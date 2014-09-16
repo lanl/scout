@@ -64,6 +64,8 @@ public:
         eCore_thumbv7m,
         eCore_thumbv7em,
         eCore_arm_arm64,
+        eCore_arm_armv8,
+        eCore_arm_aarch64,
         
         eCore_mips64,
 
@@ -103,6 +105,9 @@ public:
         eCore_uknownMach64,
 
         eCore_kalimba,
+        eCore_kalimba3,
+        eCore_kalimba4,
+        eCore_kalimba5,
 
         kNumCores,
 
@@ -135,7 +140,10 @@ public:
         kCore_x86_64_last   = eCore_x86_64_x86_64h,
 
         kCore_hexagon_first  = eCore_hexagon_generic,
-        kCore_hexagon_last   = eCore_hexagon_hexagonv5
+        kCore_hexagon_last   = eCore_hexagon_hexagonv5,
+
+        kCore_kalimba_first = eCore_kalimba,
+        kCore_kalimba_last = eCore_kalimba5
     };
 
     //------------------------------------------------------------------
@@ -360,6 +368,24 @@ public:
     uint32_t
     GetMachOCPUSubType () const;
 
+    //------------------------------------------------------------------
+    /// Architecture data byte width accessor
+    ///
+    /// @return the size in 8-bit (host) bytes of a minimum addressable
+    /// unit from the Architecture's data bus
+    //------------------------------------------------------------------
+    uint32_t
+    GetDataByteSize() const;
+
+    //------------------------------------------------------------------
+    /// Architecture code byte width accessor
+    ///
+    /// @return the size in 8-bit (host) bytes of a minimum addressable
+    /// unit from the Architecture's code bus
+    //------------------------------------------------------------------
+    uint32_t
+    GetCodeByteSize() const;
+ 
     //------------------------------------------------------------------
     /// Architecture tripple accessor.
     ///

@@ -56,7 +56,8 @@ GetFileStats (const FileSpec *file_spec, struct stat *stats_ptr)
 }
 
 // Resolves the username part of a path of the form ~user/other/directories, and
-// writes the result into dst_path.
+// writes the result into dst_path.  This will also resolve "~" to the current user.
+// If you want to complete "~" to the list of users, pass it to ResolvePartialUsername.
 void
 FileSpec::ResolveUsername (llvm::SmallVectorImpl<char> &path)
 {
@@ -66,9 +67,9 @@ FileSpec::ResolveUsername (llvm::SmallVectorImpl<char> &path)
     
     llvm::StringRef path_str(path.data());
     size_t slash_pos = path_str.find_first_of("/", 1);
-    if (slash_pos == 1)
+    if (slash_pos == 1 || path.size() == 1)
     {
-        // A path of the form ~/ resolves to the current user's home dir
+        // A path of ~/ resolves to the current user's home dir
         llvm::SmallString<64> home_dir;
         if (!llvm::sys::path::home_directory(home_dir))
             return;
@@ -946,6 +947,8 @@ FileSpec::EnumerateDirectory
         lldb_utility::CleanUp <DIR *, int> dir_path_dir(opendir(dir_path), NULL, closedir);
         if (dir_path_dir.is_valid())
         {
+            char dir_path_last_char = dir_path[strlen(dir_path) - 1];
+
             long path_max = fpathconf (dirfd (dir_path_dir.get()), _PC_NAME_MAX);
 #if defined (__APPLE_) && defined (__DARWIN_MAXPATHLEN)
             if (path_max < __DARWIN_MAXPATHLEN)
@@ -990,7 +993,14 @@ FileSpec::EnumerateDirectory
                 if (call_callback)
                 {
                     char child_path[PATH_MAX];
-                    const int child_path_len = ::snprintf (child_path, sizeof(child_path), "%s/%s", dir_path, dp->d_name);
+
+                    // Don't make paths with "/foo//bar", that just confuses everybody.
+                    int child_path_len;
+                    if (dir_path_last_char == '/')
+                        child_path_len = ::snprintf (child_path, sizeof(child_path), "%s%s", dir_path, dp->d_name);
+                    else
+                        child_path_len = ::snprintf (child_path, sizeof(child_path), "%s/%s", dir_path, dp->d_name);
+
                     if (child_path_len < (int)(sizeof(child_path) - 1))
                     {
                         // Don't resolve the file type or path

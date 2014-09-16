@@ -139,23 +139,6 @@ static CallingConv getCallingConventionForDecl(const Decl *D, bool IsWindows) {
   return CC_C;
 }
 
-static bool isAAPCSVFP(const CGFunctionInfo &FI, const TargetInfo &Target) {
-  switch (FI.getEffectiveCallingConvention()) {
-  case llvm::CallingConv::C:
-    switch (Target.getTriple().getEnvironment()) {
-    case llvm::Triple::EABIHF:
-    case llvm::Triple::GNUEABIHF:
-      return true;
-    default:
-      return false;
-    }
-  case llvm::CallingConv::ARM_AAPCS_VFP:
-    return true;
-  default:
-    return false;
-  }
-}
-
 /// Arrange the argument and result information for a call to an
 /// unknown C++ non-static member function of the given abstract type.
 /// (Zero value of RD means we don't have any meaningful "this" argument type,
@@ -198,30 +181,35 @@ CodeGenTypes::arrangeCXXMethodDeclaration(const CXXMethodDecl *MD) {
   return arrangeFreeFunctionType(prototype);
 }
 
-/// Arrange the argument and result information for a declaration
-/// or definition to the given constructor variant.
 const CGFunctionInfo &
-CodeGenTypes::arrangeCXXConstructorDeclaration(const CXXConstructorDecl *D,
-                                               CXXCtorType ctorKind) {
+CodeGenTypes::arrangeCXXStructorDeclaration(const CXXMethodDecl *MD,
+                                            StructorType Type) {
+
   SmallVector<CanQualType, 16> argTypes;
-  argTypes.push_back(GetThisType(Context, D->getParent()));
+  argTypes.push_back(GetThisType(Context, MD->getParent()));
 
-  GlobalDecl GD(D, ctorKind);
-  CanQualType resultType =
-    TheCXXABI.HasThisReturn(GD) ? argTypes.front() : Context.VoidTy;
+  GlobalDecl GD;
+  if (auto *CD = dyn_cast<CXXConstructorDecl>(MD)) {
+    GD = GlobalDecl(CD, toCXXCtorType(Type));
+  } else {
+    auto *DD = dyn_cast<CXXDestructorDecl>(MD);
+    GD = GlobalDecl(DD, toCXXDtorType(Type));
+  }
 
-  CanQual<FunctionProtoType> FTP = GetFormalType(D);
+  CanQual<FunctionProtoType> FTP = GetFormalType(MD);
 
   // Add the formal parameters.
   for (unsigned i = 0, e = FTP->getNumParams(); i != e; ++i)
     argTypes.push_back(FTP->getParamType(i));
 
-  TheCXXABI.BuildConstructorSignature(D, ctorKind, resultType, argTypes);
+  TheCXXABI.buildStructorSignature(MD, Type, argTypes);
 
   RequiredArgs required =
-      (D->isVariadic() ? RequiredArgs(argTypes.size()) : RequiredArgs::All);
+      (MD->isVariadic() ? RequiredArgs(argTypes.size()) : RequiredArgs::All);
 
   FunctionType::ExtInfo extInfo = FTP->getExtInfo();
+  CanQualType resultType =
+      TheCXXABI.HasThisReturn(GD) ? argTypes.front() : Context.VoidTy;
   return arrangeLLVMFunctionInfo(resultType, true, argTypes, extInfo, required);
 }
 
@@ -244,30 +232,6 @@ CodeGenTypes::arrangeCXXConstructorCall(const CallArgList &args,
 
   FunctionType::ExtInfo Info = FPT->getExtInfo();
   return arrangeLLVMFunctionInfo(ResultType, true, ArgTypes, Info, Required);
-}
-
-/// Arrange the argument and result information for a declaration,
-/// definition, or call to the given destructor variant.  It so
-/// happens that all three cases produce the same information.
-const CGFunctionInfo &
-CodeGenTypes::arrangeCXXDestructor(const CXXDestructorDecl *D,
-                                   CXXDtorType dtorKind) {
-  SmallVector<CanQualType, 2> argTypes;
-  argTypes.push_back(GetThisType(Context, D->getParent()));
-
-  GlobalDecl GD(D, dtorKind);
-  CanQualType resultType =
-    TheCXXABI.HasThisReturn(GD) ? argTypes.front() : Context.VoidTy;
-
-  TheCXXABI.BuildDestructorSignature(D, dtorKind, resultType, argTypes);
-
-  CanQual<FunctionProtoType> FTP = GetFormalType(D);
-  assert(FTP->getNumParams() == 0 && "dtor with formal parameters");
-  assert(FTP->isVariadic() == 0 && "dtor with formal parameters");
-
-  FunctionType::ExtInfo extInfo = FTP->getExtInfo();
-  return arrangeLLVMFunctionInfo(resultType, true, argTypes, extInfo,
-                                 RequiredArgs::All);
 }
 
 /// Arrange the argument and result information for the declaration or
@@ -347,12 +311,26 @@ CodeGenTypes::arrangeGlobalDeclaration(GlobalDecl GD) {
   const FunctionDecl *FD = cast<FunctionDecl>(GD.getDecl());
 
   if (const CXXConstructorDecl *CD = dyn_cast<CXXConstructorDecl>(FD))
-    return arrangeCXXConstructorDeclaration(CD, GD.getCtorType());
+    return arrangeCXXStructorDeclaration(CD, getFromCtorType(GD.getCtorType()));
 
   if (const CXXDestructorDecl *DD = dyn_cast<CXXDestructorDecl>(FD))
-    return arrangeCXXDestructor(DD, GD.getDtorType());
+    return arrangeCXXStructorDeclaration(DD, getFromDtorType(GD.getDtorType()));
 
   return arrangeFunctionDeclaration(FD);
+}
+
+/// Arrange a thunk that takes 'this' as the first parameter followed by
+/// varargs.  Return a void pointer, regardless of the actual return type.
+/// The body of the thunk will end in a musttail call to a function of the
+/// correct type, and the caller will bitcast the function to the correct
+/// prototype.
+const CGFunctionInfo &
+CodeGenTypes::arrangeMSMemberPointerThunk(const CXXMethodDecl *MD) {
+  assert(MD->isVirtual() && "only virtual memptrs have thunks");
+  CanQual<FunctionProtoType> FTP = GetFormalType(MD);
+  CanQualType ArgTys[] = { GetThisType(Context, MD->getParent()) };
+  return arrangeLLVMFunctionInfo(Context.VoidTy, false, ArgTys,
+                                 FTP->getExtInfo(), RequiredArgs(1));
 }
 
 /// Arrange a call as unto a free function, except possibly with an
@@ -650,11 +628,13 @@ EnterStructPointerForCoercedAccess(llvm::Value *SrcPtr,
   llvm::Type *FirstElt = SrcSTy->getElementType(0);
 
   // If the first elt is at least as large as what we're looking for, or if the
-  // first element is the same size as the whole struct, we can enter it.
+  // first element is the same size as the whole struct, we can enter it. The
+  // comparison must be made on the store size and not the alloca size. Using
+  // the alloca size may overstate the size of the load.
   uint64_t FirstEltSize =
-    CGF.CGM.getDataLayout().getTypeAllocSize(FirstElt);
+    CGF.CGM.getDataLayout().getTypeStoreSize(FirstElt);
   if (FirstEltSize < DstSize &&
-      FirstEltSize < CGF.CGM.getDataLayout().getTypeAllocSize(SrcSTy))
+      FirstEltSize < CGF.CGM.getDataLayout().getTypeStoreSize(SrcSTy))
     return SrcPtr;
 
   // GEP into the first element.
@@ -995,14 +975,11 @@ CodeGenTypes::GetFunctionType(const CGFunctionInfo &FI) {
 
     case ABIArgInfo::Extend:
     case ABIArgInfo::Direct: {
-      // If the coerce-to type is a first class aggregate, flatten it.  Either
-      // way is semantically identical, but fast-isel and the optimizer
-      // generally likes scalar values better than FCAs.
-      // We cannot do this for functions using the AAPCS calling convention,
-      // as structures are treated differently by that calling convention.
+      // Fast-isel and the optimizer generally like scalar values better than
+      // FCAs, so we flatten them if this is safe to do for this argument.
       llvm::Type *argType = argAI.getCoerceToType();
       llvm::StructType *st = dyn_cast<llvm::StructType>(argType);
-      if (st && !isAAPCSVFP(FI, getTarget())) {
+      if (st && argAI.isDirect() && argAI.getCanBeFlattened()) {
         for (unsigned i = 0, e = st->getNumElements(); i != e; ++i)
           argTypes.push_back(st->getElementType(i));
       } else {
@@ -1039,7 +1016,8 @@ llvm::Type *CodeGenTypes::GetFunctionTypeForVTable(GlobalDecl GD) {
     
   const CGFunctionInfo *Info;
   if (isa<CXXDestructorDecl>(MD))
-    Info = &arrangeCXXDestructor(cast<CXXDestructorDecl>(MD), GD.getDtorType());
+    Info =
+        &arrangeCXXStructorDeclaration(MD, getFromDtorType(GD.getDtorType()));
   else
     Info = &arrangeCXXMethodDeclaration(MD);
   return GetFunctionType(*Info);
@@ -1140,7 +1118,7 @@ void ClangToLLVMArgMapping::construct(CodeGenModule &CGM,
     case ABIArgInfo::Direct: {
       // FIXME: handle sseregparm someday...
       llvm::StructType *STy = dyn_cast<llvm::StructType>(AI.getCoerceToType());
-      if (!isAAPCSVFP(FI, CGM.getTarget()) && STy) {
+      if (AI.isDirect() && AI.getCanBeFlattened() && STy) {
         IRArgs.NumberOfArgs = STy->getNumElements();
       } else {
         IRArgs.NumberOfArgs = 1;
@@ -1445,9 +1423,41 @@ static llvm::Value *emitArgumentDemotion(CodeGenFunction &CGF,
   return CGF.Builder.CreateFPCast(value, varType, "arg.unpromote");
 }
 
+/// Returns the attribute (either parameter attribute, or function
+/// attribute), which declares argument ArgNo to be non-null.
+static const NonNullAttr *getNonNullAttr(const Decl *FD, const ParmVarDecl *PVD,
+                                         QualType ArgType, unsigned ArgNo) {
+  // FIXME: __attribute__((nonnull)) can also be applied to:
+  //   - references to pointers, where the pointee is known to be
+  //     nonnull (apparently a Clang extension)
+  //   - transparent unions containing pointers
+  // In the former case, LLVM IR cannot represent the constraint. In
+  // the latter case, we have no guarantee that the transparent union
+  // is in fact passed as a pointer.
+  if (!ArgType->isAnyPointerType() && !ArgType->isBlockPointerType())
+    return nullptr;
+  // First, check attribute on parameter itself.
+  if (PVD) {
+    if (auto ParmNNAttr = PVD->getAttr<NonNullAttr>())
+      return ParmNNAttr;
+  }
+  // Check function attributes.
+  if (!FD)
+    return nullptr;
+  for (const auto *NNAttr : FD->specific_attrs<NonNullAttr>()) {
+    if (NNAttr->isNonNull(ArgNo))
+      return NNAttr;
+  }
+  return nullptr;
+}
+
 void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
                                          llvm::Function *Fn,
                                          const FunctionArgList &Args) {
+  if (CurCodeDecl && CurCodeDecl->hasAttr<NakedAttr>())
+    // Naked functions don't have prologues.
+    return;
+
   // If this is an implicit-return-zero function, go ahead and
   // initialize the return value.  TODO: it might be nice to have
   // a more general mechanism for this that didn't require synthesized
@@ -1489,10 +1499,6 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
     AI->addAttr(llvm::AttributeSet::get(getLLVMContext(), AI->getArgNo() + 1,
                                         llvm::Attribute::NoAlias));
   }
-
-  // Get the function-level nonnull attribute if it exists.
-  const NonNullAttr *NNAtt =
-    CurCodeDecl ? CurCodeDecl->getAttr<NonNullAttr>() : nullptr;
 
   // Track if we received the parameter as a pointer (indirect, byval, or
   // inalloca).  If already have a pointer, EmitParmDecl doesn't need to copy it
@@ -1584,8 +1590,8 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
         llvm::Value *V = AI;
 
         if (const ParmVarDecl *PVD = dyn_cast<ParmVarDecl>(Arg)) {
-          if ((NNAtt && NNAtt->isNonNull(PVD->getFunctionScopeIndex())) ||
-              PVD->hasAttr<NonNullAttr>())
+          if (getNonNullAttr(CurCodeDecl, PVD, PVD->getType(),
+                             PVD->getFunctionScopeIndex()))
             AI->addAttr(llvm::AttributeSet::get(getLLVMContext(),
                                                 AI->getArgNo() + 1,
                                                 llvm::Attribute::NonNull));
@@ -1678,13 +1684,11 @@ void CodeGenFunction::EmitFunctionProlog(const CGFunctionInfo &FI,
                           llvm::PointerType::getUnqual(ArgI.getCoerceToType()));
       }
 
-      // If the coerce-to type is a first class aggregate, we flatten it and
-      // pass the elements. Either way is semantically identical, but fast-isel
-      // and the optimizer generally likes scalar values better than FCAs.
-      // We cannot do this for functions using the AAPCS calling convention,
-      // as structures are treated differently by that calling convention.
+      // Fast-isel and the optimizer generally like scalar values better than
+      // FCAs, so we flatten them if this is safe to do for this argument.
       llvm::StructType *STy = dyn_cast<llvm::StructType>(ArgI.getCoerceToType());
-      if (!isAAPCSVFP(FI, getTarget()) && STy && STy->getNumElements() > 1) {
+      if (ArgI.isDirect() && ArgI.getCanBeFlattened() && STy &&
+          STy->getNumElements() > 1) {
         uint64_t SrcSize = CGM.getDataLayout().getTypeAllocSize(STy);
         llvm::Type *DstTy =
           cast<llvm::PointerType>(Ptr->getType())->getElementType();
@@ -1979,6 +1983,12 @@ static llvm::StoreInst *findDominatingStoreToReturnValue(CodeGenFunction &CGF) {
 void CodeGenFunction::EmitFunctionEpilog(const CGFunctionInfo &FI,
                                          bool EmitRetDbgLoc,
                                          SourceLocation EndLoc) {
+  if (CurCodeDecl && CurCodeDecl->hasAttr<NakedAttr>()) {
+    // Naked functions don't have epilogues.
+    Builder.CreateUnreachable();
+    return;
+  }
+
   // Functions with no result always return void.
   if (!ReturnValue) {
     Builder.CreateRetVoid();
@@ -2092,16 +2102,17 @@ void CodeGenFunction::EmitFunctionEpilog(const CGFunctionInfo &FI,
 
   llvm::Instruction *Ret;
   if (RV) {
-    if (SanOpts->ReturnsNonnullAttribute &&
-        CurGD.getDecl()->hasAttr<ReturnsNonNullAttr>()) {
-      SanitizerScope SanScope(this);
-      llvm::Value *Cond =
-          Builder.CreateICmpNE(RV, llvm::Constant::getNullValue(RV->getType()));
-      llvm::Constant *StaticData[] = {
-        EmitCheckSourceLocation(EndLoc)
-      };
-      EmitCheck(Cond, "nonnull_return", StaticData, ArrayRef<llvm::Value *>(),
-                CRK_Recoverable);
+    if (SanOpts->ReturnsNonnullAttribute) {
+      if (auto RetNNAttr = CurGD.getDecl()->getAttr<ReturnsNonNullAttr>()) {
+        SanitizerScope SanScope(this);
+        llvm::Value *Cond = Builder.CreateICmpNE(
+            RV, llvm::Constant::getNullValue(RV->getType()));
+        llvm::Constant *StaticData[] = {
+            EmitCheckSourceLocation(EndLoc),
+            EmitCheckSourceLocation(RetNNAttr->getLocation()),
+        };
+        EmitCheck(Cond, "nonnull_return", StaticData, None, CRK_Recoverable);
+      }
     }
     Ret = Builder.CreateRet(RV);
   } else {
@@ -2415,10 +2426,36 @@ void CallArgList::freeArgumentMemory(CodeGenFunction &CGF) const {
   }
 }
 
+static void emitNonNullArgCheck(CodeGenFunction &CGF, RValue RV,
+                                QualType ArgType, SourceLocation ArgLoc,
+                                const FunctionDecl *FD, unsigned ParmNum) {
+  if (!CGF.SanOpts->NonnullAttribute || !FD)
+    return;
+  auto PVD = ParmNum < FD->getNumParams() ? FD->getParamDecl(ParmNum) : nullptr;
+  unsigned ArgNo = PVD ? PVD->getFunctionScopeIndex() : ParmNum;
+  auto NNAttr = getNonNullAttr(FD, PVD, ArgType, ArgNo);
+  if (!NNAttr)
+    return;
+  CodeGenFunction::SanitizerScope SanScope(&CGF);
+  assert(RV.isScalar());
+  llvm::Value *V = RV.getScalarVal();
+  llvm::Value *Cond =
+      CGF.Builder.CreateICmpNE(V, llvm::Constant::getNullValue(V->getType()));
+  llvm::Constant *StaticData[] = {
+      CGF.EmitCheckSourceLocation(ArgLoc),
+      CGF.EmitCheckSourceLocation(NNAttr->getLocation()),
+      llvm::ConstantInt::get(CGF.Int32Ty, ArgNo + 1),
+  };
+  CGF.EmitCheck(Cond, "nonnull_arg", StaticData, None,
+                CodeGenFunction::CRK_Recoverable);
+}
+
 void CodeGenFunction::EmitCallArgs(CallArgList &Args,
                                    ArrayRef<QualType> ArgTypes,
                                    CallExpr::const_arg_iterator ArgBeg,
                                    CallExpr::const_arg_iterator ArgEnd,
+                                   const FunctionDecl *CalleeDecl,
+                                   unsigned ParamsToSkip,
                                    bool ForceColumnInfo) {
   CGDebugInfo *DI = getDebugInfo();
   SourceLocation CallLoc;
@@ -2442,6 +2479,8 @@ void CodeGenFunction::EmitCallArgs(CallArgList &Args,
     for (int I = ArgTypes.size() - 1; I >= 0; --I) {
       CallExpr::const_arg_iterator Arg = ArgBeg + I;
       EmitCallArg(Args, *Arg, ArgTypes[I]);
+      emitNonNullArgCheck(*this, Args.back().RV, ArgTypes[I], Arg->getExprLoc(),
+                          CalleeDecl, ParamsToSkip + I);
       // Restore the debug location.
       if (DI) DI->EmitLocation(Builder, CallLoc, ForceColumnInfo);
     }
@@ -2456,6 +2495,8 @@ void CodeGenFunction::EmitCallArgs(CallArgList &Args,
     CallExpr::const_arg_iterator Arg = ArgBeg + I;
     assert(Arg != ArgEnd);
     EmitCallArg(Args, *Arg, ArgTypes[I]);
+    emitNonNullArgCheck(*this, Args.back().RV, ArgTypes[I], Arg->getExprLoc(),
+                        CalleeDecl, ParamsToSkip + I);
     // Restore the debug location.
     if (DI) DI->EmitLocation(Builder, CallLoc, ForceColumnInfo);
   }
@@ -2569,7 +2610,7 @@ CodeGenFunction::AddObjCARCExceptionMetadata(llvm::Instruction *Inst) {
 llvm::CallInst *
 CodeGenFunction::EmitNounwindRuntimeCall(llvm::Value *callee,
                                          const llvm::Twine &name) {
-  return EmitNounwindRuntimeCall(callee, ArrayRef<llvm::Value*>(), name);
+  return EmitNounwindRuntimeCall(callee, None, name);
 }
 
 /// Emits a call to the given nounwind runtime function.
@@ -2587,7 +2628,7 @@ CodeGenFunction::EmitNounwindRuntimeCall(llvm::Value *callee,
 llvm::CallInst *
 CodeGenFunction::EmitRuntimeCall(llvm::Value *callee,
                                  const llvm::Twine &name) {
-  return EmitRuntimeCall(callee, ArrayRef<llvm::Value*>(), name);
+  return EmitRuntimeCall(callee, None, name);
 }
 
 /// Emits a simple call (never an invoke) to the given runtime
@@ -2626,7 +2667,7 @@ void CodeGenFunction::EmitNoreturnRuntimeCallOrInvoke(llvm::Value *callee,
 llvm::CallSite
 CodeGenFunction::EmitRuntimeCallOrInvoke(llvm::Value *callee,
                                          const Twine &name) {
-  return EmitRuntimeCallOrInvoke(callee, ArrayRef<llvm::Value*>(), name);
+  return EmitRuntimeCallOrInvoke(callee, None, name);
 }
 
 /// Emits a call or invoke instruction to the given runtime function.
@@ -2642,7 +2683,7 @@ CodeGenFunction::EmitRuntimeCallOrInvoke(llvm::Value *callee,
 llvm::CallSite
 CodeGenFunction::EmitCallOrInvoke(llvm::Value *Callee,
                                   const Twine &Name) {
-  return EmitCallOrInvoke(Callee, ArrayRef<llvm::Value *>(), Name);
+  return EmitCallOrInvoke(Callee, None, Name);
 }
 
 /// Emits a call or invoke instruction to the given function, depending
@@ -2936,14 +2977,11 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
 
       }
 
-      // If the coerce-to type is a first class aggregate, we flatten it and
-      // pass the elements. Either way is semantically identical, but fast-isel
-      // and the optimizer generally likes scalar values better than FCAs.
-      // We cannot do this for functions using the AAPCS calling convention,
-      // as structures are treated differently by that calling convention.
+      // Fast-isel and the optimizer generally like scalar values better than
+      // FCAs, so we flatten them if this is safe to do for this argument.
       llvm::StructType *STy =
             dyn_cast<llvm::StructType>(ArgInfo.getCoerceToType());
-      if (STy && !isAAPCSVFP(CallInfo, getTarget())) {
+      if (STy && ArgInfo.isDirect() && ArgInfo.getCanBeFlattened()) {
         llvm::Type *SrcTy =
           cast<llvm::PointerType>(SrcPtr->getType())->getElementType();
         uint64_t SrcSize = CGM.getDataLayout().getTypeAllocSize(SrcTy);

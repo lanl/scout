@@ -262,58 +262,42 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
 
     ParsingDeclSpec DS(*this);
 
-    struct MeshFieldCallback : FieldCallback {
-      Parser& P;
-      Decl* MeshDecl;
-      llvm::SmallVectorImpl<Decl*>& FieldDecls;
-      bool externAlloc;
-
-      MeshFieldCallback(Parser& P, Decl* MeshDecl,
-                         llvm::SmallVectorImpl<Decl*>& FieldDecls) :
-          P(P), MeshDecl(MeshDecl), FieldDecls(FieldDecls) {}
-
-      void invoke(ParsingFieldDeclarator& FD) {
-        // Install the declarator into the current MeshDecl.
-        Decl* Field = P.Actions.ActOnMeshField(P.getCurScope(), MeshDecl,
-                             FD.D.getDeclSpec().getSourceRange().getBegin(),
-                             FD.D);
-
-        MeshFieldDecl* FDecl = cast<MeshFieldDecl>(Field);
-
-        FDecl->setImplicit(false);
-
-        if (P.getMeshFieldKind() == Cell) {
-          FDecl->setCellLocated(true);
-        } else if (P.getMeshFieldKind() == Vertex) {
-          FDecl->setVertexLocated(true);
-        } else if (P.getMeshFieldKind() == Edge) {
-          FDecl->setEdgeLocated(true);
-        } else if (P.getMeshFieldKind() == Face) {
-          FDecl->setFaceLocated(true);
-        } else {
-          FDecl->setCellLocated(false);
-          FDecl->setVertexLocated(false);
-          FDecl->setEdgeLocated(false);
-          FDecl->setFaceLocated(false);
-        }
-        // SC_TODO - is this a potential bug?  FIXME -- PM 
-        //FDecl->setExternAlloc(externAlloc);
-        FieldDecls.push_back(Field);
-        FD.complete(Field);
+    auto CFieldCallback = [&](ParsingFieldDeclarator &FD) {
+      // Install the declarator into the current MeshDecl.
+      Decl* Field = Actions.ActOnMeshField(getCurScope(), Dec,
+                                           FD.D.getDeclSpec().getSourceRange().getBegin(),
+                                           FD.D);
+      
+      MeshFieldDecl* FDecl = cast<MeshFieldDecl>(Field);
+      
+      FDecl->setImplicit(false);
+      
+      if (getMeshFieldKind() == Cell) {
+        FDecl->setCellLocated(true);
+      } else if (getMeshFieldKind() == Vertex) {
+        FDecl->setVertexLocated(true);
+      } else if (getMeshFieldKind() == Edge) {
+        FDecl->setEdgeLocated(true);
+      } else if (getMeshFieldKind() == Face) {
+        FDecl->setFaceLocated(true);
+      } else {
+        FDecl->setCellLocated(false);
+        FDecl->setVertexLocated(false);
+        FDecl->setEdgeLocated(false);
+        FDecl->setFaceLocated(false);
       }
-
-      void setFieldExternAlloc(bool externalloc) {
-        externAlloc = externalloc;
-      }
-
-    } Callback(*this, Dec, FieldDecls);
+      // SC_TODO - is this a potential bug?  FIXME -- PM
+      //FDecl->setExternAlloc(externAlloc);
+      FieldDecls.push_back(Field);
+      FD.complete(Field);
+    };
 
     if (Tok.getKind() == tok::kw_extern) {
       Diag(Tok, diag::err_extern_mesh_field);      
       ConsumeToken();      
     }
 
-    ParseMeshDeclaration(DS, Callback);
+    ParseMeshDeclaration(DS, CFieldCallback);
 
     if (Tok.is(tok::semi)) {
       ConsumeToken();

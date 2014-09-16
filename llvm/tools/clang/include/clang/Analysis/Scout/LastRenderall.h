@@ -66,13 +66,11 @@ namespace clang {
     typedef std::unordered_set<CFGBlock*> BlockSet;
     
     static void Run(Sema& S, FunctionDecl* fd){
-      CFG* cfg =
+      std::unique_ptr<CFG> cfg =
       CFG::buildCFG(fd, fd->getBody(), &S.Context, CFG::BuildOptions());
 
       BlockSet vs;
-      Visit(cfg, vs, cfg->getEntry());
-      
-      delete cfg;
+      Visit(cfg.get(), vs, cfg->getEntry());
     }
     
     static void Visit(CFG* cfg,

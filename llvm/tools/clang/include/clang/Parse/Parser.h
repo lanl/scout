@@ -1800,16 +1800,9 @@ private:
   void ParseStructUnionBody(SourceLocation StartLoc, unsigned TagType,
                             Decl *TagDecl);
 
-  struct FieldCallback {
-    virtual void invoke(ParsingFieldDeclarator &Field) = 0;
-    virtual ~FieldCallback() {}
-
-  private:
-    virtual void _anchor();
-  };
-  struct ObjCPropertyCallback;
-
-  void ParseStructDeclaration(ParsingDeclSpec &DS, FieldCallback &Callback);
+  void ParseStructDeclaration(
+      ParsingDeclSpec &DS,
+      llvm::function_ref<void(ParsingFieldDeclarator &)> FieldsCallback);
 
   bool isDeclarationSpecifier(bool DisambiguatingWithExpression = false);
   bool isTypeSpecifierQualifier();
@@ -2540,7 +2533,7 @@ private:
   bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
 
   void ParseMeshDeclaration(ParsingDeclSpec &DS,
-                            FieldCallback &Fields);
+         llvm::function_ref<void(ParsingFieldDeclarator &)> FieldsCallback);
 
   const RenderTargetType* LookupRenderTargetType(IdentifierInfo *TargetInfo,
                                                  SourceLocation TargetLoc);  

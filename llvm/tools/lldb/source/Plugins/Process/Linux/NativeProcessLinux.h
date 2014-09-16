@@ -21,6 +21,7 @@
 #include "lldb/Core/ArchSpec.h"
 #include "lldb/lldb-types.h"
 #include "lldb/Host/Debug.h"
+#include "lldb/Host/HostThread.h"
 #include "lldb/Host/Mutex.h"
 #include "lldb/Target/MemoryRegionInfo.h"
 
@@ -170,8 +171,8 @@ namespace lldb_private
 
         lldb_private::ArchSpec m_arch;
 
-        lldb::thread_t m_operation_thread;
-        lldb::thread_t m_monitor_thread;
+        HostThread m_operation_thread;
+        HostThread m_monitor_thread;
 
         // current operation which must be executed on the priviliged thread
         void *m_operation;
@@ -187,6 +188,11 @@ namespace lldb_private
         // ordered to stop have signaled their stop.
         std::unordered_set<lldb::tid_t> m_wait_for_stop_tids;
         lldb_private::Mutex m_wait_for_stop_tids_mutex;
+
+        std::unordered_set<lldb::tid_t> m_wait_for_group_stop_tids;
+        lldb::tid_t m_group_stop_signal_tid;
+        int m_group_stop_signal;
+        lldb_private::Mutex m_wait_for_group_stop_tids_mutex;
 
         lldb_private::LazyBool m_supports_mem_region;
         std::vector<MemoryRegionInfo> m_mem_region_cache;
@@ -373,6 +379,17 @@ namespace lldb_private
         /// LLDB_INVALID_SIGNAL_NUMBER, deliver that signal to the thread.
         bool
         SingleStep(lldb::tid_t tid, uint32_t signo);
+
+        /// Safely mark all existing threads as waiting for group stop.
+        /// When the final group stop comes in from the set of group stop threads,
+        /// we'll mark the current thread as signaled_thread_tid and set its stop
+        /// reason as the given signo.  All other threads from group stop notification
+        /// will have thread stop reason marked as signaled with no signo.
+        void
+        SetGroupStopTids (lldb::tid_t signaled_thread_tid, int signo);
+
+        void
+        OnGroupStop (lldb::tid_t tid);
 
         lldb_private::Error
         Detach(lldb::tid_t tid);

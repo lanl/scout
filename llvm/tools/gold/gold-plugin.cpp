@@ -18,6 +18,7 @@
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/CommandFlags.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
@@ -269,15 +270,15 @@ static const GlobalObject *getBaseObject(const GlobalValue &GV) {
 static ld_plugin_status claim_file_hook(const ld_plugin_input_file *file,
                                         int *claimed) {
   LLVMContext Context;
-  std::unique_ptr<MemoryBuffer> buffer;
+  MemoryBufferRef BufferRef;
+  std::unique_ptr<MemoryBuffer> Buffer;
   if (get_view) {
     const void *view;
     if (get_view(file->handle, &view) != LDPS_OK) {
       message(LDPL_ERROR, "Failed to get a view of %s", file->name);
       return LDPS_ERR;
     }
-    buffer.reset(MemoryBuffer::getMemBuffer(
-        StringRef((char *)view, file->filesize), "", false));
+    BufferRef = MemoryBufferRef(StringRef((char *)view, file->filesize), "");
   } else {
     int64_t offset = 0;
     // Gold has found what might be IR part-way inside of a file, such as
@@ -292,12 +293,12 @@ static ld_plugin_status claim_file_hook(const ld_plugin_input_file *file,
       message(LDPL_ERROR, EC.message().c_str());
       return LDPS_ERR;
     }
-    buffer = std::move(BufferOrErr.get());
+    Buffer = std::move(BufferOrErr.get());
+    BufferRef = Buffer->getMemBufferRef();
   }
 
-  ErrorOr<object::IRObjectFile *> ObjOrErr =
-      object::IRObjectFile::createIRObjectFile(buffer->getMemBufferRef(),
-                                               Context);
+  ErrorOr<std::unique_ptr<object::IRObjectFile>> ObjOrErr =
+      object::IRObjectFile::createIRObjectFile(BufferRef, Context);
   std::error_code EC = ObjOrErr.getError();
   if (EC == BitcodeError::InvalidBitcodeSignature)
     return LDPS_OK;
@@ -309,7 +310,7 @@ static ld_plugin_status claim_file_hook(const ld_plugin_input_file *file,
             EC.message().c_str());
     return LDPS_ERR;
   }
-  std::unique_ptr<object::IRObjectFile> Obj(ObjOrErr.get());
+  std::unique_ptr<object::IRObjectFile> Obj = std::move(*ObjOrErr);
 
   Modules.resize(Modules.size() + 1);
   claimed_file &cf = Modules.back();
@@ -456,6 +457,7 @@ static void drop(GlobalValue &GV) {
                          /*Initializer*/ nullptr);
   Var->takeName(&Alias);
   Alias.replaceAllUsesWith(Var);
+  Alias.eraseFromParent();
 }
 
 static const char *getResolutionName(ld_plugin_symbol_resolution R) {
@@ -546,18 +548,17 @@ getModuleForFile(LLVMContext &Context, claimed_file &F, raw_fd_ostream *ApiFile,
   if (get_view(F.handle, &View) != LDPS_OK)
     message(LDPL_FATAL, "Failed to get a view of file");
 
-  std::unique_ptr<MemoryBuffer> Buffer(MemoryBuffer::getMemBuffer(
-      StringRef((char *)View, File.filesize), "", false));
+  std::unique_ptr<MemoryBuffer> Buffer = MemoryBuffer::getMemBuffer(
+      StringRef((char *)View, File.filesize), "", false);
 
   if (release_input_file(F.handle) != LDPS_OK)
     message(LDPL_FATAL, "Failed to release file information");
 
-  ErrorOr<Module *> MOrErr = getLazyBitcodeModule(Buffer.get(), Context);
+  ErrorOr<Module *> MOrErr = getLazyBitcodeModule(std::move(Buffer), Context);
 
   if (std::error_code EC = MOrErr.getError())
     message(LDPL_FATAL, "Could not read bitcode from file : %s",
             EC.message().c_str());
-  Buffer.release();
 
   std::unique_ptr<Module> M(MOrErr.get());
 
@@ -576,6 +577,13 @@ getModuleForFile(LLVMContext &Context, claimed_file &F, raw_fd_ostream *ApiFile,
     GlobalValue *GV = M->getNamedValue(Sym.name);
     if (!GV)
       continue; // Asm symbol.
+
+    if (GV->hasCommonLinkage()) {
+      // Common linkage is special. There is no single symbol that wins the
+      // resolution. Instead we have to collect the maximum alignment and size.
+      // The IR linker does that for us if we just pass it every common GV.
+      continue;
+    }
 
     switch (Resolution) {
     case LDPR_UNKNOWN:
@@ -685,7 +693,7 @@ static void codegen(Module &M) {
   runLTOPasses(M, *TM);
 
   PassManager CodeGenPasses;
-  CodeGenPasses.add(new DataLayoutPass(&M));
+  CodeGenPasses.add(new DataLayoutPass());
 
   SmallString<128> Filename;
   int FD;
@@ -775,9 +783,9 @@ static ld_plugin_status allSymbolsReadHook(raw_fd_ostream *ApiFile) {
     else
       path = output_name + ".bc";
     {
-      std::string Error;
-      raw_fd_ostream OS(path.c_str(), Error, sys::fs::OpenFlags::F_None);
-      if (!Error.empty())
+      std::error_code EC;
+      raw_fd_ostream OS(path, EC, sys::fs::OpenFlags::F_None);
+      if (EC)
         message(LDPL_FATAL, "Failed to write the output file.");
       WriteBitcodeToFile(L.getModule(), OS);
     }
@@ -799,11 +807,11 @@ static ld_plugin_status all_symbols_read_hook(void) {
   if (!options::generate_api_file) {
     Ret = allSymbolsReadHook(nullptr);
   } else {
-    std::string Error;
-    raw_fd_ostream ApiFile("apifile.txt", Error, sys::fs::F_None);
-    if (!Error.empty())
+    std::error_code EC;
+    raw_fd_ostream ApiFile("apifile.txt", EC, sys::fs::F_None);
+    if (EC)
       message(LDPL_FATAL, "Unable to open apifile.txt for writing: %s",
-              Error.c_str());
+              EC.message().c_str());
     Ret = allSymbolsReadHook(&ApiFile);
   }
 

@@ -1498,7 +1498,7 @@ bool Sema::CheckMessageArgumentTypes(QualType ReceiverType,
 
   // Do additional checkings on method.
   IsError |= CheckObjCMethodCall(
-      Method, SelLoc, makeArrayRef<const Expr *>(Args.data(), Args.size()));
+      Method, SelLoc, makeArrayRef(Args.data(), Args.size()));
 
   return IsError;
 }
@@ -2114,6 +2114,45 @@ static void checkCocoaAPI(Sema &S, const ObjCMessageExpr *Msg) {
                      edit::rewriteObjCRedundantCallWithLiteral);
 }
 
+/// \brief Diagnose use of %s directive in an NSString which is being passed
+/// as formatting string to formatting method.
+static void
+DiagnoseCStringFormatDirectiveInObjCAPI(Sema &S,
+                                        ObjCMethodDecl *Method,
+                                        Selector Sel,
+                                        Expr **Args, unsigned NumArgs) {
+  unsigned Idx = 0;
+  bool Format = false;
+  ObjCStringFormatFamily SFFamily = Sel.getStringFormatFamily();
+  if (SFFamily == ObjCStringFormatFamily::SFF_NSString) {
+    Idx = 0;
+    Format = true;
+  }
+  else if (Method) {
+    for (const auto *I : Method->specific_attrs<FormatAttr>()) {
+      if (S.GetFormatNSStringIdx(I, Idx)) {
+        Format = true;
+        break;
+      }
+    }
+  }
+  if (!Format || NumArgs <= Idx)
+    return;
+  
+  Expr *FormatExpr = Args[Idx];
+  if (ObjCStringLiteral *OSL =
+      dyn_cast<ObjCStringLiteral>(FormatExpr->IgnoreParenImpCasts())) {
+    StringLiteral *FormatString = OSL->getString();
+    if (S.FormatStringHasSArg(FormatString)) {
+      S.Diag(FormatExpr->getExprLoc(), diag::warn_objc_cdirective_format_string)
+        << "%s" << 0 << 0;
+      if (Method)
+        S.Diag(Method->getLocation(), diag::note_method_declared_at)
+          << Method->getDeclName();
+    }
+  }
+}
+
 /// \brief Build an Objective-C class message expression.
 ///
 /// This routine takes care of both normal class messages and
@@ -2237,17 +2276,30 @@ ExprResult Sema::BuildClassMessage(TypeSourceInfo *ReceiverTypeInfo,
     return ExprError();
   
   // Warn about explicit call of +initialize on its own class. But not on 'super'.
-  if (Method && Method->getMethodFamily() == OMF_initialize &&
-      !SuperLoc.isValid()) {
-    const ObjCInterfaceDecl *ID =
-      dyn_cast<ObjCInterfaceDecl>(Method->getDeclContext());
-    if (ID == Class) {
-      Diag(Loc, diag::warn_direct_initialize_call);
-      Diag(Method->getLocation(), diag::note_method_declared_at)
-      << Method->getDeclName();
+  if (Method && Method->getMethodFamily() == OMF_initialize) {
+    if (!SuperLoc.isValid()) {
+      const ObjCInterfaceDecl *ID =
+        dyn_cast<ObjCInterfaceDecl>(Method->getDeclContext());
+      if (ID == Class) {
+        Diag(Loc, diag::warn_direct_initialize_call);
+        Diag(Method->getLocation(), diag::note_method_declared_at)
+          << Method->getDeclName();
+      }
+    }
+    else if (ObjCMethodDecl *CurMeth = getCurMethodDecl()) {
+      // [super initialize] is allowed only within an +initialize implementation
+      if (CurMeth->getMethodFamily() != OMF_initialize) {
+        Diag(Loc, diag::warn_direct_super_initialize_call);
+        Diag(Method->getLocation(), diag::note_method_declared_at)
+          << Method->getDeclName();
+        Diag(CurMeth->getLocation(), diag::note_method_declared_at)
+        << CurMeth->getDeclName();
+      }
     }
   }
-
+  
+  DiagnoseCStringFormatDirectiveInObjCAPI(*this, Method, Sel, Args, NumArgs);
+  
   // Construct the appropriate ObjCMessageExpr.
   ObjCMessageExpr *Result;
   if (SuperLoc.isValid())
@@ -2732,6 +2784,8 @@ ExprResult Sema::BuildInstanceMessage(Expr *Receiver,
     }
   }
 
+  DiagnoseCStringFormatDirectiveInObjCAPI(*this, Method, Sel, Args, NumArgs);
+  
   // Construct the appropriate ObjCMessageExpr instance.
   ObjCMessageExpr *Result;
   if (SuperLoc.isValid())
