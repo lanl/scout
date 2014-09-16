@@ -50,6 +50,7 @@
  *
  */
 
+#include "scout/Runtime/init_mac.h"
 #include "scout/Runtime/GraphicsCInterface.h"
 #include "scout/Runtime/opengl/glfw/glfwDevice.h"
 #include "scout/Runtime/opengl/glfw/glfwWindow.h"
@@ -61,6 +62,9 @@ extern "C"
 void __scrt_init_graphics() {
   // CMS:  We don't really need to keep track of this as a device
   // but we do so since that was already built -- can change that.
+#if defined(__APPLE__)
+   scoutInitMac();
+#endif
   glDevice* glDevice_ = glfwDevice::Instance();
 }
 
