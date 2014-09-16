@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <string>
 #include <map>
+#include <cassert>
 
 #include <stdio.h>
 
@@ -156,7 +157,7 @@ lsci_subgrid_bounds_at_set(lsci_rect_1d_t rect_1d_array_basep,
 {
     assert(rect_1d_array_basep && index >= 0);
     Rect<1> *pos = static_cast<Rect<1> *>(rect_1d_array_basep);
-    pos += index; 
+    pos += index;
     *dest = *((lsci_rect_1d_storage_t*)pos);
 }
 
@@ -189,24 +190,28 @@ lsci_argument_map_set_point(lsci_argument_map_t *arg_map,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// TODO do something with task_arg
 int
 lsci_index_launcher_create(lsci_index_launcher_t *il,
                            int task_id,
                            lsci_domain_t *ldom,
-                           lsci_task_argument_t *task_arg,
+                           void *task_arg,
+                           size_t task_arg_extent,
                            lsci_argument_map_t *arg_map)
 {
     using namespace LegionRuntime::HighLevel;
     using LegionRuntime::HighLevel::HighLevelRuntime;
     assert(il && ldom); // task_arg and arg_map can be NULL
+    assert(task_arg_extent >= 0);
+    if (task_arg_extent > 0) assert(task_arg);
 
     Domain *ldom_cxx = static_cast<Domain *>(ldom->hndl);
     assert(ldom_cxx);
     ArgumentMap *arg_map_cxx = static_cast<ArgumentMap *>(arg_map->hndl);
-    IndexLauncher *ilp_cxx = new IndexLauncher(task_id, *ldom_cxx,
-                                               TaskArgument(NULL, 0),
-                                               *arg_map_cxx);
+    IndexLauncher *ilp_cxx = new IndexLauncher(
+                                     task_id, *ldom_cxx,
+                                     TaskArgument(task_arg, task_arg_extent),
+                                     *arg_map_cxx
+                                 );
     il->hndl = static_cast<lsci_index_launcher_handle_t>(ilp_cxx);
     return LSCI_SUCCESS;
 }
@@ -281,9 +286,11 @@ reg_void_legion_task_cxx(
     lsci_task_args_t targs = {
         .context = static_cast<lsci_context_t>(&ctx),
         .runtime = static_cast<lsci_runtime_t>(lrt),
+        .task = (lsci_task_t)task,
         .task_id = task->index_point.point_data[0],
         .n_regions = rgns.size(),
         .regions = (lsci_physical_regions_t)rgns.data(),
+        .argsp = task->args,
         .local_argsp = task->local_args
     };
     /* now call the provided callback and pass it all the info it needs */
@@ -453,22 +460,34 @@ lsci_vector_dump(lsci_vector_t *vec,
     return LSCI_SUCCESS;
 }
 
+// TODO assert dense
 void *
-raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
-                lsci_dt_t type,
-                size_t region_id,
-                lsci_field_id_t fid,
-                lsci_rect_1d_t subgrid_bounds)
+lsci_raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
+                     lsci_dt_t type,
+                     size_t rid,
+                     lsci_field_id_t fid,
+                     lsci_task_t task,
+                     lsci_context_t context,
+                     lsci_runtime_t runtime)
 {
-    // TODO assert dense
-    assert(rgnp && type < LSCI_TYPE_MAX);
     using namespace LegionRuntime::HighLevel;
     using namespace LegionRuntime::Accessor;
-    assert(rgnp && region_id >= 0);
+
+    assert(context && runtime && rgnp && type < LSCI_TYPE_MAX);
+    assert(rgnp && rid >= 0);
+    HighLevelRuntime *rtp_cxx = static_cast<HighLevelRuntime *>(runtime);
+    Task *taskp_cxx = static_cast<Task *>(task);
+    Context *ctxp_cxx = static_cast<Context *>(context);
     // get the base of the PhysicalRegion array
     PhysicalRegion *prgnp_cxx = static_cast<PhysicalRegion *>(rgnp);
     // index into the array given the region id
-    prgnp_cxx += region_id;
+    prgnp_cxx += rid;
+    // get the domain so we can get the sub-grid bounds later
+    Domain dom_cxx = rtp_cxx->get_index_space_domain(
+                         *ctxp_cxx,
+                         taskp_cxx->regions[rid].region.get_index_space()
+                     );
+    Rect<1> sgb_cxx = dom_cxx.get_rect<1>();
 
     switch (type) {
         case LSCI_TYPE_INT32: {
@@ -476,32 +495,28 @@ raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
             RA fm = prgnp_cxx->get_field_accessor(fid).typeify<int32_t>();
             Rect<1> subRect;
             ByteOffset bOff[1];
-            Rect<1> *sgbp_cxx = static_cast< Rect<1> * >(subgrid_bounds);
-            return fm.raw_rect_ptr<1>(*sgbp_cxx, subRect, bOff);
+            return fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
         }
         case LSCI_TYPE_INT64: {
             typedef RegionAccessor<AccessorType::Generic, int64_t> RA;
             RA fm = prgnp_cxx->get_field_accessor(fid).typeify<int64_t>();
             Rect<1> subRect;
             ByteOffset bOff[1];
-            Rect<1> *sgbp_cxx = static_cast< Rect<1> * >(subgrid_bounds);
-            return fm.raw_rect_ptr<1>(*sgbp_cxx, subRect, bOff);
+            return fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
         }
         case LSCI_TYPE_FLOAT: {
             typedef RegionAccessor<AccessorType::Generic, float> RA;
             RA fm = prgnp_cxx->get_field_accessor(fid).typeify<float>();
             Rect<1> subRect;
             ByteOffset bOff[1];
-            Rect<1> *sgbp_cxx = static_cast< Rect<1> * >(subgrid_bounds);
-            return fm.raw_rect_ptr<1>(*sgbp_cxx, subRect, bOff);
+            return fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
         }
         case LSCI_TYPE_DOUBLE: {
             typedef RegionAccessor<AccessorType::Generic, double> RA;
             RA fm = prgnp_cxx->get_field_accessor(fid).typeify<double>();
             Rect<1> subRect;
             ByteOffset bOff[1];
-            Rect<1> *sgbp_cxx = static_cast< Rect<1> * >(subgrid_bounds);
-            return fm.raw_rect_ptr<1>(*sgbp_cxx, subRect, bOff);
+            return fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
         }
         default:
             assert(false && "invalid lsci_dt_t");
@@ -687,6 +702,8 @@ struct struct_cxx {
     }
 };
 
+} // end unnamed namespace for internal things
+
 int
 lsci_struct_create(lsci_struct_t *theStruct,
                    lsci_context_t context,
@@ -707,7 +724,9 @@ lsci_struct_add_field(lsci_struct_t *theStruct,
                       lsci_context_t context,
                       lsci_runtime_t runtime)
 {
-    assert(theStruct && field_name && context && runtime && type < LSCI_TYPE_MAX);
+    assert(theStruct && field_name &&
+           context && runtime &&
+           type < LSCI_TYPE_MAX);
     struct_cxx *scxx = static_cast<struct_cxx *>(theStruct->hndl);
     assert(scxx);
     lsci_vector_t field;
@@ -744,26 +763,53 @@ lsci_struct_get_vec_by_name(lsci_struct_t *theStruct,
     return LSCI_SUCCESS;
 }
 
-} // end unnamed namespace for internal things
+int
+lsci_get_index_space_domain(
+    lsci_runtime_t runtime,
+    lsci_context_t context,
+    lsci_task_t task,
+    size_t rid,
+    lsci_domain_t *answer_bufp
+)
+{
+    using namespace LegionRuntime::HighLevel;
+    using LegionRuntime::HighLevel::HighLevelRuntime;
 
+    assert(runtime && context && task && answer_bufp);
 
-void lsci_print_mesh_task_args(lsci_mesh_task_args_t* mtargs) {
-  printf("lsci_mesh_task_args: \n");
-  printf("\trank: %lu\n", mtargs->rank);
-  printf("\twidth: %lu\n", mtargs->global_width);
-  printf("\theight: %lu\n", mtargs->global_height);
-  printf("\tdepth: %lu\n", mtargs->global_depth);
-  printf("\tlen: %lu\n", mtargs->sgb_len);
+    HighLevelRuntime *rtp_cxx = static_cast<HighLevelRuntime *>(runtime);
+    Context *ctxp_cxx = static_cast<Context *>(context);
+    Task *taskp_cxx = static_cast<Task *>(task);
+    assert(rtp_cxx && ctxp_cxx && taskp_cxx);
+
+    Domain *domp_cxx = new Domain(rtp_cxx->get_index_space_domain(
+                           *ctxp_cxx,
+                           taskp_cxx->regions[rid].region.get_index_space()
+                       ));
+    answer_bufp->hndl = static_cast<lsci_domain_handle_t>(domp_cxx);
+    answer_bufp->volume = domp_cxx->get_volume();
+    return LSCI_SUCCESS;
 }
 
-void lsci_print_task_args_local_argsp(lsci_task_args_t* targs) {
-  printf("lsci_task_args->local_argsp: \n");
-  lsci_mesh_task_args_t* mtargs = (lsci_mesh_task_args_t*)targs->local_argsp;
-  printf("\trank: %lu\n", mtargs->rank);
-  printf("\twidth: %lu\n", mtargs->global_width);
-  printf("\theight: %lu\n", mtargs->global_height);
-  printf("\tdepth: %lu\n", mtargs->global_depth);
-  printf("\tlen: %lu\n", mtargs->sgb_len);
+void
+lsci_print_mesh_task_args(lsci_mesh_task_args_t* mtargs)
+{
+    printf("lsci_mesh_task_args: \n");
+    printf("\trank: %lu\n", mtargs->rank);
+    printf("\twidth: %lu\n", mtargs->global_width);
+    printf("\theight: %lu\n", mtargs->global_height);
+    printf("\tdepth: %lu\n", mtargs->global_depth);
+    printf("\tlen: %lu\n", mtargs->sgb_len);
 }
 
-
+void
+lsci_print_task_args_local_argsp(lsci_task_args_t* targs)
+{
+    printf("lsci_task_args->local_argsp: \n");
+    lsci_mesh_task_args_t* mtargs = (lsci_mesh_task_args_t*)targs->local_argsp;
+    printf("\trank: %lu\n", mtargs->rank);
+    printf("\twidth: %lu\n", mtargs->global_width);
+    printf("\theight: %lu\n", mtargs->global_height);
+    printf("\tdepth: %lu\n", mtargs->global_depth);
+    printf("\tlen: %lu\n", mtargs->sgb_len);
+}

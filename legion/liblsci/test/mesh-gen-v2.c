@@ -31,7 +31,7 @@ forall_ir(struct Mesh* m, uint32_t depth, uint32_t height, uint32_t width){
            (unsigned long)depth, (unsigned long)height, (unsigned long)width);
     size_t extent = width * height * depth;
     for (size_t i = 0; i < extent; ++i) {
-        m->a[i] += m->b[i];
+        m->a[i] += (m->b[i] + i);
     }
     printf("%s: done!\n", __func__);
 }
@@ -47,10 +47,10 @@ main_task(lsci_task_args_t* task_args)
     lsci_context_t context = task_args->context;
     lsci_runtime_t runtime = task_args->runtime;
 
-    struct Mesh*m = malloc(sizeof(*m));
+    struct Mesh *m = malloc(sizeof(*m));
     m->rank = 2;
-    m->width = 512;
-    m->height = 512;
+    m->width = 3;
+    m->height = 2;
     m->depth = 1;
 #if 0
     // no need to allocate here
@@ -74,26 +74,19 @@ main_task(lsci_task_args_t* task_args)
     lsci_unimesh_get_vec_by_name(&lgn_m, "a", &field_a, context, runtime);
     lsci_unimesh_get_vec_by_name(&lgn_m, "b", &field_b, context, runtime);
     int idx = 0;
-    lsci_argument_map_t arg_map;
-    lsci_argument_map_create(&arg_map);
-    for (size_t i = 0; i < field_a.launch_domain.volume; ++i) {
-        lsci_mesh_task_args_t mtargs;
-        mtargs.global_width = m->width;
-        mtargs.global_height = m->height;
-        mtargs.global_depth = m->depth;
-        mtargs.rank = m->rank;
-        lsci_subgrid_bounds_at_set(field_a.subgrid_bounds, i, &(mtargs.sgb));
-        //mtargs.sgb = *(lsci_rect_1d_storage_t *)
-        //    lsci_subgrid_bounds_at(field_a.subgrid_bounds, i);
-        mtargs.sgb_len = field_a.subgrid_bounds_len;
-        //printf("main_task:subgrid_bounds_len: %lu\n", mtargs.sgb_len);
-        lsci_argument_map_set_point(&arg_map, i, &mtargs, sizeof(mtargs));
-    }
     // create an index launcher
     lsci_index_launcher_t il;
+    lsci_mesh_task_args_t mtargs = {
+        .global_width = m->width,
+        .global_height = m->height,
+        .global_depth = m->depth,
+        .rank = m->rank
+    };
+    lsci_argument_map_t arg_map;
+    lsci_argument_map_create(&arg_map);
     lsci_index_launcher_create(&il, FORALL_TID,
                                &field_a.launch_domain,
-                               NULL, 0, &arg_map);
+                               &mtargs, sizeof(mtargs), &arg_map);
     // add the region requirements for each of the fields
     lsci_add_region_requirement(
         &il, field_a.logical_partition, 0,
@@ -108,31 +101,55 @@ main_task(lsci_task_args_t* task_args)
     lsci_add_field(&il, idx++, field_b.fid);
     // execute the index launcher
     lsci_execute_index_space(runtime, context, &il);
+    // sanity
+    lsci_vector_dump(&field_a, LSCI_TYPE_FLOAT, context, runtime);
 }
 
 void
 forall_task(lsci_task_args_t* task_args)
 {
+    static const int aRID = 0;
+    static const int bRID = 0;
     // extract the args
     printf("%s: hi from task %d\n", __func__, task_args->task_id);
-    int rid = 0;
-    lsci_mesh_task_args_t* mtargs = (lsci_mesh_task_args_t *)task_args->local_argsp;
+    lsci_mesh_task_args_t *mtargs = (lsci_mesh_task_args_t *)task_args->argsp;
     //printf("subgrid_bounds_len: %lu\n", mtargs->sgb_len);
+    // example of how to get domain to get bounds (volume)
+    lsci_domain_t a_dom, b_dom;
+    lsci_get_index_space_domain(task_args->runtime, task_args->context,
+                                task_args->task, aRID, &a_dom);
+    lsci_get_index_space_domain(task_args->runtime, task_args->context,
+                                task_args->task, bRID, &b_dom);
+    assert(a_dom.volume == b_dom.volume);
+    printf("a_dom volume: %lu\n", (unsigned long)a_dom.volume);
     struct Mesh m = {
         .a = NULL,
         .b = NULL,
         .rank = mtargs->rank,
+        // XXX not correct. cannot assume width, height, depth. only works
+        // because we are dealing with one partition. will cause pain and
+        // heartache at some point.
         .width = mtargs->global_width,
         .height = mtargs->global_height,
         .depth = mtargs->global_depth
     };
     m.a = (float *)lsci_raw_rect_ptr_1d(
-              task_args->regions, LSCI_TYPE_FLOAT, rid++, 0,
-              task_args->task, task_args->context, task_args->runtime
+              task_args->regions,
+              LSCI_TYPE_FLOAT,
+              aRID,
+              0,
+              task_args->task,
+              task_args->context,
+              task_args->runtime
           );
     m.b = (float *)lsci_raw_rect_ptr_1d(
-              task_args->regions, LSCI_TYPE_FLOAT, rid++, 0,
-              task_args->task, task_args->context, task_args->runtime
+              task_args->regions,
+              LSCI_TYPE_FLOAT,
+              bRID,
+              0,
+              task_args->task,
+              task_args->context,
+              task_args->runtime
           );
     // take the IR from forall_ir and stitch in here
     // launch the forall_task's
@@ -142,7 +159,8 @@ forall_task(lsci_task_args_t* task_args)
 int main(int argc, char** argv){
     lsci_set_top_level_task_id(MAIN_TID);
 
-    lsci_register_void_legion_task_aux(MAIN_TID,
+    lsci_register_void_legion_task_aux(
+            MAIN_TID,
             LSCI_LOC_PROC,
             true,
             false,
@@ -151,9 +169,10 @@ int main(int argc, char** argv){
             "main-task",
             main_task);
 
-    lsci_register_void_legion_task_aux(FORALL_TID,
+    lsci_register_void_legion_task_aux(
+            FORALL_TID,
             LSCI_LOC_PROC,
-            false,
+            true,
             true,
             true,
             LSCI_AUTO_GENERATE_ID,
