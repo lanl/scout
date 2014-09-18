@@ -12,8 +12,8 @@
 #include <iomanip>
 #include <string>
 #include <map>
-#include <cassert>
 
+#include <assert.h>
 #include <stdio.h>
 
 // convenience namespace aliases
@@ -39,7 +39,8 @@ lsci_vector_create(lsci_vector_t *vec,
     using namespace LegionRuntime::HighLevel;
     using LegionRuntime::HighLevel::HighLevelRuntime;
     assert(vec && len > 0 && context && runtime && type < LSCI_TYPE_MAX);
-
+    // first zero out everything in *vec
+    (void)memset(vec, 0, sizeof(*vec));
     HighLevelRuntime *rtp_cxx = static_cast<HighLevelRuntime *>(runtime);
     Context *ctxp_cxx = static_cast<Context *>(context);
     vec->lr_len = len;
@@ -61,7 +62,38 @@ lsci_vector_create(lsci_vector_t *vec,
     LogicalRegion *lr = new LogicalRegion();
     *lr = rtp_cxx->create_logical_region(*ctxp_cxx, *isp, fs);
     vec->logical_region = static_cast<LogicalRegion *>(lr);
+    // FIXME leak: add to C struct and free in lsci_vector_free
+    //rtp_cxx->destroy_field_space(*ctxp_cxx, fs);
+    return LSCI_SUCCESS;
+}
 
+int
+lsci_vector_free(lsci_vector_t *vec,
+                 lsci_context_t context,
+                 lsci_runtime_t runtime)
+{
+    using namespace LegionRuntime::HighLevel;
+    using LegionRuntime::HighLevel::HighLevelRuntime;
+    assert(vec && context && runtime);
+
+    HighLevelRuntime *rtp_cxx = static_cast<HighLevelRuntime *>(runtime);
+    Context *ctxp_cxx = static_cast<Context *>(context);
+    // if we had a logical partition, clean up resources
+    if (vec->logical_partition) {
+        LogicalPartition *lpp_cxx = static_cast<LogicalPartition *>(
+                                        vec->logical_partition
+                                    );
+        rtp_cxx->destroy_logical_partition(*ctxp_cxx, *lpp_cxx);
+        delete lpp_cxx;
+    }
+    IndexSpace *isp_cxx = static_cast<IndexSpace *>(vec->index_space);
+    LogicalRegion *lrp_cxx = static_cast<LogicalRegion *>(
+                                 vec->logical_region
+                             );
+    rtp_cxx->destroy_logical_region(*ctxp_cxx, *lrp_cxx);
+    rtp_cxx->destroy_index_space(*ctxp_cxx, *isp_cxx);
+    delete isp_cxx;
+    delete lrp_cxx;
     return LSCI_SUCCESS;
 }
 
@@ -451,25 +483,25 @@ lsci_vector_dump(lsci_vector_t *vec,
         case LSCI_TYPE_INT32: {
             dump<int32_t>(*lrp_cxx, fid_cxx,
                           Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
-                          "int32 dump", 1, *ctxp_cxx, rtp_cxx);
+                          "int32 dump", 32, *ctxp_cxx, rtp_cxx);
             break;
         }
         case LSCI_TYPE_INT64: {
             dump<int64_t>(*lrp_cxx, fid_cxx,
                           Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
-                          "int64 dump", 1, *ctxp_cxx, rtp_cxx);
+                          "int64 dump", 32, *ctxp_cxx, rtp_cxx);
             break;
         }
         case LSCI_TYPE_FLOAT: {
             dump<float>(*lrp_cxx, fid_cxx,
                          Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
-                         "float dump", 1, *ctxp_cxx, rtp_cxx);
+                         "float dump", 32, *ctxp_cxx, rtp_cxx);
             break;
         }
         case LSCI_TYPE_DOUBLE: {
             dump<double>(*lrp_cxx, fid_cxx,
                          Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
-                         "double dump", 1, *ctxp_cxx, rtp_cxx);
+                         "double dump", 32, *ctxp_cxx, rtp_cxx);
             break;
         }
         default:
@@ -570,6 +602,7 @@ struct mesh_cxx {
     size_t depth;
     // total number of elements stored in mesh
     size_t nelems;
+    // FIXME map leak. Plug in free
     std::map<std::string, lsci_vector_t> vectab;
 
     mesh_cxx(void) {
@@ -587,6 +620,16 @@ struct mesh_cxx {
         assert(width > 0);
         set_dims();
         set_nelemes();
+    }
+
+    void
+    free(lsci_context_t context,
+         lsci_runtime_t runtime) {
+        assert(context && runtime);
+        typedef std::map<std::string, lsci_vector_t>::iterator MapI;
+        for (MapI i = vectab.begin(); i != vectab.end(); i++) {
+            lsci_vector_free(&i->second, context, runtime);
+        }
     }
 
     void
@@ -651,6 +694,17 @@ lsci_unimesh_create(lsci_unimesh_t *mesh,
     mesh->width = w;
     mesh->height = h;
     mesh->depth = d;
+    return LSCI_SUCCESS;
+}
+
+int
+lsci_unimesh_free(lsci_unimesh_t *mesh,
+                  lsci_context_t context,
+                  lsci_runtime_t runtime)
+{
+    assert(mesh && context && runtime);
+    mesh_cxx *mp_cxx = static_cast<mesh_cxx *>(mesh->hndl);
+    mp_cxx->free(context, runtime);
     return LSCI_SUCCESS;
 }
 

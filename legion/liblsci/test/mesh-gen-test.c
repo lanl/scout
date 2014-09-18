@@ -108,6 +108,8 @@ main_task(lsci_task_args_t* task_args)
     lsci_add_field(&il, idx++, field_b.fid);
     // execute the index launcher
     lsci_execute_index_space(runtime, context, &il);
+    // all done - cleanup
+    lsci_unimesh_free(&lgn_m, context, runtime);
 }
 
 void

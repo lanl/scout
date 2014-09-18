@@ -203,6 +203,11 @@ lsci_vector_create(lsci_vector_t *vec,
                    lsci_runtime_t runtime);
 
 int
+lsci_vector_free(lsci_vector_t *vec,
+                 lsci_context_t context,
+                 lsci_runtime_t runtime);
+
+int
 lsci_vector_partition(lsci_vector_t *vec,
                       size_t n_parts,
                       lsci_context_t context,
@@ -240,6 +245,11 @@ lsci_unimesh_create(lsci_unimesh_t *mesh,
                     size_t d,
                     lsci_context_t context,
                     lsci_runtime_t runtime);
+
+int
+lsci_unimesh_free(lsci_unimesh_t *mesh,
+                  lsci_context_t context,
+                  lsci_runtime_t runtime);
 
 int
 lsci_unimesh_add_field(lsci_unimesh_t *mesh,

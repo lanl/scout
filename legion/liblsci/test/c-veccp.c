@@ -182,6 +182,8 @@ main_task(lsci_task_args_t *task_args)
     printf("-- %s: calling %s\n", __func__, "veccp");
     veccp(&vec_from, &vec_to, context, runtime);
     lsci_vector_dump(&vec_to, LSCI_TYPE_DOUBLE, context, runtime);
+    lsci_vector_free(&vec_to, context, runtime);
+    lsci_vector_free(&vec_from, context, runtime);
 }
 
 int
