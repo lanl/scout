@@ -3,6 +3,11 @@
  *                         All rights reserved.
  */
 
+/**
+ * TODO
+ * . add free routines - lots of leaks
+ */
+
 #ifndef LSCI_H_INCLUDED
 #define LSCI_H_INCLUDED
 
@@ -60,6 +65,7 @@ typedef void* lsci_logical_region_t;
 typedef void* lsci_logical_partition_t;
 typedef void* lsci_index_space_t;
 typedef void* lsci_domain_handle_t;
+typedef void* lsci_task_t;
 typedef void* lsci_physical_regions_t;
 typedef void* lsci_rect_1d_t;
 typedef int   lsci_field_id_t;
@@ -68,11 +74,17 @@ size_t
 lsci_sizeof_cxx_rect_1d(void);
 
 lsci_rect_1d_t
-lsci_subgrid_bounds_at(lsci_rect_1d_t rect_1d_array_basep,
-                       size_t index);
+lsci_subgrid_bounds_at(
+    lsci_rect_1d_t rect_1d_array_basep,
+    size_t index
+);
+
 void
-lsci_subgrid_bounds_at_set(lsci_rect_1d_t rect_1d_array_basep,
-                       size_t index, lsci_rect_1d_storage_t* dest);
+lsci_subgrid_bounds_at_set(
+    lsci_rect_1d_t rect_1d_array_basep,
+    size_t index,
+    lsci_rect_1d_storage_t *dest
+);
 
 // update lsci_domain_member_t if updating this
 typedef struct lsci_domain_t {
@@ -87,7 +99,6 @@ typedef enum lsci_domain_member_t {
   LSCI_DOMAIN_HANDLE = 0,
   LSCI_DOMAIN_VOLUME = 1
 } lsci_domain_member_t;
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // convenience vector abstraction
@@ -116,7 +127,7 @@ typedef enum lsci_vector_member_t {
   LSCI_VECTOR_SUBGRID_BOUNDS_LEN = 6,
   LSCI_VECTOR_SUBGRID_BOUNDS = 7
 } lsci_vector_member_t;
-  
+
 int
 lsci_vector_dump(lsci_vector_t *vec,
                  lsci_dt_t type,
@@ -125,7 +136,6 @@ lsci_vector_dump(lsci_vector_t *vec,
 
 ////////////////////////////////////////////////////////////////////////////////
 typedef void* lsci_index_launcher_handle_t;
-typedef void* lsci_task_argument_t; // TODO
 typedef void* lsci_argument_map_handle_t;
 
 typedef struct lsci_argument_map_t {
@@ -146,7 +156,6 @@ typedef struct lsci_index_launcher_t {
     lsci_index_launcher_handle_t hndl;
     int task_id;
     lsci_domain_t domain;
-    // TODO add task args and argmap
 } lsci_index_launcher_t;
 
 typedef unsigned int lsci_projection_id_t;
@@ -164,7 +173,8 @@ int
 lsci_index_launcher_create(lsci_index_launcher_t *il,
                            int task_id,
                            lsci_domain_t *ldom,
-                           lsci_task_argument_t *task_arg,
+                           void *task_arg,
+                           size_t task_arg_extent,
                            lsci_argument_map_t *arg_map);
 
 int
@@ -191,6 +201,11 @@ lsci_vector_create(lsci_vector_t *vec,
                    lsci_dt_t type,
                    lsci_context_t context,
                    lsci_runtime_t runtime);
+
+int
+lsci_vector_free(lsci_vector_t *vec,
+                 lsci_context_t context,
+                 lsci_runtime_t runtime);
 
 int
 lsci_vector_partition(lsci_vector_t *vec,
@@ -230,6 +245,11 @@ lsci_unimesh_create(lsci_unimesh_t *mesh,
                     size_t d,
                     lsci_context_t context,
                     lsci_runtime_t runtime);
+
+int
+lsci_unimesh_free(lsci_unimesh_t *mesh,
+                  lsci_context_t context,
+                  lsci_runtime_t runtime);
 
 int
 lsci_unimesh_add_field(lsci_unimesh_t *mesh,
@@ -292,41 +312,45 @@ lsci_struct_get_vec_by_name(lsci_unimesh_t *theStruct,
 typedef struct lsci_task_args_t {
     lsci_context_t context;
     lsci_runtime_t runtime;
+    lsci_task_t task;
     int task_id;
     /// physical region things ///
     size_t n_regions;
     lsci_physical_regions_t regions;
+    void *argsp;
     void *local_argsp;
 } lsci_task_args_t;
 
 // update this if updating lsci_task_args_t
 typedef enum lsci_task_args_member_t {
-  LSCI_TARGS_CONTEXT = 0,
-  LSCI_TARGS_RUNTIME = 1,
-  LSCI_TARGS_TASK_ID = 2,
-  LSCI_TARGS_N_REGIONS = 3,
-  LSCI_TARGS_REGIONS = 4,
-  LSCI_TARGS_LOCAL_ARGSP = 5
+    LSCI_TARGS_CONTEXT     = 0,
+    LSCI_TARGS_RUNTIME     = 1,
+    LSCI_TARGS_TASK        = 2,
+    LSCI_TARGS_TASK_ID     = 3,
+    LSCI_TARGS_N_REGIONS   = 4,
+    LSCI_TARGS_REGIONS     = 5,
+    LSCI_TARGS_ARGSP       = 6,
+    LSCI_TARGS_LOCAL_ARGSP = 7
 } lsci_task_args_member_t;
 
 // update lsci_mesh_task_args_member_t if updating this
 typedef struct lsci_mesh_task_args_t {
-  size_t rank;
-  size_t global_width;
-  size_t global_height;
-  size_t global_depth;
-  lsci_rect_1d_storage_t sgb;
-  size_t sgb_len;
+    size_t rank;
+    size_t global_width;
+    size_t global_height;
+    size_t global_depth;
+    lsci_rect_1d_storage_t sgb;
+    size_t sgb_len;
 } lsci_mesh_task_args_t;
 
 // update this if updating lsci_mesh_task_args_t
 typedef enum lsci_mesh_task_args_member_t {
-  LSCI_MTARGS_RANK = 0,
-  LSCI_MTARGS_GLOBAL_WIDTH = 1,
-  LSCI_MTARGS_GLOBAL_HEIGHT = 2,
-  LSCI_MTARGS_GLOBAL_DEPTH = 3,
-  LSCI_MTARGS_SUBGRID_BOUNDS = 4,
-  LSCI_MTARGS_SUBGRID_LEN = 5
+    LSCI_MTARGS_RANK = 0,
+    LSCI_MTARGS_GLOBAL_WIDTH = 1,
+    LSCI_MTARGS_GLOBAL_HEIGHT = 2,
+    LSCI_MTARGS_GLOBAL_DEPTH = 3,
+    LSCI_MTARGS_SUBGRID_BOUNDS = 4,
+    LSCI_MTARGS_SUBGRID_LEN = 5
 } lsci_mesh_task_args_member_t;
 
 
@@ -389,18 +413,31 @@ lsci_register_void_legion_task_aux(
 );
 
 void *
-raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
-                lsci_dt_t type,
-                size_t region_id,
-                lsci_field_id_t fid,
-                lsci_rect_1d_t subgrid_bounds);
+lsci_raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
+                     lsci_dt_t type,
+                     size_t region_id,
+                     lsci_field_id_t fid,
+                     lsci_task_t task,
+                     lsci_context_t context,
+                     lsci_runtime_t runtime);
+
+int
+lsci_get_index_space_domain(
+    lsci_runtime_t runtime,
+    lsci_context_t context,
+    lsci_task_t task,
+    size_t region_id,
+    lsci_domain_t *answer_bufp
+);
 
 /**
  * Print functions for debugging IR
  */
+void
+lsci_print_mesh_task_args(lsci_mesh_task_args_t *mtargs);
 
-void lsci_print_mesh_task_args(lsci_mesh_task_args_t* mtargs);
-void lsci_print_task_args_local_argsp(lsci_task_args_t* targs);
+void
+lsci_print_task_args_local_argsp(lsci_task_args_t *targs);
 
 #ifdef __cplusplus
 }

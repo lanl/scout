@@ -48,7 +48,7 @@ init_vals(lsci_unimesh_t *mesh,
     lsci_index_launcher_t il;
     lsci_index_launcher_create(&il, INIT_VALS_TID,
                                &field_a.launch_domain,
-                               NULL, &arg_map);
+                               NULL, 0, &arg_map);
     lsci_add_region_requirement(
         &il, field_a.logical_partition, 0,
         LSCI_WRITE_DISCARD, LSCI_EXCLUSIVE, field_a.logical_region
@@ -69,12 +69,13 @@ init_vals_task(lsci_task_args_t *task_args)
     assert(task_args->regions);
     size_t rid = 0;
     lsci_mesh_task_args_t targs = *(lsci_mesh_task_args_t *)task_args->local_argsp;
-    lsci_rect_1d_t field_sgb = (lsci_rect_1d_t)&targs.sgb;
-    double *fieldap = (double *)raw_rect_ptr_1d(
-                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0, field_sgb
+    double *fieldap = (double *)lsci_raw_rect_ptr_1d(
+                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0,
+                        task_args->task, task_args->context, task_args->runtime
                       );
-    double *fieldbp = (double *)raw_rect_ptr_1d(
-                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0, field_sgb
+    double *fieldbp = (double *)lsci_raw_rect_ptr_1d(
+                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0,
+                        task_args->task, task_args->context, task_args->runtime
                       );
     assert(fieldap && fieldbp);
     for (size_t i = 0; i < targs.sgb_len; ++i) {
@@ -122,6 +123,8 @@ main_task(lsci_task_args_t *task_args)
         lsci_unimesh_get_vec_by_name(&mesh_a, "field-b", &field_b, context, runtime);
         lsci_vector_dump(&field_a, LSCI_TYPE_DOUBLE, context, runtime);
     } while (0);
+    // cleanup
+    lsci_unimesh_free(&mesh_a, context, runtime);
 }
 
 int

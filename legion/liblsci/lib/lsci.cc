@@ -13,6 +13,7 @@
 #include <string>
 #include <map>
 
+#include <assert.h>
 #include <stdio.h>
 
 // convenience namespace aliases
@@ -38,7 +39,8 @@ lsci_vector_create(lsci_vector_t *vec,
     using namespace LegionRuntime::HighLevel;
     using LegionRuntime::HighLevel::HighLevelRuntime;
     assert(vec && len > 0 && context && runtime && type < LSCI_TYPE_MAX);
-
+    // first zero out everything in *vec
+    (void)memset(vec, 0, sizeof(*vec));
     HighLevelRuntime *rtp_cxx = static_cast<HighLevelRuntime *>(runtime);
     Context *ctxp_cxx = static_cast<Context *>(context);
     vec->lr_len = len;
@@ -60,7 +62,38 @@ lsci_vector_create(lsci_vector_t *vec,
     LogicalRegion *lr = new LogicalRegion();
     *lr = rtp_cxx->create_logical_region(*ctxp_cxx, *isp, fs);
     vec->logical_region = static_cast<LogicalRegion *>(lr);
+    // FIXME leak: add to C struct and free in lsci_vector_free
+    //rtp_cxx->destroy_field_space(*ctxp_cxx, fs);
+    return LSCI_SUCCESS;
+}
 
+int
+lsci_vector_free(lsci_vector_t *vec,
+                 lsci_context_t context,
+                 lsci_runtime_t runtime)
+{
+    using namespace LegionRuntime::HighLevel;
+    using LegionRuntime::HighLevel::HighLevelRuntime;
+    assert(vec && context && runtime);
+
+    HighLevelRuntime *rtp_cxx = static_cast<HighLevelRuntime *>(runtime);
+    Context *ctxp_cxx = static_cast<Context *>(context);
+    // if we had a logical partition, clean up resources
+    if (vec->logical_partition) {
+        LogicalPartition *lpp_cxx = static_cast<LogicalPartition *>(
+                                        vec->logical_partition
+                                    );
+        rtp_cxx->destroy_logical_partition(*ctxp_cxx, *lpp_cxx);
+        delete lpp_cxx;
+    }
+    IndexSpace *isp_cxx = static_cast<IndexSpace *>(vec->index_space);
+    LogicalRegion *lrp_cxx = static_cast<LogicalRegion *>(
+                                 vec->logical_region
+                             );
+    rtp_cxx->destroy_logical_region(*ctxp_cxx, *lrp_cxx);
+    rtp_cxx->destroy_index_space(*ctxp_cxx, *isp_cxx);
+    delete isp_cxx;
+    delete lrp_cxx;
     return LSCI_SUCCESS;
 }
 
@@ -156,7 +189,7 @@ lsci_subgrid_bounds_at_set(lsci_rect_1d_t rect_1d_array_basep,
 {
     assert(rect_1d_array_basep && index >= 0);
     Rect<1> *pos = static_cast<Rect<1> *>(rect_1d_array_basep);
-    pos += index; 
+    pos += index;
     *dest = *((lsci_rect_1d_storage_t*)pos);
 }
 
@@ -189,24 +222,28 @@ lsci_argument_map_set_point(lsci_argument_map_t *arg_map,
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// TODO do something with task_arg
 int
 lsci_index_launcher_create(lsci_index_launcher_t *il,
                            int task_id,
                            lsci_domain_t *ldom,
-                           lsci_task_argument_t *task_arg,
+                           void *task_arg,
+                           size_t task_arg_extent,
                            lsci_argument_map_t *arg_map)
 {
     using namespace LegionRuntime::HighLevel;
     using LegionRuntime::HighLevel::HighLevelRuntime;
     assert(il && ldom); // task_arg and arg_map can be NULL
+    assert(task_arg_extent >= 0);
+    if (task_arg_extent > 0) assert(task_arg);
 
     Domain *ldom_cxx = static_cast<Domain *>(ldom->hndl);
     assert(ldom_cxx);
     ArgumentMap *arg_map_cxx = static_cast<ArgumentMap *>(arg_map->hndl);
-    IndexLauncher *ilp_cxx = new IndexLauncher(task_id, *ldom_cxx,
-                                               TaskArgument(NULL, 0),
-                                               *arg_map_cxx);
+    IndexLauncher *ilp_cxx = new IndexLauncher(
+                                     task_id, *ldom_cxx,
+                                     TaskArgument(task_arg, task_arg_extent),
+                                     *arg_map_cxx
+                                 );
     il->hndl = static_cast<lsci_index_launcher_handle_t>(ilp_cxx);
     return LSCI_SUCCESS;
 }
@@ -281,14 +318,35 @@ reg_void_legion_task_cxx(
     lsci_task_args_t targs = {
         .context = static_cast<lsci_context_t>(&ctx),
         .runtime = static_cast<lsci_runtime_t>(lrt),
+        .task = (lsci_task_t)task,
         .task_id = task->index_point.point_data[0],
         .n_regions = rgns.size(),
         .regions = (lsci_physical_regions_t)rgns.data(),
+        .argsp = task->args,
         .local_argsp = task->local_args
     };
     /* now call the provided callback and pass it all the info it needs */
     cb_args.cbf(&targs);
     return LSCI_SUCCESS;
+}
+
+template <unsigned DIM, typename T>
+bool
+offsetsAreDense(const Rect<DIM> &bounds,
+                const LegionRuntime::Accessor::ByteOffset *offset)
+{
+    off_t exp_offset = sizeof(T);
+    for (unsigned i = 0; i < DIM; i++) {
+        bool found = false;
+        for (unsigned j = 0; j < DIM; j++)
+            if (offset[j].offset == exp_offset) {
+                found = true;
+                exp_offset *= (bounds.hi[j] - bounds.lo[j] + 1);
+                break;
+            }
+        if (!found) return false;
+    }
+    return true;
 }
 
 } // end namespace
@@ -425,25 +483,25 @@ lsci_vector_dump(lsci_vector_t *vec,
         case LSCI_TYPE_INT32: {
             dump<int32_t>(*lrp_cxx, fid_cxx,
                           Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
-                          "int32 dump", 1, *ctxp_cxx, rtp_cxx);
+                          "int32 dump", 32, *ctxp_cxx, rtp_cxx);
             break;
         }
         case LSCI_TYPE_INT64: {
             dump<int64_t>(*lrp_cxx, fid_cxx,
                           Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
-                          "int64 dump", 1, *ctxp_cxx, rtp_cxx);
+                          "int64 dump", 32, *ctxp_cxx, rtp_cxx);
             break;
         }
         case LSCI_TYPE_FLOAT: {
             dump<float>(*lrp_cxx, fid_cxx,
                          Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
-                         "float dump", 1, *ctxp_cxx, rtp_cxx);
+                         "float dump", 32, *ctxp_cxx, rtp_cxx);
             break;
         }
         case LSCI_TYPE_DOUBLE: {
             dump<double>(*lrp_cxx, fid_cxx,
                          Rect<1>(Point<1>::ZEROES(), Point<1>(vec->lr_len - 1)),
-                         "double dump", 1, *ctxp_cxx, rtp_cxx);
+                         "double dump", 32, *ctxp_cxx, rtp_cxx);
             break;
         }
         default:
@@ -454,54 +512,77 @@ lsci_vector_dump(lsci_vector_t *vec,
 }
 
 void *
-raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
-                lsci_dt_t type,
-                size_t region_id,
-                lsci_field_id_t fid,
-                lsci_rect_1d_t subgrid_bounds)
+lsci_raw_rect_ptr_1d(lsci_physical_regions_t rgnp,
+                     lsci_dt_t type,
+                     size_t rid,
+                     lsci_field_id_t fid,
+                     lsci_task_t task,
+                     lsci_context_t context,
+                     lsci_runtime_t runtime)
 {
-    // TODO assert dense
-    assert(rgnp && type < LSCI_TYPE_MAX);
     using namespace LegionRuntime::HighLevel;
     using namespace LegionRuntime::Accessor;
-    assert(rgnp && region_id >= 0);
+
+    assert(context && runtime && rgnp && type < LSCI_TYPE_MAX);
+    assert(rgnp && rid >= 0);
+    HighLevelRuntime *rtp_cxx = static_cast<HighLevelRuntime *>(runtime);
+    Task *taskp_cxx = static_cast<Task *>(task);
+    Context *ctxp_cxx = static_cast<Context *>(context);
     // get the base of the PhysicalRegion array
     PhysicalRegion *prgnp_cxx = static_cast<PhysicalRegion *>(rgnp);
     // index into the array given the region id
-    prgnp_cxx += region_id;
+    prgnp_cxx += rid;
+    // get the domain so we can get the sub-grid bounds later
+    Domain dom_cxx = rtp_cxx->get_index_space_domain(
+                         *ctxp_cxx,
+                         taskp_cxx->regions[rid].region.get_index_space()
+                     );
+    Rect<1> sgb_cxx = dom_cxx.get_rect<1>();
+
+    void *resultp = NULL;
+    Rect<1> subRect;
+    ByteOffset bOff[1];
 
     switch (type) {
         case LSCI_TYPE_INT32: {
             typedef RegionAccessor<AccessorType::Generic, int32_t> RA;
             RA fm = prgnp_cxx->get_field_accessor(fid).typeify<int32_t>();
-            Rect<1> subRect;
-            ByteOffset bOff[1];
-            Rect<1> *sgbp_cxx = static_cast< Rect<1> * >(subgrid_bounds);
-            return fm.raw_rect_ptr<1>(*sgbp_cxx, subRect, bOff);
+            resultp = fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
+            if (!resultp || (subRect != sgb_cxx) ||
+                !offsetsAreDense<1, int32_t>(sgb_cxx, bOff)) {
+                assert(false && "Cannot continue >:-|");
+            }
+            return resultp;
         }
         case LSCI_TYPE_INT64: {
             typedef RegionAccessor<AccessorType::Generic, int64_t> RA;
             RA fm = prgnp_cxx->get_field_accessor(fid).typeify<int64_t>();
-            Rect<1> subRect;
-            ByteOffset bOff[1];
-            Rect<1> *sgbp_cxx = static_cast< Rect<1> * >(subgrid_bounds);
-            return fm.raw_rect_ptr<1>(*sgbp_cxx, subRect, bOff);
+            resultp = fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
+            if (!resultp || (subRect != sgb_cxx) ||
+                !offsetsAreDense<1, int64_t>(sgb_cxx, bOff)) {
+                assert(false && "Cannot continue >:-|");
+            }
+            return resultp;
         }
         case LSCI_TYPE_FLOAT: {
             typedef RegionAccessor<AccessorType::Generic, float> RA;
             RA fm = prgnp_cxx->get_field_accessor(fid).typeify<float>();
-            Rect<1> subRect;
-            ByteOffset bOff[1];
-            Rect<1> *sgbp_cxx = static_cast< Rect<1> * >(subgrid_bounds);
-            return fm.raw_rect_ptr<1>(*sgbp_cxx, subRect, bOff);
+            resultp = fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
+            if (!resultp || (subRect != sgb_cxx) ||
+                !offsetsAreDense<1, float>(sgb_cxx, bOff)) {
+                assert(false && "Cannot continue >:-|");
+            }
+            return resultp;
         }
         case LSCI_TYPE_DOUBLE: {
             typedef RegionAccessor<AccessorType::Generic, double> RA;
             RA fm = prgnp_cxx->get_field_accessor(fid).typeify<double>();
-            Rect<1> subRect;
-            ByteOffset bOff[1];
-            Rect<1> *sgbp_cxx = static_cast< Rect<1> * >(subgrid_bounds);
-            return fm.raw_rect_ptr<1>(*sgbp_cxx, subRect, bOff);
+            resultp = fm.raw_rect_ptr<1>(sgb_cxx, subRect, bOff);
+            if (!resultp || (subRect != sgb_cxx) ||
+                !offsetsAreDense<1, double>(sgb_cxx, bOff)) {
+                assert(false && "Cannot continue >:-|");
+            }
+            return resultp;
         }
         default:
             assert(false && "invalid lsci_dt_t");
@@ -521,6 +602,7 @@ struct mesh_cxx {
     size_t depth;
     // total number of elements stored in mesh
     size_t nelems;
+    // FIXME map leak. Plug in free
     std::map<std::string, lsci_vector_t> vectab;
 
     mesh_cxx(void) {
@@ -538,6 +620,16 @@ struct mesh_cxx {
         assert(width > 0);
         set_dims();
         set_nelemes();
+    }
+
+    void
+    free(lsci_context_t context,
+         lsci_runtime_t runtime) {
+        assert(context && runtime);
+        typedef std::map<std::string, lsci_vector_t>::iterator MapI;
+        for (MapI i = vectab.begin(); i != vectab.end(); i++) {
+            lsci_vector_free(&i->second, context, runtime);
+        }
     }
 
     void
@@ -583,6 +675,7 @@ private:
         if (dims > 3) assert(false && "not supported");
     }
 };
+
 } // end unnamed namespace for internal mesh things
 
 int
@@ -601,6 +694,17 @@ lsci_unimesh_create(lsci_unimesh_t *mesh,
     mesh->width = w;
     mesh->height = h;
     mesh->depth = d;
+    return LSCI_SUCCESS;
+}
+
+int
+lsci_unimesh_free(lsci_unimesh_t *mesh,
+                  lsci_context_t context,
+                  lsci_runtime_t runtime)
+{
+    assert(mesh && context && runtime);
+    mesh_cxx *mp_cxx = static_cast<mesh_cxx *>(mesh->hndl);
+    mp_cxx->free(context, runtime);
     return LSCI_SUCCESS;
 }
 
@@ -687,6 +791,8 @@ struct struct_cxx {
     }
 };
 
+} // end unnamed namespace for internal things
+
 int
 lsci_struct_create(lsci_struct_t *theStruct,
                    lsci_context_t context,
@@ -707,7 +813,9 @@ lsci_struct_add_field(lsci_struct_t *theStruct,
                       lsci_context_t context,
                       lsci_runtime_t runtime)
 {
-    assert(theStruct && field_name && context && runtime && type < LSCI_TYPE_MAX);
+    assert(theStruct && field_name &&
+           context && runtime &&
+           type < LSCI_TYPE_MAX);
     struct_cxx *scxx = static_cast<struct_cxx *>(theStruct->hndl);
     assert(scxx);
     lsci_vector_t field;
@@ -744,26 +852,53 @@ lsci_struct_get_vec_by_name(lsci_struct_t *theStruct,
     return LSCI_SUCCESS;
 }
 
-} // end unnamed namespace for internal things
+int
+lsci_get_index_space_domain(
+    lsci_runtime_t runtime,
+    lsci_context_t context,
+    lsci_task_t task,
+    size_t rid,
+    lsci_domain_t *answer_bufp
+)
+{
+    using namespace LegionRuntime::HighLevel;
+    using LegionRuntime::HighLevel::HighLevelRuntime;
 
+    assert(runtime && context && task && answer_bufp);
 
-void lsci_print_mesh_task_args(lsci_mesh_task_args_t* mtargs) {
-  printf("lsci_mesh_task_args: \n");
-  printf("\trank: %lu\n", mtargs->rank);
-  printf("\twidth: %lu\n", mtargs->global_width);
-  printf("\theight: %lu\n", mtargs->global_height);
-  printf("\tdepth: %lu\n", mtargs->global_depth);
-  printf("\tlen: %lu\n", mtargs->sgb_len);
+    HighLevelRuntime *rtp_cxx = static_cast<HighLevelRuntime *>(runtime);
+    Context *ctxp_cxx = static_cast<Context *>(context);
+    Task *taskp_cxx = static_cast<Task *>(task);
+    assert(rtp_cxx && ctxp_cxx && taskp_cxx);
+
+    Domain *domp_cxx = new Domain(rtp_cxx->get_index_space_domain(
+                           *ctxp_cxx,
+                           taskp_cxx->regions[rid].region.get_index_space()
+                       ));
+    answer_bufp->hndl = static_cast<lsci_domain_handle_t>(domp_cxx);
+    answer_bufp->volume = domp_cxx->get_volume();
+    return LSCI_SUCCESS;
 }
 
-void lsci_print_task_args_local_argsp(lsci_task_args_t* targs) {
-  printf("lsci_task_args->local_argsp: \n");
-  lsci_mesh_task_args_t* mtargs = (lsci_mesh_task_args_t*)targs->local_argsp;
-  printf("\trank: %lu\n", mtargs->rank);
-  printf("\twidth: %lu\n", mtargs->global_width);
-  printf("\theight: %lu\n", mtargs->global_height);
-  printf("\tdepth: %lu\n", mtargs->global_depth);
-  printf("\tlen: %lu\n", mtargs->sgb_len);
+void
+lsci_print_mesh_task_args(lsci_mesh_task_args_t* mtargs)
+{
+    printf("lsci_mesh_task_args: \n");
+    printf("\trank: %lu\n", mtargs->rank);
+    printf("\twidth: %lu\n", mtargs->global_width);
+    printf("\theight: %lu\n", mtargs->global_height);
+    printf("\tdepth: %lu\n", mtargs->global_depth);
+    printf("\tlen: %lu\n", mtargs->sgb_len);
 }
 
-
+void
+lsci_print_task_args_local_argsp(lsci_task_args_t* targs)
+{
+    printf("lsci_task_args->local_argsp: \n");
+    lsci_mesh_task_args_t* mtargs = (lsci_mesh_task_args_t*)targs->local_argsp;
+    printf("\trank: %lu\n", mtargs->rank);
+    printf("\twidth: %lu\n", mtargs->global_width);
+    printf("\theight: %lu\n", mtargs->global_height);
+    printf("\tdepth: %lu\n", mtargs->global_depth);
+    printf("\tlen: %lu\n", mtargs->sgb_len);
+}

@@ -56,7 +56,7 @@ veccp(lsci_vector_t *from,
     lsci_index_launcher_t il;
     lsci_index_launcher_create(&il, VECCP_TID,
                                &to->launch_domain,
-                               NULL, &arg_map);
+                               NULL, 0, &arg_map);
     lsci_add_region_requirement(
         &il, from->logical_partition, 0,
         LSCI_READ_ONLY, LSCI_EXCLUSIVE, from->logical_region
@@ -82,14 +82,13 @@ veccp_task(lsci_task_args_t *task_args)
             (unsigned long)task_args->n_regions);
 #endif
     veccp_args_t t_args = *(veccp_args_t *)task_args->local_argsp;
-    lsci_rect_1d_t from_sgb = (lsci_rect_1d_t)&t_args.vec_a_sgb;
-    lsci_rect_1d_t to_sgb   = (lsci_rect_1d_t)&t_args.vec_b_sgb;
-    assert(t_args.vec_a_sgb_len == t_args.vec_b_sgb_len);
-    double *fromp = (double *)raw_rect_ptr_1d(
-                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0, from_sgb
+    double *fromp = (double *)lsci_raw_rect_ptr_1d(
+                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0,
+                        task_args->task, task_args->context, task_args->runtime
                     );
-    double *top = (double *)raw_rect_ptr_1d(
-                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0, to_sgb
+    double *top = (double *)lsci_raw_rect_ptr_1d(
+                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0,
+                        task_args->task, task_args->context, task_args->runtime
                   );
     assert(fromp && top);
     for (size_t i = 0; i < t_args.vec_a_sgb_len; ++i) {
@@ -125,7 +124,7 @@ init_vals(lsci_vector_t *from,
     lsci_index_launcher_t il;
     lsci_index_launcher_create(&il, INIT_VALS_TID,
                                &to->launch_domain,
-                               NULL, &arg_map);
+                               NULL, 0, &arg_map);
     lsci_add_region_requirement(
         &il, from->logical_partition, 0,
         LSCI_WRITE_DISCARD, LSCI_EXCLUSIVE, from->logical_region
@@ -146,14 +145,14 @@ init_vals_task(lsci_task_args_t *task_args)
     assert(task_args->regions);
     size_t rid = 0;
     veccp_args_t t_args = *(veccp_args_t *)task_args->local_argsp;
-    lsci_rect_1d_t from_sgb = (lsci_rect_1d_t)&t_args.vec_a_sgb;
-    lsci_rect_1d_t to_sgb   = (lsci_rect_1d_t)&t_args.vec_b_sgb;
     assert(t_args.vec_a_sgb_len == t_args.vec_b_sgb_len);
-    double *fromp = (double *)raw_rect_ptr_1d(
-                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0, from_sgb
+    double *fromp = (double *)lsci_raw_rect_ptr_1d(
+                        task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0,
+                        task_args->task, task_args->context, task_args->runtime
                     );
-    double *top = (double *)raw_rect_ptr_1d(
-                      task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0, to_sgb
+    double *top = (double *)lsci_raw_rect_ptr_1d(
+                      task_args->regions, LSCI_TYPE_DOUBLE, rid++, 0,
+                      task_args->task, task_args->context, task_args->runtime
                   );
     assert(fromp && top);
     for (size_t i = 0; i < t_args.vec_a_sgb_len; ++i) {
@@ -183,6 +182,8 @@ main_task(lsci_task_args_t *task_args)
     printf("-- %s: calling %s\n", __func__, "veccp");
     veccp(&vec_from, &vec_to, context, runtime);
     lsci_vector_dump(&vec_to, LSCI_TYPE_DOUBLE, context, runtime);
+    lsci_vector_free(&vec_to, context, runtime);
+    lsci_vector_free(&vec_from, context, runtime);
 }
 
 int
