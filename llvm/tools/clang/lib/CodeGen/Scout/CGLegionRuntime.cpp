@@ -111,13 +111,43 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
   LocProcVal = llvm::ConstantInt::get(context, llvm::APInt(32, 1));
   UtilProcVal = llvm::ConstantInt::get(context, llvm::APInt(32, 2));
  
+  DomainHandleVal =
+  llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_DOMAIN_HANDLE));
+  
+  DomainVolumeVal =
+  llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_DOMAIN_VOLUME));
+  
+  VectorLRVal =
+  llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_VECTOR_LR_LEN));
+  
+  VectorFIDVal =
+  llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_VECTOR_FID));
+  
+  VectorIndexSpaceVal =
+  llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_VECTOR_INDEX_SPACE));
+  
+  VectorLogicalRegionVal =
+  llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_VECTOR_LOGICAL_REGION));
+  
+  VectorLogicalPartitionVal =
+  llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_VECTOR_LOGICAL_PARTITION));
+  
+  VectorLaunchDomainVal =
+  llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_VECTOR_LAUNCH_DOMAIN));
+  
+  VectorSubgridBoundsLenVal =
+  llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_VECTOR_SUBGRID_BOUNDS_LEN));
+  
+  VectorSubgridBoundsVal =
+  llvm::ConstantInt::get(context, llvm::APInt(32, LSCI_VECTOR_SUBGRID_BOUNDS));
+  
   // need to change all the struct types to create identified struct types if not already created
   // can't use literal struct types
   vector<llvm::Type*> fields;
  
   Rect1dStorageTy = CGM.getModule().getTypeByName("struct.lsci_rect_1d_storage_t");
   if (!Rect1dStorageTy) {
-    llvm::ArrayType* ArrayTy = llvm::ArrayType::get(llvm::IntegerType::get(context, 8), LSCI_RECT_1D_CXX_SIZE);
+    llvm::ArrayType* ArrayTy = llvm::ArrayType::get(Int8Ty, LSCI_RECT_1D_CXX_SIZE);
     fields = {ArrayTy};
     Rect1dStorageTy = llvm::StructType::create(context, fields, "struct.lsci_rect_1d_storage_t");
   }
@@ -283,7 +313,7 @@ llvm::Function* CGLegionRuntime::SizeofCXXRect1dFunc(){
 
 llvm::Function* CGLegionRuntime::SubgridBoundsAtFunc(){
   string name = "lsci_subgrid_bounds_at";
-  vector<llvm::Type*> params = {VoidPtrTy, Int64Ty};
+  vector<llvm::Type*> params = {Rect1dTy, Int64Ty};
   return LegionRuntimeFunction(name, params, VoidPtrTy);
 }
 
@@ -296,7 +326,7 @@ llvm::Function* CGLegionRuntime::SubgridBoundsAtSetFunc(){
 
 llvm::Function* CGLegionRuntime::VectorDumpFunc(){
   string name = "lsci_vector_dump";
-  vector<llvm::Type*> params = {VoidPtrTy, Int64Ty};
+  vector<llvm::Type*> params = {VoidPtrTy, Int64Ty, ContextTy, RuntimeTy};
   return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
@@ -346,10 +376,22 @@ llvm::Function* CGLegionRuntime::VectorCreateFunc(){
   return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
+llvm::Function* CGLegionRuntime::VectorFreeFunc(){
+  string name = "lsci_vector_free";
+  vector<llvm::Type*> params = {PointerTy(VectorTy), ContextTy, RuntimeTy};
+  return LegionRuntimeFunction(name, params, Int32Ty);
+}
+
 llvm::Function* CGLegionRuntime::UnimeshCreateFunc(){
   string name = "lsci_unimesh_create";
   vector<llvm::Type*> params =
     {PointerTy(UnimeshTy), Int64Ty, Int64Ty, Int64Ty, ContextTy, RuntimeTy};
+  return LegionRuntimeFunction(name, params, Int32Ty);
+}
+
+llvm::Function* CGLegionRuntime::UnimeshFreeFunc(){
+  string name = "lsci_unimesh_free";
+  vector<llvm::Type*> params = {PointerTy(UnimeshTy), ContextTy, RuntimeTy};
   return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
