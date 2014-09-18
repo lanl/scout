@@ -57,7 +57,8 @@
 #include "legion/lsci.h"
 
 using namespace std;
-using namespace CodeGen;
+using namespace clang;
+using namespace clang::CodeGen;
 
 CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
   llvm::LLVMContext& context = CGM.getLLVMContext();

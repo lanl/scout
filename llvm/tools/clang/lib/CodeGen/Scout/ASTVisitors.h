@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2014, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -82,11 +82,13 @@
 using namespace clang;
 using namespace clang::CodeGen;
 
+typedef std::map<std::string, bool> MeshFieldMap;
+typedef std::map<std::string, std::string> MeshNameMap;
+
 // find what mesh fields are used in a forall
 class ForallVisitor : public StmtVisitor<ForallVisitor> {
 public:
 
-  typedef std::map<std::string, bool> FieldMap;
   enum NodeType {
     NodeNone,
     NodeLHS,
@@ -126,17 +128,12 @@ public:
   }
 
   void VisitMemberExpr(MemberExpr* E) {
-
     if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())) {
-
       if(ImplicitMeshParamDecl *bd = dyn_cast<ImplicitMeshParamDecl>(dr->getDecl())) {
-
         if (isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())) {
-
           ValueDecl* md = E->getMemberDecl();
 
           std::string ref = bd->getMeshVarDecl()->getName().str() + "." + md->getName().str();
-
           if (nodeType_ == NodeLHS) {
             LHS_.insert(make_pair(ref, true));
           } else if (nodeType_ == NodeRHS) {
@@ -182,20 +179,19 @@ public:
 private:
 
   ForallMeshStmt *fs_;
-  FieldMap LHS_;
-  FieldMap RHS_;
+  MeshFieldMap LHS_;
+  MeshFieldMap RHS_;
   NodeType nodeType_;
 };
 
-
-// find what mesh fields are used in a task function.
-class TaskVisitor : public DeclVisitor<TaskVisitor> {
+class TaskStmtVisitor : public StmtVisitor<TaskStmtVisitor> {
 public:
 
-  typedef std::map<std::string, bool> FieldMap;
-  typedef std::map<std::string, std::string> MeshNameMap;
+  TaskStmtVisitor(Stmt* S)
+: S_(S) {
+    (void)S_;
+  }
 
-  TaskVisitor(const FunctionDecl *FD) { fd_ = FD; }
 
   const std::map<std::string, bool>& getLHSmap() const {
     return LHS_;
@@ -209,47 +205,52 @@ public:
     return MNM_;
   }
 
-  void VisitChildren(Stmt* S) {
-    if(S) {
-      for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-        if (Stmt* child = *I) {
-          if(ForallMeshStmt *FAMS = dyn_cast<ForallMeshStmt>(child)) {
-            std::string MeshName = FAMS->getMeshVarDecl()->getName().str();
-            std::string MeshTypeName =  FAMS->getMeshType()->getName().str();
-            MNM_.insert(make_pair(MeshName, MeshTypeName));
-
-            ForallVisitor v(FAMS);
-            v.Visit(FAMS);
-
-            FieldMap lhs = v.getLHSmap();
-            LHS_.insert(lhs.begin(), lhs.end());
-            FieldMap rhs = v.getRHSmap();
-            RHS_.insert(rhs.begin(), rhs.end());
-          }
-          // look for function calls in task function
-          if(CallExpr *CE = dyn_cast<CallExpr>(child)) {
-            TaskVisitor v(CE->getDirectCallee());
-            v.VisitStmt(CE->getDirectCallee()->getBody());
-            FieldMap subLHS = v.getLHSmap();
-            LHS_.insert(subLHS.begin(), subLHS.end());
-            FieldMap subRHS = v.getRHSmap();
-            RHS_.insert(subRHS.begin(), subRHS.end());
-          }
-        }
-      }
-    }
-  }
-
   void VisitStmt(Stmt* S) {
     VisitChildren(S);
   }
 
+  void VisitCallExpr(CallExpr* E) {
+    VisitChildren(E);
+  }
+
+  void VisitDeclStmt(DeclStmt* S) {
+    VisitChildren(S);
+  }
+
+  void VisitChildren(Stmt* S);
 
 private:
+  Stmt *S_;
+  MeshFieldMap LHS_;
+  MeshFieldMap RHS_;
+  MeshNameMap MNM_;
+};
 
+// find what mesh fields are used in a task function.
+class TaskDeclVisitor : public DeclVisitor<TaskDeclVisitor> {
+public:
+
+
+  TaskDeclVisitor(const FunctionDecl *FD) { fd_ = FD; }
+
+  const std::map<std::string, bool>& getLHSmap() const {
+    return LHS_;
+  }
+
+  const std::map<std::string, bool>& getRHSmap() const {
+    return RHS_;
+  }
+
+  const std::map<std::string, std::string>& getMeshNamemap() const {
+    return MNM_;
+  }
+
+  void VisitStmt(Stmt* S);
+
+private:
   const FunctionDecl *fd_;
-  FieldMap LHS_;
-  FieldMap RHS_;
+  MeshFieldMap LHS_;
+  MeshFieldMap RHS_;
   MeshNameMap MNM_;
 
 };

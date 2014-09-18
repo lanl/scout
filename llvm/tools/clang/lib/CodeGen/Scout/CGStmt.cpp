@@ -1264,13 +1264,14 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   ValueVec fields;
   ValueVec args;
   
-  TaskVisitor visitor(FD);
+  TaskDeclVisitor visitor(FD);
   visitor.VisitStmt(FD->getBody());
   
-  const TaskVisitor::FieldMap& LHS = visitor.getLHSmap();
-  const TaskVisitor::FieldMap& RHS = visitor.getRHSmap();
+  const MeshFieldMap& LHS = visitor.getLHSmap();
+  const MeshFieldMap& RHS = visitor.getRHSmap();
   
-  const TaskVisitor::MeshNameMap& MN = visitor.getMeshNamemap();
+  const MeshNameMap& MN = visitor.getMeshNamemap();
+  llvm::errs() << "MN " << MN.size() << "\n";
   assert(MN.size() == 1 && "expected one mesh");
   
   const string& meshName = MN.begin()->first;
@@ -2157,11 +2158,11 @@ void CodeGenFunction::EmitForallMeshMDBlock(const ForallMeshStmt &S) {
   v.Visit(SP);
 
   //find fields used on LHS and add to metadata
-  const ForallVisitor::FieldMap LHS = v.getLHSmap();
+  const MeshFieldMap LHS = v.getLHSmap();
   EmitMeshFieldsUsedMD(LHS, "LHS", BI);
 
   //find fields used on RHS and add to metadata
-  const ForallVisitor::FieldMap RHS = v.getRHSmap();
+  const MeshFieldMap RHS = v.getRHSmap();
   EmitMeshFieldsUsedMD(RHS, "RHS", BI);
 
   EmitBlock(entry);
