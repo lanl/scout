@@ -36,6 +36,7 @@
 #include "llvm/Support/Debug.h"
 // +===== Scout ==========================================================+
 #include "clang/Basic/Scout/BuiltinsScout.h"
+#include "Scout/ASTVisitors.h"
 // +======================================================================+
 
 namespace llvm {
@@ -2069,7 +2070,7 @@ public:
   void EmitForallMeshMDBlock(const ForallMeshStmt &S);
   void EmitTaskMDBlock(const FunctionDecl *FD);
   void EmitStencilMDBlock(const FunctionDecl *FD);
-  void EmitMeshFieldsUsedMD(std::map<std::string, bool>  HS,
+  void EmitMeshFieldsUsedMD(MeshFieldMap HS,
       const char *str, llvm::BranchInst *BI);
 
   void EmitGPUPreamble(const ForallMeshStmt& S);

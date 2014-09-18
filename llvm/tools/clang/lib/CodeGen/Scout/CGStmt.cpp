@@ -1271,7 +1271,7 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   const MeshFieldMap& RHS = visitor.getRHSmap();
   
   const MeshNameMap& MN = visitor.getMeshNamemap();
-  llvm::errs() << "MN " << MN.size() << "\n";
+
   assert(MN.size() == 1 && "expected one mesh");
   
   const string& meshName = MN.begin()->first;

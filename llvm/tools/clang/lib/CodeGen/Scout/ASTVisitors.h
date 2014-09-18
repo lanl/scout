@@ -59,7 +59,6 @@
 #include "CGDebugInfo.h"
 #include "CGValue.h"
 #include "CodeGenModule.h"
-#include "CodeGenFunction.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/Stmt.h"
@@ -68,16 +67,6 @@
 #include "clang/AST/Type.h"
 #include "clang/AST/DeclVisitor.h"
 #include "clang/AST/StmtVisitor.h"
-#include "clang/Basic/ABI.h"
-#include "clang/Basic/TargetInfo.h"
-#include "clang/Frontend/CodeGenOptions.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SetVector.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/IR/ValueHandle.h"
-#include "llvm/IR/Intrinsics.h"
 
 using namespace clang;
 using namespace clang::CodeGen;
@@ -101,6 +90,7 @@ public:
     (void)fs_; //suppress warning
   }
 
+
   const std::map<std::string, bool>& getLHSmap() const {
     return LHS_;
   }
@@ -108,6 +98,12 @@ public:
   const std::map<std::string, bool>& getRHSmap() const {
     return RHS_;
   }
+
+  void VisitBinaryOperator(BinaryOperator* S);
+
+  void VisitChildren(Stmt* S);
+
+  void VisitMemberExpr(MemberExpr* E);
 
   void VisitStmt(Stmt* S) {
     VisitChildren(S);
@@ -117,67 +113,11 @@ public:
     VisitChildren(E);
   }
 
-  void VisitChildren(Stmt* S) {
-    if(S) {
-      for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-        if (Stmt* child = *I) {
-          Visit(child);
-        }
-      }
-    }
-  }
-
-  void VisitMemberExpr(MemberExpr* E) {
-    if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())) {
-      if(ImplicitMeshParamDecl *bd = dyn_cast<ImplicitMeshParamDecl>(dr->getDecl())) {
-        if (isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())) {
-          ValueDecl* md = E->getMemberDecl();
-
-          std::string ref = bd->getMeshVarDecl()->getName().str() + "." + md->getName().str();
-          if (nodeType_ == NodeLHS) {
-            LHS_.insert(make_pair(ref, true));
-          } else if (nodeType_ == NodeRHS) {
-            RHS_.insert(make_pair(ref, true));
-          }
-        }
-      }
-    }
-  }
-
-
   void VisitDeclStmt(DeclStmt* S) {
-    VisitChildren(S);
-  }
-
-  void VisitBinaryOperator(BinaryOperator* S) {
-
-    switch(S->getOpcode()){
-    case BO_Assign:
-    case BO_MulAssign:
-    case BO_DivAssign:
-    case BO_RemAssign:
-    case BO_AddAssign:
-    case BO_SubAssign:
-    case BO_ShlAssign:
-    case BO_ShrAssign:
-    case BO_AndAssign:
-    case BO_XorAssign:
-    case BO_OrAssign:
-      nodeType_ = NodeLHS;
-      break;
-    default:
-      break;
-    }
-
-    Visit(S->getLHS());
-    nodeType_ = NodeRHS;
-    Visit(S->getRHS());
-    nodeType_ = NodeNone;
-  }
-
+     VisitChildren(S);
+   }
 
 private:
-
   ForallMeshStmt *fs_;
   MeshFieldMap LHS_;
   MeshFieldMap RHS_;
@@ -209,9 +149,7 @@ public:
     VisitChildren(S);
   }
 
-  void VisitCallExpr(CallExpr* E) {
-    VisitChildren(E);
-  }
+  void VisitCallExpr(CallExpr* E);
 
   void VisitDeclStmt(DeclStmt* S) {
     VisitChildren(S);
@@ -219,6 +157,7 @@ public:
 
   void VisitChildren(Stmt* S);
 
+  void VisitForallMeshStmt(ForallMeshStmt *S);
 private:
   Stmt *S_;
   MeshFieldMap LHS_;

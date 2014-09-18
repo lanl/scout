@@ -54,6 +54,62 @@
 
 #include "ASTVisitors.h"
 
+
+void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
+
+  switch(S->getOpcode()){
+  case BO_Assign:
+  case BO_MulAssign:
+  case BO_DivAssign:
+  case BO_RemAssign:
+  case BO_AddAssign:
+  case BO_SubAssign:
+  case BO_ShlAssign:
+  case BO_ShrAssign:
+  case BO_AndAssign:
+  case BO_XorAssign:
+  case BO_OrAssign:
+    nodeType_ = NodeLHS;
+    break;
+  default:
+    break;
+  }
+
+  Visit(S->getLHS());
+  nodeType_ = NodeRHS;
+  Visit(S->getRHS());
+  nodeType_ = NodeNone;
+}
+
+void ForallVisitor::VisitChildren(Stmt* S) {
+  if(S) {
+    for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+      if (Stmt* child = *I) {
+        Visit(child);
+      }
+    }
+  }
+}
+
+void ForallVisitor::VisitMemberExpr(MemberExpr* E) {
+  if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())) {
+    if(ImplicitMeshParamDecl *bd = dyn_cast<ImplicitMeshParamDecl>(dr->getDecl())) {
+      if (isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())) {
+        ValueDecl* md = E->getMemberDecl();
+
+        std::string ref = bd->getMeshVarDecl()->getName().str() + "." + md->getName().str();
+        //llvm::errs() << "ref " << ref << "\n";
+        if (nodeType_ == NodeLHS) {
+          LHS_.insert(make_pair(ref, true));
+        } else if (nodeType_ == NodeRHS) {
+          RHS_.insert(make_pair(ref, true));
+        }
+      }
+    }
+  }
+}
+
+
 void TaskDeclVisitor::VisitStmt(Stmt* S) {
   if(S) {
     TaskStmtVisitor v(S);
@@ -69,35 +125,44 @@ void TaskDeclVisitor::VisitStmt(Stmt* S) {
 
 
 void TaskStmtVisitor::VisitChildren(Stmt* S) {
-    if(S) {
-      for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-        if (Stmt* child = *I) {
-          Visit(child);
-
-          if(ForallMeshStmt *FAMS = dyn_cast<ForallMeshStmt>(child)) {
-            std::string MeshName = FAMS->getMeshVarDecl()->getName().str();
-            std::string MeshTypeName =  FAMS->getMeshType()->getName().str();
-            MNM_.insert(make_pair(MeshName, MeshTypeName));
-
-            ForallVisitor v(FAMS);
-            v.Visit(FAMS);
-
-            MeshFieldMap lhs = v.getLHSmap();
-            LHS_.insert(lhs.begin(), lhs.end());
-            MeshFieldMap rhs = v.getRHSmap();
-            RHS_.insert(rhs.begin(), rhs.end());
-          }
-          // look for function calls in task function
-          // SC_TODO: is this still working? need test
-          if(CallExpr *CE = dyn_cast<CallExpr>(child)) {
-            TaskDeclVisitor v(CE->getDirectCallee());
-            v.VisitStmt(CE->getDirectCallee()->getBody());
-            MeshFieldMap subLHS = v.getLHSmap();
-            LHS_.insert(subLHS.begin(), subLHS.end());
-            MeshFieldMap subRHS = v.getRHSmap();
-            RHS_.insert(subRHS.begin(), subRHS.end());
-          }
-        }
+  if(S) {
+    for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+      if (Stmt* child = *I) {
+        Visit(child);
       }
     }
   }
+}
+
+void TaskStmtVisitor::VisitForallMeshStmt(ForallMeshStmt *S) {
+  std::string MeshName = S->getMeshVarDecl()->getName().str();
+  std::string MeshTypeName =  S->getMeshType()->getName().str();
+  MNM_.insert(make_pair(MeshName, MeshTypeName));
+
+  ForallVisitor v(S);
+  v.Visit(S);
+
+  MeshFieldMap lhs = v.getLHSmap();
+  LHS_.insert(lhs.begin(), lhs.end());
+  MeshFieldMap rhs = v.getRHSmap();
+  RHS_.insert(rhs.begin(), rhs.end());
+
+  VisitChildren(S);
+}
+
+// look for function calls in task function
+void TaskStmtVisitor::VisitCallExpr(CallExpr* E) {
+
+  TaskDeclVisitor v(E->getDirectCallee());
+  v.VisitStmt(E->getDirectCallee()->getBody());
+  MeshFieldMap subLHS = v.getLHSmap();
+  LHS_.insert(subLHS.begin(), subLHS.end());
+  MeshFieldMap subRHS = v.getRHSmap();
+  RHS_.insert(subRHS.begin(), subRHS.end());
+
+  VisitChildren(E->getDirectCallee()->getBody());
+  VisitChildren(E);
+
+}
+
+

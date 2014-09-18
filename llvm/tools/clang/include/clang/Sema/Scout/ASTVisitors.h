@@ -585,13 +585,14 @@ public:
       for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
         if (Stmt* child = *I) {
           if(ForallMeshStmt *FAMS = dyn_cast<ForallMeshStmt>(child)) {
-            llvm::errs() << "Forall visit\n";
             ForallVisitor v(sema_, FAMS);
             v.Visit(FAMS);
-            if(v.getMeshAccess()) {
-              meshAccess_ = true;
-              llvm::errs() << "mesh access true\n";
-            }
+            if(v.getMeshAccess()) meshAccess_ = true;
+          }
+          if(CallExpr *CE = dyn_cast<CallExpr>(child)) {
+            //SC_TODO: need to descend into function and make sure it accesses mesh
+            llvm::errs() << "sema: call in task assuming it accesses mesh\n";
+            meshAccess_ = true;
           }
           if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(child)) {
             if(VarDecl *VD = dyn_cast<VarDecl>(dr->getDecl())) {
@@ -621,13 +622,12 @@ private:
 };
 
 
-class TaskVisitor : public DeclVisitor<TaskVisitor> {
+class TaskDeclVisitor : public DeclVisitor<TaskDeclVisitor> {
 public:
 
-  TaskVisitor(Sema& sema, FunctionDecl *FD)
+  TaskDeclVisitor(Sema& sema, FunctionDecl *FD)
 : FD_(FD), sema_(sema), meshAccess_(false) {
   }
-
 
   void VisitStmt(Stmt* S) {
     if(FD_->isTaskSpecified()) {
