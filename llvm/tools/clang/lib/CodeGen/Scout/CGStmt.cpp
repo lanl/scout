@@ -1514,7 +1514,7 @@ void CodeGenFunction::EmitArgumentMapSetPointFuncCall(llvm::Value* i) {
 
 void CodeGenFunction::EmitIndexLauncherCreateFuncCall() {
 
-  assert((fields.size() > 0) && argMap && taskId);
+  assert((fields.size() > 0) && argMap );
 
   CGLegionRuntime& R = CGM.getLegionRuntime();
   auto& B = Builder;
@@ -1527,9 +1527,11 @@ void CodeGenFunction::EmitIndexLauncherCreateFuncCall() {
 
   llvm::Value* TaskId = llvm::ConstantInt::get(Int32Ty, taskId);
 
+  llvm::Value* ConstantZero = llvm::ConstantInt::get(Int64Ty, 0);
+
   ValueVec args;
   args = {indexLauncher, TaskId, launchDomain,
-    R.GetNull(R.TaskArgumentTy), argMap};
+    R.GetNull(Int8Ty), ConstantZero, argMap};
 
   B.CreateCall(R.IndexLauncherCreateFunc(), args);
 
@@ -1798,7 +1800,7 @@ void CodeGenFunction::EmitLegionTaskFunctionStart() {
  
 void CodeGenFunction::EmitMeshRawRectPtr1dFuncCalls() {
 
-  assert(taskArgs && meshType && meshDecl && (fields.size() > 0));
+  assert(taskArgs && meshType && meshDecl && (fields.size() > 0) && legionContext && legionRuntime);
 
   auto& B = Builder;
   CGLegionRuntime& R = CGM.getLegionRuntime();
@@ -1808,6 +1810,15 @@ void CodeGenFunction::EmitMeshRawRectPtr1dFuncCalls() {
   llvm::Value* taskArgsAddr = B.CreateAlloca(R.PointerTy(R.TaskArgsTy), 0, "task_args.addr");
   B.CreateAlignedStore(taskArgs, taskArgsAddr, 8);
   llvm::LoadInst* loadTaskArgsPtr = B.CreateAlignedLoad(taskArgsAddr, 8, "task_args_loaded.ptr");
+
+  // load the task
+  
+  llvm::Value* task = B.CreateLoad(B.CreateStructGEP(taskArgs, LSCI_TARGS_TASK), "task");
+  legionContext = B.CreateLoad(B.CreateStructGEP(taskArgs, LSCI_TARGS_CONTEXT), "task");
+  legionRuntime = B.CreateLoad(B.CreateStructGEP(taskArgs, LSCI_TARGS_RUNTIME), "task");
+  //llvm::Value* taskAddr = B.CreateAlloca(R.PointerTy(R.TaskTy), 0, "task.addr");
+  //llvm::Value* taskPtr = B.CreateStructGEP(taskAddr, LSCI_TARGS_TASK); 
+  //task = B.CreateAlignedLoad(taskPtr, 8, "task.loaded");
 
   // load the mesh task args ptr from taskArgs local_argsp field
   llvm::Value* meshTaskArgsAddr = B.CreateAlloca(R.PointerTy(R.MeshTaskArgsTy), 0, "mtargs.addr");
@@ -1860,8 +1871,11 @@ void CodeGenFunction::EmitMeshRawRectPtr1dFuncCalls() {
       
       args.push_back(llvm::ConstantInt::get(Int64Ty, j));
       args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
-      args.push_back(subgridBounds);
       
+      args.push_back(task); 
+      args.push_back(legionContext); 
+      args.push_back(legionRuntime); 
+
       llvm::Value* fp = B.CreateCall(R.RawRectPtr1dFunc(), args);
       llvm::Value* cv = B.CreateBitCast(fp, meshType->getTypeAtIndex(j));
       
@@ -1883,13 +1897,16 @@ void CodeGenFunction::EmitMeshRawRectPtr1dFuncCalls() {
  
 void CodeGenFunction::EmitVectorRawRectPtr1dFuncCalls() {
 
-  assert(legionTaskInitFunc && funcDecl && mesh && regions && subgridBounds);
+  assert(taskArgs && legionTaskInitFunc && funcDecl && mesh && regions && subgridBounds);
 
   auto& B = Builder;
   CGLegionRuntime& R = CGM.getLegionRuntime();
 
   ValueVec args;
   uint32_t j = fields.size();
+  llvm::Value* task = B.CreateLoad(B.CreateStructGEP(taskArgs, LSCI_TARGS_TASK), "task");
+  legionContext = B.CreateLoad(B.CreateStructGEP(taskArgs, LSCI_TARGS_CONTEXT), "task");
+  legionRuntime = B.CreateLoad(B.CreateStructGEP(taskArgs, LSCI_TARGS_RUNTIME), "task");
  
   // create calls to  lsci_raw_rect_ptr_1d
   uint32_t k = j;
@@ -1944,7 +1961,9 @@ void CodeGenFunction::EmitVectorRawRectPtr1dFuncCalls() {
           
           args.push_back(llvm::ConstantInt::get(Int64Ty, k++));
           args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
-          args.push_back(subgridBounds);
+          args.push_back(task); 
+          args.push_back(legionContext); 
+          args.push_back(legionRuntime); 
   
           llvm::Value* ep = B.CreateStructGEP(arg, ei++);
           llvm::Value* fp = B.CreateCall(R.RawRectPtr1dFunc(), args);
@@ -1987,7 +2006,9 @@ void CodeGenFunction::EmitVectorRawRectPtr1dFuncCalls() {
       
       args.push_back(llvm::ConstantInt::get(Int64Ty, k++));
       args.push_back(llvm::ConstantInt::get(Int32Ty, 0));
-      args.push_back(subgridBounds);
+      args.push_back(task); 
+      args.push_back(legionContext); 
+      args.push_back(legionRuntime); 
       
       llvm::Value* fp = B.CreateCall(R.RawRectPtr1dFunc(), args);
       llvm::Value* cv = B.CreateBitCast(fp, R.PointerTy(t));

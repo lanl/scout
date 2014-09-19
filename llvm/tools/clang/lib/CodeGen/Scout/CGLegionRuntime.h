@@ -127,7 +127,7 @@ namespace CodeGen {
     llvm::Type* Rect1dTy;
     llvm::Type* FieldIdTy;
     llvm::Type* IndexLauncherHandleTy;
-    llvm::Type* TaskArgumentTy;
+    llvm::Type* TaskTy;
     llvm::Type* ArgumentMapHandleTy;
     llvm::Type* ProjectionIdTy;
     llvm::Type* RegionRequirementHndlTy;

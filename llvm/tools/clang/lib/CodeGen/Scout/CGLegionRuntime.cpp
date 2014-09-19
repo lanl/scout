@@ -79,7 +79,7 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
   Rect1dTy = VoidPtrTy;
   FieldIdTy = Int32Ty;
   IndexLauncherHandleTy = VoidPtrTy;
-  TaskArgumentTy = VoidPtrTy;
+  TaskTy = VoidPtrTy;
   ArgumentMapHandleTy = VoidPtrTy;
   ProjectionIdTy = Int32Ty;
   RegionRequirementHndlTy = VoidPtrTy;
@@ -199,7 +199,7 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
   
   TaskArgsTy =  CGM.getModule().getTypeByName("struct.lsci_task_args_t");
   if (!TaskArgsTy) {
-    fields = {ContextTy, RuntimeTy, Int32Ty, Int64Ty, PhysicalRegionsTy, VoidPtrTy};
+    fields = {ContextTy, RuntimeTy, TaskTy, Int32Ty, Int64Ty, PhysicalRegionsTy, VoidPtrTy, VoidPtrTy};
     TaskArgsTy = llvm::StructType::create(context, fields, "struct.lsci_task_args_t");
   }
 
@@ -347,7 +347,7 @@ llvm::Function* CGLegionRuntime::IndexLauncherCreateFunc(){
   string name = "lsci_index_launcher_create";
   vector<llvm::Type*> params =
    {PointerTy(IndexLauncherTy), Int32Ty, PointerTy(DomainTy),
-     PointerTy(TaskArgumentTy), PointerTy(ArgumentMapTy)};
+     VoidPtrTy, Int64Ty, PointerTy(ArgumentMapTy)};
   return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
@@ -475,9 +475,9 @@ llvm::Function* CGLegionRuntime::RegisterVoidLegionTaskAuxFunc(){
   
 
 llvm::Function* CGLegionRuntime::RawRectPtr1dFunc(){
-  string name = "raw_rect_ptr_1d";
+  string name = "lsci_raw_rect_ptr_1d";
   vector<llvm::Type*> params =
-   {PhysicalRegionsTy, Int32Ty, Int64Ty, FieldIdTy, Rect1dTy};
+   {PhysicalRegionsTy, Int32Ty, Int64Ty, FieldIdTy, TaskTy, ContextTy, RuntimeTy};
   return LegionRuntimeFunction(name, params, VoidPtrTy);
 }
 
