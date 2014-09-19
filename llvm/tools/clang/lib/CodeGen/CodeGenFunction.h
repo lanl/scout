@@ -39,7 +39,6 @@
 #include "Scout/ASTVisitors.h"
 // +======================================================================+
 
-
 namespace llvm {
 class BasicBlock;
 class LLVMContext;
@@ -433,7 +432,7 @@ public:
   llvm::Value* subgridBounds;
   size_t taskId;
   
-  TaskVisitor* taskVisitor;
+  TaskDeclVisitor* taskDeclVisitor;
   size_t meshPos;
   MeshDecl* meshDecl;
   llvm::Value* mesh;
@@ -2114,7 +2113,7 @@ public:
   void EmitForallMeshMDBlock(const ForallMeshStmt &S);
   void EmitTaskMDBlock(const FunctionDecl *FD);
   void EmitStencilMDBlock(const FunctionDecl *FD);
-  void EmitMeshFieldsUsedMD(TaskVisitor::FieldMap HS,
+  void EmitMeshFieldsUsedMD(MeshFieldMap HS,
       const char *str, llvm::BranchInst *BI);
 
   void EmitGPUPreamble(const ForallMeshStmt& S);

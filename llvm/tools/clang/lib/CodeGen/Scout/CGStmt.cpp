@@ -1194,7 +1194,7 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   argMap = NULL;
   regions = NULL;
   subgridBounds = NULL;
-  taskVisitor = NULL;
+  taskDeclVisitor = NULL;
   meshPos = 0;
   meshDecl = NULL;
   meshPtr = NULL;
@@ -1256,7 +1256,7 @@ void CodeGenFunction::EmitLegionTaskInitFunction() {
   llvm::BasicBlock* entry = llvm::BasicBlock::Create(context, "entry", legionTaskInitFunc);
   B.SetInsertPoint(entry);
 
-  taskVisitor = new TaskVisitor(funcDecl);
+  taskDeclVisitor = new TaskDeclVisitor(funcDecl);
 
   EmitUnimeshGetVecByNameFuncCalls();
 
@@ -1302,9 +1302,9 @@ void CodeGenFunction::EmitLegionTaskInitFunction() {
  
   EmitAddMeshRegionReqAndFieldFuncCalls(); 
 
-  // done with taskVisitor 
-  delete taskVisitor;  
-  taskVisitor = NULL;
+  // done with taskDeclVisitor 
+  delete taskDeclVisitor;  
+  taskDeclVisitor = NULL;
 
   EmitAddVectorRegionReqAndFieldFuncCalls();  
 
@@ -1389,12 +1389,12 @@ void CodeGenFunction::EmitUnimeshGetVecByNameFuncCalls()
   CGLegionRuntime& R = CGM.getLegionRuntime();
 
   // visit the function to determine read and write uses of the mesh fields 
-  taskVisitor->VisitStmt(funcDecl->getBody());
+  taskDeclVisitor->VisitStmt(funcDecl->getBody());
   
-  const TaskVisitor::FieldMap& LHS = taskVisitor->getLHSmap();
-  const TaskVisitor::FieldMap& RHS = taskVisitor->getRHSmap();
+  const MeshFieldMap& LHS = taskDeclVisitor->getLHSmap();
+  const MeshFieldMap& RHS = taskDeclVisitor->getRHSmap();
   
-  const TaskVisitor::MeshNameMap& MN = taskVisitor->getMeshNamemap();
+  const MeshNameMap& MN = taskDeclVisitor->getMeshNamemap();
   assert(MN.size() == 1 && "expected one mesh");
   
   const std::string& meshName = MN.begin()->first;
@@ -1537,18 +1537,18 @@ void CodeGenFunction::EmitIndexLauncherCreateFuncCall() {
 
 void CodeGenFunction::EmitAddMeshRegionReqAndFieldFuncCalls() { 
 
-  assert(funcDecl && meshDecl && (fields.size() > 0) && indexLauncher && taskVisitor);
+  assert(funcDecl && meshDecl && (fields.size() > 0) && indexLauncher && taskDeclVisitor);
 
   auto& B = Builder;
   CGLegionRuntime& R = CGM.getLegionRuntime();
 
   // get mesh name
-  const TaskVisitor::MeshNameMap& MN = taskVisitor->getMeshNamemap();
+  const MeshNameMap& MN = taskDeclVisitor->getMeshNamemap();
   assert(MN.size() == 1 && "expected one mesh");
   const std::string& meshName = MN.begin()->first;
 
-  const TaskVisitor::FieldMap& LHS = taskVisitor->getLHSmap();
-  const TaskVisitor::FieldMap& RHS = taskVisitor->getRHSmap();
+  const MeshFieldMap& LHS = taskDeclVisitor->getLHSmap();
+  const MeshFieldMap& RHS = taskDeclVisitor->getRHSmap();
 
   ValueVec args;
 
@@ -2386,11 +2386,11 @@ void CodeGenFunction::EmitForallMeshMDBlock(const ForallMeshStmt &S) {
   v.Visit(SP);
 
   //find fields used on LHS and add to metadata
-  const ForallVisitor::FieldMap LHS = v.getLHSmap();
+  const MeshFieldMap LHS = v.getLHSmap();
   EmitMeshFieldsUsedMD(LHS, "LHS", BI);
 
   //find fields used on RHS and add to metadata
-  const ForallVisitor::FieldMap RHS = v.getRHSmap();
+  const MeshFieldMap RHS = v.getRHSmap();
   EmitMeshFieldsUsedMD(RHS, "RHS", BI);
 
   EmitBlock(entry);

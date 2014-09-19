@@ -546,8 +546,12 @@ class TaskStmtVisitor : public StmtVisitor<TaskStmtVisitor> {
 public:
 
   TaskStmtVisitor(Sema& sema, Stmt* S)
-: S_(S), sema_(sema) {
+: S_(S), sema_(sema), meshAccess_(false) {
     (void)S_;
+  }
+
+  bool getMeshAccess() {
+    return meshAccess_;
   }
 
   void VisitStmt(Stmt* S) {
@@ -576,12 +580,20 @@ public:
     VisitChildren(E);
   }
 
-
-
   void VisitChildren(Stmt* S) {
     if(S) {
       for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
         if (Stmt* child = *I) {
+          if(ForallMeshStmt *FAMS = dyn_cast<ForallMeshStmt>(child)) {
+            ForallVisitor v(sema_, FAMS);
+            v.Visit(FAMS);
+            if(v.getMeshAccess()) meshAccess_ = true;
+          }
+          if(CallExpr *CE = dyn_cast<CallExpr>(child)) {
+            //SC_TODO: need to descend into function and make sure it accesses mesh
+            llvm::errs() << "sema: call in task assuming it accesses mesh\n";
+            meshAccess_ = true;
+          }
           if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(child)) {
             if(VarDecl *VD = dyn_cast<VarDecl>(dr->getDecl())) {
               if(VD->hasGlobalStorage() && !VD->getType().isConstQualified()) {
@@ -606,34 +618,27 @@ public:
 private:
   Stmt *S_;
   Sema& sema_;
+  bool meshAccess_;
 };
 
 
-class TaskVisitor : public DeclVisitor<TaskVisitor> {
+class TaskDeclVisitor : public DeclVisitor<TaskDeclVisitor> {
 public:
 
-  TaskVisitor(Sema& sema, FunctionDecl *FD)
-: FD_(FD), sema_(sema) {
+  TaskDeclVisitor(Sema& sema, FunctionDecl *FD)
+: FD_(FD), sema_(sema), meshAccess_(false) {
   }
 
-  void Visit(Stmt* S) {
-    bool meshAccess =false;
+  void VisitStmt(Stmt* S) {
     if(FD_->isTaskSpecified()) {
       if(S) {
-        for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-          if (Stmt* child = *I) {
-            TaskStmtVisitor v(sema_, child);
-            v.Visit(child);
-            if(ForallMeshStmt *FAMS = dyn_cast<ForallMeshStmt>(child)) {
-              ForallVisitor v(sema_, FAMS);
-              v.Visit(FAMS);
-              if(v.getMeshAccess()) meshAccess = true;
 
-            }
-          }
-        }
+        TaskStmtVisitor v(sema_, S);
+        v.Visit(S);
+        if(v.getMeshAccess()) meshAccess_ = true;
+
         // don't allow tasks w/ no mesh access in legion mode
-        if(sema_.getLangOpts().ScoutLegionSupport && !meshAccess) {
+        if(sema_.getLangOpts().ScoutLegionSupport && !meshAccess_) {
           sema_.Diag(S->getLocStart(), diag::err_nomesh_task_fuction);
         }
       }
@@ -643,6 +648,7 @@ public:
 private:
   FunctionDecl *FD_;
   Sema& sema_;
+  bool meshAccess_;
 
 };
 

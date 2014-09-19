@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-
+#include <unistd.h>
 #include "lowlevel.h"
 #include "accessor.h"
 #include "legion_logging.h"
@@ -1971,6 +1971,12 @@ namespace LegionRuntime {
                             orig->utility_finish();
                           }
                         }
+// +===== Scout ==============================================================+
+// this is a hack to deal w/ using apple frameworks like Cocoa  
+#if defined(__APPLE__)
+			exit(0);
+#endif                       	
+// +==========================================================================+
                         pthread_exit(NULL);	
 		}
 		

@@ -88,8 +88,10 @@ namespace CodeGen {
     llvm::Function* AddFieldFunc();
     llvm::Function* ExecuteIndexSpaceFunc();
     llvm::Function* VectorCreateFunc();
-
+    llvm::Function* VectorFreeFunc();
+    
     llvm::Function* UnimeshCreateFunc();
+    llvm::Function* UnimeshFreeFunc();
     llvm::Function* UnimeshAddFieldFunc();
     llvm::Function* UnimeshPartitionFunc();
     llvm::Function* UnimeshGetVecByNameFunc();
@@ -165,6 +167,16 @@ namespace CodeGen {
     llvm::Value* TocProcVal;
     llvm::Value* LocProcVal;
     llvm::Value* UtilProcVal;
+    llvm::Value* DomainHandleVal;
+    llvm::Value* DomainVolumeVal;
+    llvm::Value* VectorLRVal;
+    llvm::Value* VectorFIDVal;
+    llvm::Value* VectorIndexSpaceVal;
+    llvm::Value* VectorLogicalRegionVal;
+    llvm::Value* VectorLogicalPartitionVal;
+    llvm::Value* VectorLaunchDomainVal;
+    llvm::Value* VectorSubgridBoundsLenVal;
+    llvm::Value* VectorSubgridBoundsVal;
     
   protected:
     CodeGen::CodeGenModule &CGM;

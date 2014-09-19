@@ -15,6 +15,7 @@
 namespace scout{
 
 void scoutInitMac();
+void scoutStopMac();
 
 } // end namespace scout
 
