@@ -417,6 +417,33 @@ public:
   bool callsPrintf(const Stmt *S) {
     return hasPrintfNode(S);
   }
+
+  // for emitting Legion tasks
+  const FunctionDecl* funcDecl;
+  llvm::Function* taskFunc;
+  llvm::Function* legionTaskInitFunc;
+  llvm::Function* legionTaskFunc;
+  llvm::Value* legionContext;
+  llvm::Value* legionRuntime;
+  llvm::Value* meshTaskArgs;
+  llvm::Value* taskArgs;
+  llvm::Value* indexLauncher;
+  llvm::Value* argMap;
+  llvm::Value* regions;
+  llvm::Value* subgridBounds;
+  size_t taskId;
+  
+  TaskVisitor* taskVisitor;
+  size_t meshPos;
+  MeshDecl* meshDecl;
+  llvm::Value* mesh;
+  llvm::Value* meshPtr;
+  llvm::StructType* meshType;
+  std::vector<llvm::Value*> fields;
+  std::vector<llvm::Value*> taskFuncArgs;
+
+  
+
   // +========================================================================+
 
 
@@ -2040,6 +2067,22 @@ public:
                         llvm::Value* MeshBaseAddr);
 
   void EmitLegionTask(const FunctionDecl* FD, llvm::Function* taskFunc);
+  void EmitLegionTaskInitFunction();
+  void EmitLegionTaskInitFunctionStart();
+  void EmitUnimeshGetVecByNameFuncCalls();
+  void EmitArgumentMapCreateFuncCall();
+  llvm::Value* CreateMeshTaskArgs();
+  void EmitSubgridBoundsAtSetFuncCall(llvm::Value* index);
+  void EmitArgumentMapSetPointFuncCall(llvm::Value* index);
+  void EmitIndexLauncherCreateFuncCall();
+  void EmitAddMeshRegionReqAndFieldFuncCalls();
+  void EmitAddVectorRegionReqAndFieldFuncCalls();
+  void EmitExecuteIndexSpaceFuncCall();
+  void EmitLegionTaskFunction();
+  void EmitLegionTaskFunctionStart();
+  void EmitMeshRawRectPtr1dFuncCalls();
+  void EmitVectorRawRectPtr1dFuncCalls();
+  void EmitTaskFuncCall();
   
   void ResetVars(void);
   void EmitForallMeshStmt(const ForallMeshStmt &S);
