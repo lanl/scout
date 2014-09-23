@@ -5,6 +5,7 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_clang_library(scoutSema
+  ASTVisitors.cpp
   Sema.cpp
   SemaChecking.cpp
   SemaDecl.cpp

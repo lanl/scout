@@ -61,91 +61,25 @@
 #include "clang/AST/DeclVisitor.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/Builtins.h"
+#include "clang/Sema/SemaDiagnostic.h"
 #include <map>
 
 using namespace clang;
+using namespace clang::sema;
 
-namespace {
+namespace clang {
+namespace sema {
 
 enum ShiftKind {
   CShift,
   EOShift
 };
 
-//check if builtin id is a cshift
-bool isCShift(unsigned id) {
-  if (id == Builtin::BIcshift || id == Builtin::BIcshifti
-      || id == Builtin::BIcshiftf || id == Builtin::BIcshiftd ) return true;
-  return false;
-}
+bool isCShift(unsigned id);
 
-//check if builtin id is an eoshift
-bool isEOShift(unsigned id) {
-  if (id == Builtin::BIeoshift || id == Builtin::BIeoshifti
-      || id == Builtin::BIeoshiftf || id == Builtin::BIeoshiftd ) return true;
-  return false;
-}
+bool isEOShift(unsigned id);
 
-bool CheckShift(unsigned id, CallExpr *E, Sema &S) {
-  bool error = false;
-  unsigned kind = 0;
-  if (isCShift(id)) kind = ShiftKind::CShift;
-  if (isEOShift(id)) kind = ShiftKind::EOShift;
-
-  unsigned args = E->getNumArgs();
-
-  // max number of args is 4 for cshift and 5 for eoshift
-  if (args > kind + 4) {
-    S.Diag(E->getRParenLoc(), diag::err_shift_args) << kind;
-    error = true;
-  } else {
-    Expr* fe = E->getArg(0);
-
-    if (ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(fe)) {
-      fe = ce->getSubExpr();
-    }
-
-    if (MemberExpr* me = dyn_cast<MemberExpr>(fe)) {
-      if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())) {
-        ValueDecl* bd = dr->getDecl();
-        const Type *T= bd->getType().getCanonicalType().getTypePtr();
-        if (!isa<MeshType>(T)) {
-          S.Diag(fe->getExprLoc(), diag::err_shift_field) << kind;
-          error = true;
-        }
-        if(isa<StructuredMeshType>(T)) {
-          S.Diag(fe->getExprLoc(), diag::err_shift_not_allowed) << kind << 0;
-          error = true;
-        }
-        if(isa<UnstructuredMeshType>(T)) {
-          S.Diag(fe->getExprLoc(), diag::err_shift_not_allowed) << kind << 1;
-          error = true;
-        }
-
-      }
-    } else {
-      S.Diag(fe->getExprLoc(), diag::err_shift_field) << kind;
-      error = true;
-    }
-    //disable this check for now as Jamal needs this functionality
-#if 0
-    // only allow integers for shift values
-    for (unsigned i = kind+1; i < args; i++) {
-      Expr *arg = E->getArg(i);
-      // remove unary operator if it exists
-      if(UnaryOperator *UO = dyn_cast<UnaryOperator>(arg)) {
-        arg = UO->getSubExpr();
-      }
-      if(!isa<IntegerLiteral>(arg)) {
-        S.Diag(arg->getExprLoc(), diag::err_shift_nonint) << kind;
-        error = true;
-      }
-    }
-#endif
-
-  }
-  return error;
-}
+bool CheckShift(unsigned id, CallExpr *E, Sema &S);
 
 // look for foralls outside of tasks
 class NonTaskForallVisitor : public StmtVisitor<NonTaskForallVisitor> {
@@ -158,15 +92,17 @@ public:
    }
 
   void VisitChildren(Stmt* S) {
-      for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-        if (Stmt* child = *I) {
-           if(isa<ForallMeshStmt>(child)) {
-             sema_.Diag(S->getLocStart(), diag::err_forall_non_task);
-           }
-           Visit(child);
-        }
+    for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+      if (Stmt* child = *I) {
+        Visit(child);
       }
     }
+  }
+
+  void VisitForallMeshStmt(ForallMeshStmt *S) {
+    sema_.Diag(S->getLocStart(), diag::err_forall_non_task);
+    VisitChildren(S);
+  }
 
 private:
   Sema& sema_;
@@ -194,29 +130,16 @@ public:
     (void)fs_; //suppress warning
   }
 
+  void VisitBinaryOperator(BinaryOperator* S);
+
+  void VisitCallExpr(CallExpr* E);
+
+  void VisitDeclStmt(DeclStmt* S);
+
+  void VisitMemberExpr(MemberExpr* E);
+
   void VisitStmt(Stmt* S) {
     VisitChildren(S);
-  }
-
-  void VisitCallExpr(CallExpr* E) {
-
-    FunctionDecl* fd = E->getDirectCallee();
-
-    if (fd) {
-      std::string name = fd->getName();
-      unsigned id = fd->getBuiltinID();
-      if (name == "printf" || name == "fprintf") {
-        // SC_TODO -- for now we'll warn that you're calling a print
-        // function inside a parallel construct -- in the long run
-        // we can either (1) force the loop to run sequentially or
-        // (2) replace print function with a "special" version...
-        sema_.Diag(E->getExprLoc(), diag::warn_forall_calling_io_func);
-      } else if (isCShift(id) || isEOShift(id)) {
-        error_ = CheckShift(id, E, sema_);
-      }
-    }
-
-    VisitChildren(E);
   }
 
   void VisitChildren(Stmt* S) {
@@ -225,84 +148,6 @@ public:
         Visit(child);
       }
     }
-  }
-
-  void VisitMemberExpr(MemberExpr* E) {
-
-    if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())) {
-      ValueDecl* bd = dr->getDecl();
-
-      if (isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
-
-        ValueDecl* md = E->getMemberDecl();
-
-        std::string ref = bd->getName().str() + "." + md->getName().str();
-
-        if (nodeType_ == NodeLHS) {
-          refMap_.insert(make_pair(ref, true));
-          meshAccess_ = true;
-        } else if (nodeType_ == NodeRHS) {
-          RefMap_::iterator itr = refMap_.find(ref);
-          meshAccess_ = true;
-          if (itr != refMap_.end()) {
-            sema_.Diag(E->getMemberLoc(), diag::err_rhs_after_lhs_forall);
-            error_ = true;
-          }
-        }
-      }
-    }
-  }
-
-
-  void VisitDeclStmt(DeclStmt* S) {
-
-    DeclGroupRef declGroup = S->getDeclGroup();
-
-    for(DeclGroupRef::iterator itr = declGroup.begin(),
-        itrEnd = declGroup.end(); itr != itrEnd; ++itr){
-      Decl* decl = *itr;
-
-      if (NamedDecl* nd = dyn_cast<NamedDecl>(decl)) {
-        localMap_.insert(make_pair(nd->getName().str(), true));
-      }
-    }
-
-    VisitChildren(S);
-  }
-
-  void VisitBinaryOperator(BinaryOperator* S){
-
-    switch(S->getOpcode()){
-    case BO_Assign:
-    case BO_MulAssign:
-    case BO_DivAssign:
-    case BO_RemAssign:
-    case BO_AddAssign:
-    case BO_SubAssign:
-    case BO_ShlAssign:
-    case BO_ShrAssign:
-    case BO_AndAssign:
-    case BO_XorAssign:
-    case BO_OrAssign:
-      if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(S->getLHS())){
-        RefMap_::iterator itr = localMap_.find(DR->getDecl()->getName().str());
-        if(itr == localMap_.end()){
-
-          sema_.Diag(DR->getLocation(),
-              diag::warn_lhs_outside_forall) << DR->getDecl()->getName();
-        }
-      }
-
-      nodeType_ = NodeLHS;
-      break;
-    default:
-      break;
-    }
-
-    Visit(S->getLHS());
-    nodeType_ = NodeRHS;
-    Visit(S->getRHS());
-    nodeType_ = NodeNone;
   }
 
   bool getMeshAccess() {
@@ -346,29 +191,18 @@ public:
 
   }
 
+  void VisitBinaryOperator(BinaryOperator* S);
+
+  void VisitCallExpr(CallExpr* E);
+
+  void VisitDeclStmt(DeclStmt* S);
+
+  void VisitIfStmt(IfStmt* S);
+
+  void VisitMemberExpr(MemberExpr* E);
+
   void VisitStmt(Stmt* S) {
     VisitChildren(S);
-  }
-
-  void VisitCallExpr(CallExpr* E) {
-
-    FunctionDecl* fd = E->getDirectCallee();
-
-    if (fd) {
-      std::string name = fd->getName();
-      unsigned id = fd->getBuiltinID();
-      if (name == "printf" || name == "fprintf") {
-        // SC_TODO -- for now we'll warn that you're calling a print
-        // function inside a parallel construct -- in the long run
-        // we can either (1) force the loop to run sequentially or
-        // (2) replace print function with a "special" version...
-        sema_.Diag(E->getExprLoc(), diag::warn_renderall_calling_io_func);
-      } else if (isCShift(id) || isEOShift(id)) {
-        error_ = CheckShift(id, E, sema_);
-      }
-    }
-
-    VisitChildren(E);
   }
 
   void VisitChildren(Stmt* S) {
@@ -379,47 +213,6 @@ public:
     }
   }
 
-  void VisitMemberExpr(MemberExpr* E) {
-
-    if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())) {
-      ValueDecl* bd = dr->getDecl();
-
-      if (isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
-
-        ValueDecl* md = E->getMemberDecl();
-
-        std::string ref = bd->getName().str() + "." + md->getName().str();
-
-        if (nodeType_ == NodeLHS) {
-          refMap_.insert(make_pair(ref, true));
-        } else if (nodeType_ == NodeRHS) {
-          RefMap_::iterator itr = refMap_.find(ref);
-          if (itr != refMap_.end()) {
-            sema_.Diag(E->getMemberLoc(), diag::err_rhs_after_lhs_forall);
-            error_ = true;
-          }
-        }
-      }
-    }
-  }
-
-
-  void VisitDeclStmt(DeclStmt* S) {
-
-    DeclGroupRef declGroup = S->getDeclGroup();
-
-    for(DeclGroupRef::iterator itr = declGroup.begin(),
-        itrEnd = declGroup.end(); itr != itrEnd; ++itr){
-      Decl* decl = *itr;
-
-      if (NamedDecl* nd = dyn_cast<NamedDecl>(decl)) {
-        localMap_.insert(make_pair(nd->getName().str(), true));
-      }
-    }
-
-    VisitChildren(S);
-  }
-
   bool isColorExpr(Expr *E) {
     if (DeclRefExpr* DR = dyn_cast<DeclRefExpr>(E)) {
       if(isa<ImplicitColorParamDecl>(DR->getDecl())) {
@@ -427,88 +220,6 @@ public:
       }
     }
     return false;
-  }
-
-  void VisitBinaryOperator(BinaryOperator* S){
-    switch(S->getOpcode()){
-    case BO_Assign:
-      if(S->getOpcode() == BO_Assign){
-
-        // "color = " case
-        if(isColorExpr(S->getLHS())) {
-          foundColorAssign_ = true;
-          // "color.{rgba} = " case
-        } else if(ExtVectorElementExpr* VE = dyn_cast<ExtVectorElementExpr>(S->getLHS())) {
-          if(isColorExpr(VE->getBase())) { // make sure Base is a color expr
-
-            //only allow .r .g .b .a not combos like .rg
-            if (VE->getNumElements() == 1) {
-              const char *namestart = VE->getAccessor().getNameStart();
-              // find the index for this accesssor name {r,g,b,a} -> {0,1,2,3}
-              int idx = ExtVectorType::getAccessorIdx(*namestart);
-              foundComponentAssign_[idx] = true;
-            }
-          }
-        }
-      } else {
-        VisitChildren(S);
-      }
-      break;
-    case BO_MulAssign:
-    case BO_DivAssign:
-    case BO_RemAssign:
-    case BO_AddAssign:
-    case BO_SubAssign:
-    case BO_ShlAssign:
-    case BO_ShrAssign:
-    case BO_AndAssign:
-    case BO_XorAssign:
-    case BO_OrAssign:
-      if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(S->getLHS())){
-        RefMap_::iterator itr = localMap_.find(DR->getDecl()->getName().str());
-        if(itr == localMap_.end()){
-
-          sema_.Diag(DR->getLocation(),
-              diag::warn_lhs_outside_forall) << DR->getDecl()->getName();
-        }
-      }
-
-      nodeType_ = NodeLHS;
-      break;
-    default:
-      break;
-    }
-
-    Visit(S->getLHS());
-    nodeType_ = NodeRHS;
-    Visit(S->getRHS());
-    nodeType_ = NodeNone;
-  }
-
-  void VisitIfStmt(IfStmt* S) {
-    size_t ic = 0;
-    for(Stmt::child_iterator I = S->child_begin(),
-        E = S->child_end(); I != E; ++I){
-
-      if(Stmt* child = *I) {
-        if(isa<CompoundStmt>(child) || isa<IfStmt>(child)) {
-          RenderallVisitor v(sema_,fs_);
-          v.Visit(child);
-          if(v.foundColorAssign()) {
-            foundColorAssign_ = true;
-          } else {
-            foundColorAssign_ = false;
-            break;
-          }
-        } else {
-          Visit(child);
-        }
-        ++ic;
-      }
-    }
-    if(ic == 2) {
-      foundColorAssign_ = false;
-    }
   }
 
   bool foundColorAssign() {
@@ -541,6 +252,7 @@ private:
   bool foundComponentAssign_[4];
 };
 
+
 // make sure task functions are pure
 class TaskStmtVisitor : public StmtVisitor<TaskStmtVisitor> {
 public:
@@ -550,70 +262,25 @@ public:
     (void)S_;
   }
 
-  bool getMeshAccess() {
-    return meshAccess_;
-  }
+  void VisitCallExpr(CallExpr* E);
+
+  void VisitChildren(Stmt* S);
+
+  void VisitDeclRefExpr(DeclRefExpr *E);
+
+  void VisitForallMeshStmt(ForallMeshStmt *S);
 
   void VisitStmt(Stmt* S) {
     VisitChildren(S);
-  }
-
-
-  void VisitCallExpr(CallExpr* E) {
-
-    FunctionDecl* fd = E->getDirectCallee();
-
-    if (fd) {
-      std::string name = fd->getName();
-      if (name == "printf" || name == "fprintf") {
-
-        if(sema_.getLangOpts().ScoutLegionSupport) {
-          // in legion mode printf in task is error
-          sema_.Diag(E->getExprLoc(), diag::err_task_calling_io_func);
-        } else {
-          //  warn that you're calling a print function inside a task
-          sema_.Diag(E->getExprLoc(), diag::warn_task_calling_io_func);
-        }
-      }
-    }
-
-    VisitChildren(E);
-  }
-
-  void VisitChildren(Stmt* S) {
-    if(S) {
-      for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-        if (Stmt* child = *I) {
-          if(ForallMeshStmt *FAMS = dyn_cast<ForallMeshStmt>(child)) {
-            ForallVisitor v(sema_, FAMS);
-            v.Visit(FAMS);
-            if(v.getMeshAccess()) meshAccess_ = true;
-          }
-          if(CallExpr *CE = dyn_cast<CallExpr>(child)) {
-            //SC_TODO: need to descend into function and make sure it accesses mesh
-            llvm::errs() << "sema: call in task assuming it accesses mesh\n";
-            meshAccess_ = true;
-          }
-          if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(child)) {
-            if(VarDecl *VD = dyn_cast<VarDecl>(dr->getDecl())) {
-              if(VD->hasGlobalStorage() && !VD->getType().isConstQualified()) {
-                sema_.Diag(S->getLocStart(), diag::err_nonpure_task_fuction);
-              }
-              if(VD->isStaticDataMember()) {
-                sema_.Diag(S->getLocStart(), diag::err_nonpure_task_fuction);
-              }
-            }
-          }
-          Visit(child);
-        }
-      }
-    }
   }
 
   void VisitDeclStmt(DeclStmt* S) {
     VisitChildren(S);
   }
 
+  bool getMeshAccess() {
+    return meshAccess_;
+  }
 
 private:
   Stmt *S_;
@@ -629,21 +296,7 @@ public:
 : FD_(FD), sema_(sema), meshAccess_(false) {
   }
 
-  void VisitStmt(Stmt* S) {
-    if(FD_->isTaskSpecified()) {
-      if(S) {
-
-        TaskStmtVisitor v(sema_, S);
-        v.Visit(S);
-        if(v.getMeshAccess()) meshAccess_ = true;
-
-        // don't allow tasks w/ no mesh access in legion mode
-        if(sema_.getLangOpts().ScoutLegionSupport && !meshAccess_) {
-          sema_.Diag(S->getLocStart(), diag::err_nomesh_task_fuction);
-        }
-      }
-    }
-  }
+  void VisitStmt(Stmt* S);
 
 private:
   FunctionDecl *FD_;
@@ -652,5 +305,7 @@ private:
 
 };
 
-} // end namespace
+} // end namespace sema
+} // end namespace clang
+
 #endif

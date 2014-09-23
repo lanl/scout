@@ -54,6 +54,8 @@
 
 #include "ASTVisitors.h"
 
+namespace clang {
+namespace CodeGen {
 
 void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
 
@@ -165,4 +167,6 @@ void TaskStmtVisitor::VisitCallExpr(CallExpr* E) {
 
 }
 
+} // end namespace CodeGen
+} // end namespace clang
 

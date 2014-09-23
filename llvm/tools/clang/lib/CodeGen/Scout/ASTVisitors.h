@@ -71,6 +71,9 @@
 using namespace clang;
 using namespace clang::CodeGen;
 
+namespace clang {
+namespace CodeGen {
+
 typedef std::map<std::string, bool> MeshFieldMap;
 typedef std::map<std::string, std::string> MeshNameMap;
 
@@ -193,5 +196,8 @@ private:
   MeshNameMap MNM_;
 
 };
+
+} // end namespace CodeGen
+} // end namespace clang
 
 #endif
