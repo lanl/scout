@@ -212,8 +212,7 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   //SC_TODO: this will not work inside a function
   unsigned int rank = S.getMeshType()->rankOf();
 
-  llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.vertices.entry");
-  (void)EntryBlock; //suppress warning
+  EmitMarkerBlock("forall.vertices.entry");
 
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
@@ -319,8 +318,7 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   //SC_TODO: this will not work inside a function
   unsigned int rank = S.getMeshType()->rankOf();
 
-  llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.cells.entry");
-  (void)EntryBlock; //suppress warning
+  EmitMarkerBlock("forall.cells.entry");
 
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
@@ -464,8 +462,7 @@ void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
   //SC_TODO: this will not work inside a function
   unsigned int rank = S.getMeshType()->rankOf();
 
-  llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.edges.entry");
-  (void)EntryBlock; //suppress warning
+  EmitMarkerBlock("forall.edges.entry");
 
   if(rank == 1){
     EdgeIndex = InnerIndex;
@@ -632,8 +629,7 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
   //SC_TODO: this will not work inside a function
   unsigned int rank = S.getMeshType()->rankOf();
 
-  llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.faces.entry");
-  (void)EntryBlock; //suppress warning
+  EmitMarkerBlock("forall.faces.entry");
 
   if(rank == 1){
     FaceIndex = InnerIndex;
@@ -726,8 +722,7 @@ CodeGenFunction::EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
   llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
 
-  llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.cells.entry");
-  (void)EntryBlock; //suppress warning
+  EmitMarkerBlock("forall.cells.entry");
 
   if(rank == 1){
     CellIndex = InnerIndex;
@@ -823,8 +818,7 @@ CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
   //llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
 
-  llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.edges.entry");
-  (void)EntryBlock; //suppress warning
+  EmitMarkerBlock("forall.edges.entry");
 
   if(rank == 1){
     llvm::Value* One32 = llvm::ConstantInt::get(Int32Ty, 1);
@@ -955,8 +949,7 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
 
-  llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.edges.entry");
-  (void)EntryBlock; //suppress warning
+  EmitMarkerBlock("forall.edges.entry");
 
   InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.edges_idx.ptr");
   //zero-initialize induction var
@@ -1032,8 +1025,7 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
 
-  llvm::BasicBlock *EntryBlock = EmitMarkerBlock("forall.faces.entry");
-  (void)EntryBlock; //suppress warning
+  EmitMarkerBlock("forall.faces.entry");
 
   InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.faces_idx.ptr");
   //zero-initialize induction var
@@ -2168,7 +2160,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
     return;
   }
 
-  //need a marker for start of Forall for CodeExtraction
   llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
 
   // Track down the mesh meta data. 
@@ -2237,14 +2228,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   // so width/height etc can't be called after forall
   ResetVars();
   Rank = 0;
-
-  //need a marker for end of Forall for CodeExtraction
-  llvm::BasicBlock *exit = EmitMarkerBlock("forall.exit");
-
-  // Extract Blocks to function and replace w/ call to function
-  if(!inLLDB()){
-    ExtractRegion(entry, exit, "ForallMeshFunction");
-  }
 }
 
 
@@ -2434,7 +2417,7 @@ llvm::Function* CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::B
 
   llvm::Function::iterator BB = CurFn->begin();
 
-  //SC_TODO: is there a better way rather than using name?
+  //SC_TODO: is there a betterf way rather than using name?
   // find start marker
   for( ; BB->getName() != entry->getName(); ++BB) { }
 
@@ -2470,19 +2453,8 @@ llvm::Function* CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::B
 
 void CodeGenFunction::EmitForallArrayStmt(const ForallArrayStmt &S) {
 
-  //need a marker for start of Forall for CodeExtraction
-  llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
-
   EmitForallArrayLoop(S, S.getDims());
 
-  //need a marker for end of Forall for CodeExtraction
-  llvm::BasicBlock *exit = EmitMarkerBlock("forall.exit");
-
-  // Extract Blocks to function and replace w/ call to function
-
-  if(!inLLDB()){
-  	ExtractRegion(entry, exit, "ForallArrayFunction");
-  }
 }
 
 void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) {
@@ -2612,9 +2584,6 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   llvm::SmallVector< llvm::Value *, 4 > Args;
   Args.clear();
 
-  //need a marker for start of Renderall for CodeExtraction
-  llvm::BasicBlock *entry = EmitMarkerBlock("renderall.entry");
-
   // Create the induction variables for eack rank.
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "renderall.induct.%s.ptr", IndexNames[i]);
@@ -2707,21 +2676,13 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // so width/height etc can't be called after renderall
   ResetVars();
   Rank = 0;
-
-  //need a marker for end of Renderall for CodeExtraction
-  llvm::BasicBlock *exit = EmitMarkerBlock("renderall.exit");
-
-  if(!inLLDB()){
-  	ExtractRegion(entry, exit, "RenderallFunction");
-  }
 }
 
 void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S){
 	llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
 	llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
 
-	llvm::BasicBlock *EntryBlock = EmitMarkerBlock("renderall.entry");
-	(void)EntryBlock; //suppress warning
+	EmitMarkerBlock("renderall.entry");
 
 	InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "renderall.idx.ptr");
 	//zero-initialize induction var
