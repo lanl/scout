@@ -67,6 +67,7 @@ CGLegionRuntime::CGLegionRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
   Int8Ty = llvm::Type::getInt8Ty(context);
   Int32Ty = llvm::Type::getInt32Ty(context);
   Int64Ty = llvm::Type::getInt64Ty(context);
+  VoidTy = llvm::Type::getVoidTy(context);
   VoidPtrTy = PointerTy(Int8Ty);
   
   RuntimeTy = VoidPtrTy;

@@ -36,6 +36,7 @@ add_clang_library(scoutCodeGen
   CGMeshLayoutBuilder.cpp
   CGScoutRuntime.cpp
   CGLegionRuntime.cpp
+  CGLegionTask.cpp
   CGBuiltin.cpp
   CodeGenTypes.cpp
   CodeGenModule.cpp

@@ -116,6 +116,7 @@ namespace CodeGen {
     llvm::Type* Int8Ty;
     llvm::Type* Int32Ty;
     llvm::Type* Int64Ty;
+    llvm::Type* VoidTy;
     
     llvm::Type* RuntimeTy;
     llvm::Type* ContextTy;
