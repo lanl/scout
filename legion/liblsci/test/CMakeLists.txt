@@ -91,7 +91,7 @@ foreach (test ${RT_LIBLSCI_SRCS})
 endforeach(test)
 
 set(CMAKE_CXX_COMPILER "${SCOUT_BUILD_DIR}/../bin/clang")
-set(CMAKE_CXX_FLAGS "-Wno-enum-compare")
+set(CMAKE_CXX_FLAGS "-Wno-enum-compare -Wno-delete-non-virtual-dtor")
 add_executable(runtime_liblsci_enums enums.cpp)
 add_test(runtime_liblsci_enums ${TEST_BINARY_DIR}/runtime_liblsci_enums)
 message(" + added runtime regression test entry: runtime_liblsci_enums")
