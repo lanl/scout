@@ -7442,8 +7442,10 @@ def  warn_mesh_builtin_ptr : Warning<
  	"argument to %select{width()|height()|depth()|rank()}0 must be a mesh, adding *">;  
 def err_nonpure_task_fuction : Error<
     "non-pure task function">;
- def err_nomesh_task_fuction : Error<
+def err_nomesh_task_fuction : Error<
     "no mesh access in task function">;
+def err_more_than_one_mesh_task_fuction : Error<
+    "only one mesh is allowed in task function">;
  		  
  		  
     

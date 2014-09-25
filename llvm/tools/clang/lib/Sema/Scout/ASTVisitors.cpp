@@ -452,6 +452,22 @@ void TaskDeclVisitor::VisitStmt(Stmt* S) {
         sema_.Diag(S->getLocStart(), diag::err_nomesh_task_fuction);
       }
     }
+    // make sure there is only one mesh parameter if we are in legion mode
+    if(sema_.getLangOpts().ScoutLegionSupport) {
+      int meshcount = 0;
+      for(unsigned i = 0; i < FD_->getNumParams(); i++) {
+        ParmVarDecl *PVD = FD_->getParamDecl(i);
+        const Type *T = PVD->getType().getCanonicalType().getTypePtr();
+        if(T->isPointerType() || T->isReferenceType()) {
+          if(isa<UniformMeshType>(T->getPointeeType())) {
+            meshcount++;
+          }
+        }
+      }
+      if(meshcount > 1) {
+        sema_.Diag(S->getLocStart(), diag::err_more_than_one_mesh_task_fuction);
+      }
+    }
   }
 }
 
