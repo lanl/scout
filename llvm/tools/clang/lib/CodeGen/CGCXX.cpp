@@ -196,33 +196,26 @@ bool CodeGenModule::TryEmitDefinitionAsAlias(GlobalDecl AliasDecl,
   return false;
 }
 
-void CodeGenModule::EmitCXXConstructor(const CXXConstructorDecl *ctor,
-                                       CXXCtorType ctorType) {
-  if (!getTarget().getCXXABI().hasConstructorVariants()) {
-    // If there are no constructor variants, always emit the complete destructor.
-    ctorType = Ctor_Complete;
-  } else if (!ctor->getParent()->getNumVBases() &&
-             (ctorType == Ctor_Complete || ctorType == Ctor_Base)) {
-    // The complete constructor is equivalent to the base constructor
-    // for classes with no virtual bases.  Try to emit it as an alias.
-    bool ProducedAlias =
-        !TryEmitDefinitionAsAlias(GlobalDecl(ctor, Ctor_Complete),
-                                  GlobalDecl(ctor, Ctor_Base), true);
-    if (ctorType == Ctor_Complete && ProducedAlias)
-      return;
+llvm::Function *CodeGenModule::codegenCXXStructor(const CXXMethodDecl *MD,
+                                                  StructorType Type) {
+  const CGFunctionInfo &FnInfo =
+      getTypes().arrangeCXXStructorDeclaration(MD, Type);
+  auto *Fn = cast<llvm::Function>(
+      getAddrOfCXXStructor(MD, Type, &FnInfo, nullptr, true));
+
+  GlobalDecl GD;
+  if (const auto *DD = dyn_cast<CXXDestructorDecl>(MD)) {
+    GD = GlobalDecl(DD, toCXXDtorType(Type));
+  } else {
+    const auto *CD = cast<CXXConstructorDecl>(MD);
+    GD = GlobalDecl(CD, toCXXCtorType(Type));
   }
 
-  const CGFunctionInfo &fnInfo =
-      getTypes().arrangeCXXStructorDeclaration(ctor, getFromCtorType(ctorType));
-
-  auto *fn = cast<llvm::Function>(getAddrOfCXXStructor(
-      ctor, getFromCtorType(ctorType), &fnInfo, nullptr, true));
-  setFunctionLinkage(GlobalDecl(ctor, ctorType), fn);
-
-  CodeGenFunction(*this).GenerateCode(GlobalDecl(ctor, ctorType), fn, fnInfo);
-
-  setFunctionDefinitionAttributes(ctor, fn);
-  SetLLVMFunctionAttributesForDefinition(ctor, fn);
+  setFunctionLinkage(GD, Fn);
+  CodeGenFunction(*this).GenerateCode(GD, Fn, FnInfo);
+  setFunctionDefinitionAttributes(MD, Fn);
+  SetLLVMFunctionAttributesForDefinition(MD, Fn);
+  return Fn;
 }
 
 llvm::GlobalValue *CodeGenModule::getAddrOfCXXStructor(
@@ -249,43 +242,6 @@ llvm::GlobalValue *CodeGenModule::getAddrOfCXXStructor(
   return cast<llvm::Function>(GetOrCreateLLVMFunction(Name, FnType, GD,
                                                       /*ForVTable=*/false,
                                                       DontDefer));
-}
-
-void CodeGenModule::EmitCXXDestructor(const CXXDestructorDecl *dtor,
-                                      CXXDtorType dtorType) {
-  // The complete destructor is equivalent to the base destructor for
-  // classes with no virtual bases, so try to emit it as an alias.
-  if (!dtor->getParent()->getNumVBases() &&
-      (dtorType == Dtor_Complete || dtorType == Dtor_Base)) {
-    bool ProducedAlias =
-        !TryEmitDefinitionAsAlias(GlobalDecl(dtor, Dtor_Complete),
-                                  GlobalDecl(dtor, Dtor_Base), true);
-    if (ProducedAlias) {
-      if (dtorType == Dtor_Complete)
-        return;
-      if (dtor->isVirtual())
-        getVTables().EmitThunks(GlobalDecl(dtor, Dtor_Complete));
-    }
-  }
-
-  // The base destructor is equivalent to the base destructor of its
-  // base class if there is exactly one non-virtual base class with a
-  // non-trivial destructor, there are no fields with a non-trivial
-  // destructor, and the body of the destructor is trivial.
-  if (dtorType == Dtor_Base && !TryEmitBaseDestructorAsAlias(dtor))
-    return;
-
-  const CGFunctionInfo &fnInfo =
-      getTypes().arrangeCXXStructorDeclaration(dtor, getFromDtorType(dtorType));
-
-  auto *fn = cast<llvm::Function>(getAddrOfCXXStructor(
-      dtor, getFromDtorType(dtorType), &fnInfo, nullptr, true));
-  setFunctionLinkage(GlobalDecl(dtor, dtorType), fn);
-
-  CodeGenFunction(*this).GenerateCode(GlobalDecl(dtor, dtorType), fn, fnInfo);
-
-  setFunctionDefinitionAttributes(dtor, fn);
-  SetLLVMFunctionAttributesForDefinition(dtor, fn);
 }
 
 static llvm::Value *BuildAppleKextVirtualCall(CodeGenFunction &CGF,

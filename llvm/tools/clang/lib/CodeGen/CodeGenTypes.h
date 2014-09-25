@@ -85,8 +85,8 @@ inline StructorType getFromCtorType(CXXCtorType T) {
     return StructorType::Complete;
   case Ctor_Base:
     return StructorType::Base;
-  case Ctor_CompleteAllocating:
-    llvm_unreachable("invalid enum");
+  case Ctor_Comdat:
+    llvm_unreachable("not expecting a COMDAT");
   }
   llvm_unreachable("not a CXXCtorType");
 }
@@ -111,6 +111,8 @@ inline StructorType getFromDtorType(CXXDtorType T) {
     return StructorType::Complete;
   case Dtor_Base:
     return StructorType::Base;
+  case Dtor_Comdat:
+    llvm_unreachable("not expecting a COMDAT");
   }
   llvm_unreachable("not a CXXDtorType");
 }

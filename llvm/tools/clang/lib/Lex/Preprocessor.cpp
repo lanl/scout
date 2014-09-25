@@ -186,7 +186,7 @@ void Preprocessor::InitializeForModelFile() {
   NumEnteredSourceFiles = 0;
 
   // Reset pragmas
-  PragmaHandlersBackup = PragmaHandlers.release();
+  PragmaHandlersBackup = std::move(PragmaHandlers);
   PragmaHandlers = llvm::make_unique<PragmaNamespace>(StringRef());
   RegisterBuiltinPragmas();
 
@@ -197,7 +197,7 @@ void Preprocessor::InitializeForModelFile() {
 void Preprocessor::FinalizeForModelFile() {
   NumEnteredSourceFiles = 1;
 
-  PragmaHandlers.reset(PragmaHandlersBackup);
+  PragmaHandlers = std::move(PragmaHandlersBackup);
 }
 
 void Preprocessor::setPTHManager(PTHManager* pm) {

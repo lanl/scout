@@ -617,6 +617,9 @@ public:
   DiagnosticsEngine &getDiags() const { return Diags; }
   const llvm::DataLayout &getDataLayout() const { return TheDataLayout; }
   const TargetInfo &getTarget() const { return Target; }
+  const llvm::Triple &getTriple() const;
+  bool supportsCOMDAT() const;
+
   CGCXXABI &getCXXABI() const { return *ABI; }
   // +===== Scout ==========================================================+
   CGScoutABI &getScoutABI() const { return *ScoutABI; }
@@ -822,6 +825,12 @@ public:
   /// \brief Retrieve the record type that describes the state of an
   /// Objective-C fast enumeration loop (for..in).
   QualType getObjCFastEnumerationStateType();
+
+  // Produce code for this constructor/destructor. This method doesn't try
+  // to apply any ABI rules about which other constructors/destructors
+  // are needed or if they are alias to each other.
+  llvm::Function *codegenCXXStructor(const CXXMethodDecl *MD,
+                                     StructorType Type);
 
   /// Return the address of the constructor/destructor of the given type.
   llvm::GlobalValue *
@@ -1069,8 +1078,30 @@ public:
   /// are emitted lazily.
   void EmitGlobal(GlobalDecl D);
 
-private:
+  bool TryEmitDefinitionAsAlias(GlobalDecl Alias, GlobalDecl Target,
+                                bool InEveryTU);
+  bool TryEmitBaseDestructorAsAlias(const CXXDestructorDecl *D);
+
+  /// Set attributes for a global definition.
+  void setFunctionDefinitionAttributes(const FunctionDecl *D,
+                                       llvm::Function *F);
+
   llvm::GlobalValue *GetGlobalValue(StringRef Ref);
+
+  /// Set attributes which are common to any form of a global definition (alias,
+  /// Objective-C method, function, global variable).
+  ///
+  /// NOTE: This should only be called for definitions.
+  void SetCommonAttributes(const Decl *D, llvm::GlobalValue *GV);
+
+  /// Set attributes which must be preserved by an alias. This includes common
+  /// attributes (i.e. it includes a call to SetCommonAttributes).
+  ///
+  /// NOTE: This should only be called for definitions.
+  void setAliasAttributes(const Decl *D, llvm::GlobalValue *GV);
+
+  void addReplacement(StringRef Name, llvm::Constant *C);
+private:
 
   llvm::Constant *
   GetOrCreateLLVMFunction(StringRef MangledName, llvm::Type *Ty, GlobalDecl D,
@@ -1081,17 +1112,7 @@ private:
                                         llvm::PointerType *PTy,
                                         const VarDecl *D);
 
-  /// Set attributes which are common to any form of a global definition (alias,
-  /// Objective-C method, function, global variable).
-  ///
-  /// NOTE: This should only be called for definitions.
-  void SetCommonAttributes(const Decl *D, llvm::GlobalValue *GV);
-
   void setNonAliasAttributes(const Decl *D, llvm::GlobalObject *GO);
-
-  /// Set attributes for a global definition.
-  void setFunctionDefinitionAttributes(const FunctionDecl *D,
-                                       llvm::Function *F);
 
   /// Set function attributes for a function declaration.
   void SetFunctionAttributes(GlobalDecl GD,
@@ -1108,19 +1129,9 @@ private:
   
   // C++ related functions.
 
-  bool TryEmitDefinitionAsAlias(GlobalDecl Alias, GlobalDecl Target,
-                                bool InEveryTU);
-  bool TryEmitBaseDestructorAsAlias(const CXXDestructorDecl *D);
-
   void EmitNamespace(const NamespaceDecl *D);
   void EmitLinkageSpec(const LinkageSpecDecl *D);
   void CompleteDIClassType(const CXXMethodDecl* D);
-
-  /// Emit a single constructor with the given type from a C++ constructor Decl.
-  void EmitCXXConstructor(const CXXConstructorDecl *D, CXXCtorType Type);
-
-  /// Emit a single destructor with the given type from a C++ destructor Decl.
-  void EmitCXXDestructor(const CXXDestructorDecl *D, CXXDtorType Type);
 
   /// \brief Emit the function that initializes C++ thread_local variables.
   void EmitCXXThreadLocalInitFunc();
