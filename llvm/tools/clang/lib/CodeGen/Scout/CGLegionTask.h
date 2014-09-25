@@ -100,22 +100,25 @@ namespace clang {
       llvm::Function* legionTaskFunc;
       llvm::StructType* meshType;
       std::vector<llvm::Value*> fields;
+      llvm::Value* firstField;
 
-      // members used only for creating legion task init function
       size_t taskId;
       llvm::Value* legionContext;
       llvm::Value* legionRuntime;
       llvm::Value* meshTaskArgs;
+
+
+      // members used only for creating legion task init function
       llvm::Value* indexLauncher;
       llvm::Value* argMap;
-      llvm::Value* regions;
-      llvm::Value* subgridBounds;
       TaskDeclVisitor* taskDeclVisitor;
       size_t meshPos;       // position of the mesh in the argument list of LegionTaskInitFunc()
       llvm::Value* meshPtr;  // pointer to the scout mesh struct argument LegionTaskInitFunc()
 
       // used only for creating legion task function
       llvm::Value* taskArgs;
+      llvm::Value* task;
+      llvm::Value* regions;
       std::vector<llvm::Value*> taskFuncArgs;
       llvm::Value* mesh;     // legion-allocated scout mesh struct to be passed to forall
 
@@ -135,6 +138,8 @@ namespace clang {
       // member function for creating the legion task function
       void EmitLegionTaskFunction();
       void EmitLegionTaskFunctionStart();
+      void EmitGetIndexSpaceDomainFuncCall();
+      void EmitScoutMesh();
       void EmitMeshRawRectPtr1dFuncCalls();
       void EmitVectorRawRectPtr1dFuncCalls();
       void EmitTaskFuncCall();

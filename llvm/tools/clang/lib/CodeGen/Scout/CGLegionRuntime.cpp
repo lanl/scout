@@ -473,13 +473,19 @@ llvm::Function* CGLegionRuntime::RegisterVoidLegionTaskAuxFunc(){
     {Int32Ty, Int32Ty, Int1Ty, Int1Ty, Int1Ty, VariantIdTy, VoidPtrTy, llvm::PointerType::get(funcType, 0)};
   return LegionRuntimeFunction(name, params, Int32Ty);
 }
-  
 
 llvm::Function* CGLegionRuntime::RawRectPtr1dFunc(){
   string name = "lsci_raw_rect_ptr_1d";
   vector<llvm::Type*> params =
    {PhysicalRegionsTy, Int32Ty, Int64Ty, FieldIdTy, TaskTy, ContextTy, RuntimeTy};
   return LegionRuntimeFunction(name, params, VoidPtrTy);
+}
+
+llvm::Function* CGLegionRuntime::GetIndexSpaceDomainFunc(){
+  string name = "lsci_get_index_space_domain";
+  vector<llvm::Type*> params =
+   {RuntimeTy, ContextTy, TaskTy, Int64Ty, PointerTy(DomainTy)};
+  return LegionRuntimeFunction(name, params, Int32Ty);
 }
 
 llvm::Function* CGLegionRuntime::PrintMeshTaskArgsFunc() {
