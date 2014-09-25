@@ -471,7 +471,7 @@ void CGLegionTask::EmitAddVectorRegionReqAndFieldFuncCalls() {
   assert(legionTaskInitFunc && funcDecl && indexLauncher);
 
   ValueVec args;
-  llvm::Value* One = llvm::ConstantInt::get(R.Int32Ty, 1);
+  llvm::Value* One = llvm::ConstantInt::get(R.Int64Ty, 1);
 
   uint32_t j = fields.size();
   auto aitr = legionTaskInitFunc->arg_begin();
