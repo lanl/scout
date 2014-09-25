@@ -85,6 +85,15 @@ static cl::opt<bool>
 Rebase("rebase", cl::desc("Display mach-o rebasing info"));
 
 static cl::opt<bool>
+Bind("bind", cl::desc("Display mach-o binding info"));
+
+static cl::opt<bool>
+LazyBind("lazy-bind", cl::desc("Display mach-o lazy binding info"));
+
+static cl::opt<bool>
+WeakBind("weak-bind", cl::desc("Display mach-o weak binding info"));
+
+static cl::opt<bool>
 MachOOpt("macho", cl::desc("Use MachO specific object file parser"));
 static cl::alias
 MachOm("m", cl::desc("Alias for --macho"), cl::aliasopt(MachOOpt));
@@ -119,9 +128,10 @@ llvm::MAttrs("mattr",
   cl::desc("Target specific attributes"),
   cl::value_desc("a1,+a2,-a3,..."));
 
-static cl::opt<bool>
-NoShowRawInsn("no-show-raw-insn", cl::desc("When disassembling instructions, "
-                                           "do not print the instruction bytes."));
+cl::opt<bool>
+llvm::NoShowRawInsn("no-show-raw-insn", cl::desc("When disassembling "
+                                                 "instructions, do not print "
+                                                 "the instruction bytes."));
 
 static cl::opt<bool>
 UnwindInfo("unwind-info", cl::desc("Display unwind information"));
@@ -591,6 +601,8 @@ static void PrintCOFFSymbolTable(const COFFObjectFile *coff) {
         if (error(coff->getAuxSymbol<coff_aux_section_definition>(SI + 1, asd)))
           return;
 
+        int32_t AuxNumber = asd->getNumber(Symbol->isBigObj());
+
         outs() << "AUX "
                << format("scnlen 0x%x nreloc %d nlnno %d checksum 0x%x "
                          , unsigned(asd->Length)
@@ -598,7 +610,7 @@ static void PrintCOFFSymbolTable(const COFFObjectFile *coff) {
                          , unsigned(asd->NumberOfLinenumbers)
                          , unsigned(asd->CheckSum))
                << format("assoc %d comdat %d\n"
-                         , unsigned(asd->Number)
+                         , unsigned(AuxNumber)
                          , unsigned(asd->Selection));
       } else if (Symbol->isFileRecord()) {
         const char *FileName;
@@ -734,6 +746,38 @@ static void printRebaseTable(const ObjectFile *o) {
   }
 }
 
+static void printBindTable(const ObjectFile *o) {
+  outs() << "Bind table:\n";
+  if (const MachOObjectFile *MachO = dyn_cast<MachOObjectFile>(o))
+    printMachOBindTable(MachO);
+  else {
+    errs() << "This operation is only currently supported "
+              "for Mach-O executable files.\n";
+    return;
+  }
+}
+
+static void printLazyBindTable(const ObjectFile *o) {
+  outs() << "Lazy bind table:\n";
+  if (const MachOObjectFile *MachO = dyn_cast<MachOObjectFile>(o))
+    printMachOLazyBindTable(MachO);
+  else {
+    errs() << "This operation is only currently supported "
+              "for Mach-O executable files.\n";
+    return;
+  }
+}
+
+static void printWeakBindTable(const ObjectFile *o) {
+  outs() << "Weak bind table:\n";
+  if (const MachOObjectFile *MachO = dyn_cast<MachOObjectFile>(o))
+    printMachOWeakBindTable(MachO);
+  else {
+    errs() << "This operation is only currently supported "
+              "for Mach-O executable files.\n";
+    return;
+  }
+}
 
 static void printPrivateFileHeader(const ObjectFile *o) {
   if (o->isELF()) {
@@ -768,6 +812,12 @@ static void DumpObject(const ObjectFile *o) {
     printExportsTrie(o);
   if (Rebase)
     printRebaseTable(o);
+  if (Bind)
+    printBindTable(o);
+  if (LazyBind)
+    printLazyBindTable(o);
+  if (WeakBind)
+    printWeakBindTable(o);
 }
 
 /// @brief Dump each object file in \a a;
@@ -851,7 +901,10 @@ int main(int argc, char **argv) {
       && !UnwindInfo
       && !PrivateHeaders
       && !ExportsTrie
-      && !Rebase) {
+      && !Rebase
+      && !Bind
+      && !LazyBind
+      && !WeakBind) {
     cl::PrintHelpMessage();
     return 2;
   }

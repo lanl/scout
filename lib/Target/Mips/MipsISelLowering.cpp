@@ -209,7 +209,7 @@ const char *MipsTargetLowering::getTargetNodeName(unsigned Opcode) const {
   }
 }
 
-MipsTargetLowering::MipsTargetLowering(MipsTargetMachine &TM,
+MipsTargetLowering::MipsTargetLowering(const MipsTargetMachine &TM,
                                        const MipsSubtarget &STI)
     : TargetLowering(TM, new MipsTargetObjectFile()), Subtarget(STI) {
   // Mips does not have i1 type, so use i32 for
@@ -409,7 +409,7 @@ MipsTargetLowering::MipsTargetLowering(MipsTargetMachine &TM,
   isMicroMips = Subtarget.inMicroMipsMode();
 }
 
-const MipsTargetLowering *MipsTargetLowering::create(MipsTargetMachine &TM,
+const MipsTargetLowering *MipsTargetLowering::create(const MipsTargetMachine &TM,
                                                      const MipsSubtarget &STI) {
   if (STI.inMips16Mode())
     return llvm::createMips16TargetLowering(TM, STI);
@@ -2373,6 +2373,8 @@ static bool CC_MipsO32_FP64(unsigned ValNo, MVT ValVT,
   return CC_MipsO32(ValNo, ValVT, LocVT, LocInfo, ArgFlags, State, F64Regs);
 }
 
+static bool originalTypeIsF128(const Type *Ty, const SDNode *CallNode);
+
 #include "MipsGenCallingConv.inc"
 
 //===----------------------------------------------------------------------===//
@@ -2686,20 +2688,57 @@ MipsTargetLowering::LowerCallResult(SDValue Chain, SDValue InFlag,
   SmallVector<CCValAssign, 16> RVLocs;
   CCState CCInfo(CallConv, IsVarArg, DAG.getMachineFunction(), RVLocs,
                  *DAG.getContext());
-  MipsCC MipsCCInfo(CallConv, Subtarget, CCInfo);
 
-  MipsCCInfo.analyzeCallResult(Ins, Subtarget.abiUsesSoftFloat(),
-                               CallNode, RetTy);
+  if (originalTypeIsF128(RetTy, CallNode))
+    CCInfo.AnalyzeCallResult(Ins, RetCC_F128);
+  else
+    CCInfo.AnalyzeCallResult(Ins, RetCC_Mips);
 
   // Copy all of the result registers out of their specified physreg.
   for (unsigned i = 0; i != RVLocs.size(); ++i) {
+    CCValAssign &VA = RVLocs[i];
+    assert(VA.isRegLoc() && "Can only return in registers!");
+
     SDValue Val = DAG.getCopyFromReg(Chain, DL, RVLocs[i].getLocReg(),
                                      RVLocs[i].getLocVT(), InFlag);
     Chain = Val.getValue(1);
     InFlag = Val.getValue(2);
 
-    if (RVLocs[i].getValVT() != RVLocs[i].getLocVT())
-      Val = DAG.getNode(ISD::BITCAST, DL, RVLocs[i].getValVT(), Val);
+    if (VA.isUpperBitsInLoc()) {
+      unsigned ValSizeInBits = Ins[i].ArgVT.getSizeInBits();
+      unsigned LocSizeInBits = VA.getLocVT().getSizeInBits();
+      unsigned Shift =
+          VA.getLocInfo() == CCValAssign::ZExtUpper ? ISD::SRL : ISD::SRA;
+      Val = DAG.getNode(
+          Shift, DL, VA.getLocVT(), Val,
+          DAG.getConstant(LocSizeInBits - ValSizeInBits, VA.getLocVT()));
+    }
+
+    switch (VA.getLocInfo()) {
+    default:
+      llvm_unreachable("Unknown loc info!");
+    case CCValAssign::Full:
+      break;
+    case CCValAssign::BCvt:
+      Val = DAG.getNode(ISD::BITCAST, DL, VA.getValVT(), Val);
+      break;
+    case CCValAssign::AExt:
+    case CCValAssign::AExtUpper:
+      Val = DAG.getNode(ISD::TRUNCATE, DL, VA.getValVT(), Val);
+      break;
+    case CCValAssign::ZExt:
+    case CCValAssign::ZExtUpper:
+      Val = DAG.getNode(ISD::AssertZext, DL, VA.getLocVT(), Val,
+                        DAG.getValueType(VA.getValVT()));
+      Val = DAG.getNode(ISD::TRUNCATE, DL, VA.getValVT(), Val);
+      break;
+    case CCValAssign::SExt:
+    case CCValAssign::SExtUpper:
+      Val = DAG.getNode(ISD::AssertSext, DL, VA.getLocVT(), Val,
+                        DAG.getValueType(VA.getValVT()));
+      Val = DAG.getNode(ISD::TRUNCATE, DL, VA.getValVT(), Val);
+      break;
+    }
 
     InVals.push_back(Val);
   }
@@ -2886,8 +2925,10 @@ MipsTargetLowering::LowerReturn(SDValue Chain,
   MipsCC MipsCCInfo(CallConv, Subtarget, CCInfo);
 
   // Analyze return values.
-  MipsCCInfo.analyzeReturn(Outs, Subtarget.abiUsesSoftFloat(),
-                           MF.getFunction()->getReturnType());
+  if (originalTypeIsF128(MF.getFunction()->getReturnType(), nullptr))
+    CCInfo.AnalyzeReturn(Outs, RetCC_F128);
+  else
+    CCInfo.AnalyzeReturn(Outs, RetCC_Mips);
 
   SDValue Flag;
   SmallVector<SDValue, 4> RetOps(1, Chain);
@@ -2897,9 +2938,43 @@ MipsTargetLowering::LowerReturn(SDValue Chain,
     SDValue Val = OutVals[i];
     CCValAssign &VA = RVLocs[i];
     assert(VA.isRegLoc() && "Can only return in registers!");
+    bool UseUpperBits = false;
 
-    if (RVLocs[i].getValVT() != RVLocs[i].getLocVT())
-      Val = DAG.getNode(ISD::BITCAST, DL, RVLocs[i].getLocVT(), Val);
+    switch (VA.getLocInfo()) {
+    default:
+      llvm_unreachable("Unknown loc info!");
+    case CCValAssign::Full:
+      break;
+    case CCValAssign::BCvt:
+      Val = DAG.getNode(ISD::BITCAST, DL, VA.getLocVT(), Val);
+      break;
+    case CCValAssign::AExtUpper:
+      UseUpperBits = true;
+      // Fallthrough
+    case CCValAssign::AExt:
+      Val = DAG.getNode(ISD::ANY_EXTEND, DL, VA.getLocVT(), Val);
+      break;
+    case CCValAssign::ZExtUpper:
+      UseUpperBits = true;
+      // Fallthrough
+    case CCValAssign::ZExt:
+      Val = DAG.getNode(ISD::ZERO_EXTEND, DL, VA.getLocVT(), Val);
+      break;
+    case CCValAssign::SExtUpper:
+      UseUpperBits = true;
+      // Fallthrough
+    case CCValAssign::SExt:
+      Val = DAG.getNode(ISD::SIGN_EXTEND, DL, VA.getLocVT(), Val);
+      break;
+    }
+
+    if (UseUpperBits) {
+      unsigned ValSizeInBits = Outs[i].ArgVT.getSizeInBits();
+      unsigned LocSizeInBits = VA.getLocVT().getSizeInBits();
+      Val = DAG.getNode(
+          ISD::SHL, DL, VA.getLocVT(), Val,
+          DAG.getConstant(LocSizeInBits - ValSizeInBits, VA.getLocVT()));
+    }
 
     Chain = DAG.getCopyToReg(Chain, DL, VA.getLocReg(), Val, Flag);
 
@@ -3469,44 +3544,6 @@ analyzeFormalArguments(const SmallVectorImpl<ISD::InputArg> &Args,
 #endif
     llvm_unreachable(nullptr);
   }
-}
-
-template<typename Ty>
-void MipsTargetLowering::MipsCC::
-analyzeReturn(const SmallVectorImpl<Ty> &RetVals, bool IsSoftFloat,
-              const SDNode *CallNode, const Type *RetTy) const {
-  CCAssignFn *Fn;
-
-  if (IsSoftFloat && originalTypeIsF128(RetTy, CallNode))
-    Fn = RetCC_F128Soft;
-  else
-    Fn = RetCC_Mips;
-
-  for (unsigned I = 0, E = RetVals.size(); I < E; ++I) {
-    MVT VT = RetVals[I].VT;
-    ISD::ArgFlagsTy Flags = RetVals[I].Flags;
-    MVT RegVT = this->getRegVT(VT, RetTy, CallNode, IsSoftFloat);
-
-    if (Fn(I, VT, RegVT, CCValAssign::Full, Flags, this->CCInfo)) {
-#ifndef NDEBUG
-      dbgs() << "Call result #" << I << " has unhandled type "
-             << EVT(VT).getEVTString() << '\n';
-#endif
-      llvm_unreachable(nullptr);
-    }
-  }
-}
-
-void MipsTargetLowering::MipsCC::
-analyzeCallResult(const SmallVectorImpl<ISD::InputArg> &Ins, bool IsSoftFloat,
-                  const SDNode *CallNode, const Type *RetTy) const {
-  analyzeReturn(Ins, IsSoftFloat, CallNode, RetTy);
-}
-
-void MipsTargetLowering::MipsCC::
-analyzeReturn(const SmallVectorImpl<ISD::OutputArg> &Outs, bool IsSoftFloat,
-              const Type *RetTy) const {
-  analyzeReturn(Outs, IsSoftFloat, nullptr, RetTy);
 }
 
 void MipsTargetLowering::MipsCC::handleByValArg(unsigned ValNo, MVT ValVT,
