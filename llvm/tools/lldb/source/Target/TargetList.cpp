@@ -170,7 +170,7 @@ TargetList::CreateTarget (Debugger &debugger,
                     
                     typedef std::vector<PlatformSP> PlatformList;
                     PlatformList platforms;
-                    PlatformSP host_platform_sp = Platform::GetDefaultPlatform();
+                    PlatformSP host_platform_sp = Platform::GetHostPlatform();
                     for (size_t i=0; i<num_specs; ++i)
                     {
                         ModuleSpec module_spec;
@@ -258,7 +258,11 @@ TargetList::CreateTarget (Debugger &debugger,
         if (!prefer_platform_arch && arch.IsValid())
         {
             if (!platform_sp->IsCompatibleArchitecture(arch, false, &platform_arch))
+            {
                 platform_sp = Platform::GetPlatformForArchitecture(arch, &platform_arch);
+                if (platform_sp)
+                    debugger.GetPlatformList().SetSelectedPlatform(platform_sp);
+            }
         }
         else if (platform_arch.IsValid())
         {
@@ -266,7 +270,11 @@ TargetList::CreateTarget (Debugger &debugger,
             // a single architecture which should be used
             ArchSpec fixed_platform_arch;
             if (!platform_sp->IsCompatibleArchitecture(platform_arch, false, &fixed_platform_arch))
+            {
                 platform_sp = Platform::GetPlatformForArchitecture(platform_arch, &fixed_platform_arch);
+                if (platform_sp)
+                    debugger.GetPlatformList().SetSelectedPlatform(platform_sp);
+            }
         }
     }
     

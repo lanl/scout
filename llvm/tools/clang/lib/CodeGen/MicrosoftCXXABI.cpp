@@ -488,7 +488,18 @@ public:
 
   bool isMemberPointerConvertible(const MemberPointerType *MPT) const override {
     const CXXRecordDecl *RD = MPT->getMostRecentCXXRecordDecl();
-    return RD->getAttr<MSInheritanceAttr>() != nullptr;
+    return RD->hasAttr<MSInheritanceAttr>();
+  }
+
+  virtual bool isTypeInfoCalculable(QualType Ty) const {
+    if (!CGCXXABI::isTypeInfoCalculable(Ty))
+      return false;
+    if (const auto *MPT = Ty->getAs<MemberPointerType>()) {
+      const CXXRecordDecl *RD = MPT->getMostRecentCXXRecordDecl();
+      if (!RD->hasAttr<MSInheritanceAttr>())
+        return false;
+    }
+    return true;
   }
 
   llvm::Constant *EmitNullMemberPointer(const MemberPointerType *MPT) override;
@@ -524,6 +535,8 @@ public:
   EmitLoadOfMemberFunctionPointer(CodeGenFunction &CGF, const Expr *E,
                                   llvm::Value *&This, llvm::Value *MemPtr,
                                   const MemberPointerType *MPT) override;
+
+  void emitCXXStructor(const CXXMethodDecl *MD, StructorType Type) override;
 
 private:
   typedef std::pair<const CXXRecordDecl *, CharUnits> VFTableIdTy;
@@ -2869,4 +2882,46 @@ llvm::GlobalVariable *
 MicrosoftCXXABI::getMSCompleteObjectLocator(const CXXRecordDecl *RD,
                                             const VPtrInfo *Info) {
   return MSRTTIBuilder(*this, RD).getCompleteObjectLocator(Info);
+}
+
+static void emitCXXConstructor(CodeGenModule &CGM,
+                               const CXXConstructorDecl *ctor,
+                               StructorType ctorType) {
+  // There are no constructor variants, always emit the complete destructor.
+  CGM.codegenCXXStructor(ctor, StructorType::Complete);
+}
+
+static void emitCXXDestructor(CodeGenModule &CGM, const CXXDestructorDecl *dtor,
+                              StructorType dtorType) {
+  // The complete destructor is equivalent to the base destructor for
+  // classes with no virtual bases, so try to emit it as an alias.
+  if (!dtor->getParent()->getNumVBases() &&
+      (dtorType == StructorType::Complete || dtorType == StructorType::Base)) {
+    bool ProducedAlias = !CGM.TryEmitDefinitionAsAlias(
+        GlobalDecl(dtor, Dtor_Complete), GlobalDecl(dtor, Dtor_Base), true);
+    if (ProducedAlias) {
+      if (dtorType == StructorType::Complete)
+        return;
+      if (dtor->isVirtual())
+        CGM.getVTables().EmitThunks(GlobalDecl(dtor, Dtor_Complete));
+    }
+  }
+
+  // The base destructor is equivalent to the base destructor of its
+  // base class if there is exactly one non-virtual base class with a
+  // non-trivial destructor, there are no fields with a non-trivial
+  // destructor, and the body of the destructor is trivial.
+  if (dtorType == StructorType::Base && !CGM.TryEmitBaseDestructorAsAlias(dtor))
+    return;
+
+  CGM.codegenCXXStructor(dtor, dtorType);
+}
+
+void MicrosoftCXXABI::emitCXXStructor(const CXXMethodDecl *MD,
+                                      StructorType Type) {
+  if (auto *CD = dyn_cast<CXXConstructorDecl>(MD)) {
+    emitCXXConstructor(CGM, CD, Type);
+    return;
+  }
+  emitCXXDestructor(CGM, cast<CXXDestructorDecl>(MD), Type);
 }

@@ -1780,15 +1780,25 @@ QualType Sema::BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
 
 // +==== Scout ===============================================================+
 
+void markDimsUsed(const MeshType::MeshDimensions &dims, ASTContext &Ctx) {
+  for(unsigned i = 0; i< dims.size(); i++ ) {
+    if (DeclRefExpr* DRE = dyn_cast<DeclRefExpr>(dims[i])) {
+        DRE->getDecl()->markUsed(Ctx);
+    }
+  }
+}
+
 QualType Sema::BuildUniformMeshType(QualType T,
                                     const MeshType::MeshDimensions &dims,
                                     SourceRange Brackets,
                                     DeclarationName Entity) {
   assert(dims.size() > 0);
-  const UniformMeshType* cUMT;
-  cUMT = dyn_cast<UniformMeshType>(T.getCanonicalType().getTypePtr());
-  if (cUMT) {
-    return Context.getUniformMeshType(cUMT->getDecl(), dims);
+  markDimsUsed(dims, Context);
+
+  const UniformMeshType* UMT;
+  UMT = dyn_cast<UniformMeshType>(T.getCanonicalType().getTypePtr());
+  if (UMT) {
+    return Context.getUniformMeshType(UMT->getDecl(), dims);
   }
   return QualType();  
 }

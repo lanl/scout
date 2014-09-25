@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <linux/unistd.h>
 #include <sys/personality.h>
+#include <sys/procfs.h>
 #include <sys/ptrace.h>
 #include <sys/uio.h>
 #include <sys/socket.h>
@@ -592,6 +593,59 @@ namespace
     void
     ReadRegOperation::Execute(NativeProcessLinux *monitor)
     {
+#if defined (__arm64__) || defined (__aarch64__)
+        if (m_offset > sizeof(struct user_pt_regs))
+        {
+            uintptr_t offset = m_offset - sizeof(struct user_pt_regs);
+            if (offset > sizeof(struct user_fpsimd_state))
+            {
+                m_result = false;
+            }
+            else
+            {
+                elf_fpregset_t regs;
+                int regset = NT_FPREGSET;
+                struct iovec ioVec;
+
+                ioVec.iov_base = &regs;
+                ioVec.iov_len = sizeof regs;
+                if (PTRACE(PTRACE_GETREGSET, m_tid, &regset, &ioVec, sizeof regs) < 0)
+                    m_result = false;
+                else
+                {
+                    lldb_private::ArchSpec arch;
+                    if (monitor->GetArchitecture(arch))
+                    {
+                        m_result = true;
+                        m_value.SetBytes((void *)(((unsigned char *)(&regs)) + offset), 16, arch.GetByteOrder());
+                    }
+                    else
+                        m_result = false;
+                }
+            }
+        }
+        else
+        {
+            elf_gregset_t regs;
+            int regset = NT_PRSTATUS;
+            struct iovec ioVec;
+
+            ioVec.iov_base = &regs;
+            ioVec.iov_len = sizeof regs;
+            if (PTRACE(PTRACE_GETREGSET, m_tid, &regset, &ioVec, sizeof regs) < 0)
+                m_result = false;
+            else
+            {
+                lldb_private::ArchSpec arch;
+                if (monitor->GetArchitecture(arch))
+                {
+                    m_result = true;
+                    m_value.SetBytes((void *)(((unsigned char *)(regs)) + m_offset), 8, arch.GetByteOrder());
+                } else
+                    m_result = false;
+            }
+        }
+#else
         Log *log (ProcessPOSIXLog::GetLogIfAllCategoriesSet (POSIX_LOG_REGISTERS));
 
         // Set errno to zero so that we can detect a failed peek.
@@ -607,6 +661,7 @@ namespace
         if (log)
             log->Printf ("NativeProcessLinux::%s() reg %s: 0x%" PRIx64, __FUNCTION__,
                     m_reg_name, data);
+#endif
     }
 
     //------------------------------------------------------------------------------
@@ -634,6 +689,54 @@ namespace
     void
     WriteRegOperation::Execute(NativeProcessLinux *monitor)
     {
+#if defined (__arm64__) || defined (__aarch64__)
+        if (m_offset > sizeof(struct user_pt_regs))
+        {
+            uintptr_t offset = m_offset - sizeof(struct user_pt_regs);
+            if (offset > sizeof(struct user_fpsimd_state))
+            {
+                m_result = false;
+            }
+            else
+            {
+                elf_fpregset_t regs;
+                int regset = NT_FPREGSET;
+                struct iovec ioVec;
+
+                ioVec.iov_base = &regs;
+                ioVec.iov_len = sizeof regs;
+                if (PTRACE(PTRACE_GETREGSET, m_tid, &regset, &ioVec, sizeof regs) < 0)
+                    m_result = false;
+                else
+                {
+                    ::memcpy((void *)(((unsigned char *)(&regs)) + offset), m_value.GetBytes(), 16);
+                    if (PTRACE(PTRACE_SETREGSET, m_tid, &regset, &ioVec, sizeof regs) < 0)
+                        m_result = false;
+                    else
+                        m_result = true;
+                }
+            }
+        }
+        else
+        {
+            elf_gregset_t regs;
+            int regset = NT_PRSTATUS;
+            struct iovec ioVec;
+
+            ioVec.iov_base = &regs;
+            ioVec.iov_len = sizeof regs;
+            if (PTRACE(PTRACE_GETREGSET, m_tid, &regset, &ioVec, sizeof regs) < 0)
+                m_result = false;
+            else
+            {
+                ::memcpy((void *)(((unsigned char *)(&regs)) + m_offset), m_value.GetBytes(), 8);
+                if (PTRACE(PTRACE_SETREGSET, m_tid, &regset, &ioVec, sizeof regs) < 0)
+                    m_result = false;
+                else
+                    m_result = true;
+            }
+        }
+#else
         void* buf;
         Log *log (ProcessPOSIXLog::GetLogIfAllCategoriesSet (POSIX_LOG_REGISTERS));
 
@@ -645,6 +748,7 @@ namespace
             m_result = false;
         else
             m_result = true;
+#endif
     }
 
     //------------------------------------------------------------------------------
@@ -1174,7 +1278,7 @@ NativeProcessLinux::AttachToProcess (
 
     // Grab the current platform architecture.  This should be Linux,
     // since this code is only intended to run on a Linux host.
-    PlatformSP platform_sp (Platform::GetDefaultPlatform ());
+    PlatformSP platform_sp (Platform::GetHostPlatform ());
     if (!platform_sp)
         return Error("failed to get a valid default platform");
 
@@ -1292,7 +1396,7 @@ WAIT_AGAIN:
     // Finally, start monitoring the child process for change in state.
     m_monitor_thread = Host::StartMonitoringChildProcess(
         NativeProcessLinux::MonitorCallback, this, GetID(), true);
-    if (m_monitor_thread.GetState() != eThreadStateRunning)
+    if (!m_monitor_thread.IsJoinable())
     {
         error.SetErrorToGenericError();
         error.SetErrorString ("Process attach failed to create monitor thread for NativeProcessLinux::MonitorCallback.");
@@ -1308,7 +1412,7 @@ NativeProcessLinux::AttachToInferior (lldb::pid_t pid, lldb_private::Error &erro
         log->Printf ("NativeProcessLinux::%s (pid = %" PRIi64 ")", __FUNCTION__, pid);
 
     // We can use the Host for everything except the ResolveExecutable portion.
-    PlatformSP platform_sp = Platform::GetDefaultPlatform ();
+    PlatformSP platform_sp = Platform::GetHostPlatform ();
     if (!platform_sp)
     {
         if (log)
@@ -1370,7 +1474,7 @@ WAIT_AGAIN:
     // Finally, start monitoring the child process for change in state.
     m_monitor_thread = Host::StartMonitoringChildProcess (
         NativeProcessLinux::MonitorCallback, this, GetID (), true);
-    if (m_monitor_thread.GetState() != eThreadStateRunning)
+    if (!m_monitor_thread.IsJoinable())
     {
         error.SetErrorToGenericError ();
         error.SetErrorString ("Process attach failed to create monitor thread for NativeProcessLinux::MonitorCallback.");
@@ -1391,7 +1495,7 @@ NativeProcessLinux::StartLaunchOpThread(LaunchArgs *args, Error &error)
 {
     static const char *g_thread_name = "lldb.process.nativelinux.operation";
 
-    if (m_operation_thread.GetState() == eThreadStateRunning)
+    if (m_operation_thread.IsJoinable())
         return;
 
     m_operation_thread = ThreadLauncher::LaunchThread(g_thread_name, LaunchOpThread, args, &error);
@@ -1550,7 +1654,7 @@ NativeProcessLinux::Launch(LaunchArgs *args)
                 else
                 {
                     if (log)
-                        log->Printf ("NativeProcessLinux::%s disbling ASLR: SUCCESS", __FUNCTION__);
+                        log->Printf ("NativeProcessLinux::%s disabling ASLR: SUCCESS", __FUNCTION__);
 
                 }
             }
@@ -1700,7 +1804,7 @@ NativeProcessLinux::StartAttachOpThread(AttachArgs *args, lldb_private::Error &e
 {
     static const char *g_thread_name = "lldb.process.linux.operation";
 
-    if (m_operation_thread.GetState() == eThreadStateRunning)
+    if (m_operation_thread.IsJoinable())
         return;
 
     m_operation_thread = ThreadLauncher::LaunchThread(g_thread_name, AttachOpThread, args, &error);
@@ -3541,11 +3645,10 @@ NativeProcessLinux::DupDescriptor(const char *path, int fd, int flags)
 void
 NativeProcessLinux::StopMonitoringChildProcess()
 {
-    if (m_monitor_thread.GetState() == eThreadStateRunning)
+    if (m_monitor_thread.IsJoinable())
     {
         m_monitor_thread.Cancel();
         m_monitor_thread.Join(nullptr);
-        m_monitor_thread.Reset();
     }
 }
 
@@ -3567,12 +3670,11 @@ NativeProcessLinux::StopMonitor()
 void
 NativeProcessLinux::StopOpThread()
 {
-    if (m_operation_thread.GetState() != eThreadStateRunning)
+    if (!m_operation_thread.IsJoinable())
         return;
 
     m_operation_thread.Cancel();
     m_operation_thread.Join(nullptr);
-    m_operation_thread.Reset();
 }
 
 bool
