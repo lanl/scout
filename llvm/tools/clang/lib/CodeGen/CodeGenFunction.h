@@ -1541,18 +1541,7 @@ public:
                             CGM.getTBAAInfo(T));
   }
 
-  LValue MakeNaturalAlignAddrLValue(llvm::Value *V, QualType T) {
-    CharUnits Alignment;
-    if (!T->isIncompleteType()) {
-      Alignment = getContext().getTypeAlignInChars(T);
-      unsigned MaxAlign = getContext().getLangOpts().MaxTypeAlign;
-      if (MaxAlign && Alignment.getQuantity() > MaxAlign &&
-          !getContext().isAlignmentRequired(T))
-        Alignment = CharUnits::fromQuantity(MaxAlign);
-    }
-    return LValue::MakeAddr(V, T, Alignment, getContext(),
-                            CGM.getTBAAInfo(T));
-  }
+  LValue MakeNaturalAlignAddrLValue(llvm::Value *V, QualType T);
 
   /// CreateTempAlloca - This creates a alloca and inserts it into the entry
   /// block. The caller is responsible for setting an appropriate alignment on
@@ -2199,12 +2188,14 @@ public:
   void EmitOMPParallelDirective(const OMPParallelDirective &S);
   void EmitOMPSimdDirective(const OMPSimdDirective &S);
   void EmitOMPForDirective(const OMPForDirective &S);
+  void EmitOMPForSimdDirective(const OMPForSimdDirective &S);
   void EmitOMPSectionsDirective(const OMPSectionsDirective &S);
   void EmitOMPSectionDirective(const OMPSectionDirective &S);
   void EmitOMPSingleDirective(const OMPSingleDirective &S);
   void EmitOMPMasterDirective(const OMPMasterDirective &S);
   void EmitOMPCriticalDirective(const OMPCriticalDirective &S);
   void EmitOMPParallelForDirective(const OMPParallelForDirective &S);
+  void EmitOMPParallelForSimdDirective(const OMPParallelForSimdDirective &S);
   void EmitOMPParallelSectionsDirective(const OMPParallelSectionsDirective &S);
   void EmitOMPTaskDirective(const OMPTaskDirective &S);
   void EmitOMPTaskyieldDirective(const OMPTaskyieldDirective &S);
@@ -2213,6 +2204,7 @@ public:
   void EmitOMPFlushDirective(const OMPFlushDirective &S);
   void EmitOMPOrderedDirective(const OMPOrderedDirective &S);
   void EmitOMPAtomicDirective(const OMPAtomicDirective &S);
+  void EmitOMPTargetDirective(const OMPTargetDirective &S);
 
   //===--------------------------------------------------------------------===//
   //                         LValue Expression Emission

@@ -33,12 +33,9 @@ def isCI : Predicate<"Subtarget.getGeneration() "
                       ">= AMDGPUSubtarget::SEA_ISLANDS">;
 def HasFlatAddressSpace : Predicate<"Subtarget.hasFlatAddressSpace()">;
 
-def isCFDepth0 : Predicate<"isCFDepth0()">;
-
 def WAIT_FLAG : InstFlag<"printWaitFlag">;
 
 let SubtargetPredicate = isSI in {
-let OtherPredicates  = [isCFDepth0] in {
 
 //===----------------------------------------------------------------------===//
 // SMRD Instructions
@@ -364,8 +361,6 @@ def S_SETREG_B32 : SOPK_32 <0x00000013, "S_SETREG_B32", []>;
 def S_GETREG_REGRD_B32 : SOPK_32 <0x00000014, "S_GETREG_REGRD_B32", []>;
 //def S_SETREG_IMM32_B32 : SOPK_32 <0x00000015, "S_SETREG_IMM32_B32", []>;
 //def EXP : EXP_ <0x00000000, "EXP", []>;
-
-} // End let OtherPredicates = [isCFDepth0]
 
 //===----------------------------------------------------------------------===//
 // SOPP Instructions
@@ -1317,9 +1312,8 @@ def V_CNDMASK_B32_e32 : VOP2 <0x00000000, (outs VReg_32:$dst),
 }
 
 def V_CNDMASK_B32_e64 : VOP3 <0x00000100, (outs VReg_32:$dst),
-  (ins VSrc_32:$src0, VSrc_32:$src1, SSrc_64:$src2,
-   InstFlag:$abs, InstFlag:$clamp, InstFlag:$omod, InstFlag:$neg),
-  "V_CNDMASK_B32_e64 $dst, $src0, $src1, $src2, $abs, $clamp, $omod, $neg",
+  (ins VSrc_32:$src0, VSrc_32:$src1, SSrc_64:$src2),
+  "V_CNDMASK_B32_e64 $dst, $src0, $src1, $src2",
   [(set i32:$dst, (select i1:$src2, i32:$src1, i32:$src0))]
 > {
   let src0_modifiers = 0;
@@ -1653,6 +1647,10 @@ def V_XOR_I1 : InstSI <
   [(set i1:$dst, (xor i1:$src0, i1:$src1))]
 >;
 
+let hasSideEffects = 1 in {
+def SGPR_USE : InstSI <(outs),(ins), "", []>;
+}
+
 // SI pseudo instructions. These are used by the CFG structurizer pass
 // and should be lowered to ISA instructions prior to codegen.
 
@@ -1827,6 +1825,27 @@ defm SI_SPILL_S128 : SI_SPILL_SGPR <SReg_128>;
 defm SI_SPILL_S256 : SI_SPILL_SGPR <SReg_256>;
 defm SI_SPILL_S512 : SI_SPILL_SGPR <SReg_512>;
 
+multiclass SI_SPILL_VGPR <RegisterClass vgpr_class> {
+  def _SAVE : InstSI <
+    (outs),
+    (ins vgpr_class:$src, i32imm:$frame_idx),
+    "", []
+  >;
+
+  def _RESTORE : InstSI <
+    (outs vgpr_class:$dst),
+    (ins i32imm:$frame_idx),
+    "", []
+  >;
+}
+
+defm SI_SPILL_V32  : SI_SPILL_VGPR <VReg_32>;
+defm SI_SPILL_V64  : SI_SPILL_VGPR <VReg_64>;
+defm SI_SPILL_V96  : SI_SPILL_VGPR <VReg_96>;
+defm SI_SPILL_V128 : SI_SPILL_VGPR <VReg_128>;
+defm SI_SPILL_V256 : SI_SPILL_VGPR <VReg_256>;
+defm SI_SPILL_V512 : SI_SPILL_VGPR <VReg_512>;
+
 let Defs = [SCC] in {
 
 def SI_CONSTDATA_PTR : InstSI <
@@ -1920,8 +1939,6 @@ def : Pat <
 // SOP1 Patterns
 //===----------------------------------------------------------------------===//
 
-let Predicates = [isSI, isCFDepth0] in {
-
 def : Pat <
   (i64 (ctpop i64:$src)),
   (INSERT_SUBREG (INSERT_SUBREG (i64 (IMPLICIT_DEF)),
@@ -1939,8 +1956,6 @@ def : Pat <
   (i32 (addc i32:$src0, i32:$src1)),
   (S_ADD_U32 $src0, $src1)
 >;
-
-} // Predicates = [isSI, isCFDepth0]
 
 let  Predicates = [isSI] in {
 
@@ -1976,9 +1991,9 @@ class BinOp64Pat <SDNode node, Instruction inst> : Pat <
                   (EXTRACT_SUBREG i64:$src1, sub1)), sub1)
 >;
 
-def : BinOp64Pat <and, V_AND_B32_e32>;
-def : BinOp64Pat <or, V_OR_B32_e32>;
-def : BinOp64Pat <xor, V_XOR_B32_e32>;
+def : BinOp64Pat <and, V_AND_B32_e64>;
+def : BinOp64Pat <or, V_OR_B32_e64>;
+def : BinOp64Pat <xor, V_XOR_B32_e64>;
 
 class SextInReg <ValueType vt, int ShiftAmt> : Pat <
   (sext_inreg i32:$src0, vt),
@@ -1990,7 +2005,7 @@ def : SextInReg <i16, 16>;
 
 def : Pat <
   (i32 (add (i32 (ctpop i32:$popcnt)), i32:$val)),
-  (V_BCNT_U32_B32_e32 $popcnt, $val)
+  (V_BCNT_U32_B32_e64 $popcnt, $val)
 >;
 
 def : Pat <
@@ -2010,7 +2025,7 @@ def : Pat <
 
 def : Pat <
   (addc i32:$src0, i32:$src1),
-  (V_ADD_I32_e32 $src0, $src1)
+  (V_ADD_I32_e64 $src0, $src1)
 >;
 
 /********** ======================= **********/
@@ -3070,13 +3085,13 @@ def : Pat <
 
 def : Pat <
   (i1 (trunc i32:$a)),
-  (V_CMP_EQ_I32_e64 (V_AND_B32_e32 (i32 1), $a), 1)
+  (V_CMP_EQ_I32_e64 (V_AND_B32_e64 (i32 1), $a), 1)
 >;
 
 //============================================================================//
 // Miscellaneous Optimization Patterns
 //============================================================================//
 
-def : SHA256MaPattern <V_BFI_B32, V_XOR_B32_e32>;
+def : SHA256MaPattern <V_BFI_B32, V_XOR_B32_e64>;
 
 } // End isSI predicate

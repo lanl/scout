@@ -868,6 +868,9 @@ private:
                          Tok.Previous->Type == TT_PointerOrReference ||
                          Tok.Previous->Type == TT_TemplateCloser ||
                          Tok.Previous->isSimpleTypeSpecifier();
+    if (Style.Language == FormatStyle::LK_JavaScript && Tok.Next &&
+        Tok.Next->TokenText == "in")
+      return false;
     bool ParensCouldEndDecl =
         Tok.Next && Tok.Next->isOneOf(tok::equal, tok::semi, tok::l_brace);
     bool IsSizeOfOrAlignOf =
@@ -1653,6 +1656,8 @@ bool TokenAnnotator::spaceRequiredBefore(const AnnotatedLine &Line,
     return !Line.First->isOneOf(tok::kw_case, tok::kw_default) &&
            Tok.getNextNonComment() && Tok.Type != TT_ObjCMethodExpr &&
            !Tok.Previous->is(tok::question) &&
+           !(Tok.Type == TT_InlineASMColon &&
+             Tok.Previous->is(tok::coloncolon)) &&
            (Tok.Type != TT_DictLiteral || Style.SpacesInContainerLiterals);
   if (Tok.Previous->Type == TT_UnaryOperator)
     return Tok.Type == TT_BinaryOperator;

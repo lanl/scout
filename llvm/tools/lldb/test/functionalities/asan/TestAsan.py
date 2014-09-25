@@ -17,12 +17,14 @@ class AsanTestCase(TestBase):
     # self.useBuiltClang() to use clang from the llvm-build directory instead
 
     @unittest2.skipUnless(sys.platform.startswith("darwin"), "requires Darwin")
+    @skipIfRemote
     @dsym_test
     def test_with_dsym (self):
         compiler = self.findBuiltClang ()
         self.buildDsym (None, compiler)
         self.asan_tests ()
 
+    @skipIfRemote
     @dwarf_test
     def test_with_dwarf (self):
         compiler = self.findBuiltClang ()
@@ -83,6 +85,12 @@ class AsanTestCase(TestBase):
         self.assertEqual(history_thread.frames[1].GetLineEntry().GetLine(), self.line_malloc)
         
         history_thread = threads.GetThreadAtIndex(1)
+        self.assertTrue(history_thread.num_frames >= 2)
+        self.assertEqual(history_thread.frames[1].GetLineEntry().GetFileSpec().GetFilename(), "main.c")
+        self.assertEqual(history_thread.frames[1].GetLineEntry().GetLine(), self.line_free)
+
+        # let's free the container (SBThreadCollection) and see if the SBThreads still live
+        threads = None
         self.assertTrue(history_thread.num_frames >= 2)
         self.assertEqual(history_thread.frames[1].GetLineEntry().GetFileSpec().GetFilename(), "main.c")
         self.assertEqual(history_thread.frames[1].GetLineEntry().GetLine(), self.line_free)

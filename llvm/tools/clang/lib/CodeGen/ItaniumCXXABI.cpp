@@ -274,6 +274,8 @@ public:
   classifyRTTIUniqueness(QualType CanTy,
                          llvm::GlobalValue::LinkageTypes Linkage) const;
   friend class ItaniumRTTIBuilder;
+
+  void emitCXXStructor(const CXXMethodDecl *MD, StructorType Type) override;
 };
 
 class ARMCXXABI : public ItaniumCXXABI {
@@ -1664,6 +1666,15 @@ void ItaniumCXXABI::EmitGuardedInit(CodeGenFunction &CGF,
     // If the variable is thread-local, so is its guard variable.
     guard->setThreadLocalMode(var->getThreadLocalMode());
 
+    // The ABI says: It is suggested that it be emitted in the same COMDAT group
+    // as the associated data object
+    if (!D.isLocalVarDecl() && var->isWeakForLinker() && CGM.supportsCOMDAT()) {
+      llvm::Comdat *C = CGM.getModule().getOrInsertComdat(var->getName());
+      guard->setComdat(C);
+      var->setComdat(C);
+      CGF.CurFn->setComdat(C);
+    }
+
     CGM.setStaticLocalDeclGuardAddress(&D, guard);
   }
 
@@ -3016,4 +3027,129 @@ ItaniumCXXABI::RTTIUniquenessKind ItaniumCXXABI::classifyRTTIUniqueness(
   // enable string-comparisons.
   assert(Linkage == llvm::GlobalValue::WeakODRLinkage);
   return RUK_NonUniqueVisible;
+}
+
+// Find out how to codegen the complete destructor and constructor
+namespace {
+enum class StructorCodegen { Emit, RAUW, Alias, COMDAT };
+}
+static StructorCodegen getCodegenToUse(CodeGenModule &CGM,
+                                       const CXXMethodDecl *MD) {
+  if (!CGM.getCodeGenOpts().CXXCtorDtorAliases)
+    return StructorCodegen::Emit;
+
+  // The complete and base structors are not equivalent if there are any virtual
+  // bases, so emit separate functions.
+  if (MD->getParent()->getNumVBases())
+    return StructorCodegen::Emit;
+
+  GlobalDecl AliasDecl;
+  if (const auto *DD = dyn_cast<CXXDestructorDecl>(MD)) {
+    AliasDecl = GlobalDecl(DD, Dtor_Complete);
+  } else {
+    const auto *CD = cast<CXXConstructorDecl>(MD);
+    AliasDecl = GlobalDecl(CD, Ctor_Complete);
+  }
+  llvm::GlobalValue::LinkageTypes Linkage = CGM.getFunctionLinkage(AliasDecl);
+
+  if (llvm::GlobalValue::isDiscardableIfUnused(Linkage))
+    return StructorCodegen::RAUW;
+
+  // FIXME: Should we allow available_externally aliases?
+  if (!llvm::GlobalAlias::isValidLinkage(Linkage))
+    return StructorCodegen::RAUW;
+
+  if (llvm::GlobalValue::isWeakForLinker(Linkage)) {
+    // Only ELF supports COMDATs with arbitrary names (C5/D5).
+    if (CGM.getTarget().getTriple().isOSBinFormatELF())
+      return StructorCodegen::COMDAT;
+    return StructorCodegen::Emit;
+  }
+
+  return StructorCodegen::Alias;
+}
+
+static void emitConstructorDestructorAlias(CodeGenModule &CGM,
+                                           GlobalDecl AliasDecl,
+                                           GlobalDecl TargetDecl) {
+  llvm::GlobalValue::LinkageTypes Linkage = CGM.getFunctionLinkage(AliasDecl);
+
+  StringRef MangledName = CGM.getMangledName(AliasDecl);
+  llvm::GlobalValue *Entry = CGM.GetGlobalValue(MangledName);
+  if (Entry && !Entry->isDeclaration())
+    return;
+
+  auto *Aliasee = cast<llvm::GlobalValue>(CGM.GetAddrOfGlobal(TargetDecl));
+  llvm::PointerType *AliasType = Aliasee->getType();
+
+  // Create the alias with no name.
+  auto *Alias = llvm::GlobalAlias::create(
+      AliasType->getElementType(), 0, Linkage, "", Aliasee, &CGM.getModule());
+
+  // Switch any previous uses to the alias.
+  if (Entry) {
+    assert(Entry->getType() == AliasType &&
+           "declaration exists with different type");
+    Alias->takeName(Entry);
+    Entry->replaceAllUsesWith(Alias);
+    Entry->eraseFromParent();
+  } else {
+    Alias->setName(MangledName);
+  }
+
+  // Finally, set up the alias with its proper name and attributes.
+  CGM.setAliasAttributes(cast<NamedDecl>(AliasDecl.getDecl()), Alias);
+}
+
+void ItaniumCXXABI::emitCXXStructor(const CXXMethodDecl *MD,
+                                    StructorType Type) {
+  auto *CD = dyn_cast<CXXConstructorDecl>(MD);
+  const CXXDestructorDecl *DD = CD ? nullptr : cast<CXXDestructorDecl>(MD);
+
+  StructorCodegen CGType = getCodegenToUse(CGM, MD);
+
+  if (Type == StructorType::Complete) {
+    GlobalDecl CompleteDecl;
+    GlobalDecl BaseDecl;
+    if (CD) {
+      CompleteDecl = GlobalDecl(CD, Ctor_Complete);
+      BaseDecl = GlobalDecl(CD, Ctor_Base);
+    } else {
+      CompleteDecl = GlobalDecl(DD, Dtor_Complete);
+      BaseDecl = GlobalDecl(DD, Dtor_Base);
+    }
+
+    if (CGType == StructorCodegen::Alias || CGType == StructorCodegen::COMDAT) {
+      emitConstructorDestructorAlias(CGM, CompleteDecl, BaseDecl);
+      return;
+    }
+
+    if (CGType == StructorCodegen::RAUW) {
+      StringRef MangledName = CGM.getMangledName(CompleteDecl);
+      auto *Aliasee = cast<llvm::GlobalValue>(CGM.GetAddrOfGlobal(BaseDecl));
+      CGM.addReplacement(MangledName, Aliasee);
+      return;
+    }
+  }
+
+  // The base destructor is equivalent to the base destructor of its
+  // base class if there is exactly one non-virtual base class with a
+  // non-trivial destructor, there are no fields with a non-trivial
+  // destructor, and the body of the destructor is trivial.
+  if (DD && Type == StructorType::Base && CGType != StructorCodegen::COMDAT &&
+      !CGM.TryEmitBaseDestructorAsAlias(DD))
+    return;
+
+  llvm::Function *Fn = CGM.codegenCXXStructor(MD, Type);
+
+  if (CGType == StructorCodegen::COMDAT) {
+    SmallString<256> Buffer;
+    llvm::raw_svector_ostream Out(Buffer);
+    if (DD)
+      getMangleContext().mangleCXXDtorComdat(DD, Out);
+    else
+      getMangleContext().mangleCXXCtorComdat(CD, Out);
+    llvm::Comdat *C = CGM.getModule().getOrInsertComdat(Out.str());
+    Fn->setComdat(C);
+  }
 }
