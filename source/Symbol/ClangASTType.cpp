@@ -516,7 +516,7 @@ ClangASTType::GetNumberOfFunctionArguments () const
 }
 
 ClangASTType
-ClangASTType::GetFunctionArgumentAtIndex (const size_t index)
+ClangASTType::GetFunctionArgumentAtIndex (const size_t index) const
 {
     if (IsValid())
     {
@@ -1714,7 +1714,7 @@ ClangASTType::GetFunctionArgumentCount () const
 }
 
 ClangASTType
-ClangASTType::GetFunctionArgumentTypeAtIndex (size_t idx)
+ClangASTType::GetFunctionArgumentTypeAtIndex (size_t idx) const
 {
     if (IsValid())
     {
@@ -1759,8 +1759,45 @@ ClangASTType::GetNumMemberFunctions () const
                     const clang::CXXRecordDecl *cxx_record_decl = llvm::dyn_cast<clang::CXXRecordDecl>(record_decl);
                     if (cxx_record_decl)
                         num_functions = std::distance(cxx_record_decl->method_begin(), cxx_record_decl->method_end());
-                    break;
                 }
+                break;
+                
+            case clang::Type::ObjCObjectPointer:
+                if (GetCompleteType())
+                {
+                    const clang::ObjCObjectPointerType *objc_class_type = qual_type->getAsObjCInterfacePointerType();
+                    if (objc_class_type)
+                    {
+                        clang::ObjCInterfaceDecl *class_interface_decl = objc_class_type->getInterfaceDecl();
+                        if (class_interface_decl)
+                            num_functions = std::distance(class_interface_decl->meth_begin(), class_interface_decl->meth_end());
+                    }
+                }
+                break;
+                
+            case clang::Type::ObjCObject:
+            case clang::Type::ObjCInterface:
+                if (GetCompleteType())
+                {
+                    const clang::ObjCObjectType *objc_class_type = llvm::dyn_cast<clang::ObjCObjectType>(qual_type.getTypePtr());
+                    if (objc_class_type)
+                    {
+                        clang::ObjCInterfaceDecl *class_interface_decl = objc_class_type->getInterface();
+                        if (class_interface_decl)
+                            num_functions = std::distance(class_interface_decl->meth_begin(), class_interface_decl->meth_end());
+                    }
+                }
+                break;
+                
+                
+            case clang::Type::Typedef:
+                return ClangASTType (m_ast, llvm::cast<clang::TypedefType>(qual_type)->getDecl()->getUnderlyingType()).GetNumMemberFunctions();
+                
+            case clang::Type::Elaborated:
+                return ClangASTType (m_ast, llvm::cast<clang::ElaboratedType>(qual_type)->getNamedType()).GetNumMemberFunctions();
+                
+            case clang::Type::Paren:
+                return ClangASTType (m_ast, llvm::cast<clang::ParenType>(qual_type)->desugar()).GetNumMemberFunctions();
                 
             default:
                 break;
@@ -1769,9 +1806,13 @@ ClangASTType::GetNumMemberFunctions () const
     return num_functions;
 }
 
-ClangASTType
+TypeMemberFunctionImpl
 ClangASTType::GetMemberFunctionAtIndex (size_t idx)
 {
+    std::string name("");
+    MemberFunctionKind kind(MemberFunctionKind::eMemberFunctionKindUnknown);
+    ClangASTType type{};
+    clang::ObjCMethodDecl *method_decl(nullptr);
     if (IsValid())
     {
         clang::QualType qual_type(GetCanonicalQualType());
@@ -1787,22 +1828,112 @@ ClangASTType::GetMemberFunctionAtIndex (size_t idx)
                     {
                         auto method_iter = cxx_record_decl->method_begin();
                         auto method_end = cxx_record_decl->method_end();
-                        if (idx < std::distance(method_iter, method_end))
+                        if (idx < static_cast<size_t>(std::distance(method_iter, method_end)))
                         {
                             std::advance(method_iter, idx);
                             auto method_decl = method_iter->getCanonicalDecl();
                             if (method_decl)
-                                return ClangASTType(m_ast,method_decl->getType().getAsOpaquePtr());
+                            {
+                                if (!method_decl->getName().empty())
+                                    name.assign(method_decl->getName().data());
+                                else
+                                    name.clear();
+                                if (method_decl->isStatic())
+                                    kind = lldb::eMemberFunctionKindStaticMethod;
+                                else if (llvm::isa<clang::CXXConstructorDecl>(method_decl))
+                                    kind = lldb::eMemberFunctionKindConstructor;
+                                else if (llvm::isa<clang::CXXDestructorDecl>(method_decl))
+                                    kind = lldb::eMemberFunctionKindDestructor;
+                                else
+                                    kind = lldb::eMemberFunctionKindInstanceMethod;
+                                type = ClangASTType(m_ast,method_decl->getType().getAsOpaquePtr());
+                            }
                         }
                     }
                 }
+                break;
+                
+            case clang::Type::ObjCObjectPointer:
+                if (GetCompleteType())
+                {
+                    const clang::ObjCObjectPointerType *objc_class_type = qual_type->getAsObjCInterfacePointerType();
+                    if (objc_class_type)
+                    {
+                        clang::ObjCInterfaceDecl *class_interface_decl = objc_class_type->getInterfaceDecl();
+                        if (class_interface_decl)
+                        {
+                            auto method_iter = class_interface_decl->meth_begin();
+                            auto method_end = class_interface_decl->meth_end();
+                            if (idx < static_cast<size_t>(std::distance(method_iter, method_end)))
+                            {
+                                std::advance(method_iter, idx);
+                                method_decl = method_iter->getCanonicalDecl();
+                                if (method_decl)
+                                {
+                                    name = method_decl->getSelector().getAsString();
+                                    if (method_decl->isClassMethod())
+                                        kind = lldb::eMemberFunctionKindStaticMethod;
+                                    else
+                                        kind = lldb::eMemberFunctionKindInstanceMethod;
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+                
+            case clang::Type::ObjCObject:
+            case clang::Type::ObjCInterface:
+                if (GetCompleteType())
+                {
+                    const clang::ObjCObjectType *objc_class_type = llvm::dyn_cast<clang::ObjCObjectType>(qual_type.getTypePtr());
+                    if (objc_class_type)
+                    {
+                        clang::ObjCInterfaceDecl *class_interface_decl = objc_class_type->getInterface();
+                        if (class_interface_decl)
+                        {
+                            auto method_iter = class_interface_decl->meth_begin();
+                            auto method_end = class_interface_decl->meth_end();
+                            if (idx < static_cast<size_t>(std::distance(method_iter, method_end)))
+                            {
+                                std::advance(method_iter, idx);
+                                method_decl = method_iter->getCanonicalDecl();
+                                if (method_decl)
+                                {
+                                    name = method_decl->getSelector().getAsString();
+                                    if (method_decl->isClassMethod())
+                                        kind = lldb::eMemberFunctionKindStaticMethod;
+                                    else
+                                        kind = lldb::eMemberFunctionKindInstanceMethod;
+                                }
+                            }
+                        }
+                    }
+                }
+                break;
+
+            case clang::Type::Typedef:
+                return ClangASTType (m_ast, llvm::cast<clang::TypedefType>(qual_type)->getDecl()->getUnderlyingType()).GetMemberFunctionAtIndex(idx);
+                
+            case clang::Type::Elaborated:
+                return ClangASTType (m_ast, llvm::cast<clang::ElaboratedType>(qual_type)->getNamedType()).GetMemberFunctionAtIndex(idx);
+                
+            case clang::Type::Paren:
+                return ClangASTType (m_ast, llvm::cast<clang::ParenType>(qual_type)->desugar()).GetMemberFunctionAtIndex(idx);
                 
             default:
                 break;
         }
     }
     
-    return ClangASTType();
+    if (kind == eMemberFunctionKindUnknown)
+        return TypeMemberFunctionImpl();
+    if (method_decl)
+        return TypeMemberFunctionImpl(method_decl, name, kind);
+    if (type)
+        return TypeMemberFunctionImpl(type, name, kind);
+    
+    return TypeMemberFunctionImpl();
 }
 
 ClangASTType

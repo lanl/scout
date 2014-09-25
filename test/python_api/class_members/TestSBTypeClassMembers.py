@@ -1,5 +1,5 @@
 """
-Test SBType and SBTypeList API.
+Test SBType APIs to fetch member function types.
 """
 
 import os, time
@@ -8,7 +8,7 @@ import unittest2
 import lldb, lldbutil
 from lldbtest import *
 
-class TypeAndTypeListTestCase(TestBase):
+class SBTypeMemberFunctionsTest(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
@@ -16,7 +16,7 @@ class TypeAndTypeListTestCase(TestBase):
     @python_api_test
     @dsym_test
     def test_with_dsym(self):
-        """Exercise SBType and SBTypeList API."""
+        """Test SBType APIs to fetch member function types."""
         d = {'EXE': self.exe_name}
         self.buildDsym(dictionary=d)
         self.setTearDownCleanup(dictionary=d)
@@ -25,7 +25,7 @@ class TypeAndTypeListTestCase(TestBase):
     @python_api_test
     @dwarf_test
     def test_with_dwarf(self):
-        """Exercise SBType and SBTypeList API."""
+        """Test SBType APIs to fetch member function types."""
         d = {'EXE': self.exe_name}
         self.buildDwarf(dictionary=d)
         self.setTearDownCleanup(dictionary=d)
@@ -37,11 +37,11 @@ class TypeAndTypeListTestCase(TestBase):
         # We'll use the test method name as the exe_name.
         self.exe_name = self.testMethodName
         # Find the line number to break at.
-        self.source = 'main.cpp'
+        self.source = 'main.mm'
         self.line = line_number(self.source, '// set breakpoint here')
 
     def type_api(self, exe_name):
-        """Exercise SBType and SBTypeList API."""
+        """Test SBType APIs to fetch member function types."""
         exe = os.path.join(os.getcwd(), exe_name)
 
         # Create a target by the debugger.
@@ -67,12 +67,24 @@ class TypeAndTypeListTestCase(TestBase):
         Base = Derived.GetDirectBaseClassAtIndex(0).GetType()
 
         self.assertTrue(Derived.GetNumberOfMemberFunctions() == 2, "Derived declares two methods")
-        self.assertTrue(Derived.GetMemberFunctionAtIndex(0).GetFunctionReturnType().GetName() == "int", "Derived::dImpl returns int")
+        self.assertTrue(Derived.GetMemberFunctionAtIndex(0).GetType().GetFunctionReturnType().GetName() == "int", "Derived::dImpl returns int")
         
         self.assertTrue(Base.GetNumberOfMemberFunctions() == 4, "Base declares three methods")
-        self.assertTrue(Base.GetMemberFunctionAtIndex(3).GetFunctionArgumentTypes().GetSize() == 3, "Base::sfunc takes three arguments")
-        self.assertTrue(Base.GetMemberFunctionAtIndex(2).GetFunctionArgumentTypes().GetSize() == 0, "Base::dat takes no arguments")
-        self.assertTrue(Base.GetMemberFunctionAtIndex(1).GetFunctionArgumentTypes().GetTypeAtIndex(1).GetName() == "char", "Base::bar takes a second 'char' argument")
+        self.assertTrue(Base.GetMemberFunctionAtIndex(3).GetType().GetFunctionArgumentTypes().GetSize() == 3, "Base::sfunc takes three arguments")
+        self.assertTrue(Base.GetMemberFunctionAtIndex(3).GetName() == "sfunc", "Base::sfunc not found")
+        self.assertTrue(Base.GetMemberFunctionAtIndex(3).GetKind() == lldb.eMemberFunctionKindStaticMethod, "Base::sfunc is a static")
+        self.assertTrue(Base.GetMemberFunctionAtIndex(2).GetType().GetFunctionArgumentTypes().GetSize() == 0, "Base::dat takes no arguments")
+        self.assertTrue(Base.GetMemberFunctionAtIndex(1).GetType().GetFunctionArgumentTypes().GetTypeAtIndex(1).GetName() == "char", "Base::bar takes a second 'char' argument")
+        self.assertTrue(Base.GetMemberFunctionAtIndex(1).GetName() == "bar", "Base::bar not found")
+        
+        variable = frame0.FindVariable("thingy")
+        Thingy = variable.GetType()
+        
+        self.assertTrue(Thingy.GetNumberOfMemberFunctions() == 2, "Thingy declares two methods")
+        
+        self.assertTrue(Thingy.GetMemberFunctionAtIndex(0).GetReturnType().GetName() == "id", "Thingy::init returns an id")
+        self.assertTrue(Thingy.GetMemberFunctionAtIndex(1).GetNumberOfArguments() == 2, "Thingy::foo takes two arguments")
+        self.assertTrue(Thingy.GetMemberFunctionAtIndex(1).GetArgumentTypeAtIndex(0).GetName() == "int", "Thingy::foo takes an int")
 
 if __name__ == '__main__':
     import atexit
