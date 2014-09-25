@@ -236,19 +236,34 @@ CommandObject::CheckRequirements (CommandReturnObject &result)
 
         if ((flags & eFlagRequiresProcess) && !m_exe_ctx.HasProcessScope())
         {
-            result.AppendError (GetInvalidProcessDescription());
+            if (!m_exe_ctx.HasTargetScope())
+                result.AppendError (GetInvalidTargetDescription());
+            else
+                result.AppendError (GetInvalidProcessDescription());
             return false;
         }
         
         if ((flags & eFlagRequiresThread) && !m_exe_ctx.HasThreadScope())
         {
-            result.AppendError (GetInvalidThreadDescription());
+            if (!m_exe_ctx.HasTargetScope())
+                result.AppendError (GetInvalidTargetDescription());
+            else if (!m_exe_ctx.HasProcessScope())
+                result.AppendError (GetInvalidProcessDescription());
+            else 
+                result.AppendError (GetInvalidThreadDescription());
             return false;
         }
         
         if ((flags & eFlagRequiresFrame) && !m_exe_ctx.HasFrameScope())
         {
-            result.AppendError (GetInvalidFrameDescription());
+            if (!m_exe_ctx.HasTargetScope())
+                result.AppendError (GetInvalidTargetDescription());
+            else if (!m_exe_ctx.HasProcessScope())
+                result.AppendError (GetInvalidProcessDescription());
+            else if (!m_exe_ctx.HasThreadScope())
+                result.AppendError (GetInvalidThreadDescription());
+            else
+                result.AppendError (GetInvalidFrameDescription());
             return false;
         }
         
@@ -1103,6 +1118,7 @@ CommandObject::g_arguments_data[] =
     { eArgTypeFunctionName, "function-name", CommandCompletions::eNoCompletion, { nullptr, false }, "The name of a function." },
     { eArgTypeFunctionOrSymbol, "function-or-symbol", CommandCompletions::eNoCompletion, { nullptr, false }, "The name of a function or symbol." },
     { eArgTypeGDBFormat, "gdb-format", CommandCompletions::eNoCompletion, { GDBFormatHelpTextCallback, true }, nullptr },
+    { eArgTypeHelpText, "help-text", CommandCompletions::eNoCompletion, { nullptr, false }, "Text to be used as help for some other entity in LLDB" },
     { eArgTypeIndex, "index", CommandCompletions::eNoCompletion, { nullptr, false }, "An index into a list." },
     { eArgTypeLanguage, "language", CommandCompletions::eNoCompletion, { LanguageTypeHelpTextCallback, true }, nullptr },
     { eArgTypeLineNum, "linenum", CommandCompletions::eNoCompletion, { nullptr, false }, "Line number in a source file." },

@@ -330,8 +330,14 @@ PlatformPOSIX::PutFile (const lldb_private::FileSpec& source,
             error = source_file.Read(buffer_sp->GetBytes(), bytes_read);
             if (bytes_read)
             {
-                WriteFile(dest_file, offset, buffer_sp->GetBytes(), bytes_read, error);
-                offset += bytes_read;
+                const uint64_t bytes_written = WriteFile(dest_file, offset, buffer_sp->GetBytes(), bytes_read, error);
+                offset += bytes_written;
+                if (bytes_written != bytes_read)
+                {
+                    // We didn't write the correct numbe of bytes, so adjust
+                    // the file position in the source file we are reading from...
+                    source_file.SeekFromStart(offset);
+                }
             }
             else
                 break;
@@ -343,6 +349,18 @@ PlatformPOSIX::PutFile (const lldb_private::FileSpec& source,
 //        std::string dst_path (destination.GetPath());
 //        if (chown_file(this,dst_path.c_str(),uid,gid) != 0)
 //            return Error("unable to perform chown");
+
+
+        uint64_t src_md5[2];
+        uint64_t dst_md5[2];
+
+        if (FileSystem::CalculateMD5 (source, src_md5[0], src_md5[1]) && CalculateMD5 (destination, dst_md5[0], dst_md5[1]))
+        {
+            if (src_md5[0] != dst_md5[0] || src_md5[1] != dst_md5[1])
+            {
+                error.SetErrorString("md5 checksum of installed file doesn't match, installation failed");
+            }
+        }
         return error;
     }
     return Platform::PutFile(source,destination,uid,gid);
@@ -616,6 +634,18 @@ PlatformPOSIX::GetRemoteOSBuildString (std::string &s)
     return false;
 }
 
+size_t
+PlatformPOSIX::GetEnvironment (StringList &env)
+{
+    if (IsRemote())
+    {
+        if (m_remote_platform_sp)
+            return m_remote_platform_sp->GetEnvironment(env);
+        return 0;
+    }
+    return Host::GetEnvironment(env);
+}
+
 bool
 PlatformPOSIX::GetRemoteOSKernelDescription (std::string &s)
 {
@@ -681,7 +711,7 @@ PlatformPOSIX::ConnectRemote (Args& args)
     else
     {
         if (!m_remote_platform_sp)
-            m_remote_platform_sp = Platform::Create ("remote-gdb-server", error);
+            m_remote_platform_sp = Platform::Create (ConstString("remote-gdb-server"), error);
 
         if (m_remote_platform_sp && error.Success())
             error = m_remote_platform_sp->ConnectRemote (args);
