@@ -260,8 +260,8 @@ lsci_add_region_requirement(lsci_index_launcher_t *il,
     using LegionRuntime::HighLevel::HighLevelRuntime;
     assert(il);
     IndexLauncher *ilp_cxx = static_cast<IndexLauncher *>(il->hndl);
-    LogicalPartition *lpp_cxx = static_cast<LogicalPartition *>(lr);
-    LogicalRegion *parp_cxx = static_cast<LogicalRegion *>(parent);
+    LogicalPartition *lpp_cxx = static_cast<LogicalPartition *>(parent);
+    LogicalRegion *parp_cxx = static_cast<LogicalRegion *>(lr);
     ilp_cxx->add_region_requirement(
         RegionRequirement(
             *lpp_cxx, proj_id,

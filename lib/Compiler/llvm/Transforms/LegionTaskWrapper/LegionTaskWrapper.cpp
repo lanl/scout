@@ -251,7 +251,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       //M.dump();
 
       // Go through blocks in main_task and if find call to a func that is a task,
-      // substitute with a call to LegionTaskInitFunctionX(lsci_unimesh_t*, char* , char* ).
+      // substitute with a call to LegionTaskInitFunctionX(lsci_unimesh_t*, char* context, char* runtime ).
 
       // for each basic block in main_task()
       for(BB = mainTaskFunc->begin() ; BB != mainTaskFunc->end(); ++BB) {
@@ -331,7 +331,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
                     MDString* lsciUnimeshMDStr = cast < MDString > (lsciMDN->getOperand(1));
                     StringRef lsciUnimeshStr = lsciUnimeshMDStr->getString();
                     //errs() << "Found lsci_unimesh_t str:" << lsciUnimeshStr << "\n";
-            
+
                     // lookup lsci_unimesh_t alloc name to get value
                     lsciUnimeshVal = mainTaskFunc->getValueSymbolTable().lookup(lsciUnimeshStr);
                     //lsciUnimeshVal = F.getValueSymbolTable().lookup(lsciUnimeshStr);
@@ -339,17 +339,30 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
                   if (lsciUnimeshVal) break;
                 }
-                
+
                 assert (lsciUnimeshVal && "no val for lsci_unimesh_t");
 
-                // add lsci_mesh, context and runtime to params to call
-                llvm::SmallVector < llvm::Value*, 3 > Args;
+                // create the arguments to the call to the LegionTaskInitFunction
+                // (lsci_mesh, any other args, then context and runtime)
+
+                std::vector<llvm::Value*> Args = {}; 
                 Args.push_back(lsciUnimeshVal);
+
+                // Go through each operand after mesh to original call to task and add it
+                // Also don't want last operand, because that is the callee.
+
+                unsigned numArgs = callInst.getNumOperands(); 
+                for (unsigned i = 1; i < numArgs-1; i++) {
+                  Args.push_back(callInst.getArgOperand(i));
+                }
+
                 Args.push_back(context);
                 Args.push_back(runtime);
 
                 // replace call to function with call to LegionTaskInitFunction
+                // which we can get rom the metadata
                 Function *legionTaskInitFN = cast < Function > (MDN->getOperand(2));
+
                 builder.SetInsertPoint(&callInst);
                 //errs() << "create call\n";
                 builder.CreateCall(legionTaskInitFN, ArrayRef<llvm::Value*> (Args));

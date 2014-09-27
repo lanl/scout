@@ -222,7 +222,10 @@ void CGLegionTask::EmitLegionTaskInitFunctionStart()
   llvm::LLVMContext& llvmContext = CGM.getLLVMContext();
  
   TypeVec params;
-  
+ 
+  // Note that we allow more than one task argument.
+  // The mesh is the first argument, then you can have structs and/or scalars
+  // after that. 
   size_t idx = 0;
   const UniformMeshType* mt = 0;
   auto aitr = taskFunc->arg_begin();
@@ -412,6 +415,9 @@ void CGLegionTask::EmitIndexLauncherCreateFuncCall() {
 
 }
 
+// When emitting IR for LegionTaskInitFunction(), you need to emit
+// region requirements and add fields for the first
+// parameter, which is a mesh.
 void CGLegionTask::EmitAddMeshRegionReqAndFieldFuncCalls() { 
 
   assert(funcDecl && meshDecl && (fields.size() > 0) && indexLauncher && taskDeclVisitor);
@@ -452,8 +458,8 @@ void CGLegionTask::EmitAddMeshRegionReqAndFieldFuncCalls() {
       B.CreateLoad(B.CreateStructGEP(field, LSCI_VECTOR_LOGICAL_REGION), "logicalRegion");
       
       args =
-      {indexLauncher, logicalPartition, llvm::ConstantInt::get(R.Int32Ty, 0),
-        mode, R.ExclusiveVal, logicalRegion};
+      {indexLauncher, logicalRegion, llvm::ConstantInt::get(R.Int32Ty, 0),
+        mode, R.ExclusiveVal, logicalPartition};
       
       B.CreateCall(R.AddRegionRequirementFunc(), args);
       
@@ -466,6 +472,9 @@ void CGLegionTask::EmitAddMeshRegionReqAndFieldFuncCalls() {
   }
 }
 
+// While emitting IR for LegionTaskInitFunction(), you need to emit
+// region requirements and add fields for the other
+// task parameters, which can be structs or scalars.
 void CGLegionTask::EmitAddVectorRegionReqAndFieldFuncCalls() { 
 
   assert(legionTaskInitFunc && funcDecl && indexLauncher);
@@ -539,8 +548,8 @@ void CGLegionTask::EmitAddVectorRegionReqAndFieldFuncCalls() {
           B.CreateLoad(B.CreateStructGEP(field, LSCI_VECTOR_LOGICAL_REGION), "logicalRegion");
           
           args =
-          {indexLauncher, logicalPartition, llvm::ConstantInt::get(R.Int32Ty, 0),
-            mode, R.ExclusiveVal, logicalRegion};
+          {indexLauncher, logicalRegion, llvm::ConstantInt::get(R.Int32Ty, 0),
+            mode, R.ExclusiveVal, logicalPartition};
           
           B.CreateCall(R.AddRegionRequirementFunc(), args);
           
@@ -585,8 +594,8 @@ void CGLegionTask::EmitAddVectorRegionReqAndFieldFuncCalls() {
       B.CreateLoad(B.CreateStructGEP(field, LSCI_VECTOR_LOGICAL_REGION), "logicalRegion");
       
       args =
-      {indexLauncher, logicalPartition, llvm::ConstantInt::get(R.Int32Ty, 0),
-        mode, R.ExclusiveVal, logicalRegion};
+      {indexLauncher, logicalRegion, llvm::ConstantInt::get(R.Int32Ty, 0),
+        mode, R.ExclusiveVal, logicalPartition};
       
       B.CreateCall(R.AddRegionRequirementFunc(), args);
       

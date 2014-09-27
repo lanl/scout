@@ -96,14 +96,14 @@ main_task(lsci_task_args_t* task_args)
                                NULL, 0, &arg_map);
     // add the region requirements for each of the fields
     lsci_add_region_requirement(
-        &il, field_a.logical_partition, 0,
-        LSCI_READ_WRITE, LSCI_EXCLUSIVE, field_a.logical_region
+        &il, field_a.logical_region, 0,
+        LSCI_READ_WRITE, LSCI_EXCLUSIVE, field_a.logical_partition
     );
     lsci_add_field(&il, idx++, field_a.fid);
     //
     lsci_add_region_requirement(
-        &il, field_b.logical_partition, 0,
-        LSCI_READ_ONLY, LSCI_EXCLUSIVE, field_b.logical_region
+        &il, field_b.logical_region, 0,
+        LSCI_READ_ONLY, LSCI_EXCLUSIVE, field_b.logical_partition
     );
     lsci_add_field(&il, idx++, field_b.fid);
     // execute the index launcher
