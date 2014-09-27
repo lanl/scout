@@ -156,13 +156,49 @@ void TaskStmtVisitor::VisitForallMeshStmt(ForallMeshStmt *S) {
 void TaskStmtVisitor::VisitCallExpr(CallExpr* E) {
 
   TaskDeclVisitor v(E->getDirectCallee());
-  v.VisitStmt(E->getDirectCallee()->getBody());
-  MeshFieldMap subLHS = v.getLHSmap();
-  LHS_.insert(subLHS.begin(), subLHS.end());
-  MeshFieldMap subRHS = v.getRHSmap();
-  RHS_.insert(subRHS.begin(), subRHS.end());
+  if(E->getDirectCallee()->getBody()) {
+    //look inside function
+    v.VisitStmt(E->getDirectCallee()->getBody());
+    MeshFieldMap subLHS = v.getLHSmap();
+    LHS_.insert(subLHS.begin(), subLHS.end());
+    MeshFieldMap subRHS = v.getRHSmap();
+    RHS_.insert(subRHS.begin(), subRHS.end());
 
-  VisitChildren(E->getDirectCallee()->getBody());
+    VisitChildren(E->getDirectCallee()->getBody());
+  } else {
+    // we can't find the body (e.g library functions, builtins)
+    // so look in the arguments for meshes
+    //llvm::errs() << "can't find body for " << E->getDirectCallee()->getName() << "\n";
+
+    for(unsigned i = 0; i < E->getNumArgs(); i++) {
+
+      Expr *EE = E->getArg(i);
+      // remove casts
+      while(ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(EE)) {
+        EE = ICE->getSubExpr();
+      }
+
+      if(MemberExpr *ME = dyn_cast<MemberExpr>(EE)) {
+        if (DeclRefExpr* DRE = dyn_cast<DeclRefExpr>(ME->getBase())) {
+          if(ImplicitMeshParamDecl *bd = dyn_cast<ImplicitMeshParamDecl>(DRE->getDecl())) {
+            const Type *T = bd->getType().getCanonicalType().getTypePtr();
+            if (isa<MeshType>(T)) {
+              ValueDecl* md = ME->getMemberDecl();
+              std::string ref = bd->getMeshVarDecl()->getName().str() + "." + md->getName().str();
+              //access is read only
+              //llvm::errs() << "adding " << ref << "\n";
+              RHS_.insert(make_pair(ref, true));
+            }
+            if(T->isPointerType() || T->isReferenceType()) {
+              if(isa<MeshType>(T->getPointeeType())) {
+                assert(false && "pointer to mesh field not allowed\n");
+              }
+            }
+          }
+        }
+      }
+    }
+  }
   VisitChildren(E);
 
 }
