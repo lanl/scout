@@ -171,36 +171,32 @@ void TaskStmtVisitor::VisitCallExpr(CallExpr* E) {
     //llvm::errs() << "can't find body for " << E->getDirectCallee()->getName() << "\n";
 
     for(unsigned i = 0; i < E->getNumArgs(); i++) {
-
-      Expr *EE = E->getArg(i);
-      // remove casts
-      while(ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(EE)) {
-        EE = ICE->getSubExpr();
-      }
-
-      if(MemberExpr *ME = dyn_cast<MemberExpr>(EE)) {
-        if (DeclRefExpr* DRE = dyn_cast<DeclRefExpr>(ME->getBase())) {
-          if(ImplicitMeshParamDecl *bd = dyn_cast<ImplicitMeshParamDecl>(DRE->getDecl())) {
-            const Type *T = bd->getType().getCanonicalType().getTypePtr();
-            if (isa<MeshType>(T)) {
-              ValueDecl* md = ME->getMemberDecl();
-              std::string ref = bd->getMeshVarDecl()->getName().str() + "." + md->getName().str();
-              //access is read only
-              //llvm::errs() << "adding " << ref << "\n";
-              RHS_.insert(make_pair(ref, true));
-            }
-            if(T->isPointerType() || T->isReferenceType()) {
-              if(isa<MeshType>(T->getPointeeType())) {
-                assert(false && "pointer to mesh field not allowed\n");
-              }
-            }
-          }
-        }
-      }
+      FunctionArgVisitor av(E->getArg(i));
+      av.VisitStmt(E->getArg(i));
+      MeshFieldMap subLHS = av.getLHSmap();
+      LHS_.insert(subLHS.begin(), subLHS.end());
+      MeshFieldMap subRHS = av.getRHSmap();
+      RHS_.insert(subRHS.begin(), subRHS.end());
     }
   }
   VisitChildren(E);
 
+}
+
+void FunctionArgVisitor::VisitMemberExpr(MemberExpr *E) {
+  if (DeclRefExpr* DRE = dyn_cast<DeclRefExpr>(E->getBase())) {
+    if(ImplicitMeshParamDecl *bd = dyn_cast<ImplicitMeshParamDecl>(DRE->getDecl())) {
+      const Type *T = bd->getType().getCanonicalType().getTypePtr();
+      if (isa<MeshType>(T)) {
+        ValueDecl* md = E->getMemberDecl();
+        std::string ref = bd->getMeshVarDecl()->getName().str() + "." + md->getName().str();
+        //don't know what type of access this is just that it is an access.
+        //llvm::errs() << "adding " << ref << "\n";
+        LHS_.insert(make_pair(ref, true));
+        RHS_.insert(make_pair(ref, true));
+      }
+    }
+  }
 }
 
 } // end namespace CodeGen

@@ -197,6 +197,45 @@ private:
 
 };
 
+
+//look in function argument for a mesh access
+class FunctionArgVisitor : public StmtVisitor<FunctionArgVisitor> {
+public:
+  FunctionArgVisitor(Stmt* S)
+  : S_(S) {
+      (void)S_;
+    }
+
+  const std::map<std::string, bool>& getLHSmap() const {
+    return LHS_;
+  }
+
+  const std::map<std::string, bool>& getRHSmap() const {
+    return RHS_;
+  }
+
+  void VisitChildren(Stmt* S) {
+    if(S) {
+      for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+        if (Stmt* child = *I) {
+          Visit(child);
+        }
+      }
+    }
+  }
+
+  void VisitStmt(Stmt* S) {
+    VisitChildren(S);
+  }
+
+  void VisitMemberExpr(MemberExpr* E);
+
+private:
+  Stmt *S_;
+  MeshFieldMap LHS_;
+  MeshFieldMap RHS_;
+};
+
 } // end namespace CodeGen
 } // end namespace clang
 

@@ -398,7 +398,12 @@ void TaskStmtVisitor::VisitCallExpr(CallExpr* E) {
       }
     }
     TaskDeclVisitor v(sema_, fd);
-    v.VisitStmt(fd->getBody());
+    if(fd->getBody()) {
+      v.VisitStmt(fd->getBody());
+    } else {
+      // can't find body assume function accesses mesh
+      meshAccess_ = true;
+    }
     VisitChildren(fd->getBody());
   }
 
