@@ -156,15 +156,47 @@ void TaskStmtVisitor::VisitForallMeshStmt(ForallMeshStmt *S) {
 void TaskStmtVisitor::VisitCallExpr(CallExpr* E) {
 
   TaskDeclVisitor v(E->getDirectCallee());
-  v.VisitStmt(E->getDirectCallee()->getBody());
-  MeshFieldMap subLHS = v.getLHSmap();
-  LHS_.insert(subLHS.begin(), subLHS.end());
-  MeshFieldMap subRHS = v.getRHSmap();
-  RHS_.insert(subRHS.begin(), subRHS.end());
+  if(E->getDirectCallee()->getBody()) {
+    //look inside function
+    v.VisitStmt(E->getDirectCallee()->getBody());
+    MeshFieldMap subLHS = v.getLHSmap();
+    LHS_.insert(subLHS.begin(), subLHS.end());
+    MeshFieldMap subRHS = v.getRHSmap();
+    RHS_.insert(subRHS.begin(), subRHS.end());
 
-  VisitChildren(E->getDirectCallee()->getBody());
+    VisitChildren(E->getDirectCallee()->getBody());
+  } else {
+    // we can't find the body (e.g library functions, builtins)
+    // so look in the arguments for meshes
+    //llvm::errs() << "can't find body for " << E->getDirectCallee()->getName() << "\n";
+
+    for(unsigned i = 0; i < E->getNumArgs(); i++) {
+      FunctionArgVisitor av(E->getArg(i));
+      av.VisitStmt(E->getArg(i));
+      MeshFieldMap subLHS = av.getLHSmap();
+      LHS_.insert(subLHS.begin(), subLHS.end());
+      MeshFieldMap subRHS = av.getRHSmap();
+      RHS_.insert(subRHS.begin(), subRHS.end());
+    }
+  }
   VisitChildren(E);
 
+}
+
+void FunctionArgVisitor::VisitMemberExpr(MemberExpr *E) {
+  if (DeclRefExpr* DRE = dyn_cast<DeclRefExpr>(E->getBase())) {
+    if(ImplicitMeshParamDecl *bd = dyn_cast<ImplicitMeshParamDecl>(DRE->getDecl())) {
+      const Type *T = bd->getType().getCanonicalType().getTypePtr();
+      if (isa<MeshType>(T)) {
+        ValueDecl* md = E->getMemberDecl();
+        std::string ref = bd->getMeshVarDecl()->getName().str() + "." + md->getName().str();
+        //don't know what type of access this is just that it is an access.
+        //llvm::errs() << "adding " << ref << "\n";
+        LHS_.insert(make_pair(ref, true));
+        RHS_.insert(make_pair(ref, true));
+      }
+    }
+  }
 }
 
 } // end namespace CodeGen

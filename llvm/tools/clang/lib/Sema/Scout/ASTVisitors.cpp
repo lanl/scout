@@ -153,7 +153,7 @@ void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
       RefMap_::iterator itr = localMap_.find(DR->getDecl()->getName().str());
       if(itr == localMap_.end()){
 
-        sema_.Diag(DR->getLocation(),
+        if (!isTask_) sema_.Diag(DR->getLocation(),
             diag::warn_lhs_outside_forall) << DR->getDecl()->getName();
       }
     }
@@ -182,9 +182,9 @@ void ForallVisitor::VisitCallExpr(CallExpr* E) {
       // function inside a parallel construct -- in the long run
       // we can either (1) force the loop to run sequentially or
       // (2) replace print function with a "special" version...
-      sema_.Diag(E->getExprLoc(), diag::warn_forall_calling_io_func);
+      if (!isTask_) sema_.Diag(E->getExprLoc(), diag::warn_forall_calling_io_func);
     } else if (isCShift(id) || isEOShift(id)) {
-      error_ = CheckShift(id, E, sema_);
+      if (!isTask_) error_ = CheckShift(id, E, sema_);
     }
   }
 
@@ -225,7 +225,7 @@ void ForallVisitor::VisitMemberExpr(MemberExpr* E) {
         RefMap_::iterator itr = refMap_.find(ref);
         meshAccess_ = true;
         if (itr != refMap_.end()) {
-          sema_.Diag(E->getMemberLoc(), diag::err_rhs_after_lhs_forall);
+          if (!isTask_) sema_.Diag(E->getMemberLoc(), diag::err_rhs_after_lhs_forall);
           error_ = true;
         }
       }
@@ -398,7 +398,12 @@ void TaskStmtVisitor::VisitCallExpr(CallExpr* E) {
       }
     }
     TaskDeclVisitor v(sema_, fd);
-    v.VisitStmt(fd->getBody());
+    if(fd->getBody()) {
+      v.VisitStmt(fd->getBody());
+    } else {
+      // can't find body assume function accesses mesh
+      meshAccess_ = true;
+    }
     VisitChildren(fd->getBody());
   }
 
@@ -429,7 +434,7 @@ void TaskStmtVisitor::VisitDeclRefExpr(DeclRefExpr *E) {
 
 
 void TaskStmtVisitor::VisitForallMeshStmt(ForallMeshStmt *S) {
-  ForallVisitor v(sema_, S);
+  ForallVisitor v(sema_, S, true);
   v.Visit(S);
   if(v.getMeshAccess()) meshAccess_ = true;
 
@@ -450,6 +455,22 @@ void TaskDeclVisitor::VisitStmt(Stmt* S) {
       // don't allow tasks w/ no mesh access in legion mode
       if(sema_.getLangOpts().ScoutLegionSupport && !meshAccess_) {
         sema_.Diag(S->getLocStart(), diag::err_nomesh_task_fuction);
+      }
+    }
+    // make sure there is only one mesh parameter if we are in legion mode
+    if(sema_.getLangOpts().ScoutLegionSupport) {
+      int meshcount = 0;
+      for(unsigned i = 0; i < FD_->getNumParams(); i++) {
+        ParmVarDecl *PVD = FD_->getParamDecl(i);
+        const Type *T = PVD->getType().getCanonicalType().getTypePtr();
+        if(T->isPointerType() || T->isReferenceType()) {
+          if(isa<UniformMeshType>(T->getPointeeType())) {
+            meshcount++;
+          }
+        }
+      }
+      if(meshcount > 1) {
+        sema_.Diag(S->getLocStart(), diag::err_more_than_one_mesh_task_fuction);
       }
     }
   }
