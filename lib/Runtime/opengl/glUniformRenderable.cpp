@@ -484,10 +484,20 @@ void glUniformRenderable::initialize(glCamera* camera){
   edgeColors_->alloc(sizeof(float) * 4 * numEdges_, GL_STREAM_DRAW_ARB);
   edgeColors_->release();
 
+  edgeLinesAdj_ = new glVertexBuffer;
+  edgeLinesAdj_->bind();
+  edgeLinesAdj_->alloc(sizeof(float) * 3 * numEdges_, GL_STREAM_DRAW_ARB);
+  edgeLinesAdj_->release();
+
   vertexColors_ = new glColorBuffer;
   vertexColors_->bind();
   vertexColors_->alloc(sizeof(float) * 4 * numVertices_, GL_STREAM_DRAW_ARB);
   vertexColors_->release();
+
+  vertexPoints_ = new glVertexBuffer;
+  vertexPoints_->bind();
+  vertexPoints_->alloc(sizeof(float) * 3 * numVertices, GL_STREAM_DRAW_ARB);
+  vertexPoints_->release();
   */
 
   cellVAO_ = 0;
@@ -564,7 +574,7 @@ void glUniformRenderable::unmap_vertex_colors(){
     return;
   }
   
-  vertexColors_->unmap();
+  //vertexColors_->unmap();
 }
 
 void glUniformRenderable::unmap_edge_colors(){
@@ -572,28 +582,32 @@ void glUniformRenderable::unmap_edge_colors(){
     return;
   }
   
-  edgeColors_->unmap();
+  //edgeColors_->unmap();
 }
 
 void glUniformRenderable::draw(glCamera* camera){
-  //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-  glUseProgram(cellProgram_);
-  glUniformMatrix4fv(mvpCellLoc_, 1, GL_FALSE, mvp_);
-  glBindVertexArray(cellVAO_);
-  glDrawArrays(GL_POINTS, 0, numCells_);
+  if(drawCells_){
+    glUseProgram(cellProgram_);
+    glUniformMatrix4fv(mvpCellLoc_, 1, GL_FALSE, mvp_);
+    glBindVertexArray(cellVAO_);
+    glDrawArrays(GL_POINTS, 0, numCells_);
+  }
 
   /*
-  glUseProgram(edgeProgram);
-  glUniform1f(widthEdgeLoc, 0.05);
-  glUniformMatrix4fv(mvpEdgeLoc, 1, GL_FALSE, mvp);
-  glBindVertexArray(edgeVAO);
-  glDrawArrays(GL_LINES_ADJACENCY, 0, n * 4);
+  if(drawEdges_){
+    glUseProgram(edgeProgram_);
+    glUniform1f(edgeWidthEdgeLoc_, 0.05);
+    glUniformMatrix4fv(mvpEdgeLoc_, 1, GL_FALSE, mvp_);
+    glBindVertexArray(edgeVAO_);
+    glDrawArrays(GL_LINES_ADJACENCY, 0, numEdges_);
+  }
 
-  glUseProgram(vertexProgram);
-  glUniform1f(pointSizeVertexLoc, 5.0);
-  glUniformMatrix4fv(mvpVertexLoc, 1, GL_FALSE, mvp);
-  glBindVertexArray(vertexVAO);
-  glDrawArrays(GL_POINTS, 0, n);
+  if(drawVertices_){
+    glUseProgram(vertexProgram_);
+    glUniform1f(pointSizeVertexLoc_, 5.0);
+    glUniformMatrix4fv(mvpVertexLoc_, 1, GL_FALSE, mvp_);
+    glBindVertexArray(vertexVAO_);
+    glDrawArrays(GL_POINTS, 0, numVertices_);
+  }
   */
 }

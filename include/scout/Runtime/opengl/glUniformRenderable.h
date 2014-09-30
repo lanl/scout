@@ -15,8 +15,8 @@
  *
  */
 
-#ifndef SCOUT_GL_UNIFORM_RENDERABLE_VA_H_
-#define SCOUT_GL_UNIFORM_RENDERABLE_VA_H_
+#ifndef SCOUT_GL_UNIFORM_RENDERABLE_H_
+#define SCOUT_GL_UNIFORM_RENDERABLE_H_
 
 #include "scout/Runtime/opengl/vectors.h"
 #include "scout/Runtime/opengl/glRenderable.h"

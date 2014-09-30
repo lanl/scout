@@ -65,6 +65,7 @@ glfwWindow::glfwWindow(ScreenCoord width, ScreenCoord height, glCamera* camera)
   // need to check here?
   assert(glfwInit());
   
+  /*
   size_t accumRedBits = 8;
   size_t accumGreenBits = 8;
   size_t accumBlueBits = 8;
@@ -74,12 +75,18 @@ glfwWindow::glfwWindow(ScreenCoord width, ScreenCoord height, glCamera* camera)
   glfwWindowHint(GLFW_ACCUM_GREEN_BITS, accumGreenBits);
   glfwWindowHint(GLFW_ACCUM_BLUE_BITS, accumBlueBits);
   glfwWindowHint(GLFW_SAMPLES, samples);
-  
+  */  
+
   /*
    glfwOpenWindowHint(GLFW_OPENGL_VERSION_MAJOR, 3);
    glfwOpenWindowHint(GLFW_OPENGL_VERSION_MINOR, 2);
    */
-  
+
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+  glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);  
+
   size_t redBits = 8;
   size_t greenBits = 8;
   size_t blueBits = 8;
