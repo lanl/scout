@@ -50,11 +50,13 @@ namespace scout{
     
     size_t numCells_;
     size_t numVertices_;
-    size_t numEdges_;
+    size_t numHorizEdges_;
+    size_t numVertEdges_;
 
     glVertexBuffer* cellPoints_;
     glVertexBuffer* vertexPoints_;
-    glVertexBuffer* edgeLinesAdj_;
+    glVertexBuffer* horizEdgePoints_;
+    glVertexBuffer* vertEdgePoints_;
     
     glColorBuffer* cellColors_;
     glColorBuffer* vertexColors_;
@@ -71,17 +73,24 @@ namespace scout{
     GLuint vertexVAO_;
     float vertexSize_;
 
-    GLuint edgeProgram_;
-    GLuint edgeVAO_;
+    GLuint horizEdgeProgram_;
+    GLuint horizEdgeVAO_;
+    
+    GLuint vertEdgeProgram_;
+    GLuint vertEdgeVAO_;
+
     float edgeSize_;
 
     vmath::mat4 mvp_;
 
     GLint mvpCellLoc_;
-    GLint mvpEdgeLoc_;
+    GLint mvpHorizEdgeLoc_;
+    GLint mvpVertEdgeLoc_;
     GLint mvpVertexLoc_;
-    GLint edgeWidthEdgeLoc_;
-    GLint pointSizeVertexLoc_;
+    GLint sizeHorizEdgeLoc_;
+    GLint sizeVertEdgeLoc_;
+    GLint startVertEdgeLoc_;
+    GLint sizeVertexLoc_;
   };
 
 } // end namespace scout
