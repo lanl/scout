@@ -19,7 +19,11 @@
 #include <cstdlib>
 #include <iostream>
 
+#ifdef __APPLE__
+
 #include <OpenGL/gl3.h>
+
+#endif
 
 #include "scout/Runtime/opengl/glUniformRenderable.h"
 
