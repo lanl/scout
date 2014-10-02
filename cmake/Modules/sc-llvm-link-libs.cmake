@@ -50,7 +50,7 @@
 #
 
 if (${SCOUT_ENABLE_CUDA})
-  set(SCOUT_LLVM_LINK_LIBS LLVMdoallToPTX)
+  set(SCOUT_LLVM_LINK_LIBS LLVMForallPTX)
 endif()
 
 if (${SCOUT_ENABLE_OPENCL})

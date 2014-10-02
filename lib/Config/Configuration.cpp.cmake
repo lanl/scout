@@ -165,11 +165,6 @@ namespace scout {
   
     const char* Configuration::Libraries[] = {
 
-//      "-lBlocksRuntime",
-      #ifdef SCOUT_ENABLE_CUDA
-      "-lscCudaError",
-      #endif
-
       #ifdef APPLE 
       "-framework Cocoa", 
       "-framework Foundation", 
@@ -188,7 +183,7 @@ namespace scout {
       #endif // OPENGL 
     
       #ifdef SCOUT_ENABLE_CUDA
-      "${CUDA_LIBRARIES} -lscCudaError",
+      "${CUDA_LIBRARIES}",
       #endif
 
       #ifdef SCOUT_ENABLE_OPENCL

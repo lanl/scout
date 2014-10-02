@@ -107,7 +107,7 @@ public:
   static void check(CUresult err){
     if(err != CUDA_SUCCESS){
       const char* s;
-      cuGetErrorString(err, &s);
+      //cuGetErrorString(err, &s);
       cerr << "CUDARuntime error: " << s << endl;
       assert(false);
     }
