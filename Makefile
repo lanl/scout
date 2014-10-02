@@ -132,6 +132,8 @@ uname := $(shell uname)
 ifneq ($(uname), Darwin)
 # These flags must be enabled in order to build LLDB.
   cmake_flags += -DLLVM_ENABLE_CXX11=ON -DLLVM_REQUIRES_RTTI=1
+else
+  cmake_flags += -DLLVM_ENABLE_LIBCXX=ON
 endif
 cmake_flags += -DCMAKE_CXX_FLAGS="-std=c++11"
 
