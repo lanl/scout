@@ -69,9 +69,11 @@ namespace scout{
 
     GLuint vertexProgram_;
     GLuint vertexVAO_;
+    float vertexSize_;
 
     GLuint edgeProgram_;
     GLuint edgeVAO_;
+    float edgeSize_;
 
     vmath::mat4 mvp_;
 

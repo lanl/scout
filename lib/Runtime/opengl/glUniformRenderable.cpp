@@ -371,7 +371,6 @@ void glUniformRenderable::initialize(glCamera* camera){
   
   glLinkProgram(cellProgram_);
 
-  /*
   vs = compileShader(edgeVS, GL_VERTEX_SHADER);
   assert(vs);
 
@@ -413,13 +412,12 @@ void glUniformRenderable::initialize(glCamera* camera){
   glDeleteShader(fs);
   
   glLinkProgram(vertexProgram_);
-  */
 
   mvpCellLoc_ = glGetUniformLocation(cellProgram_, "mvp");
-  //mvpEdgeLoc_ = glGetUniformLocation(edgeProgram_, "mvp");
-  //mvpVertexLoc_ = glGetUniformLocation(vertexProgram_, "mvp");
-  //edgeWidthEdgeLoc_ = glGetUniformLocation(edgeProgram_, "edgeWidth");
-  //pointSizeVertexLoc_ = glGetUniformLocation(vertexProgram_, "pointSize");
+  mvpEdgeLoc_ = glGetUniformLocation(edgeProgram_, "mvp");
+  edgeWidthEdgeLoc_ = glGetUniformLocation(edgeProgram_, "edgeWidth");
+  pointSizeVertexLoc_ = glGetUniformLocation(vertexProgram_, "pointSize");
+  mvpVertexLoc_ = glGetUniformLocation(vertexProgram_, "mvp");
 
   float pad = 0.05;
   float near = 0.00;
@@ -454,7 +452,7 @@ void glUniformRenderable::initialize(glCamera* camera){
   size_t width1 = width_ + 1;
   size_t height1 = height_ + 1;
   numCells_ = width_ * height_;
-  numVertices_ = width1 * height_;
+  numVertices_ = width1 * height1;
   numEdges_ = width_ * height1 + width1 * height_;
 
   cellColors_ = new glColorBuffer;
@@ -478,16 +476,38 @@ void glUniformRenderable::initialize(glCamera* camera){
   }
   cellPoints_->unmap();
 
-  /*
   edgeColors_ = new glColorBuffer;
   edgeColors_->bind();
-  edgeColors_->alloc(sizeof(float) * 4 * numEdges_, GL_STREAM_DRAW_ARB);
+  edgeColors_->alloc(sizeof(float) * 4 * numCells_ * 4, GL_STREAM_DRAW_ARB);
   edgeColors_->release();
 
   edgeLinesAdj_ = new glVertexBuffer;
   edgeLinesAdj_->bind();
-  edgeLinesAdj_->alloc(sizeof(float) * 3 * numEdges_, GL_STREAM_DRAW_ARB);
+  edgeLinesAdj_->alloc(sizeof(float) * 3 * numCells_ * 4, GL_STREAM_DRAW_ARB);
   edgeLinesAdj_->release();
+
+  i = 0;
+  float* edges = (float*)edgeLinesAdj_->mapForWrite();
+  for(size_t y = 0; y < height_; ++y){
+    for(size_t x = 0; x < width_; ++x){
+      edges[i++] = x;
+      edges[i++] = y;      
+      edges[i++] = 0.0f; 
+
+      edges[i++] = x + 1.0f;
+      edges[i++] = y;      
+      edges[i++] = 0.0f; 
+
+      edges[i++] = x + 1.0f;
+      edges[i++] = y + 1.0;      
+      edges[i++] = 0.0f;
+
+      edges[i++] = x;
+      edges[i++] = y + 1.0;      
+      edges[i++] = 0.0f;
+    }
+  }
+  edgeLinesAdj_->unmap();
 
   vertexColors_ = new glColorBuffer;
   vertexColors_->bind();
@@ -496,9 +516,19 @@ void glUniformRenderable::initialize(glCamera* camera){
 
   vertexPoints_ = new glVertexBuffer;
   vertexPoints_->bind();
-  vertexPoints_->alloc(sizeof(float) * 3 * numVertices, GL_STREAM_DRAW_ARB);
+  vertexPoints_->alloc(sizeof(float) * 3 * numVertices_, GL_STREAM_DRAW_ARB);
   vertexPoints_->release();
-  */
+
+  points = (float*)vertexPoints_->mapForWrite();
+  i = 0;
+  for(size_t y = 0; y < height1; ++y) {
+    for(size_t x = 0; x < width1; ++x) {
+      points[i++] = x;
+      points[i++] = y;
+      points[i++] = 0.0f; 
+    }
+  }
+  vertexPoints_->unmap();
 
   cellVAO_ = 0;
   glGenVertexArrays(1, &cellVAO_);
@@ -512,22 +542,6 @@ void glUniformRenderable::initialize(glCamera* camera){
   glBindAttribLocation(cellProgram_, 0, "position");
   glBindAttribLocation(cellProgram_, 1, "color");
   
-  cellPoints_->release();
-  cellColors_->release();
-
-  /*
-  vertexVAO_ = 0;
-  glGenVertexArrays(1, &vertexVAO_);
-  glBindVertexArray(vertexVAO_);
-  vertexPoints_->bind();
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
-  vertexColors_->bind();
-  glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, NULL);
-  glEnableVertexAttribArray(0);
-  glEnableVertexAttribArray(1);
-  glBindAttribLocation(vertexProgram_, 0, "position");
-  glBindAttribLocation(vertexProgram_, 1, "color");
-
   edgeVAO_ = 0;
   glGenVertexArrays(1, &edgeVAO_);
   glBindVertexArray(edgeVAO_);
@@ -540,8 +554,22 @@ void glUniformRenderable::initialize(glCamera* camera){
   glBindAttribLocation(edgeProgram_, 0, "position");
   glBindAttribLocation(edgeProgram_, 1, "color");
 
+  vertexVAO_ = 0;
+  glGenVertexArrays(1, &vertexVAO_);
+  glBindVertexArray(vertexVAO_);
+  vertexPoints_->bind();
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
+  vertexColors_->bind();
+  glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 0, NULL);
+  glEnableVertexAttribArray(0);
+  glEnableVertexAttribArray(1);
+  glBindAttribLocation(vertexProgram_, 0, "position");
+  glBindAttribLocation(vertexProgram_, 1, "color");
+
   glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
-  */
+
+  vertexSize_ = 100.0f/max(width_, height_);
+  edgeSize_ = vertexSize_/50.f;
 
   glClearColor(0.5, 0.55, 0.65, 1.0);
 }
@@ -574,7 +602,7 @@ void glUniformRenderable::unmap_vertex_colors(){
     return;
   }
   
-  //vertexColors_->unmap();
+  vertexColors_->unmap();
 }
 
 void glUniformRenderable::unmap_edge_colors(){
@@ -582,7 +610,7 @@ void glUniformRenderable::unmap_edge_colors(){
     return;
   }
   
-  //edgeColors_->unmap();
+  edgeColors_->unmap();
 }
 
 void glUniformRenderable::draw(glCamera* camera){
@@ -596,18 +624,18 @@ void glUniformRenderable::draw(glCamera* camera){
   /*
   if(drawEdges_){
     glUseProgram(edgeProgram_);
-    glUniform1f(edgeWidthEdgeLoc_, 0.05);
+    glUniform1f(edgeWidthEdgeLoc_, edgeSize_);
     glUniformMatrix4fv(mvpEdgeLoc_, 1, GL_FALSE, mvp_);
     glBindVertexArray(edgeVAO_);
     glDrawArrays(GL_LINES_ADJACENCY, 0, numEdges_);
   }
+  */
 
   if(drawVertices_){
     glUseProgram(vertexProgram_);
-    glUniform1f(pointSizeVertexLoc_, 5.0);
     glUniformMatrix4fv(mvpVertexLoc_, 1, GL_FALSE, mvp_);
+    glUniform1f(pointSizeVertexLoc_, vertexSize_);
     glBindVertexArray(vertexVAO_);
     glDrawArrays(GL_POINTS, 0, numVertices_);
   }
-  */
 }
