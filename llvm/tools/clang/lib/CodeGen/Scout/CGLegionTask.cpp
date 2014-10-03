@@ -183,7 +183,7 @@ void CGLegionTask::EmitLegionTaskInitFunction() {
   B.SetInsertPoint(loop);
 
   // take this out for liblsci v2 
-  EmitSubgridBoundsAtSetFuncCall(i);
+  //EmitSubgridBoundsAtSetFuncCall(i);
  
   EmitArgumentMapSetPointFuncCall(i); 
 
@@ -638,7 +638,7 @@ void CGLegionTask::EmitLegionTaskFunction() {
   legionRuntime = B.CreateLoad(B.CreateStructGEP(taskArgs, LSCI_TARGS_RUNTIME), "legionRuntime");
 
   // for liblsci v2
-  //EmitGetIndexSpaceDomainFuncCall();
+  EmitGetIndexSpaceDomainFuncCall();
 
   EmitScoutMesh();
 
@@ -692,7 +692,7 @@ void CGLegionTask::EmitLegionTaskFunctionStart() {
 // for liblsci v2
 void CGLegionTask::EmitGetIndexSpaceDomainFuncCall() {
 
-  assert(legionRuntime && legionContext && task);
+  assert(meshDecl && legionRuntime && legionContext && task);
 
   uint32_t meshDeclFieldNum = 0;
   ValueVec args;
