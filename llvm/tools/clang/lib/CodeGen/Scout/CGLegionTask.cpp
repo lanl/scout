@@ -324,6 +324,7 @@ void CGLegionTask::EmitUnimeshGetVecByNameFuncCalls()
     }
   }
   assert(firstField && "no mesh fields accessed");
+
 }
 
  
@@ -432,15 +433,16 @@ void CGLegionTask::EmitAddMeshRegionReqAndFieldFuncCalls() {
 
   ValueVec args;
 
-  uint32_t j = 0;
+  uint32_t meshDeclFieldNum = 0;
+  uint32_t legionFieldNum = 0;
   for(MeshDecl::field_iterator itr = meshDecl->field_begin(),
       itrEnd = meshDecl->field_end(); itr != itrEnd; ++itr){
     
     MeshFieldDecl* fd = *itr;
-    llvm::Value* field = fields[j];
+    llvm::Value* field = fields[meshDeclFieldNum];
     
     if(field) {
-      
+  
       assert(fd);
       std::string fieldName = meshName + "." + fd->getName().str();
       bool read = RHS.find(fieldName) != RHS.end();
@@ -464,11 +466,12 @@ void CGLegionTask::EmitAddMeshRegionReqAndFieldFuncCalls() {
       B.CreateCall(R.AddRegionRequirementFunc(), args);
       
       args =
-      {indexLauncher, llvm::ConstantInt::get(R.Int32Ty, j), fieldId};
+      {indexLauncher, llvm::ConstantInt::get(R.Int32Ty, legionFieldNum), fieldId};
       B.CreateCall(R.AddFieldFunc(), args);
+
+      ++legionFieldNum;
     }
-    
-    ++j;
+    ++meshDeclFieldNum; 
   }
 }
 
@@ -691,19 +694,20 @@ void CGLegionTask::EmitGetIndexSpaceDomainFuncCall() {
 
   assert(legionRuntime && legionContext && task);
 
-  uint32_t j = 0;
+  uint32_t meshDeclFieldNum = 0;
   ValueVec args;
 
   for(MeshDecl::field_iterator itr = meshDecl->field_begin(),
       itrEnd = meshDecl->field_end(); itr != itrEnd; ++itr){
     
-    llvm::Value* field = fields[j];
+    llvm::Value* field = fields[meshDeclFieldNum];
 
     if(field){
       llvm::Value* domain =  B.CreateAlloca(R.DomainTy, 0, "domain");
       args = {legionRuntime, legionContext, task, llvm::ConstantInt::get(R.Int64Ty, 0), domain};
       B.CreateCall(R.GetIndexSpaceDomainFunc(), args);
     }
+    ++meshDeclFieldNum;
   }
 }
 
@@ -729,18 +733,19 @@ void CGLegionTask::EmitScoutMesh() {
 
 void CGLegionTask::EmitMeshRawRectPtr1dFuncCalls() {
 
-  assert(meshDecl && (fields.size() > 0) && task && legionContext && legionRuntime);
+  assert(meshDecl && (fields.size() > 0) && regions && task && legionContext && legionRuntime);
 
  
-  uint32_t j = 0;
+  uint32_t meshDeclFieldNum = 0;
+  uint32_t legionFieldNum = 0;
   ValueVec args;
 
   for(MeshDecl::field_iterator itr = meshDecl->field_begin(),
       itrEnd = meshDecl->field_end(); itr != itrEnd; ++itr){
     
-    llvm::Value* field = fields[j];
+    llvm::Value* field = fields[meshDeclFieldNum];
 
-    llvm::Value* mf = B.CreateStructGEP(mesh, j);
+    llvm::Value* mf = B.CreateStructGEP(mesh, meshDeclFieldNum);
     
     if(field){
       MeshFieldDecl* fd = *itr;
@@ -764,7 +769,7 @@ void CGLegionTask::EmitMeshRawRectPtr1dFuncCalls() {
         assert(false && "unhandled mesh field type");
       }
       
-      args.push_back(llvm::ConstantInt::get(R.Int64Ty, j));
+      args.push_back(llvm::ConstantInt::get(R.Int64Ty, legionFieldNum));
       args.push_back(llvm::ConstantInt::get(R.Int32Ty, 0));
       
       args.push_back(task); 
@@ -772,9 +777,17 @@ void CGLegionTask::EmitMeshRawRectPtr1dFuncCalls() {
       args.push_back(legionRuntime); 
 
       llvm::Value* fp = B.CreateCall(R.RawRectPtr1dFunc(), args);
-      llvm::Value* cv = B.CreateBitCast(fp, meshType->getTypeAtIndex(j));
+      llvm::Value* cv = B.CreateBitCast(fp, meshType->getTypeAtIndex(meshDeclFieldNum));
       
       B.CreateStore(cv, mf);
+
+      // Since physical regions are created only for fields that
+      // get used, only increment the legion field num here (and not in the else part of
+      // the conditional), otherwise we can get in a situation where 
+      // we later try to access a field with no physical region underlying it .
+      // This fixes the bug where if only accessing field b of mesh with a and
+      // b fields.
+      ++legionFieldNum;
     }
     else{
       llvm::PointerType* pt = dyn_cast<llvm::PointerType>(mf->getType());
@@ -785,8 +798,7 @@ void CGLegionTask::EmitMeshRawRectPtr1dFuncCalls() {
       
       B.CreateStore(llvm::ConstantPointerNull::get(et), mf);
     }
-    
-    ++j;
+    ++meshDeclFieldNum;
   }
 }
  
