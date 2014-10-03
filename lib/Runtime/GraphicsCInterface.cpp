@@ -54,7 +54,7 @@
 #include "scout/Runtime/GraphicsCInterface.h"
 #include "scout/Runtime/opengl/glfw/glfwDevice.h"
 #include "scout/Runtime/opengl/glfw/glfwWindow.h"
-#include "scout/Runtime/opengl/glQuadRenderableVA.h"
+#include "scout/Runtime/opengl/glUniformRenderable.h"
 
 using namespace scout;
 
@@ -75,10 +75,9 @@ __scrt_target_t __scrt_create_window(unsigned short width, unsigned short height
   return (__scrt_target_t)win;
 }
 
-static glQuadRenderableVA*
+static glUniformRenderable*
 get_renderable(unsigned int width,
                unsigned int height,
-               unsigned int depth,
                void* renderTarget){
 
   glWindow* window = (glWindow*)renderTarget;
@@ -87,13 +86,13 @@ get_renderable(unsigned int width,
   // TODO:  Check if there is already a quad renderable associated with this window 
   // and if so, try to reuse it.
 
-  glQuadRenderableVA* renderable = 0; 
+  glUniformRenderable* renderable = 0; 
 
   if (window->getCurrentRenderable() != NULL) {
     // check here if right kind and size
-    renderable = (glQuadRenderableVA*)(window->getCurrentRenderable());
+    renderable = (glUniformRenderable*)(window->getCurrentRenderable());
   } else  {
-    renderable = new glQuadRenderableVA( glfloat3(0.0, 0.0, 0.0), glfloat3(width, height, 0.0));
+    renderable = new glUniformRenderable(width, height);
 
     // add to window's list of renderables
 
@@ -113,8 +112,8 @@ __scrt_window_quad_renderable_colors(unsigned int width,
                                      unsigned int depth,
                                      void* renderTarget){
 
-  glQuadRenderableVA* renderable = 
-    get_renderable(width, height, depth, renderTarget);
+  glUniformRenderable* renderable = 
+    get_renderable(width, height, renderTarget);
 
   assert(renderable && "failed to get renderable");
 
@@ -128,8 +127,8 @@ __scrt_window_quad_renderable_vertex_colors(unsigned int width,
                                             unsigned int depth,
                                             void* renderTarget){
 
-  glQuadRenderableVA* renderable = 
-    get_renderable(width, height, depth, renderTarget);
+  glUniformRenderable* renderable = 
+    get_renderable(width, height, renderTarget);
 
   assert(renderable && "failed to get renderable");
 
@@ -143,8 +142,8 @@ __scrt_window_quad_renderable_edge_colors(unsigned int width,
                                           unsigned int depth,
                                           void* renderTarget){
 
-  glQuadRenderableVA* renderable = 
-    get_renderable(width, height, depth, renderTarget);
+  glUniformRenderable* renderable = 
+    get_renderable(width, height, renderTarget);
 
   assert(renderable && "failed to get renderable");
 
@@ -156,12 +155,12 @@ void __scrt_window_paint(void* renderTarget) {
   glWindow* window = (glWindow*)renderTarget;
   // this is funky -- should be a separate function 
   // (__scrt_window_quad_renderable_unmap_colors)
-  ((glQuadRenderableVA*)(window->getCurrentRenderable()))->unmap_colors();
+  ((glUniformRenderable*)(window->getCurrentRenderable()))->unmap_colors();
 
-  ((glQuadRenderableVA*)(window->getCurrentRenderable()))->
+  ((glUniformRenderable*)(window->getCurrentRenderable()))->
     unmap_vertex_colors();
 
-  ((glQuadRenderableVA*)(window->getCurrentRenderable()))->
+  ((glUniformRenderable*)(window->getCurrentRenderable()))->
     unmap_edge_colors();
 
   window->paint();

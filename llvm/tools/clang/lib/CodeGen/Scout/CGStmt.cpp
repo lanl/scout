@@ -121,25 +121,29 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& 
     // If BaseAddr is an external global then it is assumed that we are within LLDB
     // and we need to load the mesh base address because it is passed as a global
     // reference.
-    bool shouldLoad = false;
-    if(llvm::PointerType* PT = dyn_cast<llvm::PointerType>(BaseAddr->getType())){
-      llvm::Type* ET = PT->getElementType();
-      shouldLoad = ET->isPointerTy();
-    }
-
-    if(shouldLoad) {
+    if(inLLDB()){
       llvm::Value* V = LocalDeclMap.lookup(MeshVarDecl);
       if(V){
         BaseAddr = V;
         return;
       }
-
-      BaseAddr = Builder.CreateLoad(BaseAddr);
+      
+      while(llvm::PointerType* PT =
+            dyn_cast<llvm::PointerType>(BaseAddr->getType())){
+        
+        if(!PT->getElementType()->isPointerTy()){
+          break;
+        }
+        
+        BaseAddr = Builder.CreateLoad(BaseAddr);
+      }
+      
       LocalDeclMap[MeshVarDecl] = BaseAddr;
-    } else {
-      EmitGlobalMeshAllocaIfMissing(BaseAddr, *MeshVarDecl);
+      return;
     }
-
+    
+    EmitGlobalMeshAllocaIfMissing(BaseAddr, *MeshVarDecl);
+    
   } else {
     if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(MeshVarDecl)){
       BaseAddr = LocalDeclMap[IP->getMeshVarDecl()];
@@ -1252,7 +1256,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   llvm::Value *MeshBaseAddr;
   GetMeshBaseAddr(S, MeshBaseAddr);
   llvm::StringRef MeshName = MeshBaseAddr->getName();
-
+   
   // find number of fields
   MeshDecl* MD =  S.getMeshType()->getDecl();
   unsigned int nfields = MD->fields();

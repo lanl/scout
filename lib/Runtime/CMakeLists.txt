@@ -53,17 +53,18 @@ project(scRuntime)
 
 find_library(GLFW glfw)
 
-# Build w/ clang as volren uses blocks
+# Build w/ clang
 set(CMAKE_CXX_COMPILER ${SCOUT_BUILD_DIR}/bin/clang++)
-if(NOT APPLE)
-  set(CMAKE_CXX_FLAGS "") #don't use c++11 for runtime
-endif()
+#if(NOT APPLE)
+#  set(CMAKE_CXX_FLAGS "") #don't use c++11 for runtime
+#endif()
 
 include_directories(
   ${SCOUT_INCLUDE_DIR}
   ${SCOUT_BUILD_DIR}/config/include
   ${GLFW_INCLUDE_DIR}
   ${PNG_INCLUDE_DIR}
+  ${CUDA_INCLUDE_DIRS}
   ${SCOUT_INCLUDE_DIR}/scout/sys/linux #find our unistd.h wrapper to deal with __block in linux unistd.h
 )
 
@@ -88,8 +89,10 @@ file(GLOB rt_srcs_cpu cpu/*.cpp)
 list(APPEND rt_srcs ${rt_srcs_cpu})
 
 #gpu
-#file(GLOB rt_srcs_gpu gpu/*.cpp)
-#list(APPEND rt_srcs ${rt_srcs_gpu})
+if (SCOUT_ENABLE_CUDA)
+  file(GLOB rt_srcs_gpu gpu/*.cpp)
+  list(APPEND rt_srcs ${rt_srcs_gpu})
+endif()
 
 if (SCOUT_ENABLE_OPENGL)
 

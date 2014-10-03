@@ -121,11 +121,12 @@ public:
     NodeRHS
   };
 
-  ForallVisitor(Sema& sema, ForallMeshStmt* fs)
+  ForallVisitor(Sema& sema, ForallMeshStmt* fs, bool isTask = false)
   : sema_(sema),
     fs_(fs),
     meshAccess_(false),
     error_(false),
+    isTask_(isTask),
     nodeType_(NodeNone) {
     (void)fs_; //suppress warning
   }
@@ -166,6 +167,7 @@ private:
   RefMap_ localMap_;
   bool meshAccess_;
   bool error_;
+  bool isTask_;
   NodeType nodeType_;
 };
 
