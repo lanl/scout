@@ -55,9 +55,10 @@ find_library(GLFW glfw)
 
 # Build w/ clang
 set(CMAKE_CXX_COMPILER ${SCOUT_BUILD_DIR}/bin/clang++)
-#if(NOT APPLE)
-#  set(CMAKE_CXX_FLAGS "") #don't use c++11 for runtime
-#endif()
+
+if (NOT SCOUT_ENABLE_CUDA)
+  set(CUDA_INCLUDE_DIRS "")
+endif()
 
 include_directories(
   ${SCOUT_INCLUDE_DIR}

@@ -174,25 +174,25 @@ endif()
 
   # --- CUDA support.
   #find_package(CUDA)
-  #if (CUDA_FOUND)
-  #  message(STATUS "scout: CUDA found, enabling PTX codegen support.")
-  #  message(STATUS "scout: CUDA include path: ${CUDA_INCLUDE_DIRS}")
-  #    set(SCOUT_ENABLE_CUDA ON CACHE BOOL
-  #    "Enable CUDA/PTX code generation and runtime support.")
-  #
-  #  set(SCOUT_ENABLE_LIB_NVVM OFF CACHE BOOL
-  #    "Enable NVIDIA's compiler SDK vs. LLVM's PTX backend.")
-  #
-  #  if (SCOUT_ENABLE_LIB_NVVM)
-  #   message(STATUS "scout: Enabling NVIDIA libnvvm support.")
-  # endif()
-  #else()
+  if (CUDA_FOUND)
+    message(STATUS "scout: CUDA found, enabling PTX codegen support.")
+    message(STATUS "scout: CUDA include path: ${CUDA_INCLUDE_DIRS}")
+      set(SCOUT_ENABLE_CUDA ON CACHE BOOL
+      "Enable CUDA/PTX code generation and runtime support.")
+  
+    set(SCOUT_ENABLE_LIB_NVVM OFF CACHE BOOL
+      "Enable NVIDIA's compiler SDK vs. LLVM's PTX backend.")
+  
+    if (SCOUT_ENABLE_LIB_NVVM)
+     message(STATUS "scout: Enabling NVIDIA libnvvm support.")
+   endif()
+  else()
     message(STATUS "scout: CUDA not found disabling support.")
     set(SCOUT_ENABLE_CUDA OFF CACHE BOOL
       "Enable CUDA/PTX code generation and runtime support.")
     set(CUDA_VERSION_MAJOR 0)
     set(CUDA_VERSION_MINOR 0)
-  #endif()
+  endif()
 
   # --- Legion support
     message(STATUS "scout: enabling Legion by default.")
