@@ -52,7 +52,7 @@
 project(scout_rt_test)
 
 if(CUDA_FOUND)
- add_subdirectory(cuda)
+ #add_subdirectory(cuda)
 endif()
 
 if(PNG_FOUND)
