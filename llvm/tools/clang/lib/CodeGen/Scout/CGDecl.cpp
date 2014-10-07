@@ -214,12 +214,9 @@ void CodeGenFunction::GetMeshDimensions(const MeshType* MT,
       intValue  = RV.getScalarVal();
 
     } else if (E->isConstantInitializer(getContext(), false)) {
-
-      bool evalret;
       llvm::APSInt dimAPValue;
-      evalret = E->EvaluateAsInt(dimAPValue, getContext());
-      // SC_TODO: check the evalret
-      (void)evalret; //supress warning
+      bool success = E->EvaluateAsInt(dimAPValue, getContext());
+      assert(success && "Failed to evaluate mesh dimension");
 
       intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
     } else {

@@ -338,6 +338,8 @@ public:
   llvm::SmallVector< llvm::Value *, 4 > InductionVar;
   // mesh dimension sizes
   llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
+  // mesh dimension sizes + 1
+  llvm::SmallVector< llvm::Value *, 3 > LoopBoundsP1;
   llvm::Value *Rank = 0;
 
   llvm::Value* InnerInductionVar;
@@ -2024,9 +2026,8 @@ public:
   void GetMeshBaseAddr(const Stmt &S, llvm::Value *&BaseAddr);
   void GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& BaseAddr);
 
-  void GetMeshDimValues(const ForallMeshStmt &S,
-                        llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
-                        llvm::Value* MeshBaseAddr);
+  void SetMeshLoopBounds(const ForallMeshStmt &S);
+  void SetMeshRank(const ForallMeshStmt &S);
 
   void EmitLegionTask(const FunctionDecl* FD, llvm::Function* taskFunc);
 
@@ -2052,6 +2053,7 @@ public:
   void EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
                                           llvm::Value* OuterIndex);
 
+  void EmitForallCellsOrVertices(const ForallMeshStmt &S);
   void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
   llvm::BasicBlock *EmitMarkerBlock(const std::string name);
   llvm::Function* ExtractRegion(llvm::BasicBlock *entry,
@@ -2063,6 +2065,7 @@ public:
   void EmitMeshFieldsUsedMD(MeshFieldMap HS,
       const char *str, llvm::BranchInst *BI);
 
+  void EmitGPUForall(const ForallMeshStmt& S, llvm::Value *&Index);
   void EmitGPUPreamble(const ForallMeshStmt& S);
   void AddScoutKernel(llvm::Function* f, const ForallMeshStmt &S);
 

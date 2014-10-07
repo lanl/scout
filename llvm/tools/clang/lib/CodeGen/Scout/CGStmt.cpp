@@ -175,6 +175,70 @@ void CodeGenFunction::GetMeshBaseAddr(const Stmt &S, llvm::Value*& BaseAddr) {
   GetMeshBaseAddr(MeshVarDecl, BaseAddr);
 }
 
+
+// modifies LoopBounds and LoopBoundsP1
+void CodeGenFunction::SetMeshLoopBounds(const ForallMeshStmt &S) {
+  llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
+
+  //get mesh Base Addr
+  llvm::Value *MeshBaseAddr;
+  GetMeshBaseAddr(S, MeshBaseAddr);
+  llvm::StringRef MeshName = MeshBaseAddr->getName();
+
+  // find number of fields
+  MeshDecl* MD =  S.getMeshType()->getDecl();
+  unsigned int nfields = MD->fields();
+
+  // Extract width/height/depth from the mesh
+  // note: width/height depth are stored after mesh fields
+  for(unsigned int i = 0; i < 3; i++) {
+    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
+    LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
+    LoopBoundsP1[i] =  Builder.CreateAlloca(Int32Ty, 0, "loopboundsp1.ptr");
+
+    //if LoopBound !=1 then and 1 to it
+    llvm::Value *dim = Builder.CreateLoad(LoopBounds[i]);
+    Builder.CreateStore(dim, LoopBoundsP1[i]);
+
+    llvm::Function *TheFunction;
+    TheFunction = Builder.GetInsertBlock()->getParent();
+    llvm::BasicBlock *Then = createBasicBlock("vertices.loopbound.then");
+    llvm::BasicBlock *Done = createBasicBlock("vertices.loopbound.done");
+    llvm::Value *Check = Builder.CreateICmpNE(dim, ConstantOne);
+    Builder.CreateCondBr(Check, Then, Done);
+
+    //then block
+    TheFunction->getBasicBlockList().push_back(Then);
+    Builder.SetInsertPoint(Then);
+    dim = Builder.CreateAdd(dim, ConstantOne);
+    Builder.CreateStore(dim, LoopBoundsP1[i]);
+    Builder.CreateBr(Done);
+    Then = Builder.GetInsertBlock();
+
+    // done block
+    TheFunction->getBasicBlockList().push_back(Done);
+    Builder.SetInsertPoint(Done);
+    Done = Builder.GetInsertBlock();
+
+  }
+}
+
+// modifies Rank
+void CodeGenFunction::SetMeshRank(const ForallMeshStmt &S) {
+  //get mesh Base Addr
+    llvm::Value *MeshBaseAddr;
+    GetMeshBaseAddr(S, MeshBaseAddr);
+    llvm::StringRef MeshName = MeshBaseAddr->getName();
+
+    // find number of fields
+    MeshDecl* MD =  S.getMeshType()->getDecl();
+    unsigned int nfields = MD->fields();
+
+    // extract rank from mesh stored after width/height/depth
+    sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
+    Rank = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+3, IRNameStr);
+}
+
 // ----- EmitforallMeshStmt
 //
 // Forall statements are transformed into a nested loop
@@ -912,39 +976,7 @@ void CodeGenFunction::EmitForallFacesVertices(const ForallMeshStmt &S){
 
 void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
   if(isGPU()){
-    llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
-    
-    EmitGPUPreamble(S);
-    
-    llvm::BasicBlock* condBlock = createBasicBlock("forall.cond");
-    EmitBlock(condBlock);
-    
-    llvm::Value* threadId = Builder.CreateLoad(GPUThreadId, "threadId");
-    
-    llvm::Value* cond = Builder.CreateICmpULT(threadId, GPUNumThreads);
-    
-    llvm::BasicBlock* bodyBlock = createBasicBlock("forall.body");
-    llvm::BasicBlock* exitBlock = createBasicBlock("forall.exit");
-    
-    Builder.CreateCondBr(cond, bodyBlock, exitBlock);
-    
-    EmitBlock(bodyBlock);
-    
-    EdgeIndex = GPUThreadId;
-    EmitStmt(S.getBody());
-    EdgeIndex = 0;
-    
-    threadId = Builder.CreateAdd(threadId, GPUThreadInc);
-    Builder.CreateStore(threadId, GPUThreadId);
-    
-    Builder.CreateBr(condBlock);
-    
-    EmitBlock(exitBlock);
-    
-    llvm::Function* f = ExtractRegion(entry, exitBlock, "ForallMeshFunction");
-    
-    AddScoutKernel(f, S);
-    
+    EmitGPUForall(S, EdgeIndex);
     return;
   }
   
@@ -988,39 +1020,7 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
 
 void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
   if(isGPU()){
-    llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
-    
-    EmitGPUPreamble(S);
-    
-    llvm::BasicBlock* condBlock = createBasicBlock("forall.cond");
-    EmitBlock(condBlock);
-    
-    llvm::Value* threadId = Builder.CreateLoad(GPUThreadId, "threadId");
-    
-    llvm::Value* cond = Builder.CreateICmpULT(threadId, GPUNumThreads);
-    
-    llvm::BasicBlock* bodyBlock = createBasicBlock("forall.body");
-    llvm::BasicBlock* exitBlock = createBasicBlock("forall.exit");
-    
-    Builder.CreateCondBr(cond, bodyBlock, exitBlock);
-    
-    EmitBlock(bodyBlock);
-    
-    FaceIndex = GPUThreadId;
-    EmitStmt(S.getBody());
-    FaceIndex = 0;
-    
-    threadId = Builder.CreateAdd(threadId, GPUThreadInc);
-    Builder.CreateStore(threadId, GPUThreadId);
-    
-    Builder.CreateBr(condBlock);
-    
-    EmitBlock(exitBlock);
-    
-    llvm::Function* f = ExtractRegion(entry, exitBlock, "ForallMeshFunction");
-    
-    AddScoutKernel(f, S);
-    
+    EmitGPUForall(S, FaceIndex);
     return;
   }
   
@@ -1107,6 +1107,41 @@ void CodeGenFunction::AddScoutKernel(llvm::Function* f,
   kernelData.push_back(fieldsMD);
   
   kernels->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), kernelData));
+}
+
+void CodeGenFunction::EmitGPUForall(const ForallMeshStmt& S, llvm::Value *&Index) {
+  llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
+
+  EmitGPUPreamble(S);
+
+  llvm::BasicBlock* condBlock = createBasicBlock("forall.cond");
+  EmitBlock(condBlock);
+
+  llvm::Value* threadId = Builder.CreateLoad(GPUThreadId, "threadId");
+
+  llvm::Value* cond = Builder.CreateICmpULT(threadId, GPUNumThreads);
+
+  llvm::BasicBlock* bodyBlock = createBasicBlock("forall.body");
+  llvm::BasicBlock* exitBlock = createBasicBlock("forall.exit");
+
+  Builder.CreateCondBr(cond, bodyBlock, exitBlock);
+
+  EmitBlock(bodyBlock);
+
+  Index = GPUThreadId;
+  EmitStmt(S.getBody());
+  Index = 0;
+
+  threadId = Builder.CreateAdd(threadId, GPUThreadInc);
+  Builder.CreateStore(threadId, GPUThreadId);
+
+  Builder.CreateBr(condBlock);
+
+  EmitBlock(exitBlock);
+
+  llvm::Function* f = ExtractRegion(entry, exitBlock, "ForallMeshFunction");
+
+  AddScoutKernel(f, S);
 }
 
 void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
@@ -1248,72 +1283,41 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
     }
   }
 
-  llvm::Value* ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
-
   ResetVars();
+  SetMeshLoopBounds(S);
+  SetMeshRank(S);
 
-  //get mesh Base Addr
-  llvm::Value *MeshBaseAddr;
-  GetMeshBaseAddr(S, MeshBaseAddr);
-  llvm::StringRef MeshName = MeshBaseAddr->getName();
-   
-  // find number of fields
-  MeshDecl* MD =  S.getMeshType()->getDecl();
-  unsigned int nfields = MD->fields();
+  switch(FET) {
+   case ForallMeshStmt::Cells:
+   case ForallMeshStmt::Vertices:
+     EmitForallCellsOrVertices(S);
+     return;
+   case ForallMeshStmt::Edges:
+     EmitForallEdges(S);
+     return;
+   case ForallMeshStmt::Faces:
+     EmitForallFaces(S);
+     return;
+   default:
+     assert(false && "invalid forall case");
+   }
+}
 
-  // Extract width/height/depth from the mesh for this rank
-  // note: width/height depth are stored after mesh fields
-  for(unsigned int i = 0; i < 3; i++) {
-    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-    LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
-  }
 
-  if(FET == ForallMeshStmt::Edges){
-    EmitForallEdges(S);
-    return;
-  }
-  else if(FET == ForallMeshStmt::Faces){
-    EmitForallFaces(S);
-    return;
-  }
+void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
 
-  llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
+  ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
+  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
   // Track down the mesh meta data. 
   EmitForallMeshMDBlock(S);
 
-  if(isGPU()){
-    EmitGPUPreamble(S);
-
-    llvm::BasicBlock* condBlock = createBasicBlock("forall.cond");
-    EmitBlock(condBlock);
-    
-    llvm::Value* threadId = Builder.CreateLoad(GPUThreadId, "threadId");
-    
-    llvm::Value* cond = Builder.CreateICmpULT(threadId, GPUNumThreads);
-    
-    llvm::BasicBlock* bodyBlock = createBasicBlock("forall.body");
-    llvm::BasicBlock* exitBlock = createBasicBlock("forall.exit");
-    
-    Builder.CreateCondBr(cond, bodyBlock, exitBlock);
-    
-    EmitBlock(bodyBlock);
-    
-    CellIndex = GPUThreadId;
-    EmitStmt(S.getBody());
-    CellIndex = 0;
-    
-    threadId = Builder.CreateAdd(threadId, GPUThreadInc);
-    Builder.CreateStore(threadId, GPUThreadId);
-    
-    Builder.CreateBr(condBlock);
-
-    EmitBlock(exitBlock);
-    
-    llvm::Function* f = ExtractRegion(entry, exitBlock, "ForallMeshFunction");
-    
-    AddScoutKernel(f, S);
-
+  if(isGPU()) {
+    if(FET == ForallMeshStmt::Vertices) {
+      EmitGPUForall(S, VertexIndex);
+    } else if (FET == ForallMeshStmt::Cells) {
+      EmitGPUForall(S, CellIndex);
+    }
     return;
   }
 
@@ -1335,10 +1339,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
   InnerIndex = Builder.CreateAlloca(Int32Ty, 0, "forall.inneridx.ptr");
 
-  // extract rank from mesh stored after width/height/depth
-  sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
-  Rank = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+3, IRNameStr);
-
   EmitForallMeshLoop(S, 3);
 
   // reset Loopbounds, Rank and induction var
@@ -1350,10 +1350,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
 //generate one of the nested loops
 void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
-  unsigned int rank = S.getMeshType()->rankOf();
-
-  RegionCounter Cnt = getPGORegionCounter(&S);
-  (void)Cnt; //suppress warning 
  
   llvm::StringRef MeshName = S.getMeshVarDecl()->getName();
 
@@ -1376,13 +1372,13 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
 
   // Extract the loop bounds from the mesh for this rank
   sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
-  llvm::Value *LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
+  llvm::Value *LoopBound;
 
   ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
-  if(FET == ForallMeshStmt::Vertices){
-    if(r <= rank){
-      LoopBound = Builder.CreateAdd(LoopBound, ConstantOne);
-    }
+  if(FET == ForallMeshStmt::Cells) {
+    LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
+  } else if(FET == ForallMeshStmt::Vertices) {
+    LoopBound  = Builder.CreateLoad(LoopBoundsP1[r-1], IRNameStr);
     VertexIndex = InductionVar[3];
   }
 
@@ -1474,9 +1470,11 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
 // reset Loopbounds and induction var
 void CodeGenFunction::ResetVars(void) {
     LoopBounds.clear();
+    LoopBoundsP1.clear();
     InductionVar.clear();
     for(unsigned int i = 0; i < 3; i++) {
        LoopBounds.push_back(0);
+       LoopBoundsP1.push_back(0);
        InductionVar.push_back(0);
     }
     // create linear loop index as 4th element

@@ -81,6 +81,7 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
     // to call -- may not be a rock solid plan but working
     // for now...
     LoopBounds.push_back(0);
+    LoopBoundsP1.push_back(0);
   }
   for(unsigned i = 0; i <= 3; ++i) {
     ScoutABIInductionVarDecl.push_back(0);
