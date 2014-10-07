@@ -1,0 +1,62 @@
+#!/usr/bin/env expect
+#
+# make sure we can debug a mesh in a function or legion task
+#
+
+set path [lindex $argv 0]
+set type [lindex $argv 1]
+set ext [lindex $argv 2]
+set legion [lindex $argv 3]
+
+set timeout 30
+
+if {$legion == "0"} {
+  spawn $path/../../build/bin/$type -g -o mesh-function-$type $path/mesh-function.$ext
+} else {
+  spawn $path/../../build/bin/$type -sclegion -g -o mesh-function-$type $path/mesh-function.$ext
+}
+expect "1 warning"
+sleep 1
+spawn $path/../../build/bin/scdb -- ./mesh-function-$type
+expect "(lldb)"
+
+send "b mesh-function.$ext:15\n"
+expect {
+    "at mesh-function.$ext:15" {
+  }
+  timeout {
+    exit 1
+  }
+}
+
+expect "(lldb)"
+
+send "r\n"
+expect {
+    "int x = 9;" {
+  }
+  timeout {
+    exit 1
+  }
+}
+
+expect "(lldb)"
+
+if {$type == "sc++"} {
+send "expr forall cells c in m {c.field = 10;}\n"
+} else {
+send "expr forall cells c in *m {c.field = 10;}\n"
+}
+expect "(lldb)"
+
+send "c\n"
+expect {
+    "10.0000" {
+  }
+  timeout {
+    exit 1
+  }
+}
+
+send "q\n"
+#
