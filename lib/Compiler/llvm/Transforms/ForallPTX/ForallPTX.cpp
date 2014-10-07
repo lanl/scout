@@ -436,7 +436,6 @@ public:
                        uint8_t elementType,
                        PointerType* type){
 
-      llvm::errs() << "name " << name << "\n";
       auto itr = fieldMap_.find(name);
       assert(itr == fieldMap_.end());
 
