@@ -105,7 +105,32 @@ FindSessionDictionary(const char *session_dictionary_name)
 class PyCallable
 {
 public:
-    
+    struct argc {
+        size_t num_args;
+        bool varargs : 1;
+        bool kwargs : 1;
+    };
+
+    argc
+    GetNumArguments ()
+    {
+        if (m_callable && PyFunction_Check(m_callable))
+        {
+            PyCodeObject* code = (PyCodeObject*)PyFunction_GET_CODE(m_callable);
+            if (code)
+            {
+                size_t args = code->co_argcount;
+                bool va=false,kw=false;
+                if ((code->co_flags & 4) == 4)
+                    va = true;
+                if ((code->co_flags & 8) == 8)
+                    kw = true;
+                return {args,va,kw};
+            }
+        }
+        return {SIZE_MAX,false,false};
+    }
+
     operator
     bool ()
     {
@@ -419,6 +444,118 @@ LLDBSwigPythonCreateSyntheticProvider
         Py_RETURN_NONE;
 }
 
+SWIGEXPORT void*
+LLDBSwigPythonCreateScriptedThreadPlan
+(
+    const char *python_class_name,
+    const char *session_dictionary_name,
+    const lldb::ThreadPlanSP& thread_plan_sp
+)
+{
+    PyObject* retval = NULL;
+
+    if (python_class_name == NULL || python_class_name[0] == '\0' || !session_dictionary_name)
+        Py_RETURN_NONE;
+
+    // I do not want the SBThreadPlan to be deallocated when going out of scope because python
+    // has ownership of it and will manage memory for this object by itself
+    lldb::SBThreadPlan *tp_value = new lldb::SBThreadPlan(thread_plan_sp);
+
+    PyObject *ThreadPlan_PyObj = SBTypeToSWIGWrapper(tp_value);
+
+    if (ThreadPlan_PyObj == NULL)
+        Py_RETURN_NONE;
+    
+    {
+        PyErr_Cleaner py_err_cleaner(true);
+        
+        PyCallable pfunc = PyCallable::FindWithFunctionName(python_class_name, session_dictionary_name);
+        
+        if (!pfunc)
+            return retval;
+        
+        Py_INCREF(ThreadPlan_PyObj);
+        
+        PyObject* session_dict = NULL;
+        session_dict = FindSessionDictionary(session_dictionary_name);
+        retval = pfunc(tp_value, session_dict);
+
+        // FIXME: At this point we should check that the class we found supports all the methods
+        // that we need.
+        
+        Py_XINCREF (session_dict);
+        
+        Py_XINCREF(retval);
+    }
+
+    if (retval)
+        return retval;
+    else
+        Py_RETURN_NONE;
+}
+
+SWIGEXPORT bool
+LLDBSWIGPythonCallThreadPlan
+(
+    void *implementor,
+    const char *method_name,
+    lldb_private::Event *event,
+    bool &got_error
+)
+{
+    bool ret_val = false;
+    got_error = false;
+
+
+    PyErr_Cleaner py_err_cleaner(false);
+    
+    PyCallable pfunc = PyCallable::FindWithMemberFunction((PyObject *) implementor, method_name);
+    
+    if (!pfunc)
+    {
+        return ret_val;
+    }
+
+    PyObject* py_return = Py_None;
+
+    if (event != NULL)
+    {
+        lldb::SBEvent sb_event(event);
+
+        PyObject *py_obj_event = SBTypeToSWIGWrapper(sb_event);
+
+        py_return = pfunc(py_obj_event);
+    }
+    else
+    {
+        py_return = pfunc();
+    }
+
+    if (PyErr_Occurred())
+    {
+        got_error = true;
+        printf ("Return value was neither false nor true for call to %s.\n", method_name);
+        PyErr_Print();
+    }
+    else
+    {
+        if (py_return == Py_True)
+            ret_val = true;
+        else if (py_return == Py_False)
+            ret_val = false;
+        else
+        {
+            // Somebody returned the wrong thing...
+            got_error = true;
+            printf ("Wrong return value type for call to %s.\n", method_name);
+        }
+    }
+    
+    Py_XDECREF(py_return);
+
+    return ret_val;
+}
+
 // wrapper that calls an optional instance member of an object taking no arguments
 static PyObject*
 LLDBSwigPython_CallOptionalMember
@@ -586,6 +723,34 @@ LLDBSwigPython_MightHaveChildrenSynthProviderInstance
     return ret_val;
 }
 
+SWIGEXPORT PyObject*
+LLDBSwigPython_GetValueSynthProviderInstance
+(
+    PyObject *implementor
+)
+{
+    PyObject* ret_val = nullptr;
+
+    static char callee_name[] = "get_value";
+
+    PyObject* py_return = LLDBSwigPython_CallOptionalMember(implementor,callee_name, Py_None);
+
+    if (py_return == Py_None || py_return == nullptr)
+        ret_val = nullptr;
+
+    lldb::SBValue* sbvalue_ptr = NULL;
+    
+    if (SWIG_ConvertPtr(py_return, (void**)&sbvalue_ptr, SWIGTYPE_p_lldb__SBValue, 0) == -1)
+        ret_val = nullptr;
+    else if (sbvalue_ptr == NULL)
+        ret_val = nullptr;
+    else
+        ret_val = py_return;
+
+    Py_XDECREF(py_return);
+    return ret_val;
+}
+
 SWIGEXPORT void*
 LLDBSWIGPython_CastPyObjectToSBValue
 (
@@ -633,13 +798,15 @@ LLDBSwigPythonCallCommand
     const char *session_dictionary_name,
     lldb::DebuggerSP& debugger,
     const char* args,
-    lldb_private::CommandReturnObject& cmd_retobj
+    lldb_private::CommandReturnObject& cmd_retobj,
+    lldb::ExecutionContextRefSP exe_ctx_ref_sp
 )
 {
 
     lldb::SBCommandReturnObject cmd_retobj_sb(&cmd_retobj);
     SBCommandReturnObjectReleaser cmd_retobj_sb_releaser(cmd_retobj_sb);
     lldb::SBDebugger debugger_sb(debugger);
+    lldb::SBExecutionContext exe_ctx_sb(exe_ctx_ref_sp);
 
     bool retval = false;
 
@@ -654,7 +821,12 @@ LLDBSwigPythonCallCommand
         // pass the pointer-to cmd_retobj_sb or watch the underlying object disappear from under you
         // see comment above for SBCommandReturnObjectReleaser for further details
         PyObject* pvalue = NULL;
-        pvalue = pfunc(debugger_sb, args, &cmd_retobj_sb, session_dict = FindSessionDictionary(session_dictionary_name));
+
+        PyCallable::argc argc = pfunc.GetNumArguments();
+        if (argc.num_args == 5 || argc.varargs == true)
+            pvalue = pfunc(debugger_sb, args, exe_ctx_sb, &cmd_retobj_sb, session_dict = FindSessionDictionary(session_dictionary_name));
+        else
+            pvalue = pfunc(debugger_sb, args, &cmd_retobj_sb, session_dict = FindSessionDictionary(session_dictionary_name));
         
         Py_XINCREF (session_dict);
         Py_XDECREF (pvalue);
