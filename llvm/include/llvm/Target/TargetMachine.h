@@ -99,7 +99,7 @@ public:
   virtual const TargetSubtargetInfo *getSubtargetImpl() const {
     return nullptr;
   }
-  virtual const TargetSubtargetInfo *getSubtargetImpl(const Function *) const {
+  virtual const TargetSubtargetInfo *getSubtargetImpl(const Function &) const {
     return getSubtargetImpl();
   }
 
@@ -114,7 +114,9 @@ public:
   }
 
   /// \brief Reset the target options based on the function's attributes.
-  void resetTargetOptions(const MachineFunction *MF) const;
+  // FIXME: Remove TargetOptions that affect per-function code generation
+  // from TargetMachine.
+  void resetTargetOptions(const Function &F) const;
 
   /// getMCAsmInfo - Return target specific asm information.
   ///
