@@ -71,6 +71,65 @@ static const MCPhysReg Mips64DPRegs[8] = {
   Mips::D16_64, Mips::D17_64, Mips::D18_64, Mips::D19_64
 };
 
+static bool originalTypeIsF128(const Type *Ty, const SDNode *CallNode);
+
+namespace {
+class MipsCCState : public CCState {
+private:
+  /// Identify lowered values that originated from f128 arguments and record
+  /// this for use by RetCC_MipsN.
+  void
+  PreAnalyzeCallResultForF128(const SmallVectorImpl<ISD::InputArg> &Ins,
+                              const TargetLowering::CallLoweringInfo &CLI) {
+    for (unsigned i = 0; i < Ins.size(); ++i)
+      OriginalArgWasF128.push_back(
+          originalTypeIsF128(CLI.RetTy, CLI.Callee.getNode()));
+  }
+
+  /// Identify lowered values that originated from f128 arguments and record
+  /// this for use by RetCC_MipsN.
+  void PreAnalyzeReturnForF128(const SmallVectorImpl<ISD::OutputArg> &Outs) {
+    const MachineFunction &MF = getMachineFunction();
+    for (unsigned i = 0; i < Outs.size(); ++i)
+      OriginalArgWasF128.push_back(
+          originalTypeIsF128(MF.getFunction()->getReturnType(), nullptr));
+  }
+
+  /// Records whether the value has been lowered from an f128.
+  SmallVector<bool, 4> OriginalArgWasF128;
+
+public:
+  MipsCCState(CallingConv::ID CC, bool isVarArg, MachineFunction &MF,
+              SmallVectorImpl<CCValAssign> &locs, LLVMContext &C)
+      : CCState(CC, isVarArg, MF, locs, C) {}
+
+  void AnalyzeCallResult(const SmallVectorImpl<ISD::InputArg> &Ins,
+                         CCAssignFn Fn,
+                         const TargetLowering::CallLoweringInfo &CLI) {
+    PreAnalyzeCallResultForF128(Ins, CLI);
+    CCState::AnalyzeCallResult(Ins, Fn);
+    OriginalArgWasF128.clear();
+  }
+
+  void AnalyzeReturn(const SmallVectorImpl<ISD::OutputArg> &Outs,
+                     CCAssignFn Fn) {
+    PreAnalyzeReturnForF128(Outs);
+    CCState::AnalyzeReturn(Outs, Fn);
+    OriginalArgWasF128.clear();
+  }
+
+  bool CheckReturn(const SmallVectorImpl<ISD::OutputArg> &ArgsFlags,
+                   CCAssignFn Fn) {
+    PreAnalyzeReturnForF128(ArgsFlags);
+    bool Return = CCState::CheckReturn(ArgsFlags, Fn);
+    OriginalArgWasF128.clear();
+    return Return;
+  }
+
+  bool WasOriginalArgF128(unsigned ValNo) { return OriginalArgWasF128[ValNo]; }
+};
+}
+
 // If I is a shifted mask, set the size (Size) and the first bit of the
 // mask (Pos), and return true.
 // For example, if I is 0x003ff800, (Pos, Size) = (11, 11).
@@ -2373,8 +2432,6 @@ static bool CC_MipsO32_FP64(unsigned ValNo, MVT ValVT,
   return CC_MipsO32(ValNo, ValVT, LocVT, LocInfo, ArgFlags, State, F64Regs);
 }
 
-static bool originalTypeIsF128(const Type *Ty, const SDNode *CallNode);
-
 #include "MipsGenCallingConv.inc"
 
 //===----------------------------------------------------------------------===//
@@ -2409,13 +2466,19 @@ void MipsTargetLowering::
 getOpndList(SmallVectorImpl<SDValue> &Ops,
             std::deque< std::pair<unsigned, SDValue> > &RegsToPass,
             bool IsPICCall, bool GlobalOrExternal, bool InternalLinkage,
-            CallLoweringInfo &CLI, SDValue Callee, SDValue Chain) const {
+            bool IsCallReloc, CallLoweringInfo &CLI, SDValue Callee,
+            SDValue Chain) const {
   // Insert node "GP copy globalreg" before call to function.
   //
   // R_MIPS_CALL* operators (emitted when non-internal functions are called
   // in PIC mode) allow symbols to be resolved via lazy binding.
   // The lazy binding stub requires GP to point to the GOT.
-  if (IsPICCall && !InternalLinkage) {
+  // Note that we don't need GP to point to the GOT for indirect calls
+  // (when R_MIPS_CALL* is not used for the call) because Mips linker generates
+  // lazy binding stub for a function only when R_MIPS_CALL* are the only relocs
+  // used for the function (that is, Mips linker doesn't generate lazy binding
+  // stub for a function whose address is taken in the program).
+  if (IsPICCall && !InternalLinkage && IsCallReloc) {
     unsigned GPReg = Subtarget.isABI_N64() ? Mips::GP_64 : Mips::GP;
     EVT Ty = Subtarget.isABI_N64() ? MVT::i64 : MVT::i32;
     RegsToPass.push_back(std::make_pair(GPReg, getGlobalReg(CLI.DAG, Ty)));
@@ -2610,7 +2673,7 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   bool IsPICCall =
       (Subtarget.isABI_N64() || IsPIC); // true if calls are translated to
                                          // jalr $25
-  bool GlobalOrExternal = false, InternalLinkage = false;
+  bool GlobalOrExternal = false, InternalLinkage = false, IsCallReloc = false;
   SDValue CalleeLo;
   EVT Ty = Callee.getValueType();
 
@@ -2622,13 +2685,16 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
       if (InternalLinkage)
         Callee = getAddrLocal(G, Ty, DAG,
                               Subtarget.isABI_N32() || Subtarget.isABI_N64());
-      else if (LargeGOT)
+      else if (LargeGOT) {
         Callee = getAddrGlobalLargeGOT(G, Ty, DAG, MipsII::MO_CALL_HI16,
                                        MipsII::MO_CALL_LO16, Chain,
                                        FuncInfo->callPtrInfo(Val));
-      else
+        IsCallReloc = true;
+      } else {
         Callee = getAddrGlobal(G, Ty, DAG, MipsII::MO_GOT_CALL, Chain,
                                FuncInfo->callPtrInfo(Val));
+        IsCallReloc = true;
+      }
     } else
       Callee = DAG.getTargetGlobalAddress(G->getGlobal(), DL, getPointerTy(), 0,
                                           MipsII::MO_NO_FLAG);
@@ -2640,13 +2706,16 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
     if (!Subtarget.isABI_N64() && !IsPIC) // !N64 && static
       Callee = DAG.getTargetExternalSymbol(Sym, getPointerTy(),
                                             MipsII::MO_NO_FLAG);
-    else if (LargeGOT)
+    else if (LargeGOT) {
       Callee = getAddrGlobalLargeGOT(S, Ty, DAG, MipsII::MO_CALL_HI16,
                                      MipsII::MO_CALL_LO16, Chain,
                                      FuncInfo->callPtrInfo(Sym));
-    else // N64 || PIC
+      IsCallReloc = true;
+    } else { // N64 || PIC
       Callee = getAddrGlobal(S, Ty, DAG, MipsII::MO_GOT_CALL, Chain,
                              FuncInfo->callPtrInfo(Sym));
+      IsCallReloc = true;
+    }
 
     GlobalOrExternal = true;
   }
@@ -2655,7 +2724,7 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
 
   getOpndList(Ops, RegsToPass, IsPICCall, GlobalOrExternal, InternalLinkage,
-              CLI, Callee, Chain);
+              IsCallReloc, CLI, Callee, Chain);
 
   if (IsTailCall)
     return DAG.getNode(MipsISD::TailCall, DL, MVT::Other, Ops);
@@ -2670,29 +2739,22 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 
   // Handle result values, copying them out of physregs into vregs that we
   // return.
-  return LowerCallResult(Chain, InFlag, CallConv, IsVarArg,
-                         Ins, DL, DAG, InVals, CLI.Callee.getNode(), CLI.RetTy);
+  return LowerCallResult(Chain, InFlag, CallConv, IsVarArg, Ins, DL, DAG,
+                         InVals, CLI);
 }
 
 /// LowerCallResult - Lower the result values of a call into the
 /// appropriate copies out of appropriate physical registers.
-SDValue
-MipsTargetLowering::LowerCallResult(SDValue Chain, SDValue InFlag,
-                                    CallingConv::ID CallConv, bool IsVarArg,
-                                    const SmallVectorImpl<ISD::InputArg> &Ins,
-                                    SDLoc DL, SelectionDAG &DAG,
-                                    SmallVectorImpl<SDValue> &InVals,
-                                    const SDNode *CallNode,
-                                    const Type *RetTy) const {
+SDValue MipsTargetLowering::LowerCallResult(
+    SDValue Chain, SDValue InFlag, CallingConv::ID CallConv, bool IsVarArg,
+    const SmallVectorImpl<ISD::InputArg> &Ins, SDLoc DL, SelectionDAG &DAG,
+    SmallVectorImpl<SDValue> &InVals,
+    TargetLowering::CallLoweringInfo &CLI) const {
   // Assign locations to each value returned by this call.
   SmallVector<CCValAssign, 16> RVLocs;
-  CCState CCInfo(CallConv, IsVarArg, DAG.getMachineFunction(), RVLocs,
-                 *DAG.getContext());
-
-  if (originalTypeIsF128(RetTy, CallNode))
-    CCInfo.AnalyzeCallResult(Ins, RetCC_F128);
-  else
-    CCInfo.AnalyzeCallResult(Ins, RetCC_Mips);
+  MipsCCState CCInfo(CallConv, IsVarArg, DAG.getMachineFunction(), RVLocs,
+                     *DAG.getContext());
+  CCInfo.AnalyzeCallResult(Ins, RetCC_Mips, CLI);
 
   // Copy all of the result registers out of their specified physreg.
   for (unsigned i = 0; i != RVLocs.size(); ++i) {
@@ -2905,7 +2967,7 @@ MipsTargetLowering::CanLowerReturn(CallingConv::ID CallConv,
                                    const SmallVectorImpl<ISD::OutputArg> &Outs,
                                    LLVMContext &Context) const {
   SmallVector<CCValAssign, 16> RVLocs;
-  CCState CCInfo(CallConv, IsVarArg, MF, RVLocs, Context);
+  MipsCCState CCInfo(CallConv, IsVarArg, MF, RVLocs, Context);
   return CCInfo.CheckReturn(Outs, RetCC_Mips);
 }
 
@@ -2921,14 +2983,11 @@ MipsTargetLowering::LowerReturn(SDValue Chain,
   MachineFunction &MF = DAG.getMachineFunction();
 
   // CCState - Info about the registers and stack slot.
-  CCState CCInfo(CallConv, IsVarArg, MF, RVLocs, *DAG.getContext());
+  MipsCCState CCInfo(CallConv, IsVarArg, MF, RVLocs, *DAG.getContext());
   MipsCC MipsCCInfo(CallConv, Subtarget, CCInfo);
 
   // Analyze return values.
-  if (originalTypeIsF128(MF.getFunction()->getReturnType(), nullptr))
-    CCInfo.AnalyzeReturn(Outs, RetCC_F128);
-  else
-    CCInfo.AnalyzeReturn(Outs, RetCC_Mips);
+  CCInfo.AnalyzeReturn(Outs, RetCC_Mips);
 
   SDValue Flag;
   SmallVector<SDValue, 4> RetOps(1, Chain);
@@ -3437,10 +3496,14 @@ static bool isF128SoftLibCall(const char *CallSym) {
   return std::binary_search(LibCalls, End, CallSym, Comp);
 }
 
-/// This function returns true if Ty is fp128 or i128 which was originally a
-/// fp128.
+/// This function returns true if Ty is fp128, {f128} or i128 which was
+/// originally a fp128.
 static bool originalTypeIsF128(const Type *Ty, const SDNode *CallNode) {
   if (Ty->isFP128Ty())
+    return true;
+
+  if (Ty->isStructTy() && Ty->getStructNumElements() == 1 &&
+      Ty->getStructElementType(0)->isFP128Ty())
     return true;
 
   const ExternalSymbolSDNode *ES =
