@@ -3254,6 +3254,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         case NestedNameSpecifier::Namespace:
         case NestedNameSpecifier::NamespaceAlias:
         case NestedNameSpecifier::Global:
+        case NestedNameSpecifier::Super:
           llvm_unreachable("Nested-name-specifier must name a type");
 
         case NestedNameSpecifier::TypeSpec:
@@ -3963,6 +3964,7 @@ namespace {
       case NestedNameSpecifier::Namespace:
       case NestedNameSpecifier::NamespaceAlias:
       case NestedNameSpecifier::Global:
+      case NestedNameSpecifier::Super:
         llvm_unreachable("Nested-name-specifier must name a type");
       }
 

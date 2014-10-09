@@ -218,12 +218,22 @@ bool Parser::ParseOptionalCXXScopeSpecifier(CXXScopeSpec &SS,
       return false;
 
     // '::' - Global scope qualifier.
-    if (Actions.ActOnCXXGlobalScopeSpecifier(getCurScope(), ConsumeToken(), SS))
+    if (Actions.ActOnCXXGlobalScopeSpecifier(ConsumeToken(), SS))
       return true;
 
     CheckForLParenAfterColonColon();
 
     HasScopeSpecifier = true;
+  }
+
+  if (Tok.is(tok::kw___super)) {
+    SourceLocation SuperLoc = ConsumeToken();
+    if (!Tok.is(tok::coloncolon)) {
+      Diag(Tok.getLocation(), diag::err_expected_coloncolon_after_super);
+      return true;
+    }
+
+    return Actions.ActOnSuperScopeSpecifier(SuperLoc, ConsumeToken(), SS);
   }
 
   bool CheckForDestructor = false;
@@ -232,7 +242,8 @@ bool Parser::ParseOptionalCXXScopeSpecifier(CXXScopeSpec &SS,
     *MayBePseudoDestructor = false;
   }
 
-  if (Tok.is(tok::kw_decltype) || Tok.is(tok::annot_decltype)) {
+  if (!HasScopeSpecifier &&
+      (Tok.is(tok::kw_decltype) || Tok.is(tok::annot_decltype))) {
     DeclSpec DS(AttrFactory);
     SourceLocation DeclLoc = Tok.getLocation();
     SourceLocation EndLoc  = ParseDecltypeSpecifier(DS);

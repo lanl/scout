@@ -1437,9 +1437,10 @@ public:
 };
 
 class X86_64TargetCodeGenInfo : public TargetCodeGenInfo {
+  bool HasAVX;
 public:
   X86_64TargetCodeGenInfo(CodeGen::CodeGenTypes &CGT, bool HasAVX)
-      : TargetCodeGenInfo(new X86_64ABIInfo(CGT, HasAVX)) {}
+      : TargetCodeGenInfo(new X86_64ABIInfo(CGT, HasAVX)), HasAVX(HasAVX) {}
 
   const X86_64ABIInfo &getABIInfo() const {
     return static_cast<const X86_64ABIInfo&>(TargetCodeGenInfo::getABIInfo());
@@ -1499,6 +1500,9 @@ public:
     return llvm::ConstantInt::get(CGM.Int32Ty, Sig);
   }
 
+  unsigned getOpenMPSimdDefaultAlignment(QualType) const override {
+    return HasAVX ? 32 : 16;
+  }
 };
 
 static std::string qualifyWindowsLibrary(llvm::StringRef Lib) {
@@ -1530,9 +1534,10 @@ public:
 };
 
 class WinX86_64TargetCodeGenInfo : public TargetCodeGenInfo {
+  bool HasAVX;
 public:
-  WinX86_64TargetCodeGenInfo(CodeGen::CodeGenTypes &CGT)
-    : TargetCodeGenInfo(new WinX86_64ABIInfo(CGT)) {}
+  WinX86_64TargetCodeGenInfo(CodeGen::CodeGenTypes &CGT, bool HasAVX)
+    : TargetCodeGenInfo(new WinX86_64ABIInfo(CGT)), HasAVX(HasAVX) {}
 
   int getDwarfEHStackPointer(CodeGen::CodeGenModule &CGM) const override {
     return 7;
@@ -1558,6 +1563,10 @@ public:
                                llvm::StringRef Value,
                                llvm::SmallString<32> &Opt) const override {
     Opt = "/FAILIFMISMATCH:\"" + Name.str() + "=" + Value.str() + "\"";
+  }
+
+  unsigned getOpenMPSimdDefaultAlignment(QualType) const override {
+    return HasAVX ? 32 : 16;
   }
 };
 
@@ -1686,10 +1695,25 @@ void X86_64ABIInfo::classify(QualType Ty, uint64_t OffsetBase,
   }
 
   if (Ty->isMemberPointerType()) {
-    if (Ty->isMemberFunctionPointerType() && Has64BitPointers)
-      Lo = Hi = Integer;
-    else
+    if (Ty->isMemberFunctionPointerType()) {
+      if (Has64BitPointers) {
+        // If Has64BitPointers, this is an {i64, i64}, so classify both
+        // Lo and Hi now.
+        Lo = Hi = Integer;
+      } else {
+        // Otherwise, with 32-bit pointers, this is an {i32, i32}. If that
+        // straddles an eightbyte boundary, Hi should be classified as well.
+        uint64_t EB_FuncPtr = (OffsetBase) / 64;
+        uint64_t EB_ThisAdj = (OffsetBase + 64 - 1) / 64;
+        if (EB_FuncPtr != EB_ThisAdj) {
+          Lo = Hi = Integer;
+        } else {
+          Current = Integer;
+        }
+      }
+    } else {
       Current = Integer;
+    }
     return;
   }
 
@@ -2568,23 +2592,17 @@ void X86_64ABIInfo::computeInfo(CGFunctionInfo &FI) const {
   if (FI.getReturnInfo().isIndirect())
     --freeIntRegs;
 
-  bool isVariadic = FI.isVariadic();
-  unsigned numRequiredArgs = 0;
-  if (isVariadic)
-    numRequiredArgs = FI.getRequiredArgs().getNumRequiredArgs();
-
+  unsigned NumRequiredArgs = FI.getNumRequiredArgs();
   // AMD64-ABI 3.2.3p3: Once arguments are classified, the registers
   // get assigned (in left-to-right order) for passing as follows...
+  unsigned ArgNo = 0;
   for (CGFunctionInfo::arg_iterator it = FI.arg_begin(), ie = FI.arg_end();
-       it != ie; ++it) {
-    bool isNamedArg = true;
-    if (isVariadic)
-      isNamedArg = (it - FI.arg_begin()) < 
-                    static_cast<signed>(numRequiredArgs);
+       it != ie; ++it, ++ArgNo) {
+    bool IsNamedArg = ArgNo < NumRequiredArgs;
 
     unsigned neededInt, neededSSE;
     it->info = classifyArgumentType(it->type, freeIntRegs, neededInt,
-                                    neededSSE, isNamedArg);
+                                    neededSSE, IsNamedArg);
 
     // AMD64-ABI 3.2.3p3: If there are no registers available for any
     // eightbyte of an argument, the whole argument is passed on the
@@ -2915,9 +2933,14 @@ class NaClX86_64ABIInfo : public ABIInfo {
 };
 
 class NaClX86_64TargetCodeGenInfo : public TargetCodeGenInfo  {
+  bool HasAVX;
  public:
-  NaClX86_64TargetCodeGenInfo(CodeGen::CodeGenTypes &CGT, bool HasAVX)
-      : TargetCodeGenInfo(new NaClX86_64ABIInfo(CGT, HasAVX)) {}
+   NaClX86_64TargetCodeGenInfo(CodeGen::CodeGenTypes &CGT, bool HasAVX)
+       : TargetCodeGenInfo(new NaClX86_64ABIInfo(CGT, HasAVX)), HasAVX(HasAVX) {
+   }
+   unsigned getOpenMPSimdDefaultAlignment(QualType) const override {
+     return HasAVX ? 32 : 16;
+   }
 };
 
 }
@@ -2951,6 +2974,10 @@ public:
 
   bool initDwarfEHRegSizeTable(CodeGen::CodeGenFunction &CGF,
                                llvm::Value *Address) const override;
+
+  unsigned getOpenMPSimdDefaultAlignment(QualType) const override {
+    return 16; // Natural alignment for Altivec vectors.
+  }
 };
 
 }
@@ -3067,6 +3094,10 @@ public:
 
   bool initDwarfEHRegSizeTable(CodeGen::CodeGenFunction &CGF,
                                llvm::Value *Address) const override;
+
+  unsigned getOpenMPSimdDefaultAlignment(QualType) const override {
+    return 16; // Natural alignment for Altivec and VSX vectors.
+  }
 };
 
 class PPC64TargetCodeGenInfo : public DefaultTargetCodeGenInfo {
@@ -3080,6 +3111,10 @@ public:
 
   bool initDwarfEHRegSizeTable(CodeGen::CodeGenFunction &CGF,
                                llvm::Value *Address) const override;
+
+  unsigned getOpenMPSimdDefaultAlignment(QualType) const override {
+    return 16; // Natural alignment for Altivec vectors.
+  }
 };
 
 }
@@ -3554,20 +3589,18 @@ private:
 
     // Find the number of named arguments. Variadic arguments get special
     // treatment with the Darwin ABI.
-    unsigned NumRequiredArgs = (FI.isVariadic() ?
-                                FI.getRequiredArgs().getNumRequiredArgs() :
-                                FI.arg_size());
+    unsigned NumRequiredArgs = FI.getNumRequiredArgs();
 
     if (!getCXXABI().classifyReturnType(FI))
       FI.getReturnInfo() = classifyReturnType(FI.getReturnType());
+    unsigned ArgNo = 0;
     for (CGFunctionInfo::arg_iterator it = FI.arg_begin(), ie = FI.arg_end();
-         it != ie; ++it) {
+         it != ie; ++it, ++ArgNo) {
       unsigned PreAllocation = AllocatedVFP, PreGPR = AllocatedGPR;
       bool IsHA = false, IsSmallAggr = false;
       const unsigned NumVFPs = 8;
       const unsigned NumGPRs = 8;
-      bool IsNamedArg = ((it - FI.arg_begin()) <
-                         static_cast<signed>(NumRequiredArgs));
+      bool IsNamedArg = ArgNo < NumRequiredArgs;
       it->info = classifyArgumentType(it->type, AllocatedVFP, IsHA,
                                       AllocatedGPR, IsSmallAggr, IsNamedArg);
 
@@ -6989,13 +7022,14 @@ const TargetCodeGenInfo &CodeGenModule::getTargetCodeGenInfo() {
 
     switch (Triple.getOS()) {
     case llvm::Triple::Win32:
-      return *(TheTargetCodeGenInfo = new WinX86_64TargetCodeGenInfo(Types));
+      return *(TheTargetCodeGenInfo =
+                   new WinX86_64TargetCodeGenInfo(Types, HasAVX));
     case llvm::Triple::NaCl:
-      return *(TheTargetCodeGenInfo = new NaClX86_64TargetCodeGenInfo(Types,
-                                                                      HasAVX));
+      return *(TheTargetCodeGenInfo =
+                   new NaClX86_64TargetCodeGenInfo(Types, HasAVX));
     default:
-      return *(TheTargetCodeGenInfo = new X86_64TargetCodeGenInfo(Types,
-                                                                  HasAVX));
+      return *(TheTargetCodeGenInfo =
+                   new X86_64TargetCodeGenInfo(Types, HasAVX));
     }
   }
   case llvm::Triple::hexagon:

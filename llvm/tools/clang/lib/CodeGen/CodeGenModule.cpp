@@ -2418,21 +2418,12 @@ void CodeGenModule::EmitAliasDefinition(GlobalDecl GD) {
   // Set attributes which are particular to an alias; this is a
   // specialization of the attributes which may be set on a global
   // variable/function.
-  if (D->hasAttr<DLLExportAttr>()) {
-    if (const auto *FD = dyn_cast<FunctionDecl>(D)) {
-      // The dllexport attribute is ignored for undefined symbols.
-      if (FD->hasBody())
-        GA->setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
-    } else {
-      GA->setDLLStorageClass(llvm::GlobalValue::DLLExportStorageClass);
-    }
-  } else if (D->hasAttr<WeakAttr>() ||
-             D->hasAttr<WeakRefAttr>() ||
-             D->isWeakImported()) {
+  if (D->hasAttr<WeakAttr>() || D->hasAttr<WeakRefAttr>() ||
+      D->isWeakImported()) {
     GA->setLinkage(llvm::Function::WeakAnyLinkage);
   }
 
-  SetCommonAttributes(D, GA);
+  setAliasAttributes(D, GA);
 }
 
 llvm::Function *CodeGenModule::getIntrinsic(unsigned IID,
@@ -2794,7 +2785,8 @@ GenerateStringLiteral(llvm::Constant *C, llvm::GlobalValue::LinkageTypes LT,
 /// GetAddrOfConstantStringFromLiteral - Return a pointer to a
 /// constant array for the given string literal.
 llvm::GlobalVariable *
-CodeGenModule::GetAddrOfConstantStringFromLiteral(const StringLiteral *S) {
+CodeGenModule::GetAddrOfConstantStringFromLiteral(const StringLiteral *S,
+                                                  StringRef Name) {
   auto Alignment =
       getContext().getAlignOfGlobalVarInChars(S->getType()).getQuantity();
 
@@ -2826,7 +2818,7 @@ CodeGenModule::GetAddrOfConstantStringFromLiteral(const StringLiteral *S) {
     GlobalVariableName = MangledNameBuffer;
   } else {
     LT = llvm::GlobalValue::PrivateLinkage;
-    GlobalVariableName = ".str";
+    GlobalVariableName = Name;
   }
 
   auto GV = GenerateStringLiteral(C, LT, *this, GlobalVariableName, Alignment);

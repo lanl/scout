@@ -381,8 +381,10 @@ static AvailabilityResult CheckAvailability(ASTContext &Context,
     if (Message) {
       Message->clear();
       llvm::raw_string_ostream Out(*Message);
+      VersionTuple VTI(A->getIntroduced());
+      VTI.UseDotAsSeparator();
       Out << "introduced in " << PrettyPlatformName << ' ' 
-          << A->getIntroduced() << HintMessage;
+          << VTI << HintMessage;
     }
 
     return AR_NotYetIntroduced;
@@ -393,8 +395,10 @@ static AvailabilityResult CheckAvailability(ASTContext &Context,
     if (Message) {
       Message->clear();
       llvm::raw_string_ostream Out(*Message);
+      VersionTuple VTO(A->getObsoleted());
+      VTO.UseDotAsSeparator();
       Out << "obsoleted in " << PrettyPlatformName << ' ' 
-          << A->getObsoleted() << HintMessage;
+          << VTO << HintMessage;
     }
     
     return AR_Unavailable;
@@ -405,8 +409,10 @@ static AvailabilityResult CheckAvailability(ASTContext &Context,
     if (Message) {
       Message->clear();
       llvm::raw_string_ostream Out(*Message);
+      VersionTuple VTD(A->getDeprecated());
+      VTD.UseDotAsSeparator();
       Out << "first deprecated in " << PrettyPlatformName << ' '
-          << A->getDeprecated() << HintMessage;
+          << VTD << HintMessage;
     }
     
     return AR_Deprecated;

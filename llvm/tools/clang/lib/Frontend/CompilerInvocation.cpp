@@ -471,6 +471,11 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
                       Args.hasArg(OPT_cl_fast_relaxed_math);
   Opts.UnwindTables = Args.hasArg(OPT_munwind_tables);
   Opts.RelocationModel = Args.getLastArgValue(OPT_mrelocation_model, "pic");
+  Opts.ThreadModel = Args.getLastArgValue(OPT_mthread_model, "posix");
+  if (Opts.ThreadModel != "posix" && Opts.ThreadModel != "single")
+    Diags.Report(diag::err_drv_invalid_value)
+        << Args.getLastArg(OPT_mthread_model)->getAsString(Args)
+        << Opts.ThreadModel;
   Opts.TrapFuncName = Args.getLastArgValue(OPT_ftrap_function_EQ);
   Opts.UseInitArray = Args.hasArg(OPT_fuse_init_array);
 
@@ -1709,6 +1714,9 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       break;
     }
   }
+  // -fsanitize-address-field-padding=N has to be a LangOpt, parse it here.
+  Opts.Sanitize.SanitizeAddressFieldPadding =
+      getLastArgIntValue(Args, OPT_fsanitize_address_field_padding, 0, Diags);
 }
 
 static void ParsePreprocessorArgs(PreprocessorOptions &Opts, ArgList &Args,
