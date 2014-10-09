@@ -818,6 +818,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::OMPOrderedDirectiveClass:
     case Stmt::OMPAtomicDirectiveClass:
     case Stmt::OMPTargetDirectiveClass:
+    case Stmt::OMPTeamsDirectiveClass:
       llvm_unreachable("Stmt should not be in analyzer evaluation loop");
 
     case Stmt::ObjCSubscriptRefExprClass:
@@ -867,7 +868,6 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::ObjCProtocolExprClass:
     case Stmt::ObjCSelectorExprClass:
     case Stmt::ParenListExprClass:
-    case Stmt::PredefinedExprClass:
     case Stmt::ShuffleVectorExprClass:
     case Stmt::ConvertVectorExprClass:
     case Stmt::VAArgExprClass:
@@ -879,6 +879,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
 
     // Cases we intentionally don't evaluate, since they don't need
     // to be explicitly evaluated.
+    case Stmt::PredefinedExprClass:
     case Stmt::AddrLabelExprClass:
     case Stmt::AttributedStmtClass:
     case Stmt::IntegerLiteralClass:

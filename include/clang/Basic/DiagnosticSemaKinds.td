@@ -531,6 +531,11 @@ def warn_cxx_ms_struct :
           "with base classes or virtual functions">,
   DefaultError, InGroup<IncompatibleMSStruct>;
 def err_section_conflict : Error<"%0 causes a section type conflict with %1">;
+def err_no_base_classes : Error<"invalid use of '__super', %0 has no base classes">;
+def err_invalid_super_scope : Error<"invalid use of '__super', "
+  "this keyword can only be used inside class or member function scope">;
+def err_super_in_lambda_unsupported : Error<
+  "use of '__super' inside a lambda is unsupported">;
 
 def warn_pragma_unused_undeclared_var : Warning<
   "undeclared variable %0 used as an argument for '#pragma unused'">,
@@ -581,7 +586,8 @@ def warn_property_attribute : Warning<
   "'%1' attribute on property %0 does not match the property inherited from %2">,
   InGroup<PropertyAttr>;
 def warn_property_types_are_incompatible : Warning<
-  "property type %0 is incompatible with type %1 inherited from %2">;
+  "property type %0 is incompatible with type %1 inherited from %2">,
+  InGroup<DiagGroup<"incompatible-property-type">>;
 def warn_protocol_property_mismatch : Warning<
   "property of type %0 was selected for synthesis">,
   InGroup<DiagGroup<"protocol-property-synthesis-ambiguity">>;
@@ -1924,8 +1930,12 @@ def err_attribute_bad_neon_vector_size : Error<
   "Neon vector size must be 64 or 128 bits">;
 def err_attribute_unsupported : Error<
   "%0 attribute is not supported for this target">;
+// The err_*_attribute_argument_not_int are seperate because they're used by
+// VerifyIntegerConstantExpression.
 def err_aligned_attribute_argument_not_int : Error<
   "'aligned' attribute requires integer constant">;
+def err_align_value_attribute_argument_not_int : Error<
+  "'align_value' attribute requires integer constant">;
 def err_alignas_attribute_wrong_decl_type : Error<
   "%0 attribute cannot be applied to a %select{function parameter|"
   "variable with 'register' storage class|'catch' variable|bit-field}1">;
@@ -1960,6 +1970,12 @@ def warn_attribute_pointers_only : Warning<
 def err_attribute_pointers_only : Error<warn_attribute_pointers_only.Text>;
 def warn_attribute_return_pointers_only : Warning<
   "%0 attribute only applies to return values that are pointers">,
+  InGroup<IgnoredAttributes>;
+def warn_attribute_return_pointers_refs_only : Warning<
+  "%0 attribute only applies to return values that are pointers or references">,
+  InGroup<IgnoredAttributes>;
+def warn_attribute_pointer_or_reference_only : Warning<
+  "%0 attribute only applies to a pointer or reference (%1 is invalid)">,
   InGroup<IgnoredAttributes>;
 def err_attribute_no_member_pointers : Error<
   "%0 attribute cannot be used with pointers to members">;
@@ -2145,6 +2161,8 @@ def err_declspec_thread_on_thread_variable : Error<
   "thread-local storage specifier">;
 def err_attribute_dll_not_extern : Error<
   "%q0 must have external linkage when declared %q1">;
+def err_attribute_dll_thread_local : Error<
+  "%q0 cannot be thread local when declared %q1">;
 def warn_attribute_invalid_on_definition : Warning<
   "'%0' attribute cannot be specified on a definition">,
   InGroup<IgnoredAttributes>;
@@ -2201,7 +2219,7 @@ def warn_attribute_wrong_decl_type : Warning<
   "functions, methods and blocks|functions, methods, and classes|"
   "functions, methods, and parameters|classes|variables|methods|"
   "variables, functions and labels|fields and global variables|structs|"
-  "variables, functions and tag types|thread-local variables|"
+  "variables and typedefs|thread-local variables|"
   "variables and fields|variables, data members and tag types|"
   "types and namespaces|Objective-C interfaces|methods and properties|"
   "struct or union|struct, union or class|types|"
@@ -3024,8 +3042,18 @@ def note_ovl_candidate_bad_target : Note<
     "function (the implicit copy assignment operator)|"
     "function (the implicit move assignment operator)|"
     "constructor (inherited)}0 not viable: call to "
-    "%select{__device__|__global__|__host__|__host__ __device__}1 function from"
-    " %select{__device__|__global__|__host__|__host__ __device__}2 function">;
+    "%select{__device__|__global__|__host__|__host__ __device__|invalid}1 function from"
+    " %select{__device__|__global__|__host__|__host__ __device__|invalid}2 function">;
+def note_implicit_member_target_infer_collision : Note<
+    "implicit %select{"
+    "default constructor|"
+    "copy constructor|"
+    "move constructor|"
+    "copy assignment operator|"
+    "move assignment operator|"
+    "destructor}0 inferred target collision: call to both "
+    "%select{__device__|__global__|__host__|__host__ __device__}1 and "
+    "%select{__device__|__global__|__host__|__host__ __device__}2 members">;
 
 def note_ambiguous_type_conversion: Note<
     "because of ambiguity in conversion %diff{of $ to $|between types}0,1">;
@@ -6879,6 +6907,11 @@ def warn_duplicate_attribute : Warning<
   "attribute %0 is already applied with different parameters">,
   InGroup<IgnoredAttributes>;
 
+def warn_sync_fetch_and_nand_semantics_change : Warning<
+  "the semantics of this intrinsic changed with GCC "
+  "version 4.4 - the newer semantics are provided here">,
+  InGroup<DiagGroup<"sync-fetch-and-nand-semantics-changed">>;
+
 // Type
 def ext_invalid_sign_spec : Extension<"'%0' cannot be signed or unsigned">;
 def warn_receiver_forward_class : Warning<
@@ -7108,8 +7141,8 @@ def err_omp_expected_var_name : Error<
   "expected variable name">;
 def err_omp_required_method : Error<
   "%0 variable must have an accessible, unambiguous %select{default constructor|copy constructor|copy assignment operator|'%2'|destructor}1">;
-def err_omp_task_predetermined_firstprivate_required_method : Error<
-  "predetermined as a firstprivate in a task construct variable must have an accessible, unambiguous %select{copy constructor|destructor}0">;
+def note_omp_task_predetermined_firstprivate_here : Note<
+  "predetermined as a firstprivate in a task construct here">;
 def err_omp_clause_ref_type_arg : Error<
   "arguments of OpenMP clause '%0' cannot be of reference type %1">;
 def err_omp_task_predetermined_firstprivate_ref_type_arg : Error<
@@ -7168,6 +7201,9 @@ def err_omp_linear_expected_int_or_ptr : Error<
 def warn_omp_linear_step_zero : Warning<
   "zero linear step (%0 %select{|and other variables in clause }1should probably be const)">,
   InGroup<OpenMPClauses>;
+def warn_omp_alignment_not_power_of_two : Warning<
+  "aligned clause will be ignored because the requested alignment is not a power of 2">,
+  InGroup<OpenMPClauses>;
 def err_omp_aligned_expected_array_or_ptr : Error<
   "argument of aligned clause should be array"
   "%select{ or pointer|, pointer, reference to array or reference to pointer}1"
@@ -7195,10 +7231,16 @@ def err_omp_loop_incr_not_compatible : Error<
   "on each iteration of OpenMP for loop">;
 def note_omp_loop_cond_requres_compatible_incr : Note<
   "loop step is expected to be %select{negative|positive}0 due to this condition">;
+def err_omp_loop_diff_cxx : Error<
+  "could not calculate number of iterations calling 'operator-' with "
+  "upper and lower loop bounds">;
 def err_omp_loop_cannot_use_stmt : Error<
   "'%0' statement cannot be used in OpenMP for loop">;
 def err_omp_simd_region_cannot_use_stmt : Error<
   "'%0' statement cannot be used in OpenMP simd region">;
+def warn_omp_loop_64_bit_var : Warning<
+  "OpenMP loop iteration variable cannot have more than 64 bits size and will be narrowed">,
+  InGroup<OpenMPLoopForm>;
 def err_omp_unknown_reduction_identifier : Error<
   "incorrect reduction identifier, expected one of '+', '-', '*', '&', '|', '^', '&&', '||', 'min' or 'max'">;
 def err_omp_reduction_type_array : Error<
@@ -7220,7 +7262,8 @@ def err_omp_reduction_id_not_compatible : Error<
 def err_omp_prohibited_region : Error<
   "region cannot be%select{| closely}0 nested inside '%1' region"
   "%select{|; perhaps you forget to enclose 'omp %3' directive into a parallel region?|"
-  "; perhaps you forget to enclose 'omp %3' directive into a for or a parallel for region with 'ordered' clause?}2">;
+  "; perhaps you forget to enclose 'omp %3' directive into a for or a parallel for region with 'ordered' clause?|"
+  "; perhaps you forget to enclose 'omp %3' directive into a target region?}2">;
 def err_omp_prohibited_region_simd : Error<
   "OpenMP constructs may not be nested inside a simd region">;
 def err_omp_prohibited_region_atomic : Error<
@@ -7263,6 +7306,12 @@ def err_omp_atomic_several_clauses : Error<
   "directive '#pragma omp atomic' cannot contain more than one 'read', 'write', 'update' or 'capture' clause">;
 def note_omp_atomic_previous_clause : Note<
   "'%0' clause used here">;
+def err_omp_target_contains_not_only_teams : Error<
+  "target construct with nested teams region contains statements outside of the teams construct">;
+def note_omp_nested_teams_construct_here : Note<
+  "nested teams construct here">;
+def note_omp_nested_statement_here : Note<
+  "%select{statement|directive}0 outside teams construct here">;
 } // end of OpenMP category
 
 let CategoryName = "Related Result Type Issue" in {

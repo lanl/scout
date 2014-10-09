@@ -353,7 +353,9 @@ void Sema::ActOnParamDefaultArgumentError(Decl *param,
   Param->setInvalidDecl();
   UnparsedDefaultArgLocs.erase(Param);
   Param->setDefaultArg(new(Context)
-                       OpaqueValueExpr(EqualLoc, Param->getType(), VK_RValue));
+                       OpaqueValueExpr(EqualLoc,
+                                       Param->getType().getNonReferenceType(),
+                                       VK_RValue));
 }
 
 /// CheckExtraCXXDefaultArguments - Check for any extra default
@@ -2221,13 +2223,16 @@ namespace {
                               llvm::SmallPtrSetImpl<ValueDecl*> &Decls)
       : Inherited(S.Context), S(S), Decls(Decls) { }
 
-    void HandleMemberExpr(MemberExpr *ME, bool CheckReferenceOnly) {
+    void HandleMemberExpr(MemberExpr *ME, bool CheckReferenceOnly,
+                          bool AddressOf) {
       if (isa<EnumConstantDecl>(ME->getMemberDecl()))
         return;
 
       // FieldME is the inner-most MemberExpr that is not an anonymous struct
       // or union.
       MemberExpr *FieldME = ME;
+
+      bool AllPODFields = FieldME->getType().isPODType(S.Context);
 
       Expr *Base = ME;
       while (isa<MemberExpr>(Base)) {
@@ -2240,10 +2245,16 @@ namespace {
           if (!FD->isAnonymousStructOrUnion())
             FieldME = ME;
 
-        Base = ME->getBase();
+        if (!FieldME->getType().isPODType(S.Context))
+          AllPODFields = false;
+
+        Base = ME->getBase()->IgnoreParenImpCasts();
       }
 
       if (!isa<CXXThisExpr>(Base))
+        return;
+
+      if (AddressOf && AllPODFields)
         return;
 
       ValueDecl* FoundVD = FieldME->getMemberDecl();
@@ -2254,7 +2265,7 @@ namespace {
       const bool IsReference = FoundVD->getType()->isReferenceType();
 
       // Prevent double warnings on use of unbounded references.
-      if (IsReference != CheckReferenceOnly)
+      if (CheckReferenceOnly && !IsReference)
         return;
 
       unsigned diag = IsReference
@@ -2268,44 +2279,51 @@ namespace {
 
     }
 
-    void HandleValue(Expr *E) {
+    void HandleValue(Expr *E, bool AddressOf) {
       E = E->IgnoreParens();
 
       if (MemberExpr *ME = dyn_cast<MemberExpr>(E)) {
-        HandleMemberExpr(ME, false /*CheckReferenceOnly*/);
+        HandleMemberExpr(ME, false /*CheckReferenceOnly*/,
+                         AddressOf /*AddressOf*/);
         return;
       }
 
       if (ConditionalOperator *CO = dyn_cast<ConditionalOperator>(E)) {
-        HandleValue(CO->getTrueExpr());
-        HandleValue(CO->getFalseExpr());
+        Visit(CO->getCond());
+        HandleValue(CO->getTrueExpr(), AddressOf);
+        HandleValue(CO->getFalseExpr(), AddressOf);
         return;
       }
 
       if (BinaryConditionalOperator *BCO =
               dyn_cast<BinaryConditionalOperator>(E)) {
-        HandleValue(BCO->getFalseExpr());
+        Visit(BCO->getCond());
+        HandleValue(BCO->getFalseExpr(), AddressOf);
         return;
       }
 
       if (OpaqueValueExpr *OVE = dyn_cast<OpaqueValueExpr>(E)) {
-        HandleValue(OVE->getSourceExpr());
+        HandleValue(OVE->getSourceExpr(), AddressOf);
         return;
       }
 
       if (BinaryOperator *BO = dyn_cast<BinaryOperator>(E)) {
         switch (BO->getOpcode()) {
         default:
-          return;
+          break;
         case(BO_PtrMemD):
         case(BO_PtrMemI):
-          HandleValue(BO->getLHS());
+          HandleValue(BO->getLHS(), AddressOf);
+          Visit(BO->getRHS());
           return;
         case(BO_Comma):
-          HandleValue(BO->getRHS());
+          Visit(BO->getLHS());
+          HandleValue(BO->getRHS(), AddressOf);
           return;
         }
       }
+
+      Visit(E);
     }
 
     void CheckInitializer(Expr *E, const CXXConstructorDecl *FieldConstructor,
@@ -2324,14 +2342,14 @@ namespace {
 
     void VisitMemberExpr(MemberExpr *ME) {
       // All uses of unbounded reference fields will warn.
-      HandleMemberExpr(ME, true /*CheckReferenceOnly*/);
-
-      Inherited::VisitMemberExpr(ME);
+      HandleMemberExpr(ME, true /*CheckReferenceOnly*/, false /*AddressOf*/);
     }
 
     void VisitImplicitCastExpr(ImplicitCastExpr *E) {
-      if (E->getCastKind() == CK_LValueToRValue)
-        HandleValue(E->getSubExpr());
+      if (E->getCastKind() == CK_LValueToRValue) {
+        HandleValue(E->getSubExpr(), false /*AddressOf*/);
+        return;
+      }
 
       Inherited::VisitImplicitCastExpr(E);
     }
@@ -2339,23 +2357,24 @@ namespace {
     void VisitCXXConstructExpr(CXXConstructExpr *E) {
       if (E->getConstructor()->isCopyConstructor()) {
         Expr *ArgExpr = E->getArg(0);
-        if (ImplicitCastExpr* ICE = dyn_cast<ImplicitCastExpr>(ArgExpr)) {
-          if (ICE->getCastKind() == CK_NoOp) {
+        if (InitListExpr *ILE = dyn_cast<InitListExpr>(ArgExpr))
+          if (ILE->getNumInits() == 1)
+            ArgExpr = ILE->getInit(0);
+        if (ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(ArgExpr))
+          if (ICE->getCastKind() == CK_NoOp)
             ArgExpr = ICE->getSubExpr();
-          }
-        }
-
-        if (MemberExpr *ME = dyn_cast<MemberExpr>(ArgExpr)) {
-          HandleMemberExpr(ME, false /*CheckReferenceOnly*/);
-        }
+        HandleValue(ArgExpr, false /*AddressOf*/);
+        return;
       }
       Inherited::VisitCXXConstructExpr(E);
     }
 
     void VisitCXXMemberCallExpr(CXXMemberCallExpr *E) {
       Expr *Callee = E->getCallee();
-      if (isa<MemberExpr>(Callee))
-        HandleValue(Callee);
+      if (isa<MemberExpr>(Callee)) {
+        HandleValue(Callee, false /*AddressOf*/);
+        return;
+      }
 
       Inherited::VisitCXXMemberCallExpr(E);
     }
@@ -2365,7 +2384,8 @@ namespace {
       if (E->getNumArgs() == 1) {
         if (FunctionDecl *FD = E->getDirectCallee()) {
           if (FD->getIdentifier() && FD->getIdentifier()->isStr("move")) {
-            HandleValue(E->getArg(0));
+            HandleValue(E->getArg(0), false /*AddressOf*/);
+            return;
           }
         }
       }
@@ -2383,15 +2403,25 @@ namespace {
               DeclsToRemove.push_back(FD);
 
       if (E->isCompoundAssignmentOp()) {
-        HandleValue(E->getLHS());
+        HandleValue(E->getLHS(), false /*AddressOf*/);
+        Visit(E->getRHS());
+        return;
       }
 
       Inherited::VisitBinaryOperator(E);
     }
 
     void VisitUnaryOperator(UnaryOperator *E) {
-      if (E->isIncrementDecrementOp())
-        HandleValue(E->getSubExpr());
+      if (E->isIncrementDecrementOp()) {
+        HandleValue(E->getSubExpr(), false /*AddressOf*/);
+        return;
+      }
+      if (E->getOpcode() == UO_AddrOf) {
+        if (MemberExpr *ME = dyn_cast<MemberExpr>(E->getSubExpr())) {
+          HandleValue(ME->getBase(), true /*AddressOf*/);
+          return;
+        }
+      }
 
       Inherited::VisitUnaryOperator(E);
     }
@@ -5575,6 +5605,13 @@ bool Sema::ShouldDeleteSpecialMember(CXXMethodDecl *MD, CXXSpecialMember CSM,
   if (SMI.shouldDeleteForAllConstMembers())
     return true;
 
+  if (getLangOpts().CUDA) {
+    // We should delete the special member in CUDA mode if target inference
+    // failed.
+    return inferCUDATargetForImplicitSpecialMember(RD, CSM, MD, SMI.ConstArg,
+                                                   Diagnose);
+  }
+
   return false;
 }
 
@@ -6984,7 +7021,7 @@ NamespaceDecl *Sema::getOrCreateStdNamespace() {
                                          /*PrevDecl=*/nullptr);
     getStdNamespace()->setImplicit(true);
   }
-  
+
   return getStdNamespace();
 }
 
@@ -8516,7 +8553,7 @@ CXXConstructorDecl *Sema::DeclareImplicitDefaultConstructor(
   //   user-declared constructor for class X, a default constructor is
   //   implicitly declared. An implicitly-declared default constructor
   //   is an inline public member of its class.
-  assert(ClassDecl->needsImplicitDefaultConstructor() && 
+  assert(ClassDecl->needsImplicitDefaultConstructor() &&
          "Should not build implicit default constructor!");
 
   DeclaringSpecialMember DSM(*this, ClassDecl, CXXDefaultConstructor);
@@ -8540,7 +8577,13 @@ CXXConstructorDecl *Sema::DeclareImplicitDefaultConstructor(
       /*isImplicitlyDeclared=*/true, Constexpr);
   DefaultCon->setAccess(AS_public);
   DefaultCon->setDefaulted();
-  DefaultCon->setImplicit();
+
+  if (getLangOpts().CUDA) {
+    inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXDefaultConstructor,
+                                            DefaultCon,
+                                            /* ConstRHS */ false,
+                                            /* Diagnose */ false);
+  }
 
   // Build an exception specification pointing back at this constructor.
   FunctionProtoType::ExtProtoInfo EPI = getImplicitMethodEPI(*this, DefaultCon);
@@ -8582,6 +8625,11 @@ void Sema::DefineImplicitDefaultConstructor(SourceLocation CurrentLocation,
     Constructor->setInvalidDecl();
     return;
   }
+
+  // The exception specification is needed because we are defining the
+  // function.
+  ResolveExceptionSpec(CurrentLocation,
+                       Constructor->getType()->castAs<FunctionProtoType>());
 
   SourceLocation Loc = Constructor->getLocEnd().isValid()
                            ? Constructor->getLocEnd()
@@ -8995,7 +9043,13 @@ CXXDestructorDecl *Sema::DeclareImplicitDestructor(CXXRecordDecl *ClassDecl) {
                                   /*isImplicitlyDeclared=*/true);
   Destructor->setAccess(AS_public);
   Destructor->setDefaulted();
-  Destructor->setImplicit();
+
+  if (getLangOpts().CUDA) {
+    inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXDestructor,
+                                            Destructor,
+                                            /* ConstRHS */ false,
+                                            /* Diagnose */ false);
+  }
 
   // Build an exception specification pointing back at this destructor.
   FunctionProtoType::ExtProtoInfo EPI = getImplicitMethodEPI(*this, Destructor);
@@ -9046,6 +9100,11 @@ void Sema::DefineImplicitDestructor(SourceLocation CurrentLocation,
     Destructor->setInvalidDecl();
     return;
   }
+
+  // The exception specification is needed because we are defining the
+  // function.
+  ResolveExceptionSpec(CurrentLocation,
+                       Destructor->getType()->castAs<FunctionProtoType>());
 
   SourceLocation Loc = Destructor->getLocEnd().isValid()
                            ? Destructor->getLocEnd()
@@ -9616,6 +9675,13 @@ CXXMethodDecl *Sema::DeclareImplicitCopyAssignment(CXXRecordDecl *ClassDecl) {
   CopyAssignment->setDefaulted();
   CopyAssignment->setImplicit();
 
+  if (getLangOpts().CUDA) {
+    inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXCopyAssignment,
+                                            CopyAssignment,
+                                            /* ConstRHS */ Const,
+                                            /* Diagnose */ false);
+  }
+
   // Build an exception specification pointing back at this member.
   FunctionProtoType::ExtProtoInfo EPI =
       getImplicitMethodEPI(*this, CopyAssignment);
@@ -9890,6 +9956,11 @@ void Sema::DefineImplicitCopyAssignment(SourceLocation CurrentLocation,
     }
   }
 
+  // The exception specification is needed because we are defining the
+  // function.
+  ResolveExceptionSpec(CurrentLocation,
+                       CopyAssignOperator->getType()->castAs<FunctionProtoType>());
+
   if (Invalid) {
     CopyAssignOperator->setInvalidDecl();
     return;
@@ -9992,6 +10063,13 @@ CXXMethodDecl *Sema::DeclareImplicitMoveAssignment(CXXRecordDecl *ClassDecl) {
   MoveAssignment->setAccess(AS_public);
   MoveAssignment->setDefaulted();
   MoveAssignment->setImplicit();
+
+  if (getLangOpts().CUDA) {
+    inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXMoveAssignment,
+                                            MoveAssignment,
+                                            /* ConstRHS */ false,
+                                            /* Diagnose */ false);
+  }
 
   // Build an exception specification pointing back at this member.
   FunctionProtoType::ExtProtoInfo EPI =
@@ -10312,6 +10390,11 @@ void Sema::DefineImplicitMoveAssignment(SourceLocation CurrentLocation,
     }
   }
 
+  // The exception specification is needed because we are defining the
+  // function.
+  ResolveExceptionSpec(CurrentLocation,
+                       MoveAssignOperator->getType()->castAs<FunctionProtoType>());
+
   if (Invalid) {
     MoveAssignOperator->setInvalidDecl();
     return;
@@ -10414,6 +10497,13 @@ CXXConstructorDecl *Sema::DeclareImplicitCopyConstructor(
   CopyConstructor->setAccess(AS_public);
   CopyConstructor->setDefaulted();
 
+  if (getLangOpts().CUDA) {
+    inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXCopyConstructor,
+                                            CopyConstructor,
+                                            /* ConstRHS */ Const,
+                                            /* Diagnose */ false);
+  }
+
   // Build an exception specification pointing back at this member.
   FunctionProtoType::ExtProtoInfo EPI =
       getImplicitMethodEPI(*this, CopyConstructor);
@@ -10480,6 +10570,11 @@ void Sema::DefineImplicitCopyConstructor(SourceLocation CurrentLocation,
     CopyConstructor->setBody(
         ActOnCompoundStmt(Loc, Loc, None, /*isStmtExpr=*/false).getAs<Stmt>());
   }
+
+  // The exception specification is needed because we are defining the
+  // function.
+  ResolveExceptionSpec(CurrentLocation,
+                       CopyConstructor->getType()->castAs<FunctionProtoType>());
 
   CopyConstructor->markUsed(Context);
   MarkVTableUsed(CurrentLocation, ClassDecl);
@@ -10579,6 +10674,13 @@ CXXConstructorDecl *Sema::DeclareImplicitMoveConstructor(
   MoveConstructor->setAccess(AS_public);
   MoveConstructor->setDefaulted();
 
+  if (getLangOpts().CUDA) {
+    inferCUDATargetForImplicitSpecialMember(ClassDecl, CXXMoveConstructor,
+                                            MoveConstructor,
+                                            /* ConstRHS */ false,
+                                            /* Diagnose */ false);
+  }
+
   // Build an exception specification pointing back at this member.
   FunctionProtoType::ExtProtoInfo EPI =
       getImplicitMethodEPI(*this, MoveConstructor);
@@ -10640,6 +10742,11 @@ void Sema::DefineImplicitMoveConstructor(SourceLocation CurrentLocation,
     MoveConstructor->setBody(ActOnCompoundStmt(
         Loc, Loc, None, /*isStmtExpr=*/ false).getAs<Stmt>());
   }
+
+  // The exception specification is needed because we are defining the
+  // function.
+  ResolveExceptionSpec(CurrentLocation,
+                       MoveConstructor->getType()->castAs<FunctionProtoType>());
 
   MoveConstructor->markUsed(Context);
   MarkVTableUsed(CurrentLocation, ClassDecl);
@@ -12212,8 +12319,12 @@ NamedDecl *Sema::ActOnFriendFunctionDecl(Scope *S, Declarator &D,
     }
 
     // Mark templated-scope function declarations as unsupported.
-    if (FD->getNumTemplateParameterLists())
+    if (FD->getNumTemplateParameterLists() && SS.isValid()) {
+      Diag(FD->getLocation(), diag::warn_template_qualified_friend_unsupported)
+        << SS.getScopeRep() << SS.getRange()
+        << cast<CXXRecordDecl>(CurContext);
       FrD->setUnsupportedFriend(true);
+    }
   }
 
   return ND;
@@ -12313,11 +12424,6 @@ void Sema::SetDeclDefaulted(Decl *Dcl, SourceLocation DefaultLoc) {
       return;
 
     CheckExplicitlyDefaultedSpecialMember(MD);
-
-    // The exception specification is needed because we are defining the
-    // function.
-    ResolveExceptionSpec(DefaultLoc,
-                         MD->getType()->castAs<FunctionProtoType>());
 
     if (MD->isInvalidDecl())
       return;

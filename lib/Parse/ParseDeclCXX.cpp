@@ -493,6 +493,12 @@ Decl *Parser::ParseUsingDeclaration(unsigned Context,
   if (TryConsumeToken(tok::kw_typename, TypenameLoc))
     HasTypenameKeyword = true;
 
+  if (Tok.is(tok::kw___super)) {
+    Diag(Tok.getLocation(), diag::err_super_in_using_declaration);
+    SkipUntil(tok::semi);
+    return nullptr;
+  }
+
   // Parse nested-name-specifier.
   IdentifierInfo *LastII = nullptr;
   ParseOptionalCXXScopeSpecifier(SS, ParsedType(), /*EnteringContext=*/false,
@@ -2101,7 +2107,8 @@ void Parser::ParseCXXClassMemberDeclaration(AccessSpecifier AS,
   // Access declarations.
   bool MalformedTypeSpec = false;
   if (!TemplateInfo.Kind &&
-      (Tok.is(tok::identifier) || Tok.is(tok::coloncolon))) {
+      (Tok.is(tok::identifier) || Tok.is(tok::coloncolon) ||
+       Tok.is(tok::kw___super))) {
     if (TryAnnotateCXXScopeToken())
       MalformedTypeSpec = true;
 
@@ -2670,13 +2677,43 @@ void Parser::ParseCXXMemberSpecification(SourceLocation RecordLoc,
 
   if (Tok.is(tok::colon)) {
     ParseBaseClause(TagDecl);
-
     if (!Tok.is(tok::l_brace)) {
-      Diag(Tok, diag::err_expected_lbrace_after_base_specifiers);
-
-      if (TagDecl)
-        Actions.ActOnTagDefinitionError(getCurScope(), TagDecl);
-      return;
+      bool SuggestFixIt = false;
+      SourceLocation BraceLoc = PP.getLocForEndOfToken(PrevTokLocation);
+      if (Tok.isAtStartOfLine()) {
+        switch (Tok.getKind()) {
+        case tok::kw_private:
+        case tok::kw_protected:
+        case tok::kw_public:
+          SuggestFixIt = NextToken().getKind() == tok::colon;
+          break;
+        case tok::kw_static_assert:
+        case tok::r_brace:
+        case tok::kw_using:
+        // base-clause can have simple-template-id; 'template' can't be there
+        case tok::kw_template:
+          SuggestFixIt = true;
+          break;
+        case tok::identifier:
+          SuggestFixIt = isConstructorDeclarator(true);
+          break;
+        default:
+          SuggestFixIt = isCXXSimpleDeclaration(/*AllowForRangeDecl=*/false);
+          break;
+        }
+      }
+      DiagnosticBuilder LBraceDiag =
+          Diag(BraceLoc, diag::err_expected_lbrace_after_base_specifiers);
+      if (SuggestFixIt) {
+        LBraceDiag << FixItHint::CreateInsertion(BraceLoc, " {");
+        // Try recovering from missing { after base-clause.
+        PP.EnterToken(Tok);
+        Tok.setKind(tok::l_brace);
+      } else {
+        if (TagDecl)
+          Actions.ActOnTagDefinitionError(getCurScope(), TagDecl);
+        return;
+      }
     }
   }
 
