@@ -75,7 +75,7 @@ namespace llvm {
 
     explicit DIScoutDerivedType(const MDNode* N = 0) : DIDerivedType(N) {}
 
-    unsigned getScoutFlags() const { return getUnsignedField(10); }
+    unsigned getScoutFlags() const { return getUnsignedField(4); }
 
     bool isCellLocated() const { 
       return (getScoutFlags() & FlagMeshFieldCellLocated) != 0;
@@ -101,11 +101,11 @@ namespace llvm {
     unsigned getDimension(int dim) const {
       switch(dim){
       case 0:
-        return getUnsignedField(15);
+        return getUnsignedField(8);
       case 1:
-        return getUnsignedField(16);
+        return getUnsignedField(9);
       case 2:
-        return getUnsignedField(17);
+        return getUnsignedField(10);
       default:
         assert(false && "Invalid mesh dimension");
       }
