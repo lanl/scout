@@ -179,12 +179,12 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
 
     Builder.CreateStore(intValue, field);
   }
-  // set unused dimensions to size 1 this makes the codegen for forall/renderall easier
+  // set unused dimensions to size 0
   for(size_t i = rank; i< 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
     llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(MeshAddr, 0, nfields+i, IRNameStr);
-    llvm::Value* ConstantOne =  llvm::ConstantInt::get(Int32Ty, 1);
-    Builder.CreateStore(ConstantOne, field);
+    llvm::Value* ConstantZero =  llvm::ConstantInt::get(Int32Ty, 0);
+    Builder.CreateStore(ConstantZero, field);
   }
   //set rank this makes Codegen easier for rank() builtin
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
@@ -192,6 +192,8 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
   Builder.CreateStore(llvm::ConstantInt::get(Int32Ty, rank), Rank);
 }
 
+// SC_TODO: this should not be a member function, as it calls dims.size()
+// and should only be used in this file.
 void CodeGenFunction::GetMeshDimensions(const MeshType* MT,
                                         SmallVector<llvm::Value*, 3>& DS){
   MeshType::MeshDimensions dims = MT->dimensions();
@@ -231,6 +233,7 @@ void CodeGenFunction::GetMeshDimensions(const MeshType* MT,
   }
 }
 
+//SC_TODO: this should go away completely as it uses rank.
 void
 CodeGenFunction::GetNumMeshItems(SmallVector<llvm::Value*, 3>& Dimensions,
                                  llvm::Value** numCells,
@@ -397,9 +400,9 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
         Args.push_back(Dimensions[i]);
       }
       
-      // if doesn't have 3 dims, add 1's for the dims
+      // if doesn't have 3 dims, add 0's for the dims
       for(unsigned int i = Dimensions.size(); i < 3; i++) {
-        Args.push_back(Builder.getInt64(1));
+        Args.push_back(Builder.getInt64(0));
       }
 
       Args.push_back(Builder.CreateLoad(

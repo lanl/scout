@@ -90,6 +90,31 @@ static Constant *GetTagConstant(LLVMContext &VMContext, unsigned Tag) {
   return ConstantInt::get(Type::getInt32Ty(VMContext), Tag | LLVMDebugVersion);
 }
 
+namespace {
+  class HeaderBuilder {
+    SmallVector<char, 256> Chars;
+    
+  public:
+    explicit HeaderBuilder(Twine T) { T.toVector(Chars); }
+    HeaderBuilder(const HeaderBuilder &X) : Chars(X.Chars) {}
+    HeaderBuilder(HeaderBuilder &&X) : Chars(std::move(X.Chars)) {}
+    
+    template <class Twineable> HeaderBuilder &concat(Twineable &&X) {
+      Chars.push_back(0);
+      Twine(X).toVector(Chars);
+      return *this;
+    }
+    
+    MDString *get(LLVMContext &Context) const {
+      return MDString::get(Context, StringRef(Chars.begin(), Chars.size()));
+    }
+    
+    static HeaderBuilder get(unsigned Tag) {
+      return HeaderBuilder("0x" + Twine::utohexstr(Tag));
+    }
+  };
+}
+
 // ----------------------------------------------------
 
 DICompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
@@ -106,24 +131,21 @@ DICompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
     DIType VTableHolder,
     StringRef UniqueIdentifier
 ) {
- // TAG_structure_type is encoded in DICompositeType format.
+  // TAG_structure_type is encoded in DICompositeType format.
   Value *Elts[] = {
-    GetTagConstant(VMContext, dwarf::DW_TAG_SCOUT_uniform_mesh_type),
-    File.getFileNode(),
-    DIScope(getNonCompileUnitScope(Context)).getRef(),
-    MDString::get(VMContext, Name),
-    ConstantInt::get(Type::getInt32Ty(VMContext), LineNumber),
-    ConstantInt::get(Type::getInt64Ty(VMContext), SizeInBits),
-    ConstantInt::get(Type::getInt64Ty(VMContext), AlignInBits),
-    ConstantInt::get(Type::getInt32Ty(VMContext), 0),
-    ConstantInt::get(Type::getInt32Ty(VMContext), Flags),
-    DerivedFrom.getRef(),
-    Elements,
-    ConstantInt::get(Type::getInt32Ty(VMContext), RunTimeLang),
-    VTableHolder.getRef(),
-    NULL,
-    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier),
-
+    HeaderBuilder::get(dwarf::DW_TAG_SCOUT_uniform_mesh_type)
+    .concat(Name)
+    .concat(LineNumber)
+    .concat(SizeInBits)
+    .concat(AlignInBits)
+    .concat(0)
+    .concat(Flags)
+    .concat(RunTimeLang)
+    .get(VMContext),
+    File.getFileNode(), DIScope(getNonCompileUnitScope(Context)).getRef(),
+    DerivedFrom.getRef(), Elements, VTableHolder.getRef(), nullptr,
+    UniqueIdentifier.empty() ? nullptr
+    : MDString::get(VMContext, UniqueIdentifier),
     // These are the Scout-specific fields, we need to keep an eye on this when we merge
     // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
     // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
@@ -134,8 +156,9 @@ DICompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
   DIScoutCompositeType R(MDNode::get(VMContext, Elts));
   assert(R.isCompositeType() &&
          "createUniformMeshType should return a DICompositeType");
-  if (!UniqueIdentifier.empty())
+  if (!UniqueIdentifier.empty()){
     retainType(R);
+  }
   return R;
 }
 
@@ -152,24 +175,21 @@ DICompositeType DIBuilder::createStructuredMeshType(DIDescriptor Context,
     unsigned RunTimeLang,
     DIType VTableHolder,
     StringRef UniqueIdentifier) {
- // TAG_structure_type is encoded in DICompositeType format.
+  // TAG_structure_type is encoded in DICompositeType format.
   Value *Elts[] = {
-    GetTagConstant(VMContext, dwarf::DW_TAG_SCOUT_structured_mesh_type),
-    File.getFileNode(),
-    DIScope(getNonCompileUnitScope(Context)).getRef(),
-    MDString::get(VMContext, Name),
-    ConstantInt::get(Type::getInt32Ty(VMContext), LineNumber),
-    ConstantInt::get(Type::getInt64Ty(VMContext), SizeInBits),
-    ConstantInt::get(Type::getInt64Ty(VMContext), AlignInBits),
-    ConstantInt::get(Type::getInt32Ty(VMContext), 0),
-    ConstantInt::get(Type::getInt32Ty(VMContext), Flags),
-    DerivedFrom.getRef(),
-    Elements,
-    ConstantInt::get(Type::getInt32Ty(VMContext), RunTimeLang),
-    VTableHolder.getRef(),
-    NULL,
-    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier),
-
+    HeaderBuilder::get(dwarf::DW_TAG_SCOUT_uniform_mesh_type)
+    .concat(Name)
+    .concat(LineNumber)
+    .concat(SizeInBits)
+    .concat(AlignInBits)
+    .concat(0)
+    .concat(Flags)
+    .concat(RunTimeLang)
+    .get(VMContext),
+    File.getFileNode(), DIScope(getNonCompileUnitScope(Context)).getRef(),
+    DerivedFrom.getRef(), Elements, VTableHolder.getRef(), nullptr,
+    UniqueIdentifier.empty() ? nullptr
+    : MDString::get(VMContext, UniqueIdentifier),
     // These are the Scout-specific fields, we need to keep an eye on this when we merge
     // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
     // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
@@ -180,8 +200,9 @@ DICompositeType DIBuilder::createStructuredMeshType(DIDescriptor Context,
   DIScoutCompositeType R(MDNode::get(VMContext, Elts));
   assert(R.isCompositeType() &&
          "createStructuredMeshType should return a DICompositeType");
-  if (!UniqueIdentifier.empty())
+  if (!UniqueIdentifier.empty()){
     retainType(R);
+  }
   return R;
 }
 
@@ -199,23 +220,21 @@ DICompositeType DIBuilder::createRectilinearMeshType(DIDescriptor Context,
     DIType VTableHolder,
     StringRef UniqueIdentifier) {
  // TAG_structure_type is encoded in DICompositeType format.
+  // TAG_structure_type is encoded in DICompositeType format.
   Value *Elts[] = {
-    GetTagConstant(VMContext, dwarf::DW_TAG_SCOUT_rectilinear_mesh_type),
-    File.getFileNode(),
-    DIScope(getNonCompileUnitScope(Context)).getRef(),
-    MDString::get(VMContext, Name),
-    ConstantInt::get(Type::getInt32Ty(VMContext), LineNumber),
-    ConstantInt::get(Type::getInt64Ty(VMContext), SizeInBits),
-    ConstantInt::get(Type::getInt64Ty(VMContext), AlignInBits),
-    ConstantInt::get(Type::getInt32Ty(VMContext), 0),
-    ConstantInt::get(Type::getInt32Ty(VMContext), Flags),
-    DerivedFrom.getRef(),
-    Elements,
-    ConstantInt::get(Type::getInt32Ty(VMContext), RunTimeLang),
-    VTableHolder.getRef(),
-    NULL,
-    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier),
-
+    HeaderBuilder::get(dwarf::DW_TAG_SCOUT_uniform_mesh_type)
+    .concat(Name)
+    .concat(LineNumber)
+    .concat(SizeInBits)
+    .concat(AlignInBits)
+    .concat(0)
+    .concat(Flags)
+    .concat(RunTimeLang)
+    .get(VMContext),
+    File.getFileNode(), DIScope(getNonCompileUnitScope(Context)).getRef(),
+    DerivedFrom.getRef(), Elements, VTableHolder.getRef(), nullptr,
+    UniqueIdentifier.empty() ? nullptr
+    : MDString::get(VMContext, UniqueIdentifier),
     // These are the Scout-specific fields, we need to keep an eye on this when we merge
     // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
     // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
@@ -226,8 +245,9 @@ DICompositeType DIBuilder::createRectilinearMeshType(DIDescriptor Context,
   DIScoutCompositeType R(MDNode::get(VMContext, Elts));
   assert(R.isCompositeType() &&
          "createRectilinearMeshType should return a DICompositeType");
-  if (!UniqueIdentifier.empty())
+  if (!UniqueIdentifier.empty()){
     retainType(R);
+  }
   return R;
 }
 
@@ -244,24 +264,21 @@ DICompositeType DIBuilder::createUnstructuredMeshType(DIDescriptor Context,
     unsigned RunTimeLang,
     DIType VTableHolder,
     StringRef UniqueIdentifier) {
- // TAG_structure_type is encoded in DICompositeType format.
+  // TAG_structure_type is encoded in DICompositeType format.
   Value *Elts[] = {
-    GetTagConstant(VMContext, dwarf::DW_TAG_SCOUT_unstructured_mesh_type),
-    File.getFileNode(),
-    DIScope(getNonCompileUnitScope(Context)).getRef(),
-    MDString::get(VMContext, Name),
-    ConstantInt::get(Type::getInt32Ty(VMContext), LineNumber),
-    ConstantInt::get(Type::getInt64Ty(VMContext), SizeInBits),
-    ConstantInt::get(Type::getInt64Ty(VMContext), AlignInBits),
-    ConstantInt::get(Type::getInt32Ty(VMContext), 0),
-    ConstantInt::get(Type::getInt32Ty(VMContext), Flags),
-    DerivedFrom.getRef(),
-    Elements,
-    ConstantInt::get(Type::getInt32Ty(VMContext), RunTimeLang),
-    VTableHolder.getRef(),
-    NULL,
-    UniqueIdentifier.empty() ? NULL : MDString::get(VMContext, UniqueIdentifier),
-
+    HeaderBuilder::get(dwarf::DW_TAG_SCOUT_uniform_mesh_type)
+    .concat(Name)
+    .concat(LineNumber)
+    .concat(SizeInBits)
+    .concat(AlignInBits)
+    .concat(0)
+    .concat(Flags)
+    .concat(RunTimeLang)
+    .get(VMContext),
+    File.getFileNode(), DIScope(getNonCompileUnitScope(Context)).getRef(),
+    DerivedFrom.getRef(), Elements, VTableHolder.getRef(), nullptr,
+    UniqueIdentifier.empty() ? nullptr
+    : MDString::get(VMContext, UniqueIdentifier),
     // These are the Scout-specific fields, we need to keep an eye on this when we merge
     // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
     // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
@@ -272,8 +289,9 @@ DICompositeType DIBuilder::createUnstructuredMeshType(DIDescriptor Context,
   DIScoutCompositeType R(MDNode::get(VMContext, Elts));
   assert(R.isCompositeType() &&
          "createUnstructuredMeshType should return a DICompositeType");
-  if (!UniqueIdentifier.empty())
+  if (!UniqueIdentifier.empty()){
     retainType(R);
+  }
   return R;
 }
 
@@ -287,18 +305,17 @@ DIBuilder::createMeshMemberType(DIDescriptor Scope, StringRef Name,
                                 unsigned ScoutFlags,
                                 DIType Ty) {
   // TAG_member is encoded in DIScoutDerivedType format.
-  Value *Elts[] = {
-    GetTagConstant(VMContext, dwarf::DW_TAG_member),
+  Value *Elts[] = {HeaderBuilder::get(dwarf::DW_TAG_member)
+    .concat(Name)
+    .concat(LineNumber)
+    .concat(SizeInBits)
+    .concat(AlignInBits)
+    .concat(OffsetInBits)
+    .concat(Flags)
+    .get(VMContext),
     File.getFileNode(),
     DIScope(getNonCompileUnitScope(Scope)).getRef(),
-    MDString::get(VMContext, Name),
-    ConstantInt::get(Type::getInt32Ty(VMContext), LineNumber),
-    ConstantInt::get(Type::getInt64Ty(VMContext), SizeInBits),
-    ConstantInt::get(Type::getInt64Ty(VMContext), AlignInBits),
-    ConstantInt::get(Type::getInt64Ty(VMContext), OffsetInBits),
-    ConstantInt::get(Type::getInt32Ty(VMContext), Flags),
     Ty.getRef(),
-    ConstantInt::get(Type::getInt32Ty(VMContext), ScoutFlags)
-  };
+    ConstantInt::get(Type::getInt32Ty(VMContext), ScoutFlags)};
   return DIScoutDerivedType(MDNode::get(VMContext, Elts));
 }

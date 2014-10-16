@@ -91,6 +91,7 @@ HEADER_FILES="${SRC_ROOT}/include/lldb/lldb.h"\
 " ${SRC_ROOT}/include/lldb/API/SBDebugger.h"\
 " ${SRC_ROOT}/include/lldb/API/SBError.h"\
 " ${SRC_ROOT}/include/lldb/API/SBEvent.h"\
+" ${SRC_ROOT}/include/lldb/API/SBExecutionContext.h"\
 " ${SRC_ROOT}/include/lldb/API/SBExpressionOptions.h"\
 " ${SRC_ROOT}/include/lldb/API/SBFileSpec.h"\
 " ${SRC_ROOT}/include/lldb/API/SBFrame.h"\
@@ -114,6 +115,7 @@ HEADER_FILES="${SRC_ROOT}/include/lldb/lldb.h"\
 " ${SRC_ROOT}/include/lldb/API/SBTarget.h"\
 " ${SRC_ROOT}/include/lldb/API/SBThread.h"\
 " ${SRC_ROOT}/include/lldb/API/SBThreadCollection.h"\
+" ${SRC_ROOT}/include/lldb/API/SBThreadPlan.h"\
 " ${SRC_ROOT}/include/lldb/API/SBType.h"\
 " ${SRC_ROOT}/include/lldb/API/SBTypeCategory.h"\
 " ${SRC_ROOT}/include/lldb/API/SBTypeFilter.h"\
@@ -140,6 +142,7 @@ INTERFACE_FILES="${SRC_ROOT}/scripts/Python/interface/SBAddress.i"\
 " ${SRC_ROOT}/scripts/Python/interface/SBDeclaration.i"\
 " ${SRC_ROOT}/scripts/Python/interface/SBError.i"\
 " ${SRC_ROOT}/scripts/Python/interface/SBEvent.i"\
+" ${SRC_ROOT}/scripts/Python/interface/SBExecutionContext.i"\
 " ${SRC_ROOT}/scripts/Python/interface/SBExpressionOptions.i"\
 " ${SRC_ROOT}/scripts/Python/interface/SBFileSpec.i"\
 " ${SRC_ROOT}/scripts/Python/interface/SBFrame.i"\
@@ -163,6 +166,7 @@ INTERFACE_FILES="${SRC_ROOT}/scripts/Python/interface/SBAddress.i"\
 " ${SRC_ROOT}/scripts/Python/interface/SBTarget.i"\
 " ${SRC_ROOT}/scripts/Python/interface/SBThread.i"\
 " ${SRC_ROOT}/scripts/Python/interface/SBThreadCollection.i"\
+" ${SRC_ROOT}/scripts/Python/interface/SBThreadPlan.i"\
 " ${SRC_ROOT}/scripts/Python/interface/SBType.i"\
 " ${SRC_ROOT}/scripts/Python/interface/SBTypeCategory.i"\
 " ${SRC_ROOT}/scripts/Python/interface/SBTypeFilter.i"\

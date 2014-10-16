@@ -103,14 +103,14 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   return InductionVar[index];
 }
 
-// If in Stencil then lookup and load LoopBound, otherwise return it directly
-llvm::Value *CodeGenFunction::LookupLoopBound(unsigned int index) {
-  llvm::Value *V = LocalDeclMap.lookup(ScoutABILoopBoundDecl[index]);
+// If in Stencil then lookup and load Mesh Dimension, otherwise return it directly
+llvm::Value *CodeGenFunction::LookupMeshDim(unsigned int index) {
+  llvm::Value *V = LocalDeclMap.lookup(ScoutABIMeshDimDecl[index]);
   if(V) {
     sprintf(IRNameStr, "stencil.%s.ptr", DimNames[index]);
     return Builder.CreateLoad(V, IRNameStr);
   }
-  return LoopBounds[index];
+  return MeshDims[index];
 }
 
 /// Emit field annotations for the given mesh field & value. Returns the

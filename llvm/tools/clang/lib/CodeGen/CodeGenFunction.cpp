@@ -76,18 +76,20 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   EdgeIndex = 0;
   FaceIndex = 0;
   for(unsigned i = 0; i < 3; ++i) {
-    // We use LoopBounds[0] == 0 as a test for being in a
+    // We use MeshDims[0] == 0 as a test for being in a
     // valid mesh/forall state where instrinsics are safe
     // to call -- may not be a rock solid plan but working
     // for now...
-    LoopBounds.push_back(0);
-    LoopBoundsP1.push_back(0);
+
+    LoopBoundsCells.push_back(0);
+    MeshDims.push_back(0);
+    MeshDimsP1.push_back(0);
   }
   for(unsigned i = 0; i <= 3; ++i) {
     ScoutABIInductionVarDecl.push_back(0);
   }
   for(unsigned i = 0; i < 3; ++i) {
-    ScoutABILoopBoundDecl.push_back(0);
+    ScoutABIMeshDimDecl.push_back(0);
   }
 
   // +=====================================================+ 
@@ -269,6 +271,11 @@ void CodeGenFunction::FinishFunction(SourceLocation EndLoc) {
     else
       DI->EmitLocation(Builder, EndLoc);
   }
+
+  // Some top level lifetime extended variables may still need
+  // to have their cleanups called.
+  if (!LifetimeExtendedCleanupStack.empty())
+    MoveDeferedCleanups(0);
 
   // Pop any cleanups that might have been associated with the
   // parameters.  Do this in whatever block we're currently in; it's

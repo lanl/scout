@@ -81,7 +81,7 @@ void CGScoutABI::buildImplicitStencilParams(CodeGenFunction &CGF, FunctionArgLis
     D = ImplicitParamDecl::Create(CGM.getContext(), 0, FD->getLocation(),
         &CGM.getContext().Idents.get(IRNameStr), T);
     params.insert(params.begin(), D);
-    getLoopBoundDecl(CGF, 2-i) = D;
+    getMeshDimDecl(CGF, 2-i) = D;
   }
 }
 

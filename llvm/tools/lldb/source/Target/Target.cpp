@@ -2337,7 +2337,11 @@ Error
 Target::Launch (Listener &listener, ProcessLaunchInfo &launch_info)
 {
     Error error;
-    
+    Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_TARGET));
+
+    if (log)
+        log->Printf ("Target::%s() called for %s", __FUNCTION__, launch_info.GetExecutableFile().GetPath().c_str ());
+
     StateType state = eStateInvalid;
     
     // Scope to temporarily get the process state in case someone has manually
@@ -2347,7 +2351,16 @@ Target::Launch (Listener &listener, ProcessLaunchInfo &launch_info)
         ProcessSP process_sp (GetProcessSP());
     
         if (process_sp)
+        {
             state = process_sp->GetState();
+            if (log)
+                log->Printf ("Target::%s the process exists, and its current state is %s", __FUNCTION__, StateAsCString (state));
+        }
+        else
+        {
+            if (log)
+                log->Printf ("Target::%s the process instance doesn't currently exist.", __FUNCTION__);
+        }
     }
 
     launch_info.GetFlags().Set (eLaunchFlagDebug);
@@ -2380,6 +2393,9 @@ Target::Launch (Listener &listener, ProcessLaunchInfo &launch_info)
     // If we're not already connected to the process, and if we have a platform that can launch a process for debugging, go ahead and do that here.
     if (state != eStateConnected && platform_sp && platform_sp->CanDebugProcess ())
     {
+        if (log)
+            log->Printf ("Target::%s asking the platform to debug the process", __FUNCTION__);
+
         m_process_sp = GetPlatform()->DebugProcess (launch_info,
                                                     debugger,
                                                     this,
@@ -2388,6 +2404,9 @@ Target::Launch (Listener &listener, ProcessLaunchInfo &launch_info)
     }
     else
     {
+        if (log)
+            log->Printf ("Target::%s the platform doesn't know how to debug a process, getting a process plugin to do this for us.", __FUNCTION__);
+
         if (state == eStateConnected)
         {
             assert(m_process_sp);
@@ -2416,7 +2435,7 @@ Target::Launch (Listener &listener, ProcessLaunchInfo &launch_info)
         if (launch_info.GetFlags().Test(eLaunchFlagStopAtEntry) == false)
         {
             ListenerSP hijack_listener_sp (launch_info.GetHijackListener());
-            
+
             StateType state = m_process_sp->WaitForProcessToStop (NULL, NULL, false, hijack_listener_sp.get());
             
             if (state == eStateStopped)
@@ -2653,6 +2672,7 @@ g_properties[] =
     { "breakpoints-use-platform-avoid-list", OptionValue::eTypeBoolean   , false, true                      , NULL, NULL, "Consult the platform module avoid list when setting non-module specific breakpoints." },
     { "arg0"                               , OptionValue::eTypeString    , false, 0                         , NULL, NULL, "The first argument passed to the program in the argument array which can be different from the executable itself." },
     { "run-args"                           , OptionValue::eTypeArgs      , false, 0                         , NULL, NULL, "A list containing all the arguments to be passed to the executable when it is run. Note that this does NOT include the argv[0] which is in target.arg0." },
+    { "expr-parser-compiler-args"          , OptionValue::eTypeArgs      , false, 0                         , NULL, NULL, "A list containing all the arguments to be passed to the expression parser compiler." },
     { "env-vars"                           , OptionValue::eTypeDictionary, false, OptionValue::eTypeString  , NULL, NULL, "A list of all the environment variables to be passed to the executable's environment, and their values." },
     { "inherit-env"                        , OptionValue::eTypeBoolean   , false, true                      , NULL, NULL, "Inherit the environment from the process that is running LLDB." },
     { "input-path"                         , OptionValue::eTypeFileSpec  , false, 0                         , NULL, NULL, "The file/path to be used by the executable program for reading its standard input." },
@@ -2701,6 +2721,7 @@ enum
     ePropertyBreakpointUseAvoidList,
     ePropertyArg0,
     ePropertyRunArgs,
+    ePropertyExprParserCompilerArgs,
     ePropertyEnvVars,
     ePropertyInheritEnv,
     ePropertyInputPath,
@@ -2953,6 +2974,20 @@ bool
 TargetProperties::GetRunArguments (Args &args) const
 {
     const uint32_t idx = ePropertyRunArgs;
+    return m_collection_sp->GetPropertyAtIndexAsArgs (NULL, idx, args);
+}
+
+void
+TargetProperties::SetExprParserCompilerArguments (const Args &args)
+{
+    const uint32_t idx = ePropertyExprParserCompilerArgs;
+    m_collection_sp->SetPropertyAtIndexFromArgs (NULL, idx, args);
+}
+
+bool
+TargetProperties::GetExprParserCompilerArguments (Args &args) const
+{
+    const uint32_t idx = ePropertyExprParserCompilerArgs;
     return m_collection_sp->GetPropertyAtIndexAsArgs (NULL, idx, args);
 }
 

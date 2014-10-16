@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AArch64InstrInfo.h"
+#include "AArch64PBQPRegAlloc.h"
 #include "AArch64Subtarget.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineScheduler.h"
@@ -43,8 +44,8 @@ AArch64Subtarget::initializeSubtargetDependencies(StringRef FS) {
 
 AArch64Subtarget::AArch64Subtarget(const std::string &TT,
                                    const std::string &CPU,
-                                   const std::string &FS, TargetMachine &TM,
-                                   bool LittleEndian)
+                                   const std::string &FS,
+                                   const TargetMachine &TM, bool LittleEndian)
     : AArch64GenSubtargetInfo(TT, CPU, FS), ARMProcFamily(Others),
       HasFPARMv8(false), HasNEON(false), HasCrypto(false), HasCRC(false),
       HasZeroCycleRegMove(false), HasZeroCycleZeroing(false), CPUString(CPU),
@@ -132,4 +133,9 @@ void AArch64Subtarget::overrideSchedPolicy(MachineSchedPolicy &Policy,
 
 bool AArch64Subtarget::enableEarlyIfConversion() const {
   return EnableEarlyIfConvert;
+}
+
+std::unique_ptr<PBQPRAConstraint>
+AArch64Subtarget::getCustomPBQPConstraints() const {
+  return llvm::make_unique<A57PBQPConstraints>();
 }

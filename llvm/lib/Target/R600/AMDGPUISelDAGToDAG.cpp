@@ -96,11 +96,16 @@ private:
                    SDValue &TFE) const;
   bool SelectMUBUFAddr64(SDValue Addr, SDValue &SRsrc, SDValue &VAddr,
                          SDValue &Offset) const;
+  bool SelectMUBUFAddr64(SDValue Addr, SDValue &SRsrc,
+                         SDValue &VAddr, SDValue &Offset,
+                         SDValue &SLC) const;
   bool SelectMUBUFScratch(SDValue Addr, SDValue &RSrc, SDValue &VAddr,
                           SDValue &SOffset, SDValue &ImmOffset) const;
   bool SelectMUBUFOffset(SDValue Addr, SDValue &SRsrc, SDValue &SOffset,
                          SDValue &Offset, SDValue &GLC, SDValue &SLC,
                          SDValue &TFE) const;
+  bool SelectMUBUFOffset(SDValue Addr, SDValue &SRsrc, SDValue &Soffset,
+                         SDValue &Offset, SDValue &GLC) const;
   SDNode *SelectAddrSpaceCast(SDNode *N);
   bool SelectVOP3Mods(SDValue In, SDValue &Src, SDValue &SrcMods) const;
   bool SelectVOP3Mods0(SDValue In, SDValue &Src, SDValue &SrcMods,
@@ -482,9 +487,16 @@ SDNode *AMDGPUDAGToDAGISel::Select(SDNode *N) {
   case AMDGPUISD::DIV_SCALE: {
     return SelectDIV_SCALE(N);
   }
+  case ISD::CopyToReg: {
+    const SITargetLowering& Lowering =
+      *static_cast<const SITargetLowering*>(getTargetLowering());
+    Lowering.legalizeTargetIndependentNode(N, *CurDAG);
+    break;
+  }
   case ISD::ADDRSPACECAST:
     return SelectAddrSpaceCast(N);
   }
+
   return SelectCode(N);
 }
 
@@ -731,15 +743,16 @@ SDNode *AMDGPUDAGToDAGISel::SelectDIV_SCALE(SDNode *N) {
     = (VT == MVT::f64) ? AMDGPU::V_DIV_SCALE_F64 : AMDGPU::V_DIV_SCALE_F32;
 
   const SDValue Zero = CurDAG->getTargetConstant(0, MVT::i32);
-
+  const SDValue False = CurDAG->getTargetConstant(0, MVT::i1);
   SDValue Ops[] = {
-    N->getOperand(0),
-    N->getOperand(1),
-    N->getOperand(2),
-    Zero,
-    Zero,
-    Zero,
-    Zero
+    Zero,             // src0_modifiers
+    N->getOperand(0), // src0
+    Zero,             // src1_modifiers
+    N->getOperand(1), // src1
+    Zero,             // src2_modifiers
+    N->getOperand(2), // src2
+    False,            // clamp
+    Zero              // omod
   };
 
   return CurDAG->SelectNodeTo(N, Opc, VT, MVT::i1, Ops);
@@ -891,6 +904,14 @@ bool AMDGPUDAGToDAGISel::SelectMUBUFAddr64(SDValue Addr, SDValue &SRsrc,
   return false;
 }
 
+bool AMDGPUDAGToDAGISel::SelectMUBUFAddr64(SDValue Addr, SDValue &SRsrc,
+                                           SDValue &VAddr, SDValue &Offset,
+                                           SDValue &SLC) const {
+  SLC = CurDAG->getTargetConstant(0, MVT::i1);
+
+  return SelectMUBUFAddr64(Addr, SRsrc, VAddr, Offset);
+}
+
 static SDValue buildRSRC(SelectionDAG *DAG, SDLoc DL, SDValue Ptr,
                          uint32_t RsrcDword1, uint64_t RsrcDword2And3) {
 
@@ -999,6 +1020,14 @@ bool AMDGPUDAGToDAGISel::SelectMUBUFOffset(SDValue Addr, SDValue &SRsrc,
     return true;
   }
   return false;
+}
+
+bool AMDGPUDAGToDAGISel::SelectMUBUFOffset(SDValue Addr, SDValue &SRsrc,
+                                           SDValue &Soffset, SDValue &Offset,
+                                           SDValue &GLC) const {
+  SDValue SLC, TFE;
+
+  return SelectMUBUFOffset(Addr, SRsrc, Soffset, Offset, GLC, SLC, TFE);
 }
 
 // FIXME: This is incorrect and only enough to be able to compile.

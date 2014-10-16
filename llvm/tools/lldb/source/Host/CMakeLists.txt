@@ -21,7 +21,6 @@ add_host_subdirectory(common
   common/NativeProcessProtocol.cpp
   common/NativeThreadProtocol.cpp
   common/OptionParser.cpp
-  common/Pipe.cpp
   common/ProcessRunLock.cpp
   common/Socket.cpp
   common/SocketAddress.cpp
@@ -33,9 +32,14 @@ add_host_subdirectory(common
   common/TimeValue.cpp
   )
 
+add_host_subdirectory(posix
+  posix/ConnectionFileDescriptorPosix.cpp
+  )
+
 if (CMAKE_SYSTEM_NAME MATCHES "Windows")
   add_host_subdirectory(windows
     windows/Condition.cpp
+    windows/ConnectionGenericFileWindows.cpp
     windows/EditLineWin.cpp
     windows/FileSystem.cpp
     windows/Host.cpp
@@ -43,6 +47,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "Windows")
     windows/HostProcessWindows.cpp
     windows/HostThreadWindows.cpp
     windows/Mutex.cpp
+    windows/PipeWindows.cpp
     windows/ProcessRunLock.cpp
     windows/ThisThread.cpp
     windows/Windows.cpp
@@ -53,6 +58,7 @@ else()
     posix/HostInfoPosix.cpp
     posix/HostProcessPosix.cpp
     posix/HostThreadPosix.cpp
+    posix/PipePosix.cpp
     )
 
   if (CMAKE_SYSTEM_NAME MATCHES "Darwin")

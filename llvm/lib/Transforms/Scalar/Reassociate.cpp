@@ -967,6 +967,10 @@ static bool ShouldBreakUpSubtract(Instruction *Sub) {
   if (BinaryOperator::isNeg(Sub) || BinaryOperator::isFNeg(Sub))
     return false;
 
+  // Don't breakup X - undef.
+  if (isa<UndefValue>(Sub->getOperand(1)))
+    return false;
+
   // Don't bother to break this up unless either the LHS is an associable add or
   // subtract or if this is only used by one.
   Value *V0 = Sub->getOperand(0);
@@ -1034,13 +1038,23 @@ static unsigned FindInOperandList(SmallVectorImpl<ValueEntry> &Ops, unsigned i,
                                   Value *X) {
   unsigned XRank = Ops[i].Rank;
   unsigned e = Ops.size();
-  for (unsigned j = i+1; j != e && Ops[j].Rank == XRank; ++j)
+  for (unsigned j = i+1; j != e && Ops[j].Rank == XRank; ++j) {
     if (Ops[j].Op == X)
       return j;
+    if (Instruction *I1 = dyn_cast<Instruction>(Ops[j].Op))
+      if (Instruction *I2 = dyn_cast<Instruction>(X))
+        if (I1->isIdenticalTo(I2))
+          return j;
+  }
   // Scan backwards.
-  for (unsigned j = i-1; j != ~0U && Ops[j].Rank == XRank; --j)
+  for (unsigned j = i-1; j != ~0U && Ops[j].Rank == XRank; --j) {
     if (Ops[j].Op == X)
       return j;
+    if (Instruction *I1 = dyn_cast<Instruction>(Ops[j].Op))
+      if (Instruction *I2 = dyn_cast<Instruction>(X))
+        if (I1->isIdenticalTo(I2))
+          return j;
+  }
   return i;
 }
 

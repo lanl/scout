@@ -235,10 +235,15 @@ public:
                           llvm::Constant *dtor, llvm::Constant *addr) override;
 
   llvm::Function *getOrCreateThreadLocalWrapper(const VarDecl *VD,
-                                                llvm::GlobalVariable *Var);
+                                                llvm::Value *Val);
   void EmitThreadLocalInitFuncs(
-      ArrayRef<std::pair<const VarDecl *, llvm::GlobalVariable *> > Decls,
-      llvm::Function *InitFunc) override;
+      CodeGenModule &CGM,
+      ArrayRef<std::pair<const VarDecl *, llvm::GlobalVariable *>>
+          CXXThreadLocals,
+      ArrayRef<llvm::Function *> CXXThreadLocalInits,
+      ArrayRef<llvm::GlobalVariable *> CXXThreadLocalInitVars) override;
+
+  bool usesThreadWrapperFunction() const override { return true; }
   LValue EmitThreadLocalVarDeclLValue(CodeGenFunction &CGF, const VarDecl *VD,
                                       QualType LValType) override;
 
@@ -1870,7 +1875,7 @@ getThreadLocalWrapperLinkage(const VarDecl *VD, CodeGen::CodeGenModule &CGM) {
 
 llvm::Function *
 ItaniumCXXABI::getOrCreateThreadLocalWrapper(const VarDecl *VD,
-                                             llvm::GlobalVariable *Var) {
+                                             llvm::Value *Val) {
   // Mangle the name for the thread_local wrapper function.
   SmallString<256> WrapperName;
   {
@@ -1879,10 +1884,10 @@ ItaniumCXXABI::getOrCreateThreadLocalWrapper(const VarDecl *VD,
     Out.flush();
   }
 
-  if (llvm::Value *V = Var->getParent()->getNamedValue(WrapperName))
+  if (llvm::Value *V = CGM.getModule().getNamedValue(WrapperName))
     return cast<llvm::Function>(V);
 
-  llvm::Type *RetTy = Var->getType();
+  llvm::Type *RetTy = Val->getType();
   if (VD->getType()->isReferenceType())
     RetTy = RetTy->getPointerElementType();
 
@@ -1897,11 +1902,28 @@ ItaniumCXXABI::getOrCreateThreadLocalWrapper(const VarDecl *VD,
 }
 
 void ItaniumCXXABI::EmitThreadLocalInitFuncs(
-    ArrayRef<std::pair<const VarDecl *, llvm::GlobalVariable *> > Decls,
-    llvm::Function *InitFunc) {
-  for (unsigned I = 0, N = Decls.size(); I != N; ++I) {
-    const VarDecl *VD = Decls[I].first;
-    llvm::GlobalVariable *Var = Decls[I].second;
+    CodeGenModule &CGM,
+    ArrayRef<std::pair<const VarDecl *, llvm::GlobalVariable *>>
+        CXXThreadLocals, ArrayRef<llvm::Function *> CXXThreadLocalInits,
+    ArrayRef<llvm::GlobalVariable *> CXXThreadLocalInitVars) {
+  llvm::Function *InitFunc = nullptr;
+  if (!CXXThreadLocalInits.empty()) {
+    // Generate a guarded initialization function.
+    llvm::FunctionType *FTy =
+        llvm::FunctionType::get(CGM.VoidTy, /*isVarArg=*/false);
+    InitFunc = CGM.CreateGlobalInitOrDestructFunction(FTy, "__tls_init",
+                                                      /*TLS=*/true);
+    llvm::GlobalVariable *Guard = new llvm::GlobalVariable(
+        CGM.getModule(), CGM.Int8Ty, /*isConstant=*/false,
+        llvm::GlobalVariable::InternalLinkage,
+        llvm::ConstantInt::get(CGM.Int8Ty, 0), "__tls_guard");
+    Guard->setThreadLocal(true);
+    CodeGenFunction(CGM)
+        .GenerateCXXGlobalInitFunc(InitFunc, CXXThreadLocalInits, Guard);
+  }
+  for (unsigned I = 0, N = CXXThreadLocals.size(); I != N; ++I) {
+    const VarDecl *VD = CXXThreadLocals[I].first;
+    llvm::GlobalVariable *Var = CXXThreadLocals[I].second;
 
     // Some targets require that all access to thread local variables go through
     // the thread wrapper.  This means that we cannot attempt to create a thread
@@ -1970,7 +1992,9 @@ void ItaniumCXXABI::EmitThreadLocalInitFuncs(
       LI->setAlignment(CGM.getContext().getDeclAlign(VD).getQuantity());
       Val = LI;
     }
-
+    if (Val->getType() != Wrapper->getReturnType())
+      Val = Builder.CreatePointerBitCastOrAddrSpaceCast(
+          Val, Wrapper->getReturnType(), "");
     Builder.CreateRet(Val);
   }
 }
@@ -1981,8 +2005,7 @@ LValue ItaniumCXXABI::EmitThreadLocalVarDeclLValue(CodeGenFunction &CGF,
   QualType T = VD->getType();
   llvm::Type *Ty = CGF.getTypes().ConvertTypeForMem(T);
   llvm::Value *Val = CGF.CGM.GetAddrOfGlobalVar(VD, Ty);
-  llvm::Function *Wrapper =
-      getOrCreateThreadLocalWrapper(VD, cast<llvm::GlobalVariable>(Val));
+  llvm::Function *Wrapper = getOrCreateThreadLocalWrapper(VD, Val);
 
   Val = CGF.Builder.CreateCall(Wrapper);
 

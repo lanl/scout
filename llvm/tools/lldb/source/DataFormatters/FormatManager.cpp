@@ -541,6 +541,7 @@ FormatManager::ShouldPrintAsOneLiner (ValueObject& valobj)
          idx < valobj.GetNumChildren();
          idx++)
     {
+        bool is_synth_val = false;
         ValueObjectSP child_sp(valobj.GetChildAtIndex(idx, true));
         // something is wrong here - bail out
         if (!child_sp)
@@ -548,7 +549,17 @@ FormatManager::ShouldPrintAsOneLiner (ValueObject& valobj)
         // if we decided to define synthetic children for a type, we probably care enough
         // to show them, but avoid nesting children in children
         if (child_sp->GetSyntheticChildren().get() != nullptr)
-            return false;
+        {
+            ValueObjectSP synth_sp(child_sp->GetSyntheticValue());
+            // wait.. wat? just get out of here..
+            if (!synth_sp)
+                return false;
+            // but if we only have them to provide a value, keep going
+            if (synth_sp->MightHaveChildren() == false && synth_sp->DoesProvideSyntheticValue())
+                is_synth_val = true;
+            else
+                return false;
+        }
         
         total_children_name_len += child_sp->GetName().GetLength();
         
@@ -572,7 +583,7 @@ FormatManager::ShouldPrintAsOneLiner (ValueObject& valobj)
             // ...and no summary...
             // (if it had a summary and the summary wanted children, we would have bailed out anyway
             //  so this only makes us bail out if this has no summary and we would then print children)
-            if (!child_sp->GetSummaryFormat())
+            if (!child_sp->GetSummaryFormat() && !is_synth_val) // but again only do that if not a synthetic valued child
                 return false; // then bail out
         }
     }
@@ -1028,13 +1039,6 @@ FormatManager::LoadLibStdcppFormatters()
     AddCXXSynthetic(gnu_category_sp, lldb_private::formatters::LibStdcppVectorIteratorSyntheticFrontEndCreator, "std::vector iterator synthetic children", ConstString("^__gnu_cxx::__normal_iterator<.+>$"), stl_synth_flags, true);
     
     AddCXXSynthetic(gnu_category_sp, lldb_private::formatters::LibstdcppMapIteratorSyntheticFrontEndCreator, "std::map iterator synthetic children", ConstString("^std::_Rb_tree_iterator<.+>$"), stl_synth_flags, true);
-    
-    gnu_category_sp->GetTypeSummariesContainer()->Add(ConstString("std::vector<std::allocator<bool> >"),
-                                                   TypeSummaryImplSP(new StringSummaryFormat(stl_summary_flags, "size=${svar%#}")));
-    
-    gnu_category_sp->GetTypeSyntheticsContainer()->Add(ConstString("std::vector<std::allocator<bool> >"),
-                                                     SyntheticChildrenSP(new CXXSyntheticChildren(stl_synth_flags,"libc++ std::vector<bool> synthetic children",lldb_private::formatters::LibstdcppVectorBoolSyntheticFrontEndCreator)));
-
 #endif
 }
 
