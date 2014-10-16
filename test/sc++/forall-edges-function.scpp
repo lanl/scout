@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2014, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -52,57 +52,27 @@
  * ##### 
  */ 
 
-#ifndef CLANG_CODEGEN_SCOUTABI_H
-#define CLANG_CODEGEN_SCOUTABI_H
+#include <stdio.h>
+#include <assert.h>
 
-#include "CodeGenFunction.h"
-#include "clang/Basic/LLVM.h"
-
-namespace llvm {
-  class Constant;
-  class Type;
-  class Value;
-}
-
-namespace clang {
-  class CastExpr;
-  class CXXConstructorDecl;
-  class CXXDestructorDecl;
-  class CXXMethodDecl;
-  class CXXRecordDecl;
-  class FieldDecl;
-  class MangleContext;
-
-namespace CodeGen {
-  class CodeGenFunction;
-  class CodeGenModule;
-
-
-class CGScoutABI {
-protected:
-  CodeGenModule &CGM;
-
-public:
-  CGScoutABI(CodeGenModule &CGM)
-      : CGM(CGM) {}
-
-  ~CGScoutABI() {}
-
-  ImplicitParamDecl *&getInductionVarDecl(CodeGenFunction &CGF, unsigned int index) {
-    return CGF.ScoutABIInductionVarDecl[index];
-  }
-
-  ImplicitParamDecl *&getMeshDimDecl(CodeGenFunction &CGF, unsigned int index) {
-    return CGF.ScoutABIMeshDimDecl[index];
-  }
-
-  void buildImplicitStencilParams(CodeGenFunction &CGF, FunctionArgList &Params);
-
+uniform mesh AMeshType{
+edges:
+  int field;
 };
 
-CGScoutABI *createScoutABI(CodeGenModule &CGM);
-
+void MyFunc(AMeshType &m) {
+  int val = 0;
+  forall edges e in m {
+    val++;
+    field = val;
+  }
+  assert(val==17 && "bad number of edges"); 
 }
+
+int main(int argc, char *argv[])
+{
+  AMeshType amesh[2, 3];
+  MyFunc(amesh);
+  return 0;
 }
 
-#endif

@@ -76,19 +76,20 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   EdgeIndex = 0;
   FaceIndex = 0;
   for(unsigned i = 0; i < 3; ++i) {
-    // We use LoopBounds[0] == 0 as a test for being in a
+    // We use MeshDims[0] == 0 as a test for being in a
     // valid mesh/forall state where instrinsics are safe
     // to call -- may not be a rock solid plan but working
     // for now...
-    LoopBounds.push_back(0);
+
     LoopBoundsCells.push_back(0);
-    LoopBoundsP1.push_back(0);
+    MeshDims.push_back(0);
+    MeshDimsP1.push_back(0);
   }
   for(unsigned i = 0; i <= 3; ++i) {
     ScoutABIInductionVarDecl.push_back(0);
   }
   for(unsigned i = 0; i < 3; ++i) {
-    ScoutABILoopBoundDecl.push_back(0);
+    ScoutABIMeshDimDecl.push_back(0);
   }
 
   // +=====================================================+ 

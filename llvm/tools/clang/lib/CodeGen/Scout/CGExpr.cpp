@@ -271,7 +271,7 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
   SmallVector< llvm::Value *, 3 > dims;
   for(unsigned i = 0; i < args.size(); ++i) {
     sprintf(IRNameStr, "%s", DimNames[i]);
-    dims.push_back(Builder.CreateLoad(LookupLoopBound(i), IRNameStr));
+    dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
   }
 
   SmallVector< llvm::Value *, 3 > indices;
@@ -403,7 +403,7 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        SmallVector< llvm::Value *, 3 > dims;
        for(unsigned i = 0; i < args.size(); ++i) {
          sprintf(IRNameStr, "%s", DimNames[i]);
-         dims.push_back(Builder.CreateLoad(LookupLoopBound(i), IRNameStr));
+         dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
        }
 
        //get the eoshift indices

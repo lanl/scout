@@ -337,12 +337,12 @@ public:
   // overall induction variable is stored as 4th element
   llvm::SmallVector< llvm::Value *, 4 > InductionVar;
   // mesh dimension sizes
-  llvm::SmallVector< llvm::Value *, 3 > LoopBounds; //SC_TODO: rename Dims
+  llvm::SmallVector< llvm::Value *, 3 > MeshDims;
   // mesh dimension sizes + 1
-  llvm::SmallVector< llvm::Value *, 3 > LoopBoundsP1; // SC_TODO: rename DimsP1
+  llvm::SmallVector< llvm::Value *, 3 > MeshDimsP1;
   // loopbounds for forall cells
   llvm::SmallVector< llvm::Value *, 3 > LoopBoundsCells;
-  llvm::Value *Rank = 0;
+  llvm::Value *MeshRank = 0;
 
   llvm::Value* InnerInductionVar;
   llvm::Value* InnerIndex;
@@ -359,7 +359,7 @@ public:
   llvm::Value *Color;
 
   llvm::Value *LookupInductionVar(unsigned int index);
-  llvm::Value *LookupLoopBound(unsigned int index);
+  llvm::Value *LookupMeshDim(unsigned int index);
 
   inline llvm::Value *getLinearIdx() {
     return Builder.CreateLoad(LookupInductionVar(3), "Xall.linearidx");
@@ -1064,7 +1064,7 @@ private:
 
   // +===== Scout ==========================================================+
   llvm::SmallVector<ImplicitParamDecl*, 4 > ScoutABIInductionVarDecl;
-  llvm::SmallVector<ImplicitParamDecl*, 3 > ScoutABILoopBoundDecl;
+  llvm::SmallVector<ImplicitParamDecl*, 3 > ScoutABIMeshDimDecl;
   // +======================================================================+
 
   /// The value of 'this' to use when evaluating CXXDefaultInitExprs within
@@ -2028,13 +2028,11 @@ public:
   void GetMeshBaseAddr(const Stmt &S, llvm::Value *&BaseAddr);
   void GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& BaseAddr);
 
-  void SetMeshLoopBounds(const Stmt &S);
-
-  void SetMeshRank(const Stmt &S);
+  void SetMeshBounds(const Stmt &S);
+  void ResetMeshBounds(void);
 
   void EmitLegionTask(const FunctionDecl* FD, llvm::Function* taskFunc);
 
-  void ResetVars(void);
   void EmitForallMeshStmt(const ForallMeshStmt &S);
 
   void EmitForallEdges(const ForallMeshStmt &S);
