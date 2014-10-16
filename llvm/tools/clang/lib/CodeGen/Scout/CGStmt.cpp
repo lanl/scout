@@ -175,10 +175,24 @@ void CodeGenFunction::GetMeshBaseAddr(const Stmt &S, llvm::Value*& BaseAddr) {
   GetMeshBaseAddr(MeshVarDecl, BaseAddr);
 }
 
+// find number of fields
+unsigned int GetMeshNFields(const Stmt &S) {
+  MeshDecl* MD;
+  if (const ForallMeshStmt *FAMS = dyn_cast<ForallMeshStmt>(&S)) {
+    MD = FAMS->getMeshType()->getDecl();
+  }  else if (const RenderallMeshStmt *RAMS = dyn_cast<RenderallMeshStmt>(&S)) {
+    MD =  RAMS->getMeshType()->getDecl();
+  } else {
+    assert(false && "non-mesh stmt in GetMeshNFields()");
+  }
+  return MD->fields();
+}
 
-// modifies LoopBounds and LoopBoundsP1
-void CodeGenFunction::SetMeshLoopBounds(const ForallMeshStmt &S) {
+
+// modifies LoopBounds, LoopBoundsP1, and LoopBoundsCells
+void CodeGenFunction::SetMeshLoopBounds(const Stmt &S) {
   llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
+  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
   //get mesh Base Addr
   llvm::Value *MeshBaseAddr;
@@ -186,32 +200,35 @@ void CodeGenFunction::SetMeshLoopBounds(const ForallMeshStmt &S) {
   llvm::StringRef MeshName = MeshBaseAddr->getName();
 
   // find number of fields
-  MeshDecl* MD =  S.getMeshType()->getDecl();
-  unsigned int nfields = MD->fields();
+  unsigned int nfields = GetMeshNFields(S);
 
   // Extract width/height/depth from the mesh
   // note: width/height depth are stored after mesh fields
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-    LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
-    LoopBoundsP1[i] =  Builder.CreateAlloca(Int32Ty, 0, "loopboundsp1.ptr");
+    LoopBounds[i] =  Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
 
-    //if LoopBound !=1 then and 1 to it
+    LoopBoundsCells[i] = Builder.CreateAlloca(Int32Ty, 0, "loopbounds.ptr");
     llvm::Value *dim = Builder.CreateLoad(LoopBounds[i]);
-    Builder.CreateStore(dim, LoopBoundsP1[i]);
+    Builder.CreateStore(dim, LoopBoundsCells[i]);
 
+    // dimensions + 1 are used in many places so cache them
+    LoopBoundsP1[i] =  Builder.CreateAlloca(Int32Ty, 0, "loopboundsp1.ptr");
+    llvm::Value *incr = Builder.CreateAdd(Builder.CreateLoad(LoopBounds[i]), ConstantOne);
+    Builder.CreateStore(incr, LoopBoundsP1[i]);
+
+    //if LoopBoundCells == 0 then set it to 1 (for cells)
     llvm::Function *TheFunction;
     TheFunction = Builder.GetInsertBlock()->getParent();
-    llvm::BasicBlock *Then = createBasicBlock("vertices.loopbound.then");
-    llvm::BasicBlock *Done = createBasicBlock("vertices.loopbound.done");
-    llvm::Value *Check = Builder.CreateICmpNE(dim, ConstantOne);
+    llvm::BasicBlock *Then = createBasicBlock("cells.loopbound.then");
+    llvm::BasicBlock *Done = createBasicBlock("cells.loopbound.done");
+    llvm::Value *Check = Builder.CreateICmpEQ(dim, ConstantZero);
     Builder.CreateCondBr(Check, Then, Done);
 
     //then block
     TheFunction->getBasicBlockList().push_back(Then);
     Builder.SetInsertPoint(Then);
-    dim = Builder.CreateAdd(dim, ConstantOne);
-    Builder.CreateStore(dim, LoopBoundsP1[i]);
+    Builder.CreateStore(ConstantOne, LoopBoundsCells[i]);
     Builder.CreateBr(Done);
     Then = Builder.GetInsertBlock();
 
@@ -224,15 +241,14 @@ void CodeGenFunction::SetMeshLoopBounds(const ForallMeshStmt &S) {
 }
 
 // modifies Rank
-void CodeGenFunction::SetMeshRank(const ForallMeshStmt &S) {
+void CodeGenFunction::SetMeshRank(const Stmt &S) {
   //get mesh Base Addr
     llvm::Value *MeshBaseAddr;
     GetMeshBaseAddr(S, MeshBaseAddr);
     llvm::StringRef MeshName = MeshBaseAddr->getName();
 
     // find number of fields
-    MeshDecl* MD =  S.getMeshType()->getDecl();
-    unsigned int nfields = MD->fields();
+    unsigned int nfields = GetMeshNFields(S);
 
     // extract rank from mesh stored after width/height/depth
     sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
@@ -1157,9 +1173,9 @@ void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
   
   ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
 
-  Builder.CreateLoad(LoopBounds[0], "TheMesh.width");
-  Builder.CreateLoad(LoopBounds[1], "TheMesh.height");
-  Builder.CreateLoad(LoopBounds[2], "TheMesh.depth");
+  Builder.CreateLoad(LoopBoundsCells[0], "TheMesh.width");
+  Builder.CreateLoad(LoopBoundsCells[1], "TheMesh.height");
+  Builder.CreateLoad(LoopBoundsCells[2], "TheMesh.depth");
   
   llvm::Value* numItems;
   
@@ -1376,7 +1392,7 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
 
   ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
   if(FET == ForallMeshStmt::Cells) {
-    LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
+    LoopBound  = Builder.CreateLoad(LoopBoundsCells[r-1], IRNameStr);
   } else if(FET == ForallMeshStmt::Vertices) {
     LoopBound  = Builder.CreateLoad(LoopBoundsP1[r-1], IRNameStr);
     VertexIndex = InductionVar[3];
@@ -1470,10 +1486,12 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
 // reset Loopbounds and induction var
 void CodeGenFunction::ResetVars(void) {
     LoopBounds.clear();
+    LoopBoundsCells.clear();
     LoopBoundsP1.clear();
     InductionVar.clear();
     for(unsigned int i = 0; i < 3; i++) {
        LoopBounds.push_back(0);
+       LoopBoundsCells.push_back(0);
        LoopBoundsP1.push_back(0);
        InductionVar.push_back(0);
     }
@@ -1699,6 +1717,10 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   llvm::SmallVector< llvm::Value *, 4 > Args;
   Args.clear();
 
+  ResetVars();
+  SetMeshLoopBounds(S);
+  SetMeshRank(S);
+
   // Create the induction variables for eack rank.
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "renderall.induct.%s.ptr", IndexNames[i]);
@@ -1711,8 +1733,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   for(unsigned int i = 0; i < 3; i++) {
      Args.push_back(0);
      sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-     LoopBounds[i] = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
-     Args[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
+     Args[i] = Builder.CreateLoad(LoopBoundsCells[i], IRNameStr);
   }
   
   if(Ty.getTypeClass() != Type::Window){
@@ -1859,8 +1880,6 @@ void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S
 
 //generate one of the nested loops
 void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned r) {
-  RegionCounter Cnt = getPGORegionCounter(&S);
-  (void)Cnt; //suppress warning
 
   llvm::StringRef MeshName = S.getMeshVarDecl()->getName();
 
@@ -1886,7 +1905,7 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
   // note: width/height depth are stored after mesh fields
   // GEP is done in EmitRenderallStmt so just load here.
   sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
-  llvm::LoadInst *LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
+  llvm::LoadInst *LoopBound  = Builder.CreateLoad(LoopBoundsCells[r-1], IRNameStr);
 
 
   // Next we create a block that tests the induction variables value to

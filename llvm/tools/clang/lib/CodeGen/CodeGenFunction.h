@@ -337,9 +337,11 @@ public:
   // overall induction variable is stored as 4th element
   llvm::SmallVector< llvm::Value *, 4 > InductionVar;
   // mesh dimension sizes
-  llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
+  llvm::SmallVector< llvm::Value *, 3 > LoopBounds; //SC_TODO: rename Dims
   // mesh dimension sizes + 1
-  llvm::SmallVector< llvm::Value *, 3 > LoopBoundsP1;
+  llvm::SmallVector< llvm::Value *, 3 > LoopBoundsP1; // SC_TODO: rename DimsP1
+  // loopbounds for forall cells
+  llvm::SmallVector< llvm::Value *, 3 > LoopBoundsCells;
   llvm::Value *Rank = 0;
 
   llvm::Value* InnerInductionVar;
@@ -2026,8 +2028,9 @@ public:
   void GetMeshBaseAddr(const Stmt &S, llvm::Value *&BaseAddr);
   void GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& BaseAddr);
 
-  void SetMeshLoopBounds(const ForallMeshStmt &S);
-  void SetMeshRank(const ForallMeshStmt &S);
+  void SetMeshLoopBounds(const Stmt &S);
+
+  void SetMeshRank(const Stmt &S);
 
   void EmitLegionTask(const FunctionDecl* FD, llvm::Function* taskFunc);
 
