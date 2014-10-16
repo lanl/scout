@@ -4310,7 +4310,8 @@ ASTContext::getCanonicalNestedNameSpecifier(NestedNameSpecifier *NNS) const {
   }
 
   case NestedNameSpecifier::Global:
-    // The global specifier is canonical and unique.
+  case NestedNameSpecifier::Super:
+    // The global specifier and __super specifer are canonical and unique.
     return NNS;
   }
 
@@ -8436,7 +8437,7 @@ namespace {
 
 } // end namespace
 
-ASTContext::ParentVector
+ArrayRef<ast_type_traits::DynTypedNode>
 ASTContext::getParents(const ast_type_traits::DynTypedNode &Node) {
   assert(Node.getMemoizationData() &&
          "Invariant broken: only nodes that support memoization may be "
@@ -8449,13 +8450,12 @@ ASTContext::getParents(const ast_type_traits::DynTypedNode &Node) {
   }
   ParentMap::const_iterator I = AllParents->find(Node.getMemoizationData());
   if (I == AllParents->end()) {
-    return ParentVector();
+    return None;
   }
-  if (I->second.is<ast_type_traits::DynTypedNode *>()) {
-    return ParentVector(1, *I->second.get<ast_type_traits::DynTypedNode *>());
+  if (auto *N = I->second.dyn_cast<ast_type_traits::DynTypedNode *>()) {
+    return llvm::makeArrayRef(N, 1);
   }
-  const auto &Parents = *I->second.get<ParentVector *>();
-  return ParentVector(Parents.begin(), Parents.end());
+  return *I->second.get<ParentVector *>();
 }
 
 bool

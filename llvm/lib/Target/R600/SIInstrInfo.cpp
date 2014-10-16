@@ -88,7 +88,10 @@ bool SIInstrInfo::areLoadsFromSameBasePtr(SDNode *Load0, SDNode *Load1,
     return false;
 
   if (isDS(Opc0) && isDS(Opc1)) {
-    assert(getNumOperandsNoGlue(Load0) == getNumOperandsNoGlue(Load1));
+
+    // FIXME: Handle this case:
+    if (getNumOperandsNoGlue(Load0) != getNumOperandsNoGlue(Load1))
+      return false;
 
     // Check base reg.
     if (Load0->getOperand(1) != Load1->getOperand(1))
@@ -684,26 +687,33 @@ bool SIInstrInfo::expandPostRAPseudo(MachineBasicBlock::iterator MI) const {
 
 MachineInstr *SIInstrInfo::commuteInstruction(MachineInstr *MI,
                                               bool NewMI) const {
-
-  if (MI->getNumOperands() < 3 || !MI->getOperand(1).isReg())
+  if (MI->getNumOperands() < 3)
     return nullptr;
+
+  int Src0Idx = AMDGPU::getNamedOperandIdx(MI->getOpcode(),
+                                           AMDGPU::OpName::src0);
+  assert(Src0Idx != -1 && "Should always have src0 operand");
+
+  if (!MI->getOperand(Src0Idx).isReg())
+    return nullptr;
+
+  int Src1Idx = AMDGPU::getNamedOperandIdx(MI->getOpcode(),
+                                           AMDGPU::OpName::src1);
 
   // Make sure it s legal to commute operands for VOP2.
-  if (isVOP2(MI->getOpcode()) &&
-      (!isOperandLegal(MI, 1, &MI->getOperand(2)) ||
-       !isOperandLegal(MI, 2, &MI->getOperand(1))))
+  if ((Src1Idx != -1) && isVOP2(MI->getOpcode()) &&
+      (!isOperandLegal(MI, Src0Idx, &MI->getOperand(Src1Idx)) ||
+       !isOperandLegal(MI, Src1Idx, &MI->getOperand(Src0Idx))))
     return nullptr;
 
-  if (!MI->getOperand(2).isReg()) {
+  if (Src1Idx != -1 && !MI->getOperand(Src1Idx).isReg()) {
     // XXX: Commute instructions with FPImm operands
-    if (NewMI || MI->getOperand(2).isFPImm() ||
+    if (NewMI || !MI->getOperand(Src1Idx).isImm() ||
        (!isVOP2(MI->getOpcode()) && !isVOP3(MI->getOpcode()))) {
       return nullptr;
     }
 
     // XXX: Commute VOP3 instructions with abs and neg set .
-    const MachineOperand *Abs = getNamedOperand(*MI, AMDGPU::OpName::abs);
-    const MachineOperand *Neg = getNamedOperand(*MI, AMDGPU::OpName::neg);
     const MachineOperand *Src0Mods = getNamedOperand(*MI,
                                           AMDGPU::OpName::src0_modifiers);
     const MachineOperand *Src1Mods = getNamedOperand(*MI,
@@ -711,16 +721,16 @@ MachineInstr *SIInstrInfo::commuteInstruction(MachineInstr *MI,
     const MachineOperand *Src2Mods = getNamedOperand(*MI,
                                           AMDGPU::OpName::src2_modifiers);
 
-    if ((Abs && Abs->getImm()) || (Neg && Neg->getImm()) ||
-        (Src0Mods && Src0Mods->getImm()) || (Src1Mods && Src1Mods->getImm()) ||
+    if ((Src0Mods && Src0Mods->getImm()) ||
+        (Src1Mods && Src1Mods->getImm()) ||
         (Src2Mods && Src2Mods->getImm()))
       return nullptr;
 
-    unsigned Reg = MI->getOperand(1).getReg();
-    unsigned SubReg = MI->getOperand(1).getSubReg();
-    MI->getOperand(1).ChangeToImmediate(MI->getOperand(2).getImm());
-    MI->getOperand(2).ChangeToRegister(Reg, false);
-    MI->getOperand(2).setSubReg(SubReg);
+    unsigned Reg = MI->getOperand(Src0Idx).getReg();
+    unsigned SubReg = MI->getOperand(Src0Idx).getSubReg();
+    MI->getOperand(Src0Idx).ChangeToImmediate(MI->getOperand(Src1Idx).getImm());
+    MI->getOperand(Src1Idx).ChangeToRegister(Reg, false);
+    MI->getOperand(Src1Idx).setSubReg(SubReg);
   } else {
     MI = TargetInstrInfo::commuteInstruction(MI, NewMI);
   }
@@ -729,6 +739,38 @@ MachineInstr *SIInstrInfo::commuteInstruction(MachineInstr *MI,
     MI->setDesc(get(commuteOpcode(MI->getOpcode())));
 
   return MI;
+}
+
+// This needs to be implemented because the source modifiers may be inserted
+// between the true commutable operands, and the base
+// TargetInstrInfo::commuteInstruction uses it.
+bool SIInstrInfo::findCommutedOpIndices(MachineInstr *MI,
+                                        unsigned &SrcOpIdx1,
+                                        unsigned &SrcOpIdx2) const {
+  const MCInstrDesc &MCID = MI->getDesc();
+  if (!MCID.isCommutable())
+    return false;
+
+  unsigned Opc = MI->getOpcode();
+  int Src0Idx = AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::src0);
+  if (Src0Idx == -1)
+    return false;
+
+  // FIXME: Workaround TargetInstrInfo::commuteInstruction asserting on
+  // immediate.
+  if (!MI->getOperand(Src0Idx).isReg())
+    return false;
+
+  int Src1Idx = AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::src1);
+  if (Src1Idx == -1)
+    return false;
+
+  if (!MI->getOperand(Src1Idx).isReg())
+    return false;
+
+  SrcOpIdx1 = Src0Idx;
+  SrcOpIdx2 = Src1Idx;
+  return true;
 }
 
 MachineInstr *SIInstrInfo::buildMovInstr(MachineBasicBlock *MBB,
@@ -1348,12 +1390,15 @@ void SIInstrInfo::legalizeOperands(MachineInstr *MI) const {
   // XXX - Do any VOP3 instructions read VCC?
   // Legalize VOP3
   if (isVOP3(MI->getOpcode())) {
-    int VOP3Idx[3] = {Src0Idx, Src1Idx, Src2Idx};
-    unsigned SGPRReg = AMDGPU::NoRegister;
+    int VOP3Idx[3] = { Src0Idx, Src1Idx, Src2Idx };
+
+    // Find the one SGPR operand we are allowed to use.
+    unsigned SGPRReg = findUsedSGPR(MI, VOP3Idx);
+
     for (unsigned i = 0; i < 3; ++i) {
       int Idx = VOP3Idx[i];
       if (Idx == -1)
-        continue;
+        break;
       MachineOperand &MO = MI->getOperand(Idx);
 
       if (MO.isReg()) {
@@ -2107,6 +2152,74 @@ void SIInstrInfo::addDescImplicitUseDef(const MCInstrDesc &NewDesc,
       Inst->addOperand(MachineOperand::CreateReg(Reg, true, true));
     }
   }
+}
+
+unsigned SIInstrInfo::findUsedSGPR(const MachineInstr *MI,
+                                   int OpIndices[3]) const {
+  const MCInstrDesc &Desc = get(MI->getOpcode());
+
+  // Find the one SGPR operand we are allowed to use.
+  unsigned SGPRReg = AMDGPU::NoRegister;
+
+  // First we need to consider the instruction's operand requirements before
+  // legalizing. Some operands are required to be SGPRs, such as implicit uses
+  // of VCC, but we are still bound by the constant bus requirement to only use
+  // one.
+  //
+  // If the operand's class is an SGPR, we can never move it.
+
+  for (const MachineOperand &MO : MI->implicit_operands()) {
+    // We only care about reads.
+    if (MO.isDef())
+      continue;
+
+    if (MO.getReg() == AMDGPU::VCC)
+      return AMDGPU::VCC;
+
+    if (MO.getReg() == AMDGPU::FLAT_SCR)
+      return AMDGPU::FLAT_SCR;
+  }
+
+  unsigned UsedSGPRs[3] = { AMDGPU::NoRegister };
+  const MachineRegisterInfo &MRI = MI->getParent()->getParent()->getRegInfo();
+
+  for (unsigned i = 0; i < 3; ++i) {
+    int Idx = OpIndices[i];
+    if (Idx == -1)
+      break;
+
+    const MachineOperand &MO = MI->getOperand(Idx);
+    if (RI.isSGPRClassID(Desc.OpInfo[Idx].RegClass))
+      SGPRReg = MO.getReg();
+
+    if (MO.isReg() && RI.isSGPRClass(MRI.getRegClass(MO.getReg())))
+      UsedSGPRs[i] = MO.getReg();
+  }
+
+  if (SGPRReg != AMDGPU::NoRegister)
+    return SGPRReg;
+
+  // We don't have a required SGPR operand, so we have a bit more freedom in
+  // selecting operands to move.
+
+  // Try to select the most used SGPR. If an SGPR is equal to one of the
+  // others, we choose that.
+  //
+  // e.g.
+  // V_FMA_F32 v0, s0, s0, s0 -> No moves
+  // V_FMA_F32 v0, s0, s1, s0 -> Move s1
+
+  if (UsedSGPRs[0] != AMDGPU::NoRegister) {
+    if (UsedSGPRs[0] == UsedSGPRs[1] || UsedSGPRs[0] == UsedSGPRs[2])
+      SGPRReg = UsedSGPRs[0];
+  }
+
+  if (SGPRReg == AMDGPU::NoRegister && UsedSGPRs[1] != AMDGPU::NoRegister) {
+    if (UsedSGPRs[1] == UsedSGPRs[2])
+      SGPRReg = UsedSGPRs[1];
+  }
+
+  return SGPRReg;
 }
 
 MachineInstrBuilder SIInstrInfo::buildIndirectWrite(

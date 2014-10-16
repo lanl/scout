@@ -397,10 +397,11 @@ class CodeGenModule : public CodeGenTypeCache {
 
   /// \brief thread_local variables with initializers that need to run
   /// before any thread_local variable in this TU is odr-used.
-  std::vector<llvm::Constant*> CXXThreadLocalInits;
+  std::vector<llvm::Function *> CXXThreadLocalInits;
+  std::vector<llvm::GlobalVariable *> CXXThreadLocalInitVars;
 
   /// Global variables with initializers that need to run before main.
-  std::vector<llvm::Constant*> CXXGlobalInits;
+  std::vector<llvm::Function *> CXXGlobalInits;
 
   /// When a C++ decl with an initializer is deferred, null is
   /// appended to CXXGlobalInits, and the index of that null is placed
@@ -582,6 +583,10 @@ public:
     StaticLocalDeclMap[D] = C;
   }
 
+  llvm::Constant *
+  getOrCreateStaticVarDecl(const VarDecl &D,
+                           llvm::GlobalValue::LinkageTypes Linkage);
+
   llvm::GlobalVariable *getStaticLocalDeclGuardAddress(const VarDecl *D) {
     return StaticLocalDeclGuardMap[D];
   }
@@ -720,6 +725,10 @@ public:
   CreateOrReplaceCXXRuntimeVariable(StringRef Name, llvm::Type *Ty,
                                     llvm::GlobalValue::LinkageTypes Linkage);
 
+  llvm::Function *CreateGlobalInitOrDestructFunction(llvm::FunctionType *ty,
+                                                     const Twine &name,
+                                                     bool TLS = false);
+
   /// Return the address space of the underlying global variable for D, as
   /// determined by its declaration. Normally this is the same as the address
   /// space of D's type, but in CUDA, address spaces are associated with
@@ -813,7 +822,8 @@ public:
 
   /// Return a pointer to a constant array for the given string literal.
   llvm::GlobalVariable *
-  GetAddrOfConstantStringFromLiteral(const StringLiteral *S);
+  GetAddrOfConstantStringFromLiteral(const StringLiteral *S,
+                                     StringRef Name = ".str");
 
   /// Return a pointer to a constant array for the given ObjCEncodeExpr node.
   llvm::GlobalVariable *

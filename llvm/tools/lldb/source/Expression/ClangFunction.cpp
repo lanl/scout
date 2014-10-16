@@ -238,7 +238,9 @@ ClangFunction::CompileFunction (Stream &errors)
     if (jit_process_sp)
     {
         const bool generate_debug_info = true;
-        m_parser.reset(new ClangExpressionParser(jit_process_sp.get(), *this, generate_debug_info));
+        Args expr_parser_compiler_args;
+        jit_process_sp->GetTarget().GetExprParserCompilerArguments (expr_parser_compiler_args);
+        m_parser.reset(new ClangExpressionParser(jit_process_sp.get(), *this, expr_parser_compiler_args, generate_debug_info));
         
         num_errors = m_parser->Parse (errors);
     }
@@ -422,7 +424,7 @@ ClangFunction::InsertFunction (ExecutionContext &exe_ctx, lldb::addr_t &args_add
     return true;
 }
 
-ThreadPlan *
+lldb::ThreadPlanSP
 ClangFunction::GetThreadPlanToCallFunction (ExecutionContext &exe_ctx, 
                                             lldb::addr_t args_addr,
                                             const EvaluateExpressionOptions &options,
@@ -447,14 +449,14 @@ ClangFunction::GetThreadPlanToCallFunction (ExecutionContext &exe_ctx,
     
     lldb::addr_t args = { args_addr };
     
-    ThreadPlan *new_plan = new ThreadPlanCallFunction (*thread, 
+    lldb::ThreadPlanSP new_plan_sp (new ThreadPlanCallFunction (*thread,
                                                        wrapper_address,
                                                        ClangASTType(),
                                                        args,
-                                                       options);
-    new_plan->SetIsMasterPlan(true);
-    new_plan->SetOkayToDiscard (false);
-    return new_plan;
+                                                       options));
+    new_plan_sp->SetIsMasterPlan(true);
+    new_plan_sp->SetOkayToDiscard (false);
+    return new_plan_sp;
 }
 
 bool
@@ -541,10 +543,10 @@ ClangFunction::ExecuteFunction(
     if (log)
         log->Printf("== [ClangFunction::ExecuteFunction] Executing function \"%s\" ==", m_name.c_str());
     
-    lldb::ThreadPlanSP call_plan_sp (GetThreadPlanToCallFunction (exe_ctx,
-                                                                  args_addr,
-                                                                  real_options,
-                                                                  errors));
+    lldb::ThreadPlanSP call_plan_sp = GetThreadPlanToCallFunction (exe_ctx,
+                                                                   args_addr,
+                                                                   real_options,
+                                                                   errors);
     if (!call_plan_sp)
         return lldb::eExpressionSetupError;
         

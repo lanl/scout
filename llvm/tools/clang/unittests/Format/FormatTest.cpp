@@ -832,6 +832,12 @@ TEST_F(FormatTest, UnderstandsSingleLineComments) {
   verifyFormat("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa =\n"
                "    // Comment inside a statement.\n"
                "    bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;");
+  verifyFormat("SomeFunction(a,\n"
+               "             // comment\n"
+               "             b + x);");
+  verifyFormat("SomeFunction(a, a,\n"
+               "             // comment\n"
+               "             b + x);");
   verifyFormat(
       "bool aaaaaaaaaaaaa = // comment\n"
       "    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa || aaaaaaaaaaaaaaaaaaaaaaaaaaaa ||\n"
@@ -3679,9 +3685,25 @@ TEST_F(FormatTest, BreaksDesireably) {
       "                             NSTrackingActiveAlways;");
 }
 
+TEST_F(FormatTest, FormatsDeclarationsOnePerLine) {
+  FormatStyle NoBinPacking = getGoogleStyle();
+  NoBinPacking.BinPackParameters = false;
+  NoBinPacking.BinPackArguments = true;
+  verifyFormat("void f() {\n"
+               "  f(aaaaaaaaaaaaaaaaaaaa, aaaaaaaaaaaaaaaaaaaa,\n"
+               "    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);\n"
+               "}",
+               NoBinPacking);
+  verifyFormat("void f(int aaaaaaaaaaaaaaaaaaaa,\n"
+               "       int aaaaaaaaaaaaaaaaaaaa,\n"
+               "       int aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa) {}",
+               NoBinPacking);
+}
+
 TEST_F(FormatTest, FormatsOneParameterPerLineIfNecessary) {
   FormatStyle NoBinPacking = getGoogleStyle();
   NoBinPacking.BinPackParameters = false;
+  NoBinPacking.BinPackArguments = false;
   verifyFormat("f(aaaaaaaaaaaaaaaaaaaa,\n"
                "  aaaaaaaaaaaaaaaaaaaa,\n"
                "  aaaaaaaaaaaaaaaaaaaa + aaaaaaaaaaaaaaaaaaaa);",
@@ -4020,7 +4042,7 @@ TEST_F(FormatTest, BreaksConditionalExpressions) {
       "             : aaaaaaaaaaaaaaaaaaaaaaaaaaaa;");
 
   FormatStyle NoBinPacking = getLLVMStyle();
-  NoBinPacking.BinPackParameters = false;
+  NoBinPacking.BinPackArguments = false;
   verifyFormat(
       "void f() {\n"
       "  g(aaa,\n"
@@ -5116,6 +5138,7 @@ TEST_F(FormatTest, FormatsCasts) {
   verifyFormat("my_int a = (my_int)sizeof(int);");
   verifyFormat("return (my_int)aaa;");
   verifyFormat("#define x ((int)-1)");
+  verifyFormat("#define LENGTH(x, y) (x) - (y) + 1");
   verifyFormat("#define p(q) ((int *)&q)");
   verifyFormat("fn(a)(b) + 1;");
 
@@ -5123,7 +5146,7 @@ TEST_F(FormatTest, FormatsCasts) {
   verifyFormat("void f() { return P ? (my_int)*P : (my_int)0; }");
   verifyFormat("my_int a = (my_int)~0;");
   verifyFormat("my_int a = (my_int)++a;");
-  verifyFormat("my_int a = (my_int)+2;");
+  verifyFormat("my_int a = (my_int)-2;");
   verifyFormat("my_int a = (my_int)1;");
   verifyFormat("my_int a = (my_int *)1;");
   verifyFormat("my_int a = (const my_int)-1;");
@@ -6546,17 +6569,16 @@ TEST_F(FormatTest, FormatObjCMethodExpr) {
       "                    der:NO]);\n"
       "}",
       getLLVMStyleWithColumns(70));
-  verifyFormat("{\n"
-               "  popup_window_.reset([[RenderWidgetPopupWindow alloc]\n"
-               "      initWithContentRect:NSMakeRect(origin_global.x,\n"
-               "                                     origin_global.y,\n"
-               "                                     pos.width(),\n"
-               "                                     pos.height())\n"
-               "                styleMask:NSBorderlessWindowMask\n"
-               "                  backing:NSBackingStoreBuffered\n"
-               "                    defer:NO]);\n"
-               "}",
-               getChromiumStyle(FormatStyle::LK_Cpp));
+  verifyFormat(
+      "void f() {\n"
+      "  popup_window_.reset([[RenderWidgetPopupWindow alloc]\n"
+      "      initWithContentRect:NSMakeRect(origin_global.x, origin_global.y,\n"
+      "                                     pos.width(), pos.height())\n"
+      "                styleMask:NSBorderlessWindowMask\n"
+      "                  backing:NSBackingStoreBuffered\n"
+      "                    defer:NO]);\n"
+      "}",
+      getChromiumStyle(FormatStyle::LK_Cpp));
   verifyFormat("[contentsContainer replaceSubview:[subviews objectAtIndex:0]\n"
                "                             with:contentsNativeView];");
 
@@ -8353,12 +8375,14 @@ TEST_F(FormatTest, GetsCorrectBasedOnStyle) {
   EXPECT_ALL_STYLES_EQUAL(Styles);
 }
 
-#define CHECK_PARSE_BOOL(FIELD)                                                \
+#define CHECK_PARSE_BOOL_FIELD(FIELD, CONFIG_NAME)                             \
   Style.FIELD = false;                                                         \
-  EXPECT_EQ(0, parseConfiguration(#FIELD ": true", &Style).value());           \
+  EXPECT_EQ(0, parseConfiguration(CONFIG_NAME ": true", &Style).value());      \
   EXPECT_TRUE(Style.FIELD);                                                    \
-  EXPECT_EQ(0, parseConfiguration(#FIELD ": false", &Style).value());          \
+  EXPECT_EQ(0, parseConfiguration(CONFIG_NAME ": false", &Style).value());     \
   EXPECT_FALSE(Style.FIELD);
+
+#define CHECK_PARSE_BOOL(FIELD) CHECK_PARSE_BOOL_FIELD(FIELD, #FIELD)
 
 #define CHECK_PARSE(TEXT, FIELD, VALUE)                                        \
   EXPECT_NE(VALUE, Style.FIELD);                                               \
@@ -8378,13 +8402,12 @@ TEST_F(FormatTest, ParsesConfigurationBools) {
   CHECK_PARSE_BOOL(AlwaysBreakAfterDefinitionReturnType);
   CHECK_PARSE_BOOL(AlwaysBreakTemplateDeclarations);
   CHECK_PARSE_BOOL(BinPackParameters);
+  CHECK_PARSE_BOOL(BinPackArguments);
   CHECK_PARSE_BOOL(BreakBeforeTernaryOperators);
   CHECK_PARSE_BOOL(BreakConstructorInitializersBeforeComma);
   CHECK_PARSE_BOOL(ConstructorInitializerAllOnOneLineOrOnePerLine);
   CHECK_PARSE_BOOL(DerivePointerAlignment);
-  // For backward compatibility:
-  CHECK_PARSE("DerivePointerBinding: true", DerivePointerAlignment, true);
-  CHECK_PARSE("DerivePointerBinding: false", DerivePointerAlignment, false);
+  CHECK_PARSE_BOOL_FIELD(DerivePointerAlignment, "DerivePointerBinding");
   CHECK_PARSE_BOOL(IndentCaseLabels);
   CHECK_PARSE_BOOL(IndentWrappedFunctionNames);
   CHECK_PARSE_BOOL(KeepEmptyLinesAtTheStartOfBlocks);

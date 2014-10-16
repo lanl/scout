@@ -2641,6 +2641,7 @@ public:
   ObjCProtocolDecl *LookupProtocol(IdentifierInfo *II, SourceLocation IdLoc,
                                    RedeclarationKind Redecl
                                      = NotForRedeclaration);
+  bool LookupInSuper(LookupResult &R, CXXRecordDecl *Class);
 
   void LookupOverloadedOperatorName(OverloadedOperatorKind Op, Scope *S,
                                     QualType T1, QualType T2,
@@ -2739,8 +2740,11 @@ public:
 
   void checkUnusedDeclAttributes(Declarator &D);
 
-  /// Determine if type T is a valid subject for a nonnull attribute.
-  bool isValidNonNullAttrType(QualType T);
+  /// Determine if type T is a valid subject for a nonnull and similar
+  /// attributes. By default, we look through references (the behavior used by
+  /// nonnull), but if the second parameter is true, then we treat a reference
+  /// type as valid.
+  bool isValidPointerAttrType(QualType T, bool RefOkay = false);
 
   bool CheckRegparmAttr(const AttributeList &attr, unsigned &value);
   bool CheckCallingConvAttr(const AttributeList &attr, CallingConv &CC, 
@@ -4530,16 +4534,26 @@ public:
 
   /// \brief The parser has parsed a global nested-name-specifier '::'.
   ///
-  /// \param S The scope in which this nested-name-specifier occurs.
-  ///
   /// \param CCLoc The location of the '::'.
   ///
   /// \param SS The nested-name-specifier, which will be updated in-place
   /// to reflect the parsed nested-name-specifier.
   ///
   /// \returns true if an error occurred, false otherwise.
-  bool ActOnCXXGlobalScopeSpecifier(Scope *S, SourceLocation CCLoc,
-                                    CXXScopeSpec &SS);
+  bool ActOnCXXGlobalScopeSpecifier(SourceLocation CCLoc, CXXScopeSpec &SS);
+
+  /// \brief The parser has parsed a '__super' nested-name-specifier.
+  ///
+  /// \param SuperLoc The location of the '__super' keyword.
+  ///
+  /// \param ColonColonLoc The location of the '::'.
+  ///
+  /// \param SS The nested-name-specifier, which will be updated in-place
+  /// to reflect the parsed nested-name-specifier.
+  ///
+  /// \returns true if an error occurred, false otherwise.
+  bool ActOnSuperScopeSpecifier(SourceLocation SuperLoc,
+                                SourceLocation ColonColonLoc, CXXScopeSpec &SS);
 
   bool isAcceptableNestedNameSpecifier(const NamedDecl *SD);
   NamedDecl *FindFirstQualifierInScope(Scope *S, NestedNameSpecifier *NNS);
@@ -7392,6 +7406,16 @@ public:
   void AddAlignedAttr(SourceRange AttrRange, Decl *D, TypeSourceInfo *T,
                       unsigned SpellingListIndex, bool IsPackExpansion);
 
+  /// AddAssumeAlignedAttr - Adds an assume_aligned attribute to a particular
+  /// declaration.
+  void AddAssumeAlignedAttr(SourceRange AttrRange, Decl *D, Expr *E, Expr *OE,
+                            unsigned SpellingListIndex);
+
+  /// AddAlignValueAttr - Adds an align_value attribute to a particular
+  /// declaration.
+  void AddAlignValueAttr(SourceRange AttrRange, Decl *D, Expr *E,
+                         unsigned SpellingListIndex);
+
   // OpenMP directives and clauses.
 private:
   void *VarDataSharingAttributesStack;
@@ -7525,12 +7549,16 @@ public:
   StmtResult ActOnOpenMPAtomicDirective(ArrayRef<OMPClause *> Clauses,
                                         Stmt *AStmt, SourceLocation StartLoc,
                                         SourceLocation EndLoc);
-
   /// \brief Called on well-formed '\#pragma omp target' after parsing of the
   /// associated statement.
   StmtResult ActOnOpenMPTargetDirective(ArrayRef<OMPClause *> Clauses,
                                         Stmt *AStmt, SourceLocation StartLoc,
                                         SourceLocation EndLoc);
+  /// \brief Called on well-formed '\#pragma omp teams' after parsing of the
+  /// associated statement.
+  StmtResult ActOnOpenMPTeamsDirective(ArrayRef<OMPClause *> Clauses,
+                                       Stmt *AStmt, SourceLocation StartLoc,
+                                       SourceLocation EndLoc);
 
   OMPClause *ActOnOpenMPSingleExprClause(OpenMPClauseKind Kind,
                                          Expr *Expr,
@@ -7766,6 +7794,7 @@ public:
     VAK_Valid,
     VAK_ValidInCXX11,
     VAK_Undefined,
+    VAK_MSVCUndefined,
     VAK_Invalid
   };
 
@@ -8219,7 +8248,8 @@ public:
     CFT_Device,
     CFT_Global,
     CFT_Host,
-    CFT_HostDevice
+    CFT_HostDevice,
+    CFT_InvalidTarget
   };
 
   CUDAFunctionTarget IdentifyCUDATarget(const FunctionDecl *D);
@@ -8227,10 +8257,24 @@ public:
   bool CheckCUDATarget(CUDAFunctionTarget CallerTarget,
                        CUDAFunctionTarget CalleeTarget);
 
-  bool CheckCUDATarget(const FunctionDecl *Caller, const FunctionDecl *Callee) {
-    return CheckCUDATarget(IdentifyCUDATarget(Caller),
-                           IdentifyCUDATarget(Callee));
-  }
+  bool CheckCUDATarget(const FunctionDecl *Caller, const FunctionDecl *Callee);
+
+  /// Given a implicit special member, infer its CUDA target from the
+  /// calls it needs to make to underlying base/field special members.
+  /// \param ClassDecl the class for which the member is being created.
+  /// \param CSM the kind of special member.
+  /// \param MemberDecl the special member itself.
+  /// \param ConstRHS true if this is a copy operation with a const object on
+  ///        its RHS.
+  /// \param Diagnose true if this call should emit diagnostics.
+  /// \return true if there was an error inferring.
+  /// The result of this call is implicit CUDA target attribute(s) attached to
+  /// the member declaration.
+  bool inferCUDATargetForImplicitSpecialMember(CXXRecordDecl *ClassDecl,
+                                               CXXSpecialMember CSM,
+                                               CXXMethodDecl *MemberDecl,
+                                               bool ConstRHS,
+                                               bool Diagnose);
 
   /// \name Code completion
   //@{

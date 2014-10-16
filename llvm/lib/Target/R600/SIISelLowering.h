@@ -37,6 +37,7 @@ class SITargetLowering : public AMDGPUTargetLowering {
   SDValue LowerFDIV32(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerFDIV64(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerFDIV(SDValue Op, SelectionDAG &DAG) const;
+  SDValue LowerINT_TO_FP(SDValue Op, SelectionDAG &DAG, bool Signed) const;
   SDValue LowerSTORE(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerTrig(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerBRCOND(SDValue Op, SelectionDAG &DAG) const;
@@ -47,8 +48,6 @@ class SITargetLowering : public AMDGPUTargetLowering {
                                                 const SDValue &Op) const;
   bool fitsRegClass(SelectionDAG &DAG, const SDValue &Op,
                     unsigned RegClass) const;
-  void ensureSRegLimit(SelectionDAG &DAG, SDValue &Operand,
-                       unsigned RegClass, bool &ScalarSlotUsed) const;
 
   SDNode *legalizeOperands(MachineSDNode *N, SelectionDAG &DAG) const;
   void adjustWritemask(MachineSDNode *&N, SelectionDAG &DAG) const;
@@ -102,6 +101,7 @@ public:
   int32_t analyzeImmediate(const SDNode *N) const;
   SDValue CreateLiveInRegister(SelectionDAG &DAG, const TargetRegisterClass *RC,
                                unsigned Reg, EVT VT) const override;
+  void legalizeTargetIndependentNode(SDNode *Node, SelectionDAG &DAG) const;
 };
 
 } // End namespace llvm

@@ -85,6 +85,24 @@ is applied for all input files. The format of the configuration is:
   -style='{key1: value1, key2: value2, ...}'
 
 
+Disabling Formatting on a Piece of Code
+=======================================
+
+Clang-format understands also special comments that switch formatting in a
+delimited range. The code between a comment ``// clang-format off`` or
+``/* clang-format off */`` up to a comment ``// clang-format on`` or
+``/* clang-format on */`` will not be formatted. The comments themselves
+will be formatted (aligned) normally.
+
+.. code-block:: c++
+
+  int formatted_code;
+  // clang-format off
+      void    unformatted_code  ;
+  // clang-format on
+  void formatted_code_again;
+
+
 Configuring Style in Code
 =========================
 
@@ -187,9 +205,13 @@ the configuration (without a prefix: ``Auto``).
   If ``true``, always break after the ``template<...>`` of a
   template declaration.
 
+**BinPackArguments** (``bool``)
+  If ``false``, a function call's arguments will either be all on the
+  same line or will have one line each.
+
 **BinPackParameters** (``bool``)
-  If ``false``, a function call's or function definition's parameters
-  will either all be on the same line or will have one line each.
+  If ``false``, a function declaration's or function definition's
+  parameters will either all be on the same line or will have one line each.
 
 **BreakBeforeBinaryOperators** (``BinaryOperatorStyle``)
   The way to wrap binary operators.
@@ -270,7 +292,7 @@ the configuration (without a prefix: ``Auto``).
 
 **DerivePointerAlignment** (``bool``)
   If ``true``, analyze the formatted file for the most common
-  alignment of & and ``*``. ``PointerAlignment`` is then used only as fallback.
+  alignment of & and \*. ``PointerAlignment`` is then used only as fallback.
 
 **DisableFormat** (``bool``)
   Disables formatting at all.
@@ -324,6 +346,8 @@ the configuration (without a prefix: ``Auto``).
     Do not use.
   * ``LK_Cpp`` (in configuration: ``Cpp``)
     Should be used for C, C++, ObjectiveC, ObjectiveC++.
+  * ``LK_Java`` (in configuration: ``Java``)
+    Should be used for Java.
   * ``LK_JavaScript`` (in configuration: ``JavaScript``)
     Should be used for JavaScript.
   * ``LK_Proto`` (in configuration: ``Proto``)

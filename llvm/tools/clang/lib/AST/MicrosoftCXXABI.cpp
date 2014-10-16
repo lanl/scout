@@ -45,7 +45,7 @@ public:
     return ++LambdaManglingNumber;
   }
 
-  unsigned getManglingNumber(const BlockDecl *BD) {
+  unsigned getManglingNumber(const BlockDecl *BD) override {
     const Type *Ty = nullptr;
     return ++ManglingNumbers[Ty];
   }

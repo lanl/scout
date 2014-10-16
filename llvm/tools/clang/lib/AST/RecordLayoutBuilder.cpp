@@ -2211,7 +2211,7 @@ static bool isMsLayout(const RecordDecl* D) {
 // * There is a distinction between alignment and required alignment.
 //   __declspec(align) changes the required alignment of a struct.  This
 //   alignment is _always_ obeyed, even in the presence of #pragma pack. A
-//   record inherites required alignment from all of its fields an bases.
+//   record inherits required alignment from all of its fields and bases.
 // * __declspec(align) on bitfields has the effect of changing the bitfield's
 //   alignment instead of its required alignment.  This is the only known way
 //   to make the alignment of a struct bigger than 8.  Interestingly enough
@@ -2318,6 +2318,8 @@ public:
   CharUnits CurrentBitfieldSize;
   /// \brief Offset to the virtual base table pointer (if one exists).
   CharUnits VBPtrOffset;
+  /// \brief Minimum record size possible.
+  CharUnits MinEmptyStructSize;
   /// \brief The size and alignment info of a pointer.
   ElementInfo PointerInfo;
   /// \brief The primary base class (if one exists).
@@ -2413,6 +2415,8 @@ MicrosoftRecordLayoutBuilder::getAdjustedElementInfo(
 }
 
 void MicrosoftRecordLayoutBuilder::layout(const RecordDecl *RD) {
+  // For C record layout, zero-sized records always have size 4.
+  MinEmptyStructSize = CharUnits::fromQuantity(4);
   initializeLayout(RD);
   layoutFields(RD);
   DataSize = Size = Size.RoundUpToAlignment(Alignment);
@@ -2422,6 +2426,8 @@ void MicrosoftRecordLayoutBuilder::layout(const RecordDecl *RD) {
 }
 
 void MicrosoftRecordLayoutBuilder::cxxLayout(const CXXRecordDecl *RD) {
+  // The C++ standard says that empty structs have size 1.
+  MinEmptyStructSize = CharUnits::One();
   initializeLayout(RD);
   initializeCXXLayout(RD);
   layoutNonVirtualBases(RD);
@@ -2750,7 +2756,7 @@ void MicrosoftRecordLayoutBuilder::layoutVirtualBases(const CXXRecordDecl *RD) {
 
 void MicrosoftRecordLayoutBuilder::finalizeLayout(const RecordDecl *RD) {
   // Respect required alignment.  Note that in 32-bit mode Required alignment
-  // may be 0 nad cause size not to be updated.
+  // may be 0 and cause size not to be updated.
   DataSize = Size;
   if (!RequiredAlignment.isZero()) {
     Alignment = std::max(Alignment, RequiredAlignment);
@@ -2760,11 +2766,15 @@ void MicrosoftRecordLayoutBuilder::finalizeLayout(const RecordDecl *RD) {
     RoundingAlignment = std::max(RoundingAlignment, RequiredAlignment);
     Size = Size.RoundUpToAlignment(RoundingAlignment);
   }
-  // Zero-sized structures have size equal to their alignment.
   if (Size.isZero()) {
     EndsWithZeroSizedObject = true;
     LeadsWithZeroSizedBase = true;
-    Size = Alignment;
+    // Zero-sized structures have size equal to their alignment if a
+    // __declspec(align) came into play.
+    if (RequiredAlignment >= MinEmptyStructSize)
+      Size = Alignment;
+    else
+      Size = MinEmptyStructSize;
   }
 }
 

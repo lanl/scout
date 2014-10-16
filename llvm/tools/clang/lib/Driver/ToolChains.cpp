@@ -142,7 +142,7 @@ static const char *GetArmArchForMCpu(StringRef Value) {
     .Cases("cortex-a9", "cortex-a12", "cortex-a15", "krait", "armv7")
     .Cases("cortex-r4", "cortex-r5", "armv7r")
     .Case("cortex-m3", "armv7m")
-    .Case("cortex-m4", "armv7em")
+    .Cases("cortex-m4", "cortex-m7", "armv7em")
     .Case("swift", "armv7s")
     .Default(nullptr);
 }
@@ -152,7 +152,7 @@ static bool isSoftFloatABI(const ArgList &Args) {
                            options::OPT_mfloat_abi_EQ);
   if (!A)
     return false;
- 
+
   return A->getOption().matches(options::OPT_msoft_float) ||
          (A->getOption().matches(options::OPT_mfloat_abi_EQ) &&
           A->getValue() == StringRef("soft"));
@@ -2168,7 +2168,10 @@ bool Generic_GCC::IsIntegratedAssemblerDefault() const {
          getTriple().getArch() == llvm::Triple::arm ||
          getTriple().getArch() == llvm::Triple::armeb ||
          getTriple().getArch() == llvm::Triple::thumb ||
-         getTriple().getArch() == llvm::Triple::thumbeb;
+         getTriple().getArch() == llvm::Triple::thumbeb ||
+         getTriple().getArch() == llvm::Triple::ppc64 ||
+         getTriple().getArch() == llvm::Triple::ppc64le ||
+         getTriple().getArch() == llvm::Triple::systemz;
 }
 
 void Generic_ELF::addClangTargetOptions(const ArgList &DriverArgs,

@@ -283,8 +283,7 @@ int SymbolizerGetOpInfo(void *DisInfo, uint64_t Pc, uint64_t Offset,
       return 0;
     // First search the section's relocation entries (if any) for an entry
     // for this section offset.
-    uint64_t sect_addr;
-    info->S.getAddress(sect_addr);
+    uint64_t sect_addr = info->S.getAddress();
     uint64_t sect_offset = (Pc + Offset) - sect_addr;
     bool reloc_found = false;
     DataRefImpl Rel;
@@ -413,6 +412,94 @@ const char *GuessCstringPointer(uint64_t ReferenceValue,
   return nullptr;
 }
 
+// GuessIndirectSymbol returns the name of the indirect symbol for the
+// ReferenceValue passed in or nullptr.  This is used when ReferenceValue maybe
+// an address of a symbol stub or a lazy or non-lazy pointer to associate the
+// symbol name being referenced by the stub or pointer.
+static const char *GuessIndirectSymbol(uint64_t ReferenceValue,
+                                       struct DisassembleInfo *info) {
+  uint32_t LoadCommandCount = info->O->getHeader().ncmds;
+  MachOObjectFile::LoadCommandInfo Load = info->O->getFirstLoadCommandInfo();
+  MachO::dysymtab_command Dysymtab = info->O->getDysymtabLoadCommand();
+  MachO::symtab_command Symtab = info->O->getSymtabLoadCommand();
+  for (unsigned I = 0;; ++I) {
+    if (Load.C.cmd == MachO::LC_SEGMENT_64) {
+      MachO::segment_command_64 Seg = info->O->getSegment64LoadCommand(Load);
+      for (unsigned J = 0; J < Seg.nsects; ++J) {
+        MachO::section_64 Sec = info->O->getSection64(Load, J);
+        uint32_t section_type = Sec.flags & MachO::SECTION_TYPE;
+        if ((section_type == MachO::S_NON_LAZY_SYMBOL_POINTERS ||
+             section_type == MachO::S_LAZY_SYMBOL_POINTERS ||
+             section_type == MachO::S_LAZY_DYLIB_SYMBOL_POINTERS ||
+             section_type == MachO::S_THREAD_LOCAL_VARIABLE_POINTERS ||
+             section_type == MachO::S_SYMBOL_STUBS) &&
+            ReferenceValue >= Sec.addr &&
+            ReferenceValue < Sec.addr + Sec.size) {
+          uint32_t stride;
+          if (section_type == MachO::S_SYMBOL_STUBS)
+            stride = Sec.reserved2;
+          else
+            stride = 8;
+          if (stride == 0)
+            return nullptr;
+          uint32_t index = Sec.reserved1 + (ReferenceValue - Sec.addr) / stride;
+          if (index < Dysymtab.nindirectsyms) {
+            uint32_t indirect_symbol =
+              info->O->getIndirectSymbolTableEntry(Dysymtab, index);
+            if (indirect_symbol < Symtab.nsyms) {
+              symbol_iterator Sym = info->O->getSymbolByIndex(indirect_symbol);
+              SymbolRef Symbol = *Sym;
+              StringRef SymName;
+              Symbol.getName(SymName);
+              const char *name = SymName.data();
+              return name;
+            }
+          }
+        }
+      }
+    } else if (Load.C.cmd == MachO::LC_SEGMENT) {
+      MachO::segment_command Seg = info->O->getSegmentLoadCommand(Load);
+      for (unsigned J = 0; J < Seg.nsects; ++J) {
+        MachO::section Sec = info->O->getSection(Load, J);
+        uint32_t section_type = Sec.flags & MachO::SECTION_TYPE;
+        if ((section_type == MachO::S_NON_LAZY_SYMBOL_POINTERS ||
+             section_type == MachO::S_LAZY_SYMBOL_POINTERS ||
+             section_type == MachO::S_LAZY_DYLIB_SYMBOL_POINTERS ||
+             section_type == MachO::S_THREAD_LOCAL_VARIABLE_POINTERS ||
+             section_type == MachO::S_SYMBOL_STUBS) &&
+            ReferenceValue >= Sec.addr &&
+            ReferenceValue < Sec.addr + Sec.size) {
+          uint32_t stride;
+          if (section_type == MachO::S_SYMBOL_STUBS)
+            stride = Sec.reserved2;
+          else
+            stride = 4;
+          if (stride == 0)
+            return nullptr;
+          uint32_t index = Sec.reserved1 + (ReferenceValue - Sec.addr) / stride;
+          if (index < Dysymtab.nindirectsyms) {
+            uint32_t indirect_symbol =
+              info->O->getIndirectSymbolTableEntry(Dysymtab, index);
+            if (indirect_symbol < Symtab.nsyms) {
+              symbol_iterator Sym = info->O->getSymbolByIndex(indirect_symbol);
+              SymbolRef Symbol = *Sym;
+              StringRef SymName;
+              Symbol.getName(SymName);
+              const char *name = SymName.data();
+              return name;
+            }
+          }
+        }
+      }
+    }
+    if (I == LoadCommandCount - 1)
+      break;
+    else
+      Load = info->O->getNextLoadCommandInfo(Load);
+  }
+  return nullptr;
+}
+
 // GuessLiteralPointer returns a string which for the item in the Mach-O file
 // for the address passed in as ReferenceValue for printing as a comment with
 // the instruction and also returns the corresponding type of that item
@@ -434,8 +521,7 @@ const char *GuessLiteralPointer(uint64_t ReferenceValue, uint64_t ReferencePC,
     return nullptr;
 
   // First see if there is an external relocation entry at the ReferencePC.
-  uint64_t sect_addr;
-  info->S.getAddress(sect_addr);
+  uint64_t sect_addr = info->S.getAddress();
   uint64_t sect_offset = ReferencePC - sect_addr;
   bool reloc_found = false;
   DataRefImpl Rel;
@@ -531,7 +617,14 @@ const char *SymbolizerSymbolLookUp(void *DisInfo, uint64_t ReferenceValue,
   if (!name.empty())
     SymbolName = name.data();
 
-  if (*ReferenceType == LLVMDisassembler_ReferenceType_In_PCrel_Load) {
+  if (*ReferenceType == LLVMDisassembler_ReferenceType_In_Branch) {
+    *ReferenceName = GuessIndirectSymbol(ReferenceValue, info);
+    if (*ReferenceName)
+      *ReferenceType = LLVMDisassembler_ReferenceType_Out_SymbolStub;
+    else
+      *ReferenceType = LLVMDisassembler_ReferenceType_InOut_None;
+  }
+  else if (*ReferenceType == LLVMDisassembler_ReferenceType_In_PCrel_Load) {
     *ReferenceName = GuessLiteralPointer(ReferenceValue, ReferencePC,
                                          ReferenceType, info);
     if (*ReferenceName == nullptr)
@@ -725,7 +818,7 @@ static void DisassembleInputMachO2(StringRef Filename,
   // Build a data in code table that is sorted on by the address of each entry.
   uint64_t BaseAddress = 0;
   if (Header.filetype == MachO::MH_OBJECT)
-    Sections[0].getAddress(BaseAddress);
+    BaseAddress = Sections[0].getAddress();
   else
     BaseAddress = BaseSegmentAddress;
   DiceTable Dices;
@@ -768,8 +861,7 @@ static void DisassembleInputMachO2(StringRef Filename,
 
   for (unsigned SectIdx = 0; SectIdx != Sections.size(); SectIdx++) {
 
-    bool SectIsText = false;
-    Sections[SectIdx].isText(SectIsText);
+    bool SectIsText = Sections[SectIdx].isText();
     if (SectIsText == false)
       continue;
 
@@ -786,8 +878,7 @@ static void DisassembleInputMachO2(StringRef Filename,
 
     StringRef Bytes;
     Sections[SectIdx].getContents(Bytes);
-    uint64_t SectAddress = 0;
-    Sections[SectIdx].getAddress(SectAddress);
+    uint64_t SectAddress = Sections[SectIdx].getAddress();
     DisasmMemoryObject MemoryObject((const uint8_t *)Bytes.data(), Bytes.size(),
                                     SectAddress);
     bool symbolTableWorked = false;
@@ -795,9 +886,9 @@ static void DisassembleInputMachO2(StringRef Filename,
     // Parse relocations.
     std::vector<std::pair<uint64_t, SymbolRef>> Relocs;
     for (const RelocationRef &Reloc : Sections[SectIdx].relocations()) {
-      uint64_t RelocOffset, SectionAddress;
+      uint64_t RelocOffset;
       Reloc.getOffset(RelocOffset);
-      Sections[SectIdx].getAddress(SectionAddress);
+      uint64_t SectionAddress = Sections[SectIdx].getAddress();
       RelocOffset -= SectionAddress;
 
       symbol_iterator RelocSym = Reloc.getSymbol();
@@ -838,15 +929,13 @@ static void DisassembleInputMachO2(StringRef Filename,
         continue;
 
       // Make sure the symbol is defined in this section.
-      bool containsSym = false;
-      Sections[SectIdx].containsSymbol(Symbols[SymIdx], containsSym);
+      bool containsSym = Sections[SectIdx].containsSymbol(Symbols[SymIdx]);
       if (!containsSym)
         continue;
 
       // Start at the address of the symbol relative to the section's address.
-      uint64_t SectionAddress = 0;
       uint64_t Start = 0;
-      Sections[SectIdx].getAddress(SectionAddress);
+      uint64_t SectionAddress = Sections[SectIdx].getAddress();
       Symbols[SymIdx].getAddress(Start);
       Start -= SectionAddress;
 
@@ -859,8 +948,8 @@ static void DisassembleInputMachO2(StringRef Filename,
         SymbolRef::Type NextSymType;
         Symbols[NextSymIdx].getType(NextSymType);
         if (NextSymType == SymbolRef::ST_Function) {
-          Sections[SectIdx].containsSymbol(Symbols[NextSymIdx],
-                                           containsNextSym);
+          containsNextSym =
+              Sections[SectIdx].containsSymbol(Symbols[NextSymIdx]);
           Symbols[NextSymIdx].getAddress(NextSym);
           NextSym -= SectionAddress;
           break;
@@ -868,8 +957,7 @@ static void DisassembleInputMachO2(StringRef Filename,
         ++NextSymIdx;
       }
 
-      uint64_t SectSize;
-      Sections[SectIdx].getSize(SectSize);
+      uint64_t SectSize = Sections[SectIdx].getSize();
       uint64_t End = containsNextSym ?  NextSym : SectSize;
       uint64_t Size;
 
@@ -955,11 +1043,9 @@ static void DisassembleInputMachO2(StringRef Filename,
       }
     }
     if (!symbolTableWorked) {
-      // Reading the symbol table didn't work, disassemble the whole section. 
-      uint64_t SectAddress;
-      Sections[SectIdx].getAddress(SectAddress);
-      uint64_t SectSize;
-      Sections[SectIdx].getSize(SectSize);
+      // Reading the symbol table didn't work, disassemble the whole section.
+      uint64_t SectAddress = Sections[SectIdx].getAddress();
+      uint64_t SectSize = Sections[SectIdx].getSize();
       uint64_t InstSize;
       for (uint64_t Index = 0; Index < SectSize; Index += InstSize) {
         MCInst Inst;
@@ -1064,8 +1150,7 @@ static void findUnwindRelocNameAddend(const MachOObjectFile *Obj,
   auto RE = Obj->getRelocation(Reloc.getRawDataRefImpl());
   SectionRef RelocSection = Obj->getRelocationSection(RE);
 
-  uint64_t SectionAddr;
-  RelocSection.getAddress(SectionAddr);
+  uint64_t SectionAddr = RelocSection.getAddress();
 
   auto Sym = Symbols.upper_bound(Addr);
   if (Sym == Symbols.begin()) {
@@ -2636,10 +2721,8 @@ SegInfo::SegInfo(const object::MachOObjectFile *Obj) {
     SectionInfo Info;
     if (error(Section.getName(Info.SectionName)))
       return;
-    if (error(Section.getAddress(Info.Address)))
-      return;
-    if (error(Section.getSize(Info.Size)))
-      return;
+    Info.Address = Section.getAddress();
+    Info.Size = Section.getSize();
     Info.SegmentName =
         Obj->getSectionFinalSegmentName(Section.getRawDataRefImpl());
     if (!Info.SegmentName.equals(CurSegName)) {
@@ -2734,8 +2817,8 @@ void llvm::printMachOBindTable(const object::MachOObjectFile *Obj) {
   // Build table of sections so names can used in final output.
   SegInfo sectionTable(Obj);
 
-  outs() << "segment  section            address     type     "
-            "addend   dylib               symbol\n";
+  outs() << "segment  section            address    type       "
+            "addend dylib            symbol\n";
   for (const llvm::object::MachOBindEntry &Entry : Obj->bindTable()) {
     uint32_t SegIndex = Entry.segmentIndex();
     uint64_t OffsetInSeg = Entry.segmentOffset();
@@ -2745,18 +2828,17 @@ void llvm::printMachOBindTable(const object::MachOObjectFile *Obj) {
 
     // Table lines look like:
     //  __DATA  __got  0x00012010    pointer   0 libSystem ___stack_chk_guard
-    outs() << format("%-8s %-18s 0x%08" PRIX64 "  %-8s %-8" PRId64 " %-20s",
-                     SegmentName.str().c_str(),
-                     SectionName.str().c_str(),
-                     Address,
-                     Entry.typeName().str().c_str(),
-                     Entry.addend(),
-                     ordinalName(Obj, Entry.ordinal()).str().c_str())
-           << Entry.symbolName();
+    StringRef Attr;
     if (Entry.flags() & MachO::BIND_SYMBOL_FLAGS_WEAK_IMPORT)
-      outs() << " (weak_import)\n";
-    else
-      outs() << "\n";
+      Attr = " (weak_import)";
+    outs() << left_justify(SegmentName, 8)  << " "
+           << left_justify(SectionName, 18) << " "
+           << format_hex(Address, 10, true) << " "
+           << left_justify(Entry.typeName(), 8) << " "
+           << format_decimal(Entry.addend(), 8)  << " "  
+           << left_justify(ordinalName(Obj, Entry.ordinal()), 16) << " "
+           << Entry.symbolName() 
+           << Attr << "\n";
   }
 }
 
@@ -2768,8 +2850,8 @@ void llvm::printMachOLazyBindTable(const object::MachOObjectFile *Obj) {
   // Build table of sections so names can used in final output.
   SegInfo sectionTable(Obj);
 
-  outs() << "segment  section            address      "
-            "dylib               symbol\n";
+  outs() << "segment  section            address     "
+            "dylib            symbol\n";
   for (const llvm::object::MachOBindEntry &Entry : Obj->lazyBindTable()) {
     uint32_t SegIndex = Entry.segmentIndex();
     uint64_t OffsetInSeg = Entry.segmentOffset();
@@ -2779,11 +2861,10 @@ void llvm::printMachOLazyBindTable(const object::MachOObjectFile *Obj) {
 
     // Table lines look like:
     //  __DATA  __got  0x00012010 libSystem ___stack_chk_guard
-    outs() << format("%-8s %-18s 0x%08" PRIX64 "   %-20s",
-                     SegmentName.str().c_str(),
-                     SectionName.str().c_str(),
-                     Address,
-                     ordinalName(Obj, Entry.ordinal()).str().c_str())
+    outs() << left_justify(SegmentName, 8)  << " "
+           << left_justify(SectionName, 18) << " "
+           << format_hex(Address, 10, true) << " "
+           << left_justify(ordinalName(Obj, Entry.ordinal()), 16) << " "
            << Entry.symbolName() << "\n";
   }
 }
@@ -2797,12 +2878,12 @@ void llvm::printMachOWeakBindTable(const object::MachOObjectFile *Obj) {
   // Build table of sections so names can used in final output.
   SegInfo sectionTable(Obj);
 
-  outs() << "segment  section            address      "
-            "type     addend   symbol\n";
+  outs() << "segment  section            address     "
+            "type       addend   symbol\n";
   for (const llvm::object::MachOBindEntry &Entry : Obj->weakBindTable()) {
     // Strong symbols don't have a location to update.
     if (Entry.flags() & MachO::BIND_SYMBOL_FLAGS_NON_WEAK_DEFINITION) {
-      outs() << "                                          strong            "
+      outs() << "                                        strong              "
              << Entry.symbolName() << "\n";
       continue;
     }
@@ -2814,12 +2895,11 @@ void llvm::printMachOWeakBindTable(const object::MachOObjectFile *Obj) {
 
     // Table lines look like:
     // __DATA  __data  0x00001000  pointer    0   _foo
-    outs() << format("%-8s %-18s 0x%08" PRIX64 "   %-8s %-8" PRId64 " ",
-                     SegmentName.str().c_str(),
-                     SectionName.str().c_str(),
-                     Address,
-                     Entry.typeName().str().c_str(),
-                     Entry.addend())
+    outs() << left_justify(SegmentName, 8)  << " "
+           << left_justify(SectionName, 18) << " "
+           << format_hex(Address, 10, true) << " "
+           << left_justify(Entry.typeName(), 8) << " "
+           << format_decimal(Entry.addend(), 8)  << "   "  
            << Entry.symbolName() << "\n";
   }
 }

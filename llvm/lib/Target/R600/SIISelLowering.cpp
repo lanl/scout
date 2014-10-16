@@ -168,9 +168,6 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
 
   setOperationAction(ISD::LOAD, MVT::i1, Custom);
 
-  setOperationAction(ISD::FP_TO_SINT, MVT::i64, Expand);
-  setOperationAction(ISD::FP_TO_UINT, MVT::i64, Expand);
-
   setOperationAction(ISD::GlobalAddress, MVT::i32, Custom);
   setOperationAction(ISD::GlobalAddress, MVT::i64, Custom);
   setOperationAction(ISD::FrameIndex, MVT::i32, Custom);
@@ -226,6 +223,7 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
 
   setOperationAction(ISD::FDIV, MVT::f32, Custom);
 
+  setTargetDAGCombine(ISD::FADD);
   setTargetDAGCombine(ISD::FSUB);
   setTargetDAGCombine(ISD::SELECT_CC);
   setTargetDAGCombine(ISD::SETCC);
@@ -1418,6 +1416,40 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
   case ISD::UINT_TO_FP: {
     return performUCharToFloatCombine(N, DCI);
 
+  case ISD::FADD: {
+    if (DCI.getDAGCombineLevel() < AfterLegalizeDAG)
+      break;
+
+    EVT VT = N->getValueType(0);
+    if (VT != MVT::f32)
+      break;
+
+    SDValue LHS = N->getOperand(0);
+    SDValue RHS = N->getOperand(1);
+
+    // These should really be instruction patterns, but writing patterns with
+    // source modiifiers is a pain.
+
+    // fadd (fadd (a, a), b) -> mad 2.0, a, b
+    if (LHS.getOpcode() == ISD::FADD) {
+      SDValue A = LHS.getOperand(0);
+      if (A == LHS.getOperand(1)) {
+        const SDValue Two = DAG.getTargetConstantFP(2.0, MVT::f32);
+        return DAG.getNode(AMDGPUISD::MAD, DL, VT, Two, A, RHS);
+      }
+    }
+
+    // fadd (b, fadd (a, a)) -> mad 2.0, a, b
+    if (RHS.getOpcode() == ISD::FADD) {
+      SDValue A = RHS.getOperand(0);
+      if (A == RHS.getOperand(1)) {
+        const SDValue Two = DAG.getTargetConstantFP(2.0, MVT::f32);
+        return DAG.getNode(AMDGPUISD::MAD, DL, VT, Two, A, LHS);
+      }
+    }
+
+    break;
+  }
   case ISD::FSUB: {
     if (DCI.getDAGCombineLevel() < AfterLegalizeDAG)
       break;
@@ -1448,6 +1480,28 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
         SDValue C = LHS;
 
         return DAG.getNode(AMDGPUISD::MAD, DL, VT, A, B, C);
+      }
+
+      if (LHS.getOpcode() == ISD::FADD) {
+        // (fsub (fadd a, a), c) -> mad 2.0, a, (fneg c)
+
+        SDValue A = LHS.getOperand(0);
+        if (A == LHS.getOperand(1)) {
+          const SDValue Two = DAG.getTargetConstantFP(2.0, MVT::f32);
+          SDValue NegRHS = DAG.getNode(ISD::FNEG, DL, VT, RHS);
+
+          return DAG.getNode(AMDGPUISD::MAD, DL, VT, Two, A, NegRHS);
+        }
+      }
+
+      if (RHS.getOpcode() == ISD::FADD) {
+        // (fsub c, (fadd a, a)) -> mad -2.0, a, c
+
+        SDValue A = RHS.getOperand(0);
+        if (A == RHS.getOperand(1)) {
+          const SDValue NegTwo = DAG.getTargetConstantFP(-2.0, MVT::f32);
+          return DAG.getNode(AMDGPUISD::MAD, DL, VT, NegTwo, A, LHS);
+        }
       }
     }
 
@@ -1648,57 +1702,6 @@ bool SITargetLowering::fitsRegClass(SelectionDAG &DAG, const SDValue &Op,
   return TRI->getRegClass(RegClass)->hasSubClassEq(RC);
 }
 
-/// \brief Make sure that we don't exeed the number of allowed scalars
-void SITargetLowering::ensureSRegLimit(SelectionDAG &DAG, SDValue &Operand,
-                                       unsigned RegClass,
-                                       bool &ScalarSlotUsed) const {
-
-  if (!isVSrc(RegClass))
-    return;
-
-  // First map the operands register class to a destination class
-  switch (RegClass) {
-    case AMDGPU::VSrc_32RegClassID:
-    case AMDGPU::VCSrc_32RegClassID:
-      RegClass = AMDGPU::VReg_32RegClassID;
-      break;
-    case AMDGPU::VSrc_64RegClassID:
-    case AMDGPU::VCSrc_64RegClassID:
-      RegClass = AMDGPU::VReg_64RegClassID;
-      break;
-   default:
-    llvm_unreachable("Unknown vsrc reg class");
-  }
-
-  // Nothing to do if they fit naturally
-  if (fitsRegClass(DAG, Operand, RegClass))
-    return;
-
-  // If the scalar slot isn't used yet use it now
-  if (!ScalarSlotUsed) {
-    ScalarSlotUsed = true;
-    return;
-  }
-
-  // This is a conservative aproach. It is possible that we can't determine the
-  // correct register class and copy too often, but better safe than sorry.
-
-  SDNode *Node;
-  // We can't use COPY_TO_REGCLASS with FrameIndex arguments.
-  if (isa<FrameIndexSDNode>(Operand) ||
-      isa<GlobalAddressSDNode>(Operand)) {
-    unsigned Opcode = Operand.getValueType() == MVT::i32 ?
-                      AMDGPU::S_MOV_B32 : AMDGPU::S_MOV_B64;
-    Node = DAG.getMachineNode(Opcode, SDLoc(), Operand.getValueType(),
-                              Operand);
-  } else {
-    SDValue RC = DAG.getTargetConstant(RegClass, MVT::i32);
-    Node = DAG.getMachineNode(TargetOpcode::COPY_TO_REGCLASS, SDLoc(),
-                              Operand.getValueType(), Operand, RC);
-  }
-  Operand = SDValue(Node, 0);
-}
-
 /// \returns true if \p Node's operands are different from the SDValue list
 /// \p Ops
 static bool isNodeChanged(const SDNode *Node, const std::vector<SDValue> &Ops) {
@@ -1710,8 +1713,9 @@ static bool isNodeChanged(const SDNode *Node, const std::vector<SDValue> &Ops) {
   return false;
 }
 
-/// \brief Try to commute instructions and insert copies in order to satisfy the
-/// operand constraints.
+/// TODO: This needs to be removed. It's current primary purpose is to fold
+/// immediates into operands when legal. The legalization parts are redundant
+/// with SIInstrInfo::legalizeOperands which is called in a post-isel hook.
 SDNode *SITargetLowering::legalizeOperands(MachineSDNode *Node,
                                            SelectionDAG &DAG) const {
   // Original encoding (either e32 or e64)
@@ -1784,20 +1788,10 @@ SDNode *SITargetLowering::legalizeOperands(MachineSDNode *Node,
     // Is this a VSrc or SSrc operand?
     unsigned RegClass = Desc->OpInfo[Op].RegClass;
     if (isVSrc(RegClass) || isSSrc(RegClass)) {
-      // Try to fold the immediates
-      if (!foldImm(Ops[i], Immediate, ScalarSlotUsed)) {
-        // Folding didn't work, make sure we don't hit the SReg limit.
-        ensureSRegLimit(DAG, Ops[i], RegClass, ScalarSlotUsed);
-      }
+      // Try to fold the immediates. If this ends up with multiple constant bus
+      // uses, it will be legalized later.
+      foldImm(Ops[i], Immediate, ScalarSlotUsed);
       continue;
-    } else {
-      // If it's not a VSrc or SSrc operand check if we have a GlobalAddress.
-      // These will be lowered to immediates, so we will need to insert a MOV.
-      if (isa<GlobalAddressSDNode>(Ops[i])) {
-        SDNode *Node = DAG.getMachineNode(AMDGPU::V_MOV_B32_e32, SDLoc(),
-                                    Operand.getValueType(), Operand);
-        Ops[i] = SDValue(Node, 0);
-      }
     }
 
     if (i == 1 && DescRev && fitsRegClass(DAG, Ops[0], RegClass)) {
@@ -1926,6 +1920,28 @@ void SITargetLowering::adjustWritemask(MachineSDNode *&Node,
   }
 }
 
+/// \brief Legalize target independent instructions (e.g. INSERT_SUBREG)
+/// with frame index operands.
+/// LLVM assumes that inputs are to these instructions are registers.
+void SITargetLowering::legalizeTargetIndependentNode(SDNode *Node,
+                                                     SelectionDAG &DAG) const {
+
+  SmallVector<SDValue, 8> Ops;
+  for (unsigned i = 0; i < Node->getNumOperands(); ++i) {
+    if (!isa<FrameIndexSDNode>(Node->getOperand(i))) {
+      Ops.push_back(Node->getOperand(i));
+      continue;
+    }
+
+    SDLoc DL(Node);
+    Ops.push_back(SDValue(DAG.getMachineNode(AMDGPU::S_MOV_B32, DL,
+                                     Node->getOperand(i).getValueType(),
+                                     Node->getOperand(i)), 0));
+  }
+
+  DAG.UpdateNodeOperands(Node, Ops);
+}
+
 /// \brief Fold the instructions after selecting them.
 SDNode *SITargetLowering::PostISelFolding(MachineSDNode *Node,
                                           SelectionDAG &DAG) const {
@@ -1936,6 +1952,11 @@ SDNode *SITargetLowering::PostISelFolding(MachineSDNode *Node,
   if (TII->isMIMG(Node->getMachineOpcode()))
     adjustWritemask(Node, DAG);
 
+  if (Node->getMachineOpcode() == AMDGPU::INSERT_SUBREG) {
+    legalizeTargetIndependentNode(Node, DAG);
+    return Node;
+  }
+
   return legalizeOperands(Node, DAG);
 }
 
@@ -1945,6 +1966,8 @@ void SITargetLowering::AdjustInstrPostInstrSelection(MachineInstr *MI,
                                                      SDNode *Node) const {
   const SIInstrInfo *TII = static_cast<const SIInstrInfo *>(
       getTargetMachine().getSubtargetImpl()->getInstrInfo());
+
+  TII->legalizeOperands(MI);
 
   if (TII->isMIMG(MI->getOpcode())) {
     unsigned VReg = MI->getOperand(0).getReg();
