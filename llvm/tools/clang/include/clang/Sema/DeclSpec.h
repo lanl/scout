@@ -227,7 +227,8 @@ public:
     SCS_auto,
     SCS_register,
     SCS_private_extern,
-    SCS_mutable
+    SCS_mutable,
+    SCS_persistent //+===== Scout
   };
 
   // Import thread storage class specifier enumeration and constants.
@@ -323,7 +324,7 @@ public:
 
 private:
   // storage-class-specifier
-  /*SCS*/unsigned StorageClassSpec : 3;
+  /*SCS*/unsigned StorageClassSpec : 4;
   /*TSCS*/unsigned ThreadStorageClassSpec : 2;
   unsigned SCS_extern_in_linkage_spec : 1;
 

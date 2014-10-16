@@ -3901,6 +3901,7 @@ StorageClassSpecToVarDeclStorageClass(const DeclSpec &DS) {
     // Illegal SCSs map to None: error reporting is up to the caller.
   case DeclSpec::SCS_mutable:        // Fall through.
   case DeclSpec::SCS_typedef:        return SC_None;
+  case DeclSpec::SCS_persistent:     return SC_Persistent;
   }
   llvm_unreachable("unknown storage class specifier");
 }

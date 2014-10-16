@@ -185,7 +185,9 @@ namespace clang {
     // These are only legal on variables.
     SC_OpenCLWorkGroupLocal,
     SC_Auto,
-    SC_Register
+    SC_Register,
+    // +===== Scout ===========
+    SC_Persistent
   };
 
   /// \brief Checks whether the given storage class is legal for functions.
