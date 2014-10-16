@@ -126,7 +126,7 @@ int main(int argc, char** argv){
     assert(pw == position().w && "bad PositionW");
     assert(w == W && "bad width");
     assert(h == H && "bad height");
-    assert(d == 1 && "bad depth");
+    assert(d == 0 && "bad depth");
     assert(w == width() && "bad width");
     assert(h == height() && "bad height");
     assert(d == depth() && "bad depth");

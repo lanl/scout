@@ -66,17 +66,17 @@ int main(int argc, char** argv) {
  
   assert(width(m) == 3 && "bad width(m)"); 
   assert(height(m) == 4 && "bad height(m)"); 
-  assert(depth(m) == 1 && "bad depth(m)");
+  assert(depth(m) == 0 && "bad depth(m)");
   assert(rank(m) == 2 && "bad rank(m)"); 
 
   forall cells c in m {
     assert(width() == 3 && "bad width()"); 
     assert(height() == 4 && "bad height()"); 
-    assert(depth() == 1 && "bad depth()"); 
+    assert(depth() == 0 && "bad depth()"); 
     assert(rank() == 2 && "bad rank()"); 
     assert(width(c) == 3 && "bad width(c)"); 
     assert(height(c) == 4 && "bad height(c)"); 
-    assert(depth(c) == 1 && "bad depth(c)"); 
+    assert(depth(c) == 0 && "bad depth(c)"); 
     assert(rank(c) == 2 && "bad rank(c)"); 
   }
 
