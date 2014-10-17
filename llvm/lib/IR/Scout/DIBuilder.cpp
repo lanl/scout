@@ -84,12 +84,6 @@ static MDNode *getNonCompileUnitScope(MDNode *N) {
   return N;
 }
 
-static Constant *GetTagConstant(LLVMContext &VMContext, unsigned Tag) {
-  assert((Tag & LLVMDebugVersionMask) == 0 &&
-         "Tag too large for debug encoding!");
-  return ConstantInt::get(Type::getInt32Ty(VMContext), Tag | LLVMDebugVersion);
-}
-
 namespace {
   class HeaderBuilder {
     SmallVector<char, 256> Chars;
