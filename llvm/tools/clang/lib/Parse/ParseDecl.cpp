@@ -10,6 +10,7 @@
 //  This file implements the Declaration portions of the Parser interfaces.
 //
 //===----------------------------------------------------------------------===//
+#include <iostream>
 
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
@@ -2984,6 +2985,14 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
                                                Loc, PrevSpec, DiagID);
       break;
 
+    // +===== Scout ==========================================================+
+    case tok::kw_persistent:
+      isInvalid = DS.SetStorageClassSpec(Actions, DeclSpec::SCS_persistent, Loc,
+                                         PrevSpec, DiagID, Policy);
+      break;
+    // +======================================================================+                                         
+        
+
     // function-specifier
     // +===== Scout ==========================================================+
     case tok::kw_stencil:
@@ -4235,6 +4244,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw___thread:
   case tok::kw_thread_local:
   case tok::kw__Thread_local:
+  case tok::kw_persistent:   // +===== Scout ======= 
 
     // Modules
   case tok::kw___module_private__:
