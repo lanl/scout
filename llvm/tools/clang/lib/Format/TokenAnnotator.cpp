@@ -902,8 +902,9 @@ private:
         if (Prev && Tok.Next && Tok.Next->Next) {
           bool NextIsUnary = Tok.Next->isUnaryOperator() ||
                              Tok.Next->isOneOf(tok::amp, tok::star);
-          IsCast = NextIsUnary && Tok.Next->Next->isOneOf(
-                                      tok::identifier, tok::numeric_constant);
+          IsCast =
+              NextIsUnary && !Tok.Next->is(tok::plus) &&
+              Tok.Next->Next->isOneOf(tok::identifier, tok::numeric_constant);
         }
 
         for (; Prev != Tok.MatchingParen; Prev = Prev->Previous) {
@@ -1734,6 +1735,13 @@ bool TokenAnnotator::mustBreakBefore(const AnnotatedLine &Line,
              Style.Language == FormatStyle::LK_Proto) {
     // Don't enums onto single lines in protocol buffers.
     return true;
+  } else if (Style.Language == FormatStyle::LK_JavaScript &&
+             Right.is(tok::r_brace) && Left.is(tok::l_brace) &&
+             !Left.Children.empty()) {
+    // Support AllowShortFunctionsOnASingleLine for JavaScript.
+    return Style.AllowShortFunctionsOnASingleLine == FormatStyle::SFS_None ||
+           (Left.NestingLevel == 0 && Line.Level == 0 &&
+            Style.AllowShortFunctionsOnASingleLine == FormatStyle::SFS_Inline);
   } else if (isAllmanBrace(Left) || isAllmanBrace(Right)) {
     return Style.BreakBeforeBraces == FormatStyle::BS_Allman ||
            Style.BreakBeforeBraces == FormatStyle::BS_GNU;

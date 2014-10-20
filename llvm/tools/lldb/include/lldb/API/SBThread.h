@@ -127,6 +127,9 @@ public:
                    uint32_t line);
 
     SBError
+    StepUsingScriptedThreadPlan (const char *script_class_name);
+
+    SBError
     JumpToLine (lldb::SBFileSpec &file_spec, uint32_t line);
 
     void
@@ -216,9 +219,19 @@ public:
     bool
     SafeToCallFunctions ();
 
+#ifndef SWIG
+    lldb_private::Thread *
+    operator->();
+
+    lldb_private::Thread *
+    get();
+
+#endif
+
 protected:
     friend class SBBreakpoint;
     friend class SBBreakpointLocation;
+    friend class SBExecutionContext;
     friend class SBFrame;
     friend class SBProcess;
     friend class SBDebugger;

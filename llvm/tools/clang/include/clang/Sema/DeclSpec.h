@@ -40,6 +40,7 @@
 
 namespace clang {
   class ASTContext;
+  class CXXRecordDecl;
   class TypeLoc;
   class LangOptions;
   class DiagnosticsEngine;
@@ -144,6 +145,22 @@ public:
   /// nested-name-specifier '::'.
   void MakeGlobal(ASTContext &Context, SourceLocation ColonColonLoc);
   
+  /// \brief Turns this (empty) nested-name-specifier into '__super'
+  /// nested-name-specifier.
+  ///
+  /// \param Context The AST context in which this nested-name-specifier
+  /// resides.
+  ///
+  /// \param RD The declaration of the class in which nested-name-specifier
+  /// appeared.
+  ///
+  /// \param SuperLoc The location of the '__super' keyword.
+  /// name.
+  ///
+  /// \param ColonColonLoc The location of the trailing '::'.
+  void MakeSuper(ASTContext &Context, CXXRecordDecl *RD,
+                 SourceLocation SuperLoc, SourceLocation ColonColonLoc);
+
   /// \brief Make a new nested-name-specifier from incomplete source-location
   /// information.
   ///
@@ -227,7 +244,8 @@ public:
     SCS_auto,
     SCS_register,
     SCS_private_extern,
-    SCS_mutable
+    SCS_mutable,
+    SCS_persistent //+===== Scout
   };
 
   // Import thread storage class specifier enumeration and constants.
@@ -323,7 +341,7 @@ public:
 
 private:
   // storage-class-specifier
-  /*SCS*/unsigned StorageClassSpec : 3;
+  /*SCS*/unsigned StorageClassSpec : 4;
   /*TSCS*/unsigned ThreadStorageClassSpec : 2;
   unsigned SCS_extern_in_linkage_spec : 1;
 

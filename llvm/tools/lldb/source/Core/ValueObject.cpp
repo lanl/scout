@@ -1450,7 +1450,7 @@ ValueObject::GetValueAsCString ()
                     }
                     else
                     {
-                        my_format = GetClangType().GetFormat();
+                        my_format = GetValue().GetClangType().GetFormat();
                     }
                 }
             }
@@ -1482,7 +1482,7 @@ uint64_t
 ValueObject::GetValueAsUnsigned (uint64_t fail_value, bool *success)
 {
     // If our byte size is zero this is an aggregate type that has children
-    if (!GetClangType().IsAggregateType())
+    if (CanProvideValue())
     {
         Scalar scalar;
         if (ResolveValue (scalar))
@@ -1503,7 +1503,7 @@ int64_t
 ValueObject::GetValueAsSigned (int64_t fail_value, bool *success)
 {
     // If our byte size is zero this is an aggregate type that has children
-    if (!GetClangType().IsAggregateType())
+    if (CanProvideValue())
     {
         Scalar scalar;
         if (ResolveValue (scalar))
@@ -1751,7 +1751,7 @@ ValueObject::DumpPrintableRepresentation(Stream& s,
                 cstr = GetSummaryAsCString();
             else if (val_obj_display == eValueObjectRepresentationStyleSummary)
             {
-                if (GetClangType().IsAggregateType())
+                if (!CanProvideValue())
                 {
                     strm.Printf("%s @ %s", GetTypeName().AsCString(), GetLocationAsCString());
                     cstr = strm.GetString().c_str();
@@ -2805,7 +2805,7 @@ ValueObject::GetValueForExpressionPath_Impl(const char* expression_cstr,
                         if (root->IsSynthetic())
                         {
                             *first_unparsed = expression_cstr;
-                            *reason_to_stop = ValueObject::eExpressionPathScanEndReasonNoSuchChild;
+                            *reason_to_stop = ValueObject::eExpressionPathScanEndReasonNoSuchSyntheticChild;
                             *final_result = ValueObject::eExpressionPathEndResultTypeInvalid;
                             return ValueObjectSP();
                         }
@@ -3551,6 +3551,56 @@ ValueObject::CreateConstantValue (const ConstString &name)
     return valobj_sp;
 }
 
+ValueObjectSP
+ValueObject::GetQualifiedRepresentationIfAvailable (lldb::DynamicValueType dynValue,
+                                                    bool synthValue)
+{
+    ValueObjectSP result_sp(GetSP());
+    
+    switch (dynValue)
+    {
+        case lldb::eDynamicCanRunTarget:
+        case lldb::eDynamicDontRunTarget:
+        {
+            if (!result_sp->IsDynamic())
+            {
+                if (result_sp->GetDynamicValue(dynValue))
+                    result_sp = result_sp->GetDynamicValue(dynValue);
+            }
+        }
+            break;
+        case lldb::eNoDynamicValues:
+        default:
+        {
+            if (result_sp->IsDynamic())
+            {
+                if (result_sp->GetStaticValue())
+                    result_sp = result_sp->GetStaticValue();
+            }
+        }
+            break;
+    }
+    
+    if (synthValue)
+    {
+        if (!result_sp->IsSynthetic())
+        {
+            if (result_sp->GetSyntheticValue())
+                result_sp = result_sp->GetSyntheticValue();
+        }
+    }
+    else
+    {
+        if (result_sp->IsSynthetic())
+        {
+            if (result_sp->GetNonSyntheticValue())
+                result_sp = result_sp->GetNonSyntheticValue();
+        }
+    }
+    
+    return result_sp;
+}
+
 lldb::addr_t
 ValueObject::GetCPPVTableAddress (AddressType &address_type)
 {
@@ -4079,4 +4129,10 @@ ValueObject::GetFormat () const
         with_fmt_info = with_fmt_info->m_parent;
     }
     return m_format;
+}
+
+bool
+ValueObject::CanProvideValue ()
+{
+    return (false == GetClangType().IsAggregateType());
 }

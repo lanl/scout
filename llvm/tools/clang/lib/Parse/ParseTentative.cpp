@@ -1188,6 +1188,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
       return TPResult::False;
   }
     // Fall through.
+  case tok::kw___super:
   case tok::kw_decltype:
     // Annotate typenames and C++ scope specifiers.  If we get one, just
     // recurse to handle whatever we get.
@@ -1214,6 +1215,9 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw___thread:
   case tok::kw_thread_local:
   case tok::kw__Thread_local:
+  // +===== Scout ==========================================================+    
+  case tok::kw_persistent:
+  // +======================================================================+
     // function-specifier
   // +===== Scout ==========================================================+
   case tok::kw_stencil:
