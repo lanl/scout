@@ -2115,6 +2115,7 @@ public:
   void EmitForallEdges(const ForallMeshStmt &S);
   void EmitForallFaces(const ForallMeshStmt &S);
 
+  llvm::Value *GetNumLocalMeshItems(llvm::Value *d1, llvm::Value *d2, llvm::Value *d3);
   void EmitForallCellsVertices(const ForallMeshStmt &S);
   void EmitForallCellsEdges(const ForallMeshStmt &S);
   void EmitForallCellsFaces(const ForallMeshStmt &S);
