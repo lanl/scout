@@ -63,15 +63,30 @@ cells:
 
 int main(int argc, char *argv[])
 {
-  AMeshType amesh[2, 3];
+  AMeshType m1[2];
+  AMeshType m2[2, 3];
+  AMeshType m3[2, 3, 4];
 
   int val = 0;
-  forall cells c in amesh {
+  forall cells c in m1 {
     val++;
     field = val;
-    printf("%d %d %d\n", field, position().x, position().y);
   }
-  assert(val==6 && "bad number of cells"); 
+  assert(val==2 && "bad number of cells r=1"); 
+
+  val = 0;
+  forall cells c in m2 {
+    val++;
+    field = val;
+  }
+  assert(val==6 && "bad number of cells r=2"); 
+
+  val = 0;
+  forall cells c in m3 {
+    val++;
+    field = val;
+  }
+  assert(val==24 && "bad number of cells r=3"); 
 
   return 0;
 }

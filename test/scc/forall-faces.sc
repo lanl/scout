@@ -63,13 +63,30 @@ faces:
 
 int main(int argc, char *argv[])
 {
-  AMeshType amesh[2, 3];
+  AMeshType m1[2];
+  AMeshType m2[2, 3];
+  AMeshType m3[2, 3, 4];
 
   int val = 0;
-  forall faces f in amesh {
+  forall faces f in m1 {
     val++;
     field = val;
   }
-  assert(val==17 && "bad number of faces"); 
+  assert(val==2 && "bad number of faces r=1"); 
+
+  val = 0;
+  forall faces f in m2 {
+    val++;
+    field = val;
+  }
+  assert(val==17 && "bad number of faces r=2"); 
+
+  val = 0;
+  forall faces f in m3 {
+    val++;
+    field = val;
+  }
+  assert(val==98 && "bad number of faces r=3"); 
+
   return 0;
 }

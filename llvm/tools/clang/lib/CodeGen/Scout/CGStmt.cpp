@@ -1040,6 +1040,7 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
   
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+  llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
 
   EmitMarkerBlock("forall.faces.entry");
 
@@ -1047,10 +1048,50 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
   //zero-initialize induction var
   Builder.CreateStore(Zero, InductionVar[3]);
 
-  SmallVector<llvm::Value*, 3> Dimensions;
-  GetMeshDimensions(S.getMeshType(), Dimensions);
-  llvm::Value* numFaces;
-  GetNumMeshItems(Dimensions, 0, 0, 0, &numFaces);
+  // find number of faces (if rank !=3 this is the same as the edges case)
+  llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
+  llvm::Value* width1 = Builder.CreateLoad(MeshDimsP1[0], "width1");
+  llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
+  llvm::Value* height1 = Builder.CreateLoad(MeshDimsP1[1], "height1");
+  llvm::Value* depth = Builder.CreateLoad(MeshDims[2], "depth");
+  llvm::Value* depth1 = Builder.CreateLoad(MeshDimsP1[2], "depth1");
+
+  llvm::Function *TheFunction;
+  TheFunction = Builder.GetInsertBlock()->getParent();
+  llvm::BasicBlock *Then = createBasicBlock("numfaces.then");
+  llvm::BasicBlock *Else = createBasicBlock("numfaces.else");
+  llvm::BasicBlock *Merge = createBasicBlock("numfaces.merge");
+
+
+  llvm::Value *Check = Builder.CreateICmpEQ(Builder.CreateLoad(MeshRank), Three);
+  Builder.CreateCondBr(Check, Then, Else);
+
+  //then block (rank == 3 case)
+  TheFunction->getBasicBlockList().push_back(Then);
+  Builder.SetInsertPoint(Then);
+  llvm::Value *p1 = Builder.CreateMul(width1, Builder.CreateMul(height, depth));
+  llvm::Value *p2 = Builder.CreateMul(width, Builder.CreateMul(height1, depth));
+  llvm::Value *p3 = Builder.CreateMul(width, Builder.CreateMul(height, depth1));
+  llvm::Value *V1 = Builder.CreateAdd(p1, Builder.CreateAdd(p2, p3), "numfaces3");
+  Builder.CreateBr(Merge);
+  Then = Builder.GetInsertBlock();
+
+  // else block (rank !=3 case)
+  TheFunction->getBasicBlockList().push_back(Else);
+  Builder.SetInsertPoint(Else);
+  llvm::Value *V2 = Builder.CreateAdd(Builder.CreateMul(width, height1),
+      Builder.CreateMul(width1, height), "numfaces12");
+  Builder.CreateBr(Merge);
+  Else = Builder.GetInsertBlock();
+
+  //Merge Block
+  TheFunction->getBasicBlockList().push_back(Merge);
+  Builder.SetInsertPoint(Merge);
+  llvm::PHINode *PN = Builder.CreatePHI(Int32Ty, 2, "numfaces.phi");
+  PN->addIncoming(V1, Then);
+  PN->addIncoming(V2, Else);
+  llvm::Value* numFaces = Builder.CreateZExt(PN, Int64Ty, "numFaces");
+
 
   llvm::BasicBlock *LoopBlock = createBasicBlock("forall.faces.loop");
   Builder.CreateBr(LoopBlock);
