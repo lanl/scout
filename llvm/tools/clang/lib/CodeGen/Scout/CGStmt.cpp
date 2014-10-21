@@ -281,7 +281,7 @@ void CodeGenFunction::SetMeshBounds(const Stmt &S) {
 //
 
 
-// return d1 if rank = 1, d2 if rank =2, d3 if rank = 3;
+// generate code to return d1 if rank = 1, d2 if rank = 2, d3 if rank = 3;
 llvm::Value *CodeGenFunction::GetNumLocalMeshItems(llvm::Value *d1, llvm::Value *d2, llvm::Value *d3) {
 
   llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
@@ -371,13 +371,11 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
 
   llvm::Value* vertexPos = Builder.CreateLoad(vertexPosPtr, "vertex.pos");
 
-
   llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
   llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
   llvm::BasicBlock *Then2 = createBasicBlock("rank2.then");
   llvm::BasicBlock *Else2 = createBasicBlock("rank2.else");
   llvm::BasicBlock *Merge = createBasicBlock("rank.merge");
-
 
   llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, Three);
   Builder.CreateCondBr(Check3, Then3, Else3);
@@ -431,7 +429,7 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   Builder.CreateBr(Merge);
   Else2 = Builder.GetInsertBlock();
 
-  //Merge Block
+  // Merge Block
   TheFunction->getBasicBlockList().push_back(Merge);
   Builder.SetInsertPoint(Merge);
   llvm::PHINode *PNVI = Builder.CreatePHI(Int32Ty, 3, "rank.phi");
