@@ -56,37 +56,40 @@
 #include <assert.h>
 
 uniform mesh AMeshType{
-vertices:
+faces:
   int field;
 };
 
+
+void MyFunc(AMeshType &m1, AMeshType &m2, AMeshType &m3)
+{
+  int val = 0;
+  forall faces f in m1 {
+    val++;
+    field = val;
+  }
+  assert(val==2 && "bad number of faces r=1"); 
+
+  val = 0;
+  forall faces f in m2 {
+    val++;
+    field = val;
+  }
+  assert(val==17 && "bad number of faces r=2"); 
+
+  val = 0;
+  forall faces f in m3 {
+    val++;
+    field = val;
+  }
+  assert(val==98 && "bad number of faces r=3"); 
+}
 
 int main(int argc, char *argv[])
 {
   AMeshType m1[2];
   AMeshType m2[2, 3];
   AMeshType m3[2, 3, 4];
-
-  int val = 0;
-  forall vertices v in m1 {
-    val++;
-    field = val;
-  }
-  assert(val==3 && "bad number of vertices r=1"); 
-  
-  val = 0;
-  forall vertices v in m2 {
-    val++;
-    field = val;
-  }
-  assert(val==12 && "bad number of vertices r=2"); 
-  
-  val = 0;
-  forall vertices v in m3 {
-    val++;
-    field = val;
-  }
-  assert(val==60 && "bad number of vertices r=3"); 
-
+  MyFunc(m1, m2, m3);
   return 0;
 }
