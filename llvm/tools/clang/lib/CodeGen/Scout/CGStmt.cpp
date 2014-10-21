@@ -335,8 +335,7 @@ llvm::Value *CodeGenFunction::GetNumLocalMeshItems(llvm::Value *d1, llvm::Value 
 }
 
 void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
-  llvm::Function *TheFunction;
-  TheFunction = Builder.GetInsertBlock()->getParent();
+  llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 
   EmitMarkerBlock("forall.vertices.entry");
 
@@ -453,8 +452,11 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
 }
 
 void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
-  //SC_TODO: this will not work inside a function
-  unsigned int rank = S.getMeshType()->rankOf();
+  llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+
+  llvm::Value *cx1, *cx2, *vx2, *vx3, *cy1, *cy2, *vy2, *vy3;
+  llvm::Value *vx1, *vy1;
+  llvm::Value *x, *y, *z, *i, *j, *k;
 
   EmitMarkerBlock("forall.cells.entry");
 
@@ -471,16 +473,12 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   Builder.CreateStore(Zero, cellPosPtr);
 
   llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
+  llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
+  llvm::Value* depth = Builder.CreateLoad(MeshDims[2], "depth");
 
-  llvm::Value* height;
-  llvm::Value* depth;
-  if(rank > 1){
-    height = Builder.CreateLoad(MeshDims[1], "height");
-  }
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
 
-  if(rank > 2){
-    depth = Builder.CreateLoad(MeshDims[2], "depth");
-  }
+  llvm::Value *PNCell = GetNumLocalMeshItems(One, Three, Seven);
 
   llvm::BasicBlock *LoopBlock = createBasicBlock("forall.cells.loop");
   Builder.CreateBr(LoopBlock);
@@ -489,83 +487,117 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
 
   llvm::Value* cellPos = Builder.CreateLoad(cellPosPtr, "cell.pos");
 
-  if(rank == 3){
-    llvm::Value* pd4 = Builder.CreateUDiv(cellPos, Four);
-    llvm::Value* pm4 = Builder.CreateURem(cellPos, Four);
-    llvm::Value* pd2 = Builder.CreateUDiv(pm4, Two);
-    llvm::Value* pm2 = Builder.CreateURem(pm4, Two);
+  llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
+  llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
+  llvm::BasicBlock *Then2 = createBasicBlock("rank2.then");
+  llvm::BasicBlock *Else2 = createBasicBlock("rank2.else");
+  llvm::BasicBlock *Merge = createBasicBlock("rank.merge");
 
-    llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
-    llvm::Value* x = Builder.CreateSub(i, pd2, "x");
+  llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, Three);
+  Builder.CreateCondBr(Check3, Then3, Else3);
 
-    llvm::Value* cx1 = Builder.CreateICmpSLT(x, Zero);
-    llvm::Value* cx2 = Builder.CreateICmpSGE(x, width);
-    llvm::Value* vx2 = Builder.CreateAdd(x, width);
-    llvm::Value* vx3 = Builder.CreateURem(x, width);
-    x = Builder.CreateSelect(cx1, vx2, Builder.CreateSelect(cx2, vx3, x));
+  // rank = 3
+  TheFunction->getBasicBlockList().push_back(Then3);
+  Builder.SetInsertPoint(Then3);
+  llvm::Value* pd4 = Builder.CreateUDiv(cellPos, Four);
+  llvm::Value* pm4 = Builder.CreateURem(cellPos, Four);
+  llvm::Value* pd2 = Builder.CreateUDiv(pm4, Two);
+  llvm::Value* pm2 = Builder.CreateURem(pm4, Two);
 
-    llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
-    llvm::Value* y = Builder.CreateSub(j, pm2, "y");
+  i = Builder.CreateLoad(InductionVar[0], "i");
+  x = Builder.CreateSub(i, pd2, "x");
 
-    llvm::Value* cy1 = Builder.CreateICmpSLT(y, Zero);
-    llvm::Value* cy2 = Builder.CreateICmpSGE(y, height);
-    llvm::Value* vy2 = Builder.CreateAdd(y, height);
-    llvm::Value* vy3 = Builder.CreateURem(y, height);
-    y = Builder.CreateSelect(cy1, vy2, Builder.CreateSelect(cy2, vy3, y));
+  cx1 = Builder.CreateICmpSLT(x, Zero);
+  cx2 = Builder.CreateICmpSGE(x, width);
+  vx2 = Builder.CreateAdd(x, width);
+  vx3 = Builder.CreateURem(x, width);
+  x = Builder.CreateSelect(cx1, vx2, Builder.CreateSelect(cx2, vx3, x));
 
-    llvm::Value* k = Builder.CreateLoad(InductionVar[2], "k");
-    llvm::Value* z = Builder.CreateSub(k, pd4, "z");
+  j = Builder.CreateLoad(InductionVar[1], "j");
+  y = Builder.CreateSub(j, pm2, "y");
 
-    llvm::Value* cz1 = Builder.CreateICmpSLT(z, Zero);
-    llvm::Value* cz2 = Builder.CreateICmpSGE(z, depth);
-    llvm::Value* vz2 = Builder.CreateAdd(z, depth);
-    llvm::Value* vz3 = Builder.CreateURem(z, depth);
-    z = Builder.CreateSelect(cz1, vz2, Builder.CreateSelect(cz2, vz3, z));
+  cy1 = Builder.CreateICmpSLT(y, Zero);
+  cy2 = Builder.CreateICmpSGE(y, height);
+  vy2 = Builder.CreateAdd(y, height);
+  vy3 = Builder.CreateURem(y, height);
+  y = Builder.CreateSelect(cy1, vy2, Builder.CreateSelect(cy2, vy3, y));
 
-    llvm::Value* v1 = Builder.CreateMul(j, width);
-    llvm::Value* v2 = Builder.CreateMul(k, Builder.CreateMul(width, height));
+  k = Builder.CreateLoad(InductionVar[2], "k");
+  z = Builder.CreateSub(k, pd4, "z");
 
-    llvm::Value* newCellIndex = Builder.CreateAdd(i, Builder.CreateAdd(v1, v2));
-    Builder.CreateStore(newCellIndex, CellIndex);
-  }
-  else if(rank == 2){
-    llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
+  llvm::Value* cz1 = Builder.CreateICmpSLT(z, Zero);
+  llvm::Value* cz2 = Builder.CreateICmpSGE(z, depth);
+  llvm::Value* vz2 = Builder.CreateAdd(z, depth);
+  llvm::Value* vz3 = Builder.CreateURem(z, depth);
+  z = Builder.CreateSelect(cz1, vz2, Builder.CreateSelect(cz2, vz3, z));
 
-    llvm::Value* vx1 = Builder.CreateUDiv(cellPos, Two);
-    llvm::Value* x = Builder.CreateSub(i, vx1, "x");
+  llvm::Value* v1 = Builder.CreateMul(j, width);
+  llvm::Value* v2 = Builder.CreateMul(k, Builder.CreateMul(width, height));
 
-    llvm::Value* cx1 = Builder.CreateICmpSLT(x, Zero);
-    llvm::Value* cx2 = Builder.CreateICmpSGE(x, width);
-    llvm::Value* vx2 = Builder.CreateAdd(x, width);
-    llvm::Value* vx3 = Builder.CreateURem(x, width);
-    x = Builder.CreateSelect(cx1, vx2, Builder.CreateSelect(cx2, vx3, x));
+  llvm::Value* newCellIndex3 = Builder.CreateAdd(i, Builder.CreateAdd(v1, v2));
+  Builder.CreateBr(Merge);
+  Then3 = Builder.GetInsertBlock();
 
-    llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
-    llvm::Value* vy1 = Builder.CreateURem(cellPos, Two);
-    llvm::Value* y = Builder.CreateSub(j, vy1, "y");
+  // rank != 3
+  TheFunction->getBasicBlockList().push_back(Else3);
+  Builder.SetInsertPoint(Else3);
+  Else3 = Builder.GetInsertBlock();
 
-    llvm::Value* cy1 = Builder.CreateICmpSLT(y, Zero);
-    llvm::Value* cy2 = Builder.CreateICmpSGE(y, height);
-    llvm::Value* vy2 = Builder.CreateAdd(y, height);
-    llvm::Value* vy3 = Builder.CreateURem(y, height);
-    y = Builder.CreateSelect(cy1, vy2, Builder.CreateSelect(cy2, vy3, y));
+  // rank = 2
+  llvm::Value *Check2 = Builder.CreateICmpEQ(Rank, Two);
+  Builder.CreateCondBr(Check2, Then2, Else2);
+  TheFunction->getBasicBlockList().push_back(Then2);
+  Builder.SetInsertPoint(Then2);
 
-    llvm::Value* newCellIndex = Builder.CreateAdd(Builder.CreateMul(y, width), x);
-    Builder.CreateStore(newCellIndex, CellIndex);
-  }
-  else{
-    llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
-    llvm::Value* vx1 = Builder.CreateURem(cellPos, Two);
-    llvm::Value* x = Builder.CreateSub(i, vx1, "x");
+  i = Builder.CreateLoad(InductionVar[0], "i");
 
-    llvm::Value* cx1 = Builder.CreateICmpSLT(x, Zero);
-    llvm::Value* cx2 = Builder.CreateICmpSGE(x, width);
-    llvm::Value* vx2 = Builder.CreateAdd(x, width);
-    llvm::Value* vx3 = Builder.CreateURem(x, width);
-    x = Builder.CreateSelect(cx1, vx2, Builder.CreateSelect(cx2, vx3, x));
+  vx1 = Builder.CreateUDiv(cellPos, Two);
+  x = Builder.CreateSub(i, vx1, "x");
 
-    Builder.CreateStore(x, CellIndex);
-  }
+  cx1 = Builder.CreateICmpSLT(x, Zero);
+  cx2 = Builder.CreateICmpSGE(x, width);
+  vx2 = Builder.CreateAdd(x, width);
+  vx3 = Builder.CreateURem(x, width);
+  x = Builder.CreateSelect(cx1, vx2, Builder.CreateSelect(cx2, vx3, x));
+
+  j = Builder.CreateLoad(InductionVar[1], "j");
+  vy1 = Builder.CreateURem(cellPos, Two);
+  y = Builder.CreateSub(j, vy1, "y");
+
+  cy1 = Builder.CreateICmpSLT(y, Zero);
+  cy2 = Builder.CreateICmpSGE(y, height);
+  vy2 = Builder.CreateAdd(y, height);
+  vy3 = Builder.CreateURem(y, height);
+  y = Builder.CreateSelect(cy1, vy2, Builder.CreateSelect(cy2, vy3, y));
+
+  llvm::Value* newCellIndex2 = Builder.CreateAdd(Builder.CreateMul(y, width), x);
+  Builder.CreateBr(Merge);
+  Then2 = Builder.GetInsertBlock();
+
+  // rank !=2 (rank = 1)
+  TheFunction->getBasicBlockList().push_back(Else2);
+  Builder.SetInsertPoint(Else2);
+
+  i = Builder.CreateLoad(InductionVar[0], "i");
+  vx1 = Builder.CreateURem(cellPos, Two);
+  x = Builder.CreateSub(i, vx1, "x");
+
+  cx1 = Builder.CreateICmpSLT(x, Zero);
+  cx2 = Builder.CreateICmpSGE(x, width);
+  vx2 = Builder.CreateAdd(x, width);
+  vx3 = Builder.CreateURem(x, width);
+  llvm::Value* newCellIndex1 = Builder.CreateSelect(cx1, vx2, Builder.CreateSelect(cx2, vx3, x));
+  Builder.CreateBr(Merge);
+  Else2 = Builder.GetInsertBlock();
+
+  // Merge Block
+  TheFunction->getBasicBlockList().push_back(Merge);
+  Builder.SetInsertPoint(Merge);
+  llvm::PHINode *PNVI = Builder.CreatePHI(Int32Ty, 3, "rank.phi");
+  PNVI->addIncoming(newCellIndex3, Then3);
+  PNVI->addIncoming(newCellIndex2, Then2);
+  PNVI->addIncoming(newCellIndex1, Else2);
+  Builder.CreateStore(PNVI, CellIndex);
 
   llvm::Value* newCellPos = Builder.CreateAdd(cellPos, One);
   Builder.CreateStore(newCellPos, cellPosPtr);
@@ -574,21 +606,7 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
 
   CellIndex = 0;
 
-  llvm::Value* Cond;
-
-  switch(rank){
-  case 3:
-    Cond = Builder.CreateICmpSLT(cellPos, Seven, "cond");
-    break;
-  case 2:
-    Cond = Builder.CreateICmpSLT(cellPos, Three, "cond");
-    break;
-  case 1:
-    Cond = Builder.CreateICmpSLT(cellPos, One, "cond");
-    break;
-  default:
-    assert(false && "invalid rank");
-  }
+  llvm::Value* Cond = Builder.CreateICmpSLT(cellPos, PNCell, "cond");
 
   llvm::BasicBlock *ExitBlock = createBasicBlock("forall.cells.exit");
   Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
