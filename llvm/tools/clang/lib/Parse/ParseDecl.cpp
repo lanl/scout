@@ -3202,6 +3202,12 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_image, Loc, PrevSpec, DiagID, Policy);
       continue;
     }
+    
+    case tok::kw_query: {
+      ConsumeToken();
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_query, Loc, PrevSpec, DiagID, Policy);
+      continue;
+    }
         
     // +======================================================================+
 
@@ -4047,6 +4053,7 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_unstructured:
   case tok::kw_window:
   case tok::kw_image:
+  case tok::kw_query:
   // +========================================================================+
 
   case tok::kw_bool:
@@ -4279,7 +4286,8 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw_structured:
   case tok::kw_unstructured:
   case tok::kw_window:
-  case tok::kw_image:    
+  case tok::kw_image:
+  case tok::kw_query:
   // +========================================================================+
 
   case tok::kw_bool:
@@ -5703,6 +5711,10 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
     }
     case DeclSpec::TST_image: {
       ParseImageBracketDeclarator(D);
+      return;
+    }
+    case DeclSpec::TST_query: {
+      assert(false && "unimplemented");
       return;
     }
     default:

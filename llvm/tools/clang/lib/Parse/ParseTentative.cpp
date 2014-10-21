@@ -1420,6 +1420,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw_unstructured:
   case tok::kw_window:
   case tok::kw_image:
+  case tok::kw_query:
   // +========================================================================+
   case tok::kw_void:
   case tok::annot_decltype:
