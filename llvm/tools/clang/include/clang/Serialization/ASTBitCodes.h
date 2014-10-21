@@ -864,6 +864,8 @@ namespace clang {
       TYPE_WINDOW             = 47,
       /// \brief A Image type.
       TYPE_IMAGE              = 48,
+      /// \brief A Query type.
+      TYPE_QUERY              = 49
       // =======================================
     };
 

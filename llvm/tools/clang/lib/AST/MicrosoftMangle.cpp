@@ -1799,6 +1799,10 @@ void MicrosoftCXXNameMangler::mangleType(const ImageType *T,
   Out << "_Ri"; 
 }
 
+void MicrosoftCXXNameMangler::mangleType(const QueryType *T,
+                                         SourceRange) {
+  Out << "_Rq";
+}
 
 void MicrosoftCXXNameMangler::mangleType(const RenderTargetType *T) {
   Out << "Rt";

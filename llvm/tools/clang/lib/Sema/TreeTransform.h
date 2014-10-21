@@ -4974,6 +4974,14 @@ TreeTransform<Derived>::TransformImageType(TypeLocBuilder &TLB,
   return TL.getType();
 }
   
+template<typename Derived>
+QualType
+TreeTransform<Derived>::TransformQueryType(TypeLocBuilder &TLB,
+                                           QueryTypeLoc TL) {
+    
+  return TL.getType();
+}
+  
 // +==========================================================================+
 
 template<typename Derived>

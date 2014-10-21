@@ -2126,6 +2126,10 @@ void CXXNameMangler::mangleType(const ImageType *T) {
     mangleExpression(T->getHeightExpr());
 }
 
+void CXXNameMangler::mangleType(const QueryType *T) {
+  Out << 'A';
+}
+
 // ============================================================================
 
 // <type>       ::= <array-type>

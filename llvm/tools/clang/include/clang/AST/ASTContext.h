@@ -1137,7 +1137,9 @@ public:
   QualType getUnstructuredMeshType(const UnstructuredMeshDecl *Decl) const;
 
   QualType getWindowType(const llvm::SmallVector<Expr*,2> &dims) const;
-  QualType getImageType(const llvm::SmallVector<Expr*,2> &dims) const;  
+  QualType getImageType(const llvm::SmallVector<Expr*,2> &dims) const;
+  
+  QualType getQueryType() const;
   // +========================================================================+
 
   QualType getRecordType(const RecordDecl *Decl) const;

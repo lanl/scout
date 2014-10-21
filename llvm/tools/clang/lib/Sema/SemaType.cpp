@@ -955,7 +955,18 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     break;
   }
   case DeclSpec::TST_query: {
-    assert(false && "unimplemented");
+    for(unsigned i = 0; i < declarator.getNumTypeObjects(); ++i) {
+      DeclaratorChunk &DeclType = declarator.getTypeObject(i);
+      switch(DeclType.Kind) {
+        case DeclaratorChunk::Query: {
+          Result = Context.getQueryType();
+          break;
+        }
+        default:
+          break;
+      }
+    }
+    break;
     break;
   }
     
@@ -1861,6 +1872,13 @@ QualType Sema::BuildImageType(QualType T, const llvm::SmallVector<Expr*,2> &dims
   return QualType();  
 }
 
+QualType Sema::BuildQueryType(QualType T) {
+  const QueryType* qt = dyn_cast<QueryType>(T.getCanonicalType().getTypePtr());
+  if (qt) {
+    return Context.getQueryType();
+  }
+  return QualType();
+}
 
 // +==========================================================================+
 
@@ -4054,7 +4072,12 @@ namespace {
       TL.setRBracketLoc(Chunk.EndLoc);
       TL.setWidth(Chunk.Img.Dims()[0]);
       TL.setHeight(Chunk.Img.Dims()[1]);
-    }                  
+    }
+    
+    void VisitQueryTypeLoc(QueryTypeLoc TL) {
+      TL.setLBracketLoc(Chunk.Loc);
+      TL.setRBracketLoc(Chunk.EndLoc);
+    }
 
     // +======================================================================+
 

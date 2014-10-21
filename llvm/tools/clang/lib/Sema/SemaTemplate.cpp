@@ -4062,6 +4062,10 @@ bool UnnamedLocalNoLinkageFinder::VisitImageType(const ImageType* T) {
   return false;
 }
 
+bool UnnamedLocalNoLinkageFinder::VisitQueryType(const QueryType* T) {
+  return false;
+}
+
 
 // +==========================================================================+
 
