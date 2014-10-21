@@ -99,6 +99,7 @@ ABSTRACT_TYPE(Mesh, Type)
 ABSTRACT_TYPE(RenderTarget, Type)
   TYPE(Window, RenderTargetType)
   TYPE(Image, RenderTargetType)
+TYPE(Query, Type)
 // +==========================================================================+
 NON_CANONICAL_TYPE(Elaborated, Type)
 NON_CANONICAL_TYPE(Attributed, Type)

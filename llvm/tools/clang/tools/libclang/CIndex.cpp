@@ -1674,6 +1674,11 @@ bool CursorVisitor::VisitWindowTypeLoc(WindowTypeLoc TL) {
 bool CursorVisitor::VisitImageTypeLoc(ImageTypeLoc TL) {
   return false;
 }
+
+bool CursorVisitor::VisitQueryTypeLoc(QueryTypeLoc TL) {
+  return false;
+}
+
 // +==========================================================================+
 
 bool CursorVisitor::VisitAtomicTypeLoc(AtomicTypeLoc TL) {

@@ -65,7 +65,8 @@ class CGDebugInfo {
   llvm::DIType BlockLiteralGeneric;
   // +==== Scout =============================================================+
   llvm::DIType WindowDITy;
-  llvm::DIType ImageDITy;  
+  llvm::DIType ImageDITy;
+  llvm::DIType QueryDITy;
   // +========================================================================+
   /// TypeCache - Cache of previously constructed Types.
   llvm::DenseMap<const void *, llvm::WeakVH> TypeCache;
@@ -202,7 +203,9 @@ class CGDebugInfo {
 
 
   llvm::DIType CreateType(const WindowType *Ty);
-  llvm::DIType CreateType(const ImageType *Ty);  
+  llvm::DIType CreateType(const ImageType *Ty);
+  
+  llvm::DIType CreateType(const QueryType *Ty);
   // +========================================================================+
 
   void CollectCXXMemberFunctions(const CXXRecordDecl *Decl,
