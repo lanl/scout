@@ -63,7 +63,8 @@ namespace clang {
     TST_rectilinear_mesh,
     TST_unstructured_mesh,
     TST_window,
-    TST_image,     
+    TST_image,
+    TST_query,
     // +======================================================================+
     TST_decltype,         // C++11 decltype
     TST_underlyingType,   // __underlying_type for C++11

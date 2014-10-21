@@ -296,7 +296,8 @@ public:
   static const TST TST_rectilinear_mesh  = clang::TST_rectilinear_mesh;
   static const TST TST_unstructured_mesh = clang::TST_unstructured_mesh;
   static const TST TST_window            = clang::TST_window;
-  static const TST TST_image             = clang::TST_image;  
+  static const TST TST_image             = clang::TST_image;
+  static const TST TST_query             = clang::TST_query;
   // +========================================================================+
 
   static const TST TST_decimal32 = clang::TST_decimal32;

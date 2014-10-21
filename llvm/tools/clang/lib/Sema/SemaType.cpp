@@ -954,6 +954,10 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     }
     break;
   }
+  case DeclSpec::TST_query: {
+    assert(false && "unimplemented");
+    break;
+  }
     
   // +========================================================================+
   case DeclSpec::TST_bool: Result = Context.BoolTy; break; // _Bool or bool
