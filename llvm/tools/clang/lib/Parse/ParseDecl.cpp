@@ -5881,6 +5881,7 @@ void Parser::ParseMisplacedBracketDeclarator(Declarator &D) {
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
     // +==========================================================================+
       break;
     }

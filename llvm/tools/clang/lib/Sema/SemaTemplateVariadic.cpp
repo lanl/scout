@@ -782,6 +782,7 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
     case DeclaratorChunk::UnstructuredMesh:
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
     // +======================================================================+
 
       // Syntactically, these kinds of declarator chunks all come after the

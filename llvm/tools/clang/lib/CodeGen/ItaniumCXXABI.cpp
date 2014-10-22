@@ -2428,6 +2428,7 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty) {
   case Type::UnstructuredMesh:
   case Type::Window:
   case Type::Image:
+  case Type::Query:
     VTableName = ClassTypeInfo;
     break; 
   // +==========================================================================+
@@ -2645,6 +2646,7 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
   case Type::UnstructuredMesh:
   case Type::Window:
   case Type::Image:
+  case Type::Query:
     break;
   // +==========================================================================+
 

@@ -893,6 +893,8 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     case Type::Window:
     case Type::Image:
       llvm_unreachable("type is illegal as a nested name specifier");      
+    case Type::Query:
+      llvm_unreachable("type is illegal as a nested name specifier");      
     // +======================================================================+
 
 

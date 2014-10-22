@@ -1778,6 +1778,12 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
     Align = Target->getPointerAlign(0);    
     break;
   }
+
+  case Type::Query: {
+    //SC_TODO
+    break;
+  }
+  
   // +========================================================================+
 
   case Type::SubstTemplateTypeParm:
@@ -2551,6 +2557,7 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   case Type::UnstructuredMesh:
   case Type::Window:
   case Type::Image:
+  case Type::Query:
   // +========================================================================+
   case Type::Enum:
   case Type::UnresolvedUsing:
@@ -5735,6 +5742,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
   case Type::UnstructuredMesh:
   case Type::Window:
   case Type::Image:
+  case Type::Query:
     return;
   // +========================================================================+
   }
@@ -7434,6 +7442,8 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
   }
   case Type::Window:
   case Type::Image:
+    return QualType();
+  case Type::Query:
     return QualType();
   // +========================================================================+
   case Type::Record:

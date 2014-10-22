@@ -1276,6 +1276,18 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
 
       return Param == Arg ? Sema::TDK_Success : Sema::TDK_NonDeducedMismatch;
     }
+
+    case Type::Query: {
+      if (TDF & TDF_SkipNonDependent)
+        return Sema::TDK_Success;
+
+      if (TDF & TDF_IgnoreQualifiers) {
+        Param = Param.getUnqualifiedType();
+        Arg   = Arg.getUnqualifiedType();
+      }
+
+      return Param == Arg ? Sema::TDK_Success : Sema::TDK_NonDeducedMismatch;
+    }
     // +======================================================================+
     case Type::Enum:
     case Type::ObjCObject:
@@ -5026,6 +5038,7 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
   case Type::UnstructuredMesh:
   case Type::Window:
   case Type::Image:
+  case Type::Query:
   // +========================================================================+
   case Type::Enum:
   case Type::ObjCInterface:

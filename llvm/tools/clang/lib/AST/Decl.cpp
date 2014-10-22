@@ -1698,6 +1698,9 @@ const char *VarDecl::getStorageClassSpecifierString(StorageClass SC) {
   case SC_PrivateExtern:        return "__private_extern__";
   case SC_Register:             return "register";
   case SC_Static:               return "static";
+  // +===== Scout ==============================================================+
+  case SC_Persistent:           return "persistent";
+  // +==========================================================================+
   }
 
   llvm_unreachable("Invalid storage class");

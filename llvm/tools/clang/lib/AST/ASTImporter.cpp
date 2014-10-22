@@ -685,6 +685,8 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   case Type::Image:
     return false;
     
+  case Type::Query:
+    return false;
   // +========================================================================+
   case Type::Record:
   case Type::Enum:

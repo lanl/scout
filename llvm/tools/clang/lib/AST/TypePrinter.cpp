@@ -190,6 +190,10 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::Image:
       CanPrefixQualifiers = false;
       break;
+    
+    case Type::Query:
+      CanPrefixQualifiers = false;
+      break;
     // +======================================================================+
 
     case Type::Record:

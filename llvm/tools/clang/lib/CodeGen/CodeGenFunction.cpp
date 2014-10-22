@@ -155,6 +155,8 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
   case Type::Image:
     return TEK_Scalar;
     
+  case Type::Query:
+    return TEK_Aggregate;
   // +========================================================================+
 
     // Various scalar types.
@@ -1563,6 +1565,9 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
 
     case Type::Window:
     case Type::Image:
+      llvm_unreachable("type class is never variably-modified!");      
+    
+    case Type::Query:
       llvm_unreachable("type class is never variably-modified!");      
     // +======================================================================+
     case Type::Builtin:

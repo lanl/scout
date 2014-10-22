@@ -604,6 +604,9 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T, bool isStencil) {
     ResultType = ConvertScoutRenderTargetType(T);
     break;
       
+  case Type::Query:
+    ResultType = 0; //SC_TODO
+    break;
   // +========================================================================+
 
   case Type::Enum: {

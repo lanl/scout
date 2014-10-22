@@ -5610,6 +5610,10 @@ Sema::ActOnVariableDeclarator(Scope *S, Declarator &D, DeclContext *DC,
              diag::err_storage_class_for_static_member)
           << FixItHint::CreateRemoval(D.getDeclSpec().getStorageClassSpecLoc());
         break;
+      // +===== Scout ==============================================================+
+      case SC_Persistent:
+        break; 
+      // +==========================================================================+
       case SC_PrivateExtern:
         llvm_unreachable("C storage class in c++!");
       case SC_OpenCLWorkGroupLocal:
@@ -5855,6 +5859,10 @@ Sema::ActOnVariableDeclarator(Scope *S, Declarator &D, DeclContext *DC,
       case SC_PrivateExtern:
       case SC_OpenCLWorkGroupLocal:
         break;
+      // +===== Scout ==============================================================+
+      case SC_Persistent:
+        break;
+      // +==========================================================================+
       }
     } else if (SC == SC_Register) {
       // Global Named register
@@ -9453,6 +9461,11 @@ void Sema::ActOnCXXForRangeDecl(Decl *D) {
   case SC_Register:
     Error = 4;
     break;
+  // +===== Scout ==============================================================+
+  case SC_Persistent:
+    Error = 6;  //SC_TODO: Error = 6 handling
+    break;
+  // +==========================================================================+
   case SC_OpenCLWorkGroupLocal:
     llvm_unreachable("Unexpected storage class");
   }

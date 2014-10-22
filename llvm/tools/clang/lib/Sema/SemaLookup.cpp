@@ -2247,6 +2247,9 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       break;  // SC_TODO: We're assuming image is a fundamental type (correct?) 
     }
 
+    case Type::Query: {
+      break;  // SC_TODO: We're assuming query is a fundamental type (correct?) 
+    }
     // +======================================================================+
 
     //     -- If T is a class type (including unions), its associated

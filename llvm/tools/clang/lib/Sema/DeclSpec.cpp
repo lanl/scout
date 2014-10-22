@@ -275,6 +275,7 @@ bool Declarator::isDeclarationOfFunction() const {
     case DeclaratorChunk::UnstructuredMesh:
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
     // +======================================================================+
       return false;
     }
@@ -408,6 +409,9 @@ const char *DeclSpec::getSpecifierName(DeclSpec::SCS S) {
   case DeclSpec::SCS_register:    return "register";
   case DeclSpec::SCS_private_extern: return "__private_extern__";
   case DeclSpec::SCS_mutable:     return "mutable";
+  // +===== Scout ==============================================================+
+  case DeclSpec::SCS_persistent:     return "persistent";
+  // +==========================================================================+
   }
   llvm_unreachable("Unknown typespec!");
 }
