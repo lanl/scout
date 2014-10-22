@@ -78,13 +78,6 @@ set(SRC_PATH ${CMAKE_SOURCE_DIR}/sc++/driver)
     endif(NOT tname)
   endforeach(test)
 
-  set(name no-input-files)
-  set(tname sc++_driver_${name})
-  add_test(${tname} ${CMAKE_SCC_COMPILER})
-  set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "error: no input files")
-  set_property(TEST ${tname} PROPERTY WILL_FAIL) 
-
 set(name no-semicolon)
 set(tname sc++_driver_${name})
 set(FLAGS "-###")

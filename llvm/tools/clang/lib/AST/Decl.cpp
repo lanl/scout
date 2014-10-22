@@ -3319,7 +3319,13 @@ SourceRange FieldDecl::getSourceRange() const {
   case ISK_InClassListInit:
     if (const Expr *E = static_cast<const Expr *>(InitStorage.getPointer()))
       return SourceRange(getInnerLocStart(), E->getLocEnd());
-    // FALLTHROUGH
+      // FALLTHROUGH
+      
+    case ISK_CapturedVLAType:
+      return DeclaratorDecl::getSourceRange();
+  }
+  llvm_unreachable("bad init storage kind");
+}
 
 // +===== Scout ==============================================================+
 
@@ -3387,15 +3393,6 @@ void MeshFieldDecl::setInClassInitializer(Expr *Init) {
   InitializerOrBitWidth.setPointer(Init);
 }
 // +==========================================================================+
-
-bool FieldDecl::hasCapturedVLAType() const {
-  return getDeclContext()->isRecord() && getParent()->isLambda() &&
-         InitializerOrBitWidth.getPointer();
-  case ISK_CapturedVLAType:
-    return DeclaratorDecl::getSourceRange();
-  }
-  llvm_unreachable("bad init storage kind");
-}
 
 void FieldDecl::setCapturedVLAType(const VariableArrayType *VLAType) {
   assert(getParent()->isLambda() && "capturing type in non-lambda.");

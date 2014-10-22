@@ -597,7 +597,7 @@ int main(int argc_, const char **argv_) {
   SetInstallDir(argv, TheDriver);
 
   llvm::InitializeAllTargets();
-  ParseProgName(argv, SavedStrings, TheDriver);
+  ParseProgName(argv, SavedStrings);
 
   SetBackdoorDriverOutputsFromEnvVars(TheDriver);
 
