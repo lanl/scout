@@ -2959,10 +2959,6 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
       break;
     }
 
-    case DeclaratorChunk::Query: {
-      //SC_TODO
-      break;
-    }
     // =============================================================
 
 
