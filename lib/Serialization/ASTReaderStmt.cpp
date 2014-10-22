@@ -135,8 +135,8 @@ void ASTStmtReader::VisitCompoundStmt(CompoundStmt *S) {
   while (NumStmts--)
     Stmts.push_back(Reader.ReadSubStmt());
   S->setStmts(Reader.getContext(), Stmts.data(), Stmts.size());
-  S->setLBracLoc(ReadSourceLocation(Record, Idx));
-  S->setRBracLoc(ReadSourceLocation(Record, Idx));
+  S->LBraceLoc = ReadSourceLocation(Record, Idx);
+  S->RBraceLoc = ReadSourceLocation(Record, Idx);
 }
 
 void ASTStmtReader::VisitSwitchCase(SwitchCase *S) {
@@ -423,7 +423,7 @@ void ASTStmtReader::VisitPredefinedExpr(PredefinedExpr *E) {
   VisitExpr(E);
   E->setLocation(ReadSourceLocation(Record, Idx));
   E->Type = (PredefinedExpr::IdentType)Record[Idx++];
-  E->FnName = cast<StringLiteral>(Reader.ReadSubExpr());
+  E->FnName = cast_or_null<StringLiteral>(Reader.ReadSubExpr());
 }
 
 void ASTStmtReader::VisitDeclRefExpr(DeclRefExpr *E) {
@@ -1845,6 +1845,10 @@ void OMPClauseReader::VisitOMPPrivateClause(OMPPrivateClause *C) {
   for (unsigned i = 0; i != NumVars; ++i)
     Vars.push_back(Reader->Reader.ReadSubExpr());
   C->setVarRefs(Vars);
+  Vars.clear();
+  for (unsigned i = 0; i != NumVars; ++i)
+    Vars.push_back(Reader->Reader.ReadSubExpr());
+  C->setPrivateCopies(Vars);
 }
 
 void OMPClauseReader::VisitOMPFirstprivateClause(OMPFirstprivateClause *C) {

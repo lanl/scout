@@ -591,6 +591,11 @@ TEST(DeclarationMatcher, MatchNot) {
   EXPECT_TRUE(matches("class X { class Z {}; };", ClassXHasNotClassY));
   EXPECT_TRUE(notMatches("class X { class Y {}; class Z {}; };",
                          ClassXHasNotClassY));
+
+  DeclarationMatcher NamedNotRecord =
+      namedDecl(hasName("Foo"), unless(recordDecl()));
+  EXPECT_TRUE(matches("void Foo(){}", NamedNotRecord));
+  EXPECT_TRUE(notMatches("struct Foo {};", NamedNotRecord));
 }
 
 TEST(DeclarationMatcher, HasDescendant) {
@@ -4414,6 +4419,25 @@ TEST(IsEqualTo, MatchesNodesByIdentity) {
   EXPECT_TRUE(matchAndVerifyResultTrue(
       "void f() { if (true) if(true) {} }", ifStmt().bind(""),
       new VerifyAncestorHasChildIsEqual<IfStmt>()));
+}
+
+TEST(MatchFinder, CheckProfiling) {
+  MatchFinder::MatchFinderOptions Options;
+  llvm::StringMap<llvm::TimeRecord> Records;
+  Options.CheckProfiling.emplace(Records);
+  MatchFinder Finder(std::move(Options));
+
+  struct NamedCallback : public MatchFinder::MatchCallback {
+    void run(const MatchFinder::MatchResult &Result) override {}
+    StringRef getID() const override { return "MyID"; }
+  } Callback;
+  Finder.addMatcher(decl(), &Callback);
+  std::unique_ptr<FrontendActionFactory> Factory(
+      newFrontendActionFactory(&Finder));
+  ASSERT_TRUE(tooling::runToolOnCode(Factory->create(), "int x;"));
+
+  EXPECT_EQ(1u, Records.size());
+  EXPECT_EQ("MyID", Records.begin()->getKey());
 }
 
 class VerifyStartOfTranslationUnit : public MatchFinder::MatchCallback {

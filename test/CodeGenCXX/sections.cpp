@@ -1,8 +1,7 @@
-// RUN: %clang_cc1 -emit-llvm -fms-extensions -xc++ -o - < %s | FileCheck %s
+// RUN: %clang_cc1 -emit-llvm -triple i686-pc-win32 -fms-extensions -o - %s | FileCheck %s
 
-#ifdef __cplusplus
 extern "C" {
-#endif
+
 #pragma const_seg(".my_const")
 #pragma bss_seg(".my_bss")
 int D = 1;
@@ -31,9 +30,26 @@ int i;
 int TEST1;
 #pragma bss_seg(pop)
 int TEST2;
-#ifdef __cplusplus
+
+#pragma section("read_flag_section", read)
+// Even though they are not declared const, these become constant since they are
+// in a read-only section.
+__declspec(allocate("read_flag_section")) int unreferenced = 0;
+extern __declspec(allocate("read_flag_section")) int referenced = 42;
+int *user() { return &referenced; }
+
+#pragma section("no_section_attributes")
+// A pragma section with no section attributes is read/write.
+__declspec(allocate("no_section_attributes")) int implicitly_read_write = 42;
+
+#pragma section("long_section", long)
+// Pragma section ignores "long".
+__declspec(allocate("long_section")) long long_var = 42;
+
+#pragma section("short_section", short)
+// Pragma section ignores "short".
+__declspec(allocate("short_section")) short short_var = 42;
 }
-#endif
 
 //CHECK: @D = global i32 1
 //CHECK: @a = global i32 1, section ".data"
@@ -47,5 +63,10 @@ int TEST2;
 //CHECK: @i = global i32 0
 //CHECK: @TEST1 = global i32 0
 //CHECK: @TEST2 = global i32 0, section ".bss1"
+//CHECK: @unreferenced = constant i32 0, section "read_flag_section"
+//CHECK: @referenced = constant i32 42, section "read_flag_section"
+//CHECK: @implicitly_read_write = global i32 42, section "no_section_attributes"
+//CHECK: @long_var = global i32 42, section "long_section"
+//CHECK: @short_var = global i16 42, section "short_section"
 //CHECK: define void @g()
 //CHECK: define void @h() {{.*}} section ".my_code"
