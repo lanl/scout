@@ -98,7 +98,6 @@ std::string GetBuiltinIncludePath(const char *Argv0) {
 
 ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
                                               ClangExpression &expr,
-                                              Args &expr_parser_compiler_args,
                                               bool generate_debug_info) :
     m_expr (expr),
     m_compiler (),
@@ -153,11 +152,6 @@ ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
 
     // 3. Set options.
 
-    clang::CompilerInvocation::CreateFromArgs(m_compiler->getInvocation(),
-        expr_parser_compiler_args.GetConstArgumentVector(),
-        expr_parser_compiler_args.GetConstArgumentVector() + expr_parser_compiler_args.GetArgumentCount(),
-        m_compiler->getDiagnostics());
-
     lldb::LanguageType language = expr.Language();
 
     switch (language)
@@ -171,6 +165,7 @@ ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
     case lldb::eLanguageTypeC_plus_plus:
         m_compiler->getLangOpts().CPlusPlus = true;
         m_compiler->getLangOpts().CPlusPlus11 = true;
+        m_compiler->getHeaderSearchOpts().UseLibcxx = true;
         break;
     case lldb::eLanguageTypeObjC_plus_plus:
     default:
@@ -178,6 +173,7 @@ ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
         m_compiler->getLangOpts().ObjC2 = true;
         m_compiler->getLangOpts().CPlusPlus = true;
         m_compiler->getLangOpts().CPlusPlus11 = true;
+        m_compiler->getHeaderSearchOpts().UseLibcxx = true;
         break;
     }
 
@@ -305,22 +301,23 @@ ClangExpressionParser::Parse (Stream &stream)
     {
         std::string temp_source_path;
 
+        int temp_fd = -1;
+        llvm::SmallString<PATH_MAX> result_path;
         FileSpec tmpdir_file_spec;
         if (HostInfo::GetLLDBPath(lldb::ePathTypeLLDBTempSystemDir, tmpdir_file_spec))
         {
-            tmpdir_file_spec.AppendPathComponent("expr.XXXXXX");
+            tmpdir_file_spec.AppendPathComponent("lldb-%%%%%%.expr");
             temp_source_path = std::move(tmpdir_file_spec.GetPath());
+            llvm::sys::fs::createUniqueFile(temp_source_path, temp_fd, result_path);
         }
         else
         {
-            temp_source_path = "/tmp/expr.XXXXXX";
+            llvm::sys::fs::createTemporaryFile("lldb", "expr", temp_fd, result_path);
         }
-
-        if (mktemp(&temp_source_path[0]))
+        
+        if (temp_fd != -1)
         {
-            lldb_private::File file (temp_source_path.c_str(),
-                                     File::eOpenOptionWrite | File::eOpenOptionCanCreateNewOnly,
-                                     lldb::eFilePermissionsFileDefault);
+            lldb_private::File file (temp_fd, true);
             const size_t expr_text_len = strlen(expr_text);
             size_t bytes_written = expr_text_len;
             if (file.Write(expr_text, bytes_written).Success())
@@ -329,7 +326,7 @@ ClangExpressionParser::Parse (Stream &stream)
                 {
                     file.Close();
                     SourceMgr.setMainFileID(SourceMgr.createFileID(
-                        m_file_manager->getFile(temp_source_path),
+                        m_file_manager->getFile(result_path),
                         SourceLocation(), SrcMgr::C_User));
                     created_main_file = true;
                 }

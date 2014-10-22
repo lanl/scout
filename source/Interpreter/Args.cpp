@@ -647,20 +647,6 @@ Args::ParseOptions (Options &options)
     }
     OptionParser::Prepare();
     int val;
-
-    // Before parsing arguments, insert quote char to the head of the string.
-    // So quoted arguments like "-l" won't be treated as option.
-    int argv_iter = 0;
-    for (auto args_iter = m_args.begin(); args_iter != m_args.end(); args_iter++, argv_iter++)
-    {
-        char quote_char = GetArgumentQuoteCharAtIndex(argv_iter);
-        if (quote_char != '\0')
-        {
-            *args_iter = std::string(1, quote_char) + *args_iter;
-            m_argv[argv_iter] = args_iter->c_str();
-        }
-    }
-
     while (1)
     {
         int long_options_index = -1;
@@ -699,7 +685,7 @@ Args::ParseOptions (Options &options)
             }
         }
         // Call the callback with the option
-        if (long_options_index >= 0)
+        if (long_options_index >= 0 && long_options[long_options_index].definition)
         {
             const OptionDefinition *def = long_options[long_options_index].definition;
             CommandInterpreter &interpreter = options.GetInterpreter();
@@ -710,23 +696,8 @@ Args::ParseOptions (Options &options)
             }
             else
             {
-                const char *value = OptionParser::GetOptionArgument();
-                if (value)
-                {
-                    // Remove leading quote char from option value
-                    argv_iter = 0;
-                    for (auto args_iter = m_args.begin(); args_iter != m_args.end(); args_iter++, argv_iter++)
-                    {
-                        if (*args_iter == value && GetArgumentQuoteCharAtIndex(argv_iter) != '\0')
-                        {
-                            *args_iter = args_iter->substr(1);
-                            value = args_iter->c_str();
-                            break;
-                        }
-                    }
-                }
                 error = options.SetOptionValue(long_options_index,
-                                               (def->option_has_arg == OptionParser::eNoArgument) ? nullptr : value);
+                                               (def->option_has_arg == OptionParser::eNoArgument) ? nullptr : OptionParser::GetOptionArgument());
             }
         }
         else
@@ -740,19 +711,6 @@ Args::ParseOptions (Options &options)
     // Update our ARGV now that get options has consumed all the options
     m_argv.erase(m_argv.begin(), m_argv.begin() + OptionParser::GetOptionIndex());
     UpdateArgsAfterOptionParsing ();
-
-    // Remove leading quote char from other arguments.
-    argv_iter = 0;
-    for (auto args_iter = m_args.begin(); args_iter != m_args.end(); args_iter++, argv_iter++)
-    {
-        char quote_char = GetArgumentQuoteCharAtIndex(argv_iter);
-        if (quote_char != '\0')
-        {
-            *args_iter = args_iter->substr(1);
-            m_argv[argv_iter] = args_iter->c_str();
-        }
-    }
-
     return error;
 }
 
@@ -871,15 +829,18 @@ Args::StringToAddress (const ExecutionContext *exe_ctx, const char *s, lldb::add
                 options.SetTryAllThreads(true);
                 
                 ExpressionResults expr_result = target->EvaluateExpression(s,
-                                                                          exe_ctx->GetFramePtr(),
-                                                                          valobj_sp,
-                                                                          options);
+                                                                           exe_ctx->GetFramePtr(),
+                                                                           valobj_sp,
+                                                                           options);
 
                 bool success = false;
                 if (expr_result == eExpressionCompleted)
                 {
+                    if (valobj_sp)
+                        valobj_sp = valobj_sp->GetQualifiedRepresentationIfAvailable(valobj_sp->GetDynamicValueType(), true);
                     // Get the address to watch.
-                    addr = valobj_sp->GetValueAsUnsigned(fail_value, &success);
+                    if (valobj_sp)
+                        addr = valobj_sp->GetValueAsUnsigned(fail_value, &success);
                     if (success)
                     {
                         if (error_ptr)

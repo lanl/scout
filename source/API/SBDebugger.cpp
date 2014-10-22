@@ -972,7 +972,32 @@ SBDebugger::RunCommandInterpreter (bool auto_handle_events,
                                    bool spawn_thread)
 {
     if (m_opaque_sp)
-        m_opaque_sp->GetCommandInterpreter().RunCommandInterpreter(auto_handle_events, spawn_thread);
+    {
+        CommandInterpreterRunOptions options;
+
+        m_opaque_sp->GetCommandInterpreter().RunCommandInterpreter(auto_handle_events,
+                                                                   spawn_thread,
+                                                                   options);
+    }
+}
+
+void
+SBDebugger::RunCommandInterpreter (bool auto_handle_events,
+                                   bool spawn_thread,
+                                   SBCommandInterpreterRunOptions &options,
+                                   int  &num_errors,
+                                   bool &quit_requested,
+                                   bool &stopped_for_crash)
+
+{
+    if (m_opaque_sp)
+    {
+        CommandInterpreter &interp = m_opaque_sp->GetCommandInterpreter();
+        interp.RunCommandInterpreter(auto_handle_events, spawn_thread, options.ref());
+        num_errors = interp.GetNumErrors();
+        quit_requested = interp.GetQuitRequested();
+        stopped_for_crash = interp.GetStoppedForCrash();
+    }
 }
 
 void

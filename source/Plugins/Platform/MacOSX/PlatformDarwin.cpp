@@ -672,76 +672,6 @@ PlatformDarwin::FindProcesses (const ProcessInstanceInfoMatch &match_info,
     return match_count;    
 }
 
-Error
-PlatformDarwin::LaunchProcess (ProcessLaunchInfo &launch_info)
-{
-    Error error;
-    
-    if (IsHost())
-    {
-        error = Platform::LaunchProcess (launch_info);
-    }
-    else
-    {
-        if (m_remote_platform_sp)
-            error = m_remote_platform_sp->LaunchProcess (launch_info);
-        else
-            error.SetErrorString ("the platform is not currently connected");
-    }
-    return error;
-}
-
-lldb::ProcessSP
-PlatformDarwin::Attach (ProcessAttachInfo &attach_info,
-                        Debugger &debugger,
-                        Target *target,
-                        Listener &listener, 
-                        Error &error)
-{
-    lldb::ProcessSP process_sp;
-    
-    if (IsHost())
-    {
-        if (target == NULL)
-        {
-            TargetSP new_target_sp;
-            
-            error = debugger.GetTargetList().CreateTarget (debugger,
-                                                           NULL,
-                                                           NULL, 
-                                                           false,
-                                                           NULL,
-                                                           new_target_sp);
-            target = new_target_sp.get();
-        }
-        else
-            error.Clear();
-    
-        if (target && error.Success())
-        {
-            debugger.GetTargetList().SetSelectedTarget(target);
-
-            process_sp = target->CreateProcess (listener, attach_info.GetProcessPluginName(), NULL);
-            
-            if (process_sp)
-            {
-                ListenerSP listener_sp (new Listener("lldb.PlatformDarwin.attach.hijack"));
-                attach_info.SetHijackListener(listener_sp);
-                process_sp->HijackProcessEvents(listener_sp.get());
-                error = process_sp->Attach (attach_info);
-            }
-        }
-    }
-    else
-    {
-        if (m_remote_platform_sp)
-            process_sp = m_remote_platform_sp->Attach (attach_info, debugger, target, listener, error);
-        else
-            error.SetErrorString ("the platform is not currently connected");
-    }
-    return process_sp;
-}
-
 bool
 PlatformDarwin::ModuleIsExcludedForNonModuleSpecificSearches (lldb_private::Target &target, const lldb::ModuleSP &module_sp)
 {
@@ -1126,7 +1056,7 @@ PlatformDarwin::GetDeveloperDirectory()
                                                      &signo,
                                                      &command_output,
                                                      2,                                     // short timeout
-                                                     NULL);                                 // don't run in a shell
+                                                     false);                                // don't run in a shell
                 if (error.Success() && exit_status == 0 && !command_output.empty())
                 {
                     const char *cmd_output_ptr = command_output.c_str();
@@ -1216,13 +1146,14 @@ PlatformDarwin::SetThreadCreationBreakpoint (Target &target)
 int32_t
 PlatformDarwin::GetResumeCountForLaunchInfo (ProcessLaunchInfo &launch_info)
 {
-    const char *shell = launch_info.GetShell();
-    if (shell == NULL)
+    const FileSpec &shell = launch_info.GetShell();
+    if (!shell)
         return 1;
         
-    const char *shell_name = strrchr (shell, '/');
+    std::string shell_string = shell.GetPath();
+    const char *shell_name = strrchr (shell_string.c_str(), '/');
     if (shell_name == NULL)
-        shell_name = shell;
+        shell_name = shell_string.c_str();
     else
         shell_name++;
     

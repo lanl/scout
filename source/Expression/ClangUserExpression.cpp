@@ -527,9 +527,7 @@ ClangUserExpression::Parse (Stream &error_stream,
     if (!exe_scope)
         exe_scope = exe_ctx.GetTargetPtr();
 
-    Args expr_parser_compiler_args;
-    target->GetExprParserCompilerArguments (expr_parser_compiler_args);
-    ClangExpressionParser parser(exe_scope, *this, expr_parser_compiler_args, generate_debug_info);
+    ClangExpressionParser parser(exe_scope, *this, generate_debug_info);
 
     unsigned num_errors = parser.Parse (error_stream);
 
@@ -621,15 +619,14 @@ GetObjectPointer (lldb::StackFrameSP frame_sp,
 
     valobj_sp = frame_sp->GetValueForVariableExpressionPath(object_name.AsCString(),
                                                             lldb::eNoDynamicValues,
-                                                            StackFrame::eExpressionPathOptionCheckPtrVsMember ||
-                                                            StackFrame::eExpressionPathOptionsAllowDirectIVarAccess ||
-                                                            StackFrame::eExpressionPathOptionsNoFragileObjcIvar ||
-                                                            StackFrame::eExpressionPathOptionsNoSyntheticChildren ||
+                                                            StackFrame::eExpressionPathOptionCheckPtrVsMember |
+                                                            StackFrame::eExpressionPathOptionsNoFragileObjcIvar |
+                                                            StackFrame::eExpressionPathOptionsNoSyntheticChildren |
                                                             StackFrame::eExpressionPathOptionsNoSyntheticArrayRange,
                                                             var_sp,
                                                             err);
 
-    if (!err.Success())
+    if (!err.Success() || !valobj_sp.get())
         return LLDB_INVALID_ADDRESS;
 
     lldb::addr_t ret = valobj_sp->GetValueAsUnsigned(LLDB_INVALID_ADDRESS);
@@ -1072,7 +1069,7 @@ ClangUserExpression::Evaluate (ExecutionContext &exe_ctx,
                                                              user_expression_sp,
                                                              expr_result);
 
-            if (options.GetResultIsInternal())
+            if (options.GetResultIsInternal() && expr_result && process)
             {
                 process->GetTarget().GetPersistentVariables().RemovePersistentVariable (expr_result);
             }
