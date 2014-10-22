@@ -174,7 +174,7 @@ class DwarfDebug : public AsmPrinterHandler {
   MapVector<const MDNode *, DwarfCompileUnit *> CUMap;
 
   // Maps subprogram MDNode with its corresponding DwarfCompileUnit.
-  DenseMap<const MDNode *, DwarfCompileUnit *> SPMap;
+  MapVector<const MDNode *, DwarfCompileUnit *> SPMap;
 
   // Maps a CU DIE with its corresponding DwarfCompileUnit.
   DenseMap<const DIE *, DwarfCompileUnit *> CUDieMap;
@@ -350,8 +350,8 @@ class DwarfDebug : public AsmPrinterHandler {
                                                const MDNode *Scope);
 
   /// \brief Construct a DIE for this abstract scope.
-  void constructAbstractSubprogramScopeDIE(DwarfCompileUnit &TheCU,
-                                           LexicalScope *Scope);
+  void constructAbstractSubprogramScopeDIE(LexicalScope *Scope);
+
   /// \brief Emit initial Dwarf sections with a label at the start of each one.
   void emitSectionLabels();
 

@@ -120,6 +120,10 @@ public:
   void constructSubprogramScopeDIE(LexicalScope *Scope);
 
   DIE *createAndAddScopeChildren(LexicalScope *Scope, DIE &ScopeDIE);
+
+  DIE &constructAbstractSubprogramScopeDIE(LexicalScope *Scope);
+
+  void finishSubprogramDefinition(DISubprogram SP);
 };
 
 } // end llvm namespace

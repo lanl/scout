@@ -29,6 +29,45 @@ using namespace llvm;
 #include "HexagonGenAsmWriter.inc"
 
 const char HexagonInstPrinter::PacketPadding = '\t';
+// Return the minimum value that a constant extendable operand can have
+// without being extended.
+static int getMinValue(uint64_t TSFlags) {
+  unsigned isSigned =
+      (TSFlags >> HexagonII::ExtentSignedPos) & HexagonII::ExtentSignedMask;
+  unsigned bits =
+      (TSFlags >> HexagonII::ExtentBitsPos) & HexagonII::ExtentBitsMask;
+
+  if (isSigned)
+    return -1U << (bits - 1);
+
+  return 0;
+}
+
+// Return the maximum value that a constant extendable operand can have
+// without being extended.
+static int getMaxValue(uint64_t TSFlags) {
+  unsigned isSigned =
+      (TSFlags >> HexagonII::ExtentSignedPos) & HexagonII::ExtentSignedMask;
+  unsigned bits =
+      (TSFlags >> HexagonII::ExtentBitsPos) & HexagonII::ExtentBitsMask;
+
+  if (isSigned)
+    return ~(-1U << (bits - 1));
+
+  return ~(-1U << bits);
+}
+
+// Return true if the instruction must be extended.
+static bool isExtended(uint64_t TSFlags) {
+  return (TSFlags >> HexagonII::ExtendedPos) & HexagonII::ExtendedMask;
+}
+
+// Currently just used in an assert statement
+static bool isExtendable(uint64_t TSFlags) LLVM_ATTRIBUTE_UNUSED;
+// Return true if the instruction may be extended based on the operand value.
+static bool isExtendable(uint64_t TSFlags) {
+  return (TSFlags >> HexagonII::ExtendablePos) & HexagonII::ExtendableMask;
+}
 
 StringRef HexagonInstPrinter::getOpcodeName(unsigned Opcode) const {
   return MII.getName(Opcode);
@@ -52,14 +91,13 @@ void HexagonInstPrinter::printInst(const HexagonMCInst *MI, raw_ostream &O,
     // Ending a harware loop is different from ending an regular packet.
     assert(MI->isPacketEnd() && "Loop-end must also end the packet");
 
-    if (MI->isPacketStart()) {
+    if (MI->isPacketBegin()) {
       // There must be a packet to end a loop.
       // FIXME: when shuffling is always run, this shouldn't be needed.
-      HexagonMCInst Nop;
+      HexagonMCInst Nop (Hexagon::NOP);
       StringRef NoAnnot;
 
-      Nop.setOpcode (Hexagon::NOP);
-      Nop.setPacketStart (MI->isPacketStart());
+      Nop.setPacketBegin (MI->isPacketBegin());
       printInst (&Nop, O, NoAnnot);
     }
 
@@ -71,7 +109,7 @@ void HexagonInstPrinter::printInst(const HexagonMCInst *MI, raw_ostream &O,
   }
   else {
     // Prefix the insn opening the packet.
-    if (MI->isPacketStart())
+    if (MI->isPacketBegin())
       O << PacketPadding << startPacket << '\n';
 
     printInstruction(MI, O);
@@ -116,9 +154,20 @@ void HexagonInstPrinter::printImmOperand(const MCInst *MI, unsigned OpNo,
 
 void HexagonInstPrinter::printExtOperand(const MCInst *MI, unsigned OpNo,
                                          raw_ostream &O) const {
-  const HexagonMCInst *HMCI = static_cast<const HexagonMCInst*>(MI);
-  if (HMCI->isConstExtended())
+  const MCOperand &MO = MI->getOperand(OpNo);
+  const MCInstrDesc &MII = getMII().get(MI->getOpcode());
+
+  assert((isExtendable(MII.TSFlags) || isExtended(MII.TSFlags)) &&
+         "Expecting an extendable operand");
+
+  if (MO.isExpr() || isExtended(MII.TSFlags)) {
     O << "#";
+  } else if (MO.isImm()) {
+    int ImmValue = MO.getImm();
+    if (ImmValue < getMinValue(MII.TSFlags) ||
+        ImmValue > getMaxValue(MII.TSFlags))
+      O << "#";
+  }
   printOperand(MI, OpNo, O);
 }
 

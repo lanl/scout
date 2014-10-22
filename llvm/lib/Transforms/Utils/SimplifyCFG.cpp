@@ -1010,6 +1010,8 @@ static bool isSafeToHoistInvoke(BasicBlock *BB1, BasicBlock *BB2,
   return true;
 }
 
+static bool passingValueIsAlwaysUndefined(Value *V, Instruction *I);
+
 /// HoistThenElseCodeToIf - Given a conditional branch that goes to BB1 and
 /// BB2, hoist any common code in the two blocks up into the branch block.  The
 /// caller of this function guarantees that BI's block dominates BB1 and BB2.
@@ -1059,7 +1061,8 @@ static bool HoistThenElseCodeToIf(BranchInst *BI, const DataLayout *DL) {
       LLVMContext::MD_tbaa,
       LLVMContext::MD_range,
       LLVMContext::MD_fpmath,
-      LLVMContext::MD_invariant_load
+      LLVMContext::MD_invariant_load,
+      LLVMContext::MD_nonnull
     };
     combineMetadata(I1, I2, KnownIDs);
     I2->eraseFromParent();
@@ -1093,6 +1096,12 @@ HoistTerminator:
       Value *BB2V = PN->getIncomingValueForBlock(BB2);
       if (BB1V == BB2V)
         continue;
+
+      // Check for passingValueIsAlwaysUndefined here because we would rather
+      // eliminate undefined control flow then converting it to a select.
+      if (passingValueIsAlwaysUndefined(BB1V, PN) ||
+          passingValueIsAlwaysUndefined(BB2V, PN))
+       return Changed;
 
       if (isa<ConstantExpr>(BB1V) && !isSafeToSpeculativelyExecute(BB1V, DL))
         return Changed;
@@ -1303,6 +1312,8 @@ static bool SinkThenElseCodeToEnd(BranchInst *BI1) {
     if (!I2->use_empty())
       I2->replaceAllUsesWith(I1);
     I1->intersectOptionalDataWith(I2);
+    // TODO: Use combineMetadata here to preserve what metadata we can
+    // (analogous to the hoisting case above).
     I2->eraseFromParent();
 
     if (UpdateRE1)
@@ -1507,6 +1518,11 @@ static bool SpeculativelyExecuteBB(BranchInst *BI, BasicBlock *ThenBB,
     // Skip PHIs which are trivial.
     if (ThenV == OrigV)
       continue;
+
+    // Don't convert to selects if we could remove undefined behavior instead.
+    if (passingValueIsAlwaysUndefined(OrigV, PN) ||
+        passingValueIsAlwaysUndefined(ThenV, PN))
+      return false;
 
     HaveRewritablePHIs = true;
     ConstantExpr *OrigCE = dyn_cast<ConstantExpr>(OrigV);
@@ -3559,7 +3575,7 @@ static void RemoveSwitchAfterSelectConversion(SwitchInst *SI, PHINode *PHI,
                                               Value *SelectValue,
                                               IRBuilder<> &Builder) {
   BasicBlock *SelectBB = SI->getParent();
-  if (PHI->getBasicBlockIndex(SelectBB) >= 0)
+  while (PHI->getBasicBlockIndex(SelectBB) >= 0)
     PHI->removeIncomingValue(SelectBB);
   PHI->addIncoming(SelectValue, SelectBB);
 

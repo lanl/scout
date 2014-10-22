@@ -92,6 +92,77 @@ def HexagonWrapperCombineII :
 def HexagonWrapperCombineRR :
   SDNode<"HexagonISD::WrapperCombineRR", SDTHexagonI64I32I32>;
 
+let hasSideEffects = 0, hasNewValue = 1, InputType = "reg" in
+class T_ALU32_3op<string mnemonic, bits<3> MajOp, bits<3> MinOp, bit OpsRev,
+                  bit IsComm>
+  : ALU32_rr<(outs IntRegs:$Rd), (ins IntRegs:$Rs, IntRegs:$Rt),
+             "$Rd = "#mnemonic#"($Rs, $Rt)",
+             [], "", ALU32_3op_tc_1_SLOT0123>, ImmRegRel, PredRel {
+  let isCommutable = IsComm;
+  let BaseOpcode = mnemonic#_rr;
+  let CextOpcode = mnemonic;
+
+  bits<5> Rs;
+  bits<5> Rt;
+  bits<5> Rd;
+
+  let IClass = 0b1111;
+  let Inst{27} = 0b0;
+  let Inst{26-24} = MajOp;
+  let Inst{23-21} = MinOp;
+  let Inst{20-16} = !if(OpsRev,Rt,Rs);
+  let Inst{12-8} = !if(OpsRev,Rs,Rt);
+  let Inst{4-0} = Rd;
+}
+
+let hasSideEffects = 0, hasNewValue = 1 in
+class T_ALU32_3op_pred<string mnemonic, bits<3> MajOp, bits<3> MinOp,
+                       bit OpsRev, bit PredNot, bit PredNew>
+  : ALU32_rr<(outs IntRegs:$Rd), (ins PredRegs:$Pu, IntRegs:$Rs, IntRegs:$Rt),
+             "if ("#!if(PredNot,"!","")#"$Pu"#!if(PredNew,".new","")#") "#
+             "$Rd = "#mnemonic#"($Rs, $Rt)",
+             [], "", ALU32_3op_tc_1_SLOT0123>, ImmRegRel, PredNewRel {
+  let isPredicated = 1;
+  let isPredicatedFalse = PredNot;
+  let isPredicatedNew = PredNew;
+  let BaseOpcode = mnemonic#_rr;
+  let CextOpcode = mnemonic;
+
+  bits<2> Pu;
+  bits<5> Rs;
+  bits<5> Rt;
+  bits<5> Rd;
+
+  let IClass = 0b1111;
+  let Inst{27} = 0b1;
+  let Inst{26-24} = MajOp;
+  let Inst{23-21} = MinOp;
+  let Inst{20-16} = !if(OpsRev,Rt,Rs);
+  let Inst{13} = PredNew;
+  let Inst{12-8} = !if(OpsRev,Rs,Rt);
+  let Inst{7} = PredNot;
+  let Inst{6-5} = Pu;
+  let Inst{4-0} = Rd;
+}
+
+multiclass T_ALU32_3op_p<string mnemonic, bits<3> MajOp, bits<3> MinOp,
+                         bit OpsRev> {
+  def t    : T_ALU32_3op_pred<mnemonic, MajOp, MinOp, OpsRev, 0, 0>;
+  def f    : T_ALU32_3op_pred<mnemonic, MajOp, MinOp, OpsRev, 1, 0>;
+  def tnew : T_ALU32_3op_pred<mnemonic, MajOp, MinOp, OpsRev, 0, 1>;
+  def fnew : T_ALU32_3op_pred<mnemonic, MajOp, MinOp, OpsRev, 1, 1>;
+}
+
+multiclass T_ALU32_3op_A2<string mnemonic, bits<3> MajOp, bits<3> MinOp,
+                          bit OpsRev, bit IsComm> {
+  let isPredicable = 1 in
+  def  A2_#NAME  : T_ALU32_3op  <mnemonic, MajOp, MinOp, OpsRev, IsComm>;
+  defm A2_p#NAME : T_ALU32_3op_p<mnemonic, MajOp, MinOp, OpsRev>;
+}
+
+let isCodeGenOnly = 0 in
+defm add : T_ALU32_3op_A2<"add", 0b011, 0b000, 0, 1>;
+
 multiclass ALU32_Pbase<string mnemonic, RegisterClass RC, bit isNot,
                        bit isPredNew> {
   let isPredicatedNew = isPredNew in
@@ -225,7 +296,7 @@ def AND_ri : ALU32_ri<(outs IntRegs:$dst),
                                            s10ExtPred:$src2))]>, ImmRegRel;
 
 // Nop.
-let neverHasSideEffects = 1 in
+let neverHasSideEffects = 1, isCodeGenOnly = 0 in
 def NOP : ALU32_rr<(outs), (ins),
           "nop",
           []>;
@@ -753,7 +824,7 @@ def HexagonBR_JT: SDNode<"HexagonISD::BR_JT", SDHexagonBR_JT, [SDNPHasChain]>;
 
 let InputType = "imm", isBarrier = 1, isPredicable = 1,
 Defs = [PC], isExtendable = 1, opExtendable = 0, isExtentSigned = 1,
-opExtentBits = 24 in
+opExtentBits = 24, isCodeGenOnly = 0 in
 class T_JMP <dag InsDag, list<dag> JumpList = []>
             : JInst<(outs), InsDag,
             "jump $dst" , JumpList> {
