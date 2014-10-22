@@ -58,18 +58,19 @@
 uniform mesh MyMesh {
  cells:
   float a;
- vertices:
+ edges:
   float b;
 };
 
-void MyFunc(MyMesh *m) { 
+int main(int argc, char** argv) {
+  MyMesh m[2,2];
 
-  forall cells c in *m {
+  forall cells c in m{
     a = position().x + position().y*10; 
   }
 
-  forall cells c in *m {
-    forall vertices v in c {
+  forall cells c in m{
+    forall edges e in c{
       b = a;
     }
   }
@@ -80,14 +81,11 @@ void MyFunc(MyMesh *m) {
      11.000000f};
   
   int i = 0;
-  forall vertices v in *m {
-    assert(b == expected[i] && "unexpected value");
+  forall edges e in m{
+    printf("%f\n", b);
+    //assert(b == expected[i] && "unexpected value");
     ++i;
   }
-}
   
-int main(int argc, char** argv) {
-  MyMesh m[2,2];
-  MyFunc(&m);
   return 0;
 }
