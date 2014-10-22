@@ -185,7 +185,8 @@ namespace lldb {
         eStopReasonException,
         eStopReasonExec,        // Program was re-exec'ed
         eStopReasonPlanComplete,
-        eStopReasonThreadExiting
+        eStopReasonThreadExiting,
+        eStopReasonInstrumentation
     } StopReason;
 
     //----------------------------------------------------------------------
@@ -393,6 +394,11 @@ namespace lldb {
         eNumLanguageTypes = 35
         // +==============================  
     } LanguageType;
+    
+    typedef enum InstrumentationRuntimeType {
+        eInstrumentationRuntimeTypeAddressSanitizer = 0x0000,
+        eNumInstrumentationRuntimeTypes
+    } InstrumentationRuntimeType;
 
     typedef enum DynamicValueType
     {
@@ -879,6 +885,34 @@ namespace lldb {
         eMatchTypeRegex,
         eMatchTypeStartsWith
     } MatchType;
+    
+    //----------------------------------------------------------------------
+    // Bitmask that describes details about a type
+    //----------------------------------------------------------------------
+    typedef enum TypeFlags {
+        eTypeHasChildren        = (1u <<  0),
+        eTypeHasValue           = (1u <<  1),
+        eTypeIsArray            = (1u <<  2),
+        eTypeIsBlock            = (1u <<  3),
+        eTypeIsBuiltIn          = (1u <<  4),
+        eTypeIsClass            = (1u <<  5),
+        eTypeIsCPlusPlus        = (1u <<  6),
+        eTypeIsEnumeration      = (1u <<  7),
+        eTypeIsFuncPrototype    = (1u <<  8),
+        eTypeIsMember           = (1u <<  9),
+        eTypeIsObjC             = (1u << 10),
+        eTypeIsPointer          = (1u << 11),
+        eTypeIsReference        = (1u << 12),
+        eTypeIsStructUnion      = (1u << 13),
+        eTypeIsTemplate         = (1u << 14),
+        eTypeIsTypedef          = (1u << 15),
+        eTypeIsVector           = (1u << 16),
+        eTypeIsScalar           = (1u << 17),
+        eTypeIsInteger          = (1u << 18),
+        eTypeIsFloat            = (1u << 19),
+        eTypeIsComplex          = (1u << 20),
+        eTypeIsSigned           = (1u << 21)
+    } TypeFlags;
 
 } // namespace lldb
 

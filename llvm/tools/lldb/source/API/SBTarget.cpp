@@ -236,13 +236,16 @@ SBLaunchInfo::SetProcessPluginName (const char *plugin_name)
 const char *
 SBLaunchInfo::GetShell ()
 {
-    return m_opaque_sp->GetShell();
+    // Constify this string so that it is saved in the string pool.  Otherwise
+    // it would be freed when this function goes out of scope.
+    ConstString shell(m_opaque_sp->GetShell().GetPath().c_str());
+    return shell.AsCString();
 }
 
 void
 SBLaunchInfo::SetShell (const char * path)
 {
-    m_opaque_sp->SetShell (path);
+    m_opaque_sp->SetShell (FileSpec(path, false));
 }
 
 uint32_t
@@ -584,6 +587,19 @@ SBTarget::GetProcess ()
     return sb_process;
 }
 
+SBPlatform
+SBTarget::GetPlatform ()
+{
+    TargetSP target_sp(GetSP());
+    if (!target_sp)
+        return SBPlatform();
+
+    SBPlatform platform;
+    platform.m_opaque_sp = target_sp->GetPlatform();
+
+    return platform;
+}
+
 SBDebugger
 SBTarget::GetDebugger () const
 {
@@ -735,9 +751,9 @@ SBTarget::Launch
             launch_info.GetEnvironmentEntries ().SetArguments (envp);
 
         if (listener.IsValid())
-            error.SetError (target_sp->Launch(listener.ref(), launch_info));
+            error.SetError (target_sp->Launch(listener.ref(), launch_info, NULL));
         else
-            error.SetError (target_sp->Launch(target_sp->GetDebugger().GetListener(), launch_info));
+            error.SetError (target_sp->Launch(target_sp->GetDebugger().GetListener(), launch_info, NULL));
 
         sb_process.SetSP(target_sp->GetProcessSP());
     }
@@ -801,7 +817,7 @@ SBTarget::Launch (SBLaunchInfo &sb_launch_info, SBError& error)
         if (arch_spec.IsValid())
             launch_info.GetArchitecture () = arch_spec;
 
-        error.SetError (target_sp->Launch (target_sp->GetDebugger().GetListener(), launch_info));
+        error.SetError (target_sp->Launch (target_sp->GetDebugger().GetListener(), launch_info, NULL));
         sb_process.SetSP(target_sp->GetProcessSP());
     }
     else
@@ -1001,7 +1017,7 @@ SBTarget::AttachToProcessWithID
                 // If we are doing synchronous mode, then wait for the
                 // process to stop!
                 if (target_sp->GetDebugger().GetAsyncExecution () == false)
-                process_sp->WaitForProcessToStop (NULL);
+                    process_sp->WaitForProcessToStop (NULL);
             }
         }
         else
@@ -1228,6 +1244,22 @@ SBTarget::ResolveLoadAddress (lldb::addr_t vm_addr)
     return sb_addr;
 }
 
+lldb::SBAddress
+SBTarget::ResolveFileAddress (lldb::addr_t file_addr)
+{
+    lldb::SBAddress sb_addr;
+    Address &addr = sb_addr.ref();
+    TargetSP target_sp(GetSP());
+    if (target_sp)
+    {
+        Mutex::Locker api_locker (target_sp->GetAPIMutex());
+        if (target_sp->ResolveFileAddress (file_addr, addr))
+            return sb_addr;
+    }
+
+    addr.SetRawAddress(file_addr);
+    return sb_addr;
+}
 
 lldb::SBAddress
 SBTarget::ResolvePastLoadAddress (uint32_t stop_id, lldb::addr_t vm_addr)
@@ -1262,6 +1294,29 @@ SBTarget::ResolveSymbolContextForAddress (const SBAddress& addr,
     return sc;
 }
 
+size_t
+SBTarget::ReadMemory (const SBAddress addr,
+                      void *buf,
+                      size_t size,
+                      lldb::SBError &error)
+{
+    SBError sb_error;
+    size_t bytes_read = 0;
+    TargetSP target_sp(GetSP());
+    if (target_sp)
+    {
+        Mutex::Locker api_locker (target_sp->GetAPIMutex());
+        lldb_private::Address addr_priv(addr.GetFileAddress(), NULL);
+        lldb_private::Error err_priv;    
+        bytes_read = target_sp->ReadMemory(addr_priv, false, buf, size, err_priv);
+        if(err_priv.Fail())
+        {
+            sb_error.SetError(err_priv.GetError(), err_priv.GetType());
+        }
+    }
+
+    return bytes_read;
+}
 
 SBBreakpoint
 SBTarget::BreakpointCreateByLocation (const char *file,
@@ -2055,6 +2110,28 @@ SBTarget::GetTriple ()
         return const_triple.GetCString();
     }
     return NULL;
+}
+
+uint32_t
+SBTarget::GetDataByteSize ()
+{
+    TargetSP target_sp(GetSP());
+    if (target_sp)
+    {
+        return target_sp->GetArchitecture().GetDataByteSize() ;
+    }
+    return 0;
+}
+
+uint32_t
+SBTarget::GetCodeByteSize ()
+{
+    TargetSP target_sp(GetSP());
+    if (target_sp)
+    {
+        return target_sp->GetArchitecture().GetCodeByteSize() ;
+    }
+    return 0;
 }
 
 uint32_t

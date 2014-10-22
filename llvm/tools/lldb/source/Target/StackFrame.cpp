@@ -691,8 +691,8 @@ StackFrame::GetValueForVariableExpressionPath (const char *var_expr_cstr,
                             // Make sure we aren't trying to deref an objective
                             // C ivar if this is not allowed
                             const uint32_t pointer_type_flags = valobj_sp->GetClangType().GetTypeInfo (NULL);
-                            if ((pointer_type_flags & ClangASTType::eTypeIsObjC) &&
-                                (pointer_type_flags & ClangASTType::eTypeIsPointer))
+                            if ((pointer_type_flags & eTypeIsObjC) &&
+                                (pointer_type_flags & eTypeIsPointer))
                             {
                                 // This was an objective C object pointer and 
                                 // it was requested we skip any fragile ivars
@@ -1380,12 +1380,14 @@ StackFrame::Dump (Stream *strm, bool show_frame_index, bool show_fullpaths)
     GetSymbolContext(eSymbolContextEverything);
     const bool show_module = true;
     const bool show_inline = true;
+    const bool show_function_arguments = true;
     m_sc.DumpStopContext (strm, 
                           exe_ctx.GetBestExecutionContextScope(), 
                           GetFrameCodeAddress(), 
                           show_fullpaths, 
                           show_module, 
-                          show_inline);
+                          show_inline,
+                          show_function_arguments);
 }
 
 void

@@ -15,6 +15,7 @@
 
 // LLDB Headers
 #include "lldb/Core/Flags.h"
+#include "lldb/Host/FileSpec.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Target/FileAction.h"
 #include "lldb/Target/ProcessInfo.h"
@@ -105,11 +106,11 @@ namespace lldb_private
         void
         SetProcessPluginName (const char *plugin);
 
-        const char *
+        const FileSpec &
         GetShell () const;
 
         void
-        SetShell (const char * path);
+        SetShell (const FileSpec &shell);
 
         uint32_t
         GetResumeCount () const
@@ -124,7 +125,7 @@ namespace lldb_private
         }
 
         bool
-        GetLaunchInSeparateProcessGroup ()
+        GetLaunchInSeparateProcessGroup() const
         {
             return m_flags.Test(lldb::eLaunchFlagLaunchInSeparateProcessGroup);
         }
@@ -148,15 +149,21 @@ namespace lldb_private
                                    bool monitor_signals);
 
         Host::MonitorChildProcessCallback
-        GetMonitorProcessCallback ()
+        GetMonitorProcessCallback() const
         {
             return m_monitor_callback;
         }
 
-        const void*
-        GetMonitorProcessBaton () const
+        void *
+        GetMonitorProcessBaton() const
         {
             return m_monitor_callback_baton;
+        }
+
+        bool
+        GetMonitorSignals() const
+        {
+            return m_monitor_signals;
         }
 
         // If the LaunchInfo has a monitor callback, then arrange to monitor the process.
@@ -209,7 +216,7 @@ namespace lldb_private
     protected:
         std::string m_working_dir;
         std::string m_plugin_name;
-        std::string m_shell;
+        FileSpec m_shell;
         Flags m_flags;       // Bitwise OR of bits from lldb::LaunchFlags
         std::vector<FileAction> m_file_actions; // File actions for any other files
         std::shared_ptr<lldb_utility::PseudoTerminal> m_pty;
