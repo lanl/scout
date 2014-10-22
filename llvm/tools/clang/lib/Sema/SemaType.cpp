@@ -356,8 +356,8 @@ static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
         case DeclaratorChunk::StructuredMesh:
         case DeclaratorChunk::UnstructuredMesh:
         case DeclaratorChunk::Window:
-        case DeclaratorChunk::Image: 
-        case DeclaratorChunk::Query: 
+        case DeclaratorChunk::Image:
+        case DeclaratorChunk::Query:
         // +==================================================================+
           continue;
         case DeclaratorChunk::BlockPointer:
@@ -2136,8 +2136,8 @@ static void inferARCWriteback(TypeProcessingState &state,
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
     case DeclaratorChunk::Window:
-    case DeclaratorChunk::Image:      
-    case DeclaratorChunk::Query:      
+    case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
     // +======================================================================+
       return;
     }
@@ -2953,6 +2953,11 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
       T = S.BuildImageType(T, dims);
       break;
     }
+        
+    case DeclaratorChunk::Query: {
+      T = S.BuildQueryType(T);
+      break;
+    }
 
     case DeclaratorChunk::Query: {
       //SC_TODO
@@ -3539,10 +3544,11 @@ TypeSourceInfo *Sema::GetTypeForDeclarator(Declarator &D, Scope *S) {
   TypeProcessingState state(*this, D);
 
   TypeSourceInfo *ReturnTypeInfo = nullptr;
+  
   QualType T = GetDeclSpecTypeForDeclarator(state, ReturnTypeInfo);
   if (T.isNull())
     return Context.getNullTypeSourceInfo();
-
+  
   if (D.isPrototypeContext() && getLangOpts().ObjCAutoRefCount)
     inferARCWriteback(state, T);
 
