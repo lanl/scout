@@ -739,7 +739,8 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
   case TST_structured_mesh:
   case TST_unstructured_mesh:
   case TST_window:
-  case TST_image:    
+  case TST_image:
+  case TST_query:
   // +========================================================================+
   case TST_bool:
   case TST_decimal32:

@@ -2726,6 +2726,14 @@ public:
     return true;
   }
 
+  void setLast(bool flag) const{
+    Last = flag;
+  }
+  
+  bool isLast() const{
+    return Last;
+  }
+  
 protected:
   // The loop's reference element variable is an implicitly declared
   // instance whose type matches that of the mesh location specified
@@ -2749,6 +2757,7 @@ protected:
   IdentifierInfo  *ContainerRefVarInfo;
   VarDecl         *ContainerVarDecl;
   SourceLocation  RenderallKWLoc, LParenLoc, RParenLoc;
+  mutable bool Last;
 };
 
 

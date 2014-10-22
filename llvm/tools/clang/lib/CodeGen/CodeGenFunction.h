@@ -39,7 +39,6 @@
 #include "Scout/ASTVisitors.h"
 // +======================================================================+
 
-
 namespace llvm {
 class BasicBlock;
 class LLVMContext;
@@ -342,8 +341,12 @@ public:
   // overall induction variable is stored as 4th element
   llvm::SmallVector< llvm::Value *, 4 > InductionVar;
   // mesh dimension sizes
-  llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
-  llvm::Value *Rank = 0;
+  llvm::SmallVector< llvm::Value *, 3 > MeshDims;
+  // mesh dimension sizes + 1
+  llvm::SmallVector< llvm::Value *, 3 > MeshDimsP1;
+  // loopbounds for forall cells
+  llvm::SmallVector< llvm::Value *, 3 > LoopBoundsCells;
+  llvm::Value *MeshRank = 0;
 
   llvm::Value* InnerInductionVar;
   llvm::Value* InnerIndex;
@@ -360,7 +363,7 @@ public:
   llvm::Value *Color;
 
   llvm::Value *LookupInductionVar(unsigned int index);
-  llvm::Value *LookupLoopBound(unsigned int index);
+  llvm::Value *LookupMeshDim(unsigned int index);
 
   inline llvm::Value *getLinearIdx() {
     return Builder.CreateLoad(LookupInductionVar(3), "Xall.linearidx");
@@ -369,7 +372,7 @@ public:
   bool isGPU() {
     return CGM.getCodeGenOpts().ScoutNvidiaGPU;
   }
-
+  
   bool inLLDB(){
   	return CGM.getModule().getModuleIdentifier() == "$__lldb_module";
   }
@@ -421,6 +424,7 @@ public:
   bool callsPrintf(const Stmt *S) {
     return hasPrintfNode(S);
   }
+
   // +========================================================================+
 
 
@@ -1127,7 +1131,7 @@ private:
 
   // +===== Scout ==========================================================+
   llvm::SmallVector<ImplicitParamDecl*, 4 > ScoutABIInductionVarDecl;
-  llvm::SmallVector<ImplicitParamDecl*, 3 > ScoutABILoopBoundDecl;
+  llvm::SmallVector<ImplicitParamDecl*, 3 > ScoutABIMeshDimDecl;
   // +======================================================================+
 
   /// The value of 'this' to use when evaluating CXXDefaultInitExprs within
@@ -2101,16 +2105,17 @@ public:
   void GetMeshBaseAddr(const Stmt &S, llvm::Value *&BaseAddr);
   void GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& BaseAddr);
 
-  void GetMeshDimValues(const ForallMeshStmt &S,
-                        llvm::SmallVector<llvm::Value*, 3> &MeshDimensions,
-                        llvm::Value* MeshBaseAddr);
+  void SetMeshBounds(const Stmt &S);
+  void ResetMeshBounds(void);
 
-  void ResetVars(void);
+  void EmitLegionTask(const FunctionDecl* FD, llvm::Function* taskFunc);
+
   void EmitForallMeshStmt(const ForallMeshStmt &S);
 
   void EmitForallEdges(const ForallMeshStmt &S);
   void EmitForallFaces(const ForallMeshStmt &S);
 
+  llvm::Value *GetNumLocalMeshItems(llvm::Value *d1, llvm::Value *d2, llvm::Value *d3);
   void EmitForallCellsVertices(const ForallMeshStmt &S);
   void EmitForallCellsEdges(const ForallMeshStmt &S);
   void EmitForallCellsFaces(const ForallMeshStmt &S);
@@ -2127,6 +2132,7 @@ public:
   void EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
                                           llvm::Value* OuterIndex);
 
+  void EmitForallCellsOrVertices(const ForallMeshStmt &S);
   void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
   llvm::BasicBlock *EmitMarkerBlock(const std::string name);
   llvm::Function* ExtractRegion(llvm::BasicBlock *entry,
@@ -2135,9 +2141,10 @@ public:
   void EmitForallMeshMDBlock(const ForallMeshStmt &S);
   void EmitTaskMDBlock(const FunctionDecl *FD);
   void EmitStencilMDBlock(const FunctionDecl *FD);
-  void EmitMeshFieldsUsedMD(TaskVisitor::FieldMap HS,
+  void EmitMeshFieldsUsedMD(MeshFieldMap HS,
       const char *str, llvm::BranchInst *BI);
 
+  void EmitGPUForall(const ForallMeshStmt& S, llvm::Value *&Index);
   void EmitGPUPreamble(const ForallMeshStmt& S);
   void AddScoutKernel(llvm::Function* f, const ForallMeshStmt &S);
 
@@ -2151,6 +2158,9 @@ public:
   void EmitForallArrayLoop(const ForallArrayStmt &S,  unsigned r);
 
   void EmitRenderallStmt(const RenderallMeshStmt &S);
+
+  void EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S);
+
   void EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned r);
   //void EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S);
 

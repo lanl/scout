@@ -88,6 +88,10 @@ namespace llvm {
     /// returns false.
     Function *extractCodeRegion();
 
+//===== Scout ===================================
+    Function *extractCodeRegionIntoMainTaskFunc(Function* mainTaskFunc);
+//===============================================
+
     /// \brief Test whether this code extractor is eligible.
     ///
     /// Based on the blocks used when constructing the code extractor,

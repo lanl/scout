@@ -1607,6 +1607,7 @@ public:
   bool isScoutWindowType() const;
   bool isScoutImageType() const;
   bool isScoutRenderTargetType() const;
+  bool isScoutQueryType() const;
   // +==========================================================================+  
   
   /// Determines if this type, which must satisfy
@@ -3770,6 +3771,33 @@ class ImageType :  public RenderTargetType {
   
   QualType desugar() const { return QualType(this, 0); }
 };
+
+class QueryType : public Type {
+    
+  friend class ASTContext;  // ASTContext creates these.
+  
+public:
+  QueryType()
+  : QueryType(Query, QualType()) { }
+  
+  QueryType(TypeClass TC, QualType can)
+  : Type(TC, can, false,
+         /*InstantiationDependent*/false,
+         /*VariablyModified*/false,
+         /*ContainsUnexpandedParameterPack*/false){}
+  
+  StringRef getName(const PrintingPolicy &Policy) const {
+    return "query";
+  }
+  
+  bool isSugared() const { return false; }
+  
+  QualType desugar() const { return QualType(this, 0); }
+  
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == Query;
+  };
+};
   
 // +==========================================================================+
 
@@ -5494,11 +5522,17 @@ inline bool Type::isUnstructuredMeshType() const {
 inline bool Type::isScoutWindowType() const {
   return isa<WindowType>(CanonicalType);
 }
+  
 inline bool Type::isScoutImageType() const {
   return isa<ImageType>(CanonicalType);
 }
+  
 inline bool Type::isScoutRenderTargetType() const {
   return isScoutWindowType() || isScoutImageType();
+}
+  
+inline bool Type::isScoutQueryType() const {
+  return isa<QueryType>(CanonicalType);
 }
 // +=======================================================================+
   

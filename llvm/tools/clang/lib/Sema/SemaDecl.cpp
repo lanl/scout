@@ -49,6 +49,7 @@
 
 // +===== Scout ==============================================================+
 #include "clang/AST/Scout/MeshDecls.h"
+#include "clang/Sema/Scout/ASTVisitors.h"
 // +==========================================================================+
 
 #include <algorithm>
@@ -3903,6 +3904,7 @@ StorageClassSpecToVarDeclStorageClass(const DeclSpec &DS) {
     // Illegal SCSs map to None: error reporting is up to the caller.
   case DeclSpec::SCS_mutable:        // Fall through.
   case DeclSpec::SCS_typedef:        return SC_None;
+  case DeclSpec::SCS_persistent:     return SC_Persistent;
   }
   llvm_unreachable("unknown storage class specifier");
 }
@@ -10548,6 +10550,7 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *D, Stmt *BodyArg) {
   return ActOnFinishFunctionBody(D, BodyArg, false);
 }
 
+
 Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
                                     bool IsInstantiation) {
   FunctionDecl *FD = dcl ? dcl->getAsFunction() : nullptr;
@@ -10557,6 +10560,19 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
 
   if (FD) {
     FD->setBody(Body);
+
+    // +===== Scout ==========================================================+
+    if(FD->isTaskSpecified()) {
+      TaskDeclVisitor v(*this, FD);
+      v.VisitStmt(Body);
+    } else {
+      //for now don't allow foralls outside of tasks in legion mode.
+      if(getLangOpts().ScoutLegionSupport) {
+        NonTaskForallVisitor v(*this);
+        v.VisitStmt(Body);
+      }
+    }
+    // +======================================================================+
 
     if (getLangOpts().CPlusPlus14 && !FD->isInvalidDecl() && Body &&
         !FD->isDependentContext() && FD->getReturnType()->isUndeducedType()) {

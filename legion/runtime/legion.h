@@ -711,7 +711,8 @@ namespace LegionRuntime {
        * @param instance indicate whether to add to instance fields
        */
       inline RegionRequirement& add_field(FieldID fid, bool instance = true);
-      inline RegionRequirement& add_fields(const std::vector<FieldID>& fids, bool instance = true);
+      inline RegionRequirement& add_fields(const std::vector<FieldID>& fids, 
+                                           bool instance = true);
     public:
 #ifdef PRIVILEGE_CHECKS
       AccessorPrivilege get_accessor_privilege(void) const;
@@ -732,7 +733,7 @@ namespace LegionRuntime {
       LogicalRegion parent; /**< parent region to derive privileges from*/
       ReductionOpID redop; /**<reduction operation (default 0)*/
       MappingTagID tag; /**< mapping tag for this region requirement*/
-      unsigned flags; /**< optional flags set for region requirements*/
+      RegionFlags flags; /**< optional flags set for region requirements*/
       HandleType handle_type; /**< region or partition requirement*/
       ProjectionID projection; /**< projection function for index space tasks*/
     public:
@@ -814,158 +815,6 @@ namespace LegionRuntime {
     public:
       bool operator<(const FieldSpaceRequirement &req) const;
       bool operator==(const FieldSpaceRequirement &req) const;
-    };
-
-    //==========================================================================
-    //                    Operation Launcher Classes
-    //==========================================================================
-
-    /**
-     * \struct TaskLauncher
-     * Task launchers are objects that describe a launch
-     * configuration to the runtime.  They can be re-used
-     * and safely modified between calls to task launches.
-     * @see HighLevelRuntime
-     */
-    struct TaskLauncher {
-    public:
-      TaskLauncher(void);
-      TaskLauncher(Processor::TaskFuncID tid, 
-                   TaskArgument arg,
-                   Predicate pred = Predicate::TRUE_PRED,
-                   MapperID id = 0,
-                   MappingTagID tag = 0);
-    public:
-      inline void add_index_requirement(const IndexSpaceRequirement &req);
-      inline void add_region_requirement(const RegionRequirement &req);
-      inline void add_field(unsigned idx, FieldID fid, bool inst = true);
-    public:
-      inline void add_future(Future f);
-      inline void add_grant(Grant g);
-      inline void add_wait_barrier(PhaseBarrier bar);
-      inline void add_arrival_barrier(PhaseBarrier bar);
-    public:
-      Processor::TaskFuncID              task_id;
-      std::vector<IndexSpaceRequirement> index_requirements;
-      std::vector<RegionRequirement>     region_requirements;
-      std::vector<Future>                futures;
-      std::vector<Grant>                 grants;
-      std::vector<PhaseBarrier>          wait_barriers;
-      std::vector<PhaseBarrier>          arrive_barriers;
-      TaskArgument                       argument;
-      Predicate                          predicate;
-      MapperID                           map_id;
-      MappingTagID                       tag;
-      DomainPoint                        point;
-    };
-
-    /**
-     * \struct IndexLauncher
-     * Index launchers are objects that describe the launch
-     * of an index space of tasks to the runtime.  They can
-     * be re-used and safely modified between calls to 
-     * index space launches.
-     * @see HighLevelRuntime
-     */
-    struct IndexLauncher {
-    public:
-      IndexLauncher(void);
-      IndexLauncher(Processor::TaskFuncID tid,
-                    Domain domain,
-                    TaskArgument global_arg,
-                    ArgumentMap map,
-                    Predicate pred = Predicate::TRUE_PRED,
-                    bool must = false,
-                    MapperID id = 0,
-                    MappingTagID tag = 0);
-    public:
-      inline void add_index_requirement(const IndexSpaceRequirement &req);
-      inline void add_region_requirement(const RegionRequirement &req);
-      inline void add_field(unsigned idx, FieldID fid, bool inst = true);
-    public:
-      inline void add_future(Future f);
-      inline void add_grant(Grant g);
-      inline void add_wait_barrier(PhaseBarrier bar);
-      inline void add_arrival_barrier(PhaseBarrier bar);
-    public:
-      Processor::TaskFuncID              task_id;
-      Domain                             launch_domain;
-      std::vector<IndexSpaceRequirement> index_requirements;
-      std::vector<RegionRequirement>     region_requirements;
-      std::vector<Future>                futures;
-      std::vector<Grant>                 grants;
-      std::vector<PhaseBarrier>          wait_barriers;
-      std::vector<PhaseBarrier>          arrive_barriers;
-      TaskArgument                       global_arg;
-      ArgumentMap                        argument_map;
-      Predicate                          predicate;
-      bool                               must_parallelism;
-      MapperID                           map_id;
-      MappingTagID                       tag;
-    };
-
-    /**
-     * \struct InlineLauncher
-     * Inline launchers are objects that describe the launch
-     * of an inline mapping operation to the runtime.  They
-     * can be re-used and safely modified between calls to
-     * inline mapping operations.
-     * @see HighLevelRuntime
-     */
-    struct InlineLauncher {
-    public:
-      InlineLauncher(void);
-      InlineLauncher(const RegionRequirement &req,
-                     MapperID id = 0,
-                     MappingTagID tag = 0);
-    public:
-      inline void add_field(FieldID fid, bool inst = true);
-    public:
-      RegionRequirement               requirement;
-      MapperID                        map_id;
-      MappingTagID                    tag;
-    };
-
-    /**
-     * \struct CopyLauncher
-     * Copy launchers are objects that can be used to issue
-     * copies between two regions including regions that are
-     * not of the same region tree.  Copy operations specify
-     * an arbitrary number of pairs of source and destination 
-     * region requirements.  The source region requirements 
-     * must be READ_ONLY, while the destination requirements 
-     * must be either READ_WRITE, WRITE_ONLY, or REDUCE with 
-     * a reduction function.  While the regions in a source 
-     * and a destination pair do not have to be in the same 
-     * region tree, they must share an index space tree.  
-     * Furthermore, the index space of the destination region
-     * requirement will determine the data copied, and therefore
-     * the destination index space must be the same or a 
-     * sub-space of the source index space.
-     * @see HighLevelRuntime
-     */
-    struct CopyLauncher {
-    public:
-      CopyLauncher(Predicate pred = Predicate::TRUE_PRED,
-                   MapperID id = 0, MappingTagID tag = 0);
-    public:
-      inline void add_copy_requirements(const RegionRequirement &src,
-					const RegionRequirement &dst);
-      inline void add_src_field(unsigned idx, FieldID fid, bool inst = true);
-      inline void add_dst_field(unsigned idx, FieldID fid, bool inst = true);
-    public:
-      inline void add_grant(Grant g);
-      inline void add_wait_barrier(PhaseBarrier bar);
-      inline void add_arrival_barrier(PhaseBarrier bar);
-    public:
-      std::vector<RegionRequirement>  src_requirements;
-      std::vector<RegionRequirement>  dst_requirements;
-      std::vector<Grant>              grants;
-      std::vector<PhaseBarrier>       wait_barriers;
-      std::vector<PhaseBarrier>       arrive_barriers;
-      Predicate                       predicate;
-      MapperID                        map_id;
-      MappingTagID                    tag;
     };
 
     //==========================================================================
@@ -1145,6 +994,187 @@ namespace LegionRuntime {
       void wait_all_results(void); 
     }; 
 
+
+    //==========================================================================
+    //                    Operation Launcher Classes
+    //==========================================================================
+
+    /**
+     * \struct TaskLauncher
+     * Task launchers are objects that describe a launch
+     * configuration to the runtime.  They can be re-used
+     * and safely modified between calls to task launches.
+     * @see HighLevelRuntime
+     */
+    struct TaskLauncher {
+    public:
+      TaskLauncher(void);
+      TaskLauncher(Processor::TaskFuncID tid, 
+                   TaskArgument arg,
+                   Predicate pred = Predicate::TRUE_PRED,
+                   MapperID id = 0,
+                   MappingTagID tag = 0);
+    public:
+      inline void add_index_requirement(const IndexSpaceRequirement &req);
+      inline void add_region_requirement(const RegionRequirement &req);
+      inline void add_field(unsigned idx, FieldID fid, bool inst = true);
+    public:
+      inline void add_future(Future f);
+      inline void add_grant(Grant g);
+      inline void add_wait_barrier(PhaseBarrier bar);
+      inline void add_arrival_barrier(PhaseBarrier bar);
+    public:
+      inline void set_predicate_false_future(Future f);
+      inline void set_predicate_false_result(TaskArgument arg);
+    public:
+      Processor::TaskFuncID              task_id;
+      std::vector<IndexSpaceRequirement> index_requirements;
+      std::vector<RegionRequirement>     region_requirements;
+      std::vector<Future>                futures;
+      std::vector<Grant>                 grants;
+      std::vector<PhaseBarrier>          wait_barriers;
+      std::vector<PhaseBarrier>          arrive_barriers;
+      TaskArgument                       argument;
+      Predicate                          predicate;
+      MapperID                           map_id;
+      MappingTagID                       tag;
+      DomainPoint                        point;
+    public:
+      // If the predicate is set to anything other than
+      // Predicate::TRUE_PRED, then the application must 
+      // specify a value for the future in the case that
+      // the predicate resolves to false. TaskArgument(NULL,0)
+      // can be used if the task's return type is void.
+      Future                             predicate_false_future;
+      TaskArgument                       predicate_false_result;
+    };
+
+    /**
+     * \struct IndexLauncher
+     * Index launchers are objects that describe the launch
+     * of an index space of tasks to the runtime.  They can
+     * be re-used and safely modified between calls to 
+     * index space launches.
+     * @see HighLevelRuntime
+     */
+    struct IndexLauncher {
+    public:
+      IndexLauncher(void);
+      IndexLauncher(Processor::TaskFuncID tid,
+                    Domain domain,
+                    TaskArgument global_arg,
+                    ArgumentMap map,
+                    Predicate pred = Predicate::TRUE_PRED,
+                    bool must = false,
+                    MapperID id = 0,
+                    MappingTagID tag = 0);
+    public:
+      inline void add_index_requirement(const IndexSpaceRequirement &req);
+      inline void add_region_requirement(const RegionRequirement &req);
+      inline void add_field(unsigned idx, FieldID fid, bool inst = true);
+    public:
+      inline void add_future(Future f);
+      inline void add_grant(Grant g);
+      inline void add_wait_barrier(PhaseBarrier bar);
+      inline void add_arrival_barrier(PhaseBarrier bar);
+    public:
+      inline void set_predicate_false_future(Future f);
+      inline void set_predicate_false_result(TaskArgument arg);
+    public:
+      Processor::TaskFuncID              task_id;
+      Domain                             launch_domain;
+      std::vector<IndexSpaceRequirement> index_requirements;
+      std::vector<RegionRequirement>     region_requirements;
+      std::vector<Future>                futures;
+      std::vector<Grant>                 grants;
+      std::vector<PhaseBarrier>          wait_barriers;
+      std::vector<PhaseBarrier>          arrive_barriers;
+      TaskArgument                       global_arg;
+      ArgumentMap                        argument_map;
+      Predicate                          predicate;
+      bool                               must_parallelism;
+      MapperID                           map_id;
+      MappingTagID                       tag;
+    public:
+      // If the predicate is set to anything other than
+      // Predicate::TRUE_PRED, then the application must 
+      // specify a value for the future in the case that
+      // the predicate resolves to false. TaskArgument(NULL,0)
+      // can be used if the task's return type is void.
+      Future                             predicate_false_future;
+      TaskArgument                       predicate_false_result;
+    };
+
+    /**
+     * \struct InlineLauncher
+     * Inline launchers are objects that describe the launch
+     * of an inline mapping operation to the runtime.  They
+     * can be re-used and safely modified between calls to
+     * inline mapping operations.
+     * @see HighLevelRuntime
+     */
+    struct InlineLauncher {
+    public:
+      InlineLauncher(void);
+      InlineLauncher(const RegionRequirement &req,
+                     MapperID id = 0,
+                     MappingTagID tag = 0);
+    public:
+      inline void add_field(FieldID fid, bool inst = true);
+    public:
+      RegionRequirement               requirement;
+      MapperID                        map_id;
+      MappingTagID                    tag;
+    };
+
+    /**
+     * \struct CopyLauncher
+     * Copy launchers are objects that can be used to issue
+     * copies between two regions including regions that are
+     * not of the same region tree.  Copy operations specify
+     * an arbitrary number of pairs of source and destination 
+     * region requirements.  The source region requirements 
+     * must be READ_ONLY, while the destination requirements 
+     * must be either READ_WRITE, WRITE_ONLY, or REDUCE with 
+     * a reduction function.  While the regions in a source 
+     * and a destination pair do not have to be in the same 
+     * region tree, one of the following two conditions must hold: 
+     * 1. The two regions share an index space tree and the
+     *    source region's index space is an ancestor of the
+     *    destination region's index space.
+     * 2. The source and destination index spaces must be
+     *    of the same kind (either dimensions match or number
+     *    of elements match in the element mask) and the source
+     *    region's index space must dominate the destination
+     *    region's index space.
+     * If either of these two conditions does not hold then
+     * the runtime will issue an error.
+     * @see HighLevelRuntime
+     */
+    struct CopyLauncher {
+    public:
+      CopyLauncher(Predicate pred = Predicate::TRUE_PRED,
+                   MapperID id = 0, MappingTagID tag = 0);
+    public:
+      inline void add_copy_requirements(const RegionRequirement &src,
+					const RegionRequirement &dst);
+      inline void add_src_field(unsigned idx, FieldID fid, bool inst = true);
+      inline void add_dst_field(unsigned idx, FieldID fid, bool inst = true);
+    public:
+      inline void add_grant(Grant g);
+      inline void add_wait_barrier(PhaseBarrier bar);
+      inline void add_arrival_barrier(PhaseBarrier bar);
+    public:
+      std::vector<RegionRequirement>  src_requirements;
+      std::vector<RegionRequirement>  dst_requirements;
+      std::vector<Grant>              grants;
+      std::vector<PhaseBarrier>       wait_barriers;
+      std::vector<PhaseBarrier>       arrive_barriers;
+      Predicate                       predicate;
+      MapperID                        map_id;
+      MappingTagID                    tag;
+    };
+ 
     //==========================================================================
     //                          Physical Data Classes
     //==========================================================================
@@ -2128,7 +2158,10 @@ namespace LegionRuntime {
        * this copy operation.  Note that ONLY THE DESTINATION region
        * requirements have to have their mapping fields set as the source
        * instances will be used to find existing physical instances containing
-       * valid data and will not actually be mapped.
+       * valid data and will not actually be mapped. Users have the option
+       * of still filling in mapping requests for the src region requirements
+       * to create an explicit instance for performing the copy, but it 
+       * is not required.
        *
        * In addition, the mapper must also set the 'blocking_factor' field or
        * the 'reduction_list' field in the case of reduction copies as there
@@ -2291,12 +2324,12 @@ namespace LegionRuntime {
        * spec_value will be ignored by the runtime and 
        * anything depending on the predicate will block until
        * it resolves.
-       * @param task the task that generated the future for this predicate
+       * @param op the op that is predicated
        * @param spec_value the speculative value to be
        *    set if the mapper is going to speculate
        * @return true if the mapper is speculating, false otherwise
        */
-      virtual bool speculate_on_predicate(const Task *task,
+      virtual bool speculate_on_predicate(const Mappable *mappable,
                                           bool &spec_value) = 0;
 
       /**
@@ -2361,7 +2394,12 @@ namespace LegionRuntime {
 
       IndexSpace get_index_subspace(IndexPartition p, Color c) const;
 
+      bool has_multiple_domains(IndexSpace handle) const;
+
       Domain get_index_space_domain(IndexSpace handle) const;
+
+      void get_index_space_domains(IndexSpace handle,
+                                   std::vector<Domain> &domains) const;
 
       Domain get_index_partition_color_space(IndexPartition p) const;
 
@@ -2708,6 +2746,17 @@ namespace LegionRuntime {
                                     Color color); 
 
       /**
+       * Return if the given index space is represented by 
+       * multiple domains or just a single one. If multiple
+       * domains represent the index space then 'get_index_space_domains'
+       * should be used for getting the set of domains.
+       * @param ctx enclosing task context
+       * @param handle index space handle
+       * @return true if the index space has multiple domains
+       */
+      bool has_multiple_domains(Context ctx, IndexSpace handle);
+
+      /**
        * Return the domain corresponding to the
        * specified index space if it exists
        * @param ctx enclosing task context
@@ -2715,6 +2764,18 @@ namespace LegionRuntime {
        * @return the domain corresponding to the index space
        */
       Domain get_index_space_domain(Context ctx, IndexSpace handle);
+
+      /**
+       * Return the domains that represent the index space.
+       * While the previous call only works when there is a
+       * single domain for the index space, this call will
+       * work in all circumstances.
+       * @param ctx enclosing task context
+       * @param handle index space handle
+       * @param vector to populate with domains
+       */
+      void get_index_space_domains(Context ctx, IndexSpace handle,
+                                   std::vector<Domain> &domains);
 
       /**
        * Return a domain that represents the color space
@@ -3484,9 +3545,14 @@ namespace LegionRuntime {
        * application level information.
        * @param ctx the enclosing task context
        * @param id the mapper ID for which mapper to locate
+       * @param target processor if any, if none specified then
+       *               the executing processor for the current
+       *               context is used, if specified processor
+       *               must be local to the address space
        * @return a pointer to the specified mapper object
        */
-      Mapper* get_mapper(Context ctx, MapperID id);
+      Mapper* get_mapper(Context ctx, MapperID id, 
+                         Processor target = Processor::NO_PROC);
       
       /**
        * Return the processor on which the current task is
@@ -3514,6 +3580,27 @@ namespace LegionRuntime {
        */
       void raise_region_exception(Context ctx, PhysicalRegion region, 
                                   bool nuclear);
+    public:
+      //------------------------------------------------------------------------
+      // MPI Interoperability 
+      //------------------------------------------------------------------------
+      /**
+       * Return a reference to the mapping from MPI ranks to address spaces.
+       * This method is only valid if the static initialization method
+       * 'configure_MPI_interoperability' was called on all nodes before 
+       * starting the runtime with the static 'start' method.
+       * @return a const reference to the forward map
+       */
+      const std::map<int/*rank*/,AddressSpace>& find_forward_MPI_mapping(void);
+
+      /**
+       * Return a reference to the reverse mapping from address spaces to
+       * MPI ranks. This method is only valid if the static initialization
+       * method 'configure_MPI_interoperability' was called on all nodes
+       * before starting the runtime with the static 'start' method.
+       * @return a const reference to the reverse map
+       */
+      const std::map<AddressSpace,int/*rank*/>& find_reverse_MPI_mapping(void);
     public:
       //------------------------------------------------------------------------
       // Registration Callback Operations
@@ -3663,6 +3750,17 @@ namespace LegionRuntime {
        * @param top_id ID of the top level task to be run
        */
       static void set_top_level_task_id(Processor::TaskFuncID top_id);
+
+      /**
+       * Configre the runtime for interoperability with MPI. This call
+       * should be made once in each MPI process before invoking the 
+       * 'start' function when running Legion within the same process 
+       * as MPI. As a result of this call the 'find_forward_MPI_mapping' 
+       * and 'find_reverse_MPI_mapping' methods on a runtime instance will 
+       * return a map which associates an AddressSpace with each MPI rank.
+       * @param rank the integer naming this MPI rank
+       */
+      static void configure_MPI_interoperability(int rank);
 
       /**
        * Register a reduction operation with the runtime.  Note that the
@@ -4480,8 +4578,8 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    inline RegionRequirement& RegionRequirement::add_fields(const std::vector<FieldID>& fids, 
-                                             bool instance/*= true*/)
+    inline RegionRequirement& RegionRequirement::add_fields(
+                      const std::vector<FieldID>& fids, bool instance/*= true*/)
     //--------------------------------------------------------------------------
     {
       privilege_fields.insert(fids.begin(), fids.end());
@@ -4545,6 +4643,20 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    inline void TaskLauncher::set_predicate_false_future(Future f)
+    //--------------------------------------------------------------------------
+    {
+      predicate_false_future = f;
+    }
+
+    //--------------------------------------------------------------------------
+    inline void TaskLauncher::set_predicate_false_result(TaskArgument arg)
+    //--------------------------------------------------------------------------
+    {
+      predicate_false_result = arg;
+    }
+
+    //--------------------------------------------------------------------------
     inline void IndexLauncher::add_index_requirement(
                                               const IndexSpaceRequirement &req)
     //--------------------------------------------------------------------------
@@ -4596,6 +4708,20 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       arrive_barriers.push_back(bar);
+    }
+
+    //--------------------------------------------------------------------------
+    inline void IndexLauncher::set_predicate_false_future(Future f)
+    //--------------------------------------------------------------------------
+    {
+      predicate_false_future = f;
+    }
+
+    //--------------------------------------------------------------------------
+    inline void IndexLauncher::set_predicate_false_result(TaskArgument arg)
+    //--------------------------------------------------------------------------
+    {
+      predicate_false_result = arg;
     }
 
     //--------------------------------------------------------------------------
@@ -5767,6 +5893,179 @@ namespace LegionRuntime {
               0/*size*/, TaskConfigOptions(leaf, inner, idempotent), name);
     }
 
+    //--------------------------------------------------------------------------
+    inline PrivilegeMode operator~(PrivilegeMode p)
+    //--------------------------------------------------------------------------
+    {
+      return static_cast<PrivilegeMode>(~unsigned(p));
+    }
+
+    //--------------------------------------------------------------------------
+    inline PrivilegeMode operator|(PrivilegeMode left, PrivilegeMode right)
+    //--------------------------------------------------------------------------
+    {
+      return static_cast<PrivilegeMode>(unsigned(left) | unsigned(right));
+    }
+
+    //--------------------------------------------------------------------------
+    inline PrivilegeMode operator&(PrivilegeMode left, PrivilegeMode right)
+    //--------------------------------------------------------------------------
+    {
+      return static_cast<PrivilegeMode>(unsigned(left) & unsigned(right));
+    }
+
+    //--------------------------------------------------------------------------
+    inline PrivilegeMode operator^(PrivilegeMode left, PrivilegeMode right)
+    //--------------------------------------------------------------------------
+    {
+      return static_cast<PrivilegeMode>(unsigned(left) ^ unsigned(right));
+    }
+
+    //--------------------------------------------------------------------------
+    inline PrivilegeMode operator|=(PrivilegeMode &left, PrivilegeMode right)
+    //--------------------------------------------------------------------------
+    {
+      unsigned l = static_cast<unsigned>(left);
+      unsigned r = static_cast<unsigned>(right);
+      l |= r;
+      return left = static_cast<PrivilegeMode>(l);
+    }
+
+    //--------------------------------------------------------------------------
+    inline PrivilegeMode operator&=(PrivilegeMode &left, PrivilegeMode right)
+    //--------------------------------------------------------------------------
+    {
+      unsigned l = static_cast<unsigned>(left);
+      unsigned r = static_cast<unsigned>(right);
+      l &= r;
+      return left = static_cast<PrivilegeMode>(l);
+    }
+
+    //--------------------------------------------------------------------------
+    inline PrivilegeMode operator^=(PrivilegeMode &left, PrivilegeMode right)
+    //--------------------------------------------------------------------------
+    {
+      unsigned l = static_cast<unsigned>(left);
+      unsigned r = static_cast<unsigned>(right);
+      l ^= r;
+      return left = static_cast<PrivilegeMode>(l);
+    }
+
+    //--------------------------------------------------------------------------
+    inline AllocateMode operator~(AllocateMode a)
+    //--------------------------------------------------------------------------
+    {
+      return static_cast<AllocateMode>(~unsigned(a));
+    }
+
+    //--------------------------------------------------------------------------
+    inline AllocateMode operator|(AllocateMode left, AllocateMode right)
+    //--------------------------------------------------------------------------
+    {
+      return static_cast<AllocateMode>(unsigned(left) | unsigned(right));
+    }
+
+    //--------------------------------------------------------------------------
+    inline AllocateMode operator&(AllocateMode left, AllocateMode right)
+    //--------------------------------------------------------------------------
+    {
+      return static_cast<AllocateMode>(unsigned(left) & unsigned(right));
+    }
+
+    //--------------------------------------------------------------------------
+    inline AllocateMode operator^(AllocateMode left, AllocateMode right)
+    //--------------------------------------------------------------------------
+    {
+      return static_cast<AllocateMode>(unsigned(left) ^ unsigned(right));
+    }
+
+    //--------------------------------------------------------------------------
+    inline AllocateMode operator|=(AllocateMode &left, AllocateMode right)
+    //--------------------------------------------------------------------------
+    {
+      unsigned l = static_cast<unsigned>(left);
+      unsigned r = static_cast<unsigned>(right);
+      l |= r;
+      return left = static_cast<AllocateMode>(l);
+    }
+
+    //--------------------------------------------------------------------------
+    inline AllocateMode operator&=(AllocateMode &left, AllocateMode right)
+    //--------------------------------------------------------------------------
+    {
+      unsigned l = static_cast<unsigned>(left);
+      unsigned r = static_cast<unsigned>(right);
+      l &= r;
+      return left = static_cast<AllocateMode>(l);
+    }
+
+    //--------------------------------------------------------------------------
+    inline AllocateMode operator^=(AllocateMode &left, AllocateMode right)
+    //--------------------------------------------------------------------------
+    {
+      unsigned l = static_cast<unsigned>(left);
+      unsigned r = static_cast<unsigned>(right);
+      l ^= r;
+      return left = static_cast<AllocateMode>(l);
+    }
+
+    //--------------------------------------------------------------------------
+    inline RegionFlags operator~(RegionFlags f)
+    //--------------------------------------------------------------------------
+    {
+      return static_cast<RegionFlags>(~unsigned(f));
+    }
+
+    //--------------------------------------------------------------------------
+    inline RegionFlags operator|(RegionFlags left, RegionFlags right)
+    //--------------------------------------------------------------------------
+    {
+      return static_cast<RegionFlags>(unsigned(left) | unsigned(right));
+    }
+
+    //--------------------------------------------------------------------------
+    inline RegionFlags operator&(RegionFlags left, RegionFlags right)
+    //--------------------------------------------------------------------------
+    {
+      return static_cast<RegionFlags>(unsigned(left) & unsigned(right));
+    }
+
+    //--------------------------------------------------------------------------
+    inline RegionFlags operator^(RegionFlags left, RegionFlags right)
+    //--------------------------------------------------------------------------
+    {
+      return static_cast<RegionFlags>(unsigned(left) ^ unsigned(right));
+    }
+
+    //--------------------------------------------------------------------------
+    inline RegionFlags operator|=(RegionFlags &left, RegionFlags right)
+    //--------------------------------------------------------------------------
+    {
+      unsigned l = static_cast<unsigned>(left);
+      unsigned r = static_cast<unsigned>(right);
+      l |= r;
+      return left = static_cast<RegionFlags>(l);
+    }
+
+    //--------------------------------------------------------------------------
+    inline RegionFlags operator&=(RegionFlags &left, RegionFlags right)
+    //--------------------------------------------------------------------------
+    {
+      unsigned l = static_cast<unsigned>(left);
+      unsigned r = static_cast<unsigned>(right);
+      l &= r;
+      return left = static_cast<RegionFlags>(l);
+    }
+
+    //--------------------------------------------------------------------------
+    inline RegionFlags operator^=(RegionFlags &left, RegionFlags right)
+    //--------------------------------------------------------------------------
+    {
+      unsigned l = static_cast<unsigned>(left);
+      unsigned r = static_cast<unsigned>(right);
+      l ^= r;
+      return left = static_cast<RegionFlags>(l);
+    }
 
   }; // namespace HighLevel
 }; // namespace LegionRuntime

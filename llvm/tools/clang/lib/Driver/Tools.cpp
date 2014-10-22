@@ -2472,11 +2472,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // +===== Scout ============================================================+
   // SC_TODO -- do we always want to do this?
   CmdArgs.push_back("-pthread");
-
-  // scout - debug wait flag
-  if(Args.hasArg(options::OPT_debugWait)){
-    CmdArgs.push_back("-debug-wait");
-  }
   // +========================================================================+
 
   const llvm::Triple TT(TripleStr);
@@ -3405,27 +3400,13 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     // Enable debug flag 
     Args.AddAllArgs(CmdArgs, options::OPT_debug);
 
-    // Enable cpu multithreading.
-    Args.AddAllArgs(CmdArgs, options::OPT_cpuThreads);
-
     // Enable legion support.
     Args.AddAllArgs(CmdArgs, options::OPT_legionSupport);
 
     // Enable NVIDIA gpu support (if available).
     Args.AddAllArgs(CmdArgs, options::OPT_gpu);
 
-    // --- Disabled (AMD is a off-version from us at the moment).
-    // Enable AMD gpu support (if available).
-    //Args.AddAllArgs(CmdArgs, options::OPT_gpuAMD);
 
-    // Emit-all-definitions from compilation.
-    Args.AddAllArgs(CmdArgs, options::OPT_emitAllDefinitions);
-
-    // Do not run the rewriter.
-    Args.AddAllArgs(CmdArgs, options::OPT_noRewrite);
-
-    // Dump the output of rewriter to stdout
-    Args.AddAllArgs(CmdArgs, options::OPT_dumpRewrite);
   }
   // +========================================================================+
 

@@ -21,6 +21,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/IR/ValueHandle.h"
 #include "llvm/IR/Intrinsics.h"
+#include "Scout/ASTVisitors.h"
 
 using namespace clang;
 using namespace clang::CodeGen;
@@ -30,13 +31,13 @@ static const char *IndexNames[] = { "x", "y", "z", "w"};
 static const char *DimNames[]   = { "width", "height", "depth" };
 
 
-void CodeGenFunction::EmitMeshFieldsUsedMD(TaskVisitor::FieldMap HS,
+void CodeGenFunction::EmitMeshFieldsUsedMD(MeshFieldMap HS,
     const char *str, llvm::BranchInst *BI) {
   SmallVector<llvm::Value*, 16> MDL;
   llvm::MDString *MDName = llvm::MDString::get(getLLVMContext(), str);
   MDL.push_back(MDName);
 
-  for( TaskVisitor::FieldMap::const_iterator it = HS.begin(); it != HS.end(); ++it)
+  for( MeshFieldMap::const_iterator it = HS.begin(); it != HS.end(); ++it)
   {
     MDName = llvm::MDString::get(getLLVMContext(), it->first);
     MDL.push_back(MDName);
@@ -57,16 +58,16 @@ void CodeGenFunction::EmitStencilMDBlock(const FunctionDecl *FD) {
 }
 
 void CodeGenFunction::EmitTaskMDBlock(const FunctionDecl *FD) {
-  TaskVisitor v(FD);
+  TaskDeclVisitor v(FD);
   v.VisitStmt(FD->getBody());
 
   llvm::BasicBlock *entry = createBasicBlock("task.md");
   llvm::BranchInst *BI = Builder.CreateBr(entry);
 
   llvm::NamedMDNode *MeshMD = CGM.getModule().getNamedMetadata("scout.meshmd");
-  TaskVisitor::MeshNameMap MNM = v.getMeshNamemap();
+  MeshNameMap MNM = v.getMeshNamemap();
 
-  for( TaskVisitor::MeshNameMap::const_iterator it =
+  for(MeshNameMap::const_iterator it =
       MNM.begin(); it != MNM.end(); ++it) {
     // find meta data for mesh used in this forall
     const std::string MeshName = it->first;
@@ -80,11 +81,11 @@ void CodeGenFunction::EmitTaskMDBlock(const FunctionDecl *FD) {
   }
 
   //find fields used on LHS and add to metadata
-  TaskVisitor::FieldMap LHS = v.getLHSmap();
+  MeshFieldMap LHS = v.getLHSmap();
   EmitMeshFieldsUsedMD(LHS, "LHS", BI);
 
   //find fields used on RHS and add to metadata
-  TaskVisitor::FieldMap RHS = v.getRHSmap();
+  MeshFieldMap RHS = v.getRHSmap();
   EmitMeshFieldsUsedMD(RHS, "RHS", BI);
 
   EmitBlock(entry);
@@ -102,14 +103,14 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   return InductionVar[index];
 }
 
-// If in Stencil then lookup and load LoopBound, otherwise return it directly
-llvm::Value *CodeGenFunction::LookupLoopBound(unsigned int index) {
-  llvm::Value *V = LocalDeclMap.lookup(ScoutABILoopBoundDecl[index]);
+// If in Stencil then lookup and load Mesh Dimension, otherwise return it directly
+llvm::Value *CodeGenFunction::LookupMeshDim(unsigned int index) {
+  llvm::Value *V = LocalDeclMap.lookup(ScoutABIMeshDimDecl[index]);
   if(V) {
     sprintf(IRNameStr, "stencil.%s.ptr", DimNames[index]);
     return Builder.CreateLoad(V, IRNameStr);
   }
-  return LoopBounds[index];
+  return MeshDims[index];
 }
 
 /// Emit field annotations for the given mesh field & value. Returns the

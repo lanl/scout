@@ -271,7 +271,7 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
   SmallVector< llvm::Value *, 3 > dims;
   for(unsigned i = 0; i < args.size(); ++i) {
     sprintf(IRNameStr, "%s", DimNames[i]);
-    dims.push_back(Builder.CreateLoad(LookupLoopBound(i), IRNameStr));
+    dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
   }
 
   SmallVector< llvm::Value *, 3 > indices;
@@ -403,7 +403,7 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        SmallVector< llvm::Value *, 3 > dims;
        for(unsigned i = 0; i < args.size(); ++i) {
          sprintf(IRNameStr, "%s", DimNames[i]);
-         dims.push_back(Builder.CreateLoad(LookupLoopBound(i), IRNameStr));
+         dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
        }
 
        //get the eoshift indices
@@ -547,7 +547,7 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 
 //emit width()/height()/depth()/rank() with mesh as argument
 RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset offset) {
-  llvm::Value* rank = 0;
+  llvm::Value* value = 0;
   unsigned int nfields = 0;
 
   static const char *names[]   = { "width", "height", "depth", "rank" };
@@ -585,11 +585,11 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
 
 
       sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), names[offset]);
-      rank = Builder.CreateConstInBoundsGEP2_32(BaseAddr, 0, nfields+offset, IRNameStr);
+      value = Builder.CreateConstInBoundsGEP2_32(BaseAddr, 0, nfields+offset, IRNameStr);
 
       sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), names[offset]);
-      rank = Builder.CreateLoad(rank, IRNameStr);
-      return RValue::get(rank);
+      value = Builder.CreateLoad(value, IRNameStr);
+      return RValue::get(value);
     }
   }
   //sema should make sure we don't get here.

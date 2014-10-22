@@ -586,6 +586,7 @@ def cl_std_EQ : Joined<["-"], "cl-std=">,
 def cl_denorms_are_zero : Flag<["-"], "cl-denorms-are-zero">,
   HelpText<"OpenCL only. Allow denormals to be flushed to zero">;
 
+/*
 // +===== Scout =============================================================+
 // --- Disabled for now (AMD is off-version of us at present).
 //def gpuAMD : Flag<["-"], "gpu-amd">,
@@ -594,8 +595,6 @@ def emitAllDefinitions : Flag<["-"], "emit-all-definitions">,
   HelpText<"Emit all definitions regardless of it that definition was used.">;
 def cpuThreads : Flag<["-"], "mt">,
   HelpText<"Enable CPU multithreading support.">;
-def legionSupport : Flag<["-"], "legion">,
-  HelpText<"Enable support for Legion Programming Model http://legion.stanford.edu">;
 def noRewrite : Flag<["-"], "rewrite">,
   HelpText<"run the rewriter">;
 def dumpRewrite : Flag<["-"], "dump-rewrite">,
@@ -603,7 +602,7 @@ def dumpRewrite : Flag<["-"], "dump-rewrite">,
 def debugWait : Flag<["-"], "debug-wait">,
       HelpText<"Used to allow debugger to attach to the scc driver.">;
 // +=========================================================================+
-
+*/
 //===----------------------------------------------------------------------===//
 // CUDA Options
 //===----------------------------------------------------------------------===//

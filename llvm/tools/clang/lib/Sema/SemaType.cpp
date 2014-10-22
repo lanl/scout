@@ -954,6 +954,21 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     }
     break;
   }
+  case DeclSpec::TST_query: {
+    for(unsigned i = 0; i < declarator.getNumTypeObjects(); ++i) {
+      DeclaratorChunk &DeclType = declarator.getTypeObject(i);
+      switch(DeclType.Kind) {
+        case DeclaratorChunk::Query: {
+          Result = Context.getQueryType();
+          break;
+        }
+        default:
+          break;
+      }
+    }
+    break;
+    break;
+  }
     
   // +========================================================================+
   case DeclSpec::TST_bool: Result = Context.BoolTy; break; // _Bool or bool
@@ -1780,15 +1795,25 @@ QualType Sema::BuildArrayType(QualType T, ArrayType::ArraySizeModifier ASM,
 
 // +==== Scout ===============================================================+
 
+void markDimsUsed(const MeshType::MeshDimensions &dims, ASTContext &Ctx) {
+  for(unsigned i = 0; i< dims.size(); i++ ) {
+    if (DeclRefExpr* DRE = dyn_cast<DeclRefExpr>(dims[i])) {
+        DRE->getDecl()->markUsed(Ctx);
+    }
+  }
+}
+
 QualType Sema::BuildUniformMeshType(QualType T,
                                     const MeshType::MeshDimensions &dims,
                                     SourceRange Brackets,
                                     DeclarationName Entity) {
   assert(dims.size() > 0);
-  const UniformMeshType* cUMT;
-  cUMT = dyn_cast<UniformMeshType>(T.getCanonicalType().getTypePtr());
-  if (cUMT) {
-    return Context.getUniformMeshType(cUMT->getDecl(), dims);
+  markDimsUsed(dims, Context);
+
+  const UniformMeshType* UMT;
+  UMT = dyn_cast<UniformMeshType>(T.getCanonicalType().getTypePtr());
+  if (UMT) {
+    return Context.getUniformMeshType(UMT->getDecl(), dims);
   }
   return QualType();  
 }
@@ -1847,6 +1872,13 @@ QualType Sema::BuildImageType(QualType T, const llvm::SmallVector<Expr*,2> &dims
   return QualType();  
 }
 
+QualType Sema::BuildQueryType(QualType T) {
+  const QueryType* qt = dyn_cast<QueryType>(T.getCanonicalType().getTypePtr());
+  if (qt) {
+    return Context.getQueryType();
+  }
+  return QualType();
+}
 
 // +==========================================================================+
 
@@ -4040,7 +4072,12 @@ namespace {
       TL.setRBracketLoc(Chunk.EndLoc);
       TL.setWidth(Chunk.Img.Dims()[0]);
       TL.setHeight(Chunk.Img.Dims()[1]);
-    }                  
+    }
+    
+    void VisitQueryTypeLoc(QueryTypeLoc TL) {
+      TL.setLBracketLoc(Chunk.Loc);
+      TL.setRBracketLoc(Chunk.EndLoc);
+    }
 
     // +======================================================================+
 

@@ -3362,10 +3362,10 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
   if (const FunctionDecl* FD = dyn_cast_or_null<const FunctionDecl>(TargetDecl)) {
     if (FD->isStencilSpecified()) {
       QualType T = getContext().getPointerType(getContext().IntTy);
-      // Add loop bounds to args, could get this out of the
+      // Add meshdims to args, could get this out of the
       // mesh but it is easier this way.
       for(unsigned i = 0; i < 3; i++)
-        Args.add(RValue::get(LoopBounds[i]), T);
+        Args.add(RValue::get(MeshDims[i]), T);
       // Add induction vars to args
       for(unsigned i = 0; i <= 3; i++)
         Args.add(RValue::get(InductionVar[i]), T);

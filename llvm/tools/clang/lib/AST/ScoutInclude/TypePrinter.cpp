@@ -105,6 +105,13 @@ TypePrinter::printImageBefore(const ImageType *T,
 }
 
 void
+TypePrinter::printQueryBefore(const QueryType *T,
+                              raw_ostream &OS) {
+  OS << T->getName(Policy);
+  spaceBeforePlaceHolder(OS);
+}
+
+void
 TypePrinter::printUniformMeshAfter(const UniformMeshType *T,
                                    raw_ostream &OS)
 {
@@ -145,4 +152,9 @@ TypePrinter::printWindowAfter(const WindowType *T,
 void
 TypePrinter::printImageAfter(const ImageType *T,
                               raw_ostream &OS)
+{ }
+
+void
+TypePrinter::printQueryAfter(const QueryType *T,
+                             raw_ostream &OS)
 { }

@@ -455,7 +455,7 @@ namespace LegionRuntime {
 
     //--------------------------------------------------------------------------
     Predicate::Predicate(void)
-      : impl(NULL), const_value(false)
+      : impl(NULL), const_value(true)
     //--------------------------------------------------------------------------
     {
     }
@@ -467,7 +467,7 @@ namespace LegionRuntime {
       const_value = p.const_value;
       impl = p.impl;
       if (impl != NULL)
-        impl->add_reference();
+        impl->add_predicate_reference();
     }
 
     //--------------------------------------------------------------------------
@@ -483,7 +483,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       if (impl != NULL)
-        impl->add_reference();
+        impl->add_predicate_reference();
     }
 
     //--------------------------------------------------------------------------
@@ -492,7 +492,7 @@ namespace LegionRuntime {
     {
       if (impl != NULL)
       {
-        impl->remove_reference();
+        impl->remove_predicate_reference();
         impl = NULL;
       }
     }
@@ -502,13 +502,11 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       if (impl != NULL)
-      {
-        impl->remove_reference();
-      }
+        impl->remove_predicate_reference();
       const_value = rhs.const_value;
       impl = rhs.impl;
       if (impl != NULL)
-        impl->add_reference();
+        impl->add_predicate_reference();
       return *this;
     }
 
@@ -2115,11 +2113,26 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    bool HighLevelRuntime::has_multiple_domains(Context ctx, IndexSpace handle)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->has_multiple_domains(ctx, handle);
+    }
+
+    //--------------------------------------------------------------------------
     Domain HighLevelRuntime::get_index_space_domain(Context ctx, 
                                                     IndexSpace handle)
     //--------------------------------------------------------------------------
     {
       return runtime->get_index_space_domain(ctx, handle);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::get_index_space_domains(Context ctx, 
+                                IndexSpace handle, std::vector<Domain> &domains)
+    //--------------------------------------------------------------------------
+    {
+      runtime->get_index_space_domains(ctx, handle, domains);
     }
 
     //--------------------------------------------------------------------------
@@ -2649,10 +2662,11 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    Mapper* HighLevelRuntime::get_mapper(Context ctx, MapperID id)
+    Mapper* HighLevelRuntime::get_mapper(Context ctx, MapperID id,
+                                         Processor target)
     //--------------------------------------------------------------------------
     {
-      return runtime->get_mapper(ctx, id);
+      return runtime->get_mapper(ctx, id, target);
     }
 
     //--------------------------------------------------------------------------
@@ -2669,6 +2683,22 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       runtime->raise_region_exception(ctx, region, nuclear);
+    }
+
+    //--------------------------------------------------------------------------
+    const std::map<int,AddressSpace>& 
+                                HighLevelRuntime::find_forward_MPI_mapping(void)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->find_forward_MPI_mapping();
+    }
+
+    //--------------------------------------------------------------------------
+    const std::map<AddressSpace,int>&
+                                HighLevelRuntime::find_reverse_MPI_mapping(void)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->find_reverse_MPI_mapping();
     }
 
     //--------------------------------------------------------------------------
@@ -2765,6 +2795,13 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       Runtime::set_top_level_task_id(top_id);
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ void HighLevelRuntime::configure_MPI_interoperability(int rank)
+    //--------------------------------------------------------------------------
+    {
+      Runtime::configure_MPI_interoperability(rank);
     }
 
     //--------------------------------------------------------------------------
@@ -2918,10 +2955,25 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    bool Mapper::has_multiple_domains(IndexSpace handle) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->has_multiple_domains(handle);
+    }
+
+    //--------------------------------------------------------------------------
     Domain Mapper::get_index_space_domain(IndexSpace handle) const
     //--------------------------------------------------------------------------
     {
       return runtime->runtime->get_index_space_domain(handle);
+    }
+
+    //--------------------------------------------------------------------------
+    void Mapper::get_index_space_domains(IndexSpace handle,
+                                         std::vector<Domain> &domains) const
+    //--------------------------------------------------------------------------
+    {
+      return runtime->runtime->get_index_space_domains(handle, domains);
     }
 
     //--------------------------------------------------------------------------

@@ -43,11 +43,14 @@
 #include <memory>
 
 #include "scout/Config/defs.h"
-#ifdef SC_ENABLE_CUDA
+#ifdef SCOUT_ENABLE_CUDA
 #include "llvm/Transforms/Scout/ForallPTX/ForallPTX.h"
 #endif
 #ifdef SC_ENABLE_OPENCL
 #include "llvm/Transforms/Scout/DoallToAMDIL/DoallToAMDIL.h"
+#endif
+#ifdef SCOUT_ENABLE_LEGION
+#include "llvm/Transforms/Scout/LegionTaskWrapper/LegionTaskWrapper.h"
 #endif
 #include "llvm/Transforms/Vectorize.h"
 // +==========================================================================+
@@ -230,7 +233,7 @@ static void addThreadSanitizerPass(const PassManagerBuilder &Builder,
 // ===== Scout ================================================================
 //
 void EmitAssemblyHelper::CreateScoutPasses() {
-#ifdef SC_ENABLE_CUDA
+#ifdef SCOUT_ENABLE_CUDA
   if(CodeGenOpts.ScoutNvidiaGPU){
     PassManager MPM;
     MPM.add(createForallPTXPass());
@@ -247,6 +250,13 @@ void EmitAssemblyHelper::CreateScoutPasses() {
     MPM.run(*TheModule);
   }
   */
+#endif
+#ifdef SCOUT_ENABLE_LEGION
+  if(CodeGenOpts.ScoutLegionSupport){
+    PassManager MPM;
+    MPM.add(createLegionTaskWrapperPass());
+    MPM.run(*TheModule);
+  }
 #endif
 }
 // ===========================================================================

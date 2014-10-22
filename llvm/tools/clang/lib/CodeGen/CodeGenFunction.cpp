@@ -33,6 +33,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
+
 using namespace clang;
 using namespace CodeGen;
 
@@ -75,17 +76,20 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   EdgeIndex = 0;
   FaceIndex = 0;
   for(unsigned i = 0; i < 3; ++i) {
-    // We use LoopBounds[0] == 0 as a test for being in a
+    // We use MeshDims[0] == 0 as a test for being in a
     // valid mesh/forall state where instrinsics are safe
     // to call -- may not be a rock solid plan but working
     // for now...
-    LoopBounds.push_back(0);
+
+    LoopBoundsCells.push_back(0);
+    MeshDims.push_back(0);
+    MeshDimsP1.push_back(0);
   }
   for(unsigned i = 0; i <= 3; ++i) {
     ScoutABIInductionVarDecl.push_back(0);
   }
   for(unsigned i = 0; i < 3; ++i) {
-    ScoutABILoopBoundDecl.push_back(0);
+    ScoutABIMeshDimDecl.push_back(0);
   }
 
   // +=====================================================+ 
@@ -901,6 +905,9 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
   // emit metadata for a task function
   if(FD->isTaskSpecified()) {
     EmitTaskMDBlock(FD);
+    if(hasLegionSupport()){
+      EmitLegionTask(FD, Fn);
+    }
   }
   // emit metadata for a stencil function
   if(FD->isStencilSpecified()) {

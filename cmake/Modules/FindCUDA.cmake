@@ -61,8 +61,32 @@
 #     CUDA_NVCC        - location of CUDA_NVCC
 #     CUDA_VERSION_MAJOR - major version number
 #     CUDA_VERSION_MINOR - minor version number 
+#     CUDA_HAVE_GPU TRUE - Whether CUDA-capable GPU is present
+#     CUDA_COMPUTE_CAPABILITY - Compute capability of CUDA-capable GPU present
 # 
 #####
+# This macro helps us find the location of helper files we will need the full path to
+macro(CUDA_FIND_HELPER_FILE _name _extension)
+  set(_full_name "${_name}.${_extension}")
+  # CMAKE_CURRENT_LIST_FILE contains the full path to the file currently being
+  # processed.  Using this variable, we can pull out the current path, and
+  # provide a way to get access to the other files we need local to here.
+  get_filename_component(CMAKE_CURRENT_LIST_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
+  set(CUDA_${_name} "${CMAKE_CURRENT_LIST_DIR}/FindCUDA/${_full_name}")
+  if(NOT EXISTS "${CUDA_${_name}}")
+    message(STATUS "file not found")
+    set(error_message "${_full_name} not found in ${CMAKE_CURRENT_LIST_DIR}/FindCUDA")
+    if(CUDA_FIND_REQUIRED)
+      message(FATAL_ERROR "${error_message}")
+    else()
+      if(NOT CUDA_FIND_QUIETLY)
+        message(STATUS "${error_message}")
+      endif()
+    endif()
+  endif()
+  # Set this variable as internal, so the user isn't bugged with it.
+  set(CUDA_${_name} ${CUDA_${_name}} CACHE INTERNAL "Location of ${_full_name}" FORCE)
+endmacro()
 
   # CUDA 5 introduced a framework bundle on Mac OS X.  Unfortunately, 
   # the header files associated with the the framework are incomplete; 
@@ -147,7 +171,31 @@
     else()
       set(CUDA_LIBRARIES "-ldl -lcuda -lcudart")
     endif()
+   
+  cuda_find_helper_file(cuda_compute_capability c)
+  try_run(RUN_RESULT_VAR COMPILE_RESULT_VAR
+    ${CMAKE_BINARY_DIR} 
+    ${CUDA_cuda_compute_capability}
+    CMAKE_FLAGS 
+    -DINCLUDE_DIRECTORIES:STRING=${CUDA_INCLUDE_DIRS}
+    -DLINK_LIBRARIES:STRING=${CUDA_LIBRARIES}
+    -DLINK_DIRECTORIES:STRING=${CUDA_LIBRARY_DIR}
+    COMPILE_OUTPUT_VARIABLE COMPILE_OUTPUT_VAR
+    RUN_OUTPUT_VARIABLE RUN_OUTPUT_VAR)
+  # COMPILE_RESULT_VAR is TRUE when compile succeeds
+  # RUN_RESULT_VAR is zero when a GPU is found
+
+  if(COMPILE_RESULT_VAR AND NOT RUN_RESULT_VAR)
+    set(CUDA_HAVE_GPU TRUE CACHE BOOL "Whether CUDA-capable GPU is present")
+    set(CUDA_COMPUTE_CAPABILITY ${RUN_OUTPUT_VAR} CACHE STRING "Compute capability of CUDA-capable GPU present")
+    set(CUDA_GENERATE_CODE "arch=compute_${CUDA_COMPUTE_CAPABILITY},code=sm_${CUDA_COMPUTE_CAPABILITY}" CACHE STRING "Which GPU architectures to generate code for (each arch/code pair will be passed as --generate-code option to nvcc, separate multiple pairs by ;)")
+    mark_as_advanced(CUDA_COMPUTE_CAPABILITY CUDA_GENERATE_CODE)
+  else()
+    set(CUDA_HAVE_GPU FALSE CACHE BOOL "Whether CUDA-capable GPU is present")
+    set(CUDA_COMPUTE_CAPABILITY "0" CACHE STRING "Compute capability of CUDA-capable GPU present")
   endif()
+ endif(CUDA_LIBRARY_DIR)
+
 
   find_package_handle_standard_args(CUDA
     REQUIRED_VARS 

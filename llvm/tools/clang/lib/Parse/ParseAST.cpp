@@ -27,6 +27,10 @@
 #include <cstdio>
 #include <memory>
 
+// ===== Scout =============================
+#include "clang/Analysis/Scout/LastRenderall.h"
+// =========================================
+
 using namespace clang;
 
 namespace {
@@ -137,11 +141,27 @@ void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies) {
       P.Diag(diag::ext_empty_translation_unit);
   } else {
     do {
+      // ===== Scout ========================
+      if(ADecl && isScoutLang(S.getLangOpts())){
+        DeclGroupRef dr = ADecl.get();
+        if(dr.isSingleDecl()){
+          Decl* d = dr.getSingleDecl();
+          if(d){
+            FunctionDecl* fd = dyn_cast<FunctionDecl>(d);
+            if(fd && fd->hasBody() && S.SourceMgr.isInMainFile(fd->getLocStart())){
+              LastRenderall::Run(S, fd);
+            }
+          }
+        }
+      }
+      // ====================================
+      
       // If we got a null return and something *was* parsed, ignore it.  This
       // is due to a top-level semicolon, an action override, or a parse error
       // skipping something.
       if (ADecl && !Consumer->HandleTopLevelDecl(ADecl.get()))
         return;
+
     } while (!P.ParseTopLevelDecl(ADecl));
   }
 

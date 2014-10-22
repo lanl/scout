@@ -27,6 +27,9 @@ add_llvm_library(LLVMTransformUtils
   MetaRenamer.cpp
   ModuleUtils.cpp
   PromoteMemoryToRegister.cpp
+# +===== Scout ===================================+
+  ScoutCodeExtractor.cpp
+# +===============================================+
   SSAUpdater.cpp
   SimplifyCFG.cpp
   FlattenCFG.cpp

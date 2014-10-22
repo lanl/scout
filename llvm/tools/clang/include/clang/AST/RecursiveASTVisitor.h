@@ -989,6 +989,7 @@ DEF_TRAVERSE_TYPE(RectilinearMeshType, { })
 DEF_TRAVERSE_TYPE(UnstructuredMeshType, { })
 DEF_TRAVERSE_TYPE(WindowType, { })
 DEF_TRAVERSE_TYPE(ImageType, { })
+DEF_TRAVERSE_TYPE(QueryType, { })
 // +==========================================================================+
 
 DEF_TRAVERSE_TYPE(TemplateSpecializationType, {
@@ -1212,6 +1213,7 @@ DEF_TRAVERSE_TYPELOC(UnstructuredMeshType, { })
 
 DEF_TRAVERSE_TYPELOC(WindowType, { })
 DEF_TRAVERSE_TYPELOC(ImageType, { })
+DEF_TRAVERSE_TYPELOC(QueryType, { })
 // ============================================================================
 
 // FIXME: use the loc for the template name?

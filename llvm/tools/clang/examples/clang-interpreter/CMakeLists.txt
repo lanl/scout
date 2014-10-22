@@ -22,7 +22,7 @@ add_dependencies(clang-interpreter
 target_link_libraries(clang-interpreter
   clangBasic
 # +===== Scout ===========================================================+
-  ${SC_LLVM_LINK_LIBS}
+  ${SCOUT_LLVM_LINK_LIBS}
 # +=======================================================================+
   clangCodeGen
   clangDriver

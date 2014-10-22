@@ -50,10 +50,11 @@
  *
  */
 
+#include "scout/Runtime/init_mac.h"
 #include "scout/Runtime/GraphicsCInterface.h"
 #include "scout/Runtime/opengl/glfw/glfwDevice.h"
 #include "scout/Runtime/opengl/glfw/glfwWindow.h"
-#include "scout/Runtime/opengl/glQuadRenderableVA.h"
+#include "scout/Runtime/opengl/glUniformRenderable.h"
 
 using namespace scout;
 
@@ -61,6 +62,9 @@ extern "C"
 void __scrt_init_graphics() {
   // CMS:  We don't really need to keep track of this as a device
   // but we do so since that was already built -- can change that.
+#if defined(__APPLE__)
+   scoutInitMac();
+#endif
   glDevice* glDevice_ = glfwDevice::Instance();
 }
 
@@ -71,9 +75,10 @@ __scrt_target_t __scrt_create_window(unsigned short width, unsigned short height
   return (__scrt_target_t)win;
 }
 
-extern "C"
-float* __scrt_window_quad_renderable_colors(unsigned int width, unsigned int height, unsigned int depth,
-    void* renderTarget){
+static glUniformRenderable*
+get_renderable(unsigned int width,
+               unsigned int height,
+               void* renderTarget){
 
   glWindow* window = (glWindow*)renderTarget;
   window->makeContextCurrent();
@@ -81,13 +86,13 @@ float* __scrt_window_quad_renderable_colors(unsigned int width, unsigned int hei
   // TODO:  Check if there is already a quad renderable associated with this window 
   // and if so, try to reuse it.
 
-  glQuadRenderableVA* renderable; 
+  glUniformRenderable* renderable = 0; 
 
   if (window->getCurrentRenderable() != NULL) {
     // check here if right kind and size
-    renderable = (glQuadRenderableVA*)(window->getCurrentRenderable());
+    renderable = (glUniformRenderable*)(window->getCurrentRenderable());
   } else  {
-    renderable = new glQuadRenderableVA( glfloat3(0.0, 0.0, 0.0), glfloat3(width, height, 0.0));
+    renderable = new glUniformRenderable(width, height);
 
     // add to window's list of renderables
 
@@ -95,9 +100,54 @@ float* __scrt_window_quad_renderable_colors(unsigned int width, unsigned int hei
     window->makeCurrentRenderable(renderable);
 
     renderable->initialize(NULL); // also does a clear
-  } 
+  }
+
+  return renderable;
+}
+
+extern "C"
+float*
+__scrt_window_quad_renderable_colors(unsigned int width,
+                                     unsigned int height,
+                                     unsigned int depth,
+                                     void* renderTarget){
+
+  glUniformRenderable* renderable = 
+    get_renderable(width, height, renderTarget);
+
+  assert(renderable && "failed to get renderable");
 
   return (float*)renderable->map_colors();
+}
+
+extern "C"
+float*
+__scrt_window_quad_renderable_vertex_colors(unsigned int width,
+                                            unsigned int height,
+                                            unsigned int depth,
+                                            void* renderTarget){
+
+  glUniformRenderable* renderable = 
+    get_renderable(width, height, renderTarget);
+
+  assert(renderable && "failed to get renderable");
+
+  return (float*)renderable->map_vertex_colors();
+}
+
+extern "C"
+float*
+__scrt_window_quad_renderable_edge_colors(unsigned int width,
+                                          unsigned int height,
+                                          unsigned int depth,
+                                          void* renderTarget){
+
+  glUniformRenderable* renderable = 
+    get_renderable(width, height, renderTarget);
+
+  assert(renderable && "failed to get renderable");
+
+  return (float*)renderable->map_edge_colors();
 }
 
 extern "C"
@@ -105,9 +155,15 @@ void __scrt_window_paint(void* renderTarget) {
   glWindow* window = (glWindow*)renderTarget;
   // this is funky -- should be a separate function 
   // (__scrt_window_quad_renderable_unmap_colors)
-  ((glQuadRenderableVA*)(window->getCurrentRenderable()))->unmap_colors();
+  ((glUniformRenderable*)(window->getCurrentRenderable()))->unmap_colors();
+
+  ((glUniformRenderable*)(window->getCurrentRenderable()))->
+    unmap_vertex_colors();
+
+  ((glUniformRenderable*)(window->getCurrentRenderable()))->
+    unmap_edge_colors();
+
   window->paint();
   window->swapBuffers();
   window->pollEvents();
 }
-

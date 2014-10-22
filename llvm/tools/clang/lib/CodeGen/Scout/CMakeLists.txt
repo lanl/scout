@@ -1,6 +1,7 @@
 # ===== Scout =================================================================
 include_directories(
  ${CMAKE_BINARY_DIR}/config/include
+ ${CMAKE_BINARY_DIR}/include
  ../
 )
 # =============================================================================
@@ -24,6 +25,7 @@ set(LLVM_LINK_COMPONENTS
   )
 
 add_clang_library(scoutCodeGen
+  ASTVisitors.cpp
   CGCall.cpp
   CGDebugInfo.cpp
   CGDecl.cpp
@@ -33,6 +35,8 @@ add_clang_library(scoutCodeGen
   CodeGenTypes.cpp
   CGMeshLayoutBuilder.cpp
   CGScoutRuntime.cpp
+  CGLegionRuntime.cpp
+  CGLegionTask.cpp
   CGBuiltin.cpp
   CodeGenTypes.cpp
   CodeGenModule.cpp

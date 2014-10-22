@@ -70,8 +70,10 @@
 #include "llvm/IR/Module.h"
 #include "clang/AST/Type.h"
 #include "Scout/CGScoutRuntime.h"
+#include "Scout/CGLegionRuntime.h"
 #include <stdio.h>
 #include <cassert>
+#include "legion/lsci.h"
 
 using namespace std;
 using namespace clang;
@@ -177,12 +179,12 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
 
     Builder.CreateStore(intValue, field);
   }
-  // set unused dimensions to size 1 this makes the codegen for forall/renderall easier
+  // set unused dimensions to size 0
   for(size_t i = rank; i< 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
     llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(MeshAddr, 0, nfields+i, IRNameStr);
-    llvm::Value* ConstantOne =  llvm::ConstantInt::get(Int32Ty, 1);
-    Builder.CreateStore(ConstantOne, field);
+    llvm::Value* ConstantZero =  llvm::ConstantInt::get(Int32Ty, 0);
+    Builder.CreateStore(ConstantZero, field);
   }
   //set rank this makes Codegen easier for rank() builtin
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
@@ -190,6 +192,8 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
   Builder.CreateStore(llvm::ConstantInt::get(Int32Ty, rank), Rank);
 }
 
+// SC_TODO: this should not be a member function, as it calls dims.size()
+// and should only be used in this file.
 void CodeGenFunction::GetMeshDimensions(const MeshType* MT,
                                         SmallVector<llvm::Value*, 3>& DS){
   MeshType::MeshDimensions dims = MT->dimensions();
@@ -212,12 +216,9 @@ void CodeGenFunction::GetMeshDimensions(const MeshType* MT,
       intValue  = RV.getScalarVal();
 
     } else if (E->isConstantInitializer(getContext(), false)) {
-
-      bool evalret;
       llvm::APSInt dimAPValue;
-      evalret = E->EvaluateAsInt(dimAPValue, getContext());
-      // SC_TODO: check the evalret
-      (void)evalret; //supress warning
+      bool success = E->EvaluateAsInt(dimAPValue, getContext());
+      assert(success && "Failed to evaluate mesh dimension");
 
       intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
     } else {
@@ -232,6 +233,7 @@ void CodeGenFunction::GetMeshDimensions(const MeshType* MT,
   }
 }
 
+//SC_TODO: this should go away completely as it uses rank.
 void
 CodeGenFunction::GetNumMeshItems(SmallVector<llvm::Value*, 3>& Dimensions,
                                  llvm::Value** numCells,
@@ -360,14 +362,60 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     //
     // SC_TODO - We are only supporting one mesh type here...
     //
+
     const MeshType* MT = cast<MeshType>(T.getTypePtr());
     llvm::StringRef MeshName  = Alloc->getName();
     MeshDecl* MD = MT->getDecl();
 
     SmallVector<llvm::Value*, 3> Dimensions;
-
     GetMeshDimensions(MT, Dimensions);
-    //unsigned int rank = Dimensions.size();
+
+    llvm::AllocaInst* lsciUnimeshAlloc;
+
+    // call lsci_unimesh_create()
+    if(CGM.getCodeGenOpts().ScoutLegionSupport) {
+      llvm::SmallVector< llvm::Value *, 4 > Args;
+
+      // need to create lsci_unimesh_t ptr 
+      lsciUnimeshAlloc = Builder.CreateAlloca(CGM.getLegionRuntime().UnimeshTy, nullptr, "lsci_unimesh_t.ptr"); 
+      lsciUnimeshAlloc->setAlignment(8);
+
+      // Create metadata to connect the name of the Alloc with the name of the lsciUnimeshAlloc
+      llvm::NamedMDNode *MeshMD;
+      MeshMD = CGM.getModule().getOrInsertNamedMetadata("scout.lscimeshmd");
+      SmallVector<llvm::Value*, 2> lsciMeshInfoMD;
+
+      llvm::MDString *MDMeshName = llvm::MDString::get(getLLVMContext(), MeshName);
+      lsciMeshInfoMD.push_back(MDMeshName);
+
+      llvm::MDString *MDlsciMeshName = llvm::MDString::get(getLLVMContext(), lsciUnimeshAlloc->getName());
+      lsciMeshInfoMD.push_back(MDlsciMeshName);
+
+      MeshMD->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(lsciMeshInfoMD)));
+      
+      // Start collecting args to the lsci_unimesh_create() call
+      Args.push_back(lsciUnimeshAlloc);
+
+      for(unsigned int i = 0; i < Dimensions.size(); i++) {
+        Args.push_back(Dimensions[i]);
+      }
+      
+      // if doesn't have 3 dims, add 0's for the dims
+      for(unsigned int i = Dimensions.size(); i < 3; i++) {
+        Args.push_back(Builder.getInt64(0));
+      }
+
+      Args.push_back(Builder.CreateLoad(
+          CGM.getLegionRuntime().GetLegionContextGlobal(), "legionContext"));
+      Args.push_back(Builder.CreateLoad(
+          CGM.getLegionRuntime().GetLegionRuntimeGlobal(), "legionRuntime"));
+
+      CGM.getLegionRuntime().UnimeshCreateFunc();
+      llvm::Function *F = CGM.getLegionRuntime().CreateSetupMeshFunction(CGM.getLegionRuntime().UnimeshTy);
+
+
+      Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args));
+    }
 
     bool hasCells = false;
     bool hasVertices = false;
@@ -456,21 +504,91 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
       fieldTotalBytes = Builder.CreateNUWMul(numElements, fieldTyBytesValue);
 
-      // Dynamically allocate memory.
-      llvm::SmallVector< llvm::Value *, 3 > Args;
-      Args.push_back(fieldTotalBytes);
-      llvm::Function *MallocFunc = CGM.getScoutRuntime().MemAllocFunction();
-      llvm::Value *val = Builder.CreateCall(MallocFunc, ArrayRef<llvm::Value *>(Args));
-      val = Builder.CreateBitCast(val, structTy->getContainedType(i));
+      if(!(CGM.getCodeGenOpts().ScoutLegionSupport)) {
+        // Dynamically allocate memory.
+        llvm::SmallVector< llvm::Value *, 3 > Args;
+        Args.push_back(fieldTotalBytes);
+        llvm::Function *MallocFunc = CGM.getScoutRuntime().MemAllocFunction();
+        llvm::Value *val = Builder.CreateCall(MallocFunc, ArrayRef<llvm::Value *>(Args));
+        val = Builder.CreateBitCast(val, structTy->getContainedType(i));
 
-      sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), MeshFieldName.str().c_str());
-      llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i, IRNameStr);
-      Builder.CreateStore(val, field);
+        sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), MeshFieldName.str().c_str());
+        llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i, IRNameStr);
+        Builder.CreateStore(val, field);
+      }
+      
+      // call lsci_unimesh_add_field()
+      if(CGM.getCodeGenOpts().ScoutLegionSupport) {
+        llvm::SmallVector< llvm::Value *, 5 > Args;
+        llvm::Function *F = CGM.getLegionRuntime().CreateAddFieldFunction(CGM.getLegionRuntime().UnimeshTy);
+
+        assert(lsciUnimeshAlloc && "should have allocated this struct earlier");
+
+        Args.push_back(lsciUnimeshAlloc);
+
+        llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(Alloc, 0, i, IRNameStr);
+        llvm::Value *fval = Builder.CreateLoad(Builder.CreateLoad(field));
+        llvm::Type::TypeID typeID = fval->getType()->getTypeID();
+        int lscitype;
+        switch(typeID) {
+        case llvm::Type::IntegerTyID:
+          lscitype = LSCI_TYPE_INT64;
+          break;
+        case  llvm::Type::FloatTyID:
+          lscitype = LSCI_TYPE_FLOAT;
+          break;
+        case llvm::Type::DoubleTyID:
+          lscitype = LSCI_TYPE_DOUBLE;
+          break;
+        default:
+          lscitype = LSCI_TYPE_MAX;
+        }
+        Args.push_back(Builder.getInt32(lscitype));
+
+        Args.push_back(Builder.CreateGlobalStringPtr(MeshFieldName));
+
+        Args.push_back(Builder.CreateLoad(
+            CGM.getLegionRuntime().GetLegionContextGlobal(), "legionContext"));
+        Args.push_back(Builder.CreateLoad(
+            CGM.getLegionRuntime().GetLegionRuntimeGlobal(), "legionRuntime"));
+
+        Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args));
+      }
     }
 
+    // emit call to lsci_unimesh_partition()
+    if(CGM.getCodeGenOpts().ScoutLegionSupport) {
+
+      llvm::SmallVector< llvm::Value *, 4 > Args;
+
+      // lsci_unimesh_t
+      assert(lsciUnimeshAlloc && "should have allocated this struct earlier");
+      Args.push_back(lsciUnimeshAlloc);
+
+      // n_parts (number of pieces to break it up into)
+      // TODO do something other than default to 1?
+      llvm::Value *ConstantOne = llvm::ConstantInt::get(Int64Ty, 1);
+      Args.push_back(ConstantOne);
+ 
+      // context and runtime 
+      Args.push_back(Builder.CreateLoad(
+          CGM.getLegionRuntime().GetLegionContextGlobal(), "legionContext"));
+      Args.push_back(Builder.CreateLoad(
+          CGM.getLegionRuntime().GetLegionRuntimeGlobal(), "legionRuntime"));
+
+      llvm::Function *F = CGM.getLegionRuntime().UnimeshPartitionFunc();
+      Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args));
+
+    }
+    
     // mesh dimensions after the fields
     // this is setup in Codegentypes.cpp ConvertScoutMeshType()
+
+    // Should we still do this if using Legion?  The declared mesh doesn't really get used here. 
+    // The mesh really used by forall gets made later.
     EmitMeshParameters(Alloc, D);
+
+
   } else if (Ty.getTypeClass() == Type::Window) {
     //llvm::Type *voidPtrTy = llvm::PointerType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()),0);
     //llvm::Value *voidPtr  = Builder.CreateAlloca(voidPtrTy, 0, "void.ptr");

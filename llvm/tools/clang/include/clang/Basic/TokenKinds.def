@@ -268,6 +268,9 @@ SCOUT_KEYWORD(camera)
 SCOUT_KEYWORD(with)
 SCOUT_KEYWORD(to)
 SCOUT_KEYWORD(task)
+SCOUT_KEYWORD(persistent)
+SCOUT_KEYWORD(query)
+SCOUT_KEYWORD(select)
 // +==========================================================================+
 
 KEYWORD(auto                        , KEYALL)

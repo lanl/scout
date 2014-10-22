@@ -194,6 +194,50 @@ llvm::Function *CGScoutRuntime::CreateWindowQuadRenderableColorsFunction() {
           llvm::Type::getFloatTy(CGM.getModule().getContext()), 4), 0));
 }
 
+llvm::Function
+*CGScoutRuntime::CreateWindowQuadRenderableVertexColorsFunction() {
+  std::string funcName = "__scrt_window_quad_renderable_vertex_colors";
+  
+  std::vector<llvm::Type*> Params;
+  
+  // params for width, height, depth of renderable
+  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 32));
+  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 32));
+  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 32));
+  
+  // param for pointer to window
+  Params.push_back(llvm::PointerType::get(llvm::IntegerType::get(CGM.getModule().getContext(), 8), 0));
+  
+  return ScoutRuntimeFunction(
+                              funcName, Params,
+                              /*retType -- pointer to float for colors*/
+                              llvm::PointerType::get(
+                                                     llvm::VectorType::get(
+                                                                           llvm::Type::getFloatTy(CGM.getModule().getContext()), 4), 0));
+}
+
+llvm::Function
+*CGScoutRuntime::CreateWindowQuadRenderableEdgeColorsFunction() {
+  std::string funcName = "__scrt_window_quad_renderable_edge_colors";
+  
+  std::vector<llvm::Type*> Params;
+  
+  // params for width, height, depth of renderable
+  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 32));
+  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 32));
+  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 32));
+  
+  // param for pointer to window
+  Params.push_back(llvm::PointerType::get(llvm::IntegerType::get(CGM.getModule().getContext(), 8), 0));
+  
+  return ScoutRuntimeFunction(
+                              funcName, Params,
+                              /*retType -- pointer to float for colors*/
+                              llvm::PointerType::get(
+                                                     llvm::VectorType::get(
+                                                                           llvm::Type::getFloatTy(CGM.getModule().getContext()), 4), 0));
+}
+
 // build function call to do window paint 
 llvm::Function *CGScoutRuntime::CreateWindowPaintFunction() {
   std::string funcName = "__scrt_window_paint";
@@ -240,7 +284,10 @@ llvm::Type *CGScoutRuntime::convertScoutSpecificType(const Type *T) {
     return llvm::PointerType::get(llvm::StructType::create(Ctx, "scout.window_t"), 0);
   } else if (T->isScoutImageType()) {
     return llvm::PointerType::get(llvm::StructType::create(Ctx, "scout.image_t"), 0);
-  } else {
+  } else if (T->isScoutQueryType()) {
+    return llvm::PointerType::get(llvm::StructType::create(Ctx, "scout.query_t"), 0);
+  }
+  else {
     llvm_unreachable("Unexpected scout type!");
     return 0;
   }

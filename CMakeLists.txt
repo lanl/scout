@@ -136,9 +136,9 @@ project(Scout)
       add_subdirectory(lib/Config)
       add_subdirectory(cmake)
       add_subdirectory(tools)
-      # add this last as it is built w/ clang
+      #build w/ clang
+      add_subdirectory(legion)
       add_subdirectory(lib/Runtime)
-      #add_subdirectory(lib/NewRuntime)
     endif()
 
     file(GLOB scout_incs ${SCOUT_INCLUDE_DIR}/scout/*)

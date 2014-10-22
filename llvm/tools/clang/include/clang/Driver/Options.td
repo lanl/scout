@@ -1354,6 +1354,7 @@ def _no_scout_standard_libraries : Flag<["--"], "no-scout-standard-libraries">,
     Alias<noscstdlib>;
 def gpu : Flag<["-"], "gpu">, Flags<[CC1Option]>, HelpText<"Enable NVIDIA gpu mode.">;
 def debug : Flag<["-"], "debug">, Flags<[DriverOption,CC1Option]>, HelpText<"Stop and give PID to attach debugger to">;
+def legionSupport : Flag<["-"], "sclegion">, Flags<[CC1Option,DriverOption]>, HelpText<"Run Scout functions as Legion tasks.">;
 // +====================================================================================+
 def object : Flag<["-"], "object">;
 def o : JoinedOrSeparate<["-"], "o">, Flags<[DriverOption, RenderAsInput, CC1Option, CC1AsOption]>,

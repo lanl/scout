@@ -82,10 +82,11 @@ class CodeGenFunction;
 class CodeGenTBAA;
 class CGCXXABI;
 class CGDebugInfo;
-  // ===== Scout ============
-  class CGScoutABI;
-  class CGScoutRuntime;
-  // ========================
+// ===== Scout ============
+class CGScoutABI;
+class CGScoutRuntime;
+class CGLegionRuntime;
+// ========================
 class CGObjCRuntime;
 class CGOpenCLRuntime;
 class CGOpenMPRuntime;
@@ -302,6 +303,7 @@ class CodeGenModule : public CodeGenTypeCache {
   // ===== Scout ======================
   std::unique_ptr<CGScoutABI> ScoutABI;
   CGScoutRuntime* ScoutRuntime;
+  CGLegionRuntime* LegionRuntime;
   // ==================================
   CGOpenCLRuntime* OpenCLRuntime;
   CGOpenMPRuntime* OpenMPRuntime;
@@ -453,6 +455,7 @@ class CodeGenModule : public CodeGenTypeCache {
   void createObjCRuntime();
   // ===== Scout ==========================
   void createScoutRuntime();
+  void createLegionRuntime();
   // ======================================
   void createOpenCLRuntime();
   void createOpenMPRuntime();
@@ -540,6 +543,19 @@ public:
     assert(ScoutRuntime != 0);
     return *ScoutRuntime;
   }
+
+  /// getLegionRuntime() - Return a reference to the configured legion runtime.
+  CGLegionRuntime &getLegionRuntime() {
+    assert(LegionRuntime != 0);
+    return *LegionRuntime;
+  }
+
+  llvm::Function *lsciMainFunction();
+  void startLsciMainFunction();
+  void regTaskInLsciMainFunction(int taskID, llvm::Function* task);
+  void finishLsciMainFunction();
+
+  uint32_t NextLegionTaskId = 1;
   // ========================================================================
 
   ARCEntrypoints &getARCEntrypoints() const {

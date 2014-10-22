@@ -85,7 +85,8 @@ RenderallStmt::RenderallStmt(StmtClass StatementClass,
     RenderTargetVarDecl(TargetVD),        
     ContainerRefVarInfo(ContainerInfo),
     ContainerVarDecl(ContainerVD),
-    RenderallKWLoc(RenderallLocation) {
+    RenderallKWLoc(RenderallLocation),
+    Last(false){
   SubExprs[PREDICATE] = 0;
   SubExprs[BODY]      = Body;
 }
@@ -113,7 +114,8 @@ RenderallStmt::RenderallStmt(StmtClass StatementClass,
     ContainerRefVarInfo(ContainerInfo),
     ContainerVarDecl(ContainerVD),
     RenderallKWLoc(RenderallLocation),
-    LParenLoc(LeftParenLoc), RParenLoc(RightParenLoc) {
+    LParenLoc(LeftParenLoc), RParenLoc(RightParenLoc),
+    Last(false){
 
   SubExprs[PREDICATE] = Predicate;
   SubExprs[BODY]      = Body;

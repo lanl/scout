@@ -92,8 +92,8 @@ public:
     return CGF.ScoutABIInductionVarDecl[index];
   }
 
-  ImplicitParamDecl *&getLoopBoundDecl(CodeGenFunction &CGF, unsigned int index) {
-    return CGF.ScoutABILoopBoundDecl[index];
+  ImplicitParamDecl *&getMeshDimDecl(CodeGenFunction &CGF, unsigned int index) {
+    return CGF.ScoutABIMeshDimDecl[index];
   }
 
   void buildImplicitStencilParams(CodeGenFunction &CGF, FunctionArgList &Params);

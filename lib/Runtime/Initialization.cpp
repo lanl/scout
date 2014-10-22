@@ -63,8 +63,10 @@ using namespace std;
 #include "scout/Runtime/GraphicsCInterface.h"
 #include "scout/Runtime/cpu/CpuInitialization.h"
 
-
 using namespace scout;
+
+void *__scrt_legion_context;
+void *__scrt_legion_runtime;
 
 extern "C" void __scrt_init_cpu() {
   DeviceList *devicelist = DeviceList::Instance();

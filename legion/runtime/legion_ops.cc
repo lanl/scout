@@ -91,6 +91,7 @@ namespace LegionRuntime {
       tracing = false;
       must_epoch = NULL;
       must_epoch_gen = 0;
+      must_epoch_index = 0;
 #ifdef DEBUG_HIGH_LEVEL
       assert(completion_event.exists());
 #endif
@@ -181,7 +182,7 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void Operation::set_must_epoch(MustEpochOp *epoch)
+    void Operation::set_must_epoch(MustEpochOp *epoch, unsigned index)
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
@@ -190,6 +191,7 @@ namespace LegionRuntime {
 #endif
       must_epoch = epoch;
       must_epoch_gen = epoch->get_generation();
+      must_epoch_index = index;
       must_epoch->register_subop(this);
     }
 
@@ -285,6 +287,14 @@ namespace LegionRuntime {
       commit_operation();
       // Once we're done with this, we can deactivate the object
       deactivate();
+    }
+
+    //--------------------------------------------------------------------------
+    void Operation::report_aliased_requirements(unsigned idx1, unsigned idx2)
+    //--------------------------------------------------------------------------
+    {
+      // should only be called if overridden
+      assert(false);
     }
 
     //--------------------------------------------------------------------------
@@ -581,7 +591,7 @@ namespace LegionRuntime {
     void Operation::end_dependence_analysis(void)
     //--------------------------------------------------------------------------
     {
-      bool need_mapping;
+      bool need_mapping = false;
       bool need_resolution = false;
       {
         AutoLock o_lock(op_lock);
@@ -590,8 +600,13 @@ namespace LegionRuntime {
 #endif
         outstanding_mapping_deps--;
         outstanding_speculation_deps--;
-        need_mapping = (outstanding_mapping_deps == 0);
-        if ((outstanding_speculation_deps == 0) &&
+        if (!mapped && (outstanding_mapping_deps == 0) &&
+            !trigger_mapping_invoked)
+        {
+          trigger_mapping_invoked = true;
+          need_mapping = true;
+        }
+        if (!resolved && (outstanding_speculation_deps == 0) &&
             !trigger_resolution_invoked)
         {
           trigger_resolution_invoked = true;
@@ -672,6 +687,8 @@ namespace LegionRuntime {
       // true if the generation is older than our current generation.
       if (target == this)
       {
+        if (target_gen == gen)
+          report_aliased_requirements(target_idx, idx);
         // Can't remove this if we are tracing
         if (tracing)
         {
@@ -726,6 +743,8 @@ namespace LegionRuntime {
       }
       if (target == this)
       {
+        if (target_gen == gen)
+          report_aliased_requirements(target_idx, idx);
         // Can't remove this if we are tracing
         if (tracing)
         {
@@ -921,10 +940,14 @@ namespace LegionRuntime {
         if ((our_gen == gen) && !committed)
         {
 #ifdef DEBUG_HIGH_LEVEL
+          assert(!resolved);
           assert(outstanding_speculation_deps > 0);
 #endif
           outstanding_speculation_deps--;
-          need_trigger = (outstanding_speculation_deps == 0);
+          need_trigger = !trigger_resolution_invoked &&
+                          (outstanding_speculation_deps == 0);
+          if (need_trigger)
+            trigger_resolution_invoked = true;
         }
       }
       if (need_trigger)
@@ -1005,28 +1028,120 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void Predicate::Impl::add_reference(void)
+    void Predicate::Impl::activate_predicate(void)
     //--------------------------------------------------------------------------
     {
-      add_mapping_reference(get_generation());
+      activate_operation();
+      predicate_resolved = false;
+      predicate_references = 0;
     }
 
     //--------------------------------------------------------------------------
-    void Predicate::Impl::remove_reference(void)
+    void Predicate::Impl::deactivate_predicate(void)
     //--------------------------------------------------------------------------
     {
-      remove_mapping_reference(get_generation());
+      deactivate_operation();
+#ifdef DEBUG_HIGH_LEVEL
+      assert(predicate_references == 0);
+#endif
+      waiters.clear();
     }
 
     //--------------------------------------------------------------------------
-    void Predicate::Impl::trigger_commit(void)
+    void Predicate::Impl::add_predicate_reference(void)
     //--------------------------------------------------------------------------
     {
-      commit_operation();
-      if (!Runtime::resilient_mode)
-        parent_ctx->register_reclaim_operation(this);
+      bool add_map_reference;
+      {
+        AutoLock o_lock(op_lock);
+        add_map_reference = (predicate_references == 0);
+        predicate_references++;
+      }
+      if (add_map_reference)
+        add_mapping_reference(get_generation());
+    }
+
+    //--------------------------------------------------------------------------
+    void Predicate::Impl::remove_predicate_reference(void)
+    //--------------------------------------------------------------------------
+    {
+      bool need_trigger;
+      bool remove_reference;
+      GenerationID task_gen;
+      {
+        AutoLock o_lock(op_lock);
+#ifdef DEBUG_HIGH_LEVEL
+        assert(predicate_references > 0);
+#endif
+        predicate_references--;
+        remove_reference = (predicate_references == 0);
+        if (remove_reference)
+        {
+          // Get the task generation before things can be cleaned up
+          task_gen = get_generation();
+          need_trigger = predicate_resolved;
+        }
+        else
+          need_trigger = false;
+      }
+      if (need_trigger)
+        complete_execution();
+      if (remove_reference)
+        remove_mapping_reference(task_gen);
+    }
+
+    //--------------------------------------------------------------------------
+    bool Predicate::Impl::register_waiter(PredicateWaiter *waiter,
+                                          GenerationID waiter_gen, bool &value)
+    //--------------------------------------------------------------------------
+    {
+      bool valid;
+      AutoLock o_lock(op_lock);
+      if (predicate_resolved)
+      {
+        value = predicate_value;
+        valid = true;
+      }
       else
-        deactivate();
+      {
+#ifdef DEBUG_HIGH_LEVEL
+        assert(waiters.find(waiter) == waiters.end());
+#endif
+        waiters[waiter] = waiter_gen;
+        valid = false;
+      }
+      return valid;
+    }
+
+    //--------------------------------------------------------------------------
+    void Predicate::Impl::set_resolved_value(GenerationID pred_gen, bool value)
+    //--------------------------------------------------------------------------
+    {
+      bool need_trigger;
+      // Make a copy of the waiters since we could get cleaned up in parallel
+      std::map<PredicateWaiter*,GenerationID> copy_waiters;
+      {
+        AutoLock o_lock(op_lock);
+        if ((pred_gen == get_generation()) && !predicate_resolved)
+        {
+          predicate_resolved = true;
+          predicate_value = value;
+          copy_waiters = waiters;
+          need_trigger = (predicate_references == 0);
+        }
+        else
+          need_trigger= false;
+      }
+      // Notify any waiters, no need to hold the lock since waiters can't
+      // be added after we set the state to resolved
+      for (std::map<PredicateWaiter*,GenerationID>::const_iterator it = 
+            copy_waiters.begin(); it != copy_waiters.end(); it++)
+      {
+        it->first->notify_predicate_value(it->second, value);
+      }
+      // Now see if we need to indicate we are done executing
+      if (need_trigger)
+        complete_execution();
     }
 
     /////////////////////////////////////////////////////////////
@@ -1047,6 +1162,8 @@ namespace LegionRuntime {
       activate_operation();
       speculation_state = RESOLVE_TRUE_STATE;
       predicate = NULL;
+      received_trigger_resolution = false;
+      predicate_waiter = UserEvent::NO_USER_EVENT;
     }
 
     //--------------------------------------------------------------------------
@@ -1077,6 +1194,7 @@ namespace LegionRuntime {
       {
         speculation_state = PENDING_MAP_STATE;
         predicate = p.impl;
+        predicate->add_predicate_reference();
       }
     }
 
@@ -1104,19 +1222,27 @@ namespace LegionRuntime {
 #ifdef DEBUG_HIGH_LEVEL
           assert(predicate != NULL);
 #endif
-          wait_event = predicate->get_completion_event();
+          predicate_waiter = UserEvent::create_user_event();
+          wait_event = predicate_waiter;
         }
       }
-      if (!wait_event.has_triggered())
+      if (wait_event.exists())
       {
-        runtime->pre_wait(proc);
-        wait_event.wait();
-        runtime->post_wait(proc);
-        bool valid, speculated;
-        result = predicate->sample(valid, speculated);
+        if (!wait_event.has_triggered())
+        {
+          runtime->pre_wait(proc);
+          wait_event.wait();
+          runtime->post_wait(proc);
+        }
+        // Might be a little bit of a race here with cleanup
 #ifdef DEBUG_HIGH_LEVEL
-        assert(valid); // should be valid for this sample
+        assert((speculation_state == RESOLVE_TRUE_STATE) ||
+               (speculation_state == RESOLVE_FALSE_STATE));
 #endif
+        if (speculation_state == RESOLVE_TRUE_STATE)
+          result = true;
+        else
+          result = false;
       }
       return result;
     }
@@ -1133,22 +1259,30 @@ namespace LegionRuntime {
                (speculation_state == RESOLVE_FALSE_STATE));
 #endif
         if (speculation_state == RESOLVE_TRUE_STATE)
-          continue_mapping();
+          resolve_true();
         else
-          complete_mapping();
+          resolve_false();
         return;
       }
-      // See if we need to sample the predicate value, not we can do this
-      // unsafely whithout holding the lock since it never hurts to sample
-      // the value prematurely.
-      bool value, valid, speculated;
-      valid = false;
-      speculated = false;
-      if (speculation_state == PENDING_MAP_STATE)
-        value = predicate->sample(valid, speculated);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(predicate != NULL);
+#endif
+      // Register ourselves as a waiter on the predicate value
+      // If the predicate hasn't resolved yet, then we can ask the
+      // mapper if it would like us to speculate on the value.
+      // Then take the lock and set up our state.
+      bool value, speculated;
+      bool valid = predicate->register_waiter(this, get_generation(), value);
+      // Now that we've attempted to register ourselves with the
+      // predicate we can remove the predicate reference
+      predicate->remove_predicate_reference();
+      if (!valid)
+        speculated = speculate(value);
       // Now hold the lock and figure out what we should do
-      bool need_continue = false;
-      bool need_complete = false;
+      bool continue_true = false;
+      bool continue_false = false;
+      bool need_resolution = false;
+      bool need_trigger = false;
       {
         AutoLock o_lock(op_lock);
         switch (speculation_state)
@@ -1160,49 +1294,57 @@ namespace LegionRuntime {
                 if (value)
                 {
                   speculation_state = RESOLVE_TRUE_STATE;
-                  need_continue = true;
+                  continue_true = true;
                 }
                 else
                 {
                   speculation_state = RESOLVE_FALSE_STATE;
-                  need_complete = true;
+                  continue_false = true;
                 }
+                need_resolution = received_trigger_resolution;
+                need_trigger = predicate_waiter.exists();
               }
               else if (speculated)
               {
                 if (value)
                 {
                   speculation_state = SPECULATE_TRUE_STATE;
-                  need_continue = true;
+                  continue_true = true;
                 }
                 else
                 {
                   speculation_state = SPECULATE_FALSE_STATE;
-                  need_complete = true;
+                  continue_false = true;
                 }
               }
-              else
-                speculation_state = PENDING_PRED_STATE;
+              // Otherwise just stay in pending map state
               break;
             }
           case RESOLVE_TRUE_STATE:
             {
-              need_continue = true;
+              // Someone else has already resolved us to true and
+              // triggered the appropriate method
               break;
             }
           case RESOLVE_FALSE_STATE:
             {
-              need_complete = true;
+              // Someone else has already resolved us to false and
+              // triggered the appropriate method
+              break;
             }
           default:
             assert(false); // shouldn't be in the other states
         }
       }
       // Now do what we need to do
-      if (need_continue)
-        continue_mapping();
-      else if (need_complete)
-        complete_mapping();
+      if (need_trigger)
+        predicate_waiter.trigger();
+      if (continue_true)
+        resolve_true();
+      if (continue_false)
+        resolve_false();
+      if (need_resolution)
+        resolve_speculation(); 
     }
 
     //--------------------------------------------------------------------------
@@ -1215,50 +1357,59 @@ namespace LegionRuntime {
         resolve_speculation();
         return;
       }
-      bool need_continue = false;
-      bool need_complete = false;
-      bool need_mispredict = false;
-      bool restart = false;
-      bool need_resolve = true;
-      bool value, valid, speculated;
-      value = predicate->sample(valid, speculated);
-#ifdef DEBUG_HIGH_LEVEL
-      assert(valid);
-      assert(!speculated);
-#endif
+      bool need_trigger;
       {
         AutoLock o_lock(op_lock);
+#ifdef DEBUG_HIGH_LEVEL
+        assert(!received_trigger_resolution);
+#endif
+        received_trigger_resolution = true;
+        need_trigger = (speculation_state == RESOLVE_TRUE_STATE) ||
+                        (speculation_state == RESOLVE_FALSE_STATE);
+      }
+      if (need_trigger)
+        resolve_speculation();
+    }
+
+    //--------------------------------------------------------------------------
+    void SpeculativeOp::notify_predicate_value(GenerationID pred_gen,bool value)
+    //--------------------------------------------------------------------------
+    {
+      bool continue_true = false;
+      bool continue_false = false;
+      bool need_mispredict = false;
+      bool restart = false;
+      bool need_resolve = false;
+      bool need_trigger = false;
+      {
+        AutoLock o_lock(op_lock);
+#ifdef DEBUG_HIGH_LEVEL
+        assert(pred_gen == get_generation());
+#endif
         switch (speculation_state)
         {
           case PENDING_MAP_STATE:
             {
-              // We're not ready to map, so set the value
-              if (value)
-                speculation_state = RESOLVE_TRUE_STATE;
-              else
-                speculation_state = RESOLVE_FALSE_STATE;
-              break;
-            }
-          case PENDING_PRED_STATE:
-            {
               if (value)
               {
                 speculation_state = RESOLVE_TRUE_STATE;
-                need_continue = true;
+                continue_true = true;
               }
               else
               {
                 speculation_state = RESOLVE_FALSE_STATE;
-                need_complete = true;
+                continue_false = true;
               }
+              need_resolve = received_trigger_resolution;
+              need_trigger = predicate_waiter.exists();
               break;
             }
           case SPECULATE_TRUE_STATE:
             {
-              if (value)
+              if (value) // We guessed right
               {
-                // We guessed right
                 speculation_state = RESOLVE_TRUE_STATE;
+                need_resolve = received_trigger_resolution;
               }
               else
               {
@@ -1266,7 +1417,6 @@ namespace LegionRuntime {
                 speculation_state = RESOLVE_FALSE_STATE;
                 need_mispredict = true;
                 restart = false;
-                need_resolve = false;
               }
               break;
             }
@@ -1274,42 +1424,28 @@ namespace LegionRuntime {
             {
               if (value)
               {
-                // We guessed wrong
                 speculation_state = RESOLVE_TRUE_STATE;
                 need_mispredict = true;
                 restart = true;
-                need_resolve = false;
               }
               else
               {
-                // We guessed right
                 speculation_state = RESOLVE_FALSE_STATE;
+                need_resolve = received_trigger_resolution;  
               }
               break;
             }
-          case RESOLVE_TRUE_STATE:
-            {
-#ifdef DEBUG_HIGH_LEVEL
-              assert(value);
-#endif
-              break;
-            }
-          case RESOLVE_FALSE_STATE:
-            {
-#ifdef DEBUG_HIGH_LEVEL
-              assert(!value);
-#endif
-              break;
-            }
           default:
-            assert(false); // should never get here
+            assert(false); // shouldn't be in any of the other states
         }
       }
-      if (need_continue)
-        continue_mapping();
-      else if (need_complete)
-        complete_mapping();
-      else if (need_mispredict)
+      if (need_trigger)
+        predicate_waiter.trigger();
+      if (continue_true)
+        resolve_true();
+      if (continue_false)
+        resolve_false();
+      if (need_mispredict)
         quash_operation(get_generation(), restart);
       if (need_resolve)
         resolve_speculation();
@@ -2158,15 +2294,29 @@ namespace LegionRuntime {
           }
           check_copy_privilege(dst_requirements[idx], idx, false/*src*/);
         }
-        std::vector<Color> path;
         for (unsigned idx = 0; idx < src_requirements.size(); idx++)
         {
-          path.clear();  
           IndexSpace src_space = src_requirements[idx].region.get_index_space();
           IndexSpace dst_space = dst_requirements[idx].region.get_index_space();
-          bool has_path = runtime->forest->compute_index_path(src_space,
-                                                              dst_space, path);
-          if (!has_path)
+          if (!runtime->forest->are_compatible(src_space, dst_space))
+          {
+            log_run(LEVEL_ERROR,"Copy launcher index space mismatch at index "
+                                "%d of cross-region copy (ID %lld) in task %s "
+                                "(ID %lld). Source requirement with index "
+                                "space " IDFMT " and destination requirement "
+                                "with index space " IDFMT " do not have the "
+                                "same number of dimensions or the same number "
+                                "of elements in their element masks.",
+                                idx, get_unique_copy_id(),
+                                parent_ctx->variants->name, 
+                                parent_ctx->get_unique_task_id(),
+                                src_space.id, dst_space.id);
+#ifdef DEBUG_HIGH_LEVEL
+            assert(false);
+#endif
+            exit(ERROR_COPY_SPACE_MISMATCH);
+          }
+          else if (!runtime->forest->is_dominated(src_space, dst_space))
           {
             log_run(LEVEL_ERROR,"Destination index space " IDFMT " for "
                                 "requirement %d of cross-region copy "
@@ -2349,12 +2499,31 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void CopyOp::continue_mapping(void)
+    void CopyOp::resolve_true(void)
     //--------------------------------------------------------------------------
     {
       // Put this on the queue of stuff to do
       runtime->add_to_local_queue(parent_ctx->get_executing_processor(),
                                   this, false/*prev fail*/);
+    }
+
+    //--------------------------------------------------------------------------
+    void CopyOp::resolve_false(void)
+    //--------------------------------------------------------------------------
+    {
+      // Mark that this operation has completed both
+      // execution and mapping indicating that we are done
+      // Do it in this order to avoid calling 'execute_trigger'
+      complete_execution();
+      complete_mapping();
+    }
+
+    //--------------------------------------------------------------------------
+    bool CopyOp::speculate(bool &value)
+    //--------------------------------------------------------------------------
+    {
+      Processor exec_proc = parent_ctx->get_executing_processor();
+      return runtime->invoke_mapper_speculate(exec_proc, this, value);
     }
 
     //--------------------------------------------------------------------------
@@ -2424,6 +2593,10 @@ namespace LegionRuntime {
       for (unsigned idx = 0; (idx < src_requirements.size()) && 
             map_success; idx++)
       {
+        // If there is no ranking for this instance then we can skip
+        // it as we will just issue copies from the existing valid instances
+        if (src_requirements[idx].target_ranking.empty())
+          continue;
         src_mapping_refs[idx] = runtime->forest->map_physical_region(
                                                         src_contexts[idx],
                                                         src_mapping_paths[idx],
@@ -2522,60 +2695,83 @@ namespace LegionRuntime {
         std::set<Event> copy_complete_events;
         for (unsigned idx = 0; idx < src_requirements.size(); idx++)
         {
-          InstanceRef src_ref = runtime->forest->register_physical_region(
-                                                      src_contexts[idx],
-                                                      src_mapping_refs[idx],
-                                                      src_requirements[idx],
-                                                      idx,
-                                                      this,
-                                                      local_proc,
-                                                      completion_event
-#ifdef DEBUG_HIGH_LEVEL
-                                                      , get_logging_name()
-                                                      , unique_op_id
-                                                      , src_mapping_paths[idx]
-#endif
-                                                      );
           InstanceRef dst_ref = runtime->forest->register_physical_region(
-                                                      dst_contexts[idx],
-                                                      dst_mapping_refs[idx],
-                                                      dst_requirements[idx],
-                                                      idx,
-                                                      this,
-                                                      local_proc,
-                                                      completion_event
+                                                        dst_contexts[idx],
+                                                        dst_mapping_refs[idx],
+                                                        dst_requirements[idx],
+                                                        idx,
+                                                        this,
+                                                        local_proc,
+                                                        completion_event
 #ifdef DEBUG_HIGH_LEVEL
-                                                      , get_logging_name()
-                                                      , unique_op_id
-                                                      , dst_mapping_paths[idx]
+                                                        , get_logging_name()
+                                                        , unique_op_id
+                                                        , dst_mapping_paths[idx]
 #endif
-                                                      );
+                                                        );
 #ifdef DEBUG_HIGH_LEVEL
-          assert(src_ref.has_ref());
           assert(dst_ref.has_ref());
 #endif
           if (notify)
           {
-            src_requirements[idx].mapping_failed = false;
-            src_requirements[idx].selected_memory = src_ref.get_memory();
             dst_requirements[idx].mapping_failed = false;
             dst_requirements[idx].selected_memory = dst_ref.get_memory();
           }
-          // Now issue the copies from source to destination
-          copy_complete_events.insert(
-            runtime->forest->copy_across(src_contexts[idx],
-                                         dst_contexts[idx],
-                                         src_requirements[idx],
-                                         dst_requirements[idx],
-                                         src_ref, dst_ref, sync_precondition));
 #ifdef LEGION_SPY
-          start_events.insert(src_ref.get_ready_event());
           start_events.insert(dst_ref.get_ready_event());
-          LegionSpy::log_op_user(unique_op_id, idx,
-            src_ref.get_handle().get_view()->get_manager()->get_instance().id);
           LegionSpy::log_op_user(unique_op_id, src_requirements.size()+idx,
-            dst_ref.get_handle().get_view()->get_manager()->get_instance().id);
+             dst_ref.get_handle().get_view()->get_manager()->get_instance().id);
 #endif
+          if (!src_mapping_refs[idx].has_ref())
+          {
+            // In this case, there is no source instance so we need
+            // to issue copies from the valid set
+            copy_complete_events.insert(runtime->forest->copy_across(this, 
+                                          parent_ctx->get_executing_processor(),
+                                                   src_contexts[idx],
+                                                   dst_contexts[idx],
+                                                   src_requirements[idx],
+                                                   dst_requirements[idx],
+                                                   dst_ref, sync_precondition));
+          }
+          else
+          {
+            InstanceRef src_ref = runtime->forest->register_physical_region(
+                                                        src_contexts[idx],
+                                                        src_mapping_refs[idx],
+                                                        src_requirements[idx],
+                                                        idx,
+                                                        this,
+                                                        local_proc,
+                                                        completion_event
+#ifdef DEBUG_HIGH_LEVEL
+                                                        , get_logging_name()
+                                                        , unique_op_id
+                                                        , src_mapping_paths[idx]
+#endif
+                                                        );
+            
+#ifdef DEBUG_HIGH_LEVEL
+            assert(src_ref.has_ref());
+#endif
+            if (notify)
+            {
+              src_requirements[idx].mapping_failed = false;
+              src_requirements[idx].selected_memory = src_ref.get_memory();
+            }
+            // Now issue the copies from source to destination
+            copy_complete_events.insert(
+             runtime->forest->copy_across(src_contexts[idx],
+                                          dst_contexts[idx],
+                                          src_requirements[idx],
+                                          dst_requirements[idx],
+                                          src_ref, dst_ref, sync_precondition));
+#ifdef LEGION_SPY
+            start_events.insert(src_ref.get_ready_event());
+            LegionSpy::log_op_user(unique_op_id, idx,
+             src_ref.get_handle().get_view()->get_manager()->get_instance().id);
+#endif
+          }
         }
 #ifdef LEGION_LOGGING
         LegionLogging::log_timing_event(Machine::get_executing_processor(),
@@ -2659,9 +2855,11 @@ namespace LegionRuntime {
 #else
           Processor util = local_proc.get_utility_processor();
 #endif
-          Operation *proxy_this = this;
-          util.spawn(DEFERRED_COMPLETE_ID, &proxy_this, 
-                      sizeof(proxy_this), copy_complete_event);
+          DeferredCompleteArgs deferred_complete_args;
+          deferred_complete_args.hlr_id = HLR_DEFERRED_COMPLETE_ID;
+          deferred_complete_args.proxy_this = this;
+          util.spawn(HLR_TASK_ID, &deferred_complete_args, 
+                      sizeof(deferred_complete_args), copy_complete_event);
         }
         else
           deferred_complete();
@@ -2687,6 +2885,28 @@ namespace LegionRuntime {
     {
       // Mark that we're done executing
       complete_execution();
+    }
+
+    //--------------------------------------------------------------------------
+    void CopyOp::report_aliased_requirements(unsigned idx1, unsigned idx2)
+    //--------------------------------------------------------------------------
+    {
+      bool is_src1 = idx1 < src_requirements.size();
+      bool is_src2 = idx2 < src_requirements.size();
+      unsigned actual_idx1 = is_src1 ? idx1 : (idx1 - src_requirements.size());
+      unsigned actual_idx2 = is_src2 ? idx2 : (idx2 - src_requirements.size());
+      log_run(LEVEL_ERROR,"Aliased region requirements for copy operations "
+                          "are not permitted. Region requirement %d of %s "
+                          "requirements and %d of %s requirements aliased for "
+                          "copy operation (UID %lld) in task %s (UID %lld).",
+                          actual_idx1, is_src1 ? "source" : "destination",
+                          actual_idx2, is_src2 ? "source" : "destination",
+                          unique_op_id, parent_ctx->variants->name,
+                          parent_ctx->get_unique_task_id());
+#ifdef DEBUG_HIGH_LEVEL
+      assert(false);
+#endif
+      exit(ERROR_ALIASED_REGION_REQUIREMENTS);
     }
 
     //--------------------------------------------------------------------------
@@ -3040,9 +3260,11 @@ namespace LegionRuntime {
           Processor util = parent_ctx->get_executing_processor().
                             get_utility_processor();
 #endif
-          Operation *proxy_this = this;
-          util.spawn(DEFERRED_COMPLETE_ID, &proxy_this,
-                     sizeof(proxy_this), wait_on);
+          DeferredCompleteArgs deferred_complete_args;
+          deferred_complete_args.hlr_id = HLR_DEFERRED_COMPLETE_ID;
+          deferred_complete_args.proxy_this = this;
+          util.spawn(HLR_TASK_ID, &deferred_complete_args,
+                     sizeof(deferred_complete_args), wait_on);
         }
         else
           deferred_complete();
@@ -3612,7 +3834,6 @@ namespace LegionRuntime {
         // when we are complete.
         completion_event.trigger(close_event);
         need_completion_trigger = false;
-        CloseOp *proxy_this = this;
 #ifdef SPECIALIZED_UTIL_PROCS
         Processor util = runtime->get_cleanup_proc(
                           parent_ctx->get_executing_processor());
@@ -3620,8 +3841,11 @@ namespace LegionRuntime {
         Processor util = parent_ctx->get_executing_processor().
                           get_utility_processor();
 #endif
-        util.spawn(DEFERRED_COMPLETE_ID, &proxy_this, 
-                   sizeof(proxy_this), close_event);
+        DeferredCompleteArgs deferred_complete_args;
+        deferred_complete_args.hlr_id = HLR_DEFERRED_COMPLETE_ID;
+        deferred_complete_args.proxy_this = this;
+        util.spawn(HLR_TASK_ID, &deferred_complete_args, 
+                   sizeof(deferred_complete_args), close_event);
       }
       else
         deferred_complete();
@@ -3762,12 +3986,29 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void AcquireOp::continue_mapping(void)
+    void AcquireOp::resolve_true(void)
     //--------------------------------------------------------------------------
     {
       // Put this on the queue of stuff to do
       runtime->add_to_local_queue(parent_ctx->get_executing_processor(),
                                   this, false/*prev fail*/);
+    }
+
+    //--------------------------------------------------------------------------
+    void AcquireOp::resolve_false(void)
+    //--------------------------------------------------------------------------
+    {
+      // Clean up this operation
+      complete_execution();
+      complete_mapping();
+    }
+
+    //--------------------------------------------------------------------------
+    bool AcquireOp::speculate(bool &value)
+    //--------------------------------------------------------------------------
+    {
+      Processor exec_proc = parent_ctx->get_executing_processor();
+      return runtime->invoke_mapper_speculate(exec_proc, this, value);
     }
 
     //--------------------------------------------------------------------------
@@ -3875,9 +4116,11 @@ namespace LegionRuntime {
 #else
         Processor util = local_proc.get_utility_processor();
 #endif
-        Operation *proxy_this = this;
-        util.spawn(DEFERRED_COMPLETE_ID, &proxy_this,
-                    sizeof(proxy_this), acquire_complete);
+        DeferredCompleteArgs deferred_complete_args;
+        deferred_complete_args.hlr_id = HLR_DEFERRED_COMPLETE_ID;
+        deferred_complete_args.proxy_this = this;
+        util.spawn(HLR_TASK_ID, &deferred_complete_args,
+                    sizeof(deferred_complete_args), acquire_complete);
       }
       else
         deferred_complete();
@@ -4203,12 +4446,29 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void ReleaseOp::continue_mapping(void)
+    void ReleaseOp::resolve_true(void)
     //--------------------------------------------------------------------------
     {
       // Put this on the queue of stuff to do
       runtime->add_to_local_queue(parent_ctx->get_executing_processor(),
                                   this, false/*prev fail*/);
+    }
+
+    //--------------------------------------------------------------------------
+    void ReleaseOp::resolve_false(void)
+    //--------------------------------------------------------------------------
+    {
+      // Clean up this operation
+      complete_execution();
+      complete_mapping();
+    }
+
+    //--------------------------------------------------------------------------
+    bool ReleaseOp::speculate(bool &value)
+    //--------------------------------------------------------------------------
+    {
+      Processor exec_proc = parent_ctx->get_executing_processor();
+      return runtime->invoke_mapper_speculate(exec_proc, this, value);
     }
 
     //--------------------------------------------------------------------------
@@ -4296,9 +4556,11 @@ namespace LegionRuntime {
 #else
         Processor util = local_proc.get_utility_processor();
 #endif
-        Operation *proxy_this = this;
-        util.spawn(DEFERRED_COMPLETE_ID, &proxy_this,
-                   sizeof(proxy_this), release_complete);
+        DeferredCompleteArgs deferred_complete_args;
+        deferred_complete_args.hlr_id = HLR_DEFERRED_COMPLETE_ID;
+        deferred_complete_args.proxy_this = this;
+        util.spawn(HLR_TASK_ID, &deferred_complete_args,
+                   sizeof(deferred_complete_args), release_complete);
       }
       else
         deferred_complete();
@@ -4531,15 +4793,14 @@ namespace LegionRuntime {
     void FuturePredOp::activate(void)
     //--------------------------------------------------------------------------
     {
-      try_speculated = false;
-      pred_valid = false;
-      pred_speculated = false;
+      activate_predicate();
     }
 
     //--------------------------------------------------------------------------
     void FuturePredOp::deactivate(void)
     //--------------------------------------------------------------------------
     {
+      deactivate_predicate();
       future = Future();
       runtime->free_future_predicate_op(this);
     }
@@ -4552,69 +4813,70 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void FuturePredOp::initialize(Future f, Processor p)
+    void FuturePredOp::initialize(SingleTask *ctx, Future f)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(ctx != NULL);
+      assert(f.impl != NULL);
+#endif
+      // Don't track this as it can lead to deadlock because
+      // predicates can't complete until all their references from
+      // the parent task have been removed.
+      initialize_operation(ctx, false/*track*/);
       future = f;
-      proc = p;
-      // Register this operation as dependent on the task that
+    }
+
+    //--------------------------------------------------------------------------
+    void FuturePredOp::resolve_future_predicate(void)
+    //--------------------------------------------------------------------------
+    {
+      bool valid;
+      bool value = future.impl->get_boolean_value(valid);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(valid);
+#endif
+      set_resolved_value(get_generation(), value);
+    }
+
+    //--------------------------------------------------------------------------
+    void FuturePredOp::trigger_dependence_analysis(void)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(future.impl->task != NULL);
+#endif
+      begin_dependence_analysis();
+      // Register this operation as dependent on task that
       // generated the future
-      register_dependence(f.impl->task, f.impl->task_gen);
+      register_dependence(future.impl->task, future.impl->task_gen);
+      end_dependence_analysis();
     }
 
     //--------------------------------------------------------------------------
-    void FuturePredOp::speculate(void)
+    void FuturePredOp::trigger_mapping(void)
     //--------------------------------------------------------------------------
     {
-      // Assume we are already holding the lock on this operation
-      if (!try_speculated)
-      {
-        pred_value = runtime->invoke_mapper_speculate(proc, future.impl->task, 
-                                                      pred_valid);  
-        try_speculated = true;
-      }
-    }
-
-    //--------------------------------------------------------------------------
-    bool FuturePredOp::sample(bool &valid, bool &speculated)
-    //--------------------------------------------------------------------------
-    {
-      valid = false;
-      speculated = false;
-      // Always check to see if the future has a value if we
-      // don't already have a value set
-      if (!pred_valid)
-      {
-        AutoLock o_lock(op_lock);
-        if (!pred_valid)
-          pred_value = future.impl->get_boolean_value(pred_valid);
-        if (pred_valid)
-        {
-          valid = true;
-          return pred_value;
-        }
-      }
-      // If we're still not valid, see if we want to speculate
-      if (!pred_speculated)
-      {
-        AutoLock o_lock(op_lock);
-        if (!pred_speculated && !pred_valid)
-          speculate(); 
-        if (pred_speculated)
-        {
-          speculated = true;
-          return pred_value;
-        }
-      }
+      // See if we have a value
+      bool valid;
+      bool value = future.impl->get_boolean_value(valid);
+      if (valid)
+        set_resolved_value(get_generation(), value);
       else
       {
-        // If we already speculated, just return that
-        speculated = true;
-        return pred_value;
+        // Launch a task to get the value
+        add_predicate_reference();
+        ResolveFuturePredArgs args;
+        args.hlr_id = HLR_RESOLVE_FUTURE_PRED_ID;
+        args.future_pred_op = this;
+        Processor exec_proc = Machine::get_executing_processor();
+        Processor util_proc = exec_proc.get_utility_processor();
+        util_proc.spawn(HLR_TASK_ID, &args, sizeof(args),
+                        future.impl->get_ready_event());
       }
-      // Otherwise they get no value
-      return false;
-    }
+      // Mark that we completed mapping this operation
+      complete_mapping();
+    } 
 
     /////////////////////////////////////////////////////////////
     // Not Predicate Operation
@@ -4652,25 +4914,28 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void NotPredOp::initialize(const Predicate &p)
+    void NotPredOp::initialize(SingleTask *ctx, const Predicate &p)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(ctx != NULL);
+#endif
+      // Don't track this as it can lead to deadlock because
+      // predicates can't complete until all their references from
+      // the parent task have been removed.
+      initialize_operation(ctx, false/*track*/);
+      // Don't forget to reverse the values
       if (p == Predicate::TRUE_PRED)
-      {
-        pred_op = NULL;
-        pred_valid = true;
-        pred_value = false;
-      }
+        set_resolved_value(get_generation(), false);
       else if (p == Predicate::FALSE_PRED)
-      {
-        pred_op = NULL;
-        pred_valid = true;
-        pred_value = true;
-      }
+        set_resolved_value(get_generation(), true);
       else
       {
-        pred_op = p.impl;  
-        register_dependence(pred_op, pred_op->get_generation());
+#ifdef DEBUG_HIGH_LEVEL
+        assert(p.impl != NULL);
+#endif
+        pred_op = p.impl;
+        pred_op->add_predicate_reference();
       }
     }
 
@@ -4678,15 +4943,15 @@ namespace LegionRuntime {
     void NotPredOp::activate(void)
     //--------------------------------------------------------------------------
     {
+      activate_predicate();
       pred_op = NULL;
-      pred_valid = false;
-      pred_speculated = false;
     }
 
     //--------------------------------------------------------------------------
     void NotPredOp::deactivate(void)
     //--------------------------------------------------------------------------
     {
+      deactivate_predicate();
       runtime->free_not_predicate_op(this);
     }
 
@@ -4698,25 +4963,45 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    bool NotPredOp::sample(bool &valid, bool &speculated)
+    void NotPredOp::trigger_dependence_analysis(void)
     //--------------------------------------------------------------------------
     {
-      valid = false;
-      speculated = false;
-      AutoLock o_lock(op_lock);
-      if (!pred_value)
-        pred_value = !pred_op->sample(pred_valid, pred_speculated);
-      if (pred_value)
+      begin_dependence_analysis();
+      if (pred_op != NULL)
+        register_dependence(pred_op, pred_op->get_generation());
+      end_dependence_analysis();
+    }
+
+    //--------------------------------------------------------------------------
+    void NotPredOp::trigger_mapping(void)
+    //--------------------------------------------------------------------------
+    {
+      if (pred_op != NULL)
       {
-        valid = true;
-        return pred_value;
+        bool prev_value;
+        bool valid = pred_op->register_waiter(this, get_generation(),
+                                              prev_value);
+        // Don't forget to negate 
+        if (valid)
+          set_resolved_value(get_generation(), !prev_value);
+        // Now we can remove the reference we added
+        pred_op->remove_predicate_reference();
       }
-      else if (pred_speculated)
-      {
-        speculated = true;
-        return pred_value;
-      }
-      return false;
+      complete_mapping();
+    }
+
+    //--------------------------------------------------------------------------
+    void NotPredOp::notify_predicate_value(GenerationID prev_gen, bool value)
+    //--------------------------------------------------------------------------
+    {
+      // No short circuit in this one
+      // We can test this without the lock because 
+      // it is monotonically increasing
+#ifdef DEBUG_HIGH_LEVEL
+      assert(prev_gen == get_generation());
+#endif
+      // Don't forget to negate the value
+      set_resolved_value(prev_gen, !value);
     }
 
     /////////////////////////////////////////////////////////////
@@ -4755,42 +5040,50 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void AndPredOp::initialize(const Predicate &p1, const Predicate &p2)
+    void AndPredOp::initialize(SingleTask *ctx,
+                               const Predicate &p1, const Predicate &p2)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(ctx != NULL);
+#endif
+      // Don't track this as it can lead to deadlock because
+      // predicates can't complete until all their references from
+      // the parent task have been removed.
+      initialize_operation(ctx, false/*track*/);
+      // Short circuit case
+      if ((p1 == Predicate::FALSE_PRED) || (p2 == Predicate::FALSE_PRED))
+      {
+        set_resolved_value(get_generation(), false);
+        return;
+      }
       if (p1 == Predicate::TRUE_PRED)
       {
-        pred0 = NULL;
-        zero_valid = true;
-        zero_value = true;
-      }
-      else if (p1 == Predicate::FALSE_PRED)
-      {
-        pred0 = NULL;
-        zero_valid = true;
-        zero_value = false;
+        left_value = true;
+        left_valid = true;
       }
       else
       {
-        pred0 = p1.impl;
-        register_dependence(pred0, pred0->get_generation());
+#ifdef DEBUG_HIGH_LEVEL
+        assert(p1.impl != NULL);
+#endif
+        left_valid = false;
+        left = p1.impl;
+        left->add_predicate_reference();
       }
       if (p2 == Predicate::TRUE_PRED)
       {
-        pred1 = NULL;
-        one_valid = true;
-        one_value = true;
-      }
-      else if (p2 == Predicate::FALSE_PRED)
-      {
-        pred1 = NULL;
-        one_valid = true;
-        one_value = false;
+        right_value = true;
+        right_valid = true;
       }
       else
       {
-        pred1 = p2.impl;
-        register_dependence(pred1, pred1->get_generation());
+#ifdef DEBUG_HIGH_LEVEL
+        assert(p2.impl != NULL);
+#endif
+        right_valid = false;
+        right = p2.impl;
+        right->add_predicate_reference();
       }
     }
 
@@ -4798,18 +5091,18 @@ namespace LegionRuntime {
     void AndPredOp::activate(void)
     //--------------------------------------------------------------------------
     {
-      pred0 = NULL;
-      pred1 = NULL;
-      zero_valid = false;
-      zero_speculated = false;
-      one_valid = false;
-      one_speculated = false;
+      activate_predicate();
+      left = NULL;
+      right = NULL;
+      left_valid = false;
+      right_valid = false;
     }
 
     //--------------------------------------------------------------------------
     void AndPredOp::deactivate(void)
     //--------------------------------------------------------------------------
     {
+      deactivate_predicate();
       runtime->free_and_predicate_op(this);
     }
 
@@ -4821,94 +5114,112 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    bool AndPredOp::sample(bool &valid, bool &speculated)
+    void AndPredOp::trigger_dependence_analysis(void)
     //--------------------------------------------------------------------------
     {
-      valid = false;
-      speculated = false;
-      AutoLock o_lock(op_lock);
-      if (!zero_valid)
-        zero_value = pred0->sample(zero_valid, zero_speculated);
-      if (!one_valid)
-        one_value = pred1->sample(one_valid, one_speculated);
-      if (zero_valid)
+      begin_dependence_analysis();
+      if (left != NULL)
+        register_dependence(left, left->get_generation());
+      if (left != NULL)
+        register_dependence(right, right->get_generation());
+      end_dependence_analysis();
+    }
+
+    //--------------------------------------------------------------------------
+    void AndPredOp::trigger_mapping(void)
+    //--------------------------------------------------------------------------
+    {
+      // Hold the lock when doing this to prevent 
+      // any triggers from interfering with the analysis
+      bool need_resolve = false;
+      bool resolve_value;
+      GenerationID local_gen = get_generation();
       {
-        if (one_valid)
+        AutoLock o_lock(op_lock);
+        if (!predicate_resolved)
         {
-          valid = true;
-          return (zero_value && one_value);
-        }
-        else if (one_speculated)
-        {
-          if (zero_value)
+          if (left != NULL)
+            left_valid = left->register_waiter(this, get_generation(),
+                                               left_value);
+          if (right != NULL)
+            right_valid = right->register_waiter(this, get_generation(),
+                                                 right_value);
+          // Both valid
+          if (left_valid && right_valid)
           {
-            speculated = true;
-            return one_value;
+            need_resolve = true;
+            resolve_value = (left_value && right_value);
           }
-          else
+          // Left short circuit
+          else if (left_valid && !left_value)
           {
-            valid = true;
-            return false;
+            need_resolve = true;
+            resolve_value = false;
           }
-        }
-        else
-        {
-          if (!zero_value)
+          // Right short circuit
+          else if (right_valid && !right_value) 
           {
-            valid = true;
-            return false;
+            need_resolve = true;
+            resolve_value = false;
           }
         }
       }
-      else if (zero_speculated)
+      if (need_resolve)
+        set_resolved_value(local_gen, resolve_value);
+      // Clean up any references that we have
+      if (left != NULL)
+        left->remove_predicate_reference();
+      if (right != NULL)
+        right->remove_predicate_reference();
+      complete_mapping();
+    }
+
+    //--------------------------------------------------------------------------
+    void AndPredOp::notify_predicate_value(GenerationID pred_gen, bool value)
+    //--------------------------------------------------------------------------
+    {
+      bool need_resolve, resolve_value;
+      if (pred_gen == get_generation())
       {
-        if (one_valid)
+        AutoLock o_lock(op_lock);
+        // Check again to make sure we didn't lose the race
+        if ((pred_gen == get_generation()) && !predicate_resolved)
         {
-          if (one_value)
+          if (!value)
           {
-            speculated = true;
-            return zero_value;
+            need_resolve = true;
+            resolve_value = false;
           }
           else
           {
-            valid = true;
-            return false;
+            // Figure out which of the two values to fill in
+#ifdef DEBUG_HIGH_LEVEL
+            assert(!left_valid || !right_valid);
+#endif
+            if (!left_valid)
+            {
+              left_value = value;
+              left_valid = true;
+            }
+            else
+            {
+              right_value = value;
+              right_valid = true;
+            }
+            if (left_valid && right_valid)
+            {
+              need_resolve = true;
+              resolve_value = (left_value && right_value);
+            }
           }
-        }
-        else if (one_speculated)
-        {
-          speculated = true;
-          return (zero_value && one_value);
         }
         else
-        {
-          if (!zero_value)
-          {
-            speculated = true;
-            return false;
-          }
-        }
+          need_resolve = false;
       }
       else
-      {
-        if (one_valid)
-        {
-          if (!one_value)
-          {
-            valid = true;
-            return false;
-          }
-        }
-        else if (one_speculated)
-        {
-          if (!one_value)
-          {
-            speculated = true;
-            return false;
-          }
-        }
-      }
-      return false;
+        need_resolve = false;
+      if (need_resolve)
+        set_resolved_value(pred_gen, resolve_value);
     }
 
     /////////////////////////////////////////////////////////////
@@ -4947,42 +5258,44 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void OrPredOp::initialize(const Predicate &p1, const Predicate &p2)
+    void OrPredOp::initialize(SingleTask *ctx,
+                              const Predicate &p1, const Predicate &p2)
     //--------------------------------------------------------------------------
     {
-      if (p1 == Predicate::TRUE_PRED)
+#ifdef DEBUG_HIGH_LEVEL
+      assert(ctx != NULL);
+#endif
+      // Don't track this as it can lead to deadlock because
+      // predicates can't complete until all their references from
+      // the parent task have been removed.
+      initialize_operation(ctx, false/*track*/);
+      // Short circuit case
+      if ((p1 == Predicate::TRUE_PRED) || (p2 == Predicate::TRUE_PRED))
       {
-        pred0 = NULL;
-        zero_valid = true;
-        zero_value = true;
+        set_resolved_value(get_generation(), true);
+        return;
       }
-      else if (p1 == Predicate::FALSE_PRED)
+      if (p1 == Predicate::FALSE_PRED)
       {
-        pred0 = NULL;
-        zero_valid = true;
-        zero_value = false;
-      }
-      else
-      {
-        pred0 = p1.impl;
-        register_dependence(pred0, pred0->get_generation());
-      }
-      if (p2 == Predicate::TRUE_PRED)
-      {
-        pred1 = NULL;
-        one_valid = true;
-        one_value = true;
-      }
-      else if (p2 == Predicate::FALSE_PRED)
-      {
-        pred1 = NULL;
-        one_valid = true;
-        one_value = false;
+        left_value = false;
+        left_valid = true;
       }
       else
       {
-        pred1 = p2.impl;
-        register_dependence(pred1, pred1->get_generation());
+        left = p1.impl;
+        left_valid = false;
+        left->add_predicate_reference();
+      }
+      if (p2 == Predicate::FALSE_PRED)
+      {
+        right_value = false;
+        right_valid = true;
+      }
+      else
+      {
+        right = p2.impl;
+        right_valid = false;
+        right->add_predicate_reference();
       }
     }
 
@@ -4990,18 +5303,18 @@ namespace LegionRuntime {
     void OrPredOp::activate(void)
     //--------------------------------------------------------------------------
     {
-      pred0 = NULL;
-      pred1 = NULL;
-      zero_valid = false;
-      zero_speculated = false;
-      one_valid = false;
-      one_speculated = false;
+      activate_predicate();
+      left = NULL;
+      right = NULL;
+      left_valid = false;
+      right_valid = false;
     }
 
     //--------------------------------------------------------------------------
     void OrPredOp::deactivate(void)
     //--------------------------------------------------------------------------
     {
+      deactivate_predicate();
       runtime->free_or_predicate_op(this);
     }
 
@@ -5013,95 +5326,114 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    bool OrPredOp::sample(bool &valid, bool &speculated)
+    void OrPredOp::trigger_dependence_analysis(void)
     //--------------------------------------------------------------------------
     {
-      valid = false;
-      speculated = false;
-      AutoLock o_lock(op_lock);
-      if (!zero_valid)
-        zero_value = pred0->sample(zero_valid, zero_speculated);
-      if (!one_valid)
-        one_value = pred1->sample(one_valid, one_speculated);
-      if (zero_valid)
+      begin_dependence_analysis();
+      if (left != NULL)
+        register_dependence(left, left->get_generation());
+      if (right != NULL)
+        register_dependence(right, right->get_generation());
+      end_dependence_analysis();
+    }
+
+    //--------------------------------------------------------------------------
+    void OrPredOp::trigger_mapping(void)
+    //--------------------------------------------------------------------------
+    {
+      // Hold the lock when doing this to prevent 
+      // any triggers from interfering with the analysis
+      bool need_resolve = false;
+      bool resolve_value;
+      GenerationID local_gen = get_generation();
       {
-        if (one_valid)
+        AutoLock o_lock(op_lock);
+        if (!predicate_resolved)
         {
-          valid = true;
-          return (zero_value || one_value);
-        }
-        else if (one_speculated)
-        {
-          if (zero_value)
+          if (left != NULL)
+            left_valid = left->register_waiter(this, get_generation(),
+                                               left_value);
+          if (right != NULL)
+            right_valid = right->register_waiter(this, get_generation(),
+                                                 right_value);
+          // Both valid
+          if (left_valid && right_valid)
           {
-            valid = true;
-            return true;
+            need_resolve = true;
+            resolve_value = (left_value || right_value);
           }
-          else
+          // Left short circuit
+          else if (left_valid && left_value)
           {
-            speculated = true;
-            return one_value;
+            need_resolve = true;
+            resolve_value = true;
           }
-        }
-        else
-        {
-          if (one_value)
+          // Right short circuit
+          else if (right_valid && right_value) 
           {
-            valid = true;
-            return true;
+            need_resolve = true;
+            resolve_value = true;
           }
         }
       }
-      else if (zero_speculated)
+      if (need_resolve)
+        set_resolved_value(local_gen, resolve_value);
+      // Clean up any references that we have
+      if (left != NULL)
+        left->remove_predicate_reference();
+      if (right != NULL)
+        right->remove_predicate_reference();
+      complete_mapping();
+    }
+
+    //--------------------------------------------------------------------------
+    void OrPredOp::notify_predicate_value(GenerationID pred_gen, bool value)
+    //--------------------------------------------------------------------------
+    {
+      bool need_resolve, resolve_value;
+      if (pred_gen == get_generation())
       {
-        if (one_valid)
+        AutoLock o_lock(op_lock);
+        // Check again to make sure we didn't lose the race
+        if ((pred_gen == get_generation()) && !predicate_resolved)
         {
-          if (one_value)
+          if (value)
           {
-            valid = true;
-            return true;
+            need_resolve = true;
+            resolve_value = true;
           }
           else
           {
-            speculated = true;
-            return zero_value;
+            // Figure out which of the two values to fill in
+#ifdef DEBUG_HIGH_LEVEL
+            assert(!left_valid || !right_valid);
+#endif
+            if (!left_valid)
+            {
+              left_value = value;
+              left_valid = true;
+            }
+            else
+            {
+              right_value = value;
+              right_valid = true;
+            }
+            if (left_valid && right_valid)
+            {
+              need_resolve = true;
+              resolve_value = (left_value || right_value);
+            }
           }
-        }
-        else if (one_speculated)
-        {
-          speculated = true;
-          return (zero_value || one_value);
         }
         else
-        {
-          if (zero_value)
-          {
-            speculated = true;
-            return true;
-          }
-        }
+          need_resolve = false;
       }
       else
-      {
-        if (one_valid)
-        {
-          if (one_value)
-          {
-            valid = true;
-            return true;
-          }
-        }
-        else if (one_speculated)
-        {
-          if (one_value)
-          {
-            speculated = true;
-            return true;
-          }
-        }
-      }
-      return true;
+        need_resolve = false;
+      if (need_resolve)
+        set_resolved_value(pred_gen, resolve_value);
     }
+
 
     /////////////////////////////////////////////////////////////
     // Must Epoch Operation 
@@ -5156,25 +5488,37 @@ namespace LegionRuntime {
         indiv_tasks[idx] = runtime->get_available_individual_task();
         indiv_tasks[idx]->initialize_task(ctx, launcher.single_tasks[idx],
                                           check_privileges, false/*track*/);
-        indiv_tasks[idx]->set_must_epoch(this);
+        indiv_tasks[idx]->set_must_epoch(this, idx);
         // If we have a trace, set it for this operation as well
         if (trace != NULL)
           indiv_tasks[idx]->set_trace(trace);
       }
+      indiv_triggered.resize(indiv_tasks.size(), false);
       for (unsigned idx = 0; idx < launcher.index_tasks.size(); idx++)
       {
         index_tasks[idx] = runtime->get_available_index_task();
         index_tasks[idx]->initialize_task(ctx, launcher.index_tasks[idx],
                                           check_privileges, false/*track*/);
-        index_tasks[idx]->set_must_epoch(this);
+        index_tasks[idx]->set_must_epoch(this, indiv_tasks.size()+idx);
         if (trace != NULL)
           index_tasks[idx]->set_trace(trace);
       }
+      index_triggered.resize(index_tasks.size(), false);
       mapper_id = launcher.map_id;
       mapper_tag = launcher.mapping_tag;
       // Make a new future map for storing our results
       // We'll fill it in later
       result_map = new FutureMap::Impl(ctx, get_completion_event(), runtime);
+#ifdef DEBUG_HIGH_LEVEL
+      for (unsigned idx = 0; idx < indiv_tasks.size(); idx++)
+      {
+        result_map.impl->add_valid_point(indiv_tasks[idx]->index_point);
+      }
+      for (unsigned idx = 0; idx < index_tasks.size(); idx++)
+      {
+        result_map.impl->add_valid_domain(index_tasks[idx]->index_domain);
+      }
+#endif
       return result_map;
     }
 
@@ -5240,7 +5584,9 @@ namespace LegionRuntime {
       deactivate_operation();
       // All the sub-operations we have will deactivate themselves
       indiv_tasks.clear();
+      indiv_triggered.clear();
       index_tasks.clear();
+      index_triggered.clear();
       slice_tasks.clear();
       single_tasks.clear();
       // Remove our reference on the future map
@@ -5289,15 +5635,10 @@ namespace LegionRuntime {
       if (!triggering_complete)
       {
         task_sets.resize(indiv_tasks.size()+index_tasks.size());
-        triggering_index = 0;
-        for (unsigned idx = 0; idx < indiv_tasks.size(); 
-              idx++, triggering_index++)
-          if (!indiv_tasks[idx]->trigger_execution())
-            return false;
-        for (unsigned idx = 0; idx < index_tasks.size(); 
-              idx++, triggering_index++)
-          if (!index_tasks[idx]->trigger_execution())
-            return false;
+        MustEpochTriggerer triggerer(this);
+        if (!triggerer.trigger_tasks(indiv_tasks, indiv_triggered,
+                                     index_tasks, index_triggered))
+          return false;
 
 #ifdef DEBUG_HIGH_LEVEL
         assert(!single_tasks.empty());
@@ -5358,19 +5699,10 @@ namespace LegionRuntime {
       }
 
       // Then we need to actually perform the mapping
-      for (std::set<SingleTask*>::const_iterator it = 
-            single_tasks.begin(); it != single_tasks.end(); it++)
       {
-        if (!(*it)->perform_mapping(true/*mapper invoked already*/))
-        {
-          // Failed to map, unmap everyone that came before and restart
-          for (std::set<SingleTask*>::const_iterator it2 = 
-                single_tasks.begin(); it2 != it; it2++)
-          {
-            (*it2)->unmap_all_regions();
-          }
+        MustEpochMapper mapper(this); 
+        if (!mapper.map_tasks(single_tasks))
           return false;
-        }
       }
 
       // Everybody successfully mapped so now check that all
@@ -5414,22 +5746,9 @@ namespace LegionRuntime {
       }
 
       // If we passed all the constraints, then kick everything off
-      for (std::vector<IndividualTask*>::const_iterator it = 
-            indiv_tasks.begin(); it != indiv_tasks.end(); it++)
-      {
-        if (!runtime->is_local((*it)->target_proc)) 
-          (*it)->distribute_task();
-        else
-          (*it)->launch_task();
-      }
-      for (std::set<SliceTask*>::const_iterator it = 
-            slice_tasks.begin(); it != slice_tasks.end(); it++)
-      {
-        if (!runtime->is_local((*it)->target_proc))
-          (*it)->distribute_task();
-        else
-          (*it)->launch_task();
-      }
+      MustEpochDistributor distributor(this);
+      distributor.distribute_tasks(runtime, indiv_tasks, slice_tasks);
+      
       // Mark that we are done mapping and executing this operation
       complete_mapping();
       complete_execution();
@@ -5555,20 +5874,23 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void MustEpochOp::register_single_task(SingleTask *single)
+    void MustEpochOp::register_single_task(SingleTask *single, unsigned index)
     //--------------------------------------------------------------------------
     {
-      single_tasks.insert(single);
+      // Can do the first part without the lock 
 #ifdef DEBUG_HIGH_LEVEL
-      assert(triggering_index < task_sets.size());
+      assert(index < task_sets.size());
 #endif
-      task_sets[triggering_index].insert(single);
+      task_sets[index].insert(single);
+      AutoLock o_lock(op_lock);
+      single_tasks.insert(single);
     }
 
     //--------------------------------------------------------------------------
     void MustEpochOp::register_slice_task(SliceTask *slice)
     //--------------------------------------------------------------------------
     {
+      AutoLock o_lock(op_lock);
       slice_tasks.insert(slice);
     }
 
@@ -5667,6 +5989,374 @@ namespace LegionRuntime {
         return index_tasks[index];
       assert(false);
       return NULL;
+    }
+
+    /////////////////////////////////////////////////////////////
+    // Must Epoch Triggerer 
+    /////////////////////////////////////////////////////////////
+
+    //--------------------------------------------------------------------------
+    MustEpochTriggerer::MustEpochTriggerer(MustEpochOp *own)
+      : owner(own)
+    //--------------------------------------------------------------------------
+    {
+      trigger_lock = Reservation::create_reservation();
+    }
+
+    //--------------------------------------------------------------------------
+    MustEpochTriggerer::MustEpochTriggerer(const MustEpochTriggerer &rhs)
+      : owner(rhs.owner)
+    //--------------------------------------------------------------------------
+    {
+      // should never be called
+      assert(false);
+    }
+
+    //--------------------------------------------------------------------------
+    MustEpochTriggerer::~MustEpochTriggerer(void)
+    //--------------------------------------------------------------------------
+    {
+      trigger_lock.destroy_reservation();
+      trigger_lock = Reservation::NO_RESERVATION;
+    }
+
+    //--------------------------------------------------------------------------
+    MustEpochTriggerer& MustEpochTriggerer::operator=(
+                                                  const MustEpochTriggerer &rhs)
+    //--------------------------------------------------------------------------
+    {
+      // should never be called
+      assert(false);
+      return *this;
+    }
+
+    //--------------------------------------------------------------------------
+    bool MustEpochTriggerer::trigger_tasks(
+                                const std::vector<IndividualTask*> &indiv_tasks,
+                                std::vector<bool> &indiv_triggered,
+                                const std::vector<IndexTask*> &index_tasks,
+                                std::vector<bool> &index_triggered)
+    //--------------------------------------------------------------------------
+    {
+      std::deque<IndividualTask*> needed_indiv;
+      std::deque<IndexTask*> needed_index;
+      std::set<Event> wait_events;
+      // Count how many triggerers we are attempting
+      for (unsigned idx = 0; idx < indiv_triggered.size(); idx++)
+        if (!indiv_triggered[idx])
+          needed_indiv.push_back(indiv_tasks[idx]);
+      for (unsigned idx = 0; idx < index_triggered.size(); idx++)
+        if (!index_triggered[idx])
+          needed_index.push_back(index_tasks[idx]);
+      // Now do the launches
+      if (!needed_indiv.empty())
+      {
+        Processor exec_proc = Machine::get_executing_processor();
+        Processor util_proc = exec_proc.get_utility_processor();
+        MustEpochIndivArgs args;
+        args.hlr_id = HLR_MUST_INDIV_ID;
+        args.triggerer = this;
+        for (unsigned idx = 0; idx < needed_indiv.size(); idx++)
+        {
+          args.task = needed_indiv[idx];
+          Event wait = util_proc.spawn(HLR_TASK_ID, &args, sizeof(args));
+          if (wait.exists())
+            wait_events.insert(wait);
+        }
+      }
+      if (!needed_index.empty())
+      {
+        Processor exec_proc = Machine::get_executing_processor();
+        Processor util_proc = exec_proc.get_utility_processor();
+        MustEpochIndexArgs args;
+        args.hlr_id = HLR_MUST_INDEX_ID;
+        args.triggerer = this;
+        for (unsigned idx = 0; idx < needed_index.size(); idx++)
+        {
+          args.task = needed_index[idx];
+          Event wait = util_proc.spawn(HLR_TASK_ID, &args, sizeof(args));
+          if (wait.exists())
+            wait_events.insert(wait);
+        }
+      }
+
+      // Wait for all of the launches to be done
+      // We can safely block to free up the utility processor
+      if (!wait_events.empty())
+      {
+        Event trigger_event = Event::merge_events(wait_events);
+        trigger_event.wait(false/*block*/);
+      }
+      
+      // Now see if any failed
+      // Otherwise mark which ones succeeded
+      if (!failed_individual_tasks.empty())
+      {
+        for (unsigned idx = 0; idx < indiv_tasks.size(); idx++)
+        {
+          if (indiv_triggered[idx])
+            continue;
+          if (failed_individual_tasks.find(indiv_tasks[idx]) ==
+              failed_individual_tasks.end())
+            indiv_triggered[idx] = true;
+        }
+      }
+      if (!failed_index_tasks.empty())
+      {
+        for (unsigned idx = 0; idx < index_tasks.size(); idx++)
+        {
+          if (index_triggered[idx])
+            continue;
+          if (failed_index_tasks.find(index_tasks[idx]) ==
+              failed_index_tasks.end())
+            index_triggered[idx] = true;
+        }
+      }
+      return (failed_individual_tasks.empty() && failed_index_tasks.empty());
+    }
+
+    //--------------------------------------------------------------------------
+    void MustEpochTriggerer::trigger_individual(IndividualTask *task)
+    //--------------------------------------------------------------------------
+    {
+      if (!task->trigger_execution())
+      {
+        AutoLock t_lock(trigger_lock);
+        failed_individual_tasks.insert(task);
+      }
+    }
+
+    //--------------------------------------------------------------------------
+    void MustEpochTriggerer::trigger_index(IndexTask *task)
+    //--------------------------------------------------------------------------
+    {
+      if (!task->trigger_execution())
+      {
+        AutoLock t_lock(trigger_lock);
+        failed_index_tasks.insert(task);
+      }
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ void MustEpochTriggerer::handle_individual(const void *args)
+    //--------------------------------------------------------------------------
+    {
+      const MustEpochIndivArgs *indiv_args = (const MustEpochIndivArgs*)args;
+      indiv_args->triggerer->trigger_individual(indiv_args->task);
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ void MustEpochTriggerer::handle_index(const void *args)
+    //--------------------------------------------------------------------------
+    {
+      const MustEpochIndexArgs *index_args = (const MustEpochIndexArgs*)args;
+      index_args->triggerer->trigger_index(index_args->task);
+    }
+
+    /////////////////////////////////////////////////////////////
+    // Must Epoch Mapper 
+    /////////////////////////////////////////////////////////////
+
+    //--------------------------------------------------------------------------
+    MustEpochMapper::MustEpochMapper(MustEpochOp *own)
+      : owner(own), success(true)
+    //--------------------------------------------------------------------------
+    {
+    }
+
+    //--------------------------------------------------------------------------
+    MustEpochMapper::MustEpochMapper(const MustEpochMapper &rhs)
+      : owner(rhs.owner)
+    //--------------------------------------------------------------------------
+    {
+      // should never be called
+      assert(false);
+    }
+
+    //--------------------------------------------------------------------------
+    MustEpochMapper::~MustEpochMapper(void)
+    //--------------------------------------------------------------------------
+    {
+    }
+
+    //--------------------------------------------------------------------------
+    MustEpochMapper& MustEpochMapper::operator=(const MustEpochMapper &rhs)
+    //--------------------------------------------------------------------------
+    {
+      // should never be called
+      assert(false);
+      return *this;
+    }
+
+    //--------------------------------------------------------------------------
+    bool MustEpochMapper::map_tasks(const std::set<SingleTask*> &single_tasks)
+    //--------------------------------------------------------------------------
+    {
+      std::set<Event> wait_events;   
+      MustEpochMapArgs args;
+      args.hlr_id = HLR_MUST_MAP_ID;
+      args.mapper = this;
+      Processor exec_proc = Machine::get_executing_processor();
+      Processor util_proc = exec_proc.get_utility_processor();
+      for (std::set<SingleTask*>::const_iterator it = single_tasks.begin();
+            it != single_tasks.end(); it++)
+      {
+        args.task = *it;
+        Event wait = util_proc.spawn(HLR_TASK_ID, &args, sizeof(args));
+        if (wait.exists())
+          wait_events.insert(wait);
+      }
+      
+      if (!wait_events.empty())
+      {
+        Event mapped_event = Event::merge_events(wait_events);
+        mapped_event.wait(false/*block*/);
+      }
+
+      // If we failed to map then unmap all the tasks 
+      if (!success)
+      {
+        for (std::set<SingleTask*>::const_iterator it = single_tasks.begin();
+              it != single_tasks.end(); it++)
+        {
+          (*it)->unmap_all_regions();
+        }
+      }
+      return success;
+    }
+
+    //--------------------------------------------------------------------------
+    void MustEpochMapper::map_task(SingleTask *task)
+    //--------------------------------------------------------------------------
+    {
+      // Note we don't need to hold a lock here because this is
+      // a monotonic change.  Once it fails for anyone then it
+      // fails for everyone.
+      if (!task->perform_mapping(true/*mapper invoked already*/))
+        success = false;
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ void MustEpochMapper::handle_map_task(const void *args)
+    //--------------------------------------------------------------------------
+    {
+      const MustEpochMapArgs *map_args = (const MustEpochMapArgs*)args;
+      map_args->mapper->map_task(map_args->task);
+    }
+
+    /////////////////////////////////////////////////////////////
+    // Must Epoch Distributor 
+    /////////////////////////////////////////////////////////////
+
+    //--------------------------------------------------------------------------
+    MustEpochDistributor::MustEpochDistributor(MustEpochOp *own)
+      : owner(own)
+    //--------------------------------------------------------------------------
+    {
+    }
+
+    //--------------------------------------------------------------------------
+    MustEpochDistributor::MustEpochDistributor(const MustEpochDistributor &rhs)
+      : owner(rhs.owner)
+    //--------------------------------------------------------------------------
+    {
+      // should never be called
+      assert(false);
+    }
+
+    //--------------------------------------------------------------------------
+    MustEpochDistributor::~MustEpochDistributor(void)
+    //--------------------------------------------------------------------------
+    {
+    }
+
+    //--------------------------------------------------------------------------
+    MustEpochDistributor& MustEpochDistributor::operator=(
+                                                const MustEpochDistributor &rhs)
+    //--------------------------------------------------------------------------
+    {
+      // should never be called
+      assert(false);
+      return *this;
+    }
+
+    //--------------------------------------------------------------------------
+    void MustEpochDistributor::distribute_tasks(Runtime *runtime,
+                                const std::vector<IndividualTask*> &indiv_tasks,
+                                const std::set<SliceTask*> &slice_tasks)
+    //--------------------------------------------------------------------------
+    {
+      MustEpochDistributorArgs dist_args;
+      dist_args.hlr_id = HLR_MUST_DIST_ID;
+      MustEpochLauncherArgs launch_args;
+      launch_args.hlr_id = HLR_MUST_LAUNCH_ID;
+      std::set<Event> wait_events;
+      Processor exec_proc = Machine::get_executing_processor();
+      Processor util_proc = exec_proc.get_utility_processor();
+      for (std::vector<IndividualTask*>::const_iterator it = 
+            indiv_tasks.begin(); it != indiv_tasks.end(); it++)
+      {
+        if (!runtime->is_local((*it)->target_proc))
+        {
+          dist_args.task = *it;
+          Event wait = util_proc.spawn(HLR_TASK_ID, 
+                                       &dist_args, sizeof(dist_args));
+          if (wait.exists())
+            wait_events.insert(wait);
+        }
+        else
+        {
+          launch_args.task = *it;
+          Event wait = util_proc.spawn(HLR_TASK_ID,
+                                       &launch_args, sizeof(launch_args));
+          if (wait.exists())
+            wait_events.insert(wait);
+        }
+      }
+      for (std::set<SliceTask*>::const_iterator it = 
+            slice_tasks.begin(); it != slice_tasks.end(); it++)
+      {
+        if (!runtime->is_local((*it)->target_proc))
+        {
+          dist_args.task = *it;
+          Event wait = util_proc.spawn(HLR_TASK_ID,
+                                       &dist_args, sizeof(dist_args));
+          if (wait.exists())
+            wait_events.insert(wait);
+        }
+        else
+        {
+          launch_args.task = *it;
+          Event wait = util_proc.spawn(HLR_TASK_ID,
+                                       &launch_args, sizeof(launch_args));
+          if (wait.exists())
+            wait_events.insert(wait);
+        }
+      }
+      if (!wait_events.empty())
+      {
+        Event dist_event = Event::merge_events(wait_events);
+        dist_event.wait(false/*block*/);
+      }
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ void MustEpochDistributor::handle_distribute_task(
+                                                               const void *args)
+    //--------------------------------------------------------------------------
+    {
+      const MustEpochDistributorArgs *dist_args = 
+        (const MustEpochDistributorArgs*)args;
+      dist_args->task->distribute_task();
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ void MustEpochDistributor::handle_launch_task(const void *args)
+    //--------------------------------------------------------------------------
+    {
+      const MustEpochLauncherArgs *launch_args = 
+        (const MustEpochLauncherArgs *)args;
+      launch_args->task->launch_task();
     }
 
   }; // namespace LegionRuntime

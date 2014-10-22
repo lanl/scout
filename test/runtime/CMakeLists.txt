@@ -52,29 +52,31 @@
 project(scout_rt_test)
 
 if(CUDA_FOUND)
- add_subdirectory(cuda)
+ #add_subdirectory(cuda)
 endif()
 
 if(PNG_FOUND)
- add_subdirectory(png)
+ #add_subdirectory(png)
 endif()
 
 if(MPI_FOUND)
-# disabled for now
-add_subdirectory(volren)
+# add_subdirectory(volren)
 endif()
 
 if(CUDA_FOUND)
-  add_subdirectory(interop)
+#  add_subdirectory(interop)
 endif()
 
-add_subdirectory(display)
+#add_subdirectory(display)
 
 if (THRUST_FOUND)
-  add_subdirectory(isosurf)
+#  add_subdirectory(isosurf)
 endif()
 
 if (SCOUT_ENABLE_GLFW)
   add_subdirectory(glfw)
 endif()
-  
+
+if (SCOUT_ENABLE_LEGION)
+  add_subdirectory(liblsci)
+endif()  

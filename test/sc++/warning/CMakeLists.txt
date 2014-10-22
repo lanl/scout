@@ -89,3 +89,8 @@ add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
     "warning: builtin mesh intrinsics called outside of mesh construct")
 
+set(name task-io)
+set(tname sc++_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: I/O function called within task body")

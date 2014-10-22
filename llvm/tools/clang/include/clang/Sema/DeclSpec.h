@@ -244,7 +244,8 @@ public:
     SCS_auto,
     SCS_register,
     SCS_private_extern,
-    SCS_mutable
+    SCS_mutable,
+    SCS_persistent //+===== Scout
   };
 
   // Import thread storage class specifier enumeration and constants.
@@ -295,7 +296,8 @@ public:
   static const TST TST_rectilinear_mesh  = clang::TST_rectilinear_mesh;
   static const TST TST_unstructured_mesh = clang::TST_unstructured_mesh;
   static const TST TST_window            = clang::TST_window;
-  static const TST TST_image             = clang::TST_image;  
+  static const TST TST_image             = clang::TST_image;
+  static const TST TST_query             = clang::TST_query;
   // +========================================================================+
 
   static const TST TST_decimal32 = clang::TST_decimal32;
@@ -340,7 +342,7 @@ public:
 
 private:
   // storage-class-specifier
-  /*SCS*/unsigned StorageClassSpec : 3;
+  /*SCS*/unsigned StorageClassSpec : 4;
   /*TSCS*/unsigned ThreadStorageClassSpec : 2;
   unsigned SCS_extern_in_linkage_spec : 1;
 
@@ -1111,7 +1113,7 @@ struct DeclaratorChunk {
     Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren,
     // +===== Scout ==========================================================+
     UniformMesh, UnstructuredMesh, RectilinearMesh, StructuredMesh,
-    Window, Image 
+    Window, Image, Query
     // +======================================================================+
   } Kind;
 
@@ -1250,6 +1252,11 @@ struct DeclaratorChunk {
     
     Expr *WidthExpr;
     Expr *HeightExpr;
+
+    void destroy() {}
+  };
+  
+  struct QueryTypeInfo : TypeInfoCommon {
 
     void destroy() {}
   };
@@ -1507,6 +1514,7 @@ struct DeclaratorChunk {
     StructuredMeshTypeInfo     Strmsh;
     WindowTypeInfo             Win;
     ImageTypeInfo              Img;
+    QueryTypeInfo              Qry;
     // +======================================================================+
   };
 
@@ -1526,6 +1534,7 @@ struct DeclaratorChunk {
       case DeclaratorChunk::StructuredMesh:     return Strmsh.destroy();
       case DeclaratorChunk::Window:             return Win.destroy();
       case DeclaratorChunk::Image:              return Img.destroy();
+      case DeclaratorChunk::Query:              return Qry.destroy();
         // +======================================================================+
     }
   }
@@ -1731,6 +1740,15 @@ struct DeclaratorChunk {
     assert(dims[0] != 0 && dims[1] != 0);
     I.Img.WidthExpr  = dims[0];
     I.Img.HeightExpr = dims[1];  
+    return I;
+  }
+  
+  static DeclaratorChunk getQuery(SourceLocation LBLoc,
+                                  SourceLocation RBLoc) {
+    DeclaratorChunk I;
+    I.Kind           = Query;
+    I.Loc            = LBLoc;
+    I.EndLoc         = RBLoc;
     return I;
   }
   
@@ -2198,6 +2216,7 @@ public:
         case DeclaratorChunk::RectilinearMesh:
         case DeclaratorChunk::Window:
         case DeclaratorChunk::Image:
+        case DeclaratorChunk::Query:
           // +====================================================================+
         return false;
       }

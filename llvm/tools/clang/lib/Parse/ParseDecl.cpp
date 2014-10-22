@@ -10,6 +10,7 @@
 //  This file implements the Declaration portions of the Parser interfaces.
 //
 //===----------------------------------------------------------------------===//
+#include <iostream>
 
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
@@ -2984,6 +2985,14 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
                                                Loc, PrevSpec, DiagID);
       break;
 
+    // +===== Scout ==========================================================+
+    case tok::kw_persistent:
+      isInvalid = DS.SetStorageClassSpec(Actions, DeclSpec::SCS_persistent, Loc,
+                                         PrevSpec, DiagID, Policy);
+      break;
+    // +======================================================================+                                         
+        
+
     // function-specifier
     // +===== Scout ==========================================================+
     case tok::kw_stencil:
@@ -3191,6 +3200,12 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     case tok::kw_image: {
       ConsumeToken();
       isInvalid = DS.SetTypeSpecType(DeclSpec::TST_image, Loc, PrevSpec, DiagID, Policy);
+      continue;
+    }
+    
+    case tok::kw_query: {
+      ConsumeToken();
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_query, Loc, PrevSpec, DiagID, Policy);
       continue;
     }
         
@@ -4038,6 +4053,7 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_unstructured:
   case tok::kw_window:
   case tok::kw_image:
+  case tok::kw_query:
   // +========================================================================+
 
   case tok::kw_bool:
@@ -4235,6 +4251,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw___thread:
   case tok::kw_thread_local:
   case tok::kw__Thread_local:
+  case tok::kw_persistent:   // +===== Scout ======= 
 
     // Modules
   case tok::kw___module_private__:
@@ -4269,7 +4286,8 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw_structured:
   case tok::kw_unstructured:
   case tok::kw_window:
-  case tok::kw_image:    
+  case tok::kw_image:
+  case tok::kw_query:
   // +========================================================================+
 
   case tok::kw_bool:
@@ -5693,6 +5711,10 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
     }
     case DeclSpec::TST_image: {
       ParseImageBracketDeclarator(D);
+      return;
+    }
+    case DeclSpec::TST_query: {
+      assert(false && "unimplemented");
       return;
     }
     default:

@@ -63,7 +63,8 @@ namespace clang {
     TST_rectilinear_mesh,
     TST_unstructured_mesh,
     TST_window,
-    TST_image,     
+    TST_image,
+    TST_query,
     // +======================================================================+
     TST_decltype,         // C++11 decltype
     TST_underlyingType,   // __underlying_type for C++11
@@ -185,7 +186,9 @@ namespace clang {
     // These are only legal on variables.
     SC_OpenCLWorkGroupLocal,
     SC_Auto,
-    SC_Register
+    SC_Register,
+    // +===== Scout ===========
+    SC_Persistent
   };
 
   /// \brief Checks whether the given storage class is legal for functions.

@@ -5,8 +5,6 @@
 
 #include "llvm/ADT/Triple.h"
 #include "llvm/CodeGen/CommandFlags.h"
-#include "llvm/CodeGen/LinkAllAsmWriterComponents.h"
-#include "llvm/CodeGen/LinkAllCodegenComponents.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/LLVMContext.h"
@@ -28,6 +26,7 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Target/TargetLibraryInfo.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
@@ -55,11 +54,13 @@ typedef vector<string> StringVec;
 static const uint8_t FIELD_READ = 0x01;
 static const uint8_t FIELD_WRITE = 0x02;
 
+/*
 static const uint8_t FIELD_CELL = 0;
 static const uint8_t FIELD_VERTEX = 1;
 static const uint8_t FIELD_EDGE = 2;
 static const uint8_t FIELD_FACE = 3;
-  
+*/
+
 class CUDAModule{
 public:
   
@@ -73,8 +74,8 @@ public:
             PointerType* type)
         : name_(name),
           position_(position),
-          elementType_(elementType),
           type_(type),
+          elementType_(elementType),
           mode_(0),
           value_(0){
 
@@ -607,12 +608,13 @@ public:
 
     passManager.add(createVerifierPass());
 
-    const DataLayout* dataLayout = targetMachine->getDataLayout();
+    const DataLayout* dataLayout = targetMachine->getSubtargetImpl()->getDataLayout();
+
     kernelModule_.setDataLayout(dataLayout);
 
     assert(dataLayout && "failed to get data layout");
 
-    passManager.add(new DataLayoutPass(&kernelModule_));
+    passManager.add(new DataLayoutPass());
 
     string ptxCode;
     raw_string_ostream rstr(ptxCode);
@@ -668,6 +670,10 @@ public:
   ForallPTX() : ModulePass(ID){}
 
   void getAnalysisUsage(AnalysisUsage& AU) const override{}
+
+  const char *getPassName() const {
+    return "Forall-to-PTX";
+  }
 
   bool runOnModule(Module& M) override{
     CUDAModule cudaModule(&M);

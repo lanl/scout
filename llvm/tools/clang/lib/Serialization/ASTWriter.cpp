@@ -326,6 +326,10 @@ void ASTTypeWriter::VisitWindowType(const WindowType *T) {
 void ASTTypeWriter::VisitImageType(const ImageType *T) {
   Code = TYPE_IMAGE;
 }
+
+void ASTTypeWriter::VisitQueryType(const QueryType *T) {
+  Code = TYPE_QUERY;
+}
 // +==========================================================================+
 void ASTTypeWriter::VisitRecordType(const RecordType *T) {
   VisitTagType(T);
@@ -621,6 +625,8 @@ void TypeLocWriter::VisitUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc TL)
 void TypeLocWriter::VisitWindowTypeLoc(WindowTypeLoc TL)
 { }
 void TypeLocWriter::VisitImageTypeLoc(ImageTypeLoc TL)
+{ }
+void TypeLocWriter::VisitQueryTypeLoc(QueryTypeLoc TL)
 { }
 // +==========================================================================+
 void TypeLocWriter::VisitRecordTypeLoc(RecordTypeLoc TL) {

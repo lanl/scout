@@ -433,6 +433,31 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    size_t TaskOp::check_future_size(Future::Impl *impl)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(impl != NULL);
+#endif
+      const size_t result_size = impl->get_untyped_size();
+      if (result_size != variants->return_size)
+      {
+        log_run(LEVEL_ERROR,"Predicated task launch for task %s "
+                            "in parent task %s (UID %lld) has predicated "
+                            "false future of size %ld bytes, but the "
+                            "expected return size is %ld bytes.",
+                            variants->name, parent_ctx->variants->name,
+                            parent_ctx->get_unique_task_id(),
+                            result_size, variants->return_size);
+#ifdef DEBUG_HIGH_LEVEL
+        assert(false);
+#endif
+        exit(ERROR_PREDICATE_RESULT_SIZE_MISMATCH);
+      }
+      return result_size;
+    }
+
+    //--------------------------------------------------------------------------
     const char* TaskOp::get_logging_name(void)
     //--------------------------------------------------------------------------
     {
@@ -479,11 +504,19 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void TaskOp::continue_mapping(void)
+    void TaskOp::resolve_true(void)
     //--------------------------------------------------------------------------
     {
       // Put this on the ready queue
       runtime->add_to_ready_queue(current_proc, this, false/*prev fail*/);
+    }
+
+    //--------------------------------------------------------------------------
+    bool TaskOp::speculate(bool &value)
+    //--------------------------------------------------------------------------
+    {
+      Processor exec_proc = parent_ctx->get_executing_processor();
+      return runtime->invoke_mapper_speculate(exec_proc, this, value);
     }
 
     //--------------------------------------------------------------------------
@@ -1274,7 +1307,7 @@ namespace LegionRuntime {
       // From Operation
       this->parent_ctx = rhs->parent_ctx;
       if (rhs->must_epoch != NULL)
-        this->set_must_epoch(rhs->must_epoch);
+        this->set_must_epoch(rhs->must_epoch, this->must_epoch_index);
       // From Task
       this->task_id = rhs->task_id;
       this->indexes = rhs->indexes;
@@ -1773,8 +1806,13 @@ namespace LegionRuntime {
     {
       RezCheck z(rez);
       rez.serialize(p.dim);
-      for (int idx = 0; idx < p.dim; idx++)
-        rez.serialize(p.point_data[idx]);
+      if (p.dim == 0)
+        rez.serialize(p.point_data[0]);
+      else
+      {
+        for (int idx = 0; idx < p.dim; idx++)
+          rez.serialize(p.point_data[idx]);
+      }
     }
 
     //--------------------------------------------------------------------------
@@ -1783,8 +1821,13 @@ namespace LegionRuntime {
     {
       DerezCheck z(derez);
       derez.deserialize(p.dim);
-      for (int idx = 0; idx < p.dim; idx++)
-        derez.deserialize(p.point_data[idx]);
+      if (p.dim == 0)
+        derez.deserialize(p.point_data[0]);
+      else
+      {
+        for (int idx = 0; idx < p.dim; idx++)
+          derez.deserialize(p.point_data[idx]);
+      }
     }
 
     //--------------------------------------------------------------------------
@@ -1877,12 +1920,6 @@ namespace LegionRuntime {
       complete_children.clear();
       mapping_paths.clear();
       premapping_events.clear();
-      for (std::set<Operation*>::const_iterator it = reclaim_children.begin();
-            it != reclaim_children.end(); it++)
-      {
-        (*it)->deactivate();
-      }
-      reclaim_children.clear();
       for (std::map<TraceID,LegionTrace*>::const_iterator it = traces.begin();
             it != traces.end(); it++)
       {
@@ -2480,14 +2517,6 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void SingleTask::register_reclaim_operation(Operation *op)
-    //--------------------------------------------------------------------------
-    {
-      AutoLock o_lock(op_lock);
-      reclaim_children.insert(op);
-    }
-
-    //--------------------------------------------------------------------------
     void SingleTask::register_fence_dependence(Operation *op)
     //--------------------------------------------------------------------------
     {
@@ -2635,6 +2664,8 @@ namespace LegionRuntime {
       {
         // Successfully allocated a local field, launch a task to reclaim it
         Serializer rez;
+        // Do this before the check since it gets pulled off first
+        rez.serialize<HLRTaskID>(HLR_RECLAIM_LOCAL_FIELD_ID);
         {
           RezCheck z(rez);
           rez.serialize(info.handle);
@@ -2645,8 +2676,8 @@ namespace LegionRuntime {
 #else
         Processor util = executing_processor.get_utility_processor();
 #endif
-        util.spawn(RECLAIM_LOCAL_FID,rez.get_buffer(),
-                   rez.get_used_bytes(),info.reclaim_event);
+        util.spawn(HLR_TASK_ID, rez.get_buffer(),
+                   rez.get_used_bytes(), info.reclaim_event);
       }
     }
 
@@ -3541,7 +3572,10 @@ namespace LegionRuntime {
       AutoLock o_lock(op_lock,1,false/*exclusive*/);
       for (unsigned idx = 0; idx < regions.size(); idx++)
       {
-        if (regions[idx].prop != SIMULTANEOUS)
+        // Restriction is transitive so we need to be restricted if
+        // our parent was also restricted
+        if ((regions[idx].prop != SIMULTANEOUS) &&
+            !regions[idx].restricted)
           continue;
         // Also check to see if we have a physical region
         // If not then we don't need to bother with coherence
@@ -3586,7 +3620,8 @@ namespace LegionRuntime {
       AutoLock o_lock(op_lock,1,false/*exclusive*/);
       for (unsigned idx = 0; idx < regions.size(); idx++)
       {
-        if (regions[idx].prop != SIMULTANEOUS)
+        if ((regions[idx].prop != SIMULTANEOUS) &&
+            !regions[idx].restricted)
           continue;
         if (!physical_regions[idx].is_mapped())
           continue;
@@ -3647,6 +3682,252 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void SingleTask::check_index_subspace(IndexSpace handle, const char *caller)
+    //--------------------------------------------------------------------------
+    {
+      // This is always called inline so no need to take the lock
+      std::vector<Color> path;
+      for (unsigned idx = 0; idx < regions.size(); idx++)
+      {
+        path.clear();
+        if (runtime->forest->compute_index_path(
+              regions[idx].region.get_index_space(), handle, path))
+          return;
+      }
+      // Finally check the index space requirements
+      for (unsigned idx = 0; idx < indexes.size(); idx++)
+      {
+        path.clear();
+        if (runtime->forest->compute_index_path(indexes[idx].handle, 
+                                                handle, path))
+          return;
+      }
+      // Also check the created regions
+      for (std::set<LogicalRegion>::const_iterator it = 
+            created_regions.begin(); it != created_regions.end(); it++)
+      {
+        path.clear();
+        if (runtime->forest->compute_index_path(it->get_index_space(),
+                                                handle, path))
+          return;
+      }
+      // Finally check the created index spaces
+      for (std::set<IndexSpace>::const_iterator it = 
+            created_index_spaces.begin(); it != 
+            created_index_spaces.end(); it++)
+      {
+        path.clear();
+        if (runtime->forest->compute_index_path(*it, handle, path))
+          return;
+      }
+#if 0
+      log_task(LEVEL_ERROR,"Invalid call of %s with index space " IDFMT 
+                           "which is not a sub-space of any requested or "
+                           "created index spaces in task %s (ID %lld).",
+                           caller, handle.id, variants->name,
+                           get_unique_task_id());
+#ifdef DEBUG_HIGH_LEVEL
+      assert(false);
+#endif
+      exit(ERROR_INVALID_INDEX_SUBSPACE_REQUEST);
+#else
+      log_task(LEVEL_WARNING,"Invalid call of %s with index space " IDFMT 
+                           "which is not a sub-space of any requested or "
+                           "created index spaces in task %s (ID %lld). "
+                           "This must be fixed to guarantee correct "
+                           "execution in multi-node runs.",
+                           caller, handle.id, variants->name,
+                           get_unique_task_id());
+#endif
+    }
+
+    //--------------------------------------------------------------------------
+    void SingleTask::check_index_subpartition(IndexPartition handle,
+                                              const char *caller)
+    //--------------------------------------------------------------------------
+    {
+      std::vector<Color> path;
+      for (unsigned idx = 0; idx < regions.size(); idx++)
+      {
+        path.clear();
+        if (runtime->forest->compute_partition_path(
+              regions[idx].region.get_index_space(), handle, path))
+          return;
+      }
+      // Finally check the index space requirements
+      for (unsigned idx = 0; idx < indexes.size(); idx++)
+      {
+        path.clear();
+        if (runtime->forest->compute_partition_path(
+              indexes[idx].handle, handle, path))
+          return;
+      }
+      // Also check the created regions
+      for (std::set<LogicalRegion>::const_iterator it = 
+            created_regions.begin(); it != created_regions.end(); it++)
+      {
+        path.clear();
+        if (runtime->forest->compute_partition_path(
+              it->get_index_space(), handle, path))
+          return;
+      }
+      // Finally check the created index spaces
+      for (std::set<IndexSpace>::const_iterator it = 
+            created_index_spaces.begin(); it != 
+            created_index_spaces.end(); it++)
+      {
+        path.clear();
+        if (runtime->forest->compute_partition_path(*it, handle, path))
+          return;
+      }
+#if 0
+      log_task(LEVEL_ERROR,"Invalid call of %s with index partition %d"
+                           "which is not a sub-partition of any requested "
+                           "or created index spaces in task %s (ID %lld).",
+                           caller, handle, variants->name,
+                           get_unique_task_id());
+#ifdef DEBUG_HIGH_LEVEL
+      assert(false);
+#endif
+      exit(ERROR_INVALID_INDEX_SUBPARTITION_REQUEST);
+#else
+      log_task(LEVEL_WARNING,"Invalid call of %s with index partition %d"
+                           "which is not a sub-partition of any requested "
+                           "or created index spaces in task %s (ID %lld). "
+                           "This must be fixed to guarantee correct "
+                           "execution in multi-node runs.",
+                           caller, handle, variants->name,
+                           get_unique_task_id());
+#endif
+    }
+
+    //--------------------------------------------------------------------------
+    void SingleTask::check_field_space(FieldSpace handle, const char *caller)
+    //--------------------------------------------------------------------------
+    {
+      for (unsigned idx = 0; idx < regions.size(); idx++)
+      {
+        if (regions[idx].region.get_field_space() == handle)
+          return;
+      }
+      for (std::set<FieldSpace>::const_iterator it = 
+            created_field_spaces.begin(); it != 
+            created_field_spaces.end(); it++)
+      {
+        if ((*it) == handle)
+          return;
+      }
+#if 0
+      log_task(LEVEL_ERROR,"Invalid call of %s with field space %d which is "
+                           "not a field space of any requested regions and "
+                           "was not created in the context of task %s "
+                           "(ID %lld).", caller, handle.id, variants->name,
+                           get_unique_task_id());
+#ifdef DEBUG_HIGH_LEVEL
+      assert(false);
+#endif
+      exit(ERROR_INVALID_FIELD_SPACE_REQUEST);
+#else
+      log_task(LEVEL_WARNING,"Invalid call of %s with field space %d which is "
+                           "not a field space of any requested regions and "
+                           "was not created in the context of task %s "
+                           "(ID %lld). This must be fixed to guarantee correct "
+                           "execution in multi-node runs", caller, handle.id, 
+                           variants->name, get_unique_task_id());
+#endif
+    }
+
+    //--------------------------------------------------------------------------
+    void SingleTask::check_logical_subregion(LogicalRegion handle, 
+                                             const char *caller)
+    //--------------------------------------------------------------------------
+    {
+      std::vector<Color> path;
+      for (unsigned idx = 0; idx < regions.size(); idx++)
+      {
+        if (regions[idx].region.get_tree_id() != handle.get_tree_id())
+          continue;
+        path.clear();
+        if (runtime->forest->compute_index_path(
+              regions[idx].region.get_index_space(),
+              handle.get_index_space(), path))
+          return;
+      }
+      for (std::set<LogicalRegion>::const_iterator it = 
+            created_regions.begin(); it != created_regions.end(); it++)
+      {
+        if (it->get_tree_id() == handle.get_tree_id())
+          return;
+      }
+#if 0
+      log_task(LEVEL_ERROR,"Invalid call of %s with logical region ("
+                            IDFMT ",%d,%d) which is not a sub-region of any "
+                            "requested or created regions in task %s "
+                            "(ID %lld).", caller, handle.get_index_space().id,
+                            handle.get_field_space().id, handle.get_tree_id(),
+                            variants->name, get_unique_task_id());
+#ifdef DEBUG_HIGH_LEVEL
+      assert(false);
+#endif
+      exit(ERROR_INVALID_LOGICAL_SUBREGION_REQUEST);
+#else
+      log_task(LEVEL_WARNING,"Invalid call of %s with logical region ("
+                            IDFMT ",%d,%d) which is not a sub-region of any "
+                            "requested or created regions in task %s "
+                            "(ID %lld). This must be fixed to guarantee "
+                            "correct execution in multi-node runs.", 
+                            caller, handle.get_index_space().id,
+                            handle.get_field_space().id, handle.get_tree_id(),
+                            variants->name, get_unique_task_id());
+#endif
+    }
+
+    //--------------------------------------------------------------------------
+    void SingleTask::check_logical_subpartition(LogicalPartition handle,
+                                                const char *caller)
+    //--------------------------------------------------------------------------
+    {
+      std::vector<Color> path;
+      for (unsigned idx = 0; idx < regions.size(); idx++)
+      {
+        if (regions[idx].region.get_tree_id() != handle.get_tree_id())
+          continue;
+        path.clear();
+        if (runtime->forest->compute_partition_path(
+              regions[idx].region.get_index_space(),
+              handle.get_index_partition(), path))
+          return;
+      }
+      for (std::set<LogicalRegion>::const_iterator it = 
+            created_regions.begin(); it != created_regions.end(); it++)
+      {
+        if (it->get_tree_id() == handle.get_tree_id())
+          return;
+      }
+#if 0
+      log_task(LEVEL_ERROR,"Invalid call of %s with logical partition "
+                           "(%d,%d,%d) which is not a sub-partition of any "
+                           "requested or created regions in task %s (ID %lld).",
+                           caller, handle.get_index_partition(),
+                           handle.get_field_space().id, handle.get_tree_id(),
+                           variants->name, get_unique_task_id());
+#ifdef DEBUG_HIGH_LEVEL
+      assert(false);
+#endif
+      exit(ERROR_INVALID_LOGICAL_SUBPARTITION_REQUEST);
+#else
+      log_task(LEVEL_WARNING,"Invalid call of %s with logical partition "
+                           "(%d,%d,%d) which is not a sub-partition of any "
+                           "requested or created regions in task %s (ID %lld). "
+                           "This must be fixed to guarantee correct execution "
+                           " in multi-node runs.",
+                           caller, handle.get_index_partition(),
+                           handle.get_field_space().id, handle.get_tree_id(),
+                           variants->name, get_unique_task_id());
+#endif
+    }
+
+    //--------------------------------------------------------------------------
     bool SingleTask::trigger_execution(void)
     //--------------------------------------------------------------------------
     {
@@ -3688,7 +3969,7 @@ namespace LegionRuntime {
           // See if we have a must epoch in which case
           // we can simply record ourselves and we are done
           if (must_epoch != NULL)
-            must_epoch->register_single_task(this);
+            must_epoch->register_single_task(this, must_epoch_index);
           else
           {
             // See if this task is going to be sent
@@ -4485,8 +4766,10 @@ namespace LegionRuntime {
 #endif
       if (util != executing_processor)
       {
-        SingleTask *proxy_this = this; 
-        util.spawn(POST_END_TASK_ID,&proxy_this,sizeof(proxy_this));
+        PostEndArgs post_end_args;
+        post_end_args.hlr_id = HLR_POST_END_ID;
+        post_end_args.proxy_this = this;
+        util.spawn(HLR_TASK_ID, &post_end_args, sizeof(post_end_args));
       }
       else
         post_end_task();
@@ -4654,11 +4937,24 @@ namespace LegionRuntime {
           switch (d.dim)
           {
             case 0:
-              break;
+              {
+                if (d.get_volume() <= 0)
+                {
+                  log_run(LEVEL_ERROR,
+                            "Invalid mapper domain slice result for mapper %d "
+                            "on processor " IDFMT " for task %s (ID %lld). "
+                            "Mapper returned an empty domain for split %d.",
+                            map_id, current_proc.id, variants->name,
+                            get_unique_task_id(), idx);
+                  assert(false);
+                  exit(ERROR_INVALID_MAPPER_DOMAIN_SLICE);
+                }
+                break;
+              }
             case 1:
               {
                 Rect<1> rec = d.get_rect<1>();
-                if (rec.volume() == 0)
+                if (rec.volume() <= 0)
                 {
                   log_run(LEVEL_ERROR,
                             "Invalid mapper domain slice result for mapper %d "
@@ -4674,7 +4970,7 @@ namespace LegionRuntime {
             case 2:
               {
                 Rect<2> rec = d.get_rect<2>();
-                if (rec.volume() == 0)
+                if (rec.volume() <= 0)
                 {
                   log_run(LEVEL_ERROR,
                             "Invalid mapper domain slice result for mapper %d "
@@ -4690,7 +4986,7 @@ namespace LegionRuntime {
             case 3:
               {
                 Rect<3> rec = d.get_rect<3>();
-                if (rec.volume() == 0)
+                if (rec.volume() <= 0)
                 {
                   log_run(LEVEL_ERROR,
                             "Invalid mapper domain slice result for mapper %d "
@@ -4716,55 +5012,30 @@ namespace LegionRuntime {
         slices.push_back(slice);
       }
 
-      bool success = true;
 #ifdef LEGION_LOGGING
       UniqueID local_id = get_unique_task_id();
 #endif
-      // Watch out for the cleanup race, make a copy of the slices
-      bool is_slice = (get_task_kind() == SLICE_TASK_KIND);
-      std::list<SliceTask*> local_slices = slices;
-      std::set<SliceTask*> failed_slices;
-      for (std::list<SliceTask*>::const_iterator it = local_slices.begin();
-            it != local_slices.end(); it++)
-      {
-        bool slice_success = (*it)->trigger_execution();
-        if (!slice_success)
-        {
-          success = false;
-          failed_slices.insert(*it);
-        }
-      }
-      // If there were some slices that didn't succeed, then we
-      // need to clean up the ones that did so we know when
-      // which ones to re-trigger when we try again later. Otherwise
-      // if all the slices succeeded, then the normal deactivation of
-      // this task will clean up the slices. Note that if we have
-      // at least one slice that didn't succeed then we know this
-      // task cannot be deactivated.
-      if (!success)
-      {
-        for (std::list<SliceTask*>::iterator it = slices.begin();
-              it != slices.end(); /*nothing*/)
-        {
-          // If we can't find it in the set of failed slices
-          // then it succeeded so we can remove it from the list
-          if (failed_slices.find(*it) == failed_slices.end())
-            it = slices.erase(it);
-          else
-            it++;
-        }
-      }
+      bool success = trigger_slices(); 
 #ifdef LEGION_LOGGING
       LegionLogging::log_timing_event(Machine::get_executing_processor(),
                                       local_id, END_SLICING);
 #endif
-
       // If we succeeded and this is an intermediate slice task
       // then we can reclaim it, otherwise, if it is the original
-      // index task then we want to keep it around
-      if (success && is_slice)
+      // index task then we want to keep it around. Note it is safe
+      // to call get_task_kind here despite the cleanup race because
+      // it is a static property of the object.
+      if (success && (get_task_kind() == SLICE_TASK_KIND))
         deactivate();
       return success;
+    }
+
+    //--------------------------------------------------------------------------
+    bool MultiTask::trigger_slices(void)
+    //--------------------------------------------------------------------------
+    {
+      DeferredSlicer slicer(this);
+      return slicer.trigger_slices(slices);
     }
 
     //--------------------------------------------------------------------------
@@ -4781,7 +5052,10 @@ namespace LegionRuntime {
       this->argument_map = rhs->argument_map;
       this->redop = rhs->redop;
       if (this->redop != 0)
+      {
         this->reduction_op = rhs->reduction_op;
+        initialize_reduction_state();
+      }
     }
 
     //--------------------------------------------------------------------------
@@ -4953,7 +5227,10 @@ namespace LegionRuntime {
       derez.deserialize(must_barrier);
       derez.deserialize(redop);
       if (redop > 0)
+      {
         reduction_op = Runtime::get_reduction_op(redop);
+        initialize_reduction_state();
+      }
       if (unpack_args)
       {
         argument_map = 
@@ -4963,25 +5240,34 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void MultiTask::initialize_reduction_state(void)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(reduction_op != NULL);
+      assert(reduction_op->is_foldable);
+      assert(reduction_state == NULL);
+#endif
+      reduction_state_size = reduction_op->sizeof_rhs;
+      reduction_state = malloc(reduction_state_size);
+      reduction_op->init(reduction_state, 1);
+    }
+
+    //--------------------------------------------------------------------------
     void MultiTask::fold_reduction_future(const void *result, 
-                                          size_t result_size, bool owner)
+                                          size_t result_size, 
+                                          bool owner, bool exclusive)
     //--------------------------------------------------------------------------
     {
       // Apply the reduction operation
 #ifdef DEBUG_HIGH_LEVEL
       assert(reduction_op != NULL);
       assert(reduction_op->is_foldable);
+      assert(reduction_state != NULL);
       assert(result_size == reduction_op->sizeof_rhs);
 #endif
-      // See if we need to make the state
-      if (reduction_state == NULL)
-      {
-        reduction_state_size = reduction_op->sizeof_rhs;
-        reduction_state = malloc(reduction_state_size);
-        reduction_op->init(reduction_state,1);
-      }
-      // Now do the fold operation
-      reduction_op->fold(reduction_state, result, 1, true/*exclusive*/);
+      // Perform the reduction
+      reduction_op->fold(reduction_state, result, 1, exclusive);
 
       // If we're the owner, then free the memory
       if (owner)
@@ -5030,6 +5316,8 @@ namespace LegionRuntime {
       activate_single();
       future_store = NULL;
       future_size = 0;
+      predicate_false_result = NULL;
+      predicate_false_size = 0;
       orig_task = this;
       remote_completion_event = get_completion_event();
       remote_unique_id = get_unique_task_id();
@@ -5051,8 +5339,15 @@ namespace LegionRuntime {
         future_store = NULL;
         future_size = 0;
       }
+      if (predicate_false_result != NULL)
+      {
+        free(predicate_false_result);
+        predicate_false_result = NULL;
+        predicate_false_size = 0;
+      }
       // Remove our reference on the future
       result = Future();
+      predicate_false_future = Future();
       privilege_paths.clear();
       // Read this before freeing the task
       // Should be safe, but we'll be careful
@@ -5061,11 +5356,7 @@ namespace LegionRuntime {
       // If we are the top-level-task and we are deactivated then
       // it is now safe to shutdown the machine
       if (is_top_level_task)
-      {
-        log_run(LEVEL_SPEW,"Computation has terminated. "
-                           "Shutting down the Legion runtime...");
-        runtime->machine->shutdown();
-      }
+        runtime->initiate_runtime_shutdown();
     }
 
     //--------------------------------------------------------------------------
@@ -5104,6 +5395,59 @@ namespace LegionRuntime {
       index_point = launcher.point;
       is_index_space = false;
       initialize_base_task(ctx, track, launcher.predicate, task_id);
+      if (launcher.predicate != Predicate::TRUE_PRED)
+      {
+        if (launcher.predicate_false_future.impl != NULL)
+          predicate_false_future = launcher.predicate_false_future;
+        else
+        {
+          predicate_false_size = launcher.predicate_false_result.get_size();
+          if (predicate_false_size == 0)
+          {
+            if (variants->return_size > 0)
+            {
+              log_run(LEVEL_ERROR,"Predicated task launch for task %s "
+                                  "in parent task %s (UID %lld) has non-void "
+                                  "return type but no default value for its "
+                                  "future if the task predicate evaluates to "
+                                  "false.  Please set either the "
+                                  "'predicate_false_result' or "
+                                  "'predicate_false_future' fields of the "
+                                  "TaskLauncher struct.",
+                                  variants->name, ctx->variants->name,
+                                  ctx->get_unique_task_id());
+#ifdef DEBUG_HIGH_LEVEL
+              assert(false);
+#endif
+              exit(ERROR_MISSING_DEFAULT_PREDICATE_RESULT);
+            }
+          }
+          else
+          {
+            if (predicate_false_size != variants->return_size)
+            {
+              log_run(LEVEL_ERROR,"Predicated task launch for task %s "
+                                 "in parent task %s (UID %lld) has predicated "
+                                 "false return type of size %ld bytes, but the "
+                                 "expected return size is %ld bytes.",
+                                 variants->name, parent_ctx->variants->name,
+                                 parent_ctx->get_unique_task_id(),
+                                 predicate_false_size, variants->return_size);
+#ifdef DEBUG_HIGH_LEVEL
+              assert(false);
+#endif
+              exit(ERROR_PREDICATE_RESULT_SIZE_MISMATCH);
+            }
+#ifdef DEBUG_HIGH_LEVEL
+            assert(predicate_false_result == NULL);
+#endif
+            predicate_false_result = malloc(predicate_false_size);
+            memcpy(predicate_false_result, 
+                   launcher.predicate_false_result.get_ptr(),
+                   predicate_false_size);
+          }
+        }
+      }
       if (check_privileges)
         perform_privilege_checks();
       initialize_physical_contexts();
@@ -5115,7 +5459,7 @@ namespace LegionRuntime {
 #endif
       initialize_paths(); 
       // Get a future from the parent context to use as the result
-      result = Future(new Future::Impl(runtime, 
+      result = Future(new Future::Impl(runtime, true/*register*/, 
             runtime->get_available_distributed_id(), runtime->address_space,
             runtime->address_space, this));
       check_empty_field_requirements();
@@ -5185,7 +5529,7 @@ namespace LegionRuntime {
       assert(remote_outermost_context.exists());
 #endif
       initialize_paths();
-      result = Future(new Future::Impl(runtime,
+      result = Future(new Future::Impl(runtime, true/*register*/,
             runtime->get_available_distributed_id(), runtime->address_space,
             runtime->address_space, this));
       check_empty_field_requirements();
@@ -5255,6 +5599,80 @@ namespace LegionRuntime {
 #ifdef LEGION_PROF
       LegionProf::register_event(get_unique_task_id(), PROF_END_DEP_ANALYSIS);
 #endif
+    }
+
+    //--------------------------------------------------------------------------
+    void IndividualTask::report_aliased_requirements(unsigned idx1, 
+                                                     unsigned idx2)
+    //--------------------------------------------------------------------------
+    {
+#if 0
+      log_run(LEVEL_ERROR,"Aliased region requirements for individual tasks "
+                          "are not permitted. Region requirements %d and %d "
+                          "of task %s (UID %lld) in parent task %s (UID %lld) "
+                          "are aliased.", idx1, idx2, variants->name,
+                          get_unique_task_id(), parent_ctx->variants->name,
+                          parent_ctx->get_unique_task_id());
+#ifdef DEBUG_HIGH_LEVEL
+      assert(false);
+#endif
+      exit(ERROR_ALIASED_REGION_REQUIREMENTS);
+#else
+      log_run(LEVEL_WARNING,"Region requirements %d and %d of individual task "
+                            "%s (UID %lld) in parent task %s (UID %lld) are "
+                            "aliased.  This behavior is currently undefined. "
+                            "You better really know what you are doing.",
+                            idx1, idx2, variants->name, get_unique_task_id(),
+                            parent_ctx->variants->name, 
+                            parent_ctx->get_unique_task_id());
+#endif
+    }
+    
+    //--------------------------------------------------------------------------
+    void IndividualTask::resolve_false(void)
+    //--------------------------------------------------------------------------
+    {
+      bool trigger = true;
+      // Set the future to the false result
+      if (predicate_false_future.impl != NULL)
+      {
+        Event wait_on = predicate_false_future.impl->get_ready_event();
+        if (wait_on.has_triggered())
+        {
+          const size_t result_size = 
+            check_future_size(predicate_false_future.impl);
+          if (result_size > 0)
+            result.impl->set_result(
+                predicate_false_future.impl->get_untyped_result(),
+                result_size, false/*own*/);
+        }
+        else
+        {
+          // Add references so they aren't garbage collected
+          result.impl->add_gc_reference();
+          predicate_false_future.impl->add_gc_reference();
+          Runtime::DeferredFutureSetArgs args;
+          args.hlr_id = HLR_DEFERRED_FUTURE_SET_ID;
+          args.target = result.impl;
+          args.result = predicate_false_future.impl;
+          args.task_op = this;
+          Processor exec_proc = Machine::get_executing_processor();
+          Processor util_proc = exec_proc.get_utility_processor();
+          util_proc.spawn(HLR_TASK_ID, &args, sizeof(args), wait_on);
+          trigger = false;
+        }
+      }
+      else
+      {
+        if (predicate_false_size > 0)
+          result.impl->set_result(predicate_false_result,
+                                  predicate_false_size, false/*own*/);
+      }
+      // Then clean up this task instance
+      if (trigger)
+        complete_execution();
+      complete_mapping();
+      trigger_children_complete();
     }
 
     //--------------------------------------------------------------------------
@@ -5881,7 +6299,7 @@ namespace LegionRuntime {
     {
       // Send state for anything that was not premapped and has not
       // already been mapped
-      std::set<LogicalView*> needed_views;
+      std::map<LogicalView*,FieldMask> needed_views;
       std::set<PhysicalManager*> needed_managers;
 #ifdef DEBUG_HIGH_LEVEL
       assert(enclosing_physical_contexts.size() == regions.size());
@@ -6039,6 +6457,14 @@ namespace LegionRuntime {
 
     //--------------------------------------------------------------------------
     void PointTask::trigger_dependence_analysis(void)
+    //--------------------------------------------------------------------------
+    {
+      // should never be called
+      assert(false);
+    }
+
+    //--------------------------------------------------------------------------
+    void PointTask::resolve_false(void)
     //--------------------------------------------------------------------------
     {
       // should never be called
@@ -6390,6 +6816,14 @@ namespace LegionRuntime {
 
     //--------------------------------------------------------------------------
     void WrapperTask::trigger_dependence_analysis(void)
+    //--------------------------------------------------------------------------
+    {
+      // should never be called
+      assert(false);
+    }
+
+    //--------------------------------------------------------------------------
+    void WrapperTask::resolve_false(void)
     //--------------------------------------------------------------------------
     {
       // should never be called
@@ -6840,13 +7274,6 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void InlineTask::register_reclaim_operation(Operation *op)
-    //--------------------------------------------------------------------------
-    {
-      enclosing->register_reclaim_operation(op);
-    }
-
-    //--------------------------------------------------------------------------
     void InlineTask::register_fence_dependence(Operation *op)
     //--------------------------------------------------------------------------
     {
@@ -6908,6 +7335,8 @@ namespace LegionRuntime {
       committed_points = 0;
       complete_received = false;
       commit_received = false; 
+      predicate_false_result = NULL;
+      predicate_false_size = 0;
     }
 
     //--------------------------------------------------------------------------
@@ -6922,6 +7351,13 @@ namespace LegionRuntime {
       argument_map = ArgumentMap();
       // Remove our reference to the future map
       future_map = FutureMap();
+      if (predicate_false_result != NULL)
+      {
+        free(predicate_false_result);
+        predicate_false_result = NULL;
+        predicate_false_size = 0;
+      }
+      predicate_false_future = Future();
       // Remove our reference to the reduction future
       reduction_future = Future();
       runtime->free_index_task(this);
@@ -6970,12 +7406,18 @@ namespace LegionRuntime {
         must_barrier = Barrier::create_barrier(1);
       index_domain = launcher.launch_domain;
       initialize_base_task(ctx, track, launcher.predicate, task_id);
+      if (launcher.predicate != Predicate::TRUE_PRED)
+        initialize_predicate(launcher.predicate_false_future,
+                             launcher.predicate_false_result);
       if (check_privileges)
         perform_privilege_checks();
       initialize_physical_contexts();
       initialize_paths();
       annotate_early_mapped_regions();
       future_map = FutureMap(new FutureMap::Impl(ctx, this, runtime));
+#ifdef DEBUG_HIGH_LEVEL
+      future_map.impl->add_valid_domain(index_domain);
+#endif
       check_empty_field_requirements();
 #ifdef LEGION_LOGGING
       LegionLogging::log_index_space_task(parent_ctx->get_executing_processor(),
@@ -7002,7 +7444,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     Future IndexTask::initialize_task(SingleTask *ctx,
                                       const IndexLauncher &launcher,
-                                      ReductionOpID redop, 
+                                      ReductionOpID redop_id, 
                                       bool check_privileges,
                                       bool track /*= true*/)
     //--------------------------------------------------------------------------
@@ -7042,6 +7484,7 @@ namespace LegionRuntime {
       if (must_parallelism)
         must_barrier = Barrier::create_barrier(1);
       index_domain = launcher.launch_domain;
+      redop = redop_id;
       reduction_op = Runtime::get_reduction_op(redop);
       if (!reduction_op->is_foldable)
       {
@@ -7053,13 +7496,18 @@ namespace LegionRuntime {
 #endif
         exit(ERROR_UNFOLDABLE_REDUCTION_OP);
       }
+      else
+        initialize_reduction_state();
       initialize_base_task(ctx, track, launcher.predicate, task_id);
+      if (launcher.predicate != Predicate::TRUE_PRED)
+        initialize_predicate(launcher.predicate_false_future,
+                             launcher.predicate_false_result);
       if (check_privileges)
         perform_privilege_checks();
       initialize_physical_contexts();
       initialize_paths();
       annotate_early_mapped_regions();
-      reduction_future = Future(new Future::Impl(runtime,
+      reduction_future = Future(new Future::Impl(runtime, true/*register*/,
             runtime->get_available_distributed_id(), runtime->address_space,
             runtime->address_space, this));
       check_empty_field_requirements();
@@ -7136,6 +7584,9 @@ namespace LegionRuntime {
       initialize_paths();
       annotate_early_mapped_regions();
       future_map = FutureMap(new FutureMap::Impl(ctx, this, runtime));
+#ifdef DEBUG_HIGH_LEVEL
+      future_map.impl->add_valid_domain(index_domain);
+#endif
       check_empty_field_requirements();
 #ifdef LEGION_LOGGING
       LegionLogging::log_index_space_task(parent_ctx->get_executing_processor(),
@@ -7167,7 +7618,7 @@ namespace LegionRuntime {
             const std::vector<RegionRequirement> &region_requirements,
             const TaskArgument &global_arg,
             const ArgumentMap &arg_map,
-            ReductionOpID redop,
+            ReductionOpID redop_id,
             const TaskArgument &init_value,
             const Predicate &pred,
             bool must,
@@ -7205,6 +7656,7 @@ namespace LegionRuntime {
         if (must_parallelism)
         must_barrier = Barrier::create_barrier(1);
       index_domain = domain;
+      redop = redop_id;
       reduction_op = Runtime::get_reduction_op(redop);
       if (!reduction_op->is_foldable)
       {
@@ -7216,13 +7668,15 @@ namespace LegionRuntime {
 #endif
         exit(ERROR_UNFOLDABLE_REDUCTION_OP);
       }
+      else
+        initialize_reduction_state();
       initialize_base_task(ctx, true/*track*/, pred, task_id);
       if (check_privileges)
         perform_privilege_checks();
       initialize_physical_contexts();
       initialize_paths();
       annotate_early_mapped_regions();
-      reduction_future = Future(new Future::Impl(runtime,
+      reduction_future = Future(new Future::Impl(runtime, true/*register*/,
             runtime->get_available_distributed_id(), runtime->address_space,
             runtime->address_space, this));
       check_empty_field_requirements();
@@ -7246,6 +7700,62 @@ namespace LegionRuntime {
       }
 #endif
       return reduction_future;
+    }
+
+    //--------------------------------------------------------------------------
+    void IndexTask::initialize_predicate(const Future &pred_future,
+                                         const TaskArgument &pred_arg)
+    //--------------------------------------------------------------------------
+    {
+      if (pred_future.impl != NULL)
+        predicate_false_future = pred_future;
+      else
+      {
+        predicate_false_size = pred_arg.get_size();
+        if (predicate_false_size == 0)
+        {
+          if (variants->return_size > 0)
+          {
+            log_run(LEVEL_ERROR,"Predicated index task launch for task %s "
+                                "in parent task %s (UID %lld) has non-void "
+                                "return type but no default value for its "
+                                "future if the task predicate evaluates to "
+                                "false.  Please set either the "
+                                "'predicate_false_result' or "
+                                "'predicate_false_future' fields of the "
+                                "IndexLauncher struct.",
+                                variants->name, parent_ctx->variants->name,
+                                parent_ctx->get_unique_task_id());
+#ifdef DEBUG_HIGH_LEVEL
+            assert(false);
+#endif
+            exit(ERROR_MISSING_DEFAULT_PREDICATE_RESULT);
+          }
+        }
+        else
+        {
+          if (predicate_false_size != variants->return_size)
+          {
+            log_run(LEVEL_ERROR,"Predicated index task launch for task %s "
+                                "in parent task %s (UID %lld) has predicated "
+                                "false return type of size %ld bytes, but the "
+                                "expected return size is %ld bytes.",
+                                variants->name, parent_ctx->variants->name,
+                                parent_ctx->get_unique_task_id(),
+                                predicate_false_size, variants->return_size);
+#ifdef DEBUG_HIGH_LEVEL
+            assert(false);
+#endif
+            exit(ERROR_PREDICATE_RESULT_SIZE_MISMATCH);
+          }
+#ifdef DEBUG_HIGH_LEVEL
+          assert(predicate_false_result == NULL);
+#endif
+          predicate_false_result = malloc(predicate_false_size);
+          memcpy(predicate_false_result, pred_arg.get_ptr(),
+                 predicate_false_size);
+        }
+      }
     }
 
     //--------------------------------------------------------------------------
@@ -7301,6 +7811,130 @@ namespace LegionRuntime {
 #ifdef LEGION_PROF
       LegionProf::register_event(get_unique_task_id(), PROF_END_DEP_ANALYSIS);
 #endif
+    }
+
+    //--------------------------------------------------------------------------
+    void IndexTask::report_aliased_requirements(unsigned idx1, unsigned idx2)
+    //--------------------------------------------------------------------------
+    {
+#if 0
+      log_run(LEVEL_ERROR,"Aliased region requirements for index tasks "
+                          "are not permitted. Region requirements %d and %d "
+                          "of task %s (UID %lld) in parent task %s (UID %lld) "
+                          "are aliased.", idx1, idx2, variants->name,
+                          get_unique_task_id(), parent_ctx->variants->name,
+                          parent_ctx->get_unique_task_id());
+#ifdef DEBUG_HIGH_LEVEL
+      assert(false);
+#endif
+      exit(ERROR_ALIASED_REGION_REQUIREMENTS);
+#else
+      log_run(LEVEL_WARNING,"Region requirements %d and %d of individual task "
+                            "%s (UID %lld) in parent task %s (UID %lld) are "
+                            "aliased.  This behavior is currently undefined. "
+                            "You better really know what you are doing.",
+                            idx1, idx2, variants->name, get_unique_task_id(),
+                            parent_ctx->variants->name, 
+                            parent_ctx->get_unique_task_id());
+#endif
+    }
+
+    //--------------------------------------------------------------------------
+    void IndexTask::resolve_false(void)
+    //--------------------------------------------------------------------------
+    {
+      bool trigger = true;
+      // Fill in the index task map with the default future value
+      if (redop == 0)
+      {
+        // Handling the future map case
+        if (predicate_false_future.impl != NULL)
+        {
+          Event wait_on = predicate_false_future.impl->get_ready_event();
+          if (wait_on.has_triggered())
+          {
+            const size_t result_size = 
+              check_future_size(predicate_false_future.impl);
+            const void *result = 
+              predicate_false_future.impl->get_untyped_result();
+            for (Domain::DomainPointIterator itr(index_domain); itr; itr++)
+            {
+              Future f = future_map.get_future(itr.p);
+              if (result_size > 0)
+                f.impl->set_result(result, result_size, false/*own*/);
+            }
+          }
+          else
+          {
+            // Add references so things won't be prematurely collected
+            future_map.impl->add_reference();
+            predicate_false_future.impl->add_gc_reference();
+            Runtime::DeferredFutureMapSetArgs args;
+            args.hlr_id = HLR_DEFERRED_FUTURE_MAP_SET_ID;
+            args.future_map = future_map.impl;
+            args.result = predicate_false_future.impl;
+            args.domain = index_domain;
+            args.task_op = this;
+            Processor exec_proc = Machine::get_executing_processor();
+            Processor util_proc = exec_proc.get_utility_processor();
+            util_proc.spawn(HLR_TASK_ID, &args, sizeof(args), wait_on);
+            trigger = false;
+          }
+        }
+        else
+        {
+          for (Domain::DomainPointIterator itr(index_domain); itr; itr++)
+          {
+            Future f = future_map.get_future(itr.p);
+            if (predicate_false_size > 0)
+              f.impl->set_result(predicate_false_result,
+                                 predicate_false_size, false/*own*/);
+          }
+        }
+      }
+      else
+      {
+        // Handling a reduction case
+        if (predicate_false_future.impl != NULL)
+        {
+          Event wait_on = predicate_false_future.impl->get_ready_event();
+          if (wait_on.has_triggered())
+          {
+            const size_t result_size = 
+                        check_future_size(predicate_false_future.impl);
+            if (result_size > 0)
+              reduction_future.impl->set_result(
+                  predicate_false_future.impl->get_untyped_result(),
+                  result_size, false/*own*/);
+          }
+          else
+          {
+            // Add references so they aren't garbage collected 
+            reduction_future.impl->add_gc_reference();
+            predicate_false_future.impl->add_gc_reference();
+            Runtime::DeferredFutureSetArgs args;
+            args.hlr_id = HLR_DEFERRED_FUTURE_SET_ID;
+            args.target = reduction_future.impl;
+            args.result = predicate_false_future.impl;
+            args.task_op = this;
+            Processor exec_proc = Machine::get_executing_processor();
+            Processor util_proc = exec_proc.get_utility_processor();
+            util_proc.spawn(HLR_TASK_ID, &args, sizeof(args), wait_on);
+            trigger = false;
+          }
+        }
+        else
+        {
+          if (predicate_false_size > 0)
+            reduction_future.impl->set_result(predicate_false_result,
+                                  predicate_false_size, false/*own*/);
+        }
+      }
+      // Then clean up this task execution
+      if (trigger)
+        complete_execution();
+      complete_mapping();
+      trigger_children_complete();
     }
 
     //--------------------------------------------------------------------------
@@ -7460,9 +8094,12 @@ namespace LegionRuntime {
     bool IndexTask::map_and_launch(void)
     //--------------------------------------------------------------------------
     {
-      // should never be called
-      assert(false);
-      return false;
+      // This should only ever be called if we had slices which failed to map
+#ifdef DEBUG_HIGH_LEVEL
+      assert(is_sliced());
+      assert(!slices.empty());
+#endif
+      return trigger_slices();
     }
 
     //--------------------------------------------------------------------------
@@ -7499,15 +8136,18 @@ namespace LegionRuntime {
       // and then trigger it
       if (redop != 0)
       {
-        reduction_future.impl->set_result(reduction_state,
-                                          reduction_state_size, 
-                                          false/*owner*/);
+        if (speculation_state != RESOLVE_FALSE_STATE)
+          reduction_future.impl->set_result(reduction_state,
+                                            reduction_state_size, 
+                                            false/*owner*/);
         reduction_future.impl->complete_future();
       }
       else
         future_map.impl->complete_all_futures();
 
       complete_operation();
+      if (speculation_state == RESOLVE_FALSE_STATE)
+        trigger_children_committed();
     }
 
     //--------------------------------------------------------------------------
@@ -7603,7 +8243,8 @@ namespace LegionRuntime {
           f.impl->set_result(result,result_size,true/*owner*/);
         }
         else
-          fold_reduction_future(result, result_size, true/*owner*/);
+          fold_reduction_future(result, result_size, 
+                                true/*owner*/, true/*exclusive*/);
       }
       if (redop == 0)
         future_map.impl->complete_all_futures();
@@ -7661,14 +8302,10 @@ namespace LegionRuntime {
     {
       // Need to hold the lock when doing this since it could
       // be going in parallel with other users
-      if (redop != 0)
-      {
-        AutoLock o_lock(op_lock);
-        fold_reduction_future(result, result_size, owner);
-      }
+      if (reduction_op != NULL)
+        fold_reduction_future(result, result_size, owner, false/*exclusive*/);
       else
       {
-        AutoLock o_lock(op_lock);
         if (must_epoch == NULL)
         {
           Future f = future_map.get_future(point);
@@ -7774,41 +8411,36 @@ namespace LegionRuntime {
       DerezCheck z(derez);
       size_t points;
       derez.deserialize(points);
-      // Hold the lock when doing these things
+      // Hold the lock when unpacking the privileges
       {
         AutoLock o_lock(op_lock);
         unpack_privilege_state(derez);
-        if (redop != 0)
-        {
+      }
+      if (redop != 0)
+      {
 #ifdef DEBUG_HIGH_LEVEL
-          assert(reduction_op != NULL);
+        assert(reduction_op != NULL);
+        assert(reduction_state_size == reduction_op->sizeof_rhs);
 #endif
-          // See if we need to make a reduction state
-          if (reduction_state == NULL)
-          {
-            reduction_state_size = reduction_op->sizeof_rhs;
-            reduction_state = malloc(reduction_state_size);
-            reduction_op->init(reduction_state,1);
-          }
-          const void *reduc_ptr = derez.get_current_pointer();
-          reduction_op->fold(reduction_state,reduc_ptr,1,true/*exclusive*/);
-          // Advance the pointer on the deserializer
-          derez.advance_pointer(reduction_state_size);
-        }
-        else
+        const void *reduc_ptr = derez.get_current_pointer();
+        fold_reduction_future(reduc_ptr, reduction_state_size,
+                              false /*owner*/, false/*exclusive*/);
+        // Advance the pointer on the deserializer
+        derez.advance_pointer(reduction_state_size);
+      }
+      else
+      {
+        for (unsigned idx = 0; idx < points; idx++)
         {
-          for (unsigned idx = 0; idx < points; idx++)
+          DomainPoint p;
+          unpack_point(derez, p);
+          if (must_epoch == NULL)
           {
-            DomainPoint p;
-            unpack_point(derez, p);
-            if (must_epoch == NULL)
-            {
-              Future f = future_map.impl->get_future(p);
-              f.impl->unpack_future(derez);
-            }
-            else
-              must_epoch->unpack_future(p, derez);
+            Future f = future_map.impl->get_future(p);
+            f.impl->unpack_future(derez);
           }
+          else
+            must_epoch->unpack_future(p, derez);
         }
       }
       return_slice_complete(points);
@@ -7857,7 +8489,7 @@ namespace LegionRuntime {
     {
       // Send state for anything that was not premapped and has not
       // already been mapped
-      std::set<LogicalView*> needed_views;
+      std::map<LogicalView*,FieldMask> needed_views;
       std::set<PhysicalManager*> needed_managers;
 #ifdef DEBUG_HIGH_LEVEL
       assert(enclosing_physical_contexts.size() == regions.size());
@@ -7988,6 +8620,14 @@ namespace LegionRuntime {
 
     //--------------------------------------------------------------------------
     void SliceTask::trigger_dependence_analysis(void)
+    //--------------------------------------------------------------------------
+    {
+      // should never be called
+      assert(false);
+    }
+
+    //--------------------------------------------------------------------------
+    void SliceTask::resolve_false(void)
     //--------------------------------------------------------------------------
     {
       // should never be called
@@ -8424,7 +9064,7 @@ namespace LegionRuntime {
       if (is_remote())
       {
         if (redop != 0)
-          fold_reduction_future(result, result_size, owner);
+          fold_reduction_future(result, result_size, owner, false/*exclusive*/);
         else
         {
           // Store it in our temporary futures
@@ -8458,7 +9098,7 @@ namespace LegionRuntime {
         enumerate_points();
       must_epoch->register_slice_task(this);
       for (unsigned idx = 0; idx < points.size(); idx++)
-        must_epoch->register_single_task(points[idx]);
+        must_epoch->register_single_task(points[idx], must_epoch_index);
     }
 
     //--------------------------------------------------------------------------
@@ -8543,6 +9183,9 @@ namespace LegionRuntime {
         PointTask *next_point = clone_as_point_task(itr.p);
         points.push_back(next_point);
       }
+#ifdef DEBUG_HIGH_LEVEL
+      assert(index_domain.get_volume() == points.size());
+#endif
       mapping_index = 0;
       // Mark how many points we have
       num_unmapped_points = points.size();
@@ -8834,6 +9477,121 @@ namespace LegionRuntime {
       derez.deserialize(slice_task);
       rt->add_to_ready_queue(slice_task->current_proc, slice_task,
                              false/*prev fail*/);
+    }
+
+    /////////////////////////////////////////////////////////////
+    // Slice Task 
+    /////////////////////////////////////////////////////////////
+
+    //--------------------------------------------------------------------------
+    DeferredSlicer::DeferredSlicer(MultiTask *own)
+      : owner(own)
+    //--------------------------------------------------------------------------
+    {
+      slice_lock = Reservation::create_reservation();
+    }
+
+    //--------------------------------------------------------------------------
+    DeferredSlicer::DeferredSlicer(const DeferredSlicer &rhs)
+      : owner(rhs.owner)
+    //--------------------------------------------------------------------------
+    {
+      // should never be called
+      assert(false);
+    }
+
+    //--------------------------------------------------------------------------
+    DeferredSlicer::~DeferredSlicer(void)
+    //--------------------------------------------------------------------------
+    {
+      slice_lock.destroy_reservation();
+      slice_lock = Reservation::NO_RESERVATION;
+    }
+
+    //--------------------------------------------------------------------------
+    DeferredSlicer& DeferredSlicer::operator=(const DeferredSlicer &rhs)
+    //--------------------------------------------------------------------------
+    {
+      // should never be called
+      assert(false);
+      return *this;
+    }
+
+    //--------------------------------------------------------------------------
+    bool DeferredSlicer::trigger_slices(std::list<SliceTask*> &slices)
+    //--------------------------------------------------------------------------
+    {
+      // Watch out for the cleanup race with some acrobatics here
+      // to handle the case where the iterator is invalidated
+      std::set<Event> wait_events;
+      {
+        Processor exec_proc = Machine::get_executing_processor();
+        Processor util_proc = exec_proc.get_utility_processor();
+        std::list<SliceTask*>::const_iterator it = slices.begin();
+        DeferredSliceArgs args;
+        args.hlr_id = HLR_DEFERRED_SLICE_ID;
+        args.slicer = this;
+        while (true) 
+        {
+          args.slice = *it;
+          it++;
+          bool done = (it == slices.end()); 
+          Event wait = util_proc.spawn(HLR_TASK_ID, &args, sizeof(args)); 
+          if (wait.exists())
+            wait_events.insert(wait);
+          if (done)
+            break;
+        }
+      }
+
+      // Now we wait for the slices to trigger, note we do not
+      // block on the event allowing the utility processor to 
+      // perform other operations
+      if (!wait_events.empty())
+      {
+        Event sliced_event = Event::merge_events(wait_events);
+        sliced_event.wait(false/*block*/);
+      }
+
+      bool success = failed_slices.empty();
+      // If there were some slices that didn't succeed, then we
+      // need to clean up the ones that did so we know when
+      // which ones to re-trigger when we try again later. Otherwise
+      // if all the slices succeeded, then the normal deactivation of
+      // this task will clean up the slices. Note that if we have
+      // at least one slice that didn't succeed then we know this
+      // task cannot be deactivated.
+      if (!success)
+      {
+        for (std::list<SliceTask*>::iterator it = slices.begin();
+              it != slices.end(); /*nothing*/)
+        {
+          if (failed_slices.find(*it) == failed_slices.end())
+            it = slices.erase(it);
+          else
+            it++;
+        }
+      }
+      return success;
+    }
+
+    //--------------------------------------------------------------------------
+    void DeferredSlicer::perform_slice(SliceTask *slice)
+    //--------------------------------------------------------------------------
+    {
+      if (!slice->trigger_execution())
+      {
+        AutoLock s_lock(slice_lock);
+        failed_slices.insert(slice);
+      }
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ void DeferredSlicer::handle_slice(const void *args)
+    //--------------------------------------------------------------------------
+    {
+      const DeferredSliceArgs *slice_args = (const DeferredSliceArgs*)args;
+      slice_args->slicer->perform_slice(slice_args->slice);
     }
 
   }; // namespace HighLevel

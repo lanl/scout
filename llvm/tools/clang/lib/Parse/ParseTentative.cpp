@@ -1215,6 +1215,9 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw___thread:
   case tok::kw_thread_local:
   case tok::kw__Thread_local:
+  // +===== Scout ==========================================================+    
+  case tok::kw_persistent:
+  // +======================================================================+
     // function-specifier
   // +===== Scout ==========================================================+
   case tok::kw_stencil:
@@ -1417,6 +1420,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw_unstructured:
   case tok::kw_window:
   case tok::kw_image:
+  case tok::kw_query:
   // +========================================================================+
   case tok::kw_void:
   case tok::annot_decltype:

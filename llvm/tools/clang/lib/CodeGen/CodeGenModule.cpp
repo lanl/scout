@@ -58,6 +58,7 @@
 
 // ====== Scout =========================
 #include "Scout/CGScoutRuntime.h"
+#include "Scout/CGLegionRuntime.h"
 // ======================================
 
 using namespace clang;
@@ -92,6 +93,7 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
       // ===== Scout =========================================
     ScoutABI(createScoutABI(*this)),
     ScoutRuntime(nullptr),
+    LegionRuntime(nullptr),
       // =====================================================
       OpenCLRuntime(nullptr), OpenMPRuntime(nullptr),
       CUDARuntime(nullptr), DebugInfo(nullptr), ARCData(nullptr),
@@ -133,8 +135,16 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
   if (LangOpts.CUDA)
     createCUDARuntime();
   // +===== Scout ============================================================+
-  if(isScoutLang(LangOpts))
+  if(isScoutLang(LangOpts)) {
     createScoutRuntime();
+    if (CodeGenOpts.ScoutLegionSupport) {
+      createLegionRuntime();
+      // start lsci_main() function for doing Legion task registration and Legion startup.
+      // Once this is started, each time we see a task while doing code gen, add
+      // to this function to register the legion task.
+      startLsciMainFunction();
+    }
+  }
   // +========================================================================+
 
   // Enable TBAA unless it's suppressed. ThreadSanitizer needs TBAA even at O0.
@@ -189,6 +199,10 @@ CodeGenModule::~CodeGenModule() {
 // ===== Scout ==============================
 void CodeGenModule::createScoutRuntime() {
   ScoutRuntime = new CGScoutRuntime(*this);
+}
+
+void CodeGenModule::createLegionRuntime() {
+  LegionRuntime = new CGLegionRuntime(*this);
 }
 // ==========================================
 
@@ -371,7 +385,7 @@ void CodeGenModule::Release() {
   // ===== Scout ===============================================================
   // add call to scout runtime initializer
   if(ScoutRuntime)
-    if (llvm::Function *ScoutInitFunction = ScoutRuntime->ModuleInitFunction())
+    if (llvm::Function *ScoutInitFunction = ScoutRuntime->ModuleInitFunction()) 
       AddGlobalCtor(ScoutInitFunction);
   // ===========================================================================
   if (ObjCRuntime)
@@ -438,6 +452,8 @@ void CodeGenModule::Release() {
   EmitVersionIdentMetadata();
 
   EmitTargetMetadata();
+
+
 }
 
 void CodeGenModule::UpdateCompletedType(const TagDecl *TD) {

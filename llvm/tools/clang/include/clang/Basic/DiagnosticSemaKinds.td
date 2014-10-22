@@ -7390,8 +7390,15 @@ def warn_forall_calling_io_func:Warning<
     "I/O function called within forall body">,
      InGroup<CallingIOFunction>;
 def warn_renderall_calling_io_func:Warning<
-    "I/O function called within forall body">,
+    "I/O function called within renderall body">,
      InGroup<CallingIOFunction>;
+def warn_task_calling_io_func:Warning<
+    "I/O function called within task body">,
+     InGroup<CallingIOFunction>;     
+def err_task_calling_io_func:Error<
+    "I/O function called within task body">;
+def err_forall_non_task:Error<
+	"Forall outside of task in legion mode not allowed">;     
 def err_forall_non_cell_field:Error<
     "Mesh field is not cell located.">;
 def err_forall_non_edge_field:Error<
@@ -7481,7 +7488,15 @@ def err_mesh_builtin_nargs : Error<
 def  err_mesh_builtin_arg : Error<
  	"argument to %select{width()|height()|depth()|rank()}0 must be a mesh">;  
 def  warn_mesh_builtin_ptr : Warning<
- 	"argument to %select{width()|height()|depth()|rank()}0 must be a mesh, adding *">;  	  
+ 	"argument to %select{width()|height()|depth()|rank()}0 must be a mesh, adding *">;  
+def err_nonpure_task_fuction : Error<
+    "non-pure task function">;
+def err_nomesh_task_fuction : Error<
+    "no mesh access in task function">;
+def err_more_than_one_mesh_task_fuction : Error<
+    "only one mesh is allowed in task function">;
+ 		  
+ 		  
     
 } // end Scout issue category
 

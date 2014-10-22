@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * Copyright (c) 2014, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -51,86 +51,42 @@
  *
  * ##### 
  */ 
-#include <assert.h>
+
 #include <stdio.h>
+#include <assert.h>
 
-#define W 3
-#define H 4
-#define D 5
-
-uniform mesh MyMesh3 {
- cells:
-  float a,b;
-  int px, py, pz, pw;
-  int w,h,d;
+uniform mesh AMeshType{
+vertices:
+  int field;
 };
 
-uniform mesh MyMesh2 {
- cells:
-  float a,b;
-  int px, py, pz, pw;
-  int w,h,d;
-};
 
-int main(int argc, char** argv){
+int main(int argc, char *argv[])
+{
+  AMeshType m1[2];
+  AMeshType m2[2, 3];
+  AMeshType m3[2, 3, 4];
 
-  MyMesh3 m[W,H,D];
-  MyMesh2 n[W,H]; 
- 
-  forall cells c in m {
-    a = 1.0f;
-    b = 2.0f;
-    px = positionx();
-    py = positiony();
-    pz = positionz();
-    pw = positionw();
-    w = width();
-    h = height();
-    d = depth();    
+  int val = 0;
+  forall vertices v in m1 {
+    val++;
+    field = val;
   }
-
-  forall cells c in m {
-    c.a += c.b;
-    assert(px == position().x && "bad PositionX");
-    assert(py == position().y && "bad PositionY");
-    assert(pz == position().z && "bad PositionZ");
-    assert(pw == position().w && "bad PositionW");
-    assert(w == W && "bad width");
-    assert(h == H && "bad height");
-    assert(d == D && "bad depth");
-    assert(w == width() && "bad width");
-    assert(h == height() && "bad height");
-    assert(d == depth() && "bad depth");
+  assert(val==3 && "bad number of vertices r=1"); 
+  
+  val = 0;
+  forall vertices v in m2 {
+    val++;
+    field = val;
   }
-
-  forall cells c in n {
-    a = 1.0f;
-    b = 2.0f;
-    px = positionx();
-    py = positiony();
-    pz = positionz();
-    pw = positionw();
-    w = width();
-    h = height();
-    d = depth();
+  assert(val==12 && "bad number of vertices r=2"); 
+  
+  val = 0;
+  forall vertices v in m3 {
+    val++;
+    field = val;
   }
-
-  forall cells c in n {
-    c.a += c.b;
-    assert(px == position().x && "bad PositionX");
-    assert(py == position().y && "bad PositionY");
-    assert(pz == position().z && "bad PositionZ");
-    assert(position().z == 0 && "bad PositionZ");
-    assert(positionz() == 0 && "bad PositionZ");
-    assert(pz == 0 && "bad PositionZ");
-    assert(pw == position().w && "bad PositionW");
-    assert(w == W && "bad width");
-    assert(h == H && "bad height");
-    assert(d == 1 && "bad depth");
-    assert(w == width() && "bad width");
-    assert(h == height() && "bad height");
-    assert(d == depth() && "bad depth");
-  }
+  assert(val==60 && "bad number of vertices r=3"); 
 
   return 0;
 }

@@ -1162,3 +1162,11 @@ llvm::DIType CGDebugInfo::CreateType(const WindowType *Ty) {
 llvm::DIType CGDebugInfo::CreateType(const ImageType *Ty) {
   return getOrCreateStructPtrType("__scout_win_t", ImageDITy);
 }
+
+//===----------------------------------------------------------------------===//
+// Query debug support
+//===----------------------------------------------------------------------===//
+
+llvm::DIType CGDebugInfo::CreateType(const QueryType *Ty) {
+  return getOrCreateStructPtrType("__scout_query_t", QueryDITy);
+}

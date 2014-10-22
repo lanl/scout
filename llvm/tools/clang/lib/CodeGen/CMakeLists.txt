@@ -3,6 +3,7 @@ include_directories(
  ${CMAKE_BINARY_DIR}/config/include
 )
 add_subdirectory(Scout)
+include(sc-llvm-link-libs)
 # =============================================================================
 
 set(LLVM_LINK_COMPONENTS
@@ -77,6 +78,7 @@ add_clang_library(clangCodeGen
 
   LINK_LIBS
 # ===== Scout ===================================
+  ${SCOUT_LLVM_LINK_LIBS}
   scoutCodeGen
 # ===============================================
   clangAST

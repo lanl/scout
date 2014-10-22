@@ -126,10 +126,10 @@ const MeshType* Parser::LookupMeshType(VarDecl *VD,
   if (VD) {
     const Type* T = VD->getType().getCanonicalType().getTypePtr();
 
-    if(T->isPointerType() || T->isReferenceType()) {
+    while(T->isPointerType() || T->isReferenceType()) {
       T = T->getPointeeType().getTypePtr();
     }
-
+    
     if (!T->isMeshType()) {
       // SC_TODO: Should this diag go in sema instead?
       Diag(MeshLoc, diag::err_expected_a_mesh_type);

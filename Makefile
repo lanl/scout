@@ -112,6 +112,7 @@ stdlib_flags     :=
 runtime_dir := lib/Runtime
 runtime_build_dir := $(build_dir)/$(runtime_dir)
 runtime_flags := -DCMAKE_SCC_RUNTIME_ONLY=ON
+runtime_remove_flags := -UCMAKE_SCC_RUNTIME_ONLY
 
 test_dir := test
 test_build_dir := $(build_dir)/$(test_dir)
@@ -129,12 +130,11 @@ cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) \
 uname := $(shell uname)
 
 ifeq ($(uname), Darwin)
-  cmake_flags += -DCMAKE_CXX_FLAGS="-stdlib=libc++" -DCMAKE_SHARED_LINKER_FLAGS="-stdlib=libc++"
+  cmake_flags += -DCMAKE_CXX_FLAGS="-stdlib=libc++ -std=c++11" -DCMAKE_SHARED_LINKER_FLAGS="-stdlib=libc++"
+  cmake_flags += -DLLVM_ENABLE_LIBCXX=ON 
 else
 # These flags must be enabled in order to build LLDB.
-  cmake_flags += -DLLVM_ENABLE_CXX11=ON -DLLVM_REQUIRES_RTTI=1
-
-  cmake_flags += -DCMAKE_CXX_FLAGS="-std=c++11"
+  cmake_flags += -DLLVM_ENABLE_CXX11=ON -DLLVM_REQUIRES_RTTI=1 -DCMAKE_CXX_FLAGS="-std=c++11"
 endif
 
 all: $(build_dir)/Makefile toolchain stdlib
@@ -145,6 +145,21 @@ $(build_dir)/Makefile: CMakeLists.txt
 	@((test -d $(build_dir)) || (mkdir $(build_dir)))
 	@echo "*** Creating Scout build directory: $(build_dir)"
 	@(cd $(build_dir); cmake $(cmake_flags) $(src_dir))
+
+legion-rt: $(build_dir) $(build_dir)/Makefile
+	@ \
+	echo "*** Building Legion Runtime" && \
+	cd $(build_dir) && \
+	CC=$(build_dir)/bin/clang  \
+	CXX=$(build_dir)/bin/clang++ \
+	LG_RT_DIR=$(src_dir)/legion/runtime \
+	make $(make_flags) -C $(src_dir)/legion/liblsci && \
+	LSCI_PREFIX=$(build_dir) make install -C $(src_dir)/legion/liblsci
+
+.PHONY: clean-legion-rt
+clean-legion-rt:
+	LG_RT_DIR=$(src_dir)/legion/runtime \
+	make vclean -C $(src_dir)/legion/liblsci
 
 toolchain: $(build_dir) $(build_dir)/Makefile
 	@(cd $(build_dir); make $(make_flags))
@@ -186,6 +201,7 @@ runtime:
 	@((test -d $(runtime_build_dir)) || (mkdir $(runtime_build_dir)))
 	@(cd $(build_dir); cmake $(cmake_flags) $(runtime_flags) $(src_dir))
 	@(cd $(runtime_build_dir); make $(make_flags) install)
+	@(cd $(build_dir); cmake $(cmake_flags) $(runtime_remove_flags) $(src_dir))
 
 .PHONY: runtimeclean
 runtimeclean:
@@ -201,7 +217,7 @@ xcode:;
 	@(cd xcode; cmake -G Xcode $(src_dir))
 
 .PHONY: clean
-clean:
+clean: 
 	-@/bin/rm -rf $(build_dir)
 	-@/bin/rm -rf $(docs_build_dir)
 	-@(if test -d scout-local/sandbox; then /usr/bin/find ./scout-local/sandbox -name build -exec rm -rf {} \; ;fi)
