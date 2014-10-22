@@ -72,9 +72,9 @@ def ThreadDocs : Documentation {
   let Content = [{
 The ``__declspec(thread)`` attribute declares a variable with thread local
 storage.  It is available under the ``-fms-extensions`` flag for MSVC
-compatibility.  Documentation for the Visual C++ attribute is available on MSDN_.
+compatibility.  See the documentation for `__declspec(thread)`_ on MSDN.
 
-.. _MSDN: http://msdn.microsoft.com/en-us/library/9w1sdazb.aspx
+.. _`__declspec(thread)`: http://msdn.microsoft.com/en-us/library/9w1sdazb.aspx
 
 In Clang, ``__declspec(thread)`` is generally equivalent in functionality to the
 GNU ``__thread`` keyword.  The variable must not have a destructor and must have
@@ -673,12 +673,91 @@ The semantics are as follows:
   }];
 }
 
-def PcsDocs : Documentation {
-  let Category = DocCatFunction;
+def DocCatCallingConvs : DocumentationCategory<"Calling Conventions"> {
   let Content = [{
-On ARM targets, this can attribute can be used to select calling conventions,
+Clang supports several different calling conventions, depending on the target
+platform and architecture. The calling convention used for a function determines
+how parameters are passed, how results are returned to the caller, and other
+low-level details of calling a function.
+  }];
+}
+
+def PcsDocs : Documentation {
+  let Category = DocCatCallingConvs;
+  let Content = [{
+On ARM targets, this attribute can be used to select calling conventions
 similar to ``stdcall`` on x86. Valid parameter values are "aapcs" and
 "aapcs-vfp".
+  }];
+}
+
+def RegparmDocs : Documentation {
+  let Category = DocCatCallingConvs;
+  let Content = [{
+On 32-bit x86 targets, the regparm attribute causes the compiler to pass
+the first three integer parameters in EAX, EDX, and ECX instead of on the
+stack. This attribute has no effect on variadic functions, and all parameters
+are passed via the stack as normal.
+  }];
+}
+
+def SysVABIDocs : Documentation {
+  let Category = DocCatCallingConvs;
+  let Content = [{
+On Windows x86_64 targets, this attribute changes the calling convention of a
+function to match the default convention used on Sys V targets such as Linux,
+Mac, and BSD. This attribute has no effect on other targets.
+  }];
+}
+
+def MSABIDocs : Documentation {
+  let Category = DocCatCallingConvs;
+  let Content = [{
+On non-Windows x86_64 targets, this attribute changes the calling convention of
+a function to match the default convention used on Windows x86_64. This
+attribute has no effect on Windows targets or non-x86_64 targets.
+  }];
+}
+
+def StdCallDocs : Documentation {
+  let Category = DocCatCallingConvs;
+  let Content = [{
+On 32-bit x86 targets, this attribute changes the calling convention of a
+function to clear parameters off of the stack on return. This convention does
+not support variadic calls or unprototyped functions in C, and has no effect on
+x86_64 targets. This calling convention is used widely by the Windows API and
+COM applications.  See the documentation for `__stdcall`_ on MSDN.
+
+.. _`__stdcall`: http://msdn.microsoft.com/en-us/library/zxk0tw93.aspx
+  }];
+}
+
+def FastCallDocs : Documentation {
+  let Category = DocCatCallingConvs;
+  let Content = [{
+On 32-bit x86 targets, this attribute changes the calling convention of a
+function to use ECX and EDX as register parameters and clear parameters off of
+the stack on return. This convention does not support variadic calls or
+unprototyped functions in C, and has no effect on x86_64 targets. This calling
+convention is supported primarily for compatibility with existing code. Users
+seeking register parameters should use the ``regparm`` attribute, which does
+not require callee-cleanup.  See the documentation for `__fastcall`_ on MSDN.
+
+.. _`__fastcall`: http://msdn.microsoft.com/en-us/library/6xa169sk.aspx
+  }];
+}
+
+def ThisCallDocs : Documentation {
+  let Category = DocCatCallingConvs;
+  let Content = [{
+On 32-bit x86 targets, this attribute changes the calling convention of a
+function to use ECX for the first parameter (typically the implicit ``this``
+parameter of C++ methods) and clear parameters off of the stack on return. This
+convention does not support variadic calls or unprototyped functions in C, and
+has no effect on x86_64 targets. See the documentation for `__thiscall`_ on
+MSDN.
+
+.. _`__thiscall`: http://msdn.microsoft.com/en-us/library/ek8tkfbw.aspx
   }];
 }
 

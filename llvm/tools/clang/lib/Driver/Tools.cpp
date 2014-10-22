@@ -917,6 +917,19 @@ void Clang::AddAArch64TargetArgs(const ArgList &Args,
       CmdArgs.push_back("-aarch64-no-strict-align");
   }
 
+  if (Arg *A = Args.getLastArg(options::OPT_mfix_cortex_a53_835769,
+                               options::OPT_mno_fix_cortex_a53_835769)) {
+    CmdArgs.push_back("-backend-option");
+    if (A->getOption().matches(options::OPT_mfix_cortex_a53_835769))
+      CmdArgs.push_back("-aarch64-fix-cortex-a53-835769=1");
+    else
+      CmdArgs.push_back("-aarch64-fix-cortex-a53-835769=0");
+  } else if (Triple.getEnvironment() == llvm::Triple::Android) {
+    // Enabled A53 errata (835769) workaround by default on android
+    CmdArgs.push_back("-backend-option");
+    CmdArgs.push_back("-aarch64-fix-cortex-a53-835769=1");
+  }
+
   // Setting -mno-global-merge disables the codegen global merge pass. Setting
   // -mglobal-merge has no effect as the pass is enabled by default.
   if (Arg *A = Args.getLastArg(options::OPT_mglobal_merge,
@@ -3142,14 +3155,16 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // are preserved, all other debug options are substituted with "-g".
   Args.ClaimAllArgs(options::OPT_g_Group);
   if (Arg *A = Args.getLastArg(options::OPT_g_Group)) {
-    if (A->getOption().matches(options::OPT_gline_tables_only)) {
+    if (A->getOption().matches(options::OPT_gline_tables_only) ||
+        A->getOption().matches(options::OPT_g1)) {
       // FIXME: we should support specifying dwarf version with
       // -gline-tables-only.
       CmdArgs.push_back("-gline-tables-only");
-      // Default is dwarf-2 for Darwin, OpenBSD and FreeBSD.
+      // Default is dwarf-2 for Darwin, OpenBSD, FreeBSD and Solaris.
       const llvm::Triple &Triple = getToolChain().getTriple();
       if (Triple.isOSDarwin() || Triple.getOS() == llvm::Triple::OpenBSD ||
-          Triple.getOS() == llvm::Triple::FreeBSD)
+          Triple.getOS() == llvm::Triple::FreeBSD ||
+          Triple.getOS() == llvm::Triple::Solaris)
         CmdArgs.push_back("-gdwarf-2");
     } else if (A->getOption().matches(options::OPT_gdwarf_2))
       CmdArgs.push_back("-gdwarf-2");
@@ -3159,10 +3174,11 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("-gdwarf-4");
     else if (!A->getOption().matches(options::OPT_g0) &&
              !A->getOption().matches(options::OPT_ggdb0)) {
-      // Default is dwarf-2 for Darwin, OpenBSD and FreeBSD.
+      // Default is dwarf-2 for Darwin, OpenBSD, FreeBSD and Solaris.
       const llvm::Triple &Triple = getToolChain().getTriple();
       if (Triple.isOSDarwin() || Triple.getOS() == llvm::Triple::OpenBSD ||
-          Triple.getOS() == llvm::Triple::FreeBSD)
+          Triple.getOS() == llvm::Triple::FreeBSD ||
+          Triple.getOS() == llvm::Triple::Solaris)
         CmdArgs.push_back("-gdwarf-2");
       else
         CmdArgs.push_back("-g");
@@ -3250,7 +3266,12 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       C.getArgs().hasArg(options::OPT_S)) {
     if (Output.isFilename()) {
       CmdArgs.push_back("-coverage-file");
-      SmallString<128> CoverageFilename(Output.getFilename());
+      SmallString<128> CoverageFilename;
+      if (Arg *FinalOutput = C.getArgs().getLastArg(options::OPT_o)) {
+        CoverageFilename = FinalOutput->getValue();
+      } else {
+        CoverageFilename = llvm::sys::path::filename(Output.getBaseInput());
+      }
       if (llvm::sys::path::is_relative(CoverageFilename.str())) {
         SmallString<128> Pwd;
         if (!llvm::sys::fs::current_path(Pwd)) {
@@ -3836,15 +3857,17 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   // -fmodule-name specifies the module that is currently being built (or
   // used for header checking by -fmodule-maps).
-  if (Arg *A = Args.getLastArg(options::OPT_fmodule_name))
-    A->render(Args, CmdArgs);
+  Args.AddLastArg(CmdArgs, options::OPT_fmodule_name);
 
-  // -fmodule-map-file can be used to specify a file containing module
+  // -fmodule-map-file can be used to specify files containing module
   // definitions.
-  if (Arg *A = Args.getLastArg(options::OPT_fmodule_map_file))
-    A->render(Args, CmdArgs);
+  Args.AddAllArgs(CmdArgs, options::OPT_fmodule_map_file);
 
-  // -fmodule-cache-path specifies where our module files should be written.
+  // -fmodule-file can be used to specify files containing precompiled modules.
+  Args.AddAllArgs(CmdArgs, options::OPT_fmodule_file);
+
+  // -fmodule-cache-path specifies where our implicitly-built module files
+  // should be written.
   SmallString<128> ModuleCachePath;
   if (Arg *A = Args.getLastArg(options::OPT_fmodules_cache_path))
     ModuleCachePath = A->getValue();
@@ -3872,14 +3895,16 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (HaveModules && C.isForDiagnostics()) {
     SmallString<128> VFSDir(Output.getFilename());
     llvm::sys::path::replace_extension(VFSDir, ".cache");
+    // Add the cache directory as a temp so the crash diagnostics pick it up.
+    C.addTempFile(Args.MakeArgString(VFSDir));
+
     llvm::sys::path::append(VFSDir, "vfs");
     CmdArgs.push_back("-module-dependency-dir");
     CmdArgs.push_back(Args.MakeArgString(VFSDir));
   }
 
-  if (Arg *A = Args.getLastArg(options::OPT_fmodules_user_build_path))
-    if (HaveModules)
-      A->render(Args, CmdArgs);
+  if (HaveModules)
+    Args.AddLastArg(CmdArgs, options::OPT_fmodules_user_build_path);
 
   // Pass through all -fmodules-ignore-macro arguments.
   Args.AddAllArgs(CmdArgs, options::OPT_fmodules_ignore_macro);
@@ -5383,7 +5408,7 @@ const char *arm::getLLVMArchSuffixForARM(StringRef CPU) {
     .Cases("arm1176jzf-s",  "mpcorenovfp",  "mpcore", "v6")
     .Cases("arm1156t2-s",  "arm1156t2f-s", "v6t2")
     .Cases("cortex-a5", "cortex-a7", "cortex-a8", "cortex-a9-mp", "v7")
-    .Cases("cortex-a9", "cortex-a12", "cortex-a15", "krait", "v7")
+    .Cases("cortex-a9", "cortex-a12", "cortex-a15", "cortex-a17", "krait", "v7")
     .Cases("cortex-r4", "cortex-r5", "v7r")
     .Case("cortex-m0", "v6m")
     .Case("cortex-m3", "v7m")
@@ -7839,6 +7864,26 @@ static void addSanitizerRTWindows(const ToolChain &TC, const ArgList &Args,
   CmdArgs.push_back(Args.MakeArgString(LibSanitizer));
 }
 
+// Try to find Exe from a Visual Studio distribution.  This first tries to find
+// an installed copy of Visual Studio and, failing that, looks in the PATH,
+// making sure that whatever executable that's found is not a same-named exe
+// from clang itself to prevent clang from falling back to itself.
+static std::string FindVisualStudioExecutable(const ToolChain &TC,
+                                              const char *Exe,
+                                              const char *ClangProgramPath) {
+  const auto &MSVC = static_cast<const toolchains::MSVCToolChain &>(TC);
+  std::string visualStudioBinDir;
+  if (MSVC.getVisualStudioBinariesFolder(ClangProgramPath,
+                                         visualStudioBinDir)) {
+    SmallString<128> FilePath(visualStudioBinDir);
+    llvm::sys::path::append(FilePath, Exe);
+    if (llvm::sys::fs::can_execute(FilePath.c_str()))
+      return FilePath.str();
+  }
+
+  return Exe;
+}
+
 void visualstudio::Link::ConstructJob(Compilation &C, const JobAction &JA,
                                       const InputInfo &Output,
                                       const InputInfoList &Inputs,
@@ -7857,6 +7902,39 @@ void visualstudio::Link::ConstructJob(Compilation &C, const JobAction &JA,
       !Args.hasArg(options::OPT_nostartfiles) &&
       !C.getDriver().IsCLMode()) {
     CmdArgs.push_back("-defaultlib:libcmt");
+  }
+
+  if (!llvm::sys::Process::GetEnv("LIB")) {
+    // If the VC environment hasn't been configured (perhaps because the user
+    // did not run vcvarsall), try to build a consistent link environment.  If
+    // the environment variable is set however, assume the user knows what he's
+    // doing.
+    std::string VisualStudioDir;
+    const auto &MSVC = static_cast<const toolchains::MSVCToolChain &>(getToolChain());
+    if (MSVC.getVisualStudioInstallDir(VisualStudioDir)) {
+      SmallString<128> LibDir(VisualStudioDir);
+      llvm::sys::path::append(LibDir, "VC", "lib");
+      switch (MSVC.getArch()) {
+      case llvm::Triple::x86:
+        // x86 just puts the libraries directly in lib
+        break;
+      case llvm::Triple::x86_64:
+        llvm::sys::path::append(LibDir, "amd64");
+        break;
+      case llvm::Triple::arm:
+        llvm::sys::path::append(LibDir, "arm");
+        break;
+      default:
+        break;
+      }
+      CmdArgs.push_back(
+          Args.MakeArgString(std::string("-libpath:") + LibDir.c_str()));
+    }
+
+    std::string WindowsSdkLibPath;
+    if (MSVC.getWindowsSDKLibraryPath(WindowsSdkLibPath))
+      CmdArgs.push_back(Args.MakeArgString(std::string("-libpath:") +
+                                           WindowsSdkLibPath.c_str()));
   }
 
   CmdArgs.push_back("-nologo");
@@ -7924,8 +8002,11 @@ void visualstudio::Link::ConstructJob(Compilation &C, const JobAction &JA,
     A.renderAsInput(Args, CmdArgs);
   }
 
-  const char *Exec =
-    Args.MakeArgString(getToolChain().GetProgramPath("link.exe"));
+  // It's not sufficient to just use link from the program PATH, because other
+  // environments like GnuWin32 install their own link.exe which may come first.
+  llvm::SmallString<128> linkPath(FindVisualStudioExecutable(
+      getToolChain(), "link.exe", C.getDriver().getClangProgramPath()));
+  const char *Exec = Args.MakeArgString(linkPath);
   C.addCommand(llvm::make_unique<Command>(JA, *this, Exec, CmdArgs));
 }
 
@@ -7935,35 +8016,6 @@ void visualstudio::Compile::ConstructJob(Compilation &C, const JobAction &JA,
                                          const ArgList &Args,
                                          const char *LinkingOutput) const {
   C.addCommand(GetCommand(C, JA, Output, Inputs, Args, LinkingOutput));
-}
-
-// Try to find FallbackName on PATH that is not identical to ClangProgramPath.
-// If one cannot be found, return FallbackName.
-// We do this special search to prevent clang-cl from falling back onto itself
-// if it's available as cl.exe on the path.
-static std::string FindFallback(const char *FallbackName,
-                                const char *ClangProgramPath) {
-  llvm::Optional<std::string> OptPath = llvm::sys::Process::GetEnv("PATH");
-  if (!OptPath.hasValue())
-    return FallbackName;
-
-  const char EnvPathSeparatorStr[] = {llvm::sys::EnvPathSeparator, '\0'};
-  SmallVector<StringRef, 8> PathSegments;
-  llvm::SplitString(OptPath.getValue(), PathSegments, EnvPathSeparatorStr);
-
-  for (size_t i = 0, e = PathSegments.size(); i != e; ++i) {
-    StringRef PathSegment = PathSegments[i];
-    if (PathSegment.empty())
-      continue;
-
-    SmallString<128> FilePath(PathSegment);
-    llvm::sys::path::append(FilePath, FallbackName);
-    if (llvm::sys::fs::can_execute(Twine(FilePath)) &&
-        !llvm::sys::fs::equivalent(Twine(FilePath), ClangProgramPath))
-      return FilePath.str();
-  }
-
-  return FallbackName;
 }
 
 std::unique_ptr<Command> visualstudio::Compile::GetCommand(
@@ -8047,7 +8099,8 @@ std::unique_ptr<Command> visualstudio::Compile::GetCommand(
   CmdArgs.push_back(Fo);
 
   const Driver &D = getToolChain().getDriver();
-  std::string Exec = FindFallback("cl.exe", D.getClangProgramPath());
+  std::string Exec = FindVisualStudioExecutable(getToolChain(), "cl.exe",
+                                                D.getClangProgramPath());
   return llvm::make_unique<Command>(JA, *this, Args.MakeArgString(Exec),
                                     CmdArgs);
 }

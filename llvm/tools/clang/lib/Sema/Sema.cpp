@@ -88,6 +88,7 @@ Sema::Sema(Preprocessor &pp, ASTContext &ctxt, ASTConsumer &consumer,
     CodeSegStack(nullptr), CurInitSeg(nullptr), VisContext(nullptr),
     IsBuildingRecoveryCallExpr(false),
     ExprNeedsCleanups(false), LateTemplateParser(nullptr),
+    LateTemplateParserCleanup(nullptr),
     OpaqueParser(nullptr), IdResolver(pp), StdInitializerList(nullptr),
     CXXTypeInfoDecl(nullptr), MSVCGuidDecl(nullptr),
     NSNumberDecl(nullptr),
@@ -545,7 +546,12 @@ static bool MethodsAndNestedClassesComplete(const CXXRecordDecl *RD,
     if (const CXXMethodDecl *M = dyn_cast<CXXMethodDecl>(*I))
       Complete = M->isDefined() || (M->isPure() && !isa<CXXDestructorDecl>(M));
     else if (const FunctionTemplateDecl *F = dyn_cast<FunctionTemplateDecl>(*I))
-      Complete = F->getTemplatedDecl()->isDefined();
+      // If the template function is marked as late template parsed at this point,
+      // it has not been instantiated and therefore we have not performed semantic
+      // analysis on it yet, so we cannot know if the type can be considered
+      // complete.
+      Complete = !F->getTemplatedDecl()->isLateTemplateParsed() &&
+                  F->getTemplatedDecl()->isDefined();
     else if (const CXXRecordDecl *R = dyn_cast<CXXRecordDecl>(*I)) {
       if (R->isInjectedClassName())
         continue;
@@ -666,6 +672,9 @@ void Sema::ActOnEndOfTranslationUnit() {
                                    Pending.begin(), Pending.end());
     }
     PerformPendingInstantiations();
+
+    if (LateTemplateParserCleanup)
+      LateTemplateParserCleanup(OpaqueParser);
 
     CheckDelayedMemberExceptionSpecs();
   }

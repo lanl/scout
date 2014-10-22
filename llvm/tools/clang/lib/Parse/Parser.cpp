@@ -510,6 +510,13 @@ namespace {
   };
 }
 
+void Parser::LateTemplateParserCleanupCallback(void *P) {
+  // While this RAII helper doesn't bracket any actual work, the destructor will
+  // clean up annotations that were created during ActOnEndOfTranslationUnit
+  // when incremental processing is enabled.
+  DestroyTemplateIdAnnotationsRAIIObj CleanupRAII(((Parser *)P)->TemplateIds);
+}
+
 /// ParseTopLevelDecl - Parse one top-level declaration, return whatever the
 /// action tells us to.  This returns true if the EOF was encountered.
 bool Parser::ParseTopLevelDecl(DeclGroupPtrTy &Result) {
@@ -542,7 +549,10 @@ bool Parser::ParseTopLevelDecl(DeclGroupPtrTy &Result) {
   case tok::eof:
     // Late template parsing can begin.
     if (getLangOpts().DelayedTemplateParsing)
-      Actions.SetLateTemplateParser(LateTemplateParserCallback, this);
+      Actions.SetLateTemplateParser(LateTemplateParserCallback,
+                                    PP.isIncrementalProcessingEnabled() ?
+                                    LateTemplateParserCleanupCallback : nullptr,
+                                    this);
     if (!PP.isIncrementalProcessingEnabled())
       Actions.ActOnEndOfTranslationUnit();
     //else don't tell Sema that we ended parsing: more input might come.
@@ -697,8 +707,7 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
     // A function definition cannot start with any of these keywords.
     {
       SourceLocation DeclEnd;
-      StmtVector Stmts;
-      return ParseDeclaration(Stmts, Declarator::FileContext, DeclEnd, attrs);
+      return ParseDeclaration(Declarator::FileContext, DeclEnd, attrs);
     }
 
   case tok::kw_static:
@@ -708,8 +717,7 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
       Diag(ConsumeToken(), diag::warn_static_inline_explicit_inst_ignored)
         << 0;
       SourceLocation DeclEnd;
-      StmtVector Stmts;
-      return ParseDeclaration(Stmts, Declarator::FileContext, DeclEnd, attrs);  
+      return ParseDeclaration(Declarator::FileContext, DeclEnd, attrs);
     }
     goto dont_know;
       
@@ -720,8 +728,7 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
       // Inline namespaces. Allowed as an extension even in C++03.
       if (NextKind == tok::kw_namespace) {
         SourceLocation DeclEnd;
-        StmtVector Stmts;
-        return ParseDeclaration(Stmts, Declarator::FileContext, DeclEnd, attrs);
+        return ParseDeclaration(Declarator::FileContext, DeclEnd, attrs);
       }
       
       // Parse (then ignore) 'inline' prior to a template instantiation. This is
@@ -730,8 +737,7 @@ Parser::ParseExternalDeclaration(ParsedAttributesWithRange &attrs,
         Diag(ConsumeToken(), diag::warn_static_inline_explicit_inst_ignored)
           << 1;
         SourceLocation DeclEnd;
-        StmtVector Stmts;
-        return ParseDeclaration(Stmts, Declarator::FileContext, DeclEnd, attrs);  
+        return ParseDeclaration(Declarator::FileContext, DeclEnd, attrs);
       }
     }
     goto dont_know;

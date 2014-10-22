@@ -4682,8 +4682,8 @@ CheckTemplateArgumentAddressOfObjectOrFunction(Sema &S,
     return true;
 
   // Create the template argument.
-  Converted = TemplateArgument(cast<ValueDecl>(Entity->getCanonicalDecl()),
-                               ParamType->isReferenceType());
+  Converted =
+      TemplateArgument(cast<ValueDecl>(Entity->getCanonicalDecl()), ParamType);
   S.MarkAnyDeclReferenced(Arg->getLocStart(), Entity, false);
   return false;
 }
@@ -4778,7 +4778,7 @@ static bool CheckTemplateArgumentPointerToMember(Sema &S,
             Converted = TemplateArgument(Arg);
           } else {
             VD = cast<ValueDecl>(VD->getCanonicalDecl());
-            Converted = TemplateArgument(VD, /*isReferenceParam*/false);
+            Converted = TemplateArgument(VD, ParamType);
           }
           return Invalid;
         }
@@ -4807,7 +4807,7 @@ static bool CheckTemplateArgumentPointerToMember(Sema &S,
       Converted = TemplateArgument(Arg);
     } else {
       ValueDecl *D = cast<ValueDecl>(DRE->getDecl()->getCanonicalDecl());
-      Converted = TemplateArgument(D, /*isReferenceParam*/false);
+      Converted = TemplateArgument(D, ParamType);
     }
     return Invalid;
   }

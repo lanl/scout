@@ -975,13 +975,21 @@ static bool compileModuleImpl(CompilerInstance &ImportingInstance,
   // safe because the FileManager is shared between the compiler instances.
   GenerateModuleAction CreateModuleAction(
       ModMap.getModuleMapFileForUniquing(Module), Module->IsSystem);
-  
+
+  ImportingInstance.getDiagnostics().Report(ImportLoc,
+                                            diag::remark_module_build)
+    << Module->Name << ModuleFileName;
+
   // Execute the action to actually build the module in-place. Use a separate
   // thread so that we get a stack large enough.
   const unsigned ThreadStackSize = 8 << 20;
   llvm::CrashRecoveryContext CRC;
   CRC.RunSafelyOnThread([&]() { Instance.ExecuteAction(CreateModuleAction); },
                         ThreadStackSize);
+
+  ImportingInstance.getDiagnostics().Report(ImportLoc,
+                                            diag::remark_module_build_done)
+    << Module->Name;
 
   // Delete the temporary module map file.
   // FIXME: Even though we're executing under crash protection, it would still
@@ -1044,7 +1052,7 @@ static bool compileAndLoadModule(CompilerInstance &ImportingInstance,
     // Try to read the module file, now that we've compiled it.
     ASTReader::ASTReadResult ReadResult =
         ImportingInstance.getModuleManager()->ReadAST(
-            ModuleFileName, serialization::MK_Module, ImportLoc,
+            ModuleFileName, serialization::MK_ImplicitModule, ImportLoc,
             ModuleLoadCapabilities);
 
     if (ReadResult == ASTReader::OutOfDate &&
@@ -1272,6 +1280,53 @@ void CompilerInstance::createModuleManager() {
 }
 
 ModuleLoadResult
+CompilerInstance::loadModuleFile(StringRef FileName, SourceLocation Loc) {
+  if (!ModuleManager)
+    createModuleManager();
+  if (!ModuleManager)
+    return ModuleLoadResult();
+
+  // Load the module if this is the first time we've been told about this file.
+  auto *MF = ModuleManager->getModuleManager().lookup(FileName);
+  if (!MF) {
+    struct ReadModuleNameListener : ASTReaderListener {
+      std::function<void(StringRef)> OnRead;
+      ReadModuleNameListener(std::function<void(StringRef)> F) : OnRead(F) {}
+      void ReadModuleName(StringRef ModuleName) override { OnRead(ModuleName); }
+    };
+
+    // Register listener to track the modules that are loaded by explicitly
+    // loading a module file. We suppress any attempts to implicitly load
+    // module files for any such module.
+    ASTReader::ListenerScope OnReadModuleName(
+        *ModuleManager,
+        llvm::make_unique<ReadModuleNameListener>([&](StringRef ModuleName) {
+      auto &PP = getPreprocessor();
+      auto *NameII = PP.getIdentifierInfo(ModuleName);
+      auto *Module = PP.getHeaderSearchInfo().lookupModule(ModuleName, false);
+      if (!KnownModules.insert(std::make_pair(NameII, Module)).second)
+        getDiagnostics().Report(Loc, diag::err_module_already_loaded)
+            << ModuleName << FileName;
+    }));
+
+    if (ModuleManager->ReadAST(FileName, serialization::MK_ExplicitModule, Loc,
+                               ASTReader::ARR_None) != ASTReader::Success)
+      return ModuleLoadResult();
+
+    MF = ModuleManager->getModuleManager().lookup(FileName);
+    assert(MF && "unexpectedly failed to load module file");
+  }
+
+  if (MF->ModuleName.empty()) {
+    getDiagnostics().Report(Loc, diag::err_module_file_not_module)
+      << FileName;
+    return ModuleLoadResult();
+  }
+  auto *Module = PP->getHeaderSearchInfo().lookupModule(MF->ModuleName, false);
+  return ModuleLoadResult(Module, false);
+}
+
+ModuleLoadResult
 CompilerInstance::loadModule(SourceLocation ImportLoc,
                              ModuleIdPath Path,
                              Module::NameVisibilityKind Visibility,
@@ -1334,8 +1389,9 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
 
     // Try to load the module file.
     unsigned ARRFlags = ASTReader::ARR_OutOfDate | ASTReader::ARR_Missing;
-    switch (ModuleManager->ReadAST(ModuleFileName, serialization::MK_Module,
-                                   ImportLoc, ARRFlags)) {
+    switch (ModuleManager->ReadAST(ModuleFileName,
+                                   serialization::MK_ImplicitModule, ImportLoc,
+                                   ARRFlags)) {
     case ASTReader::Success:
       break;
 
@@ -1363,9 +1419,6 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
           << ModuleName << CyclePath;
         return ModuleLoadResult();
       }
-
-      getDiagnostics().Report(ImportLoc, diag::remark_module_build)
-          << ModuleName << ModuleFileName;
 
       // Check whether we have already attempted to build this module (but
       // failed).

@@ -616,8 +616,6 @@ void CodeGenFunction::EmitCondBrHints(llvm::LLVMContext &Context,
 
     LoopHintAttr::OptionType Option = LH->getOption();
     LoopHintAttr::LoopHintState State = LH->getState();
-    int ValueInt = LH->getValue();
-
     const char *MetadataName;
     switch (Option) {
     case LoopHintAttr::Vectorize:
@@ -637,6 +635,15 @@ void CodeGenFunction::EmitCondBrHints(llvm::LLVMContext &Context,
       MetadataName = "llvm.loop.unroll.count";
       break;
     }
+
+    Expr *ValueExpr = LH->getValue();
+    int ValueInt = 1;
+    if (ValueExpr) {
+      llvm::APSInt ValueAPS =
+          ValueExpr->EvaluateKnownConstInt(CGM.getContext());
+      ValueInt = static_cast<int>(ValueAPS.getSExtValue());
+    }
+
     llvm::Value *Value;
     llvm::MDString *Name;
     switch (Option) {

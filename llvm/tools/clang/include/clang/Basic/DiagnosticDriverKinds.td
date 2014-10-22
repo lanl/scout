@@ -102,10 +102,6 @@ def err_drv_cc_print_options_failure : Error<
     "unable to open CC_PRINT_OPTIONS file: %0">;
 def err_drv_preamble_format : Error<
     "incorrect format for -preamble-bytes=N,END">;
-def err_drv_conflicting_deployment_targets : Error<
-  "conflicting deployment targets, both '%0' and '%1' are present in environment">;
-def err_drv_invalid_arch_for_deployment_target : Error<
-  "invalid architecture '%0' for deployment target '%1'">;
 def err_drv_objc_gc_arr : Error<
   "cannot specify both '-fobjc-arc' and '%0'">;
 def err_arc_unsupported_on_runtime : Error<
@@ -174,8 +170,11 @@ def err_scout_gpu_nvidia_amd_combo : Error<"-gpu and -gpu-amd operate exclusivel
 // +=========================================================================+
 
 
-def note_drv_t_option_is_global :
-  Note<"The last /TC or /TP option takes precedence over earlier instances">;
+def note_drv_t_option_is_global : Note<
+  "The last /TC or /TP option takes precedence over earlier instances">;
+def note_drv_address_sanitizer_debug_runtime : Note<
+  "AddressSanitizer doesn't support linking with debug runtime libraries yet">;
+
 def err_analyzer_config_no_value : Error<
   "analyzer-config option '%0' has a key but no value">;
 def err_analyzer_config_multiple_values : Error<
