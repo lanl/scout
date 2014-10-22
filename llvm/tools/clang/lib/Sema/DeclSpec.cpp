@@ -275,6 +275,7 @@ bool Declarator::isDeclarationOfFunction() const {
     case DeclaratorChunk::UnstructuredMesh:
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
     // +======================================================================+
       return false;
     }

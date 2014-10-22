@@ -334,6 +334,7 @@ static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
     case DeclaratorChunk::UnstructuredMesh:
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
     // +======================================================================+
       return result;
 
@@ -355,7 +356,8 @@ static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
         case DeclaratorChunk::StructuredMesh:
         case DeclaratorChunk::UnstructuredMesh:
         case DeclaratorChunk::Window:
-        case DeclaratorChunk::Image: 
+        case DeclaratorChunk::Image:
+        case DeclaratorChunk::Query:
         // +==================================================================+
           continue;
         case DeclaratorChunk::BlockPointer:
@@ -416,6 +418,7 @@ static void distributeObjCPointerTypeAttr(TypeProcessingState &state,
     case DeclaratorChunk::UnstructuredMesh:
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
     // +======================================================================+
       continue;
 
@@ -473,6 +476,7 @@ distributeObjCPointerTypeAttrFromDeclarator(TypeProcessingState &state,
     case DeclaratorChunk::UnstructuredMesh:
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
     // +======================================================================+
       continue;
 
@@ -541,6 +545,7 @@ static void distributeFunctionTypeAttr(TypeProcessingState &state,
     case DeclaratorChunk::UnstructuredMesh:
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
     // +======================================================================+
     case DeclaratorChunk::MemberPointer:
       continue;
@@ -2131,7 +2136,8 @@ static void inferARCWriteback(TypeProcessingState &state,
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
     case DeclaratorChunk::Window:
-    case DeclaratorChunk::Image:      
+    case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
     // +======================================================================+
       return;
     }
@@ -2278,6 +2284,7 @@ static void diagnoseRedundantReturnTypeQualifiers(Sema &S, QualType RetTy,
     case DeclaratorChunk::UnstructuredMesh:
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
     // +======================================================================+
     case DeclaratorChunk::MemberPointer:
       // FIXME: We can't currently provide an accurate source location and a
@@ -2726,6 +2733,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         case DeclaratorChunk::UnstructuredMesh:
         case DeclaratorChunk::Window:
         case DeclaratorChunk::Image:
+        case DeclaratorChunk::Query:
         // +==================================================================+
           continue;
         case DeclaratorChunk::Function: {
@@ -2881,6 +2889,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
           case DeclaratorChunk::UnstructuredMesh:
           case DeclaratorChunk::Window:
           case DeclaratorChunk::Image:
+          case DeclaratorChunk::Query:
           // +================================================================+
             // These are invalid anyway, so just ignore.
             break;
@@ -2942,6 +2951,11 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     case DeclaratorChunk::Image: {
       llvm::SmallVector<Expr*,2> dims = DeclType.Img.Dims();
       T = S.BuildImageType(T, dims);
+      break;
+    }
+        
+    case DeclaratorChunk::Query: {
+      T = S.BuildQueryType(T);
       break;
     }
 
@@ -3526,10 +3540,11 @@ TypeSourceInfo *Sema::GetTypeForDeclarator(Declarator &D, Scope *S) {
   TypeProcessingState state(*this, D);
 
   TypeSourceInfo *ReturnTypeInfo = nullptr;
+  
   QualType T = GetDeclSpecTypeForDeclarator(state, ReturnTypeInfo);
   if (T.isNull())
     return Context.getNullTypeSourceInfo();
-
+  
   if (D.isPrototypeContext() && getLangOpts().ObjCAutoRefCount)
     inferARCWriteback(state, T);
 
@@ -3610,6 +3625,7 @@ static void transferARCOwnership(TypeProcessingState &state,
     case DeclaratorChunk::UnstructuredMesh:
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
     // +======================================================================+
     case DeclaratorChunk::Reference:
     case DeclaratorChunk::Pointer:
@@ -4099,6 +4115,7 @@ static void fillAtomicQualLoc(AtomicTypeLoc ATL, const DeclaratorChunk &Chunk) {
   case DeclaratorChunk::UnstructuredMesh:
   case DeclaratorChunk::Window:
   case DeclaratorChunk::Image:
+  case DeclaratorChunk::Query:
   // +========================================================================+
   case DeclaratorChunk::Paren:
     llvm_unreachable("cannot be _Atomic qualified");
