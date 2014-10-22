@@ -290,6 +290,8 @@ namespace {
     SDValue visitFCEIL(SDNode *N);
     SDValue visitFTRUNC(SDNode *N);
     SDValue visitFFLOOR(SDNode *N);
+    SDValue visitFMINNUM(SDNode *N);
+    SDValue visitFMAXNUM(SDNode *N);
     SDValue visitBRCOND(SDNode *N);
     SDValue visitBR_CC(SDNode *N);
     SDValue visitLOAD(SDNode *N);
@@ -1321,6 +1323,8 @@ SDValue DAGCombiner::visit(SDNode *N) {
   case ISD::FNEG:               return visitFNEG(N);
   case ISD::FABS:               return visitFABS(N);
   case ISD::FFLOOR:             return visitFFLOOR(N);
+  case ISD::FMINNUM:            return visitFMINNUM(N);
+  case ISD::FMAXNUM:            return visitFMAXNUM(N);
   case ISD::FCEIL:              return visitFCEIL(N);
   case ISD::FTRUNC:             return visitFTRUNC(N);
   case ISD::BRCOND:             return visitBRCOND(N);
@@ -1680,6 +1684,17 @@ SDValue DAGCombiner::visitADD(SDNode *N) {
     return DAG.getNode(ISD::SUB, DL, VT, N1, ZExt);
   }
 
+  // add X, (sextinreg Y i1) -> sub X, (and Y 1)
+  if (N1.getOpcode() == ISD::SIGN_EXTEND_INREG) {
+    VTSDNode *TN = cast<VTSDNode>(N1.getOperand(1));
+    if (TN->getVT() == MVT::i1) {
+      SDLoc DL(N);
+      SDValue ZExt = DAG.getNode(ISD::AND, DL, VT, N1.getOperand(0),
+                                 DAG.getConstant(1, VT));
+      return DAG.getNode(ISD::SUB, DL, VT, N0, ZExt);
+    }
+  }
+
   return SDValue();
 }
 
@@ -1844,6 +1859,17 @@ SDValue DAGCombiner::visitSUB(SDNode *N) {
           return DAG.getConstant((uint64_t)GA->getOffset() - GB->getOffset(),
                                  VT);
     }
+
+  // sub X, (sextinreg Y i1) -> add X, (and Y 1)
+  if (N1.getOpcode() == ISD::SIGN_EXTEND_INREG) {
+    VTSDNode *TN = cast<VTSDNode>(N1.getOperand(1));
+    if (TN->getVT() == MVT::i1) {
+      SDLoc DL(N);
+      SDValue ZExt = DAG.getNode(ISD::AND, DL, VT, N1.getOperand(0),
+                                 DAG.getConstant(1, VT));
+      return DAG.getNode(ISD::ADD, DL, VT, N0, ZExt);
+    }
+  }
 
   return SDValue();
 }
@@ -3128,7 +3154,7 @@ SDValue DAGCombiner::MatchBSwapHWordLow(SDNode *N, SDValue N0, SDValue N1,
 /// ((x & 0x0000ff00) >> 8) |
 /// ((x & 0x00ff0000) << 8) |
 /// ((x & 0xff000000) >> 8)
-static bool isBSwapHWordElement(SDValue N, SmallVectorImpl<SDNode *> &Parts) {
+static bool isBSwapHWordElement(SDValue N, MutableArrayRef<SDNode *> Parts) {
   if (!N.getNode()->hasOneUse())
     return false;
 
@@ -3211,7 +3237,6 @@ SDValue DAGCombiner::MatchBSwapHWord(SDNode *N, SDValue N0, SDValue N1) {
   if (!TLI.isOperationLegal(ISD::BSWAP, VT))
     return SDValue();
 
-  SmallVector<SDNode*,4> Parts(4, (SDNode*)nullptr);
   // Look for either
   // (or (or (and), (and)), (or (and), (and)))
   // (or (or (or (and), (and)), (and)), (and))
@@ -3219,6 +3244,7 @@ SDValue DAGCombiner::MatchBSwapHWord(SDNode *N, SDValue N0, SDValue N1) {
     return SDValue();
   SDValue N00 = N0.getOperand(0);
   SDValue N01 = N0.getOperand(1);
+  SDNode *Parts[4] = {};
 
   if (N1.getOpcode() == ISD::OR &&
       N00.getNumOperands() == 2 && N01.getNumOperands() == 2) {
@@ -7088,26 +7114,25 @@ SDValue DAGCombiner::visitFREM(SDNode *N) {
 
 SDValue DAGCombiner::visitFSQRT(SDNode *N) {
   if (DAG.getTarget().Options.UnsafeFPMath) {
-    // Compute this as 1/(1/sqrt(X)): the reciprocal of the reciprocal sqrt.
+    // Compute this as X * (1/sqrt(X)) = X * (X ** -0.5)
     if (SDValue RV = BuildRsqrtEstimate(N->getOperand(0))) {
       AddToWorklist(RV.getNode());
-      RV = BuildReciprocalEstimate(RV);
-      if (RV.getNode()) {
-        // Unfortunately, RV is now NaN if the input was exactly 0.
-        // Select out this case and force the answer to 0.
-        EVT VT = RV.getValueType();
-      
-        SDValue Zero = DAG.getConstantFP(0.0, VT);
-        SDValue ZeroCmp =
-          DAG.getSetCC(SDLoc(N), TLI.getSetCCResultType(*DAG.getContext(), VT),
-                       N->getOperand(0), Zero, ISD::SETEQ);
-        AddToWorklist(ZeroCmp.getNode());
-        AddToWorklist(RV.getNode());
+      EVT VT = RV.getValueType();
+      RV = DAG.getNode(ISD::FMUL, SDLoc(N), VT, N->getOperand(0), RV);
+      AddToWorklist(RV.getNode());
 
-        RV = DAG.getNode(VT.isVector() ? ISD::VSELECT : ISD::SELECT,
-                         SDLoc(N), VT, ZeroCmp, Zero, RV);
-        return RV;
-      }
+      // Unfortunately, RV is now NaN if the input was exactly 0.
+      // Select out this case and force the answer to 0.
+      SDValue Zero = DAG.getConstantFP(0.0, VT);
+      SDValue ZeroCmp =
+        DAG.getSetCC(SDLoc(N), TLI.getSetCCResultType(*DAG.getContext(), VT),
+                     N->getOperand(0), Zero, ISD::SETEQ);
+      AddToWorklist(ZeroCmp.getNode());
+      AddToWorklist(RV.getNode());
+
+      RV = DAG.getNode(VT.isVector() ? ISD::VSELECT : ISD::SELECT,
+                       SDLoc(N), VT, ZeroCmp, Zero, RV);
+      return RV;
     }
   }
   return SDValue();
@@ -7467,6 +7492,48 @@ SDValue DAGCombiner::visitFNEG(SDNode *N) {
             ISD::FMUL, SDLoc(N), VT, N0.getOperand(0),
             DAG.getNode(ISD::FNEG, SDLoc(N), VT, N0.getOperand(1)));
     }
+  }
+
+  return SDValue();
+}
+
+SDValue DAGCombiner::visitFMINNUM(SDNode *N) {
+  SDValue N0 = N->getOperand(0);
+  SDValue N1 = N->getOperand(1);
+  const ConstantFPSDNode *N0CFP = dyn_cast<ConstantFPSDNode>(N0);
+  const ConstantFPSDNode *N1CFP = dyn_cast<ConstantFPSDNode>(N1);
+
+  if (N0CFP && N1CFP) {
+    const APFloat &C0 = N0CFP->getValueAPF();
+    const APFloat &C1 = N1CFP->getValueAPF();
+    return DAG.getConstantFP(minnum(C0, C1), N->getValueType(0));
+  }
+
+  if (N0CFP) {
+    EVT VT = N->getValueType(0);
+    // Canonicalize to constant on RHS.
+    return DAG.getNode(ISD::FMINNUM, SDLoc(N), VT, N1, N0);
+  }
+
+  return SDValue();
+}
+
+SDValue DAGCombiner::visitFMAXNUM(SDNode *N) {
+  SDValue N0 = N->getOperand(0);
+  SDValue N1 = N->getOperand(1);
+  const ConstantFPSDNode *N0CFP = dyn_cast<ConstantFPSDNode>(N0);
+  const ConstantFPSDNode *N1CFP = dyn_cast<ConstantFPSDNode>(N1);
+
+  if (N0CFP && N1CFP) {
+    const APFloat &C0 = N0CFP->getValueAPF();
+    const APFloat &C1 = N1CFP->getValueAPF();
+    return DAG.getConstantFP(maxnum(C0, C1), N->getValueType(0));
+  }
+
+  if (N0CFP) {
+    EVT VT = N->getValueType(0);
+    // Canonicalize to constant on RHS.
+    return DAG.getNode(ISD::FMAXNUM, SDLoc(N), VT, N1, N0);
   }
 
   return SDValue();

@@ -15,7 +15,6 @@ AMDGPUMCAsmInfo::AMDGPUMCAsmInfo(StringRef &TT) : MCAsmInfoELF() {
   HasSingleParameterDotFile = false;
   //===------------------------------------------------------------------===//
   HasSubsectionsViaSymbols = true;
-  LinkerRequiresNonEmptyDwarfLines = true;
   MaxInstLength = 16;
   SeparatorString = "\n";
   CommentString = ";";
@@ -34,8 +33,6 @@ AMDGPUMCAsmInfo::AMDGPUMCAsmInfo(StringRef &TT) : MCAsmInfoELF() {
   UsesELFSectionDirectiveForBSS = true;
 
   //===--- Global Variable Emission Directives --------------------------===//
-  GlobalDirective = ".global";
-  HasSetDirective = false;
   HasAggressiveSymbolFolding = true;
   COMMDirectiveAlignmentIsInBytes = false;
   HasDotTypeDotSizeDirective = false;
@@ -43,9 +40,4 @@ AMDGPUMCAsmInfo::AMDGPUMCAsmInfo(StringRef &TT) : MCAsmInfoELF() {
   WeakRefDirective = ".weakref\t";
   //===--- Dwarf Emission Directives -----------------------------------===//
   SupportsDebugInformation = true;
-}
-
-const MCSection*
-AMDGPUMCAsmInfo::getNonexecutableStackSection(MCContext &CTX) const {
-  return nullptr;
 }

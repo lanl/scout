@@ -92,11 +92,6 @@ protected:
   /// is false.
   bool HasStaticCtorDtorReferenceInStaticMode;
 
-  /// True if the linker has a bug and requires that the debug_line section be
-  /// of a minimum size. In practice such a linker requires a non-empty line
-  /// sequence if a file is present.  Default to false.
-  bool LinkerRequiresNonEmptyDwarfLines;
-
   /// This is the maximum possible length of an instruction, which is needed to
   /// compute the size of an inline asm.  Defaults to 4.
   unsigned MaxInstLength;
@@ -223,8 +218,12 @@ protected:
   /// This is the directive used to declare a global entity.  Defaults to NULL.
   const char *GlobalDirective;
 
-  /// True if the assembler supports the .set directive.  Defaults to true.
-  bool HasSetDirective;
+  /// True if the expression
+  ///   .long f - g
+  /// uses an relocation but it can be supressed by writting
+  ///   a = f - g
+  ///   .long a
+  bool SetDirectiveSuppressesReloc;
 
   /// False if the assembler requires that we use
   /// \code
@@ -401,9 +400,6 @@ public:
   bool hasStaticCtorDtorReferenceInStaticMode() const {
     return HasStaticCtorDtorReferenceInStaticMode;
   }
-  bool getLinkerRequiresNonEmptyDwarfLines() const {
-    return LinkerRequiresNonEmptyDwarfLines;
-  }
   unsigned getMaxInstLength() const { return MaxInstLength; }
   unsigned getMinInstAlignment() const { return MinInstAlignment; }
   bool getDollarIsPC() const { return DollarIsPC; }
@@ -442,7 +438,9 @@ public:
   bool getAlignmentIsInBytes() const { return AlignmentIsInBytes; }
   unsigned getTextAlignFillValue() const { return TextAlignFillValue; }
   const char *getGlobalDirective() const { return GlobalDirective; }
-  bool hasSetDirective() const { return HasSetDirective; }
+  bool doesSetDirectiveSuppressesReloc() const {
+    return SetDirectiveSuppressesReloc;
+  }
   bool hasAggressiveSymbolFolding() const { return HasAggressiveSymbolFolding; }
   bool getCOMMDirectiveAlignmentIsInBytes() const {
     return COMMDirectiveAlignmentIsInBytes;
