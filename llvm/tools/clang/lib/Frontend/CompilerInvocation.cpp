@@ -1404,11 +1404,6 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
 
   CompilerInvocation::setLangDefaults(Opts, IK, LangStd);
 
-  // +===== Scout ==========================================================+
-  // Enable scout Legion support if OPT_legionSupport is present
-    Opts.ScoutLegionSupport = Args.hasArg(OPT_legionSupport);
-  // +======================================================================+
-
   // We abuse '-f[no-]gnu-keywords' to force overriding all GNU-extension
   // keywords. This behavior is provided by GCC's poorly named '-fasm' flag,
   // while a subset (the non-C++ GNU keywords) is provided by GCC's
@@ -1662,6 +1657,8 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
   // --- Disabled for now (AMD is behind us in version support)
   //Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
+  // Enable scout Legion support if OPT_legionSupport is present
+  Opts.ScoutLegionSupport = Args.hasArg(OPT_legionSupport);
   // +========================================================================+
   // FIXME: Eliminate this dependency.
   unsigned Opt = getOptimizationLevel(Args, IK, Diags),
