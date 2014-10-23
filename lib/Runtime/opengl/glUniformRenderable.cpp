@@ -21,9 +21,8 @@
 #include <stdio.h>
 
 #ifdef __APPLE__
-
+#define GL_DO_NOT_WARN_IF_MULTI_GL_VERSION_HEADERS_INCLUDED
 #include <OpenGL/gl3.h>
-
 #endif
 
 #include "scout/Runtime/opengl/glUniformRenderable.h"

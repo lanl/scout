@@ -3081,11 +3081,11 @@ namespace LegionRuntime {
       for (int idx = (BIT_ELMTS-1); idx >= 0; idx--)
       {
         if (idx == (BIT_ELMTS-1))
-          sprintf(result,"%16.16llx",bits.bit_vector[idx]);
+          sprintf(result,"%16.16lx",bits.bit_vector[idx]);
         else
         {
           char temp[65];
-          sprintf(temp,"%16.16llx",bits.bit_vector[idx]);
+          sprintf(temp,"%16.16lx",bits.bit_vector[idx]);
           strcat(result,temp);
         }
       }

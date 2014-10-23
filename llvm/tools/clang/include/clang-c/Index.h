@@ -3363,7 +3363,10 @@ enum CX_StorageClass {
   CX_SC_PrivateExtern,
   CX_SC_OpenCLWorkGroupLocal,
   CX_SC_Auto,
-  CX_SC_Register
+  CX_SC_Register,
+  /* +===== Scout ==============================================================+ */
+  CX_SC_Persistent
+  /* +==========================================================================+ */
 };
 
 /**
