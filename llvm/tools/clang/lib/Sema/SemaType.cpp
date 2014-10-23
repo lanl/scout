@@ -961,6 +961,13 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     break;
   }
   case DeclSpec::TST_query: {
+    Result = Context.getQueryType();
+    break;
+    
+    // we may need this later, if we need to attach
+    // attach declarator chunks to query
+    
+    /*
     for(unsigned i = 0; i < declarator.getNumTypeObjects(); ++i) {
       DeclaratorChunk &DeclType = declarator.getTypeObject(i);
       switch(DeclType.Kind) {
@@ -973,7 +980,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
       }
     }
     break;
-    break;
+    */
   }
     
   // +========================================================================+
