@@ -10273,6 +10273,14 @@ TreeTransform<Derived>::TransformAtomicExpr(AtomicExpr *E) {
                                         RetTy, E->getOp(), E->getRParenLoc());
 }
 
+// +===== Scout ====================================
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformQueryExpr(QueryExpr *E) {
+  llvm_unreachable("Cannot transform query expressions yet");
+}
+// =================================================
+  
 //===----------------------------------------------------------------------===//
 // Type reconstruction
 //===----------------------------------------------------------------------===//

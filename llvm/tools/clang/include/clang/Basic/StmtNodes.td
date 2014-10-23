@@ -90,6 +90,10 @@ def VAArgExpr : DStmt<Expr>;
 def GenericSelectionExpr : DStmt<Expr>;
 def PseudoObjectExpr : DStmt<Expr>;
 
+// +==== Scout ==============================================================+
+def QueryExpr : DStmt<Expr>;
+// +=========================================================================+
+
 // Atomic expressions
 def AtomicExpr : DStmt<Expr>;
 

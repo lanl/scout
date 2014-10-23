@@ -67,3 +67,6 @@
 using namespace clang;
 
 
+ExprResult Parser::ParseScoutQueryExpression(){
+  return ExprError();
+}

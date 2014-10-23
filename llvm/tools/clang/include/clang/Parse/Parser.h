@@ -2510,6 +2510,8 @@ private:
 
   StmtResult ParseRenderallMeshStatement(ParsedAttributes &Attr);
 
+  ExprResult ParseScoutQueryExpression();
+  
   const MeshType* LookupMeshType(IdentifierInfo *MeshInfo,
                                  SourceLocation MeshLoc);
 

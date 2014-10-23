@@ -1242,6 +1242,9 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
       break;
     }
     // FALL THROUGH.
+  case tok::kw_from:
+    Res = ParseScoutQueryExpression();
+    break;
   default:
     NotCastExpr = true;
     return ExprError();

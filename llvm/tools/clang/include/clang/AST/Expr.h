@@ -4846,6 +4846,29 @@ public:
     return child_range(SubExprs, SubExprs+NumSubExprs);
   }
 };
+
+// +===== Scout ========================
+
+class QueryExpr : public Expr{
+  enum { QUERY, END_EXPR };
+  Stmt* SubExprs[END_EXPR];
+  SourceLocation StartLoc, EndLoc;
+public:
+  QueryExpr(EmptyShell shell) : Expr(QueryExprClass, shell){}
+  
+  // Iterators
+  child_range children() {
+    return child_range(SubExprs, SubExprs+1);
+  }
+  
+  SourceLocation getLocStart() const LLVM_READONLY { return StartLoc; }
+
+  SourceLocation getLocEnd() const LLVM_READONLY { return EndLoc; }
+  
+};
+
+// ====== Scout ========================
+
 }  // end namespace clang
 
 #endif

@@ -1232,6 +1232,10 @@ namespace clang {
       /// \brief An AtomicExpr record.
       EXPR_ATOMIC,
 
+      // +===== Scout ====================
+      EXPR_QUERY,
+      // =================================
+      
       // Objective-C
 
       /// \brief An ObjCStringLiteral record.
