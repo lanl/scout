@@ -2914,6 +2914,10 @@ bool Expr::HasSideEffects(const ASTContext &Ctx) const {
   case ObjCBoolLiteralExprClass:
   case CXXUuidofExprClass:
   case OpaqueValueExprClass:
+// +===== Scout ===========================
+  case QueryExprClass:
+// ========================================
+      
     // These never have a side-effect.
     return false;
 
