@@ -92,7 +92,7 @@
   ##### 
 
   if (GLFW_LIBRARY_DIR) 
-    set(GLFW_LIBS "-lglfw3")
+    set(GLFW_LIBRARIES "-lglfw3")
   endif()
 
   find_package_handle_standard_args(GLFW

@@ -50,20 +50,32 @@
 #
 project(gl-info)
 
-FIND_PACKAGE(GLUT)
+find_library(GLFW glfw)
 
 INCLUDE_DIRECTORIES(
-  ${GLUT_INCLUDE_DIR}
+  ${GLFW_INCLUDE_DIR}
   ${OPENGL_INCLUDE_DIR}
   )
 
 SET(LIBS
-  ${GLUT_LIBRARIES}
-  ${OPENGL_LIBRARIES}
+  ${GLFW_LIBRARIES}
+  ${OPENGL_LIBRARY}
+  ${COCOA_LIBRARY}
+  ${IOKIT_LIBRARY}
+  ${COREVIDEO_LIBRARY}
+  ${COREFOUNDATION_FRAMEWORK}
 )
 
 ADD_EXECUTABLE(gl-info gl-info.cpp )
-TARGET_LINK_LIBRARIES(gl-info ${LIBS})
+
+if ("${CMAKE_SYSTEM}" MATCHES "Linux")
+  #GL and GLU are added here as findOpenGL is broken on Ubuntu
+  target_link_libraries(gl-info ${LIBS} GL GLU X11 Xxf86vm Xrandr pthread Xi Xcursor rt)
+else()
+  target_link_libraries(gl-info ${LIBS})
+endif()
+
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L${GLFW_LIBRARY_DIR}")
 
 install(TARGETS gl-info
   DESTINATION bin)

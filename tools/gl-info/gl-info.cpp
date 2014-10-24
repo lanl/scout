@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyrigh (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2014, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -73,7 +73,6 @@
 #include <OpenGL/gl.h>
 #include <OpenGL/glu.h>
 #include <OpenGL/glext.h>
-#include <GLUT/glut.h>
 
 #else /* Linux */ 
 
@@ -84,9 +83,11 @@
 #include <GL/gl.h>
 #include <GL/glu.h>
 #include <GL/glext.h>
-#include <GL/glut.h>
 
 #endif
+
+#define GLFW_INCLUDE_GLCOREARB
+#include <GLFW/glfw3.h>
 
 using namespace std;
 
@@ -159,14 +160,24 @@ int main(int argc, char *argv[])
     }
   }
 
-  glutInit(&argc, argv);
-  glutInitDisplayMode(GLUT_DOUBLE|GLUT_RGBA|GLUT_ALPHA|GLUT_DEPTH);
-  glutInitWindowPosition(-10,-10);  
-  glutInitWindowSize(2,2);
-  glutCreateWindow("glslcc");
-  glutHideWindow();
-
-  const GLubyte *versionStr = glGetString(GL_VERSION);
-  cout << "OpenGL Version: " << versionStr << endl;
+  GLFWwindow* window;
+  if(!glfwInit()) {
+    cerr << "failed to start glfw" << endl;
+    return -1;
+  }
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+  glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+  window = glfwCreateWindow(2, 2, "", NULL, NULL);
+  if(!window) {
+    cerr << "failed to open window" << endl;
+    return -1;
+  }
+  int major, minor, rev;
+  glfwGetVersion(&major, &minor, &rev);
+  cout << "OpenGL Version: " << major << "." << minor << "." << rev << endl;
+  const char *versionStr  = glfwGetVersionString();
+  cout << "OpenGL Version String: " << versionStr << endl;
   return 0;
 }

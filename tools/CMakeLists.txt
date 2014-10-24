@@ -63,6 +63,10 @@ project(sc_tools)
     add_subdirectory(glsl-cc)
   endif()
 
+  if (SCOUT_ENABLE_GLFW)
+   add_subdirectory(gl-info)
+  endif()
+
   add_subdirectory(gdb)
   add_subdirectory(lldb)
   add_subdirectory(sc-config)
