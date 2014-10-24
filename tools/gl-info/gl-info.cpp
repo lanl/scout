@@ -74,6 +74,8 @@
 #include <OpenGL/glu.h>
 #include <OpenGL/glext.h>
 
+#define GLFW_INCLUDE_GLCOREARB
+
 #else /* Linux */ 
 
 #ifndef GL_GLEXT_PROTOTYPES
@@ -86,7 +88,6 @@
 
 #endif
 
-#define GLFW_INCLUDE_GLCOREARB
 #include <GLFW/glfw3.h>
 
 using namespace std;
