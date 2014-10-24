@@ -1221,6 +1221,11 @@ ExprResult Parser::ParseCastExpression(bool isUnaryExpression,
     cutOffParsing();
     return ExprError();
   }
+  // +===== Scout ================================
+  case tok::kw_from:
+    Res = ParseScoutQueryExpression();
+    break;
+  // +============================================
   case tok::l_square:
     if (getLangOpts().CPlusPlus11) {
       if (getLangOpts().ObjC1) {

@@ -2389,6 +2389,10 @@ DEF_TRAVERSE_STMT(FunctionParmPackExpr, {})
 DEF_TRAVERSE_STMT(MaterializeTemporaryExpr, {})
 DEF_TRAVERSE_STMT(AtomicExpr, {})
 
+// +===== Scout ===========================
+DEF_TRAVERSE_STMT(QueryExpr, {})
+// ========================================
+  
 // These literals (all of them) do not need any action.
 DEF_TRAVERSE_STMT(IntegerLiteral, {})
 DEF_TRAVERSE_STMT(CharacterLiteral, {})

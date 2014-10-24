@@ -2686,6 +2686,9 @@ recurse:
   case Expr::ParenListExprClass:
   case Expr::LambdaExprClass:
   case Expr::MSPropertyRefExprClass:
+// +===== Scout ==========================
+  case Expr::QueryExprClass:
+// =======================================
     llvm_unreachable("unexpected statement kind");
 
   // FIXME: invent manglings for all these.

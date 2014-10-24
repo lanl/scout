@@ -142,5 +142,6 @@ void StmtPrinter::VisitForallArrayStmt(ForallArrayStmt *Node) {
 
 }
 
-
-
+void StmtPrinter::VisitQueryExpr(QueryExpr *Node) {
+  assert(false && "unimplemented");
+}

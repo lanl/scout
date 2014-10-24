@@ -854,6 +854,10 @@ void ASTStmtWriter::VisitAtomicExpr(AtomicExpr *E) {
   Code = serialization::EXPR_ATOMIC;
 }
 
+void ASTStmtWriter::VisitQueryExpr(QueryExpr *E) {
+  assert(false && "unimplemented");
+}
+
 //===----------------------------------------------------------------------===//
 // Objective-C Expressions and Statements.
 //===----------------------------------------------------------------------===//

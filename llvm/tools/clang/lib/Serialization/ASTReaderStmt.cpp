@@ -911,6 +911,10 @@ void ASTStmtReader::VisitAtomicExpr(AtomicExpr *E) {
   E->RParenLoc = ReadSourceLocation(Record, Idx);
 }
 
+void ASTStmtReader::VisitQueryExpr(QueryExpr *E) {
+  assert(false && "unimplemented");
+}
+
 //===----------------------------------------------------------------------===//
 // Objective-C Expressions and Statements
 
@@ -2502,7 +2506,7 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
     case EXPR_BLOCK:
       S = new (Context) BlockExpr(Empty);
       break;
-
+        
     case EXPR_GENERIC_SELECTION:
       S = new (Context) GenericSelectionExpr(Empty);
       break;
@@ -2948,6 +2952,12 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
                                          NumArrayIndexVars);
       break;
     }
+        
+    // +===== Scout ============================
+    case EXPR_QUERY:
+      S = new (Context) QueryExpr(Empty);
+      break;
+    // =========================================
     }
     
     // We hit a STMT_STOP, so we're done with this expression.

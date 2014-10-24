@@ -964,7 +964,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     Result = Context.getQueryType();
     break;
     
-    // we may need this later, if we need to attach
+    // we may need this later, if we need to
     // attach declarator chunks to query
     
     /*

@@ -827,6 +827,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     //case Stmt::RenderAllStmtClass:
     //case Stmt::ForAllArrayStmtClass:
     //case Stmt::VolumeRenderAllStmtClass:
+    case Expr::QueryExprClass:
       llvm_unreachable("Stmt should not be in analyzer evaluation loop");
     // +======================================================================+
 

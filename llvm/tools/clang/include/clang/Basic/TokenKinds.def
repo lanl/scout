@@ -271,6 +271,7 @@ SCOUT_KEYWORD(task)
 SCOUT_KEYWORD(persistent)
 SCOUT_KEYWORD(query)
 SCOUT_KEYWORD(select)
+SCOUT_KEYWORD(from)
 // +==========================================================================+
 
 KEYWORD(auto                        , KEYALL)
