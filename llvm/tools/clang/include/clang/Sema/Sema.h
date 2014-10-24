@@ -8774,7 +8774,11 @@ public:
                                     Expr* Predicate,
                                     SourceLocation RParenLoc,
                                     Stmt* Body);
-
+  
+  ExprResult ActOnQueryExpr(SourceLocation FromLoc,
+                            Expr* Field,
+                            Expr* Predicate);
+  
   //  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
   //                                      SourceLocation L, SourceLocation R,
   //                                      IdentifierInfo* MII, VarDecl* MVD,

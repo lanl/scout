@@ -4850,20 +4850,27 @@ public:
 // +===== Scout ========================
 
 class QueryExpr : public Expr{
-  enum { QUERY, END_EXPR };
+  enum { FIELD, PRED, END_EXPR };
   Stmt* SubExprs[END_EXPR];
-  SourceLocation StartLoc, EndLoc;
+  SourceLocation FromLoc;
 public:
+  QueryExpr(QualType t, SourceLocation fromLoc, Expr* field, Expr* pred)
+  : Expr(QueryExprClass, t, VK_LValue, OK_Ordinary, false, false, false, false){
+    FromLoc = fromLoc;
+    SubExprs[FIELD] = field;
+    SubExprs[PRED] = pred;
+  }
+  
   QueryExpr(EmptyShell shell) : Expr(QueryExprClass, shell){}
   
   // Iterators
   child_range children() {
-    return child_range(SubExprs, SubExprs+1);
+    return child_range(SubExprs, SubExprs+END_EXPR);
   }
   
-  SourceLocation getLocStart() const LLVM_READONLY { return StartLoc; }
+  SourceLocation getLocStart() const LLVM_READONLY { return FromLoc; }
 
-  SourceLocation getLocEnd() const LLVM_READONLY { return EndLoc; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SubExprs[PRED]->getLocEnd();; }
   
 };
 

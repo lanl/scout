@@ -100,7 +100,7 @@ ExprResult Parser::ParseScoutQueryExpression(){
   ConsumeToken();
   
   ForallMeshStmt::MeshElementType MeshElementType = setMeshElementType(ElementToken);
-  if (MeshElementType == ForallMeshStmt::Undefined) {
+  if (MeshElementType == ForallMeshStmt::Undefined){
     Diag(Tok, diag::err_query_expected_mesh_element_kw);
     SkipUntil(tok::semi);
     return ExprError();
@@ -109,7 +109,7 @@ ExprResult Parser::ParseScoutQueryExpression(){
   // We consumed the element token above and should now be
   // at the element identifier portion of the query; make
   // sure we have a valid identifier and bail if not...
-  if (Tok.isNot(tok::identifier)) {
+  if (Tok.isNot(tok::identifier)){
     Diag(Tok, diag::err_expected_ident);
     SkipUntil(tok::semi);
     return ExprError();
@@ -120,7 +120,7 @@ ExprResult Parser::ParseScoutQueryExpression(){
   ConsumeToken();
   
   // Next we should encounter the 'in' keyword...
-  if (Tok.isNot(tok::kw_in)) {
+  if (Tok.isNot(tok::kw_in)){
     Diag(Tok, diag::err_forall_expected_kw_in);
     SkipUntil(tok::semi);
     return ExprError();
@@ -130,8 +130,8 @@ ExprResult Parser::ParseScoutQueryExpression(){
   //if we are in scc-mode and in a function where the mesh was
   // passed as a parameter we will have a star here.
   bool meshptr = false;
-  if(getLangOpts().ScoutC) {
-    if(Tok.is(tok::star)) {
+  if(getLangOpts().ScoutC){
+    if(Tok.is(tok::star)){
       ConsumeToken();
       meshptr = true;
     }
@@ -139,7 +139,7 @@ ExprResult Parser::ParseScoutQueryExpression(){
   
   // Finally, we are at the identifier that specifies the mesh
   // that we are computing over.
-  if (Tok.isNot(tok::identifier)) {
+  if (Tok.isNot(tok::identifier)){
     Diag(Tok, diag::err_expected_ident);
     SkipUntil(tok::semi);
     return ExprError();
@@ -156,7 +156,7 @@ ExprResult Parser::ParseScoutQueryExpression(){
   
   // If we are in scc-mode and inside a function then make sure
   // we have a *
-  if(getLangOpts().ScoutC && isa<ParmVarDecl>(VD) && meshptr == false) {
+  if(getLangOpts().ScoutC && isa<ParmVarDecl>(VD) && meshptr == false){
     Diag(Tok,diag::err_expected_star_mesh);
     SkipUntil(tok::semi);
     return ExprError();
@@ -184,5 +184,37 @@ ExprResult Parser::ParseScoutQueryExpression(){
   
   MeshElementTypeDiag(MeshElementType, RefMeshType, MeshIdentLoc);
   
-  return ExprError();
+  if (Tok.isNot(tok::kw_select)){
+    Diag(Tok, diag::err_query_expected_kw_select);
+    SkipUntil(tok::semi);
+    return ExprError();
+  }
+  SourceLocation SelectLoc = ConsumeToken();
+  
+  ExprResult FieldResult = ParseExpression();
+  
+  if(FieldResult.isInvalid() || !isa<MemberExpr>(FieldResult.get())){
+    Diag(Tok, diag::err_invalid_query_field);
+    SkipUntil(tok::semi);
+    return ExprError();
+  }
+  
+  if (Tok.isNot(tok::kw_where)){
+    Diag(Tok, diag::err_query_expected_kw_where);
+    SkipUntil(tok::semi);
+    return ExprError();
+  }
+  SourceLocation WhereLoc = ConsumeToken();
+  
+  ExprResult PredicateResult = ParseExpression();
+  
+  if(PredicateResult.isInvalid()){
+    Diag(Tok, diag::err_invalid_query_predicate);
+    SkipUntil(tok::semi);
+    return ExprError();
+  }
+  
+  return Actions.ActOnQueryExpr(FromLoc,
+                                FieldResult.get(),
+                                PredicateResult.get());
 }
