@@ -54,7 +54,7 @@ project(scout_rt_test_glfw)
 message(STATUS "scout install include directory: ${SCOUT_INSTALL_INCLUDE_DIR}")
 message(STATUS "scout install lib directory: ${SCOUT_INSTALL_LIB_DIR}")
 message(STATUS "glfw library dir: ${GLFW_LIBRARY_DIR}")
-message(STATUS "glfw libs : ${GLFW_LIBS}")
+message(STATUS "glfw libs : ${GLFW_LIBRARIES}")
 message(STATUS "opengl libs : ${OPENGL_LIBRARY}")
 
 include_directories(
@@ -65,7 +65,7 @@ include_directories(
 
 set(LIBS
   scRuntime
-  ${GLFW_LIBS}
+  ${GLFW_LIBRARIES}
   ${OPENGL_LIBRARY}
   ${COCOA_LIBRARY}
   ${IOKIT_LIBRARY}
