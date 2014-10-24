@@ -4870,7 +4870,11 @@ public:
   
   SourceLocation getLocStart() const LLVM_READONLY { return FromLoc; }
 
-  SourceLocation getLocEnd() const LLVM_READONLY { return SubExprs[PRED]->getLocEnd();; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SubExprs[PRED]->getLocEnd(); }
+  
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == QueryExprClass;
+  }
   
 };
 
