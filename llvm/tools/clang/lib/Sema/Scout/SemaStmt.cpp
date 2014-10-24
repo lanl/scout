@@ -212,6 +212,18 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
   return FS;
 }
 
+ExprResult Sema::ActOnQueryExpr(SourceLocation FromLoc,
+                                Expr* Field,
+                                Expr* Predicate){
+
+  QueryExpr* QE = new (Context) QueryExpr(Context.getQueryType(),
+                                          FromLoc,
+                                          Field,
+                                          Predicate);
+  
+  return QE;
+}
+
 // Check forall array for shadowing
 bool Sema::CheckForallArray(Scope* S,
                                   IdentifierInfo* InductionVarInfo,

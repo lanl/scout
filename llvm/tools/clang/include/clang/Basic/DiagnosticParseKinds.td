@@ -1100,6 +1100,18 @@ def err_query_expected_mesh_element_kw:Error<
 def err_query_expected_kw_in:Error<
 "query missing (expected) keyword: 'in'">;
 
+def err_query_expected_kw_select:Error<
+"query missing (expected) keyword: 'select'">;
+
+def err_query_expected_kw_where:Error<
+"query missing (expected) keyword: 'where'">;
+
+def err_invalid_query_field:Error<
+"invalid query field">;
+
+def err_invalid_query_predicate:Error<
+"invalid query predicate">;
+
 // +=========================================================================+
 
 def err_pragma_loop_missing_argument : Error<
