@@ -4855,7 +4855,7 @@ class QueryExpr : public Expr{
   SourceLocation FromLoc;
 public:
   QueryExpr(QualType t, SourceLocation fromLoc, Expr* field, Expr* pred)
-  : Expr(QueryExprClass, t, VK_LValue, OK_Ordinary, false, false, false, false){
+  : Expr(QueryExprClass, t, VK_LValue, OK_Ordinary, true, true, true, false){
     FromLoc = fromLoc;
     SubExprs[FIELD] = field;
     SubExprs[PRED] = pred;

@@ -1217,6 +1217,13 @@ void CodeGenFunction::EmitExprAsInit(const Expr *init,
                                      bool capturedByInit) {
   QualType type = D->getType();
 
+  // +===== Scout ===============================
+  if(const QueryExpr* qe = dyn_cast<QueryExpr>(init)){
+    EmitQueryExpr(D, lvalue, qe);
+    return;
+  }
+  // ============================================
+  
   if (type->isReferenceType()) {
     RValue rvalue = EmitReferenceBindingToExpr(init);
     if (capturedByInit)

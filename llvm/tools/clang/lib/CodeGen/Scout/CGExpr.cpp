@@ -596,4 +596,8 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
   assert(false && "Failed to emit Mesh Parameter");
 }
 
-
+void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
+                                    LValue LV,
+                                    const QueryExpr* QE){
+  
+}
