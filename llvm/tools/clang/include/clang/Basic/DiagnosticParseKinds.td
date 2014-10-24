@@ -1092,6 +1092,14 @@ def err_expected_star_mesh:Error<
     "expected a mesh, perhaps a missing *?">;          
 def err_expected_mesh_var_decl:Error<
     "expected mesh variable declaration">;
+
+// +----- query errors -----------------------------------------------------+
+def err_query_expected_mesh_element_kw:Error<
+"expected mesh element keyword">;
+
+def err_query_expected_kw_in:Error<
+"query missing (expected) keyword: 'in'">;
+
 // +=========================================================================+
 
 def err_pragma_loop_missing_argument : Error<

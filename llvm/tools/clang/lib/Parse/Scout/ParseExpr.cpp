@@ -66,7 +66,123 @@
 
 using namespace clang;
 
+static ForallMeshStmt::MeshElementType setMeshElementType(tok::TokenKind kind){
+   switch(kind){
+     case tok::kw_cells:
+      return ForallMeshStmt::Cells;
+    case tok::kw_vertices:
+      return ForallMeshStmt::Vertices;
+    case tok::kw_edges:
+      return ForallMeshStmt::Edges;
+    case tok::kw_faces:
+      return ForallMeshStmt::Faces;
+      break;
+    default:
+      return ForallMeshStmt::Undefined;
+  }
+}
 
 ExprResult Parser::ParseScoutQueryExpression(){
+  // Upon entry we expect the input token to be on the 'from'
+  // keyword -- we'll throw an assertion in just to make sure
+  // we help maintain consistency from the caller(s).
+  assert(Tok.getKind() == tok::kw_from && "expected input token to be 'from'");
+  
+  // Swallow the 'from' token...
+  SourceLocation FromLoc = ConsumeToken();
+  
+  // At this point we should be sitting at the mesh element keyword
+  // that identifies the locations on the mesh that are to be queried
+  // over.  Keep track of the element token and its location (for later
+  // use).  Also set the mesh element type we're processing so we can
+  // refer to it later w/out having to query/translate token types...
+  tok::TokenKind ElementToken = Tok.getKind();
+  ConsumeToken();
+  
+  ForallMeshStmt::MeshElementType MeshElementType = setMeshElementType(ElementToken);
+  if (MeshElementType == ForallMeshStmt::Undefined) {
+    Diag(Tok, diag::err_query_expected_mesh_element_kw);
+    SkipUntil(tok::semi);
+    return ExprError();
+  }
+  
+  // We consumed the element token above and should now be
+  // at the element identifier portion of the query; make
+  // sure we have a valid identifier and bail if not...
+  if (Tok.isNot(tok::identifier)) {
+    Diag(Tok, diag::err_expected_ident);
+    SkipUntil(tok::semi);
+    return ExprError();
+  }
+  
+  IdentifierInfo* ElementIdentInfo = Tok.getIdentifierInfo();
+  SourceLocation  ElementIdentLoc  = Tok.getLocation();
+  ConsumeToken();
+  
+  // Next we should encounter the 'in' keyword...
+  if (Tok.isNot(tok::kw_in)) {
+    Diag(Tok, diag::err_forall_expected_kw_in);
+    SkipUntil(tok::semi);
+    return ExprError();
+  }
+  ConsumeToken();
+  
+  //if we are in scc-mode and in a function where the mesh was
+  // passed as a parameter we will have a star here.
+  bool meshptr = false;
+  if(getLangOpts().ScoutC) {
+    if(Tok.is(tok::star)) {
+      ConsumeToken();
+      meshptr = true;
+    }
+  }
+  
+  // Finally, we are at the identifier that specifies the mesh
+  // that we are computing over.
+  if (Tok.isNot(tok::identifier)) {
+    Diag(Tok, diag::err_expected_ident);
+    SkipUntil(tok::semi);
+    return ExprError();
+  }
+  
+  IdentifierInfo* MeshIdentInfo = Tok.getIdentifierInfo();
+  SourceLocation MeshIdentLoc  = Tok.getLocation();
+  
+  VarDecl* VD = LookupMeshVarDecl(MeshIdentInfo, MeshIdentLoc);
+  
+  if(VD == 0){
+    return ExprError();
+  }
+  
+  // If we are in scc-mode and inside a function then make sure
+  // we have a *
+  if(getLangOpts().ScoutC && isa<ParmVarDecl>(VD) && meshptr == false) {
+    Diag(Tok,diag::err_expected_star_mesh);
+    SkipUntil(tok::semi);
+    return ExprError();
+  }
+  
+  const MeshType* RefMeshType = LookupMeshType(VD, MeshIdentInfo, MeshIdentLoc);
+  
+  if(RefMeshType == 0){
+    return ExprError();
+  }
+  
+  DeclStmt* Init; //declstmt for forall implicit variable
+  bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
+                                                    MeshIdentInfo, MeshIdentLoc,
+                                                    MeshElementType,
+                                                    ElementIdentInfo,
+                                                    ElementIdentLoc,
+                                                    RefMeshType,
+                                                    VD, &Init);
+  if(!success){
+    return ExprError();
+  }
+  
+  ConsumeToken();
+  
+  MeshElementTypeDiag(MeshElementType, RefMeshType, MeshIdentLoc);
+  
   return ExprError();
 }
