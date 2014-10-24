@@ -1218,7 +1218,7 @@ void CodeGenFunction::EmitExprAsInit(const Expr *init,
   QualType type = D->getType();
 
   // +===== Scout ===============================
-  if(init && const QueryExpr* qe = dyn_cast<QueryExpr>(init)){
+  if(const QueryExpr* qe = dyn_cast_or_null<QueryExpr>(init)){
     EmitQueryExpr(D, lvalue, qe);
     return;
   }
