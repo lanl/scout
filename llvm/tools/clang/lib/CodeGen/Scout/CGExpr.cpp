@@ -20,6 +20,7 @@
 #include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "Scout/CGMeshLayout.h"
+#include "Scout/CGLegionRuntime.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include <stdio.h>
 
@@ -599,5 +600,83 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
 void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
                                     LValue LV,
                                     const QueryExpr* QE){
+  using namespace std;
+  using namespace llvm;
   
+  typedef vector<llvm::Value*> ValueVec;
+  typedef vector<llvm::Type*> TypeVec;
+
+  CGBuilderTy& B = Builder;
+  CGLegionRuntime& R = CGM.getLegionRuntime();
+  LLVMContext& C = getLLVMContext();
+  
+  Value* One = ConstantInt::get(Int64Ty, 1);
+  
+  BasicBlock* prevBlock = B.GetInsertBlock();
+  BasicBlock::iterator prevPoint = B.GetInsertPoint();
+  
+  const MemberExpr* memberExpr = QE->getField();
+  const Expr* pred = QE->getPredicate();
+  
+  const DeclRefExpr* base = dyn_cast<DeclRefExpr>(memberExpr->getBase());
+  assert(base && "expected a DeclRefExpr");
+
+  const ImplicitMeshParamDecl* imp = dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
+  assert(base && "expected an ImplicitMeshParamDecl");
+  
+  const VarDecl* mvd = imp->getMeshVarDecl();
+  
+  TypeVec params =
+  {R.PointerTy(ConvertType(mvd->getType())), R.PointerTy(Int8Ty), Int64Ty, Int64Ty};
+
+  llvm::FunctionType* ft = llvm::FunctionType::get(R.VoidTy, params, false);
+  
+  Function* queryFunc = Function::Create(ft,
+                                         Function::ExternalLinkage,
+                                         "MeshQueryFunction",
+                                         &CGM.getModule());
+  
+  auto aitr = queryFunc->arg_begin();
+  Value* meshPtr = aitr++;
+  Value* outPtr = aitr++;
+  Value* start = aitr++;
+  Value* end = aitr++;
+  
+  BasicBlock* entry = BasicBlock::Create(C, "entry", queryFunc);
+  B.SetInsertPoint(entry);
+
+  Value* inductPtr = B.CreateAlloca(Int64Ty, 0, "induct.ptr");
+
+  B.CreateStore(start, inductPtr);
+  
+  BasicBlock* loopBlock = BasicBlock::Create(C, "query.loop", queryFunc);
+  B.CreateBr(loopBlock);
+  B.SetInsertPoint(loopBlock);
+
+  CellIndex = inductPtr;
+  EmitAnyExprToTemp(pred);
+  CellIndex = 0;
+  
+  Value* induct = B.CreateLoad(inductPtr);
+  Value* nextInduct = B.CreateAdd(induct, One);
+  B.CreateStore(nextInduct, inductPtr);
+  
+  BasicBlock* condBlock = BasicBlock::Create(C, "query.cond", queryFunc);
+  
+  B.CreateBr(condBlock);
+  
+  BasicBlock* mergeBlock = BasicBlock::Create(C, "query.merge", queryFunc);
+  
+  B.SetInsertPoint(condBlock);
+  
+  Value* cond = B.CreateICmpULT(induct, end);
+  B.CreateCondBr(cond, loopBlock, mergeBlock);
+
+  B.SetInsertPoint(mergeBlock);
+  
+  B.CreateRetVoid();
+  
+  B.SetInsertPoint(prevBlock, prevPoint);
+  
+  //queryFunc->dump();
 }

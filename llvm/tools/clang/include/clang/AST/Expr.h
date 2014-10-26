@@ -4876,6 +4876,14 @@ public:
     return T->getStmtClass() == QueryExprClass;
   }
   
+  MemberExpr* getField() const{
+    return cast<MemberExpr>(SubExprs[FIELD]);
+  }
+  
+  Expr* getPredicate() const{
+    return cast<Expr>(SubExprs[PRED]);
+  }
+  
 };
 
 // ====== Scout ========================
