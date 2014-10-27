@@ -134,6 +134,10 @@ void glWindow::paintMono()
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
   
   if (_camera != 0) {
+    /*
+      
+    // the renderable is now responsible for doing this...
+
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     gluPerspective(_camera->fov, _camera->aspect, _camera->near, _camera->far);
@@ -144,6 +148,7 @@ void glWindow::paintMono()
     gluLookAt(_camera->position.x, _camera->position.y, _camera->position.z,
               _camera->look_at.x, _camera->look_at.y, _camera->look_at.z,
               _camera->up[0], _camera->up[1], _camera->up[2]);
+    */
     
     if (_manipulator)
       _manipulator->apply();
@@ -168,6 +173,10 @@ void glWindow::paintStereo()
   const double DTOR = 0.0174532925;
   
   if (_camera != 0) {
+    /*
+
+    // the renderable is now responsible for doing this...
+
     double ratio   = _camera->win_width / (double)_camera->win_height;
     double radians = DTOR * _camera->fov / 2.0;
     double wd2     = _camera->near * tan(radians);
@@ -209,7 +218,8 @@ void glWindow::paintStereo()
               _camera->up[1],
               _camera->up[2]);
     
-    
+    */
+
     if (_manipulator)
       _manipulator->apply();
     
@@ -219,7 +229,11 @@ void glWindow::paintStereo()
         (*it)->render(_camera);
     }
     
-    // ****** Left
+    // ****** Right
+    /*
+
+    // the renderable is now responsible for doing this...
+
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     left   = -ratio * wd2 + 0.5 * _camera->eye_sep * ndfl;
@@ -242,7 +256,8 @@ void glWindow::paintStereo()
               _camera->up[0],
               _camera->up[1],
               _camera->up[2]);
-    
+    */
+
     if (_manipulator)
       _manipulator->apply();
     
