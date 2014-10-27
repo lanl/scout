@@ -20,6 +20,7 @@
 #include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "Scout/CGMeshLayout.h"
+#include "Scout/CGLegionRuntime.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include <stdio.h>
 
@@ -596,4 +597,142 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
   assert(false && "Failed to emit Mesh Parameter");
 }
 
+void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
+                                    LValue LV,
+                                    const QueryExpr* QE){
+  using namespace std;
+  using namespace llvm;
+  
+  typedef vector<llvm::Value*> ValueVec;
+  typedef vector<llvm::Type*> TypeVec;
 
+  CGBuilderTy& B = Builder;
+  CGLegionRuntime& R = CGM.getLegionRuntime();
+  LLVMContext& C = getLLVMContext();
+  
+  Value* One = ConstantInt::get(Int64Ty, 1);
+  
+  BasicBlock* prevBlock = B.GetInsertBlock();
+  BasicBlock::iterator prevPoint = B.GetInsertPoint();
+  
+  const MemberExpr* memberExpr = QE->getField();
+  const Expr* pred = QE->getPredicate();
+  
+  const DeclRefExpr* base = dyn_cast<DeclRefExpr>(memberExpr->getBase());
+  assert(base && "expected a DeclRefExpr");
+
+  const ImplicitMeshParamDecl* imp = dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
+  assert(base && "expected an ImplicitMeshParamDecl");
+
+  ImplicitMeshParamDecl::MeshElementType et = imp->getElementType();
+  
+  const VarDecl* mvd = imp->getMeshVarDecl();
+  
+  TypeVec params =
+  {R.PointerTy(ConvertType(mvd->getType())), R.PointerTy(Int8Ty), Int64Ty, Int64Ty};
+
+  llvm::FunctionType* ft = llvm::FunctionType::get(R.VoidTy, params, false);
+  
+  Function* queryFunc = Function::Create(ft,
+                                         Function::ExternalLinkage,
+                                         "MeshQueryFunction",
+                                         &CGM.getModule());
+  
+  auto aitr = queryFunc->arg_begin();
+  Value* meshPtr = aitr++;
+  Value* outPtr = aitr++;
+  Value* start = aitr++;
+  Value* end = aitr++;
+  
+  LocalDeclMap[mvd] = meshPtr;
+  
+  BasicBlock* entry = BasicBlock::Create(C, "entry", queryFunc);
+  B.SetInsertPoint(entry);
+
+  Value* inductPtr = B.CreateAlloca(Int64Ty, 0, "induct.ptr");
+
+  B.CreateStore(start, inductPtr);
+  
+  BasicBlock* loopBlock = BasicBlock::Create(C, "query.loop", queryFunc);
+  B.CreateBr(loopBlock);
+  B.SetInsertPoint(loopBlock);
+
+  switch(et){
+    case ImplicitMeshParamDecl::Cells:
+      CellIndex = inductPtr;
+      break;
+    case ImplicitMeshParamDecl::Vertices:
+      VertexIndex = inductPtr;
+      break;
+    case ImplicitMeshParamDecl::Edges:
+      EdgeIndex = inductPtr;
+      break;
+    case ImplicitMeshParamDecl::Faces:
+      FaceIndex = inductPtr;
+      break;
+    default:
+      assert(false && "invalid mesh element type");
+  }
+
+  Value* result =
+  B.CreateTrunc(EmitAnyExprToTemp(pred).getScalarVal(), Int8Ty, "result");
+  
+  switch(et){
+    case ImplicitMeshParamDecl::Cells:
+      CellIndex = 0;
+      break;
+    case ImplicitMeshParamDecl::Vertices:
+      VertexIndex = 0;
+      break;
+    case ImplicitMeshParamDecl::Edges:
+      EdgeIndex = 0;
+      break;
+    case ImplicitMeshParamDecl::Faces:
+      FaceIndex = 0;
+      break;
+    default:
+      break;
+  }
+  
+  Value* induct = B.CreateLoad(inductPtr);
+
+  Value* outPosPtr = B.CreateGEP(outPtr, induct, "outPos.ptr");
+  B.CreateStore(result, outPosPtr);
+  
+  Value* nextInduct = B.CreateAdd(induct, One);
+  B.CreateStore(nextInduct, inductPtr);
+  
+  BasicBlock* condBlock = BasicBlock::Create(C, "query.cond", queryFunc);
+  
+  B.CreateBr(condBlock);
+  
+  BasicBlock* mergeBlock = BasicBlock::Create(C, "query.merge", queryFunc);
+  
+  B.SetInsertPoint(condBlock);
+  
+  Value* cond = B.CreateICmpULT(induct, end);
+  B.CreateCondBr(cond, loopBlock, mergeBlock);
+
+  B.SetInsertPoint(mergeBlock);
+  
+  B.CreateRetVoid();
+  
+  LocalDeclMap.erase(mvd);
+  
+  B.SetInsertPoint(prevBlock, prevPoint);
+  
+  StructType* qt = StructType::create(C, "scout.query_t");
+  qt->setBody(R.VoidPtrTy, R.VoidPtrTy, NULL);
+
+  llvm::Value* meshAddr;
+  GetMeshBaseAddr(mvd, meshAddr);
+  
+  Value* qp = B.CreateAlloca(qt, 0, "query.ptr");
+  Value* funcField = B.CreateStructGEP(qp, 0, "query.func.ptr");
+  Value* meshPtrField = B.CreateStructGEP(qp, 1, "query.func.ptr");
+
+  B.CreateStore(B.CreateBitCast(queryFunc, R.VoidPtrTy), funcField);
+  B.CreateStore(B.CreateBitCast(meshAddr, R.VoidPtrTy), meshPtrField);
+
+  //queryFunc->dump();
+}

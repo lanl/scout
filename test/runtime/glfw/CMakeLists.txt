@@ -65,7 +65,7 @@ include_directories(
 
 set(LIBS
   scRuntime
-  ${GLFW_LIBS}
+  ${GLFW_LIBRARIES}
   ${OPENGL_LIBRARY}
   ${COCOA_LIBRARY}
   ${IOKIT_LIBRARY}

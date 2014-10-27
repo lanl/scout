@@ -605,7 +605,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T, bool isStencil) {
     break;
       
   case Type::Query:
-    ResultType = 0; //SC_TODO
+    ResultType = ConvertScoutQueryType(T);
     break;
   // +========================================================================+
 

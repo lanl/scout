@@ -2192,6 +2192,8 @@ public:
     llvm::outs() << "Attempting " << s << ".\n";
   }
 
+  void EmitQueryExpr(const ValueDecl* VD, LValue LV, const QueryExpr* QE);
+  
   //MeshFieldPair FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName);
   // +========================================================================+
 

@@ -4855,7 +4855,7 @@ class QueryExpr : public Expr{
   SourceLocation FromLoc;
 public:
   QueryExpr(QualType t, SourceLocation fromLoc, Expr* field, Expr* pred)
-  : Expr(QueryExprClass, t, VK_LValue, OK_Ordinary, false, false, false, false){
+  : Expr(QueryExprClass, t, VK_LValue, OK_Ordinary, true, true, true, false){
     FromLoc = fromLoc;
     SubExprs[FIELD] = field;
     SubExprs[PRED] = pred;
@@ -4870,7 +4870,19 @@ public:
   
   SourceLocation getLocStart() const LLVM_READONLY { return FromLoc; }
 
-  SourceLocation getLocEnd() const LLVM_READONLY { return SubExprs[PRED]->getLocEnd();; }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SubExprs[PRED]->getLocEnd(); }
+  
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == QueryExprClass;
+  }
+  
+  MemberExpr* getField() const{
+    return cast<MemberExpr>(SubExprs[FIELD]);
+  }
+  
+  Expr* getPredicate() const{
+    return cast<Expr>(SubExprs[PRED]);
+  }
   
 };
 
