@@ -52,6 +52,11 @@ project(glsl-cc)
 
 FIND_PACKAGE(GLUT)
 
+# ignore glut deprecated warnings on osx >=10.9
+if(APPLE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated-declarations")
+endif()
+
 INCLUDE_DIRECTORIES(
   ${GLUT_INCLUDE_DIR}
   ${OPENGL_INCLUDE_DIR}
