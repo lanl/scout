@@ -87,7 +87,11 @@ project(scout_test_scxx)
   endforeach(test)
 
   add_subdirectory(debug)
-  add_subdirectory(display)
+
+  if(OPENGL_VERSION_MAJOR VERSION_GREATER 3 OR OPENGL_VERSION_MAJOR VERSION_EQUAL 3)
+    add_subdirectory(display) 
+  endif()
+
   add_subdirectory(driver)
   if (SCOUT_ENABLE_LEGION MATCHES "ON")
    add_subdirectory(legion)
