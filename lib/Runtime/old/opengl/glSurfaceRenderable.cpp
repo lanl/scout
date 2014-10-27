@@ -28,7 +28,7 @@ glSurfaceRenderable::glSurfaceRenderable(int width, int height, int depth, float
   initialize(camera);
 }
 
-// init opengl and compute view and projection matrices in SDL
+// init opengl and compute view and projection matrices 
 void glSurfaceRenderable::initialize(glCamera *camera) 
 {
 

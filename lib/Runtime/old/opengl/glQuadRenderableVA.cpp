@@ -14,6 +14,9 @@
  *-----
  *
  */
+
+#include <unistd.h>
+#include <cstdlib>
 #include <iostream>
 #include "scout/Runtime/opengl/glQuadRenderableVA.h"
 #include "scout/Runtime/opengl/glTexture1D.h"
@@ -22,7 +25,8 @@
 using namespace std;
 using namespace scout;
 
-glQuadRenderableVA::glQuadRenderableVA(const glfloat3 &min_pt, const glfloat3 &max_pt)
+glQuadRenderableVA::glQuadRenderableVA(const glfloat3 &min_pt,
+                                       const glfloat3 &max_pt)
 {
   setMinPoint(min_pt);
   setMaxPoint(max_pt);
@@ -38,81 +42,100 @@ glQuadRenderableVA::glQuadRenderableVA(const glfloat3 &min_pt, const glfloat3 &m
 
 void glQuadRenderableVA::glQuadRenderableVA_1D()
 {
-  size_t xdim = _max_pt.x - _min_pt.x;
+  _drawCells = false;
+  _drawVertices = false;
+  _drawEdges = false;
+  
+  _xdim = _max_pt.x - _min_pt.x;
 
-  _ntexcoords = 1;
-  _texture = new glTexture1D(xdim);
-  _texture->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  _texture->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  _texture->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-  _pbo = new glTextureBuffer;
+  _pbo = new glColorBuffer;
   _pbo->bind();
-  _pbo->alloc(sizeof(float) * 4 * xdim, GL_STREAM_DRAW_ARB);
+  _pbo->alloc(sizeof(float) * 4 * _xdim, GL_STREAM_DRAW_ARB);
   _pbo->release();
 
-  _vbo = new glVertexBuffer;
-  _vbo->bind();
-  _vbo->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);  // we use a quad for 1D meshes...
-  fill_vbo(_min_pt.x, _min_pt.x, _max_pt.x, _max_pt.x);
-  _vbo->release();
-  _nverts = 4;
-
-  _tcbo = new glTexCoordBuffer;
-  _tcbo->bind();
-  _tcbo->alloc(sizeof(float) * 4, GL_STREAM_DRAW_ARB);  // one-dimensional texture coordinates.
-  fill_tcbo1d(0.0f, 1.0f);
-  _tcbo->release();
-
   oglErrorCheck();
-
 }
 
 void glQuadRenderableVA::glQuadRenderableVA_2D()
 {
-  size_t xdim = _max_pt.x - _min_pt.x;
-  size_t ydim = _max_pt.y - _min_pt.y;
+  _drawCells = false;
+  _drawVertices = false;
+  _drawEdges = false;
+  
+  _xdim = _max_pt.x - _min_pt.x;
+  _ydim = _max_pt.y - _min_pt.y;
+  _xdim1 = _xdim + 1;
+  _ydim1 = _ydim + 1;
+  _numCells = _xdim * _ydim;
+  _numVertices = _xdim1 * _ydim1;
+  _numEdges = _xdim * _ydim1 + _xdim1 * _ydim;
 
-  _ntexcoords = 2;
-  _texture = new glTexture2D(xdim, ydim);
-  _texture->addParameter(GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  _texture->addParameter(GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  _texture->addParameter(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-
-  _pbo = new glTextureBuffer;
+  _cellColors = (float4*)malloc(sizeof(float4) * _numCells);
+  
+  _pbo = new glColorBuffer;
   _pbo->bind();
-  _pbo->alloc(sizeof(float) * 4 * xdim * ydim, GL_STREAM_DRAW_ARB);
+  _pbo->alloc(sizeof(float) * 4 * _numCells * 4, GL_STREAM_DRAW_ARB);
   _pbo->release();
 
+  _cvbo = new glVertexBuffer;
+  _cvbo->bind();
+  _cvbo->alloc(sizeof(float) * 3 * _numCells * 4, GL_STREAM_DRAW_ARB);
+  fill_cvbo();
+  _cvbo->release();
+  
+  
+
+  
+  _edgeColors = (float4*)malloc(sizeof(float4) * _numEdges);
+  
+  _epbo = new glColorBuffer;
+  _epbo->bind();
+  _epbo->alloc(sizeof(float) * 4 * _numEdges * 2, GL_STREAM_DRAW_ARB);
+  _epbo->release();
+  
+  _evbo = new glVertexBuffer;
+  _evbo->bind();
+  _evbo->alloc(sizeof(float) * 3 * _numEdges * 2, GL_STREAM_DRAW_ARB);
+  fill_evbo();
+  _evbo->release();
+
+  
+  
+  
   _vbo = new glVertexBuffer;
   _vbo->bind();
-  _vbo->alloc(sizeof(float) * 3 * 4, GL_STREAM_DRAW_ARB);
-  fill_vbo(_min_pt.x, _min_pt.y, _max_pt.x, _max_pt.y);
+  _vbo->alloc(sizeof(float) * 3 * _numVertices, GL_STREAM_DRAW_ARB);
+  fill_vbo();
   _vbo->release();
-  _nverts = 4;
 
-  _tcbo = new glTexCoordBuffer;
-  _tcbo->bind();
-  _tcbo->alloc(sizeof(float) * 8, GL_STREAM_DRAW_ARB);  // two-dimensional texture coordinates.
-  fill_tcbo2d(0.0f, 0.0f, 1.0f, 1.0f);
-  _tcbo->release();
-
+  _vpbo = new glColorBuffer;
+  _vpbo->bind();
+  _vpbo->alloc(sizeof(float) * 4 * _numVertices, GL_STREAM_DRAW_ARB);
+  _vpbo->release();
+  
   oglErrorCheck();
-
 }
 
 
 void glQuadRenderableVA::destroy()
 {
-  if (_texture != 0) delete _texture;
-  if (_pbo != 0) delete _pbo;
-  if (_vbo != 0) delete _vbo;
-  if (_tcbo != 0) delete _tcbo;
-  _texture = NULL;
-  _pbo = NULL;
+  if (_vbo) delete _vbo;
+  if (_cvbo) delete _cvbo;
+  if (_evbo) delete _evbo;
+  if (_pbo) delete _pbo;
+  if (_vpbo) delete _vpbo;
+  if (_epbo) delete _epbo;
+  if (_cellColors) free(_cellColors);
+  if (_edgeColors) free(_edgeColors);
+
   _vbo = NULL;
-  _tcbo = NULL;
+  _cvbo = NULL;
+  _evbo = NULL;
+  _pbo = NULL;
+  _vpbo = NULL;
+  _epbo = NULL;
+  _edgeColors = NULL;
+  _cellColors = NULL;
 }
 
 glQuadRenderableVA::~glQuadRenderableVA()
@@ -127,161 +150,219 @@ void glQuadRenderableVA::initialize(glCamera* camera)
 
   glLoadIdentity();
 
-  size_t width = _max_pt.x - _min_pt.x;
-  size_t height = _max_pt.y - _min_pt.y;
-
   static const float pad = 0.05;
 
-  if(height == 0){
-    float px = pad * width;
-    gluOrtho2D(-px, width + px, -px, width + px);
+  if(_ydim == 0){
+    float px = pad * _xdim;
+    gluOrtho2D(-px, _xdim + px, -px, _xdim + px);
 
   }
   else{
-    if(width >= height){
-      float px = pad * width;
-      float py = (1 - float(height)/width) * width * 0.50;
-      gluOrtho2D(-px, width + px, -py - px, width - py + px);
+    if(_xdim >= _ydim){
+      float px = pad * _xdim;
+      float py = (1 - float(_ydim)/_xdim) * _xdim * 0.50;
+      gluOrtho2D(-px, _xdim + px, -py - px, _xdim - py + px);
     }
     else{
-      float py = pad * height;
-      float px = (1 - float(width)/height) * height * 0.50;
-      gluOrtho2D(-px - py, width + px + py, -py, height + py);
+      float py = pad * _ydim;
+      float px = (1 - float(_xdim)/_ydim) * _ydim * 0.50;
+      gluOrtho2D(-px - py, _xdim + px + py, -py, _ydim + py);
     }
 
   }
 
   glMatrixMode(GL_MODELVIEW);
-
   glLoadIdentity();
-
   glClearColor(0.5, 0.55, 0.65, 0.0);
-
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 }
 
-
-void glQuadRenderableVA::fill_vbo(float x0,
-    float y0,
-    float x1,
-    float y1)
+void glQuadRenderableVA::fill_vbo()
 {
-
   float* verts = (float*)_vbo->mapForWrite();
 
-  verts[0] = x0;
-  verts[1] = y0;
-  verts[2] = 0.0f;
-
-  verts[3] = x1;
-  verts[4] = y0;
-  verts[5] = 0.f;
-
-  verts[6] = x1;
-  verts[7] = y1;
-  verts[8] = 0.0f;
-
-  verts[9] = x0;
-  verts[10] = y1;
-  verts[11] = 0.0f;
+  size_t i = 0;
+  for(float y = 0; y < _ydim1; y++) {
+    for(float x = 0; x < _xdim1; x++) {
+      verts[i++] = x;
+      verts[i++] = y;
+      verts[i++] = 0.0f;
+    }
+  }
 
   _vbo->unmap();
 }
 
-
-void glQuadRenderableVA::fill_tcbo2d(float x0,
-    float y0,
-    float x1,
-    float y1)
+void glQuadRenderableVA::fill_cvbo()
 {
+  float* verts = (float*)_cvbo->mapForWrite();
 
-  float* coords = (float*)_tcbo->mapForWrite();
+  size_t i = 0;
+  for(float y = 0.0; y < _ydim; y++) {
+    for(float x = 0.0; x < _xdim; x++) {
+      verts[i++] = x;
+      verts[i++] = y + 1.0f;
+      verts[i++] = 0.0f;
 
-  coords[0] = x0;
-  coords[1] = y0;
+      verts[i++] = x;
+      verts[i++] = y;
+      verts[i++] = 0.0f;
 
-  coords[2] = x1;
-  coords[3] = y0;
-
-  coords[4] = x1;
-  coords[5] = y1;
-
-  coords[6] = x0;
-  coords[7] = y1;
-
-  _tcbo->unmap();
-
+      verts[i++] = x + 1.0f;
+      verts[i++] = y;
+      verts[i++] = 0.0f;
+      
+      verts[i++] = x + 1.0f;
+      verts[i++] = y + 1.0f;
+      verts[i++] = 0.0f;
+    }
+  }
+  
+  _cvbo->unmap();
 }
 
-
-void glQuadRenderableVA::fill_tcbo1d(float start, float end)
+void glQuadRenderableVA::fill_evbo()
 {
+  float* edges = (float*)_evbo->mapForWrite();
+  
+  size_t i = 0;
+  for(float y = 0; y <= _ydim; ++y) {
+    for(float x = 0; x < _xdim; ++x) {
+      edges[i++] = x;
+      edges[i++] = y;
+      edges[i++] = 0.0f;
+      
+      edges[i++] = x + 1.0f;
+      edges[i++] = y;
+      edges[i++] = 0.0f;
+    }
+  }
 
-  float* coords = (float*)_tcbo->mapForWrite();
-
-  coords[0] = start;
-  coords[1] = end;
-  coords[2] = end;
-  coords[3] = start;
-
-  _tcbo->unmap();
+  for(float x = 0; x <= _xdim; ++x) {
+    for(float y = 0; y < _ydim; ++y) {
+      edges[i++] = x;
+      edges[i++] = y;
+      edges[i++] = 0.0f;
+      
+      edges[i++] = x;
+      edges[i++] = y + 1.0f;
+      edges[i++] = 0.0f;
+    }
+  }
+  
+  _evbo->unmap();
 }
-
-
-void glQuadRenderableVA::alloc_texture()
-{
-  _pbo->bind();
-  _texture->initialize(0);
-  _pbo->release();
-}
-
-
-GLuint glQuadRenderableVA::get_buffer_object_id()
-{
-  return _pbo->id();
-}
-
 
 float4* glQuadRenderableVA::map_colors()
 {
-  return (float4*)_pbo->mapForWrite();
+  _drawCells = true;
+  return _cellColors;
 }
 
+float4* glQuadRenderableVA::map_vertex_colors()
+{
+  _drawVertices = true;
+  return (float4*)_vpbo->mapForWrite();
+}
+
+float4* glQuadRenderableVA::map_edge_colors()
+{
+  _drawEdges = true;
+  return _edgeColors;
+}
 
 void glQuadRenderableVA::unmap_colors()
 {
+  if(!_drawCells){
+    return;
+  }
+  
+  float4* pb = (float4*)_pbo->mapForWrite();
+  
+  size_t j = 0;
+  for(size_t i = 0; i < _numCells; ++i){
+    pb[j++] = _cellColors[i];
+    pb[j++] = _cellColors[i];
+    pb[j++] = _cellColors[i];
+    pb[j++] = _cellColors[i];
+  }
+  
   _pbo->unmap();
-  _pbo->bind();
-  _texture->initialize(0);
-  _pbo->release();
 }
 
+void glQuadRenderableVA::unmap_vertex_colors()
+{
+  if(!_drawVertices){
+    return;
+  }
+  
+  _vpbo->unmap();
+}
+
+void glQuadRenderableVA::unmap_edge_colors()
+{
+  if(!_drawEdges){
+    return;
+  }
+  
+  float4* eb = (float4*)_epbo->mapForWrite();
+  
+  size_t j = 0;
+  for(size_t i = 0; i < _numEdges; ++i){
+    eb[j++] = _edgeColors[i];
+    eb[j++] = _edgeColors[i];
+  }
+  
+  _epbo->unmap();
+}
 
 void glQuadRenderableVA::draw(glCamera* camera)
 {
-  _pbo->bind();
-  _texture->enable();
-  _texture->update(0);
-  _pbo->release();
-
-  glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-  _tcbo->bind();
-  glTexCoordPointer(_ntexcoords, GL_FLOAT, 0, 0);
-
   glEnableClientState(GL_VERTEX_ARRAY);
-  _vbo->bind();
-  glVertexPointer(3, GL_FLOAT, 0, 0);
+  glEnableClientState(GL_COLOR_ARRAY);
+  
+  float s = 100.0/max(_xdim, _ydim);
 
-  oglErrorCheck();
+  if(_drawCells){
+    _cvbo->bind();
+    glVertexPointer(3, GL_FLOAT, 0, 0);
+    _cvbo->release();
+    
+    _pbo->bind();
+    glColorPointer(4, GL_FLOAT, 0, 0);
+    _pbo->release();
+    
+    glDrawArrays(GL_QUADS, 0, _numCells * 4);
+  }
+ 
+  if(_drawEdges){
+    _evbo->bind();
+    glVertexPointer(3, GL_FLOAT, 0, 0);
+    _evbo->release();
+    
+    _epbo->bind();
+    glColorPointer(4, GL_FLOAT, 0, 0);
+    _epbo->release();
+    
+    glLineWidth(s);
+    glDrawArrays(GL_LINES, 0, _numEdges * 2);
+  }
 
-  glDrawArrays(GL_POLYGON, 0, _nverts);
-
+  if(_drawVertices){
+    _vbo->bind();
+    glVertexPointer(3, GL_FLOAT, 0, 0);
+    _vbo->release();
+    
+    _vpbo->bind();
+    glColorPointer(4, GL_FLOAT, 0, 0);
+    _vpbo->release();
+    
+    glPointSize(s);
+    glDrawArrays(GL_POINTS, 0, _numVertices);
+  }
+  
   glDisableClientState(GL_VERTEX_ARRAY);
-  _vbo->release();
-
-  glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-  _tcbo->release();
-
-  _texture->disable();
+  glDisableClientState(GL_COLOR_ARRAY);
+  
+  oglErrorCheck();
 }

@@ -717,7 +717,22 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   B.CreateRetVoid();
   
+  LocalDeclMap.erase(mvd);
+  
   B.SetInsertPoint(prevBlock, prevPoint);
   
+  StructType* qt = StructType::create(C, "scout.query_t");
+  qt->setBody(R.VoidPtrTy, R.VoidPtrTy, NULL);
+
+  llvm::Value* meshAddr;
+  GetMeshBaseAddr(mvd, meshAddr);
+  
+  Value* qp = B.CreateAlloca(qt, 0, "query.ptr");
+  Value* funcField = B.CreateStructGEP(qp, 0, "query.func.ptr");
+  Value* meshPtrField = B.CreateStructGEP(qp, 1, "query.func.ptr");
+
+  B.CreateStore(B.CreateBitCast(queryFunc, R.VoidPtrTy), funcField);
+  B.CreateStore(B.CreateBitCast(meshAddr, R.VoidPtrTy), meshPtrField);
+
   //queryFunc->dump();
 }

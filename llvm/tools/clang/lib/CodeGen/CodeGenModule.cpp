@@ -135,8 +135,12 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
   // +===== Scout ============================================================+
   if(isScoutLang(LangOpts)) {
     createScoutRuntime();
+    
+    // ndm - test
+    createLegionRuntime();
+    
     if (CodeGenOpts.ScoutLegionSupport) {
-      createLegionRuntime();
+      //createLegionRuntime();
       // start lsci_main() function for doing Legion task registration and Legion startup.
       // Once this is started, each time we see a task while doing code gen, add
       // to this function to register the legion task.
