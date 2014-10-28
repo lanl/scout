@@ -71,7 +71,6 @@
 #ifdef __APPLE__
 
 #include <OpenGL/gl.h>
-#include <OpenGL/glu.h>
 #include <OpenGL/glext.h>
 
 #define GLFW_INCLUDE_GLCOREARB
@@ -83,7 +82,6 @@
 #endif
 
 #include <GL/gl.h>
-#include <GL/glu.h>
 #include <GL/glext.h>
 
 #endif
@@ -101,7 +99,7 @@ static bool glErrorCheck(const char* file, int line_no)
     cout << "-- opengl runtime error:\n";
     cout << "   file: " << file << endl;
     cout << "   line: " << line_no << endl;
-    cout << "   mesg: '" << (const char*)gluErrorString(error) << "'\n";
+    cout << "   error: '" << error << "'\n";
     return true;
   } else {
     return false;

@@ -623,6 +623,8 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
 
   const ImplicitMeshParamDecl* imp = dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
   assert(base && "expected an ImplicitMeshParamDecl");
+
+  ImplicitMeshParamDecl::MeshElementType et = imp->getElementType();
   
   const VarDecl* mvd = imp->getMeshVarDecl();
   
@@ -642,6 +644,10 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   Value* start = aitr++;
   Value* end = aitr++;
   
+  Value* baseAddr = LocalDeclMap[mvd];
+  
+  LocalDeclMap[mvd] = meshPtr;
+  
   BasicBlock* entry = BasicBlock::Create(C, "entry", queryFunc);
   B.SetInsertPoint(entry);
 
@@ -653,11 +659,48 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   B.CreateBr(loopBlock);
   B.SetInsertPoint(loopBlock);
 
-  CellIndex = inductPtr;
-  EmitAnyExprToTemp(pred);
-  CellIndex = 0;
+  switch(et){
+    case ImplicitMeshParamDecl::Cells:
+      CellIndex = inductPtr;
+      break;
+    case ImplicitMeshParamDecl::Vertices:
+      VertexIndex = inductPtr;
+      break;
+    case ImplicitMeshParamDecl::Edges:
+      EdgeIndex = inductPtr;
+      break;
+    case ImplicitMeshParamDecl::Faces:
+      FaceIndex = inductPtr;
+      break;
+    default:
+      assert(false && "invalid mesh element type");
+  }
+
+  Value* result =
+  B.CreateTrunc(EmitAnyExprToTemp(pred).getScalarVal(), Int8Ty, "result");
+  
+  switch(et){
+    case ImplicitMeshParamDecl::Cells:
+      CellIndex = 0;
+      break;
+    case ImplicitMeshParamDecl::Vertices:
+      VertexIndex = 0;
+      break;
+    case ImplicitMeshParamDecl::Edges:
+      EdgeIndex = 0;
+      break;
+    case ImplicitMeshParamDecl::Faces:
+      FaceIndex = 0;
+      break;
+    default:
+      break;
+  }
   
   Value* induct = B.CreateLoad(inductPtr);
+
+  Value* outPosPtr = B.CreateGEP(outPtr, induct, "outPos.ptr");
+  B.CreateStore(result, outPosPtr);
+  
   Value* nextInduct = B.CreateAdd(induct, One);
   B.CreateStore(nextInduct, inductPtr);
   
@@ -678,5 +721,13 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   B.SetInsertPoint(prevBlock, prevPoint);
   
-  //queryFunc->dump();
+  LocalDeclMap[mvd] = baseAddr;
+  
+  Value* qp = LV.getAddress();
+
+  Value* funcField = B.CreateStructGEP(qp, 0, "query.func.ptr");
+  Value* meshPtrField = B.CreateStructGEP(qp, 1, "query.mesh.ptr");
+  
+  B.CreateStore(B.CreateBitCast(queryFunc, CGM.VoidPtrTy), funcField);
+  B.CreateStore(B.CreateBitCast(baseAddr, CGM.VoidPtrTy), meshPtrField);
 }

@@ -66,6 +66,8 @@ SET(LIBS
   ${COREFOUNDATION_FRAMEWORK}
 )
 
+
+
 ADD_EXECUTABLE(gl-info gl-info.cpp )
 
 if ("${CMAKE_SYSTEM}" MATCHES "Linux")

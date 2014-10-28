@@ -285,7 +285,9 @@ llvm::Type *CGScoutRuntime::convertScoutSpecificType(const Type *T) {
   } else if (T->isScoutImageType()) {
     return llvm::PointerType::get(llvm::StructType::create(Ctx, "scout.image_t"), 0);
   } else if (T->isScoutQueryType()) {
-    return llvm::PointerType::get(llvm::StructType::create(Ctx, "scout.query_t"), 0);
+    llvm::StructType* qt = llvm::StructType::create(Ctx, "scout.query_t");
+    qt->setBody(CGM.VoidPtrTy, CGM.VoidPtrTy, NULL);
+    return qt;
   }
   else {
     llvm_unreachable("Unexpected scout type!");
