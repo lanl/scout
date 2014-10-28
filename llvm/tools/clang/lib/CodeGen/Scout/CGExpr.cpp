@@ -644,6 +644,8 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   Value* start = aitr++;
   Value* end = aitr++;
   
+  Value* baseAddr = LocalDeclMap[mvd];
+  
   LocalDeclMap[mvd] = meshPtr;
   
   BasicBlock* entry = BasicBlock::Create(C, "entry", queryFunc);
@@ -717,22 +719,15 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   B.CreateRetVoid();
   
-  LocalDeclMap.erase(mvd);
-  
   B.SetInsertPoint(prevBlock, prevPoint);
   
-  StructType* qt = StructType::create(C, "scout.query_t");
-  qt->setBody(R.VoidPtrTy, R.VoidPtrTy, NULL);
-
-  llvm::Value* meshAddr;
-  GetMeshBaseAddr(mvd, meshAddr);
+  LocalDeclMap[mvd] = baseAddr;
   
-  Value* qp = B.CreateAlloca(qt, 0, "query.ptr");
+  Value* qp = LV.getAddress();
+
   Value* funcField = B.CreateStructGEP(qp, 0, "query.func.ptr");
-  Value* meshPtrField = B.CreateStructGEP(qp, 1, "query.func.ptr");
-
-  B.CreateStore(B.CreateBitCast(queryFunc, R.VoidPtrTy), funcField);
-  B.CreateStore(B.CreateBitCast(meshAddr, R.VoidPtrTy), meshPtrField);
-
-  //queryFunc->dump();
+  Value* meshPtrField = B.CreateStructGEP(qp, 1, "query.mesh.ptr");
+  
+  B.CreateStore(B.CreateBitCast(queryFunc, CGM.VoidPtrTy), funcField);
+  B.CreateStore(B.CreateBitCast(baseAddr, CGM.VoidPtrTy), meshPtrField);
 }
