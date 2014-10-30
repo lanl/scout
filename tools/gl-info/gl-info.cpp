@@ -74,6 +74,7 @@
 #include <OpenGL/glext.h>
 
 #define GLFW_INCLUDE_GLCOREARB
+#define GL_DO_NOT_WARN_IF_MULTI_GL_VERSION_HEADERS_INCLUDED
 
 #else /* Linux */ 
 
