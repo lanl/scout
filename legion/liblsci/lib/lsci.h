@@ -213,6 +213,12 @@ lsci_vector_partition(lsci_vector_t *vec,
                       lsci_context_t context,
                       lsci_runtime_t runtime);
 
+int
+lsci_vector_partition_from_mask(lsci_vector_t *vec,
+                                bool *mask,
+                                lsci_context_t context,
+                                lsci_runtime_t runtime);
+
 ////////////////////////////////////////////////////////////////////////////////
 // convenience mesh abstraction
 ////////////////////////////////////////////////////////////////////////////////
@@ -263,6 +269,12 @@ lsci_unimesh_partition(lsci_unimesh_t *mesh,
                        size_t n_parts,
                        lsci_context_t context,
                        lsci_runtime_t runtime);
+
+int
+lsci_unimesh_partition_from_mask(lsci_unimesh_t *mesh,
+                                 bool* mask,
+                                 lsci_context_t context,
+                                 lsci_runtime_t runtime);
 int
 lsci_unimesh_get_vec_by_name(lsci_unimesh_t *mesh,
                              char *name,
