@@ -21,9 +21,13 @@ if (GL_INFO MATCHES "NOTFOUND")
     set(OPENGL_VERSION_MAJOR "0")
     set(OPENGL_VERSION_MINOR "0")
 else()
- execute_process(COMMAND ${GL_INFO} "--version" OUTPUT_VARIABLE _OPENGL_VERSION)
-    string(REGEX REPLACE ".*([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\1" OPENGL_VERSION_MAJOR ${_OPENGL_VERSION})
-    string(REGEX REPLACE ".*([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\2" OPENGL_VERSION_MINOR ${_OPENGL_VERSION})
+ execute_process(COMMAND ${GL_INFO} "--version" 
+     OUTPUT_VARIABLE _OPENGL_VERSION
+     RESULT_VARIABLE GL_INFO_RESULT)
+    if(GL_INFO_RESULT EQUAL 0)
+      string(REGEX REPLACE ".*([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\1" OPENGL_VERSION_MAJOR ${_OPENGL_VERSION})
+      string(REGEX REPLACE ".*([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\2" OPENGL_VERSION_MINOR ${_OPENGL_VERSION})
+    endif()
     unset(_OPENGL_VERSION)
 endif()
 

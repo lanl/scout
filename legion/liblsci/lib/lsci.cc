@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <string>
 #include <map>
+#include <utility>
 
 #include <assert.h>
 #include <stdio.h>
@@ -160,6 +161,75 @@ lsci_vector_partition(lsci_vector_t *vec,
     vec->subgrid_bounds_len = vec->lr_len / n_parts;
     //printf("subgrid_bounds_len set: %lu\n", vec->subgrid_bounds_len);
     vec->subgrid_bounds = static_cast<lsci_rect_1d_t>(subgrid_bnds_cxx->data());
+    return LSCI_SUCCESS;
+}
+
+int
+lsci_vector_partition_from_mask(lsci_vector_t *vec,
+                                bool* mask,
+                                lsci_context_t context,
+                                lsci_runtime_t runtime)
+{
+    using namespace LegionRuntime::HighLevel;
+    using LegionRuntime::HighLevel::HighLevelRuntime;
+    using LegionRuntime::Arrays::Rect;
+    assert(vec && mask && context && runtime);
+
+    HighLevelRuntime *rtp_cxx = static_cast<HighLevelRuntime *>(runtime);
+    Context *ctxp_cxx = static_cast<Context *>(context);
+    IndexSpace *isp_cxx = static_cast<IndexSpace *>(vec->index_space);
+    LogicalRegion *lrp_cxx = static_cast<LogicalRegion *>(vec->logical_region);
+
+    const size_t gvlen = vec->lr_len;
+
+    typedef std::set<Domain> DomainSet;
+    DomainSet domainSet;
+    
+    size_t i = 0;
+    size_t start;
+    size_t end;
+
+    for(;;){
+      while(i < gvlen && !mask[i]){
+        ++i;
+      }
+      
+      start = i;
+      
+      while(i < gvlen && mask[i]){
+        ++i;
+      }
+      
+      end = i;
+
+      domainSet.insert(Domain::from_rect<1>(Rect<1>(Point<1>(start),
+                                                    Point<1>(end))));
+    }
+
+    Rect<1> colorBounds(Point<1>(0), Point<1>(0));
+
+    Domain* colorDomain = 
+      new Domain(Domain::from_rect<1>(colorBounds));
+
+    MultiDomainColoring coloring;
+    coloring[0] = std::move(domainSet);
+
+    IndexPartition ip = 
+      rtp_cxx->create_index_partition(*ctxp_cxx,
+                                      *isp_cxx,
+                                      *colorDomain, coloring, true);
+    
+    LogicalPartition* lpp = new LogicalPartition;
+    *lpp = rtp_cxx->get_logical_partition(*ctxp_cxx, *lrp_cxx, ip);
+
+    vec->logical_partition = static_cast<lsci_logical_partition_t>(lpp);
+    vec->launch_domain.hndl = static_cast<lsci_domain_handle_t>(colorDomain);
+    vec->launch_domain.volume = colorDomain->get_volume();
+
+    // ndm - not sure how to handle these
+    vec->subgrid_bounds_len = 0;
+    vec->subgrid_bounds = 0;
+
     return LSCI_SUCCESS;
 }
 
@@ -658,7 +728,18 @@ struct mesh_cxx {
             lsci_vector_partition(&i->second, n_parts, context, runtime);
         }
     }
-
+  
+    void
+    partition_from_mask(bool *mask,
+                        lsci_context_t context,
+                        lsci_runtime_t runtime) {
+      assert(mask && context && runtime);
+      typedef std::map<std::string, lsci_vector_t>::iterator MapI;
+      for (MapI i = vectab.begin(); i != vectab.end(); i++) {
+        lsci_vector_partition_from_mask(&i->second, mask, context, runtime);
+      }
+    }
+  
 private:
     void
     set_dims(void) {
@@ -735,6 +816,18 @@ lsci_unimesh_partition(lsci_unimesh_t *mesh,
     mesh_cxx *mcxx = static_cast<mesh_cxx *>(mesh->hndl);
     assert(mcxx);
     mcxx->partition(n_parts, context, runtime);
+    return LSCI_SUCCESS;
+}
+int
+lsci_unimesh_partition_from_mask(lsci_unimesh_t *mesh,
+                                 bool *mask,
+                                 lsci_context_t context,
+                                 lsci_runtime_t runtime)
+{
+    assert(mesh && mask && context && runtime);
+    mesh_cxx *mcxx = static_cast<mesh_cxx *>(mesh->hndl);
+    assert(mcxx);
+    mcxx->partition_from_mask(mask, context, runtime);
     return LSCI_SUCCESS;
 }
 
