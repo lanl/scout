@@ -112,14 +112,21 @@ endmacro()
 
   # Dig out the version information from nvcc if it exists... This is based on the CMake
   # provided FindCUDA module. 
+  set(CUDA_VERSION_MAJOR "-1")
+  set(CUDA_VERSION_MINOR "-1")
   if (CUDA_NVCC MATCHES "NOTFOUND")
     set(CUDA_VERSION_MAJOR "0")
     set(CUDA_VERSION_MINOR "0")
   else() 
-    execute_process(COMMAND ${CUDA_NVCC} "--version" OUTPUT_VARIABLE _NVCC_VERSION)
-    string(REGEX REPLACE ".*release ([0-9]+)\\.([0-9]+).*" "\\1" CUDA_VERSION_MAJOR ${_NVCC_VERSION})
-    string(REGEX REPLACE ".*release ([0-9]+)\\.([0-9]+).*" "\\2" CUDA_VERSION_MINOR ${_NVCC_VERSION})
+    execute_process(COMMAND ${CUDA_NVCC} "--version" 
+      OUTPUT_VARIABLE _NVCC_VERSION
+      RESULT_VARIABLE _NVCC_RESULT)
+    if(_NVCC_RESULT EQUAL 0) 
+      string(REGEX REPLACE ".*release ([0-9]+)\\.([0-9]+).*" "\\1" CUDA_VERSION_MAJOR ${_NVCC_VERSION})
+      string(REGEX REPLACE ".*release ([0-9]+)\\.([0-9]+).*" "\\2" CUDA_VERSION_MINOR ${_NVCC_VERSION})
+    endif()
     unset(_NVCC_VERSION)
+    unset(_NVCC_RESULT)
   endif()
   set(CUDA_VERSION "${CUDA_VERSION_MAJOR}.${CUDA_VERSION_MINOR}" 
     CACHE STRING "Version of CUDA as computed from nvcc.")

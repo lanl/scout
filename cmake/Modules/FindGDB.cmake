@@ -35,12 +35,20 @@ find_program(GDB_COMMAND
 	bin
 	libexec)
 
-if(GDB_COMMAND)
+set(GDB_VERSION "-1")
+if(GDB_COMMAND MATCHES "NOTFOUND")
+  set(GDB_VERSION "0")
+else()
 	execute_process(COMMAND gdb --version
 		COMMAND head -n 1
-		OUTPUT_VARIABLE GDB_VERSION
+		OUTPUT_VARIABLE _GDB_VERSION
+                RESULT_VARIABLE _GDB_RESULT
 		OUTPUT_STRIP_TRAILING_WHITESPACE)
-	string(REGEX REPLACE "[^0-9]*([0-9]+[0-9.]*).*" "\\1" GDB_VERSION "${GDB_VERSION}")
+        if(_GDB_RESULT)
+	  string(REGEX REPLACE "[^0-9]*([0-9]+[0-9.]*).*" "\\1" GDB_VERSION "${_GDB_VERSION}")
+        endif()
+        unset(_GDB_VERSION)
+        unset(_GDB_RESULT)
 endif()
 
 # handle the QUIETLY and REQUIRED arguments and set xxx_FOUND to TRUE if
