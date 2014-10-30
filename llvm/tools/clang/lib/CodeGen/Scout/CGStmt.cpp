@@ -940,7 +940,7 @@ CodeGenFunction::EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
 
     llvm::Value* c5 = Builder.CreateICmpEQ(y, h, "c5");
     llvm::Value* y2 =
-        Builder.CreateSelect(c1, y, Builder.CreateSelect(c5, Zero, y), "y2");
+        Builder.CreateSelect(c1, Builder.CreateSelect(c5, Zero, y), y, "y2");
 
     cellIndex =
         Builder.CreateAdd(Builder.CreateMul(y2, w), x2, "cellIndex.2");

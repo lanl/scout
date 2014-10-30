@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2014, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -51,62 +51,39 @@
  *
  * ##### 
  */
-#include <assert.h> 
+
 #include <stdio.h>
+#include <assert.h>
 
 uniform mesh MyMesh {
  cells:
-  float a;
+  int a;
  edges:
-  float b;
+  int b;
 };
 
 int main(int argc, char** argv) {
-  MyMesh m[2, 2];
+  MyMesh m[2,2];
 
-  int k = 0;
+  forall cells c in m {
+    a = position().x + position().y*10; 
+  }
+ 
   forall edges e in m {
-    b = k;
-    int j = 0;
-    forall cells c in e {
-      if(k < 6){
-        a = k * 100 + j;
-      }
-      ++j;
-    }
-    ++k;
+    b = 0;
   }
 
-  float expected1[] = {201.000000f,
-                       200.000000f,
-                       501.000000f,
-                       500.000000f};
+  forall edges v in m {
+    forall cells c in v {
+      b += a;
+    }
+  }
+
+  int expected[] = {1, 1, 1, 21, 21, 21, 10, 12, 10, 12, 10, 12};
 
   int i = 0;
-  forall cells c in m{
-    assert(a == expected1[i] && "unexpected value");
-    ++i;
-  }
-
-  k = 0;
   forall edges e in m {
-    b = k;
-    int j = 0;
-    forall cells c in e {
-      a = k * 100 + j;
-      ++j;
-    }
-    ++k;
-  }
-
-  float expected2[] = {800.000000f,
-                       900.000000f,
-                       1000.000000f,
-                       1100.000000f};
-
-  i = 0;
-  forall cells c in m{
-    assert(a == expected2[i] && "unexpected value");
+    assert(b == expected[i] && "unexpected value");
     ++i;
   }
 
