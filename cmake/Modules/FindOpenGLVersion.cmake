@@ -10,6 +10,7 @@
     PATHS 
      ${CMAKE_CURRENT_BINARY_DIR}/bin
      ${CMAKE_CURRENT_BINARY_DIR}/../bin 
+     ${CMAKE_CURRENT_BINARY_DIR}/../../bin 
     NO_DEFAULT_PATH
     DOC "Path to gl-info"
   )
@@ -20,10 +21,15 @@ if (GL_INFO MATCHES "NOTFOUND")
     set(OPENGL_VERSION_MAJOR "0")
     set(OPENGL_VERSION_MINOR "0")
 else()
- execute_process(COMMAND ${GL_INFO} "--version" OUTPUT_VARIABLE _OPENGL_VERSION)
-    string(REGEX REPLACE ".*([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\1" OPENGL_VERSION_MAJOR ${_OPENGL_VERSION})
-    string(REGEX REPLACE ".*([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\2" OPENGL_VERSION_MINOR ${_OPENGL_VERSION})
+ execute_process(COMMAND ${GL_INFO} "--version" 
+     OUTPUT_VARIABLE _OPENGL_VERSION
+     RESULT_VARIABLE GL_INFO_RESULT)
+    if(GL_INFO_RESULT EQUAL 0)
+      string(REGEX REPLACE ".*([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\1" OPENGL_VERSION_MAJOR ${_OPENGL_VERSION})
+      string(REGEX REPLACE ".*([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\2" OPENGL_VERSION_MINOR ${_OPENGL_VERSION})
+    endif()
     unset(_OPENGL_VERSION)
-    message(STATUS "OpenGL version: ${OPENGL_VERSION_MAJOR}.${OPENGL_VERSION_MINOR}")
 endif()
+
+message(STATUS "OpenGL version: ${OPENGL_VERSION_MAJOR}.${OPENGL_VERSION_MINOR}")
 

@@ -361,7 +361,7 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   llvm::Value *v1, *v2, *v3, *v4, *v5;
   llvm::Value *Rank = Builder.CreateLoad(MeshRank);
 
-  llvm::Value *PNVert = GetNumLocalMeshItems(One, Four, Seven);
+  llvm::Value *PNVert = GetNumLocalMeshItems(One, Three, Seven);
 
   llvm::BasicBlock *LoopBlock = createBasicBlock("forall.vertices.loop");
   Builder.CreateBr(LoopBlock);
@@ -451,6 +451,7 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   EmitBlock(ExitBlock);
 }
 
+//SC_TODO: Vertices had "regular" boundary while Cells is circular.
 void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 
@@ -531,10 +532,10 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   llvm::Value* vz3 = Builder.CreateURem(z, depth);
   z = Builder.CreateSelect(cz1, vz2, Builder.CreateSelect(cz2, vz3, z));
 
-  llvm::Value* v1 = Builder.CreateMul(j, width);
-  llvm::Value* v2 = Builder.CreateMul(k, Builder.CreateMul(width, height));
+  llvm::Value* v1 = Builder.CreateMul(y, width);
+  llvm::Value* v2 = Builder.CreateMul(z, Builder.CreateMul(width, height));
 
-  llvm::Value* newCellIndex3 = Builder.CreateAdd(i, Builder.CreateAdd(v1, v2));
+  llvm::Value* newCellIndex3 = Builder.CreateAdd(x, Builder.CreateAdd(v1, v2));
   Builder.CreateBr(Merge);
   Then3 = Builder.GetInsertBlock();
 

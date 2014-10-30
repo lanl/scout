@@ -603,7 +603,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   using namespace std;
   using namespace llvm;
   
-  typedef vector<llvm::Value*> ValueVec;
+  //typedef vector<llvm::Value*> ValueVec;
   typedef vector<llvm::Type*> TypeVec;
 
   CGBuilderTy& B = Builder;
