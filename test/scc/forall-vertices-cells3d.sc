@@ -57,36 +57,38 @@
 
 uniform mesh MyMesh {
  cells:
-  float a;
+  int a;
  vertices:
-  float b;
+  int b;
 };
 
 int main(int argc, char** argv) {
-  MyMesh m[3,3,3];
-  
-  int i = 0;
-  forall vertices v in m{
-    b = i;
-    ++i;
+  MyMesh m[3,3,2];
+
+ int i = 0;
+ forall cells c in m {
+   a = i;
+   i++;
+ }
+ 
+ forall vertices v in m {
+    b = 0;
   }
 
-  forall vertices v in m{
-    forall cells c in v{
-      a = b;
+  forall vertices v in m {
+    forall cells c in v {
+      b += a;
     }
   }
 
-  float expected[] = 
-    {0.000000f, 1.000000f, 2.000000f, 4.000000f, 5.000000f, 6.000000f,
-     8.000000f, 9.000000f, 10.000000f, 16.000000f, 17.000000f, 18.000000f,
-     20.000000f, 21.000000f, 22.000000f, 24.000000f, 25.000000f, 26.000000f,
-     32.000000f, 33.000000f, 34.000000f, 36.000000f, 37.000000f, 38.000000f,
-     40.000000f, 41.000000f, 42.000000f};
+  int expected[] = {68, 64, 72, 68, 56, 52, 60, 56, 80, 76, 84, 80, 68, 64, 72, 68, 
+                    68, 64, 72, 68, 56, 52, 60, 56, 80, 76, 84, 80, 68, 64, 72, 68,
+                    68, 64, 72, 68, 56, 52, 60, 56, 80, 76, 84, 80, 68, 64, 72, 68};
+
 
   i = 0;
-  forall cells c in m{
-    assert(a == expected[i] && "unexpected value");
+  forall vertices v in m {
+    assert(b == expected[i] && "unexpected value");
     ++i;
   }
 
