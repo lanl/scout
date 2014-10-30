@@ -451,6 +451,7 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   EmitBlock(ExitBlock);
 }
 
+//SC_TODO: Vertices had "regular" boundary while Cells is circular.
 void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 

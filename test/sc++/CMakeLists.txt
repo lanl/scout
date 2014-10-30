@@ -88,7 +88,7 @@ project(scout_test_scxx)
 
   add_subdirectory(debug)
 
-  if(OPENGL_VERSION_MAJOR VERSION_GREATER 3 OR OPENGL_VERSION_MAJOR VERSION_EQUAL 3)
+  if(OPENGL_VERSION_MAJOR GREATER 3 OR OPENGL_VERSION_MAJOR EQUAL 3)
     add_subdirectory(display) 
   endif()
 

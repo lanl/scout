@@ -190,7 +190,8 @@ ExprResult Parser::ParseScoutQueryExpression(){
     return ExprError();
   }
   SourceLocation SelectLoc = ConsumeToken();
-  
+  (void)SelectLoc; // suppress warning 
+ 
   ExprResult FieldResult = ParseExpression();
   
   if(FieldResult.isInvalid() || !isa<MemberExpr>(FieldResult.get())){
@@ -205,7 +206,8 @@ ExprResult Parser::ParseScoutQueryExpression(){
     return ExprError();
   }
   SourceLocation WhereLoc = ConsumeToken();
-  
+  (void)WhereLoc; // suppress warning 
+
   ExprResult PredicateResult = ParseExpression();
   
   if(PredicateResult.isInvalid()){

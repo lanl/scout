@@ -94,8 +94,8 @@ main_task(lsci_task_args_t *task_args)
     lsci_runtime_t runtime = task_args->runtime;
     lsci_unimesh_t mesh_a;
     // 2D thing
-    const size_t mesh_width = 512;
-    const size_t mesh_height = 512;
+    const size_t mesh_width = 4;
+    const size_t mesh_height = 4;
     const size_t mesh_depth = 1;
     printf("-- %s: creating meshes\n", __func__);
     assert(LSCI_SUCCESS == lsci_unimesh_create(&mesh_a, mesh_width,

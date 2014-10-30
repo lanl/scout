@@ -10,6 +10,7 @@
     PATHS 
      ${CMAKE_CURRENT_BINARY_DIR}/bin
      ${CMAKE_CURRENT_BINARY_DIR}/../bin 
+     ${CMAKE_CURRENT_BINARY_DIR}/../../bin 
     NO_DEFAULT_PATH
     DOC "Path to gl-info"
   )
@@ -24,6 +25,7 @@ else()
     string(REGEX REPLACE ".*([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\1" OPENGL_VERSION_MAJOR ${_OPENGL_VERSION})
     string(REGEX REPLACE ".*([0-9]+)\\.([0-9]+)\\.([0-9]+).*" "\\2" OPENGL_VERSION_MINOR ${_OPENGL_VERSION})
     unset(_OPENGL_VERSION)
-    message(STATUS "OpenGL version: ${OPENGL_VERSION_MAJOR}.${OPENGL_VERSION_MINOR}")
 endif()
+
+message(STATUS "OpenGL version: ${OPENGL_VERSION_MAJOR}.${OPENGL_VERSION_MINOR}")
 

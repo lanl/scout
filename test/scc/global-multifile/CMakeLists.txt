@@ -54,7 +54,7 @@
 
 project(scout_test_scc_global_multifile)
 
-set(tname scc_display_global_multifile)
+set(tname scc_global_multifile)
 add_executable(${tname} init.sc global-mesh.sc)
   add_test(${tname} ${TEST_BINARY_DIR}/${tname})
   message(" + added runtime regression test entry: ${tname}")
