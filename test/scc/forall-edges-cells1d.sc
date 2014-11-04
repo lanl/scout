@@ -63,10 +63,10 @@ uniform mesh MyMesh {
 };
 
 int main(int argc, char** argv) {
-  MyMesh m[2,2];
+  MyMesh m[5];
 
   forall cells c in m {
-    a = position().x + position().y*10; 
+    a = position().x;
   }
  
   forall edges e in m {
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
     }
   }
 
-  int expected[] = {1, 1, 1, 21, 21, 21, 10, 12, 10, 12, 10, 12};
+  int expected[] = {0, 1, 2, 3, 4};
 
   int i = 0;
   forall edges e in m {

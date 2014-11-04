@@ -745,6 +745,10 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
 }
 
 void CodeGenFunction::EmitForallEdgesCells(const ForallMeshStmt &S){
+
+  //llvm::Value *Rank = Builder.CreateLoad(MeshRank);
+  //llvm::Value *check = Builder.CreateICmpULE(Rank, llvm::ConstantInt::get(Int32Ty, 2));
+
   unsigned int rank = S.getMeshType()->rankOf();
   if(rank <= 2){
     EmitForallEdgesOrFacesCellsLowD(S, EdgeIndex);
@@ -765,14 +769,14 @@ CodeGenFunction::EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
 
   EmitMarkerBlock("forall.cells.entry");
 
-  if(rank == 1){
+
+  if(rank == 1) { //in 1-D cell = edge = face
     CellIndex = InnerIndex;
-    Builder.CreateStore(Builder.CreateTrunc(OuterIndex, Int32Ty), CellIndex);
+    Builder.CreateStore(Builder.CreateTrunc(Builder.CreateLoad(OuterIndex), Int32Ty), CellIndex);
 
     EmitStmt(S.getBody());
     CellIndex = 0;
-  }
-  if(rank == 2){
+  } else if(rank == 2) {
     llvm::Value* w = Builder.CreateLoad(MeshDims[0], "w");
     w = Builder.CreateZExt(w, Int64Ty, "w");
     llvm::Value* w1 = Builder.CreateAdd(w, One, "w1");
@@ -834,8 +838,7 @@ CodeGenFunction::EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
     EmitStmt(S.getBody());
 
     CellIndex = 0;
-  }
-  else{
+  } else {
     assert(false && "invalid rank");
   }
 }
