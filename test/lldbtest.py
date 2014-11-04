@@ -565,8 +565,8 @@ def skipIfNoSBHeaders(func):
     def wrapper(*args, **kwargs):
         from unittest2 import case
         self = args[0]
+        header = os.path.join(self.lib_dir, 'LLDB.framework', 'Versions','Current','Headers','LLDB.h')
         platform = sys.platform
-        header = os.path.join(os.environ["LLDB_SRC"], "include", "lldb", "API", "LLDB.h")
         if not os.path.exists(header):
             self.skipTest("skip because LLDB.h header not found")
         else:
@@ -1014,12 +1014,12 @@ class Base(unittest2.TestCase):
                 self.child.sendline('settings set interpreter.prompt-on-quit false')
                 self.child.sendline('quit')
                 self.child.expect(pexpect.EOF)
-            except ValueError, ExceptionPexpect:
+            except (ValueError, pexpect.ExceptionPexpect):
                 # child is already terminated
                 pass
-
-            # Give it one final blow to make sure the child is terminated.
-            self.child.close()
+	    finally:
+		# Give it one final blow to make sure the child is terminated.
+		self.child.close()
 
 
     def tearDown(self):

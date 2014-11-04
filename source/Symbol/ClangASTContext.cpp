@@ -1739,7 +1739,7 @@ ClangASTContext::CreateFunctionDeclaration (DeclContext *decl_ctx,
                                           DeclarationName (&ast->Idents.get(name)),
                                           function_clang_type.GetQualType(),
                                           nullptr,
-                                          (FunctionDecl::StorageClass)storage,
+                                          (clang::StorageClass)storage,
                                           is_inline,
                                           hasWrittenPrototype,
                                           isConstexprSpecified);
@@ -1753,7 +1753,7 @@ ClangASTContext::CreateFunctionDeclaration (DeclContext *decl_ctx,
                                           DeclarationName (),
                                           function_clang_type.GetQualType(),
                                           nullptr,
-                                          (FunctionDecl::StorageClass)storage,
+                                          (clang::StorageClass)storage,
                                           is_inline,
                                           hasWrittenPrototype,
                                           isConstexprSpecified);
@@ -1805,7 +1805,7 @@ ClangASTContext::CreateParameterDeclaration (const char *name, const ClangASTTyp
                                 name && name[0] ? &ast->Idents.get(name) : nullptr,
                                 param_type.GetQualType(),
                                 nullptr,
-                                (VarDecl::StorageClass)storage,
+                                (clang::StorageClass)storage,
                                 nullptr);
 }
 
@@ -1855,7 +1855,23 @@ ClangASTContext::CreateArrayType (const ClangASTType &element_type,
     return ClangASTType();
 }
 
-
+ClangASTType
+ClangASTContext::GetOrCreateStructForIdentifier (const ConstString &type_name,
+                                                 const std::initializer_list< std::pair < const char *, ClangASTType > >& type_fields,
+                                                 bool packed)
+{
+    ClangASTType type;
+    if ((type = GetTypeForIdentifier<clang::CXXRecordDecl>(type_name)).IsValid())
+        return type;
+    type = CreateRecordType(nullptr, lldb::eAccessPublic, type_name.GetCString(), clang::TTK_Struct, lldb::eLanguageTypeC);
+    type.StartTagDeclarationDefinition();
+    for (const auto& field : type_fields)
+        type.AddFieldToRecordType(field.first, field.second, lldb::eAccessPublic, 0);
+    if (packed)
+        type.SetIsPacked();
+    type.CompleteTagDeclarationDefinition();
+    return type;
+}
 
 #pragma mark Enumeration Types
 

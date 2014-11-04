@@ -1030,6 +1030,11 @@ RegisterContextLLDB::IsValid () const
     return m_frame_type != eNotAValidFrame;
 }
 
+// After the final stack frame in a stack walk we'll get one invalid (eNotAValidFrame) stack frame --
+// one past the end of the stack walk.  But higher-level code will need to tell the differnece between
+// "the unwind plan below this frame failed" versus "we successfully completed the stack walk" so
+// this method helps to disambiguate that.
+
 bool
 RegisterContextLLDB::IsTrapHandlerFrame () const
 {
@@ -1399,20 +1404,19 @@ RegisterContextLLDB::TryFallbackUnwindPlan ()
     if (m_fallback_unwind_plan_sp.get() == NULL)
         return false;
 
+    if (m_full_unwind_plan_sp.get() == NULL)
+        return false;
+
+    // If a compiler generated unwind plan failed, trying the arch default unwindplan
+    // isn't going to do any better.
+    if (m_full_unwind_plan_sp->GetSourcedFromCompiler() == eLazyBoolYes)
+        return false;
+
     UnwindPlanSP original_full_unwind_plan_sp = m_full_unwind_plan_sp;
     UnwindPlan::RowSP active_row = m_fallback_unwind_plan_sp->GetRowForFunctionOffset (m_current_offset);
     
     if (active_row && active_row->GetCFARegister() != LLDB_INVALID_REGNUM)
     {
-        FuncUnwindersSP func_unwinders_sp;
-        if (m_sym_ctx_valid && m_current_pc.IsValid() && m_current_pc.GetModule())
-        {
-            func_unwinders_sp = m_current_pc.GetModule()->GetObjectFile()->GetUnwindTable().GetFuncUnwindersContainingAddress (m_current_pc, m_sym_ctx);
-            if (func_unwinders_sp)
-            {
-                func_unwinders_sp->InvalidateNonCallSiteUnwindPlan (m_thread);
-            }
-        }
         m_registers.clear();
         m_full_unwind_plan_sp = m_fallback_unwind_plan_sp;
         addr_t cfa_regval = LLDB_INVALID_ADDRESS;
@@ -1421,8 +1425,9 @@ RegisterContextLLDB::TryFallbackUnwindPlan ()
             m_cfa = cfa_regval + active_row->GetCFAOffset ();
         }
 
-        UnwindLogMsg ("full unwind plan '%s' has been replaced by architecture default unwind plan '%s' for this function from now on.",
-                      original_full_unwind_plan_sp->GetSourceName().GetCString(), m_fallback_unwind_plan_sp->GetSourceName().GetCString());
+        UnwindLogMsg ("trying to unwind from this function with the UnwindPlan '%s' because UnwindPlan '%s' failed.", 
+                      m_fallback_unwind_plan_sp->GetSourceName().GetCString(),
+                      original_full_unwind_plan_sp->GetSourceName().GetCString());
         m_fallback_unwind_plan_sp.reset();
     }
 
