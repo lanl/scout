@@ -126,16 +126,12 @@ void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const
   Builder.CreateCondBr(Check, Then, Done);
 
   //then block (do setup)
-  TheFunction->getBasicBlockList().push_back(Then);
-  Builder.SetInsertPoint(Then);
+  EmitBlock(Then);
   EmitScoutAutoVarAlloca(MeshAddr, D);
   Builder.CreateBr(Done);
-  Then = Builder.GetInsertBlock();
 
   // done block
-  TheFunction->getBasicBlockList().push_back(Done);
-  Builder.SetInsertPoint(Done);
-  Done = Builder.GetInsertBlock();
+  EmitBlock(Done);
   return;
 }
 
