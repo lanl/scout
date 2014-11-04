@@ -57,7 +57,7 @@ set(name forall-mesh-unknown)
 set(tname sc++_error_${name})
 add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.scpp)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "error: unknown or invalid mesh instance")
+    "error: unknown or invalid mesh or query instance")
 set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
 set(name forall-mesh-shadow)
