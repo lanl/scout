@@ -860,13 +860,22 @@ CodeGenFunction::EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
 }
 
 void CodeGenFunction::EmitForallFacesCells(const ForallMeshStmt &S){
-  unsigned int rank = S.getMeshType()->rankOf();
-  if(rank <= 2){
-    EmitForallEdgesOrFacesCellsLowD(S, FaceIndex);
-  }
-  else{
-    assert(false && "forall case unimplemented");
-  }
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
+   llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
+   llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
+   llvm::BasicBlock *Done3 = createBasicBlock("done3.else");
+   llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 3));
+   Builder.CreateCondBr(Check3, Then3, Else3);
+
+   EmitBlock(Then3);
+   //SC_TODO: 3D case
+   Builder.CreateBr(Done3);
+
+   EmitBlock(Else3);
+   EmitForallEdgesOrFacesCellsLowD(S, FaceIndex);
+   Builder.CreateBr(Done3);
+
+   EmitBlock(Done3);
 }
 
 void
@@ -949,23 +958,41 @@ CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
 }
 
 void CodeGenFunction::EmitForallEdgesVertices(const ForallMeshStmt &S){
-  unsigned int rank = S.getMeshType()->rankOf();
-  if(rank <= 2){
-    EmitForallEdgesOrFacesVerticesLowD(S, EdgeIndex);
-  }
-  else{
-    assert(false && "forall case unimplemented");
-  }
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
+  llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
+  llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
+  llvm::BasicBlock *Done3 = createBasicBlock("done3.else");
+  llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 3));
+  Builder.CreateCondBr(Check3, Then3, Else3);
+
+  EmitBlock(Then3);
+  //SC_TODO: 3D case
+  Builder.CreateBr(Done3);
+
+  EmitBlock(Else3);
+  EmitForallEdgesOrFacesVerticesLowD(S, EdgeIndex);
+  Builder.CreateBr(Done3);
+
+  EmitBlock(Done3);
 }
 
 void CodeGenFunction::EmitForallFacesVertices(const ForallMeshStmt &S){
-  unsigned int rank = S.getMeshType()->rankOf();
-  if(rank <= 2){
-    EmitForallEdgesOrFacesVerticesLowD(S, FaceIndex);
-  }
-  else{
-    assert(false && "forall case unimplemented");
-  }
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
+  llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
+  llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
+  llvm::BasicBlock *Done3 = createBasicBlock("done3.else");
+  llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 3));
+  Builder.CreateCondBr(Check3, Then3, Else3);
+
+  EmitBlock(Then3);
+  //SC_TODO: 3D case
+  Builder.CreateBr(Done3);
+
+  EmitBlock(Else3);
+  EmitForallEdgesOrFacesVerticesLowD(S, FaceIndex);
+  Builder.CreateBr(Done3);
+
+  EmitBlock(Done3);
 }
 
 void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
