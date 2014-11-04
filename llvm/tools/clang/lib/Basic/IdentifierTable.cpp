@@ -146,6 +146,12 @@ static KeywordStatus GetKeywordStatus(const LangOptions &LangOpts,
   // in non-arc mode.
   if (LangOpts.ObjC2 && (Flags & KEYARC)) return KS_Enabled;
   if (LangOpts.CPlusPlus && (Flags & KEYCXX11)) return KS_Future;
+
+  // +==== Scout - keywords ==================================================+
+  if (LangOpts.ScoutC && (Flags & KEYSCOUT)) return KS_Enabled;
+  else if (LangOpts.ScoutCPlusPlus && (Flags & KEYSCOUT)) return KS_Enabled;
+  // +========================================================================+
+  
   return KS_Disabled;
 }
 
@@ -156,15 +162,6 @@ static void AddKeyword(StringRef Keyword,
                        tok::TokenKind TokenCode, unsigned Flags,
                        const LangOptions &LangOpts, IdentifierTable &Table) {
   KeywordStatus AddResult = GetKeywordStatus(LangOpts, Flags);
-
-  // +==== Scout - keywords ==================================================+
-  else if (LangOpts.ScoutC && (Flags & KEYSCOUT)) {
-    AddResult = 1;
-  }
-  else if (LangOpts.ScoutCPlusPlus && (Flags & KEYSCOUT)) {
-    AddResult = 1;
-  }
-  // +========================================================================+
 
   // Don't add this keyword under MSVCCompat.
   if (LangOpts.MSVCCompat && (Flags & KEYNOMS))

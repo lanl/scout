@@ -1164,23 +1164,12 @@ void ASTDumper::VisitMeshFieldDecl(const MeshFieldDecl *D) {
   if (D->isModulePrivate())
     OS << " __module_private__";
 
-  bool OldMoreChildren = hasMoreChildren();
-  bool IsBitField = D->isBitField();
-  Expr *Init = D->getInClassInitializer();
-  bool HasInit = Init;
-
-  setMoreChildren(OldMoreChildren || HasInit);
-  if (IsBitField) {
-    lastChild();
+  if (D->isBitField()) {
     dumpStmt(D->getBitWidth());
   }
 
-  setMoreChildren(OldMoreChildren);
-
-  if (HasInit) {
-    lastChild();
+  if (Expr *Init = D->getInClassInitializer())
     dumpStmt(Init);
-  }
 }
 // +==========================================================================+
 
