@@ -635,7 +635,7 @@ void ASTStmtReader::VisitCastExpr(CastExpr *E) {
   unsigned NumBaseSpecs = Record[Idx++];
   assert(NumBaseSpecs == E->path_size());
   E->setSubExpr(Reader.ReadSubExpr());
-  E->setCastKind((CastExpr::CastKind)Record[Idx++]);
+  E->setCastKind((CastKind)Record[Idx++]);
   CastExpr::path_iterator BaseI = E->path_begin();
   while (NumBaseSpecs--) {
     CXXBaseSpecifier *BaseSpec = new (Reader.getContext()) CXXBaseSpecifier;
@@ -936,7 +936,6 @@ void ASTStmtReader::VisitObjCArrayLiteral(ObjCArrayLiteral *E) {
   for (unsigned I = 0, N = NumElements; I != N; ++I)
     Elements[I] = Reader.ReadSubExpr();
   E->ArrayWithObjectsMethod = ReadDeclAs<ObjCMethodDecl>(Record, Idx);
-  E->ArrayAllocMethod = ReadDeclAs<ObjCMethodDecl>(Record, Idx);
   E->Range = ReadSourceRange(Record, Idx);
 }
 
@@ -957,7 +956,6 @@ void ASTStmtReader::VisitObjCDictionaryLiteral(ObjCDictionaryLiteral *E) {
     }
   }
   E->DictWithObjectsMethod = ReadDeclAs<ObjCMethodDecl>(Record, Idx);
-  E->DictAllocMethod = ReadDeclAs<ObjCMethodDecl>(Record, Idx);
   E->Range = ReadSourceRange(Record, Idx);
 }
 
@@ -1586,6 +1584,10 @@ void ASTStmtReader::VisitOpaqueValueExpr(OpaqueValueExpr *E) {
   VisitExpr(E);
   E->SourceExpr = Reader.ReadSubExpr();
   E->Loc = ReadSourceLocation(Record, Idx);
+}
+
+void ASTStmtReader::VisitTypoExpr(TypoExpr *E) {
+  llvm_unreachable("Cannot read TypoExpr nodes");
 }
 
 //===----------------------------------------------------------------------===//

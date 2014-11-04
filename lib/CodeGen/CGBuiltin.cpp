@@ -147,7 +147,7 @@ static RValue EmitBinaryAtomicPost(CodeGenFunction &CGF,
 }
 
 /// EmitFAbs - Emit a call to @llvm.fabs().
-static Value *EmitFAbs(CodeGenFunction &CGF, Value *V, QualType ValTy) {
+static Value *EmitFAbs(CodeGenFunction &CGF, Value *V) {
   Value *F = CGF.CGM.getIntrinsic(Intrinsic::fabs, V->getType());
   llvm::CallInst *Call = CGF.Builder.CreateCall(F, V);
   Call->setDoesNotAccessMemory();
@@ -243,6 +243,13 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
     Value *Result =
       Builder.CreateSelect(CmpResult, ArgValue, NegOp, "abs");
 
+    return RValue::get(Result);
+  }
+  case Builtin::BI__builtin_fabs:
+  case Builtin::BI__builtin_fabsf:
+  case Builtin::BI__builtin_fabsl: {
+    Value *Arg1 = EmitScalarExpr(E->getArg(0));
+    Value *Result = EmitFAbs(*this, Arg1);
     return RValue::get(Result);
   }
   case Builtin::BI__builtin_fmod:
@@ -466,7 +473,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
     return RValue::get(Builder.CreateCall(F));
   }
   case Builtin::BI__builtin_unreachable: {
-    if (SanOpts->Unreachable) {
+    if (SanOpts.Unreachable) {
       SanitizerScope SanScope(this);
       EmitCheck(Builder.getFalse(), "builtin_unreachable",
                 EmitCheckSourceLocation(E->getExprLoc()),
@@ -534,7 +541,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
   case Builtin::BI__builtin_isinf: {
     // isinf(x) --> fabs(x) == infinity
     Value *V = EmitScalarExpr(E->getArg(0));
-    V = EmitFAbs(*this, V, E->getArg(0)->getType());
+    V = EmitFAbs(*this, V);
 
     V = Builder.CreateFCmpOEQ(V, ConstantFP::getInfinity(V->getType()),"isinf");
     return RValue::get(Builder.CreateZExt(V, ConvertType(E->getType())));
@@ -548,7 +555,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
     Value *V = EmitScalarExpr(E->getArg(0));
     Value *Eq = Builder.CreateFCmpOEQ(V, V, "iseq");
 
-    Value *Abs = EmitFAbs(*this, V, E->getArg(0)->getType());
+    Value *Abs = EmitFAbs(*this, V);
     Value *IsLessThanInf =
       Builder.CreateFCmpULT(Abs, ConstantFP::getInfinity(V->getType()),"isinf");
     APFloat Smallest = APFloat::getSmallestNormalized(
@@ -566,7 +573,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
     Value *V = EmitScalarExpr(E->getArg(0));
     Value *Eq = Builder.CreateFCmpOEQ(V, V, "iseq");
 
-    Value *Abs = EmitFAbs(*this, V, E->getArg(0)->getType());
+    Value *Abs = EmitFAbs(*this, V);
     Value *IsNotInf =
       Builder.CreateFCmpUNE(Abs, ConstantFP::getInfinity(V->getType()),"isinf");
 
@@ -605,7 +612,7 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
 
     // if (fabs(V) == infinity) return FP_INFINITY
     Builder.SetInsertPoint(NotNan);
-    Value *VAbs = EmitFAbs(*this, V, E->getArg(5)->getType());
+    Value *VAbs = EmitFAbs(*this, V);
     Value *IsInf =
       Builder.CreateFCmpOEQ(VAbs, ConstantFP::getInfinity(V->getType()),
                             "isinf");
@@ -1623,6 +1630,14 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
       llvm::SequentiallyConsistent);
     RMWI->setVolatile(true);
     return RValue::get(RMWI);
+  }
+  case Builtin::BI__readfsdword: {
+    Value *IntToPtr =
+      Builder.CreateIntToPtr(EmitScalarExpr(E->getArg(0)),
+                             llvm::PointerType::get(CGM.Int32Ty, 257));
+    LoadInst *Load =
+        Builder.CreateAlignedLoad(IntToPtr, /*Align=*/4, /*isVolatile=*/true);
+    return RValue::get(Load);
   }
   }
 

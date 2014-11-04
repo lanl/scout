@@ -286,10 +286,10 @@ ParsedType Sema::getTypeName(const IdentifierInfo &II, SourceLocation NameLoc,
   case LookupResult::NotFound:
   case LookupResult::NotFoundInCurrentInstantiation:
     if (CorrectedII) {
-      TypeNameValidatorCCC Validator(true, isClassName);
-      TypoCorrection Correction = CorrectTypo(Result.getLookupNameInfo(),
-                                              Kind, S, SS, Validator,
-                                              CTK_ErrorRecovery);
+      TypoCorrection Correction = CorrectTypo(
+          Result.getLookupNameInfo(), Kind, S, SS,
+          llvm::make_unique<TypeNameValidatorCCC>(true, isClassName),
+          CTK_ErrorRecovery);
       IdentifierInfo *NewII = Correction.getCorrectionAsIdentifierInfo();
       TemplateTy Template;
       bool MemberOfUnknownSpecialization;
@@ -523,10 +523,11 @@ void Sema::DiagnoseUnknownTypeName(IdentifierInfo *&II,
   
   // There may have been a typo in the name of the type. Look up typo
   // results, in case we have something that we can suggest.
-  TypeNameValidatorCCC Validator(false, false, AllowClassTemplates);
-  if (TypoCorrection Corrected = CorrectTypo(DeclarationNameInfo(II, IILoc),
-                                             LookupOrdinaryName, S, SS,
-                                             Validator, CTK_ErrorRecovery)) {
+  if (TypoCorrection Corrected =
+          CorrectTypo(DeclarationNameInfo(II, IILoc), LookupOrdinaryName, S, SS,
+                      llvm::make_unique<TypeNameValidatorCCC>(
+                          false, false, AllowClassTemplates),
+                      CTK_ErrorRecovery)) {
     if (Corrected.isKeyword()) {
       // We corrected to a keyword.
       diagnoseTypo(Corrected, PDiag(diag::err_unknown_typename_suggest) << II);
@@ -686,13 +687,11 @@ static ParsedType buildNestedType(Sema &S, CXXScopeSpec &SS,
   return S.CreateParsedType(T, Builder.getTypeSourceInfo(Context, T));
 }
 
-Sema::NameClassification Sema::ClassifyName(Scope *S,
-                                            CXXScopeSpec &SS,
-                                            IdentifierInfo *&Name,
-                                            SourceLocation NameLoc,
-                                            const Token &NextToken,
-                                            bool IsAddressOfOperand,
-                                            CorrectionCandidateCallback *CCC) {
+Sema::NameClassification
+Sema::ClassifyName(Scope *S, CXXScopeSpec &SS, IdentifierInfo *&Name,
+                   SourceLocation NameLoc, const Token &NextToken,
+                   bool IsAddressOfOperand,
+                   std::unique_ptr<CorrectionCandidateCallback> CCC) {
   DeclarationNameInfo NameInfo(Name, NameLoc);
   ObjCMethodDecl *CurMethod = getCurMethodDecl();
 
@@ -769,7 +768,7 @@ Corrected:
       SecondTry = true;
       if (TypoCorrection Corrected = CorrectTypo(Result.getLookupNameInfo(),
                                                  Result.getLookupKind(), S, 
-                                                 &SS, *CCC,
+                                                 &SS, std::move(CCC),
                                                  CTK_ErrorRecovery)) {
         unsigned UnqualifiedDiag = diag::err_undeclared_var_use_suggest;
         unsigned QualifiedDiag = diag::err_no_member_suggest;
@@ -1585,10 +1584,10 @@ ObjCInterfaceDecl *Sema::getObjCInterfaceDecl(IdentifierInfo *&Id,
   if (!IDecl && DoTypoCorrection) {
     // Perform typo correction at the given location, but only if we
     // find an Objective-C class name.
-    DeclFilterCCC<ObjCInterfaceDecl> Validator;
-    if (TypoCorrection C = CorrectTypo(DeclarationNameInfo(Id, IdLoc),
-                                       LookupOrdinaryName, TUScope, nullptr,
-                                       Validator, CTK_ErrorRecovery)) {
+    if (TypoCorrection C = CorrectTypo(
+            DeclarationNameInfo(Id, IdLoc), LookupOrdinaryName, TUScope, nullptr,
+            llvm::make_unique<DeclFilterCCC<ObjCInterfaceDecl>>(),
+            CTK_ErrorRecovery)) {
       diagnoseTypo(C, PDiag(diag::err_undef_interface_suggest) << Id);
       IDecl = C.getCorrectionDeclAs<ObjCInterfaceDecl>();
       Id = IDecl->getIdentifier();
@@ -3996,7 +3995,7 @@ Decl *Sema::BuildAnonymousStructOrUnion(Scope *S, DeclSpec &DS,
       FieldCollector->Add(cast<FieldDecl>(Anon));
   } else {
     DeclSpec::SCS SCSpec = DS.getStorageClassSpec();
-    VarDecl::StorageClass SC = StorageClassSpecToVarDeclStorageClass(DS);
+    StorageClass SC = StorageClassSpecToVarDeclStorageClass(DS);
     if (SCSpec == DeclSpec::SCS_mutable) {
       // mutable can only appear on non-static class members, so it's always
       // an error here
@@ -5141,7 +5140,7 @@ static void checkDLLAttributeRedeclaration(Sema &S, NamedDecl *OldDecl,
     // If the declaration hasn't been used yet, allow with a warning for
     // free functions and global variables.
     bool JustWarn = false;
-    if (!OldDecl->isUsed() && OldDecl->getDeclContext()->isFileContext()) {
+    if (!OldDecl->isUsed() && !OldDecl->isCXXClassMember()) {
       auto *VD = dyn_cast<VarDecl>(OldDecl);
       if (VD && !VD->getDescribedVarTemplate())
         JustWarn = true;
@@ -5186,6 +5185,14 @@ static void checkDLLAttributeRedeclaration(Sema &S, NamedDecl *OldDecl,
     S.Diag(OldImportAttr->getLocation(), diag::note_previous_attribute);
     OldDecl->dropAttr<DLLImportAttr>();
     NewDecl->dropAttr<DLLImportAttr>();
+  } else if (IsInline && OldImportAttr &&
+             !S.Context.getTargetInfo().getCXXABI().isMicrosoft()) {
+    // In MinGW, seeing a function declared inline drops the dllimport attribute.
+    OldDecl->dropAttr<DLLImportAttr>();
+    NewDecl->dropAttr<DLLImportAttr>();
+    S.Diag(NewDecl->getLocation(),
+           diag::warn_dllimport_dropped_from_inline_function)
+        << NewDecl << OldImportAttr;
   }
 }
 
@@ -5326,8 +5333,7 @@ Sema::ActOnVariableDeclarator(Scope *S, Declarator &D, DeclContext *DC,
   DeclarationName Name = GetNameForDeclarator(D).getName();
 
   DeclSpec::SCS SCSpec = D.getDeclSpec().getStorageClassSpec();
-  VarDecl::StorageClass SC =
-    StorageClassSpecToVarDeclStorageClass(D.getDeclSpec());
+  StorageClass SC = StorageClassSpecToVarDeclStorageClass(D.getDeclSpec());
 
   // dllimport globals without explicit storage class are treated as extern. We
   // have to change the storage class this early to get the right DeclContext.
@@ -6424,8 +6430,6 @@ static NamedDecl *DiagnoseInvalidRedeclaration(
   assert(!Prev.isAmbiguous() &&
          "Cannot have an ambiguity in previous-declaration lookup");
   CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(NewFD);
-  DifferentNameValidatorCCC Validator(SemaRef.Context, NewFD,
-                                      MD ? MD->getParent() : nullptr);
   if (!Prev.empty()) {
     for (LookupResult::iterator Func = Prev.begin(), FuncEnd = Prev.end();
          Func != FuncEnd; ++Func) {
@@ -6441,9 +6445,11 @@ static NamedDecl *DiagnoseInvalidRedeclaration(
     }
   // If the qualified name lookup yielded nothing, try typo correction
   } else if ((Correction = SemaRef.CorrectTypo(
-                 Prev.getLookupNameInfo(), Prev.getLookupKind(), S,
-                 &ExtraArgs.D.getCXXScopeSpec(), Validator,
-                 Sema::CTK_ErrorRecovery, IsLocalFriend ? nullptr : NewDC))) {
+                  Prev.getLookupNameInfo(), Prev.getLookupKind(), S,
+                  &ExtraArgs.D.getCXXScopeSpec(),
+                  llvm::make_unique<DifferentNameValidatorCCC>(
+                      SemaRef.Context, NewFD, MD ? MD->getParent() : nullptr),
+                  Sema::CTK_ErrorRecovery, IsLocalFriend ? nullptr : NewDC))) {
     // Set up everything for the call to ActOnFunctionDeclarator
     ExtraArgs.D.SetIdentifier(Correction.getCorrectionAsIdentifierInfo(),
                               ExtraArgs.D.getIdentifierLoc());
@@ -6540,8 +6546,7 @@ static NamedDecl *DiagnoseInvalidRedeclaration(
   return nullptr;
 }
 
-static FunctionDecl::StorageClass getFunctionStorageClass(Sema &SemaRef, 
-                                                          Declarator &D) {
+static StorageClass getFunctionStorageClass(Sema &SemaRef, Declarator &D) {
   switch (D.getDeclSpec().getStorageClassSpec()) {
   default: llvm_unreachable("Unknown storage class!");
   case DeclSpec::SCS_auto:
@@ -6579,7 +6584,7 @@ static FunctionDecl::StorageClass getFunctionStorageClass(Sema &SemaRef,
 static FunctionDecl* CreateNewFunctionDecl(Sema &SemaRef, Declarator &D,
                                            DeclContext *DC, QualType &R,
                                            TypeSourceInfo *TInfo,
-                                           FunctionDecl::StorageClass SC,
+                                           StorageClass SC,
                                            bool &IsVirtualOkay) {
   DeclarationNameInfo NameInfo = SemaRef.GetNameForDeclarator(D);
   DeclarationName Name = NameInfo.getName();
@@ -6906,7 +6911,7 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
   // TODO: consider using NameInfo for diagnostic.
   DeclarationNameInfo NameInfo = GetNameForDeclarator(D);
   DeclarationName Name = NameInfo.getName();
-  FunctionDecl::StorageClass SC = getFunctionStorageClass(*this, D);
+  StorageClass SC = getFunctionStorageClass(*this, D);
 
   if (DeclSpec::TSCS TSCS = D.getDeclSpec().getThreadStorageClassSpec())
     Diag(D.getDeclSpec().getThreadStorageClassSpecLoc(),
@@ -7387,6 +7392,22 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     assert((NewFD->isInvalidDecl() || !D.isRedeclaration() ||
             Previous.getResultKind() != LookupResult::FoundOverloaded) &&
            "previous declaration set still overloaded");
+
+    // Diagnose no-prototype function declarations with calling conventions that
+    // don't support variadic calls. Only do this in C and do it after merging
+    // possibly prototyped redeclarations.
+    const FunctionType *FT = NewFD->getType()->castAs<FunctionType>();
+    if (isa<FunctionNoProtoType>(FT) && !D.isFunctionDefinition()) {
+      CallingConv CC = FT->getExtInfo().getCC();
+      if (!supportsVariadicCall(CC)) {
+        // Windows system headers sometimes accidentally use stdcall without
+        // (void) parameters, so we relax this to a warning.
+        int DiagID =
+            CC == CC_X86StdCall ? diag::warn_cconv_knr : diag::err_cconv_knr;
+        Diag(NewFD->getLocation(), DiagID)
+            << FunctionType::getNameForCallConv(CC);
+      }
+    }
   } else {
     // C++11 [replacement.functions]p3:
     //  The program's definitions shall not be specified as inline.
@@ -7943,21 +7964,6 @@ bool Sema::CheckFunctionDeclaration(Scope *S, FunctionDecl *NewFD,
 
   // Semantic checking for this function declaration (in isolation).
 
-  // Diagnose the use of callee-cleanup calls on unprototyped functions.
-  QualType NewQType = Context.getCanonicalType(NewFD->getType());
-  const FunctionType *NewType = cast<FunctionType>(NewQType);
-  if (isa<FunctionNoProtoType>(NewType)) {
-    FunctionType::ExtInfo NewTypeInfo = NewType->getExtInfo();
-    if (isCalleeCleanup(NewTypeInfo.getCC())) {
-      // Windows system headers sometimes accidentally use stdcall without
-      // (void) parameters, so use a default-error warning in this case :-/
-      int DiagID = NewTypeInfo.getCC() == CC_X86StdCall
-          ? diag::warn_cconv_knr : diag::err_cconv_knr;
-      Diag(NewFD->getLocation(), DiagID)
-          << FunctionType::getNameForCallConv(NewTypeInfo.getCC());
-    }
-  }
-
   if (getLangOpts().CPlusPlus) {
     // C++-specific checks.
     if (CXXConstructorDecl *Constructor = dyn_cast<CXXConstructorDecl>(NewFD)) {
@@ -8437,11 +8443,14 @@ namespace {
     }
 
     void VisitCXXOperatorCallExpr(CXXOperatorCallExpr *E) {
-      if (E->getNumArgs() > 0)
-        if (DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E->getArg(0)))
-          HandleDeclRefExpr(DRE);
+      Expr *Callee = E->getCallee();
 
-      Inherited::VisitCXXOperatorCallExpr(E);
+      if (isa<UnresolvedLookupExpr>(Callee))
+        return Inherited::VisitCXXOperatorCallExpr(E);
+
+      Visit(Callee);
+      for (auto Arg: E->arguments())
+        HandleValue(Arg->IgnoreParenImpCasts());
     }
 
     void VisitUnaryOperator(UnaryOperator *E) {
@@ -9758,12 +9767,12 @@ Decl *Sema::ActOnParamDeclarator(Scope *S, Declarator &D) {
   // Verify C99 6.7.5.3p2: The only SCS allowed is 'register'.
 
   // C++03 [dcl.stc]p2 also permits 'auto'.
-  VarDecl::StorageClass StorageClass = SC_None;
+  StorageClass SC = SC_None;
   if (DS.getStorageClassSpec() == DeclSpec::SCS_register) {
-    StorageClass = SC_Register;
+    SC = SC_Register;
   } else if (getLangOpts().CPlusPlus &&
              DS.getStorageClassSpec() == DeclSpec::SCS_auto) {
-    StorageClass = SC_Auto;
+    SC = SC_Auto;
   } else if (DS.getStorageClassSpec() != DeclSpec::SCS_unspecified) {
     Diag(DS.getStorageClassSpecLoc(),
          diag::err_invalid_storage_class_in_func_decl);
@@ -9837,7 +9846,7 @@ Decl *Sema::ActOnParamDeclarator(Scope *S, Declarator &D) {
                                     D.getLocStart(),
                                     D.getIdentifierLoc(), II,
                                     parmDeclType, TInfo,
-                                    StorageClass);
+                                    SC);
 
   if (D.isInvalidType())
     New->setInvalidDecl();
@@ -9929,7 +9938,7 @@ void Sema::DiagnoseSizeOfParametersAndReturnValue(ParmVarDecl * const *Param,
 ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
                                   SourceLocation NameLoc, IdentifierInfo *Name,
                                   QualType T, TypeSourceInfo *TSInfo,
-                                  VarDecl::StorageClass StorageClass) {
+                                  StorageClass SC) {
   // In ARC, infer a lifetime qualifier for appropriate parameter types.
   if (getLangOpts().ObjCAutoRefCount &&
       T.getObjCLifetime() == Qualifiers::OCL_None &&
@@ -9955,8 +9964,7 @@ ParmVarDecl *Sema::CheckParameter(DeclContext *DC, SourceLocation StartLoc,
 
   ParmVarDecl *New = ParmVarDecl::Create(Context, DC, StartLoc, NameLoc, Name,
                                          Context.getAdjustedParameterType(T), 
-                                         TSInfo,
-                                         StorageClass, nullptr);
+                                         TSInfo, SC, nullptr);
 
   // Parameters can not be abstract class types.
   // For record types, this is done by the AbstractClassUsageDiagnoser once
@@ -10635,10 +10643,10 @@ NamedDecl *Sema::ImplicitlyDefineFunction(SourceLocation Loc,
   // function declaration is going to be treated as an error.
   if (Diags.getDiagnosticLevel(diag_id, Loc) >= DiagnosticsEngine::Error) {
     TypoCorrection Corrected;
-    DeclFilterCCC<FunctionDecl> Validator;
-    if (S && (Corrected = CorrectTypo(DeclarationNameInfo(&II, Loc),
-                                      LookupOrdinaryName, S, nullptr, Validator,
-                                      CTK_NonError)))
+    if (S &&
+        (Corrected = CorrectTypo(
+             DeclarationNameInfo(&II, Loc), LookupOrdinaryName, S, nullptr,
+             llvm::make_unique<DeclFilterCCC<FunctionDecl>>(), CTK_NonError)))
       diagnoseTypo(Corrected, PDiag(diag::note_function_suggestion),
                    /*ErrorRecovery*/false);
   }

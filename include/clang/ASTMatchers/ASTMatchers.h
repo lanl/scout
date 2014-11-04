@@ -586,6 +586,15 @@ AST_MATCHER_P(TemplateArgument, equalsIntegralValue,
   return Node.getAsIntegral().toString(10) == Value;
 }
 
+/// \brief Matches any value declaration.
+///
+/// Example matches A, B, C and F
+/// \code
+///   enum X { A, B, C };
+///   void F();
+/// \endcode
+const internal::VariadicDynCastAllOfMatcher<Decl, ValueDecl> valueDecl;
+
 /// \brief Matches C++ constructor declarations.
 ///
 /// Example matches Foo::Foo() and Foo::Foo(int)
@@ -2362,10 +2371,9 @@ AST_MATCHER(CXXCtorInitializer, isWritten) {
 AST_POLYMORPHIC_MATCHER_P(hasAnyArgument, AST_POLYMORPHIC_SUPPORTED_TYPES_2(
                                               CallExpr, CXXConstructExpr),
                           internal::Matcher<Expr>, InnerMatcher) {
-  for (unsigned I = 0; I < Node.getNumArgs(); ++I) {
+  for (const Expr *Arg : Node.arguments()) {
     BoundNodesTreeBuilder Result(*Builder);
-    if (InnerMatcher.matches(*Node.getArg(I)->IgnoreParenImpCasts(), Finder,
-                             &Result)) {
+    if (InnerMatcher.matches(*Arg->IgnoreParenImpCasts(), Finder, &Result)) {
       *Builder = std::move(Result);
       return true;
     }
@@ -3568,8 +3576,9 @@ AST_MATCHER_P(ElaboratedType, namesType, internal::Matcher<QualType>,
 /// \c recordDecl(hasDeclContext(namedDecl(hasName("M")))) matches the
 /// declaration of \c class \c D.
 AST_MATCHER_P(Decl, hasDeclContext, internal::Matcher<Decl>, InnerMatcher) {
-  return InnerMatcher.matches(*Decl::castFromDeclContext(Node.getDeclContext()),
-                              Finder, Builder);
+  const DeclContext *DC = Node.getDeclContext();
+  if (!DC) return false;
+  return InnerMatcher.matches(*Decl::castFromDeclContext(DC), Finder, Builder);
 }
 
 /// \brief Matches nested name specifiers.

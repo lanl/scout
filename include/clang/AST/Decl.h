@@ -662,8 +662,6 @@ struct EvaluatedStmt {
 /// declaration or definition.
 class VarDecl : public DeclaratorDecl, public Redeclarable<VarDecl> {
 public:
-  typedef clang::StorageClass StorageClass;
-
   /// getStorageClassSpecifierString - Return the string used to
   /// specify the storage class \p SC.
   ///
@@ -1437,8 +1435,6 @@ private:
 class FunctionDecl : public DeclaratorDecl, public DeclContext,
                      public Redeclarable<FunctionDecl> {
 public:
-  typedef clang::StorageClass StorageClass;
-
   /// \brief The kind of templated function a FunctionDecl can be.
   enum TemplatedKind {
     TK_NonTemplate,
@@ -3217,6 +3213,13 @@ public:
   /// \brief Determine whether this record is a class describing a lambda
   /// function object.
   bool isLambda() const;
+
+  /// \brief Determine whether this record is a record for captured variables in
+  /// CapturedStmt construct.
+  bool isCapturedRecord() const;
+  /// \brief Mark the record as a record for captured variables in CapturedStmt
+  /// construct.
+  void setCapturedRecord();
 
   /// getDefinition - Returns the RecordDecl that actually defines
   ///  this struct/union/class.  When determining whether or not a

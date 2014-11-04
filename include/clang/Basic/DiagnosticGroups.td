@@ -71,6 +71,7 @@ def GNUDesignator : DiagGroup<"gnu-designator">;
 def GNUStringLiteralOperatorTemplate :
   DiagGroup<"gnu-string-literal-operator-template">;
 
+def DeleteIncomplete : DiagGroup<"delete-incomplete">;
 def DeleteNonVirtualDtor : DiagGroup<"delete-non-virtual-dtor">;
 def AbstractFinalClass : DiagGroup<"abstract-final-class">;
 
@@ -145,6 +146,8 @@ def CXX98CompatPedantic : DiagGroup<"c++98-compat-pedantic",
                                      CXXPre1zCompatPedantic]>;
 
 def CXX11Narrowing : DiagGroup<"c++11-narrowing">;
+
+def CXX11WarnOverrideMethod : DiagGroup<"inconsistent-missing-override">;
 
 // Original name of this warning in Clang
 def : DiagGroup<"c++0x-narrowing", [CXX11Narrowing]>;
@@ -729,6 +732,9 @@ def ProfileInstrUnprofiled : DiagGroup<"profile-instr-unprofiled">;
 
 // AddressSanitizer frontent instrumentation remarks.
 def SanitizeAddressRemarks : DiagGroup<"sanitize-address">;
+
+// Issues with serialized diagnostics.
+def SerializedDiagnostics : DiagGroup<"serialized-diagnostics">;
 
 // A warning group for warnings about code that clang accepts when
 // compiling CUDA C/C++ but which is not compatible with the CUDA spec.

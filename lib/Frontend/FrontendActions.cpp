@@ -431,8 +431,8 @@ namespace {
       Out.indent(2) << "Module map file: " << ModuleMapPath << "\n";
     }
 
-    bool ReadLanguageOptions(const LangOptions &LangOpts,
-                             bool Complain) override {
+    bool ReadLanguageOptions(const LangOptions &LangOpts, bool Complain,
+                             bool AllowCompatibleDifferences) override {
       Out.indent(2) << "Language options:\n";
 #define LANGOPT(Name, Bits, Default, Description) \
       DUMP_BOOLEAN(LangOpts.Name, Description);
@@ -683,10 +683,10 @@ void PrintPreambleAction::ExecuteAction() {
   }
 
   CompilerInstance &CI = getCompilerInstance();
-  if (std::unique_ptr<llvm::MemoryBuffer> Buffer =
-          CI.getFileManager().getBufferForFile(getCurrentFile())) {
+  auto Buffer = CI.getFileManager().getBufferForFile(getCurrentFile());
+  if (Buffer) {
     unsigned Preamble =
-        Lexer::ComputePreamble(Buffer->getBuffer(), CI.getLangOpts()).first;
-    llvm::outs().write(Buffer->getBufferStart(), Preamble);
+        Lexer::ComputePreamble((*Buffer)->getBuffer(), CI.getLangOpts()).first;
+    llvm::outs().write((*Buffer)->getBufferStart(), Preamble);
   }
 }
