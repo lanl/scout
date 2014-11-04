@@ -64,6 +64,7 @@ using namespace lldb_private;
 
 static uint32_t g_shared_debugger_refcount = 0;
 static lldb::user_id_t g_unique_id = 1;
+static size_t g_debugger_event_thread_stack_bytes = 8 * 1024 * 1024;
 
 #pragma mark Static Functions
 
@@ -124,8 +125,7 @@ g_language_enumerators[] =
     FILE_AND_LINE\
     "\\n"
 
-#define DEFAULT_DISASSEMBLY_FORMAT "${addr-file-or-load} <${function.name-without-args}${function.concrete-only-addr-offset-no-padding}>: "
-
+#define DEFAULT_DISASSEMBLY_FORMAT "${addr-file-or-load}{ <${function.name-without-args}${function.concrete-only-addr-offset-no-padding}>}: "
 
 static PropertyDefinition
 g_properties[] =
@@ -1734,6 +1734,15 @@ FormatPromptRecurse
                                     target = valobj;
                                     val_obj_display = ValueObject::eValueObjectRepresentationStyleValue;
                                 }
+                                else if (IsToken (var_name_begin, "var.script:"))
+                                {
+                                    var_name_begin += ::strlen("var.script:");
+                                    std::string script_name(var_name_begin,var_name_end);
+                                    ScriptInterpreter* script_interpreter = valobj->GetTargetSP()->GetDebugger().GetCommandInterpreter().GetScriptInterpreter();
+                                    if (RunScriptFormatKeyword (s, script_interpreter, valobj, script_name))
+                                        var_success = true;
+                                    break;
+                                }
                                 else if (IsToken (var_name_begin,"var%"))
                                 {
                                     was_var_format = true;
@@ -3322,11 +3331,9 @@ Debugger::StartEventHandlerThread()
 {
     if (!m_event_handler_thread.IsJoinable())
     {
-        m_event_handler_thread = ThreadLauncher::LaunchThread ("lldb.debugger.event-handler",
-                                                               EventHandlerThread,
-                                                               this,
-                                                               NULL,
-                                                               8*1024*1024); // Use larger 8MB stack for this thread
+        // Use larger 8MB stack for this thread
+        m_event_handler_thread = ThreadLauncher::LaunchThread("lldb.debugger.event-handler", EventHandlerThread, this, NULL,
+                                                              g_debugger_event_thread_stack_bytes);
     }
     return m_event_handler_thread.IsJoinable();
 }

@@ -3715,7 +3715,7 @@ ClangASTType::GetChildClangTypeAtIndex (ExecutionContext *exe_ctx,
         case clang::Type::IncompleteArray:
             if (ignore_array_bounds || idx_is_valid)
             {
-                const clang::ArrayType *array = llvm::cast<clang::ArrayType>(parent_qual_type.getTypePtr());
+                const clang::ArrayType *array = GetQualType()->getAsArrayTypeUnsafe();
                 if (array)
                 {
                     ClangASTType element_type (m_ast, array->getElementType());
@@ -5017,6 +5017,17 @@ ClangASTType::BuildIndirectFields ()
     {
         record_decl->addDecl(*ifi);
     }
+}
+
+void
+ClangASTType::SetIsPacked ()
+{
+    clang::RecordDecl *record_decl = GetAsRecordDecl();
+    
+    if (!record_decl)
+        return;
+    
+    record_decl->addAttr(clang::PackedAttr::CreateImplicit(*m_ast));
 }
 
 clang::VarDecl *
