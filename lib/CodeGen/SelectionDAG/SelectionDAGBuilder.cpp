@@ -3480,13 +3480,13 @@ void SelectionDAGBuilder::visitLoad(const LoadInst &I) {
   Type *Ty = I.getType();
 
   bool isVolatile = I.isVolatile();
-  bool isNonTemporal = I.getMetadata(LLVMContext::MD_nontemporal) != nullptr;
-  bool isInvariant = I.getMetadata(LLVMContext::MD_invariant_load) != nullptr;
+  bool isNonTemporal = I.getMDNode(LLVMContext::MD_nontemporal) != nullptr;
+  bool isInvariant = I.getMDNode(LLVMContext::MD_invariant_load) != nullptr;
   unsigned Alignment = I.getAlignment();
 
   AAMDNodes AAInfo;
   I.getAAMetadata(AAInfo);
-  const MDNode *Ranges = I.getMetadata(LLVMContext::MD_range);
+  const MDNode *Ranges = I.getMDNode(LLVMContext::MD_range);
 
   const TargetLowering &TLI = DAG.getTargetLoweringInfo();
   SmallVector<EVT, 4> ValueVTs;
@@ -3584,7 +3584,7 @@ void SelectionDAGBuilder::visitStore(const StoreInst &I) {
                                           NumValues));
   EVT PtrVT = Ptr.getValueType();
   bool isVolatile = I.isVolatile();
-  bool isNonTemporal = I.getMetadata(LLVMContext::MD_nontemporal) != nullptr;
+  bool isNonTemporal = I.getMDNode(LLVMContext::MD_nontemporal) != nullptr;
   unsigned Alignment = I.getAlignment();
 
   AAMDNodes AAInfo;
@@ -5899,12 +5899,12 @@ bool SelectionDAGBuilder::visitUnaryFloatCall(const CallInst &I,
   return true;
 }
 
-/// visitBinaryFloatCall - If a call instruction is a unary floating-point
+/// visitBinaryFloatCall - If a call instruction is a binary floating-point
 /// operation (as expected), translate it to an SDNode with the specified opcode
 /// and return true.
 bool SelectionDAGBuilder::visitBinaryFloatCall(const CallInst &I,
                                                unsigned Opcode) {
-  // Sanity check that it really is a unary floating-point call.
+  // Sanity check that it really is a binary floating-point call.
   if (I.getNumArgOperands() != 2 ||
       !I.getArgOperand(0)->getType()->isFloatingPointTy() ||
       I.getType() != I.getArgOperand(0)->getType() ||
@@ -6479,7 +6479,7 @@ void SelectionDAGBuilder::visitInlineAsm(ImmutableCallSite CS) {
   // If we have a !srcloc metadata node associated with it, we want to attach
   // this to the ultimately generated inline asm machineinstr.  To do this, we
   // pass in the third operand as this (potentially null) inline asm MDNode.
-  const MDNode *SrcLoc = CS.getInstruction()->getMetadata("srcloc");
+  const MDNode *SrcLoc = CS.getInstruction()->getMDNode("srcloc");
   AsmNodeOperands.push_back(DAG.getMDNode(SrcLoc));
 
   // Remember the HasSideEffect, AlignStack, AsmDialect, MayLoad and MayStore

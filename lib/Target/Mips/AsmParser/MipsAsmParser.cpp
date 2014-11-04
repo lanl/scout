@@ -1161,6 +1161,42 @@ bool MipsAsmParser::processInstruction(MCInst &Inst, SMLoc IDLoc,
             Imm % 4 != 0)
           return Error(IDLoc, "immediate operand value out of range");
         break;
+      case Mips::SLL16_MM:
+      case Mips::SRL16_MM:
+        Opnd = Inst.getOperand(2);
+        if (!Opnd.isImm())
+          return Error(IDLoc, "expected immediate operand kind");
+        Imm = Opnd.getImm();
+        if (Imm < 1 || Imm > 8)
+          return Error(IDLoc, "immediate operand value out of range");
+        break;
+      case Mips::LI16_MM:
+        Opnd = Inst.getOperand(1);
+        if (!Opnd.isImm())
+          return Error(IDLoc, "expected immediate operand kind");
+        Imm = Opnd.getImm();
+        if (Imm < -1 || Imm > 126)
+          return Error(IDLoc, "immediate operand value out of range");
+        break;
+      case Mips::ADDIUR2_MM:
+        Opnd = Inst.getOperand(2);
+        if (!Opnd.isImm())
+          return Error(IDLoc, "expected immediate operand kind");
+        Imm = Opnd.getImm();
+        if (!(Imm == 1 || Imm == -1 ||
+              ((Imm % 4 == 0) && Imm < 28 && Imm > 0)))
+          return Error(IDLoc, "immediate operand value out of range");
+        break;
+      case Mips::ADDIUR1SP_MM:
+        Opnd = Inst.getOperand(1);
+        if (!Opnd.isImm())
+          return Error(IDLoc, "expected immediate operand kind");
+        Imm = Opnd.getImm();
+        if (OffsetToAlignment(Imm, 4LL))
+          return Error(IDLoc, "misaligned immediate operand value");
+        if (Imm < 0 || Imm > 255)
+          return Error(IDLoc, "immediate operand value out of range");
+        break;
     }
   }
 

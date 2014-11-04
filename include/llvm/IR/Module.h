@@ -352,11 +352,11 @@ public:
   /// function arguments, which makes it easier for clients to use.
   Constant *getOrInsertFunction(StringRef Name,
                                 AttributeSet AttributeList,
-                                Type *RetTy, ...)  END_WITH_NULL;
+                                Type *RetTy, ...) LLVM_END_WITH_NULL;
 
   /// Same as above, but without the attributes.
   Constant *getOrInsertFunction(StringRef Name, Type *RetTy, ...)
-    END_WITH_NULL;
+    LLVM_END_WITH_NULL;
 
   /// Look up the specified function in the module symbol table. If it does not
   /// exist, return null.
@@ -469,9 +469,6 @@ public:
   /// Retrieves the GVMaterializer, if any, for this Module.
   GVMaterializer *getMaterializer() const { return Materializer.get(); }
 
-  /// True if the definition of GV has yet to be materializedfrom the
-  /// GVMaterializer.
-  bool isMaterializable(const GlobalValue *GV) const;
   /// Returns true if this GV was loaded from this Module's GVMaterializer and
   /// the GVMaterializer knows how to dematerialize the GV.
   bool isDematerializable(const GlobalValue *GV) const;
@@ -479,7 +476,7 @@ public:
   /// Make sure the GlobalValue is fully read. If the module is corrupt, this
   /// returns true and fills in the optional string with information about the
   /// problem. If successful, this returns false.
-  bool Materialize(GlobalValue *GV, std::string *ErrInfo = nullptr);
+  std::error_code materialize(GlobalValue *GV);
   /// If the GlobalValue is read in, and if the GVMaterializer supports it,
   /// release the memory for the function, and set it up to be materialized
   /// lazily. If !isDematerializable(), this method is a noop.

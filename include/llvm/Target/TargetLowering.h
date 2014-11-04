@@ -262,7 +262,15 @@ public:
   bool isMaskAndBranchFoldingLegal() const {
     return MaskAndBranchFoldingIsLegal;
   }
-  
+
+  /// Return true if the target can combine store(extractelement VectorTy,
+  /// Idx).
+  /// \p Cost[out] gives the cost of that transformation when this is true.
+  virtual bool canCombineStoreAndExtract(Type *VectorTy, Value *Idx,
+                                         unsigned &Cost) const {
+    return false;
+  }
+
   /// Return true if target supports floating point exceptions.
   bool hasFloatingPointExceptions() const {
     return HasFloatingPointExceptions;
@@ -2652,13 +2660,16 @@ public:
   /// The RefinementSteps output is the number of Newton-Raphson refinement
   /// iterations required to generate a sufficient (though not necessarily
   /// IEEE-754 compliant) estimate for the value type.
+  /// The boolean UseOneConstNR output is used to select a Newton-Raphson
+  /// algorithm implementation that uses one constant or two constants.
   /// A target may choose to implement its own refinement within this function.
   /// If that's true, then return '0' as the number of RefinementSteps to avoid
   /// any further refinement of the estimate.
   /// An empty SDValue return means no estimate sequence can be created.
   virtual SDValue getRsqrtEstimate(SDValue Operand,
                               DAGCombinerInfo &DCI,
-                              unsigned &RefinementSteps) const {
+                              unsigned &RefinementSteps,
+                              bool &UseOneConstNR) const {
     return SDValue();
   }
 
