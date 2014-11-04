@@ -10,6 +10,7 @@ set(LLVM_LINK_COMPONENTS
 add_clang_library(clangDriver
   Action.cpp
   Compilation.cpp
+  CrossWindowsToolChain.cpp
   Driver.cpp
   DriverOptions.cpp
   Job.cpp

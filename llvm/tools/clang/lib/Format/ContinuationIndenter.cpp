@@ -57,12 +57,13 @@ static bool startsNextParameter(const FormatToken &Current,
 }
 
 ContinuationIndenter::ContinuationIndenter(const FormatStyle &Style,
+                                           const AdditionalKeywords &Keywords,
                                            SourceManager &SourceMgr,
                                            WhitespaceManager &Whitespaces,
                                            encoding::Encoding Encoding,
                                            bool BinPackInconclusiveFunctions)
-    : Style(Style), SourceMgr(SourceMgr), Whitespaces(Whitespaces),
-      Encoding(Encoding),
+    : Style(Style), Keywords(Keywords), SourceMgr(SourceMgr),
+      Whitespaces(Whitespaces), Encoding(Encoding),
       BinPackInconclusiveFunctions(BinPackInconclusiveFunctions),
       CommentPragmasRegex(Style.CommentPragmas) {}
 
@@ -122,6 +123,12 @@ bool ContinuationIndenter::canBreak(const LineState &State) {
       State.Stack[State.Stack.size() - 2].HasMultipleNestedBlocks)
     return false;
 
+  // Don't break after very short return types (e.g. "void") as that is often
+  // unexpected.
+  if (Current.Type == TT_FunctionDeclarationName &&
+      !Style.AlwaysBreakAfterDefinitionReturnType && State.Column < 6)
+    return false;
+
   return !State.Stack.back().NoLineBreak;
 }
 
@@ -150,8 +157,7 @@ bool ContinuationIndenter::mustBreak(const LineState &State) {
       Previous.Type != TT_InlineASMColon &&
       Previous.Type != TT_ConditionalExpr && nextIsMultilineString(State))
     return true;
-  if (Style.Language != FormatStyle::LK_Proto &&
-      ((Previous.Type == TT_DictLiteral && Previous.is(tok::l_brace)) ||
+  if (((Previous.Type == TT_DictLiteral && Previous.is(tok::l_brace)) ||
        Previous.Type == TT_ArrayInitializerLSquare) &&
       Style.ColumnLimit > 0 &&
       getLengthToMatchingParen(Previous) + State.Column > getColumnLimit(State))
@@ -423,7 +429,9 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
        !State.Stack.back().AvoidBinPacking) ||
       Previous.Type == TT_BinaryOperator)
     State.Stack.back().BreakBeforeParameter = false;
-  if (Previous.Type == TT_TemplateCloser && Current.NestingLevel == 0)
+  if ((Previous.Type == TT_TemplateCloser ||
+       Previous.Type == TT_JavaAnnotation) &&
+      Current.NestingLevel == 0)
     State.Stack.back().BreakBeforeParameter = false;
   if (NextNonComment->is(tok::question) ||
       (PreviousNonComment && PreviousNonComment->is(tok::question)))
@@ -459,6 +467,7 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
       PreviousNonComment->Type != TT_TemplateCloser &&
       PreviousNonComment->Type != TT_BinaryOperator &&
       PreviousNonComment->Type != TT_JavaAnnotation &&
+      PreviousNonComment->Type != TT_LeadingJavaAnnotation &&
       Current.Type != TT_BinaryOperator && !PreviousNonComment->opensScope())
     State.Stack.back().BreakBeforeParameter = true;
 
@@ -497,6 +506,13 @@ unsigned ContinuationIndenter::getNewLineColumn(const LineState &State) {
   const FormatToken *NextNonComment = Previous.getNextNonComment();
   if (!NextNonComment)
     NextNonComment = &Current;
+
+  // Java specific bits.
+  if (Style.Language == FormatStyle::LK_Java &&
+      Current.isOneOf(Keywords.kw_implements, Keywords.kw_extends))
+    return std::max(State.Stack.back().LastSpace,
+                    State.Stack.back().Indent + Style.ContinuationIndentWidth);
+
   if (NextNonComment->is(tok::l_brace) && NextNonComment->BlockKind == BK_Block)
     return Current.NestingLevel == 0 ? State.FirstIndent
                                      : State.Stack.back().Indent;
@@ -533,9 +549,11 @@ unsigned ContinuationIndenter::getNewLineColumn(const LineState &State) {
     return State.Stack.back().QuestionColumn;
   if (Previous.is(tok::comma) && State.Stack.back().VariablePos != 0)
     return State.Stack.back().VariablePos;
-  if ((PreviousNonComment && (PreviousNonComment->ClosesTemplateDeclaration ||
-                              PreviousNonComment->Type == TT_AttributeParen ||
-                              PreviousNonComment->Type == TT_JavaAnnotation)) ||
+  if ((PreviousNonComment &&
+       (PreviousNonComment->ClosesTemplateDeclaration ||
+        PreviousNonComment->Type == TT_AttributeParen ||
+        PreviousNonComment->Type == TT_JavaAnnotation ||
+        PreviousNonComment->Type == TT_LeadingJavaAnnotation)) ||
       (!Style.IndentWrappedFunctionNames &&
        (NextNonComment->is(tok::kw_operator) ||
         NextNonComment->Type == TT_FunctionDeclarationName)))
@@ -656,9 +674,10 @@ unsigned ContinuationIndenter::moveStateToNextToken(LineState &State,
       }
       State.Stack[State.Stack.size() - 2].JSFunctionInlined = false;
     }
-    if (Current.TokenText == "function")
+    if (Current.is(Keywords.kw_function))
       State.Stack.back().JSFunctionInlined =
           !Newline && Previous && Previous->Type != TT_DictLiteral &&
+          Previous->Type != TT_ConditionalExpr &&
           // If the unnamed function is the only parameter to another function,
           // we can likely inline it and come up with a good format.
           (Previous->isNot(tok::l_paren) || Previous->ParameterCount > 1);
@@ -912,10 +931,10 @@ void ContinuationIndenter::moveStateToNewBlock(LineState &State) {
   if (fakeRParenSpecialCase(State))
     consumeRParens(State, *State.NextToken->MatchingParen);
 
-  // For some reason, ObjC blocks are indented like continuations.
+  // ObjC block sometimes follow special indentation rules.
   unsigned NewIndent = State.Stack.back().LastSpace +
                        (State.NextToken->Type == TT_ObjCBlockLBrace
-                            ? Style.ContinuationIndentWidth
+                            ? Style.ObjCBlockIndentWidth
                             : Style.IndentWidth);
   State.Stack.push_back(ParenState(
       NewIndent, /*NewIndentLevel=*/State.Stack.back().IndentLevel + 1,

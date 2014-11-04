@@ -1167,6 +1167,13 @@ def ThisCall : InheritableAttr {
   let Documentation = [ThisCallDocs];
 }
 
+def VectorCall : InheritableAttr {
+  let Spellings = [GNU<"vectorcall">, Keyword<"__vectorcall">,
+                   Keyword<"_vectorcall">];
+//  let Subjects = [Function, ObjCMethod];
+  let Documentation = [VectorCallDocs];
+}
+
 def Pascal : InheritableAttr {
   let Spellings = [GNU<"pascal">, Keyword<"__pascal">, Keyword<"_pascal">];
 //  let Subjects = [Function, ObjCMethod];
@@ -1911,3 +1918,11 @@ def LoopHint : Attr {
 
   let Documentation = [LoopHintDocs, UnrollHintDocs];
 }
+
+def CapturedRecord : InheritableAttr {
+  // This attribute has no spellings as it is only ever created implicitly.
+  let Spellings = [];
+  let SemaHandler = 0;
+  let Documentation = [Undocumented];
+}
+
