@@ -159,18 +159,22 @@ void PassManagerBuilder::populateFunctionPassManager(FunctionPassManager &FPM) {
 }
 
 void PassManagerBuilder::populateModulePassManager(PassManagerBase &MPM) {
-  // If all optimizations are disabled, just run the always-inline pass.
+  // If all optimizations are disabled, just run the always-inline pass and,
+  // if enabled, the function merging pass.
   if (OptLevel == 0) {
     if (Inliner) {
       MPM.add(Inliner);
       Inliner = nullptr;
     }
 
-    // FIXME: This is a HACK! The inliner pass above implicitly creates a CGSCC
-    // pass manager, but we don't want to add extensions into that pass manager.
-    // To prevent this we must insert a no-op module pass to reset the pass
-    // manager to get the same behavior as EP_OptimizerLast in non-O0 builds.
-    if (!GlobalExtensions->empty() || !Extensions.empty())
+    // FIXME: The BarrierNoopPass is a HACK! The inliner pass above implicitly
+    // creates a CGSCC pass manager, but we don't want to add extensions into
+    // that pass manager. To prevent this we insert a no-op module pass to reset
+    // the pass manager to get the same behavior as EP_OptimizerLast in non-O0
+    // builds. The function merging pass is 
+    if (MergeFunctions)
+      MPM.add(createMergeFunctionsPass());
+    else if (!GlobalExtensions->empty() || !Extensions.empty())
       MPM.add(createBarrierNoopPass());
 
     addExtensionsToPM(EP_EnabledOnOptLevel0, MPM);
@@ -440,7 +444,7 @@ void PassManagerBuilder::addLTOOptimizationPasses(PassManagerBase &PM) {
   // More loops are countable; try to optimize them.
   PM.add(createIndVarSimplifyPass());
   PM.add(createLoopDeletionPass());
-  PM.add(createLoopVectorizePass(DisableUnrollLoops, LoopVectorize));
+  PM.add(createLoopVectorizePass(true, LoopVectorize));
 
   // More scalar chains could be vectorized due to more alias information
   if (RunSLPAfterLoopVectorization)

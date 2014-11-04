@@ -1638,8 +1638,16 @@ SDValue PPCTargetLowering::LowerJumpTable(SDValue Op, SelectionDAG &DAG) const {
 SDValue PPCTargetLowering::LowerBlockAddress(SDValue Op,
                                              SelectionDAG &DAG) const {
   EVT PtrVT = Op.getValueType();
+  BlockAddressSDNode *BASDN = cast<BlockAddressSDNode>(Op);
+  const BlockAddress *BA = BASDN->getBlockAddress();
 
-  const BlockAddress *BA = cast<BlockAddressSDNode>(Op)->getBlockAddress();
+  // 64-bit SVR4 ABI code is always position-independent.
+  // The actual BlockAddress is stored in the TOC.
+  if (Subtarget.isSVR4ABI() && Subtarget.isPPC64()) {
+    SDValue GA = DAG.getTargetBlockAddress(BA, PtrVT, BASDN->getOffset());
+    return DAG.getNode(PPCISD::TOC_ENTRY, SDLoc(BASDN), MVT::i64, GA,
+                       DAG.getRegister(PPC::X2, MVT::i64));
+  }
 
   unsigned MOHiFlag, MOLoFlag;
   bool isPIC = GetLabelAccessInfo(DAG.getTarget(), MOHiFlag, MOLoFlag);
@@ -7466,7 +7474,8 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
 
 SDValue PPCTargetLowering::getRsqrtEstimate(SDValue Operand,
                                             DAGCombinerInfo &DCI,
-                                            unsigned &RefinementSteps) const {
+                                            unsigned &RefinementSteps,
+                                            bool &UseOneConstNR) const {
   EVT VT = Operand.getValueType();
   if ((VT == MVT::f32 && Subtarget.hasFRSQRTES()) ||
       (VT == MVT::f64 && Subtarget.hasFRSQRTE())  ||
@@ -7479,6 +7488,7 @@ SDValue PPCTargetLowering::getRsqrtEstimate(SDValue Operand,
     RefinementSteps = Subtarget.hasRecipPrec() ? 1 : 3;
     if (VT.getScalarType() == MVT::f64)
       ++RefinementSteps;
+    UseOneConstNR = true;
     return DCI.DAG.getNode(PPCISD::FRSQRTE, SDLoc(Operand), VT, Operand);
   }
   return SDValue();

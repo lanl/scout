@@ -205,7 +205,7 @@ public:
            I != E; ++I, ++Field) {
         if (I->capturesThis())
           CXXThisFieldDecl = *Field;
-        else
+        else if (I->capturesVariable())
           CaptureFields[I->getCapturedVar()] = *Field;
       }
     }
@@ -261,7 +261,7 @@ public:
   unsigned char BoundsChecking;
 
   /// \brief Sanitizer options to use for this function.
-  const SanitizerOptions *SanOpts;
+  SanitizerOptions SanOpts;
 
   /// \brief True if CodeGen currently emits code implementing sanitizer checks.
   bool IsSanitizerScope;
@@ -301,11 +301,11 @@ public:
   /// Header for data within LifetimeExtendedCleanupStack.
   struct LifetimeExtendedCleanupHeader {
     /// The size of the following cleanup object.
-    size_t Size : 29;
+    unsigned Size : 29;
     /// The kind of cleanup to push: a value from the CleanupKind enumeration.
     unsigned Kind : 3;
 
-    size_t getSize() const { return Size; }
+    size_t getSize() const { return size_t(Size); }
     CleanupKind getKind() const { return static_cast<CleanupKind>(Kind); }
   };
 
@@ -1250,6 +1250,9 @@ public:
   void pushLifetimeExtendedDestroy(CleanupKind kind, llvm::Value *addr,
                                    QualType type, Destroyer *destroyer,
                                    bool useEHCleanupForArray);
+  void pushCallObjectDeleteCleanup(const FunctionDecl *OperatorDelete,
+                                   llvm::Value *CompletePtr,
+                                   QualType ElementType);
   void pushStackRestore(CleanupKind kind, llvm::Value *SPMem);
   void emitDestroy(llvm::Value *addr, QualType type, Destroyer *destroyer,
                    bool useEHCleanupForArray);
@@ -2229,6 +2232,7 @@ public:
   void EmitCXXForRangeStmt(const CXXForRangeStmt &S,
                            ArrayRef<const Attr *> Attrs = None);
 
+  LValue InitCapturedStruct(const CapturedStmt &S);
   llvm::Function *EmitCapturedStmt(const CapturedStmt &S, CapturedRegionKind K);
   void GenerateCapturedStmtFunctionProlog(const CapturedStmt &S);
   llvm::Function *GenerateCapturedStmtFunctionEpilog(const CapturedStmt &S);
@@ -2545,6 +2549,11 @@ public:
                               ReturnValueSlot ReturnValue, llvm::Value *This,
                               llvm::Value *ImplicitParam,
                               QualType ImplicitParamTy, const CallExpr *E);
+  RValue EmitCXXStructorCall(const CXXMethodDecl *MD, llvm::Value *Callee,
+                             ReturnValueSlot ReturnValue, llvm::Value *This,
+                             llvm::Value *ImplicitParam,
+                             QualType ImplicitParamTy, const CallExpr *E,
+                             StructorType Type);
   RValue EmitCXXMemberCallExpr(const CXXMemberCallExpr *E,
                                ReturnValueSlot ReturnValue);
   RValue EmitCXXMemberPointerCallExpr(const CXXMemberCallExpr *E,
@@ -2619,8 +2628,7 @@ public:
   llvm::Value *EmitObjCArrayLiteral(const ObjCArrayLiteral *E);
   llvm::Value *EmitObjCDictionaryLiteral(const ObjCDictionaryLiteral *E);
   llvm::Value *EmitObjCCollectionLiteral(const Expr *E,
-                                const ObjCMethodDecl *MethodWithObjects,
-                                const ObjCMethodDecl *AllocMethod);
+                                const ObjCMethodDecl *MethodWithObjects);
   llvm::Value *EmitObjCSelectorExpr(const ObjCSelectorExpr *E);
   RValue EmitObjCMessageExpr(const ObjCMessageExpr *E,
                              ReturnValueSlot Return = ReturnValueSlot());

@@ -80,6 +80,7 @@ using namespace clang;
 
 // add dimensions to an argument string
 void ScoutVisitor::addDims(std::string* s, MeshType::MeshDimensions& dims) {
+/*
   for(size_t i = 0; i < 3; ++i){
     if(i > 0){
       *s += ", ";
@@ -91,6 +92,7 @@ void ScoutVisitor::addDims(std::string* s, MeshType::MeshDimensions& dims) {
       *s += rewriter_.ConvertToString(dims[i]);
     }
   }
+ */
 }
 
 bool ScoutVisitor::VisitStmt(Stmt* s) {

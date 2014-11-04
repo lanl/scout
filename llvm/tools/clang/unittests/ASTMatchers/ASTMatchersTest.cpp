@@ -375,6 +375,8 @@ TEST(DeclarationMatcher, hasDeclContext) {
                       "}",
                       recordDecl(hasDeclContext(namespaceDecl(
                           hasName("M"), hasDeclContext(namespaceDecl()))))));
+
+  EXPECT_TRUE(matches("class D{};", decl(hasDeclContext(decl()))));
 }
 
 TEST(DeclarationMatcher, LinkageSpecification) {
@@ -823,6 +825,13 @@ TEST(Has, MatchesChildTypes) {
   EXPECT_TRUE(notMatches(
       "int* i;",
       varDecl(hasName("i"), hasType(qualType(has(pointerType()))))));
+}
+
+TEST(ValueDecl, Matches) {
+  EXPECT_TRUE(matches("enum EnumType { EnumValue };",
+                      valueDecl(hasType(asString("enum EnumType")))));
+  EXPECT_TRUE(matches("void FunctionDecl();",
+                      valueDecl(hasType(asString("void (void)")))));
 }
 
 TEST(Enum, DoesNotMatchClasses) {

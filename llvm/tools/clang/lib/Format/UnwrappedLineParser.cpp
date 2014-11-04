@@ -202,12 +202,13 @@ private:
 } // end anonymous namespace
 
 UnwrappedLineParser::UnwrappedLineParser(const FormatStyle &Style,
+                                         const AdditionalKeywords &Keywords,
                                          ArrayRef<FormatToken *> Tokens,
                                          UnwrappedLineConsumer &Callback)
     : Line(new UnwrappedLine), MustBreakBeforeNextToken(false),
       CurrentLines(&Lines), StructuralError(false), Style(Style),
-      Tokens(nullptr), Callback(Callback), AllTokens(Tokens),
-      PPBranchLevel(-1) {}
+      Keywords(Keywords), Tokens(nullptr), Callback(Callback),
+      AllTokens(Tokens), PPBranchLevel(-1) {}
 
 void UnwrappedLineParser::reset() {
   PPBranchLevel = -1;
@@ -746,8 +747,7 @@ void UnwrappedLineParser::parseStructuralElement() {
       break;
     case tok::kw_typedef:
       nextToken();
-      // FIXME: Use the IdentifierTable instead.
-      if (FormatTok->TokenText == "NS_ENUM")
+      if (FormatTok->is(Keywords.kw_NS_ENUM))
         parseEnum();
       break;
     case tok::kw_struct:
@@ -849,7 +849,8 @@ bool UnwrappedLineParser::tryToParseLambda() {
   // FIXME: This is a dirty way to access the previous token. Find a better
   // solution.
   if (!Line->Tokens.empty() &&
-      (Line->Tokens.back().Tok->isOneOf(tok::identifier, tok::kw_operator) ||
+      (Line->Tokens.back().Tok->isOneOf(tok::identifier, tok::kw_operator,
+                                        tok::kw_new, tok::kw_delete) ||
        Line->Tokens.back().Tok->closesScope() ||
        Line->Tokens.back().Tok->isSimpleTypeSpecifier())) {
     nextToken();
@@ -976,7 +977,7 @@ bool UnwrappedLineParser::parseBracedList(bool ContinueOnSemicolons) {
   // replace this by using parseAssigmentExpression() inside.
   do {
     if (Style.Language == FormatStyle::LK_JavaScript &&
-        FormatTok->TokenText == "function") {
+        FormatTok->is(Keywords.kw_function)) {
       tryToParseJSFunction();
       continue;
     }
@@ -1046,7 +1047,7 @@ void UnwrappedLineParser::parseParens() {
       break;
     case tok::identifier:
       if (Style.Language == FormatStyle::LK_JavaScript &&
-          FormatTok->TokenText == "function")
+          FormatTok->is(Keywords.kw_function))
         tryToParseJSFunction();
       else
         nextToken();
@@ -1174,8 +1175,9 @@ void UnwrappedLineParser::parseTryCatch() {
     --Line->Level;
   }
   while (FormatTok->is(tok::kw_catch) ||
-         (Style.Language == FormatStyle::LK_JavaScript &&
-          FormatTok->TokenText == "finally")) {
+         ((Style.Language == FormatStyle::LK_Java ||
+           Style.Language == FormatStyle::LK_JavaScript) &&
+          FormatTok->is(Keywords.kw_finally))) {
     nextToken();
     while (FormatTok->isNot(tok::l_brace)) {
       if (FormatTok->is(tok::l_paren)) {
@@ -1361,6 +1363,9 @@ void UnwrappedLineParser::parseEnum() {
   // We fall through to parsing a structural element afterwards, so that in
   // enum A {} n, m;
   // "} n, m;" will end up in one unwrapped line.
+  // This does not apply for Java.
+  if (Style.Language == FormatStyle::LK_Java)
+    addUnwrappedLine();
 }
 
 void UnwrappedLineParser::parseRecord() {
@@ -1375,10 +1380,10 @@ void UnwrappedLineParser::parseRecord() {
     }
     // The actual identifier can be a nested name specifier, and in macros
     // it is often token-pasted.
-    while (
-        FormatTok->is(tok::identifier) || FormatTok->is(tok::coloncolon) ||
-        FormatTok->is(tok::hashhash) ||
-        (Style.Language == FormatStyle::LK_Java && FormatTok->is(tok::period)))
+    while (FormatTok->is(tok::identifier) || FormatTok->is(tok::coloncolon) ||
+           FormatTok->is(tok::hashhash) ||
+           (Style.Language == FormatStyle::LK_Java &&
+            FormatTok->isOneOf(tok::period, tok::comma)))
       nextToken();
 
     // Note that parsing away template declarations here leads to incorrectly

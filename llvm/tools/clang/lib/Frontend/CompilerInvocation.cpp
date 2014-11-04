@@ -480,6 +480,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
                                        OPT_fno_function_sections, false);
   Opts.DataSections = Args.hasFlag(OPT_fdata_sections,
                                    OPT_fno_data_sections, false);
+  Opts.MergeFunctions = Args.hasArg(OPT_fmerge_functions);
 
   Opts.VectorizeBB = Args.hasArg(OPT_vectorize_slp_aggressive);
   Opts.VectorizeLoop = Args.hasArg(OPT_vectorize_loops);
@@ -640,8 +641,9 @@ bool clang::ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
   bool Success = true;
 
   Opts.DiagnosticLogFile = Args.getLastArgValue(OPT_diagnostic_log_file);
-  Opts.DiagnosticSerializationFile =
-    Args.getLastArgValue(OPT_diagnostic_serialized_file);
+  if (Arg *A =
+          Args.getLastArg(OPT_diagnostic_serialized_file, OPT__serialize_diags))
+    Opts.DiagnosticSerializationFile = A->getValue();
   Opts.IgnoreWarnings = Args.hasArg(OPT_w);
   Opts.NoRewriteMacros = Args.hasArg(OPT_Wno_rewrite_macros);
   Opts.Pedantic = Args.hasArg(OPT_pedantic);
@@ -912,6 +914,8 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
     Opts.ObjCMTAction |= FrontendOptions::ObjCMT_Literals;
   if (Args.hasArg(OPT_objcmt_migrate_subscripting))
     Opts.ObjCMTAction |= FrontendOptions::ObjCMT_Subscripting;
+  if (Args.hasArg(OPT_objcmt_migrate_property_dot_syntax))
+    Opts.ObjCMTAction |= FrontendOptions::ObjCMT_PropertyDotSyntax;
   if (Args.hasArg(OPT_objcmt_migrate_property))
     Opts.ObjCMTAction |= FrontendOptions::ObjCMT_Property;
   if (Args.hasArg(OPT_objcmt_migrate_readonly_property))

@@ -47,8 +47,7 @@ GenerateDwarfTypeUnits("generate-type-units", cl::Hidden,
 DwarfUnit::DwarfUnit(unsigned UID, dwarf::Tag UnitTag, DICompileUnit Node,
                      AsmPrinter *A, DwarfDebug *DW, DwarfFile *DWU)
     : UniqueID(UID), CUNode(Node), UnitDie(UnitTag), DebugInfoOffset(0), Asm(A),
-      DD(DW), DU(DWU), IndexTyDie(nullptr), Section(nullptr),
-      Skeleton(nullptr) {
+      DD(DW), DU(DWU), IndexTyDie(nullptr), Section(nullptr) {
   assert(UnitTag == dwarf::DW_TAG_compile_unit ||
          UnitTag == dwarf::DW_TAG_type_unit);
   DIEIntegerOne = new (DIEValueAllocator) DIEInteger(1);
@@ -202,10 +201,14 @@ void DwarfUnit::addSInt(DIELoc &Die, Optional<dwarf::Form> Form,
 /// table.
 void DwarfUnit::addString(DIE &Die, dwarf::Attribute Attribute,
                           StringRef String) {
-
-  if (!DD->useSplitDwarf())
+  if (!isDwoUnit())
     return addLocalString(Die, Attribute, String);
 
+  addIndexedString(Die, Attribute, String);
+}
+
+void DwarfUnit::addIndexedString(DIE &Die, dwarf::Attribute Attribute,
+                                 StringRef String) {
   unsigned idx = DU->getStringPool().getIndex(*Asm, String);
   DIEValue *Value = new (DIEValueAllocator) DIEInteger(idx);
   DIEValue *Str = new (DIEValueAllocator) DIEString(Value, String);
@@ -224,23 +227,6 @@ void DwarfUnit::addLocalString(DIE &Die, dwarf::Attribute Attribute,
     Value = new (DIEValueAllocator) DIEDelta(Symb, DD->getDebugStrSym());
   DIEValue *Str = new (DIEValueAllocator) DIEString(Value, String);
   Die.addValue(Attribute, dwarf::DW_FORM_strp, Str);
-}
-
-/// addExpr - Add a Dwarf expression attribute data and value.
-///
-void DwarfUnit::addExpr(DIELoc &Die, dwarf::Form Form, const MCExpr *Expr) {
-  DIEValue *Value = new (DIEValueAllocator) DIEExpr(Expr);
-  Die.addValue((dwarf::Attribute)0, Form, Value);
-}
-
-/// addLocationList - Add a Dwarf loclistptr attribute data and value.
-///
-void DwarfUnit::addLocationList(DIE &Die, dwarf::Attribute Attribute,
-                                unsigned Index) {
-  DIEValue *Value = new (DIEValueAllocator) DIELocList(Index);
-  dwarf::Form Form = DD->getDwarfVersion() >= 4 ? dwarf::DW_FORM_sec_offset
-                                                : dwarf::DW_FORM_data4;
-  Die.addValue(Attribute, Form, Value);
 }
 
 /// addLabel - Add a Dwarf label attribute data and value.
@@ -412,19 +398,6 @@ void DwarfUnit::addSourceLine(DIE &Die, DINameSpace NS) {
   addSourceLine(Die, NS.getLineNumber(), NS.getFilename(), NS.getDirectory());
 }
 
-/// addVariableAddress - Add DW_AT_location attribute for a
-/// DbgVariable based on provided MachineLocation.
-void DwarfUnit::addVariableAddress(const DbgVariable &DV, DIE &Die,
-                                   MachineLocation Location) {
-  if (DV.variableHasComplexAddress())
-    addComplexAddress(DV, Die, dwarf::DW_AT_location, Location);
-  else if (DV.isBlockByrefVariable())
-    addBlockByrefAddress(DV, Die, dwarf::DW_AT_location, Location);
-  else
-    addAddress(Die, dwarf::DW_AT_location, Location,
-               DV.getVariable().isIndirect());
-}
-
 /// addRegisterOp - Add register operand.
 // FIXME: Ideally, this would share the implementation with
 // AsmPrinter::EmitDwarfRegOpPiece.
@@ -505,84 +478,6 @@ void DwarfUnit::addRegisterOffset(DIELoc &TheDie, unsigned Reg,
     addUInt(TheDie, dwarf::DW_FORM_udata, DWReg);
   }
   addSInt(TheDie, dwarf::DW_FORM_sdata, Offset);
-}
-
-/// addAddress - Add an address attribute to a die based on the location
-/// provided.
-void DwarfUnit::addAddress(DIE &Die, dwarf::Attribute Attribute,
-                           const MachineLocation &Location, bool Indirect) {
-  DIELoc *Loc = new (DIEValueAllocator) DIELoc();
-
-  if (Location.isReg() && !Indirect)
-    addRegisterOpPiece(*Loc, Location.getReg());
-  else {
-    addRegisterOffset(*Loc, Location.getReg(), Location.getOffset());
-    if (Indirect && !Location.isReg()) {
-      addUInt(*Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_deref);
-    }
-  }
-
-  // Now attach the location information to the DIE.
-  addBlock(Die, Attribute, Loc);
-}
-
-/// addComplexAddress - Start with the address based on the location provided,
-/// and generate the DWARF information necessary to find the actual variable
-/// given the extra address information encoded in the DbgVariable, starting
-/// from the starting location.  Add the DWARF information to the die.
-///
-void DwarfUnit::addComplexAddress(const DbgVariable &DV, DIE &Die,
-                                  dwarf::Attribute Attribute,
-                                  const MachineLocation &Location) {
-  DIELoc *Loc = new (DIEValueAllocator) DIELoc();
-  unsigned N = DV.getNumAddrElements();
-  unsigned i = 0;
-  if (Location.isReg()) {
-    if (N >= 2 && DV.getAddrElement(0) == dwarf::DW_OP_plus) {
-      assert(!DV.getVariable().isIndirect() &&
-             "double indirection not handled");
-      // If first address element is OpPlus then emit
-      // DW_OP_breg + Offset instead of DW_OP_reg + Offset.
-      addRegisterOffset(*Loc, Location.getReg(), DV.getAddrElement(1));
-      i = 2;
-    } else if (N >= 2 && DV.getAddrElement(0) == dwarf::DW_OP_deref) {
-      assert(!DV.getVariable().isIndirect() &&
-             "double indirection not handled");
-      addRegisterOpPiece(*Loc, Location.getReg(),
-                         DV.getExpression().getPieceSize(),
-                         DV.getExpression().getPieceOffset());
-      i = 3;
-    } else
-      addRegisterOpPiece(*Loc, Location.getReg());
-  } else
-    addRegisterOffset(*Loc, Location.getReg(), Location.getOffset());
-
-  for (; i < N; ++i) {
-    uint64_t Element = DV.getAddrElement(i);
-    if (Element == dwarf::DW_OP_plus) {
-      addUInt(*Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_plus_uconst);
-      addUInt(*Loc, dwarf::DW_FORM_udata, DV.getAddrElement(++i));
-
-    } else if (Element == dwarf::DW_OP_deref) {
-      if (!Location.isReg())
-        addUInt(*Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_deref);
-
-    } else if (Element == dwarf::DW_OP_piece) {
-      const unsigned SizeOfByte = 8;
-      unsigned PieceOffsetInBits = DV.getAddrElement(++i)*SizeOfByte;
-      unsigned PieceSizeInBits = DV.getAddrElement(++i)*SizeOfByte;
-      // Emit DW_OP_bit_piece Size Offset.
-      assert(PieceSizeInBits > 0 && "piece has zero size");
-      addUInt(*Loc, dwarf::DW_FORM_data1, dwarf::DW_OP_bit_piece);
-      addUInt(*Loc, dwarf::DW_FORM_udata, PieceSizeInBits);
-      addUInt(*Loc, dwarf::DW_FORM_udata, PieceOffsetInBits);
-
-    } else
-      llvm_unreachable("unknown DIBuilder Opcode");
-  }
-
-  // Now attach the location information to the DIE.
-  addBlock(Die, Attribute, Loc);
 }
 
 /* Byref variables, in Blocks, are declared by the programmer as "SomeType
@@ -989,11 +884,9 @@ void DwarfUnit::updateAcceleratorTables(DIScope Context, DIType Ty,
     unsigned Flags = IsImplementation ? dwarf::DW_FLAG_type_implementation : 0;
     DD->addAccelType(Ty.getName(), TyDIE, Flags);
 
-    if ((!Context || Context.isCompileUnit() || Context.isFile() ||
-         Context.isNameSpace()) &&
-        getCUNode().getEmissionKind() != DIBuilder::LineTablesOnly)
-      GlobalTypes[getParentContextString(Context) + Ty.getName().str()] =
-          &TyDIE;
+    if (!Context || Context.isCompileUnit() || Context.isFile() ||
+        Context.isNameSpace())
+      addGlobalType(Ty, TyDIE, Context);
   }
 }
 
@@ -1016,14 +909,6 @@ void DwarfUnit::addType(DIE &Entity, DIType Ty, dwarf::Attribute Attribute) {
   Entry = createDIEEntry(*Buffer);
   insertDIEEntry(Ty, Entry);
   addDIEEntry(Entity, Attribute, Entry);
-}
-
-/// addGlobalName - Add a new global name to the compile unit.
-void DwarfUnit::addGlobalName(StringRef Name, DIE &Die, DIScope Context) {
-  if (getCUNode().getEmissionKind() == DIBuilder::LineTablesOnly)
-    return;
-  std::string FullName = getParentContextString(Context) + Name.str();
-  GlobalNames[FullName] = &Die;
 }
 
 /// getParentContextString - Walks the metadata parent chain in a language
@@ -1124,39 +1009,11 @@ void DwarfUnit::constructSubprogramArguments(DIE &Buffer, DITypeArray Args) {
       createAndAddDIE(dwarf::DW_TAG_unspecified_parameters, Buffer);
     } else {
       DIE &Arg = createAndAddDIE(dwarf::DW_TAG_formal_parameter, Buffer);
-      addType(Arg, DIType(Ty));
-      if (DIType(Ty).isArtificial())
+      addType(Arg, Ty);
+      if (Ty.isArtificial())
         addFlag(Arg, dwarf::DW_AT_artificial);
     }
   }
-}
-
-std::unique_ptr<DIE>
-DwarfUnit::constructImportedEntityDIE(const DIImportedEntity &Module) {
-  assert(Module.Verify() &&
-         "Use one of the MDNode * overloads to handle invalid metadata");
-  std::unique_ptr<DIE> IMDie = make_unique<DIE>((dwarf::Tag)Module.getTag());
-  insertDIE(Module, IMDie.get());
-  DIE *EntityDie;
-  DIDescriptor Entity = resolve(Module.getEntity());
-  if (Entity.isNameSpace())
-    EntityDie = getOrCreateNameSpace(DINameSpace(Entity));
-  else if (Entity.isSubprogram())
-    EntityDie = getOrCreateSubprogramDIE(DISubprogram(Entity));
-  else if (Entity.isType())
-    EntityDie = getOrCreateTypeDIE(DIType(Entity));
-  else
-    EntityDie = getDIE(Entity);
-  assert(EntityDie);
-  addSourceLine(*IMDie, Module.getLineNumber(),
-                Module.getContext().getFilename(),
-                Module.getContext().getDirectory());
-  addDIEEntry(*IMDie, dwarf::DW_AT_import, *EntityDie);
-  StringRef Name = Module.getName();
-  if (!Name.empty())
-    addString(*IMDie, dwarf::DW_AT_name, Name);
-
-  return IMDie;
 }
 
 /// constructTypeDIE - Construct type DIE from DICompositeType.
@@ -1431,14 +1288,8 @@ DIE *DwarfUnit::getOrCreateSubprogramDIE(DISubprogram SP) {
   return &SPDie;
 }
 
-void DwarfUnit::applySubprogramAttributesToDefinition(DISubprogram SP, DIE &SPDie) {
-  DISubprogram SPDecl = SP.getFunctionDeclaration();
-  DIScope Context = resolve(SPDecl ? SPDecl.getContext() : SP.getContext());
-  applySubprogramAttributes(SP, SPDie);
-  addGlobalName(SP.getName(), SPDie, Context);
-}
-
-void DwarfUnit::applySubprogramAttributes(DISubprogram SP, DIE &SPDie) {
+void DwarfUnit::applySubprogramAttributes(DISubprogram SP, DIE &SPDie,
+                                          bool Minimal) {
   DIE *DeclDie = nullptr;
   StringRef DeclLinkageName;
   if (DISubprogram SPDecl = SP.getFunctionDeclaration()) {
@@ -1473,7 +1324,7 @@ void DwarfUnit::applySubprogramAttributes(DISubprogram SP, DIE &SPDie) {
     addString(SPDie, dwarf::DW_AT_name, SP.getName());
 
   // Skip the rest of the attributes under -gmlt to save space.
-  if(getCUNode().getEmissionKind() == DIBuilder::LineTablesOnly)
+  if (Minimal)
     return;
 
   addSourceLine(SPDie, SP);
@@ -1548,17 +1399,6 @@ void DwarfUnit::applySubprogramAttributes(DISubprogram SP, DIE &SPDie) {
     addFlag(SPDie, dwarf::DW_AT_explicit);
 }
 
-void DwarfUnit::applyVariableAttributes(const DbgVariable &Var,
-                                        DIE &VariableDie) {
-  StringRef Name = Var.getName();
-  if (!Name.empty())
-    addString(VariableDie, dwarf::DW_AT_name, Name);
-  addSourceLine(VariableDie, Var.getVariable());
-  addType(VariableDie, Var.getType());
-  if (Var.isArtificial())
-    addFlag(VariableDie, dwarf::DW_AT_artificial);
-}
-
 /// constructSubrangeDIE - Construct subrange DIE from DISubrange.
 void DwarfUnit::constructSubrangeDIE(DIE &Buffer, DISubrange SR, DIE *IndexTy) {
   DIE &DW_Subrange = createAndAddDIE(dwarf::DW_TAG_subrange_type, Buffer);
@@ -1581,6 +1421,18 @@ void DwarfUnit::constructSubrangeDIE(DIE &Buffer, DISubrange SR, DIE *IndexTy) {
     addUInt(DW_Subrange, dwarf::DW_AT_count, None, Count);
 }
 
+DIE *DwarfUnit::getIndexTyDie() {
+  if (IndexTyDie)
+    return IndexTyDie;
+  // Construct an integer type to use for indexes.
+  IndexTyDie = &createAndAddDIE(dwarf::DW_TAG_base_type, UnitDie);
+  addString(*IndexTyDie, dwarf::DW_AT_name, "sizetype");
+  addUInt(*IndexTyDie, dwarf::DW_AT_byte_size, None, sizeof(int64_t));
+  addUInt(*IndexTyDie, dwarf::DW_AT_encoding, dwarf::DW_FORM_data1,
+          dwarf::DW_ATE_unsigned);
+  return IndexTyDie;
+}
+
 /// constructArrayTypeDIE - Construct array type DIE from DICompositeType.
 void DwarfUnit::constructArrayTypeDIE(DIE &Buffer, DICompositeType CTy) {
   if (CTy.isVector())
@@ -1593,15 +1445,6 @@ void DwarfUnit::constructArrayTypeDIE(DIE &Buffer, DICompositeType CTy) {
   // FIXME: This type should be passed down from the front end
   // as different languages may have different sizes for indexes.
   DIE *IdxTy = getIndexTyDie();
-  if (!IdxTy) {
-    // Construct an integer type to use for indexes.
-    IdxTy = &createAndAddDIE(dwarf::DW_TAG_base_type, UnitDie);
-    addString(*IdxTy, dwarf::DW_AT_name, "sizetype");
-    addUInt(*IdxTy, dwarf::DW_AT_byte_size, None, sizeof(int64_t));
-    addUInt(*IdxTy, dwarf::DW_AT_encoding, dwarf::DW_FORM_data1,
-            dwarf::DW_ATE_unsigned);
-    setIndexTyDie(IdxTy);
-  }
 
   // Add subranges to array type.
   DIArray Elements = CTy.getElements();
@@ -1786,6 +1629,10 @@ DIE *DwarfUnit::getOrCreateStaticMemberDIE(DIDerivedType DT) {
 }
 
 void DwarfUnit::emitHeader(const MCSymbol *ASectionSym) const {
+  // Emit size of content not including length itself
+  Asm->OutStreamer.AddComment("Length of Unit");
+  Asm->EmitInt32(getHeaderSize() + UnitDie.getSize());
+
   Asm->OutStreamer.AddComment("DWARF version number");
   Asm->EmitInt16(DD->getDwarfVersion());
   Asm->OutStreamer.AddComment("Offset Into Abbrev. Section");
@@ -1801,6 +1648,11 @@ void DwarfUnit::emitHeader(const MCSymbol *ASectionSym) const {
   Asm->EmitInt8(Asm->getDataLayout().getPointerSize());
 }
 
+void DwarfUnit::initSection(const MCSection *Section) {
+  assert(!this->Section);
+  this->Section = Section;
+}
+
 void DwarfTypeUnit::emitHeader(const MCSymbol *ASectionSym) const {
   DwarfUnit::emitHeader(ASectionSym);
   Asm->OutStreamer.AddComment("Type Signature");
@@ -1811,16 +1663,8 @@ void DwarfTypeUnit::emitHeader(const MCSymbol *ASectionSym) const {
                                 sizeof(Ty->getOffset()));
 }
 
-void DwarfTypeUnit::initSection(const MCSection *Section) {
-  assert(!this->Section);
-  this->Section = Section;
-  // Since each type unit is contained in its own COMDAT section, the begin
-  // label and the section label are the same. Using the begin label emission in
-  // DwarfDebug to emit the section label as well is slightly subtle/sneaky, but
-  // the only other alternative of lazily constructing start-of-section labels
-  // and storing a mapping in DwarfDebug (or AsmPrinter).
-  this->SectionSym = this->LabelBegin =
-      Asm->GetTempSymbol(Section->getLabelBeginName(), getUniqueID());
-  this->LabelEnd =
-      Asm->GetTempSymbol(Section->getLabelEndName(), getUniqueID());
+bool DwarfTypeUnit::isDwoUnit() const {
+  // Since there are no skeleton type units, all type units are dwo type units
+  // when split DWARF is being used.
+  return DD->useSplitDwarf();
 }

@@ -16,12 +16,20 @@ find_program(LLDB_COMMAND
 	bin
 	libexec)
 
-if(LLDB_COMMAND)
+set(LLDB_VERSION "-1")
+if(LLDB_COMMAND MATCHES "NOTFOUND" )
+  set(LLDB_VERSION "0")
+else()
 	execute_process(COMMAND lldb --version
 		COMMAND head -n 1
-		OUTPUT_VARIABLE LLDB_VERSION
+		OUTPUT_VARIABLE _LLDB_VERSION
+		RESULT_VARIABLE _LLDB_RESULT
 		OUTPUT_STRIP_TRAILING_WHITESPACE)
-	string(REGEX REPLACE "[^0-9]*([0-9]+[0-9.]*).*" "\\1" LLDB_VERSION "${LLDB_VERSION}")
+        if(_LLDB_RESULT EQUAL 0)
+	  string(REGEX REPLACE "[^0-9]*([0-9]+[0-9.]*).*" "\\1" LLDB_VERSION "${_LLDB_VERSION}")
+        endif()
+        unset(_LLDB_VERSION)
+        unset(_LLDB_RESULT)
 endif()
 
 include(FindPackageHandleStandardArgs)

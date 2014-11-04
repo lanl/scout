@@ -59,7 +59,8 @@ private:
   SmallVector<RangeSpan, 2> Ranges;
 
 public:
-  RangeSpanList(MCSymbol *Sym) : RangeSym(Sym) {}
+  RangeSpanList(MCSymbol *Sym, SmallVector<RangeSpan, 2> Ranges)
+      : RangeSym(Sym), Ranges(std::move(Ranges)) {}
   MCSymbol *getSym() const { return RangeSym; }
   const SmallVectorImpl<RangeSpan> &getRanges() const { return Ranges; }
   void addRange(RangeSpan Range) { Ranges.push_back(Range); }
@@ -100,12 +101,6 @@ protected:
   /// descriptors to debug information entries using a DIEEntry proxy.
   DenseMap<const MDNode *, DIEEntry *> MDNodeToDIEEntryMap;
 
-  /// GlobalNames - A map of globally visible named entities for this unit.
-  StringMap<const DIE *> GlobalNames;
-
-  /// GlobalTypes - A map of globally visible types for this unit.
-  StringMap<const DIE *> GlobalTypes;
-
   /// DIEBlocks - A list of all the DIEBlocks in use.
   std::vector<DIEBlock *> DIEBlocks;
   
@@ -117,13 +112,6 @@ protected:
   /// corresponds to the MDNode mapped with the subprogram DIE.
   DenseMap<DIE *, const MDNode *> ContainingTypeMap;
 
-  // List of ranges for a given compile unit.
-  SmallVector<RangeSpan, 1> CURanges;
-
-  // List of range lists for a given compile unit, separate from the ranges for
-  // the CU itself.
-  SmallVector<RangeSpanList, 1> CURangeLists;
-
   // DIEValueAllocator - All DIEValues are allocated through this allocator.
   BumpPtrAllocator DIEValueAllocator;
 
@@ -133,77 +121,22 @@ protected:
   /// The section this unit will be emitted in.
   const MCSection *Section;
 
-  /// A label at the start of the non-dwo section related to this unit.
-  MCSymbol *SectionSym;
-
-  /// The start of the unit within its section.
-  MCSymbol *LabelBegin;
-
-  /// The end of the unit within its section.
-  MCSymbol *LabelEnd;
-
-  /// Skeleton unit associated with this unit.
-  DwarfUnit *Skeleton;
-
   DwarfUnit(unsigned UID, dwarf::Tag, DICompileUnit CU, AsmPrinter *A,
             DwarfDebug *DW, DwarfFile *DWU);
+
+  void initSection(const MCSection *Section);
+
+  /// Add a string attribute data and value.
+  void addLocalString(DIE &Die, dwarf::Attribute Attribute, StringRef Str);
+
+  void addIndexedString(DIE &Die, dwarf::Attribute Attribute, StringRef Str);
 
 public:
   virtual ~DwarfUnit();
 
-  /// Set the skeleton unit associated with this unit.
-  void setSkeleton(DwarfUnit &Skel) { Skeleton = &Skel; }
-
-  /// Get the skeleton unit associated with this unit.
-  DwarfUnit *getSkeleton() const { return Skeleton; }
-
-  /// Pass in the SectionSym even though we could recreate it in every compile
-  /// unit (type units will have actually distinct symbols once they're in
-  /// comdat sections).
-  void initSection(const MCSection *Section, MCSymbol *SectionSym) {
-    assert(!this->Section);
-    this->Section = Section;
-    this->SectionSym = SectionSym;
-    this->LabelBegin =
-        Asm->GetTempSymbol(Section->getLabelBeginName(), getUniqueID());
-    this->LabelEnd =
-        Asm->GetTempSymbol(Section->getLabelEndName(), getUniqueID());
-  }
-
   const MCSection *getSection() const {
     assert(Section);
     return Section;
-  }
-
-  /// If there's a skeleton then return the section symbol for the skeleton
-  /// unit, otherwise return the section symbol for this unit.
-  MCSymbol *getLocalSectionSym() const {
-    if (Skeleton)
-      return Skeleton->getSectionSym();
-    return getSectionSym();
-  }
-
-  MCSymbol *getSectionSym() const {
-    assert(Section);
-    return SectionSym;
-  }
-
-  /// If there's a skeleton then return the begin label for the skeleton unit,
-  /// otherwise return the local label for this unit.
-  MCSymbol *getLocalLabelBegin() const {
-    if (Skeleton)
-      return Skeleton->getLabelBegin();
-    return getLabelBegin();
-  }
-
-  MCSymbol *getLabelBegin() const {
-    assert(Section);
-    return LabelBegin;
-  }
-
-  MCSymbol *getLabelEnd() const {
-    assert(Section);
-    return LabelEnd;
   }
 
   // Accessors.
@@ -211,8 +144,6 @@ public:
   uint16_t getLanguage() const { return CUNode.getLanguage(); }
   DICompileUnit getCUNode() const { return CUNode; }
   DIE &getUnitDie() { return UnitDie; }
-  const StringMap<const DIE *> &getGlobalNames() const { return GlobalNames; }
-  const StringMap<const DIE *> &getGlobalTypes() const { return GlobalTypes; }
 
   unsigned getDebugInfoOffset() const { return DebugInfoOffset; }
   void setDebugInfoOffset(unsigned DbgInfoOff) { DebugInfoOffset = DbgInfoOff; }
@@ -220,28 +151,15 @@ public:
   /// hasContent - Return true if this compile unit has something to write out.
   bool hasContent() const { return !UnitDie.getChildren().empty(); }
 
-  /// getRanges - Get the list of ranges for this unit.
-  const SmallVectorImpl<RangeSpan> &getRanges() const { return CURanges; }
-  SmallVectorImpl<RangeSpan> &getRanges() { return CURanges; }
-
-  /// addRangeList - Add an address range list to the list of range lists.
-  void addRangeList(RangeSpanList Ranges) {
-    CURangeLists.push_back(std::move(Ranges));
-  }
-
-  /// getRangeLists - Get the vector of range lists.
-  const SmallVectorImpl<RangeSpanList> &getRangeLists() const {
-    return CURangeLists;
-  }
-  SmallVectorImpl<RangeSpanList> &getRangeLists() { return CURangeLists; }
-
   /// getParentContextString - Get a string containing the language specific
   /// context for a global name.
   std::string getParentContextString(DIScope Context) const;
 
-  /// addGlobalName - Add a new global entity to the compile unit.
-  ///
-  void addGlobalName(StringRef Name, DIE &Die, DIScope Context);
+  /// Add a new global name to the compile unit.
+  virtual void addGlobalName(StringRef Name, DIE &Die, DIScope Context) {}
+
+  /// Add a new global type to the compile unit.
+  virtual void addGlobalType(DIType Ty, const DIE &Die, DIScope Context) {}
 
   /// addAccelNamespace - Add a new name to the namespace accelerator table.
   void addAccelNamespace(StringRef Name, const DIE &Die);
@@ -280,21 +198,11 @@ public:
   /// addString - Add a string attribute data and value.
   void addString(DIE &Die, dwarf::Attribute Attribute, StringRef Str);
 
-  /// addLocalString - Add a string attribute data and value.
-  void addLocalString(DIE &Die, dwarf::Attribute Attribute,
-                      StringRef Str);
-
-  /// addExpr - Add a Dwarf expression attribute data and value.
-  void addExpr(DIELoc &Die, dwarf::Form Form, const MCExpr *Expr);
-
   /// addLabel - Add a Dwarf label attribute data and value.
   void addLabel(DIE &Die, dwarf::Attribute Attribute, dwarf::Form Form,
                 const MCSymbol *Label);
 
   void addLabel(DIELoc &Die, dwarf::Form Form, const MCSymbol *Label);
-
-  /// addLocationList - Add a Dwarf loclistptr attribute data and value.
-  void addLocationList(DIE &Die, dwarf::Attribute Attribute, unsigned Index);
 
   /// addSectionOffset - Add an offset into a section attribute data and value.
   ///
@@ -333,11 +241,6 @@ public:
   void addSourceLine(DIE &Die, DINameSpace NS);
   void addSourceLine(DIE &Die, DIObjCProperty Ty);
 
-  /// addAddress - Add an address attribute to a die based on the location
-  /// provided.
-  void addAddress(DIE &Die, dwarf::Attribute Attribute,
-                  const MachineLocation &Location, bool Indirect = false);
-
   /// addConstantValue - Add constant value entry in variable DIE.
   void addConstantValue(DIE &Die, const MachineOperand &MO, DIType Ty);
   void addConstantValue(DIE &Die, const ConstantInt *CI, DIType Ty);
@@ -359,14 +262,6 @@ public:
   /// addRegisterOffset - Add register offset.
   void addRegisterOffset(DIELoc &TheDie, unsigned Reg, int64_t Offset);
 
-  /// addComplexAddress - Start with the address based on the location provided,
-  /// and generate the DWARF information necessary to find the actual variable
-  /// (navigating the extra location information encoded in the type) based on
-  /// the starting location.  Add the DWARF information to the die.
-  void addComplexAddress(const DbgVariable &DV, DIE &Die,
-                         dwarf::Attribute Attribute,
-                         const MachineLocation &Location);
-
   // FIXME: Should be reformulated in terms of addComplexAddress.
   /// addBlockByrefAddress - Start with the address based on the location
   /// provided, and generate the DWARF information necessary to find the
@@ -376,11 +271,6 @@ public:
   void addBlockByrefAddress(const DbgVariable &DV, DIE &Die,
                             dwarf::Attribute Attribute,
                             const MachineLocation &Location);
-
-  /// addVariableAddress - Add DW_AT_location attribute for a
-  /// DbgVariable based on provided MachineLocation.
-  void addVariableAddress(const DbgVariable &DV, DIE &Die,
-                          MachineLocation Location);
 
   /// addType - Add a new type attribute to the specified entity. This takes
   /// and attribute parameter because DW_AT_friend attributes are also
@@ -394,9 +284,8 @@ public:
   /// getOrCreateSubprogramDIE - Create new DIE using SP.
   DIE *getOrCreateSubprogramDIE(DISubprogram SP);
 
-  void applySubprogramAttributes(DISubprogram SP, DIE &SPDie);
-  void applySubprogramAttributesToDefinition(DISubprogram SP, DIE &SPDie);
-  void applyVariableAttributes(const DbgVariable &Var, DIE &VariableDie);
+  void applySubprogramAttributes(DISubprogram SP, DIE &SPDie,
+                                 bool Minimal = false);
 
   /// getOrCreateTypeDIE - Find existing DIE or create new DIE for the
   /// given DIType.
@@ -414,10 +303,6 @@ public:
 
   /// constructSubprogramArguments - Construct function argument DIEs.
   void constructSubprogramArguments(DIE &Buffer, DITypeArray Args);
-
-  /// \brief Construct import_module DIE.
-  std::unique_ptr<DIE>
-  constructImportedEntityDIE(const DIImportedEntity &Module);
 
   /// Create a DIE with the given Tag, add the DIE to its parent, and
   /// call insertDIE if MD is not null.
@@ -509,7 +394,7 @@ private:
   }
 
   // getIndexTyDie - Get an anonymous type for index type.
-  DIE *getIndexTyDie() { return IndexTyDie; }
+  DIE *getIndexTyDie();
 
   // setIndexTyDie - Set D as anonymous type for index which can be reused
   // later.
@@ -522,14 +407,18 @@ private:
   /// If this is a named finished type then include it in the list of types for
   /// the accelerator tables.
   void updateAcceleratorTables(DIScope Context, DIType Ty, const DIE &TyDIE);
+
+  virtual bool isDwoUnit() const = 0;
 };
 
 class DwarfTypeUnit : public DwarfUnit {
-private:
   uint64_t TypeSignature;
   const DIE *Ty;
   DwarfCompileUnit &CU;
   MCDwarfDwoLineTable *SplitLineTable;
+
+  unsigned getOrCreateSourceID(StringRef File, StringRef Directory) override;
+  bool isDwoUnit() const override;
 
 public:
   DwarfTypeUnit(unsigned UID, DwarfCompileUnit &CU, AsmPrinter *A,
@@ -546,15 +435,8 @@ public:
     return DwarfUnit::getHeaderSize() + sizeof(uint64_t) + // Type Signature
            sizeof(uint32_t);                               // Type DIE Offset
   }
-  void initSection(const MCSection *Section);
-  // Bring in the base function (taking two args, including the section symbol)
-  // for use when building DWO type units (they don't go in unique comdat
-  // sections)
   using DwarfUnit::initSection;
   DwarfCompileUnit &getCU() override { return CU; }
-
-protected:
-  unsigned getOrCreateSourceID(StringRef File, StringRef Directory) override;
 };
 } // end llvm namespace
 #endif
