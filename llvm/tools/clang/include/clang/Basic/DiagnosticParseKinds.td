@@ -976,10 +976,12 @@ def err_expected_mesh_kw:Error<
     "expected mesh keyword">;
 def err_expected_semi_mesh_decl:Error<
     "expected closing semicolon at end of mesh declaration">;
-def err_unknown_mesh_variable:Error<
-    "unknown or invalid mesh instance">;
+def err_unknown_mesh_or_query_variable:Error<
+    "unknown or invalid mesh or query instance">;
 def err_expected_a_mesh_type:Error<
     "expected a mesh type">;
+def err_expected_a_mesh_or_query_type:Error<
+"expected a mesh or query type">;
 
 // +----- mesh warnings -----------------------------------------------------+
 def warn_mesh_has_no_cell_fields:Warning<

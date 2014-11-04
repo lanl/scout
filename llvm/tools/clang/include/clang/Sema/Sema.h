@@ -1160,7 +1160,7 @@ public:
 
   QualType BuildWindowType(QualType T, const llvm::SmallVector<Expr*,2> &dims);
   QualType BuildImageType(QualType T, const llvm::SmallVector<Expr*,2> &dims);
-  QualType BuildQueryType(QualType T);
+  QualType BuildQueryType(QualType T, VarDecl* MD);
   // +========================================================================+
 
   /// \brief Build a function type.
@@ -8819,6 +8819,7 @@ public:
                                     Stmt* Body);
   
   ExprResult ActOnQueryExpr(SourceLocation FromLoc,
+                            VarDecl* MeshDecl,
                             Expr* Field,
                             Expr* Predicate);
   
