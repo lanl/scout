@@ -2501,10 +2501,12 @@ private:
                                  SourceLocation MeshLoc);
 
   const MeshType* LookupMeshType(VarDecl *VD,
-                                 IdentifierInfo *MeshInfo,
-                                 SourceLocation MeshLoc);
+                                 IdentifierInfo *MeshInfo);
 
-  VarDecl* LookupMeshVarDecl(IdentifierInfo *MeshInfo,
+  const QueryType* LookupQueryType(VarDecl *VD,
+                                 IdentifierInfo *QueryInfo);
+  
+  VarDecl* LookupScoutVarDecl(IdentifierInfo *MeshInfo,
                              SourceLocation MeshLoc);
 
   bool ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo);

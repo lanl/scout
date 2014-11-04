@@ -4868,9 +4868,12 @@ class QueryExpr : public Expr{
   enum { FIELD, PRED, END_EXPR };
   Stmt* SubExprs[END_EXPR];
   SourceLocation FromLoc;
+  VarDecl* MeshDecl;
+  
 public:
-  QueryExpr(QualType t, SourceLocation fromLoc, Expr* field, Expr* pred)
+  QueryExpr(QualType t, SourceLocation fromLoc, VarDecl* MD, Expr* field, Expr* pred)
   : Expr(QueryExprClass, t, VK_LValue, OK_Ordinary, true, true, true, false){
+    MeshDecl = MD;
     FromLoc = fromLoc;
     SubExprs[FIELD] = field;
     SubExprs[PRED] = pred;

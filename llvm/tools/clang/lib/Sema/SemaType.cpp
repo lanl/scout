@@ -962,18 +962,11 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     break;
   }
   case DeclSpec::TST_query: {
-    Result = Context.getQueryType();
-    break;
-    
-    // we may need this later, if we need to
-    // attach declarator chunks to query
-    
-    /*
     for(unsigned i = 0; i < declarator.getNumTypeObjects(); ++i) {
       DeclaratorChunk &DeclType = declarator.getTypeObject(i);
       switch(DeclType.Kind) {
         case DeclaratorChunk::Query: {
-          Result = Context.getQueryType();
+          Result = Context.getQueryType(DeclType.Qry.MD);
           break;
         }
         default:
@@ -981,7 +974,6 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
       }
     }
     break;
-    */
   }
     
   // +========================================================================+
@@ -1886,10 +1878,10 @@ QualType Sema::BuildImageType(QualType T, const llvm::SmallVector<Expr*,2> &dims
   return QualType();  
 }
 
-QualType Sema::BuildQueryType(QualType T) {
+QualType Sema::BuildQueryType(QualType T, VarDecl* MD) {
   const QueryType* qt = dyn_cast<QueryType>(T.getCanonicalType().getTypePtr());
   if (qt) {
-    return Context.getQueryType();
+    return Context.getQueryType(MD);
   }
   return QualType();
 }
@@ -2964,7 +2956,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     }
         
     case DeclaratorChunk::Query: {
-      T = S.BuildQueryType(T);
+      T = S.BuildQueryType(T, DeclType.Qry.MD);
       break;
     }
 

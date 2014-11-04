@@ -54,6 +54,10 @@ namespace clang {
   class Sema;
   class Declarator;
   struct TemplateIdAnnotation;
+  
+  // ===== Scout ====================
+  class VarDecl;
+  // ================================
 
 /// \brief Represents a C++ nested-name-specifier or a global scope specifier.
 ///
@@ -1257,7 +1261,8 @@ struct DeclaratorChunk {
   };
   
   struct QueryTypeInfo : TypeInfoCommon {
-
+    VarDecl* MD;
+    
     void destroy() {}
   };
 
@@ -1754,12 +1759,14 @@ struct DeclaratorChunk {
     return I;
   }
   
-  static DeclaratorChunk getQuery(SourceLocation LBLoc,
+  static DeclaratorChunk getQuery(VarDecl* MD,
+                                  SourceLocation LBLoc,
                                   SourceLocation RBLoc) {
     DeclaratorChunk I;
     I.Kind           = Query;
     I.Loc            = LBLoc;
     I.EndLoc         = RBLoc;
+    I.Qry.MD         = MD;
     return I;
   }
   

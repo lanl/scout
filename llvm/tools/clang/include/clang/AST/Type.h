@@ -98,6 +98,7 @@ namespace clang {
   struct PrintingPolicy;
 
   // +==== Scout ============================================================+
+  class VarDecl;
   class MeshDecl;
   class UniformMeshDecl;
   class StructuredMeshDecl;
@@ -105,6 +106,7 @@ namespace clang {
   class UnstructuredMeshDecl;
   class MeshFieldDecl;
   class MemberExpr;
+  class QueryExpr;
   // +=======================================================================+
 
   template <typename> class CanQual;
@@ -3773,14 +3775,15 @@ class ImageType :  public RenderTargetType {
 };
 
 class QueryType : public Type {
-    
+  VarDecl* meshDecl;
+  
   friend class ASTContext;  // ASTContext creates these.
   
 public:
-  QueryType()
-  : QueryType(Query, QualType()) { }
+  QueryType(VarDecl* MD)
+  : QueryType(Query, MD, QualType()) { }
   
-  QueryType(TypeClass TC, QualType can)
+  QueryType(TypeClass TC, VarDecl* MD, QualType can)
   : Type(TC, can, false,
          /*InstantiationDependent*/false,
          /*VariablyModified*/false,
@@ -3793,6 +3796,10 @@ public:
   bool isSugared() const { return false; }
   
   QualType desugar() const { return QualType(this, 0); }
+  
+  VarDecl* getMeshDecl() const{
+    return meshDecl;
+  }
   
   static bool classof(const Type *T) {
     return T->getTypeClass() == Query;

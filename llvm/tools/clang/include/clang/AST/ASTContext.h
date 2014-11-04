@@ -1148,7 +1148,7 @@ public:
   QualType getWindowType(const llvm::SmallVector<Expr*,2> &dims) const;
   QualType getImageType(const llvm::SmallVector<Expr*,2> &dims) const;
   
-  QualType getQueryType() const;
+  QualType getQueryType(VarDecl* MD) const;
   // +========================================================================+
 
   QualType getRecordType(const RecordDecl *Decl) const;

@@ -138,7 +138,7 @@ ExprResult Parser::ParseScoutQueryExpression(){
   }
   
   // Finally, we are at the identifier that specifies the mesh
-  // that we are computing over.
+  // that we are querying over.
   if (Tok.isNot(tok::identifier)){
     Diag(Tok, diag::err_expected_ident);
     SkipUntil(tok::semi);
@@ -148,7 +148,7 @@ ExprResult Parser::ParseScoutQueryExpression(){
   IdentifierInfo* MeshIdentInfo = Tok.getIdentifierInfo();
   SourceLocation MeshIdentLoc  = Tok.getLocation();
   
-  VarDecl* VD = LookupMeshVarDecl(MeshIdentInfo, MeshIdentLoc);
+  VarDecl* VD = LookupScoutVarDecl(MeshIdentInfo, MeshIdentLoc);
   
   if(VD == 0){
     return ExprError();
@@ -162,9 +162,11 @@ ExprResult Parser::ParseScoutQueryExpression(){
     return ExprError();
   }
   
-  const MeshType* RefMeshType = LookupMeshType(VD, MeshIdentInfo, MeshIdentLoc);
+  const MeshType* RefMeshType = LookupMeshType(VD, MeshIdentInfo);
   
   if(RefMeshType == 0){
+    Diag(MeshIdentLoc, diag::err_expected_a_mesh_type);
+    SkipUntil(tok::semi);
     return ExprError();
   }
   
@@ -217,6 +219,7 @@ ExprResult Parser::ParseScoutQueryExpression(){
   }
   
   return Actions.ActOnQueryExpr(FromLoc,
+                                VD,
                                 FieldResult.get(),
                                 PredicateResult.get());
 }

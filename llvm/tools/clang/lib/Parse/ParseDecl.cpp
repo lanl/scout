@@ -5744,10 +5744,6 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
       ParseImageBracketDeclarator(D);
       return;
     }
-    case DeclSpec::TST_query: {
-      assert(false && "unimplemented");
-      return;
-    }
     default:
       break;
     }

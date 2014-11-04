@@ -270,9 +270,9 @@ QualType ASTContext::getImageType(const llvm::SmallVector<Expr*,2> &dims) const 
 }
 
 // ===== Query Type ====================================================
-QualType ASTContext::getQueryType() const {
+QualType ASTContext::getQueryType(VarDecl* MD) const {
   QueryType *newType;
-  newType = new (*this, TypeAlignment) QueryType();
+  newType = new (*this, TypeAlignment) QueryType(MD);
   Types.push_back(newType);
   return QualType(newType, 0);
 }
