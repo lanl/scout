@@ -66,7 +66,7 @@
 #define LLVM_MSC_PREREQ(version) 0
 #endif
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) || defined(__clang__) || LLVM_MSC_PREREQ(1900)
 #define LLVM_NOEXCEPT noexcept
 #else
 #define LLVM_NOEXCEPT
@@ -137,6 +137,12 @@
 #define LLVM_LIBRARY_VISIBILITY __attribute__ ((visibility("hidden")))
 #else
 #define LLVM_LIBRARY_VISIBILITY
+#endif
+
+#if __has_attribute(sentinel) || LLVM_GNUC_PREREQ(3, 0, 0)
+#define LLVM_END_WITH_NULL __attribute__((sentinel))
+#else
+#define LLVM_END_WITH_NULL
 #endif
 
 #if __has_attribute(used) || LLVM_GNUC_PREREQ(3, 1, 0)

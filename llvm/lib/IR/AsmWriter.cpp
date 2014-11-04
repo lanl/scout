@@ -285,6 +285,7 @@ static void PrintCallingConv(unsigned cc, raw_ostream &Out) {
   case CallingConv::X86_StdCall:   Out << "x86_stdcallcc"; break;
   case CallingConv::X86_FastCall:  Out << "x86_fastcallcc"; break;
   case CallingConv::X86_ThisCall:  Out << "x86_thiscallcc"; break;
+  case CallingConv::X86_VectorCall:Out << "x86_vectorcallcc"; break;
   case CallingConv::Intel_OCL_BI:  Out << "intel_ocl_bicc"; break;
   case CallingConv::ARM_APCS:      Out << "arm_apcscc"; break;
   case CallingConv::ARM_AAPCS:     Out << "arm_aapcscc"; break;
@@ -717,7 +718,7 @@ void SlotTracker::processFunction() {
 
   ST_DEBUG("Inserting Instructions:\n");
 
-  SmallVector<std::pair<unsigned, MDNode*>, 4> MDForInst;
+  SmallVector<std::pair<unsigned, Value *>, 4> MDForInst;
 
   // Add all of the basic blocks and instructions with no names.
   for (Function::const_iterator BB = TheFunction->begin(),
@@ -754,7 +755,7 @@ void SlotTracker::processFunction() {
       // Process metadata attached with this instruction.
       I->getAllMetadata(MDForInst);
       for (unsigned i = 0, e = MDForInst.size(); i != e; ++i)
-        CreateMetadataSlot(MDForInst[i].second);
+        CreateMetadataSlot(cast<MDNode>(MDForInst[i].second));
       MDForInst.clear();
     }
   }
@@ -2314,7 +2315,7 @@ void AssemblyWriter::printInstruction(const Instruction &I) {
   }
 
   // Print Metadata info.
-  SmallVector<std::pair<unsigned, MDNode*>, 4> InstMD;
+  SmallVector<std::pair<unsigned, Value *>, 4> InstMD;
   I.getAllMetadata(InstMD);
   if (!InstMD.empty()) {
     SmallVector<StringRef, 8> MDNames;
@@ -2327,8 +2328,8 @@ void AssemblyWriter::printInstruction(const Instruction &I) {
          Out << ", !<unknown kind #" << Kind << ">";
        }
       Out << ' ';
-      WriteAsOperandInternal(Out, InstMD[i].second, &TypePrinter, &Machine,
-                             TheModule);
+      WriteAsOperandInternal(Out, cast<MDNode>(InstMD[i].second), &TypePrinter,
+                             &Machine, TheModule);
     }
   }
   printInfoComment(I);
