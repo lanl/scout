@@ -58,12 +58,12 @@
 uniform mesh MyMesh {
  vertices:
   int a;
- edges:
+ faces:
   int b;
 };
 
 int main(int argc, char** argv) {
-  MyMesh m[2,2];
+  MyMesh m[5];
 
   int i = 0;
   forall vertices v in m {
@@ -71,20 +71,20 @@ int main(int argc, char** argv) {
     ++i;
   }
  
-  forall edges e in m {
+  forall faces f in m {
     b = 0;
   }
 
-  forall edges e in m {
-    forall vertices v in e {
+  forall faces f in m {
+    forall vertices v in f {
       b += a;
     }
   }
 
-  int expected[] = {3, 5, 7, 9, 11, 13, 1, 3, 7, 9, 13, 15};
+  int expected[] = {1, 3, 5, 7, 9};
 
   i = 0;
-  forall edges e in m {
+  forall faces f in m {
     assert(b == expected[i] && "unexpected value");
     ++i;
   }
