@@ -637,13 +637,11 @@ void CXXNameMangler::mangleUnscopedTemplateName(const TemplateDecl *ND) {
     return;
 
   // <template-template-param> ::= <template-param>
-  if (const TemplateTemplateParmDecl *TTP
-                                     = dyn_cast<TemplateTemplateParmDecl>(ND)) {
+  if (const auto *TTP = dyn_cast<TemplateTemplateParmDecl>(ND))
     mangleTemplateParameter(TTP->getIndex());
-    return;
-  }
+  else
+    mangleUnscopedName(ND->getTemplatedDecl());
 
-  mangleUnscopedName(ND->getTemplatedDecl());
   addSubstitution(ND);
 }
 
@@ -1578,14 +1576,13 @@ void CXXNameMangler::mangleTemplatePrefix(const TemplateDecl *ND,
     return;
 
   // <template-template-param> ::= <template-param>
-  if (const TemplateTemplateParmDecl *TTP
-                                     = dyn_cast<TemplateTemplateParmDecl>(ND)) {
+  if (const auto *TTP = dyn_cast<TemplateTemplateParmDecl>(ND)) {
     mangleTemplateParameter(TTP->getIndex());
-    return;
+  } else {
+    manglePrefix(getEffectiveDeclContext(ND), NoFunction);
+    mangleUnqualifiedName(ND->getTemplatedDecl());
   }
 
-  manglePrefix(getEffectiveDeclContext(ND), NoFunction);
-  mangleUnqualifiedName(ND->getTemplatedDecl());
   addSubstitution(ND);
 }
 
@@ -2689,6 +2686,7 @@ recurse:
 // +===== Scout ==========================
   case Expr::QueryExprClass:
 // =======================================
+  case Expr::TypoExprClass:  // This should no longer exist in the AST by now.
     llvm_unreachable("unexpected statement kind");
 
   // FIXME: invent manglings for all these.

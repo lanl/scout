@@ -2658,9 +2658,6 @@ public:
 /// representation in the source code (ExplicitCastExpr's derived
 /// classes).
 class CastExpr : public Expr {
-public:
-  typedef clang::CastKind CastKind;
-
 private:
   Stmt *Op;
 
@@ -4847,15 +4844,36 @@ public:
   }
 };
 
+/// TypoExpr - Internal placeholder for expressions where typo correction
+/// still needs to be performed and/or an error diagnostic emitted.
+class TypoExpr : public Expr {
+public:
+  TypoExpr(QualType T)
+      : Expr(TypoExprClass, T, VK_LValue, OK_Ordinary,
+             /*isTypeDependent*/ true,
+             /*isValueDependent*/ true,
+             /*isInstantiationDependent*/ true,
+             /*containsUnexpandedParameterPack*/ false) {
+    assert(T->isDependentType() && "TypoExpr given a non-dependent type");
+  }
+
+  child_range children() { return child_range(); }
+  SourceLocation getLocStart() const LLVM_READONLY { return SourceLocation(); }
+  SourceLocation getLocEnd() const LLVM_READONLY { return SourceLocation(); }
+};
+
 // +===== Scout ========================
 
 class QueryExpr : public Expr{
   enum { FIELD, PRED, END_EXPR };
   Stmt* SubExprs[END_EXPR];
   SourceLocation FromLoc;
+  VarDecl* MeshDecl;
+  
 public:
-  QueryExpr(QualType t, SourceLocation fromLoc, Expr* field, Expr* pred)
+  QueryExpr(QualType t, SourceLocation fromLoc, VarDecl* MD, Expr* field, Expr* pred)
   : Expr(QueryExprClass, t, VK_LValue, OK_Ordinary, true, true, true, false){
+    MeshDecl = MD;
     FromLoc = fromLoc;
     SubExprs[FIELD] = field;
     SubExprs[PRED] = pred;

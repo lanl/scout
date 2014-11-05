@@ -301,6 +301,13 @@ namespace llvm {
 
       UMUL, // LOW, HI, FLAGS = umul LHS, RHS
 
+      // 8-bit SMUL/UMUL - AX, FLAGS = smul8/umul8 AL, RHS
+      SMUL8, UMUL8,
+
+      // 8-bit divrem that zero-extend the high result (AH).
+      UDIVREM8_ZEXT_HREG,
+      SDIVREM8_SEXT_HREG,
+
       // MUL_IMM - X86 specific multiply by immediate.
       MUL_IMM,
 
@@ -1014,6 +1021,11 @@ namespace llvm {
 
     /// Convert a comparison if required by the subtarget.
     SDValue ConvertCmpIfNecessary(SDValue Cmp, SelectionDAG &DAG) const;
+
+    /// Use rsqrt* to speed up sqrt calculations.
+    SDValue getRsqrtEstimate(SDValue Operand, DAGCombinerInfo &DCI,
+                             unsigned &RefinementSteps,
+                             bool &UseOneConstNR) const override;
   };
 
   namespace X86 {

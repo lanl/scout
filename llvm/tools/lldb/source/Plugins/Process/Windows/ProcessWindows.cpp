@@ -11,18 +11,24 @@
 #include "lldb/Host/windows/windows.h"
 
 // C++ Includes
+#include <vector>
+
 // Other libraries and framework includes
 #include "lldb/Core/Module.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/State.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Host/HostProcess.h"
+#include "lldb/Host/MonitoringProcessLauncher.h"
+#include "lldb/Host/ThreadLauncher.h"
 #include "lldb/Host/windows/ProcessLauncherWindows.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Target/DynamicLoader.h"
 #include "lldb/Target/FileAction.h"
 #include "lldb/Target/Target.h"
 
+#include "DebugDriverThread.h"
+#include "DebugProcessLauncher.h"
 #include "ProcessWindows.h"
 
 using namespace lldb;
@@ -48,6 +54,7 @@ ProcessWindows::Initialize()
         PluginManager::RegisterPlugin(GetPluginNameStatic(),
                                       GetPluginDescriptionStatic(),
                                       CreateInstance);
+        DebugDriverThread::Initialize();
     }
 }
 
@@ -59,9 +66,14 @@ ProcessWindows::ProcessWindows(Target& target, Listener &listener)
 {
 }
 
+ProcessWindows::~ProcessWindows()
+{
+}
+
 void
 ProcessWindows::Terminate()
 {
+    DebugDriverThread::Teardown();
 }
 
 lldb_private::ConstString
@@ -89,11 +101,26 @@ Error
 ProcessWindows::DoLaunch(Module *exe_module,
                          ProcessLaunchInfo &launch_info)
 {
-    Error error;
-    ProcessLauncherWindows launcher;
-    HostProcess process = launcher.LaunchProcess(launch_info, error);
+    Error result;
+    HostProcess process;
+    SetPrivateState(eStateLaunching);
+    if (launch_info.GetFlags().Test(eLaunchFlagDebug))
+    {
+        // If we're trying to debug this process, we need to use a
+        // DebugProcessLauncher so that we can enter a WaitForDebugEvent loop
+        // on the same thread that does the CreateProcess.
+        DebugProcessLauncher launcher(shared_from_this());
+        process = launcher.LaunchProcess(launch_info, result);
+    }
+    else
+        return Host::LaunchProcess(launch_info);
+
+    if (!result.Success())
+        return result;
+
     launch_info.SetProcessID(process.GetProcessId());
-    return error;
+    SetID(process.GetProcessId());
+    return result;
 }
 
 Error
@@ -185,4 +212,3 @@ ProcessWindows::CanDebug(Target &target, bool plugin_specified_by_name)
         return exe_module_sp->GetFileSpec().Exists();
     return false;
 }
-

@@ -341,6 +341,10 @@ def err_invalid_vector_decl_spec : Error<
   "cannot use '%0' with '__vector'">;
 def err_invalid_vector_bool_decl_spec : Error<
   "cannot use '%0' with '__vector bool'">;
+def err_invalid_vector_double_decl_spec : Error <
+  "use of 'double' with '__vector' requires VSX support to be enabled (available on the POWER7 or later)">;
+def err_invalid_vector_long_double_decl_spec : Error<
+  "cannot use 'long double' with '__vector'">;
 def warn_vector_long_decl_spec_combination : Warning<
   "Use of 'long' with '__vector' is deprecated">, InGroup<Deprecated>;
 def err_friend_invalid_in_context : Error<
@@ -972,10 +976,12 @@ def err_expected_mesh_kw:Error<
     "expected mesh keyword">;
 def err_expected_semi_mesh_decl:Error<
     "expected closing semicolon at end of mesh declaration">;
-def err_unknown_mesh_variable:Error<
-    "unknown or invalid mesh instance">;
+def err_unknown_mesh_or_query_variable:Error<
+    "unknown or invalid mesh or query instance">;
 def err_expected_a_mesh_type:Error<
     "expected a mesh type">;
+def err_expected_a_mesh_or_query_type:Error<
+"expected a mesh or query type">;
 
 // +----- mesh warnings -----------------------------------------------------+
 def warn_mesh_has_no_cell_fields:Warning<

@@ -23,6 +23,8 @@
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/Options.h"
 #include "clang/Frontend/CompilerInvocation.h"
+#include "clang/Frontend/ChainedDiagnosticConsumer.h"
+#include "clang/Frontend/SerializedDiagnosticPrinter.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Frontend/Utils.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -241,7 +243,7 @@ static const DriverSuffix *FindDriverSuffix(StringRef ProgName) {
     { "cl" ,       "--driver-mode=cl"  },
     { "++",        "--driver-mode=g++" }
   };
- 
+
   for (size_t i = 0; i < llvm::array_lengthof(DriverSuffixes); ++i)
     if (ProgName.endswith(DriverSuffixes[i].Suffix))
       return &DriverSuffixes[i];
@@ -372,10 +374,10 @@ static void SetInstallDir(SmallVectorImpl<const char *> &argv,
 
   // Do a PATH lookup, if there are no directory components.
   if (llvm::sys::path::filename(InstalledPath) == InstalledPath) {
-    std::string Tmp = llvm::sys::FindProgramByName(
+    auto Tmp = llvm::sys::findProgramByName(
       llvm::sys::path::filename(InstalledPath.str()));
-    if (!Tmp.empty())
-      InstalledPath = Tmp;
+    if (Tmp)
+      InstalledPath = *Tmp;
   }
   llvm::sys::fs::make_absolute(InstalledPath);
   InstalledPath = llvm::sys::path::parent_path(InstalledPath);
@@ -591,6 +593,16 @@ int main(int argc_, const char **argv_) {
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
 
   DiagnosticsEngine Diags(DiagID, &*DiagOpts, DiagClient);
+
+  if (!DiagOpts->DiagnosticSerializationFile.empty()) {
+    auto SerializedConsumer =
+        clang::serialized_diags::create(DiagOpts->DiagnosticSerializationFile,
+                                        &*DiagOpts, /*MergeChildRecords=*/true);
+    Diags.setClient(new ChainedDiagnosticConsumer(
+        std::unique_ptr<DiagnosticConsumer>(Diags.takeClient()),
+        std::move(SerializedConsumer)));
+  }
+
   ProcessWarningOptions(Diags, *DiagOpts, /*ReportDiags=*/false);
 
   Driver TheDriver(Path, llvm::sys::getDefaultTargetTriple(), Diags);
@@ -639,6 +651,8 @@ int main(int argc_, const char **argv_) {
       break;
     }
   }
+
+  Diags.getClient()->finish();
 
   // If any timers were active but haven't been destroyed yet, print their
   // results now.  This happens in -disable-free mode.

@@ -465,6 +465,9 @@ public:
     void
     BuildIndirectFields ();
     
+    void
+    SetIsPacked ();
+    
     clang::VarDecl *
     AddVariableToRecordType (const char *name,
                              const ClangASTType &var_type,

@@ -73,8 +73,8 @@ int main(int argc, char** argv) {
     b = 0;
   }
 
-  forall edges v in m {
-    forall cells c in v {
+  forall edges e in m {
+    forall cells c in e {
       b += a;
     }
   }

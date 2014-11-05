@@ -185,8 +185,6 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
 
   llvm::Value *addr = base.getAddress();
   unsigned cvr = base.getVRQualifiers();
-  bool TBAAPath = CGM.getCodeGenOpts().StructPathTBAA;
-  (void)TBAAPath; // suppress warning
 
   // We GEP to the field that the record layout suggests.
   unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
@@ -201,7 +199,6 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
     load->setAlignment(alignment.getQuantity());
 
     // Loading the reference will disable path-aware TBAA.
-    TBAAPath = false;
     if (CGM.shouldUseTBAA()) {
       llvm::MDNode *tbaa;
       if (mayAlias)
@@ -238,16 +235,7 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
   LValue LV = MakeAddrLValue(addr, type, alignment);
 
   LV.getQuals().addCVRQualifiers(cvr);
-  /*if (TBAAPath) {
-    const ASTRecordLayout &Layout =
-        getContext().getASTMeshLayout(field->getParent());
-    // Set the base type to be the base type of the base LValue and
-    // update offset to be relative to the base type.
-    LV.setTBAABaseType(mayAlias ? getContext().CharTy : base.getTBAABaseType());
-    LV.setTBAAOffset(mayAlias ? 0 : base.getTBAAOffset() +
-                     Layout.getFieldOffset(field->getFieldIndex()) /
-                                           getContext().getCharWidth());
-  }*/
+
 
   // __weak attribute on a field is ignored.
   if (LV.getQuals().getObjCGCAttr() == Qualifiers::Weak)
@@ -422,10 +410,6 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 				 indices.push_back(Builder.CreateURem(rawindices[i], dims[i], IRNameStr));
        }
 
-       // get function
-       llvm::Function *TheFunction;
-       TheFunction = Builder.GetInsertBlock()->getParent();
-
        // setup flag
        llvm::Value *flag;
        flag = Builder.CreateAlloca(Int32Ty, 0, "flag");
@@ -451,34 +435,28 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        for(unsigned i = 0; i < args.size(); ++i) {
 
       	 // Start Block
-				 TheFunction->getBasicBlockList().push_back(Start[i]);
-				 Builder.SetInsertPoint(Start[i]);
+	 EmitBlock(Start[i]);
          // check if index is in range
          llvm::Value *Check = Builder.CreateICmpEQ(rawindices[i], indices[i]);
          Builder.CreateCondBr(Check, Then[i], Else[i]);
-         Start[i] = Builder.GetInsertBlock();
 
          // Then Block
-         TheFunction->getBasicBlockList().push_back(Then[i]);
-         Builder.SetInsertPoint(Then[i]);
+         EmitBlock(Then[i]);
          //index is in range do nothing
          if(i == args.size()-1) {
         	 Builder.CreateBr(Done);
          } else {
         	 Builder.CreateBr(Start[i+1]);
          }
-         Then[i] = Builder.GetInsertBlock();
 
          // Else Block
-         TheFunction->getBasicBlockList().push_back(Else[i]);
-         Builder.SetInsertPoint(Else[i]);
+         EmitBlock(Else[i]);
          //index is not in range increment flag and break
          llvm::Value *IncFlag = Builder.CreateAdd(Builder.CreateLoad(flag, "flag"),
         		 ConstantOne, "flaginc");
          Builder.CreateStore(IncFlag, flag);
 
          Builder.CreateBr(Done);
-         Else[i] = Builder.GetInsertBlock();
        }
 
        //setup basic blocks
@@ -487,24 +465,19 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        llvm::BasicBlock *Merge = createBasicBlock("Merge");
 
        // Done Block
-       TheFunction->getBasicBlockList().push_back(Done);
-       Builder.SetInsertPoint(Done);
+       EmitBlock(Done);
        //check if flag is set
        llvm::Value *FlagCheck = Builder.CreateICmpNE(Builder.CreateLoad(flag, "flag"), ConstantZero);
        Builder.CreateCondBr(FlagCheck, FlagThen, FlagElse);
-       Done = Builder.GetInsertBlock();
 
        // Then Block
-       TheFunction->getBasicBlockList().push_back(FlagThen);
-       Builder.SetInsertPoint(FlagThen);
+       EmitBlock(FlagThen);
        //index is not in range
        llvm::Value *V1 = Boundary.getScalarVal();
        Builder.CreateBr(Merge);
-       FlagThen = Builder.GetInsertBlock();
 
        // Else Block
-       TheFunction->getBasicBlockList().push_back(FlagElse);
-       Builder.SetInsertPoint(FlagElse);
+       EmitBlock(FlagElse);
 
        //all indices are in range, compute the linear index
        llvm::Value *idx;
@@ -530,11 +503,10 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        LValue LV = EmitMeshMemberExpr(E, idx);
        llvm::Value *V2 = Builder.CreateLoad(LV.getAddress(), "eoshift.element");
        Builder.CreateBr(Merge);
-       FlagElse = Builder.GetInsertBlock();
+
 
        //Merge Block
-       TheFunction->getBasicBlockList().push_back(Merge);
-       Builder.SetInsertPoint(Merge);
+       EmitBlock(Merge);
        llvm::PHINode *PN = Builder.CreatePHI(Boundary.getScalarVal()->getType(), 2, "iftmp");
        PN->addIncoming(V1, FlagThen);
        PN->addIncoming(V2, FlagElse);

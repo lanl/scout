@@ -212,131 +212,33 @@ void CodeGenFunction::SetMeshBounds(const Stmt &S) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
     MeshDims[i] =  Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
 
-    LoopBoundsCells[i] = Builder.CreateAlloca(Int32Ty, 0, "meshdims.ptr");
-    llvm::Value *dim = Builder.CreateLoad(MeshDims[i]);
-    Builder.CreateStore(dim, LoopBoundsCells[i]);
-
     // dimensions + 1 are used in many places so cache them
     MeshDimsP1[i] =  Builder.CreateAlloca(Int32Ty, 0, "meshdimsp1.ptr");
     llvm::Value *incr = Builder.CreateAdd(Builder.CreateLoad(MeshDims[i]), ConstantOne);
     Builder.CreateStore(incr, MeshDimsP1[i]);
 
     // if LoopBoundCells == 0 then set it to 1 (for cells)
-    llvm::Function *TheFunction;
-    TheFunction = Builder.GetInsertBlock()->getParent();
-    llvm::BasicBlock *Then = createBasicBlock("cells.loopbound.then");
-    llvm::BasicBlock *Done = createBasicBlock("cells.loopbound.done");
+    LoopBoundsCells[i] = Builder.CreateAlloca(Int32Ty, 0, "meshdims.ptr");
+    llvm::Value *dim = Builder.CreateLoad(MeshDims[i]);
     llvm::Value *Check = Builder.CreateICmpEQ(dim, ConstantZero);
-    Builder.CreateCondBr(Check, Then, Done);
-
-    //then block
-    TheFunction->getBasicBlockList().push_back(Then);
-    Builder.SetInsertPoint(Then);
-    Builder.CreateStore(ConstantOne, LoopBoundsCells[i]);
-    Builder.CreateBr(Done);
-    Then = Builder.GetInsertBlock();
-
-    // done block
-    TheFunction->getBasicBlockList().push_back(Done);
-    Builder.SetInsertPoint(Done);
-    Done = Builder.GetInsertBlock();
-
+    llvm::Value *x = Builder.CreateSelect(Check, ConstantOne, dim);
+    Builder.CreateStore(x, LoopBoundsCells[i]);
   }
 }
 
-
-// ----- EmitforallMeshStmt
-//
-// Forall statements are transformed into a nested loop
-// structure (with a loop per rank of the mesh) that
-// uses a single linear address variable.  In other words,
-// a structure that looks something like this:
-//
-//  linear_index = 0;
-//  for(z = 0; z < mesh.depth; z++)
-//    for(y = 0; y < mesh.height; y++)
-//      for(x = 0; x < mesh.width; x++) {
-//        ... body goes here ...
-//        linear_index++;
-//      }
-//
-// At this point in time we don't kill ourselves in trying
-// to over optimize the loop structure (partially in hope
-// that our restrictions at the language level will help the
-// standard optimizers do an OK job).  That said, there is
-// likely room for improvement here...   At this point we're
-// more interested in code readability than performance.
-//
-// The guts of this code follow the techniques used in the
-// EmitForStmt member function.
-//
-// SC_TODO - we need to find a way to share the loop index
-// across code gen routines.
-//
-// SC_TODO - need to eventually add support for predicated
-// induction variable ranges.
-//
-// SC_TODO - need to handle cases with edge and vertex
-// fields (the implementation below is cell centric).
-//
 
 
 // generate code to return d1 if rank = 1, d2 if rank = 2, d3 if rank = 3;
 llvm::Value *CodeGenFunction::GetNumLocalMeshItems(llvm::Value *d1, llvm::Value *d2, llvm::Value *d3) {
 
-  llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
-  llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
-
-  llvm::Function *TheFunction;
-  TheFunction = Builder.GetInsertBlock()->getParent();
   llvm::Value *Rank = Builder.CreateLoad(MeshRank);
+  llvm::Value *check3 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 3));
+  llvm::Value *check2 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 2));
+  return Builder.CreateSelect(check3, d3, Builder.CreateSelect(check2, d2, d1));
 
-  llvm::BasicBlock *then3 = createBasicBlock("rank3.then");
-  llvm::BasicBlock *else3 = createBasicBlock("rank3.else");
-  llvm::BasicBlock *then2 = createBasicBlock("rank2.then");
-  llvm::BasicBlock *else2 = createBasicBlock("rank2.else");
-  llvm::BasicBlock *merge = createBasicBlock("rank.merge");
-
-  // rank = 3
-  llvm::Value *check3 = Builder.CreateICmpEQ(Rank, Three);
-  Builder.CreateCondBr(check3, then3, else3);
-  TheFunction->getBasicBlockList().push_back(then3);
-  Builder.SetInsertPoint(then3);
-  Builder.CreateBr(merge);
-  then3 = Builder.GetInsertBlock();
-
-  // rank != 3
-  TheFunction->getBasicBlockList().push_back(else3);
-  Builder.SetInsertPoint(else3);
-  else3 = Builder.GetInsertBlock();
-
-  // rank = 2
-  llvm::Value *check2 = Builder.CreateICmpEQ(Rank, Two);
-  Builder.CreateCondBr(check2, then2, else2);
-  TheFunction->getBasicBlockList().push_back(then2);
-  Builder.SetInsertPoint(then2);
-  Builder.CreateBr(merge);
-  then2 = Builder.GetInsertBlock();
-
-  // rank !=2 (rank = 1)
-  TheFunction->getBasicBlockList().push_back(else2);
-  Builder.SetInsertPoint(else2);
-  Builder.CreateBr(merge);
-  else2 = Builder.GetInsertBlock();
-
-  // merge
-  TheFunction->getBasicBlockList().push_back(merge);
-  Builder.SetInsertPoint(merge);
-  llvm::PHINode* PN = Builder.CreatePHI(Int32Ty, 3, "nitems.phi");
-  PN->addIncoming(d3, then3);
-  PN->addIncoming(d2, then2);
-  PN->addIncoming(d1, else2);
-  return PN;
 }
 
 void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
-  llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
-
   EmitMarkerBlock("forall.vertices.entry");
 
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
@@ -380,8 +282,7 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   Builder.CreateCondBr(Check3, Then3, Else3);
 
   // rank = 3
-  TheFunction->getBasicBlockList().push_back(Then3);
-  Builder.SetInsertPoint(Then3);
+  EmitBlock(Then3);
   llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
   llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
   llvm::Value* k = Builder.CreateLoad(InductionVar[2], "k");
@@ -400,18 +301,14 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
       Builder.CreateAdd(Builder.CreateAdd(xyz, v3),
           Builder.CreateAdd(pm2, v4));
   Builder.CreateBr(Merge);
-  Then3 = Builder.GetInsertBlock();
 
   // rank != 3
-  TheFunction->getBasicBlockList().push_back(Else3);
-  Builder.SetInsertPoint(Else3);
-  Else3 = Builder.GetInsertBlock();
+  EmitBlock(Else3);
 
   // rank = 2
   llvm::Value *Check2 = Builder.CreateICmpEQ(Rank, Two);
   Builder.CreateCondBr(Check2, Then2, Else2);
-  TheFunction->getBasicBlockList().push_back(Then2);
-  Builder.SetInsertPoint(Then2);
+  EmitBlock(Then2);
   v1 = Builder.CreateUDiv(vertexPos, Two);
   v2 = Builder.CreateMul(v1, width1);
   v3 = Builder.CreateURem(vertexPos, Two);
@@ -419,18 +316,14 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   v5 = Builder.CreateAdd(v4, indVar);
   llvm::Value* newVertexIndex2 = Builder.CreateAdd(v5, idvw, "vertex.index.new");
   Builder.CreateBr(Merge);
-  Then2 = Builder.GetInsertBlock();
 
   // rank !=2 (rank = 1)
-  TheFunction->getBasicBlockList().push_back(Else2);
-  Builder.SetInsertPoint(Else2);
+  EmitBlock(Else2);
   llvm::Value* newVertexIndex1 = Builder.CreateAdd(vertexPos, indVar, "vertex.index.new");
   Builder.CreateBr(Merge);
-  Else2 = Builder.GetInsertBlock();
 
   // Merge Block
-  TheFunction->getBasicBlockList().push_back(Merge);
-  Builder.SetInsertPoint(Merge);
+  EmitBlock(Merge);
   llvm::PHINode *PNVI = Builder.CreatePHI(Int32Ty, 3, "rank.phi");
   PNVI->addIncoming(newVertexIndex3, Then3);
   PNVI->addIncoming(newVertexIndex2, Then2);
@@ -451,9 +344,8 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   EmitBlock(ExitBlock);
 }
 
-//SC_TODO: Vertices had "regular" boundary while Cells is circular.
+//SC_TODO: Vertices has "regular" boundary while Cells is circular.
 void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
-  llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 
   llvm::Value *cx1, *cx2, *vx2, *vx3, *cy1, *cy2, *vy2, *vy3;
   llvm::Value *vx1, *vy1;
@@ -498,8 +390,7 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   Builder.CreateCondBr(Check3, Then3, Else3);
 
   // rank = 3
-  TheFunction->getBasicBlockList().push_back(Then3);
-  Builder.SetInsertPoint(Then3);
+  EmitBlock(Then3);
   llvm::Value* pd4 = Builder.CreateUDiv(cellPos, Four);
   llvm::Value* pm4 = Builder.CreateURem(cellPos, Four);
   llvm::Value* pd2 = Builder.CreateUDiv(pm4, Two);
@@ -537,18 +428,14 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
 
   llvm::Value* newCellIndex3 = Builder.CreateAdd(x, Builder.CreateAdd(v1, v2));
   Builder.CreateBr(Merge);
-  Then3 = Builder.GetInsertBlock();
 
   // rank != 3
-  TheFunction->getBasicBlockList().push_back(Else3);
-  Builder.SetInsertPoint(Else3);
-  Else3 = Builder.GetInsertBlock();
+  EmitBlock(Else3);
 
   // rank = 2
   llvm::Value *Check2 = Builder.CreateICmpEQ(Rank, Two);
   Builder.CreateCondBr(Check2, Then2, Else2);
-  TheFunction->getBasicBlockList().push_back(Then2);
-  Builder.SetInsertPoint(Then2);
+  EmitBlock(Then2);
 
   i = Builder.CreateLoad(InductionVar[0], "i");
 
@@ -573,11 +460,9 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
 
   llvm::Value* newCellIndex2 = Builder.CreateAdd(Builder.CreateMul(y, width), x);
   Builder.CreateBr(Merge);
-  Then2 = Builder.GetInsertBlock();
 
   // rank !=2 (rank = 1)
-  TheFunction->getBasicBlockList().push_back(Else2);
-  Builder.SetInsertPoint(Else2);
+  EmitBlock(Else2);
 
   i = Builder.CreateLoad(InductionVar[0], "i");
   vx1 = Builder.CreateURem(cellPos, Two);
@@ -592,8 +477,7 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   Else2 = Builder.GetInsertBlock();
 
   // Merge Block
-  TheFunction->getBasicBlockList().push_back(Merge);
-  Builder.SetInsertPoint(Merge);
+  EmitBlock(Merge);
   llvm::PHINode *PNVI = Builder.CreatePHI(Int32Ty, 3, "rank.phi");
   PNVI->addIncoming(newCellIndex3, Then3);
   PNVI->addIncoming(newCellIndex2, Then2);
@@ -861,109 +745,137 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
 }
 
 void CodeGenFunction::EmitForallEdgesCells(const ForallMeshStmt &S){
-  unsigned int rank = S.getMeshType()->rankOf();
-  if(rank <= 2){
-    EmitForallEdgesOrFacesCellsLowD(S, EdgeIndex);
-  }
-  else{
-    assert(false && "forall case unimplemented");
-  }
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
+  llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
+  llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
+  llvm::BasicBlock *Done3 = createBasicBlock("done3.else");
+  llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 3));
+  Builder.CreateCondBr(Check3, Then3, Else3);
+
+  EmitBlock(Then3);
+  //SC_TODO: 3D case
+  Builder.CreateBr(Done3);
+
+  EmitBlock(Else3);
+  EmitForallEdgesOrFacesCellsLowD(S, EdgeIndex);
+  Builder.CreateBr(Done3);
+
+  EmitBlock(Done3);
 }
 
 void
 CodeGenFunction::EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
                                                  llvm::Value* OuterIndex){
-  //SC_TODO: this will not work inside a function
-  unsigned int rank = S.getMeshType()->rankOf();
 
   llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
+  llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
 
   EmitMarkerBlock("forall.cells.entry");
 
-  if(rank == 1){
-    CellIndex = InnerIndex;
-    Builder.CreateStore(Builder.CreateTrunc(OuterIndex, Int32Ty), CellIndex);
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
 
-    EmitStmt(S.getBody());
-    CellIndex = 0;
-  }
-  if(rank == 2){
-    llvm::Value* w = Builder.CreateLoad(MeshDims[0], "w");
-    w = Builder.CreateZExt(w, Int64Ty, "w");
-    llvm::Value* w1 = Builder.CreateAdd(w, One, "w1");
+  llvm::BasicBlock *Then2 = createBasicBlock("rank2.then");
+  llvm::BasicBlock *Else2 = createBasicBlock("rank2.else");
+  llvm::BasicBlock *Done2 = createBasicBlock("done2.else");
 
-    llvm::Value* h = Builder.CreateLoad(MeshDims[1], "h");
-    h = Builder.CreateZExt(h, Int64Ty, "h");
+  llvm::Value *Check2 = Builder.CreateICmpEQ(Rank, Two);
+  Builder.CreateCondBr(Check2, Then2, Else2);
 
-    llvm::Value* wm1 = Builder.CreateSub(w, One, "wm1");
-    llvm::Value* hm1 = Builder.CreateSub(h, One, "hm1");
-    llvm::Value* w1h = Builder.CreateMul(w1, h, "w1h");
+  // rank 2
+  EmitBlock(Then2);
+  llvm::Value* w = Builder.CreateLoad(MeshDims[0], "w");
+  w = Builder.CreateZExt(w, Int64Ty, "w");
+  llvm::Value* w1 = Builder.CreateAdd(w, One, "w1");
 
-    llvm::Value* k = Builder.CreateLoad(OuterIndex, "k");
-    k = Builder.CreateZExt(k, Int64Ty, "k");
+  llvm::Value* h = Builder.CreateLoad(MeshDims[1], "h");
+  h = Builder.CreateZExt(h, Int64Ty, "h");
 
-    llvm::Value* c1 = Builder.CreateICmpUGE(k, w1h, "c1");
-    llvm::Value* km = Builder.CreateSub(k, w1h, "km");
+  llvm::Value* wm1 = Builder.CreateSub(w, One, "wm1");
+  llvm::Value* hm1 = Builder.CreateSub(h, One, "hm1");
+  llvm::Value* w1h = Builder.CreateMul(w1, h, "w1h");
 
-    llvm::Value* x =
-        Builder.CreateSelect(c1, Builder.CreateURem(km, w),
-                             Builder.CreateURem(k, w1), "x");
+  llvm::Value* k = Builder.CreateLoad(OuterIndex, "k");
+  k = Builder.CreateZExt(k, Int64Ty, "k");
 
-    llvm::Value* xm1 = Builder.CreateSub(x, One, "xm1");
+  llvm::Value* c1 = Builder.CreateICmpUGE(k, w1h, "c1");
+  llvm::Value* km = Builder.CreateSub(k, w1h, "km");
 
-    llvm::Value* y =
-        Builder.CreateSelect(c1, Builder.CreateUDiv(km, w),
-                             Builder.CreateUDiv(k, w1), "y");
+  llvm::Value* x =
+      Builder.CreateSelect(c1, Builder.CreateURem(km, w),
+          Builder.CreateURem(k, w1), "x");
 
-    llvm::Value* ym1 = Builder.CreateSub(y, One, "ym1");
+  llvm::Value* xm1 = Builder.CreateSub(x, One, "xm1");
 
-    llvm::Value* c2 = Builder.CreateICmpEQ(x, Zero, "c2");
-    llvm::Value* x1 =
-        Builder.CreateSelect(c1, x, Builder.CreateSelect(c2, wm1, xm1), "x1");
+  llvm::Value* y =
+      Builder.CreateSelect(c1, Builder.CreateUDiv(km, w),
+          Builder.CreateUDiv(k, w1), "y");
 
-    llvm::Value* c3 = Builder.CreateICmpEQ(y, Zero, "c3");
-    llvm::Value* y1 =
-        Builder.CreateSelect(c1, Builder.CreateSelect(c3, hm1, ym1), y, "y1");
+  llvm::Value* ym1 = Builder.CreateSub(y, One, "ym1");
 
-    llvm::Value* cellIndex =
-        Builder.CreateAdd(Builder.CreateMul(y1, w), x1, "cellIndex.1");
+  llvm::Value* c2 = Builder.CreateICmpEQ(x, Zero, "c2");
+  llvm::Value* x1 =
+      Builder.CreateSelect(c1, x, Builder.CreateSelect(c2, wm1, xm1), "x1");
 
-    CellIndex = InnerIndex;
-    Builder.CreateStore(Builder.CreateTrunc(cellIndex, Int32Ty), CellIndex);
+  llvm::Value* c3 = Builder.CreateICmpEQ(y, Zero, "c3");
+  llvm::Value* y1 =
+      Builder.CreateSelect(c1, Builder.CreateSelect(c3, hm1, ym1), y, "y1");
 
-    EmitStmt(S.getBody());
+  llvm::Value* cellIndex =
+      Builder.CreateAdd(Builder.CreateMul(y1, w), x1, "cellIndex.1");
 
-    llvm::Value* c4 = Builder.CreateICmpEQ(x, w, "c4");
-    llvm::Value* x2 =
-        Builder.CreateSelect(c1, x, Builder.CreateSelect(c4, Zero, x), "x2");
+  CellIndex = InnerIndex;
+  Builder.CreateStore(Builder.CreateTrunc(cellIndex, Int32Ty), CellIndex);
 
-    llvm::Value* c5 = Builder.CreateICmpEQ(y, h, "c5");
-    llvm::Value* y2 =
-        Builder.CreateSelect(c1, Builder.CreateSelect(c5, Zero, y), y, "y2");
+  EmitStmt(S.getBody());
 
-    cellIndex =
-        Builder.CreateAdd(Builder.CreateMul(y2, w), x2, "cellIndex.2");
+  llvm::Value* c4 = Builder.CreateICmpEQ(x, w, "c4");
+  llvm::Value* x2 =
+      Builder.CreateSelect(c1, x, Builder.CreateSelect(c4, Zero, x), "x2");
 
-    Builder.CreateStore(Builder.CreateTrunc(cellIndex, Int32Ty), CellIndex);
+  llvm::Value* c5 = Builder.CreateICmpEQ(y, h, "c5");
+  llvm::Value* y2 =
+      Builder.CreateSelect(c1, Builder.CreateSelect(c5, Zero, y), y, "y2");
 
-    EmitStmt(S.getBody());
+  cellIndex =
+      Builder.CreateAdd(Builder.CreateMul(y2, w), x2, "cellIndex.2");
 
-    CellIndex = 0;
-  }
-  else{
-    assert(false && "invalid rank");
-  }
+  Builder.CreateStore(Builder.CreateTrunc(cellIndex, Int32Ty), CellIndex);
+
+  EmitStmt(S.getBody());
+
+  CellIndex = 0;
+  Builder.CreateBr(Done2);
+
+  // rank 1
+  EmitBlock(Else2);
+  CellIndex = InnerIndex;
+  Builder.CreateStore(Builder.CreateTrunc(Builder.CreateLoad(OuterIndex), Int32Ty), CellIndex);
+
+  EmitStmt(S.getBody());
+  CellIndex = 0;
+
+  EmitBlock(Done2);
+
 }
 
 void CodeGenFunction::EmitForallFacesCells(const ForallMeshStmt &S){
-  unsigned int rank = S.getMeshType()->rankOf();
-  if(rank <= 2){
-    EmitForallEdgesOrFacesCellsLowD(S, FaceIndex);
-  }
-  else{
-    assert(false && "forall case unimplemented");
-  }
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
+   llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
+   llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
+   llvm::BasicBlock *Done3 = createBasicBlock("done3.else");
+   llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 3));
+   Builder.CreateCondBr(Check3, Then3, Else3);
+
+   EmitBlock(Then3);
+   //SC_TODO: 3D case
+   Builder.CreateBr(Done3);
+
+   EmitBlock(Else3);
+   EmitForallEdgesOrFacesCellsLowD(S, FaceIndex);
+   Builder.CreateBr(Done3);
+
+   EmitBlock(Done3);
 }
 
 void
@@ -1046,23 +958,41 @@ CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
 }
 
 void CodeGenFunction::EmitForallEdgesVertices(const ForallMeshStmt &S){
-  unsigned int rank = S.getMeshType()->rankOf();
-  if(rank <= 2){
-    EmitForallEdgesOrFacesVerticesLowD(S, EdgeIndex);
-  }
-  else{
-    assert(false && "forall case unimplemented");
-  }
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
+  llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
+  llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
+  llvm::BasicBlock *Done3 = createBasicBlock("done3.else");
+  llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 3));
+  Builder.CreateCondBr(Check3, Then3, Else3);
+
+  EmitBlock(Then3);
+  //SC_TODO: 3D case
+  Builder.CreateBr(Done3);
+
+  EmitBlock(Else3);
+  EmitForallEdgesOrFacesVerticesLowD(S, EdgeIndex);
+  Builder.CreateBr(Done3);
+
+  EmitBlock(Done3);
 }
 
 void CodeGenFunction::EmitForallFacesVertices(const ForallMeshStmt &S){
-  unsigned int rank = S.getMeshType()->rankOf();
-  if(rank <= 2){
-    EmitForallEdgesOrFacesVerticesLowD(S, FaceIndex);
-  }
-  else{
-    assert(false && "forall case unimplemented");
-  }
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
+  llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
+  llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
+  llvm::BasicBlock *Done3 = createBasicBlock("done3.else");
+  llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 3));
+  Builder.CreateCondBr(Check3, Then3, Else3);
+
+  EmitBlock(Then3);
+  //SC_TODO: 3D case
+  Builder.CreateBr(Done3);
+
+  EmitBlock(Else3);
+  EmitForallEdgesOrFacesVerticesLowD(S, FaceIndex);
+  Builder.CreateBr(Done3);
+
+  EmitBlock(Done3);
 }
 
 void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
@@ -1141,8 +1071,7 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
   llvm::Value* depth = Builder.CreateLoad(MeshDims[2], "depth");
   llvm::Value* depth1 = Builder.CreateLoad(MeshDimsP1[2], "depth1");
 
-  llvm::Function *TheFunction;
-  TheFunction = Builder.GetInsertBlock()->getParent();
+
   llvm::BasicBlock *Then = createBasicBlock("numfaces.then");
   llvm::BasicBlock *Else = createBasicBlock("numfaces.else");
   llvm::BasicBlock *Merge = createBasicBlock("numfaces.merge");
@@ -1152,26 +1081,21 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
   Builder.CreateCondBr(Check, Then, Else);
 
   //then block (rank == 3 case)
-  TheFunction->getBasicBlockList().push_back(Then);
-  Builder.SetInsertPoint(Then);
+  EmitBlock(Then);
   llvm::Value *p1 = Builder.CreateMul(width1, Builder.CreateMul(height, depth));
   llvm::Value *p2 = Builder.CreateMul(width, Builder.CreateMul(height1, depth));
   llvm::Value *p3 = Builder.CreateMul(width, Builder.CreateMul(height, depth1));
   llvm::Value *V1 = Builder.CreateAdd(p1, Builder.CreateAdd(p2, p3), "numfaces3");
   Builder.CreateBr(Merge);
-  Then = Builder.GetInsertBlock();
 
   // else block (rank !=3 case)
-  TheFunction->getBasicBlockList().push_back(Else);
-  Builder.SetInsertPoint(Else);
+  EmitBlock(Else);
   llvm::Value *V2 = Builder.CreateAdd(Builder.CreateMul(width, height1),
       Builder.CreateMul(width1, height), "numfaces12");
   Builder.CreateBr(Merge);
-  Else = Builder.GetInsertBlock();
 
   //Merge Block
-  TheFunction->getBasicBlockList().push_back(Merge);
-  Builder.SetInsertPoint(Merge);
+  EmitBlock(Merge);
   llvm::PHINode *PN = Builder.CreatePHI(Int32Ty, 2, "numfaces.phi");
   PN->addIncoming(V1, Then);
   PN->addIncoming(V2, Else);
@@ -1442,6 +1366,40 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
    }
 }
 
+// ----- EmitforallCellsOrVertices
+//
+// Forall statements are transformed into a nested loop
+// structure (with a loop per rank of the mesh) that
+// uses a single linear address variable.  In other words,
+// a structure that looks something like this:
+//
+//  linear_index = 0;
+//  for(z = 0; z < mesh.depth; z++)
+//    for(y = 0; y < mesh.height; y++)
+//      for(x = 0; x < mesh.width; x++) {
+//        ... body goes here ...
+//        linear_index++;
+//      }
+//
+// At this point in time we don't kill ourselves in trying
+// to over optimize the loop structure (partially in hope
+// that our restrictions at the language level will help the
+// standard optimizers do an OK job).  That said, there is
+// likely room for improvement here...   At this point we're
+// more interested in code readability than performance.
+//
+// The guts of this code follow the techniques used in the
+// EmitForStmt member function.
+//
+// SC_TODO - we need to find a way to share the loop index
+// across code gen routines.
+//
+// SC_TODO - need to eventually add support for predicated
+// induction variable ranges.
+//
+// SC_TODO - need to handle cases with edge and vertex
+// fields (the implementation below is cell centric).
+//
 
 void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
 

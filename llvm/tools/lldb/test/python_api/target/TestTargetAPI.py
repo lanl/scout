@@ -213,16 +213,20 @@ class TargetAPITestCase(TestBase):
         breakpoint = target.BreakpointCreateByLocation("main.c", self.line_main)
         self.assertTrue(breakpoint, VALID_BREAKPOINT)
 
+        # Put debugger into synchronous mode so when we target.LaunchSimple returns
+        # it will guaranteed to be at the breakpoint
+        self.dbg.SetAsync(False)
+        
         # Launch the process, and do not stop at the entry point.
         process = target.LaunchSimple (None, None, self.get_process_working_directory())
 
         # find the file address in the .data section of the main
         # module            
         data_section = self.find_data_section(target)
-        data_section_addr = data_section.file_addr
-        a = target.ResolveFileAddress(data_section_addr)
-
-        content = target.ReadMemory(a, 1, lldb.SBError())
+        sb_addr = lldb.SBAddress(data_section, 0)
+        error = lldb.SBError()
+        content = target.ReadMemory(sb_addr, 1, error)
+        self.assertTrue(error.Success(), "Make sure memory read succeeded")
         self.assertEquals(len(content), 1)
 
     def create_simple_target(self, fn):
@@ -252,9 +256,17 @@ class TargetAPITestCase(TestBase):
         mod = target.GetModuleAtIndex(0)
         data_section = None
         for s in mod.sections:
-            if ".data" == s.name:
+            sect_type = s.GetSectionType()
+            if sect_type == lldb.eSectionTypeData:
                 data_section = s
                 break
+            elif sect_type == lldb.eSectionTypeContainer:
+                for i in range(s.GetNumSubSections()):
+                    ss = s.GetSubSectionAtIndex(i)
+                    sect_type = ss.GetSectionType()
+                    if sect_type == lldb.eSectionTypeData:
+                        data_section = ss
+                        break                    
 
         self.assertIsNotNone(data_section)
         return data_section

@@ -276,23 +276,7 @@ public:
 
   typedef SmallVector<TemplateParameterList *, 4> TemplateParameterLists;
 
-  typedef clang::ExprResult        ExprResult;
-  typedef clang::StmtResult        StmtResult;
-  typedef clang::BaseResult        BaseResult;
-  typedef clang::MemInitResult     MemInitResult;
-  typedef clang::TypeResult        TypeResult;
-
-  typedef Expr *ExprArg;
-  typedef MutableArrayRef<Stmt*> MultiStmtArg;
   typedef Sema::FullExprArg FullExprArg;
-
-  ExprResult ExprError() { return ExprResult(true); }
-  StmtResult StmtError() { return StmtResult(true); }
-
-  ExprResult ExprError(const DiagnosticBuilder &) { return ExprError(); }
-  StmtResult StmtError(const DiagnosticBuilder &) { return StmtError(); }
-
-  ExprResult ExprEmpty() { return ExprResult(false); }
 
   // Parsing methods.
 
@@ -609,8 +593,9 @@ private:
     /// Annotation was successful.
     ANK_Success
   };
-  AnnotatedNameKind TryAnnotateName(bool IsAddressOfOperand,
-                                    CorrectionCandidateCallback *CCC = nullptr);
+  AnnotatedNameKind
+  TryAnnotateName(bool IsAddressOfOperand,
+                  std::unique_ptr<CorrectionCandidateCallback> CCC = nullptr);
 
   /// Push a tok::annot_cxxscope token onto the token stream.
   void AnnotateScopeToken(CXXScopeSpec &SS, bool IsNewAnnotation);
@@ -1470,7 +1455,7 @@ private:
 
   //===--------------------------------------------------------------------===//
   // C++ 5.2.4: C++ Pseudo-Destructor Expressions
-  ExprResult ParseCXXPseudoDestructor(ExprArg Base, SourceLocation OpLoc,
+  ExprResult ParseCXXPseudoDestructor(Expr *Base, SourceLocation OpLoc,
                                             tok::TokenKind OpKind,
                                             CXXScopeSpec &SS,
                                             ParsedType ObjectType);
@@ -1570,10 +1555,10 @@ private:
   ExprResult ParseObjCMessageExpressionBody(SourceLocation LBracloc,
                                             SourceLocation SuperLoc,
                                             ParsedType ReceiverType,
-                                            ExprArg ReceiverExpr);
+                                            Expr *ReceiverExpr);
   ExprResult ParseAssignmentExprWithObjCMessageExprStart(
       SourceLocation LBracloc, SourceLocation SuperLoc,
-      ParsedType ReceiverType, ExprArg ReceiverExpr);
+      ParsedType ReceiverType, Expr *ReceiverExpr);
   bool ParseObjCXXMessageReceiver(bool &IsExpr, void *&TypeOrExpr);
     
   //===--------------------------------------------------------------------===//
@@ -2516,10 +2501,12 @@ private:
                                  SourceLocation MeshLoc);
 
   const MeshType* LookupMeshType(VarDecl *VD,
-                                 IdentifierInfo *MeshInfo,
-                                 SourceLocation MeshLoc);
+                                 IdentifierInfo *MeshInfo);
 
-  VarDecl* LookupMeshVarDecl(IdentifierInfo *MeshInfo,
+  const QueryType* LookupQueryType(VarDecl *VD,
+                                 IdentifierInfo *QueryInfo);
+  
+  VarDecl* LookupScoutVarDecl(IdentifierInfo *MeshInfo,
                              SourceLocation MeshLoc);
 
   bool ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo);

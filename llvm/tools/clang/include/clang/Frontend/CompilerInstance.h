@@ -123,6 +123,9 @@ class CompilerInstance : public ModuleLoader {
   /// along with the module map
   llvm::DenseMap<const IdentifierInfo *, Module *> KnownModules;
 
+  /// \brief Module names that have an override for the target file.
+  llvm::StringMap<std::string> ModuleFileOverrides;
+
   /// \brief The location of the module-import keyword for the last module
   /// import. 
   SourceLocation LastModuleImportLoc;
@@ -731,7 +734,7 @@ public:
   // Create module manager.
   void createModuleManager();
 
-  ModuleLoadResult loadModuleFile(StringRef FileName, SourceLocation Loc);
+  bool loadModuleFile(StringRef FileName);
 
   ModuleLoadResult loadModule(SourceLocation ImportLoc, ModuleIdPath Path,
                               Module::NameVisibilityKind Visibility,

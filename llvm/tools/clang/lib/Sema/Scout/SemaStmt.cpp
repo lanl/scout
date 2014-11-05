@@ -213,11 +213,13 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
 }
 
 ExprResult Sema::ActOnQueryExpr(SourceLocation FromLoc,
+                                VarDecl* MeshDecl,
                                 Expr* Field,
                                 Expr* Predicate){
 
-  QueryExpr* QE = new (Context) QueryExpr(Context.getQueryType(),
+  QueryExpr* QE = new (Context) QueryExpr(Context.getQueryType(MeshDecl),
                                           FromLoc,
+                                          MeshDecl,
                                           Field,
                                           Predicate);
   

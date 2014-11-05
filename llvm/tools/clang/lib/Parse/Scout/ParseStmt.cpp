@@ -68,22 +68,22 @@
 
 using namespace clang;
 
-// ----- LookupMeshVarDecl
+// ----- LookupScoutVarDecl
 //
-VarDecl* Parser::LookupMeshVarDecl(IdentifierInfo *MeshInfo,
-                                   SourceLocation MeshLoc) {
+VarDecl* Parser::LookupScoutVarDecl(IdentifierInfo *Info,
+                                    SourceLocation Loc) {
 
-  LookupResult MeshLookup(Actions, MeshInfo, MeshLoc, Sema::LookupOrdinaryName);
-  Actions.LookupName(MeshLookup, getCurScope());
+  LookupResult Lookup(Actions, Info, Loc, Sema::LookupOrdinaryName);
+  Actions.LookupName(Lookup, getCurScope());
 
-  if (MeshLookup.getResultKind() != LookupResult::Found) {
-    Diag(MeshLoc, diag::err_unknown_mesh_variable) << MeshInfo;
+  if (Lookup.getResultKind() != LookupResult::Found) {
+    Diag(Loc, diag::err_unknown_mesh_or_query_variable) << Info;
     return 0;
   }
 
-  NamedDecl* ND = MeshLookup.getFoundDecl();
+  NamedDecl* ND = Lookup.getFoundDecl();
   if (!isa<VarDecl>(ND)) {
-    Diag(MeshLoc, diag::err_expected_a_mesh_type);
+    Diag(Loc, diag::err_unknown_mesh_or_query_variable) << Info;
     SkipUntil(tok::semi);
     return 0;
   }
@@ -97,7 +97,7 @@ VarDecl* Parser::LookupMeshVarDecl(IdentifierInfo *MeshInfo,
 const MeshType* Parser::LookupMeshType(IdentifierInfo *MeshInfo,
                                        SourceLocation MeshLoc) {
 
-  VarDecl* VD = LookupMeshVarDecl(MeshInfo, MeshLoc);
+  VarDecl* VD = LookupScoutVarDecl(MeshInfo, MeshLoc);
   if (VD == 0)
     return 0;
   else {
@@ -105,9 +105,6 @@ const MeshType* Parser::LookupMeshType(IdentifierInfo *MeshInfo,
     if (!T->isMeshType()) {
       T = VD->getType().getCanonicalType().getNonReferenceType().getTypePtr();
       if(!T->isMeshType()) {
-        // SC_TODO: Should this diag go in sema instead?
-        Diag(MeshLoc, diag::err_expected_a_mesh_type);
-        SkipUntil(tok::semi);
         return 0;
       }
     }
@@ -120,8 +117,7 @@ const MeshType* Parser::LookupMeshType(IdentifierInfo *MeshInfo,
 // ---- LookupMeshType
 //
 const MeshType* Parser::LookupMeshType(VarDecl *VD,
-                                       IdentifierInfo *MeshInfo,
-                                       SourceLocation MeshLoc) {
+                                       IdentifierInfo *MeshInfo) {
   assert(VD != 0 && "null var decl passed for mesh type lookup");
   if (VD) {
     const Type* T = VD->getType().getCanonicalType().getTypePtr();
@@ -131,15 +127,34 @@ const MeshType* Parser::LookupMeshType(VarDecl *VD,
     }
     
     if (!T->isMeshType()) {
-      // SC_TODO: Should this diag go in sema instead?
-      Diag(MeshLoc, diag::err_expected_a_mesh_type);
-      SkipUntil(tok::semi);
       return 0;
     } else {
       return const_cast<MeshType *>(cast<MeshType>(T));
     }
   }
 
+  return 0;
+}
+
+// ---- LookupQueryType
+//
+const QueryType* Parser::LookupQueryType(VarDecl *VD,
+                                         IdentifierInfo *QueryInfo) {
+  assert(VD != 0 && "null var decl passed for query type lookup");
+  if (VD) {
+    const Type* T = VD->getType().getCanonicalType().getTypePtr();
+    
+    while(T->isPointerType() || T->isReferenceType()) {
+      T = T->getPointeeType().getTypePtr();
+    }
+    
+    if (!T->isScoutQueryType()) {
+      return 0;
+    } else {
+      return const_cast<QueryType *>(cast<QueryType>(T));
+    }
+  }
+  
   return 0;
 }
 
@@ -286,10 +301,10 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
     return StmtError();
   }
 
-  IdentifierInfo  *MeshIdentInfo = Tok.getIdentifierInfo();
-  SourceLocation   MeshIdentLoc  = Tok.getLocation();
+  IdentifierInfo  *IdentInfo = Tok.getIdentifierInfo();
+  SourceLocation   IdentLoc  = Tok.getLocation();
 
-  VarDecl *VD = LookupMeshVarDecl(MeshIdentInfo, MeshIdentLoc);
+  VarDecl *VD = LookupScoutVarDecl(IdentInfo, IdentLoc);
 
   if (VD == 0)
     return StmtError();
@@ -302,26 +317,37 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
     return StmtError();
   }
 
-  const MeshType *RefMeshType = LookupMeshType(VD, MeshIdentInfo, MeshIdentLoc);
-
-  if (RefMeshType == 0)
-    return StmtError();
-
   DeclStmt* Init; //declstmt for forall implicit variable
-  bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
-                                                    MeshIdentInfo, MeshIdentLoc,
-                                                    MeshElementType,
-                                                    ElementIdentInfo,
-                                                    ElementIdentLoc,
-                                                    RefMeshType,
-                                                    VD, &Init);
-  if (! success)
-    return StmtError();
+  
+  const MeshType *RefMeshType = LookupMeshType(VD, IdentInfo);
+  if(RefMeshType){
+    
+    bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
+                                                      IdentInfo, IdentLoc,
+                                                      MeshElementType,
+                                                      ElementIdentInfo,
+                                                      ElementIdentLoc,
+                                                      RefMeshType,
+                                                      VD, &Init);
+    if (! success)
+      return StmtError();
+    
+    MeshElementTypeDiag(MeshElementType, RefMeshType, IdentLoc);
 
+  }
+  else{
+    const QueryType *RefQueryType = LookupQueryType(VD, IdentInfo);
+    if(RefQueryType){
+      llvm::errs() << "got query\n";
+    }
+    else{
+      Diag(IdentLoc, diag::err_expected_a_mesh_or_query_type);
+      SkipUntil(tok::semi);
+      return StmtError();
+    }
+  }
+  
   ConsumeToken();
-
-
-  MeshElementTypeDiag(MeshElementType, RefMeshType, MeshIdentLoc);
 
   // Now check to see if we have a predicate/conditional expression...
   //
@@ -374,7 +400,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
                                                         MeshElementType,
                                                         RefMeshType, VD,
                                                         ElementIdentInfo,
-                                                        MeshIdentInfo,
+                                                        IdentInfo,
                                                         LParenLoc,
                                                         Predicate,
                                                         RParenLoc,
@@ -545,7 +571,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   IdentifierInfo  *MeshIdentInfo = Tok.getIdentifierInfo();
   SourceLocation   MeshIdentLoc  = Tok.getLocation();
 
-  VarDecl *VD = LookupMeshVarDecl(MeshIdentInfo, MeshIdentLoc);
+  VarDecl *VD = LookupScoutVarDecl(MeshIdentInfo, MeshIdentLoc);
   if (VD == 0)
     return StmtError();
 
@@ -557,9 +583,12 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
     return StmtError();
   }
 
-  const MeshType *RefMeshType = LookupMeshType(VD, MeshIdentInfo, MeshIdentLoc);
-  if (RefMeshType == 0)
+  const MeshType *RefMeshType = LookupMeshType(VD, MeshIdentInfo);
+  if (RefMeshType == 0){
+    Diag(MeshIdentLoc, diag::err_expected_a_mesh_type);
+    SkipUntil(tok::semi);
     return StmtError();
+  }
 
   bool success = Actions.ActOnRenderallMeshRefVariable(getCurScope(),
                                                        MeshElementType,

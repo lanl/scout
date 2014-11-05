@@ -107,6 +107,7 @@ static void diagnoseBadTypeAttribute(Sema &S, const AttributeList &attr,
     case AttributeList::AT_StdCall: \
     case AttributeList::AT_ThisCall: \
     case AttributeList::AT_Pascal: \
+    case AttributeList::AT_VectorCall: \
     case AttributeList::AT_MSABI: \
     case AttributeList::AT_SysVABI: \
     case AttributeList::AT_Regparm: \
@@ -961,18 +962,11 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     break;
   }
   case DeclSpec::TST_query: {
-    Result = Context.getQueryType();
-    break;
-    
-    // we may need this later, if we need to
-    // attach declarator chunks to query
-    
-    /*
     for(unsigned i = 0; i < declarator.getNumTypeObjects(); ++i) {
       DeclaratorChunk &DeclType = declarator.getTypeObject(i);
       switch(DeclType.Kind) {
         case DeclaratorChunk::Query: {
-          Result = Context.getQueryType();
+          Result = Context.getQueryType(DeclType.Qry.MD);
           break;
         }
         default:
@@ -980,7 +974,6 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
       }
     }
     break;
-    */
   }
     
   // +========================================================================+
@@ -1885,10 +1878,10 @@ QualType Sema::BuildImageType(QualType T, const llvm::SmallVector<Expr*,2> &dims
   return QualType();  
 }
 
-QualType Sema::BuildQueryType(QualType T) {
+QualType Sema::BuildQueryType(QualType T, VarDecl* MD) {
   const QueryType* qt = dyn_cast<QueryType>(T.getCanonicalType().getTypePtr());
   if (qt) {
-    return Context.getQueryType();
+    return Context.getQueryType(MD);
   }
   return QualType();
 }
@@ -2963,7 +2956,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     }
         
     case DeclaratorChunk::Query: {
-      T = S.BuildQueryType(T);
+      T = S.BuildQueryType(T, DeclType.Qry.MD);
       break;
     }
 
@@ -3714,6 +3707,8 @@ static AttributeList::Kind getAttrListKind(AttributedType::Kind kind) {
     return AttributeList::AT_ThisCall;
   case AttributedType::attr_pascal:
     return AttributeList::AT_Pascal;
+  case AttributedType::attr_vectorcall:
+    return AttributeList::AT_VectorCall;
   case AttributedType::attr_pcs:
   case AttributedType::attr_pcs_vfp:
     return AttributeList::AT_Pcs;
@@ -4794,6 +4789,8 @@ static AttributedType::Kind getCCTypeAttrKind(AttributeList &Attr) {
     return AttributedType::attr_thiscall;
   case AttributeList::AT_Pascal:
     return AttributedType::attr_pascal;
+  case AttributeList::AT_VectorCall:
+    return AttributedType::attr_vectorcall;
   case AttributeList::AT_Pcs: {
     // The attribute may have had a fixit applied where we treated an
     // identifier as a string literal.  The contents of the string are valid,
@@ -4911,7 +4908,7 @@ static bool handleFunctionTypeAttr(TypeProcessingState &state,
   }
 
   // Diagnose use of callee-cleanup calling convention on variadic functions.
-  if (isCalleeCleanup(CC)) {
+  if (!supportsVariadicCall(CC)) {
     const FunctionProtoType *FnP = dyn_cast<FunctionProtoType>(fn);
     if (FnP && FnP->isVariadic()) {
       unsigned DiagID = diag::err_cconv_varargs;

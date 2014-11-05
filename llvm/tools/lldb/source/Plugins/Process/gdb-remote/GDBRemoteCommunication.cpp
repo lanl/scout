@@ -475,8 +475,8 @@ GDBRemoteCommunication::CheckForPacket (const uint8_t *src, size_t src_len, Stri
                     }
                     if (log)
                         log->Printf ("GDBRemoteCommunication::%s tossing %u junk bytes: '%.*s'",
-                                     __FUNCTION__, idx, idx, m_bytes.c_str());
-                    m_bytes.erase(0, idx);
+                                     __FUNCTION__, idx - 1, idx - 1, m_bytes.c_str());
+                    m_bytes.erase(0, idx - 1);
                 }
                 break;
         }

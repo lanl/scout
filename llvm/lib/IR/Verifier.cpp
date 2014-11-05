@@ -377,8 +377,8 @@ void Verifier::visit(Instruction &I) {
 
 
 void Verifier::visitGlobalValue(const GlobalValue &GV) {
-  Assert1(!GV.isDeclaration() || GV.isMaterializable() ||
-              GV.hasExternalLinkage() || GV.hasExternalWeakLinkage(),
+  Assert1(!GV.isDeclaration() || GV.hasExternalLinkage() ||
+              GV.hasExternalWeakLinkage(),
           "Global is external, but doesn't have external or weak linkage!",
           &GV);
 
@@ -2267,7 +2267,7 @@ void Verifier::visitInstruction(Instruction &I) {
     }
   }
 
-  if (MDNode *MD = I.getMetadata(LLVMContext::MD_fpmath)) {
+  if (MDNode *MD = I.getMDNode(LLVMContext::MD_fpmath)) {
     Assert1(I.getType()->isFPOrFPVectorTy(),
             "fpmath requires a floating point result!", &I);
     Assert1(MD->getNumOperands() == 1, "fpmath takes one operand!", &I);
@@ -2281,7 +2281,7 @@ void Verifier::visitInstruction(Instruction &I) {
     }
   }
 
-  if (MDNode *Range = I.getMetadata(LLVMContext::MD_range)) {
+  if (MDNode *Range = I.getMDNode(LLVMContext::MD_range)) {
     Assert1(isa<LoadInst>(I) || isa<CallInst>(I) || isa<InvokeInst>(I),
             "Ranges are only for loads, calls and invokes!", &I);
     visitRangeMetadata(I, Range, I.getType());
@@ -2587,7 +2587,7 @@ void DebugInfoVerifier::verifyDebugInfo() {
 void DebugInfoVerifier::processInstructions(DebugInfoFinder &Finder) {
   for (const Function &F : *M)
     for (auto I = inst_begin(&F), E = inst_end(&F); I != E; ++I) {
-      if (MDNode *MD = I->getMetadata(LLVMContext::MD_dbg))
+      if (MDNode *MD = I->getMDNode(LLVMContext::MD_dbg))
         Finder.processLocation(*M, DILocation(MD));
       if (const CallInst *CI = dyn_cast<CallInst>(&*I))
         processCallInst(Finder, *CI);
@@ -2632,7 +2632,7 @@ bool llvm::verifyModule(const Module &M, raw_ostream *OS) {
 
   bool Broken = false;
   for (Module::const_iterator I = M.begin(), E = M.end(); I != E; ++I)
-    if (!I->isDeclaration())
+    if (!I->isDeclaration() && !I->isMaterializable())
       Broken |= !V.verify(*I);
 
   // Note that this function's return value is inverted from what you would
