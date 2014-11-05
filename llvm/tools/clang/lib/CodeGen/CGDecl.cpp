@@ -10,6 +10,7 @@
 // This contains code to emit Decl nodes as LLVM code.
 //
 //===----------------------------------------------------------------------===//
+#include <iostream>
 
 #include "CodeGenFunction.h"
 #include "CGDebugInfo.h"
@@ -156,6 +157,13 @@ void CodeGenFunction::EmitVarDecl(const VarDecl &D) {
 
     return EmitStaticVarDecl(D, Linkage);
   }
+
+  //+===== Scout =======================================================+ 
+  if (D.isPersistentLocal()) {
+    std::cerr << "found persistent local variable.\n";
+    EmitPersistentVarDecl(D, Linkage);
+  }
+  //+===================================================================+ 
 
   if (D.hasExternalStorage())
     // Don't emit it now, allow it to be emitted lazily on its first use.
@@ -967,7 +975,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
 
       // +===== Scout ========================================================+
       // SC_TODO - we need to make sure we handle other mesh types here.
-        EmitScoutAutoVarAlloca(Alloc, D);
+      EmitScoutAutoVarAlloca(Alloc, D);
       // +====================================================================+
 
       // Emit a lifetime intrinsic if meaningful.  There's no point

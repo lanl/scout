@@ -487,16 +487,13 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
       llvm::Value* numElements = 0;
 
-      if(FD->isCellLocated()){
+      if (FD->isCellLocated()) {
         numElements = numCells;
-      }
-      else if(FD->isVertexLocated()){
+      } else if(FD->isVertexLocated()) {
         numElements = numVertices;
-      }
-      else if(FD->isEdgeLocated()){
+      } else if(FD->isEdgeLocated()) {
         numElements = numEdges;
-      }
-      else if(FD->isFaceLocated()){
+      } else if(FD->isFaceLocated()) {
         numElements = numFaces;
       }
 
@@ -504,7 +501,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
       fieldTotalBytes = Builder.CreateNUWMul(numElements, fieldTyBytesValue);
 
-      if(!(CGM.getCodeGenOpts().ScoutLegionSupport)) {
+      if (!(CGM.getCodeGenOpts().ScoutLegionSupport)) {
         // Dynamically allocate memory.
         llvm::SmallVector< llvm::Value *, 3 > Args;
         Args.push_back(fieldTotalBytes);
@@ -557,7 +554,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     }
 
     // emit call to lsci_unimesh_partition()
-    if(CGM.getCodeGenOpts().ScoutLegionSupport) {
+    if (CGM.getCodeGenOpts().ScoutLegionSupport) {
 
       llvm::SmallVector< llvm::Value *, 4 > Args;
 

@@ -857,6 +857,14 @@ public:
       && !isFileVarDecl();
   }
 
+  // +==== Scout ============================================================+
+  /// isPersistent - Returns true if a variable with function scope is a 
+  /// persistent local variable. 
+  bool isPersistentLocal() const {
+    return (getStorageClass() == SC_Persistent) && !isFileVarDecl();
+  }
+  // +==== Scout ============================================================+
+
   /// \brief Returns true if a variable has extern or __private_extern__
   /// storage.
   bool hasExternalStorage() const {
