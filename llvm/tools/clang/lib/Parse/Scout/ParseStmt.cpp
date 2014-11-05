@@ -317,7 +317,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
     return StmtError();
   }
 
-  DeclStmt* Init; //declstmt for forall implicit variable
+  DeclStmt* Init = NULL; //declstmt for forall implicit variable
   
   const MeshType *RefMeshType = LookupMeshType(VD, IdentInfo);
   if(RefMeshType){
