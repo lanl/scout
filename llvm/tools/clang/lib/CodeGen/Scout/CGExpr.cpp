@@ -410,10 +410,6 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 				 indices.push_back(Builder.CreateURem(rawindices[i], dims[i], IRNameStr));
        }
 
-       // get function
-       llvm::Function *TheFunction;
-       TheFunction = Builder.GetInsertBlock()->getParent();
-
        // setup flag
        llvm::Value *flag;
        flag = Builder.CreateAlloca(Int32Ty, 0, "flag");
@@ -439,7 +435,7 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        for(unsigned i = 0; i < args.size(); ++i) {
 
       	 // Start Block
-				 EmitBlock(Start[i]);
+	 EmitBlock(Start[i]);
          // check if index is in range
          llvm::Value *Check = Builder.CreateICmpEQ(rawindices[i], indices[i]);
          Builder.CreateCondBr(Check, Then[i], Else[i]);

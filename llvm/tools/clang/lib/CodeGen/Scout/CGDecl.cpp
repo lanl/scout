@@ -109,10 +109,6 @@ void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const
   // If the rank has not been set it is ok to do the alloc and other setup
   // this is for the multifile case to make sure we don't double alloc.
 
-  // get function
-  llvm::Function *TheFunction;
-  TheFunction = Builder.GetInsertBlock()->getParent();
-
   llvm::BasicBlock *Then = createBasicBlock("global.alloc");
   llvm::BasicBlock *Done = createBasicBlock("global.done");
 
