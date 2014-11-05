@@ -62,9 +62,7 @@ uniform mesh MyMesh {
   int b;
 };
 
-int main(int argc, char** argv) {
-  MyMesh m[2,2];
-
+void MyFunc(MyMesh &m) {
   int i = 0;
   forall vertices v in m {
     a = i;
@@ -88,6 +86,10 @@ int main(int argc, char** argv) {
     assert(b == expected[i] && "unexpected value");
     ++i;
   }
+}
 
+int main(int argc, char** argv) {
+  MyMesh m[2,2];
+  MyFunc(m);
   return 0;
 }

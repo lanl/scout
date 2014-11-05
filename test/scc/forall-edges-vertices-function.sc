@@ -62,20 +62,18 @@ uniform mesh MyMesh {
   int b;
 };
 
-int main(int argc, char** argv) {
-  MyMesh m[2,2];
-
+void MyFunc(MyMesh *m) {
   int i = 0;
-  forall vertices v in m {
+  forall vertices v in *m {
     a = i;
     ++i;
   }
  
-  forall edges e in m {
+  forall edges e in *m {
     b = 0;
   }
 
-  forall edges e in m {
+  forall edges e in *m {
     forall vertices v in e {
       b += a;
     }
@@ -84,10 +82,14 @@ int main(int argc, char** argv) {
   int expected[] = {3, 5, 7, 9, 11, 13, 1, 3, 7, 9, 13, 15};
 
   i = 0;
-  forall edges e in m {
+  forall edges e in *m {
     assert(b == expected[i] && "unexpected value");
     ++i;
   }
+}
 
+int main(int argc, char** argv) {
+  MyMesh m[2,2];
+  MyFunc(&m);
   return 0;
 }

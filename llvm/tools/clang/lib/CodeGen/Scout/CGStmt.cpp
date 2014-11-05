@@ -881,80 +881,92 @@ void CodeGenFunction::EmitForallFacesCells(const ForallMeshStmt &S){
 void
 CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
                                                     llvm::Value* OuterIndex){
-  //SC_TODO: this will not work inside a function
-  unsigned int rank = S.getMeshType()->rankOf();
 
-  //llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
+  llvm::Value *k, *vertexIndex;
   llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
+  llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
 
   EmitMarkerBlock("forall.edges.entry");
 
-  if(rank == 1){
-    llvm::Value* One32 = llvm::ConstantInt::get(Int32Ty, 1);
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
 
-    llvm::Value* k = Builder.CreateLoad(OuterIndex, "k");
-    k = Builder.CreateZExt(k, Int64Ty, "k");
+  llvm::BasicBlock *Then2 = createBasicBlock("rank2.then");
+  llvm::BasicBlock *Else2 = createBasicBlock("rank2.else");
+  llvm::BasicBlock *Done2 = createBasicBlock("done2.else");
 
-    VertexIndex = InnerIndex;
-    llvm::Value* vertexIndex = Builder.CreateTrunc(k, Int32Ty);
-    Builder.CreateStore(vertexIndex, VertexIndex);
+  llvm::Value *Check2 = Builder.CreateICmpEQ(Rank, Two);
+  Builder.CreateCondBr(Check2, Then2, Else2);
 
-    EmitStmt(S.getBody());
+  // rank 2
+  EmitBlock(Then2);
 
-    vertexIndex = Builder.CreateAdd(vertexIndex, One32);
-    Builder.CreateStore(vertexIndex, VertexIndex);
+  llvm::Value* w = Builder.CreateLoad(MeshDims[0], "w");
+  w = Builder.CreateZExt(w, Int64Ty, "w");
+  llvm::Value* w1 = Builder.CreateAdd(w, One, "w1");
 
-    EmitStmt(S.getBody());
+  llvm::Value* h = Builder.CreateLoad(MeshDims[1], "h");
+  h = Builder.CreateZExt(h, Int64Ty, "h");
 
-    VertexIndex = 0;
-  }
-  else if(rank == 2){
-    llvm::Value* w = Builder.CreateLoad(MeshDims[0], "w");
-    w = Builder.CreateZExt(w, Int64Ty, "w");
-    llvm::Value* w1 = Builder.CreateAdd(w, One, "w1");
+  llvm::Value* w1h = Builder.CreateMul(w1, h, "w1h");
 
-    llvm::Value* h = Builder.CreateLoad(MeshDims[1], "h");
-    h = Builder.CreateZExt(h, Int64Ty, "h");
+  k = Builder.CreateLoad(OuterIndex, "k");
+  k = Builder.CreateZExt(k, Int64Ty, "k");
 
-    llvm::Value* w1h = Builder.CreateMul(w1, h, "w1h");
+  llvm::Value* c1 = Builder.CreateICmpUGE(k, w1h, "c1");
+  llvm::Value* km = Builder.CreateSub(k, w1h, "km");
 
-    llvm::Value* k = Builder.CreateLoad(OuterIndex, "k");
-    k = Builder.CreateZExt(k, Int64Ty, "k");
-    
-    llvm::Value* c1 = Builder.CreateICmpUGE(k, w1h, "c1");
-    llvm::Value* km = Builder.CreateSub(k, w1h, "km");
+  llvm::Value* x1 =
+      Builder.CreateSelect(c1, Builder.CreateURem(km, w),
+          Builder.CreateURem(k, w1), "x1");
 
-    llvm::Value* x1 =
-        Builder.CreateSelect(c1, Builder.CreateURem(km, w),
-                             Builder.CreateURem(k, w1), "x1");
+  llvm::Value* y1 =
+      Builder.CreateSelect(c1, Builder.CreateUDiv(km, w),
+          Builder.CreateUDiv(k, w1), "y1");
 
-    llvm::Value* y1 =
-        Builder.CreateSelect(c1, Builder.CreateUDiv(km, w),
-                             Builder.CreateUDiv(k, w1), "y1");
-    
-    llvm::Value* vertexIndex =
-        Builder.CreateAdd(Builder.CreateMul(y1, w1), x1, "vertexIndex.1");
+  vertexIndex =
+      Builder.CreateAdd(Builder.CreateMul(y1, w1), x1, "vertexIndex.1");
 
-    VertexIndex = InnerIndex;
-    Builder.CreateStore(Builder.CreateTrunc(vertexIndex, Int32Ty), VertexIndex);
+  VertexIndex = InnerIndex;
+  Builder.CreateStore(Builder.CreateTrunc(vertexIndex, Int32Ty), VertexIndex);
 
-    EmitStmt(S.getBody());
+  EmitStmt(S.getBody());
 
-    llvm::Value* x2 = Builder.CreateSelect(c1, Builder.CreateAdd(x1, One), x1);
-    llvm::Value* y2 = Builder.CreateSelect(c1, y1, Builder.CreateAdd(y1, One));
+  llvm::Value* x2 = Builder.CreateSelect(c1, Builder.CreateAdd(x1, One), x1);
+  llvm::Value* y2 = Builder.CreateSelect(c1, y1, Builder.CreateAdd(y1, One));
 
-    vertexIndex =
-        Builder.CreateAdd(Builder.CreateMul(y2, w1), x2, "vertexIndex.2");
+  vertexIndex =
+      Builder.CreateAdd(Builder.CreateMul(y2, w1), x2, "vertexIndex.2");
 
-    Builder.CreateStore(Builder.CreateTrunc(vertexIndex, Int32Ty), VertexIndex);
+  Builder.CreateStore(Builder.CreateTrunc(vertexIndex, Int32Ty), VertexIndex);
 
-    EmitStmt(S.getBody());
+  EmitStmt(S.getBody());
 
-    VertexIndex = 0;
-  }
-  else{
-    assert(false && "forall case unimplemented");
-  }
+  VertexIndex = 0;
+  Builder.CreateBr(Done2);
+
+  // rank 1
+  EmitBlock(Else2);
+
+
+  llvm::Value* One32 = llvm::ConstantInt::get(Int32Ty, 1);
+
+  k = Builder.CreateLoad(OuterIndex, "k");
+  k = Builder.CreateZExt(k, Int64Ty, "k");
+
+  VertexIndex = InnerIndex;
+  vertexIndex = Builder.CreateTrunc(k, Int32Ty);
+  Builder.CreateStore(vertexIndex, VertexIndex);
+
+  EmitStmt(S.getBody());
+
+  vertexIndex = Builder.CreateAdd(vertexIndex, One32);
+  Builder.CreateStore(vertexIndex, VertexIndex);
+
+  EmitStmt(S.getBody());
+
+  VertexIndex = 0;
+
+  EmitBlock(Done2);
 }
 
 void CodeGenFunction::EmitForallEdgesVertices(const ForallMeshStmt &S){

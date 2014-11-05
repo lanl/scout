@@ -63,7 +63,7 @@ uniform mesh MyMesh {
 };
 
 int main(int argc, char** argv) {
-  MyMesh m[2,2];
+  MyMesh m[5];
 
   int i = 0;
   forall vertices v in m {
@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
     }
   }
 
-  int expected[] = {3, 5, 7, 9, 11, 13, 1, 3, 7, 9, 13, 15};
+  int expected[] = {1, 3, 5, 7, 9};
 
   i = 0;
   forall edges e in m {

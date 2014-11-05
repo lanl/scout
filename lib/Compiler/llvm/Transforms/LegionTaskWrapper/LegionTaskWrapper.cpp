@@ -162,8 +162,8 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       // TODO fix codegen to store argc and argv in task args in lsci_main(), then use
       // liblsci interface to to allow you to get them back within main_task().
 
-      Instruction* argc_store;
-      Instruction* argv_store;
+      Instruction* argc_store = NULL;
+      Instruction* argv_store = NULL;
 
       // for each basic block in main_task()
       for(BB = mainTaskFunc->begin() ; BB != mainTaskFunc->end(); ++BB) {

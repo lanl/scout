@@ -492,8 +492,6 @@ CGMeshLayout *CodeGenTypes::ComputeMeshLayout(const MeshDecl *D,
 
   const ASTMeshLayout &AST_ML = getContext().getASTMeshLayout(D);
   MeshDecl::field_iterator it = D->field_begin();
-  const MeshFieldDecl *LastFD = 0;
-  (void)LastFD; //suppress warning
   for (unsigned i = 0, e = AST_ML.getFieldCount(); i != e; ++i, ++it) {
     const MeshFieldDecl *FD = *it;
 
@@ -503,13 +501,11 @@ CGMeshLayout *CodeGenTypes::ComputeMeshLayout(const MeshDecl *D,
       unsigned FieldNo = ML->getLLVMFieldNo(FD);
       assert(AST_ML.getFieldOffset(i) == SL->getElementOffsetInBits(FieldNo) &&
              "Invalid field offset!");
-      LastFD = FD;
       continue;
     }
 
     // Ignore unnamed bit-fields.
     if (!FD->getDeclName()) {
-      LastFD = FD;
       continue;
     }
 

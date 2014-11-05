@@ -480,7 +480,7 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        EmitBlock(FlagElse);
 
        //all indices are in range, compute the linear index
-       llvm::Value *idx;
+       llvm::Value *idx = NULL;
        switch(args.size()) {
 				 case 1:
 					 idx = indices[0];
