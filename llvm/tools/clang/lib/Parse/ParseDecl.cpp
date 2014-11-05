@@ -5124,6 +5124,15 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
     } else if (Tok.is(tok::l_square)) {
       ParseBracketDeclarator(D);
     } else {
+      // +===== Scout ============================================================+
+      const DeclSpec& DS = D.getDeclSpec();
+      if (DS.getTypeSpecType() == DeclSpec::TST_query) {
+        ParsedAttributes attrs(AttrFactory);
+        MaybeParseCXX11Attributes(attrs);
+        
+        D.AddTypeInfo(DeclaratorChunk::getQuery(Tok.getLocation()), attrs, Tok.getLocation());
+      }
+      // +========================================================================+
       break;
     }
   }

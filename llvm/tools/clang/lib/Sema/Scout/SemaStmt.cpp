@@ -217,7 +217,7 @@ ExprResult Sema::ActOnQueryExpr(SourceLocation FromLoc,
                                 Expr* Field,
                                 Expr* Predicate){
 
-  QueryExpr* QE = new (Context) QueryExpr(Context.getQueryType(MeshDecl),
+  QueryExpr* QE = new (Context) QueryExpr(Context.getQueryType(),
                                           FromLoc,
                                           MeshDecl,
                                           Field,

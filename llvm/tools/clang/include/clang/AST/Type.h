@@ -3780,10 +3780,10 @@ class QueryType : public Type {
   friend class ASTContext;  // ASTContext creates these.
   
 public:
-  QueryType(VarDecl* MD)
-  : QueryType(Query, MD, QualType()) { }
+  QueryType()
+  : QueryType(Query, QualType()) { }
   
-  QueryType(TypeClass TC, VarDecl* MD, QualType can)
+  QueryType(TypeClass TC, QualType can)
   : Type(TC, can, false,
          /*InstantiationDependent*/false,
          /*VariablyModified*/false,

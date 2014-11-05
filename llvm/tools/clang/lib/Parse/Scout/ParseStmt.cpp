@@ -316,7 +316,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
     SkipUntil(tok::semi);
     return StmtError();
   }
-
+  
   DeclStmt* Init; //declstmt for forall implicit variable
   
   const MeshType *RefMeshType = LookupMeshType(VD, IdentInfo);
@@ -338,7 +338,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   else{
     const QueryType *RefQueryType = LookupQueryType(VD, IdentInfo);
     if(RefQueryType){
-      llvm::errs() << "got query\n";
+
     }
     else{
       Diag(IdentLoc, diag::err_expected_a_mesh_or_query_type);
