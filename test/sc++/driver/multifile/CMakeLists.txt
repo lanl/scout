@@ -48,49 +48,18 @@
 #
 ###########################################################################
 #
-#  Notes: 
+#  Notes: test driver compiling 2 files at once
 
-project(scout_test_scpp_driver)
+project(scout_test_scpp_driver_multifile)
 
-set(SRC_PATH ${CMAKE_SOURCE_DIR}/sc++/driver)
+set(SRC_PATH ${CMAKE_SOURCE_DIR}/sc++/driver/multifile)
+set(SCXX_DRIVER ${CMAKE_BINARY_DIR}/../bin/sc++)
 
-  # Note: By default we pull in all the .scpp source files in this
-  # directory for inclusion into the regression checks.  If you want do
-  # build more complex tests we suggest creating a subdirectory for the
-  # source.
-  #
-  file(GLOB SC_SRCS *.scpp) 
-  set(test symlink.scpp)
-  # Add an executable and test entry for each source file...
-  foreach (test ${SC_SRCS})
+# compile 2 files together
+set(tname sc++_driver_multifile)
+add_test(${tname} ${SCXX_DRIVER} -o ${tname}-exe ${SRC_PATH}/main.scpp ${SRC_PATH}/update.scpp)
 
-    get_filename_component(tname ${test} NAME_WE) 
-    if (NOT tname) 
-      message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
-    else (NOT tname)
-      if(tname STREQUAL "no-semicolon")
-      else()
-        set(fname "sc++_driver_${tname}")
-        add_executable("${fname}" ${test})
-        add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
-        message(" + added runtime regression test entry: ${fname}")
-      endif()
-    endif(NOT tname)
-  endforeach(test)
-
-add_subdirectory(multifile)
-
-set(name no-semicolon)
-set(tname sc++_driver_${name})
-set(FLAGS "-###")
-add_test(${tname} ${CMAKE_SCC_COMPILER} ${FLAGS} ${SRC_PATH}/${name}.scpp)
-set_property(TEST ${tname} PROPERTY FAIL_REGULAR_EXPRESSION
-    "[;]")
-
-find_package(EXPECT)                                                                                         
-if(EXPECT_FOUND)    
-  set (name debugflag)
-  set(tname sc++_driver_${name})
-  add_test(${tname} ${SRC_PATH}/debugflag.exp ${SRC_PATH} "sc++" "scpp")
-endif()
+# run resulting exe
+add_test(${tname}-run ${tname}-exe)
+set_tests_properties(${tname}-run PROPERTIES DEPENDS ${tname}-exe)
 
