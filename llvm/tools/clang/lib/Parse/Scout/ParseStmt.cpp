@@ -320,6 +320,8 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
 
   DeclStmt* Init = NULL; //declstmt for forall implicit variable
   
+  QueryExpr* QE = 0;
+  
   const MeshType *RefMeshType = LookupMeshType(VD, IdentInfo);
   if(RefMeshType){
     
@@ -339,10 +341,10 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   else{
     const QueryType *RefQueryType = LookupQueryType(VD, IdentInfo);
     if(RefQueryType){
-      QueryExpr* qe = dyn_cast<QueryExpr>(VD->getInit());
-      assert(qe && "expected a query expression");
+      QE = dyn_cast<QueryExpr>(VD->getInit());
+      assert(QE && "expected a query expression");
 
-      const MemberExpr* memberExpr = qe->getField();
+      const MemberExpr* memberExpr = QE->getField();
       const DeclRefExpr* base = dyn_cast<DeclRefExpr>(memberExpr->getBase());
       assert(base && "expected a DeclRefExpr");
       
@@ -351,7 +353,11 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
       
       assert(base && "expected an ImplicitMeshParamDecl");
       
-      const VarDecl* mvd = imp->getMeshVarDecl();
+      VD = imp->getMeshVarDecl();
+      
+      QualType qt = VD->getType();
+      RefMeshType = dyn_cast<MeshType>(qt.getTypePtr());
+      assert(RefMeshType && "expected a mesh type");
     }
     else{
       Diag(IdentLoc, diag::err_expected_a_mesh_or_query_type);
@@ -417,7 +423,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
                                                         LParenLoc,
                                                         Predicate,
                                                         RParenLoc,
-                                                        Init, Body);
+                                                        Init, QE, Body);
   if (! ForallResult.isUsable())
     return StmtError();
 

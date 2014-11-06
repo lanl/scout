@@ -88,14 +88,18 @@ namespace clang {
       ElementType = ET;
     }
 
+    VarDecl *getBaseVarDecl(){
+      return BVD;
+    }
+    
     const VarDecl *getBaseVarDecl() const {
       return BVD;
     }
-
-    const VarDecl* getMeshVarDecl() const {
-      const VarDecl* VD = BVD;
+    
+    VarDecl* getMeshVarDecl() const{
+      VarDecl* VD = BVD;
       for(;;){
-        if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
+        if(ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
           VD = IP->getBaseVarDecl();
         }
         else{
