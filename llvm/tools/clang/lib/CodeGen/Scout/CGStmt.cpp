@@ -500,18 +500,12 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
 }
 
 void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
-  //SC_TODO: this will not work inside a function
-  unsigned int rank = S.getMeshType()->rankOf();
 
   EmitMarkerBlock("forall.edges.entry");
 
-  if(rank == 1){
-    EdgeIndex = InnerIndex;
-    Builder.CreateStore(InductionVar[0], EdgeIndex);
-    EmitStmt(S.getBody());
-    EdgeIndex = 0;
-    return;
-  }
+  llvm::Value *width, *height, *width1, *height1, *w1h, *i, *j, *k ,*a, *b, *c;
+  llvm::Value *edgePos, *Cond, *x, *y, *z, *c1, *c2, *e1, *e2, *v1;
+  llvm::Value *newEdgePos, *newEdgeIndex, *edgePosPtr;
 
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
@@ -520,148 +514,178 @@ void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
   llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
   llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
 
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
+
+  llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
+  llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
+  llvm::BasicBlock *Then2 = createBasicBlock("rank2.then");
+  llvm::BasicBlock *Else2 = createBasicBlock("rank2.else");
+  llvm::BasicBlock *Done = createBasicBlock("rank.done");
+
+  //rank = 3
+  llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, Three);
+  Builder.CreateCondBr(Check3, Then3, Else3);
+  EmitBlock(Then3);
+
   EdgeIndex = InnerIndex;
-  llvm::Value* edgePosPtr = InnerInductionVar;
+  edgePosPtr = InnerInductionVar;
   Builder.CreateStore(Zero, edgePosPtr);
 
-  if(rank == 3){
-    llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
-    llvm::Value* width1 = Builder.CreateLoad(MeshDimsP1[0], "width1");
-    llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
-    llvm::Value* height1 = Builder.CreateLoad(MeshDimsP1[1], "height1");
-    //llvm::Value* depth = Builder.CreateLoad(MeshDims[2], "depth");
-    llvm::Value* depth1 = Builder.CreateLoad(MeshDimsP1[2], "depth1");
+  width = Builder.CreateLoad(MeshDims[0], "width");
+  width1 = Builder.CreateLoad(MeshDimsP1[0], "width1");
+  height = Builder.CreateLoad(MeshDims[1], "height");
+  height1 = Builder.CreateLoad(MeshDimsP1[1], "height1");
 
-    llvm::Value* w1h = Builder.CreateMul(width1, height, "w1h");
-    llvm::Value* h1w = Builder.CreateMul(height1, width, "h1w");
+  llvm::Value* depth1 = Builder.CreateLoad(MeshDimsP1[2], "depth1");
 
-    llvm::Value* c = Builder.CreateAdd(h1w, w1h);
-    llvm::Value* a = Builder.CreateMul(depth1, c);
-    llvm::Value* b = Builder.CreateMul(width1, height1);
+  w1h = Builder.CreateMul(width1, height, "w1h");
+  llvm::Value* h1w = Builder.CreateMul(height1, width, "h1w");
 
-    llvm::Value* i = Builder.CreateLoad(InductionVar[0]);
-    llvm::Value* j = Builder.CreateLoad(InductionVar[1]);
-    llvm::Value* k = Builder.CreateLoad(InductionVar[2]);
+  c = Builder.CreateAdd(h1w, w1h);
+  a = Builder.CreateMul(depth1, c);
+  b = Builder.CreateMul(width1, height1);
 
-    llvm::BasicBlock *LoopBlock = createBasicBlock("forall.edges.loop");
-    Builder.CreateBr(LoopBlock);
+  i = Builder.CreateLoad(InductionVar[0]);
+  j = Builder.CreateLoad(InductionVar[1]);
+  k = Builder.CreateLoad(InductionVar[2]);
 
-    EmitBlock(LoopBlock);
+  llvm::BasicBlock *LoopBlock = createBasicBlock("forall.edges.loop");
+  Builder.CreateBr(LoopBlock);
 
-    llvm::Value* edgePos = Builder.CreateLoad(edgePosPtr, "edge.pos");
+  EmitBlock(LoopBlock);
 
-    llvm::Value* pm4 = Builder.CreateURem(edgePos, Four);
-    llvm::Value* pm2 = Builder.CreateURem(edgePos, Two);
-    llvm::Value* c1 = Builder.CreateICmpEQ(pm4, Two);
-    llvm::Value* c2 = Builder.CreateICmpEQ(pm4, Three);
-    llvm::Value* c3 = Builder.CreateICmpUGT(edgePos, Three);
-    llvm::Value* x = Builder.CreateSelect(c1, Builder.CreateAdd(i, One), i);
-    llvm::Value* y = Builder.CreateSelect(c2, Builder.CreateAdd(j, One), j);
-    llvm::Value* z = Builder.CreateSelect(c3, Builder.CreateAdd(k, One), k);
+  edgePos = Builder.CreateLoad(edgePosPtr, "edge.pos");
 
-    llvm::Value* e1 = Builder.CreateAdd(x, Builder.CreateAdd(w1h, Builder.CreateMul(y, width)));
-    llvm::Value* e2 = Builder.CreateAdd(x, Builder.CreateMul(y, width1));
-    llvm::Value* c4 = Builder.CreateICmpEQ(pm2, One);
+  llvm::Value* pm4 = Builder.CreateURem(edgePos, Four);
+  llvm::Value* pm2 = Builder.CreateURem(edgePos, Two);
+  c1 = Builder.CreateICmpEQ(pm4, Two);
+  c2 = Builder.CreateICmpEQ(pm4, Three);
+  llvm::Value* c3 = Builder.CreateICmpUGT(edgePos, Three);
+  x = Builder.CreateSelect(c1, Builder.CreateAdd(i, One), i);
+  y = Builder.CreateSelect(c2, Builder.CreateAdd(j, One), j);
+  z = Builder.CreateSelect(c3, Builder.CreateAdd(k, One), k);
 
-    llvm::Value* newEdgeIndex =
-        Builder.CreateAdd(Builder.CreateMul(z, c), Builder.CreateSelect(c4, e1, e2));
+  e1 = Builder.CreateAdd(x, Builder.CreateAdd(w1h, Builder.CreateMul(y, width)));
+  e2 = Builder.CreateAdd(x, Builder.CreateMul(y, width1));
+  llvm::Value* c4 = Builder.CreateICmpEQ(pm2, One);
 
-    Builder.CreateStore(newEdgeIndex, EdgeIndex);
+  newEdgeIndex =
+      Builder.CreateAdd(Builder.CreateMul(z, c), Builder.CreateSelect(c4, e1, e2));
 
-    llvm::Value* newEdgePos = Builder.CreateAdd(edgePos, One);
-    Builder.CreateStore(newEdgePos, edgePosPtr);
+  Builder.CreateStore(newEdgeIndex, EdgeIndex);
 
-    EmitStmt(S.getBody());
+  newEdgePos = Builder.CreateAdd(edgePos, One);
+  Builder.CreateStore(newEdgePos, edgePosPtr);
 
-    llvm::Value* Cond = Builder.CreateICmpSLT(edgePos, Seven, "cond");
+  EmitStmt(S.getBody());
 
-    llvm::BasicBlock *ExitBlock = createBasicBlock("forall.edges.exit");
-    Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
-    EmitBlock(ExitBlock);
+  Cond = Builder.CreateICmpSLT(edgePos, Seven, "cond");
 
-    Builder.CreateStore(Zero, edgePosPtr);
+  llvm::BasicBlock *ExitBlock = createBasicBlock("forall.edges.exit");
+  Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
+  EmitBlock(ExitBlock);
 
-    llvm::BasicBlock *LoopBlock2 = createBasicBlock("forall.edges.loop2");
-    Builder.CreateBr(LoopBlock2);
+  Builder.CreateStore(Zero, edgePosPtr);
 
-    EmitBlock(LoopBlock2);
+  llvm::BasicBlock *LoopBlock2 = createBasicBlock("forall.edges.loop2");
+  Builder.CreateBr(LoopBlock2);
 
-    edgePos = Builder.CreateLoad(edgePosPtr, "edge.pos");
+  EmitBlock(LoopBlock2);
 
-    pm2 = Builder.CreateURem(edgePos, Two);
-    llvm::Value* pd2 = Builder.CreateUDiv(edgePos, Two);
+  edgePos = Builder.CreateLoad(edgePosPtr, "edge.pos");
 
-    x = Builder.CreateAdd(i, pm2);
-    y = Builder.CreateAdd(j, pd2);
+  pm2 = Builder.CreateURem(edgePos, Two);
+  llvm::Value* pd2 = Builder.CreateUDiv(edgePos, Two);
 
-    llvm::Value* v1 = Builder.CreateAdd(a, Builder.CreateMul(b, k));
-    llvm::Value* v2 = Builder.CreateAdd(x, Builder.CreateMul(width1, y));
+  x = Builder.CreateAdd(i, pm2);
+  y = Builder.CreateAdd(j, pd2);
 
-    newEdgeIndex = Builder.CreateAdd(v1, v2);
+  v1 = Builder.CreateAdd(a, Builder.CreateMul(b, k));
+  llvm::Value* v2 = Builder.CreateAdd(x, Builder.CreateMul(width1, y));
 
-    Builder.CreateStore(newEdgeIndex, EdgeIndex);
+  newEdgeIndex = Builder.CreateAdd(v1, v2);
 
-    newEdgePos = Builder.CreateAdd(edgePos, One);
-    Builder.CreateStore(newEdgePos, edgePosPtr);
+  Builder.CreateStore(newEdgeIndex, EdgeIndex);
 
-    EmitStmt(S.getBody());
+  newEdgePos = Builder.CreateAdd(edgePos, One);
+  Builder.CreateStore(newEdgePos, edgePosPtr);
 
-    Cond = Builder.CreateICmpSLT(edgePos, Three, "cond");
+  EmitStmt(S.getBody());
 
-    llvm::BasicBlock *ExitBlock2 = createBasicBlock("forall.edges.exit2");
-    Builder.CreateCondBr(Cond, LoopBlock2, ExitBlock2);
-    EmitBlock(ExitBlock2);
+  Cond = Builder.CreateICmpSLT(edgePos, Three, "cond");
 
-    EdgeIndex = 0;
-  }
-  else if(rank == 2){
-    llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
-    llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
-    llvm::Value* width1 =  Builder.CreateLoad(MeshDimsP1[0], "width1");
-    llvm::Value* w1h = Builder.CreateMul(width1, height, "w1h");
-    llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
-    llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
+  llvm::BasicBlock *ExitBlock2 = createBasicBlock("forall.edges.exit2");
+  Builder.CreateCondBr(Cond, LoopBlock2, ExitBlock2);
+  EmitBlock(ExitBlock2);
 
-    llvm::BasicBlock *LoopBlock = createBasicBlock("forall.edges.loop");
-    Builder.CreateBr(LoopBlock);
+  EdgeIndex = 0;
+  Builder.CreateBr(Done);
 
-    EmitBlock(LoopBlock);
+  // rank !=3
+  EmitBlock(Else3);
 
-    llvm::Value* edgePos = Builder.CreateLoad(edgePosPtr, "edge.pos");
+  // rank = 2
+  llvm::Value *Check2 = Builder.CreateICmpEQ(Rank, Two);
+  Builder.CreateCondBr(Check2, Then2, Else2);
+  EmitBlock(Then2);
 
-    llvm::Value* c1 = Builder.CreateICmpEQ(edgePos, Two);
-    llvm::Value* c2 = Builder.CreateICmpEQ(edgePos, Three);
+  EdgeIndex = InnerIndex;
+  edgePosPtr = InnerInductionVar;
+  Builder.CreateStore(Zero, edgePosPtr);
 
-    llvm::Value* x = Builder.CreateSelect(c1, Builder.CreateAdd(i, One), i);
-    llvm::Value* y = Builder.CreateSelect(c2, Builder.CreateAdd(j, One), j);
+  width = Builder.CreateLoad(MeshDims[0], "width");
+  height = Builder.CreateLoad(MeshDims[1], "height");
+  width1 =  Builder.CreateLoad(MeshDimsP1[0], "width1");
+  w1h = Builder.CreateMul(width1, height, "w1h");
+  i = Builder.CreateLoad(InductionVar[0], "i");
+  j = Builder.CreateLoad(InductionVar[1], "j");
 
-    llvm::Value* v1 = Builder.CreateMul(y, width);
-    llvm::Value* e1 = Builder.CreateAdd(w1h, Builder.CreateAdd(v1, x));
-    llvm::Value* e2 = Builder.CreateAdd(Builder.CreateMul(y, width1), x);
+  llvm::BasicBlock *LoopBlock3 = createBasicBlock("forall.edges.loop");
+  Builder.CreateBr(LoopBlock3);
 
-    llvm::Value* h = Builder.CreateURem(edgePos, Two);
+  EmitBlock(LoopBlock3);
 
-    llvm::Value* newEdgeIndex =
-        Builder.CreateSelect(Builder.CreateICmpEQ(h, One), e1, e2);
+  edgePos = Builder.CreateLoad(edgePosPtr, "edge.pos");
 
-    Builder.CreateStore(newEdgeIndex, EdgeIndex);
+  c1 = Builder.CreateICmpEQ(edgePos, Two);
+  c2 = Builder.CreateICmpEQ(edgePos, Three);
 
-    EmitStmt(S.getBody());
+  x = Builder.CreateSelect(c1, Builder.CreateAdd(i, One), i);
+  y = Builder.CreateSelect(c2, Builder.CreateAdd(j, One), j);
 
-    EdgeIndex = 0;
+  v1 = Builder.CreateMul(y, width);
+  e1 = Builder.CreateAdd(w1h, Builder.CreateAdd(v1, x));
+  e2 = Builder.CreateAdd(Builder.CreateMul(y, width1), x);
 
-    llvm::Value* newEdgePos = Builder.CreateAdd(edgePos, One);
-    Builder.CreateStore(newEdgePos, edgePosPtr);
+  llvm::Value* h = Builder.CreateURem(edgePos, Two);
 
-    llvm::Value* Cond = Builder.CreateICmpSLT(edgePos, Three, "cond");
+  newEdgeIndex =
+      Builder.CreateSelect(Builder.CreateICmpEQ(h, One), e1, e2);
 
-    llvm::BasicBlock *ExitBlock = createBasicBlock("forall.edges.exit");
-    Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
-    EmitBlock(ExitBlock);
-  }
-  else{
-    assert(false && "invalid rank");
-  }
+  Builder.CreateStore(newEdgeIndex, EdgeIndex);
+
+  EmitStmt(S.getBody());
+
+  newEdgePos = Builder.CreateAdd(edgePos, One);
+  Builder.CreateStore(newEdgePos, edgePosPtr);
+
+  Cond = Builder.CreateICmpSLT(edgePos, Three, "cond");
+
+  llvm::BasicBlock *ExitBlock3 = createBasicBlock("forall.edges.exit");
+  Builder.CreateCondBr(Cond, LoopBlock3, ExitBlock3);
+  EmitBlock(ExitBlock3);
+  EdgeIndex = 0;
+  Builder.CreateBr(Done);
+
+  // rank !=2 (rank = 1)
+  EmitBlock(Else2);
+  EdgeIndex = InnerIndex;
+  Builder.CreateStore(Builder.CreateLoad(InductionVar[0]), EdgeIndex);
+  EmitStmt(S.getBody());
+  EdgeIndex = 0;
+  Builder.CreateBr(Done);
+
+  EmitBlock(Done);
 }
 
 void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
