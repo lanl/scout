@@ -696,7 +696,7 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
 
   if(rank == 1){
     FaceIndex = InnerIndex;
-    Builder.CreateStore(InductionVar[0], FaceIndex);
+    Builder.CreateStore(Builder.CreateLoad(InductionVar[0]), FaceIndex);
     EmitStmt(S.getBody());
     FaceIndex = 0;
     return;
