@@ -1892,6 +1892,16 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(
 
       ExprResult Init(ParseInitializer());
 
+      // +===== Scout ======================
+      if(QueryExpr* qe = dyn_cast<QueryExpr>(Init.get())){
+        TypeSourceInfo* tsi = Actions.GetTypeForDeclarator(D, 0);
+        QualType qt = tsi->getType();
+        //QueryType* qt = qt
+        //qt.dump();
+        //DeclSpec& ds = D.getMutableDeclSpec();
+      }
+      // +==================================
+      
       // If this is the only decl in (possibly) range based for statement,
       // our best guess is that the user meant ':' instead of '='.
       if (Tok.is(tok::r_paren) && FRI && D.isFirstDeclarator()) {
@@ -5130,7 +5140,8 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
         ParsedAttributes attrs(AttrFactory);
         MaybeParseCXX11Attributes(attrs);
         
-        D.AddTypeInfo(DeclaratorChunk::getQuery(Tok.getLocation()), attrs, Tok.getLocation());
+        D.AddTypeInfo(DeclaratorChunk::getQuery(Tok.getLocation()),
+                      attrs, Tok.getLocation());
       }
       // +========================================================================+
       break;

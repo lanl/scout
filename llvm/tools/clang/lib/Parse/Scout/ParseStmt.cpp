@@ -54,6 +54,7 @@
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
 #include "clang/AST/Scout/MeshDecls.h"
+#include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/PrettyStackTrace.h"
 #include "clang/Basic/SourceManager.h"
@@ -338,7 +339,19 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   else{
     const QueryType *RefQueryType = LookupQueryType(VD, IdentInfo);
     if(RefQueryType){
+      QueryExpr* qe = dyn_cast<QueryExpr>(VD->getInit());
+      assert(qe && "expected a query expression");
 
+      const MemberExpr* memberExpr = qe->getField();
+      const DeclRefExpr* base = dyn_cast<DeclRefExpr>(memberExpr->getBase());
+      assert(base && "expected a DeclRefExpr");
+      
+      const ImplicitMeshParamDecl* imp =
+      dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
+      
+      assert(base && "expected an ImplicitMeshParamDecl");
+      
+      const VarDecl* mvd = imp->getMeshVarDecl();
     }
     else{
       Diag(IdentLoc, diag::err_expected_a_mesh_or_query_type);
