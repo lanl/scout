@@ -709,7 +709,7 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
   //llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
   //llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
 
-  EdgeIndex = InnerIndex;
+  FaceIndex = InnerIndex;
   llvm::Value* facePosPtr = InnerInductionVar;
   Builder.CreateStore(Zero, facePosPtr);
 
