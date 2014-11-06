@@ -2042,6 +2042,8 @@ public:
                        llvm::Value** numVertices,
                        llvm::Value** numEdges,
                        llvm::Value** numFaces);
+  void GetNumMeshItems(llvm::Value** numCells, llvm::Value** numVertices,
+      llvm::Value** numEdges, llvm::Value** numFaces);
 
   // +========================================================================+
 
