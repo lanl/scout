@@ -188,7 +188,7 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
                                      IdentifierInfo* MeshInfo,
                                      SourceLocation LParenLoc,
                                      Expr* Predicate, SourceLocation RParenLoc,
-                                     DeclStmt* Init, Stmt* Body) {
+                                     DeclStmt* Init, QueryExpr* QE, Stmt* Body) {
 
   SCLStack.pop_back();
 
@@ -196,7 +196,7 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
                                                     RefVarInfo,
                                                     MeshInfo, MVD, MT,
                                                     ForallLoc,
-                                                    Init, Body, Predicate,
+                                                    Init, QE, Body, Predicate,
                                                     LParenLoc, RParenLoc);
 
   // check that LHS mesh field assignment
