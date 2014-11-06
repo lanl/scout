@@ -966,7 +966,7 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
       DeclaratorChunk &DeclType = declarator.getTypeObject(i);
       switch(DeclType.Kind) {
         case DeclaratorChunk::Query: {
-          Result = Context.getQueryType(DeclType.Qry.MD);
+          Result = Context.getQueryType();
           break;
         }
         default:
@@ -1878,10 +1878,10 @@ QualType Sema::BuildImageType(QualType T, const llvm::SmallVector<Expr*,2> &dims
   return QualType();  
 }
 
-QualType Sema::BuildQueryType(QualType T, VarDecl* MD) {
+QualType Sema::BuildQueryType(QualType T) {
   const QueryType* qt = dyn_cast<QueryType>(T.getCanonicalType().getTypePtr());
   if (qt) {
-    return Context.getQueryType(MD);
+    return Context.getQueryType();
   }
   return QualType();
 }
@@ -2326,7 +2326,7 @@ static QualType GetDeclSpecTypeForDeclarator(TypeProcessingState &state,
 
   // The TagDecl owned by the DeclSpec.
   TagDecl *OwnedTagDecl = nullptr;
-
+  
   bool ContainsPlaceholderType = false;
 
   switch (D.getName().getKind()) {
@@ -2956,7 +2956,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     }
         
     case DeclaratorChunk::Query: {
-      T = S.BuildQueryType(T, DeclType.Qry.MD);
+      T = S.BuildQueryType(T);
       break;
     }
 

@@ -1261,8 +1261,6 @@ struct DeclaratorChunk {
   };
   
   struct QueryTypeInfo : TypeInfoCommon {
-    VarDecl* MD;
-    
     void destroy() {}
   };
 
@@ -1759,14 +1757,10 @@ struct DeclaratorChunk {
     return I;
   }
   
-  static DeclaratorChunk getQuery(VarDecl* MD,
-                                  SourceLocation LBLoc,
-                                  SourceLocation RBLoc) {
+  static DeclaratorChunk getQuery(SourceLocation Loc) {
     DeclaratorChunk I;
     I.Kind           = Query;
-    I.Loc            = LBLoc;
-    I.EndLoc         = RBLoc;
-    I.Qry.MD         = MD;
+    I.Loc            = Loc;
     return I;
   }
   
