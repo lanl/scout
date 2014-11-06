@@ -63,16 +63,23 @@ uniform mesh MyMesh {
 };
 
 int main(int argc, char** argv) {
-  MyMesh m[2,2];
-
-  int i = 0;
-  forall edges e in m {
-    b = i;
-    ++i;
-  }
+  MyMesh m[2,2,2];
 
   forall cells c in m {
     a = 0;
+  }
+
+  int i = 0;
+  forall edges e in m {
+    // set to 1, 2 or 3 depending on edge direction
+    if (i < 6) b = 1;
+    else if (i < 12) b = 2;
+    else if (i < 18) b = 1;
+    else if (i < 24) b = 2;
+    else if (i < 30) b = 1;
+    else if (i < 36) b = 2;
+    else b = 3; 
+    ++i;
   }
 
   forall cells c in m {
@@ -81,12 +88,10 @@ int main(int argc, char** argv) {
     }
   }
 
-  int expected[] = {15, 19, 25, 29}; 
+  int expected = 24; 
   
-  i = 0;
   forall cells c in m {
-    assert(a == expected[i] && "unexpected value");
-    ++i;
+    assert(a == expected && "unexpected value");
   }
   
   return 0;
