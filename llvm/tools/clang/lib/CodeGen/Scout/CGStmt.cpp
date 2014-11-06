@@ -573,8 +573,6 @@ void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
 
     EmitStmt(S.getBody());
 
-    EdgeIndex = 0;
-
     llvm::Value* Cond = Builder.CreateICmpSLT(edgePos, Seven, "cond");
 
     llvm::BasicBlock *ExitBlock = createBasicBlock("forall.edges.exit");
@@ -608,13 +606,13 @@ void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
 
     EmitStmt(S.getBody());
 
-    EdgeIndex = 0;
-
     Cond = Builder.CreateICmpSLT(edgePos, Three, "cond");
 
     llvm::BasicBlock *ExitBlock2 = createBasicBlock("forall.edges.exit2");
     Builder.CreateCondBr(Cond, LoopBlock2, ExitBlock2);
     EmitBlock(ExitBlock2);
+
+    EdgeIndex = 0;
   }
   else if(rank == 2){
     llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
