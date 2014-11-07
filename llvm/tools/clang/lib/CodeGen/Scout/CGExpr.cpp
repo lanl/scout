@@ -702,4 +702,6 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   B.CreateStore(B.CreateBitCast(queryFunc, CGM.VoidPtrTy), funcField);
   B.CreateStore(B.CreateBitCast(baseAddr, CGM.VoidPtrTy), meshPtrField);
+  
+  LocalDeclMap[VD] = qp;
 }

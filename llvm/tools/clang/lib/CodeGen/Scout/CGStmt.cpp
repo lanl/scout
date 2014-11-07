@@ -1412,7 +1412,67 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 //
 
 void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
+  VarDecl* qd = S.getQueryVarDecl();
 
+  if(qd){
+    using namespace std;
+    using namespace llvm;
+    
+    auto& B = Builder;
+    
+    typedef vector<llvm::Type*> TypeVec;
+    typedef vector<Value*> ValueVec;
+    
+    const MeshType* cmt = S.getMeshType();
+    
+    StructType* mt =
+    cast<StructType>(ConvertType(QualType(cmt, 0)));
+    
+    size_t numFields = mt->getNumElements();
+    
+    llvm::PointerType* mpt =
+    llvm::PointerType::get(mt, 0);
+    
+    llvm::PointerType* outTy = llvm::PointerType::get(Int8Ty, 0);
+    
+    TypeVec params = {mpt, outTy, Int64Ty, Int64Ty};
+    llvm::FunctionType* ft = llvm::FunctionType::get(VoidTy, params, false);
+    
+    Value* qp = LocalDeclMap[qd];
+    
+    Value* rawFuncPtr = B.CreateStructGEP(qp, 0, "query.func.ptr");
+    Value* funcPtr = B.CreateBitCast(rawFuncPtr, llvm::PointerType::get(ft, 0));
+    
+    Value* rawMeshPtr = B.CreateStructGEP(qp, 1, "query.mesh.ptr");
+    Value* meshPtr = B.CreateBitCast(rawMeshPtr, mpt);
+    
+    Value* depth =
+    B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 2)),
+                 Int64Ty, "depth");
+    
+    Value* height =
+    B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 3)),
+                 Int64Ty, "height");
+    
+    Value* width =
+    B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 4)),
+                 Int64Ty, "width");
+    
+    Value* zero = llvm::ConstantInt::get(Int64Ty, 0);
+    Value* one = llvm::ConstantInt::get(Int64Ty, 1);
+    
+    Value* size = B.CreateMul(width, B.CreateMul(height, depth));
+    Value* end = B.CreateSub(size, one);
+    
+    ValueVec args = {size};
+    llvm::Function* allocFunc = CGM.getScoutRuntime().MemAllocFunction();
+    Value* outPtr = B.CreateCall(allocFunc, args);
+    outPtr = B.CreateBitCast(outPtr, outTy);
+    
+    ValueVec queryArgs = {meshPtr, outPtr, zero, end};
+    B.CreateCall(funcPtr, queryArgs);
+  }
+  
   ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 

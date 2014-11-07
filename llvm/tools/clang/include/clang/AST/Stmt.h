@@ -2415,7 +2415,7 @@ private:
    // and codegen passes...
    IdentifierInfo  *MeshRefVarInfo;
    VarDecl         *MeshVarDecl;
-   QueryExpr       *MeshQueryExpr;
+   VarDecl         *MeshQueryVarDecl;
   
 
   // The mesh location/element we're looping over -- this provides us
@@ -2440,7 +2440,7 @@ public:
                  VarDecl* MVD,
                  const MeshType* MT,
                  SourceLocation ForallLocation,
-                 DeclStmt* Init, QueryExpr* QE, Stmt *Body);
+                 DeclStmt* Init, VarDecl* QD, Stmt *Body);
 
   ForallMeshStmt(MeshElementType RefElement,
                  IdentifierInfo* RefVarInfo,
@@ -2448,7 +2448,7 @@ public:
                  VarDecl* MVD,
                  const MeshType* MT,
                  SourceLocation ForallLocation,
-                 DeclStmt *Init, QueryExpr* QE,
+                 DeclStmt *Init, VarDecl* QD,
                  Stmt *Body,
                  Expr* Predicate,
                  SourceLocation LeftParenLoc,
@@ -2512,8 +2512,8 @@ public:
 
   const MeshType* getMeshType() const { return MeshRefType; }
 
-  QueryExpr* getQueryExpr() const{
-    return MeshQueryExpr;
+  VarDecl* getQueryVarDecl() const{
+    return MeshQueryVarDecl;
   }
   
   static bool classof(const Stmt *T) {

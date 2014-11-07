@@ -8788,7 +8788,7 @@ public:
                                  SourceLocation LParenLoc,
                                  Expr* Predicate,
                                  SourceLocation RParenLoc,
-                                 DeclStmt *Init, QueryExpr* QE, Stmt* Body);
+                                 DeclStmt *Init, VarDecl* QD, Stmt* Body);
 
 
   StmtResult ActOnForallMeshStmt(SourceLocation ForAllLoc,
@@ -8798,7 +8798,7 @@ public:
                                  SourceLocation LParenLoc,
                                  Expr* Predicate,
                                  SourceLocation RParenLoc,
-                                 QueryExpr* QE,
+                                 VarDecl* QD,
                                  Stmt* Body);
 
   StmtResult ActOnForallArrayStmt(IdentifierInfo* InductionVarII[],
