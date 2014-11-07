@@ -1494,7 +1494,8 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 
 void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
   VarDecl* qd = S.getQueryVarDecl();
-
+  llvm::Value* queryMask = 0;
+  
   if(qd){
     using namespace std;
     using namespace llvm;
@@ -1547,10 +1548,10 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
     
     ValueVec args = {size};
     llvm::Function* allocFunc = CGM.getScoutRuntime().MemAllocFunction();
-    Value* outPtr = B.CreateCall(allocFunc, args);
-    outPtr = B.CreateBitCast(outPtr, outTy);
+    queryMask = B.CreateCall(allocFunc, args);
+    queryMask = B.CreateBitCast(queryMask, outTy);
     
-    ValueVec queryArgs = {meshPtr, outPtr, zero, end};
+    ValueVec queryArgs = {meshPtr, queryMask, zero, end};
     B.CreateCall(funcPtr, queryArgs);
   }
   
@@ -1587,7 +1588,7 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
 
   InnerIndex = Builder.CreateAlloca(Int32Ty, 0, "forall.inneridx.ptr");
 
-  EmitForallMeshLoop(S, 3);
+  EmitForallMeshLoop(S, 3, queryMask);
 
   // reset MeshDims, Rank and induction var
   // so width/height etc can't be called after forall
@@ -1596,7 +1597,9 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
 
 
 //generate one of the nested loops
-void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
+void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S,
+                                         unsigned r,
+                                         llvm::Value* queryMask) {
  
   llvm::StringRef MeshName = S.getMeshVarDecl()->getName();
 
@@ -1647,7 +1650,7 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
   llvm::Value *CondValue = Builder.CreateICmpSLT(IVar,
                                                  LoopBound,
                                                  IRNameStr);
-
+  
   llvm::BasicBlock *ExitBlock = LoopExit.getBlock();
 
   // If there are any cleanups between here and the loop-exit
@@ -1675,17 +1678,33 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r) {
 
   BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
   if (r == 1) {  // This is our innermost rank, generate the loop body.
+    
+    if(queryMask){
+      llvm::Value* Mask = Builder.CreateGEP(queryMask, getLinearIdx());
+      Mask = Builder.CreateLoad(Mask);
+      
+      llvm::Value* Zero = llvm::ConstantInt::get(Int8Ty, 0);
+      llvm::Value* Cond = Builder.CreateICmpNE(Mask, Zero);
+      
+      llvm::BasicBlock* Body = createBasicBlock("forall.body");
+      Builder.CreateCondBr(Cond, Body, Continue.getBlock());
+      
+      EmitBlock(Body);
+    }
+
     EmitStmt(S.getBody());
 
     // Increment the loop index stored as last element of InductionVar
-    llvm::LoadInst* liv = Builder.CreateLoad(InductionVar[3], "forall.linearidx");
+    llvm::LoadInst* liv =
+    Builder.CreateLoad(InductionVar[3], "forall.linearidx");
+    
     llvm::Value *IncLoopIndexVar = Builder.CreateAdd(liv,
                                                      ConstantOne,
                                                      "forall.linearidx.inc");
 
     Builder.CreateStore(IncLoopIndexVar, InductionVar[3]);
   } else { // generate nested loop
-    EmitForallMeshLoop(S, r-1);
+    EmitForallMeshLoop(S, r-1, queryMask);
   }
 
   EmitBlock(Continue.getBlock());

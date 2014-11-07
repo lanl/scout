@@ -2144,7 +2144,9 @@ public:
                                           llvm::Value* OuterIndex);
 
   void EmitForallCellsOrVertices(const ForallMeshStmt &S);
-  void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
+  void EmitForallMeshLoop(const ForallMeshStmt &S,
+                          unsigned r,
+                          llvm::Value* queryMask);
   llvm::BasicBlock *EmitMarkerBlock(const std::string name);
   llvm::Function* ExtractRegion(llvm::BasicBlock *entry,
                                 llvm::BasicBlock *exit,
