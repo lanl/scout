@@ -251,6 +251,29 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
 
 }
 
+llvm::Value *CodeGenFunction::getMeshIndex(const MeshFieldDecl* MFD) {
+  llvm::Value* Index;
+
+  if(MFD->isVertexLocated()) {
+    assert(VertexIndex && "null VertexIndex while referencing vertex field");
+    // use the vertex index if we are within a forall vertices
+    Index = Builder.CreateLoad(VertexIndex);
+  } else if(MFD->isEdgeLocated()) {
+    assert(EdgeIndex && "null EdgeIndex while referencing edge field");
+    // use the vertex index if we are within a forall vertices
+    Index = Builder.CreateLoad(EdgeIndex);
+  } else if(MFD->isFaceLocated()) {
+    assert(FaceIndex && "null FaceIndex while referencing face field");
+    // use the vertex index if we are within a forall vertices
+    Index = Builder.CreateLoad(FaceIndex);
+  } else if(MFD->isCellLocated() && CellIndex) {
+    Index = Builder.CreateLoad(CellIndex);
+  } else {
+    Index = getLinearIdx();
+  }
+  return Index;
+}
+
 // compute the linear index based on cshift parameters
 // with circular boundary conditions
 llvm::Value *

@@ -2512,31 +2512,7 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   // +===== Scout ============================================================+
   // check if we are dealing w/ a mesh
   if(const MeshFieldDecl* MFD = dyn_cast<MeshFieldDecl>(E->getMemberDecl())) {
-    llvm::Value* Index;
-
-    if(MFD->isVertexLocated()){
-      assert(VertexIndex && "null VertexIndex while referencing vertex field");
-      // use the vertex index if we are within a forall vertices
-      Index = Builder.CreateLoad(VertexIndex);
-    }
-    else if(MFD->isEdgeLocated()){
-      assert(EdgeIndex && "null EdgeIndex while referencing edge field");
-      // use the vertex index if we are within a forall vertices
-      Index = Builder.CreateLoad(EdgeIndex);
-    }
-    else if(MFD->isFaceLocated()){
-      assert(FaceIndex && "null FaceIndex while referencing face field");
-      // use the vertex index if we are within a forall vertices
-      Index = Builder.CreateLoad(FaceIndex);
-    }
-    else if(MFD->isCellLocated() && CellIndex){
-      Index = Builder.CreateLoad(CellIndex);
-    }
-    else{
-      Index = getLinearIdx();
-    }
-
-    return EmitMeshMemberExpr(E, Index);
+    return EmitMeshMemberExpr(E, getMeshIndex(MFD));
   }
   // +========================================================================+
 

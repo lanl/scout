@@ -250,7 +250,7 @@ void CodeGenFunction::GetNumMeshItems(llvm::Value** numCells, llvm::Value** numV
   if(numCells) {
     width = Builder.CreateLoad(LoopBoundsCells[0], "width");
     height = Builder.CreateLoad(LoopBoundsCells[1], "height");
-    depth = Builder.CreateLoad(LoopBoundsCells[0], "depth");
+    depth = Builder.CreateLoad(LoopBoundsCells[2], "depth");
     n = Builder.CreateMul(depth, Builder.CreateMul(height, width));
     *numCells = Builder.CreateZExt(n, Int64Ty, "numCells");
   }
@@ -259,7 +259,7 @@ void CodeGenFunction::GetNumMeshItems(llvm::Value** numCells, llvm::Value** numV
   if(numVertices) {
     width = Builder.CreateLoad(MeshDimsP1[0], "width");
     height = Builder.CreateLoad(MeshDimsP1[1], "height");
-    depth = Builder.CreateLoad(MeshDimsP1[0], "depth");
+    depth = Builder.CreateLoad(MeshDimsP1[2], "depth");
     n = Builder.CreateMul(depth, Builder.CreateMul(height, width));
     *numVertices = Builder.CreateZExt(n, Int64Ty, "numVertices");
   }
@@ -872,7 +872,7 @@ void CodeGenFunction::EmitForallEdgesCells(const ForallMeshStmt &S){
   llvm::Value *Rank = Builder.CreateLoad(MeshRank);
   llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
   llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
-  llvm::BasicBlock *Done3 = createBasicBlock("done3.else");
+  llvm::BasicBlock *Done3 = createBasicBlock("rank3.done");
   llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 3));
   Builder.CreateCondBr(Check3, Then3, Else3);
 
@@ -901,7 +901,7 @@ CodeGenFunction::EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
 
   llvm::BasicBlock *Then2 = createBasicBlock("rank2.then");
   llvm::BasicBlock *Else2 = createBasicBlock("rank2.else");
-  llvm::BasicBlock *Done2 = createBasicBlock("done2.else");
+  llvm::BasicBlock *Done2 = createBasicBlock("rank2.done");
 
   llvm::Value *Check2 = Builder.CreateICmpEQ(Rank, Two);
   Builder.CreateCondBr(Check2, Then2, Else2);
@@ -987,7 +987,7 @@ void CodeGenFunction::EmitForallFacesCells(const ForallMeshStmt &S){
   llvm::Value *Rank = Builder.CreateLoad(MeshRank);
    llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
    llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
-   llvm::BasicBlock *Done3 = createBasicBlock("done3.else");
+   llvm::BasicBlock *Done3 = createBasicBlock("rank3.done");
    llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 3));
    Builder.CreateCondBr(Check3, Then3, Else3);
 
@@ -1016,7 +1016,7 @@ CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
 
   llvm::BasicBlock *Then2 = createBasicBlock("rank2.then");
   llvm::BasicBlock *Else2 = createBasicBlock("rank2.else");
-  llvm::BasicBlock *Done2 = createBasicBlock("done2.else");
+  llvm::BasicBlock *Done2 = createBasicBlock("rank2.done");
 
   llvm::Value *Check2 = Builder.CreateICmpEQ(Rank, Two);
   Builder.CreateCondBr(Check2, Then2, Else2);
@@ -1097,7 +1097,7 @@ void CodeGenFunction::EmitForallEdgesVertices(const ForallMeshStmt &S){
   llvm::Value *Rank = Builder.CreateLoad(MeshRank);
   llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
   llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
-  llvm::BasicBlock *Done3 = createBasicBlock("done3.else");
+  llvm::BasicBlock *Done3 = createBasicBlock("rank3.done");
   llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 3));
   Builder.CreateCondBr(Check3, Then3, Else3);
 
@@ -1116,7 +1116,7 @@ void CodeGenFunction::EmitForallFacesVertices(const ForallMeshStmt &S){
   llvm::Value *Rank = Builder.CreateLoad(MeshRank);
   llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
   llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
-  llvm::BasicBlock *Done3 = createBasicBlock("done3.else");
+  llvm::BasicBlock *Done3 = createBasicBlock("rank3.done");
   llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 3));
   Builder.CreateCondBr(Check3, Then3, Else3);
 
@@ -1309,6 +1309,7 @@ void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
 
   SmallVector<llvm::Value*, 3> Dimensions;
   GetMeshDimensions(S.getMeshType(), Dimensions);
+
   
   ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
 
@@ -1926,8 +1927,8 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
   RenderallMeshStmt::MeshElementType ET = S.getMeshElementRef();
 
-  SmallVector<llvm::Value*, 3> Dimensions;
-  GetMeshDimensions(S.getMeshType(), Dimensions);
+  //SmallVector<llvm::Value*, 3> Dimensions;
+  //GetMeshDimensions(S.getMeshType(), Dimensions);
 
   // make quad renderable and add to the window and return color pointer
   // use same args as for RenderallUniformBeginFunction
@@ -1991,8 +1992,9 @@ void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S
 	Builder.CreateStore(Zero, InductionVar[3]);
 	InnerIndex = Builder.CreateAlloca(Int32Ty, 0, "renderall.inneridx.ptr");
 
-	SmallVector<llvm::Value*, 3> Dimensions;
-	GetMeshDimensions(S.getMeshType(), Dimensions);
+	//SmallVector<llvm::Value*, 3> Dimensions;
+	//GetMeshDimensions(S.getMeshType(), Dimensions);
+
 
 	RenderallMeshStmt::MeshElementType ET = S.getMeshElementRef();
 
@@ -2006,23 +2008,25 @@ void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S
 
   llvm::Value** IndexPtr;
 
-  llvm::Value* numItems = 0;
+  llvm::Value* numItems;
   
   switch(ET){
     case ForallMeshStmt::Vertices:
       IndexPtr = &VertexIndex;
-      GetNumMeshItems(Dimensions, 0, &numItems, 0, 0);
+      GetNumMeshItems(0, &numItems, 0, 0);
       break;
     case ForallMeshStmt::Edges:
       IndexPtr = &EdgeIndex;
-      GetNumMeshItems(Dimensions, 0, 0, &numItems, 0);
+      GetNumMeshItems(0, 0, &numItems, 0);
       break;
     case ForallMeshStmt::Faces:
       IndexPtr = &FaceIndex;
-      GetNumMeshItems(Dimensions, 0, 0, 0, &numItems);
+      GetNumMeshItems(0, 0, 0, &numItems);
       break;
     case ForallMeshStmt::Cells:
       IndexPtr = &CellIndex;
+      GetNumMeshItems(&numItems, 0, 0, 0);
+      assert(false && "not valid for cells");
       break;
     case ForallMeshStmt::Undefined:
       assert(false && "Undefined MeshElementType");
