@@ -320,7 +320,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
 
   DeclStmt* Init = NULL; //declstmt for forall implicit variable
   
-  QueryExpr* QE = 0;
+  VarDecl* QD = 0;
   
   const MeshType *RefMeshType = LookupMeshType(VD, IdentInfo);
   if(RefMeshType){
@@ -341,7 +341,9 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   else{
     const QueryType *RefQueryType = LookupQueryType(VD, IdentInfo);
     if(RefQueryType){
-      QE = dyn_cast<QueryExpr>(VD->getInit());
+      QD = VD;
+      
+      const QueryExpr* QE = dyn_cast<QueryExpr>(QD->getInit());
       assert(QE && "expected a query expression");
 
       const MemberExpr* memberExpr = QE->getField();
@@ -423,7 +425,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
                                                         LParenLoc,
                                                         Predicate,
                                                         RParenLoc,
-                                                        Init, QE, Body);
+                                                        Init, QD, Body);
   if (! ForallResult.isUsable())
     return StmtError();
 
