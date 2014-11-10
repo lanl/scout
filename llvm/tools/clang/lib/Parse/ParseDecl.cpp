@@ -1893,12 +1893,16 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(
       ExprResult Init(ParseInitializer());
 
       // +===== Scout ======================
-      if(QueryExpr* qe = dyn_cast<QueryExpr>(Init.get())){
-        TypeSourceInfo* tsi = Actions.GetTypeForDeclarator(D, 0);
-        QualType qt = tsi->getType();
-        //QueryType* qt = qt
-        //qt.dump();
-        //DeclSpec& ds = D.getMutableDeclSpec();
+      if (isScoutLang()) {
+        if(QueryExpr* qe = dyn_cast<QueryExpr>(Init.get())){
+          TypeSourceInfo* tsi = Actions.GetTypeForDeclarator(D, 0);
+          QualType qt = tsi->getType();
+          //QueryType* qt = qt
+          //qt.dump();
+          //DeclSpec& ds = D.getMutableDeclSpec();
+          (void)qt;
+          (void)qe;
+        }
       }
       // +==================================
       
@@ -5135,13 +5139,15 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
       ParseBracketDeclarator(D);
     } else {
       // +===== Scout ============================================================+
-      const DeclSpec& DS = D.getDeclSpec();
-      if (DS.getTypeSpecType() == DeclSpec::TST_query) {
-        ParsedAttributes attrs(AttrFactory);
-        MaybeParseCXX11Attributes(attrs);
-        
-        D.AddTypeInfo(DeclaratorChunk::getQuery(Tok.getLocation()),
-                      attrs, Tok.getLocation());
+      if (isScoutLang()) {
+        const DeclSpec& DS = D.getDeclSpec();
+        if (DS.getTypeSpecType() == DeclSpec::TST_query) {
+          ParsedAttributes attrs(AttrFactory);
+          MaybeParseCXX11Attributes(attrs);
+
+          D.AddTypeInfo(DeclaratorChunk::getQuery(Tok.getLocation()),
+              attrs, Tok.getLocation());
+        }
       }
       // +========================================================================+
       break;

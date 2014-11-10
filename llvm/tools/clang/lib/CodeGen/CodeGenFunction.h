@@ -2186,6 +2186,7 @@ public:
   LValue EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index);
   LValue EmitLValueForMeshField(LValue base, const MeshFieldDecl *field, llvm::Value *Index);
   llvm::Value *getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args);
+  llvm::Value *getMeshIndex(const MeshFieldDecl* MFD);
 
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   RValue EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
