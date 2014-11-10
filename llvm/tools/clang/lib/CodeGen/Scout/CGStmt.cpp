@@ -1522,26 +1522,39 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
     
     Value* qp = LocalDeclMap[qd];
     
-    Value* rawFuncPtr = B.CreateStructGEP(qp, 0, "query.func.ptr");
+    Value* rawFuncPtr = B.CreateStructGEP(qp, 0);
+    rawFuncPtr = B.CreateLoad(rawFuncPtr, "query.func.ptr");
     Value* funcPtr = B.CreateBitCast(rawFuncPtr, llvm::PointerType::get(ft, 0));
     
     Value* rawMeshPtr = B.CreateStructGEP(qp, 1, "query.mesh.ptr");
     Value* meshPtr = B.CreateBitCast(rawMeshPtr, mpt);
-    
-    Value* depth =
+
+    Value* rank = B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 1));
+
+    Value* width =
     B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 2)),
-                 Int64Ty, "depth");
+                 Int64Ty, "width");
     
     Value* height =
     B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 3)),
                  Int64Ty, "height");
     
-    Value* width =
+    Value* depth =
     B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 4)),
-                 Int64Ty, "width");
-    
+                 Int64Ty, "depth");
+
     Value* zero = llvm::ConstantInt::get(Int64Ty, 0);
     Value* one = llvm::ConstantInt::get(Int64Ty, 1);
+    
+    Value* heightCond =
+    B.CreateICmpUGT(rank, llvm::ConstantInt::get(Int32Ty, 1));
+    
+    height = B.CreateSelect(heightCond, height, one);
+    
+    Value* depthCond =
+    B.CreateICmpUGT(rank, llvm::ConstantInt::get(Int32Ty, 2));
+    
+    depth = B.CreateSelect(depthCond, depth, one);
     
     Value* size = B.CreateMul(width, B.CreateMul(height, depth));
     Value* end = B.CreateSub(size, one);

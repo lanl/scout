@@ -575,7 +575,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   using namespace std;
   using namespace llvm;
   
-  //typedef vector<llvm::Value*> ValueVec;
+  typedef vector<llvm::Value*> ValueVec;
   typedef vector<llvm::Type*> TypeVec;
 
   CGBuilderTy& B = Builder;
@@ -611,10 +611,18 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
                                          &CGM.getModule());
   
   auto aitr = queryFunc->arg_begin();
+
   Value* meshPtr = aitr++;
+  meshPtr->setName("mesh");
+
   Value* outPtr = aitr++;
+  outPtr->setName("outMask");
+  
   Value* start = aitr++;
+  start->setName("start");
+  
   Value* end = aitr++;
+  end->setName("end");
   
   Value* baseAddr = LocalDeclMap[mvd];
   
@@ -622,7 +630,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   BasicBlock* entry = BasicBlock::Create(C, "entry", queryFunc);
   B.SetInsertPoint(entry);
-
+  
   Value* inductPtr = B.CreateAlloca(Int64Ty, 0, "induct.ptr");
 
   B.CreateStore(start, inductPtr);
@@ -668,14 +676,14 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
       break;
   }
   
-  Value* induct = B.CreateLoad(inductPtr);
+  Value* induct = B.CreateLoad(inductPtr, "induct");
 
   Value* outPosPtr = B.CreateGEP(outPtr, induct, "outPos.ptr");
   B.CreateStore(result, outPosPtr);
   
-  Value* nextInduct = B.CreateAdd(induct, One);
+  Value* nextInduct = B.CreateAdd(induct, One, "nextInduct");
   B.CreateStore(nextInduct, inductPtr);
-  
+    
   BasicBlock* condBlock = BasicBlock::Create(C, "query.cond", queryFunc);
   
   B.CreateBr(condBlock);
@@ -684,7 +692,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   B.SetInsertPoint(condBlock);
   
-  Value* cond = B.CreateICmpULT(induct, end);
+  Value* cond = B.CreateICmpULT(induct, end, "cond");
   B.CreateCondBr(cond, loopBlock, mergeBlock);
 
   B.SetInsertPoint(mergeBlock);
