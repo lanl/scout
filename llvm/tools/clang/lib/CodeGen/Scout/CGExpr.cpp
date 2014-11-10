@@ -679,8 +679,16 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
       assert(false && "invalid mesh element type");
   }
 
-  Value* result =
-  B.CreateTrunc(EmitAnyExprToTemp(pred).getScalarVal(), Int8Ty, "result");
+  Value* result = EmitAnyExprToTemp(pred).getScalarVal();
+
+  size_t bits = result->getType()->getPrimitiveSizeInBits();
+  
+  if(bits < 8){
+    result = B.CreateZExt(result, Int8Ty, "result");
+  }
+  else if(bits > 8){
+    result = B.CreateTrunc(result, Int8Ty, "result");
+  }
   
   switch(et){
     case ImplicitMeshParamDecl::Cells:
