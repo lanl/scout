@@ -1695,14 +1695,31 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S,
   if (r == 1) {  // This is our innermost rank, generate the loop body.
     
     if(queryMask){
-      llvm::Value* Mask = Builder.CreateGEP(queryMask, getLinearIdx());
+      llvm::Value* linearIdx =
+      Builder.CreateLoad(InductionVar[3], "forall.linearidx");
+      
+      llvm::Value* Mask = Builder.CreateGEP(queryMask, linearIdx);
       Mask = Builder.CreateLoad(Mask);
       
       llvm::Value* Zero = llvm::ConstantInt::get(Int8Ty, 0);
       llvm::Value* Cond = Builder.CreateICmpNE(Mask, Zero);
       
       llvm::BasicBlock* Body = createBasicBlock("forall.body");
-      Builder.CreateCondBr(Cond, Body, Continue.getBlock());
+      llvm::BasicBlock* Else = createBasicBlock("forall.else");
+      
+      Builder.CreateCondBr(Cond, Body, Else);
+      
+      EmitBlock(Else);
+      
+      llvm::Value* nextLinearIdx =
+      Builder.CreateLoad(InductionVar[3], "forall.linearidx");
+      
+      nextLinearIdx =
+      Builder.CreateAdd(nextLinearIdx, ConstantOne, "forall.linearidx.inc");
+
+      Builder.CreateStore(nextLinearIdx, InductionVar[3]);
+      
+      Builder.CreateBr(Continue.getBlock());
       
       EmitBlock(Body);
     }
