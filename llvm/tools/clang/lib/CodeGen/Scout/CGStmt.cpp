@@ -1528,22 +1528,23 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
     Value* funcPtr = B.CreateBitCast(rawFuncPtr, llvm::PointerType::get(ft, 0));
     
     Value* rawMeshPtr = B.CreateStructGEP(qp, 1, "query.mesh.ptr");
+    rawMeshPtr = B.CreateLoad(rawMeshPtr);
     Value* meshPtr = B.CreateBitCast(rawMeshPtr, mpt);
 
     Value* rank = B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 1));
-
-    Value* width =
-    B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 2)),
-                 Int64Ty, "width");
     
+    Value* width =
+    B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 4)),
+                 Int64Ty, "width");
+
     Value* height =
     B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 3)),
                  Int64Ty, "height");
     
     Value* depth =
-    B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 4)),
+    B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 2)),
                  Int64Ty, "depth");
-
+    
     Value* zero = llvm::ConstantInt::get(Int64Ty, 0);
     Value* one = llvm::ConstantInt::get(Int64Ty, 1);
     

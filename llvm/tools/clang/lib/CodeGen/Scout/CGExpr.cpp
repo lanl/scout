@@ -703,10 +703,10 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
 
   Value* outPosPtr = B.CreateGEP(outPtr, induct, "outPos.ptr");
   B.CreateStore(result, outPosPtr);
-  
+
   Value* nextInduct = B.CreateAdd(induct, One, "nextInduct");
   B.CreateStore(nextInduct, inductPtr);
-    
+
   BasicBlock* condBlock = BasicBlock::Create(C, "query.cond", queryFunc);
   
   B.CreateBr(condBlock);
