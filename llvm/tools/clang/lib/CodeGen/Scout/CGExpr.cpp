@@ -616,7 +616,8 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   const DeclRefExpr* base = dyn_cast<DeclRefExpr>(memberExpr->getBase());
   assert(base && "expected a DeclRefExpr");
 
-  const ImplicitMeshParamDecl* imp = dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
+  const ImplicitMeshParamDecl* imp =
+  dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
   assert(base && "expected an ImplicitMeshParamDecl");
 
   ImplicitMeshParamDecl::MeshElementType et = imp->getElementType();
@@ -624,7 +625,8 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   const VarDecl* mvd = imp->getMeshVarDecl();
   
   TypeVec params =
-  {R.PointerTy(ConvertType(mvd->getType())), R.PointerTy(Int8Ty), Int64Ty, Int64Ty};
+  {R.PointerTy(ConvertType(mvd->getType())),
+    R.PointerTy(Int8Ty), Int64Ty, Int64Ty};
 
   llvm::FunctionType* ft = llvm::FunctionType::get(R.VoidTy, params, false);
   

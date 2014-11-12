@@ -1510,9 +1510,7 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
     
     StructType* mt =
     cast<StructType>(ConvertType(QualType(cmt, 0)));
-    
-    size_t numFields = mt->getNumElements();
-    
+        
     llvm::PointerType* mpt =
     llvm::PointerType::get(mt, 0);
     
@@ -1531,41 +1529,39 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
     rawMeshPtr = B.CreateLoad(rawMeshPtr);
     Value* meshPtr = B.CreateBitCast(rawMeshPtr, mpt);
 
-    Value* rank = B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 1));
+    SmallVector<llvm::Value*, 3> Dimensions;
+    GetMeshDimensions(S.getMeshType(), Dimensions);
     
-    Value* width =
-    B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 4)),
-                 Int64Ty, "width");
-
-    Value* height =
-    B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 3)),
-                 Int64Ty, "height");
+    ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
     
-    Value* depth =
-    B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 2)),
-                 Int64Ty, "depth");
+    llvm::Value* numItems;
     
-    Value* zero = llvm::ConstantInt::get(Int64Ty, 0);
-    Value* one = llvm::ConstantInt::get(Int64Ty, 1);
+    switch(FET){
+      case ForallMeshStmt::Cells:
+        GetNumMeshItems(Dimensions, &numItems, 0, 0, 0);
+        break;
+      case ForallMeshStmt::Vertices:
+        GetNumMeshItems(Dimensions, 0, &numItems, 0, 0);
+        break;
+      case ForallMeshStmt::Edges:
+        GetNumMeshItems(Dimensions, 0, 0, &numItems, 0);
+        break;
+      case ForallMeshStmt::Faces:
+        GetNumMeshItems(Dimensions, 0, 0, 0, &numItems);
+        break;
+      default:
+        assert(false && "unrecognized forall type");
+    }
     
-    Value* heightCond =
-    B.CreateICmpUGT(rank, llvm::ConstantInt::get(Int32Ty, 1));
-    
-    height = B.CreateSelect(heightCond, height, one);
-    
-    Value* depthCond =
-    B.CreateICmpUGT(rank, llvm::ConstantInt::get(Int32Ty, 2));
-    
-    depth = B.CreateSelect(depthCond, depth, one);
-    
-    Value* size = B.CreateMul(width, B.CreateMul(height, depth));
-    Value* end = B.CreateSub(size, one);
-    
-    ValueVec args = {size};
+    ValueVec args = {numItems};
     llvm::Function* allocFunc = CGM.getScoutRuntime().MemAllocFunction();
     queryMask = B.CreateCall(allocFunc, args);
     queryMask = B.CreateBitCast(queryMask, outTy);
     
+    Value* zero = llvm::ConstantInt::get(Int64Ty, 0);
+    Value* one = llvm::ConstantInt::get(Int64Ty, 1);
+    
+    Value* end = B.CreateSub(numItems, one);
     ValueVec queryArgs = {meshPtr, queryMask, zero, end};
     B.CreateCall(funcPtr, queryArgs);
   }
