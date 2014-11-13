@@ -115,13 +115,14 @@ ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
                                VarDecl* MVD,
                                const MeshType* MT,
                                SourceLocation ForallLocation,
-                               DeclStmt* Init, Stmt *Body)
+                               DeclStmt* Init, VarDecl* QD, Stmt *Body)
   : ForallStmt(ForallMeshStmtClass,
                ForallLocation, Body) {
 
     LoopRefVarInfo = RefVarInfo;
     MeshRefVarInfo = MeshInfo;
     MeshVarDecl = MVD;
+    MeshQueryVarDecl = QD;
     MeshElementRef = RefElement;
     MeshRefType    = MT;
     setInit(Init);
@@ -138,7 +139,7 @@ ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
                                VarDecl* MVD,
                                const MeshType* MT,
                                SourceLocation ForallLocation,
-                               DeclStmt* Init, Stmt *Body,
+                               DeclStmt* Init, VarDecl* QD, Stmt *Body,
                                Expr* Predicate,
                                SourceLocation LeftParenLoc, SourceLocation RightParenLoc)
   : ForallStmt(ForallMeshStmtClass,
@@ -148,6 +149,7 @@ ForallMeshStmt::ForallMeshStmt(MeshElementType RefElement,
     LoopRefVarInfo = RefVarInfo;
     MeshRefVarInfo = MeshInfo;
     MeshVarDecl = MVD;
+    MeshQueryVarDecl = QD;
     MeshElementRef = RefElement;
     MeshRefType    = MT;
     setInit(Init);

@@ -4690,6 +4690,7 @@ NamedDecl *Sema::HandleDeclarator(Scope *S, Declarator &D,
       return nullptr;
 
   TypeSourceInfo *TInfo = GetTypeForDeclarator(D, S);
+
   QualType R = TInfo->getType();
 
   if (DiagnoseUnexpandedParameterPack(D.getIdentifierLoc(), TInfo,

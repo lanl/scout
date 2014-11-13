@@ -251,6 +251,29 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
 
 }
 
+llvm::Value *CodeGenFunction::getMeshIndex(const MeshFieldDecl* MFD) {
+  llvm::Value* Index;
+
+  if(MFD->isVertexLocated()) {
+    assert(VertexIndex && "null VertexIndex while referencing vertex field");
+    // use the vertex index if we are within a forall vertices
+    Index = Builder.CreateLoad(VertexIndex);
+  } else if(MFD->isEdgeLocated()) {
+    assert(EdgeIndex && "null EdgeIndex while referencing edge field");
+    // use the vertex index if we are within a forall vertices
+    Index = Builder.CreateLoad(EdgeIndex);
+  } else if(MFD->isFaceLocated()) {
+    assert(FaceIndex && "null FaceIndex while referencing face field");
+    // use the vertex index if we are within a forall vertices
+    Index = Builder.CreateLoad(FaceIndex);
+  } else if(MFD->isCellLocated() && CellIndex) {
+    Index = Builder.CreateLoad(CellIndex);
+  } else {
+    Index = getLinearIdx();
+  }
+  return Index;
+}
+
 // compute the linear index based on cshift parameters
 // with circular boundary conditions
 llvm::Value *
@@ -575,7 +598,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   using namespace std;
   using namespace llvm;
   
-  //typedef vector<llvm::Value*> ValueVec;
+  typedef vector<llvm::Value*> ValueVec;
   typedef vector<llvm::Type*> TypeVec;
 
   CGBuilderTy& B = Builder;
@@ -593,7 +616,8 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   const DeclRefExpr* base = dyn_cast<DeclRefExpr>(memberExpr->getBase());
   assert(base && "expected a DeclRefExpr");
 
-  const ImplicitMeshParamDecl* imp = dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
+  const ImplicitMeshParamDecl* imp =
+  dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
   assert(base && "expected an ImplicitMeshParamDecl");
 
   ImplicitMeshParamDecl::MeshElementType et = imp->getElementType();
@@ -601,7 +625,8 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   const VarDecl* mvd = imp->getMeshVarDecl();
   
   TypeVec params =
-  {R.PointerTy(ConvertType(mvd->getType())), R.PointerTy(Int8Ty), Int64Ty, Int64Ty};
+  {R.PointerTy(ConvertType(mvd->getType())),
+    R.PointerTy(Int8Ty), Int64Ty, Int64Ty};
 
   llvm::FunctionType* ft = llvm::FunctionType::get(R.VoidTy, params, false);
   
@@ -611,10 +636,18 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
                                          &CGM.getModule());
   
   auto aitr = queryFunc->arg_begin();
+
   Value* meshPtr = aitr++;
+  meshPtr->setName("mesh");
+
   Value* outPtr = aitr++;
+  outPtr->setName("outMask");
+  
   Value* start = aitr++;
+  start->setName("start");
+  
   Value* end = aitr++;
+  end->setName("end");
   
   Value* baseAddr = LocalDeclMap[mvd];
   
@@ -622,7 +655,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   BasicBlock* entry = BasicBlock::Create(C, "entry", queryFunc);
   B.SetInsertPoint(entry);
-
+  
   Value* inductPtr = B.CreateAlloca(Int64Ty, 0, "induct.ptr");
 
   B.CreateStore(start, inductPtr);
@@ -648,8 +681,16 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
       assert(false && "invalid mesh element type");
   }
 
-  Value* result =
-  B.CreateTrunc(EmitAnyExprToTemp(pred).getScalarVal(), Int8Ty, "result");
+  Value* result = EmitAnyExprToTemp(pred).getScalarVal();
+
+  size_t bits = result->getType()->getPrimitiveSizeInBits();
+  
+  if(bits < 8){
+    result = B.CreateZExt(result, Int8Ty, "result");
+  }
+  else if(bits > 8){
+    result = B.CreateTrunc(result, Int8Ty, "result");
+  }
   
   switch(et){
     case ImplicitMeshParamDecl::Cells:
@@ -668,14 +709,14 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
       break;
   }
   
-  Value* induct = B.CreateLoad(inductPtr);
+  Value* induct = B.CreateLoad(inductPtr, "induct");
 
   Value* outPosPtr = B.CreateGEP(outPtr, induct, "outPos.ptr");
   B.CreateStore(result, outPosPtr);
-  
-  Value* nextInduct = B.CreateAdd(induct, One);
+
+  Value* nextInduct = B.CreateAdd(induct, One, "nextInduct");
   B.CreateStore(nextInduct, inductPtr);
-  
+
   BasicBlock* condBlock = BasicBlock::Create(C, "query.cond", queryFunc);
   
   B.CreateBr(condBlock);
@@ -684,7 +725,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   B.SetInsertPoint(condBlock);
   
-  Value* cond = B.CreateICmpULT(induct, end);
+  Value* cond = B.CreateICmpULT(induct, end, "cond");
   B.CreateCondBr(cond, loopBlock, mergeBlock);
 
   B.SetInsertPoint(mergeBlock);
@@ -702,4 +743,6 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   B.CreateStore(B.CreateBitCast(queryFunc, CGM.VoidPtrTy), funcField);
   B.CreateStore(B.CreateBitCast(baseAddr, CGM.VoidPtrTy), meshPtrField);
+  
+  LocalDeclMap[VD] = qp;
 }

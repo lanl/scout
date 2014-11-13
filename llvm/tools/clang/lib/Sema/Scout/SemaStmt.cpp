@@ -188,7 +188,7 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
                                      IdentifierInfo* MeshInfo,
                                      SourceLocation LParenLoc,
                                      Expr* Predicate, SourceLocation RParenLoc,
-                                     DeclStmt* Init, Stmt* Body) {
+                                     DeclStmt* Init, VarDecl* QD, Stmt* Body) {
 
   SCLStack.pop_back();
 
@@ -196,7 +196,7 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
                                                     RefVarInfo,
                                                     MeshInfo, MVD, MT,
                                                     ForallLoc,
-                                                    Init, Body, Predicate,
+                                                    Init, QD, Body, Predicate,
                                                     LParenLoc, RParenLoc);
 
   // check that LHS mesh field assignment
@@ -217,7 +217,7 @@ ExprResult Sema::ActOnQueryExpr(SourceLocation FromLoc,
                                 Expr* Field,
                                 Expr* Predicate){
 
-  QueryExpr* QE = new (Context) QueryExpr(Context.getQueryType(MeshDecl),
+  QueryExpr* QE = new (Context) QueryExpr(Context.getQueryType(),
                                           FromLoc,
                                           MeshDecl,
                                           Field,

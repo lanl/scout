@@ -1,7 +1,7 @@
 # +===== Scout =========================================================+
   if(SCOUT_ENABLE_LLDB)
      message("scout: building LLDB")
-
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive")
 # +=====================================================================+
 
 if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )

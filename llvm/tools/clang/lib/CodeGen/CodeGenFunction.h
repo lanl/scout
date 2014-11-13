@@ -2042,6 +2042,8 @@ public:
                        llvm::Value** numVertices,
                        llvm::Value** numEdges,
                        llvm::Value** numFaces);
+  void GetNumMeshItems(llvm::Value** numCells, llvm::Value** numVertices,
+      llvm::Value** numEdges, llvm::Value** numFaces);
 
   // +========================================================================+
 
@@ -2142,7 +2144,9 @@ public:
                                           llvm::Value* OuterIndex);
 
   void EmitForallCellsOrVertices(const ForallMeshStmt &S);
-  void EmitForallMeshLoop(const ForallMeshStmt &S, unsigned r);
+  void EmitForallMeshLoop(const ForallMeshStmt &S,
+                          unsigned r,
+                          llvm::Value* queryMask);
   llvm::BasicBlock *EmitMarkerBlock(const std::string name);
   llvm::Function* ExtractRegion(llvm::BasicBlock *entry,
                                 llvm::BasicBlock *exit,
@@ -2182,6 +2186,7 @@ public:
   LValue EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index);
   LValue EmitLValueForMeshField(LValue base, const MeshFieldDecl *field, llvm::Value *Index);
   llvm::Value *getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args);
+  llvm::Value *getMeshIndex(const MeshFieldDecl* MFD);
 
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   RValue EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);

@@ -3775,15 +3775,13 @@ class ImageType :  public RenderTargetType {
 };
 
 class QueryType : public Type {
-  VarDecl* meshDecl;
-  
   friend class ASTContext;  // ASTContext creates these.
   
 public:
-  QueryType(VarDecl* MD)
-  : QueryType(Query, MD, QualType()) { }
+  QueryType()
+  : QueryType(Query, QualType()) { }
   
-  QueryType(TypeClass TC, VarDecl* MD, QualType can)
+  QueryType(TypeClass TC, QualType can)
   : Type(TC, can, false,
          /*InstantiationDependent*/false,
          /*VariablyModified*/false,
@@ -3796,10 +3794,6 @@ public:
   bool isSugared() const { return false; }
   
   QualType desugar() const { return QualType(this, 0); }
-  
-  VarDecl* getMeshDecl() const{
-    return meshDecl;
-  }
   
   static bool classof(const Type *T) {
     return T->getTypeClass() == Query;

@@ -57,33 +57,35 @@
 
 uniform mesh MyMesh {
  cells:
-  float a;
+  int a;
  edges:
-  float b;
+  int b;
 };
 
 int main(int argc, char** argv) {
   MyMesh m[2,2];
 
-  forall cells c in m{
-    a = position().x + position().y*10; 
+  int i = 0;
+  forall edges e in m {
+    b = i;
+    ++i;
   }
 
-  forall cells c in m{
-    forall edges e in c{
-      b = a;
+  forall cells c in m {
+    a = 0;
+  }
+
+  forall cells c in m {
+    forall edges e in c {
+      a += b;
     }
   }
 
-  float expected[] = 
-    {0.000000f, 1.000000f, 1.000000f, 10.000000f, 
-     11.000000f, 11.000000f,10.000000f, 11.000000f,
-     11.000000f};
+  int expected[] = {15, 19, 25, 29}; 
   
-  int i = 0;
-  forall edges e in m{
-    printf("%f\n", b);
-    //assert(b == expected[i] && "unexpected value");
+  i = 0;
+  forall cells c in m {
+    assert(a == expected[i] && "unexpected value");
     ++i;
   }
   

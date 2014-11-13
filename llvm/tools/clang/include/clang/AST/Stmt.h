@@ -56,6 +56,7 @@ namespace clang {
   class MeshType;
   class BlockExpr;
   class MemberExpr;
+  class QueryExpr;
   // =========================================================================+
 
   //===--------------------------------------------------------------------===//
@@ -2414,7 +2415,8 @@ private:
    // and codegen passes...
    IdentifierInfo  *MeshRefVarInfo;
    VarDecl         *MeshVarDecl;
-
+   VarDecl         *MeshQueryVarDecl;
+  
 
   // The mesh location/element we're looping over -- this provides us
   // information about looping over cells, edges, faces, etc.  Is the
@@ -2438,7 +2440,7 @@ public:
                  VarDecl* MVD,
                  const MeshType* MT,
                  SourceLocation ForallLocation,
-                 DeclStmt* Init, Stmt *Body);
+                 DeclStmt* Init, VarDecl* QD, Stmt *Body);
 
   ForallMeshStmt(MeshElementType RefElement,
                  IdentifierInfo* RefVarInfo,
@@ -2446,7 +2448,8 @@ public:
                  VarDecl* MVD,
                  const MeshType* MT,
                  SourceLocation ForallLocation,
-                 DeclStmt *Init, Stmt *Body,
+                 DeclStmt *Init, VarDecl* QD,
+                 Stmt *Body,
                  Expr* Predicate,
                  SourceLocation LeftParenLoc,
                  SourceLocation RightParenLoc);
@@ -2502,13 +2505,17 @@ public:
   VarDecl* getMeshVarDecl() {
     return MeshVarDecl;
   }
-
+  
   const VarDecl* getMeshVarDecl() const {
     return MeshVarDecl;
   }
 
   const MeshType* getMeshType() const { return MeshRefType; }
 
+  VarDecl* getQueryVarDecl() const{
+    return MeshQueryVarDecl;
+  }
+  
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == ForallMeshStmtClass;
   }
