@@ -834,15 +834,15 @@ namespace {
   public:
     explicit CopyingValueRepresentation(CodeGenFunction &CGF)
         : CGF(CGF), OldSanOpts(CGF.SanOpts) {
-      CGF.SanOpts.Bool = false;
-      CGF.SanOpts.Enum = false;
+      CGF.SanOpts.set(SanitizerKind::Bool, false);
+      CGF.SanOpts.set(SanitizerKind::Enum, false);
     }
     ~CopyingValueRepresentation() {
       CGF.SanOpts = OldSanOpts;
     }
   private:
     CodeGenFunction &CGF;
-    SanitizerOptions OldSanOpts;
+    SanitizerSet OldSanOpts;
   };
 }
 
@@ -858,7 +858,7 @@ namespace {
 
     bool isMemcpyableField(FieldDecl *F) const {
       // Never memcpy fields when we are adding poisoned paddings.
-      if (CGF.getContext().getLangOpts().Sanitize.SanitizeAddressFieldPadding)
+      if (CGF.getContext().getLangOpts().SanitizeAddressFieldPadding)
         return false;
       Qualifiers Qual = F->getType().getQualifiers();
       if (Qual.hasVolatile() || Qual.hasObjCLifetime())

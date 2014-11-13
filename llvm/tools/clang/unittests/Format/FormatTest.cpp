@@ -187,7 +187,7 @@ TEST_F(FormatTest, RemovesEmptyLines) {
                    "\n"
                    "};"));
 
-  // Don't remove empty lines at the start of namespaces.
+  // Don't remove empty lines at the start of namespaces or extern "C" blocks.
   EXPECT_EQ("namespace N {\n"
             "\n"
             "int i;\n"
@@ -195,6 +195,29 @@ TEST_F(FormatTest, RemovesEmptyLines) {
             format("namespace N {\n"
                    "\n"
                    "int    i;\n"
+                   "}",
+                   getGoogleStyle()));
+  EXPECT_EQ("extern /**/ \"C\" /**/ {\n"
+            "\n"
+            "int i;\n"
+            "}",
+            format("extern /**/ \"C\" /**/ {\n"
+                   "\n"
+                   "int    i;\n"
+                   "}",
+                   getGoogleStyle()));
+
+  // ...but do keep inlining and removing empty lines for non-block extern "C"
+  // functions.
+  verifyFormat("extern \"C\" int f() { return 42; }", getGoogleStyle());
+  EXPECT_EQ("extern \"C\" int f() {\n"
+            "  int i = 42;\n"
+            "  return i;\n"
+            "}",
+            format("extern \"C\" int f() {\n"
+                   "\n"
+                   "  int i = 42;\n"
+                   "  return i;\n"
                    "}",
                    getGoogleStyle()));
 
@@ -1964,7 +1987,8 @@ TEST_F(FormatTest, FormatsEnum) {
   verifyFormat("enum E { // comment\n"
                "  ONE,\n"
                "  TWO\n"
-               "};");
+               "};\n"
+               "int i;");
 }
 
 TEST_F(FormatTest, FormatsEnumsWithErrors) {
@@ -2569,6 +2593,11 @@ TEST_F(FormatTest, MacrosWithoutTrailingSemicolon) {
                    "     Q_Object\n"
                    "  A() {\n}\n"
                    "}  ;"));
+
+  // Only if the next line can actually start an unwrapped line.
+  EXPECT_EQ("SOME_WEIRD_LOG_MACRO << SomeThing;",
+            format("SOME_WEIRD_LOG_MACRO\n"
+                   "<< SomeThing;"));
 }
 
 TEST_F(FormatTest, MacroCallsWithoutTrailingSemicolon) {
@@ -3112,6 +3141,9 @@ TEST_F(FormatTest, LineBreakingInBinaryExpressions) {
   verifyFormat("if ((aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa ||\n"
                "     bbbbbbbbbbbbbbbbbb) && // aaaaaaaaaaaaaaaa\n"
                "    cccccc) {\n}");
+  verifyFormat("b = a &&\n"
+               "    // Comment\n"
+               "    b.c && d;");
 
   // If the LHS of a comparison is not a binary expression itself, the
   // additional linebreak confuses many people.
@@ -4978,6 +5010,9 @@ TEST_F(FormatTest, UnderstandsUsesOfStarAndAmp) {
   verifyGoogleFormat(
       "const char* const p = reinterpret_cast<const char* const>(q);");
   verifyGoogleFormat("void f(int i = 0, SomeType** temps = NULL);");
+  verifyGoogleFormat("void f(Bar* a = nullptr, Bar* b);");
+  verifyGoogleFormat("template <typename T>\n"
+                     "void f(int i = 0, SomeType** temps = NULL);");
 
   FormatStyle Left = getLLVMStyle();
   Left.PointerAlignment = FormatStyle::PAS_Left;
@@ -5636,9 +5671,9 @@ TEST_F(FormatTest, LayoutCxx11BraceInitializers) {
   // FIXME: The alignment of these trailing comments might be bad. Then again,
   // this might be utterly useless in real code.
   verifyFormat("Constructor::Constructor()\n"
-               "    : some_value{        //\n"
-               "                 aaaaaaa //\n"
-               "      } {}");
+               "    : some_value{         //\n"
+               "                 aaaaaaa, //\n"
+               "                 bbbbbbb} {}");
 
   // In braced lists, the first comment is always assumed to belong to the
   // first element. Thus, it can be moved to the next or previous line as
@@ -5662,6 +5697,13 @@ TEST_F(FormatTest, LayoutCxx11BraceInitializers) {
                    "                           // Second element:\n"
                    "                           2};",
                    getLLVMStyleWithColumns(30)));
+  // A trailing comma should still lead to an enforced line break.
+  EXPECT_EQ("vector<int> SomeVector = {\n"
+            "    // aaa\n"
+            "    1, 2,\n"
+            "};",
+            format("vector<int> SomeVector = { // aaa\n"
+                   "    1, 2, };"));
 
   FormatStyle ExtraSpaces = getLLVMStyle();
   ExtraSpaces.Cpp11BracedListStyle = false;
@@ -8710,7 +8752,7 @@ TEST_F(FormatTest, UsesLanguageForBasedOnStyle) {
   Style.Language = FormatStyle::LK_JavaScript;
   Style.BreakBeforeTernaryOperators = true;
   EXPECT_EQ(0, parseConfiguration("BasedOnStyle: Google", &Style).value());
-  EXPECT_FALSE(Style.SpacesInContainerLiterals);
+  EXPECT_FALSE(Style.BreakBeforeTernaryOperators);
 
   Style.BreakBeforeTernaryOperators = true;
   EXPECT_EQ(0, parseConfiguration("---\n"
@@ -8719,7 +8761,7 @@ TEST_F(FormatTest, UsesLanguageForBasedOnStyle) {
               "Language: JavaScript\n"
               "IndentWidth: 76\n"
               "...\n", &Style).value());
-  EXPECT_FALSE(Style.SpacesInContainerLiterals);
+  EXPECT_FALSE(Style.BreakBeforeTernaryOperators);
   EXPECT_EQ(76u, Style.IndentWidth);
   EXPECT_EQ(FormatStyle::LK_JavaScript, Style.Language);
 }
