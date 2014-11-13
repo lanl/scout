@@ -1159,45 +1159,7 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
   Value* numEdges;
   GetNumMeshItems(0, 0 ,&numEdges, 0);
 
-  VarDecl* qd = S.getQueryVarDecl();
-  Value* queryMask = 0;
-  
-  if(qd){
-    const MeshType* cmt = S.getMeshType();
-    
-    StructType* mt =
-    cast<StructType>(ConvertType(QualType(cmt, 0)));
-    
-    llvm::PointerType* mpt =
-    llvm::PointerType::get(mt, 0);
-    
-    llvm::PointerType* outTy = llvm::PointerType::get(Int8Ty, 0);
-    
-    TypeVec params = {mpt, outTy, Int64Ty, Int64Ty};
-    llvm::FunctionType* ft = llvm::FunctionType::get(VoidTy, params, false);
-    
-    Value* qp = LocalDeclMap[qd];
-    
-    Value* rawFuncPtr = B.CreateStructGEP(qp, 0);
-    rawFuncPtr = B.CreateLoad(rawFuncPtr, "query.func.ptr");
-    Value* funcPtr = B.CreateBitCast(rawFuncPtr, llvm::PointerType::get(ft, 0));
-    
-    Value* rawMeshPtr = B.CreateStructGEP(qp, 1, "query.mesh.ptr");
-    rawMeshPtr = B.CreateLoad(rawMeshPtr);
-    Value* meshPtr = B.CreateBitCast(rawMeshPtr, mpt);
-    
-    ValueVec args = {numEdges};
-    llvm::Function* allocFunc = CGM.getScoutRuntime().MemAllocFunction();
-    queryMask = B.CreateCall(allocFunc, args);
-    queryMask = B.CreateBitCast(queryMask, outTy);
-    
-    Value* zero = llvm::ConstantInt::get(Int64Ty, 0);
-    Value* one = llvm::ConstantInt::get(Int64Ty, 1);
-    
-    Value* end = B.CreateSub(numEdges, one);
-    ValueVec queryArgs = {meshPtr, queryMask, zero, end};
-    B.CreateCall(funcPtr, queryArgs);
-  }
+  Value* queryMask = EmitForallQueryCall(S, numEdges);
   
   BasicBlock *LoopBlock = createBasicBlock("forall.edges.loop");
   B.CreateBr(LoopBlock);
@@ -1276,46 +1238,8 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
   Value* numFaces;
   GetNumMeshItems(0, 0 ,0, &numFaces);
 
-  VarDecl* qd = S.getQueryVarDecl();
-  Value* queryMask = 0;
-  
-  if(qd){
-    const MeshType* cmt = S.getMeshType();
-    
-    StructType* mt =
-    cast<StructType>(ConvertType(QualType(cmt, 0)));
-    
-    llvm::PointerType* mpt =
-    llvm::PointerType::get(mt, 0);
-    
-    llvm::PointerType* outTy = llvm::PointerType::get(Int8Ty, 0);
-    
-    TypeVec params = {mpt, outTy, Int64Ty, Int64Ty};
-    llvm::FunctionType* ft = llvm::FunctionType::get(VoidTy, params, false);
-    
-    Value* qp = LocalDeclMap[qd];
-    
-    Value* rawFuncPtr = B.CreateStructGEP(qp, 0);
-    rawFuncPtr = B.CreateLoad(rawFuncPtr, "query.func.ptr");
-    Value* funcPtr = B.CreateBitCast(rawFuncPtr, llvm::PointerType::get(ft, 0));
-    
-    Value* rawMeshPtr = B.CreateStructGEP(qp, 1, "query.mesh.ptr");
-    rawMeshPtr = B.CreateLoad(rawMeshPtr);
-    Value* meshPtr = B.CreateBitCast(rawMeshPtr, mpt);
-    
-    ValueVec args = {numFaces};
-    llvm::Function* allocFunc = CGM.getScoutRuntime().MemAllocFunction();
-    queryMask = B.CreateCall(allocFunc, args);
-    queryMask = B.CreateBitCast(queryMask, outTy);
-    
-    Value* zero = llvm::ConstantInt::get(Int64Ty, 0);
-    Value* one = llvm::ConstantInt::get(Int64Ty, 1);
-    
-    Value* end = B.CreateSub(numFaces, one);
-    ValueVec queryArgs = {meshPtr, queryMask, zero, end};
-    B.CreateCall(funcPtr, queryArgs);
-  }
-  
+  Value* queryMask = EmitForallQueryCall(S, numFaces);
+
   BasicBlock *LoopBlock = createBasicBlock("forall.faces.loop");
   B.CreateBr(LoopBlock);
 
@@ -1644,79 +1568,26 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 //
 
 void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
-  VarDecl* qd = S.getQueryVarDecl();
-  llvm::Value* queryMask = 0;
+  llvm::Value* numItems;
   
-  if(qd){
-    using namespace std;
-    using namespace llvm;
-    
-    auto& B = Builder;
-    
-    typedef vector<llvm::Type*> TypeVec;
-    typedef vector<Value*> ValueVec;
-    
-    const MeshType* cmt = S.getMeshType();
-    
-    StructType* mt =
-    cast<StructType>(ConvertType(QualType(cmt, 0)));
-    
-    llvm::PointerType* mpt =
-    llvm::PointerType::get(mt, 0);
-    
-    llvm::PointerType* outTy = llvm::PointerType::get(Int8Ty, 0);
-    
-    TypeVec params = {mpt, outTy, Int64Ty, Int64Ty};
-    llvm::FunctionType* ft = llvm::FunctionType::get(VoidTy, params, false);
-    
-    Value* qp = LocalDeclMap[qd];
-    
-    Value* rawFuncPtr = B.CreateStructGEP(qp, 0);
-    rawFuncPtr = B.CreateLoad(rawFuncPtr, "query.func.ptr");
-    Value* funcPtr = B.CreateBitCast(rawFuncPtr, llvm::PointerType::get(ft, 0));
-    
-    Value* rawMeshPtr = B.CreateStructGEP(qp, 1, "query.mesh.ptr");
-    rawMeshPtr = B.CreateLoad(rawMeshPtr);
-    Value* meshPtr = B.CreateBitCast(rawMeshPtr, mpt);
+  SmallVector<llvm::Value*, 3> Dimensions;
+  GetMeshDimensions(S.getMeshType(), Dimensions);
 
-    SmallVector<llvm::Value*, 3> Dimensions;
-    GetMeshDimensions(S.getMeshType(), Dimensions);
-    
-    ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
-    
-    llvm::Value* numItems;
-    
-    switch(FET){
-      case ForallMeshStmt::Cells:
-        GetNumMeshItems(Dimensions, &numItems, 0, 0, 0);
-        break;
-      case ForallMeshStmt::Vertices:
-        GetNumMeshItems(Dimensions, 0, &numItems, 0, 0);
-        break;
-      case ForallMeshStmt::Edges:
-        GetNumMeshItems(Dimensions, 0, 0, &numItems, 0);
-        break;
-      case ForallMeshStmt::Faces:
-        GetNumMeshItems(Dimensions, 0, 0, 0, &numItems);
-        break;
-      default:
-        assert(false && "unrecognized forall type");
-    }
-    
-    ValueVec args = {numItems};
-    llvm::Function* allocFunc = CGM.getScoutRuntime().MemAllocFunction();
-    queryMask = B.CreateCall(allocFunc, args);
-    queryMask = B.CreateBitCast(queryMask, outTy);
-    
-    Value* zero = llvm::ConstantInt::get(Int64Ty, 0);
-    Value* one = llvm::ConstantInt::get(Int64Ty, 1);
-    
-    Value* end = B.CreateSub(numItems, one);
-    ValueVec queryArgs = {meshPtr, queryMask, zero, end};
-    B.CreateCall(funcPtr, queryArgs);
+  ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
+  
+  switch(FET){
+    case ForallMeshStmt::Cells:
+      GetNumMeshItems(Dimensions, &numItems, 0, 0, 0);
+      break;
+    case ForallMeshStmt::Vertices:
+      GetNumMeshItems(Dimensions, 0, &numItems, 0, 0);
+      break;
+    default:
+      assert(false && "invalid forall type");
   }
   
-  ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
+  llvm::Value* queryMask = EmitForallQueryCall(S, numItems);
+
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
   // Track down the mesh meta data. 
@@ -1912,6 +1783,59 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S,
   CellIndex = 0;
 }
 
+llvm::Value* CodeGenFunction::EmitForallQueryCall(const ForallMeshStmt& S,
+                                                  llvm::Value* numItems){
+  using namespace std;
+  using namespace llvm;
+  
+  auto& B = Builder;
+  
+  typedef vector<llvm::Type*> TypeVec;
+  typedef vector<Value*> ValueVec;
+  
+  VarDecl* qd = S.getQueryVarDecl();
+ 
+  if(!qd){
+    return 0;
+  }
+  
+  const MeshType* cmt = S.getMeshType();
+  
+  StructType* mt =
+  cast<StructType>(ConvertType(QualType(cmt, 0)));
+  
+  llvm::PointerType* mpt =
+  llvm::PointerType::get(mt, 0);
+  
+  llvm::PointerType* outTy = llvm::PointerType::get(Int8Ty, 0);
+  
+  TypeVec params = {mpt, outTy, Int64Ty, Int64Ty};
+  llvm::FunctionType* ft = llvm::FunctionType::get(VoidTy, params, false);
+  
+  Value* qp = LocalDeclMap[qd];
+  
+  Value* rawFuncPtr = B.CreateStructGEP(qp, 0);
+  rawFuncPtr = B.CreateLoad(rawFuncPtr, "query.func.ptr");
+  Value* funcPtr = B.CreateBitCast(rawFuncPtr, llvm::PointerType::get(ft, 0));
+  
+  Value* rawMeshPtr = B.CreateStructGEP(qp, 1, "query.mesh.ptr");
+  rawMeshPtr = B.CreateLoad(rawMeshPtr);
+  Value* meshPtr = B.CreateBitCast(rawMeshPtr, mpt);
+  
+  ValueVec args = {numItems};
+  llvm::Function* allocFunc = CGM.getScoutRuntime().MemAllocFunction();
+  Value* queryMask = B.CreateCall(allocFunc, args);
+  queryMask = B.CreateBitCast(queryMask, outTy);
+  
+  Value* zero = llvm::ConstantInt::get(Int64Ty, 0);
+  Value* one = llvm::ConstantInt::get(Int64Ty, 1);
+  
+  Value* end = B.CreateSub(numItems, one);
+  ValueVec queryArgs = {meshPtr, queryMask, zero, end};
+  B.CreateCall(funcPtr, queryArgs);
+  
+  return queryMask;
+}
 
 // reset Loopbounds, mesh dimensions, rank and induction var
 void CodeGenFunction::ResetMeshBounds(void) {
