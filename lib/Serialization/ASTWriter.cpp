@@ -1203,8 +1203,9 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
   Record.push_back(LangOpts.Name);
 #define ENUM_LANGOPT(Name, Type, Bits, Default, Description) \
   Record.push_back(static_cast<unsigned>(LangOpts.get##Name()));
-#include "clang/Basic/LangOptions.def"  
-#define SANITIZER(NAME, ID) Record.push_back(LangOpts.Sanitize.ID);
+#include "clang/Basic/LangOptions.def"
+#define SANITIZER(NAME, ID)                                                    \
+  Record.push_back(LangOpts.Sanitize.has(SanitizerKind::ID));
 #include "clang/Basic/Sanitizers.def"
 
   Record.push_back((unsigned) LangOpts.ObjCRuntime.getKind());
@@ -4787,6 +4788,10 @@ void ASTWriter::WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord) {
       case UPD_STATIC_LOCAL_NUMBER:
         Record.push_back(Update.getNumber());
         break;
+      case UPD_DECL_MARKED_OPENMP_THREADPRIVATE:
+        AddSourceRange(D->getAttr<OMPThreadPrivateDeclAttr>()->getRange(),
+                       Record);
+        break;
       }
     }
 
@@ -5879,4 +5884,12 @@ void ASTWriter::DeclarationMarkedUsed(const Decl *D) {
     return;
 
   DeclUpdates[D].push_back(DeclUpdate(UPD_DECL_MARKED_USED));
+}
+
+void ASTWriter::DeclarationMarkedOpenMPThreadPrivate(const Decl *D) {
+  assert(!WritingAST && "Already writing the AST!");
+  if (!D->isFromASTFile())
+    return;
+
+  DeclUpdates[D].push_back(DeclUpdate(UPD_DECL_MARKED_OPENMP_THREADPRIVATE));
 }

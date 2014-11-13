@@ -738,7 +738,7 @@ ASTContext::ASTContext(LangOptions &LOpts, SourceManager &SM,
       BlockDescriptorExtendedType(nullptr), cudaConfigureCallDecl(nullptr),
       NullTypeSourceInfo(QualType()), FirstLocalImport(), LastLocalImport(),
       SourceMgr(SM), LangOpts(LOpts),
-      SanitizerBL(new SanitizerBlacklist(LangOpts.Sanitize.BlacklistFile, SM)),
+      SanitizerBL(new SanitizerBlacklist(LangOpts.SanitizerBlacklistFile, SM)),
       AddrSpaceMap(nullptr), Target(nullptr), PrintingPolicy(LOpts),
       Idents(idents), Selectors(sels), BuiltinInfo(builtins),
       DeclarationNames(*this), ExternalSource(nullptr), Listener(nullptr),
@@ -2109,6 +2109,62 @@ void ASTContext::adjustDeducedFunctionResultType(FunctionDecl *FD,
   }
   if (ASTMutationListener *L = getASTMutationListener())
     L->DeducedReturnType(FD, ResultType);
+}
+
+/// Get a function type and produce the equivalent function type with the
+/// specified exception specification. Type sugar that can be present on a
+/// declaration of a function with an exception specification is permitted
+/// and preserved. Other type sugar (for instance, typedefs) is not.
+static QualType getFunctionTypeWithExceptionSpec(
+    ASTContext &Context, QualType Orig,
+    const FunctionProtoType::ExceptionSpecInfo &ESI) {
+  // Might have some parens.
+  if (auto *PT = dyn_cast<ParenType>(Orig))
+    return Context.getParenType(
+        getFunctionTypeWithExceptionSpec(Context, PT->getInnerType(), ESI));
+
+  // Might have a calling-convention attribute.
+  if (auto *AT = dyn_cast<AttributedType>(Orig))
+    return Context.getAttributedType(
+        AT->getAttrKind(),
+        getFunctionTypeWithExceptionSpec(Context, AT->getModifiedType(), ESI),
+        getFunctionTypeWithExceptionSpec(Context, AT->getEquivalentType(),
+                                         ESI));
+
+  // Anything else must be a function type. Rebuild it with the new exception
+  // specification.
+  const FunctionProtoType *Proto = cast<FunctionProtoType>(Orig);
+  return Context.getFunctionType(
+      Proto->getReturnType(), Proto->getParamTypes(),
+      Proto->getExtProtoInfo().withExceptionSpec(ESI));
+}
+
+void ASTContext::adjustExceptionSpec(
+    FunctionDecl *FD, const FunctionProtoType::ExceptionSpecInfo &ESI,
+    bool AsWritten) {
+  // Update the type.
+  QualType Updated =
+      getFunctionTypeWithExceptionSpec(*this, FD->getType(), ESI);
+  FD->setType(Updated);
+
+  if (!AsWritten)
+    return;
+
+  // Update the type in the type source information too.
+  if (TypeSourceInfo *TSInfo = FD->getTypeSourceInfo()) {
+    // If the type and the type-as-written differ, we may need to update
+    // the type-as-written too.
+    if (TSInfo->getType() != FD->getType())
+      Updated = getFunctionTypeWithExceptionSpec(*this, TSInfo->getType(), ESI);
+
+    // FIXME: When we get proper type location information for exceptions,
+    // we'll also have to rebuild the TypeSourceInfo. For now, we just patch
+    // up the TypeSourceInfo;
+    assert(TypeLoc::getFullDataSizeForType(Updated) ==
+               TypeLoc::getFullDataSizeForType(TSInfo->getType()) &&
+           "TypeLoc size mismatch from updating exception specification");
+    TSInfo->overrideType(Updated);
+  }
 }
 
 /// getComplexType - Return the uniqued reference to the type for a complex
@@ -7904,7 +7960,9 @@ bool ASTContext::DeclMustBeEmitted(const Decl *D) {
     // We never need to emit an uninstantiated function template.
     if (FD->getTemplatedKind() == FunctionDecl::TK_FunctionTemplate)
       return false;
-  } else
+  } else if (isa<OMPThreadPrivateDecl>(D))
+    return true;
+  else
     return false;
 
   // If this is a member of a class template, we do not need to emit it.

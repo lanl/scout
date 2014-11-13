@@ -714,7 +714,7 @@ llvm::DIType CGDebugInfo::CreateType(const BlockPointerType *Ty,
   FType = CGM.getContext().IntTy;
   EltTys.push_back(CreateMemberType(Unit, FType, "__flags", &FieldOffset));
   EltTys.push_back(CreateMemberType(Unit, FType, "__reserved", &FieldOffset));
-  FType = CGM.getContext().getPointerType(CGM.getContext().VoidTy);
+  FType = CGM.getContext().getPointerType(Ty->getPointeeType());
   EltTys.push_back(CreateMemberType(Unit, FType, "__FuncPtr", &FieldOffset));
 
   FType = CGM.getContext().getPointerType(CGM.getContext().VoidTy);
@@ -1175,6 +1175,10 @@ void CGDebugInfo::CollectCXXMemberFunctions(
     // referenced)
     if (!Method || Method->isImplicit())
       continue;
+
+    if (Method->getType()->getAs<FunctionProtoType>()->getContainedAutoType())
+      continue;
+
     // Reuse the existing member function declaration if it exists.
     // It may be associated with the declaration of the type & should be
     // reused as we're building the definition.
@@ -2013,8 +2017,7 @@ static QualType UnwrapTypeForDebugInfo(QualType T, const ASTContext &C) {
       break;
     case Type::Auto:
       QualType DT = cast<AutoType>(T)->getDeducedType();
-      if (DT.isNull())
-        return T;
+      assert(!DT.isNull() && "Undeduced types shouldn't reach here.");
       T = DT;
       break;
     }
@@ -2106,8 +2109,6 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile Unit) {
   if (Ty.hasLocalQualifiers())
     return CreateQualifiedType(Ty, Unit);
 
-  const char *Diag = nullptr;
-
   // Work out details of type.
   switch (Ty->getTypeClass()) {
 #define TYPE(Class, Base)
@@ -2167,6 +2168,7 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile Unit) {
   case Type::TemplateSpecialization:
     return CreateType(cast<TemplateSpecializationType>(Ty), Unit);
 
+  case Type::Auto:
   case Type::Attributed:
   case Type::Elaborated:
   case Type::Paren:
@@ -2176,18 +2178,10 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile Unit) {
   case Type::Decltype:
   case Type::UnaryTransform:
   case Type::PackExpansion:
-    llvm_unreachable("type should have been unwrapped!");
-  case Type::Auto:
-    Diag = "auto";
     break;
   }
 
-  assert(Diag && "Fall through without a diagnostic?");
-  unsigned DiagID = CGM.getDiags().getCustomDiagID(
-      DiagnosticsEngine::Error,
-      "debug information for %0 is not yet supported");
-  CGM.getDiags().Report(DiagID) << Diag;
-  return llvm::DIType();
+  llvm_unreachable("type should have been unwrapped!");
 }
 
 /// getOrCreateLimitedType - Get the type from the cache or create a new
@@ -2307,7 +2301,7 @@ llvm::DIType CGDebugInfo::CreateMemberType(llvm::DIFile Unit, QualType FType,
   return Ty;
 }
 
-llvm::DIScope CGDebugInfo::getDeclarationOrDefinition(const Decl *D) {
+llvm::DIDescriptor CGDebugInfo::getDeclarationOrDefinition(const Decl *D) {
   // We only need a declaration (not a definition) of the type - so use whatever
   // we would otherwise do to get a type for a pointee. (forward declarations in
   // limited debug info, full definitions (if the type definition is available)
@@ -2327,7 +2321,7 @@ llvm::DIScope CGDebugInfo::getDeclarationOrDefinition(const Decl *D) {
   if (I == DeclCache.end())
     return llvm::DIScope();
   llvm::Value *V = I->second;
-  return llvm::DIScope(dyn_cast_or_null<llvm::MDNode>(V));
+  return llvm::DIDescriptor(dyn_cast_or_null<llvm::MDNode>(V));
 }
 
 /// getFunctionDeclaration - Return debug info descriptor to describe method
@@ -2527,7 +2521,10 @@ void CGDebugInfo::EmitFunctionStart(GlobalDecl GD, SourceLocation Loc,
       getOrCreateFunctionType(D, FnType, Unit), Fn->hasInternalLinkage(),
       true /*definition*/, ScopeLine, Flags, CGM.getLangOpts().Optimize, Fn,
       TParamsArray, getFunctionDeclaration(D));
-  if (HasDecl)
+  // We might get here with a VarDecl in the case we're generating
+  // code for the initialization of globals. Do not record these decls
+  // as they will overwrite the actual VarDecl Decl in the cache.
+  if (HasDecl && isa<FunctionDecl>(D))
     DeclCache.insert(std::make_pair(D->getCanonicalDecl(), llvm::WeakVH(SP)));
 
   // Push the function onto the lexical block stack.
@@ -2953,7 +2950,9 @@ void CGDebugInfo::EmitDeclareOfBlockLiteralArgVariable(const CGBlockInfo &block,
   fields.push_back(createFieldType("__reserved", C.IntTy, 0, loc, AS_public,
                                    blockLayout->getElementOffsetInBits(2),
                                    tunit, tunit));
-  fields.push_back(createFieldType("__FuncPtr", C.VoidPtrTy, 0, loc, AS_public,
+  auto *FnTy = block.getBlockExpr()->getFunctionType();
+  auto FnPtrType = CGM.getContext().getPointerType(FnTy->desugar());
+  fields.push_back(createFieldType("__FuncPtr", FnPtrType, 0, loc, AS_public,
                                    blockLayout->getElementOffsetInBits(3),
                                    tunit, tunit));
   fields.push_back(createFieldType(
@@ -3234,7 +3233,7 @@ void CGDebugInfo::EmitUsingDecl(const UsingDecl &UD) {
   // Emitting one decl is sufficient - debuggers can detect that this is an
   // overloaded name & provide lookup for all the overloads.
   const UsingShadowDecl &USD = **UD.shadow_begin();
-  if (llvm::DIScope Target =
+  if (llvm::DIDescriptor Target =
           getDeclarationOrDefinition(USD.getUnderlyingDecl()))
     DBuilder.createImportedDeclaration(
         getCurrentContextDescriptor(cast<Decl>(USD.getDeclContext())), Target,

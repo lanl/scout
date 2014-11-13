@@ -765,6 +765,7 @@ private:
            Previous && Previous->isOneOf(tok::star, tok::amp);
            Previous = Previous->Previous)
         Previous->Type = TT_PointerOrReference;
+      Contexts.back().IsExpression = false;
     } else if (Current.Previous &&
                Current.Previous->Type == TT_CtorInitializerColon) {
       Contexts.back().IsExpression = true;
@@ -842,7 +843,8 @@ private:
         // function declaration have been found.
         Current.Type = TT_TrailingAnnotation;
       } else if (Style.Language == FormatStyle::LK_Java && Current.Previous &&
-                 Current.Previous->is(tok::at)) {
+                 Current.Previous->is(tok::at) &&
+                 Current.isNot(Keywords.kw_interface)) {
         const FormatToken& AtToken = *Current.Previous;
         if (!AtToken.Previous ||
             AtToken.Previous->Type == TT_LeadingJavaAnnotation)
@@ -1147,8 +1149,7 @@ public:
           Current->OperatorIndex = OperatorIndex;
           ++OperatorIndex;
         }
-
-        next(/*SkipPastLeadingComments=*/false);
+        next(/*SkipPastLeadingComments=*/Precedence > 0);
       }
     }
   }
@@ -1773,9 +1774,22 @@ bool TokenAnnotator::mustBreakBefore(const AnnotatedLine &Line,
   const FormatToken &Left = *Right.Previous;
   if (Right.NewlinesBefore > 1)
     return true;
+
+  // If the last token before a '}' is a comma or a trailing comment, the
+  // intention is to insert a line break after it in order to make shuffling
+  // around entries easier.
+  const FormatToken *BeforeClosingBrace = nullptr;
+  if (Left.is(tok::l_brace) && Left.BlockKind != BK_Block && Left.MatchingParen)
+    BeforeClosingBrace = Left.MatchingParen->Previous;
+  else if (Right.is(tok::r_brace) && Right.BlockKind != BK_Block)
+    BeforeClosingBrace = &Left;
+  if (BeforeClosingBrace && (BeforeClosingBrace->is(tok::comma) ||
+                             BeforeClosingBrace->isTrailingComment()))
+    return true;
+
   if (Right.is(tok::comment)) {
-    return Right.Previous->BlockKind != BK_BracedInit &&
-           Right.Previous->Type != TT_CtorInitializerColon &&
+    return Left.BlockKind != BK_BracedInit &&
+           Left.Type != TT_CtorInitializerColon &&
            (Right.NewlinesBefore > 0 && Right.HasUnescapedNewline);
   } else if (Right.Previous->isTrailingComment() ||
              (Right.isStringLiteral() && Right.Previous->isStringLiteral())) {
@@ -1823,18 +1837,6 @@ bool TokenAnnotator::mustBreakBefore(const AnnotatedLine &Line,
              !Style.AllowShortBlocksOnASingleLine) {
     return true;
   }
-
-  // If the last token before a '}' is a comma or a trailing comment, the
-  // intention is to insert a line break after it in order to make shuffling
-  // around entries easier.
-  const FormatToken *BeforeClosingBrace = nullptr;
-  if (Left.is(tok::l_brace) && Left.MatchingParen)
-    BeforeClosingBrace = Left.MatchingParen->Previous;
-  else if (Right.is(tok::r_brace))
-    BeforeClosingBrace = Right.Previous;
-  if (BeforeClosingBrace && (BeforeClosingBrace->is(tok::comma) ||
-                             BeforeClosingBrace->isTrailingComment()))
-    return true;
 
   if (Style.Language == FormatStyle::LK_JavaScript) {
     // FIXME: This might apply to other languages and token kinds.

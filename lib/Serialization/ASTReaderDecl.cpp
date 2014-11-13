@@ -2274,7 +2274,8 @@ static bool isConsumerInterestedIn(Decl *D, bool HasBody) {
   if (isa<FileScopeAsmDecl>(D) || 
       isa<ObjCProtocolDecl>(D) || 
       isa<ObjCImplDecl>(D) ||
-      isa<ImportDecl>(D))
+      isa<ImportDecl>(D) ||
+      isa<OMPThreadPrivateDecl>(D))
     return true;
   if (VarDecl *Var = dyn_cast<VarDecl>(D))
     return Var->isFileVarDecl() &&
@@ -2781,10 +2782,8 @@ void ASTDeclReader::attachPreviousDeclImpl(ASTReader &Reader,
   if (FPT && PrevFPT &&
       isUnresolvedExceptionSpec(FPT->getExceptionSpecType()) &&
       !isUnresolvedExceptionSpec(PrevFPT->getExceptionSpecType())) {
-    FunctionProtoType::ExtProtoInfo EPI = PrevFPT->getExtProtoInfo();
-    FD->setType(Reader.Context.getFunctionType(
-        FPT->getReturnType(), FPT->getParamTypes(),
-        FPT->getExtProtoInfo().withExceptionSpec(EPI.ExceptionSpec)));
+    Reader.Context.adjustExceptionSpec(
+        FD, PrevFPT->getExtProtoInfo().ExceptionSpec);
   }
 }
 }
@@ -3685,6 +3684,10 @@ void ASTDeclReader::UpdateDecl(Decl *D, ModuleFile &ModuleFile,
 
     case UPD_STATIC_LOCAL_NUMBER:
       Reader.Context.setStaticLocalNumber(cast<VarDecl>(D), Record[Idx++]);
+      break;
+    case UPD_DECL_MARKED_OPENMP_THREADPRIVATE:
+      D->addAttr(OMPThreadPrivateDeclAttr::CreateImplicit(
+          Reader.Context, ReadSourceRange(Record, Idx)));
       break;
     }
   }

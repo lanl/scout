@@ -1847,7 +1847,8 @@ Driver::generatePrefixedToolNames(const char *Tool, const ToolChain &TC,
   Names.push_back(Tool);
 }
 
-bool ScanDirForExecutable(SmallString<128> &Dir, ArrayRef<std::string> Names) {
+static bool ScanDirForExecutable(SmallString<128> &Dir,
+                                 ArrayRef<std::string> Names) {
   for (const auto &Name : Names) {
     llvm::sys::path::append(Dir, Name);
     if (llvm::sys::fs::can_execute(Twine(Dir)))
@@ -1884,11 +1885,10 @@ std::string Driver::GetProgramPath(const char *Name,
   }
 
   // If all else failed, search the path.
-  for (const auto &TargetSpecificExecutable : TargetSpecificExecutables) {
-    auto P = llvm::sys::findProgramByName(TargetSpecificExecutable);
-    if (P)
+  for (const auto &TargetSpecificExecutable : TargetSpecificExecutables)
+    if (llvm::ErrorOr<std::string> P =
+            llvm::sys::findProgramByName(TargetSpecificExecutable))
       return *P;
-  }
 
   return Name;
 }

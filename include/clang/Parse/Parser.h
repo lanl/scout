@@ -1392,6 +1392,8 @@ private:
   
   ExprResult ParseObjCBoolLiteral();
 
+  ExprResult ParseFoldExpression(ExprResult LHS, BalancedDelimiterTracker &T);
+
   //===--------------------------------------------------------------------===//
   // C++ Expressions
   ExprResult ParseCXXIdExpression(bool isAddressOfOperand = false);
@@ -1451,10 +1453,12 @@ private:
   ExprResult ParseThrowExpression();
 
   ExceptionSpecificationType tryParseExceptionSpecification(
+                    bool Delayed,
                     SourceRange &SpecificationRange,
                     SmallVectorImpl<ParsedType> &DynamicExceptions,
                     SmallVectorImpl<SourceRange> &DynamicExceptionRanges,
-                    ExprResult &NoexceptExpr);
+                    ExprResult &NoexceptExpr,
+                    CachedTokens *&ExceptionSpecTokens);
 
   // EndLoc is filled with the location of the last token of the specification.
   ExceptionSpecificationType ParseDynamicExceptionSpecification(

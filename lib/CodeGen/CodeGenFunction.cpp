@@ -604,7 +604,7 @@ void CodeGenFunction::StartFunction(GlobalDecl GD,
 
   // If we are checking function types, emit a function type signature as
   // prefix data.
-  if (getLangOpts().CPlusPlus && SanOpts.Function) {
+  if (getLangOpts().CPlusPlus && SanOpts.has(SanitizerKind::Function)) {
     if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(D)) {
       if (llvm::Constant *PrefixSig =
               CGM.getTargetCodeGenInfo().getUBSanFunctionSignature(CGM)) {
@@ -897,11 +897,12 @@ void CodeGenFunction::GenerateCode(GlobalDecl GD, llvm::Function *Fn,
   //   function call is used by the caller, the behavior is undefined.
   if (getLangOpts().CPlusPlus && !FD->hasImplicitReturnZero() && !SawAsmBlock &&
       !FD->getReturnType()->isVoidType() && Builder.GetInsertBlock()) {
-    if (SanOpts.Return) {
+    if (SanOpts.has(SanitizerKind::Return)) {
       SanitizerScope SanScope(this);
-      EmitCheck(Builder.getFalse(), "missing_return",
-                EmitCheckSourceLocation(FD->getLocation()),
-                None, CRK_Unrecoverable);
+      llvm::Value *IsFalse = Builder.getFalse();
+      EmitCheck(std::make_pair(IsFalse, SanitizerKind::Return),
+                "missing_return", EmitCheckSourceLocation(FD->getLocation()),
+                None);
     } else if (CGM.getCodeGenOpts().OptimizationLevel == 0)
       Builder.CreateCall(CGM.getIntrinsic(llvm::Intrinsic::trap));
     Builder.CreateUnreachable();
@@ -1552,7 +1553,7 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
           //   If the size is an expression that is not an integer constant
           //   expression [...] each time it is evaluated it shall have a value
           //   greater than zero.
-          if (SanOpts.VLABound &&
+          if (SanOpts.has(SanitizerKind::VLABound) &&
               size->getType()->isSignedIntegerType()) {
             SanitizerScope SanScope(this);
             llvm::Value *Zero = llvm::Constant::getNullValue(Size->getType());
@@ -1560,9 +1561,9 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
               EmitCheckSourceLocation(size->getLocStart()),
               EmitCheckTypeDescriptor(size->getType())
             };
-            EmitCheck(Builder.CreateICmpSGT(Size, Zero),
-                      "vla_bound_not_positive", StaticArgs, Size,
-                      CRK_Recoverable);
+            EmitCheck(std::make_pair(Builder.CreateICmpSGT(Size, Zero),
+                                     SanitizerKind::VLABound),
+                      "vla_bound_not_positive", StaticArgs, Size);
           }
 
           // Always zexting here would be wrong if it weren't

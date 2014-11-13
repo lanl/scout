@@ -1493,7 +1493,7 @@ llvm::Value *ItaniumCXXABI::InitializeArrayCookie(CodeGenFunction &CGF,
   llvm::Value *NumElementsPtr =
       CGF.Builder.CreateBitCast(CookiePtr, NumElementsTy);
   llvm::Instruction *SI = CGF.Builder.CreateStore(NumElements, NumElementsPtr);
-  if (CGM.getLangOpts().Sanitize.Address && AS == 0 &&
+  if (CGM.getLangOpts().Sanitize.has(SanitizerKind::Address) && AS == 0 &&
       expr->getOperatorNew()->isReplaceableGlobalAllocationFunction()) {
     // The store to the CookiePtr does not need to be instrumented.
     CGM.getSanitizerMetadata()->disableSanitizerForInstruction(SI);
@@ -1525,7 +1525,7 @@ llvm::Value *ItaniumCXXABI::readArrayCookieImpl(CodeGenFunction &CGF,
   unsigned AS = allocPtr->getType()->getPointerAddressSpace();
   numElementsPtr = 
     CGF.Builder.CreateBitCast(numElementsPtr, CGF.SizeTy->getPointerTo(AS));
-  if (!CGM.getLangOpts().Sanitize.Address || AS != 0)
+  if (!CGM.getLangOpts().Sanitize.has(SanitizerKind::Address) || AS != 0)
     return CGF.Builder.CreateLoad(numElementsPtr);
   // In asan mode emit a function call instead of a regular load and let the
   // run-time deal with it: if the shadow is properly poisoned return the
@@ -2190,6 +2190,11 @@ ItaniumRTTIBuilder::GetAddrOfExternalRTTIDescriptor(QualType Ty) {
                                   /*Constant=*/true,
                                   llvm::GlobalValue::ExternalLinkage, nullptr,
                                   Name);
+    if (const RecordType *RecordTy = dyn_cast<RecordType>(Ty)) {
+      const CXXRecordDecl *RD = cast<CXXRecordDecl>(RecordTy->getDecl());
+      if (RD->hasAttr<DLLImportAttr>())
+        GV->setDLLStorageClass(llvm::GlobalVariable::DLLImportStorageClass);
+    }
   }
 
   return llvm::ConstantExpr::getBitCast(GV, CGM.Int8PtrTy);
@@ -2312,7 +2317,11 @@ static bool ShouldUseExternalRTTIDescriptor(CodeGenModule &CGM,
 
     // FIXME: this may need to be reconsidered if the key function
     // changes.
-    return CGM.getVTables().isVTableExternal(RD);
+    if (CGM.getVTables().isVTableExternal(RD))
+      return true;
+
+    if (RD->hasAttr<DLLImportAttr>())
+      return true;
   }
 
   return false;

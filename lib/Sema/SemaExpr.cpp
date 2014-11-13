@@ -8618,6 +8618,17 @@ QualType Sema::CheckAssignmentOperands(Expr *LHSExpr, ExprResult &RHS,
                                        QualType CompoundType) {
   assert(!LHSExpr->hasPlaceholderType(BuiltinType::PseudoObject));
 
+  if (!getLangOpts().CPlusPlus) {
+    // C cannot handle TypoExpr nodes on either side of n assignment because it
+    // doesn't handle dependent types properly, so make sure any TypoExprs have
+    // been dealt with before checking the operands.
+    ExprResult Res = CorrectDelayedTyposInExpr(LHSExpr);
+    Expr *NewLHS = Res.isInvalid() ? LHSExpr : Res.get();
+    Res = CorrectDelayedTyposInExpr(RHS);
+    if (!Res.isInvalid() && (Res.get() != RHS.get() || NewLHS != LHSExpr))
+      return CheckAssignmentOperands(NewLHS, Res, Loc, CompoundType);
+  }
+
   // Verify that LHS is a modifiable lvalue, and emit error if not.
   if (CheckForModifiableLvalue(LHSExpr, Loc, *this))
     return QualType();
@@ -9164,8 +9175,7 @@ static QualType CheckIndirectionOperand(Sema &S, Expr *Op, ExprValueKind &VK,
   return Result;
 }
 
-static inline BinaryOperatorKind ConvertTokenKindToBinaryOpcode(
-  tok::TokenKind Kind) {
+BinaryOperatorKind Sema::ConvertTokenKindToBinaryOpcode(tok::TokenKind Kind) {
   BinaryOperatorKind Opc;
   switch (Kind) {
   default: llvm_unreachable("Unknown binop!");
@@ -13342,6 +13352,39 @@ ExprResult RebuildUnknownAnyExpr::resolveDecl(Expr *E, ValueDecl *VD) {
       S.Diag(E->getExprLoc(), diag::err_unknown_any_function)
         << VD << E->getSourceRange();
       return ExprError();
+    }
+    if (const FunctionProtoType *FT = Type->getAs<FunctionProtoType>()) {
+      // We must match the FunctionDecl's type to the hack introduced in
+      // RebuildUnknownAnyExpr::VisitCallExpr to vararg functions of unknown
+      // type. See the lengthy commentary in that routine.
+      QualType FDT = FD->getType();
+      const FunctionType *FnType = FDT->castAs<FunctionType>();
+      const FunctionProtoType *Proto = dyn_cast_or_null<FunctionProtoType>(FnType);
+      DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(E);
+      if (DRE && Proto && Proto->getParamTypes().empty() && Proto->isVariadic()) {
+        SourceLocation Loc = FD->getLocation();
+        FunctionDecl *NewFD = FunctionDecl::Create(FD->getASTContext(),
+                                      FD->getDeclContext(),
+                                      Loc, Loc, FD->getNameInfo().getName(),
+                                      DestType, FD->getTypeSourceInfo(),
+                                      SC_None, false/*isInlineSpecified*/,
+                                      FD->hasPrototype(),
+                                      false/*isConstexprSpecified*/);
+          
+        if (FD->getQualifier())
+          NewFD->setQualifierInfo(FD->getQualifierLoc());
+
+        SmallVector<ParmVarDecl*, 16> Params;
+        for (const auto &AI : FT->param_types()) {
+          ParmVarDecl *Param =
+            S.BuildParmVarDeclForTypedef(FD, Loc, AI);
+          Param->setScopeInfo(0, Params.size());
+          Params.push_back(Param);
+        }
+        NewFD->setParams(Params);
+        DRE->setDecl(NewFD);
+        VD = DRE->getDecl();
+      }
     }
 
     if (CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(FD))

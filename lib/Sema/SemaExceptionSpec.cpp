@@ -112,6 +112,11 @@ bool Sema::CheckDistantExceptionSpec(QualType T) {
 
 const FunctionProtoType *
 Sema::ResolveExceptionSpec(SourceLocation Loc, const FunctionProtoType *FPT) {
+  if (FPT->getExceptionSpecType() == EST_Unparsed) {
+    Diag(Loc, diag::err_exception_spec_not_parsed);
+    return nullptr;
+  }
+
   if (!isUnresolvedExceptionSpec(FPT->getExceptionSpecType()))
     return FPT;
 
@@ -135,16 +140,8 @@ Sema::ResolveExceptionSpec(SourceLocation Loc, const FunctionProtoType *FPT) {
 void
 Sema::UpdateExceptionSpec(FunctionDecl *FD,
                           const FunctionProtoType::ExceptionSpecInfo &ESI) {
-  for (auto *Redecl : FD->redecls()) {
-    auto *RedeclFD = dyn_cast<FunctionDecl>(Redecl);
-    const FunctionProtoType *Proto =
-        RedeclFD->getType()->castAs<FunctionProtoType>();
-
-    // Overwrite the exception spec and rebuild the function type.
-    RedeclFD->setType(Context.getFunctionType(
-        Proto->getReturnType(), Proto->getParamTypes(),
-        Proto->getExtProtoInfo().withExceptionSpec(ESI)));
-  }
+  for (auto *Redecl : FD->redecls())
+    Context.adjustExceptionSpec(cast<FunctionDecl>(Redecl), ESI);
 
   // If we've fully resolved the exception specification, notify listeners.
   if (!isUnresolvedExceptionSpec(ESI.Type))
@@ -720,10 +717,11 @@ static bool CheckSpecForTypesEquivalent(Sema &S,
 /// assignment and override compatibility check. We do not check the parameters
 /// of parameter function pointers recursively, as no sane programmer would
 /// even be able to write such a function type.
-bool Sema::CheckParamExceptionSpec(const PartialDiagnostic & NoteID,
-    const FunctionProtoType *Target, SourceLocation TargetLoc,
-    const FunctionProtoType *Source, SourceLocation SourceLoc)
-{
+bool Sema::CheckParamExceptionSpec(const PartialDiagnostic &NoteID,
+                                   const FunctionProtoType *Target,
+                                   SourceLocation TargetLoc,
+                                   const FunctionProtoType *Source,
+                                   SourceLocation SourceLoc) {
   if (CheckSpecForTypesEquivalent(
           *this, PDiag(diag::err_deep_exception_specs_differ) << 0, PDiag(),
           Target->getReturnType(), TargetLoc, Source->getReturnType(),
@@ -744,23 +742,30 @@ bool Sema::CheckParamExceptionSpec(const PartialDiagnostic & NoteID,
   return false;
 }
 
-bool Sema::CheckExceptionSpecCompatibility(Expr *From, QualType ToType)
-{
+bool Sema::CheckExceptionSpecCompatibility(Expr *From, QualType ToType) {
   // First we check for applicability.
   // Target type must be a function, function pointer or function reference.
   const FunctionProtoType *ToFunc = GetUnderlyingFunction(ToType);
-  if (!ToFunc)
+  if (!ToFunc || ToFunc->hasDependentExceptionSpec())
     return false;
 
   // SourceType must be a function or function pointer.
   const FunctionProtoType *FromFunc = GetUnderlyingFunction(From->getType());
-  if (!FromFunc)
+  if (!FromFunc || FromFunc->hasDependentExceptionSpec())
     return false;
 
   // Now we've got the correct types on both sides, check their compatibility.
   // This means that the source of the conversion can only throw a subset of
   // the exceptions of the target, and any exception specs on arguments or
   // return types must be equivalent.
+  //
+  // FIXME: If there is a nested dependent exception specification, we should
+  // not be checking it here. This is fine:
+  //   template<typename T> void f() {
+  //     void (*p)(void (*) throw(T));
+  //     void (*q)(void (*) throw(int)) = p;
+  //   }
+  // ... because it might be instantiated with T=int.
   return CheckExceptionSpecSubset(PDiag(diag::err_incompatible_exception_specs),
                                   PDiag(), ToFunc, 
                                   From->getSourceRange().getBegin(),
@@ -782,6 +787,11 @@ bool Sema::CheckOverridingFunctionExceptionSpec(const CXXMethodDecl *New,
       return false;
     }
   }
+  // If the exception specification hasn't been parsed yet, skip the check.
+  // We'll get called again once it's been parsed.
+  if (New->getType()->castAs<FunctionProtoType>()->getExceptionSpecType() ==
+      EST_Unparsed)
+    return false;
   unsigned DiagID = diag::err_override_exception_spec;
   if (getLangOpts().MicrosoftExt)
     DiagID = diag::ext_override_exception_spec;
@@ -1048,6 +1058,7 @@ CanThrowResult Sema::canThrow(const Expr *E) {
   case Expr::CXXDependentScopeMemberExprClass:
   case Expr::CXXUnresolvedConstructExprClass:
   case Expr::DependentScopeDeclRefExprClass:
+  case Expr::CXXFoldExprClass:
     return CT_Dependent;
 
   case Expr::AsTypeExprClass:
