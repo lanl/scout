@@ -364,7 +364,7 @@ bool CallInst::paramHasAttr(unsigned i, Attribute::AttrKind A) const {
 
 /// IsConstantOne - Return true only if val is constant int 1
 static bool IsConstantOne(Value *val) {
-  assert(val && "IsConstantOne does not work with NULL val");
+  assert(val && "IsConstantOne does not work with nullptr val");
   const ConstantInt *CVal = dyn_cast<ConstantInt>(val);
   return CVal && CVal->isOne();
 }
@@ -419,7 +419,7 @@ static Instruction *createMalloc(Instruction *InsertBefore,
   Value *MallocFunc = MallocF;
   if (!MallocFunc)
     // prototype malloc as "void *malloc(size_t)"
-    MallocFunc = M->getOrInsertFunction("malloc", BPTy, IntPtrTy, NULL);
+    MallocFunc = M->getOrInsertFunction("malloc", BPTy, IntPtrTy, nullptr);
   PointerType *AllocPtrType = PointerType::getUnqual(AllocTy);
   CallInst *MCall = nullptr;
   Instruction *Result = nullptr;
@@ -492,7 +492,7 @@ static Instruction* createFree(Value* Source, Instruction *InsertBefore,
   Type *VoidTy = Type::getVoidTy(M->getContext());
   Type *IntPtrTy = Type::getInt8PtrTy(M->getContext());
   // prototype free as "void free(void*)"
-  Value *FreeFunc = M->getOrInsertFunction("free", VoidTy, IntPtrTy, NULL);
+  Value *FreeFunc = M->getOrInsertFunction("free", VoidTy, IntPtrTy, nullptr);
   CallInst* Result = nullptr;
   Value *PtrCast = Source;
   if (InsertBefore) {
@@ -791,7 +791,7 @@ void BranchInst::swapSuccessors() {
 
   // Update profile metadata if present and it matches our structural
   // expectations.
-  MDNode *ProfileData = getMDNode(LLVMContext::MD_prof);
+  MDNode *ProfileData = getMetadata(LLVMContext::MD_prof);
   if (!ProfileData || ProfileData->getNumOperands() != 3)
     return;
 
@@ -2072,7 +2072,8 @@ void BinaryOperator::andIRFlags(const Value *V) {
 /// An accuracy of 0.0 means that the operation should be performed with the
 /// default precision.
 float FPMathOperator::getFPAccuracy() const {
-  const MDNode *MD = cast<Instruction>(this)->getMDNode(LLVMContext::MD_fpmath);
+  const MDNode *MD =
+      cast<Instruction>(this)->getMetadata(LLVMContext::MD_fpmath);
   if (!MD)
     return 0.0;
   ConstantFP *Accuracy = cast<ConstantFP>(MD->getOperand(0));

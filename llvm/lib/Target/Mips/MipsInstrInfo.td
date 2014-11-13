@@ -672,6 +672,40 @@ class StoreLeftRight<string opstr, SDNode OpNode, RegisterOperand RO,
   let DecoderMethod = "DecodeMem";
 }
 
+// COP2 Load/Store
+class LW_FT2<string opstr, RegisterOperand RC, InstrItinClass Itin,
+             SDPatternOperator OpNode= null_frag> :
+  InstSE<(outs RC:$rt), (ins mem:$addr), !strconcat(opstr, "\t$rt, $addr"),
+         [(set RC:$rt, (OpNode addrDefault:$addr))], Itin, FrmFI, opstr> {
+  let DecoderMethod = "DecodeFMem2";
+  let mayLoad = 1;
+}
+
+class SW_FT2<string opstr, RegisterOperand RC, InstrItinClass Itin,
+             SDPatternOperator OpNode= null_frag> :
+  InstSE<(outs), (ins RC:$rt, mem:$addr), !strconcat(opstr, "\t$rt, $addr"),
+         [(OpNode RC:$rt, addrDefault:$addr)], Itin, FrmFI, opstr> {
+  let DecoderMethod = "DecodeFMem2";
+  let mayStore = 1;
+}
+
+// COP3 Load/Store
+class LW_FT3<string opstr, RegisterOperand RC, InstrItinClass Itin,
+             SDPatternOperator OpNode= null_frag> :
+  InstSE<(outs RC:$rt), (ins mem:$addr), !strconcat(opstr, "\t$rt, $addr"),
+         [(set RC:$rt, (OpNode addrDefault:$addr))], Itin, FrmFI, opstr> {
+  let DecoderMethod = "DecodeFMem3";
+  let mayLoad = 1;
+}
+
+class SW_FT3<string opstr, RegisterOperand RC, InstrItinClass Itin,
+             SDPatternOperator OpNode= null_frag> :
+  InstSE<(outs), (ins RC:$rt, mem:$addr), !strconcat(opstr, "\t$rt, $addr"),
+         [(OpNode RC:$rt, addrDefault:$addr)], Itin, FrmFI, opstr> {
+  let DecoderMethod = "DecodeFMem3";
+  let mayStore = 1;
+}
+
 // Conditional Branch
 class CBranch<string opstr, DAGOperand opnd, PatFrag cond_op,
               RegisterOperand RO, bit DelaySlot = 1> :
@@ -1071,9 +1105,10 @@ def SLTi  : MMRel, SetCC_I<"slti", setlt, simm16, immSExt16, GPR32Opnd>,
             SLTI_FM<0xa>;
 def SLTiu : MMRel, SetCC_I<"sltiu", setult, simm16, immSExt16, GPR32Opnd>,
             SLTI_FM<0xb>;
+let AdditionalPredicates = [NotInMicroMips] in {
 def ANDi  : MMRel, ArithLogicI<"andi", uimm16, GPR32Opnd, II_ANDI, immZExt16,
-                               and>,
-            ADDI_FM<0xc>;
+                               and>, ADDI_FM<0xc>;
+}
 def ORi   : MMRel, ArithLogicI<"ori", uimm16, GPR32Opnd, II_ORI, immZExt16,
                                or>,
             ADDI_FM<0xd>;
@@ -1103,10 +1138,12 @@ def XOR   : MMRel, ArithLogicR<"xor", GPR32Opnd, 1, II_XOR, xor>,
 def NOR   : MMRel, LogicNOR<"nor", GPR32Opnd>, ADD_FM<0, 0x27>;
 
 /// Shift Instructions
+let AdditionalPredicates = [NotInMicroMips] in {
 def SLL  : MMRel, shift_rotate_imm<"sll", uimm5, GPR32Opnd, II_SLL, shl,
                                    immZExt5>, SRA_FM<0, 0>;
 def SRL  : MMRel, shift_rotate_imm<"srl", uimm5, GPR32Opnd, II_SRL, srl,
                                    immZExt5>, SRA_FM<2, 0>;
+}
 def SRA  : MMRel, shift_rotate_imm<"sra", uimm5, GPR32Opnd, II_SRA, sra,
                                    immZExt5>, SRA_FM<3, 0>;
 def SLLV : MMRel, shift_rotate_reg<"sllv", GPR32Opnd, II_SLLV, shl>,
@@ -1148,6 +1185,26 @@ def SWL : StoreLeftRight<"swl", MipsSWL, GPR32Opnd, II_SWL>, LW_FM<0x2a>,
           ISA_MIPS1_NOT_32R6_64R6;
 def SWR : StoreLeftRight<"swr", MipsSWR, GPR32Opnd, II_SWR>, LW_FM<0x2e>,
           ISA_MIPS1_NOT_32R6_64R6;
+}
+
+// COP2 Memory Instructions
+def LWC2 : LW_FT2<"lwc2", COP2Opnd, NoItinerary, load>, LW_FM<0x32>,
+           ISA_MIPS1_NOT_32R6_64R6;
+def SWC2 : SW_FT2<"swc2", COP2Opnd, NoItinerary, store>, LW_FM<0x3a>,
+           ISA_MIPS1_NOT_32R6_64R6;
+def LDC2 : LW_FT2<"ldc2", COP2Opnd, NoItinerary, load>, LW_FM<0x36>,
+           ISA_MIPS2_NOT_32R6_64R6;
+def SDC2 : SW_FT2<"sdc2", COP2Opnd, NoItinerary, store>, LW_FM<0x3e>,
+           ISA_MIPS2_NOT_32R6_64R6;
+
+// COP3 Memory Instructions
+let DecoderNamespace = "COP3_" in {
+  def LWC3 : LW_FT3<"lwc3", COP3Opnd, NoItinerary, load>, LW_FM<0x33>;
+  def SWC3 : SW_FT3<"swc3", COP3Opnd, NoItinerary, store>, LW_FM<0x3b>;
+  def LDC3 : LW_FT3<"ldc3", COP3Opnd, NoItinerary, load>, LW_FM<0x37>,
+             ISA_MIPS2;
+  def SDC3 : SW_FT3<"sdc3", COP3Opnd, NoItinerary, store>, LW_FM<0x3f>,
+             ISA_MIPS2;
 }
 
 def SYNC : MMRel, SYNC_FT<"sync">, SYNC_FM, ISA_MIPS32;
@@ -1595,6 +1652,12 @@ let AdditionalPredicates = [NotDSP] in {
   def : MipsPat<(addc  GPR32:$src, immSExt16:$imm),
                 (ADDiu GPR32:$src, imm:$imm)>;
 }
+
+// Support multiplication for pre-Mips32 targets that don't have
+// the MUL instruction.
+def : MipsPat<(mul GPR32:$lhs, GPR32:$rhs),
+              (PseudoMFLO (PseudoMULT GPR32:$lhs, GPR32:$rhs))>,
+      ISA_MIPS1_NOT_32R6_64R6;
 
 // SYNC
 def : MipsPat<(MipsSync (i32 immz)),

@@ -150,11 +150,17 @@ public:
   void apply(PBQPRAGraph &G) override {
     LiveIntervals &LIS = G.getMetadata().LIS;
 
+    // A minimum spill costs, so that register constraints can can be set
+    // without normalization in the [0.0:MinSpillCost( interval.
+    const PBQP::PBQPNum MinSpillCost = 10.0;
+
     for (auto NId : G.nodeIds()) {
       PBQP::PBQPNum SpillCost =
         LIS.getInterval(G.getNodeMetadata(NId).getVReg()).weight;
       if (SpillCost == 0.0)
         SpillCost = std::numeric_limits<PBQP::PBQPNum>::min();
+      else
+        SpillCost += MinSpillCost;
       PBQPRAGraph::RawVector NodeCosts(G.getNodeCosts(NId));
       NodeCosts[PBQP::RegAlloc::getSpillOptionIdx()] = SpillCost;
       G.setNodeCosts(NId, std::move(NodeCosts));
@@ -350,11 +356,8 @@ public:
         unsigned DstReg = CP.getDstReg();
         unsigned SrcReg = CP.getSrcReg();
 
-        const float CopyFactor = 0.5; // Cost of copy relative to load. Current
-                                      // value plucked randomly out of the air.
-
-        PBQP::PBQPNum CBenefit =
-          CopyFactor * LiveIntervals::getSpillWeight(false, true, &MBFI, &MI);
+        const float Scale = 1.0f / MBFI.getEntryFreq();
+        PBQP::PBQPNum CBenefit = MBFI.getBlockFreq(&MBB).getFrequency() * Scale;
 
         if (CP.isPhys()) {
           if (!MF.getRegInfo().isAllocatable(DstReg))
@@ -476,6 +479,15 @@ void RegAllocPBQP::findVRegIntervalsToAlloc(const MachineFunction &MF,
   }
 }
 
+static bool isACalleeSavedRegister(unsigned reg, const TargetRegisterInfo &TRI,
+                                   const MachineFunction &MF) {
+  const MCPhysReg *CSR = TRI.getCalleeSavedRegs(&MF);
+  for (unsigned i = 0; CSR[i] != 0; ++i)
+    if (TRI.regsOverlap(reg, CSR[i]))
+      return true;
+  return false;
+}
+
 void RegAllocPBQP::initializeGraph(PBQPRAGraph &G) {
   MachineFunction &MF = G.getMetadata().MF;
 
@@ -520,6 +532,13 @@ void RegAllocPBQP::initializeGraph(PBQPRAGraph &G) {
     }
 
     PBQPRAGraph::RawVector NodeCosts(VRegAllowed.size() + 1, 0);
+
+    // Tweak cost of callee saved registers, as using then force spilling and
+    // restoring them. This would only happen in the prologue / epilogue though.
+    for (unsigned i = 0; i != VRegAllowed.size(); ++i)
+      if (isACalleeSavedRegister(VRegAllowed[i], TRI, MF))
+        NodeCosts[1 + i] += 1.0;
+
     PBQPRAGraph::NodeId NId = G.addNode(std::move(NodeCosts));
     G.getNodeMetadata(NId).setVReg(VReg);
     G.getNodeMetadata(NId).setAllowedRegs(
@@ -607,12 +626,20 @@ void RegAllocPBQP::finalizeAlloc(MachineFunction &MF,
   }
 }
 
+static inline float normalizePBQPSpillWeight(float UseDefFreq, unsigned Size,
+                                         unsigned NumInstr) {
+  // All intervals have a spill weight that is mostly proportional to the number
+  // of uses, with uses in loops having a bigger weight.
+  return NumInstr * normalizeSpillWeight(UseDefFreq, Size, 1);
+}
+
 bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
   LiveIntervals &LIS = getAnalysis<LiveIntervals>();
   MachineBlockFrequencyInfo &MBFI =
     getAnalysis<MachineBlockFrequencyInfo>();
 
-  calculateSpillWeightsAndHints(LIS, MF, getAnalysis<MachineLoopInfo>(), MBFI);
+  calculateSpillWeightsAndHints(LIS, MF, getAnalysis<MachineLoopInfo>(), MBFI,
+                                normalizePBQPSpillWeight);
 
   VirtRegMap &VRM = getAnalysis<VirtRegMap>();
 

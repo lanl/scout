@@ -560,8 +560,8 @@ LLVMValueRef LLVMGetMetadata(LLVMValueRef Inst, unsigned KindID) {
 }
 
 void LLVMSetMetadata(LLVMValueRef Inst, unsigned KindID, LLVMValueRef MD) {
-  unwrap<Instruction>(Inst)->setMetadata(KindID,
-                                         MD ? unwrap<MDNode>(MD) : nullptr);
+  unwrap<Instruction>(Inst)
+      ->setMetadata(KindID, MD ? unwrap<MDNode>(MD) : nullptr);
 }
 
 /*--.. Conversion functions ................................................--*/
