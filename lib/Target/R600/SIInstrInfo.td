@@ -245,6 +245,7 @@ def MUBUFOffset : ComplexPattern<i64, 6, "SelectMUBUFOffset">;
 def MUBUFOffsetAtomic : ComplexPattern<i64, 4, "SelectMUBUFOffset">;
 
 def VOP3Mods0 : ComplexPattern<untyped, 4, "SelectVOP3Mods0">;
+def VOP3Mods0Clamp : ComplexPattern<untyped, 3, "SelectVOP3Mods0Clamp">;
 def VOP3Mods  : ComplexPattern<untyped, 2, "SelectVOP3Mods">;
 
 //===----------------------------------------------------------------------===//
@@ -298,7 +299,7 @@ class EXPCommon : InstSI<
   (outs),
   (ins i32imm:$en, i32imm:$tgt, i32imm:$compr, i32imm:$done, i32imm:$vm,
        VReg_32:$src0, VReg_32:$src1, VReg_32:$src2, VReg_32:$src3),
-  "EXP $en, $tgt, $compr, $done, $vm, $src0, $src1, $src2, $src3",
+  "exp $en, $tgt, $compr, $done, $vm, $src0, $src1, $src2, $src3",
   [] > {
 
   let EXP_CNT = 1;
@@ -308,10 +309,10 @@ class EXPCommon : InstSI<
 multiclass EXP_m {
 
   let isPseudo = 1 in {
-    def "" : EXPCommon, SIMCInstr <"EXP", SISubtarget.NONE> ;
+    def "" : EXPCommon, SIMCInstr <"exp", SISubtarget.NONE> ;
   }
 
-  def _si : EXPCommon, SIMCInstr <"EXP", SISubtarget.SI>, EXPe;
+  def _si : EXPCommon, SIMCInstr <"exp", SISubtarget.SI>, EXPe;
 }
 
 //===----------------------------------------------------------------------===//
@@ -339,6 +340,11 @@ class SOP2_32 <bits<7> op, string opName, list<dag> pattern> : SOP2 <
   opName#" $dst, $src0, $src1", pattern
 >;
 
+class SOP2_SELECT_32 <bits<7> op, string opName, list<dag> pattern> : SOP2 <
+  op, (outs SReg_32:$dst), (ins SSrc_32:$src0, SSrc_32:$src1, SCCReg:$scc),
+  opName#" $dst, $src0, $src1 [$scc]", pattern
+>;
+
 class SOP2_64 <bits<7> op, string opName, list<dag> pattern> : SOP2 <
   op, (outs SReg_64:$dst), (ins SSrc_64:$src0, SSrc_64:$src1),
   opName#" $dst, $src0, $src1", pattern
@@ -362,12 +368,12 @@ class SOPC_64<bits<7> op, string opName, PatLeaf cond = COND_NULL>
   : SOPC_Helper<op, SSrc_64, i64, opName, cond>;
 
 class SOPK_32 <bits<5> op, string opName, list<dag> pattern> : SOPK <
-  op, (outs SReg_32:$dst), (ins i16imm:$src0),
+  op, (outs SReg_32:$dst), (ins u16imm:$src0),
   opName#" $dst, $src0", pattern
 >;
 
 class SOPK_64 <bits<5> op, string opName, list<dag> pattern> : SOPK <
-  op, (outs SReg_64:$dst), (ins i16imm:$src0),
+  op, (outs SReg_64:$dst), (ins u16imm:$src0),
   opName#" $dst, $src0", pattern
 >;
 
@@ -893,12 +899,12 @@ multiclass VOP3Inst <vop3 op, string opName, VOPProfile P,
 multiclass VOP3b_Helper <vop op, RegisterClass vrc, RegisterClass arc,
                     string opName, list<dag> pattern> :
   VOP3b_2_m <
-  op, (outs vrc:$dst0, SReg_64:$dst1),
+  op, (outs vrc:$vdst, SReg_64:$sdst),
       (ins InputModsNoDefault:$src0_modifiers, arc:$src0,
            InputModsNoDefault:$src1_modifiers, arc:$src1,
            InputModsNoDefault:$src2_modifiers, arc:$src2,
-           ClampMod:$clamp, i32imm:$omod),
-  opName#" $dst0, $dst1, $src0_modifiers, $src1_modifiers, $src2_modifiers"#"$clamp"#"$omod", pattern,
+           ClampMod:$clamp, omod:$omod),
+  opName#" $vdst, $sdst, $src0_modifiers, $src1_modifiers, $src2_modifiers"#"$clamp"#"$omod", pattern,
   opName, opName, 1, 1
 >;
 

@@ -107,7 +107,7 @@ static void ComputePTXValueVTs(const TargetLowering &TLI, Type *Ty,
 
 // NVPTXTargetLowering Constructor.
 NVPTXTargetLowering::NVPTXTargetLowering(const NVPTXTargetMachine &TM)
-    : TargetLowering(TM, new NVPTXTargetObjectFile()), nvTM(&TM),
+    : TargetLowering(TM), nvTM(&TM),
       nvptxSubtarget(TM.getSubtarget<NVPTXSubtarget>()) {
 
   // always lower memset, memcpy, and memmove intrinsics to load/store
@@ -4495,4 +4495,11 @@ NVPTXTargetObjectFile::~NVPTXTargetObjectFile() {
   delete DwarfARangesSection;
   delete DwarfRangesSection;
   delete DwarfMacroInfoSection;
+}
+
+const MCSection *
+NVPTXTargetObjectFile::SelectSectionForGlobal(const GlobalValue *GV,
+                                              SectionKind Kind, Mangler &Mang,
+                                              const TargetMachine &TM) const {
+  return getDataSection();
 }

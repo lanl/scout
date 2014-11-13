@@ -759,8 +759,8 @@ Value *LibCallSimplifier::optimizeStrPBrk(CallInst *CI, IRBuilder<> &B) {
   bool HasS1 = getConstantStringInfo(CI->getArgOperand(0), S1);
   bool HasS2 = getConstantStringInfo(CI->getArgOperand(1), S2);
 
-  // strpbrk(s, "") -> NULL
-  // strpbrk("", s) -> NULL
+  // strpbrk(s, "") -> nullptr
+  // strpbrk("", s) -> nullptr
   if ((HasS1 && S1.empty()) || (HasS2 && S2.empty()))
     return Constant::getNullValue(CI->getType());
 
@@ -1238,7 +1238,7 @@ Value *LibCallSimplifier::optimizeExp2(CallInst *CI, IRBuilder<> &B) {
       Module *M = Caller->getParent();
       Value *Callee =
           M->getOrInsertFunction(TLI->getName(LdExp), Op->getType(),
-                                 Op->getType(), B.getInt32Ty(), NULL);
+                                 Op->getType(), B.getInt32Ty(), nullptr);
       CallInst *CI = B.CreateCall2(Callee, One, LdExpArg);
       if (const Function *F = dyn_cast<Function>(Callee->stripPointerCasts()))
         CI->setCallingConv(F->getCallingConv());
@@ -1463,15 +1463,15 @@ void insertSinCosCall(IRBuilder<> &B, Function *OrigCallee, Value *Arg,
     // xmm0 and xmm1, which isn't what a real struct would do.
     ResTy = T.getArch() == Triple::x86_64
                 ? static_cast<Type *>(VectorType::get(ArgTy, 2))
-                : static_cast<Type *>(StructType::get(ArgTy, ArgTy, NULL));
+                : static_cast<Type *>(StructType::get(ArgTy, ArgTy, nullptr));
   } else {
     Name = "__sincospi_stret";
-    ResTy = StructType::get(ArgTy, ArgTy, NULL);
+    ResTy = StructType::get(ArgTy, ArgTy, nullptr);
   }
 
   Module *M = OrigCallee->getParent();
   Value *Callee = M->getOrInsertFunction(Name, OrigCallee->getAttributes(),
-                                         ResTy, ArgTy, NULL);
+                                         ResTy, ArgTy, nullptr);
 
   if (Instruction *ArgInst = dyn_cast<Instruction>(Arg)) {
     // If the argument is an instruction, it must dominate all uses so put our
@@ -2184,28 +2184,20 @@ Value *LibCallSimplifier::optimizeCall(CallInst *CI) {
       return nullptr;
     case LibFunc::memcpy_chk:
       return optimizeMemCpyChk(CI, Builder);
+    case LibFunc::memmove_chk:
+      return optimizeMemMoveChk(CI, Builder);
+    case LibFunc::memset_chk:
+      return optimizeMemSetChk(CI, Builder);
+    case LibFunc::strcpy_chk:
+      return optimizeStrCpyChk(CI, Builder);
+    case LibFunc::stpcpy_chk:
+      return optimizeStpCpyChk(CI, Builder);
+    case LibFunc::stpncpy_chk:
+    case LibFunc::strncpy_chk:
+      return optimizeStrNCpyChk(CI, Builder);
     default:
       return nullptr;
     }
-  }
-
-  if (!isCallingConvC)
-    return nullptr;
-
-  // Finally check for fortified library calls.
-  if (FuncName.endswith("_chk")) {
-    if (FuncName == "__memmove_chk")
-      return optimizeMemMoveChk(CI, Builder);
-    else if (FuncName == "__memset_chk")
-      return optimizeMemSetChk(CI, Builder);
-    else if (FuncName == "__strcpy_chk")
-      return optimizeStrCpyChk(CI, Builder);
-    else if (FuncName == "__stpcpy_chk")
-      return optimizeStpCpyChk(CI, Builder);
-    else if (FuncName == "__strncpy_chk")
-      return optimizeStrNCpyChk(CI, Builder);
-    else if (FuncName == "__stpncpy_chk")
-      return optimizeStrNCpyChk(CI, Builder);
   }
 
   return nullptr;

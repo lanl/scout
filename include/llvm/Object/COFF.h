@@ -36,7 +36,7 @@ typedef content_iterator<ImportedSymbolRef> imported_symbol_iterator;
 
 /// The DOS compatible header at the front of all PE/COFF executables.
 struct dos_header {
-  support::ulittle16_t Magic;
+  char                 Magic[2];
   support::ulittle16_t UsedBytesInTheLastPage;
   support::ulittle16_t FileSizeInPages;
   support::ulittle16_t NumberOfRelocationItems;
@@ -299,7 +299,9 @@ public:
 
   uint8_t getBaseType() const { return getType() & 0x0F; }
 
-  uint8_t getComplexType() const { return (getType() & 0xF0) >> 4; }
+  uint8_t getComplexType() const {
+    return (getType() & 0xF0) >> COFF::SCT_COMPLEX_TYPE_SHIFT;
+  }
 
   bool isExternal() const {
     return getStorageClass() == COFF::IMAGE_SYM_CLASS_EXTERNAL;
@@ -373,9 +375,9 @@ struct coff_section {
   // Returns true if the actual number of relocations is stored in
   // VirtualAddress field of the first relocation table entry.
   bool hasExtendedRelocations() const {
-    return Characteristics & COFF::IMAGE_SCN_LNK_NRELOC_OVFL &&
-        NumberOfRelocations == UINT16_MAX;
-  };
+    return (Characteristics & COFF::IMAGE_SCN_LNK_NRELOC_OVFL) &&
+           NumberOfRelocations == UINT16_MAX;
+  }
 };
 
 struct coff_relocation {
@@ -621,6 +623,11 @@ public:
       delay_import_directories() const;
   iterator_range<export_directory_iterator> export_directories() const;
 
+  const dos_header *getDOSHeader() const {
+    if (!PE32Header && !PE32PlusHeader)
+      return nullptr;
+    return reinterpret_cast<const dos_header *>(base());
+  }
   std::error_code getPE32Header(const pe32_header *&Res) const;
   std::error_code getPE32PlusHeader(const pe32plus_header *&Res) const;
   std::error_code getDataDirectory(uint32_t index,
@@ -681,6 +688,7 @@ public:
                               StringRef &Name) const;
 
   bool isRelocatableObject() const override;
+  bool is64() const { return PE32PlusHeader; }
 
   static inline bool classof(const Binary *v) { return v->isCOFF(); }
 };
@@ -733,6 +741,7 @@ public:
   std::error_code getName(StringRef &Result) const;
   std::error_code getDelayImportTable(
       const delay_import_directory_table_entry *&Result) const;
+  std::error_code getImportAddress(int AddrIndex, uint64_t &Result) const;
 
 private:
   const delay_import_directory_table_entry *Table;

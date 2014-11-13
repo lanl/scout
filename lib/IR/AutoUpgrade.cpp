@@ -476,14 +476,6 @@ void llvm::UpgradeIntrinsicCall(CallInst *CI, Function *NewFn) {
     CI->eraseFromParent();
     return;
 
-  case Intrinsic::arm_neon_vclz: {
-    // Change name from llvm.arm.neon.vclz.* to llvm.ctlz.*
-    CI->replaceAllUsesWith(Builder.CreateCall2(NewFn, CI->getArgOperand(0),
-                                               Builder.getFalse(),
-                                               "llvm.ctlz." + Name.substr(14)));
-    CI->eraseFromParent();
-    return;
-  }
   case Intrinsic::ctpop: {
     CI->replaceAllUsesWith(Builder.CreateCall(NewFn, CI->getArgOperand(0)));
     CI->eraseFromParent();
@@ -579,7 +571,7 @@ void llvm::UpgradeCallsToIntrinsic(Function* F) {
 }
 
 void llvm::UpgradeInstWithTBAATag(Instruction *I) {
-  MDNode *MD = I->getMDNode(LLVMContext::MD_tbaa);
+  MDNode *MD = I->getMetadata(LLVMContext::MD_tbaa);
   assert(MD && "UpgradeInstWithTBAATag should have a TBAA tag");
   // Check if the tag uses struct-path aware TBAA format.
   if (isa<MDNode>(MD->getOperand(0)) && MD->getNumOperands() >= 3)
