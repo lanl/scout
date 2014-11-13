@@ -96,6 +96,12 @@ else
 	ifeq "$(ARCH)" "i686"
 		override ARCH := $(subst i686,32,$(ARCH))
 	endif
+	ifeq "$(ARCH)" "powerpc"
+		override ARCH := $(subst powerpc,32,$(ARCH))
+	endif
+	ifeq "$(ARCH)" "powerpc64"
+		override ARCH := $(subst powerpc64,64,$(ARCH))
+	endif
 
 	ifeq "$(SPLIT_DEBUG_SYMBOLS)" "YES"
 		DSYM = $(EXE).debug
@@ -130,11 +136,27 @@ ifneq "$(DYLIB_NAME)" ""
 endif
 
 # Function that returns the counterpart C++ compiler, given $(CC) as arg.
-cxx_compiler_notdir = $(if $(findstring clang,$(1)), $(subst clang,clang++,$(1)), $(if $(findstring icc,$(1)), $(subst icc,icpc,$(1)), $(if $(findstring llvm-gcc,$(1)), $(subst llvm-gcc,llvm-g++,$(1)), $(subst gcc,g++,$(1)))))
+cxx_compiler_notdir = $(if $(findstring clang,$(1)), \
+                           $(subst clang,clang++,$(1)), \
+                           $(if $(findstring icc,$(1)), \
+                                $(subst icc,icpc,$(1)), \
+                                $(if $(findstring llvm-gcc,$(1)), \
+                                     $(subst llvm-gcc,llvm-g++,$(1)), \
+                                     $(if $(findstring gcc,$(1)), \
+                                          $(subst gcc,g++,$(1)), \
+                                          $(subst cc,c++,$(1))))))
 cxx_compiler = $(if $(findstring /,$(1)),$(join $(dir $(1)), $(call cxx_compiler_notdir,$(notdir $(1)))),$(call cxx_compiler_notdir,$(1)))
 
 # Function that returns the C++ linker, given $(CC) as arg.
-cxx_linker_notdir = $(if $(findstring clang,$(1)), $(subst clang,clang++,$(1)), $(if $(findstring icc,$(1)), $(subst icc,icpc,$(1)), $(if $(findstring llvm-gcc,$(1)), $(subst llvm-gcc,llvm-g++,$(1)), $(subst gcc,g++,$(1)))))
+cxx_linker_notdir = $(if $(findstring clang,$(1)), \
+                         $(subst clang,clang++,$(1)), \
+                         $(if $(findstring icc,$(1)), \
+                              $(subst icc,icpc,$(1)), \
+                              $(if $(findstring llvm-gcc,$(1)), \
+                                   $(subst llvm-gcc,llvm-g++,$(1)), \
+                                   $(if $(findstring gcc,$(1)), \
+                                        $(subst gcc,g++,$(1)), \
+                                        $(subst cc,c++,$(1))))))
 cxx_linker = $(if $(findstring /,$(1)),$(join $(dir $(1)), $(call cxx_linker_notdir,$(notdir $(1)))),$(call cxx_linker_notdir,$(1)))
 
 #----------------------------------------------------------------------

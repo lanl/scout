@@ -128,7 +128,7 @@ public:
         }
     }
     
-    
+
     static size_t
     WriteRegister (RegisterContext *reg_ctx, const char *name, const char *alt_name, size_t reg_byte_size, Stream &data)
     {
@@ -156,7 +156,7 @@ public:
             data.PutChar(0);
         return reg_byte_size;
     }
-    
+
     static bool
     Create_LC_THREAD (Thread *thread, Stream &data)
     {
@@ -166,7 +166,7 @@ public:
             RegisterContext *reg_ctx = reg_ctx_sp.get();
 
             data.PutHex32 (GPRRegSet);  // Flavor
-            data.PutHex32 (sizeof(GPR)/sizeof(uint64_t));   // Number of uint64_t values that follow
+            data.PutHex32 (GPRWordCount);
             WriteRegister (reg_ctx, "rax", NULL, 8, data);
             WriteRegister (reg_ctx, "rbx", NULL, 8, data);
             WriteRegister (reg_ctx, "rcx", NULL, 8, data);
@@ -240,7 +240,7 @@ public:
             
             // Write out the EXC registers
             data.PutHex32 (EXCRegSet);
-            data.PutHex32 (sizeof(EXC)/sizeof(uint64_t));
+            data.PutHex32 (EXCWordCount);
             WriteRegister (reg_ctx, "trapno", NULL, 4, data);
             WriteRegister (reg_ctx, "err", NULL, 4, data);
             WriteRegister (reg_ctx, "faultvaddr", NULL, 8, data);
@@ -357,6 +357,73 @@ public:
             }
         }
     }
+
+    static size_t
+    WriteRegister (RegisterContext *reg_ctx, const char *name, const char *alt_name, size_t reg_byte_size, Stream &data)
+    {
+        const RegisterInfo *reg_info = reg_ctx->GetRegisterInfoByName(name);
+        if (reg_info == NULL)
+            reg_info = reg_ctx->GetRegisterInfoByName(alt_name);
+        if (reg_info)
+        {
+            lldb_private::RegisterValue reg_value;
+            if (reg_ctx->ReadRegister(reg_info, reg_value))
+            {
+                if (reg_info->byte_size >= reg_byte_size)
+                    data.Write(reg_value.GetBytes(), reg_byte_size);
+                else
+                {
+                    data.Write(reg_value.GetBytes(), reg_info->byte_size);
+                    for (size_t i=0, n = reg_byte_size - reg_info->byte_size; i<n; ++ i)
+                        data.PutChar(0);
+                }
+                return reg_byte_size;
+            }
+        }
+        // Just write zeros if all else fails
+        for (size_t i=0; i<reg_byte_size; ++ i)
+            data.PutChar(0);
+        return reg_byte_size;
+    }
+
+    static bool
+    Create_LC_THREAD (Thread *thread, Stream &data)
+    {
+        RegisterContextSP reg_ctx_sp (thread->GetRegisterContext());
+        if (reg_ctx_sp)
+        {
+            RegisterContext *reg_ctx = reg_ctx_sp.get();
+
+            data.PutHex32 (GPRRegSet);  // Flavor
+            data.PutHex32 (GPRWordCount);
+            WriteRegister (reg_ctx, "eax", NULL, 4, data);
+            WriteRegister (reg_ctx, "ebx", NULL, 4, data);
+            WriteRegister (reg_ctx, "ecx", NULL, 4, data);
+            WriteRegister (reg_ctx, "edx", NULL, 4, data);
+            WriteRegister (reg_ctx, "edi", NULL, 4, data);
+            WriteRegister (reg_ctx, "esi", NULL, 4, data);
+            WriteRegister (reg_ctx, "ebp", NULL, 4, data);
+            WriteRegister (reg_ctx, "esp", NULL, 4, data);
+            WriteRegister (reg_ctx, "ss", NULL, 4, data);
+            WriteRegister (reg_ctx, "eflags", NULL, 4, data);
+            WriteRegister (reg_ctx, "eip", NULL, 4, data);
+            WriteRegister (reg_ctx, "cs", NULL, 4, data);
+            WriteRegister (reg_ctx, "ds", NULL, 4, data);
+            WriteRegister (reg_ctx, "es", NULL, 4, data);
+            WriteRegister (reg_ctx, "fs", NULL, 4, data);
+            WriteRegister (reg_ctx, "gs", NULL, 4, data);
+
+            // Write out the EXC registers
+            data.PutHex32 (EXCRegSet);
+            data.PutHex32 (EXCWordCount);
+            WriteRegister (reg_ctx, "trapno", NULL, 4, data);
+            WriteRegister (reg_ctx, "err", NULL, 4, data);
+            WriteRegister (reg_ctx, "faultvaddr", NULL, 4, data);
+            return true;
+        }
+        return false;
+    }
+
 protected:
     virtual int
     DoReadGPR (lldb::tid_t tid, int flavor, GPR &gpr)
@@ -475,6 +542,74 @@ public:
             }
         }
     }
+
+    static size_t
+    WriteRegister (RegisterContext *reg_ctx, const char *name, const char *alt_name, size_t reg_byte_size, Stream &data)
+    {
+        const RegisterInfo *reg_info = reg_ctx->GetRegisterInfoByName(name);
+        if (reg_info == NULL)
+            reg_info = reg_ctx->GetRegisterInfoByName(alt_name);
+        if (reg_info)
+        {
+            lldb_private::RegisterValue reg_value;
+            if (reg_ctx->ReadRegister(reg_info, reg_value))
+            {
+                if (reg_info->byte_size >= reg_byte_size)
+                    data.Write(reg_value.GetBytes(), reg_byte_size);
+                else
+                {
+                    data.Write(reg_value.GetBytes(), reg_info->byte_size);
+                    for (size_t i=0, n = reg_byte_size - reg_info->byte_size; i<n; ++ i)
+                        data.PutChar(0);
+                }
+                return reg_byte_size;
+            }
+        }
+        // Just write zeros if all else fails
+        for (size_t i=0; i<reg_byte_size; ++ i)
+            data.PutChar(0);
+        return reg_byte_size;
+    }
+
+    static bool
+    Create_LC_THREAD (Thread *thread, Stream &data)
+    {
+        RegisterContextSP reg_ctx_sp (thread->GetRegisterContext());
+        if (reg_ctx_sp)
+        {
+            RegisterContext *reg_ctx = reg_ctx_sp.get();
+
+            data.PutHex32 (GPRRegSet);  // Flavor
+            data.PutHex32 (GPRWordCount);
+            WriteRegister (reg_ctx, "r0", NULL, 4, data);
+            WriteRegister (reg_ctx, "r1", NULL, 4, data);
+            WriteRegister (reg_ctx, "r2", NULL, 4, data);
+            WriteRegister (reg_ctx, "r3", NULL, 4, data);
+            WriteRegister (reg_ctx, "r4", NULL, 4, data);
+            WriteRegister (reg_ctx, "r5", NULL, 4, data);
+            WriteRegister (reg_ctx, "r6", NULL, 4, data);
+            WriteRegister (reg_ctx, "r7", NULL, 4, data);
+            WriteRegister (reg_ctx, "r8", NULL, 4, data);
+            WriteRegister (reg_ctx, "r9", NULL, 4, data);
+            WriteRegister (reg_ctx, "r10", NULL, 4, data);
+            WriteRegister (reg_ctx, "r11", NULL, 4, data);
+            WriteRegister (reg_ctx, "r12", NULL, 4, data);
+            WriteRegister (reg_ctx, "sp", NULL, 4, data);
+            WriteRegister (reg_ctx, "lr", NULL, 4, data);
+            WriteRegister (reg_ctx, "pc", NULL, 4, data);
+            WriteRegister (reg_ctx, "cpsr", NULL, 4, data);
+
+            // Write out the EXC registers
+//            data.PutHex32 (EXCRegSet);
+//            data.PutHex32 (EXCWordCount);
+//            WriteRegister (reg_ctx, "exception", NULL, 4, data);
+//            WriteRegister (reg_ctx, "fsr", NULL, 4, data);
+//            WriteRegister (reg_ctx, "far", NULL, 4, data);
+            return true;
+        }
+        return false;
+    }
+
 protected:
     virtual int
     DoReadGPR (lldb::tid_t tid, int flavor, GPR &gpr)
@@ -598,6 +733,91 @@ public:
             }
         }
     }
+
+    static size_t
+    WriteRegister (RegisterContext *reg_ctx, const char *name, const char *alt_name, size_t reg_byte_size, Stream &data)
+    {
+        const RegisterInfo *reg_info = reg_ctx->GetRegisterInfoByName(name);
+        if (reg_info == NULL)
+            reg_info = reg_ctx->GetRegisterInfoByName(alt_name);
+        if (reg_info)
+        {
+            lldb_private::RegisterValue reg_value;
+            if (reg_ctx->ReadRegister(reg_info, reg_value))
+            {
+                if (reg_info->byte_size >= reg_byte_size)
+                    data.Write(reg_value.GetBytes(), reg_byte_size);
+                else
+                {
+                    data.Write(reg_value.GetBytes(), reg_info->byte_size);
+                    for (size_t i=0, n = reg_byte_size - reg_info->byte_size; i<n; ++ i)
+                        data.PutChar(0);
+                }
+                return reg_byte_size;
+            }
+        }
+        // Just write zeros if all else fails
+        for (size_t i=0; i<reg_byte_size; ++ i)
+            data.PutChar(0);
+        return reg_byte_size;
+    }
+
+    static bool
+    Create_LC_THREAD (Thread *thread, Stream &data)
+    {
+        RegisterContextSP reg_ctx_sp (thread->GetRegisterContext());
+        if (reg_ctx_sp)
+        {
+            RegisterContext *reg_ctx = reg_ctx_sp.get();
+
+            data.PutHex32 (GPRRegSet);  // Flavor
+            data.PutHex32 (GPRWordCount);
+            WriteRegister (reg_ctx, "x0", NULL, 8, data);
+            WriteRegister (reg_ctx, "x1", NULL, 8, data);
+            WriteRegister (reg_ctx, "x2", NULL, 8, data);
+            WriteRegister (reg_ctx, "x3", NULL, 8, data);
+            WriteRegister (reg_ctx, "x4", NULL, 8, data);
+            WriteRegister (reg_ctx, "x5", NULL, 8, data);
+            WriteRegister (reg_ctx, "x6", NULL, 8, data);
+            WriteRegister (reg_ctx, "x7", NULL, 8, data);
+            WriteRegister (reg_ctx, "x8", NULL, 8, data);
+            WriteRegister (reg_ctx, "x9", NULL, 8, data);
+            WriteRegister (reg_ctx, "x10", NULL, 8, data);
+            WriteRegister (reg_ctx, "x11", NULL, 8, data);
+            WriteRegister (reg_ctx, "x12", NULL, 8, data);
+            WriteRegister (reg_ctx, "x13", NULL, 8, data);
+            WriteRegister (reg_ctx, "x14", NULL, 8, data);
+            WriteRegister (reg_ctx, "x15", NULL, 8, data);
+            WriteRegister (reg_ctx, "x16", NULL, 8, data);
+            WriteRegister (reg_ctx, "x17", NULL, 8, data);
+            WriteRegister (reg_ctx, "x18", NULL, 8, data);
+            WriteRegister (reg_ctx, "x19", NULL, 8, data);
+            WriteRegister (reg_ctx, "x20", NULL, 8, data);
+            WriteRegister (reg_ctx, "x21", NULL, 8, data);
+            WriteRegister (reg_ctx, "x22", NULL, 8, data);
+            WriteRegister (reg_ctx, "x23", NULL, 8, data);
+            WriteRegister (reg_ctx, "x24", NULL, 8, data);
+            WriteRegister (reg_ctx, "x25", NULL, 8, data);
+            WriteRegister (reg_ctx, "x26", NULL, 8, data);
+            WriteRegister (reg_ctx, "x27", NULL, 8, data);
+            WriteRegister (reg_ctx, "x28", NULL, 8, data);
+            WriteRegister (reg_ctx, "fp", NULL, 8, data);
+            WriteRegister (reg_ctx, "lr", NULL, 8, data);
+            WriteRegister (reg_ctx, "sp", NULL, 8, data);
+            WriteRegister (reg_ctx, "pc", NULL, 8, data);
+            WriteRegister (reg_ctx, "cpsr", NULL, 4, data);
+
+            // Write out the EXC registers
+//            data.PutHex32 (EXCRegSet);
+//            data.PutHex32 (EXCWordCount);
+//            WriteRegister (reg_ctx, "far", NULL, 8, data);
+//            WriteRegister (reg_ctx, "esr", NULL, 4, data);
+//            WriteRegister (reg_ctx, "exception", NULL, 4, data);
+            return true;
+        }
+        return false;
+    }
+
 protected:
     virtual int
     DoReadGPR (lldb::tid_t tid, int flavor, GPR &gpr)
@@ -5217,6 +5437,11 @@ ObjectFileMachO::SaveCore (const lldb::ProcessSP &process_sp,
             bool make_core = false;
             switch (target_arch.GetMachine())
             {
+                  // arm64 core file writing is having some problem with writing  down the 
+                  // dyld shared images info struct and/or the main executable binary. May
+                  // turn out to be a debugserver problem, not sure yet.
+//                case llvm::Triple::aarch64:
+
                 case llvm::Triple::arm:
                 case llvm::Triple::x86:
                 case llvm::Triple::x86_64:
@@ -5233,6 +5458,8 @@ ObjectFileMachO::SaveCore (const lldb::ProcessSP &process_sp,
 //                uint32_t range_info_idx = 0;
                 MemoryRegionInfo range_info;
                 Error range_error = process_sp->GetMemoryRegionInfo(0, range_info);
+                const uint32_t addr_byte_size = target_arch.GetAddressByteSize();
+                const ByteOrder byte_order = target_arch.GetByteOrder();
                 if (range_error.Success())
                 {
                     while (range_info.GetRange().GetRangeBase() != LLDB_INVALID_ADDRESS)
@@ -5262,14 +5489,21 @@ ObjectFileMachO::SaveCore (const lldb::ProcessSP &process_sp,
 
                         if (prot != 0)
                         {
+                            uint32_t cmd_type = LC_SEGMENT_64;
+                            uint32_t segment_size = sizeof (segment_command_64);
+                            if (addr_byte_size == 4)
+                            {
+                                cmd_type = LC_SEGMENT;
+                                segment_size = sizeof (segment_command);
+                            }
                             segment_command_64 segment = {
-                                LC_SEGMENT_64,      // uint32_t cmd;
-                                sizeof(segment),    // uint32_t cmdsize;
+                                cmd_type,           // uint32_t cmd;
+                                segment_size,       // uint32_t cmdsize;
                                 {0},                // char segname[16];
-                                addr,               // uint64_t vmaddr;
-                                size,               // uint64_t vmsize;
-                                0,                  // uint64_t fileoff;
-                                size,               // uint64_t filesize;
+                                addr,               // uint64_t vmaddr;    // uint32_t for 32-bit Mach-O
+                                size,               // uint64_t vmsize;    // uint32_t for 32-bit Mach-O
+                                0,                  // uint64_t fileoff;   // uint32_t for 32-bit Mach-O
+                                size,               // uint64_t filesize;  // uint32_t for 32-bit Mach-O
                                 prot,               // uint32_t maxprot;
                                 prot,               // uint32_t initprot;
                                 0,                  // uint32_t nsects;
@@ -5290,14 +5524,19 @@ ObjectFileMachO::SaveCore (const lldb::ProcessSP &process_sp,
                             break;
                     }
                     
-                    const uint32_t addr_byte_size = target_arch.GetAddressByteSize();
-                    const ByteOrder byte_order = target_arch.GetByteOrder();
                     StreamString buffer (Stream::eBinary,
                                          addr_byte_size,
                                          byte_order);
 
                     mach_header_64 mach_header;
-                    mach_header.magic = MH_MAGIC_64;
+                    if (addr_byte_size == 8)
+                    {
+                        mach_header.magic = MH_MAGIC_64;
+                    }
+                    else
+                    {
+                        mach_header.magic = MH_MAGIC;
+                    }
                     mach_header.cputype = target_arch.GetMachOCPUType();
                     mach_header.cpusubtype = target_arch.GetMachOCPUSubType();
                     mach_header.filetype = MH_CORE;
@@ -5325,12 +5564,16 @@ ObjectFileMachO::SaveCore (const lldb::ProcessSP &process_sp,
                         {
                             switch (mach_header.cputype)
                             {
-                                case llvm::MachO::CPU_TYPE_ARM:
-                                    //RegisterContextDarwin_arm_Mach::Create_LC_THREAD (thread_sp.get(), thread_load_commands);
+                                case llvm::MachO::CPU_TYPE_ARM64:
+                                    RegisterContextDarwin_arm64_Mach::Create_LC_THREAD (thread_sp.get(), LC_THREAD_datas[thread_idx]);
                                     break;
-                                    
+
+                                case llvm::MachO::CPU_TYPE_ARM:
+                                    RegisterContextDarwin_arm_Mach::Create_LC_THREAD (thread_sp.get(), LC_THREAD_datas[thread_idx]);
+                                    break;
+
                                 case llvm::MachO::CPU_TYPE_I386:
-                                    //RegisterContextDarwin_i386_Mach::Create_LC_THREAD (thread_sp.get(), thread_load_commands);
+                                    RegisterContextDarwin_i386_Mach::Create_LC_THREAD (thread_sp.get(), LC_THREAD_datas[thread_idx]);
                                     break;
                                     
                                 case llvm::MachO::CPU_TYPE_X86_64:
@@ -5342,7 +5585,14 @@ ObjectFileMachO::SaveCore (const lldb::ProcessSP &process_sp,
                     }
                     
                     // The size of the load command is the size of the segments...
-                    mach_header.sizeofcmds = segment_load_commands.size() * segment_load_commands[0].cmdsize;
+                    if (addr_byte_size == 8)
+                    {
+                        mach_header.sizeofcmds = segment_load_commands.size() * sizeof (struct segment_command_64);
+                    }
+                    else
+                    {
+                        mach_header.sizeofcmds = segment_load_commands.size() * sizeof (struct segment_command);
+                    }
                     
                     // and the size of all LC_THREAD load command
                     for (const auto &LC_THREAD_data : LC_THREAD_datas)
@@ -5369,7 +5619,10 @@ ObjectFileMachO::SaveCore (const lldb::ProcessSP &process_sp,
                     buffer.PutHex32(mach_header.ncmds);
                     buffer.PutHex32(mach_header.sizeofcmds);
                     buffer.PutHex32(mach_header.flags);
-                    buffer.PutHex32(mach_header.reserved);
+                    if (addr_byte_size == 8)
+                    {
+                        buffer.PutHex32(mach_header.reserved);
+                    }
                     
                     // Skip the mach header and all load commands and align to the next
                     // 0x1000 byte boundary
@@ -5413,10 +5666,20 @@ ObjectFileMachO::SaveCore (const lldb::ProcessSP &process_sp,
                         buffer.PutHex32(segment.cmd);
                         buffer.PutHex32(segment.cmdsize);
                         buffer.PutRawBytes(segment.segname, sizeof(segment.segname));
-                        buffer.PutHex64(segment.vmaddr);
-                        buffer.PutHex64(segment.vmsize);
-                        buffer.PutHex64(segment.fileoff);
-                        buffer.PutHex64(segment.filesize);
+                        if (addr_byte_size == 8)
+                        {
+                            buffer.PutHex64(segment.vmaddr);
+                            buffer.PutHex64(segment.vmsize);
+                            buffer.PutHex64(segment.fileoff);
+                            buffer.PutHex64(segment.filesize);
+                        }
+                        else
+                        {
+                            buffer.PutHex32(static_cast<uint32_t>(segment.vmaddr));
+                            buffer.PutHex32(static_cast<uint32_t>(segment.vmsize));
+                            buffer.PutHex32(static_cast<uint32_t>(segment.fileoff));
+                            buffer.PutHex32(static_cast<uint32_t>(segment.filesize));
+                        }
                         buffer.PutHex32(segment.maxprot);
                         buffer.PutHex32(segment.initprot);
                         buffer.PutHex32(segment.nsects);
@@ -5447,7 +5710,7 @@ ObjectFileMachO::SaveCore (const lldb::ProcessSP &process_sp,
                                     break;
                                 }
                                 
-                                printf ("Saving data for segment at 0x%" PRIx64 "\n", segment.vmaddr);
+                                printf ("Saving %" PRId64 " bytes of data for memory region at 0x%" PRIx64 "\n", segment.vmsize, segment.vmaddr);
                                 addr_t bytes_left = segment.vmsize;
                                 addr_t addr = segment.vmaddr;
                                 Error memory_read_error;

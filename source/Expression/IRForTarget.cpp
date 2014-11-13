@@ -403,8 +403,7 @@ IRForTarget::DeclForGlobal (const GlobalValue *global_val, Module *module)
          node_index < num_nodes;
          ++node_index)
     {
-        MDNode *metadata_node = named_metadata->getOperand(node_index);
-
+        llvm::MDNode *metadata_node = dyn_cast<llvm::MDNode>(named_metadata->getOperand(node_index));
         if (!metadata_node)
             return NULL;
 
@@ -1037,7 +1036,7 @@ static bool IsObjCSelectorRef (Value *value)
 {
     GlobalVariable *global_variable = dyn_cast<GlobalVariable>(value);
 
-    if (!global_variable || !global_variable->hasName() || !global_variable->getName().startswith("\01L_OBJC_SELECTOR_REFERENCES_"))
+    if (!global_variable || !global_variable->hasName() || !global_variable->getName().startswith("OBJC_SELECTOR_REFERENCES_"))
         return false;
 
     return true;
@@ -1056,12 +1055,12 @@ IRForTarget::RewriteObjCSelector (Instruction* selector_load)
 
     // Unpack the message name from the selector.  In LLVM IR, an objc_msgSend gets represented as
     //
-    // %tmp     = load i8** @"\01L_OBJC_SELECTOR_REFERENCES_" ; <i8*>
+    // %tmp     = load i8** @"OBJC_SELECTOR_REFERENCES_" ; <i8*>
     // %call    = call i8* (i8*, i8*, ...)* @objc_msgSend(i8* %obj, i8* %tmp, ...) ; <i8*>
     //
     // where %obj is the object pointer and %tmp is the selector.
     //
-    // @"\01L_OBJC_SELECTOR_REFERENCES_" is a pointer to a character array called @"\01L_OBJC_llvm_moduleETH_VAR_NAllvm_moduleE_".
+    // @"OBJC_SELECTOR_REFERENCES_" is a pointer to a character array called @"\01L_OBJC_llvm_moduleETH_VAR_NAllvm_moduleE_".
     // @"\01L_OBJC_llvm_moduleETH_VAR_NAllvm_moduleE_" contains the string.
 
     // Find the pointer's initializer (a ConstantExpr with opcode GetElementPtr) and get the string from its target
@@ -1210,7 +1209,7 @@ IRForTarget::RewritePersistentAlloc (llvm::Instruction *persistent_alloc)
 
     AllocaInst *alloc = dyn_cast<AllocaInst>(persistent_alloc);
 
-    MDNode *alloc_md = alloc->getMDNode("clang.decl.ptr");
+    MDNode *alloc_md = alloc->getMetadata("clang.decl.ptr");
 
     if (!alloc_md || !alloc_md->getNumOperands())
         return false;
