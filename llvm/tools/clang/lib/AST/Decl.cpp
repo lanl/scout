@@ -1701,6 +1701,7 @@ const char *VarDecl::getStorageClassSpecifierString(StorageClass SC) {
   case SC_Static:               return "static";
   // +===== Scout ==============================================================+
   case SC_Persistent:           return "persistent";
+  case SC_Nonvolatile:          return "nonvolatile";
   // +==========================================================================+
   }
 

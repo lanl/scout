@@ -668,5 +668,6 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     (void)void_store; // suppress warning
 
   }
-
 }
+
+

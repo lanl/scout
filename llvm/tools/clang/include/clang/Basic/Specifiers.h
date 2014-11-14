@@ -188,7 +188,8 @@ namespace clang {
     SC_Auto,
     SC_Register,
     // +===== Scout ===========
-    SC_Persistent
+    SC_Persistent,
+    SC_Nonvolatile 
   };
 
   /// \brief Checks whether the given storage class is legal for functions.

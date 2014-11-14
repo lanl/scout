@@ -14,6 +14,7 @@
 
 #ifndef LLVM_CLANG_AST_ASTCONTEXT_H
 #define LLVM_CLANG_AST_ASTCONTEXT_H
+#include <stdio.h>
 
 #include "clang/AST/ASTTypeTraits.h"
 #include "clang/AST/CanonicalType.h"
@@ -2069,10 +2070,11 @@ public:
   }
 
   unsigned getTargetAddressSpace(unsigned AS) const {
-    if (AS < LangAS::Offset || AS >= LangAS::Offset + LangAS::Count)
+    if (AS < LangAS::Offset || AS >= LangAS::Offset + LangAS::Count) {
       return AS;
-    else
+    } else {
       return (*AddrSpaceMap)[AS - LangAS::Offset];
+    }
   }
 
   bool addressSpaceMapManglingFor(unsigned AS) const {

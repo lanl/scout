@@ -495,16 +495,14 @@ Driver::GetScriptLanguage() const
 
 // ===== Scout ================================
 void Driver::ExecuteScoutInitialCommands(){
-  /*
+
   SBFileSpec fs = SBHostOS::GetProgramFileSpec();
   std::string dir = fs.GetDirectory();
   std::string prefixPath = dir + "/lldb-prefix.h";
 
   std::string cmd = "settings set target.expr-prefix " + prefixPath;
-
   SBCommandReturnObject result;
   m_debugger.GetCommandInterpreter().HandleCommand(cmd.c_str(), result, false);
-  */
 }
 // ============================================
 

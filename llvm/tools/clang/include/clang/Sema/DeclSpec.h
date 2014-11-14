@@ -249,7 +249,8 @@ public:
     SCS_register,
     SCS_private_extern,
     SCS_mutable,
-    SCS_persistent //+===== Scout
+    SCS_persistent, //+===== Scout
+    SCS_nonvolatile //+===== Scout
   };
 
   // Import thread storage class specifier enumeration and constants.

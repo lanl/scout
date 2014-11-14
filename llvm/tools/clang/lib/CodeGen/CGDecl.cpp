@@ -10,7 +10,7 @@
 // This contains code to emit Decl nodes as LLVM code.
 //
 //===----------------------------------------------------------------------===//
-#include <iostream>
+#include <stdio.h>
 
 #include "CodeGenFunction.h"
 #include "CGDebugInfo.h"
@@ -160,8 +160,23 @@ void CodeGenFunction::EmitVarDecl(const VarDecl &D) {
 
   //+===== Scout =======================================================+ 
   if (D.isPersistentLocal()) {
-    std::cerr << "found persistent local variable.\n";
-    EmitPersistentVarDecl(D, Linkage);
+    llvm::GlobalValue::LinkageTypes Linkage =
+        CGM.getLLVMLinkageVarDefinition(&D, /*isConstant=*/false);
+
+    // FIXME: We need to force the emission/use of a guard variable for
+    // some variables even if we can constant-evaluate them because
+    // we can't guarantee every translation unit will constant-evaluate them.
+    return EmitStaticVarDecl(D, Linkage);
+  } 
+
+  if (D.isNonvolatileLocal()) {
+    llvm::GlobalValue::LinkageTypes Linkage =
+        CGM.getLLVMLinkageVarDefinition(&D, /*isConstant=*/false);
+
+    // FIXME: We need to force the emission/use of a guard variable for
+    // some variables even if we can constant-evaluate them because
+    // we can't guarantee every translation unit will constant-evaluate them.
+    return EmitStaticVarDecl(D, Linkage);
   }
   //+===================================================================+ 
 
