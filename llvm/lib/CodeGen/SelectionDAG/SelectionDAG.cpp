@@ -687,6 +687,15 @@ void SelectionDAG::DeleteNodeNotInCSEMaps(SDNode *N) {
   DeallocateNode(N);
 }
 
+void SDDbgInfo::erase(const SDNode *Node) {
+  DbgValMapType::iterator I = DbgValMap.find(Node);
+  if (I == DbgValMap.end())
+    return;
+  for (auto &Val: I->second)
+    Val->setIsInvalidated();
+  DbgValMap.erase(I);
+}
+
 void SelectionDAG::DeallocateNode(SDNode *N) {
   if (N->OperandsNeedDelete)
     delete[] N->OperandList;
@@ -697,10 +706,9 @@ void SelectionDAG::DeallocateNode(SDNode *N) {
 
   NodeAllocator.Deallocate(AllNodes.remove(N));
 
-  // If any of the SDDbgValue nodes refer to this SDNode, invalidate them.
-  ArrayRef<SDDbgValue*> DbgVals = DbgInfo->getSDDbgValues(N);
-  for (unsigned i = 0, e = DbgVals.size(); i != e; ++i)
-    DbgVals[i]->setIsInvalidated();
+  // If any of the SDDbgValue nodes refer to this SDNode, invalidate
+  // them and forget about that node.
+  DbgInfo->erase(N);
 }
 
 #ifndef NDEBUG
@@ -6144,9 +6152,11 @@ unsigned SelectionDAG::AssignTopologicalOrder() {
 /// AddDbgValue - Add a dbg_value SDNode. If SD is non-null that means the
 /// value is produced by SD.
 void SelectionDAG::AddDbgValue(SDDbgValue *DB, SDNode *SD, bool isParameter) {
-  DbgInfo->add(DB, SD, isParameter);
-  if (SD)
+  if (SD) {
+    assert(DbgInfo->getSDDbgValues(SD).empty() || SD->getHasDebugValue());
     SD->setHasDebugValue(true);
+  }
+  DbgInfo->add(DB, SD, isParameter);
 }
 
 /// TransferDbgValues - Transfer SDDbgValues.

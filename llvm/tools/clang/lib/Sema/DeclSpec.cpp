@@ -184,6 +184,7 @@ DeclaratorChunk DeclaratorChunk::getFunction(bool hasProto,
                                              SourceRange *ExceptionRanges,
                                              unsigned NumExceptions,
                                              Expr *NoexceptExpr,
+                                             CachedTokens *ExceptionSpecTokens,
                                              SourceLocation LocalRangeBegin,
                                              SourceLocation LocalRangeEnd,
                                              Declarator &TheDeclarator,
@@ -221,6 +222,9 @@ DeclaratorChunk DeclaratorChunk::getFunction(bool hasProto,
                                   TrailingReturnType.isInvalid();
   I.Fun.TrailingReturnType      = TrailingReturnType.get();
 
+  assert(I.Fun.TypeQuals == TypeQuals && "bitfield overflow");
+  assert(I.Fun.ExceptionSpecType == ESpecType && "bitfield overflow");
+
   // new[] a parameter array if needed.
   if (NumParams) {
     // If the 'InlineParams' in Declarator is unused and big enough, put our
@@ -256,6 +260,10 @@ DeclaratorChunk DeclaratorChunk::getFunction(bool hasProto,
 
   case EST_ComputedNoexcept:
     I.Fun.NoexceptExpr = NoexceptExpr;
+    break;
+
+  case EST_Unparsed:
+    I.Fun.ExceptionSpecTokens = ExceptionSpecTokens;
     break;
   }
   return I;

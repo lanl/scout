@@ -190,6 +190,11 @@ namespace llvm {
       /// BLENDI - Blend where the selector is an immediate.
       BLENDI,
 
+      /// SHRUNKBLEND - Blend where the condition has been shrunk.
+      /// This is used to emphasize that the condition mask is
+      /// no more valid for generic VSELECT optimizations.
+      SHRUNKBLEND,
+
       /// ADDSUB - Combined add and sub on an FP vector.
       ADDSUB,
 
@@ -413,6 +418,9 @@ namespace llvm {
 
       // Test if in transactional execution.
       XTEST,
+
+      // ERI instructions
+      RSQRT28, RCP28, EXP2,
 
       // Compare and swap.
       LCMPXCHG_DAG = ISD::FIRST_TARGET_MEMORY_OPCODE,
@@ -1026,6 +1034,10 @@ namespace llvm {
     SDValue getRsqrtEstimate(SDValue Operand, DAGCombinerInfo &DCI,
                              unsigned &RefinementSteps,
                              bool &UseOneConstNR) const override;
+
+    /// Use rcp* to speed up fdiv calculations.
+    SDValue getRecipEstimate(SDValue Operand, DAGCombinerInfo &DCI,
+                             unsigned &RefinementSteps) const override;
   };
 
   namespace X86 {

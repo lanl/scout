@@ -1575,19 +1575,25 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
 
   ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
   
-  switch(FET){
-    case ForallMeshStmt::Cells:
-      GetNumMeshItems(Dimensions, &numItems, 0, 0, 0);
-      break;
-    case ForallMeshStmt::Vertices:
-      GetNumMeshItems(Dimensions, 0, &numItems, 0, 0);
-      break;
-    default:
-      assert(false && "invalid forall type");
-  }
+  llvm::Value* queryMask = 0;
   
-  llvm::Value* queryMask = EmitForallQueryCall(S, numItems);
-
+  if(S.getQueryVarDecl()){
+    
+    switch(FET){
+      case ForallMeshStmt::Cells:
+        GetNumMeshItems(Dimensions, &numItems, 0, 0, 0);
+        break;
+      case ForallMeshStmt::Vertices:
+        GetNumMeshItems(Dimensions, 0, &numItems, 0, 0);
+        break;
+      default:
+        assert(false && "invalid forall type");
+    }
+    
+    queryMask = EmitForallQueryCall(S, numItems);
+    
+  }
+     
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
   // Track down the mesh meta data. 

@@ -131,6 +131,8 @@ protected:
 
   void addIndexedString(DIE &Die, dwarf::Attribute Attribute, StringRef Str);
 
+  bool applySubprogramDefinitionAttributes(DISubprogram SP, DIE &SPDie);
+
 public:
   virtual ~DwarfUnit();
 
@@ -282,7 +284,7 @@ public:
   DIE *getOrCreateNameSpace(DINameSpace NS);
 
   /// getOrCreateSubprogramDIE - Create new DIE using SP.
-  DIE *getOrCreateSubprogramDIE(DISubprogram SP);
+  DIE *getOrCreateSubprogramDIE(DISubprogram SP, bool Minimal = false);
 
   void applySubprogramAttributes(DISubprogram SP, DIE &SPDie,
                                  bool Minimal = false);

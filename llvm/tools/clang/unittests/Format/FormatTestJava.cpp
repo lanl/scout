@@ -87,6 +87,22 @@ TEST_F(FormatTestJava, ClassDeclarations) {
                "    implements cccccccccccc {\n"
                "}",
                getStyleWithColumns(76));
+  verifyFormat("interface SomeInterface<A> extends Foo, Bar {\n"
+               "  void doStuff(int theStuff);\n"
+               "  void doMoreStuff(int moreStuff);\n"
+               "}");
+  verifyFormat("public interface SomeInterface {\n"
+               "  void doStuff(int theStuff);\n"
+               "  void doMoreStuff(int moreStuff);\n"
+               "}");
+  verifyFormat("@interface SomeInterface {\n"
+               "  void doStuff(int theStuff);\n"
+               "  void doMoreStuff(int moreStuff);\n"
+               "}");
+  verifyFormat("public @interface SomeInterface {\n"
+               "  void doStuff(int theStuff);\n"
+               "  void doMoreStuff(int moreStuff);\n"
+               "}");
 }
 
 TEST_F(FormatTestJava, EnumDeclarations) {
@@ -98,6 +114,44 @@ TEST_F(FormatTestJava, EnumDeclarations) {
   verifyFormat("public class SomeClass {\n"
                "  enum SomeThing { ABC, CDE }\n"
                "  void f() {\n"
+               "  }\n"
+               "}");
+  verifyFormat("public class SomeClass implements SomeInterface {\n"
+               "  enum SomeThing { ABC, CDE }\n"
+               "  void f() {\n"
+               "  }\n"
+               "}");
+  verifyFormat("enum SomeThing {\n"
+               "  ABC,\n"
+               "  CDE;\n"
+               "  void f() {\n"
+               "  }\n"
+               "}");
+  verifyFormat("enum SomeThing {\n"
+               "  ABC(1, \"ABC\"),\n"
+               "  CDE(2, \"CDE\");\n"
+               "  Something(int i, String s) {\n"
+               "  }\n"
+               "}");
+  verifyFormat("enum SomeThing {\n"
+               "  ABC(new int[]{1, 2}),\n"
+               "  CDE(new int[]{2, 3});\n"
+               "  Something(int[] i) {\n"
+               "  }\n"
+               "}");
+  verifyFormat("public enum SomeThing {\n"
+               "  ABC {\n"
+               "    public String toString() {\n"
+               "      return \"ABC\";\n"
+               "    }\n"
+               "  },\n"
+               "  CDE {\n"
+               "    @Override\n"
+               "    public String toString() {\n"
+               "      return \"CDE\";\n"
+               "    }\n"
+               "  };\n"
+               "  public void f() {\n"
                "  }\n"
                "}");
 }
