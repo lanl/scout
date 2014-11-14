@@ -56,36 +56,36 @@
 #include <assert.h>
 
 uniform mesh MyMesh {
- cells:
-  float a;
+ edges:
+  float b;
 };
 
 int main(int argc, char** argv) {
   MyMesh m[8];
 
   float inc = 0.0;
-  forall cells c in m{
-    c.a = inc;
+  forall edges e in m{
+    e.b = inc;
     inc += 1.0;
-  }  
+  } 
 
   query q = 
-    from cells c in m 
-    select c.a where 
-    c.a > 4.0;
+    from edges e in m 
+    select e.b where 
+    e.b > 5.0;
   
-  forall cells c in q{
-    c.a += 100;
+  forall edges e in q{
+    e.b += 100;
   }
 
   float expected[] = 
-    {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 105.0f, 106.0f, 107.0f};
+    {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0, 106.0f, 107.0f};
 
   int i = 0;
-  forall cells c in m{
-    assert(a == expected[i] && "unexpected value");
+  forall edges e in m{
+    assert(b == expected[i] && "unexpected value");
     ++i;
-  }
+  }  
 
   return 0;
 }

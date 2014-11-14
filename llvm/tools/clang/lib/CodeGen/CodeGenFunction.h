@@ -2147,6 +2147,10 @@ public:
   void EmitForallMeshLoop(const ForallMeshStmt &S,
                           unsigned r,
                           llvm::Value* queryMask);
+  
+  llvm::Value* EmitForallQueryCall(const ForallMeshStmt& S,
+                                   llvm::Value* numItems);
+  
   llvm::BasicBlock *EmitMarkerBlock(const std::string name);
   llvm::Function* ExtractRegion(llvm::BasicBlock *entry,
                                 llvm::BasicBlock *exit,
