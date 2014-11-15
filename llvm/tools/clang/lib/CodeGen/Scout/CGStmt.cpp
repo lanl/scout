@@ -1575,25 +1575,6 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
 
   ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
   
-  llvm::Value* queryMask = 0;
-  
-  if(S.getQueryVarDecl()){
-    
-    switch(FET){
-      case ForallMeshStmt::Cells:
-        GetNumMeshItems(Dimensions, &numItems, 0, 0, 0);
-        break;
-      case ForallMeshStmt::Vertices:
-        GetNumMeshItems(Dimensions, 0, &numItems, 0, 0);
-        break;
-      default:
-        assert(false && "invalid forall type");
-    }
-    
-    queryMask = EmitForallQueryCall(S, numItems);
-    
-  }
-     
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
   // Track down the mesh meta data. 
@@ -1626,6 +1607,23 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
 
   InnerIndex = Builder.CreateAlloca(Int32Ty, 0, "forall.inneridx.ptr");
 
+  llvm::Value* queryMask = 0;
+  
+  if(S.getQueryVarDecl()){
+    switch(FET){
+      case ForallMeshStmt::Cells:
+        GetNumMeshItems(&numItems, 0, 0, 0);
+        break;
+      case ForallMeshStmt::Vertices:
+        GetNumMeshItems(0, &numItems, 0, 0);
+        break;
+      default:
+        assert(false && "invalid forall type");
+    }
+    
+    queryMask = EmitForallQueryCall(S, numItems);
+  }
+  
   EmitForallMeshLoop(S, 3, queryMask);
 
   // reset MeshDims, Rank and induction var
