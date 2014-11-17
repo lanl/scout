@@ -77,6 +77,8 @@ namespace clang {
     QualType VisitStructuredMeshType(const StructuredMeshType* T);
     QualType VisitRectilinearMeshType(const RectilinearMeshType* T);
     QualType VisitUnstructuredMeshType(const UnstructuredMeshType* T);
+    QualType VisitWindowType(const WindowType* T);
+    QualType VisitImageType(const ImageType* T);
     // +======================================================================+
     QualType VisitRecordType(const RecordType *T);
     QualType VisitEnumType(const EnumType *T);
