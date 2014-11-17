@@ -86,7 +86,7 @@ project(scStandard SCXX)
 
   add_library(scStandardStatic STATIC ${std_srcs})
   set_target_properties(scStandardStatic PROPERTIES OUTPUT_NAME scStandard)
-  set_target_properties(scStandardStatic PROPERTIES COMPILE_FLAGS -noscstdlib)
+  set_target_properties(scStandardStatic PROPERTIES LINK_FLAGS -noscstdlib)
   add_library(scStandard SHARED ${std_srcs})
 
   install(TARGETS scStandard
