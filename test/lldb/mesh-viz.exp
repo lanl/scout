@@ -1,0 +1,82 @@
+#!/usr/bin/env expect
+#
+# make sure we can debug a mesh using renderall
+#
+
+set path [lindex $argv 0]
+set type [lindex $argv 1]
+set ext [lindex $argv 2]
+
+set timeout 30
+
+spawn $path/../../build/bin/$type -g -o mesh-viz-$type $path/mesh-viz.$ext
+expect "1 warning"
+sleep 1
+spawn $path/../../build/bin/scdb -- ./mesh-viz-$type
+expect "(lldb)"
+
+send "b mesh-viz.$ext:162\n"
+expect {
+    "at mesh-viz.$ext:162" {
+  }
+  timeout {
+    exit 1
+  }
+}
+
+expect "(lldb)"
+
+send "r\n"
+expect {
+    "162" {
+  }
+  timeout {
+    exit 1
+  }
+}
+
+expect "(lldb)"
+
+send "expr\n"
+
+expect "1:"
+
+send "window render_win\[512,512\];\n"
+
+expect "2:"
+
+send "renderall cells c in heat_mesh to render_win {\n"
+
+expect "3:"
+
+send "float norm_h = h_now / MAX_TEMP;\n"
+
+expect "4:"
+
+send "float hue = 240.0f - 240.0f * norm_h;\n"
+
+expect "5:"
+
+send "color = hsva(hue, 1.0f, mask_now, 1.0f);\n"
+
+expect "6:"
+
+send "}\n"
+
+expect "7:"
+
+send "\n"
+
+expect "(lldb)"
+
+send "c\n"
+expect {
+    "162" {
+  }
+  timeout {
+    exit 1
+  }
+}
+
+#send "q\n"
+#
