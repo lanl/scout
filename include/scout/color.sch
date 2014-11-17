@@ -119,6 +119,9 @@ extern color_t hsv(color_channel_t hue,
                    color_channel_t saturation,
                    color_channel_t value);
 
+#if defined(__scout_cxx__)
+}
+#endif
 
 /// Linear blend of two color channels values with an associated
 /// alpha weight.  The blend is straightforward and is implemented
@@ -129,9 +132,6 @@ extern color_channel_t mix(color_channel_t ch0,
                            color_channel_t ch1,
                            color_channel_t alpha);
 
-#if defined(__scout_cxx__)
-}
-#endif
 
 #if defined(__scout_cxx__)
 /// Linear blend of the two colors with a single alpha weighting.

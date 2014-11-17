@@ -3906,6 +3906,7 @@ StorageClassSpecToVarDeclStorageClass(const DeclSpec &DS) {
   case DeclSpec::SCS_mutable:        // Fall through.
   case DeclSpec::SCS_typedef:        return SC_None;
   case DeclSpec::SCS_persistent:     return SC_Persistent;
+  case DeclSpec::SCS_nonvolatile:    return SC_Nonvolatile;
   }
   llvm_unreachable("unknown storage class specifier");
 }
@@ -5621,6 +5622,7 @@ Sema::ActOnVariableDeclarator(Scope *S, Declarator &D, DeclContext *DC,
         break;
       // +===== Scout ==============================================================+
       case SC_Persistent:
+      case SC_Nonvolatile:
         break; 
       // +==========================================================================+
       case SC_PrivateExtern:
@@ -5870,6 +5872,7 @@ Sema::ActOnVariableDeclarator(Scope *S, Declarator &D, DeclContext *DC,
         break;
       // +===== Scout ==============================================================+
       case SC_Persistent:
+      case SC_Nonvolatile:
         break;
       // +==========================================================================+
       }
@@ -9477,6 +9480,7 @@ void Sema::ActOnCXXForRangeDecl(Decl *D) {
     break;
   // +===== Scout ==============================================================+
   case SC_Persistent:
+  case SC_Nonvolatile:
     Error = 6;  //SC_TODO: Error = 6 handling
     break;
   // +==========================================================================+

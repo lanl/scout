@@ -6529,6 +6529,8 @@ enum CX_StorageClass clang_Cursor_getStorageClass(CXCursor C) {
   // +===== Scout ==============================================================+
   case SC_Persistent:
     return CX_SC_Persistent;
+  case SC_Nonvolatile:
+    return CX_SC_Nonvolatile;
   // +==========================================================================+
   }
   llvm_unreachable("Unhandled storage class!");

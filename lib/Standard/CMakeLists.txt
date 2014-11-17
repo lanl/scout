@@ -72,6 +72,7 @@ project(scStandard SCXX)
 
   set(CMAKE_VERBOSE_MAKEFILE ON)
   cmake_minimum_required(VERSION 2.8.9)
+  set(CMAKE_SCXX_FLAGS "-g")
   set(LINK_FLAGS "-noscstdlib")
   set(CMAKE_INSTALL_PREFIX ${SCOUT_INSTALL_DIR})
   set(LIBRARY_OUTPUT_PATH ${SCOUT_BUILD_DIR}/lib)
@@ -83,7 +84,10 @@ project(scStandard SCXX)
   file(GLOB std_hdrs ${SCOUT_INCLUDE_DIR}/scout/*.sch)
   file(GLOB std_srcs *.scpp)
 
-  add_library(scStandard STATIC ${std_srcs})
+  add_library(scStandardStatic STATIC ${std_srcs})
+  set_target_properties(scStandardStatic PROPERTIES OUTPUT_NAME scStandard)
+  set_target_properties(scStandardStatic PROPERTIES LINK_FLAGS -noscstdlib)
+  add_library(scStandard SHARED ${std_srcs})
 
   install(TARGETS scStandard
     DESTINATION lib)

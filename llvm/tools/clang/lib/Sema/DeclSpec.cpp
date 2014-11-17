@@ -11,6 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <stdio.h>
+
 #include "clang/Sema/DeclSpec.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclCXX.h"
@@ -423,6 +425,7 @@ const char *DeclSpec::getSpecifierName(DeclSpec::SCS S) {
   case DeclSpec::SCS_mutable:     return "mutable";
   // +===== Scout ==============================================================+
   case DeclSpec::SCS_persistent:     return "persistent";
+  case DeclSpec::SCS_nonvolatile:    return "nonvolatile";
   // +==========================================================================+
   }
   llvm_unreachable("Unknown typespec!");

@@ -48,55 +48,36 @@
 #
 ###########################################################################
 #
-project(scout_test_lldb)
+project(glsl-cc)
 
-set(SRC_PATH ${CMAKE_SOURCE_DIR}/lldb)
+find_library(GLFW glfw)
 
-find_package(EXPECT)
-find_package(LLDB)
+INCLUDE_DIRECTORIES(
+  ${GLFW_INCLUDE_DIR}
+  ${OPENGL_INCLUDE_DIR}
+  )
 
-if(EXPECT_FOUND)
-  if(LLDB_FOUND)
-    set(name scc-breakpoint)
-    set(tname lldb_${name})
-    add_test(${tname} ${SRC_PATH}/breakpoint.exp ${SRC_PATH} "scc")
-    set(name sc++-breakpoint)
-    set(tname lldb_${name})
-    add_test(${tname} ${SRC_PATH}/breakpoint.exp ${SRC_PATH} "sc++")
-  endif()
-  if(DEFINED ENV{SC_BUILD_LLDB})
-    set(name scc-mesh)
-    set(tname lldb_${name})
-    add_test(${tname} ${SRC_PATH}/mesh.exp ${SRC_PATH} "scc" "sc")
-    set(name sc++-mesh)
-    set(tname lldb_${name})
-    add_test(${tname} ${SRC_PATH}/mesh.exp ${SRC_PATH} "sc++" "scpp")
-    set(name scc-mesh-uq)
-    set(tname lldb_${name})
-    add_test(${tname} ${SRC_PATH}/mesh-uq.exp ${SRC_PATH} "scc" "sc")
-    set(name sc++-mesh-uq)
-    set(tname lldb_${name})
-    add_test(${tname} ${SRC_PATH}/mesh-uq.exp ${SRC_PATH} "sc++" "scpp")
-    set(name scc-mesh-function)
-    set(tname lldb_${name})
-    add_test(${tname} ${SRC_PATH}/mesh-function.exp ${SRC_PATH} "scc" "sc" "0")
-    set(name sc++-mesh-function)
-    set(tname lldb_${name})
-    add_test(${tname} ${SRC_PATH}/mesh-function.exp ${SRC_PATH} "sc++" "scpp" "0")
-    if (SCOUT_ENABLE_LEGION MATCHES "ON") 
-      set(name scc-mesh-legion)
-      set(tname lldb_${name})
-      add_test(${tname} ${SRC_PATH}/mesh-function.exp ${SRC_PATH} "scc" "sc" "1")
-      set(name sc++-mesh-legion)
-      set(tname lldb_${name})
-      add_test(${tname} ${SRC_PATH}/mesh-function.exp ${SRC_PATH} "sc++" "scpp" "1")
-    endif()
-    if(OPENGL_VERSION_MAJOR EQUAL 3 OR OPENGL_VERSION_MAJOR GREATER 3)
-      if(DEFINED ENV{DISPLAY}) 
-        #set(name scc-mesh-viz)
-        #set(tname lldb_${name})
-        #add_test(${tname} ${SRC_PATH}/mesh-viz.exp ${SRC_PATH} "scc" "sc")
-      endif()
-    endif()
-  endif()
+SET(LIBS
+  ${GLFW_LIBRARIES}
+  ${OPENGL_LIBRARY}
+  ${COCOA_LIBRARY}
+  ${IOKIT_LIBRARY}
+  ${COREVIDEO_LIBRARY}
+  ${COREFOUNDATION_FRAMEWORK}
+)
+
+
+
+ADD_EXECUTABLE(glsl-cc glsl-cc.cpp )
+
+if ("${CMAKE_SYSTEM}" MATCHES "Linux")
+  #GL and GLU are added here as findOpenGL is broken on Ubuntu
+  target_link_libraries(gl-info ${LIBS} GL GLU X11 Xxf86vm Xrandr pthread Xi Xcursor rt)
+else()
+  target_link_libraries(glsl-cc ${LIBS})
 endif()
+
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L${GLFW_LIBRARY_DIR}")
+
+install(TARGETS glsl-cc
+  DESTINATION bin)

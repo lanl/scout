@@ -14,6 +14,8 @@
 #ifndef LLVM_CLANG_AST_DECL_H
 #define LLVM_CLANG_AST_DECL_H
 
+#include <stdio.h>
+
 #include "clang/AST/APValue.h"
 #include "clang/AST/DeclBase.h"
 #include "clang/AST/DeclarationName.h"
@@ -707,7 +709,7 @@ private:
     friend class VarDecl;
     friend class ASTDeclReader;
 
-    unsigned SClass : 3;
+    unsigned SClass : 4;
     unsigned TSCSpec : 2;
     unsigned InitStyle : 2;
 
@@ -857,6 +859,20 @@ public:
             (getStorageClass() == SC_None && getTSCSpec() == TSCS_thread_local))
       && !isFileVarDecl();
   }
+
+  // +==== Scout ============================================================+
+  /// isPersistentLocal - Returns true if a variable with function
+  /// scope is a persistent local variable.
+  bool isPersistentLocal() const {
+    return (getStorageClass() == SC_Persistent) && !isFileVarDecl();
+  }
+
+  /// isNonvolatileLocal - Returns true if a variable with function
+  /// scope is a nonvolatile local variable.
+  bool isNonvolatileLocal() const {
+    return (getStorageClass() == SC_Nonvolatile) && !isFileVarDecl();
+  }
+  // +==== Scout ============================================================+
 
   /// \brief Returns true if a variable has extern or __private_extern__
   /// storage.
@@ -1470,7 +1486,7 @@ private:
 
   // FIXME: This can be packed into the bitfields in Decl.
   // NOTE: VC++ treats enums as signed, avoid using the StorageClass enum
-  unsigned SClass : 2;
+  unsigned SClass : 3;
   bool IsInline : 1;
   bool IsInlineSpecified : 1;
   bool IsVirtualAsWritten : 1;

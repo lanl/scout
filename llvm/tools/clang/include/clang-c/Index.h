@@ -3366,7 +3366,8 @@ enum CX_StorageClass {
   CX_SC_Auto,
   CX_SC_Register,
   /* +===== Scout ==============================================================+ */
-  CX_SC_Persistent
+  CX_SC_Persistent,
+  CX_SC_Nonvolatile 
   /* +==========================================================================+ */
 };
 

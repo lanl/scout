@@ -409,6 +409,7 @@ void DeclPrinter::VisitFunctionDecl(FunctionDecl *D) {
     case SC_PrivateExtern: Out << "__private_extern__ "; break;
     // +===== Scout ==============================================================+
     case SC_Persistent: Out << "persistent "; break;
+    case SC_Nonvolatile: Out << "nonvolatile "; break;
     // +==========================================================================+
     case SC_Auto: case SC_Register: case SC_OpenCLWorkGroupLocal:
       llvm_unreachable("invalid for functions");

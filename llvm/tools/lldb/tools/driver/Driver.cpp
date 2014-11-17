@@ -497,16 +497,29 @@ Driver::GetScriptLanguage() const
 
 // ===== Scout ================================
 void Driver::ExecuteScoutInitialCommands(){
-  /*
+
   SBFileSpec fs = SBHostOS::GetProgramFileSpec();
   std::string dir = fs.GetDirectory();
   std::string prefixPath = dir + "/lldb-prefix.h";
 
+  // Point at the expr prefix file -- note the contents of this file
+  // get inserted prior to each 'expr' evalutation/execution.  If it
+  // gets too unwieldy 'expr' will likely become slow (i.e. best not
+  // to deal with all system headers).
   std::string cmd = "settings set target.expr-prefix " + prefixPath;
-
   SBCommandReturnObject result;
   m_debugger.GetCommandInterpreter().HandleCommand(cmd.c_str(), result, false);
-  */
+
+  cmd = "settings set prompt \"(scdb) \"";
+  m_debugger.GetCommandInterpreter().HandleCommand(cmd.c_str(), result, false);
+
+#if defined(__linux__)
+  std::string extension = ".so";
+#else
+  std::string extension = ".dylib";
+#endif
+  cmd = "expr (void*)dlopen(\"" + dir + "/../lib/libscStandard." + extension + "\", 0x2)";
+  m_debugger.GetCommandInterpreter().HandleCommand(cmd.c_str(), result, false);
 }
 // ============================================
 
