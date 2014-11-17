@@ -1239,6 +1239,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw__Thread_local:
   // +===== Scout ==========================================================+    
   case tok::kw_persistent:
+  case tok::kw_nonvolatile:
   // +======================================================================+
     // function-specifier
   // +===== Scout ==========================================================+

@@ -10,6 +10,7 @@
 // This contains code to emit Decl nodes as LLVM code.
 //
 //===----------------------------------------------------------------------===//
+#include <stdio.h>
 
 #include "CodeGenFunction.h"
 #include "CGDebugInfo.h"
@@ -156,6 +157,28 @@ void CodeGenFunction::EmitVarDecl(const VarDecl &D) {
 
     return EmitStaticVarDecl(D, Linkage);
   }
+
+  //+===== Scout =======================================================+ 
+  if (D.isPersistentLocal()) {
+    llvm::GlobalValue::LinkageTypes Linkage =
+        CGM.getLLVMLinkageVarDefinition(&D, /*isConstant=*/false);
+
+    // FIXME: We need to force the emission/use of a guard variable for
+    // some variables even if we can constant-evaluate them because
+    // we can't guarantee every translation unit will constant-evaluate them.
+    return EmitStaticVarDecl(D, Linkage);
+  } 
+
+  if (D.isNonvolatileLocal()) {
+    llvm::GlobalValue::LinkageTypes Linkage =
+        CGM.getLLVMLinkageVarDefinition(&D, /*isConstant=*/false);
+
+    // FIXME: We need to force the emission/use of a guard variable for
+    // some variables even if we can constant-evaluate them because
+    // we can't guarantee every translation unit will constant-evaluate them.
+    return EmitStaticVarDecl(D, Linkage);
+  }
+  //+===================================================================+ 
 
   if (D.hasExternalStorage())
     // Don't emit it now, allow it to be emitted lazily on its first use.
@@ -975,7 +998,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
 
       // +===== Scout ========================================================+
       // SC_TODO - we need to make sure we handle other mesh types here.
-        EmitScoutAutoVarAlloca(Alloc, D);
+      EmitScoutAutoVarAlloca(Alloc, D);
       // +====================================================================+
 
       // Emit a lifetime intrinsic if meaningful.  There's no point

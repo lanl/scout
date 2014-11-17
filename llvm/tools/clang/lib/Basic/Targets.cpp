@@ -1369,7 +1369,7 @@ namespace {
     4,    // opencl_constant
     1,    // cuda_device
     4,    // cuda_constant
-    3,    // cuda_shared
+    3     // cuda_shared
   };
   class NVPTXTargetInfo : public TargetInfo {
     static const char * const GCCRegNames[];
