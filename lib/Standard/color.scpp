@@ -58,35 +58,37 @@ const color_channel_t SC_MAX_CHANNEL_VALUE =   1.0;
 const color_channel_t SC_MIN_HUE_VALUE     =   0.0;
 const color_channel_t SC_MAX_HUE_VALUE     = 360.0;
 
-// +--- Convert HSV color to RGB color ---------------------------------------+
-//
-color_t hsv(color_channel_t hue,
-            color_channel_t saturation,
-            color_channel_t value) {
+extern "C" {
 
-  color_t rgbaColor;
-  rgbaColor.a = 0.0;
+  // +--- Convert HSV color to RGB color ---------------------------------------+
+  //
+  color_t hsv(color_channel_t hue,
+	      color_channel_t saturation,
+	      color_channel_t value) {
 
-  hue         = clamp(hue, SC_MIN_HUE_VALUE, SC_MAX_HUE_VALUE);
-  saturation  = clamp(saturation, SC_MIN_CHANNEL_VALUE, SC_MAX_CHANNEL_VALUE);
-  value       = clamp(value, SC_MIN_CHANNEL_VALUE, SC_MAX_CHANNEL_VALUE);
+    color_t rgbaColor;
+    rgbaColor.a = 0.0;
 
-  if (saturation == SC_MIN_CHANNEL_VALUE) {
-    rgbaColor.rgb = value;
-    return rgbaColor;
-  }
+    hue         = clamp(hue, SC_MIN_HUE_VALUE, SC_MAX_HUE_VALUE);
+    saturation  = clamp(saturation, SC_MIN_CHANNEL_VALUE, SC_MAX_CHANNEL_VALUE);
+    value       = clamp(value, SC_MIN_CHANNEL_VALUE, SC_MAX_CHANNEL_VALUE);
 
-  int   i;
-  float f, p, q, t;
+    if (saturation == SC_MIN_CHANNEL_VALUE) {
+      rgbaColor.rgb = value;
+      return rgbaColor;
+    }
 
-  hue = hue / 60.0;
-  i   = int(hue);
-  f   = hue - float(i);
-  p   = value * (1.0 - saturation);
-  q   = value * (1.0 - saturation * f);
-  t   = value * (1.0 - saturation * (1.0 - f));
+    int   i;
+    float f, p, q, t;
 
-  switch(i) {
+    hue = hue / 60.0;
+    i   = int(hue);
+    f   = hue - float(i);
+    p   = value * (1.0 - saturation);
+    q   = value * (1.0 - saturation * f);
+    t   = value * (1.0 - saturation * (1.0 - f));
+
+    switch(i) {
 
     case 0:
       rgbaColor.r = value;
@@ -123,23 +125,24 @@ color_t hsv(color_channel_t hue,
       rgbaColor.g = p;
       rgbaColor.b = q;
       break;
+    }
+
+    return rgbaColor;
   }
 
-  return rgbaColor;
-}
+  // +--- Convert HSV-alpha color to RGB-alpha color ---------------------------+
+  //
+  color_t hsva(color_channel_t hue,
+	       color_channel_t saturation,
+	       color_channel_t value,
+	       color_channel_t alpha) {
+    //printf("hsva %f %f %f %f\n", hue, saturation, value, alpha); 
+    color_t rgbaColor = hsv(hue, saturation, value);
+    rgbaColor.a = clamp(alpha, SC_MIN_CHANNEL_VALUE, SC_MAX_CHANNEL_VALUE);
+    return rgbaColor;
+  }
 
-// +--- Convert HSV-alpha color to RGB-alpha color ---------------------------+
-//
-color_t hsva(color_channel_t hue,
-             color_channel_t saturation,
-             color_channel_t value,
-             color_channel_t alpha) {
-  //printf("hsva %f %f %f %f\n", hue, saturation, value, alpha); 
-  color_t rgbaColor = hsv(hue, saturation, value);
-  rgbaColor.a = clamp(alpha, SC_MIN_CHANNEL_VALUE, SC_MAX_CHANNEL_VALUE);
-  return rgbaColor;
 }
-
 
 // +--- Linear blend of 2 channel values and an alpha weighting. -------------+
 //
