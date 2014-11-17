@@ -146,6 +146,7 @@ def SubstNonTypeTemplateParmPackExpr : DStmt<Expr>;
 def FunctionParmPackExpr : DStmt<Expr>;
 def MaterializeTemporaryExpr : DStmt<Expr>;
 def LambdaExpr : DStmt<Expr>;
+def CXXFoldExpr : DStmt<Expr>;
 
 // Obj-C Expressions.
 def ObjCStringLiteral : DStmt<Expr>;

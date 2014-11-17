@@ -531,7 +531,7 @@ static std::string getDebugLocString(const Loop *L) {
 
 /// \brief Propagate known metadata from one instruction to another.
 static void propagateMetadata(Instruction *To, const Instruction *From) {
-  SmallVector<std::pair<unsigned, Value *>, 4> Metadata;
+  SmallVector<std::pair<unsigned, MDNode *>, 4> Metadata;
   From->getAllMetadataOtherThanDebugLoc(Metadata);
 
   for (auto M : Metadata) {
@@ -5265,7 +5265,13 @@ LoopVectorizationLegality::isInductionVariable(PHINode *Phi) {
     return IK_NoInduction;
 
   assert(PhiTy->isPointerTy() && "The PHI must be a pointer");
-  uint64_t Size = DL->getTypeAllocSize(PhiTy->getPointerElementType());
+  Type *PointerElementType = PhiTy->getPointerElementType();
+  // The pointer stride cannot be determined if the pointer element type is not
+  // sized.
+  if (!PointerElementType->isSized())
+    return IK_NoInduction;
+
+  uint64_t Size = DL->getTypeAllocSize(PointerElementType);
   if (C->getValue()->equalsInt(Size))
     return IK_PtrInduction;
   else if (C->getValue()->equalsInt(0 - Size))

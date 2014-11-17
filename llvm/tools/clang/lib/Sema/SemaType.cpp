@@ -707,27 +707,27 @@ static void maybeSynthesizeBlockSignature(TypeProcessingState &state,
   // ...and *prepend* it to the declarator.
   SourceLocation NoLoc;
   declarator.AddInnermostTypeInfo(DeclaratorChunk::getFunction(
-                             /*HasProto=*/true,
-                             /*IsAmbiguous=*/false,
-                             /*LParenLoc=*/NoLoc,
-                             /*ArgInfo=*/nullptr,
-                             /*NumArgs=*/0,
-                             /*EllipsisLoc=*/NoLoc,
-                             /*RParenLoc=*/NoLoc,
-                             /*TypeQuals=*/0,
-                             /*RefQualifierIsLvalueRef=*/true,
-                             /*RefQualifierLoc=*/NoLoc,
-                             /*ConstQualifierLoc=*/NoLoc,
-                             /*VolatileQualifierLoc=*/NoLoc,
-                             /*RestrictQualifierLoc=*/NoLoc,
-                             /*MutableLoc=*/NoLoc,
-                             EST_None,
-                             /*ESpecLoc=*/NoLoc,
-                             /*Exceptions=*/nullptr,
-                             /*ExceptionRanges=*/nullptr,
-                             /*NumExceptions=*/0,
-                             /*NoexceptExpr=*/nullptr,
-                             loc, loc, declarator));
+      /*HasProto=*/true,
+      /*IsAmbiguous=*/false,
+      /*LParenLoc=*/NoLoc,
+      /*ArgInfo=*/nullptr,
+      /*NumArgs=*/0,
+      /*EllipsisLoc=*/NoLoc,
+      /*RParenLoc=*/NoLoc,
+      /*TypeQuals=*/0,
+      /*RefQualifierIsLvalueRef=*/true,
+      /*RefQualifierLoc=*/NoLoc,
+      /*ConstQualifierLoc=*/NoLoc,
+      /*VolatileQualifierLoc=*/NoLoc,
+      /*RestrictQualifierLoc=*/NoLoc,
+      /*MutableLoc=*/NoLoc, EST_None,
+      /*ESpecLoc=*/NoLoc,
+      /*Exceptions=*/nullptr,
+      /*ExceptionRanges=*/nullptr,
+      /*NumExceptions=*/0,
+      /*NoexceptExpr=*/nullptr,
+      /*ExceptionSpecTokens=*/nullptr,
+      loc, loc, declarator));
 
   // For consistency, make sure the state still has us as processing
   // the decl spec.
@@ -3269,7 +3269,8 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
           NoexceptExpr = FTI.NoexceptExpr;
         }
 
-        S.checkExceptionSpecification(FTI.getExceptionSpecType(),
+        S.checkExceptionSpecification(D.isFunctionDeclarationContext(),
+                                      FTI.getExceptionSpecType(),
                                       DynamicExceptions,
                                       DynamicExceptionRanges,
                                       NoexceptExpr,
@@ -5824,6 +5825,8 @@ static QualType getDecltypeForExpr(Sema &S, Expr *E) {
   } else if (const ObjCPropertyRefExpr *PR = dyn_cast<ObjCPropertyRefExpr>(E)) {
     if (PR->isExplicitProperty())
       return PR->getExplicitProperty()->getType();
+  } else if (auto *PE = dyn_cast<PredefinedExpr>(E)) {
+    return PE->getType();
   }
 
   // C++11 [expr.lambda.prim]p18:

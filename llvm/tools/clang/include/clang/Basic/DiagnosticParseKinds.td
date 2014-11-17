@@ -121,6 +121,8 @@ def ext_c11_alignment : Extension<
 
 def ext_c11_noreturn : Extension<
   "_Noreturn functions are a C11-specific feature">, InGroup<C11>;
+def err_c11_noreturn_misplaced : Error<
+  "'_Noreturn' keyword must precede function declarator">;
 
 def ext_gnu_indirect_goto : Extension<
   "use of GNU indirect-goto extension">, InGroup<GNULabelsAsValue>;
@@ -197,11 +199,19 @@ def err_expected_semi_after_namespace_name : Error<
   "expected ';' after namespace name">;
 def err_unexpected_namespace_attributes_alias : Error<
   "attributes cannot be specified on namespace alias">;
+def err_unexpected_nested_namespace_attribute : Error<
+  "attributes cannot be specified on a nested namespace definition">;
 def err_inline_namespace_alias : Error<"namespace alias cannot be inline">;
 def err_namespace_nonnamespace_scope : Error<
   "namespaces can only be defined in global or namespace scope">;
-def err_nested_namespaces_with_double_colon : Error<
-  "nested namespace definition must define each namespace separately">;
+def ext_nested_namespace_definition : ExtWarn<
+  "nested namespace definition is a C++1z extension; "
+  "define each namespace separately">, InGroup<CXX1z>;
+def warn_cxx14_compat_nested_namespace_definition : Warning<
+  "nested namespace definition is incompatible with C++ standards before C++1z">,
+  InGroup<CXXPre1zCompat>, DefaultIgnore;
+def err_inline_nested_namespace_definition : Error<
+  "nested namespace definition cannot be 'inline'">;
 def err_expected_semi_after_attribute_list : Error<
   "expected ';' after attribute list">;
 def err_expected_semi_after_static_assert : Error<
@@ -337,8 +347,6 @@ def err_invalid_vector_decl_spec_combination : Error<
 def err_invalid_pixel_decl_spec_combination : Error<
   "'__pixel' must be preceded by '__vector'.  "
   "'%0' declaration specifier not allowed here">;
-def err_invalid_vector_decl_spec : Error<
-  "cannot use '%0' with '__vector'">;
 def err_invalid_vector_bool_decl_spec : Error<
   "cannot use '%0' with '__vector bool'">;
 def err_invalid_vector_double_decl_spec : Error <
@@ -504,6 +512,8 @@ def ext_ellipsis_exception_spec : Extension<
   InGroup<Microsoft>;
 def err_dynamic_and_noexcept_specification : Error<
   "cannot have both throw() and noexcept() clause on the same function">;
+def err_except_spec_unparsed : Error<
+  "unexpected end of exception specification">;
 def warn_cxx98_compat_noexcept_decl : Warning<
   "noexcept specifications are incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
@@ -571,6 +581,10 @@ def warn_cxx98_compat_noexcept_expr : Warning<
 def warn_cxx98_compat_nullptr : Warning<
   "'nullptr' is incompatible with C++98">, InGroup<CXX98Compat>, DefaultIgnore;
 
+def warn_cxx14_compat_attribute : Warning<
+  "attributes on %select{a namespace|an enumerator}0 declaration are "
+  "incompatible with C++ standards before C++1z">,
+  InGroup<CXXPre1zCompat>, DefaultIgnore;
 def warn_cxx98_compat_alignas : Warning<"'alignas' is incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
 def warn_cxx98_compat_attribute : Warning<
@@ -698,7 +712,18 @@ def err_explicit_spec_non_template : Error<
 def err_default_template_template_parameter_not_template : Error<
   "default template argument for a template template parameter must be a class "
   "template">;
-  
+
+def ext_fold_expression : ExtWarn<
+  "pack fold expression is a C++1z extension">,
+  InGroup<CXX1z>;
+def warn_cxx14_compat_fold_expression : Warning<
+  "pack fold expression is incompatible with C++ standards before C++1z">,
+  InGroup<CXXPre1zCompat>, DefaultIgnore;
+def err_expected_fold_operator : Error<
+  "expected a foldable binary operator in fold expression">;
+def err_fold_operator_mismatch : Error<
+  "operators in fold expression must be the same">;
+
 def err_ctor_init_missing_comma : Error<
   "missing ',' between base or member initializers">;
 

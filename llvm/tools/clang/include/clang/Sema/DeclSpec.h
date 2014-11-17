@@ -1321,7 +1321,7 @@ struct DeclaratorChunk {
     unsigned TypeQuals : 3;
 
     /// ExceptionSpecType - An ExceptionSpecificationType value.
-    unsigned ExceptionSpecType : 3;
+    unsigned ExceptionSpecType : 4;
 
     /// DeleteParams - If this is true, we need to delete[] Params.
     unsigned DeleteParams : 1;
@@ -1388,6 +1388,10 @@ struct DeclaratorChunk {
       /// \brief Pointer to the expression in the noexcept-specifier of this
       /// function, if it has one.
       Expr *NoexceptExpr;
+  
+      /// \brief Pointer to the cached tokens for an exception-specification
+      /// that has not yet been parsed.
+      CachedTokens *ExceptionSpecTokens;
     };
 
     /// \brief If HasTrailingReturnType is true, this is the trailing return
@@ -1414,6 +1418,8 @@ struct DeclaratorChunk {
         delete[] Params;
       if (getExceptionSpecType() == EST_Dynamic)
         delete[] Exceptions;
+      else if (getExceptionSpecType() == EST_Unparsed)
+        delete ExceptionSpecTokens;
     }
 
     /// isKNRPrototype - Return true if this is a K&R style identifier list,
@@ -1627,6 +1633,7 @@ struct DeclaratorChunk {
                                      SourceRange *ExceptionRanges,
                                      unsigned NumExceptions,
                                      Expr *NoexceptExpr,
+                                     CachedTokens *ExceptionSpecTokens,
                                      SourceLocation LocalRangeBegin,
                                      SourceLocation LocalRangeEnd,
                                      Declarator &TheDeclarator,

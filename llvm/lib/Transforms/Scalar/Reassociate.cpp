@@ -236,7 +236,9 @@ FunctionPass *llvm::createReassociatePass() { return new Reassociate(); }
 /// opcode and if it only has one use.
 static BinaryOperator *isReassociableOp(Value *V, unsigned Opcode) {
   if (V->hasOneUse() && isa<Instruction>(V) &&
-      cast<Instruction>(V)->getOpcode() == Opcode)
+      cast<Instruction>(V)->getOpcode() == Opcode &&
+      (!isa<FPMathOperator>(V) ||
+       cast<Instruction>(V)->hasUnsafeAlgebra()))
     return cast<BinaryOperator>(V);
   return nullptr;
 }
@@ -245,7 +247,9 @@ static BinaryOperator *isReassociableOp(Value *V, unsigned Opcode1,
                                         unsigned Opcode2) {
   if (V->hasOneUse() && isa<Instruction>(V) &&
       (cast<Instruction>(V)->getOpcode() == Opcode1 ||
-       cast<Instruction>(V)->getOpcode() == Opcode2))
+       cast<Instruction>(V)->getOpcode() == Opcode2) &&
+      (!isa<FPMathOperator>(V) ||
+       cast<Instruction>(V)->hasUnsafeAlgebra()))
     return cast<BinaryOperator>(V);
   return nullptr;
 }
@@ -661,7 +665,9 @@ static bool LinearizeExprTree(BinaryOperator *I,
       // expression.  This means that it can safely be modified.  See if we
       // can usefully morph it into an expression of the right kind.
       assert((!isa<Instruction>(Op) ||
-              cast<Instruction>(Op)->getOpcode() != Opcode) &&
+              cast<Instruction>(Op)->getOpcode() != Opcode
+              || (isa<FPMathOperator>(Op) &&
+                  !cast<Instruction>(Op)->hasUnsafeAlgebra())) &&
              "Should have been handled above!");
       assert(Op->hasOneUse() && "Has uses outside the expression tree!");
 
@@ -1024,8 +1030,19 @@ static BinaryOperator *ConvertShiftToMul(Instruction *Shl) {
     BinaryOperator::CreateMul(Shl->getOperand(0), MulCst, "", Shl);
   Shl->setOperand(0, UndefValue::get(Shl->getType())); // Drop use of op.
   Mul->takeName(Shl);
+
+  // Everyone now refers to the mul instruction.
   Shl->replaceAllUsesWith(Mul);
   Mul->setDebugLoc(Shl->getDebugLoc());
+
+  // We can safely preserve the nuw flag in all cases.  It's also safe to turn a
+  // nuw nsw shl into a nuw nsw mul.  However, nsw in isolation requires special
+  // handling.
+  bool NSW = cast<BinaryOperator>(Shl)->hasNoSignedWrap();
+  bool NUW = cast<BinaryOperator>(Shl)->hasNoUnsignedWrap();
+  if (NSW && NUW)
+    Mul->setHasNoSignedWrap(true);
+  Mul->setHasNoUnsignedWrap(NUW);
   return Mul;
 }
 
@@ -1936,6 +1953,12 @@ Instruction *Reassociate::canonicalizeNegConstExpr(Instruction *I) {
   if (!I->hasOneUse() || I->getType()->isVectorTy())
     return nullptr;
 
+  // Must be a mul, fmul, or fdiv instruction.
+  unsigned Opcode = I->getOpcode();
+  if (Opcode != Instruction::Mul && Opcode != Instruction::FMul &&
+      Opcode != Instruction::FDiv)
+    return nullptr;
+
   // Must have at least one constant operand.
   Constant *C0 = dyn_cast<Constant>(I->getOperand(0));
   Constant *C1 = dyn_cast<Constant>(I->getOperand(1));
@@ -1958,21 +1981,6 @@ Instruction *Reassociate::canonicalizeNegConstExpr(Instruction *I) {
   Instruction *User = I->user_back();
   if (!isa<BinaryOperator>(User) || !User->getNumUses())
     return nullptr;
-
-  // Must be a binary operator with higher precedence that add/sub.
-  switch(I->getOpcode()) {
-  default:
-    return nullptr;
-  case Instruction::Mul:
-  case Instruction::FMul:
-  case Instruction::UDiv:
-  case Instruction::SDiv:
-  case Instruction::FDiv:
-  case Instruction::URem:
-  case Instruction::SRem:
-  case Instruction::FRem:
-   break;
-  }
 
   unsigned UserOpcode = User->getOpcode();
   if (UserOpcode != Instruction::Add && UserOpcode != Instruction::FAdd &&

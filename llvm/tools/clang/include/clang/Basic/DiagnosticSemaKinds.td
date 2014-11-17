@@ -1117,6 +1117,8 @@ def warn_missing_exception_specification : Warning<
   "%0 is missing exception specification '%1'">;
 def err_noexcept_needs_constant_expression : Error<
   "argument to noexcept specifier must be a constant expression">;
+def err_exception_spec_not_parsed : Error<
+  "exception specification is not available until end of class definition">;
 
 // C++ access checking
 def err_class_redeclared_with_different_access : Error<
@@ -3658,6 +3660,11 @@ def err_invalid_var_template_spec_type : Error<"type %2 "
   "of %select{explicit instantiation|explicit specialization|"
   "partial specialization|redeclaration}0 of %1 does not match"
   " expected type %3">;
+def err_mismatched_exception_spec_explicit_instantiation : Error<
+  "exception specification in explicit instantiation does not match instantiated one">;
+def ext_mismatched_exception_spec_explicit_instantiation : ExtWarn<
+  "exception specification in explicit instantiation does not match instantiated one">,
+  InGroup<Microsoft>;
   
 // C++ typename-specifiers
 def err_typename_nested_not_found : Error<"no type named %0 in %1">;
@@ -3778,6 +3785,14 @@ def err_ellipsis_in_declarator_not_parameter : Error<
 
 def err_sizeof_pack_no_pack_name : Error<
   "%0 does not refer to the name of a parameter pack">;
+
+def err_fold_expression_packs_both_sides : Error<
+  "binary fold expression has unexpanded parameter packs in both operands">;
+def err_fold_expression_empty : Error<
+  "unary fold expression has empty expansion for operator '%0' "
+  "with no fallback value">;
+def err_fold_expression_bad_operand : Error<
+  "expression not permitted as operand of fold expression">;
 
 def err_unexpected_typedef : Error<
   "unexpected type name %0: expected expression">;

@@ -309,21 +309,20 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
 
   if (VD == 0)
     return StmtError();
-
-  // If we are in scc-mode and inside a function then make sure
-  // we have a *
-  if(getLangOpts().ScoutC && isa<ParmVarDecl>(VD) && meshptr == false) {
-    Diag(Tok,diag::err_expected_star_mesh);
-    SkipUntil(tok::semi);
-    return StmtError();
-  }
-
+  
   DeclStmt* Init = NULL; //declstmt for forall implicit variable
   
   VarDecl* QD = 0;
   
   const MeshType *RefMeshType = LookupMeshType(VD, IdentInfo);
   if(RefMeshType){
+    // If we are in scc-mode and inside a function then make sure
+    // we have a *
+    if(getLangOpts().ScoutC && isa<ParmVarDecl>(VD) && meshptr == false) {
+      Diag(Tok,diag::err_expected_star_mesh);
+      SkipUntil(tok::semi);
+      return StmtError();
+    }
     
     bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
                                                       IdentInfo, IdentLoc,
@@ -336,7 +335,6 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
       return StmtError();
     
     MeshElementTypeDiag(MeshElementType, RefMeshType, IdentLoc);
-
   }
   else{
     const QueryType *RefQueryType = LookupQueryType(VD, IdentInfo);

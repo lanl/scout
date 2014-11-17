@@ -8,10 +8,10 @@
 # LLVM components. All compoenent names handled by llvm-config are valid.
 
 if(NOT DEFINED LLVM_DYLIB_COMPONENTS)
-  set(LLVM_LINK_COMPONENTS
+  set(LLVM_DYLIB_COMPONENTS
     ${LLVM_TARGETS_TO_BUILD}
     Analysis
-    AsmPrinter
+    BitReader
     BitWriter
     CodeGen
     Core
@@ -23,20 +23,17 @@ if(NOT DEFINED LLVM_DYLIB_COMPONENTS)
     Instrumentation
     Interpreter
     Linker
-    MC
+    MCDisassembler
     MCJIT
     ObjCARCOpts
     Object
     ScalarOpts
-    SelectionDAG
     Support
     Target
     TransformUtils
     Vectorize
     native
     )
-else()
-  set(LLVM_LINK_COMPONENTS ${LLVM_DYLIB_COMPONENTS})
 endif()
 
 add_definitions( -DLLVM_VERSION_INFO=\"${PACKAGE_VERSION}\" )
@@ -56,7 +53,7 @@ if(NOT DEFINED LLVM_EXPORTED_SYMBOL_FILE)
 
   set(LLVM_EXPORTED_SYMBOL_FILE ${CMAKE_BINARY_DIR}/libllvm.exports)
 
-  llvm_map_components_to_libnames(LIB_NAMES ${LLVM_LINK_COMPONENTS})
+  llvm_map_components_to_libnames(LIB_NAMES ${LLVM_DYLIB_COMPONENTS})
 
   foreach (lib ${LIB_NAMES})
     
@@ -84,6 +81,14 @@ if(NOT DEFINED LLVM_EXPORTED_SYMBOL_FILE)
 endif()
 
 add_llvm_library(LLVM SHARED ${SOURCES})
+
+if("${CMAKE_SYSTEM_NAME}" STREQUAL "Linux") # FIXME: It should be "GNU ld for elf"
+  # GNU ld doesn't resolve symbols in the version script.
+  list(REMOVE_DUPLICATES LIB_NAMES)
+  set(LIB_NAMES -Wl,--whole-archive ${LIB_NAMES} -Wl,--no-whole-archive)
+endif()
+
+target_link_libraries(LLVM ${cmake_2_8_12_PRIVATE} ${LIB_NAMES})
 
 add_dependencies(LLVM ${LLVM_EXPORTED_SYMBOL_FILE})
 

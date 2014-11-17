@@ -167,6 +167,10 @@ if( CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT WIN32 )
   endif( LLVM_BUILD_32_BITS )
 endif( CMAKE_SIZEOF_VOID_P EQUAL 8 AND NOT WIN32 )
 
+if (LLVM_BUILD_STATIC)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static")
+endif()
+
 if( XCODE )
   # For Xcode enable several build settings that correspond to
   # many warnings that are on by default in Clang but are
@@ -272,6 +276,7 @@ if( MSVC )
 elseif( LLVM_COMPILER_IS_GCC_COMPATIBLE )
   if (LLVM_ENABLE_WARNINGS)
     append("-Wall -W -Wno-unused-parameter -Wwrite-strings" CMAKE_C_FLAGS CMAKE_CXX_FLAGS)
+    append("-Wcast-qual" CMAKE_CXX_FLAGS)
 
     # Turn off missing field initializer warnings for gcc to avoid noise from
     # false positives with empty {}. Turn them on otherwise (they're off by

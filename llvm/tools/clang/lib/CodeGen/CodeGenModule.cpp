@@ -150,7 +150,7 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
   // +========================================================================+
 
   // Enable TBAA unless it's suppressed. ThreadSanitizer needs TBAA even at O0.
-  if (LangOpts.Sanitize.Thread ||
+  if (LangOpts.Sanitize.has(SanitizerKind::Thread) ||
       (!CodeGenOpts.RelaxedAliasing && CodeGenOpts.OptimizationLevel > 0))
     TBAA = new CodeGenTBAA(Context, VMContext, CodeGenOpts, getLangOpts(),
                            getCXXABI().getMangleContext());
@@ -794,13 +794,16 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
   if (!isInSanitizerBlacklist(F, D->getLocation())) {
     // When AddressSanitizer is enabled, set SanitizeAddress attribute
     // unless __attribute__((no_sanitize_address)) is used.
-    if (LangOpts.Sanitize.Address && !D->hasAttr<NoSanitizeAddressAttr>())
+    if (LangOpts.Sanitize.has(SanitizerKind::Address) &&
+        !D->hasAttr<NoSanitizeAddressAttr>())
       B.addAttribute(llvm::Attribute::SanitizeAddress);
     // Same for ThreadSanitizer and __attribute__((no_sanitize_thread))
-    if (LangOpts.Sanitize.Thread && !D->hasAttr<NoSanitizeThreadAttr>())
+    if (LangOpts.Sanitize.has(SanitizerKind::Thread) &&
+        !D->hasAttr<NoSanitizeThreadAttr>())
       B.addAttribute(llvm::Attribute::SanitizeThread);
     // Same for MemorySanitizer and __attribute__((no_sanitize_memory))
-    if (LangOpts.Sanitize.Memory && !D->hasAttr<NoSanitizeMemoryAttr>())
+    if (LangOpts.Sanitize.has(SanitizerKind::Memory) &&
+        !D->hasAttr<NoSanitizeMemoryAttr>())
       B.addAttribute(llvm::Attribute::SanitizeMemory);
   }
 
@@ -1241,7 +1244,7 @@ bool CodeGenModule::isInSanitizerBlacklist(llvm::GlobalVariable *GV,
                                            SourceLocation Loc, QualType Ty,
                                            StringRef Category) const {
   // For now globals can be blacklisted only in ASan.
-  if (!LangOpts.Sanitize.Address)
+  if (!LangOpts.Sanitize.has(SanitizerKind::Address))
     return false;
   const auto &SanitizerBL = getContext().getSanitizerBlacklist();
   if (SanitizerBL.isBlacklistedGlobal(GV->getName(), Category))
@@ -2895,7 +2898,8 @@ CodeGenModule::GetAddrOfConstantStringFromLiteral(const StringLiteral *S,
   // Mangle the string literal if the ABI allows for it.  However, we cannot
   // do this if  we are compiling with ASan or -fwritable-strings because they
   // rely on strings having normal linkage.
-  if (!LangOpts.WritableStrings && !LangOpts.Sanitize.Address &&
+  if (!LangOpts.WritableStrings &&
+      !LangOpts.Sanitize.has(SanitizerKind::Address) &&
       getCXXABI().getMangleContext().shouldMangleStringLiteral(S)) {
     llvm::raw_svector_ostream Out(MangledNameBuffer);
     getCXXABI().getMangleContext().mangleStringLiteral(S, Out);
@@ -3077,6 +3081,19 @@ static bool needsDestructMethod(ObjCImplementationDecl *impl) {
   return false;
 }
 
+static bool AllTrivialInitializers(CodeGenModule &CGM,
+                                   ObjCImplementationDecl *D) {
+  CodeGenFunction CGF(CGM);
+  for (ObjCImplementationDecl::init_iterator B = D->init_begin(),
+       E = D->init_end(); B != E; ++B) {
+    CXXCtorInitializer *CtorInitExp = *B;
+    Expr *Init = CtorInitExp->getInit();
+    if (!CGF.isTrivialInitializer(Init))
+      return false;
+  }
+  return true;
+}
+
 /// EmitObjCIvarInitializations - Emit information for ivar initialization
 /// for an implementation.
 void CodeGenModule::EmitObjCIvarInitializations(ObjCImplementationDecl *D) {
@@ -3097,7 +3114,8 @@ void CodeGenModule::EmitObjCIvarInitializations(ObjCImplementationDecl *D) {
 
   // If the implementation doesn't have any ivar initializers, we don't need
   // a .cxx_construct.
-  if (D->getNumIvarInitializers() == 0)
+  if (D->getNumIvarInitializers() == 0 ||
+      AllTrivialInitializers(*this, D))
     return;
   
   IdentifierInfo *II = &getContext().Idents.get(".cxx_construct");
@@ -3301,6 +3319,10 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
     ImportedModules.insert(Import->getImportedModule());
     break;
   }
+
+  case Decl::OMPThreadPrivate:
+    EmitOMPThreadPrivateDecl(cast<OMPThreadPrivateDecl>(D));
+    break;
 
   case Decl::ClassTemplateSpecialization: {
     const auto *Spec = cast<ClassTemplateSpecializationDecl>(D);
@@ -3599,5 +3621,20 @@ llvm::Constant *CodeGenModule::GetAddrOfRTTIDescriptor(QualType Ty,
     return ObjCRuntime->GetEHType(Ty);
 
   return getCXXABI().getAddrOfRTTIDescriptor(Ty);
+}
+
+void CodeGenModule::EmitOMPThreadPrivateDecl(const OMPThreadPrivateDecl *D) {
+  for (auto RefExpr : D->varlists()) {
+    auto *VD = cast<VarDecl>(cast<DeclRefExpr>(RefExpr)->getDecl());
+    bool PerformInit =
+        VD->getAnyInitializer() &&
+        !VD->getAnyInitializer()->isConstantInitializer(getContext(),
+                                                        /*ForRef=*/false);
+    if (auto InitFunction =
+            getOpenMPRuntime().EmitOMPThreadPrivateVarDefinition(
+                VD, GetAddrOfGlobalVar(VD), RefExpr->getLocStart(),
+                PerformInit))
+      CXXGlobalInits.push_back(InitFunction);
+  }
 }
 

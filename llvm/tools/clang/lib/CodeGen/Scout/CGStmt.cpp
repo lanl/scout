@@ -1132,85 +1132,159 @@ void CodeGenFunction::EmitForallFacesVertices(const ForallMeshStmt &S){
 }
 
 void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
+  using namespace std;
+  using namespace llvm;
+  
+  auto& B = Builder;
+  
+  typedef vector<llvm::Type*> TypeVec;
+  typedef vector<Value*> ValueVec;
+  
   if(isGPU()){
     EmitGPUForall(S, EdgeIndex);
     return;
   }
   
-  llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
-  llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+  Value* Zero = ConstantInt::get(Int32Ty, 0);
+  Value* One = ConstantInt::get(Int32Ty, 1);
 
   EmitMarkerBlock("forall.edges.entry");
 
-  InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.edges_idx.ptr");
+  InductionVar[3] = B.CreateAlloca(Int32Ty, 0, "forall.edges_idx.ptr");
   //zero-initialize induction var
-  Builder.CreateStore(Zero, InductionVar[3]);
-  InnerIndex = Builder.CreateAlloca(Int32Ty, 0, "forall.inneridx.ptr");
+  B.CreateStore(Zero, InductionVar[3]);
+  InnerIndex = B.CreateAlloca(Int32Ty, 0, "forall.inneridx.ptr");
 
   // find number of edges
-  llvm::Value* numEdges;
+  Value* numEdges;
   GetNumMeshItems(0, 0 ,&numEdges, 0);
 
-  llvm::BasicBlock *LoopBlock = createBasicBlock("forall.edges.loop");
-  Builder.CreateBr(LoopBlock);
+  Value* queryMask = EmitForallQueryCall(S, numEdges);
+  
+  BasicBlock *LoopBlock = createBasicBlock("forall.edges.loop");
+  B.CreateBr(LoopBlock);
 
   EmitBlock(LoopBlock);
-
+  
   EdgeIndex = InductionVar[3];
+  
+  if(queryMask){
+    Value* nextEdgeIndex = Builder.CreateLoad(EdgeIndex);
+    
+    Value* Mask = Builder.CreateGEP(queryMask, nextEdgeIndex);
+    Mask = Builder.CreateLoad(Mask);
+    
+    llvm::Value* Zero = llvm::ConstantInt::get(Int8Ty, 0);
+    llvm::Value* Cond = Builder.CreateICmpNE(Mask, Zero);
+    
+    llvm::BasicBlock* Body = createBasicBlock("forall.edges.body");
+    llvm::BasicBlock* Else = createBasicBlock("forall.edges.else");
+    
+    Builder.CreateCondBr(Cond, Body, Else);
+    
+    EmitBlock(Else);
+    
+    nextEdgeIndex =
+    Builder.CreateAdd(nextEdgeIndex, One, "nextEdgeIndex");
+    
+    Builder.CreateStore(nextEdgeIndex, EdgeIndex);
+    
+    Builder.CreateBr(LoopBlock);
+    
+    EmitBlock(Body);
+  }
+  
   EmitStmt(S.getBody());
   EdgeIndex = 0;
 
-  llvm::Value* k = Builder.CreateLoad(InductionVar[3], "forall.edges_idx");
-  k = Builder.CreateAdd(k, One);
-  Builder.CreateStore(k, InductionVar[3]);
-  k = Builder.CreateZExt(k, Int64Ty, "k");
+  Value* k = B.CreateLoad(InductionVar[3], "forall.edges_idx");
+  k = B.CreateAdd(k, One);
+  B.CreateStore(k, InductionVar[3]);
+  k = B.CreateZExt(k, Int64Ty, "k");
 
-  llvm::Value* Cond = Builder.CreateICmpSLT(k, numEdges, "cond");
+  Value* Cond = B.CreateICmpSLT(k, numEdges, "cond");
 
-  llvm::BasicBlock *ExitBlock = createBasicBlock("forall.edges.exit");
-  Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
+  BasicBlock* ExitBlock = createBasicBlock("forall.edges.exit");
+  B.CreateCondBr(Cond, LoopBlock, ExitBlock);
   EmitBlock(ExitBlock);
 
   InnerIndex = 0;
 }
 
 void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
+  using namespace std;
+  using namespace llvm;
+  
+  auto& B = Builder;
+  
+  typedef vector<llvm::Type*> TypeVec;
+  typedef vector<Value*> ValueVec;
+  
   if(isGPU()){
     EmitGPUForall(S, FaceIndex);
     return;
   }
   
-  llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
-  llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+  Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
+  Value* One = llvm::ConstantInt::get(Int32Ty, 1);
 
   EmitMarkerBlock("forall.faces.entry");
 
-  InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.faces_idx.ptr");
+  InductionVar[3] = B.CreateAlloca(Int32Ty, 0, "forall.faces_idx.ptr");
   //zero-initialize induction var
-  Builder.CreateStore(Zero, InductionVar[3]);
+  B.CreateStore(Zero, InductionVar[3]);
 
   // find number of faces
-  llvm::Value* numFaces;
+  Value* numFaces;
   GetNumMeshItems(0, 0 ,0, &numFaces);
 
-  llvm::BasicBlock *LoopBlock = createBasicBlock("forall.faces.loop");
-  Builder.CreateBr(LoopBlock);
+  Value* queryMask = EmitForallQueryCall(S, numFaces);
+
+  BasicBlock *LoopBlock = createBasicBlock("forall.faces.loop");
+  B.CreateBr(LoopBlock);
 
   EmitBlock(LoopBlock);
 
   FaceIndex = InductionVar[3];
+  
+  if(queryMask){
+    Value* nextFaceIndex = Builder.CreateLoad(FaceIndex);
+    
+    Value* Mask = Builder.CreateGEP(queryMask, nextFaceIndex);
+    Mask = Builder.CreateLoad(Mask);
+    
+    llvm::Value* Zero = llvm::ConstantInt::get(Int8Ty, 0);
+    llvm::Value* Cond = Builder.CreateICmpNE(Mask, Zero);
+    
+    llvm::BasicBlock* Body = createBasicBlock("forall.faces.body");
+    llvm::BasicBlock* Else = createBasicBlock("forall.faces.else");
+    
+    Builder.CreateCondBr(Cond, Body, Else);
+    
+    EmitBlock(Else);
+    
+    nextFaceIndex =
+    Builder.CreateAdd(nextFaceIndex, One, "nextFaceIndex");
+    
+    Builder.CreateStore(nextFaceIndex, FaceIndex);
+    
+    Builder.CreateBr(LoopBlock);
+    
+    EmitBlock(Body);
+  }
+  
   EmitStmt(S.getBody());
   FaceIndex = 0;
 
-  llvm::Value* k = Builder.CreateLoad(InductionVar[3], "forall.faces_idx");
-  k = Builder.CreateAdd(k, One);
-  Builder.CreateStore(k, InductionVar[3]);
-  k = Builder.CreateZExt(k, Int64Ty, "k");
+  llvm::Value* k = B.CreateLoad(InductionVar[3], "forall.faces_idx");
+  k = B.CreateAdd(k, One);
+  B.CreateStore(k, InductionVar[3]);
+  k = B.CreateZExt(k, Int64Ty, "k");
 
-  llvm::Value* Cond = Builder.CreateICmpSLT(k, numFaces, "cond");
+  llvm::Value* Cond = B.CreateICmpSLT(k, numFaces, "cond");
 
   llvm::BasicBlock *ExitBlock = createBasicBlock("forall.faces.exit");
-  Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
+  B.CreateCondBr(Cond, LoopBlock, ExitBlock);
   EmitBlock(ExitBlock);
 }
 
@@ -1494,69 +1568,13 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
 //
 
 void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
-  VarDecl* qd = S.getQueryVarDecl();
-  llvm::Value* queryMask = 0;
+  llvm::Value* numItems;
   
-  if(qd){
-    using namespace std;
-    using namespace llvm;
-    
-    auto& B = Builder;
-    
-    typedef vector<llvm::Type*> TypeVec;
-    typedef vector<Value*> ValueVec;
-    
-    const MeshType* cmt = S.getMeshType();
-    
-    StructType* mt =
-    cast<StructType>(ConvertType(QualType(cmt, 0)));
-    
-    size_t numFields = mt->getNumElements();
-    
-    llvm::PointerType* mpt =
-    llvm::PointerType::get(mt, 0);
-    
-    llvm::PointerType* outTy = llvm::PointerType::get(Int8Ty, 0);
-    
-    TypeVec params = {mpt, outTy, Int64Ty, Int64Ty};
-    llvm::FunctionType* ft = llvm::FunctionType::get(VoidTy, params, false);
-    
-    Value* qp = LocalDeclMap[qd];
-    
-    Value* rawFuncPtr = B.CreateStructGEP(qp, 0, "query.func.ptr");
-    Value* funcPtr = B.CreateBitCast(rawFuncPtr, llvm::PointerType::get(ft, 0));
-    
-    Value* rawMeshPtr = B.CreateStructGEP(qp, 1, "query.mesh.ptr");
-    Value* meshPtr = B.CreateBitCast(rawMeshPtr, mpt);
-    
-    Value* depth =
-    B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 2)),
-                 Int64Ty, "depth");
-    
-    Value* height =
-    B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 3)),
-                 Int64Ty, "height");
-    
-    Value* width =
-    B.CreateZExt(B.CreateLoad(B.CreateStructGEP(meshPtr, numFields - 4)),
-                 Int64Ty, "width");
-    
-    Value* zero = llvm::ConstantInt::get(Int64Ty, 0);
-    Value* one = llvm::ConstantInt::get(Int64Ty, 1);
-    
-    Value* size = B.CreateMul(width, B.CreateMul(height, depth));
-    Value* end = B.CreateSub(size, one);
-    
-    ValueVec args = {size};
-    llvm::Function* allocFunc = CGM.getScoutRuntime().MemAllocFunction();
-    queryMask = B.CreateCall(allocFunc, args);
-    queryMask = B.CreateBitCast(queryMask, outTy);
-    
-    ValueVec queryArgs = {meshPtr, queryMask, zero, end};
-    B.CreateCall(funcPtr, queryArgs);
-  }
-  
+  SmallVector<llvm::Value*, 3> Dimensions;
+  GetMeshDimensions(S.getMeshType(), Dimensions);
+
   ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
+  
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
   // Track down the mesh meta data. 
@@ -1589,6 +1607,23 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
 
   InnerIndex = Builder.CreateAlloca(Int32Ty, 0, "forall.inneridx.ptr");
 
+  llvm::Value* queryMask = 0;
+  
+  if(S.getQueryVarDecl()){
+    switch(FET){
+      case ForallMeshStmt::Cells:
+        GetNumMeshItems(&numItems, 0, 0, 0);
+        break;
+      case ForallMeshStmt::Vertices:
+        GetNumMeshItems(0, &numItems, 0, 0);
+        break;
+      default:
+        assert(false && "invalid forall type");
+    }
+    
+    queryMask = EmitForallQueryCall(S, numItems);
+  }
+  
   EmitForallMeshLoop(S, 3, queryMask);
 
   // reset MeshDims, Rank and induction var
@@ -1681,14 +1716,31 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S,
   if (r == 1) {  // This is our innermost rank, generate the loop body.
     
     if(queryMask){
-      llvm::Value* Mask = Builder.CreateGEP(queryMask, getLinearIdx());
+      llvm::Value* linearIdx =
+      Builder.CreateLoad(InductionVar[3], "forall.linearidx");
+      
+      llvm::Value* Mask = Builder.CreateGEP(queryMask, linearIdx);
       Mask = Builder.CreateLoad(Mask);
       
       llvm::Value* Zero = llvm::ConstantInt::get(Int8Ty, 0);
       llvm::Value* Cond = Builder.CreateICmpNE(Mask, Zero);
       
       llvm::BasicBlock* Body = createBasicBlock("forall.body");
-      Builder.CreateCondBr(Cond, Body, Continue.getBlock());
+      llvm::BasicBlock* Else = createBasicBlock("forall.else");
+      
+      Builder.CreateCondBr(Cond, Body, Else);
+      
+      EmitBlock(Else);
+      
+      llvm::Value* nextLinearIdx =
+      Builder.CreateLoad(InductionVar[3], "forall.linearidx");
+      
+      nextLinearIdx =
+      Builder.CreateAdd(nextLinearIdx, ConstantOne, "forall.linearidx.inc");
+
+      Builder.CreateStore(nextLinearIdx, InductionVar[3]);
+      
+      Builder.CreateBr(Continue.getBlock());
       
       EmitBlock(Body);
     }
@@ -1735,6 +1787,59 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S,
   CellIndex = 0;
 }
 
+llvm::Value* CodeGenFunction::EmitForallQueryCall(const ForallMeshStmt& S,
+                                                  llvm::Value* numItems){
+  using namespace std;
+  using namespace llvm;
+  
+  auto& B = Builder;
+  
+  typedef vector<llvm::Type*> TypeVec;
+  typedef vector<Value*> ValueVec;
+  
+  VarDecl* qd = S.getQueryVarDecl();
+ 
+  if(!qd){
+    return 0;
+  }
+  
+  const MeshType* cmt = S.getMeshType();
+  
+  StructType* mt =
+  cast<StructType>(ConvertType(QualType(cmt, 0)));
+  
+  llvm::PointerType* mpt =
+  llvm::PointerType::get(mt, 0);
+  
+  llvm::PointerType* outTy = llvm::PointerType::get(Int8Ty, 0);
+  
+  TypeVec params = {mpt, outTy, Int64Ty, Int64Ty};
+  llvm::FunctionType* ft = llvm::FunctionType::get(VoidTy, params, false);
+  
+  Value* qp = LocalDeclMap[qd];
+  
+  Value* rawFuncPtr = B.CreateStructGEP(qp, 0);
+  rawFuncPtr = B.CreateLoad(rawFuncPtr, "query.func.ptr");
+  Value* funcPtr = B.CreateBitCast(rawFuncPtr, llvm::PointerType::get(ft, 0));
+  
+  Value* rawMeshPtr = B.CreateStructGEP(qp, 1, "query.mesh.ptr");
+  rawMeshPtr = B.CreateLoad(rawMeshPtr);
+  Value* meshPtr = B.CreateBitCast(rawMeshPtr, mpt);
+  
+  ValueVec args = {numItems};
+  llvm::Function* allocFunc = CGM.getScoutRuntime().MemAllocFunction();
+  Value* queryMask = B.CreateCall(allocFunc, args);
+  queryMask = B.CreateBitCast(queryMask, outTy);
+  
+  Value* zero = llvm::ConstantInt::get(Int64Ty, 0);
+  Value* one = llvm::ConstantInt::get(Int64Ty, 1);
+  
+  Value* end = B.CreateSub(numItems, one);
+  ValueVec queryArgs = {meshPtr, queryMask, zero, end};
+  B.CreateCall(funcPtr, queryArgs);
+  
+  return queryMask;
+}
 
 // reset Loopbounds, mesh dimensions, rank and induction var
 void CodeGenFunction::ResetMeshBounds(void) {
