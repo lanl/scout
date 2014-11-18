@@ -135,6 +135,21 @@ ASTNodeImporter::VisitUnstructuredMeshType(const UnstructuredMeshType *T) {
   return Importer.getToContext().getUnstructuredMeshDeclType(ToDecl);
 }
 
+QualType
+ASTNodeImporter::VisitWindowType(const WindowType *T) {
+  llvm::SmallVector<Expr*, 2> dims;
+  dims.push_back(T->getWidthExpr());
+  dims.push_back(T->getHeightExpr());
+  return Importer.getToContext().getWindowType(dims);
+}
+
+QualType
+ASTNodeImporter::VisitImageType(const ImageType *T) {
+  llvm::SmallVector<Expr*, 2> dims;
+  dims.push_back(T->getWidthExpr());
+  dims.push_back(T->getHeightExpr());
+  return Importer.getToContext().getImageType(dims);
+}
 
 // ===== Scout -- Mesh Types Import ===========================================
 

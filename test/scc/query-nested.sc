@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -50,19 +50,77 @@
  * Notes
  *
  * ##### 
- */ 
+ */
 
-#include "Scout/Tools.h"
+uniform mesh MyMesh {
+ cells:
+  float cf;
+ vertices:
+  float vf;
+ edges:
+  float ef;
+ faces:
+  float ff;
+};
 
-void AddScoutLibArgs(const ArgList &Args,
-                            ArgStringList &CmdArgs) {
-  if (! Args.hasArg(options::OPT_noscstdlib)) {
-    CmdArgs.push_back("-lscRuntime");
-    CmdArgs.push_back("-lscStandard");
+int main(int argc, char** argv) {
+  MyMesh m[8][8];
+
+  query qc = 
+    from cells c in m 
+    select c.cf where 
+    c.cf > 5.0;
+
+  query qv = 
+    from vertices v in m 
+    select v.vf where 
+    v.vf > 5.0;
+
+  query qe = 
+    from edges e in m 
+    select e.ef where 
+    e.ef > 5.0;
+
+  query qf = 
+    from faces f in m 
+    select f.ff where 
+    f.ff > 5.0;  
+
+  forall cells c in qc{
+    forall vertices v1 in c{
+      v1.vf = 10;
+    }
   }
-  if (Args.hasArg(options::OPT_legionSupport)) {
-    CmdArgs.push_back("-lpthread");
-    CmdArgs.push_back("-llsci");
-    CmdArgs.push_back("-lstdc++");
-  }
+
+  forall cells c in qc{
+    forall edges e1 in c{
+      e1.ef = 10;
+    }
+  }  
+
+  forall cells c in qc{
+    forall faces f1 in c{
+      f1.ff = 10;
+    }
+  }  
+
+  forall vertices v in qv{
+    forall cells c1 in v{
+      c1.vf = 10;
+    }
+  }  
+
+  forall edges e in qe{
+    forall cells c1 in e{
+      c1.cf = 10;
+    }
+  } 
+
+  forall edges e in qe{
+    forall vertices v1 in e{
+      v1.cf = 10;
+    }
+  } 
+
+  return 0;
 }

@@ -235,11 +235,16 @@ endif()
 # are empty....  This is the best way (to date) that I've found
 # to deal with the cruft of handling multiple configurations of
 # the runtime...
-add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${glfw_srcs})
+add_library(scRuntime SHARED ${rt_srcs} ${gl_srcs} ${glfw_srcs})
 add_dependencies(scRuntime
   scc
   glsl2cstr
   )
+if(NOT APPLE)  # linux
+  set_target_properties(scRuntime PROPERTIES COMPILE_FLAGS -fPIC)
+  set_target_properties(scRuntime PROPERTIES LINK_FLAGS -fPIC)
+endif()
+
 
 install(TARGETS scRuntime
   DESTINATION lib)

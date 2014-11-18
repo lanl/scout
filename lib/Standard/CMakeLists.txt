@@ -85,9 +85,14 @@ project(scStandard SCXX)
   file(GLOB std_srcs *.scpp)
 
   add_library(scStandardStatic STATIC ${std_srcs})
-  set_target_properties(scStandardStatic PROPERTIES OUTPUT_NAME scStandard)
+  set_target_properties(scStandardStatic PROPERTIES OUTPUT_NAME scStandard-static)
   set_target_properties(scStandardStatic PROPERTIES LINK_FLAGS -noscstdlib)
-  add_library(scStandard SHARED ${std_srcs})
 
-  install(TARGETS scStandard
+  add_library(scStandard SHARED ${std_srcs})
+  if(NOT APPLE)  # linux
+    set_target_properties(scStandard PROPERTIES COMPILE_FLAGS -fPIC)
+    set_target_properties(scStandard PROPERTIES LINK_FLAGS "-fPIC -noscstdlib")
+  endif()
+
+  install(TARGETS scStandard scStandardStatic
     DESTINATION lib)

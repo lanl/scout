@@ -1910,14 +1910,14 @@ unsigned CodeGenModule::GetGlobalVarAddressSpace(const VarDecl *D,
     // AddressSpaces.h).  We don't use the functionality used there at
     // this point in time (due to it being target centric).  Wise to
     // consider this a placeholder for now...
-    AddrSpace = getContext().getTargetAddressSpace(LangAS::Last);
+    AddrSpace = getContext().getTargetAddressSpace(11 /*LangAS::Last*/);
   } else if (LangOpts.ScoutC && D->isNonvolatileLocal()) {
     // For now we're using the last high-address space for Scout (this
     // is a langugage-centric range defined in AddressSpaces.h).  We
     // don't use the functionality used there at this point in time
     // (due to it being target centric).  Wise to consider this a
     // placeholder for now...
-    AddrSpace = getContext().getTargetAddressSpace(LangAS::Last+1);
+    AddrSpace = getContext().getTargetAddressSpace(13 /*LangAS::Last+1*/);
   }
 
   return AddrSpace;
