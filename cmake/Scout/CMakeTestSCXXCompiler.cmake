@@ -61,7 +61,6 @@ IF(NOT CMAKE_SCXX_COMPILER_WORKS)
     "#ifndef __cplusplus\n"
     "# error \"The CMAKE_SCXX_COMPILER is set to a C compiler\"\n"
     "#endif\n"
-    "extern \"C\" void __scrt_init_cpu(){}\n"
     "int main(){return 0;}\n")
   TRY_COMPILE(CMAKE_SCXX_COMPILER_WORKS ${CMAKE_CURRENT_BINARY_DIR} 
     ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/testSCXXCompiler.scpp

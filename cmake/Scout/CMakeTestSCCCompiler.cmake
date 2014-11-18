@@ -61,7 +61,6 @@ IF(NOT CMAKE_SCC_COMPILER_WORKS)
     "#ifdef __cplusplus\n"
     "# error \"The CMAKE_SCC_COMPILER is set to a CPP compiler\"\n"
     "#endif\n"
-    "extern \"C\" void __scrt_init_cpu(){}\n"
     "int main(){return 0;}\n")
   TRY_COMPILE(CMAKE_SCC_COMPILER_WORKS ${CMAKE_CURRENT_BINARY_DIR} 
     ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/testSCCCompiler.sc
