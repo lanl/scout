@@ -56,10 +56,6 @@ find_library(GLFW glfw)
 # Build w/ clang
 set(CMAKE_CXX_COMPILER ${SCOUT_BUILD_DIR}/bin/clang++)
 
-if (NOT SCOUT_ENABLE_CUDA)
-  set(CUDA_INCLUDE_DIRS "")
-endif()
-
 include_directories(
   ${SCOUT_INCLUDE_DIR}
   ${SCOUT_BUILD_DIR}/config/include
