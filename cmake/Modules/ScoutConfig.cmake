@@ -194,9 +194,9 @@ endif()
           "Enable CUDA/PTX code generation and runtime support.")
         set(CUDA_VERSION_MAJOR 0)
         set(CUDA_VERSION_MINOR 0)
-        unset(CUDA_INCLUDE_DIRS)
-        unset(CUDA_LIBRARY_DIR)
-        unset(CUDA_LIBRARIES)
+        set(CUDA_INCLUDE_DIRS "")
+        set(CUDA_LIBRARY_DIR "")
+        set(CUDA_LIBRARIES "")
       endif() # CUDA_COMPUTE_CAPABILITY
    else() #CUDA VERSION
      message(STATUS "scout: CUDA >=6.0 required, disabling support .")
@@ -204,9 +204,9 @@ endif()
       "Enable CUDA/PTX code generation and runtime support.")
      set(CUDA_VERSION_MAJOR 0)
      set(CUDA_VERSION_MINOR 0)
-     unset(CUDA_INCLUDE_DIRS)
-     unset(CUDA_LIBRARY_DIR)
-     unset(CUDA_LIBRARIES)
+     set(CUDA_INCLUDE_DIRS "")
+     set(CUDA_LIBRARY_DIR "")
+     set(CUDA_LIBRARIES "")
    endif() # CUDA_VERSION
   else() # CUDA_FOUND
     message(STATUS "scout: CUDA not found disabling support.")
@@ -214,6 +214,9 @@ endif()
       "Enable CUDA/PTX code generation and runtime support.")
     set(CUDA_VERSION_MAJOR 0)
     set(CUDA_VERSION_MINOR 0)
+    set(CUDA_INCLUDE_DIRS "")
+    set(CUDA_LIBRARY_DIR "")
+    set(CUDA_LIBRARIES "")
   endif() #CUDA_FOUND
 
   # --- Legion support
