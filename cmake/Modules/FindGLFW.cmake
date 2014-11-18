@@ -76,15 +76,15 @@
   ##### 
 
   if (APPLE) 
-    set(_LIBEXT ".dylib")
+    set(_LIB "libglfw.dylib")
   else()
-    set(_LIBEXT ".so")
+    set(_LIB "libglfw.so")
   endif()
 
   ##### LIBRARY DIRECTORY
   # 
   find_path(GLFW_LIBRARY_DIR
-    libglfw.$(_LIBEXT) 
+    ${_LIB}
     PATH_SUFFIXES lib64 lib glfw/lib64 glfw/lib 
     HINTS $ENV{GLFW_DIR}
     PATHS
@@ -107,5 +107,5 @@
     GLFW_INCLUDE_DIR
     )
 
-unset(_LIBEXT)
+unset(_LIB)
 

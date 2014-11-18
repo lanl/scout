@@ -60,7 +60,6 @@
 #   associated headers and library file.
 #   
 
-
 include(${CMAKE_BINARY_DIR}/CMake/Modules/Configuration.cmake)
 
 set(CMAKE_MODULE_PATH
@@ -72,7 +71,7 @@ project(scStandard SCXX)
 
   set(CMAKE_VERBOSE_MAKEFILE ON)
   cmake_minimum_required(VERSION 2.8.9)
-  set(CMAKE_SCXX_FLAGS "-g")
+  set(CMAKE_SCXX_FLAGS "-g -noscstdlib") # -noscstdlib")
   set(LINK_FLAGS "-noscstdlib")
   set(CMAKE_INSTALL_PREFIX ${SCOUT_INSTALL_DIR})
   set(LIBRARY_OUTPUT_PATH ${SCOUT_BUILD_DIR}/lib)

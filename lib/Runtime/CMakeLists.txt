@@ -230,19 +230,27 @@ if (SCOUT_ENABLE_MPI)
   file(GLOB volren_srcs volren/hpgv/*.cpp)
 endif()
 
+
 # Finally add the library and dependencies...  Note that if we
 # are running w/out PNG/OpenGL support the associated variables
 # are empty....  This is the best way (to date) that I've found
 # to deal with the cruft of handling multiple configurations of
 # the runtime...
+link_directories(${CUDA_LIBRARY_DIR})
+
 add_library(scRuntime SHARED ${rt_srcs} ${gl_srcs} ${glfw_srcs})
+target_link_libraries(scRuntime ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${GLFW_LIBRARIES})
 add_dependencies(scRuntime
   scc
   glsl2cstr
   )
+
 if(NOT APPLE)  # linux
   set_target_properties(scRuntime PROPERTIES COMPILE_FLAGS -fPIC)
   set_target_properties(scRuntime PROPERTIES LINK_FLAGS -fPIC)
+else()
+  set_target_properties(scRuntime PROPERTIES LINK_FLAGS 
+        "-framework Cocoa -framework Foundation -framework IOKit -framework CoreVideo")
 endif()
 
 
