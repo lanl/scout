@@ -54,7 +54,8 @@ project(scRuntimeLibrary)
 find_library(GLFW glfw)
 
 # Build w/ clang
-set(CMAKE_CXX_COMPILER clang++)
+find_package(Clang)
+set(CMAKE_CXX_COMPILER ${CLANGXX_COMMAND})
 
 include_directories(
   ${SCOUT_INCLUDE_DIR}
