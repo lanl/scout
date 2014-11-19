@@ -9,7 +9,7 @@ set type [lindex $argv 1]
 set timeout 120
 
 spawn $path/../../build/bin/lldb-$type $path/breakpoint.sc
-expect "(scdb)"
+expect "(lldb)"
 send "b clang::CodeGen::CodeGenFunction::EmitForallMeshStmt\n"
 expect {
     "clang::CodeGen::CodeGenFunction::EmitForallMeshStmt(" {
