@@ -56,6 +56,7 @@
 #include "scout/Runtime/opengl/glfw/glfwWindow.h"
 #include <stdio.h>
 
+using namespace std;
 using namespace scout;
 
 glfwDevice* glfwDevice::_instance=0;
@@ -80,6 +81,7 @@ void error_callback(int error, const char* description)
 glfwDevice::glfwDevice() {
   if (getenv("DISPLAY") != NULL) {
     glfwSetErrorCallback(error_callback);
+    cout << "init glfw" << endl;
     if (glfwInit() == GL_FALSE) {
       //fputs("glfwInit() failed\n", stderr);
       //exit(EXIT_FAILURE);
