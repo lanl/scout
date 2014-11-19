@@ -60,7 +60,6 @@ using namespace std;
 #include "scout/Runtime/DeviceList.h"
 #include "scout/Runtime/opengl/opengl.h"
 #include "scout/Runtime/opengl/glyph_vertex.h"
-#include "scout/Runtime/GraphicsCInterface.h"
 #include "scout/Runtime/cpu/CpuInitialization.h"
 
 using namespace scout;
@@ -79,8 +78,5 @@ extern "C" void __scrt_init_cpu() {
   // device initialization depending on available
   // hardware (see CGScoutRuntime::ModuleInitFunction())
   // For now, just add graphics init for each case (cpu, cuda, opencl).
-
-  __scrt_init_graphics();
-
 }
 

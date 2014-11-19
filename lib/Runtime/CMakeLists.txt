@@ -57,10 +57,6 @@ find_library(GLFW glfw)
 find_package(Clang)
 set(CMAKE_CXX_COMPILER ${CLANGXX_COMMAND})
 
-if (NOT SCOUT_ENABLE_CUDA)
-  set(CUDA_INCLUDE_DIRS "")
-endif()
-
 include_directories(
   ${SCOUT_INCLUDE_DIR}
   ${SCOUT_BUILD_DIR}/config/include
@@ -107,8 +103,6 @@ if (SCOUT_ENABLE_OPENGL)
     if(NOT EXISTS /System/Library/Frameworks/CoreGraphics.framework)
       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -F/System/Library/Frameworks/ApplicationServices.framework/Frameworks/")
     endif()
-    file(GLOB apple_gl_hdrs ${SCOUT_INCLUDE_DIR}/Runtime/opengl/macosx/*.h)
-    file(GLOB apple_gl_srcs opengl/macosx/*.cpp opengl/macosx/*.mm)
     list(APPEND gl_hdrs ${apple_gl_hdrs})
     list(APPEND gl_srcs ${apple_gl_srcs})
   else()
@@ -231,16 +225,29 @@ if (SCOUT_ENABLE_MPI)
   file(GLOB volren_srcs volren/hpgv/*.cpp)
 endif()
 
+
 # Finally add the library and dependencies...  Note that if we
 # are running w/out PNG/OpenGL support the associated variables
 # are empty....  This is the best way (to date) that I've found
 # to deal with the cruft of handling multiple configurations of
 # the runtime...
-add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${glfw_srcs})
+link_directories(${CUDA_LIBRARY_DIR})
+
+add_library(scRuntime SHARED ${rt_srcs} ${gl_srcs} ${glfw_srcs})
+target_link_libraries(scRuntime ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${GLFW_LIBRARIES})
 add_dependencies(scRuntime
   scc
   glsl2cstr
   )
+
+if(NOT APPLE)  # linux
+  set_target_properties(scRuntime PROPERTIES COMPILE_FLAGS -fPIC)
+  set_target_properties(scRuntime PROPERTIES LINK_FLAGS -fPIC)
+else()
+  set_target_properties(scRuntime PROPERTIES LINK_FLAGS 
+        "-framework Cocoa -framework Foundation -framework IOKit -framework CoreVideo")
+endif()
+
 
 install(TARGETS scRuntime
   DESTINATION lib)

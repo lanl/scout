@@ -75,10 +75,16 @@
   #
   ##### 
 
+  if (APPLE) 
+    set(_LIB "libglfw.dylib")
+  else()
+    set(_LIB "libglfw.so")
+  endif()
+
   ##### LIBRARY DIRECTORY
   # 
   find_path(GLFW_LIBRARY_DIR
-    libglfw3.a 
+    ${_LIB}
     PATH_SUFFIXES lib64 lib glfw/lib64 glfw/lib 
     HINTS $ENV{GLFW_DIR}
     PATHS
@@ -92,7 +98,7 @@
   ##### 
 
   if (GLFW_LIBRARY_DIR) 
-    set(GLFW_LIBRARIES "-lglfw3")
+    set(GLFW_LIBRARIES "-lglfw")
   endif()
 
   find_package_handle_standard_args(GLFW
@@ -100,3 +106,6 @@
     GLFW_LIBRARY_DIR 
     GLFW_INCLUDE_DIR
     )
+
+unset(_LIB)
+
