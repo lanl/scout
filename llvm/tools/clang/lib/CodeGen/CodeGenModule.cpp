@@ -10,6 +10,7 @@
 // This coordinates the per-module state used while generating code.
 //
 //===----------------------------------------------------------------------===//
+#include <iostream>
 
 #include "CodeGenModule.h"
 #include "CGCUDARuntime.h"
@@ -91,9 +92,9 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
       TheTargetCodeGenInfo(nullptr), Types(*this), VTables(*this),
       ObjCRuntime(nullptr), 
       // ===== Scout =========================================
-    ScoutABI(createScoutABI(*this)),
-    ScoutRuntime(nullptr),
-    LegionRuntime(nullptr),
+      ScoutABI(createScoutABI(*this)),
+      ScoutRuntime(nullptr),
+      LegionRuntime(nullptr),
       // =====================================================
       OpenCLRuntime(nullptr), OpenMPRuntime(nullptr),
       CUDARuntime(nullptr), DebugInfo(nullptr), ARCData(nullptr),
@@ -116,7 +117,7 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
   DoubleTy = llvm::Type::getDoubleTy(LLVMContext);
   PointerWidthInBits = C.getTargetInfo().getPointerWidth(0);
   PointerAlignInBytes =
-  C.toCharUnitsFromBits(C.getTargetInfo().getPointerAlign(0)).getQuantity();
+    C.toCharUnitsFromBits(C.getTargetInfo().getPointerAlign(0)).getQuantity();
   IntTy = llvm::IntegerType::get(LLVMContext, C.getTargetInfo().getIntWidth());
   IntPtrTy = llvm::IntegerType::get(LLVMContext, PointerWidthInBits);
   Int8PtrTy = Int8Ty->getPointerTo(0);
@@ -170,7 +171,7 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
 
   if (!CodeGenOpts.InstrProfileInput.empty()) {
     if (std::error_code EC = llvm::IndexedInstrProfReader::create(
-            CodeGenOpts.InstrProfileInput, PGOReader)) {
+          CodeGenOpts.InstrProfileInput, PGOReader)) {
       unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
                                               "Could not read profile: %0");
       getDiags().Report(DiagID) << EC.message();
@@ -386,9 +387,15 @@ void CodeGenModule::Release() {
   EmitCXXThreadLocalInitFunc();
   // ===== Scout ===============================================================
   // add call to scout runtime initializer
-  if(ScoutRuntime)
-    if (llvm::Function *ScoutInitFunction = ScoutRuntime->ModuleInitFunction()) 
-      AddGlobalCtor(ScoutInitFunction);
+  if (ScoutRuntime) {
+    if (! getCodeGenOpts().ScoutNoStdLibrary) {
+      if (llvm::Function *ScoutInitFunction = ScoutRuntime->ModuleInitFunction()) 
+        AddGlobalCtor(ScoutInitFunction);
+    } else {
+      Diags.Report(diag::warn_no_scstdlib);
+    }
+  }
+
   // ===========================================================================
   if (ObjCRuntime)
     if (llvm::Function *ObjCInitFunction = ObjCRuntime->ModuleInitFunction())

@@ -73,6 +73,7 @@ BENIGN_LANGOPT(DumpMeshLayoutsSimple, 1, 0, "dumping the layout of IRgen'd meshe
 LANGOPT(ScoutNvidiaGPU,               1, 0, "ScoutNvidiaGPU")
 LANGOPT(ScoutDebug,                   1, 0, "ScoutDebug")
 LANGOPT(ScoutLegionSupport,           1, 0, "ScoutLegionSupport")
+LANGOPT(ScoutNoStdLibrary,            1, 0, "ScoutNoStdLibrary")
 // +=========================================================================+
 
 // FIXME: A lot of the BENIGN_ options should be COMPATIBLE_ instead.

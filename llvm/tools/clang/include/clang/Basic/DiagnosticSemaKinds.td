@@ -7521,7 +7521,8 @@ def err_nomesh_task_fuction : Error<
 def err_more_than_one_mesh_task_fuction : Error<
     "only one mesh is allowed in task function">;
  		  
- 		  
+def warn_no_scstdlib : Warning<
+    "scout standard library inclusion and rt code generation disabled">;
     
 } // end Scout issue category
 

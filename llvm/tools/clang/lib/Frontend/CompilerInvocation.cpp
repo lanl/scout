@@ -6,8 +6,6 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-#include <iostream>  // Scout debug
-
 #include "clang/Frontend/CompilerInvocation.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/Version.h"
@@ -358,9 +356,12 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   // Enable debug flag
   Opts.ScoutDebug = Args.hasArg(OPT_debug);
 
-  // GPU support disabled for now...
+  // NVIDIA gpu support is enabled.
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
+  // AMD GPU support disabled (codegen not working).  
   //Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
+
+  Opts.ScoutNoStdLibrary = Args.hasArg(OPT_noscstdlib);
 
   // Enable scout Legion support if OPT_legionSupport is present
   Opts.ScoutLegionSupport = Args.hasArg(OPT_legionSupport);
@@ -1661,6 +1662,9 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.ScoutDebug = Args.hasArg(OPT_debug);
   // Detect -gpu flag
   Opts.ScoutNvidiaGPU = Args.hasArg(OPT_gpu);
+
+  Opts.ScoutNoStdLibrary = Args.hasArg(OPT_noscstdlib);
+
   // --- Disabled for now (AMD is behind us in version support)
   //Opts.ScoutAMDGPU = Args.hasArg(OPT_gpuAMD);
   // Enable scout Legion support if OPT_legionSupport is present
