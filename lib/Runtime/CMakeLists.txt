@@ -54,7 +54,8 @@ project(scRuntime)
 find_library(GLFW glfw)
 
 # Build w/ clang
-set(CMAKE_CXX_COMPILER ${SCOUT_BUILD_DIR}/bin/clang++)
+find_package(Clang)
+set(CMAKE_CXX_COMPILER ${CLANGXX_COMMAND})
 
 if (NOT SCOUT_ENABLE_CUDA)
   set(CUDA_INCLUDE_DIRS "")
