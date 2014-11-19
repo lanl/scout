@@ -13,7 +13,7 @@ spawn $path/../../build/bin/$type -g -o mesh-viz-$type $path/mesh-viz.$ext
 expect "1 warning"
 sleep 1
 spawn $path/../../build/bin/scdb -- ./mesh-viz-$type
-expect "(lldb)"
+expect "(scdb)"
 
 send "b mesh-viz.$ext:162\n"
 expect {
@@ -24,7 +24,7 @@ expect {
   }
 }
 
-expect "(lldb)"
+expect "(scdb)"
 
 send "r\n"
 expect {
@@ -35,7 +35,7 @@ expect {
   }
 }
 
-expect "(lldb)"
+expect "(scdb)"
 
 send "expr\n"
 
@@ -67,7 +67,7 @@ expect "7:"
 
 send "\n"
 
-expect "(lldb)"
+expect "(scdb)"
 
 send "c\n"
 expect {
