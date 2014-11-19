@@ -188,18 +188,25 @@ endif()
         if (SCOUT_ENABLE_LIB_NVVM)
          message(STATUS "scout: Enabling NVIDIA libnvvm support.")
         endif()
-      else() # CUDA_CUMPUTE_CAPABILITY
+      else() # CUDA_COMPUTE_CAPABILITY
         message(STATUS "scout: CUDA compute capability >=2.0 required, disabling support .")
         set(SCOUT_ENABLE_CUDA OFF CACHE BOOL
           "Enable CUDA/PTX code generation and runtime support.")
         set(CUDA_VERSION_MAJOR 0)
-      endif() # CUDA_CUMPUTE_CAPABILITY
+        set(CUDA_VERSION_MINOR 0)
+        set(CUDA_INCLUDE_DIRS "")
+        set(CUDA_LIBRARY_DIR "")
+        set(CUDA_LIBRARIES "")
+      endif() # CUDA_COMPUTE_CAPABILITY
    else() #CUDA VERSION
      message(STATUS "scout: CUDA >=6.0 required, disabling support .")
      set(SCOUT_ENABLE_CUDA OFF CACHE BOOL
       "Enable CUDA/PTX code generation and runtime support.")
      set(CUDA_VERSION_MAJOR 0)
      set(CUDA_VERSION_MINOR 0)
+     set(CUDA_INCLUDE_DIRS "")
+     set(CUDA_LIBRARY_DIR "")
+     set(CUDA_LIBRARIES "")
    endif() # CUDA_VERSION
   else() # CUDA_FOUND
     message(STATUS "scout: CUDA not found disabling support.")
@@ -207,6 +214,9 @@ endif()
       "Enable CUDA/PTX code generation and runtime support.")
     set(CUDA_VERSION_MAJOR 0)
     set(CUDA_VERSION_MINOR 0)
+    set(CUDA_INCLUDE_DIRS "")
+    set(CUDA_LIBRARY_DIR "")
+    set(CUDA_LIBRARIES "")
   endif() #CUDA_FOUND
 
   # --- Legion support

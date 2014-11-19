@@ -56,10 +56,6 @@ find_library(GLFW glfw)
 # Build w/ clang
 set(CMAKE_CXX_COMPILER clang++)
 
-if (NOT SCOUT_ENABLE_CUDA)
-  set(CUDA_INCLUDE_DIRS "")
-endif()
-
 include_directories(
   ${SCOUT_INCLUDE_DIR}
   ${SCOUT_BUILD_DIR}/config/include
@@ -106,8 +102,6 @@ if (SCOUT_ENABLE_OPENGL)
     if(NOT EXISTS /System/Library/Frameworks/CoreGraphics.framework)
       set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -F/System/Library/Frameworks/ApplicationServices.framework/Frameworks/")
     endif()
-    file(GLOB apple_gl_hdrs ${SCOUT_INCLUDE_DIR}/Runtime/opengl/macosx/*.h)
-    file(GLOB apple_gl_srcs opengl/macosx/*.cpp opengl/macosx/*.mm)
     list(APPEND gl_hdrs ${apple_gl_hdrs})
     list(APPEND gl_srcs ${apple_gl_srcs})
   else()

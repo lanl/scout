@@ -55,7 +55,7 @@
 #   This module sets the following variables:
 #
 #     CUDA_FOUND       - Set to TRUE if CUDA is found.
-#     CUDA_INCLUDE_DIR - Path for reaching CUDA header files. 
+#     CUDA_INCLUDE_DIRS - Path for reaching CUDA header files. 
 #     CUDA_LIBRARY_DIR - Path to CUDA library file(s).
 #     CUDA_LIBRARIES   - Set of libraries required for linking.
 #     CUDA_NVCC        - location of CUDA_NVCC
