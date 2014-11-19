@@ -67,11 +67,10 @@ set(CMAKE_MODULE_PATH
   ${CMAKE_MODULE_PATH}
   )
 
-project(scStandard SCXX)
-
+project(scStandardLibrary SCXX)
   set(CMAKE_VERBOSE_MAKEFILE ON)
   cmake_minimum_required(VERSION 2.8.9)
-  set(CMAKE_SCXX_FLAGS "-g -noscstdlib") # -noscstdlib")
+  set(CMAKE_SCXX_FLAGS "-g -noscstdlib")
   set(LINK_FLAGS "-noscstdlib")
   set(CMAKE_INSTALL_PREFIX ${SCOUT_INSTALL_DIR})
   set(LIBRARY_OUTPUT_PATH ${SCOUT_BUILD_DIR}/lib)
@@ -83,15 +82,15 @@ project(scStandard SCXX)
   file(GLOB std_hdrs ${SCOUT_INCLUDE_DIR}/scout/*.sch)
   file(GLOB std_srcs *.scpp)
 
-  add_library(scStandardStatic STATIC ${std_srcs})
-  set_target_properties(scStandardStatic PROPERTIES OUTPUT_NAME scStandard-static)
-  set_target_properties(scStandardStatic PROPERTIES LINK_FLAGS -noscstdlib)
-
   add_library(scStandard SHARED ${std_srcs})
-  if(NOT APPLE)  # linux
-    set_target_properties(scStandard PROPERTIES COMPILE_FLAGS -fPIC)
+  if(NOT APPLE)  
+    set_target_properties(scStandard PROPERTIES COMPILE_FLAGS "-fPIC")
     set_target_properties(scStandard PROPERTIES LINK_FLAGS "-fPIC -noscstdlib")
+  else()
+    set_target_properties(scStandard PROPERTIES POSITION_INDEPENDENT_CODE 1
+                                                COMPILE_FLAGS "-fPIC"
+						MACOSX_RPATH 1) 
   endif()
 
-  install(TARGETS scStandard scStandardStatic
+  install(TARGETS scStandard
     DESTINATION lib)

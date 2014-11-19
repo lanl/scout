@@ -3443,7 +3443,12 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // SC_TODO - we should probably skip some of these flags on systems
   // that have no support enabled (no need to add flags if the build
   // configuration hasn't enabled them).
-
+  //
+  // NOTE: These calls do not add the options to the command line but
+  // instead enable the options to be available from the command line.
+  // If your command line option isn't behaving make sure it is
+  // enabled below...
+  
   if (getToolChain().getDriver().CCCIsScoutC() ||
       getToolChain().getDriver().CCCIsScoutCXX()) {
    
@@ -3456,7 +3461,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     // Enable NVIDIA gpu support (if available).
     Args.AddAllArgs(CmdArgs, options::OPT_gpu);
 
-
+    // Enable the code generation option to skip scout's standard library
+    // inclusion. 
+    Args.AddAllArgs(CmdArgs, options::OPT_noscstdlib);
   }
   // +========================================================================+
 

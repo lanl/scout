@@ -49,7 +49,7 @@
 ###########################################################################
 #
 
-project(scRuntime)
+project(scRuntimeLibrary)
 
 find_library(GLFW glfw)
 
@@ -138,21 +138,21 @@ if (SCOUT_ENABLE_OPENGL)
     # only compile shaders if $DISPLAY is set
     if(DEFINED ENV{DISPLAY})
       add_custom_command(
-        OUTPUT ${scRuntime_BINARY_DIR}/${name}_pass.dep
+        OUTPUT ${scRuntimeLibrary_BINARY_DIR}/${name}_pass.dep
         COMMAND ${GLSLCC} --vertex ${v_shader}
-        COMMAND touch ${scRuntime_BINARY_DIR}/${name}_pass.dep
+        COMMAND touch ${scRuntimeLibrary_BINARY_DIR}/${name}_pass.dep
         DEPENDS ${GLSLCC} ${v_shader}
         )
     else()
       add_custom_command(
-        OUTPUT ${scRuntime_BINARY_DIR}/${name}_pass.dep
-        COMMAND touch ${scRuntime_BINARY_DIR}/${name}_pass.dep
+        OUTPUT ${scRuntimeLibrary_BINARY_DIR}/${name}_pass.dep
+        COMMAND touch ${scRuntimeLibrary_BINARY_DIR}/${name}_pass.dep
         )
     endif()
 
     add_custom_target(compile_${name}
       ALL
-      DEPENDS ${GLSLCC} ${v_shader} ${scRuntime_BINARY_DIR}/${name}_pass.dep
+      DEPENDS ${GLSLCC} ${v_shader} ${scRuntimeLibrary_BINARY_DIR}/${name}_pass.dep
       )
   endforeach()
 
@@ -165,21 +165,21 @@ if (SCOUT_ENABLE_OPENGL)
     # only compile shaders if $DISPLAY is set
     if(DEFINED ENV{DISPLAY})
       add_custom_command(
-        OUTPUT ${scRuntime_BINARY_DIR}/${name}_pass.dep
+        OUTPUT ${scRuntimeLibrary_BINARY_DIR}/${name}_pass.dep
         COMMAND ${GLSLCC} --fragment ${f_shader}
-        COMMAND touch ${scRuntime_BINARY_DIR}/${name}_pass.dep
+        COMMAND touch ${scRuntimeLibrary_BINARY_DIR}/${name}_pass.dep
         DEPENDS ${GLSLCC} ${f_shader}
         )
     else()
       add_custom_command(
-        OUTPUT ${scRuntime_BINARY_DIR}/${name}_pass.dep
-        COMMAND touch ${scRuntime_BINARY_DIR}/${name}_pass.dep
+        OUTPUT ${scRuntimeLibrary_BINARY_DIR}/${name}_pass.dep
+        COMMAND touch ${scRuntimeLibrary_BINARY_DIR}/${name}_pass.dep
         )
     endif()
 
     add_custom_target(compile_${name}
       ALL
-      DEPENDS ${GLSLCC} ${f_shader} ${scRuntime_BINARY_DIR}/${name}_pass.dep
+      DEPENDS ${GLSLCC} ${f_shader} ${scRuntimeLibrary_BINARY_DIR}/${name}_pass.dep
       )
   endforeach()
 
@@ -233,21 +233,12 @@ endif()
 # the runtime...
 link_directories(${CUDA_LIBRARY_DIR})
 
-add_library(scRuntime SHARED ${rt_srcs} ${gl_srcs} ${glfw_srcs})
+add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${glfw_srcs})
 target_link_libraries(scRuntime ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${GLFW_LIBRARIES})
 add_dependencies(scRuntime
   scc
   glsl2cstr
   )
-
-if(NOT APPLE)  # linux
-  set_target_properties(scRuntime PROPERTIES COMPILE_FLAGS -fPIC)
-  set_target_properties(scRuntime PROPERTIES LINK_FLAGS -fPIC)
-else()
-  set_target_properties(scRuntime PROPERTIES LINK_FLAGS 
-        "-framework Cocoa -framework Foundation -framework IOKit -framework CoreVideo")
-endif()
-
 
 install(TARGETS scRuntime
   DESTINATION lib)

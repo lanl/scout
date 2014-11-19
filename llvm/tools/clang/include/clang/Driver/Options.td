@@ -1367,7 +1367,7 @@ def nostdlib : Flag<["-"], "nostdlib">;
 // +===== Scout ========================================================================+
 def noscstdinc : Flag<["-"], "noscstdinc">, Flags<[CC1Option]>,
     HelpText<"Disable scout's default standard include directory.">;
-def noscstdlib : Flag<["-"], "noscstdlib">,
+def noscstdlib : Flag<["-"], "noscstdlib">, Flags<[CC1Option,DriverOption,NoArgumentUnused]>,
     HelpText<"Disable scout's automatic link-time inclusion of libraries.">;
 def _no_scout_standard_includes : Flag<["--"], "no-scout-standard-includes">, 
     Alias<noscstdinc>;
