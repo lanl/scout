@@ -70,3 +70,10 @@ project(sc_include)
         "${SCOUT_BUILD_DIR}/include/legion/legion_c.h"
         COPYONLY)
 
+  configure_file("../legion/runtime/legion_config.h" 
+        "${SCOUT_BUILD_DIR}/include/legion/legion_config.h"
+        COPYONLY)
+
+  configure_file("../legion/runtime/lowlevel_config.h" 
+        "${SCOUT_BUILD_DIR}/include/legion/lowlevel_config.h"
+        COPYONLY)
