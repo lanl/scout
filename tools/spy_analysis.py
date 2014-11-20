@@ -28,9 +28,9 @@ SIMULTANEOUS_DEPENDENCE = 4
 
 NO_ACCESS  = 0x00000000
 READ_ONLY  = 0x00000001
-READ_WRITE = 0x00000111
-WRITE_ONLY = 0x00000010
-REDUCE     = 0x00000100
+READ_WRITE = 0x00000007
+WRITE_ONLY = 0x00000002
+REDUCE     = 0x00000004
 
 EXCLUSIVE = 0
 ATOMIC = 1
@@ -49,12 +49,16 @@ CLOSE_OP = 3
 DELETION_OP = 4
 COPY_OP = 5
 FENCE_OP = 6
+ACQUIRE_OP = 7
+RELEASE_OP = 8
 
 # Instance Kinds
 TASK_INST = 0
 MAPPING_INST = 1
 CLOSE_INST = 2
 COPY_INST = 3
+ACQUIRE_INST = 4
+RELEASE_INST = 5
 
 
 # Some helper methods
@@ -95,7 +99,7 @@ def compute_dependence_type(req1, req2):
             else:
                 return check_for_anti_dependence(req1,req2,TRUE_DEPENDENCE)
         elif req1.is_simult() or req2.is_simult():
-            return check_for_anti_dependence(req1,req2,SIMULTANEOUSE_DEPENDENCE)
+            return check_for_anti_dependence(req1,req2,SIMULTANEOUS_DEPENDENCE)
         elif req1.is_relaxed() and req2.is_relaxed():
             return check_for_anti_dependence(req1,req2,SIMULTANEOUS_DEPENDENCE)
         # Should never get here
@@ -104,15 +108,13 @@ def compute_dependence_type(req1, req2):
 
 
 class Processor(object):
-    def __init__(self, state, uid, util, kind):
+    def __init__(self, state, uid, kind):
         self.state = state
         self.uid = uid
-        self.utility = util
         self.kind = kind
         self.mem_latency = dict()
         self.mem_bandwidth = dict()
         self.executed_tasks = list()
-        util.add_constituent(self)
 
     def add_memory(self, mem, bandwidth, latency):
         assert mem not in self.mem_latency
@@ -128,8 +130,16 @@ class UtilityProcessor(object):
     def __init__(self, state, uid):
         self.state = state
         self.uid = uid
-        self.kind = UTIL_PROC 
+        self.kind = UTIL_PROC
         self.constituents = set()
+        self.mem_latency = dict()
+        self.mem_bandwidth = dict()
+
+    def add_memory(self, mem, bandwidth, latency):
+        assert mem not in self.mem_latency
+        assert mem not in self.mem_bandwidth
+        self.mem_latency[mem] = latency
+        self.mem_bandwidth[mem] = bandwidth
 
     def add_constituent(self, proc):
         assert proc not in self.constituents
@@ -161,13 +171,13 @@ class Memory(object):
         self.mem_bandwidth[mem] = bandwidth
         self.mem_latency[mem] = latency
 
-    def add_physical_instance(self, inst):
-        assert inst.uid not in self.physical_instances
-        self.physical_instances[inst.uid] = inst
+    #def add_physical_instance(self, inst):
+    #    assert inst.uid not in self.physical_instances
+    #    self.physical_instances[inst.uid] = inst
 
-    def add_reduction_instance(self, inst):
-        assert inst.uid not in self.reduction_instances
-        self.reduction_instances[inst.uid] = inst
+    #def add_reduction_instance(self, inst):
+    #    assert inst.uid not in self.reduction_instances
+    #    self.reduction_instances[inst.uid] = inst
 
     def print_timeline(self):
         name = "memory_"+str(self.uid)+"_timeline"
@@ -549,8 +559,7 @@ class SingleTask(object):
                         if self.state.is_aliased(index1, index2):
                             def record_visit(node, traverser):
                                 # Get the last instance of the traverser
-                                last_idx = len(traverser.instance_stack) - 1
-                                last_inst = traverser.instance_stack[last_idx]
+                                last_inst = traverser.instance_stack[-1]
                                 # See if we have visited this node in this context before  
                                 if node in traverser.visited:
                                     contexts = traverser.visited[node]
@@ -601,14 +610,29 @@ class SingleTask(object):
                                     return False
                                 # Check to see if we have the matching
                                 # manager on the stack
-                                last_idx = len(traverser.instance_stack) - 1
-                                assert last_idx >= 0
-                                last_inst = traverser.instance_stack[last_idx]
+                                assert len(traverser.instance_stack) >= 1
+                                last_inst = traverser.instance_stack[-1]
                                 if ((last_inst == node.dst_inst) and 
                                     (traverser.field in node.fields)):
                                     traverser.instance_stack.append(node.src_inst)
                                     return True
                                 return False
+                            def traverse_acquire(node, traverser):
+                                if record_visit(node, traverser):
+                                    return False
+                                if node == traverser.target:
+                                    traverser.found = True
+                                if traverser.found:
+                                    return False
+                                return True
+                            def traverse_release(node, traverser):
+                                if record_visit(node, traverser):
+                                    return False
+                                if node == traverser.target:
+                                    traverser.found = True
+                                if traverser.found:
+                                    return False
+                                return True
                             def post_traverse_event(node, traverser):
                                 pass
                             def post_traverse_task(node, traverser):
@@ -619,15 +643,20 @@ class SingleTask(object):
                                 pass
                             def post_traverse_copy(node, traverser):
                                 traverser.instance_stack.pop()
+                            def post_traverse_acquire(node, traverser):
+                                pass
+                            def post_traverse_release(node, traverser):
+                                pass
                             # Do the traversal for each overlapping field
                             fields = req1.fields & req2.fields
                             for f in fields:
                                 traverser = EventGraphTraverser(False, False, False, 
                                     self.state.get_next_traverser_gen(), traverse_event,
                                     traverse_task, traverse_map, traverse_close, 
-                                    traverse_copy, post_traverse_event, 
-                                    post_traverse_task, post_traverse_map,
-                                    post_traverse_close, post_traverse_copy)
+                                    traverse_copy, traverse_acquire, traverse_release,
+                                    post_traverse_event, post_traverse_task, post_traverse_map,
+                                    post_traverse_close, post_traverse_copy, post_traverse_acquire,
+                                    post_traverse_release)
                                 traverser.found = False
                                 traverser.target = inst1
                                 traverser.field = f
@@ -1038,8 +1067,15 @@ class CopyOp(object):
         self.physical_marked = False
 
     def print_physical_node(self, printer):
-        printer.println(self.node_name+' [style=filled,label="Copy Across'+\
-                '",fillcolor=darkgoldenrod1,fontsize=14,fontcolor=black,'+\
+        label = 'Copy Across '+str(self.uid)+'\\n '+\
+                'Src\ Inst:\ '+hex(self.instances[0].iid)+'\ '+\
+                'Dst\ Inst:\ '+hex(self.instances[1].iid)+'\\n '+\
+                'Src Req:\ '+self.reqs[0].to_summary_string()+'\\n '+\
+                'Dst Req:\ '+self.reqs[1].to_summary_string()+'\\n '+\
+                'Copy Fields: '+self.reqs[0].to_field_mask_string()
+
+        printer.println(self.node_name+' [style=filled,label="'+label+\
+                '",fillcolor=darkgoldenrod3,fontsize=14,fontcolor=black,'+\
                 'shape=record,penwidth=2];')
 
     def print_event_dependences(self, printer):
@@ -1053,6 +1089,264 @@ class CopyOp(object):
             self.prev_event_deps.add(later_name)
         self.start_event.print_prev_event_dependences(printer, later_name)
 
+class AcquireOp(object):
+    def __init__(self, state, uid, ctx):
+        assert ctx is not None
+        self.state = state
+        self.uid = uid
+        self.ctx = ctx
+        self.reqs = dict()
+        self.logical_incoming = set()
+        self.logical_outgoing = set()
+        self.logical_marked = False
+        self.op_instances = set()
+        self.op_instances.add(self)
+        self.instances = dict()
+        self.generation = 0
+        self.start_event = None
+        self.term_event = None
+        self.physical_marked = False
+        self.node_name = 'acquire_node_'+str(self.uid)
+        self.prev_event_deps = set()
+
+    def get_name(self):
+        return "Acquire "+str(self.uid)
+
+    def get_op_kind(self):
+        return ACQUIRE_OP
+
+    def get_inst_kind(self):
+        return ACQUIRE_INST
+
+    def add_requirement(self, idx, req):
+        assert idx not in self.reqs
+        self.reqs[idx] = req
+
+    def get_requirement(self, idx):
+        assert idx in self.reqs
+        return self.reqs[idx]
+
+    def add_req_field(self, idx, fid):
+        assert idx in self.reqs
+        self.reqs[idx].add_field(fid)
+
+    def add_logical_incoming(self, op):
+        assert op <> self
+        self.logical_incoming.add(op)
+
+    def add_logical_outgoing(self, op):
+        assert op <> self
+        self.logical_outgoing.add(op)
+
+    def has_logical_path(self, target):
+        if target == self:
+            return True
+        if self.logical_marked:
+            return False
+        # Otherwise check all the outgoing edges
+        for op in self.logical_outgoing:
+            if op.has_logical_path(target):
+                return True
+        self.logical_marked = True
+        return False
+
+    def unmark_logical(self):
+        self.logical_marked = False
+
+    def add_events(self, start, term):
+        assert self.start_event == None
+        assert self.term_event == None
+        self.start_event = start
+        self.term_event = term
+
+    def event_graph_traverse(self, traverser):
+        traverser.visit_acquire(self)
+
+    def add_instance(self, idx, inst):
+        assert idx not in self.instances
+        self.instances[idx] = inst
+
+    def get_instance(self, idx):
+        assert idx in self.instances
+        return self.instances[idx]
+
+    def physical_traverse(self, component):
+        if self.physical_marked:
+            return
+        self.physical_marked = True
+        component.add_acquire(self)
+        self.start_event.physical_traverse(component)
+        self.term_event.physical_traverse(component)
+
+    def physical_unmark(self):
+        self.physical_marked = False
+
+    def find_dependences(self, op):
+        for idx,req in self.reqs.iteritems():
+            op.find_individual_dependences(self, req)
+
+    def find_individual_dependences(self, other_op, other_req):
+        for idx,req in self.reqs.iteritems():
+            dtype = self.state.compute_dependence(other_req, req)
+            if is_mapping_dependence(dtype):
+                self.ctx.add_adep(other_op, self, other_req.index, req.index, dtype)
+
+    def compute_dependence_diff(self, verbose):
+        # do nothing for the moment
+        pass
+
+    def check_data_flow(self):
+        # do nothing for the moment
+        pass
+
+    def print_physical_node(self, printer):
+        printer.println(self.node_name+\
+                ' [style=filled,label="Acquire '+str(self.uid)+'\\n '+\
+                'Inst: '+hex(self.instances[0].iid)+'\\n '+\
+                self.reqs[0].to_summary_string()+'\\n '+\
+                'Fields: '+self.reqs[0].to_field_mask_string()+'\\n '+\
+                '",fillcolor=darkolivegreen,fontsize=14,fontcolor=black,'+\
+                'shape=record,penwidth=2];')
+
+    def print_event_dependences(self, printer):
+        self.start_event.print_prev_event_dependences(printer, self.node_name)
+        pass
+
+    def print_prev_event_dependences(self, printer, later_name):
+        if later_name not in self.prev_event_deps:
+            printer.println(self.node_name+' -> '+later_name+
+                ' [style=solid,color=black,penwidth=2];')
+            self.prev_event_deps.add(later_name)
+        self.start_event.print_prev_event_dependences(printer, later_name)
+
+class ReleaseOp(object):
+    def __init__(self, state, uid, ctx):
+        assert ctx is not None
+        self.state = state
+        self.uid = uid
+        self.ctx = ctx
+        self.reqs = dict()
+        self.logical_incoming = set()
+        self.logical_outgoing = set()
+        self.logical_marked = False
+        self.op_instances = set()
+        self.op_instances.add(self)
+        self.instances = dict()
+        self.generation = 0
+        self.start_event = None
+        self.term_event = None
+        self.physical_marked = False
+        self.node_name = 'release_node_'+str(self.uid)
+        self.prev_event_deps = set()
+
+    def get_name(self):
+        return "Release "+str(self.uid)
+
+    def get_op_kind(self):
+        return RELEASE_OP
+
+    def get_inst_kind(self):
+        return RELEASE_INST
+
+    def add_requirement(self, idx, req):
+        assert idx not in self.reqs
+        self.reqs[idx] = req
+
+    def get_requirement(self, idx):
+        assert idx in self.reqs
+        return self.reqs[idx]
+
+    def add_req_field(self, idx, fid):
+        assert idx in self.reqs
+        self.reqs[idx].add_field(fid)
+
+    def add_logical_incoming(self, op):
+        assert op <> self
+        self.logical_incoming.add(op)
+
+    def add_logical_outgoing(self, op):
+        assert op <> self
+        self.logical_outgoing.add(op)
+
+    def has_logical_path(self, target):
+        if target == self:
+            return True
+        if self.logical_marked:
+            return False
+        # Otherwise check all the outgoing edges
+        for op in self.logical_outgoing:
+            if op.has_logical_path(target):
+                return True
+        self.logical_marked = True
+        return False
+
+    def unmark_logical(self):
+        self.logical_marked = False
+
+    def add_events(self, start, term):
+        assert self.start_event == None
+        assert self.term_event == None
+        self.start_event = start
+        self.term_event = term
+
+    def event_graph_traverse(self, traverser):
+        traverser.visit_acquire(self)
+
+    def add_instance(self, idx, inst):
+        assert idx not in self.instances
+        self.instances[idx] = inst
+
+    def get_instance(self, idx):
+        assert idx in self.instances
+        return self.instances[idx]
+
+    def physical_traverse(self, component):
+        if self.physical_marked:
+            return
+        self.physical_marked = True
+        component.add_release(self)
+        self.start_event.physical_traverse(component)
+        self.term_event.physical_traverse(component)
+
+    def physical_unmark(self):
+        self.physical_marked = False
+
+    def find_dependences(self, op):
+        for idx,req in self.reqs.iteritems():
+            op.find_individual_dependences(self, req)
+
+    def find_individual_dependences(self, other_op, other_req):
+        for idx,req in self.reqs.iteritems():
+            dtype = self.state.compute_dependence(other_req, req)
+            if is_mapping_dependence(dtype):
+                self.ctx.add_adep(other_op, self, other_req.index, req.index, dtype)
+
+    def compute_dependence_diff(self, verbose):
+        # do nothing for the moment
+        pass
+
+    def check_data_flow(self):
+        # do nothing for the moment
+        pass
+
+    def print_physical_node(self, printer):
+        printer.println(self.node_name+\
+                ' [style=filled,label="Release '+str(self.uid)+'\\n '+\
+                self.reqs[0].to_summary_string()+'\\n '+\
+                'Fields: '+self.reqs[0].to_field_mask_string()+'\\n '+\
+                '",fillcolor=darksalmon,fontsize=14,fontcolor=black,'+\
+                'shape=record,penwidth=2];')
+
+    def print_event_dependences(self, printer):
+        self.start_event.print_prev_event_dependences(printer, self.node_name)
+        pass
+
+    def print_prev_event_dependences(self, printer, later_name):
+        if later_name not in self.prev_event_deps:
+            printer.println(self.node_name+' -> '+later_name+
+                ' [style=solid,color=black,penwidth=2];')
+            self.prev_event_deps.add(later_name)
+        self.start_event.print_prev_event_dependences(printer, later_name)
 
 class Close(object):
     def __init__(self, state, uid, ctx):
@@ -1284,30 +1578,22 @@ class Copy(object):
         self.physical_marked = False
 
     def print_physical_node(self, printer):
+        label = 'Copy ID '+str(self.uid)+'\\n'+\
+                'Src\ Inst:\ '+hex(self.src_inst.iid)+'\ '+\
+                'Dst\ Inst:\ '+hex(self.dst_inst.iid)+'\\n'+\
+                'Src\ Loc:\ '+hex(self.src_inst.memory.uid)+'\ '+\
+                'Dst\ Loc:\ '+hex(self.dst_inst.memory.uid)+'\\n'+\
+                '\{index:'+hex(self.region.index_node.uid)+\
+                ',field:'+hex(self.region.field_node.uid)+',tree:'+\
+                str(self.region.tid)+'\}\\nCopy\ Fields:\ '+self.mask
+        color = 'darkgoldenrod1'
+
         if self.redop <> 0:
-            # Reduction copy
-            printer.println(self.node_name+' [style=filled,label="'+\
-                'Src\ Inst:\ '+str(hex(self.src_inst.iid))+'\ Src\ Loc:\ '+\
-                str(hex(self.src_inst.memory.uid))+'\\n'+\
-                'Dst\ Inst:\ '+str(hex(self.dst_inst.iid))+'\ Dst\ Loc:\ '+\
-                str(hex(self.dst_inst.memory.uid))+'\\n'+\
-                'Logical\ Region:\ (index:'+str(hex(self.region.index_node.uid))+\
-                ',field:'+str(hex(self.region.field_node.uid))+',tree:'+\
-                str(self.region.tid)+')\\nCopy\ Fields:\ '+self.mask+\
-                '\\nReduction\ Op:\ '+str(self.redop)+\
-                '",fillcolor=crimson,fontsize=14,fontcolor=black,'+\
-                'shape=record,penwidth=2];')
-        else:
-            # Normal copy
-            printer.println(self.node_name+' [style=filled,label="'+\
-                'Src\ Inst:\ '+str(hex(self.src_inst.iid))+'\ Src\ Loc:\ '+\
-                str(hex(self.src_inst.memory.uid))+'\\n'+\
-                'Dst\ Inst:\ '+str(hex(self.dst_inst.iid))+'\ Dst\ Loc:\ '+\
-                str(hex(self.dst_inst.memory.uid))+'\\n'+\
-                'Logical\ Region:\ (index:'+str(hex(self.region.index_node.uid))+\
-                ',field:'+str(hex(self.region.field_node.uid))+',tree:'+\
-                str(self.region.tid)+')\\nCopy\ Fields:\ '+self.mask+\
-                '",fillcolor=darkgoldenrod1,fontsize=14,fontcolor=black,'+\
+            label += '\\nReduction\ Op:\ '+str(self.redop)
+            color = 'crimson'
+
+        printer.println(self.node_name+' [style=filled,label="'+label+\
+                '",fillcolor='+color+',fontsize=14,fontcolor=black,'+\
                 'shape=record,penwidth=2];')
 
     def print_event_dependences(self, printer):
@@ -1372,6 +1658,32 @@ class EventHandle(object):
     def exists(self):
         return (self.uid <> 0)
 
+class PhaseBarrier(object):
+    def __init__(self, uid):
+        self.uid = uid
+        self.gen = 0
+        self.node_name = 'phase_barrier_'+str(self.uid)
+        self.prev_event_deps = set()
+
+    def __hash__(self):
+        return hash((self.uid, self.gen))
+
+    def __eq__(self, other):
+        return (self.uid,self.gen) == (other.uid,other.gen)
+
+    def exists(self):
+        return (self.uid <> 0)
+
+    def print_physical_node(self, printer):
+        printer.println(self.node_name+' [style=filled,label="PB '+hex(self.uid)+\
+                '",fillcolor=deeppink3,fontsize=12,fontcolor=white,'+\
+                'shape=circle,penwidth=0,margin=0];')
+
+    def print_prev_event_dependences(self, printer, later_name):
+        if later_name not in self.prev_event_deps:
+            printer.println(self.node_name+' -> '+later_name+
+                ' [style=solid,color=black,penwidth=2];')
+            self.prev_event_deps.add(later_name)
 
 class Requirement(object):
     def __init__(self, index, is_reg, ispace, fspace, tid, priv, coher, redop):
@@ -1387,7 +1699,7 @@ class Requirement(object):
 
     def print_requirement(self):
         if self.is_reg:
-            print "        Logical Region Requirement ("+str(hex(self.ispace))+","+\
+            print "        Logical Region Requirement ("+hex(self.ispace)+","+\
                   str(self.fspace)+","+str(self.tid)+")"
         else:
             print "        Logical Partition Requirement ("+str(self.ispace)+","+\
@@ -1437,7 +1749,7 @@ class Requirement(object):
 
     def to_string(self):
         if self.is_reg:
-            print "Region Requirement for ("+str(hex(self.ispace))+","+\
+            print "Region Requirement for ("+hex(self.ispace)+","+\
                   str(self.fspace)+","+str(self.tid)+")"
         else:
             print "Partition Requirement for ("+str(self.ispace)+","+\
@@ -1498,10 +1810,16 @@ class Requirement(object):
         else:
             assert self.coher == RELAXED
             result = result + "R"
-        result = result + '\ Fields:'
-        for f in self.fields:
-            result = result + str(f) + ','
+        result = result + '\ Fields:' +\
+                ','.join([str(f) for f in self.fields])
         return result
+
+    def to_summary_string(self):
+        return '\{index:'+hex(self.ispace)+',field:'+hex(self.fspace)+\
+                ',tree:'+str(self.tid)+'\}'
+
+    def to_field_mask_string(self):
+        return ','.join([str(f) for f in self.fields])
 
 
 class MappingDependence(object):
@@ -1549,6 +1867,8 @@ class Event(object):
             return
         self.physical_marked = True
         component.add_event(self)
+        if self.is_phase_barrier():
+            component.add_phase_barrier(self.handle)
         for n in self.physical_incoming:
             n.physical_traverse(component)
         for n in self.physical_outgoing:
@@ -1557,9 +1877,17 @@ class Event(object):
     def physical_unmark(self):
         self.physical_marked = False
 
+    def is_phase_barrier(self):
+        return isinstance(self.handle, PhaseBarrier)
+
     def print_prev_event_dependences(self, printer, name):
-        for n in self.physical_incoming:
-            n.print_prev_event_dependences(printer, name)
+        if self.is_phase_barrier():
+            self.handle.print_prev_event_dependences(printer, name)
+            for n in self.physical_incoming:
+                n.print_prev_event_dependences(printer, self.handle.node_name)
+        else:
+            for n in self.physical_incoming:
+                n.print_prev_event_dependences(printer, name)
 
     def print_prev_filtered_dependences(self, printer, name, printed_nodes):
         for n in self.physical_incoming:
@@ -1603,9 +1931,11 @@ class EventGraphTraverser(object):
     def __init__(self, forwards, implicit, use_gen, generation, 
                  event_fn = None, task_fn = None, 
                  map_fn = None, close_fn = None, copy_fn = None,
+                 acquire_fn = None, release_fn = None,
                  post_event_fn = None, post_task_fn = None,
                  post_map_fn = None, post_close_fn = None,
-                 post_copy_fn = None):
+                 post_copy_fn = None, post_acquire_fn = None,
+                 post_release_fn = None):
         self.forwards = forwards
         self.implicit = implicit
         self.use_gen = use_gen
@@ -1615,11 +1945,15 @@ class EventGraphTraverser(object):
         self.map_fn = map_fn
         self.close_fn = close_fn
         self.copy_fn = copy_fn
+        self.acquire_fn = acquire_fn
+        self.release_fn = release_fn
         self.post_event_fn = post_event_fn
         self.post_task_fn = post_task_fn
         self.post_map_fn = post_map_fn
         self.post_close_fn = post_close_fn
         self.post_copy_fn = post_copy_fn
+        self.post_acquire_fn = post_acquire_fn
+        self.post_release_fn = post_release_fn
 
     def visit_event(self, node):
         if self.use_gen:
@@ -1719,6 +2053,41 @@ class EventGraphTraverser(object):
         if self.post_copy_fn <> None:
             self.post_copy_fn(node, self)
 
+    def visit_acquire(self, node):
+        if self.use_gen:
+            if node.generation == self.generation:
+                return
+            else:
+                node.generation = self.generation
+        do_next = True
+        if self.acquire_fn <> None:
+            do_next = self.acquire_fn(node, self)
+        if not do_next:
+            return
+        if self.forwards:
+            node.term_event.event_graph_traverse(self)
+        else:
+            node.start_event.event_graph_traverse(self)
+        if self.post_acquire_fn <> None:
+            self.post_acquire_fn(node, self)
+
+    def visit_release(self, node):
+        if self.use_gen:
+            if node.generation == self.generation:
+                return
+            else:
+                node.generation = self.generation
+        do_next = True
+        if self.release_fn <> None:
+            do_next = self.release_fn(node, self)
+        if not do_next:
+            return
+        if self.forwards:
+            node.term_event.event_graph_traverse(self)
+        else:
+            node.start_event.event_graph_traverse(self)
+        if self.post_release_fn <> None:
+            self.post_release_fn(node, self)
 
 class ConnectedComponent(object):
     def __init__(self, state):
@@ -1728,6 +2097,9 @@ class ConnectedComponent(object):
         self.maps = set()
         self.closes = set()
         self.copies = set()
+        self.acquires = set()
+        self.releases = set()
+        self.phase_barriers = set()
 
     def add_event(self, event):
         assert event not in self.events
@@ -1749,8 +2121,24 @@ class ConnectedComponent(object):
         assert copy not in self.copies
         self.copies.add(copy)
 
+    def add_acquire(self, acquire):
+        assert acquire not in self.acquires
+        self.acquires.add(acquire)
+
+    def add_release(self, release):
+        assert release not in self.releases
+        self.releases.add(release)
+
+    def add_phase_barrier(self, phase_barrier):
+        assert phase_barrier not in self.phase_barriers
+        self.phase_barriers.add(phase_barrier)
+
+    def num_ops(self):
+        return len(self.tasks)+len(self.maps)+len(self.closes)+len(self.copies)+\
+                len(self.acquires)+len(self.releases)
+
     def empty(self):
-        total = len(self.tasks)+len(self.maps)+len(self.closes)+len(self.copies)
+        total = self.num_ops()
         return (total < 2)
 
     def unmark_all(self):
@@ -1764,8 +2152,12 @@ class ConnectedComponent(object):
             c.physical_unmark()
         for e in self.events:
             e.physical_unmark()
+        for a in self.acquires:
+            a.physical_unmark()
+        for r in self.releases:
+            r.physical_unmark()
 
-    def generate_graph(self, idx, path):
+    def generate_graph(self, idx, path, sup_trans_conns):
         name = 'event_graph_'+str(idx)
         printer = GraphPrinter(path,name)
         # Print the nodes
@@ -1777,19 +2169,34 @@ class ConnectedComponent(object):
             c.print_physical_node(printer)
         for c in self.copies:
             c.print_physical_node(printer)
-        # Now print the dependences
-        for t in self.tasks:
-            t.print_event_dependences(printer)
-        for m in self.maps:
-            m.print_event_dependences(printer)
-        for c in self.closes:
-            c.print_event_dependences(printer)
-        for c in self.copies:
-            c.print_event_dependences(printer) 
+        for a in self.acquires:
+            a.print_physical_node(printer)
+        for r in self.releases:
+            r.print_physical_node(printer)
+        for p in self.phase_barriers:
+            p.print_physical_node(printer)
+        if self.num_ops() > 1:
+            # Now print the dependences
+            for t in self.tasks:
+                t.print_event_dependences(printer)
+            for m in self.maps:
+                m.print_event_dependences(printer)
+            for c in self.closes:
+                c.print_event_dependences(printer)
+            for c in self.copies:
+                c.print_event_dependences(printer) 
+            for a in self.acquires:
+                a.print_event_dependences(printer)
+            for r in self.releases:
+                r.print_event_dependences(printer)
         dot_file = printer.close()
         pdf_file = name+'.pdf'
         try:
-            subprocess.check_call(['dot -Tpdf -o '+pdf_file+' '+dot_file],shell=True)
+            if sup_trans_conns:
+                command = ['tred ' + dot_file + ' | dot -Tpdf -o '+pdf_file]
+            else:
+                command = ['dot -Tpdf -o '+pdf_file+' '+dot_file]
+            subprocess.check_call(command,shell=True)
         except:
             print "WARNING: DOT failure, image for event graph "+str(idx)+" not generated"
             subprocess.call(['rm -f core '+pdf_file],shell=True)
@@ -1807,7 +2214,7 @@ class GraphPrinter(object):
         #self.println('ratio = 1;')
         #self.println('size = "10,10";')
         self.println('compound = true;')
-        self.println('rankdir="LR";')
+        self.println('rankdir="TD";')
         self.println('size = "36,36";')
 
     def close(self):
@@ -1846,6 +2253,7 @@ class State(object):
         self.point_slice = dict()
         self.instances = dict()
         self.events = dict()
+        self.phase_barriers = dict()
         self.verbose = verbose
         self.top_level_uid = None
         self.traverser_gen = 1
@@ -1860,11 +2268,9 @@ class State(object):
         assert pid not in self.utilities
         self.utilities[pid] = UtilityProcessor(self, pid)
 
-    def add_processor(self, pid, util, kind):
+    def add_processor(self, pid, kind):
         assert pid not in self.processors
-        if util not in self.utilities:
-            return False
-        self.processors[pid] = Processor(self, pid, self.utilities[util], kind)
+        self.processors[pid] = Processor(self, pid, kind)
         return True
 
     def add_memory(self, mid, capacity):
@@ -1872,12 +2278,16 @@ class State(object):
         self.memories[mid] = Memory(self, mid, capacity)
 
     def set_proc_mem(self, pid, mid, bandwidth, latency):
-        if pid not in self.processors:
+        if pid not in self.processors and pid not in self.utilities:
             return False
         if mid not in self.memories:
             return False
-        self.processors[pid].add_memory(self.memories[mid], bandwidth, latency)
-        self.memories[mid].add_processor(self.processors[pid], bandwidth, latency)
+        if pid in self.processors:
+            processor = self.processors[pid]
+        else: # pid in self.utilities
+            processor = self.utilities[pid]
+        processor.add_memory(self.memories[mid], bandwidth, latency)
+        self.memories[mid].add_processor(processor, bandwidth, latency)
         return True
 
     def set_mem_mem(self, mem1, mem2, bandwidth, latency):
@@ -1984,6 +2394,22 @@ class State(object):
         self.ops[ctx].add_operation(self.ops[uid])
         return True
 
+    def add_acquire_op(self, ctx, uid):
+        assert uid not in self.ops
+        if ctx not in self.ops:
+            return False
+        self.ops[uid] = AcquireOp(self, uid, self.ops[ctx])
+        self.ops[ctx].add_operation(self.ops[uid])
+        return True
+
+    def add_release_op(self, ctx, uid):
+        assert uid not in self.ops
+        if ctx not in self.ops:
+            return False
+        self.ops[uid] = ReleaseOp(self, uid, self.ops[ctx])
+        self.ops[ctx].add_operation(self.ops[uid])
+        return True
+
     def add_deletion(self, ctx, uid):
         assert uid not in self.ops
         if ctx not in self.ops:
@@ -2028,6 +2454,12 @@ class State(object):
             return False
         assert point2 not in self.ops
         self.ops[point2] = self.ops[point1]
+        return True
+
+    def add_phase_barrier(self, uid):
+        pb = PhaseBarrier(uid)
+        assert pb not in self.events
+        self.get_event(pb)
         return True
 
     def add_requirement(self, uid, index, is_reg, ispace, fspace, tid, priv, coher, redop):
@@ -2089,7 +2521,7 @@ class State(object):
         e1 = self.get_event(EventHandle(startid,startgen))
         e2 = self.get_event(EventHandle(termid,termgen))
         region = self.get_index_node(True, index).get_instance(tree)
-        copy = Copy(self, self.instances[srcman], self.instances[dstman], 
+        copy = Copy(self, self.instances[srcman][-1], self.instances[dstman][-1], 
                              e1, e2, region, redop, mask, self.copy_uid)
         self.copy_uid = self.copy_uid + 1
         self.copies.add(copy)
@@ -2098,8 +2530,8 @@ class State(object):
         return True
 
     def add_physical_instance(self, iid, mem, index, field, tree):
-        if iid in self.instances:
-            return True
+        #if iid in self.instances:
+        #    return True
         if mem not in self.memories:
             return False
         if index not in self.index_space_nodes:
@@ -2109,11 +2541,15 @@ class State(object):
         if tree not in self.region_trees:
             return False
         region = self.get_index_node(True, index).get_instance(tree)
-        self.instances[iid] = PhysicalInstance(self, iid, self.memories[mem], region)
+        inst = PhysicalInstance(self, iid, self.memories[mem], region)
+        if iid in self.instances:
+            self.instances[iid].append(inst)
+        else:
+            self.instances[iid] = [inst]
         return True
 
     def add_reduction_instance(self, iid, mem, index, field, tree, fold, indirect):
-        assert iid not in self.instances
+        #assert iid not in self.instances
         if mem not in self.memories:
             return False
         if index not in self.index_space_nodes:
@@ -2123,8 +2559,12 @@ class State(object):
         if tree not in self.region_trees:
             return False
         region = self.get_index_node(True, index).get_instance(tree)
-        self.instances[iid] = ReductionInstance(self, iid, self.memories[mem],
-                                                region, fold, indirect)
+        inst = ReductionInstance(self, iid, self.memories[mem],
+                                 region, fold, indirect)
+        if iid in self.instances:
+            self.instances[iid].append(inst)
+        else:
+            self.instances[iid] = [inst]
         return True
 
     def add_op_user(self, uid, idx, iid):
@@ -2132,13 +2572,13 @@ class State(object):
             return False
         if iid not in self.instances:
             return False
-        self.instances[iid].add_op_user(self.ops[uid], idx)
-        self.ops[uid].add_instance(idx, self.instances[iid])
+        self.instances[iid][-1].add_op_user(self.ops[uid], idx)
+        self.ops[uid].add_instance(idx, self.instances[iid][-1])
         return True
 
     def add_event_dependence(self, id1, gen1, id2, gen2):
-        e1 = self.get_event(EventHandle(id1,gen1))
-        e2 = self.get_event(EventHandle(id2,gen2))
+        e1 = self.get_event_from_id(id1,gen1)
+        e2 = self.get_event_from_id(id2,gen2)
         e1.add_physical_outgoing(e2)
         e2.add_physical_incoming(e1)
 
@@ -2158,6 +2598,17 @@ class State(object):
         if handle not in self.events:
             self.events[handle] = Event(self, handle)
         return self.events[handle]
+
+    def get_event_from_id(self, id, gen):
+        handle = EventHandle(id, gen)
+        pb = PhaseBarrier(id)
+        if pb in self.events:
+            return self.events[pb]
+        elif handle in self.events:
+            return self.events[handle]
+        else:
+            self.events[handle] = Event(self, handle)
+            return self.events[handle]
 
     def get_index_node(self, is_reg, iid):
         if is_reg:
@@ -2224,82 +2675,54 @@ class State(object):
             op.check_data_flow()
 
     def check_instance_dependences(self):
-        for instance in self.instances.itervalues():
-            print "Checking physical instance "+str(instance.iid)+"..."
-            for field, op_users in instance.op_users.iteritems():
-                for op1, reqs1 in op_users.iteritems():
-                    for req1 in reqs1:
-                        for op2, reqs2 in op_users.iteritems():
-                            for req2 in reqs2:
-                                if op1 != op2 and self.compute_dependence(req1, req2) in (TRUE_DEPENDENCE, ANTI_DEPENDENCE):
-                                    def traverse_event(node, traverser):
-                                        if traverser.found:
-                                            return False
-                                        return True
-                                    def traverse_task(node, traverser):
-                                        if node == traverser.target:
-                                            traverser.found = True
-                                        if traverser.found:
-                                            return False
-                                        return True
-                                    def traverse_map(node, traverser):
-                                        if node == traverser.target:
-                                            traverser.found = True
-                                        if traverser.found:
-                                            return False
-                                        return True
-                                    def traverse_close(node, traverser):
-                                        if node == traverser.target:
-                                            traverser.found = True
-                                        if traverser.found:
-                                            return False
-                                        return True
-                                    def traverse_copy(node, traverser):
-                                        if node == traverser.target:
-                                            traverser.found = True
-                                        if traverser.found:
-                                            return False
-                                        return True
-                                    def post_traverse_event(node, traverser):
-                                        pass
-                                    def post_traverse_task(node, traverser):
-                                        pass
-                                    def post_traverse_map(node, traverser):
-                                        pass
-                                    def post_traverse_close(node, traverser):
-                                        pass
-                                    def post_traverse_copy(node, traverser):
-                                        pass
-                                    traverser = EventGraphTraverser(False, True, True,
-                                        self.get_next_traverser_gen(), traverse_event,
-                                        traverse_task, traverse_map, traverse_close,
-                                        traverse_copy, post_traverse_event,
-                                        post_traverse_task, post_traverse_map,
-                                        post_traverse_close, post_traverse_copy)
-                                    traverser.found = False
-                                    traverser.target = op1
-                                    # Traverse and see if we find op1 from op2
-                                    op2.event_graph_traverse(traverser)
-                                    if not traverser.found:
+        for versions in self.instances.itervalues():
+            for instance in versions:
+                print "Checking physical instance "+str(instance.iid)+"..."
+                for field, op_users in instance.op_users.iteritems():
+                    for op1, reqs1 in op_users.iteritems():
+                        for req1 in reqs1:
+                            for op2, reqs2 in op_users.iteritems():
+                                for req2 in reqs2:
+                                    if op1 != op2 and self.compute_dependence(req1, req2) in (TRUE_DEPENDENCE, ANTI_DEPENDENCE):
+                                        def traverse_event(node, traverser):
+                                            if traverser.found:
+                                                return False
+                                            return True
+                                        def traverse_op(node, traverser):
+                                            traverser.found = traverser.target == node or traverser.found
+                                            return not traverser.found
+                                        def post_traverse(node, traverser):
+                                            pass
+                                        traverser = EventGraphTraverser(False, True, True,
+                                                self.get_next_traverser_gen(), traverse_event,
+                                                traverse_op, traverse_op, traverse_op, traverse_op,
+                                                traverse_op, traverse_op, post_traverse, post_traverse,
+                                                post_traverse, post_traverse, post_traverse, post_traverse,
+                                                post_traverse)
                                         traverser.found = False
-                                        traverser.target = op2
-                                        traverser.generation = self.get_next_traverser_gen()
-                                        # Otherwise flip around and try to find op2 from op1
-                                        op1.event_graph_traverse(traverser)
+                                        traverser.target = op1
+                                        # Traverse and see if we find op1 from op2
+                                        op2.event_graph_traverse(traverser)
                                         if not traverser.found:
-                                            print "   ERROR: Potential data race between "+\
-                                                "requirement "+str(req1.index)+" of "+\
-                                                op1.get_name()+" (UID "+str(op1.uid)+") "+\
-                                                "and requirement "+str(req2.index)+" of "+\
-                                                op2.get_name()+" (UID "+str(op2.uid)+") "+\
-                                                "for field "+str(field)
-                                            if self.verbose:
-                                                print "      First Requirement:"
-                                                req1.print_requirement()
-                                                print "      Second Requirement:"
-                                                req2.print_requirement()
+                                            traverser.found = False
+                                            traverser.target = op2
+                                            traverser.generation = self.get_next_traverser_gen()
+                                            # Otherwise flip around and try to find op2 from op1
+                                            op1.event_graph_traverse(traverser)
+                                            if not traverser.found:
+                                                print "   ERROR: Potential data race between "+\
+                                                        "requirement "+str(req1.index)+" of "+\
+                                                        op1.get_name()+" (UID "+str(op1.uid)+") "+\
+                                                        "and requirement "+str(req2.index)+" of "+\
+                                                        op2.get_name()+" (UID "+str(op2.uid)+") "+\
+                                                        "for field "+str(field)
+                                                if self.verbose:
+                                                    print "      First Requirement:"
+                                                    req1.print_requirement()
+                                                    print "      Second Requirement:"
+                                                    req2.print_requirement()
 
-    def print_pictures(self, path):
+    def print_pictures(self, path, sup_trans_conns):
         components = list()
         for h,e in self.events.iteritems():
             comp = ConnectedComponent(self)
@@ -2310,6 +2733,6 @@ class State(object):
                 comp.unmark_all()
         print "Found "+str(len(components))+" event graphs"
         for idx in range(len(components)):
-            components[idx].generate_graph(idx,path)
+            components[idx].generate_graph(idx,path,sup_trans_conns)
             components[idx].unmark_all()
 
