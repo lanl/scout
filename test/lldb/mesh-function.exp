@@ -18,7 +18,7 @@ if {$legion == "0"} {
 expect "1 warning"
 sleep 1
 spawn $path/../../build/bin/scdb -- ./mesh-function-$type
-expect "(lldb)"
+expect "(scdb)"
 
 send "b mesh-function.$ext:15\n"
 expect {
@@ -29,7 +29,7 @@ expect {
   }
 }
 
-expect "(lldb)"
+expect "(scdb)"
 
 send "r\n"
 expect {
@@ -40,14 +40,14 @@ expect {
   }
 }
 
-expect "(lldb)"
+expect "(scdb)"
 
 if {$type == "sc++"} {
 send "expr forall cells c in m {c.field = 10;}\n"
 } else {
 send "expr forall cells c in *m {c.field = 10;}\n"
 }
-expect "(lldb)"
+expect "(scdb)"
 
 send "c\n"
 expect {

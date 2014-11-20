@@ -65,7 +65,7 @@ using namespace scout;
 glWindow::glWindow(ScreenCoord width, ScreenCoord height, glCamera* camera)
   : RenderTarget(RTK_window, width, height), _frame(width, height), _colorBuffer(0), 
   _camera(camera), _currentRenderable(NULL)  {
-  cout << "init window1" << endl;
+    
 }
 
 /// Create a window with the given location and size (as described
@@ -75,7 +75,6 @@ glWindow::glWindow(const WindowRect &rect)
   : RenderTarget(RTK_window, rect.size.width, rect.size.height), _frame(rect), _colorBuffer(0), 
   _camera(0), _currentRenderable(NULL) {
 
-  cout << "init window2" << endl;
 }
 
 glWindow::~glWindow() {
