@@ -29,6 +29,10 @@
 GASNETT_THREADKEY_DECLARE(in_handler);
 #endif
 
+// eliminate GASNet warnings for unused static functions
+static const void *ignore_gasnet_warning1 __attribute__((unused)) = (void *)_gasneti_threadkey_init;
+static const void *ignore_gasnet_warning2 __attribute__((unused)) = (void *)_gasnett_trace_printf_noop;
+
 #include "utilities.h"
 
 #include <vector>
@@ -429,6 +433,10 @@ RPLTYPE dummy_short_w_reply_handler(MSGTYPE dummy) { RPLTYPE dummyret; return du
 template <class MSGTYPE, class RPLTYPE>
 RPLTYPE dummy_medium_w_reply_handler(MSGTYPE dummy, const void *data, size_t datalen) { RPLTYPE dummyret; return dummyret; }
 
+#ifdef ACTIVE_MESSAGE_TRACE
+void record_am_handler(int msgid, const char *description, bool reply = false);
+#endif
+
 template <int MSGID, class MSGTYPE, void (*FNPTR)(MSGTYPE)>
 class ActiveMessageShortNoReply {
  public:
@@ -456,11 +464,14 @@ class ActiveMessageShortNoReply {
 #endif
   }
 
-  static int add_handler_entries(gasnet_handlerentry_t *entries)
+  static int add_handler_entries(gasnet_handlerentry_t *entries, const char *description)
   {
     assert(sizeof(MessageRawArgsType) <= 64);  // max of 16 4-byte args
     entries[0].index = MSGID;
     entries[0].fnptr = (void (*)()) (MessageRawArgsType::handler_short);
+#ifdef ACTIVE_MESSAGE_TRACE
+    record_am_handler(MSGID, description);
+#endif
     return 1;
   }
 };
@@ -498,17 +509,19 @@ class ActiveMessageMediumNoReply {
 		    spans, datalen, payload_mode, dstptr);
   }
 
-  static int add_handler_entries(gasnet_handlerentry_t *entries)
+  static int add_handler_entries(gasnet_handlerentry_t *entries, const char *description)
   {
     assert(sizeof(MessageRawArgsType) <= 64);  // max of 16 4-byte args
     entries[0].index = MSGID;
     entries[0].fnptr = (void (*)()) (MessageRawArgsType::handler_medium);
+#ifdef ACTIVE_MESSAGE_TRACE
+    record_am_handler(MSGID, description);
+#endif
     return 1;
   }
 };
 
-template <int REQID, int RPLID, class REQTYPE, class RPLTYPE,
-          RPLTYPE (*FNPTR)(REQTYPE)>
+template <int REQID, int RPLID, class REQTYPE, class RPLTYPE, RPLTYPE (*FNPTR)(REQTYPE)>
 class ActiveMessageShortReply {
  public:
   typedef RequestRawArgs<REQTYPE, REQID, RPLTYPE, RPLID, FNPTR, dummy_medium_w_reply_handler<REQTYPE, RPLTYPE>,
@@ -550,7 +563,7 @@ class ActiveMessageShortReply {
     return future.value;
   }
 
-  static int add_handler_entries(gasnet_handlerentry_t *entries)
+  static int add_handler_entries(gasnet_handlerentry_t *entries, const char *description)
   {
     assert(sizeof(ReqRawArgsType) <= 64);  // max of 16 4-byte args
     assert(sizeof(RplRawArgsType) <= 64);  // max of 16 4-byte args
@@ -558,6 +571,10 @@ class ActiveMessageShortReply {
     entries[0].fnptr = (void (*)()) (ReqRawArgsType::handler_short);
     entries[1].index = RPLID;
     entries[1].fnptr = (void (*)()) (RplRawArgsType::handler_short);
+#ifdef ACTIVE_MESSAGE_TRACE
+    record_am_handler(REQID, description);
+    record_am_handler(RPLID, description, true/*reply*/);
+#endif
     return 2;
   }
 };
@@ -644,7 +661,7 @@ class ActiveMessageMediumReply {
     return future.value;
   }
 
-  static int add_handler_entries(gasnet_handlerentry_t *entries)
+  static int add_handler_entries(gasnet_handlerentry_t *entries, const char *description)
   {
     assert(sizeof(ReqRawArgsType) <= 64);  // max of 16 4-byte args
     assert(sizeof(RplRawArgsType) <= 64);  // max of 16 4-byte args
@@ -652,6 +669,10 @@ class ActiveMessageMediumReply {
     entries[0].fnptr = (void (*)()) (ReqRawArgsType::handler_medium);
     entries[1].index = RPLID;
     entries[1].fnptr = (void (*)()) (RplRawArgsType::handler_short);
+#ifdef ACTIVE_MESSAGE_TRACE
+    record_am_handler(REQID, description);
+    record_am_handler(RPLID, description, true/*reply*/);
+#endif
     return 2;
   }
 };

@@ -615,7 +615,7 @@ local function convert_terra_struct_to_lua_struct(terra_struct)
    for _, v in pairs(terra_struct.entries)
    do
       local ty = nil
-      if v.type.N
+      if rawget(v.type, 'N')
       then
          ty = ArrayType:new(convert_terra_type(v.type.type),
                             v.type.N)
@@ -819,6 +819,14 @@ end
 
 function LegionLib:unmap_region(physical_region)
    self.__runtime:unmap_region(self.__ctx, physical_region)
+end
+
+function LegionLib:map_all_regions()
+   self.__runtime:map_all_regions(self.__ctx)
+end
+
+function LegionLib:unmap_all_regions()
+   self.__runtime:unmap_all_regions(self.__ctx)
 end
 
 function LegionLib:allocate_in_indexspace(ispace, num)

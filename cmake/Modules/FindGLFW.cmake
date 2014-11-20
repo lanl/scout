@@ -84,7 +84,7 @@
   ##### LIBRARY DIRECTORY
   # 
   find_path(GLFW_LIBRARY_DIR
-    ${_LIB}
+    libglfw3.a ${_LIB}
     PATH_SUFFIXES lib64 lib glfw/lib64 glfw/lib 
     HINTS $ENV{GLFW_DIR}
     PATHS
@@ -97,8 +97,25 @@
   #
   ##### 
 
+  #see if there is a static version of lib
+  find_library(_GLFW_STATIC_LIB glfw3
+    PATH_SUFFIXES lib64 lib glfw/lib64 glfw/lib
+    HINTS $ENV{GLFW_DIR}
+    PATHS
+    /usr
+    /usr/local
+    /opt
+    /opt/local
+    DOC "GLFW STATIC library"
+    )
+
   if (GLFW_LIBRARY_DIR) 
-    set(GLFW_LIBRARIES "-lglfw")
+    #dyanmic and static versions have different names
+    if(_GLFW_STATIC_LIB MATCHES "NOTFOUND") 
+      set(GLFW_LIBRARIES "-lglfw")
+    else()
+      set(GLFW_LIBRARIES "-lglfw3")
+    endif()
   endif()
 
   find_package_handle_standard_args(GLFW

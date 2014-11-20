@@ -43,6 +43,9 @@ namespace LegionRuntime {
   namespace LowLevel {
 
     Logger::Category log_dma("dma");
+#ifdef EVENT_GRAPH_TRACE
+    extern Logger::Category log_event_graph;
+#endif
 
     typedef std::pair<Memory, Memory> MemPair;
     typedef std::pair<RegionInstance, RegionInstance> InstPair;
@@ -104,6 +107,9 @@ namespace LegionRuntime {
 
       class Waiter : public Event::Impl::EventWaiter {
       public:
+        Waiter(void) { }
+        virtual ~Waiter(void) { }
+      public:
 	Reservation current_lock;
 	DmaRequestQueue *queue;
 	DmaRequest *req;
@@ -132,7 +138,7 @@ namespace LegionRuntime {
 		  Event _after_copy,
 		  int _priority);
 
-      ~CopyRequest(void);
+      virtual ~CopyRequest(void);
 
       size_t serialize(void *buffer, size_t maxlen);
 
@@ -172,7 +178,7 @@ namespace LegionRuntime {
 		    Event _after_copy,
 		    int _priority);
 
-      ~ReduceRequest(void);
+      virtual ~ReduceRequest(void);
 
       size_t serialize(void *buffer, size_t maxlen);
 
@@ -632,6 +638,8 @@ namespace LegionRuntime {
 	  : tgt_mem(_tgt_mem), tgt_offset(_tgt_offset),
 	    src_ptr((const char *)_src_ptr), elmt_size(_elmt_size) {}
 
+        virtual ~GasnetPut(void) { }
+
 	void do_span(int offset, int count)
 	{
 	  off_t byte_offset = offset * elmt_size;
@@ -696,6 +704,8 @@ namespace LegionRuntime {
 	  : GasnetPut(_tgt_mem, _tgt_offset, _src_ptr, _elmt_size),
 	    redop(_redop), redfold(_redfold) {}
 
+        virtual ~GasnetPutReduce(void) { }
+
 	void do_span(int offset, int count)
 	{
 	  assert(redfold == false);
@@ -732,6 +742,8 @@ namespace LegionRuntime {
 			 const void *_src_ptr, size_t _elmt_size)
 	  : GasnetPut(_tgt_mem, _tgt_offset, _src_ptr, _elmt_size),
 	    redopid(_redopid), redop(_redop) {}
+
+        virtual ~GasnetPutRedList(void) { }
 
 	void do_span(int offset, int count)
 	{
@@ -964,6 +976,9 @@ namespace LegionRuntime {
 
     class InstPairCopier {
     public:
+      InstPairCopier(void) { }
+      virtual ~InstPairCopier(void) { }
+    public:
       virtual void copy_field(int src_index, int dst_index, int elem_count,
                               unsigned offset_index) = 0;
 
@@ -1050,6 +1065,8 @@ namespace LegionRuntime {
 				(dst_size[idx] != oas_vec[idx].size));
         }
       }
+
+      virtual ~SpanBasedInstPairCopier(void) { }
 
       virtual void copy_field(int src_index, int dst_index, int elem_count,
                               unsigned offset_index)
@@ -1417,6 +1434,8 @@ namespace LegionRuntime {
           oas_vec(_oas_vec)
       {}
 
+      virtual ~RemoteWriteInstPairCopier(void) { }
+
       virtual void copy_field(int src_index, int dst_index, int elem_count,
                               unsigned offset_index)
       {
@@ -1449,8 +1468,15 @@ namespace LegionRuntime {
     class MemPairCopier {
     public:
       static MemPairCopier* create_copier(Memory src_mem, Memory dst_mem,
-					  const ReductionOpUntyped *redop = 0,
+					  ReductionOpID redop_id = 0,
 					  bool fold = false);
+      MemPairCopier(void) 
+      { 
+#ifdef EVENT_GRAPH_TRACE
+        total_bytes = 0;
+#endif
+      }
+      virtual ~MemPairCopier(void) { }
 
       virtual InstPairCopier *inst_pair(RegionInstance src_inst, RegionInstance dst_inst,
                                         OASVec &oas_vec) = 0;
@@ -1458,9 +1484,23 @@ namespace LegionRuntime {
       // default behavior of flush is just to trigger the event, if it exists
       virtual void flush(Event after_copy)
       {
+#ifdef EVENT_GRAPH_TRACE
+        report_bytes(after_copy);
+#endif
 	if(after_copy.exists())
 	  after_copy.impl()->trigger(after_copy.gen, gasnet_mynode());
       }
+#ifdef EVENT_GRAPH_TRACE
+    public:
+      void record_bytes(size_t bytes) { total_bytes += bytes; }
+      void report_bytes(Event after_copy)
+      {
+        log_event_graph.debug("Copy Size: (" IDFMT ",%d) %ld",
+                              after_copy.id, after_copy.gen, total_bytes);
+      }
+    protected:
+      size_t total_bytes;
+#endif
     };
 
     class BufferedMemPairCopier : public MemPairCopier {
@@ -1473,7 +1513,7 @@ namespace LegionRuntime {
 	buffer = new char[buffer_size];
       }
 
-      ~BufferedMemPairCopier(void)
+      virtual ~BufferedMemPairCopier(void)
       {
 	delete[] buffer;
       }
@@ -1494,10 +1534,16 @@ namespace LegionRuntime {
 	  src_offset += buffer_size;
 	  dst_offset += buffer_size;
 	  bytes -= buffer_size;
+#ifdef EVENT_GRAPH_TRACE
+          record_bytes(buffer_size);
+#endif
 	}
 	if(bytes > 0) {
 	  src_mem->get_bytes(src_offset, buffer, bytes);
 	  dst_mem->put_bytes(dst_offset, buffer, bytes);
+#ifdef EVENT_GRAPH_TRACE
+          record_bytes(bytes);
+#endif
 	}
       }
 
@@ -1531,6 +1577,8 @@ namespace LegionRuntime {
 	assert(dst_base);
       }
 
+      virtual ~MemcpyMemPairCopier(void) { }
+
       virtual InstPairCopier *inst_pair(RegionInstance src_inst, RegionInstance dst_inst,
                                         OASVec &oas_vec)
       {
@@ -1542,6 +1590,9 @@ namespace LegionRuntime {
       {
 	//printf("memcpy of %zd bytes\n", bytes);
 	memcpy(dst_base + dst_offset, src_base + src_offset, bytes);
+#ifdef EVENT_GRAPH_TRACE
+        record_bytes(bytes);
+#endif
       }
 
       // default behavior of 2D copy is to unroll to 1D copies
@@ -1563,7 +1614,7 @@ namespace LegionRuntime {
     class LocalReductionMemPairCopier : public MemPairCopier {
     public:
       LocalReductionMemPairCopier(Memory _src_mem, Memory _dst_mem,
-				  const ReductionOpUntyped *_redop, bool _fold)
+				  ReductionOpID redop_id, bool _fold)
       {
 	Memory::Impl *src_impl = _src_mem.impl();
 	src_base = (const char *)(src_impl->get_direct_ptr(0, src_impl->size));
@@ -1573,9 +1624,11 @@ namespace LegionRuntime {
 	dst_base = (char *)(dst_impl->get_direct_ptr(0, dst_impl->size));
 	assert(dst_base);
 
-	redop = _redop;
+	redop = reduce_op_table[redop_id];
 	fold = _fold;
       }
+
+      virtual ~LocalReductionMemPairCopier(void) { }
 
       virtual InstPairCopier *inst_pair(RegionInstance src_inst, RegionInstance dst_inst,
                                         OASVec &oas_vec)
@@ -1630,20 +1683,20 @@ namespace LegionRuntime {
     class BufferedReductionMemPairCopier : public MemPairCopier {
     public:
       BufferedReductionMemPairCopier(Memory _src_mem, Memory _dst_mem,
-				     const ReductionOpUntyped *_redop, bool _fold,
+				     ReductionOpID redop_id, bool _fold,
 				     size_t _buffer_size = 1024) // in elements
 	: buffer_size(_buffer_size)
       {
 	src_mem = _src_mem.impl();
 	dst_mem = _dst_mem.impl();
-	redop = _redop;
+	redop = reduce_op_table[redop_id];
 	fold = _fold;
 
 	src_buffer = new char[buffer_size * redop->sizeof_rhs];
 	dst_buffer = new char[buffer_size * (fold ? redop->sizeof_rhs : redop->sizeof_lhs)];
       }
 
-      ~BufferedReductionMemPairCopier(void)
+      virtual ~BufferedReductionMemPairCopier(void)
       {
 	delete[] src_buffer;
 	delete[] dst_buffer;
@@ -1711,6 +1764,8 @@ namespace LegionRuntime {
     class DelayedMemPairCopier : public MemPairCopier {
     public:
       DelayedMemPairCopier(void) {}
+
+      virtual ~DelayedMemPairCopier(void) {}
       
       virtual void flush(Event after_copy)
       {
@@ -1737,6 +1792,9 @@ namespace LegionRuntime {
 	    // nothing happened and we don't need to tell anyone - life is simple
 	  }
 	}
+#ifdef EVENT_GRAPH_TRACE
+        report_bytes(after_copy);
+#endif
       }
 
     protected:
@@ -1754,6 +1812,8 @@ namespace LegionRuntime {
 	assert(src_base);
       }
 
+      virtual ~GPUtoFBMemPairCopier(void) { }
+
       virtual InstPairCopier *inst_pair(RegionInstance src_inst, RegionInstance dst_inst,
                                         OASVec &oas_vec)
       {
@@ -1766,6 +1826,9 @@ namespace LegionRuntime {
 	Event e = Event::Impl::create_event();
 	//printf("gpu write of %zd bytes\n", bytes);
 	gpu->copy_to_fb(dst_offset, src_base + src_offset, bytes, Event::NO_EVENT, e);
+#ifdef EVENT_GRAPH_TRACE
+        record_bytes(bytes);
+#endif
 	events.insert(e);
       }
 
@@ -1776,6 +1839,9 @@ namespace LegionRuntime {
         gpu->copy_to_fb_2d(dst_offset, src_base + src_offset,
                            dst_stride, src_stride, bytes, lines,
                            Event::NO_EVENT, e);
+#ifdef EVENT_GRAPH_TRACE
+        record_bytes(bytes * lines);
+#endif
         events.insert(e);
       }
 
@@ -1794,6 +1860,8 @@ namespace LegionRuntime {
 	assert(dst_base);
       }
 
+      virtual ~GPUfromFBMemPairCopier(void) { }
+
       virtual InstPairCopier *inst_pair(RegionInstance src_inst, RegionInstance dst_inst,
                                         OASVec &oas_vec)
       {
@@ -1806,6 +1874,9 @@ namespace LegionRuntime {
 	Event e = Event::Impl::create_event();
 	//printf("gpu read of %zd bytes\n", bytes);
 	gpu->copy_from_fb(dst_base + dst_offset, src_offset, bytes, Event::NO_EVENT, e);
+#ifdef EVENT_GRAPH_TRACE
+        record_bytes(bytes);
+#endif
         events.insert(e);
 	//e.wait(true);
       }
@@ -1817,6 +1888,9 @@ namespace LegionRuntime {
         gpu->copy_from_fb_2d(dst_base + dst_offset, src_offset,
                              dst_stride, src_stride, bytes, lines,
                              Event::NO_EVENT, e);
+#ifdef EVENT_GRAPH_TRACE
+        record_bytes(bytes * lines);
+#endif
         events.insert(e);
       }
 
@@ -1832,6 +1906,8 @@ namespace LegionRuntime {
       {
       }
 
+      virtual ~GPUinFBMemPairCopier(void) { }
+
       virtual InstPairCopier *inst_pair(RegionInstance src_inst, RegionInstance dst_inst,
                                         OASVec &oas_vec)
       {
@@ -1844,6 +1920,9 @@ namespace LegionRuntime {
 	Event e = Event::Impl::create_event();
 	//printf("gpu write of %zd bytes\n", bytes);
 	gpu->copy_within_fb(dst_offset, src_offset, bytes, Event::NO_EVENT, e);
+#ifdef EVENT_GRAPH_TRACE
+        record_bytes(bytes);
+#endif
 	//e.wait(true);
         events.insert(e);
       }
@@ -1855,6 +1934,9 @@ namespace LegionRuntime {
         gpu->copy_within_fb_2d(dst_offset, src_offset,
                                dst_stride, src_stride, bytes, lines,
                                Event::NO_EVENT, e);
+#ifdef EVENT_GRAPH_TRACE
+        record_bytes(bytes * lines);
+#endif
         events.insert(e);
       }
 
@@ -1869,6 +1951,8 @@ namespace LegionRuntime {
       {
       }
 
+      virtual ~GPUPeerMemPairCopier(void) { }
+
       virtual InstPairCopier *inst_pair(RegionInstance src_inst, RegionInstance dst_inst,
                                         OASVec &oas_vec)
       {
@@ -1880,6 +1964,9 @@ namespace LegionRuntime {
       {
         Event e = Event::Impl::create_event();
         src->copy_to_peer(dst, dst_offset, src_offset, bytes, Event::NO_EVENT, e);
+#ifdef EVENT_GRAPH_TRACE
+        record_bytes(bytes);
+#endif
         events.insert(e);
       }
 
@@ -1890,6 +1977,9 @@ namespace LegionRuntime {
         src->copy_to_peer_2d(dst, dst_offset, src_offset,
                              dst_stride, src_stride, bytes, lines,
                              Event::NO_EVENT, e);
+#ifdef EVENT_GRAPH_TRACE
+        record_bytes(bytes * lines);
+#endif
         events.insert(e);
       }
     protected:
@@ -1916,7 +2006,7 @@ namespace LegionRuntime {
 	num_writes = 0;
       }
 
-      ~RemoteWriteMemPairCopier(void)
+      virtual ~RemoteWriteMemPairCopier(void)
       {
       }
 
@@ -1943,7 +2033,9 @@ namespace LegionRuntime {
 #ifdef TIME_REMOTE_WRITES
         unsigned long long start = TimeStamp::get_current_time_in_micros();
 #endif
-
+#ifdef EVENT_GRAPH_TRACE
+        record_bytes(bytes);
+#endif
 	if(bytes >= TARGET_XFER_SIZE) {
 	  // large enough that we can transfer it by itself
 #ifdef DEBUG_REMOTE_WRITES
@@ -2017,6 +2109,9 @@ namespace LegionRuntime {
 	  num_writes += do_remote_write(dst_mem->me, dst_offset,
 					src_base + src_offset, bytes, src_stride, lines,
 					sequence_id, Event::NO_EVENT, false /* no copy */);
+#ifdef EVENT_GRAPH_TRACE
+          record_bytes(bytes * lines);
+#endif
 	  return;
 	}
 	
@@ -2130,6 +2225,9 @@ namespace LegionRuntime {
             }
 	  }
 	}
+#ifdef EVENT_GRAPH_TRACE
+        report_bytes(after_copy);
+#endif
 #ifdef TIME_REMOTE_WRITES
         unsigned long long stop = TimeStamp::get_current_time_in_micros();
         gather_time += (stop - start);
@@ -2150,8 +2248,85 @@ namespace LegionRuntime {
       unsigned sequence_id, num_writes;
     };
      
+    class RemoteReduceMemPairCopier : public MemPairCopier {
+    public:
+      RemoteReduceMemPairCopier(Memory _src_mem, Memory _dst_mem,
+				ReductionOpID _redop_id, bool _fold)
+      {
+	src_mem = _src_mem.impl();
+	src_base = (const char *)(src_mem->get_direct_ptr(0, src_mem->size));
+	assert(src_base);
+
+	dst_mem = _dst_mem.impl();
+
+	redop_id = _redop_id;
+	redop = reduce_op_table[redop_id];
+	fold = _fold;
+
+	sequence_id = __sync_fetch_and_add(&rdma_sequence_no, 1);
+	num_writes = 0;
+      }
+
+      virtual ~RemoteReduceMemPairCopier(void)
+      {
+      }
+
+      virtual InstPairCopier *inst_pair(RegionInstance src_inst, RegionInstance dst_inst,
+                                        OASVec &oas_vec)
+      {
+	return new SpanBasedInstPairCopier<RemoteReduceMemPairCopier>(this, src_inst, 
+								      dst_inst, oas_vec);
+      }
+
+      void copy_span(off_t src_offset, off_t dst_offset, size_t bytes)
+      {
+	//printf("remote write of %zd bytes (" IDFMT ":%zd -> " IDFMT ":%zd)\n", bytes, src_mem->me.id, src_offset, dst_mem->me.id, dst_offset);
+#ifdef TIME_REMOTE_WRITES
+        unsigned long long start = TimeStamp::get_current_time_in_micros();
+#endif
+
+#ifdef DEBUG_REMOTE_WRITES
+	printf("remote reduce of %zd bytes (" IDFMT ":%zd -> " IDFMT ":%zd)\n", bytes, src_mem->me.id, src_offset, dst_mem->me.id, dst_offset);
+#endif
+	num_writes += do_remote_reduce(dst_mem->me, dst_offset, redop_id, fold,
+				       src_base + src_offset, bytes / redop->sizeof_rhs,
+				       redop->sizeof_rhs, redop->sizeof_lhs,
+				       sequence_id, Event::NO_EVENT, false /* no copy */);
+      }
+
+      void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
+		     off_t src_stride, off_t dst_stride, size_t lines)
+      {
+	// TODO: figure out 2D coalescing for reduction case (sizes may not match)
+	//if((src_stride == bytes) && (dst_stride == bytes)) {
+	//  copy_span(src_offset, dst_offset, bytes * lines);
+	//  return;
+	//}
+	
+	// default is to unroll the lines here
+	while(lines-- > 0) {
+	  copy_span(src_offset, dst_offset, bytes);
+	  src_offset += src_stride;
+	  dst_offset += dst_stride;
+	}
+      }
+
+      virtual void flush(Event after_copy)
+      {
+	do_remote_fence(dst_mem->me, sequence_id, num_writes, after_copy);
+      }
+
+    protected:
+      Memory::Impl *src_mem, *dst_mem;
+      const char *src_base;
+      unsigned sequence_id, num_writes;
+      ReductionOpID redop_id;
+      const ReductionOpUntyped *redop;
+      bool fold;
+    };
+     
     MemPairCopier *MemPairCopier::create_copier(Memory src_mem, Memory dst_mem,
-						const ReductionOpUntyped *redop /*= 0*/,
+						ReductionOpID redop_id /*= 0*/,
 						bool fold /*= false*/)
     {
       Memory::Impl *src_impl = src_mem.impl();
@@ -2162,7 +2337,7 @@ namespace LegionRuntime {
 
       log_dma.info("copier: " IDFMT "(%d) -> " IDFMT "(%d)", src_mem.id, src_kind, dst_mem.id, dst_kind);
 
-      if(redop == 0) {
+      if(redop_id == 0) {
 	// can we perform simple memcpy's?
 	if(((src_kind == Memory::Impl::MKIND_SYSMEM) || (src_kind == Memory::Impl::MKIND_ZEROCOPY)) &&
 	   ((dst_kind == Memory::Impl::MKIND_SYSMEM) || (dst_kind == Memory::Impl::MKIND_ZEROCOPY))) {
@@ -2216,13 +2391,20 @@ namespace LegionRuntime {
 	// can we perform simple memcpy's?
 	if(((src_kind == Memory::Impl::MKIND_SYSMEM) || (src_kind == Memory::Impl::MKIND_ZEROCOPY)) &&
 	   ((dst_kind == Memory::Impl::MKIND_SYSMEM) || (dst_kind == Memory::Impl::MKIND_ZEROCOPY))) {
-	  return new LocalReductionMemPairCopier(src_mem, dst_mem, redop, fold);
+	  return new LocalReductionMemPairCopier(src_mem, dst_mem, redop_id, fold);
+	}
+
+	// reductions to a remote memory get shipped over there to be applied
+	if((dst_kind == Memory::Impl::MKIND_REMOTE) ||
+	   (dst_kind == Memory::Impl::MKIND_RDMA)) {
+	  assert(src_kind != Memory::Impl::MKIND_REMOTE);
+	  return new RemoteReduceMemPairCopier(src_mem, dst_mem, redop_id, fold);
 	}
 
 	// fallback is pretty damn slow
-	log_dma.warning("using a buffering copier for reductions (%x -> %x)",
+	log_dma.warning("using a buffering copier for reductions (" IDFMT " -> " IDFMT ")",
 			src_mem.id, dst_mem.id);
-	return new BufferedReductionMemPairCopier(src_mem, dst_mem, redop, fold);
+	return new BufferedReductionMemPairCopier(src_mem, dst_mem, redop_id, fold);
       }
     }
 
@@ -2422,6 +2604,8 @@ namespace LegionRuntime {
     class CopyCompletionLogger : public Event::Impl::EventWaiter {
     public:
       CopyCompletionLogger(Event _event) : event(_event) {}
+
+      virtual ~CopyCompletionLogger(void) { }
 
       virtual bool event_triggered(void)
       {
@@ -3367,7 +3551,7 @@ namespace LegionRuntime {
 	  }
 	}
       } else {
-	MemPairCopier *mpc = MemPairCopier::create_copier(src_mem, dst_mem, redop, red_fold);
+	MemPairCopier *mpc = MemPairCopier::create_copier(src_mem, dst_mem, redop_id, red_fold);
 
 	switch(domain.get_dim()) {
 	case 1: perform_dma_rect<1>(mpc); break;
@@ -3600,6 +3784,12 @@ namespace LegionRuntime {
 	  OASByInst *oas_by_inst = it->second;
 
 	  Event ev = Event::Impl::create_event();
+#ifdef EVENT_GRAPH_TRACE
+          log_event_graph.info("Copy Request: (" IDFMT ",%d) (" IDFMT ",%d) "
+                                IDFMT " " IDFMT "",
+                                ev.id, ev.gen, wait_on.id, wait_on.gen,
+                                src_mem.id, dst_mem.id);
+#endif
 
 	  int priority = 0;
 #ifdef USE_CUDA
