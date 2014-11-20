@@ -38,8 +38,6 @@
   } \
 } while(0)
 
-GASNETT_THREADKEY_DECLARE(gpu_thread);
-
 namespace LegionRuntime {
   namespace LowLevel {
 
@@ -58,6 +56,10 @@ namespace LegionRuntime {
 
       void *get_zcmem_cpu_base(void);
       void *get_fbmem_gpu_base(void);
+
+      virtual void tasks_available(int priority);
+
+      virtual void enqueue_task(Task *task);
 
       virtual void spawn_task(Processor::TaskFuncID func_id,
 			      const void *args, size_t arglen,
