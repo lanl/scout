@@ -1137,8 +1137,8 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
   
   auto& B = Builder;
   
-  typedef vector<llvm::Type*> TypeVec;
-  typedef vector<Value*> ValueVec;
+  //typedef vector<llvm::Type*> TypeVec;
+  //typedef vector<Value*> ValueVec;
   
   if(isGPU()){
     EmitGPUForall(S, EdgeIndex);
@@ -1217,8 +1217,8 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
   
   auto& B = Builder;
   
-  typedef vector<llvm::Type*> TypeVec;
-  typedef vector<Value*> ValueVec;
+  //typedef vector<llvm::Type*> TypeVec;
+  //typedef vector<Value*> ValueVec;
   
   if(isGPU()){
     EmitGPUForall(S, FaceIndex);
