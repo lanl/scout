@@ -1,31 +1,42 @@
-# - Try to find CLANG
+# - Try to find CLANG if it can't be found use the one we build as part of Scout
 # Once done, this will define:
 #  CLANG_COMMAND - the clang location
 #  CLANGXX_COMMAND - the clang++ location
 #
 
-find_program(CLANG_COMMAND
+find_program(_CLANG_COMMAND
     NAMES clang
     HINTS $ENV{CLANG_DIR}
     PATHS
     /usr/bin
     /usr/local/bin
-    ${SCOUT_BUILD_DIR}/bin
     DOC "Path for clang"
     )
 
+if(_CLANG_COMMAND MATCHES "NOTFOUND")
+  set(CLANG_COMMAND "${SCOUT_BUILD_DIR}/bin/clang" CACHE FILEPATH "Clang")
+else()
+  set(CLANG_COMMAND ${_CLANG_COMMAND} CACHE FILEPATH "Clang")
+endif()
+unset(_CLANG_COMMAND)
 
-find_program(CLANGXX_COMMAND
+find_program(_CLANGXX_COMMAND
     NAMES clang++
     HINTS $ENV{CLANG_DIR}
     PATHS
     /usr/bin
     /usr/local/bin
-    ${SCOUT_BUILD_DIR}/bin
     DOC "Path for clang++"
     )
 
-#message(STATUS "clang: ${CLANG_COMMAND} ${CLANGXX_COMMAND}")
+if(_CLANGXX_COMMAND MATCHES "NOTFOUND")
+  set(CLANGXX_COMMAND "${SCOUT_BUILD_DIR}/bin/clang++" CACHE FILEPATH "Clang++")
+else()
+  set(CLANGXX_COMMAND ${_CLANGXX_COMMAND} CACHE FILEPATH "Clang++")
+endif()
+unset(_CLANGXX_COMMAND)
+
+#message(STATUS "clang found: ${CLANG_COMMAND} ${CLANGXX_COMMAND}")
 
 # handle the QUIETLY and REQUIRED arguments and set xxx_FOUND to TRUE if
 # all listed variables are TRUE
