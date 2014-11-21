@@ -70,6 +70,7 @@ CGCLegionCRuntime::CGCLegionCRuntime(CodeGenModule& CGM) : CGM(CGM){
   Int64Ty = llvm::Type::getInt64Ty(C);
   VoidTy = llvm::Type::getVoidTy(C);
   VoidPtrTy = PointerTy(Int8Ty);
+  StringTy = PointerTy(Int8Ty);
   
   TypeVec fields;
   
@@ -189,6 +190,52 @@ CGCLegionCRuntime::CGCLegionCRuntime(CodeGenModule& CGM) : CGM(CGM){
   
   fields = {llvm::ArrayType::get(Int32Ty, 3)};
   Rect3dTy = StructType::create(C, fields, "struct.legion_rect3d_t");
+
+  fields = {LowlevelIdTy, Int32Ty,
+    llvm::ArrayType::get(Int32Ty, 2 * MAX_RECT_DIM)};
+  DomainTy = StructType::create(C, fields, "struct.legion_domain_t");
+  
+  fields = {LowlevelIdTy, IndexSpaceTy};
+  IndexSpaceTy = StructType::create(C, fields, "struct.legion_index_space_t");
+
+  fields = {IndexSpaceTy, IndexSpaceAllocatorTy, IndexAllocatorTy};
+  IndexAllocatorTy =
+  StructType::create(C, fields, "struct.legion_index_allocator_t");
+  
+  fields = {FieldSpaceTy, FieldSpaceTy};
+  FieldSpaceTy = StructType::create(C, fields, "struct.legion_field_space_t");
+
+  fields = {FieldSpaceTy, ContextTy, RuntimeTy, FieldAllocatorTy};;
+  FieldAllocatorTy =
+  StructType::create(C, fields, "struct.legion_field_allocator_t");
+
+  fields = {RegionTreeIdTy, IndexSpaceTy, FieldSpaceTy, LogicalRegionTy};
+  LogicalRegionTy =
+  StructType::create(C, fields, "struct.legion_logical_region_t");
+  
+  fields = {RegionTreeIdTy, IndexPartitionTy, FieldSpaceTy, LogicalPartitionTy};
+  LogicalPartitionTy =
+  StructType::create(C, fields, "struct.legion_logical_partition_t");
+  
+  fields = {VoidPtrTy, Int64Ty};
+  TaskArgumentTy =
+  StructType::create(C, fields, "struct.legion_task_argument_t");
+  
+  fields = {VoidPtrTy, Int64Ty};
+  TaskResultTy =
+  StructType::create(C, fields, "struct.legion_task_result_t");
+  
+  fields = {Int32Ty};
+  ByteOffsetTy =
+  StructType::create(C, fields, "struct.legion_byte_offset_t");
+  
+  fields = {PointerTy(StringTy), Int32Ty};
+  InputArgsTy =
+  StructType::create(C, fields, "struct.legion_input_args_t");
+
+  fields = {Int1Ty, Int1Ty, Int1Ty};
+  TaskConfigOptionsTy =
+  StructType::create(C, fields, "struct.legion_task_config_options_t");
   
   TypeVec params;
 
@@ -366,7 +413,7 @@ CGCLegionCRuntime::LogicalRegionDestroyFunc(){
 llvm::Function*
 CGCLegionCRuntime::LogicalPartitionCreateFunc(){
   return GetFunc("legion_logical_partition_create",
-                 {RuntimeTy, ContextTy, LogicalPartitionTy},
+                 {RuntimeTy, ContextTy, LogicalRegionTy, LogicalPartitionTy},
                  LogicalPartitionTy);
 }
 
@@ -406,7 +453,7 @@ CGCLegionCRuntime::IndexAllocatorDestroyFunc(){
 llvm::Function*
 CGCLegionCRuntime::IndexAllocatorAllocFunc(){
   return GetFunc("legion_index_allocator_alloc",
-                 {IndexAllocatorTy, PtrTy},
+                 {IndexAllocatorTy, Int32Ty},
                  PtrTy);
 }
 
@@ -420,7 +467,7 @@ llvm::Function*
 CGCLegionCRuntime::FieldAllocatorCreateFunc(){
   return GetFunc("legion_field_allocator_create",
                  {RuntimeTy, ContextTy, FieldSpaceTy},
-                 IndexAllocatorTy);
+                 FieldAllocatorTy);
 }
 
 llvm::Function*
@@ -439,8 +486,7 @@ CGCLegionCRuntime::FieldAllocatorAllocateFieldFunc(){
 llvm::Function*
 CGCLegionCRuntime::FieldAllocatorFreeFieldFunc(){
   return GetFunc("legion_field_allocator_free_field",
-                 {RuntimeTy, ContextTy},
-                 DomainTy);
+                 {FieldAllocatorTy, FieldIdTy});
 }
 
 llvm::Function*
@@ -592,7 +638,7 @@ llvm::Function*
 CGCLegionCRuntime::IndexLauncherAddRegionRequirementLogicalPartitionFunc(){
   return GetFunc("legion_index_launcher_add_region_requirement_logical_partition",
                  {IndexLauncherTy, LogicalPartitionTy, ProjectionIdTy,
-                 ProjectionIdTy, PrivilegeModeTy, CoherencePropertyTy,
+                 PrivilegeModeTy, CoherencePropertyTy,
                  LogicalRegionTy, MappingTagIdTy, Int1Ty},
                  Int32Ty);
 }
@@ -827,7 +873,7 @@ CGCLegionCRuntime::TaskGetLocalArglenFunc(){
 llvm::Function*
 CGCLegionCRuntime::RuntimeStartFunc(){
   return GetFunc("legion_runtime_start",
-                 {Int32Ty, PointerTy(PointerTy(VoidPtrTy)), Int1Ty},
+                 {Int32Ty, PointerTy(StringTy), Int1Ty},
                  Int32Ty);
 }
 
@@ -854,7 +900,7 @@ llvm::Function*
 CGCLegionCRuntime::RuntimeRegisterTaskVoidFunc(){
   return GetFunc("legion_runtime_register_task_void",
                  {TaskIdTy, Int32Ty, Int1Ty, Int1Ty, VariantIdTy,
-                 TaskConfigOptionsTy, VoidPtrTy, VoidTaskFuncTy},
+                 TaskConfigOptionsTy, StringTy, VoidTaskFuncTy},
                  TaskIdTy);
 }
 
@@ -862,6 +908,6 @@ llvm::Function*
 CGCLegionCRuntime::RuntimeRegisterTaskFunc(){
   return GetFunc("legion_runtime_register_task",
                  {TaskIdTy, Int32Ty, Int1Ty, Int1Ty, VariantIdTy,
-                   TaskConfigOptionsTy, VoidPtrTy, TaskFuncTy},
+                   TaskConfigOptionsTy, StringTy, TaskFuncTy},
                  TaskIdTy);
 }

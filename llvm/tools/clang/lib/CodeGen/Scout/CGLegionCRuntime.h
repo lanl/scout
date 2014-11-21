@@ -87,6 +87,7 @@ namespace CodeGen {
     llvm::Type* Int32Ty;
     llvm::Type* Int64Ty;
     llvm::Type* VoidTy;
+    llvm::Type* StringTy;
     
     llvm::StructType* OpaqueTy;
     
@@ -108,7 +109,7 @@ namespace CodeGen {
     llvm::Type* IndexIteratorTy;
     llvm::Type* TaskTy;
     
-    llvm::Type* PtrTy;
+    llvm::StructType* PtrTy;
     llvm::Type* Point1dTy;
     llvm::Type* Point2dTy;
     llvm::Type* Point3dTy;
