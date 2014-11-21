@@ -213,12 +213,12 @@ void CodeGenFunction::SetMeshBounds(const Stmt &S) {
     MeshDims[i] =  Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
 
     // dimensions + 1 are used in many places so cache them
-    MeshDimsP1[i] =  Builder.CreateAlloca(Int32Ty, 0, "meshdimsp1.ptr");
+    MeshDimsP1[i] = CreateTempAlloca(Int32Ty, "meshdimsp1.ptr");
     llvm::Value *incr = Builder.CreateAdd(Builder.CreateLoad(MeshDims[i]), ConstantOne);
     Builder.CreateStore(incr, MeshDimsP1[i]);
 
     // if LoopBoundCells == 0 then set it to 1 (for cells)
-    LoopBoundsCells[i] = Builder.CreateAlloca(Int32Ty, 0, "meshdims.ptr");
+    LoopBoundsCells[i] = CreateTempAlloca(Int32Ty, "meshdims.ptr");
     llvm::Value *dim = Builder.CreateLoad(MeshDims[i]);
     llvm::Value *Check = Builder.CreateICmpEQ(dim, ConstantZero);
     llvm::Value *x = Builder.CreateSelect(Check, ConstantOne, dim);
@@ -1150,10 +1150,10 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
 
   EmitMarkerBlock("forall.edges.entry");
 
-  InductionVar[3] = B.CreateAlloca(Int32Ty, 0, "forall.edges_idx.ptr");
+  InductionVar[3] = CreateTempAlloca(Int32Ty, "forall.edges_idx.ptr");
   //zero-initialize induction var
   B.CreateStore(Zero, InductionVar[3]);
-  InnerIndex = B.CreateAlloca(Int32Ty, 0, "forall.inneridx.ptr");
+  InnerIndex = CreateTempAlloca(Int32Ty, "forall.inneridx.ptr");
 
   // find number of edges
   Value* numEdges;
@@ -1230,7 +1230,7 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
 
   EmitMarkerBlock("forall.faces.entry");
 
-  InductionVar[3] = B.CreateAlloca(Int32Ty, 0, "forall.faces_idx.ptr");
+  InductionVar[3] = CreateTempAlloca(Int32Ty, "forall.faces_idx.ptr");
   //zero-initialize induction var
   B.CreateStore(Zero, InductionVar[3]);
 
@@ -1592,20 +1592,20 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
   // Create the induction variables for eack rank.
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "forall.induct.%s.ptr", IndexNames[i]);
-    InductionVar[i] = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
+    InductionVar[i] = CreateTempAlloca(Int32Ty, IRNameStr);
     //zero-initialize induction var
     Builder.CreateStore(ConstantZero, InductionVar[i]);
 
   }
   // create linear loop index as 4th element and zero-initialize.
-  InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "forall.linearidx.ptr");
+  InductionVar[3] = CreateTempAlloca(Int32Ty, "forall.linearidx.ptr");
   //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
   InnerInductionVar =
-      Builder.CreateAlloca(Int32Ty, 0, "forall.inneridx_ind.ptr");
+      CreateTempAlloca(Int32Ty, "forall.inneridx_ind.ptr");
 
-  InnerIndex = Builder.CreateAlloca(Int32Ty, 0, "forall.inneridx.ptr");
+  InnerIndex = CreateTempAlloca(Int32Ty, "forall.inneridx.ptr");
 
   llvm::Value* queryMask = 0;
   
@@ -2079,7 +2079,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // Create the induction variables for eack rank.
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "renderall.induct.%s.ptr", IndexNames[i]);
-    InductionVar[i] = Builder.CreateAlloca(Int32Ty, 0, IRNameStr);
+    InductionVar[i] = CreateTempAlloca(Int32Ty, IRNameStr);
     //zero-initialize induction var
     Builder.CreateStore(ConstantZero, InductionVar[i]);
   }
@@ -2105,7 +2105,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   Args.push_back(int8PtrRTAlloc);
 
   // create linear loop index as 4th element and zero-initialize
-  InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "renderall.linearidx.ptr");
+  InductionVar[3] = CreateTempAlloca(Int32Ty, "renderall.linearidx.ptr");
   //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
@@ -2171,10 +2171,10 @@ void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S
 
 	EmitMarkerBlock("renderall.entry");
 
-	InductionVar[3] = Builder.CreateAlloca(Int32Ty, 0, "renderall.idx.ptr");
+	InductionVar[3] = CreateTempAlloca(Int32Ty, "renderall.idx.ptr");
 	//zero-initialize induction var
 	Builder.CreateStore(Zero, InductionVar[3]);
-	InnerIndex = Builder.CreateAlloca(Int32Ty, 0, "renderall.inneridx.ptr");
+	InnerIndex = CreateTempAlloca(Int32Ty, "renderall.inneridx.ptr");
 
 	//SmallVector<llvm::Value*, 3> Dimensions;
 	//GetMeshDimensions(S.getMeshType(), Dimensions);
