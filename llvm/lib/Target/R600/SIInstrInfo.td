@@ -350,6 +350,11 @@ class SOP2_64 <bits<7> op, string opName, list<dag> pattern> : SOP2 <
   opName#" $dst, $src0, $src1", pattern
 >;
 
+class SOP2_64_32 <bits<7> op, string opName, list<dag> pattern> : SOP2 <
+  op, (outs SReg_64:$dst), (ins SSrc_64:$src0, SSrc_32:$src1),
+  opName#" $dst, $src0, $src1", pattern
+>;
+
 class SOP2_SHIFT_64 <bits<7> op, string opName, list<dag> pattern> : SOP2 <
   op, (outs SReg_64:$dst), (ins SSrc_64:$src0, SSrc_32:$src1),
   opName#" $dst, $src0, $src1", pattern
@@ -936,12 +941,14 @@ class DS_1A <bits<8> op, dag outs, dag ins, string asm, list<dag> pat> :
   // Single load interpret the 2 i8imm operands as a single i16 offset.
   let offset0 = offset{7-0};
   let offset1 = offset{15-8};
+
+  let hasSideEffects = 0;
 }
 
 class DS_Load_Helper <bits<8> op, string asm, RegisterClass regClass> : DS_1A <
   op,
   (outs regClass:$vdst),
-  (ins i1imm:$gds, VReg_32:$addr, ds_offset:$offset),
+  (ins i1imm:$gds, VReg_32:$addr, ds_offset:$offset, M0Reg:$m0),
   asm#" $vdst, $addr"#"$offset"#" [M0]",
   []> {
   let data0 = 0;
@@ -953,19 +960,21 @@ class DS_Load_Helper <bits<8> op, string asm, RegisterClass regClass> : DS_1A <
 class DS_Load2_Helper <bits<8> op, string asm, RegisterClass regClass> : DS <
   op,
   (outs regClass:$vdst),
-  (ins i1imm:$gds, VReg_32:$addr, ds_offset0:$offset0, ds_offset1:$offset1),
+  (ins i1imm:$gds, VReg_32:$addr, ds_offset0:$offset0, ds_offset1:$offset1,
+        M0Reg:$m0),
   asm#" $vdst, $addr"#"$offset0"#"$offset1 [M0]",
   []> {
   let data0 = 0;
   let data1 = 0;
   let mayLoad = 1;
   let mayStore = 0;
+  let hasSideEffects = 0;
 }
 
 class DS_Store_Helper <bits<8> op, string asm, RegisterClass regClass> : DS_1A <
   op,
   (outs),
-  (ins i1imm:$gds, VReg_32:$addr, regClass:$data0, ds_offset:$offset),
+  (ins i1imm:$gds, VReg_32:$addr, regClass:$data0, ds_offset:$offset, M0Reg:$m0),
   asm#" $addr, $data0"#"$offset"#" [M0]",
   []> {
   let data1 = 0;
@@ -978,11 +987,12 @@ class DS_Store2_Helper <bits<8> op, string asm, RegisterClass regClass> : DS <
   op,
   (outs),
   (ins i1imm:$gds, VReg_32:$addr, regClass:$data0, regClass:$data1,
-       ds_offset0:$offset0, ds_offset1:$offset1),
+       ds_offset0:$offset0, ds_offset1:$offset1, M0Reg:$m0),
   asm#" $addr, $data0, $data1"#"$offset0"#"$offset1 [M0]",
   []> {
   let mayStore = 1;
   let mayLoad = 0;
+  let hasSideEffects = 0;
   let vdst = 0;
 }
 
@@ -990,7 +1000,7 @@ class DS_Store2_Helper <bits<8> op, string asm, RegisterClass regClass> : DS <
 class DS_1A1D_RET <bits<8> op, string asm, RegisterClass rc, string noRetOp = ""> : DS_1A <
   op,
   (outs rc:$vdst),
-  (ins i1imm:$gds, VReg_32:$addr, rc:$data0, ds_offset:$offset),
+  (ins i1imm:$gds, VReg_32:$addr, rc:$data0, ds_offset:$offset, M0Reg:$m0),
   asm#" $vdst, $addr, $data0"#"$offset"#" [M0]", []>,
   AtomicNoRet<noRetOp, 1> {
 
@@ -1005,13 +1015,12 @@ class DS_1A1D_RET <bits<8> op, string asm, RegisterClass rc, string noRetOp = ""
 class DS_1A2D_RET <bits<8> op, string asm, RegisterClass rc, string noRetOp = ""> : DS_1A <
   op,
   (outs rc:$vdst),
-  (ins i1imm:$gds, VReg_32:$addr, rc:$data0, rc:$data1, ds_offset:$offset),
+  (ins i1imm:$gds, VReg_32:$addr, rc:$data0, rc:$data1, ds_offset:$offset, M0Reg:$m0),
   asm#" $vdst, $addr, $data0, $data1"#"$offset"#" [M0]",
   []>,
   AtomicNoRet<noRetOp, 1> {
   let mayStore = 1;
   let mayLoad = 1;
-
   let hasPostISelHook = 1; // Adjusted to no return version.
 }
 
@@ -1019,7 +1028,7 @@ class DS_1A2D_RET <bits<8> op, string asm, RegisterClass rc, string noRetOp = ""
 class DS_1A2D_NORET <bits<8> op, string asm, RegisterClass rc, string noRetOp = asm> : DS_1A <
   op,
   (outs),
-  (ins i1imm:$gds, VReg_32:$addr, rc:$data0, rc:$data1, ds_offset:$offset),
+  (ins i1imm:$gds, VReg_32:$addr, rc:$data0, rc:$data1, ds_offset:$offset, M0Reg:$m0),
   asm#" $addr, $data0, $data1"#"$offset"#" [M0]",
   []>,
   AtomicNoRet<noRetOp, 0> {
@@ -1031,7 +1040,7 @@ class DS_1A2D_NORET <bits<8> op, string asm, RegisterClass rc, string noRetOp = 
 class DS_1A1D_NORET <bits<8> op, string asm, RegisterClass rc, string noRetOp = asm> : DS_1A <
   op,
   (outs),
-  (ins i1imm:$gds, VReg_32:$addr, rc:$data0, ds_offset:$offset),
+  (ins i1imm:$gds, VReg_32:$addr, rc:$data0, ds_offset:$offset, M0Reg:$m0),
   asm#" $addr, $data0"#"$offset"#" [M0]",
   []>,
   AtomicNoRet<noRetOp, 0> {

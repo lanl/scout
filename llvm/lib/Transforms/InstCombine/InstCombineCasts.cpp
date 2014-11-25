@@ -1273,10 +1273,12 @@ Instruction *InstCombiner::visitFPTrunc(FPTruncInst &CI) {
           LHSOrig = Builder->CreateFPExt(LHSOrig, RHSOrig->getType());
         else if (RHSWidth <= SrcWidth)
           RHSOrig = Builder->CreateFPExt(RHSOrig, LHSOrig->getType());
-        Value *ExactResult = Builder->CreateFRem(LHSOrig, RHSOrig);
-        if (Instruction *RI = dyn_cast<Instruction>(ExactResult))
-          RI->copyFastMathFlags(OpI);
-        return CastInst::CreateFPCast(ExactResult, CI.getType());
+        if (LHSOrig != OpI->getOperand(0) || RHSOrig != OpI->getOperand(1)) {
+          Value *ExactResult = Builder->CreateFRem(LHSOrig, RHSOrig);
+          if (Instruction *RI = dyn_cast<Instruction>(ExactResult))
+            RI->copyFastMathFlags(OpI);
+          return CastInst::CreateFPCast(ExactResult, CI.getType());
+        }
     }
 
     // (fptrunc (fneg x)) -> (fneg (fptrunc x))

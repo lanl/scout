@@ -453,6 +453,9 @@
 /* Have host's ___chkstk */
 #undef HAVE____CHKSTK
 
+/* Linker version detected at compile time. */
+#undef HOST_LINK_VERSION
+
 /* Installation directory for binary executables */
 #undef LLVM_BINDIR
 
@@ -539,6 +542,9 @@
 
 /* Patch version of the LLVM API */
 #undef LLVM_VERSION_PATCH
+
+/* LLVM version string */
+#undef LLVM_VERSION_STRING
 
 /* The shared library extension */
 #undef LTDL_SHLIB_EXT
