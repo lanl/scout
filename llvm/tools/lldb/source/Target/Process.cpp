@@ -3252,6 +3252,15 @@ Process::AttachCompletionHandler::GetExitString ()
     return m_exit_string.c_str();
 }
 
+Listener &
+ProcessAttachInfo::GetListenerForProcess (Debugger &debugger)
+{
+    if (m_listener_sp)
+        return *m_listener_sp;
+    else
+        return debugger.GetListener();
+}
+
 Error
 Process::Attach (ProcessAttachInfo &attach_info)
 {
@@ -3388,14 +3397,13 @@ Process::Attach (ProcessAttachInfo &attach_info)
             else
             {
                 if (GetID() != LLDB_INVALID_PROCESS_ID)
-                {
                     SetID (LLDB_INVALID_PROCESS_ID);
-                    const char *error_string = error.AsCString();
-                    if (error_string == NULL)
-                        error_string = "attach failed";
 
-                    SetExitStatus(-1, error_string);
-                }
+                const char *error_string = error.AsCString();
+                if (error_string == NULL)
+                    error_string = "attach failed";
+
+                SetExitStatus(-1, error_string);
             }
         }
     }
@@ -4893,7 +4901,7 @@ class IOHandlerProcessSTDIO :
 public:
     IOHandlerProcessSTDIO (Process *process,
                            int write_fd) :
-        IOHandler(process->GetTarget().GetDebugger()),
+    IOHandler(process->GetTarget().GetDebugger(), IOHandler::Type::ProcessIO),
         m_process (process),
         m_read_file (),
         m_write_file (write_fd, false),
@@ -6187,7 +6195,8 @@ Process::RunPreResumeActions ()
         struct PreResumeCallbackAndBaton action = m_pre_resume_actions.back();
         m_pre_resume_actions.pop_back();
         bool this_result = action.callback (action.baton);
-        if (result == true) result = this_result;
+        if (result == true) 
+            result = this_result;
     }
     return result;
 }

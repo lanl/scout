@@ -176,6 +176,7 @@ namespace {
   private:
     void BuildRankMap(Function &F);
     unsigned getRank(Value *V);
+    void canonicalizeOperands(Instruction *I);
     void ReassociateExpression(BinaryOperator *I);
     void RewriteExprTree(BinaryOperator *I, SmallVectorImpl<ValueEntry> &Ops);
     Value *OptimizeExpression(BinaryOperator *I,
@@ -278,9 +279,11 @@ static bool isUnmovableInstruction(Instruction *I) {
 void Reassociate::BuildRankMap(Function &F) {
   unsigned i = 2;
 
-  // Assign distinct ranks to function arguments
-  for (Function::arg_iterator I = F.arg_begin(), E = F.arg_end(); I != E; ++I)
+  // Assign distinct ranks to function arguments.
+  for (Function::arg_iterator I = F.arg_begin(), E = F.arg_end(); I != E; ++I) {
     ValueRankMap[&*I] = ++i;
+    DEBUG(dbgs() << "Calculated Rank[" << I->getName() << "] = " << i << "\n");
+  }
 
   ReversePostOrderTraversal<Function*> RPOT(&F);
   for (ReversePostOrderTraversal<Function*>::rpo_iterator I = RPOT.begin(),
@@ -324,10 +327,26 @@ unsigned Reassociate::getRank(Value *V) {
        !BinaryOperator::isFNeg(I)))
     ++Rank;
 
-  //DEBUG(dbgs() << "Calculated Rank[" << V->getName() << "] = "
-  //     << Rank << "\n");
+  DEBUG(dbgs() << "Calculated Rank[" << V->getName() << "] = " << Rank << "\n");
 
   return ValueRankMap[I] = Rank;
+}
+
+// Canonicalize constants to RHS.  Otherwise, sort the operands by rank.
+void Reassociate::canonicalizeOperands(Instruction *I) {
+  assert(isa<BinaryOperator>(I) && "Expected binary operator.");
+  assert(I->isCommutative() && "Expected commutative operator.");
+
+  Value *LHS = I->getOperand(0);
+  Value *RHS = I->getOperand(1);
+  unsigned LHSRank = getRank(LHS);
+  unsigned RHSRank = getRank(RHS);
+
+  if (isa<Constant>(RHS))
+    return;
+
+  if (isa<Constant>(LHS) || RHSRank < LHSRank)
+    cast<BinaryOperator>(I)->swapOperands();
 }
 
 static BinaryOperator *CreateAdd(Value *S1, Value *S2, const Twine &Name,
@@ -567,7 +586,7 @@ static bool LinearizeExprTree(BinaryOperator *I,
   // ways to get to it.
   SmallVector<std::pair<BinaryOperator*, APInt>, 8> Worklist; // (Op, Weight)
   Worklist.push_back(std::make_pair(I, APInt(Bitwidth, 1)));
-  bool MadeChange = false;
+  bool Changed = false;
 
   // Leaves of the expression are values that either aren't the right kind of
   // operation (eg: a constant, or a multiply in an add tree), or are, but have
@@ -604,7 +623,7 @@ static bool LinearizeExprTree(BinaryOperator *I,
       // If this is a binary operation of the right kind with only one use then
       // add its operands to the expression.
       if (BinaryOperator *BO = isReassociableOp(Op, Opcode)) {
-        assert(Visited.insert(Op) && "Not first visit!");
+        assert(Visited.insert(Op).second && "Not first visit!");
         DEBUG(dbgs() << "DIRECT ADD: " << *Op << " (" << Weight << ")\n");
         Worklist.push_back(std::make_pair(BO, Weight));
         continue;
@@ -614,7 +633,7 @@ static bool LinearizeExprTree(BinaryOperator *I,
       LeafMap::iterator It = Leaves.find(Op);
       if (It == Leaves.end()) {
         // Not in the leaf map.  Must be the first time we saw this operand.
-        assert(Visited.insert(Op) && "Not first visit!");
+        assert(Visited.insert(Op).second && "Not first visit!");
         if (!Op->hasOneUse()) {
           // This value has uses not accounted for by the expression, so it is
           // not safe to modify.  Mark it as being a leaf.
@@ -636,7 +655,7 @@ static bool LinearizeExprTree(BinaryOperator *I,
         // exactly one such use, drop this new use of the leaf.
         assert(!Op->hasOneUse() && "Only one use, but we got here twice!");
         I->setOperand(OpIdx, UndefValue::get(I->getType()));
-        MadeChange = true;
+        Changed = true;
 
         // If the leaf is a binary operation of the right kind and we now see
         // that its multiple original uses were in fact all by nodes belonging
@@ -680,7 +699,7 @@ static bool LinearizeExprTree(BinaryOperator *I,
           BO = LowerNegateToMultiply(BO);
           DEBUG(dbgs() << *BO << '\n');
           Worklist.push_back(std::make_pair(BO, Weight));
-          MadeChange = true;
+          Changed = true;
           continue;
         }
 
@@ -720,7 +739,7 @@ static bool LinearizeExprTree(BinaryOperator *I,
     Ops.push_back(std::make_pair(Identity, APInt(Bitwidth, 1)));
   }
 
-  return MadeChange;
+  return Changed;
 }
 
 // RewriteExprTree - Now that the operands for this expression tree are
@@ -1589,7 +1608,7 @@ Value *Reassociate::OptimizeAdd(Instruction *I,
     SmallPtrSet<Value*, 8> Duplicates;
     for (unsigned i = 0, e = Factors.size(); i != e; ++i) {
       Value *Factor = Factors[i];
-      if (!Duplicates.insert(Factor))
+      if (!Duplicates.insert(Factor).second)
         continue;
 
       unsigned Occ = ++FactorOccurrences[Factor];
@@ -1940,7 +1959,7 @@ void Reassociate::EraseInst(Instruction *I) {
       // and add that since that's where optimization actually happens.
       unsigned Opcode = Op->getOpcode();
       while (Op->hasOneUse() && Op->user_back()->getOpcode() == Opcode &&
-             Visited.insert(Op))
+             Visited.insert(Op).second)
         Op = Op->user_back();
       RedoInsts.insert(Op);
     }
@@ -2062,34 +2081,19 @@ void Reassociate::OptimizeInst(Instruction *I) {
   if (Instruction *Res = canonicalizeNegConstExpr(I))
     I = Res;
 
-  // Commute floating point binary operators, to canonicalize the order of their
-  // operands.  This can potentially expose more CSE opportunities, and makes
-  // writing other transformations simpler.
-  if (I->getType()->isFloatingPointTy() || I->getType()->isVectorTy()) {
+  // Commute binary operators, to canonicalize the order of their operands.
+  // This can potentially expose more CSE opportunities, and makes writing other
+  // transformations simpler.
+  if (I->isCommutative())
+    canonicalizeOperands(I);
 
-    // FAdd and FMul can be commuted.
-    unsigned Opcode = I->getOpcode();
-    if (Opcode == Instruction::FMul || Opcode == Instruction::FAdd) {
-      Value *LHS = I->getOperand(0);
-      Value *RHS = I->getOperand(1);
-      unsigned LHSRank = getRank(LHS);
-      unsigned RHSRank = getRank(RHS);
+  // Don't optimize vector instructions.
+  if (I->getType()->isVectorTy())
+    return;
 
-      // Sort the operands by rank.
-      if (RHSRank < LHSRank) {
-        I->setOperand(0, RHS);
-        I->setOperand(1, LHS);
-      }
-    }
-
-    // FIXME: We should commute vector instructions as well.  However, this 
-    // requires further analysis to determine the effect on later passes.
-
-    // Don't try to optimize vector instructions or anything that doesn't have
-    // unsafe algebra.
-    if (I->getType()->isVectorTy() || !I->hasUnsafeAlgebra())
-      return;
-  }
+  // Don't optimize floating point instructions that don't have unsafe algebra.
+  if (I->getType()->isFloatingPointTy() && !I->hasUnsafeAlgebra())
+    return;
 
   // Do not reassociate boolean (i1) expressions.  We want to preserve the
   // original order of evaluation for short-circuited comparisons that

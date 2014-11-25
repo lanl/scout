@@ -116,6 +116,12 @@ dont_do_python_api_test = False
 # By default, both command line and Python API tests are performed.
 just_do_python_api_test = False
 
+# By default, lldb-mi tests are performed if lldb-mi can be found.
+# Use @lldbmi_test decorator, defined in lldbtest.py, to mark a test as
+# a lldb-mi test.
+dont_do_lldbmi_test = False
+just_do_lldbmi_test = False
+
 # By default, benchmarks tests are not run.
 just_do_benchmarks_test = False
 
@@ -415,7 +421,7 @@ def setupCrashInfoHook():
             return
         dylib_src = os.path.join(test_dir,"crashinfo.c")
         dylib_dst = os.path.join(test_dir,"crashinfo.so")
-        cmd = "xcrun clang %s -o %s -framework Python -Xlinker -dylib -iframework /System/Library/Frameworks/ -Xlinker -F /System/Library/Frameworks/" % (dylib_src,dylib_dst)
+        cmd = "SDKROOT= xcrun clang %s -o %s -framework Python -Xlinker -dylib -iframework /System/Library/Frameworks/ -Xlinker -F /System/Library/Frameworks/" % (dylib_src,dylib_dst)
         if subprocess.call(cmd,shell=True) == 0 and os.path.exists(dylib_dst):
             setCrashInfoHook = setCrashInfoHook_Mac
     else:
@@ -429,6 +435,8 @@ def parseOptionsAndInitTestdirs():
 
     global dont_do_python_api_test
     global just_do_python_api_test
+    global dont_do_lldbmi_test
+    global just_do_lldbmi_test
     global just_do_benchmarks_test
     global dont_do_dsym_test
     global dont_do_dwarf_test
@@ -471,6 +479,9 @@ def parseOptionsAndInitTestdirs():
 
     do_help = False
 
+    platform_system = platform.system()
+    platform_machine = platform.machine()
+
     parser = argparse.ArgumentParser(description='description', prefix_chars='+-', add_help=False)
     group = None
 
@@ -484,6 +495,8 @@ def parseOptionsAndInitTestdirs():
     group = parser.add_argument_group('Toolchain options')
     group.add_argument('-A', '--arch', metavar='arch', action='append', dest='archs', help=textwrap.dedent('''Specify the architecture(s) to test. This option can be specified more than once'''))
     group.add_argument('-C', '--compiler', metavar='compiler', dest='compilers', action='append', help=textwrap.dedent('''Specify the compiler(s) used to build the inferior executables. The compiler path can be an executable basename or a full path to a compiler executable. This option can be specified multiple times.'''))
+    if platform_system == 'Darwin':
+        group.add_argument('--apple-sdk', metavar='apple_sdk', dest='apple_sdk', help=textwrap.dedent('''Specify the name of the Apple SDK (macosx, macosx.internal, iphoneos, iphoneos.internal, or path to SDK) and use the appropriate tools from that SDK's toolchain.'''))
     # FIXME? This won't work for different extra flags according to each arch.
     group.add_argument('-E', metavar='extra-flags', help=textwrap.dedent('''Specify the extra flags to be passed to the toolchain when building the inferior programs to be debugged
                                                            suggestions: do not lump the "-A arch1 -A arch2" together such that the -E option applies to only one of the architectures'''))
@@ -499,6 +512,8 @@ def parseOptionsAndInitTestdirs():
     group.add_argument('-f', metavar='filterspec', action='append', help='Specify a filter, which consists of the test class name, a dot, followed by the test method, to only admit such test into the test suite')  # FIXME: Example?
     X('-g', 'If specified, the filterspec by -f is not exclusive, i.e., if a test module does not match the filterspec (testclass.testmethod), the whole module is still admitted to the test suite')
     X('-l', "Don't skip long running tests")
+    X('-m', "Don't do lldb-mi tests")
+    X('+m', "Just do lldb-mi tests. Do not specify along with '+m'", dest='plus_m')
     group.add_argument('-p', metavar='pattern', help='Specify a regexp filename pattern for inclusion in the test suite')
     group.add_argument('-X', metavar='directory', help="Exclude a directory from consideration for test discovery. -X types => if 'types' appear in the pathname components of a potential testfile, it will be ignored")
     group.add_argument('-G', '--category', metavar='category', action='append', dest='categoriesList', help=textwrap.dedent('''Specify categories of test cases of interest. Can be specified more than once.'''))
@@ -547,8 +562,6 @@ def parseOptionsAndInitTestdirs():
     group.add_argument('args', metavar='test-dir', nargs='*', help='Specify a list of directory names to search for test modules named after Test*.py (test discovery). If empty, search from the current working directory instead.')
 
     args = parse_args(parser)
-    platform_system = platform.system()
-    platform_machine = platform.machine()
     
     if args.unset_env_varnames:
         for env_var in args.unset_env_varnames:
@@ -568,13 +581,23 @@ def parseOptionsAndInitTestdirs():
     if args.compilers:
         compilers = args.compilers
     else:
-        compilers = ['clang']
+        # Use a compiler appropriate appropriate for the Apple SDK if one was specified
+        if platform_system == 'Darwin' and args.apple_sdk:
+            compilers = [commands.getoutput('xcrun -sdk "%s" -find clang 2> /dev/null' % (args.apple_sdk))]
+        else:
+            compilers = ['clang']
+
+    # Set SDKROOT if we are using an Apple SDK
+    if platform_system == 'Darwin' and args.apple_sdk:
+        os.environ['SDKROOT'] = commands.getoutput('xcrun --sdk "%s" --show-sdk-path 2> /dev/null' % (args.apple_sdk))
 
     if args.archs:
         archs = args.archs
         for arch in archs:
-            if arch.startswith('arm') and platform_system == 'Darwin':
+            if arch.startswith('arm') and platform_system == 'Darwin' and not args.apple_sdk:
                 os.environ['SDKROOT'] = commands.getoutput('xcrun --sdk iphoneos.internal --show-sdk-path 2> /dev/null')
+                if not os.path.exists(os.environ['SDKROOT']):
+                    os.environ['SDKROOT'] = commands.getoutput('xcrun --sdk iphoneos --show-sdk-path 2> /dev/null')
     else:
         archs = [platform_machine]
 
@@ -663,6 +686,15 @@ def parseOptionsAndInitTestdirs():
     if args.l:
         skip_long_running_test = False
 
+    if args.m:
+        dont_do_lldbmi_test = True
+
+    if args.plus_m:
+        if dont_do_lldbmi_test:
+            print "Warning: -m and +m can't both be specified! Using only -m"
+        else:
+            just_do_lldbmi_test = True
+
     if args.framework:
         lldbFrameworkPath = args.framework
 
@@ -748,6 +780,10 @@ def parseOptionsAndInitTestdirs():
 
     # Do not specify both '-a' and '+a' at the same time.
     if dont_do_python_api_test and just_do_python_api_test:
+        usage(parser)
+
+    # Do not specify both '-m' and '+m' at the same time.
+    if dont_do_lldbmi_test and just_do_lldbmi_test:
         usage(parser)
 
     if args.lldb_platform_name:
@@ -904,6 +940,7 @@ def setupSysPath():
     # We'll try to locate the appropriate executable right here.
 
     lldbExec = None
+    lldbMiExec = None
     if lldbExecutablePath:
         if is_exe(lldbExecutablePath):
             lldbExec = lldbExecutablePath
@@ -970,6 +1007,20 @@ def setupSysPath():
     else:
         os.environ["LLDB_EXEC"] = lldbExec
         #print "The 'lldb' from PATH env variable", lldbExec
+
+    # Assume lldb-mi is in same place as lldb
+    # If not found, disable the lldb-mi tests
+    global dont_do_lldbmi_test
+    if is_exe(lldbExec + "-mi"):
+        lldbMiExec = lldbExec + "-mi"
+    if not lldbMiExec:
+        dont_do_lldbmi_test = True
+        if just_do_lldbmi_test:
+            print "The 'lldb-mi' executable cannot be located.  The lldb-mi tests can not be run as a result."
+        else:
+            print "The 'lldb-mi' executable cannot be located.  Some of the tests may not be run as a result."
+    else:
+        os.environ["LLDBMI_EXEC"] = lldbMiExec
 
     # Skip printing svn/git information when running in parsable (lit-test compatibility) mode
     if not svn_silent and not parsable:
@@ -1301,6 +1352,8 @@ lldb.lldbtest_remote_shell_template = lldbtest_remote_shell_template
 # Put all these test decorators in the lldb namespace.
 lldb.dont_do_python_api_test = dont_do_python_api_test
 lldb.just_do_python_api_test = just_do_python_api_test
+lldb.dont_do_lldbmi_test = dont_do_lldbmi_test
+lldb.just_do_lldbmi_test = just_do_lldbmi_test
 lldb.just_do_benchmarks_test = just_do_benchmarks_test
 lldb.dont_do_dsym_test = dont_do_dsym_test
 lldb.dont_do_dwarf_test = dont_do_dwarf_test

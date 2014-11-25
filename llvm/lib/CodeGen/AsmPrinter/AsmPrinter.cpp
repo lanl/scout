@@ -241,7 +241,7 @@ bool AsmPrinter::doInitialization(Module &M) {
   case ExceptionHandling::ARM:
     ES = new ARMException(this);
     break;
-  case ExceptionHandling::WinEH:
+  case ExceptionHandling::ItaniumWinEH:
     switch (MAI->getWinEHEncodingType()) {
     default: llvm_unreachable("unsupported unwinding information encoding");
     case WinEH::EncodingType::Itanium:
@@ -701,8 +701,8 @@ AsmPrinter::CFIMoveType AsmPrinter::needsCFIMoves() {
 }
 
 bool AsmPrinter::needsSEHMoves() {
-  return MAI->getExceptionHandlingType() == ExceptionHandling::WinEH &&
-    MF->getFunction()->needsUnwindTableEntry();
+  return MAI->getExceptionHandlingType() == ExceptionHandling::ItaniumWinEH &&
+         MF->getFunction()->needsUnwindTableEntry();
 }
 
 void AsmPrinter::emitCFIInstruction(const MachineInstr &MI) {
@@ -1167,7 +1167,8 @@ void AsmPrinter::EmitJumpTableInfo() {
       const MCExpr *Base = TLI->getPICJumpTableRelocBaseExpr(MF,JTI,OutContext);
       for (unsigned ii = 0, ee = JTBBs.size(); ii != ee; ++ii) {
         const MachineBasicBlock *MBB = JTBBs[ii];
-        if (!EmittedSets.insert(MBB)) continue;
+        if (!EmittedSets.insert(MBB).second)
+          continue;
 
         // .set LJTSet, LBB32-base
         const MCExpr *LHS =

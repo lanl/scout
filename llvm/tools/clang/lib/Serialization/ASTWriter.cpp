@@ -3743,7 +3743,7 @@ static void visitLocalLookupResults(const DeclContext *ConstDC,
 }
 
 void ASTWriter::AddUpdatedDeclContext(const DeclContext *DC) {
-  if (UpdatedDeclContexts.insert(DC) && WritingAST) {
+  if (UpdatedDeclContexts.insert(DC).second && WritingAST) {
     // Ensure we emit all the visible declarations.
     visitLocalLookupResults(DC, DC->NeedToReconcileExternalVisibleStorage,
                             [&](DeclarationName Name,

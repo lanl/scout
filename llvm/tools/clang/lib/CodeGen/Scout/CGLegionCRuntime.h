@@ -78,7 +78,7 @@ namespace CodeGen {
     llvm::Value* GetNull(llvm::Type* T);
     
     llvm::Function* GetFunc(const std::string& funcName,
-                            TypeVec& argTypes,
+                            const TypeVec& argTypes,
                             llvm::Type* retType=0);
     
     llvm::PointerType* VoidPtrTy;
@@ -87,6 +87,7 @@ namespace CodeGen {
     llvm::Type* Int32Ty;
     llvm::Type* Int64Ty;
     llvm::Type* VoidTy;
+    llvm::Type* StringTy;
     
     llvm::StructType* OpaqueTy;
     
@@ -108,7 +109,7 @@ namespace CodeGen {
     llvm::Type* IndexIteratorTy;
     llvm::Type* TaskTy;
     
-    llvm::Type* PtrTy;
+    llvm::StructType* PtrTy;
     llvm::Type* Point1dTy;
     llvm::Type* Point2dTy;
     llvm::Type* Point3dTy;
@@ -117,9 +118,73 @@ namespace CodeGen {
     llvm::Type* Rect3dTy;
     
     llvm::Type* LowlevelIdTy;
-    llvm::Type* LowlevelAddressSpaceTy;
-    llvm::Type* LowlevelTaskFuncIdTy;
-    llvm::Type* LowlevelReductionOpIdTy;
+    llvm::Type* ProcessorTy;
+    llvm::Type* DomainMaxRectDimTy;
+    llvm::Type* ReductionOpIdTy;
+    llvm::Type* AddressSpaceTy;
+    llvm::Type* TaskPriorityTy;
+    llvm::Type* ColorTy;
+    llvm::Type* IndexPartitionTy;
+    llvm::Type* FieldIdTy;
+    llvm::Type* TraceIdTy;
+    llvm::Type* MapperIdTy;
+    llvm::Type* ContextIdTy;
+    llvm::Type* InstanceIdTy;
+    llvm::Type* FieldSpaceIdTy;
+    llvm::Type* GenerationIdTy;
+    llvm::Type* TypeHandleTy;
+    llvm::Type* ProjectionIdTy;
+    llvm::Type* RegionTreeIdTy;
+    llvm::Type* DistributedIdTy;
+    llvm::Type* AddressSpaceIdTy;
+    llvm::Type* TunableIdTy;
+    llvm::Type* MappingTagIdTy;
+    llvm::Type* VariantIdTy;
+    llvm::Type* UniqueIdTy;
+    llvm::Type* VersionIdTy;
+    llvm::Type* TaskIdTy;
+    
+    llvm::Type* PrivilegeModeTy;
+    llvm::Value* NoAccessVal;
+    llvm::Value* ReadOnlyVal;
+    llvm::Value* ReadWriteVal;
+    llvm::Value* WriteOnlyVal;
+    llvm::Value* WriteDiscardVal;
+    llvm::Value* ReduceVal;
+    llvm::Value* PromotedVal;
+    
+    llvm::Type* AllocateModeTy;
+    llvm::Value* NoMemoryVal;
+    llvm::Value* AllocableVal;
+    llvm::Value* FreeableVal;
+    llvm::Value* MutableVal;
+    llvm::Value* RegionCreationVal;
+    llvm::Value* RegionDeletionVal;
+    llvm::Value* AllMemoryVal;
+    
+    llvm::Type* CoherencePropertyTy;
+    llvm::Value* ExclusiveVal;
+    llvm::Value* AtomicVal;
+    llvm::Value* SimultaneousVal;
+    llvm::Value* RelaxedVal;
+    
+    llvm::Type* RegionFlagsTy;
+    llvm::Value* NoFlagVal;
+    llvm::Value* VerifiedFlagVal;
+    llvm::Value* NoAccessFlagVal;
+    
+    llvm::Type* HandleTy;
+    llvm::Value* SingularVal;
+    llvm::Value* PartProjectionVal;
+    llvm::Value* RegProjectionVal;
+    
+    llvm::Type* DependenceTy;
+    llvm::Value* NoDependenceVal;
+    llvm::Value* TrueDependenceVal;
+    llvm::Value* AntiDependenceVal;
+    llvm::Value* AtomicDependenceVal;
+    llvm::Value* SimultaneousDependenceVal;
+    llvm::Value* PromotedDependenceVal;
     
     llvm::StructType* DomainTy;
     llvm::StructType* IndexSpaceTy;
@@ -136,6 +201,12 @@ namespace CodeGen {
     
     llvm::FunctionType* VoidTaskFuncTy;
     llvm::FunctionType* TaskFuncTy;
+    
+    llvm::Value* TocProcVal;
+    llvm::Value* LocProcVal;
+    llvm::Value* UtilProcVal;
+    llvm::Value* ProcGroupVal;
+    llvm::Value* MaxRectDimVal;
     
     llvm::Function* DomainFromRect1dFunc();
     llvm::Function* DomainFromRect2dFunc();
@@ -253,7 +324,7 @@ namespace CodeGen {
     llvm::Function* RuntimeRegisterTaskFunc();
     
   private:
-    CodeGen::CodeGenModule &CGM;
+    CodeGen::CodeGenModule& CGM;
   };
 }
 }

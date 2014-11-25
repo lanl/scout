@@ -554,11 +554,16 @@ private:
     //------------------------------------------------------------------
     Target (Debugger &debugger,
             const ArchSpec &target_arch,
-            const lldb::PlatformSP &platform_sp);
+            const lldb::PlatformSP &platform_sp,
+            bool is_dummy_target);
 
     // Helper function.
     bool
     ProcessIsValid ();
+
+    // Copy breakpoints, stop hooks and so forth from the dummy target:
+    void
+    PrimeFromDummyTarget(Target *dummy_target);
 
 public:
     ~Target();
@@ -607,8 +612,7 @@ public:
     Destroy();
     
     Error
-    Launch (Listener &listener,
-            ProcessLaunchInfo &launch_info,
+    Launch (ProcessLaunchInfo &launch_info,
             Stream *stream); // Optional stream to receive first stop info
 
     //------------------------------------------------------------------
@@ -1147,6 +1151,12 @@ public:
                            lldb::addr_t load_addr,
                            bool warn_multiple = false);
 
+    size_t
+    UnloadModuleSections (const lldb::ModuleSP &module_sp);
+
+    size_t
+    UnloadModuleSections (const ModuleList &module_list);
+
     bool
     SetSectionUnloaded (const lldb::SectionSP &section_sp);
 
@@ -1382,6 +1392,7 @@ protected:
     lldb::user_id_t         m_stop_hook_next_id;
     bool                    m_valid;
     bool                    m_suppress_stop_hooks;
+    bool                    m_is_dummy_target;
     
     static void
     ImageSearchPathsChanged (const PathMappingList &path_list,

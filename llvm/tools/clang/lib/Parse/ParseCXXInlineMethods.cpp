@@ -336,6 +336,7 @@ void Parser::ParseLexedMethodDeclaration(LateParsedMethodDeclaration &LM) {
         DefArgResult = ParseBraceInitializer();
       } else
         DefArgResult = ParseAssignmentExpression();
+      DefArgResult = Actions.CorrectDelayedTyposInExpr(DefArgResult);
       if (DefArgResult.isInvalid())
         Actions.ActOnParamDefaultArgumentError(LM.DefaultArgs[I].Param,
                                                EqualLoc);
@@ -415,13 +416,12 @@ void Parser::ParseLexedMethodDeclaration(LateParsedMethodDeclaration &LM) {
       Diag(Tok.getLocation(), diag::err_except_spec_unparsed);
 
     // Attach the exception-specification to the method.
-    if (EST != EST_None)
-      Actions.actOnDelayedExceptionSpecification(LM.Method, EST,
-                                                 SpecificationRange,
-                                                 DynamicExceptions,
-                                                 DynamicExceptionRanges,
-                                                 NoexceptExpr.isUsable()?
-                                                   NoexceptExpr.get() : nullptr);
+    Actions.actOnDelayedExceptionSpecification(LM.Method, EST,
+                                               SpecificationRange,
+                                               DynamicExceptions,
+                                               DynamicExceptionRanges,
+                                               NoexceptExpr.isUsable()?
+                                                 NoexceptExpr.get() : nullptr);
 
     assert(!PP.getSourceManager().isBeforeInTranslationUnit(origLoc,
                                                             Tok.getLocation()) &&

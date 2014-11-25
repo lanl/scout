@@ -321,7 +321,7 @@ namespace {
     void RewriteObjCInternalStruct(ObjCInterfaceDecl *CDecl,
                                       std::string &Result);
 
-    virtual void Initialize(ASTContext &context) override = 0;
+    void Initialize(ASTContext &context) override = 0;
 
     // Metadata Rewriting.
     virtual void RewriteMetaDataIntoBuffer(std::string &Result) = 0;
@@ -513,7 +513,7 @@ namespace {
                                                      silenceMacroWarn) {}
     
     ~RewriteObjCFragileABI() {}
-    virtual void Initialize(ASTContext &context) override;
+    void Initialize(ASTContext &context) override;
 
     // Rewriting metadata
     template<typename MethodIterator>
@@ -3227,7 +3227,7 @@ void RewriteObjC::RewriteObjCInternalStruct(ObjCInterfaceDecl *CDecl,
     ReplaceText(LocStart, endBuf-startBuf, Result);
   }
   // Mark this struct as having been generated.
-  if (!ObjCSynthesizedStructs.insert(CDecl))
+  if (!ObjCSynthesizedStructs.insert(CDecl).second)
     llvm_unreachable("struct already synthesize- SynthesizeObjCInternalStruct");
 }
 
@@ -5260,7 +5260,7 @@ void RewriteObjCFragileABI::RewriteObjCProtocolMetaData(
   Result += "};\n";
   
   // Mark this protocol as having been generated.
-  if (!ObjCSynthesizedProtocols.insert(PDecl->getCanonicalDecl()))
+  if (!ObjCSynthesizedProtocols.insert(PDecl->getCanonicalDecl()).second)
     llvm_unreachable("protocol already synthesized");
   
 }
