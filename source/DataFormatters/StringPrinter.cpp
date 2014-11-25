@@ -454,8 +454,10 @@ ReadStringAndDumpToStream<StringElementType::ASCII> (ReadStringAndDumpToStreamOp
 
     if (options.GetSourceSize() == 0)
         size = process_sp->GetTarget().GetMaximumSizeOfStringSummary();
-    else
+    else if (!options.GetIgnoreMaxLength())
         size = std::min(options.GetSourceSize(),process_sp->GetTarget().GetMaximumSizeOfStringSummary());
+    else
+        size = options.GetSourceSize();
 
     lldb::DataBufferSP buffer_sp(new DataBufferHeap(size,0));
 
@@ -566,7 +568,7 @@ ReadUTFBufferAndDumpToStream (const ReadStringAndDumpToStreamOptions& options,
     else
         data_read = process_sp->ReadMemoryFromInferior(options.GetLocation(), (char*)buffer_sp->GetBytes(), bufferSPSize, error);
 
-    if (error.Fail() || data_read == 0)
+    if (error.Fail())
     {
         options.GetStream()->Printf("unable to read data");
         return true;
