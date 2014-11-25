@@ -279,7 +279,7 @@ isSafeToConvert(const MeshDecl *MD, CodeGenTypes &CGT,
                 llvm::SmallPtrSet<const MeshDecl*, 16> &AlreadyChecked) {
   // If we have already checked this type (maybe the same type is used by-value
   // multiple times in multiple structure fields, don't check again.
-  if (!AlreadyChecked.insert(MD)) return true;
+  if (!AlreadyChecked.insert(MD).second) return true;
 
   const Type *Key = CGT.getContext().getMeshDeclType(MD).getTypePtr();
 
@@ -361,7 +361,7 @@ llvm::StructType *CodeGenTypes::ConvertMeshDeclType(const MeshDecl *MD) {
   }
 
   // Okay, this is a definition of a type.  Compile the implementation now.
-  bool InsertResult = MeshesBeingLaidOut.insert(Key); (void)InsertResult;
+  bool InsertResult = MeshesBeingLaidOut.insert(Key).second; (void)InsertResult;
   assert(InsertResult && "Recursively compiling a mesh?");
 
    // Layout fields.
