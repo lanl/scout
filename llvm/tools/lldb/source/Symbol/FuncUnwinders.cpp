@@ -209,3 +209,36 @@ FuncUnwinders::GetUnwindAssemblyProfiler ()
     }
     return assembly_profiler_sp;
 }
+
+Address
+FuncUnwinders::GetLSDAAddress ()
+{
+    Address lsda_addr;
+    Mutex::Locker locker (m_mutex);
+
+    GetUnwindPlanAtCallSite (-1);
+
+    if (m_unwind_plan_call_site_sp && m_unwind_plan_call_site_sp->GetLSDAAddress().IsValid())
+    {
+        lsda_addr = m_unwind_plan_call_site_sp->GetLSDAAddress().IsValid();
+    }
+
+    return lsda_addr;
+}
+
+
+Address
+FuncUnwinders::GetPersonalityRoutinePtrAddress ()
+{
+    Address personality_addr;
+    Mutex::Locker locker (m_mutex);
+
+    GetUnwindPlanAtCallSite (-1);
+
+    if (m_unwind_plan_call_site_sp && m_unwind_plan_call_site_sp->GetPersonalityFunctionPtr().IsValid())
+    {
+        personality_addr = m_unwind_plan_call_site_sp->GetPersonalityFunctionPtr().IsValid();
+    }
+
+    return personality_addr;
+}

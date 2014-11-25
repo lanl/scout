@@ -689,7 +689,7 @@ class GdbRemoteTestCaseBase(TestBase):
     def run_process_then_stop(self, run_seconds=1):
         # Tell the stub to continue.
         self.test_sequence.add_log_lines(
-             ["read packet: $vCont;c#00"],
+             ["read packet: $vCont;c#a8"],
              True)
         context = self.expect_gdbremote_sequence()
 
@@ -734,7 +734,7 @@ class GdbRemoteTestCaseBase(TestBase):
 
         registers = {}
         for (key, val) in kv_dict.items():
-            if re.match(r"^[0-9a-fA-F]+", key):
+            if re.match(r"^[0-9a-fA-F]+$", key):
                 registers[int(key, 16)] = val
         return registers
 

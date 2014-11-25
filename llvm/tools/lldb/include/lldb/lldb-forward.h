@@ -370,6 +370,7 @@ namespace lldb {
     typedef std::shared_ptr<lldb_private::SearchFilter> SearchFilterSP;
     typedef std::shared_ptr<lldb_private::Settings> SettingsSP;
     typedef std::shared_ptr<lldb_private::StackFrame> StackFrameSP;
+    typedef std::unique_ptr<lldb_private::StackFrame> StackFrameUP;
     typedef std::weak_ptr<lldb_private::StackFrame> StackFrameWP;
     typedef std::shared_ptr<lldb_private::StackFrameList> StackFrameListSP;
     typedef std::shared_ptr<lldb_private::StopInfo> StopInfoSP;
@@ -401,6 +402,7 @@ namespace lldb {
     typedef std::shared_ptr<lldb_private::TypeFormatImpl> TypeFormatImplSP;
     typedef std::shared_ptr<lldb_private::TypeNameSpecifierImpl> TypeNameSpecifierImplSP;
     typedef std::shared_ptr<lldb_private::TypeSummaryImpl> TypeSummaryImplSP;
+    typedef std::shared_ptr<lldb_private::TypeSummaryOptions> TypeSummaryOptionsSP;
     typedef std::shared_ptr<lldb_private::TypeValidatorImpl> TypeValidatorImplSP;
 #ifndef LLDB_DISABLE_PYTHON
     typedef std::shared_ptr<lldb_private::ScriptedSyntheticChildren> ScriptedSyntheticChildrenSP;
