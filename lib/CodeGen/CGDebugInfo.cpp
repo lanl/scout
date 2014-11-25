@@ -1287,8 +1287,9 @@ CGDebugInfo::CollectTemplateParams(const TemplateParameterList *TPList,
         V = CGM.getCXXABI().EmitMemberDataPointer(MPT, chars);
       }
       llvm::DITemplateValueParameter TVP =
-          DBuilder.createTemplateValueParameter(TheCU, Name, TTy,
-                                                V->stripPointerCasts());
+          DBuilder.createTemplateValueParameter(
+              TheCU, Name, TTy,
+              cast_or_null<llvm::Constant>(V->stripPointerCasts()));
       TemplateParams.push_back(TVP);
     } break;
     case TemplateArgument::NullPtr: {
@@ -1309,7 +1310,8 @@ CGDebugInfo::CollectTemplateParams(const TemplateParameterList *TPList,
       if (!V)
         V = llvm::ConstantInt::get(CGM.Int8Ty, 0);
       llvm::DITemplateValueParameter TVP =
-          DBuilder.createTemplateValueParameter(TheCU, Name, TTy, V);
+          DBuilder.createTemplateValueParameter(TheCU, Name, TTy,
+                                                cast<llvm::Constant>(V));
       TemplateParams.push_back(TVP);
     } break;
     case TemplateArgument::Template: {
@@ -1334,8 +1336,8 @@ CGDebugInfo::CollectTemplateParams(const TemplateParameterList *TPList,
       assert(V && "Expression in template argument isn't constant");
       llvm::DIType TTy = getOrCreateType(T, Unit);
       llvm::DITemplateValueParameter TVP =
-          DBuilder.createTemplateValueParameter(TheCU, Name, TTy,
-                                                V->stripPointerCasts());
+          DBuilder.createTemplateValueParameter(
+              TheCU, Name, TTy, cast<llvm::Constant>(V->stripPointerCasts()));
       TemplateParams.push_back(TVP);
     } break;
     // And the following should never occur:
@@ -2301,6 +2303,129 @@ llvm::DIType CGDebugInfo::CreateMemberType(llvm::DIFile Unit, QualType FType,
   return Ty;
 }
 
+void CGDebugInfo::collectFunctionDeclProps(GlobalDecl GD,
+                                           llvm::DIFile Unit,
+                                           StringRef &Name, StringRef &LinkageName,
+                                           llvm::DIDescriptor &FDContext,
+                                           llvm::DIArray &TParamsArray,
+                                           unsigned &Flags) {
+  const FunctionDecl *FD = cast<FunctionDecl>(GD.getDecl());
+  Name = getFunctionName(FD);
+  // Use mangled name as linkage name for C/C++ functions.
+  if (FD->hasPrototype()) {
+    LinkageName = CGM.getMangledName(GD);
+    Flags |= llvm::DIDescriptor::FlagPrototyped;
+  }
+  // No need to replicate the linkage name if it isn't different from the
+  // subprogram name, no need to have it at all unless coverage is enabled or
+  // debug is set to more than just line tables.
+  if (LinkageName == Name ||
+      (!CGM.getCodeGenOpts().EmitGcovArcs &&
+       !CGM.getCodeGenOpts().EmitGcovNotes &&
+       DebugKind <= CodeGenOptions::DebugLineTablesOnly))
+    LinkageName = StringRef();
+
+  if (DebugKind >= CodeGenOptions::LimitedDebugInfo) {
+    if (const NamespaceDecl *NSDecl =
+        dyn_cast_or_null<NamespaceDecl>(FD->getDeclContext()))
+      FDContext = getOrCreateNameSpace(NSDecl);
+    else if (const RecordDecl *RDecl =
+             dyn_cast_or_null<RecordDecl>(FD->getDeclContext()))
+      FDContext = getContextDescriptor(cast<Decl>(RDecl));
+    // Collect template parameters.
+    TParamsArray = CollectFunctionTemplateParams(FD, Unit);
+  }
+}
+
+void CGDebugInfo::collectVarDeclProps(const VarDecl *VD, llvm::DIFile &Unit,
+                                      unsigned &LineNo, QualType &T,
+                                      StringRef &Name, StringRef &LinkageName,
+                                      llvm::DIDescriptor &VDContext) {
+  Unit = getOrCreateFile(VD->getLocation());
+  LineNo = getLineNumber(VD->getLocation());
+
+  setLocation(VD->getLocation());
+
+  T = VD->getType();
+  if (T->isIncompleteArrayType()) {
+    // CodeGen turns int[] into int[1] so we'll do the same here.
+    llvm::APInt ConstVal(32, 1);
+    QualType ET = CGM.getContext().getAsArrayType(T)->getElementType();
+
+    T = CGM.getContext().getConstantArrayType(ET, ConstVal,
+                                              ArrayType::Normal, 0);
+  }
+
+  Name = VD->getName();
+  if (VD->getDeclContext() && !isa<FunctionDecl>(VD->getDeclContext()) &&
+      !isa<ObjCMethodDecl>(VD->getDeclContext()))
+    LinkageName = CGM.getMangledName(VD);
+  if (LinkageName == Name)
+    LinkageName = StringRef();
+
+  // Since we emit declarations (DW_AT_members) for static members, place the
+  // definition of those static members in the namespace they were declared in
+  // in the source code (the lexical decl context).
+  // FIXME: Generalize this for even non-member global variables where the
+  // declaration and definition may have different lexical decl contexts, once
+  // we have support for emitting declarations of (non-member) global variables.
+  VDContext = getContextDescriptor(
+      dyn_cast<Decl>(VD->isStaticDataMember() ? VD->getLexicalDeclContext()
+                                              : VD->getDeclContext()));
+}
+
+llvm::DISubprogram
+CGDebugInfo::getFunctionForwardDeclaration(const FunctionDecl *FD) {
+  llvm::DIArray TParamsArray;
+  StringRef Name, LinkageName;
+  unsigned Flags = 0;
+  SourceLocation Loc = FD->getLocation();
+  llvm::DIFile Unit = getOrCreateFile(Loc);
+  llvm::DIDescriptor DContext(Unit);
+  unsigned Line = getLineNumber(Loc);
+
+  collectFunctionDeclProps(FD, Unit, Name, LinkageName, DContext,
+                           TParamsArray, Flags);
+  // Build function type.
+  SmallVector<QualType, 16> ArgTypes;
+  for (const ParmVarDecl *Parm: FD->parameters())
+    ArgTypes.push_back(Parm->getType());
+  QualType FnType =
+    CGM.getContext().getFunctionType(FD->getReturnType(), ArgTypes,
+                                     FunctionProtoType::ExtProtoInfo());
+  llvm::DISubprogram SP =
+    DBuilder.createTempFunctionFwdDecl(DContext, Name, LinkageName, Unit, Line,
+                                       getOrCreateFunctionType(FD, FnType, Unit),
+                                       !FD->isExternallyVisible(),
+                                       false /*declaration*/, 0, Flags,
+                                       CGM.getLangOpts().Optimize, nullptr,
+                                       TParamsArray, getFunctionDeclaration(FD));
+  const FunctionDecl *CanonDecl = cast<FunctionDecl>(FD->getCanonicalDecl());
+  FwdDeclReplaceMap.push_back(std::make_pair(CanonDecl,
+                                             static_cast<llvm::Value *>(SP)));
+  return SP;
+}
+
+llvm::DIGlobalVariable
+CGDebugInfo::getGlobalVariableForwardDeclaration(const VarDecl *VD) {
+  QualType T;
+  StringRef Name, LinkageName;
+  SourceLocation Loc = VD->getLocation();
+  llvm::DIFile Unit = getOrCreateFile(Loc);
+  llvm::DIDescriptor DContext(Unit);
+  unsigned Line = getLineNumber(Loc);
+
+  collectVarDeclProps(VD, Unit, Line, T, Name, LinkageName, DContext);
+  llvm::DIGlobalVariable GV =
+    DBuilder.createTempGlobalVariableFwdDecl(DContext, Name, LinkageName, Unit,
+                                             Line, getOrCreateType(T, Unit),
+                                             !VD->isExternallyVisible(),
+                                             nullptr, nullptr);
+  FwdDeclReplaceMap.push_back(std::make_pair(cast<VarDecl>(VD->getCanonicalDecl()),
+                                             static_cast<llvm::Value *>(GV)));
+  return GV;
+}
+
 llvm::DIDescriptor CGDebugInfo::getDeclarationOrDefinition(const Decl *D) {
   // We only need a declaration (not a definition) of the type - so use whatever
   // we would otherwise do to get a type for a pointee. (forward declarations in
@@ -2309,19 +2434,22 @@ llvm::DIDescriptor CGDebugInfo::getDeclarationOrDefinition(const Decl *D) {
   if (const TypeDecl *TD = dyn_cast<TypeDecl>(D))
     return getOrCreateType(CGM.getContext().getTypeDeclType(TD),
                            getOrCreateFile(TD->getLocation()));
-  // Otherwise fall back to a fairly rudimentary cache of existing declarations.
-  // This doesn't handle providing declarations (for functions or variables) for
-  // entities without definitions in this TU, nor when the definition proceeds
-  // the call to this function.
-  // FIXME: This should be split out into more specific maps with support for
-  // emitting forward declarations and merging definitions with declarations,
-  // the same way as we do for types.
   llvm::DenseMap<const Decl *, llvm::WeakVH>::iterator I =
       DeclCache.find(D->getCanonicalDecl());
-  if (I == DeclCache.end())
-    return llvm::DIScope();
-  llvm::Value *V = I->second;
-  return llvm::DIDescriptor(dyn_cast_or_null<llvm::MDNode>(V));
+
+  if (I != DeclCache.end()) {
+    llvm::Value *V = I->second;
+    return llvm::DIDescriptor(dyn_cast_or_null<llvm::MDNode>(V));
+  }
+
+  // No definition for now. Emit a forward definition that might be
+  // merged with a potential upcoming definition.
+  if (const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(D))
+    return getFunctionForwardDeclaration(FD);
+  else if (const auto *VD = dyn_cast<VarDecl>(D))
+    return getGlobalVariableForwardDeclaration(VD);
+
+  return llvm::DIDescriptor();
 }
 
 /// getFunctionDeclaration - Return debug info descriptor to describe method
@@ -2465,32 +2593,8 @@ void CGDebugInfo::EmitFunctionStart(GlobalDecl GD, SourceLocation Loc,
         return;
       }
     }
-    Name = getFunctionName(FD);
-    // Use mangled name as linkage name for C/C++ functions.
-    if (FD->hasPrototype()) {
-      LinkageName = CGM.getMangledName(GD);
-      Flags |= llvm::DIDescriptor::FlagPrototyped;
-    }
-    // No need to replicate the linkage name if it isn't different from the
-    // subprogram name, no need to have it at all unless coverage is enabled or
-    // debug is set to more than just line tables.
-    if (LinkageName == Name ||
-        (!CGM.getCodeGenOpts().EmitGcovArcs &&
-         !CGM.getCodeGenOpts().EmitGcovNotes &&
-         DebugKind <= CodeGenOptions::DebugLineTablesOnly))
-      LinkageName = StringRef();
-
-    if (DebugKind >= CodeGenOptions::LimitedDebugInfo) {
-      if (const NamespaceDecl *NSDecl =
-              dyn_cast_or_null<NamespaceDecl>(FD->getDeclContext()))
-        FDContext = getOrCreateNameSpace(NSDecl);
-      else if (const RecordDecl *RDecl =
-                   dyn_cast_or_null<RecordDecl>(FD->getDeclContext()))
-        FDContext = getContextDescriptor(cast<Decl>(RDecl));
-
-      // Collect template parameters.
-      TParamsArray = CollectFunctionTemplateParams(FD, Unit);
-    }
+    collectFunctionDeclProps(GD, Unit, Name, LinkageName, FDContext,
+                             TParamsArray, Flags);
   } else if (const ObjCMethodDecl *OMD = dyn_cast<ObjCMethodDecl>(D)) {
     Name = getObjCMethodName(OMD);
     Flags |= llvm::DIDescriptor::FlagPrototyped;
@@ -2836,7 +2940,7 @@ llvm::DIType CGDebugInfo::CreateSelfType(const QualType &QualTy,
 
 void CGDebugInfo::EmitDeclareOfBlockDeclRefVariable(
     const VarDecl *VD, llvm::Value *Storage, CGBuilderTy &Builder,
-    const CGBlockInfo &blockInfo) {
+    const CGBlockInfo &blockInfo, llvm::Instruction *InsertPoint) {
   assert(DebugKind >= CodeGenOptions::LimitedDebugInfo);
   assert(!LexicalBlockStack.empty() && "Region stack mismatch, stack empty!");
 
@@ -2894,8 +2998,11 @@ void CGDebugInfo::EmitDeclareOfBlockDeclRefVariable(
                                    VD->getName(), Unit, Line, Ty);
 
   // Insert an llvm.dbg.declare into the current block.
-  llvm::Instruction *Call = DBuilder.insertDeclare(
-      Storage, D, DBuilder.createExpression(addr), Builder.GetInsertPoint());
+  llvm::Instruction *Call = InsertPoint ?
+      DBuilder.insertDeclare(Storage, D, DBuilder.createExpression(addr),
+                             InsertPoint)
+    : DBuilder.insertDeclare(Storage, D, DBuilder.createExpression(addr),
+                             Builder.GetInsertBlock());
   Call->setDebugLoc(
       llvm::DebugLoc::get(Line, Column, LexicalBlockStack.back()));
 }
@@ -3123,39 +3230,12 @@ void CGDebugInfo::EmitGlobalVariable(llvm::GlobalVariable *Var,
                                      const VarDecl *D) {
   assert(DebugKind >= CodeGenOptions::LimitedDebugInfo);
   // Create global variable debug descriptor.
-  llvm::DIFile Unit = getOrCreateFile(D->getLocation());
-  unsigned LineNo = getLineNumber(D->getLocation());
-
-  setLocation(D->getLocation());
-
-  QualType T = D->getType();
-  if (T->isIncompleteArrayType()) {
-
-    // CodeGen turns int[] into int[1] so we'll do the same here.
-    llvm::APInt ConstVal(32, 1);
-    QualType ET = CGM.getContext().getAsArrayType(T)->getElementType();
-
-    T = CGM.getContext().getConstantArrayType(ET, ConstVal, ArrayType::Normal,
-                                              0);
-  }
-
-  StringRef DeclName = D->getName();
-  StringRef LinkageName;
-  if (D->getDeclContext() && !isa<FunctionDecl>(D->getDeclContext()) &&
-      !isa<ObjCMethodDecl>(D->getDeclContext()))
-    LinkageName = Var->getName();
-  if (LinkageName == DeclName)
-    LinkageName = StringRef();
-
-  // Since we emit declarations (DW_AT_members) for static members, place the
-  // definition of those static members in the namespace they were declared in
-  // in the source code (the lexical decl context).
-  // FIXME: Generalize this for even non-member global variables where the
-  // declaration and definition may have different lexical decl contexts, once
-  // we have support for emitting declarations of (non-member) global variables.
-  llvm::DIDescriptor DContext = getContextDescriptor(
-      dyn_cast<Decl>(D->isStaticDataMember() ? D->getLexicalDeclContext()
-                                             : D->getDeclContext()));
+  llvm::DIFile Unit;
+  llvm::DIDescriptor DContext;
+  unsigned LineNo;
+  StringRef DeclName, LinkageName;
+  QualType T;
+  collectVarDeclProps(D, Unit, LineNo, T, DeclName, LinkageName, DContext);
 
   // Attempt to store one global variable for the declaration - even if we
   // emit a lot of fields.
@@ -3198,15 +3278,25 @@ void CGDebugInfo::EmitGlobalVariable(const ValueDecl *VD,
   if (isa<FunctionDecl>(VD->getDeclContext()))
     return;
   VD = cast<ValueDecl>(VD->getCanonicalDecl());
+  auto *VarD = cast<VarDecl>(VD);
+  if (VarD->isStaticDataMember()) {
+    auto *RD = cast<RecordDecl>(VarD->getDeclContext());
+    getContextDescriptor(RD);
+    // Ensure that the type is retained even though it's otherwise unreferenced.
+    RetainedTypes.push_back(
+        CGM.getContext().getRecordType(RD).getAsOpaquePtr());
+    return;
+  }
+
+  llvm::DIDescriptor DContext =
+      getContextDescriptor(dyn_cast<Decl>(VD->getDeclContext()));
+
   auto pair = DeclCache.insert(std::make_pair(VD, llvm::WeakVH()));
   if (!pair.second)
     return;
-  llvm::DIDescriptor DContext =
-      getContextDescriptor(dyn_cast<Decl>(VD->getDeclContext()));
   llvm::DIGlobalVariable GV = DBuilder.createGlobalVariable(
       DContext, Name, StringRef(), Unit, getLineNumber(VD->getLocation()), Ty,
-      true, Init,
-      getOrCreateStaticDataMemberDeclarationOrNull(cast<VarDecl>(VD)));
+      true, Init, getOrCreateStaticDataMemberDeclarationOrNull(VarD));
   pair.first->second = llvm::WeakVH(GV);
 }
 
@@ -3306,6 +3396,24 @@ void CGDebugInfo::finalize() {
 
     llvm::DIType RepTy(cast<llvm::MDNode>(it->second));
     Ty.replaceAllUsesWith(CGM.getLLVMContext(), RepTy);
+  }
+
+  for (const auto &p : FwdDeclReplaceMap) {
+    assert(p.second);
+    llvm::DIDescriptor FwdDecl(cast<llvm::MDNode>(p.second));
+    llvm::WeakVH VH;
+
+    auto it = DeclCache.find(p.first);
+    // If there has been no definition for the declaration, call RAUV
+    // with ourselves, that will destroy the temporary MDNode and
+    // replace it with a standard one, avoiding leaking memory.
+    if (it == DeclCache.end())
+      VH = p.second;
+    else
+      VH = it->second;
+
+    FwdDecl.replaceAllUsesWith(CGM.getLLVMContext(),
+                               llvm::DIDescriptor(cast<llvm::MDNode>(VH)));
   }
 
   // We keep our own list of retained types, because we need to look

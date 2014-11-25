@@ -3525,7 +3525,7 @@ void ASTReader::makeModuleVisible(Module *Mod,
     for (SmallVectorImpl<Module *>::iterator
            I = Exports.begin(), E = Exports.end(); I != E; ++I) {
       Module *Exported = *I;
-      if (Visited.insert(Exported))
+      if (Visited.insert(Exported).second)
         Stack.push_back(Exported);
     }
 
@@ -6574,9 +6574,14 @@ ASTReader::FindExternalVisibleDeclsByName(const DeclContext *DC,
         (Kind == DeclarationName::CXXOperatorName &&
          Name.getCXXOverloadedOperator() == OO_Equal)) {
       auto Merged = MergedLookups.find(DC);
-      if (Merged != MergedLookups.end())
-        for (auto *MergedDC : Merged->second)
-          LookUpInContexts(MergedDC);
+      if (Merged != MergedLookups.end()) {
+        for (unsigned I = 0; I != Merged->second.size(); ++I) {
+          LookUpInContexts(Merged->second[I]);
+          // We might have just added some more merged lookups. If so, our
+          // iterator is now invalid, so grab a fresh one before continuing.
+          Merged = MergedLookups.find(DC);
+        }
+      }
     }
   }
 
@@ -8142,6 +8147,14 @@ void ASTReader::ReadComments() {
   }
 }
 
+void ASTReader::getInputFiles(ModuleFile &F,
+                             SmallVectorImpl<serialization::InputFile> &Files) {
+  for (unsigned I = 0, E = F.InputFilesLoaded.size(); I != E; ++I) {
+    unsigned ID = I+1;
+    Files.push_back(getInputFile(F, ID));
+  }
+}
+
 std::string ASTReader::getOwningModuleNameForDiagnostic(const Decl *D) {
   // If we know the owning module, use it.
   if (Module *M = D->getOwningModule())
@@ -8406,7 +8419,7 @@ void ASTReader::diagnoseOdrViolations() {
   for (auto &Merge : OdrMergeFailures) {
     // If we've already pointed out a specific problem with this class, don't
     // bother issuing a general "something's different" diagnostic.
-    if (!DiagnosedOdrMergeFailures.insert(Merge.first))
+    if (!DiagnosedOdrMergeFailures.insert(Merge.first).second)
       continue;
 
     bool Diagnosed = false;
