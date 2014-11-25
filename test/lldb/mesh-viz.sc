@@ -73,7 +73,7 @@ double now(){
 
 int main(int argc, char *argv[])
 {
-  hsva(0, 0, 0, 0);
+  //hsva(0, 0, 0, 0);
 
   const int NTIME_STEPS     = 300;
   const float MAX_TEMP      = 100.0f;

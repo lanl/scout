@@ -78,5 +78,5 @@ expect {
   }
 }
 
-#send "q\n"
+send "q\n"
 #
