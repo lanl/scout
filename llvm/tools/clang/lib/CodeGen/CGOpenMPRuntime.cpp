@@ -363,6 +363,14 @@ CGOpenMPRuntime::CreateRuntimeFunction(OpenMPRTLFunction Function) {
     RTLFn = CGM.CreateRuntimeFunction(FnTy, "__kmpc_end_serialized_parallel");
     break;
   }
+  case OMPRTL__kmpc_flush: {
+    // Build void __kmpc_flush(ident_t *loc, ...);
+    llvm::Type *TypeParams[] = {getIdentTyPointerTy()};
+    llvm::FunctionType *FnTy =
+        llvm::FunctionType::get(CGM.VoidTy, TypeParams, /*isVarArg*/ true);
+    RTLFn = CGM.CreateRuntimeFunction(FnTy, "__kmpc_flush");
+    break;
+  }
   }
   return RTLFn;
 }
@@ -590,19 +598,17 @@ CGOpenMPRuntime::GetOrCreateInternalVariable(llvm::Type *Ty,
   llvm::raw_svector_ostream Out(Buffer);
   Out << Name;
   auto RuntimeName = Out.str();
-  auto &Elem = InternalVars.GetOrCreateValue(RuntimeName);
-  if (Elem.getValue()) {
-    assert(Elem.getValue()->getType()->getPointerElementType() == Ty &&
+  auto &Elem = *InternalVars.insert(std::make_pair(RuntimeName, nullptr)).first;
+  if (Elem.second) {
+    assert(Elem.second->getType()->getPointerElementType() == Ty &&
            "OMP internal variable has different type than requested");
-    return &*Elem.getValue();
+    return &*Elem.second;
   }
 
-  auto Item = new llvm::GlobalVariable(
-      CGM.getModule(), Ty, /*IsConstant*/ false,
-      llvm::GlobalValue::CommonLinkage,
-      llvm::Constant::getNullValue(Ty), Elem.getKey());
-  Elem.setValue(Item);
-  return Item;
+  return Elem.second = new llvm::GlobalVariable(
+             CGM.getModule(), Ty, /*IsConstant*/ false,
+             llvm::GlobalValue::CommonLinkage, llvm::Constant::getNullValue(Ty),
+             Elem.first());
 }
 
 llvm::Value *CGOpenMPRuntime::GetCriticalRegionLock(StringRef CriticalName) {
@@ -653,3 +659,14 @@ void CGOpenMPRuntime::EmitOMPNumThreadsClause(CodeGenFunction &CGF,
   CGF.EmitRuntimeCall(RTLFn, Args);
 }
 
+void CGOpenMPRuntime::EmitOMPFlush(CodeGenFunction &CGF, ArrayRef<const Expr *>,
+                                   SourceLocation Loc) {
+  // Build call void __kmpc_flush(ident_t *loc, ...)
+  // FIXME: List of variables is ignored by libiomp5 runtime, no need to
+  // generate it, just request full memory fence.
+  llvm::Value *Args[] = {EmitOpenMPUpdateLocation(CGF, Loc),
+                         llvm::ConstantInt::get(CGM.Int32Ty, 0)};
+  auto *RTLFn = CGF.CGM.getOpenMPRuntime().CreateRuntimeFunction(
+      CGOpenMPRuntime::OMPRTL__kmpc_flush);
+  CGF.EmitRuntimeCall(RTLFn, Args);
+}

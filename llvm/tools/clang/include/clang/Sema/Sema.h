@@ -458,12 +458,11 @@ public:
   /// cycle detection at the end of the TU.
   DelegatingCtorDeclsType DelegatingCtorDecls;
 
-  /// \brief All the overriding destructors seen during a class definition
-  /// (there could be multiple due to nested classes) that had their exception
-  /// spec checks delayed, plus the overridden destructor.
-  SmallVector<std::pair<const CXXDestructorDecl*,
-                              const CXXDestructorDecl*>, 2>
-      DelayedDestructorExceptionSpecChecks;
+  /// \brief All the overriding functions seen during a class definition
+  /// that had their exception spec checks delayed, plus the overridden
+  /// function.
+  SmallVector<std::pair<const CXXMethodDecl*, const CXXMethodDecl*>, 2>
+    DelayedExceptionSpecChecks;
 
   /// \brief All the members seen during a class definition which were both
   /// explicitly defaulted and had explicitly-specified exception
@@ -3489,7 +3488,7 @@ public:
       Scope *S, CXXScopeSpec &SS, SourceLocation TemplateKWLoc,
       UnqualifiedId &Id, bool HasTrailingLParen, bool IsAddressOfOperand,
       std::unique_ptr<CorrectionCandidateCallback> CCC = nullptr,
-      bool IsInlineAsmIdentifier = false);
+      bool IsInlineAsmIdentifier = false, Token *KeywordReplacement = nullptr);
 
   void DecomposeUnqualifiedId(const UnqualifiedId &Id,
                               TemplateArgumentListInfo &Buffer,
@@ -3500,7 +3499,7 @@ public:
   DiagnoseEmptyLookup(Scope *S, CXXScopeSpec &SS, LookupResult &R,
                       std::unique_ptr<CorrectionCandidateCallback> CCC,
                       TemplateArgumentListInfo *ExplicitTemplateArgs = nullptr,
-                      ArrayRef<Expr *> Args = None);
+                      ArrayRef<Expr *> Args = None, TypoExpr **Out = nullptr);
 
   ExprResult LookupInObjCMethod(LookupResult &LookUp, Scope *S,
                                 IdentifierInfo *II,
@@ -3555,11 +3554,13 @@ public:
 
   ExprResult BuildDeclarationNameExpr(const CXXScopeSpec &SS,
                                       LookupResult &R,
-                                      bool NeedsADL);
+                                      bool NeedsADL,
+                                      bool AcceptInvalidDecl = false);
   ExprResult BuildDeclarationNameExpr(
       const CXXScopeSpec &SS, const DeclarationNameInfo &NameInfo, NamedDecl *D,
       NamedDecl *FoundD = nullptr,
-      const TemplateArgumentListInfo *TemplateArgs = nullptr);
+      const TemplateArgumentListInfo *TemplateArgs = nullptr,
+      bool AcceptInvalidDecl = false);
 
   ExprResult BuildLiteralOperatorCall(LookupResult &R,
                       DeclarationNameInfo &SuffixInfo,
@@ -4031,6 +4032,8 @@ public:
                         bool IsStdInitListInitialization, bool RequiresZeroInit,
                         unsigned ConstructKind, SourceRange ParenRange);
 
+  ExprResult BuildCXXDefaultInitExpr(SourceLocation Loc, FieldDecl *Field);
+
   /// BuildCXXDefaultArgExpr - Creates a CXXDefaultArgExpr, instantiating
   /// the default expr if needed.
   ExprResult BuildCXXDefaultArgExpr(SourceLocation CallLoc,
@@ -4157,6 +4160,10 @@ public:
                                    Expr *NoexceptExpr,
                                    SmallVectorImpl<QualType> &Exceptions,
                                    FunctionProtoType::ExceptionSpecInfo &ESI);
+
+  /// \brief Determine if we're in a case where we need to (incorrectly) eagerly
+  /// parse an exception specification to work around a libstdc++ bug.
+  bool isLibstdcxxEagerExceptionSpecHack(const Declarator &D);
 
   /// \brief Add an exception-specification to the given member function
   /// (or member function template). The exception-specification was parsed
@@ -6876,6 +6883,10 @@ public:
                        const MultiLevelTemplateArgumentList &TemplateArgs,
                        TemplateSpecializationKind TSK);
 
+  bool InstantiateInClassInitializer(
+      SourceLocation PointOfInstantiation, FieldDecl *Instantiation,
+      FieldDecl *Pattern, const MultiLevelTemplateArgumentList &TemplateArgs);
+
   struct LateInstantiatedAttribute {
     const Attr *TmplAttr;
     LocalInstantiationScope *Scope;
@@ -8644,6 +8655,7 @@ private:
 
   void CheckFloatComparison(SourceLocation Loc, Expr* LHS, Expr* RHS);
   void CheckImplicitConversions(Expr *E, SourceLocation CC = SourceLocation());
+  void CheckBoolLikeConversion(Expr *E, SourceLocation CC);
   void CheckForIntOverflow(Expr *E);
   void CheckUnsequencedOperations(Expr *E);
 

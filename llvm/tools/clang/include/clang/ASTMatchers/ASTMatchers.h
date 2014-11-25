@@ -47,6 +47,7 @@
 
 #include "clang/AST/DeclFriend.h"
 #include "clang/AST/DeclTemplate.h"
+#include "clang/AST/ASTContext.h"
 #include "clang/ASTMatchers/ASTMatchersInternal.h"
 #include "clang/ASTMatchers/ASTMatchersMacros.h"
 #include "llvm/ADT/Twine.h"
@@ -141,6 +142,97 @@ typedef internal::Matcher<NestedNameSpecifierLoc> NestedNameSpecifierLocMatcher;
 ///
 /// Usable as: Any Matcher
 inline internal::TrueMatcher anything() { return internal::TrueMatcher(); }
+
+/// \brief Matches typedef declarations.
+///
+/// Given
+/// \code
+///   typedef int X;
+/// \endcode
+/// typedefDecl()
+///   matches "typedef int X"
+const internal::VariadicDynCastAllOfMatcher<Decl, TypedefDecl> typedefDecl;
+
+/// \brief Matches AST nodes that were expanded within the main-file.
+///
+/// Example matches X but not Y (matcher = recordDecl(isExpansionInMainFile())
+/// \code
+///   #include <Y.h>
+///   class X {};
+/// \endcode
+/// Y.h:
+/// \code
+///   class Y {};
+/// \endcode
+///
+/// Usable as: Matcher<Decl>, Matcher<Stmt>, Matcher<TypeLoc>
+AST_POLYMORPHIC_MATCHER(isExpansionInMainFile,
+                        AST_POLYMORPHIC_SUPPORTED_TYPES_3(Decl, Stmt,
+                                                          TypeLoc)) {
+  auto &SourceManager = Finder->getASTContext().getSourceManager();
+  return SourceManager.isInMainFile(
+      SourceManager.getExpansionLoc(Node.getLocStart()));
+}
+
+/// \brief Matches AST nodes that were expanded within system-header-files.
+///
+/// Example matches Y but not X
+///     (matcher = recordDecl(isExpansionInSystemHeader())
+/// \code
+///   #include <SystemHeader.h>
+///   class X {};
+/// \endcode
+/// SystemHeader.h:
+/// \code
+///   class Y {};
+/// \endcode
+///
+/// Usable as: Matcher<Decl>, Matcher<Stmt>, Matcher<TypeLoc>
+AST_POLYMORPHIC_MATCHER(isExpansionInSystemHeader,
+                        AST_POLYMORPHIC_SUPPORTED_TYPES_3(Decl, Stmt,
+                                                          TypeLoc)) {
+  auto &SourceManager = Finder->getASTContext().getSourceManager();
+  auto ExpansionLoc = SourceManager.getExpansionLoc(Node.getLocStart());
+  if (ExpansionLoc.isInvalid()) {
+    return false;
+  }
+  return SourceManager.isInSystemHeader(ExpansionLoc);
+}
+
+/// \brief Matches AST nodes that were expanded within files whose name is
+/// partially matching a given regex.
+///
+/// Example matches Y but not X
+///     (matcher = recordDecl(isExpansionInFileMatching("AST.*"))
+/// \code
+///   #include "ASTMatcher.h"
+///   class X {};
+/// \endcode
+/// ASTMatcher.h:
+/// \code
+///   class Y {};
+/// \endcode
+///
+/// Usable as: Matcher<Decl>, Matcher<Stmt>, Matcher<TypeLoc>
+AST_POLYMORPHIC_MATCHER_P(isExpansionInFileMatching,
+                          AST_POLYMORPHIC_SUPPORTED_TYPES_3(Decl, Stmt,
+                                                            TypeLoc),
+                          std::string, RegExp) {
+  auto &SourceManager = Finder->getASTContext().getSourceManager();
+  auto ExpansionLoc = SourceManager.getExpansionLoc(Node.getLocStart());
+  if (ExpansionLoc.isInvalid()) {
+    return false;
+  }
+  auto FileEntry =
+      SourceManager.getFileEntryForID(SourceManager.getFileID(ExpansionLoc));
+  if (!FileEntry) {
+    return false;
+  }
+
+  auto Filename = FileEntry->getName();
+  llvm::Regex RE(RegExp);
+  return RE.match(Filename);
+}
 
 /// \brief Matches declarations.
 ///
@@ -1524,21 +1616,21 @@ const internal::VariadicAllOfMatcher<TypeLoc> typeLoc;
 ///
 /// Usable as: Any Matcher
 const internal::VariadicOperatorMatcherFunc<2, UINT_MAX> eachOf = {
-  internal::EachOfVariadicOperator
+  internal::DynTypedMatcher::VO_EachOf
 };
 
 /// \brief Matches if any of the given matchers matches.
 ///
 /// Usable as: Any Matcher
 const internal::VariadicOperatorMatcherFunc<2, UINT_MAX> anyOf = {
-  internal::AnyOfVariadicOperator
+  internal::DynTypedMatcher::VO_AnyOf
 };
 
 /// \brief Matches if all given matchers match.
 ///
 /// Usable as: Any Matcher
 const internal::VariadicOperatorMatcherFunc<2, UINT_MAX> allOf = {
-  internal::AllOfVariadicOperator
+  internal::DynTypedMatcher::VO_AllOf
 };
 
 /// \brief Matches sizeof (C99), alignof (C++11) and vec_step (OpenCL)
@@ -1870,7 +1962,7 @@ const internal::ArgumentAdaptingMatcherFunc<
 ///
 /// Usable as: Any Matcher
 const internal::VariadicOperatorMatcherFunc<1, 1> unless = {
-  internal::NotUnaryOperator
+  internal::DynTypedMatcher::VO_UnaryNot
 };
 
 /// \brief Matches a node if the declaration associated with that node

@@ -5761,22 +5761,20 @@ Sema::ActOnVariableDeclarator(Scope *S, Declarator &D, DeclContext *DC,
     NewVD->setLocalExternDecl();
 
   if (DeclSpec::TSCS TSCS = D.getDeclSpec().getThreadStorageClassSpec()) {
-    if (NewVD->hasLocalStorage()) {
-      // C++11 [dcl.stc]p4:
-      //   When thread_local is applied to a variable of block scope the
-      //   storage-class-specifier static is implied if it does not appear
-      //   explicitly.
-      // Core issue: 'static' is not implied if the variable is declared
-      //   'extern'.
-      if (SCSpec == DeclSpec::SCS_unspecified &&
-          TSCS == DeclSpec::TSCS_thread_local &&
-          DC->isFunctionOrMethod())
-        NewVD->setTSCSpec(TSCS);
-      else
-        Diag(D.getDeclSpec().getThreadStorageClassSpecLoc(),
-             diag::err_thread_non_global)
-          << DeclSpec::getSpecifierName(TSCS);
-    } else if (!Context.getTargetInfo().isTLSSupported())
+    // C++11 [dcl.stc]p4:
+    //   When thread_local is applied to a variable of block scope the
+    //   storage-class-specifier static is implied if it does not appear
+    //   explicitly.
+    // Core issue: 'static' is not implied if the variable is declared
+    //   'extern'.
+    if (NewVD->hasLocalStorage() &&
+        (SCSpec != DeclSpec::SCS_unspecified ||
+         TSCS != DeclSpec::TSCS_thread_local ||
+         !DC->isFunctionOrMethod()))
+      Diag(D.getDeclSpec().getThreadStorageClassSpecLoc(),
+           diag::err_thread_non_global)
+        << DeclSpec::getSpecifierName(TSCS);
+    else if (!Context.getTargetInfo().isTLSSupported())
       Diag(D.getDeclSpec().getThreadStorageClassSpecLoc(),
            diag::err_thread_unsupported);
     else
@@ -6461,7 +6459,7 @@ static void ReportOverrides(Sema& S, unsigned DiagID, const CXXMethodDecl *MD,
 /// AddOverriddenMethods - See if a method overrides any in the base classes,
 /// and if so, check that it's a valid override and remember it.
 bool Sema::AddOverriddenMethods(CXXRecordDecl *DC, CXXMethodDecl *MD) {
-  // Look for virtual methods in base classes that this method might override.
+  // Look for methods in base classes that this method might override.
   CXXBasePaths Paths;
   FindOverriddenMethodData Data;
   Data.Method = MD;
@@ -8974,6 +8972,23 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init,
       Args = MultiExprArg(CXXDirectInit->getExprs(),
                           CXXDirectInit->getNumExprs());
 
+    // Try to correct any TypoExprs if there might be some in the initialization
+    // arguments (TypoExprs are marked as type-dependent).
+    // TODO: Handle typo correction when there's more than one argument?
+    if (Args.size() == 1 && Expr::hasAnyTypeDependentArguments(Args)) {
+      ExprResult Res =
+          CorrectDelayedTyposInExpr(Args[0], [this, Entity, Kind](Expr *E) {
+            InitializationSequence Init(*this, Entity, Kind, MultiExprArg(E));
+            return Init.Failed() ? ExprError() : E;
+          });
+      if (Res.isInvalid()) {
+        VDecl->setInvalidDecl();
+        return;
+      }
+      if (Res.get() != Args[0])
+        Args[0] = Res.get();
+    }
+
     InitializationSequence InitSeq(*this, Entity, Kind, Args);
     ExprResult Result = InitSeq.Perform(*this, Entity, Kind, Args, &DclT);
     if (Result.isInvalid()) {
@@ -10772,7 +10787,8 @@ Decl *Sema::ActOnFinishFunctionBody(Decl *dcl, Stmt *Body,
       }
     }
 
-    assert(ExprCleanupObjects.empty() && "Leftover temporaries in function");
+    assert(ExprCleanupObjects.size() == ExprEvalContexts.back().NumCleanupObjects
+           && "Leftover temporaries in function");
     assert(!ExprNeedsCleanups && "Unaccounted cleanups in function");
     assert(MaybeODRUseExprs.empty() &&
            "Leftover expressions for odr-use checking");
