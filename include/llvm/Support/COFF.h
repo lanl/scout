@@ -515,12 +515,14 @@ namespace COFF {
     uint32_t SizeOfHeaders;
     uint32_t CheckSum;
     uint16_t Subsystem;
+    // FIXME: This should be DllCharacteristics to match the COFF spec.
     uint16_t DLLCharacteristics;
     uint32_t SizeOfStackReserve;
     uint32_t SizeOfStackCommit;
     uint32_t SizeOfHeapReserve;
     uint32_t SizeOfHeapCommit;
     uint32_t LoaderFlags;
+    // FIXME: This should be NumberOfRvaAndSizes to match the COFF spec.
     uint32_t NumberOfRvaAndSize;
   };
 
@@ -544,7 +546,9 @@ namespace COFF {
     BOUND_IMPORT,
     IAT,
     DELAY_IMPORT_DESCRIPTOR,
-    CLR_RUNTIME_HEADER
+    CLR_RUNTIME_HEADER,
+
+    NUM_DATA_DIRECTORIES
   };
 
   enum WindowsSubsystem {
