@@ -87,6 +87,8 @@ protected:
   SDValue LowerSTORE(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerSDIVREM(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerDIVREM24(SDValue Op, SelectionDAG &DAG, bool sign) const;
+  void LowerUDIVREM64(SDValue Op, SelectionDAG &DAG,
+                                    SmallVectorImpl<SDValue> &Results) const;
   bool isHWTrueValue(SDValue Op) const;
   bool isHWFalseValue(SDValue Op) const;
 
@@ -140,14 +142,23 @@ public:
 
   SDValue LowerIntrinsicIABS(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerIntrinsicLRP(SDValue Op, SelectionDAG &DAG) const;
-  SDValue CombineMinMax(SDLoc DL,
-                        EVT VT,
-                        SDValue LHS,
-                        SDValue RHS,
-                        SDValue True,
-                        SDValue False,
-                        SDValue CC,
-                        SelectionDAG &DAG) const;
+  SDValue CombineFMinMax(SDLoc DL,
+                         EVT VT,
+                         SDValue LHS,
+                         SDValue RHS,
+                         SDValue True,
+                         SDValue False,
+                         SDValue CC,
+                         SelectionDAG &DAG) const;
+  SDValue CombineIMinMax(SDLoc DL,
+                         EVT VT,
+                         SDValue LHS,
+                         SDValue RHS,
+                         SDValue True,
+                         SDValue False,
+                         SDValue CC,
+                         SelectionDAG &DAG) const;
+
   const char* getTargetNodeName(unsigned Opcode) const override;
 
   virtual SDNode *PostISelFolding(MachineSDNode *N,
@@ -201,6 +212,12 @@ enum {
   FMIN_LEGACY,
   SMIN,
   UMIN,
+  FMAX3,
+  SMAX3,
+  UMAX3,
+  FMIN3,
+  SMIN3,
+  UMIN3,
   URECIP,
   DIV_SCALE,
   DIV_FMAS,

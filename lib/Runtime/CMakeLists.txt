@@ -234,6 +234,10 @@ endif()
 link_directories(${CUDA_LIBRARY_DIR})
 
 add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${glfw_srcs})
+if(NOT APPLE)  
+    set_target_properties(scRuntime PROPERTIES COMPILE_FLAGS "-fPIC")
+    set_target_properties(scRuntime PROPERTIES LINK_FLAGS "-fPIC")
+endif()
 target_link_libraries(scRuntime ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${GLFW_LIBRARIES})
 add_dependencies(scRuntime
   scc

@@ -64,7 +64,7 @@ Target::GetStaticBroadcasterClass ()
 //----------------------------------------------------------------------
 // Target constructor
 //----------------------------------------------------------------------
-Target::Target(Debugger &debugger, const ArchSpec &target_arch, const lldb::PlatformSP &platform_sp) :
+Target::Target(Debugger &debugger, const ArchSpec &target_arch, const lldb::PlatformSP &platform_sp, bool is_dummy_target) :
     TargetProperties (this),
     Broadcaster (&debugger, Target::GetStaticBroadcasterClass().AsCString()),
     ExecutionContextScope (),
@@ -88,7 +88,9 @@ Target::Target(Debugger &debugger, const ArchSpec &target_arch, const lldb::Plat
     m_stop_hooks (),
     m_stop_hook_next_id (0),
     m_valid (true),
-    m_suppress_stop_hooks (false)
+    m_suppress_stop_hooks (false),
+    m_is_dummy_target(is_dummy_target)
+
 {
     SetEventName (eBroadcastBitBreakpointChanged, "breakpoint-changed");
     SetEventName (eBroadcastBitModulesLoaded, "modules-loaded");
@@ -98,6 +100,9 @@ Target::Target(Debugger &debugger, const ArchSpec &target_arch, const lldb::Plat
 
     CheckInWithManager();
 
+    if (!m_is_dummy_target)
+        PrimeFromDummyTarget(m_debugger.GetDummyTarget());
+
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
     if (log)
         log->Printf ("%p Target::Target()", static_cast<void*>(this));
@@ -105,6 +110,16 @@ Target::Target(Debugger &debugger, const ArchSpec &target_arch, const lldb::Plat
     {
         LogIfAnyCategoriesSet(LIBLLDB_LOG_TARGET, "Target::Target created with architecture %s (%s)", m_arch.GetArchitectureName(), m_arch.GetTriple().getTriple().c_str());
     }
+}
+
+void
+Target::PrimeFromDummyTarget(Target *target)
+{
+    if (!target)
+        return;
+
+    m_stop_hooks = target->m_stop_hooks;
+
 }
 
 //----------------------------------------------------------------------
@@ -1215,6 +1230,7 @@ Target::ModulesDidUnload (ModuleList &module_list, bool delete_locations)
 {
     if (m_valid && module_list.GetSize())
     {
+        UnloadModuleSections (module_list);
         m_breakpoint_list.UpdateBreakpoints (module_list, false, delete_locations);
         // TODO: make event data that packages up the module_list
         BroadcastEvent (eBroadcastBitModulesUnloaded, NULL);
@@ -2308,6 +2324,40 @@ Target::SetSectionLoadAddress (const SectionSP &section_sp, addr_t new_section_l
 
 }
 
+size_t
+Target::UnloadModuleSections (const ModuleList &module_list)
+{
+    size_t section_unload_count = 0;
+    size_t num_modules = module_list.GetSize();
+    for (size_t i=0; i<num_modules; ++i)
+    {
+        section_unload_count += UnloadModuleSections (module_list.GetModuleAtIndex(i));
+    }
+    return section_unload_count;
+}
+
+size_t
+Target::UnloadModuleSections (const lldb::ModuleSP &module_sp)
+{
+    uint32_t stop_id = 0;
+    ProcessSP process_sp(GetProcessSP());
+    if (process_sp)
+        stop_id = process_sp->GetStopID();
+    else
+        stop_id = m_section_load_history.GetLastStopID();
+    SectionList *sections = module_sp->GetSectionList();
+    size_t section_unload_count = 0;
+    if (sections)
+    {
+        const uint32_t num_sections = sections->GetNumSections(0);
+        for (uint32_t i = 0; i < num_sections; ++i)
+        {
+            section_unload_count += m_section_load_history.SetSectionUnloaded(stop_id, sections->GetSectionAtIndex(i));
+        }
+    }
+    return section_unload_count;
+}
+
 bool
 Target::SetSectionUnloaded (const lldb::SectionSP &section_sp)
 {
@@ -2340,7 +2390,7 @@ Target::ClearAllLoadedSections ()
 
 
 Error
-Target::Launch (Listener &listener, ProcessLaunchInfo &launch_info, Stream *stream)
+Target::Launch (ProcessLaunchInfo &launch_info, Stream *stream)
 {
     Error error;
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_TARGET));
@@ -2412,7 +2462,6 @@ Target::Launch (Listener &listener, ProcessLaunchInfo &launch_info, Stream *stre
         m_process_sp = GetPlatform()->DebugProcess (launch_info,
                                                     debugger,
                                                     this,
-                                                    listener,
                                                     error);
     }
     else
@@ -2428,7 +2477,7 @@ Target::Launch (Listener &listener, ProcessLaunchInfo &launch_info, Stream *stre
         {
             // Use a Process plugin to construct the process.
             const char *plugin_name = launch_info.GetProcessPluginName();
-            CreateProcess (listener, plugin_name, NULL);
+            CreateProcess (launch_info.GetListenerForProcess(debugger), plugin_name, NULL);
         }
 
         // Since we didn't have a platform launch the process, launch it here.

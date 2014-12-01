@@ -273,6 +273,17 @@ void MCObjectFileInfo::InitELFMCObjectFileInfo(Triple T) {
   case Triple::mips64el:
     FDECFIEncoding = dwarf::DW_EH_PE_sdata8;
     break;
+  case Triple::x86_64:
+    if (RelocM == Reloc::PIC_) {
+      FDECFIEncoding = dwarf::DW_EH_PE_pcrel |
+        ((CMModel == CodeModel::Small || CMModel == CodeModel::Medium)
+         ? dwarf::DW_EH_PE_sdata4 : dwarf::DW_EH_PE_sdata8);
+    } else {
+      FDECFIEncoding =
+        (CMModel == CodeModel::Small || CMModel == CodeModel::Medium)
+        ? dwarf::DW_EH_PE_udata4 : dwarf::DW_EH_PE_absptr;
+    }
+    break;
   default:
     FDECFIEncoding = dwarf::DW_EH_PE_pcrel | dwarf::DW_EH_PE_sdata4;
     break;
@@ -401,7 +412,7 @@ void MCObjectFileInfo::InitELFMCObjectFileInfo(Triple T) {
   // platform.
   EHSectionType = ELF::SHT_PROGBITS;
   EHSectionFlags = ELF::SHF_ALLOC;
-  if (T.getOS() == Triple::Solaris) {
+  if (T.isOSSolaris()) {
     if (T.getArch() == Triple::x86_64)
       EHSectionType = ELF::SHT_X86_64_UNWIND;
     else
@@ -780,6 +791,27 @@ void MCObjectFileInfo::InitCOFFMCObjectFileInfo(Triple T) {
                         COFF::IMAGE_SCN_MEM_DISCARDABLE |
                         COFF::IMAGE_SCN_MEM_READ,
                         SectionKind::getMetadata());
+
+  DwarfAccelNamesSection =
+      Ctx->getCOFFSection(".apple_names",
+                          COFF::IMAGE_SCN_MEM_DISCARDABLE |
+                          COFF::IMAGE_SCN_MEM_READ,
+                          SectionKind::getMetadata());
+  DwarfAccelNamespaceSection =
+      Ctx->getCOFFSection(".apple_namespaces",
+                          COFF::IMAGE_SCN_MEM_DISCARDABLE |
+                          COFF::IMAGE_SCN_MEM_READ,
+                          SectionKind::getMetadata());
+  DwarfAccelTypesSection =
+      Ctx->getCOFFSection(".apple_types",
+                          COFF::IMAGE_SCN_MEM_DISCARDABLE |
+                          COFF::IMAGE_SCN_MEM_READ,
+                          SectionKind::getMetadata());
+  DwarfAccelObjCSection =
+      Ctx->getCOFFSection(".apple_objc",
+                          COFF::IMAGE_SCN_MEM_DISCARDABLE |
+                          COFF::IMAGE_SCN_MEM_READ,
+                          SectionKind::getMetadata());
 
   DrectveSection =
     Ctx->getCOFFSection(".drectve",

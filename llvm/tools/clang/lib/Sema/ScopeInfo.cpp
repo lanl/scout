@@ -39,6 +39,7 @@ void FunctionScopeInfo::Clear() {
   ErrorTrap.reset();
   PossiblyUnreachableDiags.clear();
   WeakObjectUses.clear();
+  ModifiedNonNullParams.clear();
 }
 
 static const NamedDecl *getBestPropertyDecl(const ObjCPropertyRefExpr *PropE) {
@@ -175,6 +176,8 @@ void FunctionScopeInfo::markSafeWeakUse(const Expr *E) {
   // Has this weak object been seen before?
   FunctionScopeInfo::WeakObjectUseMap::iterator Uses;
   if (const ObjCPropertyRefExpr *RefExpr = dyn_cast<ObjCPropertyRefExpr>(E)) {
+    if (!RefExpr->isObjectReceiver())
+      return;
     if (isa<OpaqueValueExpr>(RefExpr->getBase()))
      Uses = WeakObjectUses.find(WeakObjectProfileTy(RefExpr));
     else {

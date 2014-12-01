@@ -126,6 +126,16 @@ namespace scout {
       "-stdlib=libc++",
       #endif // APPLE
 
+      #ifdef APPLE
+      // force loading of all Runtime symbols
+      // needed so we can for example do viz in lldb
+      "-force_load ${CMAKE_INSTALL_PREFIX}/lib/libscRuntime.a",
+      #else
+      // there is nothing like -force_load in gnu ld must do it for each symbol 
+      // SC_TODO: there are probably  more __scrt* we should add here
+      "-u __scrt_create_window",
+      #endif
+
       0 // end of include paths. 
     };
 

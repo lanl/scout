@@ -169,7 +169,7 @@ SymbolFileDWARF::ParseMeshChildMembers
                 case DW_AT_decl_line:   decl.SetLine(form_value.Unsigned()); break;
                 case DW_AT_decl_column: decl.SetColumn(form_value.Unsigned()); break;
                 case DW_AT_name:        name = form_value.AsCString(&get_debug_str_data()); break;
-                case DW_AT_type:        encoding_uid = form_value.Reference(dwarf_cu); break;
+                case DW_AT_type:        encoding_uid = form_value.Reference(); break;
                 case DW_AT_data_member_location:
                   if (form_value.BlockData())
                   {

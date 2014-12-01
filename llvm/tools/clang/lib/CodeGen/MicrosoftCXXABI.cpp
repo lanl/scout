@@ -70,6 +70,8 @@ public:
                                llvm::Value *Ptr, QualType ElementType,
                                const CXXDestructorDecl *Dtor) override;
 
+  void emitRethrow(CodeGenFunction &CGF, bool isNoReturn) override;
+
   llvm::GlobalVariable *getMSCompleteObjectLocator(const CXXRecordDecl *RD,
                                                    const VPtrInfo *Info);
 
@@ -507,7 +509,7 @@ public:
     return RD->hasAttr<MSInheritanceAttr>();
   }
 
-  virtual bool isTypeInfoCalculable(QualType Ty) const override {
+  bool isTypeInfoCalculable(QualType Ty) const override {
     if (!CGCXXABI::isTypeInfoCalculable(Ty))
       return false;
     if (const auto *MPT = Ty->getAs<MemberPointerType>()) {
@@ -663,6 +665,30 @@ void MicrosoftCXXABI::emitVirtualObjectDelete(CodeGenFunction &CGF,
       EmitVirtualDestructorCall(CGF, Dtor, DtorType, Ptr, /*CE=*/nullptr);
   if (UseGlobalDelete)
     CGF.EmitDeleteCall(DE->getOperatorDelete(), MDThis, ElementType);
+}
+
+static llvm::Function *getRethrowFn(CodeGenModule &CGM) {
+  // _CxxThrowException takes two pointer width arguments: a value and a context
+  // object which points to a TypeInfo object.
+  llvm::Type *ArgTypes[] = {CGM.Int8PtrTy, CGM.Int8PtrTy};
+  llvm::FunctionType *FTy =
+      llvm::FunctionType::get(CGM.VoidTy, ArgTypes, false);
+  auto *Fn = cast<llvm::Function>(
+      CGM.CreateRuntimeFunction(FTy, "_CxxThrowException"));
+  // _CxxThrowException is stdcall on 32-bit x86 platforms.
+  if (CGM.getTarget().getTriple().getArch() == llvm::Triple::x86)
+    Fn->setCallingConv(llvm::CallingConv::X86_StdCall);
+  return Fn;
+}
+
+void MicrosoftCXXABI::emitRethrow(CodeGenFunction &CGF, bool isNoReturn) {
+  llvm::Value *Args[] = {llvm::ConstantPointerNull::get(CGM.Int8PtrTy),
+                         llvm::ConstantPointerNull::get(CGM.Int8PtrTy)};
+  auto *Fn = getRethrowFn(CGM);
+  if (isNoReturn)
+    CGF.EmitNoreturnRuntimeCallOrInvoke(Fn, Args);
+  else
+    CGF.EmitRuntimeCallOrInvoke(Fn, Args);
 }
 
 /// \brief Gets the offset to the virtual base that contains the vfptr for
@@ -1292,7 +1318,7 @@ llvm::GlobalVariable *MicrosoftCXXABI::getAddrOfVTable(const CXXRecordDecl *RD,
   MicrosoftVTableContext &VTContext = CGM.getMicrosoftVTableContext();
   const VPtrInfoVector &VFPtrs = VTContext.getVFPtrOffsets(RD);
 
-  if (DeferredVFTables.insert(RD)) {
+  if (DeferredVFTables.insert(RD).second) {
     // We haven't processed this record type before.
     // Queue up this v-table for possible deferred emission.
     CGM.addDeferredVTable(RD);
@@ -1304,7 +1330,7 @@ llvm::GlobalVariable *MicrosoftCXXABI::getAddrOfVTable(const CXXRecordDecl *RD,
     for (size_t J = 0, F = VFPtrs.size(); J != F; ++J) {
       SmallString<256> Name;
       mangleVFTableName(getMangleContext(), RD, VFPtrs[J], Name);
-      if (!ObservedMangledNames.insert(Name.str()))
+      if (!ObservedMangledNames.insert(Name.str()).second)
         llvm_unreachable("Already saw this mangling before?");
     }
 #endif
@@ -2784,11 +2810,11 @@ detectAmbiguousBases(SmallVectorImpl<MSRTTIClass> &Classes) {
   llvm::SmallPtrSet<const CXXRecordDecl *, 8> AmbiguousBases;
   for (MSRTTIClass *Class = &Classes.front(); Class <= &Classes.back();) {
     if ((Class->Flags & MSRTTIClass::IsVirtual) &&
-        !VirtualBases.insert(Class->RD)) {
+        !VirtualBases.insert(Class->RD).second) {
       Class = MSRTTIClass::getNextChild(Class);
       continue;
     }
-    if (!UniqueBases.insert(Class->RD))
+    if (!UniqueBases.insert(Class->RD).second)
       AmbiguousBases.insert(Class->RD);
     Class++;
   }
