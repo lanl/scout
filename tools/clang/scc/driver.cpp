@@ -497,6 +497,10 @@ static void scAddFlags(Driver &driver,
                  scout::config::Configuration::LibraryPaths);
     scAddFlagSet(sc_args,
                  scout::config::Configuration::Libraries);
+
+    // SC_TODO: might be nice to do something with 'rpath' here to
+    // simplify the compiler and all the hidden dyanmic library
+    // paths... This however, probably won't play well with modules...
   }
 
   ApplyQAOverride(argv, sc_args.c_str(), SavedStrings);

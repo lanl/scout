@@ -58,16 +58,16 @@
 #include <stdio.h>
 
 #define N_BODIES   5
-#define SOLUBLE    1
+#define SOLUBLE    0
 #define SHOW_SOLID (1-SOLUBLE)
 #define MESH_DIM   512
 
 int main(int argc, char *argv[])
 {
-  const int NTIME_STEPS     = 100;
+  const int NTIME_STEPS     = 1000;
   const float MAX_TEMP      = 100.0f;
 
-  window render_win[512,512];
+  window render_win[1024,1024];
 
   uniform mesh HeatMeshType{
    cells:
