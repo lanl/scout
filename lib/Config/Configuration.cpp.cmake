@@ -225,8 +225,7 @@ namespace scout {
           //glfw requires Xrandr,Xxf86vm,Xi,Xcursor
           "-lXrandr -lXxf86vm -lXi -lXcursor -lX11 -lrt", 
         #endif
-      // need scRuntime here again to get lib dependency correct
-      "-lscRuntime ${GLFW_LIBRARIES}",
+      "${GLFW_LIBRARIES}",
       #endif
 
       0 // mark end of library paths.      
