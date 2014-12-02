@@ -1370,7 +1370,11 @@ namespace {
     4,    // opencl_constant
     1,    // cuda_device
     4,    // cuda_constant
-    3     // cuda_shared
+    3,    // cuda_shared
+    // +===== Scout ==========================================================+
+    0,    // scout_persistent
+    0     // scout_nonvolatile
+    // +======================================================================+
   };
   class NVPTXTargetInfo : public TargetInfo {
     static const char * const GCCRegNames[];
@@ -1489,7 +1493,11 @@ static const unsigned R600AddrSpaceMap[] = {
   2,    // opencl_constant
   1,    // cuda_device
   2,    // cuda_constant
-  3     // cuda_shared
+  3,    // cuda_shared
+  // +===== Scout ==========================================================+
+  0,    // scout_persistent
+  0     // scout_nonvolatile
+  // +======================================================================+
 };
 
 // If you edit the description strings, make sure you update
@@ -1661,6 +1669,20 @@ const Builtin::Info R600TargetInfo::BuiltinInfo[] = {
 } // end anonymous namespace
 
 namespace {
+
+  // +===== Scout ==========================================================+  
+  static const unsigned X86AddrSpaceMap[] = {
+    0,    // opencl_global
+    0,    // opencl_local
+    0,    // opencl_constant
+    0,    // cuda_device
+    0,    // cuda_constant
+    0,    // cuda_shared
+    13,   // scout_persistent
+    14    // scout_nonvolatile
+  };
+  // +======================================================================+
+  
 // Namespace for x86 abstract base class
 const Builtin::Info BuiltinInfo[] = {
 #define BUILTIN(ID, TYPE, ATTRS) { #ID, TYPE, ATTRS, 0, ALL_LANGUAGES },
@@ -1900,6 +1922,9 @@ public:
         HasSHA(false), HasCX16(false), CPU(CK_Generic), FPMath(FP_Default) {
     BigEndian = false;
     LongDoubleFormat = &llvm::APFloat::x87DoubleExtended;
+    // +===== Scout ==================
+      AddrSpaceMap = &X86AddrSpaceMap;
+    // +==============================
   }
   unsigned getFloatEvalMethod() const override {
     // X87 evaluates with 80 bits "long double" precision.
@@ -5383,7 +5408,11 @@ namespace {
       5, // opencl_constant
       0, // cuda_device
       0, // cuda_constant
-      0  // cuda_shared
+      0, // cuda_shared
+      // +===== Scout ========================================================+
+      0, // scout_persistent
+      0  // scout_nonvolatile
+      // +====================================================================+
   };
 
   class TCETargetInfo : public TargetInfo{
@@ -6106,7 +6135,11 @@ namespace {
     2,    // opencl_constant
     0,    // cuda_device
     0,    // cuda_constant
-    0     // cuda_shared
+    0,    // cuda_shared,
+    // +===== Scout ==========================================================+
+    0,    // scout_persistent
+    0     // scout_nonvolatile
+    // +======================================================================+
   };
   class SPIRTargetInfo : public TargetInfo {
   public:

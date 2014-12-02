@@ -473,14 +473,11 @@ static void scAddFlags(Driver &driver,
   // Not sure this works in all cases (e.g. odd sym links?).
   std::string sc_install_prefix=llvm::sys::path::parent_path(driver.Dir);
 
-  // SC_TODO: Do we always want/need blocks?
-  std::string sc_args = "#^-fblocks ";
-
   // Put scout's include directory up front (assuming we search for
   // headers in order from first to last on the command line).  Place
   // a '#' at the head of the sc_args string to silence info about the
   // changes when we run 'scc'.
-  sc_args += "^-I" + sc_install_prefix + "/include ";
+  std::string sc_args = "#^-I" + sc_install_prefix + "/include ";
 
   scAddFlagSet(sc_args, scout::config::Configuration::CompileOptions);
   scAddFlagSet(sc_args, scout::config::Configuration::IncludePaths);
@@ -490,6 +487,7 @@ static void scAddFlags(Driver &driver,
   // warnings at the command line).
   if (!(Args->hasArg(options::OPT_c) ||
         Args->hasArg(options::OPT_S) ||
+        Args->hasArg(options::OPT_dynamiclib) || 
         Args->hasArg(options::OPT_fsyntax_only))) {
     scAddFlagSet(sc_args,
                  scout::config::Configuration::LinkOptions);

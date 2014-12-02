@@ -35,6 +35,11 @@ enum ID {
   cuda_constant,
   cuda_shared,
 
+  // +===== Scout =============================================================
+  scout_persistent,
+  scout_nonvolatile,
+  // +=========================================================================
+  
   Last,
   Count = Last-Offset
 };

@@ -70,8 +70,7 @@ set(CMAKE_MODULE_PATH
 project(scStandardLibrary SCXX)
   set(CMAKE_VERBOSE_MAKEFILE ON)
   cmake_minimum_required(VERSION 2.8.9)
-  set(CMAKE_SCXX_FLAGS "-g -noscstdlib")
-  set(LINK_FLAGS "-noscstdlib")
+  set(CMAKE_SCXX_FLAGS "-noscstdlib")
   set(CMAKE_INSTALL_PREFIX ${SCOUT_INSTALL_DIR})
   set(LIBRARY_OUTPUT_PATH ${SCOUT_BUILD_DIR}/lib)
 
@@ -88,7 +87,7 @@ project(scStandardLibrary SCXX)
     set_target_properties(scStandard PROPERTIES LINK_FLAGS "-fPIC -noscstdlib")
   else()
     set_target_properties(scStandard PROPERTIES POSITION_INDEPENDENT_CODE 1
-                                                COMPILE_FLAGS "-fPIC"
+                                                COMPILE_FLAGS "-fPIC -noscstdlib"
 						MACOSX_RPATH 1) 
   endif()
 

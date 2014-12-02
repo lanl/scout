@@ -10,7 +10,7 @@
 // This coordinates the per-module state used while generating code.
 //
 //===----------------------------------------------------------------------===//
-#include <iostream>
+#include <stdio.h>
 
 #include "CodeGenModule.h"
 #include "CGCUDARuntime.h"
@@ -1927,23 +1927,26 @@ unsigned CodeGenModule::GetGlobalVarAddressSpace(const VarDecl *D,
     else
       AddrSpace = getContext().getTargetAddressSpace(LangAS::cuda_device);
   }
-
-  if (LangOpts.ScoutC && D->isPersistentLocal()) {
-    // For now we're using the last high-address address space for
-    // Scout (this is a language-centric range defined in
-    // AddressSpaces.h).  We don't use the functionality used there at
-    // this point in time (due to it being target centric).  Wise to
-    // consider this a placeholder for now...
-    AddrSpace = getContext().getTargetAddressSpace(11 /*LangAS::Last*/);
-  } else if (LangOpts.ScoutC && D->isNonvolatileLocal()) {
-    // For now we're using the last high-address space for Scout (this
-    // is a langugage-centric range defined in AddressSpaces.h).  We
-    // don't use the functionality used there at this point in time
-    // (due to it being target centric).  Wise to consider this a
-    // placeholder for now...
-    AddrSpace = getContext().getTargetAddressSpace(13 /*LangAS::Last+1*/);
+  
+  // +===== Scout =============================================================
+  if (LangOpts.ScoutC || LangOpts.ScoutCPlusPlus) {
+    if (D->isPersistentLocal()) {
+      // For now we're using the last high-address address space for
+      // Scout (this is a language-centric range defined in
+      // AddressSpaces.h).  We don't use the functionality used there at
+      // this point in time (due to it being target centric).  Wise to
+      // consider this a placeholder for now...
+      AddrSpace = getContext().getTargetAddressSpace(LangAS::scout_persistent);
+    } else if (D->isNonvolatileLocal()) {
+      // For now we're using the last high-address space for Scout (this
+      // is a langugage-centric range defined in AddressSpaces.h).  We
+      // don't use the functionality used there at this point in time
+      // (due to it being target centric).  Wise to consider this a
+      // placeholder for now...
+      AddrSpace = getContext().getTargetAddressSpace(LangAS::scout_nonvolatile);
+    }
   }
-
+  // +=========================================================================
   return AddrSpace;
 }
 
