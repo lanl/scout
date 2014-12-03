@@ -69,7 +69,7 @@ set(CMAKE_MODULE_PATH
 
 project(scStandardLibrary SCXX)
   set(CMAKE_VERBOSE_MAKEFILE ON)
-  cmake_minimum_required(VERSION 2.8.9)
+  cmake_minimum_required(VERSION 2.8.12)
   set(CMAKE_SCXX_FLAGS "-g -noscstdlib")
   set(LINK_FLAGS "-noscstdlib")
   set(CMAKE_INSTALL_PREFIX ${SCOUT_INSTALL_DIR})
