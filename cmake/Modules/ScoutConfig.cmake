@@ -384,5 +384,11 @@ endif()
     endif()
   endif()
 
+  #setup RPATH
+  set(CMAKE_SKIP_BUILD_RPATH FALSE)
+  set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
+  set(CMAKE_INSTALL_RPATH ${SCOUT_BUILD_DIR}/lib ${CUDA_LIBRARY_DIR} ${GLFW_LIBRARY_DIR})
+
+
 #
 #####
