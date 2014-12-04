@@ -58,7 +58,7 @@ set(CMAKE_MODULE_PATH
 
 project(scout_test_scc C SCC SCXX )
 
-  cmake_minimum_required(VERSION 2.8.9)
+  cmake_minimum_required(VERSION 2.8.12)
   set(DART_TESTING_TIMEOUT "300" CACHE STRING "" FORCE)
   include(CTest)
   
@@ -67,7 +67,6 @@ project(scout_test_scc C SCC SCXX )
   set(SCOUT_REGRESSION_DIR ${CMAKE_CURRENT_BINARY_DIR}/../../test)
   set(SCOUT_BINARY_REGRESSION_DIR ${CMAKE_CURRENT_BINARY_DIR})
   set(TEST_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/bin)
-  set(CMAKE_INSTALL_RPATH ${SCOUT_BUILD_DIR}/../lib ${CUDA_LIBRARY_DIR} ${GLFW_LIBRARY_DIR})
 
   add_definitions(-DSC_REG_DATA_PATH=${SCOUT_REGRESSION_DIR}/data)
   add_definitions(-DSC_REG_BIN_PATH=${SCOUT_BINARY_REGRESSION_DIR})
