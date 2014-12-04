@@ -2195,6 +2195,9 @@ public:
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   RValue EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
 
+  RValue EmitTailExpr(void);
+  RValue EmitHeadExpr(void);
+
   RValue EmitMeshParameterExpr(const Expr *E, MeshParameterOffset offset);
 
   bool EmitScoutBuiltinExpr(const FunctionDecl *FD,

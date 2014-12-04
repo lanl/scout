@@ -592,6 +592,97 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
   assert(false && "Failed to emit Mesh Parameter");
 }
 
+RValue CodeGenFunction::EmitTailExpr(void) {
+
+  llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
+  llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+  llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
+  llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
+
+  if(EdgeIndex) {
+
+    llvm::Value *Rank = Builder.CreateLoad(MeshRank);
+
+    llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
+    llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
+    llvm::BasicBlock *Then2 = createBasicBlock("rank2.then");
+    llvm::BasicBlock *Else2 = createBasicBlock("rank2.else");
+    llvm::BasicBlock *Merge = createBasicBlock("rank.merge");
+
+    llvm::Value *Check3 = Builder.CreateICmpEQ(Rank, Three);
+    Builder.CreateCondBr(Check3, Then3, Else3);
+
+    // rank = 3
+    EmitBlock(Then3);
+    llvm::Value *Result3 =
+                  llvm::UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
+    //SC_TOD0: add correct x,y,z
+    Result3 = Builder.CreateInsertElement(Result3, Zero,
+        Builder.getInt32(0), "tail.x");
+    Result3 = Builder.CreateInsertElement(Result3, Zero,
+        Builder.getInt32(1), "tail.y");
+    Result3 = Builder.CreateInsertElement(Result3, Zero,
+        Builder.getInt32(2), "tail.z");
+    Result3 = Builder.CreateInsertElement(Result3, Builder.CreateLoad(EdgeIndex, "forall.edgeIndex"),
+        Builder.getInt32(3),  "tail.idx");
+
+    //SC_TODO
+    Builder.CreateBr(Merge);
+
+    // rank != 3
+    EmitBlock(Else3);
+
+    // rank = 2
+    llvm::Value *Check2 = Builder.CreateICmpEQ(Rank, Two);
+    Builder.CreateCondBr(Check2, Then2, Else2);
+    EmitBlock(Then2);
+    llvm::Value *Result2 =
+                  llvm::UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
+
+    //SC_TOD0: add correct x,y
+    Result2 = Builder.CreateInsertElement(Result2, Zero,
+        Builder.getInt32(0), "tail.x");
+    Result2 = Builder.CreateInsertElement(Result2, Zero,
+        Builder.getInt32(1), "tail.y");
+    Result2 = Builder.CreateInsertElement(Result2, Zero,
+        Builder.getInt32(2), "tail.z");
+    Result2 = Builder.CreateInsertElement(Result2, Builder.CreateLoad(EdgeIndex, "forall.edgeIndex"),
+        Builder.getInt32(3),  "tail.idx");
+
+    Builder.CreateBr(Merge);
+
+    // rank !=2 (rank = 1)
+    EmitBlock(Else2);
+    llvm::Value *Result1 =
+              llvm::UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
+    llvm::Value *x = Builder.CreateLoad(EdgeIndex, "forall.edgeIndex");
+        Result1 = Builder.CreateInsertElement(Result1, x,
+            Builder.getInt32(0), "tail.x");
+        Result1 = Builder.CreateInsertElement(Result1, Zero,
+            Builder.getInt32(1), "tail.y");
+        Result1 = Builder.CreateInsertElement(Result1, Zero,
+            Builder.getInt32(2), "tail.z");
+        Result1 = Builder.CreateInsertElement(Result1, x,
+            Builder.getInt32(3),  "tail.idx");
+
+    Builder.CreateBr(Merge);
+
+    // Merge Block
+    EmitBlock(Merge);
+    llvm::PHINode *PN = Builder.CreatePHI(llvm::VectorType::get(Int32Ty, 4), 3, "tail.phi");
+    PN->addIncoming(Result3, Then3);
+    PN->addIncoming(Result2, Then2);
+    PN->addIncoming(Result1, Else2);
+
+    return RValue::get(PN);
+  }
+
+}
+
+RValue CodeGenFunction::EmitHeadExpr(void) {
+
+}
+
 void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
                                     LValue LV,
                                     const QueryExpr* QE){
@@ -746,3 +837,5 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   LocalDeclMap[VD] = qp;
 }
+
+
