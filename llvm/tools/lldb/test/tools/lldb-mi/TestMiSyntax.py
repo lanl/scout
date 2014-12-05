@@ -1,5 +1,5 @@
 """
-Test that the lldb-mi driver can interrupt and resume a looping app.
+Test that the lldb-mi driver understands MI command syntax.
 """
 
 import os
@@ -7,7 +7,7 @@ import unittest2
 import lldb
 from lldbtest import *
 
-class MiInterruptTestCase(TestBase):
+class MiSyntaxTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
     myexe = "a.out"
@@ -22,10 +22,9 @@ class MiInterruptTestCase(TestBase):
         except:
             pass
 
-    @unittest2.skipUnless(sys.platform.startswith("darwin"), "requires Darwin")
     @lldbmi_test
-    def test_lldbmi_interrupt(self):
-        """Test that 'lldb-mi --interpreter' interrupt and resume a looping app."""
+    def test_lldbmi_tokens(self):
+        """Test that 'lldb-mi --interpreter' echos command tokens."""
         import pexpect
         self.buildDefault()
 
@@ -42,39 +41,19 @@ class MiInterruptTestCase(TestBase):
                 child.logfile_send = f_send
                 child.logfile_read = f_read
 
-                child.sendline("-file-exec-and-symbols " + self.myexe)
-                child.expect("\^done")
+                child.sendline("000-file-exec-and-symbols " + self.myexe)
+                child.expect("000\^done")
 
-                #run to main
-                child.sendline("-break-insert -f main")
-                child.expect("\^done,bkpt={number=\"1\"")
-                child.sendline("-exec-run")
-                child.sendline("") #FIXME: hangs here; extra return is needed
-                child.expect("\^running")
+                child.sendline("100000001-break-insert -f a_MyFunction")
+                child.expect("100000001\^done,bkpt={number=\"1\"")
+
+                child.sendline("2-exec-run")
+                child.sendline("") # FIXME: lldb-mi hangs here, so extra return is needed
+                child.expect("2\^running")
                 child.expect("\*stopped,reason=\"breakpoint-hit\"")
 
-                #set doloop=1 and run (to loop forever)
-                child.sendline("-data-evaluate-expression \"doloop=1\"")
-                child.expect("value=\"1\"")
-                child.sendline("-exec-continue")
-                child.expect("\^running")
-
-                #issue interrupt, set BP in loop (marked BP_loop), and resume
-                child.sendline("-exec-interrupt")
-                child.expect("\*stopped,reason=\"signal-received\"")
-                self.line = line_number('loop.c', '//BP_loop')
-                child.sendline("-break-insert loop.c:%d" % self.line)
-                child.expect("\^done,bkpt={number=\"2\"")
-                #child.sendline("-exec-resume") #FIXME: command not recognized
-                child.sendline("-exec-continue")
-                child.expect("\*stopped,reason=\"breakpoint-hit\"")
-
-                #we should have hit BP
-                #set loop=-1 so we'll exit the loop
-                child.sendline("-data-evaluate-expression \"loop=-1\"")
-                child.expect("value=\"-1\"")
-                child.sendline("-exec-continue")
-                child.expect("\^running")
+                child.sendline("0000000000000000000003-exec-continue")
+                child.expect("0000000000000000000003\^running")
                 child.expect("\*stopped,reason=\"exited-normally\"")
                 child.expect_exact(prompt)
 
@@ -94,6 +73,9 @@ class MiInterruptTestCase(TestBase):
             if self.TraceOn():
                 print "\n\nContents of child_read.txt:"
                 print from_child
+
+            self.expect(from_child, exe=False,
+                substrs = ["breakpoint-hit"])
 
 
 if __name__ == '__main__':
