@@ -168,7 +168,7 @@ bool ContinuationIndenter::mustBreak(const LineState &State) {
 
   if (State.Column < getNewLineColumn(State))
     return false;
-  if (!Style.BreakBeforeBinaryOperators) {
+  if (Style.BreakBeforeBinaryOperators == FormatStyle::BOS_None) {
     // If we need to break somewhere inside the LHS of a binary expression, we
     // should also break after the operator. Otherwise, the formatting would
     // hide the operator precedence, e.g. in:
@@ -178,9 +178,6 @@ bool ContinuationIndenter::mustBreak(const LineState &State) {
     // expression itself as otherwise, the line breaks seem superfluous.
     // We need special cases for ">>" which we have split into two ">" while
     // lexing in order to make template parsing easier.
-    //
-    // FIXME: We'll need something similar for styles that break before binary
-    // operators.
     bool IsComparison = (Previous.getPrecedence() == prec::Relational ||
                          Previous.getPrecedence() == prec::Equality) &&
                         Previous.Previous &&
@@ -193,7 +190,12 @@ bool ContinuationIndenter::mustBreak(const LineState &State) {
         Previous.getPrecedence() != prec::Assignment &&
         State.Stack.back().BreakBeforeParameter)
       return true;
+  } else {
+    if (Current.is(TT_BinaryOperator) && Previous.EndsBinaryExpression &&
+        State.Stack.back().BreakBeforeParameter)
+      return true;
   }
+
 
   // Same as above, but for the first "<<" operator.
   if (Current.is(tok::lessless) && Current.isNot(TT_OverloadedOperator) &&
@@ -712,7 +714,8 @@ void ContinuationIndenter::moveStatePastFakeLParens(LineState &State,
   // is special cased.
   bool SkipFirstExtraIndent =
       (Previous && (Previous->opensScope() || Previous->is(tok::kw_return) ||
-                    Previous->getPrecedence() == prec::Assignment ||
+                    (Previous->getPrecedence() == prec::Assignment &&
+                     Style.AlignOperands) ||
                     Previous->is(TT_ObjCMethodExpr)));
   for (SmallVectorImpl<prec::Level>::const_reverse_iterator
            I = Current.FakeLParens.rbegin(),
@@ -725,6 +728,7 @@ void ContinuationIndenter::moveStatePastFakeLParens(LineState &State,
     // a builder type call after 'return' or, if the alignment after opening
     // brackets is disabled.
     if (!Current.isTrailingComment() &&
+        (Style.AlignOperands || *I < prec::Assignment) &&
         (!Previous || Previous->isNot(tok::kw_return) ||
          (Style.Language != FormatStyle::LK_Java && *I > 0)) &&
         (Style.AlignAfterOpenBracket || *I != prec::Comma ||
@@ -740,11 +744,12 @@ void ContinuationIndenter::moveStatePastFakeLParens(LineState &State,
     if (Previous && Previous->getPrecedence() > prec::Assignment &&
         Previous->isOneOf(TT_BinaryOperator, TT_ConditionalExpr) &&
         Previous->getPrecedence() != prec::Relational) {
-      bool BreakBeforeOperator = Previous->is(tok::lessless) ||
-                                 (Previous->is(TT_BinaryOperator) &&
-                                  Style.BreakBeforeBinaryOperators) ||
-                                 (Previous->is(TT_ConditionalExpr) &&
-                                  Style.BreakBeforeTernaryOperators);
+      bool BreakBeforeOperator =
+          Previous->is(tok::lessless) ||
+          (Previous->is(TT_BinaryOperator) &&
+           Style.BreakBeforeBinaryOperators != FormatStyle::BOS_None) ||
+          (Previous->is(TT_ConditionalExpr) &&
+           Style.BreakBeforeTernaryOperators);
       if ((!Newline && !BreakBeforeOperator) ||
           (!State.Stack.back().LastOperatorWrapped && BreakBeforeOperator))
         NewParenState.NoLineBreak = true;
@@ -766,7 +771,7 @@ void ContinuationIndenter::moveStatePastFakeLParens(LineState &State,
     // other expression, unless the indentation needs to be skipped.
     if (*I == prec::Conditional ||
         (!SkipFirstExtraIndent && *I > prec::Assignment &&
-         !Current.isTrailingComment() && !Style.BreakBeforeBinaryOperators))
+         !Current.isTrailingComment()))
       NewParenState.Indent += Style.ContinuationIndentWidth;
     if ((Previous && !Previous->opensScope()) || *I > prec::Comma)
       NewParenState.BreakBeforeParameter = false;

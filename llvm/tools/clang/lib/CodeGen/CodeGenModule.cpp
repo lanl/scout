@@ -124,6 +124,7 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
   Int8PtrPtrTy = Int8PtrTy->getPointerTo(0);
 
   RuntimeCC = getTargetCodeGenInfo().getABIInfo().getRuntimeCC();
+  BuiltinCC = getTargetCodeGenInfo().getABIInfo().getBuiltinCC();
 
   if (LangOpts.ObjC1)
     createObjCRuntime();
@@ -682,7 +683,7 @@ void CodeGenModule::EmitCtorList(const CtorList &Fns, const char *GlobalName) {
 
   // Get the type of a ctor entry, { i32, void ()*, i8* }.
   llvm::StructType *CtorStructTy = llvm::StructType::get(
-      Int32Ty, llvm::PointerType::getUnqual(CtorFTy), VoidPtrTy, NULL);
+      Int32Ty, llvm::PointerType::getUnqual(CtorFTy), VoidPtrTy, nullptr);
 
   // Construct the constructor and destructor arrays.
   SmallVector<llvm::Constant*, 8> Ctors;
@@ -1722,6 +1723,21 @@ CodeGenModule::CreateRuntimeFunction(llvm::FunctionType *FTy,
   if (auto *F = dyn_cast<llvm::Function>(C))
     if (F->empty())
       F->setCallingConv(getRuntimeCC());
+  return C;
+}
+
+/// CreateBuiltinFunction - Create a new builtin function with the specified
+/// type and name.
+llvm::Constant *
+CodeGenModule::CreateBuiltinFunction(llvm::FunctionType *FTy,
+                                     StringRef Name,
+                                     llvm::AttributeSet ExtraAttrs) {
+  llvm::Constant *C =
+      GetOrCreateLLVMFunction(Name, FTy, GlobalDecl(), /*ForVTable=*/false,
+                              /*DontDefer=*/false, /*IsThunk=*/false, ExtraAttrs);
+  if (auto *F = dyn_cast<llvm::Function>(C))
+    if (F->empty())
+      F->setCallingConv(getBuiltinCC());
   return C;
 }
 
@@ -3369,6 +3385,7 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
     if (DebugInfo &&
         Spec->getSpecializationKind() == TSK_ExplicitInstantiationDefinition)
       DebugInfo->completeTemplateDefinition(*Spec);
+    break;
   }
 
   default:
@@ -3399,6 +3416,7 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
     // +======================================================================+
     }
     */
+    break;
   }
 }
 
