@@ -1,5 +1,7 @@
-;RUN: llc < %s -march=r600 -mcpu=redwood | FileCheck --check-prefix=R600 --check-prefix=FUNC %s
-;RUN: llc < %s -march=r600 -mcpu=SI -verify-machineinstrs| FileCheck --check-prefix=SI --check-prefix=FUNC %s
+; RUN: llc -march=r600 -mcpu=redwood < %s | FileCheck -check-prefix=R600 -check-prefix=FUNC %s
+; RUN: llc -march=r600 -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
+
+declare i32 @llvm.r600.read.tidig.x() nounwind readnone
 
 ; FUNC-LABEL: {{^}}setcc_v2i32:
 ; R600-DAG: SETE_INT * T{{[0-9]+\.[XYZW]}}, KC0[3].X, KC0[3].Z
@@ -94,11 +96,12 @@ entry:
 ; R600-DAG: SETNE_DX10
 ; R600-DAG: AND_INT
 ; R600-DAG: SETNE_INT
-; SI: v_cmp_o_f32
-; SI: v_cmp_neq_f32
-; SI: v_cndmask_b32_e64
-; SI: v_cndmask_b32_e64
-; SI: v_and_b32_e32
+
+; SI-DAG: v_cmp_o_f32_e32 vcc
+; SI-DAG: v_cmp_neq_f32_e64 [[CMP1:s\[[0-9]+:[0-9]+\]]]
+; SI: s_and_b64 [[AND:s\[[0-9]+:[0-9]+\]]], [[CMP1]], vcc
+; SI: v_cndmask_b32_e64 [[VRESULT:v[0-9]+]], 0, -1, [[AND]]
+; SI: buffer_store_dword [[VRESULT]]
 define void @f32_one(i32 addrspace(1)* %out, float %a, float %b) {
 entry:
   %0 = fcmp one float %a, %b
@@ -128,11 +131,12 @@ entry:
 ; R600-DAG: SETE_DX10
 ; R600-DAG: OR_INT
 ; R600-DAG: SETNE_INT
-; SI: v_cmp_u_f32
-; SI: v_cmp_eq_f32
-; SI: v_cndmask_b32_e64
-; SI: v_cndmask_b32_e64
-; SI: v_or_b32_e32
+
+; SI-DAG: v_cmp_u_f32_e32 vcc
+; SI-DAG: v_cmp_eq_f32_e64 [[CMP1:s\[[0-9]+:[0-9]+\]]]
+; SI: s_or_b64 [[OR:s\[[0-9]+:[0-9]+\]]], [[CMP1]], vcc
+; SI: v_cndmask_b32_e64 [[VRESULT:v[0-9]+]], 0, -1, [[OR]]
+; SI: buffer_store_dword [[VRESULT]]
 define void @f32_ueq(i32 addrspace(1)* %out, float %a, float %b) {
 entry:
   %0 = fcmp ueq float %a, %b
@@ -146,9 +150,8 @@ entry:
 ; R600: SETE_DX10
 ; SI: v_cmp_u_f32
 ; SI: v_cmp_gt_f32
-; SI: v_cndmask_b32_e64
-; SI: v_cndmask_b32_e64
-; SI: v_or_b32_e32
+; SI: s_or_b64
+; SI: v_cndmask_b32
 define void @f32_ugt(i32 addrspace(1)* %out, float %a, float %b) {
 entry:
   %0 = fcmp ugt float %a, %b
@@ -162,9 +165,8 @@ entry:
 ; R600: SETE_DX10
 ; SI: v_cmp_u_f32
 ; SI: v_cmp_ge_f32
-; SI: v_cndmask_b32_e64
-; SI: v_cndmask_b32_e64
-; SI: v_or_b32_e32
+; SI: s_or_b64
+; SI: v_cndmask_b32
 define void @f32_uge(i32 addrspace(1)* %out, float %a, float %b) {
 entry:
   %0 = fcmp uge float %a, %b
@@ -178,9 +180,8 @@ entry:
 ; R600: SETE_DX10
 ; SI: v_cmp_u_f32
 ; SI: v_cmp_lt_f32
-; SI: v_cndmask_b32_e64
-; SI: v_cndmask_b32_e64
-; SI: v_or_b32_e32
+; SI: s_or_b64
+; SI: v_cndmask_b32
 define void @f32_ult(i32 addrspace(1)* %out, float %a, float %b) {
 entry:
   %0 = fcmp ult float %a, %b
@@ -194,9 +195,8 @@ entry:
 ; R600: SETE_DX10
 ; SI: v_cmp_u_f32
 ; SI: v_cmp_le_f32
-; SI: v_cndmask_b32_e64
-; SI: v_cndmask_b32_e64
-; SI: v_or_b32_e32
+; SI: s_or_b64
+; SI: v_cndmask_b32
 define void @f32_ule(i32 addrspace(1)* %out, float %a, float %b) {
 entry:
   %0 = fcmp ule float %a, %b
@@ -341,5 +341,48 @@ entry:
   %0 = icmp sle i32 %a, %b
   %1 = sext i1 %0 to i32
   store i32 %1, i32 addrspace(1)* %out
+  ret void
+}
+
+; FIXME: This does 4 compares
+; FUNC-LABEL: {{^}}v3i32_eq:
+; SI-DAG: v_cmp_eq_i32
+; SI-DAG: v_cndmask_b32_e64 {{v[0-9]+}}, 0, -1,
+; SI-DAG: v_cmp_eq_i32
+; SI-DAG: v_cndmask_b32_e64 {{v[0-9]+}}, 0, -1,
+; SI-DAG: v_cmp_eq_i32
+; SI-DAG: v_cndmask_b32_e64 {{v[0-9]+}}, 0, -1,
+; SI: s_endpgm
+define void @v3i32_eq(<3 x i32> addrspace(1)* %out, <3 x i32> addrspace(1)* %ptra, <3 x i32> addrspace(1)* %ptrb) {
+  %tid = call i32 @llvm.r600.read.tidig.x() nounwind readnone
+  %gep.a = getelementptr <3 x i32> addrspace(1)* %ptra, i32 %tid
+  %gep.b = getelementptr <3 x i32> addrspace(1)* %ptrb, i32 %tid
+  %gep.out = getelementptr <3 x i32> addrspace(1)* %out, i32 %tid
+  %a = load <3 x i32> addrspace(1)* %gep.a
+  %b = load <3 x i32> addrspace(1)* %gep.b
+  %cmp = icmp eq <3 x i32> %a, %b
+  %ext = sext <3 x i1> %cmp to <3 x i32>
+  store <3 x i32> %ext, <3 x i32> addrspace(1)* %gep.out
+  ret void
+}
+
+; FUNC-LABEL: {{^}}v3i8_eq:
+; SI-DAG: v_cmp_eq_i32
+; SI-DAG: v_cndmask_b32_e64 {{v[0-9]+}}, 0, -1,
+; SI-DAG: v_cmp_eq_i32
+; SI-DAG: v_cndmask_b32_e64 {{v[0-9]+}}, 0, -1,
+; SI-DAG: v_cmp_eq_i32
+; SI-DAG: v_cndmask_b32_e64 {{v[0-9]+}}, 0, -1,
+; SI: s_endpgm
+define void @v3i8_eq(<3 x i8> addrspace(1)* %out, <3 x i8> addrspace(1)* %ptra, <3 x i8> addrspace(1)* %ptrb) {
+  %tid = call i32 @llvm.r600.read.tidig.x() nounwind readnone
+  %gep.a = getelementptr <3 x i8> addrspace(1)* %ptra, i32 %tid
+  %gep.b = getelementptr <3 x i8> addrspace(1)* %ptrb, i32 %tid
+  %gep.out = getelementptr <3 x i8> addrspace(1)* %out, i32 %tid
+  %a = load <3 x i8> addrspace(1)* %gep.a
+  %b = load <3 x i8> addrspace(1)* %gep.b
+  %cmp = icmp eq <3 x i8> %a, %b
+  %ext = sext <3 x i1> %cmp to <3 x i8>
+  store <3 x i8> %ext, <3 x i8> addrspace(1)* %gep.out
   ret void
 }

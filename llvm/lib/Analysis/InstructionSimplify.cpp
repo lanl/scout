@@ -20,6 +20,7 @@
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/MemoryBuiltins.h"
 #include "llvm/Analysis/ValueTracking.h"
@@ -31,6 +32,7 @@
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/ValueHandle.h"
+#include <algorithm>
 using namespace llvm;
 using namespace llvm::PatternMatch;
 
@@ -2007,6 +2009,50 @@ static Constant *computePointerICmp(const DataLayout *DL,
       return ConstantExpr::getICmp(Pred,
                                    ConstantExpr::getAdd(LHSOffset, LHSNoBound),
                                    ConstantExpr::getAdd(RHSOffset, RHSNoBound));
+
+    // If one side of the equality comparison must come from a noalias call
+    // (meaning a system memory allocation function), and the other side must
+    // come from a pointer that cannot overlap with dynamically-allocated
+    // memory within the lifetime of the current function (allocas, byval
+    // arguments, globals), then determine the comparison result here.
+    SmallVector<Value *, 8> LHSUObjs, RHSUObjs;
+    GetUnderlyingObjects(LHS, LHSUObjs, DL);
+    GetUnderlyingObjects(RHS, RHSUObjs, DL);
+
+    // Is the set of underlying objects all noalias calls?
+    auto IsNAC = [](SmallVectorImpl<Value *> &Objects) {
+      return std::all_of(Objects.begin(), Objects.end(),
+                         [](Value *V){ return isNoAliasCall(V); });
+    };
+
+    // Is the set of underlying objects all things which must be disjoint from
+    // noalias calls. For allocas, we consider only static ones (dynamic
+    // allocas might be transformed into calls to malloc not simultaneously
+    // live with the compared-to allocation). For globals, we exclude symbols
+    // that might be resolve lazily to symbols in another dynamically-loaded
+    // library (and, thus, could be malloc'ed by the implementation).
+    auto IsAllocDisjoint = [](SmallVectorImpl<Value *> &Objects) {
+      return std::all_of(Objects.begin(), Objects.end(),
+                         [](Value *V){
+                           if (const AllocaInst *AI = dyn_cast<AllocaInst>(V))
+                             return AI->getParent() && AI->getParent()->getParent() &&
+                                    AI->isStaticAlloca();
+                           if (const GlobalValue *GV = dyn_cast<GlobalValue>(V))
+                             return (GV->hasLocalLinkage() ||
+                                     GV->hasHiddenVisibility() ||
+                                     GV->hasProtectedVisibility() ||
+                                     GV->hasUnnamedAddr()) &&
+                                    !GV->isThreadLocal();
+                           if (const Argument *A = dyn_cast<Argument>(V))
+                             return A->hasByValAttr();
+                           return false;
+                         });
+    };
+
+    if ((IsNAC(LHSUObjs) && IsAllocDisjoint(RHSUObjs)) ||
+        (IsNAC(RHSUObjs) && IsAllocDisjoint(LHSUObjs)))
+        return ConstantInt::get(GetCompareTy(LHS),
+                                !CmpInst::isTrueWhenEqual(Pred));
   }
 
   // Otherwise, fail.
@@ -3054,6 +3100,40 @@ static Value *SimplifySelectInst(Value *CondVal, Value *TrueVal,
     return FalseVal;
   if (isa<UndefValue>(FalseVal))   // select C, X, undef -> X
     return TrueVal;
+
+  if (const auto *ICI = dyn_cast<ICmpInst>(CondVal)) {
+    Value *X;
+    const APInt *Y;
+    if (ICI->isEquality() &&
+        match(ICI->getOperand(0), m_And(m_Value(X), m_APInt(Y))) &&
+        match(ICI->getOperand(1), m_Zero())) {
+      ICmpInst::Predicate Pred = ICI->getPredicate();
+      const APInt *C;
+      // (X & Y) == 0 ? X & ~Y : X  --> X
+      // (X & Y) != 0 ? X & ~Y : X  --> X & ~Y
+      if (FalseVal == X && match(TrueVal, m_And(m_Specific(X), m_APInt(C))) &&
+          *Y == ~*C)
+        return Pred == ICmpInst::ICMP_EQ ? FalseVal : TrueVal;
+      // (X & Y) == 0 ? X : X & ~Y  --> X & ~Y
+      // (X & Y) != 0 ? X : X & ~Y  --> X
+      if (TrueVal == X && match(FalseVal, m_And(m_Specific(X), m_APInt(C))) &&
+          *Y == ~*C)
+        return Pred == ICmpInst::ICMP_EQ ? FalseVal : TrueVal;
+
+      if (Y->isPowerOf2()) {
+        // (X & Y) == 0 ? X | Y : X  --> X | Y
+        // (X & Y) != 0 ? X | Y : X  --> X
+        if (FalseVal == X && match(TrueVal, m_Or(m_Specific(X), m_APInt(C))) &&
+            *Y == *C)
+          return Pred == ICmpInst::ICMP_EQ ? TrueVal : FalseVal;
+        // (X & Y) == 0 ? X : X | Y  --> X
+        // (X & Y) != 0 ? X : X | Y  --> X | Y
+        if (TrueVal == X && match(FalseVal, m_Or(m_Specific(X), m_APInt(C))) &&
+            *Y == *C)
+          return Pred == ICmpInst::ICMP_EQ ? TrueVal : FalseVal;
+      }
+    }
+  }
 
   return nullptr;
 }

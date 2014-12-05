@@ -518,9 +518,6 @@
 /* Type of 1st arg on ELM Callback */
 #cmakedefine WIN32_ELMCB_PCSTR ${WIN32_ELMCB_PCSTR}
 
-/* Define to empty if `const' does not conform to ANSI C. */
-#undef const
-
 /* Define to `int' if <sys/types.h> does not define. */
 #undef pid_t
 
@@ -541,8 +538,5 @@
 
 /* Define to 1 if you have the `_chsize_s' function. */
 #cmakedefine HAVE__CHSIZE_S ${HAVE__CHSIZE_S}
-
-/* Maximum path length */
-#cmakedefine MAXPATHLEN ${MAXPATHLEN}
 
 #endif
