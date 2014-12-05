@@ -79,6 +79,10 @@ def FeatureSlowBTMem : SubtargetFeature<"slow-bt-mem", "IsBTMemSlow", "true",
                                        "Bit testing of memory is slow">;
 def FeatureSlowSHLD : SubtargetFeature<"slow-shld", "IsSHLDSlow", "true",
                                        "SHLD instruction is slow">;
+// FIXME: This is a 16-byte (SSE/AVX) feature; we should rename it to make that
+// explicit. Also, it seems this would be the default state for most chips
+// going forward, so it would probably be better to negate the logic and
+// match the 32-byte "slow mem" feature below.
 def FeatureFastUAMem : SubtargetFeature<"fast-unaligned-mem",
                                         "IsUAMemFast", "true",
                                         "Fast unaligned memory access">;
@@ -327,7 +331,7 @@ def : Proc<"athlon",          [Feature3DNowA, FeatureSlowBTMem,
                                FeatureSlowSHLD]>;
 def : Proc<"athlon-tbird",    [Feature3DNowA, FeatureSlowBTMem,
                                FeatureSlowSHLD]>;
-def : Proc<"athlon-4",        [FeatureSSE1,   Feature3DNowA, FeatureSlowBTMem, 
+def : Proc<"athlon-4",        [FeatureSSE1,   Feature3DNowA, FeatureSlowBTMem,
                                FeatureSlowSHLD]>;
 def : Proc<"athlon-xp",       [FeatureSSE1,   Feature3DNowA, FeatureSlowBTMem,
                                FeatureSlowSHLD]>;
@@ -361,8 +365,10 @@ def : ProcessorModel<"btver2", BtVer2Model,
                      [FeatureAVX, FeatureSSE4A, FeatureCMPXCHG16B,
                       FeaturePRFCHW, FeatureAES, FeaturePCLMUL,
                       FeatureBMI, FeatureF16C, FeatureMOVBE,
-                      FeatureLZCNT, FeaturePOPCNT, FeatureSlowSHLD,
-                      FeatureUseSqrtEst, FeatureUseRecipEst]>;
+                      FeatureLZCNT, FeaturePOPCNT, FeatureFastUAMem,
+                      FeatureSlowSHLD, FeatureUseSqrtEst, FeatureUseRecipEst]>;
+
+// TODO: We should probably add 'FeatureFastUAMem' to all of the AMD chips.
 
 // Bulldozer
 def : Proc<"bdver1",          [FeatureXOP, FeatureFMA4, FeatureCMPXCHG16B,
@@ -403,7 +409,7 @@ def : Proc<"c3-2",            [FeatureSSE1]>;
 // be good for modern chips without enabling instruction set encodings past the
 // basic SSE2 and 64-bit ones. It disables slow things from any mainstream and
 // modern 64-bit x86 chip, and enables features that are generally beneficial.
-// 
+//
 // We currently use the Sandy Bridge model as the default scheduling model as
 // we use it across Nehalem, Westmere, Sandy Bridge, and Ivy Bridge which
 // covers a huge swath of x86 processors. If there are specific scheduling

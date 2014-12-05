@@ -448,6 +448,8 @@ void X86FrameLowering::getStackProbeFunction(const X86Subtarget &STI,
 
   [if needs base pointer]
       mov  %rsp, %rbx
+      [if needs to restore base pointer]
+          mov %rsp, -MMM(%rbp)
 
   ; Emit CFI info
   [if needs FP]
@@ -515,8 +517,8 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF) const {
     X86FI->setCalleeSavedFrameSize(
       X86FI->getCalleeSavedFrameSize() - TailCallReturnAddrDelta);
 
-  bool UseStackProbe = (STI.isOSWindows() && !STI.isTargetMacho());
-  
+  bool UseStackProbe = (STI.isOSWindows() && !STI.isTargetMachO());
+
   // If this is x86-64 and the Red Zone is not disabled, if we are a leaf
   // function, and use up to 128 bytes of stack space, don't have a frame
   // pointer, calls, or dynamic alloca then we do not need to adjust the
@@ -570,6 +572,9 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF) const {
   if (HasFP) {
     // Calculate required stack adjustment.
     uint64_t FrameSize = StackSize - SlotSize;
+    // If required, include space for extra hidden slot for stashing base pointer.
+    if (X86FI->getRestoreBasePointer())
+      FrameSize += SlotSize;
     if (RegInfo->needsStackRealignment(MF)) {
       // Callee-saved registers are pushed on stack before the stack
       // is realigned.
@@ -838,6 +843,14 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF) const {
     BuildMI(MBB, MBBI, DL, TII.get(Opc), BasePtr)
       .addReg(StackPtr)
       .setMIFlag(MachineInstr::FrameSetup);
+    if (X86FI->getRestoreBasePointer()) {
+      // Stash value of base pointer.  Saving RSP instead of EBP shortens dependence chain.
+      unsigned Opm = Uses64BitFramePtr ? X86::MOV64mr : X86::MOV32mr;
+      addRegOffset(BuildMI(MBB, MBBI, DL, TII.get(Opm)),
+                   FramePtr, true, X86FI->getRestoreBasePointerOffset())
+        .addReg(StackPtr)
+        .setMIFlag(MachineInstr::FrameSetup);
+    }
   }
 
   if (((!HasFP && NumBytes) || PushedRegs) && NeedsDwarfCFI) {
@@ -1133,6 +1146,79 @@ int X86FrameLowering::getFrameIndexReference(const MachineFunction &MF, int FI,
   else
     FrameReg = RegInfo->getFrameRegister(MF);
   return getFrameIndexOffset(MF, FI);
+}
+
+// Simplified from getFrameIndexOffset keeping only StackPointer cases
+int X86FrameLowering::getFrameIndexOffsetFromSP(const MachineFunction &MF, int FI) const {
+  const MachineFrameInfo *MFI = MF.getFrameInfo();
+  // Does not include any dynamic realign.
+  const uint64_t StackSize = MFI->getStackSize();
+  {
+#ifndef NDEBUG
+    const X86RegisterInfo *RegInfo =
+      static_cast<const X86RegisterInfo*>(MF.getSubtarget().getRegisterInfo());
+    // Note: LLVM arranges the stack as:
+    // Args > Saved RetPC (<--FP) > CSRs > dynamic alignment (<--BP)
+    //      > "Stack Slots" (<--SP)
+    // We can always address StackSlots from RSP.  We can usually (unless
+    // needsStackRealignment) address CSRs from RSP, but sometimes need to
+    // address them from RBP.  FixedObjects can be placed anywhere in the stack
+    // frame depending on their specific requirements (i.e. we can actually
+    // refer to arguments to the function which are stored in the *callers*
+    // frame).  As a result, THE RESULT OF THIS CALL IS MEANINGLESS FOR CSRs
+    // AND FixedObjects IFF needsStackRealignment or hasVarSizedObject.
+
+    assert(!RegInfo->hasBasePointer(MF) && "we don't handle this case");
+
+    // We don't handle tail calls, and shouldn't be seeing them
+    // either.
+    int TailCallReturnAddrDelta =
+        MF.getInfo<X86MachineFunctionInfo>()->getTCReturnAddrDelta();
+    assert(!(TailCallReturnAddrDelta < 0) && "we don't handle this case!");
+#endif
+  }
+
+  // This is how the math works out:
+  //
+  //  %rsp grows (i.e. gets lower) left to right. Each box below is
+  //  one word (eight bytes).  Obj0 is the stack slot we're trying to
+  //  get to.
+  //
+  //    ----------------------------------
+  //    | BP | Obj0 | Obj1 | ... | ObjN |
+  //    ----------------------------------
+  //    ^    ^      ^                   ^
+  //    A    B      C                   E
+  //
+  // A is the incoming stack pointer.
+  // (B - A) is the local area offset (-8 for x86-64) [1]
+  // (C - A) is the Offset returned by MFI->getObjectOffset for Obj0 [2]
+  //
+  // |(E - B)| is the StackSize (absolute value, positive).  For a
+  // stack that grown down, this works out to be (B - E). [3]
+  //
+  // E is also the value of %rsp after stack has been set up, and we
+  // want (C - E) -- the value we can add to %rsp to get to Obj0.  Now
+  // (C - E) == (C - A) - (B - A) + (B - E)
+  //            { Using [1], [2] and [3] above }
+  //         == getObjectOffset - LocalAreaOffset + StackSize
+  //
+
+  // Get the Offset from the StackPointer
+  int Offset = MFI->getObjectOffset(FI) - getOffsetOfLocalArea();
+
+  return Offset + StackSize;
+}
+// Simplified from getFrameIndexReference keeping only StackPointer cases
+int X86FrameLowering::getFrameIndexReferenceFromSP(const MachineFunction &MF, int FI,
+                                                  unsigned &FrameReg) const {
+  const X86RegisterInfo *RegInfo =
+    static_cast<const X86RegisterInfo*>(MF.getSubtarget().getRegisterInfo());
+
+  assert(!RegInfo->hasBasePointer(MF) && "we don't handle this case");
+
+  FrameReg = RegInfo->getStackRegister();
+  return getFrameIndexOffsetFromSP(MF, FI);
 }
 
 bool X86FrameLowering::assignCalleeSavedSpillSlots(

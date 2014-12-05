@@ -898,8 +898,18 @@ bool RegisterCoalescer::reMaterializeTrivialDef(CoalescerPair &CP,
 
   // The source interval can become smaller because we removed a use.
   LIS->shrinkToUses(&SrcInt, &DeadDefs);
-  if (!DeadDefs.empty())
+  if (!DeadDefs.empty()) {
+    // If the virtual SrcReg is completely eliminated, update all DBG_VALUEs
+    // to describe DstReg instead.
+    for (MachineOperand &UseMO : MRI->use_operands(SrcReg)) {
+      MachineInstr *UseMI = UseMO.getParent();
+      if (UseMI->isDebugValue()) {
+        UseMO.setReg(DstReg);
+        DEBUG(dbgs() << "\t\tupdated: " << *UseMI);
+      }
+    }
     eliminateDeadDefs();
+  }
 
   return true;
 }

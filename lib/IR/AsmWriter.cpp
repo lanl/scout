@@ -101,6 +101,11 @@ static OrderMap orderModule(const Module *M) {
     if (F.hasPrefixData())
       if (!isa<GlobalValue>(F.getPrefixData()))
         orderValue(F.getPrefixData(), OM);
+
+    if (F.hasPrologueData())
+      if (!isa<GlobalValue>(F.getPrologueData()))
+        orderValue(F.getPrologueData(), OM);
+
     orderValue(&F, OM);
 
     if (F.isDeclaration())
@@ -282,6 +287,7 @@ static void PrintCallingConv(unsigned cc, raw_ostream &Out) {
   case CallingConv::AnyReg:        Out << "anyregcc"; break;
   case CallingConv::PreserveMost:  Out << "preserve_mostcc"; break;
   case CallingConv::PreserveAll:   Out << "preserve_allcc"; break;
+  case CallingConv::GHC:           Out << "ghccc"; break;
   case CallingConv::X86_StdCall:   Out << "x86_stdcallcc"; break;
   case CallingConv::X86_FastCall:  Out << "x86_fastcallcc"; break;
   case CallingConv::X86_ThisCall:  Out << "x86_thiscallcc"; break;
@@ -1901,6 +1907,11 @@ void AssemblyWriter::printFunction(const Function *F) {
     Out << " prefix ";
     writeOperand(F->getPrefixData(), true);
   }
+  if (F->hasPrologueData()) {
+    Out << " prologue ";
+    writeOperand(F->getPrologueData(), true);
+  }
+
   if (F->isDeclaration()) {
     Out << '\n';
   } else {

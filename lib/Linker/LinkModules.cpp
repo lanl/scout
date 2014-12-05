@@ -13,9 +13,11 @@
 
 #include "llvm/Linker/Linker.h"
 #include "llvm-c/Linker.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
@@ -36,8 +38,6 @@ using namespace llvm;
 //===----------------------------------------------------------------------===//
 
 namespace {
-typedef SmallPtrSet<StructType *, 32> TypeSet;
-
 class TypeMapTy : public ValueMapTypeRemapper {
   /// This is a mapping from a source type to a destination type to use.
   DenseMap<Type*, Type*> MappedTypes;
@@ -46,6 +46,8 @@ class TypeMapTy : public ValueMapTypeRemapper {
   /// add types to MappedTypes, but keep track of them here in case we need to
   /// roll back.
   SmallVector<Type*, 16> SpeculativeTypes;
+
+  SmallVector<StructType*, 16> SpeculativeDstOpaqueTypes;
 
   /// This is a list of non-opaque structs in the source module that are mapped
   /// to an opaque struct in the destination module.
@@ -56,9 +58,10 @@ class TypeMapTy : public ValueMapTypeRemapper {
   SmallPtrSet<StructType*, 16> DstResolvedOpaqueTypes;
 
 public:
-  TypeMapTy(TypeSet &Set) : DstStructTypesSet(Set) {}
+  TypeMapTy(Linker::IdentifiedStructTypeSet &DstStructTypesSet)
+      : DstStructTypesSet(DstStructTypesSet) {}
 
-  TypeSet &DstStructTypesSet;
+  Linker::IdentifiedStructTypeSet &DstStructTypesSet;
   /// Indicate that the specified type in the destination module is conceptually
   /// equivalent to the specified type in the source module.
   void addTypeMapping(Type *DstTy, Type *SrcTy);
@@ -70,6 +73,9 @@ public:
   /// Return the mapped type to use for the specified input type from the
   /// source module.
   Type *get(Type *SrcTy);
+  Type *get(Type *SrcTy, SmallPtrSet<StructType *, 8> &Visited);
+
+  void finishType(StructType *DTy, StructType *STy, ArrayRef<Type *> ETypes);
 
   FunctionType *get(FunctionType *T) {
     return cast<FunctionType>(get((Type *)T));
@@ -94,26 +100,29 @@ private:
 }
 
 void TypeMapTy::addTypeMapping(Type *DstTy, Type *SrcTy) {
+  assert(SpeculativeTypes.empty());
+  assert(SpeculativeDstOpaqueTypes.empty());
+
   // Check to see if these types are recursively isomorphic and establish a
   // mapping between them if so.
-  if (areTypesIsomorphic(DstTy, SrcTy)) {
-    SpeculativeTypes.clear();
-    return;
-  }
+  if (!areTypesIsomorphic(DstTy, SrcTy)) {
+    // Oops, they aren't isomorphic.  Just discard this request by rolling out
+    // any speculative mappings we've established.
+    for (Type *Ty : SpeculativeTypes)
+      MappedTypes.erase(Ty);
 
-  // Oops, they aren't isomorphic. Just discard this request by rolling out
-  // any speculative mappings we've established.
-  unsigned Removed = 0;
-  for (unsigned I = 0, E = SpeculativeTypes.size(); I != E; ++I) {
-    Type *SrcTy = SpeculativeTypes[I];
-    auto Iter = MappedTypes.find(SrcTy);
-    auto *DstTy = dyn_cast<StructType>(Iter->second);
-    if (DstTy && DstResolvedOpaqueTypes.erase(DstTy))
-      Removed++;
-    MappedTypes.erase(Iter);
+    SrcDefinitionsToResolve.resize(SrcDefinitionsToResolve.size() -
+                                   SpeculativeDstOpaqueTypes.size());
+    for (StructType *Ty : SpeculativeDstOpaqueTypes)
+      DstResolvedOpaqueTypes.erase(Ty);
+  } else {
+    for (Type *Ty : SpeculativeTypes)
+      if (auto *STy = dyn_cast<StructType>(Ty))
+        if (STy->hasName())
+          STy->setName("");
   }
-  SrcDefinitionsToResolve.resize(SrcDefinitionsToResolve.size() - Removed);
   SpeculativeTypes.clear();
+  SpeculativeDstOpaqueTypes.clear();
 }
 
 /// Recursively walk this pair of types, returning true if they are isomorphic,
@@ -156,6 +165,7 @@ bool TypeMapTy::areTypesIsomorphic(Type *DstTy, Type *SrcTy) {
         return false;
       SrcDefinitionsToResolve.push_back(SSTy);
       SpeculativeTypes.push_back(SrcTy);
+      SpeculativeDstOpaqueTypes.push_back(cast<StructType>(DstTy));
       Entry = DstTy;
       return true;
     }
@@ -219,108 +229,9 @@ void TypeMapTy::linkDefinedTypeBodies() {
   DstResolvedOpaqueTypes.clear();
 }
 
-Type *TypeMapTy::get(Type *Ty) {
-  // If we already have an entry for this type, return it.
-  Type **Entry = &MappedTypes[Ty];
-  if (*Entry)
-    return *Entry;
-
-  // If this is not a named struct type, then just map all of the elements and
-  // then rebuild the type from inside out.
-  if (!isa<StructType>(Ty) || cast<StructType>(Ty)->isLiteral()) {
-    // If there are no element types to map, then the type is itself.  This is
-    // true for the anonymous {} struct, things like 'float', integers, etc.
-    if (Ty->getNumContainedTypes() == 0)
-      return *Entry = Ty;
-
-    // Remap all of the elements, keeping track of whether any of them change.
-    bool AnyChange = false;
-    SmallVector<Type*, 4> ElementTypes;
-    ElementTypes.resize(Ty->getNumContainedTypes());
-    for (unsigned I = 0, E = Ty->getNumContainedTypes(); I != E; ++I) {
-      ElementTypes[I] = get(Ty->getContainedType(I));
-      AnyChange |= ElementTypes[I] != Ty->getContainedType(I);
-    }
-
-    // If we found our type while recursively processing stuff, just use it.
-    Entry = &MappedTypes[Ty];
-    if (*Entry)
-      return *Entry;
-
-    // If all of the element types mapped directly over, then the type is usable
-    // as-is.
-    if (!AnyChange)
-      return *Entry = Ty;
-
-    // Otherwise, rebuild a modified type.
-    switch (Ty->getTypeID()) {
-    default:
-      llvm_unreachable("unknown derived type to remap");
-    case Type::ArrayTyID:
-      return *Entry = ArrayType::get(ElementTypes[0],
-                                     cast<ArrayType>(Ty)->getNumElements());
-    case Type::VectorTyID:
-      return *Entry = VectorType::get(ElementTypes[0],
-                                      cast<VectorType>(Ty)->getNumElements());
-    case Type::PointerTyID:
-      return *Entry = PointerType::get(
-                 ElementTypes[0], cast<PointerType>(Ty)->getAddressSpace());
-    case Type::FunctionTyID:
-      return *Entry = FunctionType::get(ElementTypes[0],
-                                        makeArrayRef(ElementTypes).slice(1),
-                                        cast<FunctionType>(Ty)->isVarArg());
-    case Type::StructTyID:
-      // Note that this is only reached for anonymous structs.
-      return *Entry = StructType::get(Ty->getContext(), ElementTypes,
-                                      cast<StructType>(Ty)->isPacked());
-    }
-  }
-
-  // Otherwise, this is an unmapped named struct.  If the struct can be directly
-  // mapped over, just use it as-is.  This happens in a case when the linked-in
-  // module has something like:
-  //   %T = type {%T*, i32}
-  //   @GV = global %T* null
-  // where T does not exist at all in the destination module.
-  //
-  // The other case we watch for is when the type is not in the destination
-  // module, but that it has to be rebuilt because it refers to something that
-  // is already mapped.  For example, if the destination module has:
-  //  %A = type { i32 }
-  // and the source module has something like
-  //  %A' = type { i32 }
-  //  %B = type { %A'* }
-  //  @GV = global %B* null
-  // then we want to create a new type: "%B = type { %A*}" and have it take the
-  // pristine "%B" name from the source module.
-  //
-  // To determine which case this is, we have to recursively walk the type graph
-  // speculating that we'll be able to reuse it unmodified.  Only if this is
-  // safe would we map the entire thing over.  Because this is an optimization,
-  // and is not required for the prettiness of the linked module, we just skip
-  // it and always rebuild a type here.
-  StructType *STy = cast<StructType>(Ty);
-
-  // If the type is opaque, we can just use it directly.
-  if (STy->isOpaque()) {
-    // A named structure type from src module is used. Add it to the Set of
-    // identified structs in the destination module.
-    DstStructTypesSet.insert(STy);
-    return *Entry = STy;
-  }
-
-  // Otherwise we create a new type.
-  StructType *DTy = StructType::create(STy->getContext());
-  // A new identified structure type was created. Add it to the set of
-  // identified structs in the destination module.
-  DstStructTypesSet.insert(DTy);
-  *Entry = DTy;
-
-  SmallVector<Type*, 4> ElementTypes;
-  ElementTypes.resize(STy->getNumElements());
-  for (unsigned I = 0, E = ElementTypes.size(); I != E; ++I)
-    ElementTypes[I] = get(STy->getElementType(I));
-  DTy->setBody(ElementTypes, STy->isPacked());
+void TypeMapTy::finishType(StructType *DTy, StructType *STy,
+                           ArrayRef<Type *> ETypes) {
+  DTy->setBody(ETypes, STy->isPacked());
 
   // Steal STy's name.
   if (STy->hasName()) {
@@ -329,7 +240,116 @@ Type *TypeMapTy::get(Type *Ty) {
     DTy->setName(TmpName);
   }
 
-  return DTy;
+  DstStructTypesSet.addNonOpaque(DTy);
+}
+
+Type *TypeMapTy::get(Type *Ty) {
+  SmallPtrSet<StructType *, 8> Visited;
+  return get(Ty, Visited);
+}
+
+Type *TypeMapTy::get(Type *Ty, SmallPtrSet<StructType *, 8> &Visited) {
+  // If we already have an entry for this type, return it.
+  Type **Entry = &MappedTypes[Ty];
+  if (*Entry)
+    return *Entry;
+
+  // These are types that LLVM itself will unique.
+  bool IsUniqued = !isa<StructType>(Ty) || cast<StructType>(Ty)->isLiteral();
+
+#ifndef NDEBUG
+  if (!IsUniqued) {
+    for (auto &Pair : MappedTypes) {
+      assert(!(Pair.first != Ty && Pair.second == Ty) &&
+             "mapping to a source type");
+    }
+  }
+#endif
+
+  if (!IsUniqued && !Visited.insert(cast<StructType>(Ty)).second) {
+    StructType *DTy = StructType::create(Ty->getContext());
+    return *Entry = DTy;
+  }
+
+  // If this is not a recursive type, then just map all of the elements and
+  // then rebuild the type from inside out.
+  SmallVector<Type *, 4> ElementTypes;
+
+  // If there are no element types to map, then the type is itself.  This is
+  // true for the anonymous {} struct, things like 'float', integers, etc.
+  if (Ty->getNumContainedTypes() == 0 && IsUniqued)
+    return *Entry = Ty;
+
+  // Remap all of the elements, keeping track of whether any of them change.
+  bool AnyChange = false;
+  ElementTypes.resize(Ty->getNumContainedTypes());
+  for (unsigned I = 0, E = Ty->getNumContainedTypes(); I != E; ++I) {
+    ElementTypes[I] = get(Ty->getContainedType(I), Visited);
+    AnyChange |= ElementTypes[I] != Ty->getContainedType(I);
+  }
+
+  // If we found our type while recursively processing stuff, just use it.
+  Entry = &MappedTypes[Ty];
+  if (*Entry) {
+    if (auto *DTy = dyn_cast<StructType>(*Entry)) {
+      if (DTy->isOpaque()) {
+        auto *STy = cast<StructType>(Ty);
+        finishType(DTy, STy, ElementTypes);
+      }
+    }
+    return *Entry;
+  }
+
+  // If all of the element types mapped directly over and the type is not
+  // a nomed struct, then the type is usable as-is.
+  if (!AnyChange && IsUniqued)
+    return *Entry = Ty;
+
+  // Otherwise, rebuild a modified type.
+  switch (Ty->getTypeID()) {
+  default:
+    llvm_unreachable("unknown derived type to remap");
+  case Type::ArrayTyID:
+    return *Entry = ArrayType::get(ElementTypes[0],
+                                   cast<ArrayType>(Ty)->getNumElements());
+  case Type::VectorTyID:
+    return *Entry = VectorType::get(ElementTypes[0],
+                                    cast<VectorType>(Ty)->getNumElements());
+  case Type::PointerTyID:
+    return *Entry = PointerType::get(ElementTypes[0],
+                                     cast<PointerType>(Ty)->getAddressSpace());
+  case Type::FunctionTyID:
+    return *Entry = FunctionType::get(ElementTypes[0],
+                                      makeArrayRef(ElementTypes).slice(1),
+                                      cast<FunctionType>(Ty)->isVarArg());
+  case Type::StructTyID: {
+    auto *STy = cast<StructType>(Ty);
+    bool IsPacked = STy->isPacked();
+    if (IsUniqued)
+      return *Entry = StructType::get(Ty->getContext(), ElementTypes, IsPacked);
+
+    // If the type is opaque, we can just use it directly.
+    if (STy->isOpaque()) {
+      DstStructTypesSet.addOpaque(STy);
+      return *Entry = Ty;
+    }
+
+    if (StructType *OldT =
+            DstStructTypesSet.findNonOpaque(ElementTypes, IsPacked)) {
+      STy->setName("");
+      return *Entry = OldT;
+    }
+
+    if (!AnyChange) {
+      DstStructTypesSet.addNonOpaque(STy);
+      return *Entry = Ty;
+    }
+
+    StructType *DTy = StructType::create(Ty->getContext());
+    finishType(DTy, STy, ElementTypes);
+    return *Entry = DTy;
+  }
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -399,7 +419,7 @@ class ModuleLinker {
   Linker::DiagnosticHandlerFunction DiagnosticHandler;
 
 public:
-  ModuleLinker(Module *dstM, TypeSet &Set, Module *srcM,
+  ModuleLinker(Module *dstM, Linker::IdentifiedStructTypeSet &Set, Module *srcM,
                Linker::DiagnosticHandlerFunction DiagnosticHandler)
       : DstM(dstM), SrcM(srcM), TypeMap(Set),
         ValMaterializer(TypeMap, DstM, LazilyLinkFunctions),
@@ -464,12 +484,9 @@ private:
                              const GlobalVariable *SrcGV);
 
   bool linkGlobalValueProto(GlobalValue *GV);
-  GlobalValue *linkGlobalVariableProto(const GlobalVariable *SGVar,
-                                       GlobalValue *DGV, bool LinkFromSrc);
-  GlobalValue *linkFunctionProto(const Function *SF, GlobalValue *DGV,
-                                 bool LinkFromSrc);
-  GlobalValue *linkGlobalAliasProto(const GlobalAlias *SGA, GlobalValue *DGV,
-                                    bool LinkFromSrc);
+  GlobalValue *linkGlobalVariableProto(const GlobalVariable *SGVar);
+  GlobalValue *linkFunctionProto(const Function *SF, GlobalValue *DGV);
+  GlobalValue *linkGlobalAliasProto(const GlobalAlias *SGA);
 
   bool linkModuleFlagsMetadata();
 
@@ -505,17 +522,7 @@ static void forceRenaming(GlobalValue *GV, StringRef Name) {
 /// copy additional attributes (those not needed to construct a GlobalValue)
 /// from the SrcGV to the DestGV.
 static void copyGVAttributes(GlobalValue *DestGV, const GlobalValue *SrcGV) {
-  // Use the maximum alignment, rather than just copying the alignment of SrcGV.
-  auto *DestGO = dyn_cast<GlobalObject>(DestGV);
-  unsigned Alignment;
-  if (DestGO)
-    Alignment = std::max(DestGO->getAlignment(), SrcGV->getAlignment());
-
   DestGV->copyAttributesFrom(SrcGV);
-
-  if (DestGO)
-    DestGO->setAlignment(Alignment);
-
   forceRenaming(DestGV, SrcGV->getName());
 }
 
@@ -778,43 +785,42 @@ void ModuleLinker::computeTypeMapping() {
   // At this point, the destination module may have a type "%foo = { i32 }" for
   // example.  When the source module got loaded into the same LLVMContext, if
   // it had the same type, it would have been renamed to "%foo.42 = { i32 }".
-  TypeFinder SrcStructTypes;
-  SrcStructTypes.run(*SrcM, true);
-  SmallPtrSet<StructType*, 32> SrcStructTypesSet(SrcStructTypes.begin(),
-                                                 SrcStructTypes.end());
-
-  for (unsigned i = 0, e = SrcStructTypes.size(); i != e; ++i) {
-    StructType *ST = SrcStructTypes[i];
-    if (!ST->hasName()) continue;
+  std::vector<StructType *> Types = SrcM->getIdentifiedStructTypes();
+  for (StructType *ST : Types) {
+    if (!ST->hasName())
+      continue;
 
     // Check to see if there is a dot in the name followed by a digit.
     size_t DotPos = ST->getName().rfind('.');
     if (DotPos == 0 || DotPos == StringRef::npos ||
         ST->getName().back() == '.' ||
-        !isdigit(static_cast<unsigned char>(ST->getName()[DotPos+1])))
+        !isdigit(static_cast<unsigned char>(ST->getName()[DotPos + 1])))
       continue;
 
     // Check to see if the destination module has a struct with the prefix name.
-    if (StructType *DST = DstM->getTypeByName(ST->getName().substr(0, DotPos)))
-      // Don't use it if this actually came from the source module. They're in
-      // the same LLVMContext after all. Also don't use it unless the type is
-      // actually used in the destination module. This can happen in situations
-      // like this:
-      //
-      //      Module A                         Module B
-      //      --------                         --------
-      //   %Z = type { %A }                %B = type { %C.1 }
-      //   %A = type { %B.1, [7 x i8] }    %C.1 = type { i8* }
-      //   %B.1 = type { %C }              %A.2 = type { %B.3, [5 x i8] }
-      //   %C = type { i8* }               %B.3 = type { %C.1 }
-      //
-      // When we link Module B with Module A, the '%B' in Module B is
-      // used. However, that would then use '%C.1'. But when we process '%C.1',
-      // we prefer to take the '%C' version. So we are then left with both
-      // '%C.1' and '%C' being used for the same types. This leads to some
-      // variables using one type and some using the other.
-      if (!SrcStructTypesSet.count(DST) && TypeMap.DstStructTypesSet.count(DST))
-        TypeMap.addTypeMapping(DST, ST);
+    StructType *DST = DstM->getTypeByName(ST->getName().substr(0, DotPos));
+    if (!DST)
+      continue;
+
+    // Don't use it if this actually came from the source module. They're in
+    // the same LLVMContext after all. Also don't use it unless the type is
+    // actually used in the destination module. This can happen in situations
+    // like this:
+    //
+    //      Module A                         Module B
+    //      --------                         --------
+    //   %Z = type { %A }                %B = type { %C.1 }
+    //   %A = type { %B.1, [7 x i8] }    %C.1 = type { i8* }
+    //   %B.1 = type { %C }              %A.2 = type { %B.3, [5 x i8] }
+    //   %C = type { i8* }               %B.3 = type { %C.1 }
+    //
+    // When we link Module B with Module A, the '%B' in Module B is
+    // used. However, that would then use '%C.1'. But when we process '%C.1',
+    // we prefer to take the '%C' version. So we are then left with both
+    // '%C.1' and '%C' being used for the same types. This leads to some
+    // variables using one type and some using the other.
+    if (TypeMap.DstStructTypesSet.hasType(DST))
+      TypeMap.addTypeMapping(DST, ST);
   }
 
   // Now that we have discovered all of the type equivalences, get a body for
@@ -1012,37 +1018,49 @@ bool ModuleLinker::linkGlobalValueProto(GlobalValue *SGV) {
     return false;
 
   GlobalValue *NewGV;
-  if (auto *SGVar = dyn_cast<GlobalVariable>(SGV)) {
-    NewGV = linkGlobalVariableProto(SGVar, DGV, LinkFromSrc);
-    if (!NewGV)
-      return true;
-  } else if (auto *SF = dyn_cast<Function>(SGV)) {
-    NewGV = linkFunctionProto(SF, DGV, LinkFromSrc);
+  if (!LinkFromSrc) {
+    NewGV = DGV;
   } else {
-    NewGV = linkGlobalAliasProto(cast<GlobalAlias>(SGV), DGV, LinkFromSrc);
+    if (auto *SGVar = dyn_cast<GlobalVariable>(SGV))
+      NewGV = linkGlobalVariableProto(SGVar);
+    else if (auto *SF = dyn_cast<Function>(SGV))
+      NewGV = linkFunctionProto(SF, DGV);
+    else
+      NewGV = linkGlobalAliasProto(cast<GlobalAlias>(SGV));
   }
 
-  if (NewGV) {
-    if (NewGV != DGV)
-      copyGVAttributes(NewGV, SGV);
+  if (!NewGV)
+    return false;
 
-    NewGV->setUnnamedAddr(HasUnnamedAddr);
-    NewGV->setVisibility(Visibility);
+  if (NewGV != DGV)
+    copyGVAttributes(NewGV, SGV);
 
-    if (auto *NewGO = dyn_cast<GlobalObject>(NewGV)) {
-      if (C)
-        NewGO->setComdat(C);
+  NewGV->setUnnamedAddr(HasUnnamedAddr);
+  NewGV->setVisibility(Visibility);
+
+  if (auto *NewGO = dyn_cast<GlobalObject>(NewGV)) {
+    if (C)
+      NewGO->setComdat(C);
+
+    if (DGV && DGV->hasCommonLinkage() && SGV->hasCommonLinkage())
+      NewGO->setAlignment(std::max(DGV->getAlignment(), SGV->getAlignment()));
+  }
+
+  if (auto *NewGVar = dyn_cast<GlobalVariable>(NewGV)) {
+    auto *DGVar = dyn_cast_or_null<GlobalVariable>(DGV);
+    auto *SGVar = dyn_cast<GlobalVariable>(SGV);
+    if (DGVar && SGVar && DGVar->isDeclaration() && SGVar->isDeclaration() &&
+        (!DGVar->isConstant() || !SGVar->isConstant()))
+      NewGVar->setConstant(false);
+  }
+
+  // Make sure to remember this mapping.
+  if (NewGV != DGV) {
+    if (DGV) {
+      DGV->replaceAllUsesWith(ConstantExpr::getBitCast(NewGV, DGV->getType()));
+      DGV->eraseFromParent();
     }
-
-    // Make sure to remember this mapping.
-    if (NewGV != DGV) {
-      if (DGV) {
-        DGV->replaceAllUsesWith(
-            ConstantExpr::getBitCast(NewGV, DGV->getType()));
-        DGV->eraseFromParent();
-      }
-      ValueMap[SGV] = NewGV;
-    }
+    ValueMap[SGV] = NewGV;
   }
 
   return false;
@@ -1050,31 +1068,8 @@ bool ModuleLinker::linkGlobalValueProto(GlobalValue *SGV) {
 
 /// Loop through the global variables in the src module and merge them into the
 /// dest module.
-GlobalValue *ModuleLinker::linkGlobalVariableProto(const GlobalVariable *SGVar,
-                                                   GlobalValue *DGV,
-                                                   bool LinkFromSrc) {
-  unsigned Alignment = 0;
-  bool ClearConstant = false;
-
-  if (DGV) {
-    if (DGV->hasCommonLinkage() && SGVar->hasCommonLinkage())
-      Alignment = std::max(SGVar->getAlignment(), DGV->getAlignment());
-
-    auto *DGVar = dyn_cast<GlobalVariable>(DGV);
-    if (!SGVar->isConstant() || (DGVar && !DGVar->isConstant()))
-      ClearConstant = true;
-  }
-
-  if (!LinkFromSrc) {
-    if (auto *NewGVar = dyn_cast<GlobalVariable>(DGV)) {
-      if (Alignment)
-        NewGVar->setAlignment(Alignment);
-      if (NewGVar->isDeclaration() && ClearConstant)
-        NewGVar->setConstant(false);
-    }
-    return DGV;
-  }
-
+GlobalValue *
+ModuleLinker::linkGlobalVariableProto(const GlobalVariable *SGVar) {
   // No linking to be performed or linking from the source: simply create an
   // identical version of the symbol over in the dest module... the
   // initializer will be filled in later by LinkGlobalInits.
@@ -1084,20 +1079,13 @@ GlobalValue *ModuleLinker::linkGlobalVariableProto(const GlobalVariable *SGVar,
       SGVar->getName(), /*insertbefore*/ nullptr, SGVar->getThreadLocalMode(),
       SGVar->getType()->getAddressSpace());
 
-  if (Alignment)
-    NewDGV->setAlignment(Alignment);
-
   return NewDGV;
 }
 
 /// Link the function in the source module into the destination module if
 /// needed, setting up mapping information.
 GlobalValue *ModuleLinker::linkFunctionProto(const Function *SF,
-                                             GlobalValue *DGV,
-                                             bool LinkFromSrc) {
-  if (!LinkFromSrc)
-    return DGV;
-
+                                             GlobalValue *DGV) {
   // If the function is to be lazily linked, don't create it just yet.
   // The ValueMaterializerTy will deal with creating it if it's used.
   if (!DGV && (SF->hasLocalLinkage() || SF->hasLinkOnceLinkage() ||
@@ -1113,12 +1101,7 @@ GlobalValue *ModuleLinker::linkFunctionProto(const Function *SF,
 }
 
 /// Set up prototypes for any aliases that come over from the source module.
-GlobalValue *ModuleLinker::linkGlobalAliasProto(const GlobalAlias *SGA,
-                                                GlobalValue *DGV,
-                                                bool LinkFromSrc) {
-  if (!LinkFromSrc)
-    return DGV;
-
+GlobalValue *ModuleLinker::linkGlobalAliasProto(const GlobalAlias *SGA) {
   // If there is no linkage to be performed or we're linking from the source,
   // bring over SGA.
   auto *PTy = cast<PointerType>(TypeMap.get(SGA->getType()));
@@ -1491,11 +1474,16 @@ bool ModuleLinker::run() {
     if (DoNotLinkFromSource.count(SF)) continue;
 
     Function *DF = cast<Function>(ValueMap[SF]);
-    if (SF->hasPrefixData()) {
-      // Link in the prefix data.
+
+    // Link in the prefix data.
+    if (SF->hasPrefixData())
       DF->setPrefixData(MapValue(
           SF->getPrefixData(), ValueMap, RF_None, &TypeMap, &ValMaterializer));
-    }
+
+    // Link in the prologue data.
+    if (SF->hasPrologueData())
+      DF->setPrologueData(MapValue(
+          SF->getPrologueData(), ValueMap, RF_None, &TypeMap, &ValMaterializer));
 
     // Materialize if needed.
     if (std::error_code EC = SF->materialize())
@@ -1526,50 +1514,111 @@ bool ModuleLinker::run() {
   linkGlobalInits();
 
   // Process vector of lazily linked in functions.
-  bool LinkedInAnyFunctions;
-  do {
-    LinkedInAnyFunctions = false;
+  while (!LazilyLinkFunctions.empty()) {
+    Function *SF = LazilyLinkFunctions.back();
+    LazilyLinkFunctions.pop_back();
 
-    for(std::vector<Function*>::iterator I = LazilyLinkFunctions.begin(),
-        E = LazilyLinkFunctions.end(); I != E; ++I) {
-      Function *SF = *I;
-      if (!SF)
-        continue;
-
-      Function *DF = cast<Function>(ValueMap[SF]);
-      if (SF->hasPrefixData()) {
-        // Link in the prefix data.
-        DF->setPrefixData(MapValue(SF->getPrefixData(),
-                                   ValueMap,
-                                   RF_None,
-                                   &TypeMap,
-                                   &ValMaterializer));
-      }
-
-      // Materialize if needed.
-      if (std::error_code EC = SF->materialize())
-        return emitError(EC.message());
-
-      // Skip if no body (function is external).
-      if (SF->isDeclaration())
-        continue;
-
-      // Erase from vector *before* the function body is linked - linkFunctionBody could
-      // invalidate I.
-      LazilyLinkFunctions.erase(I);
-
-      // Link in function body.
-      linkFunctionBody(DF, SF);
-      SF->Dematerialize();
-
-      // Set flag to indicate we may have more functions to lazily link in
-      // since we linked in a function.
-      LinkedInAnyFunctions = true;
-      break;
+    Function *DF = cast<Function>(ValueMap[SF]);
+    if (SF->hasPrefixData()) {
+      // Link in the prefix data.
+      DF->setPrefixData(MapValue(SF->getPrefixData(), ValueMap, RF_None,
+                                 &TypeMap, &ValMaterializer));
     }
-  } while (LinkedInAnyFunctions);
+
+    // Materialize if needed.
+    if (std::error_code EC = SF->materialize())
+      return emitError(EC.message());
+
+    // Link in function body.
+    assert(!SF->isDeclaration());
+    linkFunctionBody(DF, SF);
+    SF->Dematerialize();
+  }
 
   return false;
+}
+
+Linker::StructTypeKeyInfo::KeyTy::KeyTy(ArrayRef<Type *> E, bool P)
+    : ETypes(E), IsPacked(P) {}
+
+Linker::StructTypeKeyInfo::KeyTy::KeyTy(const StructType *ST)
+    : ETypes(ST->elements()), IsPacked(ST->isPacked()) {}
+
+bool Linker::StructTypeKeyInfo::KeyTy::operator==(const KeyTy &That) const {
+  if (IsPacked != That.IsPacked)
+    return false;
+  if (ETypes != That.ETypes)
+    return false;
+  return true;
+}
+
+bool Linker::StructTypeKeyInfo::KeyTy::operator!=(const KeyTy &That) const {
+  return !this->operator==(That);
+}
+
+StructType *Linker::StructTypeKeyInfo::getEmptyKey() {
+  return DenseMapInfo<StructType *>::getEmptyKey();
+}
+
+StructType *Linker::StructTypeKeyInfo::getTombstoneKey() {
+  return DenseMapInfo<StructType *>::getTombstoneKey();
+}
+
+unsigned Linker::StructTypeKeyInfo::getHashValue(const KeyTy &Key) {
+  return hash_combine(hash_combine_range(Key.ETypes.begin(), Key.ETypes.end()),
+                      Key.IsPacked);
+}
+
+unsigned Linker::StructTypeKeyInfo::getHashValue(const StructType *ST) {
+  return getHashValue(KeyTy(ST));
+}
+
+bool Linker::StructTypeKeyInfo::isEqual(const KeyTy &LHS,
+                                        const StructType *RHS) {
+  if (RHS == getEmptyKey() || RHS == getTombstoneKey())
+    return false;
+  return LHS == KeyTy(RHS);
+}
+
+bool Linker::StructTypeKeyInfo::isEqual(const StructType *LHS,
+                                        const StructType *RHS) {
+  if (RHS == getEmptyKey())
+    return LHS == getEmptyKey();
+
+  if (RHS == getTombstoneKey())
+    return LHS == getTombstoneKey();
+
+  return KeyTy(LHS) == KeyTy(RHS);
+}
+
+void Linker::IdentifiedStructTypeSet::addNonOpaque(StructType *Ty) {
+  assert(!Ty->isOpaque());
+  bool &Entry = NonOpaqueStructTypes[Ty];
+  Entry = true;
+}
+
+void Linker::IdentifiedStructTypeSet::addOpaque(StructType *Ty) {
+  assert(Ty->isOpaque());
+  OpaqueStructTypes.insert(Ty);
+}
+
+StructType *
+Linker::IdentifiedStructTypeSet::findNonOpaque(ArrayRef<Type *> ETypes,
+                                               bool IsPacked) {
+  Linker::StructTypeKeyInfo::KeyTy Key(ETypes, IsPacked);
+  auto I = NonOpaqueStructTypes.find_as(Key);
+  if (I == NonOpaqueStructTypes.end())
+    return nullptr;
+  return I->first;
+}
+
+bool Linker::IdentifiedStructTypeSet::hasType(StructType *Ty) {
+  if (Ty->isOpaque())
+    return OpaqueStructTypes.count(Ty);
+  auto I = NonOpaqueStructTypes.find(Ty);
+  if (I == NonOpaqueStructTypes.end())
+    return false;
+  return I->first == Ty;
 }
 
 void Linker::init(Module *M, DiagnosticHandlerFunction DiagnosticHandler) {
@@ -1578,7 +1627,12 @@ void Linker::init(Module *M, DiagnosticHandlerFunction DiagnosticHandler) {
 
   TypeFinder StructTypes;
   StructTypes.run(*M, true);
-  IdentifiedStructTypes.insert(StructTypes.begin(), StructTypes.end());
+  for (StructType *Ty : StructTypes) {
+    if (Ty->isOpaque())
+      IdentifiedStructTypes.addOpaque(Ty);
+    else
+      IdentifiedStructTypes.addNonOpaque(Ty);
+  }
 }
 
 Linker::Linker(Module *M, DiagnosticHandlerFunction DiagnosticHandler) {

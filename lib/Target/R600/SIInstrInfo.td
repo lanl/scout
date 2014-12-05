@@ -131,6 +131,10 @@ def as_i32imm: SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant(N->getSExtValue(), MVT::i32);
 }]>;
 
+def as_i64imm: SDNodeXForm<imm, [{
+  return CurDAG->getTargetConstant(N->getSExtValue(), MVT::i64);
+}]>;
+
 def IMM8bit : PatLeaf <(imm),
   [{return isUInt<8>(N->getZExtValue());}]
 >;
@@ -1495,14 +1499,6 @@ def getCommuteOrig : InstrMapping {
   let ColFields = ["IsOrig"];
   let KeyCol = ["0"];
   let ValueCols = [["1"]];
-}
-
-def isDS : InstrMapping {
-  let FilterClass = "DS";
-  let RowFields = ["Inst"];
-  let ColFields = ["Size"];
-  let KeyCol = ["8"];
-  let ValueCols = [["8"]];
 }
 
 def getMCOpcode : InstrMapping {

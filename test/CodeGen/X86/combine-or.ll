@@ -223,10 +223,10 @@ define <4 x i32> @test17(<4 x i32> %a, <4 x i32> %b) {
 define <4 x i32> @test18(<4 x i32> %a, <4 x i32> %b) {
 ; CHECK-LABEL: test18:
 ; CHECK:       # BB#0:
-; CHECK-NEXT:    xorps %xmm2, %xmm2
-; CHECK-NEXT:    blendps {{.*#+}} xmm0 = xmm0[0],xmm2[1,2,3]
+; CHECK-NEXT:    pxor %xmm2, %xmm2
+; CHECK-NEXT:    pblendw {{.*#+}} xmm0 = xmm0[0,1],xmm2[2,3,4,5,6,7]
 ; CHECK-NEXT:    pshufd {{.*#+}} xmm0 = xmm0[1,0,1,1]
-; CHECK-NEXT:    blendps {{.*#+}} xmm1 = xmm1[0],xmm2[1,2,3]
+; CHECK-NEXT:    pblendw {{.*#+}} xmm1 = xmm1[0,1],xmm2[2,3,4,5,6,7]
 ; CHECK-NEXT:    por %xmm1, %xmm0
 ; CHECK-NEXT:    retq
   %shuf1 = shufflevector <4 x i32> %a, <4 x i32> zeroinitializer, <4 x i32><i32 4, i32 0, i32 4, i32 4>
@@ -271,9 +271,8 @@ define <2 x i64> @test20(<2 x i64> %a, <2 x i64> %b) {
 define <2 x i64> @test21(<2 x i64> %a, <2 x i64> %b) {
 ; CHECK-LABEL: test21:
 ; CHECK:       # BB#0:
-; CHECK-NEXT:    orps %xmm1, %xmm0
-; CHECK-NEXT:    movq %xmm0, %xmm0
-; CHECK-NEXT:    pshufd {{.*#+}} xmm0 = xmm0[2,3,0,1]
+; CHECK-NEXT:    por %xmm1, %xmm0
+; CHECK-NEXT:    pslldq {{.*#+}} xmm0 = zero,zero,zero,zero,zero,zero,zero,zero,xmm0[0,1,2,3,4,5,6,7]
 ; CHECK-NEXT:    retq
   %shuf1 = shufflevector <2 x i64> %a, <2 x i64> zeroinitializer, <2 x i32><i32 2, i32 0>
   %shuf2 = shufflevector <2 x i64> %b, <2 x i64> zeroinitializer, <2 x i32><i32 2, i32 0>

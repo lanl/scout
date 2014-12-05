@@ -143,6 +143,7 @@ class BitcodeReader : public GVMaterializer {
   std::vector<std::pair<GlobalVariable*, unsigned> > GlobalInits;
   std::vector<std::pair<GlobalAlias*, unsigned> > AliasInits;
   std::vector<std::pair<Function*, unsigned> > FunctionPrefixes;
+  std::vector<std::pair<Function*, unsigned> > FunctionPrologues;
 
   SmallVector<Instruction*, 64> InstsWithTBAATag;
 
@@ -226,6 +227,7 @@ public:
   bool isDematerializable(const GlobalValue *GV) const override;
   std::error_code materialize(GlobalValue *GV) override;
   std::error_code MaterializeModule(Module *M) override;
+  std::vector<StructType *> getIdentifiedStructTypes() const override;
   void Dematerialize(GlobalValue *GV) override;
 
   /// @brief Main interface to parsing a bitcode buffer.
@@ -239,6 +241,10 @@ public:
   static uint64_t decodeSignRotatedValue(uint64_t V);
 
 private:
+  std::vector<StructType *> IdentifiedStructTypes;
+  StructType *createIdentifiedStructType(LLVMContext &Context, StringRef Name);
+  StructType *createIdentifiedStructType(LLVMContext &Context);
+
   Type *getTypeByID(unsigned ID);
   Value *getFnValueByID(unsigned ID, Type *Ty) {
     if (Ty && Ty->isMetadataTy())
