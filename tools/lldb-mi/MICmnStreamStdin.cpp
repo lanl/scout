@@ -434,3 +434,4 @@ CMICmnStreamStdin::SetOSStdinHandler(IOSStdinHandler &vrHandler)
 
     return MIstatus::success;
 }
+

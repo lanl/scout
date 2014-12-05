@@ -13,7 +13,6 @@
 // C Includes
 
 // C++ Includes
-#include <map>
 #include <memory>
 #include <queue>
 
@@ -70,6 +69,9 @@ public:
     size_t GetSTDOUT(char *buf, size_t buf_size, lldb_private::Error &error) override;
     size_t GetSTDERR(char *buf, size_t buf_size, lldb_private::Error &error) override;
     size_t PutSTDIN(const char *buf, size_t buf_size, lldb_private::Error &error) override;
+
+    lldb_private::Error EnableBreakpointSite(lldb_private::BreakpointSite *bp_site) override;
+    lldb_private::Error DisableBreakpointSite(lldb_private::BreakpointSite *bp_site) override;
 
     lldb_private::Error DoDetach(bool keep_stopped) override;
     lldb_private::Error DoLaunch(lldb_private::Module *exe_module, lldb_private::ProcessLaunchInfo &launch_info) override;
