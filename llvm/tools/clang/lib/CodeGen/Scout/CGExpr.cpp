@@ -458,7 +458,7 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        for(unsigned i = 0; i < args.size(); ++i) {
 
       	 // Start Block
-	 EmitBlock(Start[i]);
+         EmitBlock(Start[i]);
          // check if index is in range
          llvm::Value *Check = Builder.CreateICmpEQ(rawindices[i], indices[i]);
          Builder.CreateCondBr(Check, Then[i], Else[i]);
@@ -621,7 +621,7 @@ RValue CodeGenFunction::EmitTailExpr(void) {
   EmitBlock(Then3);
   llvm::Value *Result3 =
       llvm::UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
-  //SC_TOD0: add correct x,y,z
+  //SC_TODO: add correct x,y,z
   Result3 = Builder.CreateInsertElement(Result3, Zero,
       Builder.getInt32(0), "tail.x");
   Result3 = Builder.CreateInsertElement(Result3, Zero,
@@ -724,7 +724,7 @@ RValue CodeGenFunction::EmitHeadExpr(void) {
   EmitBlock(Then3);
   llvm::Value *Result3 =
       llvm::UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
-  //SC_TOD0: add correct x,y,z
+  //SC_TODO: add correct x,y,z
   Result3 = Builder.CreateInsertElement(Result3, Zero,
       Builder.getInt32(0), "head.x");
   Result3 = Builder.CreateInsertElement(Result3, Zero,
@@ -797,8 +797,6 @@ RValue CodeGenFunction::EmitHeadExpr(void) {
   PN->addIncoming(Result1, Else2);
 
   return RValue::get(PN);
-
-
 }
 
 void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,

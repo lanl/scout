@@ -60,6 +60,12 @@ using namespace clang::sema;
 namespace clang {
 namespace sema {
 
+bool isPosition(unsigned id) {
+  if (id == Builtin::BIposition || id == Builtin::BIpositionx
+      || id == Builtin::BIpositiony || id == Builtin::BIpositionz
+      || id == Builtin::BIpositionw) return true;
+  return false;
+}
 
 bool isCShift(unsigned id) {
   if (id == Builtin::BIcshift || id == Builtin::BIcshifti
@@ -172,6 +178,7 @@ void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
 
 void ForallVisitor::VisitCallExpr(CallExpr* E) {
 
+  ForallMeshStmt::MeshElementType FET = fs_->getMeshElementRef();
   FunctionDecl* fd = E->getDirectCallee();
 
   if (fd) {
@@ -185,6 +192,36 @@ void ForallVisitor::VisitCallExpr(CallExpr* E) {
       if (!isTask_) sema_.Diag(E->getExprLoc(), diag::warn_forall_calling_io_func);
     } else if (isCShift(id) || isEOShift(id)) {
       if (!isTask_) error_ = CheckShift(id, E, sema_);
+    } else if (id == Builtin::BIhead || id == Builtin::BItail) {
+      // check if we are in forall edges or faces
+      switch(FET) {
+        case ForallMeshStmt::Cells:
+        case ForallMeshStmt::Vertices:
+          sema_.Diag(E->getExprLoc(), diag::err_forall_non_edges);
+          break;
+        case ForallMeshStmt::Faces: // include this but warn as faces=edges in 2d
+          //SC_TODO: need to set EdgeIndex in forall faces 2d
+          sema_.Diag(E->getExprLoc(), diag::warn_forall_non_edges);
+          break;
+        case ForallMeshStmt::Edges:
+          break;
+        default:
+          assert(false && "invalid forall case");
+        }
+    } else if (isPosition(id)) {
+      //check if we are in forall cells/vertices
+      switch(FET) {
+      case ForallMeshStmt::Cells:
+      case ForallMeshStmt::Vertices:
+        break;
+      case ForallMeshStmt::Faces:
+      case ForallMeshStmt::Edges:
+        sema_.Diag(E->getExprLoc(), diag::err_forall_non_cells_vertices);
+        break;
+      default:
+        assert(false && "invalid forall case");
+      }
+
     }
   }
 

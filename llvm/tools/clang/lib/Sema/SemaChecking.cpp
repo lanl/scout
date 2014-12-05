@@ -176,6 +176,20 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
    case Builtin::BIrank:
     if(!CheckMeshParameterCall(BuiltinID, TheCall)) return ExprError();
     break;
+   case Builtin::BIhead:
+   case Builtin::BItail:
+     /*
+     llvm::errs() << "FDecl\n";
+     FDecl->dump();
+     llvm::errs() << "TheCall\n";
+     TheCall->dump();
+     */
+     break;
+   case Builtin::BIposition:
+   case Builtin::BIpositionx:
+   case Builtin::BIpositiony:
+   case Builtin::BIpositionz:
+     break;
   // +========================================================================+
   case Builtin::BI__builtin___CFStringMakeConstantString:
     assert(TheCall->getNumArgs() == 1 &&

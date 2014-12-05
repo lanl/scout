@@ -7549,7 +7549,13 @@ def err_nomesh_task_fuction : Error<
     "no mesh access in task function">;
 def err_more_than_one_mesh_task_fuction : Error<
     "only one mesh is allowed in task function">;
- 		  
+def err_forall_non_edges : Error<
+    "calling head/tail outside of forall edges">; 
+def warn_forall_non_edges : Warning<
+    "calling head/tail in forall faces">; 
+def err_forall_non_cells_vertices : Error<
+     "calling position outside of forall cells/vertices">; 
+    		  
 def warn_no_scstdlib : Warning<
     "scout standard library inclusion and rt code generation disabled">;
     

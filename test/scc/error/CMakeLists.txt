@@ -244,3 +244,17 @@ set_property(TEST ${tname} PROPERTY WILL_FAIL)
 #    "error: Non integer shift in")
 #set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
+set(name head-tail-no-edges)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: calling head/tail outside of forall edges")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name position-no-cells-vertices)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: calling position outside of forall cells/vertices")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
