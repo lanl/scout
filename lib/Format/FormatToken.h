@@ -535,7 +535,10 @@ private:
 struct AdditionalKeywords {
   AdditionalKeywords(IdentifierTable &IdentTable) {
     kw_in = &IdentTable.get("in");
+    kw_CF_ENUM = &IdentTable.get("CF_ENUM");
+    kw_CF_OPTIONS = &IdentTable.get("CF_OPTIONS");
     kw_NS_ENUM = &IdentTable.get("NS_ENUM");
+    kw_NS_OPTIONS = &IdentTable.get("NS_OPTIONS");
 
     kw_finally = &IdentTable.get("finally");
     kw_function = &IdentTable.get("function");
@@ -547,6 +550,7 @@ struct AdditionalKeywords {
     kw_implements = &IdentTable.get("implements");
     kw_instanceof = &IdentTable.get("instanceof");
     kw_interface = &IdentTable.get("interface");
+    kw_package = &IdentTable.get("package");
     kw_synchronized = &IdentTable.get("synchronized");
     kw_throws = &IdentTable.get("throws");
 
@@ -559,7 +563,10 @@ struct AdditionalKeywords {
 
   // ObjC context sensitive keywords.
   IdentifierInfo *kw_in;
+  IdentifierInfo *kw_CF_ENUM;
+  IdentifierInfo *kw_CF_OPTIONS;
   IdentifierInfo *kw_NS_ENUM;
+  IdentifierInfo *kw_NS_OPTIONS;
 
   // JavaScript keywords.
   IdentifierInfo *kw_finally;
@@ -573,6 +580,7 @@ struct AdditionalKeywords {
   IdentifierInfo *kw_implements;
   IdentifierInfo *kw_instanceof;
   IdentifierInfo *kw_interface;
+  IdentifierInfo *kw_package;
   IdentifierInfo *kw_synchronized;
   IdentifierInfo *kw_throws;
 

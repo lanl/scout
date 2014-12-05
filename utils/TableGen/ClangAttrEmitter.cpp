@@ -1920,9 +1920,6 @@ void EmitClangAttrHasAttrImpl(RecordKeeper &Records, raw_ostream &OS) {
   }
 
   OS << "switch (Syntax) {\n";
-  OS << "case AttrSyntax::Generic:\n";
-  OS << "  return llvm::StringSwitch<int>(Name)\n";
-  GenerateHasAttrSpellingStringSwitch(Attrs, OS);
   OS << "case AttrSyntax::GNU:\n";
   OS << "  return llvm::StringSwitch<int>(Name)\n";
   GenerateHasAttrSpellingStringSwitch(GNU, OS, "GNU");
@@ -2187,7 +2184,8 @@ static std::string CalculateDiagnostic(const Record &S) {
     Namespace = 1U << 11,
     Field = 1U << 12,
     CXXMethod = 1U << 13,
-    ObjCProtocol = 1U << 14
+    ObjCProtocol = 1U << 14,
+    Enum = 1U << 15
   };
   uint32_t SubMask = 0;
 
@@ -2221,6 +2219,7 @@ static std::string CalculateDiagnostic(const Record &S) {
                    .Case("Namespace", Namespace)
                    .Case("Field", Field)
                    .Case("CXXMethod", CXXMethod)
+                   .Case("Enum", Enum)
                    .Default(0);
     if (!V) {
       // Something wasn't in our mapping, so be helpful and let the developer
@@ -2239,6 +2238,7 @@ static std::string CalculateDiagnostic(const Record &S) {
     case Var:   return "ExpectedVariable";
     case Param: return "ExpectedParameter";
     case Class: return "ExpectedClass";
+    case Enum:  return "ExpectedEnum";
     case CXXMethod:
       // FIXME: Currently, this maps to ExpectedMethod based on existing code,
       // but should map to something a bit more accurate at some point.
@@ -2392,6 +2392,8 @@ static std::string GenerateLangOptRequirements(const Record &R,
   std::string FnName = "check", Test;
   for (auto I = LangOpts.begin(), E = LangOpts.end(); I != E; ++I) {
     std::string Part = (*I)->getValueAsString("Name");
+    if ((*I)->getValueAsBit("Negated"))
+      Test += "!";
     Test += "S.LangOpts." + Part;
     if (I + 1 != E)
       Test += " || ";

@@ -94,7 +94,10 @@ TEST_F(FormatTestJS, LiteralOperatorsCanBeKeywords) {
 
 TEST_F(FormatTestJS, ES6DestructuringAssignment) {
   verifyFormat("var [a, b, c] = [1, 2, 3];");
-  verifyFormat("var {a, b} = {a: 1, b: 2};");
+  verifyFormat("var {a, b} = {\n"
+               "  a: 1,\n"
+               "  b: 2\n"
+               "};");
 }
 
 TEST_F(FormatTestJS, ContainerLiterals) {
@@ -131,20 +134,25 @@ TEST_F(FormatTestJS, ContainerLiterals) {
                "      //\n"
                "      a\n"
                "};");
+  verifyFormat("var obj = {\n"
+               "  fooooooooo: function(x) {\n"
+               "    return x.zIsTooLongForOneLineWithTheDeclarationLine();\n"
+               "  }\n"
+               "};");
 }
 
 TEST_F(FormatTestJS, SpacesInContainerLiterals) {
   verifyFormat("var arr = [1, 2, 3];");
-  verifyFormat("var obj = {a: 1, b: 2, c: 3};");
+  verifyFormat("f({a: 1, b: 2, c: 3});");
 
   verifyFormat("var object_literal_with_long_name = {\n"
                "  a: 'aaaaaaaaaaaaaaaaaa',\n"
                "  b: 'bbbbbbbbbbbbbbbbbb'\n"
                "};");
 
-  verifyFormat("var obj = {a: 1, b: 2, c: 3};",
+  verifyFormat("f({a: 1, b: 2, c: 3});",
                getChromiumStyle(FormatStyle::LK_JavaScript));
-  verifyFormat("someVariable = {'a': [{}]};");
+  verifyFormat("f({'a': [{}]});");
 }
 
 TEST_F(FormatTestJS, SingleQuoteStrings) {
@@ -167,6 +175,11 @@ TEST_F(FormatTestJS, GoogModules) {
                getGoogleJSStyleWithColumns(40));
   verifyFormat("var long = goog.require('this.is.really.absurdly.long');",
                getGoogleJSStyleWithColumns(40));
+
+  // These should be wrapped normally.
+  verifyFormat(
+      "var MyLongClassName =\n"
+      "    goog.module.get('my.long.module.name.followedBy.MyLongClassName');");
 }
 
 TEST_F(FormatTestJS, FormatsFreestandingFunctions) {
@@ -222,13 +235,18 @@ TEST_F(FormatTestJS, FunctionLiterals) {
                "    };\n"
                "  }\n"
                "};");
+  verifyFormat("{\n"
+               "  var someVariable = function(x) {\n"
+               "    return x.zIsTooLongForOneLineWithTheDeclarationLine();\n"
+               "  };\n"
+               "}");
 
-  verifyFormat("var x = {a: function() { return 1; }};",
-               getGoogleJSStyleWithColumns(38));
-  verifyFormat("var x = {\n"
+  verifyFormat("f({a: function() { return 1; }});",
+               getGoogleJSStyleWithColumns(33));
+  verifyFormat("f({\n"
                "  a: function() { return 1; }\n"
-               "};",
-               getGoogleJSStyleWithColumns(37));
+               "});",
+               getGoogleJSStyleWithColumns(32));
 
   verifyFormat("return {\n"
                "  a: function SomeFunction() {\n"
@@ -356,6 +374,8 @@ TEST_F(FormatTestJS, TryCatch) {
 
   // But, of course, "catch" is a perfectly fine function name in JavaScript.
   verifyFormat("someObject.catch();");
+  verifyFormat("someObject.new();");
+  verifyFormat("someObject.delete();");
 }
 
 TEST_F(FormatTestJS, StringLiteralConcatenation) {

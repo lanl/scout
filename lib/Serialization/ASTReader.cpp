@@ -1559,7 +1559,12 @@ HeaderFileInfoTrait::ReadData(internal_key_ref key, const unsigned char *d,
       FileManager &FileMgr = Reader.getFileManager();
       ModuleMap &ModMap =
           Reader.getPreprocessor().getHeaderSearchInfo().getModuleMap();
-      ModMap.addHeader(Mod, FileMgr.getFile(key.Filename), HFI.getHeaderRole());
+      // FIXME: This is wrong. We should track the filename as written; this
+      // information should be propagated through the SUBMODULE_HEADER etc
+      // records rather than from here.
+      // FIXME: We don't ever mark excluded headers.
+      Module::Header H = { key.Filename, FileMgr.getFile(key.Filename) };
+      ModMap.addHeader(Mod, H, HFI.getHeaderRole());
     }
   }
 

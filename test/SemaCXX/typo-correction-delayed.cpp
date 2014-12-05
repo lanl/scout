@@ -93,3 +93,22 @@ void f(NestedNode *node) {
   NestedNode *next = node->Next();  // expected-error-re {{no member named 'Next' in 'initializerCorrections::NestedNode'{{$}}}}
 }
 }
+
+namespace PR21669 {
+void f(int *i) {
+  // Check that arguments to a builtin with custom type checking are corrected
+  // properly, since calls to such builtins bypass much of the normal code path
+  // for building and checking the call.
+  __atomic_load(i, i, something_something);  // expected-error-re {{use of undeclared identifier 'something_something'{{$}}}}
+}
+}
+
+const int DefaultArg = 9;  // expected-note {{'DefaultArg' declared here}}
+template <int I = defaultArg> struct S {};  // expected-error {{use of undeclared identifier 'defaultArg'; did you mean 'DefaultArg'?}}
+S<1> s;
+
+namespace foo {}
+void test_paren_suffix() {
+  foo::bar({5, 6});  // expected-error-re {{no member named 'bar' in namespace 'foo'{{$}}}} \
+                     // expected-error {{expected expression}}
+}

@@ -108,6 +108,9 @@ def ext_alignof_expr : ExtWarn<
 def warn_microsoft_dependent_exists : Warning<
   "dependent %select{__if_not_exists|__if_exists}0 declarations are ignored">, 
   InGroup<DiagGroup<"microsoft-exists">>;
+def warn_microsoft_qualifiers_ignored : Warning<
+  "qualifiers after comma in declarator list are ignored">,
+  InGroup<IgnoredAttributes>;
 
 def ext_c11_generic_selection : Extension<
   "generic selections are a C11-specific feature">, InGroup<C11>;
@@ -290,13 +293,8 @@ def ext_for_range : ExtWarn<
 def warn_cxx98_compat_for_range : Warning<
   "range-based for loop is incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
-def ext_for_range_identifier : ExtWarn<
-  "range-based for loop with implicit deduced type is a C++1z extension">,
-  InGroup<CXX1z>;
-def warn_cxx14_compat_for_range_identifier : Warning<
-  "range-based for loop with implicit deduced type is incompatible with "
-  "C++ standards before C++1z">,
-  InGroup<CXXPre1zCompat>, DefaultIgnore;
+def err_for_range_identifier : Error<
+  "range-based for loop requires type for loop variable">;
 def err_for_range_expected_decl : Error<
   "for range declaration must declare a variable">;
 def err_argument_required_after_attribute : Error<
@@ -934,8 +932,8 @@ def err_pragma_optimize_extra_argument : Error<
   "unexpected extra argument '%0' to '#pragma clang optimize'">;
 
 // OpenCL Section 6.8.g
-def err_not_opencl_storage_class_specifier : Error<
-  "OpenCL does not support the '%0' storage class specifier">;
+def err_opencl_unknown_type_specifier : Error<
+  "OpenCL does not support the '%0' %select{type qualifier|storage class specifier}1">;
 
 // OpenCL EXTENSION pragma (OpenCL 1.1 [9.1])
 def warn_pragma_expected_colon : Warning<

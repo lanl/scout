@@ -1982,10 +1982,14 @@ CodeGenFunction::InitializeVTablePointer(BaseSubobject Base,
                                                   NonVirtualOffset,
                                                   VirtualOffset);
 
-  // Finally, store the address point.
-  llvm::Type *AddressPointPtrTy =
-    VTableAddressPoint->getType()->getPointerTo();
-  VTableField = Builder.CreateBitCast(VTableField, AddressPointPtrTy);
+  // Finally, store the address point. Use the same LLVM types as the field to
+  // support optimization.
+  llvm::Type *VTablePtrTy =
+      llvm::FunctionType::get(CGM.Int32Ty, /*isVarArg=*/true)
+          ->getPointerTo()
+          ->getPointerTo();
+  VTableField = Builder.CreateBitCast(VTableField, VTablePtrTy->getPointerTo());
+  VTableAddressPoint = Builder.CreateBitCast(VTableAddressPoint, VTablePtrTy);
   llvm::StoreInst *Store = Builder.CreateStore(VTableAddressPoint, VTableField);
   CGM.DecorateInstruction(Store, CGM.getTBAAInfoForVTablePtr());
 }
@@ -2161,20 +2165,6 @@ CodeGenFunction::CanDevirtualizeMemberFunctionCall(const Expr *Base,
 
   // We can't devirtualize the call.
   return false;
-}
-
-llvm::Value *
-CodeGenFunction::EmitCXXOperatorMemberCallee(const CXXOperatorCallExpr *E,
-                                             const CXXMethodDecl *MD,
-                                             llvm::Value *This) {
-  llvm::FunctionType *fnType =
-    CGM.getTypes().GetFunctionType(
-                             CGM.getTypes().arrangeCXXMethodDeclaration(MD));
-
-  if (MD->isVirtual() && !CanDevirtualizeMemberFunctionCall(E->getArg(0), MD))
-    return CGM.getCXXABI().getVirtualFunctionPointer(*this, MD, This, fnType);
-
-  return CGM.GetAddrOfFunction(MD, fnType);
 }
 
 void CodeGenFunction::EmitForwardingCallToLambda(

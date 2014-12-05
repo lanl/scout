@@ -614,6 +614,42 @@ void Parser::ParseMicrosoftTypeAttributes(ParsedAttributes &attrs) {
   }
 }
 
+void Parser::DiagnoseAndSkipExtendedMicrosoftTypeAttributes() {
+  SourceLocation StartLoc = Tok.getLocation();
+  SourceLocation EndLoc = SkipExtendedMicrosoftTypeAttributes();
+
+  if (EndLoc.isValid()) {
+    SourceRange Range(StartLoc, EndLoc);
+    Diag(StartLoc, diag::warn_microsoft_qualifiers_ignored) << Range;
+  }
+}
+
+SourceLocation Parser::SkipExtendedMicrosoftTypeAttributes() {
+  SourceLocation EndLoc;
+
+  while (true) {
+    switch (Tok.getKind()) {
+    case tok::kw_const:
+    case tok::kw_volatile:
+    case tok::kw___fastcall:
+    case tok::kw___stdcall:
+    case tok::kw___thiscall:
+    case tok::kw___cdecl:
+    case tok::kw___vectorcall:
+    case tok::kw___ptr32:
+    case tok::kw___ptr64:
+    case tok::kw___w64:
+    case tok::kw___unaligned:
+    case tok::kw___sptr:
+    case tok::kw___uptr:
+      EndLoc = ConsumeToken();
+      break;
+    default:
+      return EndLoc;
+    }
+  }
+}
+
 void Parser::ParseBorlandTypeAttributes(ParsedAttributes &attrs) {
   // Treat these like attributes
   while (Tok.is(tok::kw___pascal)) {
@@ -1732,6 +1768,10 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
     //    short x, __attribute__((common)) var;    -> declarator
     MaybeParseGNUAttributes(D);
 
+    // MSVC parses but ignores qualifiers after the comma as an extension.
+    if (getLangOpts().MicrosoftExt)
+      DiagnoseAndSkipExtendedMicrosoftTypeAttributes();
+
     ParseDeclarator(D);
     if (!D.isInvalidType()) {
       Decl *ThisDecl = ParseDeclarationAfterDeclarator(D);
@@ -2520,6 +2560,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
   const PrintingPolicy &Policy = Actions.getASTContext().getPrintingPolicy();
   while (1) {
     bool isInvalid = false;
+    bool isStorageClass = false;
     const char *PrevSpec = nullptr;
     unsigned DiagID = 0;
 
@@ -2943,22 +2984,26 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     case tok::kw_typedef:
       isInvalid = DS.SetStorageClassSpec(Actions, DeclSpec::SCS_typedef, Loc,
                                          PrevSpec, DiagID, Policy);
+      isStorageClass = true;
       break;
     case tok::kw_extern:
       if (DS.getThreadStorageClassSpec() == DeclSpec::TSCS___thread)
         Diag(Tok, diag::ext_thread_before) << "extern";
       isInvalid = DS.SetStorageClassSpec(Actions, DeclSpec::SCS_extern, Loc,
                                          PrevSpec, DiagID, Policy);
+      isStorageClass = true;
       break;
     case tok::kw___private_extern__:
       isInvalid = DS.SetStorageClassSpec(Actions, DeclSpec::SCS_private_extern,
                                          Loc, PrevSpec, DiagID, Policy);
+      isStorageClass = true;
       break;
     case tok::kw_static:
       if (DS.getThreadStorageClassSpec() == DeclSpec::TSCS___thread)
         Diag(Tok, diag::ext_thread_before) << "static";
       isInvalid = DS.SetStorageClassSpec(Actions, DeclSpec::SCS_static, Loc,
                                          PrevSpec, DiagID, Policy);
+      isStorageClass = true;
       break;
     case tok::kw_auto:
       if (getLangOpts().CPlusPlus11) {
@@ -2974,18 +3019,22 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       } else
         isInvalid = DS.SetStorageClassSpec(Actions, DeclSpec::SCS_auto, Loc,
                                            PrevSpec, DiagID, Policy);
+      isStorageClass = true;
       break;
     case tok::kw_register:
       isInvalid = DS.SetStorageClassSpec(Actions, DeclSpec::SCS_register, Loc,
                                          PrevSpec, DiagID, Policy);
+      isStorageClass = true;
       break;
     case tok::kw_mutable:
       isInvalid = DS.SetStorageClassSpec(Actions, DeclSpec::SCS_mutable, Loc,
                                          PrevSpec, DiagID, Policy);
+      isStorageClass = true;
       break;
     case tok::kw___thread:
       isInvalid = DS.SetStorageClassSpecThread(DeclSpec::TSCS___thread, Loc,
                                                PrevSpec, DiagID);
+      isStorageClass = true;
       break;
     case tok::kw_thread_local:
       isInvalid = DS.SetStorageClassSpecThread(DeclSpec::TSCS_thread_local, Loc,
@@ -2994,6 +3043,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     case tok::kw__Thread_local:
       isInvalid = DS.SetStorageClassSpecThread(DeclSpec::TSCS__Thread_local,
                                                Loc, PrevSpec, DiagID);
+      isStorageClass = true;
       break;
 
     // function-specifier
@@ -3232,6 +3282,15 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       break;
 
     // OpenCL qualifiers:
+    case tok::kw___generic:
+      // generic address space is introduced only in OpenCL v2.0
+      // see OpenCL C Spec v2.0 s6.5.5
+      if (Actions.getLangOpts().OpenCLVersion < 200) {
+        DiagID = diag::err_opencl_unknown_type_specifier;
+        PrevSpec = Tok.getIdentifierInfo()->getNameStart();
+        isInvalid = true;
+        break;
+      };
     case tok::kw___private:
     case tok::kw___global:
     case tok::kw___local:
@@ -3266,6 +3325,8 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       if (DiagID == diag::ext_duplicate_declspec)
         Diag(Tok, DiagID)
           << PrevSpec << FixItHint::CreateRemoval(Tok.getLocation());
+      else if (DiagID == diag::err_opencl_unknown_type_specifier)
+        Diag(Tok, DiagID) << PrevSpec << isStorageClass;
       else
         Diag(Tok, DiagID) << PrevSpec;
     }
@@ -3982,6 +4043,7 @@ bool Parser::isTypeQualifier() const {
   case tok::kw___local:
   case tok::kw___global:
   case tok::kw___constant:
+  case tok::kw___generic:
   case tok::kw___read_only:
   case tok::kw___read_write:
   case tok::kw___write_only:
@@ -4131,6 +4193,7 @@ bool Parser::isTypeSpecifierQualifier() {
   case tok::kw___local:
   case tok::kw___global:
   case tok::kw___constant:
+  case tok::kw___generic:
   case tok::kw___read_only:
   case tok::kw___read_write:
   case tok::kw___write_only:
@@ -4303,6 +4366,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw___local:
   case tok::kw___global:
   case tok::kw___constant:
+  case tok::kw___generic:
   case tok::kw___read_only:
   case tok::kw___read_write:
   case tok::kw___write_only:
@@ -4491,6 +4555,7 @@ void Parser::ParseTypeQualifierListOpt(DeclSpec &DS, unsigned AttrReqs,
     case tok::kw___global:
     case tok::kw___local:
     case tok::kw___constant:
+    case tok::kw___generic:
     case tok::kw___read_only:
     case tok::kw___write_only:
     case tok::kw___read_write:
@@ -4848,19 +4913,20 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
     }
 
     // C++0x [dcl.fct]p14:
-    //   There is a syntactic ambiguity when an ellipsis occurs at the end
-    //   of a parameter-declaration-clause without a preceding comma. In
-    //   this case, the ellipsis is parsed as part of the
-    //   abstract-declarator if the type of the parameter names a template
-    //   parameter pack that has not been expanded; otherwise, it is parsed
-    //   as part of the parameter-declaration-clause.
+    //   There is a syntactic ambiguity when an ellipsis occurs at the end of a
+    //   parameter-declaration-clause without a preceding comma. In this case,
+    //   the ellipsis is parsed as part of the abstract-declarator if the type
+    //   of the parameter either names a template parameter pack that has not
+    //   been expanded or contains auto; otherwise, it is parsed as part of the
+    //   parameter-declaration-clause.
     if (Tok.is(tok::ellipsis) && D.getCXXScopeSpec().isEmpty() &&
         !((D.getContext() == Declarator::PrototypeContext ||
            D.getContext() == Declarator::LambdaExprParameterContext ||
            D.getContext() == Declarator::BlockLiteralContext) &&
           NextToken().is(tok::r_paren) &&
           !D.hasGroupingParens() &&
-          !Actions.containsUnexpandedParameterPacks(D))) {
+          !Actions.containsUnexpandedParameterPacks(D) &&
+          D.getDeclSpec().getTypeSpecType() != TST_auto)) {
       SourceLocation EllipsisLoc = ConsumeToken();
       if (isPtrOperatorToken(Tok.getKind(), getLangOpts(), D.getContext())) {
         // The ellipsis was put in the wrong place. Recover, and explain to

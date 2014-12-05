@@ -747,7 +747,8 @@ void UnwrappedLineParser::parseStructuralElement() {
       break;
     case tok::kw_typedef:
       nextToken();
-      if (FormatTok->is(Keywords.kw_NS_ENUM))
+      if (FormatTok->isOneOf(Keywords.kw_NS_ENUM, Keywords.kw_NS_OPTIONS,
+                             Keywords.kw_CF_ENUM, Keywords.kw_CF_OPTIONS))
         parseEnum();
       break;
     case tok::kw_struct:
@@ -756,6 +757,13 @@ void UnwrappedLineParser::parseStructuralElement() {
       parseRecord();
       // A record declaration or definition is always the start of a structural
       // element.
+      break;
+    case tok::period:
+      nextToken();
+      // In Java, classes have an implicit static member "class".
+      if (Style.Language == FormatStyle::LK_Java && FormatTok &&
+          FormatTok->is(tok::kw_class))
+        nextToken();
       break;
     case tok::semi:
       nextToken();

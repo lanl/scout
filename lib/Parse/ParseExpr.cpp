@@ -1364,8 +1364,10 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
       if (!LHS.isInvalid() && !Idx.isInvalid() && Tok.is(tok::r_square)) {
         LHS = Actions.ActOnArraySubscriptExpr(getCurScope(), LHS.get(), Loc,
                                               Idx.get(), RLoc);
-      } else
+      } else {
+        (void)Actions.CorrectDelayedTyposInExpr(LHS);
         LHS = ExprError();
+      }
 
       // Match the ']'.
       T.consumeClose();
@@ -1388,6 +1390,7 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
         SourceLocation OpenLoc = ConsumeToken();
 
         if (ParseSimpleExpressionList(ExecConfigExprs, ExecConfigCommaLocs)) {
+          (void)Actions.CorrectDelayedTyposInExpr(LHS);
           LHS = ExprError();
         }
 
@@ -1438,6 +1441,7 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
         if (Tok.isNot(tok::r_paren)) {
           if (ParseExpressionList(ArgExprs, CommaLocs, &Sema::CodeCompleteCall,
                                   LHS.get())) {
+            (void)Actions.CorrectDelayedTyposInExpr(LHS);
             LHS = ExprError();
           }
         }
@@ -1536,8 +1540,10 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
                                     /*AllowDestructorName=*/true,
                                     /*AllowConstructorName=*/
                                       getLangOpts().MicrosoftExt, 
-                                    ObjectType, TemplateKWLoc, Name))
+                                    ObjectType, TemplateKWLoc, Name)) {
+        (void)Actions.CorrectDelayedTyposInExpr(LHS);
         LHS = ExprError();
+      }
       
       if (!LHS.isInvalid())
         LHS = Actions.ActOnMemberAccessExpr(getCurScope(), LHS.get(), OpLoc, 
