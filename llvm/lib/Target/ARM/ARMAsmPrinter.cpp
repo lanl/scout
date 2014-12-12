@@ -782,6 +782,13 @@ void ARMAsmPrinter::emitAttributes() {
   if (Subtarget->hasFP16())
       ATS.emitAttribute(ARMBuildAttrs::FP_HP_extension, ARMBuildAttrs::AllowHPFP);
 
+  // FIXME: To support emitting this build attribute as GCC does, the
+  // -mfp16-format option and associated plumbing must be
+  // supported. For now the __fp16 type is exposed by default, so this
+  // attribute should be emitted with value 1.
+  ATS.emitAttribute(ARMBuildAttrs::ABI_FP_16bit_format,
+                    ARMBuildAttrs::FP16FormatIEEE);
+
   if (Subtarget->hasMPExtension())
       ATS.emitAttribute(ARMBuildAttrs::MPextension_use, ARMBuildAttrs::AllowMP);
 
@@ -798,7 +805,7 @@ void ARMAsmPrinter::emitAttributes() {
     if (const Module *SourceModule = MMI->getModule()) {
       // ABI_PCS_wchar_t to indicate wchar_t width
       // FIXME: There is no way to emit value 0 (wchar_t prohibited).
-      if (auto WCharWidthValue = cast_or_null<ConstantInt>(
+      if (auto WCharWidthValue = mdconst::extract_or_null<ConstantInt>(
               SourceModule->getModuleFlag("wchar_size"))) {
         int WCharWidth = WCharWidthValue->getZExtValue();
         assert((WCharWidth == 2 || WCharWidth == 4) &&
@@ -809,7 +816,7 @@ void ARMAsmPrinter::emitAttributes() {
       // ABI_enum_size to indicate enum width
       // FIXME: There is no way to emit value 0 (enums prohibited) or value 3
       //        (all enums contain a value needing 32 bits to encode).
-      if (auto EnumWidthValue = cast_or_null<ConstantInt>(
+      if (auto EnumWidthValue = mdconst::extract_or_null<ConstantInt>(
               SourceModule->getModuleFlag("min_enum_size"))) {
         int EnumWidth = EnumWidthValue->getZExtValue();
         assert((EnumWidth == 1 || EnumWidth == 4) &&
