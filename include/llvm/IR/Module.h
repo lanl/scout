@@ -33,8 +33,6 @@ class GVMaterializer;
 class LLVMContext;
 class RandomNumberGenerator;
 class StructType;
-template<typename T> struct DenseMapInfo;
-template<typename KeyT, typename ValueT, typename KeyInfoT> class DenseMap;
 
 template<> struct ilist_traits<Function>
   : public SymbolTableListTraits<Function, Module> {
@@ -190,16 +188,16 @@ public:
     ModFlagBehaviorLastVal = AppendUnique
   };
 
-  /// Checks if Value represents a valid ModFlagBehavior, and stores the
+  /// Checks if Metadata represents a valid ModFlagBehavior, and stores the
   /// converted result in MFB.
-  static bool isValidModFlagBehavior(Value *V, ModFlagBehavior &MFB);
+  static bool isValidModFlagBehavior(Metadata *MD, ModFlagBehavior &MFB);
 
   struct ModuleFlagEntry {
     ModFlagBehavior Behavior;
     MDString *Key;
-    Value *Val;
-    ModuleFlagEntry(ModFlagBehavior B, MDString *K, Value *V)
-      : Behavior(B), Key(K), Val(V) {}
+    Metadata *Val;
+    ModuleFlagEntry(ModFlagBehavior B, MDString *K, Metadata *V)
+        : Behavior(B), Key(K), Val(V) {}
   };
 
 /// @}
@@ -219,7 +217,7 @@ private:
   Materializer;                   ///< Used to materialize GlobalValues
   std::string ModuleID;           ///< Human readable identifier for the module
   std::string TargetTriple;       ///< Platform target triple Module compiled on
-                                  ///< Format:<arch><sub>-<vendor>-<sys>-<abi>
+                                  ///< Format: (arch)(sub)-(vendor)-(sys0-(abi)
   void *NamedMDSymTab;            ///< NamedMDNode names.
   // Allow lazy initialization in const method.
   mutable RandomNumberGenerator *RNG; ///< The random number generator for this module.
@@ -444,7 +442,7 @@ public:
 
   /// Return the corresponding value if Key appears in module flags, otherwise
   /// return null.
-  Value *getModuleFlag(StringRef Key) const;
+  Metadata *getModuleFlag(StringRef Key) const;
 
   /// Returns the NamedMDNode in the module that represents module-level flags.
   /// This method returns null if there are no module-level flags.
@@ -457,7 +455,8 @@ public:
 
   /// Add a module-level flag to the module-level flags metadata. It will create
   /// the module-level flags named metadata if it doesn't already exist.
-  void addModuleFlag(ModFlagBehavior Behavior, StringRef Key, Value *Val);
+  void addModuleFlag(ModFlagBehavior Behavior, StringRef Key, Metadata *Val);
+  void addModuleFlag(ModFlagBehavior Behavior, StringRef Key, Constant *Val);
   void addModuleFlag(ModFlagBehavior Behavior, StringRef Key, uint32_t Val);
   void addModuleFlag(MDNode *Node);
 
