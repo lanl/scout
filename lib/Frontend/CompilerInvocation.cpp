@@ -417,11 +417,13 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   Opts.LessPreciseFPMAD = Args.hasArg(OPT_cl_mad_enable);
   Opts.LimitFloatPrecision = Args.getLastArgValue(OPT_mlimit_float_precision);
   Opts.NoInfsFPMath = (Args.hasArg(OPT_menable_no_infinities) ||
-                       Args.hasArg(OPT_cl_finite_math_only)||
+                       Args.hasArg(OPT_cl_finite_math_only) ||
                        Args.hasArg(OPT_cl_fast_relaxed_math));
   Opts.NoNaNsFPMath = (Args.hasArg(OPT_menable_no_nans) ||
-                       Args.hasArg(OPT_cl_finite_math_only)||
+                       Args.hasArg(OPT_cl_unsafe_math_optimizations) ||
+                       Args.hasArg(OPT_cl_finite_math_only) ||
                        Args.hasArg(OPT_cl_fast_relaxed_math));
+  Opts.NoSignedZeros = Args.hasArg(OPT_cl_no_signed_zeros);
   Opts.NoZeroInitializedInBSS = Args.hasArg(OPT_mno_zero_initialized_in_bss);
   Opts.BackendOptions = Args.getAllArgValues(OPT_backend_option);
   Opts.NumRegisterParameters = getLastArgIntValue(Args, OPT_mregparm, 0, Diags);
@@ -848,6 +850,7 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
   Opts.ASTDumpLookups = Args.hasArg(OPT_ast_dump_lookups);
   Opts.UseGlobalModuleIndex = !Args.hasArg(OPT_fno_modules_global_index);
   Opts.GenerateGlobalModuleIndex = Opts.UseGlobalModuleIndex;
+  Opts.ModuleMapFiles = Args.getAllArgValues(OPT_fmodule_map_file);
   Opts.ModuleFiles = Args.getAllArgValues(OPT_fmodule_file);
 
   Opts.CodeCompleteOpts.IncludeMacros
@@ -1002,6 +1005,7 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {
   Opts.DisableModuleHash = Args.hasArg(OPT_fdisable_module_hash);
   // -fmodules implies -fmodule-maps
   Opts.ModuleMaps = Args.hasArg(OPT_fmodule_maps) || Args.hasArg(OPT_fmodules);
+  Opts.ModuleMapFileHomeIsCwd = Args.hasArg(OPT_fmodule_map_file_home_is_cwd);
   Opts.ModuleCachePruneInterval =
       getLastArgIntValue(Args, OPT_fmodules_prune_interval, 7 * 24 * 60 * 60);
   Opts.ModuleCachePruneAfter =
@@ -1019,9 +1023,6 @@ static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {
     StringRef MacroDef = (*it)->getValue();
     Opts.ModulesIgnoreMacros.insert(MacroDef.split('=').first);
   }
-  std::vector<std::string> ModuleMapFiles =
-      Args.getAllArgValues(OPT_fmodule_map_file);
-  Opts.ModuleMapFiles.insert(ModuleMapFiles.begin(), ModuleMapFiles.end());
 
   // Add -I..., -F..., and -index-header-map options in order.
   bool IsIndexHeaderMap = false;
@@ -1599,8 +1600,11 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   // inlining enabled.
   Opts.NoInlineDefine = !Opt || Args.hasArg(OPT_fno_inline);
 
-  Opts.FastMath = Args.hasArg(OPT_ffast_math);
-  Opts.FiniteMathOnly = Args.hasArg(OPT_ffinite_math_only);
+  Opts.FastMath = Args.hasArg(OPT_ffast_math) ||
+      Args.hasArg(OPT_cl_fast_relaxed_math);
+  Opts.FiniteMathOnly = Args.hasArg(OPT_ffinite_math_only) ||
+      Args.hasArg(OPT_cl_finite_math_only) ||
+      Args.hasArg(OPT_cl_fast_relaxed_math);
 
   Opts.RetainCommentsFromSystemHeaders =
       Args.hasArg(OPT_fretain_comments_from_system_headers);

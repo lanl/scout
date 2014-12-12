@@ -765,6 +765,7 @@ void Clang::AddARMTargetArgs(const ArgList &Args,
   // Select the ABI to use.
   //
   // FIXME: Support -meabi.
+  // FIXME: Parts of this are duplicated in the backend, unify this somehow.
   const char *ABIName = nullptr;
   if (Arg *A = Args.getLastArg(options::OPT_mabi_EQ)) {
     ABIName = A->getValue();
@@ -793,11 +794,10 @@ void Clang::AddARMTargetArgs(const ArgList &Args,
     case llvm::Triple::EABI:
       ABIName = "aapcs";
       break;
+    // This is also the case for netbsd.
+    case llvm::Triple::GNU:
     default:
-      if (Triple.getOS() == llvm::Triple::NetBSD)
-        ABIName = "apcs-gnu";
-      else
-        ABIName = "aapcs";
+      ABIName = "apcs-gnu";
       break;
     }
   }
@@ -1894,6 +1894,23 @@ static void getTargetFeatures(const Driver &D, const llvm::Triple &Triple,
   }
 }
 
+static bool
+shouldUseExceptionTablesForObjCExceptions(const ObjCRuntime &runtime,
+                                          const llvm::Triple &Triple) {
+  // We use the zero-cost exception tables for Objective-C if the non-fragile
+  // ABI is enabled or when compiling for x86_64 and ARM on Snow Leopard and
+  // later.
+  if (runtime.isNonFragile())
+    return true;
+
+  if (!Triple.isMacOSX())
+    return false;
+
+  return (!Triple.isMacOSXVersionLT(10,5) &&
+          (Triple.getArch() == llvm::Triple::x86_64 ||
+           Triple.getArch() == llvm::Triple::arm));
+}
+
 // exceptionSettings() exists to share the logic between -cc1 and linker
 // invocations.
 static bool exceptionSettings(const ArgList &Args, const llvm::Triple &Triple) {
@@ -1930,21 +1947,15 @@ static void addExceptionArgs(const ArgList &Args, types::ID InputType,
   // Gather the exception settings from the command line arguments.
   bool EH = exceptionSettings(Args, Triple);
 
-  if (types::isObjC(InputType)) {
-    bool ObjCExceptionsEnabled = true;
-    if (Arg *A = Args.getLastArg(options::OPT_fobjc_exceptions,
-                                 options::OPT_fno_objc_exceptions,
-                                 options::OPT_fexceptions,
-                                 options::OPT_fno_exceptions))
-      ObjCExceptionsEnabled =
-          A->getOption().matches(options::OPT_fobjc_exceptions) ||
-          A->getOption().matches(options::OPT_fexceptions);
+  // Obj-C exceptions are enabled by default, regardless of -fexceptions. This
+  // is not necessarily sensible, but follows GCC.
+  if (types::isObjC(InputType) &&
+      Args.hasFlag(options::OPT_fobjc_exceptions,
+                   options::OPT_fno_objc_exceptions,
+                   true)) {
+    CmdArgs.push_back("-fobjc-exceptions");
 
-    if (ObjCExceptionsEnabled) {
-      CmdArgs.push_back("-fobjc-exceptions");
-
-      EH = true;
-    }
+    EH |= shouldUseExceptionTablesForObjCExceptions(objcRuntime, Triple);
   }
 
   if (types::isCXX(InputType)) {
