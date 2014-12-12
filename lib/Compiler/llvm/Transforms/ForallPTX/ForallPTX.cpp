@@ -130,7 +130,7 @@ public:
       : m_(m),
         context_(m_.context()){
 
-      f_ = cast<Function>(kernelMD->getOperand(0));
+      f_ = cast<Function>(cast<ValueAsMetadata>(kernelMD->getOperand(0))->getValue());
 
       meshName_ = cast<MDString>(kernelMD->getOperand(1))->getString().str();
 
@@ -145,7 +145,7 @@ public:
           cast<MDString>(fieldNode->getOperand(0))->getString().str();
         
         uint8_t elementType =
-        cast<ConstantInt>(fieldNode->getOperand(1))->getZExtValue();
+        cast<ConstantInt>(cast<ValueAsMetadata>(fieldNode->getOperand(1))->getValue())->getZExtValue();
 
         fieldInfoMap_.insert({fieldName, {pos, elementType}});
         ++pos;
@@ -360,10 +360,10 @@ public:
       NamedMDNode* annotations = 
         kernelModule.getOrInsertNamedMetadata("nvvm.annotations");
       
-      SmallVector<Value*, 3> av;
-      av.push_back(kf_);
+      SmallVector<Metadata*, 3> av;
+      av.push_back(ValueAsMetadata::get(kf_));
       av.push_back(MDString::get(context_, "kernel"));
-      av.push_back(m_.getInt32(1));
+      av.push_back(ValueAsMetadata::get(m_.getInt32(1)));
 
       annotations->addOperand(MDNode::get(context_, av));
     }

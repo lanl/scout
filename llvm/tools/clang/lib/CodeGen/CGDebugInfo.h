@@ -188,15 +188,15 @@ class CGDebugInfo {
 
   void CollectMeshFields(const MeshDecl *Decl,
                          llvm::DIFile F,
-                         SmallVectorImpl<llvm::Value *> &E,
+                         SmallVectorImpl<llvm::Metadata *> &E,
                          llvm::DIType RecordTy);
   void CollectMeshStaticField(const VarDecl *Var,
-                              SmallVectorImpl<llvm::Value *> &E,
+                              SmallVectorImpl<llvm::Metadata *> &E,
                               llvm::DIType MeshTy);
   void CollectMeshNormalField(const MeshFieldDecl *Field,
                               uint64_t OffsetInBits,
                               llvm::DIFile F,
-                              SmallVectorImpl<llvm::Value *> &E,
+                              SmallVectorImpl<llvm::Metadata *> &E,
                               llvm::DIType RecordTy);
 
   llvm::DIType 

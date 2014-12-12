@@ -208,7 +208,7 @@ public:
   //llvm::Type *ConvertType(QualType T);
   llvm::Type *ConvertType(QualType T, bool issStencil=false);
   typedef std::vector<MeshFieldDecl*>   FieldDeclVector;
-  typedef SmallVector<llvm::Value*, 16> MetadataVector;
+  typedef SmallVector<llvm::Metadata*, 16> MetadataVector;
   void AddMeshFieldMetadata(const char *locationName,
                             FieldDeclVector Fields,
                             MetadataVector &MD);
