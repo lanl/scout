@@ -2624,6 +2624,9 @@ TEST_F(FormatTest, MacrosWithoutTrailingSemicolon) {
   EXPECT_EQ("SOME_WEIRD_LOG_MACRO << SomeThing;",
             format("SOME_WEIRD_LOG_MACRO\n"
                    "<< SomeThing;"));
+
+  verifyFormat("VISIT_GL_CALL(GenBuffers, void, (GLsizei n, GLuint* buffers), "
+               "(n, buffers))\n", getChromiumStyle(FormatStyle::LK_Cpp));
 }
 
 TEST_F(FormatTest, MacroCallsWithoutTrailingSemicolon) {
@@ -5909,8 +5912,7 @@ TEST_F(FormatTest, LayoutCxx11BraceInitializers) {
       "             BracedList{ // comment 1 (Forcing interesting break)\n"
       "                         param1, param2,\n"
       "                         // comment 2\n"
-      "                         param3, param4\n"
-      "             });",
+      "                         param3, param4 });",
       ExtraSpaces);
   verifyFormat(
       "std::this_thread::sleep_for(\n"
@@ -8372,6 +8374,11 @@ TEST_F(FormatTest, AllmanBraceBreaking) {
                "  [object someMethod:@{ @\"a\" : @\"b\" }];\n"
                "}",
                AllmanBraceStyle);
+  verifyFormat("int f()\n"
+               "{ // comment\n"
+               "  return 42;\n"
+               "}",
+               AllmanBraceStyle);
 
   AllmanBraceStyle.ColumnLimit = 19;
   verifyFormat("void f() { int i; }", AllmanBraceStyle);
@@ -9373,6 +9380,7 @@ TEST_F(FormatTest, FormatsLambdas) {
   verifyFormat("int c = []() -> vector<int> { return {2}; }();\n");
   verifyFormat("Foo([]() -> std::vector<int> { return {2}; }());");
   verifyGoogleFormat("auto a = [&b, c](D* d) -> D* {};");
+  verifyGoogleFormat("auto a = [&b, c](D* d) -> pair<D*, D*> {};");
   verifyGoogleFormat("auto a = [&b, c](D* d) -> D& {};");
   verifyGoogleFormat("auto a = [&b, c](D* d) -> const D* {};");
   verifyFormat("auto aaaaaaaa = [](int i, // break for some reason\n"
@@ -9411,6 +9419,12 @@ TEST_F(FormatTest, FormatsLambdas) {
   // Lambdas created through weird macros.
   verifyFormat("void f() {\n"
                "  MACRO((const AA &a) { return 1; });\n"
+               "}");
+
+  verifyFormat("if (blah_blah(whatever, whatever, [] {\n"
+               "      doo_dah();\n"
+               "      doo_dah();\n"
+               "    })) {\n"
                "}");
 }
 
