@@ -923,12 +923,13 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
 
 
   // +===== Scout ============================================================+
-  //case DeclSpec::TST_mesh:
   case DeclSpec::TST_uniform_mesh:
   case DeclSpec::TST_rectilinear_mesh:
   case DeclSpec::TST_structured_mesh:
   case DeclSpec::TST_unstructured_mesh:
-    assert(false && "invalid case for mesh type.");
+    Result = Context.VoidPtrTy;
+    declarator.setInvalidType(true);
+    S.Diag(DS.getTypeSpecTypeLoc(), diag::err_invalid_mesh_specifier);
     break;
 
    case DeclSpec::TST_window: {

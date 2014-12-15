@@ -299,6 +299,7 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
 
     ParseMeshDeclaration(DS, CFieldCallback);
 
+
     if (Tok.is(tok::semi)) {
       ConsumeToken();
     } else if (Tok.is(tok::r_brace)) {
@@ -316,10 +317,11 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
     Diag(LBraceLoc, diag::warn_empty_mesh);
   }
 
-  // scout - MERGE
-  //SourceLocation RBraceLoc = MatchRHSPunctuation(tok::r_brace, LBraceLoc);
-  assert(Tok.is(tok::r_brace));
-  ConsumeBrace();
+  if (Tok.is(tok::r_brace)) {
+    ConsumeBrace();
+  } else {
+    Diag(Tok, diag::err_expected_rbrace);
+  }
 
   MeshScope.Exit();
 

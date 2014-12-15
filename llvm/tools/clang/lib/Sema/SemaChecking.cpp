@@ -170,26 +170,20 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
   case Builtin::BIeoshift:
     TheCall->setType(TheCall->getArg(0)->getType());
     break;
-   case Builtin::BIwidth:
-   case Builtin::BIheight:
-   case Builtin::BIdepth:
-   case Builtin::BIrank:
+  case Builtin::BIwidth:
+  case Builtin::BIheight:
+  case Builtin::BIdepth:
+  case Builtin::BIrank:
     if(!CheckMeshParameterCall(BuiltinID, TheCall)) return ExprError();
     break;
-   case Builtin::BIhead:
-   case Builtin::BItail:
-     /*
-     llvm::errs() << "FDecl\n";
-     FDecl->dump();
-     llvm::errs() << "TheCall\n";
-     TheCall->dump();
-     */
-     break;
-   case Builtin::BIposition:
-   case Builtin::BIpositionx:
-   case Builtin::BIpositiony:
-   case Builtin::BIpositionz:
-     break;
+  case Builtin::BIhead:
+  case Builtin::BItail:
+    break;
+  case Builtin::BIposition:
+  case Builtin::BIpositionx:
+  case Builtin::BIpositiony:
+  case Builtin::BIpositionz:
+    break;
   // +========================================================================+
   case Builtin::BI__builtin___CFStringMakeConstantString:
     assert(TheCall->getNumArgs() == 1 &&
