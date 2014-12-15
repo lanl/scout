@@ -51,6 +51,11 @@
 
 project(scRuntimeLibrary)
 
+SET(CMAKE_SKIP_BUILD_RPATH  FALSE)
+SET(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE) 
+SET(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+
 find_library(GLFW glfw)
 
 # Build w/ clang
@@ -233,12 +238,15 @@ endif()
 # the runtime...
 link_directories(${CUDA_LIBRARY_DIR})
 
-add_library(scRuntime STATIC ${rt_srcs} ${gl_srcs} ${glfw_srcs})
-if(NOT APPLE)  
-    set_target_properties(scRuntime PROPERTIES COMPILE_FLAGS "-fPIC")
-    set_target_properties(scRuntime PROPERTIES LINK_FLAGS "-fPIC")
-endif()
-target_link_libraries(scRuntime ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${GLFW_LIBRARIES})
+add_library(scRuntime SHARED ${rt_srcs} ${gl_srcs} ${glfw_srcs})
+set_target_properties(scRuntime 
+  PROPERTIES 
+  POSITION_INDEPENDENT_CODE 1
+  COMPILE_FLAGS "-fPIC"
+  MACOSX_RPATH 1) 
+
+target_link_libraries(scRuntime ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${GLFW_LIBRARIES} "-framework Cocoa -framework Foundation -framework IOKit -framework CoreVideo")
+
 add_dependencies(scRuntime
   scc
   glsl2cstr

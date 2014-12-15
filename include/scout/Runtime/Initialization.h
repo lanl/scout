@@ -9,6 +9,10 @@
 extern const size_t __scrt_initial_window_width;
 extern const size_t __scrt_initial_window_height;
 
+extern "C" void __scrt_init_cpu();
+
+#else
+extern void __scrt_init_cpu();
 #endif
 #endif 
 

@@ -389,8 +389,9 @@ void CodeGenModule::Release() {
   // add call to scout runtime initializer
   if (ScoutRuntime) {
     if (! getCodeGenOpts().ScoutNoStdLibrary) {
-      if (llvm::Function *ScoutInitFunction = ScoutRuntime->ModuleInitFunction()) 
+      if (llvm::Function *ScoutInitFunction = ScoutRuntime->ModuleInitFunction()) {
         AddGlobalCtor(ScoutInitFunction);
+      }
     } else {
       Diags.Report(diag::warn_no_scstdlib);
     }

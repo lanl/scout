@@ -67,16 +67,23 @@ using namespace scout;
 void *__scrt_legion_context;
 void *__scrt_legion_runtime;
 
-extern "C" void __scrt_init_cpu() {
-  DeviceList *devicelist = DeviceList::Instance();
-  cpu::scInitialize(*devicelist);
+extern "C" {
+  
+  void __scrt_init_cpu() {
+    cerr << "doing nothing\n";
+    
+    DeviceList *devicelist = DeviceList::Instance();
+    cpu::scInitialize(*devicelist);
 
-  // CMS -- not sure this is the best way to do this.
-  // Could create general __scrt_init() function that calls 
-  // __scrt_init_cpu and __scrt_init_graphics(), 
-  // but it appears we want to insert different
-  // device initialization depending on available
-  // hardware (see CGScoutRuntime::ModuleInitFunction())
-  // For now, just add graphics init for each case (cpu, cuda, opencl).
+    // CMS -- not sure this is the best way to do this.
+    // Could create general __scrt_init() function that calls 
+    // __scrt_init_cpu and __scrt_init_graphics(), 
+    // but it appears we want to insert different
+    // device initialization depending on available
+    // hardware (see CGScoutRuntime::ModuleInitFunction())
+    // For now, just add graphics init for each case (cpu, cuda, opencl).
+  }
+  
 }
+
 

@@ -1,5 +1,9 @@
 # The Scout Programming Language
 
+The Scout toolchain is still very much a *work-in-progress* and the documentation and source are both under active development.  We use 64-bit Mac OS X 10.9.X and Linux systems (primarily the LTS releases of Ubuntu / Linux Mint) as our primary development platforms.   In addition to these primary platforms our nightly regression systems test the following:
+
+
+
 Scout is open-source software.  Los Alamos National Security, LLC (LANS) owns the copyright to Scout.  
 The license is BSD-like with a "modifications must be indicated" clause. See the 
 [LICENSE](http://github.com/pmccormick/scout/blob/master/License.md) file for the full details.
