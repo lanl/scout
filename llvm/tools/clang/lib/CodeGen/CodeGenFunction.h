@@ -427,6 +427,8 @@ public:
     return hasPrintfNode(S);
   }
 
+  void dumpValue(const char* label, llvm::Value* value);
+
   // +========================================================================+
 
 

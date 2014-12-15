@@ -84,7 +84,8 @@ namespace CodeGen {
     llvm::Function *CreateWindowQuadRenderableEdgeColorsFunction();
     llvm::Function *CreateWindowPaintFunction();
     llvm::Value    *RenderallUniformColorsGlobal(CodeGenFunction &CGF);
-    llvm::Type     *convertScoutSpecificType(const Type *T);    
+    llvm::Type     *convertScoutSpecificType(const Type *T);
+    void DumpValue(CodeGenFunction& CGF, const char* label, llvm::Value* value);
   };
 }
 }
