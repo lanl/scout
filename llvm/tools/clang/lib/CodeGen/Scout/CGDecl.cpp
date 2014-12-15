@@ -375,7 +375,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       // Create metadata to connect the name of the Alloc with the name of the lsciUnimeshAlloc
       llvm::NamedMDNode *MeshMD;
       MeshMD = CGM.getModule().getOrInsertNamedMetadata("scout.lscimeshmd");
-      SmallVector<llvm::Value*, 2> lsciMeshInfoMD;
+      SmallVector<llvm::Metadata*, 2> lsciMeshInfoMD;
 
       llvm::MDString *MDMeshName = llvm::MDString::get(getLLVMContext(), MeshName);
       lsciMeshInfoMD.push_back(MDMeshName);
@@ -383,7 +383,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       llvm::MDString *MDlsciMeshName = llvm::MDString::get(getLLVMContext(), lsciUnimeshAlloc->getName());
       lsciMeshInfoMD.push_back(MDlsciMeshName);
 
-      MeshMD->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(lsciMeshInfoMD)));
+      MeshMD->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Metadata*>(lsciMeshInfoMD)));
       
       // Start collecting args to the lsci_unimesh_create() call
       Args.push_back(lsciUnimeshAlloc);

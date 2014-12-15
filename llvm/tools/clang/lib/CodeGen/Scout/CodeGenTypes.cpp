@@ -100,7 +100,7 @@ void CodeGenTypes::AddMeshFieldMetadata(const char *locationName,
     FieldInfo.push_back(MDName);
     MDName = llvm::MDString::get(getLLVMContext(), (*it)->getName());
     FieldInfo.push_back(MDName);
-    llvm::Value *FieldsMD = llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(FieldInfo));
+    llvm::Metadata *FieldsMD = llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Metadata*>(FieldInfo));
     MD.push_back(FieldsMD);
     FieldInfo.clear();
   }
@@ -129,7 +129,7 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   // optimization and code generation.
   llvm::NamedMDNode *MeshMD;
   MeshMD = CGM.getModule().getOrInsertNamedMetadata("scout.meshmd");
-  SmallVector<llvm::Value*, 16> MeshInfoMD;
+  SmallVector<llvm::Metadata*, 16> MeshInfoMD;
 
   // Mesh type "name"... 
   llvm::MDString *MDName = llvm::MDString::get(getLLVMContext(), meshName);
@@ -151,7 +151,8 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   
   // Metadata - mesh dims.   
   llvm::IntegerType *Int32Ty = llvm::Type::getInt32Ty(getLLVMContext());
-  llvm::Value *MDRank = llvm::ConstantInt::get(Int32Ty, rank);
+  llvm::Metadata *MDRank =
+  llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int32Ty, rank));
   MeshInfoMD.push_back(MDRank);
   
   //typedef llvm::ArrayType ArrayTy;
@@ -194,7 +195,7 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   AddMeshFieldMetadata("edges",    EdgeFields,   MeshInfoMD);
   AddMeshFieldMetadata("faces",    FaceFields,   MeshInfoMD);    
 
-  MeshMD->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MeshInfoMD)));
+  MeshMD->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Metadata*>(MeshInfoMD)));
   
   if (isa<UniformMeshType>(meshType) || isa<RectilinearMeshType>(meshType)) {
     // put width/height/depth/rank after fields

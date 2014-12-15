@@ -431,7 +431,7 @@ class CodeGenModule : public CodeGenTypeCache {
   llvm::SetVector<clang::Module *> ImportedModules;
 
   /// \brief A vector of metadata strings.
-  SmallVector<llvm::Value *, 16> LinkerOptionsMetadata;
+  SmallVector<llvm::Metadata *, 16> LinkerOptionsMetadata;
 
   /// @name Cache for Objective-C runtime types
   /// @{
@@ -625,9 +625,7 @@ public:
 
   llvm::MDNode *getNoObjCARCExceptionsMetadata() {
     if (!NoObjCARCExceptionsMetadata)
-      NoObjCARCExceptionsMetadata =
-        llvm::MDNode::get(getLLVMContext(),
-                          SmallVector<llvm::Value*,1>());
+      NoObjCARCExceptionsMetadata = llvm::MDNode::get(getLLVMContext(), None);
     return NoObjCARCExceptionsMetadata;
   }
 

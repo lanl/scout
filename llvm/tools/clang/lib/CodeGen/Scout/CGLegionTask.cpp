@@ -270,10 +270,10 @@ void CGLegionTask::EmitLegionTaskInitFunctionStart()
   CGM.getModule().getOrInsertNamedMetadata("scout.tasks");
   
   
-  SmallVector<llvm::Value*, 3> taskInfo;
-  taskInfo.push_back(llvm::ConstantInt::get(R.Int32Ty, taskId));
-  taskInfo.push_back(taskFunc);
-  taskInfo.push_back(legionTaskInitFunc);
+  SmallVector<llvm::Metadata*, 3> taskInfo;
+  taskInfo.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(R.Int32Ty, taskId)));
+  taskInfo.push_back(llvm::ValueAsMetadata::get(taskFunc));
+  taskInfo.push_back(llvm::ValueAsMetadata::get(legionTaskInitFunc));
  
   tasks->addOperand(llvm::MDNode::get(llvmContext, taskInfo));
 }

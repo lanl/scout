@@ -41,6 +41,8 @@
 #include "ProcessWindows.h"
 #include "TargetThreadWindows.h"
 
+#include "llvm/Support/raw_ostream.h"
+
 using namespace lldb;
 using namespace lldb_private;
 
@@ -235,10 +237,13 @@ ProcessWindows::DoLaunch(Module *exe_module,
 Error
 ProcessWindows::DoResume()
 {
+    llvm::sys::ScopedLock lock(m_mutex);
+
     Error error;
-    if (GetPrivateState() == eStateStopped)
+    if (GetPrivateState() == eStateStopped || GetPrivateState() == eStateCrashed)
     {
-        if (m_session_data->m_debugger->GetActiveException())
+        ExceptionRecordSP active_exception = m_session_data->m_debugger->GetActiveException().lock();
+        if (active_exception)
         {
             // Resume the process and continue processing debug events.  Mask the exception so that
             // from the process's view, there is no indication that anything happened.
@@ -276,6 +281,8 @@ ProcessWindows::DoDetach(bool keep_stopped)
 Error
 ProcessWindows::DoDestroy()
 {
+    llvm::sys::ScopedLock lock(m_mutex);
+
     Error error;
     if (GetPrivateState() != eStateExited && GetPrivateState() != eStateDetached && m_session_data)
     {
@@ -289,9 +296,15 @@ ProcessWindows::DoDestroy()
 void
 ProcessWindows::RefreshStateAfterStop()
 {
+    llvm::sys::ScopedLock lock(m_mutex);
+
+    if (!m_session_data)
+        return;
+
     m_thread_list.RefreshStateAfterStop();
 
-    ExceptionRecord *active_exception = m_session_data->m_debugger->GetActiveException();
+    std::weak_ptr<ExceptionRecord> exception_record = m_session_data->m_debugger->GetActiveException();
+    ExceptionRecordSP active_exception = exception_record.lock();
     if (!active_exception)
         return;
 
@@ -299,9 +312,9 @@ ProcessWindows::RefreshStateAfterStop()
     ThreadSP stop_thread = m_thread_list.GetSelectedThread();
     RegisterContextSP register_context = stop_thread->GetRegisterContext();
 
+    uint64_t pc = register_context->GetPC();
     if (active_exception->GetExceptionCode() == EXCEPTION_BREAKPOINT)
     {
-        uint64_t pc = register_context->GetPC();
         // TODO(zturner): The current EIP is AFTER the BP opcode, which is one byte.  So
         // to find the breakpoint, move the PC back.  A better way to do this is probably
         // to ask the Platform how big a breakpoint opcode is.
@@ -316,6 +329,14 @@ ProcessWindows::RefreshStateAfterStop()
         }
 
         stop_info = StopInfo::CreateStopReasonWithBreakpointSiteID(*stop_thread, break_id, should_stop);
+        stop_thread->SetStopInfo(stop_info);
+    }
+    else
+    {
+        std::string desc;
+        llvm::raw_string_ostream desc_stream(desc);
+        desc_stream << "Exception " << active_exception->GetExceptionCode() << " encountered at address " << pc;
+        stop_info = StopInfo::CreateStopReasonWithException(*stop_thread, desc_stream.str().c_str());
         stop_thread->SetStopInfo(stop_info);
     }
 }
@@ -355,6 +376,8 @@ ProcessWindows::DoHalt(bool &caused_stop)
 
 void ProcessWindows::DidLaunch()
 {
+    llvm::sys::ScopedLock lock(m_mutex);
+
     StateType state = GetPrivateState();
     // The initial stop won't broadcast the state change event, so account for that here.
     if (m_session_data && GetPrivateState() == eStateStopped &&
@@ -371,6 +394,8 @@ ProcessWindows::DoReadMemory(lldb::addr_t vm_addr,
     if (!m_session_data)
         return 0;
 
+    llvm::sys::ScopedLock lock(m_mutex);
+
     HostProcess process = m_session_data->m_debugger->GetProcess();
     void *addr = reinterpret_cast<void *>(vm_addr);
     SIZE_T bytes_read = 0;
@@ -384,6 +409,8 @@ ProcessWindows::DoWriteMemory(lldb::addr_t vm_addr, const void *buf, size_t size
 {
     if (!m_session_data)
         return 0;
+
+    llvm::sys::ScopedLock lock(m_mutex);
 
     HostProcess process = m_session_data->m_debugger->GetProcess();
     void *addr = reinterpret_cast<void *>(vm_addr);
@@ -424,6 +451,8 @@ ProcessWindows::CanDebug(Target &target, bool plugin_specified_by_name)
 void
 ProcessWindows::OnExitProcess(uint32_t exit_code)
 {
+    llvm::sys::ScopedLock lock(m_mutex);
+
     ModuleSP executable_module = GetTarget().GetExecutableModule();
     ModuleList unloaded_modules;
     unloaded_modules.Append(executable_module);
@@ -438,6 +467,8 @@ ProcessWindows::OnDebuggerConnected(lldb::addr_t image_base)
 {
     // Either we successfully attached to an existing process, or we successfully launched a new
     // process under the debugger.
+    llvm::sys::ScopedLock lock(m_mutex);
+
     ModuleSP module = GetTarget().GetExecutableModule();
     bool load_addr_changed;
     module->SetLoadAddress(GetTarget(), image_base, false, load_addr_changed);
@@ -456,6 +487,16 @@ ProcessWindows::OnDebuggerConnected(lldb::addr_t image_base)
 ExceptionResult
 ProcessWindows::OnDebugException(bool first_chance, const ExceptionRecord &record)
 {
+    llvm::sys::ScopedLock lock(m_mutex);
+
+    // FIXME: Without this check, occasionally when running the test suite there is
+    // an issue where m_session_data can be null.  It's not clear how this could happen
+    // but it only surfaces while running the test suite.  In order to properly diagnose
+    // this, we probably need to first figure allow the test suite to print out full
+    // lldb logs, and then add logging to the process plugin.
+    if (!m_session_data)
+        return ExceptionResult::SendToApplication;
+
     ExceptionResult result = ExceptionResult::SendToApplication;
     switch (record.GetExceptionCode())
     {
@@ -501,6 +542,8 @@ ProcessWindows::OnDebugException(bool first_chance, const ExceptionRecord &recor
 void
 ProcessWindows::OnCreateThread(const HostThread &new_thread)
 {
+    llvm::sys::ScopedLock lock(m_mutex);
+
     const HostThreadWindows &wnew_thread = new_thread.GetNativeThread();
     m_session_data->m_new_threads[wnew_thread.GetThreadId()] = new_thread;
 }
@@ -508,6 +551,8 @@ ProcessWindows::OnCreateThread(const HostThread &new_thread)
 void
 ProcessWindows::OnExitThread(const HostThread &exited_thread)
 {
+    llvm::sys::ScopedLock lock(m_mutex);
+
     // A thread may have started and exited before the debugger stopped allowing a refresh.
     // Just remove it from the new threads list in that case.
     const HostThreadWindows &wexited_thread = exited_thread.GetNativeThread();
@@ -521,6 +566,8 @@ ProcessWindows::OnExitThread(const HostThread &exited_thread)
 void
 ProcessWindows::OnLoadDll(const ModuleSpec &module_spec, lldb::addr_t module_addr)
 {
+    llvm::sys::ScopedLock lock(m_mutex);
+
     // Confusingly, there is no Target::AddSharedModule.  Instead, calling GetSharedModule() with
     // a new module will add it to the module list and return a corresponding ModuleSP.
     Error error;
@@ -536,6 +583,8 @@ ProcessWindows::OnLoadDll(const ModuleSpec &module_spec, lldb::addr_t module_add
 void
 ProcessWindows::OnUnloadDll(lldb::addr_t module_addr)
 {
+    llvm::sys::ScopedLock lock(m_mutex);
+
     Address resolved_addr;
     if (GetTarget().ResolveLoadAddress(module_addr, resolved_addr))
     {
@@ -557,6 +606,8 @@ ProcessWindows::OnDebugString(const std::string &string)
 void
 ProcessWindows::OnDebuggerError(const Error &error, uint32_t type)
 {
+    llvm::sys::ScopedLock lock(m_mutex);
+
     if (!m_session_data->m_initial_stop_received)
     {
         // If we haven't actually launched the process yet, this was an error launching the

@@ -159,12 +159,11 @@ void CGDebugInfo::completeClassData(const UniformMeshDecl *MD) {
   void* TyPtr = Ty.getAsOpaquePtr();
   auto I = TypeCache.find(TyPtr);
   if (I != TypeCache.end() &&
-      !llvm::DIType(cast<llvm::MDNode>(static_cast<llvm::Value *>(I->second)))
-      .isForwardDecl())
+      !llvm::DIType(cast<llvm::MDNode>(I->second)).isForwardDecl())
     return;
   llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
   assert(!Res.isForwardDecl());
-  TypeCache[TyPtr] = Res;
+  TypeCache[TyPtr].reset(Res);
 }
 
 void CGDebugInfo::completeClassData(const RectilinearMeshDecl *MD) {
@@ -174,12 +173,11 @@ void CGDebugInfo::completeClassData(const RectilinearMeshDecl *MD) {
   void* TyPtr = Ty.getAsOpaquePtr();
   auto I = TypeCache.find(TyPtr);
   if (I != TypeCache.end() &&
-      !llvm::DIType(cast<llvm::MDNode>(static_cast<llvm::Value *>(I->second)))
-      .isForwardDecl())
+      !llvm::DIType(cast<llvm::MDNode>(I->second)).isForwardDecl())
     return;
-  llvm::DIType Res = CreateTypeDefinition(Ty->castAs<RectilinearMeshType>());
+  llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
   assert(!Res.isForwardDecl());
-  TypeCache[TyPtr] = Res;
+  TypeCache[TyPtr].reset(Res);
 }
 
 void CGDebugInfo::completeClassData(const StructuredMeshDecl *MD) {
@@ -189,12 +187,11 @@ void CGDebugInfo::completeClassData(const StructuredMeshDecl *MD) {
   void* TyPtr = Ty.getAsOpaquePtr();
   auto I = TypeCache.find(TyPtr);
   if (I != TypeCache.end() &&
-      !llvm::DIType(cast<llvm::MDNode>(static_cast<llvm::Value *>(I->second)))
-      .isForwardDecl())
+      !llvm::DIType(cast<llvm::MDNode>(I->second)).isForwardDecl())
     return;
-  llvm::DIType Res = CreateTypeDefinition(Ty->castAs<StructuredMeshType>());
+  llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
   assert(!Res.isForwardDecl());
-  TypeCache[TyPtr] = Res;
+  TypeCache[TyPtr].reset(Res);
 }
 
 void CGDebugInfo::completeClassData(const UnstructuredMeshDecl *MD) {
@@ -204,11 +201,11 @@ void CGDebugInfo::completeClassData(const UnstructuredMeshDecl *MD) {
   void* TyPtr = Ty.getAsOpaquePtr();
   auto I = TypeCache.find(TyPtr);
   if (I != TypeCache.end() &&
-      !llvm::DIType(cast<llvm::MDNode>(static_cast<llvm::Value *>(I->second)))
-      .isForwardDecl())
-    return;  llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UnstructuredMeshType>());
+      !llvm::DIType(cast<llvm::MDNode>(I->second)).isForwardDecl())
+    return;
+  llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
   assert(!Res.isForwardDecl());
-  TypeCache[TyPtr] = Res;
+  TypeCache[TyPtr].reset(Res);
 }
 
 
@@ -269,11 +266,11 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
     return FwdDecl;
 
   // Push the mesh on region stack.
-  LexicalBlockStack.push_back(&*FwdDecl);
-  RegionMap[MD] = llvm::WeakVH(FwdDecl);
+  LexicalBlockStack.emplace_back(&*FwdDecl);
+  RegionMap[Ty->getDecl()].reset(FwdDecl);
 
   // Convert all the elements.
-  SmallVector<llvm::Value *, 16> EltTys;
+  SmallVector<llvm::Metadata *, 16> EltTys;
   // what about nested types?
 
   // Collect data fields (including static variables and any initializers).
@@ -285,7 +282,7 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
   llvm::DIArray Elements = DBuilder.getOrCreateArray(EltTys);
   FwdDecl.setArrays(Elements);
 
-  RegionMap[MD] = llvm::WeakVH(FwdDecl);
+  RegionMap[Ty->getDecl()].reset(FwdDecl);
   return FwdDecl;
 }
 
@@ -355,8 +352,8 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
                                             llvm::DIArray(), dimX, dimY, dimZ, 0,
                                             llvm::DIType(), FullName);
 
-  RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
-  TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
+  RegionMap[Ty->getDecl()].reset(RealDecl);
+  TypeCache[QualType(Ty, 0).getAsOpaquePtr()].reset(RealDecl);
 
   return RealDecl;
 }
@@ -403,7 +400,7 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const UniformMeshType *Ty,
   Res.setArrays(T.getElements());
 
   // And update the type cache.
-  TypeCache[QTy.getAsOpaquePtr()] = Res;
+  TypeCache[QTy.getAsOpaquePtr()].reset(Res);
   return Res;
 }
 
@@ -464,11 +461,11 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const RectilinearMeshType *Ty) {
     return FwdDecl;
 
   // Push the mesh on region stack.
-  LexicalBlockStack.push_back(&*FwdDecl);
-  RegionMap[MD] = llvm::WeakVH(FwdDecl);
+  LexicalBlockStack.emplace_back(&*FwdDecl);
+  RegionMap[Ty->getDecl()].reset(FwdDecl);
 
   // Convert all the elements.
-  SmallVector<llvm::Value *, 16> EltTys;
+  SmallVector<llvm::Metadata *, 16> EltTys;
   // what about nested types?
 
   // Collect data fields (including static variables and any initializers).
@@ -480,7 +477,7 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const RectilinearMeshType *Ty) {
   llvm::DIArray Elements = DBuilder.getOrCreateArray(EltTys);
   FwdDecl.setArrays(Elements);
 
-  RegionMap[MD] = llvm::WeakVH(FwdDecl);
+  RegionMap[Ty->getDecl()].reset(FwdDecl);
   return FwdDecl;
 }
 
@@ -551,8 +548,8 @@ CGDebugInfo::CreateLimitedType(const RectilinearMeshType *Ty) {
                                                 llvm::DIArray(), dimX, dimY, dimZ, 0,
                                                 llvm::DIType(), FullName);
 
-  RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
-  TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
+  RegionMap[Ty->getDecl()].reset(RealDecl);
+  TypeCache[QualType(Ty, 0).getAsOpaquePtr()].reset(RealDecl);
 
   return RealDecl;
 }
@@ -599,7 +596,7 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const RectilinearMeshType *Ty,
   Res.setArrays(T.getElements());
 
   // And update the type cache.
-  TypeCache[QTy.getAsOpaquePtr()] = Res;
+  TypeCache[QTy.getAsOpaquePtr()].reset(Res);
   return Res;
 }
 
@@ -660,11 +657,11 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const StructuredMeshType *Ty) {
     return FwdDecl;
 
   // Push the mesh on region stack.
-  LexicalBlockStack.push_back(&*FwdDecl);
-  RegionMap[MD] = llvm::WeakVH(FwdDecl);
+  LexicalBlockStack.emplace_back(&*FwdDecl);
+  RegionMap[Ty->getDecl()].reset(FwdDecl);
 
   // Convert all the elements.
-  SmallVector<llvm::Value *, 16> EltTys;
+  SmallVector<llvm::Metadata *, 16> EltTys;
   // what about nested types?
 
   // Collect data fields (including static variables and any initializers).
@@ -676,7 +673,7 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const StructuredMeshType *Ty) {
   llvm::DIArray Elements = DBuilder.getOrCreateArray(EltTys);
   FwdDecl.setArrays(Elements);
 
-  RegionMap[MD] = llvm::WeakVH(FwdDecl);
+  RegionMap[Ty->getDecl()].reset(FwdDecl);
   return FwdDecl;
 }
 
@@ -748,8 +745,8 @@ CGDebugInfo::CreateLimitedType(const StructuredMeshType *Ty) {
                                                llvm::DIArray(), dimX, dimY, dimZ, 0,
                                                llvm::DIType(), FullName);
 
-  RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
-  TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
+  RegionMap[Ty->getDecl()].reset(RealDecl);
+  TypeCache[QualType(Ty, 0).getAsOpaquePtr()].reset(RealDecl);
 
   return RealDecl;
 }
@@ -797,7 +794,7 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const StructuredMeshType *Ty,
   Res.setArrays(T.getElements());
 
   // And update the type cache.
-  TypeCache[QTy.getAsOpaquePtr()] = Res;
+  TypeCache[QTy.getAsOpaquePtr()].reset(Res);
   return Res;
 }
 
@@ -899,8 +896,8 @@ CGDebugInfo::CreateLimitedType(const UnstructuredMeshType *Ty) {
                                                  llvm::DIArray(), dimX, dimY, dimZ, 0,
                                                  llvm::DIType(), FullName);
 
-  RegionMap[Ty->getDecl()] = llvm::WeakVH(RealDecl);
-  TypeCache[QualType(Ty, 0).getAsOpaquePtr()] = RealDecl;
+  RegionMap[Ty->getDecl()].reset(RealDecl);
+  TypeCache[QualType(Ty, 0).getAsOpaquePtr()].reset(RealDecl);
 
   return RealDecl;
 }
@@ -928,7 +925,7 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const UnstructuredMeshType *Ty,
   Res.setArrays(T.getElements());
 
   // And update the type cache.
-  TypeCache[QTy.getAsOpaquePtr()] = Res;
+  TypeCache[QTy.getAsOpaquePtr()].reset(Res);
   return Res;
 }
 
@@ -957,11 +954,11 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const UnstructuredMeshType *Ty) {
     return FwdDecl;
 
   // Push the mesh on region stack.
-  LexicalBlockStack.push_back(&*FwdDecl);
-  RegionMap[MD] = llvm::WeakVH(FwdDecl);
+  LexicalBlockStack.emplace_back(&*FwdDecl);
+  RegionMap[Ty->getDecl()].reset(FwdDecl);
 
   // Convert all the elements.
-  SmallVector<llvm::Value *, 16> EltTys;
+  SmallVector<llvm::Metadata *, 16> EltTys;
   // what about nested types?
 
   // Collect data fields (including static variables and any initializers).
@@ -973,7 +970,7 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const UnstructuredMeshType *Ty) {
   llvm::DIArray Elements = DBuilder.getOrCreateArray(EltTys);
   FwdDecl.setArrays(Elements);
 
-  RegionMap[MD] = llvm::WeakVH(FwdDecl);
+  RegionMap[Ty->getDecl()].reset(FwdDecl);
   return FwdDecl;
 }
 
@@ -1014,7 +1011,7 @@ CGDebugInfo::getOrCreateMeshFwdDecl(const UnstructuredMeshType *Ty,
 /// Mesh.
 void CGDebugInfo::
 CollectMeshFields(const MeshDecl *mesh, llvm::DIFile tunit,
-                  SmallVectorImpl<llvm::Value *> &elements,
+                  SmallVectorImpl<llvm::Metadata *> &elements,
                   llvm::DIType MeshTy) {
 
   const ASTMeshLayout &layout = CGM.getContext().getASTMeshLayout(mesh);
@@ -1043,7 +1040,7 @@ CollectMeshFields(const MeshDecl *mesh, llvm::DIFile tunit,
 void CGDebugInfo::
 CollectMeshNormalField(const MeshFieldDecl *field, uint64_t OffsetInBits,
                        llvm::DIFile tunit,
-                       SmallVectorImpl<llvm::Value *> &elements,
+                       SmallVectorImpl<llvm::Metadata *> &elements,
                        llvm::DIType MeshTy) {
   StringRef name = field->getName();
   QualType type = field->getType();
@@ -1065,7 +1062,7 @@ CollectMeshNormalField(const MeshFieldDecl *field, uint64_t OffsetInBits,
 /// CollectMeshStaticField - Helper for CollectMeshFields.
 void CGDebugInfo::
 CollectMeshStaticField(const VarDecl *Var,
-                       SmallVectorImpl<llvm::Value *> &elements,
+                       SmallVectorImpl<llvm::Metadata *> &elements,
                        llvm::DIType MeshTy) {
   // Create the descriptor for the static variable, with or without
   // constant initializers.
@@ -1078,7 +1075,7 @@ CollectMeshStaticField(const VarDecl *Var,
 
   unsigned LineNumber = getLineNumber(Var->getLocation());
   StringRef VName = Var->getName();
-  llvm::Constant *C = NULL;
+  llvm::Constant *C = nullptr;
   if (Var->getInit()) {
     const APValue *Value = Var->evaluateValue();
     if (Value) {
@@ -1093,7 +1090,7 @@ CollectMeshStaticField(const VarDecl *Var,
   llvm::DIType GV = DBuilder.createStaticMemberType(MeshTy, VName, VUnit,
                                                     LineNumber, VTy, Flags, C);
   elements.push_back(GV);
-  StaticDataMemberCache[Var->getCanonicalDecl()] = llvm::WeakVH(GV);
+  StaticDataMemberCache[Var->getCanonicalDecl()].reset(GV);
 }
 
 llvm::DIType

@@ -1293,8 +1293,8 @@ void CodeGenFunction::AddScoutKernel(llvm::Function* f,
   llvm::NamedMDNode* kernels =
       CGM.getModule().getOrInsertNamedMetadata("scout.kernels");
 
-  llvm::SmallVector<llvm::Value*, 3> kernelData;
-  kernelData.push_back(f);
+  llvm::SmallVector<llvm::Metadata*, 3> kernelData;
+  kernelData.push_back(llvm::ValueAsMetadata::get(f));
   
   const MeshType* mt = S.getMeshType();
   kernelData.push_back(llvm::MDString::get(CGM.getLLVMContext(),
@@ -1302,36 +1302,36 @@ void CodeGenFunction::AddScoutKernel(llvm::Function* f,
   
   MeshDecl* md = mt->getDecl();
   
-  llvm::SmallVector<llvm::Value*, 16> meshFields;
+  llvm::SmallVector<llvm::Metadata*, 16> meshFields;
   
   for (MeshDecl::field_iterator itr = md->field_begin(),
        itrEnd = md->field_end(); itr != itrEnd; ++itr){
     MeshFieldDecl* fd = *itr;
     
-    llvm::SmallVector<llvm::Value*, 3> fieldData;
+    llvm::SmallVector<llvm::Metadata*, 3> fieldData;
     fieldData.push_back(llvm::MDString::get(CGM.getLLVMContext(),
                                             fd->getName()));
     if(fd->isCellLocated()){
-      fieldData.push_back(llvm::ConstantInt::get(Int8Ty, FIELD_CELL));
+      fieldData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int8Ty, FIELD_CELL)));
     }
     else if(fd->isVertexLocated()){
-      fieldData.push_back(llvm::ConstantInt::get(Int8Ty, FIELD_VERTEX));
+      fieldData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int8Ty, FIELD_VERTEX)));
     }
     else if(fd->isEdgeLocated()){
-      fieldData.push_back(llvm::ConstantInt::get(Int8Ty, FIELD_EDGE));
+      fieldData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int8Ty, FIELD_EDGE)));
     }
     else if(fd->isFaceLocated()){
-      fieldData.push_back(llvm::ConstantInt::get(Int8Ty, FIELD_FACE));
+      fieldData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int8Ty, FIELD_FACE)));
     }
     
-    llvm::Value* fieldDataMD =
-    llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Value*>(fieldData));
+    llvm::Metadata* fieldDataMD =
+    llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Metadata*>(fieldData));
     
     meshFields.push_back(fieldDataMD);
   }
   
-  llvm::Value* fieldsMD =
-  llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Value*>(meshFields));
+  llvm::Metadata* fieldsMD =
+  llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Metadata*>(meshFields));
   
   kernelData.push_back(fieldsMD);
   
@@ -1873,7 +1873,7 @@ void CodeGenFunction::EmitForallMeshMDBlock(const ForallMeshStmt &S) {
   StringRef MeshTypeName =  S.getMeshType()->getName();
   for (llvm::NamedMDNode::op_iterator II = MeshMD->op_begin(), IE = MeshMD->op_end();
       II != IE; ++II) {
-    if((*II)->getOperand(0)->getName() == MeshTypeName) {
+    if(cast<llvm::MDString>((*II)->getOperand(0))->getString() == MeshTypeName) {
       BI->setMetadata(MeshName, *II);
     }
   }
@@ -1916,19 +1916,6 @@ llvm::Function* CodeGenFunction:: ExtractRegion(llvm::BasicBlock *entry, llvm::B
 
   // collect forall basic blocks up to exit
   for( ; BB->getName() != exit->getName(); ++BB) {
-
-    // look for function local metadata
-    for (llvm::BasicBlock::const_iterator II = BB->begin(), IE = BB->end(); II != IE; ++II) {
-      for(unsigned i = 0, e = II->getNumOperands(); i!=e; ++i){
-        if(llvm::MDNode *N = dyn_cast_or_null<llvm::MDNode>(II->getOperand(i))){
-          if (N->isFunctionLocal()) {
-            // just remove function local metadata
-            // see http://lists.cs.uiuc.edu/pipermail/llvmdev/2013-November/068205.html
-            N->replaceOperandWith(i, 0);
-          }
-        } 
-      }
-    }
     Blocks.push_back(BB);
   }
 

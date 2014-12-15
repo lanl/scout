@@ -971,15 +971,19 @@ bool SIInstrInfo::isImmOperandLegal(const MachineInstr *MI, unsigned OpNo,
   return RI.regClassCanUseInlineConstant(OpInfo.RegClass);
 }
 
-bool SIInstrInfo::canFoldOffset(unsigned OffsetSize, unsigned AS) {
+bool SIInstrInfo::canFoldOffset(unsigned OffsetSize, unsigned AS) const {
   switch (AS) {
   case AMDGPUAS::GLOBAL_ADDRESS: {
     // MUBUF instructions a 12-bit offset in bytes.
     return isUInt<12>(OffsetSize);
   }
   case AMDGPUAS::CONSTANT_ADDRESS: {
-    // SMRD instructions have an 8-bit offset in dwords.
-    return (OffsetSize % 4 == 0) && isUInt<8>(OffsetSize / 4);
+    // SMRD instructions have an 8-bit offset in dwords on SI and
+    // a 20-bit offset in bytes on VI.
+    if (RI.ST.getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS)
+      return isUInt<20>(OffsetSize);
+    else
+      return (OffsetSize % 4 == 0) && isUInt<8>(OffsetSize / 4);
   }
   case AMDGPUAS::LOCAL_ADDRESS:
   case AMDGPUAS::REGION_ADDRESS: {
@@ -1103,10 +1107,18 @@ bool SIInstrInfo::verifyInstruction(const MachineInstr *MI,
 
   // Verify VOP*
   if (isVOP1(Opcode) || isVOP2(Opcode) || isVOP3(Opcode) || isVOPC(Opcode)) {
+    // Only look at the true operands. Only a real operand can use the constant
+    // bus, and we don't want to check pseudo-operands like the source modifier
+    // flags.
+    const int OpIndices[] = { Src0Idx, Src1Idx, Src2Idx };
+
     unsigned ConstantBusCount = 0;
     unsigned SGPRUsed = AMDGPU::NoRegister;
-    for (int i = 0, e = MI->getNumOperands(); i != e; ++i) {
-      const MachineOperand &MO = MI->getOperand(i);
+    for (int OpIdx : OpIndices) {
+      if (OpIdx == -1)
+        break;
+
+      const MachineOperand &MO = MI->getOperand(OpIdx);
       if (usesConstantBus(MRI, MO)) {
         if (MO.isReg()) {
           if (MO.getReg() != SGPRUsed)
@@ -1230,8 +1242,13 @@ const TargetRegisterClass *SIInstrInfo::getOpRegClass(const MachineInstr &MI,
   const MachineRegisterInfo &MRI = MI.getParent()->getParent()->getRegInfo();
   const MCInstrDesc &Desc = get(MI.getOpcode());
   if (MI.isVariadic() || OpNo >= Desc.getNumOperands() ||
-      Desc.OpInfo[OpNo].RegClass == -1)
-    return MRI.getRegClass(MI.getOperand(OpNo).getReg());
+      Desc.OpInfo[OpNo].RegClass == -1) {
+    unsigned Reg = MI.getOperand(OpNo).getReg();
+
+    if (TargetRegisterInfo::isVirtualRegister(Reg))
+      return MRI.getRegClass(Reg);
+    return RI.getRegClass(Reg);
+  }
 
   unsigned RCID = Desc.OpInfo[OpNo].RegClass;
   return RI.getRegClass(RCID);
@@ -1354,6 +1371,14 @@ unsigned SIInstrInfo::split64BitImm(SmallVectorImpl<MachineInstr *> &Worklist,
   Worklist.push_back(Hi);
 
   return Dst;
+}
+
+// Change the order of operands from (0, 1, 2) to (0, 2, 1)
+void SIInstrInfo::swapOperands(MachineBasicBlock::iterator Inst) const {
+  assert(Inst->getNumExplicitOperands() == 3);
+  MachineOperand Op1 = Inst->getOperand(1);
+  Inst->RemoveOperand(1);
+  Inst->addOperand(Op1);
 }
 
 bool SIInstrInfo::isOperandLegal(const MachineInstr *MI, unsigned OpIdx,
@@ -1693,27 +1718,30 @@ void SIInstrInfo::splitSMRD(MachineInstr *MI,
       getNamedOperand(*MI, AMDGPU::OpName::offset);
   const MachineOperand *SBase = getNamedOperand(*MI, AMDGPU::OpName::sbase);
 
+  // The SMRD has an 8-bit offset in dwords on SI and a 20-bit offset in bytes
+  // on VI.
   if (OffOp) {
+    bool isVI = RI.ST.getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS;
+    unsigned OffScale = isVI ? 1 : 4;
     // Handle the _IMM variant
-    unsigned LoOffset = OffOp->getImm();
-    unsigned HiOffset = LoOffset + (HalfSize / 4);
+    unsigned LoOffset = OffOp->getImm() * OffScale;
+    unsigned HiOffset = LoOffset + HalfSize;
     Lo = BuildMI(*MBB, MI, DL, get(HalfImmOp), RegLo)
                   .addOperand(*SBase)
-                  .addImm(LoOffset);
+                  .addImm(LoOffset / OffScale);
 
-    if (!isUInt<8>(HiOffset)) {
+    if (!isUInt<20>(HiOffset) || (!isVI && !isUInt<8>(HiOffset / OffScale))) {
       unsigned OffsetSGPR =
           MRI.createVirtualRegister(&AMDGPU::SReg_32RegClass);
       BuildMI(*MBB, MI, DL, get(AMDGPU::S_MOV_B32), OffsetSGPR)
-              .addImm(HiOffset << 2);  // The immediate offset is in dwords,
-                                       // but offset in register is in bytes.
+              .addImm(HiOffset); // The offset in register is in bytes.
       Hi = BuildMI(*MBB, MI, DL, get(HalfSGPROp), RegHi)
                     .addOperand(*SBase)
                     .addReg(OffsetSGPR);
     } else {
       Hi = BuildMI(*MBB, MI, DL, get(HalfImmOp), RegHi)
                      .addOperand(*SBase)
-                     .addImm(HiOffset);
+                     .addImm(HiOffset / OffScale);
     }
   } else {
     // Handle the _SGPR variant
@@ -1778,10 +1806,13 @@ void SIInstrInfo::moveSMRDToVALU(MachineInstr *MI, MachineRegisterInfo &MRI) con
         ImmOffset = 0;
       } else {
         assert(MI->getOperand(2).isImm());
-        // SMRD instructions take a dword offsets and MUBUF instructions
-        // take a byte offset.
-        ImmOffset = MI->getOperand(2).getImm() << 2;
+        // SMRD instructions take a dword offsets on SI and byte offset on VI
+        // and MUBUF instructions always take a byte offset.
+        ImmOffset = MI->getOperand(2).getImm();
+        if (RI.ST.getGeneration() <= AMDGPUSubtarget::SEA_ISLANDS)
+          ImmOffset <<= 2;
         RegOffset = MRI.createVirtualRegister(&AMDGPU::SGPR_32RegClass);
+
         if (isUInt<12>(ImmOffset)) {
           BuildMI(*MBB, MI, MI->getDebugLoc(), get(AMDGPU::S_MOV_B32),
                   RegOffset)
@@ -1930,6 +1961,25 @@ void SIInstrInfo::moveToVALU(MachineInstr &TopInst) const {
       Inst->eraseFromParent();
       continue;
     }
+
+    case AMDGPU::S_LSHL_B32:
+      if (ST.getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS) {
+        NewOpcode = AMDGPU::V_LSHLREV_B32_e64;
+        swapOperands(Inst);
+      }
+      break;
+    case AMDGPU::S_ASHR_I32:
+      if (ST.getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS) {
+        NewOpcode = AMDGPU::V_ASHRREV_I32_e64;
+        swapOperands(Inst);
+      }
+      break;
+    case AMDGPU::S_LSHR_B32:
+      if (ST.getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS) {
+        NewOpcode = AMDGPU::V_LSHRREV_B32_e64;
+        swapOperands(Inst);
+      }
+      break;
 
     case AMDGPU::S_BFE_U64:
     case AMDGPU::S_BFM_B64:

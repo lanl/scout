@@ -1413,7 +1413,8 @@ public:
                         FunctionArgList &Args);
 
   void EmitInitializerForField(FieldDecl *Field, LValue LHS, Expr *Init,
-                               ArrayRef<VarDecl *> ArrayIndexes);
+                               ArrayRef<VarDecl *> ArrayIndexes,
+                               SourceLocation DbgLoc = SourceLocation());
 
   /// InitializeVTablePointer - Initialize the vtable pointer of the given
   /// subobject.
@@ -1663,8 +1664,8 @@ public:
 
   /// EmitExprAsInit - Emits the code necessary to initialize a
   /// location in memory with the given initializer.
-  void EmitExprAsInit(const Expr *init, const ValueDecl *D,
-                      LValue lvalue, bool capturedByInit);
+  void EmitExprAsInit(const Expr *init, const ValueDecl *D, LValue lvalue,
+                      bool capturedByInit, SourceLocation DbgLoc);
 
   /// hasVolatileMember - returns true if aggregate type has a volatile
   /// member.
@@ -1950,8 +1951,9 @@ public:
   /// This function can be called with a null (unreachable) insert point.
   void EmitVarDecl(const VarDecl &D);
 
-  void EmitScalarInit(const Expr *init, const ValueDecl *D,
-                      LValue lvalue, bool capturedByInit);
+  void EmitScalarInit(const Expr *init, const ValueDecl *D, LValue lvalue,
+                      bool capturedByInit,
+                      SourceLocation DbgLoc = SourceLocation());
   void EmitScalarInit(llvm::Value *init, LValue lvalue);
 
   typedef void SpecialInitFn(CodeGenFunction &Init, const VarDecl &D,
@@ -2389,7 +2391,8 @@ public:
   /// EmitStoreThroughLValue - Store the specified rvalue into the specified
   /// lvalue, where both are guaranteed to the have the same type, and that type
   /// is 'Ty'.
-  void EmitStoreThroughLValue(RValue Src, LValue Dst, bool isInit=false);
+  void EmitStoreThroughLValue(RValue Src, LValue Dst, bool isInit = false,
+                              SourceLocation DbgLoc = SourceLocation());
   void EmitStoreThroughExtVectorComponentLValue(RValue Src, LValue Dst);
   void EmitStoreThroughGlobalRegLValue(RValue Src, LValue Dst);
 
@@ -2759,10 +2762,12 @@ public:
 
   /// EmitComplexExprIntoLValue - Emit the given expression of complex
   /// type and place its result into the specified l-value.
-  void EmitComplexExprIntoLValue(const Expr *E, LValue dest, bool isInit);
+  void EmitComplexExprIntoLValue(const Expr *E, LValue dest, bool isInit,
+                                 SourceLocation DbgLoc = SourceLocation());
 
   /// EmitStoreOfComplex - Store a complex number into the specified l-value.
-  void EmitStoreOfComplex(ComplexPairTy V, LValue dest, bool isInit);
+  void EmitStoreOfComplex(ComplexPairTy V, LValue dest, bool isInit,
+                          SourceLocation DbgLoc = SourceLocation());
 
   /// EmitLoadOfComplex - Load a complex number from the specified l-value.
   ComplexPairTy EmitLoadOfComplex(LValue src, SourceLocation loc);
