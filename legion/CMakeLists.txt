@@ -70,6 +70,7 @@ list(APPEND mapper_src
 
 list(APPEND high_level_src 
   ${LG_RT_DIR}/legion.cc 
+  ${LG_RT_DIR}/legion_c.cc 
   ${LG_RT_DIR}/legion_ops.cc 
   ${LG_RT_DIR}/legion_tasks.cc 
   ${LG_RT_DIR}/legion_trace.cc 
@@ -90,3 +91,13 @@ add_library(lsci STATIC ${low_level_src} ${mapper_src} ${high_level_src} ${lsci_
 add_dependencies(lsci scc)
 install(TARGETS lsci DESTINATION lib)
 
+list(APPEND scrt_legion_src ${SCOUT_SRC_DIR}/legion/scrt_legion/scrt_legion.cc)
+
+include_directories(
+  scrt_legion
+  runtime
+)
+
+add_library(scrt_legion STATIC ${low_level_src} ${mapper_src} ${high_level_src} ${scrt_legion_src})
+add_dependencies(scrt_legion scc)
+install(TARGETS scrt_legion DESTINATION lib)
