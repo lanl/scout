@@ -66,6 +66,30 @@ uniform mesh MyMesh {
 int main(int argc, char** argv) {
   MyMesh m[8][8];
 
+  float inc = 0.0;
+  forall cells c in m{
+    c.cf = inc;
+    inc += 1.0;
+  }  
+
+  inc = 0.0;
+  forall vertices v in m{
+    v.vf = inc;
+    inc += 1.0;
+  }  
+
+  inc = 0.0;
+  forall edges e in m{
+    e.ef = inc;
+    inc += 1.0;
+  }  
+
+  inc = 0.0;
+  forall faces f in m{
+    f.ff = inc;
+    inc += 1.0;
+  }  
+
   query qc = 
     from cells c in m 
     select c.cf where 
@@ -120,7 +144,7 @@ int main(int argc, char** argv) {
     forall vertices v1 in e{
       v1.cf = 10;
     }
-  } 
+  }
 
   return 0;
 }
