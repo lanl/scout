@@ -177,6 +177,7 @@ namespace clang {
     Decl *VisitObjCMethodDecl(ObjCMethodDecl *D);
     Decl *VisitObjCCategoryDecl(ObjCCategoryDecl *D);
     Decl *VisitObjCProtocolDecl(ObjCProtocolDecl *D);
+    Decl *VisitLinkageSpecDecl(LinkageSpecDecl *D);
     Decl *VisitObjCInterfaceDecl(ObjCInterfaceDecl *D);
     Decl *VisitObjCCategoryImplDecl(ObjCCategoryImplDecl *D);
     Decl *VisitObjCImplementationDecl(ObjCImplementationDecl *D);
@@ -2297,7 +2298,7 @@ Decl *ASTNodeImporter::VisitNamespaceDecl(NamespaceDecl *D) {
   } else {
     SmallVector<NamedDecl *, 4> ConflictingDecls;
     SmallVector<NamedDecl *, 2> FoundDecls;
-    DC->localUncachedLookup(Name, FoundDecls);
+    DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
     for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
       if (!FoundDecls[I]->isInIdentifierNamespace(Decl::IDNS_Namespace))
         continue;
@@ -2360,7 +2361,7 @@ Decl *ASTNodeImporter::VisitTypedefNameDecl(TypedefNameDecl *D, bool IsAlias) {
     SmallVector<NamedDecl *, 4> ConflictingDecls;
     unsigned IDNS = Decl::IDNS_Ordinary;
     SmallVector<NamedDecl *, 2> FoundDecls;
-    DC->localUncachedLookup(Name, FoundDecls);
+    DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
     for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
       if (!FoundDecls[I]->isInIdentifierNamespace(IDNS))
         continue;
@@ -2440,7 +2441,7 @@ Decl *ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
   if (!DC->isFunctionOrMethod() && SearchName) {
     SmallVector<NamedDecl *, 4> ConflictingDecls;
     SmallVector<NamedDecl *, 2> FoundDecls;
-    DC->localUncachedLookup(SearchName, FoundDecls);
+    DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
     for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
       if (!FoundDecls[I]->isInIdentifierNamespace(IDNS))
         continue;
@@ -2526,7 +2527,7 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
   if (!DC->isFunctionOrMethod()) {
     SmallVector<NamedDecl *, 4> ConflictingDecls;
     SmallVector<NamedDecl *, 2> FoundDecls;
-    DC->localUncachedLookup(SearchName, FoundDecls);
+    DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
     for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
       if (!FoundDecls[I]->isInIdentifierNamespace(IDNS))
         continue;
@@ -2648,7 +2649,7 @@ Decl *ASTNodeImporter::VisitEnumConstantDecl(EnumConstantDecl *D) {
     SmallVector<NamedDecl *, 4> ConflictingDecls;
     unsigned IDNS = Decl::IDNS_Ordinary;
     SmallVector<NamedDecl *, 2> FoundDecls;
-    DC->localUncachedLookup(Name, FoundDecls);
+    DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
     for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
       if (!FoundDecls[I]->isInIdentifierNamespace(IDNS))
         continue;
@@ -2700,7 +2701,7 @@ Decl *ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
     SmallVector<NamedDecl *, 4> ConflictingDecls;
     unsigned IDNS = Decl::IDNS_Ordinary;
     SmallVector<NamedDecl *, 2> FoundDecls;
-    DC->localUncachedLookup(Name, FoundDecls);
+    DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
     for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
       if (!FoundDecls[I]->isInIdentifierNamespace(IDNS))
         continue;
@@ -2903,7 +2904,7 @@ Decl *ASTNodeImporter::VisitFieldDecl(FieldDecl *D) {
 
   // Determine whether we've already imported this field. 
   SmallVector<NamedDecl *, 2> FoundDecls;
-  DC->localUncachedLookup(Name, FoundDecls);
+  DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
   for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
     if (FieldDecl *FoundField = dyn_cast<FieldDecl>(FoundDecls[I])) {
       // For anonymous fields, match up by index.
@@ -2959,7 +2960,7 @@ Decl *ASTNodeImporter::VisitIndirectFieldDecl(IndirectFieldDecl *D) {
 
   // Determine whether we've already imported this field. 
   SmallVector<NamedDecl *, 2> FoundDecls;
-  DC->localUncachedLookup(Name, FoundDecls);
+  DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
   for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
     if (IndirectFieldDecl *FoundField 
                                 = dyn_cast<IndirectFieldDecl>(FoundDecls[I])) {
@@ -3026,7 +3027,7 @@ Decl *ASTNodeImporter::VisitObjCIvarDecl(ObjCIvarDecl *D) {
 
   // Determine whether we've already imported this ivar 
   SmallVector<NamedDecl *, 2> FoundDecls;
-  DC->localUncachedLookup(Name, FoundDecls);
+  DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
   for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
     if (ObjCIvarDecl *FoundIvar = dyn_cast<ObjCIvarDecl>(FoundDecls[I])) {
       if (Importer.IsStructurallyEquivalent(D->getType(), 
@@ -3081,7 +3082,7 @@ Decl *ASTNodeImporter::VisitVarDecl(VarDecl *D) {
     SmallVector<NamedDecl *, 4> ConflictingDecls;
     unsigned IDNS = Decl::IDNS_Ordinary;
     SmallVector<NamedDecl *, 2> FoundDecls;
-    DC->localUncachedLookup(Name, FoundDecls);
+    DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
     for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
       if (!FoundDecls[I]->isInIdentifierNamespace(IDNS))
         continue;
@@ -3251,7 +3252,7 @@ Decl *ASTNodeImporter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
     return nullptr;
 
   SmallVector<NamedDecl *, 2> FoundDecls;
-  DC->localUncachedLookup(Name, FoundDecls);
+  DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
   for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
     if (ObjCMethodDecl *FoundMethod = dyn_cast<ObjCMethodDecl>(FoundDecls[I])) {
       if (FoundMethod->isInstanceMethod() != D->isInstanceMethod())
@@ -3487,7 +3488,7 @@ Decl *ASTNodeImporter::VisitObjCProtocolDecl(ObjCProtocolDecl *D) {
 
   ObjCProtocolDecl *MergeWithProtocol = nullptr;
   SmallVector<NamedDecl *, 2> FoundDecls;
-  DC->localUncachedLookup(Name, FoundDecls);
+  DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
   for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
     if (!FoundDecls[I]->isInIdentifierNamespace(Decl::IDNS_ObjCProtocol))
       continue;
@@ -3512,6 +3513,36 @@ Decl *ASTNodeImporter::VisitObjCProtocolDecl(ObjCProtocolDecl *D) {
     return nullptr;
 
   return ToProto;
+}
+
+Decl *ASTNodeImporter::VisitLinkageSpecDecl(LinkageSpecDecl *D) {
+  DeclContext *DC = Importer.ImportContext(D->getDeclContext());
+  DeclContext *LexicalDC = Importer.ImportContext(D->getLexicalDeclContext());
+
+  SourceLocation ExternLoc = Importer.Import(D->getExternLoc());
+  SourceLocation LangLoc = Importer.Import(D->getLocation());
+
+  bool HasBraces = D->hasBraces();
+ 
+  LinkageSpecDecl *ToLinkageSpec =
+    LinkageSpecDecl::Create(Importer.getToContext(),
+                            DC,
+                            ExternLoc,
+                            LangLoc,
+                            D->getLanguage(),
+                            HasBraces);
+
+  if (HasBraces) {
+    SourceLocation RBraceLoc = Importer.Import(D->getRBraceLoc());
+    ToLinkageSpec->setRBraceLoc(RBraceLoc);
+  }
+
+  ToLinkageSpec->setLexicalDeclContext(LexicalDC);
+  LexicalDC->addDeclInternal(ToLinkageSpec);
+
+  Importer.Imported(D, ToLinkageSpec);
+
+  return ToLinkageSpec;
 }
 
 bool ASTNodeImporter::ImportDefinition(ObjCInterfaceDecl *From, 
@@ -3633,7 +3664,7 @@ Decl *ASTNodeImporter::VisitObjCInterfaceDecl(ObjCInterfaceDecl *D) {
   // Look for an existing interface with the same name.
   ObjCInterfaceDecl *MergeWithIface = nullptr;
   SmallVector<NamedDecl *, 2> FoundDecls;
-  DC->localUncachedLookup(Name, FoundDecls);
+  DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
   for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
     if (!FoundDecls[I]->isInIdentifierNamespace(Decl::IDNS_Ordinary))
       continue;
@@ -3787,7 +3818,7 @@ Decl *ASTNodeImporter::VisitObjCPropertyDecl(ObjCPropertyDecl *D) {
 
   // Check whether we have already imported this property.
   SmallVector<NamedDecl *, 2> FoundDecls;
-  DC->localUncachedLookup(Name, FoundDecls);
+  DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
   for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
     if (ObjCPropertyDecl *FoundProp
                                 = dyn_cast<ObjCPropertyDecl>(FoundDecls[I])) {
@@ -4020,7 +4051,7 @@ Decl *ASTNodeImporter::VisitClassTemplateDecl(ClassTemplateDecl *D) {
   if (!DC->isFunctionOrMethod()) {
     SmallVector<NamedDecl *, 4> ConflictingDecls;
     SmallVector<NamedDecl *, 2> FoundDecls;
-    DC->localUncachedLookup(Name, FoundDecls);
+    DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
     for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
       if (!FoundDecls[I]->isInIdentifierNamespace(Decl::IDNS_Ordinary))
         continue;
@@ -4209,7 +4240,7 @@ Decl *ASTNodeImporter::VisitVarTemplateDecl(VarTemplateDecl *D) {
          "Variable templates cannot be declared at function scope");
   SmallVector<NamedDecl *, 4> ConflictingDecls;
   SmallVector<NamedDecl *, 2> FoundDecls;
-  DC->localUncachedLookup(Name, FoundDecls);
+  DC->getRedeclContext()->localUncachedLookup(Name, FoundDecls);
   for (unsigned I = 0, N = FoundDecls.size(); I != N; ++I) {
     if (!FoundDecls[I]->isInIdentifierNamespace(Decl::IDNS_Ordinary))
       continue;
@@ -4937,7 +4968,10 @@ SourceLocation ASTImporter::Import(SourceLocation FromLoc) {
   FromLoc = FromSM.getSpellingLoc(FromLoc);
   std::pair<FileID, unsigned> Decomposed = FromSM.getDecomposedLoc(FromLoc);
   SourceManager &ToSM = ToContext.getSourceManager();
-  return ToSM.getLocForStartOfFile(Import(Decomposed.first))
+  FileID ToFileID = Import(Decomposed.first);
+  if (ToFileID.isInvalid())
+    return SourceLocation();
+  return ToSM.getLocForStartOfFile(ToFileID)
              .getLocWithOffset(Decomposed.second);
 }
 
@@ -4968,6 +5002,8 @@ FileID ASTImporter::Import(FileID FromID) {
     // FIXME: We definitely want to re-use the existing MemoryBuffer, rather
     // than mmap the files several times.
     const FileEntry *Entry = ToFileManager.getFile(Cache->OrigEntry->getName());
+    if (!Entry)
+      return FileID();
     ToID = ToSM.createFileID(Entry, ToIncludeLoc, 
                              FromSLoc.getFile().getFileCharacteristic());
   } else {

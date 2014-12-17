@@ -2511,7 +2511,8 @@ namespace {
       // Treat std::move as a use.
       if (E->getNumArgs() == 1) {
         if (FunctionDecl *FD = E->getDirectCallee()) {
-          if (FD->getIdentifier() && FD->getIdentifier()->isStr("move")) {
+          if (FD->isInStdNamespace() && FD->getIdentifier() &&
+              FD->getIdentifier()->isStr("move")) {
             HandleValue(E->getArg(0), false /*AddressOf*/);
             return;
           }
@@ -2812,6 +2813,11 @@ Sema::BuildMemInitializer(Decl *ConstructorD,
                           SourceLocation IdLoc,
                           Expr *Init,
                           SourceLocation EllipsisLoc) {
+  ExprResult Res = CorrectDelayedTyposInExpr(Init);
+  if (!Res.isUsable())
+    return true;
+  Init = Res.get();
+
   if (!ConstructorD)
     return true;
 

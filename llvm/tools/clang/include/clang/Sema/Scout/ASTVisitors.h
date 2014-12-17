@@ -75,6 +75,8 @@ enum ShiftKind {
   EOShift
 };
 
+bool isPosition(unsigned id);
+
 bool isCShift(unsigned id);
 
 bool isEOShift(unsigned id);

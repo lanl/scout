@@ -22,7 +22,9 @@
 // Third Party Headers:
 #if !defined(_MSC_VER)
 #include <sys/select.h>
+#include <unistd.h>
 #include <termios.h>
+#include <sys/ioctl.h>
 #endif              // !defined( _MSC_VER )
 #include <string.h> // For std::strerror()
 
@@ -153,30 +155,20 @@ CMICmnStreamStdinLinux::Shutdown(void)
 bool
 CMICmnStreamStdinLinux::InputAvailable(bool &vwbAvail)
 {
-    /* AD: Not used ATM but could come in handy just in case we need to do
-           this, poll for input
-
-            static const int STDIN = 0;
-        static bool bInitialized = false;
-
-        if( !bInitialized )
-            {
-            // Use termios to turn off line buffering
-            ::termios term;
-            ::tcgetattr( STDIN, &term );
-            ::term.c_lflag &= ~ICANON;
-            ::tcsetattr( STDIN, TCSANOW, &term );
-            ::setbuf( stdin, NULL );
-            bInitialized = true;
-        }
-
-        int nBytesWaiting;
-        ::ioctl( STDIN, FIONREAD, &nBytesWaiting );
-        vwbAvail = (nBytesWaiting > 0);
-
-            return MIstatus::success;
-    */
-
+#if !defined(_WIN32)
+    // The code below is needed on OSX where lldb-mi hangs when doing -exec-run.
+    // The hang seems to come from calling fgets and fileno from different thread.
+    // Although this problem was not observed on Linux.
+    // A solution based on 'select' was also proposed but it seems to slow things down
+    // a lot.
+    int nBytesWaiting;
+    if (::ioctl(STDIN_FILENO, FIONREAD, &nBytesWaiting) == -1)
+    {
+        vwbAvail = false;
+        return MIstatus::failure;;
+    }
+    vwbAvail = (nBytesWaiting > 0);
+#endif // !defined( _WIN32 )
     return MIstatus::success;
 }
 
@@ -213,3 +205,4 @@ CMICmnStreamStdinLinux::ReadLine(CMIUtilString &vwErrMsg)
 
     return pText;
 }
+

@@ -377,6 +377,14 @@ void CompilerInstance::createPreprocessor(TranslationUnitKind TUKind) {
     AttachHeaderIncludeGen(*PP, /*ShowAllHeaders=*/false, /*OutputPath=*/"",
                            /*ShowDepth=*/true, /*MSStyle=*/true);
   }
+
+  // Load all explictly-specified module map files.
+  for (const auto &Filename : getFrontendOpts().ModuleMapFiles) {
+    if (auto *File = getFileManager().getFile(Filename))
+      PP->getHeaderSearchInfo().loadModuleMapFile(File, /*IsSystem*/false);
+    else
+      getDiagnostics().Report(diag::err_module_map_not_found) << Filename;
+  }
 }
 
 // ASTContext
@@ -1304,7 +1312,9 @@ bool CompilerInstance::loadModuleFile(StringRef FileName) {
         TopFileIsModule = true;
 
       auto &ModuleFile = CI.ModuleFileOverrides[ModuleName];
-      if (!ModuleFile.empty() && ModuleFile != ModuleFileStack.back())
+      if (!ModuleFile.empty() &&
+          CI.getFileManager().getFile(ModuleFile) !=
+              CI.getFileManager().getFile(ModuleFileStack.back()))
         CI.getDiagnostics().Report(SourceLocation(),
                                    diag::err_conflicting_module_files)
             << ModuleName << ModuleFile << ModuleFileStack.back();
@@ -1564,7 +1574,7 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
 
     // Check whether this module is available.
     clang::Module::Requirement Requirement;
-    clang::Module::HeaderDirective MissingHeader;
+    clang::Module::UnresolvedHeaderDirective MissingHeader;
     if (!Module->isAvailable(getLangOpts(), getTarget(), Requirement,
                              MissingHeader)) {
       if (MissingHeader.FileNameLoc.isValid()) {
@@ -1593,9 +1603,16 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
                      Module, ImportLoc);
   }
 
-  // If this module import was due to an inclusion directive, create an
+  // Determine whether we're in the #include buffer for a module. The #includes
+  // in that buffer do not qualify as module imports; they're just an
+  // implementation detail of us building the module.
+  bool IsInModuleIncludes = !getLangOpts().CurrentModule.empty() &&
+                            getSourceManager().getFileID(ImportLoc) ==
+                                getSourceManager().getMainFileID();
+
+  // If this module import was due to an inclusion directive, create an 
   // implicit import declaration to capture it in the AST.
-  if (IsInclusionDirective && hasASTContext()) {
+  if (IsInclusionDirective && hasASTContext() && !IsInModuleIncludes) {
     TranslationUnitDecl *TU = getASTContext().getTranslationUnitDecl();
     ImportDecl *ImportD = ImportDecl::CreateImplicit(getASTContext(), TU,
                                                      ImportLoc, Module,

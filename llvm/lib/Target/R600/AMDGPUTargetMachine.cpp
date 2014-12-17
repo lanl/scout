@@ -87,10 +87,10 @@ public:
   void addCodeGenPrepare() override;
   bool addPreISel() override;
   bool addInstSelector() override;
-  bool addPreRegAlloc() override;
-  bool addPostRegAlloc() override;
-  bool addPreSched2() override;
-  bool addPreEmitPass() override;
+  void addPreRegAlloc() override;
+  void addPostRegAlloc() override;
+  void addPreSched2() override;
+  void addPreEmitPass() override;
 };
 } // End of anonymous namespace
 
@@ -157,14 +157,13 @@ bool AMDGPUPassConfig::addInstSelector() {
   if (ST.getGeneration() >= AMDGPUSubtarget::SOUTHERN_ISLANDS) {
     addPass(createSILowerI1CopiesPass());
     addPass(createSIFixSGPRCopiesPass(*TM));
+    addPass(createSIFoldOperandsPass());
   }
 
-  addPass(createSILowerI1CopiesPass());
-  addPass(createSIFoldOperandsPass());
   return false;
 }
 
-bool AMDGPUPassConfig::addPreRegAlloc() {
+void AMDGPUPassConfig::addPreRegAlloc() {
   const AMDGPUSubtarget &ST = TM->getSubtarget<AMDGPUSubtarget>();
 
   if (ST.getGeneration() <= AMDGPUSubtarget::NORTHERN_ISLANDS) {
@@ -180,45 +179,42 @@ bool AMDGPUPassConfig::addPreRegAlloc() {
       insertPass(&MachineSchedulerID, &SILoadStoreOptimizerID);
     }
 
-    addPass(createSIShrinkInstructionsPass());
-    addPass(createSIFixSGPRLiveRangesPass());
+    addPass(createSIShrinkInstructionsPass(), false);
+    addPass(createSIFixSGPRLiveRangesPass(), false);
   }
-  return false;
 }
 
-bool AMDGPUPassConfig::addPostRegAlloc() {
+void AMDGPUPassConfig::addPostRegAlloc() {
   const AMDGPUSubtarget &ST = TM->getSubtarget<AMDGPUSubtarget>();
 
-  addPass(createSIShrinkInstructionsPass());
   if (ST.getGeneration() > AMDGPUSubtarget::NORTHERN_ISLANDS) {
-    addPass(createSIInsertWaits(*TM));
+    addPass(createSIShrinkInstructionsPass(), false);
   }
-  return false;
 }
 
-bool AMDGPUPassConfig::addPreSched2() {
+void AMDGPUPassConfig::addPreSched2() {
   const AMDGPUSubtarget &ST = TM->getSubtarget<AMDGPUSubtarget>();
 
   if (ST.getGeneration() <= AMDGPUSubtarget::NORTHERN_ISLANDS)
-    addPass(createR600EmitClauseMarkers());
+    addPass(createR600EmitClauseMarkers(), false);
   if (ST.isIfCvtEnabled())
-    addPass(&IfConverterID);
+    addPass(&IfConverterID, false);
   if (ST.getGeneration() <= AMDGPUSubtarget::NORTHERN_ISLANDS)
-    addPass(createR600ClauseMergePass(*TM));
-  return false;
+    addPass(createR600ClauseMergePass(*TM), false);
+  if (ST.getGeneration() >= AMDGPUSubtarget::SOUTHERN_ISLANDS) {
+    addPass(createSIInsertWaits(*TM), false);
+  }
 }
 
-bool AMDGPUPassConfig::addPreEmitPass() {
+void AMDGPUPassConfig::addPreEmitPass() {
   const AMDGPUSubtarget &ST = TM->getSubtarget<AMDGPUSubtarget>();
   if (ST.getGeneration() <= AMDGPUSubtarget::NORTHERN_ISLANDS) {
-    addPass(createAMDGPUCFGStructurizerPass());
-    addPass(createR600ExpandSpecialInstrsPass(*TM));
-    addPass(&FinalizeMachineBundlesID);
-    addPass(createR600Packetizer(*TM));
-    addPass(createR600ControlFlowFinalizer(*TM));
+    addPass(createAMDGPUCFGStructurizerPass(), false);
+    addPass(createR600ExpandSpecialInstrsPass(*TM), false);
+    addPass(&FinalizeMachineBundlesID, false);
+    addPass(createR600Packetizer(*TM), false);
+    addPass(createR600ControlFlowFinalizer(*TM), false);
   } else {
-    addPass(createSILowerControlFlowPass(*TM));
+    addPass(createSILowerControlFlowPass(*TM), false);
   }
-
-  return false;
 }

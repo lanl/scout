@@ -1420,8 +1420,8 @@ llvm::Value *CodeGenFunction::EmitExtVectorElementLValue(LValue LV) {
 RValue CodeGenFunction::EmitLoadOfGlobalRegLValue(LValue LV) {
   assert((LV.getType()->isIntegerType() || LV.getType()->isPointerType()) &&
          "Bad type for register variable");
-  llvm::MDNode *RegName = dyn_cast<llvm::MDNode>(LV.getGlobalReg());
-  assert(RegName && "Register LValue is not metadata");
+  llvm::MDNode *RegName = cast<llvm::MDNode>(
+      cast<llvm::MetadataAsValue>(LV.getGlobalReg())->getMetadata());
 
   // We accept integer and pointer types only
   llvm::Type *OrigTy = CGM.getTypes().ConvertType(LV.getType());
@@ -1431,7 +1431,8 @@ RValue CodeGenFunction::EmitLoadOfGlobalRegLValue(LValue LV) {
   llvm::Type *Types[] = { Ty };
 
   llvm::Value *F = CGM.getIntrinsic(llvm::Intrinsic::read_register, Types);
-  llvm::Value *Call = Builder.CreateCall(F, RegName);
+  llvm::Value *Call = Builder.CreateCall(
+      F, llvm::MetadataAsValue::get(Ty->getContext(), RegName));
   if (OrigTy->isPointerTy())
     Call = Builder.CreateIntToPtr(Call, OrigTy);
   return RValue::get(Call);
@@ -1442,7 +1443,11 @@ RValue CodeGenFunction::EmitLoadOfGlobalRegLValue(LValue LV) {
 /// lvalue, where both are guaranteed to the have the same type, and that type
 /// is 'Ty'.
 void CodeGenFunction::EmitStoreThroughLValue(RValue Src, LValue Dst,
-                                             bool isInit) {
+                                             bool isInit,
+                                             SourceLocation DbgLoc) {
+  if (auto *DI = getDebugInfo())
+    DI->EmitLocation(Builder, DbgLoc);
+
   if (!Dst.isSimple()) {
     if (Dst.isVectorElt()) {
       // Read/modify/write the vector, inserting the new element.
@@ -1681,7 +1686,8 @@ void CodeGenFunction::EmitStoreThroughExtVectorComponentLValue(RValue Src,
 void CodeGenFunction::EmitStoreThroughGlobalRegLValue(RValue Src, LValue Dst) {
   assert((Dst.getType()->isIntegerType() || Dst.getType()->isPointerType()) &&
          "Bad type for register variable");
-  llvm::MDNode *RegName = dyn_cast<llvm::MDNode>(Dst.getGlobalReg());
+  llvm::MDNode *RegName = cast<llvm::MDNode>(
+      cast<llvm::MetadataAsValue>(Dst.getGlobalReg())->getMetadata());
   assert(RegName && "Register LValue is not metadata");
 
   // We accept integer and pointer types only
@@ -1695,7 +1701,8 @@ void CodeGenFunction::EmitStoreThroughGlobalRegLValue(RValue Src, LValue Dst) {
   llvm::Value *Value = Src.getScalarVal();
   if (OrigTy->isPointerTy())
     Value = Builder.CreatePtrToInt(Value, Ty);
-  Builder.CreateCall2(F, RegName, Value);
+  Builder.CreateCall2(F, llvm::MetadataAsValue::get(Ty->getContext(), RegName),
+                      Value);
 }
 
 // setObjCGCLValueClass - sets class of the lvalue for the purpose of
@@ -1890,10 +1897,12 @@ static LValue EmitGlobalNamedRegister(const VarDecl *VD,
   if (M->getNumOperands() == 0) {
     llvm::MDString *Str = llvm::MDString::get(CGM.getLLVMContext(),
                                               Asm->getLabel());
-    llvm::Value *Ops[] = { Str };
+    llvm::Metadata *Ops[] = {Str};
     M->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), Ops));
   }
-  return LValue::MakeGlobalReg(M->getOperand(0), VD->getType(), Alignment);
+  return LValue::MakeGlobalReg(
+      llvm::MetadataAsValue::get(CGM.getLLVMContext(), M->getOperand(0)),
+      VD->getType(), Alignment);
 }
 
 LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
@@ -2425,6 +2434,9 @@ LValue CodeGenFunction::EmitArraySubscriptExpr(const ArraySubscriptExpr *E,
     // The element count here is the total number of non-VLA elements.
     llvm::Value *numElements = getVLASize(vla).first;
 
+    if (auto *DI = getDebugInfo())
+      DI->EmitLocation(Builder, E->getLocStart());
+
     // Effectively, the multiply by the VLA size is part of the GEP.
     // GEP indexes are signed, and scaling an index isn't permitted to
     // signed-overflow, so we use the same semantics for our explicit
@@ -2470,6 +2482,9 @@ LValue CodeGenFunction::EmitArraySubscriptExpr(const ArraySubscriptExpr *E,
     // Propagate the alignment from the array itself to the result.
     ArrayAlignment = ArrayLV.getAlignment();
 
+    if (auto *DI = getDebugInfo())
+      DI->EmitLocation(Builder, E->getLocStart());
+
     if (getLangOpts().isSignedOverflowDefined())
       Address = Builder.CreateGEP(ArrayPtr, Args, "arrayidx");
     else
@@ -2477,6 +2492,8 @@ LValue CodeGenFunction::EmitArraySubscriptExpr(const ArraySubscriptExpr *E,
   } else {
     // The base must be a pointer, which is not an aggregate.  Emit it.
     llvm::Value *Base = EmitScalarExpr(E->getBase());
+    if (auto *DI = getDebugInfo())
+      DI->EmitLocation(Builder, E->getLocStart());
     if (getLangOpts().isSignedOverflowDefined())
       Address = Builder.CreateGEP(Base, Idx, "arrayidx");
     else
@@ -3167,6 +3184,8 @@ LValue CodeGenFunction::EmitBinaryOperatorLValue(const BinaryOperator *E) {
 
     RValue RV = EmitAnyExpr(E->getRHS());
     LValue LV = EmitCheckedLValue(E->getLHS(), TCK_Store);
+    if (CGDebugInfo *DI = getDebugInfo())
+      DI->EmitLocation(Builder, E->getLocStart());
     EmitStoreThroughLValue(RV, LV);
     return LV;
   }

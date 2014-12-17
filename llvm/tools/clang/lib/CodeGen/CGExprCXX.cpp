@@ -120,9 +120,23 @@ RValue CodeGenFunction::EmitCXXMemberCallExpr(const CXXMemberCallExpr *CE,
                     ReturnValue);
   }
 
-  // Compute the object pointer.
+  bool HasQualifier = ME->hasQualifier();
+  NestedNameSpecifier *Qualifier = HasQualifier ? ME->getQualifier() : nullptr;
+  bool IsArrow = ME->isArrow();
   const Expr *Base = ME->getBase();
-  bool CanUseVirtualCall = MD->isVirtual() && !ME->hasQualifier();
+
+  return EmitCXXMemberOrOperatorMemberCallExpr(
+      CE, MD, ReturnValue, HasQualifier, Qualifier, IsArrow, Base);
+}
+
+RValue CodeGenFunction::EmitCXXMemberOrOperatorMemberCallExpr(
+    const CallExpr *CE, const CXXMethodDecl *MD, ReturnValueSlot ReturnValue,
+    bool HasQualifier, NestedNameSpecifier *Qualifier, bool IsArrow,
+    const Expr *Base) {
+  assert(isa<CXXMemberCallExpr>(CE) || isa<CXXOperatorCallExpr>(CE));
+
+  // Compute the object pointer.
+  bool CanUseVirtualCall = MD->isVirtual() && !HasQualifier;
 
   const CXXMethodDecl *DevirtualizedMethod = nullptr;
   if (CanUseVirtualCall && CanDevirtualizeMemberFunctionCall(Base, MD)) {
@@ -153,7 +167,7 @@ RValue CodeGenFunction::EmitCXXMemberCallExpr(const CXXMemberCallExpr *CE,
   }
 
   llvm::Value *This;
-  if (ME->isArrow())
+  if (IsArrow)
     This = EmitScalarExpr(Base);
   else
     This = EmitLValue(Base).getAddress();
@@ -165,32 +179,40 @@ RValue CodeGenFunction::EmitCXXMemberCallExpr(const CXXMemberCallExpr *CE,
         cast<CXXConstructorDecl>(MD)->isDefaultConstructor())
       return RValue::get(nullptr);
 
-    if (MD->isCopyAssignmentOperator() || MD->isMoveAssignmentOperator()) {
-      // We don't like to generate the trivial copy/move assignment operator
-      // when it isn't necessary; just produce the proper effect here.
-      llvm::Value *RHS = EmitLValue(*CE->arg_begin()).getAddress();
-      EmitAggregateAssign(This, RHS, CE->getType());
-      return RValue::get(This);
-    }
+    if (!MD->getParent()->mayInsertExtraPadding()) {
+      if (MD->isCopyAssignmentOperator() || MD->isMoveAssignmentOperator()) {
+        // We don't like to generate the trivial copy/move assignment operator
+        // when it isn't necessary; just produce the proper effect here.
+        // Special case: skip first argument of CXXOperatorCall (it is "this").
+        unsigned ArgsToSkip = isa<CXXOperatorCallExpr>(CE) ? 1 : 0;
+        llvm::Value *RHS =
+            EmitLValue(*(CE->arg_begin() + ArgsToSkip)).getAddress();
+        if (auto *DI = getDebugInfo())
+          DI->EmitLocation(Builder, CE->getLocStart());
+        EmitAggregateAssign(This, RHS, CE->getType());
+        return RValue::get(This);
+      }
 
-    if (isa<CXXConstructorDecl>(MD) &&
-        cast<CXXConstructorDecl>(MD)->isCopyOrMoveConstructor()) {
-      // Trivial move and copy ctor are the same.
-      assert(CE->getNumArgs() == 1 && "unexpected argcount for trivial ctor");
-      llvm::Value *RHS = EmitLValue(*CE->arg_begin()).getAddress();
-      EmitAggregateCopy(This, RHS, CE->arg_begin()->getType());
-      return RValue::get(This);
+      if (isa<CXXConstructorDecl>(MD) &&
+          cast<CXXConstructorDecl>(MD)->isCopyOrMoveConstructor()) {
+        // Trivial move and copy ctor are the same.
+        assert(CE->getNumArgs() == 1 && "unexpected argcount for trivial ctor");
+        llvm::Value *RHS = EmitLValue(*CE->arg_begin()).getAddress();
+        EmitAggregateCopy(This, RHS, CE->arg_begin()->getType());
+        return RValue::get(This);
+      }
+      llvm_unreachable("unknown trivial member function");
     }
-    llvm_unreachable("unknown trivial member function");
   }
 
   // Compute the function type we're calling.
-  const CXXMethodDecl *CalleeDecl = DevirtualizedMethod ? DevirtualizedMethod : MD;
+  const CXXMethodDecl *CalleeDecl =
+      DevirtualizedMethod ? DevirtualizedMethod : MD;
   const CGFunctionInfo *FInfo = nullptr;
-  if (const CXXDestructorDecl *Dtor = dyn_cast<CXXDestructorDecl>(CalleeDecl))
+  if (const auto *Dtor = dyn_cast<CXXDestructorDecl>(CalleeDecl))
     FInfo = &CGM.getTypes().arrangeCXXStructorDeclaration(
         Dtor, StructorType::Complete);
-  else if (const CXXConstructorDecl *Ctor = dyn_cast<CXXConstructorDecl>(CalleeDecl))
+  else if (const auto *Ctor = dyn_cast<CXXConstructorDecl>(CalleeDecl))
     FInfo = &CGM.getTypes().arrangeCXXStructorDeclaration(
         Ctor, StructorType::Complete);
   else
@@ -212,13 +234,11 @@ RValue CodeGenFunction::EmitCXXMemberCallExpr(const CXXMemberCallExpr *CE,
            "Destructor shouldn't have explicit parameters");
     assert(ReturnValue.isNull() && "Destructor shouldn't have return value");
     if (UseVirtualCall) {
-      CGM.getCXXABI().EmitVirtualDestructorCall(*this, Dtor, Dtor_Complete,
-                                                This, CE);
+      CGM.getCXXABI().EmitVirtualDestructorCall(
+          *this, Dtor, Dtor_Complete, This, cast<CXXMemberCallExpr>(CE));
     } else {
-      if (getLangOpts().AppleKext &&
-          MD->isVirtual() &&
-          ME->hasQualifier())
-        Callee = BuildAppleKextVirtualCall(MD, ME->getQualifier(), Ty);
+      if (getLangOpts().AppleKext && MD->isVirtual() && HasQualifier)
+        Callee = BuildAppleKextVirtualCall(MD, Qualifier, Ty);
       else if (!DevirtualizedMethod)
         Callee =
             CGM.getAddrOfCXXStructor(Dtor, StructorType::Complete, FInfo, Ty);
@@ -238,10 +258,8 @@ RValue CodeGenFunction::EmitCXXMemberCallExpr(const CXXMemberCallExpr *CE,
   } else if (UseVirtualCall) {
     Callee = CGM.getCXXABI().getVirtualFunctionPointer(*this, MD, This, Ty);
   } else {
-    if (getLangOpts().AppleKext &&
-        MD->isVirtual() &&
-        ME->hasQualifier())
-      Callee = BuildAppleKextVirtualCall(MD, ME->getQualifier(), Ty);
+    if (getLangOpts().AppleKext && MD->isVirtual() && HasQualifier)
+      Callee = BuildAppleKextVirtualCall(MD, Qualifier, Ty);
     else if (!DevirtualizedMethod)
       Callee = CGM.GetAddrOfFunction(MD, Ty);
     else {
@@ -314,20 +332,9 @@ CodeGenFunction::EmitCXXOperatorMemberCallExpr(const CXXOperatorCallExpr *E,
                                                ReturnValueSlot ReturnValue) {
   assert(MD->isInstance() &&
          "Trying to emit a member call expr on a static method!");
-  LValue LV = EmitLValue(E->getArg(0));
-  llvm::Value *This = LV.getAddress();
-
-  if ((MD->isCopyAssignmentOperator() || MD->isMoveAssignmentOperator()) &&
-      MD->isTrivial() && !MD->getParent()->mayInsertExtraPadding()) {
-    llvm::Value *Src = EmitLValue(E->getArg(1)).getAddress();
-    QualType Ty = E->getType();
-    EmitAggregateAssign(This, Src, Ty);
-    return RValue::get(This);
-  }
-
-  llvm::Value *Callee = EmitCXXOperatorMemberCallee(E, MD, This);
-  return EmitCXXMemberOrOperatorCall(MD, Callee, ReturnValue, This,
-                                     /*ImplicitParam=*/nullptr, QualType(), E);
+  return EmitCXXMemberOrOperatorMemberCallExpr(
+      E, MD, ReturnValue, /*HasQualifier=*/false, /*Qualifier=*/nullptr,
+      /*IsArrow=*/false, E->getArg(0));
 }
 
 RValue CodeGenFunction::EmitCUDAKernelCallExpr(const CUDAKernelCallExpr *E,
@@ -747,14 +754,15 @@ static llvm::Value *EmitCXXNewAllocSize(CodeGenFunction &CGF,
 }
 
 static void StoreAnyExprIntoOneUnit(CodeGenFunction &CGF, const Expr *Init,
-                                    QualType AllocType, llvm::Value *NewPtr) {
+                                    QualType AllocType, llvm::Value *NewPtr,
+                                    SourceLocation DbgLoc = SourceLocation()) {
   // FIXME: Refactor with EmitExprAsInit.
   CharUnits Alignment = CGF.getContext().getTypeAlignInChars(AllocType);
   switch (CGF.getEvaluationKind(AllocType)) {
   case TEK_Scalar:
-    CGF.EmitScalarInit(Init, nullptr, CGF.MakeAddrLValue(NewPtr, AllocType,
-                                                         Alignment),
-                       false);
+    CGF.EmitScalarInit(Init, nullptr,
+                       CGF.MakeAddrLValue(NewPtr, AllocType, Alignment), false,
+                       DbgLoc);
     return;
   case TEK_Complex:
     CGF.EmitComplexExprIntoLValue(Init, CGF.MakeAddrLValue(NewPtr, AllocType,
@@ -1016,7 +1024,8 @@ static void EmitNewInitializer(CodeGenFunction &CGF, const CXXNewExpr *E,
     CGF.EmitNewArrayInitializer(E, ElementType, NewPtr, NumElements,
                                 AllocSizeWithoutCookie);
   else if (const Expr *Init = E->getInitializer())
-    StoreAnyExprIntoOneUnit(CGF, Init, E->getAllocatedType(), NewPtr);
+    StoreAnyExprIntoOneUnit(CGF, Init, E->getAllocatedType(), NewPtr,
+                            E->getStartLoc());
 }
 
 /// Emit a call to an operator new or operator delete function, as implicitly

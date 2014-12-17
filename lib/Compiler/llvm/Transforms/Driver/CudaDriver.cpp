@@ -334,7 +334,9 @@ void CudaDriver::create(Function *func,
 	  unsigned numOperands = mdn->getNumOperands();
 	  bool found = false;
 	  for(unsigned i = 0; i < numOperands; ++i) {
-	    Value* v = mdn->getOperand(i);
+	    Value* v = 
+              cast<ValueAsMetadata>(mdn->getOperand(i))->getValue();
+
 	    std::string s = v->getName().str();
 	    std::string a = arg->getName().str();
 

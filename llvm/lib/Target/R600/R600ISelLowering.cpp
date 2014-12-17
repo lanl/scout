@@ -186,8 +186,6 @@ R600TargetLowering::R600TargetLowering(TargetMachine &TM) :
     setOperationAction(ISD::SUBE, VT, Expand);
   }
 
-  setBooleanContents(ZeroOrNegativeOneBooleanContent);
-  setBooleanVectorContents(ZeroOrNegativeOneBooleanContent);
   setSchedulingPreference(Sched::Source);
 }
 
@@ -1119,6 +1117,13 @@ SDValue R600TargetLowering::LowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const 
   SDValue False = Op.getOperand(3);
   SDValue CC = Op.getOperand(4);
   SDValue Temp;
+
+  if (VT == MVT::f32) {
+    DAGCombinerInfo DCI(DAG, AfterLegalizeVectorOps, true, nullptr);
+    SDValue MinMax = CombineFMinMaxLegacy(DL, VT, LHS, RHS, True, False, CC, DCI);
+    if (MinMax)
+      return MinMax;
+  }
 
   // LHS and RHS are guaranteed to be the same value type
   EVT CompareVT = LHS.getValueType();

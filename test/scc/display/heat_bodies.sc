@@ -64,7 +64,7 @@
 
 int main(int argc, char *argv[])
 {
-  const int NTIME_STEPS     = 1000;
+  const int NTIME_STEPS     = 200;
   const float MAX_TEMP      = 100.0f;
 
   window render_win[1024,1024];

@@ -13,7 +13,6 @@
 // C Includes
 
 // C++ Includes
-#include <map>
 #include <memory>
 #include <queue>
 
@@ -24,6 +23,8 @@
 #include "lldb/Core/Error.h"
 #include "lldb/Host/HostThread.h"
 #include "lldb/Target/Process.h"
+
+#include "llvm/Support/Mutex.h"
 
 class ProcessMonitor;
 
@@ -71,6 +72,9 @@ public:
     size_t GetSTDERR(char *buf, size_t buf_size, lldb_private::Error &error) override;
     size_t PutSTDIN(const char *buf, size_t buf_size, lldb_private::Error &error) override;
 
+    lldb_private::Error EnableBreakpointSite(lldb_private::BreakpointSite *bp_site) override;
+    lldb_private::Error DisableBreakpointSite(lldb_private::BreakpointSite *bp_site) override;
+
     lldb_private::Error DoDetach(bool keep_stopped) override;
     lldb_private::Error DoLaunch(lldb_private::Module *exe_module, lldb_private::ProcessLaunchInfo &launch_info) override;
     lldb_private::Error DoResume() override;
@@ -111,6 +115,8 @@ public:
     void OnDebuggerError(const lldb_private::Error &error, uint32_t type) override;
 
   private:
+    llvm::sys::Mutex m_mutex;
+
     // Data for the active debugging session.
     std::unique_ptr<lldb_private::ProcessWindowsData> m_session_data;
 };

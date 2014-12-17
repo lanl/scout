@@ -268,14 +268,18 @@ FileSpec::SetFile (const char *pathname, bool resolve, PathSyntax syntax)
         return;
 
     llvm::SmallString<64> normalized(pathname);
-    Normalize(normalized, syntax);
 
     if (resolve)
     {
         FileSpec::Resolve (normalized);
         m_is_resolved = true;
     }
-    
+
+    // Only normalize after resolving the path.  Resolution will modify the path
+    // string, potentially adding wrong kinds of slashes to the path, that need
+    // to be re-normalized.
+    Normalize(normalized, syntax);
+
     llvm::StringRef resolve_path_ref(normalized.c_str());
     llvm::StringRef filename_ref = llvm::sys::path::filename(resolve_path_ref);
     if (!filename_ref.empty())
@@ -1336,17 +1340,30 @@ FileSpec::IsSourceImplementationFile () const
 bool
 FileSpec::IsRelativeToCurrentWorkingDirectory () const
 {
-    const char *directory = m_directory.GetCString();
-    if (directory && directory[0])
+    const char *dir = m_directory.GetCString();
+    llvm::StringRef directory(dir ? dir : "");
+
+    if (directory.size() > 0)
     {
-        // If the path doesn't start with '/' or '~', return true
-        switch (directory[0])
+        if (m_syntax == ePathSyntaxWindows)
         {
-        case '/':
-        case '~':
-            return false;
-        default:
+            if (directory.size() >= 2 && directory[1] == ':')
+                return false;
+            if (directory[0] == '/')
+                return false;
             return true;
+        }
+        else
+        {
+            // If the path doesn't start with '/' or '~', return true
+            switch (directory[0])
+            {
+                case '/':
+                case '~':
+                    return false;
+                default:
+                    return true;
+            }
         }
     }
     else if (m_filename)

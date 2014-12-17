@@ -155,6 +155,8 @@ struct CodeGenTypeCache {
 
   llvm::CallingConv::ID RuntimeCC;
   llvm::CallingConv::ID getRuntimeCC() const { return RuntimeCC; }
+  llvm::CallingConv::ID BuiltinCC;
+  llvm::CallingConv::ID getBuiltinCC() const { return BuiltinCC; }
 };
 
 struct RREntrypoints {
@@ -429,7 +431,7 @@ class CodeGenModule : public CodeGenTypeCache {
   llvm::SetVector<clang::Module *> ImportedModules;
 
   /// \brief A vector of metadata strings.
-  SmallVector<llvm::Value *, 16> LinkerOptionsMetadata;
+  SmallVector<llvm::Metadata *, 16> LinkerOptionsMetadata;
 
   /// @name Cache for Objective-C runtime types
   /// @{
@@ -623,9 +625,7 @@ public:
 
   llvm::MDNode *getNoObjCARCExceptionsMetadata() {
     if (!NoObjCARCExceptionsMetadata)
-      NoObjCARCExceptionsMetadata =
-        llvm::MDNode::get(getLLVMContext(),
-                          SmallVector<llvm::Value*,1>());
+      NoObjCARCExceptionsMetadata = llvm::MDNode::get(getLLVMContext(), None);
     return NoObjCARCExceptionsMetadata;
   }
 
@@ -908,6 +908,11 @@ public:
 
   /// Create a new runtime function with the specified type and name.
   llvm::Constant *CreateRuntimeFunction(llvm::FunctionType *Ty,
+                                        StringRef Name,
+                                        llvm::AttributeSet ExtraAttrs =
+                                          llvm::AttributeSet());
+  /// Create a new compiler builtin function with the specified type and name.
+  llvm::Constant *CreateBuiltinFunction(llvm::FunctionType *Ty,
                                         StringRef Name,
                                         llvm::AttributeSet ExtraAttrs =
                                           llvm::AttributeSet());

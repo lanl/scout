@@ -1,6 +1,5 @@
 """Test that types defined in shared libraries with stripped symbols work correctly."""
 
-import os, time
 import unittest2
 import lldb
 from lldbtest import *
@@ -40,12 +39,6 @@ class SharedLibStrippedTestCase(TestBase):
         # Find the line number to break inside main().
         self.source = 'main.c'
         self.line = line_number(self.source, '// Set breakpoint 0 here.')
-        if sys.platform.startswith("freebsd") or sys.platform.startswith("linux"):
-            if "LD_LIBRARY_PATH" in os.environ:
-                self.runCmd("settings set target.env-vars " + self.dylibPath + "=" + os.environ["LD_LIBRARY_PATH"] + ":" + os.getcwd())
-            else:
-                self.runCmd("settings set target.env-vars " + self.dylibPath + "=" + os.getcwd())
-            self.addTearDownHook(lambda: self.runCmd("settings remove target.env-vars " + self.dylibPath))
         self.shlib_names = ["foo"]
 
     def common_setup(self):

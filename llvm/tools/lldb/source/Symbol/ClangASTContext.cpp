@@ -1138,6 +1138,16 @@ ClangASTContext::AreTypesSame (ClangASTType type1,
     return ast->hasSameType (type1_qual, type2_qual);
 }
 
+ClangASTType
+ClangASTContext::GetTypeForDecl (clang::NamedDecl *decl)
+{
+    if (clang::ObjCInterfaceDecl *interface_decl = llvm::dyn_cast<clang::ObjCInterfaceDecl>(decl))
+        return GetTypeForDecl(interface_decl);
+    if (clang::TagDecl *tag_decl = llvm::dyn_cast<clang::TagDecl>(decl))
+        return GetTypeForDecl(tag_decl);
+    return ClangASTType();
+}
+
 
 ClangASTType
 ClangASTContext::GetTypeForDecl (TagDecl *decl)
@@ -1145,7 +1155,7 @@ ClangASTContext::GetTypeForDecl (TagDecl *decl)
     // No need to call the getASTContext() accessor (which can create the AST
     // if it isn't created yet, because we can't have created a decl in this
     // AST if our AST didn't already exist...
-    ASTContext *ast = m_ast_ap.get();
+    ASTContext *ast = &decl->getASTContext();
     if (ast)
         return ClangASTType (ast, ast->getTagDeclType(decl).getAsOpaquePtr());
     return ClangASTType();
@@ -1157,7 +1167,7 @@ ClangASTContext::GetTypeForDecl (ObjCInterfaceDecl *decl)
     // No need to call the getASTContext() accessor (which can create the AST
     // if it isn't created yet, because we can't have created a decl in this
     // AST if our AST didn't already exist...
-    ASTContext *ast = m_ast_ap.get();
+    ASTContext *ast = &decl->getASTContext();
     if (ast)
         return ClangASTType (ast, ast->getObjCInterfaceType(decl).getAsOpaquePtr());
     return ClangASTType();
@@ -2116,7 +2126,7 @@ ClangASTContext::SetMetadata (clang::ASTContext *ast,
                               ClangASTMetadata &metadata)
 {
     ClangExternalASTSourceCommon *external_source =
-        static_cast<ClangExternalASTSourceCommon*>(ast->getExternalSource());
+        ClangExternalASTSourceCommon::Lookup(ast->getExternalSource());
     
     if (external_source)
         external_source->SetMetadata(object, metadata);
@@ -2127,7 +2137,7 @@ ClangASTContext::GetMetadata (clang::ASTContext *ast,
                               const void *object)
 {
     ClangExternalASTSourceCommon *external_source =
-        static_cast<ClangExternalASTSourceCommon*>(ast->getExternalSource());
+        ClangExternalASTSourceCommon::Lookup(ast->getExternalSource());
     
     if (external_source && external_source->HasMetadata(object))
         return external_source->GetMetadata(object);

@@ -58,6 +58,9 @@ BUILTIN(positiony, "i", "n")
 BUILTIN(positionz, "i", "n")
 BUILTIN(positionw, "i", "n")
 
+BUILTIN(head, "E4i", "n")
+BUILTIN(tail, "E4i", "n")
+
 //0 or 1 args
 BUILTIN(width, "i.", "n")
 BUILTIN(height, "i.", "n")

@@ -68,9 +68,9 @@ set(CMAKE_MODULE_PATH
   )
 
 project(scStandardLibrary SCXX)
-  set(CMAKE_VERBOSE_MAKEFILE ON)
-  cmake_minimum_required(VERSION 2.8.9)
-  set(CMAKE_SCXX_FLAGS "-noscstdlib")
+  cmake_minimum_required(VERSION 2.8.12)
+  set(CMAKE_SCXX_FLAGS "-g -noscstdlib")
+  set(LINK_FLAGS "-noscstdlib")
   set(CMAKE_INSTALL_PREFIX ${SCOUT_INSTALL_DIR})
   set(LIBRARY_OUTPUT_PATH ${SCOUT_BUILD_DIR}/lib)
 
@@ -82,6 +82,7 @@ project(scStandardLibrary SCXX)
   file(GLOB std_srcs *.scpp)
 
   add_library(scStandard SHARED ${std_srcs})
+
   if(NOT APPLE)  
     set_target_properties(scStandard PROPERTIES COMPILE_FLAGS "-fPIC")
     set_target_properties(scStandard PROPERTIES LINK_FLAGS "-fPIC -noscstdlib")

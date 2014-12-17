@@ -118,6 +118,7 @@ void Preprocessor::RegisterBuiltinMacros() {
   Ident__has_extension    = RegisterBuiltinMacro(*this, "__has_extension");
   Ident__has_builtin      = RegisterBuiltinMacro(*this, "__has_builtin");
   Ident__has_attribute    = RegisterBuiltinMacro(*this, "__has_attribute");
+  Ident__has_declspec = RegisterBuiltinMacro(*this, "__has_declspec_attribute");
   Ident__has_include      = RegisterBuiltinMacro(*this, "__has_include");
   Ident__has_include_next = RegisterBuiltinMacro(*this, "__has_include_next");
   Ident__has_warning      = RegisterBuiltinMacro(*this, "__has_warning");
@@ -911,8 +912,10 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
       .Case("objc_dictionary_literals", LangOpts.ObjC2)
       .Case("objc_boxed_expressions", LangOpts.ObjC2)
       .Case("arc_cf_code_audited", true)
+      .Case("objc_bridge_id", LangOpts.ObjC2)
       // C11 features
       .Case("c_alignas", LangOpts.C11)
+      .Case("c_alignof", LangOpts.C11)
       .Case("c_atomic", LangOpts.C11)
       .Case("c_generic_selections", LangOpts.C11)
       .Case("c_static_assert", LangOpts.C11)
@@ -922,6 +925,7 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
       .Case("cxx_access_control_sfinae", LangOpts.CPlusPlus11)
       .Case("cxx_alias_templates", LangOpts.CPlusPlus11)
       .Case("cxx_alignas", LangOpts.CPlusPlus11)
+      .Case("cxx_alignof", LangOpts.CPlusPlus11)
       .Case("cxx_atomic", LangOpts.CPlusPlus11)
       .Case("cxx_attributes", LangOpts.CPlusPlus11)
       .Case("cxx_auto_type", LangOpts.CPlusPlus11)
@@ -1030,6 +1034,7 @@ static bool HasExtension(const Preprocessor &PP, const IdentifierInfo *II) {
   return llvm::StringSwitch<bool>(Extension)
            // C11 features supported by other languages as extensions.
            .Case("c_alignas", true)
+           .Case("c_alignof", true)
            .Case("c_atomic", true)
            .Case("c_generic_selections", true)
            .Case("c_static_assert", true)
@@ -1378,6 +1383,7 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
              II == Ident__has_builtin   ||
              II == Ident__is_identifier ||
              II == Ident__has_attribute ||
+             II == Ident__has_declspec  ||
              II == Ident__has_cpp_attribute) {
     // The argument to these builtins should be a parenthesized identifier.
     SourceLocation StartLoc = Tok.getLocation();
@@ -1420,10 +1426,13 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
       // Check for a builtin is trivial.
       Value = FeatureII->getBuiltinID() != 0;
     } else if (II == Ident__has_attribute)
-      Value = hasAttribute(AttrSyntax::Generic, nullptr, FeatureII,
+      Value = hasAttribute(AttrSyntax::GNU, nullptr, FeatureII,
                            getTargetInfo().getTriple(), getLangOpts());
     else if (II == Ident__has_cpp_attribute)
       Value = hasAttribute(AttrSyntax::CXX, ScopeII, FeatureII,
+                           getTargetInfo().getTriple(), getLangOpts());
+    else if (II == Ident__has_declspec)
+      Value = hasAttribute(AttrSyntax::Declspec, nullptr, FeatureII,
                            getTargetInfo().getTriple(), getLangOpts());
     else if (II == Ident__has_extension)
       Value = HasExtension(*this, FeatureII);

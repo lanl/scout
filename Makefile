@@ -175,7 +175,7 @@ scc: $(build_dir)/Makefile toolchain
 stdlib: $(build_dir)/Makefile 
 	@echo "*** Creating standard library build directory: $(stdlib_build_dir)"
 	@((test -d $(stdlib_build_dir)) || (mkdir $(stdlib_build_dir)))
-	@(cd $(stdlib_build_dir); cmake $(cmake_flags) --debug-trycompile $(stdlib_flags) $(stdlib_src_dir))
+	@(cd $(stdlib_build_dir); cmake $(cmake_flags) --debug-trycompile --debug-output -trace $(stdlib_flags) $(stdlib_src_dir))
 	@(cd $(stdlib_build_dir); make $(make_flags))
 
 .PHONY: test

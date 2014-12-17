@@ -33,7 +33,7 @@ static const char *DimNames[]   = { "width", "height", "depth" };
 
 void CodeGenFunction::EmitMeshFieldsUsedMD(MeshFieldMap HS,
     const char *str, llvm::BranchInst *BI) {
-  SmallVector<llvm::Value*, 16> MDL;
+  SmallVector<llvm::Metadata*, 16> MDL;
   llvm::MDString *MDName = llvm::MDString::get(getLLVMContext(), str);
   MDL.push_back(MDName);
 
@@ -44,7 +44,7 @@ void CodeGenFunction::EmitMeshFieldsUsedMD(MeshFieldMap HS,
 
   }
   BI->setMetadata(StringRef(str),
-      llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Value*>(MDL)));
+      llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Metadata*>(MDL)));
 
 }
 
@@ -74,7 +74,7 @@ void CodeGenFunction::EmitTaskMDBlock(const FunctionDecl *FD) {
     const std::string MeshTypeName =  it->second;
     for (llvm::NamedMDNode::op_iterator II = MeshMD->op_begin(), IE = MeshMD->op_end();
         II != IE; ++II) {
-      if((*II)->getOperand(0)->getName().str() == MeshTypeName) {
+      if(cast<llvm::MDString>((*II)->getOperand(0))->getString() == MeshTypeName) {
         BI->setMetadata(MeshName, *II);
       }
     }

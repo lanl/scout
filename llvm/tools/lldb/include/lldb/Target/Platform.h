@@ -560,7 +560,16 @@ namespace lldb_private {
         SetSDKBuild (const ConstString &sdk_build)
         {
             m_sdk_build = sdk_build;
-        }    
+        }
+        
+        // Override this to return true if your platform supports Clang modules.
+        // You may also need to override AddClangModuleCompilationOptions to pass the right Clang flags for your platform.
+        virtual bool
+        SupportsModules () { return false; }
+        
+        // Appends the platform-specific options required to find the modules for the current platform.
+        virtual void
+        AddClangModuleCompilationOptions (std::vector<std::string> &options);
 
         ConstString
         GetWorkingDirectory ();
@@ -572,7 +581,7 @@ namespace lldb_private {
         // The platform will return "true" from this call if the passed in module happens to be one of these.
         
         virtual bool
-        ModuleIsExcludedForNonModuleSpecificSearches (Target &target, const lldb::ModuleSP &module_sp)
+        ModuleIsExcludedForUnconstrainedSearches (Target &target, const lldb::ModuleSP &module_sp)
         {
             return false;
         }

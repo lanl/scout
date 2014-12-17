@@ -124,6 +124,7 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
   Int8PtrPtrTy = Int8PtrTy->getPointerTo(0);
 
   RuntimeCC = getTargetCodeGenInfo().getABIInfo().getRuntimeCC();
+  BuiltinCC = getTargetCodeGenInfo().getABIInfo().getBuiltinCC();
 
   if (LangOpts.ObjC1)
     createObjCRuntime();
@@ -389,7 +390,9 @@ void CodeGenModule::Release() {
   // add call to scout runtime initializer
   if (ScoutRuntime) {
     if (! getCodeGenOpts().ScoutNoStdLibrary) {
-      if (llvm::Function *ScoutInitFunction = ScoutRuntime->ModuleInitFunction()) {
+      CodeGenFunction CGF(*this);          
+      if (llvm::Function *ScoutInitFunction =
+          ScoutRuntime->ModuleInitFunction(CGF, SourceLocation())) {
         AddGlobalCtor(ScoutInitFunction);
       }
     } else {
@@ -401,9 +404,6 @@ void CodeGenModule::Release() {
   if (ObjCRuntime)
     if (llvm::Function *ObjCInitFunction = ObjCRuntime->ModuleInitFunction())
       AddGlobalCtor(ObjCInitFunction);
-  if (getCodeGenOpts().ProfileInstrGenerate)
-    if (llvm::Function *PGOInit = CodeGenPGO::emitInitialization(*this))
-      AddGlobalCtor(PGOInit, 0);
   if (PGOReader && PGOStats.hasDiagnostics())
     PGOStats.reportDiagnostics(getDiags(), getCodeGenOpts().MainFileName);
   EmitCtorList(GlobalCtors, "llvm.global_ctors");
@@ -683,7 +683,7 @@ void CodeGenModule::EmitCtorList(const CtorList &Fns, const char *GlobalName) {
 
   // Get the type of a ctor entry, { i32, void ()*, i8* }.
   llvm::StructType *CtorStructTy = llvm::StructType::get(
-      Int32Ty, llvm::PointerType::getUnqual(CtorFTy), VoidPtrTy, NULL);
+      Int32Ty, llvm::PointerType::getUnqual(CtorFTy), VoidPtrTy, nullptr);
 
   // Construct the constructor and destructor arrays.
   SmallVector<llvm::Constant*, 8> Ctors;
@@ -786,7 +786,8 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
   }
 
   if (D->hasAttr<ColdAttr>()) {
-    B.addAttribute(llvm::Attribute::OptimizeForSize);
+    if (!D->hasAttr<OptimizeNoneAttr>())
+      B.addAttribute(llvm::Attribute::OptimizeForSize);
     B.addAttribute(llvm::Attribute::Cold);
   }
 
@@ -827,7 +828,9 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
     F->addFnAttr(llvm::Attribute::NoInline);
 
     // OptimizeNone wins over OptimizeForSize, MinSize, AlwaysInline.
-    F->removeFnAttr(llvm::Attribute::OptimizeForSize);
+    assert(!F->hasFnAttribute(llvm::Attribute::OptimizeForSize) &&
+           "OptimizeNone and OptimizeForSize on same function!");
+    // FIXME: Change these to asserts.
     F->removeFnAttr(llvm::Attribute::MinSize);
     F->removeFnAttr(llvm::Attribute::AlwaysInline);
 
@@ -1013,29 +1016,28 @@ void CodeGenModule::emitLLVMUsed() {
 }
 
 void CodeGenModule::AppendLinkerOptions(StringRef Opts) {
-  llvm::Value *MDOpts = llvm::MDString::get(getLLVMContext(), Opts);
+  auto *MDOpts = llvm::MDString::get(getLLVMContext(), Opts);
   LinkerOptionsMetadata.push_back(llvm::MDNode::get(getLLVMContext(), MDOpts));
 }
 
 void CodeGenModule::AddDetectMismatch(StringRef Name, StringRef Value) {
   llvm::SmallString<32> Opt;
   getTargetCodeGenInfo().getDetectMismatchOption(Name, Value, Opt);
-  llvm::Value *MDOpts = llvm::MDString::get(getLLVMContext(), Opt);
+  auto *MDOpts = llvm::MDString::get(getLLVMContext(), Opt);
   LinkerOptionsMetadata.push_back(llvm::MDNode::get(getLLVMContext(), MDOpts));
 }
 
 void CodeGenModule::AddDependentLib(StringRef Lib) {
   llvm::SmallString<24> Opt;
   getTargetCodeGenInfo().getDependentLibraryOption(Lib, Opt);
-  llvm::Value *MDOpts = llvm::MDString::get(getLLVMContext(), Opt);
+  auto *MDOpts = llvm::MDString::get(getLLVMContext(), Opt);
   LinkerOptionsMetadata.push_back(llvm::MDNode::get(getLLVMContext(), MDOpts));
 }
 
 /// \brief Add link options implied by the given module, including modules
 /// it depends on, using a postorder walk.
-static void addLinkOptionsPostorder(CodeGenModule &CGM,
-                                    Module *Mod,
-                                    SmallVectorImpl<llvm::Value *> &Metadata,
+static void addLinkOptionsPostorder(CodeGenModule &CGM, Module *Mod,
+                                    SmallVectorImpl<llvm::Metadata *> &Metadata,
                                     llvm::SmallPtrSet<Module *, 16> &Visited) {
   // Import this module's parent.
   if (Mod->Parent && Visited.insert(Mod->Parent).second) {
@@ -1055,10 +1057,9 @@ static void addLinkOptionsPostorder(CodeGenModule &CGM,
     // Link against a framework.  Frameworks are currently Darwin only, so we
     // don't to ask TargetCodeGenInfo for the spelling of the linker option.
     if (Mod->LinkLibraries[I-1].IsFramework) {
-      llvm::Value *Args[2] = {
-        llvm::MDString::get(Context, "-framework"),
-        llvm::MDString::get(Context, Mod->LinkLibraries[I-1].Library)
-      };
+      llvm::Metadata *Args[2] = {
+          llvm::MDString::get(Context, "-framework"),
+          llvm::MDString::get(Context, Mod->LinkLibraries[I - 1].Library)};
 
       Metadata.push_back(llvm::MDNode::get(Context, Args));
       continue;
@@ -1068,7 +1069,7 @@ static void addLinkOptionsPostorder(CodeGenModule &CGM,
     llvm::SmallString<24> Opt;
     CGM.getTargetCodeGenInfo().getDependentLibraryOption(
       Mod->LinkLibraries[I-1].Library, Opt);
-    llvm::Value *OptString = llvm::MDString::get(Context, Opt);
+    auto *OptString = llvm::MDString::get(Context, Opt);
     Metadata.push_back(llvm::MDNode::get(Context, OptString));
   }
 }
@@ -1121,7 +1122,7 @@ void CodeGenModule::EmitModuleLinkOptions() {
   // Add link options for all of the imported modules in reverse topological
   // order.  We don't do anything to try to order import link flags with respect
   // to linker options inserted by things like #pragma comment().
-  SmallVector<llvm::Value *, 16> MetadataArgs;
+  SmallVector<llvm::Metadata *, 16> MetadataArgs;
   Visited.clear();
   for (llvm::SetVector<clang::Module *>::iterator M = LinkModules.begin(),
                                                MEnd = LinkModules.end();
@@ -1723,6 +1724,21 @@ CodeGenModule::CreateRuntimeFunction(llvm::FunctionType *FTy,
   if (auto *F = dyn_cast<llvm::Function>(C))
     if (F->empty())
       F->setCallingConv(getRuntimeCC());
+  return C;
+}
+
+/// CreateBuiltinFunction - Create a new builtin function with the specified
+/// type and name.
+llvm::Constant *
+CodeGenModule::CreateBuiltinFunction(llvm::FunctionType *FTy,
+                                     StringRef Name,
+                                     llvm::AttributeSet ExtraAttrs) {
+  llvm::Constant *C =
+      GetOrCreateLLVMFunction(Name, FTy, GlobalDecl(), /*ForVTable=*/false,
+                              /*DontDefer=*/false, /*IsThunk=*/false, ExtraAttrs);
+  if (auto *F = dyn_cast<llvm::Function>(C))
+    if (F->empty())
+      F->setCallingConv(getBuiltinCC());
   return C;
 }
 
@@ -3373,6 +3389,7 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
     if (DebugInfo &&
         Spec->getSpecializationKind() == TSK_ExplicitInstantiationDefinition)
       DebugInfo->completeTemplateDefinition(*Spec);
+    break;
   }
 
   default:
@@ -3403,6 +3420,7 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
     // +======================================================================+
     }
     */
+    break;
   }
 }
 
@@ -3507,10 +3525,9 @@ static void EmitGlobalDeclMetadata(CodeGenModule &CGM,
       CGM.getModule().getOrInsertNamedMetadata("clang.global.decl.ptrs");
 
   // TODO: should we report variant information for ctors/dtors?
-  llvm::Value *Ops[] = {
-    Addr,
-    GetPointerConstant(CGM.getLLVMContext(), D.getDecl())
-  };
+  llvm::Metadata *Ops[] = {llvm::ConstantAsMetadata::get(Addr),
+                           llvm::ConstantAsMetadata::get(GetPointerConstant(
+                               CGM.getLLVMContext(), D.getDecl()))};
   GlobalMetadata->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), Ops));
 }
 
@@ -3573,7 +3590,9 @@ void CodeGenFunction::EmitDeclMetadata() {
     llvm::Value *Addr = I.second;
     if (auto *Alloca = dyn_cast<llvm::AllocaInst>(Addr)) {
       llvm::Value *DAddr = GetPointerConstant(getLLVMContext(), D);
-      Alloca->setMetadata(DeclPtrKind, llvm::MDNode::get(Context, DAddr));
+      Alloca->setMetadata(
+          DeclPtrKind, llvm::MDNode::get(
+                           Context, llvm::ValueAsMetadata::getConstant(DAddr)));
     } else if (auto *GV = dyn_cast<llvm::GlobalValue>(Addr)) {
       GlobalDecl GD = GlobalDecl(cast<VarDecl>(D));
       EmitGlobalDeclMetadata(CGM, GlobalMetadata, GD, GV);
@@ -3587,9 +3606,7 @@ void CodeGenModule::EmitVersionIdentMetadata() {
   std::string Version = getClangFullVersion();
   llvm::LLVMContext &Ctx = TheModule.getContext();
 
-  llvm::Value *IdentNode[] = {
-    llvm::MDString::get(Ctx, Version)
-  };
+  llvm::Metadata *IdentNode[] = {llvm::MDString::get(Ctx, Version)};
   IdentMetadata->addOperand(llvm::MDNode::get(Ctx, IdentNode));
 }
 
@@ -3617,9 +3634,8 @@ void CodeGenModule::EmitCoverageFile() {
           llvm::MDString::get(Ctx, getCodeGenOpts().CoverageFile);
       for (int i = 0, e = CUNode->getNumOperands(); i != e; ++i) {
         llvm::MDNode *CU = CUNode->getOperand(i);
-        llvm::Value *node[] = { CoverageFile, CU };
-        llvm::MDNode *N = llvm::MDNode::get(Ctx, node);
-        GCov->addOperand(N);
+        llvm::Metadata *Elts[] = {CoverageFile, CU};
+        GCov->addOperand(llvm::MDNode::get(Ctx, Elts));
       }
     }
   }

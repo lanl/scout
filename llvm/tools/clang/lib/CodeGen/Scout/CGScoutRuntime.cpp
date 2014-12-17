@@ -61,14 +61,18 @@ using namespace CodeGen;
 CGScoutRuntime::~CGScoutRuntime() {}
 
 // call the correct scout runtime Initializer
-llvm::Function *CGScoutRuntime::ModuleInitFunction() {
+llvm::Function *CGScoutRuntime::ModuleInitFunction(CodeGenFunction &CGF, SourceLocation Loc) {
 
+  llvm::Function *rtInitFn = EmitRuntimeInitFunc(Loc, &CGF);
+  return rtInitFn;
+  
+  /*
   std::string funcName;
   if(CGM.getLangOpts().ScoutNvidiaGPU){
    funcName = "__scrt_cuda_init";
-  } /*else if(CGM.getLangOpts().ScoutAMDGPU){
+  } else if(CGM.getLangOpts().ScoutAMDGPU){
    funcName = "__scrt_init_opengl";
-  }*/ else {
+  } else {
    funcName = "__scrt_init_cpu";
   }
 
@@ -86,6 +90,7 @@ llvm::Function *CGScoutRuntime::ModuleInitFunction() {
                                      &CGM.getModule());
   }
   return scrtInit;
+  */
 }
 
 // build a function call to a scout runtime function w/ no arguments
@@ -293,4 +298,39 @@ llvm::Type *CGScoutRuntime::convertScoutSpecificType(const Type *T) {
     llvm_unreachable("Unexpected scout type!");
     return 0;
   }
+}
+
+llvm::Function *CGScoutRuntime::EmitRuntimeInitFunc(SourceLocation Loc,
+                                                    CodeGenFunction *CGF) {
+  auto InitFunctionTy = llvm::FunctionType::get(CGM.VoidTy, /* isVarArg */ false);
+  auto InitFunction   = CGM.CreateGlobalInitOrDestructFunction(InitFunctionTy,
+                                                               ".__sc_init__.");
+  CodeGenFunction InitCGF(CGM);
+  FunctionArgList ArgList; /* empty */
+  InitCGF.StartFunction(GlobalDecl(), CGM.getContext().VoidTy, InitFunction,
+                        CGM.getTypes().arrangeNullaryFunction(), ArgList, Loc);
+
+  EmitRuntimeInitializationCall(InitCGF, Loc);
+  
+  InitCGF.FinishFunction();
+  return InitFunction;
+}
+
+void CGScoutRuntime::EmitRuntimeInitializationCall(CodeGenFunction &CGF,
+                                                   SourceLocation Loc) {
+
+  std::string funcName("__scrt_init_cpu");
+  // main high-level runtime initialization.
+  llvm::Function *rtInitFn = CGM.getModule().getFunction(funcName);
+  if (!rtInitFn) {
+    std::vector<llvm::Type*> args;
+    llvm::FunctionType *FTy =
+      llvm::FunctionType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()), args, false);
+    rtInitFn = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage,
+                                      funcName, &CGM.getModule());
+  }
+  
+  std::vector<llvm::Value*> params; /* void */ 
+  CGF.Builder.CreateCall(rtInitFn, params, "");
+  //return rtInitFn;
 }

@@ -291,6 +291,12 @@ def int_stackprotector : Intrinsic<[], [llvm_ptr_ty, llvm_ptrptr_ty], []>;
 def int_stackprotectorcheck : Intrinsic<[], [llvm_ptrptr_ty],
                                         [IntrReadWriteArgMem]>;
 
+// A counter increment for instrumentation based profiling.
+def int_instrprof_increment : Intrinsic<[],
+                                        [llvm_ptr_ty, llvm_i64_ty,
+                                         llvm_i32_ty, llvm_i32_ty],
+                                        []>;
+
 //===------------------- Standard C Library Intrinsics --------------------===//
 //
 
@@ -496,6 +502,22 @@ def int_experimental_patchpoint_i64 : Intrinsic<[llvm_i64_ty],
                                                  llvm_ptr_ty, llvm_i32_ty,
                                                  llvm_vararg_ty],
                                                  [Throws]>;
+
+
+//===------------------------ Garbage Collection Intrinsics ---------------===//
+// These are documented in docs/Statepoint.rst
+
+def int_experimental_gc_statepoint : Intrinsic<[llvm_i32_ty],
+                               [llvm_anyptr_ty, llvm_i32_ty,
+                                llvm_i32_ty, llvm_vararg_ty]>;
+
+def int_experimental_gc_result_int : Intrinsic<[llvm_anyint_ty], [llvm_i32_ty]>;
+def int_experimental_gc_result_float : Intrinsic<[llvm_anyfloat_ty], 
+                                                 [llvm_i32_ty]>;
+def int_experimental_gc_result_ptr : Intrinsic<[llvm_anyptr_ty], [llvm_i32_ty]>;
+
+def int_experimental_gc_relocate : Intrinsic<[llvm_anyptr_ty],
+                                [llvm_i32_ty, llvm_i32_ty, llvm_i32_ty]>;
 
 //===-------------------------- Other Intrinsics --------------------------===//
 //

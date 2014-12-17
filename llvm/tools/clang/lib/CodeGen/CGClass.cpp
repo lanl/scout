@@ -597,24 +597,26 @@ static void EmitMemberInitializer(CodeGenFunction &CGF,
   ArrayRef<VarDecl *> ArrayIndexes;
   if (MemberInit->getNumArrayIndices())
     ArrayIndexes = MemberInit->getArrayIndexes();
-  CGF.EmitInitializerForField(Field, LHS, MemberInit->getInit(), ArrayIndexes);
+  CGF.EmitInitializerForField(Field, LHS, MemberInit->getInit(), ArrayIndexes,
+                              MemberInit->getMemberLocation());
 }
 
-void CodeGenFunction::EmitInitializerForField(FieldDecl *Field,
-                                              LValue LHS, Expr *Init,
-                                             ArrayRef<VarDecl *> ArrayIndexes) {
+void CodeGenFunction::EmitInitializerForField(FieldDecl *Field, LValue LHS,
+                                              Expr *Init,
+                                              ArrayRef<VarDecl *> ArrayIndexes,
+                                              SourceLocation DbgLoc) {
   QualType FieldType = Field->getType();
   switch (getEvaluationKind(FieldType)) {
   case TEK_Scalar:
     if (LHS.isSimple()) {
-      EmitExprAsInit(Init, Field, LHS, false);
+      EmitExprAsInit(Init, Field, LHS, false, DbgLoc);
     } else {
       RValue RHS = RValue::get(EmitScalarExpr(Init));
       EmitStoreThroughLValue(RHS, LHS);
     }
     break;
   case TEK_Complex:
-    EmitComplexExprIntoLValue(Init, LHS, /*isInit*/ true);
+    EmitComplexExprIntoLValue(Init, LHS, /*isInit*/ true, DbgLoc);
     break;
   case TEK_Aggregate: {
     llvm::Value *ArrayIndexVar = nullptr;
@@ -1735,7 +1737,7 @@ void CodeGenFunction::EmitCXXConstructorCall(const CXXConstructorDecl *D,
                                              bool Delegating, llvm::Value *This,
                                              const CXXConstructExpr *E) {
   // If this is a trivial constructor, just emit what's needed.
-  if (D->isTrivial()) {
+  if (D->isTrivial() && !D->getParent()->mayInsertExtraPadding()) {
     if (E->getNumArgs() == 0) {
       // Trivial default constructor, no codegen required.
       assert(D->isDefaultConstructor() &&
@@ -1785,7 +1787,8 @@ void
 CodeGenFunction::EmitSynthesizedCXXCopyCtorCall(const CXXConstructorDecl *D,
                                         llvm::Value *This, llvm::Value *Src,
                                         const CXXConstructExpr *E) {
-  if (D->isTrivial()) {
+  if (D->isTrivial() &&
+      !D->getParent()->mayInsertExtraPadding()) {
     assert(E->getNumArgs() == 1 && "unexpected argcount for trivial ctor");
     assert(D->isCopyOrMoveConstructor() &&
            "trivial 1-arg ctor not a copy/move ctor");
@@ -1982,10 +1985,14 @@ CodeGenFunction::InitializeVTablePointer(BaseSubobject Base,
                                                   NonVirtualOffset,
                                                   VirtualOffset);
 
-  // Finally, store the address point.
-  llvm::Type *AddressPointPtrTy =
-    VTableAddressPoint->getType()->getPointerTo();
-  VTableField = Builder.CreateBitCast(VTableField, AddressPointPtrTy);
+  // Finally, store the address point. Use the same LLVM types as the field to
+  // support optimization.
+  llvm::Type *VTablePtrTy =
+      llvm::FunctionType::get(CGM.Int32Ty, /*isVarArg=*/true)
+          ->getPointerTo()
+          ->getPointerTo();
+  VTableField = Builder.CreateBitCast(VTableField, VTablePtrTy->getPointerTo());
+  VTableAddressPoint = Builder.CreateBitCast(VTableAddressPoint, VTablePtrTy);
   llvm::StoreInst *Store = Builder.CreateStore(VTableAddressPoint, VTableField);
   CGM.DecorateInstruction(Store, CGM.getTBAAInfoForVTablePtr());
 }
@@ -2161,20 +2168,6 @@ CodeGenFunction::CanDevirtualizeMemberFunctionCall(const Expr *Base,
 
   // We can't devirtualize the call.
   return false;
-}
-
-llvm::Value *
-CodeGenFunction::EmitCXXOperatorMemberCallee(const CXXOperatorCallExpr *E,
-                                             const CXXMethodDecl *MD,
-                                             llvm::Value *This) {
-  llvm::FunctionType *fnType =
-    CGM.getTypes().GetFunctionType(
-                             CGM.getTypes().arrangeCXXMethodDeclaration(MD));
-
-  if (MD->isVirtual() && !CanDevirtualizeMemberFunctionCall(E->getArg(0), MD))
-    return CGM.getCXXABI().getVirtualFunctionPointer(*this, MD, This, fnType);
-
-  return CGM.GetAddrOfFunction(MD, fnType);
 }
 
 void CodeGenFunction::EmitForwardingCallToLambda(

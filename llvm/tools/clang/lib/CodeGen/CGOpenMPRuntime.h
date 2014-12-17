@@ -43,6 +43,46 @@ class CodeGenModule;
 
 class CGOpenMPRuntime {
 public:
+
+private:
+  enum OpenMPRTLFunction {
+    /// \brief Call to void __kmpc_fork_call(ident_t *loc, kmp_int32 argc,
+    /// kmpc_micro microtask, ...);
+    OMPRTL__kmpc_fork_call,
+    /// \brief Call to void *__kmpc_threadprivate_cached(ident_t *loc,
+    /// kmp_int32 global_tid, void *data, size_t size, void ***cache);
+    OMPRTL__kmpc_threadprivate_cached,
+    /// \brief Call to void __kmpc_threadprivate_register( ident_t *,
+    /// void *data, kmpc_ctor ctor, kmpc_cctor cctor, kmpc_dtor dtor);
+    OMPRTL__kmpc_threadprivate_register,
+    // Call to __kmpc_int32 kmpc_global_thread_num(ident_t *loc);
+    OMPRTL__kmpc_global_thread_num,
+    // Call to void __kmpc_critical(ident_t *loc, kmp_int32 global_tid,
+    // kmp_critical_name *crit);
+    OMPRTL__kmpc_critical,
+    // Call to void __kmpc_end_critical(ident_t *loc, kmp_int32 global_tid,
+    // kmp_critical_name *crit);
+    OMPRTL__kmpc_end_critical,
+    // Call to kmp_int32 __kmpc_cancel_barrier(ident_t *loc, kmp_int32
+    // global_tid);
+    OMPRTL__kmpc_cancel_barrier,
+    // Call to void __kmpc_serialized_parallel(ident_t *loc, kmp_int32
+    // global_tid);
+    OMPRTL__kmpc_serialized_parallel,
+    // Call to void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32
+    // global_tid);
+    OMPRTL__kmpc_end_serialized_parallel,
+    // Call to void __kmpc_push_num_threads(ident_t *loc, kmp_int32 global_tid,
+    // kmp_int32 num_threads);
+    OMPRTL__kmpc_push_num_threads,
+    // Call to void __kmpc_flush(ident_t *loc, ...);
+    OMPRTL__kmpc_flush,
+    // Call to kmp_int32 __kmpc_master(ident_t *, kmp_int32 global_tid);
+    OMPRTL__kmpc_master,
+    // Call to void __kmpc_end_master(ident_t *, kmp_int32 global_tid);
+    OMPRTL__kmpc_end_master,
+  };
+
   /// \brief Values for bit flags used in the ident_t to describe the fields.
   /// All enumeric elements are named and described in accordance with the code
   /// from http://llvm.org/svn/llvm-project/openmp/trunk/runtime/src/kmp.h
@@ -64,40 +104,6 @@ public:
     /// \brief Implicit barrier in 'single' directive.
     OMP_IDENT_BARRIER_IMPL_SINGLE = 0x140
   };
-  enum OpenMPRTLFunction {
-    /// \brief Call to void __kmpc_fork_call(ident_t *loc, kmp_int32 argc,
-    /// kmpc_micro microtask, ...);
-    OMPRTL__kmpc_fork_call,
-    /// \brief Call to void *__kmpc_threadprivate_cached(ident_t *loc,
-    /// kmp_int32 global_tid, void *data, size_t size, void ***cache);
-    OMPRTL__kmpc_threadprivate_cached,
-    /// \brief Call to void __kmpc_threadprivate_register( ident_t *,
-    /// void *data, kmpc_ctor ctor, kmpc_cctor cctor, kmpc_dtor dtor);
-    OMPRTL__kmpc_threadprivate_register,
-    // Call to __kmpc_int32 kmpc_global_thread_num(ident_t *loc);
-    OMPRTL__kmpc_global_thread_num,
-    // Call to void __kmpc_critical(ident_t *loc, kmp_int32 global_tid,
-    // kmp_critical_name *crit);
-    OMPRTL__kmpc_critical,
-    // Call to void __kmpc_end_critical(ident_t *loc, kmp_int32 global_tid,
-    // kmp_critical_name *crit);
-    OMPRTL__kmpc_end_critical,
-    // Call to void __kmpc_barrier(ident_t *loc, kmp_int32 global_tid);
-    OMPRTL__kmpc_barrier,
-    // Call to void __kmpc_serialized_parallel(ident_t *loc, kmp_int32
-    // global_tid);
-    OMPRTL__kmpc_serialized_parallel,
-    // Call to void __kmpc_end_serialized_parallel(ident_t *loc, kmp_int32
-    // global_tid);
-    OMPRTL__kmpc_end_serialized_parallel,
-    // Call to void __kmpc_push_num_threads(ident_t *loc, kmp_int32 global_tid,
-    // kmp_int32 num_threads);
-    OMPRTL__kmpc_push_num_threads,
-    // Call to void __kmpc_flush(ident_t *loc, ...);
-    OMPRTL__kmpc_flush
-  };
-
-private:
   CodeGenModule &CGM;
   /// \brief Default const ident_t object used for initialization of all other
   /// ident_t objects.
@@ -230,6 +236,13 @@ private:
                                    llvm::Value *Ctor, llvm::Value *CopyCtor,
                                    llvm::Value *Dtor, SourceLocation Loc);
 
+  /// \brief Returns corresponding lock object for the specified critical region
+  /// name. If the lock object does not exist it is created, otherwise the
+  /// reference to the existing copy is returned.
+  /// \param CriticalName Name of the critical region.
+  ///
+  llvm::Value *GetCriticalRegionLock(StringRef CriticalName);
+
 public:
   explicit CGOpenMPRuntime(CodeGenModule &CGM);
   virtual ~CGOpenMPRuntime() {}
@@ -270,34 +283,27 @@ public:
                                  llvm::Value *OutlinedFn,
                                  llvm::Value *CapturedStruct);
 
-  /// \brief Returns corresponding lock object for the specified critical region
-  /// name. If the lock object does not exist it is created, otherwise the
-  /// reference to the existing copy is returned.
+  /// \brief Emits a critical region.
   /// \param CriticalName Name of the critical region.
-  ///
-  llvm::Value *GetCriticalRegionLock(StringRef CriticalName);
+  /// \param CriticalOpGen Generator for the statement associated with the given
+  /// critical region.
+  virtual void EmitOMPCriticalRegion(CodeGenFunction &CGF,
+                                     StringRef CriticalName,
+                                     const std::function<void()> &CriticalOpGen,
+                                     SourceLocation Loc);
 
-  /// \brief Emits start of the critical region by calling void
-  /// __kmpc_critical(ident_t *loc, kmp_int32 global_tid, kmp_critical_name
-  /// * \a RegionLock)
-  /// \param RegionLock The lock object for critical region.
-  virtual void EmitOMPCriticalRegionStart(CodeGenFunction &CGF,
-                                          llvm::Value *RegionLock,
-                                          SourceLocation Loc);
+  /// \brief Emits a master region.
+  /// \param MasterOpGen Generator for the statement associated with the given
+  /// master region.
+  virtual void EmitOMPMasterRegion(CodeGenFunction &CGF,
+                                   const std::function<void()> &MasterOpGen,
+                                   SourceLocation Loc);
 
-  /// \brief Emits end of the critical region by calling void
-  /// __kmpc_end_critical(ident_t *loc, kmp_int32 global_tid, kmp_critical_name
-  /// * \a RegionLock)
-  /// \param RegionLock The lock object for critical region.
-  virtual void EmitOMPCriticalRegionEnd(CodeGenFunction &CGF,
-                                        llvm::Value *RegionLock,
-                                        SourceLocation Loc);
-
-  /// \brief Emits a barrier for OpenMP threads.
-  /// \param Flags Flags for the barrier.
+  /// \brief Emits explicit barrier for OpenMP threads.
+  /// \param IsExplicit true, if it is explicitly specified barrier.
   ///
   virtual void EmitOMPBarrierCall(CodeGenFunction &CGF, SourceLocation Loc,
-                                  OpenMPLocationFlags Flags);
+                                  bool IsExplicit = true);
 
   /// \brief Emits call to void __kmpc_push_num_threads(ident_t *loc, kmp_int32
   /// global_tid, kmp_int32 num_threads) to generate code for 'num_threads'

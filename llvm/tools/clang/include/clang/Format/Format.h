@@ -212,6 +212,8 @@ struct FormatStyle {
     SFS_None,
     /// \brief Only merge functions defined inside a class.
     SFS_Inline,
+    /// \brief Only merge empty functions.
+    SFS_Empty,
     /// \brief Merge all functions fitting on a single line.
     SFS_All,
   };
@@ -237,6 +239,10 @@ struct FormatStyle {
   ///                  argument2);
   /// \endcode
   bool AlignAfterOpenBracket;
+
+  /// \brief If \c true, horizontally align operands of binary and ternary
+  /// expressions.
+  bool AlignOperands;
 
   /// \brief If \c true, aligns trailing comments.
   bool AlignTrailingComments;
@@ -405,6 +411,7 @@ struct FormatStyle {
   bool operator==(const FormatStyle &R) const {
     return AccessModifierOffset == R.AccessModifierOffset &&
            AlignAfterOpenBracket == R.AlignAfterOpenBracket &&
+           AlignOperands == R.AlignOperands &&
            AlignEscapedNewlinesLeft == R.AlignEscapedNewlinesLeft &&
            AlignTrailingComments == R.AlignTrailingComments &&
            AllowAllParametersOfDeclarationOnNextLine ==

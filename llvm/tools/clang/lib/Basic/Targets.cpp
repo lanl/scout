@@ -1368,6 +1368,8 @@ namespace {
     1,    // opencl_global
     3,    // opencl_local
     4,    // opencl_constant
+    // FIXME: generic has to be added to the target
+    0,    // opencl_generic
     1,    // cuda_device
     4,    // cuda_constant
     3,    // cuda_shared
@@ -1379,6 +1381,16 @@ namespace {
   class NVPTXTargetInfo : public TargetInfo {
     static const char * const GCCRegNames[];
     static const Builtin::Info BuiltinInfo[];
+
+  // The GPU profiles supported by the NVPTX backend
+  enum GPUKind {
+    GK_NONE,
+    GK_SM20,
+    GK_SM21,
+    GK_SM30,
+    GK_SM35,
+  } GPU;
+
   public:
     NVPTXTargetInfo(const llvm::Triple &Triple) : TargetInfo(Triple) {
       BigEndian = false;
@@ -1389,11 +1401,34 @@ namespace {
       // Define available target features
       // These must be defined in sorted order!
       NoAsmVariants = true;
+      // Set the default GPU to sm20
+      GPU = GK_SM20;
     }
     void getTargetDefines(const LangOptions &Opts,
                           MacroBuilder &Builder) const override {
       Builder.defineMacro("__PTX__");
       Builder.defineMacro("__NVPTX__");
+      if (Opts.CUDAIsDevice) {
+        // Set __CUDA_ARCH__ for the GPU specified.
+        std::string CUDAArchCode;
+        switch (GPU) {
+        case GK_SM20:
+          CUDAArchCode = "200";
+          break;
+        case GK_SM21:
+          CUDAArchCode = "210";
+          break;
+        case GK_SM30:
+          CUDAArchCode = "300";
+          break;
+        case GK_SM35:
+          CUDAArchCode = "350";
+          break;
+        default:
+          llvm_unreachable("Unhandled target CPU");
+        }
+        Builder.defineMacro("__CUDA_ARCH__", CUDAArchCode);
+      }
     }
     void getTargetBuiltins(const Builtin::Info *&Records,
                            unsigned &NumRecords) const override {
@@ -1436,14 +1471,14 @@ namespace {
       return TargetInfo::CharPtrBuiltinVaList;
     }
     bool setCPU(const std::string &Name) override {
-      bool Valid = llvm::StringSwitch<bool>(Name)
-        .Case("sm_20", true)
-        .Case("sm_21", true)
-        .Case("sm_30", true)
-        .Case("sm_35", true)
-        .Default(false);
+      GPU = llvm::StringSwitch<GPUKind>(Name)
+                .Case("sm_20", GK_SM20)
+                .Case("sm_21", GK_SM21)
+                .Case("sm_30", GK_SM30)
+                .Case("sm_35", GK_SM35)
+                .Default(GK_NONE);
 
-      return Valid;
+      return GPU != GK_NONE;
     }
   };
 
@@ -1491,6 +1526,7 @@ static const unsigned R600AddrSpaceMap[] = {
   1,    // opencl_global
   3,    // opencl_local
   2,    // opencl_constant
+  4,    // opencl_generic
   1,    // cuda_device
   2,    // cuda_constant
   3,    // cuda_shared
@@ -1675,6 +1711,7 @@ namespace {
     0,    // opencl_global
     0,    // opencl_local
     0,    // opencl_constant
+    0,    // opencl_generic
     0,    // cuda_device
     0,    // cuda_constant
     0,    // cuda_shared
@@ -1821,27 +1858,41 @@ class X86TargetInfo : public TargetInfo {
     /// \name Atom
     /// Atom processors
     //@{
-    CK_Atom,
+    CK_Bonnell,
     CK_Silvermont,
     //@}
 
     /// \name Nehalem
     /// Nehalem microarchitecture based processors.
-    //@{
-    CK_Corei7,
-    CK_Corei7AVX,
-    CK_CoreAVXi,
-    CK_CoreAVX2,
+    CK_Nehalem,
+
+    /// \name Westmere
+    /// Westmere microarchitecture based processors.
+    CK_Westmere,
+
+    /// \name Sandy Bridge
+    /// Sandy Bridge microarchitecture based processors.
+    CK_SandyBridge,
+
+    /// \name Ivy Bridge
+    /// Ivy Bridge microarchitecture based processors.
+    CK_IvyBridge,
+
+    /// \name Haswell
+    /// Haswell microarchitecture based processors.
+    CK_Haswell,
+
+    /// \name Broadwell
+    /// Broadwell microarchitecture based processors.
     CK_Broadwell,
-    //@}
+
+    /// \name Skylake
+    /// Skylake microarchitecture based processors.
+    CK_Skylake,
 
     /// \name Knights Landing
     /// Knights Landing processor.
     CK_KNL,
-
-    /// \name Skylake Server
-    /// Skylake server processor.
-    CK_SKX,
 
     /// \name K6
     /// K6 architecture processors.
@@ -2015,15 +2066,23 @@ public:
       .Case("nocona", CK_Nocona)
       .Case("core2", CK_Core2)
       .Case("penryn", CK_Penryn)
-      .Case("atom", CK_Atom)
-      .Case("slm", CK_Silvermont)
-      .Case("corei7", CK_Corei7)
-      .Case("corei7-avx", CK_Corei7AVX)
-      .Case("core-avx-i", CK_CoreAVXi)
-      .Case("core-avx2", CK_CoreAVX2)
+      .Case("bonnell", CK_Bonnell)
+      .Case("atom", CK_Bonnell) // Legacy name.
+      .Case("silvermont", CK_Silvermont)
+      .Case("slm", CK_Silvermont) // Legacy name.
+      .Case("nehalem", CK_Nehalem)
+      .Case("corei7", CK_Nehalem) // Legacy name.
+      .Case("westmere", CK_Westmere)
+      .Case("sandybridge", CK_SandyBridge)
+      .Case("corei7-avx", CK_SandyBridge) // Legacy name.
+      .Case("ivybridge", CK_IvyBridge)
+      .Case("core-avx-i", CK_IvyBridge) // Legacy name.
+      .Case("haswell", CK_Haswell)
+      .Case("core-avx2", CK_Haswell) // Legacy name.
       .Case("broadwell", CK_Broadwell)
+      .Case("skylake", CK_Skylake)
+      .Case("skx", CK_Skylake) // Legacy name.
       .Case("knl", CK_KNL)
-      .Case("skx", CK_SKX)
       .Case("k6", CK_K6)
       .Case("k6-2", CK_K6_2)
       .Case("k6-3", CK_K6_3)
@@ -2039,6 +2098,7 @@ public:
       .Case("k8-sse3", CK_K8SSE3)
       .Case("opteron", CK_Opteron)
       .Case("opteron-sse3", CK_OpteronSSE3)
+      .Case("barcelona", CK_AMDFAM10)
       .Case("amdfam10", CK_AMDFAM10)
       .Case("btver1", CK_BTVER1)
       .Case("btver2", CK_BTVER2)
@@ -2095,15 +2155,16 @@ public:
     case CK_Nocona:
     case CK_Core2:
     case CK_Penryn:
-    case CK_Atom:
+    case CK_Bonnell:
     case CK_Silvermont:
-    case CK_Corei7:
-    case CK_Corei7AVX:
-    case CK_CoreAVXi:
-    case CK_CoreAVX2:
+    case CK_Nehalem:
+    case CK_Westmere:
+    case CK_SandyBridge:
+    case CK_IvyBridge:
+    case CK_Haswell:
     case CK_Broadwell:
+    case CK_Skylake:
     case CK_KNL:
-    case CK_SKX:
     case CK_Athlon64:
     case CK_Athlon64SSE3:
     case CK_AthlonFX:
@@ -2194,7 +2255,7 @@ void X86TargetInfo::getDefaultFeatures(llvm::StringMap<bool> &Features) const {
     setFeatureEnabledImpl(Features, "cx16", true);
     break;
   case CK_Core2:
-  case CK_Atom:
+  case CK_Bonnell:
     setFeatureEnabledImpl(Features, "ssse3", true);
     setFeatureEnabledImpl(Features, "cx16", true);
     break;
@@ -2202,7 +2263,7 @@ void X86TargetInfo::getDefaultFeatures(llvm::StringMap<bool> &Features) const {
     setFeatureEnabledImpl(Features, "sse4.1", true);
     setFeatureEnabledImpl(Features, "cx16", true);
     break;
-  case CK_SKX:
+  case CK_Skylake:
     setFeatureEnabledImpl(Features, "avx512f", true);
     setFeatureEnabledImpl(Features, "avx512cd", true);
     setFeatureEnabledImpl(Features, "avx512dq", true);
@@ -2213,7 +2274,7 @@ void X86TargetInfo::getDefaultFeatures(llvm::StringMap<bool> &Features) const {
     setFeatureEnabledImpl(Features, "rdseed", true);
     setFeatureEnabledImpl(Features, "adx", true);
     // FALLTHROUGH
-  case CK_CoreAVX2:
+  case CK_Haswell:
     setFeatureEnabledImpl(Features, "avx2", true);
     setFeatureEnabledImpl(Features, "lzcnt", true);
     setFeatureEnabledImpl(Features, "bmi", true);
@@ -2221,19 +2282,20 @@ void X86TargetInfo::getDefaultFeatures(llvm::StringMap<bool> &Features) const {
     setFeatureEnabledImpl(Features, "rtm", true);
     setFeatureEnabledImpl(Features, "fma", true);
     // FALLTHROUGH
-  case CK_CoreAVXi:
+  case CK_IvyBridge:
     setFeatureEnabledImpl(Features, "rdrnd", true);
     setFeatureEnabledImpl(Features, "f16c", true);
     setFeatureEnabledImpl(Features, "fsgsbase", true);
     // FALLTHROUGH
-  case CK_Corei7AVX:
+  case CK_SandyBridge:
     setFeatureEnabledImpl(Features, "avx", true);
     // FALLTHROUGH
+  case CK_Westmere:
   case CK_Silvermont:
     setFeatureEnabledImpl(Features, "aes", true);
     setFeatureEnabledImpl(Features, "pclmul", true);
     // FALLTHROUGH
-  case CK_Corei7:
+  case CK_Nehalem:
     setFeatureEnabledImpl(Features, "sse4.2", true);
     setFeatureEnabledImpl(Features, "cx16", true);
     break;
@@ -2776,24 +2838,32 @@ void X86TargetInfo::getTargetDefines(const LangOptions &Opts,
   case CK_Penryn:
     defineCPUMacros(Builder, "core2");
     break;
-  case CK_Atom:
+  case CK_Bonnell:
     defineCPUMacros(Builder, "atom");
     break;
   case CK_Silvermont:
     defineCPUMacros(Builder, "slm");
     break;
-  case CK_Corei7:
-  case CK_Corei7AVX:
-  case CK_CoreAVXi:
-  case CK_CoreAVX2:
+  case CK_Nehalem:
+  case CK_Westmere:
+  case CK_SandyBridge:
+  case CK_IvyBridge:
+  case CK_Haswell:
   case CK_Broadwell:
+    // FIXME: Historically, we defined this legacy name, it would be nice to
+    // remove it at some point. We've never exposed fine-grained names for
+    // recent primary x86 CPUs, and we should keep it that way.
     defineCPUMacros(Builder, "corei7");
+    break;
+  case CK_Skylake:
+    // FIXME: Historically, we defined this legacy name, it would be nice to
+    // remove it at some point. This is the only fine-grained CPU macro in the
+    // main intel CPU line, and it would be better to not have these and force
+    // people to use ISA macros.
+    defineCPUMacros(Builder, "skx");
     break;
   case CK_KNL:
     defineCPUMacros(Builder, "knl");
-    break;
-  case CK_SKX:
-    defineCPUMacros(Builder, "skx");
     break;
   case CK_K6_2:
     Builder.defineMacro("__k6_2__");
@@ -3827,7 +3897,42 @@ public:
     // FIXME: Should we just treat this as a feature?
     IsThumb = getTriple().getArchName().startswith("thumb");
 
-    setABI("aapcs-linux");
+    // FIXME: This duplicates code from the driver that sets the -target-abi
+    // option - this code is used if -target-abi isn't passed and should
+    // be unified in some way.
+    if (Triple.isOSBinFormatMachO()) {
+      // The backend is hardwired to assume AAPCS for M-class processors, ensure
+      // the frontend matches that.
+      if (Triple.getEnvironment() == llvm::Triple::EABI ||
+          Triple.getOS() == llvm::Triple::UnknownOS ||
+          StringRef(CPU).startswith("cortex-m")) {
+        setABI("aapcs");
+      } else {
+        setABI("apcs-gnu");
+      }
+    } else if (Triple.isOSWindows()) {
+      // FIXME: this is invalid for WindowsCE
+      setABI("aapcs");
+    } else {
+      // Select the default based on the platform.
+      switch (Triple.getEnvironment()) {
+      case llvm::Triple::Android:
+      case llvm::Triple::GNUEABI:
+      case llvm::Triple::GNUEABIHF:
+        setABI("aapcs-linux");
+        break;
+      case llvm::Triple::EABIHF:
+      case llvm::Triple::EABI:
+        setABI("aapcs");
+        break;
+      default:
+        if (Triple.getOS() == llvm::Triple::NetBSD)
+          setABI("apcs-gnu");
+        else
+          setABI("aapcs");
+        break;
+      }
+    }
 
     // ARM targets default to using the ARM C++ ABI.
     TheCXXABI.set(TargetCXXABI::GenericARM);
@@ -5406,6 +5511,8 @@ namespace {
       3, // opencl_global
       4, // opencl_local
       5, // opencl_constant
+      // FIXME: generic has to be added to the target
+      0, // opencl_generic
       0, // cuda_device
       0, // cuda_constant
       0, // cuda_shared
@@ -6085,7 +6192,7 @@ public:
     LongWidth = LongAlign = PointerWidth = PointerAlign = 64;
     MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 64;
     DescriptionString =
-        "e-S128-p:64:64-v16:16-v32:32-v64:64-v96:32-v128:32-m:e-n8:16:32:64";
+        "e-m:e-v128:32-v16:16-v32:32-v96:32-n8:16:32:64-S128";
   }
 
   void getTargetDefines(const LangOptions &Opts,
@@ -6133,6 +6240,7 @@ namespace {
     1,    // opencl_global
     3,    // opencl_local
     2,    // opencl_constant
+    4,    // opencl_generic
     0,    // cuda_device
     0,    // cuda_constant
     0,    // cuda_shared,

@@ -70,8 +70,6 @@ void *__scrt_legion_runtime;
 extern "C" {
   
   void __scrt_init_cpu() {
-    cerr << "doing nothing\n";
-    
     DeviceList *devicelist = DeviceList::Instance();
     cpu::scInitialize(*devicelist);
 

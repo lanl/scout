@@ -245,7 +245,11 @@ set_target_properties(scRuntime
   COMPILE_FLAGS "-fPIC"
   MACOSX_RPATH 1) 
 
-target_link_libraries(scRuntime ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${GLFW_LIBRARIES} "-framework Cocoa -framework Foundation -framework IOKit -framework CoreVideo")
+set(_link_libs ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${GLFW_LIBRARIES})
+if (APPLE) 
+  set(_link_libs ${_link_libs} "-framework Cocoa -framework Foundation -framework IOKit -framework CoreVideo")
+endif()
+target_link_libraries(scRuntime ${_link_libs})
 
 add_dependencies(scRuntime
   scc
@@ -254,3 +258,5 @@ add_dependencies(scRuntime
 
 install(TARGETS scRuntime
   DESTINATION lib)
+
+unset(_link_libs)

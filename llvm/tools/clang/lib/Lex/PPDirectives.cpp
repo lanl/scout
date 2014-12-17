@@ -100,6 +100,55 @@ void Preprocessor::DiscardUntilEndOfDirective() {
   } while (Tmp.isNot(tok::eod));
 }
 
+/// \brief Enumerates possible cases of #define/#undef a reserved identifier.
+enum MacroDiag {
+  MD_NoWarn,        //> Not a reserved identifier
+  MD_KeywordDef,    //> Macro hides keyword, enabled by default
+  MD_ReservedMacro  //> #define of #undef reserved id, disabled by default
+};
+
+/// \brief Checks if the specified identifier is reserved in the specified
+/// language.
+/// This function does not check if the identifier is a keyword.
+static bool isReservedId(StringRef Text, const LangOptions &Lang) {
+  // C++ [macro.names], C11 7.1.3:
+  // All identifiers that begin with an underscore and either an uppercase
+  // letter or another underscore are always reserved for any use.
+  if (Text.size() >= 2 && Text[0] == '_' &&
+      (isUppercase(Text[1]) || Text[1] == '_'))
+    return true;
+  // C++ [global.names]
+  // Each name that contains a double underscore ... is reserved to the
+  // implementation for any use.
+  if (Lang.CPlusPlus) {
+    if (Text.find("__") != StringRef::npos)
+      return true;
+  }
+  return false;
+}
+
+static MacroDiag shouldWarnOnMacroDef(Preprocessor &PP, IdentifierInfo *II) {
+  const LangOptions &Lang = PP.getLangOpts();
+  StringRef Text = II->getName();
+  if (isReservedId(Text, Lang))
+    return MD_ReservedMacro;
+  // Do not warn on keyword undef.  It is generally harmless and widely used.
+  if (II->isKeyword(Lang))
+    return MD_KeywordDef;
+  if (Lang.CPlusPlus && (Text.equals("override") || Text.equals("final")))
+    return MD_KeywordDef;
+  return MD_NoWarn;
+}
+
+static MacroDiag shouldWarnOnMacroUndef(Preprocessor &PP, IdentifierInfo *II) {
+  const LangOptions &Lang = PP.getLangOpts();
+  StringRef Text = II->getName();
+  // Do not warn on keyword undef.  It is generally harmless and widely used.
+  if (isReservedId(Text, Lang))
+    return MD_ReservedMacro;
+  return MD_NoWarn;
+}
+
 bool Preprocessor::CheckMacroName(Token &MacroNameTok, MacroUse isDefineUndef) {
   // Missing macro name?
   if (MacroNameTok.is(tok::eod))
@@ -138,6 +187,21 @@ bool Preprocessor::CheckMacroName(Token &MacroNameTok, MacroUse isDefineUndef) {
     // Warn if undefining "__LINE__" and other builtins, per C99 6.10.8/4
     // and C++ [cpp.predefined]p4], but allow it as an extension.
     Diag(MacroNameTok, diag::ext_pp_undef_builtin_macro);
+  }
+
+  // Warn if defining/undefining reserved identifier including keywords.
+  SourceLocation MacroNameLoc = MacroNameTok.getLocation();
+  if (!SourceMgr.isInSystemHeader(MacroNameLoc) &&
+      (strcmp(SourceMgr.getBufferName(MacroNameLoc), "<built-in>") != 0)) {
+    MacroDiag D = MD_NoWarn;
+    if (isDefineUndef == MU_Define)
+      D = shouldWarnOnMacroDef(*this, II);
+    else if (isDefineUndef == MU_Undef)
+      D = shouldWarnOnMacroUndef(*this, II);
+    if (D == MD_KeywordDef)
+      Diag(MacroNameTok, diag::warn_pp_macro_hides_keyword);
+    if (D == MD_ReservedMacro)
+      Diag(MacroNameTok, diag::warn_pp_macro_is_reserved_id);
   }
 
   // Okay, we got a good identifier.
@@ -550,14 +614,22 @@ const FileEntry *Preprocessor::LookupFile(
     const FileEntry *FileEnt = SourceMgr.getFileEntryForID(FID);
 
     // If there is no file entry associated with this file, it must be the
-    // predefines buffer.  Any other file is not lexed with a normal lexer, so
-    // it won't be scanned for preprocessor directives.   If we have the
-    // predefines buffer, resolve #include references (which come from the
-    // -include command line argument) from the current working directory
-    // instead of relative to the main file.
+    // predefines buffer or the module includes buffer. Any other file is not
+    // lexed with a normal lexer, so it won't be scanned for preprocessor
+    // directives.
+    //
+    // If we have the predefines buffer, resolve #include references (which come
+    // from the -include command line argument) from the current working
+    // directory instead of relative to the main file.
+    //
+    // If we have the module includes buffer, resolve #include references (which
+    // come from header declarations in the module map) relative to the module
+    // map file.
     if (!FileEnt) {
-      FileEnt = SourceMgr.getFileEntryForID(SourceMgr.getMainFileID());
-      if (FileEnt)
+      if (FID == SourceMgr.getMainFileID() && MainFileDir)
+        Includers.push_back(std::make_pair(nullptr, MainFileDir));
+      else if ((FileEnt =
+                    SourceMgr.getFileEntryForID(SourceMgr.getMainFileID())))
         Includers.push_back(std::make_pair(FileEnt, FileMgr.getDirectory(".")));
     } else {
       Includers.push_back(std::make_pair(FileEnt, FileEnt->getDir()));

@@ -414,7 +414,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T, bool isStencil) {
     llvm_unreachable("Unexpected undeduced auto type!");
   case Type::Complex: {
     llvm::Type *EltTy = ConvertType(cast<ComplexType>(Ty)->getElementType());
-    ResultType = llvm::StructType::get(EltTy, EltTy, NULL);
+    ResultType = llvm::StructType::get(EltTy, EltTy, nullptr);
     break;
   }
   case Type::LValueReference:

@@ -74,7 +74,7 @@ namespace CodeGen {
   public:
     CGScoutRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM) {}
     virtual ~CGScoutRuntime();
-    llvm::Function *ModuleInitFunction();
+    llvm::Function *ModuleInitFunction(CodeGenFunction &CGF, SourceLocation Loc);
     llvm::Function *MemAllocFunction();
     llvm::Function *RenderallUniformBeginFunction();
     llvm::Function *RenderallEndFunction();
@@ -84,7 +84,12 @@ namespace CodeGen {
     llvm::Function *CreateWindowQuadRenderableEdgeColorsFunction();
     llvm::Function *CreateWindowPaintFunction();
     llvm::Value    *RenderallUniformColorsGlobal(CodeGenFunction &CGF);
-    llvm::Type     *convertScoutSpecificType(const Type *T);    
+    llvm::Type     *convertScoutSpecificType(const Type *T);
+
+    llvm::Function *EmitRuntimeInitFunc(SourceLocation Loc,
+                                        CodeGenFunction *CGF);
+    void EmitRuntimeInitializationCall(CodeGenFunction &CGF,
+                                       SourceLocation Loc);
   };
 }
 }

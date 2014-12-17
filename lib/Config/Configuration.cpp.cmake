@@ -122,6 +122,16 @@ namespace scout {
     };
 
     const char* Configuration::LinkOptions[] = {
+      
+      // add rpaths
+      "-Wl,-rpath,${SCOUT_BUILD_DIR}/lib/",
+      #ifdef SCOUT_ENABLE_CUDA    
+        "-Wl,-rpath,${CUDA_LIBRARY_DIR}",
+      #endif
+      #ifdef SCOUT_ENABLE_GLFW
+        "-Wl,-rpath,${GLFW_LIBRARY_DIR}",
+      #endif
+
       #ifdef APPLE
       "-stdlib=libc++",
       #endif // APPLE
@@ -136,7 +146,7 @@ namespace scout {
       "-u __scrt_create_window",
       #endif
 
-      0 // end of include paths. 
+      0 // end of link options. 
     };
 
     const char* Configuration::LibraryPaths[] = {

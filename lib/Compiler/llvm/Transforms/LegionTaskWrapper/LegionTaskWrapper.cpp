@@ -96,23 +96,6 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
       // collect basic blocks up to exit
       for( ; BB != F.end(); ++BB) {
-
-        // look for function local metadata
-        for (BasicBlock::const_iterator II = BB->begin(), IE = BB->end(); II != IE; ++II) {
-
-          for(unsigned i = 0, e = II->getNumOperands(); i!=e; ++i){
-
-            if(MDNode *N = dyn_cast_or_null<MDNode>(II->getOperand(i))){
-
-              if (N->isFunctionLocal()) {
-
-                // just remove function local metadata
-                // see http://lists.cs.uiuc.edu/pipermail/llvmdev/2013-November/068205.html
-                N->replaceOperandWith(i, 0);
-              }
-            } 
-          }
-        }
         Blocks.push_back(BB);
       }
 
@@ -290,7 +273,8 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
               MDNode *MDN = cast< MDNode >(NMDN->getOperand(i));
 
               // 1st Operand  of MDNodes is a function ptr
-              Function *FN = cast < Function > (MDN->getOperand(1));
+              Function *FN = 
+                cast < Function > (cast<ValueAsMetadata>(MDN->getOperand(1))->getValue());
 
               if (FN == calledFN) {
                 //errs() << "This is a task\n";
@@ -361,7 +345,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
                 // replace call to function with call to LegionTaskInitFunction
                 // which we can get rom the metadata
-                Function *legionTaskInitFN = cast < Function > (MDN->getOperand(2));
+                Function *legionTaskInitFN = cast < Function > (cast<ValueAsMetadata>(MDN->getOperand(2))->getValue());
 
                 builder.SetInsertPoint(&callInst);
                 //errs() << "create call\n";

@@ -26,6 +26,7 @@
 #include "lldb/Core/Event.h"
 #include "lldb/Core/ModuleList.h"
 #include "lldb/Core/UserSettingsController.h"
+#include "lldb/Expression/ClangModulesDeclVendor.h"
 #include "lldb/Expression/ClangPersistentVariables.h"
 #include "lldb/Interpreter/Args.h"
 #include "lldb/Interpreter/OptionValueBoolean.h"
@@ -565,6 +566,9 @@ private:
     void
     PrimeFromDummyTarget(Target *dummy_target);
 
+    void
+    AddBreakpoint(lldb::BreakpointSP breakpoint_sp, bool internal);
+
 public:
     ~Target();
 
@@ -959,9 +963,9 @@ public:
     //------------------------------------------------------------------
     /// Return whether this FileSpec corresponds to a module that should be considered for general searches.
     ///
-    /// This API will be consulted by the SearchFilterForNonModuleSpecificSearches
+    /// This API will be consulted by the SearchFilterForUnconstrainedSearches
     /// and any module that returns \b true will not be searched.  Note the
-    /// SearchFilterForNonModuleSpecificSearches is the search filter that
+    /// SearchFilterForUnconstrainedSearches is the search filter that
     /// gets used in the CreateBreakpoint calls when no modules is provided.
     ///
     /// The target call at present just consults the Platform's call of the
@@ -973,14 +977,14 @@ public:
     /// @return \b true if the module should be excluded, \b false otherwise.
     //------------------------------------------------------------------
     bool
-    ModuleIsExcludedForNonModuleSpecificSearches (const FileSpec &module_spec);
+    ModuleIsExcludedForUnconstrainedSearches (const FileSpec &module_spec);
     
     //------------------------------------------------------------------
     /// Return whether this module should be considered for general searches.
     ///
-    /// This API will be consulted by the SearchFilterForNonModuleSpecificSearches
+    /// This API will be consulted by the SearchFilterForUnconstrainedSearches
     /// and any module that returns \b true will not be searched.  Note the
-    /// SearchFilterForNonModuleSpecificSearches is the search filter that
+    /// SearchFilterForUnconstrainedSearches is the search filter that
     /// gets used in the CreateBreakpoint calls when no modules is provided.
     ///
     /// The target call at present just consults the Platform's call of the
@@ -995,7 +999,7 @@ public:
     /// @return \b true if the module should be excluded, \b false otherwise.
     //------------------------------------------------------------------
     bool
-    ModuleIsExcludedForNonModuleSpecificSearches (const lldb::ModuleSP &module_sp);
+    ModuleIsExcludedForUnconstrainedSearches (const lldb::ModuleSP &module_sp);
 
     ArchSpec &
     GetArchitecture ()
@@ -1346,6 +1350,9 @@ public:
 
     SourceManager &
     GetSourceManager ();
+    
+    ClangModulesDeclVendor *
+    GetClangModulesDeclVendor ();
 
     //------------------------------------------------------------------
     // Methods.
@@ -1383,6 +1390,7 @@ protected:
     std::unique_ptr<ClangASTContext> m_scratch_ast_context_ap;
     std::unique_ptr<ClangASTSource> m_scratch_ast_source_ap;
     std::unique_ptr<ClangASTImporter> m_ast_importer_ap;
+    std::unique_ptr<ClangModulesDeclVendor> m_clang_modules_decl_vendor_ap;
     ClangPersistentVariables m_persistent_variables;      ///< These are the persistent variables associated with this process for the expression parser.
 
     std::unique_ptr<SourceManager> m_source_manager_ap;

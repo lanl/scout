@@ -4778,8 +4778,12 @@ Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
                                      VK_RValue, RParenLoc);
 
   // Bail out early if calling a builtin with custom typechecking.
-  if (BuiltinID && Context.BuiltinInfo.hasCustomTypechecking(BuiltinID))
-    return CheckBuiltinFunctionCall(FDecl, BuiltinID, TheCall);
+  if (BuiltinID && Context.BuiltinInfo.hasCustomTypechecking(BuiltinID)) {
+    ExprResult Res = CorrectDelayedTyposInExpr(TheCall);
+    if (!Res.isUsable() || !isa<CallExpr>(Res.get()))
+      return Res;
+    return CheckBuiltinFunctionCall(FDecl, BuiltinID, cast<CallExpr>(Res.get()));
+  }
 
  retry:
   const FunctionType *FuncT;
@@ -6278,7 +6282,7 @@ checkPointerTypesForAssignment(Sema &S, QualType LHSType, QualType RHSType) {
 
   if (!lhq.compatiblyIncludes(rhq)) {
     // Treat address-space mismatches as fatal.  TODO: address subspaces
-    if (lhq.getAddressSpace() != rhq.getAddressSpace())
+    if (!lhq.isAddressSpaceSupersetOf(rhq))
       ConvTy = Sema::IncompatiblePointerDiscardsQualifiers;
 
     // It's okay to add or remove GC or lifetime qualifiers when converting to
@@ -6563,7 +6567,9 @@ Sema::CheckAssignmentConstraints(QualType LHSType, ExprResult &RHS,
   if (const PointerType *LHSPointer = dyn_cast<PointerType>(LHSType)) {
     // U* -> T*
     if (isa<PointerType>(RHSType)) {
-      Kind = CK_BitCast;
+      unsigned AddrSpaceL = LHSPointer->getPointeeType().getAddressSpace();
+      unsigned AddrSpaceR = RHSType->getPointeeType().getAddressSpace();
+      Kind = AddrSpaceL != AddrSpaceR ? CK_AddressSpaceConversion : CK_BitCast;
       return checkPointerTypesForAssignment(*this, LHSType, RHSType);
     }
 
@@ -7245,6 +7251,19 @@ static bool checkArithmeticBinOpPointerOperands(Sema &S, SourceLocation Loc,
   QualType LHSPointeeTy, RHSPointeeTy;
   if (isLHSPointer) LHSPointeeTy = LHSExpr->getType()->getPointeeType();
   if (isRHSPointer) RHSPointeeTy = RHSExpr->getType()->getPointeeType();
+
+  // if both are pointers check if operation is valid wrt address spaces
+  if (isLHSPointer && isRHSPointer) {
+    const PointerType *lhsPtr = LHSExpr->getType()->getAs<PointerType>();
+    const PointerType *rhsPtr = RHSExpr->getType()->getAs<PointerType>();
+    if (!lhsPtr->isAddressSpaceOverlapping(*rhsPtr)) {
+      S.Diag(Loc,
+             diag::err_typecheck_op_on_nonoverlapping_address_space_pointers)
+          << LHSExpr->getType() << RHSExpr->getType() << 1 /*arithmetic op*/
+          << LHSExpr->getSourceRange() << RHSExpr->getSourceRange();
+      return false;
+    }
+  }
 
   // Check for arithmetic on pointers to incomplete types.
   bool isLHSVoidPtr = isLHSPointer && LHSPointeeTy->isVoidType();
@@ -8174,6 +8193,13 @@ QualType Sema::CheckCompareOperands(ExprResult &LHS, ExprResult &RHS,
       diagnoseDistinctPointerComparison(*this, Loc, LHS, RHS, /*isError*/false);
     }
     if (LCanPointeeTy != RCanPointeeTy) {
+      const PointerType *lhsPtr = LHSType->getAs<PointerType>();
+      if (!lhsPtr->isAddressSpaceOverlapping(*RHSType->getAs<PointerType>())) {
+        Diag(Loc,
+             diag::err_typecheck_op_on_nonoverlapping_address_space_pointers)
+            << LHSType << RHSType << 0 /* comparison */
+            << LHS.get()->getSourceRange() << RHS.get()->getSourceRange();
+      }
       unsigned AddrSpaceL = LCanPointeeTy.getAddressSpace();
       unsigned AddrSpaceR = RCanPointeeTy.getAddressSpace();
       CastKind Kind = AddrSpaceL != AddrSpaceR ? CK_AddressSpaceConversion
@@ -9243,7 +9269,7 @@ static void RecordModifiableNonNullParam(Sema &S, const Expr *Exp) {
   if (!Param)
     return;
   if (const FunctionDecl* FD = dyn_cast<FunctionDecl>(Param->getDeclContext()))
-    if (!FD->hasAttr<NonNullAttr>())
+    if (!FD->hasAttr<NonNullAttr>() && !Param->hasAttr<NonNullAttr>())
       return;
   if (FunctionScopeInfo *FD = S.getCurFunction())
     if (!FD->ModifiedNonNullParams.count(Param))

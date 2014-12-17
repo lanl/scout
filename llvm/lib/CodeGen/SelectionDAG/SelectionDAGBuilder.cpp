@@ -16,6 +16,7 @@
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/BranchProbabilityInfo.h"
 #include "llvm/Analysis/ConstantFolding.h"
@@ -46,6 +47,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Statepoint.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -884,6 +886,7 @@ void SelectionDAGBuilder::clear() {
   CurInst = nullptr;
   HasTailCall = false;
   SDNodeOrder = LowestSDNodeOrder;
+  StatepointLowering.clear();
 }
 
 /// clearDanglingDebugInfo - Clear the dangling debug information
@@ -2514,15 +2517,14 @@ bool SelectionDAGBuilder::handleBitTestsSwitchCase(CaseRec& CR,
     return false;
 
   size_t numCmps = 0;
-  for (CaseItr I = CR.Range.first, E = CR.Range.second;
-       I!=E; ++I) {
+  for (CaseItr I = CR.Range.first, E = CR.Range.second; I != E; ++I) {
     // Single case counts one, case range - two.
     numCmps += (I->Low == I->High ? 1 : 2);
   }
 
   // Count unique destinations
   SmallSet<MachineBasicBlock*, 4> Dests;
-  for (CaseItr I = CR.Range.first, E = CR.Range.second; I!=E; ++I) {
+  for (CaseItr I = CR.Range.first, E = CR.Range.second; I != E; ++I) {
     Dests.insert(I->BB);
     if (Dests.size() > 3)
       // Don't bother the code below, if there are too much unique destinations
@@ -2629,9 +2631,8 @@ bool SelectionDAGBuilder::handleBitTestsSwitchCase(CaseRec& CR,
 void SelectionDAGBuilder::Clusterify(CaseVector& Cases,
                                      const SwitchInst& SI) {
   BranchProbabilityInfo *BPI = FuncInfo.BPI;
-  // Start with "simple" cases
-  for (SwitchInst::ConstCaseIt i = SI.case_begin(), e = SI.case_end();
-       i != e; ++i) {
+  // Start with "simple" cases.
+  for (SwitchInst::ConstCaseIt i : SI.cases()) {
     const BasicBlock *SuccBB = i.getCaseSuccessor();
     MachineBasicBlock *SMBB = FuncInfo.MBBMap[SuccBB];
 
@@ -2694,32 +2695,58 @@ void SelectionDAGBuilder::visitSwitch(const SwitchInst &SI) {
 
   // Figure out which block is immediately after the current one.
   MachineBasicBlock *NextBlock = nullptr;
-  MachineBasicBlock *Default = FuncInfo.MBBMap[SI.getDefaultDest()];
+  if (SwitchMBB + 1 != FuncInfo.MF->end())
+    NextBlock = SwitchMBB + 1;
 
-  // If there is only the default destination, branch to it if it is not the
-  // next basic block.  Otherwise, just fall through.
-  if (!SI.getNumCases()) {
-    // Update machine-CFG edges.
 
-    // If this is not a fall-through branch, emit the branch.
-    SwitchMBB->addSuccessor(Default);
-    if (Default != NextBlock)
-      DAG.setRoot(DAG.getNode(ISD::BR, getCurSDLoc(),
-                              MVT::Other, getControlRoot(),
-                              DAG.getBasicBlock(Default)));
-
-    return;
-  }
-
-  // If there are any non-default case statements, create a vector of Cases
-  // representing each one, and sort the vector so that we can efficiently
-  // create a binary search tree from them.
+  // Create a vector of Cases, sorted so that we can efficiently create a binary
+  // search tree from them.
   CaseVector Cases;
   Clusterify(Cases, SI);
 
-  // Get the Value to be switched on and default basic blocks, which will be
-  // inserted into CaseBlock records, representing basic blocks in the binary
-  // search tree.
+  // Get the default destination MBB.
+  MachineBasicBlock *Default = FuncInfo.MBBMap[SI.getDefaultDest()];
+
+  if (isa<UnreachableInst>(SI.getDefaultDest()->getFirstNonPHIOrDbg()) &&
+      !Cases.empty()) {
+    // Replace an unreachable default destination with the most popular case
+    // destination.
+    DenseMap<const BasicBlock *, uint64_t> Popularity;
+    uint64_t MaxPop = 0;
+    const BasicBlock *MaxBB = nullptr;
+    for (auto I : SI.cases()) {
+      const BasicBlock *BB = I.getCaseSuccessor();
+      if (++Popularity[BB] > MaxPop) {
+        MaxPop = Popularity[BB];
+        MaxBB = BB;
+      }
+    }
+
+    // Set new default.
+    assert(MaxPop > 0);
+    assert(MaxBB);
+    Default = FuncInfo.MBBMap[MaxBB];
+
+    // Remove cases that were pointing to the destination that is now the default.
+    Cases.erase(std::remove_if(Cases.begin(), Cases.end(),
+                               [&](const Case &C) { return C.BB == Default; }),
+                Cases.end());
+  }
+
+  // If there is only the default destination, go there directly.
+  if (Cases.empty()) {
+    // Update machine-CFG edges.
+    SwitchMBB->addSuccessor(Default);
+
+    // If this is not a fall-through branch, emit the branch.
+    if (Default != NextBlock) {
+      DAG.setRoot(DAG.getNode(ISD::BR, getCurSDLoc(), MVT::Other,
+                              getControlRoot(), DAG.getBasicBlock(Default)));
+    }
+    return;
+  }
+
+  // Get the Value to be switched on.
   const Value *SV = SI.getCondition();
 
   // Push the initial CaseRec onto the worklist
@@ -4687,7 +4714,8 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     return nullptr;
   case Intrinsic::read_register: {
     Value *Reg = I.getArgOperand(0);
-    SDValue RegName = DAG.getMDNode(cast<MDNode>(Reg));
+    SDValue RegName =
+        DAG.getMDNode(cast<MDNode>(cast<MetadataAsValue>(Reg)->getMetadata()));
     EVT VT = TLI.getValueType(I.getType());
     setValue(&I, DAG.getNode(ISD::READ_REGISTER, sdl, VT, RegName));
     return nullptr;
@@ -4696,7 +4724,8 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     Value *Reg = I.getArgOperand(0);
     Value *RegValue = I.getArgOperand(1);
     SDValue Chain = getValue(RegValue).getOperand(0);
-    SDValue RegName = DAG.getMDNode(cast<MDNode>(Reg));
+    SDValue RegName =
+        DAG.getMDNode(cast<MDNode>(cast<MetadataAsValue>(Reg)->getMetadata()));
     DAG.setRoot(DAG.getNode(ISD::WRITE_REGISTER, sdl, MVT::Other, Chain,
                             RegName, getValue(RegValue)));
     return nullptr;
@@ -5529,6 +5558,22 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
     visitPatchpoint(&I);
     return nullptr;
   }
+  case Intrinsic::experimental_gc_statepoint: {
+    visitStatepoint(I);
+    return nullptr;
+  }
+  case Intrinsic::experimental_gc_result_int:
+  case Intrinsic::experimental_gc_result_float:
+  case Intrinsic::experimental_gc_result_ptr: {
+    visitGCResult(I);
+    return nullptr;
+  }
+  case Intrinsic::experimental_gc_relocate: {
+    visitGCRelocate(I);
+    return nullptr;
+  }
+  case Intrinsic::instrprof_increment:
+    llvm_unreachable("instrprof failed to lower an increment");
   }
 }
 
@@ -7832,6 +7877,7 @@ MachineBasicBlock *
 SelectionDAGBuilder::StackProtectorDescriptor::
 AddSuccessorMBB(const BasicBlock *BB,
                 MachineBasicBlock *ParentMBB,
+                bool IsLikely,
                 MachineBasicBlock *SuccMBB) {
   // If SuccBB has not been created yet, create it.
   if (!SuccMBB) {
@@ -7841,6 +7887,7 @@ AddSuccessorMBB(const BasicBlock *BB,
     MF->insert(++BBI, SuccMBB);
   }
   // Add it as a successor of ParentMBB.
-  ParentMBB->addSuccessor(SuccMBB);
+  ParentMBB->addSuccessor(
+      SuccMBB, BranchProbabilityInfo::getBranchWeightStackProtector(IsLikely));
   return SuccMBB;
 }
