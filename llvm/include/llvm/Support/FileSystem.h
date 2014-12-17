@@ -336,11 +336,11 @@ std::error_code copy_file(const Twine &From, const Twine &To);
 
 /// @brief Resize path to size. File is resized as if by POSIX truncate().
 ///
-/// @param path Input path.
-/// @param size Size to resize to.
+/// @param FD Input file descriptor.
+/// @param Size Size to resize to.
 /// @returns errc::success if \a path has been resized to \a size, otherwise a
 ///          platform-specific error_code.
-std::error_code resize_file(const Twine &path, uint64_t size);
+std::error_code resize_file(int FD, uint64_t Size);
 
 /// @}
 /// @name Physical Observers
@@ -639,11 +639,6 @@ private:
   /// Platform-specific mapping state.
   uint64_t Size;
   void *Mapping;
-#ifdef LLVM_ON_WIN32
-  int FileDescriptor;
-  void *FileHandle;
-  void *FileMappingHandle;
-#endif
 
   std::error_code init(int FD, uint64_t Offset, mapmode Mode);
 

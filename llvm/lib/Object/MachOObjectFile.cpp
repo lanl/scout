@@ -2299,6 +2299,16 @@ MachOObjectFile::getEntryPointCommand(const LoadCommandInfo &L) const {
   return getStruct<MachO::entry_point_command>(this, L.Ptr);
 }
 
+MachO::encryption_info_command
+MachOObjectFile::getEncryptionInfoCommand(const LoadCommandInfo &L) const {
+  return getStruct<MachO::encryption_info_command>(this, L.Ptr);
+}
+
+MachO::encryption_info_command_64
+MachOObjectFile::getEncryptionInfoCommand64(const LoadCommandInfo &L) const {
+  return getStruct<MachO::encryption_info_command_64>(this, L.Ptr);
+}
+
 
 MachO::any_relocation_info
 MachOObjectFile::getRelocation(DataRefImpl Rel) const {
