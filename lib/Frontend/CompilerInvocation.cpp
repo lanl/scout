@@ -330,15 +330,17 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
   using namespace options;
   bool Success = true;
 
-  Opts.OptimizationLevel = getOptimizationLevel(Args, IK, Diags);
+  unsigned OptimizationLevel = getOptimizationLevel(Args, IK, Diags);
   // TODO: This could be done in Driver
   unsigned MaxOptLevel = 3;
-  if (Opts.OptimizationLevel > MaxOptLevel) {
-    // If the optimization level is not supported, fall back on the default optimization
+  if (OptimizationLevel > MaxOptLevel) {
+    // If the optimization level is not supported, fall back on the default
+    // optimization
     Diags.Report(diag::warn_drv_optimization_value)
         << Args.getLastArg(OPT_O)->getAsString(Args) << "-O" << MaxOptLevel;
-    Opts.OptimizationLevel = MaxOptLevel;
+    OptimizationLevel = MaxOptLevel;
   }
+  Opts.OptimizationLevel = OptimizationLevel;
 
   // We must always run at least the always inlining pass.
   Opts.setInlining(
@@ -707,6 +709,9 @@ bool clang::ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
   Opts.ConstexprBacktraceLimit = getLastArgIntValue(
       Args, OPT_fconstexpr_backtrace_limit,
       DiagnosticOptions::DefaultConstexprBacktraceLimit, Diags);
+  Opts.SpellCheckingLimit = getLastArgIntValue(
+      Args, OPT_fspell_checking_limit,
+      DiagnosticOptions::DefaultSpellCheckingLimit, Diags);
   Opts.TabStop = getLastArgIntValue(Args, OPT_ftabstop,
                                     DiagnosticOptions::DefaultTabStop, Diags);
   if (Opts.TabStop == 0 || Opts.TabStop > DiagnosticOptions::MaxTabStop) {

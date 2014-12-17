@@ -99,26 +99,28 @@ void f9(int i) {
       src1)[src2()];
 }
 
-void *operator new(decltype(sizeof(1)), void *);
+inline void *operator new(decltype(sizeof(1)), void *p) noexcept { return p; }
 
 // CHECK-LABEL: define
 void f10() {
   void *void_src();
-  ( // CHECK: store {{.*}} !dbg [[DBG_F10:!.*]]
+  ( // CHECK: icmp {{.*}} !dbg [[DBG_F10_ICMP:.*]]
+    // CHECK: store {{.*}} !dbg [[DBG_F10_STORE:!.*]]
 #line 1100
       new (void_src()) int(src()));
 }
 
-// CHECK: [[DBG_F1]] = metadata !{i32 100,
-// CHECK: [[DBG_FOO_VALUE]] = metadata !{i32 200,
-// CHECK: [[DBG_FOO_REF]] = metadata !{i32 202,
-// CHECK: [[DBG_FOO_COMPLEX]] = metadata !{i32 204,
-// CHECK: [[DBG_F2]] = metadata !{i32 300,
-// CHECK: [[DBG_F3]] = metadata !{i32 400,
-// CHECK: [[DBG_F4]] = metadata !{i32 500,
-// CHECK: [[DBG_F5]] = metadata !{i32 600,
-// CHECK: [[DBG_F6]] = metadata !{i32 700,
-// CHECK: [[DBG_F7]] = metadata !{i32 800,
-// CHECK: [[DBG_F8]] = metadata !{i32 900,
-// CHECK: [[DBG_F9]] = metadata !{i32 1000,
-// CHECK: [[DBG_F10]] = metadata !{i32 1100,
+// CHECK: [[DBG_F1]] = !{i32 100,
+// CHECK: [[DBG_FOO_VALUE]] = !{i32 200,
+// CHECK: [[DBG_FOO_REF]] = !{i32 202,
+// CHECK: [[DBG_FOO_COMPLEX]] = !{i32 204,
+// CHECK: [[DBG_F2]] = !{i32 300,
+// CHECK: [[DBG_F3]] = !{i32 400,
+// CHECK: [[DBG_F4]] = !{i32 500,
+// CHECK: [[DBG_F5]] = !{i32 600,
+// CHECK: [[DBG_F6]] = !{i32 700,
+// CHECK: [[DBG_F7]] = !{i32 800,
+// CHECK: [[DBG_F8]] = !{i32 900,
+// CHECK: [[DBG_F9]] = !{i32 1000,
+// CHECK: [[DBG_F10_ICMP]] = !{i32 1100,
+// CHECK: [[DBG_F10_STORE]] = !{i32 1100,
