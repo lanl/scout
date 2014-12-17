@@ -22,6 +22,12 @@ namespace {
 class MetadataTest : public testing::Test {
 protected:
   LLVMContext Context;
+  MDNode *getNode() { return MDNode::get(Context, None); }
+  MDNode *getNode(Metadata *MD) { return MDNode::get(Context, MD); }
+  MDNode *getNode(Metadata *MD1, Metadata *MD2) {
+    Metadata *MDs[] = {MD1, MD2};
+    return MDNode::get(Context, MDs);
+  }
 };
 typedef MetadataTest MDStringTest;
 
@@ -57,7 +63,7 @@ TEST_F(MDStringTest, PrintingSimple) {
   std::string Str;
   raw_string_ostream oss(Str);
   s->print(oss);
-  EXPECT_STREQ("metadata !\"testing 1 2 3\"", oss.str().c_str());
+  EXPECT_STREQ("!\"testing 1 2 3\"", oss.str().c_str());
 }
 
 // Test printing of MDString with non-printable characters.
@@ -67,7 +73,7 @@ TEST_F(MDStringTest, PrintingComplex) {
   std::string Str;
   raw_string_ostream oss(Str);
   s->print(oss);
-  EXPECT_STREQ("metadata !\"\\00\\0A\\22\\5C\\FF\"", oss.str().c_str());
+  EXPECT_STREQ("!\"\\00\\0A\\22\\5C\\FF\"", oss.str().c_str());
 }
 
 typedef MetadataTest MDNodeTest;
@@ -124,8 +130,8 @@ TEST_F(MDNodeTest, Delete) {
 }
 
 TEST_F(MDNodeTest, SelfReference) {
-  // !0 = metadata !{metadata !0}
-  // !1 = metadata !{metadata !0}
+  // !0 = !{!0}
+  // !1 = !{!0}
   {
     MDNode *Temp = MDNode::getTemporary(Context, None);
     Metadata *Args[] = {Temp};
@@ -143,8 +149,8 @@ TEST_F(MDNodeTest, SelfReference) {
     EXPECT_EQ(Ref1, Ref2);
   }
 
-  // !0 = metadata !{metadata !0, metadata !{}}
-  // !1 = metadata !{metadata !0, metadata !{}}
+  // !0 = !{!0, !{}}
+  // !1 = !{!0, !{}}
   {
     MDNode *Temp = MDNode::getTemporary(Context, None);
     Metadata *Args[] = {Temp, MDNode::get(Context, None)};
@@ -161,6 +167,39 @@ TEST_F(MDNodeTest, SelfReference) {
     EXPECT_NE(Self, Ref1);
     EXPECT_EQ(Ref1, Ref2);
   }
+}
+
+TEST_F(MDNodeTest, Print) {
+  Constant *C = ConstantInt::get(Type::getInt32Ty(Context), 7);
+  MDString *S = MDString::get(Context, "foo");
+  MDNode *N0 = getNode();
+  MDNode *N1 = getNode(N0);
+  MDNode *N2 = getNode(N0, N1);
+
+  Metadata *Args[] = {ConstantAsMetadata::get(C), S, nullptr, N0, N1, N2};
+  MDNode *N = MDNode::get(Context, Args);
+
+  std::string Expected;
+  {
+    raw_string_ostream OS(Expected);
+    OS << "!{";
+    C->printAsOperand(OS);
+    OS << ", ";
+    S->printAsOperand(OS);
+    OS << ", null";
+    MDNode *Nodes[] = {N0, N1, N2};
+    for (auto *Node : Nodes)
+      OS << ", <" << (void *)Node << ">";
+    OS << "}\n";
+  }
+
+  std::string Actual;
+  {
+    raw_string_ostream OS(Actual);
+    N->print(OS);
+  }
+
+  EXPECT_EQ(Expected, Actual);
 }
 
 typedef MetadataTest MetadataAsValueTest;
@@ -205,6 +244,53 @@ TEST_F(MetadataAsValueTest, MDNodeConstant) {
   auto *V2 = MetadataAsValue::get(Context, N);
   EXPECT_EQ(MD, V2->getMetadata());
   EXPECT_EQ(V, V2);
+}
+
+typedef MetadataTest ValueAsMetadataTest;
+
+TEST_F(ValueAsMetadataTest, UpdatesOnRAUW) {
+  Type *Ty = Type::getInt1PtrTy(Context);
+  std::unique_ptr<GlobalVariable> GV0(
+      new GlobalVariable(Ty, false, GlobalValue::ExternalLinkage));
+  auto *MD = ValueAsMetadata::get(GV0.get());
+  EXPECT_TRUE(MD->getValue() == GV0.get());
+  ASSERT_TRUE(GV0->use_empty());
+
+  std::unique_ptr<GlobalVariable> GV1(
+      new GlobalVariable(Ty, false, GlobalValue::ExternalLinkage));
+  GV0->replaceAllUsesWith(GV1.get());
+  EXPECT_TRUE(MD->getValue() == GV1.get());
+}
+
+typedef MetadataTest TrackingMDRefTest;
+
+TEST_F(TrackingMDRefTest, UpdatesOnRAUW) {
+  Type *Ty = Type::getInt1PtrTy(Context);
+  std::unique_ptr<GlobalVariable> GV0(
+      new GlobalVariable(Ty, false, GlobalValue::ExternalLinkage));
+  TypedTrackingMDRef<ValueAsMetadata> MD(ValueAsMetadata::get(GV0.get()));
+  EXPECT_TRUE(MD->getValue() == GV0.get());
+  ASSERT_TRUE(GV0->use_empty());
+
+  std::unique_ptr<GlobalVariable> GV1(
+      new GlobalVariable(Ty, false, GlobalValue::ExternalLinkage));
+  GV0->replaceAllUsesWith(GV1.get());
+  EXPECT_TRUE(MD->getValue() == GV1.get());
+
+  // Reset it, so we don't inadvertently test deletion.
+  MD.reset();
+}
+
+TEST_F(TrackingMDRefTest, UpdatesOnDeletion) {
+  Type *Ty = Type::getInt1PtrTy(Context);
+  std::unique_ptr<GlobalVariable> GV(
+      new GlobalVariable(Ty, false, GlobalValue::ExternalLinkage));
+  TypedTrackingMDRef<ValueAsMetadata> MD(ValueAsMetadata::get(GV.get()));
+  EXPECT_TRUE(MD->getValue() == GV.get());
+  ASSERT_TRUE(GV->use_empty());
+
+  GV.reset();
+  EXPECT_TRUE(!MD);
 }
 
 TEST(NamedMDNodeTest, Search) {
