@@ -426,6 +426,7 @@ namespace lldb {
         eArgTypeBoolean,
         eArgTypeBreakpointID,
         eArgTypeBreakpointIDRange,
+        eArgTypeBreakpointName,
         eArgTypeByteSize,
         eArgTypeClassName,
         eArgTypeCommandName,
