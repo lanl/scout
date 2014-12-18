@@ -1264,7 +1264,6 @@ static void WriteMDNodeBodyInternal(raw_ostream &Out, const MDNode *Node,
       Out << ' ';
       WriteAsOperandInternal(Out, V, TypePrinter, Machine, Context);
     } else {
-      Out << "metadata ";
       WriteAsOperandInternal(Out, MD, TypePrinter, Machine, Context);
     }
     if (mi + 1 != me)
@@ -1363,7 +1362,9 @@ static void WriteAsOperandInternal(raw_ostream &Out, const Metadata *MD,
       Machine = new SlotTracker(Context);
     int Slot = Machine->getMetadataSlot(N);
     if (Slot == -1)
-      Out << "<badref>";
+      // Give the pointer value instead of "badref", since this comes up all
+      // the time when debugging.
+      Out << "<" << N << ">";
     else
       Out << '!' << Slot;
     return;
@@ -1381,13 +1382,9 @@ static void WriteAsOperandInternal(raw_ostream &Out, const Metadata *MD,
   assert((FromValue || !isa<LocalAsMetadata>(V)) &&
          "Unexpected function-local metadata outside of value argument");
 
-  if (FromValue)
-    Out << "!{";
   TypePrinter->print(V->getValue()->getType(), Out);
   Out << ' ';
   WriteAsOperandInternal(Out, V->getValue(), TypePrinter, Machine, Context);
-  if (FromValue)
-    Out << "}";
 }
 
 void AssemblyWriter::init() {
@@ -2378,7 +2375,7 @@ static void WriteMDNodeComment(const MDNode *Node,
 }
 
 void AssemblyWriter::writeMDNode(unsigned Slot, const MDNode *Node) {
-  Out << '!' << Slot << " = metadata ";
+  Out << '!' << Slot << " = ";
   printMDNodeBody(Node);
 }
 
@@ -2570,7 +2567,6 @@ void Value::printAsOperand(raw_ostream &O, bool PrintType, const Module *M) cons
 void Metadata::print(raw_ostream &ROS) const {
   formatted_raw_ostream OS(ROS);
   if (auto *N = dyn_cast<MDNode>(this)) {
-    OS << "metadata ";
     SlotTracker SlotTable(static_cast<Function *>(nullptr));
     AssemblyWriter W(OS, SlotTable, nullptr, nullptr);
     W.printMDNodeBody(N);
@@ -2583,8 +2579,6 @@ void Metadata::print(raw_ostream &ROS) const {
 void Metadata::printAsOperand(raw_ostream &ROS, bool PrintType,
                               const Module *M) const {
   formatted_raw_ostream OS(ROS);
-  if (PrintType)
-    OS << "metadata ";
 
   std::unique_ptr<TypePrinting> TypePrinter;
   if (PrintType) {

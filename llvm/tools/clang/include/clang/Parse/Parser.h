@@ -357,7 +357,7 @@ private:
   void UnconsumeToken(Token &Consumed) {
       Token Next = Tok;
       PP.EnterToken(Consumed);
-      ConsumeToken();
+      PP.Lex(Tok);
       PP.EnterToken(Next);
   }
 
@@ -1746,7 +1746,6 @@ private:
                                         ForRangeInit *FRI = nullptr);
   bool MightBeDeclarator(unsigned Context);
   DeclGroupPtrTy ParseDeclGroup(ParsingDeclSpec &DS, unsigned Context,
-                                bool AllowFunctionDefinitions,
                                 SourceLocation *DeclEnd = nullptr,
                                 ForRangeInit *FRI = nullptr);
   Decl *ParseDeclarationAfterDeclarator(Declarator &D,

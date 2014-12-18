@@ -5779,8 +5779,7 @@ public:
   }
 
   const char *getClobbers() const override {
-    // FIXME: Implement!
-    return "";
+    return "~{$1}";
   }
 
   bool handleTargetFeatures(std::vector<std::string> &Features,

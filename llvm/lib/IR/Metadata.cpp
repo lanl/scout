@@ -173,7 +173,8 @@ void ReplaceableMetadataImpl::replaceAllUsesWith(Metadata *MD) {
       // Update unowned tracking references directly.
       Metadata *&Ref = *static_cast<Metadata **>(Pair.first);
       Ref = MD;
-      MetadataTracking::track(Ref);
+      if (MD)
+        MetadataTracking::track(Ref);
       UseMap.erase(Pair.first);
       continue;
     }
@@ -838,8 +839,6 @@ unsigned NamedMDNode::getNumOperands() const {
 MDNode *NamedMDNode::getOperand(unsigned i) const {
   assert(i < getNumOperands() && "Invalid Operand number!");
   auto *N = getNMDOps(Operands)[i].get();
-  if (N && i > 10000)
-    N->dump();
   return cast_or_null<MDNode>(N);
 }
 
@@ -1050,4 +1049,3 @@ void Instruction::clearMetadataHashEntries() {
   getContext().pImpl->MetadataStore.erase(this);
   setHasMetadataHashEntry(false);
 }
-

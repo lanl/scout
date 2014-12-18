@@ -78,7 +78,7 @@ CodeGenTypes::arrangeStencilFunctionDeclaration(const FunctionDecl *FD) {
     argTypes.push_back(FTP->getParamType(i));
 
 
-  return arrangeLLVMFunctionInfo(FTP->getReturnType(), false, argTypes,
+  return arrangeLLVMFunctionInfo(FTP->getReturnType(), false, false, argTypes,
                                      FTP->getExtInfo(), RequiredArgs::All);
 
 }
@@ -103,7 +103,7 @@ static const CGFunctionInfo &arrangeLLVMStencilFunctionInfo(CodeGenTypes &CGT,
   for (unsigned i = 0, e = FTP->getNumParams(); i != e; ++i)
     prefix.push_back(FTP->getParamType(i));
   CanQualType resultType = FTP->getReturnType().getUnqualifiedType();
-  return CGT.arrangeLLVMFunctionInfo(resultType, IsInstanceMethod, prefix,
+  return CGT.arrangeLLVMFunctionInfo(resultType, IsInstanceMethod, false, prefix,
                                      extInfo, required);
 }
 

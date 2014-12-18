@@ -2922,6 +2922,7 @@ let isCodeGenOnly = 1 in {
 ///
 multiclass sse12_fp_packed_logical<bits<8> opc, string OpcodeStr,
                                    SDNode OpNode> {
+  let Predicates = [HasAVX, NoVLX] in {
   defm V#NAME#PSY : sse12_fp_packed_logical_rm<opc, VR256, SSEPackedSingle,
         !strconcat(OpcodeStr, "ps"), f256mem,
         [(set VR256:$dst, (v4i64 (OpNode VR256:$src1, VR256:$src2)))],
@@ -2952,6 +2953,7 @@ multiclass sse12_fp_packed_logical<bits<8> opc, string OpcodeStr,
        [(set VR128:$dst, (OpNode (bc_v2i64 (v2f64 VR128:$src1)),
                                  (loadv2i64 addr:$src2)))], 0>,
                                                  PD, VEX_4V;
+  }
 
   let Constraints = "$src1 = $dst" in {
     defm PS : sse12_fp_packed_logical_rm<opc, VR128, SSEPackedSingle,
@@ -7185,7 +7187,7 @@ let Constraints = "$src1 = $dst" in {
                                   SSE_INTMUL_ITINS_P, 1>;
 }
 
-let Predicates = [HasAVX] in {
+let Predicates = [HasAVX, NoVLX] in {
   defm VPMULLD  : SS48I_binop_rm<0x40, "vpmulld", mul, v4i32, VR128,
                                  memopv2i64, i128mem, 0, SSE_PMULLD_ITINS>,
                                  VEX_4V;
@@ -8154,6 +8156,49 @@ def : Pat<(vinsert128_insert:$ins (v4f64 VR256:$src1), (loadv2f64 addr:$src2),
                                    (iPTR imm)),
           (VINSERTF128rm VR256:$src1, addr:$src2,
                          (INSERT_get_vinsert128_imm VR256:$ins))>;
+}
+
+// Combine two consecutive 16-byte loads with a common destination register into
+// one 32-byte load to that register.
+let Predicates = [HasAVX, HasFastMem32] in {
+  def : Pat<(insert_subvector
+              (v8f32 (insert_subvector undef, (loadv4f32 addr:$src), (iPTR 0))),
+              (loadv4f32 (add addr:$src, (iPTR 16))),
+              (iPTR 4)),
+            (VMOVUPSYrm addr:$src)>;
+
+  def : Pat<(insert_subvector
+              (v4f64 (insert_subvector undef, (loadv2f64 addr:$src), (iPTR 0))),
+              (loadv2f64 (add addr:$src, (iPTR 16))),
+              (iPTR 2)),
+            (VMOVUPDYrm addr:$src)>;
+            
+  def : Pat<(insert_subvector
+              (v32i8 (insert_subvector
+                undef, (bc_v16i8 (loadv2i64 addr:$src)), (iPTR 0))),
+              (bc_v16i8 (loadv2i64 (add addr:$src, (iPTR 16)))),
+              (iPTR 16)),
+            (VMOVDQUYrm addr:$src)>;
+            
+  def : Pat<(insert_subvector
+              (v16i16 (insert_subvector
+                undef, (bc_v8i16 (loadv2i64 addr:$src)), (iPTR 0))),
+              (bc_v8i16 (loadv2i64 (add addr:$src, (iPTR 16)))),
+              (iPTR 8)),
+            (VMOVDQUYrm addr:$src)>;
+            
+  def : Pat<(insert_subvector
+              (v8i32 (insert_subvector
+                undef, (bc_v4i32 (loadv2i64 addr:$src)), (iPTR 0))),
+              (bc_v4i32 (loadv2i64 (add addr:$src, (iPTR 16)))),
+              (iPTR 4)),
+            (VMOVDQUYrm addr:$src)>;
+
+  def : Pat<(insert_subvector
+              (v4i64 (insert_subvector undef, (loadv2i64 addr:$src), (iPTR 0))),
+              (loadv2i64 (add addr:$src, (iPTR 16))),
+              (iPTR 2)),
+            (VMOVDQUYrm addr:$src)>;
 }
 
 let Predicates = [HasAVX1Only] in {
