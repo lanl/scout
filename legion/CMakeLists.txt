@@ -91,13 +91,13 @@ add_library(lsci STATIC ${low_level_src} ${mapper_src} ${high_level_src} ${lsci_
 add_dependencies(lsci scc)
 install(TARGETS lsci DESTINATION lib)
 
-list(APPEND scrt_legion_src ${SCOUT_SRC_DIR}/legion/scrt_legion/scrt_legion.cc)
+list(APPEND sclegion_src ${SCOUT_SRC_DIR}/legion/sclegion/sclegion.cc)
 
 include_directories(
-  scrt_legion
+  sclegion
   runtime
 )
 
-add_library(scrt_legion STATIC ${low_level_src} ${mapper_src} ${high_level_src} ${scrt_legion_src})
-add_dependencies(scrt_legion scc)
-install(TARGETS scrt_legion DESTINATION lib)
+add_library(sclegion STATIC ${low_level_src} ${mapper_src} ${high_level_src} ${sclegion_src})
+add_dependencies(sclegion scc)
+install(TARGETS sclegion DESTINATION lib)

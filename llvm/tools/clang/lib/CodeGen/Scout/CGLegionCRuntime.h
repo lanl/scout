@@ -65,13 +65,13 @@ namespace clang {
 namespace CodeGen {
   class CodeGenModule;
 
-  class CGCLegionCRuntime{
+  class CGLegionCRuntime{
   public:
     typedef std::vector<llvm::Type*> TypeVec;
     
-    CGCLegionCRuntime(CodeGen::CodeGenModule &CGM);
+    CGLegionCRuntime(CodeGen::CodeGenModule &CGM);
     
-    ~CGCLegionCRuntime();
+    ~CGLegionCRuntime();
     
     llvm::PointerType* PointerTy(llvm::Type* elementType);
     
@@ -82,10 +82,10 @@ namespace CodeGen {
                             llvm::Type* retType=0);
     
     llvm::PointerType* VoidPtrTy;
-    llvm::Type* Int1Ty;
-    llvm::Type* Int8Ty;
-    llvm::Type* Int32Ty;
-    llvm::Type* Int64Ty;
+    llvm::IntegerType* Int1Ty;
+    llvm::IntegerType* Int8Ty;
+    llvm::IntegerType* Int32Ty;
+    llvm::IntegerType* Int64Ty;
     llvm::Type* VoidTy;
     llvm::Type* StringTy;
     
@@ -117,32 +117,32 @@ namespace CodeGen {
     llvm::Type* Rect2dTy;
     llvm::Type* Rect3dTy;
     
-    llvm::Type* LowlevelIdTy;
-    llvm::Type* ProcessorTy;
-    llvm::Type* DomainMaxRectDimTy;
-    llvm::Type* ReductionOpIdTy;
-    llvm::Type* AddressSpaceTy;
-    llvm::Type* TaskPriorityTy;
-    llvm::Type* ColorTy;
-    llvm::Type* IndexPartitionTy;
-    llvm::Type* FieldIdTy;
-    llvm::Type* TraceIdTy;
-    llvm::Type* MapperIdTy;
-    llvm::Type* ContextIdTy;
-    llvm::Type* InstanceIdTy;
-    llvm::Type* FieldSpaceIdTy;
-    llvm::Type* GenerationIdTy;
-    llvm::Type* TypeHandleTy;
-    llvm::Type* ProjectionIdTy;
-    llvm::Type* RegionTreeIdTy;
-    llvm::Type* DistributedIdTy;
-    llvm::Type* AddressSpaceIdTy;
-    llvm::Type* TunableIdTy;
-    llvm::Type* MappingTagIdTy;
-    llvm::Type* VariantIdTy;
-    llvm::Type* UniqueIdTy;
-    llvm::Type* VersionIdTy;
-    llvm::Type* TaskIdTy;
+    llvm::IntegerType* LowlevelIdTy;
+    llvm::IntegerType* ProcessorTy;
+    llvm::IntegerType* DomainMaxRectDimTy;
+    llvm::IntegerType* ReductionOpIdTy;
+    llvm::IntegerType* AddressSpaceTy;
+    llvm::IntegerType* TaskPriorityTy;
+    llvm::IntegerType* ColorTy;
+    llvm::IntegerType* IndexPartitionTy;
+    llvm::IntegerType* FieldIdTy;
+    llvm::IntegerType* TraceIdTy;
+    llvm::IntegerType* MapperIdTy;
+    llvm::IntegerType* ContextIdTy;
+    llvm::IntegerType* InstanceIdTy;
+    llvm::IntegerType* FieldSpaceIdTy;
+    llvm::IntegerType* GenerationIdTy;
+    llvm::IntegerType* TypeHandleTy;
+    llvm::IntegerType* ProjectionIdTy;
+    llvm::IntegerType* RegionTreeIdTy;
+    llvm::IntegerType* DistributedIdTy;
+    llvm::IntegerType* AddressSpaceIdTy;
+    llvm::IntegerType* TunableIdTy;
+    llvm::IntegerType* MappingTagIdTy;
+    llvm::IntegerType* VariantIdTy;
+    llvm::IntegerType* UniqueIdTy;
+    llvm::IntegerType* VersionIdTy;
+    llvm::IntegerType* TaskIdTy;
     
     llvm::Type* PrivilegeModeTy;
     llvm::Value* NoAccessVal;

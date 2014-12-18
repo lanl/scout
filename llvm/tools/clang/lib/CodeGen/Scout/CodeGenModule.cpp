@@ -58,6 +58,7 @@
 
 #include "clang/AST/Scout/MeshDecl.h"
 #include "Scout/CGLegionRuntime.h"
+#include "Scout/CGLegionCRuntime.h"
 #include "CodeGenFunction.h"
 
 using namespace clang;
@@ -97,17 +98,20 @@ llvm::Function *CodeGenModule::lsciMainFunction() {
 }
 
 void CodeGenModule::startLsciMainFunction() {
-
+  typedef std::vector<llvm::Type*> TypeVec;
+  typedef std::vector<llvm::Value*> ValueVec;
+  
   // need to create main_task()
   llvm::LLVMContext& context = getLLVMContext();
   llvm::IRBuilder<> Builder(TheModule.getContext());
 
   CGLegionRuntime& r = getLegionRuntime();
-
+  CGLegionCRuntime& rc = getLegionCRuntime();
+  
   llvm::PointerType* TaskArgsPtrTy = llvm::PointerType::get(r.TaskArgsTy, 0);
 
   // use lsci_task_args_t to create main_task function type and function
-  std::vector<llvm::Type*> params = {TaskArgsPtrTy};
+  TypeVec params = {TaskArgsPtrTy};
   llvm::FunctionType* main_task_ft = llvm::FunctionType::get(VoidTy, params, false);
 
   llvm::Function* main_task = llvm::Function::Create(main_task_ft,
@@ -136,12 +140,12 @@ void CodeGenModule::startLsciMainFunction() {
   llvm::Function* lsciMainFunc = lsciMainFunction();
   llvm::BasicBlock* BB = llvm::BasicBlock::Create(getLLVMContext(), "entry", lsciMainFunc);
   Builder.SetInsertPoint(BB);
-  llvm::ConstantInt* mainTID = llvm::ConstantInt::get(Int32Ty, 0);
-  std::vector<llvm::Value*> args = {mainTID};
-  Builder.CreateCall(LegionRuntime->SetTopLevelTaskIdFunc(), args); 
+  llvm::ConstantInt* mainTID = llvm::ConstantInt::get(rc.TaskIdTy, 0);
+  ValueVec args = {mainTID};
+  Builder.CreateCall(rc.RuntimeSetTopLevelTaskIdFunc(), args);
 
   // make call to lsci_register_void_legion_task
-  std::vector<llvm::Value*> reg_main_task_params;
+  ValueVec reg_main_task_params;
 
   reg_main_task_params.push_back(mainTID);
 

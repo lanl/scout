@@ -86,6 +86,7 @@ class CGDebugInfo;
 class CGScoutABI;
 class CGScoutRuntime;
 class CGLegionRuntime;
+class CGLegionCRuntime;
 // ========================
 class CGObjCRuntime;
 class CGOpenCLRuntime;
@@ -306,6 +307,7 @@ class CodeGenModule : public CodeGenTypeCache {
   std::unique_ptr<CGScoutABI> ScoutABI;
   CGScoutRuntime* ScoutRuntime;
   CGLegionRuntime* LegionRuntime;
+  CGLegionCRuntime* LegionCRuntime;
   // ==================================
   CGOpenCLRuntime* OpenCLRuntime;
   CGOpenMPRuntime* OpenMPRuntime;
@@ -458,6 +460,7 @@ class CodeGenModule : public CodeGenTypeCache {
   // ===== Scout ==========================
   void createScoutRuntime();
   void createLegionRuntime();
+  void createLegionCRuntime();
   // ======================================
   void createOpenCLRuntime();
   void createOpenMPRuntime();
@@ -548,6 +551,12 @@ public:
   CGLegionRuntime &getLegionRuntime() {
     assert(LegionRuntime != 0);
     return *LegionRuntime;
+  }
+  
+  /// getLegionRuntime() - Return a reference to the configured legion runtime.
+  CGLegionCRuntime &getLegionCRuntime() {
+    assert(LegionCRuntime != 0);
+    return *LegionCRuntime;
   }
 
   llvm::Function *lsciMainFunction();
