@@ -60,6 +60,7 @@
 // ====== Scout =========================
 #include "Scout/CGScoutRuntime.h"
 #include "Scout/CGLegionRuntime.h"
+#include "Scout/CGLegionCRuntime.h"
 // ======================================
 
 using namespace clang;
@@ -139,6 +140,8 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
     createScoutRuntime();
     // ndm - test
     createLegionRuntime();
+    createLegionCRuntime();
+    
     if (CodeGenOpts.ScoutLegionSupport) {
       //createLegionRuntime(); start lsci_main() function for doing
       // Legion task registration and Legion startup.  Once this is
@@ -205,6 +208,10 @@ void CodeGenModule::createScoutRuntime() {
 
 void CodeGenModule::createLegionRuntime() {
   LegionRuntime = new CGLegionRuntime(*this);
+}
+
+void CodeGenModule::createLegionCRuntime() {
+  LegionCRuntime = new CGLegionCRuntime(*this);
 }
 // ==========================================
 
