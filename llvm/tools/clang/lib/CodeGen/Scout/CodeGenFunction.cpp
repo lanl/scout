@@ -22,6 +22,7 @@
 #include "llvm/IR/ValueHandle.h"
 #include "llvm/IR/Intrinsics.h"
 #include "Scout/ASTVisitors.h"
+#include "CGScoutRuntime.h"
 
 using namespace clang;
 using namespace clang::CodeGen;
@@ -150,3 +151,6 @@ bool CodeGenFunction::CheckMeshPtrTypes(QualType &ArgType, QualType &ActualArgTy
   return false;
 }
 
+void CodeGenFunction::dumpValue(const char* label, llvm::Value* value){
+	CGM.getScoutRuntime().DumpValue(*this, label, value);
+}

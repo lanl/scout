@@ -52,48 +52,14 @@
  * ##### 
  */ 
 
-#ifndef CLANG_CODEGEN_SCOUTRUNTIME_H
-#define CLANG_CODEGEN_SCOUTRUNTIME_H
-
-#include "CodeGenModule.h"
-
-namespace llvm {
-  class Function;
+int main(int argc, char *argv[])
+{
+uniform mesh MyMesh {
+  cells:
+    int a;
+    int b;
 }
 
-namespace clang {
-  namespace CodeGen {
-    class CodeGenModule;
+int f;
 
-    class CGScoutRuntime {
-     protected:
-      CodeGen::CodeGenModule &CGM;
-      llvm::Function *ScoutRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params);
-      llvm::Function *ScoutRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params, 
-                                           llvm::Type* retType);
-     public:
-      CGScoutRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM) {}
-      virtual ~CGScoutRuntime();
-      llvm::Function *ModuleInitFunction(CodeGenFunction &CGF, SourceLocation Loc);
-      llvm::Function *MemAllocFunction();
-      llvm::Function *RenderallUniformBeginFunction();
-      llvm::Function *RenderallEndFunction();
-      llvm::Function *CreateWindowFunction();
-      llvm::Function *CreateWindowQuadRenderableColorsFunction();
-      llvm::Function *CreateWindowQuadRenderableVertexColorsFunction();
-      llvm::Function *CreateWindowQuadRenderableEdgeColorsFunction();
-      llvm::Function *CreateWindowPaintFunction();
-      llvm::Value    *RenderallUniformColorsGlobal(CodeGenFunction &CGF);
-      llvm::Type     *convertScoutSpecificType(const Type *T);
-
-      llvm::Function *EmitRuntimeInitFunc(SourceLocation Loc,
-                                          CodeGenFunction *CGF);
-      void EmitRuntimeInitializationCall(CodeGenFunction &CGF,
-                                         SourceLocation Loc);
-
-      void DumpValue(CodeGenFunction& CGF, const char* label,
-                     llvm::Value* value);
-    };
-  }
 }
-#endif

@@ -258,3 +258,9 @@ set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
     "error: calling position outside of forall cells/vertices")
 set_property(TEST ${tname} PROPERTY WILL_FAIL)
 
+set(name mesh-semicolon)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: invalid mesh specifier")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
