@@ -137,15 +137,13 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
   // +===== Scout ============================================================+
   if(isScoutLang(LangOpts)) {
     createScoutRuntime();
-    
     // ndm - test
     createLegionRuntime();
-    
     if (CodeGenOpts.ScoutLegionSupport) {
-      //createLegionRuntime();
-      // start lsci_main() function for doing Legion task registration and Legion startup.
-      // Once this is started, each time we see a task while doing code gen, add
-      // to this function to register the legion task.
+      //createLegionRuntime(); start lsci_main() function for doing
+      // Legion task registration and Legion startup.  Once this is
+      // started, each time we see a task while doing code gen, add to
+      // this function to register the legion task.
       startLsciMainFunction();
     }
   }
@@ -386,7 +384,7 @@ void CodeGenModule::Release() {
   EmitCXXGlobalInitFunc();
   EmitCXXGlobalDtorFunc();
   EmitCXXThreadLocalInitFunc();
-  // ===== Scout ===============================================================
+  // ===== Scout =============================================================
   // add call to scout runtime initializer
   if (ScoutRuntime) {
     if (! getCodeGenOpts().ScoutNoStdLibrary) {
@@ -399,8 +397,8 @@ void CodeGenModule::Release() {
       Diags.Report(diag::warn_no_scstdlib);
     }
   }
-
-  // ===========================================================================
+  // =========================================================================
+  
   if (ObjCRuntime)
     if (llvm::Function *ObjCInitFunction = ObjCRuntime->ModuleInitFunction())
       AddGlobalCtor(ObjCInitFunction);
@@ -1796,6 +1794,7 @@ CodeGenModule::GetOrCreateLLVMGlobal(StringRef MangledName,
     return llvm::ConstantExpr::getBitCast(Entry, Ty);
   }
 
+  // SCOUT: D is nullptr here in crash!  (FUBAR)
   unsigned AddrSpace = GetGlobalVarAddressSpace(D, Ty->getAddressSpace());
   auto *GV = new llvm::GlobalVariable(
       getModule(), Ty->getElementType(), false,
@@ -1948,14 +1947,14 @@ unsigned CodeGenModule::GetGlobalVarAddressSpace(const VarDecl *D,
   
   // +===== Scout =============================================================
   if (LangOpts.ScoutC || LangOpts.ScoutCPlusPlus) {
-    if (D->isPersistentLocal()) {
+    if (D && D->isPersistentLocal()) {
       // For now we're using the last high-address address space for
       // Scout (this is a language-centric range defined in
       // AddressSpaces.h).  We don't use the functionality used there at
       // this point in time (due to it being target centric).  Wise to
       // consider this a placeholder for now...
       AddrSpace = getContext().getTargetAddressSpace(LangAS::scout_persistent);
-    } else if (D->isNonvolatileLocal()) {
+    } else if (D && D->isNonvolatileLocal()) {
       // For now we're using the last high-address space for Scout (this
       // is a langugage-centric range defined in AddressSpaces.h).  We
       // don't use the functionality used there at this point in time
