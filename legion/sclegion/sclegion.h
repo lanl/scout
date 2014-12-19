@@ -62,6 +62,11 @@
 #ifdef __cplusplus
 extern "C"{
 #endif
+
+#define NEW_OPAQUE_TYPE(T) typedef struct T { void* impl; } T  
+  NEW_OPAQUE_TYPE(sclegion_uniform_mesh_t);
+  NEW_OPAQUE_TYPE(sclegion_uniform_mesh_launcher_t);
+#undef NEW_OPAQUE_TYPE
   
   typedef enum sclegion_field_kind_t{
     SCLEGION_INT32,
@@ -79,14 +84,21 @@ extern "C"{
     SCLEGION_ELEMENT_MAX
   } sclegion_element_kind_t;
 
-#define NEW_OPAQUE_TYPE(T) typedef struct T { void* impl; } T  
-  NEW_OPAQUE_TYPE(sclegion_uniform_mesh_t);
-#undef NEW_OPAQUE_TYPE
+  void
+  sclegion_init(const char* main_task_name,
+                legion_task_pointer_void_t main_task_pointer);
+  
+  int
+  sclegion_start(int argc, char** argv);
 
   void
+  sclegion_register_task(legion_task_id_t task_id,
+                         const char* task_name,
+                         legion_task_pointer_void_t task_pointer);
+
+  sclegion_uniform_mesh_t
   sclegion_uniform_mesh_create(legion_runtime_t runtime,
                                legion_context_t context,
-                               sclegion_uniform_mesh_t mesh,
                                size_t rank,
                                size_t width,
                                size_t height,
@@ -100,6 +112,29 @@ extern "C"{
 
   void
   sclegion_uniform_mesh_init(sclegion_uniform_mesh_t mesh);
+
+  void*
+  sclegion_uniform_mesh_reconstruct(const legion_task_t task,
+                                    const legion_physical_region_t* region,
+                                    unsigned numRegions,
+                                    legion_context_t context,
+                                    legion_runtime_t runtime);
+
+  sclegion_uniform_mesh_launcher_t
+  sclegion_uniform_mesh_create_launcher(sclegion_uniform_mesh_t mesh,
+                                        legion_task_id_t task_id);
+
+  void
+  sclegion_uniform_mesh_launcher_add_field(
+    sclegion_uniform_mesh_launcher_t launcher,
+    const char* field_name,
+    legion_privilege_mode_t mode);
+
+  void
+  sclegion_uniform_mesh_launcher_execute(
+    legion_context_t context,
+    legion_runtime_t runtime,
+    sclegion_uniform_mesh_launcher_t launcher);
 
 #ifdef __cplusplus
 } // extern "C"
