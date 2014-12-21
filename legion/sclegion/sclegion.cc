@@ -55,10 +55,9 @@
 #include "sclegion.h"
 
 #include <map>
+#include <vector>
 #include <string>
 #include <cassert>
-#include <mutex>
-#include <vector>
 
 using namespace std;
 
