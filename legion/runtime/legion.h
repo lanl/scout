@@ -1020,8 +1020,10 @@ namespace LegionRuntime {
                    MapperID id = 0,
                    MappingTagID tag = 0);
     public:
-      inline void add_index_requirement(const IndexSpaceRequirement &req);
-      inline void add_region_requirement(const RegionRequirement &req);
+      inline IndexSpaceRequirement&
+              add_index_requirement(const IndexSpaceRequirement &req);
+      inline RegionRequirement&
+              add_region_requirement(const RegionRequirement &req);
       inline void add_field(unsigned idx, FieldID fid, bool inst = true);
     public:
       inline void add_future(Future f);
@@ -1074,8 +1076,10 @@ namespace LegionRuntime {
                     MapperID id = 0,
                     MappingTagID tag = 0);
     public:
-      inline void add_index_requirement(const IndexSpaceRequirement &req);
-      inline void add_region_requirement(const RegionRequirement &req);
+      inline IndexSpaceRequirement&
+                  add_index_requirement(const IndexSpaceRequirement &req);
+      inline RegionRequirement&
+                  add_region_requirement(const RegionRequirement &req);
       inline void add_field(unsigned idx, FieldID fid, bool inst = true);
     public:
       inline void add_future(Future f);
@@ -1161,8 +1165,8 @@ namespace LegionRuntime {
       CopyLauncher(Predicate pred = Predicate::TRUE_PRED,
                    MapperID id = 0, MappingTagID tag = 0);
     public:
-      inline void add_copy_requirements(const RegionRequirement &src,
-					const RegionRequirement &dst);
+      inline unsigned add_copy_requirements(const RegionRequirement &src,
+					    const RegionRequirement &dst);
       inline void add_src_field(unsigned idx, FieldID fid, bool inst = true);
       inline void add_dst_field(unsigned idx, FieldID fid, bool inst = true);
     public:
@@ -1526,6 +1530,12 @@ namespace LegionRuntime {
       bool                                map_locally;
       bool                                profile_task;
       TaskPriority                        task_priority;
+    public:
+      // Options for configuring this task's context
+      int                                 max_window_size;
+      unsigned                            hysteresis_percentage;
+      int                                 max_outstanding_frames;
+      unsigned                            min_tasks_to_schedule;
     public:
       // Profiling information for the task
       unsigned long long                  start_time;
@@ -2274,6 +2284,54 @@ namespace LegionRuntime {
        * ----------------------------------------------------------------------
        *  Rank Copy Targets 
        * ----------------------------------------------------------------------
+       * This mapper call is invoked when a non-leaf task is launched in order
+       * to set up the configuration of the context for this task to manage
+       * how far deferred execution can progress. There are two components
+       * to managing this: first controlling the number of outstanding 
+       * operations in the context, and second controlling how many of 
+       * these need to be mapped before the scheduler stops being invoked
+       * by the runtime. By setting the following fields, the mapper 
+       * can control both of these characteristics.
+       *
+       * max_window_size - set the maximum number of operations that can
+       *                   be outstanding in a context. The default value
+       *                   is set to either 1024 or whatever value was
+       *                   passed on the command line to the -hl:window flag.
+       *                   Setting the value less than or equal to zero will
+       *                   disable the maximum.
+       * hystersis_percentage - set the percentage of the maximum task window
+       *                   that should be outstanding before a context starts
+       *                   issuing tasks again. Hysteresis avoids jitter and
+       *                   enables a more efficient execution at the potential
+       *                   cost of latency in a single task. The default value
+       *                   is 75% indicating that a context will start 
+       *                   launching new sub-tasks after the current number of
+       *                   tasks drains to 75% of the max_window_size.  If the
+       *                   max_window_size is disabled then this parameter has
+       *                   no effect on the execution.
+       * max_outstanding_frames - instead of specifying the maximum window size
+       *                   applications can also launch frames corresponding
+       *                   to application specific groups of tasks (see the
+       *                   'issue_frame' runtime call for more information). 
+       *                   The 'max_outstanding_frames' field allows mappers 
+       *                   to specify the maximum number of outstanding frames 
+       *                   instead. Setting this parameter subsumes the 
+       *                   max_window_size.
+       * min_tasks_to_schedule - specify the minimum number of pending mapped
+       *                   tasks that must be issued before calls to 
+       *                   select_tasks_to_schedule are stopped for this 
+       *                   context. The default is set to 32 or the value
+       *                   passed on the command line to the -hl:sched flag.
+       *                   Any value of 0 or less will disable the check
+       *                   causing select_tasks_to_schedule to be polled as
+       *                   long as there are tasks to map.
+       */
+      virtual void configure_context(Task *task) = 0;
+
+      /**
+       * ----------------------------------------------------------------------
+       *  Rank Copy Targets 
+       * ----------------------------------------------------------------------
        * If this call occurs the runtime is rebuilding a physical instance
        * of a logical region because it is closing up one or more partitions
        * of a logical region so it can open a new one.  The runtime
@@ -2437,7 +2495,7 @@ namespace LegionRuntime {
        * @param message a pointer to a buffer containing the message
        * @param the size of the message to be sent in bytes
        */
-      void send_message(Processor target, const void *message, size_t length);
+      void send_message(Processor target, const void *message, size_t length); 
     protected:
       //------------------------------------------------------------------------
       // Methods for introspecting index space trees 
@@ -2609,6 +2667,59 @@ namespace LegionRuntime {
       bool leaf;
       bool inner;
       bool idempotent;
+    };
+
+    /**
+     * \interface ProjectionFunctor
+     * This defines an interface for objects that need to be
+     * able to handle projection requests for an application.
+     * Whenever index space tasks are launched with projection
+     * region requirements, instances of this object are used
+     * to handle the lowering down to individual regions for
+     * specific task instances in the index space of task.
+     * No more than one query of this interface will be made
+     * per object at a time.
+     *
+     * Note also that the interface inherits from the 
+     * RegionTreeInspector class which gives it access to 
+     * all of the functions in that class for discovering
+     * the shape of index space trees, field spaces, and
+     * logical region trees.
+     */
+    class ProjectionFunctor {
+    public:
+      ProjectionFunctor(HighLevelRuntime *rt);
+    public:
+      /**
+       * Compute the projection for a logical region projection
+       * requirement down to a specific logical region.
+       * @param ctx the context for this projection
+       * @param task the task for the requested projection
+       * @param index which region requirement we are projecting
+       * @param upper_bound the upper bound logical region
+       * @param point the point of the task in the index space
+       * @return logical region to be used by the child task
+       */
+      virtual LogicalRegion project(Context ctx, Task *task, 
+                                    unsigned index,
+                                    LogicalRegion upper_bound,
+                                    const DomainPoint &point) = 0;
+      /**
+       * Compute the projection for a logical partition projection
+       * requirement down to a specific logical region.
+       * @param ctx the context for this projection
+       * @param task the task for the requested projection
+       * @param index which region requirement we are projecting
+       * @param upper_bound the upper bound logical partition
+       * @param point the point of the task in the index space
+       * @return logical region to be used by the child task
+       */
+      virtual LogicalRegion project(Context ctx, Task *task, 
+                                    unsigned index,
+                                    LogicalPartition upper_bound,
+                                    const DomainPoint &point) = 0;
+    protected:
+      HighLevelRuntime *const runtime;
     };
 
     /**
@@ -3541,6 +3652,23 @@ namespace LegionRuntime {
       void end_trace(Context ctx, TraceID tid);
     public:
       //------------------------------------------------------------------------
+      // Frame Operations 
+      //------------------------------------------------------------------------
+      /**
+       * Frames are a very simple way to control the number of 
+       * outstanding operations in a task context. By default, mappers
+       * have control over this by saying how many outstanding operations
+       * each task context can have using the 'configure_context' mapper
+       * call. However, in many cases, it is easier for custom mappers to
+       * reason about how many iterations or some other application-specific
+       * set of operations are in flight. To facilitate this, applications can 
+       * create 'frames' of tasks. Using the 'configure_context' mapper
+       * call, custom mappers can specify the maximum number of outstanding
+       * frames that make up the operation window.
+       */
+      void issue_frame(Context ctx);
+    public:
+      //------------------------------------------------------------------------
       // Must Parallelism 
       //------------------------------------------------------------------------
       /**
@@ -3638,7 +3766,225 @@ namespace LegionRuntime {
       const std::map<AddressSpace,int/*rank*/>& find_reverse_MPI_mapping(void);
     public:
       //------------------------------------------------------------------------
+      // Semantic Information 
+      //------------------------------------------------------------------------
+      /**
+       * Attach semantic information to an index space
+       * @param handle index space handle
+       * @param tag semantic tag
+       * @param buffer pointer to a buffer
+       * @param size size of the buffer to save
+       */
+      void attach_semantic_information(IndexSpace handle, SemanticTag tag,
+                                       const void *buffer, size_t size);
+
+      /**
+       * Attach semantic information to an index partition 
+       * @param handle index partition handle
+       * @param tag semantic tag
+       * @param buffer pointer to a buffer
+       * @param size size of the buffer to save
+       */
+      void attach_semantic_information(IndexPartition handle, SemanticTag tag,
+                                       const void *buffer, size_t size);
+
+      /**
+       * Attach semantic information to a field space
+       * @param handle field space handle
+       * @param tag semantic tag
+       * @param buffer pointer to a buffer
+       * @param size size of the buffer to save
+       */
+      void attach_semantic_information(FieldSpace handle, SemanticTag tag,
+                                       const void *buffer, size_t size);
+
+      /**
+       * Attach semantic information to a specific field 
+       * @param handle field space handle
+       * @param fid field ID
+       * @param tag semantic tag
+       * @param buffer pointer to a buffer
+       * @param size size of the buffer to save
+       */
+      void attach_semantic_information(FieldSpace handle, FieldID fid, 
+                                       SemanticTag tag,
+                                       const void *buffer, size_t size);
+
+      /**
+       * Attach semantic information to a logical region 
+       * @param handle logical region handle
+       * @param tag semantic tag
+       * @param buffer pointer to a buffer
+       * @param size size of the buffer to save
+       */
+      void attach_semantic_information(LogicalRegion handle, SemanticTag tag,
+                                       const void *buffer, size_t size);
+      
+      /**
+       * Attach semantic information to a logical partition 
+       * @param handle logical partition handle
+       * @param tag semantic tag
+       * @param buffer pointer to a buffer
+       * @param size size of the buffer to save
+       */
+      void attach_semantic_information(LogicalPartition handle, 
+                                       SemanticTag tag,
+                                       const void *buffer, size_t size);
+
+      /**
+       * Attach a name to an index space
+       * @param handle index space handle
+       * @param name pointer to a name
+       */
+      void attach_name(IndexSpace handle, const char *name);
+
+      /**
+       * Attach a name to an index partition
+       * @param handle index partition handle
+       * @param name pointer to a name
+       */
+      void attach_name(IndexPartition handle, const char *name);
+
+      /**
+       * Attach a name to a field space
+       * @param handle field space handle
+       * @param name pointer to a name
+       */
+      void attach_name(FieldSpace handle, const char *name);
+
+      /**
+       * Attach a name to a specific field
+       * @param handle field space handle
+       * @param fid field ID
+       * @param name pointer to a name
+       */
+      void attach_name(FieldSpace handle, FieldID fid, const char *name);
+
+      /**
+       * Attach a name to a logical region
+       * @param handle logical region handle
+       * @param name pointer to a name
+       */
+      void attach_name(LogicalRegion handle, const char *name);
+
+      /**
+       * Attach a name to a logical partition
+       * @param handle logical partition handle
+       * @param name pointer to a name
+       */
+      void attach_name(LogicalPartition handle, const char *name);
+
+      /**
+       * Retrieve semantic information for an index space
+       * @param handle index space handle
+       * @param tag semantic tag
+       * @param result pointer to assign to the semantic buffer
+       * @param size where to write the size of the semantic buffer
+       */
+      void retrieve_semantic_information(IndexSpace handle, SemanticTag tag,
+                                         const void *&result, size_t &size);
+
+      /**
+       * Retrieve semantic information for an index partition 
+       * @param handle index partition handle
+       * @param tag semantic tag
+       * @param result pointer to assign to the semantic buffer
+       * @param size where to write the size of the semantic buffer
+       */
+      void retrieve_semantic_information(IndexPartition handle, SemanticTag tag,
+                                         const void *&result, size_t &size);
+
+      /**
+       * Retrieve semantic information for a field space
+       * @param handle field space handle
+       * @param tag semantic tag
+       * @param result pointer to assign to the semantic buffer
+       * @param size where to write the size of the semantic buffer
+       */
+      void retrieve_semantic_information(FieldSpace handle, SemanticTag tag,
+                                         const void *&result, size_t &size);
+
+      /**
+       * Retrieve semantic information for a specific field 
+       * @param handle field space handle
+       * @param fid field ID
+       * @param tag semantic tag
+       * @param result pointer to assign to the semantic buffer
+       * @param size where to write the size of the semantic buffer
+       */
+      void retrieve_semantic_information(FieldSpace handle, FieldID fid, 
+                                         SemanticTag tag,
+                                         const void *&result, size_t &size);
+
+      /**
+       * Retrieve semantic information for a logical region 
+       * @param handle logical region handle
+       * @param tag semantic tag
+       * @param result pointer to assign to the semantic buffer
+       * @param size where to write the size of the semantic buffer
+       */
+      void retrieve_semantic_information(LogicalRegion handle, SemanticTag tag,
+                                         const void *&result, size_t &size);
+
+      /**
+       * Retrieve semantic information for a logical partition
+       * @param handle logical partition handle
+       * @param tag semantic tag
+       * @param result pointer to assign to the semantic buffer
+       * @param size where to write the size of the semantic buffer
+       */
+      void retrieve_semantic_information(LogicalPartition handle, 
+                                         SemanticTag tag,
+                                         const void *&result, size_t &size);
+
+      /**
+       * Retrieve the name of an index space
+       * @param handle index space handle
+       * @param result pointer to assign to the name
+       */
+      void retrieve_name(IndexSpace handle, const char *&result);
+
+      /**
+       * Retrieve the name of an index partition
+       * @param handle index partition handle
+       * @param result pointer to assign to the name
+       */
+      void retrieve_name(IndexPartition handle, const char *&result);
+
+      /**
+       * Retrieve the name of a field space
+       * @param handle field space handle
+       * @param result pointer to assign to the name
+       */
+      void retrieve_name(FieldSpace handle, const char *&result);
+
+      /**
+       * Retrieve the name of a specific field
+       * @param handle field space handle
+       * @param fid field ID
+       * @param result pointer to assign to the name
+       */
+      void retrieve_name(FieldSpace handle, FieldID fid, const char *&result);
+
+      /**
+       * Retrieve the name of a logical region
+       * @param handle logical region handle
+       * @param result pointer to assign to the name
+       */
+      void retrieve_name(LogicalRegion handle, const char *&result);
+
+      /**
+       * Retrieve the name of a logical partition
+       * @param handle logical partition handle
+       * @param result pointer to assign to the name
+       */
+      void retrieve_name(LogicalPartition handle, const char *&result);
+    public:
+      //------------------------------------------------------------------------
       // Registration Callback Operations
+      // All of these calls must be made while in the registration
+      // function called before start-up.  This function is specified
+      // by calling the 'set_registration_callback' static method.
       //------------------------------------------------------------------------
       /**
        * Add a mapper at the given mapper ID for the runtime
@@ -3663,6 +4009,18 @@ namespace LegionRuntime {
        * @param proc the processor to associate the mapper with
        */
       void replace_default_mapper(Mapper *mapper, Processor proc);
+
+      /**
+       * Register a projection functor for handling projection
+       * queries. The ProjectionID must be non-zero because 
+       * zero is the identity projection. Unlike mappers which
+       * require a separate instance per processor, only
+       * one of these must be registered per projection ID.
+       * @param pid the projection ID to use for the registration
+       * @param functor the object to register for handle projections
+       */
+      void register_projection_functor(ProjectionID pid, 
+                                       ProjectionFunctor *functor);
     public:
       //------------------------------------------------------------------------
       // Start-up Operations
@@ -4644,19 +5002,21 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    inline void TaskLauncher::add_index_requirement(
+    inline IndexSpaceRequirement& TaskLauncher::add_index_requirement(
                                               const IndexSpaceRequirement &req)
     //--------------------------------------------------------------------------
     {
       index_requirements.push_back(req);
+      return index_requirements.back();
     }
 
     //--------------------------------------------------------------------------
-    inline void TaskLauncher::add_region_requirement(
+    inline RegionRequirement& TaskLauncher::add_region_requirement(
                                                   const RegionRequirement &req)
     //--------------------------------------------------------------------------
     {
       region_requirements.push_back(req);
+      return region_requirements.back();
     }
 
     //--------------------------------------------------------------------------
@@ -4712,19 +5072,21 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    inline void IndexLauncher::add_index_requirement(
+    inline IndexSpaceRequirement& IndexLauncher::add_index_requirement(
                                               const IndexSpaceRequirement &req)
     //--------------------------------------------------------------------------
     {
       index_requirements.push_back(req);
+      return index_requirements.back();
     }
 
     //--------------------------------------------------------------------------
-    inline void IndexLauncher::add_region_requirement(
+    inline RegionRequirement& IndexLauncher::add_region_requirement(
                                                   const RegionRequirement &req)
     //--------------------------------------------------------------------------
     {
       region_requirements.push_back(req);
+      return region_requirements.back();
     }
 
     //--------------------------------------------------------------------------
@@ -4787,12 +5149,17 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    inline void CopyLauncher::add_copy_requirements(
+    inline unsigned CopyLauncher::add_copy_requirements(
                      const RegionRequirement &src, const RegionRequirement &dst)
     //--------------------------------------------------------------------------
     {
+      unsigned result = src_requirements.size();
+#ifdef DEBUG_HIGH_LEVEL
+      assert(result == dst_requirements.size());
+#endif
       src_requirements.push_back(src);
       dst_requirements.push_back(dst);
+      return result;
     }
 
     //--------------------------------------------------------------------------

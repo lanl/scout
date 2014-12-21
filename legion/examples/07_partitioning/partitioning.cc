@@ -67,21 +67,29 @@ void top_level_task(const Task *task,
   Rect<1> elem_rect(Point<1>(0),Point<1>(num_elements-1));
   IndexSpace is = runtime->create_index_space(ctx, 
                           Domain::from_rect<1>(elem_rect));
+  runtime->attach_name(is, "is");
   FieldSpace input_fs = runtime->create_field_space(ctx);
+  runtime->attach_name(input_fs, "input_fs");
   {
     FieldAllocator allocator = 
       runtime->create_field_allocator(ctx, input_fs);
     allocator.allocate_field(sizeof(double),FID_X);
+    runtime->attach_name(input_fs, FID_X, "X");
     allocator.allocate_field(sizeof(double),FID_Y);
+    runtime->attach_name(input_fs, FID_Y, "Y");
   }
   FieldSpace output_fs = runtime->create_field_space(ctx);
+  runtime->attach_name(output_fs, "output_fs");
   {
     FieldAllocator allocator = 
       runtime->create_field_allocator(ctx, output_fs);
     allocator.allocate_field(sizeof(double),FID_Z);
+    runtime->attach_name(output_fs, FID_Z, "Z");
   }
   LogicalRegion input_lr = runtime->create_logical_region(ctx, is, input_fs);
+  runtime->attach_name(input_lr, "input_lr");
   LogicalRegion output_lr = runtime->create_logical_region(ctx, is, output_fs);
+  runtime->attach_name(output_lr, "output_lr");
 
   // In addition to using rectangles and domains for launching index spaces
   // of tasks (see example 02), Legion also uses them for performing 
@@ -184,6 +192,7 @@ void top_level_task(const Task *task,
     Blockify<1> coloring(num_elements/num_subregions);
     ip = runtime->create_index_partition(ctx, is, coloring);
   }
+  runtime->attach_name(ip, "ip");
 
   // The index space 'is' was used in creating two logical regions: 'input_lr'
   // and 'output_lr'.  By creating an IndexPartitiong of 'is' we implicitly
@@ -194,7 +203,9 @@ void top_level_task(const Task *task,
   // and returns the LogicalPartition of the given LogicalRegion that corresponds
   // to the given IndexPartition.  
   LogicalPartition input_lp = runtime->get_logical_partition(ctx, input_lr, ip);
+  runtime->attach_name(input_lp, "input_lp");
   LogicalPartition output_lp = runtime->get_logical_partition(ctx, output_lr, ip);
+  runtime->attach_name(output_lp, "output_lp");
 
   // Create our launch domain.  Note that is the same as color domain
   // as we are going to launch one task for each subregion we created.

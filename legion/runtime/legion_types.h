@@ -153,6 +153,7 @@ namespace LegionRuntime {
     class Mapper; 
     template<typename T> struct ColoredPoints; 
     struct InputArgs;
+    class ProjectionFunctor;
     class HighLevelRuntime;
 
     // Forward declarations for compiler level objects
@@ -184,6 +185,7 @@ namespace LegionRuntime {
     class MapOp;
     class CopyOp;
     class FenceOp;
+    class FrameOp;
     class DeletionOp;
     class CloseOp;
     class AcquireOp;
@@ -329,6 +331,7 @@ namespace LegionRuntime {
     typedef ::legion_address_space_id_t AddressSpaceID;
     typedef ::legion_tunable_id_t TunableID;
     typedef ::legion_mapping_tag_id_t MappingTagID;
+    typedef ::legion_semantic_tag_t SemanticTag;
     typedef ::legion_variant_id_t VariantID;
     typedef ::legion_unique_id_t UniqueID;
     typedef ::legion_version_id_t VersionID;

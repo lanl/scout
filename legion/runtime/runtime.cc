@@ -1663,12 +1663,11 @@ namespace LegionRuntime {
 
     //--------------------------------------------------------------------------
     ProcessorManager::ProcessorManager(Processor proc, Processor::Kind kind,
-                                       Runtime *rt, unsigned min_out,
-                                       unsigned width, unsigned def_mappers,
-                                       bool no_steal, unsigned max_steals)
+                                       Runtime *rt, unsigned width, 
+                                       unsigned def_mappers, bool no_steal, 
+                                       unsigned max_steals)
       : runtime(rt), local_proc(proc), proc_kind(kind), 
-        utility_proc(rt->find_utility_group()),
-        superscalar_width(width), min_outstanding(min_out), 
+        utility_proc(rt->find_utility_group()), superscalar_width(width), 
         stealing_disabled(no_steal), max_outstanding_steals(max_steals),
         next_local_index(0),
         task_scheduler_enabled(false), pending_shutdown(false),
@@ -1701,8 +1700,8 @@ namespace LegionRuntime {
     ProcessorManager::ProcessorManager(const ProcessorManager &rhs)
       : runtime(NULL), local_proc(Processor::NO_PROC),
         proc_kind(Processor::LOC_PROC), utility_proc(Processor::NO_PROC),
-        superscalar_width(0), min_outstanding(0), 
-        stealing_disabled(false), max_outstanding_steals(0),next_local_index(0),
+        superscalar_width(0), stealing_disabled(false), 
+        max_outstanding_steals(0), next_local_index(0),
         task_scheduler_enabled(false), pending_shutdown(false),
         total_active_contexts(0)
     //--------------------------------------------------------------------------
@@ -2079,6 +2078,31 @@ namespace LegionRuntime {
       if (!messages.empty())
         send_mapper_messages(op->map_id, messages);
       return result;
+    }
+
+    //--------------------------------------------------------------------------
+    void ProcessorManager::invoke_mapper_configure_context(TaskOp *task)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(task->map_id < mapper_objects.size());
+      assert(mapper_objects[task->map_id] != NULL);
+#endif
+      std::vector<MapperMessage> messages;
+      {
+        AutoLock m_lock(mapper_locks[task->map_id]);
+        inside_mapper_call[task->map_id] = true;
+        mapper_objects[task->map_id]->configure_context(task);
+        AutoLock g_lock(message_lock);
+        inside_mapper_call[task->map_id] = false;
+        if (!mapper_messages[task->map_id].empty())
+        {
+          messages = mapper_messages[task->map_id];
+          mapper_messages[task->map_id].clear();
+        }
+      }
+      if (!messages.empty())
+        send_mapper_messages(task->map_id, messages);
     }
 
     //--------------------------------------------------------------------------
@@ -3571,6 +3595,54 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void MessageManager::send_index_space_semantic_info(Serializer &rez, 
+                                                        bool flush)
+    //--------------------------------------------------------------------------
+    {
+      package_message(rez, SEND_INDEX_SPACE_SEMANTIC_INFO, flush);
+    }
+
+    //--------------------------------------------------------------------------
+    void MessageManager::send_index_partition_semantic_info(Serializer &rez, 
+                                                            bool flush)
+    //--------------------------------------------------------------------------
+    {
+      package_message(rez, SEND_INDEX_PARTITION_SEMANTIC_INFO, flush);
+    }
+
+    //--------------------------------------------------------------------------
+    void MessageManager::send_field_space_semantic_info(Serializer &rez, 
+                                                        bool flush)
+    //--------------------------------------------------------------------------
+    {
+      package_message(rez, SEND_FIELD_SPACE_SEMANTIC_INFO, flush);
+    }
+
+    //--------------------------------------------------------------------------
+    void MessageManager::send_field_semantic_info(Serializer &rez, 
+                                                  bool flush)
+    //--------------------------------------------------------------------------
+    {
+      package_message(rez, SEND_FIELD_SEMANTIC_INFO, flush);
+    }
+
+    //--------------------------------------------------------------------------
+    void MessageManager::send_logical_region_semantic_info(Serializer &rez, 
+                                                           bool flush)
+    //--------------------------------------------------------------------------
+    {
+      package_message(rez, SEND_LOGICAL_REGION_SEMANTIC_INFO, flush);
+    }
+
+    //--------------------------------------------------------------------------
+    void MessageManager::send_logical_partition_semantic_info(Serializer &rez, 
+                                                              bool flush)
+    //--------------------------------------------------------------------------
+    {
+      package_message(rez, SEND_LOGICAL_PARTITION_SEMANTIC_INFO, flush);
+    }
+
+    //--------------------------------------------------------------------------
     void MessageManager::package_message(Serializer &rez, MessageKind k,
                                          bool flush)
     //--------------------------------------------------------------------------
@@ -4011,6 +4083,36 @@ namespace LegionRuntime {
               runtime->handle_mapper_message(derez);
               break;
             }
+          case SEND_INDEX_SPACE_SEMANTIC_INFO:
+            {
+              runtime->handle_index_space_semantic_info(derez);
+              break;
+            }
+          case SEND_INDEX_PARTITION_SEMANTIC_INFO:
+            {
+              runtime->handle_index_partition_semantic_info(derez);
+              break;
+            }
+          case SEND_FIELD_SPACE_SEMANTIC_INFO:
+            {
+              runtime->handle_field_space_semantic_info(derez);
+              break;
+            }
+          case SEND_FIELD_SEMANTIC_INFO:
+            {
+              runtime->handle_field_semantic_info(derez);
+              break;
+            }
+          case SEND_LOGICAL_REGION_SEMANTIC_INFO:
+            {
+              runtime->handle_logical_region_semantic_info(derez);
+              break;
+            }
+          case SEND_LOGICAL_PARTITION_SEMANTIC_INFO:
+            {
+              runtime->handle_logical_partition_semantic_info(derez);
+              break;
+            }
           default:
             assert(false); // should never get here
         }
@@ -4192,6 +4294,7 @@ namespace LegionRuntime {
         map_op_lock(Reservation::create_reservation()), 
         copy_op_lock(Reservation::create_reservation()), 
         fence_op_lock(Reservation::create_reservation()),
+        frame_op_lock(Reservation::create_reservation()),
         deletion_op_lock(Reservation::create_reservation()), 
         close_op_lock(Reservation::create_reservation()), 
         future_pred_op_lock(Reservation::create_reservation()), 
@@ -4303,8 +4406,7 @@ namespace LegionRuntime {
         assert(machine->get_processor_kind(*it) != Processor::UTIL_PROC);
 #endif
         ProcessorManager *manager = new ProcessorManager(*it,
-                                    machine->get_processor_kind(*it),
-                                    this, min_tasks_to_schedule,
+                                    machine->get_processor_kind(*it), this,
                                     superscalar_width,
                                     DEFAULT_MAPPER_SLOTS, 
                                     stealing_disabled,
@@ -4437,10 +4539,16 @@ namespace LegionRuntime {
       {
         delete it->second;
       }
+      for (std::map<ProjectionID,ProjectionFunctor*>::const_iterator it = 
+            projection_functors.begin(); it != projection_functors.end(); it++)
+      {
+        delete it->second;
+      }
       memory_manager_lock.destroy_reservation();
       memory_manager_lock = Reservation::NO_RESERVATION;
       memory_managers.clear();
       message_managers.clear();
+      projection_functors.clear();
       mapper_info_lock.destroy_reservation();
       mapper_info_lock = Reservation::NO_RESERVATION;
       available_lock.destroy_reservation();
@@ -4540,6 +4648,15 @@ namespace LegionRuntime {
       available_fence_ops.clear();
       fence_op_lock.destroy_reservation();
       fence_op_lock = Reservation::NO_RESERVATION;
+      for (std::deque<FrameOp*>::const_iterator it = 
+            available_frame_ops.begin(); it !=
+            available_frame_ops.end(); it++)
+      {
+        delete *it;
+      }
+      available_frame_ops.clear();
+      frame_op_lock.destroy_reservation();
+      frame_op_lock = Reservation::NO_RESERVATION;
       for (std::deque<DeletionOp*>::const_iterator it = 
             available_deletion_ops.begin(); it != 
             available_deletion_ops.end(); it++)
@@ -4748,6 +4865,7 @@ namespace LegionRuntime {
         assert(proc_managers.find(proc) != proc_managers.end());
 #endif
         proc_managers[proc]->invoke_mapper_set_task_options(top_task);
+        invoke_mapper_configure_context(proc, top_task);
 #ifdef LEGION_LOGGING
         LegionLogging::log_top_level_task(Runtime::legion_main_id,
                                           top_task->get_unique_task_id());
@@ -4839,10 +4957,16 @@ namespace LegionRuntime {
     {
       IndexSpace space = IndexSpace::create_index_space(max_num_elmts);
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create index space!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_index(LEVEL_DEBUG,"Creating index space " IDFMT " in task %s "
                             "(ID %lld) with %ld maximum elements", space.id, 
                             ctx->variants->name, ctx->get_unique_task_id(), 
-                            max_num_elmts);
+                            max_num_elmts); 
       if (ctx->is_leaf())
       {
         log_task(LEVEL_ERROR,"Illegal index space creation performed in "
@@ -4874,6 +4998,12 @@ namespace LegionRuntime {
       // Make a dummy index space that will be associated with the domain
       IndexSpace space = domain.get_index_space(true/*create if needed*/);
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create index space!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_index(LEVEL_DEBUG,"Creating dummy index space " IDFMT " in task %s "
                             "(ID %lld) for domain", 
                             space.id, ctx->variants->name,
@@ -4908,6 +5038,12 @@ namespace LegionRuntime {
       Domain hull = *(domains.begin());
 #ifdef DEBUG_HIGH_LEVEL
       assert(!domains.empty());
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create index space!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       if (ctx->is_leaf())
       {
         log_task(LEVEL_ERROR,"Illegal index space creation performed in "
@@ -5007,6 +5143,12 @@ namespace LegionRuntime {
       if (!handle.exists())
         return;
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context destroy index space!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_index(LEVEL_DEBUG, "Destroying index space " IDFMT " in task %s "
                              "(ID %lld)", 
                       handle.id, ctx->variants->name, 
@@ -5056,6 +5198,12 @@ namespace LegionRuntime {
       IndexPartition pid = get_unique_partition_id();
 #ifdef DEBUG_HIGH_LEVEL
       assert(pid > 0);
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context finalize index space!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_index(LEVEL_DEBUG,"Creating index partition %d with parent index "
                             "space " IDFMT " in task %s (ID %lld)", 
                             pid, parent.id,
@@ -5225,6 +5373,12 @@ namespace LegionRuntime {
       IndexPartition pid = get_unique_partition_id();
 #ifdef DEBUG_HIGH_LEVEL
       assert(pid > 0);
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create index partition!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_index(LEVEL_DEBUG,"Creating index partition %d with parent index "
                             "space " IDFMT " in task %s (ID %lld)", 
                             pid, parent.id,
@@ -5332,6 +5486,12 @@ namespace LegionRuntime {
       IndexPartition pid = get_unique_partition_id();
 #ifdef DEBUG_HIGH_LEVEL
       assert(pid > 0);
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create index partition!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_index(LEVEL_DEBUG,"Creating index partition %d with parent index "
                             "space " IDFMT " in task %s (ID %lld)", 
                             pid, parent.id,
@@ -5502,6 +5662,12 @@ namespace LegionRuntime {
       IndexPartition pid = get_unique_partition_id();
 #ifdef DEBUG_HIGH_LEVEL
       assert(pid > 0);
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create index partition!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_index(LEVEL_DEBUG,"Creating index partition %d with parent index "
                             "space " IDFMT " in task %s (ID %lld)", 
                             pid, parent.id,
@@ -5599,6 +5765,12 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context destroy index partition!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_index(LEVEL_DEBUG, "Destroying index partition %x in task %s "
                              "(ID %lld)", 
                         handle, ctx->variants->name, ctx->get_unique_task_id());
@@ -5641,7 +5813,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subspace(parent, "get_index_partition");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_index_subspace(parent, "get_index_partition");
 #endif
       IndexPartition result = forest->get_index_partition(parent, color);
 #ifdef DEBUG_HIGH_LEVEL
@@ -5669,7 +5842,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subpartition(p, "get_index_subspace");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_index_subpartition(p, "get_index_subspace");
 #endif
       IndexSpace result = forest->get_index_subspace(p, color);
 #ifdef DEBUG_HIGH_LEVEL
@@ -5696,7 +5870,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subspace(handle, "has_multiple_domains");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_index_subspace(handle, "has_multiple_domains");
 #endif
       return forest->has_multiple_domains(handle);
     }
@@ -5713,7 +5888,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subspace(handle, "get_index_space_domain");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_index_subspace(handle, "get_index_space_domain");
 #endif
       Domain result = forest->get_index_space_domain(handle);
 #ifdef DEBUG_HIGH_LEVEL
@@ -5742,7 +5918,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subspace(handle, "get_index_space_domains");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_index_subspace(handle, "get_index_space_domains");
 #endif
       forest->get_index_space_domains(handle, domains);
     }
@@ -5761,7 +5938,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subpartition(p, "get_index_partition_color_space");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_index_subpartition(p, "get_index_partition_color_space");
 #endif
       Domain result = forest->get_index_partition_color_space(p);
 #ifdef DEBUG_HIGH_LEVEL
@@ -5789,7 +5967,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subspace(sp, "get_index_space_partition_colors");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_index_subspace(sp, "get_index_space_partition_colors");
 #endif
       forest->get_index_space_partition_colors(sp, colors);
     }
@@ -5807,7 +5986,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subpartition(p, "is_index_partition_disjoint");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_index_subpartition(p, "is_index_partition_disjoint");
 #endif
       return forest->is_index_partition_disjoint(p);
     }
@@ -5824,7 +6004,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subspace(handle, "get_index_space_color");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_index_subspace(handle, "get_index_space_color");
 #endif
       return forest->get_index_space_color(handle);
     }
@@ -5842,7 +6023,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subpartition(handle, "get_index_partition_color");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_index_subpartition(handle, "get_index_partition_color");
 #endif
       return forest->get_index_partition_color(handle);
     }
@@ -5860,7 +6042,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subpartition(handle, "get_parent_index_space");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_index_subpartition(handle, "get_parent_index_space");
 #endif
       return forest->get_parent_index_space(handle);
     }
@@ -5877,7 +6060,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subspace(handle, "has_parent_index_partition");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_index_subspace(handle, "has_parent_index_partition");
 #endif
       return forest->has_parent_index_partition(handle);
     }
@@ -5895,7 +6079,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subspace(handle, "get_parent_index_partition");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_index_subspace(handle, "get_parent_index_partition");
 #endif
       return forest->get_parent_index_partition(handle);
     }
@@ -5913,7 +6098,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_logical_subregion(region, "safe_cast");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_logical_subregion(region, "safe_cast");
 #endif
       if (pointer.is_null())
         return pointer;
@@ -5931,7 +6117,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_logical_subregion(region, "safe_cast");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_logical_subregion(region, "safe_cast");
 #endif
       if (point.is_null())
         return point;
@@ -5948,6 +6135,12 @@ namespace LegionRuntime {
     {
       FieldSpace space(get_unique_field_space_id());
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create field space!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_field(LEVEL_DEBUG, "Creating field space %x in task %s (ID %lld)", 
                       space.id, ctx->variants->name,ctx->get_unique_task_id());
       if (ctx->is_leaf())
@@ -5975,6 +6168,12 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context destroy field space!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_field(LEVEL_DEBUG, "Destroying field space %x in task %s (ID %lld)", 
                     handle.id, ctx->variants->name, ctx->get_unique_task_id());
       if (ctx->is_leaf())
@@ -6008,7 +6207,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_field_space(handle, "get_field_size");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_field_space(handle, "get_field_size");
 #endif
       return forest->get_field_size(handle, fid);
     }
@@ -6050,6 +6250,12 @@ namespace LegionRuntime {
       RegionTreeID tid = get_unique_tree_id();
       LogicalRegion region(tid, index_space, field_space);
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create logical region!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_region(LEVEL_DEBUG, "Creating logical region in task %s (ID %lld) "
                               "with index space " IDFMT " and field space %x "
                               "in new tree %d",
@@ -6083,6 +6289,12 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context destroy logical region!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_region(LEVEL_DEBUG, "Deleting logical region (" IDFMT ",%x) in "
                               "task %s (ID %lld)",
                               handle.index_space.id, handle.field_space.id, 
@@ -6119,6 +6331,12 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context destroy logical partition!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_region(LEVEL_DEBUG, "Deleting logical partition (%x,%x) in task %s "
                               "(ID %lld)",
                               handle.index_partition, handle.field_space.id, 
@@ -6170,7 +6388,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_logical_subregion(parent, "get_logical_partition");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_logical_subregion(parent, "get_logical_partition");
 #endif
       return forest->get_logical_partition(parent, handle);
     }
@@ -6189,7 +6408,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_logical_subregion(parent, "get_logical_partition_by_color");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_logical_subregion(parent, "get_logical_partition_by_color");
 #endif
       return forest->get_logical_partition_by_color(parent, c);
     }
@@ -6209,8 +6429,11 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subpartition(handle, "get_logical_partition_by_tree");
-      ctx->check_field_space(fspace, "get_logical_partition_by_tree");
+      if (ctx != DUMMY_CONTEXT)
+      {
+        ctx->check_index_subpartition(handle, "get_logical_partition_by_tree");
+        ctx->check_field_space(fspace, "get_logical_partition_by_tree");
+      }
 #endif
       return forest->get_logical_partition_by_tree(handle, fspace, tid);
     }
@@ -6230,7 +6453,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_logical_subpartition(parent, "get_logical_subregion");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_logical_subpartition(parent, "get_logical_subregion");
 #endif
       return forest->get_logical_subregion(parent, handle);
     }
@@ -6249,7 +6473,9 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_logical_subpartition(parent, "get_logical_subregion_by_color");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_logical_subpartition(parent, 
+                                        "get_logical_subregion_by_color");
 #endif
       return forest->get_logical_subregion_by_color(parent, c);
     }
@@ -6268,8 +6494,11 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_index_subspace(handle, "get_logical_subregion_by_tree");
-      ctx->check_field_space(fspace, "get_logical_subregion_by_tree");
+      if (ctx != DUMMY_CONTEXT)
+      {
+        ctx->check_index_subspace(handle, "get_logical_subregion_by_tree");
+        ctx->check_field_space(fspace, "get_logical_subregion_by_tree");
+      }
 #endif
       return forest->get_logical_subregion_by_tree(handle, fspace, tid);
     }
@@ -6289,7 +6518,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_logical_subregion(handle, "get_logical_region_color");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_logical_subregion(handle, "get_logical_region_color");
 #endif
       return forest->get_logical_region_color(handle);
     }
@@ -6307,7 +6537,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_logical_subpartition(handle, "get_logical_partition_color");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_logical_subpartition(handle, "get_logical_partition_color");
 #endif
       return forest->get_logical_partition_color(handle);
     }
@@ -6325,7 +6556,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_logical_subpartition(handle, "get_parent_logical_region");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_logical_subpartition(handle, "get_parent_logical_region");
 #endif
       return forest->get_parent_logical_region(handle);
     }
@@ -6343,7 +6575,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_logical_subregion(handle, "has_parent_logical_partition");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_logical_subregion(handle, "has_parent_logical_partition");
 #endif
       return forest->has_parent_logical_partition(handle);
     }
@@ -6361,7 +6594,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      ctx->check_logical_subregion(handle, "get_parent_logical_partition");
+      if (ctx != DUMMY_CONTEXT)
+        ctx->check_logical_subregion(handle, "get_parent_logical_partition");
 #endif
       return forest->get_parent_logical_partition(handle);
     }
@@ -6379,6 +6613,12 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create index allocator!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       if (ctx->is_leaf())
       {
         log_task(LEVEL_ERROR,"Illegal create index allocation requested in "
@@ -6397,6 +6637,12 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create field allocator!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       if (ctx->is_leaf())
       {
         log_task(LEVEL_ERROR,"Illegal create field allocation requested in "
@@ -6426,6 +6672,14 @@ namespace LegionRuntime {
                                           const TaskLauncher &launcher)
     //--------------------------------------------------------------------------
     { 
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context execute task!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+#endif
       // Quick out for predicate false
       if (launcher.predicate == Predicate::FALSE_PRED)
       {
@@ -6506,6 +6760,14 @@ namespace LegionRuntime {
                                                   const IndexLauncher &launcher)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context execute index space!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+#endif
       // Quick out for predicate false
       if (launcher.predicate == Predicate::FALSE_PRED)
       {
@@ -6626,6 +6888,14 @@ namespace LegionRuntime {
                             const IndexLauncher &launcher, ReductionOpID redop)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context execute index space!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+#endif
       // Quick out for predicate false
       if (launcher.predicate == Predicate::FALSE_PRED)
       {
@@ -6716,6 +6986,12 @@ namespace LegionRuntime {
               get_available_distributed_id(), address_space, address_space));
       IndividualTask *task = get_available_individual_task();
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context execute task!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       if (ctx->is_leaf())
       {
         log_task(LEVEL_ERROR,"Illegal execute task call performed in "
@@ -6765,6 +7041,12 @@ namespace LegionRuntime {
         return FutureMap(legion_new<FutureMap::Impl>(ctx,this));
       IndexTask *task = get_available_index_task();
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context execute index space!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       if (ctx->is_leaf())
       {
         log_task(LEVEL_ERROR,"Illegal execute index space call performed in "
@@ -6820,6 +7102,12 @@ namespace LegionRuntime {
               get_available_distributed_id(), address_space, address_space));
       IndexTask *task = get_available_index_task();
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context execute index space!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       if (ctx->is_leaf())
       {
         log_task(LEVEL_ERROR,"Illegal execute index space call performed in "
@@ -7018,6 +7306,12 @@ namespace LegionRuntime {
       if (region.impl->is_mapped())
         return;
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context remap region!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       if (ctx->is_leaf())
       {
         log_task(LEVEL_ERROR,"Illegal remap operation performed in "
@@ -7044,6 +7338,12 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context unmap region!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       if (ctx->is_leaf())
       {
         log_task(LEVEL_ERROR,"Illegal unmap operation performed in "
@@ -7101,6 +7401,12 @@ namespace LegionRuntime {
     {
       CopyOp *copy_op = get_available_copy_op();  
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context issue copy operation!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       if (ctx->is_leaf())
       {
         log_task(LEVEL_ERROR,"Illegal copy operation call performed in "
@@ -7193,6 +7499,14 @@ namespace LegionRuntime {
     Predicate Runtime::create_predicate(Context ctx, const Future &f) 
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create predicate!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+#endif
       if (f.impl == NULL)
       {
         log_run(LEVEL_ERROR,"Illegal predicate creation performed on "
@@ -7239,6 +7553,14 @@ namespace LegionRuntime {
     Predicate Runtime::predicate_not(Context ctx, const Predicate &p) 
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create predicate not!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+#endif
       // Find the mapper for this predicate
       Processor proc = ctx->get_executing_processor();
 #ifdef DEBUG_HIGH_LEVEL
@@ -7276,6 +7598,14 @@ namespace LegionRuntime {
                                                   const Predicate &p2) 
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create predicate and!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+#endif
       // Find the mapper for this predicate
       Processor proc = ctx->get_executing_processor();
 #ifdef DEBUG_HIGH_LEVEL
@@ -7313,6 +7643,14 @@ namespace LegionRuntime {
                                                  const Predicate &p2)  
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create predicate or!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+#endif
       // Find the mapper for this predicate
       Processor proc = ctx->get_executing_processor();
 #ifdef DEBUG_HIGH_LEVEL
@@ -7415,6 +7753,9 @@ namespace LegionRuntime {
       // TODO: put this back in once Sean fixes barriers
       //bar.arrive();
       Barrier new_bar = bar.advance_barrier();
+#ifdef LEGION_SPY
+      LegionSpy::log_event_dependence(bar, new_bar);
+#endif
       return PhaseBarrier(new_bar, pb.participant_count());
     }
 
@@ -7424,6 +7765,12 @@ namespace LegionRuntime {
     {
       AcquireOp *acquire_op = get_available_acquire_op();
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context issue acquire!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_run(LEVEL_DEBUG,"Issuing an acquire operation in task %s (ID %lld)",
                           ctx->variants->name, ctx->get_unique_task_id());
       if (ctx->is_leaf())
@@ -7516,6 +7863,12 @@ namespace LegionRuntime {
     {
       ReleaseOp *release_op = get_available_release_op();
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context issue release!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_run(LEVEL_DEBUG,"Issuing a release operation in task %s (ID %lld)",
                           ctx->variants->name, ctx->get_unique_task_id());
       if (ctx->is_leaf())
@@ -7608,6 +7961,12 @@ namespace LegionRuntime {
     {
       FenceOp *fence_op = get_available_fence_op();
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context issue mapping fence!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_run(LEVEL_DEBUG,"Issuing a mapping fence in task %s (ID %lld)",
                           ctx->variants->name, ctx->get_unique_task_id());
       if (ctx->is_leaf())
@@ -7641,6 +8000,12 @@ namespace LegionRuntime {
     {
       FenceOp *fence_op = get_available_fence_op();
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context issue execution fence!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_run(LEVEL_DEBUG,"Issuing an execution fence in task %s (ID %lld)",
                           ctx->variants->name, ctx->get_unique_task_id());
       if (ctx->is_leaf())
@@ -7673,6 +8038,12 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context begin trace!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_run(LEVEL_DEBUG,"Beginning a trace in task %s (ID %lld)",
                           ctx->variants->name, ctx->get_unique_task_id());
       if (ctx->is_leaf())
@@ -7696,6 +8067,12 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
  #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context end trace!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_run(LEVEL_DEBUG,"Ending a trace in task %s (ID %lld)",
                           ctx->variants->name, ctx->get_unique_task_id());
       if (ctx->is_leaf())
@@ -7715,12 +8092,57 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void Runtime::issue_frame(Context ctx)
+    //--------------------------------------------------------------------------
+    {
+      FrameOp *frame_op = get_available_frame_op();
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context issue frame!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+      log_run(LEVEL_DEBUG,"Issuing a frame in task %s (ID %lld)",
+                          ctx->variants->name, ctx->get_unique_task_id());
+      if (ctx->is_leaf())
+      {
+        log_task(LEVEL_ERROR,"Illegal Legion end trace call in leaf "
+                             "task %s (ID %lld)",
+                             ctx->variants->name, ctx->get_unique_task_id());
+        assert(false);
+        exit(ERROR_LEAF_TASK_VIOLATION);
+      }
+#endif
+      frame_op->initialize(ctx);
+#ifdef INORDER_EXECUTION
+      Event term_event = frame_op->get_completion_event();
+#endif
+      add_to_dependence_queue(ctx->get_executing_processor(), frame_op);
+#ifdef INORDER_EXECUTION
+      if (program_order_execution && !term_event.has_triggered())
+      {
+        Processor proc = ctx->get_executing_processor();
+        pre_wait(proc);
+        term_event.wait();
+        post_wait(proc);
+      }
+#endif
+    }
+
+    //--------------------------------------------------------------------------
     FutureMap Runtime::execute_must_epoch(Context ctx, 
                                           const MustEpochLauncher &launcher)
     //--------------------------------------------------------------------------
     {
       MustEpochOp *epoch_op = get_available_epoch_op();
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context issue must epoch!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       log_run(LEVEL_DEBUG,"Executing a must epoch in task %s (ID %lld)",
                           ctx->variants->name, ctx->get_unique_task_id());
       if (ctx->is_leaf())
@@ -7937,12 +8359,194 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void Runtime::register_projection_functor(ProjectionID pid,
+                                              ProjectionFunctor *functor)
+    //--------------------------------------------------------------------------
+    {
+      if (pid == 0)
+      {
+        log_run(LEVEL_ERROR,"ERROR: ProjectionID zero is reserved.\n");
+#ifdef DEBUG_HIGH_LEVEl
+        assert(false);
+#endif
+        exit(ERROR_RESERVED_PROJECTION_ID);
+      }
+      // No need for a lock because these all need to be reserved at
+      // registration time before the runtime starts up
+      std::map<ProjectionID,ProjectionFunctor*>::const_iterator finder = 
+        projection_functors.find(pid);
+      if (finder != projection_functors.end())
+      {
+        log_run(LEVEL_ERROR,"ERROR: ProjectionID %d has already been used in "
+                                    "the region projection table\n", pid);
+#ifdef DEBUG_HIGH_LEVEl
+        assert(false);
+#endif
+        exit(ERROR_DUPLICATE_PROJECTION_ID);
+      }
+      projection_functors[pid] = functor;
+    }
+
+    //--------------------------------------------------------------------------
+    ProjectionFunctor* Runtime::find_projection_functor(ProjectionID pid)
+    //--------------------------------------------------------------------------
+    {
+      std::map<ProjectionID,ProjectionFunctor*>::const_iterator finder = 
+        projection_functors.find(pid);
+      if (finder == projection_functors.end())
+      {
+        log_run(LEVEL_WARNING,"Unable to find registered region projection "
+                              "ID %d. Please upgrade to using projection "
+                              "functors!", pid);
+        // Uncomment this once we deprecate the old projection functions
+#ifdef DEBUG_HIGH_LEVEL
+        //assert(false);
+#endif
+        //exit(ERROR_INVALID_PROJECTION_ID);
+        return NULL;
+      }
+      return finder->second;
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::attach_semantic_information(IndexSpace handle, 
+                                              SemanticTag tag,
+                                              const void *buffer, size_t size)
+    //--------------------------------------------------------------------------
+    {
+      NodeMask mask;
+      mask.set_bit(address_space);
+      forest->attach_semantic_information(handle, tag, mask, buffer, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::attach_semantic_information(IndexPartition handle, 
+                                              SemanticTag tag,
+                                              const void *buffer, size_t size)
+    //--------------------------------------------------------------------------
+    {
+      NodeMask mask;
+      mask.set_bit(address_space);
+      forest->attach_semantic_information(handle, tag, mask, buffer, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::attach_semantic_information(FieldSpace handle, 
+                                              SemanticTag tag,
+                                              const void *buffer, size_t size)
+    //--------------------------------------------------------------------------
+    {
+      NodeMask mask;
+      mask.set_bit(address_space);
+      forest->attach_semantic_information(handle, tag, mask, buffer, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::attach_semantic_information(FieldSpace handle, FieldID fid,
+                                              SemanticTag tag,
+                                              const void *buffer, size_t size)
+    //--------------------------------------------------------------------------
+    {
+      NodeMask mask;
+      mask.set_bit(address_space);
+      forest->attach_semantic_information(handle, fid, tag, mask, buffer, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::attach_semantic_information(LogicalRegion handle, 
+                                              SemanticTag tag,
+                                              const void *buffer, size_t size)
+    //--------------------------------------------------------------------------
+    {
+      NodeMask mask;
+      mask.set_bit(address_space);
+      forest->attach_semantic_information(handle, tag, mask, buffer, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::attach_semantic_information(LogicalPartition handle, 
+                                              SemanticTag tag,
+                                              const void *buffer, size_t size)
+    //--------------------------------------------------------------------------
+    {
+      NodeMask mask;
+      mask.set_bit(address_space);
+      forest->attach_semantic_information(handle, tag, mask, buffer, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::retrieve_semantic_information(IndexSpace handle,
+                                                SemanticTag tag,
+                                                const void *&result, 
+                                                size_t &size)
+    //--------------------------------------------------------------------------
+    {
+      forest->retrieve_semantic_information(handle, tag, result, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::retrieve_semantic_information(IndexPartition handle,
+                                                SemanticTag tag,
+                                                const void *&result, 
+                                                size_t &size)
+    //--------------------------------------------------------------------------
+    {
+      forest->retrieve_semantic_information(handle, tag, result, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::retrieve_semantic_information(FieldSpace handle,
+                                                SemanticTag tag,
+                                                const void *&result, 
+                                                size_t &size)
+    //--------------------------------------------------------------------------
+    {
+      forest->retrieve_semantic_information(handle, tag, result, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::retrieve_semantic_information(FieldSpace handle, FieldID fid,
+                                                SemanticTag tag,
+                                                const void *&result, 
+                                                size_t &size)
+    //--------------------------------------------------------------------------
+    {
+      forest->retrieve_semantic_information(handle, fid, tag, result, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::retrieve_semantic_information(LogicalRegion handle,
+                                                SemanticTag tag,
+                                                const void *&result, 
+                                                size_t &size)
+    //--------------------------------------------------------------------------
+    {
+      forest->retrieve_semantic_information(handle, tag, result, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::retrieve_semantic_information(LogicalPartition handle,
+                                                SemanticTag tag,
+                                                const void *&result, 
+                                                size_t &size)
+    //--------------------------------------------------------------------------
+    {
+      forest->retrieve_semantic_information(handle, tag, result, size);
+    }
+
+    //--------------------------------------------------------------------------
     FieldID Runtime::allocate_field(Context ctx, FieldSpace space,
                                           size_t field_size, FieldID fid,
                                           bool local)
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context allocate field!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       if (ctx->is_leaf() && !local)
       {
         log_task(LEVEL_ERROR,"Illegal non-local field allocation performed "
@@ -7976,6 +8580,12 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context free field!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       if (ctx->is_leaf())
       {
         log_task(LEVEL_ERROR,"Illegal field destruction performed in "
@@ -8010,6 +8620,12 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context allocate fields!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       if (ctx->is_leaf() && !local)
       {
         log_task(LEVEL_ERROR,"Illegal non-local field allocation performed "
@@ -8049,6 +8665,12 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context free fields!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
       if (ctx->is_leaf())
       {
         log_task(LEVEL_ERROR,"Illegal field destruction performed in "
@@ -8808,6 +9430,57 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void Runtime::send_index_space_semantic_info(AddressSpaceID target,
+                                                 Serializer &rez)
+    //--------------------------------------------------------------------------
+    {
+      find_messenger(target)->send_index_space_semantic_info(rez,true/*flush*/);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::send_index_partition_semantic_info(AddressSpaceID target,
+                                                     Serializer &rez)
+    //--------------------------------------------------------------------------
+    {
+      find_messenger(target)->send_index_partition_semantic_info(rez,
+                                                                 true/*flush*/);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::send_field_space_semantic_info(AddressSpaceID target,
+                                                 Serializer &rez)
+    //--------------------------------------------------------------------------
+    {
+      find_messenger(target)->send_field_space_semantic_info(rez,true/*flush*/);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::send_field_semantic_info(AddressSpaceID target,
+                                                 Serializer &rez)
+    //--------------------------------------------------------------------------
+    {
+      find_messenger(target)->send_field_semantic_info(rez, true/*flush*/);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::send_logical_region_semantic_info(AddressSpaceID target,
+                                                    Serializer &rez)
+    //--------------------------------------------------------------------------
+    {
+      find_messenger(target)->send_logical_region_semantic_info(rez,
+                                                                true/*flush*/);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::send_logical_partition_semantic_info(AddressSpaceID target,
+                                                       Serializer &rez)
+    //--------------------------------------------------------------------------
+    {
+      find_messenger(target)->send_logical_partition_semantic_info(rez,
+                                                                 true/*flush*/);
+    }
+
+    //--------------------------------------------------------------------------
     void Runtime::handle_task(Deserializer &derez)
     //--------------------------------------------------------------------------
     {
@@ -9267,6 +9940,48 @@ namespace LegionRuntime {
       invoke_mapper_handle_message(target, map_id, source, message, length);
     }
 
+    //--------------------------------------------------------------------------
+    void Runtime::handle_index_space_semantic_info(Deserializer &derez)
+    //--------------------------------------------------------------------------
+    {
+      IndexSpaceNode::handle_semantic_info(forest, derez);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::handle_index_partition_semantic_info(Deserializer &derez)
+    //--------------------------------------------------------------------------
+    {
+      IndexPartNode::handle_semantic_info(forest, derez);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::handle_field_space_semantic_info(Deserializer &derez)
+    //--------------------------------------------------------------------------
+    {
+      FieldSpaceNode::handle_semantic_info(forest, derez);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::handle_field_semantic_info(Deserializer &derez)
+    //--------------------------------------------------------------------------
+    {
+      FieldSpaceNode::handle_field_semantic_info(forest, derez);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::handle_logical_region_semantic_info(Deserializer &derez)
+    //--------------------------------------------------------------------------
+    {
+      RegionNode::handle_semantic_info(forest, derez);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::handle_logical_partition_semantic_info(Deserializer &derez)
+    //--------------------------------------------------------------------------
+    {
+      PartitionNode::handle_semantic_info(forest, derez);
+    }
+
 #ifdef SPECIALIZED_UTIL_PROCS
     //--------------------------------------------------------------------------
     Processor Runtime::get_cleanup_proc(Processor p) const
@@ -9619,6 +10334,22 @@ namespace LegionRuntime {
       assert(proc_managers.find(proc) != proc_managers.end());
 #endif
       return proc_managers[proc]->invoke_mapper_speculate(mappable, value);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::invoke_mapper_configure_context(Processor proc, TaskOp *task)
+    //--------------------------------------------------------------------------
+    {
+ #ifdef DEBUG_HIGH_LEVEL
+      assert(proc_managers.find(proc) != proc_managers.end());
+#endif     
+      // Values are initialized in SingleTask::activate_single
+      proc_managers[proc]->invoke_mapper_configure_context(task);
+      // Should only be using one of these at a time
+      // Frames are the less common case so if we see them then use them
+      if ((task->max_outstanding_frames > 0) && 
+          (task->max_window_size > 0))
+        task->max_window_size = -1;
     }
 
     //--------------------------------------------------------------------------
@@ -10309,6 +11040,28 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    FrameOp* Runtime::get_available_frame_op(void)
+    //--------------------------------------------------------------------------
+    {
+      FrameOp *result = NULL;
+      {
+        AutoLock f_lock(frame_op_lock);
+        if (!available_frame_ops.empty())
+        {
+          result = available_frame_ops.front();
+          available_frame_ops.pop_front();
+        }
+      }
+      if (result == NULL)
+        result = legion_new<FrameOp>(this);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(result != NULL);
+#endif
+      result->activate();
+      return result;
+    }
+
+    //--------------------------------------------------------------------------
     DeletionOp* Runtime::get_available_deletion_op(void)
     //--------------------------------------------------------------------------
     {
@@ -10647,6 +11400,14 @@ namespace LegionRuntime {
     {
       AutoLock f_lock(fence_op_lock);
       available_fence_ops.push_front(op);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::free_frame_op(FrameOp *op)
+    //--------------------------------------------------------------------------
+    {
+      AutoLock f_lock(frame_op_lock);
+      available_frame_ops.push_back(op);
     }
 
     //--------------------------------------------------------------------------
@@ -11153,6 +11914,8 @@ namespace LegionRuntime {
           return "Task Local Fields";
         case TASK_INLINE_ALLOC:
           return "Task Inline Tasks";
+        case SEMANTIC_INFO_ALLOC:
+          return "Semantic Information";
         default:
           assert(false); // should never get here
       }
@@ -11401,9 +12164,11 @@ namespace LegionRuntime {
     /*static*/ Processor::TaskFuncID Runtime::legion_main_id = 0;
     /*static*/ const long long Runtime::init_time = 
                                       TimeStamp::get_current_time_in_micros();
-    /*static*/ unsigned Runtime::max_task_window_per_context = 
+    /*static*/ int Runtime::initial_task_window_size = 
                                       DEFAULT_MAX_TASK_WINDOW;
-    /*static*/ unsigned Runtime::min_tasks_to_schedule = 
+    /*static*/ unsigned Runtime::initial_task_window_hysteresis =
+                                      DEFAULT_TASK_WINDOW_HYSTERESIS;
+    /*static*/ unsigned Runtime::initial_tasks_to_schedule = 
                                       DEFAULT_MIN_TASKS_TO_SCHEDULE;
     /*static*/ unsigned Runtime::superscalar_width = 
                                       DEFAULT_SUPERSCALAR_WIDTH;
@@ -11509,8 +12274,9 @@ namespace LegionRuntime {
         separate_runtime_instances = false;
         stealing_disabled = false;
         resilient_mode = false;
-        max_task_window_per_context = DEFAULT_MAX_TASK_WINDOW;
-        min_tasks_to_schedule = DEFAULT_MIN_TASKS_TO_SCHEDULE;
+        initial_task_window_size = DEFAULT_MAX_TASK_WINDOW;
+        initial_task_window_hysteresis = DEFAULT_TASK_WINDOW_HYSTERESIS;
+        initial_tasks_to_schedule = DEFAULT_MIN_TASKS_TO_SCHEDULE;
         superscalar_width = DEFAULT_SUPERSCALAR_WIDTH;
         max_message_size = DEFAULT_MAX_MESSAGE_SIZE;
         max_filter_size = DEFAULT_MAX_FILTER_SIZE;
@@ -11543,8 +12309,9 @@ namespace LegionRuntime {
           if (!strcmp(argv[i],"-hl:outorder"))
             program_order_execution = false;
 #endif
-          INT_ARG("-hl:window", max_task_window_per_context);
-          INT_ARG("-hl:sched", min_tasks_to_schedule);
+          INT_ARG("-hl:window", initial_task_window_size);
+          INT_ARG("-hl:hysteresis", initial_task_window_hysteresis);
+          INT_ARG("-hl:sched", initial_tasks_to_schedule);
           INT_ARG("-hl:width", superscalar_width);
           INT_ARG("-hl:message",max_message_size);
           INT_ARG("-hl:filter", max_filter_size);
@@ -11592,7 +12359,7 @@ namespace LegionRuntime {
 #undef INT_ARG
 #undef BOOL_ARG
 #ifdef DEBUG_HIGH_LEVEL
-        assert(max_task_window_per_context > 0);
+        assert(initial_task_window_hysteresis <= 100);
 #endif
       }
       // Now we can set out input args
