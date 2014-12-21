@@ -61,6 +61,8 @@
 
 #include "legion.h"
 
+#define np(MSG) printf(MSG "\n")
+
 using namespace std;
 using namespace LegionRuntime;
 using namespace LegionRuntime::HighLevel;
@@ -168,7 +170,7 @@ namespace{
         if(count == 0){
           continue;
         }
-
+        
         legion_rect_1d_t rect;
         rect.lo = {0};
         rect.hi = {int(count) - 1};
@@ -190,6 +192,12 @@ namespace{
                                                 fieldKindSize(field.fieldKind),
                                                 field.fieldId);
         }
+
+        element.logicalRegion =
+          legion_logical_region_create(runtime_,
+                                       context_,
+                                       element.indexSpace,
+                                       element.fieldSpace);
       }
     }
 
@@ -312,7 +320,7 @@ namespace{
         : mode_(0){}
 
       void addField(const Mesh::Field& field, legion_privilege_mode_t mode){
-        fields_.push_back(&field);
+        fields_.push_back(field);
 
         switch(mode){
         case READ_ONLY:
@@ -352,9 +360,9 @@ namespace{
         for(auto f : fields_){
           MeshFieldInfo* info = (MeshFieldInfo*)args;
           info->region = region;
-          info->fieldKind = f->fieldKind;
+          info->fieldKind = f.fieldKind;
           info->count = count;
-          info->fieldId = f->fieldId;
+          info->fieldId = f.fieldId;
           args += sizeof(MeshFieldInfo);
         }
 
@@ -362,15 +370,23 @@ namespace{
         return args;
       }
 
+      
       void addFieldsToIndexLauncher(legion_index_launcher_t launcher,
-                                    unsigned& idx) const{
-        for(auto f : fields_){
-          legion_index_launcher_add_field(launcher, idx++, f->fieldId, true);
+                                    unsigned region) const{
+        for(auto& f : fields_){
+          legion_index_launcher_add_field(launcher, region, f.fieldId, true);
+        } 
+      }
+
+      void addFieldsToTaskLauncher(legion_task_launcher_t launcher,
+                                   unsigned region) const{
+        for(auto& f : fields_){
+          legion_task_launcher_add_field(launcher, region, f.fieldId, true);
         } 
       }
 
     private:
-      typedef vector<const Mesh::Field*> Fields_;
+      typedef vector<Mesh::Field> Fields_;
 
       Fields_ fields_;
       uint8_t mode_;
@@ -414,9 +430,14 @@ namespace{
       }
       
       legion_task_argument_t taskArg = {args, argsLen};
-      
-      legion_argument_map_t map = {new ArgumentMap};
 
+      /*
+      ArgumentMap argMap;
+
+      legion_argument_map_t map = {new ArgumentMap};
+      */      
+
+      /*
       legion_index_launcher_t launcher =
         legion_index_launcher_create(taskId_,
                                      domain,
@@ -426,8 +447,14 @@ namespace{
                                      false,
                                      0,
                                      0);
+      */
 
-      unsigned fieldIdx = 0;
+      legion_task_launcher_t launcher =
+        legion_task_launcher_create(taskId_,
+                                    taskArg,
+                                    legion_predicate_true(),
+                                    0,
+                                    0);
 
       for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
 
@@ -440,6 +467,7 @@ namespace{
         const Mesh::Element& element = 
           mesh_->getElement(sclegion_element_kind_t(i));
 
+        /*
         legion_index_launcher_add_region_requirement_logical_region(
           launcher,
           element.logicalRegion,
@@ -449,11 +477,26 @@ namespace{
           element.logicalRegion,
           0,
           false);
+        */
 
-        region.addFieldsToIndexLauncher(launcher, fieldIdx);
+        legion_task_launcher_add_region_requirement_logical_region(
+          launcher,
+          element.logicalRegion,
+          region.legionMode(),
+          EXCLUSIVE,
+          element.logicalRegion,
+          0,
+          false);
+
+        //region.addFieldsToIndexLauncher(launcher, i);
+        region.addFieldsToTaskLauncher(launcher, i);
       }
-
+      
+      /*
       legion_index_launcher_execute(runtime, context, launcher);
+      */
+
+      legion_task_launcher_execute(runtime, context, launcher);
     }
 
   private:
