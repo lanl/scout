@@ -85,12 +85,15 @@ void top_level_task(const Task *task,
   Rect<1> elem_rect(Point<1>(0),Point<1>(num_elements-1));
   IndexSpace is = runtime->create_index_space(ctx,
                           Domain::from_rect<1>(elem_rect));
+  runtime->attach_name(is, "is");
   
   FieldSpace ghost_fs = runtime->create_field_space(ctx);
+  runtime->attach_name(ghost_fs, "ghost_fs");
   {
     FieldAllocator allocator = 
       runtime->create_field_allocator(ctx, ghost_fs);
     allocator.allocate_field(sizeof(double),FID_GHOST);
+    runtime->attach_name(ghost_fs, FID_GHOST, "GHOST");
   }
 
   Rect<1> color_bounds(Point<1>(0),Point<1>(num_subregions-1));
@@ -115,15 +118,19 @@ void top_level_task(const Task *task,
     disjoint_ip = runtime->create_index_partition(ctx, is, color_domain,
                                     disjoint_coloring, true/*disjoint*/);
   }
+  runtime->attach_name(disjoint_ip, "disjoint_ip");
   // Now iterate over each of the sub-regions and make the ghost partitions
   Rect<1> ghost_bounds(Point<1>((int)GHOST_LEFT),Point<1>((int)GHOST_RIGHT));
   Domain ghost_domain = Domain::from_rect<1>(ghost_bounds);
   std::vector<LogicalRegion> ghost_left;
   std::vector<LogicalRegion> ghost_right;
+  char buf[32]; const char* parts[2] = {"L", "R"};
   for (int color = 0; color < num_subregions; color++)
   {
     // Get each of the subspaces
     IndexSpace subspace = runtime->get_index_subspace(ctx, disjoint_ip, color);
+    sprintf(buf, "disjoint_subspace_%d", color);
+    runtime->attach_name(subspace, buf);
     Domain dom = runtime->get_index_space_domain(ctx, subspace);
     Rect<1> rect = dom.get_rect<1>(); 
     // Make two sub-regions, one on the left, and one on the right
@@ -135,12 +142,16 @@ void top_level_task(const Task *task,
     IndexPartition ghost_ip =
       runtime->create_index_partition(ctx, subspace, ghost_domain,
                                       ghost_coloring, true/*disjoint*/);
+    sprintf(buf, "ghost_ip_%d", color);
+    runtime->attach_name(ghost_ip, buf);
     // Make explicit logical regions for each of the ghost spaces
     for (int idx = GHOST_LEFT; idx <= GHOST_RIGHT; idx++)
     {
       IndexSpace ghost_space = runtime->get_index_subspace(ctx, ghost_ip, idx);
       LogicalRegion ghost_lr = 
         runtime->create_logical_region(ctx, ghost_space, ghost_fs);  
+      sprintf(buf, "ghost_lr_%d_%s", color, parts[idx]);
+      runtime->attach_name(ghost_lr, buf);
       if (idx == GHOST_LEFT)
         ghost_left.push_back(ghost_lr);
       else
@@ -286,15 +297,22 @@ void spmd_task(const Task *task,
   FieldSpace local_fs;
   LogicalRegion local_lr;
   {
+    char buf[16];
     IndexSpace ghost_is = task->regions[0].region.get_index_space(); 
     IndexPartition ghost_ip = runtime->get_parent_index_partition(ctx, ghost_is);
     IndexSpace local_is = runtime->get_parent_index_space(ctx, ghost_ip);
     local_fs = runtime->create_field_space(ctx);
+    sprintf(buf, "local_fs_%d", task->index_point.get_index());
+    runtime->attach_name(local_fs, buf);
     FieldAllocator allocator = 
       runtime->create_field_allocator(ctx, local_fs);
     allocator.allocate_field(sizeof(double),FID_VAL);
+    runtime->attach_name(local_fs, FID_VAL, "VAL");
     allocator.allocate_field(sizeof(double),FID_DERIV);
+    runtime->attach_name(local_fs, FID_DERIV, "DERIV");
     local_lr = runtime->create_logical_region(ctx, local_is, local_fs);
+    sprintf(buf, "local_lr_%d", task->index_point.get_index());
+    runtime->attach_name(local_lr, buf);
   }
   // Run a bunch of steps
   for (int s = 0; s < args->num_steps; s++)

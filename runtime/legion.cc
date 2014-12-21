@@ -2744,6 +2744,13 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void HighLevelRuntime::issue_frame(Context ctx)
+    //--------------------------------------------------------------------------
+    {
+      runtime->issue_frame(ctx);
+    }
+
+    //--------------------------------------------------------------------------
     FutureMap HighLevelRuntime::execute_must_epoch(Context ctx,
                                               const MustEpochLauncher &launcher)
     //--------------------------------------------------------------------------
@@ -2813,6 +2820,252 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       runtime->replace_default_mapper(mapper, proc);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::register_projection_functor(ProjectionID pid,
+                                                       ProjectionFunctor *func)
+    //--------------------------------------------------------------------------
+    {
+      runtime->register_projection_functor(pid, func);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::attach_semantic_information(IndexSpace handle,
+                                                       SemanticTag tag,
+                                                       const void *buffer,
+                                                       size_t size)
+    //--------------------------------------------------------------------------
+    {
+      runtime->attach_semantic_information(handle, tag, buffer, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::attach_semantic_information(IndexPartition handle,
+                                                       SemanticTag tag,
+                                                       const void *buffer,
+                                                       size_t size)
+    //--------------------------------------------------------------------------
+    {
+      runtime->attach_semantic_information(handle, tag, buffer, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::attach_semantic_information(FieldSpace handle,
+                                                       SemanticTag tag,
+                                                       const void *buffer,
+                                                       size_t size)
+    //--------------------------------------------------------------------------
+    {
+      runtime->attach_semantic_information(handle, tag, buffer, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::attach_semantic_information(FieldSpace handle,
+                                                       FieldID fid,
+                                                       SemanticTag tag,
+                                                       const void *buffer,
+                                                       size_t size)
+    //--------------------------------------------------------------------------
+    {
+      runtime->attach_semantic_information(handle, fid, tag, buffer, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::attach_semantic_information(LogicalRegion handle,
+                                                       SemanticTag tag,
+                                                       const void *buffer,
+                                                       size_t size)
+    //--------------------------------------------------------------------------
+    {
+      runtime->attach_semantic_information(handle, tag, buffer, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::attach_semantic_information(LogicalPartition handle,
+                                                       SemanticTag tag,
+                                                       const void *buffer,
+                                                       size_t size)
+    //--------------------------------------------------------------------------
+    {
+      runtime->attach_semantic_information(handle, tag, buffer, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::attach_name(IndexSpace handle, const char *name)
+    //--------------------------------------------------------------------------
+    {
+      HighLevelRuntime::attach_semantic_information(handle,
+          NAME_SEMANTIC_TAG, name, strlen(name) + 1);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::attach_name(IndexPartition handle, const char *name)
+    //--------------------------------------------------------------------------
+    {
+      HighLevelRuntime::attach_semantic_information(handle,
+          NAME_SEMANTIC_TAG, name, strlen(name) + 1);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::attach_name(FieldSpace handle, const char *name)
+    //--------------------------------------------------------------------------
+    {
+      HighLevelRuntime::attach_semantic_information(handle,
+          NAME_SEMANTIC_TAG, name, strlen(name) + 1);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::attach_name(FieldSpace handle,
+                                       FieldID fid,
+                                       const char *name)
+    //--------------------------------------------------------------------------
+    {
+      HighLevelRuntime::attach_semantic_information(handle, fid,
+          NAME_SEMANTIC_TAG, name, strlen(name) + 1);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::attach_name(LogicalRegion handle, const char *name)
+    //--------------------------------------------------------------------------
+    {
+      HighLevelRuntime::attach_semantic_information(handle,
+          NAME_SEMANTIC_TAG, name, strlen(name) + 1);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::attach_name(LogicalPartition handle,
+                                       const char *name)
+    //--------------------------------------------------------------------------
+    {
+      HighLevelRuntime::attach_semantic_information(handle,
+          NAME_SEMANTIC_TAG, name, strlen(name) + 1);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::retrieve_semantic_information(IndexSpace handle,
+                                                         SemanticTag tag,
+                                                         const void *&result,
+                                                         size_t &size)
+    //--------------------------------------------------------------------------
+    {
+      runtime->retrieve_semantic_information(handle, tag, result, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::retrieve_semantic_information(IndexPartition handle,
+                                                         SemanticTag tag,
+                                                         const void *&result,
+                                                         size_t &size)
+    //--------------------------------------------------------------------------
+    {
+      runtime->retrieve_semantic_information(handle, tag, result, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::retrieve_semantic_information(FieldSpace handle,
+                                                         SemanticTag tag,
+                                                         const void *&result,
+                                                         size_t &size)
+    //--------------------------------------------------------------------------
+    {
+      runtime->retrieve_semantic_information(handle, tag, result, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::retrieve_semantic_information(FieldSpace handle,
+                                                         FieldID fid,
+                                                         SemanticTag tag,
+                                                         const void *&result,
+                                                         size_t &size)
+    //--------------------------------------------------------------------------
+    {
+      runtime->retrieve_semantic_information(handle, fid, tag, result, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::retrieve_semantic_information(LogicalRegion handle,
+                                                         SemanticTag tag,
+                                                         const void *&result,
+                                                         size_t &size)
+    //--------------------------------------------------------------------------
+    {
+      runtime->retrieve_semantic_information(handle, tag, result, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::retrieve_semantic_information(LogicalPartition part,
+                                                         SemanticTag tag,
+                                                         const void *&result,
+                                                         size_t &size)
+    //--------------------------------------------------------------------------
+    {
+      runtime->retrieve_semantic_information(part, tag, result, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::retrieve_name(IndexSpace handle, const char *&result)
+    //--------------------------------------------------------------------------
+    {
+      const void* dummy_ptr; size_t dummy_size;
+      HighLevelRuntime::retrieve_semantic_information(handle,
+          NAME_SEMANTIC_TAG, dummy_ptr, dummy_size);
+      result = reinterpret_cast<const char*>(dummy_ptr);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::retrieve_name(IndexPartition handle,
+                                         const char *&result)
+    //--------------------------------------------------------------------------
+    {
+      const void* dummy_ptr; size_t dummy_size;
+      HighLevelRuntime::retrieve_semantic_information(handle,
+          NAME_SEMANTIC_TAG, dummy_ptr, dummy_size);
+      result = reinterpret_cast<const char*>(dummy_ptr);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::retrieve_name(FieldSpace handle, const char *&result)
+    //--------------------------------------------------------------------------
+    {
+      const void* dummy_ptr; size_t dummy_size;
+      HighLevelRuntime::retrieve_semantic_information(handle,
+          NAME_SEMANTIC_TAG, dummy_ptr, dummy_size);
+      result = reinterpret_cast<const char*>(dummy_ptr);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::retrieve_name(FieldSpace handle,
+                                         FieldID fid,
+                                         const char *&result)
+    //--------------------------------------------------------------------------
+    {
+      const void* dummy_ptr; size_t dummy_size;
+      HighLevelRuntime::retrieve_semantic_information(handle,
+          NAME_SEMANTIC_TAG, dummy_ptr, dummy_size);
+      result = reinterpret_cast<const char*>(dummy_ptr);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::retrieve_name(LogicalRegion handle,
+                                         const char *&result)
+    //--------------------------------------------------------------------------
+    {
+      const void* dummy_ptr; size_t dummy_size;
+      HighLevelRuntime::retrieve_semantic_information(handle,
+          NAME_SEMANTIC_TAG, dummy_ptr, dummy_size);
+      result = reinterpret_cast<const char*>(dummy_ptr);
+    }
+
+    //--------------------------------------------------------------------------
+    void HighLevelRuntime::retrieve_name(LogicalPartition part,
+                                         const char *&result)
+    //--------------------------------------------------------------------------
+    {
+      const void* dummy_ptr; size_t dummy_size;
+      HighLevelRuntime::retrieve_semantic_information(part,
+          NAME_SEMANTIC_TAG, dummy_ptr, dummy_size);
+      result = reinterpret_cast<const char*>(dummy_ptr);
     }
 
     //--------------------------------------------------------------------------
@@ -3098,8 +3351,8 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void Mapper::get_index_space_partition_colors(IndexSpace handle,
-                                                  std::set<Color> &colors) const
+    void Mapper::get_index_space_partition_colors(
+                              IndexSpace handle, std::set<Color> &colors) const
     //--------------------------------------------------------------------------
     {
       runtime->runtime->get_index_space_partition_colors(handle, colors);
@@ -3171,8 +3424,10 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    LogicalPartition Mapper::get_logical_partition_by_tree(IndexPartition part,
-                                     FieldSpace fspace, RegionTreeID tid) const
+    LogicalPartition Mapper::get_logical_partition_by_tree(
+                                                        IndexPartition part,
+                                                        FieldSpace fspace, 
+                                                        RegionTreeID tid) const
     //--------------------------------------------------------------------------
     {
       return runtime->runtime->get_logical_partition_by_tree(part, fspace, tid);
