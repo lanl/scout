@@ -59,7 +59,12 @@
 #include <string>
 #include <cassert>
 
+#include "legion.h"
+
 using namespace std;
+using namespace LegionRuntime;
+using namespace LegionRuntime::HighLevel;
+using namespace LegionRuntime::Accessor;
 
 namespace{
 
@@ -211,6 +216,8 @@ namespace{
         return width_ * height_;
       case 3:
         return width_ * height_ * depth_;
+      default:
+        assert(false && "invalid rank");
       }
     }
 
@@ -222,6 +229,8 @@ namespace{
         return (width_ + 1) * (height_ + 1);
       case 3:
         return (width_ + 1) * (height_ + 1) + (depth_ + 1);
+      default:
+        assert(false && "invalid rank");
       }
     }
 
@@ -231,10 +240,13 @@ namespace{
         return width_;
       case 2:
         return (width_ + 1)*height_ + (height_ + 1)*width_;
-      case 3:
+      case 3:{
         size_t w1 = width_ + 1;
         size_t h1 = height_ + 1;
         return (w1*height_ + h1*width_)*(depth_ + 1) + w1*h1*depth_;
+      }
+      default:
+        assert(false && "invalid rank");
       }
     }
 
@@ -244,11 +256,14 @@ namespace{
         return width_;
       case 2:
         return (width_ + 1)*height_ + (height_ + 1)*width_;
-      case 3:
+      case 3:{
         size_t w1 = width_ + 1;
         size_t h1 = height_ + 1;
         size_t d1 = depth_ + 1;
         return w1*height_*depth_ + h1*width_*depth_ + d1*width_*height_;
+      }
+      default:
+        assert(false && "invalid rank");
       }
     }
 
@@ -309,6 +324,8 @@ namespace{
         case READ_WRITE:
            mode_ = READ_AND_WRITE;
            break;
+        default:
+          assert(false && "invalid mode");
         }
       }
       
@@ -398,7 +415,7 @@ namespace{
       
       legion_task_argument_t taskArg = {args, argsLen};
       
-      legion_argument_map_t map = {0};
+      legion_argument_map_t map = {new ArgumentMap};
 
       legion_index_launcher_t launcher =
         legion_index_launcher_create(taskId_,
@@ -521,6 +538,8 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   char* meshPtr = 
     (char*)malloc(sizeof(void*) * header->numFields + 4 * sizeof(uint32_t)); 
 
+  char* ret = meshPtr;
+
   legion_accessor_generic_t accessor;
   legion_rect_1d_t rect;
   MeshFieldInfo* fi;
@@ -562,6 +581,8 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
 
   *(uint32_t*)meshPtr = header->rank;
   meshPtr += sizeof(uint32_t);
+
+  return ret;
 }
 
 sclegion_uniform_mesh_launcher_t
