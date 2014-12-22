@@ -264,11 +264,13 @@ CGLegionCRuntime::CGLegionCRuntime(CodeGenModule& CGM) : CGM(CGM){
   
   TypeVec params;
 
-  params = {TaskTy, PhysicalRegionTy, Int32Ty, ContextTy, RuntimeTy};
+  params = {TaskTy, PointerTy(PhysicalRegionTy), 
+            Int32Ty, ContextTy, RuntimeTy};
   VoidTaskFuncTy = llvm::FunctionType::get(llvm::Type::getVoidTy(C),
                                            params, false);
 
-  params = {TaskTy, PhysicalRegionTy, Int32Ty, ContextTy, RuntimeTy};
+  params = {TaskTy, PointerTy(PhysicalRegionTy),
+            Int32Ty, ContextTy, RuntimeTy};
   TaskFuncTy = llvm::FunctionType::get(TaskResultTy,
                                        params, false);
 
@@ -999,7 +1001,8 @@ llvm::Function* CGLegionCRuntime::ScUniformMeshInitFunc(){
 
 llvm::Function* CGLegionCRuntime::ScUniformMeshReconstructFunc(){
     return GetFunc("sclegion_uniform_mesh_reconstruct",
-                   {TaskTy, PhysicalRegionTy, Int32Ty, ContextTy, RuntimeTy},
+                   {TaskTy, PointerTy(PhysicalRegionTy), Int32Ty,
+                       ContextTy, RuntimeTy},
                    VoidPtrTy);
 }
 
