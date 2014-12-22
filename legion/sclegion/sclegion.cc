@@ -61,7 +61,11 @@
 
 #include "legion.h"
 
-#define np(MSG) printf(MSG "\n")
+#define ndump(X) std::cout << __FILE__ << ":" << __LINE__ << ": " << \
+__PRETTY_FUNCTION__ << ": " << #X << " = " << X << std::endl
+
+#define nlog(X) std::cout << __FILE__ << ":" << __LINE__ << ": " << \
+__PRETTY_FUNCTION__ << ": " << X << std::endl
 
 using namespace std;
 using namespace LegionRuntime;
@@ -400,14 +404,14 @@ namespace{
     void addField(const string& fieldName, legion_privilege_mode_t mode){
       const Mesh::Field& field = mesh_->getField(fieldName);
       regions_[field.elementKind].addField(field, mode);
+      ++numFields_;
     }
 
     void execute(legion_context_t context,
                  legion_runtime_t runtime){
-
       size_t argsLen = sizeof(MeshHeader) + numFields_ * sizeof(MeshFieldInfo);
-      
-      char* args = (char*)malloc(argsLen);
+      void* argsPtr = malloc(argsLen);
+      char* args = (char*)argsPtr;
       MeshHeader* header = (MeshHeader*)args;
       mesh_->setMeshHeader(header);
       header->numFields = numFields_;
@@ -429,7 +433,7 @@ namespace{
         }
       }
       
-      legion_task_argument_t taskArg = {args, argsLen};
+      legion_task_argument_t taskArg = {argsPtr, argsLen};
 
       /*
       ArgumentMap argMap;
@@ -574,17 +578,20 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
                                   legion_context_t context,
                                   legion_runtime_t runtime){
 
+  size_t argsLen = legion_task_get_arglen(task);
+
   char* args = (char*)legion_task_get_args(task);
   MeshHeader* header = (MeshHeader*)args;
   args += sizeof(MeshHeader);
-
-  char* meshPtr = 
-    (char*)malloc(sizeof(void*) * header->numFields + 4 * sizeof(uint32_t)); 
+  
+  size_t size = sizeof(void*) * header->numFields + 4 * sizeof(uint32_t);
+  char* meshPtr = (char*)malloc(size); 
 
   char* ret = meshPtr;
 
   legion_accessor_generic_t accessor;
   legion_rect_1d_t rect;
+  legion_rect_1d_t subrect;
   MeshFieldInfo* fi;
   size_t numFields = header->numFields;
 
@@ -602,11 +609,16 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
       rect.lo = {0};
       rect.hi = {int(fi->count) - 1};
 
+      subrect.lo = {0};
+      subrect.hi = {int(fi->count) - 1};
+
+      legion_byte_offset_t offset = {0};
+
       meshPtr = 
         (char*)legion_accessor_generic_raw_rect_ptr_1d(accessor,
                                                        rect,
-                                                       0,
-                                                       0);
+                                                       &subrect,
+                                                       &offset);
     }
     
     args += sizeof(MeshFieldInfo);
