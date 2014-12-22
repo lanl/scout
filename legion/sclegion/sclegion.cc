@@ -592,6 +592,7 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   legion_accessor_generic_t accessor;
   legion_rect_1d_t rect;
   legion_rect_1d_t subrect;
+  legion_byte_offset_t offset[1];
   MeshFieldInfo* fi;
   size_t numFields = header->numFields;
 
@@ -599,7 +600,7 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
     fi = (MeshFieldInfo*)args;
     
     if(fi->count == 0){
-      meshPtr = 0;
+      *(void**)meshPtr = 0;
     }
     else{
       accessor =
@@ -609,16 +610,11 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
       rect.lo = {0};
       rect.hi = {int(fi->count) - 1};
 
-      subrect.lo = {0};
-      subrect.hi = {int(fi->count) - 1};
-
-      legion_byte_offset_t offset = {0};
-
-      meshPtr = 
-        (char*)legion_accessor_generic_raw_rect_ptr_1d(accessor,
-                                                       rect,
-                                                       &subrect,
-                                                       &offset);
+      *(void**)meshPtr = 
+        legion_accessor_generic_raw_rect_ptr_1d(accessor,
+                                                rect,
+                                                &subrect,
+                                                offset);
     }
     
     args += sizeof(MeshFieldInfo);
