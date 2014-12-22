@@ -207,7 +207,26 @@ namespace CodeGen {
     llvm::Value* UtilProcVal;
     llvm::Value* ProcGroupVal;
     llvm::Value* MaxRectDimVal;
-    
+
+    // ======== Scout specific types =================
+
+    llvm::Type* ScUniformMeshTy;
+    llvm::Type* ScUniformMeshLauncherTy;
+
+    llvm::Type* ScFieldKindTy;
+    llvm::Value* ScInt32Val;
+    llvm::Value* ScInt64Val;
+    llvm::Value* ScFloatVal;
+    llvm::Value* ScDoubleVal;
+
+    llvm::Type* ScElementKindTy;
+    llvm::Value* ScCellVal;
+    llvm::Value* ScVertexVal;
+    llvm::Value* ScEdgeVal;
+    llvm::Value* ScFaceVal;
+
+    // ==============================================
+
     llvm::Function* DomainFromRect1dFunc();
     llvm::Function* DomainFromRect2dFunc();
     llvm::Function* DomainFromRect3dFunc();
@@ -322,7 +341,22 @@ namespace CodeGen {
     llvm::Function* RuntimeGetInputArgsFunc();
     llvm::Function* RuntimeRegisterTaskVoidFunc();
     llvm::Function* RuntimeRegisterTaskFunc();
+
+    // ======== Scout specific functions =================
     
+    llvm::Function* ScInitFunc();
+    llvm::Function* ScStart();
+    llvm::Function* ScRegisterTaskFunc();
+    llvm::Function* ScUniformMeshCreateFunc();
+    llvm::Function* ScUniformMeshAddFieldFunc();
+    llvm::Function* ScUniformMeshInitFunc();
+    llvm::Function* ScUniformMeshReconstructFunc();
+    llvm::Function* ScUniformMeshCreateLauncherFunc();
+    llvm::Function* ScUniformMeshLauncherAddFieldFunc();
+    llvm::Function* ScUniformMeshLauncherExecuteFunc();
+
+    // ===================================================
+
   private:
     CodeGen::CodeGenModule& CGM;
   };

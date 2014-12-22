@@ -77,3 +77,8 @@ project(sc_include)
   configure_file("../legion/runtime/lowlevel_config.h" 
         "${SCOUT_BUILD_DIR}/include/legion/lowlevel_config.h"
         COPYONLY)
+
+  #copy sclegion headers
+  configure_file("../legion/sclegion/sclegion.h" 
+	"${SCOUT_BUILD_DIR}/include/legion/sclegion.h"
+	COPYONLY)

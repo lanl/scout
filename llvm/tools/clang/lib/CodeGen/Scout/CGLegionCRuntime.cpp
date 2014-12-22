@@ -55,6 +55,7 @@
 #include "Scout/CGLegionCRuntime.h"
 #include "CodeGenFunction.h"
 #include "legion/legion_c.h"
+#include "legion/sclegion.h"
 
 using namespace std;
 using namespace clang;
@@ -270,6 +271,32 @@ CGLegionCRuntime::CGLegionCRuntime(CodeGenModule& CGM) : CGM(CGM){
   params = {TaskTy, PhysicalRegionTy, Int32Ty, ContextTy, RuntimeTy};
   TaskFuncTy = llvm::FunctionType::get(TaskResultTy,
                                        params, false);
+
+  fields = {VoidPtrTy};
+
+  // ======== Scout specific types =================  
+
+  ScUniformMeshTy = 
+    StructType::create(C, fields,
+                       "struct.sclegion_uniform_mesh_t");
+
+  ScUniformMeshLauncherTy = 
+    StructType::create(C, fields,
+                       "struct.sclegion_uniform_mesh_launcher_t");  
+  
+  ScFieldKindTy = Int32Ty;
+  ScInt32Val = ConstantInt::get(C, APInt(32, SCLEGION_INT32));
+  ScInt64Val = ConstantInt::get(C, APInt(32, SCLEGION_INT64));
+  ScFloatVal = ConstantInt::get(C, APInt(32, SCLEGION_FLOAT));
+  ScDoubleVal = ConstantInt::get(C, APInt(32, SCLEGION_DOUBLE));
+  
+  ScElementKindTy = Int32Ty;
+  ScCellVal = ConstantInt::get(C, APInt(32, SCLEGION_CELL));
+  ScVertexVal = ConstantInt::get(C, APInt(32, SCLEGION_VERTEX));
+  ScEdgeVal = ConstantInt::get(C, APInt(32, SCLEGION_EDGE));
+  ScFaceVal = ConstantInt::get(C, APInt(32, SCLEGION_FACE));
+
+  // ==============================================
 }
 
 CGLegionCRuntime::~CGLegionCRuntime(){}
@@ -935,3 +962,61 @@ CGLegionCRuntime::RuntimeRegisterTaskFunc(){
                    TaskConfigOptionsTy, StringTy, TaskFuncTy},
                  TaskIdTy);
 }
+
+// ======== Scout specific functions =================
+
+llvm::Function* CGLegionCRuntime::ScInitFunc(){
+  return GetFunc("sclegion_init",
+                 {StringTy, VoidTaskFuncTy});
+}
+
+llvm::Function* CGLegionCRuntime::ScStart(){
+  return GetFunc("sclegion_start",
+                 {Int32Ty, PointerTy(StringTy)},
+                 Int32Ty);
+}
+
+llvm::Function* CGLegionCRuntime::ScRegisterTaskFunc(){
+  return GetFunc("sclegion_register_task",
+                 {TaskIdTy, StringTy, VoidTaskFuncTy});
+}
+
+llvm::Function* CGLegionCRuntime::ScUniformMeshCreateFunc(){
+  return GetFunc("sclegion_uniform_mesh_create",
+                 {RuntimeTy, ContextTy, Int64Ty, Int64Ty, Int64Ty, Int64Ty},
+                 ScUniformMeshTy);
+}
+
+llvm::Function* CGLegionCRuntime::ScUniformMeshAddFieldFunc(){
+  return GetFunc("sclegion_uniform_mesh_add_field",
+                 {ScUniformMeshTy, StringTy, ScElementKindTy, ScFieldKindTy});
+}
+
+llvm::Function* CGLegionCRuntime::ScUniformMeshInitFunc(){
+  return GetFunc("sclegion_uniform_mesh_init",
+                 {ScUniformMeshTy});
+}
+
+llvm::Function* CGLegionCRuntime::ScUniformMeshReconstructFunc(){
+    return GetFunc("sclegion_uniform_mesh_reconstruct",
+                   {TaskTy, PhysicalRegionTy, Int32Ty, ContextTy, RuntimeTy},
+                   VoidPtrTy);
+}
+
+llvm::Function* CGLegionCRuntime::ScUniformMeshCreateLauncherFunc(){
+  return GetFunc("sclegion_uniform_mesh_create_launcher",
+                 {ScUniformMeshTy, TaskIdTy},
+                 ScUniformMeshLauncherTy);
+}
+
+llvm::Function* CGLegionCRuntime::ScUniformMeshLauncherAddFieldFunc(){
+  return GetFunc("sclegion_uniform_mesh_launcher_add_field",
+                 {ScUniformMeshLauncherTy, StringTy, PrivilegeModeTy});
+}
+
+llvm::Function* CGLegionCRuntime::ScUniformMeshLauncherExecuteFunc(){
+  return GetFunc("sclegion_uniform_mesh_launcher_execute",
+                 {ContextTy, RuntimeTy, ScUniformMeshLauncherTy});
+}
+
+// ===================================================
