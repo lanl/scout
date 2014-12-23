@@ -611,7 +611,9 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
       typedef RegionAccessor<AccessorType::Generic, float> RA;
       RA fm = hp->get_field_accessor(fi->fieldId).typeify<float>();
 
-      *meshPtr = fm.raw_rect_ptr<1>(r, sr, bo);
+      //*meshPtr = fm.raw_rect_ptr<1>(r, sr, bo);
+
+      *meshPtr = malloc(fieldKindSize(fi->fieldKind) * fi->count);
     }
     
     args += sizeof(MeshFieldInfo);
