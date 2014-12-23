@@ -435,13 +435,8 @@ namespace{
       
       legion_task_argument_t taskArg = {argsPtr, argsLen};
 
-      /*
-      ArgumentMap argMap;
-
       legion_argument_map_t map = {new ArgumentMap};
-      */      
 
-      /*
       legion_index_launcher_t launcher =
         legion_index_launcher_create(taskId_,
                                      domain,
@@ -451,14 +446,15 @@ namespace{
                                      false,
                                      0,
                                      0);
-      */
 
+      /*
       legion_task_launcher_t launcher =
         legion_task_launcher_create(taskId_,
                                     taskArg,
                                     legion_predicate_true(),
                                     0,
                                     0);
+      */
 
       for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
 
@@ -471,7 +467,6 @@ namespace{
         const Mesh::Element& element = 
           mesh_->getElement(sclegion_element_kind_t(i));
 
-        /*
         legion_index_launcher_add_region_requirement_logical_region(
           launcher,
           element.logicalRegion,
@@ -481,8 +476,8 @@ namespace{
           element.logicalRegion,
           0,
           false);
-        */
 
+        /*
         legion_task_launcher_add_region_requirement_logical_region(
           launcher,
           element.logicalRegion,
@@ -491,16 +486,15 @@ namespace{
           element.logicalRegion,
           0,
           false);
+        */
 
-        //region.addFieldsToIndexLauncher(launcher, i);
-        region.addFieldsToTaskLauncher(launcher, i);
+        region.addFieldsToIndexLauncher(launcher, i);
+        //region.addFieldsToTaskLauncher(launcher, i);
       }
       
-      /*
       legion_index_launcher_execute(runtime, context, launcher);
-      */
 
-      legion_task_launcher_execute(runtime, context, launcher);
+      //legion_task_launcher_execute(runtime, context, launcher);
     }
 
   private:
@@ -578,6 +572,10 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
                                   legion_context_t context,
                                   legion_runtime_t runtime){
 
+  HighLevelRuntime* hr = static_cast<HighLevelRuntime*>(runtime.impl);
+  Context* hc = static_cast<Context*>(context.impl);
+  Task* ht = static_cast<Task*>(task.impl);
+
   size_t argsLen = legion_task_get_arglen(task);
 
   char* args = (char*)legion_task_get_args(task);
@@ -585,14 +583,10 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   args += sizeof(MeshHeader);
   
   size_t size = sizeof(void*) * header->numFields + 4 * sizeof(uint32_t);
-  char* meshPtr = (char*)malloc(size); 
+  void** meshPtr = (void**)malloc(size); 
 
-  char* ret = meshPtr;
+  void* ret = meshPtr;
 
-  legion_accessor_generic_t accessor;
-  legion_rect_1d_t rect;
-  legion_rect_1d_t subrect;
-  legion_byte_offset_t offset[1];
   MeshFieldInfo* fi;
   size_t numFields = header->numFields;
 
@@ -600,42 +594,42 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
     fi = (MeshFieldInfo*)args;
     
     if(fi->count == 0){
-      *(void**)meshPtr = 0;
+      *meshPtr = 0;
     }
     else{
-      accessor =
-        legion_physical_region_get_field_accessor_generic(region[fi->region],
-                                                          fi->fieldId);
+      PhysicalRegion* hp = 
+        static_cast<PhysicalRegion*>(region[fi->region].impl);
 
-      rect.lo = {0};
-      rect.hi = {int(fi->count) - 1};
+      Domain d = 
+        hr->get_index_space_domain(*hc,
+          ht->regions[fi->region].region.get_index_space());
 
-      /*
-      *(void**)meshPtr = 
-        legion_accessor_generic_raw_rect_ptr_1d(accessor,
-                                                rect,
-                                                &subrect,
-                                                offset);
-      */
+      Rect<1> r = d.get_rect<1>();
+      Rect<1> sr;
+      ByteOffset bo[1];
 
-      *(void**)meshPtr = malloc(fieldKindSize(fi->fieldKind) * fi->count);
+      typedef RegionAccessor<AccessorType::Generic, float> RA;
+      RA fm = hp->get_field_accessor(fi->fieldId).typeify<float>();
 
+      *meshPtr = fm.raw_rect_ptr<1>(r, sr, bo);
     }
     
     args += sizeof(MeshFieldInfo);
-    meshPtr += sizeof(void*);
+    ++meshPtr;
   }
 
-  *(uint32_t*)meshPtr = header->width;
-  meshPtr += sizeof(uint32_t);
+  uint32_t* meshTailPtr = (uint32_t*)meshPtr;
 
-  *(uint32_t*)meshPtr = header->height;
-  meshPtr += sizeof(uint32_t);
+  *meshTailPtr = header->width;
+  ++meshTailPtr;
 
-  *(uint32_t*)meshPtr = header->depth;
-  meshPtr += sizeof(uint32_t);
+  *meshTailPtr = header->height;
+  ++meshTailPtr;
 
-  *(uint32_t*)meshPtr = header->rank;
+  *meshTailPtr = header->depth;
+  ++meshTailPtr;
+
+  *meshTailPtr = header->rank;
 
   return ret;
 }
