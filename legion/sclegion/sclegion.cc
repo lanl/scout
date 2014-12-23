@@ -631,7 +631,6 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   meshPtr += sizeof(uint32_t);
 
   *(uint32_t*)meshPtr = header->rank;
-  meshPtr += sizeof(uint32_t);
 
   return ret;
 }

@@ -188,24 +188,17 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       llvm::Instruction& firstInst = firstBlock.front();
       // inserts before first instruction
       builder.SetInsertPoint(&firstInst);
+      
+      //mainTaskFunc->dump();
 
       // get lsci_task_args_t variable
       Function::arg_iterator arg_iter = mainTaskFunc->arg_begin();
-      Value* ptr_task_args = arg_iter++;
-      ptr_task_args->setName("task_args");
-      StructType *StructTy_struct_lsci_task_args_t = M.getTypeByName("struct.lsci_task_args_t");
-      PointerType* PointerLsciTaskArgsTy = PointerType::get(StructTy_struct_lsci_task_args_t, 0); 
-      AllocaInst* ptr_task_args_addr = builder.CreateAlloca(PointerLsciTaskArgsTy, 0, "task_args.addr");
-      builder.CreateAlignedStore(ptr_task_args, ptr_task_args_addr, 8);
-      LoadInst* loadTaskArgsInst = builder.CreateAlignedLoad(ptr_task_args_addr, 8, "");
-
-      // get context from task args
-      Value* ptr_context = builder.CreateStructGEP(loadTaskArgsInst, LSCI_TARGS_CONTEXT, "ptr_context");
-      LoadInst* context = builder.CreateAlignedLoad(ptr_context, 8, "context");
-
-      // get runtime from task args
-      Value* ptr_runtime = builder.CreateStructGEP(loadTaskArgsInst, LSCI_TARGS_RUNTIME, "ptr_runtime");
-      LoadInst* runtime = builder.CreateAlignedLoad(ptr_runtime, 8, "runtime");
+      
+      Value* task = arg_iter++;
+      Value* regions = arg_iter++;
+      Value* numRegions = arg_iter++;
+      Value* context = arg_iter++;
+      Value* runtime = arg_iter;
 
       // go through instructions in this block and look for loads of @__scrt_legion_context
       // and replace with my context address.  Same with runtime.

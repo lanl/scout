@@ -58,6 +58,7 @@
 #include "CGBuilder.h"
 #include "CodeGenModule.h"
 #include "Scout/CGLegionRuntime.h"
+#include "Scout/CGLegionCRuntime.h"
 
 namespace llvm {
   class Function;
@@ -71,18 +72,22 @@ namespace clang {
   class MeshDecl;
 
   namespace CodeGen {
-    class TaskDeclVisitor;
     class CodeGenFunction;
-    class CGLegionTask {
+    
+    class CGLegionTask{
 
       typedef std::vector<llvm::Value*> ValueVec;
       typedef std::vector<llvm::Type*> TypeVec;
 
       public:
 
-      CGLegionTask(const FunctionDecl* FD, llvm::Function* taskFunc, CodeGenModule& codeGenModule, CGBuilderTy& builder, 
-        CodeGenFunction* codeGenFunction);
-      ~CGLegionTask(){}; 
+      CGLegionTask(const FunctionDecl* FD,
+                   llvm::Function* taskFunc,
+                   CodeGenModule& codeGenModule,
+                   CGBuilderTy& builder,
+                   CodeGenFunction* codeGenFunction);
+
+      ~CGLegionTask(){};
 
       void EmitLegionTask();
 
@@ -90,7 +95,7 @@ namespace clang {
 
       CodeGenModule& CGM;
       CGBuilderTy& B;
-      CGLegionRuntime& R;
+      CGLegionCRuntime& R;
       CodeGenFunction* CGF;
 
       const FunctionDecl* funcDecl;
@@ -99,50 +104,17 @@ namespace clang {
       llvm::Function* legionTaskInitFunc;
       llvm::Function* legionTaskFunc;
       llvm::StructType* meshType;
-      std::vector<llvm::Value*> fields;
-      llvm::Value* firstField;
 
       size_t taskId;
       llvm::Value* legionContext;
       llvm::Value* legionRuntime;
-      llvm::Value* meshTaskArgs;
-
-
-      // members used only for creating legion task init function
-      llvm::Value* indexLauncher;
-      llvm::Value* argMap;
-      TaskDeclVisitor* taskDeclVisitor;
-      size_t meshPos;       // position of the mesh in the argument list of LegionTaskInitFunc()
-      llvm::Value* meshPtr;  // pointer to the scout mesh struct argument LegionTaskInitFunc()
-
-      // used only for creating legion task function
-      llvm::Value* taskArgs;
-      llvm::Value* task;
-      llvm::Value* regions;
-      std::vector<llvm::Value*> taskFuncArgs;
-      llvm::Value* mesh;     // legion-allocated scout mesh struct to be passed to forall
 
       // member functions for creating the legion task init function
       void EmitLegionTaskInitFunction();
       void EmitLegionTaskInitFunctionStart();
-      void EmitUnimeshGetVecByNameFuncCalls();
-      void EmitArgumentMapCreateFuncCall();
-      llvm::Value* CreateMeshTaskArgs();
-      void EmitSubgridBoundsAtSetFuncCall(llvm::Value* index);
-      void EmitArgumentMapSetPointFuncCall(llvm::Value* index);
-      void EmitIndexLauncherCreateFuncCall();
-      void EmitAddMeshRegionReqAndFieldFuncCalls();
-      void EmitAddVectorRegionReqAndFieldFuncCalls();
-      void EmitExecuteIndexSpaceFuncCall();
 
       // member function for creating the legion task function
       void EmitLegionTaskFunction();
-      void EmitLegionTaskFunctionStart();
-      void EmitGetIndexSpaceDomainFuncCall();
-      void EmitScoutMesh();
-      void EmitMeshRawRectPtr1dFuncCalls();
-      void EmitVectorRawRectPtr1dFuncCalls();
-      void EmitTaskFuncCall();
 
     };
   }

@@ -953,7 +953,7 @@ llvm::Function*
 CGLegionCRuntime::RuntimeRegisterTaskVoidFunc(){
   return GetFunc("legion_runtime_register_task_void",
                  {TaskIdTy, Int32Ty, Int1Ty, Int1Ty, VariantIdTy,
-                 TaskConfigOptionsTy, StringTy, VoidTaskFuncTy},
+                 TaskConfigOptionsTy, StringTy, PointerTy(VoidTaskFuncTy)},
                  TaskIdTy);
 }
 
@@ -961,7 +961,7 @@ llvm::Function*
 CGLegionCRuntime::RuntimeRegisterTaskFunc(){
   return GetFunc("legion_runtime_register_task",
                  {TaskIdTy, Int32Ty, Int1Ty, Int1Ty, VariantIdTy,
-                   TaskConfigOptionsTy, StringTy, TaskFuncTy},
+                   TaskConfigOptionsTy, StringTy, PointerTy(TaskFuncTy)},
                  TaskIdTy);
 }
 
@@ -969,7 +969,7 @@ CGLegionCRuntime::RuntimeRegisterTaskFunc(){
 
 llvm::Function* CGLegionCRuntime::ScInitFunc(){
   return GetFunc("sclegion_init",
-                 {StringTy, VoidTaskFuncTy});
+                 {StringTy, PointerTy(VoidTaskFuncTy)});
 }
 
 llvm::Function* CGLegionCRuntime::ScStart(){
@@ -980,7 +980,7 @@ llvm::Function* CGLegionCRuntime::ScStart(){
 
 llvm::Function* CGLegionCRuntime::ScRegisterTaskFunc(){
   return GetFunc("sclegion_register_task",
-                 {TaskIdTy, StringTy, VoidTaskFuncTy});
+                 {TaskIdTy, StringTy, PointerTy(VoidTaskFuncTy)});
 }
 
 llvm::Function* CGLegionCRuntime::ScUniformMeshCreateFunc(){
@@ -1020,6 +1020,27 @@ llvm::Function* CGLegionCRuntime::ScUniformMeshLauncherAddFieldFunc(){
 llvm::Function* CGLegionCRuntime::ScUniformMeshLauncherExecuteFunc(){
   return GetFunc("sclegion_uniform_mesh_launcher_execute",
                  {ContextTy, RuntimeTy, ScUniformMeshLauncherTy});
+}
+
+llvm::Value* CGLegionCRuntime::GetLegionGlobal(std::string name,
+                                              llvm::Type* type){
+  if(!CGM.getModule().getNamedGlobal(name)) {
+    new llvm::GlobalVariable(CGM.getModule(),
+                             type,
+                             false,
+                             llvm::GlobalValue::ExternalLinkage,
+                             0,
+                             name);
+  }
+  return CGM.getModule().getNamedGlobal(name);
+}
+
+llvm::Value* CGLegionCRuntime::GetLegionRuntimeGlobal() {
+  return GetLegionGlobal("__scrt_legion_runtime", RuntimeTy);
+}
+
+llvm::Value* CGLegionCRuntime::GetLegionContextGlobal() {
+  return GetLegionGlobal("__scrt_legion_context", ContextTy);
 }
 
 // ===================================================

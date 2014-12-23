@@ -357,6 +357,10 @@ namespace CodeGen {
 
     // ===================================================
 
+    llvm::Value* GetLegionRuntimeGlobal();
+    llvm::Value* GetLegionContextGlobal();
+    llvm::Value* GetLegionGlobal(std::string varName, llvm::Type* type);
+    
   private:
     CodeGen::CodeGenModule& CGM;
   };
