@@ -63,28 +63,19 @@ uniform mesh MyMesh {
 task void MyTask(MyMesh *m) {
   
   forall cells c in *m {
-    a = 5;
+    a = 0;
     b = 17;
   }
 
-  forall cells c in *m {
-    printf("a is %f\n", a);
-    printf("b is %f\n", b);
-  }
-
-  /*
   forall cells c in *m {
     a += b;
   }
   
   forall cells c in *m {
-    printf("a is %f\n", a);
-    printf("b is %f\n", b);
     if ((a-b)*(a-b) > 1e-10) {
       assert(false && "bad val");
     }
   }
-  */
 
 }
 
