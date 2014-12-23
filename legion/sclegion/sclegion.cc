@@ -610,11 +610,16 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
       rect.lo = {0};
       rect.hi = {int(fi->count) - 1};
 
+      /*
       *(void**)meshPtr = 
         legion_accessor_generic_raw_rect_ptr_1d(accessor,
                                                 rect,
                                                 &subrect,
                                                 offset);
+      */
+
+      *(void**)meshPtr = malloc(fieldKindSize(fi->fieldKind) * fi->count);
+
     }
     
     args += sizeof(MeshFieldInfo);
