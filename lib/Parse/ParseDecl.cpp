@@ -143,10 +143,12 @@ void Parser::ParseGNUAttributes(ParsedAttributes &attrs,
         continue;
 
       // Expect an identifier or declaration specifier (const, int, etc.)
-      if (Tok.isNot(tok::identifier) && !isDeclarationSpecifier())
+      if (Tok.isAnnotation())
+        break;
+      IdentifierInfo *AttrName = Tok.getIdentifierInfo();
+      if (!AttrName)
         break;
 
-      IdentifierInfo *AttrName = Tok.getIdentifierInfo();
       SourceLocation AttrNameLoc = ConsumeToken();
 
       if (Tok.isNot(tok::l_paren)) {
@@ -4725,7 +4727,7 @@ void Parser::ParseDeclaratorInternal(Declarator &D,
       // Sema will have to catch (syntactically invalid) pointers into global
       // scope. It has to catch pointers into namespace scope anyway.
       D.AddTypeInfo(DeclaratorChunk::getMemberPointer(SS,DS.getTypeQualifiers(),
-                                                      Loc),
+                                                      DS.getLocEnd()),
                     DS.getAttributes(),
                     /* Don't replace range end. */SourceLocation());
       return;
@@ -5932,8 +5934,8 @@ void Parser::ParseTypeofSpecifier(DeclSpec &DS) {
   bool isCastExpr;
   ParsedType CastTy;
   SourceRange CastRange;
-  ExprResult Operand = ParseExprAfterUnaryExprOrTypeTrait(OpTok, isCastExpr,
-                                                          CastTy, CastRange);
+  ExprResult Operand = Actions.CorrectDelayedTyposInExpr(
+      ParseExprAfterUnaryExprOrTypeTrait(OpTok, isCastExpr, CastTy, CastRange));
   if (hasParens)
     DS.setTypeofParensRange(CastRange);
 

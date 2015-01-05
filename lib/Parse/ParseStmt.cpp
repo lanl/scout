@@ -1801,7 +1801,7 @@ StmtResult Parser::ParseReturnStatement() {
              diag::ext_generalized_initializer_lists)
           << R.get()->getSourceRange();
     } else
-        R = ParseExpression();
+      R = ParseExpression();
     if (R.isInvalid()) {
       SkipUntil(tok::r_brace, StopAtSemi | StopBeforeMatch);
       return StmtError();
@@ -1959,7 +1959,6 @@ StmtResult Parser::ParseCXXTryBlock() {
 StmtResult Parser::ParseCXXTryBlockCommon(SourceLocation TryLoc, bool FnTry) {
   if (Tok.isNot(tok::l_brace))
     return StmtError(Diag(Tok, diag::err_expected) << tok::l_brace);
-  // FIXME: Possible draft standard bug: attribute-specifier should be allowed?
 
   StmtResult TryBlock(ParseCompoundStatement(/*isStmtExpr=*/false,
                       Scope::DeclScope | Scope::TryScope |

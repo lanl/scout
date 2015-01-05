@@ -53,7 +53,7 @@ class CGDebugInfo {
   const CodeGenOptions::DebugInfoKind DebugKind;
   llvm::DIBuilder DBuilder;
   llvm::DICompileUnit TheCU;
-  SourceLocation CurLoc, PrevLoc;
+  SourceLocation CurLoc;
   llvm::DIType VTablePtrType;
   llvm::DIType ClassTy;
   llvm::DICompositeType ObjTy;
@@ -221,9 +221,6 @@ public:
   /// setLocation - Update the current source location. If \arg loc is
   /// invalid it is ignored.
   void setLocation(SourceLocation Loc);
-
-  /// getLocation - Return the current source location.
-  SourceLocation getLocation() const { return CurLoc; }
 
   /// EmitLocation - Emit metadata to indicate a change in line/column
   /// information in the source file.
@@ -457,6 +454,7 @@ public:
   ApplyDebugLocation(CodeGenFunction &CGF,
                      SourceLocation TemporaryLocation = SourceLocation(),
                      bool ForceColumnInfo = false);
+  ApplyDebugLocation(CodeGenFunction &CGF, llvm::DebugLoc Loc);
   ~ApplyDebugLocation();
 };
 

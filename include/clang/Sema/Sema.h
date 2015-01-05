@@ -1251,7 +1251,7 @@ public:
   static QualType getPrintable(QualType T) { return T; }
   static SourceRange getPrintable(SourceRange R) { return R; }
   static SourceRange getPrintable(SourceLocation L) { return L; }
-  static SourceRange getPrintable(Expr *E) { return E->getSourceRange(); }
+  static SourceRange getPrintable(const Expr *E) { return E->getSourceRange(); }
   static SourceRange getPrintable(TypeLoc TL) { return TL.getSourceRange();}
 
   template<typename T1>
@@ -1399,7 +1399,10 @@ public:
                              const CXXScopeSpec &SS, QualType T);
 
   QualType BuildTypeofExprType(Expr *E, SourceLocation Loc);
-  QualType BuildDecltypeType(Expr *E, SourceLocation Loc);
+  /// If AsUnevaluated is false, E is treated as though it were an evaluated
+  /// context, such as when building a type for decltype(auto).
+  QualType BuildDecltypeType(Expr *E, SourceLocation Loc,
+                             bool AsUnevaluated = true);
   QualType BuildUnaryTransformType(QualType BaseType,
                                    UnaryTransformType::UTTKind UKind,
                                    SourceLocation Loc);

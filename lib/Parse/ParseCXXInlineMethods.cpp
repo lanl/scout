@@ -218,6 +218,7 @@ void Parser::ParseCXXNonStaticMemberInitializer(Decl *VarD) {
   Eof.startToken();
   Eof.setKind(tok::eof);
   Eof.setLocation(Tok.getLocation());
+  Eof.setEofData(VarD);
   Toks.push_back(Eof);
 }
 
@@ -622,7 +623,9 @@ void Parser::ParseLexedMemberInitializer(LateParsedMemberInitializer &MI) {
     while (Tok.isNot(tok::eof))
       ConsumeAnyToken();
   }
-  ConsumeAnyToken();
+  // Make sure this is *our* artificial EOF token.
+  if (Tok.getEofData() == MI.Field)
+    ConsumeAnyToken();
 }
 
 /// ConsumeAndStoreUntil - Consume and store the token at the passed token
@@ -1016,7 +1019,7 @@ bool Parser::ConsumeAndStoreInitializer(CachedTokens &Toks,
         case CIK_DefaultArgument:
           bool InvalidAsDeclaration = false;
           Result = TryParseParameterDeclarationClause(
-              &InvalidAsDeclaration, /*VersusTemplateArgument*/true);
+              &InvalidAsDeclaration, /*VersusTemplateArgument=*/true);
           // If this is an expression or a declaration with a missing
           // 'typename', assume it's not a declaration.
           if (Result == TPResult::Ambiguous && InvalidAsDeclaration)
