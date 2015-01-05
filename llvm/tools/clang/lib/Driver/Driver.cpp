@@ -70,8 +70,11 @@ Driver::Driver(StringRef ClangExecutable,
     SmallString<128> P(Dir);
     if (ScResourceDir != "")
       llvm::sys::path::append(P, ScResourceDir);
-    else
-      llvm::sys::path::append(P, "..", "include");
+    else {
+      StringRef ClangLibdirSuffix(CLANG_LIBDIR_SUFFIX);
+      llvm::sys::path::append(P, "..", Twine("lib") + ClangLibdirSuffix, "clang",
+                              CLANG_VERSION_STRING);
+    }
     ScoutResourceDir = P.str();
   }
   // +===========================================================+

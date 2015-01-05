@@ -2983,19 +2983,6 @@ public:
            I != E; ++I, ++Arg) {
         assert(Arg != ArgEnd && "Running over edge of argument list!");
 
-#ifndef NDEBUG
-        // +==== Scout =======================================================+
-        if(isScoutLang(getLangOpts()) && !CheckMeshPtrTypes(ArgType, ActualArgType)) {
-          // +==================================================================+
-          assert(getContext().getCanonicalType(ArgType.getNonReferenceType()).
-                 getTypePtr() ==
-                 getContext().getCanonicalType(ActualArgType).getTypePtr() &&
-                 "type mismatch in call argument!");
-          // +==== Scout =======================================================+
-        }
-        // +==================================================================+
-#endif
-
         assert(
             ((*I)->isVariablyModifiedType() ||
              getContext()

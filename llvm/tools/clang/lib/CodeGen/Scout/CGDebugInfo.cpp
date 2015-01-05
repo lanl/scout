@@ -280,7 +280,7 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
   RegionMap.erase(Ty->getDecl());
 
   llvm::DIArray Elements = DBuilder.getOrCreateArray(EltTys);
-  FwdDecl.setArrays(Elements);
+  DBuilder.replaceArrays(FwdDecl, Elements);
 
   RegionMap[Ty->getDecl()].reset(FwdDecl);
   return FwdDecl;
@@ -397,7 +397,7 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const UniformMeshType *Ty,
   // Propagate members from the declaration to the definition
   // CreateType(const MeshType*) will overwrite this with the members in the
   // correct order if the full type is needed.
-  Res.setArrays(T.getElements());
+  DBuilder.replaceArrays(Res, T.getElements());
 
   // And update the type cache.
   TypeCache[QTy.getAsOpaquePtr()].reset(Res);
@@ -475,7 +475,7 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const RectilinearMeshType *Ty) {
   RegionMap.erase(Ty->getDecl());
 
   llvm::DIArray Elements = DBuilder.getOrCreateArray(EltTys);
-  FwdDecl.setArrays(Elements);
+  DBuilder.replaceArrays(FwdDecl, Elements);
 
   RegionMap[Ty->getDecl()].reset(FwdDecl);
   return FwdDecl;
@@ -593,7 +593,7 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const RectilinearMeshType *Ty,
   // Propagate members from the declaration to the definition
   // CreateType(const MeshType*) will overwrite this with the members in the
   // correct order if the full type is needed.
-  Res.setArrays(T.getElements());
+  DBuilder.replaceArrays(Res, T.getElements());
 
   // And update the type cache.
   TypeCache[QTy.getAsOpaquePtr()].reset(Res);
@@ -671,7 +671,7 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const StructuredMeshType *Ty) {
   RegionMap.erase(Ty->getDecl());
 
   llvm::DIArray Elements = DBuilder.getOrCreateArray(EltTys);
-  FwdDecl.setArrays(Elements);
+  DBuilder.replaceArrays(FwdDecl, Elements);
 
   RegionMap[Ty->getDecl()].reset(FwdDecl);
   return FwdDecl;
@@ -791,7 +791,7 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const StructuredMeshType *Ty,
   // Propagate members from the declaration to the definition
   // CreateType(const MeshType*) will overwrite this with the members in the
   // correct order if the full type is needed.
-  Res.setArrays(T.getElements());
+  DBuilder.replaceArrays(Res, T.getElements());
 
   // And update the type cache.
   TypeCache[QTy.getAsOpaquePtr()].reset(Res);
@@ -922,7 +922,7 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const UnstructuredMeshType *Ty,
   // Propagate members from the declaration to the definition
   // CreateType(const MeshType*) will overwrite this with the members in the
   // correct order if the full type is needed.
-  Res.setArrays(T.getElements());
+  DBuilder.replaceArrays(Res, T.getElements());
 
   // And update the type cache.
   TypeCache[QTy.getAsOpaquePtr()].reset(Res);
@@ -968,7 +968,7 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const UnstructuredMeshType *Ty) {
   RegionMap.erase(Ty->getDecl());
 
   llvm::DIArray Elements = DBuilder.getOrCreateArray(EltTys);
-  FwdDecl.setArrays(Elements);
+  DBuilder.replaceArrays(FwdDecl, Elements);
 
   RegionMap[Ty->getDecl()].reset(FwdDecl);
   return FwdDecl;
