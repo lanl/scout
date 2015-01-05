@@ -292,8 +292,6 @@ class ASTContext : public RefCountedBase<ASTContext> {
   /// \brief Declaration for the CUDA cudaConfigureCall function.
   FunctionDecl *cudaConfigureCallDecl;
 
-  TypeSourceInfo NullTypeSourceInfo;
-
   /// \brief Keeps track of all declaration attributes.
   ///
   /// Since so few decls have attrs, we keep them in a hash map instead of
@@ -2256,8 +2254,6 @@ public:
   TypeSourceInfo *
   getTrivialTypeSourceInfo(QualType T, 
                            SourceLocation Loc = SourceLocation()) const;
-
-  TypeSourceInfo *getNullTypeSourceInfo() { return &NullTypeSourceInfo; }
 
   /// \brief Add a deallocation callback that will be invoked when the 
   /// ASTContext is destroyed.

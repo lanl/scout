@@ -721,7 +721,8 @@ def warn_implements_nscopying : Warning<
 "default assign attribute on property %0 which implements "
 "NSCopying protocol is not appropriate with -fobjc-gc[-only]">;
 
-def warn_multiple_method_decl : Warning<"multiple methods named %0 found">;
+def warn_multiple_method_decl : Warning<"multiple methods named %0 found">,
+  InGroup<ObjCMultipleMethodNames>;
 def warn_strict_multiple_method_decl : Warning<
   "multiple methods named %0 found">, InGroup<StrictSelector>, DefaultIgnore;
 def warn_accessor_property_type_mismatch : Warning<
@@ -6100,13 +6101,19 @@ def warn_unused_voidptr : Warning<
   InGroup<UnusedValue>;
 def warn_unused_property_expr : Warning<
  "property access result unused - getters should not be used for side effects">,
-  InGroup<UnusedValue>;
+  InGroup<UnusedGetterReturnValue>;
 def warn_unused_container_subscript_expr : Warning<
  "container access result unused - container access should not be used for side effects">,
   InGroup<UnusedValue>;
 def warn_unused_call : Warning<
   "ignoring return value of function declared with %0 attribute">,
   InGroup<UnusedValue>;
+def warn_side_effects_unevaluated_context : Warning<
+  "expression with side effects has no effect in an unevaluated context">,
+  InGroup<UnevaluatedExpression>;
+def warn_side_effects_typeid : Warning<
+  "expression with side effects will be evaluated despite being used as an "
+  "operand to 'typeid'">, InGroup<PotentiallyEvaluatedExpression>;
 def warn_unused_result : Warning<
   "ignoring return value of function declared with warn_unused_result "
   "attribute">, InGroup<DiagGroup<"unused-result">>;
@@ -6159,6 +6166,8 @@ let CategoryName = "Inline Assembly Issue" in {
   def err_asm_tying_incompatible_types : Error<
     "unsupported inline asm: input with type "
     "%diff{$ matching output with type $|}0,1">;
+  def err_asm_unexpected_constraint_alternatives : Error<
+    "asm constraint has an unexpected number of alternatives: %0 vs %1">;
   def err_asm_incomplete_type : Error<"asm operand has incomplete type %0">;
   def err_asm_unknown_register_name : Error<"unknown register name '%0' in asm">;
   def err_asm_bad_register_type : Error<"bad type for named register variable">;
@@ -6444,7 +6453,13 @@ def err_conv_function_to_array : Error<
 def err_conv_function_to_function : Error<
   "conversion function cannot convert to a function type">;
 def err_conv_function_with_complex_decl : Error<
-  "must use a typedef to declare a conversion to %0">;
+  "cannot specify any part of a return type in the "
+  "declaration of a conversion function"
+  "%select{"
+  "; put the complete type after 'operator'|"
+  "; use a typedef to declare a conversion to %1|"
+  "; use an alias template to declare a conversion to %1|"
+  "}0">;
 def err_conv_function_redeclared : Error<
   "conversion function cannot be redeclared">;
 def warn_conv_to_self_not_used : Warning<

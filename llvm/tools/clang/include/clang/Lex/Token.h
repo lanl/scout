@@ -58,6 +58,8 @@ class Token {
   ///    may be dirty (have trigraphs / escaped newlines).
   ///  Annotations (resolved type names, C++ scopes, etc): isAnnotation().
   ///    This is a pointer to sema-specific data for the annotation token.
+  ///  Eof:
+  //     This is a pointer to a Decl.
   ///  Other:
   ///    This is null.
   void *PtrData;
@@ -164,10 +166,21 @@ public:
     assert(!isAnnotation() &&
            "getIdentifierInfo() on an annotation token!");
     if (isLiteral()) return nullptr;
+    if (is(tok::eof)) return nullptr;
     return (IdentifierInfo*) PtrData;
   }
   void setIdentifierInfo(IdentifierInfo *II) {
     PtrData = (void*) II;
+  }
+
+  const void *getEofData() const {
+    assert(is(tok::eof));
+    return reinterpret_cast<const void *>(PtrData);
+  }
+  void setEofData(const void *D) {
+    assert(is(tok::eof));
+    assert(!PtrData);
+    PtrData = const_cast<void *>(D);
   }
 
   /// getRawIdentifier - For a raw identifier token (i.e., an identifier
