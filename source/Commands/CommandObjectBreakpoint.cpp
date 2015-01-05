@@ -245,8 +245,6 @@ public:
                 case 'N':
                     if (BreakpointID::StringIsBreakpointName(option_arg, error))
                         m_breakpoint_names.push_back (option_arg);
-                    else
-                        error.SetErrorStringWithFormat(error.AsCString());
                     break;
 
                 case 'o':
@@ -585,10 +583,17 @@ protected:
             Stream &output_stream = result.GetOutputStream();
             const bool show_locations = false;
             bp->GetDescription(&output_stream, lldb::eDescriptionLevelInitial, show_locations);
-            // Don't print out this warning for exception breakpoints.  They can get set before the target
-            // is set, but we won't know how to actually set the breakpoint till we run.
-            if (bp->GetNumLocations() == 0 && break_type != eSetTypeException)
-                output_stream.Printf ("WARNING:  Unable to resolve breakpoint to any actual locations.\n");
+            if (target == m_interpreter.GetDebugger().GetDummyTarget())
+                    output_stream.Printf ("Breakpoint set in dummy target, will get copied into future targets.\n");
+            else
+            {
+                // Don't print out this warning for exception breakpoints.  They can get set before the target
+                // is set, but we won't know how to actually set the breakpoint till we run.
+                if (bp->GetNumLocations() == 0 && break_type != eSetTypeException)
+                {
+                    output_stream.Printf ("WARNING:  Unable to resolve breakpoint to any actual locations.\n");
+                }
+            }
             result.SetStatus (eReturnStatusSuccessFinishResult);
         }
         else if (!bp)
