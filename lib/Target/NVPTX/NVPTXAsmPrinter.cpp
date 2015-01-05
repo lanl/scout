@@ -374,17 +374,15 @@ void NVPTXAsmPrinter::printReturnValStr(const Function *F, raw_ostream &O) {
     } else if (isa<PointerType>(Ty)) {
       O << ".param .b" << TLI->getPointerTy().getSizeInBits()
         << " func_retval0";
-    } else {
-      if ((Ty->getTypeID() == Type::StructTyID) || isa<VectorType>(Ty)) {
-        unsigned totalsz = TD->getTypeAllocSize(Ty);
-        unsigned retAlignment = 0;
-        if (!llvm::getAlign(*F, 0, retAlignment))
-          retAlignment = TD->getABITypeAlignment(Ty);
-        O << ".param .align " << retAlignment << " .b8 func_retval0[" << totalsz
-          << "]";
-      } else
-        assert(false && "Unknown return type");
-    }
+    } else if ((Ty->getTypeID() == Type::StructTyID) || isa<VectorType>(Ty)) {
+       unsigned totalsz = TD->getTypeAllocSize(Ty);
+       unsigned retAlignment = 0;
+       if (!llvm::getAlign(*F, 0, retAlignment))
+         retAlignment = TD->getABITypeAlignment(Ty);
+       O << ".param .align " << retAlignment << " .b8 func_retval0[" << totalsz
+         << "]";
+    } else
+      llvm_unreachable("Unknown return type");
   } else {
     SmallVector<EVT, 16> vtparts;
     ComputeValueVTs(*TLI, Ty, vtparts);
@@ -1128,7 +1126,7 @@ void NVPTXAsmPrinter::printModuleLevelGV(const GlobalVariable *GVar,
   else
     O << " .align " << GVar->getAlignment();
 
-  if (ETy->isSingleValueType()) {
+  if (ETy->isFloatingPointTy() || ETy->isIntegerTy() || ETy->isPointerTy()) {
     O << " .";
     // Special case: ABI requires that we use .u8 for predicates
     if (ETy->isIntegerTy(1))
@@ -1310,7 +1308,7 @@ void NVPTXAsmPrinter::emitPTXGlobalVariable(const GlobalVariable *GVar,
   else
     O << " .align " << GVar->getAlignment();
 
-  if (ETy->isSingleValueType()) {
+  if (ETy->isFloatingPointTy() || ETy->isIntegerTy() || ETy->isPointerTy()) {
     O << " .";
     O << getPTXFundamentalTypeStr(ETy);
     O << " ";
@@ -1348,17 +1346,6 @@ static unsigned int getOpenCLAlignment(const DataLayout *TD, Type *Ty) {
   const ArrayType *ATy = dyn_cast<ArrayType>(Ty);
   if (ATy)
     return getOpenCLAlignment(TD, ATy->getElementType());
-
-  const VectorType *VTy = dyn_cast<VectorType>(Ty);
-  if (VTy) {
-    Type *ETy = VTy->getElementType();
-    unsigned int numE = VTy->getNumElements();
-    unsigned int alignE = TD->getPrefTypeAlignment(ETy);
-    if (numE == 3)
-      return 4 * alignE;
-    else
-      return numE * alignE;
-  }
 
   const StructType *STy = dyn_cast<StructType>(Ty);
   if (STy) {

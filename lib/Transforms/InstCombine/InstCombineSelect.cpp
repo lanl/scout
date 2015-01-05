@@ -314,8 +314,7 @@ Instruction *InstCombiner::FoldSelectIntoOp(SelectInst &SI, Value *TrueVal,
 static Value *SimplifyWithOpReplaced(Value *V, Value *Op, Value *RepOp,
                                      const DataLayout *TD,
                                      const TargetLibraryInfo *TLI,
-                                     DominatorTree *DT,
-                                     AssumptionTracker *AT) {
+                                     DominatorTree *DT, AssumptionCache *AC) {
   // Trivial replacement.
   if (V == Op)
     return RepOp;
@@ -336,10 +335,10 @@ static Value *SimplifyWithOpReplaced(Value *V, Value *Op, Value *RepOp,
   if (CmpInst *C = dyn_cast<CmpInst>(I)) {
     if (C->getOperand(0) == Op)
       return SimplifyCmpInst(C->getPredicate(), RepOp, C->getOperand(1), TD,
-                             TLI, DT, AT);
+                             TLI, DT, AC);
     if (C->getOperand(1) == Op)
       return SimplifyCmpInst(C->getPredicate(), C->getOperand(0), RepOp, TD,
-                             TLI, DT, AT);
+                             TLI, DT, AC);
   }
 
   // TODO: We could hand off more cases to instsimplify here.
@@ -580,26 +579,26 @@ Instruction *InstCombiner::visitSelectInstWithICmp(SelectInst &SI,
   // arms of the select. See if substituting this value into the arm and
   // simplifying the result yields the same value as the other arm.
   if (Pred == ICmpInst::ICMP_EQ) {
-    if (SimplifyWithOpReplaced(FalseVal, CmpLHS, CmpRHS, DL, TLI,
-                               DT, AT) == TrueVal ||
-        SimplifyWithOpReplaced(FalseVal, CmpRHS, CmpLHS, DL, TLI,
-                               DT, AT) == TrueVal)
+    if (SimplifyWithOpReplaced(FalseVal, CmpLHS, CmpRHS, DL, TLI, DT, AC) ==
+            TrueVal ||
+        SimplifyWithOpReplaced(FalseVal, CmpRHS, CmpLHS, DL, TLI, DT, AC) ==
+            TrueVal)
       return ReplaceInstUsesWith(SI, FalseVal);
-    if (SimplifyWithOpReplaced(TrueVal, CmpLHS, CmpRHS, DL, TLI,
-                               DT, AT) == FalseVal ||
-        SimplifyWithOpReplaced(TrueVal, CmpRHS, CmpLHS, DL, TLI,
-                               DT, AT) == FalseVal)
+    if (SimplifyWithOpReplaced(TrueVal, CmpLHS, CmpRHS, DL, TLI, DT, AC) ==
+            FalseVal ||
+        SimplifyWithOpReplaced(TrueVal, CmpRHS, CmpLHS, DL, TLI, DT, AC) ==
+            FalseVal)
       return ReplaceInstUsesWith(SI, FalseVal);
   } else if (Pred == ICmpInst::ICMP_NE) {
-    if (SimplifyWithOpReplaced(TrueVal, CmpLHS, CmpRHS, DL, TLI,
-                               DT, AT) == FalseVal ||
-        SimplifyWithOpReplaced(TrueVal, CmpRHS, CmpLHS, DL, TLI,
-                               DT, AT) == FalseVal)
+    if (SimplifyWithOpReplaced(TrueVal, CmpLHS, CmpRHS, DL, TLI, DT, AC) ==
+            FalseVal ||
+        SimplifyWithOpReplaced(TrueVal, CmpRHS, CmpLHS, DL, TLI, DT, AC) ==
+            FalseVal)
       return ReplaceInstUsesWith(SI, TrueVal);
-    if (SimplifyWithOpReplaced(FalseVal, CmpLHS, CmpRHS, DL, TLI,
-                               DT, AT) == TrueVal ||
-        SimplifyWithOpReplaced(FalseVal, CmpRHS, CmpLHS, DL, TLI,
-                               DT, AT) == TrueVal)
+    if (SimplifyWithOpReplaced(FalseVal, CmpLHS, CmpRHS, DL, TLI, DT, AC) ==
+            TrueVal ||
+        SimplifyWithOpReplaced(FalseVal, CmpRHS, CmpLHS, DL, TLI, DT, AC) ==
+            TrueVal)
       return ReplaceInstUsesWith(SI, TrueVal);
   }
 
@@ -617,26 +616,44 @@ Instruction *InstCombiner::visitSelectInstWithICmp(SelectInst &SI,
     }
   }
 
-  {
+  if (unsigned BitWidth = TrueVal->getType()->getScalarSizeInBits()) {
+    APInt MinSignedValue = APInt::getSignBit(BitWidth);
     Value *X;
     const APInt *Y, *C;
-    if (match(CmpLHS, m_And(m_Value(X), m_Power2(Y))) &&
+    bool TrueWhenUnset;
+    bool IsBitTest = false;
+    if (ICmpInst::isEquality(Pred) &&
+        match(CmpLHS, m_And(m_Value(X), m_Power2(Y))) &&
         match(CmpRHS, m_Zero())) {
+      IsBitTest = true;
+      TrueWhenUnset = Pred == ICmpInst::ICMP_EQ;
+    } else if (Pred == ICmpInst::ICMP_SLT && match(CmpRHS, m_Zero())) {
+      X = CmpLHS;
+      Y = &MinSignedValue;
+      IsBitTest = true;
+      TrueWhenUnset = false;
+    } else if (Pred == ICmpInst::ICMP_SGT && match(CmpRHS, m_AllOnes())) {
+      X = CmpLHS;
+      Y = &MinSignedValue;
+      IsBitTest = true;
+      TrueWhenUnset = true;
+    }
+    if (IsBitTest) {
       Value *V = nullptr;
       // (X & Y) == 0 ? X : X ^ Y  --> X & ~Y
-      if (Pred == ICmpInst::ICMP_EQ && TrueVal == X &&
+      if (TrueWhenUnset && TrueVal == X &&
           match(FalseVal, m_Xor(m_Specific(X), m_APInt(C))) && *Y == *C)
         V = Builder->CreateAnd(X, ~(*Y));
       // (X & Y) != 0 ? X ^ Y : X  --> X & ~Y
-      else if (Pred == ICmpInst::ICMP_NE && FalseVal == X &&
+      else if (!TrueWhenUnset && FalseVal == X &&
                match(TrueVal, m_Xor(m_Specific(X), m_APInt(C))) && *Y == *C)
         V = Builder->CreateAnd(X, ~(*Y));
       // (X & Y) == 0 ? X ^ Y : X  --> X | Y
-      else if (Pred == ICmpInst::ICMP_EQ && FalseVal == X &&
+      else if (TrueWhenUnset && FalseVal == X &&
                match(TrueVal, m_Xor(m_Specific(X), m_APInt(C))) && *Y == *C)
         V = Builder->CreateOr(X, *Y);
       // (X & Y) != 0 ? X : X ^ Y  --> X | Y
-      else if (Pred == ICmpInst::ICMP_NE && TrueVal == X &&
+      else if (!TrueWhenUnset && TrueVal == X &&
                match(FalseVal, m_Xor(m_Specific(X), m_APInt(C))) && *Y == *C)
         V = Builder->CreateOr(X, *Y);
 
@@ -836,8 +853,8 @@ Instruction *InstCombiner::visitSelectInst(SelectInst &SI) {
   Value *TrueVal = SI.getTrueValue();
   Value *FalseVal = SI.getFalseValue();
 
-  if (Value *V = SimplifySelectInst(CondVal, TrueVal, FalseVal, DL, TLI,
-                                    DT, AT))
+  if (Value *V =
+          SimplifySelectInst(CondVal, TrueVal, FalseVal, DL, TLI, DT, AC))
     return ReplaceInstUsesWith(SI, V);
 
   if (SI.getType()->isIntegerTy(1)) {

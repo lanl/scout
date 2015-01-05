@@ -472,6 +472,12 @@ namespace llvm {
       removeSegment(S.start, S.end, RemoveDeadValNo);
     }
 
+    /// Remove segment pointed to by iterator @p I from this range.  This does
+    /// not remove dead value numbers.
+    iterator removeSegment(iterator I) {
+      return segments.erase(I);
+    }
+
     /// Query Liveness at Idx.
     /// The sub-instruction slot of Idx doesn't matter, only the instruction
     /// it refers to is considered.
@@ -545,6 +551,10 @@ namespace llvm {
 #else
     void verify() const;
 #endif
+
+  protected:
+    /// Append a segment to the list of segments.
+    void append(const LiveRange::Segment S);
 
   private:
 
@@ -678,6 +688,10 @@ namespace llvm {
     /// Removes all subranges without any segments (subranges without segments
     /// are not considered valid and should only exist temporarily).
     void removeEmptySubRanges();
+
+    /// Construct main live range by merging the SubRanges of @p LI.
+    void constructMainRangeFromSubranges(const SlotIndexes &Indexes,
+                                         VNInfo::Allocator &VNIAllocator);
 
     /// getSize - Returns the sum of sizes of all the LiveRange's.
     ///
