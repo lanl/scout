@@ -1361,29 +1361,10 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
                                             DAGCombinerInfo &DCI) const {
   SelectionDAG &DAG = DCI.DAG;
   SDLoc DL(N);
-  EVT VT = N->getValueType(0);
 
   switch (N->getOpcode()) {
-    default: return AMDGPUTargetLowering::PerformDAGCombine(N, DCI);
-    case ISD::SETCC: {
-      SDValue Arg0 = N->getOperand(0);
-      SDValue Arg1 = N->getOperand(1);
-      SDValue CC = N->getOperand(2);
-      ConstantSDNode * C = nullptr;
-      ISD::CondCode CCOp = dyn_cast<CondCodeSDNode>(CC)->get();
-
-      // i1 setcc (sext(i1), 0, setne) -> i1 setcc(i1, 0, setne)
-      if (VT == MVT::i1
-          && Arg0.getOpcode() == ISD::SIGN_EXTEND
-          && Arg0.getOperand(0).getValueType() == MVT::i1
-          && (C = dyn_cast<ConstantSDNode>(Arg1))
-          && C->isNullValue()
-          && CCOp == ISD::SETNE) {
-        return SimplifySetCC(VT, Arg0.getOperand(0),
-                             DAG.getConstant(0, MVT::i1), CCOp, true, DCI, DL);
-      }
-      break;
-    }
+  default:
+    return AMDGPUTargetLowering::PerformDAGCombine(N, DCI);
   case ISD::FMAXNUM: // TODO: What about fmax_legacy?
   case ISD::FMINNUM:
   case AMDGPUISD::SMAX:
@@ -1578,31 +1559,30 @@ static bool isSSrc(unsigned RegClass) {
 /// and the immediate value if it's a literal immediate
 int32_t SITargetLowering::analyzeImmediate(const SDNode *N) const {
 
-  union {
-    int32_t I;
-    float F;
-  } Imm;
+  const SIInstrInfo *TII = static_cast<const SIInstrInfo *>(
+    getTargetMachine().getSubtargetImpl()->getInstrInfo());
 
   if (const ConstantSDNode *Node = dyn_cast<ConstantSDNode>(N)) {
-    if (Node->getZExtValue() >> 32) {
-        return -1;
-    }
-    Imm.I = Node->getSExtValue();
-  } else if (const ConstantFPSDNode *Node = dyn_cast<ConstantFPSDNode>(N)) {
-    if (N->getValueType(0) != MVT::f32)
+    if (Node->getZExtValue() >> 32)
       return -1;
-    Imm.F = Node->getValueAPF().convertToFloat();
-  } else
-    return -1; // It isn't an immediate
 
-  if ((Imm.I >= -16 && Imm.I <= 64) ||
-      Imm.F == 0.5f || Imm.F == -0.5f ||
-      Imm.F == 1.0f || Imm.F == -1.0f ||
-      Imm.F == 2.0f || Imm.F == -2.0f ||
-      Imm.F == 4.0f || Imm.F == -4.0f)
-    return 0; // It's an inline immediate
+    if (TII->isInlineConstant(Node->getAPIntValue()))
+      return 0;
 
-  return Imm.I; // It's a literal immediate
+    return Node->getZExtValue();
+  }
+
+  if (const ConstantFPSDNode *Node = dyn_cast<ConstantFPSDNode>(N)) {
+    if (TII->isInlineConstant(Node->getValueAPF().bitcastToAPInt()))
+      return 0;
+
+    if (Node->getValueType(0) == MVT::f32)
+      return FloatToBits(Node->getValueAPF().convertToFloat());
+
+    return -1;
+  }
+
+  return -1;
 }
 
 /// \brief Try to fold an immediate directly into an instruction

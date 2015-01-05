@@ -787,11 +787,12 @@ SDValue DAGCombiner::CombineTo(SDNode *N, const SDValue *To, unsigned NumTo,
         N->dump(&DAG);
         dbgs() << "\nWith: ";
         To[0].getNode()->dump(&DAG);
-        dbgs() << " and " << NumTo-1 << " other values\n";
-        for (unsigned i = 0, e = NumTo; i != e; ++i)
-          assert((!To[i].getNode() ||
-                  N->getValueType(i) == To[i].getValueType()) &&
-                 "Cannot combine value to value of different type!"));
+        dbgs() << " and " << NumTo-1 << " other values\n");
+  for (unsigned i = 0, e = NumTo; i != e; ++i)
+    assert((!To[i].getNode() ||
+            N->getValueType(i) == To[i].getValueType()) &&
+           "Cannot combine value to value of different type!");
+
   WorklistRemover DeadNodes(*this);
   DAG.ReplaceAllUsesWith(N, To);
   if (AddTo) {
@@ -9734,7 +9735,7 @@ bool DAGCombiner::MergeConsecutiveStores(StoreSDNode* St) {
         } else if (ConstantFPSDNode *C = dyn_cast<ConstantFPSDNode>(Val)) {
           StoreInt|= C->getValueAPF().bitcastToAPInt().zext(StoreBW);
         } else {
-          assert(false && "Invalid constant element type");
+          llvm_unreachable("Invalid constant element type");
         }
       }
 
@@ -10761,6 +10762,7 @@ SDValue DAGCombiner::visitBUILD_VECTOR(SDNode *N) {
 
   // If everything is good, we can make a shuffle operation.
   if (VecIn1.getNode()) {
+    unsigned InNumElements = VecIn1.getValueType().getVectorNumElements();
     SmallVector<int, 8> Mask;
     for (unsigned i = 0; i != NumInScalars; ++i) {
       unsigned Opcode = N->getOperand(i).getOpcode();
@@ -10787,8 +10789,8 @@ SDValue DAGCombiner::visitBUILD_VECTOR(SDNode *N) {
         continue;
       }
 
-      // Otherwise, use InIdx + VecSize
-      Mask.push_back(NumInScalars+ExtIndex);
+      // Otherwise, use InIdx + InputVecSize
+      Mask.push_back(InNumElements + ExtIndex);
     }
 
     // Avoid introducing illegal shuffles with zero.
@@ -10798,14 +10800,12 @@ SDValue DAGCombiner::visitBUILD_VECTOR(SDNode *N) {
     // We can't generate a shuffle node with mismatched input and output types.
     // Attempt to transform a single input vector to the correct type.
     if ((VT != VecIn1.getValueType())) {
-      // We don't support shuffeling between TWO values of different types.
-      if (VecIn2.getNode())
-        return SDValue();
-
       // If the input vector type has a different base type to the output
       // vector type, bail out.
-      if (VecIn1.getValueType().getVectorElementType() !=
-          VT.getVectorElementType())
+      EVT VTElemType = VT.getVectorElementType();
+      if ((VecIn1.getValueType().getVectorElementType() != VTElemType) ||
+          (VecIn2.getNode() &&
+           (VecIn2.getValueType().getVectorElementType() != VTElemType)))
         return SDValue();
 
       // If the input vector is too small, widen it.
@@ -10813,11 +10813,22 @@ SDValue DAGCombiner::visitBUILD_VECTOR(SDNode *N) {
       // output registers. For example XMM->YMM widening on X86 with AVX.
       EVT VecInT = VecIn1.getValueType();
       if (VecInT.getSizeInBits() * 2 == VT.getSizeInBits()) {
-        // Widen the input vector by adding undef values.
-        VecIn1 = DAG.getNode(ISD::CONCAT_VECTORS, dl, VT,
-                             VecIn1, DAG.getUNDEF(VecIn1.getValueType()));
+        // If we only have one small input, widen it by adding undef values.
+        if (!VecIn2.getNode())
+          VecIn1 = DAG.getNode(ISD::CONCAT_VECTORS, dl, VT, VecIn1,
+                               DAG.getUNDEF(VecIn1.getValueType()));
+        else if (VecIn1.getValueType() == VecIn2.getValueType()) {
+          // If we have two small inputs of the same type, try to concat them.
+          VecIn1 = DAG.getNode(ISD::CONCAT_VECTORS, dl, VT, VecIn1, VecIn2);
+          VecIn2 = SDValue(nullptr, 0);
+        } else
+          return SDValue();
       } else if (VecInT.getSizeInBits() == VT.getSizeInBits() * 2) {
         // If the input vector is too large, try to split it.
+        // We don't support having two input vectors that are too large.
+        if (VecIn2.getNode())
+          return SDValue();
+
         if (!TLI.isExtractSubvectorCheap(VT, VT.getVectorNumElements()))
           return SDValue();
         
@@ -10828,7 +10839,7 @@ SDValue DAGCombiner::visitBUILD_VECTOR(SDNode *N) {
         VecIn1 = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, VT, VecIn1,
           DAG.getConstant(0, TLI.getVectorIdxTy()));
         UsesZeroVector = false;
-      } else 
+      } else
         return SDValue();
     }
 

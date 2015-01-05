@@ -2441,6 +2441,13 @@ bool Verifier::VerifyIntrinsicType(Type *Ty,
     return VerifyIntrinsicType(ThisArgType->getVectorElementType(),
                                Infos, ArgTys);
   }
+  case IITDescriptor::PtrToArgument: {
+    if (D.getArgumentNumber() >= ArgTys.size())
+      return true;
+    Type * ReferenceType = ArgTys[D.getArgumentNumber()];
+    PointerType *ThisArgType = dyn_cast<PointerType>(Ty);
+    return (!ThisArgType || ThisArgType->getElementType() != ReferenceType);
+  }
   }
   llvm_unreachable("unhandled");
 }
@@ -2895,15 +2902,15 @@ ModulePass *llvm::createDebugInfoVerifierPass(bool FatalErrors) {
   return new DebugInfoVerifierLegacyPass(FatalErrors);
 }
 
-PreservedAnalyses VerifierPass::run(Module *M) {
-  if (verifyModule(*M, &dbgs()) && FatalErrors)
+PreservedAnalyses VerifierPass::run(Module &M) {
+  if (verifyModule(M, &dbgs()) && FatalErrors)
     report_fatal_error("Broken module found, compilation aborted!");
 
   return PreservedAnalyses::all();
 }
 
-PreservedAnalyses VerifierPass::run(Function *F) {
-  if (verifyFunction(*F, &dbgs()) && FatalErrors)
+PreservedAnalyses VerifierPass::run(Function &F) {
+  if (verifyFunction(F, &dbgs()) && FatalErrors)
     report_fatal_error("Broken function found, compilation aborted!");
 
   return PreservedAnalyses::all();
