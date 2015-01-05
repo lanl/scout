@@ -2784,7 +2784,7 @@ CommandInterpreter::HandleCommandsFromFile (FileSpec &cmd_file,
     else
     {
         result.AppendErrorWithFormat ("Error reading commands from file %s - file not found.\n", 
-                                      cmd_file.GetFilename().AsCString());
+                                      cmd_file.GetFilename().AsCString("<Unknown>"));
         result.SetStatus (eReturnStatusFailed);
         return;
     }

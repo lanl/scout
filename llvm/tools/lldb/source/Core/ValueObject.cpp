@@ -3545,9 +3545,7 @@ ValueObject::LogValueObject (Log *log, const DumpValueObjectOptions& options)
 void
 ValueObject::Dump (Stream &s)
 {
-    
-    ValueObjectPrinter printer(this,&s,DumpValueObjectOptions::DefaultOptions());
-    printer.PrintValueObject();
+    Dump (s, DumpValueObjectOptions::DefaultOptions());
 }
 
 void
@@ -4041,6 +4039,16 @@ ValueObject::CreateValueObjectFromExpression (const char* name,
                                               const char* expression,
                                               const ExecutionContext& exe_ctx)
 {
+    return CreateValueObjectFromExpression(name, expression, exe_ctx, EvaluateExpressionOptions());
+}
+
+
+lldb::ValueObjectSP
+ValueObject::CreateValueObjectFromExpression (const char* name,
+                                              const char* expression,
+                                              const ExecutionContext& exe_ctx,
+                                              const EvaluateExpressionOptions& options)
+{
     lldb::ValueObjectSP retval_sp;
     lldb::TargetSP target_sp(exe_ctx.GetTargetSP());
     if (!target_sp)
@@ -4049,7 +4057,8 @@ ValueObject::CreateValueObjectFromExpression (const char* name,
         return retval_sp;
     target_sp->EvaluateExpression (expression,
                                    exe_ctx.GetFrameSP().get(),
-                                   retval_sp);
+                                   retval_sp,
+                                   options);
     if (retval_sp && name && *name)
         retval_sp->SetName(ConstString(name));
     return retval_sp;
@@ -4071,7 +4080,7 @@ ValueObject::CreateValueObjectFromAddress (const char* name,
                                                                                      pointer_type,
                                                                                      ConstString(name),
                                                                                      buffer,
-                                                                                     lldb::endian::InlHostByteOrder(),
+                                                                                     exe_ctx.GetByteOrder(),
                                                                                      exe_ctx.GetAddressByteSize()));
             if (ptr_result_valobj_sp)
             {
