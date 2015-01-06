@@ -58,7 +58,10 @@ set(files
   xopintrin.h
   )
 
-set(output_dir ${LLVM_LIBRARY_OUTPUT_INTDIR}/clang/${CLANG_VERSION}/include)
+##### Scout ##########################
+# set(output_dir ${LLVM_LIBRARY_OUTPUT_INTDIR}/clang/${CLANG_VERSION}/include)
+set(output_dir ${SCOUT_BUILD_DIR}/lib/clang/${CLANG_VERSION}/include)
+####################################
 
 # Generate arm_neon.h
 clang_tablegen(arm_neon.h -gen-arm-neon
