@@ -60,7 +60,7 @@
 #include <assert.h>
 #include <stdio.h>
 
-const int MESH_DIM = 512;
+const int MESH_DIM = 8;
 
 uniform mesh HeatMesh {
   cells: 
@@ -102,7 +102,7 @@ task void init(HeatMesh *m) {
   }
 }
 task void work(HeatMesh *m) {
-  const int NTIME_STEPS = 100;
+  const int NTIME_STEPS = 1;
   const float VALUE = 87.899254;
 
   const float dx = 10.0f / width(*m);

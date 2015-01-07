@@ -59,6 +59,8 @@
 #include <string>
 #include <cassert>
 
+#include "cg-mapper.h"
+
 #include "legion.h"
 
 #define ndump(X) std::cout << __FILE__ << ":" << __LINE__ << ": " << \
@@ -73,6 +75,8 @@ using namespace LegionRuntime::HighLevel;
 using namespace LegionRuntime::Accessor;
 
 namespace{
+
+  typedef LegionRuntime::HighLevel::HighLevelRuntime HLR;
 
   static const uint8_t READ_MASK = 0x1;
   static const uint8_t WRITE_MASK = 0x2;  
@@ -110,30 +114,32 @@ namespace{
     }
   }
 
+  struct Field{
+    string fieldName;
+    sclegion_element_kind_t elementKind;
+    sclegion_field_kind_t fieldKind;
+    legion_field_id_t fieldId;
+  };
+
+  typedef vector<Field> FieldVec;
+
   class Mesh{
   public:
-
-    struct Field{
-      string fieldName;
-      sclegion_element_kind_t elementKind;
-      sclegion_field_kind_t fieldKind;
-      legion_field_id_t fieldId;
-    };
     
     struct Element{
       Element()
         : count(0){}
 
       size_t count;
-      legion_logical_region_t logicalRegion;
-      legion_field_space_t fieldSpace;
-      legion_domain_t domain;
-      legion_index_space_t indexSpace;
-      legion_field_allocator_t fieldAllocator;
+      LogicalRegion logicalRegion;
+      FieldSpace fieldSpace;
+      Domain domain;
+      IndexSpace indexSpace;
+      FieldAllocator fieldAllocator;
     };
 
-    Mesh(legion_runtime_t runtime,
-         legion_context_t context,
+    Mesh(HighLevelRuntime* runtime,
+         Context context,
          size_t rank,
          size_t width,
          size_t height,
@@ -165,43 +171,50 @@ namespace{
       }
     }
 
+    void getFields(sclegion_element_kind_t elementKind, FieldVec& fields){
+      for(auto& itr : fieldMap_){
+        const Field& field = itr.second;
+
+        if(field.elementKind == elementKind){
+          fields.push_back(field);
+        }
+      }
+    }
+
     void init(){
       for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
         Element& element = elements_[i];
 
         size_t count = element.count;
-
+        
         if(count == 0){
           continue;
         }
-        
-        legion_rect_1d_t rect;
-        rect.lo = {0};
-        rect.hi = {int(count) - 1};
-        
-        element.domain = legion_domain_from_rect_1d(rect);
+
+        Rect<1> rect(Point<1>(0), Point<1>(count - 1));
+        Rect<1> subRect;
+
+        element.domain = Domain::from_rect<1>(rect);
 
         element.indexSpace = 
-          legion_index_space_create_domain(runtime_, context_, element.domain);
+          runtime_->create_index_space(context_, element.domain);
 
-        element.fieldSpace = legion_field_space_create(runtime_, context_);
+        element.fieldSpace = runtime_->create_field_space(context_);
 
-        element.fieldAllocator =
-          legion_field_allocator_create(runtime_, context_, element.fieldSpace);
+        element.fieldAllocator = 
+          runtime_->create_field_allocator(context_, element.fieldSpace);
 
         for(auto& itr : fieldMap_){
           Field& field = itr.second;
-          size_t size = fieldKindSize(field.fieldKind) * count;
-          legion_field_allocator_allocate_field(element.fieldAllocator,
-                                                size,
+
+          element.fieldAllocator.allocate_field(fieldKindSize(field.fieldKind),
                                                 field.fieldId);
         }
 
         element.logicalRegion =
-          legion_logical_region_create(runtime_,
-                                       context_,
-                                       element.indexSpace,
-                                       element.fieldSpace);
+          runtime_->create_logical_region(context_,
+                                          element.indexSpace,
+                                          element.fieldSpace);
       }
     }
 
@@ -300,8 +313,8 @@ namespace{
   private:
     typedef map<string, Field> FieldMap_;
 
-    legion_runtime_t runtime_;
-    legion_context_t context_;
+    HighLevelRuntime* runtime_;
+    Context context_;
 
     legion_field_id_t nextFieldId_;
 
@@ -323,8 +336,12 @@ namespace{
       Region()
         : mode_(0){}
 
-      void addField(const Mesh::Field& field, legion_privilege_mode_t mode){
-        fields_.push_back(field);
+      void setFields(const FieldVec& fields){
+        fields_ = fields;
+      }
+
+      void addField(const Field& field, legion_privilege_mode_t mode){
+        fieldSet_.insert(field.fieldName);
 
         switch(mode){
         case READ_ONLY:
@@ -365,7 +382,14 @@ namespace{
           MeshFieldInfo* info = (MeshFieldInfo*)args;
           info->region = region;
           info->fieldKind = f.fieldKind;
-          info->count = count;
+          
+          if(fieldSet_.find(f.fieldName) != fieldSet_.end()){
+            info->count = count;
+          }
+          else{
+            info->count = 0;
+          }
+
           info->fieldId = f.fieldId;
           args += sizeof(MeshFieldInfo);
         }
@@ -375,23 +399,25 @@ namespace{
       }
 
       
-      void addFieldsToIndexLauncher(legion_index_launcher_t launcher,
+      void addFieldsToIndexLauncher(IndexLauncher& launcher,
                                     unsigned region) const{
         for(auto& f : fields_){
-          legion_index_launcher_add_field(launcher, region, f.fieldId, true);
+          launcher.add_field(region, f.fieldId);
         } 
       }
 
-      void addFieldsToTaskLauncher(legion_task_launcher_t launcher,
+      void addFieldsToTaskLauncher(TaskLauncher& launcher,
                                    unsigned region) const{
         for(auto& f : fields_){
-          legion_task_launcher_add_field(launcher, region, f.fieldId, true);
+          launcher.add_field(region, f.fieldId);
         } 
       }
 
     private:
-      typedef vector<Mesh::Field> Fields_;
+      typedef set<string> FieldSet_;
+      typedef vector<Field> Fields_;
 
+      FieldSet_ fieldSet_;
       Fields_ fields_;
       uint8_t mode_;
     };
@@ -399,16 +425,25 @@ namespace{
     Launcher(Mesh* mesh, legion_task_id_t taskId)
     : mesh_(mesh),
       taskId_(taskId),
-      numFields_(0){}
+      numFields_(0){
 
-    void addField(const string& fieldName, legion_privilege_mode_t mode){
-      const Mesh::Field& field = mesh_->getField(fieldName);
-      regions_[field.elementKind].addField(field, mode);
-      ++numFields_;
+      for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
+        FieldVec fields;
+        mesh->getFields(sclegion_element_kind_t(i), fields);
+        regions_[i].setFields(fields);
+        numFields_ += fields.size();
+      }
     }
 
-    void execute(legion_context_t context,
-                 legion_runtime_t runtime){
+    void addField(const string& fieldName, legion_privilege_mode_t mode){
+      const Field& field = mesh_->getField(fieldName);
+      regions_[field.elementKind].addField(field, mode);
+    }
+
+    void execute(legion_context_t ctx, legion_runtime_t rt){
+      HighLevelRuntime* runtime = static_cast<HighLevelRuntime*>(rt.impl);
+      Context context = static_cast<Context>(ctx.impl);
+
       size_t argsLen = sizeof(MeshHeader) + numFields_ * sizeof(MeshFieldInfo);
       void* argsPtr = malloc(argsLen);
       char* args = (char*)argsPtr;
@@ -417,7 +452,7 @@ namespace{
       header->numFields = numFields_;
       args += sizeof(MeshHeader);
 
-      legion_domain_t domain;
+      Domain domain;
       size_t maxCount = 0;
 
       size_t region = 0;
@@ -432,29 +467,8 @@ namespace{
           domain = element.domain;
         }
       }
-      
-      legion_task_argument_t taskArg = {argsPtr, argsLen};
 
-      legion_argument_map_t map = {new ArgumentMap};
-
-      /*
-      legion_index_launcher_t launcher =
-        legion_index_launcher_create(taskId_,
-                                     domain,
-                                     taskArg,
-                                     map,
-                                     legion_predicate_true(),
-                                     false,
-                                     0,
-                                     0);
-      */
-
-      legion_task_launcher_t launcher =
-        legion_task_launcher_create(taskId_,
-                                    taskArg,
-                                    legion_predicate_true(),
-                                    0,
-                                    0);
+      TaskLauncher launcher(taskId_, TaskArgument(argsPtr, argsLen));
 
       for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
 
@@ -467,34 +481,16 @@ namespace{
         const Mesh::Element& element = 
           mesh_->getElement(sclegion_element_kind_t(i));
 
-        /*
-        legion_index_launcher_add_region_requirement_logical_region(
-          launcher,
-          element.logicalRegion,
-          0,
-          region.legionMode(),
-          EXCLUSIVE,
-          element.logicalRegion,
-          0,
-          false);
-        */
-        
-        legion_task_launcher_add_region_requirement_logical_region(
-          launcher,
-          element.logicalRegion,
-          region.legionMode(),
-          EXCLUSIVE,
-          element.logicalRegion,
-          0,
-          false);
+        launcher.add_region_requirement(
+          RegionRequirement(element.logicalRegion,
+                            region.legionMode(),
+                            EXCLUSIVE,
+                            element.logicalRegion));
 
-        //region.addFieldsToIndexLauncher(launcher, i);
         region.addFieldsToTaskLauncher(launcher, i);
       }
       
-      //legion_index_launcher_execute(runtime, context, launcher);
-
-      legion_task_launcher_execute(runtime, context, launcher);
+      runtime->execute_task(context, launcher);
     }
 
   private:
@@ -510,7 +506,7 @@ void
 sclegion_init(const char* main_task_name,
               legion_task_pointer_void_t main_task_pointer){
   
-  legion_runtime_set_top_level_task_id(0);
+  HLR::set_top_level_task_id(0);
   
   legion_task_config_options_t options;
   options.leaf = false;
@@ -524,7 +520,10 @@ sclegion_init(const char* main_task_name,
 
 int
 sclegion_start(int argc, char** argv){
-  return legion_runtime_start(argc, argv, false);
+  // register custom mapper
+  HLR::set_registration_callback(mapperRegistration);
+
+  return HLR::start(argc, argv);
 }
 
 void
@@ -543,12 +542,16 @@ sclegion_register_task(legion_task_id_t task_id,
 }
 
 sclegion_uniform_mesh_t
-sclegion_uniform_mesh_create(legion_runtime_t runtime,
-                             legion_context_t context,
+sclegion_uniform_mesh_create(legion_runtime_t rt,
+                             legion_context_t ctx,
                              size_t rank,
                              size_t width,
                              size_t height,
                              size_t depth){
+
+  HighLevelRuntime* runtime = static_cast<HighLevelRuntime*>(rt.impl);
+  Context context = static_cast<Context>(ctx.impl);
+
   return {new Mesh(runtime, context, rank, width, height, depth)};
 }
 
@@ -573,7 +576,7 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
                                   legion_runtime_t runtime){
 
   HighLevelRuntime* hr = static_cast<HighLevelRuntime*>(runtime.impl);
-  Context* hc = static_cast<Context*>(context.impl);
+  Context hc = static_cast<Context>(context.impl);
   Task* ht = static_cast<Task*>(task.impl);
 
   size_t argsLen = legion_task_get_arglen(task);
@@ -601,13 +604,13 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
         static_cast<PhysicalRegion*>(region[fi->region].impl);
 
       Domain d = 
-        hr->get_index_space_domain(*hc,
+        hr->get_index_space_domain(hc,
           ht->regions[fi->region].region.get_index_space());
 
       Rect<1> r = d.get_rect<1>();
-      Rect<1> sr = d.get_rect<1>();
+      Rect<1> sr;
       ByteOffset bo[1];
-      
+
       typedef RegionAccessor<AccessorType::Generic, float> RA;
       RA fm = hp->get_field_accessor(fi->fieldId).typeify<float>();
 

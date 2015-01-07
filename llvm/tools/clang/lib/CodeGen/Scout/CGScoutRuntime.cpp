@@ -319,7 +319,13 @@ llvm::Function *CGScoutRuntime::EmitRuntimeInitFunc(SourceLocation Loc,
 void CGScoutRuntime::EmitRuntimeInitializationCall(CodeGenFunction &CGF,
                                                    SourceLocation Loc) {
 
-  std::string funcName("__scrt_init_cpu");
+  std::string funcName;
+  if(CGM.getLangOpts().ScoutNvidiaGPU){
+    funcName = "__scrt_cuda_init";
+  } else {
+    funcName = "__scrt_init_cpu";
+  }
+  
   // main high-level runtime initialization.
   llvm::Function *rtInitFn = CGM.getModule().getFunction(funcName);
   if (!rtInitFn) {

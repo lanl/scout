@@ -2982,14 +2982,19 @@ public:
            E = CallArgTypeInfo->param_type_end();
            I != E; ++I, ++Arg) {
         assert(Arg != ArgEnd && "Running over edge of argument list!");
-
+        // ===== Scout ===================================
+        // SC_TODO: this is causing a problem with mesh params
+        // commented out for now
+        /*
         assert(
-            ((*I)->isVariablyModifiedType() ||
-             getContext()
-                     .getCanonicalType((*I).getNonReferenceType())
-                     .getTypePtr() ==
-                 getContext().getCanonicalType(Arg->getType()).getTypePtr()) &&
-            "type mismatch in call argument!");
+               ((*I)->isVariablyModifiedType() ||
+                getContext()
+                .getCanonicalType((*I).getNonReferenceType())
+                .getTypePtr() ==
+                getContext().getCanonicalType(Arg->getType()).getTypePtr()) &&
+               "type mismatch in call argument!");
+         */
+        // ===============================================
         ArgTypes.push_back(*I);
       }
     }

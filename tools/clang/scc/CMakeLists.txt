@@ -102,5 +102,3 @@ endif()
 if(SCC_ORDER_FILE)
   target_link_libraries(scc "-Wl,-order_file,${SCC_ORDER_FILE}")
 endif()
-
-file(COPY ${SCOUT_BUILD_DIR}/llvm/lib/clang/${CLANG_VERSION} DESTINATION ${SCOUT_BUILD_DIR}/lib/clang)
