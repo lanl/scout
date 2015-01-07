@@ -972,7 +972,7 @@ llvm::Function* CGLegionCRuntime::ScInitFunc(){
                  {StringTy, PointerTy(VoidTaskFuncTy)});
 }
 
-llvm::Function* CGLegionCRuntime::ScStart(){
+llvm::Function* CGLegionCRuntime::ScStartFunc(){
   return GetFunc("sclegion_start",
                  {Int32Ty, PointerTy(StringTy)},
                  Int32Ty);

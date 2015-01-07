@@ -345,7 +345,7 @@ namespace CodeGen {
     // ======== Scout specific functions =================
     
     llvm::Function* ScInitFunc();
-    llvm::Function* ScStart();
+    llvm::Function* ScStartFunc();
     llvm::Function* ScRegisterTaskFunc();
     llvm::Function* ScUniformMeshCreateFunc();
     llvm::Function* ScUniformMeshAddFieldFunc();

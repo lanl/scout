@@ -167,7 +167,7 @@ void CodeGenModule::finishLsciMainFunction() {
   CodeGenFunction CGF(*this);
   llvm::Function* lsciMainFunc = lsciMainFunction();
   llvm::IRBuilder<> Builder(TheModule.getContext());
-  CGLegionRuntime& r = getLegionRuntime();
+  CGLegionCRuntime& r = getLegionCRuntime();
 
   // Go through and find last block in main()
   llvm::BasicBlock &lastBlock = lsciMainFunc->back();
@@ -195,7 +195,7 @@ void CodeGenModule::finishLsciMainFunction() {
   std::vector<llvm::Value*> params;
   params.push_back(load_argc);
   params.push_back(load_argv);
-  llvm::CallInst* retVal = Builder.CreateCall(r.StartFunc(), params);
+  llvm::CallInst* retVal = Builder.CreateCall(r.ScStartFunc(), params);
 
   // return result of lsci_start()
   Builder.CreateRet(retVal);

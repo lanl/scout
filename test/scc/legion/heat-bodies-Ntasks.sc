@@ -148,8 +148,6 @@ int main(int argc, char *argv[]) {
     work(&m);
     if(t == NTIME_STEPS-2) check(&m);
   }
-  
-  printf("done\n");
 
   return 0;
 }
