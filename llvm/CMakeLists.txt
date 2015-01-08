@@ -132,6 +132,8 @@ endif()
 
 string(TOUPPER "${CMAKE_BUILD_TYPE}" uppercase_CMAKE_BUILD_TYPE)
 
+set(LLVM_LIBDIR_SUFFIX "" CACHE STRING "Define suffix of library directory name (32/64)" )
+
 # +===== Scout ===========================================================================+
 set(LLVM_BINARY_DIR ${SCOUT_BUILD_DIR})
 set(LLVM_TOOLS_BINARY_DIR ${LLVM_BINARY_DIR}/bin)
@@ -143,12 +145,6 @@ set(LLVM_TOOLS_BINARY_DIR ${LLVM_BINARY_DIR}/bin)
 set(LLVM_RUNTIME_OUTPUT_INTDIR ${SCOUT_BUILD_DIR}/bin)
 set(LLVM_LIBRARY_OUTPUT_INTDIR ${SCOUT_BUILD_DIR}/lib)
 # +=======================================================================================+
-
-set(LLVM_LIBDIR_SUFFIX "" CACHE STRING "Define suffix of library directory name (32/64)" )
-
-# They are used as destination of target generators.
-set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/bin)
-set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_CFG_INTDIR}/lib${LLVM_LIBDIR_SUFFIX})
 
 if(WIN32 OR CYGWIN)
   # DLL platform -- put DLLs into bin.
