@@ -21,6 +21,7 @@
 #include "llvm/Support/ConvertUTF.h"
 #include "Scout/CGMeshLayout.h"
 #include "Scout/CGLegionRuntime.h"
+#include "Scout/CGPlotRuntime.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include <stdio.h>
 
