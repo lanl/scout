@@ -61,6 +61,7 @@
 #include "Scout/CGScoutRuntime.h"
 #include "Scout/CGLegionRuntime.h"
 #include "Scout/CGLegionCRuntime.h"
+#include "Scout/CGPlotRuntime.h"
 // ======================================
 
 using namespace clang;
@@ -138,11 +139,12 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
   // +===== Scout ============================================================+
   if(isScoutLang(LangOpts)) {
     createScoutRuntime();
-    // ndm - test
-    createLegionRuntime();
-    createLegionCRuntime();
+    createPlotRuntime();
     
     if (CodeGenOpts.ScoutLegionSupport) {
+      createLegionRuntime();
+      createLegionCRuntime();
+      
       //createLegionRuntime(); start lsci_main() function for doing
       // Legion task registration and Legion startup.  Once this is
       // started, each time we see a task while doing code gen, add to
@@ -204,6 +206,10 @@ CodeGenModule::~CodeGenModule() {
 // ===== Scout ==============================
 void CodeGenModule::createScoutRuntime() {
   ScoutRuntime = new CGScoutRuntime(*this);
+}
+
+void CodeGenModule::createPlotRuntime() {
+  PlotRuntime = new CGPlotRuntime(*this);
 }
 
 void CodeGenModule::createLegionRuntime() {

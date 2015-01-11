@@ -59,6 +59,7 @@
 #include "clang/AST/Scout/MeshDecl.h"
 #include "Scout/CGLegionRuntime.h"
 #include "Scout/CGLegionCRuntime.h"
+#include "Scout/CGPlotRuntime.h"
 #include "CodeGenFunction.h"
 
 using namespace clang;
