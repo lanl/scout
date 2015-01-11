@@ -247,6 +247,13 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
   case Builtin::BIpositiony:
   case Builtin::BIpositionz:
     break;
+  case Builtin::BIplot:
+      if(!CheckPlotCall(BuiltinID, TheCall)){
+        return ExprError();
+      }
+      
+      TheCall->setType(Context.IntTy);
+    break;
   // +========================================================================+
   case Builtin::BI__builtin___CFStringMakeConstantString:
     assert(TheCall->getNumArgs() == 1 &&

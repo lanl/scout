@@ -7603,8 +7603,10 @@ def warn_forall_non_edges : Warning<
 def err_forall_non_cells_vertices : Error<
      "calling position outside of forall cells/vertices">; 
 def err_invalid_mesh_specifier : Error<
-     "invalid mesh specifier">;     
-     
+     "invalid mesh specifier">;
+def err_invalid_plot_call : Error<
+"invalid plot call: %0">;
+
     		  
 def warn_no_scstdlib : Warning<
     "scout standard library inclusion and rt code generation disabled">;

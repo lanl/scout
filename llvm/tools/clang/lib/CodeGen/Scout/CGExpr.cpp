@@ -799,6 +799,22 @@ RValue CodeGenFunction::EmitHeadExpr(void) {
   return RValue::get(PN);
 }
 
+RValue CodeGenFunction::EmitPlotExpr(ArgIterator argsBegin, ArgIterator argsEnd){
+  // proper checking is already done in Sema::CheclPlotCall()
+  
+  const MemberExpr* memberExpr = cast<MemberExpr>(*argsBegin);
+  const DeclRefExpr* base = dyn_cast<DeclRefExpr>(memberExpr->getBase());
+  const ValueDecl* vd = dyn_cast<ValueDecl>(base->getDecl());
+  const UniformMeshType* mt = dyn_cast<UniformMeshType>(vd->getType().getTypePtr());
+  
+  ++argsBegin;
+  
+  const StringLiteral* plotTypeLiteral = dyn_cast<StringLiteral>(*argsBegin);
+  std::string plotType = plotTypeLiteral->getString();
+
+  return RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+}
+
 void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
                                     LValue LV,
                                     const QueryExpr* QE){
@@ -953,5 +969,6 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   LocalDeclMap[VD] = qp;
 }
+
 
 

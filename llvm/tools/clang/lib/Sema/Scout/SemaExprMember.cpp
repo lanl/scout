@@ -182,11 +182,16 @@ bool Sema::LookupMeshMemberExpr(LookupResult &R, ExprResult &BaseExpr, SourceLoc
     return false;
   }
 
+  // now, make this parseable to support parsing of plot() builtin
+  // and other potential expressions
+  
+  /*
   if(!isa<ImplicitMeshParamDecl>(DRE->getDecl()) &&
       !isa<ParmVarDecl>(DRE->getDecl())) { // for stencil
     Diag(MemberLoc, diag::err_illegal_mesh_element_access);
     return false;
   }
+  */
 
   if (LookupMemberExprInMesh(*this, R, BaseExpr.get()->getSourceRange(),
       MTy, OpLoc, SS))

@@ -81,6 +81,5 @@ BUILTIN(eoshifti, "iiii.", "n") // just for int
 BUILTIN(eoshiftf, "fffi.", "n") // just for float
 BUILTIN(eoshiftd, "dddi.", "n") // just for double
 
-
-
+BUILTIN(plot, "vvv", "t") // generic 
 

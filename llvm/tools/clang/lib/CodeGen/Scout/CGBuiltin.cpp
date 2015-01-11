@@ -205,6 +205,11 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     *RV = EmitEOShiftExpr(E->arg_begin(), E->arg_end());
     return true;
   }
+  case Builtin::BIplot:
+  {
+    EmitPlotExpr(E->arg_begin(), E->arg_end());
+    return true;
+  }
 
   default: return false;
   }

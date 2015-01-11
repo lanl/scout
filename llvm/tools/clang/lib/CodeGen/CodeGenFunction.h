@@ -2187,6 +2187,8 @@ public:
 
   RValue EmitTailExpr(void);
   RValue EmitHeadExpr(void);
+  
+  RValue EmitPlotExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
 
   RValue EmitMeshParameterExpr(const Expr *E, MeshParameterOffset offset);
 
