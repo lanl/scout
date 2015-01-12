@@ -826,7 +826,8 @@ RValue CodeGenFunction::EmitPlotExpr(ArgIterator argsBegin, ArgIterator argsEnd)
   
   unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
   
-  llvm::Value* fieldAddr = Builder.CreateStructGEP(meshAddr, idx, "mesh.field");
+  llvm::Value* fieldAddr = Builder.CreateStructGEP(meshAddr, idx);
+  fieldAddr = Builder.CreateLoad(fieldAddr, "mesh.field");
   
   llvm::Type* fieldTy = structTy->getContainedType(idx);
   llvm::PointerType* ptrTy = dyn_cast<llvm::PointerType>(fieldTy);

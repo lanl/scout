@@ -53,6 +53,7 @@
  */
 
 #include <vector>
+#include <cassert>
 
 #include <Rcpp.h>
 #include <RInside.h>
@@ -70,7 +71,7 @@ namespace{
   class Plot{
   public:
     Plot()
-      : _r(0, 0){
+      : r_(0, 0){
 
       r_.parseEvalQ("library(ggplot2)");
 
