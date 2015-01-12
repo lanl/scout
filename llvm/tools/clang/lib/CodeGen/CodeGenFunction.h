@@ -2107,6 +2107,7 @@ public:
   void GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& BaseAddr);
 
   void SetMeshBounds(const Stmt &S);
+  void SetMeshBounds(llvm::Value* meshAddr);
   void ResetMeshBounds(void);
 
   void EmitLegionTask(const FunctionDecl* FD, llvm::Function* taskFunc);

@@ -63,4 +63,11 @@
     RankOffset
   };
 
+  enum MeshParameterEndOffset {
+    RankEndOffset = 1,
+    DepthEndOffset,
+    HeightEndOffset,
+    WidthEndOffset
+  };
+
 #endif

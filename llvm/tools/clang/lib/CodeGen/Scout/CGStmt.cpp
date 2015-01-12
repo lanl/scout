@@ -191,32 +191,45 @@ unsigned int GetMeshNFields(const Stmt &S) {
 
 // modifies meshDims, MeshDimsP1, LoopBoundsCells, Rank
 void CodeGenFunction::SetMeshBounds(const Stmt &S) {
-  llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
-  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
-
   //get mesh Base Addr
   llvm::Value *MeshBaseAddr;
   GetMeshBaseAddr(S, MeshBaseAddr);
+  SetMeshBounds(MeshBaseAddr);
+}
+
+// modifies meshDims, MeshDimsP1, LoopBoundsCells, Rank
+void CodeGenFunction::SetMeshBounds(llvm::Value* MeshBaseAddr) {
+  llvm::PointerType* pointerTy = cast<llvm::PointerType>(MeshBaseAddr->getType());
+  
+  llvm::StructType* structTy =
+  cast<llvm::StructType>(pointerTy->getElementType());
+
+  // find total number of fields
+  unsigned int nfields = structTy->getNumElements();
+  
+  llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
+  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+  
   llvm::StringRef MeshName = MeshBaseAddr->getName();
-
-  // find number of fields
-  unsigned int nfields = GetMeshNFields(S);
-
+  
   // extract rank from mesh stored after width/height/depth
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
-  MeshRank = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+MeshParameterOffset::RankOffset, IRNameStr);
-
+  MeshRank = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields - MeshParameterEndOffset::RankEndOffset, IRNameStr);
+  
+  unsigned start = nfields - MeshParameterEndOffset::WidthEndOffset;
+  
   // Extract width/height/depth from the mesh
   // note: width/height depth are stored after mesh fields
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-    MeshDims[i] =  Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields+i, IRNameStr);
-
+    MeshDims[i] =
+    Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, start + i, IRNameStr);
+    
     // dimensions + 1 are used in many places so cache them
     MeshDimsP1[i] = CreateTempAlloca(Int32Ty, "meshdimsp1.ptr");
     llvm::Value *incr = Builder.CreateAdd(Builder.CreateLoad(MeshDims[i]), ConstantOne);
     Builder.CreateStore(incr, MeshDimsP1[i]);
-
+    
     // if LoopBoundCells == 0 then set it to 1 (for cells)
     LoopBoundsCells[i] = CreateTempAlloca(Int32Ty, "meshdims.ptr");
     llvm::Value *dim = Builder.CreateLoad(MeshDims[i]);
@@ -225,8 +238,6 @@ void CodeGenFunction::SetMeshBounds(const Stmt &S) {
     Builder.CreateStore(x, LoopBoundsCells[i]);
   }
 }
-
-
 
 // generate code to return d1 if rank = 1, d2 if rank = 2, d3 if rank = 3;
 llvm::Value *CodeGenFunction::GetNumLocalMeshItems(llvm::Value *d1, llvm::Value *d2, llvm::Value *d3) {
