@@ -68,6 +68,7 @@ include_directories(
   ${GLFW_INCLUDE_DIR}
   ${PNG_INCLUDE_DIR}
   ${CUDA_INCLUDE_DIRS}
+  ${R_INCLUDE_DIRS}
   ${SCOUT_INCLUDE_DIR}/scout/sys/linux #find our unistd.h wrapper to deal with __block in linux unistd.h
 )
 
@@ -95,6 +96,12 @@ list(APPEND rt_srcs ${rt_srcs_cpu})
 if (SCOUT_ENABLE_CUDA)
   file(GLOB rt_srcs_gpu gpu/*.cpp)
   list(APPEND rt_srcs ${rt_srcs_gpu})
+endif()
+
+#plot
+if (SCOUT_ENABLE_PLOT)
+  file(GLOB rt_srcs_plot plot/*.cpp)
+  list(APPEND rt_srcs ${rt_srcs_plot})
 endif()
 
 if (SCOUT_ENABLE_OPENGL)
@@ -245,7 +252,9 @@ set_target_properties(scRuntime
   COMPILE_FLAGS "-fPIC"
   MACOSX_RPATH 1) 
 
-set(_link_libs ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${GLFW_LIBRARIES})
+set(_link_libs ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${GLFW_LIBRARIES}
+${R_LIBRARIES})
+
 if (APPLE) 
   set(_link_libs ${_link_libs} "-framework Cocoa -framework Foundation -framework IOKit -framework CoreVideo")
 endif()
