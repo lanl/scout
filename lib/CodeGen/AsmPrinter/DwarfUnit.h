@@ -14,12 +14,12 @@
 #ifndef LLVM_LIB_CODEGEN_ASMPRINTER_DWARFUNIT_H
 #define LLVM_LIB_CODEGEN_ASMPRINTER_DWARFUNIT_H
 
-#include "DIE.h"
 #include "DwarfDebug.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/CodeGen/AsmPrinter.h"
+#include "llvm/CodeGen/DIE.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/MC/MCExpr.h"
@@ -138,6 +138,7 @@ public:
   }
 
   // Accessors.
+  AsmPrinter* getAsmPrinter() const { return Asm; }
   unsigned getUniqueID() const { return UniqueID; }
   uint16_t getLanguage() const { return CUNode.getLanguage(); }
   DICompileUnit getCUNode() const { return CUNode; }

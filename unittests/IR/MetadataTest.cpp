@@ -7,6 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
@@ -129,6 +130,10 @@ TEST_F(MDNodeTest, Delete) {
   delete I;
 }
 
+TEST_F(MDNodeTest, DeleteMDNodeFwdDecl) {
+  delete MDNode::getTemporary(Context, None);
+}
+
 TEST_F(MDNodeTest, SelfReference) {
   // !0 = !{!0}
   // !1 = !{!0}
@@ -200,6 +205,186 @@ TEST_F(MDNodeTest, Print) {
   }
 
   EXPECT_EQ(Expected, Actual);
+}
+
+TEST_F(MDNodeTest, NullOperand) {
+  // metadata !{}
+  MDNode *Empty = MDNode::get(Context, None);
+
+  // metadata !{metadata !{}}
+  Metadata *Ops[] = {Empty};
+  MDNode *N = MDNode::get(Context, Ops);
+  ASSERT_EQ(Empty, N->getOperand(0));
+
+  // metadata !{metadata !{}} => metadata !{null}
+  N->replaceOperandWith(0, nullptr);
+  ASSERT_EQ(nullptr, N->getOperand(0));
+
+  // metadata !{null}
+  Ops[0] = nullptr;
+  MDNode *NullOp = MDNode::get(Context, Ops);
+  ASSERT_EQ(nullptr, NullOp->getOperand(0));
+  EXPECT_EQ(N, NullOp);
+}
+
+TEST_F(MDNodeTest, DistinctOnUniquingCollision) {
+  // !{}
+  MDNode *Empty = MDNode::get(Context, None);
+  ASSERT_TRUE(Empty->isResolved());
+  EXPECT_FALSE(Empty->isDistinct());
+
+  // !{!{}}
+  Metadata *Wrapped1Ops[] = {Empty};
+  MDNode *Wrapped1 = MDNode::get(Context, Wrapped1Ops);
+  ASSERT_EQ(Empty, Wrapped1->getOperand(0));
+  ASSERT_TRUE(Wrapped1->isResolved());
+  EXPECT_FALSE(Wrapped1->isDistinct());
+
+  // !{!{!{}}}
+  Metadata *Wrapped2Ops[] = {Wrapped1};
+  MDNode *Wrapped2 = MDNode::get(Context, Wrapped2Ops);
+  ASSERT_EQ(Wrapped1, Wrapped2->getOperand(0));
+  ASSERT_TRUE(Wrapped2->isResolved());
+  EXPECT_FALSE(Wrapped2->isDistinct());
+
+  // !{!{!{}}} => !{!{}}
+  Wrapped2->replaceOperandWith(0, Empty);
+  ASSERT_EQ(Empty, Wrapped2->getOperand(0));
+  EXPECT_TRUE(Wrapped2->isDistinct());
+  EXPECT_FALSE(Wrapped1->isDistinct());
+}
+
+TEST_F(MDNodeTest, getDistinct) {
+  // !{}
+  MDNode *Empty = MDNode::get(Context, None);
+  ASSERT_TRUE(Empty->isResolved());
+  ASSERT_FALSE(Empty->isDistinct());
+  ASSERT_EQ(Empty, MDNode::get(Context, None));
+
+  // distinct !{}
+  MDNode *Distinct1 = MDNode::getDistinct(Context, None);
+  MDNode *Distinct2 = MDNode::getDistinct(Context, None);
+  EXPECT_TRUE(Distinct1->isResolved());
+  EXPECT_TRUE(Distinct2->isDistinct());
+  EXPECT_NE(Empty, Distinct1);
+  EXPECT_NE(Empty, Distinct2);
+  EXPECT_NE(Distinct1, Distinct2);
+
+  // !{}
+  ASSERT_EQ(Empty, MDNode::get(Context, None));
+}
+
+TEST_F(MDNodeTest, TempIsDistinct) {
+  MDNode *T = MDNode::getTemporary(Context, None);
+  EXPECT_TRUE(T->isDistinct());
+  MDNode::deleteTemporary(T);
+}
+
+TEST_F(MDNodeTest, getDistinctWithUnresolvedOperands) {
+  // temporary !{}
+  MDNodeFwdDecl *Temp = MDNode::getTemporary(Context, None);
+  ASSERT_FALSE(Temp->isResolved());
+
+  // distinct !{temporary !{}}
+  Metadata *Ops[] = {Temp};
+  MDNode *Distinct = MDNode::getDistinct(Context, Ops);
+  EXPECT_TRUE(Distinct->isResolved());
+  EXPECT_EQ(Temp, Distinct->getOperand(0));
+
+  // temporary !{} => !{}
+  MDNode *Empty = MDNode::get(Context, None);
+  Temp->replaceAllUsesWith(Empty);
+  MDNode::deleteTemporary(Temp);
+  EXPECT_EQ(Empty, Distinct->getOperand(0));
+}
+
+TEST_F(MDNodeTest, handleChangedOperandRecursion) {
+  // !0 = !{}
+  MDNode *N0 = MDNode::get(Context, None);
+
+  // !1 = !{!3, null}
+  std::unique_ptr<MDNodeFwdDecl> Temp3(MDNode::getTemporary(Context, None));
+  Metadata *Ops1[] = {Temp3.get(), nullptr};
+  MDNode *N1 = MDNode::get(Context, Ops1);
+
+  // !2 = !{!3, !0}
+  Metadata *Ops2[] = {Temp3.get(), N0};
+  MDNode *N2 = MDNode::get(Context, Ops2);
+
+  // !3 = !{!2}
+  Metadata *Ops3[] = {N2};
+  MDNode *N3 = MDNode::get(Context, Ops3);
+  Temp3->replaceAllUsesWith(N3);
+
+  // !4 = !{!1}
+  Metadata *Ops4[] = {N1};
+  MDNode *N4 = MDNode::get(Context, Ops4);
+
+  // Confirm that the cycle prevented RAUW from getting dropped.
+  EXPECT_TRUE(N0->isResolved());
+  EXPECT_FALSE(N1->isResolved());
+  EXPECT_FALSE(N2->isResolved());
+  EXPECT_FALSE(N3->isResolved());
+  EXPECT_FALSE(N4->isResolved());
+
+  // Create a couple of distinct nodes to observe what's going on.
+  //
+  // !5 = distinct !{!2}
+  // !6 = distinct !{!3}
+  Metadata *Ops5[] = {N2};
+  MDNode *N5 = MDNode::getDistinct(Context, Ops5);
+  Metadata *Ops6[] = {N3};
+  MDNode *N6 = MDNode::getDistinct(Context, Ops6);
+
+  // Mutate !2 to look like !1, causing a uniquing collision (and an RAUW).
+  // This will ripple up, with !3 colliding with !4, and RAUWing.  Since !2
+  // references !3, this can cause a re-entry of handleChangedOperand() when !3
+  // is not ready for it.
+  //
+  // !2->replaceOperandWith(1, nullptr)
+  // !2: !{!3, !0} => !{!3, null}
+  // !2->replaceAllUsesWith(!1)
+  // !3: !{!2] => !{!1}
+  // !3->replaceAllUsesWith(!4)
+  N2->replaceOperandWith(1, nullptr);
+
+  // If all has gone well, N2 and N3 will have been RAUW'ed and deleted from
+  // under us.  Just check that the other nodes are sane.
+  //
+  // !1 = !{!4, null}
+  // !4 = !{!1}
+  // !5 = distinct !{!1}
+  // !6 = distinct !{!4}
+  EXPECT_EQ(N4, N1->getOperand(0));
+  EXPECT_EQ(N1, N4->getOperand(0));
+  EXPECT_EQ(N1, N5->getOperand(0));
+  EXPECT_EQ(N4, N6->getOperand(0));
+}
+
+TEST_F(MDNodeTest, replaceResolvedOperand) {
+  // Check code for replacing one resolved operand with another.  If doing this
+  // directly (via replaceOperandWith()) becomes illegal, change the operand to
+  // a global value that gets RAUW'ed.
+  //
+  // Use a temporary node to keep N from being resolved.
+  std::unique_ptr<MDNodeFwdDecl> Temp(MDNodeFwdDecl::get(Context, None));
+  Metadata *Ops[] = {nullptr, Temp.get()};
+
+  MDNode *Empty = MDTuple::get(Context, ArrayRef<Metadata *>());
+  MDNode *N = MDTuple::get(Context, Ops);
+  EXPECT_EQ(nullptr, N->getOperand(0));
+  ASSERT_FALSE(N->isResolved());
+
+  // Check code for replacing resolved nodes.
+  N->replaceOperandWith(0, Empty);
+  EXPECT_EQ(Empty, N->getOperand(0));
+
+  // Check code for adding another unresolved operand.
+  N->replaceOperandWith(0, Temp.get());
+  EXPECT_EQ(Temp.get(), N->getOperand(0));
+
+  // Remove the references to Temp; required for teardown.
+  Temp->replaceAllUsesWith(nullptr);
 }
 
 typedef MetadataTest MetadataAsValueTest;

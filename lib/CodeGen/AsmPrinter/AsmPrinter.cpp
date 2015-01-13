@@ -748,6 +748,16 @@ void AsmPrinter::emitCFIInstruction(const MachineInstr &MI) {
   emitCFIInstruction(CFI);
 }
 
+void AsmPrinter::emitFrameAlloc(const MachineInstr &MI) {
+  // The operands are the MCSymbol and the frame offset of the allocation.
+  MCSymbol *FrameAllocSym = MI.getOperand(0).getMCSymbol();
+  int FrameOffset = MI.getOperand(1).getImm();
+
+  // Emit a symbol assignment.
+  OutStreamer.EmitAssignment(FrameAllocSym,
+                             MCConstantExpr::Create(FrameOffset, OutContext));
+}
+
 /// EmitFunctionBody - This method emits the body and trailer for a
 /// function.
 void AsmPrinter::EmitFunctionBody() {
@@ -784,6 +794,10 @@ void AsmPrinter::EmitFunctionBody() {
       switch (MI.getOpcode()) {
       case TargetOpcode::CFI_INSTRUCTION:
         emitCFIInstruction(MI);
+        break;
+
+      case TargetOpcode::FRAME_ALLOC:
+        emitFrameAlloc(MI);
         break;
 
       case TargetOpcode::EH_LABEL:
@@ -2293,6 +2307,11 @@ isBlockOnlyReachableByFallthrough(const MachineBasicBlock *MBB) const {
 GCMetadataPrinter *AsmPrinter::GetOrCreateGCPrinter(GCStrategy &S) {
   if (!S.usesMetadata())
     return nullptr;
+
+  assert(!S.useStatepoints() && "statepoints do not currently support custom"
+         " stackmap formats, please see the documentation for a description of"
+         " the default format.  If you really need a custom serialized format,"
+         " please file a bug");
 
   gcp_map_type &GCMap = getGCMap(GCMetadataPrinters);
   gcp_map_type::iterator GCPI = GCMap.find(&S);

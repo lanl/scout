@@ -47,27 +47,6 @@ bool LLParser::Run() {
 /// ValidateEndOfModule - Do final validity and sanity checks at the end of the
 /// module.
 bool LLParser::ValidateEndOfModule() {
-  // Handle any instruction metadata forward references.
-  if (!ForwardRefInstMetadata.empty()) {
-    for (DenseMap<Instruction*, std::vector<MDRef> >::iterator
-         I = ForwardRefInstMetadata.begin(), E = ForwardRefInstMetadata.end();
-         I != E; ++I) {
-      Instruction *Inst = I->first;
-      const std::vector<MDRef> &MDList = I->second;
-
-      for (unsigned i = 0, e = MDList.size(); i != e; ++i) {
-        unsigned SlotNo = MDList[i].MDSlot;
-
-        if (SlotNo >= NumberedMetadata.size() ||
-            NumberedMetadata[SlotNo] == nullptr)
-          return Error(MDList[i].Loc, "use of undefined metadata '!" +
-                       Twine(SlotNo) + "'");
-        Inst->setMetadata(MDList[i].MDKind, NumberedMetadata[SlotNo]);
-      }
-    }
-    ForwardRefInstMetadata.clear();
-  }
-
   for (unsigned I = 0, E = InstsWithTBAATag.size(); I < E; I++)
     UpgradeInstWithTBAATag(InstsWithTBAATag[I]);
 
@@ -169,8 +148,8 @@ bool LLParser::ValidateEndOfModule() {
 
   // Resolve metadata cycles.
   for (auto &N : NumberedMetadata)
-    if (auto *G = cast_or_null<GenericMDNode>(N))
-      G->resolveCycles();
+    if (auto *U = cast_or_null<UniquableMDNode>(N))
+      U->resolveCycles();
 
   // Look for intrinsic functions and CallInst that need to be upgraded
   for (Module::iterator FI = M->begin(), FE = M->end(); FI != FE; )
@@ -539,31 +518,20 @@ bool LLParser::ParseMDString(MDString *&Result) {
 
 // MDNode:
 //   ::= '!' MDNodeNumber
-//
-/// This version of ParseMDNodeID returns the slot number and null in the case
-/// of a forward reference.
-bool LLParser::ParseMDNodeID(MDNode *&Result, unsigned &SlotNo) {
-  // !{ ..., !42, ... }
-  if (ParseUInt32(SlotNo)) return true;
-
-  // Check existing MDNode.
-  if (SlotNo < NumberedMetadata.size() && NumberedMetadata[SlotNo] != nullptr)
-    Result = NumberedMetadata[SlotNo];
-  else
-    Result = nullptr;
-  return false;
-}
-
 bool LLParser::ParseMDNodeID(MDNode *&Result) {
   // !{ ..., !42, ... }
   unsigned MID = 0;
-  if (ParseMDNodeID(Result, MID)) return true;
+  if (ParseUInt32(MID))
+    return true;
 
   // If not a forward reference, just return it now.
-  if (Result) return false;
+  if (MID < NumberedMetadata.size() && NumberedMetadata[MID] != nullptr) {
+    Result = NumberedMetadata[MID];
+    return false;
+  }
 
   // Otherwise, create MDNode forward reference.
-  MDNodeFwdDecl *FwdNode = MDNode::getTemporary(Context, None);
+  MDNodeFwdDecl *FwdNode = MDNodeFwdDecl::get(Context, None);
   ForwardRefMDNodes[MID] = std::make_pair(FwdNode, Lex.getLoc());
 
   if (NumberedMetadata.size() <= MID)
@@ -618,16 +586,17 @@ bool LLParser::ParseStandaloneMetadata() {
   if (Lex.getKind() == lltok::Type)
     return TokError("unexpected type in metadata definition");
 
+  bool IsDistinct = EatIfPresent(lltok::kw_distinct);
   if (ParseToken(lltok::exclaim, "Expected '!' here") ||
-      ParseMDNode(Init))
+      ParseMDTuple(Init, IsDistinct))
     return true;
 
   // See if this was forward referenced, if so, handle it.
   auto FI = ForwardRefMDNodes.find(MetadataID);
   if (FI != ForwardRefMDNodes.end()) {
-    auto *Temp = FI->second.first;
+    MDNodeFwdDecl *Temp = FI->second.first;
     Temp->replaceAllUsesWith(Init);
-    MDNode::deleteTemporary(Temp);
+    delete Temp;
     ForwardRefMDNodes.erase(FI);
 
     assert(NumberedMetadata[MetadataID] == Init && "Tracking VH didn't work");
@@ -850,7 +819,7 @@ bool LLParser::ParseGlobal(const std::string &Name, LocTy NameLoc,
       GV->setAlignment(Alignment);
     } else {
       Comdat *C;
-      if (parseOptionalComdat(C))
+      if (parseOptionalComdat(Name, C))
         return true;
       if (C)
         GV->setComdat(C);
@@ -1521,35 +1490,11 @@ bool LLParser::ParseInstructionMetadata(Instruction *Inst,
     unsigned MDK = M->getMDKindID(Name);
     Lex.Lex();
 
-    MDNode *Node;
-    SMLoc Loc = Lex.getLoc();
-
-    if (ParseToken(lltok::exclaim, "expected '!' here"))
+    MDNode *N;
+    if (ParseMDNode(N))
       return true;
 
-    // This code is similar to that of ParseMetadata, however it needs to
-    // have special-case code for a forward reference; see the comments on
-    // ForwardRefInstMetadata for details. Also, MDStrings are not supported
-    // at the top level here.
-    if (Lex.getKind() == lltok::lbrace) {
-      MDNode *N;
-      if (ParseMDNode(N))
-        return true;
-      Inst->setMetadata(MDK, N);
-    } else {
-      unsigned NodeID = 0;
-      if (ParseMDNodeID(Node, NodeID))
-        return true;
-      if (Node) {
-        // If we got the node, add it to the instruction.
-        Inst->setMetadata(MDK, Node);
-      } else {
-        MDRef R = { Loc, MDK, NodeID };
-        // Otherwise, remember that this should be resolved later.
-        ForwardRefInstMetadata[Inst].push_back(R);
-      }
-    }
-
+    Inst->setMetadata(MDK, N);
     if (MDK == LLVMContext::MD_tbaa)
       InstsWithTBAATag.push_back(Inst);
 
@@ -2899,16 +2844,26 @@ bool LLParser::ParseGlobalTypeAndValue(Constant *&V) {
          ParseGlobalValue(Ty, V);
 }
 
-bool LLParser::parseOptionalComdat(Comdat *&C) {
+bool LLParser::parseOptionalComdat(StringRef GlobalName, Comdat *&C) {
   C = nullptr;
+
+  LocTy KwLoc = Lex.getLoc();
   if (!EatIfPresent(lltok::kw_comdat))
     return false;
-  if (Lex.getKind() != lltok::ComdatVar)
-    return TokError("expected comdat variable");
-  LocTy Loc = Lex.getLoc();
-  StringRef Name = Lex.getStrVal();
-  C = getComdat(Name, Loc);
-  Lex.Lex();
+
+  if (EatIfPresent(lltok::lparen)) {
+    if (Lex.getKind() != lltok::ComdatVar)
+      return TokError("expected comdat variable");
+    C = getComdat(Lex.getStrVal(), Lex.getLoc());
+    Lex.Lex();
+    if (ParseToken(lltok::rparen, "expected ')' after comdat var"))
+      return true;
+  } else {
+    if (GlobalName.empty())
+      return TokError("comdat cannot be unnamed");
+    C = getComdat(GlobalName, KwLoc);
+  }
+
   return false;
 }
 
@@ -2935,13 +2890,30 @@ bool LLParser::ParseGlobalValueVector(SmallVectorImpl<Constant *> &Elts) {
   return false;
 }
 
-bool LLParser::ParseMDNode(MDNode *&MD) {
+bool LLParser::ParseMDTuple(MDNode *&MD, bool IsDistinct) {
   SmallVector<Metadata *, 16> Elts;
   if (ParseMDNodeVector(Elts))
     return true;
 
-  MD = MDNode::get(Context, Elts);
+  MD = (IsDistinct ? MDTuple::getDistinct : MDTuple::get)(Context, Elts);
   return false;
+}
+
+/// MDNode:
+///  ::= !{ ... }
+///  ::= !7
+bool LLParser::ParseMDNode(MDNode *&N) {
+  return ParseToken(lltok::exclaim, "expected '!' here") ||
+         ParseMDNodeTail(N);
+}
+
+bool LLParser::ParseMDNodeTail(MDNode *&N) {
+  // !{ ... }
+  if (Lex.getKind() == lltok::lbrace)
+    return ParseMDTuple(N);
+
+  // !42
+  return ParseMDNodeID(N);
 }
 
 /// ParseMetadataAsValue
@@ -2998,32 +2970,23 @@ bool LLParser::ParseMetadata(Metadata *&MD, PerFunctionState *PFS) {
   assert(Lex.getKind() == lltok::exclaim && "Expected '!' here");
   Lex.Lex();
 
-  // MDNode:
-  // !{ ... }
-  if (Lex.getKind() == lltok::lbrace) {
-    MDNode *N;
-    if (ParseMDNode(N))
-      return true;
-    MD = N;
-    return false;
-  }
-
-  // Standalone metadata reference
-  // !42
-  if (Lex.getKind() == lltok::APSInt) {
-    MDNode *N;
-    if (ParseMDNodeID(N))
-      return true;
-    MD = N;
-    return false;
-  }
-
   // MDString:
   //   ::= '!' STRINGCONSTANT
-  MDString *S;
-  if (ParseMDString(S))
+  if (Lex.getKind() == lltok::StringConstant) {
+    MDString *S;
+    if (ParseMDString(S))
+      return true;
+    MD = S;
+    return false;
+  }
+
+  // MDNode:
+  // !{ ... }
+  // !7
+  MDNode *N;
+  if (ParseMDNodeTail(N))
     return true;
-  MD = S;
+  MD = N;
   return false;
 }
 
@@ -3262,7 +3225,7 @@ bool LLParser::ParseFunctionHeader(Function *&Fn, bool isDefine) {
                                  BuiltinLoc) ||
       (EatIfPresent(lltok::kw_section) &&
        ParseStringConstant(Section)) ||
-      parseOptionalComdat(C) ||
+      parseOptionalComdat(FunctionName, C) ||
       ParseOptionalAlignment(Alignment) ||
       (EatIfPresent(lltok::kw_gc) &&
        ParseStringConstant(GC)) ||

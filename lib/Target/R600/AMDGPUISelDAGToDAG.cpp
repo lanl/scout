@@ -113,6 +113,9 @@ private:
 
   bool SelectVOP3Mods0Clamp(SDValue In, SDValue &Src, SDValue &SrcMods,
                             SDValue &Omod) const;
+  bool SelectVOP3Mods0Clamp0OMod(SDValue In, SDValue &Src, SDValue &SrcMods,
+                                 SDValue &Clamp,
+                                 SDValue &Omod) const;
 
   SDNode *SelectADD_SUB_I64(SDNode *N);
   SDNode *SelectDIV_SCALE(SDNode *N);
@@ -283,7 +286,7 @@ SDNode *AMDGPUDAGToDAGISel::Select(SDNode *N) {
         }
       }
       switch(NumVectorElts) {
-      case 1: RegClassID = UseVReg ? AMDGPU::VReg_32RegClassID :
+      case 1: RegClassID = UseVReg ? AMDGPU::VGPR_32RegClassID :
                                      AMDGPU::SReg_32RegClassID;
         break;
       case 2: RegClassID = UseVReg ? AMDGPU::VReg_64RegClassID :
@@ -1083,7 +1086,9 @@ SDNode *AMDGPUDAGToDAGISel::SelectAddrSpaceCast(SDNode *N) {
   if (DestSize > SrcSize) {
     assert(SrcSize == 32 && DestSize == 64);
 
-    SDValue RC = CurDAG->getTargetConstant(AMDGPU::VSrc_64RegClassID, MVT::i32);
+    // FIXME: This is probably wrong, we should never be defining
+    // a register class with both VGPRs and SGPRs
+    SDValue RC = CurDAG->getTargetConstant(AMDGPU::VS_64RegClassID, MVT::i32);
 
     const SDValue Ops[] = {
       RC,
@@ -1140,6 +1145,14 @@ bool AMDGPUDAGToDAGISel::SelectVOP3Mods0Clamp(SDValue In, SDValue &Src,
   // FIXME: Handle Omod
   Omod = CurDAG->getTargetConstant(0, MVT::i32);
 
+  return SelectVOP3Mods(In, Src, SrcMods);
+}
+
+bool AMDGPUDAGToDAGISel::SelectVOP3Mods0Clamp0OMod(SDValue In, SDValue &Src,
+                                                   SDValue &SrcMods,
+                                                   SDValue &Clamp,
+                                                   SDValue &Omod) const {
+  Clamp = Omod = CurDAG->getTargetConstant(0, MVT::i32);
   return SelectVOP3Mods(In, Src, SrcMods);
 }
 

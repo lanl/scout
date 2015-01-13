@@ -135,18 +135,16 @@ LLVMContextImpl::~LLVMContextImpl() {
   for (auto &Pair : ValuesAsMetadata)
     delete Pair.second;
 
-  // Destroy MDNodes.  ~MDNode can move and remove nodes between the MDNodeSet
-  // and the NonUniquedMDNodes sets, so copy the values out first.
-  SmallVector<GenericMDNode *, 8> MDNodes;
-  MDNodes.reserve(MDNodeSet.size() + NonUniquedMDNodes.size());
-  MDNodes.append(MDNodeSet.begin(), MDNodeSet.end());
-  MDNodes.append(NonUniquedMDNodes.begin(), NonUniquedMDNodes.end());
-  for (GenericMDNode *I : MDNodes)
+  // Destroy MDNodes.
+  for (auto *I : DistinctMDNodes)
     I->dropAllReferences();
-  for (GenericMDNode *I : MDNodes)
+  for (auto *I : MDTuples)
+    I->dropAllReferences();
+
+  for (UniquableMDNode *I : DistinctMDNodes)
+    I->deleteAsSubclass();
+  for (MDTuple *I : MDTuples)
     delete I;
-  assert(MDNodeSet.empty() && NonUniquedMDNodes.empty() &&
-         "Destroying all MDNodes didn't empty the Context's sets.");
 
   // Destroy MDStrings.
   MDStringCache.clear();

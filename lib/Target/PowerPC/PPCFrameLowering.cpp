@@ -611,6 +611,14 @@ void PPCFrameLowering::emitPrologue(MachineFunction &MF) const {
     }
   }
 
+  int PBPOffset = 0;
+  if (FI->usesPICBase()) {
+    MachineFrameInfo *FFI = MF.getFrameInfo();
+    int PBPIndex = FI->getPICBasePointerSaveIndex();
+    assert(PBPIndex && "No PIC Base Pointer Save Slot!");
+    PBPOffset = FFI->getObjectOffset(PBPIndex);
+  }
+
   // Get stack alignments.
   unsigned MaxAlign = MFI->getMaxAlignment();
   if (HasBP && MaxAlign > 1)
@@ -642,6 +650,13 @@ void PPCFrameLowering::emitPrologue(MachineFunction &MF) const {
     BuildMI(MBB, MBBI, dl, StoreInst)
       .addReg(FPReg)
       .addImm(FPOffset)
+      .addReg(SPReg);
+
+  if (FI->usesPICBase())
+    // FIXME: On PPC32 SVR4, we must not spill before claiming the stackframe.
+    BuildMI(MBB, MBBI, dl, StoreInst)
+      .addReg(PPC::R30)
+      .addImm(PBPOffset)
       .addReg(SPReg);
 
   if (HasBP)
@@ -755,6 +770,15 @@ void PPCFrameLowering::emitPrologue(MachineFunction &MF) const {
           .addCFIIndex(CFIIndex);
     }
 
+    if (FI->usesPICBase()) {
+      // Describe where FP was saved, at a fixed offset from CFA.
+      unsigned Reg = MRI->getDwarfRegNum(PPC::R30, true);
+      CFIIndex = MMI.addFrameInst(
+          MCCFIInstruction::createOffset(nullptr, Reg, PBPOffset));
+      BuildMI(MBB, MBBI, dl, TII.get(TargetOpcode::CFI_INSTRUCTION))
+          .addCFIIndex(CFIIndex);
+    }
+
     if (HasBP) {
       // Describe where BP was saved, at a fixed offset from CFA.
       unsigned Reg = MRI->getDwarfRegNum(BPReg, true);
@@ -847,6 +871,7 @@ void PPCFrameLowering::emitEpilogue(MachineFunction &MF,
   DebugLoc dl;
 
   assert((RetOpcode == PPC::BLR ||
+          RetOpcode == PPC::BLR8 ||
           RetOpcode == PPC::TCRETURNri ||
           RetOpcode == PPC::TCRETURNdi ||
           RetOpcode == PPC::TCRETURNai ||
@@ -922,6 +947,14 @@ void PPCFrameLowering::emitEpilogue(MachineFunction &MF,
                                                    isDarwinABI,
                                                    isPIC);
     }
+  }
+
+  int PBPOffset = 0;
+  if (FI->usesPICBase()) {
+    MachineFrameInfo *FFI = MF.getFrameInfo();
+    int PBPIndex = FI->getPICBasePointerSaveIndex();
+    assert(PBPIndex && "No PIC Base Pointer Save Slot!");
+    PBPOffset = FFI->getObjectOffset(PBPIndex);
   }
 
   bool UsesTCRet =  RetOpcode == PPC::TCRETURNri ||
@@ -1003,6 +1036,13 @@ void PPCFrameLowering::emitEpilogue(MachineFunction &MF,
       .addImm(FPOffset)
       .addReg(SPReg);
 
+  if (FI->usesPICBase())
+    // FIXME: On PPC32 SVR4, we must not spill before claiming the stackframe.
+    BuildMI(MBB, MBBI, dl, LoadInst)
+      .addReg(PPC::R30)
+      .addImm(PBPOffset)
+      .addReg(SPReg);
+
   if (HasBP)
     BuildMI(MBB, MBBI, dl, LoadInst, BPReg)
       .addImm(BPOffset)
@@ -1018,7 +1058,8 @@ void PPCFrameLowering::emitEpilogue(MachineFunction &MF,
 
   // Callee pop calling convention. Pop parameter/linkage area. Used for tail
   // call optimization
-  if (MF.getTarget().Options.GuaranteedTailCallOpt && RetOpcode == PPC::BLR &&
+  if (MF.getTarget().Options.GuaranteedTailCallOpt &&
+      (RetOpcode == PPC::BLR || RetOpcode == PPC::BLR8) &&
       MF.getFunction()->getCallingConv() == CallingConv::Fast) {
      PPCFunctionInfo *FI = MF.getInfo<PPCFunctionInfo>();
      unsigned CallerAllocatedAmt = FI->getMinReservedArea();
@@ -1117,6 +1158,14 @@ PPCFrameLowering::processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
     BPSI = MFI->CreateFixedObject(isPPC64? 8 : 4, BPOffset, true);
     // Save the result.
     FI->setBasePointerSaveIndex(BPSI);
+  }
+
+  // Reserve stack space for the PIC Base register (R30).
+  // Only used in SVR4 32-bit.
+  if (FI->usesPICBase()) {
+    int PBPSI = FI->getPICBasePointerSaveIndex();
+    PBPSI = MFI->CreateFixedObject(4, -8, true);
+    FI->setPICBasePointerSaveIndex(PBPSI);
   }
 
   // Reserve stack space to move the linkage area to in case of a tail call.
@@ -1246,6 +1295,15 @@ void PPCFrameLowering::processFunctionBeforeFrameFinalized(MachineFunction &MF,
 
     int FI = PFI->getFramePointerSaveIndex();
     assert(FI && "No Frame Pointer Save Slot!");
+
+    FFI->setObjectOffset(FI, LowerBound + FFI->getObjectOffset(FI));
+  }
+
+  if (PFI->usesPICBase()) {
+    HasGPSaveArea = true;
+
+    int FI = PFI->getPICBasePointerSaveIndex();
+    assert(FI && "No PIC Base Pointer Save Slot!");
 
     FFI->setObjectOffset(FI, LowerBound + FFI->getObjectOffset(FI));
   }

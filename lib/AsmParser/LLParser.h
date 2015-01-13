@@ -102,7 +102,6 @@ namespace llvm {
       SMLoc Loc;
       unsigned MDKind, MDSlot;
     };
-    DenseMap<Instruction*, std::vector<MDRef> > ForwardRefInstMetadata;
 
     SmallVector<Instruction*, 64> InstsWithTBAATag;
 
@@ -266,7 +265,6 @@ namespace llvm {
     bool ParseNamedMetadata();
     bool ParseMDString(MDString *&Result);
     bool ParseMDNodeID(MDNode *&Result);
-    bool ParseMDNodeID(MDNode *&Result, unsigned &SlotNo);
     bool ParseUnnamedAttrGrp();
     bool ParseFnAttributeValuePairs(AttrBuilder &B,
                                     std::vector<unsigned> &FwdRefAttrGrps,
@@ -385,11 +383,13 @@ namespace llvm {
     bool ParseGlobalValue(Type *Ty, Constant *&V);
     bool ParseGlobalTypeAndValue(Constant *&V);
     bool ParseGlobalValueVector(SmallVectorImpl<Constant *> &Elts);
-    bool parseOptionalComdat(Comdat *&C);
+    bool parseOptionalComdat(StringRef GlobalName, Comdat *&C);
     bool ParseMetadataAsValue(Value *&V, PerFunctionState &PFS);
     bool ParseValueAsMetadata(Metadata *&MD, PerFunctionState *PFS);
     bool ParseMetadata(Metadata *&MD, PerFunctionState *PFS);
+    bool ParseMDTuple(MDNode *&MD, bool IsDistinct = false);
     bool ParseMDNode(MDNode *&MD);
+    bool ParseMDNodeTail(MDNode *&MD);
     bool ParseMDNodeVector(SmallVectorImpl<Metadata *> &MDs);
     bool ParseInstructionMetadata(Instruction *Inst, PerFunctionState *PFS);
 

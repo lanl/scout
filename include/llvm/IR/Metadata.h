@@ -49,7 +49,6 @@ class Metadata {
 protected:
   /// \brief Storage flag for non-uniqued, otherwise unowned, metadata.
   bool IsDistinctInContext : 1;
-  bool InRAUW : 1;
   // TODO: expose remaining bits to subclasses.
 
   unsigned short SubclassData16;
@@ -57,7 +56,7 @@ protected:
 
 public:
   enum MetadataKind {
-    GenericMDNodeKind,
+    MDTupleKind,
     MDNodeFwdDeclKind,
     ConstantAsMetadataKind,
     LocalAsMetadataKind,
@@ -66,8 +65,8 @@ public:
 
 protected:
   Metadata(unsigned ID)
-      : SubclassID(ID), IsDistinctInContext(false), InRAUW(false),
-        SubclassData16(0), SubclassData32(0) {}
+      : SubclassID(ID), IsDistinctInContext(false), SubclassData16(0),
+        SubclassData32(0) {}
   ~Metadata() {}
 
   /// \brief Store this in a big non-uniqued untyped bucket.
@@ -159,7 +158,7 @@ public:
   /// \brief Resolve all uses of this.
   ///
   /// Resolve all uses of this, turning off RAUW permanently.  If \c
-  /// ResolveUsers, call \a GenericMDNode::resolve() on any users whose last
+  /// ResolveUsers, call \a UniquableMDNode::resolve() on any users whose last
   /// operand is resolved.
   void resolveAllUses(bool ResolveUsers = true);
 
@@ -186,7 +185,7 @@ class ValueAsMetadata : public Metadata, ReplaceableMetadataImpl {
   Value *V;
 
 protected:
-  ValueAsMetadata(LLVMContext &Context, unsigned ID, Value *V)
+  ValueAsMetadata(unsigned ID, Value *V)
       : Metadata(ID), V(V) {
     assert(V && "Expected valid value");
   }
@@ -236,8 +235,8 @@ public:
 class ConstantAsMetadata : public ValueAsMetadata {
   friend class ValueAsMetadata;
 
-  ConstantAsMetadata(LLVMContext &Context, Constant *C)
-      : ValueAsMetadata(Context, ConstantAsMetadataKind, C) {}
+  ConstantAsMetadata(Constant *C)
+      : ValueAsMetadata(ConstantAsMetadataKind, C) {}
 
 public:
   static ConstantAsMetadata *get(Constant *C) {
@@ -259,8 +258,8 @@ public:
 class LocalAsMetadata : public ValueAsMetadata {
   friend class ValueAsMetadata;
 
-  LocalAsMetadata(LLVMContext &Context, Value *Local)
-      : ValueAsMetadata(Context, LocalAsMetadataKind, Local) {
+  LocalAsMetadata(Value *Local)
+      : ValueAsMetadata(LocalAsMetadataKind, Local) {
     assert(!isa<Constant>(Local) && "Expected local value");
   }
 
@@ -586,8 +585,6 @@ protected:
   unsigned MDNodeSubclassData;
 
   void *operator new(size_t Size, unsigned NumOps);
-
-  /// \brief Required by std, but never called.
   void operator delete(void *Mem);
 
   /// \brief Required by std, but never called.
@@ -604,27 +601,16 @@ protected:
   ~MDNode() {}
 
   void dropAllReferences();
-  void storeDistinctInContext();
-
-  static MDNode *getMDNode(LLVMContext &C, ArrayRef<Metadata *> MDs,
-                           bool Insert = true);
 
   MDOperand *mutable_begin() { return mutable_end() - NumOperands; }
   MDOperand *mutable_end() { return reinterpret_cast<MDOperand *>(this); }
 
 public:
-  static MDNode *get(LLVMContext &Context, ArrayRef<Metadata *> MDs) {
-    return getMDNode(Context, MDs, true);
-  }
-  static MDNode *getWhenValsUnresolved(LLVMContext &Context,
-                                       ArrayRef<Metadata *> MDs) {
-    // TODO: Remove this.
-    return get(Context, MDs);
-  }
-
-  static MDNode *getIfExists(LLVMContext &Context, ArrayRef<Metadata *> MDs) {
-    return getMDNode(Context, MDs, false);
-  }
+  static inline MDNode *get(LLVMContext &Context, ArrayRef<Metadata *> MDs);
+  static inline MDNode *getIfExists(LLVMContext &Context,
+                                    ArrayRef<Metadata *> MDs);
+  static inline MDNode *getDistinct(LLVMContext &Context,
+                                    ArrayRef<Metadata *> MDs);
 
   /// \brief Return a temporary MDNode
   ///
@@ -646,6 +632,14 @@ public:
 
   /// \brief Check if node is fully resolved.
   bool isResolved() const;
+
+  /// \brief Check if node is distinct.
+  ///
+  /// Distinct nodes are not uniqued, and will not be returned by \a
+  /// MDNode::get().
+  bool isDistinct() const {
+    return isStoredDistinctInContext() || isa<MDNodeFwdDecl>(this);
+  }
 
 protected:
   /// \brief Set an operand.
@@ -675,7 +669,7 @@ public:
 
   /// \brief Methods for support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const Metadata *MD) {
-    return MD->getMetadataID() == GenericMDNodeKind ||
+    return MD->getMetadataID() == MDTupleKind ||
            MD->getMetadataID() == MDNodeFwdDeclKind;
   }
 
@@ -691,43 +685,48 @@ public:
   static MDNode *getMostGenericRange(MDNode *A, MDNode *B);
 };
 
-/// \brief Generic metadata node.
+/// \brief Uniquable metadata node.
 ///
-/// Generic metadata nodes, with opt-out support for uniquing.
+/// A uniquable metadata node.  This contains the basic functionality
+/// for implementing sub-types of \a MDNode that can be uniqued like
+/// constants.
 ///
-/// Although nodes are uniqued by default, \a GenericMDNode has no support for
-/// RAUW.  If an operand change (due to RAUW or otherwise) causes a uniquing
-/// collision, the uniquing bit is dropped.
+/// There is limited support for RAUW at construction time.  At
+/// construction time, if any operands are an instance of \a
+/// MDNodeFwdDecl (or another unresolved \a UniquableMDNode, which
+/// indicates an \a MDNodeFwdDecl in its path), the node itself will be
+/// unresolved.  As soon as all operands become resolved, it will drop
+/// RAUW support permanently.
 ///
-/// TODO: Make uniquing opt-out (status: mandatory, sometimes dropped).
-/// TODO: Drop support for RAUW.
-class GenericMDNode : public MDNode {
-  friend class Metadata;
+/// If an unresolved node is part of a cycle, \a resolveCycles() needs
+/// to be called on some member of the cycle when each \a MDNodeFwdDecl
+/// has been removed.
+class UniquableMDNode : public MDNode {
+  friend class ReplaceableMetadataImpl;
   friend class MDNode;
   friend class LLVMContextImpl;
-  friend class ReplaceableMetadataImpl;
 
   /// \brief Support RAUW as long as one of its arguments is replaceable.
-  ///
-  /// If an operand is an \a MDNodeFwdDecl (or a replaceable \a GenericMDNode),
-  /// support RAUW to support uniquing as forward declarations are resolved.
-  /// As soon as operands have been resolved, drop support.
   ///
   /// FIXME: Save memory by storing this in a pointer union with the
   /// LLVMContext, and adding an LLVMContext reference to RMI.
   std::unique_ptr<ReplaceableMetadataImpl> ReplaceableUses;
 
-  GenericMDNode(LLVMContext &C, ArrayRef<Metadata *> Vals);
-  ~GenericMDNode();
+protected:
+  /// \brief Create a new node.
+  ///
+  /// If \c AllowRAUW, then if any operands are unresolved support RAUW.  RAUW
+  /// will be dropped once all operands have been resolved (or if \a
+  /// resolveCycles() is called).
+  UniquableMDNode(LLVMContext &C, unsigned ID, ArrayRef<Metadata *> Vals,
+                  bool AllowRAUW);
+  ~UniquableMDNode() {}
 
-  void setHash(unsigned Hash) { MDNodeSubclassData = Hash; }
+  void storeDistinctInContext();
 
 public:
-  /// \brief Get the hash, if any.
-  unsigned getHash() const { return MDNodeSubclassData; }
-
   static bool classof(const Metadata *MD) {
-    return MD->getMetadataID() == GenericMDNodeKind;
+    return MD->getMetadataID() == MDTupleKind;
   }
 
   /// \brief Check whether any operands are forward declarations.
@@ -751,27 +750,90 @@ public:
 private:
   void handleChangedOperand(void *Ref, Metadata *New);
 
-  bool hasUnresolvedOperands() const { return SubclassData32; }
-  void incrementUnresolvedOperands() { ++SubclassData32; }
-  void decrementUnresolvedOperands() { --SubclassData32; }
   void resolve();
+  void resolveAfterOperandChange(Metadata *Old, Metadata *New);
+  void decrementUnresolvedOperandCount();
+
+  void deleteAsSubclass();
+  UniquableMDNode *uniquify();
+  void eraseFromStore();
 };
+
+/// \brief Tuple of metadata.
+///
+/// This is the simple \a MDNode arbitrary tuple.  Nodes are uniqued by
+/// default based on their operands.
+class MDTuple : public UniquableMDNode {
+  friend class LLVMContextImpl;
+  friend class UniquableMDNode;
+
+  MDTuple(LLVMContext &C, ArrayRef<Metadata *> Vals, bool AllowRAUW)
+      : UniquableMDNode(C, MDTupleKind, Vals, AllowRAUW) {}
+  ~MDTuple() { dropAllReferences(); }
+
+  void setHash(unsigned Hash) { MDNodeSubclassData = Hash; }
+  void recalculateHash();
+
+  static MDTuple *getImpl(LLVMContext &Context, ArrayRef<Metadata *> MDs,
+                          bool ShouldCreate);
+
+public:
+  /// \brief Get the hash, if any.
+  unsigned getHash() const { return MDNodeSubclassData; }
+
+  static MDTuple *get(LLVMContext &Context, ArrayRef<Metadata *> MDs) {
+    return getImpl(Context, MDs, /* ShouldCreate */ true);
+  }
+  static MDTuple *getIfExists(LLVMContext &Context, ArrayRef<Metadata *> MDs) {
+    return getImpl(Context, MDs, /* ShouldCreate */ false);
+  }
+
+  /// \brief Return a distinct node.
+  ///
+  /// Return a distinct node -- i.e., a node that is not uniqued.
+  static MDTuple *getDistinct(LLVMContext &Context, ArrayRef<Metadata *> MDs);
+
+  static bool classof(const Metadata *MD) {
+    return MD->getMetadataID() == MDTupleKind;
+  }
+
+private:
+  MDTuple *uniquifyImpl();
+  void eraseFromStoreImpl();
+};
+
+MDNode *MDNode::get(LLVMContext &Context, ArrayRef<Metadata *> MDs) {
+  return MDTuple::get(Context, MDs);
+}
+MDNode *MDNode::getIfExists(LLVMContext &Context, ArrayRef<Metadata *> MDs) {
+  return MDTuple::getIfExists(Context, MDs);
+}
+MDNode *MDNode::getDistinct(LLVMContext &Context, ArrayRef<Metadata *> MDs) {
+  return MDTuple::getDistinct(Context, MDs);
+}
 
 /// \brief Forward declaration of metadata.
 ///
-/// Forward declaration of metadata, in the form of a metadata node.  Unlike \a
-/// GenericMDNode, this class has support for RAUW and is suitable for forward
-/// references.
+/// Forward declaration of metadata, in the form of a basic tuple.  Unlike \a
+/// MDTuple, this class has full support for RAUW, is not owned, is not
+/// uniqued, and is suitable for forward references.
 class MDNodeFwdDecl : public MDNode, ReplaceableMetadataImpl {
   friend class Metadata;
-  friend class MDNode;
   friend class ReplaceableMetadataImpl;
 
   MDNodeFwdDecl(LLVMContext &C, ArrayRef<Metadata *> Vals)
       : MDNode(C, MDNodeFwdDeclKind, Vals) {}
-  ~MDNodeFwdDecl() { dropAllReferences(); }
 
 public:
+  ~MDNodeFwdDecl() { dropAllReferences(); }
+
+  // MSVC doesn't seem to see the alternaive: "using MDNode::operator delete".
+  void operator delete(void *Mem) { MDNode::operator delete(Mem); }
+
+  static MDNodeFwdDecl *get(LLVMContext &Context, ArrayRef<Metadata *> MDs) {
+    return new (MDs.size()) MDNodeFwdDecl(Context, MDs);
+  }
+
   static bool classof(const Metadata *MD) {
     return MD->getMetadataID() == MDNodeFwdDeclKind;
   }
@@ -853,6 +915,7 @@ public:
   MDNode *getOperand(unsigned i) const;
   unsigned getNumOperands() const;
   void addOperand(MDNode *M);
+  void setOperand(unsigned I, MDNode *New);
   StringRef getName() const;
   void print(raw_ostream &ROS) const;
   void dump() const;

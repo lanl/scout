@@ -113,6 +113,23 @@ bool AArch64MachObjectWriter::getAArch64FixupKindMachOInfo(
   }
 }
 
+static bool canUseLocalRelocation(const MCSectionMachO &Section,
+                                  const MCSymbol &Symbol, unsigned Log2Size) {
+  // Debug info sections can use local relocations.
+  if (Section.hasAttribute(MachO::S_ATTR_DEBUG))
+    return true;
+
+  // Otherwise, only pointer sized relocations are supported.
+  if (Log2Size != 3)
+    return false;
+
+  // But only if they don't point to a cstring.
+  if (!Symbol.isInSection())
+    return true;
+  const MCSectionMachO &RefSec = cast<MCSectionMachO>(Symbol.getSection());
+  return RefSec.getType() != MachO::S_CSTRING_LITERALS;
+}
+
 void AArch64MachObjectWriter::RecordRelocation(
     MachObjectWriter *Writer, MCAssembler &Asm, const MCAsmLayout &Layout,
     const MCFragment *Fragment, const MCFixup &Fixup, MCValue Target,
@@ -262,11 +279,8 @@ void AArch64MachObjectWriter::RecordRelocation(
     const MCSectionMachO &Section = static_cast<const MCSectionMachO &>(
         Fragment->getParent()->getSection());
 
-    // Pointer-sized relocations can use a local relocation. Otherwise,
-    // we have to be in a debug info section.
     bool CanUseLocalRelocation =
-        Section.hasAttribute(MachO::S_ATTR_DEBUG) || Log2Size == 3;
-
+        canUseLocalRelocation(Section, *Symbol, Log2Size);
     if (Symbol->isTemporary() && (Value || !CanUseLocalRelocation)) {
       const MCSection &Sec = Symbol->getSection();
       if (!Asm.getContext().getAsmInfo()->isSectionAtomizableBySymbols(Sec))
