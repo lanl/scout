@@ -113,9 +113,6 @@ public:
   /// Default target triple.
   std::string DefaultTargetTriple;
 
-  /// Default name for linked images (e.g., "a.out").
-  mutable std::string DefaultImageName;
-
   /// Driver title to use with help.
   std::string DriverTitle;
 
@@ -379,6 +376,9 @@ public:
                           bool MultipleArchs,
                           const char *LinkingOutput,
                           InputInfo &Result) const;
+
+  /// Returns the default name for linked images (e.g., "a.out").
+  const char *getDefaultImageName() const;
 
   /// GetNamedOutputPath - Return the name to use for the output of
   /// the action \p JA. The result is appended to the compilation's

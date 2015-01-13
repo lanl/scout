@@ -322,7 +322,7 @@ void DeclRefExpr::computeDependence(const ASTContext &Ctx) {
 DeclRefExpr::DeclRefExpr(const ASTContext &Ctx,
                          NestedNameSpecifierLoc QualifierLoc,
                          SourceLocation TemplateKWLoc,
-                         ValueDecl *D, bool RefersToCapturedVariable,
+                         ValueDecl *D, bool RefersToEnclosingVariableOrCapture,
                          const DeclarationNameInfo &NameInfo,
                          NamedDecl *FoundD,
                          const TemplateArgumentListInfo *TemplateArgs,
@@ -343,7 +343,8 @@ DeclRefExpr::DeclRefExpr(const ASTContext &Ctx,
     getInternalFoundDecl() = FoundD;
   DeclRefExprBits.HasTemplateKWAndArgsInfo
     = (TemplateArgs || TemplateKWLoc.isValid()) ? 1 : 0;
-  DeclRefExprBits.RefersToCapturedVariable = RefersToCapturedVariable;
+  DeclRefExprBits.RefersToEnclosingVariableOrCapture =
+      RefersToEnclosingVariableOrCapture;
   if (TemplateArgs) {
     bool Dependent = false;
     bool InstantiationDependent = false;
@@ -367,14 +368,14 @@ DeclRefExpr *DeclRefExpr::Create(const ASTContext &Context,
                                  NestedNameSpecifierLoc QualifierLoc,
                                  SourceLocation TemplateKWLoc,
                                  ValueDecl *D,
-                                 bool RefersToCapturedVariable,
+                                 bool RefersToEnclosingVariableOrCapture,
                                  SourceLocation NameLoc,
                                  QualType T,
                                  ExprValueKind VK,
                                  NamedDecl *FoundD,
                                  const TemplateArgumentListInfo *TemplateArgs) {
   return Create(Context, QualifierLoc, TemplateKWLoc, D,
-                RefersToCapturedVariable,
+                RefersToEnclosingVariableOrCapture,
                 DeclarationNameInfo(D->getDeclName(), NameLoc),
                 T, VK, FoundD, TemplateArgs);
 }
@@ -383,7 +384,7 @@ DeclRefExpr *DeclRefExpr::Create(const ASTContext &Context,
                                  NestedNameSpecifierLoc QualifierLoc,
                                  SourceLocation TemplateKWLoc,
                                  ValueDecl *D,
-                                 bool RefersToCapturedVariable,
+                                 bool RefersToEnclosingVariableOrCapture,
                                  const DeclarationNameInfo &NameInfo,
                                  QualType T,
                                  ExprValueKind VK,
@@ -405,7 +406,7 @@ DeclRefExpr *DeclRefExpr::Create(const ASTContext &Context,
 
   void *Mem = Context.Allocate(Size, llvm::alignOf<DeclRefExpr>());
   return new (Mem) DeclRefExpr(Context, QualifierLoc, TemplateKWLoc, D,
-                               RefersToCapturedVariable,
+                               RefersToEnclosingVariableOrCapture,
                                NameInfo, FoundD, TemplateArgs, T, VK);
 }
 
@@ -3831,7 +3832,7 @@ DesignatedInitExpr::DesignatedInitExpr(const ASTContext &C, QualType Ty,
       // Compute type- and value-dependence.
       Expr *Index = IndexExprs[IndexIdx];
       if (Index->isTypeDependent() || Index->isValueDependent())
-        ExprBits.ValueDependent = true;
+        ExprBits.TypeDependent = ExprBits.ValueDependent = true;
       if (Index->isInstantiationDependent())
         ExprBits.InstantiationDependent = true;
       // Propagate unexpanded parameter packs.
@@ -3846,7 +3847,7 @@ DesignatedInitExpr::DesignatedInitExpr(const ASTContext &C, QualType Ty,
       Expr *End = IndexExprs[IndexIdx + 1];
       if (Start->isTypeDependent() || Start->isValueDependent() ||
           End->isTypeDependent() || End->isValueDependent()) {
-        ExprBits.ValueDependent = true;
+        ExprBits.TypeDependent = ExprBits.ValueDependent = true;
         ExprBits.InstantiationDependent = true;
       } else if (Start->isInstantiationDependent() || 
                  End->isInstantiationDependent()) {

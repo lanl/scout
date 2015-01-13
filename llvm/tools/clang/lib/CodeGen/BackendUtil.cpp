@@ -39,7 +39,7 @@
 #include "llvm/Transforms/Instrumentation.h"
 #include "llvm/Transforms/ObjCARC.h"
 #include "llvm/Transforms/Scalar.h"
-
+#include "llvm/Transforms/Utils/SymbolRewriter.h"
 #include <memory>
 
 #include "scout/Config/defs.h"
@@ -285,6 +285,17 @@ static TargetLibraryInfo *createTLI(llvm::Triple &TargetTriple,
   return TLI;
 }
 
+static void addSymbolRewriterPass(const CodeGenOptions &Opts,
+                                  PassManager *MPM) {
+  llvm::SymbolRewriter::RewriteDescriptorList DL;
+
+  llvm::SymbolRewriter::RewriteMapParser MapParser;
+  for (const auto &MapFile : Opts.RewriteMapFiles)
+    MapParser.parse(MapFile, &DL);
+
+  MPM->add(createRewriteSymbolsPass(DL));
+}
+
 void EmitAssemblyHelper::CreatePasses() {
   // ===== Scout ==============================================================
   CreateScoutPasses();
@@ -400,6 +411,8 @@ void EmitAssemblyHelper::CreatePasses() {
 
   // Set up the per-module pass manager.
   PassManager *MPM = getPerModulePasses();
+  if (!CodeGenOpts.RewriteMapFiles.empty())
+    addSymbolRewriterPass(CodeGenOpts, MPM);
   if (CodeGenOpts.VerifyModule)
     MPM->add(createDebugInfoVerifierPass());
 

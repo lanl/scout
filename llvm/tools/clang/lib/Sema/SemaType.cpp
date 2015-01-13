@@ -1112,30 +1112,21 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
       const unsigned AutoParameterPosition = LSI->AutoTemplateParams.size();
       const bool IsParameterPack = declarator.hasEllipsis();
 
-      // Create a name for the invented template parameter type.
-      std::string InventedTemplateParamName = "$auto-";
-      llvm::raw_string_ostream ss(InventedTemplateParamName);
-      ss << TemplateParameterDepth;
-      ss << "-" << AutoParameterPosition;
-      ss.flush();
-
-      IdentifierInfo& TemplateParamII = Context.Idents.get(
-                                        InventedTemplateParamName.c_str());
-      // Turns out we must create the TemplateTypeParmDecl here to
-      // retrieve the corresponding template parameter type.
+      // Turns out we must create the TemplateTypeParmDecl here to 
+      // retrieve the corresponding template parameter type. 
       TemplateTypeParmDecl *CorrespondingTemplateParam =
         TemplateTypeParmDecl::Create(Context,
         // Temporarily add to the TranslationUnit DeclContext.  When the
         // associated TemplateParameterList is attached to a template
         // declaration (such as FunctionTemplateDecl), the DeclContext
         // for each template parameter gets updated appropriately via
-        // a call to AdoptTemplateParameterList.
-        Context.getTranslationUnitDecl(),
-        /*KeyLoc*/ SourceLocation(),
-        /*NameLoc*/ declarator.getLocStart(),
-        TemplateParameterDepth,
-        AutoParameterPosition,  // our template param index
-        /* Identifier*/ &TemplateParamII, false, IsParameterPack);
+        // a call to AdoptTemplateParameterList. 
+        Context.getTranslationUnitDecl(), 
+        /*KeyLoc*/ SourceLocation(), 
+        /*NameLoc*/ declarator.getLocStart(),  
+        TemplateParameterDepth, 
+        AutoParameterPosition,  // our template param index 
+        /* Identifier*/ nullptr, false, IsParameterPack);
       LSI->AutoTemplateParams.push_back(CorrespondingTemplateParam);
       // Replace the 'auto' in the function parameter with this invented
       // template type parameter.

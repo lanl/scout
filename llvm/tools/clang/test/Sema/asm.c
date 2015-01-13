@@ -171,3 +171,36 @@ void fn1() {
           : [l] "=r"(l)
           : "[l],m"(l)); // expected-error {{asm constraint has an unexpected number of alternatives: 1 vs 2}}
 }
+
+void fn2() {
+  int l;
+ __asm__(""
+          : "+&m"(l)); // expected-error {{invalid output constraint '+&m' in asm}}
+}
+
+void fn3() {
+  int l;
+ __asm__(""
+          : "+#r"(l)); // expected-error {{invalid output constraint '+#r' in asm}}
+}
+
+void fn4() {
+  int l;
+ __asm__(""
+          : "=r"(l)
+          : "#m"(l)); // expected-error {{invalid input constraint '#m' in asm}}
+}
+
+void fn5() {
+  int l;
+    __asm__(""
+          : [g] "+r"(l)
+          : "[g]"(l)); // expected-error {{invalid input constraint '[g]' in asm}}
+}
+
+void fn6() {
+    int a;
+  __asm__(""
+            : "=rm"(a), "=rm"(a)
+            : "11m"(a)) // expected-error {{invalid input constraint '11m' in asm}}
+}

@@ -998,6 +998,14 @@ TEST_F(FormatTest, UnderstandsSingleLineComments) {
                    " // first\n"
                    "// at start\n"
                    "otherLine();"));
+  EXPECT_EQ("void f() {\n"
+            "  lineWith(); // comment\n"
+            "  // at start\n"
+            "}",
+            format("void              f() {\n"
+                   "  lineWith(); // comment\n"
+                   "  // at start\n"
+                   "}"));
 
   verifyFormat(
       "#define A                                                  \\\n"
@@ -2183,11 +2191,11 @@ TEST_F(FormatTest, FormatsInlineASM) {
       "    : \"a\"(value));");
   EXPECT_EQ(
       "void NS_InvokeByIndex(void *that, unsigned int methodIndex) {\n"
-      "    __asm {\n"
+      "  __asm {\n"
       "        mov     edx,[that] // vtable in edx\n"
       "        mov     eax,methodIndex\n"
       "        call    [edx][eax*4] // stdcall\n"
-      "    }\n"
+      "  }\n"
       "}",
       format("void NS_InvokeByIndex(void *that,   unsigned int methodIndex) {\n"
              "    __asm {\n"
@@ -2196,6 +2204,10 @@ TEST_F(FormatTest, FormatsInlineASM) {
              "        call    [edx][eax*4] // stdcall\n"
              "    }\n"
              "}"));
+  verifyFormat("void function() {\n"
+               "  // comment\n"
+               "  asm(\"\");\n"
+               "}");
 }
 
 TEST_F(FormatTest, FormatTryCatch) {
@@ -2802,6 +2814,17 @@ TEST_F(FormatTest, EscapedNewlineAtStartOfToken) {
 
 TEST_F(FormatTest, NoEscapedNewlineHandlingInBlockComments) {
   EXPECT_EQ("/* \\  \\  \\\n*/", format("\\\n/* \\  \\  \\\n*/"));
+}
+
+TEST_F(FormatTest, DontCrashOnBlockComments) {
+  EXPECT_EQ(
+      "int xxxxxxxxx; /* "
+      "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy\n"
+      "zzzzzz\n"
+      "0*/",
+      format("int xxxxxxxxx;                          /* "
+             "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy zzzzzz\n"
+             "0*/"));
 }
 
 TEST_F(FormatTest, CalculateSpaceOnConsecutiveLinesInMacro) {
@@ -4666,6 +4689,10 @@ TEST_F(FormatTest, AlignsPipes) {
                "  CHECK_EQ(aaaa, (*bbbbbbbbb)->cccccc)\n"
                "      << \"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\";\n"
                "}");
+
+  // Handle 'endl'.
+  verifyFormat("llvm::errs() << aaaa << endl\n"
+               "             << bbbb << endl;");
 }
 
 TEST_F(FormatTest, UnderstandsEquals) {
@@ -4931,6 +4958,7 @@ TEST_F(FormatTest, UnderstandsTemplateParameters) {
 
   verifyFormat("f<int>();");
   verifyFormat("template <typename T> void f() {}");
+  verifyFormat("struct A<std::enable_if<sizeof(T2) < sizeof(int32)>::type>;");
 
   // Not template parameters.
   verifyFormat("return a < b && c > d;");
@@ -5164,6 +5192,7 @@ TEST_F(FormatTest, UnderstandsUsesOfStarAndAmp) {
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa(\n"
       "    aaaaaaaaaaaaaaaaaaaaaaaaaaaa, *aaaaaaaaaaaaaaaaaaaaaaaaaaaaa);");
 
+  verifyGoogleFormat("**outparam = 1;");
   verifyGoogleFormat("int main(int argc, char** argv) {}");
   verifyGoogleFormat("A<int*> a;");
   verifyGoogleFormat("A<int**> a;");
@@ -9362,6 +9391,10 @@ TEST_F(FormatTest, FormatsLambdas) {
   verifyFormat("string abc = SomeFunction(aaaaaaaaaaaaa, aaaaa, []() {\n"
                "  SomeOtherFunctioooooooooooooooooooooooooon();\n"
                "});");
+  verifyFormat("Constructor()\n"
+               "    : Field([] { // comment\n"
+               "        int i;\n"
+               "      }) {}");
 
   // Lambdas with return types.
   verifyFormat("int c = []() -> int { return 2; }();\n");

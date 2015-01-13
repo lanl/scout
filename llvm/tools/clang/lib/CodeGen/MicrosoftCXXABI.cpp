@@ -1465,9 +1465,9 @@ llvm::Value *MicrosoftCXXABI::EmitVirtualDestructorCall(
   llvm::Value *Callee = getVirtualFunctionPointer(CGF, GD, This, Ty);
 
   ASTContext &Context = CGF.getContext();
-  llvm::Value *ImplicitParam =
-      llvm::ConstantInt::get(llvm::IntegerType::getInt32Ty(CGF.getLLVMContext()),
-                             DtorType == Dtor_Deleting);
+  llvm::Value *ImplicitParam = llvm::ConstantInt::get(
+      llvm::IntegerType::getInt32Ty(CGF.getLLVMContext()),
+      DtorType == Dtor_Deleting);
 
   This = adjustThisArgumentForVirtualFunctionCall(CGF, GD, This, true);
   RValue RV = CGF.EmitCXXStructorCall(Dtor, Callee, ReturnValueSlot(), This,
@@ -1829,18 +1829,10 @@ void MicrosoftCXXABI::EmitThreadLocalInitFuncs(
     llvm::Function *F = CXXThreadLocalInits[I];
 
     // If the GV is already in a comdat group, then we have to join it.
-    llvm::Comdat *C = GV->getComdat();
-
-    // LinkOnce and Weak linkage are lowered down to a single-member comdat
-    // group.
-    // Make an explicit group so we can join it.
-    if (!C && (GV->hasWeakLinkage() || GV->hasLinkOnceLinkage())) {
-      C = CGM.getModule().getOrInsertComdat(GV->getName());
-      GV->setComdat(C);
+    if (llvm::Comdat *C = GV->getComdat())
       AddToXDU(F)->setComdat(C);
-    } else {
+    else
       NonComdatInits.push_back(F);
-    }
   }
 
   if (!NonComdatInits.empty()) {

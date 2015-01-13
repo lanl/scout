@@ -163,7 +163,6 @@ ENUM_CODEGENOPT(DefaultTLSModel, TLSModel, 2, GeneralDynamicTLSModel)
 CODEGENOPT(SanitizeRecover, 1, 1) ///< Attempt to recover from sanitizer checks
                                   ///< by continuing execution when possible
 
-
 // +===== Scout =============================================================+
 CODEGENOPT(ScoutDebug, 1, 0) /// with -debug flag
 CODEGENOPT(ScoutNvidiaGPU, 1, 0) /// with -gpu flag

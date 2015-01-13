@@ -3149,23 +3149,11 @@ Parser::tryParseExceptionSpecification(bool Delayed,
     ExceptionSpecTokens->push_back(StartTok); // 'throw' or 'noexcept'
     ExceptionSpecTokens->push_back(Tok); // '('
     SpecificationRange.setEnd(ConsumeParen()); // '('
-    
-    if (!ConsumeAndStoreUntil(tok::r_paren, *ExceptionSpecTokens,
-                              /*StopAtSemi=*/true,
-                              /*ConsumeFinalToken=*/true)) {
-      NoexceptExpr = 0;
-      delete ExceptionSpecTokens;
-      ExceptionSpecTokens = 0;
-      return IsNoexcept? EST_BasicNoexcept : EST_DynamicNone;
-    }
+
+    ConsumeAndStoreUntil(tok::r_paren, *ExceptionSpecTokens,
+                         /*StopAtSemi=*/true,
+                         /*ConsumeFinalToken=*/true);
     SpecificationRange.setEnd(Tok.getLocation());
-    
-    // Add the 'stop' token.
-    Token End;
-    End.startToken();
-    End.setKind(tok::cxx_exceptspec_end);
-    End.setLocation(Tok.getLocation());
-    ExceptionSpecTokens->push_back(End);
     return EST_Unparsed;
   }
   
@@ -3386,9 +3374,11 @@ IdentifierInfo *Parser::TryParseCXX11AttributeIdentifier(SourceLocation &Loc) {
   switch (Tok.getKind()) {
   default:
     // Identifiers and keywords have identifier info attached.
-    if (IdentifierInfo *II = Tok.getIdentifierInfo()) {
-      Loc = ConsumeToken();
-      return II;
+    if (!Tok.isAnnotation()) {
+      if (IdentifierInfo *II = Tok.getIdentifierInfo()) {
+        Loc = ConsumeToken();
+        return II;
+      }
     }
     return nullptr;
 
