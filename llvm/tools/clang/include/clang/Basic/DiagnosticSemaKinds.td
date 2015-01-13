@@ -7606,6 +7606,8 @@ def err_invalid_mesh_specifier : Error<
      "invalid mesh specifier">;
 def err_invalid_plot_call : Error<
 "invalid plot call: %0">;
+def err_plot_disabled : Error<
+"plot functionality disabled">;
 
     		  
 def warn_no_scstdlib : Warning<

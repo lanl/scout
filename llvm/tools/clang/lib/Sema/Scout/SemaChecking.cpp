@@ -131,6 +131,11 @@ bool Sema::CheckMeshParameterCall(unsigned BuiltinID, CallExpr *TheCall) {
 }
 
 bool Sema::CheckPlotCall(unsigned BuiltinID, CallExpr *TheCall) {
+#ifndef SCOUT_ENABLE_PLOT
+  Diag(TheCall->getExprLoc(), diag::err_plot_disabled);
+  return false;
+#endif
+  
   if(TheCall->getNumArgs() != 2) {
     Diag(TheCall->getExprLoc(), diag::err_invalid_plot_call) <<
     "expected 2 args";
