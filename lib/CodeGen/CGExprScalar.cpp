@@ -196,7 +196,6 @@ public:
   //===--------------------------------------------------------------------===//
 
   Value *Visit(Expr *E) {
-    ApplyDebugLocation DL(CGF, E->getLocStart());
     return StmtVisitor<ScalarExprEmitter, Value*>::Visit(E);
   }
 
@@ -3043,7 +3042,7 @@ Value *ScalarExprEmitter::VisitBinLAnd(const BinaryOperator *E) {
   // Emit an unconditional branch from this block to ContBlock.
   {
     // There is no need to emit line number for unconditional branch.
-    ApplyDebugLocation DL(CGF);
+    SuppressDebugLocation S(Builder);
     CGF.EmitBlock(ContBlock);
   }
   // Insert an entry into the phi node for the edge with the value of RHSCond.
@@ -3316,8 +3315,12 @@ Value *ScalarExprEmitter::VisitVAArgExpr(VAArgExpr *VE) {
   llvm::Value *Val = Builder.CreateLoad(ArgPtr);
 
   // If EmitVAArg promoted the type, we must truncate it.
-  if (ArgTy != Val->getType())
-    Val = Builder.CreateTrunc(Val, ArgTy);
+  if (ArgTy != Val->getType()) {
+    if (ArgTy->isPointerTy() && !Val->getType()->isPointerTy())
+      Val = Builder.CreateIntToPtr(Val, ArgTy);
+    else
+      Val = Builder.CreateTrunc(Val, ArgTy);
+  }
 
   return Val;
 }

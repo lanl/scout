@@ -1102,14 +1102,18 @@ void CodeGenModule::EmitDeferred() {
     llvm::GlobalValue *GV = G.GV;
     DeferredDeclsToEmit.pop_back();
 
-    assert(GV == GetGlobalValue(getMangledName(D)));
+    assert(!GV || GV == GetGlobalValue(getMangledName(D)));
+    if (!GV)
+      GV = GetGlobalValue(getMangledName(D));
+
+
     // Check to see if we've already emitted this.  This is necessary
     // for a couple of reasons: first, decls can end up in the
     // deferred-decls queue multiple times, and second, decls can end
     // up with definitions in unusual ways (e.g. by an extern inline
     // function acquiring a strong function redefinition).  Just
     // ignore these cases.
-    if(!GV->isDeclaration())
+    if (GV && !GV->isDeclaration())
       continue;
 
     // Otherwise, emit the definition and move on to the next one.
@@ -1234,12 +1238,22 @@ bool CodeGenModule::isInSanitizerBlacklist(llvm::GlobalVariable *GV,
   return false;
 }
 
-bool CodeGenModule::MayDeferGeneration(const ValueDecl *Global) {
+bool CodeGenModule::MustBeEmitted(const ValueDecl *Global) {
   // Never defer when EmitAllDecls is specified.
   if (LangOpts.EmitAllDecls)
-    return false;
+    return true;
 
-  return !getContext().DeclMustBeEmitted(Global);
+  return getContext().DeclMustBeEmitted(Global);
+}
+
+bool CodeGenModule::MayBeEmittedEagerly(const ValueDecl *Global) {
+  if (const auto *FD = dyn_cast<FunctionDecl>(Global))
+    if (FD->getTemplateSpecializationKind() == TSK_ImplicitInstantiation)
+      // Implicit template instantiations may change linkage if they are later
+      // explicitly instantiated, so they should not be emitted eagerly.
+      return false;
+
+  return true;
 }
 
 llvm::Constant *CodeGenModule::GetAddrOfUuidDescriptor(
@@ -1348,9 +1362,10 @@ void CodeGenModule::EmitGlobal(GlobalDecl GD) {
       return;
   }
 
-  // Defer code generation when possible if this is a static definition, inline
-  // function etc.  These we only want to emit if they are used.
-  if (!MayDeferGeneration(Global)) {
+  // Defer code generation to first use when possible, e.g. if this is an inline
+  // function. If the global must always be emitted, do it eagerly if possible
+  // to benefit from cache locality.
+  if (MustBeEmitted(Global) && MayBeEmittedEagerly(Global)) {
     // Emit the definition if it can't be deferred.
     EmitGlobalDefinition(GD);
     return;
@@ -1363,13 +1378,16 @@ void CodeGenModule::EmitGlobal(GlobalDecl GD) {
     DelayedCXXInitPosition[Global] = CXXGlobalInits.size();
     CXXGlobalInits.push_back(nullptr);
   }
-  
-  // If the value has already been used, add it directly to the
-  // DeferredDeclsToEmit list.
+
   StringRef MangledName = getMangledName(GD);
-  if (llvm::GlobalValue *GV = GetGlobalValue(MangledName))
+  if (llvm::GlobalValue *GV = GetGlobalValue(MangledName)) {
+    // The value has already been used and should therefore be emitted.
     addDeferredDeclToEmit(GV, GD);
-  else {
+  } else if (MustBeEmitted(Global)) {
+    // The value must be emitted, but cannot be emitted eagerly.
+    assert(!MayBeEmittedEagerly(Global));
+    addDeferredDeclToEmit(/*GV=*/nullptr, GD);
+  } else {
     // Otherwise, remember that we saw a deferred decl with this name.  The
     // first use of the mangled name will cause it to move into
     // DeferredDeclsToEmit.
@@ -1843,7 +1861,7 @@ CodeGenModule::CreateRuntimeVariable(llvm::Type *Ty,
 void CodeGenModule::EmitTentativeDefinition(const VarDecl *D) {
   assert(!D->getInit() && "Cannot emit definite definitions here!");
 
-  if (MayDeferGeneration(D)) {
+  if (!MustBeEmitted(D)) {
     // If we have not seen a reference to this variable yet, place it
     // into the deferred declarations table to be emitted if needed
     // later.
@@ -1908,6 +1926,31 @@ void CodeGenModule::MaybeHandleStaticInExternC(const SomeDecl *D,
   // in extern "C" regions, none of them gets that name.
   if (!R.second)
     R.first->second = nullptr;
+}
+
+static bool shouldBeInCOMDAT(CodeGenModule &CGM, const Decl &D) {
+  if (!CGM.supportsCOMDAT())
+    return false;
+
+  if (D.hasAttr<SelectAnyAttr>())
+    return true;
+
+  GVALinkage Linkage;
+  if (auto *VD = dyn_cast<VarDecl>(&D))
+    Linkage = CGM.getContext().GetGVALinkageForVariable(VD);
+  else
+    Linkage = CGM.getContext().GetGVALinkageForFunction(cast<FunctionDecl>(&D));
+
+  switch (Linkage) {
+  case GVA_Internal:
+  case GVA_AvailableExternally:
+  case GVA_StrongExternal:
+    return false;
+  case GVA_DiscardableODR:
+  case GVA_StrongODR:
+    return true;
+  }
+  llvm_unreachable("No such linkage");
 }
 
 void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D) {
@@ -2052,6 +2095,9 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D) {
       CXXThreadLocals.push_back(std::make_pair(D, GV));
     setTLSMode(GV, *D);
   }
+
+  if (shouldBeInCOMDAT(*this, *D))
+    GV->setComdat(TheModule.getOrInsertComdat(GV->getName()));
 
   // Emit the initializer function if necessary.
   if (NeedsGlobalCtor || NeedsGlobalDtor)
@@ -2386,6 +2432,9 @@ void CodeGenModule::EmitGlobalFunctionDefinition(GlobalDecl GD,
   setGlobalVisibility(Fn, D);
 
   MaybeHandleStaticInExternC(D, Fn);
+
+  if (shouldBeInCOMDAT(*this, *D))
+    Fn->setComdat(TheModule.getOrInsertComdat(Fn->getName()));
 
   CodeGenFunction(*this).GenerateCode(D, Fn, FI);
 

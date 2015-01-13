@@ -273,6 +273,12 @@ protected:
     // On FreeBSD, wchar_t contains the number of the code point as
     // used by the character set of the locale. These character sets are
     // not necessarily a superset of ASCII.
+    //
+    // FIXME: This is wrong; the macro refers to the numerical values
+    // of wchar_t *literals*, which are not locale-dependent. However,
+    // FreeBSD systems apparently depend on us getting this wrong, and
+    // setting this to 1 is conforming even if all the basic source
+    // character literals have the same encoding as char and wchar_t.
     Builder.defineMacro("__STDC_MB_MIGHT_NEQ_WC__", "1");
   }
 public:
@@ -3102,6 +3108,28 @@ X86TargetInfo::validateAsmConstraint(const char *&Name,
                                      TargetInfo::ConstraintInfo &Info) const {
   switch (*Name) {
   default: return false;
+  case 'I':
+    Info.setRequiresImmediate(0, 31);
+    return true;
+  case 'J':
+    Info.setRequiresImmediate(0, 63);
+    return true;
+  case 'K':
+    Info.setRequiresImmediate(-128, 127);
+    return true;
+  case 'L':
+    // FIXME: properly analyze this constraint:
+    //  must be one of 0xff, 0xffff, or 0xffffffff
+    return true;
+  case 'M':
+    Info.setRequiresImmediate(0, 3);
+    return true;
+  case 'N':
+    Info.setRequiresImmediate(0, 255);
+    return true;
+  case 'O':
+    Info.setRequiresImmediate(0, 127);
+    return true;
   case 'Y': // first letter of a pair:
     switch (*(Name+1)) {
     default: return false;
@@ -4289,6 +4317,13 @@ public:
     case 'P': // VFP Floating point register double precision
       Info.setAllowsRegister();
       return true;
+    case 'I':
+    case 'J':
+    case 'K':
+    case 'L':
+    case 'M':
+      // FIXME
+      return true;
     case 'Q': // A memory address that is a single base register.
       Info.setAllowsMemory();
       return true;
@@ -5152,6 +5187,16 @@ public:
   bool validateAsmConstraint(const char *&Name,
                              TargetInfo::ConstraintInfo &info) const override {
     // FIXME: Implement!
+    switch (*Name) {
+    case 'I': // Signed 13-bit constant
+    case 'J': // Zero
+    case 'K': // 32-bit constant with the low 12 bits clear
+    case 'L': // A constant in the range supported by movcc (11-bit signed imm)
+    case 'M': // A constant in the range supported by movrcc (19-bit signed imm)
+    case 'N': // Same as 'K' but zext (required for SIMode)
+    case 'O': // The constant 4096
+      return true;
+    }
     return false;
   }
   const char *getClobbers() const override {
@@ -5444,6 +5489,13 @@ namespace {
     bool
     validateAsmConstraint(const char *&Name,
                           TargetInfo::ConstraintInfo &info) const override {
+      // FIXME: implement
+      switch (*Name) {
+      case 'K': // the constant 1
+      case 'L': // constant -1^20 .. 1^19
+      case 'M': // constant 1-4:
+        return true;
+      }
       // No target constraints for now.
       return false;
     }
@@ -5740,6 +5792,15 @@ public:
     case 'x': // hilo register pair
       Info.setAllowsRegister();
       return true;
+    case 'I': // Signed 16-bit constant
+    case 'J': // Integer 0
+    case 'K': // Unsigned 16-bit constant
+    case 'L': // Signed 32-bit constant, lower 16-bit zeros (for lui)
+    case 'M': // Constants not loadable via lui, addiu, or ori
+    case 'N': // Constant -1 to -65535
+    case 'O': // A signed 15-bit constant
+    case 'P': // A constant between 1 go 65535
+      return true;
     case 'R': // An address that can be used in a non-macro load or store
       Info.setAllowsMemory();
       return true;
@@ -5747,6 +5808,27 @@ public:
   }
 
   const char *getClobbers() const override {
+    // In GCC, $1 is not widely used in generated code (it's used only in a few
+    // specific situations), so there is no real need for users to add it to
+    // the clobbers list if they want to use it in their inline assembly code.
+    //
+    // In LLVM, $1 is treated as a normal GPR and is always allocatable during
+    // code generation, so using it in inline assembly without adding it to the
+    // clobbers list can cause conflicts between the inline assembly code and
+    // the surrounding generated code.
+    //
+    // Another problem is that LLVM is allowed to choose $1 for inline assembly
+    // operands, which will conflict with the ".set at" assembler option (which
+    // we use only for inline assembly, in order to maintain compatibility with
+    // GCC) and will also conflict with the user's usage of $1.
+    //
+    // The easiest way to avoid these conflicts and keep $1 as an allocatable
+    // register for generated code is to automatically clobber $1 for all inline
+    // assembly code.
+    //
+    // FIXME: We should automatically clobber $1 only for inline assembly code
+    // which actually uses it. This would allow LLVM to use $1 for inline
+    // assembly operands if the user's assembly code doesn't use it.
     return "~{$1}";
   }
 
@@ -6579,6 +6661,7 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple) {
   case llvm::Triple::nvptx64:
     return new NVPTX64TargetInfo(Triple);
 
+  case llvm::Triple::amdgcn:
   case llvm::Triple::r600:
     return new R600TargetInfo(Triple);
 
