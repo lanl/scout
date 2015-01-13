@@ -160,18 +160,15 @@ ENUM_CODEGENOPT(Inlining, InliningMethod, 2, NoInlining)
 /// The default TLS model to use.
 ENUM_CODEGENOPT(DefaultTLSModel, TLSModel, 2, GeneralDynamicTLSModel)
 
-CODEGENOPT(SanitizeRecover, 1, 1) ///< Attempt to recover from sanitizer checks
-                                  ///< by continuing execution when possible
-
-// +===== Scout =============================================================+
+/// +===== Scout =============================================================+
 CODEGENOPT(ScoutDebug, 1, 0) /// with -debug flag
 CODEGENOPT(ScoutNvidiaGPU, 1, 0) /// with -gpu flag
 CODEGENOPT(ScoutCPUThreads, 1, 0) /// with -mt flag
 CODEGENOPT(ScoutLegionSupport, 1, 0) /// with -sclegion flag
 CODEGENOPT(ScoutNoStdLibrary, 1, 0) /// with -noscstdlib flag
-//CODEGENOPT(ScoutEmitAllDefinitions, 1, 0) /// -emit-all-definitions flag
-//CODEGENOPT(ScoutAMDGPU, 1, 0) /// -gpu-amd flag
-// +=========================================================================+
+///CODEGENOPT(ScoutEmitAllDefinitions, 1, 0) /// -emit-all-definitions flag
+///CODEGENOPT(ScoutAMDGPU, 1, 0) /// -gpu-amd flag
+/// +=========================================================================+
 
 #undef CODEGENOPT
 #undef ENUM_CODEGENOPT
