@@ -75,7 +75,7 @@ identifiers, for different purposes:
 #. Named values are represented as a string of characters with their
    prefix. For example, ``%foo``, ``@DivisionByZero``,
    ``%a.really.long.identifier``. The actual regular expression used is
-   '``[%@][a-zA-Z$._][a-zA-Z$._0-9]*``'. Identifiers that require other
+   '``[%@][-a-zA-Z$._][-a-zA-Z$._0-9]*``'. Identifiers that require other
    characters in their names can be surrounded with quotes. Special
    characters may be escaped using ``"\xx"`` where ``xx`` is the ASCII
    code for the character in hexadecimal. In this way, any character can
@@ -596,7 +596,8 @@ Syntax::
     [@<GlobalVarName> =] [Linkage] [Visibility] [DLLStorageClass] [ThreadLocal]
                          [unnamed_addr] [AddrSpace] [ExternallyInitialized]
                          <global | constant> <Type> [<InitializerConstant>]
-                         [, section "name"] [, align <Alignment>]
+                         [, section "name"] [, comdat [($name)]]
+                         [, align <Alignment>]
 
 For example, the following defines a global in a numbered address space
 with an initializer, section, and alignment:
@@ -681,7 +682,7 @@ Syntax::
     define [linkage] [visibility] [DLLStorageClass]
            [cconv] [ret attrs]
            <ResultType> @<FunctionName> ([argument list])
-           [unnamed_addr] [fn Attrs] [section "name"] [comdat $<ComdatName>]
+           [unnamed_addr] [fn Attrs] [section "name"] [comdat [($name)]]
            [align N] [gc] [prefix Constant] [prologue Constant] { ... }
 
 The argument list is a comma seperated sequence of arguments where each
@@ -775,11 +776,20 @@ the COMDAT key's section is the largest:
 .. code-block:: llvm
 
    $foo = comdat largest
-   @foo = global i32 2, comdat $foo
+   @foo = global i32 2, comdat($foo)
 
-   define void @bar() comdat $foo {
+   define void @bar() comdat($foo) {
      ret void
    }
+
+As a syntactic sugar the ``$name`` can be omitted if the name is the same as
+the global name:
+
+.. code-block:: llvm
+
+  $foo = comdat any
+  @foo = global i32 2, comdat
+
 
 In a COFF object file, this will create a COMDAT section with selection kind
 ``IMAGE_COMDAT_SELECT_LARGEST`` containing the contents of the ``@foo`` symbol
@@ -803,8 +813,8 @@ For example:
 
    $foo = comdat any
    $bar = comdat any
-   @g1 = global i32 42, section "sec", comdat $foo
-   @g2 = global i32 42, section "sec", comdat $bar
+   @g1 = global i32 42, section "sec", comdat($foo)
+   @g2 = global i32 42, section "sec", comdat($bar)
 
 From the object file perspective, this requires the creation of two sections
 with the same name.  This is necessary because both globals belong to different
@@ -2837,6 +2847,16 @@ their operand. For example:
 .. code-block:: llvm
 
     !{ !"test\00", i32 10}
+
+Metadata nodes that aren't uniqued use the ``distinct`` keyword. For example:
+
+.. code-block:: llvm
+
+    !0 = distinct !{!"test\00", i32 10}
+
+``distinct`` nodes are useful when nodes shouldn't be merged based on their
+content.  They can also occur when transformations cause uniquing collisions
+when metadata operands change.
 
 A :ref:`named metadata <namedmetadatastructure>` is a collection of
 metadata nodes, which can be looked up in the module symbol table. For
@@ -7260,6 +7280,56 @@ used for debugging purposes.
 Note that calling this intrinsic does not prevent function inlining or
 other aggressive transformations, so the value returned may not be that
 of the obvious source-language caller.
+
+'``llvm.frameallocate``' and '``llvm.framerecover``' Intrinsics
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Syntax:
+"""""""
+
+::
+
+      declare i8* @llvm.frameallocate(i32 %size)
+      declare i8* @llvm.framerecover(i8* %func, i8* %fp)
+
+Overview:
+"""""""""
+
+The '``llvm.frameallocate``' intrinsic allocates stack memory at some fixed
+offset from the frame pointer, and the '``llvm.framerecover``'
+intrinsic applies that offset to a live frame pointer to recover the address of
+the allocation. The offset is computed during frame layout of the caller of
+``llvm.frameallocate``.
+
+Arguments:
+""""""""""
+
+The ``size`` argument to '``llvm.frameallocate``' must be a constant integer
+indicating the amount of stack memory to allocate. As with allocas, allocating
+zero bytes is legal, but the result is undefined.
+
+The ``func`` argument to '``llvm.framerecover``' must be a constant
+bitcasted pointer to a function defined in the current module. The code
+generator cannot determine the frame allocation offset of functions defined in
+other modules.
+
+The ``fp`` argument to '``llvm.framerecover``' must be a frame
+pointer of a call frame that is currently live. The return value of
+'``llvm.frameaddress``' is one way to produce such a value, but most platforms
+also expose the frame pointer through stack unwinding mechanisms.
+
+Semantics:
+""""""""""
+
+These intrinsics allow a group of functions to access one stack memory
+allocation in an ancestor stack frame. The memory returned from
+'``llvm.frameallocate``' may be allocated prior to stack realignment, so the
+memory is only aligned to the ABI-required stack alignment.  Each function may
+only call '``llvm.frameallocate``' one or zero times from the function entry
+block.  The frame allocation intrinsic inhibits inlining, as any frame
+allocations in the inlined function frame are likely to be at a different
+offset from the one used by '``llvm.framerecover``' called with the
+uninlined function.
 
 .. _int_read_register:
 .. _int_write_register:

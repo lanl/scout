@@ -198,9 +198,14 @@ class Verifier : public InstVisitor<Verifier>, VerifierSupport {
   /// personality function.
   const Value *PersonalityFn;
 
+  /// \brief Whether we've seen a call to @llvm.frameallocate in this function
+  /// already.
+  bool SawFrameAllocate;
+
 public:
   explicit Verifier(raw_ostream &OS = dbgs())
-      : VerifierSupport(OS), Context(nullptr), PersonalityFn(nullptr) {}
+      : VerifierSupport(OS), Context(nullptr), PersonalityFn(nullptr),
+        SawFrameAllocate(false) {}
 
   bool verify(const Function &F) {
     M = F.getParent();
@@ -235,6 +240,7 @@ public:
     visit(const_cast<Function &>(F));
     InstsInThisBlock.clear();
     PersonalityFn = nullptr;
+    SawFrameAllocate = false;
 
     return !Broken;
   }
@@ -1122,7 +1128,7 @@ void Verifier::visitFunction(const Function &F) {
 
     // Check the entry node
     const BasicBlock *Entry = &F.getEntryBlock();
-    Assert1(pred_begin(Entry) == pred_end(Entry),
+    Assert1(pred_empty(Entry),
             "Entry block to function must not have predecessors!", Entry);
 
     // The address of the entry block cannot be taken, unless it is dead.
@@ -2599,7 +2605,26 @@ void Verifier::visitIntrinsicFunctionCall(Intrinsic::ID ID, CallInst &CI) {
     Assert1(isa<ConstantInt>(CI.getArgOperand(1)),
             "llvm.invariant.end parameter #2 must be a constant integer", &CI);
     break;
- 
+
+  case Intrinsic::frameallocate: {
+    BasicBlock *BB = CI.getParent();
+    Assert1(BB == &BB->getParent()->front(),
+            "llvm.frameallocate used outside of entry block", &CI);
+    Assert1(!SawFrameAllocate,
+            "multiple calls to llvm.frameallocate in one function", &CI);
+    SawFrameAllocate = true;
+    Assert1(isa<ConstantInt>(CI.getArgOperand(0)),
+            "llvm.frameallocate argument must be constant integer size", &CI);
+    break;
+  }
+  case Intrinsic::framerecover: {
+    Value *FnArg = CI.getArgOperand(0)->stripPointerCasts();
+    Function *Fn = dyn_cast<Function>(FnArg);
+    Assert1(Fn && !Fn->isDeclaration(), "llvm.framerecover first "
+            "argument must be function defined in this module", &CI);
+    break;
+  }
+
   case Intrinsic::experimental_gc_statepoint: {
     Assert1(!CI.doesNotAccessMemory() &&
             !CI.onlyReadsMemory(),
@@ -2691,10 +2716,12 @@ void Verifier::visitIntrinsicFunctionCall(Intrinsic::ID ID, CallInst &CI) {
   case Intrinsic::experimental_gc_result_ptr: {
     // Are we tied to a statepoint properly?
     CallSite StatepointCS(CI.getArgOperand(0));
-    const Function *StatepointFn = StatepointCS.getCalledFunction();
+    const Function *StatepointFn =
+      StatepointCS.getInstruction() ? StatepointCS.getCalledFunction() : nullptr;
     Assert2(StatepointFn && StatepointFn->isDeclaration() &&
             StatepointFn->getIntrinsicID() == Intrinsic::experimental_gc_statepoint,
-            "token must be from a statepoint", &CI, CI.getArgOperand(0));
+	    "gc.result operand #1 must be from a statepoint",
+	    &CI, CI.getArgOperand(0));
 
     // Assert that result type matches wrapped callee.
     const Value *Target = StatepointCS.getArgument(0);
@@ -2710,32 +2737,53 @@ void Verifier::visitIntrinsicFunctionCall(Intrinsic::ID ID, CallInst &CI) {
     // Are we tied to a statepoint properly?
     CallSite StatepointCS(CI.getArgOperand(0));
     const Function *StatepointFn =
-        StatepointCS.getInstruction() ? StatepointCS.getCalledFunction() : NULL;
+        StatepointCS.getInstruction() ? StatepointCS.getCalledFunction() : nullptr;
     Assert2(StatepointFn && StatepointFn->isDeclaration() &&
             StatepointFn->getIntrinsicID() == Intrinsic::experimental_gc_statepoint,
-            "token must be from a statepoint", &CI, CI.getArgOperand(0));
+            "gc.relocate operand #1 must be from a statepoint",
+	    &CI, CI.getArgOperand(0));
 
     // Both the base and derived must be piped through the safepoint
     Value* Base = CI.getArgOperand(1);
-    Assert1( isa<ConstantInt>(Base), "must be integer offset", &CI);
+    Assert1(isa<ConstantInt>(Base),
+            "gc.relocate operand #2 must be integer offset", &CI);
     
     Value* Derived = CI.getArgOperand(2);
-    Assert1( isa<ConstantInt>(Derived), "must be integer offset", &CI);
+    Assert1(isa<ConstantInt>(Derived),
+            "gc.relocate operand #3 must be integer offset", &CI);
 
     const int BaseIndex = cast<ConstantInt>(Base)->getZExtValue();
     const int DerivedIndex = cast<ConstantInt>(Derived)->getZExtValue();
     // Check the bounds
     Assert1(0 <= BaseIndex &&
             BaseIndex < (int)StatepointCS.arg_size(),
-            "index out of bounds", &CI);
+            "gc.relocate: statepoint base index out of bounds", &CI);
     Assert1(0 <= DerivedIndex &&
             DerivedIndex < (int)StatepointCS.arg_size(),
-            "index out of bounds", &CI);
+            "gc.relocate: statepoint derived index out of bounds", &CI);
+
+    // Check that BaseIndex and DerivedIndex fall within the 'gc parameters'
+    // section of the statepoint's argument
+    const int NumCallArgs =
+      cast<ConstantInt>(StatepointCS.getArgument(1))->getZExtValue();
+    const int NumDeoptArgs =
+      cast<ConstantInt>(StatepointCS.getArgument(NumCallArgs + 3))->getZExtValue();
+    const int GCParamArgsStart = NumCallArgs + NumDeoptArgs + 4;
+    const int GCParamArgsEnd = StatepointCS.arg_size();
+    Assert1(GCParamArgsStart <= BaseIndex &&
+            BaseIndex < GCParamArgsEnd,
+            "gc.relocate: statepoint base index doesn't fall within the "
+	    "'gc parameters' section of the statepoint call", &CI);
+    Assert1(GCParamArgsStart <= DerivedIndex &&
+            DerivedIndex < GCParamArgsEnd,
+            "gc.relocate: statepoint derived index doesn't fall within the "
+	    "'gc parameters' section of the statepoint call", &CI);
+
 
     // Assert that the result type matches the type of the relocated pointer
     GCRelocateOperands Operands(&CI);
     Assert1(Operands.derivedPtr()->getType() == CI.getType(),
-            "gc.relocate: relocating a pointer shouldn't change it's type",
+            "gc.relocate: relocating a pointer shouldn't change its type",
             &CI);
     break;
   }

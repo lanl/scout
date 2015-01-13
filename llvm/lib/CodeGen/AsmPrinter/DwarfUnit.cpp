@@ -16,6 +16,7 @@
 #include "DwarfAccelTable.h"
 #include "DwarfCompileUnit.h"
 #include "DwarfDebug.h"
+#include "DwarfExpression.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DIBuilder.h"
@@ -42,6 +43,34 @@ static cl::opt<bool>
 GenerateDwarfTypeUnits("generate-type-units", cl::Hidden,
                        cl::desc("Generate DWARF4 type units."),
                        cl::init(false));
+
+/// DwarfExpression implementation for DwarfUnit.
+class DIEDwarfExpression : public DwarfExpression {
+  DwarfUnit &DU;
+  DIELoc &DIE;
+public:
+  DIEDwarfExpression(const AsmPrinter &AP, DwarfUnit &DU, DIELoc &DIE)
+  : DwarfExpression(AP), DU(DU), DIE(DIE) {}
+
+  void EmitOp(uint8_t Op, const char* Comment = nullptr) override;
+  void EmitSigned(int Value) override;
+  void EmitUnsigned(unsigned Value) override;
+  unsigned getFrameRegister() override;
+};
+
+void DIEDwarfExpression::EmitOp(uint8_t Op, const char* Comment) {
+  DU.addUInt(DIE, dwarf::DW_FORM_data1, Op);
+}
+void DIEDwarfExpression::EmitSigned(int Value) {
+  DU.addSInt(DIE, dwarf::DW_FORM_sdata, Value);
+}
+void DIEDwarfExpression::EmitUnsigned(unsigned Value) {
+  DU.addUInt(DIE, dwarf::DW_FORM_udata, Value);
+}
+unsigned DIEDwarfExpression::getFrameRegister() {
+  return getTRI()->getFrameRegister(*AP.MF);
+}
+
 
 /// Unit - Unit constructor.
 DwarfUnit::DwarfUnit(unsigned UID, dwarf::Tag UnitTag, DICompileUnit Node,
@@ -399,86 +428,18 @@ void DwarfUnit::addSourceLine(DIE &Die, DINameSpace NS) {
 }
 
 /// addRegisterOp - Add register operand.
-// FIXME: Ideally, this would share the implementation with
-// AsmPrinter::EmitDwarfRegOpPiece.
 bool DwarfUnit::addRegisterOpPiece(DIELoc &TheDie, unsigned Reg,
                                    unsigned SizeInBits, unsigned OffsetInBits) {
-  const TargetRegisterInfo *RI = Asm->TM.getSubtargetImpl()->getRegisterInfo();
-  int DWReg = RI->getDwarfRegNum(Reg, false);
-  bool isSubRegister = DWReg < 0;
-
-  unsigned Idx = 0;
-
-  // Go up the super-register chain until we hit a valid dwarf register number.
-  for (MCSuperRegIterator SR(Reg, RI); SR.isValid() && DWReg < 0; ++SR) {
-    DWReg = RI->getDwarfRegNum(*SR, false);
-    if (DWReg >= 0)
-      Idx = RI->getSubRegIndex(*SR, Reg);
-  }
-
-  if (DWReg < 0)
-    return false;
-
-  // Emit register.
-  if (DWReg < 32)
-    addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_reg0 + DWReg);
-  else {
-    addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_regx);
-    addUInt(TheDie, dwarf::DW_FORM_udata, DWReg);
-  }
-
-  // Emit mask.
-  bool isPiece = SizeInBits > 0;
-  if (isSubRegister || isPiece) {
-    const unsigned SizeOfByte = 8;
-    unsigned RegSizeInBits = RI->getSubRegIdxSize(Idx);
-    unsigned RegOffsetInBits = RI->getSubRegIdxOffset(Idx);
-    unsigned PieceSizeInBits = std::max(SizeInBits, RegSizeInBits);
-    unsigned PieceOffsetInBits = OffsetInBits ? OffsetInBits : RegOffsetInBits;
-    assert(RegSizeInBits >= SizeInBits && "register smaller than value");
-
-    if (RegOffsetInBits != PieceOffsetInBits) {
-      // Manually shift the value into place, since the DW_OP_piece
-      // describes the part of the variable, not the position of the
-      // subregister.
-      addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_constu);
-      addUInt(TheDie, dwarf::DW_FORM_data1, RegOffsetInBits);
-      addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_shr);
-    }
-
-    if (PieceOffsetInBits > 0 || PieceSizeInBits % SizeOfByte) {
-      assert(PieceSizeInBits > 0 && "piece has zero size");
-      addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_bit_piece);
-      addUInt(TheDie, dwarf::DW_FORM_data1, PieceSizeInBits);
-      addUInt(TheDie, dwarf::DW_FORM_data1, PieceOffsetInBits);
-     } else {
-      assert(PieceSizeInBits > 0 && "piece has zero size");
-      addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_piece);
-      addUInt(TheDie, dwarf::DW_FORM_data1, PieceSizeInBits/SizeOfByte);
-    }
-  }
+  DIEDwarfExpression Expr(*Asm, *this, TheDie);
+  Expr.AddMachineRegPiece(Reg, SizeInBits, OffsetInBits);
   return true;
 }
 
 /// addRegisterOffset - Add register offset.
 bool DwarfUnit::addRegisterOffset(DIELoc &TheDie, unsigned Reg,
                                   int64_t Offset) {
-  const TargetRegisterInfo *TRI = Asm->TM.getSubtargetImpl()->getRegisterInfo();
-  int DWReg = TRI->getDwarfRegNum(Reg, false);
-  if (DWReg < 0)
-    return false;
-
-  if (Reg == TRI->getFrameRegister(*Asm->MF))
-    // If variable offset is based in frame register then use fbreg.
-    addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_fbreg);
-  else if (DWReg < 32)
-    addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_breg0 + DWReg);
-  else {
-    addUInt(TheDie, dwarf::DW_FORM_data1, dwarf::DW_OP_bregx);
-    addUInt(TheDie, dwarf::DW_FORM_udata, DWReg);
-  }
-  addSInt(TheDie, dwarf::DW_FORM_sdata, Offset);
-  return true;
+  DIEDwarfExpression Expr(*Asm, *this, TheDie);
+  return Expr.AddMachineRegIndirect(Reg, Offset);
 }
 
 /* Byref variables, in Blocks, are declared by the programmer as "SomeType
@@ -627,13 +588,18 @@ static bool isUnsignedDIType(DwarfDebug *DD, DIType Ty) {
     dwarf::Tag T = (dwarf::Tag)Ty.getTag();
     // Encode pointer constants as unsigned bytes. This is used at least for
     // null pointer constant emission.
+    // (Pieces of) aggregate types that get hacked apart by SROA may also be
+    // represented by a constant. Encode them as unsigned bytes.
     // FIXME: reference and rvalue_reference /probably/ shouldn't be allowed
     // here, but accept them for now due to a bug in SROA producing bogus
     // dbg.values.
-    if (T == dwarf::DW_TAG_pointer_type ||
+    if (T == dwarf::DW_TAG_array_type ||
+        T == dwarf::DW_TAG_class_type ||
+        T == dwarf::DW_TAG_pointer_type ||
         T == dwarf::DW_TAG_ptr_to_member_type ||
         T == dwarf::DW_TAG_reference_type ||
-        T == dwarf::DW_TAG_rvalue_reference_type)
+        T == dwarf::DW_TAG_rvalue_reference_type ||
+        T == dwarf::DW_TAG_structure_type)
       return true;
     assert(T == dwarf::DW_TAG_typedef || T == dwarf::DW_TAG_const_type ||
            T == dwarf::DW_TAG_volatile_type ||

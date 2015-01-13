@@ -33,10 +33,6 @@ bool MCAsmInfoDarwin::isSectionAtomizableBySymbols(
   if (SMO.getSegmentName() == "__DATA" && SMO.getSectionName() == "__cfstring")
     return false;
 
-  // no_dead_strip sections are not atomized in practice.
-  if (SMO.hasAttribute(MachO::S_ATTR_NO_DEAD_STRIP))
-    return false;
-
   switch (SMO.getType()) {
   default:
     return true;

@@ -477,17 +477,28 @@ static void WriteTypeTable(const ValueEnumerator &VE, BitstreamWriter &Stream) {
 
 static unsigned getEncodedLinkage(const GlobalValue &GV) {
   switch (GV.getLinkage()) {
-  case GlobalValue::ExternalLinkage:                 return 0;
-  case GlobalValue::WeakAnyLinkage:                  return 1;
-  case GlobalValue::AppendingLinkage:                return 2;
-  case GlobalValue::InternalLinkage:                 return 3;
-  case GlobalValue::LinkOnceAnyLinkage:              return 4;
-  case GlobalValue::ExternalWeakLinkage:             return 7;
-  case GlobalValue::CommonLinkage:                   return 8;
-  case GlobalValue::PrivateLinkage:                  return 9;
-  case GlobalValue::WeakODRLinkage:                  return 10;
-  case GlobalValue::LinkOnceODRLinkage:              return 11;
-  case GlobalValue::AvailableExternallyLinkage:      return 12;
+  case GlobalValue::ExternalLinkage:
+    return 0;
+  case GlobalValue::WeakAnyLinkage:
+    return 1;
+  case GlobalValue::AppendingLinkage:
+    return 2;
+  case GlobalValue::InternalLinkage:
+    return 3;
+  case GlobalValue::LinkOnceAnyLinkage:
+    return 4;
+  case GlobalValue::ExternalWeakLinkage:
+    return 7;
+  case GlobalValue::CommonLinkage:
+    return 8;
+  case GlobalValue::PrivateLinkage:
+    return 9;
+  case GlobalValue::WeakODRLinkage:
+    return 10;
+  case GlobalValue::LinkOnceODRLinkage:
+    return 11;
+  case GlobalValue::AvailableExternallyLinkage:
+    return 12;
   }
   llvm_unreachable("Invalid linkage");
 }
@@ -762,7 +773,9 @@ static void WriteMDNode(const MDNode *N,
     assert(!isa<LocalAsMetadata>(MD) && "Unexpected function-local metadata");
     Record.push_back(VE.getMetadataID(MD) + 1);
   }
-  Stream.EmitRecord(bitc::METADATA_NODE, Record);
+  Stream.EmitRecord(N->isDistinct() ? bitc::METADATA_DISTINCT_NODE
+                                    : bitc::METADATA_NODE,
+                    Record);
   Record.clear();
 }
 
@@ -770,69 +783,66 @@ static void WriteModuleMetadata(const Module *M,
                                 const ValueEnumerator &VE,
                                 BitstreamWriter &Stream) {
   const auto &MDs = VE.getMDs();
-  bool StartedMetadataBlock = false;
+  if (MDs.empty() && M->named_metadata_empty())
+    return;
+
+  Stream.EnterSubblock(bitc::METADATA_BLOCK_ID, 3);
+
   unsigned MDSAbbrev = 0;
+  if (VE.hasMDString()) {
+    // Abbrev for METADATA_STRING.
+    BitCodeAbbrev *Abbv = new BitCodeAbbrev();
+    Abbv->Add(BitCodeAbbrevOp(bitc::METADATA_STRING));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 8));
+    MDSAbbrev = Stream.EmitAbbrev(Abbv);
+  }
+
+  unsigned NameAbbrev = 0;
+  if (!M->named_metadata_empty()) {
+    // Abbrev for METADATA_NAME.
+    BitCodeAbbrev *Abbv = new BitCodeAbbrev();
+    Abbv->Add(BitCodeAbbrevOp(bitc::METADATA_NAME));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 8));
+    NameAbbrev = Stream.EmitAbbrev(Abbv);
+  }
+
   SmallVector<uint64_t, 64> Record;
-  for (unsigned i = 0, e = MDs.size(); i != e; ++i) {
-    if (const MDNode *N = dyn_cast<MDNode>(MDs[i])) {
-      if (!StartedMetadataBlock) {
-        Stream.EnterSubblock(bitc::METADATA_BLOCK_ID, 3);
-        StartedMetadataBlock = true;
-      }
+  for (const Metadata *MD : MDs) {
+    if (const MDNode *N = dyn_cast<MDNode>(MD)) {
       WriteMDNode(N, VE, Stream, Record);
-    } else if (const auto *MDC = dyn_cast<ConstantAsMetadata>(MDs[i])) {
-      if (!StartedMetadataBlock) {
-        Stream.EnterSubblock(bitc::METADATA_BLOCK_ID, 3);
-        StartedMetadataBlock = true;
-      }
-      WriteValueAsMetadata(MDC, VE, Stream, Record);
-    } else if (const MDString *MDS = dyn_cast<MDString>(MDs[i])) {
-      if (!StartedMetadataBlock) {
-        Stream.EnterSubblock(bitc::METADATA_BLOCK_ID, 3);
-
-        // Abbrev for METADATA_STRING.
-        BitCodeAbbrev *Abbv = new BitCodeAbbrev();
-        Abbv->Add(BitCodeAbbrevOp(bitc::METADATA_STRING));
-        Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
-        Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 8));
-        MDSAbbrev = Stream.EmitAbbrev(Abbv);
-        StartedMetadataBlock = true;
-      }
-
-      // Code: [strchar x N]
-      Record.append(MDS->bytes_begin(), MDS->bytes_end());
-
-      // Emit the finished record.
-      Stream.EmitRecord(bitc::METADATA_STRING, Record, MDSAbbrev);
-      Record.clear();
+      continue;
     }
+    if (const auto *MDC = dyn_cast<ConstantAsMetadata>(MD)) {
+      WriteValueAsMetadata(MDC, VE, Stream, Record);
+      continue;
+    }
+    const MDString *MDS = cast<MDString>(MD);
+    // Code: [strchar x N]
+    Record.append(MDS->bytes_begin(), MDS->bytes_end());
+
+    // Emit the finished record.
+    Stream.EmitRecord(bitc::METADATA_STRING, Record, MDSAbbrev);
+    Record.clear();
   }
 
   // Write named metadata.
-  for (Module::const_named_metadata_iterator I = M->named_metadata_begin(),
-       E = M->named_metadata_end(); I != E; ++I) {
-    const NamedMDNode *NMD = I;
-    if (!StartedMetadataBlock)  {
-      Stream.EnterSubblock(bitc::METADATA_BLOCK_ID, 3);
-      StartedMetadataBlock = true;
-    }
-
+  for (const NamedMDNode &NMD : M->named_metadata()) {
     // Write name.
-    StringRef Str = NMD->getName();
-    for (unsigned i = 0, e = Str.size(); i != e; ++i)
-      Record.push_back(Str[i]);
-    Stream.EmitRecord(bitc::METADATA_NAME, Record, 0/*TODO*/);
+    StringRef Str = NMD.getName();
+    Record.append(Str.bytes_begin(), Str.bytes_end());
+    Stream.EmitRecord(bitc::METADATA_NAME, Record, NameAbbrev);
     Record.clear();
 
     // Write named metadata operands.
-    for (unsigned i = 0, e = NMD->getNumOperands(); i != e; ++i)
-      Record.push_back(VE.getMetadataID(NMD->getOperand(i)));
+    for (const MDNode *N : NMD.operands())
+      Record.push_back(VE.getMetadataID(N));
     Stream.EmitRecord(bitc::METADATA_NAMED_NODE, Record, 0);
     Record.clear();
   }
 
-  if (StartedMetadataBlock)
-    Stream.ExitBlock();
+  Stream.ExitBlock();
 }
 
 static void WriteFunctionLocalMetadata(const Function &F,

@@ -109,6 +109,12 @@ public:
   int getCallFrameSetupOpcode() const { return CallFrameSetupOpcode; }
   int getCallFrameDestroyOpcode() const { return CallFrameDestroyOpcode; }
 
+  /// Returns the actual stack pointer adjustment made by an instruction
+  /// as part of a call sequence. By default, only call frame setup/destroy
+  /// instructions adjust the stack, but targets may want to override this
+  /// to enable more fine-grained adjustment, or adjust by a different value.
+  virtual int getSPAdjust(const MachineInstr *MI) const;
+
   /// isCoalescableExtInstr - Return true if the instruction is a "coalescable"
   /// extension instruction. That is, it's like a copy where it's legal for the
   /// source to overlap the destination. e.g. X86::MOVSX64rr32. If this returns
@@ -597,9 +603,12 @@ public:
   /// a side.
   ///
   /// @param MI          Optimizable select instruction.
+  /// @param SeenMIs     Set that record all MIs in the basic block up to \p
+  /// MI. Has to be updated with any newly created MI or deleted ones.
   /// @param PreferFalse Try to optimize FalseOp instead of TrueOp.
   /// @returns Optimized instruction or NULL.
   virtual MachineInstr *optimizeSelect(MachineInstr *MI,
+                                       SmallPtrSetImpl<MachineInstr *> &NewMIs,
                                        bool PreferFalse = false) const {
     // This function must be implemented if Optimizable is ever set.
     llvm_unreachable("Target must implement TargetInstrInfo::optimizeSelect!");

@@ -32,9 +32,9 @@ L1:
 // CHECK-NEXT:       Offset: 0x10
 // CHECK-NEXT:       PCRel: 0
 // CHECK-NEXT:       Length: 3
-// CHECK-NEXT:       Extern: 0
+// CHECK-NEXT:       Extern: 1
 // CHECK-NEXT:       Type: ARM64_RELOC_UNSIGNED (0)
-// CHECK-NEXT:       Symbol: 0x3
+// CHECK-NEXT:       Symbol: L1
 // CHECK-NEXT:       Scattered: 0
 // CHECK-NEXT:     }
 // CHECK-NEXT:     Relocation {
