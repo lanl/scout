@@ -56,6 +56,7 @@
 
 #cmakedefine SCOUT_ENABLE_OPENGL     // Provide OpenGL support.
 #cmakedefine SCOUT_ENABLE_CUDA       // Provide CUDA support. 
+#cmakedefine SCOUT_ENABLE_PLOT       // Provide plotting support.
 #cmakedefine SCOUT_ENABLE_LIB_NVVM   // Use NVIDIA's compiler SDK.
 #cmakedefine SCOUT_ENABLE_OPENCL     // Provide OpenCL support.
 #cmakedefine SCOUT_ENABLE_AMDIL      // Provide OpenCL+AMD IL support.

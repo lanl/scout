@@ -56,9 +56,10 @@
 #include "clang/Sema/Sema.h"
 #include "clang/Basic/TargetBuiltins.h"
 #include "clang/Basic/Scout/BuiltinsScout.h"
+#include "scout/Config/defs.h"
+
 using namespace clang;
 using namespace sema;
-
 
 bool Sema::CheckMeshParameterCall(unsigned BuiltinID, CallExpr *TheCall) {
   int diagarg = 0;
