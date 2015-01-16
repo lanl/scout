@@ -63,14 +63,7 @@ add_dependencies(scc
 install(TARGETS scc
   RUNTIME DESTINATION bin)
 
-set(SCXX_LINK_OR_COPY create_symlink)
 set(scc_binary  "${SCOUT_BUILD_DIR}/bin/scc")
-set(scpp_binary "${SCOUT_BUILD_DIR}/bin/sc++")
-
-# Create the sc++ symlink in the build directory.
-
-add_custom_command(TARGET scc POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E ${SCXX_LINK_OR_COPY} "${scc_binary}" "${scpp_binary}")
 
 # Configure plist creation for OS X.
 set (TOOL_INFO_PLIST "Info.plist" CACHE STRING "Plist name")

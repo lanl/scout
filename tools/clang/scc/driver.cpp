@@ -226,11 +226,9 @@ static const DriverSuffix *FindDriverSuffix(StringRef ProgName) {
   // necessary by applying the ModeFlag.
   static const DriverSuffix DriverSuffixes[] = {
     { "scc",       "--driver-mode=scout" },
-    { "sc++",       "--driver-mode=scout++" },    
     { "clang",     0 },
     // Scout has to go high-up or we'll miss it...
     { "scc",       "--driver-mode=scout" },
-    { "sc++",      "--driver-mode=scout++" },
     { "clang++",   "--driver-mode=g++" },
     { "clang-c++", "--driver-mode=g++" },
     { "clang-cc",  0 },

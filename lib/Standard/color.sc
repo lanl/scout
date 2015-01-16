@@ -58,7 +58,10 @@ const color_channel_t SC_MAX_CHANNEL_VALUE =   1.0;
 const color_channel_t SC_MIN_HUE_VALUE     =   0.0;
 const color_channel_t SC_MAX_HUE_VALUE     = 360.0;
 
-extern "C" {
+color_channel_t clamp(color_channel_t d, color_channel_t min, color_channel_t max) {
+  color_channel_t t = d < min ? min : d;
+  return t > max ? max : t;
+}
 
   // +--- Convert HSV color to RGB color ---------------------------------------+
   //
@@ -82,8 +85,8 @@ extern "C" {
     float f, p, q, t;
 
     hue = hue / 60.0;
-    i   = int(hue);
-    f   = hue - float(i);
+    i   = (int)(hue);
+    f   = hue - (float)(i);
     p   = value * (1.0 - saturation);
     q   = value * (1.0 - saturation * f);
     t   = value * (1.0 - saturation * (1.0 - f));
@@ -142,7 +145,6 @@ extern "C" {
     return rgbaColor;
   }
 
-}
 
 // +--- Linear blend of 2 channel values and an alpha weighting. -------------+
 //
@@ -153,20 +155,3 @@ color_channel_t mix(color_channel_t ch0,
   return ch0 + (ch1 - ch0) * alpha;
 }
 
-// +--- Linear blend of 2 colors with scalar alpha weight --------------------+
-//
-extern color_t mix(const color_t &c0,
-                   const color_t &c1,
-                   const color_channel_t alpha) {
-  color_channel_t a = clamp(alpha, SC_MIN_CHANNEL_VALUE, SC_MAX_CHANNEL_VALUE);
-  return c0 + (c1 - c0) * a;
-}
-
-// +--- Linear blend of 2 colors with a vector alpha weight ------------------+
-//
-extern color_t mix(const color_t &c0,
-                   const color_t &c1,
-                   const color_t &alpha) {
-  color_t a = clamp(alpha, SC_MIN_CHANNEL_VALUE, SC_MAX_CHANNEL_VALUE);
-  return c0 + (c1 - c0) * alpha;
-}

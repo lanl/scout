@@ -67,7 +67,7 @@ set(CMAKE_MODULE_PATH
   ${CMAKE_MODULE_PATH}
   )
 
-project(scStandardLibrary SCXX)
+project(scStandardLibrary SCC)
   cmake_minimum_required(VERSION 2.8.12)
   set(CMAKE_SCXX_FLAGS "-g -noscstdlib")
   set(LINK_FLAGS "-noscstdlib")
@@ -79,7 +79,7 @@ project(scStandardLibrary SCXX)
     )
 
   file(GLOB std_hdrs ${SCOUT_INCLUDE_DIR}/scout/*.sch)
-  file(GLOB std_srcs *.scpp)
+  file(GLOB std_srcs *.sc)
 
   add_library(scStandard SHARED ${std_srcs})
 
