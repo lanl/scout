@@ -7,6 +7,7 @@ include(sc-llvm-link-libs)
 # =============================================================================
 
 set(LLVM_LINK_COMPONENTS
+  Analysis
   BitReader
   BitWriter
   Core
@@ -20,7 +21,6 @@ set(LLVM_LINK_COMPONENTS
   ProfileData
   ScalarOpts
   Support
-  Target
   TransformUtils
   )
 
