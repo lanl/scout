@@ -8,10 +8,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/raw_ostream.h"
@@ -387,6 +387,43 @@ TEST_F(MDNodeTest, replaceResolvedOperand) {
   Temp->replaceAllUsesWith(nullptr);
 }
 
+typedef MetadataTest MDLocationTest;
+
+TEST_F(MDLocationTest, Overflow) {
+  MDNode *N = MDNode::get(Context, None);
+  {
+    MDLocation *L = MDLocation::get(Context, 2, 7, N);
+    EXPECT_EQ(2u, L->getLine());
+    EXPECT_EQ(7u, L->getColumn());
+  }
+  unsigned U24 = 1u << 24;
+  unsigned U8 = 1u << 8;
+  {
+    MDLocation *L = MDLocation::get(Context, U24 - 1, U8 - 1, N);
+    EXPECT_EQ(U24 - 1, L->getLine());
+    EXPECT_EQ(U8 - 1, L->getColumn());
+  }
+  {
+    MDLocation *L = MDLocation::get(Context, U24, U8, N);
+    EXPECT_EQ(0u, L->getLine());
+    EXPECT_EQ(0u, L->getColumn());
+  }
+  {
+    MDLocation *L = MDLocation::get(Context, U24 + 1, U8 + 1, N);
+    EXPECT_EQ(0u, L->getLine());
+    EXPECT_EQ(0u, L->getColumn());
+  }
+}
+
+TEST_F(MDLocationTest, getDistinct) {
+  MDNode *N = MDNode::get(Context, None);
+  MDLocation *L0 = MDLocation::getDistinct(Context, 2, 7, N);
+  EXPECT_TRUE(L0->isDistinct());
+  MDLocation *L1 = MDLocation::get(Context, 2, 7, N);
+  EXPECT_FALSE(L1->isDistinct());
+  EXPECT_EQ(L1, MDLocation::get(Context, 2, 7, N));
+}
+
 typedef MetadataTest MetadataAsValueTest;
 
 TEST_F(MetadataAsValueTest, MDNode) {
@@ -445,6 +482,34 @@ TEST_F(ValueAsMetadataTest, UpdatesOnRAUW) {
       new GlobalVariable(Ty, false, GlobalValue::ExternalLinkage));
   GV0->replaceAllUsesWith(GV1.get());
   EXPECT_TRUE(MD->getValue() == GV1.get());
+}
+
+TEST_F(ValueAsMetadataTest, CollidingDoubleUpdates) {
+  // Create a constant.
+  ConstantAsMetadata *CI = ConstantAsMetadata::get(
+      ConstantInt::get(getGlobalContext(), APInt(8, 0)));
+
+  // Create a temporary to prevent nodes from resolving.
+  std::unique_ptr<MDNodeFwdDecl> Temp(MDNode::getTemporary(Context, None));
+
+  // When the first operand of N1 gets reset to nullptr, it'll collide with N2.
+  Metadata *Ops1[] = {CI, CI, Temp.get()};
+  Metadata *Ops2[] = {nullptr, CI, Temp.get()};
+
+  auto *N1 = MDTuple::get(Context, Ops1);
+  auto *N2 = MDTuple::get(Context, Ops2);
+  ASSERT_NE(N1, N2);
+
+  // Tell metadata that the constant is getting deleted.
+  //
+  // After this, N1 will be invalid, so don't touch it.
+  ValueAsMetadata::handleDeletion(CI->getValue());
+  EXPECT_EQ(nullptr, N2->getOperand(0));
+  EXPECT_EQ(nullptr, N2->getOperand(1));
+  EXPECT_EQ(Temp.get(), N2->getOperand(2));
+
+  // Clean up Temp for teardown.
+  Temp->replaceAllUsesWith(nullptr);
 }
 
 typedef MetadataTest TrackingMDRefTest;

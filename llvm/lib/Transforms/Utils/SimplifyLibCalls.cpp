@@ -30,7 +30,7 @@
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Target/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Transforms/Utils/BuildLibCalls.h"
 
 using namespace llvm;
@@ -1966,7 +1966,8 @@ Value *LibCallSimplifier::optimizeCall(CallInst *CI) {
   // Also try to simplify calls to fortified library functions.
   if (Value *SimplifiedFortifiedCI = FortifiedSimplifier.optimizeCall(CI)) {
     // Try to further simplify the result.
-    if (CallInst *SimplifiedCI = dyn_cast<CallInst>(SimplifiedFortifiedCI))
+    CallInst *SimplifiedCI = dyn_cast<CallInst>(SimplifiedFortifiedCI);
+    if (SimplifiedCI && SimplifiedCI->getCalledFunction())
       if (Value *V = optimizeStringMemoryLibCall(SimplifiedCI, Builder))
         return V;
     return SimplifiedFortifiedCI;

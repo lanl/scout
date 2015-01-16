@@ -131,19 +131,22 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
   setOperationAction(ISD::BRCOND, MVT::Other, Custom);
 
   for (MVT VT : MVT::integer_valuetypes()) {
+    if (VT == MVT::i64)
+      continue;
+
     setLoadExtAction(ISD::SEXTLOAD, VT, MVT::i1, Promote);
-    setLoadExtAction(ISD::SEXTLOAD, VT, MVT::i8, Custom);
-    setLoadExtAction(ISD::SEXTLOAD, VT, MVT::i16, Custom);
+    setLoadExtAction(ISD::SEXTLOAD, VT, MVT::i8, Legal);
+    setLoadExtAction(ISD::SEXTLOAD, VT, MVT::i16, Legal);
     setLoadExtAction(ISD::SEXTLOAD, VT, MVT::i32, Expand);
 
     setLoadExtAction(ISD::ZEXTLOAD, VT, MVT::i1, Promote);
-    setLoadExtAction(ISD::ZEXTLOAD, VT, MVT::i8, Custom);
-    setLoadExtAction(ISD::ZEXTLOAD, VT, MVT::i16, Custom);
+    setLoadExtAction(ISD::ZEXTLOAD, VT, MVT::i8, Legal);
+    setLoadExtAction(ISD::ZEXTLOAD, VT, MVT::i16, Legal);
     setLoadExtAction(ISD::ZEXTLOAD, VT, MVT::i32, Expand);
 
     setLoadExtAction(ISD::EXTLOAD, VT, MVT::i1, Promote);
-    setLoadExtAction(ISD::EXTLOAD, VT, MVT::i8, Custom);
-    setLoadExtAction(ISD::EXTLOAD, VT, MVT::i16, Custom);
+    setLoadExtAction(ISD::EXTLOAD, VT, MVT::i8, Legal);
+    setLoadExtAction(ISD::EXTLOAD, VT, MVT::i16, Legal);
     setLoadExtAction(ISD::EXTLOAD, VT, MVT::i32, Expand);
   }
 
@@ -299,7 +302,7 @@ bool SITargetLowering::isLegalAddressingMode(const AddrMode &AM,
   return true;
 }
 
-bool SITargetLowering::allowsMisalignedMemoryAccesses(EVT  VT,
+bool SITargetLowering::allowsMisalignedMemoryAccesses(EVT VT,
                                                       unsigned AddrSpace,
                                                       unsigned Align,
                                                       bool *IsFast) const {
@@ -1077,7 +1080,7 @@ SDValue SITargetLowering::LowerFDIV32(SDValue Op, SelectionDAG &DAG) const {
   const APFloat K1Val(BitsToFloat(0x2f800000));
   const SDValue K1 = DAG.getConstantFP(K1Val, MVT::f32);
 
-  const SDValue One = DAG.getTargetConstantFP(1.0, MVT::f32);
+  const SDValue One = DAG.getConstantFP(1.0, MVT::f32);
 
   EVT SetCCVT = getSetCCResultType(*DAG.getContext(), MVT::f32);
 
@@ -1164,7 +1167,7 @@ SDValue SITargetLowering::LowerTrig(SDValue Op, SelectionDAG &DAG) const {
 //===----------------------------------------------------------------------===//
 
 SDValue SITargetLowering::performUCharToFloatCombine(SDNode *N,
-                                                     DAGCombinerInfo &DCI) {
+                                                     DAGCombinerInfo &DCI) const {
   EVT VT = N->getValueType(0);
   EVT ScalarVT = VT.getScalarType();
   if (ScalarVT != MVT::f32)
@@ -1212,8 +1215,21 @@ SDValue SITargetLowering::performUCharToFloatCombine(SDNode *N,
     EVT LoadVT = getEquivalentMemType(*DAG.getContext(), SrcVT);
     EVT RegVT = getEquivalentLoadRegType(*DAG.getContext(), SrcVT);
     EVT FloatVT = EVT::getVectorVT(*DAG.getContext(), MVT::f32, NElts);
-
     LoadSDNode *Load = cast<LoadSDNode>(Src);
+
+    unsigned AS = Load->getAddressSpace();
+    unsigned Align = Load->getAlignment();
+    Type *Ty = LoadVT.getTypeForEVT(*DAG.getContext());
+    unsigned ABIAlignment = getDataLayout()->getABITypeAlignment(Ty);
+
+    // Don't try to replace the load if we have to expand it due to alignment
+    // problems. Otherwise we will end up scalarizing the load, and trying to
+    // repack into the vector for no real reason.
+    if (Align < ABIAlignment &&
+        !allowsMisalignedMemoryAccesses(LoadVT, AS, Align, nullptr)) {
+      return SDValue();
+    }
+
     SDValue NewLoad = DAG.getExtLoad(ISD::ZEXTLOAD, DL, RegVT,
                                      Load->getChain(),
                                      Load->getBasePtr(),
@@ -1549,7 +1565,7 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
     if (LHS.getOpcode() == ISD::FADD) {
       SDValue A = LHS.getOperand(0);
       if (A == LHS.getOperand(1)) {
-        const SDValue Two = DAG.getTargetConstantFP(2.0, MVT::f32);
+        const SDValue Two = DAG.getConstantFP(2.0, MVT::f32);
         return DAG.getNode(AMDGPUISD::MAD, DL, VT, Two, A, RHS);
       }
     }
@@ -1558,7 +1574,7 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
     if (RHS.getOpcode() == ISD::FADD) {
       SDValue A = RHS.getOperand(0);
       if (A == RHS.getOperand(1)) {
-        const SDValue Two = DAG.getTargetConstantFP(2.0, MVT::f32);
+        const SDValue Two = DAG.getConstantFP(2.0, MVT::f32);
         return DAG.getNode(AMDGPUISD::MAD, DL, VT, Two, A, LHS);
       }
     }
@@ -1602,7 +1618,7 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
 
         SDValue A = LHS.getOperand(0);
         if (A == LHS.getOperand(1)) {
-          const SDValue Two = DAG.getTargetConstantFP(2.0, MVT::f32);
+          const SDValue Two = DAG.getConstantFP(2.0, MVT::f32);
           SDValue NegRHS = DAG.getNode(ISD::FNEG, DL, VT, RHS);
 
           return DAG.getNode(AMDGPUISD::MAD, DL, VT, Two, A, NegRHS);
@@ -1614,7 +1630,7 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
 
         SDValue A = RHS.getOperand(0);
         if (A == RHS.getOperand(1)) {
-          const SDValue NegTwo = DAG.getTargetConstantFP(-2.0, MVT::f32);
+          const SDValue NegTwo = DAG.getConstantFP(-2.0, MVT::f32);
           return DAG.getNode(AMDGPUISD::MAD, DL, VT, NegTwo, A, LHS);
         }
       }

@@ -13,8 +13,8 @@
 
 #include "ByteStreamer.h"
 #include "DwarfExpression.h"
-#include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCSection.h"
@@ -46,8 +46,9 @@ void DebugLocDwarfExpression::EmitUnsigned(unsigned Value) {
   BS.EmitULEB128(Value, Twine(Value));
 }
 
-unsigned DebugLocDwarfExpression::getFrameRegister() {
- llvm_unreachable("not available");
+bool DebugLocDwarfExpression::isFrameRegister(unsigned MachineReg) {
+  // This information is not available while emitting .debug_loc entries.
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -243,7 +244,10 @@ void AsmPrinter::EmitDwarfRegOp(ByteStreamer &Streamer,
                          "nop (could not find a dwarf register number)");
 
     // Attempt to find a valid super- or sub-register.
-    return Expr.AddMachineRegPiece(MLoc.getReg());
+    if (!Expr.AddMachineRegPiece(MLoc.getReg()))
+      Expr.EmitOp(dwarf::DW_OP_nop,
+                  "nop (could not find a dwarf register number)");
+    return;
   }
 
   if (MLoc.isIndirect())

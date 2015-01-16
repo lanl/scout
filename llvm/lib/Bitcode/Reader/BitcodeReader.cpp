@@ -23,10 +23,10 @@
 #include "llvm/IR/OperandTraits.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Support/DataStream.h"
+#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/ManagedStatic.h"
 
 using namespace llvm;
 
@@ -1264,6 +1264,20 @@ std::error_code BitcodeReader::ParseMetadata() {
         Elts.push_back(ID ? MDValueList.getValueFwdRef(ID - 1) : nullptr);
       MDValueList.AssignValue(IsDistinct ? MDNode::getDistinct(Context, Elts)
                                          : MDNode::get(Context, Elts),
+                              NextMDValueNo++);
+      break;
+    }
+    case bitc::METADATA_LOCATION: {
+      if (Record.size() != 5)
+        return Error("Invalid record");
+
+      auto get = Record[0] ? MDLocation::getDistinct : MDLocation::get;
+      unsigned Line = Record[1];
+      unsigned Column = Record[2];
+      MDNode *Scope = cast<MDNode>(MDValueList.getValueFwdRef(Record[3]));
+      Metadata *InlinedAt =
+          Record[4] ? MDValueList.getValueFwdRef(Record[4] - 1) : nullptr;
+      MDValueList.AssignValue(get(Context, Line, Column, Scope, InlinedAt),
                               NextMDValueNo++);
       break;
     }

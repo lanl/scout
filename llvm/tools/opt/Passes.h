@@ -17,8 +17,8 @@
 #define LLVM_TOOLS_OPT_PASSES_H
 
 #include "llvm/ADT/StringRef.h"
-#include "llvm/IR/PassManager.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
+#include "llvm/IR/PassManager.h"
 
 namespace llvm {
 
@@ -72,8 +72,7 @@ void registerFunctionAnalyses(FunctionAnalysisManager &FAM);
 /// an error. You cannot mix different levels implicitly, you must explicitly
 /// form a pass manager in which to nest passes.
 bool parsePassPipeline(ModulePassManager &MPM, StringRef PipelineText,
-                       bool VerifyEachPass = true);
-
+                       bool VerifyEachPass = true, bool DebugLogging = false);
 }
 
 #endif

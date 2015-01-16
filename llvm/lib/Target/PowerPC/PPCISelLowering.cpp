@@ -13,6 +13,7 @@
 
 #include "PPCISelLowering.h"
 #include "MCTargetDesc/PPCPredicates.h"
+#include "PPCCallingConv.h"
 #include "PPCMachineFunctionInfo.h"
 #include "PPCPerfectShuffle.h"
 #include "PPCTargetMachine.h"
@@ -783,8 +784,6 @@ const char *PPCTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case PPCISD::Hi:              return "PPCISD::Hi";
   case PPCISD::Lo:              return "PPCISD::Lo";
   case PPCISD::TOC_ENTRY:       return "PPCISD::TOC_ENTRY";
-  case PPCISD::LOAD:            return "PPCISD::LOAD";
-  case PPCISD::LOAD_TOC:        return "PPCISD::LOAD_TOC";
   case PPCISD::DYNALLOC:        return "PPCISD::DYNALLOC";
   case PPCISD::GlobalBaseReg:   return "PPCISD::GlobalBaseReg";
   case PPCISD::SRL:             return "PPCISD::SRL";
@@ -3589,10 +3588,11 @@ static bool isFunctionGlobalAddress(SDValue Callee) {
 
 static
 unsigned PrepareCall(SelectionDAG &DAG, SDValue &Callee, SDValue &InFlag,
-                     SDValue &Chain, SDLoc dl, int SPDiff, bool isTailCall,
+                     SDValue &Chain, SDValue CallSeqStart, SDLoc dl, int SPDiff,
+                     bool isTailCall, bool IsPatchPoint,
                      SmallVectorImpl<std::pair<unsigned, SDValue> > &RegsToPass,
                      SmallVectorImpl<SDValue> &Ops, std::vector<EVT> &NodeTys,
-                     const PPCSubtarget &Subtarget) {
+                     ImmutableCallSite *CS, const PPCSubtarget &Subtarget) {
 
   bool isPPC64 = Subtarget.isPPC64();
   bool isSVR4ABI = Subtarget.isSVR4ABI();
@@ -3658,6 +3658,16 @@ unsigned PrepareCall(SelectionDAG &DAG, SDValue &Callee, SDValue &InFlag,
     needIndirectCall = false;
   }
 
+  if (IsPatchPoint) {
+    // We'll form an invalid direct call when lowering a patchpoint; the full
+    // sequence for an indirect call is complicated, and many of the
+    // instructions introduced might have side effects (and, thus, can't be
+    // removed later). The call itself will be removed as soon as the
+    // argument/return lowering is complete, so the fact that it has the wrong
+    // kind of operands should not really matter.
+    needIndirectCall = false;
+  }
+
   if (needIndirectCall) {
     // Otherwise, this is an indirect call.  We have to use a MTCTR/BCTRL pair
     // to do the call, we can't use PPCISD::CALL.
@@ -3683,49 +3693,49 @@ unsigned PrepareCall(SelectionDAG &DAG, SDValue &Callee, SDValue &InFlag,
       //   6. On return of the callee, the TOC of the caller needs to be
       //      restored (this is done in FinishCall()).
       //
-      // All those operations are flagged together to ensure that no other
+      // The loads are scheduled at the beginning of the call sequence, and the
+      // register copies are flagged together to ensure that no other
       // operations can be scheduled in between. E.g. without flagging the
-      // operations together, a TOC access in the caller could be scheduled
-      // between the load of the callee TOC and the branch to the callee, which
+      // copies together, a TOC access in the caller could be scheduled between
+      // the assignment of the callee TOC and the branch to the callee, which
       // results in the TOC access going through the TOC of the callee instead
       // of going through the TOC of the caller, which leads to incorrect code.
 
       // Load the address of the function entry point from the function
       // descriptor.
-      SDVTList VTs = DAG.getVTList(MVT::i64, MVT::Other, MVT::Glue);
-      SDValue LoadFuncPtr = DAG.getNode(PPCISD::LOAD, dl, VTs,
-                              makeArrayRef(MTCTROps, InFlag.getNode() ? 3 : 2));
-      Chain = LoadFuncPtr.getValue(1);
-      InFlag = LoadFuncPtr.getValue(2);
+      SDValue LDChain = CallSeqStart.getValue(CallSeqStart->getNumValues()-1);
+      if (LDChain.getValueType() == MVT::Glue)
+        LDChain = CallSeqStart.getValue(CallSeqStart->getNumValues()-2);
+
+      bool LoadsInv = Subtarget.hasInvariantFunctionDescriptors();
+
+      MachinePointerInfo MPI(CS ? CS->getCalledValue() : nullptr);
+      SDValue LoadFuncPtr = DAG.getLoad(MVT::i64, dl, LDChain, Callee, MPI,
+                                        false, false, LoadsInv, 8);
 
       // Load environment pointer into r11.
-      // Offset of the environment pointer within the function descriptor.
       SDValue PtrOff = DAG.getIntPtrConstant(16);
-
       SDValue AddPtr = DAG.getNode(ISD::ADD, dl, MVT::i64, Callee, PtrOff);
-      SDValue LoadEnvPtr = DAG.getNode(PPCISD::LOAD, dl, VTs, Chain, AddPtr,
-                                       InFlag);
-      Chain = LoadEnvPtr.getValue(1);
-      InFlag = LoadEnvPtr.getValue(2);
+      SDValue LoadEnvPtr = DAG.getLoad(MVT::i64, dl, LDChain, AddPtr,
+                                       MPI.getWithOffset(16), false, false,
+                                       LoadsInv, 8);
+
+      SDValue TOCOff = DAG.getIntPtrConstant(8);
+      SDValue AddTOC = DAG.getNode(ISD::ADD, dl, MVT::i64, Callee, TOCOff);
+      SDValue TOCPtr = DAG.getLoad(MVT::i64, dl, LDChain, AddTOC,
+                                   MPI.getWithOffset(8), false, false,
+                                   LoadsInv, 8);
+
+      SDValue TOCVal = DAG.getCopyToReg(Chain, dl, PPC::X2, TOCPtr,
+                                        InFlag);
+      Chain = TOCVal.getValue(0);
+      InFlag = TOCVal.getValue(1);
 
       SDValue EnvVal = DAG.getCopyToReg(Chain, dl, PPC::X11, LoadEnvPtr,
                                         InFlag);
+
       Chain = EnvVal.getValue(0);
       InFlag = EnvVal.getValue(1);
-
-      // Load TOC of the callee into r2. We are using a target-specific load
-      // with r2 hard coded, because the result of a target-independent load
-      // would never go directly into r2, since r2 is a reserved register (which
-      // prevents the register allocator from allocating it), resulting in an
-      // additional register being allocated and an unnecessary move instruction
-      // being generated.
-      VTs = DAG.getVTList(MVT::Other, MVT::Glue);
-      SDValue TOCOff = DAG.getIntPtrConstant(8);
-      SDValue AddTOC = DAG.getNode(ISD::ADD, dl, MVT::i64, Callee, TOCOff);
-      SDValue LoadTOCPtr = DAG.getNode(PPCISD::LOAD_TOC, dl, VTs, Chain,
-                                       AddTOC, InFlag);
-      Chain = LoadTOCPtr.getValue(0);
-      InFlag = LoadTOCPtr.getValue(1);
 
       MTCTROps[0] = Chain;
       MTCTROps[1] = LoadFuncPtr;
@@ -3783,7 +3793,7 @@ unsigned PrepareCall(SelectionDAG &DAG, SDValue &Callee, SDValue &InFlag,
                                   RegsToPass[i].second.getValueType()));
 
   // Direct calls in the ELFv2 ABI need the TOC register live into the call.
-  if (Callee.getNode() && isELFv2ABI)
+  if (Callee.getNode() && isELFv2ABI && !IsPatchPoint)
     Ops.push_back(DAG.getRegister(PPC::X2, PtrVT));
 
   return CallOpc;
@@ -3846,22 +3856,23 @@ PPCTargetLowering::LowerCallResult(SDValue Chain, SDValue InFlag,
 
 SDValue
 PPCTargetLowering::FinishCall(CallingConv::ID CallConv, SDLoc dl,
-                              bool isTailCall, bool isVarArg,
+                              bool isTailCall, bool isVarArg, bool IsPatchPoint,
                               SelectionDAG &DAG,
                               SmallVector<std::pair<unsigned, SDValue>, 8>
                                 &RegsToPass,
                               SDValue InFlag, SDValue Chain,
-                              SDValue &Callee,
+                              SDValue CallSeqStart, SDValue &Callee,
                               int SPDiff, unsigned NumBytes,
                               const SmallVectorImpl<ISD::InputArg> &Ins,
-                              SmallVectorImpl<SDValue> &InVals) const {
+                              SmallVectorImpl<SDValue> &InVals,
+                              ImmutableCallSite *CS) const {
 
   bool isELFv2ABI = Subtarget.isELFv2ABI();
   std::vector<EVT> NodeTys;
   SmallVector<SDValue, 8> Ops;
-  unsigned CallOpc = PrepareCall(DAG, Callee, InFlag, Chain, dl, SPDiff,
-                                 isTailCall, RegsToPass, Ops, NodeTys,
-                                 Subtarget);
+  unsigned CallOpc = PrepareCall(DAG, Callee, InFlag, Chain, CallSeqStart, dl,
+                                 SPDiff, isTailCall, IsPatchPoint, RegsToPass,
+                                 Ops, NodeTys, CS, Subtarget);
 
   // Add implicit use of CR bit 6 for 32-bit SVR4 vararg calls
   if (isVarArg && Subtarget.isSVR4ABI() && !Subtarget.isPPC64())
@@ -3905,7 +3916,8 @@ PPCTargetLowering::FinishCall(CallingConv::ID CallConv, SDLoc dl,
   // stack frame. If caller and callee belong to the same module (and have the
   // same TOC), the NOP will remain unchanged.
 
-  if (!isTailCall && Subtarget.isSVR4ABI()&& Subtarget.isPPC64()) {
+  if (!isTailCall && Subtarget.isSVR4ABI()&& Subtarget.isPPC64() &&
+      !IsPatchPoint) {
     if (CallOpc == PPCISD::BCTRL) {
       // This is a call through a function pointer.
       // Restore the caller TOC from the save area into R2.
@@ -3963,40 +3975,43 @@ PPCTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   bool &isTailCall                      = CLI.IsTailCall;
   CallingConv::ID CallConv              = CLI.CallConv;
   bool isVarArg                         = CLI.IsVarArg;
+  bool IsPatchPoint                     = CLI.IsPatchPoint;
+  ImmutableCallSite *CS                 = CLI.CS;
 
   if (isTailCall)
     isTailCall = IsEligibleForTailCallOptimization(Callee, CallConv, isVarArg,
                                                    Ins, DAG);
 
-  if (!isTailCall && CLI.CS && CLI.CS->isMustTailCall())
+  if (!isTailCall && CS && CS->isMustTailCall())
     report_fatal_error("failed to perform tail call elimination on a call "
                        "site marked musttail");
 
   if (Subtarget.isSVR4ABI()) {
     if (Subtarget.isPPC64())
       return LowerCall_64SVR4(Chain, Callee, CallConv, isVarArg,
-                              isTailCall, Outs, OutVals, Ins,
-                              dl, DAG, InVals);
+                              isTailCall, IsPatchPoint, Outs, OutVals, Ins,
+                              dl, DAG, InVals, CS);
     else
       return LowerCall_32SVR4(Chain, Callee, CallConv, isVarArg,
-                              isTailCall, Outs, OutVals, Ins,
-                              dl, DAG, InVals);
+                              isTailCall, IsPatchPoint, Outs, OutVals, Ins,
+                              dl, DAG, InVals, CS);
   }
 
   return LowerCall_Darwin(Chain, Callee, CallConv, isVarArg,
-                          isTailCall, Outs, OutVals, Ins,
-                          dl, DAG, InVals);
+                          isTailCall, IsPatchPoint, Outs, OutVals, Ins,
+                          dl, DAG, InVals, CS);
 }
 
 SDValue
 PPCTargetLowering::LowerCall_32SVR4(SDValue Chain, SDValue Callee,
                                     CallingConv::ID CallConv, bool isVarArg,
-                                    bool isTailCall,
+                                    bool isTailCall, bool IsPatchPoint,
                                     const SmallVectorImpl<ISD::OutputArg> &Outs,
                                     const SmallVectorImpl<SDValue> &OutVals,
                                     const SmallVectorImpl<ISD::InputArg> &Ins,
                                     SDLoc dl, SelectionDAG &DAG,
-                                    SmallVectorImpl<SDValue> &InVals) const {
+                                    SmallVectorImpl<SDValue> &InVals,
+                                    ImmutableCallSite *CS) const {
   // See PPCTargetLowering::LowerFormalArguments_32SVR4() for a description
   // of the 32-bit SVR4 ABI stack frame layout.
 
@@ -4201,9 +4216,9 @@ PPCTargetLowering::LowerCall_32SVR4(SDValue Chain, SDValue Callee,
     PrepareTailCall(DAG, InFlag, Chain, dl, false, SPDiff, NumBytes, LROp, FPOp,
                     false, TailCallArguments);
 
-  return FinishCall(CallConv, dl, isTailCall, isVarArg, DAG,
-                    RegsToPass, InFlag, Chain, Callee, SPDiff, NumBytes,
-                    Ins, InVals);
+  return FinishCall(CallConv, dl, isTailCall, isVarArg, IsPatchPoint, DAG,
+                    RegsToPass, InFlag, Chain, CallSeqStart, Callee, SPDiff,
+                    NumBytes, Ins, InVals, CS);
 }
 
 // Copy an argument into memory, being careful to do this outside the
@@ -4229,12 +4244,13 @@ PPCTargetLowering::createMemcpyOutsideCallSeq(SDValue Arg, SDValue PtrOff,
 SDValue
 PPCTargetLowering::LowerCall_64SVR4(SDValue Chain, SDValue Callee,
                                     CallingConv::ID CallConv, bool isVarArg,
-                                    bool isTailCall,
+                                    bool isTailCall, bool IsPatchPoint,
                                     const SmallVectorImpl<ISD::OutputArg> &Outs,
                                     const SmallVectorImpl<SDValue> &OutVals,
                                     const SmallVectorImpl<ISD::InputArg> &Ins,
                                     SDLoc dl, SelectionDAG &DAG,
-                                    SmallVectorImpl<SDValue> &InVals) const {
+                                    SmallVectorImpl<SDValue> &InVals,
+                                    ImmutableCallSite *CS) const {
 
   bool isELFv2ABI = Subtarget.isELFv2ABI();
   bool isLittleEndian = Subtarget.isLittleEndian();
@@ -4665,7 +4681,7 @@ PPCTargetLowering::LowerCall_64SVR4(SDValue Chain, SDValue Callee,
   // Check if this is an indirect call (MTCTR/BCTRL).
   // See PrepareCall() for more information about calls through function
   // pointers in the 64-bit SVR4 ABI.
-  if (!isTailCall &&
+  if (!isTailCall && !IsPatchPoint &&
       !isFunctionGlobalAddress(Callee) &&
       !isa<ExternalSymbolSDNode>(Callee)) {
     // Load r2 into a virtual register and store it to the TOC save area.
@@ -4674,12 +4690,13 @@ PPCTargetLowering::LowerCall_64SVR4(SDValue Chain, SDValue Callee,
     unsigned TOCSaveOffset = PPCFrameLowering::getTOCSaveOffset(isELFv2ABI);
     SDValue PtrOff = DAG.getIntPtrConstant(TOCSaveOffset);
     SDValue AddPtr = DAG.getNode(ISD::ADD, dl, PtrVT, StackPtr, PtrOff);
-    Chain = DAG.getStore(Val.getValue(1), dl, Val, AddPtr, MachinePointerInfo(),
+    Chain = DAG.getStore(Val.getValue(1), dl, Val, AddPtr,
+                         MachinePointerInfo::getStack(TOCSaveOffset),
                          false, false, 0);
     // In the ELFv2 ABI, R12 must contain the address of an indirect callee.
     // This does not mean the MTCTR instruction must use R12; it's easier
     // to model this as an extra parameter, so do that.
-    if (isELFv2ABI)
+    if (isELFv2ABI && !IsPatchPoint)
       RegsToPass.push_back(std::make_pair((unsigned)PPC::X12, Callee));
   }
 
@@ -4696,20 +4713,21 @@ PPCTargetLowering::LowerCall_64SVR4(SDValue Chain, SDValue Callee,
     PrepareTailCall(DAG, InFlag, Chain, dl, true, SPDiff, NumBytes, LROp,
                     FPOp, true, TailCallArguments);
 
-  return FinishCall(CallConv, dl, isTailCall, isVarArg, DAG,
-                    RegsToPass, InFlag, Chain, Callee, SPDiff, NumBytes,
-                    Ins, InVals);
+  return FinishCall(CallConv, dl, isTailCall, isVarArg, IsPatchPoint, DAG,
+                    RegsToPass, InFlag, Chain, CallSeqStart, Callee, SPDiff,
+                    NumBytes, Ins, InVals, CS);
 }
 
 SDValue
 PPCTargetLowering::LowerCall_Darwin(SDValue Chain, SDValue Callee,
                                     CallingConv::ID CallConv, bool isVarArg,
-                                    bool isTailCall,
+                                    bool isTailCall, bool IsPatchPoint,
                                     const SmallVectorImpl<ISD::OutputArg> &Outs,
                                     const SmallVectorImpl<SDValue> &OutVals,
                                     const SmallVectorImpl<ISD::InputArg> &Ins,
                                     SDLoc dl, SelectionDAG &DAG,
-                                    SmallVectorImpl<SDValue> &InVals) const {
+                                    SmallVectorImpl<SDValue> &InVals,
+                                    ImmutableCallSite *CS) const {
 
   unsigned NumOps = Outs.size();
 
@@ -5089,9 +5107,9 @@ PPCTargetLowering::LowerCall_Darwin(SDValue Chain, SDValue Callee,
     PrepareTailCall(DAG, InFlag, Chain, dl, isPPC64, SPDiff, NumBytes, LROp,
                     FPOp, true, TailCallArguments);
 
-  return FinishCall(CallConv, dl, isTailCall, isVarArg, DAG,
-                    RegsToPass, InFlag, Chain, Callee, SPDiff, NumBytes,
-                    Ins, InVals);
+  return FinishCall(CallConv, dl, isTailCall, isVarArg, IsPatchPoint, DAG,
+                    RegsToPass, InFlag, Chain, CallSeqStart, Callee, SPDiff,
+                    NumBytes, Ins, InVals, CS);
 }
 
 bool
@@ -7246,6 +7264,10 @@ PPCTargetLowering::emitEHSjLjLongJmp(MachineInstr *MI,
 MachineBasicBlock *
 PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
                                                MachineBasicBlock *BB) const {
+  if (MI->getOpcode() == TargetOpcode::STACKMAP ||
+      MI->getOpcode() == TargetOpcode::PATCHPOINT)
+    return emitPatchPoint(MI, BB);
+
   if (MI->getOpcode() == PPC::EH_SjLj_SetJmp32 ||
       MI->getOpcode() == PPC::EH_SjLj_SetJmp64) {
     return emitEHSjLjSetJmp(MI, BB);
@@ -7700,7 +7722,7 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
     BuildMI(*BB, MI, dl, TII->get(PPC::FADD), Dest).addReg(Src1).addReg(Src2);
 
     // Restore FPSCR value.
-    BuildMI(*BB, MI, dl, TII->get(PPC::MTFSF)).addImm(1).addReg(MFFSReg);
+    BuildMI(*BB, MI, dl, TII->get(PPC::MTFSFb)).addImm(1).addReg(MFFSReg);
   } else if (MI->getOpcode() == PPC::ANDIo_1_EQ_BIT ||
              MI->getOpcode() == PPC::ANDIo_1_GT_BIT ||
              MI->getOpcode() == PPC::ANDIo_1_EQ_BIT8 ||
@@ -9880,6 +9902,27 @@ bool PPCTargetLowering::isFMAFasterThanFMulAndFAdd(EVT VT) const {
   }
 
   return false;
+}
+
+const MCPhysReg *
+PPCTargetLowering::getScratchRegisters(CallingConv::ID) const {
+  // LR is a callee-save register, but we must treat it as clobbered by any call
+  // site. Hence we include LR in the scratch registers, which are in turn added
+  // as implicit-defs for stackmaps and patchpoints. The same reasoning applies
+  // to CTR, which is used by any indirect call.
+  if (Subtarget.isELFv2ABI()) {
+    static const MCPhysReg ScratchRegs[] = {
+      PPC::X12, PPC::LR8, PPC::CTR8, 0
+    };
+
+    return ScratchRegs;
+  }
+
+  static const MCPhysReg ScratchRegs[] = {
+    PPC::X12, PPC::X11, PPC::LR8, PPC::CTR8, 0
+  };
+
+  return ScratchRegs;
 }
 
 bool

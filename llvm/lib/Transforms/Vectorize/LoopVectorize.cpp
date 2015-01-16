@@ -830,7 +830,7 @@ private:
   ///
   /// Looks for accesses like "a[i * StrideA]" where "StrideA" is loop
   /// invariant.
-  void collectStridedAcccess(Value *LoadOrStoreInst);
+  void collectStridedAccess(Value *LoadOrStoreInst);
 
   /// Report an analysis message to assist the user in diagnosing loops that are
   /// not vectorized.
@@ -1281,7 +1281,8 @@ struct LoopVectorize : public FunctionPass {
     TTI = &getAnalysis<TargetTransformInfo>();
     DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
     BFI = &getAnalysis<BlockFrequencyInfo>();
-    TLI = getAnalysisIfAvailable<TargetLibraryInfo>();
+    auto *TLIP = getAnalysisIfAvailable<TargetLibraryInfoWrapperPass>();
+    TLI = TLIP ? &TLIP->getTLI() : nullptr;
     AA = &getAnalysis<AliasAnalysis>();
     AC = &getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
 
@@ -3548,7 +3549,7 @@ bool LoopVectorizationLegality::canVectorize() {
   }
 
   // We can only vectorize innermost loops.
-  if (TheLoop->getSubLoopsVector().size()) {
+  if (!TheLoop->getSubLoopsVector().empty()) {
     emitAnalysis(Report() << "loop is not the innermost loop");
     return false;
   }
@@ -3703,7 +3704,7 @@ bool LoopVectorizationLegality::canVectorizeInstrs() {
           return false;
         }
 
-        // We only allow if-converted PHIs with more than two incoming values.
+        // We only allow if-converted PHIs with exactly two incoming values.
         if (Phi->getNumIncomingValues() != 2) {
           emitAnalysis(Report(it)
                        << "control flow not understood by vectorizer");
@@ -3829,12 +3830,12 @@ bool LoopVectorizationLegality::canVectorizeInstrs() {
           return false;
         }
         if (EnableMemAccessVersioning)
-          collectStridedAcccess(ST);
+          collectStridedAccess(ST);
       }
 
       if (EnableMemAccessVersioning)
         if (LoadInst *LI = dyn_cast<LoadInst>(it))
-          collectStridedAcccess(LI);
+          collectStridedAccess(LI);
 
       // Reduction instructions are allowed to have exit users.
       // All other instructions must not have external users.
@@ -3972,7 +3973,7 @@ static Value *getStrideFromPointer(Value *Ptr, ScalarEvolution *SE,
   return Stride;
 }
 
-void LoopVectorizationLegality::collectStridedAcccess(Value *MemAccess) {
+void LoopVectorizationLegality::collectStridedAccess(Value *MemAccess) {
   Value *Ptr = nullptr;
   if (LoadInst *LI = dyn_cast<LoadInst>(MemAccess))
     Ptr = LI->getPointerOperand();
@@ -4010,7 +4011,7 @@ void LoopVectorizationLegality::collectLoopUniforms() {
       if (I->getType()->isPointerTy() && isConsecutivePtr(I))
         Worklist.insert(Worklist.end(), I->op_begin(), I->op_end());
 
-  while (Worklist.size()) {
+  while (!Worklist.empty()) {
     Instruction *I = dyn_cast<Instruction>(Worklist.back());
     Worklist.pop_back();
 

@@ -11,16 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Target/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/ADT/Triple.h"
 using namespace llvm;
-
-// Register the default implementation.
-INITIALIZE_PASS(TargetLibraryInfo, "targetlibinfo",
-                "Target Library Information", false, true)
-char TargetLibraryInfo::ID = 0;
-
-void TargetLibraryInfo::anchor() { }
 
 const char* TargetLibraryInfo::StandardNames[LibFunc::NumLibFuncs] =
   {
@@ -379,8 +372,6 @@ static bool hasSinCosPiStret(const Triple &T) {
 /// target triple gets a sane set of defaults.
 static void initialize(TargetLibraryInfo &TLI, const Triple &T,
                        const char **StandardNames) {
-  initializeTargetLibraryInfoPass(*PassRegistry::getPassRegistry());
-
 #ifndef NDEBUG
   // Verify that the StandardNames array is in alphabetical order.
   for (unsigned F = 1; F < LibFunc::NumLibFuncs; ++F) {
@@ -685,25 +676,42 @@ static void initialize(TargetLibraryInfo &TLI, const Triple &T,
   }
 }
 
-
-TargetLibraryInfo::TargetLibraryInfo() : ImmutablePass(ID) {
+TargetLibraryInfo::TargetLibraryInfo() {
   // Default to everything being available.
   memset(AvailableArray, -1, sizeof(AvailableArray));
 
   initialize(*this, Triple(), StandardNames);
 }
 
-TargetLibraryInfo::TargetLibraryInfo(const Triple &T) : ImmutablePass(ID) {
+TargetLibraryInfo::TargetLibraryInfo(const Triple &T) {
   // Default to everything being available.
   memset(AvailableArray, -1, sizeof(AvailableArray));
-  
+
   initialize(*this, T, StandardNames);
 }
 
 TargetLibraryInfo::TargetLibraryInfo(const TargetLibraryInfo &TLI)
-  : ImmutablePass(ID) {
+    : CustomNames(TLI.CustomNames) {
   memcpy(AvailableArray, TLI.AvailableArray, sizeof(AvailableArray));
+}
+
+TargetLibraryInfo::TargetLibraryInfo(TargetLibraryInfo &&TLI)
+    : CustomNames(std::move(TLI.CustomNames)) {
+  std::move(std::begin(TLI.AvailableArray), std::end(TLI.AvailableArray),
+            AvailableArray);
+}
+
+TargetLibraryInfo &TargetLibraryInfo::operator=(const TargetLibraryInfo &TLI) {
   CustomNames = TLI.CustomNames;
+  memcpy(AvailableArray, TLI.AvailableArray, sizeof(AvailableArray));
+  return *this;
+}
+
+TargetLibraryInfo &TargetLibraryInfo::operator=(TargetLibraryInfo &&TLI) {
+  CustomNames = std::move(TLI.CustomNames);
+  std::move(std::begin(TLI.AvailableArray), std::end(TLI.AvailableArray),
+            AvailableArray);
+  return *this;
 }
 
 namespace {
@@ -747,8 +755,31 @@ bool TargetLibraryInfo::getLibFunc(StringRef funcName,
   return false;
 }
 
-/// disableAllFunctions - This disables all builtins, which is used for options
-/// like -fno-builtin.
 void TargetLibraryInfo::disableAllFunctions() {
   memset(AvailableArray, 0, sizeof(AvailableArray));
 }
+
+TargetLibraryInfoWrapperPass::TargetLibraryInfoWrapperPass()
+    : ImmutablePass(ID), TLI() {
+  initializeTargetLibraryInfoWrapperPassPass(*PassRegistry::getPassRegistry());
+}
+
+TargetLibraryInfoWrapperPass::TargetLibraryInfoWrapperPass(const Triple &T)
+    : ImmutablePass(ID), TLI(T) {
+  initializeTargetLibraryInfoWrapperPassPass(*PassRegistry::getPassRegistry());
+}
+
+TargetLibraryInfoWrapperPass::TargetLibraryInfoWrapperPass(
+    const TargetLibraryInfo &TLI)
+    : ImmutablePass(ID), TLI(TLI) {
+  initializeTargetLibraryInfoWrapperPassPass(*PassRegistry::getPassRegistry());
+}
+
+char TargetLibraryAnalysis::PassID;
+
+// Register the basic pass.
+INITIALIZE_PASS(TargetLibraryInfoWrapperPass, "targetlibinfo",
+                "Target Library Information", false, true)
+char TargetLibraryInfoWrapperPass::ID = 0;
+
+void TargetLibraryInfoWrapperPass::anchor() {}

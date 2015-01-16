@@ -278,9 +278,8 @@ bool SimplifyIndvar::strengthenOverflowingOperation(BinaryOperator *BO,
                                                     Value *IVOperand) {
 
   // Currently we only handle instructions of the form "add <indvar> <value>"
-  // and "sub <indvar> <value>".
   unsigned Op = BO->getOpcode();
-  if (!(Op == Instruction::Add || Op == Instruction::Sub))
+  if (Op != Instruction::Add)
     return false;
 
   // If BO is already both nuw and nsw then there is nothing left to do
@@ -289,29 +288,17 @@ bool SimplifyIndvar::strengthenOverflowingOperation(BinaryOperator *BO,
 
   IntegerType *IT = cast<IntegerType>(IVOperand->getType());
   Value *OtherOperand = nullptr;
-  int OtherOperandIdx = -1;
   if (BO->getOperand(0) == IVOperand) {
     OtherOperand = BO->getOperand(1);
-    OtherOperandIdx = 1;
   } else {
     assert(BO->getOperand(1) == IVOperand && "only other use!");
     OtherOperand = BO->getOperand(0);
-    OtherOperandIdx = 0;
   }
 
   bool Changed = false;
   const SCEV *OtherOpSCEV = SE->getSCEV(OtherOperand);
   if (OtherOpSCEV == SE->getCouldNotCompute())
     return false;
-
-  if (Op == Instruction::Sub) {
-    // If the subtraction is of the form "sub <indvar>, <op>", then pretend it
-    // is "add <indvar>, -<op>" and continue, else bail out.
-    if (OtherOperandIdx != 1)
-      return false;
-
-    OtherOpSCEV = SE->getNegativeSCEV(OtherOpSCEV);
-  }
 
   const SCEV *IVOpSCEV = SE->getSCEV(IVOperand);
   const SCEV *ZeroSCEV = SE->getConstant(IVOpSCEV->getType(), 0);
