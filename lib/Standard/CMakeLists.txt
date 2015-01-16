@@ -69,7 +69,7 @@ set(CMAKE_MODULE_PATH
 
 project(scStandardLibrary SCC)
   cmake_minimum_required(VERSION 2.8.12)
-  set(CMAKE_SCXX_FLAGS "-g -noscstdlib")
+  set(CMAKE_SCC_FLAGS "-g -noscstdlib")
   set(LINK_FLAGS "-noscstdlib")
   set(CMAKE_INSTALL_PREFIX ${SCOUT_INSTALL_DIR})
   set(LIBRARY_OUTPUT_PATH ${SCOUT_BUILD_DIR}/lib)
