@@ -1,4 +1,7 @@
-include_directories(../)
+include_directories(
+  ../
+  ${CMAKE_BINARY_DIR}/config/include
+)
 
 set(LLVM_LINK_COMPONENTS
   Support

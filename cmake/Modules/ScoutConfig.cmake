@@ -331,7 +331,11 @@ endif()
       set(SCOUT_ENABLE_PLOT ON CACHE BOOL "Enable plot support in scout's runtime libraries.")
       set(R_LIBRARIES -L${R_HOME}/lib -L${R_HOME}/library/RInside/lib -lR -lRInside)
       set(R_INCLUDE_DIRS ${R_HOME}/include ${R_HOME}/library/Rcpp/include ${R_HOME}/library/RInside/include)
+    else()
+      set(SCOUT_ENABLE_PLOT OFF CACHE BOOL "Enable plot support in scout's runtime libraries.")
     endif()
+  else()
+    set(SCOUT_ENABLE_PLOT OFF CACHE BOOL "Enable plot support in scout's runtime libraries.")
   endif()
 
 # --- THRUST support.
