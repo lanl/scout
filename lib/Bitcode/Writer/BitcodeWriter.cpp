@@ -549,11 +549,13 @@ static unsigned getEncodedComdatSelectionKind(const Comdat &C) {
 }
 
 static void writeComdats(const ValueEnumerator &VE, BitstreamWriter &Stream) {
-  SmallVector<uint8_t, 64> Vals;
+  SmallVector<uint16_t, 64> Vals;
   for (const Comdat *C : VE.getComdats()) {
     // COMDAT: [selection_kind, name]
     Vals.push_back(getEncodedComdatSelectionKind(*C));
-    Vals.push_back(C->getName().size());
+    size_t Size = C->getName().size();
+    assert(isUInt<16>(Size));
+    Vals.push_back(Size);
     for (char Chr : C->getName())
       Vals.push_back((unsigned char)Chr);
     Stream.EmitRecord(bitc::MODULE_CODE_COMDAT, Vals, /*AbbrevToUse=*/0);
@@ -779,6 +781,25 @@ static void WriteMDNode(const MDNode *N,
   Record.clear();
 }
 
+static void WriteMDLocation(const MDLocation *N, const ValueEnumerator &VE,
+                            BitstreamWriter &Stream,
+                            SmallVectorImpl<uint64_t> &Record,
+                            unsigned Abbrev) {
+  Record.push_back(N->isDistinct());
+  Record.push_back(N->getLine());
+  Record.push_back(N->getColumn());
+  Record.push_back(VE.getMetadataID(N->getScope()));
+
+  // Always emit the inlined-at location, even though it's optional.
+  if (Metadata *InlinedAt = N->getInlinedAt())
+    Record.push_back(VE.getMetadataID(InlinedAt) + 1);
+  else
+    Record.push_back(0);
+
+  Stream.EmitRecord(bitc::METADATA_LOCATION, Record, Abbrev);
+  Record.clear();
+}
+
 static void WriteModuleMetadata(const Module *M,
                                 const ValueEnumerator &VE,
                                 BitstreamWriter &Stream) {
@@ -798,6 +819,22 @@ static void WriteModuleMetadata(const Module *M,
     MDSAbbrev = Stream.EmitAbbrev(Abbv);
   }
 
+  unsigned LocAbbrev = 0;
+  if (VE.hasMDLocation()) {
+    // Abbrev for METADATA_LOCATION.
+    //
+    // Assume the column is usually under 128, and always output the inlined-at
+    // location (it's never more expensive than building an array size 1).
+    BitCodeAbbrev *Abbv = new BitCodeAbbrev();
+    Abbv->Add(BitCodeAbbrevOp(bitc::METADATA_LOCATION));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));
+    LocAbbrev = Stream.EmitAbbrev(Abbv);
+  }
+
   unsigned NameAbbrev = 0;
   if (!M->named_metadata_empty()) {
     // Abbrev for METADATA_NAME.
@@ -810,6 +847,10 @@ static void WriteModuleMetadata(const Module *M,
 
   SmallVector<uint64_t, 64> Record;
   for (const Metadata *MD : MDs) {
+    if (const MDLocation *Loc = dyn_cast<MDLocation>(MD)) {
+      WriteMDLocation(Loc, VE, Stream, Record, LocAbbrev);
+      continue;
+    }
     if (const MDNode *N = dyn_cast<MDNode>(MD)) {
       WriteMDNode(N, VE, Stream, Record);
       continue;

@@ -21,6 +21,7 @@
 #include "llvm/MC/MCFixupKindInfo.h"
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCSection.h"
+#include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/MCValue.h"
 #include "llvm/Support/Debug.h"
@@ -28,7 +29,6 @@
 #include "llvm/Support/LEB128.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/MC/MCSectionELF.h"
 #include <tuple>
 using namespace llvm;
 
@@ -425,16 +425,6 @@ bool MCAssembler::isThumbFunc(const MCSymbol *Symbol) const {
   return true;
 }
 
-void MCAssembler::addLocalUsedInReloc(const MCSymbol &Sym) {
-  assert(Sym.isTemporary());
-  LocalsUsedInReloc.insert(&Sym);
-}
-
-bool MCAssembler::isLocalUsedInReloc(const MCSymbol &Sym) const {
-  assert(Sym.isTemporary());
-  return LocalsUsedInReloc.count(&Sym);
-}
-
 bool MCAssembler::isSymbolLinkerVisible(const MCSymbol &Symbol) const {
   // Non-temporary labels should always be visible to the linker.
   if (!Symbol.isTemporary())
@@ -444,10 +434,8 @@ bool MCAssembler::isSymbolLinkerVisible(const MCSymbol &Symbol) const {
   if (!Symbol.isInSection())
     return false;
 
-  if (isLocalUsedInReloc(Symbol))
-    return true;
-
-  return false;
+  // Otherwise, check if the section requires symbols even for temporary labels.
+  return getBackend().doesSectionRequireSymbols(Symbol.getSection());
 }
 
 const MCSymbolData *MCAssembler::getAtom(const MCSymbolData *SD) const {
