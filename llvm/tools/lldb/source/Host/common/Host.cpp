@@ -84,12 +84,6 @@ extern "C"
 using namespace lldb;
 using namespace lldb_private;
 
-// +===== Scout ==================
-// temporary hack to get LLDB to compile due to an apparent mismatch
-// between LLDB and LLVM/Clang
-#define CPU_SUBTYPE_X86_64_H 8
-// +==============================
-
 #if !defined (__APPLE__) && !defined (_WIN32)
 struct MonitorInfo
 {

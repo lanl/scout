@@ -394,8 +394,7 @@ namespace lldb {
 
         // +===== Scout ==================
         eLanguageTypeScoutC           = 0x9000,
-        eLanguageTypeScoutC_plus_plus = 0x9001,
-        eNumLanguageTypes = 35
+        eNumLanguageTypes = 34
         // +==============================  
     } LanguageType;
     

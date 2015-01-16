@@ -640,8 +640,7 @@ enum SourceLanguage {
   DW_LANG_hi_user = 0xffff,
 
   // +===== Scout ===================
-  DW_LANG_ScoutC = 0x9000,
-  DW_LANG_ScoutC_plus_plus = 0x9001
+  DW_LANG_ScoutC = 0x9000
   // +===============================
 };
 

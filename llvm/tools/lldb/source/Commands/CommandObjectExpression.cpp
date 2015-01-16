@@ -322,8 +322,7 @@ CommandObjectExpression::EvaluateExpression
             if (sc.comp_unit)
             {
               LanguageType lang_type = sc.comp_unit->GetLanguage();
-              if(lang_type == eLanguageTypeScoutC ||
-                 lang_type == eLanguageTypeScoutC_plus_plus){
+              if(lang_type == eLanguageTypeScoutC){
                 options.SetLanguage(lang_type);
               }
             }

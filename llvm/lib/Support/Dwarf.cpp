@@ -591,7 +591,6 @@ const char *llvm::dwarf::LanguageString(unsigned Language) {
   case DW_LANG_hi_user:                  return "DW_LANG_hi_user";
   // +===== Scout =========================================================
   case DW_LANG_ScoutC:                   return "DW_LANG_ScoutC";
-  case DW_LANG_ScoutC_plus_plus:         return "DW_LANG_ScoutC_plus_plus";
   // +=====================================================================
   }
   return nullptr;
