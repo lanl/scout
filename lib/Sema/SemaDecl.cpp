@@ -3239,8 +3239,15 @@ void Sema::MergeVarDecl(VarDecl *New, LookupResult &Previous) {
   }
 
   // Merge the types.
-  MergeVarDeclTypes(New, Old, mergeTypeWithPrevious(*this, New, Old, Previous));
+  VarDecl *MostRecent = Old->getMostRecentDecl();
+  if (MostRecent != Old) {
+    MergeVarDeclTypes(New, MostRecent,
+                      mergeTypeWithPrevious(*this, New, MostRecent, Previous));
+    if (New->isInvalidDecl())
+      return;
+  }
 
+  MergeVarDeclTypes(New, Old, mergeTypeWithPrevious(*this, New, Old, Previous));
   if (New->isInvalidDecl())
     return;
 
@@ -3285,12 +3292,12 @@ void Sema::MergeVarDecl(VarDecl *New, LookupResult &Previous) {
 
   // Check if extern is followed by non-extern and vice-versa.
   if (New->hasExternalStorage() &&
-      !Old->hasLinkage() && Old->isLocalVarDecl()) {
+      !Old->hasLinkage() && Old->isLocalVarDeclOrParm()) {
     Diag(New->getLocation(), diag::err_extern_non_extern) << New->getDeclName();
     Diag(OldLocation, PrevDiag);
     return New->setInvalidDecl();
   }
-  if (Old->hasLinkage() && New->isLocalVarDecl() &&
+  if (Old->hasLinkage() && New->isLocalVarDeclOrParm() &&
       !New->hasExternalStorage()) {
     Diag(New->getLocation(), diag::err_non_extern_extern) << New->getDeclName();
     Diag(OldLocation, PrevDiag);
@@ -7003,12 +7010,12 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
 
         // Check that we can declare a template here.
         if (CheckTemplateDeclScope(S, TemplateParams))
-          return nullptr;
+          NewFD->setInvalidDecl();
 
         // A destructor cannot be a template.
         if (Name.getNameKind() == DeclarationName::CXXDestructorName) {
           Diag(NewFD->getLocation(), diag::err_destructor_template);
-          return nullptr;
+          NewFD->setInvalidDecl();
         }
         
         // If we're adding a template to a dependent context, we may need to 
@@ -8052,7 +8059,7 @@ bool Sema::CheckFunctionDeclaration(Scope *S, FunctionDecl *NewFD,
     // the function returns a UDT (class, struct, or union type) that is not C
     // compatible, and if it does, warn the user.
     // But, issue any diagnostic on the first declaration only.
-    if (NewFD->isExternC() && Previous.empty()) {
+    if (Previous.empty() && NewFD->isExternC()) {
       QualType R = NewFD->getReturnType();
       if (R->isIncompleteType() && !R->isVoidType())
         Diag(NewFD->getLocation(), diag::warn_return_value_udt_incomplete)

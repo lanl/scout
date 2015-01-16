@@ -1861,7 +1861,9 @@ void MicrosoftCXXABI::EmitGuardedInit(CodeGenFunction &CGF, const VarDecl &D,
   if (!D.isStaticLocal()) {
     assert(GV->hasWeakLinkage() || GV->hasLinkOnceLinkage());
     // GlobalOpt is allowed to discard the initializer, so use linkonce_odr.
-    CGF.CurFn->setLinkage(llvm::GlobalValue::LinkOnceODRLinkage);
+    llvm::Function *F = CGF.CurFn;
+    F->setLinkage(llvm::GlobalValue::LinkOnceODRLinkage);
+    F->setComdat(CGM.getModule().getOrInsertComdat(F->getName()));
     CGF.EmitCXXGlobalVarDeclInit(D, GV, PerformInit);
     return;
   }
@@ -3037,7 +3039,8 @@ static void emitCXXConstructor(CodeGenModule &CGM,
                                const CXXConstructorDecl *ctor,
                                StructorType ctorType) {
   // There are no constructor variants, always emit the complete destructor.
-  CGM.codegenCXXStructor(ctor, StructorType::Complete);
+  llvm::Function *Fn = CGM.codegenCXXStructor(ctor, StructorType::Complete);
+  CGM.maybeSetTrivialComdat(*ctor, *Fn);
 }
 
 static void emitCXXDestructor(CodeGenModule &CGM, const CXXDestructorDecl *dtor,
@@ -3063,7 +3066,8 @@ static void emitCXXDestructor(CodeGenModule &CGM, const CXXDestructorDecl *dtor,
   if (dtorType == StructorType::Base && !CGM.TryEmitBaseDestructorAsAlias(dtor))
     return;
 
-  CGM.codegenCXXStructor(dtor, dtorType);
+  llvm::Function *Fn = CGM.codegenCXXStructor(dtor, dtorType);
+  CGM.maybeSetTrivialComdat(*dtor, *Fn);
 }
 
 void MicrosoftCXXABI::emitCXXStructor(const CXXMethodDecl *MD,

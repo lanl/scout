@@ -509,9 +509,8 @@ def fsignaling_math : Flag<["-"], "fsignaling-math">, Group<f_Group>;
 def fno_signaling_math : Flag<["-"], "fno-signaling-math">, Group<f_Group>;
 def fsanitize_EQ : CommaJoined<["-"], "fsanitize=">, Group<f_clang_Group>,
                    Flags<[CC1Option, CoreOption]>, MetaVarName<"<check>">,
-                   HelpText<"Enable runtime instrumentation for bug detection: "
-                            "address (memory errors) | thread (race detection) | "
-                            "undefined (miscellaneous undefined behavior)">;
+                   HelpText<"Turn on runtime checks for various forms of undefined "
+                            "or suspicious behavior. See user manual for available checks ">;
 def fno_sanitize_EQ : CommaJoined<["-"], "fno-sanitize=">, Group<f_clang_Group>;
 def fsanitize_blacklist : Joined<["-"], "fsanitize-blacklist=">,
                           Group<f_clang_Group>, Flags<[CC1Option, CoreOption]>,
@@ -1229,6 +1228,11 @@ def mqpx : Flag<["-"], "mqpx">, Group<m_ppc_Features_Group>;
 def mno_qpx : Flag<["-"], "mno-qpx">, Group<m_ppc_Features_Group>;
 def mcrbits : Flag<["-"], "mcrbits">, Group<m_ppc_Features_Group>;
 def mno_crbits : Flag<["-"], "mno-crbits">, Group<m_ppc_Features_Group>;
+def minvariant_function_descriptors :
+  Flag<["-"], "minvariant-function-descriptors">, Group<m_ppc_Features_Group>;
+def mno_invariant_function_descriptors :
+  Flag<["-"], "mno-invariant-function-descriptors">,
+  Group<m_ppc_Features_Group>;
 
 def faltivec : Flag<["-"], "faltivec">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Enable AltiVec vector initializer syntax">;

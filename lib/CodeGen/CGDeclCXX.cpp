@@ -445,6 +445,8 @@ void CodeGenFunction::GenerateCXXGlobalVarDeclInitFunc(llvm::Function *Fn,
   if (D->hasAttr<NoDebugAttr>())
     DebugInfo = nullptr; // disable debug info indefinitely for this function
 
+  CurEHLocation = D->getLocStart();
+
   StartFunction(GlobalDecl(D), getContext().VoidTy, Fn,
                 getTypes().arrangeNullaryFunction(),
                 FunctionArgList(), D->getLocation(),
@@ -467,11 +469,11 @@ CodeGenFunction::GenerateCXXGlobalInitFunc(llvm::Function *Fn,
                                            ArrayRef<llvm::Function *> Decls,
                                            llvm::GlobalVariable *Guard) {
   {
-    ArtificialLocation AL(*this, Builder);
+    ApplyDebugLocation NL(*this);
     StartFunction(GlobalDecl(), getContext().VoidTy, Fn,
                   getTypes().arrangeNullaryFunction(), FunctionArgList());
     // Emit an artificial location for this function.
-    AL.Emit();
+    ArtificialLocation AL(*this);
 
     llvm::BasicBlock *ExitBlock = nullptr;
     if (Guard) {
@@ -518,11 +520,11 @@ void CodeGenFunction::GenerateCXXGlobalDtorsFunc(llvm::Function *Fn,
                   const std::vector<std::pair<llvm::WeakVH, llvm::Constant*> >
                                                 &DtorsAndObjects) {
   {
-    ArtificialLocation AL(*this, Builder);
+    ApplyDebugLocation NL(*this);
     StartFunction(GlobalDecl(), getContext().VoidTy, Fn,
                   getTypes().arrangeNullaryFunction(), FunctionArgList());
     // Emit an artificial location for this function.
-    AL.Emit();
+    ArtificialLocation AL(*this);
 
     // Emit the dtors, in reverse order from construction.
     for (unsigned i = 0, e = DtorsAndObjects.size(); i != e; ++i) {
@@ -553,6 +555,8 @@ llvm::Function *CodeGenFunction::generateDestroyHelper(
   llvm::FunctionType *FTy = CGM.getTypes().GetFunctionType(FI);
   llvm::Function *fn = CGM.CreateGlobalInitOrDestructFunction(
       FTy, "__cxx_global_array_dtor", VD->getLocation());
+
+  CurEHLocation = VD->getLocStart();
 
   StartFunction(VD, getContext().VoidTy, fn, FI, args);
 

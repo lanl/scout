@@ -211,11 +211,11 @@ namespace {
       Builder->EmitTentativeDefinition(D);
     }
 
-    void HandleVTable(CXXRecordDecl *RD, bool DefinitionRequired) override {
+    void HandleVTable(CXXRecordDecl *RD) override {
       if (Diags.hasErrorOccurred())
         return;
 
-      Builder->EmitVTable(RD, DefinitionRequired);
+      Builder->EmitVTable(RD);
     }
 
     void HandleLinkerOptionPragma(llvm::StringRef Opts) override {
@@ -238,7 +238,6 @@ void CodeGenerator::anchor() { }
 CodeGenerator *clang::CreateLLVMCodeGen(DiagnosticsEngine &Diags,
                                         const std::string& ModuleName,
                                         const CodeGenOptions &CGO,
-                                        const TargetOptions &/*TO*/,
                                         llvm::LLVMContext& C,
                                         CoverageSourceInfo *CoverageInfo) {
   return new CodeGeneratorImpl(Diags, ModuleName, CGO, C, CoverageInfo);
