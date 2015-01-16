@@ -1,1 +1,0 @@
-../../../scc/display/multifile/mesh.sch
