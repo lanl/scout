@@ -827,12 +827,7 @@ Corrected:
 
     // Perform typo correction to determine if there is another name that is
     // close to this name.
-    if (!SecondTry && CCC
-          /* ===== Scout =================================================== *
-           * SC_TODO: this causes problems w/ unqualified mesh members but   *
-           * only in sc++ and only on mac.                                   */
-          && !getLangOpts().ScoutCPlusPlus) {
-         // +================================================================+
+    if (!SecondTry && CCC) {
       SecondTry = true;
       if (TypoCorrection Corrected = CorrectTypo(Result.getLookupNameInfo(),
                                                  Result.getLookupKind(), S, 

@@ -31,8 +31,7 @@ enum LangFeatures {
   HexFloat = (1 << 10),
   ImplicitInt = (1 << 11),
   // +===== Scout ============================================================+
-  ScoutC = (1 << 12),
-  ScoutCPlusPlus = (1 << 13)
+  ScoutC = (1 << 12)
   // +========================================================================+
 };
 
@@ -97,8 +96,7 @@ public:
 
   // +===== Scout ============================================================+
   bool isScoutC() const { return Flags && frontend::ScoutC; }
-  bool isScoutCPlusPlus() const { return Flags && frontend::ScoutCPlusPlus; }
-  bool isScout() const { return isScoutC() || isScoutCPlusPlus(); }
+  bool isScout() const { return isScoutC(); }
   // +========================================================================+
 
   static const LangStandard &getLangStandardForKind(Kind K);

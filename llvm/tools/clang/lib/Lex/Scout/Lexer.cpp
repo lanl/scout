@@ -78,10 +78,8 @@ void Lexer::ScoutEnable(Preprocessor &PP) {
   if (bufferName != "Parse" && ext != "sc" && ext != "sch" &&
       ext != "scpp" && "schpp") {
     LangOpts.ScoutC = false;
-    LangOpts.ScoutCPlusPlus = false;
   } else {
     LangOpts.ScoutC         = true;
-    LangOpts.ScoutCPlusPlus = true;
   }
 }
 

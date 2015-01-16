@@ -144,7 +144,7 @@ public:
 
 // +===== Scout ==============================================================+
 inline bool isScoutLang(const LangOptions &Opts) {
-  return Opts.ScoutC || Opts.ScoutCPlusPlus;
+  return Opts.ScoutC;
 }
 // +==========================================================================+
 

@@ -2882,7 +2882,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       // declaration is parsed in ParseStatementOrDeclarationAfterAttributes()
       // it runs TryAnnotateName() which turns it from a identifier into an
       // annot_typename. Do the same here if we are a Mesh.
-      if(getLangOpts().ScoutC  || getLangOpts().ScoutCPlusPlus) {
+      if(getLangOpts().ScoutC) {
         LookupResult MeshLookup(Actions, Tok.getIdentifierInfo(),
             Tok.getLocation(), Sema::LookupMeshName);
         Actions.LookupName(MeshLookup, getCurScope());

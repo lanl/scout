@@ -203,14 +203,7 @@ ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
     case lldb::eLanguageTypeScoutC:
         m_compiler->getLangOpts().ScoutC = true;
         m_compiler->getLangOpts().CPlusPlus = true;
-        //m_compiler->getLangOpts().CPlusPlus11 = true;
         break;
-    case lldb::eLanguageTypeScoutC_plus_plus:
-        m_compiler->getLangOpts().ScoutCPlusPlus = true;
-        m_compiler->getLangOpts().CPlusPlus = true;
-        //m_compiler->getLangOpts().CPlusPlus11 = true;
-        break;
-    // +========================================
     case lldb::eLanguageTypeC:
         break;
     case lldb::eLanguageTypeObjC:

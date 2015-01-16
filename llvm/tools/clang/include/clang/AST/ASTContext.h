@@ -398,12 +398,6 @@ private:
   llvm::DenseMap<const NamedDecl *, unsigned> MangleNumbers;
   llvm::DenseMap<const VarDecl *, unsigned> StaticLocalNumbers;
 
-  // +===== Scout ============================================================+
-  // SC_TODO : Do we need these???
-  llvm::DenseMap<const DeclContext *, unsigned> UnnamedMeshMangleContexts;
-  llvm::DenseMap<const MeshDecl *, unsigned> UnnamedMeshMangleNumbers;
-  // =========================================================================+
-
   /// \brief Mapping that stores parameterIndex values for ParmVarDecls when
   /// that value exceeds the bitfield size of ParmVarDeclBits.ParameterIndex.
   typedef llvm::DenseMap<const VarDecl *, unsigned> ParameterIndexTable;

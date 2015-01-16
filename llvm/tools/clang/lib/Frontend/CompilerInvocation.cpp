@@ -1289,25 +1289,20 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
   if (IK == IK_Scout_C) {
     Opts.ScoutC = 1;
   }
-  if (IK == IK_Scout_CXX) {
-    Opts.ScoutCPlusPlus = 1;
-  }
   // +========================================================================+
 
   // OpenCL and C++ both have bool, true, false keywords.
   Opts.Bool = Opts.OpenCL || Opts.CPlusPlus ||
-              Opts.ScoutC || Opts.ScoutCPlusPlus;  // ====== Scout ==========
+              Opts.ScoutC;  // ====== Scout ==========
 
   // OpenCL has half keyword
   Opts.Half = Opts.OpenCL;
 
   // C++ has wchar_t keyword.
-  Opts.WChar = Opts.CPlusPlus || 
-	Opts.ScoutCPlusPlus; // ====== Scout ==========
+  Opts.WChar = Opts.CPlusPlus;
 
   Opts.GNUKeywords = Opts.GNUMode;
-  Opts.CXXOperatorNames = Opts.CPlusPlus || 
-		Opts.ScoutCPlusPlus; // ====== Scout ==========
+  Opts.CXXOperatorNames = Opts.CPlusPlus;
 
   Opts.DollarIdents = !Opts.AsmPreprocessor;
 

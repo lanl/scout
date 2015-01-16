@@ -250,7 +250,7 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const LangOptions &Lang,
     // We treat scout's headers like builtins -- we quietly sneak them in
     // front of the standard includes so we can muck with details if need
     // be... 
-    if (Lang.ScoutC || Lang.ScoutCPlusPlus) {
+    if (Lang.ScoutC) {
       SmallString<128> P = StringRef(HSOpts.ScoutResourceDir);
       AddUnmappedPath(P.str(), ExternCSystem, false);
       
@@ -441,17 +441,6 @@ AddDefaultCPlusPlusIncludePaths(const LangOptions &Lang, // +===== Scout =====+
                                 const HeaderSearchOptions &HSOpts) {
   llvm::Triple::OSType os = triple.getOS();
   // FIXME: temporary hack: hard-coded paths.
-
-  // +===== Scout ======================================================+
-  // We treat scout's headers like builtins -- we quietly sneak them in
-  // front of the standard includes so we can muck with details if need
-  // be... 
-  if (Lang.ScoutCPlusPlus) {
-    SmallString<128> P = StringRef(HSOpts.ScoutResourceDir);
-    llvm::sys::path::append(P, "sc++");
-    AddPath(P.str(), CXXSystem, false);
-  }
-  // +==================================================================+  
 
   if (triple.isOSDarwin()) {
     switch (triple.getArch()) {

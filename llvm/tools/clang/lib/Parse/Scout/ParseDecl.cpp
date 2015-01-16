@@ -336,10 +336,4 @@ void Parser::ParseMeshParameterDeclaration(DeclSpec& DS) {
     SkipUntil(tok::semi);
     return;
   }
-
-  if(getLangOpts().ScoutCPlusPlus && Tok.isNot(tok::amp)) {
-    Diag(Tok, diag::err_expected_mesh_param_amp);
-    SkipUntil(tok::semi);
-    return;
-  }
 }

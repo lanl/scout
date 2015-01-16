@@ -99,10 +99,6 @@ BuildMeshFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
     DeclAccessPair FoundDecl,
     const DeclarationNameInfo &MemberNameInfo) {
 
-  // allow arrow in scc as we need it in stencil functions.
-  if(S.getLangOpts().ScoutCPlusPlus && IsArrow) {
-    S.Diag(MemberNameInfo.getLoc(), diag::err_mesh_arrow);
-  }
   // x.a is an l-value if 'a' has a reference type. Otherwise:
   // x.a is an l-value/x-value/pr-value if the base is (and note
   //   that *x is always an l-value), except that if the base isn't

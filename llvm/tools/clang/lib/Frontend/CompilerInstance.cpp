@@ -858,8 +858,6 @@ static InputKind getSourceInputKindFromOptions(const LangOptions &LangOpts) {
   // +===== Scout ==========================================================+
   if (LangOpts.ScoutC)
     return IK_Scout_C;
-  if (LangOpts.ScoutCPlusPlus)
-    return IK_Scout_CXX;
   // +======================================================================+
   return LangOpts.CPlusPlus? IK_CXX : IK_C;
 }

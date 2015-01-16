@@ -343,10 +343,7 @@ void CGDebugInfo::CreateCompileUnit() {
   const LangOptions &LO = CGM.getLangOpts();
 
   // +===== Scout ========================
-  if(LO.ScoutCPlusPlus){
-    LangTag = llvm::dwarf::DW_LANG_ScoutC_plus_plus;
-  }
-  else if(LO.ScoutC){
+  if(LO.ScoutC){
     LangTag = llvm::dwarf::DW_LANG_ScoutC;
   }
   // +====================================

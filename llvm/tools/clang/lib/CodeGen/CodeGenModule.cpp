@@ -1979,7 +1979,7 @@ unsigned CodeGenModule::GetGlobalVarAddressSpace(const VarDecl *D,
   }
   
   // +===== Scout =============================================================
-  if (LangOpts.ScoutC || LangOpts.ScoutCPlusPlus) {
+  if (LangOpts.ScoutC) {
     if (D && D->isPersistentLocal()) {
       // For now we're using the last high-address address space for
       // Scout (this is a language-centric range defined in
@@ -2320,17 +2320,6 @@ llvm::GlobalValue::LinkageTypes CodeGenModule::getLLVMLinkageForDeclarator(
 
 llvm::GlobalValue::LinkageTypes CodeGenModule::getLLVMLinkageVarDefinition(
     const VarDecl *VD, bool IsConstant) {
-  
-  // +===== Scout ==========================================================+
-  // SC_TODO: global mesh gets internal linkage in sc++
-  // without this fix but common in scc. For a global struct
-  // there is no linkage qualifier.
-  if(getLangOpts().ScoutCPlusPlus &&
-      isa<MeshType>(VD->getType()) && !VD->hasExternalStorage()) {
-    return llvm::GlobalVariable::CommonLinkage;
-  }
-  // +======================================================================+
-
 
   GVALinkage Linkage = getContext().GetGVALinkageForVariable(VD);
   return getLLVMLinkageForDeclarator(VD, Linkage, IsConstant);

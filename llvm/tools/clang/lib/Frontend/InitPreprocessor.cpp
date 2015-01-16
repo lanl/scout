@@ -488,10 +488,6 @@ static void InitializePredefinedMacros(const TargetInfo &TI,
     Builder.defineMacro("__scout_version__",
                         "\"" SCOUT_VERSION_STRING " "
                         + getScoutFullCPPVersion() + "\"");
-
-    if (LangOpts.ScoutCPlusPlus) {
-      Builder.defineMacro("__scout_cxx__");
-    }
   }
   // +=======================================================================+
 

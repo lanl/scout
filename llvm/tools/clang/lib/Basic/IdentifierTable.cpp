@@ -149,7 +149,6 @@ static KeywordStatus getKeywordStatus(const LangOptions &LangOpts,
 
   // +==== Scout - keywords ==================================================+
   if (LangOpts.ScoutC && (Flags & KEYSCOUT)) return KS_Enabled;
-  else if (LangOpts.ScoutCPlusPlus && (Flags & KEYSCOUT)) return KS_Enabled;
   // +========================================================================+
   
   return KS_Disabled;
