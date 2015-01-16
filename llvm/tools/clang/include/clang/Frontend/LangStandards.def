@@ -154,9 +154,6 @@ LANGSTANDARD(cuda, "cuda",
 LANGSTANDARD(scoutc, "scout c",
              "Scout 1.X",
              LineComment | C99 | C11 | Digraphs | GNUMode | HexFloat)
-LANGSTANDARD(scoutcxx, "scout c++",
-             "Scout 1.X",
-             LineComment | CPlusPlus | Digraphs | GNUMode | HexFloat)
 // +=========================================================================+
 
 #undef LANGSTANDARD

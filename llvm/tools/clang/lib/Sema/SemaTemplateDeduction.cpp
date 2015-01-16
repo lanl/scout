@@ -1252,15 +1252,8 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
     case Type::RectilinearMesh:
     case Type::StructuredMesh:
     case Type::UnstructuredMesh: {
-      if (TDF & TDF_SkipNonDependent)
-        return Sema::TDK_Success;
-
-      if (TDF & TDF_IgnoreQualifiers) {
-        Param = Param.getUnqualifiedType();
-        Arg   = Arg.getUnqualifiedType();
-      }
-
-      return Param == Arg ? Sema::TDK_Success : Sema::TDK_NonDeducedMismatch;
+      assert(false && "parsing Scout in C++ mode");
+      return Sema::TDK_Success;
     }
 
     case Type::Window:

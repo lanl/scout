@@ -3435,8 +3435,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // If your command line option isn't behaving make sure it is
   // enabled below...
   
-  if (getToolChain().getDriver().CCCIsScoutC() ||
-      getToolChain().getDriver().CCCIsScoutCXX()) {
+  if (getToolChain().getDriver().CCCIsScoutC()) {
    
     // Enable debug flag 
     Args.AddAllArgs(CmdArgs, options::OPT_debug);

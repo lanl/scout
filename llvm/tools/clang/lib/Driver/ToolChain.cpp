@@ -413,12 +413,6 @@ void ToolChain::AddCXXStdlibLibArgs(const ArgList &Args,
                                     ArgStringList &CmdArgs) const {
   CXXStdlibType Type = GetCXXStdlibType(Args);
 
-  // +===== Scout ============================================================+  
-  if (getDriver().CCCIsScoutCXX()) {
-    AddScoutLibArgs(Args, CmdArgs);
-  }
-  // +========================================================================+  
-  
   switch (Type) {
   case ToolChain::CST_Libcxx:
     CmdArgs.push_back("-lc++");

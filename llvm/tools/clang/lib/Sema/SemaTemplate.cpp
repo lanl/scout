@@ -4137,24 +4137,7 @@ bool UnnamedLocalNoLinkageFinder::VisitTagDecl(const TagDecl *Tag) {
 
 // +===== Scout ==============================================================+
 bool UnnamedLocalNoLinkageFinder::VisitMeshDecl(const MeshDecl *Mesh) {
-  if (Mesh->getDeclContext()->isFunctionOrMethod()) {
-    S.Diag(SR.getBegin(),
-           S.getLangOpts().CPlusPlus11 ?
-             diag::warn_cxx98_compat_template_arg_local_type :
-             diag::ext_template_arg_local_type)
-      << S.Context.getTypeDeclType(Mesh) << SR;
-    return true;
-  }
-
-  if (!Mesh->hasNameForLinkage()) {
-    S.Diag(SR.getBegin(),
-           S.getLangOpts().CPlusPlus11 ?
-             diag::warn_cxx98_compat_template_arg_unnamed_type :
-             diag::ext_template_arg_unnamed_type) << SR;
-    S.Diag(Mesh->getLocation(), diag::note_template_unnamed_type_here);
-    return true;
-  }
-
+  assert(false && "parsing Scout in C++ mode");
   return false;
 }
 // +==========================================================================+

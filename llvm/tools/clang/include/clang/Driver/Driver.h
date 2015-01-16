@@ -60,8 +60,7 @@ class Driver {
     CPPMode,
     CLMode,
     // +===== Scout ============================================================+
-    ScoutCMode, 
-    ScoutCXXMode 
+    ScoutCMode
     // +========================================================================+
   } Mode;
 
@@ -142,9 +141,8 @@ public:
   bool IsCLMode() const { return Mode == CLMode; }
 
   // +===== Scout ============================================================+
-  bool CCCIsScout() const { return (Mode == ScoutCMode) || (Mode == ScoutCXXMode); }
+  bool CCCIsScout() const { return Mode == ScoutCMode; }
   bool CCCIsScoutC() const { return Mode == ScoutCMode; }
-  bool CCCIsScoutCXX() const { return Mode == ScoutCXXMode; }
   // +========================================================================+
 
   /// Only print tool bindings, don't build any jobs.

@@ -595,12 +595,6 @@ void DarwinClang::AddCXXStdlibLibArgs(const ArgList &Args,
                                       ArgStringList &CmdArgs) const {
   CXXStdlibType Type = GetCXXStdlibType(Args);
 
-  // +===== Scout ============================================================+
-  if (getDriver().CCCIsScoutCXX()) {
-    AddScoutLibArgs(Args, CmdArgs);
-  }
-  // +========================================================================+
-
   switch (Type) {
   case ToolChain::CST_Libcxx:
     CmdArgs.push_back("-lc++");
@@ -2436,16 +2430,7 @@ void Bitrig::AddClangCXXStdlibIncludeArgs(const ArgList &DriverArgs,
 }
 
 void Bitrig::AddCXXStdlibLibArgs(const ArgList &Args,
-                                 ArgStringList &CmdArgs) const {
-
-  // +===== Scout ============================================================+
-  // Add the scout standard libraries -- in this case the runtime and
-  // the standard library...
-  if (getDriver().CCCIsScoutCXX()) {
-    AddScoutLibArgs(Args, CmdArgs);    
-  }
-  // +========================================================================+
-  
+                                 ArgStringList &CmdArgs) const {  
   switch (GetCXXStdlibType(Args)) {
   case ToolChain::CST_Libcxx:
     CmdArgs.push_back("-lc++");
