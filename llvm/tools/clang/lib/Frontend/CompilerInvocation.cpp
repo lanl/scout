@@ -1010,7 +1010,6 @@ static InputKind ParseFrontendArgs(FrontendOptions &Opts, ArgList &Args,
       // It is not obvious but the language strings below must match those
       // provided in Driver/Types.def
       .Case("scout", IK_Scout_C)
-      .Case("scout++", IK_Scout_CXX)
       // +====================================================================+
       .Default(IK_None);
     if (DashX == IK_None)
@@ -1242,9 +1241,6 @@ void CompilerInvocation::setLangDefaults(LangOptions &Opts, InputKind IK,
     case IK_Scout_C:
       LangStd = LangStandard::lang_scoutc;
       break;
-    case IK_Scout_CXX:
-      LangStd = LangStandard::lang_scoutcxx;
-      break;
     // +======================================================================+
     }
   }
@@ -1396,7 +1392,6 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       case IK_ObjCXX:
       case IK_PreprocessedCXX:
       case IK_PreprocessedObjCXX:
-      case IK_Scout_CXX: // +===== Scout =====================================+
         if (!Std.isCPlusPlus())
           Diags.Report(diag::err_drv_argument_not_allowed_with)
             << A->getAsString(Args) << "C++/ObjC++";
@@ -1959,7 +1954,7 @@ bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,
   FileManager FileMgr(Res.getFileSystemOpts());
 
   // +===== Scout ============================================================+
-  if (DashX == IK_Scout_C || DashX == IK_Scout_CXX) {
+  if (DashX == IK_Scout_C) {
     // Implicitly include the Scout headers
     Res.getPreprocessorOpts().Includes.push_back("scout/scout.sch");
     Res.getPreprocessorOpts().Includes.push_back("scout/Runtime/Initialization.h");

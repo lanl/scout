@@ -324,7 +324,7 @@ void Parser::ParseImageBracketDeclarator(Declarator &D) {
                 attrs, T.getCloseLocation());
 }
 
-// only allow pass by pointer for scc and pass by ref for sc++
+// only allow pass by pointer for scc
 void Parser::ParseMeshParameterDeclaration(DeclSpec& DS) {
 
   ParsedType parsedType = DS.getRepAsType();

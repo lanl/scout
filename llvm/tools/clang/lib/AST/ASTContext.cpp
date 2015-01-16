@@ -8040,7 +8040,7 @@ static GVALinkage basicGVALinkageForFunction(const ASTContext &Context,
       // only static inline functions will...
       // by setting linkage to GVA_DiscardableODR it will be emitted
       // without optimization on and will be discarded if it is inlined
-      // with optimization on. This makes scc and sc++ behave the same
+      // with optimization on. This makes scc behave the same
       // with "linkonce_odr" for the stencil function
       return GVA_DiscardableODR;
     }

@@ -63,7 +63,7 @@ Driver::Driver(StringRef ClangExecutable,
 
   // +===== Scout ===============================================+
   // Compute the path to the scout resource directory.  This is
-  // relative to the location of the 'scc/sc++' binary.
+  // relative to the location of the 'scc' binary.
   {
     StringRef ScResourceDir(SCOUT_RESOURCE_DIR);
     SmallString<128> P(Dir);
@@ -115,8 +115,7 @@ void Driver::ParseDriverMode(ArrayRef<const char *> Args) {
         .Case("gcc", GCCMode)
         .Case("g++", GXXMode)
         .Case("cpp", CPPMode)
-        .Case("cl",  CLMode)
-        .Case("scout++", ScoutCXXMode)  // +===== Scout ======================+      
+        .Case("cl",  CLMode)   
         .Case("scout", ScoutCMode)      // +===== Scout ======================+
         .Default(~0U);
 

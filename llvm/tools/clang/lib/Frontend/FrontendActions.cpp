@@ -685,7 +685,6 @@ void PrintPreambleAction::ExecuteAction() {
   case IK_CUDA:
   // +===== Scout ============================================================+
   case IK_Scout_C:
-  case IK_Scout_CXX:
   // +========================================================================+
     break;
 

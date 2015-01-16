@@ -1117,8 +1117,6 @@ def err_not_array_renderall_elements:Error<
     "mesh field is not an array type">;
 //def err_expected_mesh_param_token:Error<
 //   "expected ']' or ':' while parsing mesh parameter">;
-def err_expected_mesh_param_amp:Error<
-    "mesh parameters must be declared as references in sc++">;
 def err_expected_mesh_param_star:Error<
     "mesh parameters must be declared as pointers in scc">;  
 def err_expected_star_mesh:Error<
