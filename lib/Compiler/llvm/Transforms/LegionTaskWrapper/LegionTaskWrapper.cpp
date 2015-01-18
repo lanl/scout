@@ -17,7 +17,6 @@
 #include "llvm/ADT/SmallVector.h"
 #include <cassert>
 #include <llvm/IR/ValueSymbolTable.h>
-#include "legion/lsci.h"
 
 using namespace llvm;
 
@@ -142,8 +141,8 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
 
       // Go through main_task() instructions and don't store argc and argv into argc.addr and argv.addr
       // since the argc and argv are not args to main_task().
-      // TODO fix codegen to store argc and argv in task args in lsci_main(), then use
-      // liblsci interface to to allow you to get them back within main_task().
+      // TODO fix codegen to store argc and argv in task args in sclegion_main(), then use
+      // sclegion interface to to allow you to get them back within main_task().
 
       Instruction* argc_store = NULL;
       Instruction* argv_store = NULL;
@@ -179,11 +178,11 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       //errs() << "erasing argv.addr\n";
       argv_store->eraseFromParent();
 
-      // In main_task() we need to subst a call to LegionTaskInitFunctionX(lsci_unimesh_t*, char* , char* ).
+      // In main_task() we need to subst a call to LegionTaskInitFunctionX(sclegion_unimesh_t*, char* , char* ).
       // instead of the original function call, but in order to do that, you need to be able to pass it the
       // context and runtime, which we need to get first from the task_args that have been passed to main_task()
 
-      // Go to beginning of main_task and get lsci runtime and context
+      // Go to beginning of main_task and get sclegion runtime and context
       BasicBlock &firstBlock = mainTaskFunc->front();
       llvm::Instruction& firstInst = firstBlock.front();
       // inserts before first instruction
@@ -191,7 +190,6 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       
       //mainTaskFunc->dump();
 
-      // get lsci_task_args_t variable
       Function::arg_iterator arg_iter = mainTaskFunc->arg_begin();
       
       Value* task = arg_iter++;
@@ -227,7 +225,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       //M.dump();
 
       // Go through blocks in main_task and if find call to a func that is a task,
-      // substitute with a call to LegionTaskInitFunctionX(lsci_unimesh_t*, char* context, char* runtime ).
+      // substitute with a call to LegionTaskInitFunctionX(sclegion_unimesh_t*, char* context, char* runtime ).
 
       // for each basic block in main_task()
       for(BB = mainTaskFunc->begin() ; BB != mainTaskFunc->end(); ++BB) {
@@ -254,7 +252,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
             // get function name and look it up to see if it is a task. 
             NamedMDNode* NMDN = M.getOrInsertNamedMetadata("scout.tasks");
 
-            Value* lsciUnimeshVal = nullptr;
+            Value* UnimeshVal = nullptr;
 
             // Go through each MDNode in the NamedMDNodes and search for metadata related to task function
             // Metadata for scout.tasks is in the form of a small vector of 3 Value*:  taskID, taskFunc and taskInit
@@ -272,25 +270,21 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
               if (FN == calledFN) {
                 //errs() << "This is a task\n";
 
-                // get metadata connecting mesh alloc and lsci_unimesh_t alloc
-                NamedMDNode* lsciNMDN = M.getOrInsertNamedMetadata("scout.lscimeshmd");
+                // get metadata connecting mesh alloc and sclegion_unimesh_t alloc
+                NamedMDNode* NMDN = M.getOrInsertNamedMetadata("scout.legion.meshmd");
 
-                for (unsigned i = 0, e = lsciNMDN->getNumOperands(); i != e; ++i) {
+                for (unsigned i = 0, e = NMDN->getNumOperands(); i != e; ++i) {
 
                   // get the ith MDNode operand of the NamedMDNode 
-                  MDNode *lsciMDN = cast< MDNode >(lsciNMDN->getOperand(i));
+                  MDNode *MDN = cast< MDNode >(NMDN->getOperand(i));
 
                   // 0th Operand  of MDNodes is name of mesh alloc
-                  MDString* allocMDStr = cast < MDString > (lsciMDN->getOperand(0));
+                  MDString* allocMDStr = cast < MDString > (MDN->getOperand(0));
                   StringRef allocStr = allocMDStr->getString();
                   //errs() << "allocStr:" << allocStr << "\n";
 
-                  //MDString* lsciallocMDStr = cast < MDString > (lsciMDN->getOperand(1));
-                  //StringRef lsciallocStr = lsciallocMDStr->getString();
-                  //errs() << "lsciallocStr:" << lsciallocStr << "\n";
-
                   // if task argument string is in the def-use chain of the metadata string value,
-                  // then get the lsci_unimesh_t value
+                  // then get the sclegion_unimesh_t value
                   // if (allocStr.equals(argStr)) 
                   Value* allocVal = mainTaskFunc->getValueSymbolTable().lookup(allocStr);
                   Instruction* argInst = dyn_cast<Instruction>(argVal);
@@ -304,26 +298,26 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
                   if (isDefinedFrom(argInst, allocInst)) {
                     //errs() << "Found match btwn task arg val and metadata str:" << argVal->getName() << "\n";
 
-                    // 1st Operand  of MDNodes is name of lsci_unimesh_t alloc
-                    MDString* lsciUnimeshMDStr = cast < MDString > (lsciMDN->getOperand(1));
-                    StringRef lsciUnimeshStr = lsciUnimeshMDStr->getString();
-                    //errs() << "Found lsci_unimesh_t str:" << lsciUnimeshStr << "\n";
+                    // 1st Operand  of MDNodes is name of sclegion_unimesh_t alloc
+                    MDString* UnimeshMDStr = cast < MDString > (MDN->getOperand(1));
+                    StringRef UnimeshStr = UnimeshMDStr->getString();
+                    //errs() << "Found sclegion_unimesh_t str:" << UnimeshStr << "\n";
 
-                    // lookup lsci_unimesh_t alloc name to get value
-                    lsciUnimeshVal = mainTaskFunc->getValueSymbolTable().lookup(lsciUnimeshStr);
-                    //lsciUnimeshVal = F.getValueSymbolTable().lookup(lsciUnimeshStr);
+                    // lookup sclegion_unimesh_t alloc name to get value
+                    UnimeshVal = mainTaskFunc->getValueSymbolTable().lookup(UnimeshStr);
+                    //UnimeshVal = F.getValueSymbolTable().lookup(UnimeshStr);
                   }
 
-                  if (lsciUnimeshVal) break;
+                  if (UnimeshVal) break;
                 }
 
-                assert (lsciUnimeshVal && "no val for lsci_unimesh_t");
+                assert (UnimeshVal && "no val for sclegion_unimesh_t");
 
                 // create the arguments to the call to the LegionTaskInitFunction
-                // (lsci_mesh, any other args, then context and runtime)
+                // (sclegion_mesh, any other args, then context and runtime)
 
                 std::vector<llvm::Value*> Args = {}; 
-                Args.push_back(lsciUnimeshVal);
+                Args.push_back(UnimeshVal);
 
                 // Go through each operand after mesh to original call to task and add it
                 // Also don't want last operand, because that is the callee.
@@ -345,7 +339,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
                 builder.CreateCall(legionTaskInitFN, ArrayRef<llvm::Value*> (Args));
                 instToErase.push_back(&callInst);
               } 
-              if (lsciUnimeshVal) break;
+              if (UnimeshVal) break;
             }
           }
         }
@@ -357,7 +351,7 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
         }
       }
 
-      // make main() call lsci_main() at the end to do lsci startup stuff
+      // make main() call sclegion_main() at the end to do legion startup stuff
 
       Function::BasicBlockListType &blocks = F.getBasicBlockList();
       llvm::BasicBlock *newheader = BasicBlock::Create(M.getContext(), "entry");
@@ -372,14 +366,13 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       args.push_back(argcValue);
       args.push_back(argvValue);
 
-      // call lsci_main() 
-      llvm::Function* lsci_mainFunc;
-      lsci_mainFunc = M.getFunction("lsci_main"); 
-      CallInst* lsciCall =  CallInst::Create(lsci_mainFunc, args);
-      newheader->getInstList().push_back(lsciCall);
+      llvm::Function* mainFunc;
+      mainFunc = M.getFunction("sclegion_main");
+      CallInst* call =  CallInst::Create(mainFunc, args);
+      newheader->getInstList().push_back(call);
 
       // create ret instruction
-      ReturnInst* retInst = ReturnInst::Create(M.getContext(), lsciCall);
+      ReturnInst* retInst = ReturnInst::Create(M.getContext(), call);
       newheader->getInstList().push_back(retInst);
 
     }

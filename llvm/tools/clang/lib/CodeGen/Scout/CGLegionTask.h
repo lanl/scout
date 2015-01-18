@@ -57,7 +57,6 @@
 
 #include "CGBuilder.h"
 #include "CodeGenModule.h"
-#include "Scout/CGLegionRuntime.h"
 #include "Scout/CGLegionCRuntime.h"
 
 namespace llvm {

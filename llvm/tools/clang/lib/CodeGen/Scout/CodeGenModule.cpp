@@ -57,7 +57,6 @@
 #include <limits>
 
 #include "clang/AST/Scout/MeshDecl.h"
-#include "Scout/CGLegionRuntime.h"
 #include "Scout/CGLegionCRuntime.h"
 #include "Scout/CGPlotRuntime.h"
 #include "CodeGenFunction.h"
@@ -70,35 +69,35 @@ void CodeGenModule::UpdateCompletedType(const MeshDecl *MD) {
   Types.UpdateCompletedType(MD);
 }
 
-llvm::Function *CodeGenModule::lsciMainFunction() {
+llvm::Function *CodeGenModule::LegionMainFunction() {
 
-  std::string funcName = "lsci_main";
+  std::string funcName = "sclegion_main";
 
-  llvm::Function *lsciMainFunc = TheModule.getFunction(funcName);
-  if(!lsciMainFunc) {
-   std::vector<llvm::Type*> args = {LegionRuntime->Int32Ty, LegionRuntime->PointerTy(LegionRuntime->PointerTy(LegionRuntime->Int8Ty))};
+  llvm::Function *MainFunc = TheModule.getFunction(funcName);
+  if(!MainFunc) {
+   std::vector<llvm::Type*> args = {LegionCRuntime->Int32Ty, LegionCRuntime->PointerTy(LegionCRuntime->PointerTy(LegionCRuntime->Int8Ty))};
 
    llvm::FunctionType *FTy =
    llvm::FunctionType::get(llvm::Type::getInt32Ty(getLLVMContext()),
                             args, false /* not var args */);
 
-   lsciMainFunc = llvm::Function::Create(FTy,
+   MainFunc = llvm::Function::Create(FTy,
                                      llvm::Function::ExternalLinkage,
                                      funcName,
                                      &TheModule);
 
    // name the two args argc and argv
-   llvm::Function::arg_iterator argiter = lsciMainFunc->arg_begin();
+   llvm::Function::arg_iterator argiter = MainFunc->arg_begin();
    llvm::Value* int32_argc = argiter++;
    int32_argc->setName("argc");
    llvm::Value* ptr_argv = argiter++;
    ptr_argv->setName("argv");
 
   }
-  return lsciMainFunc;
+  return MainFunc;
 }
 
-void CodeGenModule::startLsciMainFunction(){
+void CodeGenModule::startLegionMainFunction(){
   using namespace std;
   using namespace llvm;
 
@@ -115,9 +114,9 @@ void CodeGenModule::startLsciMainFunction(){
                    "main_task",
                    &M);
   
-  Function* lsciMainFunc = lsciMainFunction();
+  Function* MainFunc = LegionMainFunction();
   BasicBlock* BB =
-  BasicBlock::Create(C, "entry", lsciMainFunc);
+  BasicBlock::Create(C, "entry", MainFunc);
   B.SetInsertPoint(BB);
   
   ValueVec args =
@@ -125,18 +124,18 @@ void CodeGenModule::startLsciMainFunction(){
     
   B.CreateCall(R.ScInitFunc(), args);
   
-  BB = llvm::BasicBlock::Create(C, "end", lsciMainFunc);
+  BB = llvm::BasicBlock::Create(C, "end", MainFunc);
 
-  llvm::BasicBlock &firstBlock = lsciMainFunc->front();
+  llvm::BasicBlock &firstBlock = MainFunc->front();
   B.SetInsertPoint(&firstBlock);
   B.CreateBr(BB);
   
   B.SetInsertPoint(BB);
-  finishLsciMainFunction();
+  finishLegionMainFunction();
 }
 
-void CodeGenModule::regTaskInLsciMainFunction(int taskID,
-                                              llvm::Function* taskFunc){
+void CodeGenModule::regTaskInLegionMainFunction(int taskID,
+                                                llvm::Function* taskFunc){
   using namespace std;
   using namespace llvm;
   
@@ -145,10 +144,10 @@ void CodeGenModule::regTaskInLsciMainFunction(int taskID,
   IRBuilder<> B(TheModule.getContext());
   CGLegionCRuntime& R = getLegionCRuntime();
   
-  Function* lsciMainFunc = lsciMainFunction();
+  Function* MainFunc = LegionMainFunction();
   
   // Go through and find first block in main() 
-  BasicBlock &firstBlock = lsciMainFunc->front();
+  BasicBlock &firstBlock = MainFunc->front();
 
   // Find place to insert, at end of this block
   B.SetInsertPoint(&firstBlock);
@@ -164,14 +163,14 @@ void CodeGenModule::regTaskInLsciMainFunction(int taskID,
   B.CreateCall(R.ScRegisterTaskFunc(), args);
 }
 
-void CodeGenModule::finishLsciMainFunction() {
+void CodeGenModule::finishLegionMainFunction() {
   CodeGenFunction CGF(*this);
-  llvm::Function* lsciMainFunc = lsciMainFunction();
+  llvm::Function* MainFunc = LegionMainFunction();
   llvm::IRBuilder<> Builder(TheModule.getContext());
   CGLegionCRuntime& r = getLegionCRuntime();
 
   // Go through and find last block in main()
-  llvm::BasicBlock &lastBlock = lsciMainFunc->back();
+  llvm::BasicBlock &lastBlock = MainFunc->back();
 
   // Find place to insert, after last block
   Builder.SetInsertPoint(&lastBlock);
@@ -180,7 +179,7 @@ void CodeGenModule::finishLsciMainFunction() {
   llvm::AllocaInst* ptr_argc_addr = Builder.CreateAlloca(Int32Ty, 0, "argc.addr");
   llvm::AllocaInst* ptr_argv_addr = Builder.CreateAlloca(llvm::PointerType::get(llvm::PointerType::get(Int8Ty, 0), 0), 0, "argv.addr");
 
-  llvm::Function::arg_iterator args = lsciMainFunc->arg_begin();
+  llvm::Function::arg_iterator args = MainFunc->arg_begin();
   llvm::Value* argcVal = args++;
   llvm::Value* argvVal = args++;
 
@@ -192,13 +191,13 @@ void CodeGenModule::finishLsciMainFunction() {
   llvm::LoadInst* load_argc = Builder.CreateLoad(ptr_argc_addr);
   llvm::LoadInst* load_argv = Builder.CreateLoad(ptr_argv_addr);
 
-  // call lsci_start(argc, argv)
+  // call sclegion_start(argc, argv)
   std::vector<llvm::Value*> params;
   params.push_back(load_argc);
   params.push_back(load_argv);
   llvm::CallInst* retVal = Builder.CreateCall(r.ScStartFunc(), params);
 
-  // return result of lsci_start()
+  // return result of sclegion_start()
   Builder.CreateRet(retVal);
   //Builder.CreateRet(llvm::ConstantInt::get(Int32Ty, 0));
 }

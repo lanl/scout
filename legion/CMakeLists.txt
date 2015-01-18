@@ -80,17 +80,6 @@ list(APPEND high_level_src
   ${LG_RT_DIR}/garbage_collection.cc
 )
 
-list(APPEND lsci_src ${SCOUT_SRC_DIR}/legion/liblsci/lib/lsci.cc)
-
-include_directories(
-  liblsci/lib/
-  runtime
-)
-
-add_library(lsci STATIC ${low_level_src} ${mapper_src} ${high_level_src} ${lsci_src})
-add_dependencies(lsci scc)
-install(TARGETS lsci DESTINATION lib)
-
 list(APPEND sclegion_src ${SCOUT_SRC_DIR}/legion/sclegion/sclegion.cc)
 
 include_directories(

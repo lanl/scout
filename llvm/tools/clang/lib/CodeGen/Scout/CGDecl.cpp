@@ -70,11 +70,9 @@
 #include "llvm/IR/Module.h"
 #include "clang/AST/Type.h"
 #include "Scout/CGScoutRuntime.h"
-#include "Scout/CGLegionRuntime.h"
 #include "Scout/CGLegionCRuntime.h"
 #include <stdio.h>
 #include <cassert>
-#include "legion/lsci.h"
 
 using namespace std;
 using namespace clang;
@@ -363,9 +361,8 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     SmallVector<llvm::Value*, 3> Dimensions;
     GetMeshDimensions(MT, Dimensions);
 
-    llvm::Value* lsciUnimesh = 0;
+    llvm::Value* Unimesh = 0;
 
-    // call lsci_unimesh_create()
     if(CGM.getCodeGenOpts().ScoutLegionSupport) {
       llvm::SmallVector< llvm::Value *, 6 > Args;
 
@@ -392,20 +389,20 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
       llvm::Function *F = CGM.getLegionCRuntime().ScUniformMeshCreateFunc();
 
-      lsciUnimesh = Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args), "lsci.mesh");
+      Unimesh = Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args), "mesh");
       
       // Create metadata
       llvm::NamedMDNode *MeshMD;
-      MeshMD = CGM.getModule().getOrInsertNamedMetadata("scout.lscimeshmd");
-      SmallVector<llvm::Metadata*, 2> lsciMeshInfoMD;
+      MeshMD = CGM.getModule().getOrInsertNamedMetadata("scout.legion.meshmd");
+      SmallVector<llvm::Metadata*, 2> MeshInfoMD;
       
       llvm::MDString *MDMeshName = llvm::MDString::get(getLLVMContext(), MeshName);
-      lsciMeshInfoMD.push_back(MDMeshName);
+      MeshInfoMD.push_back(MDMeshName);
       
-      llvm::MDString *MDlsciMeshName = llvm::MDString::get(getLLVMContext(), lsciUnimesh->getName());
-      lsciMeshInfoMD.push_back(MDlsciMeshName);
+      llvm::MDString *MDLegionMeshName = llvm::MDString::get(getLLVMContext(), Unimesh->getName());
+      MeshInfoMD.push_back(MDLegionMeshName);
       
-      MeshMD->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Metadata*>(lsciMeshInfoMD)));
+      MeshMD->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Metadata*>(MeshInfoMD)));
     }
 
     bool hasCells = false;
@@ -505,14 +502,13 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
         Builder.CreateStore(val, field);
       }
       
-      // call lsci_unimesh_add_field()
       if(CGM.getCodeGenOpts().ScoutLegionSupport) {
         llvm::SmallVector< llvm::Value *, 4 > Args;
         llvm::Function *F = CGM.getLegionCRuntime().ScUniformMeshAddFieldFunc();
 
-        assert(lsciUnimesh && "should have created this earlier");
+        assert(Unimesh && "should have created this earlier");
 
-        Args.push_back(lsciUnimesh);
+        Args.push_back(Unimesh);
 
         Args.push_back(Builder.CreateGlobalStringPtr(MeshFieldName));
         
@@ -565,7 +561,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       llvm::Function *F = CGM.getLegionCRuntime().ScUniformMeshInitFunc();
     
       llvm::SmallVector< llvm::Value *, 1 > Args;
-      Args.push_back(lsciUnimesh);
+      Args.push_back(Unimesh);
       Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args));
     }
     

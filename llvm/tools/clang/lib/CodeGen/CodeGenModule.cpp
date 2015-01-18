@@ -59,7 +59,6 @@
 
 // ====== Scout =========================
 #include "Scout/CGScoutRuntime.h"
-#include "Scout/CGLegionRuntime.h"
 #include "Scout/CGLegionCRuntime.h"
 #include "Scout/CGPlotRuntime.h"
 // ======================================
@@ -96,7 +95,7 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
       // ===== Scout =========================================
       ScoutABI(createScoutABI(*this)),
       ScoutRuntime(nullptr),
-      LegionRuntime(nullptr),
+      LegionCRuntime(nullptr),
       // =====================================================
       OpenCLRuntime(nullptr), OpenMPRuntime(nullptr),
       CUDARuntime(nullptr), DebugInfo(nullptr), ARCData(nullptr),
@@ -140,15 +139,15 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
   if(isScoutLang(LangOpts)) {
     createScoutRuntime();
     createPlotRuntime();
-    createLegionRuntime();
-    createLegionCRuntime();
     
     if (CodeGenOpts.ScoutLegionSupport) {
-      // start lsci_main() function for doing
+      createLegionCRuntime();
+      
+      // start legion_main() function for doing
       // Legion task registration and Legion startup.  Once this is
       // started, each time we see a task while doing code gen, add to
       // this function to register the legion task.
-      startLsciMainFunction();
+      startLegionMainFunction();
     }
   }
   // +========================================================================+
@@ -209,10 +208,6 @@ void CodeGenModule::createScoutRuntime() {
 
 void CodeGenModule::createPlotRuntime() {
   PlotRuntime = new CGPlotRuntime(*this);
-}
-
-void CodeGenModule::createLegionRuntime() {
-  LegionRuntime = new CGLegionRuntime(*this);
 }
 
 void CodeGenModule::createLegionCRuntime() {

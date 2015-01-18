@@ -20,7 +20,6 @@
 #include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "Scout/CGMeshLayout.h"
-#include "Scout/CGLegionRuntime.h"
 #include "Scout/CGPlotRuntime.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include <stdio.h>
@@ -891,7 +890,6 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   typedef vector<llvm::Type*> TypeVec;
 
   CGBuilderTy& B = Builder;
-  CGLegionRuntime& R = CGM.getLegionRuntime();
   LLVMContext& C = getLLVMContext();
   
   Value* One = ConstantInt::get(Int64Ty, 1);
@@ -914,10 +912,11 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   const VarDecl* mvd = imp->getMeshVarDecl();
   
   TypeVec params =
-  {R.PointerTy(ConvertType(mvd->getType())),
-    R.PointerTy(Int8Ty), Int64Ty, Int64Ty};
+  {llvm::PointerType::get(ConvertType(mvd->getType()), 0),
+    llvm::PointerType::get(Int8Ty, 0), Int64Ty, Int64Ty};
 
-  llvm::FunctionType* ft = llvm::FunctionType::get(R.VoidTy, params, false);
+  llvm::FunctionType* ft =
+  llvm::FunctionType::get(llvm::Type::getVoidTy(C), params, false);
   
   Function* queryFunc = Function::Create(ft,
                                          Function::ExternalLinkage,

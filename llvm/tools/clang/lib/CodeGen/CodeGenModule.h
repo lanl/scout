@@ -85,7 +85,6 @@ class CGDebugInfo;
 // ===== Scout ============
 class CGScoutABI;
 class CGScoutRuntime;
-class CGLegionRuntime;
 class CGLegionCRuntime;
 class CGPlotRuntime;
 // ========================
@@ -310,7 +309,6 @@ private:
   std::unique_ptr<CGScoutABI> ScoutABI;
   CGScoutRuntime* ScoutRuntime;
   CGPlotRuntime* PlotRuntime;
-  CGLegionRuntime* LegionRuntime;
   CGLegionCRuntime* LegionCRuntime;
   // ==================================
   CGOpenCLRuntime* OpenCLRuntime;
@@ -464,7 +462,6 @@ private:
   // ===== Scout ==========================
   void createScoutRuntime();
   void createPlotRuntime();
-  void createLegionRuntime();
   void createLegionCRuntime();
   // ======================================
   void createOpenCLRuntime();
@@ -559,21 +556,15 @@ public:
   }
   
   /// getLegionRuntime() - Return a reference to the configured legion runtime.
-  CGLegionRuntime &getLegionRuntime() {
-    assert(LegionRuntime != 0);
-    return *LegionRuntime;
-  }
-  
-  /// getLegionRuntime() - Return a reference to the configured legion runtime.
   CGLegionCRuntime &getLegionCRuntime() {
     assert(LegionCRuntime != 0);
     return *LegionCRuntime;
   }
 
-  llvm::Function *lsciMainFunction();
-  void startLsciMainFunction();
-  void regTaskInLsciMainFunction(int taskID, llvm::Function* task);
-  void finishLsciMainFunction();
+  llvm::Function *LegionMainFunction();
+  void startLegionMainFunction();
+  void regTaskInLegionMainFunction(int taskID, llvm::Function* task);
+  void finishLegionMainFunction();
 
   uint32_t NextLegionTaskId = 1;
   // ========================================================================

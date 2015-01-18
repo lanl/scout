@@ -56,7 +56,6 @@
 #include "CodeGenModule.h"
 #include "CodeGenFunction.h"
 #include "Scout/ASTVisitors.h"
-#include "legion/lsci.h"
 
 using namespace clang;
 using namespace CodeGen;
@@ -111,7 +110,7 @@ void CGLegionTask::EmitLegionTask() {
  
   assert(legionTaskFunc); 
   
-  CGM.regTaskInLsciMainFunction(taskId, legionTaskFunc);
+  CGM.regTaskInLegionMainFunction(taskId, legionTaskFunc);
 }
 
 void CGLegionTask::EmitLegionTaskInitFunction() {
