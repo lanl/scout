@@ -66,6 +66,6 @@ set_property(TEST ${tname} PROPERTY FAIL_REGULAR_EXPRESSION
 find_package(EXPECT)
 if(EXPECT_FOUND)
   set (name debugflag)
-  set(tname sc++_driver_${name})
+  set(tname scc_driver_${name})
   add_test(${tname} ${SRC_PATH}/debugflag.exp ${SRC_PATH} "scc" "sc")
 endif()

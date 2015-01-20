@@ -108,7 +108,6 @@ endif()
 ##### SCOUT COMMANDS
 #
   set(CMAKE_SCC_COMPILER @SCOUT_INSTALL_PREFIX@/bin/scc)
-  set(CMAKE_SCXX_COMPILER @SCOUT_INSTALL_PREFIX@/bin/sc++)
 #
 #####
 

@@ -194,14 +194,14 @@ set_property(TEST ${tname} PROPERTY WILL_FAIL)
 #set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
 set(name non-pure-task)
-set(tname sc++_error_${name})
+set(tname scc_error_${name})
 add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
     "error: non-pure task function")
 set_property(TEST ${tname} PROPERTY WILL_FAIL)
 
 set(name non-pure-task2)
-set(tname sc++_error_${name})
+set(tname scc_error_${name})
 add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
     "error: non-pure task function")
