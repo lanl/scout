@@ -73,14 +73,8 @@ void Lexer::ScoutEnable(Preprocessor &PP) {
     }
     ext.insert(0, 1, bufferName[i]);
   }
-  // SC_TODO : Why do we need this but Clang doesn't?
-  // and why the special case for buffername Parse???
-  if (bufferName != "Parse" && ext != "sc" && ext != "sch" &&
-      ext != "scpp" && "schpp") {
-    LangOpts.ScoutC = false;
-  } else {
-    LangOpts.ScoutC         = true;
-  }
+
+  LangOpts.ScoutC = true;
 }
 
 // If we are lexing from a non-Scout file, then we need to treat Scout

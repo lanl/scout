@@ -8,7 +8,6 @@ set(LLVM_LINK_COMPONENTS
 
 add_clang_library(scoutParse
   ParseDecl.cpp
-  ParseDeclCXX.cpp
   ParseExpr.cpp
   ParseStmt.cpp
   Parser.cpp
