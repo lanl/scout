@@ -31,11 +31,6 @@ class MicrosoftNumberingContext : public MangleNumberingContext {
   llvm::DenseMap<const Type *, unsigned> ManglingNumbers;
   unsigned LambdaManglingNumber;
   unsigned StaticLocalNumber;
-  
-  // +===== Scout ============================================================+
-  llvm::DenseMap<IdentifierInfo*, unsigned> MeshManglingNumbers;
-  // +========================================================================+
-
 public:
   MicrosoftNumberingContext()
       : MangleNumberingContext(), LambdaManglingNumber(0),
@@ -64,11 +59,6 @@ public:
     return MSLocalManglingNumber;
   }
   
-  // +===== Scout ============================================================+
-  virtual unsigned getManglingNumber(const MeshDecl *MD){
-    return ++MeshManglingNumbers[MD->getIdentifier()];
-  }
-  // +========================================================================+
 };
 
 class MicrosoftCXXABI : public CXXABI {

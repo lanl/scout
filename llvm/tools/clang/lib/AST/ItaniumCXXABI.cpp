@@ -54,11 +54,6 @@ static const IdentifierInfo *findAnonymousUnionVarDeclName(const VarDecl& VD) {
 /// literals within a particular context.
 class ItaniumNumberingContext : public MangleNumberingContext {
   llvm::DenseMap<const Type *, unsigned> ManglingNumbers;
-
-  // +===== Scout ============================================================+
-  llvm::DenseMap<IdentifierInfo*, unsigned> MeshManglingNumbers;
-  // +========================================================================+
-
   llvm::DenseMap<const IdentifierInfo *, unsigned> VarManglingNumbers;
   llvm::DenseMap<const IdentifierInfo *, unsigned> TagManglingNumbers;
 
@@ -97,12 +92,6 @@ public:
   unsigned getManglingNumber(const TagDecl *TD, unsigned) override {
     return ++TagManglingNumbers[TD->getIdentifier()];
   }
-  
-  // +===== Scout ============================================================+
-  virtual unsigned getManglingNumber(const MeshDecl *MD){
-    return ++MeshManglingNumbers[MD->getIdentifier()];
-  }
-  // +========================================================================+
 };
 
 class ItaniumCXXABI : public CXXABI {

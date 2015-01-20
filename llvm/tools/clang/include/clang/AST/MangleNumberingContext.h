@@ -27,9 +27,6 @@ class IdentifierInfo;
 class TagDecl;
 class Type;
 class VarDecl;
-// +===== Scout ==============================================================+
-class MeshDecl;
-// +==========================================================================+
 
 /// \brief Keeps track of the mangled names of lambda expressions and block
 /// literals within a particular context.
@@ -59,11 +56,6 @@ public:
   virtual unsigned getManglingNumber(const TagDecl *TD,
                                      unsigned MSLocalManglingNumber) = 0;
       
-  // +===== Scout ============================================================+
-  // \brief Retrieve the mangling number of a static local variable within
-  // this context.
-  virtual unsigned getManglingNumber(const MeshDecl *MD) = 0;
-  // +========================================================================+
 };
 
 } // end namespace clang
