@@ -74,7 +74,12 @@ void Lexer::ScoutEnable(Preprocessor &PP) {
     ext.insert(0, 1, bufferName[i]);
   }
 
-  LangOpts.ScoutC = true;
+  if (bufferName != "Parse" && ext != "sc" && ext != "sch"){
+    LangOpts.ScoutC = false;
+  }
+  else{
+    LangOpts.ScoutC = true;
+  }
 }
 
 // If we are lexing from a non-Scout file, then we need to treat Scout
