@@ -623,18 +623,6 @@ namespace clang {
 
     void setQualifierInfo(NestedNameSpecifierLoc QualifierLoc);
 
-    unsigned getNumTemplateParameterLists() const {
-      return hasExtInfo() ? getExtInfo()->NumTemplParamLists : 0;
-    }
-
-    TemplateParameterList *getTemplateParameterList(unsigned i) const {
-      assert(i < getNumTemplateParameterLists());
-      return getExtInfo()->TemplParamLists[i];
-    }
-
-    void setTemplateParameterListsInfo(ASTContext &Context, unsigned NumTPLists,
-                                       TemplateParameterList **TPLists);
-
     // Implement isa/cast/dyncast/etc.
     static bool classof(const Decl *D) { return classofKind(D->getKind()); }
     static bool classofKind(Kind K) { return K >= firstMesh && K <= lastMesh; }

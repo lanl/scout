@@ -27,14 +27,6 @@ static bool isFieldOrIndirectField(Decl::Kind K) {
   return FieldDecl::classofKind(K) || IndirectFieldDecl::classofKind(K);
 }
 
-template <typename DeclT>
-static SourceLocation getTemplateOrInnerLocStart(const DeclT *decl) {
-  if (decl->getNumTemplateParameterLists() > 0)
-    return decl->getTemplateParameterList(0)->getTemplateLoc();
-  else
-    return decl->getInnerLocStart();
-}
-
 //===----------------------------------------------------------------------===//
 // MeshDecl Implementation
 //===----------------------------------------------------------------------===//
@@ -42,7 +34,7 @@ static SourceLocation getTemplateOrInnerLocStart(const DeclT *decl) {
 //
 
 SourceLocation MeshDecl::getOuterLocStart() const {
-  return getTemplateOrInnerLocStart(this);
+  return getInnerLocStart();
 }
 
 SourceRange MeshDecl::getSourceRange() const {
@@ -111,17 +103,7 @@ void MeshDecl::setQualifierInfo(NestedNameSpecifierLoc QualifierLoc) {
   }
 }
 
-void MeshDecl::setTemplateParameterListsInfo(ASTContext &Context,
-                                             unsigned NumTPLists,
-                                             TemplateParameterList **TPLists) {
-  assert(NumTPLists > 0);
-  // Make sure the extended decl info is allocated.
-  if (!hasExtInfo())
-    // Allocate external info struct.
-    TypedefNameDeclOrQualifier = new (getASTContext()) ExtInfo;
-  // Set the template parameter lists info.
-  getExtInfo()->setTemplateParameterListsInfo(Context, NumTPLists, TPLists);
-}
+
 
 
 
