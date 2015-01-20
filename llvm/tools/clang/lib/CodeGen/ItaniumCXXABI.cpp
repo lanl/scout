@@ -2473,18 +2473,6 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty) {
     VTableName = "_ZTVN10__cxxabiv116__enum_type_infoE";
     break;
 
-  // +===== Scout ==============================================================+
-  case Type::UniformMesh:
-  case Type::RectilinearMesh:
-  case Type::StructuredMesh:
-  case Type::UnstructuredMesh:
-  case Type::Window:
-  case Type::Image:
-  case Type::Query:
-    VTableName = ClassTypeInfo;
-    break; 
-  // +==========================================================================+
-
   case Type::Record: {
     const CXXRecordDecl *RD =
       cast<CXXRecordDecl>(cast<RecordType>(Ty)->getDecl());
@@ -2690,17 +2678,6 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
     // Itanium C++ ABI 2.9.5p5:
     // abi::__enum_type_info adds no data members to std::type_info.
     break;
-
-  // +===== Scout ==============================================================+
-  case Type::UniformMesh:
-  case Type::RectilinearMesh:
-  case Type::StructuredMesh:
-  case Type::UnstructuredMesh:
-  case Type::Window:
-  case Type::Image:
-  case Type::Query:
-    break;
-  // +==========================================================================+
 
   case Type::Record: {
     const CXXRecordDecl *RD =

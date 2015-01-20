@@ -3487,16 +3487,7 @@ static void HandleTagNumbering(Sema &S, const TagDecl *Tag, Scope *TagScope) {
 
 // +===== Scout ==============================================================+
 static void HandleMeshNumbering(Sema &S, const MeshDecl *MD) {
-  if (! S.Context.getLangOpts().CPlusPlus)
     return;
-
-  // If this tag isn't a direct child of a class, number it if it is local.
-  Decl *ManglingContextDecl;
-  if (MangleNumberingContext *MCtx =
-          S.getCurrentMangleNumberContext(MD->getDeclContext(),
-                                          ManglingContextDecl)) {
-    S.Context.setManglingNumber(MD, MCtx->getManglingNumber(MD));
-  }
 }
 // +==========================================================================+
 
