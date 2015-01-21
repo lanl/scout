@@ -2189,6 +2189,8 @@ public:
   
   RValue EmitPlotExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
 
+  RValue EmitSaveMeshExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
+  
   RValue EmitMeshParameterExpr(const Expr *E, MeshParameterOffset offset);
 
   bool EmitScoutBuiltinExpr(const FunctionDecl *FD,

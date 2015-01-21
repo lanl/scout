@@ -20,6 +20,7 @@
 #include "clang/Sema/SemaDiagnostic.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "Scout/CGMeshLayout.h"
+#include "Scout/CGScoutRuntime.h"
 #include "Scout/CGPlotRuntime.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include <stdio.h>
@@ -878,6 +879,111 @@ RValue CodeGenFunction::EmitPlotExpr(ArgIterator argsBegin, ArgIterator argsEnd)
   std::vector<llvm::Value*> args = {fieldAddr, numItems, elementKind};
   
   return RValue::get(Builder.CreateCall(r.PlotFunc(), args));
+}
+
+RValue
+CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
+  // proper checking is already done in Sema::CheckSaveMeshCall()
+  
+  const DeclRefExpr* base = cast<DeclRefExpr>(*argsBegin);
+  const VarDecl* vd = cast<VarDecl>(base->getDecl());
+  const UniformMeshType* mt = cast<UniformMeshType>(vd->getType().getTypePtr());
+  
+  UniformMeshDecl* md = mt->getDecl();
+  
+  ++argsBegin;
+  
+  const StringLiteral* pathLiteral = dyn_cast<StringLiteral>(*argsBegin);
+  std::string path = pathLiteral->getString();
+  
+  llvm::Value* meshAddr;
+  GetMeshBaseAddr(vd, meshAddr);
+  llvm::Value* meshPtr = Builder.CreateBitCast(meshAddr, VoidPtrTy);
+  
+  llvm::StructType* structTy =
+  cast<llvm::StructType>(meshAddr->getType()->getContainedType(0));
+  
+  CGScoutRuntime& r = CGM.getScoutRuntime();
+  
+  std::vector<llvm::Value*> args = {meshPtr};
+  Builder.CreateCall(r.SaveMeshStartFunc(), args);
+  
+  for(auto itr = md->field_begin(), itrEnd = md->field_end();
+      itr != itrEnd; ++itr){
+
+    MeshFieldDecl* field = *itr;
+    
+    llvm::Value* fieldName = Builder.CreateGlobalStringPtr(field->getName());
+    fieldName = Builder.CreateBitCast(fieldName, llvm::PointerType::get(CGM.Int8Ty, 0));
+    
+    unsigned idx = CGM.getTypes().getCGMeshLayout(md).getLLVMFieldNo(field);
+    
+    llvm::Value* fieldAddr = Builder.CreateStructGEP(meshAddr, idx);
+    fieldAddr = Builder.CreateLoad(fieldAddr, "mesh.field");
+    
+    llvm::Type* fieldTy = structTy->getContainedType(idx);
+    llvm::PointerType* ptrTy = dyn_cast<llvm::PointerType>(fieldTy);
+    assert(ptrTy && "expected a pointer");
+    
+    fieldTy = ptrTy->getElementType();
+    
+    llvm::Value* scalarKind;
+    
+    if(fieldTy->isIntegerTy(32)){
+      scalarKind = r.Int32Val;
+    }
+    else if(fieldTy->isIntegerTy(64)){
+      scalarKind = r.Int64Val;
+    }
+    else if(fieldTy->isFloatTy()){
+      scalarKind = r.FloatVal;
+    }
+    else if(fieldTy->isDoubleTy()){
+      scalarKind = r.DoubleVal;
+    }
+    else{
+      assert(false && "invalid scalar kind");
+    }
+    
+    llvm::Value* numItems;
+    SetMeshBounds(meshAddr);
+    
+    llvm::Value* elementKind;
+    
+    if(field->isCellLocated()){
+      GetNumMeshItems(&numItems, 0, 0, 0);
+      elementKind = r.CellVal;
+    }
+    else if(field->isVertexLocated()){
+      GetNumMeshItems(0, &numItems, 0, 0);
+      elementKind = r.VertexVal;
+    }
+    else if(field->isEdgeLocated()){
+      GetNumMeshItems(0, 0, &numItems, 0);
+      elementKind = r.EdgeVal;
+    }
+    else if(field->isFaceLocated()){
+      GetNumMeshItems(0, 0, 0, &numItems);
+      elementKind = r.FaceVal;
+    }
+    else{
+      assert(false && "invalid element kind");
+    }
+    
+    fieldAddr = Builder.CreateBitCast(fieldAddr, VoidPtrTy);
+    
+    args = {meshPtr, fieldName, numItems, elementKind, scalarKind, fieldAddr};
+    Builder.CreateCall(r.SaveMeshAddFieldFunc(), args);
+  }
+  
+  llvm::Value* pathValue = Builder.CreateGlobalStringPtr(path);
+  pathValue =
+  Builder.CreateBitCast(pathValue, llvm::PointerType::get(CGM.Int8Ty, 0));
+  
+  args = {meshPtr, pathValue};
+  Builder.CreateCall(r.SaveMeshEndFunc(), args);
+
+  return RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
 }
 
 void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,

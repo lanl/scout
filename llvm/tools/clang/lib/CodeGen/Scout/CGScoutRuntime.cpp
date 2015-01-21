@@ -58,6 +58,20 @@
 using namespace clang;
 using namespace CodeGen;
 
+CGScoutRuntime::CGScoutRuntime(CodeGen::CodeGenModule &CGM) : CGM(CGM){
+  auto& C = CGM.getLLVMContext();
+  
+  Int32Val = llvm::ConstantInt::get(C, llvm::APInt(32, 0));
+  Int64Val = llvm::ConstantInt::get(C, llvm::APInt(32, 1));
+  FloatVal = llvm::ConstantInt::get(C, llvm::APInt(32, 2));
+  DoubleVal = llvm::ConstantInt::get(C, llvm::APInt(32, 3));
+  
+  CellVal = llvm::ConstantInt::get(C, llvm::APInt(32, 0));
+  VertexVal = llvm::ConstantInt::get(C, llvm::APInt(32, 1));
+  EdgeVal = llvm::ConstantInt::get(C, llvm::APInt(32, 2));
+  FaceVal = llvm::ConstantInt::get(C, llvm::APInt(32, 2));
+}
+
 CGScoutRuntime::~CGScoutRuntime() {}
 
 // call the correct scout runtime Initializer
@@ -382,4 +396,26 @@ void CGScoutRuntime::DumpValue(CodeGenFunction& CGF, const char* label,
   std::vector<llvm::Value*> args = {s, value};
 
   CGF.Builder.CreateCall(f, args);
+}
+
+llvm::Function* CGScoutRuntime::SaveMeshStartFunc(){
+  return ScoutRuntimeFunction("__scrt_save_mesh_start", {CGM.VoidPtrTy});
+}
+
+llvm::Function* CGScoutRuntime::SaveMeshAddFieldFunc(){
+  return ScoutRuntimeFunction("__scrt_save_mesh_add_field",
+                              {CGM.VoidPtrTy,
+                                llvm::PointerType::get(CGM.Int8Ty, 0),
+                                CGM.Int64Ty,
+                                CGM.Int32Ty,
+                                CGM.Int32Ty,
+                                CGM.VoidPtrTy}
+                              );
+}
+
+llvm::Function* CGScoutRuntime::SaveMeshEndFunc(){
+  return ScoutRuntimeFunction("__scrt_save_mesh_end",
+                              {CGM.VoidPtrTy,
+                                llvm::PointerType::get(CGM.Int8Ty, 0)}
+                              );
 }

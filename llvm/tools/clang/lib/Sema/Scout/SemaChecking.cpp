@@ -193,3 +193,49 @@ bool Sema::CheckPlotCall(unsigned BuiltinID, CallExpr *TheCall) {
   
   return true;
 }
+
+bool Sema::CheckSaveMeshCall(unsigned BuiltinID, CallExpr *TheCall) {
+  if(TheCall->getNumArgs() != 2) {
+    Diag(TheCall->getExprLoc(), diag::err_invalid_save_mesh_call) <<
+    "expected 2 args";
+    return false;
+  }
+  
+  auto argsBegin = TheCall->arg_begin();
+  
+  Expr* meshExpr = *argsBegin;
+  
+  const DeclRefExpr* base = dyn_cast<DeclRefExpr>(*argsBegin);
+  if(!base){
+    Diag(meshExpr->getExprLoc(), diag::err_invalid_save_mesh_call) <<
+    "expected a mesh in member expression";
+    return false;
+  }
+  
+  const ValueDecl* vd = dyn_cast<ValueDecl>(base->getDecl());
+  if(!vd){
+    Diag(meshExpr->getExprLoc(), diag::err_invalid_save_mesh_call) <<
+    "expected a uniform mesh";
+    return false;
+  }
+  
+  const UniformMeshType* mt = dyn_cast<UniformMeshType>(vd->getType().getTypePtr());
+  if(!mt){
+    Diag(meshExpr->getExprLoc(), diag::err_invalid_save_mesh_call) <<
+    "expected a uniform mesh";
+    return false;
+  }
+
+  ++argsBegin;
+  
+  const StringLiteral* pathLiteral = dyn_cast<StringLiteral>(*argsBegin);
+  if(!pathLiteral){
+    Diag((*argsBegin)->getExprLoc(), diag::err_invalid_save_mesh_call) <<
+    "expected a path";
+    return false;
+  }
+  
+  std::string path = pathLiteral->getString();
+  
+  return true;
+}

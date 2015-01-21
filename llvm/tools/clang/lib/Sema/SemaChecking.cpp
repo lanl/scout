@@ -254,6 +254,13 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
       
       TheCall->setType(Context.IntTy);
     break;
+  case Builtin::BIsaveMesh:
+      if(!CheckSaveMeshCall(BuiltinID, TheCall)){
+        return ExprError();
+      }
+      
+      TheCall->setType(Context.IntTy);
+      break;
   // +========================================================================+
   case Builtin::BI__builtin___CFStringMakeConstantString:
     assert(TheCall->getNumArgs() == 1 &&

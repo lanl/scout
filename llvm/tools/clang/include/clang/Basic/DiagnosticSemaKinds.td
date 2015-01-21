@@ -7614,6 +7614,8 @@ def err_invalid_mesh_specifier : Error<
      "invalid mesh specifier">;
 def err_invalid_plot_call : Error<
 "invalid plot call: %0">;
+def err_invalid_save_mesh_call : Error<
+"invalid saveMesh call: %0">;
 def err_plot_disabled : Error<
 "plot functionality disabled">;
 

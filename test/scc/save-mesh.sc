@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -50,66 +50,21 @@
  * Notes
  *
  * ##### 
- */ 
+ */
+#include <assert.h> 
+#include <stdio.h>
 
-#ifndef CLANG_CODEGEN_SCOUTRUNTIME_H
-#define CLANG_CODEGEN_SCOUTRUNTIME_H
+uniform mesh MyMesh {
+ cells:
+  float a;
+  float b;
+};
 
-#include "CodeGenModule.h"
+int main(int argc, char** argv) {
 
-namespace llvm {
-  class Function;
+  MyMesh m[512];
+
+  saveMesh(m, "test.mesh");
+
+  return 0;
 }
-
-namespace clang {
-  namespace CodeGen {
-    class CodeGenModule;
-
-    class CGScoutRuntime {
-     protected:
-      CodeGen::CodeGenModule &CGM;
-      llvm::Function *ScoutRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params);
-      llvm::Function *ScoutRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params, 
-                                           llvm::Type* retType);
-     public:
-      CGScoutRuntime(CodeGen::CodeGenModule &CGM);
-      
-      virtual ~CGScoutRuntime();
-      llvm::Function *ModuleInitFunction(CodeGenFunction &CGF, SourceLocation Loc);
-      llvm::Function *MemAllocFunction();
-      llvm::Function *RenderallUniformBeginFunction();
-      llvm::Function *RenderallEndFunction();
-      llvm::Function *CreateWindowFunction();
-      llvm::Function *CreateWindowQuadRenderableColorsFunction();
-      llvm::Function *CreateWindowQuadRenderableVertexColorsFunction();
-      llvm::Function *CreateWindowQuadRenderableEdgeColorsFunction();
-      llvm::Function *CreateWindowPaintFunction();
-      llvm::Value    *RenderallUniformColorsGlobal(CodeGenFunction &CGF);
-      llvm::Type     *convertScoutSpecificType(const Type *T);
-
-      llvm::Function *EmitRuntimeInitFunc(SourceLocation Loc,
-                                          CodeGenFunction *CGF);
-      void EmitRuntimeInitializationCall(CodeGenFunction &CGF,
-                                         SourceLocation Loc);
-
-      
-      llvm::Value* Int32Val;
-      llvm::Value* Int64Val;
-      llvm::Value* FloatVal;
-      llvm::Value* DoubleVal;
-      
-      llvm::Value* CellVal;
-      llvm::Value* VertexVal;
-      llvm::Value* EdgeVal;
-      llvm::Value* FaceVal;
-      
-      llvm::Function *SaveMeshStartFunc();
-      llvm::Function *SaveMeshAddFieldFunc();
-      llvm::Function *SaveMeshEndFunc();
-      
-      void DumpValue(CodeGenFunction& CGF, const char* label,
-                     llvm::Value* value);
-    };
-  }
-}
-#endif

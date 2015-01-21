@@ -210,6 +210,11 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     EmitPlotExpr(E->arg_begin(), E->arg_end());
     return true;
   }
+  case Builtin::BIsaveMesh:
+  {
+    EmitSaveMeshExpr(E->arg_begin(), E->arg_end());
+    return true;
+  }
 
   default: return false;
   }
