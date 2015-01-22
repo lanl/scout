@@ -7616,6 +7616,8 @@ def err_invalid_plot_call : Error<
 "invalid plot call: %0">;
 def err_invalid_save_mesh_call : Error<
 "invalid saveMesh call: %0">;
+def err_invalid_swap_fields_call : Error<
+"invalid swapFields call: %0">;
 def err_plot_disabled : Error<
 "plot functionality disabled">;
 

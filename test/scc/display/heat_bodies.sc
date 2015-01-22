@@ -138,9 +138,7 @@ int main(int argc, char *argv[])
       h_next = mask*dt*(alpha * (d2dx2 + d2dy2) - mask*u*ddx) + c.h;
     }
 
-    forall cells c in heat_mesh {
-      h = h_next;
-    }
+    swapFields(heat_mesh.h, heat_mesh.h_next);
 
     renderall cells c in heat_mesh to render_win {
       float norm_h = h / MAX_TEMP;

@@ -239,3 +239,137 @@ bool Sema::CheckSaveMeshCall(unsigned BuiltinID, CallExpr *TheCall) {
   
   return true;
 }
+
+bool Sema::CheckSwapFieldsCall(unsigned BuiltinID, CallExpr *TheCall) {
+  if(TheCall->getNumArgs() != 2) {
+    Diag(TheCall->getExprLoc(), diag::err_invalid_swap_fields_call) <<
+    "expected 2 args";
+    return false;
+  }
+
+  auto argsBegin = TheCall->arg_begin();
+  
+  enum FieldType{
+    Cell,
+    Vertex,
+    Edge,
+    Face
+  };
+  
+  FieldType fieldType;
+  BuiltinType::Kind scalarKind;
+  const ValueDecl* mesh;
+  
+  for(size_t i = 0; i < 2; ++i){
+    
+    const MemberExpr* memberExpr = dyn_cast<MemberExpr>(*argsBegin);
+    
+    if(!memberExpr){
+      Diag((*argsBegin)->getExprLoc(), diag::err_invalid_swap_fields_call) <<
+      "expected a member expression";
+      return false;
+    }
+    
+    const DeclRefExpr* base = dyn_cast<DeclRefExpr>(memberExpr->getBase());
+    if(!base){
+      Diag(memberExpr->getExprLoc(), diag::err_invalid_swap_fields_call) <<
+      "expected a mesh in member expression";
+      return false;
+    }
+    
+    const ValueDecl* vd = dyn_cast<ValueDecl>(base->getDecl());
+    if(!vd){
+      Diag(memberExpr->getExprLoc(), diag::err_invalid_swap_fields_call) <<
+      "expected a uniform mesh";
+      return false;
+    }
+    
+    if(i == 0){
+      mesh = vd;
+    }
+    else if(mesh != vd){
+      Diag(memberExpr->getExprLoc(), diag::err_invalid_swap_fields_call) <<
+      "attempt to swap fields from different meshes";
+      return false;
+    }
+    
+    const UniformMeshType* mt = dyn_cast<UniformMeshType>(vd->getType().getTypePtr());
+    if(!mt){
+      Diag(memberExpr->getExprLoc(), diag::err_invalid_swap_fields_call) <<
+      "expected a uniform mesh";
+      return false;
+    }
+    
+    const MeshFieldDecl* fd =
+    dyn_cast<MeshFieldDecl>(memberExpr->getMemberDecl());
+    
+    if(!fd){
+      Diag(memberExpr->getExprLoc(), diag::err_invalid_swap_fields_call) <<
+      "expected a mesh field in member expression";
+      return false;
+    }
+    
+    if(i == 0){
+      if(fd->isCellLocated()){
+        fieldType = Cell;
+      }
+      else if(fd->isVertexLocated()){
+        fieldType = Vertex;
+      }
+      else if(fd->isEdgeLocated()){
+        fieldType = Edge;
+      }
+      else if(fd->isFaceLocated()){
+        fieldType = Face;
+      }
+      else{
+        assert(false);
+      }
+      
+      scalarKind = cast<BuiltinType>(fd->getType())->getKind();
+    }
+    else{
+      if(fd->isCellLocated()){
+        if(fieldType != Cell){
+          Diag(memberExpr->getExprLoc(), diag::err_invalid_swap_fields_call) <<
+          "fields are of different element types";
+          return false;
+        }
+      }
+      else if(fd->isVertexLocated()){
+        if(fieldType != Vertex){
+          Diag(memberExpr->getExprLoc(), diag::err_invalid_swap_fields_call) <<
+          "fields are of different element types";
+          return false;
+        }
+      }
+      else if(fd->isEdgeLocated()){
+        if(fieldType != Edge){
+          Diag(memberExpr->getExprLoc(), diag::err_invalid_swap_fields_call) <<
+          "fields are of different element types";
+          return false;
+        }
+      }
+      else if(fd->isFaceLocated()){
+        if(fieldType != Face){
+          Diag(memberExpr->getExprLoc(), diag::err_invalid_swap_fields_call) <<
+          "fields are of different element types";
+          return false;
+        }
+      }
+      else{
+        assert(false);
+      }
+      
+      if(cast<BuiltinType>(fd->getType())->getKind() != scalarKind){
+        Diag(memberExpr->getExprLoc(), diag::err_invalid_swap_fields_call) <<
+        "fields are of different scalar types";
+        return false;
+      }
+    }
+    
+    ++argsBegin;
+  }
+  
+  return true;
+}

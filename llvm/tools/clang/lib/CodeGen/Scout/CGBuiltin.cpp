@@ -215,7 +215,11 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     EmitSaveMeshExpr(E->arg_begin(), E->arg_end());
     return true;
   }
-
+  case Builtin::BIswapFields:
+  {
+      EmitSwapFieldsExpr(E->arg_begin(), E->arg_end());
+      return true;
+  }
   default: return false;
   }
 }

@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -48,39 +48,43 @@
  * ########################################################################### 
  * 
  * Notes
- * See Builtins.def for documentation of BUILTIN macro
+ *
  * ##### 
- */ 
+ */
+#include <assert.h> 
+#include <stdio.h>
 
-BUILTIN(position, "E4i", "n")
-BUILTIN(positionx, "i", "n")
-BUILTIN(positiony, "i", "n")
-BUILTIN(positionz, "i", "n")
-BUILTIN(positionw, "i", "n")
+uniform mesh MyMesh {
+ cells:
+  float a;
+  float b;
+};
 
-BUILTIN(head, "E4i", "n")
-BUILTIN(tail, "E4i", "n")
+int main(int argc, char** argv) {
 
-//0 or 1 args
-BUILTIN(width, "i.", "n")
-BUILTIN(height, "i.", "n")
-BUILTIN(depth, "i.", "n")
-BUILTIN(rank, "i.", "n") 
+  MyMesh m[8];
 
-// circular shift builtins
-// "template like" CShift that works for all types
-// "t" is the magic to make this work
-BUILTIN(cshift, "vvi.", "t") // generic 
-BUILTIN(cshifti, "iii.", "n") // just for int
-BUILTIN(cshiftf, "ffi.", "n") // just for float
-BUILTIN(cshiftd, "ddi.", "n") // just for double
+  float i = 0.0f;
+  forall cells c in m{
+    a = i;
+    b = 1000 + i;
+    i += 1.0f;
+  }
 
-//end-off shift builtins
-BUILTIN(eoshift, "vvvi.", "t") // generic 
-BUILTIN(eoshifti, "iiii.", "n") // just for int
-BUILTIN(eoshiftf, "fffi.", "n") // just for float
-BUILTIN(eoshiftd, "dddi.", "n") // just for double
+  swapFields(m.a, m.b);
 
-BUILTIN(plot, "vvv", "t") // generic 
-BUILTIN(saveMesh, "vvv", "t") // generic
-BUILTIN(swapFields, "vvv", "t") // generic
+  float expected_a[] = 
+    {1000.0f, 1001.0f, 1002.0f, 1003.0f, 1004.0f, 1005.0f, 1006.0f, 1007.0f};  
+  
+  float expected_b[] =
+    {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+
+  int j = 0;
+  forall cells c in m{
+    assert(a == expected_a[j] && "unexpected value");
+    assert(b == expected_b[j] && "unexpected value");
+    ++j;
+  }
+
+  return 0;
+}

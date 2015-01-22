@@ -204,12 +204,10 @@ int main(int argc, char *argv[])
 
     }
 
-    forall cells c in heat_mesh {
-      h = h_next;
-      u = u_next;
-      v = v_next;
-      rho = rho_next;
-    }
+    swapFields(heat_mesh.h, heat_mesh.h_next);
+    swapFields(heat_mesh.u, heat_mesh.u_next);
+    swapFields(heat_mesh.v, heat_mesh.v_next);
+    swapFields(heat_mesh.rho, heat_mesh.rho_next);
 
     renderall cells c in heat_mesh to win {
       // Temperature

@@ -986,6 +986,43 @@ CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
   return RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
 }
 
+RValue CodeGenFunction::EmitSwapFieldsExpr(ArgIterator argsBegin, ArgIterator argsEnd){
+  // proper checking is already done in Sema::CheckSwapFieldsCall()
+  
+  llvm::Value* fieldPtr[2];
+  llvm::Value* meshAddr;
+  
+  for(size_t i = 0; i < 2; ++i){
+    const MemberExpr* memberExpr = cast<MemberExpr>(*argsBegin);
+    const DeclRefExpr* base = cast<DeclRefExpr>(memberExpr->getBase());
+    const VarDecl* vd = cast<VarDecl>(base->getDecl());
+    const UniformMeshType* mt = cast<UniformMeshType>(vd->getType().getTypePtr());
+
+    if(i == 0){
+      GetMeshBaseAddr(vd, meshAddr);
+    }
+    
+    llvm::StructType *structTy =
+    cast<llvm::StructType>(meshAddr->getType()->getContainedType(0));
+    
+    LValue baseLV  = MakeAddrLValue(meshAddr, memberExpr->getType());
+    MeshFieldDecl* field = cast<MeshFieldDecl>(memberExpr->getMemberDecl());
+    
+    const MeshDecl* mesh = field->getParent();
+    unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
+    
+    fieldPtr[i] = Builder.CreateStructGEP(meshAddr, idx);
+    
+    ++argsBegin;
+  }
+  
+  llvm::Value* firstField = Builder.CreateLoad(fieldPtr[0]);
+  Builder.CreateStore(Builder.CreateLoad(fieldPtr[1]), fieldPtr[0]);
+  Builder.CreateStore(firstField, fieldPtr[1]);
+  
+  return RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
+}
+
 void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
                                     LValue LV,
                                     const QueryExpr* QE){
