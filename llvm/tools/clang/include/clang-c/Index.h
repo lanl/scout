@@ -2277,12 +2277,17 @@ enum CXCursorKind {
   CXCursor_FirstExtraDecl                = CXCursor_ModuleImportDecl,
   CXCursor_LastExtraDecl                 = CXCursor_ModuleImportDecl,
 
+  /**
+   * \brief A code completion overload candidate.
+   */
+  CXCursor_OverloadCandidate             = 700,
+
   /* +===== Scout =========================================================+ */
-  CXCursor_UniformMeshDecl               = 700,
-  CXCursor_StructuredMeshDecl            = 701,
-  CXCursor_RectilinearMeshDecl           = 702,
-  CXCursor_UnstructuredMeshDecl          = 703,
-  CXCursor_MeshFieldDecl                 = 704,
+  CXCursor_UniformMeshDecl               = 800,
+  CXCursor_StructuredMeshDecl            = 801,
+  CXCursor_RectilinearMeshDecl           = 802,
+  CXCursor_UnstructuredMeshDecl          = 803,
+  CXCursor_MeshFieldDecl                 = 804,
   CXCursor_FirstMeshDecl                 = CXCursor_UniformMeshDecl,
   CXCursor_LastMeshDecl                  = CXCursor_UnstructuredMeshDecl
   /* +=====================================================================+ */

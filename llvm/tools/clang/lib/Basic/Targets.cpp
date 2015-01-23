@@ -4676,6 +4676,13 @@ public:
     // specifiers.
     NoAsmVariants = true;
 
+    // AAPCS gives rules for bitfields. 7.1.7 says: "The container type
+    // contributes to the alignment of the containing aggregate in the same way
+    // a plain (non bit-field) member of that type would, without exception for
+    // zero-sized or anonymous bit-fields."
+    UseBitFieldTypeAlignment = true;
+    UseZeroLengthBitfieldAlignment = true;
+
     // AArch64 targets default to using the ARM C++ ABI.
     TheCXXABI.set(TargetCXXABI::GenericAArch64);
   }
@@ -5931,6 +5938,8 @@ public:
       : MipsTargetInfoBase(Triple, "o32", "mips32r2") {
     SizeType = UnsignedInt;
     PtrDiffType = SignedInt;
+    Int64Type = SignedLongLong;
+    IntMaxType = Int64Type;
     MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 32;
   }
   bool setABI(const std::string &Name) override {
@@ -6060,6 +6069,8 @@ public:
     PointerWidth = PointerAlign = 64;
     SizeType = UnsignedLong;
     PtrDiffType = SignedLong;
+    Int64Type = SignedLong;
+    IntMaxType = Int64Type;
   }
 
   void setN32ABITypes() {
@@ -6067,6 +6078,8 @@ public:
     PointerWidth = PointerAlign = 32;
     SizeType = UnsignedInt;
     PtrDiffType = SignedInt;
+    Int64Type = SignedLongLong;
+    IntMaxType = Int64Type;
   }
 
   bool setABI(const std::string &Name) override {
@@ -6372,6 +6385,15 @@ namespace {
                           unsigned &NumAliases) const override {}
     BuiltinVaListKind getBuiltinVaListKind() const override {
       return TargetInfo::VoidPtrBuiltinVaList;
+    }
+
+    CallingConvCheckResult checkCallingConvention(CallingConv CC) const override {
+      return (CC == CC_SpirFunction ||
+              CC == CC_SpirKernel) ? CCCR_OK : CCCR_Warning;
+    }
+
+    CallingConv getDefaultCallingConv(CallingConvMethodType MT) const override {
+      return CC_SpirFunction;
     }
   };
 

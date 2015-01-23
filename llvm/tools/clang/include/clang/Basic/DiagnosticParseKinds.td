@@ -25,6 +25,8 @@ def err_msasm_unsupported_arch : Error<
   "Unsupported architecture '%0' for MS-style inline assembly">;
 def err_msasm_unable_to_create_target : Error<
   "MS-style inline assembly is not available: %0">;
+def err_gnu_inline_asm_disabled : Error<
+  "GNU-style inline assembly is disabled">;
 }
 
 let CategoryName = "Parse Issue" in {
@@ -962,18 +964,6 @@ def warn_pragma_expected_enable_disable : Warning<
   "expected 'enable' or 'disable' - ignoring">, InGroup<IgnoredPragmas>;
 def warn_pragma_unknown_extension : Warning<
   "unknown OpenCL extension %0 - ignoring">, InGroup<IgnoredPragmas>;
-
-def err_seh_expected_handler : Error<
-  "expected '__except' or '__finally' block">;
-
-def err_seh___except_block : Error<
-  "%0 only allowed in __except block">;
-
-def err_seh___except_filter : Error<
-  "%0 only allowed in __except filter expression">;
-
-def err_seh___finally_block : Error<
-  "%0 only allowed in __finally block">;
 
 // OpenMP support.
 def warn_pragma_omp_ignored : Warning<

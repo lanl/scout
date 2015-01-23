@@ -3379,12 +3379,8 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
   // it marks vtables used in late parsed templates as used.
   SavePendingLocalImplicitInstantiationsRAII
       SavedPendingLocalImplicitInstantiations(*this);
-  std::unique_ptr<SavePendingInstantiationsAndVTableUsesRAII>
-      SavePendingInstantiationsAndVTableUses;
-  if (Recursive) {
-    SavePendingInstantiationsAndVTableUses.reset(
-        new SavePendingInstantiationsAndVTableUsesRAII(*this));
-  }
+  SavePendingInstantiationsAndVTableUsesRAII
+      SavePendingInstantiationsAndVTableUses(*this, /*Enabled=*/Recursive);
 
   // Call the LateTemplateParser callback if there is a need to late parse
   // a templated function definition.
@@ -3529,8 +3525,8 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
     // instantiation of this template.
     PerformPendingInstantiations();
 
-    // Restore PendingInstantiations and VTableUses.
-    SavePendingInstantiationsAndVTableUses.reset();
+    // PendingInstantiations and VTableUses are restored through
+    // SavePendingInstantiationsAndVTableUses's destructor.
   }
 }
 
@@ -3846,12 +3842,8 @@ void Sema::InstantiateVariableDefinition(SourceLocation PointOfInstantiation,
       // If we're performing recursive template instantiation, create our own
       // queue of pending implicit instantiations that we will instantiate
       // later, while we're still within our own instantiation context.
-      std::unique_ptr<SavePendingInstantiationsAndVTableUsesRAII>
-          SavePendingInstantiationsAndVTableUses;
-      if (Recursive) {
-        SavePendingInstantiationsAndVTableUses.reset(
-            new SavePendingInstantiationsAndVTableUsesRAII(*this));
-      }
+      SavePendingInstantiationsAndVTableUsesRAII
+          SavePendingInstantiationsAndVTableUses(*this, /*Enabled=*/Recursive);
 
       LocalInstantiationScope Local(*this);
 
@@ -3878,8 +3870,8 @@ void Sema::InstantiateVariableDefinition(SourceLocation PointOfInstantiation,
         // instantiation of this template.
         PerformPendingInstantiations();
 
-        // Restore PendingInstantiations and VTableUses.
-        SavePendingInstantiationsAndVTableUses.reset();
+        // PendingInstantiations and VTableUses are restored through
+        // SavePendingInstantiationsAndVTableUses's destructor.
       }
     }
 
@@ -3965,12 +3957,8 @@ void Sema::InstantiateVariableDefinition(SourceLocation PointOfInstantiation,
   // while we're still within our own instantiation context.
   SavePendingLocalImplicitInstantiationsRAII
       SavedPendingLocalImplicitInstantiations(*this);
-  std::unique_ptr<SavePendingInstantiationsAndVTableUsesRAII>
-      SavePendingInstantiationsAndVTableUses;
-  if (Recursive) {
-    SavePendingInstantiationsAndVTableUses.reset(
-        new SavePendingInstantiationsAndVTableUsesRAII(*this));
-  }
+  SavePendingInstantiationsAndVTableUsesRAII
+      SavePendingInstantiationsAndVTableUses(*this, /*Enabled=*/Recursive);
 
   // Enter the scope of this instantiation. We don't use
   // PushDeclContext because we don't have a scope.
@@ -4036,8 +4024,8 @@ void Sema::InstantiateVariableDefinition(SourceLocation PointOfInstantiation,
     // instantiation of this template.
     PerformPendingInstantiations();
 
-    // Restore PendingInstantiations and VTableUses.
-    SavePendingInstantiationsAndVTableUses.reset();
+    // PendingInstantiations and VTableUses are restored through
+    // SavePendingInstantiationsAndVTableUses's destructor.
   }
 }
 

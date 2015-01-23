@@ -157,3 +157,21 @@ namespace PR22092 {
 a = b ? : 0;  // expected-error {{C++ requires a type specifier for all declarations}} \
               // expected-error-re {{use of undeclared identifier 'b'{{$}}}}
 }
+
+extern long clock (void);
+struct Pointer {
+  void set_xpos(int);
+  void set_ypos(int);
+};
+void MovePointer(Pointer &Click, int x, int y) {  // expected-note 2 {{'Click' declared here}}
+  click.set_xpos(x);  // expected-error {{use of undeclared identifier 'click'; did you mean 'Click'?}}
+  click.set_ypos(x);  // expected-error {{use of undeclared identifier 'click'; did you mean 'Click'?}}
+}
+
+namespace PR22250 {
+// expected-error@+4 {{use of undeclared identifier 'size_t'; did you mean 'sizeof'?}}
+// expected-error-re@+3 {{use of undeclared identifier 'y'{{$}}}}
+// expected-error-re@+2 {{use of undeclared identifier 'z'{{$}}}}
+// expected-error@+1 {{expected ';' after top level declarator}}
+int getenv_s(size_t *y, char(&z)) {}
+}

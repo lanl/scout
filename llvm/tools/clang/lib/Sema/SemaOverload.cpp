@@ -4262,16 +4262,6 @@ TryReferenceInit(Sema &S, Expr *Init, QualType DeclType,
   //     -- Otherwise, the reference shall be an lvalue reference to a
   //        non-volatile const type (i.e., cv1 shall be const), or the reference
   //        shall be an rvalue reference.
-  //
-  // We actually handle one oddity of C++ [over.ics.ref] at this
-  // point, which is that, due to p2 (which short-circuits reference
-  // binding by only attempting a simple conversion for non-direct
-  // bindings) and p3's strange wording, we allow a const volatile
-  // reference to bind to an rvalue. Hence the check for the presence
-  // of "const" rather than checking for "const" being the only
-  // qualifier.
-  // This is also the point where rvalue references and lvalue inits no longer
-  // go together.
   if (!isRValRef && (!T1.isConstQualified() || T1.isVolatileQualified()))
     return ICS;
 
@@ -5562,7 +5552,8 @@ Sema::AddOverloadCandidate(FunctionDecl *Function,
       // is irrelevant.
       AddMethodCandidate(Method, FoundDecl, Method->getParent(),
                          QualType(), Expr::Classification::makeSimpleLValue(),
-                         Args, CandidateSet, SuppressUserConversions);
+                         Args, CandidateSet, SuppressUserConversions,
+                         PartialOverloading);
       return;
     }
     // We treat a constructor like a non-member function, since its object
@@ -5623,7 +5614,7 @@ Sema::AddOverloadCandidate(FunctionDecl *Function,
   // (C++ 13.3.2p2): A candidate function having fewer than m
   // parameters is viable only if it has an ellipsis in its parameter
   // list (8.3.5).
-  if ((Args.size() + (PartialOverloading && Args.size())) > NumParams &&
+  if (TooManyArguments(NumParams, Args.size(), PartialOverloading) &&
       !Proto->isVariadic()) {
     Candidate.Viable = false;
     Candidate.FailureKind = ovl_fail_too_many_arguments;
@@ -5858,8 +5849,9 @@ EnableIfAttr *Sema::CheckEnableIf(FunctionDecl *Function, ArrayRef<Expr *> Args,
 void Sema::AddFunctionCandidates(const UnresolvedSetImpl &Fns,
                                  ArrayRef<Expr *> Args,
                                  OverloadCandidateSet& CandidateSet,
+                                 TemplateArgumentListInfo *ExplicitTemplateArgs,
                                  bool SuppressUserConversions,
-                               TemplateArgumentListInfo *ExplicitTemplateArgs) {
+                                 bool PartialOverloading) {
   for (UnresolvedSetIterator F = Fns.begin(), E = Fns.end(); F != E; ++F) {
     NamedDecl *D = F.getDecl()->getUnderlyingDecl();
     if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
@@ -5868,10 +5860,10 @@ void Sema::AddFunctionCandidates(const UnresolvedSetImpl &Fns,
                            cast<CXXMethodDecl>(FD)->getParent(),
                            Args[0]->getType(), Args[0]->Classify(Context),
                            Args.slice(1), CandidateSet,
-                           SuppressUserConversions);
+                           SuppressUserConversions, PartialOverloading);
       else
         AddOverloadCandidate(FD, F.getPair(), Args, CandidateSet,
-                             SuppressUserConversions);
+                             SuppressUserConversions, PartialOverloading);
     } else {
       FunctionTemplateDecl *FunTmpl = cast<FunctionTemplateDecl>(D);
       if (isa<CXXMethodDecl>(FunTmpl->getTemplatedDecl()) &&
@@ -5881,11 +5873,13 @@ void Sema::AddFunctionCandidates(const UnresolvedSetImpl &Fns,
                                    ExplicitTemplateArgs,
                                    Args[0]->getType(),
                                    Args[0]->Classify(Context), Args.slice(1),
-                                   CandidateSet, SuppressUserConversions);
+                                   CandidateSet, SuppressUserConversions,
+                                   PartialOverloading);
       else
         AddTemplateOverloadCandidate(FunTmpl, F.getPair(),
                                      ExplicitTemplateArgs, Args,
-                                     CandidateSet, SuppressUserConversions);
+                                     CandidateSet, SuppressUserConversions,
+                                     PartialOverloading);
     }
   }
 }
@@ -5933,7 +5927,8 @@ Sema::AddMethodCandidate(CXXMethodDecl *Method, DeclAccessPair FoundDecl,
                          Expr::Classification ObjectClassification,
                          ArrayRef<Expr *> Args,
                          OverloadCandidateSet &CandidateSet,
-                         bool SuppressUserConversions) {
+                         bool SuppressUserConversions,
+                         bool PartialOverloading) {
   const FunctionProtoType *Proto
     = dyn_cast<FunctionProtoType>(Method->getType()->getAs<FunctionType>());
   assert(Proto && "Methods without a prototype cannot be overloaded");
@@ -5966,7 +5961,8 @@ Sema::AddMethodCandidate(CXXMethodDecl *Method, DeclAccessPair FoundDecl,
   // (C++ 13.3.2p2): A candidate function having fewer than m
   // parameters is viable only if it has an ellipsis in its parameter
   // list (8.3.5).
-  if (Args.size() > NumParams && !Proto->isVariadic()) {
+  if (TooManyArguments(NumParams, Args.size(), PartialOverloading) &&
+      !Proto->isVariadic()) {
     Candidate.Viable = false;
     Candidate.FailureKind = ovl_fail_too_many_arguments;
     return;
@@ -5978,7 +5974,7 @@ Sema::AddMethodCandidate(CXXMethodDecl *Method, DeclAccessPair FoundDecl,
   // parameter list is truncated on the right, so that there are
   // exactly m parameters.
   unsigned MinRequiredArgs = Method->getMinRequiredArguments();
-  if (Args.size() < MinRequiredArgs) {
+  if (Args.size() < MinRequiredArgs && !PartialOverloading) {
     // Not enough arguments.
     Candidate.Viable = false;
     Candidate.FailureKind = ovl_fail_too_few_arguments;
@@ -6060,7 +6056,8 @@ Sema::AddMethodTemplateCandidate(FunctionTemplateDecl *MethodTmpl,
                                  Expr::Classification ObjectClassification,
                                  ArrayRef<Expr *> Args,
                                  OverloadCandidateSet& CandidateSet,
-                                 bool SuppressUserConversions) {
+                                 bool SuppressUserConversions,
+                                 bool PartialOverloading) {
   if (!CandidateSet.isNewCandidate(MethodTmpl))
     return;
 
@@ -6077,7 +6074,7 @@ Sema::AddMethodTemplateCandidate(FunctionTemplateDecl *MethodTmpl,
   FunctionDecl *Specialization = nullptr;
   if (TemplateDeductionResult Result
       = DeduceTemplateArguments(MethodTmpl, ExplicitTemplateArgs, Args,
-                                Specialization, Info)) {
+                                Specialization, Info, PartialOverloading)) {
     OverloadCandidate &Candidate = CandidateSet.addCandidate();
     Candidate.FoundDecl = FoundDecl;
     Candidate.Function = MethodTmpl->getTemplatedDecl();
@@ -6098,7 +6095,7 @@ Sema::AddMethodTemplateCandidate(FunctionTemplateDecl *MethodTmpl,
          "Specialization is not a member function?");
   AddMethodCandidate(cast<CXXMethodDecl>(Specialization), FoundDecl,
                      ActingContext, ObjectType, ObjectClassification, Args,
-                     CandidateSet, SuppressUserConversions);
+                     CandidateSet, SuppressUserConversions, PartialOverloading);
 }
 
 /// \brief Add a C++ function template specialization as a candidate
@@ -6110,7 +6107,8 @@ Sema::AddTemplateOverloadCandidate(FunctionTemplateDecl *FunctionTemplate,
                                  TemplateArgumentListInfo *ExplicitTemplateArgs,
                                    ArrayRef<Expr *> Args,
                                    OverloadCandidateSet& CandidateSet,
-                                   bool SuppressUserConversions) {
+                                   bool SuppressUserConversions,
+                                   bool PartialOverloading) {
   if (!CandidateSet.isNewCandidate(FunctionTemplate))
     return;
 
@@ -6127,7 +6125,7 @@ Sema::AddTemplateOverloadCandidate(FunctionTemplateDecl *FunctionTemplate,
   FunctionDecl *Specialization = nullptr;
   if (TemplateDeductionResult Result
         = DeduceTemplateArguments(FunctionTemplate, ExplicitTemplateArgs, Args,
-                                  Specialization, Info)) {
+                                  Specialization, Info, PartialOverloading)) {
     OverloadCandidate &Candidate = CandidateSet.addCandidate();
     Candidate.FoundDecl = FoundDecl;
     Candidate.Function = FunctionTemplate->getTemplatedDecl();
@@ -6145,7 +6143,7 @@ Sema::AddTemplateOverloadCandidate(FunctionTemplateDecl *FunctionTemplate,
   // deduction as a candidate.
   assert(Specialization && "Missing function template specialization?");
   AddOverloadCandidate(Specialization, FoundDecl, Args, CandidateSet,
-                       SuppressUserConversions);
+                       SuppressUserConversions, PartialOverloading);
 }
 
 /// Determine whether this is an allowable conversion from the result
@@ -8299,7 +8297,7 @@ Sema::AddArgumentDependentLookupCandidates(DeclarationName Name,
     } else
       AddTemplateOverloadCandidate(cast<FunctionTemplateDecl>(*I),
                                    FoundDecl, ExplicitTemplateArgs,
-                                   Args, CandidateSet);
+                                   Args, CandidateSet, PartialOverloading);
   }
 }
 
@@ -10371,7 +10369,8 @@ static void AddOverloadedCallCandidate(Sema &S,
       assert(!KnownValid && "Explicit template arguments?");
       return;
     }
-    S.AddOverloadCandidate(Func, FoundDecl, Args, CandidateSet, false,
+    S.AddOverloadCandidate(Func, FoundDecl, Args, CandidateSet,
+                           /*SuppressUsedConversions=*/false,
                            PartialOverloading);
     return;
   }
@@ -10379,7 +10378,9 @@ static void AddOverloadedCallCandidate(Sema &S,
   if (FunctionTemplateDecl *FuncTemplate
       = dyn_cast<FunctionTemplateDecl>(Callee)) {
     S.AddTemplateOverloadCandidate(FuncTemplate, FoundDecl,
-                                   ExplicitTemplateArgs, Args, CandidateSet);
+                                   ExplicitTemplateArgs, Args, CandidateSet,
+                                   /*SuppressUsedConversions=*/false,
+                                   PartialOverloading);
     return;
   }
 
@@ -10904,7 +10905,7 @@ Sema::CreateOverloadedUnaryOp(SourceLocation OpLoc, unsigned OpcIn,
   OverloadCandidateSet CandidateSet(OpLoc, OverloadCandidateSet::CSK_Operator);
 
   // Add the candidates from the given function set.
-  AddFunctionCandidates(Fns, ArgsArray, CandidateSet, false);
+  AddFunctionCandidates(Fns, ArgsArray, CandidateSet);
 
   // Add operator candidates that are member functions.
   AddMemberOperatorCandidates(Op, OpLoc, ArgsArray, CandidateSet);
@@ -11113,7 +11114,7 @@ Sema::CreateOverloadedBinOp(SourceLocation OpLoc,
   OverloadCandidateSet CandidateSet(OpLoc, OverloadCandidateSet::CSK_Operator);
 
   // Add the candidates from the given function set.
-  AddFunctionCandidates(Fns, Args, CandidateSet, false);
+  AddFunctionCandidates(Fns, Args, CandidateSet);
 
   // Add operator candidates that are member functions.
   AddMemberOperatorCandidates(Op, OpLoc, Args, CandidateSet);
@@ -12162,8 +12163,8 @@ ExprResult Sema::BuildLiteralOperatorCall(LookupResult &R,
 
   OverloadCandidateSet CandidateSet(UDSuffixLoc,
                                     OverloadCandidateSet::CSK_Normal);
-  AddFunctionCandidates(R.asUnresolvedSet(), Args, CandidateSet, true,
-                        TemplateArgs);
+  AddFunctionCandidates(R.asUnresolvedSet(), Args, CandidateSet, TemplateArgs,
+                        /*SuppressUserConversions=*/true);
 
   bool HadMultipleCandidates = (CandidateSet.size() > 1);
 
