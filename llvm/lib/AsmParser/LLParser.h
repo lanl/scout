@@ -136,7 +136,7 @@ namespace llvm {
     std::vector<std::pair<Type*, LocTy> > NumberedTypes;
 
     std::vector<TrackingMDNodeRef> NumberedMetadata;
-    std::map<unsigned, std::pair<MDNodeFwdDecl *, LocTy>> ForwardRefMDNodes;
+    std::map<unsigned, std::pair<TempMDTuple, LocTy>> ForwardRefMDNodes;
 
     // Global Value reference information.
     std::map<std::string, std::pair<GlobalValue*, LocTy> > ForwardRefVals;
@@ -421,7 +421,11 @@ namespace llvm {
     bool ParseMDField(LocTy Loc, StringRef Name,
                       MDUnsignedField<uint32_t> &Result);
     bool ParseMDField(LocTy Loc, StringRef Name, MDField &Result);
-    template <class ParserTy> bool ParseMDFieldsImpl(ParserTy parseField);
+    template <class FieldTy> bool ParseMDField(StringRef Name, FieldTy &Result);
+    template <class ParserTy>
+    bool ParseMDFieldsImplBody(ParserTy parseField);
+    template <class ParserTy>
+    bool ParseMDFieldsImpl(ParserTy parseField, LocTy &ClosingLoc);
     bool ParseSpecializedMDNode(MDNode *&N, bool IsDistinct = false);
     bool ParseMDLocation(MDNode *&Result, bool IsDistinct);
 

@@ -480,13 +480,13 @@ static unsigned getEncodedLinkage(const GlobalValue &GV) {
   case GlobalValue::ExternalLinkage:
     return 0;
   case GlobalValue::WeakAnyLinkage:
-    return 1;
+    return 16;
   case GlobalValue::AppendingLinkage:
     return 2;
   case GlobalValue::InternalLinkage:
     return 3;
   case GlobalValue::LinkOnceAnyLinkage:
-    return 4;
+    return 18;
   case GlobalValue::ExternalWeakLinkage:
     return 7;
   case GlobalValue::CommonLinkage:
@@ -494,9 +494,9 @@ static unsigned getEncodedLinkage(const GlobalValue &GV) {
   case GlobalValue::PrivateLinkage:
     return 9;
   case GlobalValue::WeakODRLinkage:
-    return 10;
+    return 17;
   case GlobalValue::LinkOnceODRLinkage:
-    return 11;
+    return 19;
   case GlobalValue::AvailableExternallyLinkage:
     return 12;
   }
@@ -629,7 +629,7 @@ static void WriteModuleInfo(const Module *M, const ValueEnumerator &VE,
                               Log2_32_Ceil(MaxGlobalType+1)));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));      // Constant.
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));        // Initializer.
-    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 4));      // Linkage.
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 5));      // Linkage.
     if (MaxAlignment == 0)                                      // Alignment.
       Abbv->Add(BitCodeAbbrevOp(0));
     else {
@@ -762,22 +762,18 @@ static void WriteValueAsMetadata(const ValueAsMetadata *MD,
   Record.clear();
 }
 
-static void WriteMDNode(const MDNode *N,
-                        const ValueEnumerator &VE,
-                        BitstreamWriter &Stream,
-                        SmallVectorImpl<uint64_t> &Record) {
+static void WriteMDTuple(const MDTuple *N, const ValueEnumerator &VE,
+                         BitstreamWriter &Stream,
+                         SmallVectorImpl<uint64_t> &Record, unsigned Abbrev) {
   for (unsigned i = 0, e = N->getNumOperands(); i != e; ++i) {
     Metadata *MD = N->getOperand(i);
-    if (!MD) {
-      Record.push_back(0);
-      continue;
-    }
-    assert(!isa<LocalAsMetadata>(MD) && "Unexpected function-local metadata");
-    Record.push_back(VE.getMetadataID(MD) + 1);
+    assert(!(MD && isa<LocalAsMetadata>(MD)) &&
+           "Unexpected function-local metadata");
+    Record.push_back(VE.getMetadataOrNullID(MD));
   }
   Stream.EmitRecord(N->isDistinct() ? bitc::METADATA_DISTINCT_NODE
                                     : bitc::METADATA_NODE,
-                    Record);
+                    Record, Abbrev);
   Record.clear();
 }
 
@@ -789,15 +785,16 @@ static void WriteMDLocation(const MDLocation *N, const ValueEnumerator &VE,
   Record.push_back(N->getLine());
   Record.push_back(N->getColumn());
   Record.push_back(VE.getMetadataID(N->getScope()));
-
-  // Always emit the inlined-at location, even though it's optional.
-  if (Metadata *InlinedAt = N->getInlinedAt())
-    Record.push_back(VE.getMetadataID(InlinedAt) + 1);
-  else
-    Record.push_back(0);
+  Record.push_back(VE.getMetadataOrNullID(N->getInlinedAt()));
 
   Stream.EmitRecord(bitc::METADATA_LOCATION, Record, Abbrev);
   Record.clear();
+}
+
+static void WriteGenericDebugNode(const GenericDebugNode *,
+                                  const ValueEnumerator &, BitstreamWriter &,
+                                  SmallVectorImpl<uint64_t> &, unsigned) {
+  llvm_unreachable("unimplemented");
 }
 
 static void WriteModuleMetadata(const Module *M,
@@ -819,7 +816,7 @@ static void WriteModuleMetadata(const Module *M,
     MDSAbbrev = Stream.EmitAbbrev(Abbv);
   }
 
-  unsigned LocAbbrev = 0;
+  unsigned MDLocationAbbrev = 0;
   if (VE.hasMDLocation()) {
     // Abbrev for METADATA_LOCATION.
     //
@@ -832,7 +829,7 @@ static void WriteModuleMetadata(const Module *M,
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 8));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));
     Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));
-    LocAbbrev = Stream.EmitAbbrev(Abbv);
+    MDLocationAbbrev = Stream.EmitAbbrev(Abbv);
   }
 
   unsigned NameAbbrev = 0;
@@ -845,15 +842,20 @@ static void WriteModuleMetadata(const Module *M,
     NameAbbrev = Stream.EmitAbbrev(Abbv);
   }
 
+  unsigned MDTupleAbbrev = 0;
+  unsigned GenericDebugNodeAbbrev = 0;
   SmallVector<uint64_t, 64> Record;
   for (const Metadata *MD : MDs) {
-    if (const MDLocation *Loc = dyn_cast<MDLocation>(MD)) {
-      WriteMDLocation(Loc, VE, Stream, Record, LocAbbrev);
-      continue;
-    }
     if (const MDNode *N = dyn_cast<MDNode>(MD)) {
-      WriteMDNode(N, VE, Stream, Record);
-      continue;
+      switch (N->getMetadataID()) {
+      default:
+        llvm_unreachable("Invalid MDNode subclass");
+#define HANDLE_MDNODE_LEAF(CLASS)                                              \
+  case Metadata::CLASS##Kind:                                                  \
+    Write##CLASS(cast<CLASS>(N), VE, Stream, Record, CLASS##Abbrev);           \
+    continue;
+#include "llvm/IR/Metadata.def"
+      }
     }
     if (const auto *MDC = dyn_cast<ConstantAsMetadata>(MD)) {
       WriteValueAsMetadata(MDC, VE, Stream, Record);
@@ -1754,8 +1756,8 @@ static void WriteFunction(const Function &F, ValueEnumerator &VE,
 
         Vals.push_back(DL.getLine());
         Vals.push_back(DL.getCol());
-        Vals.push_back(Scope ? VE.getMetadataID(Scope) + 1 : 0);
-        Vals.push_back(IA ? VE.getMetadataID(IA) + 1 : 0);
+        Vals.push_back(VE.getMetadataOrNullID(Scope));
+        Vals.push_back(VE.getMetadataOrNullID(IA));
         Stream.EmitRecord(bitc::FUNC_CODE_DEBUG_LOC, Vals);
         Vals.clear();
 

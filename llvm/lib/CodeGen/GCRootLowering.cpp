@@ -11,13 +11,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/CodeGen/GCStrategy.h"
+#include "llvm/CodeGen/GCMetadata.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/IR/Dominators.h"
+#include "llvm/IR/GCStrategy.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
@@ -115,8 +116,6 @@ static bool NeedsCustomLoweringPass(const GCStrategy &C) {
   return C.customWriteBarrier() || C.customReadBarrier() || C.customRoots();
 }
 
-
-
 /// doInitialization - If this module uses the GC intrinsics, find them now.
 bool LowerIntrinsics::doInitialization(Module &M) {
   // FIXME: This is rather antisocial in the context of a JIT since it performs
@@ -137,7 +136,6 @@ bool LowerIntrinsics::doInitialization(Module &M) {
 
   return MadeChange;
 }
-
 
 /// CouldBecomeSafePoint - Predicate to conservatively determine whether the
 /// instruction could introduce a safe point.
@@ -197,7 +195,6 @@ static bool InsertRootInitializers(Function &F, AllocaInst **Roots,
 
   return MadeChange;
 }
-
 
 /// runOnFunction - Replace gcread/gcwrite intrinsics with loads and stores.
 /// Leave gcroot intrinsics; the code generator needs to see those.
@@ -329,8 +326,15 @@ void GCMachineCodeAnalysis::FindSafePoints(MachineFunction &MF) {
        ++BBI)
     for (MachineBasicBlock::iterator MI = BBI->begin(), ME = BBI->end();
          MI != ME; ++MI)
-      if (MI->isCall())
+      if (MI->isCall()) {
+        // Do not treat tail or sibling call sites as safe points.  This is
+        // legal since any arguments passed to the callee which live in the
+        // remnants of the callers frame will be owned and updated by the
+        // callee if required.
+        if (MI->isTerminator())
+          continue;
         VisitCallPoint(MI);
+      }
 }
 
 void GCMachineCodeAnalysis::FindStackOffsets(MachineFunction &MF) {
@@ -366,11 +370,7 @@ bool GCMachineCodeAnalysis::runOnMachineFunction(MachineFunction &MF) {
   FI->setFrameSize(MF.getFrameInfo()->getStackSize());
 
   // Find all safe points.
-  if (FI->getStrategy().customSafePoints()) {
-    FI->getStrategy().findCustomSafePoints(*FI, MF);
-  } else {
-    FindSafePoints(MF);
-  }
+  FindSafePoints(MF);
 
   // Find the stack offsets for all roots.
   FindStackOffsets(MF);

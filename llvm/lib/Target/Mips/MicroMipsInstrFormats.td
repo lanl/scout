@@ -238,6 +238,15 @@ class BEQNEZ_FM_MM16<bits<6> op> {
   let Inst{6-0}   = offset;
 }
 
+class B16_FM {
+  bits<10> offset;
+
+  bits<16> Inst;
+
+  let Inst{15-10} = 0x33;
+  let Inst{9-0}   = offset;
+}
+
 //===----------------------------------------------------------------------===//
 // MicroMIPS 32-bit Instruction Formats
 //===----------------------------------------------------------------------===//
@@ -897,4 +906,15 @@ class BARRIER_FM_MM<bits<5> op> : MMArch {
   let Inst{15-11} = op;
   let Inst{10-6}  = 0x0;
   let Inst{5-0}   = 0x0;
+}
+
+class ADDIUPC_FM_MM {
+  bits<3> rs;
+  bits<23> imm;
+
+  bits<32> Inst;
+
+  let Inst{31-26} = 0x1e;
+  let Inst{25-23} = rs;
+  let Inst{22-0} = imm;
 }

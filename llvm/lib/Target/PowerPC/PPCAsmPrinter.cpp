@@ -72,9 +72,11 @@ namespace {
     uint64_t TOCLabelID;
     StackMaps SM;
   public:
-    explicit PPCAsmPrinter(TargetMachine &TM, MCStreamer &Streamer)
-      : AsmPrinter(TM, Streamer),
-        Subtarget(TM.getSubtarget<PPCSubtarget>()), TOCLabelID(0), SM(*this) {}
+    explicit PPCAsmPrinter(TargetMachine &TM,
+                           std::unique_ptr<MCStreamer> Streamer)
+        : AsmPrinter(TM, std::move(Streamer)),
+          Subtarget(TM.getSubtarget<PPCSubtarget>()), TOCLabelID(0), SM(*this) {
+    }
 
     const char *getPassName() const override {
       return "PowerPC Assembly Printer";
@@ -104,8 +106,9 @@ namespace {
   /// PPCLinuxAsmPrinter - PowerPC assembly printer, customized for Linux
   class PPCLinuxAsmPrinter : public PPCAsmPrinter {
   public:
-    explicit PPCLinuxAsmPrinter(TargetMachine &TM, MCStreamer &Streamer)
-      : PPCAsmPrinter(TM, Streamer) {}
+    explicit PPCLinuxAsmPrinter(TargetMachine &TM,
+                                std::unique_ptr<MCStreamer> Streamer)
+        : PPCAsmPrinter(TM, std::move(Streamer)) {}
 
     const char *getPassName() const override {
       return "Linux PPC Assembly Printer";
@@ -124,8 +127,9 @@ namespace {
   /// OS X
   class PPCDarwinAsmPrinter : public PPCAsmPrinter {
   public:
-    explicit PPCDarwinAsmPrinter(TargetMachine &TM, MCStreamer &Streamer)
-      : PPCAsmPrinter(TM, Streamer) {}
+    explicit PPCDarwinAsmPrinter(TargetMachine &TM,
+                                 std::unique_ptr<MCStreamer> Streamer)
+        : PPCAsmPrinter(TM, std::move(Streamer)) {}
 
     const char *getPassName() const override {
       return "Darwin PPC Assembly Printer";
@@ -699,7 +703,7 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
                               OutContext);
     EmitToStreamer(OutStreamer, MCInstBuilder(PPC::ADDIS8)
                                 .addReg(MI->getOperand(0).getReg())
-                                .addReg(PPC::X2)
+                                .addReg(MI->getOperand(1).getReg())
                                 .addExpr(SymGotTprel));
     return;
   }
@@ -778,7 +782,7 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
                               OutContext);
     EmitToStreamer(OutStreamer, MCInstBuilder(PPC::ADDIS8)
                                 .addReg(MI->getOperand(0).getReg())
-                                .addReg(PPC::X2)
+                                .addReg(MI->getOperand(1).getReg())
                                 .addExpr(SymGotTlsGD));
     return;
   }
@@ -815,7 +819,7 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
                               OutContext);
     EmitToStreamer(OutStreamer, MCInstBuilder(PPC::ADDIS8)
                                 .addReg(MI->getOperand(0).getReg())
-                                .addReg(PPC::X2)
+                                .addReg(MI->getOperand(1).getReg())
                                 .addExpr(SymGotTlsLD));
     return;
   }
@@ -1471,13 +1475,14 @@ bool PPCDarwinAsmPrinter::doFinalization(Module &M) {
 /// for a MachineFunction to the given output stream, in a format that the
 /// Darwin assembler can deal with.
 ///
-static AsmPrinter *createPPCAsmPrinterPass(TargetMachine &tm,
-                                           MCStreamer &Streamer) {
+static AsmPrinter *
+createPPCAsmPrinterPass(TargetMachine &tm,
+                        std::unique_ptr<MCStreamer> &&Streamer) {
   const PPCSubtarget *Subtarget = &tm.getSubtarget<PPCSubtarget>();
 
   if (Subtarget->isDarwin())
-    return new PPCDarwinAsmPrinter(tm, Streamer);
-  return new PPCLinuxAsmPrinter(tm, Streamer);
+    return new PPCDarwinAsmPrinter(tm, std::move(Streamer));
+  return new PPCLinuxAsmPrinter(tm, std::move(Streamer));
 }
 
 // Force static initialization.

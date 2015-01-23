@@ -148,8 +148,8 @@ bool LLParser::ValidateEndOfModule() {
 
   // Resolve metadata cycles.
   for (auto &N : NumberedMetadata)
-    if (auto *U = cast_or_null<UniquableMDNode>(N))
-      U->resolveCycles();
+    if (N && !N->isResolved())
+      N->resolveCycles();
 
   // Look for intrinsic functions and CallInst that need to be upgraded
   for (Module::iterator FI = M->begin(), FE = M->end(); FI != FE; )
@@ -531,13 +531,13 @@ bool LLParser::ParseMDNodeID(MDNode *&Result) {
   }
 
   // Otherwise, create MDNode forward reference.
-  MDNodeFwdDecl *FwdNode = MDNodeFwdDecl::get(Context, None);
-  ForwardRefMDNodes[MID] = std::make_pair(FwdNode, Lex.getLoc());
+  auto &FwdRef = ForwardRefMDNodes[MID];
+  FwdRef = std::make_pair(MDTuple::getTemporary(Context, None), Lex.getLoc());
 
   if (NumberedMetadata.size() <= MID)
     NumberedMetadata.resize(MID+1);
-  NumberedMetadata[MID].reset(FwdNode);
-  Result = FwdNode;
+  Result = FwdRef.first.get();
+  NumberedMetadata[MID].reset(Result);
   return false;
 }
 
@@ -597,9 +597,7 @@ bool LLParser::ParseStandaloneMetadata() {
   // See if this was forward referenced, if so, handle it.
   auto FI = ForwardRefMDNodes.find(MetadataID);
   if (FI != ForwardRefMDNodes.end()) {
-    MDNodeFwdDecl *Temp = FI->second.first;
-    Temp->replaceAllUsesWith(Init);
-    delete Temp;
+    FI->second.first->replaceAllUsesWith(Init);
     ForwardRefMDNodes.erase(FI);
 
     assert(NumberedMetadata[MetadataID] == Init && "Tracking VH didn't work");
@@ -2925,10 +2923,6 @@ bool LLParser::ParseMDNodeTail(MDNode *&N) {
 
 bool LLParser::ParseMDField(LocTy Loc, StringRef Name,
                             MDUnsignedField<uint32_t> &Result) {
-  if (Result.Seen)
-    return Error(Loc,
-                 "field '" + Name + "' cannot be specified more than once");
-
   if (Lex.getKind() != lltok::APSInt || Lex.getAPSIntVal().isSigned())
     return TokError("expected unsigned integer");
   uint64_t Val64 = Lex.getAPSIntVal().getLimitedValue(Result.Max + 1ull);
@@ -2942,10 +2936,6 @@ bool LLParser::ParseMDField(LocTy Loc, StringRef Name,
 }
 
 bool LLParser::ParseMDField(LocTy Loc, StringRef Name, MDField &Result) {
-  if (Result.Seen)
-    return Error(Loc,
-                 "field '" + Name + "' cannot be specified more than once");
-
   Metadata *MD;
   if (ParseMetadata(MD, nullptr))
     return true;
@@ -2955,15 +2945,7 @@ bool LLParser::ParseMDField(LocTy Loc, StringRef Name, MDField &Result) {
 }
 
 template <class ParserTy>
-bool LLParser::ParseMDFieldsImpl(ParserTy parseField) {
-  assert(Lex.getKind() == lltok::MetadataVar && "Expected metadata type name");
-  Lex.Lex();
-
-  if (ParseToken(lltok::lparen, "expected '(' here"))
-    return true;
-  if (EatIfPresent(lltok::rparen))
-    return false;
-
+bool LLParser::ParseMDFieldsImplBody(ParserTy parseField) {
   do {
     if (Lex.getKind() != lltok::LabelStr)
       return TokError("expected field label here");
@@ -2972,7 +2954,32 @@ bool LLParser::ParseMDFieldsImpl(ParserTy parseField) {
       return true;
   } while (EatIfPresent(lltok::comma));
 
+  return false;
+}
+
+template <class ParserTy>
+bool LLParser::ParseMDFieldsImpl(ParserTy parseField, LocTy &ClosingLoc) {
+  assert(Lex.getKind() == lltok::MetadataVar && "Expected metadata type name");
+  Lex.Lex();
+
+  if (ParseToken(lltok::lparen, "expected '(' here"))
+    return true;
+  if (Lex.getKind() != lltok::rparen)
+    if (ParseMDFieldsImplBody(parseField))
+      return true;
+
+  ClosingLoc = Lex.getLoc();
   return ParseToken(lltok::rparen, "expected ')' here");
+}
+
+template <class FieldTy>
+bool LLParser::ParseMDField(StringRef Name, FieldTy &Result) {
+  if (Result.Seen)
+    return TokError("field '" + Name + "' cannot be specified more than once");
+
+  LocTy Loc = Lex.getLoc();
+  Lex.Lex();
+  return ParseMDField(Loc, Name, Result);
 }
 
 bool LLParser::ParseSpecializedMDNode(MDNode *&N, bool IsDistinct) {
@@ -2987,41 +2994,45 @@ bool LLParser::ParseSpecializedMDNode(MDNode *&N, bool IsDistinct) {
   return TokError("expected metadata type");
 }
 
-#define PARSE_MD_FIELD(NAME)                                                   \
+#define DECLARE_FIELD(NAME, TYPE, INIT) TYPE NAME INIT
+#define NOP_FIELD(NAME, TYPE, INIT)
+#define REQUIRE_FIELD(NAME, TYPE, INIT)                                        \
+  if (!NAME.Seen)                                                              \
+    return Error(ClosingLoc, "missing required field '" #NAME "'");
+#define PARSE_MD_FIELD(NAME, TYPE, DEFAULT)                                    \
+  if (Lex.getStrVal() == #NAME)                                                \
+    return ParseMDField(#NAME, NAME);
+#define PARSE_MD_FIELDS()                                                      \
+  VISIT_MD_FIELDS(DECLARE_FIELD, DECLARE_FIELD)                                \
   do {                                                                         \
-    if (Lex.getStrVal() == #NAME) {                                            \
-      LocTy Loc = Lex.getLoc();                                                \
-      Lex.Lex();                                                               \
-      if (ParseMDField(Loc, #NAME, NAME))                                      \
-        return true;                                                           \
-      return false;                                                            \
-    }                                                                          \
-  } while (0)
+    LocTy ClosingLoc;                                                          \
+    if (ParseMDFieldsImpl([&]() -> bool {                                      \
+      VISIT_MD_FIELDS(PARSE_MD_FIELD, PARSE_MD_FIELD)                          \
+      return TokError(Twine("invalid field '") + Lex.getStrVal() + "'");       \
+    }, ClosingLoc))                                                            \
+      return true;                                                             \
+    VISIT_MD_FIELDS(NOP_FIELD, REQUIRE_FIELD)                                  \
+  } while (false)
 
 /// ParseMDLocationFields:
 ///   ::= !MDLocation(line: 43, column: 8, scope: !5, inlinedAt: !6)
 bool LLParser::ParseMDLocation(MDNode *&Result, bool IsDistinct) {
-  MDUnsignedField<uint32_t> line(0, ~0u >> 8);
-  MDUnsignedField<uint32_t> column(0, ~0u >> 24);
-  MDField scope;
-  MDField inlinedAt;
-  if (ParseMDFieldsImpl([&]() -> bool {
-        PARSE_MD_FIELD(line);
-        PARSE_MD_FIELD(column);
-        PARSE_MD_FIELD(scope);
-        PARSE_MD_FIELD(inlinedAt);
-        return TokError(Twine("invalid field '") + Lex.getStrVal() + "'");
-      }))
-    return true;
-
-  if (!scope.Seen)
-    return TokError("missing required field 'scope'");
+#define VISIT_MD_FIELDS(OPTIONAL, REQUIRED)                                    \
+  OPTIONAL(line, MDUnsignedField<uint32_t>, (0, ~0u >> 8));                    \
+  OPTIONAL(column, MDUnsignedField<uint32_t>, (0, ~0u >> 16));                 \
+  REQUIRED(scope, MDField, );                                                  \
+  OPTIONAL(inlinedAt, MDField, );
+  PARSE_MD_FIELDS();
+#undef VISIT_MD_FIELDS
 
   auto get = (IsDistinct ? MDLocation::getDistinct : MDLocation::get);
   Result = get(Context, line.Val, column.Val, scope.Val, inlinedAt.Val);
   return false;
 }
 #undef PARSE_MD_FIELD
+#undef NOP_FIELD
+#undef REQUIRE_FIELD
+#undef DECLARE_FIELD
 
 /// ParseMetadataAsValue
 ///  ::= metadata i32 %local

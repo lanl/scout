@@ -1275,7 +1275,7 @@ bool PPCFastISel::processCallArgs(SmallVectorImpl<Value*> &Args,
 
   // Prepare to assign register arguments.  Every argument uses up a
   // GPR protocol register even if it's passed in a floating-point
-  // register.
+  // register (unless we're using the fast calling convention).
   unsigned NextGPR = PPC::X3;
   unsigned NextFPR = PPC::F1;
 
@@ -1325,7 +1325,8 @@ bool PPCFastISel::processCallArgs(SmallVectorImpl<Value*> &Args,
     unsigned ArgReg;
     if (ArgVT == MVT::f32 || ArgVT == MVT::f64) {
       ArgReg = NextFPR++;
-      ++NextGPR;
+      if (CC != CallingConv::Fast)
+        ++NextGPR;
     } else
       ArgReg = NextGPR++;
 
@@ -1523,9 +1524,9 @@ bool PPCFastISel::fastLowerCall(CallLoweringInfo &CLI) {
   for (unsigned II = 0, IE = RegArgs.size(); II != IE; ++II)
     MIB.addReg(RegArgs[II], RegState::Implicit);
 
-  // Direct calls in the ELFv2 ABI need the TOC register live into the call.
-  if (PPCSubTarget->isELFv2ABI())
-    MIB.addReg(PPC::X2, RegState::Implicit);
+  // Direct calls, in both the ELF V1 and V2 ABIs, need the TOC register live
+  // into the call.
+  MIB.addReg(PPC::X2, RegState::Implicit);
 
   // Add a register mask with the call-preserved registers.  Proper
   // defs for return values will be added by setPhysRegsDeadExcept().

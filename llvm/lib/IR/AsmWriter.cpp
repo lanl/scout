@@ -1286,6 +1286,12 @@ raw_ostream &operator<<(raw_ostream &OS, FieldSeparator &FS) {
 }
 } // end namespace
 
+static void writeGenericDebugNode(raw_ostream &, const GenericDebugNode *,
+                                  TypePrinting *, SlotTracker *,
+                                  const Module *) {
+  llvm_unreachable("Unimplemented write");
+}
+
 static void writeMDLocation(raw_ostream &Out, const MDLocation *DL,
                             TypePrinting *TypePrinter, SlotTracker *Machine,
                             const Module *Context) {
@@ -1309,18 +1315,17 @@ static void WriteMDNodeBodyInternal(raw_ostream &Out, const MDNode *Node,
                                     TypePrinting *TypePrinter,
                                     SlotTracker *Machine,
                                     const Module *Context) {
-  assert(isa<UniquableMDNode>(Node) && "Expected uniquable MDNode");
+  assert(!Node->isTemporary() && "Unexpected forward declaration");
 
-  auto *Uniquable = cast<UniquableMDNode>(Node);
-  if (Uniquable->isDistinct())
+  if (Node->isDistinct())
     Out << "distinct ";
 
-  switch (Uniquable->getMetadataID()) {
+  switch (Node->getMetadataID()) {
   default:
     llvm_unreachable("Expected uniquable MDNode");
-#define HANDLE_UNIQUABLE_LEAF(CLASS)                                           \
+#define HANDLE_MDNODE_LEAF(CLASS)                                              \
   case Metadata::CLASS##Kind:                                                  \
-    write##CLASS(Out, cast<CLASS>(Uniquable), TypePrinter, Machine, Context);  \
+    write##CLASS(Out, cast<CLASS>(Node), TypePrinter, Machine, Context);       \
     break;
 #include "llvm/IR/Metadata.def"
   }
