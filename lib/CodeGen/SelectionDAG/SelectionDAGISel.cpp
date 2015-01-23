@@ -24,7 +24,6 @@
 #include "llvm/CodeGen/FastISel.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
 #include "llvm/CodeGen/GCMetadata.h"
-#include "llvm/CodeGen/GCStrategy.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -36,6 +35,7 @@
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/GCStrategy.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -379,7 +379,7 @@ void SelectionDAGISel::getAnalysisUsage(AnalysisUsage &AU) const {
 ///
 /// This is required for correctness, so it must be done at -O0.
 ///
-static void SplitCriticalSideEffectEdges(Function &Fn, Pass *SDISel) {
+static void SplitCriticalSideEffectEdges(Function &Fn, AliasAnalysis *AA) {
   // Loop for blocks with phi nodes.
   for (Function::iterator BB = Fn.begin(), E = Fn.end(); BB != E; ++BB) {
     PHINode *PN = dyn_cast<PHINode>(BB->begin());
@@ -403,8 +403,9 @@ static void SplitCriticalSideEffectEdges(Function &Fn, Pass *SDISel) {
           continue;
 
         // Okay, we have to split this edge.
-        SplitCriticalEdge(Pred->getTerminator(),
-                          GetSuccessorNumber(Pred, BB), SDISel, true);
+        SplitCriticalEdge(
+            Pred->getTerminator(), GetSuccessorNumber(Pred, BB),
+            CriticalEdgeSplittingOptions(AA).setMergeIdenticalEdges());
         goto ReprocessBlock;
       }
   }
@@ -441,7 +442,7 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
 
   DEBUG(dbgs() << "\n\n\n=== " << Fn.getName() << "\n");
 
-  SplitCriticalSideEffectEdges(const_cast<Function&>(Fn), this);
+  SplitCriticalSideEffectEdges(const_cast<Function&>(Fn), AA);
 
   CurDAG->init(*MF);
   FuncInfo->set(Fn, *MF, CurDAG);
@@ -923,8 +924,13 @@ void SelectionDAGISel::PrepareEHLandingPad() {
   BuildMI(*MBB, FuncInfo->InsertPt, SDB->getCurDebugLoc(), II)
     .addSym(Label);
 
-  if (TM.getMCAsmInfo()->getExceptionHandlingType() ==
-      ExceptionHandling::MSVC) {
+  // If this is an MSVC-style personality function, we need to split the landing
+  // pad into several BBs.
+  const BasicBlock *LLVMBB = MBB->getBasicBlock();
+  const LandingPadInst *LPadInst = LLVMBB->getLandingPadInst();
+  MF->getMMI().addPersonality(
+      MBB, cast<Function>(LPadInst->getPersonalityFn()->stripPointerCasts()));
+  if (MF->getMMI().getPersonalityType() == EHPersonality::Win64SEH) {
     // Make virtual registers and a series of labels that fill in values for the
     // clauses.
     auto &RI = MF->getRegInfo();
@@ -936,8 +942,6 @@ void SelectionDAGISel::PrepareEHLandingPad() {
 
     // Emit separate machine basic blocks with separate labels for each clause
     // before the main landing pad block.
-    const BasicBlock *LLVMBB = MBB->getBasicBlock();
-    const LandingPadInst *LPadInst = LLVMBB->getLandingPadInst();
     MachineInstrBuilder SelectorPHI = BuildMI(
         *MBB, MBB->begin(), SDB->getCurDebugLoc(), TII->get(TargetOpcode::PHI),
         FuncInfo->ExceptionSelectorVirtReg);

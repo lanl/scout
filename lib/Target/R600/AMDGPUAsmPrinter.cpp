@@ -73,9 +73,10 @@ static uint32_t getFPMode(const MachineFunction &F) {
          FP_DENORM_MODE_DP(FP64Denormals);
 }
 
-static AsmPrinter *createAMDGPUAsmPrinterPass(TargetMachine &tm,
-                                              MCStreamer &Streamer) {
-  return new AMDGPUAsmPrinter(tm, Streamer);
+static AsmPrinter *
+createAMDGPUAsmPrinterPass(TargetMachine &tm,
+                           std::unique_ptr<MCStreamer> &&Streamer) {
+  return new AMDGPUAsmPrinter(tm, std::move(Streamer));
 }
 
 extern "C" void LLVMInitializeR600AsmPrinter() {
@@ -83,8 +84,9 @@ extern "C" void LLVMInitializeR600AsmPrinter() {
   TargetRegistry::RegisterAsmPrinter(TheGCNTarget, createAMDGPUAsmPrinterPass);
 }
 
-AMDGPUAsmPrinter::AMDGPUAsmPrinter(TargetMachine &TM, MCStreamer &Streamer)
-    : AsmPrinter(TM, Streamer) {
+AMDGPUAsmPrinter::AMDGPUAsmPrinter(TargetMachine &TM,
+                                   std::unique_ptr<MCStreamer> Streamer)
+    : AsmPrinter(TM, std::move(Streamer)) {
   DisasmEnabled = TM.getSubtarget<AMDGPUSubtarget>().dumpCode();
 }
 
@@ -421,6 +423,7 @@ static unsigned getRsrcReg(unsigned ShaderType) {
 
 void AMDGPUAsmPrinter::EmitProgramInfoSI(const MachineFunction &MF,
                                          const SIProgramInfo &KernelInfo) {
+  const AMDGPUSubtarget &STM = TM.getSubtarget<AMDGPUSubtarget>();
   const SIMachineFunctionInfo *MFI = MF.getInfo<SIMachineFunctionInfo>();
   unsigned RsrcReg = getRsrcReg(MFI->getShaderType());
 
@@ -441,6 +444,10 @@ void AMDGPUAsmPrinter::EmitProgramInfoSI(const MachineFunction &MF,
     OutStreamer.EmitIntValue(RsrcReg, 4);
     OutStreamer.EmitIntValue(S_00B028_VGPRS(KernelInfo.VGPRBlocks) |
                              S_00B028_SGPRS(KernelInfo.SGPRBlocks), 4);
+    if (STM.isVGPRSpillingEnabled(MFI)) {
+      OutStreamer.EmitIntValue(R_0286E8_SPI_TMPRING_SIZE, 4);
+      OutStreamer.EmitIntValue(S_0286E8_WAVESIZE(KernelInfo.ScratchBlocks), 4);
+    }
   }
 
   if (MFI->getShaderType() == ShaderType::PIXEL) {

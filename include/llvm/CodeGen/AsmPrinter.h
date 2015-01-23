@@ -127,7 +127,7 @@ private:
   DwarfDebug *DD;
 
 protected:
-  explicit AsmPrinter(TargetMachine &TM, MCStreamer &Streamer);
+  explicit AsmPrinter(TargetMachine &TM, std::unique_ptr<MCStreamer> Streamer);
 
 public:
   virtual ~AsmPrinter();
@@ -430,9 +430,8 @@ public:
                            unsigned PieceOffset = 0) const;
 
   /// EmitDwarfRegOp - Emit a dwarf register operation.
-  /// \param Indirect   whether this is a register-indirect address
-  virtual void EmitDwarfRegOp(ByteStreamer &BS, const MachineLocation &MLoc,
-                              bool Indirect) const;
+  virtual void EmitDwarfRegOp(ByteStreamer &BS,
+                              const MachineLocation &MLoc) const;
 
   //===------------------------------------------------------------------===//
   // Dwarf Lowering Routines

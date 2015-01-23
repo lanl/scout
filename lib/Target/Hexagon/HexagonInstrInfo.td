@@ -29,6 +29,8 @@ def F64 : PatLeaf<(f64 DoubleRegs:$R)>;
 // 64-bit value.
 def LoReg: OutPatFrag<(ops node:$Rs),
                       (EXTRACT_SUBREG (i64 $Rs), subreg_loreg)>;
+def HiReg: OutPatFrag<(ops node:$Rs),
+                      (EXTRACT_SUBREG (i64 $Rs), subreg_hireg)>;
 
 // SDNode for converting immediate C to C-1.
 def DEC_CONST_SIGNED : SDNodeXForm<imm, [{
@@ -2906,6 +2908,23 @@ let addrMode = BaseImmOffset, InputType = "imm", isCodeGenOnly = 0 in {
                             u6_1Ext, 0b011, 1>;
 }
 
+class Storex_simple_pat<PatFrag Store, PatFrag Value, InstHexagon MI>
+  : Pat<(Store Value:$Rt, (i32 IntRegs:$Rs)),
+        (MI IntRegs:$Rs, 0, Value:$Rt)>;
+		
+// Regular stores in the DAG have two operands: value and address.
+// Atomic stores also have two, but they are reversed: address, value.
+// To use atomic stores with the patterns, they need to have their operands
+// swapped. This relies on the knowledge that the F.Fragment uses names
+// "ptr" and "val".
+class SwapSt<PatFrag F>
+  : PatFrag<(ops node:$val, node:$ptr), F.Fragment>;
+
+def: Storex_simple_pat<SwapSt<atomic_store_8>,  I32, S2_storerb_io>;
+def: Storex_simple_pat<SwapSt<atomic_store_16>, I32, S2_storerh_io>;
+def: Storex_simple_pat<SwapSt<atomic_store_32>, I32, S2_storeri_io>;
+def: Storex_simple_pat<SwapSt<atomic_store_64>, I64, S2_storerd_io>;
+
 def : Pat<(truncstorei8 (i32 IntRegs:$src1), ADDRriS11_0:$addr),
           (S2_storerb_io AddrFI:$addr, 0, (i32 IntRegs:$src1))>;
 
@@ -3927,11 +3946,10 @@ def TFR_FI : ALU32_ri<(outs IntRegs:$dst), (ins FrameIndex:$src1),
 
 // Support for generating global address.
 // Taken from X86InstrInfo.td.
-def SDTHexagonCONST32 : SDTypeProfile<1, 1, [
-                                            SDTCisVT<0, i32>,
-                                            SDTCisVT<1, i32>,
-                                            SDTCisPtrTy<0>]>;
-def HexagonCONST32 : SDNode<"HexagonISD::CONST32",     SDTHexagonCONST32>;
+def SDTHexagonCONST32 : SDTypeProfile<1, 1, [SDTCisVT<0, i32>,
+                                             SDTCisVT<1, i32>,
+                                             SDTCisPtrTy<0>]>;
+def HexagonCONST32    : SDNode<"HexagonISD::CONST32",        SDTHexagonCONST32>;
 def HexagonCONST32_GP : SDNode<"HexagonISD::CONST32_GP",     SDTHexagonCONST32>;
 
 // HI/LO Instructions
@@ -4028,29 +4046,17 @@ def TFR_PdFalse : SInst<(outs PredRegs:$dst), (ins),
                   "$dst = xor($dst, $dst)",
                   [(set (i1 PredRegs:$dst), 0)]>;
 
-def MPY_trsext : MInst<(outs IntRegs:$dst), (ins IntRegs:$src1, IntRegs:$src2),
-       "$dst = mpy($src1, $src2)",
-       [(set (i32 IntRegs:$dst),
-             (trunc (i64 (srl (i64 (mul (i64 (sext (i32 IntRegs:$src1))),
-                                        (i64 (sext (i32 IntRegs:$src2))))),
-                              (i32 32)))))]>;
-
 // Pseudo instructions.
 def SDT_SPCallSeqStart : SDCallSeqStart<[ SDTCisVT<0, i32> ]>;
-
-def SDT_SPCallSeqEnd : SDCallSeqEnd<[ SDTCisVT<0, i32>,
+def SDT_SPCallSeqEnd   : SDCallSeqEnd<[ SDTCisVT<0, i32>,
                                         SDTCisVT<1, i32> ]>;
-
-def callseq_end : SDNode<"ISD::CALLSEQ_END",   SDT_SPCallSeqEnd,
-                  [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
 
 def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_SPCallSeqStart,
                     [SDNPHasChain, SDNPOutGlue]>;
+def callseq_end   : SDNode<"ISD::CALLSEQ_END",   SDT_SPCallSeqEnd,
+                    [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
 
-def SDT_SPCall : SDTypeProfile<0, 1, [SDTCisVT<0, i32>]>;
-
-def call : SDNode<"HexagonISD::CALL", SDT_SPCall,
-           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue, SDNPVariadic]>;
+def SDT_SPCall  : SDTypeProfile<0, 1, [SDTCisVT<0, i32>]>;
 
 // For tailcalls a HexagonTCRet SDNode has 3 SDNode Properties - a chain,
 // Optional Flag and Variable Arguments.
@@ -4094,13 +4100,6 @@ isTerminator = 1, isCodeGenOnly = 1 in {
       [], "", J_tc_2early_SLOT23>;
 }
 
-// Map call instruction.
-def : Pat<(call (i32 IntRegs:$dst)),
-      (J2_callr (i32 IntRegs:$dst))>, Requires<[HasV2TOnly]>;
-def : Pat<(call tglobaladdr:$dst),
-      (CALL tglobaladdr:$dst)>, Requires<[HasV2TOnly]>;
-def : Pat<(call texternalsym:$dst),
-      (CALL texternalsym:$dst)>, Requires<[HasV2TOnly]>;
 //Tail calls.
 def : Pat<(HexagonTCRet tglobaladdr:$dst),
       (TCRETURNtg tglobaladdr:$dst)>;
@@ -4108,71 +4107,6 @@ def : Pat<(HexagonTCRet texternalsym:$dst),
       (TCRETURNtext texternalsym:$dst)>;
 def : Pat<(HexagonTCRet (i32 IntRegs:$dst)),
       (TCRETURNR (i32 IntRegs:$dst))>;
-
-// Atomic load and store support
-// 8 bit atomic load
-def : Pat<(atomic_load_8 ADDRriS11_0:$src1),
-          (i32 (L2_loadrub_io AddrFI:$src1, 0))>;
-
-def : Pat<(atomic_load_8 (add (i32 IntRegs:$src1), s11_0ImmPred:$offset)),
-          (i32 (L2_loadrub_io (i32 IntRegs:$src1), s11_0ImmPred:$offset))>;
-
-// 16 bit atomic load
-def : Pat<(atomic_load_16 ADDRriS11_1:$src1),
-          (i32 (L2_loadruh_io AddrFI:$src1, 0))>;
-
-def : Pat<(atomic_load_16 (add (i32 IntRegs:$src1), s11_1ImmPred:$offset)),
-          (i32 (L2_loadruh_io (i32 IntRegs:$src1), s11_1ImmPred:$offset))>;
-
-def : Pat<(atomic_load_32 ADDRriS11_2:$src1),
-          (i32 (L2_loadri_io AddrFI:$src1, 0))>;
-
-def : Pat<(atomic_load_32 (add (i32 IntRegs:$src1), s11_2ImmPred:$offset)),
-          (i32 (L2_loadri_io (i32 IntRegs:$src1), s11_2ImmPred:$offset))>;
-
-// 64 bit atomic load
-def : Pat<(atomic_load_64 ADDRriS11_3:$src1),
-          (i64 (L2_loadrd_io AddrFI:$src1, 0))>;
-
-def : Pat<(atomic_load_64 (add (i32 IntRegs:$src1), s11_3ImmPred:$offset)),
-          (i64 (L2_loadrd_io (i32 IntRegs:$src1), s11_3ImmPred:$offset))>;
-
-
-def : Pat<(atomic_store_8 ADDRriS11_0:$src2, (i32 IntRegs:$src1)),
-          (S2_storerb_io AddrFI:$src2, 0, (i32 IntRegs:$src1))>;
-
-def : Pat<(atomic_store_8 (add (i32 IntRegs:$src2), s11_0ImmPred:$offset),
-                          (i32 IntRegs:$src1)),
-          (S2_storerb_io (i32 IntRegs:$src2), s11_0ImmPred:$offset,
-                         (i32 IntRegs:$src1))>;
-
-
-def : Pat<(atomic_store_16 ADDRriS11_1:$src2, (i32 IntRegs:$src1)),
-          (S2_storerh_io AddrFI:$src2, 0, (i32 IntRegs:$src1))>;
-
-def : Pat<(atomic_store_16 (i32 IntRegs:$src1),
-                          (add (i32 IntRegs:$src2), s11_1ImmPred:$offset)),
-          (S2_storerh_io (i32 IntRegs:$src2), s11_1ImmPred:$offset,
-                         (i32 IntRegs:$src1))>;
-
-def : Pat<(atomic_store_32 ADDRriS11_2:$src2, (i32 IntRegs:$src1)),
-          (S2_storeri_io AddrFI:$src2, 0, (i32 IntRegs:$src1))>;
-
-def : Pat<(atomic_store_32 (add (i32 IntRegs:$src2), s11_2ImmPred:$offset),
-                           (i32 IntRegs:$src1)),
-          (S2_storeri_io (i32 IntRegs:$src2), s11_2ImmPred:$offset,
-                         (i32 IntRegs:$src1))>;
-
-
-
-
-def : Pat<(atomic_store_64 ADDRriS11_3:$src2, (i64 DoubleRegs:$src1)),
-          (S2_storerd_io AddrFI:$src2, 0, (i64 DoubleRegs:$src1))>;
-
-def : Pat<(atomic_store_64 (add (i32 IntRegs:$src2), s11_3ImmPred:$offset),
-                           (i64 DoubleRegs:$src1)),
-          (S2_storerd_io (i32 IntRegs:$src2), s11_3ImmPred:$offset,
-                         (i64 DoubleRegs:$src1))>;
 
 // Map from r0 = and(r1, 65535) to r0 = zxth(r1)
 def : Pat <(and (i32 IntRegs:$src1), 65535),

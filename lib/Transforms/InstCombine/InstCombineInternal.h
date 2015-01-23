@@ -1,4 +1,4 @@
-//===- InstCombine.h - Main InstCombine pass definition ---------*- C++ -*-===//
+//===- InstCombineInternal.h - InstCombine pass internals -------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -6,12 +6,18 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
+/// \file
+///
+/// This file provides internal interfaces used to implement the InstCombine.
+///
+//===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TRANSFORMS_INSTCOMBINE_INSTCOMBINE_H
-#define LLVM_LIB_TRANSFORMS_INSTCOMBINE_INSTCOMBINE_H
+#ifndef LLVM_LIB_TRANSFORMS_INSTCOMBINE_INSTCOMBINEINTERNAL_H
+#define LLVM_LIB_TRANSFORMS_INSTCOMBINE_INSTCOMBINEINTERNAL_H
 
 #include "InstCombineWorklist.h"
 #include "llvm/Analysis/AssumptionCache.h"
+#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/TargetFolder.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/Dominators.h"
@@ -21,7 +27,6 @@
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/Pass.h"
-#include "llvm/Transforms/Utils/SimplifyLibCalls.h"
 
 #define DEBUG_TYPE "instcombine"
 
@@ -34,8 +39,7 @@ class DbgDeclareInst;
 class MemIntrinsic;
 class MemSetInst;
 
-/// SelectPatternFlavor - We can match a variety of different patterns for
-/// select operations.
+/// \brief Specific patterns of select instructions we can match.
 enum SelectPatternFlavor {
   SPF_UNKNOWN = 0,
   SPF_SMIN,
@@ -46,8 +50,15 @@ enum SelectPatternFlavor {
   SPF_NABS
 };
 
-/// getComplexity:  Assign a complexity or rank value to LLVM Values...
-///   0 -> undef, 1 -> Const, 2 -> Other, 3 -> Arg, 3 -> Unary, 4 -> OtherInst
+/// \brief Assign a complexity or rank value to LLVM Values.
+///
+/// This routine maps IR values to various complexity ranks:
+///   0 -> undef
+///   1 -> Constants
+///   2 -> Other non-instructions
+///   3 -> Arguments
+///   3 -> Unary operations
+///   4 -> Other instructions
 static inline unsigned getComplexity(Value *V) {
   if (isa<Instruction>(V)) {
     if (BinaryOperator::isNeg(V) || BinaryOperator::isFNeg(V) ||
@@ -60,18 +71,17 @@ static inline unsigned getComplexity(Value *V) {
   return isa<Constant>(V) ? (isa<UndefValue>(V) ? 0 : 1) : 2;
 }
 
-/// AddOne - Add one to a Constant
+/// \brief Add one to a Constant
 static inline Constant *AddOne(Constant *C) {
   return ConstantExpr::getAdd(C, ConstantInt::get(C->getType(), 1));
 }
-/// SubOne - Subtract one from a Constant
+/// \brief Subtract one from a Constant
 static inline Constant *SubOne(Constant *C) {
   return ConstantExpr::getSub(C, ConstantInt::get(C->getType(), 1));
 }
 
-/// InstCombineIRInserter - This is an IRBuilder insertion helper that works
-/// just like the normal insertion helper, but also adds any new instructions
-/// to the instcombine worklist.
+/// \brief An IRBuilder inserter that adds new instructions to the instcombine
+/// worklist.
 class LLVM_LIBRARY_VISIBILITY InstCombineIRInserter
     : public IRBuilderDefaultInserter<true> {
   InstCombineWorklist &Worklist;
@@ -92,46 +102,59 @@ public:
   }
 };
 
-/// InstCombiner - The -instcombine pass.
+/// \brief The core instruction combiner logic.
+///
+/// This class provides both the logic to recursively visit instructions and
+/// combine them, as well as the pass infrastructure for running this as part
+/// of the LLVM pass pipeline.
 class LLVM_LIBRARY_VISIBILITY InstCombiner
-    : public FunctionPass,
-      public InstVisitor<InstCombiner, Instruction *> {
-  AssumptionCache *AC;
-  const DataLayout *DL;
-  TargetLibraryInfo *TLI;
-  DominatorTree *DT;
-  bool MadeIRChange;
-  LibCallSimplifier *Simplifier;
-  bool MinimizeSize;
-
+    : public InstVisitor<InstCombiner, Instruction *> {
+  // FIXME: These members shouldn't be public.
 public:
-  /// Worklist - All of the instructions that need to be simplified.
-  InstCombineWorklist Worklist;
+  /// \brief A worklist of the instructions that need to be simplified.
+  InstCombineWorklist &Worklist;
 
-  /// Builder - This is an IRBuilder that automatically inserts new
-  /// instructions into the worklist when they are created.
+  /// \brief An IRBuilder that automatically inserts new instructions into the
+  /// worklist.
   typedef IRBuilder<true, TargetFolder, InstCombineIRInserter> BuilderTy;
   BuilderTy *Builder;
 
-  static char ID; // Pass identification, replacement for typeid
-  InstCombiner()
-      : FunctionPass(ID), DL(nullptr), DT(nullptr), Builder(nullptr) {
-    MinimizeSize = false;
-    initializeInstCombinerPass(*PassRegistry::getPassRegistry());
-  }
+private:
+  // Mode in which we are running the combiner.
+  const bool MinimizeSize;
+
+  // Required analyses.
+  // FIXME: These can never be null and should be references.
+  AssumptionCache *AC;
+  TargetLibraryInfo *TLI;
+  DominatorTree *DT;
+
+  // Optional analyses. When non-null, these can both be used to do better
+  // combining and will be updated to reflect any changes.
+  const DataLayout *DL;
+  LoopInfo *LI;
+
+  bool MadeIRChange;
 
 public:
-  bool runOnFunction(Function &F) override;
+  InstCombiner(InstCombineWorklist &Worklist, BuilderTy *Builder,
+               bool MinimizeSize, AssumptionCache *AC, TargetLibraryInfo *TLI,
+               DominatorTree *DT, const DataLayout *DL, LoopInfo *LI)
+      : Worklist(Worklist), Builder(Builder), MinimizeSize(MinimizeSize),
+        AC(AC), TLI(TLI), DT(DT), DL(DL), LI(LI), MadeIRChange(false) {}
 
-  bool DoOneIteration(Function &F, unsigned ItNum);
-
-  void getAnalysisUsage(AnalysisUsage &AU) const override;
+  /// \brief Run the combiner over the entire worklist until it is empty.
+  ///
+  /// \returns true if the IR is changed.
+  bool run();
 
   AssumptionCache *getAssumptionCache() const { return AC; }
 
   const DataLayout *getDataLayout() const { return DL; }
-  
+
   DominatorTree *getDominatorTree() const { return DT; }
+
+  LoopInfo *getLoopInfo() const { return LI; }
 
   TargetLibraryInfo *getTargetLibraryInfo() const { return TLI; }
 
@@ -266,10 +289,12 @@ private:
                             SmallVectorImpl<Value *> &NewIndices);
   Instruction *FoldOpIntoSelect(Instruction &Op, SelectInst *SI);
 
-  /// ShouldOptimizeCast - Return true if the cast from "V to Ty" actually
-  /// results in any code being generated and is interesting to optimize out. If
-  /// the cast can be eliminated by some other simple transformation, we prefer
-  /// to do the simplification first.
+  /// \brief Classify whether a cast is worth optimizing.
+  ///
+  /// Returns true if the cast from "V to Ty" actually results in any code
+  /// being generated and is interesting to optimize out. If the cast can be
+  /// eliminated by some other simple transformation, we prefer to do the
+  /// simplification first.
   bool ShouldOptimizeCast(Instruction::CastOps opcode, const Value *V,
                           Type *Ty);
 
@@ -290,9 +315,10 @@ private:
   Value *EvaluateInDifferentElementOrder(Value *V, ArrayRef<int> Mask);
 
 public:
-  // InsertNewInstBefore - insert an instruction New before instruction Old
-  // in the program.  Add the new instruction to the worklist.
-  //
+  /// \brief Inserts an instruction \p New before instruction \p Old
+  ///
+  /// Also adds the new instruction to the worklist and returns \p New so that
+  /// it is suitable for use as the return from the visitation patterns.
   Instruction *InsertNewInstBefore(Instruction *New, Instruction &Old) {
     assert(New && !New->getParent() &&
            "New instruction already inserted into a basic block!");
@@ -302,20 +328,18 @@ public:
     return New;
   }
 
-  // InsertNewInstWith - same as InsertNewInstBefore, but also sets the
-  // debug loc.
-  //
+  /// \brief Same as InsertNewInstBefore, but also sets the debug loc.
   Instruction *InsertNewInstWith(Instruction *New, Instruction &Old) {
     New->setDebugLoc(Old.getDebugLoc());
     return InsertNewInstBefore(New, Old);
   }
 
-  // ReplaceInstUsesWith - This method is to be used when an instruction is
-  // found to be dead, replacable with another preexisting expression.  Here
-  // we add all uses of I to the worklist, replace all uses of I with the new
-  // value, then return I, so that the inst combiner will know that I was
-  // modified.
-  //
+  /// \brief A combiner-aware RAUW-like routine.
+  ///
+  /// This method is to be used when an instruction is found to be dead,
+  /// replacable with another preexisting expression. Here we add all uses of
+  /// I to the worklist, replace all uses of I with the new value, then return
+  /// I, so that the inst combiner will know that I was modified.
   Instruction *ReplaceInstUsesWith(Instruction &I, Value *V) {
     Worklist.AddUsersToWorkList(I); // Add all modified instrs to worklist.
 
@@ -325,7 +349,7 @@ public:
       V = UndefValue::get(I.getType());
 
     DEBUG(dbgs() << "IC: Replacing " << I << "\n"
-                    "    with " << *V << '\n');
+                 << "    with " << *V << '\n');
 
     I.replaceAllUsesWith(V);
     return &I;
@@ -335,20 +359,21 @@ public:
   /// \p Result and a constant \p Overflow value. If \p ReUseName is true the
   /// \p Result's name is taken from \p II.
   Instruction *CreateOverflowTuple(IntrinsicInst *II, Value *Result,
-                                    bool Overflow, bool ReUseName = true) {
+                                   bool Overflow, bool ReUseName = true) {
     if (ReUseName)
       Result->takeName(II);
-    Constant *V[] = { UndefValue::get(Result->getType()),
-                      Overflow ? Builder->getTrue() : Builder->getFalse() };
+    Constant *V[] = {UndefValue::get(Result->getType()),
+                     Overflow ? Builder->getTrue() : Builder->getFalse()};
     StructType *ST = cast<StructType>(II->getType());
     Constant *Struct = ConstantStruct::get(ST, V);
     return InsertValueInst::Create(Struct, Result, 0);
   }
-        
-  // EraseInstFromFunction - When dealing with an instruction that has side
-  // effects or produces a void value, we can't rely on DCE to delete the
-  // instruction.  Instead, visit methods should return the value returned by
-  // this function.
+
+  /// \brief Combiner aware instruction erasure.
+  ///
+  /// When dealing with an instruction that has side effects or produces a void
+  /// value, we can't rely on DCE to delete the instruction. Instead, visit
+  /// methods should return the value returned by this function.
   Instruction *EraseInstFromFunction(Instruction &I) {
     DEBUG(dbgs() << "IC: ERASE " << I << '\n');
 
@@ -372,8 +397,7 @@ public:
                                   DT);
   }
 
-  bool MaskedValueIsZero(Value *V, const APInt &Mask,
-                         unsigned Depth = 0,
+  bool MaskedValueIsZero(Value *V, const APInt &Mask, unsigned Depth = 0,
                          Instruction *CxtI = nullptr) const {
     return llvm::MaskedValueIsZero(V, Mask, DL, Depth, AC, CxtI, DT);
   }
@@ -396,19 +420,21 @@ public:
   }
 
 private:
-  /// SimplifyAssociativeOrCommutative - This performs a few simplifications for
-  /// operators which are associative or commutative.
+  /// \brief Performs a few simplifications for operators which are associative
+  /// or commutative.
   bool SimplifyAssociativeOrCommutative(BinaryOperator &I);
 
-  /// SimplifyUsingDistributiveLaws - This tries to simplify binary operations
-  /// which some other binary operation distributes over either by factorizing
-  /// out common terms (eg "(A*B)+(A*C)" -> "A*(B+C)") or expanding out if this
-  /// results in simplifications (eg: "A & (B | C) -> (A&B) | (A&C)" if this is
-  /// a win).  Returns the simplified value, or null if it didn't simplify.
+  /// \brief Tries to simplify binary operations which some other binary
+  /// operation distributes over.
+  ///
+  /// It does this by either by factorizing out common terms (eg "(A*B)+(A*C)"
+  /// -> "A*(B+C)") or expanding out if this results in simplifications (eg: "A
+  /// & (B | C) -> (A&B) | (A&C)" if this is a win).  Returns the simplified
+  /// value, or null if it didn't simplify.
   Value *SimplifyUsingDistributiveLaws(BinaryOperator &I);
 
-  /// SimplifyDemandedUseBits - Attempts to replace V with a simpler value
-  /// based on the demanded bits.
+  /// \brief Attempts to replace V with a simpler value based on the demanded
+  /// bits.
   Value *SimplifyDemandedUseBits(Value *V, APInt DemandedMask, APInt &KnownZero,
                                  APInt &KnownOne, unsigned Depth,
                                  Instruction *CxtI = nullptr);
@@ -420,9 +446,8 @@ private:
                                     APInt DemandedMask, APInt &KnownZero,
                                     APInt &KnownOne);
 
-  /// SimplifyDemandedInstructionBits - Inst is an integer instruction that
-  /// SimplifyDemandedBits knows about.  See if the instruction has any
-  /// properties that allow us to simplify its operands.
+  /// \brief Tries to simplify operands to an integer instruction based on its
+  /// demanded bits.
   bool SimplifyDemandedInstructionBits(Instruction &Inst);
 
   Value *SimplifyDemandedVectorElts(Value *V, APInt DemandedElts,
@@ -438,9 +463,8 @@ private:
   //
   Instruction *FoldOpIntoPhi(Instruction &I);
 
-  // FoldPHIArgOpIntoPHI - If all operands to a PHI node are the same "unary"
-  // operator and they all are only used by the PHI, PHI together their
-  // inputs, and do the operation once, to the result of the PHI.
+  /// \brief Try to rotate an operation below a PHI node, using PHI nodes for
+  /// its operands.
   Instruction *FoldPHIArgOpIntoPHI(PHINode &PN);
   Instruction *FoldPHIArgBinOpIntoPHI(PHINode &PN);
   Instruction *FoldPHIArgGEPIntoPHI(PHINode &PN);
@@ -461,8 +485,9 @@ private:
 
   Value *EvaluateInDifferentType(Value *V, Type *Ty, bool isSigned);
 
-  /// Descale - Return a value X such that Val = X * Scale, or null if none.  If
-  /// the multiplication is known not to overflow then NoSignedWrap is set.
+  /// \brief Returns a value X such that Val = X * Scale, or null if none.
+  ///
+  /// If the multiplication is known not to overflow then NoSignedWrap is set.
   Value *Descale(Value *Val, APInt Scale, bool &NoSignedWrap);
 };
 

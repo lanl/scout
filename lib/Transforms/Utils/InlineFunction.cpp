@@ -319,13 +319,12 @@ static void CloneAliasScopeMetadata(CallSite CS, ValueToValueMapTy &VMap) {
 
   // Now we have a complete set of all metadata in the chains used to specify
   // the noalias scopes and the lists of those scopes.
-  SmallVector<MDNode *, 16> DummyNodes;
+  SmallVector<TempMDTuple, 16> DummyNodes;
   DenseMap<const MDNode *, TrackingMDNodeRef> MDMap;
   for (SetVector<const MDNode *>::iterator I = MD.begin(), IE = MD.end();
        I != IE; ++I) {
-    MDNode *Dummy = MDNode::getTemporary(CalledFunc->getContext(), None);
-    DummyNodes.push_back(Dummy);
-    MDMap[*I].reset(Dummy);
+    DummyNodes.push_back(MDTuple::getTemporary(CalledFunc->getContext(), None));
+    MDMap[*I].reset(DummyNodes.back().get());
   }
 
   // Create new metadata nodes to replace the dummy nodes, replacing old
@@ -343,7 +342,8 @@ static void CloneAliasScopeMetadata(CallSite CS, ValueToValueMapTy &VMap) {
     }
 
     MDNode *NewM = MDNode::get(CalledFunc->getContext(), NewOps);
-    MDNodeFwdDecl *TempM = cast<MDNodeFwdDecl>(MDMap[*I]);
+    MDTuple *TempM = cast<MDTuple>(MDMap[*I]);
+    assert(TempM->isTemporary() && "Expected temporary node");
 
     TempM->replaceAllUsesWith(NewM);
   }
@@ -388,10 +388,6 @@ static void CloneAliasScopeMetadata(CallSite CS, ValueToValueMapTy &VMap) {
         NI->setMetadata(LLVMContext::MD_noalias, M);
     }
   }
-
-  // Now that everything has been replaced, delete the dummy nodes.
-  for (unsigned i = 0, ie = DummyNodes.size(); i != ie; ++i)
-    MDNode::deleteTemporary(DummyNodes[i]);
 }
 
 /// AddAliasScopeMetadata - If the inlined function has noalias arguments, then
@@ -827,20 +823,42 @@ static bool hasLifetimeMarkers(AllocaInst *AI) {
   return false;
 }
 
-/// updateInlinedAtInfo - Helper function used by fixupLineNumbers to
-/// recursively update InlinedAtEntry of a DebugLoc.
-static DebugLoc updateInlinedAtInfo(const DebugLoc &DL, 
-                                    const DebugLoc &InlinedAtDL,
-                                    LLVMContext &Ctx) {
-  if (MDNode *IA = DL.getInlinedAt(Ctx)) {
-    DebugLoc NewInlinedAtDL 
-      = updateInlinedAtInfo(DebugLoc::getFromDILocation(IA), InlinedAtDL, Ctx);
-    return DebugLoc::get(DL.getLine(), DL.getCol(), DL.getScope(Ctx),
-                         NewInlinedAtDL.getAsMDNode(Ctx));
+/// Rebuild the entire inlined-at chain for this instruction so that the top of
+/// the chain now is inlined-at the new call site.
+static DebugLoc
+updateInlinedAtInfo(DebugLoc DL, MDLocation *InlinedAtNode,
+                    LLVMContext &Ctx,
+                    DenseMap<const MDLocation *, MDLocation *> &IANodes) {
+  SmallVector<MDLocation*, 3> InlinedAtLocations;
+  MDLocation *Last = InlinedAtNode;
+  DebugLoc CurInlinedAt = DL;
+
+  // Gather all the inlined-at nodes
+  while (MDLocation *IA =
+             cast_or_null<MDLocation>(CurInlinedAt.getInlinedAt(Ctx))) {
+    // Skip any we've already built nodes for
+    if (MDLocation *Found = IANodes[IA]) {
+      Last = Found;
+      break;
+    }
+
+    InlinedAtLocations.push_back(IA);
+    CurInlinedAt = DebugLoc::getFromDILocation(IA);
   }
 
-  return DebugLoc::get(DL.getLine(), DL.getCol(), DL.getScope(Ctx),
-                       InlinedAtDL.getAsMDNode(Ctx));
+  // Starting from the top, rebuild the nodes to point to the new inlined-at
+  // location (then rebuilding the rest of the chain behind it) and update the
+  // map of already-constructed inlined-at nodes.
+  for (auto I = InlinedAtLocations.rbegin(), E = InlinedAtLocations.rend();
+       I != E; ++I) {
+    const MDLocation *MD = *I;
+    Last = IANodes[MD] = MDLocation::getDistinct(
+        Ctx, MD->getLine(), MD->getColumn(), MD->getScope(), Last);
+  }
+
+  // And finally create the normal location for this instruction, referring to
+  // the new inlined-at chain.
+  return DebugLoc::get(DL.getLine(), DL.getCol(), DL.getScope(Ctx), Last);
 }
 
 /// fixupLineNumbers - Update inlined instructions' line numbers to 
@@ -850,6 +868,20 @@ static void fixupLineNumbers(Function *Fn, Function::iterator FI,
   DebugLoc TheCallDL = TheCall->getDebugLoc();
   if (TheCallDL.isUnknown())
     return;
+
+  auto &Ctx = Fn->getContext();
+  auto *InlinedAtNode = cast<MDLocation>(TheCallDL.getAsMDNode(Ctx));
+
+  // Create a unique call site, not to be confused with any other call from the
+  // same location.
+  InlinedAtNode = MDLocation::getDistinct(
+      Ctx, InlinedAtNode->getLine(), InlinedAtNode->getColumn(),
+      InlinedAtNode->getScope(), InlinedAtNode->getInlinedAt());
+
+  // Cache the inlined-at nodes as they're built so they are reused, without
+  // this every instruction's inlined-at chain would become distinct from each
+  // other.
+  DenseMap<const MDLocation *, MDLocation *> IANodes;
 
   for (; FI != Fn->end(); ++FI) {
     for (BasicBlock::iterator BI = FI->begin(), BE = FI->end();
@@ -868,7 +900,7 @@ static void fixupLineNumbers(Function *Fn, Function::iterator FI,
 
         BI->setDebugLoc(TheCallDL);
       } else {
-        BI->setDebugLoc(updateInlinedAtInfo(DL, TheCallDL, BI->getContext()));
+        BI->setDebugLoc(updateInlinedAtInfo(DL, InlinedAtNode, BI->getContext(), IANodes));
         if (DbgValueInst *DVI = dyn_cast<DbgValueInst>(BI)) {
           LLVMContext &Ctx = BI->getContext();
           MDNode *InlinedAt = BI->getDebugLoc().getInlinedAt(Ctx);

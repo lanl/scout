@@ -12,11 +12,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/CodeGen/GCStrategy.h"
+#include "llvm/IR/GCStrategy.h"
 
 using namespace llvm;
 
 GCStrategy::GCStrategy()
     : UseStatepoints(false), NeededSafePoints(0), CustomReadBarriers(false),
-      CustomWriteBarriers(false), CustomRoots(false), CustomSafePoints(false),
-      InitRoots(true), UsesMetadata(false) {}
+      CustomWriteBarriers(false), CustomRoots(false), InitRoots(true),
+      UsesMetadata(false) {}
