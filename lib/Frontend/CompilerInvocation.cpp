@@ -441,7 +441,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
                        Args.hasArg(OPT_cl_unsafe_math_optimizations) ||
                        Args.hasArg(OPT_cl_finite_math_only) ||
                        Args.hasArg(OPT_cl_fast_relaxed_math));
-  Opts.NoSignedZeros = Args.hasArg(OPT_cl_no_signed_zeros);
+  Opts.NoSignedZeros = Args.hasArg(OPT_fno_signed_zeros);
   Opts.NoZeroInitializedInBSS = Args.hasArg(OPT_mno_zero_initialized_in_bss);
   Opts.BackendOptions = Args.getAllArgValues(OPT_backend_option);
   Opts.NumRegisterParameters = getLastArgIntValue(Args, OPT_mregparm, 0, Diags);
@@ -521,6 +521,13 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
     unsigned StackAlignment = Opts.StackAlignment;
     Val.getAsInteger(10, StackAlignment);
     Opts.StackAlignment = StackAlignment;
+  }
+
+  if (Arg *A = Args.getLastArg(OPT_mstack_probe_size)) {
+    StringRef Val = A->getValue();
+    unsigned StackProbeSize = Opts.StackProbeSize;
+    Val.getAsInteger(0, StackProbeSize);
+    Opts.StackProbeSize = StackProbeSize;
   }
 
   if (Arg *A = Args.getLastArg(OPT_fobjc_dispatch_method_EQ)) {
@@ -1563,6 +1570,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
       Args.getLastArgValue(OPT_fmodule_implementation_of);
   Opts.NativeHalfType = Opts.NativeHalfType;
   Opts.HalfArgsAndReturns = Args.hasArg(OPT_fallow_half_arguments_and_returns);
+  Opts.GNUAsm = !Args.hasArg(OPT_fno_gnu_inline_asm);
 
   if (!Opts.CurrentModule.empty() && !Opts.ImplementationOfModule.empty() &&
       Opts.CurrentModule != Opts.ImplementationOfModule) {

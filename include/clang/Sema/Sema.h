@@ -2279,8 +2279,9 @@ public:
   void AddFunctionCandidates(const UnresolvedSetImpl &Functions,
                       ArrayRef<Expr *> Args,
                       OverloadCandidateSet &CandidateSet,
+                      TemplateArgumentListInfo *ExplicitTemplateArgs = nullptr,
                       bool SuppressUserConversions = false,
-                      TemplateArgumentListInfo *ExplicitTemplateArgs = nullptr);
+                      bool PartialOverloading = false);
   void AddMethodCandidate(DeclAccessPair FoundDecl,
                           QualType ObjectType,
                           Expr::Classification ObjectClassification,
@@ -2293,7 +2294,8 @@ public:
                           Expr::Classification ObjectClassification,
                           ArrayRef<Expr *> Args,
                           OverloadCandidateSet& CandidateSet,
-                          bool SuppressUserConversions = false);
+                          bool SuppressUserConversions = false,
+                          bool PartialOverloading = false);
   void AddMethodTemplateCandidate(FunctionTemplateDecl *MethodTmpl,
                                   DeclAccessPair FoundDecl,
                                   CXXRecordDecl *ActingContext,
@@ -2302,13 +2304,15 @@ public:
                                   Expr::Classification ObjectClassification,
                                   ArrayRef<Expr *> Args,
                                   OverloadCandidateSet& CandidateSet,
-                                  bool SuppressUserConversions = false);
+                                  bool SuppressUserConversions = false,
+                                  bool PartialOverloading = false);
   void AddTemplateOverloadCandidate(FunctionTemplateDecl *FunctionTemplate,
                                     DeclAccessPair FoundDecl,
                                  TemplateArgumentListInfo *ExplicitTemplateArgs,
                                     ArrayRef<Expr *> Args,
                                     OverloadCandidateSet& CandidateSet,
-                                    bool SuppressUserConversions = false);
+                                    bool SuppressUserConversions = false,
+                                    bool PartialOverloading = false);
   void AddConversionCandidate(CXXConversionDecl *Conversion,
                               DeclAccessPair FoundDecl,
                               CXXRecordDecl *ActingContext,
@@ -4632,7 +4636,8 @@ public:
   bool ActOnSuperScopeSpecifier(SourceLocation SuperLoc,
                                 SourceLocation ColonColonLoc, CXXScopeSpec &SS);
 
-  bool isAcceptableNestedNameSpecifier(const NamedDecl *SD);
+  bool isAcceptableNestedNameSpecifier(const NamedDecl *SD,
+                                       bool *CanCorrect = nullptr);
   NamedDecl *FindFirstQualifierInScope(Scope *S, NestedNameSpecifier *NNS);
 
   bool isNonTypeNestedNameSpecifier(Scope *S, CXXScopeSpec &SS,
@@ -6181,14 +6186,16 @@ public:
                                   unsigned NumExplicitlySpecified,
                                   FunctionDecl *&Specialization,
                                   sema::TemplateDeductionInfo &Info,
-           SmallVectorImpl<OriginalCallArg> const *OriginalCallArgs = nullptr);
+           SmallVectorImpl<OriginalCallArg> const *OriginalCallArgs = nullptr,
+                                  bool PartialOverloading = false);
 
   TemplateDeductionResult
   DeduceTemplateArguments(FunctionTemplateDecl *FunctionTemplate,
                           TemplateArgumentListInfo *ExplicitTemplateArgs,
                           ArrayRef<Expr *> Args,
                           FunctionDecl *&Specialization,
-                          sema::TemplateDeductionInfo &Info);
+                          sema::TemplateDeductionInfo &Info,
+                          bool PartialOverloading = false);
 
   TemplateDeductionResult
   DeduceTemplateArguments(FunctionTemplateDecl *FunctionTemplate,
@@ -6720,12 +6727,17 @@ public:
 
   class SavePendingInstantiationsAndVTableUsesRAII {
   public:
-    SavePendingInstantiationsAndVTableUsesRAII(Sema &S): S(S) {
+    SavePendingInstantiationsAndVTableUsesRAII(Sema &S, bool Enabled)
+        : S(S), Enabled(Enabled) {
+      if (!Enabled) return;
+
       SavedPendingInstantiations.swap(S.PendingInstantiations);
       SavedVTableUses.swap(S.VTableUses);
     }
 
     ~SavePendingInstantiationsAndVTableUsesRAII() {
+      if (!Enabled) return;
+
       // Restore the set of pending vtables.
       assert(S.VTableUses.empty() &&
              "VTableUses should be empty before it is discarded.");
@@ -6741,6 +6753,7 @@ public:
     Sema &S;
     SmallVector<VTableUse, 16> SavedVTableUses;
     std::deque<PendingImplicitInstantiation> SavedPendingInstantiations;
+    bool Enabled;
   };
 
   /// \brief The queue of implicit template instantiations that are required
@@ -8404,6 +8417,8 @@ public:
   void CodeCompleteTypeQualifiers(DeclSpec &DS);
   void CodeCompleteCase(Scope *S);
   void CodeCompleteCall(Scope *S, Expr *Fn, ArrayRef<Expr *> Args);
+  void CodeCompleteConstructor(Scope *S, QualType Type, SourceLocation Loc,
+                               ArrayRef<Expr *> Args);
   void CodeCompleteInitializer(Scope *S, Decl *D);
   void CodeCompleteReturn(Scope *S);
   void CodeCompleteAfterIf(Scope *S);
@@ -8721,6 +8736,16 @@ public:
     if (const ObjCCategoryDecl *CatD = dyn_cast<ObjCCategoryDecl>(DC))
       DC = CatD->getClassInterface();
     return DC;
+  }
+
+  /// \brief To be used for checking whether the arguments being passed to
+  /// function exceeds the number of parameters expected for it.
+  static bool TooManyArguments(size_t NumParams, size_t NumArgs,
+                               bool PartialOverloading = false) {
+    // We check whether we're just after a comma in code-completion.
+    if (NumArgs > 0 && PartialOverloading)
+      return NumArgs + 1 > NumParams; // If so, we view as an extra argument.
+    return NumArgs > NumParams;
   }
 };
 

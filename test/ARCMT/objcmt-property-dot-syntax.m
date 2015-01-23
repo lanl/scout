@@ -59,3 +59,34 @@ P* fun();
          [self->obj count];
 }
 @end
+
+
+@interface Rdar19038838
+@property id newItem; // should be marked objc_method_family(none), but isn't.
+@end
+
+id testRdar19038838(Rdar19038838 *obj) {
+  return [obj newItem];
+}
+
+// rdar://19381786
+@interface rdar19381786 : NSObject
+{
+  rdar19381786* obj;
+}
+@property int count;
+@end
+
+@protocol PR 
+@property int count;
+@end
+
+@implementation rdar19381786
+-(void)test:(id)some : (id<PR>)qsome : (SEL)selsome
+{
+  [obj setCount : 100];
+  [some setCount : [some count]];
+  [qsome setCount : [qsome count]];
+}
+@end
+

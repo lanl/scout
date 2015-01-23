@@ -1670,8 +1670,16 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
       break;
     }
 
-    if (const EnumType *ET = dyn_cast<EnumType>(TT))
-      return getTypeInfo(ET->getDecl()->getIntegerType());
+    if (const EnumType *ET = dyn_cast<EnumType>(TT)) {
+      const EnumDecl *ED = ET->getDecl();
+      TypeInfo Info =
+          getTypeInfo(ED->getIntegerType()->getUnqualifiedDesugaredType());
+      if (unsigned AttrAlign = ED->getMaxAlignment()) {
+        Info.Align = AttrAlign;
+        Info.AlignIsRequired = true;
+      }
+      return Info;
+    }
 
     const RecordType *RT = cast<RecordType>(TT);
     const ASTRecordLayout &Layout = getASTRecordLayout(RT->getDecl());
@@ -1786,6 +1794,8 @@ unsigned ASTContext::getPreferredTypeAlign(const Type *T) const {
   T = T->getBaseElementTypeUnsafe();
   if (const ComplexType *CT = T->getAs<ComplexType>())
     T = CT->getElementType().getTypePtr();
+  if (const EnumType *ET = T->getAs<EnumType>())
+    T = ET->getDecl()->getIntegerType().getTypePtr();
   if (T->isSpecificBuiltinType(BuiltinType::Double) ||
       T->isSpecificBuiltinType(BuiltinType::LongLong) ||
       T->isSpecificBuiltinType(BuiltinType::ULongLong))
@@ -7545,7 +7555,7 @@ static QualType DecodeTypeFromStr(const char *&Str, const ASTContext &Context,
       break;
     case 'U':
       assert(!Signed && "Can't use both 'S' and 'U' modifiers!");
-      assert(!Unsigned && "Can't use 'S' modifier multiple times!");
+      assert(!Unsigned && "Can't use 'U' modifier multiple times!");
       Unsigned = true;
       break;
     case 'L':
@@ -7580,7 +7590,7 @@ static QualType DecodeTypeFromStr(const char *&Str, const ASTContext &Context,
     break;
   case 'h':
     assert(HowLong == 0 && !Signed && !Unsigned &&
-           "Bad modifiers used with 'f'!");
+           "Bad modifiers used with 'h'!");
     Type = Context.HalfTy;
     break;
   case 'f':
@@ -8043,7 +8053,9 @@ CallingConv ASTContext::getDefaultCallingConvention(bool IsVariadic,
   if (IsCXXMethod)
     return ABI->getDefaultMethodCallConv(IsVariadic);
 
-  return (LangOpts.MRTD && !IsVariadic) ? CC_X86StdCall : CC_C;
+  if (LangOpts.MRTD && !IsVariadic) return CC_X86StdCall;
+
+  return Target->getDefaultCallingConv(TargetInfo::CCMT_Unknown);
 }
 
 bool ASTContext::isNearlyEmpty(const CXXRecordDecl *RD) const {

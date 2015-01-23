@@ -1492,6 +1492,20 @@ static void handleAliasAttr(Sema &S, Decl *D, const AttributeList &Attr) {
     return;
   }
 
+  // Aliases should be on declarations, not definitions.
+  if (const auto *FD = dyn_cast<FunctionDecl>(D)) {
+    if (FD->isThisDeclarationADefinition()) {
+      S.Diag(Attr.getLoc(), diag::err_alias_is_definition) << FD;
+      return;
+    }
+  } else {
+    const auto *VD = cast<VarDecl>(D);
+    if (VD->isThisDeclarationADefinition() && VD->isExternallyVisible()) {
+      S.Diag(Attr.getLoc(), diag::err_alias_is_definition) << VD;
+      return;
+    }
+  }
+
   // FIXME: check if target symbol exists in current file
 
   D->addAttr(::new (S.Context) AliasAttr(Attr.getRange(), S.Context, Str,
@@ -2939,12 +2953,15 @@ void Sema::AddAlignedAttr(SourceRange AttrRange, Decl *D, TypeSourceInfo *TS,
 void Sema::CheckAlignasUnderalignment(Decl *D) {
   assert(D->hasAttrs() && "no attributes on decl");
 
-  QualType Ty;
-  if (ValueDecl *VD = dyn_cast<ValueDecl>(D))
-    Ty = VD->getType();
-  else
-    Ty = Context.getTagDeclType(cast<TagDecl>(D));
-  if (Ty->isDependentType() || Ty->isIncompleteType())
+  QualType UnderlyingTy, DiagTy;
+  if (ValueDecl *VD = dyn_cast<ValueDecl>(D)) {
+    UnderlyingTy = DiagTy = VD->getType();
+  } else {
+    UnderlyingTy = DiagTy = Context.getTagDeclType(cast<TagDecl>(D));
+    if (EnumDecl *ED = dyn_cast<EnumDecl>(D))
+      UnderlyingTy = ED->getIntegerType();
+  }
+  if (DiagTy->isDependentType() || DiagTy->isIncompleteType())
     return;
 
   // C++11 [dcl.align]p5, C11 6.7.5/4:
@@ -2963,10 +2980,10 @@ void Sema::CheckAlignasUnderalignment(Decl *D) {
 
   if (AlignasAttr && Align) {
     CharUnits RequestedAlign = Context.toCharUnitsFromBits(Align);
-    CharUnits NaturalAlign = Context.getTypeAlignInChars(Ty);
+    CharUnits NaturalAlign = Context.getTypeAlignInChars(UnderlyingTy);
     if (NaturalAlign > RequestedAlign)
       Diag(AlignasAttr->getLocation(), diag::err_alignas_underaligned)
-        << Ty << (unsigned)NaturalAlign.getQuantity();
+        << DiagTy << (unsigned)NaturalAlign.getQuantity();
   }
 }
 
@@ -3769,6 +3786,10 @@ static void handleObjCDesignatedInitializer(Sema &S, Decl *D,
     IFace = CatDecl->getClassInterface();
   else
     IFace = cast<ObjCInterfaceDecl>(D->getDeclContext());
+
+  if (!IFace)
+    return;
+
   IFace->setHasDesignatedInitializers();
   D->addAttr(::new (S.Context)
                   ObjCDesignatedInitializerAttr(Attr.getRange(), S.Context,
@@ -5045,7 +5066,8 @@ static bool isDeclDeprecated(Decl *D) {
       return true;
     // A category implicitly has the availability of the interface.
     if (const ObjCCategoryDecl *CatD = dyn_cast<ObjCCategoryDecl>(D))
-      return CatD->getClassInterface()->isDeprecated();
+      if (const ObjCInterfaceDecl *Interface = CatD->getClassInterface())
+        return Interface->isDeprecated();
   } while ((D = cast_or_null<Decl>(D->getDeclContext())));
   return false;
 }
@@ -5056,7 +5078,8 @@ static bool isDeclUnavailable(Decl *D) {
       return true;
     // A category implicitly has the availability of the interface.
     if (const ObjCCategoryDecl *CatD = dyn_cast<ObjCCategoryDecl>(D))
-      return CatD->getClassInterface()->isUnavailable();
+      if (const ObjCInterfaceDecl *Interface = CatD->getClassInterface())
+        return Interface->isUnavailable();
   } while ((D = cast_or_null<Decl>(D->getDeclContext())));
   return false;
 }

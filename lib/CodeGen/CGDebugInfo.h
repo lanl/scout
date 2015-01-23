@@ -222,14 +222,9 @@ public:
   /// invalid it is ignored.
   void setLocation(SourceLocation Loc);
 
-  /// getLocation - Return the current source location.
-  SourceLocation getLocation() const { return CurLoc; }
-
   /// EmitLocation - Emit metadata to indicate a change in line/column
   /// information in the source file.
-  /// \param ForceColumnInfo  Assume DebugColumnInfo option is true.
-  void EmitLocation(CGBuilderTy &Builder, SourceLocation Loc,
-                    bool ForceColumnInfo = false);
+  void EmitLocation(CGBuilderTy &Builder, SourceLocation Loc);
 
   /// EmitFunctionStart - Emit a call to llvm.dbg.function.start to indicate
   /// start of a new function.
@@ -455,8 +450,7 @@ protected:
 
 public:
   ApplyDebugLocation(CodeGenFunction &CGF,
-                     SourceLocation TemporaryLocation = SourceLocation(),
-                     bool ForceColumnInfo = false);
+                     SourceLocation TemporaryLocation = SourceLocation());
   ApplyDebugLocation(CodeGenFunction &CGF, llvm::DebugLoc Loc);
   ~ApplyDebugLocation();
 };

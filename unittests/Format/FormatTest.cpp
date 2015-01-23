@@ -67,6 +67,12 @@ protected:
     verifyFormat(llvm::Twine("void f() { " + text + " }").str());
   }
 
+  /// \brief Verify that clang-format does not crash on the given input.
+  void verifyNoCrash(llvm::StringRef Code,
+                     const FormatStyle &Style = getLLVMStyle()) {
+    format(Code, Style);
+  }
+
   int ReplacementCount;
 };
 
@@ -1029,6 +1035,9 @@ TEST_F(FormatTest, UnderstandsSingleLineComments) {
                    "     // spanning two lines\n"
                    " x + 3) {\n"
                    "}"));
+
+  verifyNoCrash("/\\\n/");
+  verifyNoCrash("/\\\n* */");
 }
 
 TEST_F(FormatTest, KeepsParameterWithTrailingCommentsOnTheirOwnLine) {
@@ -2230,6 +2239,9 @@ TEST_F(FormatTest, FormatTryCatch) {
                "    throw;\n"
                "  }\n"
                "};\n");
+
+  // Incomplete try-catch blocks.
+  verifyFormat("try {} catch (");
 }
 
 TEST_F(FormatTest, IncompleteTryCatchBlocks) {
@@ -2596,6 +2608,13 @@ TEST_F(FormatTest, MacroDefinitionsWithIncompleteCode) {
   verifyFormat("#pragma omp threadprivate( \\\n"
                "    y)), // expected-warning",
                getLLVMStyleWithColumns(28));
+  verifyFormat("#d, = };");
+  verifyFormat("#if \"a");
+
+  verifyNoCrash("#if a\na(\n#else\n#endif\n{a");
+  verifyNoCrash("a={0,1\n#if a\n#else\n;\n#endif\n}");
+  verifyNoCrash("#if a\na(\n#else\n#endif\n) a {a,b,c,d,f,g};");
+  verifyNoCrash("#ifdef A\n a(\n #else\n #endif\n) = []() {      \n)}");
 }
 
 TEST_F(FormatTest, MacrosWithoutTrailingSemicolon) {
@@ -2917,6 +2936,12 @@ TEST_F(FormatTest, LayoutStatementsAroundPreprocessorDirectives) {
                "         aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;\n"
                "});\n"
                "#if a\n"
+               "#else\n"
+               "#endif");
+
+  verifyFormat("void f(\n"
+               "#if A\n"
+               "    );\n"
                "#else\n"
                "#endif");
 }
@@ -4591,6 +4616,9 @@ TEST_F(FormatTest, AlwaysBreakBeforeMultilineStrings) {
             format("NSString *const kString = @\"aaaa\"\n"
                    "\"bbbb\";",
                    Break));
+
+  Break.ColumnLimit = 0;
+  verifyFormat("const char *hello = \"hello llvm\";", Break);
 }
 
 TEST_F(FormatTest, AlignsPipes) {
@@ -5193,6 +5221,7 @@ TEST_F(FormatTest, UnderstandsUsesOfStarAndAmp) {
       "    aaaaaaaaaaaaaaaaaaaaaaaaaaaa, *aaaaaaaaaaaaaaaaaaaaaaaaaaaaa);");
 
   verifyGoogleFormat("**outparam = 1;");
+  verifyGoogleFormat("*outparam = a * b;");
   verifyGoogleFormat("int main(int argc, char** argv) {}");
   verifyGoogleFormat("A<int*> a;");
   verifyGoogleFormat("A<int**> a;");
@@ -5617,6 +5646,8 @@ TEST_F(FormatTest, FormatsArrays) {
       "aaaaaaaaaaa aaaaaaaaaaaaaaa = aaaaaaaaaaaaaaaaaaaaaaaaaa->aaaaaaaaa[0]\n"
       "                                  .aaaaaaa[0]\n"
       "                                  .aaaaaaaaaaaaaaaaaaaaaa();");
+
+  verifyNoCrash("a[,Y?)]", getLLVMStyleWithColumns(10));
 }
 
 TEST_F(FormatTest, LineStartsWithSpecialCharacter) {
@@ -6025,6 +6056,8 @@ TEST_F(FormatTest, FormatsBracedListsInColumnLayout) {
   // No column layout should be used here.
   verifyFormat("aaaaaaaaaaaaaaa = {aaaaaaaaaaaaaaaaaaaaaaaaaaa, 0, 0,\n"
                "                   bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb};");
+
+  verifyNoCrash("a<,");
 }
 
 TEST_F(FormatTest, PullTrivialFunctionDefinitionsIntoSingleLine) {
@@ -7413,6 +7446,12 @@ TEST_F(FormatTest, BreaksWideAndNSStringLiterals) {
   EXPECT_EQ("@\"NSString \"\n"
             "@\"literal\";",
             format("@\"NSString literal\";", getGoogleStyleWithColumns(19)));
+
+  // This input makes clang-format try to split the incomplete unicode escape
+  // sequence, which used to lead to a crasher.
+  verifyNoCrash(
+      "aaaaaaaaaaaaaaaaaaaa = L\"\\udff\"'; // aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      getLLVMStyleWithColumns(60));
 }
 
 TEST_F(FormatTest, DoesNotBreakRawStringLiterals) {

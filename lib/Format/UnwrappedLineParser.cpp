@@ -549,6 +549,7 @@ void UnwrappedLineParser::conditionalCompilationEnd() {
 void UnwrappedLineParser::parsePPIf(bool IfDef) {
   nextToken();
   bool IsLiteralFalse = (FormatTok->Tok.isLiteral() &&
+                         FormatTok->Tok.getLiteralData() != nullptr &&
                          StringRef(FormatTok->Tok.getLiteralData(),
                                    FormatTok->Tok.getLength()) == "0") ||
                         FormatTok->Tok.is(tok::kw_false);
@@ -1198,7 +1199,7 @@ void UnwrappedLineParser::parseTryCatch() {
         parseParens();
         continue;
       }
-      if (FormatTok->isOneOf(tok::semi, tok::r_brace))
+      if (FormatTok->isOneOf(tok::semi, tok::r_brace, tok::eof))
         return;
       nextToken();
     }

@@ -633,6 +633,24 @@ _mm512_valign_epi32(__m512i __A, __m512i __B, const int __I)
                                                 (__mmask16) -1);
 }
 
+/* Vector Extract */
+
+#define _mm512_extractf64x4_pd(A, I) __extension__ ({                    \
+      __m512d __A = (A);                                                 \
+      (__m256d)                                                          \
+        __builtin_ia32_extractf64x4_mask((__v8df)__A,                    \
+                                         (I),                            \
+                                         (__v4df)_mm256_setzero_si256(), \
+                                         (__mmask8) -1); })
+
+#define _mm512_extractf32x4_ps(A, I) __extension__ ({                    \
+      __m512 __A = (A);                                                  \
+      (__m128)                                                           \
+        __builtin_ia32_extractf32x4_mask((__v16sf)__A,                   \
+                                         (I),                            \
+                                         (__v4sf)_mm_setzero_ps(),       \
+                                         (__mmask8) -1); })
+
 /* Vector Blend */
 
 static __inline __m512d __attribute__ ((__always_inline__, __nodebug__))
@@ -669,22 +687,19 @@ _mm512_mask_blend_epi32(__mmask16 __U, __m512i __A, __m512i __W)
 
 /* Compare */
 
-static __inline __mmask16 __attribute__ ((__always_inline__, __nodebug__))
-_mm512_cmp_ps_mask(__m512 a, __m512 b, const int p)
-{
-  return (__mmask16) __builtin_ia32_cmpps512_mask ((__v16sf) a,
-               (__v16sf) b, p, (__mmask16) -1,
-               _MM_FROUND_CUR_DIRECTION);
-}
+#define _mm512_cmp_ps_mask(a, b, p) __extension__ ({ \
+  __m512 __a = (a); \
+  __m512 __b = (b); \
+  (__mmask16)__builtin_ia32_cmpps512_mask((__v16sf)__a, (__v16sf)__b, (p), \
+                                          (__mmask16)-1,                   \
+                                          _MM_FROUND_CUR_DIRECTION); })
 
-static __inline __mmask8 __attribute__ ((__always_inline__, __nodebug__)) 
-_mm512_cmp_pd_mask(__m512d __X, __m512d __Y, const int __P)
-{
-  return (__mmask8) __builtin_ia32_cmppd512_mask ((__v8df) __X,
-              (__v8df) __Y, __P,
-              (__mmask8) -1,
-              _MM_FROUND_CUR_DIRECTION);
-}
+#define _mm512_cmp_pd_mask(a, b, p) __extension__ ({ \
+  __m512 __a = (a); \
+  __m512 __b = (b); \
+  (__mmask8)__builtin_ia32_cmppd512_mask((__v8df)__a, (__v8df)__b, (p), \
+                                          (__mmask8)-1,                 \
+                                          _MM_FROUND_CUR_DIRECTION); })
 
 /* Conversion */
 
@@ -928,6 +943,24 @@ _mm512_maskz_loadu_pd(__mmask8 __U, void const *__P)
                                                    (__mmask8) __U);
 }
 
+static __inline __m512 __attribute__ ((__always_inline__, __nodebug__))
+_mm512_maskz_load_ps(__mmask16 __U, void const *__P)
+{
+  return (__m512) __builtin_ia32_loadaps512_mask ((const __v16sf *)__P,
+                                                  (__v16sf)
+                                                  _mm512_setzero_ps (),
+                                                  (__mmask16) __U);
+}
+
+static __inline __m512d __attribute__ ((__always_inline__, __nodebug__))
+_mm512_maskz_load_pd(__mmask8 __U, void const *__P)
+{
+  return (__m512d) __builtin_ia32_loadapd512_mask ((const __v8df *)__P,
+                                                   (__v8df)
+                                                   _mm512_setzero_pd (),
+                                                   (__mmask8) __U);
+}
+
 static __inline __m512d __attribute__((__always_inline__, __nodebug__))
 _mm512_loadu_pd(double const *__p)
 {
@@ -944,6 +977,24 @@ _mm512_loadu_ps(float const *__p)
     __m512 __v;
   } __attribute__((packed, may_alias));
   return ((struct __loadu_ps*)__p)->__v;
+}
+
+static __inline __m512 __attribute__((__always_inline__, __nodebug__))
+_mm512_load_ps(double const *__p)
+{
+  return (__m512) __builtin_ia32_loadaps512_mask ((const __v16sf *)__p,
+                                                  (__v16sf)
+                                                  _mm512_setzero_ps (),
+                                                  (__mmask16) -1);
+}
+
+static __inline __m512d __attribute__((__always_inline__, __nodebug__))
+_mm512_load_pd(float const *__p)
+{
+  return (__m512d) __builtin_ia32_loadapd512_mask ((const __v8df *)__p,
+                                                   (__v8df)
+                                                   _mm512_setzero_pd (),
+                                                   (__mmask8) -1);
 }
 
 /* SIMD store ops */
@@ -988,15 +1039,28 @@ _mm512_storeu_ps(void *__P, __m512 __A)
 }
 
 static __inline void __attribute__ ((__always_inline__, __nodebug__))
-_mm512_store_ps(void *__P, __m512 __A)
+_mm512_mask_store_pd(void *__P, __mmask8 __U, __m512d __A)
 {
-  *(__m512*)__P = __A;
+  __builtin_ia32_storeapd512_mask ((__v8df *)__P, (__v8df) __A, (__mmask8) __U);
 }
 
 static __inline void __attribute__ ((__always_inline__, __nodebug__))
 _mm512_store_pd(void *__P, __m512d __A)
 {
   *(__m512d*)__P = __A;
+}
+
+static __inline void __attribute__ ((__always_inline__, __nodebug__))
+_mm512_mask_store_ps(void *__P, __mmask16 __U, __m512 __A)
+{
+  __builtin_ia32_storeaps512_mask ((__v16sf *)__P, (__v16sf) __A,
+                                   (__mmask16) __U);
+}
+
+static __inline void __attribute__ ((__always_inline__, __nodebug__))
+_mm512_store_ps(void *__P, __m512 __A)
+{
+  *(__m512*)__P = __A;
 }
 
 /* Mask ops */

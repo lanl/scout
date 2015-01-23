@@ -1084,28 +1084,32 @@ void CodeGenModule::EmitDeferred() {
   // previously unused static decl may become used during the generation of code
   // for a static function, iterate until no changes are made.
 
-  while (true) {
-    if (!DeferredVTables.empty()) {
-      EmitDeferredVTables();
+  if (!DeferredVTables.empty()) {
+    EmitDeferredVTables();
 
-      // Emitting a v-table doesn't directly cause more v-tables to
-      // become deferred, although it can cause functions to be
-      // emitted that then need those v-tables.
-      assert(DeferredVTables.empty());
-    }
+    // Emitting a v-table doesn't directly cause more v-tables to
+    // become deferred, although it can cause functions to be
+    // emitted that then need those v-tables.
+    assert(DeferredVTables.empty());
+  }
 
-    // Stop if we're out of both deferred v-tables and deferred declarations.
-    if (DeferredDeclsToEmit.empty()) break;
+  // Stop if we're out of both deferred v-tables and deferred declarations.
+  if (DeferredDeclsToEmit.empty())
+    return;
 
-    DeferredGlobal &G = DeferredDeclsToEmit.back();
+  // Grab the list of decls to emit. If EmitGlobalDefinition schedules more
+  // work, it will not interfere with this.
+  std::vector<DeferredGlobal> CurDeclsToEmit;
+  CurDeclsToEmit.swap(DeferredDeclsToEmit);
+
+  for (DeferredGlobal &G : CurDeclsToEmit) {
     GlobalDecl D = G.GD;
     llvm::GlobalValue *GV = G.GV;
-    DeferredDeclsToEmit.pop_back();
+    G.GV = nullptr;
 
     assert(!GV || GV == GetGlobalValue(getMangledName(D)));
     if (!GV)
       GV = GetGlobalValue(getMangledName(D));
-
 
     // Check to see if we've already emitted this.  This is necessary
     // for a couple of reasons: first, decls can end up in the
@@ -1118,6 +1122,14 @@ void CodeGenModule::EmitDeferred() {
 
     // Otherwise, emit the definition and move on to the next one.
     EmitGlobalDefinition(D, GV);
+
+    // If we found out that we need to emit more decls, do that recursively.
+    // This has the advantage that the decls are emitted in a DFS and related
+    // ones are close together, which is convenient for testing.
+    if (!DeferredVTables.empty() || !DeferredDeclsToEmit.empty()) {
+      EmitDeferred();
+      assert(DeferredVTables.empty() && DeferredDeclsToEmit.empty());
+    }
   }
 }
 
@@ -1274,6 +1286,8 @@ llvm::Constant *CodeGenModule::GetAddrOfUuidDescriptor(
   auto *GV = new llvm::GlobalVariable(
       getModule(), Init->getType(),
       /*isConstant=*/true, llvm::GlobalValue::LinkOnceODRLinkage, Init, Name);
+  if (supportsCOMDAT())
+    GV->setComdat(TheModule.getOrInsertComdat(GV->getName()));
   return GV;
 }
 
@@ -2876,12 +2890,18 @@ GenerateStringLiteral(llvm::Constant *C, llvm::GlobalValue::LinkageTypes LT,
   if (CGM.getLangOpts().OpenCL)
     AddrSpace = CGM.getContext().getTargetAddressSpace(LangAS::opencl_constant);
 
+  llvm::Module &M = CGM.getModule();
   // Create a global variable for this string
   auto *GV = new llvm::GlobalVariable(
-      CGM.getModule(), C->getType(), !CGM.getLangOpts().WritableStrings, LT, C,
-      GlobalName, nullptr, llvm::GlobalVariable::NotThreadLocal, AddrSpace);
+      M, C->getType(), !CGM.getLangOpts().WritableStrings, LT, C, GlobalName,
+      nullptr, llvm::GlobalVariable::NotThreadLocal, AddrSpace);
   GV->setAlignment(Alignment);
   GV->setUnnamedAddr(true);
+  if (GV->isWeakForLinker()) {
+    assert(CGM.supportsCOMDAT() && "Only COFF uses weak string literals");
+    GV->setComdat(M.getOrInsertComdat(GV->getName()));
+  }
+
   return GV;
 }
 
