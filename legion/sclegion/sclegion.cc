@@ -82,7 +82,7 @@ namespace{
   static const uint8_t WRITE_MASK = 0x2;  
   static const uint8_t READ_AND_WRITE = 0x3;
 
-  static const legion_variant_id_t VARIANT_ID = 4294967295;
+  static legion_variant_id_t VARIANT_ID = 1000;
 
   struct MeshHeader{
     uint32_t width;
@@ -132,10 +132,14 @@ namespace{
 
       size_t count;
       LogicalRegion logicalRegion;
+      LogicalPartition logicalPartition;
+      IndexPartition indexPartition;
       FieldSpace fieldSpace;
       Domain domain;
       IndexSpace indexSpace;
       FieldAllocator fieldAllocator;
+      Domain colorDomain;
+      DomainColoring coloring;
     };
 
     Mesh(HighLevelRuntime* runtime,
@@ -306,7 +310,7 @@ namespace{
       return itr->second;
     }
 
-    const Element& getElement(sclegion_element_kind_t elementKind){
+    Element& getElement(sclegion_element_kind_t elementKind){
       return elements_[elementKind];
     }
 
@@ -373,11 +377,7 @@ namespace{
         }
       }
 
-      char* addFieldInfo(char* args, size_t& region, size_t count){
-        if(mode_ == 0){
-          return args;
-        }
-
+      char* addFieldInfo(char* args, size_t region, size_t count){
         for(auto f : fields_){
           MeshFieldInfo* info = (MeshFieldInfo*)args;
           info->region = region;
@@ -394,7 +394,6 @@ namespace{
           args += sizeof(MeshFieldInfo);
         }
 
-        ++region;
         return args;
       }
 
@@ -402,14 +401,7 @@ namespace{
       void addFieldsToIndexLauncher(IndexLauncher& launcher,
                                     unsigned region) const{
         for(auto& f : fields_){
-          launcher.add_field(region, f.fieldId);
-        } 
-      }
-
-      void addFieldsToTaskLauncher(TaskLauncher& launcher,
-                                   unsigned region) const{
-        for(auto& f : fields_){
-          launcher.add_field(region, f.fieldId);
+          launcher.region_requirements[region].add_field(f.fieldId);
         } 
       }
 
@@ -452,23 +444,57 @@ namespace{
       header->numFields = numFields_;
       args += sizeof(MeshHeader);
 
-      Domain domain;
-      size_t maxCount = 0;
+      // currently, just partition with num parts = 1
+      size_t np = 1;
 
-      size_t region = 0;
       for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
-        const Mesh::Element& element = 
+        Mesh::Element& element = 
           mesh_->getElement(sclegion_element_kind_t(i));
 
-        args = regions_[i].addFieldInfo(args, region, element.count);
+        args = regions_[i].addFieldInfo(args, i, element.count);
 
-        if(element.count > maxCount){
-          maxCount = element.count;
-          domain = element.domain;
+        if(element.count == 0){
+          continue;
         }
+
+        size_t n = element.count / np + (element.count % np > 0 ? 1 : 0); 
+
+        element.domain = 
+          Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(n - 1)));
+
+        element.colorDomain = 
+          Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(0)));
+
+        int color = 0;
+        for(size_t i = 0; i < element.count; i += n){
+          size_t r = element.count - i;
+          if(r > n){
+            r = n;
+          }
+
+          Rect<1> sr(Point<1>(i), Point<1>(i + r - 1));
+          element.coloring[color] = Domain::from_rect<1>(sr);
+          ++color;
+        }
+
+        element.indexPartition = 
+          runtime->create_index_partition(context, element.indexSpace,
+                                          element.colorDomain,
+                                          element.coloring, true);
+
+        element.logicalPartition = 
+          runtime->get_logical_partition(context,
+                                         element.logicalRegion,
+                                         element.indexPartition);
       }
 
-      TaskLauncher launcher(taskId_, TaskArgument(argsPtr, argsLen));
+      ArgumentMap argMap;
+
+      Mesh::Element& element = 
+        mesh_->getElement(sclegion_element_kind_t(0));
+
+      IndexLauncher launcher(taskId_, element.colorDomain, 
+                             TaskArgument(argsPtr, argsLen), argMap);
 
       for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
 
@@ -482,15 +508,23 @@ namespace{
           mesh_->getElement(sclegion_element_kind_t(i));
 
         launcher.add_region_requirement(
-          RegionRequirement(element.logicalRegion,
+                            RegionRequirement(element.logicalPartition, 0,
                             region.legionMode(),
                             EXCLUSIVE,
                             element.logicalRegion));
-
-        region.addFieldsToTaskLauncher(launcher, i);
       }
-      
-      runtime->execute_task(context, launcher);
+
+      for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
+        const Region& region = regions_[i]; 
+
+        if(region.legionMode() == NO_ACCESS){
+          continue;
+        }
+        
+        region.addFieldsToIndexLauncher(launcher, i);
+      }
+
+      runtime->execute_index_space(context, launcher);
     }
 
   private:
@@ -514,7 +548,7 @@ sclegion_init(const char* main_task_name,
   options.idempotent = false;
 
   legion_runtime_register_task_void(0, LOC_PROC, true, true,
-                                    VARIANT_ID, options,
+                                    VARIANT_ID++, options,
                                     main_task_name, main_task_pointer);
 }
 
@@ -536,8 +570,8 @@ sclegion_register_task(legion_task_id_t task_id,
   options.inner = false;
   options.idempotent = false;
 
-  legion_runtime_register_task_void(task_id, LOC_PROC, false, true,
-                                    VARIANT_ID, options,
+  legion_runtime_register_task_void(task_id, LOC_PROC, true, true,
+                                    VARIANT_ID++, options,
                                     task_name, task_pointer);
 }
 
