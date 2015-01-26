@@ -82,7 +82,7 @@ namespace{
   static const uint8_t WRITE_MASK = 0x2;  
   static const uint8_t READ_AND_WRITE = 0x3;
 
-  static legion_variant_id_t VARIANT_ID = 1000;
+  static const legion_variant_id_t VARIANT_ID = 4294967295;
 
   struct MeshHeader{
     uint32_t width;
@@ -445,7 +445,7 @@ namespace{
       args += sizeof(MeshHeader);
 
       // currently, just partition with num parts = 1
-      size_t np = 1;
+      size_t nc = 1;
 
       for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
         Mesh::Element& element = 
@@ -457,13 +457,13 @@ namespace{
           continue;
         }
 
-        size_t n = element.count / np + (element.count % np > 0 ? 1 : 0); 
+        size_t n = element.count / nc + (element.count % nc > 0 ? 1 : 0); 
 
         element.domain = 
           Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(n - 1)));
 
         element.colorDomain = 
-          Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(0)));
+          Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(nc - 1)));
 
         int color = 0;
         for(size_t i = 0; i < element.count; i += n){
@@ -548,7 +548,7 @@ sclegion_init(const char* main_task_name,
   options.idempotent = false;
 
   legion_runtime_register_task_void(0, LOC_PROC, true, true,
-                                    VARIANT_ID++, options,
+                                    VARIANT_ID, options,
                                     main_task_name, main_task_pointer);
 }
 
@@ -571,7 +571,7 @@ sclegion_register_task(legion_task_id_t task_id,
   options.idempotent = false;
 
   legion_runtime_register_task_void(task_id, LOC_PROC, true, true,
-                                    VARIANT_ID++, options,
+                                    VARIANT_ID, options,
                                     task_name, task_pointer);
 }
 
