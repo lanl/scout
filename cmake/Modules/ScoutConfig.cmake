@@ -277,7 +277,7 @@ endif()
   #endif()
 
   # --- GLFW support.
-  find_package(GLFW)
+  find_package(GLFW REQUIRED)
   if (GLFW_FOUND)
     if(APPLE)
       # GLFW needs COCOA, IOKIT and COREVIDEO on the mac.
