@@ -732,16 +732,6 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
   case TST_half:
   case TST_float:
   case TST_double:
-
-  // +===== Scout ============================================================+
-  case TST_uniform_mesh:
-  case TST_rectilinear_mesh:
-  case TST_structured_mesh:
-  case TST_unstructured_mesh:
-  case TST_window:
-  case TST_image:
-  case TST_query:
-  // +========================================================================+
   case TST_bool:
   case TST_decimal32:
   case TST_decimal64:
@@ -774,22 +764,6 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
         return true;
       break;
     case DeclaratorChunk::Function:
-
-    // +===== Scout ==========================================================+
-    case DeclaratorChunk::UniformMesh:
-    case DeclaratorChunk::RectilinearMesh:
-    case DeclaratorChunk::StructuredMesh:
-    case DeclaratorChunk::UnstructuredMesh:
-    case DeclaratorChunk::Window:
-    case DeclaratorChunk::Image:
-    case DeclaratorChunk::Query:
-    // +======================================================================+
-
-      // Syntactically, these kinds of declarator chunks all come after the
-      // declarator-id (conceptually), so the parser should not invoke this
-      // routine at this time.
-      llvm_unreachable("Could not have seen this kind of declarator chunk");
-        
       for (unsigned i = 0, e = Chunk.Fun.NumParams; i != e; ++i) {
         ParmVarDecl *Param = cast<ParmVarDecl>(Chunk.Fun.Params[i].Param);
         QualType ParamTy = Param->getType();
