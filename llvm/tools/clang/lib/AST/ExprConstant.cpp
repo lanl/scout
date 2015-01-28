@@ -8752,6 +8752,7 @@ static ICEDiag CheckICE(const Expr* E, const ASTContext &Ctx) {
   case Expr::CXXNoexceptExprClass:
 // +===== Scout ==========================
   case Expr::QueryExprClass:
+  case Expr::ScoutExprClass:
 // =======================================
     return NoDiag();
   case Expr::CallExprClass:

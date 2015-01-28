@@ -4863,6 +4863,32 @@ public:
 
 // +===== Scout ========================
 
+class ScoutExpr : public Expr{
+  SourceLocation StartLoc;
+  
+public:
+  ScoutExpr(QualType t, SourceLocation LocStart)
+  : Expr(ScoutExprClass, t, VK_LValue, OK_Ordinary, true, true, true, false){}
+  
+  ScoutExpr(EmptyShell shell) : Expr(ScoutExprClass, shell){}
+  
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == ScoutExprClass;
+  }
+  
+  Classification::Kinds getClassificationKind() const{
+    return Classification::Kinds::CL_LValue;
+  }
+  
+  child_range children(){
+    return child_range();
+  }
+  
+  SourceLocation getLocStart() const LLVM_READONLY { return StartLoc; }
+  
+  SourceLocation getLocEnd() const LLVM_READONLY { return SourceLocation(); }
+};
+
 class QueryExpr : public Expr{
   enum { FIELD, PRED, END_EXPR };
   Stmt* SubExprs[END_EXPR];
@@ -4886,7 +4912,7 @@ public:
   }
   
   SourceLocation getLocStart() const LLVM_READONLY { return FromLoc; }
-
+  
   SourceLocation getLocEnd() const LLVM_READONLY { return SubExprs[PRED]->getLocEnd(); }
   
   static bool classof(const Stmt *T) {

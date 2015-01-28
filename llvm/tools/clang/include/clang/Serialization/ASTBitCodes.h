@@ -1246,6 +1246,7 @@ namespace clang {
 
       // +===== Scout ====================
       EXPR_QUERY,
+      EXPR_SCOUT,
       // =================================
       
       // Objective-C

@@ -74,3 +74,6 @@ void StmtProfiler::VisitRenderallMeshStmt(const RenderallMeshStmt *S)
 
 void StmtProfiler::VisitQueryExpr(const QueryExpr *E)
 { VisitExpr(E); }
+
+void StmtProfiler::VisitScoutExpr(const ScoutExpr *E)
+{ VisitExpr(E); }

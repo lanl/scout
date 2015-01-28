@@ -2965,6 +2965,7 @@ bool Expr::HasSideEffects(const ASTContext &Ctx,
   case OpaqueValueExprClass:
 // +===== Scout ===========================
   case QueryExprClass:
+  case ScoutExprClass:
 // ========================================
       
     // These never have a side-effect.

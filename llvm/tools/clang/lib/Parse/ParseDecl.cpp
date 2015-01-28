@@ -1973,20 +1973,6 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(
       }
 
       ExprResult Init(ParseInitializer());
-
-      // +===== Scout ======================
-      if (isScoutLang()) {
-        if(QueryExpr* qe = dyn_cast<QueryExpr>(Init.get())){
-          TypeSourceInfo* tsi = Actions.GetTypeForDeclarator(D, 0);
-          QualType qt = tsi->getType();
-          //QueryType* qt = qt
-          //qt.dump();
-          //DeclSpec& ds = D.getMutableDeclSpec();
-          (void)qt;
-          (void)qe;
-        }
-      }
-      // +==================================
       
       // If this is the only decl in (possibly) range based for statement,
       // our best guess is that the user meant ':' instead of '='.

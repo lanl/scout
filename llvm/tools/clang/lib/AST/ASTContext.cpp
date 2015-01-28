@@ -1791,7 +1791,7 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
     //SC_TODO
     break;
   }
-  
+      
   // +========================================================================+
 
   case Type::SubstTemplateTypeParm:

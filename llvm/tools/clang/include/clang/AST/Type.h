@@ -108,6 +108,7 @@ namespace clang {
   class MeshFieldDecl;
   class MemberExpr;
   class QueryExpr;
+  class ScoutExpr;
   // +=======================================================================+
 
   template <typename> class CanQual;
