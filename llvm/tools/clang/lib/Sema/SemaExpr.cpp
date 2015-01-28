@@ -3950,6 +3950,17 @@ Sema::CreateBuiltinArraySubscriptExpr(Expr *Base, SourceLocation LLoc,
   ExprValueKind VK = VK_LValue;
   ExprObjectKind OK = OK_Ordinary;
 
+  // +===== Scout ==============================================================+
+  // stencil array notation
+  if (ImplicitCastExpr* ICE = dyn_cast<ImplicitCastExpr>(LHSExp)) {
+    if (MemberExpr *ME = dyn_cast<MemberExpr>(ICE->getSubExpr())) {
+      if(isa<MeshFieldDecl>(ME->getMemberDecl())) {
+         llvm::errs() << "mesh subscript\n";
+      }
+    }
+  }
+  // +=========================================================================+
+
   // C99 6.5.2.1p2: the expression e1[e2] is by definition precisely equivalent
   // to the expression *((e1)+(e2)). This means the array "Base" may actually be
   // in the subscript position. As a result, we need to derive the array base
