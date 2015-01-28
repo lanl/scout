@@ -2696,6 +2696,7 @@ recurse:
   case Expr::MSPropertyRefExprClass:
 // +===== Scout ==========================
   case Expr::QueryExprClass:
+  case Expr::ScoutExprClass:
 // =======================================
   case Expr::TypoExprClass:  // This should no longer exist in the AST by now.
     llvm_unreachable("unexpected statement kind");

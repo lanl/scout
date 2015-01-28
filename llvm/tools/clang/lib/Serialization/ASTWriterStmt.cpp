@@ -854,9 +854,17 @@ void ASTStmtWriter::VisitAtomicExpr(AtomicExpr *E) {
   Code = serialization::EXPR_ATOMIC;
 }
 
+// ===== Scout ========================================
+
 void ASTStmtWriter::VisitQueryExpr(QueryExpr *E) {
   assert(false && "unimplemented");
 }
+
+void ASTStmtWriter::VisitScoutExpr(ScoutExpr *E) {
+  assert(false && "unimplemented");
+}
+
+// ====================================================
 
 //===----------------------------------------------------------------------===//
 // Objective-C Expressions and Statements.

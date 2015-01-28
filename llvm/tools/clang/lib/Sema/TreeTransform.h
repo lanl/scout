@@ -10504,6 +10504,12 @@ ExprResult
 TreeTransform<Derived>::TransformQueryExpr(QueryExpr *E) {
   llvm_unreachable("Cannot transform query expressions yet");
 }
+  
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformScoutExpr(ScoutExpr *E) {
+  llvm_unreachable("Cannot transform query expressions yet");
+}
 // =================================================
   
 //===----------------------------------------------------------------------===//

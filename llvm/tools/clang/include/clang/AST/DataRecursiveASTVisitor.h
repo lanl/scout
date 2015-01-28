@@ -2393,6 +2393,7 @@ DEF_TRAVERSE_STMT(AtomicExpr, {})
 
 // +===== Scout ==============================
 DEF_TRAVERSE_STMT(QueryExpr, {})
+DEF_TRAVERSE_STMT(ScoutExpr, {})
 // ===========================================
   
 // These literals (all of them) do not need any action.

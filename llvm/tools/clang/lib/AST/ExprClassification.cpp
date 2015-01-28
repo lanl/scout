@@ -139,8 +139,10 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
 
 // +===== Scout =======================
   case Expr::QueryExprClass:
-// ====================================
       return Cl::CL_LValue;
+  case Expr::ScoutExprClass:
+      return cast<ScoutExpr>(E)->getClassificationKind();
+// ====================================
 
     // C99 6.5.2.5p5 says that compound literals are lvalues.
     // In C++, they're prvalue temporaries.

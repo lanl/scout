@@ -915,6 +915,10 @@ void ASTStmtReader::VisitQueryExpr(QueryExpr *E) {
   assert(false && "unimplemented");
 }
 
+void ASTStmtReader::VisitScoutExpr(ScoutExpr *E) {
+  assert(false && "unimplemented");
+}
+
 //===----------------------------------------------------------------------===//
 // Objective-C Expressions and Statements
 
@@ -2984,6 +2988,9 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
     // +===== Scout ============================
     case EXPR_QUERY:
       S = new (Context) QueryExpr(Empty);
+      break;
+    case EXPR_SCOUT:
+      S = new (Context) ScoutExpr(Empty);
       break;
     // =========================================
     }

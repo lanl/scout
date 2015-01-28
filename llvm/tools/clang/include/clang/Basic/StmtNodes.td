@@ -91,6 +91,7 @@ def GenericSelectionExpr : DStmt<Expr>;
 def PseudoObjectExpr : DStmt<Expr>;
 
 // +==== Scout ==============================================================+
+def ScoutExpr : DStmt<Expr>;
 def QueryExpr : DStmt<Expr>;
 // +=========================================================================+
 
