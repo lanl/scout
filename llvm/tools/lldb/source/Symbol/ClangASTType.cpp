@@ -1639,6 +1639,15 @@ ClangASTType::GetTypeClass () const
         // pointer type decayed from an array or function type.
         case clang::Type::Decayed:                  break;
         case clang::Type::Adjusted:                 break;
+        // ===== Scout ===================================
+        case clang::Type::UniformMesh:              break;
+        case clang::Type::StructuredMesh:           break;
+        case clang::Type::RectilinearMesh:          break;
+        case clang::Type::UnstructuredMesh:         break;
+        case clang::Type::Image:                    break;
+        case clang::Type::Window:                   break;
+        case clang::Type::Query:                    break;
+        // ===============================================
     }
     // We don't know hot to display this type...
     return lldb::eTypeClassOther;
@@ -2280,6 +2289,15 @@ ClangASTType::GetEncoding (uint64_t &count) const
         // pointer type decayed from an array or function type.
         case clang::Type::Decayed:
             break;
+        // ===== Scout ===================================
+        case clang::Type::UniformMesh:              break;
+        case clang::Type::StructuredMesh:           break;
+        case clang::Type::RectilinearMesh:          break;
+        case clang::Type::UnstructuredMesh:         break;
+        case clang::Type::Image:                    break;
+        case clang::Type::Window:                   break;
+        case clang::Type::Query:                    break;
+        // ===============================================
     }
     count = 0;
     return lldb::eEncodingInvalid;
@@ -5703,6 +5721,16 @@ ClangASTType::GetDeclContextForType () const
 
         // pointer type decayed from an array or function type.
         case clang::Type::Decayed:                  break;
+        
+        // ===== Scout ===================================
+        case clang::Type::UniformMesh:              break;
+        case clang::Type::StructuredMesh:           break;
+        case clang::Type::RectilinearMesh:          break;
+        case clang::Type::UnstructuredMesh:         break;
+        case clang::Type::Image:                    break;
+        case clang::Type::Window:                   break;
+        case clang::Type::Query:                    break;
+        // ===============================================
     }
     // No DeclContext in this type...
     return nullptr;

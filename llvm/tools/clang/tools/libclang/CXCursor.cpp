@@ -247,6 +247,7 @@ CXCursor cxcursor::MakeCXCursor(const Stmt *S, const Decl *Parent,
   case Stmt::RenderallMeshStmtClass:
   case Stmt::ForallArrayStmtClass:
   case Expr::QueryExprClass:
+  case Expr::ScoutExprClass:
   //case Stmt::VolumeRenderAllStmtClass:
   // +========================================================================+
 

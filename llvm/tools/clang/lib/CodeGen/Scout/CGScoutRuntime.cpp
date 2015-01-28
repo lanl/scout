@@ -379,8 +379,6 @@ void CGScoutRuntime::DumpValue(CodeGenFunction& CGF, const char* label,
   llvm::Function* f = CGM.getModule().getFunction(name);
 
   if(!f){
-    llvm::LLVMContext& context = CGM.getModule().getContext();
-
     std::vector<llvm::Type*> params = {CGF.VoidPtrTy, type};
 
     llvm::FunctionType* ft = llvm::FunctionType::get(CGM.VoidTy, params,

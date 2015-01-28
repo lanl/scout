@@ -806,7 +806,7 @@ RValue CodeGenFunction::EmitPlotExpr(ArgIterator argsBegin, ArgIterator argsEnd)
   const MemberExpr* memberExpr = cast<MemberExpr>(*argsBegin);
   const DeclRefExpr* base = cast<DeclRefExpr>(memberExpr->getBase());
   const VarDecl* vd = cast<VarDecl>(base->getDecl());
-  const UniformMeshType* mt = cast<UniformMeshType>(vd->getType().getTypePtr());
+  //const UniformMeshType* mt = cast<UniformMeshType>(vd->getType().getTypePtr());
   
   ++argsBegin;
   
@@ -819,7 +819,6 @@ RValue CodeGenFunction::EmitPlotExpr(ArgIterator argsBegin, ArgIterator argsEnd)
   llvm::StructType *structTy =
   cast<llvm::StructType>(meshAddr->getType()->getContainedType(0));
   
-  LValue baseLV  = MakeAddrLValue(meshAddr, memberExpr->getType());
   MeshFieldDecl* field = cast<MeshFieldDecl>(memberExpr->getMemberDecl());
 
   const MeshDecl* mesh = field->getParent();
@@ -996,7 +995,7 @@ RValue CodeGenFunction::EmitSwapFieldsExpr(ArgIterator argsBegin, ArgIterator ar
     const MemberExpr* memberExpr = cast<MemberExpr>(*argsBegin);
     const DeclRefExpr* base = cast<DeclRefExpr>(memberExpr->getBase());
     const VarDecl* vd = cast<VarDecl>(base->getDecl());
-    const UniformMeshType* mt = cast<UniformMeshType>(vd->getType().getTypePtr());
+    //const UniformMeshType* mt = cast<UniformMeshType>(vd->getType().getTypePtr());
 
     if(i == 0){
       GetMeshBaseAddr(vd, meshAddr);
@@ -1005,7 +1004,6 @@ RValue CodeGenFunction::EmitSwapFieldsExpr(ArgIterator argsBegin, ArgIterator ar
     llvm::StructType *structTy =
     cast<llvm::StructType>(meshAddr->getType()->getContainedType(0));
     
-    LValue baseLV  = MakeAddrLValue(meshAddr, memberExpr->getType());
     MeshFieldDecl* field = cast<MeshFieldDecl>(memberExpr->getMemberDecl());
     
     const MeshDecl* mesh = field->getParent();

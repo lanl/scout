@@ -6970,6 +6970,16 @@ void Sema::CheckConversionDeclarator(Declarator &D, QualType &R,
         extendLeft(Before, Chunk.Loc);
         extendRight(After, Chunk.EndLoc);
         break;
+      // ===== Scout ========================
+      case DeclaratorChunk::UniformMesh:
+      case DeclaratorChunk::UnstructuredMesh:
+      case DeclaratorChunk::RectilinearMesh:
+      case DeclaratorChunk::StructuredMesh:
+      case DeclaratorChunk::Window:
+      case DeclaratorChunk::Image:
+      case DeclaratorChunk::Query:
+        break;
+      // ====================================
       }
     }
 

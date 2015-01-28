@@ -746,6 +746,16 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
   case TST_unknown_anytype:
   case TST_error:
     break;
+// ===== Scout ======================
+  case TST_uniform_mesh:
+  case TST_structured_mesh:
+  case TST_rectilinear_mesh:
+  case TST_unstructured_mesh:
+  case TST_window:
+  case TST_image:
+  case TST_query:
+    break;
+// ==================================
   }
 
   for (unsigned I = 0, N = D.getNumTypeObjects(); I != N; ++I) {
@@ -755,6 +765,15 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
     case DeclaratorChunk::Reference:
     case DeclaratorChunk::Paren:
     case DeclaratorChunk::BlockPointer:
+// ===== Scout ========================
+    case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::RectilinearMesh:
+    case DeclaratorChunk::StructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
+// ====================================
       // These declarator chunks cannot contain any parameter packs.
       break;
         

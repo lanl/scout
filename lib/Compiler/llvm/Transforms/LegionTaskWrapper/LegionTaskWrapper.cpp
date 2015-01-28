@@ -198,6 +198,10 @@ bool LegionTaskWrapper::runOnModule(Module &M) {
       Value* context = arg_iter++;
       Value* runtime = arg_iter;
 
+      (void)task;
+      (void)regions;
+      (void)numRegions;
+      
       // go through instructions in this block and look for loads of @__scrt_legion_context
       // and replace with my context address.  Same with runtime.
 
