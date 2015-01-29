@@ -598,7 +598,6 @@ include "llvm/IR/IntrinsicsNVVM.td"
 include "llvm/IR/IntrinsicsMips.td"
 include "llvm/IR/IntrinsicsR600.td"
 include "llvm/IR/IntrinsicsBPF.td"
-// ===== Scout ================================================================
+// ===== Scout ========================================================
 include "llvm/IR/IntrinsicsScout.td"
-// ============================================================================
-=======
+// ====================================================================

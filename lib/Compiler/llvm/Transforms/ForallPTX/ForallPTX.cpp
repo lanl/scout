@@ -608,7 +608,8 @@ public:
 
     passManager.add(createVerifierPass());
 
-    const DataLayout* dataLayout = targetMachine->getSubtargetImpl()->getDataLayout();
+    const DataLayout* dataLayout = 
+      targetMachine->getDataLayout();
 
     kernelModule_.setDataLayout(dataLayout);
 
