@@ -20,6 +20,7 @@
 #ifndef LLVM_SUPPORT_COMMANDLINE_H
 #define LLVM_SUPPORT_COMMANDLINE_H
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/Twine.h"
@@ -72,8 +73,17 @@ void AddExtraVersionPrinter(void (*func)());
 // (Currently not perfect, but best-effort.)
 void PrintOptionValues();
 
-// MarkOptionsChanged - Internal helper function.
-void MarkOptionsChanged();
+// Forward declaration - AddLiteralOption needs to be up here to make gcc happy.
+class Option;
+
+/// \brief Adds a new option for parsing and provides the option it refers to.
+///
+/// \param O pointer to the option
+/// \param Name the string name for the option to handle during parsing
+///
+/// Literal options are used by some parsers to register special option values.
+/// This is how the PassNameParser registers pass names for opt.
+void AddLiteralOption(Option &O, const char *Name);
 
 //===----------------------------------------------------------------------===//
 // Flags permitted to be passed to command line arguments
@@ -191,13 +201,13 @@ class Option {
   unsigned Misc : 3;
   unsigned Position;       // Position of last occurrence of the option
   unsigned AdditionalVals; // Greater than 0 for multi-valued option.
-  Option *NextRegistered;  // Singly linked list of registered options.
 
 public:
   const char *ArgStr;   // The argument string itself (ex: "help", "o")
   const char *HelpStr;  // The descriptive text message for -help
   const char *ValueStr; // String describing what the value of this option is
   OptionCategory *Category; // The Category this option belongs to
+  bool FullyInitialized;    // Has addArguemnt been called?
 
   inline enum NumOccurrencesFlag getNumOccurrencesFlag() const {
     return (enum NumOccurrencesFlag)Occurrences;
@@ -221,7 +231,7 @@ public:
   //-------------------------------------------------------------------------===
   // Accessor functions set by OptionModifiers
   //
-  void setArgStr(const char *S) { ArgStr = S; }
+  void setArgStr(const char *S);
   void setDescription(const char *S) { HelpStr = S; }
   void setValueStr(const char *S) { ValueStr = S; }
   void setNumOccurrencesFlag(enum NumOccurrencesFlag Val) { Occurrences = Val; }
@@ -237,8 +247,8 @@ protected:
                   enum OptionHidden Hidden)
       : NumOccurrences(0), Occurrences(OccurrencesFlag), Value(0),
         HiddenFlag(Hidden), Formatting(NormalFormatting), Misc(0), Position(0),
-        AdditionalVals(0), NextRegistered(nullptr), ArgStr(""), HelpStr(""),
-        ValueStr(""), Category(&GeneralCategory) {}
+        AdditionalVals(0), ArgStr(""), HelpStr(""), ValueStr(""),
+        Category(&GeneralCategory), FullyInitialized(false) {}
 
   inline void setNumAdditionalVals(unsigned n) { AdditionalVals = n; }
 
@@ -252,8 +262,6 @@ public:
   /// This option must have been the last option registered.
   /// For testing purposes only.
   void removeArgument();
-
-  Option *getNextRegisteredOption() const { return NextRegistered; }
 
   // Return the width of the option tag for printing...
   virtual size_t getOptionWidth() const = 0;
@@ -665,7 +673,7 @@ public:
     assert(findOption(Name) == Values.size() && "Option already exists!");
     OptionInfo X(Name, static_cast<DataType>(V), HelpStr);
     Values.push_back(X);
-    MarkOptionsChanged();
+    AddLiteralOption(Owner, Name);
   }
 
   /// removeLiteralOption - Remove the specified option.
@@ -1828,9 +1836,7 @@ void PrintHelpMessage(bool Hidden = false, bool Categorized = false);
 /// \brief Use this to get a StringMap to all registered named options
 /// (e.g. -help). Note \p Map Should be an empty StringMap.
 ///
-/// \param [out] Map will be filled with mappings where the key is the
-/// Option argument string (e.g. "help") and value is the corresponding
-/// Option*.
+/// \return A reference to the StringMap used by the cl APIs to parse options.
 ///
 /// Access to unnamed arguments (i.e. positional) are not provided because
 /// it is expected that the client already has access to these.
@@ -1838,8 +1844,7 @@ void PrintHelpMessage(bool Hidden = false, bool Categorized = false);
 /// Typical usage:
 /// \code
 /// main(int argc,char* argv[]) {
-/// StringMap<llvm::cl::Option*> opts;
-/// llvm::cl::getRegisteredOptions(opts);
+/// StringMap<llvm::cl::Option*> &opts = llvm::cl::getRegisteredOptions();
 /// assert(opts.count("help") == 1)
 /// opts["help"]->setDescription("Show alphabetical help information")
 /// // More code
@@ -1851,7 +1856,11 @@ void PrintHelpMessage(bool Hidden = false, bool Categorized = false);
 /// This interface is useful for modifying options in libraries that are out of
 /// the control of the client. The options should be modified before calling
 /// llvm::cl::ParseCommandLineOptions().
-void getRegisteredOptions(StringMap<Option *> &Map);
+///
+/// Hopefully this API can be depricated soon. Any situation where options need
+/// to be modified by tools or libraries should be handled by sane APIs rather
+/// than just handing around a global list.
+StringMap<Option *> &getRegisteredOptions();
 
 //===----------------------------------------------------------------------===//
 // Standalone command line processing utilities.
@@ -1930,6 +1939,15 @@ bool ExpandResponseFiles(StringSaver &Saver, TokenizerCallback Tokenizer,
 /// not specific to the tool. This function allows a tool to specify a single
 /// option category to display in the -help output.
 void HideUnrelatedOptions(cl::OptionCategory &Category);
+
+/// \brief Mark all options not part of the categories as cl::ReallyHidden.
+///
+/// \param Categories the categories of options to keep displaying.
+///
+/// Some tools (like clang-format) like to be able to hide all options that are
+/// not specific to the tool. This function allows a tool to specify a single
+/// option category to display in the -help output.
+void HideUnrelatedOptions(ArrayRef<const cl::OptionCategory *> Categories);
 
 } // End namespace cl
 

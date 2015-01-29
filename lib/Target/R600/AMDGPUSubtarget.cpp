@@ -20,6 +20,7 @@
 #include "SIInstrInfo.h"
 #include "SIMachineFunctionInfo.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/CodeGen/MachineScheduler.h"
 
 using namespace llvm;
 
@@ -30,22 +31,8 @@ using namespace llvm;
 #define GET_SUBTARGETINFO_CTOR
 #include "AMDGPUGenSubtargetInfo.inc"
 
-static std::string computeDataLayout(const AMDGPUSubtarget &ST) {
-  std::string Ret = "e-p:32:32";
-
-  if (ST.is64bit()) {
-    // 32-bit private, local, and region pointers. 64-bit global and constant.
-    Ret += "-p1:64:64-p2:64:64-p3:32:32-p4:64:64-p5:32:32-p24:64:64";
-  }
-
-  Ret += "-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256"
-         "-v512:512-v1024:1024-v2048:2048-n32:64";
-
-  return Ret;
-}
-
 AMDGPUSubtarget &
-AMDGPUSubtarget::initializeSubtargetDependencies(StringRef GPU, StringRef FS) {
+AMDGPUSubtarget::initializeSubtargetDependencies(StringRef TT, StringRef GPU, StringRef FS) {
   // Determine default and user-specified characteristics
   // On SI+, we want FP64 denormals to be on by default. FP32 denormals can be
   // enabled, but some instructions do not respect them and they run at the
@@ -57,6 +44,9 @@ AMDGPUSubtarget::initializeSubtargetDependencies(StringRef GPU, StringRef FS) {
 
   SmallString<256> FullFS("+promote-alloca,+fp64-denormals,");
   FullFS += FS;
+
+  if (GPU == "" && Triple(TT).getArch() == Triple::amdgcn)
+    GPU = "SI";
 
   ParseSubtargetFeatures(GPU, FullFS);
 
@@ -75,17 +65,20 @@ AMDGPUSubtarget::AMDGPUSubtarget(StringRef TT, StringRef GPU, StringRef FS,
     : AMDGPUGenSubtargetInfo(TT, GPU, FS), DevName(GPU), Is64bit(false),
       DumpCode(false), R600ALUInst(false), HasVertexCache(false),
       TexVTXClauseSize(0), Gen(AMDGPUSubtarget::R600), FP64(false),
-      FP64Denormals(false), FP32Denormals(false), CaymanISA(false),
+      FP64Denormals(false), FP32Denormals(false),
+      FastFMAF32(false), CaymanISA(false),
       FlatAddressSpace(false), EnableIRStructurizer(true),
       EnablePromoteAlloca(false), EnableIfCvt(true),
       EnableLoadStoreOpt(false), WavefrontSize(0), CFALUBug(false), LocalMemorySize(0),
       EnableVGPRSpilling(false),
-      DL(computeDataLayout(initializeSubtargetDependencies(GPU, FS))),
       FrameLowering(TargetFrameLowering::StackGrowsUp,
                     64 * 16, // Maximum stack alignment (long16)
                     0),
       InstrItins(getInstrItineraryForCPU(GPU)),
       TargetTriple(TT) {
+
+  initializeSubtargetDependencies(TT, GPU, FS);
+
   if (getGeneration() <= AMDGPUSubtarget::NORTHERN_ISLANDS) {
     InstrInfo.reset(new R600InstrInfo(*this));
     TLInfo.reset(new R600TargetLowering(TM));
@@ -119,4 +112,22 @@ unsigned AMDGPUSubtarget::getAmdKernelCodeChipID() const {
 bool AMDGPUSubtarget::isVGPRSpillingEnabled(
                                        const SIMachineFunctionInfo *MFI) const {
   return MFI->getShaderType() == ShaderType::COMPUTE || EnableVGPRSpilling;
+}
+
+void AMDGPUSubtarget::overrideSchedPolicy(MachineSchedPolicy &Policy,
+                                          MachineInstr *begin,
+                                          MachineInstr *end,
+                                          unsigned NumRegionInstrs) const {
+  if (getGeneration() >= SOUTHERN_ISLANDS) {
+
+    // Track register pressure so the scheduler can try to decrease
+    // pressure once register usage is above the threshold defined by
+    // SIRegisterInfo::getRegPressureSetLimit()
+    Policy.ShouldTrackPressure = true;
+
+    // Enabling both top down and bottom up scheduling seems to give us less
+    // register spills than just using one of these approaches on its own.
+    Policy.OnlyTopDown = false;
+    Policy.OnlyBottomUp = false;
+  }
 }

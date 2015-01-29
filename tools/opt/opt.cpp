@@ -322,6 +322,7 @@ int main(int argc, char **argv) {
   initializeCodeGenPreparePass(Registry);
   initializeAtomicExpandPass(Registry);
   initializeRewriteSymbolsPass(Registry);
+  initializeWinEHPreparePass(Registry);
 
 #ifdef LINK_POLLY_INTO_TOOLS
   polly::initializePollyPasses(Registry);
@@ -401,12 +402,12 @@ int main(int argc, char **argv) {
   PassManager Passes;
 
   // Add an appropriate TargetLibraryInfo pass for the module's triple.
-  TargetLibraryInfo TLI(Triple(M->getTargetTriple()));
+  TargetLibraryInfoImpl TLII(Triple(M->getTargetTriple()));
 
   // The -disable-simplify-libcalls flag actually disables all builtin optzns.
   if (DisableSimplifyLibCalls)
-    TLI.disableAllFunctions();
-  Passes.add(new TargetLibraryInfoWrapperPass(TLI));
+    TLII.disableAllFunctions();
+  Passes.add(new TargetLibraryInfoWrapperPass(TLII));
 
   // Add an appropriate DataLayout instance for this module.
   const DataLayout *DL = M->getDataLayout();

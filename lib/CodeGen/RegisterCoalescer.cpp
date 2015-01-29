@@ -2716,15 +2716,14 @@ bool RegisterCoalescer::runOnMachineFunction(MachineFunction &fn) {
   MF = &fn;
   MRI = &fn.getRegInfo();
   TM = &fn.getTarget();
-  TRI = TM->getSubtargetImpl()->getRegisterInfo();
-  TII = TM->getSubtargetImpl()->getInstrInfo();
+  const TargetSubtargetInfo &STI = fn.getSubtarget();
+  TRI = STI.getRegisterInfo();
+  TII = STI.getInstrInfo();
   LIS = &getAnalysis<LiveIntervals>();
   AA = &getAnalysis<AliasAnalysis>();
   Loops = &getAnalysis<MachineLoopInfo>();
-
-  const TargetSubtargetInfo &ST = TM->getSubtarget<TargetSubtargetInfo>();
   if (EnableGlobalCopies == cl::BOU_UNSET)
-    JoinGlobalCopies = ST.useMachineScheduler();
+    JoinGlobalCopies = STI.useMachineScheduler();
   else
     JoinGlobalCopies = (EnableGlobalCopies == cl::BOU_TRUE);
 
@@ -2756,7 +2755,7 @@ bool RegisterCoalescer::runOnMachineFunction(MachineFunction &fn) {
     unsigned Reg = InflateRegs[i];
     if (MRI->reg_nodbg_empty(Reg))
       continue;
-    if (MRI->recomputeRegClass(Reg, *TM)) {
+    if (MRI->recomputeRegClass(Reg)) {
       DEBUG(dbgs() << PrintReg(Reg) << " inflated to "
                    << TRI->getRegClassName(MRI->getRegClass(Reg)) << '\n');
       LiveInterval &LI = LIS->getInterval(Reg);
