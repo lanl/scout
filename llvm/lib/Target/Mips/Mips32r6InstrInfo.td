@@ -379,7 +379,6 @@ class JMP_IDX_COMPACT_DESC_BASE<string opstr, DAGOperand opnd,
   list<dag> Pattern = [];
   bit isTerminator = 1;
   bit hasDelaySlot = 0;
-  string DecoderMethod = "DecodeSimm16";
 }
 
 class JIALC_DESC : JMP_IDX_COMPACT_DESC_BASE<"jialc", calloffset16,
@@ -550,6 +549,7 @@ class CACHE_HINT_DESC<string instr_asm, Operand MemOpnd,
   dag InOperandList = (ins MemOpnd:$addr, uimm5:$hint);
   string AsmString = !strconcat(instr_asm, "\t$hint, $addr");
   list<dag> Pattern = [];
+  string DecoderMethod = "DecodeCacheOpR6";
 }
 
 class CACHE_DESC : CACHE_HINT_DESC<"cache", mem_simm9, GPR32Opnd>;

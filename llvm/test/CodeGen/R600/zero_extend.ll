@@ -1,5 +1,6 @@
 ; RUN: llc < %s -march=r600 -mcpu=redwood | FileCheck %s --check-prefix=R600-CHECK
 ; RUN: llc < %s -march=amdgcn -mcpu=SI -verify-machineinstrs | FileCheck %s --check-prefix=SI-CHECK
+; RUN: llc < %s -march=amdgcn -mcpu=tonga -verify-machineinstrs | FileCheck %s --check-prefix=SI-CHECK
 
 ; R600-CHECK: {{^}}test:
 ; R600-CHECK: MEM_RAT_CACHELESS STORE_RAW
@@ -29,9 +30,9 @@ entry:
 }
 
 ; SI-CHECK-LABEL: {{^}}zext_i1_to_i64:
+; SI-CHECK: s_mov_b32 s{{[0-9]+}}, 0
 ; SI-CHECK: v_cmp_eq_i32
 ; SI-CHECK: v_cndmask_b32
-; SI-CHECK: s_mov_b32 s{{[0-9]+}}, 0
 define void @zext_i1_to_i64(i64 addrspace(1)* %out, i32 %a, i32 %b) nounwind {
   %cmp = icmp eq i32 %a, %b
   %ext = zext i1 %cmp to i64

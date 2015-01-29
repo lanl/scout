@@ -189,9 +189,6 @@ AMDGPUTargetLowering::AMDGPUTargetLowering(TargetMachine &TM) :
   setOperationAction(ISD::LOAD, MVT::v2f32, Promote);
   AddPromotedToType(ISD::LOAD, MVT::v2f32, MVT::v2i32);
 
-  setOperationAction(ISD::LOAD, MVT::i64, Promote);
-  AddPromotedToType(ISD::LOAD, MVT::i64, MVT::v2i32);
-
   setOperationAction(ISD::LOAD, MVT::v4f32, Promote);
   AddPromotedToType(ISD::LOAD, MVT::v4f32, MVT::v4i32);
 
@@ -672,7 +669,7 @@ SDValue AMDGPUTargetLowering::LowerConstantInitializer(const Constant* Init,
                                                        const SDValue &InitPtr,
                                                        SDValue Chain,
                                                        SelectionDAG &DAG) const {
-  const DataLayout *TD = getTargetMachine().getSubtargetImpl()->getDataLayout();
+  const DataLayout *TD = getDataLayout();
   SDLoc DL(InitPtr);
   Type *InitTy = Init->getType();
 
@@ -760,7 +757,7 @@ SDValue AMDGPUTargetLowering::LowerGlobalAddress(AMDGPUMachineFunction* MFI,
                                                  SDValue Op,
                                                  SelectionDAG &DAG) const {
 
-  const DataLayout *TD = getTargetMachine().getSubtargetImpl()->getDataLayout();
+  const DataLayout *TD = getDataLayout();
   GlobalAddressSDNode *G = cast<GlobalAddressSDNode>(Op);
   const GlobalValue *GV = G->getGlobal();
 
