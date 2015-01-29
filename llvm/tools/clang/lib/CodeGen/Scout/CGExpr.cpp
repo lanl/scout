@@ -1001,9 +1001,6 @@ RValue CodeGenFunction::EmitSwapFieldsExpr(ArgIterator argsBegin, ArgIterator ar
       GetMeshBaseAddr(vd, meshAddr);
     }
     
-    llvm::StructType *structTy =
-    cast<llvm::StructType>(meshAddr->getType()->getContainedType(0));
-    
     MeshFieldDecl* field = cast<MeshFieldDecl>(memberExpr->getMemberDecl());
     
     const MeshDecl* mesh = field->getParent();
