@@ -39,6 +39,20 @@ def DEC_CONST_SIGNED : SDNodeXForm<imm, [{
    return XformSToSM1Imm(imm);
 }]>;
 
+// SDNode for converting immediate C to C-2.
+def DEC2_CONST_SIGNED : SDNodeXForm<imm, [{
+   // Return the byte immediate const-2 as an SDNode.
+   int32_t imm = N->getSExtValue();
+   return XformSToSM2Imm(imm);
+}]>;
+
+// SDNode for converting immediate C to C-3.
+def DEC3_CONST_SIGNED : SDNodeXForm<imm, [{
+   // Return the byte immediate const-3 as an SDNode.
+   int32_t imm = N->getSExtValue();
+   return XformSToSM3Imm(imm);
+}]>;
+
 // SDNode for converting immediate C to C-1.
 def DEC_CONST_UNSIGNED : SDNodeXForm<imm, [{
    // Return the byte immediate const-1 as an SDNode.
@@ -2259,6 +2273,7 @@ def M2_hmmpyl_rs1 : T_MType_rr2 <"mpy", 0b111, 0b100, 1, 1, ".l">;
 // V4 Instructions
 let isCodeGenOnly = 0 in {
 def M2_mpysu_up : T_MType_rr1 <"mpysu", 0b011, 0b001, 0>;
+def M2_mpy_up_s1 : T_MType_rr1 <"mpy", 0b101, 0b010, 0>;
 def M2_mpy_up_s1_sat : T_MType_rr1 <"mpy", 0b111, 0b000, 1>;
 
 def M2_hmmpyh_s1 : T_MType_rr2 <"mpy", 0b101, 0b000, 1, 0, ".h">;
@@ -3274,6 +3289,7 @@ let Defs = [USR_OVF], isCodeGenOnly = 0 in {
   def A2_satub : T_S2op_1_ii <"satub", 0b11, 0b110>;
   def A2_sath  : T_S2op_1_ii <"sath", 0b11, 0b100>;
   def A2_satuh : T_S2op_1_ii <"satuh", 0b11, 0b101>;
+  def A2_roundsat : T_S2op_1_id <"round", 0b11, 0b001, 0b1>;
 }
 
 let Itinerary = S_2op_tc_2_SLOT23, isCodeGenOnly = 0 in {
@@ -3357,6 +3373,11 @@ def S2_asl_i_r_sat : T_S2op_2_ii <"asl", 0b010, 0b010, 1>;
 // Shift right with round
 let isCodeGenOnly = 0 in
 def S2_asr_i_r_rnd : T_S2op_2_ii <"asr", 0b010, 0b000, 0, 1>;
+
+def S2_asr_i_r_rnd_goodsyntax
+  : SInst <(outs IntRegs:$dst), (ins  IntRegs:$src, u5Imm:$u5),
+  "$dst = asrrnd($src, #$u5)",
+  [], "", S_2op_tc_1_SLOT23>;
 
 def: Pat<(i32 (sra (i32 (add (i32 (sra I32:$src1, u5ImmPred:$src2)),
                              (i32 1))),

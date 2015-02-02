@@ -25,6 +25,10 @@ def S2_asr_i_p_rnd : S_2OpInstImm<"asr", 0b110, 0b111, u6Imm,
   let Inst{13-8} = src2;
 }
 
+def S2_asr_i_p_rnd_goodsyntax
+  : MInst<(outs DoubleRegs:$dst), (ins DoubleRegs:$src1, u6Imm:$src2),
+    "$dst = asrrnd($src1, #$src2)">;
+
 let isCodeGenOnly = 0 in
 def C4_fastcorner9 : T_LOGICAL_2OP<"fastcorner9", 0b000, 0, 0>,
   Requires<[HasV5T]> {
@@ -720,6 +724,38 @@ def MUX_ri_f : ALU32_rr<(outs IntRegs:$dst),
       "$dst = mux($src1, #$src2, $src3)",
       [(set F32:$dst, (f32 (select I1:$src1, fpimm:$src2, F32:$src3)))]>,
     Requires<[HasV5T]>;
+
+//===----------------------------------------------------------------------===//
+// :natural forms of vasrh and vasrhub insns
+//===----------------------------------------------------------------------===//
+// S5_asrhub_rnd_sat: Vector arithmetic shift right by immediate with round,
+// saturate, and pack.
+let Defs = [USR_OVF], hasSideEffects = 0, hasNewValue = 1, opNewValue = 0 in
+class T_ASRHUB<bit isSat>
+  : SInst <(outs IntRegs:$Rd),
+  (ins DoubleRegs:$Rss, u4Imm:$u4),
+  "$Rd = vasrhub($Rss, #$u4):"#!if(isSat, "sat", "raw"),
+  [], "", S_2op_tc_2_SLOT23>,
+  Requires<[HasV5T]> {
+    bits<5> Rd;
+    bits<5> Rss;
+    bits<4> u4;
+
+    let IClass = 0b1000;
+
+    let Inst{27-21} = 0b1000011;
+    let Inst{20-16} = Rss;
+    let Inst{13-12} = 0b00;
+    let Inst{11-8} = u4;
+    let Inst{7-6} = 0b10;
+    let Inst{5} = isSat;
+    let Inst{4-0} = Rd;
+  }
+def S5_asrhub_sat : T_ASRHUB <1>;
+
+def S5_asrhub_rnd_sat_goodsyntax
+  : SInst <(outs IntRegs:$Rd), (ins DoubleRegs:$Rss, u4Imm:$u4),
+  "$Rd = vasrhub($Rss, #$u4):rnd:sat">, Requires<[HasV5T]>;
 
 // Classify floating-point value
 let isFP = 1, isCodeGenOnly = 0 in

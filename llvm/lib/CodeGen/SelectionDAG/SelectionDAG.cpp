@@ -1538,13 +1538,15 @@ SDValue SelectionDAG::getVectorShuffle(EVT VT, SDLoc dl, SDValue N1,
       if (Splat && Splat.getOpcode() == ISD::UNDEF)
         return getUNDEF(VT);
 
+      bool SameNumElts =
+          V.getValueType().getVectorNumElements() == VT.getVectorNumElements();
+
       // We only have a splat which can skip shuffles if there is a splatted
       // value and no undef lanes rearranged by the shuffle.
       if (Splat && UndefElements.none()) {
         // Splat of <x, x, ..., x>, return <x, x, ..., x>, provided that the
         // number of elements match or the value splatted is a zero constant.
-        if (V.getValueType().getVectorNumElements() ==
-            VT.getVectorNumElements())
+        if (SameNumElts)
           return N1;
         if (auto *C = dyn_cast<ConstantSDNode>(Splat))
           if (C->isNullValue())
@@ -1553,15 +1555,15 @@ SDValue SelectionDAG::getVectorShuffle(EVT VT, SDLoc dl, SDValue N1,
 
       // If the shuffle itself creates a constant splat, build the vector
       // directly.
-      if (AllSame) {
+      if (AllSame && SameNumElts) {
          const SDValue &Splatted = BV->getOperand(MaskVec[0]);
          if (isa<ConstantSDNode>(Splatted) || isa<ConstantFPSDNode>(Splatted)) {
            SmallVector<SDValue, 8> Ops;
-           for (unsigned i = 0; i != NElts; ++i) {
+           for (unsigned i = 0; i != NElts; ++i)
              Ops.push_back(Splatted);
-           }
-           SDValue NewBV = getNode(ISD::BUILD_VECTOR, dl,
-             BV->getValueType(0), Ops);
+
+           SDValue NewBV =
+               getNode(ISD::BUILD_VECTOR, dl, BV->getValueType(0), Ops);
 
            // We may have jumped through bitcasts, so the type of the
            // BUILD_VECTOR may not match the type of the shuffle.
@@ -4270,11 +4272,13 @@ SDValue SelectionDAG::getMemcpy(SDValue Chain, SDLoc dl, SDValue Dst,
 
   // Then check to see if we should lower the memcpy with target-specific
   // code. If the target chooses to do this, this is the next best.
-  SDValue Result =
-      TSI->EmitTargetCodeForMemcpy(*this, dl, Chain, Dst, Src, Size, Align,
-                                   isVol, AlwaysInline, DstPtrInfo, SrcPtrInfo);
-  if (Result.getNode())
-    return Result;
+  if (TSI) {
+    SDValue Result = TSI->EmitTargetCodeForMemcpy(
+        *this, dl, Chain, Dst, Src, Size, Align, isVol, AlwaysInline,
+        DstPtrInfo, SrcPtrInfo);
+    if (Result.getNode())
+      return Result;
+  }
 
   // If we really need inline code and the target declined to provide it,
   // use a (potentially long) sequence of loads and stores.
@@ -4336,10 +4340,12 @@ SDValue SelectionDAG::getMemmove(SDValue Chain, SDLoc dl, SDValue Dst,
 
   // Then check to see if we should lower the memmove with target-specific
   // code. If the target chooses to do this, this is the next best.
-  SDValue Result = TSI->EmitTargetCodeForMemmove(
-      *this, dl, Chain, Dst, Src, Size, Align, isVol, DstPtrInfo, SrcPtrInfo);
-  if (Result.getNode())
-    return Result;
+  if (TSI) {
+    SDValue Result = TSI->EmitTargetCodeForMemmove(
+        *this, dl, Chain, Dst, Src, Size, Align, isVol, DstPtrInfo, SrcPtrInfo);
+    if (Result.getNode())
+      return Result;
+  }
 
   // FIXME: If the memmove is volatile, lowering it to plain libc memmove may
   // not be safe.  See memcpy above for more details.
@@ -4388,10 +4394,12 @@ SDValue SelectionDAG::getMemset(SDValue Chain, SDLoc dl, SDValue Dst,
 
   // Then check to see if we should lower the memset with target-specific
   // code. If the target chooses to do this, this is the next best.
-  SDValue Result = TSI->EmitTargetCodeForMemset(*this, dl, Chain, Dst, Src,
-                                                Size, Align, isVol, DstPtrInfo);
-  if (Result.getNode())
-    return Result;
+  if (TSI) {
+    SDValue Result = TSI->EmitTargetCodeForMemset(
+        *this, dl, Chain, Dst, Src, Size, Align, isVol, DstPtrInfo);
+    if (Result.getNode())
+      return Result;
+  }
 
   // Emit a library call.
   Type *IntPtrTy = TLI->getDataLayout()->getIntPtrType(*getContext());
@@ -4736,10 +4744,10 @@ SelectionDAG::getLoad(ISD::MemIndexedMode AM, ISD::LoadExtType ExtType,
     assert(VT.isInteger() == MemVT.isInteger() &&
            "Cannot convert from FP to Int or Int -> FP!");
     assert(VT.isVector() == MemVT.isVector() &&
-           "Cannot use trunc store to convert to or from a vector!");
+           "Cannot use an ext load to convert to or from a vector!");
     assert((!VT.isVector() ||
             VT.getVectorNumElements() == MemVT.getVectorNumElements()) &&
-           "Cannot use trunc store to change the number of vector elements!");
+           "Cannot use an ext load to change the number of vector elements!");
   }
 
   bool Indexed = AM != ISD::UNINDEXED;

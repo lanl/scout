@@ -129,7 +129,7 @@ void initializeThreadSanitizerPass(PassRegistry&);
 void initializeSanitizerCoverageModulePass(PassRegistry&);
 void initializeDataFlowSanitizerPass(PassRegistry&);
 void initializeScalarizerPass(PassRegistry&);
-void initializeEarlyCSEPass(PassRegistry&);
+void initializeEarlyCSELegacyPassPass(PassRegistry &);
 void initializeExpandISelPseudosPass(PassRegistry&);
 void initializeFunctionAttrsPass(PassRegistry&);
 void initializeGCMachineCodeAnalysisPass(PassRegistry&);
@@ -245,6 +245,7 @@ void initializeSROA_SSAUpPass(PassRegistry&);
 void initializeScalarEvolutionAliasAnalysisPass(PassRegistry&);
 void initializeScalarEvolutionPass(PassRegistry&);
 void initializeSimpleInlinerPass(PassRegistry&);
+void initializeShadowStackGCLoweringPass(PassRegistry&);  
 void initializeRegisterCoalescerPass(PassRegistry&);
 void initializeSingleLoopExtractorPass(PassRegistry&);
 void initializeSinkingPass(PassRegistry&);
@@ -288,6 +289,7 @@ void initializeStackMapLivenessPass(PassRegistry&);
 void initializeMachineCombinerPass(PassRegistry &);
 void initializeLoadCombinePass(PassRegistry&);
 void initializeRewriteSymbolsPass(PassRegistry&);
+void initializeWinEHPreparePass(PassRegistry&);
 }
 
 #endif

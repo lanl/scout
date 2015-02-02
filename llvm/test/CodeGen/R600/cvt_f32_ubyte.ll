@@ -1,4 +1,5 @@
 ; RUN: llc -march=amdgcn -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
+; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
 
 ; SI-LABEL: {{^}}load_i8_to_f32:
 ; SI: buffer_load_ubyte [[LOADREG:v[0-9]+]],
@@ -62,10 +63,10 @@ define void @load_v4i8_to_v4f32(<4 x float> addrspace(1)* noalias %out, <4 x i8>
 ; position in the word for the component.
 
 ; SI-LABEL: {{^}}load_v4i8_to_v4f32_unaligned:
-; SI: buffer_load_ubyte [[LOADREG0:v[0-9]+]]
-; SI: buffer_load_ubyte [[LOADREG1:v[0-9]+]]
-; SI: buffer_load_ubyte [[LOADREG2:v[0-9]+]]
 ; SI: buffer_load_ubyte [[LOADREG3:v[0-9]+]]
+; SI: buffer_load_ubyte [[LOADREG2:v[0-9]+]]
+; SI: buffer_load_ubyte [[LOADREG1:v[0-9]+]]
+; SI: buffer_load_ubyte [[LOADREG0:v[0-9]+]]
 ; SI-NOT: v_lshlrev_b32
 ; SI-NOT: v_or_b32
 

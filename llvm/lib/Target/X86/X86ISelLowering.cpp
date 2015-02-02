@@ -1721,8 +1721,7 @@ void X86TargetLowering::resetOperationActions() {
   setTargetDAGCombine(ISD::SETCC);
   setTargetDAGCombine(ISD::INTRINSIC_WO_CHAIN);
   setTargetDAGCombine(ISD::BUILD_VECTOR);
-  if (Subtarget->is64Bit())
-    setTargetDAGCombine(ISD::MUL);
+  setTargetDAGCombine(ISD::MUL);
   setTargetDAGCombine(ISD::XOR);
 
   computeRegisterProperties();
@@ -3356,7 +3355,8 @@ bool MatchingStackOffset(SDValue Arg, unsigned Offset, ISD::ArgFlagsTy Flags,
         return false;
     } else {
       unsigned Opcode = Def->getOpcode();
-      if ((Opcode == X86::LEA32r || Opcode == X86::LEA64r) &&
+      if ((Opcode == X86::LEA32r || Opcode == X86::LEA64r ||
+           Opcode == X86::LEA64_32r) &&
           Def->getOperand(1).isFI()) {
         FI = Def->getOperand(1).getIndex();
         Bytes = Flags.getByValSize();
@@ -7937,11 +7937,11 @@ static SDValue lowerVectorShuffleAsZeroOrAnyExtend(
       if (Mask[i] == -1)
         continue; // Valid anywhere but doesn't tell us anything.
       if (i % Scale != 0) {
-        // Each of the extend elements needs to be zeroable.
+        // Each of the extended elements need to be zeroable.
         if (!Zeroable[i])
           return SDValue();
 
-        // We no lorger are in the anyext case.
+        // We no longer are in the anyext case.
         AnyExt = false;
         continue;
       }
@@ -7955,7 +7955,7 @@ static SDValue lowerVectorShuffleAsZeroOrAnyExtend(
         return SDValue(); // Flip-flopping inputs.
 
       if (Mask[i] % NumElements != i / Scale)
-        return SDValue(); // Non-consecutive strided elemenst.
+        return SDValue(); // Non-consecutive strided elements.
     }
 
     // If we fail to find an input, we have a zero-shuffle which should always
@@ -7977,7 +7977,7 @@ static SDValue lowerVectorShuffleAsZeroOrAnyExtend(
   // many elements.
   for (; NumExtElements < NumElements; NumExtElements *= 2) {
     assert(NumElements % NumExtElements == 0 &&
-           "The input vector size must be divisble by the extended size.");
+           "The input vector size must be divisible by the extended size.");
     if (SDValue V = Lower(NumElements / NumExtElements))
       return V;
   }
@@ -12871,6 +12871,8 @@ X86TargetLowering::ExtractBitFromMaskVector(SDValue Op, SelectionDAG &DAG) const
   MVT EltVT = Op.getSimpleValueType();
 
   assert((EltVT == MVT::i1) && "Unexpected operands in ExtractBitFromMaskVector");
+  assert((VecVT.getVectorNumElements() <= 16 || Subtarget->hasBWI()) &&
+         "Unexpected vector type in ExtractBitFromMaskVector");
 
   // variable index can't be handled in mask registers,
   // extend vector to VR512
@@ -12884,6 +12886,8 @@ X86TargetLowering::ExtractBitFromMaskVector(SDValue Op, SelectionDAG &DAG) const
 
   unsigned IdxVal = cast<ConstantSDNode>(Idx)->getZExtValue();
   const TargetRegisterClass* rc = getRegClassFor(VecVT);
+  if (!Subtarget->hasDQI() && (VecVT.getVectorNumElements() <= 8))
+    rc = getRegClassFor(MVT::v16i1);
   unsigned MaxSift = rc->getSize()*8 - 1;
   Vec = DAG.getNode(X86ISD::VSHLI, dl, VecVT, Vec,
                     DAG.getConstant(MaxSift - IdxVal, MVT::i8));
@@ -13193,27 +13197,28 @@ static SDValue LowerEXTRACT_SUBVECTOR(SDValue Op, const X86Subtarget *Subtarget,
 // the upper bits of a vector.
 static SDValue LowerINSERT_SUBVECTOR(SDValue Op, const X86Subtarget *Subtarget,
                                      SelectionDAG &DAG) {
-  if (Subtarget->hasFp256()) {
-    SDLoc dl(Op.getNode());
-    SDValue Vec = Op.getNode()->getOperand(0);
-    SDValue SubVec = Op.getNode()->getOperand(1);
-    SDValue Idx = Op.getNode()->getOperand(2);
-
-    if ((Op.getNode()->getSimpleValueType(0).is256BitVector() ||
-         Op.getNode()->getSimpleValueType(0).is512BitVector()) &&
-        SubVec.getNode()->getSimpleValueType(0).is128BitVector() &&
-        isa<ConstantSDNode>(Idx)) {
-      unsigned IdxVal = cast<ConstantSDNode>(Idx)->getZExtValue();
-      return Insert128BitVector(Vec, SubVec, IdxVal, DAG, dl);
-    }
-
-    if (Op.getNode()->getSimpleValueType(0).is512BitVector() &&
-        SubVec.getNode()->getSimpleValueType(0).is256BitVector() &&
-        isa<ConstantSDNode>(Idx)) {
-      unsigned IdxVal = cast<ConstantSDNode>(Idx)->getZExtValue();
-      return Insert256BitVector(Vec, SubVec, IdxVal, DAG, dl);
-    }
+  if (!Subtarget->hasAVX())
+    return SDValue();
+  
+  SDLoc dl(Op);
+  SDValue Vec = Op.getOperand(0);
+  SDValue SubVec = Op.getOperand(1);
+  SDValue Idx = Op.getOperand(2);
+  MVT OpVT = Op.getSimpleValueType();
+  MVT SubVecVT = SubVec.getSimpleValueType();
+    
+  if ((OpVT.is256BitVector() || OpVT.is512BitVector()) &&
+      SubVecVT.is128BitVector() && isa<ConstantSDNode>(Idx)) {
+    unsigned IdxVal = cast<ConstantSDNode>(Idx)->getZExtValue();
+    return Insert128BitVector(Vec, SubVec, IdxVal, DAG, dl);
   }
+
+  if (OpVT.is512BitVector() &&
+      SubVecVT.is256BitVector() && isa<ConstantSDNode>(Idx)) {
+    unsigned IdxVal = cast<ConstantSDNode>(Idx)->getZExtValue();
+    return Insert256BitVector(Vec, SubVec, IdxVal, DAG, dl);
+  }
+
   return SDValue();
 }
 
@@ -17035,54 +17040,6 @@ static SDValue getScalarMaskingNode(SDValue Op, SDValue Mask,
     return DAG.getNode(X86ISD::SELECT, dl, VT, IMask, Op, PreservedSrc);
 }
 
-static unsigned getOpcodeForFMAIntrinsic(unsigned IntNo) {
-    switch (IntNo) {
-    default: llvm_unreachable("Impossible intrinsic");  // Can't reach here.
-    case Intrinsic::x86_fma_vfmadd_ps:
-    case Intrinsic::x86_fma_vfmadd_pd:
-    case Intrinsic::x86_fma_vfmadd_ps_256:
-    case Intrinsic::x86_fma_vfmadd_pd_256:
-    case Intrinsic::x86_fma_mask_vfmadd_ps_512:
-    case Intrinsic::x86_fma_mask_vfmadd_pd_512:
-      return X86ISD::FMADD;
-    case Intrinsic::x86_fma_vfmsub_ps:
-    case Intrinsic::x86_fma_vfmsub_pd:
-    case Intrinsic::x86_fma_vfmsub_ps_256:
-    case Intrinsic::x86_fma_vfmsub_pd_256:
-    case Intrinsic::x86_fma_mask_vfmsub_ps_512:
-    case Intrinsic::x86_fma_mask_vfmsub_pd_512:
-      return X86ISD::FMSUB;
-    case Intrinsic::x86_fma_vfnmadd_ps:
-    case Intrinsic::x86_fma_vfnmadd_pd:
-    case Intrinsic::x86_fma_vfnmadd_ps_256:
-    case Intrinsic::x86_fma_vfnmadd_pd_256:
-    case Intrinsic::x86_fma_mask_vfnmadd_ps_512:
-    case Intrinsic::x86_fma_mask_vfnmadd_pd_512:
-      return X86ISD::FNMADD;
-    case Intrinsic::x86_fma_vfnmsub_ps:
-    case Intrinsic::x86_fma_vfnmsub_pd:
-    case Intrinsic::x86_fma_vfnmsub_ps_256:
-    case Intrinsic::x86_fma_vfnmsub_pd_256:
-    case Intrinsic::x86_fma_mask_vfnmsub_ps_512:
-    case Intrinsic::x86_fma_mask_vfnmsub_pd_512:
-      return X86ISD::FNMSUB;
-    case Intrinsic::x86_fma_vfmaddsub_ps:
-    case Intrinsic::x86_fma_vfmaddsub_pd:
-    case Intrinsic::x86_fma_vfmaddsub_ps_256:
-    case Intrinsic::x86_fma_vfmaddsub_pd_256:
-    case Intrinsic::x86_fma_mask_vfmaddsub_ps_512:
-    case Intrinsic::x86_fma_mask_vfmaddsub_pd_512:
-      return X86ISD::FMADDSUB;
-    case Intrinsic::x86_fma_vfmsubadd_ps:
-    case Intrinsic::x86_fma_vfmsubadd_pd:
-    case Intrinsic::x86_fma_vfmsubadd_ps_256:
-    case Intrinsic::x86_fma_vfmsubadd_pd_256:
-    case Intrinsic::x86_fma_mask_vfmsubadd_ps_512:
-    case Intrinsic::x86_fma_mask_vfmsubadd_pd_512:
-      return X86ISD::FMSUBADD;
-    }
-}
-
 static SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, const X86Subtarget *Subtarget,
                                        SelectionDAG &DAG) {
   SDLoc dl(Op);
@@ -17119,9 +17076,43 @@ static SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, const X86Subtarget *Subtarget
                                   Mask, Src0, Subtarget, DAG);
     }
     case INTR_TYPE_2OP_MASK: {
-      return getVectorMaskingNode(DAG.getNode(IntrData->Opc0, dl, VT, Op.getOperand(1),
+      SDValue Mask = Op.getOperand(4);
+      SDValue PassThru = Op.getOperand(3);
+      unsigned IntrWithRoundingModeOpcode = IntrData->Opc1;
+      if (IntrWithRoundingModeOpcode != 0) {
+        unsigned Round = cast<ConstantSDNode>(Op.getOperand(5))->getZExtValue();
+        if (Round != X86::STATIC_ROUNDING::CUR_DIRECTION) {
+          return getVectorMaskingNode(DAG.getNode(IntrWithRoundingModeOpcode,
+                                      dl, Op.getValueType(),
+                                      Op.getOperand(1), Op.getOperand(2),
+                                      Op.getOperand(3), Op.getOperand(5)),
+                                      Mask, PassThru, Subtarget, DAG);
+        }
+      }
+      return getVectorMaskingNode(DAG.getNode(IntrData->Opc0, dl, VT,
+                                              Op.getOperand(1),
                                               Op.getOperand(2)),
-                                  Op.getOperand(4), Op.getOperand(3), Subtarget, DAG);
+                                  Mask, PassThru, Subtarget, DAG);
+    }
+    case FMA_OP_MASK: {
+      SDValue Src1 = Op.getOperand(1);
+      SDValue Src2 = Op.getOperand(2);
+      SDValue Src3 = Op.getOperand(3);
+      SDValue Mask = Op.getOperand(4);
+      unsigned IntrWithRoundingModeOpcode = IntrData->Opc1;
+      if (IntrWithRoundingModeOpcode != 0) {
+        SDValue Rnd = Op.getOperand(5);
+        if (cast<ConstantSDNode>(Rnd)->getZExtValue() !=
+            X86::STATIC_ROUNDING::CUR_DIRECTION)
+          return getVectorMaskingNode(DAG.getNode(IntrWithRoundingModeOpcode,
+                                                  dl, Op.getValueType(),
+                                                  Src1, Src2, Src3, Rnd),
+                                      Mask, Src1, Subtarget, DAG);
+      }
+      return getVectorMaskingNode(DAG.getNode(IntrData->Opc0,
+                                              dl, Op.getValueType(),
+                                              Src1, Src2, Src3),
+                                  Mask, Src1, Subtarget, DAG);
     }
     case CMP_MASK:
     case CMP_MASK_CC: {
@@ -17210,16 +17201,6 @@ static SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, const X86Subtarget *Subtarget
                                   DAG.getIntPtrConstant(0));
       return DAG.getNode(IntrData->Opc0, dl, VT, VMask, Op.getOperand(1),
                          Op.getOperand(2));
-    }
-    case FMA_OP_MASK:
-    {
-        return getVectorMaskingNode(DAG.getNode(IntrData->Opc0,
-            dl, Op.getValueType(),
-            Op.getOperand(1),
-            Op.getOperand(2),
-            Op.getOperand(3)),
-            Op.getOperand(4), Op.getOperand(1),
-            Subtarget, DAG);
     }
     default:
       break;
@@ -17391,58 +17372,6 @@ static SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, const X86Subtarget *Subtarget
     SDVTList VTs = DAG.getVTList(Op.getValueType(), MVT::i32);
     return DAG.getNode(Opcode, dl, VTs, NewOps);
   }
-
-  case Intrinsic::x86_fma_mask_vfmadd_ps_512:
-  case Intrinsic::x86_fma_mask_vfmadd_pd_512:
-  case Intrinsic::x86_fma_mask_vfmsub_ps_512:
-  case Intrinsic::x86_fma_mask_vfmsub_pd_512:
-  case Intrinsic::x86_fma_mask_vfnmadd_ps_512:
-  case Intrinsic::x86_fma_mask_vfnmadd_pd_512:
-  case Intrinsic::x86_fma_mask_vfnmsub_ps_512:
-  case Intrinsic::x86_fma_mask_vfnmsub_pd_512:
-  case Intrinsic::x86_fma_mask_vfmaddsub_ps_512:
-  case Intrinsic::x86_fma_mask_vfmaddsub_pd_512:
-  case Intrinsic::x86_fma_mask_vfmsubadd_ps_512:
-  case Intrinsic::x86_fma_mask_vfmsubadd_pd_512: {
-    auto *SAE = cast<ConstantSDNode>(Op.getOperand(5));
-    if (SAE->getZExtValue() == X86::STATIC_ROUNDING::CUR_DIRECTION)
-      return getVectorMaskingNode(DAG.getNode(getOpcodeForFMAIntrinsic(IntNo),
-                                              dl, Op.getValueType(),
-                                              Op.getOperand(1),
-                                              Op.getOperand(2),
-                                              Op.getOperand(3)),
-                                  Op.getOperand(4), Op.getOperand(1),
-                                  Subtarget, DAG);
-    else
-      return SDValue();
-  }
-
-  case Intrinsic::x86_fma_vfmadd_ps:
-  case Intrinsic::x86_fma_vfmadd_pd:
-  case Intrinsic::x86_fma_vfmsub_ps:
-  case Intrinsic::x86_fma_vfmsub_pd:
-  case Intrinsic::x86_fma_vfnmadd_ps:
-  case Intrinsic::x86_fma_vfnmadd_pd:
-  case Intrinsic::x86_fma_vfnmsub_ps:
-  case Intrinsic::x86_fma_vfnmsub_pd:
-  case Intrinsic::x86_fma_vfmaddsub_ps:
-  case Intrinsic::x86_fma_vfmaddsub_pd:
-  case Intrinsic::x86_fma_vfmsubadd_ps:
-  case Intrinsic::x86_fma_vfmsubadd_pd:
-  case Intrinsic::x86_fma_vfmadd_ps_256:
-  case Intrinsic::x86_fma_vfmadd_pd_256:
-  case Intrinsic::x86_fma_vfmsub_ps_256:
-  case Intrinsic::x86_fma_vfmsub_pd_256:
-  case Intrinsic::x86_fma_vfnmadd_ps_256:
-  case Intrinsic::x86_fma_vfnmadd_pd_256:
-  case Intrinsic::x86_fma_vfnmsub_ps_256:
-  case Intrinsic::x86_fma_vfnmsub_pd_256:
-  case Intrinsic::x86_fma_vfmaddsub_ps_256:
-  case Intrinsic::x86_fma_vfmaddsub_pd_256:
-  case Intrinsic::x86_fma_vfmsubadd_ps_256:
-  case Intrinsic::x86_fma_vfmsubadd_pd_256:
-    return DAG.getNode(getOpcodeForFMAIntrinsic(IntNo), dl, Op.getValueType(),
-                       Op.getOperand(1), Op.getOperand(2), Op.getOperand(3));
   }
 }
 
@@ -24117,7 +24046,7 @@ static SDValue PerformMulCombine(SDNode *N, SelectionDAG &DAG,
     return SDValue();
 
   EVT VT = N->getValueType(0);
-  if (VT != MVT::i64)
+  if (VT != MVT::i64 && VT != MVT::i32)
     return SDValue();
 
   ConstantSDNode *C = dyn_cast<ConstantSDNode>(N->getOperand(1));

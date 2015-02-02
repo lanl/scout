@@ -1921,6 +1921,9 @@ GDBRemoteCommunicationServer::Handle_qLaunchGDBServer (StringExtractorGDBRemote 
         if (log)
             log->Printf("Launching debugserver with: %s:%u...\n", hostname.c_str(), port);
 
+        // Do not run in a new session so that it can not linger after the
+        // platform closes.
+        debugserver_launch_info.SetLaunchInSeparateProcessGroup(false);
         debugserver_launch_info.SetMonitorProcessCallback(ReapDebugserverProcess, this, false);
 
         std::string platform_scheme;
@@ -2995,7 +2998,7 @@ GDBRemoteCommunicationServer::Handle_qRegisterInfo (StringExtractorGDBRemote &pa
         return SendErrorResponse (69);
 
     // Return the end of registers response if we've iterated one past the end of the register set.
-    if (reg_index >= reg_context_sp->GetRegisterCount ())
+    if (reg_index >= reg_context_sp->GetUserRegisterCount ())
         return SendErrorResponse (69);
 
     const RegisterInfo *reg_info = reg_context_sp->GetRegisterInfoAtIndex(reg_index);
@@ -3196,10 +3199,10 @@ GDBRemoteCommunicationServer::Handle_p (StringExtractorGDBRemote &packet)
     }
 
     // Return the end of registers response if we've iterated one past the end of the register set.
-    if (reg_index >= reg_context_sp->GetRegisterCount ())
+    if (reg_index >= reg_context_sp->GetUserRegisterCount ())
     {
         if (log)
-            log->Printf ("GDBRemoteCommunicationServer::%s failed, requested register %" PRIu32 " beyond register count %" PRIu32, __FUNCTION__, reg_index, reg_context_sp->GetRegisterCount ());
+            log->Printf ("GDBRemoteCommunicationServer::%s failed, requested register %" PRIu32 " beyond register count %" PRIu32, __FUNCTION__, reg_index, reg_context_sp->GetUserRegisterCount ());
         return SendErrorResponse (0x15);
     }
 
@@ -3305,10 +3308,10 @@ GDBRemoteCommunicationServer::Handle_P (StringExtractorGDBRemote &packet)
     }
 
     // Return the end of registers response if we've iterated one past the end of the register set.
-    if (reg_index >= reg_context_sp->GetRegisterCount ())
+    if (reg_index >= reg_context_sp->GetUserRegisterCount ())
     {
         if (log)
-            log->Printf ("GDBRemoteCommunicationServer::%s failed, requested register %" PRIu32 " beyond register count %" PRIu32, __FUNCTION__, reg_index, reg_context_sp->GetRegisterCount ());
+            log->Printf ("GDBRemoteCommunicationServer::%s failed, requested register %" PRIu32 " beyond register count %" PRIu32, __FUNCTION__, reg_index, reg_context_sp->GetUserRegisterCount ());
         return SendErrorResponse (0x47);
     }
 

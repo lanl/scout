@@ -83,46 +83,132 @@ void StringSaver::anchor() {}
 
 //===----------------------------------------------------------------------===//
 
-// Globals for name and overview of program.  Program name is not a string to
-// avoid static ctor/dtor issues.
-static char ProgramName[80] = "<premain>";
-static const char *ProgramOverview = nullptr;
+class CommandLineParser {
+public:
+  // Globals for name and overview of program.  Program name is not a string to
+  // avoid static ctor/dtor issues.
+  std::string ProgramName;
+  const char *ProgramOverview;
 
-// This collects additional help to be printed.
-static ManagedStatic<std::vector<const char *>> MoreHelp;
+  // This collects additional help to be printed.
+  std::vector<const char *> MoreHelp;
+
+  SmallVector<Option *, 4> PositionalOpts;
+  SmallVector<Option *, 4> SinkOpts;
+  StringMap<Option *> OptionsMap;
+
+  Option *ConsumeAfterOpt; // The ConsumeAfter option if it exists.
+
+  CommandLineParser() : ProgramOverview(nullptr), ConsumeAfterOpt(nullptr) {}
+
+  void ParseCommandLineOptions(int argc, const char *const *argv,
+                               const char *Overview);
+
+  void addLiteralOption(Option &Opt, const char *Name) {
+    if (!Opt.hasArgStr()) {
+      if (!OptionsMap.insert(std::make_pair(Name, &Opt)).second) {
+        errs() << ProgramName << ": CommandLine Error: Option '" << Name
+               << "' registered more than once!\n";
+        report_fatal_error("inconsistency in registered CommandLine options");
+      }
+    }
+  }
+
+  void addOption(Option *O) {
+    bool HadErrors = false;
+    if (O->ArgStr[0]) {
+      // Add argument to the argument map!
+      if (!OptionsMap.insert(std::make_pair(O->ArgStr, O)).second) {
+        errs() << ProgramName << ": CommandLine Error: Option '" << O->ArgStr
+               << "' registered more than once!\n";
+        HadErrors = true;
+      }
+    }
+
+    // Remember information about positional options.
+    if (O->getFormattingFlag() == cl::Positional)
+      PositionalOpts.push_back(O);
+    else if (O->getMiscFlags() & cl::Sink) // Remember sink options
+      SinkOpts.push_back(O);
+    else if (O->getNumOccurrencesFlag() == cl::ConsumeAfter) {
+      if (ConsumeAfterOpt) {
+        O->error("Cannot specify more than one option with cl::ConsumeAfter!");
+        HadErrors = true;
+      }
+      ConsumeAfterOpt = O;
+    }
+
+    // Fail hard if there were errors. These are strictly unrecoverable and
+    // indicate serious issues such as conflicting option names or an
+    // incorrectly
+    // linked LLVM distribution.
+    if (HadErrors)
+      report_fatal_error("inconsistency in registered CommandLine options");
+  }
+
+  void removeOption(Option *O) {
+    SmallVector<const char *, 16> OptionNames;
+    O->getExtraOptionNames(OptionNames);
+    if (O->ArgStr[0])
+      OptionNames.push_back(O->ArgStr);
+    for (auto Name : OptionNames)
+      OptionsMap.erase(StringRef(Name));
+
+    if (O->getFormattingFlag() == cl::Positional)
+      for (auto Opt = PositionalOpts.begin(); Opt != PositionalOpts.end();
+           ++Opt) {
+        if (*Opt == O) {
+          PositionalOpts.erase(Opt);
+          break;
+        }
+      }
+    else if (O->getMiscFlags() & cl::Sink)
+      for (auto Opt = SinkOpts.begin(); Opt != SinkOpts.end(); ++Opt) {
+        if (*Opt == O) {
+          SinkOpts.erase(Opt);
+          break;
+        }
+      }
+    else if (O == ConsumeAfterOpt)
+      ConsumeAfterOpt = nullptr;
+  }
+
+  bool hasOptions() {
+    return (!OptionsMap.empty() || !PositionalOpts.empty() ||
+            nullptr != ConsumeAfterOpt);
+  }
+
+  void updateArgStr(Option *O, const char* NewName) {
+    if (!OptionsMap.insert(std::make_pair(NewName, O)).second) {
+      errs() << ProgramName << ": CommandLine Error: Option '" << O->ArgStr
+             << "' registered more than once!\n";
+      report_fatal_error("inconsistency in registered CommandLine options");
+    }
+    OptionsMap.erase(StringRef(O->ArgStr));
+  }
+};
+
+static ManagedStatic<CommandLineParser> GlobalParser;
+
+void cl::AddLiteralOption(Option &O, const char *Name) {
+  GlobalParser->addLiteralOption(O, Name);
+}
 
 extrahelp::extrahelp(const char *Help) : morehelp(Help) {
-  MoreHelp->push_back(Help);
+  GlobalParser->MoreHelp.push_back(Help);
 }
-
-static bool OptionListChanged = false;
-
-// MarkOptionsChanged - Internal helper function.
-void cl::MarkOptionsChanged() { OptionListChanged = true; }
-
-/// RegisteredOptionList - This is the list of the command line options that
-/// have statically constructed themselves.
-static Option *RegisteredOptionList = nullptr;
 
 void Option::addArgument() {
-  assert(!NextRegistered && "argument multiply registered!");
-
-  NextRegistered = RegisteredOptionList;
-  RegisteredOptionList = this;
-  MarkOptionsChanged();
+  GlobalParser->addOption(this);
+  FullyInitialized = true;
 }
 
-void Option::removeArgument() {
-  if (RegisteredOptionList == this) {
-    RegisteredOptionList = NextRegistered;
-    MarkOptionsChanged();
-    return;
-  }
-  Option *O = RegisteredOptionList;
-  for (; O->NextRegistered != this; O = O->NextRegistered)
-    ;
-  O->NextRegistered = NextRegistered;
-  MarkOptionsChanged();
+void Option::removeArgument() { GlobalParser->removeOption(this); }
+
+void Option::setArgStr(const char *S) {
+  if (FullyInitialized)
+    GlobalParser->updateArgStr(this, S);
+  ArgStr = S;
 }
 
 // This collects the different option categories that have been registered.
@@ -146,60 +232,6 @@ void OptionCategory::registerCategory() {
 //===----------------------------------------------------------------------===//
 // Basic, shared command line option processing machinery.
 //
-
-/// GetOptionInfo - Scan the list of registered options, turning them into data
-/// structures that are easier to handle.
-static void GetOptionInfo(SmallVectorImpl<Option *> &PositionalOpts,
-                          SmallVectorImpl<Option *> &SinkOpts,
-                          StringMap<Option *> &OptionsMap) {
-  bool HadErrors = false;
-  SmallVector<const char *, 16> OptionNames;
-  Option *CAOpt = nullptr; // The ConsumeAfter option if it exists.
-  for (Option *O = RegisteredOptionList; O; O = O->getNextRegisteredOption()) {
-    // If this option wants to handle multiple option names, get the full set.
-    // This handles enum options like "-O1 -O2" etc.
-    O->getExtraOptionNames(OptionNames);
-    if (O->ArgStr[0])
-      OptionNames.push_back(O->ArgStr);
-
-    // Handle named options.
-    for (size_t i = 0, e = OptionNames.size(); i != e; ++i) {
-      // Add argument to the argument map!
-      if (!OptionsMap.insert(std::make_pair(OptionNames[i], O)).second) {
-        errs() << ProgramName << ": CommandLine Error: Option '"
-               << OptionNames[i] << "' registered more than once!\n";
-        HadErrors = true;
-      }
-    }
-
-    OptionNames.clear();
-
-    // Remember information about positional options.
-    if (O->getFormattingFlag() == cl::Positional)
-      PositionalOpts.push_back(O);
-    else if (O->getMiscFlags() & cl::Sink) // Remember sink options
-      SinkOpts.push_back(O);
-    else if (O->getNumOccurrencesFlag() == cl::ConsumeAfter) {
-      if (CAOpt) {
-        O->error("Cannot specify more than one option with cl::ConsumeAfter!");
-        HadErrors = true;
-      }
-      CAOpt = O;
-    }
-  }
-
-  if (CAOpt)
-    PositionalOpts.push_back(CAOpt);
-
-  // Make sure that they are in order of registration not backwards.
-  std::reverse(PositionalOpts.begin(), PositionalOpts.end());
-
-  // Fail hard if there were errors. These are strictly unrecoverable and
-  // indicate serious issues such as conflicting option names or an incorrectly
-  // linked LLVM distribution.
-  if (HadErrors)
-    report_fatal_error("inconsistency in registered CommandLine options");
-}
 
 /// LookupOption - Lookup the option specified by the specified option on the
 /// command line.  If there is a value specified (after an equal sign) return
@@ -655,6 +687,13 @@ void cl::TokenizeWindowsCommandLine(StringRef Src, StringSaver &Saver,
     NewArgv.push_back(nullptr);
 }
 
+// It is called byte order marker but the UTF-8 BOM is actually not affected
+// by the host system's endianness.
+static bool hasUTF8ByteOrderMark(ArrayRef<char> S) {
+  return (S.size() >= 3 &&
+          S[0] == '\xef' && S[1] == '\xbb' && S[2] == '\xbf');
+}
+
 static bool ExpandResponseFile(const char *FName, StringSaver &Saver,
                                TokenizerCallback Tokenizer,
                                SmallVectorImpl<const char *> &NewArgv,
@@ -674,6 +713,11 @@ static bool ExpandResponseFile(const char *FName, StringSaver &Saver,
       return false;
     Str = StringRef(UTF8Buf);
   }
+  // If we see UTF-8 BOM sequence at the beginning of a file, we shall remove
+  // these bytes before parsing.
+  // Reference: http://en.wikipedia.org/wiki/UTF-8#Byte_order_mark
+  else if (hasUTF8ByteOrderMark(BufRef))
+    Str = StringRef(BufRef.data() + 3, BufRef.size() - 3);
 
   // Tokenize the contents into NewArgv.
   Tokenizer(Str, Saver, NewArgv, MarkEOLs);
@@ -777,13 +821,13 @@ void cl::ParseEnvironmentOptions(const char *progName, const char *envVar,
 
 void cl::ParseCommandLineOptions(int argc, const char *const *argv,
                                  const char *Overview) {
-  // Process all registered options.
-  SmallVector<Option *, 4> PositionalOpts;
-  SmallVector<Option *, 4> SinkOpts;
-  StringMap<Option *> Opts;
-  GetOptionInfo(PositionalOpts, SinkOpts, Opts);
+  GlobalParser->ParseCommandLineOptions(argc, argv, Overview);
+}
 
-  assert((!Opts.empty() || !PositionalOpts.empty()) && "No options specified!");
+void CommandLineParser::ParseCommandLineOptions(int argc,
+                                                const char *const *argv,
+                                                const char *Overview) {
+  assert(hasOptions() && "No options specified!");
 
   // Expand response files.
   SmallVector<const char *, 20> newArgv;
@@ -795,10 +839,7 @@ void cl::ParseCommandLineOptions(int argc, const char *const *argv,
   argc = static_cast<int>(newArgv.size());
 
   // Copy the program name into ProgName, making sure not to overflow it.
-  StringRef ProgName = sys::path::filename(argv[0]);
-  size_t Len = std::min(ProgName.size(), size_t(79));
-  memcpy(ProgramName, ProgName.data(), Len);
-  ProgramName[Len] = '\0';
+  ProgramName = sys::path::filename(argv[0]);
 
   ProgramOverview = Overview;
   bool ErrorParsing = false;
@@ -809,25 +850,22 @@ void cl::ParseCommandLineOptions(int argc, const char *const *argv,
   // Determine whether or not there are an unlimited number of positionals
   bool HasUnlimitedPositionals = false;
 
-  Option *ConsumeAfterOpt = nullptr;
+  if (ConsumeAfterOpt) {
+    assert(PositionalOpts.size() > 0 &&
+           "Cannot specify cl::ConsumeAfter without a positional argument!");
+  }
   if (!PositionalOpts.empty()) {
-    if (PositionalOpts[0]->getNumOccurrencesFlag() == cl::ConsumeAfter) {
-      assert(PositionalOpts.size() > 1 &&
-             "Cannot specify cl::ConsumeAfter without a positional argument!");
-      ConsumeAfterOpt = PositionalOpts[0];
-    }
 
     // Calculate how many positional values are _required_.
     bool UnboundedFound = false;
-    for (size_t i = ConsumeAfterOpt ? 1 : 0, e = PositionalOpts.size(); i != e;
-         ++i) {
+    for (size_t i = 0, e = PositionalOpts.size(); i != e; ++i) {
       Option *Opt = PositionalOpts[i];
       if (RequiresValue(Opt))
         ++NumPositionalRequired;
       else if (ConsumeAfterOpt) {
         // ConsumeAfter cannot be combined with "optional" positional options
         // unless there is only one positional argument...
-        if (PositionalOpts.size() > 2)
+        if (PositionalOpts.size() > 1)
           ErrorParsing |= Opt->error(
               "error - this positional option will never be matched, "
               "because it does not Require a value, and a "
@@ -841,6 +879,9 @@ void cl::ParseCommandLineOptions(int argc, const char *const *argv,
                                    "another positional argument will match an "
                                    "unbounded number of values, and this option"
                                    " does not require a value!");
+        errs() << ProgramName << ": CommandLine Error: Option '" << Opt->ArgStr
+               << "' is all messed up!\n";
+        errs() << PositionalOpts.size();
       }
       UnboundedFound |= EatsUnboundedNumberOfValues(Opt);
     }
@@ -865,17 +906,6 @@ void cl::ParseCommandLineOptions(int argc, const char *const *argv,
     std::string NearestHandlerString;
     StringRef Value;
     StringRef ArgName = "";
-
-    // If the option list changed, this means that some command line
-    // option has just been registered or deregistered.  This can occur in
-    // response to things like -load, etc.  If this happens, rescan the options.
-    if (OptionListChanged) {
-      PositionalOpts.clear();
-      SinkOpts.clear();
-      Opts.clear();
-      GetOptionInfo(PositionalOpts, SinkOpts, Opts);
-      OptionListChanged = false;
-    }
 
     // Check to see if this is a positional argument.  This argument is
     // considered to be positional if it doesn't start with '-', if it is "-"
@@ -917,7 +947,7 @@ void cl::ParseCommandLineOptions(int argc, const char *const *argv,
       while (!ArgName.empty() && ArgName[0] == '-')
         ArgName = ArgName.substr(1);
 
-      Handler = LookupOption(ArgName, Value, Opts);
+      Handler = LookupOption(ArgName, Value, OptionsMap);
       if (!Handler || Handler->getFormattingFlag() != cl::Positional) {
         ProvidePositionalOption(ActivePositionalArg, argv[i], i);
         continue; // We are done!
@@ -929,18 +959,18 @@ void cl::ParseCommandLineOptions(int argc, const char *const *argv,
       while (!ArgName.empty() && ArgName[0] == '-')
         ArgName = ArgName.substr(1);
 
-      Handler = LookupOption(ArgName, Value, Opts);
+      Handler = LookupOption(ArgName, Value, OptionsMap);
 
       // Check to see if this "option" is really a prefixed or grouped argument.
       if (!Handler)
-        Handler =
-            HandlePrefixedOrGroupedOption(ArgName, Value, ErrorParsing, Opts);
+        Handler = HandlePrefixedOrGroupedOption(ArgName, Value, ErrorParsing,
+                                                OptionsMap);
 
       // Otherwise, look for the closest available option to report to the user
       // in the upcoming error.
       if (!Handler && SinkOpts.empty())
         NearestHandler =
-            LookupNearestOption(ArgName, Opts, NearestHandlerString);
+            LookupNearestOption(ArgName, OptionsMap, NearestHandlerString);
     }
 
     if (!Handler) {
@@ -1037,8 +1067,8 @@ void cl::ParseCommandLineOptions(int argc, const char *const *argv,
     // positional option and keep the rest for the consume after.  The above
     // loop would have assigned no values to positional options in this case.
     //
-    if (PositionalOpts.size() == 2 && ValNo == 0 && !PositionalVals.empty()) {
-      ErrorParsing |= ProvidePositionalOption(PositionalOpts[1],
+    if (PositionalOpts.size() == 1 && ValNo == 0 && !PositionalVals.empty()) {
+      ErrorParsing |= ProvidePositionalOption(PositionalOpts[0],
                                               PositionalVals[ValNo].first,
                                               PositionalVals[ValNo].second);
       ValNo++;
@@ -1053,7 +1083,7 @@ void cl::ParseCommandLineOptions(int argc, const char *const *argv,
   }
 
   // Loop over args and make sure all required args are specified!
-  for (const auto &Opt : Opts) {
+  for (const auto &Opt : OptionsMap) {
     switch (Opt.second->getNumOccurrencesFlag()) {
     case Required:
     case OneOrMore:
@@ -1076,9 +1106,7 @@ void cl::ParseCommandLineOptions(int argc, const char *const *argv,
 
   // Free all of the memory allocated to the map.  Command line options may only
   // be processed once!
-  Opts.clear();
-  PositionalOpts.clear();
-  MoreHelp->clear();
+  MoreHelp.clear();
 
   // If we had an error processing our arguments, don't let the program execute
   if (ErrorParsing)
@@ -1095,7 +1123,7 @@ bool Option::error(const Twine &Message, StringRef ArgName) {
   if (ArgName.empty())
     errs() << HelpStr; // Be nice for positional arguments
   else
-    errs() << ProgramName << ": for the -" << ArgName;
+    errs() << GlobalParser->ProgramName << ": for the -" << ArgName;
 
   errs() << " option: " << Message << "\n";
   return true;
@@ -1483,35 +1511,23 @@ public:
     if (Value == false)
       return;
 
-    // Get all the options.
-    SmallVector<Option *, 4> PositionalOpts;
-    SmallVector<Option *, 4> SinkOpts;
-    StringMap<Option *> OptMap;
-    GetOptionInfo(PositionalOpts, SinkOpts, OptMap);
-
     StrOptionPairVector Opts;
-    sortOpts(OptMap, Opts, ShowHidden);
+    sortOpts(GlobalParser->OptionsMap, Opts, ShowHidden);
 
-    if (ProgramOverview)
-      outs() << "OVERVIEW: " << ProgramOverview << "\n";
+    if (GlobalParser->ProgramOverview)
+      outs() << "OVERVIEW: " << GlobalParser->ProgramOverview << "\n";
 
-    outs() << "USAGE: " << ProgramName << " [options]";
+    outs() << "USAGE: " << GlobalParser->ProgramName << " [options]";
 
-    // Print out the positional options.
-    Option *CAOpt = nullptr; // The cl::ConsumeAfter option, if it exists...
-    if (!PositionalOpts.empty() &&
-        PositionalOpts[0]->getNumOccurrencesFlag() == ConsumeAfter)
-      CAOpt = PositionalOpts[0];
-
-    for (size_t i = CAOpt != nullptr, e = PositionalOpts.size(); i != e; ++i) {
-      if (PositionalOpts[i]->ArgStr[0])
-        outs() << " --" << PositionalOpts[i]->ArgStr;
-      outs() << " " << PositionalOpts[i]->HelpStr;
+    for (auto Opt : GlobalParser->PositionalOpts) {
+      if (Opt->ArgStr[0])
+        outs() << " --" << Opt->ArgStr;
+      outs() << " " << Opt->HelpStr;
     }
 
     // Print the consume after option info if it exists...
-    if (CAOpt)
-      outs() << " " << CAOpt->HelpStr;
+    if (GlobalParser->ConsumeAfterOpt)
+      outs() << " " << GlobalParser->ConsumeAfterOpt->HelpStr;
 
     outs() << "\n\n";
 
@@ -1524,11 +1540,9 @@ public:
     printOptions(Opts, MaxArgLen);
 
     // Print any extra help the user has declared.
-    for (std::vector<const char *>::iterator I = MoreHelp->begin(),
-                                             E = MoreHelp->end();
-         I != E; ++I)
-      outs() << *I;
-    MoreHelp->clear();
+    for (auto I : GlobalParser->MoreHelp)
+      outs() << I;
+    GlobalParser->MoreHelp.clear();
 
     // Halt the program since help information was printed
     exit(0);
@@ -1653,39 +1667,45 @@ static HelpPrinterWrapper WrappedNormalPrinter(UncategorizedNormalPrinter,
 static HelpPrinterWrapper WrappedHiddenPrinter(UncategorizedHiddenPrinter,
                                                CategorizedHiddenPrinter);
 
+// Define a category for generic options that all tools should have.
+static cl::OptionCategory GenericCategory("Generic Options");
+
 // Define uncategorized help printers.
 // -help-list is hidden by default because if Option categories are being used
 // then -help behaves the same as -help-list.
 static cl::opt<HelpPrinter, true, parser<bool>> HLOp(
     "help-list",
     cl::desc("Display list of available options (-help-list-hidden for more)"),
-    cl::location(UncategorizedNormalPrinter), cl::Hidden, cl::ValueDisallowed);
+    cl::location(UncategorizedNormalPrinter), cl::Hidden, cl::ValueDisallowed,
+    cl::cat(GenericCategory));
 
 static cl::opt<HelpPrinter, true, parser<bool>>
     HLHOp("help-list-hidden", cl::desc("Display list of all available options"),
           cl::location(UncategorizedHiddenPrinter), cl::Hidden,
-          cl::ValueDisallowed);
+          cl::ValueDisallowed, cl::cat(GenericCategory));
 
 // Define uncategorized/categorized help printers. These printers change their
 // behaviour at runtime depending on whether one or more Option categories have
 // been declared.
 static cl::opt<HelpPrinterWrapper, true, parser<bool>>
     HOp("help", cl::desc("Display available options (-help-hidden for more)"),
-        cl::location(WrappedNormalPrinter), cl::ValueDisallowed);
+        cl::location(WrappedNormalPrinter), cl::ValueDisallowed,
+        cl::cat(GenericCategory));
 
 static cl::opt<HelpPrinterWrapper, true, parser<bool>>
     HHOp("help-hidden", cl::desc("Display all available options"),
-         cl::location(WrappedHiddenPrinter), cl::Hidden, cl::ValueDisallowed);
+         cl::location(WrappedHiddenPrinter), cl::Hidden, cl::ValueDisallowed,
+         cl::cat(GenericCategory));
 
 static cl::opt<bool> PrintOptions(
     "print-options",
     cl::desc("Print non-default options after command line parsing"),
-    cl::Hidden, cl::init(false));
+    cl::Hidden, cl::init(false), cl::cat(GenericCategory));
 
 static cl::opt<bool> PrintAllOptions(
     "print-all-options",
     cl::desc("Print all option values after command line parsing"), cl::Hidden,
-    cl::init(false));
+    cl::init(false), cl::cat(GenericCategory));
 
 void HelpPrinterWrapper::operator=(bool Value) {
   if (Value == false)
@@ -1709,14 +1729,8 @@ void cl::PrintOptionValues() {
   if (!PrintOptions && !PrintAllOptions)
     return;
 
-  // Get all the options.
-  SmallVector<Option *, 4> PositionalOpts;
-  SmallVector<Option *, 4> SinkOpts;
-  StringMap<Option *> OptMap;
-  GetOptionInfo(PositionalOpts, SinkOpts, OptMap);
-
   SmallVector<std::pair<const char *, Option *>, 128> Opts;
-  sortOpts(OptMap, Opts, /*ShowHidden*/ true);
+  sortOpts(GlobalParser->OptionsMap, Opts, /*ShowHidden*/ true);
 
   // Compute the maximum argument length...
   size_t MaxArgLen = 0;
@@ -1790,7 +1804,8 @@ static VersionPrinter VersionPrinterInstance;
 
 static cl::opt<VersionPrinter, true, parser<bool>>
     VersOp("version", cl::desc("Display the version of this program"),
-           cl::location(VersionPrinterInstance), cl::ValueDisallowed);
+           cl::location(VersionPrinterInstance), cl::ValueDisallowed,
+           cl::cat(GenericCategory));
 
 // Utility function for printing the help message.
 void cl::PrintHelpMessage(bool Hidden, bool Categorized) {
@@ -1823,21 +1838,25 @@ void cl::AddExtraVersionPrinter(void (*func)()) {
   ExtraVersionPrinters->push_back(func);
 }
 
-void cl::getRegisteredOptions(StringMap<Option *> &Map) {
-  // Get all the options.
-  SmallVector<Option *, 4> PositionalOpts; // NOT USED
-  SmallVector<Option *, 4> SinkOpts;       // NOT USED
-  assert(Map.size() == 0 && "StringMap must be empty");
-  GetOptionInfo(PositionalOpts, SinkOpts, Map);
-  return;
+StringMap<Option *> &cl::getRegisteredOptions() {
+  return GlobalParser->OptionsMap;
 }
 
 void cl::HideUnrelatedOptions(cl::OptionCategory &Category) {
-  StringMap<cl::Option *> Options;
-  cl::getRegisteredOptions(Options);
-  for (auto &I : Options) {
-    if (I.second->Category != &Category && I.first() != "help" &&
-        I.first() != "version")
+  for (auto &I : GlobalParser->OptionsMap) {
+    if (I.second->Category != &Category &&
+        I.second->Category != &GenericCategory)
+      I.second->setHiddenFlag(cl::ReallyHidden);
+  }
+}
+
+void cl::HideUnrelatedOptions(ArrayRef<const cl::OptionCategory *> Categories) {
+  auto CategoriesBegin = Categories.begin();
+  auto CategoriesEnd = Categories.end();
+  for (auto &I : GlobalParser->OptionsMap) {
+    if (std::find(CategoriesBegin, CategoriesEnd, I.second->Category) ==
+            CategoriesEnd &&
+        I.second->Category != &GenericCategory)
       I.second->setHiddenFlag(cl::ReallyHidden);
   }
 }
