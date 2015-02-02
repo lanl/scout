@@ -53,6 +53,7 @@
  */ 
 
 #include "ASTVisitors.h"
+#include "clang/Basic/Builtins.h"
 
 namespace clang {
 namespace CodeGen {
@@ -100,7 +101,7 @@ void ForallVisitor::VisitMemberExpr(MemberExpr* E) {
         ValueDecl* md = E->getMemberDecl();
 
         std::string ref = bd->getMeshVarDecl()->getName().str() + "." + md->getName().str();
-        //llvm::errs() << "ref " << ref << "\n";
+
         if (nodeType_ == NodeLHS) {
           LHS_.insert(make_pair(ref, true));
         } else if (nodeType_ == NodeRHS) {
@@ -111,6 +112,84 @@ void ForallVisitor::VisitMemberExpr(MemberExpr* E) {
   }
 }
 
+bool isCShift(unsigned id) {
+  if (id == Builtin::BIcshift || id == Builtin::BIcshifti
+      || id == Builtin::BIcshiftf || id == Builtin::BIcshiftd ) return true;
+  return false;
+}
+
+//check if builtin id is an eoshift
+bool isEOShift(unsigned id) {
+  if (id == Builtin::BIeoshift || id == Builtin::BIeoshifti
+      || id == Builtin::BIeoshiftf || id == Builtin::BIeoshiftd ) return true;
+  return false;
+}
+
+
+void ForallVisitor::VisitCallExpr(CallExpr* E) {
+  FunctionDecl* fd = E->getDirectCallee();
+
+  // look for cshift/eoshift
+  if (fd) {
+    unsigned id = fd->getBuiltinID();
+    bool iscshift = isCShift(id);
+    bool iseoshift = isEOShift(id);
+    if (iscshift || iseoshift) {
+      //llvm::errs() << "found shift\n";
+
+      std::string name;
+      unsigned args = E->getNumArgs();
+      unsigned kind = 0;
+      if (iscshift) kind = ShiftKind::CShift;
+      if (iseoshift) kind = ShiftKind::EOShift;
+
+
+      // first arg
+      Expr* fe = E->getArg(0);
+      if (ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(fe)) {
+        fe = ce->getSubExpr();
+      }
+
+      if (MemberExpr* me = dyn_cast<MemberExpr>(fe)) {
+        name = me->getMemberDecl()->getName();
+        //llvm::errs() << "member " << name << "\n";
+        if (mins_.find(name) == mins_.end()) {
+          mins_[name] = {0,0,0};
+          maxs_[name] = {0,0,0};
+        }
+
+      }
+
+      // shift args
+      std::vector<int> min = mins_[name];
+      std::vector<int> max = maxs_[name];
+
+      for (unsigned i = kind+1; i < args; i++) {
+        unsigned j = i-kind-1;
+        Expr *arg = E->getArg(i);
+        // remove unary operator if it exists
+        if(UnaryOperator *UO = dyn_cast<UnaryOperator>(arg)) {
+          arg = UO->getSubExpr();
+        }
+        if(IntegerLiteral *il = dyn_cast<IntegerLiteral>(arg)) {
+          int value = il->getValue().getLimitedValue();
+          if (value < min[j]) {
+            //llvm::errs() << "min " << name << " " << value << "\n";
+            min[j] = value;
+            mins_[name] = min;
+          }
+          if (value > max[j]) {
+            //llvm::errs() << "max " << name << " " << value << "\n";
+            max[j] = value;
+            maxs_[name] = max;
+          }
+          llvm::errs() << "ghost size " << name << "[" << j << "] " << max[j]-min[j] << "\n";
+        }
+      }
+    }
+  }
+  VisitChildren(E);
+}
 
 void TaskDeclVisitor::VisitStmt(Stmt* S) {
   if(S) {
@@ -152,24 +231,24 @@ void TaskStmtVisitor::VisitForallMeshStmt(ForallMeshStmt *S) {
   VisitChildren(S);
 }
 
-// look for function calls in task function
-void TaskStmtVisitor::VisitCallExpr(CallExpr* E) {
 
-  TaskDeclVisitor v(E->getDirectCallee());
-  if(E->getDirectCallee()->getBody()) {
+void TaskStmtVisitor::VisitCallExpr(CallExpr* E) {
+  FunctionDecl* fd = E->getDirectCallee();
+
+  // look for function calls in task function
+  TaskDeclVisitor v(fd);
+  if(fd->getBody()) {
     //look inside function
-    v.VisitStmt(E->getDirectCallee()->getBody());
+    v.VisitStmt(fd->getBody());
     MeshFieldMap subLHS = v.getLHSmap();
     LHS_.insert(subLHS.begin(), subLHS.end());
     MeshFieldMap subRHS = v.getRHSmap();
     RHS_.insert(subRHS.begin(), subRHS.end());
 
-    VisitChildren(E->getDirectCallee()->getBody());
+    VisitChildren(fd->getBody());
   } else {
     // we can't find the body (e.g library functions, builtins)
     // so look in the arguments for meshes
-    //llvm::errs() << "can't find body for " << E->getDirectCallee()->getName() << "\n";
-
     for(unsigned i = 0; i < E->getNumArgs(); i++) {
       FunctionArgVisitor av(E->getArg(i));
       av.VisitStmt(E->getArg(i));

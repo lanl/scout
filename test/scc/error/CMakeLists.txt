@@ -236,13 +236,12 @@ set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
     "error: only one mesh is allowed in task function")
 set_property(TEST ${tname} PROPERTY WILL_FAIL)
  
-# disable for now, as Jamal needs this
-#set(name cshift-expr)
-#set(tname scc_error_${name})
-#add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
-#set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-#    "error: Non integer shift in")
-#set_property(TEST ${tname} PROPERTY WILL_FAIL) 
+set(name cshift-expr)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: Non integer shift in")
+set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
 set(name head-tail-no-edges)
 set(tname scc_error_${name})

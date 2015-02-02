@@ -74,8 +74,14 @@ using namespace clang::CodeGen;
 namespace clang {
 namespace CodeGen {
 
+enum ShiftKind {
+  CShift,
+  EOShift
+};
+
 typedef std::map<std::string, bool> MeshFieldMap;
 typedef std::map<std::string, std::string> MeshNameMap;
+typedef std::map<std::string, std::vector<int>> MeshShiftMap;
 
 // find what mesh fields are used in a forall
 class ForallVisitor : public StmtVisitor<ForallVisitor> {
@@ -112,9 +118,7 @@ public:
     VisitChildren(S);
   }
 
-  void VisitCallExpr(CallExpr* E) {
-    VisitChildren(E);
-  }
+  void VisitCallExpr(CallExpr* E);
 
   void VisitDeclStmt(DeclStmt* S) {
      VisitChildren(S);
@@ -125,6 +129,8 @@ private:
   MeshFieldMap LHS_;
   MeshFieldMap RHS_;
   NodeType nodeType_;
+  MeshShiftMap mins_;
+  MeshShiftMap maxs_;
 };
 
 class TaskStmtVisitor : public StmtVisitor<TaskStmtVisitor> {

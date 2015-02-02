@@ -121,8 +121,6 @@ bool CheckShift(unsigned id, CallExpr *E, Sema &S) {
       S.Diag(fe->getExprLoc(), diag::err_shift_field) << kind;
       error = true;
     }
-    //disable this check for now as Jamal needs this functionality
-#if 0
     // only allow integers for shift values
     for (unsigned i = kind+1; i < args; i++) {
       Expr *arg = E->getArg(i);
@@ -135,8 +133,6 @@ bool CheckShift(unsigned id, CallExpr *E, Sema &S) {
         error = true;
       }
     }
-#endif
-
   }
   return error;
 }
