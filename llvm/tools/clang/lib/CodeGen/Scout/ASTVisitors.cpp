@@ -129,6 +129,12 @@ bool isEOShift(unsigned id) {
 void ForallVisitor::VisitCallExpr(CallExpr* E) {
   FunctionDecl* fd = E->getDirectCallee();
 
+  // look for stencil call and then check inside it for shifts
+  if (fd->isStencilSpecified()) {
+    //llvm::errs() << "stencil call\n";
+    VisitStmt(fd->getBody());
+  }
+
   // look for cshift/eoshift
   if (fd) {
     unsigned id = fd->getBuiltinID();
@@ -142,7 +148,6 @@ void ForallVisitor::VisitCallExpr(CallExpr* E) {
       unsigned kind = 0;
       if (iscshift) kind = ShiftKind::CShift;
       if (iseoshift) kind = ShiftKind::EOShift;
-
 
       // first arg
       Expr* fe = E->getArg(0);
@@ -168,19 +173,23 @@ void ForallVisitor::VisitCallExpr(CallExpr* E) {
         unsigned j = i-kind-1;
         Expr *arg = E->getArg(i);
         // remove unary operator if it exists
+        bool neg = false;
         if(UnaryOperator *UO = dyn_cast<UnaryOperator>(arg)) {
+          if(UO->getOpcode() == UO_Minus) neg = true;
           arg = UO->getSubExpr();
         }
         if(IntegerLiteral *il = dyn_cast<IntegerLiteral>(arg)) {
-          int value = il->getValue().getLimitedValue();
-          if (value < min[j]) {
-            //llvm::errs() << "min " << name << " " << value << "\n";
-            min[j] = value;
+          int val = il->getValue().getLimitedValue();
+          if(neg) val = -val;
+
+          if (val < min[j]) {
+            //llvm::errs() << "min " << name << " " << val << "\n";
+            min[j] = val;
             mins_[name] = min;
           }
-          if (value > max[j]) {
-            //llvm::errs() << "max " << name << " " << value << "\n";
-            max[j] = value;
+          if (val > max[j]) {
+            //llvm::errs() << "max " << name << " " << val << "\n";
+            max[j] = val;
             maxs_[name] = max;
           }
           llvm::errs() << "ghost size " << name << "[" << j << "] " << max[j]-min[j] << "\n";
