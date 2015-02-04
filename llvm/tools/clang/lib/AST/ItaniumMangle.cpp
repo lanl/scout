@@ -894,7 +894,7 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
     case Type::Image:
       llvm_unreachable("type is illegal as a nested name specifier");      
     case Type::Query:
-      llvm_unreachable("type is illegal as a nested name specifier");      
+      llvm_unreachable("type is illegal as a nested name specifier");
     // +======================================================================+
 
 
@@ -2697,6 +2697,7 @@ recurse:
 // +===== Scout ==========================
   case Expr::QueryExprClass:
   case Expr::ScoutExprClass:
+  case Expr::MeshSubscriptExprClass:
 // =======================================
   case Expr::TypoExprClass:  // This should no longer exist in the AST by now.
     llvm_unreachable("unexpected statement kind");

@@ -864,6 +864,9 @@ void ASTStmtWriter::VisitScoutExpr(ScoutExpr *E) {
   assert(false && "unimplemented");
 }
 
+void ASTStmtWriter::VisitMeshSubscriptExpr(MeshSubscriptExpr *E) {
+  assert(false && "unimplemented");
+}
 // ====================================================
 
 //===----------------------------------------------------------------------===//

@@ -149,3 +149,7 @@ void StmtPrinter::VisitQueryExpr(QueryExpr *Node) {
 void StmtPrinter::VisitScoutExpr(ScoutExpr *Node) {
   assert(false && "unimplemented");
 }
+
+void StmtPrinter::VisitMeshSubscriptExpr(MeshSubscriptExpr *Node) {
+  assert(false && "unimplemented");
+}

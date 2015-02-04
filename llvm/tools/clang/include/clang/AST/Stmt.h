@@ -58,6 +58,7 @@ namespace clang {
   class MemberExpr;
   class QueryExpr;
   class ScoutExpr;
+  class MeshSubscriptExpr;
   // =========================================================================+
 
   //===--------------------------------------------------------------------===//

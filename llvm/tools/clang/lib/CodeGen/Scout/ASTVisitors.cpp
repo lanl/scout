@@ -192,7 +192,7 @@ void ForallVisitor::VisitCallExpr(CallExpr* E) {
             max[j] = val;
             maxs_[name] = max;
           }
-          llvm::errs() << "ghost size " << name << "[" << j << "] " << max[j]-min[j] << "\n";
+          //llvm::errs() << "ghost size " << name << "[" << j << "] " << max[j]-min[j] << "\n";
         }
       }
     }

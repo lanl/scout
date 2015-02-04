@@ -77,3 +77,6 @@ void StmtProfiler::VisitQueryExpr(const QueryExpr *E)
 
 void StmtProfiler::VisitScoutExpr(const ScoutExpr *E)
 { VisitExpr(E); }
+
+void StmtProfiler::VisitMeshSubscriptExpr(const MeshSubscriptExpr *E)
+{ VisitExpr(E); }

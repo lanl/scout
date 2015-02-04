@@ -2966,6 +2966,7 @@ bool Expr::HasSideEffects(const ASTContext &Ctx,
 // +===== Scout ===========================
   case QueryExprClass:
   case ScoutExprClass:
+  case MeshSubscriptExprClass:
 // ========================================
       
     // These never have a side-effect.

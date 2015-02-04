@@ -4929,6 +4929,69 @@ public:
   
 };
 
+class MeshSubscriptExpr : public Expr {
+  enum { LHS, RHS, END_EXPR=2 };
+   Stmt* SubExprs[END_EXPR];
+   SourceLocation RBracketLoc;
+
+public:
+  MeshSubscriptExpr(Expr *LHSExp, Expr *RHSExp, QualType t, SourceLocation Loc)
+  : Expr(MeshSubscriptExprClass, t, VK_LValue, OK_Ordinary, true, true, true, false) {
+    SubExprs[LHS] = LHSExp;
+    SubExprs[RHS] = RHSExp;
+    RBracketLoc = Loc;
+  }
+
+  MeshSubscriptExpr(EmptyShell shell) : Expr(MeshSubscriptExprClass, shell){}
+
+  Expr *getLHS() { return cast<Expr>(SubExprs[LHS]); }
+  const Expr *getLHS() const { return cast<Expr>(SubExprs[LHS]); }
+  void setLHS(Expr *E) { SubExprs[LHS] = E; }
+
+  Expr *getRHS() { return cast<Expr>(SubExprs[RHS]); }
+  const Expr *getRHS() const { return cast<Expr>(SubExprs[RHS]); }
+  void setRHS(Expr *E) { SubExprs[RHS] = E; }
+
+  Expr *getBase() {
+    return cast<Expr>(getRHS()->getType()->isIntegerType() ? getLHS():getRHS());
+  }
+
+  const Expr *getBase() const {
+    return cast<Expr>(getRHS()->getType()->isIntegerType() ? getLHS():getRHS());
+  }
+
+  Expr *getIdx() {
+    return cast<Expr>(getRHS()->getType()->isIntegerType() ? getRHS():getLHS());
+  }
+
+  const Expr *getIdx() const {
+    return cast<Expr>(getRHS()->getType()->isIntegerType() ? getRHS():getLHS());
+  }
+
+  SourceLocation getLocStart() const LLVM_READONLY {
+    return getLHS()->getLocStart();
+  }
+  SourceLocation getLocEnd() const LLVM_READONLY { return RBracketLoc; }
+
+  SourceLocation getRBracketLoc() const { return RBracketLoc; }
+  void setRBracketLoc(SourceLocation L) { RBracketLoc = L; }
+
+  SourceLocation getExprLoc() const LLVM_READONLY {
+    return getBase()->getExprLoc();
+  }
+
+  static bool classof(const Stmt *T) {
+    return T->getStmtClass() == MeshSubscriptExprClass;
+  }
+
+  // Iterators
+  child_range children() {
+    return child_range(&SubExprs[0], &SubExprs[0]+END_EXPR);
+  }
+};
+
+
+
 // ====== Scout ========================
 
 }  // end namespace clang

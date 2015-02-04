@@ -919,6 +919,10 @@ void ASTStmtReader::VisitScoutExpr(ScoutExpr *E) {
   assert(false && "unimplemented");
 }
 
+void ASTStmtReader::VisitMeshSubscriptExpr(MeshSubscriptExpr *E) {
+  assert(false && "unimplemented");
+}
+
 //===----------------------------------------------------------------------===//
 // Objective-C Expressions and Statements
 
@@ -2992,6 +2996,9 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
     case EXPR_SCOUT:
       S = new (Context) ScoutExpr(Empty);
       break;
+    case EXPR_MESH_SUBSCRIPT:
+      S = new (Context) MeshSubscriptExpr(Empty);
+           break;
     // =========================================
     }
     

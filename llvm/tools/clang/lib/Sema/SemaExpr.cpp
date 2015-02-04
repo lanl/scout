@@ -3955,7 +3955,16 @@ Sema::CreateBuiltinArraySubscriptExpr(Expr *Base, SourceLocation LLoc,
   if (ImplicitCastExpr* ICE = dyn_cast<ImplicitCastExpr>(LHSExp)) {
     if (MemberExpr *ME = dyn_cast<MemberExpr>(ICE->getSubExpr())) {
       if(isa<MeshFieldDecl>(ME->getMemberDecl())) {
-         llvm::errs() << "mesh subscript\n";
+         //llvm::errs() << "mesh subscript\n";
+
+         if (const PointerType *PTy = LHSTy->getAs<PointerType>()) {
+           (void)PTy;
+           //llvm::errs() << "PointerType\n";
+           //SC_TODO: stencil index on pointer type. (array in mesh) does this make any sense?
+         } else {
+           //llvm::errs() << "mesh stencil subscript\n";
+           return new (Context) MeshSubscriptExpr(LHSExp, RHSExp, LHSTy, RLoc);
+         }
       }
     }
   }
