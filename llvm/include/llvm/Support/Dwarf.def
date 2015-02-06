@@ -98,10 +98,10 @@ HANDLE_DW_TAG(0x4108, GNU_formal_parameter_pack)
 HANDLE_DW_TAG(0x4200, APPLE_property)
 
 // ===== Scout ====================
-HANDLE_DW_TAG(0x9000, uniform_mesh_type)
-HANDLE_DW_TAG(0x9001, structured_mesh_type)
-HANDLE_DW_TAG(0x9002, rectilinear_mesh_type)
-HANDLE_DW_TAG(0x9003, unstructured_mesh_type)
+HANDLE_DW_TAG(0x9000, SCOUT_uniform_mesh_type)
+HANDLE_DW_TAG(0x9001, SCOUT_structured_mesh_type)
+HANDLE_DW_TAG(0x9002, SCOUT_rectilinear_mesh_type)
+HANDLE_DW_TAG(0x9003, SCOUT_unstructured_mesh_type)
 // =================================
 
 #undef HANDLE_DW_TAG

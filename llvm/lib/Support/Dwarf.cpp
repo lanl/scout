@@ -22,7 +22,8 @@ const char *llvm::dwarf::TagString(unsigned Tag) {
   switch (Tag) {
   default: return nullptr;
 #define HANDLE_DW_TAG(ID, NAME)                                                \
-  case DW_TAG_##NAME:                                                          \    return "DW_TAG_" #NAME;
+  case DW_TAG_##NAME:                                                          \
+    return "DW_TAG_" #NAME;
 #include "llvm/Support/Dwarf.def"
   }
 }
