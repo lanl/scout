@@ -942,6 +942,7 @@ ProcessGDBRemote::DoLaunch (Module *exe_module, ProcessLaunchInfo &launch_info)
 
                 SetPrivateState (SetThreadStopInfo (m_last_stop_packet));
                 
+                m_stdio_disable = disable_stdio;
                 if (!disable_stdio)
                 {
                     if (pty.GetMasterFileDescriptor() != lldb_utility::PseudoTerminal::invalid_fd)
@@ -1742,7 +1743,8 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                     // Swap "value" over into "name_extractor"
                     desc_extractor.GetStringRef().swap(value);
                     // Now convert the HEX bytes into a string value
-                    desc_extractor.GetHexByteString (thread_name);
+                    desc_extractor.GetHexByteString (value);
+                    description.swap(value);
                 }
                 else if (name.size() == 2 && ::isxdigit(name[0]) && ::isxdigit(name[1]))
                 {
@@ -1843,8 +1845,24 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                         }
                         else if (reason.compare("watchpoint") == 0)
                         {
-                            break_id_t watch_id = LLDB_INVALID_WATCH_ID;
-                            // TODO: locate the watchpoint somehow...
+                            StringExtractor desc_extractor(description.c_str());
+                            addr_t wp_addr = desc_extractor.GetU64(LLDB_INVALID_ADDRESS);
+                            uint32_t wp_index = desc_extractor.GetU32(LLDB_INVALID_INDEX32);
+                            watch_id_t watch_id = LLDB_INVALID_WATCH_ID;
+                            if (wp_addr != LLDB_INVALID_ADDRESS)
+                            {
+                                WatchpointSP wp_sp = GetTarget().GetWatchpointList().FindByAddress(wp_addr);
+                                if (wp_sp)
+                                {
+                                    wp_sp->SetHardwareIndex(wp_index);
+                                    watch_id = wp_sp->GetID();
+                                }
+                            }
+                            if (watch_id == LLDB_INVALID_WATCH_ID)
+                            {
+                                Log *log (ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_WATCHPOINTS));
+                                if (log) log->Printf ("failed to find watchpoint");
+                            }
                             thread_sp->SetStopInfo (StopInfo::CreateStopReasonWithWatchpointID (*thread_sp, watch_id));
                             handled = true;
                         }
@@ -2459,6 +2477,10 @@ ProcessGDBRemote::PutSTDIN (const char *src, size_t src_len, Error &error)
     {
         ConnectionStatus status;
         m_stdio_communication.Write(src, src_len, status, NULL);
+    }
+    else if (!m_stdio_disable)
+    {
+        m_gdb_comm.SendStdinNotification(src, src_len);
     }
     return 0;
 }

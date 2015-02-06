@@ -286,8 +286,7 @@ Platform::Platform (bool is_host) :
     m_minor_os_version (UINT32_MAX),
     m_update_os_version (UINT32_MAX),
     m_system_arch(),
-    m_uid_map_mutex (Mutex::eMutexTypeNormal),
-    m_gid_map_mutex (Mutex::eMutexTypeNormal),
+    m_mutex (Mutex::eMutexTypeRecursive),
     m_uid_map(),
     m_gid_map(),
     m_max_uid_name_len (0),
@@ -299,8 +298,7 @@ Platform::Platform (bool is_host) :
     m_ssh_opts (),
     m_ignores_remote_hostname (false),
     m_trap_handlers(),
-    m_calculated_trap_handlers (false),
-    m_trap_handler_mutex()
+    m_calculated_trap_handlers (false)
 {
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_OBJECT));
     if (log)
@@ -384,6 +382,8 @@ Platform::GetOSVersion (uint32_t &major,
                         uint32_t &minor, 
                         uint32_t &update)
 {
+    Mutex::Locker locker (m_mutex);
+
     bool success = m_major_os_version != UINT32_MAX;
     if (IsHost())
     {
@@ -1103,6 +1103,20 @@ Platform::LaunchProcess (ProcessLaunchInfo &launch_info)
     return error;
 }
 
+Error
+Platform::KillProcess (const lldb::pid_t pid)
+{
+    Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_PLATFORM));
+    if (log)
+        log->Printf ("Platform::%s, pid %" PRIu64, __FUNCTION__, pid);
+
+    if (!IsHost ())
+        return Error ("base lldb_private::Platform class can't launch remote processes");
+
+    Host::Kill (pid, SIGTERM);
+    return Error();
+}
+
 lldb::ProcessSP
 Platform::DebugProcess (ProcessLaunchInfo &launch_info, 
                         Debugger &debugger,
@@ -1585,7 +1599,7 @@ Platform::GetTrapHandlerSymbolNames ()
 {
     if (!m_calculated_trap_handlers)
     {
-        Mutex::Locker locker (m_trap_handler_mutex);
+        Mutex::Locker locker (m_mutex);
         if (!m_calculated_trap_handlers)
         {
             CalculateTrapHandlerSymbolNames();

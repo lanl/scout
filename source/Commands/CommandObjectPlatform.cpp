@@ -616,7 +616,7 @@ public:
             std::string cmd_line;
             args.GetCommandString(cmd_line);
             uint32_t mode;
-            const OptionPermissions* options_permissions = (OptionPermissions*)m_options.GetGroupWithOption('r');
+            const OptionPermissions* options_permissions = (const OptionPermissions*)m_options.GetGroupWithOption('r');
             if (options_permissions)
                 mode = options_permissions->m_permissions;
             else
@@ -685,7 +685,7 @@ public:
             std::string cmd_line;
             args.GetCommandString(cmd_line);
             mode_t perms;
-            const OptionPermissions* options_permissions = (OptionPermissions*)m_options.GetGroupWithOption('r');
+            const OptionPermissions* options_permissions = (const OptionPermissions*)m_options.GetGroupWithOption('r');
             if (options_permissions)
                 perms = options_permissions->m_permissions;
             else
@@ -2281,18 +2281,15 @@ CommandObjectPlatform::CommandObjectPlatform(CommandInterpreter &interpreter) :
     LoadSubCommand ("connect", CommandObjectSP (new CommandObjectPlatformConnect (interpreter)));
     LoadSubCommand ("disconnect", CommandObjectSP (new CommandObjectPlatformDisconnect (interpreter)));
     LoadSubCommand ("settings", CommandObjectSP (new CommandObjectPlatformSettings (interpreter)));
-#ifdef LLDB_CONFIGURATION_DEBUG
     LoadSubCommand ("mkdir", CommandObjectSP (new CommandObjectPlatformMkDir (interpreter)));
     LoadSubCommand ("file", CommandObjectSP (new CommandObjectPlatformFile (interpreter)));
     LoadSubCommand ("get-file", CommandObjectSP (new CommandObjectPlatformGetFile (interpreter)));
     LoadSubCommand ("get-size", CommandObjectSP (new CommandObjectPlatformGetSize (interpreter)));
     LoadSubCommand ("put-file", CommandObjectSP (new CommandObjectPlatformPutFile (interpreter)));
-#endif
     LoadSubCommand ("process", CommandObjectSP (new CommandObjectPlatformProcess (interpreter)));
     LoadSubCommand ("shell", CommandObjectSP (new CommandObjectPlatformShell (interpreter)));
     LoadSubCommand ("target-install", CommandObjectSP (new CommandObjectPlatformInstall (interpreter)));
 }
-
 
 //----------------------------------------------------------------------
 // Destructor
