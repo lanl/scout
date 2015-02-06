@@ -64,6 +64,12 @@ class Driver {
     // +========================================================================+
   } Mode;
 
+  enum SaveTempsMode {
+    SaveTempsNone,
+    SaveTempsCwd,
+    SaveTempsObj
+  } SaveTemps;
+
 public:
   // Diag - Forwarding function for diagnostics.
   DiagnosticBuilder Diag(unsigned DiagID) const {
@@ -244,6 +250,9 @@ public:
   void setInstalledDir(StringRef Value) {
     InstalledDir = Value;
   }
+
+  bool isSaveTempsEnabled() const { return SaveTemps != SaveTempsNone; }
+  bool isSaveTempsObj() const { return SaveTemps == SaveTempsObj; }
 
   /// @}
   /// @name Primary Functionality

@@ -250,6 +250,30 @@ void f20(int a, int b, int c) {
     ;
 }
 
+// CHECK-LABEL: define
+int f21_a(int = 0);
+void f21_b(int = f21_a());
+void f21() {
+// CHECK: call {{.*}}f21_b{{.*}}, !dbg [[DBG_F21:![0-9]*]]
+#line 2300
+  f21_b();
+}
+
+// CHECK-LABEL: define
+struct f22_dtor {
+  ~f22_dtor();
+};
+void f22() {
+  {
+    f22_dtor f;
+    src();
+// CHECK: invoke {{.*}}src
+// CHECK: call {{.*}}, !dbg [[DBG_F22:![0-9]*]]
+// CHECK: call {{.*}}, !dbg [[DBG_F22]]
+#line 2400
+  }
+}
+
 // CHECK: [[DBG_F1]] = !MDLocation(line: 100,
 // CHECK: [[DBG_FOO_VALUE]] = !MDLocation(line: 200,
 // CHECK: [[DBG_FOO_REF]] = !MDLocation(line: 202,

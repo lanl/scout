@@ -3043,7 +3043,7 @@ Value *ScalarExprEmitter::VisitBinLAnd(const BinaryOperator *E) {
   // Emit an unconditional branch from this block to ContBlock.
   {
     // There is no need to emit line number for unconditional branch.
-    ApplyDebugLocation DL(CGF);
+    auto NL = ApplyDebugLocation::CreateEmpty(CGF);
     CGF.EmitBlock(ContBlock);
   }
   // Insert an entry into the phi node for the edge with the value of RHSCond.
@@ -3393,11 +3393,12 @@ Value *CodeGenFunction::EmitScalarExpr(const Expr *E, bool IgnoreResultAssign) {
   assert(E && hasScalarEvaluationKind(E->getType()) &&
          "Invalid scalar expression to emit");
 
+  bool hasDebugInfo = getDebugInfo();
   if (isa<CXXDefaultArgExpr>(E))
     disableDebugInfo();
   Value *V = ScalarExprEmitter(*this, IgnoreResultAssign)
     .Visit(const_cast<Expr*>(E));
-  if (isa<CXXDefaultArgExpr>(E))
+  if (isa<CXXDefaultArgExpr>(E) && hasDebugInfo)
     enableDebugInfo();
   return V;
 }

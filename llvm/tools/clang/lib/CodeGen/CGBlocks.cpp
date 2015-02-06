@@ -1192,7 +1192,7 @@ CodeGenFunction::GenerateBlockFunction(GlobalDecl GD,
     Alloca->setAlignment(Align);
     // Set the DebugLocation to empty, so the store is recognized as a
     // frame setup instruction by llvm::DwarfDebug::beginFunction().
-    ApplyDebugLocation NL(*this);
+    auto NL = ApplyDebugLocation::CreateEmpty(*this);
     Builder.CreateAlignedStore(BlockPointer, Alloca, Align);
     BlockPointerDbgLoc = Alloca;
   }
@@ -1342,11 +1342,10 @@ CodeGenFunction::GenerateCopyHelperFunction(const CGBlockInfo &blockInfo) {
                                           nullptr, SC_Static,
                                           false,
                                           false);
-  // Create a scope with an artificial location for the body of this function.
-  ApplyDebugLocation NL(*this);
+  auto NL = ApplyDebugLocation::CreateEmpty(*this);
   StartFunction(FD, C.VoidTy, Fn, FI, args);
-  ArtificialLocation AL(*this);
-
+  // Create a scope with an artificial location for the body of this function.
+  auto AL = ApplyDebugLocation::CreateArtificial(*this);
   llvm::Type *structPtrTy = blockInfo.StructureType->getPointerTo();
 
   llvm::Value *src = GetAddrOfLocalVar(&srcDecl);
@@ -1514,9 +1513,9 @@ CodeGenFunction::GenerateDestroyHelperFunction(const CGBlockInfo &blockInfo) {
                                           nullptr, SC_Static,
                                           false, false);
   // Create a scope with an artificial location for the body of this function.
-  ApplyDebugLocation NL(*this);
+  auto NL = ApplyDebugLocation::CreateEmpty(*this);
   StartFunction(FD, C.VoidTy, Fn, FI, args);
-  ArtificialLocation AL(*this);
+  auto AL = ApplyDebugLocation::CreateArtificial(*this);
 
   llvm::Type *structPtrTy = blockInfo.StructureType->getPointerTo();
 

@@ -246,9 +246,8 @@ public:
       unsigned ColumnStart = SM.getSpellingColumnNumber(LocStart);
       unsigned LineEnd = SM.getSpellingLineNumber(LocEnd);
       unsigned ColumnEnd = SM.getSpellingColumnNumber(LocEnd);
-      CounterMappingRegion Region(Counter(), *CovFileID, LineStart, ColumnStart,
-                                  LineEnd, ColumnEnd, false,
-                                  CounterMappingRegion::SkippedRegion);
+      auto Region = CounterMappingRegion::makeSkipped(
+          *CovFileID, LineStart, ColumnStart, LineEnd, ColumnEnd);
       // Make sure that we only collect the regions that are inside
       // the souce code of this function.
       if (Region.LineStart >= FileLineRanges[*CovFileID].first &&
@@ -284,10 +283,9 @@ public:
         ColumnStart +
         Lexer::MeasureTokenLength(SM.getSpellingLoc(LocStart), SM, LangOpts);
 
-    MappingRegions.push_back(CounterMappingRegion(
-        Counter(), *CovFileID, LineStart, ColumnStart, LineEnd, ColumnEnd,
-        false, CounterMappingRegion::ExpansionRegion));
-    MappingRegions.back().ExpandedFileID = *ExpandedFileID;
+    MappingRegions.push_back(CounterMappingRegion::makeExpansion(
+        *CovFileID, *ExpandedFileID, LineStart, ColumnStart, LineEnd,
+        ColumnEnd));
   }
 
   /// \brief Enter a source region group that is identified by the given
@@ -375,9 +373,9 @@ public:
         continue;
 
       assert(LineStart <= LineEnd);
-      MappingRegions.push_back(CounterMappingRegion(
+      MappingRegions.push_back(CounterMappingRegion::makeRegion(
           I->getCounter(), *CovFileID, LineStart, ColumnStart, LineEnd,
-          ColumnEnd, false, CounterMappingRegion::CodeRegion));
+          ColumnEnd));
     }
   }
 };
@@ -566,8 +564,8 @@ struct CounterCoverageMappingBuilder
     createFileIDMapping(VirtualFileMapping);
     gatherSkippedRegions();
 
-    CoverageMappingWriter Writer(
-        VirtualFileMapping, Builder.getExpressions(), MappingRegions);
+    CoverageMappingWriter Writer(VirtualFileMapping, Builder.getExpressions(),
+                                 MappingRegions);
     Writer.write(OS);
   }
 
@@ -986,8 +984,8 @@ struct CounterCoverageMappingBuilder
 
   void VisitObjCMessageExpr(const ObjCMessageExpr *E) {
     mapToken(E->getLeftLoc());
-    for (Stmt::const_child_range I = static_cast<const Stmt*>(E)->children(); I;
-         ++I) {
+    for (Stmt::const_child_range I = static_cast<const Stmt *>(E)->children();
+         I; ++I) {
       if (*I)
         this->Visit(*I);
     }
@@ -1004,10 +1002,12 @@ static StringRef getCoverageSection(const CodeGenModule &CGM) {
   return isMachO(CGM) ? "__DATA,__llvm_covmap" : "__llvm_covmap";
 }
 
-static void dump(llvm::raw_ostream &OS, const CoverageMappingRecord &Function) {
-  OS << Function.FunctionName << ":\n";
-  CounterMappingContext Ctx(Function.Expressions);
-  for (const auto &R : Function.MappingRegions) {
+static void dump(llvm::raw_ostream &OS, StringRef FunctionName,
+                 ArrayRef<CounterExpression> Expressions,
+                 ArrayRef<CounterMappingRegion> Regions) {
+  OS << FunctionName << ":\n";
+  CounterMappingContext Ctx(Expressions);
+  for (const auto &R : Regions) {
     OS.indent(2);
     switch (R.Kind) {
     case CounterMappingRegion::CodeRegion:
@@ -1020,15 +1020,12 @@ static void dump(llvm::raw_ostream &OS, const CoverageMappingRecord &Function) {
       break;
     }
 
-    OS << "File " << R.FileID << ", " << R.LineStart << ":"
-           << R.ColumnStart << " -> " << R.LineEnd << ":" << R.ColumnEnd
-           << " = ";
+    OS << "File " << R.FileID << ", " << R.LineStart << ":" << R.ColumnStart
+       << " -> " << R.LineEnd << ":" << R.ColumnEnd << " = ";
     Ctx.dump(R.Count, OS);
-    OS << " (HasCodeBefore = " << R.HasCodeBefore;
     if (R.Kind == CounterMappingRegion::ExpansionRegion)
-      OS << ", Expanded file = " << R.ExpandedFileID;
-
-    OS << ")\n";
+      OS << " (Expanded file = " << R.ExpandedFileID << ")";
+    OS << "\n";
   }
 }
 
@@ -1067,13 +1064,11 @@ void CoverageMappingModuleGen::addFunctionMappingRecord(
     FilenameRefs.resize(FileEntries.size());
     for (const auto &Entry : FileEntries)
       FilenameRefs[Entry.second] = Entry.first->getName();
-    RawCoverageMappingReader Reader(FunctionNameValue, CoverageMapping,
-                                    FilenameRefs,
-                                    Filenames, Expressions, Regions);
-    CoverageMappingRecord FunctionRecord;
-    if (Reader.read(FunctionRecord))
+    RawCoverageMappingReader Reader(CoverageMapping, FilenameRefs, Filenames,
+                                    Expressions, Regions);
+    if (Reader.read())
       return;
-    dump(llvm::outs(), FunctionRecord);
+    dump(llvm::outs(), FunctionNameValue, Expressions, Regions);
   }
 }
 
