@@ -52,28 +52,33 @@ CGDebugInfo::~CGDebugInfo() {
          "Region stack mismatch, stack not empty!");
 }
 
-ArtificialLocation::ArtificialLocation(CodeGenFunction &CGF)
-    : ApplyDebugLocation(CGF) {
-  if (auto *DI = CGF.getDebugInfo()) {
-    // Construct a location that has a valid scope, but no line info.
-    assert(!DI->LexicalBlockStack.empty());
-    llvm::DIDescriptor Scope(DI->LexicalBlockStack.back());
-    CGF.Builder.SetCurrentDebugLocation(llvm::DebugLoc::get(0, 0, Scope));
-  }
-}
-
 ApplyDebugLocation::ApplyDebugLocation(CodeGenFunction &CGF,
                                        SourceLocation TemporaryLocation)
     : CGF(CGF) {
   init(TemporaryLocation);
 }
 
-void ApplyDebugLocation::init(SourceLocation TemporaryLocation) {
+ApplyDebugLocation::ApplyDebugLocation(CodeGenFunction &CGF,
+                                       bool DefaultToEmpty,
+                                       SourceLocation TemporaryLocation)
+    : CGF(CGF) {
+  init(TemporaryLocation, DefaultToEmpty);
+}
+
+void ApplyDebugLocation::init(SourceLocation TemporaryLocation,
+                              bool DefaultToEmpty) {
   if (auto *DI = CGF.getDebugInfo()) {
     OriginalLocation = CGF.Builder.getCurrentDebugLocation();
-    if (TemporaryLocation.isInvalid())
-      CGF.Builder.SetCurrentDebugLocation(llvm::DebugLoc());
-    else
+    if (TemporaryLocation.isInvalid()) {
+      if (DefaultToEmpty)
+        CGF.Builder.SetCurrentDebugLocation(llvm::DebugLoc());
+      else {
+        // Construct a location that has a valid scope, but no line info.
+        assert(!DI->LexicalBlockStack.empty());
+        llvm::DIDescriptor Scope(DI->LexicalBlockStack.back());
+        CGF.Builder.SetCurrentDebugLocation(llvm::DebugLoc::get(0, 0, Scope));
+      }
+    } else
       DI->EmitLocation(CGF.Builder, TemporaryLocation);
   }
 }
@@ -2786,7 +2791,7 @@ llvm::DIType CGDebugInfo::EmitTypeForVarWithBlocksAttr(const VarDecl *VD,
 }
 
 /// EmitDeclare - Emit local variable declaration debug info.
-void CGDebugInfo::EmitDeclare(const VarDecl *VD, llvm::dwarf::LLVMConstants Tag,
+void CGDebugInfo::EmitDeclare(const VarDecl *VD, llvm::dwarf::Tag Tag,
                               llvm::Value *Storage, unsigned ArgNo,
                               CGBuilderTy &Builder) {
   assert(DebugKind >= CodeGenOptions::LimitedDebugInfo);

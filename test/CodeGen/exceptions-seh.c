@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 %s -triple x86_64-pc-win32 -fexceptions -fms-extensions -emit-llvm -o - | FileCheck %s
+// RUN: %clang_cc1 %s -triple x86_64-pc-win32 -fms-extensions -emit-llvm -o - | FileCheck %s
 
 // FIXME: Perform this outlining automatically CodeGen.
 void try_body(int numerator, int denominator, int *myres) {
@@ -38,7 +38,7 @@ int safe_div(int numerator, int denominator, int *res) {
 void j(void);
 
 // FIXME: Implement local variable captures in filter expressions.
-int filter_expr_capture() {
+int filter_expr_capture(void) {
   int r = 42;
   __try {
     j();
@@ -65,7 +65,7 @@ int filter_expr_capture() {
 // FIXMECHECK: store i32 -1, i32* %{{.*}}
 // CHECK: ret i32 -1
 
-int nested_try() {
+int nested_try(void) {
   int r = 42;
   __try {
     __try {
@@ -121,7 +121,7 @@ int nested_try() {
 // FIXME: This lowering of __finally can't actually work, it will have to
 // change.
 static unsigned g = 0;
-void basic_finally() {
+void basic_finally(void) {
   ++g;
   __try {
     j();
@@ -138,15 +138,44 @@ void basic_finally() {
 // CHECK:       to label %[[cont:[^ ]*]] unwind label %[[lpad:[^ ]*]]
 //
 // CHECK: [[cont]]
+// CHECK: br label %[[finally:[^ ]*]]
+//
+// CHECK: [[finally]]
 // CHECK: load i32* @g
 // CHECK: add i32 %{{.*}}, -1
 // CHECK: store i32 %{{.*}}, i32* @g
+// CHECK: icmp eq
+// CHECK: br i1 %{{.*}}, label
+//
 // CHECK: ret void
 //
 // CHECK: [[lpad]]
 // CHECK: landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__C_specific_handler to i8*)
 // CHECK-NEXT: cleanup
-// CHECK: load i32* @g
-// CHECK: add i32 %{{.*}}, -1
-// CHECK: store i32 %{{.*}}, i32* @g
+// CHECK: br label %[[finally]]
+//
 // CHECK: resume
+
+int returns_int(void);
+int except_return(void) {
+  __try {
+    return returns_int();
+  } __except(1) {
+    return 42;
+  }
+}
+// CHECK-LABEL: define i32 @except_return()
+// CHECK: %[[tmp:[^ ]*]] = invoke i32 @returns_int()
+// CHECK:       to label %[[cont:[^ ]*]] unwind label %[[lpad:[^ ]*]]
+//
+// CHECK: [[cont]]
+// CHECK: store i32 %[[tmp]], i32* %[[rv:[^ ]*]]
+// CHECK: br label %[[retbb:[^ ]*]]
+//
+// CHECK: [[lpad]]
+// CHECK: store i32 42, i32* %[[rv]]
+// CHECK: br label %[[retbb]]
+//
+// CHECK: [[retbb]]
+// CHECK: %[[r:[^ ]*]] = load i32* %[[rv]]
+// CHECK: ret i32 %[[r]]

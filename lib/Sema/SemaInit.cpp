@@ -640,6 +640,9 @@ InitListChecker::InitListChecker(Sema &S, const InitializedEntity &Entity,
                                  InitListExpr *IL, QualType &T,
                                  bool VerifyOnly)
   : SemaRef(S), VerifyOnly(VerifyOnly) {
+  // FIXME: Check that IL isn't already the semantic form of some other
+  // InitListExpr. If it is, we'd create a broken AST.
+
   hadError = false;
 
   FullyStructuredList =
@@ -3171,16 +3174,19 @@ ResolveConstructorOverload(Sema &S, SourceLocation DeclLoc,
 /// \brief Attempt initialization by constructor (C++ [dcl.init]), which
 /// enumerates the constructors of the initialized entity and performs overload
 /// resolution to select the best.
-/// If InitListSyntax is true, this is list-initialization of a non-aggregate
-/// class type.
+/// \param IsListInit     Is this list-initialization?
+/// \param IsInitListCopy Is this non-list-initialization resulting from a
+///                       list-initialization from {x} where x is the same
+///                       type as the entity?
 static void TryConstructorInitialization(Sema &S,
                                          const InitializedEntity &Entity,
                                          const InitializationKind &Kind,
                                          MultiExprArg Args, QualType DestType,
                                          InitializationSequence &Sequence,
-                                         bool InitListSyntax = false) {
-  assert((!InitListSyntax || (Args.size() == 1 && isa<InitListExpr>(Args[0]))) &&
-         "InitListSyntax must come with a single initializer list argument.");
+                                         bool IsListInit = false,
+                                         bool IsInitListCopy = false) {
+  assert((!IsListInit || (Args.size() == 1 && isa<InitListExpr>(Args[0]))) &&
+         "IsListInit must come with a single initializer list argument.");
 
   // The type we're constructing needs to be complete.
   if (S.RequireCompleteType(Kind.getLocation(), DestType, 0)) {
@@ -3199,7 +3205,7 @@ static void TryConstructorInitialization(Sema &S,
 
   // Determine whether we are allowed to call explicit constructors or
   // explicit conversion operators.
-  bool AllowExplicit = Kind.AllowExplicit() || InitListSyntax;
+  bool AllowExplicit = Kind.AllowExplicit() || IsListInit;
   bool CopyInitialization = Kind.getKind() == InitializationKind::IK_Copy;
 
   //   - Otherwise, if T is a class type, constructors are considered. The
@@ -3224,7 +3230,7 @@ static void TryConstructorInitialization(Sema &S,
   //   - Initially, the candidate functions are the initializer-list
   //     constructors of the class T and the argument list consists of the
   //     initializer list as a single argument.
-  if (InitListSyntax) {
+  if (IsListInit) {
     InitListExpr *ILE = cast<InitListExpr>(Args[0]);
     AsInitializerList = true;
 
@@ -3253,7 +3259,7 @@ static void TryConstructorInitialization(Sema &S,
                                         /*OnlyListConstructors=*/false);
   }
   if (Result) {
-    Sequence.SetOverloadFailure(InitListSyntax ?
+    Sequence.SetOverloadFailure(IsListInit ?
                       InitializationSequence::FK_ListConstructorOverloadFailed :
                       InitializationSequence::FK_ConstructorOverloadFailed,
                                 Result);
@@ -3275,7 +3281,7 @@ static void TryConstructorInitialization(Sema &S,
   //   In copy-list-initialization, if an explicit constructor is chosen, the
   //   initializer is ill-formed.
   CXXConstructorDecl *CtorDecl = cast<CXXConstructorDecl>(Best->Function);
-  if (InitListSyntax && !Kind.AllowExplicit() && CtorDecl->isExplicit()) {
+  if (IsListInit && !Kind.AllowExplicit() && CtorDecl->isExplicit()) {
     Sequence.SetFailed(InitializationSequence::FK_ExplicitConstructor);
     return;
   }
@@ -3283,10 +3289,9 @@ static void TryConstructorInitialization(Sema &S,
   // Add the constructor initialization step. Any cv-qualification conversion is
   // subsumed by the initialization.
   bool HadMultipleCandidates = (CandidateSet.size() > 1);
-  Sequence.AddConstructorInitializationStep(CtorDecl,
-                                            Best->FoundDecl.getAccess(),
-                                            DestType, HadMultipleCandidates,
-                                            InitListSyntax, AsInitializerList);
+  Sequence.AddConstructorInitializationStep(
+      CtorDecl, Best->FoundDecl.getAccess(), DestType, HadMultipleCandidates,
+      IsListInit | IsInitListCopy, AsInitializerList);
 }
 
 static bool
@@ -3442,9 +3447,10 @@ static void TryListInitialization(Sema &S,
       QualType InitType = InitList->getInit(0)->getType();
       if (S.Context.hasSameUnqualifiedType(InitType, DestType) ||
           S.IsDerivedFrom(InitType, DestType)) {
-        Expr *InitListAsExpr = InitList;
-        TryConstructorInitialization(S, Entity, Kind, InitListAsExpr, DestType,
-                                     Sequence, /*InitListSyntax*/true);
+        Expr *InitAsExpr = InitList->getInit(0);
+        TryConstructorInitialization(S, Entity, Kind, InitAsExpr, DestType,
+                                     Sequence, /*InitListSyntax*/ false,
+                                     /*IsInitListCopy*/ true);
         return;
       }
     }
@@ -3628,11 +3634,8 @@ static OverloadingResult TryRefInitWithConversionFunction(Sema &S,
     // functions.
     CXXRecordDecl *T2RecordDecl = cast<CXXRecordDecl>(T2RecordType->getDecl());
 
-    std::pair<CXXRecordDecl::conversion_iterator,
-              CXXRecordDecl::conversion_iterator>
-      Conversions = T2RecordDecl->getVisibleConversionFunctions();
-    for (CXXRecordDecl::conversion_iterator
-           I = Conversions.first, E = Conversions.second; I != E; ++I) {
+    const auto &Conversions = T2RecordDecl->getVisibleConversionFunctions();
+    for (auto I = Conversions.begin(), E = Conversions.end(); I != E; ++I) {
       NamedDecl *D = *I;
       CXXRecordDecl *ActingDC = cast<CXXRecordDecl>(D->getDeclContext());
       if (isa<UsingShadowDecl>(D))
@@ -4260,11 +4263,9 @@ static void TryUserDefinedConversion(Sema &S,
       CXXRecordDecl *SourceRecordDecl
         = cast<CXXRecordDecl>(SourceRecordType->getDecl());
 
-      std::pair<CXXRecordDecl::conversion_iterator,
-                CXXRecordDecl::conversion_iterator>
-        Conversions = SourceRecordDecl->getVisibleConversionFunctions();
-      for (CXXRecordDecl::conversion_iterator
-             I = Conversions.first, E = Conversions.second; I != E; ++I) {
+      const auto &Conversions =
+          SourceRecordDecl->getVisibleConversionFunctions();
+      for (auto I = Conversions.begin(), E = Conversions.end(); I != E; ++I) {
         NamedDecl *D = *I;
         CXXRecordDecl *ActingDC = cast<CXXRecordDecl>(D->getDeclContext());
         if (isa<UsingShadowDecl>(D))

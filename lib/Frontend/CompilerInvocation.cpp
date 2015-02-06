@@ -709,9 +709,9 @@ bool clang::ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
   if (Format == "clang")
     Opts.setFormat(DiagnosticOptions::Clang);
   else if (Format == "msvc")
-    Opts.setFormat(DiagnosticOptions::Msvc);
+    Opts.setFormat(DiagnosticOptions::MSVC);
   else if (Format == "msvc-fallback") {
-    Opts.setFormat(DiagnosticOptions::Msvc);
+    Opts.setFormat(DiagnosticOptions::MSVC);
     Opts.CLFallbackMode = true;
   } else if (Format == "vi")
     Opts.setFormat(DiagnosticOptions::Vi);
@@ -1568,6 +1568,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   Opts.CurrentModule = Args.getLastArgValue(OPT_fmodule_name);
   Opts.ImplementationOfModule =
       Args.getLastArgValue(OPT_fmodule_implementation_of);
+  Opts.ModuleFeatures = Args.getAllArgValues(OPT_fmodule_feature);
   Opts.NativeHalfType = Opts.NativeHalfType;
   Opts.HalfArgsAndReturns = Args.hasArg(OPT_fallow_half_arguments_and_returns);
   Opts.GNUAsm = !Args.hasArg(OPT_fno_gnu_inline_asm);
@@ -1668,7 +1669,7 @@ static void ParseLangArgs(LangOptions &Opts, ArgList &Args, InputKind IK,
   // -fsanitize-address-field-padding=N has to be a LangOpt, parse it here.
   Opts.SanitizeAddressFieldPadding =
       getLastArgIntValue(Args, OPT_fsanitize_address_field_padding, 0, Diags);
-  Opts.SanitizerBlacklistFile = Args.getLastArgValue(OPT_fsanitize_blacklist);
+  Opts.SanitizerBlacklistFiles = Args.getAllArgValues(OPT_fsanitize_blacklist);
 }
 
 static void ParsePreprocessorArgs(PreprocessorOptions &Opts, ArgList &Args,

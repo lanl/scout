@@ -47,7 +47,7 @@ namespace CodeGen {
 /// and is responsible for emitting to llvm globals or pass directly to
 /// the backend.
 class CGDebugInfo {
-  friend class ArtificialLocation;
+  friend class ApplyDebugLocation;
   friend class SaveAndRestoreLocation;
   CodeGenModule &CGM;
   const CodeGenOptions::DebugInfoKind DebugKind;
@@ -309,8 +309,8 @@ private:
   /// \brief Emit call to llvm.dbg.declare for a variable declaration.
   /// Tag accepts custom types DW_TAG_arg_variable and DW_TAG_auto_variable,
   /// otherwise would be of type llvm::dwarf::Tag.
-  void EmitDeclare(const VarDecl *decl, llvm::dwarf::LLVMConstants Tag,
-                   llvm::Value *AI, unsigned ArgNo, CGBuilderTy &Builder);
+  void EmitDeclare(const VarDecl *decl, llvm::dwarf::Tag Tag, llvm::Value *AI,
+                   unsigned ArgNo, CGBuilderTy &Builder);
 
   // EmitTypeForVarWithBlocksAttr - Build up structure info for the byref.
   // See BuildByRefType.
@@ -443,38 +443,60 @@ private:
   }
 };
 
-/// A scoped helper to set the current debug location to the specified location
-/// or preferred location of the specified Expr.
+/// \brief A scoped helper to set the current debug location to the specified
+/// location or preferred location of the specified Expr.
 class ApplyDebugLocation {
 private:
-  void init(SourceLocation TemporaryLocation);
+  void init(SourceLocation TemporaryLocation, bool DefaultToEmpty = false);
+  ApplyDebugLocation(CodeGenFunction &CGF, bool DefaultToEmpty,
+                     SourceLocation TemporaryLocation);
 
-protected:
   llvm::DebugLoc OriginalLocation;
   CodeGenFunction &CGF;
-
 public:
-  ApplyDebugLocation(CodeGenFunction &CGF,
-                     SourceLocation TemporaryLocation = SourceLocation());
+
+  /// \brief Set the location to the (valid) TemporaryLocation.
+  ApplyDebugLocation(CodeGenFunction &CGF, SourceLocation TemporaryLocation);
   ApplyDebugLocation(CodeGenFunction &CGF, const Expr *E);
   ApplyDebugLocation(CodeGenFunction &CGF, llvm::DebugLoc Loc);
-  ~ApplyDebugLocation();
-};
 
-/// \brief An RAII object that temporarily switches to
-/// an artificial debug location that has a valid scope, but no line
-/// information. This is useful when emitting compiler-generated
-/// helper functions that have no source location associated with
-/// them. The DWARF specification allows the compiler to use the
-/// special line number 0 to indicate code that can not be attributed
-/// to any source location.
-///
-/// This is necessary because passing an empty SourceLocation to
-/// CGDebugInfo::setLocation() will result in the last valid location
-/// being reused.
-class ArtificialLocation : public ApplyDebugLocation {
-public:
-  ArtificialLocation(CodeGenFunction &CGF);
+  ~ApplyDebugLocation();
+
+  /// \brief Apply TemporaryLocation if it is valid. Otherwise switch to an
+  /// artificial debug location that has a valid scope, but no line information.
+  ///
+  /// Artificial locations are useful when emitting compiler-generated helper
+  /// functions that have no source location associated with them. The DWARF
+  /// specification allows the compiler to use the special line number 0 to
+  /// indicate code that can not be attributed to any source location. Note that
+  /// passing an empty SourceLocation to CGDebugInfo::setLocation() will result
+  /// in the last valid location being reused.
+  static ApplyDebugLocation CreateArtificial(CodeGenFunction &CGF) {
+    return ApplyDebugLocation(CGF, false, SourceLocation());
+  }
+  /// \brief Apply TemporaryLocation if it is valid. Otherwise switch to an
+  /// artificial debug location that has a valid scope, but no line information.
+  static ApplyDebugLocation CreateDefaultArtificial(CodeGenFunction &CGF,
+                                             SourceLocation TemporaryLocation) {
+    return ApplyDebugLocation(CGF, false, TemporaryLocation);
+  }
+
+  /// \brief Set the IRBuilder to not attach debug locations.  Note that passing
+  /// an empty SourceLocation to CGDebugInfo::setLocation() will result in the
+  /// last valid location being reused.  Note that all instructions that do not
+  /// have a location at the beginning of a function are counted towards to
+  /// funciton prologue.
+  static ApplyDebugLocation CreateEmpty(CodeGenFunction &CGF) {
+    return ApplyDebugLocation(CGF, true, SourceLocation());
+  }
+
+  /// \brief Apply TemporaryLocation if it is valid. Otherwise set the IRBuilder
+  /// to not attach debug locations.
+  static ApplyDebugLocation CreateDefaultEmpty(CodeGenFunction &CGF,
+                                             SourceLocation TemporaryLocation) {
+    return ApplyDebugLocation(CGF, true, TemporaryLocation);
+  }
+
 };
 
 
