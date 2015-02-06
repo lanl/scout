@@ -257,15 +257,13 @@ void X86Subtarget::initializeEnvironment() {
   HasVLX = false;
   HasADX = false;
   HasSHA = false;
-  HasSGX = false;
   HasPRFCHW = false;
   HasRDSEED = false;
-  HasSMAP = false;
   IsBTMemSlow = false;
   IsSHLDSlow = false;
   IsUAMemFast = false;
   IsUAMem32Slow = false;
-  HasVectorUAMem = false;
+  HasSSEUnalignedMem = false;
   HasCmpxchg16b = false;
   UseLeaForSP = false;
   HasSlowDivide32 = false;
@@ -301,7 +299,7 @@ X86Subtarget::X86Subtarget(const std::string &TT, const std::string &CPU,
       In16BitMode(TargetTriple.getArch() == Triple::x86 &&
                   TargetTriple.getEnvironment() == Triple::CODE16),
       TSInfo(*TM.getDataLayout()),
-      InstrInfo(initializeSubtargetDependencies(CPU, FS)), TLInfo(TM),
+      InstrInfo(initializeSubtargetDependencies(CPU, FS)), TLInfo(TM, *this),
       FrameLowering(TargetFrameLowering::StackGrowsDown, getStackAlignment(),
                     is64Bit() ? -8 : -4) {
   // Determine the PICStyle based on the target selected.

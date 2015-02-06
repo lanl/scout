@@ -76,9 +76,8 @@ namespace llvm {
   void
   X86AsmPrinter::StackMapShadowTracker::startFunction(MachineFunction &MF) {
     CodeEmitter.reset(TM.getTarget().createMCCodeEmitter(
-        *TM.getSubtargetImpl()->getInstrInfo(),
-        *TM.getSubtargetImpl()->getRegisterInfo(), *TM.getSubtargetImpl(),
-        MF.getContext()));
+        *MF.getSubtarget().getInstrInfo(), *MF.getSubtarget().getRegisterInfo(),
+        MF.getSubtarget(), MF.getContext()));
   }
 
   void X86AsmPrinter::StackMapShadowTracker::count(MCInst &Inst,
@@ -112,8 +111,8 @@ namespace llvm {
 
 X86MCInstLower::X86MCInstLower(const MachineFunction &mf,
                                X86AsmPrinter &asmprinter)
-: Ctx(mf.getContext()), MF(mf), TM(mf.getTarget()),
-  MAI(*TM.getMCAsmInfo()), AsmPrinter(asmprinter) {}
+    : Ctx(mf.getContext()), MF(mf), TM(mf.getTarget()), MAI(*TM.getMCAsmInfo()),
+      AsmPrinter(asmprinter) {}
 
 MachineModuleInfoMachO &X86MCInstLower::getMachOMMI() const {
   return MF.getMMI().getObjFileInfo<MachineModuleInfoMachO>();
@@ -509,6 +508,7 @@ ReSimplify:
   // inputs modeled as normal uses instead of implicit uses.  As such, truncate
   // off all but the first operand (the callee).  FIXME: Change isel.
   case X86::TAILJMPr64:
+  case X86::TAILJMPr64_REX:
   case X86::CALL64r:
   case X86::CALL64pcrel32: {
     unsigned Opcode = OutMI.getOpcode();
@@ -988,8 +988,7 @@ static std::string getShuffleComment(const MachineOperand &DstOp,
 
 void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
   X86MCInstLower MCInstLowering(*MF, *this);
-  const X86RegisterInfo *RI = static_cast<const X86RegisterInfo *>(
-      TM.getSubtargetImpl()->getRegisterInfo());
+  const X86RegisterInfo *RI = MF->getSubtarget<X86Subtarget>().getRegisterInfo();
 
   switch (MI->getOpcode()) {
   case TargetOpcode::DBG_VALUE:
@@ -1010,8 +1009,14 @@ void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
     break;
   }
   case X86::TAILJMPr:
+  case X86::TAILJMPm:
   case X86::TAILJMPd:
+  case X86::TAILJMPr64:
+  case X86::TAILJMPm64:
   case X86::TAILJMPd64:
+  case X86::TAILJMPr64_REX:
+  case X86::TAILJMPm64_REX:
+  case X86::TAILJMPd64_REX:
     // Lower these as normal, but add some comments.
     OutStreamer.AddComment("TAILCALL");
     break;

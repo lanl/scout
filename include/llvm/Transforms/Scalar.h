@@ -21,6 +21,7 @@ namespace llvm {
 
 class BasicBlockPass;
 class FunctionPass;
+class ModulePass;
 class Pass;
 class GetElementPtrInst;
 class PassInfo;
@@ -411,6 +412,19 @@ createSeparateConstOffsetFromGEPPass(const TargetMachine *TM = nullptr,
 // LoadCombine - Combine loads into bigger loads.
 //
 BasicBlockPass *createLoadCombinePass();
+
+FunctionPass *createStraightLineStrengthReducePass();
+
+
+//===----------------------------------------------------------------------===//
+//
+// PlaceSafepoints - Rewrite any IR calls to gc.statepoints and insert any
+// safepoint polls (method entry, backedge) that might be required.  This pass
+// does not generate explicit relocation sequences - that's handled by
+// RewriteStatepointsForGC which can be run at an arbitrary point in the pass
+// order following this pass.
+//
+ModulePass *createPlaceSafepointsPass();
 
 } // End llvm namespace
 

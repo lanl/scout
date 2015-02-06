@@ -149,9 +149,6 @@ protected:
 public:
   const TargetMachine &getTargetMachine() const { return TM; }
   const DataLayout *getDataLayout() const { return DL; }
-  const TargetLoweringObjectFile &getObjFileLowering() const {
-    return *TM.getObjFileLowering();
-  }
 
   bool isBigEndian() const { return !IsLittleEndian; }
   bool isLittleEndian() const { return IsLittleEndian; }
@@ -575,6 +572,14 @@ public:
   bool isLoadExtLegal(unsigned ExtType, EVT ValVT, EVT MemVT) const {
     return ValVT.isSimple() && MemVT.isSimple() &&
       getLoadExtAction(ExtType, ValVT, MemVT) == Legal;
+  }
+
+  /// Return true if the specified load with extension is legal or custom
+  /// on this target.
+  bool isLoadExtLegalOrCustom(unsigned ExtType, EVT ValVT, EVT MemVT) const {
+    return ValVT.isSimple() && MemVT.isSimple() &&
+      (getLoadExtAction(ExtType, ValVT, MemVT) == Legal ||
+       getLoadExtAction(ExtType, ValVT, MemVT) == Custom);
   }
 
   /// Return how this store with truncation should be treated: either it is
@@ -1089,10 +1094,6 @@ public:
   // TargetLowering Configuration Methods - These methods should be invoked by
   // the derived class constructor to configure this object for the target.
   //
-
-  /// \brief Reset the operation actions based on target options.
-  virtual void resetOperationActions() {}
-
 protected:
   /// Specify how the target extends the result of integer and floating point
   /// boolean values from i1 to a wider type.  See getBooleanContents.
@@ -1516,6 +1517,10 @@ public:
     assert(VT.isFloatingPoint());
     return false;
   }
+
+  /// Return true if folding a vector load into ExtVal (a sign, zero, or any
+  /// extend node) is profitable.
+  virtual bool isVectorLoadExtDesirable(SDValue ExtVal) const { return false; }
 
   /// Return true if an fneg operation is free to the point where it is never
   /// worthwhile to replace it with a bitwise operation.

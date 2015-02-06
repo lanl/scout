@@ -24,6 +24,7 @@ def llc(args, cmd_args, ir):
 
 
 ASM_SCRUB_WHITESPACE_RE = re.compile(r'(?!^(|  \w))[ \t]+', flags=re.M)
+ASM_SCRUB_TRAILING_WHITESPACE_RE = re.compile(r'[ \t]+$', flags=re.M)
 ASM_SCRUB_SHUFFLES_RE = (
     re.compile(
         r'^(\s*\w+) [^#\n]+#+ ((?:[xyz]mm\d+|mem) = .*)$',
@@ -47,6 +48,8 @@ def scrub_asm(asm):
   asm = ASM_SCRUB_RIP_RE.sub(r'{{.*}}(%rip)', asm)
   # Strip kill operands inserted into the asm.
   asm = ASM_SCRUB_KILL_COMMENT_RE.sub('', asm)
+  # Strip trailing whitespace.
+  asm = ASM_SCRUB_TRAILING_WHITESPACE_RE.sub(r'', asm)
   return asm
 
 
@@ -122,6 +125,9 @@ def main():
           continue
         f = m.group('f')
         f_asm = scrub_asm(m.group('body'))
+        if f.startswith('stress'):
+          # We only use the last line of the asm for stress tests.
+          f_asm = '\n'.join(f_asm.splitlines()[-1:])
         if args.verbose:
           print >>sys.stderr, 'Processing asm for function: ' + f
           for l in f_asm.splitlines():

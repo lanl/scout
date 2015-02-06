@@ -17,6 +17,7 @@
 #include "MCTargetDesc/PPCPredicates.h"
 #include "PPCCallingConv.h"
 #include "PPCISelLowering.h"
+#include "PPCMachineFunctionInfo.h"
 #include "PPCSubtarget.h"
 #include "PPCTargetMachine.h"
 #include "llvm/ADT/Optional.h"
@@ -85,18 +86,20 @@ typedef struct Address {
 class PPCFastISel final : public FastISel {
 
   const TargetMachine &TM;
+  const PPCSubtarget *PPCSubTarget;
+  PPCFunctionInfo *PPCFuncInfo;
   const TargetInstrInfo &TII;
   const TargetLowering &TLI;
-  const PPCSubtarget *PPCSubTarget;
   LLVMContext *Context;
 
   public:
     explicit PPCFastISel(FunctionLoweringInfo &FuncInfo,
                          const TargetLibraryInfo *LibInfo)
         : FastISel(FuncInfo, LibInfo), TM(FuncInfo.MF->getTarget()),
-          TII(*TM.getSubtargetImpl()->getInstrInfo()),
-          TLI(*TM.getSubtargetImpl()->getTargetLowering()),
-          PPCSubTarget(&TM.getSubtarget<PPCSubtarget>()),
+          PPCSubTarget(&FuncInfo.MF->getSubtarget<PPCSubtarget>()),
+          PPCFuncInfo(FuncInfo.MF->getInfo<PPCFunctionInfo>()),
+          TII(*PPCSubTarget->getInstrInfo()),
+          TLI(*PPCSubTarget->getTargetLowering()),
           Context(&FuncInfo.Fn->getContext()) {}
 
   // Backend specific FastISel code.
@@ -1526,6 +1529,7 @@ bool PPCFastISel::fastLowerCall(CallLoweringInfo &CLI) {
 
   // Direct calls, in both the ELF V1 and V2 ABIs, need the TOC register live
   // into the call.
+  PPCFuncInfo->setUsesTOCBasePtr();
   MIB.addReg(PPC::X2, RegState::Implicit);
 
   // Add a register mask with the call-preserved registers.  Proper
@@ -1864,6 +1868,7 @@ unsigned PPCFastISel::PPCMaterializeFP(const ConstantFP *CFP, MVT VT) {
   unsigned Opc = (VT == MVT::f32) ? PPC::LFS : PPC::LFD;
   unsigned TmpReg = createResultReg(&PPC::G8RC_and_G8RC_NOX0RegClass);
 
+  PPCFuncInfo->setUsesTOCBasePtr();
   // For small code model, generate a LF[SD](0, LDtocCPT(Idx, X2)).
   if (CModel == CodeModel::Small || CModel == CodeModel::JITDefault) {
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(PPC::LDtocCPT),
@@ -1913,6 +1918,7 @@ unsigned PPCFastISel::PPCMaterializeGV(const GlobalValue *GV, MVT VT) {
   if (GV->isThreadLocal())
     return 0;
 
+  PPCFuncInfo->setUsesTOCBasePtr();
   // For small code model, generate a simple TOC load.
   if (CModel == CodeModel::Small || CModel == CodeModel::JITDefault)
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(PPC::LDtoc),
@@ -2298,13 +2304,10 @@ namespace llvm {
   // Create the fast instruction selector for PowerPC64 ELF.
   FastISel *PPC::createFastISel(FunctionLoweringInfo &FuncInfo,
                                 const TargetLibraryInfo *LibInfo) {
-    const TargetMachine &TM = FuncInfo.MF->getTarget();
-
     // Only available on 64-bit ELF for now.
-    const PPCSubtarget *Subtarget = &TM.getSubtarget<PPCSubtarget>();
-    if (Subtarget->isPPC64() && Subtarget->isSVR4ABI())
+    const PPCSubtarget &Subtarget = FuncInfo.MF->getSubtarget<PPCSubtarget>();
+    if (Subtarget.isPPC64() && Subtarget.isSVR4ABI())
       return new PPCFastISel(FuncInfo, LibInfo);
-
     return nullptr;
   }
 }

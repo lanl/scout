@@ -601,7 +601,13 @@ bool CallAnalyzer::visitBinaryOperator(BinaryOperator &I) {
   if (!isa<Constant>(RHS))
     if (Constant *SimpleRHS = SimplifiedValues.lookup(RHS))
       RHS = SimpleRHS;
-  Value *SimpleV = SimplifyBinOp(I.getOpcode(), LHS, RHS, DL);
+  Value *SimpleV = nullptr;
+  if (auto FI = dyn_cast<FPMathOperator>(&I))
+    SimpleV =
+        SimplifyFPBinOp(I.getOpcode(), LHS, RHS, FI->getFastMathFlags(), DL);
+  else
+    SimpleV = SimplifyBinOp(I.getOpcode(), LHS, RHS, DL);
+
   if (Constant *C = dyn_cast_or_null<Constant>(SimpleV)) {
     SimplifiedValues[&I] = C;
     return true;
@@ -906,6 +912,25 @@ bool CallAnalyzer::analyzeBlock(BasicBlock *BB,
     ++NumInstructions;
     if (isa<ExtractElementInst>(I) || I->getType()->isVectorTy())
       ++NumVectorInstructions;
+
+    // If the instruction is floating point, and the target says this operation is
+    // expensive or the function has the "use-soft-float" attribute, this may
+    // eventually become a library call.  Treat the cost as such.
+    if (I->getType()->isFloatingPointTy()) {
+      bool hasSoftFloatAttr = false;
+
+      // If the function has the "use-soft-float" attribute, mark it as expensive.
+      if (F.hasFnAttribute("use-soft-float")) {
+        Attribute Attr = F.getFnAttribute("use-soft-float");
+        StringRef Val = Attr.getValueAsString();
+        if (Val == "true")
+          hasSoftFloatAttr = true;
+      }
+
+      if (TTI.getFPOpCost(I->getType()) == TargetTransformInfo::TCC_Expensive ||
+          hasSoftFloatAttr)
+        Cost += InlineConstants::CallPenalty;
+    }
 
     // If the instruction simplified to a constant, there is no cost to this
     // instruction. Visit the instructions using our InstVisitor to account for
@@ -1232,7 +1257,7 @@ void CallAnalyzer::dump() {
 
 INITIALIZE_PASS_BEGIN(InlineCostAnalysis, "inline-cost", "Inline Cost Analysis",
                       true, true)
-INITIALIZE_AG_DEPENDENCY(TargetTransformInfo)
+INITIALIZE_PASS_DEPENDENCY(TargetTransformInfoWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
 INITIALIZE_PASS_END(InlineCostAnalysis, "inline-cost", "Inline Cost Analysis",
                     true, true)
@@ -1246,12 +1271,12 @@ InlineCostAnalysis::~InlineCostAnalysis() {}
 void InlineCostAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
   AU.addRequired<AssumptionCacheTracker>();
-  AU.addRequired<TargetTransformInfo>();
+  AU.addRequired<TargetTransformInfoWrapperPass>();
   CallGraphSCCPass::getAnalysisUsage(AU);
 }
 
 bool InlineCostAnalysis::runOnSCC(CallGraphSCC &SCC) {
-  TTI = &getAnalysis<TargetTransformInfo>();
+  TTIWP = &getAnalysis<TargetTransformInfoWrapperPass>();
   ACT = &getAnalysis<AssumptionCacheTracker>();
   return false;
 }
@@ -1309,7 +1334,7 @@ InlineCost InlineCostAnalysis::getInlineCost(CallSite CS, Function *Callee,
   DEBUG(llvm::dbgs() << "      Analyzing call of " << Callee->getName()
         << "...\n");
 
-  CallAnalyzer CA(Callee->getDataLayout(), *TTI,
+  CallAnalyzer CA(Callee->getDataLayout(), TTIWP->getTTI(*Callee),
                   ACT->getAssumptionCache(*Callee), *Callee, Threshold);
   bool ShouldInline = CA.analyzeCall(CS);
 

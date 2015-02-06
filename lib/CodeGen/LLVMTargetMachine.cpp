@@ -15,6 +15,7 @@
 #include "llvm/Analysis/JumpInstrTableInfo.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/CodeGen/AsmPrinter.h"
+#include "llvm/CodeGen/BasicTTIImpl.h"
 #include "llvm/CodeGen/ForwardControlFlowIntegrity.h"
 #include "llvm/CodeGen/JumpInstrTables.h"
 #include "llvm/CodeGen/MachineFunctionAnalysis.h"
@@ -77,8 +78,10 @@ LLVMTargetMachine::LLVMTargetMachine(const Target &T, StringRef Triple,
   CodeGenInfo = T.createMCCodeGenInfo(Triple, RM, CM, OL);
 }
 
-void LLVMTargetMachine::addAnalysisPasses(PassManagerBase &PM) {
-  PM.add(createBasicTargetTransformInfoPass(this));
+TargetIRAnalysis LLVMTargetMachine::getTargetIRAnalysis() {
+  return TargetIRAnalysis([this](Function &F) {
+    return TargetTransformInfo(BasicTTIImpl(this, F));
+  });
 }
 
 /// addPassesToX helper drives creation and initialization of TargetPassConfig.
@@ -89,7 +92,7 @@ static MCContext *addPassesToGenerateCode(LLVMTargetMachine *TM,
                                           AnalysisID StopAfter) {
 
   // Add internal analysis passes from the target machine.
-  TM->addAnalysisPasses(PM);
+  PM.add(createTargetTransformInfoWrapperPass(TM->getTargetIRAnalysis()));
 
   // Targets may override createPassConfig to provide a target-specific
   // subclass.
@@ -113,7 +116,7 @@ static MCContext *addPassesToGenerateCode(LLVMTargetMachine *TM,
   // all the per-module stuff we're generating, including MCContext.
   MachineModuleInfo *MMI = new MachineModuleInfo(
       *TM->getMCAsmInfo(), *TM->getSubtargetImpl()->getRegisterInfo(),
-      &TM->getSubtargetImpl()->getTargetLowering()->getObjFileLowering());
+      TM->getObjFileLowering());
   PM.add(MMI);
 
   // Set up a MachineFunction for the rest of CodeGen to work on.

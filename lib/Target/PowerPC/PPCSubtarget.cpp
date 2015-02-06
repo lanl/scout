@@ -51,7 +51,7 @@ PPCSubtarget::PPCSubtarget(const std::string &TT, const std::string &CPU,
               TargetTriple.getArch() == Triple::ppc64le),
       TargetABI(PPC_ABI_UNKNOWN),
       FrameLowering(initializeSubtargetDependencies(CPU, FS)), InstrInfo(*this),
-      TLInfo(TM), TSInfo(TM.getDataLayout()) {}
+      TLInfo(TM, *this), TSInfo(TM.getDataLayout()) {}
 
 void PPCSubtarget::initializeEnvironment() {
   StackAlignment = 16;
@@ -65,6 +65,7 @@ void PPCSubtarget::initializeEnvironment() {
   HasQPX = false;
   HasVSX = false;
   HasP8Vector = false;
+  HasP8Altivec = false;
   HasFCPSGN = false;
   HasFSQRT = false;
   HasFRE = false;

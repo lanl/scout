@@ -774,10 +774,8 @@ def HasHLE       : Predicate<"Subtarget->hasHLE()">;
 def HasTSX       : Predicate<"Subtarget->hasRTM() || Subtarget->hasHLE()">;
 def HasADX       : Predicate<"Subtarget->hasADX()">;
 def HasSHA       : Predicate<"Subtarget->hasSHA()">;
-def HasSGX       : Predicate<"Subtarget->hasSGX()">;
 def HasPRFCHW    : Predicate<"Subtarget->hasPRFCHW()">;
 def HasRDSEED    : Predicate<"Subtarget->hasRDSEED()">;
-def HasSMAP      : Predicate<"Subtarget->hasSMAP()">;
 def HasPrefetchW : Predicate<"Subtarget->hasPRFCHW()">;
 def FPStackf32   : Predicate<"!Subtarget->hasSSE1()">;
 def FPStackf64   : Predicate<"!Subtarget->hasSSE2()">;
@@ -795,6 +793,7 @@ def Not16BitMode : Predicate<"!Subtarget->is16Bit()">,
 def In32BitMode  : Predicate<"Subtarget->is32Bit()">,
                              AssemblerPredicate<"Mode32Bit", "32-bit mode">;
 def IsWin64      : Predicate<"Subtarget->isTargetWin64()">;
+def NotWin64     : Predicate<"!Subtarget->isTargetWin64()">;
 def IsPS4        : Predicate<"Subtarget->isTargetPS4()">;
 def NotPS4       : Predicate<"!Subtarget->isTargetPS4()">;
 def IsNaCl       : Predicate<"Subtarget->isTargetNaCl()">;
@@ -2411,6 +2410,16 @@ let Predicates = [HasTBM] in {
 } // HasTBM
 
 //===----------------------------------------------------------------------===//
+// Memory Instructions
+//
+
+def CLFLUSHOPT : I<0xAE, MRM7m, (outs), (ins i8mem:$src),
+                   "clflushopt\t$src", []>, PD;
+def CLWB       : I<0xAE, MRM6m, (outs), (ins i8mem:$src), "clwb\t$src", []>, PD;
+def PCOMMIT    : I<0xAE, MRM_F8, (outs), (ins), "pcommit", []>, PD;
+
+
+//===----------------------------------------------------------------------===//
 // Subsystems.
 //===----------------------------------------------------------------------===//
 
@@ -2562,6 +2571,12 @@ def : MnemonicAlias<"fnstcww",  "fnstcw",   "att">;
 def : MnemonicAlias<"fnstsww",  "fnstsw",   "att">;
 def : MnemonicAlias<"fucomip",  "fucompi",  "att">;
 def : MnemonicAlias<"fwait",    "wait">;
+
+def : MnemonicAlias<"fxsaveq",   "fxsave64",   "att">;
+def : MnemonicAlias<"fxrstorq",  "fxrstor64",  "att">;
+def : MnemonicAlias<"xsaveq",    "xsave64",    "att">;
+def : MnemonicAlias<"xrstorq",   "xrstor64",   "att">;
+def : MnemonicAlias<"xsaveoptq", "xsaveopt64", "att">;
 
 
 class CondCodeAlias<string Prefix,string Suffix, string OldCond, string NewCond,

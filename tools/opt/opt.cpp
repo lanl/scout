@@ -21,6 +21,7 @@
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/RegionPass.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/IR/DataLayout.h"
@@ -369,6 +370,12 @@ int main(int argc, char **argv) {
     }
   }
 
+  Triple ModuleTriple(M->getTargetTriple());
+  TargetMachine *Machine = nullptr;
+  if (ModuleTriple.getArch())
+    Machine = GetTargetMachine(ModuleTriple);
+  std::unique_ptr<TargetMachine> TM(Machine);
+
   // If the output is set to be emitted to standard out, and standard out is a
   // console, print out a warning message and refuse to do it.  We don't
   // impress anyone by spewing tons of binary goo to a terminal.
@@ -390,8 +397,8 @@ int main(int argc, char **argv) {
     // The user has asked to use the new pass manager and provided a pipeline
     // string. Hand off the rest of the functionality to the new code for that
     // layer.
-    return runPassPipeline(argv[0], Context, *M, Out.get(), PassPipeline,
-                           OK, VK)
+    return runPassPipeline(argv[0], Context, *M, TM.get(), Out.get(),
+                           PassPipeline, OK, VK)
                ? 0
                : 1;
   }
@@ -402,7 +409,7 @@ int main(int argc, char **argv) {
   PassManager Passes;
 
   // Add an appropriate TargetLibraryInfo pass for the module's triple.
-  TargetLibraryInfoImpl TLII(Triple(M->getTargetTriple()));
+  TargetLibraryInfoImpl TLII(ModuleTriple);
 
   // The -disable-simplify-libcalls flag actually disables all builtin optzns.
   if (DisableSimplifyLibCalls)
@@ -419,24 +426,17 @@ int main(int argc, char **argv) {
   if (DL)
     Passes.add(new DataLayoutPass());
 
-  Triple ModuleTriple(M->getTargetTriple());
-  TargetMachine *Machine = nullptr;
-  if (ModuleTriple.getArch())
-    Machine = GetTargetMachine(Triple(ModuleTriple));
-  std::unique_ptr<TargetMachine> TM(Machine);
-
   // Add internal analysis passes from the target machine.
-  if (TM)
-    TM->addAnalysisPasses(Passes);
+  Passes.add(createTargetTransformInfoWrapperPass(TM ? TM->getTargetIRAnalysis()
+                                                     : TargetIRAnalysis()));
 
   std::unique_ptr<FunctionPassManager> FPasses;
   if (OptLevelO1 || OptLevelO2 || OptLevelOs || OptLevelOz || OptLevelO3) {
     FPasses.reset(new FunctionPassManager(M.get()));
     if (DL)
       FPasses->add(new DataLayoutPass());
-    if (TM)
-      TM->addAnalysisPasses(*FPasses);
-
+    FPasses->add(createTargetTransformInfoWrapperPass(
+        TM ? TM->getTargetIRAnalysis() : TargetIRAnalysis()));
   }
 
   if (PrintBreakpoints) {

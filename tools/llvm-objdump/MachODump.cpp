@@ -17,7 +17,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Config/config.h"
-#include "llvm/DebugInfo/DIContext.h"
+#include "llvm/DebugInfo/DWARF/DIContext.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDisassembler.h"
@@ -89,6 +89,11 @@ cl::opt<bool>
 cl::opt<bool>
     llvm::LinkOptHints("link-opt-hints",
                        cl::desc("Print the linker optimization hints for "
+                                "Mach-O objects (requires -macho)"));
+
+cl::list<std::string>
+    llvm::DumpSections("section",
+                       cl::desc("Prints the specified segment,section for "
                                 "Mach-O objects (requires -macho)"));
 
 static cl::list<std::string>
@@ -499,6 +504,222 @@ static void PrintLinkOptHints(MachOObjectFile *O) {
   }
 }
 
+typedef DenseMap<uint64_t, StringRef> SymbolAddressMap;
+
+static void CreateSymbolAddressMap(MachOObjectFile *O,
+                                   SymbolAddressMap *AddrMap) {
+  // Create a map of symbol addresses to symbol names.
+  for (const SymbolRef &Symbol : O->symbols()) {
+    SymbolRef::Type ST;
+    Symbol.getType(ST);
+    if (ST == SymbolRef::ST_Function || ST == SymbolRef::ST_Data ||
+        ST == SymbolRef::ST_Other) {
+      uint64_t Address;
+      Symbol.getAddress(Address);
+      StringRef SymName;
+      Symbol.getName(SymName);
+      (*AddrMap)[Address] = SymName;
+    }
+  }
+}
+
+// GuessSymbolName is passed the address of what might be a symbol and a
+// pointer to the SymbolAddressMap.  It returns the name of a symbol
+// with that address or nullptr if no symbol is found with that address.
+static const char *GuessSymbolName(uint64_t value, SymbolAddressMap *AddrMap) {
+  const char *SymbolName = nullptr;
+  // A DenseMap can't lookup up some values.
+  if (value != 0xffffffffffffffffULL && value != 0xfffffffffffffffeULL) {
+    StringRef name = AddrMap->lookup(value);
+    if (!name.empty())
+      SymbolName = name.data();
+  }
+  return SymbolName;
+}
+
+static void DumpCstringSection(MachOObjectFile *O, const char *sect,
+                               uint32_t sect_size, uint64_t sect_addr,
+                               bool verbose) {
+  for (uint32_t i = 0; i < sect_size; i++) {
+    if (O->is64Bit())
+      outs() << format("0x%016" PRIx64, sect_addr + i) << "  ";
+    else
+      outs() << format("0x%08" PRIx64, sect_addr + i) << "  ";
+    for ( ; i < sect_size && sect[i] != '\0'; i++) {
+      char p[2];
+      p[0] = sect[i];
+      p[1] = '\0';
+      outs().write_escaped(p);
+    }
+    if (i < sect_size && sect[i] == '\0')
+      outs() << "\n";
+  }
+}
+
+static void DumpInitTermPointerSection(MachOObjectFile *O, const char *sect,
+                                       uint32_t sect_size, uint64_t sect_addr,
+                                       SymbolAddressMap *AddrMap,
+                                       bool verbose) {
+  uint32_t stride;
+  if (O->is64Bit())
+    stride = sizeof(uint64_t);
+  else
+    stride = sizeof(uint32_t);
+  for (uint32_t i = 0; i < sect_size; i += stride) {
+    const char *SymbolName = nullptr;
+    if (O->is64Bit()) {
+      outs() << format("0x%016" PRIx64, sect_addr + i * stride) << " ";
+      uint64_t pointer_value;
+      memcpy(&pointer_value, sect + i, stride);
+      if (O->isLittleEndian() != sys::IsLittleEndianHost)
+        sys::swapByteOrder(pointer_value);
+      outs() << format("0x%016" PRIx64, pointer_value);
+      if (verbose)
+        SymbolName = GuessSymbolName(pointer_value, AddrMap);
+    } else {
+      outs() << format("0x%08" PRIx64, sect_addr + i * stride) << " ";
+      uint32_t pointer_value;
+      memcpy(&pointer_value, sect + i, stride);
+      if (O->isLittleEndian() != sys::IsLittleEndianHost)
+        sys::swapByteOrder(pointer_value);
+      outs() << format("0x%08" PRIx32, pointer_value);
+      if (verbose)
+        SymbolName = GuessSymbolName(pointer_value, AddrMap);
+    }
+    if (SymbolName)
+      outs() << " " << SymbolName;
+    outs() << "\n";
+  }
+}
+
+static void DumpRawSectionContents(MachOObjectFile *O, const char *sect,
+                                   uint32_t size, uint64_t addr) {
+  uint32_t cputype = O->getHeader().cputype;
+  if (cputype == MachO::CPU_TYPE_I386 || cputype == MachO::CPU_TYPE_X86_64) {
+    uint32_t j;
+    for (uint32_t i = 0; i < size; i += j, addr += j) {
+      if (O->is64Bit())
+        outs() << format("%016" PRIx64, addr) << "\t";
+      else
+        outs() << format("%08" PRIx64, sect) << "\t";
+      for (j = 0; j < 16 && i + j < size; j++) {
+        uint8_t byte_word = *(sect + i + j);
+        outs() << format("%02" PRIx32, (uint32_t)byte_word) << " ";
+      }
+      outs() << "\n";
+    }
+  } else {
+    uint32_t j;
+    for (uint32_t i = 0; i < size; i += j, addr += j) {
+      if (O->is64Bit())
+        outs() << format("%016" PRIx64, addr) << "\t";
+      else
+        outs() << format("%08" PRIx64, sect) << "\t";
+      for (j = 0; j < 4 * sizeof(int32_t) && i + j < size;
+           j += sizeof(int32_t)) {
+        if (i + j + sizeof(int32_t) < size) {
+          uint32_t long_word;
+          memcpy(&long_word, sect + i + j, sizeof(int32_t));
+          if (O->isLittleEndian() != sys::IsLittleEndianHost)
+            sys::swapByteOrder(long_word);
+          outs() << format("%08" PRIx32, long_word) << " ";
+        } else {
+          for (uint32_t k = 0; i + j + k < size; k++) {
+            uint8_t byte_word = *(sect + i + j);
+            outs() << format("%02" PRIx32, (uint32_t)byte_word) << " ";
+          }
+        }
+      }
+      outs() << "\n";
+    }
+  }
+}
+
+static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
+                             StringRef DisSegName, StringRef DisSectName);
+
+static void DumpSectionContents(StringRef Filename, MachOObjectFile *O,
+                                bool verbose) {
+  SymbolAddressMap AddrMap;
+  if (verbose)
+    CreateSymbolAddressMap(O, &AddrMap);
+
+  for (unsigned i = 0; i < DumpSections.size(); ++i) {
+    StringRef DumpSection = DumpSections[i];
+    std::pair<StringRef, StringRef> DumpSegSectName;
+    DumpSegSectName = DumpSection.split(',');
+    StringRef DumpSegName, DumpSectName;
+    if (DumpSegSectName.second.size()) {
+      DumpSegName = DumpSegSectName.first;
+      DumpSectName = DumpSegSectName.second;
+    } else {
+      DumpSegName = "";
+      DumpSectName = DumpSegSectName.first;
+    }
+    for (const SectionRef &Section : O->sections()) {
+      StringRef SectName;
+      Section.getName(SectName);
+      DataRefImpl Ref = Section.getRawDataRefImpl();
+      StringRef SegName = O->getSectionFinalSegmentName(Ref);
+      if ((DumpSegName.empty() || SegName == DumpSegName) &&
+          (SectName == DumpSectName)) {
+        outs() << "Contents of (" << SegName << "," << SectName
+               << ") section\n";
+        uint32_t section_flags;
+        if (O->is64Bit()) {
+          const MachO::section_64 Sec = O->getSection64(Ref);
+          section_flags = Sec.flags;
+
+        } else {
+          const MachO::section Sec = O->getSection(Ref);
+          section_flags = Sec.flags;
+        }
+        uint32_t section_type = section_flags & MachO::SECTION_TYPE;
+
+        StringRef BytesStr;
+        Section.getContents(BytesStr);
+        const char *sect = reinterpret_cast<const char *>(BytesStr.data());
+        uint32_t sect_size = BytesStr.size();
+        uint64_t sect_addr = Section.getAddress();
+
+        if (verbose) {
+          if ((section_flags & MachO::S_ATTR_PURE_INSTRUCTIONS) ||
+              (section_flags & MachO::S_ATTR_SOME_INSTRUCTIONS)) {
+            DisassembleMachO(Filename, O, SegName, SectName);
+            continue;
+          }
+          switch (section_type) {
+          case MachO::S_REGULAR:
+            DumpRawSectionContents(O, sect, sect_size, sect_addr);
+            break;
+          case MachO::S_ZEROFILL:
+            outs() << "zerofill section and has no contents in the file\n";
+            break;
+          case MachO::S_CSTRING_LITERALS:
+            DumpCstringSection(O, sect, sect_size, sect_addr, verbose);
+            break;
+          case MachO::S_MOD_INIT_FUNC_POINTERS:
+          case MachO::S_MOD_TERM_FUNC_POINTERS:
+            DumpInitTermPointerSection(O, sect, sect_size, sect_addr, &AddrMap,
+                                       verbose);
+            break;
+          default:
+            outs() << "Unknown section type ("
+                   << format("0x%08" PRIx32, section_type) << ")\n";
+            DumpRawSectionContents(O, sect, sect_size, sect_addr);
+            break;
+          }
+        } else {
+          if (section_type == MachO::S_ZEROFILL)
+            outs() << "zerofill section and has no contents in the file\n";
+          else
+            DumpRawSectionContents(O, sect, sect_size, sect_addr);
+        }
+      }
+    }
+  }
+}
+
 // checkMachOAndArchFlags() checks to see if the ObjectFile is a Mach-O file
 // and if it is and there is a list of architecture flags is specified then
 // check to make sure this Mach-O file is one of those architectures or all
@@ -533,8 +754,6 @@ static bool checkMachOAndArchFlags(ObjectFile *O, StringRef Filename) {
   return true;
 }
 
-static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF);
-
 // ProcessMachO() is passed a single opened Mach-O file, which may be an
 // archive member and or in a slice of a universal file.  It prints the
 // the file name and header info and then processes it according to the
@@ -546,7 +765,8 @@ static void ProcessMachO(StringRef Filename, MachOObjectFile *MachOOF,
   // info.  And don't print it otherwise like in the case of printing the
   // UniversalHeaders or ArchiveHeaders.
   if (Disassemble || PrivateHeaders || ExportsTrie || Rebase || Bind ||
-      LazyBind || WeakBind || IndirectSymbols || DataInCode || LinkOptHints) {
+      LazyBind || WeakBind || IndirectSymbols || DataInCode || LinkOptHints ||
+      DumpSections.size() != 0) {
     outs() << Filename;
     if (!ArchiveMemberName.empty())
       outs() << '(' << ArchiveMemberName << ')';
@@ -556,7 +776,7 @@ static void ProcessMachO(StringRef Filename, MachOObjectFile *MachOOF,
   }
 
   if (Disassemble)
-    DisassembleMachO(Filename, MachOOF);
+    DisassembleMachO(Filename, MachOOF, "__TEXT", "__text");
   if (IndirectSymbols)
     PrintIndirectSymbols(MachOOF, true);
   if (DataInCode)
@@ -569,6 +789,8 @@ static void ProcessMachO(StringRef Filename, MachOObjectFile *MachOOF,
     PrintSectionHeaders(MachOOF);
   if (SectionContents)
     PrintSectionContents(MachOOF);
+  if (DumpSections.size() != 0)
+    DumpSectionContents(Filename, MachOOF, true);
   if (SymbolTable)
     PrintSymbolTable(MachOOF);
   if (UnwindInfo)
@@ -1045,7 +1267,6 @@ void llvm::ParseInputMachO(StringRef Filename) {
            << "Unrecognized file type.\n";
 }
 
-typedef DenseMap<uint64_t, StringRef> SymbolAddressMap;
 typedef std::pair<uint64_t, const char *> BindInfoEntry;
 typedef std::vector<BindInfoEntry> BindTable;
 typedef BindTable::iterator bind_table_iterator;
@@ -1065,21 +1286,6 @@ struct DisassembleInfo {
   uint32_t adrp_inst;
   BindTable *bindtable;
 };
-
-// GuessSymbolName is passed the address of what might be a symbol and a
-// pointer to the DisassembleInfo struct.  It returns the name of a symbol
-// with that address or nullptr if no symbol is found with that address.
-static const char *GuessSymbolName(uint64_t value,
-                                   struct DisassembleInfo *info) {
-  const char *SymbolName = nullptr;
-  // A DenseMap can't lookup up some values.
-  if (value != 0xffffffffffffffffULL && value != 0xfffffffffffffffeULL) {
-    StringRef name = info->AddrMap->lookup(value);
-    if (!name.empty())
-      SymbolName = name.data();
-  }
-  return SymbolName;
-}
 
 // SymbolizerGetOpInfo() is the operand information call back function.
 // This is called to get the symbolic information for operand(s) of an
@@ -1171,8 +1377,8 @@ int SymbolizerGetOpInfo(void *DisInfo, uint64_t Pc, uint64_t Offset,
     }
     if (reloc_found && (r_type == MachO::GENERIC_RELOC_SECTDIFF ||
                         r_type == MachO::GENERIC_RELOC_LOCAL_SECTDIFF)) {
-      const char *add = GuessSymbolName(r_value, info);
-      const char *sub = GuessSymbolName(pair_r_value, info);
+      const char *add = GuessSymbolName(r_value, info->AddrMap);
+      const char *sub = GuessSymbolName(pair_r_value, info->AddrMap);
       uint32_t offset = value - (r_value - pair_r_value);
       op_info->AddSymbol.Present = 1;
       if (add != nullptr)
@@ -1313,34 +1519,18 @@ int SymbolizerGetOpInfo(void *DisInfo, uint64_t Pc, uint64_t Offset,
       const char *name = SymName.data();
       op_info->AddSymbol.Present = 1;
       op_info->AddSymbol.Name = name;
-      if (value != 0) {
-        switch (r_type) {
-        case MachO::ARM_RELOC_HALF:
-          if ((r_length & 0x1) == 1) {
-            op_info->Value = value << 16 | other_half;
-            op_info->VariantKind = LLVMDisassembler_VariantKind_ARM_HI16;
-          } else {
-            op_info->Value = other_half << 16 | value;
-            op_info->VariantKind = LLVMDisassembler_VariantKind_ARM_LO16;
-          }
-          break;
-        default:
-          break;
+      switch (r_type) {
+      case MachO::ARM_RELOC_HALF:
+        if ((r_length & 0x1) == 1) {
+          op_info->Value = value << 16 | other_half;
+          op_info->VariantKind = LLVMDisassembler_VariantKind_ARM_HI16;
+        } else {
+          op_info->Value = other_half << 16 | value;
+          op_info->VariantKind = LLVMDisassembler_VariantKind_ARM_LO16;
         }
-      } else {
-        switch (r_type) {
-        case MachO::ARM_RELOC_HALF:
-          if ((r_length & 0x1) == 1) {
-            op_info->Value = value << 16 | other_half;
-            op_info->VariantKind = LLVMDisassembler_VariantKind_ARM_HI16;
-          } else {
-            op_info->Value = other_half << 16 | value;
-            op_info->VariantKind = LLVMDisassembler_VariantKind_ARM_LO16;
-          }
-          break;
-        default:
-          break;
-        }
+        break;
+      default:
+        break;
       }
       return 1;
     }
@@ -1373,8 +1563,8 @@ int SymbolizerGetOpInfo(void *DisInfo, uint64_t Pc, uint64_t Offset,
         op_info->VariantKind = LLVMDisassembler_VariantKind_ARM_HI16;
       else
         op_info->VariantKind = LLVMDisassembler_VariantKind_ARM_LO16;
-      const char *add = GuessSymbolName(r_value, info);
-      const char *sub = GuessSymbolName(pair_r_value, info);
+      const char *add = GuessSymbolName(r_value, info->AddrMap);
+      const char *sub = GuessSymbolName(pair_r_value, info->AddrMap);
       int32_t offset = value - (r_value - pair_r_value);
       op_info->AddSymbol.Present = 1;
       if (add != nullptr)
@@ -1403,7 +1593,7 @@ int SymbolizerGetOpInfo(void *DisInfo, uint64_t Pc, uint64_t Offset,
           op_info->VariantKind = LLVMDisassembler_VariantKind_ARM_LO16;
       }
     }
-    const char *add = GuessSymbolName(value, info);
+    const char *add = GuessSymbolName(value, info->AddrMap);
     if (add != nullptr) {
       op_info->AddSymbol.Name = add;
       return 1;
@@ -1864,7 +2054,7 @@ const char *get_symbol_64(uint32_t sect_offset, SectionRef S,
   //
   // NOTE: need add passing the ReferenceValue to this routine.  Then that code
   // would simply be this:
-  // SymbolName = GuessSymbolName(ReferenceValue, info);
+  // SymbolName = GuessSymbolName(ReferenceValue, info->AddrMap);
 
   return SymbolName;
 }
@@ -2207,7 +2397,7 @@ const char *SymbolizerSymbolLookUp(void *DisInfo, uint64_t ReferenceValue,
     return nullptr;
   }
 
-  const char *SymbolName = GuessSymbolName(ReferenceValue, info);
+  const char *SymbolName = GuessSymbolName(ReferenceValue, info->AddrMap);
 
   if (*ReferenceType == LLVMDisassembler_ReferenceType_In_Branch) {
     *ReferenceName = GuessIndirectSymbol(ReferenceValue, info);
@@ -2371,7 +2561,8 @@ static void emitComments(raw_svector_ostream &CommentStream,
   CommentStream.resync();
 }
 
-static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF) {
+static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
+                             StringRef DisSegName, StringRef DisSectName) {
   const char *McpuDefault = nullptr;
   const Target *ThumbTarget = nullptr;
   const Target *TheTarget = GetTarget(MachOOF, &McpuDefault, &ThumbTarget);
@@ -2539,28 +2730,18 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF) {
     diContext.reset(DIContext::getDWARFContext(*DbgObj));
   }
 
-  // TODO: For now this only disassembles the (__TEXT,__text) section (see the
-  // checks in the code below at the top of this loop).  It should allow a
-  // darwin otool(1) like -s option to disassemble any named segment & section
-  // that is marked as containing instructions with the attributes
-  // S_ATTR_PURE_INSTRUCTIONS or S_ATTR_SOME_INSTRUCTIONS in the flags field of
-  // the section structure.
-  outs() << "(__TEXT,__text) section\n";
+  if (DumpSections.size() == 0)
+    outs() << "(" << DisSegName << "," << DisSectName << ") section\n";
 
   for (unsigned SectIdx = 0; SectIdx != Sections.size(); SectIdx++) {
-
-    bool SectIsText = Sections[SectIdx].isText();
-    if (SectIsText == false)
-      continue;
-
     StringRef SectName;
-    if (Sections[SectIdx].getName(SectName) || SectName != "__text")
-      continue; // Skip non-text sections
+    if (Sections[SectIdx].getName(SectName) || SectName != DisSectName)
+      continue;
 
     DataRefImpl DR = Sections[SectIdx].getRawDataRefImpl();
 
     StringRef SegmentName = MachOOF->getSectionFinalSegmentName(DR);
-    if (SegmentName != "__TEXT")
+    if (SegmentName != DisSegName)
       continue;
 
     StringRef BytesStr;

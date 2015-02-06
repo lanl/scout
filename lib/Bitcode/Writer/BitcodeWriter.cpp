@@ -17,6 +17,7 @@
 #include "llvm/Bitcode/BitstreamWriter.h"
 #include "llvm/Bitcode/LLVMBitCodes.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instructions.h"
@@ -653,7 +654,8 @@ static void WriteModuleInfo(const Module *M, const ValueEnumerator &VE,
 
     // GLOBALVAR: [type, isconst, initid,
     //             linkage, alignment, section, visibility, threadlocal,
-    //             unnamed_addr, externally_initialized, dllstorageclass]
+    //             unnamed_addr, externally_initialized, dllstorageclass,
+    //             comdat]
     Vals.push_back(VE.getTypeID(GV.getType()));
     Vals.push_back(GV.isConstant());
     Vals.push_back(GV.isDeclaration() ? 0 :
@@ -791,10 +793,20 @@ static void WriteMDLocation(const MDLocation *N, const ValueEnumerator &VE,
   Record.clear();
 }
 
-static void WriteGenericDebugNode(const GenericDebugNode *,
-                                  const ValueEnumerator &, BitstreamWriter &,
-                                  SmallVectorImpl<uint64_t> &, unsigned) {
-  llvm_unreachable("unimplemented");
+static void WriteGenericDebugNode(const GenericDebugNode *N,
+                                  const ValueEnumerator &VE,
+                                  BitstreamWriter &Stream,
+                                  SmallVectorImpl<uint64_t> &Record,
+                                  unsigned Abbrev) {
+  Record.push_back(N->isDistinct());
+  Record.push_back(N->getTag());
+  Record.push_back(0); // Per-tag version field; unused for now.
+
+  for (auto &I : N->operands())
+    Record.push_back(VE.getMetadataOrNullID(I));
+
+  Stream.EmitRecord(bitc::METADATA_GENERIC_DEBUG, Record, Abbrev);
+  Record.clear();
 }
 
 static void WriteModuleMetadata(const Module *M,
@@ -816,7 +828,10 @@ static void WriteModuleMetadata(const Module *M,
     MDSAbbrev = Stream.EmitAbbrev(Abbv);
   }
 
-  unsigned MDLocationAbbrev = 0;
+  // Initialize MDNode abbreviations.
+#define HANDLE_MDNODE_LEAF(CLASS) unsigned CLASS##Abbrev = 0;
+#include "llvm/IR/Metadata.def"
+
   if (VE.hasMDLocation()) {
     // Abbrev for METADATA_LOCATION.
     //
@@ -832,6 +847,22 @@ static void WriteModuleMetadata(const Module *M,
     MDLocationAbbrev = Stream.EmitAbbrev(Abbv);
   }
 
+  if (VE.hasGenericDebugNode()) {
+    // Abbrev for METADATA_GENERIC_DEBUG.
+    //
+    // Assume the column is usually under 128, and always output the inlined-at
+    // location (it's never more expensive than building an array size 1).
+    BitCodeAbbrev *Abbv = new BitCodeAbbrev();
+    Abbv->Add(BitCodeAbbrevOp(bitc::METADATA_GENERIC_DEBUG));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Array));
+    Abbv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));
+    GenericDebugNodeAbbrev = Stream.EmitAbbrev(Abbv);
+  }
+
   unsigned NameAbbrev = 0;
   if (!M->named_metadata_empty()) {
     // Abbrev for METADATA_NAME.
@@ -842,8 +873,6 @@ static void WriteModuleMetadata(const Module *M,
     NameAbbrev = Stream.EmitAbbrev(Abbv);
   }
 
-  unsigned MDTupleAbbrev = 0;
-  unsigned GenericDebugNodeAbbrev = 0;
   SmallVector<uint64_t, 64> Record;
   for (const Metadata *MD : MDs) {
     if (const MDNode *N = dyn_cast<MDNode>(MD)) {

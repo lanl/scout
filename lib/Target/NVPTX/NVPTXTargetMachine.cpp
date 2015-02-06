@@ -17,6 +17,7 @@
 #include "NVPTXAllocaHoisting.h"
 #include "NVPTXLowerAggrCopies.h"
 #include "NVPTXTargetObjectFile.h"
+#include "NVPTXTargetTransformInfo.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineFunctionAnalysis.h"
@@ -136,12 +137,9 @@ TargetPassConfig *NVPTXTargetMachine::createPassConfig(PassManagerBase &PM) {
   return PassConfig;
 }
 
-void NVPTXTargetMachine::addAnalysisPasses(PassManagerBase &PM) {
-  // Add first the target-independent BasicTTI pass, then our NVPTX pass. This
-  // allows the NVPTX pass to delegate to the target independent layer when
-  // appropriate.
-  PM.add(createBasicTargetTransformInfoPass(this));
-  PM.add(createNVPTXTargetTransformInfoPass(this));
+TargetIRAnalysis NVPTXTargetMachine::getTargetIRAnalysis() {
+  return TargetIRAnalysis(
+      [this](Function &) { return TargetTransformInfo(NVPTXTTIImpl(this)); });
 }
 
 void NVPTXPassConfig::addIRPasses() {
@@ -160,6 +158,7 @@ void NVPTXPassConfig::addIRPasses() {
   addPass(createNVPTXAssignValidGlobalNamesPass());
   addPass(createGenericToNVVMPass());
   addPass(createNVPTXFavorNonGenericAddrSpacesPass());
+  addPass(createStraightLineStrengthReducePass());
   addPass(createSeparateConstOffsetFromGEPPass());
   // The SeparateConstOffsetFromGEP pass creates variadic bases that can be used
   // by multiple GEPs. Run GVN or EarlyCSE to really reuse them. GVN generates

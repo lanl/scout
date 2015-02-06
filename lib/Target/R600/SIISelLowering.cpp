@@ -35,8 +35,9 @@
 
 using namespace llvm;
 
-SITargetLowering::SITargetLowering(TargetMachine &TM) :
-    AMDGPUTargetLowering(TM) {
+SITargetLowering::SITargetLowering(TargetMachine &TM,
+                                   const AMDGPUSubtarget &STI)
+    : AMDGPUTargetLowering(TM, STI) {
   addRegisterClass(MVT::i1, &AMDGPU::VReg_1RegClass);
   addRegisterClass(MVT::i64, &AMDGPU::SReg_64RegClass);
 
@@ -89,8 +90,6 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
   setOperationAction(ISD::STORE, MVT::v16i32, Custom);
 
   setOperationAction(ISD::STORE, MVT::i1, Custom);
-  setOperationAction(ISD::STORE, MVT::i32, Custom);
-  setOperationAction(ISD::STORE, MVT::v2i32, Custom);
   setOperationAction(ISD::STORE, MVT::v4i32, Custom);
 
   setOperationAction(ISD::SELECT, MVT::i64, Custom);
@@ -158,8 +157,6 @@ SITargetLowering::SITargetLowering(TargetMachine &TM) :
   for (MVT VT : MVT::fp_valuetypes())
     setLoadExtAction(ISD::EXTLOAD, VT, MVT::f32, Expand);
 
-  setTruncStoreAction(MVT::i32, MVT::i8, Custom);
-  setTruncStoreAction(MVT::i32, MVT::i16, Custom);
   setTruncStoreAction(MVT::f64, MVT::f32, Expand);
   setTruncStoreAction(MVT::i64, MVT::i32, Expand);
   setTruncStoreAction(MVT::v8i32, MVT::v8i16, Expand);
@@ -314,9 +311,8 @@ bool SITargetLowering::allowsMisalignedMemoryAccesses(EVT VT,
   if (!VT.isSimple() || VT == MVT::Other)
     return false;
 
-  // XXX - CI changes say "Support for unaligned memory accesses" but I don't
-  // see what for specifically. The wording everywhere else seems to be the
-  // same.
+  // TODO - CI+ supports unaligned memory accesses, but this requires driver
+  // support.
 
   // XXX - The only mention I see of this in the ISA manual is for LDS direct
   // reads the "byte address and must be dword aligned". Is it also true for the
@@ -328,12 +324,18 @@ bool SITargetLowering::allowsMisalignedMemoryAccesses(EVT VT,
     return Align % 4 == 0;
   }
 
+  // Smaller than dword value must be aligned.
+  // FIXME: This should be allowed on CI+
+  if (VT.bitsLT(MVT::i32))
+    return false;
+
   // 8.1.6 - For Dword or larger reads or writes, the two LSBs of the
   // byte-address are ignored, thus forcing Dword alignment.
   // This applies to private, global, and constant memory.
   if (IsFast)
     *IsFast = true;
-  return VT.bitsGT(MVT::i32);
+
+  return VT.bitsGT(MVT::i32) && Align % 4 == 0;
 }
 
 EVT SITargetLowering::getOptimalMemOpType(uint64_t Size, unsigned DstAlign,
@@ -366,8 +368,8 @@ SITargetLowering::getPreferredVectorAction(EVT VT) const {
 
 bool SITargetLowering::shouldConvertConstantLoadToIntImm(const APInt &Imm,
                                                          Type *Ty) const {
-  const SIInstrInfo *TII = static_cast<const SIInstrInfo *>(
-      getTargetMachine().getSubtargetImpl()->getInstrInfo());
+  const SIInstrInfo *TII =
+      static_cast<const SIInstrInfo *>(Subtarget->getInstrInfo());
   return TII->isInlineConstant(Imm);
 }
 
@@ -400,16 +402,11 @@ SDValue SITargetLowering::LowerParameter(SelectionDAG &DAG, EVT VT, EVT MemVT,
 }
 
 SDValue SITargetLowering::LowerFormalArguments(
-                                      SDValue Chain,
-                                      CallingConv::ID CallConv,
-                                      bool isVarArg,
-                                      const SmallVectorImpl<ISD::InputArg> &Ins,
-                                      SDLoc DL, SelectionDAG &DAG,
-                                      SmallVectorImpl<SDValue> &InVals) const {
-
-  const TargetMachine &TM = getTargetMachine();
+    SDValue Chain, CallingConv::ID CallConv, bool isVarArg,
+    const SmallVectorImpl<ISD::InputArg> &Ins, SDLoc DL, SelectionDAG &DAG,
+    SmallVectorImpl<SDValue> &InVals) const {
   const SIRegisterInfo *TRI =
-      static_cast<const SIRegisterInfo*>(TM.getSubtargetImpl()->getRegisterInfo());
+      static_cast<const SIRegisterInfo *>(Subtarget->getRegisterInfo());
 
   MachineFunction &MF = DAG.getMachineFunction();
   FunctionType *FType = MF.getFunction()->getFunctionType();
@@ -601,8 +598,8 @@ MachineBasicBlock * SITargetLowering::EmitInstrWithCustomInserter(
     MachineInstr * MI, MachineBasicBlock * BB) const {
 
   MachineBasicBlock::iterator I = *MI;
-  const SIInstrInfo *TII = static_cast<const SIInstrInfo *>(
-      getTargetMachine().getSubtargetImpl()->getInstrInfo());
+  const SIInstrInfo *TII =
+      static_cast<const SIInstrInfo *>(Subtarget->getInstrInfo());
 
   switch (MI->getOpcode()) {
   default:
@@ -864,7 +861,7 @@ SDValue SITargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
                                                   SelectionDAG &DAG) const {
   MachineFunction &MF = DAG.getMachineFunction();
   const SIRegisterInfo *TRI =
-      static_cast<const SIRegisterInfo*>(MF.getSubtarget().getRegisterInfo());
+      static_cast<const SIRegisterInfo *>(Subtarget->getRegisterInfo());
 
   EVT VT = Op.getValueType();
   SDLoc DL(Op);
@@ -1154,11 +1151,6 @@ SDValue SITargetLowering::LowerSTORE(SDValue Op, SelectionDAG &DAG) const {
   EVT VT = Store->getMemoryVT();
 
   // These stores are legal.
-  if (Store->getAddressSpace() == AMDGPUAS::LOCAL_ADDRESS &&
-      VT.isVector() && VT.getVectorNumElements() == 2 &&
-      VT.getVectorElementType() == MVT::i32)
-    return SDValue();
-
   if (Store->getAddressSpace() == AMDGPUAS::PRIVATE_ADDRESS) {
     if (VT.isVector() && VT.getVectorNumElements() > 4)
       return ScalarizeVectorStore(Op, DAG);
@@ -1335,8 +1327,8 @@ SDValue SITargetLowering::performSHLPtrCombine(SDNode *N,
   if (!CAdd)
     return SDValue();
 
-  const SIInstrInfo *TII = static_cast<const SIInstrInfo *>(
-      getTargetMachine().getSubtargetImpl()->getInstrInfo());
+  const SIInstrInfo *TII =
+      static_cast<const SIInstrInfo *>(Subtarget->getInstrInfo());
 
   // If the resulting offset is too large, we can't fold it into the addressing
   // mode offset.
@@ -1738,8 +1730,8 @@ static bool isVSrc(unsigned RegClass) {
 /// and the immediate value if it's a literal immediate
 int32_t SITargetLowering::analyzeImmediate(const SDNode *N) const {
 
-  const SIInstrInfo *TII = static_cast<const SIInstrInfo *>(
-    getTargetMachine().getSubtargetImpl()->getInstrInfo());
+  const SIInstrInfo *TII =
+      static_cast<const SIInstrInfo *>(Subtarget->getInstrInfo());
 
   if (const ConstantSDNode *Node = dyn_cast<ConstantSDNode>(N)) {
     if (Node->getZExtValue() >> 32)
@@ -1764,10 +1756,11 @@ int32_t SITargetLowering::analyzeImmediate(const SDNode *N) const {
   return -1;
 }
 
-const TargetRegisterClass *SITargetLowering::getRegClassForNode(
-                                   SelectionDAG &DAG, const SDValue &Op) const {
-  const SIInstrInfo *TII = static_cast<const SIInstrInfo *>(
-      getTargetMachine().getSubtargetImpl()->getInstrInfo());
+const TargetRegisterClass *
+SITargetLowering::getRegClassForNode(SelectionDAG &DAG,
+                                     const SDValue &Op) const {
+  const SIInstrInfo *TII =
+      static_cast<const SIInstrInfo *>(Subtarget->getInstrInfo());
   const SIRegisterInfo &TRI = TII->getRegisterInfo();
 
   if (!Op->isMachineOpcode()) {
@@ -1818,8 +1811,7 @@ const TargetRegisterClass *SITargetLowering::getRegClassForNode(
 /// \brief Does "Op" fit into register class "RegClass" ?
 bool SITargetLowering::fitsRegClass(SelectionDAG &DAG, const SDValue &Op,
                                     unsigned RegClass) const {
-  const TargetRegisterInfo *TRI =
-      getTargetMachine().getSubtargetImpl()->getRegisterInfo();
+  const TargetRegisterInfo *TRI = Subtarget->getRegisterInfo();
   const TargetRegisterClass *RC = getRegClassForNode(DAG, Op);
   if (!RC) {
     return false;
@@ -1943,8 +1935,8 @@ void SITargetLowering::legalizeTargetIndependentNode(SDNode *Node,
 /// \brief Fold the instructions after selecting them.
 SDNode *SITargetLowering::PostISelFolding(MachineSDNode *Node,
                                           SelectionDAG &DAG) const {
-  const SIInstrInfo *TII = static_cast<const SIInstrInfo *>(
-      getTargetMachine().getSubtargetImpl()->getInstrInfo());
+  const SIInstrInfo *TII =
+      static_cast<const SIInstrInfo *>(Subtarget->getInstrInfo());
   Node = AdjustRegClass(Node, DAG);
 
   if (TII->isMIMG(Node->getMachineOpcode()))
@@ -1962,8 +1954,8 @@ SDNode *SITargetLowering::PostISelFolding(MachineSDNode *Node,
 /// bits set in the writemask
 void SITargetLowering::AdjustInstrPostInstrSelection(MachineInstr *MI,
                                                      SDNode *Node) const {
-  const SIInstrInfo *TII = static_cast<const SIInstrInfo *>(
-      getTargetMachine().getSubtargetImpl()->getInstrInfo());
+  const SIInstrInfo *TII =
+      static_cast<const SIInstrInfo *>(Subtarget->getInstrInfo());
 
   MachineRegisterInfo &MRI = MI->getParent()->getParent()->getRegInfo();
   TII->legalizeOperands(MI);
@@ -2009,8 +2001,8 @@ static SDValue buildSMovImm32(SelectionDAG &DAG, SDLoc DL, uint64_t Val) {
 MachineSDNode *SITargetLowering::wrapAddr64Rsrc(SelectionDAG &DAG,
                                                 SDLoc DL,
                                                 SDValue Ptr) const {
-  const SIInstrInfo *TII = static_cast<const SIInstrInfo *>(
-      getTargetMachine().getSubtargetImpl()->getInstrInfo());
+  const SIInstrInfo *TII =
+      static_cast<const SIInstrInfo *>(Subtarget->getInstrInfo());
 #if 1
     // XXX - Workaround for moveToVALU not handling different register class
     // inserts for REG_SEQUENCE.
@@ -2091,8 +2083,8 @@ MachineSDNode *SITargetLowering::buildRSRC(SelectionDAG &DAG,
 MachineSDNode *SITargetLowering::buildScratchRSRC(SelectionDAG &DAG,
                                                   SDLoc DL,
                                                   SDValue Ptr) const {
-  const SIInstrInfo *TII = static_cast<const SIInstrInfo *>(
-      getTargetMachine().getSubtargetImpl()->getInstrInfo());
+  const SIInstrInfo *TII =
+      static_cast<const SIInstrInfo *>(Subtarget->getInstrInfo());
   uint64_t Rsrc = TII->getDefaultRsrcDataFormat() | AMDGPU::RSRC_TID_ENABLE |
                   0xffffffff; // Size
 

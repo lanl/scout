@@ -83,6 +83,8 @@ void StringSaver::anchor() {}
 
 //===----------------------------------------------------------------------===//
 
+namespace {
+
 class CommandLineParser {
 public:
   // Globals for name and overview of program.  Program name is not a string to
@@ -178,7 +180,7 @@ public:
             nullptr != ConsumeAfterOpt);
   }
 
-  void updateArgStr(Option *O, const char* NewName) {
+  void updateArgStr(Option *O, const char *NewName) {
     if (!OptionsMap.insert(std::make_pair(NewName, O)).second) {
       errs() << ProgramName << ": CommandLine Error: Option '" << O->ArgStr
              << "' registered more than once!\n";
@@ -186,7 +188,11 @@ public:
     }
     OptionsMap.erase(StringRef(O->ArgStr));
   }
+
+  void printOptionValues();
 };
+
+} // namespace
 
 static ManagedStatic<CommandLineParser> GlobalParser;
 
@@ -1725,12 +1731,14 @@ void HelpPrinterWrapper::operator=(bool Value) {
 }
 
 // Print the value of each option.
-void cl::PrintOptionValues() {
+void cl::PrintOptionValues() { GlobalParser->printOptionValues(); }
+
+void CommandLineParser::printOptionValues() {
   if (!PrintOptions && !PrintAllOptions)
     return;
 
   SmallVector<std::pair<const char *, Option *>, 128> Opts;
-  sortOpts(GlobalParser->OptionsMap, Opts, /*ShowHidden*/ true);
+  sortOpts(OptionsMap, Opts, /*ShowHidden*/ true);
 
   // Compute the maximum argument length...
   size_t MaxArgLen = 0;
