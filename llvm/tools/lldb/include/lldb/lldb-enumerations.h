@@ -378,6 +378,8 @@ namespace lldb {
         eLanguageTypeUPC             = 0x0012,   ///< Unified Parallel C.
         eLanguageTypeD               = 0x0013,   ///< D.
         eLanguageTypePython          = 0x0014,   ///< Python.
+        // NOTE: The below are DWARF5 constants, subject to change upon
+        // completion of the DWARF5 specification
         eLanguageTypeOpenCL          = 0x0015,   ///< OpenCL.
         eLanguageTypeGo              = 0x0016,   ///< Go.
         eLanguageTypeModula3         = 0x0017,   ///< Modula 3.
@@ -392,10 +394,15 @@ namespace lldb {
         eLanguageTypeJulia           = 0x001f,   ///< Julia.
         eLanguageTypeDylan           = 0x0020,   ///< Dylan.
 
+        eLanguageTypeC_plus_plus_14  = 0x0021,   ///< ISO C++:2014.
+        eLanguageTypeFortran03       = 0x0022,   ///< ISO Fortran 2003.
+        eLanguageTypeFortran08       = 0x0023,   ///< ISO Fortran 2008.
+
         // +===== Scout ==================
         eLanguageTypeScoutC           = 0x9000,
-        eNumLanguageTypes = 34
         // +==============================  
+
+        eNumLanguageTypes
     } LanguageType;
     
     typedef enum InstrumentationRuntimeType {
