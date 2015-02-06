@@ -126,7 +126,12 @@ private:
   void findVRegIntervalsToAlloc(const MachineFunction &MF, LiveIntervals &LIS);
 
   /// \brief Constructs an initial graph.
-  void initializeGraph(PBQPRAGraph &G);
+  void initializeGraph(PBQPRAGraph &G, VirtRegMap &VRM, Spiller &VRegSpiller);
+
+  /// \brief Spill the given VReg.
+  void spillVReg(unsigned VReg, SmallVectorImpl<unsigned> &NewIntervals,
+                 MachineFunction &MF, LiveIntervals &LIS, VirtRegMap &VRM,
+                 Spiller &VRegSpiller);
 
   /// \brief Given a solved PBQP problem maps this solution back to a register
   /// assignment.
@@ -486,7 +491,8 @@ static bool isACalleeSavedRegister(unsigned reg, const TargetRegisterInfo &TRI,
   return false;
 }
 
-void RegAllocPBQP::initializeGraph(PBQPRAGraph &G) {
+void RegAllocPBQP::initializeGraph(PBQPRAGraph &G, VirtRegMap &VRM,
+                                   Spiller &VRegSpiller) {
   MachineFunction &MF = G.getMetadata().MF;
 
   LiveIntervals &LIS = G.getMetadata().LIS;
@@ -494,7 +500,12 @@ void RegAllocPBQP::initializeGraph(PBQPRAGraph &G) {
   const TargetRegisterInfo &TRI =
       *G.getMetadata().MF.getSubtarget().getRegisterInfo();
 
-  for (auto VReg : VRegsToAlloc) {
+  std::vector<unsigned> Worklist(VRegsToAlloc.begin(), VRegsToAlloc.end());
+
+  while (!Worklist.empty()) {
+    unsigned VReg = Worklist.back();
+    Worklist.pop_back();
+
     const TargetRegisterClass *TRC = MRI.getRegClass(VReg);
     LiveInterval &VRegLI = LIS.getInterval(VReg);
 
@@ -529,6 +540,16 @@ void RegAllocPBQP::initializeGraph(PBQPRAGraph &G) {
       VRegAllowed.push_back(PReg);
     }
 
+    // Check for vregs that have no allowed registers. These should be
+    // pre-spilled and the new vregs added to the worklist.
+    if (VRegAllowed.empty()) {
+      SmallVector<unsigned, 8> NewVRegs;
+      spillVReg(VReg, NewVRegs, MF, LIS, VRM, VRegSpiller);
+      for (auto NewVReg : NewVRegs)
+        Worklist.push_back(NewVReg);
+      continue;
+    }
+
     PBQPRAGraph::RawVector NodeCosts(VRegAllowed.size() + 1, 0);
 
     // Tweak cost of callee saved registers, as using then force spilling and
@@ -543,6 +564,33 @@ void RegAllocPBQP::initializeGraph(PBQPRAGraph &G) {
       G.getMetadata().getAllowedRegs(std::move(VRegAllowed)));
     G.getMetadata().setNodeIdForVReg(VReg, NId);
   }
+}
+
+void RegAllocPBQP::spillVReg(unsigned VReg,
+                             SmallVectorImpl<unsigned> &NewIntervals,
+                             MachineFunction &MF, LiveIntervals &LIS,
+                             VirtRegMap &VRM, Spiller &VRegSpiller) {
+
+  VRegsToAlloc.erase(VReg);
+  LiveRangeEdit LRE(&LIS.getInterval(VReg), NewIntervals, MF, LIS, &VRM);
+  VRegSpiller.spill(LRE);
+
+  const TargetRegisterInfo &TRI = *MF.getSubtarget().getRegisterInfo();
+  (void)TRI;
+  DEBUG(dbgs() << "VREG " << PrintReg(VReg, &TRI) << " -> SPILLED (Cost: "
+               << LRE.getParent().weight << ", New vregs: ");
+
+  // Copy any newly inserted live intervals into the list of regs to
+  // allocate.
+  for (LiveRangeEdit::iterator I = LRE.begin(), E = LRE.end();
+       I != E; ++I) {
+    const LiveInterval &LI = LIS.getInterval(*I);
+    assert(!LI.empty() && "Empty spill range.");
+    DEBUG(dbgs() << PrintReg(LI.reg, &TRI) << " ");
+    VRegsToAlloc.insert(LI.reg);
+  }
+
+  DEBUG(dbgs() << ")\n");
 }
 
 bool RegAllocPBQP::mapPBQPToRegAlloc(const PBQPRAGraph &G,
@@ -573,28 +621,11 @@ bool RegAllocPBQP::mapPBQPToRegAlloc(const PBQPRAGraph &G,
       assert(PReg != 0 && "Invalid preg selected.");
       VRM.assignVirt2Phys(VReg, PReg);
     } else {
-      VRegsToAlloc.erase(VReg);
-      SmallVector<unsigned, 8> NewSpills;
-      LiveRangeEdit LRE(&LIS.getInterval(VReg), NewSpills, MF, LIS, &VRM);
-      VRegSpiller.spill(LRE);
-
-      DEBUG(dbgs() << "VREG " << PrintReg(VReg, &TRI) << " -> SPILLED (Cost: "
-                   << LRE.getParent().weight << ", New vregs: ");
-
-      // Copy any newly inserted live intervals into the list of regs to
-      // allocate.
-      for (LiveRangeEdit::iterator I = LRE.begin(), E = LRE.end();
-           I != E; ++I) {
-        LiveInterval &LI = LIS.getInterval(*I);
-        assert(!LI.empty() && "Empty spill range.");
-        DEBUG(dbgs() << PrintReg(LI.reg, &TRI) << " ");
-        VRegsToAlloc.insert(LI.reg);
-      }
-
-      DEBUG(dbgs() << ")\n");
-
-      // We need another round if spill intervals were added.
-      AnotherRoundNeeded |= !LRE.empty();
+      // Spill VReg. If this introduces new intervals we'll need another round
+      // of allocation.
+      SmallVector<unsigned, 8> NewVRegs;
+      spillVReg(VReg, NewVRegs, MF, LIS, VRM, VRegSpiller);
+      AnotherRoundNeeded |= !NewVRegs.empty();
     }
   }
 
@@ -683,7 +714,7 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
       DEBUG(dbgs() << "  PBQP Regalloc round " << Round << ":\n");
 
       PBQPRAGraph G(PBQPRAGraph::GraphMetadata(MF, LIS, MBFI));
-      initializeGraph(G);
+      initializeGraph(G, VRM, *VRegSpiller);
       ConstraintsRoot->apply(G);
 
 #ifndef NDEBUG
@@ -696,7 +727,7 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
         raw_fd_ostream OS(GraphFileName, EC, sys::fs::F_Text);
         DEBUG(dbgs() << "Dumping graph for round " << Round << " to \""
               << GraphFileName << "\"\n");
-        G.dumpToStream(OS);
+        G.dump(OS);
       }
 #endif
 
@@ -714,6 +745,79 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
   DEBUG(dbgs() << "Post alloc VirtRegMap:\n" << VRM << "\n");
 
   return true;
+}
+
+namespace {
+// A helper class for printing node and register info in a consistent way
+class PrintNodeInfo {
+public:
+  typedef PBQP::RegAlloc::PBQPRAGraph Graph;
+  typedef PBQP::RegAlloc::PBQPRAGraph::NodeId NodeId;
+
+  PrintNodeInfo(NodeId NId, const Graph &G) : G(G), NId(NId) {}
+
+  void print(raw_ostream &OS) const {
+    const MachineRegisterInfo &MRI = G.getMetadata().MF.getRegInfo();
+    const TargetRegisterInfo *TRI = MRI.getTargetRegisterInfo();
+    unsigned VReg = G.getNodeMetadata(NId).getVReg();
+    const char *RegClassName = TRI->getRegClassName(MRI.getRegClass(VReg));
+    OS << NId << " (" << RegClassName << ':' << PrintReg(VReg, TRI) << ')';
+  }
+
+private:
+  const Graph &G;
+  NodeId NId;
+};
+
+inline raw_ostream &operator<<(raw_ostream &OS, const PrintNodeInfo &PR) {
+  PR.print(OS);
+  return OS;
+}
+} // anonymous namespace
+
+void PBQP::RegAlloc::PBQPRAGraph::dump(raw_ostream &OS) const {
+  for (auto NId : nodeIds()) {
+    const Vector &Costs = getNodeCosts(NId);
+    assert(Costs.getLength() != 0 && "Empty vector in graph.");
+    OS << PrintNodeInfo(NId, *this) << ": " << Costs << '\n';
+  }
+  OS << '\n';
+
+  for (auto EId : edgeIds()) {
+    NodeId N1Id = getEdgeNode1Id(EId);
+    NodeId N2Id = getEdgeNode2Id(EId);
+    assert(N1Id != N2Id && "PBQP graphs should not have self-edges.");
+    const Matrix &M = getEdgeCosts(EId);
+    assert(M.getRows() != 0 && "No rows in matrix.");
+    assert(M.getCols() != 0 && "No cols in matrix.");
+    OS << PrintNodeInfo(N1Id, *this) << ' ' << M.getRows() << " rows / ";
+    OS << PrintNodeInfo(N2Id, *this) << ' ' << M.getCols() << " cols:\n";
+    OS << M << '\n';
+  }
+}
+
+void PBQP::RegAlloc::PBQPRAGraph::dump() const { dump(dbgs()); }
+
+void PBQP::RegAlloc::PBQPRAGraph::printDot(raw_ostream &OS) const {
+  OS << "graph {\n";
+  for (auto NId : nodeIds()) {
+    OS << "  node" << NId << " [ label=\""
+       << PrintNodeInfo(NId, *this) << "\\n"
+       << getNodeCosts(NId) << "\" ]\n";
+  }
+
+  OS << "  edge [ len=" << nodeIds().size() << " ]\n";
+  for (auto EId : edgeIds()) {
+    OS << "  node" << getEdgeNode1Id(EId)
+       << " -- node" << getEdgeNode2Id(EId)
+       << " [ label=\"";
+    const Matrix &EdgeCosts = getEdgeCosts(EId);
+    for (unsigned i = 0; i < EdgeCosts.getRows(); ++i) {
+      OS << EdgeCosts.getRowAsVector(i) << "\\n";
+    }
+    OS << "\" ]\n";
+  }
+  OS << "}\n";
 }
 
 FunctionPass *llvm::createPBQPRegisterAllocator(char *customPassID) {

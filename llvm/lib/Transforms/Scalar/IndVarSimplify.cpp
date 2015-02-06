@@ -1936,7 +1936,8 @@ bool IndVarSimplify::runOnLoop(Loop *L, LPPassManager &LPM) {
   DL = DLP ? &DLP->getDataLayout() : nullptr;
   auto *TLIP = getAnalysisIfAvailable<TargetLibraryInfoWrapperPass>();
   TLI = TLIP ? &TLIP->getTLI() : nullptr;
-  TTI = getAnalysisIfAvailable<TargetTransformInfo>();
+  auto *TTIP = getAnalysisIfAvailable<TargetTransformInfoWrapperPass>();
+  TTI = TTIP ? &TTIP->getTTI(*L->getHeader()->getParent()) : nullptr;
 
   DeadInsts.clear();
   Changed = false;

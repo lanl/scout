@@ -14,6 +14,7 @@
 #include "PPCTargetMachine.h"
 #include "PPC.h"
 #include "PPCTargetObjectFile.h"
+#include "PPCTargetTransformInfo.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/MC/MCStreamer.h"
@@ -28,6 +29,10 @@ using namespace llvm;
 static cl::
 opt<bool> DisableCTRLoops("disable-ppc-ctrloops", cl::Hidden,
                         cl::desc("Disable CTR loops for PPC"));
+
+static cl::
+opt<bool> DisablePreIncPrep("disable-ppc-preinc-prep", cl::Hidden,
+                            cl::desc("Disable PPC loop preinc prep"));
 
 static cl::opt<bool>
 VSXFMAMutateEarly("schedule-ppc-vsx-fma-mutation-early",
@@ -196,10 +201,6 @@ public:
     return getTM<PPCTargetMachine>();
   }
 
-  const PPCSubtarget &getPPCSubtarget() const {
-    return *getPPCTargetMachine().getSubtargetImpl();
-  }
-
   void addIRPasses() override;
   bool addPreISel() override;
   bool addILPOpts() override;
@@ -234,6 +235,9 @@ void PPCPassConfig::addIRPasses() {
 }
 
 bool PPCPassConfig::addPreISel() {
+  if (!DisablePreIncPrep && getOptLevel() != CodeGenOpt::None)
+    addPass(createPPCLoopPreIncPrepPass(getPPCTargetMachine()));
+
   if (!DisableCTRLoops && getOptLevel() != CodeGenOpt::None)
     addPass(createPPCCTRLoops(getPPCTargetMachine()));
 
@@ -262,11 +266,10 @@ void PPCPassConfig::addPreRegAlloc() {
   initializePPCVSXFMAMutatePass(*PassRegistry::getPassRegistry());
   insertPass(VSXFMAMutateEarly ? &RegisterCoalescerID : &MachineSchedulerID,
              &PPCVSXFMAMutateID);
+  addPass(createPPCTLSDynamicCallPass());
 }
 
 void PPCPassConfig::addPreSched2() {
-  addPass(createPPCVSXCopyCleanupPass(), false);
-
   if (getOptLevel() != CodeGenOpt::None)
     addPass(&IfConverterID);
 }
@@ -278,10 +281,7 @@ void PPCPassConfig::addPreEmitPass() {
   addPass(createPPCBranchSelectionPass(), false);
 }
 
-void PPCTargetMachine::addAnalysisPasses(PassManagerBase &PM) {
-  // Add first the target-independent BasicTTI pass, then our PPC pass. This
-  // allows the PPC pass to delegate to the target independent layer when
-  // appropriate.
-  PM.add(createBasicTargetTransformInfoPass(this));
-  PM.add(createPPCTargetTransformInfoPass(this));
+TargetIRAnalysis PPCTargetMachine::getTargetIRAnalysis() {
+  return TargetIRAnalysis(
+      [this](Function &F) { return TargetTransformInfo(PPCTTIImpl(this, F)); });
 }

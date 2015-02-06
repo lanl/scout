@@ -158,6 +158,10 @@ namespace llvm {
       /// vector to a GPR.
       MMX_MOVD2W,
 
+      /// MMX_MOVW2D - Copies a GPR into the low 32-bit word of a MMX vector
+      /// and zero out the high word.
+      MMX_MOVW2D,
+
       /// PEXTRB - Extract an 8-bit value from a vector and zero extend it to
       /// i32, corresponds to X86::PEXTRB.
       PEXTRB,
@@ -554,7 +558,8 @@ namespace llvm {
   //  X86 Implementation of the TargetLowering interface
   class X86TargetLowering final : public TargetLowering {
   public:
-    explicit X86TargetLowering(const X86TargetMachine &TM);
+    explicit X86TargetLowering(const X86TargetMachine &TM,
+                               const X86Subtarget &STI);
 
     unsigned getJumpTableEncoding() const override;
 
@@ -739,6 +744,10 @@ namespace llvm {
     bool isZExtFree(EVT VT1, EVT VT2) const override;
     bool isZExtFree(SDValue Val, EVT VT2) const override;
 
+    /// Return true if folding a vector load into ExtVal (a sign, zero, or any
+    /// extend node) is profitable.
+    bool isVectorLoadExtDesirable(SDValue) const override;
+
     /// Return true if an FMA operation is faster than a pair of fmul and fadd
     /// instructions. fmuladd intrinsics will be expanded to FMAs when this
     /// method returns true, otherwise fmuladd is expanded to fmul + fadd.
@@ -781,10 +790,6 @@ namespace llvm {
     /// load node to a smaller type.
     bool shouldReduceLoadWidth(SDNode *Load, ISD::LoadExtType ExtTy,
                                EVT NewVT) const override;
-
-    const X86Subtarget* getSubtarget() const {
-      return Subtarget;
-    }
 
     /// Return true if the specified scalar FP type is computed in an SSE
     /// register, not on the X87 floating point stack.
@@ -834,9 +839,6 @@ namespace llvm {
 
     bool isNoopAddrSpaceCast(unsigned SrcAS, unsigned DestAS) const override;
 
-    /// \brief Reset the operation actions based on target options.
-    void resetOperationActions() override;
-
     bool useLoadStackGuardNode() const override;
     /// \brief Customize the preferred legalization strategy for certain types.
     LegalizeTypeAction getPreferredVectorAction(EVT VT) const override;
@@ -850,10 +852,6 @@ namespace llvm {
     /// make the right decision when generating code for different targets.
     const X86Subtarget *Subtarget;
     const DataLayout *TD;
-
-    /// Used to store the TargetOptions so that we don't waste time resetting
-    /// the operation actions unless we have to.
-    TargetOptions TO;
 
     /// Select between SSE or x87 floating point ops.
     /// When SSE is available, use it for f32 operations.

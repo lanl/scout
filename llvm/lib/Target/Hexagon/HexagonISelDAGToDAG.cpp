@@ -47,7 +47,7 @@ namespace {
 class HexagonDAGToDAGISel : public SelectionDAGISel {
   /// Subtarget - Keep a pointer to the Hexagon Subtarget around so that we can
   /// make the right decision when generating code for different targets.
-  const HexagonSubtarget &Subtarget;
+  const HexagonSubtarget *Subtarget;
 
   // Keep a reference to HexagonTargetMachine.
   const HexagonTargetMachine& TM;
@@ -55,9 +55,7 @@ class HexagonDAGToDAGISel : public SelectionDAGISel {
 public:
   explicit HexagonDAGToDAGISel(HexagonTargetMachine &targetmachine,
                                CodeGenOpt::Level OptLevel)
-    : SelectionDAGISel(targetmachine, OptLevel),
-      Subtarget(targetmachine.getSubtarget<HexagonSubtarget>()),
-      TM(targetmachine) {
+      : SelectionDAGISel(targetmachine, OptLevel), TM(targetmachine) {
     initializeHexagonDAGToDAGISelPass(*PassRegistry::getPassRegistry());
   }
   bool hasNumUsesBelowThresGA(SDNode *N) const;
@@ -79,10 +77,19 @@ public:
   bool SelectADDRriU6_1(SDValue& N, SDValue &R1, SDValue &R2);
   bool SelectADDRriU6_2(SDValue& N, SDValue &R1, SDValue &R2);
 
+  // Complex Pattern Selectors.
+  inline bool SelectAddrGA(SDValue &N, SDValue &R);
+  inline bool SelectAddrGP(SDValue &N, SDValue &R);
+  bool SelectGlobalAddress(SDValue &N, SDValue &R, bool UseGP);
   bool SelectAddrFI(SDValue &N, SDValue &R);
 
   const char *getPassName() const override {
     return "Hexagon DAG->DAG Pattern Instruction Selection";
+  }
+
+  bool runOnMachineFunction(MachineFunction &MF) override {
+    Subtarget = &MF.getSubtarget<HexagonSubtarget>();
+    return SelectionDAGISel::runOnMachineFunction(MF);
   }
 
   /// SelectInlineAsmMemoryOperand - Implement addressing mode selection for
@@ -411,8 +418,7 @@ SDNode *HexagonDAGToDAGISel::SelectIndexedLoadSignExtend64(LoadSDNode *LD,
 
   if (SelectADDRriS11_2(N1, CPTmpN1_0, CPTmpN1_1) &&
       N1.getNode()->getValueType(0) == MVT::i32) {
-    const HexagonInstrInfo *TII = static_cast<const HexagonInstrInfo *>(
-        TM.getSubtargetImpl()->getInstrInfo());
+    const HexagonInstrInfo *TII = Subtarget->getInstrInfo();
     if (TII->isValidAutoIncImm(LoadedVT, Val)) {
       SDValue TargetConst = CurDAG->getTargetConstant(Val, MVT::i32);
       SDNode *Result_1 = CurDAG->getMachineNode(Opcode, dl, MVT::i32, MVT::i32,
@@ -441,7 +447,7 @@ SDNode *HexagonDAGToDAGISel::SelectIndexedLoadSignExtend64(LoadSDNode *LD,
                                               Chain);
     SDNode *Result_2 = CurDAG->getMachineNode(Hexagon::A2_sxtw, dl,
                                                 MVT::i64, SDValue(Result_1, 0));
-    SDNode* Result_3 = CurDAG->getMachineNode(Hexagon::ADD_ri, dl,
+    SDNode* Result_3 = CurDAG->getMachineNode(Hexagon::A2_addi, dl,
                                               MVT::i32, Base, TargetConstVal,
                                                 SDValue(Result_1, 1));
     MachineSDNode::mmo_iterator MemOp = MF->allocateMemRefsArray(1);
@@ -478,8 +484,7 @@ SDNode *HexagonDAGToDAGISel::SelectIndexedLoadZeroExtend64(LoadSDNode *LD,
 
   if (SelectADDRriS11_2(N1, CPTmpN1_0, CPTmpN1_1) &&
       N1.getNode()->getValueType(0) == MVT::i32) {
-    const HexagonInstrInfo *TII = static_cast<const HexagonInstrInfo *>(
-        TM.getSubtargetImpl()->getInstrInfo());
+    const HexagonInstrInfo *TII = Subtarget->getInstrInfo();
     if (TII->isValidAutoIncImm(LoadedVT, Val)) {
       SDValue TargetConstVal = CurDAG->getTargetConstant(Val, MVT::i32);
       SDValue TargetConst0 = CurDAG->getTargetConstant(0, MVT::i32);
@@ -520,7 +525,7 @@ SDNode *HexagonDAGToDAGISel::SelectIndexedLoadZeroExtend64(LoadSDNode *LD,
                                               SDValue(Result_2,0),
                                               SDValue(Result_1,0));
     // Add offset to base.
-    SDNode* Result_4 = CurDAG->getMachineNode(Hexagon::ADD_ri, dl, MVT::i32,
+    SDNode* Result_4 = CurDAG->getMachineNode(Hexagon::A2_addi, dl, MVT::i32,
                                               Base, TargetConstVal,
                                               SDValue(Result_1, 1));
     MachineSDNode::mmo_iterator MemOp = MF->allocateMemRefsArray(1);
@@ -556,8 +561,7 @@ SDNode *HexagonDAGToDAGISel::SelectIndexedLoad(LoadSDNode *LD, SDLoc dl) {
   bool zextval = (LD->getExtensionType() == ISD::ZEXTLOAD);
 
   // Figure out the opcode.
-  const HexagonInstrInfo *TII = static_cast<const HexagonInstrInfo *>(
-      TM.getSubtargetImpl()->getInstrInfo());
+  const HexagonInstrInfo *TII = Subtarget->getInstrInfo();
   if (LoadedVT == MVT::i64) {
     if (TII->isValidAutoIncImm(LoadedVT, Val))
       Opcode = Hexagon::L2_loadrd_pi;
@@ -617,7 +621,7 @@ SDNode *HexagonDAGToDAGISel::SelectIndexedLoad(LoadSDNode *LD, SDLoc dl) {
                                               LD->getValueType(0),
                                               MVT::Other, Base, TargetConst0,
                                               Chain);
-    SDNode* Result_2 = CurDAG->getMachineNode(Hexagon::ADD_ri, dl, MVT::i32,
+    SDNode* Result_2 = CurDAG->getMachineNode(Hexagon::A2_addi, dl, MVT::i32,
                                               Base, TargetConstVal,
                                               SDValue(Result_1, 1));
     MachineSDNode::mmo_iterator MemOp = MF->allocateMemRefsArray(1);
@@ -666,8 +670,7 @@ SDNode *HexagonDAGToDAGISel::SelectIndexedStore(StoreSDNode *ST, SDLoc dl) {
 
   // Offset value must be within representable range
   // and must have correct alignment properties.
-  const HexagonInstrInfo *TII = static_cast<const HexagonInstrInfo *>(
-      TM.getSubtargetImpl()->getInstrInfo());
+  const HexagonInstrInfo *TII = Subtarget->getInstrInfo();
   if (TII->isValidAutoIncImm(StoredVT, Val)) {
     SDValue Ops[] = {Base, CurDAG->getTargetConstant(Val, MVT::i32), Value,
                      Chain};
@@ -710,7 +713,7 @@ SDNode *HexagonDAGToDAGISel::SelectIndexedStore(StoreSDNode *ST, SDLoc dl) {
   SDValue TargetConstVal = CurDAG->getTargetConstant(Val, MVT::i32);
   SDNode* Result_1 = CurDAG->getMachineNode(Opcode, dl, MVT::Other, Ops);
   // Build splitted incriment instruction.
-  SDNode* Result_2 = CurDAG->getMachineNode(Hexagon::ADD_ri, dl, MVT::i32,
+  SDNode* Result_2 = CurDAG->getMachineNode(Hexagon::A2_addi, dl, MVT::i32,
                                             Base,
                                             TargetConstVal,
                                             SDValue(Result_1, 0));
@@ -1629,6 +1632,55 @@ bool HexagonDAGToDAGISel::SelectAddrFI(SDValue& N, SDValue &R) {
   FrameIndexSDNode *FX = cast<FrameIndexSDNode>(N);
   R = CurDAG->getTargetFrameIndex(FX->getIndex(), MVT::i32);
   return true;
+}
+
+inline bool HexagonDAGToDAGISel::SelectAddrGA(SDValue &N, SDValue &R) {
+  return SelectGlobalAddress(N, R, false);
+}
+
+inline bool HexagonDAGToDAGISel::SelectAddrGP(SDValue &N, SDValue &R) {
+  return SelectGlobalAddress(N, R, true);
+}
+
+bool HexagonDAGToDAGISel::SelectGlobalAddress(SDValue &N, SDValue &R,
+                                              bool UseGP) {
+  switch (N.getOpcode()) {
+  case ISD::ADD: {
+    SDValue N0 = N.getOperand(0);
+    SDValue N1 = N.getOperand(1);
+    unsigned GAOpc = N0.getOpcode();
+    if (UseGP && GAOpc != HexagonISD::CONST32_GP)
+      return false;
+    if (!UseGP && GAOpc != HexagonISD::CONST32)
+      return false;
+    if (ConstantSDNode *Const = dyn_cast<ConstantSDNode>(N1)) {
+      SDValue Addr = N0.getOperand(0);
+      if (GlobalAddressSDNode *GA = dyn_cast<GlobalAddressSDNode>(Addr)) {
+        if (GA->getOpcode() == ISD::TargetGlobalAddress) {
+          uint64_t NewOff = GA->getOffset() + (uint64_t)Const->getSExtValue();
+          R = CurDAG->getTargetGlobalAddress(GA->getGlobal(), SDLoc(Const),
+                                             N.getValueType(), NewOff);
+          return true;
+        }
+      }
+    }
+    break;
+  }
+  case HexagonISD::CONST32:
+    // The operand(0) of CONST32 is TargetGlobalAddress, which is what we
+    // want in the instruction.
+    if (!UseGP)
+      R = N.getOperand(0);
+    return !UseGP;
+  case HexagonISD::CONST32_GP:
+    if (UseGP)
+      R = N.getOperand(0);
+    return UseGP;
+  default:
+    return false;
+  }
+
+  return false;
 }
 
 bool HexagonDAGToDAGISel::isValueExtension(SDValue const &Val,

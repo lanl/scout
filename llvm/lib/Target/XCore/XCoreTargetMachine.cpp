@@ -12,6 +12,7 @@
 
 #include "XCoreTargetMachine.h"
 #include "XCoreTargetObjectFile.h"
+#include "XCoreTargetTransformInfo.h"
 #include "XCore.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/IR/Module.h"
@@ -82,10 +83,7 @@ extern "C" void LLVMInitializeXCoreTarget() {
   RegisterTargetMachine<XCoreTargetMachine> X(TheXCoreTarget);
 }
 
-void XCoreTargetMachine::addAnalysisPasses(PassManagerBase &PM) {
-  // Add first the target-independent BasicTTI pass, then our XCore pass. This
-  // allows the XCore pass to delegate to the target independent layer when
-  // appropriate.
-  PM.add(createBasicTargetTransformInfoPass(this));
-  PM.add(createXCoreTargetTransformInfoPass(this));
+TargetIRAnalysis XCoreTargetMachine::getTargetIRAnalysis() {
+  return TargetIRAnalysis(
+      [this](Function &) { return TargetTransformInfo(XCoreTTIImpl(this)); });
 }

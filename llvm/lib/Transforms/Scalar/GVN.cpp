@@ -711,6 +711,8 @@ namespace {
     bool iterateOnFunction(Function &F);
     bool performPRE(Function &F);
     bool performScalarPRE(Instruction *I);
+    bool performScalarPREInsertion(Instruction *Instr, BasicBlock *Pred,
+                                   unsigned int ValNo);
     Value *findLeader(const BasicBlock *BB, uint32_t num);
     void cleanupGlobalSets();
     void verifyRemoved(const Instruction *I) const;
@@ -2182,9 +2184,16 @@ bool GVN::propagateEquality(Value *LHS, Value *RHS,
 
       // Handle the floating point versions of equality comparisons too.
       if ((isKnownTrue && Cmp->getPredicate() == CmpInst::FCMP_OEQ) ||
-          (isKnownFalse && Cmp->getPredicate() == CmpInst::FCMP_UNE))
-        Worklist.push_back(std::make_pair(Op0, Op1));
-
+          (isKnownFalse && Cmp->getPredicate() == CmpInst::FCMP_UNE)) {
+        // Floating point -0.0 and 0.0 compare equal, so we can't
+        // propagate a constant based on that comparison.
+        // FIXME: We should do this optimization if 'no signed zeros' is
+        // applicable via an instruction-level fast-math-flag or some other
+        // indicator that relaxed FP semantics are being used.
+        if (!isa<ConstantFP>(Op1) || !cast<ConstantFP>(Op1)->isZero())
+          Worklist.push_back(std::make_pair(Op0, Op1));
+      }
+ 
       // If "A >= B" is known true, replace "A < B" with false everywhere.
       CmpInst::Predicate NotPred = Cmp->getInversePredicate();
       Constant *NotVal = ConstantInt::get(Cmp->getType(), isKnownFalse);
@@ -2447,6 +2456,43 @@ bool GVN::processBlock(BasicBlock *BB) {
   return ChangedFunction;
 }
 
+// Instantiate an expression in a predecessor that lacked it.
+bool GVN::performScalarPREInsertion(Instruction *Instr, BasicBlock *Pred,
+                                    unsigned int ValNo) {
+  // Because we are going top-down through the block, all value numbers
+  // will be available in the predecessor by the time we need them.  Any
+  // that weren't originally present will have been instantiated earlier
+  // in this loop.
+  bool success = true;
+  for (unsigned i = 0, e = Instr->getNumOperands(); i != e; ++i) {
+    Value *Op = Instr->getOperand(i);
+    if (isa<Argument>(Op) || isa<Constant>(Op) || isa<GlobalValue>(Op))
+      continue;
+
+    if (Value *V = findLeader(Pred, VN.lookup(Op))) {
+      Instr->setOperand(i, V);
+    } else {
+      success = false;
+      break;
+    }
+  }
+
+  // Fail out if we encounter an operand that is not available in
+  // the PRE predecessor.  This is typically because of loads which
+  // are not value numbered precisely.
+  if (!success)
+    return false;
+
+  Instr->insertBefore(Pred->getTerminator());
+  Instr->setName(Instr->getName() + ".pre");
+  Instr->setDebugLoc(Instr->getDebugLoc());
+  VN.add(Instr, ValNo);
+
+  // Update the availability map to include the new instruction.
+  addToLeaderTable(ValNo, Instr, Pred);
+  return true;
+}
+
 bool GVN::performScalarPRE(Instruction *CurInst) {
   SmallVector<std::pair<Value*, BasicBlock*>, 8> predMap;
 
@@ -2513,59 +2559,42 @@ bool GVN::performScalarPRE(Instruction *CurInst) {
 
   // Don't do PRE when it might increase code size, i.e. when
   // we would need to insert instructions in more than one pred.
-  if (NumWithout != 1 || NumWith == 0)
+  if (NumWithout > 1 || NumWith == 0)
     return false;
 
-  // Don't do PRE across indirect branch.
-  if (isa<IndirectBrInst>(PREPred->getTerminator()))
-    return false;
+  // We may have a case where all predecessors have the instruction,
+  // and we just need to insert a phi node. Otherwise, perform
+  // insertion.
+  Instruction *PREInstr = nullptr;
 
-  // We can't do PRE safely on a critical edge, so instead we schedule
-  // the edge to be split and perform the PRE the next time we iterate
-  // on the function.
-  unsigned SuccNum = GetSuccessorNumber(PREPred, CurrentBlock);
-  if (isCriticalEdge(PREPred->getTerminator(), SuccNum)) {
-    toSplit.push_back(std::make_pair(PREPred->getTerminator(), SuccNum));
-    return false;
-  }
+  if (NumWithout != 0) {
+    // Don't do PRE across indirect branch.
+    if (isa<IndirectBrInst>(PREPred->getTerminator()))
+      return false;
 
-  // Instantiate the expression in the predecessor that lacked it.
-  // Because we are going top-down through the block, all value numbers
-  // will be available in the predecessor by the time we need them.  Any
-  // that weren't originally present will have been instantiated earlier
-  // in this loop.
-  Instruction *PREInstr = CurInst->clone();
-  bool success = true;
-  for (unsigned i = 0, e = CurInst->getNumOperands(); i != e; ++i) {
-    Value *Op = PREInstr->getOperand(i);
-    if (isa<Argument>(Op) || isa<Constant>(Op) || isa<GlobalValue>(Op))
-      continue;
-
-    if (Value *V = findLeader(PREPred, VN.lookup(Op))) {
-      PREInstr->setOperand(i, V);
-    } else {
-      success = false;
-      break;
+    // We can't do PRE safely on a critical edge, so instead we schedule
+    // the edge to be split and perform the PRE the next time we iterate
+    // on the function.
+    unsigned SuccNum = GetSuccessorNumber(PREPred, CurrentBlock);
+    if (isCriticalEdge(PREPred->getTerminator(), SuccNum)) {
+      toSplit.push_back(std::make_pair(PREPred->getTerminator(), SuccNum));
+      return false;
+    }
+    // We need to insert somewhere, so let's give it a shot
+    PREInstr = CurInst->clone();
+    if (!performScalarPREInsertion(PREInstr, PREPred, ValNo)) {
+      // If we failed insertion, make sure we remove the instruction.
+      DEBUG(verifyRemoved(PREInstr));
+      delete PREInstr;
+      return false;
     }
   }
 
-  // Fail out if we encounter an operand that is not available in
-  // the PRE predecessor.  This is typically because of loads which
-  // are not value numbered precisely.
-  if (!success) {
-    DEBUG(verifyRemoved(PREInstr));
-    delete PREInstr;
-    return false;
-  }
+  // Either we should have filled in the PRE instruction, or we should
+  // not have needed insertions.
+  assert (PREInstr != nullptr || NumWithout == 0);
 
-  PREInstr->insertBefore(PREPred->getTerminator());
-  PREInstr->setName(CurInst->getName() + ".pre");
-  PREInstr->setDebugLoc(CurInst->getDebugLoc());
-  VN.add(PREInstr, ValNo);
   ++NumGVNPRE;
-
-  // Update the availability map to include the new instruction.
-  addToLeaderTable(ValNo, PREInstr, PREPred);
 
   // Create a PHI to make the value available in this block.
   PHINode *Phi =
@@ -2602,6 +2631,8 @@ bool GVN::performScalarPRE(Instruction *CurInst) {
     MD->removeInstruction(CurInst);
   DEBUG(verifyRemoved(CurInst));
   CurInst->eraseFromParent();
+  ++NumGVNInstr;
+  
   return true;
 }
 

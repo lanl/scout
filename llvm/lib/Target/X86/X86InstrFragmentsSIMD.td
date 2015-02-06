@@ -12,6 +12,17 @@
 //===----------------------------------------------------------------------===//
 
 //===----------------------------------------------------------------------===//
+// MMX specific DAG Nodes.
+//===----------------------------------------------------------------------===//
+
+// Low word of MMX to GPR.
+def MMX_X86movd2w : SDNode<"X86ISD::MMX_MOVD2W", SDTypeProfile<1, 1,
+                            [SDTCisVT<0, i32>, SDTCisVT<1, x86mmx>]>>;
+// GPR to low word of MMX.
+def MMX_X86movw2d : SDNode<"X86ISD::MMX_MOVW2D", SDTypeProfile<1, 1,
+                            [SDTCisVT<0, x86mmx>, SDTCisVT<1, i32>]>>;
+
+//===----------------------------------------------------------------------===//
 // MMX Pattern Fragments
 //===----------------------------------------------------------------------===//
 
@@ -433,7 +444,7 @@ def alignedloadv8i64  : PatFrag<(ops node:$ptr),
 // setting a feature bit in the processor (on startup, for example).
 // Opteron 10h and later implement such a feature.
 def memop : PatFrag<(ops node:$ptr), (load node:$ptr), [{
-  return    Subtarget->hasVectorUAMem()
+  return    Subtarget->hasSSEUnalignedMem()
          || cast<LoadSDNode>(N)->getAlignment() >= 16;
 }]>;
 

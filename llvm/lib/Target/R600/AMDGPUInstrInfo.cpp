@@ -319,10 +319,7 @@ int AMDGPUInstrInfo::getIndirectIndexEnd(const MachineFunction &MF) const {
     return -1;
   }
 
-  Offset = MF.getTarget()
-               .getSubtargetImpl()
-               ->getFrameLowering()
-               ->getFrameIndexOffset(MF, -1);
+  Offset = MF.getSubtarget().getFrameLowering()->getFrameIndexOffset(MF, -1);
 
   return getIndirectIndexBegin(MF) + Offset;
 }
@@ -353,7 +350,7 @@ enum SISubtarget {
   VI = 1
 };
 
-enum SISubtarget AMDGPUSubtargetToSISubtarget(unsigned Gen) {
+static enum SISubtarget AMDGPUSubtargetToSISubtarget(unsigned Gen) {
   switch (Gen) {
   default:
     return SI;

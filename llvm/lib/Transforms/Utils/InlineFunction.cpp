@@ -30,6 +30,7 @@
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
@@ -1111,6 +1112,10 @@ bool llvm::InlineFunction(CallSite CS, InlineFunctionInfo &IFI,
                                                    FirstNewBlock->getInstList(),
                                                    AI, I);
     }
+    // Move any dbg.declares describing the allocas into the entry basic block.
+    DIBuilder DIB(*Caller->getParent());
+    for (auto &AI : IFI.StaticAllocas)
+      replaceDbgDeclareForAlloca(AI, AI, DIB, /*Deref=*/false);
   }
 
   bool InlinedMustTailCalls = false;

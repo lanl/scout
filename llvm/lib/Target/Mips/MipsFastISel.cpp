@@ -60,9 +60,9 @@ class MipsFastISel final : public FastISel {
   /// Subtarget - Keep a pointer to the MipsSubtarget around so that we can
   /// make the right decision when generating code for different targets.
   const TargetMachine &TM;
+  const MipsSubtarget *Subtarget;
   const TargetInstrInfo &TII;
   const TargetLowering &TLI;
-  const MipsSubtarget *Subtarget;
   MipsFunctionInfo *MFI;
 
   // Convenience variables to avoid some queries.
@@ -157,14 +157,15 @@ public:
   explicit MipsFastISel(FunctionLoweringInfo &funcInfo,
                         const TargetLibraryInfo *libInfo)
       : FastISel(funcInfo, libInfo), TM(funcInfo.MF->getTarget()),
-        TII(*TM.getSubtargetImpl()->getInstrInfo()),
-        TLI(*TM.getSubtargetImpl()->getTargetLowering()),
-        Subtarget(&TM.getSubtarget<MipsSubtarget>()) {
+        Subtarget(
+            &static_cast<const MipsSubtarget &>(funcInfo.MF->getSubtarget())),
+        TII(*Subtarget->getInstrInfo()), TLI(*Subtarget->getTargetLowering()) {
     MFI = funcInfo.MF->getInfo<MipsFunctionInfo>();
     Context = &funcInfo.Fn->getContext();
-    TargetSupported = ((TM.getRelocationModel() == Reloc::PIC_) &&
-                       ((Subtarget->hasMips32r2() || Subtarget->hasMips32()) &&
-                        (Subtarget->isABI_O32())));
+    TargetSupported =
+        ((TM.getRelocationModel() == Reloc::PIC_) &&
+         ((Subtarget->hasMips32r2() || Subtarget->hasMips32()) &&
+          (static_cast<const MipsTargetMachine &>(TM).getABI().IsO32())));
     UnsupportedFPMode = Subtarget->isFP64bit();
   }
 
@@ -185,9 +186,9 @@ static bool CC_MipsO32_FP32(unsigned ValNo, MVT ValVT, MVT LocVT,
   llvm_unreachable("should not be called");
 }
 
-bool CC_MipsO32_FP64(unsigned ValNo, MVT ValVT, MVT LocVT,
-                     CCValAssign::LocInfo LocInfo, ISD::ArgFlagsTy ArgFlags,
-                     CCState &State) {
+static bool CC_MipsO32_FP64(unsigned ValNo, MVT ValVT, MVT LocVT,
+                            CCValAssign::LocInfo LocInfo,
+                            ISD::ArgFlagsTy ArgFlags, CCState &State) {
   llvm_unreachable("should not be called");
 }
 

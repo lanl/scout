@@ -37,7 +37,7 @@ using namespace llvm;
 #define DEBUG_TYPE "mips-isel"
 
 bool MipsSEDAGToDAGISel::runOnMachineFunction(MachineFunction &MF) {
-  Subtarget = &TM.getSubtarget<MipsSubtarget>();
+  Subtarget = &static_cast<const MipsSubtarget &>(MF.getSubtarget());
   if (Subtarget->inMips16Mode())
     return false;
   return MipsDAGToDAGISel::runOnMachineFunction(MF);
@@ -130,17 +130,17 @@ void MipsSEDAGToDAGISel::initGlobalBaseReg(MachineFunction &MF) {
   MachineBasicBlock &MBB = MF.front();
   MachineBasicBlock::iterator I = MBB.begin();
   MachineRegisterInfo &RegInfo = MF.getRegInfo();
-  const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
+  const TargetInstrInfo &TII = *Subtarget->getInstrInfo();
   DebugLoc DL = I != MBB.end() ? I->getDebugLoc() : DebugLoc();
   unsigned V0, V1, GlobalBaseReg = MipsFI->getGlobalBaseReg();
   const TargetRegisterClass *RC;
-
-  RC = (Subtarget->isABI_N64()) ? &Mips::GPR64RegClass : &Mips::GPR32RegClass;
+  const MipsABIInfo &ABI = static_cast<const MipsTargetMachine &>(TM).getABI();
+  RC = (ABI.IsN64()) ? &Mips::GPR64RegClass : &Mips::GPR32RegClass;
 
   V0 = RegInfo.createVirtualRegister(RC);
   V1 = RegInfo.createVirtualRegister(RC);
 
-  if (Subtarget->isABI_N64()) {
+  if (ABI.IsN64()) {
     MF.getRegInfo().addLiveIn(Mips::T9_64);
     MBB.addLiveIn(Mips::T9_64);
 
@@ -172,7 +172,7 @@ void MipsSEDAGToDAGISel::initGlobalBaseReg(MachineFunction &MF) {
   MF.getRegInfo().addLiveIn(Mips::T9);
   MBB.addLiveIn(Mips::T9);
 
-  if (Subtarget->isABI_N32()) {
+  if (ABI.IsN32()) {
     // lui $v0, %hi(%neg(%gp_rel(fname)))
     // addu $v1, $v0, $t9
     // addiu $globalbasereg, $v1, %lo(%neg(%gp_rel(fname)))
@@ -185,7 +185,7 @@ void MipsSEDAGToDAGISel::initGlobalBaseReg(MachineFunction &MF) {
     return;
   }
 
-  assert(Subtarget->isABI_O32());
+  assert(ABI.IsO32());
 
   // For O32 ABI, the following instruction sequence is emitted to initialize
   // the global base register:
@@ -405,6 +405,31 @@ bool MipsSEDAGToDAGISel::selectIntAddrMM(SDValue Addr, SDValue &Base,
                                          SDValue &Offset) const {
   return selectAddrRegImm12(Addr, Base, Offset) ||
     selectAddrDefault(Addr, Base, Offset);
+}
+
+bool MipsSEDAGToDAGISel::selectIntAddrLSL2MM(SDValue Addr, SDValue &Base,
+                                             SDValue &Offset) const {
+  if (selectAddrFrameIndexOffset(Addr, Base, Offset, 7)) {
+    if (dyn_cast<FrameIndexSDNode>(Base))
+      return false;
+    else {
+      ConstantSDNode *CN = dyn_cast<ConstantSDNode>(Offset);
+      if (CN) {
+        unsigned CnstOff = CN->getZExtValue();
+        if (CnstOff == (CnstOff & 0x3c))
+          return true;
+      }
+
+      return false;
+    }
+  }
+
+  // For all other cases where "lw" would be selected, don't select "lw16"
+  // because it would result in additional instructions to prepare operands.
+  if (selectAddrRegImm(Addr, Base, Offset))
+    return false;
+
+  return selectAddrDefault(Addr, Base, Offset);
 }
 
 bool MipsSEDAGToDAGISel::selectIntAddrMSA(SDValue Addr, SDValue &Base,

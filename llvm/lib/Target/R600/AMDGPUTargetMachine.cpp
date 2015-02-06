@@ -15,6 +15,7 @@
 
 #include "AMDGPUTargetMachine.h"
 #include "AMDGPU.h"
+#include "AMDGPUTargetTransformInfo.h"
 #include "R600ISelLowering.h"
 #include "R600InstrInfo.h"
 #include "R600MachineScheduler.h"
@@ -116,15 +117,12 @@ TargetPassConfig *AMDGPUTargetMachine::createPassConfig(PassManagerBase &PM) {
 }
 
 //===----------------------------------------------------------------------===//
-// AMDGPU Analysis Pass Setup
+// AMDGPU Pass Setup
 //===----------------------------------------------------------------------===//
 
-void AMDGPUTargetMachine::addAnalysisPasses(PassManagerBase &PM) {
-  // Add first the target-independent BasicTTI pass, then our AMDGPU pass. This
-  // allows the AMDGPU pass to delegate to the target independent layer when
-  // appropriate.
-  PM.add(createBasicTargetTransformInfoPass(this));
-  PM.add(createAMDGPUTargetTransformInfoPass(this));
+TargetIRAnalysis AMDGPUTargetMachine::getTargetIRAnalysis() {
+  return TargetIRAnalysis(
+      [this](Function &F) { return TargetTransformInfo(AMDGPUTTIImpl(this)); });
 }
 
 void AMDGPUPassConfig::addIRPasses() {

@@ -55,8 +55,8 @@ public:
   }
   TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
 
-  /// \brief Register R600 analysis passes with a pass manager.
-  void addAnalysisPasses(PassManagerBase &PM) override;
+  TargetIRAnalysis getTargetIRAnalysis() override;
+
   TargetLoweringObjectFile *getObjFileLowering() const override {
     return TLOF;
   }

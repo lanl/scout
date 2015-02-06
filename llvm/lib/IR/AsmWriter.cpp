@@ -1286,10 +1286,35 @@ raw_ostream &operator<<(raw_ostream &OS, FieldSeparator &FS) {
 }
 } // end namespace
 
-static void writeGenericDebugNode(raw_ostream &, const GenericDebugNode *,
-                                  TypePrinting *, SlotTracker *,
-                                  const Module *) {
-  llvm_unreachable("Unimplemented write");
+static void writeGenericDebugNode(raw_ostream &Out, const GenericDebugNode *N,
+                                  TypePrinting *TypePrinter,
+                                  SlotTracker *Machine, const Module *Context) {
+  Out << "!GenericDebugNode(";
+  FieldSeparator FS;
+  Out << FS << "tag: ";
+  if (const char *Tag = dwarf::TagString(N->getTag()))
+    Out << Tag;
+  else
+    Out << N->getTag();
+  if (!N->getHeader().empty()) {
+    Out << FS << "header: \"";
+    PrintEscapedString(N->getHeader(), Out);
+    Out << "\"";
+  }
+  if (N->getNumDwarfOperands()) {
+    Out << FS << "operands: {";
+    FieldSeparator IFS;
+    for (auto &I : N->dwarf_operands()) {
+      Out << IFS;
+      if (!I) {
+        Out << "null";
+        continue;
+      }
+      WriteAsOperandInternal(Out, I, TypePrinter, Machine, Context);
+    }
+    Out << "}";
+  }
+  Out << ")";
 }
 
 static void writeMDLocation(raw_ostream &Out, const MDLocation *DL,

@@ -158,24 +158,40 @@ struct CounterMappingRegion {
     SkippedRegion
   };
 
-  static const unsigned EncodingHasCodeBeforeBits = 1;
-
   Counter Count;
   unsigned FileID, ExpandedFileID;
   unsigned LineStart, ColumnStart, LineEnd, ColumnEnd;
   RegionKind Kind;
-  /// \brief A flag that is set to true when there is already code before
-  /// this region on the same line.
-  /// This is useful to accurately compute the execution counts for a line.
-  bool HasCodeBefore;
 
-  CounterMappingRegion(Counter Count, unsigned FileID, unsigned LineStart,
-                       unsigned ColumnStart, unsigned LineEnd,
-                       unsigned ColumnEnd, bool HasCodeBefore = false,
-                       RegionKind Kind = CodeRegion)
-      : Count(Count), FileID(FileID), ExpandedFileID(0), LineStart(LineStart),
-        ColumnStart(ColumnStart), LineEnd(LineEnd), ColumnEnd(ColumnEnd),
-        Kind(Kind), HasCodeBefore(HasCodeBefore) {}
+  CounterMappingRegion(Counter Count, unsigned FileID, unsigned ExpandedFileID,
+                       unsigned LineStart, unsigned ColumnStart,
+                       unsigned LineEnd, unsigned ColumnEnd, RegionKind Kind)
+      : Count(Count), FileID(FileID), ExpandedFileID(ExpandedFileID),
+        LineStart(LineStart), ColumnStart(ColumnStart), LineEnd(LineEnd),
+        ColumnEnd(ColumnEnd), Kind(Kind) {}
+
+  static CounterMappingRegion
+  makeRegion(Counter Count, unsigned FileID, unsigned LineStart,
+             unsigned ColumnStart, unsigned LineEnd, unsigned ColumnEnd) {
+    return CounterMappingRegion(Count, FileID, 0, LineStart, ColumnStart,
+                                LineEnd, ColumnEnd, CodeRegion);
+  }
+
+  static CounterMappingRegion
+  makeExpansion(unsigned FileID, unsigned ExpandedFileID, unsigned LineStart,
+                unsigned ColumnStart, unsigned LineEnd, unsigned ColumnEnd) {
+    return CounterMappingRegion(Counter(), FileID, ExpandedFileID, LineStart,
+                                ColumnStart, LineEnd, ColumnEnd,
+                                ExpansionRegion);
+  }
+
+  static CounterMappingRegion
+  makeSkipped(unsigned FileID, unsigned LineStart, unsigned ColumnStart,
+              unsigned LineEnd, unsigned ColumnEnd) {
+    return CounterMappingRegion(Counter(), FileID, 0, LineStart, ColumnStart,
+                                LineEnd, ColumnEnd, SkippedRegion);
+  }
+
 
   inline std::pair<unsigned, unsigned> startLoc() const {
     return std::pair<unsigned, unsigned>(LineStart, ColumnStart);

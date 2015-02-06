@@ -12,7 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Scalar/EarlyCSE.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/ScopedHashTable.h"
 #include "llvm/ADT/Statistic.h"
@@ -28,6 +28,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/RecyclingAllocator.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include <deque>
 using namespace llvm;
@@ -40,10 +41,6 @@ STATISTIC(NumCSE,      "Number of instructions CSE'd");
 STATISTIC(NumCSELoad,  "Number of load instructions CSE'd");
 STATISTIC(NumCSECall,  "Number of call instructions CSE'd");
 STATISTIC(NumDSE,      "Number of trivial dead stores removed");
-
-static unsigned getHash(const void *V) {
-  return DenseMapInfo<const void*>::getHashValue(V);
-}
 
 //===----------------------------------------------------------------------===//
 // SimpleValue
@@ -238,16 +235,10 @@ template <> struct DenseMapInfo<CallValue> {
 
 unsigned DenseMapInfo<CallValue>::getHashValue(CallValue Val) {
   Instruction *Inst = Val.Inst;
-  // Hash in all of the operands as pointers.
-  unsigned Res = 0;
-  for (unsigned i = 0, e = Inst->getNumOperands(); i != e; ++i) {
-    assert(!Inst->getOperand(i)->getType()->isMetadataTy() &&
-           "Cannot value number calls with metadata operands");
-    Res ^= getHash(Inst->getOperand(i)) << (i & 0xF);
-  }
-
-  // Mix in the opcode.
-  return (Res << 1) ^ Inst->getOpcode();
+  // Hash all of the operands as pointers and mix in the opcode.
+  return hash_combine(
+      Inst->getOpcode(),
+      hash_combine_range(Inst->value_op_begin(), Inst->value_op_end()));
 }
 
 bool DenseMapInfo<CallValue>::isEqual(CallValue LHS, CallValue RHS) {
@@ -689,6 +680,27 @@ bool EarlyCSE::run() {
   return Changed;
 }
 
+PreservedAnalyses EarlyCSEPass::run(Function &F,
+                                    AnalysisManager<Function> *AM) {
+  const DataLayout *DL = F.getParent()->getDataLayout();
+
+  auto &TLI = AM->getResult<TargetLibraryAnalysis>(F);
+  auto &TTI = AM->getResult<TargetIRAnalysis>(F);
+  auto &DT = AM->getResult<DominatorTreeAnalysis>(F);
+  auto &AC = AM->getResult<AssumptionAnalysis>(F);
+
+  EarlyCSE CSE(F, DL, TLI, TTI, DT, AC);
+
+  if (!CSE.run())
+    return PreservedAnalyses::all();
+
+  // CSE preserves the dominator tree because it doesn't mutate the CFG.
+  // FIXME: Bundle this with other CFG-preservation.
+  PreservedAnalyses PA;
+  PA.preserve<DominatorTreeAnalysis>();
+  return PA;
+}
+
 namespace {
 /// \brief A simple and fast domtree-based CSE pass.
 ///
@@ -712,7 +724,7 @@ public:
     DataLayoutPass *DLP = getAnalysisIfAvailable<DataLayoutPass>();
     auto *DL = DLP ? &DLP->getDataLayout() : nullptr;
     auto &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI();
-    auto &TTI = getAnalysis<TargetTransformInfo>();
+    auto &TTI = getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
     auto &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
     auto &AC = getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
 
@@ -725,7 +737,7 @@ public:
     AU.addRequired<AssumptionCacheTracker>();
     AU.addRequired<DominatorTreeWrapperPass>();
     AU.addRequired<TargetLibraryInfoWrapperPass>();
-    AU.addRequired<TargetTransformInfo>();
+    AU.addRequired<TargetTransformInfoWrapperPass>();
     AU.setPreservesCFG();
   }
 };
@@ -737,7 +749,7 @@ FunctionPass *llvm::createEarlyCSEPass() { return new EarlyCSELegacyPass(); }
 
 INITIALIZE_PASS_BEGIN(EarlyCSELegacyPass, "early-cse", "Early CSE", false,
                       false)
-INITIALIZE_AG_DEPENDENCY(TargetTransformInfo)
+INITIALIZE_PASS_DEPENDENCY(TargetTransformInfoWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)

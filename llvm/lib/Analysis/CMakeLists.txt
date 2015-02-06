@@ -22,7 +22,6 @@ add_llvm_library(LLVMAnalysis
   DependenceAnalysis.cpp
   DomPrinter.cpp
   DominanceFrontier.cpp
-  FunctionTargetTransformInfo.cpp
   IVUsers.cpp
   InstCount.cpp
   InstructionSimplify.cpp
@@ -35,9 +34,11 @@ add_llvm_library(LLVMAnalysis
   LibCallSemantics.cpp
   Lint.cpp
   Loads.cpp
+  LoopAccessAnalysis.cpp
   LoopInfo.cpp
   LoopPass.cpp
   MemDepPrinter.cpp
+  MemDerefPrinter.cpp
   MemoryBuiltins.cpp
   MemoryDependenceAnalysis.cpp
   ModuleDebugInfoPrinter.cpp

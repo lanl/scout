@@ -12,6 +12,38 @@
 // 80-V9418-12 Rev. A
 // June 15, 2010
 
+// Vector reduce multiply word by signed half (32x16)
+//Rdd=vrmpyweh(Rss,Rtt)[:<<1]
+def : T_PP_pat <M4_vrmpyeh_s0, int_hexagon_M4_vrmpyeh_s0>;
+def : T_PP_pat <M4_vrmpyeh_s1, int_hexagon_M4_vrmpyeh_s1>;
+
+//Rdd=vrmpywoh(Rss,Rtt)[:<<1]
+def : T_PP_pat <M4_vrmpyoh_s0, int_hexagon_M4_vrmpyoh_s0>;
+def : T_PP_pat <M4_vrmpyoh_s1, int_hexagon_M4_vrmpyoh_s1>;
+
+//Rdd+=vrmpyweh(Rss,Rtt)[:<<1]
+def : T_PPP_pat <M4_vrmpyeh_acc_s0, int_hexagon_M4_vrmpyeh_acc_s0>;
+def : T_PPP_pat <M4_vrmpyeh_acc_s1, int_hexagon_M4_vrmpyeh_acc_s1>;
+
+//Rdd=vrmpywoh(Rss,Rtt)[:<<1]
+def : T_PPP_pat <M4_vrmpyoh_acc_s0, int_hexagon_M4_vrmpyoh_acc_s0>;
+def : T_PPP_pat <M4_vrmpyoh_acc_s1, int_hexagon_M4_vrmpyoh_acc_s1>;
+
+// Vector multiply halfwords, signed by unsigned
+// Rdd=vmpyhsu(Rs,Rt)[:<<1]:sat
+def : T_RR_pat <M2_vmpy2su_s0, int_hexagon_M2_vmpy2su_s0>;
+def : T_RR_pat <M2_vmpy2su_s1, int_hexagon_M2_vmpy2su_s1>;
+
+// Rxx+=vmpyhsu(Rs,Rt)[:<<1]:sat
+def : T_PRR_pat <M2_vmac2su_s0, int_hexagon_M2_vmac2su_s0>;
+def : T_PRR_pat <M2_vmac2su_s1, int_hexagon_M2_vmac2su_s1>;
+
+// Vector polynomial multiply halfwords
+// Rdd=vpmpyh(Rs,Rt)
+def : T_RR_pat <M4_vpmpyh, int_hexagon_M4_vpmpyh>;
+// Rxx[^]=vpmpyh(Rs,Rt)
+def : T_PRR_pat <M4_vpmpyh_acc, int_hexagon_M4_vpmpyh_acc>;
+
 // Polynomial multiply words
 // Rdd=pmpyw(Rs,Rt)
 def : T_RR_pat <M4_pmpyw, int_hexagon_M4_pmpyw>;
@@ -34,6 +66,10 @@ def : MType_R32_pat <int_hexagon_M2_hmmpyh_s1, M2_hmmpyh_s1>;
 def : MType_R32_pat <int_hexagon_M2_hmmpyl_s1, M2_hmmpyl_s1>;
 def : MType_R32_pat <int_hexagon_M2_mpy_up_s1_sat, M2_mpy_up_s1_sat>;
 
+// Vector reduce add unsigned halfwords
+def : Pat <(int_hexagon_M2_vraddh DoubleRegs:$src1, DoubleRegs:$src2),
+           (M2_vraddh DoubleRegs:$src1, DoubleRegs:$src2)>;
+
 def : T_P_pat <S2_brevp, int_hexagon_S2_brevp>;
 
 def: T_P_pat  <S2_ct0p,      int_hexagon_S2_ct0p>;
@@ -41,6 +77,25 @@ def: T_P_pat  <S2_ct1p,      int_hexagon_S2_ct1p>;
 def: T_RR_pat<C4_nbitsset,  int_hexagon_C4_nbitsset>;
 def: T_RR_pat<C4_nbitsclr,  int_hexagon_C4_nbitsclr>;
 def: T_RI_pat<C4_nbitsclri, int_hexagon_C4_nbitsclri>;
+
+
+class vcmpImm_pat <InstHexagon MI, Intrinsic IntID, PatLeaf immPred> :
+      Pat <(IntID  (i64 DoubleRegs:$src1), immPred:$src2),
+           (MI (i64 DoubleRegs:$src1), immPred:$src2)>;
+
+def : vcmpImm_pat <A4_vcmpbeqi, int_hexagon_A4_vcmpbeqi, u8ImmPred>;
+def : vcmpImm_pat <A4_vcmpbgti, int_hexagon_A4_vcmpbgti, s8ImmPred>;
+def : vcmpImm_pat <A4_vcmpbgtui, int_hexagon_A4_vcmpbgtui, u7ImmPred>;
+
+def : vcmpImm_pat <A4_vcmpheqi, int_hexagon_A4_vcmpheqi, s8ImmPred>;
+def : vcmpImm_pat <A4_vcmphgti, int_hexagon_A4_vcmphgti, s8ImmPred>;
+def : vcmpImm_pat <A4_vcmphgtui, int_hexagon_A4_vcmphgtui, u7ImmPred>;
+
+def : vcmpImm_pat <A4_vcmpweqi, int_hexagon_A4_vcmpweqi, s8ImmPred>;
+def : vcmpImm_pat <A4_vcmpwgti, int_hexagon_A4_vcmpwgti, s8ImmPred>;
+def : vcmpImm_pat <A4_vcmpwgtui, int_hexagon_A4_vcmpwgtui, u7ImmPred>;
+
+def : T_PP_pat<A4_vcmpbeq_any, int_hexagon_A4_vcmpbeq_any>;
 
 def : T_RR_pat<A4_cmpbeq,   int_hexagon_A4_cmpbeq>;
 def : T_RR_pat<A4_cmpbgt,   int_hexagon_A4_cmpbgt>;
@@ -73,8 +128,24 @@ def : T_RRI_pat <M4_mpyri_addr, int_hexagon_M4_mpyri_addr>;
 def : T_RRR_pat <M4_mac_up_s1_sat, int_hexagon_M4_mac_up_s1_sat>;
 def : T_RRR_pat <M4_nac_up_s1_sat, int_hexagon_M4_nac_up_s1_sat>;
 
+// Complex multiply 32x16
+def : T_PR_pat <M4_cmpyi_wh, int_hexagon_M4_cmpyi_wh>;
+def : T_PR_pat <M4_cmpyr_wh, int_hexagon_M4_cmpyr_wh>;
+
+def : T_PR_pat <M4_cmpyi_whc, int_hexagon_M4_cmpyi_whc>;
+def : T_PR_pat <M4_cmpyr_whc, int_hexagon_M4_cmpyr_whc>;
+
 def : T_PP_pat<A4_andnp, int_hexagon_A4_andnp>;
 def : T_PP_pat<A4_ornp,  int_hexagon_A4_ornp>;
+
+// Complex add/sub halfwords/words
+def : T_PP_pat <S4_vxaddsubw, int_hexagon_S4_vxaddsubw>;
+def : T_PP_pat <S4_vxsubaddw, int_hexagon_S4_vxsubaddw>;
+def : T_PP_pat <S4_vxaddsubh, int_hexagon_S4_vxaddsubh>;
+def : T_PP_pat <S4_vxsubaddh, int_hexagon_S4_vxsubaddh>;
+
+def : T_PP_pat <S4_vxaddsubhr, int_hexagon_S4_vxaddsubhr>;
+def : T_PP_pat <S4_vxsubaddhr, int_hexagon_S4_vxsubaddhr>;
 
 // Extract bitfield
 def : T_PP_pat  <S4_extractp_rp, int_hexagon_S4_extractp_rp>;
@@ -82,11 +153,50 @@ def : T_RP_pat  <S4_extract_rp, int_hexagon_S4_extract_rp>;
 def : T_PII_pat <S4_extractp, int_hexagon_S4_extractp>;
 def : T_RII_pat <S4_extract, int_hexagon_S4_extract>;
 
+// Vector conditional negate
+// Rdd=vcnegh(Rss,Rt)
+def : T_PR_pat <S2_vcnegh, int_hexagon_S2_vcnegh>;
+
 // Shift an immediate left by register amount
 def : T_IR_pat<S4_lsli, int_hexagon_S4_lsli>;
 
+// Vector reduce maximum halfwords
+def : T_PPR_pat <A4_vrmaxh, int_hexagon_A4_vrmaxh>;
+def : T_PPR_pat <A4_vrmaxuh, int_hexagon_A4_vrmaxuh>;
+
+// Vector reduce maximum words
+def : T_PPR_pat <A4_vrmaxw, int_hexagon_A4_vrmaxw>;
+def : T_PPR_pat <A4_vrmaxuw, int_hexagon_A4_vrmaxuw>;
+
+// Vector reduce minimum halfwords
+def : T_PPR_pat <A4_vrminh, int_hexagon_A4_vrminh>;
+def : T_PPR_pat <A4_vrminuh, int_hexagon_A4_vrminuh>;
+
+// Vector reduce minimum words
+def : T_PPR_pat <A4_vrminw, int_hexagon_A4_vrminw>;
+def : T_PPR_pat <A4_vrminuw, int_hexagon_A4_vrminuw>;
+
+// Rotate and reduce bytes
+def : Pat <(int_hexagon_S4_vrcrotate DoubleRegs:$src1, IntRegs:$src2,
+                                     u2ImmPred:$src3),
+           (S4_vrcrotate DoubleRegs:$src1, IntRegs:$src2, u2ImmPred:$src3)>;
+
+// Rotate and reduce bytes with accumulation
+// Rxx+=vrcrotate(Rss,Rt,#u2)
+def : Pat <(int_hexagon_S4_vrcrotate_acc DoubleRegs:$src1, DoubleRegs:$src2,
+                                         IntRegs:$src3, u2ImmPred:$src4),
+           (S4_vrcrotate_acc DoubleRegs:$src1, DoubleRegs:$src2,
+                             IntRegs:$src3, u2ImmPred:$src4)>;
+
+// Vector conditional negate
+def : T_PPR_pat<S2_vrcnegh, int_hexagon_S2_vrcnegh>;
+
 // Logical xor with xor accumulation
 def : T_PPP_pat<M4_xor_xacc, int_hexagon_M4_xor_xacc>;
+
+// ALU64 - Vector min/max byte
+def : T_PP_pat <A2_vminb, int_hexagon_A2_vminb>;
+def : T_PP_pat <A2_vmaxb, int_hexagon_A2_vmaxb>;
 
 // Shift and add/sub/and/or
 def : T_IRI_pat <S4_andi_asl_ri, int_hexagon_S4_andi_asl_ri>;

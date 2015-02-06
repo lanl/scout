@@ -15,7 +15,34 @@
 // XTYPE/MPY
 //===----------------------------------------------------------------------===//
 
-let isCodeGenOnly = 0 in
+  //Rdd[+]=vrmpybsu(Rss,Rtt)
+let Predicates = [HasV5T] in {
+  def M5_vrmpybsu: T_XTYPE_Vect<"vrmpybsu", 0b110, 0b001, 0>;
+  def M5_vrmacbsu: T_XTYPE_Vect_acc<"vrmpybsu", 0b110, 0b001, 0>;
+
+  //Rdd[+]=vrmpybu(Rss,Rtt)
+  def M5_vrmpybuu: T_XTYPE_Vect<"vrmpybu", 0b100, 0b001, 0>;
+  def M5_vrmacbuu: T_XTYPE_Vect_acc<"vrmpybu", 0b100, 0b001, 0>;
+
+  def M5_vdmpybsu: T_M2_vmpy<"vdmpybsu", 0b101, 0b001, 0, 0, 1>;
+  def M5_vdmacbsu: T_M2_vmpy_acc_sat <"vdmpybsu", 0b001, 0b001, 0, 0>;
+}
+
+// Vector multiply bytes
+// Rdd=vmpyb[s]u(Rs,Rt)
+let Predicates = [HasV5T] in {
+  def M5_vmpybsu: T_XTYPE_mpy64 <"vmpybsu", 0b010, 0b001, 0, 0, 0>;
+  def M5_vmpybuu: T_XTYPE_mpy64 <"vmpybu",  0b100, 0b001, 0, 0, 0>;
+
+  // Rxx+=vmpyb[s]u(Rs,Rt)
+  def M5_vmacbsu: T_XTYPE_mpy64_acc <"vmpybsu", "+", 0b110, 0b001, 0, 0, 0>;
+  def M5_vmacbuu: T_XTYPE_mpy64_acc <"vmpybu", "+", 0b100, 0b001, 0, 0, 0>;
+
+  // Rd=vaddhub(Rss,Rtt):sat
+  let hasNewValue = 1, opNewValue = 0 in
+    def A5_vaddhubs: T_S3op_1 <"vaddhub", IntRegs, 0b01, 0b001, 0, 1>;
+}
+
 def S2_asr_i_p_rnd : S_2OpInstImm<"asr", 0b110, 0b111, u6Imm,
       [(set I64:$dst,
             (sra (i64 (add (i64 (sra I64:$src1, u6ImmPred:$src2)), 1)),
@@ -25,17 +52,16 @@ def S2_asr_i_p_rnd : S_2OpInstImm<"asr", 0b110, 0b111, u6Imm,
   let Inst{13-8} = src2;
 }
 
+let isAsmParserOnly = 1 in
 def S2_asr_i_p_rnd_goodsyntax
   : MInst<(outs DoubleRegs:$dst), (ins DoubleRegs:$src1, u6Imm:$src2),
     "$dst = asrrnd($src1, #$src2)">;
 
-let isCodeGenOnly = 0 in
 def C4_fastcorner9 : T_LOGICAL_2OP<"fastcorner9", 0b000, 0, 0>,
   Requires<[HasV5T]> {
   let Inst{13,7,4} = 0b111;
 }
 
-let isCodeGenOnly = 0 in
 def C4_fastcorner9_not : T_LOGICAL_2OP<"!fastcorner9", 0b000, 0, 0>,
   Requires<[HasV5T]> {
   let Inst{20,13,7,4} = 0b1111;
@@ -46,20 +72,20 @@ def SDTHexagonFCONST32 : SDTypeProfile<1, 1, [
                                             SDTCisPtrTy<1>]>;
 def HexagonFCONST32 : SDNode<"HexagonISD::FCONST32",     SDTHexagonFCONST32>;
 
-let isReMaterializable = 1, isMoveImm = 1 in
+let isReMaterializable = 1, isMoveImm = 1, isAsmParserOnly = 1 in
 def FCONST32_nsdata : LDInst<(outs IntRegs:$dst), (ins globaladdress:$global),
               "$dst = CONST32(#$global)",
               [(set (f32 IntRegs:$dst),
               (HexagonFCONST32 tglobaladdr:$global))]>,
                Requires<[HasV5T]>;
 
-let isReMaterializable = 1, isMoveImm = 1 in
+let isReMaterializable = 1, isMoveImm = 1, isAsmParserOnly = 1 in
 def CONST64_Float_Real : LDInst<(outs DoubleRegs:$dst), (ins f64imm:$src1),
                        "$dst = CONST64(#$src1)",
                        [(set DoubleRegs:$dst, fpimm:$src1)]>,
           Requires<[HasV5T]>;
 
-let isReMaterializable = 1, isMoveImm = 1 in
+let isReMaterializable = 1, isMoveImm = 1, isAsmParserOnly = 1 in
 def CONST32_Float_Real : LDInst<(outs IntRegs:$dst), (ins f32imm:$src1),
                        "$dst = CONST32(#$src1)",
                        [(set IntRegs:$dst, fpimm:$src1)]>,
@@ -80,15 +106,15 @@ def TFRI_f : ALU32_ri<(outs IntRegs:$dst), (ins f32Ext:$src1),
           Requires<[HasV5T]>;
 
 let isExtended = 1, opExtendable = 2, isPredicated = 1,
-hasSideEffects = 0, validSubTargets = HasV5SubT in
+hasSideEffects = 0, validSubTargets = HasV5SubT, isCodeGenOnly = 1 in
 def TFRI_cPt_f : ALU32_ri<(outs IntRegs:$dst),
                           (ins PredRegs:$src1, f32Ext:$src2),
            "if ($src1) $dst = #$src2",
            []>,
           Requires<[HasV5T]>;
 
-let isExtended = 1, opExtendable = 2, isPredicated = 1, isPredicatedFalse = 1,
-hasSideEffects = 0, validSubTargets = HasV5SubT in
+let isPseudo = 1, isExtended = 1, opExtendable = 2, isPredicated = 1, 
+    isPredicatedFalse = 1, hasSideEffects = 0, validSubTargets = HasV5SubT in
 def TFRI_cNotPt_f : ALU32_ri<(outs IntRegs:$dst),
                              (ins PredRegs:$src1, f32Ext:$src2),
            "if (!$src1) $dst =#$src2",
@@ -100,7 +126,7 @@ def SDTHexagonI32I64: SDTypeProfile<1, 1, [SDTCisVT<0, i32>,
 
 def HexagonPOPCOUNT: SDNode<"HexagonISD::POPCOUNT", SDTHexagonI32I64>;
 
-let hasNewValue = 1, validSubTargets = HasV5SubT, isCodeGenOnly = 0 in
+let hasNewValue = 1, validSubTargets = HasV5SubT in
 def S5_popcountp : ALU64_rr<(outs IntRegs:$Rd), (ins DoubleRegs:$Rss),
   "$Rd = popcount($Rss)",
   [(set I32:$Rd, (HexagonPOPCOUNT I64:$Rss))], "", S_2op_tc_2_SLOT23>,
@@ -144,12 +170,11 @@ class T_MInstFloat <string mnemonic, bits<3> MajOp, bits<3> MinOp>
     let Inst{4-0} = Rd;
   }
 
-let isCommutable = 1, isCodeGenOnly = 0 in {
+let isCommutable = 1 in {
   def F2_sfadd : T_MInstFloat < "sfadd", 0b000, 0b000>;
   def F2_sfmpy : T_MInstFloat < "sfmpy", 0b010, 0b000>;
 }
 
-let isCodeGenOnly = 0 in
 def F2_sfsub : T_MInstFloat < "sfsub", 0b000, 0b001>;
 
 def: Pat<(f32 (fadd F32:$src1, F32:$src2)),
@@ -161,19 +186,17 @@ def: Pat<(f32 (fsub F32:$src1, F32:$src2)),
 def: Pat<(f32 (fmul F32:$src1, F32:$src2)),
          (F2_sfmpy F32:$src1, F32:$src2)>;
 
-let Itinerary = M_tc_3x_SLOT23, isCodeGenOnly = 0 in {
+let Itinerary = M_tc_3x_SLOT23 in {
   def F2_sfmax : T_MInstFloat < "sfmax", 0b100, 0b000>;
   def F2_sfmin : T_MInstFloat < "sfmin", 0b100, 0b001>;
 }
 
-let isCodeGenOnly = 0 in {
 def F2_sffixupn : T_MInstFloat < "sffixupn", 0b110, 0b000>;
 def F2_sffixupd : T_MInstFloat < "sffixupd", 0b110, 0b001>;
-}
 
 // F2_sfrecipa: Reciprocal approximation for division.
 let isPredicateLate = 1, isFP = 1,
-hasSideEffects = 0, hasNewValue = 1, isCodeGenOnly = 0 in
+hasSideEffects = 0, hasNewValue = 1 in
 def F2_sfrecipa: MInst <
   (outs IntRegs:$Rd, PredRegs:$Pe),
   (ins IntRegs:$Rs, IntRegs:$Rt),
@@ -229,7 +252,6 @@ class T_fcmp32 <string mnemonic, PatFrag OpNode, bits<3> MinOp>
   let Inst{27-21} = 0b0111111;
 }
 
-let isCodeGenOnly = 0 in {
 def F2_dfcmpeq : T_fcmp64<"dfcmp.eq", setoeq, 0b000>;
 def F2_dfcmpgt : T_fcmp64<"dfcmp.gt", setogt, 0b001>;
 def F2_dfcmpge : T_fcmp64<"dfcmp.ge", setoge, 0b010>;
@@ -239,7 +261,6 @@ def F2_sfcmpge : T_fcmp32<"sfcmp.ge", setoge, 0b000>;
 def F2_sfcmpuo : T_fcmp32<"sfcmp.uo", setuo,  0b001>;
 def F2_sfcmpeq : T_fcmp32<"sfcmp.eq", setoeq, 0b011>;
 def F2_sfcmpgt : T_fcmp32<"sfcmp.gt", setogt, 0b100>;
-}
 
 //===----------------------------------------------------------------------===//
 // Multiclass to define 'Def Pats' for ordered gt, ge, eq operations.
@@ -566,7 +587,6 @@ class F2_RD_RS_CONVERT<string mnemonic, bits<3> MajOp, bits<3> MinOp,
   }
 
 // Convert single precision to double precision and vice-versa.
-let isCodeGenOnly = 0 in {
 def F2_conv_sf2df : F2_RDD_RS_CONVERT <"convert_sf2df", 0b000,
                                        fextend, F64, F32>;
 
@@ -628,10 +648,9 @@ let AddedComplexity = 20, Predicates = [HasV5T, IEEERndNearV5T] in {
   def F2_conv_sf2w : F2_RD_RS_CONVERT <"convert_sf2w", 0b100, 0b000,
                                          fp_to_sint, I32, F32>;
 }
-}
 
 // Fix up radicand.
-let isFP = 1, hasNewValue = 1, isCodeGenOnly = 0 in
+let isFP = 1, hasNewValue = 1 in
 def F2_sffixupr: SInst<(outs IntRegs:$Rd), (ins IntRegs:$Rs),
   "$Rd = sffixupr($Rs)",
   [], "" , S_2op_tc_3or4x_SLOT23>, Requires<[HasV5T]> {
@@ -678,15 +697,13 @@ class T_sfmpy_acc <bit isSub, bit isLib>
     let Inst{4-0}   = Rx;
   }
 
-let isCodeGenOnly = 0 in {
 def F2_sffma: T_sfmpy_acc <0, 0>;
 def F2_sffms: T_sfmpy_acc <1, 0>;
 def F2_sffma_lib: T_sfmpy_acc <0, 1>;
 def F2_sffms_lib: T_sfmpy_acc <1, 1>;
-}
 
 // Floating-point fused multiply add w/ additional scaling (2**pu).
-let isFP = 1, hasNewValue = 1, isCodeGenOnly = 0 in
+let isFP = 1, hasNewValue = 1 in
 def F2_sffma_sc: MInst <
   (outs IntRegs:$Rx),
   (ins IntRegs:$dst2, IntRegs:$Rs, IntRegs:$Rt, PredRegs:$Pu),
@@ -751,17 +768,73 @@ class T_ASRHUB<bit isSat>
     let Inst{5} = isSat;
     let Inst{4-0} = Rd;
   }
+  
+def S5_asrhub_rnd_sat : T_ASRHUB <0>;
 def S5_asrhub_sat : T_ASRHUB <1>;
 
+let isAsmParserOnly = 1 in
 def S5_asrhub_rnd_sat_goodsyntax
   : SInst <(outs IntRegs:$Rd), (ins DoubleRegs:$Rss, u4Imm:$u4),
   "$Rd = vasrhub($Rss, #$u4):rnd:sat">, Requires<[HasV5T]>;
 
+// S5_vasrhrnd: Vector arithmetic shift right by immediate with round.
+let hasSideEffects = 0 in
+def S5_vasrhrnd : SInst <(outs DoubleRegs:$Rdd),
+                         (ins DoubleRegs:$Rss, u4Imm:$u4),
+  "$Rdd = vasrh($Rss, #$u4):raw">,
+  Requires<[HasV5T]> {
+    bits<5> Rdd;
+    bits<5> Rss;
+    bits<4> u4;
+
+    let IClass = 0b1000;
+
+    let Inst{27-21} = 0b0000001;
+    let Inst{20-16} = Rss;
+    let Inst{13-12} = 0b00;
+    let Inst{11-8}  = u4;
+    let Inst{7-5}   = 0b000;
+    let Inst{4-0}   = Rdd;
+  }
+
+let isAsmParserOnly = 1 in
+def S5_vasrhrnd_goodsyntax
+  : SInst <(outs DoubleRegs:$Rdd), (ins DoubleRegs:$Rss, u4Imm:$u4),
+  "$Rdd = vasrh($Rss,#$u4):rnd">, Requires<[HasV5T]>;
+
+// Floating point reciprocal square root approximation
+let Uses = [USR], isPredicateLate = 1, isFP = 1,
+    hasSideEffects = 0, hasNewValue = 1, opNewValue = 0,
+    validSubTargets = HasV5SubT in
+def F2_sfinvsqrta: SInst <
+  (outs IntRegs:$Rd, PredRegs:$Pe),
+  (ins IntRegs:$Rs),
+  "$Rd, $Pe = sfinvsqrta($Rs)" > ,
+  Requires<[HasV5T]> {
+    bits<5> Rd;
+    bits<2> Pe;
+    bits<5> Rs;
+
+    let IClass = 0b1000;
+
+    let Inst{27-21} = 0b1011111;
+    let Inst{20-16} = Rs;
+    let Inst{7} = 0b0;
+    let Inst{6-5} = Pe;
+    let Inst{4-0} = Rd;
+  }
+
+// Complex multiply 32x16
+let Defs = [USR_OVF], Itinerary = S_3op_tc_3x_SLOT23 in {
+  def M4_cmpyi_whc : T_S3op_8<"cmpyiwh", 0b101, 1, 1, 1, 1>;
+  def M4_cmpyr_whc : T_S3op_8<"cmpyrwh", 0b111, 1, 1, 1, 1>;
+}
+
 // Classify floating-point value
-let isFP = 1, isCodeGenOnly = 0 in
+let isFP = 1 in
  def F2_sfclass : T_TEST_BIT_IMM<"sfclass", 0b111>;
 
-let isFP = 1, isCodeGenOnly = 0 in
+let isFP = 1 in
 def F2_dfclass: ALU64Inst<(outs PredRegs:$Pd), (ins DoubleRegs:$Rss, u5Imm:$u5),
   "$Pd = dfclass($Rss, #$u5)",
   [], "" , ALU64_tc_2early_SLOT23 > , Requires<[HasV5T]> {
@@ -796,12 +869,10 @@ class T_fimm <string mnemonic, RegisterClass RC, bits<4> RegType, bit isNeg>
     let Inst{4-0}   = dst;
   }
 
-let isCodeGenOnly = 0 in {
 def F2_sfimm_p : T_fimm <"sfmake", IntRegs, 0b0110, 0>;
 def F2_sfimm_n : T_fimm <"sfmake", IntRegs, 0b0110, 1>;
 def F2_dfimm_p : T_fimm <"dfmake", DoubleRegs, 0b1001, 0>;
 def F2_dfimm_n : T_fimm <"dfmake", DoubleRegs, 0b1001, 1>;
-}
 
 def : Pat <(fabs (f32 IntRegs:$src1)),
            (S2_clrbit_i (f32 IntRegs:$src1), 31)>,
