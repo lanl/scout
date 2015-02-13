@@ -1,8 +1,19 @@
-# The Scout Programming Language
+## Scout: A Domain-Specific Language & Toolchain 
 
-The Scout toolchain is still very much a *work-in-progress* and the documentation and source are both under active development.  We use 64-bit Mac OS X 10.9.X and Linux systems (primarily the LTS releases of Ubuntu / Linux Mint) as our primary development platforms.   In addition to these primary platforms our nightly regression systems test the following:
+Welcome to the Scout Project! 
 
+## Description 
+Scout is a proof-of-concept domain-specific language for exploring the combination of mesh-based 
+scientific computation and *in situ* data analysis and visualization.  The toolchain is based on 
+the [LLVM compiler infrastructure](http::/llvm.org), including the [Clang](http:://clang.llvm/org) 
+front end, and the [LLDB](http://lldb.llvm.org) debugger.  More specifically, the language 
+extends the C programming language to introduce mesh constructs and various supporting constructs.
 
+## The Scout Programming Language
+
+The Scout toolchain is still very much a *work-in-progress* and the documentation and source are 
+both under active development.  We use 64-bit Mac OS X 10.9.X and Linux systems (primarily the LTS 
+releases of Ubuntu / Linux Mint) as our primary development platforms.   
 
 Scout is open-source software.  Los Alamos National Security, LLC (LANS) owns the copyright to Scout.  
 The license is BSD-like with a "modifications must be indicated" clause. See the 
@@ -28,7 +39,7 @@ each of these packages.*
 
 ### Operating System Support
 
-**Linux Systems**: As mentioned above, our primary development environments are Mac OS X 10.8.X and 
+**Linux Systems**: As mentioned above, our primary development environments are Mac OS X 10.9.X and 
 several varieties of Linux-based distributions.  A list of Linux releases that we monitor as part of 
 our continuous integration development process are listed below: 
 
@@ -41,8 +52,8 @@ libraries.  This can be achieved used either the various software package manage
 these platforms or by downloading and building them directly from source.  Further details on each
 required (and optional) package are provided below. 
 
-**Mac OS X Systems**: For Mac OS X systems we primarily test using 10.8.X and 10.7.X and the latest 
-version of Apple's Xcode (currently 4.6).  While there are several package distribution management 
+**Mac OS X Systems**: For Mac OS X systems we primarily test using 10.9.X and 10.10.X and the latest 
+version of Apple's Xcode (currently 6.1).  While there are several package distribution management 
 systems for Mac OS X (e.g. macports) we typically avoid them and instead favor building and installing 
 from source.  If you use of these systems you may experience differences and/or conflicts with the 
 details that follow.
@@ -52,12 +63,11 @@ details that follow.
 The following software packages are required to produce a minimal version of Scout that targets 
 CPU (x86) architectures (both single and multi-core):
 
-  * [CMake](http:://cmake.org) -- version 2.8.9 or later. **TODO**: Check version specs in the source.
+  * [CMake](http:://cmake.org) -- version 2.8.12 or later. 
   
-  * [Simple Direct Media Layer](http://www.libsdl.org) -- **TODO** verify version requirements.
-    (**NOTE** we are working on our own layer of support in place of SDL).
+  * [GLFW](http://www.glfw.org/) -- Note this needs to be built as a shared library
 	
-  * [OpenGL 2.X or higher](http://opengl.org) -- We **strongly** recommend having access to a system 
+  * [OpenGL 3.X or higher](http://opengl.org) -- We **strongly** recommend having access to a system 
     with a GPU capable of supporting hardware accelerated OpenGL.  We are currently exploring the 
 	use of software-based OpenGL support but can not recommend that as a viable option at this point 
 	in time.  **NOTE** that we have primarily worked with NVIDIA GPUs for OpenGL support and are 
@@ -70,7 +80,7 @@ These additional packages expand Scout's target architectures and can be used to
 for a mixed set of platforms from a single source file.  For details on the various architectures
 supported by Scout see the Hardware section below. 
 
-  * [NVIDA's CUDA](http://developer.nvidia.com/) -- we support CUDA version 5.X and Fermi- and 
+  * [NVIDA's CUDA](http://developer.nvidia.com/) -- we support CUDA version 6.X and Fermi- and 
     Kepler-class cards (*sorry, we haven't verified older GPU models are well supported*).
 	
   * **OpenCL** -- on platforms with AMD GPUs we support OpenCL-based code generation.  **NOTE**: 
@@ -81,7 +91,6 @@ environments installed and will add support for them automatically. If you are u
 install location for these packages you can set the following environment variables prior to invoking
 the build (more details below):
 
-  * `SDL_DIR=/path/to/sdl/install`
   * `CUDA_DIR=/path/to/cuda/install`
   
 ### Building From Source 
@@ -119,7 +128,12 @@ prior to invoking `make`.
     provided flags will be passed to CMake as part of the configuration run.  Full details of this
     using this option are currently beyond the scope of this document.
 
+### Acknowledgements 
 
+The Scout language and its supporting research activties are funded by the United States Departement 
+of Energy, Office of Science, [Office of Advanced Scientific Computing Research](http://science.energy
+.gov/ascr/)
+and overseen by Dr. Lucy Nowell.
 
   
 
