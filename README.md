@@ -8,7 +8,7 @@ scientific computation and *in situ* data analysis and visualization.  The toolc
 the [LLVM compiler infrastructure](http::/llvm.org), including the [Clang](http:://clang.llvm/org) 
 front end, and the [LLDB](http://lldb.llvm.org) debugger.  More specifically, the language 
 extends the C programming language to introduce mesh constructs and various supporting constructs.
-
+n
 ## The Scout Programming Language
 
 The Scout toolchain is still very much a *work-in-progress* and the documentation and source are 
@@ -17,7 +17,7 @@ releases of Ubuntu / Linux Mint) as our primary development platforms.
 
 Scout is open-source software (released under LA-CC-13-015).  Los Alamos National Security, LLC (LANS) 
 owns the copyright to Scout. The license is BSD-like with a "modifications must be indicated" clause. 
-See the [LICENSE](http://github.com/pmccormick/scout/blob/master/License.md) file for the full details.
+See the [LICENSE](http://github.com/losalamos/scout/blob/master/License.md) file for the full details.
 
 **NOTE**: Scout is still very much a *work-in-progress* and the documentation and source are both 
 under active development.  We use Linux-based systems and Mac OS X 10.8.X as our primary software 
