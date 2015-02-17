@@ -431,8 +431,8 @@ private:
     return (T == TST_typeofExpr || T == TST_decltype);
   }
 
-  DeclSpec(const DeclSpec &) LLVM_DELETED_FUNCTION;
-  void operator=(const DeclSpec &) LLVM_DELETED_FUNCTION;
+  DeclSpec(const DeclSpec &) = delete;
+  void operator=(const DeclSpec &) = delete;
 public:
   // +===== Scout ==================================================+
    static bool isMeshDeclRep(TST T) {
@@ -898,8 +898,8 @@ private:
 /// \brief Represents a C++ unqualified-id that has been parsed. 
 class UnqualifiedId {
 private:
-  UnqualifiedId(const UnqualifiedId &Other) LLVM_DELETED_FUNCTION;
-  const UnqualifiedId &operator=(const UnqualifiedId &) LLVM_DELETED_FUNCTION;
+  UnqualifiedId(const UnqualifiedId &Other) = delete;
+  const UnqualifiedId &operator=(const UnqualifiedId &) = delete;
 
 public:
   /// \brief Describes the kind of unqualified-id parsed.

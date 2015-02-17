@@ -336,7 +336,8 @@ ComplexPairTy ComplexExprEmitter::EmitLoadOfLValue(LValue lvalue,
 /// specified value pointer.
 void ComplexExprEmitter::EmitStoreOfComplex(ComplexPairTy Val, LValue lvalue,
                                             bool isInit) {
-  if (lvalue.getType()->isAtomicType())
+  if (lvalue.getType()->isAtomicType() ||
+      (!isInit && CGF.LValueIsSuitableForInlineAtomic(lvalue)))
     return CGF.EmitAtomicStore(RValue::getComplex(Val), lvalue, isInit);
 
   llvm::Value *Ptr = lvalue.getAddress();
@@ -819,6 +820,8 @@ EmitCompoundAssignLValue(const CompoundAssignOperator *E,
   TestAndClearIgnoreReal();
   TestAndClearIgnoreImag();
   QualType LHSTy = E->getLHS()->getType();
+  if (const AtomicType *AT = LHSTy->getAs<AtomicType>())
+    LHSTy = AT->getValueType();
 
   BinOpInfo OpInfo;
 
@@ -1034,7 +1037,7 @@ ComplexPairTy CodeGenFunction::EmitComplexExpr(const Expr *E, bool IgnoreReal,
          "Invalid complex expression to emit");
 
   return ComplexExprEmitter(*this, IgnoreReal, IgnoreImag)
-    .Visit(const_cast<Expr*>(E));
+      .Visit(const_cast<Expr *>(E));
 }
 
 void CodeGenFunction::EmitComplexExprIntoLValue(const Expr *E, LValue dest,
@@ -1086,8 +1089,8 @@ EmitComplexCompoundAssignmentLValue(const CompoundAssignOperator *E) {
 }
 
 LValue CodeGenFunction::
-EmitScalarCompooundAssignWithComplex(const CompoundAssignOperator *E,
-                                     llvm::Value *&Result) {
+EmitScalarCompoundAssignWithComplex(const CompoundAssignOperator *E,
+                                    llvm::Value *&Result) {
   CompoundFunc Op = getComplexOp(E->getOpcode());
   RValue Val;
   LValue Ret = ComplexExprEmitter(*this).EmitCompoundAssignLValue(E, Op, Val);

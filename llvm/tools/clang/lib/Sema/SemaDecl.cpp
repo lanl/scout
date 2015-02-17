@@ -3589,7 +3589,7 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
     return ActOnFriendTypeDecl(S, DS, TemplateParams);
   }
 
-  CXXScopeSpec &SS = DS.getTypeSpecScope();
+  const CXXScopeSpec &SS = DS.getTypeSpecScope();
   bool IsExplicitSpecialization =
     !TemplateParams.empty() && TemplateParams.back()->size() == 0;
   if (Tag && SS.isNotEmpty() && !Tag->isCompleteDefinition() &&
@@ -3616,7 +3616,8 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
         DS.getStorageClassSpec() != DeclSpec::SCS_typedef) {
       if (getLangOpts().CPlusPlus ||
           Record->getDeclContext()->isRecord())
-        return BuildAnonymousStructOrUnion(S, DS, AS, Record, Context.getPrintingPolicy());
+        return BuildAnonymousStructOrUnion(S, DS, AS, Record,
+                                           Context.getPrintingPolicy());
 
       DeclaresAnything = false;
     }
@@ -8875,6 +8876,14 @@ void Sema::AddInitializerToDecl(Decl *RealDecl, Expr *Init,
     CheckVariableDeclarationType(VDecl);
     if (VDecl->isInvalidDecl())
       return;
+
+    // If all looks well, warn if this is a case that will change meaning when
+    // we implement N3922.
+    if (DirectInit && !CXXDirectInit && isa<InitListExpr>(Init)) {
+      Diag(Init->getLocStart(),
+           diag::warn_auto_var_direct_list_init)
+        << FixItHint::CreateInsertion(Init->getLocStart(), "=");
+    }
   }
 
   // dllimport cannot be used on variable definitions.
@@ -9418,6 +9427,8 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl,
         Var->setInvalidDecl();
         return;
       }
+    } else {
+      return;
     }
 
     // The variable can not have an abstract class type.

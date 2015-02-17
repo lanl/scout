@@ -763,8 +763,8 @@ public:
   /// the parser will exit the scope.
   class ParseScope {
     Parser *Self;
-    ParseScope(const ParseScope &) LLVM_DELETED_FUNCTION;
-    void operator=(const ParseScope &) LLVM_DELETED_FUNCTION;
+    ParseScope(const ParseScope &) = delete;
+    void operator=(const ParseScope &) = delete;
 
   public:
     // ParseScope - Construct a new object to manage a scope in the
@@ -808,8 +808,8 @@ private:
   class ParseScopeFlags {
     Scope *CurScope;
     unsigned OldFlags;
-    ParseScopeFlags(const ParseScopeFlags &) LLVM_DELETED_FUNCTION;
-    void operator=(const ParseScopeFlags &) LLVM_DELETED_FUNCTION;
+    ParseScopeFlags(const ParseScopeFlags &) = delete;
+    void operator=(const ParseScopeFlags &) = delete;
 
   public:
     ParseScopeFlags(Parser *Self, unsigned ScopeFlags, bool ManageFlags = true);

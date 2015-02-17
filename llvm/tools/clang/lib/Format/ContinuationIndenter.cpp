@@ -232,6 +232,10 @@ bool ContinuationIndenter::mustBreak(const LineState &State) {
       Previous.is(tok::l_brace) && !Current.isOneOf(tok::r_brace, tok::comment))
     return true;
 
+  if (Current.is(tok::lessless) && Previous.is(tok::identifier) &&
+      Previous.TokenText == "endl")
+    return true;
+
   return false;
 }
 
@@ -365,7 +369,7 @@ void ContinuationIndenter::addTokenOnCurrentLine(LineState &State, bool DryRun,
       const FormatToken *Next = Previous.MatchingParen->getNextNonComment();
       HasTrailingCall = Next && Next->isMemberAccess();
     }
-    if (HasTrailingCall &&
+    if (HasTrailingCall && State.Stack.size() > 1 &&
         State.Stack[State.Stack.size() - 2].CallContinuation == 0)
       State.Stack.back().LastSpace = State.Column;
   }

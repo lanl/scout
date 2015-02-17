@@ -2303,6 +2303,13 @@ TEST_F(FormatTest, FormatTryCatchBraceStyles) {
                "  // something\n"
                "}",
                Style);
+  verifyFormat("@try {\n"
+               "  // something\n"
+               "}\n"
+               "@finally {\n"
+               "  // something\n"
+               "}",
+               Style);
   Style.BreakBeforeBraces = FormatStyle::BS_Allman;
   verifyFormat("try\n"
                "{\n"
@@ -2328,13 +2335,16 @@ TEST_F(FormatTest, FormatTryCatchBraceStyles) {
 TEST_F(FormatTest, FormatObjCTryCatch) {
   verifyFormat("@try {\n"
                "  f();\n"
-               "}\n"
-               "@catch (NSException e) {\n"
+               "} @catch (NSException e) {\n"
                "  @throw;\n"
-               "}\n"
-               "@finally {\n"
+               "} @finally {\n"
                "  exit(42);\n"
                "}");
+  verifyFormat("DEBUG({\n"
+               "  @try {\n"
+               "  } @finally {\n"
+               "  }\n"
+               "});\n");
 }
 
 TEST_F(FormatTest, StaticInitializers) {
@@ -4752,8 +4762,9 @@ TEST_F(FormatTest, AlignsPipes) {
                "}");
 
   // Handle 'endl'.
-  verifyFormat("llvm::errs() << aaaa << endl\n"
-               "             << bbbb << endl;");
+  verifyFormat("llvm::errs() << aaaaaaaaaaaaaaaaaaaaaa << endl\n"
+               "             << bbbbbbbbbbbbbbbbbbbbbb << endl;");
+  verifyFormat("llvm::errs() << endl << bbbbbbbbbbbbbbbbbbbbbb << endl;");
 }
 
 TEST_F(FormatTest, UnderstandsEquals) {
@@ -5808,6 +5819,7 @@ TEST_F(FormatTest, IncorrectAccessSpecifier) {
 TEST_F(FormatTest, IncorrectCodeUnbalancedBraces) {
   verifyFormat("{");
   verifyFormat("#})");
+  verifyNoCrash("(/**/[:!] ?[).");
 }
 
 TEST_F(FormatTest, IncorrectCodeDoNoWhile) {
@@ -9519,6 +9531,13 @@ TEST_F(FormatTest, FormatsLambdas) {
                "      doo_dah();\n"
                "    })) {\n"
                "}");
+  verifyFormat("auto lambda = []() {\n"
+               "  int a = 2\n"
+               "#if A\n"
+               "          + 2\n"
+               "#endif\n"
+               "      ;\n"
+               "};");
 }
 
 TEST_F(FormatTest, FormatsBlocks) {
