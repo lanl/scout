@@ -33,7 +33,35 @@ class MiDataTestCase(lldbmi_testcase.MiTestCaseBase):
 
         # Test -data-disassemble: try to disassemble some address
         self.runCmd("-data-disassemble -s %#x -e %#x -- 0" % (addr, addr + 0x10))
-        self.expect("\^done,asm_insns=\[{address=\"%#x\",func-name=\"main\",offset=\"0x0\",size=\"[1-9]\",inst=\".+\"}," % addr)
+        self.expect("\^done,asm_insns=\[{address=\"0x%08x\",func-name=\"main\",offset=\"0\",size=\"[1-9]+\",inst=\".+\"}," % addr)
+
+    @lldbmi_test
+    @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
+    def test_lldbmi_data_read_memory_bytes(self):
+        """Test that 'lldb-mi --interpreter' works for -data-read-memory-bytes."""
+
+        self.spawnLldbMi(args = None)
+
+        # Load executable
+        self.runCmd("-file-exec-and-symbols %s" % self.myexe)
+        self.expect("\^done")
+
+        # Run to main
+        self.runCmd("-break-insert -f main")
+        self.expect("\^done,bkpt={number=\"1\"")
+        self.runCmd("-exec-run")
+        self.expect("\^running")
+        self.expect("\*stopped,reason=\"breakpoint-hit\"")
+
+        # Get address of s_RawData
+        self.runCmd("-data-evaluate-expression &s_RawData")
+        self.expect("\^done,value=\"0x[0-9a-f]+\"",timeout=1)
+        addr = int(self.child.after.split("\"")[1], 16)
+        size = 5
+
+        # Test -data-read-memory-bytes: try to read data of s_RawData
+        self.runCmd("-data-read-memory-bytes %#x %d" % (addr, size))
+        self.expect("\^done,memory=\[{begin=\"0x0*%x\",offset=\"0x0+\",end=\"0x0*%x\",contents=\"1234567800\"}\]" % (addr, addr + size))
 
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")

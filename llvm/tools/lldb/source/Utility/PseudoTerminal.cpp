@@ -239,7 +239,11 @@ PseudoTerminal::Fork (char *error_str, size_t error_len)
         error_str[0] = '\0';
 
     pid_t pid = LLDB_INVALID_PROCESS_ID;
-    if (OpenFirstAvailableMaster (O_RDWR, error_str, error_len))
+    int flags = O_RDWR;
+#if !defined(_MSC_VER)
+    flags |= O_CLOEXEC;
+#endif
+    if (OpenFirstAvailableMaster (flags, error_str, error_len))
     {
         // Successfully opened our master pseudo terminal
 
@@ -258,7 +262,8 @@ PseudoTerminal::Fork (char *error_str, size_t error_len)
             if (OpenSlave (O_RDWR, error_str, error_len))
             {
                 // Successfully opened slave
-                // We are done with the master in the child process so lets close it
+
+                // Master FD should have O_CLOEXEC set, but let's close it just in case...
                 CloseMasterFileDescriptor ();
 
 #if defined(TIOCSCTTY)

@@ -36,6 +36,12 @@ SBLaunchInfo::ref ()
     return *m_opaque_sp;
 }
 
+const lldb_private::ProcessLaunchInfo &
+SBLaunchInfo::ref () const
+{
+    return *m_opaque_sp;
+}
+
 lldb::pid_t
 SBLaunchInfo::GetProcessID()
 {
@@ -215,6 +221,18 @@ void
 SBLaunchInfo::SetShell (const char * path)
 {
     m_opaque_sp->SetShell (FileSpec(path, false));
+}
+
+bool
+SBLaunchInfo::GetGlobArguments ()
+{
+    return m_opaque_sp->GetGlobArguments();
+}
+
+void
+SBLaunchInfo::SetGlobArguments (bool glob)
+{
+    m_opaque_sp->SetGlobArguments(glob);
 }
 
 uint32_t

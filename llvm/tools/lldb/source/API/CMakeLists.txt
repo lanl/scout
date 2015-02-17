@@ -5,6 +5,7 @@ set(LLVM_NO_RTTI 1)
 # well (where appropriate).
 add_lldb_library(lldbAPI
   SBAddress.cpp
+  SBAttachInfo.cpp
   SBBlock.cpp
   SBBreakpoint.cpp
   SBBreakpointLocation.cpp
@@ -57,6 +58,7 @@ add_lldb_library(lldbAPI
   SBTypeSynthetic.cpp
   SBValue.cpp
   SBValueList.cpp
+  SBVariablesOptions.cpp
   SBWatchpoint.cpp
   SBUnixSignals.cpp
   )

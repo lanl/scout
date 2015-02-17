@@ -242,9 +242,11 @@ PlatformLinux::GetPluginName()
 void
 PlatformLinux::Initialize ()
 {
+    PlatformPOSIX::Initialize ();
+
     if (g_initialize_count++ == 0)
     {
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
         PlatformSP default_platform_sp (new PlatformLinux(true));
         default_platform_sp->SetSystemArchitecture(HostInfo::GetArchitecture());
         Platform::SetHostPlatform (default_platform_sp);
@@ -266,6 +268,8 @@ PlatformLinux::Terminate ()
             PluginManager::UnregisterPlugin (PlatformLinux::CreateInstance);
         }
     }
+
+    PlatformPOSIX::Terminate ();
 }
 
 Error
@@ -849,8 +853,8 @@ PlatformLinux::LaunchNativeProcess (
     lldb_private::NativeProcessProtocol::NativeDelegate &native_delegate,
     NativeProcessProtocolSP &process_sp)
 {
-#if !defined(__linux__) || defined(__ANDROID_NDK__)
-    return Error("only implemented on Linux hosts");
+#if !defined(__linux__)
+    return Error("Only implemented on Linux hosts");
 #else
     if (!IsHost ())
         return Error("PlatformLinux::%s (): cannot launch a debug process when not the host", __FUNCTION__);
@@ -886,8 +890,8 @@ PlatformLinux::AttachNativeProcess (lldb::pid_t pid,
                                     lldb_private::NativeProcessProtocol::NativeDelegate &native_delegate,
                                     NativeProcessProtocolSP &process_sp)
 {
-#if !defined(__linux__) || defined(__ANDROID_NDK__)
-    return Error("only implemented on Linux hosts");
+#if !defined(__linux__)
+    return Error("Only implemented on Linux hosts");
 #else
     if (!IsHost ())
         return Error("PlatformLinux::%s (): cannot attach to a debug process when not the host", __FUNCTION__);

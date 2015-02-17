@@ -378,6 +378,7 @@ HostInfoBase::ComputeHostArchitectureSupport(ArchSpec &arch_32, ArchSpec &arch_6
             arch_32.SetTriple(triple);
             break;
 
+        case llvm::Triple::ppc64:
         case llvm::Triple::x86_64:
             arch_64.SetTriple(triple);
             arch_32.SetTriple(triple.get32BitArchVariant());
@@ -386,7 +387,6 @@ HostInfoBase::ComputeHostArchitectureSupport(ArchSpec &arch_32, ArchSpec &arch_6
         case llvm::Triple::aarch64:
         case llvm::Triple::mips64:
         case llvm::Triple::sparcv9:
-        case llvm::Triple::ppc64:
             arch_64.SetTriple(triple);
             break;
     }
