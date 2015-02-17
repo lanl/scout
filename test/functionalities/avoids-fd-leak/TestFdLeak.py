@@ -36,6 +36,27 @@ class AvoidsFdLeakTestCase(TestBase):
         self.assertTrue(process.GetExitStatus() == 0,
                 "Process returned non-zero status. Were incorrect file descriptors passed?")
 
+    @skipIfWindows # The check for descriptor leakage needs to be implemented differently here.
+    def test_fd_leak_multitarget (self):
+        self.buildDefault()
+        exe = os.path.join (os.getcwd(), "a.out")
+
+        target = self.dbg.CreateTarget(exe)
+	breakpoint = target.BreakpointCreateBySourceRegex ('Set breakpoint here', lldb.SBFileSpec ("main.c", False))
+	self.assertTrue(breakpoint, VALID_BREAKPOINT)
+
+        process1 = target.LaunchSimple (None, None, self.get_process_working_directory())
+        self.assertTrue(process1, PROCESS_IS_VALID)
+        self.assertTrue(process1.GetState() == lldb.eStateStopped, "Process should have been stopped.")
+
+        target2 = self.dbg.CreateTarget(exe)
+        process2 = target2.LaunchSimple (None, None, self.get_process_working_directory())
+        self.assertTrue(process2, PROCESS_IS_VALID)
+
+        self.assertTrue(process2.GetState() == lldb.eStateExited, "Process should have exited.")
+        self.assertTrue(process2.GetExitStatus() == 0,
+                "Process returned non-zero status. Were incorrect file descriptors passed?")
+
 
 if __name__ == '__main__':
     import atexit

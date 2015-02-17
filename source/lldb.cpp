@@ -43,6 +43,7 @@
 #include "Plugins/ObjectContainer/BSD-Archive/ObjectContainerBSDArchive.h"
 #include "Plugins/ObjectFile/ELF/ObjectFileELF.h"
 #include "Plugins/ObjectFile/PECOFF/ObjectFilePECOFF.h"
+#include "Plugins/Platform/Android/PlatformAndroid.h"
 #include "Plugins/Platform/FreeBSD/PlatformFreeBSD.h"
 #include "Plugins/Platform/Linux/PlatformLinux.h"
 #include "Plugins/Platform/POSIX/PlatformPOSIX.h"
@@ -173,6 +174,7 @@ lldb_private::Initialize ()
         PlatformLinux::Initialize();
         PlatformWindows::Initialize();
         PlatformKalimba::Initialize();
+        PlatformAndroid::Initialize();
         SymbolFileDWARFDebugMap::Initialize();
         ItaniumABILanguageRuntime::Initialize();
 #ifndef LLDB_DISABLE_PYTHON
@@ -209,7 +211,7 @@ lldb_private::Initialize ()
         //----------------------------------------------------------------------
         ProcessLinux::Initialize();
 #endif
-#if defined(_WIN32)
+#if defined(_MSC_VER)
         DynamicLoaderWindows::Initialize();
         ProcessWindows::Initialize();
 #endif
@@ -269,6 +271,7 @@ lldb_private::Terminate ()
     PlatformLinux::Terminate();
     PlatformWindows::Terminate();
     PlatformKalimba::Terminate();
+    PlatformAndroid::Terminate();
     SymbolFileDWARFDebugMap::Terminate();
     ItaniumABILanguageRuntime::Terminate();
 #ifndef LLDB_DISABLE_PYTHON
@@ -298,7 +301,7 @@ lldb_private::Terminate ()
 
     Debugger::SettingsTerminate ();
 
-#if defined (_WIN32)
+#if defined(_MSC_VER)
     DynamicLoaderWindows::Terminate();
 #endif
 
@@ -310,6 +313,7 @@ lldb_private::Terminate ()
     ProcessFreeBSD::Terminate();
 #endif
 
+    PlatformRemoteGDBServer::Terminate();
     ProcessGDBRemote::Terminate();
     DynamicLoaderStatic::Terminate();
 

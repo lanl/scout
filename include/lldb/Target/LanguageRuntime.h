@@ -109,6 +109,12 @@ public:
     {
         return false;
     }
+    
+    virtual bool
+    IsRuntimeSupportValue (ValueObject& valobj)
+    {
+        return false;
+    }
 
 protected:
     //------------------------------------------------------------------

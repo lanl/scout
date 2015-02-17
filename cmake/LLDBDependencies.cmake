@@ -25,6 +25,7 @@ set( LLDB_USED_LIBS
   lldbPluginObjectContainerMachOArchive
   lldbPluginProcessGDBRemote
   lldbPluginProcessUtility
+  lldbPluginPlatformAndroid
   lldbPluginPlatformGDB
   lldbPluginPlatformFreeBSD
   lldbPluginPlatformKalimba
@@ -69,6 +70,7 @@ if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
     lldbPluginProcessElfCore
     lldbPluginJITLoaderGDB
     Ws2_32
+    Rpcrt4
     )
 endif ()
 

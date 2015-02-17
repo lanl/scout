@@ -94,6 +94,8 @@
 		25420ED21A649D88009ADBCB /* PipeBase.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 25420ED11A649D88009ADBCB /* PipeBase.cpp */; };
 		254FBB951A81AA7F00BD6378 /* SBLaunchInfo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 254FBB941A81AA7F00BD6378 /* SBLaunchInfo.cpp */; };
 		254FBB971A81B03100BD6378 /* SBLaunchInfo.h in Headers */ = {isa = PBXBuildFile; fileRef = 254FBB961A81B03100BD6378 /* SBLaunchInfo.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		254FBBA31A9166F100BD6378 /* SBAttachInfo.h in Headers */ = {isa = PBXBuildFile; fileRef = 254FBBA21A9166F100BD6378 /* SBAttachInfo.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		254FBBA51A91670E00BD6378 /* SBAttachInfo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 254FBBA41A91670E00BD6378 /* SBAttachInfo.cpp */; };
 		260157C61885F51C00F875CF /* libpanel.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 260157C41885F4FF00F875CF /* libpanel.dylib */; };
 		260157C71885F52500F875CF /* libpanel.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 260157C41885F4FF00F875CF /* libpanel.dylib */; };
 		260157C81885F53100F875CF /* libpanel.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 260157C41885F4FF00F875CF /* libpanel.dylib */; };
@@ -737,6 +739,13 @@
 		4CF3D80C15AF4DC800845BF3 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = EDB919B414F6F10D008FF64B /* Security.framework */; };
 		4CF52AF51428291E0051E832 /* SBFileSpecList.h in Headers */ = {isa = PBXBuildFile; fileRef = 4CF52AF41428291E0051E832 /* SBFileSpecList.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		4CF52AF8142829390051E832 /* SBFileSpecList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4CF52AF7142829390051E832 /* SBFileSpecList.cpp */; };
+		6D55B2901A8A806200A70529 /* GDBRemoteCommunicationServerCommon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6D55B28D1A8A806200A70529 /* GDBRemoteCommunicationServerCommon.cpp */; };
+		6D55B2911A8A806200A70529 /* GDBRemoteCommunicationServerLLGS.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6D55B28E1A8A806200A70529 /* GDBRemoteCommunicationServerLLGS.cpp */; };
+		6D55B2921A8A806200A70529 /* GDBRemoteCommunicationServerPlatform.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6D55B28F1A8A806200A70529 /* GDBRemoteCommunicationServerPlatform.cpp */; };
+		6D55BAED1A8CD0A800A70529 /* PlatformAndroid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6D55BAE91A8CD08C00A70529 /* PlatformAndroid.cpp */; };
+		6D55BAEE1A8CD0B200A70529 /* PlatformAndroidRemoteGDBServer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6D55BAEB1A8CD08C00A70529 /* PlatformAndroidRemoteGDBServer.cpp */; };
+		6D55BAEF1A8CD0B700A70529 /* PlatformAndroid.h in Headers */ = {isa = PBXBuildFile; fileRef = 6D55BAEA1A8CD08C00A70529 /* PlatformAndroid.h */; };
+		6D55BAF01A8CD0BD00A70529 /* PlatformAndroidRemoteGDBServer.h in Headers */ = {isa = PBXBuildFile; fileRef = 6D55BAEC1A8CD08C00A70529 /* PlatformAndroidRemoteGDBServer.h */; };
 		8C2D6A53197A1EAF006989C9 /* MemoryHistory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8C2D6A52197A1EAF006989C9 /* MemoryHistory.cpp */; };
 		8C2D6A5E197A250F006989C9 /* MemoryHistoryASan.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8C2D6A5A197A1FDC006989C9 /* MemoryHistoryASan.cpp */; };
 		8CCB017E19BA28A80009FD44 /* ThreadCollection.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8CCB017A19BA283D0009FD44 /* ThreadCollection.cpp */; };
@@ -747,11 +756,21 @@
 		8CF02AEF19DD16B100B14BE0 /* InstrumentationRuntimeStopInfo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8CF02AED19DD15CF00B14BE0 /* InstrumentationRuntimeStopInfo.cpp */; };
 		94094C6B163B6F840083A547 /* ValueObjectCast.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 94094C69163B6CD90083A547 /* ValueObjectCast.cpp */; };
 		940B02F619DC96E700AD0F52 /* SBExecutionContext.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 940B02F519DC96E700AD0F52 /* SBExecutionContext.cpp */; };
+		940B04D91A8984FF0045D5F7 /* argdumper.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 940B04D81A8984FF0045D5F7 /* argdumper.cpp */; };
+		940B04DB1A8985F70045D5F7 /* libz.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 940B04DA1A8985F70045D5F7 /* libz.dylib */; };
+		940B04DD1A8985FF0045D5F7 /* libpanel.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 940B04DC1A8985FF0045D5F7 /* libpanel.dylib */; };
+		940B04DF1A8986070045D5F7 /* libncurses.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 940B04DE1A8986070045D5F7 /* libncurses.dylib */; };
+		940B04E11A89860E0045D5F7 /* libedit.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 940B04E01A89860E0045D5F7 /* libedit.dylib */; };
+		940B04E41A8987680045D5F7 /* argdumper in CopyFiles */ = {isa = PBXBuildFile; fileRef = 942829C01A89835300521B30 /* argdumper */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		94145431175E63B500284436 /* lldb-versioning.h in Headers */ = {isa = PBXBuildFile; fileRef = 94145430175D7FDE00284436 /* lldb-versioning.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		941BCC7F14E48C4000BB969C /* SBTypeFilter.h in Headers */ = {isa = PBXBuildFile; fileRef = 9461568614E355F2003A195C /* SBTypeFilter.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		941BCC8014E48C4000BB969C /* SBTypeFormat.h in Headers */ = {isa = PBXBuildFile; fileRef = 9461568714E355F2003A195C /* SBTypeFormat.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		941BCC8114E48C4000BB969C /* SBTypeSummary.h in Headers */ = {isa = PBXBuildFile; fileRef = 9461568814E355F2003A195C /* SBTypeSummary.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		941BCC8214E48C4000BB969C /* SBTypeSynthetic.h in Headers */ = {isa = PBXBuildFile; fileRef = 9461568914E355F2003A195C /* SBTypeSynthetic.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		94235B9E1A8D667400EB2EED /* SBVariablesOptions.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 94235B9B1A8D5FF300EB2EED /* SBVariablesOptions.cpp */; };
+		94235B9F1A8D66D600EB2EED /* SBVariablesOptions.h in Headers */ = {isa = PBXBuildFile; fileRef = 94235B9A1A8D5FD800EB2EED /* SBVariablesOptions.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		942829561A89614C00521B30 /* JSON.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 942829551A89614C00521B30 /* JSON.cpp */; };
+		942829CC1A89839300521B30 /* liblldb-core.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2689FFCA13353D7A00698AC0 /* liblldb-core.a */; };
 		942AFF0519F84ABF007B43B4 /* LibCxxVector.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 942AFF0419F84ABF007B43B4 /* LibCxxVector.cpp */; };
 		942AFF0719F84C02007B43B4 /* LibCxxInitializerList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 942AFF0619F84C02007B43B4 /* LibCxxInitializerList.cpp */; };
 		94380B8219940B0A00BFE4A8 /* StringLexer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 94380B8119940B0A00BFE4A8 /* StringLexer.cpp */; };
@@ -776,6 +795,7 @@
 		9475C18F14E5F858001BFC6D /* SBTypeNameSpecifier.h in Headers */ = {isa = PBXBuildFile; fileRef = 9475C18C14E5F826001BFC6D /* SBTypeNameSpecifier.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		947A1D641616476B0017C8D1 /* CommandObjectPlugin.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 947A1D621616476A0017C8D1 /* CommandObjectPlugin.cpp */; };
 		947A1D651616476B0017C8D1 /* CommandObjectPlugin.h in Headers */ = {isa = PBXBuildFile; fileRef = 947A1D631616476A0017C8D1 /* CommandObjectPlugin.h */; };
+		9492E2A51A8AC11000295BBD /* CoreMedia.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9492E2A41A8AC11000295BBD /* CoreMedia.cpp */; };
 		949ADF031406F648004833E1 /* ValueObjectConstResultImpl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 949ADF021406F648004833E1 /* ValueObjectConstResultImpl.cpp */; };
 		94B6E76213D88365005F417F /* ValueObjectSyntheticFilter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 94B6E76113D88362005F417F /* ValueObjectSyntheticFilter.cpp */; };
 		94BA8B6D176F8C9B005A91B5 /* Range.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 94BA8B6C176F8C9B005A91B5 /* Range.cpp */; };
@@ -1047,6 +1067,20 @@
 			remoteGlobalIDString = 26680206115FD0ED008E1FE4;
 			remoteInfo = LLDB;
 		};
+		942829C91A89836A00521B30 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 08FB7793FE84155DC02AAC07 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2689FFC913353D7A00698AC0;
+			remoteInfo = "lldb-core";
+		};
+		942829CD1A89842900521B30 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 08FB7793FE84155DC02AAC07 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 942829BF1A89835300521B30;
+			remoteInfo = argdumper;
+		};
 		94E829C8152D33B4006F96A3 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 08FB7793FE84155DC02AAC07 /* Project object */;
@@ -1058,6 +1092,25 @@
 
 /* Begin PBXCopyFilesBuildPhase section */
 		26D6F3E5183E7F4E00194858 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+		940B04E31A89875C0045D5F7 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 7;
+			files = (
+				940B04E41A8987680045D5F7 /* argdumper in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		942829BE1A89835300521B30 /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = /usr/share/man/man1/;
@@ -1173,6 +1226,9 @@
 		254FBB921A81AA5200BD6378 /* SBLaunchInfo.i */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c.preprocessed; path = SBLaunchInfo.i; sourceTree = "<group>"; };
 		254FBB941A81AA7F00BD6378 /* SBLaunchInfo.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = SBLaunchInfo.cpp; path = source/API/SBLaunchInfo.cpp; sourceTree = "<group>"; };
 		254FBB961A81B03100BD6378 /* SBLaunchInfo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = SBLaunchInfo.h; path = include/lldb/API/SBLaunchInfo.h; sourceTree = "<group>"; };
+		254FBBA21A9166F100BD6378 /* SBAttachInfo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = SBAttachInfo.h; path = include/lldb/API/SBAttachInfo.h; sourceTree = "<group>"; };
+		254FBBA41A91670E00BD6378 /* SBAttachInfo.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = SBAttachInfo.cpp; path = source/API/SBAttachInfo.cpp; sourceTree = "<group>"; };
+		254FBBA61A91672800BD6378 /* SBAttachInfo.i */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c.preprocessed; path = SBAttachInfo.i; sourceTree = "<group>"; };
 		260157C41885F4FF00F875CF /* libpanel.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libpanel.dylib; path = /usr/lib/libpanel.dylib; sourceTree = "<absolute>"; };
 		260223E7115F06D500A601A2 /* SBCommunication.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = SBCommunication.h; path = include/lldb/API/SBCommunication.h; sourceTree = "<group>"; };
 		260223E8115F06E500A601A2 /* SBCommunication.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = SBCommunication.cpp; path = source/API/SBCommunication.cpp; sourceTree = "<group>"; };
@@ -2306,6 +2362,22 @@
 		69A01E1E1236C5D400C660B5 /* Mutex.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Mutex.cpp; sourceTree = "<group>"; };
 		69A01E1F1236C5D400C660B5 /* Symbols.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Symbols.cpp; sourceTree = "<group>"; };
 		69A01E201236C5D400C660B5 /* TimeValue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TimeValue.cpp; sourceTree = "<group>"; };
+		6D55B28D1A8A806200A70529 /* GDBRemoteCommunicationServerCommon.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GDBRemoteCommunicationServerCommon.cpp; sourceTree = "<group>"; };
+		6D55B28E1A8A806200A70529 /* GDBRemoteCommunicationServerLLGS.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GDBRemoteCommunicationServerLLGS.cpp; sourceTree = "<group>"; };
+		6D55B28F1A8A806200A70529 /* GDBRemoteCommunicationServerPlatform.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GDBRemoteCommunicationServerPlatform.cpp; sourceTree = "<group>"; };
+		6D55B2931A8A808400A70529 /* GDBRemoteCommunicationServerCommon.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GDBRemoteCommunicationServerCommon.h; sourceTree = "<group>"; };
+		6D55B2941A8A808400A70529 /* GDBRemoteCommunicationServerLLGS.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GDBRemoteCommunicationServerLLGS.h; sourceTree = "<group>"; };
+		6D55B2951A8A808400A70529 /* GDBRemoteCommunicationServerPlatform.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GDBRemoteCommunicationServerPlatform.h; sourceTree = "<group>"; };
+		6D55BAE01A8CD03D00A70529 /* HostInfoAndroid.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = HostInfoAndroid.cpp; path = source/Host/android/HostInfoAndroid.cpp; sourceTree = "<group>"; };
+		6D55BAE11A8CD03D00A70529 /* ProcessLauncherAndroid.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ProcessLauncherAndroid.cpp; path = source/Host/android/ProcessLauncherAndroid.cpp; sourceTree = "<group>"; };
+		6D55BAE21A8CD06000A70529 /* Android.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Android.h; path = include/lldb/Host/android/Android.h; sourceTree = "<group>"; };
+		6D55BAE31A8CD06000A70529 /* Config.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Config.h; path = include/lldb/Host/android/Config.h; sourceTree = "<group>"; };
+		6D55BAE41A8CD06000A70529 /* HostInfoAndroid.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = HostInfoAndroid.h; path = include/lldb/Host/android/HostInfoAndroid.h; sourceTree = "<group>"; };
+		6D55BAE51A8CD06000A70529 /* ProcessLauncherAndroid.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ProcessLauncherAndroid.h; path = include/lldb/Host/android/ProcessLauncherAndroid.h; sourceTree = "<group>"; };
+		6D55BAE91A8CD08C00A70529 /* PlatformAndroid.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PlatformAndroid.cpp; sourceTree = "<group>"; };
+		6D55BAEA1A8CD08C00A70529 /* PlatformAndroid.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PlatformAndroid.h; sourceTree = "<group>"; };
+		6D55BAEB1A8CD08C00A70529 /* PlatformAndroidRemoteGDBServer.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PlatformAndroidRemoteGDBServer.cpp; sourceTree = "<group>"; };
+		6D55BAEC1A8CD08C00A70529 /* PlatformAndroidRemoteGDBServer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PlatformAndroidRemoteGDBServer.h; sourceTree = "<group>"; };
 		8C2D6A52197A1EAF006989C9 /* MemoryHistory.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = MemoryHistory.cpp; path = source/Target/MemoryHistory.cpp; sourceTree = "<group>"; };
 		8C2D6A54197A1EBE006989C9 /* MemoryHistory.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = MemoryHistory.h; path = include/lldb/Target/MemoryHistory.h; sourceTree = "<group>"; };
 		8C2D6A5A197A1FDC006989C9 /* MemoryHistoryASan.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MemoryHistoryASan.cpp; sourceTree = "<group>"; };
@@ -2329,7 +2401,18 @@
 		940B02F419DC96CB00AD0F52 /* SBExecutionContext.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = SBExecutionContext.h; path = include/lldb/API/SBExecutionContext.h; sourceTree = "<group>"; };
 		940B02F519DC96E700AD0F52 /* SBExecutionContext.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = SBExecutionContext.cpp; path = source/API/SBExecutionContext.cpp; sourceTree = "<group>"; };
 		940B02F719DC970900AD0F52 /* SBExecutionContext.i */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c.preprocessed; path = SBExecutionContext.i; sourceTree = "<group>"; };
+		940B04D81A8984FF0045D5F7 /* argdumper.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = argdumper.cpp; path = tools/argdumper/argdumper.cpp; sourceTree = "<group>"; };
+		940B04DA1A8985F70045D5F7 /* libz.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libz.dylib; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.10.sdk/usr/lib/libz.dylib; sourceTree = DEVELOPER_DIR; };
+		940B04DC1A8985FF0045D5F7 /* libpanel.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libpanel.dylib; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.10.sdk/usr/lib/libpanel.dylib; sourceTree = DEVELOPER_DIR; };
+		940B04DE1A8986070045D5F7 /* libncurses.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libncurses.dylib; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.10.sdk/usr/lib/libncurses.dylib; sourceTree = DEVELOPER_DIR; };
+		940B04E01A89860E0045D5F7 /* libedit.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libedit.dylib; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.10.sdk/usr/lib/libedit.dylib; sourceTree = DEVELOPER_DIR; };
 		94145430175D7FDE00284436 /* lldb-versioning.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "lldb-versioning.h"; path = "include/lldb/lldb-versioning.h"; sourceTree = "<group>"; };
+		94235B9A1A8D5FD800EB2EED /* SBVariablesOptions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = SBVariablesOptions.h; path = include/lldb/API/SBVariablesOptions.h; sourceTree = "<group>"; };
+		94235B9B1A8D5FF300EB2EED /* SBVariablesOptions.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = SBVariablesOptions.cpp; path = source/API/SBVariablesOptions.cpp; sourceTree = "<group>"; };
+		94235B9D1A8D601A00EB2EED /* SBVariablesOptions.i */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c.preprocessed; path = SBVariablesOptions.i; sourceTree = "<group>"; };
+		942829541A89614000521B30 /* JSON.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = JSON.h; path = include/lldb/Utility/JSON.h; sourceTree = "<group>"; };
+		942829551A89614C00521B30 /* JSON.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = JSON.cpp; path = source/Utility/JSON.cpp; sourceTree = "<group>"; };
+		942829C01A89835300521B30 /* argdumper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = argdumper; sourceTree = BUILT_PRODUCTS_DIR; };
 		942AFF0419F84ABF007B43B4 /* LibCxxVector.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = LibCxxVector.cpp; path = source/DataFormatters/LibCxxVector.cpp; sourceTree = "<group>"; };
 		942AFF0619F84C02007B43B4 /* LibCxxInitializerList.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = LibCxxInitializerList.cpp; path = source/DataFormatters/LibCxxInitializerList.cpp; sourceTree = "<group>"; };
 		94380B8019940B0300BFE4A8 /* StringLexer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = StringLexer.h; path = include/lldb/Utility/StringLexer.h; sourceTree = "<group>"; };
@@ -2371,6 +2454,7 @@
 		9475C18D14E5F834001BFC6D /* SBTypeNameSpecifier.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = SBTypeNameSpecifier.cpp; path = source/API/SBTypeNameSpecifier.cpp; sourceTree = "<group>"; };
 		947A1D621616476A0017C8D1 /* CommandObjectPlugin.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = CommandObjectPlugin.cpp; path = source/Commands/CommandObjectPlugin.cpp; sourceTree = "<group>"; };
 		947A1D631616476A0017C8D1 /* CommandObjectPlugin.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = CommandObjectPlugin.h; path = source/Commands/CommandObjectPlugin.h; sourceTree = "<group>"; };
+		9492E2A41A8AC11000295BBD /* CoreMedia.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = CoreMedia.cpp; path = source/DataFormatters/CoreMedia.cpp; sourceTree = "<group>"; };
 		949ADF001406F62E004833E1 /* ValueObjectConstResultImpl.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ValueObjectConstResultImpl.h; path = include/lldb/Core/ValueObjectConstResultImpl.h; sourceTree = "<group>"; };
 		949ADF021406F648004833E1 /* ValueObjectConstResultImpl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = ValueObjectConstResultImpl.cpp; path = source/Core/ValueObjectConstResultImpl.cpp; sourceTree = "<group>"; };
 		94B6E76013D8833C005F417F /* ValueObjectSyntheticFilter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ValueObjectSyntheticFilter.h; path = include/lldb/Core/ValueObjectSyntheticFilter.h; sourceTree = "<group>"; };
@@ -2673,6 +2757,18 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		942829BD1A89835300521B30 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				940B04E11A89860E0045D5F7 /* libedit.dylib in Frameworks */,
+				940B04DF1A8986070045D5F7 /* libncurses.dylib in Frameworks */,
+				940B04DD1A8985FF0045D5F7 /* libpanel.dylib in Frameworks */,
+				940B04DB1A8985F70045D5F7 /* libz.dylib in Frameworks */,
+				942829CC1A89839300521B30 /* liblldb-core.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		EDC6D49614E5C19B001B75F8 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -2694,6 +2790,10 @@
 		08FB7794FE84155DC02AAC07 /* lldb */ = {
 			isa = PBXGroup;
 			children = (
+				940B04E01A89860E0045D5F7 /* libedit.dylib */,
+				940B04DE1A8986070045D5F7 /* libncurses.dylib */,
+				940B04DC1A8985FF0045D5F7 /* libpanel.dylib */,
+				940B04DA1A8985F70045D5F7 /* libz.dylib */,
 				26709E311964A34000B94724 /* LaunchServices.framework */,
 				26F5C32810F3DF7D009D5894 /* Libraries */,
 				264E8576159BE51A00E9D7A2 /* Resources */,
@@ -2744,6 +2844,7 @@
 				EDE274EC14EDCE1F005B0F75 /* com.apple.lldb.launcherRootXPCService.xpc */,
 				26D6F3E7183E7F4E00194858 /* lldb-gdbserver */,
 				2690CD171A6DC0D000E717C8 /* lldb-mi */,
+				942829C01A89835300521B30 /* argdumper */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -3033,6 +3134,7 @@
 		2611FEEE142D83060017FEA3 /* interface */ = {
 			isa = PBXGroup;
 			children = (
+				254FBBA61A91672800BD6378 /* SBAttachInfo.i */,
 				254FBB921A81AA5200BD6378 /* SBLaunchInfo.i */,
 				2611FEEF142D83060017FEA3 /* SBAddress.i */,
 				2611FEF0142D83060017FEA3 /* SBBlock.i */,
@@ -3085,6 +3187,7 @@
 				9461569514E3567F003A195C /* SBTypeSynthetic.i */,
 				2611FF12142D83060017FEA3 /* SBValue.i */,
 				2611FF13142D83060017FEA3 /* SBValueList.i */,
+				94235B9D1A8D601A00EB2EED /* SBVariablesOptions.i */,
 				B2A5872514313B480092BFBA /* SBWatchpoint.i */,
 			);
 			name = interface;
@@ -3103,8 +3206,8 @@
 		262D3190111B4341004E6F88 /* API */ = {
 			isa = PBXGroup;
 			children = (
-				254FBB961A81B03100BD6378 /* SBLaunchInfo.h */,
-				254FBB941A81AA7F00BD6378 /* SBLaunchInfo.cpp */,
+				254FBBA41A91670E00BD6378 /* SBAttachInfo.cpp */,
+				254FBBA21A9166F100BD6378 /* SBAttachInfo.h */,
 				2611FEEE142D83060017FEA3 /* interface */,
 				26BC7C2510F1B3BC00F91463 /* lldb-defines.h */,
 				26BC7C2610F1B3BC00F91463 /* lldb-enumerations.h */,
@@ -3160,6 +3263,8 @@
 				9AC703AE117675410086C050 /* SBInstruction.cpp */,
 				9AC7038F117675270086C050 /* SBInstructionList.h */,
 				9AC703B0117675490086C050 /* SBInstructionList.cpp */,
+				254FBB961A81B03100BD6378 /* SBLaunchInfo.h */,
+				254FBB941A81AA7F00BD6378 /* SBLaunchInfo.cpp */,
 				26DE205811618FE700A093E2 /* SBLineEntry.h */,
 				26DE20621161904200A093E2 /* SBLineEntry.cpp */,
 				9A9831021125FC5800A56CB0 /* SBListener.h */,
@@ -3220,6 +3325,8 @@
 				9A19A6AD1163BB9800E0D453 /* SBValue.cpp */,
 				9A357582116CFDEE00E8ED2F /* SBValueList.h */,
 				9A35758D116CFE0F00E8ED2F /* SBValueList.cpp */,
+				94235B9A1A8D5FD800EB2EED /* SBVariablesOptions.h */,
+				94235B9B1A8D5FF300EB2EED /* SBVariablesOptions.cpp */,
 				B2A58721143119810092BFBA /* SBWatchpoint.h */,
 				B2A58723143119D50092BFBA /* SBWatchpoint.cpp */,
 			);
@@ -3378,6 +3485,8 @@
 				26F996A8119B79C300412154 /* ARM_GCC_Registers.h */,
 				264723A511FA076E00DE380C /* CleanUp.h */,
 				4C73152119B7D71700F865A4 /* Iterable.h */,
+				942829541A89614000521B30 /* JSON.h */,
+				942829551A89614C00521B30 /* JSON.cpp */,
 				26D1804416CEE12500EDFB5B /* KQueue.h */,
 				26D1803C16CEBFD300EDFB5B /* KQueue.cpp */,
 				94031A9F13CF5B3D00DCFF3C /* PriorityPointerPair.h */,
@@ -4176,6 +4285,7 @@
 		26BC7DD010F1B7C100F91463 /* Host */ = {
 			isa = PBXGroup;
 			children = (
+				6D55B29B1A8CCFF000A70529 /* android */,
 				33E5E8451A6736D30024ED68 /* StringConvert.h */,
 				69A01E1A1236C5D400C660B5 /* common */,
 				3FDFE53919A29399009756A7 /* freebsd */,
@@ -4484,6 +4594,7 @@
 		26C5577E132575B6008FD8FE /* Platform */ = {
 			isa = PBXGroup;
 			children = (
+				6D55BAE61A8CD08C00A70529 /* Android */,
 				2694E99814FC0BB30076DE67 /* FreeBSD */,
 				264A97BC133918A30017F0BE /* GDB Server */,
 				23042D0F1976C9D800621B2C /* Kalimba */,
@@ -4619,6 +4730,7 @@
 		26F5C22410F3D950009D5894 /* Tools */ = {
 			isa = PBXGroup;
 			children = (
+				942829BA1A89830900521B30 /* argdumper */,
 				26579F55126A255E0007C5CB /* darwin-debug */,
 				265E9BE0115C2B8500D0DCCB /* debugserver */,
 				26F5C22510F3D956009D5894 /* Driver */,
@@ -4797,6 +4909,12 @@
 		4CEE62F71145F1C70064CF93 /* GDB Remote */ = {
 			isa = PBXGroup;
 			children = (
+				6D55B2931A8A808400A70529 /* GDBRemoteCommunicationServerCommon.h */,
+				6D55B2941A8A808400A70529 /* GDBRemoteCommunicationServerLLGS.h */,
+				6D55B2951A8A808400A70529 /* GDBRemoteCommunicationServerPlatform.h */,
+				6D55B28D1A8A806200A70529 /* GDBRemoteCommunicationServerCommon.cpp */,
+				6D55B28E1A8A806200A70529 /* GDBRemoteCommunicationServerLLGS.cpp */,
+				6D55B28F1A8A806200A70529 /* GDBRemoteCommunicationServerPlatform.cpp */,
 				2618EE5B1315B29C001D6D71 /* GDBRemoteCommunication.cpp */,
 				2618EE5C1315B29C001D6D71 /* GDBRemoteCommunication.h */,
 				26744EED1338317700EF765A /* GDBRemoteCommunicationClient.cpp */,
@@ -4844,6 +4962,30 @@
 			path = source/Host/common;
 			sourceTree = "<group>";
 		};
+		6D55B29B1A8CCFF000A70529 /* android */ = {
+			isa = PBXGroup;
+			children = (
+				6D55BAE21A8CD06000A70529 /* Android.h */,
+				6D55BAE31A8CD06000A70529 /* Config.h */,
+				6D55BAE41A8CD06000A70529 /* HostInfoAndroid.h */,
+				6D55BAE51A8CD06000A70529 /* ProcessLauncherAndroid.h */,
+				6D55BAE01A8CD03D00A70529 /* HostInfoAndroid.cpp */,
+				6D55BAE11A8CD03D00A70529 /* ProcessLauncherAndroid.cpp */,
+			);
+			name = android;
+			sourceTree = "<group>";
+		};
+		6D55BAE61A8CD08C00A70529 /* Android */ = {
+			isa = PBXGroup;
+			children = (
+				6D55BAE91A8CD08C00A70529 /* PlatformAndroid.cpp */,
+				6D55BAEA1A8CD08C00A70529 /* PlatformAndroid.h */,
+				6D55BAEB1A8CD08C00A70529 /* PlatformAndroidRemoteGDBServer.cpp */,
+				6D55BAEC1A8CD08C00A70529 /* PlatformAndroidRemoteGDBServer.h */,
+			);
+			path = Android;
+			sourceTree = "<group>";
+		};
 		8C2D6A58197A1FB9006989C9 /* MemoryHistory */ = {
 			isa = PBXGroup;
 			children = (
@@ -4878,6 +5020,14 @@
 			path = AddressSanitizer;
 			sourceTree = "<group>";
 		};
+		942829BA1A89830900521B30 /* argdumper */ = {
+			isa = PBXGroup;
+			children = (
+				940B04D81A8984FF0045D5F7 /* argdumper.cpp */,
+			);
+			name = argdumper;
+			sourceTree = "<group>";
+		};
 		9457596415349416005A9070 /* POSIX */ = {
 			isa = PBXGroup;
 			children = (
@@ -4892,6 +5042,7 @@
 			children = (
 				94CD704B16F8DDEA00CF1E42 /* CF.cpp */,
 				94CD704C16F8DDEA00CF1E42 /* Cocoa.cpp */,
+				9492E2A41A8AC11000295BBD /* CoreMedia.cpp */,
 				94CB255F16B069800059775D /* CXXFormatterFunctions.h */,
 				94CB255716B069770059775D /* CXXFormatterFunctions.cpp */,
 				94CB256016B069800059775D /* DataVisualization.h */,
@@ -5034,6 +5185,7 @@
 				9443B123140C26AB0013457C /* SBData.h in Headers */,
 				26680220115FD13D008E1FE4 /* SBDebugger.h in Headers */,
 				490A966B1628C3BF00F0002E /* SBDeclaration.h in Headers */,
+				254FBBA31A9166F100BD6378 /* SBAttachInfo.h in Headers */,
 				26680221115FD13D008E1FE4 /* SBDefines.h in Headers */,
 				8CCB018219BA4E270009FD44 /* SBThreadCollection.h in Headers */,
 				AF0EBBEC185941360059E52F /* SBQueue.h in Headers */,
@@ -5079,6 +5231,7 @@
 				26D265A2136B40EE002EEE45 /* SharingPtr.h in Headers */,
 				26D265BC136B4269002EEE45 /* lldb-public.h in Headers */,
 				4CE4F673162C971A00F75CB3 /* SBExpressionOptions.h in Headers */,
+				94235B9F1A8D66D600EB2EED /* SBVariablesOptions.h in Headers */,
 				23EFE389193D1ABC00E54E54 /* SBTypeEnumMember.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -5137,6 +5290,7 @@
 				260CC63415D04377002BF2E0 /* OptionValueFileSpec.h in Headers */,
 				26CFDCA11861638D000E63E5 /* Editline.h in Headers */,
 				26BC17B018C7F4CB00D2196D /* RegisterContextPOSIXCore_x86_64.h in Headers */,
+				6D55BAF01A8CD0BD00A70529 /* PlatformAndroidRemoteGDBServer.h in Headers */,
 				AF9B8F34182DB52900DA866F /* SystemRuntimeMacOSX.h in Headers */,
 				26474CB518D0CB180073DEBA /* RegisterContextLinux_x86_64.h in Headers */,
 				26D1804716CEE12C00EDFB5B /* TimeSpecTimeout.h in Headers */,
@@ -5152,6 +5306,7 @@
 				26D1804516CEE12500EDFB5B /* KQueue.h in Headers */,
 				AF77E0A21A033D360096C0EA /* RegisterContextFreeBSD_powerpc.h in Headers */,
 				260CC63715D04377002BF2E0 /* OptionValueSInt64.h in Headers */,
+				6D55BAEF1A8CD0B700A70529 /* PlatformAndroid.h in Headers */,
 				AF061F8C182C980000B6A19C /* HistoryUnwind.h in Headers */,
 				264A58EC1A7DBC8C00A6B1B0 /* OptionValueFormatEntity.h in Headers */,
 				260CC63815D04377002BF2E0 /* OptionValueString.h in Headers */,
@@ -5252,10 +5407,12 @@
 				9A19ACE2116563A700E0D453 /* Finish swig wrapper classes (lldb) */,
 				4959511A1A1ACE9500F6F8FC /* Install Clang compiler headers */,
 				ED4AFF44199C2207004FFDC6 /* CopyFiles */,
+				940B04E31A89875C0045D5F7 /* CopyFiles */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				942829CE1A89842900521B30 /* PBXTargetDependency */,
 				94E829C9152D33B4006F96A3 /* PBXTargetDependency */,
 				2689011513353E9B00698AC0 /* PBXTargetDependency */,
 				262CFC7211A450CB00946C6C /* PBXTargetDependency */,
@@ -5355,6 +5512,25 @@
 			productReference = 26F5C26A10F3D9A4009D5894 /* lldb */;
 			productType = "com.apple.product-type.tool";
 		};
+		942829BF1A89835300521B30 /* argdumper */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 942829C41A89835400521B30 /* Build configuration list for PBXNativeTarget "argdumper" */;
+			buildPhases = (
+				942829BC1A89835300521B30 /* Sources */,
+				942829BD1A89835300521B30 /* Frameworks */,
+				942829BE1A89835300521B30 /* CopyFiles */,
+				940B04E21A89871F0045D5F7 /* ShellScript */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				942829CA1A89836A00521B30 /* PBXTargetDependency */,
+			);
+			name = argdumper;
+			productName = argdumper;
+			productReference = 942829C01A89835300521B30 /* argdumper */;
+			productType = "com.apple.product-type.tool";
+		};
 		EDC6D49814E5C19B001B75F8 /* launcherXPCService */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = EDC6D4A614E5C19B001B75F8 /* Build configuration list for PBXNativeTarget "launcherXPCService" */;
@@ -5395,10 +5571,13 @@
 		08FB7793FE84155DC02AAC07 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastUpgradeCheck = 0600;
+				LastUpgradeCheck = 0610;
 				TargetAttributes = {
 					2690CD161A6DC0D000E717C8 = {
 						CreatedOnToolsVersion = 6.3;
+					};
+					942829BF1A89835300521B30 = {
+						CreatedOnToolsVersion = 7.0;
 					};
 				};
 			};
@@ -5434,6 +5613,7 @@
 				235AFBB5199BC6AD00897A4B /* Linux */,
 				235AFBBB199BC6FD00897A4B /* MacOSX and Linux */,
 				2690CD161A6DC0D000E717C8 /* lldb-mi */,
+				942829BF1A89835300521B30 /* argdumper */,
 			);
 		};
 /* End PBXProject section */
@@ -5562,6 +5742,19 @@
 			shellPath = /bin/sh;
 			shellScript = "if [ \"${CONFIGURATION}\" != BuildAndIntegration ]\nthen\n    codesign -f -s lldb_codesign \"${TARGET_BUILD_DIR}/${TARGET_NAME}\"\nfi\n";
 		};
+		940B04E21A89871F0045D5F7 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "";
+		};
 		9A19ACE2116563A700E0D453 /* Finish swig wrapper classes (lldb) */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -5638,10 +5831,12 @@
 				9AC703AF117675410086C050 /* SBInstruction.cpp in Sources */,
 				9AC703B1117675490086C050 /* SBInstructionList.cpp in Sources */,
 				268F9D55123AA16600B91E9B /* SBSymbolContextList.cpp in Sources */,
+				94235B9E1A8D667400EB2EED /* SBVariablesOptions.cpp in Sources */,
 				26C72C961243229A0068DC16 /* SBStream.cpp in Sources */,
 				9443B122140C18C40013457C /* SBData.cpp in Sources */,
 				4CF52AF8142829390051E832 /* SBFileSpecList.cpp in Sources */,
 				23059A101958B319007B8189 /* SBUnixSignals.cpp in Sources */,
+				254FBBA51A91670E00BD6378 /* SBAttachInfo.cpp in Sources */,
 				4C56543719D22B32002E9C44 /* SBThreadPlan.cpp in Sources */,
 				8CCB018319BA51BF0009FD44 /* SBThreadCollection.cpp in Sources */,
 				26B82840142D020F002DBC64 /* SBSection.cpp in Sources */,
@@ -5702,6 +5897,7 @@
 				2689001513353DDE00698AC0 /* CommandObjectBreakpointCommand.cpp in Sources */,
 				2689001613353DDE00698AC0 /* CommandObjectCommands.cpp in Sources */,
 				AFEC3362194A8ABA00FF05C6 /* StructuredData.cpp in Sources */,
+				6D55B2901A8A806200A70529 /* GDBRemoteCommunicationServerCommon.cpp in Sources */,
 				26474CAC18D0CB070073DEBA /* RegisterContextFreeBSD_x86_64.cpp in Sources */,
 				2689001713353DDE00698AC0 /* CommandObjectDisassemble.cpp in Sources */,
 				2689001813353DDE00698AC0 /* CommandObjectExpression.cpp in Sources */,
@@ -5745,6 +5941,7 @@
 				2689003713353E0400698AC0 /* DataBufferMemoryMap.cpp in Sources */,
 				2689003813353E0400698AC0 /* DataExtractor.cpp in Sources */,
 				2689003913353E0400698AC0 /* Debugger.cpp in Sources */,
+				6D55BAEE1A8CD0B200A70529 /* PlatformAndroidRemoteGDBServer.cpp in Sources */,
 				2689003A13353E0400698AC0 /* Disassembler.cpp in Sources */,
 				236124A51986B4E2004EFC37 /* Socket.cpp in Sources */,
 				3FDFDDBF199D345E009756A7 /* FileCache.cpp in Sources */,
@@ -5942,11 +6139,13 @@
 				268900EB13353E6F00698AC0 /* ExecutionContext.cpp in Sources */,
 				268900EC13353E6F00698AC0 /* LanguageRuntime.cpp in Sources */,
 				268900ED13353E6F00698AC0 /* ObjCLanguageRuntime.cpp in Sources */,
+				9492E2A51A8AC11000295BBD /* CoreMedia.cpp in Sources */,
 				268900EE13353E6F00698AC0 /* PathMappingList.cpp in Sources */,
 				268900EF13353E6F00698AC0 /* Platform.cpp in Sources */,
 				268900F013353E6F00698AC0 /* Process.cpp in Sources */,
 				26BC17AD18C7F4CB00D2196D /* RegisterContextPOSIXCore_mips64.cpp in Sources */,
 				268900F113353E6F00698AC0 /* RegisterContext.cpp in Sources */,
+				6D55BAED1A8CD0A800A70529 /* PlatformAndroid.cpp in Sources */,
 				268900F213353E6F00698AC0 /* SectionLoadList.cpp in Sources */,
 				942AFF0519F84ABF007B43B4 /* LibCxxVector.cpp in Sources */,
 				268900F313353E6F00698AC0 /* StackFrame.cpp in Sources */,
@@ -5970,6 +6169,7 @@
 				2689010213353E6F00698AC0 /* ThreadPlanStepOverBreakpoint.cpp in Sources */,
 				3FDFED2919BA6D96009756A7 /* ThreadLauncher.cpp in Sources */,
 				232CB617191E00CD00EF39FC /* NativeBreakpointList.cpp in Sources */,
+				942829561A89614C00521B30 /* JSON.cpp in Sources */,
 				232CB615191E00CD00EF39FC /* NativeBreakpoint.cpp in Sources */,
 				2689010313353E6F00698AC0 /* ThreadPlanStepRange.cpp in Sources */,
 				2689010413353E6F00698AC0 /* ThreadPlanStepInRange.cpp in Sources */,
@@ -6121,6 +6321,7 @@
 				260CC65015D0440D002BF2E0 /* OptionValueFormat.cpp in Sources */,
 				260CC65115D0440D002BF2E0 /* OptionValueSInt64.cpp in Sources */,
 				260CC65215D0440D002BF2E0 /* OptionValueString.cpp in Sources */,
+				6D55B2911A8A806200A70529 /* GDBRemoteCommunicationServerLLGS.cpp in Sources */,
 				260CC65315D0440D002BF2E0 /* OptionValueUInt64.cpp in Sources */,
 				260CC65415D0440D002BF2E0 /* OptionValueUUID.cpp in Sources */,
 				94BA8B6D176F8C9B005A91B5 /* Range.cpp in Sources */,
@@ -6131,6 +6332,7 @@
 				2640E19F15DC78FD00F23B50 /* Property.cpp in Sources */,
 				26491E3E15E1DB9F00CBFFC2 /* OptionValueRegex.cpp in Sources */,
 				2697A39315E404B1003E682C /* OptionValueArch.cpp in Sources */,
+				6D55B2921A8A806200A70529 /* GDBRemoteCommunicationServerPlatform.cpp in Sources */,
 				94EA1D5C15E6C9B400D4171A /* PythonDataObjects.cpp in Sources */,
 				94D6A0AC16CEB55F00833B6E /* NSSet.cpp in Sources */,
 				94CD704E16F8DDEA00CF1E42 /* Cocoa.cpp in Sources */,
@@ -6266,6 +6468,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		942829BC1A89835300521B30 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				940B04D91A8984FF0045D5F7 /* argdumper.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		EDC6D49514E5C19B001B75F8 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -6381,6 +6591,16 @@
 			isa = PBXTargetDependency;
 			target = 26680206115FD0ED008E1FE4 /* LLDB */;
 			targetProxy = 26DF745F1A6DCDB300B85563 /* PBXContainerItemProxy */;
+		};
+		942829CA1A89836A00521B30 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2689FFC913353D7A00698AC0 /* lldb-core */;
+			targetProxy = 942829C91A89836A00521B30 /* PBXContainerItemProxy */;
+		};
+		942829CE1A89842900521B30 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 942829BF1A89835300521B30 /* argdumper */;
+			targetProxy = 942829CD1A89842900521B30 /* PBXContainerItemProxy */;
 		};
 		94E829C9152D33B4006F96A3 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -8401,6 +8621,269 @@
 			};
 			name = DebugClang;
 		};
+		942829C51A89835400521B30 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"$(SYSTEM_LIBRARY_DIR)/PrivateFrameworks\"",
+				);
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				LIBRARY_SEARCH_PATHS = (
+					"$(LLVM_BUILD_DIR)/$(LLVM_BUILD_DIR_ARCH)",
+					"$(inherited)",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.8;
+				MTL_ENABLE_DEBUG_INFO = YES;
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-I/System/Library/Frameworks/Python.framework/Versions/2.7/include/python2.7",
+					"-flimit-debug-info",
+					"-Wparentheses",
+				);
+				"OTHER_CFLAGS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"-flimit-debug-info",
+					"-Wparentheses",
+				);
+				"OTHER_CPLUSPLUSFLAGS[sdk=iphoneos*]" = "$(OTHER_CFLAGS)";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lllvmclang",
+					"-L/System/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/config",
+					"-lpython2.7",
+					"-lxml2",
+					"-framework",
+					DebugSymbols,
+					"-framework",
+					Foundation,
+					"-framework",
+					Carbon,
+					"-framework",
+					Security,
+				);
+				"OTHER_LDFLAGS[sdk=iphoneos*][arch=*]" = (
+					"-lllvmclang",
+					"-lxml2",
+					"-framework",
+					Foundation,
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/include $(SRCROOT)/source $(LLVM_SOURCE_DIR)/include $(LLVM_SOURCE_DIR)/tools/clang/include $(LLVM_BUILD_DIR)/$(LLVM_BUILD_DIR_ARCH)/include $(LLVM_BUILD_DIR)/$(LLVM_BUILD_DIR_ARCH)/tools/clang/include";
+			};
+			name = Debug;
+		};
+		942829C61A89835400521B30 /* DebugClang */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"$(SYSTEM_LIBRARY_DIR)/PrivateFrameworks\"",
+				);
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				LIBRARY_SEARCH_PATHS = (
+					"$(LLVM_BUILD_DIR)/$(LLVM_BUILD_DIR_ARCH)",
+					"$(inherited)",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.8;
+				MTL_ENABLE_DEBUG_INFO = YES;
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-I/System/Library/Frameworks/Python.framework/Versions/2.7/include/python2.7",
+					"-flimit-debug-info",
+					"-Wparentheses",
+				);
+				"OTHER_CFLAGS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"-flimit-debug-info",
+					"-Wparentheses",
+				);
+				"OTHER_CPLUSPLUSFLAGS[sdk=iphoneos*]" = "$(OTHER_CFLAGS)";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lllvmclang",
+					"-L/System/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/config",
+					"-lpython2.7",
+					"-lxml2",
+					"-framework",
+					DebugSymbols,
+					"-framework",
+					Foundation,
+					"-framework",
+					Carbon,
+					"-framework",
+					Security,
+				);
+				"OTHER_LDFLAGS[sdk=iphoneos*][arch=*]" = (
+					"-lllvmclang",
+					"-lxml2",
+					"-framework",
+					Foundation,
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/include $(SRCROOT)/source $(LLVM_SOURCE_DIR)/include $(LLVM_SOURCE_DIR)/tools/clang/include $(LLVM_BUILD_DIR)/$(LLVM_BUILD_DIR_ARCH)/include $(LLVM_BUILD_DIR)/$(LLVM_BUILD_DIR_ARCH)/tools/clang/include";
+			};
+			name = DebugClang;
+		};
+		942829C71A89835400521B30 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"$(SYSTEM_LIBRARY_DIR)/PrivateFrameworks\"",
+				);
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				LIBRARY_SEARCH_PATHS = (
+					"$(LLVM_BUILD_DIR)/$(LLVM_BUILD_DIR_ARCH)",
+					"$(inherited)",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.8;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-I/System/Library/Frameworks/Python.framework/Versions/2.7/include/python2.7",
+					"-flimit-debug-info",
+					"-Wparentheses",
+				);
+				"OTHER_CFLAGS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"-flimit-debug-info",
+					"-Wparentheses",
+				);
+				"OTHER_CPLUSPLUSFLAGS[sdk=iphoneos*]" = "$(OTHER_CFLAGS)";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lllvmclang",
+					"-L/System/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/config",
+					"-lpython2.7",
+					"-lxml2",
+					"-framework",
+					DebugSymbols,
+					"-framework",
+					Foundation,
+					"-framework",
+					Carbon,
+					"-framework",
+					Security,
+				);
+				"OTHER_LDFLAGS[sdk=iphoneos*][arch=*]" = (
+					"-lllvmclang",
+					"-lxml2",
+					"-framework",
+					Foundation,
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/include $(SRCROOT)/source $(LLVM_SOURCE_DIR)/include $(LLVM_SOURCE_DIR)/tools/clang/include $(LLVM_BUILD_DIR)/$(LLVM_BUILD_DIR_ARCH)/include $(LLVM_BUILD_DIR)/$(LLVM_BUILD_DIR_ARCH)/tools/clang/include";
+			};
+			name = Release;
+		};
+		942829C81A89835400521B30 /* BuildAndIntegration */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				COPY_PHASE_STRIP = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"$(SYSTEM_LIBRARY_DIR)/PrivateFrameworks\"",
+				);
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				INSTALL_PATH = "$(LLDB_FRAMEWORK_INSTALL_DIR)/LLDB.framework/Resources";
+				LIBRARY_SEARCH_PATHS = (
+					"$(LLVM_BUILD_DIR)/$(LLVM_BUILD_DIR_ARCH)",
+					"$(inherited)",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.8;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				OTHER_CFLAGS = (
+					"$(inherited)",
+					"-I/System/Library/Frameworks/Python.framework/Versions/2.7/include/python2.7",
+					"-flimit-debug-info",
+					"-Wparentheses",
+				);
+				"OTHER_CFLAGS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"-flimit-debug-info",
+					"-Wparentheses",
+				);
+				"OTHER_CPLUSPLUSFLAGS[sdk=iphoneos*]" = "$(OTHER_CFLAGS)";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lllvmclang",
+					"-L/System/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/config",
+					"-lpython2.7",
+					"-lxml2",
+					"-framework",
+					DebugSymbols,
+					"-framework",
+					Foundation,
+					"-framework",
+					Carbon,
+					"-framework",
+					Security,
+				);
+				"OTHER_LDFLAGS[sdk=iphoneos*][arch=*]" = (
+					"-lllvmclang",
+					"-lxml2",
+					"-framework",
+					Foundation,
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRIP_INSTALLED_PRODUCT = YES;
+				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/include $(SRCROOT)/source $(LLVM_SOURCE_DIR)/include $(LLVM_SOURCE_DIR)/tools/clang/include $(LLVM_BUILD_DIR)/$(LLVM_BUILD_DIR_ARCH)/include $(LLVM_BUILD_DIR)/$(LLVM_BUILD_DIR_ARCH)/tools/clang/include";
+			};
+			name = BuildAndIntegration;
+		};
 		EDC6D4A714E5C19B001B75F8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -8729,6 +9212,17 @@
 				49BB8F381611172B00BDD462 /* DebugClang */,
 				26F5C26D10F3D9A5009D5894 /* Release */,
 				268A89B311963ECA00D953EB /* BuildAndIntegration */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = BuildAndIntegration;
+		};
+		942829C41A89835400521B30 /* Build configuration list for PBXNativeTarget "argdumper" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				942829C51A89835400521B30 /* Debug */,
+				942829C61A89835400521B30 /* DebugClang */,
+				942829C71A89835400521B30 /* Release */,
+				942829C81A89835400521B30 /* BuildAndIntegration */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = BuildAndIntegration;

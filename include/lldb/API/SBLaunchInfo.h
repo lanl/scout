@@ -140,7 +140,13 @@ public:
 
     void
     SetShell (const char * path);
-
+    
+    bool
+    GetGlobArguments ();
+    
+    void
+    SetGlobArguments (bool glob);
+    
     uint32_t
     GetResumeCount ();
 
@@ -177,6 +183,9 @@ protected:
 
     lldb_private::ProcessLaunchInfo &
     ref ();
+
+    const lldb_private::ProcessLaunchInfo &
+    ref () const;
 
     ProcessLaunchInfoSP m_opaque_sp;
 };
