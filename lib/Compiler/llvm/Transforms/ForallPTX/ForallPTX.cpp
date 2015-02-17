@@ -35,7 +35,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/PassManager.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -604,7 +604,7 @@ public:
 
     TargetMachine* targetMachine = createTargetMachine(target);
 
-    PassManager passManager;
+    llvm::legacy::PassManager passManager;
 
     passManager.add(createVerifierPass());
 
