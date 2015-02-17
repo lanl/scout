@@ -453,7 +453,8 @@ llvm::Value *CodeGenFunction::getSelectorFromSlot() {
 
 llvm::Value *CodeGenFunction::getAbnormalTerminationSlot() {
   if (!AbnormalTerminationSlot)
-    AbnormalTerminationSlot = CreateTempAlloca(Int8Ty, "abnormal.termination.slot");
+    AbnormalTerminationSlot =
+        CreateTempAlloca(Int8Ty, "abnormal.termination.slot");
   return AbnormalTerminationSlot;
 }
 
@@ -585,8 +586,9 @@ static void emitFilterDispatchBlock(CodeGenFunction &CGF,
 
     llvm::Value *zero = CGF.Builder.getInt32(0);
     llvm::Value *failsFilter =
-      CGF.Builder.CreateICmpSLT(selector, zero, "ehspec.fails");
-    CGF.Builder.CreateCondBr(failsFilter, unexpectedBB, CGF.getEHResumeBlock(false));
+        CGF.Builder.CreateICmpSLT(selector, zero, "ehspec.fails");
+    CGF.Builder.CreateCondBr(failsFilter, unexpectedBB,
+                             CGF.getEHResumeBlock(false));
 
     CGF.EmitBlock(unexpectedBB);
   }
@@ -743,8 +745,7 @@ llvm::BasicBlock *CodeGenFunction::getInvokeDestImpl() {
   if (!LO.Exceptions) {
     if (!LO.Borland && !LO.MicrosoftExt)
       return nullptr;
-    const auto *FD = dyn_cast_or_null<FunctionDecl>(CurCodeDecl);
-    if (!FD || !FD->usesSEHTry())
+    if (!currentFunctionUsesSEHTry())
       return nullptr;
   }
 
@@ -1565,6 +1566,8 @@ static llvm::Constant *getClangCallTerminateFn(CodeGenModule &CGM) {
     // we don't want it to turn into an exported symbol.
     fn->setLinkage(llvm::Function::LinkOnceODRLinkage);
     fn->setVisibility(llvm::Function::HiddenVisibility);
+    if (CGM.supportsCOMDAT())
+      fn->setComdat(CGM.getModule().getOrInsertComdat(fn->getName()));
 
     // Set up the function.
     llvm::BasicBlock *entry =
@@ -1702,7 +1705,18 @@ void CodeGenFunction::EmitSEHTryStmt(const SEHTryStmt &S) {
 
   SEHFinallyInfo FI;
   EnterSEHTryStmt(S, FI);
-  EmitStmt(S.getTryBlock());
+  {
+    JumpDest TryExit = getJumpDestInCurrentScope("__try.__leave");
+
+    SEHTryEpilogueStack.push_back(&TryExit);
+    EmitStmt(S.getTryBlock());
+    SEHTryEpilogueStack.pop_back();
+
+    if (!TryExit.getBlock()->use_empty())
+      EmitBlock(TryExit.getBlock(), /*IsFinished=*/true);
+    else
+      delete TryExit.getBlock();
+  }
   ExitSEHTryStmt(S, FI);
 }
 
@@ -1980,5 +1994,13 @@ void CodeGenFunction::ExitSEHTryStmt(const SEHTryStmt &S, SEHFinallyInfo &FI) {
 }
 
 void CodeGenFunction::EmitSEHLeaveStmt(const SEHLeaveStmt &S) {
-  CGM.ErrorUnsupported(&S, "SEH __leave");
+  // If this code is reachable then emit a stop point (if generating
+  // debug info). We have to do this ourselves because we are on the
+  // "simple" statement path.
+  if (HaveInsertPoint())
+    EmitStopPoint(&S);
+
+  assert(!SEHTryEpilogueStack.empty() &&
+         "sema should have rejected this __leave");
+  EmitBranchThroughCleanup(*SEHTryEpilogueStack.back());
 }
