@@ -59,8 +59,8 @@ using legacy::PassManagerBase;
 /// through this interface.
 ///
 class TargetMachine {
-  TargetMachine(const TargetMachine &) LLVM_DELETED_FUNCTION;
-  void operator=(const TargetMachine &) LLVM_DELETED_FUNCTION;
+  TargetMachine(const TargetMachine &) = delete;
+  void operator=(const TargetMachine &) = delete;
 protected: // Can only create subclasses.
   TargetMachine(const Target &T, StringRef TargetTriple,
                 StringRef CPU, StringRef FS, const TargetOptions &Options);
@@ -165,28 +165,23 @@ public:
 
   bool shouldPrintMachineCode() const { return Options.PrintMachineCode; }
 
-  /// getAsmVerbosityDefault - Returns the default value of asm verbosity.
+  /// Returns the default value of asm verbosity.
   ///
-  bool getAsmVerbosityDefault() const ;
+  bool getAsmVerbosityDefault() const {
+    return Options.MCOptions.AsmVerbose;
+  }
 
-  /// setAsmVerbosityDefault - Set the default value of asm verbosity. Default
-  /// is false.
-  void setAsmVerbosityDefault(bool);
+  /// Return true if data objects should be emitted into their own section,
+  /// corresponds to -fdata-sections.
+  bool getDataSections() const {
+    return Options.DataSections;
+  }
 
-  /// getDataSections - Return true if data objects should be emitted into their
-  /// own section, corresponds to -fdata-sections.
-  bool getDataSections() const;
-
-  /// getFunctionSections - Return true if functions should be emitted into
-  /// their own section, corresponding to -ffunction-sections.
-  bool getFunctionSections() const;
-
-  /// setDataSections - Set if the data are emit into separate sections.
-  void setDataSections(bool);
-
-  /// setFunctionSections - Set if the functions are emit into separate
-  /// sections.
-  void setFunctionSections(bool);
+  /// Return true if functions should be emitted into their own section,
+  /// corresponding to -ffunction-sections.
+  bool getFunctionSections() const {
+    return Options.FunctionSections;
+  }
 
   /// \brief Get a \c TargetIRAnalysis appropriate for the target.
   ///

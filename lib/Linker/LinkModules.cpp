@@ -18,6 +18,7 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -1416,10 +1417,8 @@ bool ModuleLinker::linkModuleFlagsMetadata() {
       MDNode *SrcValue = cast<MDNode>(SrcOp->getOperand(2));
       SmallVector<Metadata *, 8> MDs;
       MDs.reserve(DstValue->getNumOperands() + SrcValue->getNumOperands());
-      for (unsigned i = 0, e = DstValue->getNumOperands(); i != e; ++i)
-        MDs.push_back(DstValue->getOperand(i));
-      for (unsigned i = 0, e = SrcValue->getNumOperands(); i != e; ++i)
-        MDs.push_back(SrcValue->getOperand(i));
+      MDs.append(DstValue->op_begin(), DstValue->op_end());
+      MDs.append(SrcValue->op_begin(), SrcValue->op_end());
 
       replaceDstValue(MDNode::get(DstM->getContext(), MDs));
       break;
@@ -1428,10 +1427,8 @@ bool ModuleLinker::linkModuleFlagsMetadata() {
       SmallSetVector<Metadata *, 16> Elts;
       MDNode *DstValue = cast<MDNode>(DstOp->getOperand(2));
       MDNode *SrcValue = cast<MDNode>(SrcOp->getOperand(2));
-      for (unsigned i = 0, e = DstValue->getNumOperands(); i != e; ++i)
-        Elts.insert(DstValue->getOperand(i));
-      for (unsigned i = 0, e = SrcValue->getNumOperands(); i != e; ++i)
-        Elts.insert(SrcValue->getOperand(i));
+      Elts.insert(DstValue->op_begin(), DstValue->op_end());
+      Elts.insert(SrcValue->op_begin(), SrcValue->op_end());
 
       replaceDstValue(MDNode::get(DstM->getContext(),
                                   makeArrayRef(Elts.begin(), Elts.end())));
@@ -1457,6 +1454,28 @@ bool ModuleLinker::linkModuleFlagsMetadata() {
   return HasErr;
 }
 
+// This function returns true if the triples match.
+static bool triplesMatch(const Triple &T0, const Triple &T1) {
+  // If vendor is apple, ignore the version number.
+  if (T0.getVendor() == Triple::Apple)
+    return T0.getArch() == T1.getArch() &&
+           T0.getSubArch() == T1.getSubArch() &&
+           T0.getVendor() == T1.getVendor() &&
+           T0.getOS() == T1.getOS();
+
+  return T0 == T1;
+}
+
+// This function returns the merged triple.
+static std::string mergeTriples(const Triple &SrcTriple, const Triple &DstTriple) {
+  // If vendor is apple, pick the triple with the larger version number.
+  if (SrcTriple.getVendor() == Triple::Apple)
+    if (DstTriple.isOSVersionLT(SrcTriple))
+      return SrcTriple.str();
+
+  return DstTriple.str();
+}
+
 bool ModuleLinker::run() {
   assert(DstM && "Null destination module");
   assert(SrcM && "Null source module");
@@ -1466,10 +1485,6 @@ bool ModuleLinker::run() {
   if (!DstM->getDataLayout() && SrcM->getDataLayout())
     DstM->setDataLayout(SrcM->getDataLayout());
 
-  // Copy the target triple from the source to dest if the dest's is empty.
-  if (DstM->getTargetTriple().empty() && !SrcM->getTargetTriple().empty())
-    DstM->setTargetTriple(SrcM->getTargetTriple());
-
   if (SrcM->getDataLayout() && DstM->getDataLayout() &&
       *SrcM->getDataLayout() != *DstM->getDataLayout()) {
     emitWarning("Linking two modules of different data layouts: '" +
@@ -1478,14 +1493,21 @@ bool ModuleLinker::run() {
                 DstM->getModuleIdentifier() + "' is '" +
                 DstM->getDataLayoutStr() + "'\n");
   }
-  if (!SrcM->getTargetTriple().empty() &&
-      DstM->getTargetTriple() != SrcM->getTargetTriple()) {
+
+  // Copy the target triple from the source to dest if the dest's is empty.
+  if (DstM->getTargetTriple().empty() && !SrcM->getTargetTriple().empty())
+    DstM->setTargetTriple(SrcM->getTargetTriple());
+
+  Triple SrcTriple(SrcM->getTargetTriple()), DstTriple(DstM->getTargetTriple());
+
+  if (!SrcM->getTargetTriple().empty() && !triplesMatch(SrcTriple, DstTriple))
     emitWarning("Linking two modules of different target triples: " +
                 SrcM->getModuleIdentifier() + "' is '" +
                 SrcM->getTargetTriple() + "' whereas '" +
                 DstM->getModuleIdentifier() + "' is '" +
                 DstM->getTargetTriple() + "'\n");
-  }
+
+  DstM->setTargetTriple(mergeTriples(SrcTriple, DstTriple));
 
   // Append the module inline asm string.
   if (!SrcM->getModuleInlineAsm().empty()) {

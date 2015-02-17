@@ -38,8 +38,8 @@ class TargetLoweringObjectFile : public MCObjectFileInfo {
   const DataLayout *DL;
 
   TargetLoweringObjectFile(
-    const TargetLoweringObjectFile&) LLVM_DELETED_FUNCTION;
-  void operator=(const TargetLoweringObjectFile&) LLVM_DELETED_FUNCTION;
+    const TargetLoweringObjectFile&) = delete;
+  void operator=(const TargetLoweringObjectFile&) = delete;
 
 public:
   MCContext &getContext() const { return *Ctx; }
@@ -93,6 +93,10 @@ public:
                                     const TargetMachine &TM) const {
     return SectionForGlobal(GV, getKindForGlobal(GV, TM), Mang, TM);
   }
+
+  virtual const MCSection *
+  getSectionForJumpTable(const Function &F, Mangler &Mang,
+                         const TargetMachine &TM) const;
 
   /// Targets should implement this method to assign a section to globals with
   /// an explicit section specfied. The implementation of this method can

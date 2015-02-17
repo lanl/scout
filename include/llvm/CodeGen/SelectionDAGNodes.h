@@ -145,7 +145,7 @@ public:
   bool operator<(const SDValue &O) const {
     return std::tie(Node, ResNo) < std::tie(O.Node, O.ResNo);
   }
-  LLVM_EXPLICIT operator bool() const {
+  explicit operator bool() const {
     return Node != nullptr;
   }
 
@@ -184,7 +184,7 @@ public:
   inline bool isTargetOpcode() const;
   inline bool isMachineOpcode() const;
   inline unsigned getMachineOpcode() const;
-  inline const DebugLoc getDebugLoc() const;
+  inline const DebugLoc &getDebugLoc() const;
   inline void dump() const;
   inline void dumpr() const;
 
@@ -259,8 +259,8 @@ class SDUse {
   /// this operand.
   SDUse **Prev, *Next;
 
-  SDUse(const SDUse &U) LLVM_DELETED_FUNCTION;
-  void operator=(const SDUse &U) LLVM_DELETED_FUNCTION;
+  SDUse(const SDUse &U) = delete;
+  void operator=(const SDUse &U) = delete;
 
 public:
   SDUse() : Val(), User(nullptr), Prev(nullptr), Next(nullptr) {}
@@ -476,11 +476,11 @@ public:
   void setIROrder(unsigned Order) { IROrder = Order; }
 
   /// getDebugLoc - Return the source location info.
-  const DebugLoc getDebugLoc() const { return debugLoc; }
+  const DebugLoc &getDebugLoc() const { return debugLoc; }
 
   /// setDebugLoc - Set source location info.  Try to avoid this, putting
   /// it in the constructor is preferable.
-  void setDebugLoc(const DebugLoc dl) { debugLoc = dl; }
+  void setDebugLoc(DebugLoc dl) { debugLoc = std::move(dl); }
 
   /// use_iterator - This class provides iterator support for SDUse
   /// operands that use a specific SDNode.
@@ -754,14 +754,13 @@ protected:
     return Ret;
   }
 
-  SDNode(unsigned Opc, unsigned Order, const DebugLoc dl, SDVTList VTs,
+  SDNode(unsigned Opc, unsigned Order, DebugLoc dl, SDVTList VTs,
          ArrayRef<SDValue> Ops)
-    : NodeType(Opc), OperandsNeedDelete(true), HasDebugValue(false),
-      SubclassData(0), NodeId(-1),
-      OperandList(Ops.size() ? new SDUse[Ops.size()] : nullptr),
-      ValueList(VTs.VTs), UseList(nullptr),
-      NumOperands(Ops.size()), NumValues(VTs.NumVTs),
-      debugLoc(dl), IROrder(Order) {
+      : NodeType(Opc), OperandsNeedDelete(true), HasDebugValue(false),
+        SubclassData(0), NodeId(-1),
+        OperandList(Ops.size() ? new SDUse[Ops.size()] : nullptr),
+        ValueList(VTs.VTs), UseList(nullptr), NumOperands(Ops.size()),
+        NumValues(VTs.NumVTs), debugLoc(std::move(dl)), IROrder(Order) {
     assert(debugLoc.hasTrivialDestructor() && "Expected trivial destructor");
     assert(NumOperands == Ops.size() &&
            "NumOperands wasn't wide enough for its operands!");
@@ -777,11 +776,11 @@ protected:
 
   /// This constructor adds no operands itself; operands can be
   /// set later with InitOperands.
-  SDNode(unsigned Opc, unsigned Order, const DebugLoc dl, SDVTList VTs)
-    : NodeType(Opc), OperandsNeedDelete(false), HasDebugValue(false),
-      SubclassData(0), NodeId(-1), OperandList(nullptr), ValueList(VTs.VTs),
-      UseList(nullptr), NumOperands(0), NumValues(VTs.NumVTs), debugLoc(dl),
-      IROrder(Order) {
+  SDNode(unsigned Opc, unsigned Order, DebugLoc dl, SDVTList VTs)
+      : NodeType(Opc), OperandsNeedDelete(false), HasDebugValue(false),
+        SubclassData(0), NodeId(-1), OperandList(nullptr), ValueList(VTs.VTs),
+        UseList(nullptr), NumOperands(0), NumValues(VTs.NumVTs),
+        debugLoc(std::move(dl)), IROrder(Order) {
     assert(debugLoc.hasTrivialDestructor() && "Expected trivial destructor");
     assert(NumValues == VTs.NumVTs &&
            "NumValues wasn't wide enough for its operands!");
@@ -945,7 +944,7 @@ inline bool SDValue::use_empty() const {
 inline bool SDValue::hasOneUse() const {
   return Node->hasNUsesOfValue(1, ResNo);
 }
-inline const DebugLoc SDValue::getDebugLoc() const {
+inline const DebugLoc &SDValue::getDebugLoc() const {
   return Node->getDebugLoc();
 }
 inline void SDValue::dump() const {
@@ -1612,7 +1611,7 @@ public:
 /// BUILD_VECTORs.
 class BuildVectorSDNode : public SDNode {
   // These are constructed as SDNodes and then cast to BuildVectorSDNodes.
-  explicit BuildVectorSDNode() LLVM_DELETED_FUNCTION;
+  explicit BuildVectorSDNode() = delete;
 public:
   /// isConstantSplat - Check if this is a constant splat, and if so, find the
   /// smallest element size that splats the vector.  If MinSplatBits is

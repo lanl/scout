@@ -583,8 +583,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
 
   MemorySanitizerVisitor(Function &F, MemorySanitizer &MS)
       : F(F), MS(MS), VAHelper(CreateVarArgHelper(F, MS, *this)) {
-    bool SanitizeFunction = F.getAttributes().hasAttribute(
-        AttributeSet::FunctionIndex, Attribute::SanitizeMemory);
+    bool SanitizeFunction = F.hasFnAttribute(Attribute::SanitizeMemory);
     InsertChecks = SanitizeFunction;
     PropagateShadow = SanitizeFunction;
     PoisonStack = SanitizeFunction && ClPoisonStack;
@@ -702,7 +701,7 @@ struct MemorySanitizerVisitor : public InstVisitor<MemorySanitizerVisitor> {
 
       if (SI.isAtomic()) SI.setOrdering(addReleaseOrdering(SI.getOrdering()));
 
-      if (MS.TrackOrigins)
+      if (MS.TrackOrigins && !SI.isAtomic())
         storeOrigin(IRB, Addr, Shadow, getOrigin(Val), SI.getAlignment(),
                     InstrumentWithCalls);
     }

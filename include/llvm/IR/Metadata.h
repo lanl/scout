@@ -62,6 +62,25 @@ public:
     MDTupleKind,
     MDLocationKind,
     GenericDebugNodeKind,
+    MDSubrangeKind,
+    MDEnumeratorKind,
+    MDBasicTypeKind,
+    MDDerivedTypeKind,
+    MDCompositeTypeKind,
+    MDSubroutineTypeKind,
+    MDFileKind,
+    MDCompileUnitKind,
+    MDSubprogramKind,
+    MDLexicalBlockKind,
+    MDLexicalBlockFileKind,
+    MDNamespaceKind,
+    MDTemplateTypeParameterKind,
+    MDTemplateValueParameterKind,
+    MDGlobalVariableKind,
+    MDLocalVariableKind,
+    MDExpressionKind,
+    MDObjCPropertyKind,
+    MDImportedEntityKind,
     ConstantAsMetadataKind,
     LocalAsMetadataKind,
     MDStringKind
@@ -445,9 +464,9 @@ dyn_extract_or_null(Y &&MD) {
 class MDString : public Metadata {
   friend class StringMapEntry<MDString>;
 
-  MDString(const MDString &) LLVM_DELETED_FUNCTION;
-  MDString &operator=(MDString &&) LLVM_DELETED_FUNCTION;
-  MDString &operator=(const MDString &) LLVM_DELETED_FUNCTION;
+  MDString(const MDString &) = delete;
+  MDString &operator=(MDString &&) = delete;
+  MDString &operator=(const MDString &) = delete;
 
   StringMapEntry<MDString> *Entry;
   MDString() : Metadata(MDStringKind, Uniqued), Entry(nullptr) {}
@@ -493,7 +512,7 @@ struct AAMDNodes {
 
   bool operator!=(const AAMDNodes &A) const { return !(*this == A); }
 
-  LLVM_EXPLICIT operator bool() const { return TBAA || Scope || NoAlias; }
+  explicit operator bool() const { return TBAA || Scope || NoAlias; }
 
   /// \brief The tag for type-based alias analysis.
   MDNode *TBAA;
@@ -532,10 +551,10 @@ struct DenseMapInfo<AAMDNodes> {
 ///
 /// In particular, this is used by \a MDNode.
 class MDOperand {
-  MDOperand(MDOperand &&) LLVM_DELETED_FUNCTION;
-  MDOperand(const MDOperand &) LLVM_DELETED_FUNCTION;
-  MDOperand &operator=(MDOperand &&) LLVM_DELETED_FUNCTION;
-  MDOperand &operator=(const MDOperand &) LLVM_DELETED_FUNCTION;
+  MDOperand(MDOperand &&) = delete;
+  MDOperand(const MDOperand &) = delete;
+  MDOperand &operator=(MDOperand &&) = delete;
+  MDOperand &operator=(const MDOperand &) = delete;
 
   Metadata *MD;
 
@@ -591,15 +610,12 @@ template <> struct simplify_type<const MDOperand> {
 class ContextAndReplaceableUses {
   PointerUnion<LLVMContext *, ReplaceableMetadataImpl *> Ptr;
 
-  ContextAndReplaceableUses() LLVM_DELETED_FUNCTION;
-  ContextAndReplaceableUses(ContextAndReplaceableUses &&)
-      LLVM_DELETED_FUNCTION;
-  ContextAndReplaceableUses(const ContextAndReplaceableUses &)
-      LLVM_DELETED_FUNCTION;
+  ContextAndReplaceableUses() = delete;
+  ContextAndReplaceableUses(ContextAndReplaceableUses &&) = delete;
+  ContextAndReplaceableUses(const ContextAndReplaceableUses &) = delete;
+  ContextAndReplaceableUses &operator=(ContextAndReplaceableUses &&) = delete;
   ContextAndReplaceableUses &
-  operator=(ContextAndReplaceableUses &&) LLVM_DELETED_FUNCTION;
-  ContextAndReplaceableUses &
-  operator=(const ContextAndReplaceableUses &) LLVM_DELETED_FUNCTION;
+  operator=(const ContextAndReplaceableUses &) = delete;
 
 public:
   ContextAndReplaceableUses(LLVMContext &Context) : Ptr(&Context) {}
@@ -681,9 +697,9 @@ class MDNode : public Metadata {
   friend class ReplaceableMetadataImpl;
   friend class LLVMContextImpl;
 
-  MDNode(const MDNode &) LLVM_DELETED_FUNCTION;
-  void operator=(const MDNode &) LLVM_DELETED_FUNCTION;
-  void *operator new(size_t) LLVM_DELETED_FUNCTION;
+  MDNode(const MDNode &) = delete;
+  void operator=(const MDNode &) = delete;
+  void *operator new(size_t) = delete;
 
   unsigned NumOperands;
   unsigned NumUnresolved;
@@ -770,10 +786,22 @@ public:
   /// \pre No operands (or operands' operands, etc.) have \a isTemporary().
   void resolveCycles();
 
+  /// \brief Replace a temporary node with a permanent one.
+  ///
+  /// Try to create a uniqued version of \c N -- in place, if possible -- and
+  /// return it.  If \c N cannot be uniqued, return a distinct node instead.
+  template <class T>
+  static typename std::enable_if<std::is_base_of<MDNode, T>::value, T *>::type
+  replaceWithPermanent(std::unique_ptr<T, TempMDNodeDeleter> N) {
+    return cast<T>(N.release()->replaceWithPermanentImpl());
+  }
+
   /// \brief Replace a temporary node with a uniqued one.
   ///
   /// Create a uniqued version of \c N -- in place, if possible -- and return
   /// it.  Takes ownership of the temporary node.
+  ///
+  /// \pre N does not self-reference.
   template <class T>
   static typename std::enable_if<std::is_base_of<MDNode, T>::value, T *>::type
   replaceWithUniqued(std::unique_ptr<T, TempMDNodeDeleter> N) {
@@ -791,6 +819,7 @@ public:
   }
 
 private:
+  MDNode *replaceWithPermanentImpl();
   MDNode *replaceWithUniquedImpl();
   MDNode *replaceWithDistinctImpl();
 
@@ -865,9 +894,14 @@ public:
 
   /// \brief Methods for support type inquiry through isa, cast, and dyn_cast:
   static bool classof(const Metadata *MD) {
-    return MD->getMetadataID() == MDTupleKind ||
-           MD->getMetadataID() == MDLocationKind ||
-           MD->getMetadataID() == GenericDebugNodeKind;
+    switch (MD->getMetadataID()) {
+    default:
+      return false;
+#define HANDLE_MDNODE_LEAF(CLASS)                                              \
+  case CLASS##Kind:                                                            \
+    return true;
+#include "llvm/IR/Metadata.def"
+    }
   }
 
   /// \brief Check whether MDNode is a vtable access.
@@ -879,6 +913,7 @@ public:
   static MDNode *getMostGenericTBAA(MDNode *A, MDNode *B);
   static MDNode *getMostGenericFPMath(MDNode *A, MDNode *B);
   static MDNode *getMostGenericRange(MDNode *A, MDNode *B);
+  static MDNode *getMostGenericAliasScope(MDNode *A, MDNode *B);
 };
 
 /// \brief Tuple of metadata.
@@ -973,7 +1008,7 @@ class NamedMDNode : public ilist_node<NamedMDNode> {
   friend struct ilist_traits<NamedMDNode>;
   friend class LLVMContextImpl;
   friend class Module;
-  NamedMDNode(const NamedMDNode &) LLVM_DELETED_FUNCTION;
+  NamedMDNode(const NamedMDNode &) = delete;
 
   std::string Name;
   Module *Parent;

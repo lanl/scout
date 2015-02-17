@@ -147,18 +147,18 @@ uint64_t DIExpression::getElement(unsigned Idx) const {
   return getHeaderFieldAs<int64_t>(I);
 }
 
-bool DIExpression::isVariablePiece() const {
+bool DIExpression::isBitPiece() const {
   unsigned N = getNumElements();
-  return N >=3 && getElement(N-3) == dwarf::DW_OP_piece;
+  return N >=3 && getElement(N-3) == dwarf::DW_OP_bit_piece;
 }
 
-uint64_t DIExpression::getPieceOffset() const {
-  assert(isVariablePiece() && "not a piece");
+uint64_t DIExpression::getBitPieceOffset() const {
+  assert(isBitPiece() && "not a piece");
   return getElement(getNumElements()-2);
 }
 
-uint64_t DIExpression::getPieceSize() const {
-  assert(isVariablePiece() && "not a piece");
+uint64_t DIExpression::getBitPieceSize() const {
+  assert(isBitPiece() && "not a piece");
   return getElement(getNumElements()-1);
 }
 
@@ -254,8 +254,7 @@ bool DIDescriptor::isSubprogram() const {
 }
 
 bool DIDescriptor::isGlobalVariable() const {
-  return DbgNode && (getTag() == dwarf::DW_TAG_variable ||
-                     getTag() == dwarf::DW_TAG_constant);
+  return DbgNode && getTag() == dwarf::DW_TAG_variable;
 }
 
 bool DIDescriptor::isScope() const {
@@ -345,9 +344,7 @@ void DIDescriptor::replaceAllUsesWith(LLVMContext &VMContext, DIDescriptor D) {
   // itself.
   const MDNode *DN = D;
   if (DbgNode == DN) {
-    SmallVector<Metadata *, 10> Ops(DbgNode->getNumOperands());
-    for (size_t i = 0; i != Ops.size(); ++i)
-      Ops[i] = DbgNode->getOperand(i);
+    SmallVector<Metadata *, 10> Ops(DbgNode->op_begin(), DbgNode->op_end());
     DN = MDNode::get(VMContext, Ops);
   }
 
@@ -613,7 +610,7 @@ bool DIExpression::Verify() const {
 
   for (auto Op : *this)
     switch (Op) {
-    case DW_OP_piece:
+    case DW_OP_bit_piece:
       // Must be the last element of the expression.
       return std::distance(Op.getBase(), DIHeaderFieldIterator()) == 3;
     case DW_OP_plus:
@@ -885,9 +882,8 @@ DIVariable llvm::createInlinedVariable(MDNode *DV, MDNode *InlinedScope,
     return cleanseInlinedVariable(DV, VMContext);
 
   // Insert inlined scope.
-  SmallVector<Metadata *, 8> Elts;
-  for (unsigned I = 0, E = DIVariableInlinedAtIndex; I != E; ++I)
-    Elts.push_back(DV->getOperand(I));
+  SmallVector<Metadata *, 8> Elts(DV->op_begin(),
+                                  DV->op_begin() + DIVariableInlinedAtIndex);
   Elts.push_back(InlinedScope);
 
   DIVariable Inlined(MDNode::get(VMContext, Elts));
@@ -901,9 +897,8 @@ DIVariable llvm::cleanseInlinedVariable(MDNode *DV, LLVMContext &VMContext) {
     return DIVariable(DV);
 
   // Remove inlined scope.
-  SmallVector<Metadata *, 8> Elts;
-  for (unsigned I = 0, E = DIVariableInlinedAtIndex; I != E; ++I)
-    Elts.push_back(DV->getOperand(I));
+  SmallVector<Metadata *, 8> Elts(DV->op_begin(),
+                                  DV->op_begin() + DIVariableInlinedAtIndex);
 
   DIVariable Cleansed(MDNode::get(VMContext, Elts));
   assert(Cleansed.Verify() && "Expected to create a DIVariable");
@@ -1418,7 +1413,7 @@ void DIExpression::printInternal(raw_ostream &OS) const {
       OS << " " << Op.getArg(1);
       break;
     }
-    case DW_OP_piece: {
+    case DW_OP_bit_piece: {
       OS << " offset=" << Op.getArg(1) << ", size=" << Op.getArg(2);
       break;
     }
@@ -1538,7 +1533,7 @@ bool llvm::StripDebugInfo(Module &M) {
 }
 
 unsigned llvm::getDebugMetadataVersionFromModule(const Module &M) {
-  if (auto *Val = mdconst::extract_or_null<ConstantInt>(
+  if (auto *Val = mdconst::dyn_extract_or_null<ConstantInt>(
           M.getModuleFlag("Debug Info Version")))
     return Val->getZExtValue();
   return 0;

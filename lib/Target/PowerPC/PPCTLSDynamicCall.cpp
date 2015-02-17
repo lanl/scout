@@ -7,10 +7,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This pass fixes up GETtls[ld]ADDR[32] machine instructions so that
-// they read and write GPR3.  These are really call instructions, so
-// must use the calling convention registers.  This is done in a late
-// pass so that TLS variable accesses can be fully commoned.
+// This pass expands ADDItls{ld,gd}LADDR[32] machine instructions into
+// separate ADDItls[gd]L[32] and GETtlsADDR[32] instructions, both of
+// which define GPR3.  A copy is added from GPR3 to the target virtual
+// register of the original instruction.  The GETtlsADDR[32] is really
+// a call instruction, so its target register is constrained to be GPR3.
+// This is not true of ADDItls[gd]L[32], but there is a legacy linker
+// optimization bug that requires the target register of the addi of
+// a local- or general-dynamic TLS access sequence to be GPR3.
+//
+// This is done in a late pass so that TLS variable accesses can be
+// fully commoned by MachineCSE.
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,6 +25,7 @@
 #include "PPC.h"
 #include "PPCInstrBuilder.h"
 #include "PPCTargetMachine.h"
+#include "llvm/CodeGen/LiveIntervalAnalysis.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/Support/Debug.h"
@@ -32,11 +40,6 @@ namespace llvm {
 }
 
 namespace {
-  // PPCTLSDynamicCall pass - Add copies to and from GPR3 around
-  // GETtls[ld]ADDR[32] machine instructions.  These instructions
-  // are actually call instructions, so the register choice is
-  // constrained.  We delay introducing these copies as late as
-  // possible so that TLS variable accesses can be fully commoned.
   struct PPCTLSDynamicCall : public MachineFunctionPass {
     static char ID;
     PPCTLSDynamicCall() : MachineFunctionPass(ID) {
@@ -45,6 +48,7 @@ namespace {
 
     const PPCTargetMachine *TM;
     const PPCInstrInfo *TII;
+    LiveIntervals *LIS;
 
 protected:
     bool processBlock(MachineBasicBlock &MBB) {
@@ -55,10 +59,10 @@ protected:
            I != IE; ++I) {
         MachineInstr *MI = I;
 
-        if (MI->getOpcode() != PPC::GETtlsADDR &&
-            MI->getOpcode() != PPC::GETtlsldADDR &&
-            MI->getOpcode() != PPC::GETtlsADDR32 &&
-            MI->getOpcode() != PPC::GETtlsldADDR32)
+        if (MI->getOpcode() != PPC::ADDItlsgdLADDR &&
+            MI->getOpcode() != PPC::ADDItlsldLADDR &&
+            MI->getOpcode() != PPC::ADDItlsgdLADDR32 &&
+            MI->getOpcode() != PPC::ADDItlsldLADDR32)
           continue;
 
         DEBUG(dbgs() << "TLS Dynamic Call Fixup:\n    " << *MI;);
@@ -67,14 +71,60 @@ protected:
         unsigned InReg  = MI->getOperand(1).getReg();
         DebugLoc DL = MI->getDebugLoc();
         unsigned GPR3 = Is64Bit ? PPC::X3 : PPC::R3;
+        unsigned Opc1, Opc2;
+        SmallVector<unsigned, 4> OrigRegs;
+        OrigRegs.push_back(OutReg);
+        OrigRegs.push_back(InReg);
+        OrigRegs.push_back(GPR3);
 
-        BuildMI(MBB, I, DL, TII->get(TargetOpcode::COPY), GPR3)
+        switch (MI->getOpcode()) {
+        default:
+          llvm_unreachable("Opcode inconsistency error");
+        case PPC::ADDItlsgdLADDR:
+          Opc1 = PPC::ADDItlsgdL;
+          Opc2 = PPC::GETtlsADDR;
+          break;
+        case PPC::ADDItlsldLADDR:
+          Opc1 = PPC::ADDItlsldL;
+          Opc2 = PPC::GETtlsldADDR;
+          break;
+        case PPC::ADDItlsgdLADDR32:
+          Opc1 = PPC::ADDItlsgdL32;
+          Opc2 = PPC::GETtlsADDR32;
+          break;
+        case PPC::ADDItlsldLADDR32:
+          Opc1 = PPC::ADDItlsldL32;
+          Opc2 = PPC::GETtlsldADDR32;
+          break;
+        }
+
+        // Expand into two ops built prior to the existing instruction.
+        MachineInstr *Addi = BuildMI(MBB, I, DL, TII->get(Opc1), GPR3)
           .addReg(InReg);
-        MI->getOperand(0).setReg(GPR3);
-        MI->getOperand(1).setReg(GPR3);
-        BuildMI(MBB, ++I, DL, TII->get(TargetOpcode::COPY), OutReg)
+        Addi->addOperand(MI->getOperand(2));
+
+        // The ADDItls* instruction is the first instruction in the
+        // repair range.
+        MachineBasicBlock::iterator First = I;
+        --First;
+
+        MachineInstr *Call = (BuildMI(MBB, I, DL, TII->get(Opc2), GPR3)
+                              .addReg(GPR3));
+        Call->addOperand(MI->getOperand(3));
+
+        BuildMI(MBB, I, DL, TII->get(TargetOpcode::COPY), OutReg)
           .addReg(GPR3);
 
+        // The COPY is the last instruction in the repair range.
+        MachineBasicBlock::iterator Last = I;
+        --Last;
+
+        // Move past the original instruction and remove it.
+        ++I;
+        MI->removeFromParent();
+
+        // Repair the live intervals.
+        LIS->repairIntervalsInRange(&MBB, First, Last, OrigRegs);
         Changed = true;
       }
 
@@ -85,6 +135,7 @@ public:
     bool runOnMachineFunction(MachineFunction &MF) override {
       TM = static_cast<const PPCTargetMachine *>(&MF.getTarget());
       TII = TM->getSubtargetImpl()->getInstrInfo();
+      LIS = &getAnalysis<LiveIntervals>();
 
       bool Changed = false;
 
@@ -98,6 +149,10 @@ public:
     }
 
     void getAnalysisUsage(AnalysisUsage &AU) const override {
+      AU.addRequired<LiveIntervals>();
+      AU.addPreserved<LiveIntervals>();
+      AU.addRequired<SlotIndexes>();
+      AU.addPreserved<SlotIndexes>();
       MachineFunctionPass::getAnalysisUsage(AU);
     }
   };
@@ -105,6 +160,8 @@ public:
 
 INITIALIZE_PASS_BEGIN(PPCTLSDynamicCall, DEBUG_TYPE,
                       "PowerPC TLS Dynamic Call Fixup", false, false)
+INITIALIZE_PASS_DEPENDENCY(LiveIntervals)
+INITIALIZE_PASS_DEPENDENCY(SlotIndexes)
 INITIALIZE_PASS_END(PPCTLSDynamicCall, DEBUG_TYPE,
                     "PowerPC TLS Dynamic Call Fixup", false, false)
 
