@@ -22,10 +22,9 @@
 #define DEBUG_TYPE "ppc-loop-preinc-prep"
 #include "PPC.h"
 #include "PPCTargetMachine.h"
-#include "llvm/Transforms/Scalar.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/Analysis/CodeMetrics.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/LoopInfo.h"
@@ -39,8 +38,10 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
+#include "llvm/Transforms/Utils/LoopUtils.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
 using namespace llvm;
 
@@ -165,9 +166,6 @@ bool PPCLoopPreIncPrep::runOnLoop(Loop *L) {
     return MadeChange;
 
   BasicBlock *Header = L->getHeader();
-  BasicBlock *LoopPredecessor = L->getLoopPredecessor();
-  if (!LoopPredecessor)
-    return MadeChange;
 
   const PPCSubtarget *ST =
     TM ? TM->getSubtargetImpl(*Header->getParent()) : nullptr;
@@ -236,7 +234,17 @@ bool PPCLoopPreIncPrep::runOnLoop(Loop *L) {
     }
   }
 
-  if (Buckets.size() > MaxVars)
+  if (Buckets.empty() || Buckets.size() > MaxVars)
+    return MadeChange;
+
+  BasicBlock *LoopPredecessor = L->getLoopPredecessor();
+  // If there is no loop predecessor, or the loop predecessor's terminator
+  // returns a value (which might contribute to determining the loop's
+  // iteration space), insert a new preheader for the loop.
+  if (!LoopPredecessor ||
+      !LoopPredecessor->getTerminator()->getType()->isVoidTy())
+    LoopPredecessor = InsertPreheaderForLoop(L, this);
+  if (!LoopPredecessor)
     return MadeChange;
 
   SmallSet<BasicBlock *, 16> BBChanged;

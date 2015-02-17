@@ -245,193 +245,36 @@ const char *llvm::dwarf::FormEncodingString(unsigned Encoding) {
 
 const char *llvm::dwarf::OperationEncodingString(unsigned Encoding) {
   switch (Encoding) {
-  case DW_OP_addr:                       return "DW_OP_addr";
-  case DW_OP_deref:                      return "DW_OP_deref";
-  case DW_OP_const1u:                    return "DW_OP_const1u";
-  case DW_OP_const1s:                    return "DW_OP_const1s";
-  case DW_OP_const2u:                    return "DW_OP_const2u";
-  case DW_OP_const2s:                    return "DW_OP_const2s";
-  case DW_OP_const4u:                    return "DW_OP_const4u";
-  case DW_OP_const4s:                    return "DW_OP_const4s";
-  case DW_OP_const8u:                    return "DW_OP_const8u";
-  case DW_OP_const8s:                    return "DW_OP_const8s";
-  case DW_OP_constu:                     return "DW_OP_constu";
-  case DW_OP_consts:                     return "DW_OP_consts";
-  case DW_OP_dup:                        return "DW_OP_dup";
-  case DW_OP_drop:                       return "DW_OP_drop";
-  case DW_OP_over:                       return "DW_OP_over";
-  case DW_OP_pick:                       return "DW_OP_pick";
-  case DW_OP_swap:                       return "DW_OP_swap";
-  case DW_OP_rot:                        return "DW_OP_rot";
-  case DW_OP_xderef:                     return "DW_OP_xderef";
-  case DW_OP_abs:                        return "DW_OP_abs";
-  case DW_OP_and:                        return "DW_OP_and";
-  case DW_OP_div:                        return "DW_OP_div";
-  case DW_OP_minus:                      return "DW_OP_minus";
-  case DW_OP_mod:                        return "DW_OP_mod";
-  case DW_OP_mul:                        return "DW_OP_mul";
-  case DW_OP_neg:                        return "DW_OP_neg";
-  case DW_OP_not:                        return "DW_OP_not";
-  case DW_OP_or:                         return "DW_OP_or";
-  case DW_OP_plus:                       return "DW_OP_plus";
-  case DW_OP_plus_uconst:                return "DW_OP_plus_uconst";
-  case DW_OP_shl:                        return "DW_OP_shl";
-  case DW_OP_shr:                        return "DW_OP_shr";
-  case DW_OP_shra:                       return "DW_OP_shra";
-  case DW_OP_xor:                        return "DW_OP_xor";
-  case DW_OP_skip:                       return "DW_OP_skip";
-  case DW_OP_bra:                        return "DW_OP_bra";
-  case DW_OP_eq:                         return "DW_OP_eq";
-  case DW_OP_ge:                         return "DW_OP_ge";
-  case DW_OP_gt:                         return "DW_OP_gt";
-  case DW_OP_le:                         return "DW_OP_le";
-  case DW_OP_lt:                         return "DW_OP_lt";
-  case DW_OP_ne:                         return "DW_OP_ne";
-  case DW_OP_lit0:                       return "DW_OP_lit0";
-  case DW_OP_lit1:                       return "DW_OP_lit1";
-  case DW_OP_lit2:                       return "DW_OP_lit2";
-  case DW_OP_lit3:                       return "DW_OP_lit3";
-  case DW_OP_lit4:                       return "DW_OP_lit4";
-  case DW_OP_lit5:                       return "DW_OP_lit5";
-  case DW_OP_lit6:                       return "DW_OP_lit6";
-  case DW_OP_lit7:                       return "DW_OP_lit7";
-  case DW_OP_lit8:                       return "DW_OP_lit8";
-  case DW_OP_lit9:                       return "DW_OP_lit9";
-  case DW_OP_lit10:                      return "DW_OP_lit10";
-  case DW_OP_lit11:                      return "DW_OP_lit11";
-  case DW_OP_lit12:                      return "DW_OP_lit12";
-  case DW_OP_lit13:                      return "DW_OP_lit13";
-  case DW_OP_lit14:                      return "DW_OP_lit14";
-  case DW_OP_lit15:                      return "DW_OP_lit15";
-  case DW_OP_lit16:                      return "DW_OP_lit16";
-  case DW_OP_lit17:                      return "DW_OP_lit17";
-  case DW_OP_lit18:                      return "DW_OP_lit18";
-  case DW_OP_lit19:                      return "DW_OP_lit19";
-  case DW_OP_lit20:                      return "DW_OP_lit20";
-  case DW_OP_lit21:                      return "DW_OP_lit21";
-  case DW_OP_lit22:                      return "DW_OP_lit22";
-  case DW_OP_lit23:                      return "DW_OP_lit23";
-  case DW_OP_lit24:                      return "DW_OP_lit24";
-  case DW_OP_lit25:                      return "DW_OP_lit25";
-  case DW_OP_lit26:                      return "DW_OP_lit26";
-  case DW_OP_lit27:                      return "DW_OP_lit27";
-  case DW_OP_lit28:                      return "DW_OP_lit28";
-  case DW_OP_lit29:                      return "DW_OP_lit29";
-  case DW_OP_lit30:                      return "DW_OP_lit30";
-  case DW_OP_lit31:                      return "DW_OP_lit31";
-  case DW_OP_reg0:                       return "DW_OP_reg0";
-  case DW_OP_reg1:                       return "DW_OP_reg1";
-  case DW_OP_reg2:                       return "DW_OP_reg2";
-  case DW_OP_reg3:                       return "DW_OP_reg3";
-  case DW_OP_reg4:                       return "DW_OP_reg4";
-  case DW_OP_reg5:                       return "DW_OP_reg5";
-  case DW_OP_reg6:                       return "DW_OP_reg6";
-  case DW_OP_reg7:                       return "DW_OP_reg7";
-  case DW_OP_reg8:                       return "DW_OP_reg8";
-  case DW_OP_reg9:                       return "DW_OP_reg9";
-  case DW_OP_reg10:                      return "DW_OP_reg10";
-  case DW_OP_reg11:                      return "DW_OP_reg11";
-  case DW_OP_reg12:                      return "DW_OP_reg12";
-  case DW_OP_reg13:                      return "DW_OP_reg13";
-  case DW_OP_reg14:                      return "DW_OP_reg14";
-  case DW_OP_reg15:                      return "DW_OP_reg15";
-  case DW_OP_reg16:                      return "DW_OP_reg16";
-  case DW_OP_reg17:                      return "DW_OP_reg17";
-  case DW_OP_reg18:                      return "DW_OP_reg18";
-  case DW_OP_reg19:                      return "DW_OP_reg19";
-  case DW_OP_reg20:                      return "DW_OP_reg20";
-  case DW_OP_reg21:                      return "DW_OP_reg21";
-  case DW_OP_reg22:                      return "DW_OP_reg22";
-  case DW_OP_reg23:                      return "DW_OP_reg23";
-  case DW_OP_reg24:                      return "DW_OP_reg24";
-  case DW_OP_reg25:                      return "DW_OP_reg25";
-  case DW_OP_reg26:                      return "DW_OP_reg26";
-  case DW_OP_reg27:                      return "DW_OP_reg27";
-  case DW_OP_reg28:                      return "DW_OP_reg28";
-  case DW_OP_reg29:                      return "DW_OP_reg29";
-  case DW_OP_reg30:                      return "DW_OP_reg30";
-  case DW_OP_reg31:                      return "DW_OP_reg31";
-  case DW_OP_breg0:                      return "DW_OP_breg0";
-  case DW_OP_breg1:                      return "DW_OP_breg1";
-  case DW_OP_breg2:                      return "DW_OP_breg2";
-  case DW_OP_breg3:                      return "DW_OP_breg3";
-  case DW_OP_breg4:                      return "DW_OP_breg4";
-  case DW_OP_breg5:                      return "DW_OP_breg5";
-  case DW_OP_breg6:                      return "DW_OP_breg6";
-  case DW_OP_breg7:                      return "DW_OP_breg7";
-  case DW_OP_breg8:                      return "DW_OP_breg8";
-  case DW_OP_breg9:                      return "DW_OP_breg9";
-  case DW_OP_breg10:                     return "DW_OP_breg10";
-  case DW_OP_breg11:                     return "DW_OP_breg11";
-  case DW_OP_breg12:                     return "DW_OP_breg12";
-  case DW_OP_breg13:                     return "DW_OP_breg13";
-  case DW_OP_breg14:                     return "DW_OP_breg14";
-  case DW_OP_breg15:                     return "DW_OP_breg15";
-  case DW_OP_breg16:                     return "DW_OP_breg16";
-  case DW_OP_breg17:                     return "DW_OP_breg17";
-  case DW_OP_breg18:                     return "DW_OP_breg18";
-  case DW_OP_breg19:                     return "DW_OP_breg19";
-  case DW_OP_breg20:                     return "DW_OP_breg20";
-  case DW_OP_breg21:                     return "DW_OP_breg21";
-  case DW_OP_breg22:                     return "DW_OP_breg22";
-  case DW_OP_breg23:                     return "DW_OP_breg23";
-  case DW_OP_breg24:                     return "DW_OP_breg24";
-  case DW_OP_breg25:                     return "DW_OP_breg25";
-  case DW_OP_breg26:                     return "DW_OP_breg26";
-  case DW_OP_breg27:                     return "DW_OP_breg27";
-  case DW_OP_breg28:                     return "DW_OP_breg28";
-  case DW_OP_breg29:                     return "DW_OP_breg29";
-  case DW_OP_breg30:                     return "DW_OP_breg30";
-  case DW_OP_breg31:                     return "DW_OP_breg31";
-  case DW_OP_regx:                       return "DW_OP_regx";
-  case DW_OP_fbreg:                      return "DW_OP_fbreg";
-  case DW_OP_bregx:                      return "DW_OP_bregx";
-  case DW_OP_piece:                      return "DW_OP_piece";
-  case DW_OP_deref_size:                 return "DW_OP_deref_size";
-  case DW_OP_xderef_size:                return "DW_OP_xderef_size";
-  case DW_OP_nop:                        return "DW_OP_nop";
-  case DW_OP_push_object_address:        return "DW_OP_push_object_address";
-  case DW_OP_call2:                      return "DW_OP_call2";
-  case DW_OP_call4:                      return "DW_OP_call4";
-  case DW_OP_call_ref:                   return "DW_OP_call_ref";
-  case DW_OP_form_tls_address:           return "DW_OP_form_tls_address";
-  case DW_OP_call_frame_cfa:             return "DW_OP_call_frame_cfa";
-  case DW_OP_bit_piece:                  return "DW_OP_bit_piece";
-  case DW_OP_implicit_value:             return "DW_OP_implicit_value";
-  case DW_OP_stack_value:                return "DW_OP_stack_value";
-
-  // GNU thread-local storage
-  case DW_OP_GNU_push_tls_address:       return "DW_OP_GNU_push_tls_address";
-
-  // DWARF5 Fission Proposal Op Extensions
-  case DW_OP_GNU_addr_index:             return "DW_OP_GNU_addr_index";
-  case DW_OP_GNU_const_index:            return "DW_OP_GNU_const_index";
+  default: return nullptr;
+#define HANDLE_DW_OP(ID, NAME)                                                 \
+  case DW_OP_##NAME:                                                           \
+    return "DW_OP_" #NAME;
+#include "llvm/Support/Dwarf.def"
   }
-  return nullptr;
+}
+
+unsigned llvm::dwarf::getOperationEncoding(StringRef OperationEncodingString) {
+  return StringSwitch<unsigned>(OperationEncodingString)
+#define HANDLE_DW_OP(ID, NAME) .Case("DW_OP_" #NAME, DW_OP_##NAME)
+#include "llvm/Support/Dwarf.def"
+      .Default(0);
 }
 
 const char *llvm::dwarf::AttributeEncodingString(unsigned Encoding) {
   switch (Encoding) {
-  case DW_ATE_address:                   return "DW_ATE_address";
-  case DW_ATE_boolean:                   return "DW_ATE_boolean";
-  case DW_ATE_complex_float:             return "DW_ATE_complex_float";
-  case DW_ATE_float:                     return "DW_ATE_float";
-  case DW_ATE_signed:                    return "DW_ATE_signed";
-  case DW_ATE_signed_char:               return "DW_ATE_signed_char";
-  case DW_ATE_unsigned:                  return "DW_ATE_unsigned";
-  case DW_ATE_unsigned_char:             return "DW_ATE_unsigned_char";
-  case DW_ATE_imaginary_float:           return "DW_ATE_imaginary_float";
-  case DW_ATE_UTF:                       return "DW_ATE_UTF";
-  case DW_ATE_packed_decimal:            return "DW_ATE_packed_decimal";
-  case DW_ATE_numeric_string:            return "DW_ATE_numeric_string";
-  case DW_ATE_edited:                    return "DW_ATE_edited";
-  case DW_ATE_signed_fixed:              return "DW_ATE_signed_fixed";
-  case DW_ATE_unsigned_fixed:            return "DW_ATE_unsigned_fixed";
-  case DW_ATE_decimal_float:             return "DW_ATE_decimal_float";
-  case DW_ATE_lo_user:                   return "DW_ATE_lo_user";
-  case DW_ATE_hi_user:                   return "DW_ATE_hi_user";
+  default: return nullptr;
+#define HANDLE_DW_ATE(ID, NAME)                                                \
+  case DW_ATE_##NAME:                                                          \
+    return "DW_ATE_" #NAME;
+#include "llvm/Support/Dwarf.def"
   }
-  return nullptr;
+}
+
+unsigned llvm::dwarf::getAttributeEncoding(StringRef EncodingString) {
+  return StringSwitch<unsigned>(EncodingString)
+#define HANDLE_DW_ATE(ID, NAME) .Case("DW_ATE_" #NAME, DW_ATE_##NAME)
+#include "llvm/Support/Dwarf.def"
+      .Default(0);
 }
 
 const char *llvm::dwarf::DecimalSignString(unsigned Sign) {
@@ -477,50 +320,39 @@ const char *llvm::dwarf::VisibilityString(unsigned Visibility) {
 
 const char *llvm::dwarf::VirtualityString(unsigned Virtuality) {
   switch (Virtuality) {
-  case DW_VIRTUALITY_none:               return "DW_VIRTUALITY_none";
-  case DW_VIRTUALITY_virtual:            return "DW_VIRTUALITY_virtual";
-  case DW_VIRTUALITY_pure_virtual:       return "DW_VIRTUALITY_pure_virtual";
+  default:
+    return nullptr;
+#define HANDLE_DW_VIRTUALITY(ID, NAME)                                         \
+  case DW_VIRTUALITY_##NAME:                                                   \
+    return "DW_VIRTUALITY_" #NAME;
+#include "llvm/Support/Dwarf.def"
   }
-  return nullptr;
+}
+
+unsigned llvm::dwarf::getVirtuality(StringRef VirtualityString) {
+  return StringSwitch<unsigned>(VirtualityString)
+#define HANDLE_DW_VIRTUALITY(ID, NAME)                                         \
+  .Case("DW_VIRTUALITY_" #NAME, DW_VIRTUALITY_##NAME)
+#include "llvm/Support/Dwarf.def"
+      .Default(DW_VIRTUALITY_invalid);
 }
 
 const char *llvm::dwarf::LanguageString(unsigned Language) {
   switch (Language) {
-  case DW_LANG_C89:                      return "DW_LANG_C89";
-  case DW_LANG_C:                        return "DW_LANG_C";
-  case DW_LANG_Ada83:                    return "DW_LANG_Ada83";
-  case DW_LANG_C_plus_plus:              return "DW_LANG_C_plus_plus";
-  case DW_LANG_Cobol74:                  return "DW_LANG_Cobol74";
-  case DW_LANG_Cobol85:                  return "DW_LANG_Cobol85";
-  case DW_LANG_Fortran77:                return "DW_LANG_Fortran77";
-  case DW_LANG_Fortran90:                return "DW_LANG_Fortran90";
-  case DW_LANG_Pascal83:                 return "DW_LANG_Pascal83";
-  case DW_LANG_Modula2:                  return "DW_LANG_Modula2";
-  case DW_LANG_Java:                     return "DW_LANG_Java";
-  case DW_LANG_C99:                      return "DW_LANG_C99";
-  case DW_LANG_Ada95:                    return "DW_LANG_Ada95";
-  case DW_LANG_Fortran95:                return "DW_LANG_Fortran95";
-  case DW_LANG_PLI:                      return "DW_LANG_PLI";
-  case DW_LANG_ObjC:                     return "DW_LANG_ObjC";
-  case DW_LANG_ObjC_plus_plus:           return "DW_LANG_ObjC_plus_plus";
-  case DW_LANG_UPC:                      return "DW_LANG_UPC";
-  case DW_LANG_D:                        return "DW_LANG_D";
-  case DW_LANG_Python:                   return "DW_LANG_Python";
-  case DW_LANG_OpenCL:                   return "DW_LANG_OpenCL";
-  case DW_LANG_Go:                       return "DW_LANG_Go";
-  case DW_LANG_Modula3:                  return "DW_LANG_Modula3";
-  case DW_LANG_Haskell:                  return "DW_LANG_Haskell";
-  case DW_LANG_C_plus_plus_03:           return "DW_LANG_C_plus_plus_03";
-  case DW_LANG_C_plus_plus_11:           return "DW_LANG_C_plus_plus_11";
-  case DW_LANG_OCaml:                    return "DW_LANG_OCaml";
-  case DW_LANG_lo_user:                  return "DW_LANG_lo_user";
-  case DW_LANG_Mips_Assembler:           return "DW_LANG_Mips_Assembler";
-  case DW_LANG_hi_user:                  return "DW_LANG_hi_user";
-  // +===== Scout =========================================================
-  case DW_LANG_ScoutC:                   return "DW_LANG_ScoutC";
-  // +=====================================================================
+  default:
+    return nullptr;
+#define HANDLE_DW_LANG(ID, NAME)                                               \
+  case DW_LANG_##NAME:                                                         \
+    return "DW_LANG_" #NAME;
+#include "llvm/Support/Dwarf.def"
   }
-  return nullptr;
+}
+
+unsigned llvm::dwarf::getLanguage(StringRef LanguageString) {
+  return StringSwitch<unsigned>(LanguageString)
+#define HANDLE_DW_LANG(ID, NAME) .Case("DW_LANG_" #NAME, DW_LANG_##NAME)
+#include "llvm/Support/Dwarf.def"
+      .Default(0);
 }
 
 const char *llvm::dwarf::CaseString(unsigned Case) {

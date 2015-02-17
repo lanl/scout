@@ -23,8 +23,8 @@
 #define LLVM_ANALYSIS_TARGETTRANSFORMINFO_H
 
 #include "llvm/ADT/Optional.h"
-#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/DataTypes.h"
 
@@ -217,6 +217,13 @@ public:
     /// exceed this cost. Set this to UINT_MAX to disable the loop body cost
     /// restriction.
     unsigned Threshold;
+    /// If complete unrolling could help other optimizations (e.g. InstSimplify)
+    /// to remove N% of instructions, then we can go beyond unroll threshold.
+    /// This value set the minimal percent for allowing that.
+    unsigned MinPercentOfOptimized;
+    /// The absolute cost threshold. We won't go beyond this even if complete
+    /// unrolling could result in optimizing out 90% of instructions.
+    unsigned AbsoluteThreshold;
     /// The cost threshold for the unrolled loop when optimizing for size (set
     /// to UINT_MAX to disable).
     unsigned OptSizeThreshold;

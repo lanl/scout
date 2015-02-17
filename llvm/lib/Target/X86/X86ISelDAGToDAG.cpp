@@ -393,17 +393,14 @@ static void MoveBelowOrigChain(SelectionDAG *CurDAG, SDValue Load,
     Ops.clear();
     Ops.push_back(NewChain);
   }
-  for (unsigned i = 1, e = OrigChain.getNumOperands(); i != e; ++i)
-    Ops.push_back(OrigChain.getOperand(i));
+  Ops.append(OrigChain->op_begin() + 1, OrigChain->op_end());
   CurDAG->UpdateNodeOperands(OrigChain.getNode(), Ops);
   CurDAG->UpdateNodeOperands(Load.getNode(), Call.getOperand(0),
                              Load.getOperand(1), Load.getOperand(2));
 
-  unsigned NumOps = Call.getNode()->getNumOperands();
   Ops.clear();
   Ops.push_back(SDValue(Load.getNode(), 1));
-  for (unsigned i = 1, e = NumOps; i != e; ++i)
-    Ops.push_back(Call.getOperand(i));
+  Ops.append(Call->op_begin() + 1, Call->op_end());
   CurDAG->UpdateNodeOperands(Call.getNode(), Ops);
 }
 
@@ -451,8 +448,7 @@ static bool isCalleeLoad(SDValue Callee, SDValue &Chain, bool HasCallSeq) {
 
 void X86DAGToDAGISel::PreprocessISelDAG() {
   // OptForSize is used in pattern predicates that isel is matching.
-  OptForSize = MF->getFunction()->getAttributes().
-    hasAttribute(AttributeSet::FunctionIndex, Attribute::OptimizeForSize);
+  OptForSize = MF->getFunction()->hasFnAttribute(Attribute::OptimizeForSize);
 
   for (SelectionDAG::allnodes_iterator I = CurDAG->allnodes_begin(),
        E = CurDAG->allnodes_end(); I != E; ) {
@@ -916,7 +912,7 @@ static bool FoldMaskAndShiftToScale(SelectionDAG &DAG, SDValue N,
   if (AMShiftAmt <= 0 || AMShiftAmt > 3) return true;
 
   // We also need to ensure that mask is a continuous run of bits.
-  if (CountTrailingOnes_64(Mask >> MaskTZ) + MaskTZ + MaskLZ != 64) return true;
+  if (countTrailingOnes(Mask >> MaskTZ) + MaskTZ + MaskLZ != 64) return true;
 
   // Scale the leading zero count down based on the actual size of the value.
   // Also scale it down based on the size of the shift.
@@ -2610,26 +2606,9 @@ SDNode *X86DAGToDAGISel::Select(SDNode *Node) {
     SDValue N1 = Node->getOperand(1);
 
     if (N0.getOpcode() == ISD::TRUNCATE && N0.hasOneUse() &&
-        HasNoSignedComparisonUses(Node)) {
-      // Look for (X86cmp (truncate $op, i1), 0) and try to convert to a
-      // smaller encoding
-      if (Opcode == X86ISD::CMP && N0.getValueType() == MVT::i1 &&
-          X86::isZeroNode(N1)) {
-        SDValue Reg = N0.getOperand(0);
-        SDValue Imm = CurDAG->getTargetConstant(1, MVT::i8);
-
-        // Emit testb
-        if (Reg.getScalarValueSizeInBits() > 8)
-          Reg = CurDAG->getTargetExtractSubreg(X86::sub_8bit, dl, MVT::i8, Reg);
-        // Emit a testb.
-        SDNode *NewNode = CurDAG->getMachineNode(X86::TEST8ri, dl, MVT::i32,
-                                                Reg, Imm);
-        ReplaceUses(SDValue(Node, 0), SDValue(NewNode, 0));
-        return nullptr;
-      }
-
+        HasNoSignedComparisonUses(Node))
       N0 = N0.getOperand(0);
-    }
+
     // Look for (X86cmp (and $op, $imm), 0) and see if we can convert it to
     // use a smaller encoding.
     // Look past the truncate if CMP is the only use of it.

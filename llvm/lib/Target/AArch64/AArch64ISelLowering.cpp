@@ -1337,10 +1337,7 @@ getAArch64XALUOOp(AArch64CC::CondCode &CC, SDValue Op, SelectionDAG &DAG) {
 
 SDValue AArch64TargetLowering::LowerF128Call(SDValue Op, SelectionDAG &DAG,
                                              RTLIB::Libcall Call) const {
-  SmallVector<SDValue, 2> Ops;
-  for (unsigned i = 0, e = Op->getNumOperands(); i != e; ++i)
-    Ops.push_back(Op.getOperand(i));
-
+  SmallVector<SDValue, 2> Ops(Op->op_begin(), Op->op_end());
   return makeLibCall(DAG, Call, MVT::f128, &Ops[0], Ops.size(), false,
                      SDLoc(Op)).first;
 }
@@ -1568,10 +1565,7 @@ SDValue AArch64TargetLowering::LowerFP_TO_INT(SDValue Op,
   else
     LC = RTLIB::getFPTOUINT(Op.getOperand(0).getValueType(), Op.getValueType());
 
-  SmallVector<SDValue, 2> Ops;
-  for (unsigned i = 0, e = Op->getNumOperands(); i != e; ++i)
-    Ops.push_back(Op.getOperand(i));
-
+  SmallVector<SDValue, 2> Ops(Op->op_begin(), Op->op_end());
   return makeLibCall(DAG, LC, Op.getValueType(), &Ops[0], Ops.size(), false,
                      SDLoc(Op)).first;
 }
@@ -2021,18 +2015,19 @@ SDValue AArch64TargetLowering::LowerFormalArguments(
   unsigned CurArgIdx = 0;
   for (unsigned i = 0; i != NumArgs; ++i) {
     MVT ValVT = Ins[i].VT;
-    std::advance(CurOrigArg, Ins[i].OrigArgIndex - CurArgIdx);
-    CurArgIdx = Ins[i].OrigArgIndex;
+    if (Ins[i].isOrigArg()) {
+      std::advance(CurOrigArg, Ins[i].getOrigArgIndex() - CurArgIdx);
+      CurArgIdx = Ins[i].getOrigArgIndex();
 
-    // Get type of the original argument.
-    EVT ActualVT = getValueType(CurOrigArg->getType(), /*AllowUnknown*/ true);
-    MVT ActualMVT = ActualVT.isSimple() ? ActualVT.getSimpleVT() : MVT::Other;
-    // If ActualMVT is i1/i8/i16, we should set LocVT to i8/i8/i16.
-    if (ActualMVT == MVT::i1 || ActualMVT == MVT::i8)
-      ValVT = MVT::i8;
-    else if (ActualMVT == MVT::i16)
-      ValVT = MVT::i16;
-
+      // Get type of the original argument.
+      EVT ActualVT = getValueType(CurOrigArg->getType(), /*AllowUnknown*/ true);
+      MVT ActualMVT = ActualVT.isSimple() ? ActualVT.getSimpleVT() : MVT::Other;
+      // If ActualMVT is i1/i8/i16, we should set LocVT to i8/i8/i16.
+      if (ActualMVT == MVT::i1 || ActualMVT == MVT::i8)
+        ValVT = MVT::i8;
+      else if (ActualMVT == MVT::i16)
+        ValVT = MVT::i16;
+    }
     CCAssignFn *AssignFn = CCAssignFnForCall(CallConv, /*IsVarArg=*/false);
     bool Res =
         AssignFn(i, ValVT, ValVT, CCValAssign::Full, Ins[i].Flags, CCInfo);
@@ -3263,8 +3258,8 @@ SDValue AArch64TargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
       OFCC = getInvertedCondCode(OFCC);
     SDValue CCVal = DAG.getConstant(OFCC, MVT::i32);
 
-    return DAG.getNode(AArch64ISD::BRCOND, SDLoc(LHS), MVT::Other, Chain, Dest,
-                       CCVal, Overflow);
+    return DAG.getNode(AArch64ISD::BRCOND, dl, MVT::Other, Chain, Dest, CCVal,
+                       Overflow);
   }
 
   if (LHS.getValueType().isInteger()) {
@@ -3433,8 +3428,8 @@ SDValue AArch64TargetLowering::LowerFCOPYSIGN(SDValue Op,
 }
 
 SDValue AArch64TargetLowering::LowerCTPOP(SDValue Op, SelectionDAG &DAG) const {
-  if (DAG.getMachineFunction().getFunction()->getAttributes().hasAttribute(
-          AttributeSet::FunctionIndex, Attribute::NoImplicitFloat))
+  if (DAG.getMachineFunction().getFunction()->hasFnAttribute(
+          Attribute::NoImplicitFloat))
     return SDValue();
 
   if (!Subtarget->hasNEON())
@@ -6270,6 +6265,8 @@ static SDValue EmitVectorComparison(SDValue LHS, SDValue RHS,
                                     AArch64CC::CondCode CC, bool NoNans, EVT VT,
                                     SDLoc dl, SelectionDAG &DAG) {
   EVT SrcVT = LHS.getValueType();
+  assert(VT.getSizeInBits() == SrcVT.getSizeInBits() &&
+         "function only supposed to emit natural comparisons");
 
   BuildVectorSDNode *BVN = dyn_cast<BuildVectorSDNode>(RHS.getNode());
   APInt CnstBits(VT.getSizeInBits(), 0);
@@ -6364,13 +6361,15 @@ SDValue AArch64TargetLowering::LowerVSETCC(SDValue Op,
   ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(2))->get();
   SDValue LHS = Op.getOperand(0);
   SDValue RHS = Op.getOperand(1);
+  EVT CmpVT = LHS.getValueType().changeVectorElementTypeToInteger();
   SDLoc dl(Op);
 
   if (LHS.getValueType().getVectorElementType().isInteger()) {
     assert(LHS.getValueType() == RHS.getValueType());
     AArch64CC::CondCode AArch64CC = changeIntCCToAArch64CC(CC);
-    return EmitVectorComparison(LHS, RHS, AArch64CC, false, Op.getValueType(),
-                                dl, DAG);
+    SDValue Cmp =
+        EmitVectorComparison(LHS, RHS, AArch64CC, false, CmpVT, dl, DAG);
+    return DAG.getSExtOrTrunc(Cmp, dl, Op.getValueType());
   }
 
   assert(LHS.getValueType().getVectorElementType() == MVT::f32 ||
@@ -6384,18 +6383,20 @@ SDValue AArch64TargetLowering::LowerVSETCC(SDValue Op,
 
   bool NoNaNs = getTargetMachine().Options.NoNaNsFPMath;
   SDValue Cmp =
-      EmitVectorComparison(LHS, RHS, CC1, NoNaNs, Op.getValueType(), dl, DAG);
+      EmitVectorComparison(LHS, RHS, CC1, NoNaNs, CmpVT, dl, DAG);
   if (!Cmp.getNode())
     return SDValue();
 
   if (CC2 != AArch64CC::AL) {
     SDValue Cmp2 =
-        EmitVectorComparison(LHS, RHS, CC2, NoNaNs, Op.getValueType(), dl, DAG);
+        EmitVectorComparison(LHS, RHS, CC2, NoNaNs, CmpVT, dl, DAG);
     if (!Cmp2.getNode())
       return SDValue();
 
-    Cmp = DAG.getNode(ISD::OR, dl, Cmp.getValueType(), Cmp, Cmp2);
+    Cmp = DAG.getNode(ISD::OR, dl, CmpVT, Cmp, Cmp2);
   }
+
+  Cmp = DAG.getSExtOrTrunc(Cmp, dl, Op.getValueType());
 
   if (ShouldInvert)
     return Cmp = DAG.getNOT(dl, Cmp, Cmp.getValueType());
@@ -6604,8 +6605,7 @@ EVT AArch64TargetLowering::getOptimalMemOpType(uint64_t Size, unsigned DstAlign,
   bool Fast;
   const Function *F = MF.getFunction();
   if (Subtarget->hasFPARMv8() && !IsMemset && Size >= 16 &&
-      !F->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
-                                       Attribute::NoImplicitFloat) &&
+      !F->hasFnAttribute(Attribute::NoImplicitFloat) &&
       (memOpAlign(SrcAlign, DstAlign, 16) ||
        (allowsMisalignedMemoryAccesses(MVT::f128, 0, 1, &Fast) && Fast)))
     return MVT::f128;
@@ -7846,8 +7846,7 @@ static SDValue performSTORECombine(SDNode *N,
 
   // Don't split at Oz.
   MachineFunction &MF = DAG.getMachineFunction();
-  bool IsMinSize = MF.getFunction()->getAttributes().hasAttribute(
-      AttributeSet::FunctionIndex, Attribute::MinSize);
+  bool IsMinSize = MF.getFunction()->hasFnAttribute(Attribute::MinSize);
   if (IsMinSize)
     return SDValue();
 

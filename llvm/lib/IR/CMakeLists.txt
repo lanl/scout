@@ -51,10 +51,16 @@ add_llvm_library(LLVMCore
   ValueSymbolTable.cpp
   ValueTypes.cpp
   Verifier.cpp
+<<<<<<< HEAD
 # +===== Scout ====================
   LINK_LIBS
   ScoutCore
 # +================================
+=======
+
+  ADDITIONAL_HEADER_DIRS
+  ${LLVM_MAIN_INCLUDE_DIR}/llvm/IR
+>>>>>>> dfe4d99629bd7e0b8bb0f3e18b6c22d7d53349dd
   )
 
 add_dependencies(LLVMCore intrinsics_gen)

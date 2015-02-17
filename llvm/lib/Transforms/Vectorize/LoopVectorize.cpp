@@ -3454,9 +3454,8 @@ bool LoopVectorizationLegality::canVectorizeInstrs() {
   // Look for the attribute signaling the absence of NaNs.
   Function &F = *Header->getParent();
   if (F.hasFnAttribute("no-nans-fp-math"))
-    HasFunNoNaNAttr = F.getAttributes().getAttribute(
-      AttributeSet::FunctionIndex,
-      "no-nans-fp-math").getValueAsString() == "true";
+    HasFunNoNaNAttr =
+        F.getFnAttribute("no-nans-fp-math").getValueAsString() == "true";
 
   // For each block in the loop.
   for (Loop::block_iterator bb = TheLoop->block_begin(),
@@ -4913,7 +4912,11 @@ LoopVectorizationCostModel::getInstructionCost(Instruction *I, unsigned VF) {
 
     // Wide load/stores.
     unsigned Cost = TTI.getAddressComputationCost(VectorTy);
-    Cost += TTI.getMemoryOpCost(I->getOpcode(), VectorTy, Alignment, AS);
+    if (Legal->isMaskRequired(I))
+      Cost += TTI.getMaskedMemoryOpCost(I->getOpcode(), VectorTy, Alignment,
+                                        AS);
+    else
+      Cost += TTI.getMemoryOpCost(I->getOpcode(), VectorTy, Alignment, AS);
 
     if (Reverse)
       Cost += TTI.getShuffleCost(TargetTransformInfo::SK_Reverse,

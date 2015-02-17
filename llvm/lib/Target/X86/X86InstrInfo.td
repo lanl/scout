@@ -561,6 +561,11 @@ def AVX512ICC : Operand<i8> {
   let OperandType = "OPERAND_IMMEDIATE";
 }
 
+def XOPCC : Operand<i8> {
+  let PrintMethod = "printXOPCC";
+  let OperandType = "OPERAND_IMMEDIATE";
+}
+
 class ImmSExtAsmOperandClass : AsmOperandClass {
   let SuperClasses = [ImmAsmOperand];
   let RenderMethod = "addImmOperands";
@@ -744,14 +749,19 @@ def HasAVX512    : Predicate<"Subtarget->hasAVX512()">,
 def UseAVX       : Predicate<"Subtarget->hasAVX() && !Subtarget->hasAVX512()">;
 def UseAVX2      : Predicate<"Subtarget->hasAVX2() && !Subtarget->hasAVX512()">;
 def NoAVX512     : Predicate<"!Subtarget->hasAVX512()">;
-def HasCDI       : Predicate<"Subtarget->hasCDI()">;
-def HasPFI       : Predicate<"Subtarget->hasPFI()">;
-def HasERI       : Predicate<"Subtarget->hasERI()">;
-def HasDQI       : Predicate<"Subtarget->hasDQI()">;
+def HasCDI       : Predicate<"Subtarget->hasCDI()">,
+                     AssemblerPredicate<"FeatureCDI", "AVX-512 CD ISA">;
+def HasPFI       : Predicate<"Subtarget->hasPFI()">,
+                     AssemblerPredicate<"FeaturePFI", "AVX-512 PF ISA">;
+def HasERI       : Predicate<"Subtarget->hasERI()">,
+                     AssemblerPredicate<"FeatureERI", "AVX-512 ER ISA">;
+def HasDQI       : Predicate<"Subtarget->hasDQI()">,
+                     AssemblerPredicate<"FeatureDQI", "AVX-512 DQ ISA">;
 def NoDQI        : Predicate<"!Subtarget->hasDQI()">;
-def HasBWI       : Predicate<"Subtarget->hasBWI()">;
+def HasBWI       : Predicate<"Subtarget->hasBWI()">,
+                     AssemblerPredicate<"FeatureBWI", "AVX-512 BW ISA">;
 def HasVLX       : Predicate<"Subtarget->hasVLX()">,
-                     AssemblerPredicate<"FeatureVLX", "AVX-512 VLX ISA">;
+                     AssemblerPredicate<"FeatureVLX", "AVX-512 VL ISA">;
 def NoVLX        : Predicate<"!Subtarget->hasVLX()">;
 
 def HasPOPCNT    : Predicate<"Subtarget->hasPOPCNT()">;
@@ -2216,11 +2226,11 @@ let Predicates = [HasBMI2], Defs = [EFLAGS] in {
 
 def CountTrailingOnes : SDNodeXForm<imm, [{
   // Count the trailing ones in the immediate.
-  return getI8Imm(CountTrailingOnes_64(N->getZExtValue()));
+  return getI8Imm(countTrailingOnes(N->getZExtValue()));
 }]>;
 
 def BZHIMask : ImmLeaf<i64, [{
-  return isMask_64(Imm) && (CountTrailingOnes_64(Imm) > 32);
+  return isMask_64(Imm) && (countTrailingOnes<uint64_t>(Imm) > 32);
 }]>;
 
 let Predicates = [HasBMI2] in {

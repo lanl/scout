@@ -15,7 +15,7 @@
 #include "llvm/ProfileData/CoverageMapping.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Optional.h"
-#include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ProfileData/CoverageMappingReader.h"
 #include "llvm/ProfileData/InstrProfReader.h"
 #include "llvm/Support/Debug.h"
@@ -223,9 +223,10 @@ CoverageMapping::load(StringRef ObjectFilename, StringRef ProfileFilename) {
   ObjectFileCoverageMappingReader CoverageReader(CounterMappingBuff.get());
   if (auto EC = CoverageReader.readHeader())
     return EC;
-  std::unique_ptr<IndexedInstrProfReader> ProfileReader;
-  if (auto EC = IndexedInstrProfReader::create(ProfileFilename, ProfileReader))
+  auto ProfileReaderOrErr = IndexedInstrProfReader::create(ProfileFilename);
+  if (auto EC = ProfileReaderOrErr.getError())
     return EC;
+  auto ProfileReader = std::move(ProfileReaderOrErr.get());
   return load(CoverageReader, *ProfileReader);
 }
 
@@ -332,50 +333,43 @@ public:
 std::vector<StringRef> CoverageMapping::getUniqueSourceFiles() const {
   std::vector<StringRef> Filenames;
   for (const auto &Function : getCoveredFunctions())
-    for (const auto &Filename : Function.Filenames)
-      Filenames.push_back(Filename);
+    Filenames.insert(Filenames.end(), Function.Filenames.begin(),
+                     Function.Filenames.end());
   std::sort(Filenames.begin(), Filenames.end());
   auto Last = std::unique(Filenames.begin(), Filenames.end());
   Filenames.erase(Last, Filenames.end());
   return Filenames;
 }
 
-static Optional<unsigned> findMainViewFileID(StringRef SourceFile,
-                                             const FunctionRecord &Function) {
-  llvm::SmallVector<bool, 8> IsExpandedFile(Function.Filenames.size(), false);
-  llvm::SmallVector<bool, 8> FilenameEquivalence(Function.Filenames.size(),
-                                                 false);
+static SmallBitVector gatherFileIDs(StringRef SourceFile,
+                                    const FunctionRecord &Function) {
+  SmallBitVector FilenameEquivalence(Function.Filenames.size(), false);
   for (unsigned I = 0, E = Function.Filenames.size(); I < E; ++I)
     if (SourceFile == Function.Filenames[I])
       FilenameEquivalence[I] = true;
+  return FilenameEquivalence;
+}
+
+static Optional<unsigned> findMainViewFileID(StringRef SourceFile,
+                                             const FunctionRecord &Function) {
+  SmallBitVector IsNotExpandedFile(Function.Filenames.size(), true);
+  SmallBitVector FilenameEquivalence = gatherFileIDs(SourceFile, Function);
   for (const auto &CR : Function.CountedRegions)
     if (CR.Kind == CounterMappingRegion::ExpansionRegion &&
         FilenameEquivalence[CR.FileID])
-      IsExpandedFile[CR.ExpandedFileID] = true;
-  for (unsigned I = 0, E = Function.Filenames.size(); I < E; ++I)
-    if (FilenameEquivalence[I] && !IsExpandedFile[I])
-      return I;
-  return None;
+      IsNotExpandedFile[CR.ExpandedFileID] = false;
+  IsNotExpandedFile &= FilenameEquivalence;
+  int I = IsNotExpandedFile.find_first();
+  return I != -1 ? I : None;
 }
 
 static Optional<unsigned> findMainViewFileID(const FunctionRecord &Function) {
-  llvm::SmallVector<bool, 8> IsExpandedFile(Function.Filenames.size(), false);
+  SmallBitVector IsNotExpandedFile(Function.Filenames.size(), true);
   for (const auto &CR : Function.CountedRegions)
     if (CR.Kind == CounterMappingRegion::ExpansionRegion)
-      IsExpandedFile[CR.ExpandedFileID] = true;
-  for (unsigned I = 0, E = Function.Filenames.size(); I < E; ++I)
-    if (!IsExpandedFile[I])
-      return I;
-  return None;
-}
-
-static SmallSet<unsigned, 8> gatherFileIDs(StringRef SourceFile,
-                                           const FunctionRecord &Function) {
-  SmallSet<unsigned, 8> IDs;
-  for (unsigned I = 0, E = Function.Filenames.size(); I < E; ++I)
-    if (SourceFile == Function.Filenames[I])
-      IDs.insert(I);
-  return IDs;
+      IsNotExpandedFile[CR.ExpandedFileID] = false;
+  int I = IsNotExpandedFile.find_first();
+  return I != -1 ? I : None;
 }
 
 /// Sort a nested sequence of regions from a single file.
@@ -403,7 +397,7 @@ CoverageData CoverageMapping::getCoverageForFile(StringRef Filename) {
       continue;
     auto FileIDs = gatherFileIDs(Filename, Function);
     for (const auto &CR : Function.CountedRegions)
-      if (FileIDs.count(CR.FileID)) {
+      if (FileIDs.test(CR.FileID)) {
         Regions.push_back(CR);
         if (isExpansion(CR, *MainFileID))
           FileCoverage.Expansions.emplace_back(CR, Function);
@@ -431,8 +425,8 @@ CoverageMapping::getInstantiations(StringRef Filename) {
   for (const auto &InstantiationSet : InstantiationSetCollector) {
     if (InstantiationSet.second.size() < 2)
       continue;
-    for (auto Function : InstantiationSet.second)
-      Result.push_back(Function);
+    Result.insert(Result.end(), InstantiationSet.second.begin(),
+                  InstantiationSet.second.end());
   }
   return Result;
 }
