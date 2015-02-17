@@ -184,8 +184,8 @@ protected:
   void setDataSize(CharUnits NewSize) { DataSize = Context.toBits(NewSize); }
   void setDataSize(uint64_t NewSize) { DataSize = NewSize; }
 
-  MeshLayoutBuilder(const MeshLayoutBuilder &) LLVM_DELETED_FUNCTION;
-  void operator=(const MeshLayoutBuilder &) LLVM_DELETED_FUNCTION;
+  MeshLayoutBuilder(const MeshLayoutBuilder &) = delete;
+  void operator=(const MeshLayoutBuilder &) = delete;
 };
 
 } // end anonymous namespace

@@ -251,7 +251,7 @@ static void addThreadSanitizerPass(const PassManagerBuilder &Builder,
 void EmitAssemblyHelper::CreateScoutPasses() {
 #ifdef SCOUT_ENABLE_CUDA
   if(CodeGenOpts.ScoutNvidiaGPU){
-    PassManager MPM;
+    llvm::legacy::PassManager MPM;
     MPM.add(createForallPTXPass());
     MPM.run(*TheModule);
   }
@@ -269,7 +269,7 @@ void EmitAssemblyHelper::CreateScoutPasses() {
 #endif
 #ifdef SCOUT_ENABLE_LEGION
   if(CodeGenOpts.ScoutLegionSupport){
-    PassManager MPM;
+    llvm::legacy::PassManager MPM;
     MPM.add(createLegionTaskWrapperPass());
     MPM.run(*TheModule);
   }

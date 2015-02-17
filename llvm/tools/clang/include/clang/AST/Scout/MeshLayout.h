@@ -42,8 +42,8 @@ public:
 
   void Destroy(ASTContext &Ctx);
 
-  ASTMeshLayout(const ASTMeshLayout &) LLVM_DELETED_FUNCTION;
-  void operator=(const ASTMeshLayout &) LLVM_DELETED_FUNCTION;
+  ASTMeshLayout(const ASTMeshLayout &) = delete;
+  void operator=(const ASTMeshLayout &) = delete;
 
 private:
     /// Size - Size of record in characters.

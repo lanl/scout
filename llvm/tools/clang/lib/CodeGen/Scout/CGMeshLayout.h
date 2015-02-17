@@ -23,8 +23,8 @@ namespace clang {
 
       friend class CodeGenTypes;
 
-      CGMeshLayout(const CGMeshLayout &) LLVM_DELETED_FUNCTION;
-      void operator=(const CGMeshLayout &) LLVM_DELETED_FUNCTION;
+      CGMeshLayout(const CGMeshLayout &) = delete;
+      void operator=(const CGMeshLayout &) = delete;
 
     private:
       /// The LLVM type corresponding to this record layout; used when
