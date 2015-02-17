@@ -190,6 +190,7 @@ endif()
         endif()
       else() # CUDA_COMPUTE_CAPABILITY
         message(STATUS "scout: CUDA compute capability >=2.0 required, disabling support .")
+        message(STATUS "found CUDA compute capability ${CUDA_COMPUTE_CAPABILITY}")
         set(SCOUT_ENABLE_CUDA OFF CACHE BOOL
           "Enable CUDA/PTX code generation and runtime support.")
         set(CUDA_VERSION_MAJOR 0)
