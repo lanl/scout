@@ -1817,6 +1817,7 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
       ExpectAndConsumeSemi(Context == Declarator::FileContext
                            ? diag::err_invalid_token_after_toplevel_declarator
                            : diag::err_expected_semi_declaration)) {
+        
     // Okay, there was no semicolon and one was expected.  If we see a
     // declaration specifier, just assume it was missing and continue parsing.
     // Otherwise things are very confused and we skip to recover.
@@ -3328,7 +3329,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
         
     case tok::kw_frame: {
       ConsumeToken();
-      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_query, Loc, PrevSpec, DiagID, Policy);
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_frame, Loc, PrevSpec, DiagID, Policy);
       continue;
     }
         
@@ -5279,6 +5280,13 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
 
           D.AddTypeInfo(DeclaratorChunk::getQuery(Tok.getLocation()),
               attrs, Tok.getLocation());
+        }
+        else if (DS.getTypeSpecType() == DeclSpec::TST_frame) {
+          ParsedAttributes attrs(AttrFactory);
+          MaybeParseCXX11Attributes(attrs);
+          
+          D.AddTypeInfo(DeclaratorChunk::getFrame(Tok.getLocation()),
+                        attrs, Tok.getLocation());
         }
       }
       // +========================================================================+
