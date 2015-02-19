@@ -335,6 +335,7 @@ static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
     case DeclaratorChunk::Query:
+    case DeclaratorChunk::Frame:
     // +======================================================================+
       return result;
 
@@ -358,6 +359,7 @@ static DeclaratorChunk *maybeMovePastReturnType(Declarator &declarator,
         case DeclaratorChunk::Window:
         case DeclaratorChunk::Image:
         case DeclaratorChunk::Query:
+        case DeclaratorChunk::Frame:
         // +==================================================================+
           continue;
         case DeclaratorChunk::BlockPointer:
@@ -419,6 +421,7 @@ static void distributeObjCPointerTypeAttr(TypeProcessingState &state,
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
     case DeclaratorChunk::Query:
+    case DeclaratorChunk::Frame:
     // +======================================================================+
       continue;
 
@@ -477,6 +480,7 @@ distributeObjCPointerTypeAttrFromDeclarator(TypeProcessingState &state,
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
     case DeclaratorChunk::Query:
+    case DeclaratorChunk::Frame:
     // +======================================================================+
       continue;
 
@@ -546,6 +550,7 @@ static void distributeFunctionTypeAttr(TypeProcessingState &state,
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
     case DeclaratorChunk::Query:
+    case DeclaratorChunk::Frame:
     // +======================================================================+
     case DeclaratorChunk::MemberPointer:
       continue;
@@ -969,6 +974,20 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
       switch(DeclType.Kind) {
         case DeclaratorChunk::Query: {
           Result = Context.getQueryType();
+          break;
+        }
+        default:
+          break;
+      }
+    }
+    break;
+  }
+  case DeclSpec::TST_frame: {
+    for(unsigned i = 0; i < declarator.getNumTypeObjects(); ++i) {
+      DeclaratorChunk &DeclType = declarator.getTypeObject(i);
+      switch(DeclType.Kind) {
+        case DeclaratorChunk::Frame: {
+          Result = Context.getFrameType();
           break;
         }
         default:
@@ -1887,6 +1906,14 @@ QualType Sema::BuildQueryType(QualType T) {
   return QualType();
 }
 
+QualType Sema::BuildFrameType(QualType T) {
+  const FrameType* qt = dyn_cast<FrameType>(T.getCanonicalType().getTypePtr());
+  if (qt) {
+    return Context.getFrameType();
+  }
+  return QualType();
+}
+
 // +==========================================================================+
 
 /// \brief Build an ext-vector type.
@@ -2140,6 +2167,7 @@ static void inferARCWriteback(TypeProcessingState &state,
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
     case DeclaratorChunk::Query:
+    case DeclaratorChunk::Frame:
     // +======================================================================+
       return;
     }
@@ -2287,6 +2315,7 @@ static void diagnoseRedundantReturnTypeQualifiers(Sema &S, QualType RetTy,
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
     case DeclaratorChunk::Query:
+    case DeclaratorChunk::Frame:
     // +======================================================================+
     case DeclaratorChunk::MemberPointer:
       // FIXME: We can't currently provide an accurate source location and a
@@ -2756,6 +2785,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         case DeclaratorChunk::Window:
         case DeclaratorChunk::Image:
         case DeclaratorChunk::Query:
+        case DeclaratorChunk::Frame:
         // +==================================================================+
           continue;
         case DeclaratorChunk::Function: {
@@ -2912,6 +2942,7 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
           case DeclaratorChunk::Window:
           case DeclaratorChunk::Image:
           case DeclaratorChunk::Query:
+          case DeclaratorChunk::Frame:
           // +================================================================+
             // These are invalid anyway, so just ignore.
             break;
@@ -2978,6 +3009,11 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
         
     case DeclaratorChunk::Query: {
       T = S.BuildQueryType(T);
+      break;
+    }
+        
+    case DeclaratorChunk::Frame: {
+      T = S.BuildFrameType(T);
       break;
     }
 
@@ -3656,6 +3692,7 @@ static void transferARCOwnership(TypeProcessingState &state,
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
     case DeclaratorChunk::Query:
+    case DeclaratorChunk::Frame:
     // +======================================================================+
     case DeclaratorChunk::Reference:
     case DeclaratorChunk::Pointer:
@@ -4122,6 +4159,11 @@ namespace {
       TL.setLBracketLoc(Chunk.Loc);
       TL.setRBracketLoc(Chunk.EndLoc);
     }
+    
+    void VisitFrameTypeLoc(FrameTypeLoc TL) {
+      TL.setLBracketLoc(Chunk.Loc);
+      TL.setRBracketLoc(Chunk.EndLoc);
+    }
 
     // +======================================================================+
 
@@ -4144,6 +4186,7 @@ static void fillAtomicQualLoc(AtomicTypeLoc ATL, const DeclaratorChunk &Chunk) {
   case DeclaratorChunk::Window:
   case DeclaratorChunk::Image:
   case DeclaratorChunk::Query:
+  case DeclaratorChunk::Frame:
   // +========================================================================+
   case DeclaratorChunk::Paren:
     llvm_unreachable("cannot be _Atomic qualified");

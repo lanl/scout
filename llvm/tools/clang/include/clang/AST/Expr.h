@@ -4864,11 +4864,17 @@ public:
 // +===== Scout ========================
 
 class ScoutExpr : public Expr{
-  SourceLocation StartLoc;
-  
 public:
-  ScoutExpr(QualType t, SourceLocation LocStart)
-  : Expr(ScoutExprClass, t, VK_LValue, OK_Ordinary, true, true, true, false){}
+  enum ScoutExprKind{
+    Spec,
+    SpecObject,
+    SpecValue,
+    SpecArray
+  };
+  
+  ScoutExpr(ScoutExprKind K, SourceLocation LocStart)
+  : Expr(ScoutExprClass, QualType(), VK_LValue, OK_Ordinary, true, true, true, false),
+  Kind(K){}
   
   ScoutExpr(EmptyShell shell) : Expr(ScoutExprClass, shell){}
   
@@ -4887,6 +4893,73 @@ public:
   SourceLocation getLocStart() const LLVM_READONLY { return StartLoc; }
   
   SourceLocation getLocEnd() const LLVM_READONLY { return SourceLocation(); }
+  
+  ScoutExprKind kind(){
+    return Kind;
+  }
+  
+private:
+  SourceLocation StartLoc;
+  ScoutExprKind Kind;
+};
+
+class SpecExpr : public ScoutExpr{
+public:
+  SpecExpr(ScoutExpr::ScoutExprKind Kind, SourceLocation LocStart)
+  : ScoutExpr(Kind, LocStart){}
+
+};
+
+class SpecObjectExpr : public SpecExpr{
+public:
+  SpecObjectExpr(SourceLocation LocStart)
+  : SpecExpr(ScoutExpr::SpecObject, LocStart){}
+  
+  void insert(const std::string& K, SpecExpr* V){
+    MM.insert({K, V});
+  }
+  
+  bool has(const std::string& K){
+    auto itr = MM.find(K);
+    return itr != MM.end();
+  }
+  
+private:
+  typedef std::map<std::string, SpecExpr*> MemberMap;
+  
+  MemberMap MM;
+};
+
+class SpecValueExpr : public SpecExpr{
+public:
+  SpecValueExpr(Expr* E)
+  : SpecExpr(ScoutExpr::SpecValue, E->getExprLoc()){}
+  
+  Expr* getExpression(){
+    return Exp;
+  }
+  
+private:
+  Expr* Exp;
+};
+
+class SpecArrayExpr : public SpecExpr{
+public:
+  SpecArrayExpr(SourceLocation LocStart)
+  : SpecExpr(ScoutExpr::SpecArray, LocStart){}
+  
+  void add(SpecExpr* e){
+    V.push_back(e);
+  }
+  
+  size_t size(){
+    return V.size();
+  }
+  
+private:
+  typedef std::vector<SpecExpr*> ExprVec;
+  
+  ExprVec V;
 };
 
 class QueryExpr : public Expr{

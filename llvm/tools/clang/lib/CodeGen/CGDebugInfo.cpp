@@ -2183,6 +2183,8 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile Unit) {
     return CreateType(cast<ImageType>(Ty));
   case Type::Query:
     return CreateType(cast<QueryType>(Ty));
+  case Type::Frame:
+    return CreateType(cast<FrameType>(Ty));
   // +========================================================================+
 
   case Type::Record:

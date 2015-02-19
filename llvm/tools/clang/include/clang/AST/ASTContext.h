@@ -840,7 +840,7 @@ public:
   CanQualType OCLSamplerTy, OCLEventTy;
 
   // +===== Scout ==========================================================+
-  CanQualType SCWindowTy, SCImageTy;
+  CanQualType SCWindowTy, SCImageTy, SCFrameTy;
   // +======================================================================+
   
   // Types for deductions in C++0x [stmt.ranged]'s desugaring. Built on demand.
@@ -1148,6 +1148,8 @@ public:
   QualType getImageType(const llvm::SmallVector<Expr*,2> &dims) const;
   
   QualType getQueryType() const;
+  
+  QualType getFrameType() const;
   // +========================================================================+
 
   QualType getRecordType(const RecordDecl *Decl) const;

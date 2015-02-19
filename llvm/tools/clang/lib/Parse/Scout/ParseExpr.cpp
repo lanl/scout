@@ -223,3 +223,97 @@ ExprResult Parser::ParseScoutQueryExpression(){
                                 FieldResult.get(),
                                 PredicateResult.get());
 }
+
+ExprResult Parser::ParseSpecExpression(){
+  if(Tok.is(tok::l_brace)){
+    return ParseSpecObjectExpression();
+  }
+  else if(Tok.is(tok::l_square)){
+    return ParseSpecArrayExpression();
+  }
+  
+  return ParseSpecValueExpression();
+}
+
+ExprResult Parser::ParseSpecObjectExpression(){
+  assert(Tok.is(tok::l_brace) && "expected '{'");
+
+  ConsumeToken();
+  
+  SpecObjectExpr* obj =
+  cast<SpecObjectExpr>(Actions.ActOnSpecObjectExpr(Tok.getLocation()).get());
+  
+  while(Tok.isNot(tok::r_brace)){
+    std::string key;
+    
+    if(Tok.is(tok::identifier)){
+      IdentifierInfo* IdentInfo = Tok.getIdentifierInfo();
+      key = IdentInfo->getName().str();
+    }
+    else if(Tok.is(tok::string_literal)){
+      ExprResult StringResult = ParseStringLiteralExpression();
+      StringLiteral* literal = cast<StringLiteral>(StringResult.get());
+      key = literal->getString().str();
+    }
+    else{
+      Diag(Tok, diag::err_spec_invalid_object_key);
+      return ExprError();
+    }
+    
+    ExprResult valueResult = ParseSpecExpression();
+    
+    if(valueResult.isInvalid()){
+      return ExprError();
+    }
+    
+    SpecExpr* value = cast<SpecExpr>(valueResult.get());
+    
+    obj->insert(key, value);
+  }
+  
+  ConsumeToken();
+  
+  return obj;
+}
+
+ExprResult Parser::ParseSpecValueExpression(){
+  ExprResult result = ParseExpression();
+  
+  if(result.isInvalid()){
+    return ExprError();
+  }
+  
+  return Actions.ActOnSpecValueExpr(result.get());
+}
+
+ExprResult Parser::ParseSpecArrayExpression(){
+  assert(Tok.is(tok::l_square) && "expected '['");
+  
+  ConsumeToken();
+  
+  SpecArrayExpr* array =
+  cast<SpecArrayExpr>(Actions.ActOnSpecArrayExpr(Tok.getLocation()).get());
+  
+  while(Tok.isNot(tok::r_square)){
+    ExprResult valueResult = ParseSpecExpression();
+    
+    if(valueResult.isInvalid()){
+      return ExprError();
+    }
+    
+    SpecExpr* value = cast<SpecExpr>(valueResult.get());
+    
+    if(Tok.isNot(tok::comma)){
+      Diag(Tok, diag::err_spec_invalid_array_expected) << ",";
+      return ExprError();
+    }
+    
+    array->add(value);
+    
+    ConsumeToken();
+  }
+
+  ConsumeToken();
+  
+  return array;
+}

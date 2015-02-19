@@ -1678,6 +1678,10 @@ bool CursorVisitor::VisitQueryTypeLoc(QueryTypeLoc TL) {
   return false;
 }
 
+bool CursorVisitor::VisitFrameTypeLoc(FrameTypeLoc TL) {
+  return false;
+}
+
 // +==========================================================================+
 
 bool CursorVisitor::VisitAtomicTypeLoc(AtomicTypeLoc TL) {

@@ -12577,6 +12577,7 @@ bool Sema::tryCaptureVariable(VarDecl *Var, SourceLocation ExprLoc,
         case Type::Window:
         case Type::Image:
         case Type::Query:
+        case Type::Frame:
         // +==========================================================================+
           llvm_unreachable("type class is never variably-modified!");
         case Type::Adjusted:

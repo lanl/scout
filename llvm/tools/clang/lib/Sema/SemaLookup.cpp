@@ -2265,6 +2265,10 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
     case Type::Query: {
       break;  // SC_TODO: We're assuming query is a fundamental type (correct?) 
     }
+        
+    case Type::Frame: {
+      break;  // SC_TODO: We're assuming query is a fundamental type (correct?)
+    }
     // +======================================================================+
 
     //     -- If T is a class type (including unions), its associated

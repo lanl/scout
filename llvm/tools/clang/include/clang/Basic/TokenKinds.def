@@ -275,6 +275,7 @@ SCOUT_KEYWORD(nonvolatile)
 SCOUT_KEYWORD(query)
 SCOUT_KEYWORD(select)
 SCOUT_KEYWORD(from)
+SCOUT_KEYWORD(frame)
 // +==========================================================================+
 
 KEYWORD(auto                        , KEYALL)

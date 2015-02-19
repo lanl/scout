@@ -663,6 +663,9 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     (void)void_store; // suppress warning
 
   }
+  else if (Ty.getTypeClass() == Type::Frame) {
+    assert(false && "unimplemented");
+  }
 }
 
 

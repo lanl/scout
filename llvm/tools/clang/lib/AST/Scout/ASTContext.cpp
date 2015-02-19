@@ -276,3 +276,11 @@ QualType ASTContext::getQueryType() const {
   Types.push_back(newType);
   return QualType(newType, 0);
 }
+
+// ===== Data Type ====================================================
+QualType ASTContext::getFrameType() const {
+  FrameType *newType;
+  newType = new (*this, TypeAlignment) FrameType();
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}

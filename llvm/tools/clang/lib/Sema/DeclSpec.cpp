@@ -290,6 +290,7 @@ bool Declarator::isDeclarationOfFunction() const {
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
     case DeclaratorChunk::Query:
+    case DeclaratorChunk::Frame:
     // +======================================================================+
       return false;
     }
@@ -320,6 +321,7 @@ bool Declarator::isDeclarationOfFunction() const {
     case TST_window:
     case TST_image:
     case TST_query:
+    case TST_frame:
     // +======================================================================+
 
     case TST_float:
@@ -494,6 +496,7 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T,
   case DeclSpec::TST_window:            return "window";
   case DeclSpec::TST_image:             return "image";
   case DeclSpec::TST_query:             return "query";
+  case DeclSpec::TST_frame:             return "frame";
   // +========================================================================+
 
   case DeclSpec::TST_bool:        return Policy.Bool ? "bool" : "_Bool";

@@ -303,6 +303,7 @@ public:
   static const TST TST_window            = clang::TST_window;
   static const TST TST_image             = clang::TST_image;
   static const TST TST_query             = clang::TST_query;
+  static const TST TST_frame             = clang::TST_frame;
   // +========================================================================+
 
   static const TST TST_decimal32 = clang::TST_decimal32;
@@ -1118,7 +1119,7 @@ struct DeclaratorChunk {
     Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren,
     // +===== Scout ==========================================================+
     UniformMesh, UnstructuredMesh, RectilinearMesh, StructuredMesh,
-    Window, Image, Query
+    Window, Image, Query, Frame
     // +======================================================================+
   } Kind;
 
@@ -1268,6 +1269,10 @@ struct DeclaratorChunk {
   };
   
   struct QueryTypeInfo : TypeInfoCommon {
+    void destroy() {}
+  };
+  
+  struct FrameTypeInfo : TypeInfoCommon {
     void destroy() {}
   };
 
@@ -1541,6 +1546,7 @@ struct DeclaratorChunk {
     WindowTypeInfo             Win;
     ImageTypeInfo              Img;
     QueryTypeInfo              Qry;
+    FrameTypeInfo              Frm;
     // +======================================================================+
   };
 
@@ -1553,15 +1559,16 @@ struct DeclaratorChunk {
     case DeclaratorChunk::Array:         return Arr.destroy();
     case DeclaratorChunk::MemberPointer: return Mem.destroy();
     case DeclaratorChunk::Paren:         return;
-        // +==== Scout ===========================================================+
-      case DeclaratorChunk::UniformMesh:        return Unimsh.destroy();
-      case DeclaratorChunk::RectilinearMesh:    return Rectmsh.destroy();
-      case DeclaratorChunk::UnstructuredMesh:   return Unsmsh.destroy();
-      case DeclaratorChunk::StructuredMesh:     return Strmsh.destroy();
-      case DeclaratorChunk::Window:             return Win.destroy();
-      case DeclaratorChunk::Image:              return Img.destroy();
-      case DeclaratorChunk::Query:              return Qry.destroy();
-        // +======================================================================+
+    // +==== Scout ===========================================================+
+    case DeclaratorChunk::UniformMesh:        return Unimsh.destroy();
+    case DeclaratorChunk::RectilinearMesh:    return Rectmsh.destroy();
+    case DeclaratorChunk::UnstructuredMesh:   return Unsmsh.destroy();
+    case DeclaratorChunk::StructuredMesh:     return Strmsh.destroy();
+    case DeclaratorChunk::Window:             return Win.destroy();
+    case DeclaratorChunk::Image:              return Img.destroy();
+    case DeclaratorChunk::Query:              return Qry.destroy();
+    case DeclaratorChunk::Frame:              return Frm.destroy();
+    // +======================================================================+
     }
   }
 
@@ -1775,6 +1782,13 @@ struct DeclaratorChunk {
   static DeclaratorChunk getQuery(SourceLocation Loc) {
     DeclaratorChunk I;
     I.Kind           = Query;
+    I.Loc            = Loc;
+    return I;
+  }
+  
+  static DeclaratorChunk getFrame(SourceLocation Loc) {
+    DeclaratorChunk I;
+    I.Kind           = Frame;
     I.Loc            = Loc;
     return I;
   }
@@ -2244,15 +2258,16 @@ public:
       case DeclaratorChunk::Array:
       case DeclaratorChunk::BlockPointer:
       case DeclaratorChunk::MemberPointer:
-          // +===== Scout ========================================================+
-        case DeclaratorChunk::UniformMesh:
-        case DeclaratorChunk::UnstructuredMesh:
-        case DeclaratorChunk::StructuredMesh:
-        case DeclaratorChunk::RectilinearMesh:
-        case DeclaratorChunk::Window:
-        case DeclaratorChunk::Image:
-        case DeclaratorChunk::Query:
-          // +====================================================================+
+      // +===== Scout ========================================================+
+      case DeclaratorChunk::UniformMesh:
+      case DeclaratorChunk::UnstructuredMesh:
+      case DeclaratorChunk::StructuredMesh:
+      case DeclaratorChunk::RectilinearMesh:
+      case DeclaratorChunk::Window:
+      case DeclaratorChunk::Image:
+      case DeclaratorChunk::Query:
+      case DeclaratorChunk::Frame:
+      // +====================================================================+
         return false;
       }
       llvm_unreachable("Invalid type chunk");

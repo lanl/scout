@@ -1813,10 +1813,32 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
   if (DeclEnd)
     *DeclEnd = Tok.getLocation();
 
+  // +====== Scout ===============================
+  /*
+  if(isScoutLang() && DeclsInGroup.size() == 1){
+    VarDecl* vd = dyn_cast<VarDecl>(DeclsInGroup[0]);
+    
+    if(vd){
+      const FrameType* ft = dyn_cast<FrameType>(vd->getType().getTypePtr());
+      
+      if(ft){
+        if(Tok.isNot(tok::l_brace)){
+          Diag(Tok.getLocation(), diag::err_frame_expected_specifier);
+        }
+        else{
+          Expr* expr = ParseSpecObjectExpression().get();
+        }
+      }
+    }
+  }
+  */
+  // +============================================
+  
   if (ExpectSemi &&
       ExpectAndConsumeSemi(Context == Declarator::FileContext
                            ? diag::err_invalid_token_after_toplevel_declarator
                            : diag::err_expected_semi_declaration)) {
+        
     // Okay, there was no semicolon and one was expected.  If we see a
     // declaration specifier, just assume it was missing and continue parsing.
     // Otherwise things are very confused and we skip to recover.
@@ -3326,6 +3348,12 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       continue;
     }
         
+    case tok::kw_frame: {
+      ConsumeToken();
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_frame, Loc, PrevSpec, DiagID, Policy);
+      continue;
+    }
+        
     // +======================================================================+
 
     // enum-specifier:
@@ -4191,6 +4219,7 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_window:
   case tok::kw_image:
   case tok::kw_query:
+  case tok::kw_frame:
   // +========================================================================+
 
   case tok::kw_bool:
@@ -4428,6 +4457,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw_window:
   case tok::kw_image:
   case tok::kw_query:
+  case tok::kw_frame:
   // +========================================================================+
 
   case tok::kw_bool:
@@ -5272,6 +5302,13 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
           D.AddTypeInfo(DeclaratorChunk::getQuery(Tok.getLocation()),
               attrs, Tok.getLocation());
         }
+        else if (DS.getTypeSpecType() == DeclSpec::TST_frame) {
+          ParsedAttributes attrs(AttrFactory);
+          MaybeParseCXX11Attributes(attrs);
+          
+          D.AddTypeInfo(DeclaratorChunk::getFrame(Tok.getLocation()),
+                        attrs, Tok.getLocation());
+        }
       }
       // +========================================================================+
       break;
@@ -6078,6 +6115,7 @@ void Parser::ParseMisplacedBracketDeclarator(Declarator &D) {
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
     case DeclaratorChunk::Query:
+    case DeclaratorChunk::Frame:
     // +==========================================================================+
       break;
     }
