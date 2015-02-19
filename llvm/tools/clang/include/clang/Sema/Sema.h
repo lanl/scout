@@ -8930,6 +8930,12 @@ public:
                             Expr* Field,
                             Expr* Predicate);
   
+  ExprResult ActOnSpecObjectExpr(SourceLocation BraceLoc);
+
+  ExprResult ActOnSpecArrayExpr(SourceLocation BracketLoc);
+  
+  ExprResult ActOnSpecValueExpr(Expr* E);
+  
   //  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
   //                                      SourceLocation L, SourceLocation R,
   //                                      IdentifierInfo* MII, VarDecl* MVD,

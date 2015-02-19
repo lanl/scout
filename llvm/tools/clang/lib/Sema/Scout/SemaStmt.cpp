@@ -226,6 +226,18 @@ ExprResult Sema::ActOnQueryExpr(SourceLocation FromLoc,
   return QE;
 }
 
+ExprResult Sema::ActOnSpecObjectExpr(SourceLocation BraceLoc){
+  return new (Context) SpecObjectExpr(BraceLoc);
+}
+
+ExprResult Sema::ActOnSpecArrayExpr(SourceLocation BracketLoc){
+  return new (Context) SpecArrayExpr(BracketLoc);
+}
+
+ExprResult Sema::ActOnSpecValueExpr(Expr* E){
+  return new (Context) SpecValueExpr(E);
+}
+
 // Check forall array for shadowing
 bool Sema::CheckForallArray(Scope* S,
                                   IdentifierInfo* InductionVarInfo,

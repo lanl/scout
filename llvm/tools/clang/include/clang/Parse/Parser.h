@@ -2510,6 +2510,14 @@ private:
 
   ExprResult ParseScoutQueryExpression();
   
+  ExprResult ParseSpecExpression();
+  
+  ExprResult ParseSpecObjectExpression();
+  
+  ExprResult ParseSpecValueExpression();
+  
+  ExprResult ParseSpecArrayExpression();
+  
   const MeshType* LookupMeshType(IdentifierInfo *MeshInfo,
                                  SourceLocation MeshLoc);
 

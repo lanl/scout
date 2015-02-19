@@ -1137,6 +1137,19 @@ def err_invalid_query_field:Error<
 def err_invalid_query_predicate:Error<
 "invalid query predicate">;
 
+// +----- data/plotting errors --------------------------+-----------------+
+def err_frame_expected_specifier:Error<
+"expected a frame specifier in declaration">;
+
+def err_spec_expected_object_specifier:Error<
+"expected an object spec">;
+
+def err_spec_invalid_object_key:Error<
+"invalid object key">;
+
+def err_spec_invalid_array_expected:Error<
+"invalid array, expected '%0'">;
+
 // +=========================================================================+
 
 def err_pragma_loop_missing_argument : Error<
