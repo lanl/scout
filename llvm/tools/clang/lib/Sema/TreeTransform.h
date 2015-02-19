@@ -10515,13 +10515,13 @@ TreeTransform<Derived>::TransformQueryExpr(QueryExpr *E) {
 template<typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformScoutExpr(ScoutExpr *E) {
-  llvm_unreachable("Cannot transform query expressions yet");
+  llvm_unreachable("Cannot transform scout expressions yet");
 }
 
 template<typename Derived>
 ExprResult
-TreeTransform<Derived>::TransformMeshSubscriptExpr(MeshSubscriptExpr *E) {
-  llvm_unreachable("Cannot transform query expressions yet");
+TreeTransform<Derived>::TransformStencilShiftExpr(StencilShiftExpr *E) {
+  llvm_unreachable("Cannot transform stencil shift expressions yet");
 }
 
 // =================================================

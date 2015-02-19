@@ -1119,7 +1119,7 @@ CanThrowResult Sema::canThrow(const Expr *E) {
 // +===== Scout ==========================
   case Expr::QueryExprClass:
   case Expr::ScoutExprClass:
-  case Expr::MeshSubscriptExprClass:
+  case Expr::StencilShiftExprClass:
 // =======================================
       
       return CT_Cannot;

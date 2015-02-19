@@ -142,7 +142,7 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
       return Cl::CL_LValue;
   case Expr::ScoutExprClass:
       return cast<ScoutExpr>(E)->getClassificationKind();
-  case Expr::MeshSubscriptExprClass:
+  case Expr::StencilShiftExprClass:
        return Cl::CL_LValue;
 // ====================================
 

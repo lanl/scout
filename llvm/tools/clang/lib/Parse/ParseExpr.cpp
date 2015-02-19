@@ -1380,8 +1380,30 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
       SourceLocation RLoc = Tok.getLocation();
 
       if (!LHS.isInvalid() && !Idx.isInvalid() && Tok.is(tok::r_square)) {
-        LHS = Actions.ActOnArraySubscriptExpr(getCurScope(), LHS.get(), Loc,
+
+        // +===== Scout ==============================================================+
+        bool isStencil = false;
+        if (MemberExpr *ME = dyn_cast<MemberExpr>(LHS.get())) {
+          if(isa<MeshFieldDecl>(ME->getMemberDecl())) {
+            if (!ME->getMemberDecl()->getType().getTypePtr()->isArrayType()) {
+              isStencil = true;
+            }
+          }
+        }
+
+        if (isStencil) {
+          llvm::errs() << "mesh stencil subscript\n";
+          LHS.get()->dump();
+          Idx.get()->dump();
+
+        } else {
+        // +==========================================================================+
+          LHS = Actions.ActOnArraySubscriptExpr(getCurScope(), LHS.get(), Loc,
                                               Idx.get(), RLoc);
+        // +===== Scout ==============================================================+
+        }
+        // +==========================================================================+
+
       } else {
         (void)Actions.CorrectDelayedTyposInExpr(LHS);
         (void)Actions.CorrectDelayedTyposInExpr(Idx);

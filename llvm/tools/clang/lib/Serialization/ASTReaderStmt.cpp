@@ -919,7 +919,7 @@ void ASTStmtReader::VisitScoutExpr(ScoutExpr *E) {
   assert(false && "unimplemented");
 }
 
-void ASTStmtReader::VisitMeshSubscriptExpr(MeshSubscriptExpr *E) {
+void ASTStmtReader::VisitStencilShiftExpr(StencilShiftExpr *E) {
   assert(false && "unimplemented");
 }
 
@@ -2996,8 +2996,8 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
     case EXPR_SCOUT:
       S = new (Context) ScoutExpr(Empty);
       break;
-    case EXPR_MESH_SUBSCRIPT:
-      S = new (Context) MeshSubscriptExpr(Empty);
+    case EXPR_STENCIL_SHIFT:
+      S = new (Context) StencilShiftExpr(Empty);
            break;
     // =========================================
     }

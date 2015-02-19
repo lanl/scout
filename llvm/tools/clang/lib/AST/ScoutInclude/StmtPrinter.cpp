@@ -150,6 +150,6 @@ void StmtPrinter::VisitScoutExpr(ScoutExpr *Node) {
   assert(false && "unimplemented");
 }
 
-void StmtPrinter::VisitMeshSubscriptExpr(MeshSubscriptExpr *Node) {
+void StmtPrinter::VisitStencilShiftExpr(StencilShiftExpr *Node) {
   assert(false && "unimplemented");
 }

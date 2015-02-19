@@ -4929,20 +4929,20 @@ public:
   
 };
 
-class MeshSubscriptExpr : public Expr {
+class StencilShiftExpr : public Expr {
   enum { LHS, RHS, END_EXPR=2 };
    Stmt* SubExprs[END_EXPR];
    SourceLocation RBracketLoc;
 
 public:
-  MeshSubscriptExpr(Expr *LHSExp, Expr *RHSExp, QualType t, SourceLocation Loc)
-  : Expr(MeshSubscriptExprClass, t, VK_LValue, OK_Ordinary, true, true, true, false) {
+  StencilShiftExpr(Expr *LHSExp, Expr *RHSExp, QualType t, SourceLocation Loc)
+  : Expr(StencilShiftExprClass, t, VK_LValue, OK_Ordinary, true, true, true, false) {
     SubExprs[LHS] = LHSExp;
     SubExprs[RHS] = RHSExp;
     RBracketLoc = Loc;
   }
 
-  MeshSubscriptExpr(EmptyShell shell) : Expr(MeshSubscriptExprClass, shell){}
+  StencilShiftExpr(EmptyShell shell) : Expr(StencilShiftExprClass, shell){}
 
   Expr *getLHS() { return cast<Expr>(SubExprs[LHS]); }
   const Expr *getLHS() const { return cast<Expr>(SubExprs[LHS]); }
@@ -4981,7 +4981,7 @@ public:
   }
 
   static bool classof(const Stmt *T) {
-    return T->getStmtClass() == MeshSubscriptExprClass;
+    return T->getStmtClass() == StencilShiftExprClass;
   }
 
   // Iterators

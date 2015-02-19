@@ -8757,7 +8757,7 @@ static ICEDiag CheckICE(const Expr* E, const ASTContext &Ctx) {
 // +===== Scout ==========================
   case Expr::QueryExprClass:
   case Expr::ScoutExprClass:
-  case Expr::MeshSubscriptExprClass:
+  case Expr::StencilShiftExprClass:
 // =======================================
     return NoDiag();
   case Expr::CallExprClass:

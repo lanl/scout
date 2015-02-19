@@ -93,7 +93,7 @@ def PseudoObjectExpr : DStmt<Expr>;
 // +==== Scout ==============================================================+
 def ScoutExpr : DStmt<Expr>;
 def QueryExpr : DStmt<Expr>;
-def MeshSubscriptExpr : DStmt<Expr>;
+def StencilShiftExpr : DStmt<Expr>;
 // +=========================================================================+
 
 // Atomic expressions
