@@ -79,6 +79,7 @@ namespace clang {
     QualType VisitUnstructuredMeshType(const UnstructuredMeshType* T);
     QualType VisitWindowType(const WindowType* T);
     QualType VisitImageType(const ImageType* T);
+    QualType VisitFrameType(const FrameType* T);
     // +======================================================================+
     QualType VisitRecordType(const RecordType *T);
     QualType VisitEnumType(const EnumType *T);
@@ -689,6 +690,9 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
     return false;
     
   case Type::Query:
+    return false;
+      
+  case Type::Frame:
     return false;
   // +========================================================================+
   case Type::Record:

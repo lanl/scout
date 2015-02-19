@@ -4057,6 +4057,9 @@ bool UnnamedLocalNoLinkageFinder::VisitQueryType(const QueryType* T) {
   return false;
 }
 
+bool UnnamedLocalNoLinkageFinder::VisitFrameType(const FrameType* T) {
+  return false;
+}
 
 // +==========================================================================+
 

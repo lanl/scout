@@ -331,6 +331,10 @@ void ASTTypeWriter::VisitImageType(const ImageType *T) {
 void ASTTypeWriter::VisitQueryType(const QueryType *T) {
   Code = TYPE_QUERY;
 }
+
+void ASTTypeWriter::VisitFrameType(const FrameType *T) {
+  Code = TYPE_FRAME;
+}
 // +==========================================================================+
 void ASTTypeWriter::VisitRecordType(const RecordType *T) {
   VisitTagType(T);
@@ -628,6 +632,8 @@ void TypeLocWriter::VisitWindowTypeLoc(WindowTypeLoc TL)
 void TypeLocWriter::VisitImageTypeLoc(ImageTypeLoc TL)
 { }
 void TypeLocWriter::VisitQueryTypeLoc(QueryTypeLoc TL)
+{ }
+void TypeLocWriter::VisitFrameTypeLoc(FrameTypeLoc TL)
 { }
 // +==========================================================================+
 void TypeLocWriter::VisitRecordTypeLoc(RecordTypeLoc TL) {

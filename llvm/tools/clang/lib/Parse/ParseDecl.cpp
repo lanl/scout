@@ -3326,6 +3326,12 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       continue;
     }
         
+    case tok::kw_frame: {
+      ConsumeToken();
+      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_query, Loc, PrevSpec, DiagID, Policy);
+      continue;
+    }
+        
     // +======================================================================+
 
     // enum-specifier:
@@ -4191,6 +4197,7 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   case tok::kw_window:
   case tok::kw_image:
   case tok::kw_query:
+  case tok::kw_frame:
   // +========================================================================+
 
   case tok::kw_bool:
@@ -4428,6 +4435,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   case tok::kw_window:
   case tok::kw_image:
   case tok::kw_query:
+  case tok::kw_frame:
   // +========================================================================+
 
   case tok::kw_bool:
@@ -6078,6 +6086,7 @@ void Parser::ParseMisplacedBracketDeclarator(Declarator &D) {
     case DeclaratorChunk::Window:
     case DeclaratorChunk::Image:
     case DeclaratorChunk::Query:
+    case DeclaratorChunk::Frame:
     // +==========================================================================+
       break;
     }

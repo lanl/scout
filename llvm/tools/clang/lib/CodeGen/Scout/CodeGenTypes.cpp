@@ -415,3 +415,8 @@ llvm::Type *CodeGenTypes::ConvertScoutQueryType(QualType T) {
   const Type *Ty = T.getTypePtr();
   return CGM.getScoutRuntime().convertScoutSpecificType(Ty);
 }
+
+llvm::Type *CodeGenTypes::ConvertScoutFrameType(QualType T) {
+  const Type *Ty = T.getTypePtr();
+  return CGM.getScoutRuntime().convertScoutSpecificType(Ty);
+}

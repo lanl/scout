@@ -1167,3 +1167,11 @@ llvm::DIType CGDebugInfo::CreateType(const ImageType *Ty) {
 llvm::DIType CGDebugInfo::CreateType(const QueryType *Ty) {
   return getOrCreateStructPtrType("__scout_query_t", QueryDITy);
 }
+
+//===----------------------------------------------------------------------===//
+// Frame debug support
+//===----------------------------------------------------------------------===//
+
+llvm::DIType CGDebugInfo::CreateType(const FrameType *Ty) {
+  return getOrCreateStructPtrType("__scout_frame_t", FrameDITy);
+}

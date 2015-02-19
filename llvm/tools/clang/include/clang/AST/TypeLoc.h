@@ -2197,8 +2197,38 @@ class QueryTypeLoc : public ConcreteTypeLoc<TypeSpecTypeLoc,
     
 };
   
-// +==========================================================================+
-
+struct FrameLocInfo {
+  SourceLocation LBracketLoc, RBracketLoc;
+};
+  
+class FrameTypeLoc : public ConcreteTypeLoc<TypeSpecTypeLoc,
+  FrameTypeLoc,
+  FrameType,
+  FrameLocInfo> {
+  public:
+    SourceLocation getLBracketLoc() const {
+      return getLocalData()->LBracketLoc;
+    }
+    
+    void setLBracketLoc(SourceLocation Loc) {
+      getLocalData()->LBracketLoc = Loc;
+    }
+    
+    SourceLocation getRBracketLoc() const {
+      return getLocalData()->RBracketLoc;
+    }
+    void setRBracketLoc(SourceLocation Loc) {
+      getLocalData()->RBracketLoc = Loc;
+    }
+    
+    SourceRange getParensRange() const {
+      return SourceRange(getLBracketLoc(), getRBracketLoc());
+    }
+    
+  };
+  
+  // +==========================================================================+
+  
 }
 
 #endif

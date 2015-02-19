@@ -5477,6 +5477,7 @@ QualType ASTReader::readTypeRecord(unsigned Index) {
   case TYPE_WINDOW:
   case TYPE_IMAGE:
   case TYPE_QUERY:
+  case TYPE_FRAME:
     return QualType();
   // +======================================================================+
 
@@ -5872,6 +5873,10 @@ void TypeLocReader::VisitImageTypeLoc(ImageTypeLoc TL) {
 }
 
 void TypeLocReader::VisitQueryTypeLoc(QueryTypeLoc TL) {
+  TL.setNameLoc(ReadSourceLocation(Record, Idx));
+}
+
+void TypeLocReader::VisitFrameTypeLoc(FrameTypeLoc TL) {
   TL.setNameLoc(ReadSourceLocation(Record, Idx));
 }
 // +==========================================================================+

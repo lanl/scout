@@ -1634,7 +1634,8 @@ public:
   bool isScoutImageType() const;
   bool isScoutRenderTargetType() const;
   bool isScoutQueryType() const;
-  // +==========================================================================+  
+  bool isScoutFrameType() const;
+  // +==========================================================================+
   
   /// Determines if this type, which must satisfy
   /// isObjCLifetimeType(), is implicitly __unsafe_unretained rather
@@ -3841,6 +3842,32 @@ public:
   };
 };
   
+class FrameType : public Type {
+  friend class ASTContext;  // ASTContext creates these.
+  
+public:
+  FrameType()
+  : FrameType(Frame, QualType()) { }
+  
+  FrameType(TypeClass TC, QualType can)
+  : Type(TC, can, false,
+         /*InstantiationDependent*/false,
+         /*VariablyModified*/false,
+         /*ContainsUnexpandedParameterPack*/false){}
+  
+  StringRef getName(const PrintingPolicy &Policy) const {
+    return "frame";
+  }
+  
+  bool isSugared() const { return false; }
+  
+  QualType desugar() const { return QualType(this, 0); }
+  
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == Frame;
+  };
+};
+  
 // +==========================================================================+
 
   
@@ -5575,6 +5602,10 @@ inline bool Type::isScoutRenderTargetType() const {
   
 inline bool Type::isScoutQueryType() const {
   return isa<QueryType>(CanonicalType);
+}
+
+inline bool Type::isScoutFrameType() const {
+  return isa<FrameType>(CanonicalType);
 }
 // +=======================================================================+
   

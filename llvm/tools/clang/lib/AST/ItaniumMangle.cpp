@@ -894,9 +894,9 @@ void CXXNameMangler::mangleUnresolvedPrefix(NestedNameSpecifier *qualifier,
 
     case Type::Window:
     case Type::Image:
-      llvm_unreachable("type is illegal as a nested name specifier");      
     case Type::Query:
-      llvm_unreachable("type is illegal as a nested name specifier");
+    case Type::Frame:
+      llvm_unreachable("type is illegal as a nested name specifier");      
     // +======================================================================+
 
 
@@ -2149,6 +2149,10 @@ void CXXNameMangler::mangleType(const ImageType *T) {
 }
 
 void CXXNameMangler::mangleType(const QueryType *T) {
+  Out << 'A';
+}
+
+void CXXNameMangler::mangleType(const FrameType *T) {
   Out << 'A';
 }
 

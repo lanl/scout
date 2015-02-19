@@ -1809,6 +1809,11 @@ void MicrosoftCXXNameMangler::mangleType(const QueryType *T,
   Out << "_Rq";
 }
 
+void MicrosoftCXXNameMangler::mangleType(const FrameType *T,
+                                         SourceRange) {
+  Out << "_Rf";
+}
+
 void MicrosoftCXXNameMangler::mangleType(const RenderTargetType *T) {
   Out << "Rt";
 }

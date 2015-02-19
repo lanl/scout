@@ -6963,6 +6963,7 @@ void Sema::CheckConversionDeclarator(Declarator &D, QualType &R,
       case DeclaratorChunk::Window:
       case DeclaratorChunk::Image:
       case DeclaratorChunk::Query:
+      case DeclaratorChunk::Frame:
         break;
       // ====================================
       }

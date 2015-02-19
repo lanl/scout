@@ -151,6 +151,11 @@ ASTNodeImporter::VisitImageType(const ImageType *T) {
   return Importer.getToContext().getImageType(dims);
 }
 
+QualType
+ASTNodeImporter::VisitFrameType(const FrameType *T) {
+  return Importer.getToContext().getFrameType();
+}
+
 // ===== Scout -- Mesh Types Import ===========================================
 
 Decl *ASTNodeImporter::VisitUniformMeshDecl(UniformMeshDecl *D) {
