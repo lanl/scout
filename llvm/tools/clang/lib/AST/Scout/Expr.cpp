@@ -45,63 +45,6 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ###########################################################################
- *
- * Notes: See the various mesh types in AST/Types.h for some
- * -----  more details on Scout's mesh types.  It is important
- *        to keep a connection between the various Decls in this
- *        file and those types.
- *
- * #####
+ * ##########################################################################
  */
 
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/Attr.h"
-#include "clang/AST/CharUnits.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclObjC.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/PrettyPrinter.h"
-#include "clang/AST/Type.h"
-#include "clang/AST/TypeVisitor.h"
-#include "clang/Basic/Specifiers.h"
-#include "llvm/ADT/APSInt.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/raw_ostream.h"
-
-// +===== Scout ==============================================================+
-#include "clang/AST/Scout/MeshDecl.h"
-// +==========================================================================+
-
-
-#include <algorithm>
-using namespace clang;
-
-UniformMeshDecl *Type::getAsUniformMeshDecl() const {
-  if (const UniformMeshType *RT = getAs<UniformMeshType>())
-    return dyn_cast<UniformMeshDecl>(RT->getDecl());
-  else
-    return 0;
-}
-
-StructuredMeshDecl *Type::getAsStructuredMeshDecl() const {
-  if (const StructuredMeshType *RT = getAs<StructuredMeshType>())
-    return dyn_cast<StructuredMeshDecl>(RT->getDecl());
-  else
-    return 0;
-}
-
-RectilinearMeshDecl *Type::getAsRectilinearMeshDecl() const {
-  if (const RectilinearMeshType *RT = getAs<RectilinearMeshType>())
-    return dyn_cast<RectilinearMeshDecl>(RT->getDecl());
-  else
-    return 0;
-}
-
-UnstructuredMeshDecl *Type::getAsUnstructuredMeshDecl() const {
-  if (const UnstructuredMeshType *RT = getAs<UnstructuredMeshType>())
-    return dyn_cast<UnstructuredMeshDecl>(RT->getDecl());
-  else
-    return 0;
-}

@@ -16,6 +16,7 @@ add_clang_library(scoutAST
   UnstructuredMeshDecl.cpp
   VolumeRenderAllStmt.cpp
   Type.cpp
+  Expr.cpp
   
   LINK_LIBS
   clangBasic
