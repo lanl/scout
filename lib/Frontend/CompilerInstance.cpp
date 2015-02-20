@@ -329,14 +329,7 @@ void CompilerInstance::createPreprocessor(TranslationUnitKind TUKind) {
 
   PP->setPreprocessedOutput(getPreprocessorOutputOpts().ShowCPP);
 
-  // Set up the module path, including the hash for the
-  // module-creation options.
-  SmallString<256> SpecificModuleCache(
-                           getHeaderSearchOpts().ModuleCachePath);
-  if (!getHeaderSearchOpts().DisableModuleHash)
-    llvm::sys::path::append(SpecificModuleCache,
-                            getInvocation().getModuleHash());
-  PP->getHeaderSearchInfo().setModuleCachePath(SpecificModuleCache);
+  PP->getHeaderSearchInfo().setModuleCachePath(getSpecificModuleCachePath());
 
   // Handle generating dependencies, if requested.
   const DependencyOutputOptions &DepOpts = getDependencyOutputOpts();
@@ -371,6 +364,17 @@ void CompilerInstance::createPreprocessor(TranslationUnitKind TUKind) {
     AttachHeaderIncludeGen(*PP, /*ShowAllHeaders=*/false, /*OutputPath=*/"",
                            /*ShowDepth=*/true, /*MSStyle=*/true);
   }
+}
+
+std::string CompilerInstance::getSpecificModuleCachePath() {
+  // Set up the module path, including the hash for the
+  // module-creation options.
+  SmallString<256> SpecificModuleCache(
+                           getHeaderSearchOpts().ModuleCachePath);
+  if (!getHeaderSearchOpts().DisableModuleHash)
+    llvm::sys::path::append(SpecificModuleCache,
+                            getInvocation().getModuleHash());
+  return SpecificModuleCache.str();
 }
 
 // ASTContext
@@ -1374,6 +1378,12 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
 
     auto Override = ModuleFileOverrides.find(ModuleName);
     bool Explicit = Override != ModuleFileOverrides.end();
+    if (!Explicit && !getLangOpts().ImplicitModules) {
+      getDiagnostics().Report(ModuleNameLoc, diag::err_module_build_disabled)
+          << ModuleName;
+      ModuleBuildFailed = true;
+      return ModuleLoadResult();
+    }
 
     std::string ModuleFileName =
         Explicit ? Override->second

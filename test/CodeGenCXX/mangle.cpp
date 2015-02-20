@@ -455,7 +455,7 @@ namespace test7 {
   void g(zed<&foo::bar>*)
   {}
 }
-// CHECK-LABEL: define weak_odr void @_ZN5test81AILZNS_1B5valueEEE3incEv
+// CHECK-LABEL: define weak_odr void @_ZN5test81AIL_ZNS_1B5valueEEE3incEv
 namespace test8 {
   template <int &counter> class A { void inc() { counter++; } };
   class B { public: static int value; };
@@ -1024,16 +1024,50 @@ namespace test51 {
   template void fun<S1<int> >();
   // CHECK-LABEL: @_ZN6test513funI2S1IiEEEDTcldtcvT__EdnS3_EEv
 
+  enum E {};
+  template <typename T>
+  struct X {
+    struct Y {};
+  };
+
   template <typename T>
   decltype(S1<T>().~S1<T>()) fun1() {};
   template <typename U, typename T>
   decltype(U().~S1<T>()) fun2() {}
   template <typename U, typename T>
   decltype(S1<T>().~U()) fun3() {}
+  template <typename T>
+  decltype(S1<T>().~S1<T>(), S1<T>().~S1<T>()) fun4() {};
+  template <typename T>
+  decltype(S1<int>().~S1<T>()) fun5(){};
+  template <template <typename T> class U>
+  decltype(S1<int>().~U<int>()) fun6(){};
+  template <typename T>
+  decltype(E().E::~T()) fun7() {}
+  template <template <typename> class U>
+  decltype(X<int>::Y().U<int>::Y::~Y()) fun8() {}
   template void fun1<int>();
   // CHECK-LABEL: @_ZN6test514fun1IiEEDTcldtcv2S1IT_E_Edn2S1IS2_EEEv
   template void fun2<S1<int>, int>();
   // CHECK-LABEL: @_ZN6test514fun2I2S1IiEiEEDTcldtcvT__Edn2S1IT0_EEEv
   template void fun3<S1<int>, int>();
   // CHECK-LABEL: @_ZN6test514fun3I2S1IiEiEEDTcldtcvS1_IT0_E_EdnT_EEv
+  template void fun4<int>();
+  // CHECK-LABEL: @_ZN6test514fun4IiEEDTcmcldtcv2S1IT_E_Edn2S1IS2_EEcldtcvS3__Edn2S1IS2_EEEv
+  template void fun5<int>();
+  // CHECK-LABEL: @_ZN6test514fun5IiEEDTcldtcv2S1IiE_Edn2S1IT_EEEv
+  template void fun6<S1>();
+  // CHECK-LABEL: @_ZN6test514fun6I2S1EEDTcldtcvS1_IiE_EdnT_IiEEEv
+  template void fun7<E>();
+  // CHECK-LABEL: @_ZN6test514fun7INS_1EEEEDTcldtcvS1__Esr1EEdnT_EEv
+  template void fun8<X>();
+}
+
+namespace test52 {
+struct X {};
+void operator+(X);
+template <typename... T>
+auto f4(T... x) -> decltype(operator+(x...));
+// CHECK-LABEL: @_ZN6test522f4IJNS_1XEEEEDTclonplspfp_EEDpT_
+void use() { f4(X{}); }
 }

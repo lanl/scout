@@ -1,8 +1,9 @@
 // RUN: %clang_cc1 -std=c++1y %s -emit-llvm -triple x86_64-linux-gnu -o - | FileCheck %s --check-prefix=CHECK --check-prefix=CHECKUND
-// RUN: %clang_cc1 -std=c++1y %s -emit-llvm -triple x86_64-linux-gnu -fdef-sized-delete -o - | FileCheck %s --check-prefix=CHECK --check-prefix=CHECKDEF
+// RUN: %clang_cc1 -std=c++1y %s -emit-llvm -triple x86_64-linux-gnu -fdefine-sized-deallocation -o - | FileCheck %s --check-prefix=CHECK --check-prefix=CHECKDEF
 // RUN: %clang_cc1 -std=c++11 -fsized-deallocation %s -emit-llvm -triple x86_64-linux-gnu -o - | FileCheck %s --check-prefix=CHECK --check-prefix=CHECKUND
-// RUN: %clang_cc1 -std=c++11 -fsized-deallocation -fdef-sized-delete %s -emit-llvm -triple x86_64-linux-gnu -o - | FileCheck %s --check-prefix=CHECK --check-prefix=CHECKDEF
+// RUN: %clang_cc1 -std=c++11 -fsized-deallocation -fdefine-sized-deallocation %s -emit-llvm -triple x86_64-linux-gnu -o - | FileCheck %s --check-prefix=CHECK --check-prefix=CHECKDEF
 // RUN: %clang_cc1 -std=c++11 %s -emit-llvm -triple x86_64-linux-gnu -o - | FileCheck %s --check-prefix=CHECK-UNSIZED
+// RUN: %clang_cc1 -std=c++1y %s -emit-llvm -triple x86_64-linux-gnu -fno-sized-deallocation -o - | FileCheck %s --check-prefix=CHECK-UNSIZED
 
 // CHECK-UNSIZED-NOT: _ZdlPvm
 // CHECK-UNSIZED-NOT: _ZdaPvm
@@ -52,7 +53,7 @@ D::D() {}
 // CHECK: call void @_ZdlPvm(i8* %{{[^ ]*}}, i64 4)
 // CHECK: call void @_ZdaPv(i8* %{{[^ ]*}})
 
-// CHECKDEF-LABEL: define linkonce void @_ZdlPvm(i8*
+// CHECKDEF-LABEL: define linkonce void @_ZdlPvm(i8*, i64) #{{[0-9]+}} comdat
 // CHECKDEF: call void @_ZdlPv(i8* %0)
 // CHECKUND-LABEL: declare void @_ZdlPvm(i8*
 
@@ -74,7 +75,7 @@ D::D() {}
 // CHECK: add i64 %{{[^ ]*}}, 8
 // CHECK: call void @_ZdaPvm(i8* %{{[^ ]*}}, i64 %{{[^ ]*}})
 
-// CHECKDEF-LABEL: define linkonce void @_ZdaPvm(i8*
+// CHECKDEF-LABEL: define linkonce void @_ZdaPvm(i8*, i64) #{{[0-9]+}} comdat
 // CHECKDEF: call void @_ZdaPv(i8* %0)
 // CHECKUND-LABEL: declare void @_ZdaPvm(i8*
 

@@ -6114,8 +6114,6 @@ def err_typecheck_cond_expect_nonfloat : Error<
   "used type %0 where floating point type is not allowed">;
 def ext_typecheck_cond_one_void : Extension<
   "C99 forbids conditional expressions with only one void side">;
-def err_typecheck_cond_expect_scalar_or_vector : Error<
-  "used type %0 where arithmetic, pointer, or vector type is required">;
 def err_typecheck_cast_to_incomplete : Error<
   "cast to incomplete type %0">;
 def ext_typecheck_cast_nonscalar : Extension<
@@ -7233,8 +7231,8 @@ def err_asm_naked_this_ref : Error<
 def err_asm_naked_parm_ref : Error<
   "parameter references not allowed in naked functions">;
 
-def ext_use_of_attribute_is_a_cxx14_extension : ExtWarn<
-  "use of the %0 attribute is a C++14 extension">, InGroup<CXX14>;
+def ext_deprecated_attr_is_a_cxx14_extension : ExtWarn<
+  "use of the 'deprecated' attribute is a C++14 extension">, InGroup<CXX14>;
 
 // OpenCL warnings and errors.
 def err_invalid_astype_of_different_size : Error<

@@ -41,6 +41,8 @@ def err_pch_langopt_value_mismatch : Error<
   "%0 differs in PCH file vs. current file">;
 def err_pch_diagopt_mismatch : Error<"%0 is currently enabled, but was not in "
   "the PCH file">;
+def err_pch_modulecache_mismatch : Error<"PCH was compiled with module cache "
+  "path '%0', but the path is currently '%1'">;
   
 def err_pch_version_too_old : Error<
     "PCH file uses an older PCH format that is no longer supported">;
@@ -64,9 +66,6 @@ def err_imported_module_relocated : Error<
 def err_module_different_modmap : Error<
     "module '%0' %select{uses|does not use}1 additional module map '%2'"
     "%select{| not}1 used when the module was built">;
-def err_module_system_change : Error<
-    "module '%0' %select{is|is not}1 a 'system' module, but "
-    "%select{was not|was}1 when the module was built">;
 def warn_module_conflict : Warning<
     "module '%0' conflicts with already-imported module '%1': %2">, 
     InGroup<ModuleConflict>;

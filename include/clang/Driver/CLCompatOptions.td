@@ -80,6 +80,7 @@ def _SLASH_I : CLJoinedOrSeparate<"I">,
   Alias<I>;
 def _SLASH_J : CLFlag<"J">, HelpText<"Make char type unsigned">,
   Alias<funsigned_char>;
+def _SLASH_O0 : CLFlag<"O0">, Alias<O0>;
 def _SLASH_O : CLJoined<"O">, HelpText<"Optimization level">,
   MetaVarName<"<n>">, Alias<O>;
 def _SLASH_Ob0 : CLFlag<"Ob0">, HelpText<"Disable inlining">,
@@ -129,6 +130,8 @@ def _SLASH_WX_ : CLFlag<"WX-">, HelpText<"Do not treat warnings as errors">,
 def _SLASH_w_flag : CLFlag<"w">, HelpText<"Disable all warnings">, Alias<w>;
 def _SLASH_wd4005 : CLFlag<"wd4005">, Alias<W_Joined>,
   AliasArgs<["no-macro-redefined"]>;
+def _SLASH_wd4996 : CLFlag<"wd4996">, Alias<W_Joined>,
+  AliasArgs<["no-deprecated-declarations"]>;
 def _SLASH_vd : CLJoined<"vd">, HelpText<"Control vtordisp placement">,
   Alias<vtordisp_mode_EQ>;
 def _SLASH_Zc_strictStrings : CLFlag<"Zc:strictStrings">,

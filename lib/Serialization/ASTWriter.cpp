@@ -1216,7 +1216,6 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
       Record.push_back(0);
     }
 
-    Record.push_back(WritingModule->IsSystem);
     Stream.EmitRecord(MODULE_MAP_FILE, Record);
   }
 
@@ -1344,6 +1343,8 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
   Record.push_back(HSOpts.UseStandardSystemIncludes);
   Record.push_back(HSOpts.UseStandardCXXIncludes);
   Record.push_back(HSOpts.UseLibcxx);
+  // Write out the specific module cache path that contains the module files.
+  AddString(PP.getHeaderSearchInfo().getModuleCachePath(), Record);
   Stream.EmitRecord(HEADER_SEARCH_OPTIONS, Record);
 
   // Preprocessor options.
@@ -2108,8 +2109,7 @@ void ASTWriter::WritePreprocessor(const Preprocessor &PP, bool IsModule) {
       if (MD->isImported()) {
         auto Overrides = MD->getOverriddenModules();
         Record.push_back(Overrides.size());
-        for (auto Override : Overrides)
-          Record.push_back(Override);
+        Record.append(Overrides.begin(), Overrides.end());
       }
     }
     if (Record.empty())

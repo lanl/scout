@@ -2493,6 +2493,7 @@ static FormatAttrKind getFormatAttrKind(StringRef Format) {
     .Cases("scanf", "printf", "printf0", "strfmon", SupportedFormat)
     .Cases("cmn_err", "vcmn_err", "zcmn_err", SupportedFormat)
     .Case("kprintf", SupportedFormat) // OpenBSD.
+    .Case("freebsd_kprintf", SupportedFormat) // FreeBSD.
 
     .Cases("gcc_diag", "gcc_cdiag", "gcc_cxxdiag", "gcc_tdiag", IgnoredFormat)
     .Default(InvalidFormat);
@@ -4258,8 +4259,7 @@ static void handleDeprecatedAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   if (!S.getLangOpts().CPlusPlus14)
     if (Attr.isCXX11Attribute() &&
         !(Attr.hasScope() && Attr.getScopeName()->isStr("gnu")))
-      S.Diag(Attr.getLoc(), diag::ext_use_of_attribute_is_a_cxx14_extension)
-          << Attr.getName();
+      S.Diag(Attr.getLoc(), diag::ext_deprecated_attr_is_a_cxx14_extension);
 
   handleAttrWithMessage<DeprecatedAttr>(S, D, Attr);
 }
