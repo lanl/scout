@@ -385,16 +385,9 @@ bool DIObjCProperty::Verify() const {
 }
 
 /// \brief Check if a field at position Elt of a MDNode is a MDNode.
-///
-/// We currently allow an empty string and an integer.
-/// But we don't allow a non-empty string in a MDNode field.
 static bool fieldIsMDNode(const MDNode *DbgNode, unsigned Elt) {
-  // FIXME: This function should return true, if the field is null or the field
-  // is indeed a MDNode: return !Fld || isa<MDNode>(Fld).
   Metadata *Fld = getField(DbgNode, Elt);
-  if (Fld && isa<MDString>(Fld) && !cast<MDString>(Fld)->getString().empty())
-    return false;
-  return true;
+  return !Fld || isa<MDNode>(Fld);
 }
 
 /// \brief Check if a field at position Elt of a MDNode is a MDString.
@@ -425,13 +418,26 @@ static bool isScopeRef(const Metadata *MD) {
     return true;
   if (auto *S = dyn_cast<MDString>(MD))
     return !S->getString().empty();
-  return isa<MDNode>(MD);
+  if (auto *N = dyn_cast<MDNode>(MD))
+    return DIScope(N).isScope();
+  return false;
 }
 
 /// \brief Check if a field at position Elt of a MDNode can be a ScopeRef.
 static bool fieldIsScopeRef(const MDNode *DbgNode, unsigned Elt) {
   return isScopeRef(dyn_cast_or_null<Metadata>(getField(DbgNode, Elt)));
 }
+
+#ifndef NDEBUG
+/// \brief Check if a value can be a DescriptorRef.
+static bool isDescriptorRef(const Metadata *MD) {
+  if (!MD)
+    return true;
+  if (auto *S = dyn_cast<MDString>(MD))
+    return !S->getString().empty();
+  return isa<MDNode>(MD);
+}
+#endif
 
 bool DIType::Verify() const {
   if (!isType())
@@ -1111,11 +1117,9 @@ void DebugInfoFinder::processSubprogram(DISubprogram SP) {
     DIDescriptor Element = TParams.getElement(I);
     if (Element.isTemplateTypeParameter()) {
       DITemplateTypeParameter TType(Element);
-      processScope(TType.getContext().resolve(TypeIdentifierMap));
       processType(TType.getType().resolve(TypeIdentifierMap));
     } else if (Element.isTemplateValueParameter()) {
       DITemplateValueParameter TVal(Element);
-      processScope(TVal.getContext().resolve(TypeIdentifierMap));
       processType(TVal.getType().resolve(TypeIdentifierMap));
     }
   }
@@ -1470,6 +1474,10 @@ void DIVariable::printExtendedName(raw_ostream &OS) const {
   }
 }
 
+template <> DIRef<DIDescriptor>::DIRef(const Metadata *V) : Val(V) {
+  assert(isDescriptorRef(V) &&
+         "DIDescriptorRef should be a MDString or MDNode");
+}
 template <> DIRef<DIScope>::DIRef(const Metadata *V) : Val(V) {
   assert(isScopeRef(V) && "DIScopeRef should be a MDString or MDNode");
 }
@@ -1477,6 +1485,10 @@ template <> DIRef<DIType>::DIRef(const Metadata *V) : Val(V) {
   assert(isTypeRef(V) && "DITypeRef should be a MDString or MDNode");
 }
 
+template <>
+DIDescriptorRef DIDescriptor::getFieldAs<DIDescriptorRef>(unsigned Elt) const {
+  return DIDescriptorRef(cast_or_null<Metadata>(getField(DbgNode, Elt)));
+}
 template <>
 DIScopeRef DIDescriptor::getFieldAs<DIScopeRef>(unsigned Elt) const {
   return DIScopeRef(cast_or_null<Metadata>(getField(DbgNode, Elt)));

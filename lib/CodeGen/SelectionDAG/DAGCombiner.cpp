@@ -466,7 +466,7 @@ void TargetLowering::DAGCombinerInfo::RemoveFromWorklist(SDNode *N) {
 }
 
 SDValue TargetLowering::DAGCombinerInfo::
-CombineTo(SDNode *N, const std::vector<SDValue> &To, bool AddTo) {
+CombineTo(SDNode *N, ArrayRef<SDValue> To, bool AddTo) {
   return ((DAGCombiner*)DC)->CombineTo(N, &To[0], To.size(), AddTo);
 }
 
@@ -11749,20 +11749,17 @@ SDValue DAGCombiner::visitVECTOR_SHUFFLE(SDNode *N) {
       if (AllSame)
         return N0;
 
-      // If the splatted element is a constant, just build the vector out of
-      // constants directly.
+      // Canonicalize any other splat as a build_vector.
       const SDValue &Splatted = V->getOperand(SVN->getSplatIndex());
-      if (isa<ConstantSDNode>(Splatted) || isa<ConstantFPSDNode>(Splatted)) {
-        SmallVector<SDValue, 8> Ops(NumElts, Splatted);
-        SDValue NewBV = DAG.getNode(ISD::BUILD_VECTOR, SDLoc(N),
-          V->getValueType(0), Ops);
+      SmallVector<SDValue, 8> Ops(NumElts, Splatted);
+      SDValue NewBV = DAG.getNode(ISD::BUILD_VECTOR, SDLoc(N),
+                                  V->getValueType(0), Ops);
 
-        // We may have jumped through bitcasts, so the type of the
-        // BUILD_VECTOR may not match the type of the shuffle.
-        if (V->getValueType(0) != VT)
-           NewBV = DAG.getNode(ISD::BITCAST, SDLoc(N), VT, NewBV);
-        return NewBV;
-      }
+      // We may have jumped through bitcasts, so the type of the
+      // BUILD_VECTOR may not match the type of the shuffle.
+      if (V->getValueType(0) != VT)
+          NewBV = DAG.getNode(ISD::BITCAST, SDLoc(N), VT, NewBV);
+      return NewBV;
     }
   }
 
@@ -11976,9 +11973,11 @@ SDValue DAGCombiner::XformToShuffleWithZero(SDNode *N) {
           return SDValue();
       }
 
-      // Let's see if the target supports this vector_shuffle.
+      // Let's see if the target supports this vector_shuffle and make sure
+      // we're not running after operation legalization where it may have
+      // custom lowered the vector shuffles.
       EVT RVT = RHS.getValueType();
-      if (!TLI.isVectorClearMaskLegal(Indices, RVT))
+      if (LegalOperations || !TLI.isVectorClearMaskLegal(Indices, RVT))
         return SDValue();
 
       // Return the new VECTOR_SHUFFLE node.
