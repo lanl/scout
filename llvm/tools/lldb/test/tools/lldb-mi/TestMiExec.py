@@ -60,6 +60,8 @@ class MiExecTestCase(lldbmi_testcase.MiTestCaseBase):
 
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
+    @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
+    @skipIfLinux # llvm.org/pr22411: Failure presumably due to known thread races
     def test_lldbmi_exec_arguments_set(self):
         """Test that 'lldb-mi --interpreter' can pass args using -exec-arguments."""
 
@@ -103,6 +105,8 @@ class MiExecTestCase(lldbmi_testcase.MiTestCaseBase):
 
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
+    @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
+    @skipIfLinux # llvm.org/pr22411: Failure presumably due to known thread races
     def test_lldbmi_exec_arguments_reset(self):
         """Test that 'lldb-mi --interpreter' can reset previously set args using -exec-arguments."""
 
@@ -131,6 +135,8 @@ class MiExecTestCase(lldbmi_testcase.MiTestCaseBase):
 
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
+    @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
+    @skipIfLinux # llvm.org/pr22411: Failure presumably due to known thread races
     def test_lldbmi_exec_next(self):
         """Test that 'lldb-mi --interpreter' works for stepping."""
 
@@ -182,6 +188,8 @@ class MiExecTestCase(lldbmi_testcase.MiTestCaseBase):
 
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
+    @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
+    @skipIfLinux # llvm.org/pr22411: Failure presumably due to known thread races
     def test_lldbmi_exec_next_instruction(self):
         """Test that 'lldb-mi --interpreter' works for instruction stepping."""
 
@@ -235,6 +243,8 @@ class MiExecTestCase(lldbmi_testcase.MiTestCaseBase):
 
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
+    @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
+    @skipIfLinux # llvm.org/pr22411: Failure presumably due to known thread races
     def test_lldbmi_exec_step(self):
         """Test that 'lldb-mi --interpreter' works for stepping into."""
 
@@ -362,6 +372,8 @@ class MiExecTestCase(lldbmi_testcase.MiTestCaseBase):
 
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
+    @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
+    @skipIfLinux # llvm.org/pr22411: Failure presumably due to known thread races
     def test_lldbmi_exec_finish(self):
         """Test that 'lldb-mi --interpreter' works for -exec-finish."""
 
