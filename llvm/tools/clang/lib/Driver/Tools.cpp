@@ -1935,16 +1935,17 @@ static bool exceptionSettings(const ArgList &Args, const llvm::Triple &Triple) {
   return false;
 }
 
-/// addExceptionArgs - Adds exception related arguments to the driver command
-/// arguments. There's a master flag, -fexceptions and also language specific
-/// flags to enable/disable C++ and Objective-C exceptions.
-/// This makes it possible to for example disable C++ exceptions but enable
-/// Objective-C exceptions.
+/// Adds exception related arguments to the driver command arguments. There's a
+/// master flag, -fexceptions and also language specific flags to enable/disable
+/// C++ and Objective-C exceptions. This makes it possible to for example
+/// disable C++ exceptions but enable Objective-C exceptions.
 static void addExceptionArgs(const ArgList &Args, types::ID InputType,
-                             const llvm::Triple &Triple,
-                             bool KernelOrKext,
+                             const ToolChain &TC, bool KernelOrKext,
                              const ObjCRuntime &objcRuntime,
                              ArgStringList &CmdArgs) {
+  const Driver &D = TC.getDriver();
+  const llvm::Triple &Triple = TC.getTriple();
+
   if (KernelOrKext) {
     // -mkernel and -fapple-kext imply no exceptions, so claim exception related
     // arguments now to avoid warnings about unused arguments.
@@ -1974,15 +1975,30 @@ static void addExceptionArgs(const ArgList &Args, types::ID InputType,
   if (types::isCXX(InputType)) {
     bool CXXExceptionsEnabled =
         Triple.getArch() != llvm::Triple::xcore && !Triple.isPS4CPU();
-    if (Arg *A = Args.getLastArg(options::OPT_fcxx_exceptions,
-                                 options::OPT_fno_cxx_exceptions,
-                                 options::OPT_fexceptions,
-                                 options::OPT_fno_exceptions))
+    Arg *ExceptionArg = Args.getLastArg(
+        options::OPT_fcxx_exceptions, options::OPT_fno_cxx_exceptions,
+        options::OPT_fexceptions, options::OPT_fno_exceptions);
+    if (ExceptionArg)
       CXXExceptionsEnabled =
-          A->getOption().matches(options::OPT_fcxx_exceptions) ||
-          A->getOption().matches(options::OPT_fexceptions);
+          ExceptionArg->getOption().matches(options::OPT_fcxx_exceptions) ||
+          ExceptionArg->getOption().matches(options::OPT_fexceptions);
 
     if (CXXExceptionsEnabled) {
+      if (Triple.isPS4CPU()) {
+        ToolChain::RTTIMode RTTIMode = TC.getRTTIMode();
+        assert(ExceptionArg &&
+               "On the PS4 exceptions should only be enabled if passing "
+               "an argument");
+        if (RTTIMode == ToolChain::RM_DisabledExplicitly) {
+          const Arg *RTTIArg = TC.getRTTIArg();
+          assert(RTTIArg && "RTTI disabled explicitly but no RTTIArg!");
+          D.Diag(diag::err_drv_argument_not_allowed_with)
+              << RTTIArg->getAsString(Args) << ExceptionArg->getAsString(Args);
+        } else if (RTTIMode == ToolChain::RM_EnabledImplicitly)
+          D.Diag(diag::warn_drv_enabling_rtti_with_exceptions);
+      } else
+        assert(TC.getRTTIMode() != ToolChain::RM_DisabledImplicitly);
+
       CmdArgs.push_back("-fcxx-exceptions");
 
       EH = true;
@@ -3945,6 +3961,12 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-fmodules-strict-decluse");
   }
 
+  // -fno-implicit-modules turns off implicitly compiling modules on demand.
+  if (!Args.hasFlag(options::OPT_fimplicit_modules,
+                    options::OPT_fno_implicit_modules)) {
+    CmdArgs.push_back("-fno-implicit-modules");
+  }
+
   // -fmodule-name specifies the module that is currently being built (or
   // used for header checking by -fmodule-maps).
   Args.AddLastArg(CmdArgs, options::OPT_fmodule_name);
@@ -4040,56 +4062,11 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                    false))
     CmdArgs.push_back("-fno-elide-constructors");
 
-  // -frtti is default, except for the PS4 CPU.
-  if (!Args.hasFlag(options::OPT_frtti, options::OPT_fno_rtti,
-                    !Triple.isPS4CPU()) ||
-      KernelOrKext) {
-    bool IsCXX = types::isCXX(InputType);
-    bool RTTIEnabled = false;
-    Arg *NoRTTIArg = Args.getLastArg(
-        options::OPT_mkernel, options::OPT_fapple_kext, options::OPT_fno_rtti);
+  ToolChain::RTTIMode RTTIMode = getToolChain().getRTTIMode();
 
-    // PS4 requires rtti when exceptions are enabled. If -fno-rtti was
-    // explicitly passed, error out. Otherwise enable rtti and emit a
-    // warning.
-    Arg *Exceptions = Args.getLastArg(
-        options::OPT_fcxx_exceptions, options::OPT_fno_cxx_exceptions,
-        options::OPT_fexceptions, options::OPT_fno_exceptions);
-    if (Triple.isPS4CPU() && Exceptions) {
-      bool CXXExceptions =
-          (IsCXX &&
-           Exceptions->getOption().matches(options::OPT_fexceptions)) ||
-          Exceptions->getOption().matches(options::OPT_fcxx_exceptions);
-      if (CXXExceptions) {
-        if (NoRTTIArg)
-          D.Diag(diag::err_drv_argument_not_allowed_with)
-              << NoRTTIArg->getAsString(Args) << Exceptions->getAsString(Args);
-        else {
-          RTTIEnabled = true;
-          D.Diag(diag::warn_drv_enabling_rtti_with_exceptions);
-        }
-      }
-    }
-
-    // -fno-rtti cannot usefully be combined with -fsanitize=vptr.
-    if (Sanitize.sanitizesVptr()) {
-      // If rtti was explicitly disabled and the vptr sanitizer is on, error
-      // out. Otherwise, warn that vptr will be disabled unless -frtti is
-      // passed.
-      if (NoRTTIArg) {
-        D.Diag(diag::err_drv_argument_not_allowed_with)
-            << "-fsanitize=vptr" << NoRTTIArg->getAsString(Args);
-      } else {
-        D.Diag(diag::warn_drv_disabling_vptr_no_rtti_default);
-        // All sanitizer switches have been pushed. This -fno-sanitize
-        // will override any -fsanitize={vptr,undefined} passed before it.
-        CmdArgs.push_back("-fno-sanitize=vptr");
-      }
-    }
-
-    if (!RTTIEnabled)
-      CmdArgs.push_back("-fno-rtti");
-  }
+  if (RTTIMode == ToolChain::RM_DisabledExplicitly ||
+      RTTIMode == ToolChain::RM_DisabledImplicitly)
+    CmdArgs.push_back("-fno-rtti");
 
   // -fshort-enums=0 is default for all architectures except Hexagon.
   if (Args.hasFlag(options::OPT_fshort_enums,
@@ -4267,7 +4244,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   // Handle GCC-style exception args.
   if (!C.getDriver().IsCLMode())
-    addExceptionArgs(Args, InputType, getToolChain().getTriple(), KernelOrKext,
+    addExceptionArgs(Args, InputType, getToolChain(), KernelOrKext,
                      objcRuntime, CmdArgs);
 
   if (getToolChain().UseSjLjExceptions())
@@ -4278,10 +4255,14 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                     options::OPT_fno_assume_sane_operator_new))
     CmdArgs.push_back("-fno-assume-sane-operator-new");
   
-  // -def-sized-delete: default implementation of sized delete as a
+  // -fno-sized-deallocation: disable sized delete.
+  if (Args.hasArg(options::OPT_fno_sized_deallocation))
+    CmdArgs.push_back("-fno-sized-deallocation");
+  
+  // -fdefine-sized-deallocation: default implementation of sized delete as a
   // weak definition.
-  if (Args.hasArg(options::OPT_fdef_sized_delete))
-    CmdArgs.push_back("-fdef-sized-delete");
+  if (Args.hasArg(options::OPT_fdefine_sized_deallocation))
+    CmdArgs.push_back("-fdefine-sized-deallocation");
 
   // -fconstant-cfstrings is default, and may be subject to argument translation
   // on Darwin.
@@ -5602,9 +5583,9 @@ const char *arm::getLLVMArchSuffixForARM(StringRef CPU) {
     .Cases("arm1156t2-s",  "arm1156t2f-s", "v6t2")
     .Cases("cortex-a5", "cortex-a7", "cortex-a8", "v7")
     .Cases("cortex-a9", "cortex-a12", "cortex-a15", "cortex-a17", "krait", "v7")
-    .Cases("cortex-r4", "cortex-r5", "v7r")
-    .Case("cortex-m0", "v6m")
-    .Case("cortex-m3", "v7m")
+    .Cases("cortex-r4", "cortex-r5", "cortex-r7", "v7r")
+    .Cases("sc000", "cortex-m0", "cortex-m0plus", "cortex-m1", "v6m")
+    .Cases("sc300", "cortex-m3", "v7m")
     .Cases("cortex-m4", "cortex-m7", "v7em")
     .Case("swift", "v7s")
     .Case("cyclone", "v8")

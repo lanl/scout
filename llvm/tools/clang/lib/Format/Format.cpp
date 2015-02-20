@@ -109,10 +109,8 @@ struct ScalarEnumerationTraits<FormatStyle::NamespaceIndentationKind> {
   }
 };
 
-template <>
-struct ScalarEnumerationTraits<FormatStyle::PointerAlignmentStyle> {
-  static void enumeration(IO &IO,
-                          FormatStyle::PointerAlignmentStyle &Value) {
+template <> struct ScalarEnumerationTraits<FormatStyle::PointerAlignmentStyle> {
+  static void enumeration(IO &IO, FormatStyle::PointerAlignmentStyle &Value) {
     IO.enumCase(Value, "Middle", FormatStyle::PAS_Middle);
     IO.enumCase(Value, "Left", FormatStyle::PAS_Left);
     IO.enumCase(Value, "Right", FormatStyle::PAS_Right);
@@ -144,8 +142,8 @@ template <> struct MappingTraits<FormatStyle> {
     IO.mapOptional("Language", Style.Language);
 
     if (IO.outputting()) {
-      StringRef StylesArray[] = { "LLVM",    "Google", "Chromium",
-                                  "Mozilla", "WebKit", "GNU" };
+      StringRef StylesArray[] = {"LLVM",    "Google", "Chromium",
+                                 "Mozilla", "WebKit", "GNU"};
       ArrayRef<StringRef> Styles(StylesArray);
       for (size_t i = 0, e = Styles.size(); i < e; ++i) {
         StringRef StyleName(Styles[i]);
@@ -273,7 +271,7 @@ template <> struct MappingTraits<FormatStyle> {
 // will be used to get default values for missing keys.
 // If the first element has no Language specified, it will be treated as the
 // default one for the following elements.
-template <> struct DocumentListTraits<std::vector<FormatStyle> > {
+template <> struct DocumentListTraits<std::vector<FormatStyle>> {
   static size_t size(IO &IO, std::vector<FormatStyle> &Seq) {
     return Seq.size();
   }
@@ -600,10 +598,10 @@ public:
   FormatTokenLexer(SourceManager &SourceMgr, FileID ID, FormatStyle &Style,
                    encoding::Encoding Encoding)
       : FormatTok(nullptr), IsFirstToken(true), GreaterStashed(false),
-        Column(0), TrailingWhitespace(0), SourceMgr(SourceMgr), ID(ID),
-        Style(Style), IdentTable(getFormattingLangOpts(Style)),
-        Keywords(IdentTable), Encoding(Encoding), FirstInLineIndex(0),
-        FormattingDisabled(false) {
+        LessStashed(false), Column(0), TrailingWhitespace(0),
+        SourceMgr(SourceMgr), ID(ID), Style(Style),
+        IdentTable(getFormattingLangOpts(Style)), Keywords(IdentTable),
+        Encoding(Encoding), FirstInLineIndex(0), FormattingDisabled(false) {
     Lex.reset(new Lexer(ID, SourceMgr.getBuffer(ID), SourceMgr,
                         getFormattingLangOpts(Style)));
     Lex->SetKeepWhitespaceMode(true);
@@ -619,7 +617,7 @@ public:
     do {
       Tokens.push_back(getNextToken());
       tryMergePreviousTokens();
-      if (Tokens.back()->NewlinesBefore > 0)
+      if (Tokens.back()->NewlinesBefore > 0 || Tokens.back()->IsMultiline)
         FirstInLineIndex = Tokens.size() - 1;
     } while (Tokens.back()->Tok.isNot(tok::eof));
     return Tokens;
@@ -633,18 +631,22 @@ private:
       return;
     if (tryMergeConflictMarkers())
       return;
+    if (tryMergeLessLess())
+      return;
 
     if (Style.Language == FormatStyle::LK_JavaScript) {
       if (tryMergeJSRegexLiteral())
         return;
       if (tryMergeEscapeSequence())
         return;
+      if (tryMergeTemplateString())
+        return;
 
-      static tok::TokenKind JSIdentity[] = { tok::equalequal, tok::equal };
-      static tok::TokenKind JSNotIdentity[] = { tok::exclaimequal, tok::equal };
-      static tok::TokenKind JSShiftEqual[] = { tok::greater, tok::greater,
-                                               tok::greaterequal };
-      static tok::TokenKind JSRightArrow[] = { tok::equal, tok::greater };
+      static tok::TokenKind JSIdentity[] = {tok::equalequal, tok::equal};
+      static tok::TokenKind JSNotIdentity[] = {tok::exclaimequal, tok::equal};
+      static tok::TokenKind JSShiftEqual[] = {tok::greater, tok::greater,
+                                              tok::greaterequal};
+      static tok::TokenKind JSRightArrow[] = {tok::equal, tok::greater};
       // FIXME: We probably need to change token type to mimic operator with the
       // correct priority.
       if (tryMergeTokens(JSIdentity))
@@ -658,6 +660,39 @@ private:
     }
   }
 
+  bool tryMergeLessLess() {
+    // Merge X,less,less,Y into X,lessless,Y unless X or Y is less.
+    if (Tokens.size() < 4) {
+      // Merge <,<,eof to <<,eof
+      if (Tokens.back()->Tok.isNot(tok::eof))
+        return false;
+
+      auto &eof = Tokens.back();
+      Tokens.pop_back();
+      bool LessLessMerged;
+      if ((LessLessMerged = tryMergeTokens({tok::less, tok::less})))
+        Tokens.back()->Tok.setKind(tok::lessless);
+      Tokens.push_back(eof);
+      return LessLessMerged;
+    }
+
+    auto First = Tokens.end() - 4;
+    if (First[3]->is(tok::less) || First[2]->isNot(tok::less) ||
+        First[1]->isNot(tok::less) || First[0]->is(tok::less))
+      return false;
+
+    // Only merge if there currently is no whitespace between the two "<".
+    if (First[2]->WhitespaceRange.getBegin() !=
+        First[2]->WhitespaceRange.getEnd())
+      return false;
+
+    First[1]->Tok.setKind(tok::lessless);
+    First[1]->TokenText = "<<";
+    First[1]->ColumnWidth += 1;
+    Tokens.erase(Tokens.end() - 2);
+    return true;
+  }
+
   bool tryMergeTokens(ArrayRef<tok::TokenKind> Kinds) {
     if (Tokens.size() < Kinds.size())
       return false;
@@ -668,8 +703,9 @@ private:
       return false;
     unsigned AddLength = 0;
     for (unsigned i = 1; i < Kinds.size(); ++i) {
-      if (!First[i]->is(Kinds[i]) || First[i]->WhitespaceRange.getBegin() !=
-                                         First[i]->WhitespaceRange.getEnd())
+      if (!First[i]->is(Kinds[i]) ||
+          First[i]->WhitespaceRange.getBegin() !=
+              First[i]->WhitespaceRange.getEnd())
         return false;
       AddLength += First[i]->TokenText.size();
     }
@@ -741,6 +777,66 @@ private:
       // There can't be a newline inside a regex literal.
       if (I[0]->NewlinesBefore > 0)
         return false;
+    }
+    return false;
+  }
+
+  bool tryMergeTemplateString() {
+    if (Tokens.size() < 2)
+      return false;
+
+    FormatToken *EndBacktick = Tokens.back();
+    if (!(EndBacktick->is(tok::unknown) && EndBacktick->TokenText == "`"))
+      return false;
+
+    unsigned TokenCount = 0;
+    bool IsMultiline = false;
+    unsigned EndColumnInFirstLine = 0;
+    for (auto I = Tokens.rbegin() + 1, E = Tokens.rend(); I != E; I++) {
+      ++TokenCount;
+      if (I[0]->NewlinesBefore > 0 || I[0]->IsMultiline)
+        IsMultiline = true;
+
+      // If there was a preceding template string, this must be the start of a
+      // template string, not the end.
+      if (I[0]->is(TT_TemplateString))
+        return false;
+
+      if (I[0]->isNot(tok::unknown) || I[0]->TokenText != "`") {
+        // Keep track of the rhs offset of the last token to wrap across lines -
+        // its the rhs offset of the first line of the template string, used to
+        // determine its width.
+        if (I[0]->IsMultiline)
+          EndColumnInFirstLine = I[0]->OriginalColumn + I[0]->ColumnWidth;
+        // If the token has newlines, the token before it (if it exists) is the
+        // rhs end of the previous line.
+        if (I[0]->NewlinesBefore > 0 && (I + 1 != E))
+          EndColumnInFirstLine = I[1]->OriginalColumn + I[1]->ColumnWidth;
+
+        continue;
+      }
+
+      Tokens.resize(Tokens.size() - TokenCount);
+      Tokens.back()->Type = TT_TemplateString;
+      const char *EndOffset = EndBacktick->TokenText.data() + 1;
+      Tokens.back()->TokenText =
+          StringRef(Tokens.back()->TokenText.data(),
+                    EndOffset - Tokens.back()->TokenText.data());
+      if (IsMultiline) {
+        // ColumnWidth is from backtick to last token in line.
+        // LastLineColumnWidth is 0 to backtick.
+        // x = `some content
+        //     until here`;
+        Tokens.back()->ColumnWidth =
+            EndColumnInFirstLine - Tokens.back()->OriginalColumn;
+        Tokens.back()->LastLineColumnWidth = EndBacktick->OriginalColumn;
+        Tokens.back()->IsMultiline = true;
+      } else {
+        // Token simply spans from start to end, +1 for the ` itself.
+        Tokens.back()->ColumnWidth =
+            EndBacktick->OriginalColumn - Tokens.back()->OriginalColumn + 1;
+      }
+      return true;
     }
     return false;
   }
@@ -842,22 +938,31 @@ private:
     return false;
   }
 
+  FormatToken *getStashedToken() {
+    // Create a synthesized second '>' or '<' token.
+    Token Tok = FormatTok->Tok;
+    StringRef TokenText = FormatTok->TokenText;
+
+    unsigned OriginalColumn = FormatTok->OriginalColumn;
+    FormatTok = new (Allocator.Allocate()) FormatToken;
+    FormatTok->Tok = Tok;
+    SourceLocation TokLocation =
+        FormatTok->Tok.getLocation().getLocWithOffset(1);
+    FormatTok->WhitespaceRange = SourceRange(TokLocation, TokLocation);
+    FormatTok->TokenText = TokenText;
+    FormatTok->ColumnWidth = 1;
+    FormatTok->OriginalColumn = OriginalColumn;
+    return FormatTok;
+  }
+
   FormatToken *getNextToken() {
     if (GreaterStashed) {
-      // Create a synthesized second '>' token.
-      Token Greater = FormatTok->Tok;
-      unsigned OriginalColumn = FormatTok->OriginalColumn;
-      FormatTok = new (Allocator.Allocate()) FormatToken;
-      FormatTok->Tok = Greater;
-      SourceLocation GreaterLocation =
-          FormatTok->Tok.getLocation().getLocWithOffset(1);
-      FormatTok->WhitespaceRange =
-          SourceRange(GreaterLocation, GreaterLocation);
-      FormatTok->TokenText = ">";
-      FormatTok->ColumnWidth = 1;
-      FormatTok->OriginalColumn = OriginalColumn;
       GreaterStashed = false;
-      return FormatTok;
+      return getStashedToken();
+    }
+    if (LessStashed) {
+      LessStashed = false;
+      return getStashedToken();
     }
 
     FormatTok = new (Allocator.Allocate()) FormatToken;
@@ -870,6 +975,8 @@ private:
     // Consume and record whitespace until we find a significant token.
     unsigned WhitespaceLength = TrailingWhitespace;
     while (FormatTok->Tok.is(tok::unknown)) {
+      // FIXME: This miscounts tok:unknown tokens that are not just
+      // whitespace, e.g. a '`' character.
       for (int i = 0, e = FormatTok->TokenText.size(); i != e; ++i) {
         switch (FormatTok->TokenText[i]) {
         case '\n':
@@ -952,6 +1059,10 @@ private:
       FormatTok->Tok.setKind(tok::greater);
       FormatTok->TokenText = FormatTok->TokenText.substr(0, 1);
       GreaterStashed = true;
+    } else if (FormatTok->Tok.is(tok::lessless)) {
+      FormatTok->Tok.setKind(tok::less);
+      FormatTok->TokenText = FormatTok->TokenText.substr(0, 1);
+      LessStashed = true;
     }
 
     // Now FormatTok is the next non-whitespace token.
@@ -988,7 +1099,7 @@ private:
 
   FormatToken *FormatTok;
   bool IsFirstToken;
-  bool GreaterStashed;
+  bool GreaterStashed, LessStashed;
   unsigned Column;
   unsigned TrailingWhitespace;
   std::unique_ptr<Lexer> Lex;
