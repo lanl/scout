@@ -238,17 +238,18 @@ ExprResult Parser::ParseSpecExpression(){
 ExprResult Parser::ParseSpecObjectExpression(){
   assert(Tok.is(tok::l_brace) && "expected '{'");
 
-  ConsumeToken();
+  ConsumeBrace();
   
   SpecObjectExpr* obj =
   cast<SpecObjectExpr>(Actions.ActOnSpecObjectExpr(Tok.getLocation()).get());
   
-  while(Tok.isNot(tok::r_brace)){
+  for(;;){
     std::string key;
     
     if(Tok.is(tok::identifier)){
       IdentifierInfo* IdentInfo = Tok.getIdentifierInfo();
       key = IdentInfo->getName().str();
+      ConsumeToken();
     }
     else if(Tok.is(tok::string_literal)){
       ExprResult StringResult = ParseStringLiteralExpression();
@@ -260,6 +261,13 @@ ExprResult Parser::ParseSpecObjectExpression(){
       return ExprError();
     }
     
+    if(Tok.isNot(tok::colon)){
+      Diag(Tok, diag::err_spec_invalid_expected) << ":";
+      return ExprError();
+    }
+    
+    ConsumeToken();
+    
     ExprResult valueResult = ParseSpecExpression();
     
     if(valueResult.isInvalid()){
@@ -269,15 +277,24 @@ ExprResult Parser::ParseSpecObjectExpression(){
     SpecExpr* value = cast<SpecExpr>(valueResult.get());
     
     obj->insert(key, value);
+    
+    if(Tok.is(tok::r_brace)){
+      ConsumeBrace();
+      break;
+    }
+    else if(Tok.isNot(tok::comma)){
+      Diag(Tok, diag::err_spec_invalid_expected) << ",";
+      return ExprError();
+    }
+    
+    ConsumeToken();
   }
-  
-  ConsumeToken();
   
   return obj;
 }
 
 ExprResult Parser::ParseSpecValueExpression(){
-  ExprResult result = ParseExpression();
+  ExprResult result = ParseAssignmentExpression();
   
   if(result.isInvalid()){
     return ExprError();
@@ -289,12 +306,12 @@ ExprResult Parser::ParseSpecValueExpression(){
 ExprResult Parser::ParseSpecArrayExpression(){
   assert(Tok.is(tok::l_square) && "expected '['");
   
-  ConsumeToken();
+  ConsumeBracket();
   
   SpecArrayExpr* array =
   cast<SpecArrayExpr>(Actions.ActOnSpecArrayExpr(Tok.getLocation()).get());
   
-  while(Tok.isNot(tok::r_square)){
+  for(;;){
     ExprResult valueResult = ParseSpecExpression();
     
     if(valueResult.isInvalid()){
@@ -302,18 +319,20 @@ ExprResult Parser::ParseSpecArrayExpression(){
     }
     
     SpecExpr* value = cast<SpecExpr>(valueResult.get());
+
+    array->add(value);
     
-    if(Tok.isNot(tok::comma)){
-      Diag(Tok, diag::err_spec_invalid_array_expected) << ",";
+    if(Tok.is(tok::r_square)){
+      ConsumeBracket();
+      break;
+    }
+    else if(Tok.isNot(tok::comma)){
+      Diag(Tok, diag::err_spec_invalid_expected) << ",";
       return ExprError();
     }
     
-    array->add(value);
-    
     ConsumeToken();
   }
-
-  ConsumeToken();
   
   return array;
 }

@@ -147,7 +147,60 @@ void StmtPrinter::VisitQueryExpr(QueryExpr *Node) {
 }
 
 void StmtPrinter::VisitScoutExpr(ScoutExpr *Node) {
-  assert(false && "unimplemented");
+  switch(Node->kind()){
+    case ScoutExpr::SpecObject:{
+      SpecObjectExpr* o = static_cast<SpecObjectExpr*>(Node);
+
+      OS << "{";
+      
+      auto m = o->memberMap();
+      bool first = true;
+      
+      for(auto& itr : m){
+        if(first){
+          first = false;
+        }
+        else{
+          OS << ",";
+        }
+        
+        OS << itr.first << ":";
+
+        PrintExpr(itr.second);
+      }
+      
+      OS << "}";
+      
+      break;
+    }
+    case ScoutExpr::SpecValue:{
+      SpecValueExpr* o = static_cast<SpecValueExpr*>(Node);
+      PrintExpr(o->getExpression());
+      break;
+    }
+    case ScoutExpr::SpecArray:{
+      SpecArrayExpr* o = static_cast<SpecArrayExpr*>(Node);
+      
+      OS << "[";
+      
+      auto v = o->elements();
+      size_t size = v.size();
+
+      for(size_t i = 0; i < size; ++i){
+        if(i > 0){
+          OS << ",";
+        }
+        
+        PrintExpr(v[i]);
+      }
+      
+      OS << "]";
+      
+      break;
+    }
+    default:
+      assert(false && "unimplemented");
+  }
 }
 
 void StmtPrinter::VisitStencilShiftExpr(StencilShiftExpr *Node) {

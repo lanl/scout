@@ -4897,6 +4897,8 @@ public:
   ScoutExprKind kind(){
     return Kind;
   }
+
+  void printPretty();
   
 private:
   SourceLocation StartLoc;
@@ -4912,6 +4914,8 @@ public:
 
 class SpecObjectExpr : public SpecExpr{
 public:
+  typedef std::map<std::string, SpecExpr*> MemberMap;
+  
   SpecObjectExpr(SourceLocation LocStart)
   : SpecExpr(ScoutExpr::SpecObject, LocStart){}
   
@@ -4923,17 +4927,26 @@ public:
     auto itr = MM.find(K);
     return itr != MM.end();
   }
+
+  const MemberMap& memberMap() const{
+    return MM;
+  }
+  
+  SpecExpr* get(const std::string& K){
+    auto itr = MM.find(K);
+    assert(itr != MM.end() && "invalid key");
+    return itr->second;
+  }
   
 private:
-  typedef std::map<std::string, SpecExpr*> MemberMap;
-  
   MemberMap MM;
 };
 
 class SpecValueExpr : public SpecExpr{
 public:
   SpecValueExpr(Expr* E)
-  : SpecExpr(ScoutExpr::SpecValue, E->getExprLoc()){}
+  : SpecExpr(ScoutExpr::SpecValue, E->getExprLoc()),
+  Exp(E){}
   
   Expr* getExpression(){
     return Exp;
@@ -4945,6 +4958,8 @@ private:
 
 class SpecArrayExpr : public SpecExpr{
 public:
+  typedef std::vector<SpecExpr*> ExprVec;
+  
   SpecArrayExpr(SourceLocation LocStart)
   : SpecExpr(ScoutExpr::SpecArray, LocStart){}
   
@@ -4956,9 +4971,16 @@ public:
     return V.size();
   }
   
-private:
-  typedef std::vector<SpecExpr*> ExprVec;
+  SpecExpr* get(size_t i){
+    assert(i < V.size() && "invalid index");
+    return V[i];
+  }
   
+  const ExprVec& elements() const{
+    return V;
+  }
+  
+private:
   ExprVec V;
 };
 

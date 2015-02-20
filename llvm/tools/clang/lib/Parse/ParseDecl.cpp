@@ -1827,12 +1827,13 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
           Diag(Tok.getLocation(), diag::err_frame_expected_specifier);
         }
         else{
-          Expr* expr = ParseSpecObjectExpression().get();
+          ScoutExpr* expr = cast<ScoutExpr>(ParseSpecObjectExpression().get());
+          expr->printPretty();
         }
       }
     }
   }
-  */
+   */
   // +============================================
   
   if (ExpectSemi &&

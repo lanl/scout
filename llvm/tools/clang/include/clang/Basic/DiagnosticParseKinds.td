@@ -1147,8 +1147,8 @@ def err_spec_expected_object_specifier:Error<
 def err_spec_invalid_object_key:Error<
 "invalid object key">;
 
-def err_spec_invalid_array_expected:Error<
-"invalid array, expected '%0'">;
+def err_spec_invalid_expected:Error<
+"invalid specifier, expected '%0'">;
 
 // +=========================================================================+
 
