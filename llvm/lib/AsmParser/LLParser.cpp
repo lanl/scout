@@ -3276,7 +3276,7 @@ bool LLParser::ParseGenericDebugNode(MDNode *&Result, bool IsDistinct) {
 ///   ::= !MDSubrange(count: 30, lowerBound: 2)
 bool LLParser::ParseMDSubrange(MDNode *&Result, bool IsDistinct) {
 #define VISIT_MD_FIELDS(OPTIONAL, REQUIRED)                                    \
-  REQUIRED(count, MDUnsignedField, (0, UINT64_MAX >> 1));                      \
+  REQUIRED(count, MDSignedField, (-1, -1, INT64_MAX));                         \
   OPTIONAL(lowerBound, MDSignedField, );
   PARSE_MD_FIELDS();
 #undef VISIT_MD_FIELDS
@@ -3289,8 +3289,8 @@ bool LLParser::ParseMDSubrange(MDNode *&Result, bool IsDistinct) {
 ///   ::= !MDEnumerator(value: 30, name: "SomeKind")
 bool LLParser::ParseMDEnumerator(MDNode *&Result, bool IsDistinct) {
 #define VISIT_MD_FIELDS(OPTIONAL, REQUIRED)                                    \
-  REQUIRED(value, MDSignedField, );                                            \
-  REQUIRED(name, MDStringField, );
+  REQUIRED(name, MDStringField, );                                             \
+  REQUIRED(value, MDSignedField, );
   PARSE_MD_FIELDS();
 #undef VISIT_MD_FIELDS
 
@@ -3304,8 +3304,8 @@ bool LLParser::ParseMDBasicType(MDNode *&Result, bool IsDistinct) {
 #define VISIT_MD_FIELDS(OPTIONAL, REQUIRED)                                    \
   REQUIRED(tag, DwarfTagField, );                                              \
   OPTIONAL(name, MDStringField, );                                             \
-  OPTIONAL(size, MDUnsignedField, (0, UINT32_MAX));                            \
-  OPTIONAL(align, MDUnsignedField, (0, UINT32_MAX));                           \
+  OPTIONAL(size, MDUnsignedField, (0, UINT64_MAX));                            \
+  OPTIONAL(align, MDUnsignedField, (0, UINT64_MAX));                           \
   OPTIONAL(encoding, DwarfAttEncodingField, );
   PARSE_MD_FIELDS();
 #undef VISIT_MD_FIELDS
@@ -3327,9 +3327,9 @@ bool LLParser::ParseMDDerivedType(MDNode *&Result, bool IsDistinct) {
   OPTIONAL(line, LineField, );                                                 \
   OPTIONAL(scope, MDField, );                                                  \
   REQUIRED(baseType, MDField, );                                               \
-  OPTIONAL(size, MDUnsignedField, (0, UINT32_MAX));                            \
-  OPTIONAL(align, MDUnsignedField, (0, UINT32_MAX));                           \
-  OPTIONAL(offset, MDUnsignedField, (0, UINT32_MAX));                          \
+  OPTIONAL(size, MDUnsignedField, (0, UINT64_MAX));                            \
+  OPTIONAL(align, MDUnsignedField, (0, UINT64_MAX));                           \
+  OPTIONAL(offset, MDUnsignedField, (0, UINT64_MAX));                          \
   OPTIONAL(flags, MDUnsignedField, (0, UINT32_MAX));                           \
   OPTIONAL(extraData, MDField, );
   PARSE_MD_FIELDS();
@@ -3350,9 +3350,9 @@ bool LLParser::ParseMDCompositeType(MDNode *&Result, bool IsDistinct) {
   OPTIONAL(line, LineField, );                                                 \
   OPTIONAL(scope, MDField, );                                                  \
   OPTIONAL(baseType, MDField, );                                               \
-  OPTIONAL(size, MDUnsignedField, (0, UINT32_MAX));                            \
-  OPTIONAL(align, MDUnsignedField, (0, UINT32_MAX));                           \
-  OPTIONAL(offset, MDUnsignedField, (0, UINT32_MAX));                          \
+  OPTIONAL(size, MDUnsignedField, (0, UINT64_MAX));                            \
+  OPTIONAL(align, MDUnsignedField, (0, UINT64_MAX));                           \
+  OPTIONAL(offset, MDUnsignedField, (0, UINT64_MAX));                          \
   OPTIONAL(flags, MDUnsignedField, (0, UINT32_MAX));                           \
   OPTIONAL(elements, MDField, );                                               \
   OPTIONAL(runtimeLang, DwarfLangField, );                                     \
@@ -3515,37 +3515,33 @@ bool LLParser::ParseMDNamespace(MDNode *&Result, bool IsDistinct) {
 }
 
 /// ParseMDTemplateTypeParameter:
-///   ::= !MDTemplateTypeParameter(scope: !0, name: "Ty", type: !1)
+///   ::= !MDTemplateTypeParameter(name: "Ty", type: !1)
 bool LLParser::ParseMDTemplateTypeParameter(MDNode *&Result, bool IsDistinct) {
 #define VISIT_MD_FIELDS(OPTIONAL, REQUIRED)                                    \
-  REQUIRED(scope, MDField, );                                                  \
   OPTIONAL(name, MDStringField, );                                             \
   REQUIRED(type, MDField, );
   PARSE_MD_FIELDS();
 #undef VISIT_MD_FIELDS
 
-  Result = GET_OR_DISTINCT(MDTemplateTypeParameter,
-                           (Context, scope.Val, name.Val, type.Val));
+  Result =
+      GET_OR_DISTINCT(MDTemplateTypeParameter, (Context, name.Val, type.Val));
   return false;
 }
 
 /// ParseMDTemplateValueParameter:
 ///   ::= !MDTemplateValueParameter(tag: DW_TAG_template_value_parameter,
-///                                 scope: !0, name: "V", type: !1,
-///                                 value: i32 7)
+///                                 name: "V", type: !1, value: i32 7)
 bool LLParser::ParseMDTemplateValueParameter(MDNode *&Result, bool IsDistinct) {
 #define VISIT_MD_FIELDS(OPTIONAL, REQUIRED)                                    \
   REQUIRED(tag, DwarfTagField, );                                              \
-  REQUIRED(scope, MDField, );                                                  \
   OPTIONAL(name, MDStringField, );                                             \
   REQUIRED(type, MDField, );                                                   \
   REQUIRED(value, MDField, );
   PARSE_MD_FIELDS();
 #undef VISIT_MD_FIELDS
 
-  Result = GET_OR_DISTINCT(
-      MDTemplateValueParameter,
-      (Context, tag.Val, scope.Val, name.Val, type.Val, value.Val));
+  Result = GET_OR_DISTINCT(MDTemplateValueParameter,
+                           (Context, tag.Val, name.Val, type.Val, value.Val));
   return false;
 }
 

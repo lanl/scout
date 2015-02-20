@@ -239,6 +239,7 @@ void initializeRegionOnlyPrinterPass(PassRegistry&);
 void initializeRegionOnlyViewerPass(PassRegistry&);
 void initializeRegionPrinterPass(PassRegistry&);
 void initializeRegionViewerPass(PassRegistry&);
+void initializeRewriteStatepointsForGCPass(PassRegistry&);
 void initializeSCCPPass(PassRegistry&);
 void initializeSROAPass(PassRegistry&);
 void initializeSROA_DTPass(PassRegistry&);
@@ -281,6 +282,7 @@ void initializeVirtRegRewriterPass(PassRegistry&);
 void initializeInstSimplifierPass(PassRegistry&);
 void initializeUnpackMachineBundlesPass(PassRegistry&);
 void initializeFinalizeMachineBundlesPass(PassRegistry&);
+void initializeLoopAccessAnalysisPass(PassRegistry&);
 void initializeLoopVectorizePass(PassRegistry&);
 void initializeSLPVectorizerPass(PassRegistry&);
 void initializeBBVectorizePass(PassRegistry&);
@@ -292,6 +294,7 @@ void initializeRewriteSymbolsPass(PassRegistry&);
 void initializeWinEHPreparePass(PassRegistry&);
 void initializePlaceBackedgeSafepointsImplPass(PassRegistry&);
 void initializePlaceSafepointsPass(PassRegistry&);
+void initializeDwarfEHPreparePass(PassRegistry&);
 }
 
 #endif

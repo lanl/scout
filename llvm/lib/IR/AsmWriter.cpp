@@ -1361,8 +1361,8 @@ static void writeMDEnumerator(raw_ostream &Out, const MDEnumerator *N,
                               TypePrinting *, SlotTracker *, const Module *) {
   Out << "!MDEnumerator(";
   FieldSeparator FS;
-  Out << FS << "value: " << N->getValue();
   Out << FS << "name: \"" << N->getName() << "\"";
+  Out << FS << "value: " << N->getValue();
   Out << ")";
 }
 
@@ -1515,11 +1515,8 @@ static void writeMDCompileUnit(raw_ostream &Out, const MDCompileUnit *N,
     Out << Lang;
   else
     Out << N->getSourceLanguage();
-  if (N->getFile()) {
-    Out << FS << "file: ";
-    writeMetadataAsOperand(Out, N->getFile(), TypePrinter, Machine,
-                           Context);
-  }
+  Out << FS << "file: ";
+  writeMetadataAsOperand(Out, N->getFile(), TypePrinter, Machine, Context);
   if (!N->getProducer().empty())
     Out << FS << "producer: \"" << N->getProducer() << "\"";
   Out << FS << "isOptimized: " << (N->isOptimized() ? "true" : "false");
@@ -1685,8 +1682,6 @@ static void writeMDTemplateTypeParameter(raw_ostream &Out,
                                          const Module *Context) {
   Out << "!MDTemplateTypeParameter(";
   FieldSeparator FS;
-  Out << FS << "scope: ";
-  writeMetadataAsOperand(Out, N->getScope(), TypePrinter, Machine, Context);
   Out << FS << "name: \"" << N->getName() << "\"";
   Out << FS << "type: ";
   writeMetadataAsOperand(Out, N->getType(), TypePrinter, Machine, Context);
@@ -1701,8 +1696,6 @@ static void writeMDTemplateValueParameter(raw_ostream &Out,
   Out << "!MDTemplateValueParameter(";
   FieldSeparator FS;
   writeTag(Out, FS, N);
-  Out << FS << "scope: ";
-  writeMetadataAsOperand(Out, N->getScope(), TypePrinter, Machine, Context);
   Out << FS << "name: \"" << N->getName() << "\"";
   Out << FS << "type: ";
   writeMetadataAsOperand(Out, N->getType(), TypePrinter, Machine, Context);
