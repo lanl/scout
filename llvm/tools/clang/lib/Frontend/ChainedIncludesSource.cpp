@@ -55,6 +55,7 @@ protected:
 
   // +===== Scout ================================
   void CompleteType(MeshDecl *Mesh) override;
+  void CompleteType(FrameDecl *Frame) override;
   // +============================================
 
   void StartedDeserializing() override;
@@ -255,6 +256,10 @@ void ChainedIncludesSource::CompleteType(TagDecl *Tag) {
 
 void ChainedIncludesSource::CompleteType(MeshDecl *Mesh) {
   return getFinalReader().CompleteType(Mesh);
+}
+
+void ChainedIncludesSource::CompleteType(FrameDecl *Frame) {
+  return getFinalReader().CompleteType(Frame);
 }
 // +==========================================================================+
 void ChainedIncludesSource::CompleteType(ObjCInterfaceDecl *Class) {

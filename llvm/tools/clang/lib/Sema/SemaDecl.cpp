@@ -50,6 +50,7 @@
 // +===== Scout ==============================================================+
 #include "clang/AST/Scout/MeshDecls.h"
 #include "clang/Sema/Scout/ASTVisitors.h"
+#include "clang/AST/Scout/FrameDecl.h"
 // +==========================================================================+
 
 #include <algorithm>
@@ -552,6 +553,19 @@ DeclSpec::TST Sema::isMeshName(IdentifierInfo &II, Scope *S) {
     }
   }
 
+  return DeclSpec::TST_unspecified;
+}
+
+DeclSpec::TST Sema::isFrameName(IdentifierInfo &II, Scope *S) {
+  LookupResult R(*this, &II, SourceLocation(), LookupFrameName);
+  bool result = LookupName(R, S, false);
+  R.suppressDiagnostics();
+  if (R.getResultKind() == LookupResult::Found) {
+    if (const FrameDecl *FD = R.getAsSingle<FrameDecl>()) {
+      return DeclSpec::TST_frame;
+    }
+  }
+  
   return DeclSpec::TST_unspecified;
 }
 // +==========================================================================+
@@ -2124,6 +2138,8 @@ static bool isAttributeTargetADefinition(Decl *D) {
   // +===== Scout ============================================================+
   else if (MeshDecl *MD = dyn_cast<MeshDecl>(D))
     return MD->isCompleteDefinition() || MD->isBeingDefined();
+  else if (FrameDecl *FD = dyn_cast<FrameDecl>(D))
+    return FD->isCompleteDefinition() || FD->isBeingDefined();
   // +========================================================================+
 
   return true;
@@ -2305,6 +2321,8 @@ static const Decl *getDefinition(const Decl *D) {
   // +===== Scout ============================================================+
   if (const MeshDecl *MD = dyn_cast<MeshDecl>(D))
     return MD->getDefinition();
+  if (const FrameDecl *FD = dyn_cast<FrameDecl>(D))
+    return FD->getDefinition();
   // +========================================================================+
   if (const VarDecl *VD = dyn_cast<VarDecl>(D)) {
     const VarDecl *Def = VD->getDefinition();
@@ -3529,6 +3547,10 @@ static void HandleTagNumbering(Sema &S, const TagDecl *Tag, Scope *TagScope) {
 // +===== Scout ==============================================================+
 static void HandleMeshNumbering(Sema &S, const MeshDecl *MD) {
     return;
+}
+
+static void HandleFrameNumbering(Sema &S, const FrameDecl *FD) {
+  return;
 }
 // +==========================================================================+
 

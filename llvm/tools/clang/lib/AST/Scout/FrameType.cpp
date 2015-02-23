@@ -1,9 +1,11 @@
 /*
+ *
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ *
+ * Copyright (c) 2015, Los Alamos National Security, LLC.
  * All rights reserved.
  *
- *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *  Copyright 2013. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
  *  National Security, LLC for the U.S. Department of Energy. The
@@ -45,14 +47,7 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ###########################################################################
  *
- * Notes: See the various mesh types in AST/Types.h for some
- * -----  more details on Scout's mesh types.  It is important
- *        to keep a connection between the various Decls in this
- *        file and those types.
- *
- * #####
  */
 
 #include "clang/AST/ASTContext.h"
@@ -69,46 +64,36 @@
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/raw_ostream.h"
-
-// +===== Scout ==============================================================+
-#include "clang/AST/Scout/MeshDecl.h"
-// +==========================================================================+
-
-
 #include <algorithm>
 using namespace clang;
 
-UniformMeshDecl *Type::getAsUniformMeshDecl() const {
-  if (const UniformMeshType *RT = getAs<UniformMeshType>())
-    return dyn_cast<UniformMeshDecl>(RT->getDecl());
-  else
-    return 0;
+FrameType::FrameType(TypeClass TC, const FrameDecl *D, QualType can)
+    : Type(TC, can, D->isDependentType(),
+        /*InstantiationDependent=*/D->isDependentType(),
+        /*VariablyModified=*/false,
+        /*ContainsUnexpandedParameterPack=*/false),
+      decl(const_cast<FrameDecl*>(D)) {}
+
+
+static FrameDecl *getInterestingFrameDecl(FrameDecl *decl) {
+  for (FrameDecl::redecl_iterator I = decl->redecls_begin(),
+       E = decl->redecls_end();
+       I != E; ++I) {
+    if (I->isCompleteDefinition() || I->isBeingDefined())
+      return *I;
+  }
+  // If there's no definition (not even in progress), return what we have.
+  return decl;
 }
 
-StructuredMeshDecl *Type::getAsStructuredMeshDecl() const {
-  if (const StructuredMeshType *RT = getAs<StructuredMeshType>())
-    return dyn_cast<StructuredMeshDecl>(RT->getDecl());
-  else
-    return 0;
+FrameDecl *FrameType::getDecl() const {
+  return getInterestingFrameDecl(decl);
 }
 
-RectilinearMeshDecl *Type::getAsRectilinearMeshDecl() const {
-  if (const RectilinearMeshType *RT = getAs<RectilinearMeshType>())
-    return dyn_cast<RectilinearMeshDecl>(RT->getDecl());
-  else
-    return 0;
+StringRef FrameType::getName() const {
+  return getDecl()->getIdentifier()->getName();
 }
 
-UnstructuredMeshDecl *Type::getAsUnstructuredMeshDecl() const {
-  if (const UnstructuredMeshType *RT = getAs<UnstructuredMeshType>())
-    return dyn_cast<UnstructuredMeshDecl>(RT->getDecl());
-  else
-    return 0;
-}
-
-FrameDecl *Type::getAsFrameDecl() const {
-  if (const FrameType *FT = getAs<FrameType>())
-    return dyn_cast<FrameDecl>(FT->getDecl());
-  else
-    return 0;
+bool FrameType::isBeingDefined() const {
+  return getDecl()->isBeingDefined();
 }

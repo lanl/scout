@@ -6,7 +6,9 @@ add_clang_library(scoutAST
   ASTContext.cpp
   ForallStmt.cpp
   MeshDecl.cpp
+  FrameDecl.cpp
   MeshType.cpp
+  FrameType.cpp
   MeshLayout.cpp
   RectilinearMeshDecl.cpp
   RenderallStmt.cpp

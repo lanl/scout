@@ -136,6 +136,8 @@ public:
   /// \brief Gives the external AST source an opportunity to complete
   /// an incomplete mesh type.
   virtual void CompleteType(MeshDecl *MD) {}
+  
+  virtual void CompleteType(FrameDecl *FD) {}
   // +========================================================================+
 
   /// \brief Gives the external AST source an opportunity to complete an

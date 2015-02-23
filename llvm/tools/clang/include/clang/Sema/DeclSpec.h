@@ -440,13 +440,17 @@ public:
      return ( T == TST_uniform_mesh     || T == TST_structured_mesh ||
             T == TST_rectilinear_mesh || T == TST_unstructured_mesh);
    }
+  
+  static bool isFrameDeclRep(TST T) {
+    return T == TST_frame;
+  }
    // +==============================================================+
   static bool isDeclRep(TST T) {
     return (T == TST_enum || T == TST_struct ||
             T == TST_interface || T == TST_union ||
             T == TST_class ||
             // +===== Scout ==================================================+
-            isMeshDeclRep(T));
+            isMeshDeclRep(T) || isFrameDeclRep(T));
             // +==============================================================+
   }
 

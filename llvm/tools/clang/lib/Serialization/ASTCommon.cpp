@@ -222,6 +222,7 @@ bool serialization::isRedeclarableDeclKind(unsigned Kind) {
   case Decl::RectilinearMesh:
   case Decl::UnstructuredMesh:
   case Decl::MeshField:
+  case Decl::Frame:
     return false;
   // +========================================================================+
 

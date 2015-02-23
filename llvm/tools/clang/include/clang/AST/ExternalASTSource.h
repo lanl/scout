@@ -36,6 +36,7 @@ class TagDecl;
 // +===== Scout ==============================================================+
 class MeshDecl;
 class MeshFieldDecl;
+class FrameDecl;
 // +==========================================================================+
 
 /// \brief Enumeration describing the result of loading information from
@@ -205,6 +206,8 @@ public:
   /// \brief Gives the external AST source an opportunity to complete
   /// an incomplete mesh type.
   virtual void CompleteType(MeshDecl *MD) {}
+  
+  virtual void CompleteType(FrameDecl *FD) {}
   // +========================================================================+
 
   /// \brief Gives the external AST source an opportunity to complete an

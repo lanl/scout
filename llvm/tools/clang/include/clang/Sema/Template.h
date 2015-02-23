@@ -499,6 +499,8 @@ namespace clang {
                         StructuredMeshDecl *NewDecl);
     bool SubstQualifier(const UnstructuredMeshDecl *OldDecl,
                         UnstructuredMeshDecl *NewDecl);
+    bool SubstQualifier(const FrameDecl *OldDecl,
+                        FrameDecl *NewDecl);
     // +======================================================================+
 
     Decl *VisitVarTemplateSpecializationDecl(

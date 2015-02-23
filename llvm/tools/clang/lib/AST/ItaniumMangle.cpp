@@ -2155,7 +2155,7 @@ void CXXNameMangler::mangleType(const QueryType *T) {
 }
 
 void CXXNameMangler::mangleType(const FrameType *T) {
-  Out << 'A';
+  mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
 // ============================================================================

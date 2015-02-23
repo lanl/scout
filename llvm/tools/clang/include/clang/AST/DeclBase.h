@@ -163,7 +163,9 @@ public:
     // identifier name space? 
     // if we add this we need to bump up bitfield below from 12 to 13
     // comment above about 15bits for IDNS appears wrong
-    IDNS_Mesh                = 0x1000
+    IDNS_Mesh                = 0x1000,
+    
+    IDNS_Frame               = 0x2000
     // +======================================================================+
   };
 
@@ -1177,6 +1179,10 @@ public:
   // +===== Scout ============================================================+
   bool isMesh() const {
     return DeclKind >= Decl::firstMesh && DeclKind <= Decl::lastMesh;
+  }
+  
+  bool isFrame() const {
+    return DeclKind == Decl::Frame;
   }
   // +========================================================================+
 

@@ -818,6 +818,10 @@ public:
     QualType RebuildUnstructuredMeshType(UnstructuredMeshDecl *UMD) {
       return SemaRef.Context.getTypeDeclType(UMD);
     }
+  
+    QualType RebuildFrameType(FrameDecl *FD) {
+      return SemaRef.Context.getTypeDeclType(FD);
+    }
 // +========================================================================+
 
   /// \brief Build a new typeof(expr) type.
@@ -5147,8 +5151,25 @@ template<typename Derived>
 QualType
 TreeTransform<Derived>::TransformFrameType(TypeLocBuilder &TLB,
                                            FrameTypeLoc TL) {
+  const FrameType *T = TL.getTypePtr();
+  FrameDecl *FD;
+  FD = cast_or_null<FrameDecl>(getDerived().TransformDecl(TL.getNameLoc(),
+                                                          T->getDecl()));
+  if (!FD)
+    return QualType();
   
-  return TL.getType();
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      FD != T->getDecl()) {
+    Result = getDerived().RebuildFrameType(FD);
+    if (Result.isNull())
+      return QualType();
+  }
+  
+  FrameTypeLoc NewTL = TLB.push<FrameTypeLoc>(Result);
+  NewTL.setNameLoc(TL.getNameLoc());
+  
+  return Result;
 }
   
 // +==========================================================================+

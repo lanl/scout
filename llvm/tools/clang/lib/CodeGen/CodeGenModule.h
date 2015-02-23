@@ -953,6 +953,8 @@ public:
 
   // +===== Scout ============================================================+
   void UpdateCompletedType(const MeshDecl *TD);
+  
+  void UpdateCompletedType(const FrameDecl *FD);
   // +========================================================================+
 
   llvm::Constant *getMemberPointerConstant(const UnaryOperator *e);

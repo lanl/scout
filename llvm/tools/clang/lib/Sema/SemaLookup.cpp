@@ -250,6 +250,9 @@ static inline unsigned getIDNS(Sema::LookupNameKind NameKind,
   case Sema::LookupMeshName:
     IDNS = Decl::IDNS_Mesh; 
     break;
+  case Sema::LookupFrameName:
+    IDNS = Decl::IDNS_Frame;
+    break;
   // +========================================================================+
   case Sema::LookupLabel:
     IDNS = Decl::IDNS_Label;
@@ -1672,9 +1675,10 @@ bool Sema::LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
       break;
 
     // +===== Scout ==========================================================+
+    case LookupFrameName:
     case LookupMeshName:
       //mesh always uses C style lookup
-      assert(false && "mesh not supported in LookupQualifiedName()");
+      assert(false && "mesh/frame not supported in LookupQualifiedName()");
       break;
     // +======================================================================+
 
@@ -2171,6 +2175,27 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result,
   //if (!Result.Classes.insert(Mesh))
   //  return;
 }
+
+static void
+addAssociatedClassesAndNamespaces(AssociatedLookup &Result,
+                                  FrameDecl *Frame) {
+  
+  // Add the class of which it is a member, if any.
+  DeclContext *Ctx = Frame->getDeclContext();
+  if (FrameDecl *EnclosingFrame = dyn_cast<FrameDecl>(Ctx)) {
+    // SC_TODO -- we need to add mesh types to the associated lookup vector...
+    //Result.Classes.insert(EnclosingMesh);
+    (void)EnclosingFrame; // suppress warning
+  }
+  // Add the associated namespace for this class.
+  CollectEnclosingNamespace(Result.Namespaces, Ctx);
+  
+  // SC_TODO -- we need to add mesh types to the associated lookup vector...
+  // Add the mesh itself but avoid duplicates...
+  //if (!Result.Classes.insert(Mesh))
+  //  return;
+}
+
 // +==========================================================================+
 
 
@@ -2267,7 +2292,9 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
     }
         
     case Type::Frame: {
-      break;  // SC_TODO: We're assuming query is a fundamental type (correct?)
+      FrameDecl* FD = cast<FrameDecl>(cast<FrameType>(T)->getDecl());
+      addAssociatedClassesAndNamespaces(Result, FD);
+      break;
     }
     // +======================================================================+
 

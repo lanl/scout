@@ -38,6 +38,7 @@ namespace clang {
   class RectilinearMeshDecl;
   class StructuredMeshDecl;
   class UnstructuredMeshDecl;
+  class FrameDecl;
   // +========================================================================+
 
 /// \brief An abstract interface that should be implemented by listeners
@@ -74,6 +75,10 @@ public:
   /// \brief A new UnstructuredMeshDecl definition was completed.
   virtual void
   CompletedUnstructuredMeshDefinition(const UnstructuredMeshDecl *D)
+  { }
+  
+  virtual void
+  CompletedFrameDefinition(const FrameDecl *D)
   { }
   // +========================================================================+
 

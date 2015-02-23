@@ -434,6 +434,7 @@ private:
   bool TraverseRectilinearMeshHelper(RectilinearMeshDecl *D);
   bool TraverseStructuredMeshHelper(StructuredMeshDecl *D);
   bool TraverseUnstructuredMeshHelper(UnstructuredMeshDecl *D);
+  bool TraverseFrameHelper(FrameDecl *D);
   // +========================================================================+
 
   bool TraverseOMPExecutableDirective(OMPExecutableDirective *S);
@@ -1658,6 +1659,15 @@ bool DataRecursiveASTVisitor<Derived>::TraverseUnstructuredMeshHelper(Unstructur
   TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
   return true;
 }
+  
+template<typename Derived>
+bool DataRecursiveASTVisitor<Derived>::TraverseFrameHelper(FrameDecl *D) {
+  // We shouldn't traverse D->getTypeForDecl(); it's a result of
+  // declaring the type, not something that was written in the
+  // source.
+  TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
+  return true;
+}
 // +==========================================================================+
 
 
@@ -1693,6 +1703,10 @@ DEF_TRAVERSE_DECL(StructuredMeshDecl, {
 DEF_TRAVERSE_DECL(UnstructuredMeshDecl, {
     TRY_TO(TraverseUnstructuredMeshHelper(D));
   })
+  
+DEF_TRAVERSE_DECL(FrameDecl, {
+  TRY_TO(TraverseFrameHelper(D));
+})
 // +==========================================================================+
 
 

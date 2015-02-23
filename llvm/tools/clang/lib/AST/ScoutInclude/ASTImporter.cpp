@@ -87,6 +87,21 @@ bool ASTNodeImporter::ImportDefinition(MeshDecl *From, MeshDecl *To,
   return false;
 }
 
+bool ASTNodeImporter::ImportDefinition(FrameDecl *From, FrameDecl *To,
+                                       ImportDefinitionKind Kind) {
+  if (To->getDefinition() || To->isBeingDefined()) {
+    if (Kind == IDK_Everything)
+      ImportDeclContext(From, /*ForceImport=*/true);
+    
+    return false;
+  }
+  
+  To->startDefinition();
+  To->completeDefinition();
+  
+  return false;
+}
+
 QualType
 ASTNodeImporter::VisitUniformMeshType(const UniformMeshType *T) {
   assert(T != 0);
@@ -153,7 +168,14 @@ ASTNodeImporter::VisitImageType(const ImageType *T) {
 
 QualType
 ASTNodeImporter::VisitFrameType(const FrameType *T) {
-  return Importer.getToContext().getFrameType();
+  assert(T != 0);
+  
+  FrameDecl *ToDecl;
+  ToDecl = dyn_cast_or_null<FrameDecl>(Importer.Import(T->getDecl()));
+  if (!ToDecl)
+    return QualType();
+  
+  return Importer.getToContext().getFrameType(ToDecl);
 }
 
 // ===== Scout -- Mesh Types Import ===========================================
@@ -391,4 +413,40 @@ Decl *ASTNodeImporter::VisitMeshFieldDecl(MeshFieldDecl *D) {
   Importer.Imported(D, ToField);
   LexicalDC->addDeclInternal(ToField);
   return ToField;
+}
+
+Decl *ASTNodeImporter::VisitFrameDecl(FrameDecl *D) {
+  FrameDecl *Definition = D->getDefinition();
+  if (Definition && Definition != D) {
+    Decl *ImportedDef = Importer.Import(Definition);
+    if (!ImportedDef)
+      return 0;
+    
+    return Importer.Imported(D, ImportedDef);
+  }
+  
+  // Import the major distinguishing characteristics of this record.
+  DeclContext *DC, *LexicalDC;
+  DeclarationName Name;
+  SourceLocation Loc;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, Loc))
+    return 0;
+  
+  SourceLocation StartLoc = Importer.Import(D->getLocStart());
+  FrameDecl *D2 =
+  FrameDecl::Create(Importer.getToContext(),
+                    DC,
+                    StartLoc, Loc,
+                    Name.getAsIdentifierInfo());
+  D2->setAccess(D->getAccess());
+  D2->setQualifierInfo(Importer.Import(D->getQualifierLoc()));
+  D2->setLexicalDeclContext(LexicalDC);
+  LexicalDC->addDeclInternal(D2);
+  
+  Importer.Imported(D, D2);
+  
+  if (D->isCompleteDefinition() && ImportDefinition(D, D2, IDK_Default))
+    return 0;
+  
+  return D2;
 }

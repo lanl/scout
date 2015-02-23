@@ -114,7 +114,7 @@ TypePrinter::printQueryBefore(const QueryType *T,
 void
 TypePrinter::printFrameBefore(const FrameType *T,
                               raw_ostream &OS) {
-  OS << T->getName(Policy);
+  OS << T->getName();
   spaceBeforePlaceHolder(OS);
 }
 

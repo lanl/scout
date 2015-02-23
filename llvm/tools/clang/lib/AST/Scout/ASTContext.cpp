@@ -146,6 +146,11 @@ ASTContext::getUnstructuredMeshDeclType(const UnstructuredMeshDecl *Decl) const 
   return getTypeDeclType(const_cast<UnstructuredMeshDecl*>(Decl));
 }
 
+QualType
+ASTContext::getFrameDeclType(const FrameDecl *Decl) const {
+  assert (Decl != 0);
+  return getFrameType(const_cast<FrameDecl*>(Decl));
+}
 
 // ===== Mesh Types ===========================================================
 
@@ -277,10 +282,16 @@ QualType ASTContext::getQueryType() const {
   return QualType(newType, 0);
 }
 
-// ===== Data Type ====================================================
-QualType ASTContext::getFrameType() const {
+// ===== Frame Type ====================================================
+QualType ASTContext::getFrameType(const FrameDecl *Decl) const {
+  assert(Decl != 0);
+  
+  if (Decl->TypeForDecl)
+    return QualType(Decl->TypeForDecl, 0);
+  
   FrameType *newType;
-  newType = new (*this, TypeAlignment) FrameType();
+  newType = new (*this, TypeAlignment) FrameType(Decl);
+  Decl->TypeForDecl = newType;
   Types.push_back(newType);
   return QualType(newType, 0);
 }

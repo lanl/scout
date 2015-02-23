@@ -3918,6 +3918,7 @@ namespace {
 
     // +===== Scout ==========================================================+
     bool VisitMeshDecl(const MeshDecl *Mesh);
+    bool VisitFrameDecl(const FrameDecl *Frame);
     // +=====-------==========================================================+
   };
 }
@@ -4152,6 +4153,11 @@ bool UnnamedLocalNoLinkageFinder::VisitTagDecl(const TagDecl *Tag) {
 
 // +===== Scout ==============================================================+
 bool UnnamedLocalNoLinkageFinder::VisitMeshDecl(const MeshDecl *Mesh) {
+  assert(false && "parsing Scout in C++ mode");
+  return false;
+}
+
+bool UnnamedLocalNoLinkageFinder::VisitFrameDecl(const FrameDecl *Frame) {
   assert(false && "parsing Scout in C++ mode");
   return false;
 }

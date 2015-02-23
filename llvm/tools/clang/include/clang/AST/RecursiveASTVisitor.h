@@ -38,6 +38,7 @@
 #include "clang/AST/Scout/MeshDecls.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include "clang/AST/Scout/ImplicitColorParamDecl.h"
+#include "clang/AST/Scout/FrameDecl.h"
 // +==========================================================================+
 
 // The following three macros are used for meta programming.  The code
@@ -447,6 +448,7 @@ private:
   bool TraverseStructuredMeshHelper(StructuredMeshDecl* D);
   bool TraverseRectilinearMeshHelper(RectilinearMeshDecl* D);
   bool TraverseUnstructuredMeshHelper(UnstructuredMeshDecl* D);
+  bool TraverseFrameHelper(FrameDecl* D);
   // +========================================================================+
 
   struct EnqueueJob {
@@ -1707,6 +1709,18 @@ RecursiveASTVisitor<Derived>::TraverseUnstructuredMeshHelper(
 
 DEF_TRAVERSE_DECL(UnstructuredMeshDecl, {
   TRY_TO(TraverseUnstructuredMeshHelper(D));
+})
+  
+template<typename Derived> bool
+RecursiveASTVisitor<Derived>::TraverseFrameHelper(FrameDecl *D) {
+  // We shouldn't traverse D->getTypeForDecl(); it's a result of
+  // declaring the type, not something that was written in the source.
+  TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
+  return true;
+}
+  
+DEF_TRAVERSE_DECL(FrameDecl, {
+  TRY_TO(TraverseFrameHelper(D));
 })
 // +==========================================================================+
 

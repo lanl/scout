@@ -45,6 +45,7 @@
 
 // +===== Scout ==============================================================+
 #include "clang/AST/Scout/MeshDecls.h"
+#include "clang/AST/Scout/FrameDecl.h"
 // +==========================================================================+
 
 namespace llvm {
@@ -1149,7 +1150,7 @@ public:
   
   QualType getQueryType() const;
   
-  QualType getFrameType() const;
+  QualType getFrameType(const FrameDecl *Decl) const;
   // +========================================================================+
 
   QualType getRecordType(const RecordDecl *Decl) const;
@@ -1263,6 +1264,8 @@ public:
   QualType getStructuredMeshDeclType(const StructuredMeshDecl *Decl) const;
   QualType getRectilinearMeshDeclType(const RectilinearMeshDecl *Decl) const;
   QualType getUnstructuredMeshDeclType(const UnstructuredMeshDecl *Decl) const;
+  
+  QualType getFrameDeclType(const FrameDecl *Decl) const;
   // +========================================================================+
 
 

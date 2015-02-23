@@ -262,6 +262,7 @@ public:
     CCC_RectilinearMesh,
     CCC_StructuredMesh,
     CCC_UnstructuredMesh,
+    CCC_Frame,
     // +======================================================================+
 
     /// \brief An unknown context, in which we are recovering from a parsing

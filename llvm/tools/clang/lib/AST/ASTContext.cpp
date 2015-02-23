@@ -3160,6 +3160,8 @@ QualType ASTContext::getTypeDeclTypeSlow(const TypeDecl *Decl) const {
     return getStructuredMeshType(Mesh);
   } else if (const UnstructuredMeshDecl *Mesh = dyn_cast<UnstructuredMeshDecl>(Decl)) {
     return getUnstructuredMeshType(Mesh);
+  } else if (const FrameDecl *Frame = dyn_cast<FrameDecl>(Decl)) {
+    return getFrameType(Frame);
   // +========================================================================+
   } else if (const UnresolvedUsingTypenameDecl *Using =
                dyn_cast<UnresolvedUsingTypenameDecl>(Decl)) {

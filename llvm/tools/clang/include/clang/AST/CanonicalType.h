@@ -577,6 +577,12 @@ struct CanProxyAdaptor<StructuredMeshType> :
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(StructuredMeshDecl *, getDecl)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
 };
+  
+template <>
+struct CanProxyAdaptor<FrameType> : public CanProxyBase<FrameType> {
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(FrameDecl *, getDecl)
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
+};
 // +==========================================================================+
 
 template<>

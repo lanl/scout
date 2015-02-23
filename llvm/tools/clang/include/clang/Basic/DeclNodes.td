@@ -34,6 +34,7 @@ def Named : Decl<1>;
       def StructuredMesh : DDecl<Mesh>;
       def RectilinearMesh : DDecl<Mesh>;
       def UnstructuredMesh : DDecl<Mesh>;
+    def Frame : DDecl<Type>, DeclContext;
     // +===================================================================+
     def TemplateTypeParm : DDecl<Type>;
   def Value : DDecl<Named, 1>;

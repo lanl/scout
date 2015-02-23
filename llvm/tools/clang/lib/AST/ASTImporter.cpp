@@ -125,6 +125,9 @@ namespace clang {
     // +===== Scout ===============================================
     bool ImportDefinition(MeshDecl *From, MeshDecl *To,
                           ImportDefinitionKind Kind = IDK_Default);
+                            
+    bool ImportDefinition(FrameDecl *From, FrameDecl *To,
+                          ImportDefinitionKind Kind = IDK_Default);
     // +===========================================================
     bool ImportDefinition(VarDecl *From, VarDecl *To,
                           ImportDefinitionKind Kind = IDK_Default);
@@ -162,6 +165,7 @@ namespace clang {
     Decl* VisitRectilinearMeshDecl(RectilinearMeshDecl* D);
     Decl* VisitUnstructuredMeshDecl(UnstructuredMeshDecl* D);
     Decl* VisitMeshFieldDecl(MeshFieldDecl* D);
+    Decl* VisitFrameDecl(FrameDecl* D);
     // +======================================================================+
     Decl *VisitEnumConstantDecl(EnumConstantDecl *D);
     Decl *VisitFunctionDecl(FunctionDecl *D);
@@ -5046,6 +5050,14 @@ void ASTImporter::ImportDefinition(Decl *From) {
     if (MeshDecl *ToMesh = dyn_cast<MeshDecl>(To)) {
       if (!ToMesh->getDefinition()) {
         Importer.ImportDefinition(cast<MeshDecl>(FromDC), ToMesh,
+                                  ASTNodeImporter::IDK_Everything);
+        return;
+      }
+    }
+    
+    if (FrameDecl *ToFrame = dyn_cast<FrameDecl>(To)) {
+      if (!ToFrame->getDefinition()) {
+        Importer.ImportDefinition(cast<FrameDecl>(FromDC), ToFrame,
                                   ASTNodeImporter::IDK_Everything);
         return;
       }

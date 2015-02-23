@@ -76,6 +76,7 @@ bool CodeCompletionContext::wantConstructorResults() const {
     case CCC_RectilinearMesh:
     case CCC_StructuredMesh:
     case CCC_UnstructuredMesh:
+    case CCC_Frame:
       return false;
   // +========================================================================+
   }

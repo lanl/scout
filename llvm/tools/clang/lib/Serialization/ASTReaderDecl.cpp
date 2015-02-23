@@ -275,7 +275,7 @@ namespace clang {
     RedeclarableResult VisitStructuredMeshDeclImpl(StructuredMeshDecl *SMD);
     RedeclarableResult
     VisitUnstructuredMeshDeclImpl(UnstructuredMeshDecl *USMD);
-
+    
     void VisitUniformMeshDecl(UniformMeshDecl *UMD)
     { VisitUniformMeshDeclImpl(UMD); }
     void VisitRectilinearMeshDecl(RectilinearMeshDecl *RMD)
@@ -284,6 +284,9 @@ namespace clang {
     { VisitStructuredMeshDeclImpl(SMD); }
     void VisitUnstructuredMeshDecl(UnstructuredMeshDecl *USMD)
     { VisitUnstructuredMeshDeclImpl(USMD); }
+
+    void VisitFrameDecl(FrameDecl *FD);
+
     // +======================================================================+
 
     RedeclarableResult VisitCXXRecordDeclImpl(CXXRecordDecl *D);
@@ -653,6 +656,18 @@ ASTDeclReader::RedeclarableResult
 ASTDeclReader::VisitUnstructuredMeshDeclImpl(UnstructuredMeshDecl *USMD) {
   RedeclarableResult Redecl = VisitMeshDecl(USMD);
   return Redecl;
+}
+
+void
+ASTDeclReader::VisitFrameDecl(FrameDecl *FD) {
+  RedeclarableResult Redecl = VisitRedeclarable(FD);
+  VisitTypeDecl(FD);
+  
+  FD->IdentifierNamespace = Record[Idx++];
+  FD->setCompleteDefinition(Record[Idx++]);
+  FD->setRBraceLoc(ReadSourceLocation(Record, Idx));
+  
+  mergeRedeclarable(FD, Redecl);
 }
 // +==========================================================================+
 

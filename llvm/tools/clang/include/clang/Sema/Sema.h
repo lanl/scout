@@ -1466,6 +1466,7 @@ public:
 
   // +===== Scout ============================================================+
   TypeSpecifierType isMeshName(IdentifierInfo &II, Scope *S);
+  TypeSpecifierType isFrameName(IdentifierInfo &II, Scope *S);
   // +========================================================================+
 
   /// \brief For compatibility with MSVC, we delay parsing of some default
@@ -2549,6 +2550,7 @@ public:
     // +===== Scout ==========================================================+
     /// Mesh name lookup, which finds the names of meshes.
     LookupMeshName,
+    LookupFrameName,
     // +======================================================================+
     /// Label name lookup.
     LookupLabel,

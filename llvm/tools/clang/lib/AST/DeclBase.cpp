@@ -575,6 +575,8 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case RectilinearMesh:
     case UnstructuredMesh:
       return IDNS_Mesh | IDNS_Type;
+    case Frame:
+      return IDNS_Frame;
     // +======================================================================+
     case Record:
     case CXXRecord:
@@ -970,7 +972,23 @@ DeclContext *DeclContext::getPrimaryContext() {
 
       return M;
 
-    } else if (DeclKind >= Decl::firstTag && DeclKind <= Decl::lastTag) {
+    } else if (DeclKind == Decl::Frame){
+      FrameDecl *F = cast<FrameDecl>(this);
+      
+      if (FrameDecl *Def = F->getDefinition())
+        return Def;
+      
+      if (!isa<InjectedClassNameType>(F->getTypeForDecl())) {
+        const FrameType *FrameTy = cast<FrameType>(F->getTypeForDecl());
+        if (FrameTy->isBeingDefined())
+          // FIXME: is it necessarily being defined in the decl
+          // that owns the type?
+          return FrameTy->getDecl();
+      }
+      
+      return F;
+    }
+    else if (DeclKind >= Decl::firstTag && DeclKind <= Decl::lastTag) {
     // if (DeclKind >= Decl::firstTag && DeclKind <= Decl::lastTag) {
     // +=====================================================================+
       // If this is a tag type that has a definition or is currently
@@ -991,6 +1009,7 @@ DeclContext *DeclContext::getPrimaryContext() {
 
       return Tag;
     }
+
 
     assert(DeclKind >= Decl::firstFunction && DeclKind <= Decl::lastFunction &&
           "Unknown DeclContext kind");

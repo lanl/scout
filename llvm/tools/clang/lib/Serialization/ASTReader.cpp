@@ -5517,8 +5517,16 @@ QualType ASTReader::readTypeRecord(unsigned Index) {
   case TYPE_WINDOW:
   case TYPE_IMAGE:
   case TYPE_QUERY:
-  case TYPE_FRAME:
     return QualType();
+  case TYPE_FRAME: {
+    unsigned Idx = 0;
+    bool IsDependent = Record[Idx++];
+    FrameDecl *RD = ReadDeclAs<FrameDecl>(*Loc.F, Record, Idx);
+    RD = cast_or_null<FrameDecl>(RD->getCanonicalDecl());
+    QualType T = Context.getFrameType(RD);
+    const_cast<Type*>(T.getTypePtr())->setDependent(IsDependent);
+    return T;
+  }
   // +======================================================================+
 
   case TYPE_ENUM: {

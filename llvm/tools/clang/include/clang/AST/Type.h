@@ -105,11 +105,13 @@ namespace clang {
   class StructuredMeshDecl;
   class RectilinearMeshDecl;
   class UnstructuredMeshDecl;
+  class FrameDecl;
   class MeshFieldDecl;
   class MemberExpr;
   class QueryExpr;
   class ScoutExpr;
   class StencilShiftExpr;
+  class FrameDecl;
   // +=======================================================================+
 
   template <typename> class CanQual;
@@ -1634,7 +1636,7 @@ public:
   bool isScoutImageType() const;
   bool isScoutRenderTargetType() const;
   bool isScoutQueryType() const;
-  bool isScoutFrameType() const;
+  bool isFrameType() const;
   // +==========================================================================+
   
   /// Determines if this type, which must satisfy
@@ -1746,6 +1748,8 @@ public:
   RectilinearMeshDecl* getAsRectilinearMeshDecl() const;
 
   UnstructuredMeshDecl* getAsUnstructuredMeshDecl() const;
+  
+  FrameDecl* getAsFrameDecl() const;
   // +========================================
 
   /// \brief Retrieves the TagDecl that this type refers to, either
@@ -3843,21 +3847,21 @@ public:
 };
   
 class FrameType : public Type {
+  FrameDecl* decl;
+  
   friend class ASTContext;  // ASTContext creates these.
   
 public:
-  FrameType()
-  : FrameType(Frame, QualType()) { }
+  FrameType(const FrameDecl* Decl)
+  : FrameType(Frame, Decl, QualType()){}
   
-  FrameType(TypeClass TC, QualType can)
-  : Type(TC, can, false,
-         /*InstantiationDependent*/false,
-         /*VariablyModified*/false,
-         /*ContainsUnexpandedParameterPack*/false){}
+  FrameType(TypeClass TC, const FrameDecl* Decl, QualType can);
   
-  StringRef getName(const PrintingPolicy &Policy) const {
-    return "frame";
-  }
+  StringRef getName() const;
+  
+  FrameDecl *getDecl() const;
+  
+  bool isBeingDefined() const;
   
   bool isSugared() const { return false; }
   
@@ -5587,6 +5591,10 @@ inline bool Type::isStructuredMeshType() const {
 inline bool Type::isUnstructuredMeshType() const {
   return isa<UnstructuredMeshType>(CanonicalType);  
 }
+  
+inline bool Type::isFrameType() const {
+  return isa<FrameType>(CanonicalType);
+}
 
 inline bool Type::isScoutWindowType() const {
   return isa<WindowType>(CanonicalType);
@@ -5604,9 +5612,6 @@ inline bool Type::isScoutQueryType() const {
   return isa<QueryType>(CanonicalType);
 }
 
-inline bool Type::isScoutFrameType() const {
-  return isa<FrameType>(CanonicalType);
-}
 // +=======================================================================+
   
 inline bool Type::isTemplateTypeParmType() const {

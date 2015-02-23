@@ -28,6 +28,7 @@
 
 // +===== Scout ==============================================================+
 #include "clang/AST/Scout/MeshDecl.h"
+#include "clang/AST/Scout/FrameDecl.h"
 // +==========================================================================+
 
 
@@ -978,6 +979,15 @@ bool Type::isIncompleteType(NamedDecl **Def) const {
       *Def = USMD;
     return !USMD->isCompleteDefinition();
   }
+      
+  case Frame: {
+    // A uniform mesh type is incomplete if the decl is a forward declaration,
+    // but not a full definition (borrowed from C99 6.2.5p22).
+    FrameDecl *FD = cast<FrameType>(CanonicalType)->getDecl();
+    if (Def)
+      *Def = FD;
+    return !FD->isCompleteDefinition();
+  }
   // +========================================================================+
 
   case ConstantArray:
@@ -1424,6 +1434,7 @@ TypeWithKeyword::getKeywordForTypeSpec(unsigned TypeSpec) {
   case TST_structured_mesh:
   case TST_rectilinear_mesh:
   case TST_unstructured_mesh:
+  case TST_frame:
 // +==========================================================================+
   case TST_typename: return ETK_Typename;
   case TST_class: return ETK_Class;

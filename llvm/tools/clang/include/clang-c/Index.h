@@ -2288,6 +2288,7 @@ enum CXCursorKind {
   CXCursor_RectilinearMeshDecl           = 802,
   CXCursor_UnstructuredMeshDecl          = 803,
   CXCursor_MeshFieldDecl                 = 804,
+  CXCursor_FrameDecl                     = 805,
   CXCursor_FirstMeshDecl                 = CXCursor_UniformMeshDecl,
   CXCursor_LastMeshDecl                  = CXCursor_UnstructuredMeshDecl
   /* +=====================================================================+ */
@@ -5254,7 +5255,8 @@ typedef enum {
   CXIdxEntity_UniformMesh           = 27,
   CXIdxEntity_StructuredMesh        = 28,
   CXIdxEntity_RectilinearMesh       = 29,
-  CXIdxEntity_UnstructuredMesh      = 30
+  CXIdxEntity_UnstructuredMesh      = 30,
+  CXIdxEntity_Frame                 = 31
   /* +=====================================================================+ */
 
 } CXIdxEntityKind;

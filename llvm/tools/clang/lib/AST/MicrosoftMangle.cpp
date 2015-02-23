@@ -1811,7 +1811,7 @@ void MicrosoftCXXNameMangler::mangleType(const QueryType *T,
 
 void MicrosoftCXXNameMangler::mangleType(const FrameType *T,
                                          SourceRange) {
-  Out << "_Rf";
+  mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
 void MicrosoftCXXNameMangler::mangleType(const RenderTargetType *T) {

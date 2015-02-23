@@ -333,6 +333,10 @@ void ASTTypeWriter::VisitQueryType(const QueryType *T) {
 }
 
 void ASTTypeWriter::VisitFrameType(const FrameType *T) {
+  Record.push_back(T->isDependentType());
+  Writer.AddDeclRef(T->getDecl()->getCanonicalDecl(), Record);
+  assert(!T->isBeingDefined() &&
+         "Cannot serialize in the middle of a type definition");
   Code = TYPE_FRAME;
 }
 // +==========================================================================+

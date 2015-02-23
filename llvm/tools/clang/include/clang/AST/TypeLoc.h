@@ -23,6 +23,7 @@
 
 // +===== Scout ==============================================================+
 #include "clang/AST/Scout/MeshDecls.h"
+#include "clang/AST/Scout/FrameDecl.h"
 // +==========================================================================+
 
 namespace clang {
@@ -2201,11 +2202,18 @@ struct FrameLocInfo {
   SourceLocation LBracketLoc, RBracketLoc;
 };
   
-class FrameTypeLoc : public ConcreteTypeLoc<TypeSpecTypeLoc,
-  FrameTypeLoc,
-  FrameType,
-  FrameLocInfo> {
+class FrameTypeLoc :
+  public ConcreteTypeLoc<TypeSpecTypeLoc, FrameTypeLoc, FrameType, FrameLocInfo> {
+  
   public:
+    
+    FrameDecl *getDecl() const { return getTypePtr()->getDecl(); }
+    
+    bool isDefinition() const {
+      FrameDecl *D = getDecl();
+      return D->isCompleteDefinition();
+    }
+    
     SourceLocation getLBracketLoc() const {
       return getLocalData()->LBracketLoc;
     }

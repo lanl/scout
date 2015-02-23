@@ -351,6 +351,8 @@ public:
   // +===== Scout ============================================================+
   /// getOrCreateMeshType - Emit mesh type's standalone debug info.
   llvm::DIType getOrCreateMeshType(QualType Ty, SourceLocation L);
+  
+  llvm::DIType getOrCreateFrameType(QualType Ty, SourceLocation L);
   // +========================================================================+
 
   /// getOrCreateInterfaceType - Emit an objective c interface type standalone
@@ -370,10 +372,12 @@ public:
   void completeRequiredType(const RectilinearMeshDecl *MD);
   void completeRequiredType(const StructuredMeshDecl *MD);
   void completeRequiredType(const UnstructuredMeshDecl *MD);
+  void completeRequiredType(const FrameDecl *FD);
   void completeClassData(const UniformMeshDecl *MD);
   void completeClassData(const  RectilinearMeshDecl *MD);
   void completeClassData(const  StructuredMeshDecl *MD);
   void completeClassData(const  UnstructuredMeshDecl *MD);
+  void completeClassData(const  FrameDecl *MD);
 
   // +========================================================================+
 
@@ -421,6 +425,9 @@ private:
   /// \brief Create a forward decl for a unstructured mesh in a given context.
   llvm::DICompositeType getOrCreateMeshFwdDecl(const UnstructuredMeshType *,
                                                llvm::DIDescriptor);
+  
+  llvm::DICompositeType getOrCreateFrameFwdDecl(const FrameType *,
+                                                llvm::DIDescriptor);
 
   // +========================================================================+
 
@@ -456,6 +463,7 @@ private:
   llvm::DIType getOrCreateLimitedType(const RectilinearMeshType *, llvm::DIFile);
   llvm::DIType getOrCreateLimitedType(const StructuredMeshType *, llvm::DIFile);
   llvm::DIType getOrCreateLimitedType(const UnstructuredMeshType *, llvm::DIFile);
+  llvm::DIType getOrCreateLimitedType(const FrameType *, llvm::DIFile);
   // +========================================================================+
 
   /// CreateTypeNode - Create type metadata for a source language type.

@@ -17,6 +17,7 @@
 #include "llvm/ADT/StringRef.h"
 // +===== Scout ============================================================+
 #include "clang/AST/Scout/MeshDecl.h"
+#include "clang/AST/Scout/FrameDecl.h"
 // +========================================================================+
 
 namespace clang {
@@ -91,6 +92,9 @@ public:
   /// \brief This callback is invoked the first time each MeshDecl is required to
   /// be complete.
   virtual void HandleMeshDeclRequiredDefinition(const MeshDecl *D) {}
+  
+  virtual void HandleFrameDeclDefinition(FrameDecl *D) {}
+  virtual void HandleFrameDeclRequiredDefinition(const FrameDecl *D) {}
   // +========================================================================+
 
   /// \brief Invoked when a function is implicitly instantiated.

@@ -109,6 +109,28 @@ getUniqueMeshTypeName(const MeshType *Ty, CodeGenModule &CGM,
   return FullName;
 }
 
+static SmallString<256>
+getUniqueFrameName(const FrameType *Ty, CodeGenModule &CGM,
+                      llvm::DICompileUnit TheCU) {
+  SmallString<256> FullName;
+  // FIXME: ODR should apply to ObjC++ exactly the same wasy it does to C++.
+  // For now, only apply ODR with C++.
+  const FrameDecl *TD = Ty->getDecl();
+  if (TheCU.getLanguage() != llvm::dwarf::DW_LANG_C_plus_plus ||
+      !TD->isExternallyVisible())
+    return FullName;
+  // Microsoft Mangler does not have support for mangleCXXRTTIName yet.
+  if (CGM.getTarget().getCXXABI().isMicrosoft())
+    return FullName;
+  
+  // TODO: This is using the RTTI name. Is there a better way to get
+  // a unique string for a type?
+  llvm::raw_svector_ostream Out(FullName);
+  CGM.getCXXABI().getMangleContext().mangleCXXRTTIName(QualType(Ty, 0), Out);
+  Out.flush();
+  return FullName;
+}
+
 void CGDebugInfo::completeType(const MeshDecl *MD) {
   if (DebugKind > CodeGenOptions::LimitedDebugInfo ||
       !CGM.getLangOpts().CPlusPlus) {
@@ -122,6 +144,15 @@ void CGDebugInfo::completeType(const MeshDecl *MD) {
       completeRequiredType(USMD);
   }
 }
+
+/*
+void CGDebugInfo::completeType(const FrameDecl *FD) {
+  if (DebugKind > CodeGenOptions::LimitedDebugInfo ||
+      !CGM.getLangOpts().CPlusPlus) {
+    completeRequiredType(FD);
+  }
+}
+ */
 
 void CGDebugInfo::completeRequiredType(const UniformMeshDecl *MD) {
   QualType Ty = CGM.getContext().getUniformMeshType(MD);
@@ -150,6 +181,13 @@ void CGDebugInfo::completeRequiredType(const UnstructuredMeshDecl *MD) {
   llvm::DIType T = getTypeOrNull(Ty);
   if (T && T.isForwardDecl())
     completeClassData(MD);
+}
+
+void CGDebugInfo::completeRequiredType(const FrameDecl *FD) {
+  QualType Ty = CGM.getContext().getFrameType(FD);
+  llvm::DIType T = getTypeOrNull(Ty);
+  if (T && T.isForwardDecl())
+    completeClassData(FD);
 }
 
 void CGDebugInfo::completeClassData(const UniformMeshDecl *MD) {
@@ -208,7 +246,22 @@ void CGDebugInfo::completeClassData(const UnstructuredMeshDecl *MD) {
   TypeCache[TyPtr].reset(Res);
 }
 
-
+void CGDebugInfo::completeClassData(const FrameDecl *MD) {
+  assert(false && "unimplemented");
+  /*
+  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+    return;
+  QualType Ty = CGM.getContext().getFrameType(MD);
+  void* TyPtr = Ty.getAsOpaquePtr();
+  auto I = TypeCache.find(TyPtr);
+  if (I != TypeCache.end() &&
+      !llvm::DIType(cast<llvm::MDNode>(I->second)).isForwardDecl())
+    return;
+  llvm::DIType Res = CreateTypeDefinition(Ty->castAs<FrameType>());
+  assert(!Res.isForwardDecl());
+  TypeCache[TyPtr].reset(Res);
+   */
+}
 
 //===----------------------------------------------------------------------===//
 // Uniform Mesh debug support
@@ -1173,5 +1226,60 @@ llvm::DIType CGDebugInfo::CreateType(const QueryType *Ty) {
 //===----------------------------------------------------------------------===//
 
 llvm::DIType CGDebugInfo::CreateType(const FrameType *Ty) {
-  return getOrCreateStructPtrType("__scout_frame_t", FrameDITy);
+  assert(false && "unimplemented");
 }
+
+/*
+// ----- CreateType
+//
+
+// ----- CreateTypeDefinition
+//
+llvm::DIType CGDebugInfo::CreateTypeDefinition(const FrameType *Ty) {
+  FrameDecl *FD = Ty->getDecl();
+  
+  // Get overall information about the mesh type for the debug info.
+  llvm::DIFile DefUnit = getOrCreateFile(FD->getLocation());
+  
+  // Meshes can be recursive.  To handle them, we first generate a
+  // debug descriptor for the mesh as a forward declaration.  Then
+  // (if it is a definition) we go through and get debug information
+  // for all of its members.  Finally, we create a descriptor for the
+  // complete type (which may refer to forward decl if it is recursive)
+  // and replace all uses of the forward declaration with the final
+  // definition.
+  
+  llvm::DICompositeType FwdDecl(getOrCreateLimitedType(Ty, DefUnit));
+  assert(FwdDecl.isCompositeType() &&
+         "The debug type of UniformMeshType should be a llvm::DICompositeType");
+  
+  if (FwdDecl.isForwardDecl())
+    return FwdDecl;
+  
+  // Push the mesh on region stack.
+  LexicalBlockStack.emplace_back(&*FwdDecl);
+  RegionMap[Ty->getDecl()].reset(FwdDecl);
+
+  return FwdDecl;
+}
+
+// TODO: Currently used for context chains when limiting debug info.
+llvm::DICompositeType
+CGDebugInfo::CreateLimitedType(const FrameType *Ty) {
+  assert(false && "unimplemented");
+}
+
+// Creates a forward declaration for a uniform mesh the given context.
+llvm::DICompositeType
+CGDebugInfo::getOrCreateFrameFwdDecl(const FrameType *Ty,
+                                    llvm::DIDescriptor Ctx) {
+  assert(false && "unimplemented");
+}
+
+/// getOrCreateLimitedType - Get the type from the cache or create a new
+/// limited type if necessary.
+llvm::DIType CGDebugInfo::getOrCreateLimitedType(const FrameType *Ty,
+                                                 llvm::DIFile Unit) {
+  assert(false && "unimplemented");
+}
+*/

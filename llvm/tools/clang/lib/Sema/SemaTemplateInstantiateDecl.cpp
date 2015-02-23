@@ -98,6 +98,13 @@ TemplateDeclInstantiator::SubstQualifier(const UnstructuredMeshDecl *OldDecl,
   return false;
 }
 
+bool
+TemplateDeclInstantiator::SubstQualifier(const FrameDecl *OldDecl,
+                                         FrameDecl *NewDecl) {
+  assert(false && "parsing Scout in C++ mode");
+  return false;
+}
+
 // +==========================================================================+
 
 
@@ -1337,6 +1344,11 @@ TemplateDeclInstantiator::VisitStructuredMeshDecl(StructuredMeshDecl *D) {
 
 Decl *
 TemplateDeclInstantiator::VisitUnstructuredMeshDecl(UnstructuredMeshDecl *D) {
+  assert(false && "parsing Scout in C++ mode");
+  return nullptr;
+}
+
+Decl *TemplateDeclInstantiator::VisitFrameDecl(FrameDecl *D) {
   assert(false && "parsing Scout in C++ mode");
   return nullptr;
 }

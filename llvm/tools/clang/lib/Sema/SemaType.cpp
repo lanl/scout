@@ -983,17 +983,9 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     break;
   }
   case DeclSpec::TST_frame: {
-    for(unsigned i = 0; i < declarator.getNumTypeObjects(); ++i) {
-      DeclaratorChunk &DeclType = declarator.getTypeObject(i);
-      switch(DeclType.Kind) {
-        case DeclaratorChunk::Frame: {
-          Result = Context.getFrameType();
-          break;
-        }
-        default:
-          break;
-      }
-    }
+    Result = Context.VoidPtrTy;
+    declarator.setInvalidType(true);
+    S.Diag(DS.getTypeSpecTypeLoc(), diag::err_invalid_mesh_specifier);
     break;
   }
     
@@ -1907,10 +1899,11 @@ QualType Sema::BuildQueryType(QualType T) {
 }
 
 QualType Sema::BuildFrameType(QualType T) {
-  const FrameType* qt = dyn_cast<FrameType>(T.getCanonicalType().getTypePtr());
-  if (qt) {
-    return Context.getFrameType();
-  }
+  const FrameType* FT;
+  FT = dyn_cast<FrameType>(T.getCanonicalType().getTypePtr());
+  if (FT) {
+  }    return Context.getFrameType(FT->getDecl());
+
   return QualType();
 }
 
