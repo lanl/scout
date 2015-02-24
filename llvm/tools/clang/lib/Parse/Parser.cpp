@@ -834,19 +834,20 @@ Parser::ParseDeclOrFunctionDefInternal(ParsedAttributesWithRange &attrs,
                                        AccessSpecifier AS) {
   // ===== Scout ================================+
   // Clang normally assumes that we are parsing a TagDecl, but here
-  // we have to check if we are parsing a mesh declaration and omit
+  // we have to check if we are parsing a mesh declaration / frame and omit
   // one of the paths followed below if so
-  bool isMeshDecl;
+  bool isScoutDecl;
 
   if(isScoutLang()){
-    isMeshDecl =
+    isScoutDecl =
     Tok.is(tok::kw_uniform) ||
     Tok.is(tok::kw_structured) ||
     Tok.is(tok::kw_unstructured) ||
-    Tok.is(tok::kw_rectilinear);
+    Tok.is(tok::kw_rectilinear) ||
+    Tok.is(tok::kw_frame);
   }
   else{
-    isMeshDecl = false;
+    isScoutDecl = false;
   }
   // +============================================+
   
@@ -856,7 +857,7 @@ Parser::ParseDeclOrFunctionDefInternal(ParsedAttributesWithRange &attrs,
   // If we had a free-standing type definition with a missing semicolon, we
   // may get this far before the problem becomes obvious.
   // ===== Scout ================================+
-  if (!isMeshDecl && DS.hasTagDefinition() &&
+  if (!isScoutDecl && DS.hasTagDefinition() &&
       DiagnoseMissingSemiAfterTagDefinition(DS, AS, DSC_top_level))
     return DeclGroupPtrTy();
   // +============================================+
