@@ -2531,7 +2531,7 @@ private:
                              SourceLocation MeshLoc);
 
   bool ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo);
-
+  
   bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
 
   void ParseMeshDeclaration(ParsingDeclSpec &DS,
@@ -2565,6 +2565,8 @@ private:
   bool isScoutLang() const{
     return clang::isScoutLang(getLangOpts());
   }
+  
+  bool ParseFrameSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo);
   // +========================================================================+
 };
 

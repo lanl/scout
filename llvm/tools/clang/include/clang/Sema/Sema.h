@@ -8939,6 +8939,12 @@ public:
   
   ExprResult ActOnSpecValueExpr(Expr* E);
   
+  Decl* ActOnFrameDefinition(Scope* S,
+                             SourceLocation FrameLoc,
+                             IdentifierInfo* Name,
+                             SourceLocation NameLoc,
+                             Expr* Spec);
+  
   //  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
   //                                      SourceLocation L, SourceLocation R,
   //                                      IdentifierInfo* MII, VarDecl* MVD,

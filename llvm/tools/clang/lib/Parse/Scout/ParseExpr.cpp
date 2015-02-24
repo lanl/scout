@@ -243,7 +243,25 @@ ExprResult Parser::ParseSpecObjectExpression(){
   SpecObjectExpr* obj =
   cast<SpecObjectExpr>(Actions.ActOnSpecObjectExpr(Tok.getLocation()).get());
   
+  bool first = true;
+  
   for(;;){
+    if(Tok.is(tok::r_brace)){
+      ConsumeBrace();
+      break;
+    }
+    
+    if(first){
+      first = false;
+    }
+    else{
+      if(Tok.isNot(tok::comma)){
+        Diag(Tok, diag::err_spec_invalid_expected) << ",";
+        return ExprError();
+      }
+      ConsumeToken();
+    }
+    
     std::string key;
     
     if(Tok.is(tok::identifier)){
@@ -277,17 +295,6 @@ ExprResult Parser::ParseSpecObjectExpression(){
     SpecExpr* value = cast<SpecExpr>(valueResult.get());
     
     obj->insert(key, value);
-    
-    if(Tok.is(tok::r_brace)){
-      ConsumeBrace();
-      break;
-    }
-    else if(Tok.isNot(tok::comma)){
-      Diag(Tok, diag::err_spec_invalid_expected) << ",";
-      return ExprError();
-    }
-    
-    ConsumeToken();
   }
   
   return obj;

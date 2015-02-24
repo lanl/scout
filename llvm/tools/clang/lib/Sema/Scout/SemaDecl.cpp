@@ -324,4 +324,17 @@ bool Sema::IsValidRecordDeclInMesh(RecordDecl* RD) {
   return true;
 }
 
-
+Decl* Sema::ActOnFrameDefinition(Scope* S,
+                                 SourceLocation FrameLoc,
+                                 IdentifierInfo* Name,
+                                 SourceLocation NameLoc,
+                                 Expr* Spec){
+  
+  LookupResult LR(*this, Name, NameLoc,
+                  LookupFrameName, Sema::NotForRedeclaration);
+  
+  FrameDecl* FD =
+  FrameDecl::Create(Context, CurContext, FrameLoc, NameLoc, Name, 0);
+  PushOnScopeChains(FD, S, true);
+  return FD;
+}

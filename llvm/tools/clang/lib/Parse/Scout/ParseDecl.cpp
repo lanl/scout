@@ -597,3 +597,55 @@ void Parser::ParseMeshParameterDeclaration(DeclSpec& DS) {
     return;
   }
 }
+
+bool Parser::ParseFrameSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TI) {
+  assert(Tok.is(tok::kw_frame) && "expected frame keyword");
+  
+  SourceLocation FrameLoc = ConsumeToken();
+  
+  IdentifierInfo* Name;
+  SourceLocation NameLoc;
+  
+  if(Tok.is(tok::identifier)){
+    Name = Tok.getIdentifierInfo();
+    NameLoc = ConsumeToken();
+  }
+  else{
+    Diag(Tok, diag::err_expected_ident);
+    DS.SetTypeSpecError();
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    return false;
+  }
+  
+  if(Tok.isNot(tok::l_brace)){
+    Diag(Tok, diag::err_frame_expected_specifier);
+    DS.SetTypeSpecError();
+    SkipUntil(tok::r_brace);
+    SkipUntil(tok::semi);
+    return false;
+  }
+  
+  ExprResult Result = ParseSpecObjectExpression();
+  if(Result.isInvalid()){
+    return false;
+  }
+  
+  FrameDecl* FD =
+  static_cast<FrameDecl*>(Actions.ActOnFrameDefinition(getCurScope(), FrameLoc,
+                                                       Name, NameLoc,
+                                                       Result.get()));
+  FD->completeDefinition();
+  
+  const char* PrevSpec = 0;
+  unsigned DiagID;
+  
+  const clang::PrintingPolicy &Policy =
+  Actions.getASTContext().getPrintingPolicy();
+  
+  DS.SetTypeSpecType(DeclSpec::TST_frame,
+                     FrameLoc, PrevSpec,
+                     DiagID, FD, true, Policy);
+  
+  return true;
+}

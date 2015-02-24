@@ -3351,8 +3351,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     }
         
     case tok::kw_frame: {
-      ConsumeToken();
-      isInvalid = DS.SetTypeSpecType(DeclSpec::TST_frame, Loc, PrevSpec, DiagID, Policy);
+      ParseFrameSpecifier(DS, TemplateInfo);
       continue;
     }
         
