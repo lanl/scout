@@ -59,6 +59,7 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Parse/ParseDiagnostic.h"
+#include "clang/Lex/Preprocessor.h"
 #include <algorithm>
 #include <cstring>
 #include <functional>
@@ -327,14 +328,30 @@ bool Sema::IsValidRecordDeclInMesh(RecordDecl* RD) {
 Decl* Sema::ActOnFrameDefinition(Scope* S,
                                  SourceLocation FrameLoc,
                                  IdentifierInfo* Name,
-                                 SourceLocation NameLoc,
-                                 Expr* Spec){
-  
-  LookupResult LR(*this, Name, NameLoc,
-                  LookupFrameName, Sema::NotForRedeclaration);
+                                 SourceLocation NameLoc){
   
   FrameDecl* FD =
   FrameDecl::Create(Context, CurContext, FrameLoc, NameLoc, Name, 0);
-  PushOnScopeChains(FD, S, true);
+  
+  PushDeclContext(S, FD);
+  
+  VarDecl* VD =
+  VarDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
+                  PP.getIdentifierInfo("Timestep"), Context.IntTy,
+                  Context.getTrivialTypeSourceInfo(Context.IntTy),
+                  SC_None);
+  
+  PushOnScopeChains(VD, S, true);
+  
+  FD->completeDefinition();
+  
   return FD;
+}
+
+void Sema::PopFrameContext(FrameDecl* F){
+  PopDeclContext();
+}
+
+void Sema::InitFrame(FrameDecl* F, Expr* Spec){
+  
 }

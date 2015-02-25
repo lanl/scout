@@ -625,17 +625,24 @@ bool Parser::ParseFrameSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TI) {
     SkipUntil(tok::semi);
     return false;
   }
+
+  //unsigned ScopeFlags = Scope::DeclScope | Scope::ControlScope;
   
-  ExprResult Result = ParseSpecObjectExpression();
-  if(Result.isInvalid()){
-    return false;
-  }
+  //ParseScope FrameScope(this, ScopeFlags);
   
   FrameDecl* FD =
   static_cast<FrameDecl*>(Actions.ActOnFrameDefinition(getCurScope(), FrameLoc,
-                                                       Name, NameLoc,
-                                                       Result.get()));
-  FD->completeDefinition();
+                                                       Name, NameLoc));
+  
+  ExprResult Result = ParseSpecObjectExpression();
+  if(Result.isInvalid()){
+    Actions.PopFrameContext(FD);
+    return false;
+  }
+  
+  Actions.PopFrameContext(FD);
+  
+  Actions.InitFrame(FD, Result.get());
   
   const char* PrevSpec = 0;
   unsigned DiagID;

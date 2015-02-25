@@ -8942,8 +8942,11 @@ public:
   Decl* ActOnFrameDefinition(Scope* S,
                              SourceLocation FrameLoc,
                              IdentifierInfo* Name,
-                             SourceLocation NameLoc,
-                             Expr* Spec);
+                             SourceLocation NameLoc);
+    
+  void PopFrameContext(FrameDecl* F);
+
+  void InitFrame(FrameDecl* F, Expr* Spec);
   
   //  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
   //                                      SourceLocation L, SourceLocation R,
