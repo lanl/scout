@@ -266,6 +266,8 @@ ExprResult Parser::ParseSpecObjectExpression(){
     
     std::string key;
     
+    SourceLocation keyLoc = Tok.getLocation();
+    
     if(Tok.is(tok::identifier)){
       IdentifierInfo* IdentInfo = Tok.getIdentifierInfo();
       key = IdentInfo->getName().str();
@@ -296,7 +298,7 @@ ExprResult Parser::ParseSpecObjectExpression(){
     }
     else{
       SpecExpr* value = cast<SpecExpr>(valueResult.get());
-      obj->insert(key, value);
+      obj->insert(key, keyLoc, value);
     }
   }
   

@@ -335,23 +335,95 @@ Decl* Sema::ActOnFrameDefinition(Scope* S,
   
   PushDeclContext(S, FD);
   
-  VarDecl* VD =
-  VarDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
-                  PP.getIdentifierInfo("Timestep"), Context.IntTy,
-                  Context.getTrivialTypeSourceInfo(Context.IntTy),
-                  SC_None);
-  
-  PushOnScopeChains(VD, S, true);
-  
-  FD->completeDefinition();
+  AddFrameVarType(S, FD, "Timestep", Context.IntTy);
+  AddFrameVarType(S, FD, "Temperature", Context.DoubleTy);
   
   return FD;
+}
+
+void Sema::AddFrameVarType(Scope* Scope,
+                           FrameDecl* FD,
+                           const char* Name,
+                           QualType Type){
+  VarDecl* VD =
+  VarDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
+                  PP.getIdentifierInfo(Name), Type,
+                  Context.getTrivialTypeSourceInfo(Type),
+                  SC_None);
+  FD->addVarType(VD);
+  
+  PushOnScopeChains(VD, Scope, true);
 }
 
 void Sema::PopFrameContext(FrameDecl* F){
   PopDeclContext();
 }
 
-void Sema::InitFrame(FrameDecl* F, Expr* Spec){
+bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
+  using namespace std;
   
+  bool valid = true;
+  
+  SpecObjectExpr* Spec = static_cast<SpecObjectExpr*>(SE);
+  
+  auto& m = Spec->memberMap();
+  
+  for(auto& itr : m){
+    const string& k = itr.first;
+    
+    if(!SpecExpr::isSymbol(k)){
+      Diag(Spec->getKeyLoc(k), diag::err_invalid_frame_spec) << "invalid frame variable";
+      valid = false;
+    }
+    
+    SpecExpr* v = itr.second;
+
+    SpecObjectExpr* vo = v->toObject();
+    
+    if(!vo){
+      Diag(v->getLocStart(), diag::err_invalid_frame_spec) << "invalid frame definition";
+      valid = false;
+    }
+
+    VarDecl* vt = 0;
+    
+    SpecExpr* t = vo->get("type");
+
+    if(t){
+      DeclRefExpr* dr = dyn_cast_or_null<DeclRefExpr>(t->toExpr());
+      if(!dr){
+        Diag(v->getLocStart(), diag::err_invalid_frame_spec) << "expeceted type specifier";
+        valid = false;
+      }
+      else{
+        vt = cast<VarDecl>(dr->getDecl());
+        if(!F->hasVarType(vt)){
+          Diag(v->getLocStart(), diag::err_invalid_frame_spec) << "invalid type";
+          valid = false;
+        }
+      }
+    }
+    else{
+      vt = F->getVarType(SpecExpr::toUpper(k));
+      if(!vt){
+        Diag(v->getLocStart(), diag::err_invalid_frame_spec) << "no valid default type";
+        valid = false;
+      }
+    }
+    
+    if(vt){
+      VarDecl* VD =
+      VarDecl::Create(Context, F, SourceLocation(), SourceLocation(),
+                      PP.getIdentifierInfo(k), Context.IntTy,
+                      Context.getTrivialTypeSourceInfo(Context.IntTy),
+                      SC_None);
+      
+      PushOnScopeChains(VD, Scope, true);
+    }
+  }
+  
+  F->setSpec(Spec);
+  F->completeDefinition();
+  
+  return valid;
 }

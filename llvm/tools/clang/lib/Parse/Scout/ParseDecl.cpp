@@ -640,9 +640,12 @@ bool Parser::ParseFrameSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TI) {
     return false;
   }
   
+  if(!Actions.InitFrame(getCurScope(), FD, Result.get())){
+    Actions.PopFrameContext(FD);
+    return false;
+  }
+
   Actions.PopFrameContext(FD);
-  
-  Actions.InitFrame(FD, Result.get());
   
   const char* PrevSpec = 0;
   unsigned DiagID;

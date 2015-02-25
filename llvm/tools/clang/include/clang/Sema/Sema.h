@@ -8946,7 +8946,9 @@ public:
     
   void PopFrameContext(FrameDecl* F);
 
-  void InitFrame(FrameDecl* F, Expr* Spec);
+  void AddFrameVarType(Scope* Scope, FrameDecl* FD, const char* Name, QualType Type);
+  
+  bool InitFrame(Scope* Scope, FrameDecl* F, Expr* Spec);
   
   //  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
   //                                      SourceLocation L, SourceLocation R,
