@@ -1809,6 +1809,11 @@ void MicrosoftCXXNameMangler::mangleType(const QueryType *T,
   Out << "_Rq";
 }
 
+void MicrosoftCXXNameMangler::mangleType(const FrameVarType *T,
+                                         SourceRange) {
+  Out << "_Rv";
+}
+
 void MicrosoftCXXNameMangler::mangleType(const FrameType *T,
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));

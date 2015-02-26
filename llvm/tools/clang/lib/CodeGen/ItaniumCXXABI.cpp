@@ -2455,6 +2455,7 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty) {
   case Type::Image:
   case Type::Query:
   case Type::Frame:
+  case Type::FrameVar:
     llvm_unreachable("Scout types shouldn't get here");
   // ====================================
       
@@ -2685,6 +2686,7 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
   case Type::Image:
   case Type::Query:
   case Type::Frame:
+  case Type::FrameVar:
     llvm_unreachable("Scout types shouldn't get here");
 // ====================================
       

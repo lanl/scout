@@ -217,6 +217,7 @@ public:
   llvm::Type *ConvertScoutRenderTargetType(QualType T);
   llvm::Type *ConvertScoutQueryType(QualType T);
   llvm::Type *ConvertScoutFrameType(QualType T);
+  llvm::Type *ConvertScoutFrameVarType(QualType T);
   // +========================================================================+
 
   /// ConvertTypeForMem - Convert type T into a llvm::Type.  This differs from

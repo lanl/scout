@@ -2291,6 +2291,10 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       break;  // SC_TODO: We're assuming query is a fundamental type (correct?) 
     }
         
+    case Type::FrameVar: {
+      break;  // SC_TODO: We're assuming query is a fundamental type (correct?)
+    }
+        
     case Type::Frame: {
       FrameDecl* FD = cast<FrameDecl>(cast<FrameType>(T)->getDecl());
       addAssociatedClassesAndNamespaces(Result, FD);

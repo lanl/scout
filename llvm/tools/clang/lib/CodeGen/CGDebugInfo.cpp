@@ -2185,6 +2185,8 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile Unit) {
     return CreateType(cast<QueryType>(Ty));
   case Type::Frame:
     return CreateType(cast<FrameType>(Ty));
+  case Type::FrameVar:
+    return CreateType(cast<FrameVarType>(Ty));
   // +========================================================================+
 
   case Type::Record:

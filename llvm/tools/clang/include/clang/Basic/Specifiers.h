@@ -66,6 +66,7 @@ namespace clang {
     TST_image,
     TST_query,
     TST_frame,
+    TST_frame_var,
     // +======================================================================+
     TST_decltype,         // C++11 decltype
     TST_underlyingType,   // __underlying_type for C++11

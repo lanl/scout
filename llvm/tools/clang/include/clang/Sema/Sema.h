@@ -1166,6 +1166,7 @@ public:
   QualType BuildImageType(QualType T, const llvm::SmallVector<Expr*,2> &dims);
   QualType BuildQueryType(QualType T);
   QualType BuildFrameType(QualType T);
+  QualType BuildFrameVarType(QualType T, const Type* elementType);
   // +========================================================================+
 
   /// \brief Build a function type.

@@ -304,6 +304,7 @@ public:
   static const TST TST_image             = clang::TST_image;
   static const TST TST_query             = clang::TST_query;
   static const TST TST_frame             = clang::TST_frame;
+  static const TST TST_frame_var         = clang::TST_frame_var;
   // +========================================================================+
 
   static const TST TST_decimal32 = clang::TST_decimal32;
@@ -324,7 +325,7 @@ public:
   static const TST TST_unknown_anytype = clang::TST_unknown_anytype;
   static const TST TST_atomic = clang::TST_atomic;
   static const TST TST_error = clang::TST_error;
-
+  
   // type-qualifiers
   enum TQ {   // NOTE: These flags must be kept in sync with Qualifiers::TQ.
     TQ_unspecified = 0,
@@ -1123,7 +1124,7 @@ struct DeclaratorChunk {
     Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren,
     // +===== Scout ==========================================================+
     UniformMesh, UnstructuredMesh, RectilinearMesh, StructuredMesh,
-    Window, Image, Query, Frame
+    Window, Image, Query, Frame, FrameVar
     // +======================================================================+
   } Kind;
 
@@ -1277,6 +1278,10 @@ struct DeclaratorChunk {
   };
   
   struct FrameTypeInfo : TypeInfoCommon {
+    void destroy() {}
+  };
+  
+  struct FrameVarTypeInfo : TypeInfoCommon {
     void destroy() {}
   };
 
@@ -1551,6 +1556,7 @@ struct DeclaratorChunk {
     ImageTypeInfo              Img;
     QueryTypeInfo              Qry;
     FrameTypeInfo              Frm;
+    FrameVarTypeInfo           FrmVar;
     // +======================================================================+
   };
 
@@ -1572,6 +1578,7 @@ struct DeclaratorChunk {
     case DeclaratorChunk::Image:              return Img.destroy();
     case DeclaratorChunk::Query:              return Qry.destroy();
     case DeclaratorChunk::Frame:              return Frm.destroy();
+    case DeclaratorChunk::FrameVar:           return FrmVar.destroy();
     // +======================================================================+
     }
   }
@@ -1791,6 +1798,13 @@ struct DeclaratorChunk {
   }
   
   static DeclaratorChunk getFrame(SourceLocation Loc) {
+    DeclaratorChunk I;
+    I.Kind           = Frame;
+    I.Loc            = Loc;
+    return I;
+  }
+  
+  static DeclaratorChunk getFrameVar(SourceLocation Loc) {
     DeclaratorChunk I;
     I.Kind           = Frame;
     I.Loc            = Loc;
@@ -2271,6 +2285,7 @@ public:
       case DeclaratorChunk::Image:
       case DeclaratorChunk::Query:
       case DeclaratorChunk::Frame:
+      case DeclaratorChunk::FrameVar:
       // +====================================================================+
         return false;
       }

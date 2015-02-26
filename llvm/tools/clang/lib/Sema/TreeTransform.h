@@ -5146,6 +5146,14 @@ TreeTransform<Derived>::TransformQueryType(TypeLocBuilder &TLB,
     
   return TL.getType();
 }
+  
+template<typename Derived>
+QualType
+TreeTransform<Derived>::TransformFrameVarType(TypeLocBuilder &TLB,
+                                              FrameVarTypeLoc TL) {
+  
+  return TL.getType();
+}
 
 template<typename Derived>
 QualType

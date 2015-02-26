@@ -190,6 +190,7 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::Image:
     case Type::Query:
     case Type::Frame:
+    case Type::FrameVar:
       CanPrefixQualifiers = false;
       break;
     // +======================================================================+

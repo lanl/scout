@@ -162,6 +162,7 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
   case Type::Window:
   case Type::Image:
   case Type::Frame:
+  case Type::FrameVar:
     return TEK_Scalar;
     
   case Type::Query:
@@ -1593,6 +1594,7 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
     case Type::Image:
     case Type::Query:
     case Type::Frame:
+    case Type::FrameVar:
         llvm_unreachable("type class is never variably-modified!");
     // +======================================================================+
     case Type::Builtin:

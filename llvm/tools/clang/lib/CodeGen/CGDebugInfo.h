@@ -68,6 +68,7 @@ class CGDebugInfo {
   llvm::DIType ImageDITy;
   llvm::DIType QueryDITy;
   llvm::DIType FrameDITy;
+  llvm::DIType FrameVarDITy;
   // +========================================================================+
 
   /// TypeCache - Cache of previously constructed Types.
@@ -217,6 +218,8 @@ class CGDebugInfo {
   llvm::DIType CreateType(const QueryType *Ty);
   
   llvm::DIType CreateType(const FrameType *Ty);
+  
+  llvm::DIType CreateType(const FrameVarType *Ty);
   // +========================================================================+
 
   void CollectCXXMemberFunctions(const CXXRecordDecl *Decl, llvm::DIFile F,

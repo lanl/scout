@@ -1517,6 +1517,7 @@ bool CXXNameMangler::mangleUnresolvedTypeOrSimpleId(QualType Ty,
     case Type::Image:
     case Type::Query:
     case Type::Frame:
+    case Type::FrameVar:
       llvm_unreachable("type is illegal as a nested name specifier");
     // +======================================================================+
 
@@ -2156,6 +2157,10 @@ void CXXNameMangler::mangleType(const QueryType *T) {
 
 void CXXNameMangler::mangleType(const FrameType *T) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
+}
+
+void CXXNameMangler::mangleType(const FrameVarType *T) {
+  Out << 'A';
 }
 
 // ============================================================================

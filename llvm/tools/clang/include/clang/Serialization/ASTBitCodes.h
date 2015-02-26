@@ -878,8 +878,10 @@ namespace clang {
       TYPE_IMAGE              = 48,
       /// \brief A Query type.
       TYPE_QUERY              = 49,
-      /// \brief A Data type.
-      TYPE_FRAME              = 50
+      /// \brief A Frame type.
+      TYPE_FRAME              = 50,
+      /// \brief A FrameVar type.
+      TYPE_FRAME_VAR          = 51
       // =======================================
     };
 

@@ -611,6 +611,9 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T, bool isStencil) {
   case Type::Frame:
     ResultType = ConvertScoutFrameType(T);
     break;
+  case Type::FrameVar:
+    ResultType = ConvertScoutFrameVarType(T);
+    break;
   // +========================================================================+
 
   case Type::Enum: {

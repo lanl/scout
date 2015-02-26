@@ -332,6 +332,10 @@ void ASTTypeWriter::VisitQueryType(const QueryType *T) {
   Code = TYPE_QUERY;
 }
 
+void ASTTypeWriter::VisitFrameVarType(const FrameVarType *T) {
+  Code = TYPE_FRAME_VAR;
+}
+
 void ASTTypeWriter::VisitFrameType(const FrameType *T) {
   Record.push_back(T->isDependentType());
   Writer.AddDeclRef(T->getDecl()->getCanonicalDecl(), Record);
@@ -638,6 +642,8 @@ void TypeLocWriter::VisitImageTypeLoc(ImageTypeLoc TL)
 void TypeLocWriter::VisitQueryTypeLoc(QueryTypeLoc TL)
 { }
 void TypeLocWriter::VisitFrameTypeLoc(FrameTypeLoc TL)
+{ }
+void TypeLocWriter::VisitFrameVarTypeLoc(FrameVarTypeLoc TL)
 { }
 // +==========================================================================+
 void TypeLocWriter::VisitRecordTypeLoc(RecordTypeLoc TL) {
