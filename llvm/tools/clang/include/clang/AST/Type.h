@@ -3880,7 +3880,7 @@ class FrameVarType : public Type {
   
 public:
   FrameVarType(const Type* ET)
-  : FrameVarType(Frame, ET, QualType()){}
+  : FrameVarType(FrameVar, ET, QualType()){}
   
   FrameVarType(TypeClass TC, const Type* ET, QualType can)
   : Type(TC, can, false,

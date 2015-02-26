@@ -8949,6 +8949,12 @@ public:
 
   void AddFrameVarType(Scope* Scope, FrameDecl* FD, const char* Name, QualType Type);
   
+  void AddFrameFunction(Scope* Scope,
+                        FrameDecl* FD,
+                        const char* Name,
+                        QualType RetTy,
+                        std::vector<QualType> ArgTys);
+  
   bool InitFrame(Scope* Scope, FrameDecl* F, Expr* Spec);
   
   //  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
