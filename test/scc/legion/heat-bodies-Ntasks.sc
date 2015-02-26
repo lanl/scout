@@ -61,7 +61,7 @@
 #include <stdio.h>
 
 const int MESH_DIM = 512;
-const int NTIME_STEPS = 100;
+const int NTIME_STEPS = 16;
 
 uniform mesh HeatMesh {
   cells: 
