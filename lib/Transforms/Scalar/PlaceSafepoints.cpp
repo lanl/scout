@@ -91,19 +91,21 @@ using namespace llvm;
 
 // Ignore oppurtunities to avoid placing safepoints on backedges, useful for
 // validation
-static cl::opt<bool> AllBackedges("spp-all-backedges", cl::init(false));
+static cl::opt<bool> AllBackedges("spp-all-backedges", cl::Hidden,
+                                  cl::init(false));
 
 /// If true, do not place backedge safepoints in counted loops.
-static cl::opt<bool> SkipCounted("spp-counted", cl::init(true));
+static cl::opt<bool> SkipCounted("spp-counted", cl::Hidden, cl::init(true));
 
 // If true, split the backedge of a loop when placing the safepoint, otherwise
 // split the latch block itself.  Both are useful to support for
 // experimentation, but in practice, it looks like splitting the backedge
 // optimizes better.
-static cl::opt<bool> SplitBackedge("spp-split-backedge", cl::init(false));
+static cl::opt<bool> SplitBackedge("spp-split-backedge", cl::Hidden,
+                                   cl::init(false));
 
 // Print tracing output
-static cl::opt<bool> TraceLSP("spp-trace", cl::init(false));
+static cl::opt<bool> TraceLSP("spp-trace", cl::Hidden, cl::init(false));
 
 namespace {
 
@@ -140,23 +142,16 @@ struct PlaceBackedgeSafepointsImpl : public LoopPass {
 };
 }
 
-static cl::opt<bool> NoEntry("spp-no-entry", cl::init(false));
-static cl::opt<bool> NoCall("spp-no-call", cl::init(false));
-static cl::opt<bool> NoBackedge("spp-no-backedge", cl::init(false));
+static cl::opt<bool> NoEntry("spp-no-entry", cl::Hidden, cl::init(false));
+static cl::opt<bool> NoCall("spp-no-call", cl::Hidden, cl::init(false));
+static cl::opt<bool> NoBackedge("spp-no-backedge", cl::Hidden, cl::init(false));
 
 namespace {
 struct PlaceSafepoints : public ModulePass {
   static char ID; // Pass identification, replacement for typeid
 
-  bool EnableEntrySafepoints;
-  bool EnableBackedgeSafepoints;
-  bool EnableCallSafepoints;
-
   PlaceSafepoints() : ModulePass(ID) {
     initializePlaceSafepointsPass(*PassRegistry::getPassRegistry());
-    EnableEntrySafepoints = !NoEntry;
-    EnableBackedgeSafepoints = !NoBackedge;
-    EnableCallSafepoints = !NoCall;
   }
   bool runOnModule(Module &M) override {
     bool modified = false;
@@ -502,6 +497,25 @@ static bool isGCSafepointPoll(Function &F) {
   return F.getName().equals(GCSafepointPollName);
 }
 
+/// Returns true if this function should be rewritten to include safepoint
+/// polls and parseable call sites.  The main point of this function is to be
+/// an extension point for custom logic. 
+static bool shouldRewriteFunction(Function &F) {
+  // TODO: This should check the GCStrategy
+  if (F.hasGC()) {
+    const std::string StatepointExampleName("statepoint-example");
+    return StatepointExampleName == F.getGC();
+  } else
+    return false;
+}
+
+// TODO: These should become properties of the GCStrategy, possibly with
+// command line overrides.
+static bool enableEntrySafepoints(Function &F) { return !NoEntry; }
+static bool enableBackedgeSafepoints(Function &F) { return !NoBackedge; }
+static bool enableCallSafepoints(Function &F) { return !NoCall; }
+
+
 bool PlaceSafepoints::runOnFunction(Function &F) {
   if (F.isDeclaration() || F.empty()) {
     // This is a declaration, nothing to do.  Must exit early to avoid crash in
@@ -515,6 +529,9 @@ bool PlaceSafepoints::runOnFunction(Function &F) {
     // parseable after we inline a poll.  
     return false;
   }
+
+  if (!shouldRewriteFunction(F))
+    return false;
 
   bool modified = false;
 
@@ -534,13 +551,13 @@ bool PlaceSafepoints::runOnFunction(Function &F) {
 
   std::vector<CallSite> ParsePointNeeded;
 
-  if (EnableBackedgeSafepoints) {
+  if (enableBackedgeSafepoints(F)) {
     // Construct a pass manager to run the LoopPass backedge logic.  We
     // need the pass manager to handle scheduling all the loop passes
     // appropriately.  Doing this by hand is painful and just not worth messing
     // with for the moment.
     legacy::FunctionPassManager FPM(F.getParent());
-    bool CanAssumeCallSafepoints = EnableCallSafepoints;
+    bool CanAssumeCallSafepoints = enableCallSafepoints(F);
     PlaceBackedgeSafepointsImpl *PBS =
       new PlaceBackedgeSafepointsImpl(CanAssumeCallSafepoints);
     FPM.add(PBS);
@@ -607,7 +624,7 @@ bool PlaceSafepoints::runOnFunction(Function &F) {
     }
   }
 
-  if (EnableEntrySafepoints) {
+  if (enableEntrySafepoints(F)) {
     DT.recalculate(F);
     Instruction *term = findLocationForEntrySafepoint(F, DT);
     if (!term) {
@@ -622,7 +639,7 @@ bool PlaceSafepoints::runOnFunction(Function &F) {
     }
   }
 
-  if (EnableCallSafepoints) {
+  if (enableCallSafepoints(F)) {
     DT.recalculate(F);
     std::vector<CallSite> Calls;
     findCallSafepoints(F, Calls);
@@ -856,37 +873,12 @@ static Value *ReplaceWithStatepoint(const CallSite &CS, /* to replace */
   // this logic out to the initialization of the pass.  Doesn't appear to
   // matter in practice.
 
-  // Fill in the one generic type'd argument (the function is also vararg)
-  std::vector<Type *> argTypes;
-  argTypes.push_back(CS.getCalledValue()->getType());
-
-  Function *gc_statepoint_decl = Intrinsic::getDeclaration(
-      M, Intrinsic::experimental_gc_statepoint, argTypes);
-
   // Then go ahead and use the builder do actually do the inserts.  We insert
   // immediately before the previous instruction under the assumption that all
   // arguments will be available here.  We can't insert afterwards since we may
   // be replacing a terminator.
   Instruction *insertBefore = CS.getInstruction();
   IRBuilder<> Builder(insertBefore);
-  // First, create the statepoint (with all live ptrs as arguments).
-  std::vector<llvm::Value *> args;
-  // target, #call args, unused, call args..., #deopt args, deopt args..., gc args...
-  Value *Target = CS.getCalledValue();
-  args.push_back(Target);
-  int callArgSize = CS.arg_size();
-  args.push_back(
-      ConstantInt::get(Type::getInt32Ty(M->getContext()), callArgSize));
-  // TODO: add a 'Needs GC-rewrite' later flag
-  args.push_back(ConstantInt::get(Type::getInt32Ty(M->getContext()), 0));
-
-  // Copy all the arguments of the original call
-  args.insert(args.end(), CS.arg_begin(), CS.arg_end());
-
-  // # of deopt arguments: this pass currently does not support the
-  // identification of deopt arguments.  If this is interesting to you,
-  // please ask on llvm-dev.
-  args.push_back(ConstantInt::get(Type::getInt32Ty(M->getContext()), 0));
 
   // Note: The gc args are not filled in at this time, that's handled by
   // RewriteStatepointsForGC (which is currently under review).
@@ -896,20 +888,21 @@ static Value *ReplaceWithStatepoint(const CallSite &CS, /* to replace */
   AttributeSet return_attributes;
   if (CS.isCall()) {
     CallInst *toReplace = cast<CallInst>(CS.getInstruction());
-    CallInst *call =
-        Builder.CreateCall(gc_statepoint_decl, args, "safepoint_token");
-    call->setTailCall(toReplace->isTailCall());
-    call->setCallingConv(toReplace->getCallingConv());
+    CallInst *Call = Builder.CreateGCStatepoint(
+        CS.getCalledValue(), makeArrayRef(CS.arg_begin(), CS.arg_end()), None,
+        None, "safepoint_token");
+    Call->setTailCall(toReplace->isTailCall());
+    Call->setCallingConv(toReplace->getCallingConv());
 
     // Before we have to worry about GC semantics, all attributes are legal
     AttributeSet new_attrs = toReplace->getAttributes();
     // In case if we can handle this set of sttributes - set up function attrs
     // directly on statepoint and return attrs later for gc_result intrinsic.
-    call->setAttributes(new_attrs.getFnAttributes());
+    Call->setAttributes(new_attrs.getFnAttributes());
     return_attributes = new_attrs.getRetAttributes();
     // TODO: handle param attributes
 
-    token = call;
+    token = Call;
 
     // Put the following gc_result and gc_relocate calls immediately after the
     // the old call (which we're about to delete)
@@ -921,6 +914,33 @@ static Value *ReplaceWithStatepoint(const CallSite &CS, /* to replace */
     Builder.SetCurrentDebugLocation(IP->getDebugLoc());
 
   } else if (CS.isInvoke()) {
+    // TODO: make CreateGCStatepoint return an Instruction that we can cast to a
+    // Call or Invoke, instead of doing this junk here.
+
+    // Fill in the one generic type'd argument (the function is also
+    // vararg)
+    std::vector<Type *> argTypes;
+    argTypes.push_back(CS.getCalledValue()->getType());
+
+    Function *gc_statepoint_decl = Intrinsic::getDeclaration(
+        M, Intrinsic::experimental_gc_statepoint, argTypes);
+
+    // First, create the statepoint (with all live ptrs as arguments).
+    std::vector<llvm::Value *> args;
+    // target, #call args, unused, ... call parameters, #deopt args, ... deopt
+    // parameters, ... gc parameters
+    Value *Target = CS.getCalledValue();
+    args.push_back(Target);
+    int callArgSize = CS.arg_size();
+    // #call args
+    args.push_back(Builder.getInt32(callArgSize));
+    // unused
+    args.push_back(Builder.getInt32(0));
+    // call parameters
+    args.insert(args.end(), CS.arg_begin(), CS.arg_end());
+    // #deopt args: 0
+    args.push_back(Builder.getInt32(0));
+
     InvokeInst *toReplace = cast<InvokeInst>(CS.getInstruction());
 
     // Insert the new invoke into the old block.  We'll remove the old one in a
@@ -956,19 +976,11 @@ static Value *ReplaceWithStatepoint(const CallSite &CS, /* to replace */
 
   // Only add the gc_result iff there is actually a used result
   if (!CS.getType()->isVoidTy() && !CS.getInstruction()->use_empty()) {
-    Instruction *gc_result = nullptr;
-    std::vector<Type *> types;     // one per 'any' type
-    types.push_back(CS.getType()); // result type
-    Intrinsic::ID Id = Intrinsic::experimental_gc_result;
-    Value *gc_result_func = Intrinsic::getDeclaration(M, Id, types);
-
-    std::vector<Value *> args;
-    args.push_back(token);
-    gc_result = Builder.CreateCall(
-        gc_result_func, args,
-        CS.getInstruction()->hasName() ? CS.getInstruction()->getName() : "");
-
-    cast<CallInst>(gc_result)->setAttributes(return_attributes);
+    std::string takenName =
+      CS.getInstruction()->hasName() ? CS.getInstruction()->getName() : "";
+    CallInst *gc_result =
+        Builder.CreateGCResult(token, CS.getType(), takenName);
+    gc_result->setAttributes(return_attributes);
     return gc_result;
   } else {
     // No return value for the call.

@@ -845,6 +845,13 @@ public:
     return cast<SequentialType>(Instruction::getType());
   }
 
+  Type *getSourceElementType() const {
+    SequentialType *Ty = cast<SequentialType>(getPointerOperandType());
+    if (VectorType *VTy = dyn_cast<VectorType>(Ty))
+      Ty = cast<SequentialType>(VTy->getElementType());
+    return Ty->getElementType();
+  }
+
   /// \brief Returns the address space of this instruction's pointer type.
   unsigned getAddressSpace() const {
     // Note that this is always the same as the pointer operand's address space
@@ -2165,6 +2172,8 @@ public:
   const_block_iterator block_end() const {
     return block_begin() + getNumOperands();
   }
+
+  op_range incoming_values() { return operands(); }
 
   /// getNumIncomingValues - Return the number of incoming edges
   ///
