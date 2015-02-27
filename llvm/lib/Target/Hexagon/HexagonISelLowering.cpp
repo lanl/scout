@@ -188,7 +188,7 @@ static bool CC_Hexagon32(unsigned ValNo, MVT ValVT,
     Hexagon::R0, Hexagon::R1, Hexagon::R2, Hexagon::R3, Hexagon::R4,
     Hexagon::R5
   };
-  if (unsigned Reg = State.AllocateReg(RegList, 6)) {
+  if (unsigned Reg = State.AllocateReg(RegList)) {
     State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
     return false;
   }
@@ -213,7 +213,7 @@ static bool CC_Hexagon64(unsigned ValNo, MVT ValVT,
   static const MCPhysReg RegList2[] = {
     Hexagon::R1, Hexagon::R3
   };
-  if (unsigned Reg = State.AllocateReg(RegList1, RegList2, 2)) {
+  if (unsigned Reg = State.AllocateReg(RegList1, RegList2)) {
     State.addLoc(CCValAssign::getReg(ValNo, ValVT, Reg, LocVT, LocInfo));
     return false;
   }
@@ -1055,7 +1055,7 @@ HexagonTargetLowering::HexagonTargetLowering(const TargetMachine &TM,
 
   addRegisterClass(MVT::i1, &Hexagon::PredRegsRegClass);
 
-  computeRegisterProperties();
+  computeRegisterProperties(Subtarget->getRegisterInfo());
 
   // Align loop entry
   setPrefLoopAlignment(4);
@@ -1595,10 +1595,10 @@ const {
 // Inline Assembly Support
 //===----------------------------------------------------------------------===//
 
-std::pair<unsigned, const TargetRegisterClass*>
-HexagonTargetLowering::getRegForInlineAsmConstraint(const
-                                                    std::string &Constraint,
-                                                    MVT VT) const {
+std::pair<unsigned, const TargetRegisterClass *>
+HexagonTargetLowering::getRegForInlineAsmConstraint(
+    const TargetRegisterInfo *TRI, const std::string &Constraint,
+    MVT VT) const {
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
     case 'r':   // R0-R31
@@ -1619,7 +1619,7 @@ HexagonTargetLowering::getRegForInlineAsmConstraint(const
     }
   }
 
-  return TargetLowering::getRegForInlineAsmConstraint(Constraint, VT);
+  return TargetLowering::getRegForInlineAsmConstraint(TRI, Constraint, VT);
 }
 
 /// isFPImmLegal - Returns true if the target can instruction select the

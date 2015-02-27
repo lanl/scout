@@ -60,7 +60,7 @@ SITargetLowering::SITargetLowering(TargetMachine &TM,
   addRegisterClass(MVT::v16i32, &AMDGPU::SReg_512RegClass);
   addRegisterClass(MVT::v16f32, &AMDGPU::VReg_512RegClass);
 
-  computeRegisterProperties();
+  computeRegisterProperties(STI.getRegisterInfo());
 
   setOperationAction(ISD::VECTOR_SHUFFLE, MVT::v8i32, Expand);
   setOperationAction(ISD::VECTOR_SHUFFLE, MVT::v8f32, Expand);
@@ -587,8 +587,8 @@ SDValue SITargetLowering::LowerFormalArguments(
   }
 
   if (Info->getShaderType() != ShaderType::COMPUTE) {
-    unsigned ScratchIdx = CCInfo.getFirstUnallocated(
-        AMDGPU::SGPR_32RegClass.begin(), AMDGPU::SGPR_32RegClass.getNumRegs());
+    unsigned ScratchIdx = CCInfo.getFirstUnallocated(ArrayRef<MCPhysReg>(
+        AMDGPU::SGPR_32RegClass.begin(), AMDGPU::SGPR_32RegClass.getNumRegs()));
     Info->ScratchOffsetReg = AMDGPU::SGPR_32RegClass.getRegister(ScratchIdx);
   }
   return Chain;
@@ -604,19 +604,8 @@ MachineBasicBlock * SITargetLowering::EmitInstrWithCustomInserter(
   switch (MI->getOpcode()) {
   default:
     return AMDGPUTargetLowering::EmitInstrWithCustomInserter(MI, BB);
-  case AMDGPU::BRANCH: return BB;
-  case AMDGPU::V_SUB_F64: {
-    unsigned DestReg = MI->getOperand(0).getReg();
-    BuildMI(*BB, I, MI->getDebugLoc(), TII->get(AMDGPU::V_ADD_F64), DestReg)
-      .addImm(0)  // SRC0 modifiers
-      .addReg(MI->getOperand(1).getReg())
-      .addImm(1)  // SRC1 modifiers
-      .addReg(MI->getOperand(2).getReg())
-      .addImm(0)  // CLAMP
-      .addImm(0); // OMOD
-    MI->eraseFromParent();
-    break;
-  }
+  case AMDGPU::BRANCH:
+    return BB;
   case AMDGPU::SI_RegisterStorePseudo: {
     MachineRegisterInfo &MRI = BB->getParent()->getRegInfo();
     unsigned Reg = MRI.createVirtualRegister(&AMDGPU::SReg_64RegClass);
@@ -680,8 +669,9 @@ bool SITargetLowering::isFMAFasterThanFMulAndFAdd(EVT VT) const {
   case MVT::f32:
     // This is as fast on some subtargets. However, we always have full rate f32
     // mad available which returns the same result as the separate operations
-    // which we should prefer over fma.
-    return false;
+    // which we should prefer over fma. We can't use this if we want to support
+    // denormals, so only report this in these cases.
+    return Subtarget->hasFP32Denormals() && Subtarget->hasFastFMAF32();
   case MVT::f64:
     return true;
   default:
@@ -1642,6 +1632,11 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
     if (VT != MVT::f32)
       break;
 
+    // Only do this if we are not trying to support denormals. v_mad_f32 does
+    // not support denormals ever.
+    if (Subtarget->hasFP32Denormals())
+      break;
+
     SDValue LHS = N->getOperand(0);
     SDValue RHS = N->getOperand(1);
 
@@ -1653,7 +1648,7 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
       SDValue A = LHS.getOperand(0);
       if (A == LHS.getOperand(1)) {
         const SDValue Two = DAG.getConstantFP(2.0, MVT::f32);
-        return DAG.getNode(AMDGPUISD::MAD, DL, VT, Two, A, RHS);
+        return DAG.getNode(ISD::FMAD, DL, VT, Two, A, RHS);
       }
     }
 
@@ -1662,11 +1657,11 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
       SDValue A = RHS.getOperand(0);
       if (A == RHS.getOperand(1)) {
         const SDValue Two = DAG.getConstantFP(2.0, MVT::f32);
-        return DAG.getNode(AMDGPUISD::MAD, DL, VT, Two, A, LHS);
+        return DAG.getNode(ISD::FMAD, DL, VT, Two, A, LHS);
       }
     }
 
-    break;
+    return SDValue();
   }
   case ISD::FSUB: {
     if (DCI.getDAGCombineLevel() < AfterLegalizeDAG)
@@ -1676,30 +1671,13 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
 
     // Try to get the fneg to fold into the source modifier. This undoes generic
     // DAG combines and folds them into the mad.
-    if (VT == MVT::f32) {
+    //
+    // Only do this if we are not trying to support denormals. v_mad_f32 does
+    // not support denormals ever.
+    if (VT == MVT::f32 &&
+        !Subtarget->hasFP32Denormals()) {
       SDValue LHS = N->getOperand(0);
       SDValue RHS = N->getOperand(1);
-
-      if (LHS.getOpcode() == ISD::FMUL) {
-        // (fsub (fmul a, b), c) -> mad a, b, (fneg c)
-
-        SDValue A = LHS.getOperand(0);
-        SDValue B = LHS.getOperand(1);
-        SDValue C = DAG.getNode(ISD::FNEG, DL, VT, RHS);
-
-        return DAG.getNode(AMDGPUISD::MAD, DL, VT, A, B, C);
-      }
-
-      if (RHS.getOpcode() == ISD::FMUL) {
-        // (fsub c, (fmul a, b)) -> mad (fneg a), b, c
-
-        SDValue A = DAG.getNode(ISD::FNEG, DL, VT, RHS.getOperand(0));
-        SDValue B = RHS.getOperand(1);
-        SDValue C = LHS;
-
-        return DAG.getNode(AMDGPUISD::MAD, DL, VT, A, B, C);
-      }
-
       if (LHS.getOpcode() == ISD::FADD) {
         // (fsub (fadd a, a), c) -> mad 2.0, a, (fneg c)
 
@@ -1708,7 +1686,7 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
           const SDValue Two = DAG.getConstantFP(2.0, MVT::f32);
           SDValue NegRHS = DAG.getNode(ISD::FNEG, DL, VT, RHS);
 
-          return DAG.getNode(AMDGPUISD::MAD, DL, VT, Two, A, NegRHS);
+          return DAG.getNode(ISD::FMAD, DL, VT, Two, A, NegRHS);
         }
       }
 
@@ -1718,9 +1696,11 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
         SDValue A = RHS.getOperand(0);
         if (A == RHS.getOperand(1)) {
           const SDValue NegTwo = DAG.getConstantFP(-2.0, MVT::f32);
-          return DAG.getNode(AMDGPUISD::MAD, DL, VT, NegTwo, A, LHS);
+          return DAG.getNode(ISD::FMAD, DL, VT, NegTwo, A, LHS);
         }
       }
+
+      return SDValue();
     }
 
     break;
@@ -1772,16 +1752,6 @@ SDValue SITargetLowering::PerformDAGCombine(SDNode *N,
   return AMDGPUTargetLowering::PerformDAGCombine(N, DCI);
 }
 
-/// \brief Test if RegClass is one of the VSrc classes
-static bool isVSrc(unsigned RegClass) {
-  switch(RegClass) {
-    default: return false;
-    case AMDGPU::VS_32RegClassID:
-    case AMDGPU::VS_64RegClassID:
-      return true;
-  }
-}
-
 /// \brief Analyze the possible immediate value Op
 ///
 /// Returns -1 if it isn't an immediate, 0 if it's and inline immediate
@@ -1810,69 +1780,6 @@ int32_t SITargetLowering::analyzeImmediate(const SDNode *N) const {
   }
 
   return -1;
-}
-
-const TargetRegisterClass *
-SITargetLowering::getRegClassForNode(SelectionDAG &DAG,
-                                     const SDValue &Op) const {
-  const SIInstrInfo *TII =
-      static_cast<const SIInstrInfo *>(Subtarget->getInstrInfo());
-  const SIRegisterInfo &TRI = TII->getRegisterInfo();
-
-  if (!Op->isMachineOpcode()) {
-    switch(Op->getOpcode()) {
-    case ISD::CopyFromReg: {
-      MachineRegisterInfo &MRI = DAG.getMachineFunction().getRegInfo();
-      unsigned Reg = cast<RegisterSDNode>(Op->getOperand(1))->getReg();
-      if (TargetRegisterInfo::isVirtualRegister(Reg)) {
-        return MRI.getRegClass(Reg);
-      }
-      return TRI.getPhysRegClass(Reg);
-    }
-    default:  return nullptr;
-    }
-  }
-  const MCInstrDesc &Desc = TII->get(Op->getMachineOpcode());
-  int OpClassID = Desc.OpInfo[Op.getResNo()].RegClass;
-  if (OpClassID != -1) {
-    return TRI.getRegClass(OpClassID);
-  }
-  switch(Op.getMachineOpcode()) {
-  case AMDGPU::COPY_TO_REGCLASS:
-    // Operand 1 is the register class id for COPY_TO_REGCLASS instructions.
-    OpClassID = cast<ConstantSDNode>(Op->getOperand(1))->getZExtValue();
-
-    // If the COPY_TO_REGCLASS instruction is copying to a VSrc register
-    // class, then the register class for the value could be either a
-    // VReg or and SReg.  In order to get a more accurate
-    if (isVSrc(OpClassID))
-      return getRegClassForNode(DAG, Op.getOperand(0));
-
-    return TRI.getRegClass(OpClassID);
-  case AMDGPU::EXTRACT_SUBREG: {
-    int SubIdx = cast<ConstantSDNode>(Op.getOperand(1))->getZExtValue();
-    const TargetRegisterClass *SuperClass =
-      getRegClassForNode(DAG, Op.getOperand(0));
-    return TRI.getSubClassWithSubReg(SuperClass, SubIdx);
-  }
-  case AMDGPU::REG_SEQUENCE:
-    // Operand 0 is the register class id for REG_SEQUENCE instructions.
-    return TRI.getRegClass(
-      cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue());
-  default:
-    return getRegClassFor(Op.getSimpleValueType());
-  }
-}
-
-/// \brief Does "Op" fit into register class "RegClass" ?
-bool SITargetLowering::fitsRegClass(SelectionDAG &DAG, const SDValue &Op,
-                                    unsigned RegClass) const {
-  const TargetRegisterInfo *TRI = Subtarget->getRegisterInfo();
-  const TargetRegisterClass *RC = getRegClassForNode(DAG, Op);
-  if (!RC) {
-    return false;
-  }
-  return TRI->getRegClass(RegClass)->hasSubClassEq(RC);
 }
 
 /// \brief Helper function for adjustWritemask
@@ -1992,7 +1899,6 @@ SDNode *SITargetLowering::PostISelFolding(MachineSDNode *Node,
                                           SelectionDAG &DAG) const {
   const SIInstrInfo *TII =
       static_cast<const SIInstrInfo *>(Subtarget->getInstrInfo());
-  Node = AdjustRegClass(Node, DAG);
 
   if (TII->isMIMG(Node->getMachineOpcode()))
     adjustWritemask(Node, DAG);
@@ -2144,56 +2050,6 @@ MachineSDNode *SITargetLowering::buildScratchRSRC(SelectionDAG &DAG,
                   0xffffffff; // Size
 
   return buildRSRC(DAG, DL, Ptr, 0, Rsrc);
-}
-
-MachineSDNode *SITargetLowering::AdjustRegClass(MachineSDNode *N,
-                                                SelectionDAG &DAG) const {
-
-  SDLoc DL(N);
-  unsigned NewOpcode = N->getMachineOpcode();
-
-  switch (N->getMachineOpcode()) {
-  default: return N;
-  case AMDGPU::S_LOAD_DWORD_IMM:
-    NewOpcode = AMDGPU::BUFFER_LOAD_DWORD_ADDR64;
-    // Fall-through
-  case AMDGPU::S_LOAD_DWORDX2_SGPR:
-    if (NewOpcode == N->getMachineOpcode()) {
-      NewOpcode = AMDGPU::BUFFER_LOAD_DWORDX2_ADDR64;
-    }
-    // Fall-through
-  case AMDGPU::S_LOAD_DWORDX4_IMM:
-  case AMDGPU::S_LOAD_DWORDX4_SGPR: {
-    if (NewOpcode == N->getMachineOpcode()) {
-      NewOpcode = AMDGPU::BUFFER_LOAD_DWORDX4_ADDR64;
-    }
-    if (fitsRegClass(DAG, N->getOperand(0), AMDGPU::SReg_64RegClassID)) {
-      return N;
-    }
-    ConstantSDNode *Offset = cast<ConstantSDNode>(N->getOperand(1));
-
-    const SDValue Zero64 = DAG.getTargetConstant(0, MVT::i64);
-    SDValue Ptr(DAG.getMachineNode(AMDGPU::S_MOV_B64, DL, MVT::i64, Zero64), 0);
-    MachineSDNode *RSrc = wrapAddr64Rsrc(DAG, DL, Ptr);
-
-    SmallVector<SDValue, 8> Ops;
-    Ops.push_back(SDValue(RSrc, 0));
-    Ops.push_back(N->getOperand(0));
-    Ops.push_back(DAG.getTargetConstant(0, MVT::i32)); // soffset
-
-    // The immediate offset is in dwords on SI and in bytes on VI.
-    if (Subtarget->getGeneration() >= AMDGPUSubtarget::VOLCANIC_ISLANDS)
-      Ops.push_back(DAG.getTargetConstant(Offset->getSExtValue(), MVT::i32));
-    else
-      Ops.push_back(DAG.getTargetConstant(Offset->getSExtValue() << 2, MVT::i32));
-
-    // Copy remaining operands so we keep any chain and glue nodes that follow
-    // the normal operands.
-    Ops.append(N->op_begin() + 2, N->op_end());
-
-    return DAG.getMachineNode(NewOpcode, DL, N->getVTList(), Ops);
-  }
-  }
 }
 
 SDValue SITargetLowering::CreateLiveInRegister(SelectionDAG &DAG,
