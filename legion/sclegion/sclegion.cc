@@ -133,7 +133,7 @@ namespace{
       size_t count;
       LogicalRegion logicalRegion;
       LogicalPartition logicalPartition;
-      IndexPartition indexPartition;
+      IndexPartition disjointIndexPartition, ghostIndexPartition;
       FieldSpace fieldSpace;
       Domain domain;
       IndexSpace indexSpace;
@@ -222,78 +222,56 @@ namespace{
       }
     }
 
-    size_t numItems(sclegion_element_kind_t elementKind){
-      switch(elementKind){
+    size_t numItems(sclegion_element_kind_t elementKind) {
+      switch(elementKind) {
       case SCLEGION_CELL:
-        return numCells();
+        return getNumCells(rank_);
       case SCLEGION_VERTEX:
-        return numVertices();
+        return getNumVertices(rank_);
       case SCLEGION_EDGE:
-        return numEdges();
+        return getNumEdges(rank_);
       case SCLEGION_FACE:
-        return numFaces();
+        return getNumFaces(rank_);
       default:
         assert(false && "invalid element kind");
       }
     }
 
-    size_t numCells(){
-      switch(rank_){
-      case 1:
-        return width_;
-      case 2:
-        return width_ * height_;
-      case 3:
-        return width_ * height_ * depth_;
-      default:
-        assert(false && "invalid rank");
+    size_t numCells() { return getNumCells(rank_); }
+    size_t numVertices() { return getNumVertices(rank_); }
+    size_t numEdges() { return getNumEdges(rank_); }
+    size_t numFaces() { return getNumFaces(rank_); }
+
+
+    //for 2-d partition we want # of elements in a col.
+    //for 3-d partition we want # if elements in a row x col "face"
+    size_t numSubItems(sclegion_element_kind_t elementKind) {
+      if (rank_ == 1) {
+        return 1;
+      } else {
+        switch (elementKind) {
+        case SCLEGION_CELL:
+          return getNumCells(rank_ - 1);
+        case SCLEGION_VERTEX:
+          return getNumVertices(rank_ - 1);
+        // SC_TODO: these cases get messy...
+        case SCLEGION_EDGE:
+          assert (false && "2/3D partition not working on edges");
+        case SCLEGION_FACE:
+          assert (false && "2/3D partition not working on faces");
+        default:
+          assert(false && "invalid element kind");
+        }
       }
     }
 
-    size_t numVertices(){
-      switch(rank_){
-      case 1:
-        return width_ + 1;
-      case 2:
-        return (width_ + 1) * (height_ + 1);
-      case 3:
-        return (width_ + 1) * (height_ + 1) + (depth_ + 1);
-      default:
-        assert(false && "invalid rank");
-      }
-    }
-
-    size_t numEdges(){
-      switch(rank_){
-      case 1:
-        return width_;
-      case 2:
-        return (width_ + 1)*height_ + (height_ + 1)*width_;
-      case 3:{
-        size_t w1 = width_ + 1;
-        size_t h1 = height_ + 1;
-        return (w1*height_ + h1*width_)*(depth_ + 1) + w1*h1*depth_;
-      }
-      default:
-        assert(false && "invalid rank");
-      }
-    }
-
-    size_t numFaces(){
-      switch(rank_){
-      case 1:
-        return width_;
-      case 2:
-        return (width_ + 1)*height_ + (height_ + 1)*width_;
-      case 3:{
-        size_t w1 = width_ + 1;
-        size_t h1 = height_ + 1;
-        size_t d1 = depth_ + 1;
-        return w1*height_*depth_ + h1*width_*depth_ + d1*width_*height_;
-      }
-      default:
-        assert(false && "invalid rank");
-      }
+    // in general partition will not fall on a 'boundary' so need to
+    // extend it by 1. for example in 2-d partition may not have
+    // fixed number of rows, it may have a partial row.
+    size_t numGhostItems(sclegion_element_kind_t elementKind, size_t maxshift) {
+      size_t addshift = 1;
+      if (rank_ == 1) addshift = 0;
+      return numSubItems(elementKind)*(maxshift+addshift);
     }
 
     void setMeshHeader(MeshHeader* header){
@@ -312,6 +290,66 @@ namespace{
 
     Element& getElement(sclegion_element_kind_t elementKind){
       return elements_[elementKind];
+    }
+
+  protected:
+    size_t getNumCells(size_t rank) {
+      switch(rank) {
+      case 1:
+        return width_;
+      case 2:
+        return width_ * height_;
+      case 3:
+        return width_ * height_ * depth_;
+      default:
+        assert(false && "invalid rank");
+      }
+    }
+
+    size_t getNumVertices(size_t rank) {
+      switch(rank) {
+      case 1:
+        return width_ + 1;
+      case 2:
+        return (width_ + 1) * (height_ + 1);
+      case 3:
+        return (width_ + 1) * (height_ + 1) + (depth_ + 1);
+      default:
+        assert(false && "invalid rank");
+      }
+    }
+
+    size_t getNumEdges(size_t rank) {
+      switch(rank) {
+      case 1:
+        return width_;
+      case 2:
+        return (width_ + 1)*height_ + (height_ + 1)*width_;
+      case 3:{
+        size_t w1 = width_ + 1;
+        size_t h1 = height_ + 1;
+        return (w1*height_ + h1*width_)*(depth_ + 1) + w1*h1*depth_;
+      }
+      default:
+        assert(false && "invalid rank");
+      }
+    }
+
+    size_t getNumFaces(size_t rank) {
+      switch(rank) {
+      case 1:
+        return width_;
+      case 2:
+        return (width_ + 1)*height_ + (height_ + 1)*width_;
+      case 3:{
+        size_t w1 = width_ + 1;
+        size_t h1 = height_ + 1;
+        size_t d1 = depth_ + 1;
+        return w1*height_*depth_ + h1*width_*depth_ + d1*width_*height_;
+      }
+      default:
+        assert(false && "invalid rank");
+      }
     }
 
   private:
@@ -444,8 +482,8 @@ namespace{
       header->numFields = numFields_;
       args += sizeof(MeshHeader);
 
-      // currently, just partition with num parts = 1
-      size_t nc = 1;
+      // currently, just partition with num_subregions = 1
+      size_t num_subregions = 1;
 
       for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
         Mesh::Element& element = 
@@ -457,13 +495,13 @@ namespace{
           continue;
         }
 
-        size_t n = element.count / nc + (element.count % nc > 0 ? 1 : 0); 
+        size_t n = element.count / num_subregions + (element.count % num_subregions > 0 ? 1 : 0);
 
         element.domain = 
           Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(n - 1)));
 
         element.colorDomain = 
-          Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(nc - 1)));
+          Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(num_subregions - 1)));
 
         int color = 0;
         for(size_t i = 0; i < element.count; i += n){
@@ -477,7 +515,7 @@ namespace{
           ++color;
         }
 
-        element.indexPartition = 
+        element.disjointIndexPartition =
           runtime->create_index_partition(context, element.indexSpace,
                                           element.colorDomain,
                                           element.coloring, true);
@@ -485,7 +523,7 @@ namespace{
         element.logicalPartition = 
           runtime->get_logical_partition(context,
                                          element.logicalRegion,
-                                         element.indexPartition);
+                                         element.disjointIndexPartition);
       }
 
       ArgumentMap argMap;

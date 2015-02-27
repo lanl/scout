@@ -125,7 +125,8 @@ docs_build_dir := docs/_build
 cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) \
                -DCMAKE_INSTALL_PREFIX=$(build_dir) \
                -DCMAKE_SOURCE_DIR=$(src_dir) \
-               $(SC_BUILD_CMAKE_FLAGS)
+               $(SC_BUILD_CMAKE_FLAGS) \
+               -Wno-dev
 
 uname := $(shell uname)
 
