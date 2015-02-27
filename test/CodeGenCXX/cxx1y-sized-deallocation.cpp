@@ -47,63 +47,92 @@ template void del<F>();
 D::D() {}
 
 // CHECK-LABEL: define weak_odr void @_Z3delIiEvv()
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdlPvm, void (i8*, i64)* null),
 // CHECK: call void @_ZdlPvm(i8* %{{[^ ]*}}, i64 4)
+// CHECKUND: call void @_ZdlPv(i8* %{{[^ ]*}})
 // CHECK: call void @_ZdaPv(i8* %{{[^ ]*}})
 //
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdlPvm, void (i8*, i64)* null),
 // CHECK: call void @_ZdlPvm(i8* %{{[^ ]*}}, i64 4)
+// CHECKUND: call void @_ZdlPv(i8* %{{[^ ]*}})
 // CHECK: call void @_ZdaPv(i8* %{{[^ ]*}})
 
 // CHECKDEF-LABEL: define linkonce void @_ZdlPvm(i8*, i64) #{{[0-9]+}} comdat
 // CHECKDEF: call void @_ZdlPv(i8* %0)
-// CHECKUND-LABEL: declare void @_ZdlPvm(i8*
+// CHECKUND-LABEL: declare extern_weak void @_ZdlPvm(i8*
 
 // CHECK-LABEL: define weak_odr void @_Z3delI1BEvv()
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdlPvm, void (i8*, i64)* null),
 // CHECK: call void @_ZdlPvm(i8* %{{[^ ]*}}, i64 4)
+// CHECKUND: call void @_ZdlPv(i8* %{{[^ ]*}})
 // CHECK: call void @_ZdaPv(i8* %{{[^ ]*}})
 //
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdlPvm, void (i8*, i64)* null),
 // CHECK: call void @_ZdlPvm(i8* %{{[^ ]*}}, i64 4)
+// CHECKUND: call void @_ZdlPv(i8* %{{[^ ]*}})
 // CHECK: call void @_ZdaPv(i8* %{{[^ ]*}})
 
 // CHECK-LABEL: define weak_odr void @_Z3delI1CEvv()
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdlPvm, void (i8*, i64)* null),
 // CHECK: call void @_ZdlPvm(i8* %{{[^ ]*}}, i64 1)
+// CHECKUND: call void @_ZdlPv(i8* %{{[^ ]*}})
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdaPvm, void (i8*, i64)* null),
 // CHECK: mul i64 1, %{{[^ ]*}}
 // CHECK: add i64 %{{[^ ]*}}, 8
 // CHECK: call void @_ZdaPvm(i8* %{{[^ ]*}}, i64 %{{[^ ]*}})
+// CHECKUND: call void @_ZdaPv(i8* %{{[^ ]*}})
 //
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdlPvm, void (i8*, i64)* null),
 // CHECK: call void @_ZdlPvm(i8* %{{[^ ]*}}, i64 1)
+// CHECKUND: call void @_ZdlPv(i8* %{{[^ ]*}})
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdaPvm, void (i8*, i64)* null),
 // CHECK: mul i64 1, %{{[^ ]*}}
 // CHECK: add i64 %{{[^ ]*}}, 8
 // CHECK: call void @_ZdaPvm(i8* %{{[^ ]*}}, i64 %{{[^ ]*}})
+// CHECKUND: call void @_ZdaPv(i8* %{{[^ ]*}})
 
 // CHECKDEF-LABEL: define linkonce void @_ZdaPvm(i8*, i64) #{{[0-9]+}} comdat
 // CHECKDEF: call void @_ZdaPv(i8* %0)
-// CHECKUND-LABEL: declare void @_ZdaPvm(i8*
+// CHECKUND-LABEL: declare extern_weak void @_ZdaPvm(i8*
 
 // CHECK-LABEL: define weak_odr void @_Z3delI1DEvv()
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdlPvm, void (i8*, i64)* null),
 // CHECK: call void @_ZdlPvm(i8* %{{[^ ]*}}, i64 8)
+// CHECKUND: call void @_ZdlPv(i8* %{{[^ ]*}})
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdaPvm, void (i8*, i64)* null),
 // CHECK: mul i64 8, %{{[^ ]*}}
 // CHECK: add i64 %{{[^ ]*}}, 8
 // CHECK: call void @_ZdaPvm(i8* %{{[^ ]*}}, i64 %{{[^ ]*}})
+// CHECKUND: call void @_ZdaPv(i8* %{{[^ ]*}})
 //
-// CHECK-NOT: Zdl
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdlPvm, void (i8*, i64)* null),
+// CHECKDEF-NOT: Zdl
 // CHECK: call void %{{.*}}
 // CHECK-NOT: Zdl
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdaPvm, void (i8*, i64)* null),
 // CHECK: mul i64 8, %{{[^ ]*}}
 // CHECK: add i64 %{{[^ ]*}}, 8
 // CHECK: call void @_ZdaPvm(i8* %{{[^ ]*}}, i64 %{{[^ ]*}})
+// CHECKUND: call void @_ZdaPv(i8* %{{[^ ]*}})
 
 // CHECK-LABEL: define weak_odr void @_Z3delI1EEvv()
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdlPvm, void (i8*, i64)* null),
 // CHECK: call void @_ZdlPvm(i8* %{{[^ ]*}}, i64 1)
+// CHECKUND: call void @_ZdlPv(i8* %{{[^ ]*}})
 // CHECK: call void @_ZdaPv(i8* %{{[^ ]*}})
 //
 // CHECK: call void @_ZN1EdlEPv(i8* %{{[^ ]*}})
 // CHECK: call void @_ZN1EdaEPv(i8* %{{[^ ]*}})
 
 // CHECK-LABEL: define weak_odr void @_Z3delI1FEvv()
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdlPvm, void (i8*, i64)* null),
 // CHECK: call void @_ZdlPvm(i8* %{{[^ ]*}}, i64 1)
+// CHECKUND: call void @_ZdlPv(i8* %{{[^ ]*}})
+// CHECKUND: br i1 icmp ne (void (i8*, i64)* @_ZdaPvm, void (i8*, i64)* null),
 // CHECK: mul i64 1, %{{[^ ]*}}
 // CHECK: add i64 %{{[^ ]*}}, 8
 // CHECK: call void @_ZdaPvm(i8* %{{[^ ]*}}, i64 %{{[^ ]*}})
+// CHECKUND: call void @_ZdaPv(i8* %{{[^ ]*}})
 //
 // CHECK: call void @_ZN1FdlEPvm(i8* %{{[^ ]*}}, i64 1)
 // CHECK: mul i64 1, %{{[^ ]*}}

@@ -1297,28 +1297,35 @@ void DeclContext::buildLookupImpl(DeclContext *DCtx, bool Internal) {
   }
 }
 
+NamedDecl *const DeclContextLookupResult::SingleElementDummyList = nullptr;
+
 DeclContext::lookup_result
-DeclContext::lookup(DeclarationName Name) {
+DeclContext::lookup(DeclarationName Name) const {
   assert(DeclKind != Decl::LinkageSpec &&
          "Should not perform lookups into linkage specs!");
 
-  DeclContext *PrimaryContext = getPrimaryContext();
+  const DeclContext *PrimaryContext = getPrimaryContext();
   if (PrimaryContext != this)
     return PrimaryContext->lookup(Name);
 
-  // If this is a namespace, ensure that any later redeclarations of it have
-  // been loaded, since they may add names to the result of this lookup.
-  if (auto *ND = dyn_cast<NamespaceDecl>(this))
-    (void)ND->getMostRecentDecl();
+  // If we have an external source, ensure that any later redeclarations of this
+  // context have been loaded, since they may add names to the result of this
+  // lookup (or add external visible storage).
+  ExternalASTSource *Source = getParentASTContext().getExternalSource();
+  if (Source)
+    (void)cast<Decl>(this)->getMostRecentDecl();
 
   if (hasExternalVisibleStorage()) {
+    assert(Source && "external visible storage but no external source?");
+
     if (NeedToReconcileExternalVisibleStorage)
       reconcileExternalVisibleStorage();
 
     StoredDeclsMap *Map = LookupPtr.getPointer();
 
     if (LookupPtr.getInt())
-      Map = buildLookup();
+      // FIXME: Make buildLookup const?
+      Map = const_cast<DeclContext*>(this)->buildLookup();
 
     if (!Map)
       Map = CreateStoredDeclsMap(getParentASTContext());
@@ -1329,7 +1336,6 @@ DeclContext::lookup(DeclarationName Name) {
     if (!R.second && !R.first->second.hasExternalDecls())
       return R.first->second.getLookupResult();
 
-    ExternalASTSource *Source = getParentASTContext().getExternalSource();
     if (Source->FindExternalVisibleDeclsByName(this, Name) || !R.second) {
       if (StoredDeclsMap *Map = LookupPtr.getPointer()) {
         StoredDeclsMap::iterator I = Map->find(Name);
@@ -1338,19 +1344,19 @@ DeclContext::lookup(DeclarationName Name) {
       }
     }
 
-    return lookup_result(lookup_iterator(nullptr), lookup_iterator(nullptr));
+    return lookup_result();
   }
 
   StoredDeclsMap *Map = LookupPtr.getPointer();
   if (LookupPtr.getInt())
-    Map = buildLookup();
+    Map = const_cast<DeclContext*>(this)->buildLookup();
 
   if (!Map)
-    return lookup_result(lookup_iterator(nullptr), lookup_iterator(nullptr));
+    return lookup_result();
 
   StoredDeclsMap::iterator I = Map->find(Name);
   if (I == Map->end())
-    return lookup_result(lookup_iterator(nullptr), lookup_iterator(nullptr));
+    return lookup_result();
 
   return I->second.getLookupResult();
 }
@@ -1387,12 +1393,11 @@ DeclContext::noload_lookup(DeclarationName Name) {
   }
 
   if (!Map)
-    return lookup_result(lookup_iterator(nullptr), lookup_iterator(nullptr));
+    return lookup_result();
 
   StoredDeclsMap::iterator I = Map->find(Name);
   return I != Map->end() ? I->second.getLookupResult()
-                         : lookup_result(lookup_iterator(nullptr),
-                                         lookup_iterator(nullptr));
+                         : lookup_result();
 }
 
 void DeclContext::localUncachedLookup(DeclarationName Name,
@@ -1574,15 +1579,17 @@ void DeclContext::makeDeclVisibleInContextImpl(NamedDecl *D, bool Internal) {
   DeclNameEntries.AddSubsequentDecl(D);
 }
 
+UsingDirectiveDecl *DeclContext::udir_iterator::operator*() const {
+  return cast<UsingDirectiveDecl>(*I);
+}
+
 /// Returns iterator range [First, Last) of UsingDirectiveDecls stored within
 /// this context.
 DeclContext::udir_range DeclContext::using_directives() const {
   // FIXME: Use something more efficient than normal lookup for using
   // directives. In C++, using directives are looked up more than anything else.
-  lookup_const_result Result = lookup(UsingDirectiveDecl::getName());
-  return udir_range(
-      reinterpret_cast<UsingDirectiveDecl *const *>(Result.begin()),
-      reinterpret_cast<UsingDirectiveDecl *const *>(Result.end()));
+  lookup_result Result = lookup(UsingDirectiveDecl::getName());
+  return udir_range(Result.begin(), Result.end());
 }
 
 //===----------------------------------------------------------------------===//

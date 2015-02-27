@@ -64,6 +64,9 @@ static llvm::Constant *getGetExceptionPtrFn(CodeGenModule &CGM) {
 }
 
 static llvm::Constant *getBeginCatchFn(CodeGenModule &CGM) {
+  if (CGM.getTarget().getCXXABI().isMicrosoft())
+    return CGM.getIntrinsic(llvm::Intrinsic::eh_begincatch);
+
   // void *__cxa_begin_catch(void*);
 
   llvm::FunctionType *FTy =
@@ -73,6 +76,9 @@ static llvm::Constant *getBeginCatchFn(CodeGenModule &CGM) {
 }
 
 static llvm::Constant *getEndCatchFn(CodeGenModule &CGM) {
+  if (CGM.getTarget().getCXXABI().isMicrosoft())
+    return CGM.getIntrinsic(llvm::Intrinsic::eh_endcatch);
+
   // void __cxa_end_catch();
 
   llvm::FunctionType *FTy =
@@ -102,8 +108,11 @@ static llvm::Constant *getTerminateFn(CodeGenModule &CGM) {
   if (CGM.getLangOpts().CPlusPlus &&
       CGM.getTarget().getCXXABI().isItaniumFamily()) {
     name = "_ZSt9terminatev";
+  } else if (CGM.getLangOpts().CPlusPlus &&
+             CGM.getTarget().getCXXABI().isMicrosoft()) {
+    name = "\01?terminate@@YAXXZ";
   } else if (CGM.getLangOpts().ObjC1 &&
-           CGM.getLangOpts().ObjCRuntime.hasTerminate())
+             CGM.getLangOpts().ObjCRuntime.hasTerminate())
     name = "objc_terminate";
   else
     name = "abort";
@@ -472,7 +481,15 @@ void CodeGenFunction::EmitCXXThrowExpr(const CXXThrowExpr *E,
   }
 
   if (CGM.getTarget().getTriple().isKnownWindowsMSVCEnvironment()) {
-    ErrorUnsupported(E, "throw expression");
+    // Call std::terminate().
+    llvm::CallInst *TermCall = EmitNounwindRuntimeCall(getTerminateFn(CGM));
+    TermCall->setDoesNotReturn();
+
+    // throw is an expression, and the expression emitters expect us
+    // to leave ourselves at a valid insertion point.
+    if (KeepInsertionPoint)
+      EmitBlock(createBasicBlock("throw.cont"));
+
     return;
   }
 
@@ -633,11 +650,6 @@ void CodeGenFunction::EmitEndEHSpec(const Decl *D) {
 }
 
 void CodeGenFunction::EmitCXXTryStmt(const CXXTryStmt &S) {
-  if (CGM.getTarget().getTriple().isKnownWindowsMSVCEnvironment()) {
-    ErrorUnsupported(&S, "try statement");
-    return;
-  }
-
   EnterCXXTryStmt(S);
   EmitStmt(S.getTryBlock());
   ExitCXXTryStmt(S);
@@ -813,8 +825,8 @@ llvm::BasicBlock *CodeGenFunction::EmitLandingPad() {
   bool hasFilter = false;
   SmallVector<llvm::Value*, 4> filterTypes;
   llvm::SmallPtrSet<llvm::Value*, 4> catchTypes;
-  for (EHScopeStack::iterator I = EHStack.begin(), E = EHStack.end();
-         I != E; ++I) {
+  for (EHScopeStack::iterator I = EHStack.begin(), E = EHStack.end(); I != E;
+       ++I) {
 
     switch (I->getKind()) {
     case EHScope::Cleanup:
@@ -1672,8 +1684,7 @@ llvm::BasicBlock *CodeGenFunction::getEHResumeBlock(bool isCleanup) {
   const char *RethrowName = Personality.CatchallRethrowFn;
   if (RethrowName != nullptr && !isCleanup) {
     EmitRuntimeCall(getCatchallRethrowFn(CGM, RethrowName),
-                    getExceptionFromSlot())
-      ->setDoesNotReturn();
+                    getExceptionFromSlot())->setDoesNotReturn();
     Builder.CreateUnreachable();
     Builder.restoreIP(SavedIP);
     return EHResumeBlock;
@@ -1927,29 +1938,24 @@ void CodeGenFunction::ExitSEHTryStmt(const SEHTryStmt &S, SEHFinallyInfo &FI) {
     assert(FI.ContBB && "did not emit normal cleanup");
 
     // Emit the code into FinallyBB.
+    CGBuilderTy::InsertPoint SavedIP = Builder.saveIP();
     Builder.SetInsertPoint(FI.FinallyBB);
     EmitStmt(Finally->getBlock());
 
-    // If the finally block doesn't fall through, we don't need these blocks.
-    if (!HaveInsertPoint()) {
-      FI.ContBB->eraseFromParent();
-      if (FI.ResumeBB)
-        FI.ResumeBB->eraseFromParent();
-      return;
+    if (HaveInsertPoint()) {
+      if (FI.ResumeBB) {
+        llvm::Value *IsEH = Builder.CreateLoad(getAbnormalTerminationSlot(),
+                                               "abnormal.termination");
+        IsEH = Builder.CreateICmpEQ(IsEH, llvm::ConstantInt::get(Int8Ty, 0));
+        Builder.CreateCondBr(IsEH, FI.ContBB, FI.ResumeBB);
+      } else {
+        // There was nothing exceptional in the try body, so we only have normal
+        // control flow.
+        Builder.CreateBr(FI.ContBB);
+      }
     }
 
-    if (FI.ResumeBB) {
-      llvm::Value *IsEH = Builder.CreateLoad(getAbnormalTerminationSlot(),
-                                             "abnormal.termination");
-      IsEH = Builder.CreateICmpEQ(IsEH, llvm::ConstantInt::get(Int8Ty, 0));
-      Builder.CreateCondBr(IsEH, FI.ContBB, FI.ResumeBB);
-    } else {
-      // There was nothing exceptional in the try body, so we only have normal
-      // control flow.
-      Builder.CreateBr(FI.ContBB);
-    }
-
-    Builder.SetInsertPoint(FI.ContBB);
+    Builder.restoreIP(SavedIP);
 
     return;
   }

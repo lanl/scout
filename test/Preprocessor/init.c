@@ -259,7 +259,7 @@
 // AARCH64:#define __DBL_MIN_10_EXP__ (-307)
 // AARCH64:#define __DBL_MIN_EXP__ (-1021)
 // AARCH64:#define __DBL_MIN__ 2.2250738585072014e-308
-// AARCH64:#define __DECIMAL_DIG__ 36
+// AARCH64:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // AARCH64:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // AARCH64:#define __FLT_DIG__ 6
 // AARCH64:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -450,7 +450,7 @@
 // AARCH64-BE:#define __DBL_MIN_10_EXP__ (-307)
 // AARCH64-BE:#define __DBL_MIN_EXP__ (-1021)
 // AARCH64-BE:#define __DBL_MIN__ 2.2250738585072014e-308
-// AARCH64-BE:#define __DECIMAL_DIG__ 36
+// AARCH64-BE:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // AARCH64-BE:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // AARCH64-BE:#define __FLT_DIG__ 6
 // AARCH64-BE:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -641,7 +641,7 @@
 // AARCH64-NETBSD:#define __DBL_MIN_10_EXP__ (-307)
 // AARCH64-NETBSD:#define __DBL_MIN_EXP__ (-1021)
 // AARCH64-NETBSD:#define __DBL_MIN__ 2.2250738585072014e-308
-// AARCH64-NETBSD:#define __DECIMAL_DIG__ 36
+// AARCH64-NETBSD:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // AARCH64-NETBSD:#define __ELF__ 1
 // AARCH64-NETBSD:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // AARCH64-NETBSD:#define __FLT_DIG__ 6
@@ -833,7 +833,7 @@
 // AARCH64-FREEBSD:#define __DBL_MIN_10_EXP__ (-307)
 // AARCH64-FREEBSD:#define __DBL_MIN_EXP__ (-1021)
 // AARCH64-FREEBSD:#define __DBL_MIN__ 2.2250738585072014e-308
-// AARCH64-FREEBSD:#define __DECIMAL_DIG__ 36
+// AARCH64-FREEBSD:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // AARCH64-FREEBSD:#define __ELF__ 1
 // AARCH64-FREEBSD:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // AARCH64-FREEBSD:#define __FLT_DIG__ 6
@@ -1027,7 +1027,7 @@
 // AARCH64-DARWIN: #define __DBL_MIN_10_EXP__ (-307)
 // AARCH64-DARWIN: #define __DBL_MIN_EXP__ (-1021)
 // AARCH64-DARWIN: #define __DBL_MIN__ 2.2250738585072014e-308
-// AARCH64-DARWIN: #define __DECIMAL_DIG__ 17
+// AARCH64-DARWIN: #define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // AARCH64-DARWIN: #define __FLT_DENORM_MIN__ 1.40129846e-45F
 // AARCH64-DARWIN: #define __FLT_DIG__ 6
 // AARCH64-DARWIN: #define __FLT_EPSILON__ 1.19209290e-7F
@@ -1216,7 +1216,7 @@
 // ARM:#define __DBL_MIN_10_EXP__ (-307)
 // ARM:#define __DBL_MIN_EXP__ (-1021)
 // ARM:#define __DBL_MIN__ 2.2250738585072014e-308
-// ARM:#define __DECIMAL_DIG__ 17
+// ARM:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // ARM:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // ARM:#define __FLT_DIG__ 6
 // ARM:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -1408,7 +1408,7 @@
 // ARM-BE:#define __DBL_MIN_10_EXP__ (-307)
 // ARM-BE:#define __DBL_MIN_EXP__ (-1021)
 // ARM-BE:#define __DBL_MIN__ 2.2250738585072014e-308
-// ARM-BE:#define __DECIMAL_DIG__ 17
+// ARM-BE:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // ARM-BE:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // ARM-BE:#define __FLT_DIG__ 6
 // ARM-BE:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -1602,7 +1602,7 @@
 // ARMEABISOFTFP:#define __DBL_MIN_10_EXP__ (-307)
 // ARMEABISOFTFP:#define __DBL_MIN_EXP__ (-1021)
 // ARMEABISOFTFP:#define __DBL_MIN__ 2.2250738585072014e-308
-// ARMEABISOFTFP:#define __DECIMAL_DIG__ 17
+// ARMEABISOFTFP:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // ARMEABISOFTFP:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // ARMEABISOFTFP:#define __FLT_DIG__ 6
 // ARMEABISOFTFP:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -1798,7 +1798,7 @@
 // ARMEABIHARDFP:#define __DBL_MIN_10_EXP__ (-307)
 // ARMEABIHARDFP:#define __DBL_MIN_EXP__ (-1021)
 // ARMEABIHARDFP:#define __DBL_MIN__ 2.2250738585072014e-308
-// ARMEABIHARDFP:#define __DECIMAL_DIG__ 17
+// ARMEABIHARDFP:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // ARMEABIHARDFP:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // ARMEABIHARDFP:#define __FLT_DIG__ 6
 // ARMEABIHARDFP:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -1992,7 +1992,7 @@
 // ARM-NETBSD:#define __DBL_MIN_10_EXP__ (-307)
 // ARM-NETBSD:#define __DBL_MIN_EXP__ (-1021)
 // ARM-NETBSD:#define __DBL_MIN__ 2.2250738585072014e-308
-// ARM-NETBSD:#define __DECIMAL_DIG__ 17
+// ARM-NETBSD:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // ARM-NETBSD:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // ARM-NETBSD:#define __FLT_DIG__ 6
 // ARM-NETBSD:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -2165,6 +2165,13 @@
 // ARM-DARWIN-NO-EABI-NOT: #define __ARM_EABI__ 1
 // ARM-DARWIN-EABI: #define __ARM_EABI__ 1
 
+// RUN: %clang_cc1 -E -dM -ffreestanding -triple=armv7-bitrig-gnueabihf < /dev/null | FileCheck -check-prefix ARM-BITRIG %s
+// ARM-BITRIG:#define __ARM_DWARF_EH__ 1
+// ARM-BITRIG:#define __SIZEOF_SIZE_T__ 4
+// ARM-BITRIG:#define __SIZE_MAX__ 4294967295U
+// ARM-BITRIG:#define __SIZE_TYPE__ long unsigned int
+// ARM-BITRIG:#define __SIZE_WIDTH__ 32
+
 // Check that -mhwdiv works properly for targets which don't have the hwdiv feature enabled by default.
 
 // RUN: %clang -target arm -mhwdiv=arm -x c -E -dM %s -o - | FileCheck --check-prefix=ARMHWDIV-ARM %s
@@ -2239,7 +2246,7 @@
 // I386:#define __DBL_MIN_10_EXP__ (-307)
 // I386:#define __DBL_MIN_EXP__ (-1021)
 // I386:#define __DBL_MIN__ 2.2250738585072014e-308
-// I386:#define __DECIMAL_DIG__ 21
+// I386:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // I386:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // I386:#define __FLT_DIG__ 6
 // I386:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -2426,7 +2433,7 @@
 // I386-LINUX:#define __DBL_MIN_10_EXP__ (-307)
 // I386-LINUX:#define __DBL_MIN_EXP__ (-1021)
 // I386-LINUX:#define __DBL_MIN__ 2.2250738585072014e-308
-// I386-LINUX:#define __DECIMAL_DIG__ 21
+// I386-LINUX:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // I386-LINUX:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // I386-LINUX:#define __FLT_DIG__ 6
 // I386-LINUX:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -2613,7 +2620,7 @@
 // I386-NETBSD:#define __DBL_MIN_10_EXP__ (-307)
 // I386-NETBSD:#define __DBL_MIN_EXP__ (-1021)
 // I386-NETBSD:#define __DBL_MIN__ 2.2250738585072014e-308
-// I386-NETBSD:#define __DECIMAL_DIG__ 21
+// I386-NETBSD:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // I386-NETBSD:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // I386-NETBSD:#define __FLT_DIG__ 6
 // I386-NETBSD:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -2820,7 +2827,7 @@
 // MIPS32BE:#define __DBL_MIN_10_EXP__ (-307)
 // MIPS32BE:#define __DBL_MIN_EXP__ (-1021)
 // MIPS32BE:#define __DBL_MIN__ 2.2250738585072014e-308
-// MIPS32BE:#define __DECIMAL_DIG__ 17
+// MIPS32BE:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // MIPS32BE:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // MIPS32BE:#define __FLT_DIG__ 6
 // MIPS32BE:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -3028,7 +3035,7 @@
 // MIPS32EL:#define __DBL_MIN_10_EXP__ (-307)
 // MIPS32EL:#define __DBL_MIN_EXP__ (-1021)
 // MIPS32EL:#define __DBL_MIN__ 2.2250738585072014e-308
-// MIPS32EL:#define __DECIMAL_DIG__ 17
+// MIPS32EL:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // MIPS32EL:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // MIPS32EL:#define __FLT_DIG__ 6
 // MIPS32EL:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -3243,7 +3250,7 @@
 // MIPSN32BE: #define __DBL_MIN_10_EXP__ (-307)
 // MIPSN32BE: #define __DBL_MIN_EXP__ (-1021)
 // MIPSN32BE: #define __DBL_MIN__ 2.2250738585072014e-308
-// MIPSN32BE: #define __DECIMAL_DIG__ 36
+// MIPSN32BE: #define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // MIPSN32BE: #define __FINITE_MATH_ONLY__ 0
 // MIPSN32BE: #define __FLT_DENORM_MIN__ 1.40129846e-45F
 // MIPSN32BE: #define __FLT_DIG__ 6
@@ -3549,7 +3556,7 @@
 // MIPSN32EL: #define __DBL_MIN_10_EXP__ (-307)
 // MIPSN32EL: #define __DBL_MIN_EXP__ (-1021)
 // MIPSN32EL: #define __DBL_MIN__ 2.2250738585072014e-308
-// MIPSN32EL: #define __DECIMAL_DIG__ 36
+// MIPSN32EL: #define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // MIPSN32EL: #define __FINITE_MATH_ONLY__ 0
 // MIPSN32EL: #define __FLT_DENORM_MIN__ 1.40129846e-45F
 // MIPSN32EL: #define __FLT_DIG__ 6
@@ -3849,7 +3856,7 @@
 // MIPS64BE:#define __DBL_MIN_10_EXP__ (-307)
 // MIPS64BE:#define __DBL_MIN_EXP__ (-1021)
 // MIPS64BE:#define __DBL_MIN__ 2.2250738585072014e-308
-// MIPS64BE:#define __DECIMAL_DIG__ 36
+// MIPS64BE:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // MIPS64BE:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // MIPS64BE:#define __FLT_DIG__ 6
 // MIPS64BE:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -4057,7 +4064,7 @@
 // MIPS64EL:#define __DBL_MIN_10_EXP__ (-307)
 // MIPS64EL:#define __DBL_MIN_EXP__ (-1021)
 // MIPS64EL:#define __DBL_MIN__ 2.2250738585072014e-308
-// MIPS64EL:#define __DECIMAL_DIG__ 36
+// MIPS64EL:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // MIPS64EL:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // MIPS64EL:#define __FLT_DIG__ 6
 // MIPS64EL:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -4264,6 +4271,24 @@
 // MIPS-ARCH-32R2:#define __mips_isa_rev 2
 //
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=mips-none-none \
+// RUN:            -target-cpu mips32r3 < /dev/null \
+// RUN:   | FileCheck -check-prefix MIPS-ARCH-32R3 %s
+//
+// MIPS-ARCH-32R3:#define _MIPS_ARCH "mips32r3"
+// MIPS-ARCH-32R3:#define _MIPS_ARCH_MIPS32R3 1
+// MIPS-ARCH-32R3:#define _MIPS_ISA _MIPS_ISA_MIPS32
+// MIPS-ARCH-32R3:#define __mips_isa_rev 3
+//
+// RUN: %clang_cc1 -E -dM -ffreestanding -triple=mips-none-none \
+// RUN:            -target-cpu mips32r5 < /dev/null \
+// RUN:   | FileCheck -check-prefix MIPS-ARCH-32R5 %s
+//
+// MIPS-ARCH-32R5:#define _MIPS_ARCH "mips32r5"
+// MIPS-ARCH-32R5:#define _MIPS_ARCH_MIPS32R5 1
+// MIPS-ARCH-32R5:#define _MIPS_ISA _MIPS_ISA_MIPS32
+// MIPS-ARCH-32R5:#define __mips_isa_rev 5
+//
+// RUN: %clang_cc1 -E -dM -ffreestanding -triple=mips-none-none \
 // RUN:            -target-cpu mips32r6 < /dev/null \
 // RUN:   | FileCheck -check-prefix MIPS-ARCH-32R6 %s
 //
@@ -4298,6 +4323,24 @@
 // MIPS-ARCH-64R2:#define _MIPS_ARCH_MIPS64R2 1
 // MIPS-ARCH-64R2:#define _MIPS_ISA _MIPS_ISA_MIPS64
 // MIPS-ARCH-64R2:#define __mips_isa_rev 2
+//
+// RUN: %clang_cc1 -E -dM -ffreestanding -triple=mips64-none-none \
+// RUN:            -target-cpu mips64r3 < /dev/null \
+// RUN:   | FileCheck -check-prefix MIPS-ARCH-64R3 %s
+//
+// MIPS-ARCH-64R3:#define _MIPS_ARCH "mips64r3"
+// MIPS-ARCH-64R3:#define _MIPS_ARCH_MIPS64R3 1
+// MIPS-ARCH-64R3:#define _MIPS_ISA _MIPS_ISA_MIPS64
+// MIPS-ARCH-64R3:#define __mips_isa_rev 3
+//
+// RUN: %clang_cc1 -E -dM -ffreestanding -triple=mips64-none-none \
+// RUN:            -target-cpu mips64r5 < /dev/null \
+// RUN:   | FileCheck -check-prefix MIPS-ARCH-64R5 %s
+//
+// MIPS-ARCH-64R5:#define _MIPS_ARCH "mips64r5"
+// MIPS-ARCH-64R5:#define _MIPS_ARCH_MIPS64R5 1
+// MIPS-ARCH-64R5:#define _MIPS_ISA _MIPS_ISA_MIPS64
+// MIPS-ARCH-64R5:#define __mips_isa_rev 5
 //
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=mips64-none-none \
 // RUN:            -target-cpu mips64r6 < /dev/null \
@@ -4440,7 +4483,7 @@
 // MSP430:#define __DBL_MIN_10_EXP__ (-307)
 // MSP430:#define __DBL_MIN_EXP__ (-1021)
 // MSP430:#define __DBL_MIN__ 2.2250738585072014e-308
-// MSP430:#define __DECIMAL_DIG__ 17
+// MSP430:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // MSP430:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // MSP430:#define __FLT_DIG__ 6
 // MSP430:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -4625,7 +4668,7 @@
 // NVPTX32:#define __DBL_MIN_10_EXP__ (-307)
 // NVPTX32:#define __DBL_MIN_EXP__ (-1021)
 // NVPTX32:#define __DBL_MIN__ 2.2250738585072014e-308
-// NVPTX32:#define __DECIMAL_DIG__ 17
+// NVPTX32:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // NVPTX32:#define __FINITE_MATH_ONLY__ 0
 // NVPTX32:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // NVPTX32:#define __FLT_DIG__ 6
@@ -4812,7 +4855,7 @@
 // NVPTX64:#define __DBL_MIN_10_EXP__ (-307)
 // NVPTX64:#define __DBL_MIN_EXP__ (-1021)
 // NVPTX64:#define __DBL_MIN__ 2.2250738585072014e-308
-// NVPTX64:#define __DECIMAL_DIG__ 17
+// NVPTX64:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // NVPTX64:#define __FINITE_MATH_ONLY__ 0
 // NVPTX64:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // NVPTX64:#define __FLT_DIG__ 6
@@ -5004,7 +5047,7 @@
 // PPC603E:#define __DBL_MIN_10_EXP__ (-307)
 // PPC603E:#define __DBL_MIN_EXP__ (-1021)
 // PPC603E:#define __DBL_MIN__ 2.2250738585072014e-308
-// PPC603E:#define __DECIMAL_DIG__ 33
+// PPC603E:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // PPC603E:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // PPC603E:#define __FLT_DIG__ 6
 // PPC603E:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -5203,7 +5246,7 @@
 // PPC64:#define __DBL_MIN_10_EXP__ (-307)
 // PPC64:#define __DBL_MIN_EXP__ (-1021)
 // PPC64:#define __DBL_MIN__ 2.2250738585072014e-308
-// PPC64:#define __DECIMAL_DIG__ 33
+// PPC64:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // PPC64:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // PPC64:#define __FLT_DIG__ 6
 // PPC64:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -5405,7 +5448,7 @@
 // PPC64LE:#define __DBL_MIN_10_EXP__ (-307)
 // PPC64LE:#define __DBL_MIN_EXP__ (-1021)
 // PPC64LE:#define __DBL_MIN__ 2.2250738585072014e-308
-// PPC64LE:#define __DECIMAL_DIG__ 33
+// PPC64LE:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // PPC64LE:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // PPC64LE:#define __FLT_DIG__ 6
 // PPC64LE:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -5788,7 +5831,7 @@
 // PPC64-LINUX:#define __DBL_MIN_10_EXP__ (-307)
 // PPC64-LINUX:#define __DBL_MIN_EXP__ (-1021)
 // PPC64-LINUX:#define __DBL_MIN__ 2.2250738585072014e-308
-// PPC64-LINUX:#define __DECIMAL_DIG__ 33
+// PPC64-LINUX:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // PPC64-LINUX:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // PPC64-LINUX:#define __FLT_DIG__ 6
 // PPC64-LINUX:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -5993,7 +6036,7 @@
 // PPC:#define __DBL_MIN_10_EXP__ (-307)
 // PPC:#define __DBL_MIN_EXP__ (-1021)
 // PPC:#define __DBL_MIN__ 2.2250738585072014e-308
-// PPC:#define __DECIMAL_DIG__ 33
+// PPC:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // PPC:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // PPC:#define __FLT_DIG__ 6
 // PPC:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -6184,7 +6227,7 @@
 // PPC-LINUX:#define __DBL_MIN_10_EXP__ (-307)
 // PPC-LINUX:#define __DBL_MIN_EXP__ (-1021)
 // PPC-LINUX:#define __DBL_MIN__ 2.2250738585072014e-308
-// PPC-LINUX:#define __DECIMAL_DIG__ 33
+// PPC-LINUX:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // PPC-LINUX:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // PPC-LINUX:#define __FLT_DIG__ 6
 // PPC-LINUX:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -6375,7 +6418,7 @@
 // PPC-DARWIN:#define __DBL_MIN_10_EXP__ (-307)
 // PPC-DARWIN:#define __DBL_MIN_EXP__ (-1021)
 // PPC-DARWIN:#define __DBL_MIN__ 2.2250738585072014e-308
-// PPC-DARWIN:#define __DECIMAL_DIG__ 33
+// PPC-DARWIN:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // PPC-DARWIN:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // PPC-DARWIN:#define __FLT_DIG__ 6
 // PPC-DARWIN:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -6548,6 +6591,9 @@
 // PPC-DARWIN:#define __powerpc__ 1
 // PPC-DARWIN:#define __ppc__ 1
 //
+// RUN: %clang_cc1 -x cl -E -dM -ffreestanding -triple=amdgcn < /dev/null | FileCheck -check-prefix AMDGCN %s
+// AMDGCN:#define cl_khr_fp64 1
+
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=s390x-none-none -fno-signed-char < /dev/null | FileCheck -check-prefix S390X %s
 //
 // S390X:#define __BIGGEST_ALIGNMENT__ 8
@@ -6568,7 +6614,7 @@
 // S390X:#define __DBL_MIN_10_EXP__ (-307)
 // S390X:#define __DBL_MIN_EXP__ (-1021)
 // S390X:#define __DBL_MIN__ 2.2250738585072014e-308
-// S390X:#define __DECIMAL_DIG__ 36
+// S390X:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // S390X:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // S390X:#define __FLT_DIG__ 6
 // S390X:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -6751,7 +6797,7 @@
 // SPARC:#define __DBL_MIN_10_EXP__ (-307)
 // SPARC:#define __DBL_MIN_EXP__ (-1021)
 // SPARC:#define __DBL_MIN__ 2.2250738585072014e-308
-// SPARC:#define __DECIMAL_DIG__ 17
+// SPARC:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // SPARC:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // SPARC:#define __FLT_DIG__ 6
 // SPARC:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -6939,7 +6985,7 @@
 // TCE:#define __DBL_MIN_10_EXP__ (-37)
 // TCE:#define __DBL_MIN_EXP__ (-125)
 // TCE:#define __DBL_MIN__ 1.17549435e-38
-// TCE:#define __DECIMAL_DIG__ -1
+// TCE:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // TCE:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // TCE:#define __FLT_DIG__ 6
 // TCE:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -7106,7 +7152,7 @@
 // X86_64:#define __DBL_MIN_10_EXP__ (-307)
 // X86_64:#define __DBL_MIN_EXP__ (-1021)
 // X86_64:#define __DBL_MIN__ 2.2250738585072014e-308
-// X86_64:#define __DECIMAL_DIG__ 21
+// X86_64:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // X86_64:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // X86_64:#define __FLT_DIG__ 6
 // X86_64:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -7308,7 +7354,7 @@
 // X32:#define __DBL_MIN_10_EXP__ (-307)
 // X32:#define __DBL_MIN_EXP__ (-1021)
 // X32:#define __DBL_MIN__ 2.2250738585072014e-308
-// X32:#define __DECIMAL_DIG__ 21
+// X32:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // X32:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // X32:#define __FLT_DIG__ 6
 // X32:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -7502,7 +7548,7 @@
 // X86_64-LINUX:#define __DBL_MIN_10_EXP__ (-307)
 // X86_64-LINUX:#define __DBL_MIN_EXP__ (-1021)
 // X86_64-LINUX:#define __DBL_MIN__ 2.2250738585072014e-308
-// X86_64-LINUX:#define __DECIMAL_DIG__ 21
+// X86_64-LINUX:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // X86_64-LINUX:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // X86_64-LINUX:#define __FLT_DIG__ 6
 // X86_64-LINUX:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -7676,8 +7722,11 @@
 //
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=x86_64-unknown-freebsd9.1 < /dev/null | FileCheck -check-prefix X86_64-FREEBSD %s
 //
+// X86_64-FREEBSD:#define __DBL_DECIMAL_DIG__ 17
+// X86_64-FREEBSD:#define __FLT_DECIMAL_DIG__ 9
 // X86_64-FREEBSD:#define __FreeBSD__ 9
 // X86_64-FREEBSD:#define __FreeBSD_cc_version 900001
+// X86_64-FREEBSD:#define __LDBL_DECIMAL_DIG__ 21
 // X86_64-FREEBSD:#define __STDC_MB_MIGHT_NEQ_WC__ 1
 //
 // RUN: %clang_cc1 -E -dM -ffreestanding -triple=x86_64-netbsd < /dev/null | FileCheck -check-prefix X86_64-NETBSD %s
@@ -7701,7 +7750,7 @@
 // X86_64-NETBSD:#define __DBL_MIN_10_EXP__ (-307)
 // X86_64-NETBSD:#define __DBL_MIN_EXP__ (-1021)
 // X86_64-NETBSD:#define __DBL_MIN__ 2.2250738585072014e-308
-// X86_64-NETBSD:#define __DECIMAL_DIG__ 21
+// X86_64-NETBSD:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // X86_64-NETBSD:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // X86_64-NETBSD:#define __FLT_DIG__ 6
 // X86_64-NETBSD:#define __FLT_EPSILON__ 1.19209290e-7F
@@ -7893,7 +7942,7 @@
 // PS4:#define __DBL_MIN_10_EXP__ (-307)
 // PS4:#define __DBL_MIN_EXP__ (-1021)
 // PS4:#define __DBL_MIN__ 2.2250738585072014e-308
-// PS4:#define __DECIMAL_DIG__ 21
+// PS4:#define __DECIMAL_DIG__ __LDBL_DECIMAL_DIG__
 // PS4:#define __ELF__ 1
 // PS4:#define __FLT_DENORM_MIN__ 1.40129846e-45F
 // PS4:#define __FLT_DIG__ 6
