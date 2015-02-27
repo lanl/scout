@@ -2276,7 +2276,7 @@ public:
   /// getCallReturnType - Get the return type of the call expr. This is not
   /// always the type of the expr itself, if the return type is a reference
   /// type.
-  QualType getCallReturnType() const;
+  QualType getCallReturnType(const ASTContext &Ctx) const;
 
   SourceLocation getRParenLoc() const { return RParenLoc; }
   void setRParenLoc(SourceLocation L) { RParenLoc = L; }
@@ -4894,33 +4894,55 @@ public:
   
   SourceLocation getLocEnd() const LLVM_READONLY { return SourceLocation(); }
   
-  ScoutExprKind kind(){
+  ScoutExprKind kind() const{
     return Kind;
   }
 
-  void printPretty();
+  void printPretty() const;
   
 private:
   SourceLocation StartLoc;
   ScoutExprKind Kind;
 };
 
+class SpecObjectExpr;
+class SpecArrayExpr;
+class SpecValueExpr;
+
 class SpecExpr : public ScoutExpr{
 public:
   SpecExpr(ScoutExpr::ScoutExprKind Kind, SourceLocation LocStart)
   : ScoutExpr(Kind, LocStart){}
 
+  static bool isSymbol(const std::string& str){
+    return isSymbol(str.c_str());
+  }
+  
+  static bool isSymbol(const char* s);
+  
+  static std::string toUpper(const std::string& str);
+  
+  SpecValueExpr* toValue();
+  
+  Expr* toExpr();
+  
+  SpecObjectExpr* toObject();
+  
+  SpecArrayExpr* toArray();
+  
 };
 
 class SpecObjectExpr : public SpecExpr{
 public:
   typedef std::map<std::string, SpecExpr*> MemberMap;
+  typedef std::map<std::string, SourceLocation> KeyLocMap;
   
   SpecObjectExpr(SourceLocation LocStart)
   : SpecExpr(ScoutExpr::SpecObject, LocStart){}
   
-  void insert(const std::string& K, SpecExpr* V){
+  void insert(const std::string& K, SourceLocation KeyLoc, SpecExpr* V){
     MM.insert({K, V});
+    KM.insert({K, KeyLoc});
   }
   
   bool has(const std::string& K){
@@ -4934,12 +4956,23 @@ public:
   
   SpecExpr* get(const std::string& K){
     auto itr = MM.find(K);
-    assert(itr != MM.end() && "invalid key");
+    
+    if(itr != MM.end()){
+      return itr->second;
+    }
+    
+    return 0;
+  }
+  
+  SourceLocation getKeyLoc(const std::string& K){
+    auto itr = KM.find(K);
+    assert(itr != KM.end() && "invalid key");
     return itr->second;
   }
   
 private:
   MemberMap MM;
+  KeyLocMap KM;
 };
 
 class SpecValueExpr : public SpecExpr{

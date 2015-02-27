@@ -235,7 +235,13 @@ ExprResult Sema::ActOnSpecArrayExpr(SourceLocation BracketLoc){
 }
 
 ExprResult Sema::ActOnSpecValueExpr(Expr* E){
-  return new (Context) SpecValueExpr(E);
+  ExprResult result = CorrectDelayedTyposInExpr(E);
+  
+  if(result.isInvalid()){
+    return ExprError();
+  }
+  
+  return new (Context) SpecValueExpr(result.get());
 }
 
 // Check forall array for shadowing

@@ -1281,6 +1281,8 @@ void ItaniumCXXABI::emitVTableDefinitions(CodeGenVTables &CGVT,
       cast<NamespaceDecl>(DC)->getIdentifier()->isStr("__cxxabiv1") &&
       DC->getParent()->isTranslationUnit())
     EmitFundamentalRTTIDescriptors();
+
+  CGM.EmitVTableBitSetEntries(VTable, VTLayout);
 }
 
 llvm::Value *ItaniumCXXABI::getVTableAddressPointInStructor(
@@ -1371,6 +1373,8 @@ llvm::Value *ItaniumCXXABI::getVirtualFunctionPointer(CodeGenFunction &CGF,
   GD = GD.getCanonicalDecl();
   Ty = Ty->getPointerTo()->getPointerTo();
   llvm::Value *VTable = CGF.GetVTablePtr(This, Ty);
+
+  CGF.EmitVTablePtrCheckForCall(cast<CXXMethodDecl>(GD.getDecl()), VTable);
 
   uint64_t VTableIndex = CGM.getItaniumVTableContext().getMethodVTableIndex(GD);
   llvm::Value *VFuncPtr =
@@ -2455,6 +2459,7 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty) {
   case Type::Image:
   case Type::Query:
   case Type::Frame:
+  case Type::FrameVar:
     llvm_unreachable("Scout types shouldn't get here");
   // ====================================
       
@@ -2685,6 +2690,7 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
   case Type::Image:
   case Type::Query:
   case Type::Frame:
+  case Type::FrameVar:
     llvm_unreachable("Scout types shouldn't get here");
 // ====================================
       

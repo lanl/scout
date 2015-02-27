@@ -244,6 +244,8 @@ ExprResult Parser::ParseSpecObjectExpression(){
   cast<SpecObjectExpr>(Actions.ActOnSpecObjectExpr(Tok.getLocation()).get());
   
   bool first = true;
+
+  bool isValid = true;
   
   for(;;){
     if(Tok.is(tok::r_brace)){
@@ -263,6 +265,8 @@ ExprResult Parser::ParseSpecObjectExpression(){
     }
     
     std::string key;
+    
+    SourceLocation keyLoc = Tok.getLocation();
     
     if(Tok.is(tok::identifier)){
       IdentifierInfo* IdentInfo = Tok.getIdentifierInfo();
@@ -289,15 +293,16 @@ ExprResult Parser::ParseSpecObjectExpression(){
     ExprResult valueResult = ParseSpecExpression();
     
     if(valueResult.isInvalid()){
-      return ExprError();
+      isValid = false;
+      SkipUntil(tok::comma, tok::r_brace, StopBeforeMatch);
     }
-    
-    SpecExpr* value = cast<SpecExpr>(valueResult.get());
-    
-    obj->insert(key, value);
+    else{
+      SpecExpr* value = cast<SpecExpr>(valueResult.get());
+      obj->insert(key, keyLoc, value);
+    }
   }
   
-  return obj;
+  return isValid ? obj : ExprError();
 }
 
 ExprResult Parser::ParseSpecValueExpression(){
@@ -318,16 +323,19 @@ ExprResult Parser::ParseSpecArrayExpression(){
   SpecArrayExpr* array =
   cast<SpecArrayExpr>(Actions.ActOnSpecArrayExpr(Tok.getLocation()).get());
   
+  bool isValid = true;
+  
   for(;;){
     ExprResult valueResult = ParseSpecExpression();
     
     if(valueResult.isInvalid()){
-      return ExprError();
+      isValid = false;
+      SkipUntil(tok::comma, tok::r_square, StopBeforeMatch);
     }
-    
-    SpecExpr* value = cast<SpecExpr>(valueResult.get());
-
-    array->add(value);
+    else{
+      SpecExpr* value = cast<SpecExpr>(valueResult.get());
+      array->add(value);
+    }
     
     if(Tok.is(tok::r_square)){
       ConsumeBracket();
@@ -341,5 +349,5 @@ ExprResult Parser::ParseSpecArrayExpression(){
     ConsumeToken();
   }
   
-  return array;
+  return isValid ? array : ExprError();
 }

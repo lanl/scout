@@ -1637,6 +1637,7 @@ public:
   bool isScoutRenderTargetType() const;
   bool isScoutQueryType() const;
   bool isFrameType() const;
+  bool isFrameVarType() const;
   // +==========================================================================+
   
   /// Determines if this type, which must satisfy
@@ -3872,6 +3873,39 @@ public:
   };
 };
   
+class FrameVarType : public Type {
+  const Type* elementType;
+  
+  friend class ASTContext;  // ASTContext creates these.
+  
+public:
+  FrameVarType(const Type* ET)
+  : FrameVarType(FrameVar, ET, QualType()){}
+  
+  FrameVarType(TypeClass TC, const Type* ET, QualType can)
+  : Type(TC, can, false,
+         /*InstantiationDependent*/false,
+         /*VariablyModified*/false,
+         /*ContainsUnexpandedParameterPack*/false),
+  elementType(ET){}
+  
+  bool isSugared() const { return false; }
+  
+  QualType desugar() const { return QualType(this, 0); }
+  
+  const Type* getElementType(){
+    return elementType;
+  }
+  
+  StringRef getName(const PrintingPolicy &Policy) const {
+    return "frame var";
+  }
+  
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == FrameVar;
+  };
+};
+  
 // +==========================================================================+
 
   
@@ -5610,6 +5644,10 @@ inline bool Type::isScoutRenderTargetType() const {
   
 inline bool Type::isScoutQueryType() const {
   return isa<QueryType>(CanonicalType);
+}
+  
+inline bool Type::isFrameVarType() const {
+  return isa<FrameVarType>(CanonicalType);
 }
 
 // +=======================================================================+

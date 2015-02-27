@@ -4062,6 +4062,10 @@ bool UnnamedLocalNoLinkageFinder::VisitFrameType(const FrameType* T) {
   return false;
 }
 
+bool UnnamedLocalNoLinkageFinder::VisitFrameVarType(const FrameVarType* T) {
+  return false;
+}
+
 // +==========================================================================+
 
 bool UnnamedLocalNoLinkageFinder::VisitAutoType(const AutoType *T) {

@@ -2089,7 +2089,7 @@ void Sema::DeclareGlobalAllocationFunction(DeclarationName Name,
       }
     }
   }
-
+  
   FunctionProtoType::ExtProtoInfo EPI;
 
   QualType BadAllocType;
@@ -2121,6 +2121,16 @@ void Sema::DeclareGlobalAllocationFunction(DeclarationName Name,
   // Implicit sized deallocation functions always have default visibility.
   Alloc->addAttr(VisibilityAttr::CreateImplicit(Context,
                                                 VisibilityAttr::Default));
+
+  if (NumParams == 2 && !getLangOpts().DefineSizedDeallocation) {
+    assert(getLangOpts().SizedDeallocation &&
+           "Only sized deallocation can have two parameters");
+
+    // This declaration should be emited as extern_weak.
+    assert(Alloc->getLinkageAndVisibility().getLinkage() ==
+           clang::ExternalLinkage);
+    Alloc->addAttr(WeakAttr::CreateImplicit(Context));
+  }
 
   if (AddRestrictAttr)
     Alloc->addAttr(
@@ -2582,6 +2592,8 @@ static ExprResult BuildCXXCastArgument(Sema &S,
     S.CheckConstructorAccess(CastLoc, Constructor,
                              InitializedEntity::InitializeTemporary(Ty),
                              Constructor->getAccess());
+    if (S.DiagnoseUseOfDecl(Method, CastLoc))
+      return ExprError();
 
     ExprResult Result = S.BuildCXXConstructExpr(
         CastLoc, Ty, cast<CXXConstructorDecl>(Method),
@@ -2597,6 +2609,10 @@ static ExprResult BuildCXXCastArgument(Sema &S,
   case CK_UserDefinedConversion: {
     assert(!From->getType()->isPointerType() && "Arg can't have pointer type!");
 
+    S.CheckMemberOperatorAccess(CastLoc, From, /*arg*/ nullptr, FoundDecl);
+    if (S.DiagnoseUseOfDecl(Method, CastLoc))
+      return ExprError();
+
     // Create an implicit call expr that calls it.
     CXXConversionDecl *Conv = cast<CXXConversionDecl>(Method);
     ExprResult Result = S.BuildCXXMemberCallExpr(From, FoundDecl, Conv,
@@ -2607,8 +2623,6 @@ static ExprResult BuildCXXCastArgument(Sema &S,
     Result = ImplicitCastExpr::Create(S.Context, Result.get()->getType(),
                                       CK_UserDefinedConversion, Result.get(),
                                       nullptr, Result.get()->getValueKind());
-
-    S.CheckMemberOperatorAccess(CastLoc, From, /*arg*/ nullptr, FoundDecl);
 
     return S.MaybeBindToTemporary(Result.get());
   }
@@ -2640,7 +2654,7 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
       FunctionDecl *FD = ICS.UserDefined.ConversionFunction;
       CastKind CastKind;
       QualType BeforeToType;
-      assert(FD && "FIXME: aggregate initialization from init list");
+      assert(FD && "no conversion function for user-defined conversion seq");
       if (const CXXConversionDecl *Conv = dyn_cast<CXXConversionDecl>(FD)) {
         CastKind = CK_UserDefinedConversion;
 
@@ -3541,8 +3555,8 @@ static bool EvaluateUnaryTypeTrait(Sema &Self, TypeTrait UTT,
 
       bool FoundConstructor = false;
       unsigned FoundTQs;
-      DeclContext::lookup_const_result R = Self.LookupConstructors(RD);
-      for (DeclContext::lookup_const_iterator Con = R.begin(),
+      DeclContext::lookup_result R = Self.LookupConstructors(RD);
+      for (DeclContext::lookup_iterator Con = R.begin(),
            ConEnd = R.end(); Con != ConEnd; ++Con) {
         // A template constructor is never a copy constructor.
         // FIXME: However, it may actually be selected at the actual overload
@@ -3581,8 +3595,8 @@ static bool EvaluateUnaryTypeTrait(Sema &Self, TypeTrait UTT,
         return true;
 
       bool FoundConstructor = false;
-      DeclContext::lookup_const_result R = Self.LookupConstructors(RD);
-      for (DeclContext::lookup_const_iterator Con = R.begin(),
+      DeclContext::lookup_result R = Self.LookupConstructors(RD);
+      for (DeclContext::lookup_iterator Con = R.begin(),
            ConEnd = R.end(); Con != ConEnd; ++Con) {
         // FIXME: In C++0x, a constructor template can be a default constructor.
         if (isa<FunctionTemplateDecl>(*Con))
@@ -5151,7 +5165,7 @@ ExprResult Sema::ActOnDecltypeExpression(Expr *E) {
     if (Call == TopCall)
       continue;
 
-    if (CheckCallReturnType(Call->getCallReturnType(),
+    if (CheckCallReturnType(Call->getCallReturnType(Context),
                             Call->getLocStart(),
                             Call, Call->getDirectCallee()))
       return ExprError();
@@ -5352,20 +5366,6 @@ ExprResult Sema::ActOnStartCXXMemberReference(Scope *S, Expr *Base,
   return Base;
 }
 
-ExprResult Sema::DiagnoseDtorReference(SourceLocation NameLoc,
-                                                   Expr *MemExpr) {
-  SourceLocation ExpectedLParenLoc = PP.getLocForEndOfToken(NameLoc);
-  Diag(MemExpr->getLocStart(), diag::err_dtor_expr_without_call)
-    << isa<CXXPseudoDestructorExpr>(MemExpr)
-    << FixItHint::CreateInsertion(ExpectedLParenLoc, "()");
-
-  return ActOnCallExpr(/*Scope*/ nullptr,
-                       MemExpr,
-                       /*LPLoc*/ ExpectedLParenLoc,
-                       None,
-                       /*RPLoc*/ ExpectedLParenLoc);
-}
-
 static bool CheckArrow(Sema& S, QualType& ObjectType, Expr *&Base, 
                    tok::TokenKind& OpKind, SourceLocation OpLoc) {
   if (Base->hasPlaceholderType()) {
@@ -5406,8 +5406,7 @@ ExprResult Sema::BuildPseudoDestructorExpr(Expr *Base,
                                            TypeSourceInfo *ScopeTypeInfo,
                                            SourceLocation CCLoc,
                                            SourceLocation TildeLoc,
-                                         PseudoDestructorTypeStorage Destructed,
-                                           bool HasTrailingLParen) {
+                                         PseudoDestructorTypeStorage Destructed) {
   TypeSourceInfo *DestructedTypeInfo = Destructed.getTypeSourceInfo();
 
   QualType ObjectType;
@@ -5495,10 +5494,7 @@ ExprResult Sema::BuildPseudoDestructorExpr(Expr *Base,
                                             TildeLoc,
                                             Destructed);
 
-  if (HasTrailingLParen)
-    return Result;
-
-  return DiagnoseDtorReference(Destructed.getLocation(), Result);
+  return Result;
 }
 
 ExprResult Sema::ActOnPseudoDestructorExpr(Scope *S, Expr *Base,
@@ -5508,8 +5504,7 @@ ExprResult Sema::ActOnPseudoDestructorExpr(Scope *S, Expr *Base,
                                            UnqualifiedId &FirstTypeName,
                                            SourceLocation CCLoc,
                                            SourceLocation TildeLoc,
-                                           UnqualifiedId &SecondTypeName,
-                                           bool HasTrailingLParen) {
+                                           UnqualifiedId &SecondTypeName) {
   assert((FirstTypeName.getKind() == UnqualifiedId::IK_TemplateId ||
           FirstTypeName.getKind() == UnqualifiedId::IK_Identifier) &&
          "Invalid first type name in pseudo-destructor");
@@ -5636,15 +5631,14 @@ ExprResult Sema::ActOnPseudoDestructorExpr(Scope *S, Expr *Base,
 
   return BuildPseudoDestructorExpr(Base, OpLoc, OpKind, SS,
                                    ScopeTypeInfo, CCLoc, TildeLoc,
-                                   Destructed, HasTrailingLParen);
+                                   Destructed);
 }
 
 ExprResult Sema::ActOnPseudoDestructorExpr(Scope *S, Expr *Base,
                                            SourceLocation OpLoc,
                                            tok::TokenKind OpKind,
                                            SourceLocation TildeLoc, 
-                                           const DeclSpec& DS,
-                                           bool HasTrailingLParen) {
+                                           const DeclSpec& DS) {
   QualType ObjectType;
   if (CheckArrow(*this, ObjectType, Base, OpKind, OpLoc))
     return ExprError();
@@ -5660,7 +5654,7 @@ ExprResult Sema::ActOnPseudoDestructorExpr(Scope *S, Expr *Base,
 
   return BuildPseudoDestructorExpr(Base, OpLoc, OpKind, CXXScopeSpec(),
                                    nullptr, SourceLocation(), TildeLoc,
-                                   Destructed, HasTrailingLParen);
+                                   Destructed);
 }
 
 ExprResult Sema::BuildCXXMemberCallExpr(Expr *E, NamedDecl *FoundDecl,

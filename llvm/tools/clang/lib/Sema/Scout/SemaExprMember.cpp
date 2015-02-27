@@ -350,8 +350,7 @@ Sema::BuildMeshMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
           CXXScopeSpec TempSS(SS);
           RetryExpr = ActOnMemberAccessExpr(
               ExtraArgs->S, RetryExpr.get(), OpLoc, tok::arrow, TempSS,
-              TemplateKWLoc, ExtraArgs->Id, ExtraArgs->ObjCImpDecl,
-              ExtraArgs->HasTrailingLParen);
+              TemplateKWLoc, ExtraArgs->Id, ExtraArgs->ObjCImpDecl);
         }
         if (Trap.hasErrorOccurred())
           RetryExpr = ExprError();

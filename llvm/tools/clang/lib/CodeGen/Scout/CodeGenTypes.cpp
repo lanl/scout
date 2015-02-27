@@ -420,3 +420,7 @@ llvm::Type *CodeGenTypes::ConvertScoutFrameType(QualType T) {
   const Type *Ty = T.getTypePtr();
   return CGM.getScoutRuntime().convertScoutSpecificType(Ty);
 }
+
+llvm::Type *CodeGenTypes::ConvertScoutFrameVarType(QualType T) {
+  assert(false && "unimplemented");
+}

@@ -1217,6 +1217,7 @@ DeduceTemplateArgumentsByTypeMatch(Sema &S,
     case Type::Window:
     case Type::Image:
     case Type::Query:
+    case Type::FrameVar:
     case Type::Frame:{
       assert(false && "parsing Scout in C++ mode");
       return Sema::TDK_Success;
@@ -4894,6 +4895,7 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
   case Type::Image:
   case Type::Query:
   case Type::Frame:
+  case Type::FrameVar:
   // +========================================================================+
   case Type::Enum:
   case Type::ObjCInterface:

@@ -8,7 +8,7 @@ import unittest2
 
 class MiTestCaseBase(Base):
 
-    mydir = Base.compute_mydir(__file__)
+    mydir = None
     myexe = "a.out"
     mylog = "child.log"
 

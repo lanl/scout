@@ -59,6 +59,7 @@
 #include "clang/Sema/Lookup.h"
 #include "clang/Basic/PartialDiagnostic.h"
 #include "clang/Parse/ParseDiagnostic.h"
+#include "clang/Lex/Preprocessor.h"
 #include <algorithm>
 #include <cstring>
 #include <functional>
@@ -327,14 +328,153 @@ bool Sema::IsValidRecordDeclInMesh(RecordDecl* RD) {
 Decl* Sema::ActOnFrameDefinition(Scope* S,
                                  SourceLocation FrameLoc,
                                  IdentifierInfo* Name,
-                                 SourceLocation NameLoc,
-                                 Expr* Spec){
-  
-  LookupResult LR(*this, Name, NameLoc,
-                  LookupFrameName, Sema::NotForRedeclaration);
+                                 SourceLocation NameLoc){
   
   FrameDecl* FD =
   FrameDecl::Create(Context, CurContext, FrameLoc, NameLoc, Name, 0);
-  PushOnScopeChains(FD, S, true);
+  
+  PushDeclContext(S, FD);
+  
+  QualType vt = Context.getFrameVarType(0);
+  
+  AddFrameVarType(S, FD, "Timestep", Context.IntTy);
+  AddFrameVarType(S, FD, "Temperature", Context.DoubleTy);
+  
+  AddFrameFunction(S, FD, "sum", vt, {vt});
+  
   return FD;
+}
+
+void Sema::AddFrameVarType(Scope* Scope,
+                           FrameDecl* FD,
+                           const char* Name,
+                           QualType Type){
+  VarDecl* VD =
+  VarDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
+                  PP.getIdentifierInfo(Name), Type,
+                  Context.getTrivialTypeSourceInfo(Type),
+                  SC_None);
+  FD->addVarType(VD);
+  
+  PushOnScopeChains(VD, Scope, true);
+}
+
+void Sema::AddFrameFunction(Scope* Scope,
+                            FrameDecl* FD,
+                            const char* Name,
+                            QualType RetTy,
+                            std::vector<QualType> ArgTys){
+  using namespace std;
+  
+  FunctionProtoType::ExtProtoInfo EPI;
+
+  QualType FT = Context.getFunctionType(RetTy, ArgTys, EPI);
+  
+  FunctionDecl* F =
+  FunctionDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
+                       DeclarationName(PP.getIdentifierInfo(Name)),
+                       FT, Context.getTrivialTypeSourceInfo(FT),
+                       SC_Extern, true);
+  
+  //F->addAttr(F->getAttr<DLLExportAttr>());
+  
+  vector<ParmVarDecl*> params;
+  
+  int i = 0;
+  char nb[16];
+  
+  for(QualType t : ArgTys){
+    sprintf(nb, "p%d", i);
+    
+    ParmVarDecl* P =
+    ParmVarDecl::Create(Context, F, SourceLocation(), SourceLocation(),
+                        PP.getIdentifierInfo(nb),
+                        t, Context.getTrivialTypeSourceInfo(t),
+                        SC_Extern, 0);
+    
+    params.push_back(P);
+    
+    ++i;
+  }
+   
+  F->setParams(params);
+  
+  F->setBody(new (Context) NullStmt(SourceLocation()));
+  
+  PushOnScopeChains(F, Scope, true);
+}
+
+void Sema::PopFrameContext(FrameDecl* F){
+  PopDeclContext();
+}
+
+bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
+  using namespace std;
+  
+  bool valid = true;
+  
+  SpecObjectExpr* Spec = static_cast<SpecObjectExpr*>(SE);
+  
+  auto& m = Spec->memberMap();
+  
+  for(auto& itr : m){
+    const string& k = itr.first;
+    
+    if(!SpecExpr::isSymbol(k)){
+      Diag(Spec->getKeyLoc(k), diag::err_invalid_frame_spec) << "invalid frame variable";
+      valid = false;
+    }
+    
+    SpecExpr* v = itr.second;
+
+    SpecObjectExpr* vo = v->toObject();
+    
+    if(!vo){
+      Diag(v->getLocStart(), diag::err_invalid_frame_spec) << "invalid frame definition";
+      valid = false;
+    }
+
+    VarDecl* vd = 0;
+    
+    SpecExpr* t = vo->get("type");
+
+    if(t){
+      DeclRefExpr* dr = dyn_cast_or_null<DeclRefExpr>(t->toExpr());
+      if(!dr){
+        Diag(v->getLocStart(), diag::err_invalid_frame_spec) << "expeceted type specifier";
+        valid = false;
+      }
+      else{
+        vd = cast<VarDecl>(dr->getDecl());
+        if(!F->hasVarType(vd)){
+          Diag(v->getLocStart(), diag::err_invalid_frame_spec) << "invalid type";
+          valid = false;
+        }
+      }
+    }
+    else{
+      vd = F->getVarType(SpecExpr::toUpper(k));
+      if(!vd){
+        Diag(v->getLocStart(), diag::err_invalid_frame_spec) << "no valid default type";
+        valid = false;
+      }
+    }
+    
+    if(vd){
+      QualType vt = Context.getFrameVarType(vd->getType().getTypePtr());
+      
+      VarDecl* VD =
+      VarDecl::Create(Context, F, SourceLocation(), SourceLocation(),
+                      PP.getIdentifierInfo(k), vt,
+                      Context.getTrivialTypeSourceInfo(vt),
+                      SC_None);
+      
+      PushOnScopeChains(VD, Scope, true);
+    }
+  }
+  
+  F->setSpec(Spec);
+  F->completeDefinition();
+  
+  return valid;
 }

@@ -618,7 +618,7 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
     setOperationAction(ISD::FP_EXTEND,  MVT::f64, Custom);
   }
 
-  computeRegisterProperties();
+  computeRegisterProperties(Subtarget->getRegisterInfo());
 
   // ARM does not have floating-point extending loads.
   for (MVT VT : MVT::fp_valuetypes()) {
@@ -967,13 +967,14 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
 // of the difficulty prior to coalescing of modeling operand register classes
 // due to the common occurrence of cross class copies and subregister insertions
 // and extractions.
-std::pair<const TargetRegisterClass*, uint8_t>
-ARMTargetLowering::findRepresentativeClass(MVT VT) const{
+std::pair<const TargetRegisterClass *, uint8_t>
+ARMTargetLowering::findRepresentativeClass(const TargetRegisterInfo *TRI,
+                                           MVT VT) const {
   const TargetRegisterClass *RRC = nullptr;
   uint8_t Cost = 1;
   switch (VT.SimpleTy) {
   default:
-    return TargetLowering::findRepresentativeClass(VT);
+    return TargetLowering::findRepresentativeClass(TRI, VT);
   // Use DPR as representative register class for all floating point
   // and vector types. Since there are 32 SPR registers and 32 DPR registers so
   // the cost is 1 for both f32 and f64.
@@ -1168,12 +1169,6 @@ FastISel *
 ARMTargetLowering::createFastISel(FunctionLoweringInfo &funcInfo,
                                   const TargetLibraryInfo *libInfo) const {
   return ARM::createFastISel(funcInfo, libInfo);
-}
-
-/// getMaximalGlobalOffset - Returns the maximal possible offset which can
-/// be used for loads / stores from the global.
-unsigned ARMTargetLowering::getMaximalGlobalOffset() const {
-  return (Subtarget->isThumb1Only() ? 127 : 4095);
 }
 
 Sched::Preference ARMTargetLowering::getSchedulingPreference(SDNode *N) const {
@@ -1865,7 +1860,7 @@ ARMTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
 void
 ARMTargetLowering::HandleByVal(
     CCState *State, unsigned &size, unsigned Align) const {
-  unsigned reg = State->AllocateReg(GPRArgRegs, 4);
+  unsigned reg = State->AllocateReg(GPRArgRegs);
   assert((State->getCallOrPrologue() == Prologue ||
           State->getCallOrPrologue() == Call) &&
          "unhandled ParmContext");
@@ -1875,7 +1870,7 @@ ARMTargetLowering::HandleByVal(
       unsigned AlignInRegs = Align / 4;
       unsigned Waste = (ARM::R4 - reg) % AlignInRegs;
       for (unsigned i = 0; i < Waste; ++i)
-        reg = State->AllocateReg(GPRArgRegs, 4);
+        reg = State->AllocateReg(GPRArgRegs);
     }
     if (reg != 0) {
       unsigned excess = 4 * (ARM::R4 - reg);
@@ -1886,7 +1881,7 @@ ARMTargetLowering::HandleByVal(
       // remained registers.
       const unsigned NSAAOffset = State->getNextStackOffset();
       if (Subtarget->isAAPCS_ABI() && NSAAOffset != 0 && size > excess) {
-        while (State->AllocateReg(GPRArgRegs, 4))
+        while (State->AllocateReg(GPRArgRegs))
           ;
         return;
       }
@@ -1903,7 +1898,7 @@ ARMTargetLowering::HandleByVal(
       // Note, first register is allocated in the beginning of function already,
       // allocate remained amount of registers we need.
       for (unsigned i = reg+1; i != ByValRegEnd; ++i)
-        State->AllocateReg(GPRArgRegs, 4);
+        State->AllocateReg(GPRArgRegs);
       // A byval parameter that is split between registers and memory needs its
       // size truncated here.
       // In the case where the entire structure fits in registers, we set the
@@ -2838,9 +2833,7 @@ ARMTargetLowering::computeRegArea(CCState &CCInfo, MachineFunction &MF,
     NumGPRs = REnd - RBegin;
   } else {
     unsigned int firstUnalloced;
-    firstUnalloced = CCInfo.getFirstUnallocated(GPRArgRegs,
-                                                sizeof(GPRArgRegs) /
-                                                sizeof(GPRArgRegs[0]));
+    firstUnalloced = CCInfo.getFirstUnallocated(GPRArgRegs);
     NumGPRs = (firstUnalloced <= 3) ? (4 - firstUnalloced) : 0;
   }
 
@@ -2911,8 +2904,7 @@ ARMTargetLowering::StoreByValRegs(CCState &CCInfo, SelectionDAG &DAG,
     firstRegToSaveIndex = RBegin - ARM::R0;
     lastRegToSaveIndex = REnd - ARM::R0;
   } else {
-    firstRegToSaveIndex = CCInfo.getFirstUnallocated
-      (GPRArgRegs, array_lengthof(GPRArgRegs));
+    firstRegToSaveIndex = CCInfo.getFirstUnallocated(GPRArgRegs);
     lastRegToSaveIndex = 4;
   }
 
@@ -10637,7 +10629,8 @@ ARMTargetLowering::getSingleConstraintMatchWeight(
 
 typedef std::pair<unsigned, const TargetRegisterClass*> RCPair;
 RCPair
-ARMTargetLowering::getRegForInlineAsmConstraint(const std::string &Constraint,
+ARMTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
+                                                const std::string &Constraint,
                                                 MVT VT) const {
   if (Constraint.size() == 1) {
     // GCC ARM Constraint Letters
@@ -10683,7 +10676,7 @@ ARMTargetLowering::getRegForInlineAsmConstraint(const std::string &Constraint,
   if (StringRef("{cc}").equals_lower(Constraint))
     return std::make_pair(unsigned(ARM::CPSR), &ARM::CCRRegClass);
 
-  return TargetLowering::getRegForInlineAsmConstraint(Constraint, VT);
+  return TargetLowering::getRegForInlineAsmConstraint(TRI, Constraint, VT);
 }
 
 /// LowerAsmOperandForConstraint - Lower the specified operand into the Ops
@@ -11372,7 +11365,9 @@ static bool isHomogeneousAggregate(Type *Ty, HABaseType &Base,
   return (Members > 0 && Members <= 4);
 }
 
-/// \brief Return true if a type is an AAPCS-VFP homogeneous aggregate.
+/// \brief Return true if a type is an AAPCS-VFP homogeneous aggregate or one of
+/// [N x i32] or [N x i64]. This allows front-ends to skip emitting padding when
+/// passing according to AAPCS rules.
 bool ARMTargetLowering::functionArgumentNeedsConsecutiveRegisters(
     Type *Ty, CallingConv::ID CallConv, bool isVarArg) const {
   if (getEffectiveCallingConv(CallConv, isVarArg) !=
@@ -11381,7 +11376,9 @@ bool ARMTargetLowering::functionArgumentNeedsConsecutiveRegisters(
 
   HABaseType Base = HA_UNKNOWN;
   uint64_t Members = 0;
-  bool result = isHomogeneousAggregate(Ty, Base, Members);
-  DEBUG(dbgs() << "isHA: " << result << " "; Ty->dump());
-  return result;
+  bool IsHA = isHomogeneousAggregate(Ty, Base, Members);
+  DEBUG(dbgs() << "isHA: " << IsHA << " "; Ty->dump());
+
+  bool IsIntArray = Ty->isArrayTy() && Ty->getArrayElementType()->isIntegerTy();
+  return IsHA || IsIntArray;
 }

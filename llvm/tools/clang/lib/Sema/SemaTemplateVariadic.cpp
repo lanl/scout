@@ -755,6 +755,7 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
   case TST_image:
   case TST_query:
   case TST_frame:
+  case TST_frame_var:
     break;
 // ==================================
   }
@@ -775,6 +776,7 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
     case DeclaratorChunk::Image:
     case DeclaratorChunk::Query:
     case DeclaratorChunk::Frame:
+    case DeclaratorChunk::FrameVar:
 // ====================================
       // These declarator chunks cannot contain any parameter packs.
       break;

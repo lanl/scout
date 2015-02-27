@@ -61,7 +61,7 @@
 #include <stdio.h>
 
 const int MESH_DIM = 512;
-const int NTIME_STEPS = 100;
+const int NTIME_STEPS = 20;
 
 uniform mesh HeatMesh {
   cells: 
@@ -126,7 +126,7 @@ task void work(HeatMesh *m) {
 }	
 	
 task void check(HeatMesh *m) {
-  const float VALUE = 87.899254;
+  const float VALUE = 99.935226;
   forall cells c in *m {
     if (position().x == 260 && position().y == 260) {
        // if value does not match exit w/ error.

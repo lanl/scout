@@ -101,6 +101,7 @@ ABSTRACT_TYPE(RenderTarget, Type)
   TYPE(Image, RenderTargetType)
 TYPE(Query, Type)
 TYPE(Frame, Type)
+TYPE(FrameVar, Type)
 // +==========================================================================+
 NON_CANONICAL_TYPE(Elaborated, Type)
 NON_CANONICAL_TYPE(Attributed, Type)

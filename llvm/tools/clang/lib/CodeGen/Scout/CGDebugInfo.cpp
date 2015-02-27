@@ -1229,6 +1229,15 @@ llvm::DIType CGDebugInfo::CreateType(const FrameType *Ty) {
   assert(false && "unimplemented");
 }
 
+//===----------------------------------------------------------------------===//
+// FrameVar debug support
+//===----------------------------------------------------------------------===//
+
+llvm::DIType CGDebugInfo::CreateType(const FrameVarType *Ty) {
+  assert(false && "unimplemented");
+}
+
+
 /*
 // ----- CreateType
 //

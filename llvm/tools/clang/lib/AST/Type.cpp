@@ -2287,6 +2287,10 @@ static CachedProperties computeCachedProperties(const Type *T) {
   case Type::Frame: {
     return CachedProperties(ExternalLinkage, false);
   }
+      
+  case Type::FrameVar: {
+    return CachedProperties(ExternalLinkage, false);
+  }
   // =========================================================================
   case Type::Record:
   case Type::Enum: {
@@ -2440,6 +2444,7 @@ static LinkageInfo computeLinkageInfo(const Type *T) {
   case Type::Image:
   case Type::Query:
   case Type::Frame:
+  case Type::FrameVar:
     //SC_TODO: is external correct here?
     return LinkageInfo::external();
   // +========================================================================+

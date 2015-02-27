@@ -64,6 +64,11 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <set>
+#include <map>
+
+#include "clang/AST/Expr.h"
+
 namespace clang {
 
   class FrameDecl
@@ -88,6 +93,16 @@ namespace clang {
 
     typedef QualifierInfo ExtInfo;
 
+    typedef std::set<VarDecl*> VarTypeSet;
+    
+    VarTypeSet varTypes;
+      
+    typedef std::map<std::string, VarDecl*> VarTypeMap;
+    
+    VarTypeMap varTypeMap;
+      
+    SpecObjectExpr* Spec;
+      
     llvm::PointerUnion<TypedefNameDecl*, ExtInfo*> 
     TypedefNameDeclOrQualifier;
 
@@ -129,6 +144,29 @@ namespace clang {
     }
 
   public:
+    
+    void setSpec(SpecObjectExpr* S){
+      Spec = S;
+    }
+      
+    void addVarType(VarDecl* D){
+      varTypes.insert(D);
+      varTypeMap.insert({D->getNameAsString(), D});
+    }
+    
+    bool hasVarType(VarDecl* D){
+      return varTypes.find(D) != varTypes.end();
+    }
+      
+    VarDecl* getVarType(const std::string& name){
+      auto itr = varTypeMap.find(name);
+      if(itr == varTypeMap.end()){
+        return 0;
+      }
+      
+      return itr->second;
+    }
+      
     void completeDefinition();
 
     typedef redeclarable_base::redecl_iterator redecl_iterator;

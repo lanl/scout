@@ -65,6 +65,76 @@
 
 using namespace clang;
 
-void ScoutExpr::printPretty(){
+void ScoutExpr::printPretty() const{
   Stmt::printPretty(llvm::errs(), 0, PrintingPolicy(LangOptions()));
+}
+
+bool SpecExpr::isSymbol(const char* s){
+  bool match = false;
+      
+  size_t i = 0;
+  char c;
+
+  for(;;){
+    c = s[i];
+    
+    if(c == '\0'){
+      return match;
+    }
+
+    if(isalpha(c)){
+      match = true;
+    }    
+    else if(isdigit(c)){
+      if(!match){
+        return false;
+      }
+    }
+    else if(c != '_'){
+      return false;
+    }
+
+    ++i;
+  }
+      
+  return match;
+}
+
+std::string SpecExpr::toUpper(const std::string& str){
+  std::string ret = str;
+  transform(ret.begin(), ret.begin() + 1, ret.begin(), ::toupper);
+  return ret;
+}
+
+SpecValueExpr* SpecExpr::toValue(){
+  if(kind() != SpecValue){
+    return 0;
+  }
+  
+  return static_cast<SpecValueExpr*>(this);
+}
+
+Expr* SpecExpr::toExpr(){
+  SpecValueExpr* v = toValue();
+  if(v){
+    return v->getExpression();
+  }
+  
+  return 0;
+}
+
+SpecObjectExpr* SpecExpr::toObject(){
+  if(kind() != SpecObject){
+    return 0;
+  }
+  
+  return static_cast<SpecObjectExpr*>(this);
+}
+
+SpecArrayExpr* SpecExpr::toArray(){
+  if(kind() != SpecArray){
+    return 0;
+  }
+  
+  return static_cast<SpecArrayExpr*>(this);
 }

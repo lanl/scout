@@ -295,3 +295,12 @@ QualType ASTContext::getFrameType(const FrameDecl *Decl) const {
   Types.push_back(newType);
   return QualType(newType, 0);
 }
+
+// ===== FrameVar Type ====================================================
+QualType ASTContext::getFrameVarType(const Type *ElementType) const {
+  FrameVarType *newType;
+  newType = new (*this, TypeAlignment) FrameVarType(ElementType);
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}
+

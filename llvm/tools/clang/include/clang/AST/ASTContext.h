@@ -1151,6 +1151,8 @@ public:
   QualType getQueryType() const;
   
   QualType getFrameType(const FrameDecl *Decl) const;
+  
+  QualType getFrameVarType(const Type *ElementType) const;
   // +========================================================================+
 
   QualType getRecordType(const RecordDecl *Decl) const;

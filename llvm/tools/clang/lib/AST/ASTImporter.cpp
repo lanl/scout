@@ -698,6 +698,8 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
       
   case Type::Frame:
     return false;
+  case Type::FrameVar:
+    return false;
   // +========================================================================+
   case Type::Record:
   case Type::Enum:

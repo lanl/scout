@@ -164,7 +164,20 @@ FileSpec::Resolve (llvm::SmallVectorImpl<char> &path)
         ResolveUsername(path);
 #endif // #ifdef LLDB_CONFIG_TILDE_RESOLVES_TO_USER
 
+    // Save a copy of the original path that's passed in
+    llvm::SmallString<PATH_MAX> original_path(path.begin(), path.end());
+
     llvm::sys::fs::make_absolute(path);
+
+    
+    path.push_back(0);  // Be sure we have a nul terminated string
+    path.pop_back();
+    struct stat file_stats;
+    if (::stat (path.data(), &file_stats) != 0)
+    {
+        path.clear();
+        path.append(original_path.begin(), original_path.end());
+    }
 }
 
 FileSpec::FileSpec() : 
@@ -850,6 +863,15 @@ FileSpec::MemoryMapFileContents(off_t file_offset, size_t file_size) const
             data_sp.reset(mmap_data.release());
     }
     return data_sp;
+}
+
+DataBufferSP
+FileSpec::MemoryMapFileContentsIfLocal(off_t file_offset, size_t file_size) const
+{
+    if (FileSystem::IsLocal(*this))
+        return MemoryMapFileContents(file_offset, file_size);
+    else
+        return ReadFileContents(file_offset, file_size, NULL);
 }
 
 

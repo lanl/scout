@@ -138,6 +138,8 @@ public:
   void mangleSEHFilterExpression(const NamedDecl *EnclosingDecl,
                                  raw_ostream &Out) override;
   void mangleStringLiteral(const StringLiteral *SL, raw_ostream &Out) override;
+  void mangleCXXVTableBitSet(const CXXRecordDecl *RD,
+                             raw_ostream &Out) override;
   bool getNextDiscriminator(const NamedDecl *ND, unsigned &disc) {
     // Lambda closure types are already numbered.
     if (isLambda(ND))
@@ -1809,6 +1811,11 @@ void MicrosoftCXXNameMangler::mangleType(const QueryType *T,
   Out << "_Rq";
 }
 
+void MicrosoftCXXNameMangler::mangleType(const FrameVarType *T,
+                                         SourceRange) {
+  Out << "_Rv";
+}
+
 void MicrosoftCXXNameMangler::mangleType(const FrameType *T,
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
@@ -2643,6 +2650,11 @@ void MicrosoftMangleContextImpl::mangleStringLiteral(const StringLiteral *SL,
       MangleByte(0);
 
   Mangler.getStream() << '@';
+}
+
+void MicrosoftMangleContextImpl::mangleCXXVTableBitSet(const CXXRecordDecl *RD,
+                                                       raw_ostream &Out) {
+  llvm::report_fatal_error("Cannot mangle bitsets yet");
 }
 
 MicrosoftMangleContext *

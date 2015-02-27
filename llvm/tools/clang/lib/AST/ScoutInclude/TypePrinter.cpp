@@ -119,6 +119,13 @@ TypePrinter::printFrameBefore(const FrameType *T,
 }
 
 void
+TypePrinter::printFrameVarBefore(const FrameVarType *T,
+                                 raw_ostream &OS) {
+  OS << T->getName(Policy);
+  spaceBeforePlaceHolder(OS);
+}
+
+void
 TypePrinter::printUniformMeshAfter(const UniformMeshType *T,
                                    raw_ostream &OS)
 {
@@ -169,4 +176,9 @@ TypePrinter::printQueryAfter(const QueryType *T,
 void
 TypePrinter::printFrameAfter(const FrameType *T,
                              raw_ostream &OS)
+{ }
+
+void
+TypePrinter::printFrameVarAfter(const FrameVarType *T,
+                                raw_ostream &OS)
 { }

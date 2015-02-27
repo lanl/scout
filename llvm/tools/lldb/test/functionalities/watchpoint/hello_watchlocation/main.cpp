@@ -13,10 +13,13 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <atomic>
 
 pthread_t g_thread_1 = NULL;
 pthread_t g_thread_2 = NULL;
 pthread_t g_thread_3 = NULL;
+
+std::atomic_bool g_ready(false);
 
 char *g_char_ptr = NULL;
 
@@ -51,6 +54,8 @@ thread_func (void *arg)
 {
     uint32_t thread_index = *((uint32_t *)arg);
     printf ("%s (thread index = %u) startng...\n", __FUNCTION__, thread_index);
+
+    while (!g_ready);
 
     uint32_t count = 0;
     uint32_t val;
@@ -90,11 +95,13 @@ int main (int argc, char const *argv[])
     err = ::pthread_create (&g_thread_3, NULL, thread_func, &thread_index_3);
 
     printf ("Before turning all three threads loose...\n"); // Set break point at this line.
+    g_ready = true;
 
     // Join all of our threads
     err = ::pthread_join (g_thread_1, &thread_result);
     err = ::pthread_join (g_thread_2, &thread_result);
     err = ::pthread_join (g_thread_3, &thread_result);
+    free(g_char_ptr);
 
     return 0;
 }

@@ -1166,6 +1166,7 @@ public:
   QualType BuildImageType(QualType T, const llvm::SmallVector<Expr*,2> &dims);
   QualType BuildQueryType(QualType T);
   QualType BuildFrameType(QualType T);
+  QualType BuildFrameVarType(QualType T, const Type* elementType);
   // +========================================================================+
 
   /// \brief Build a function type.
@@ -3704,7 +3705,6 @@ public:
     Scope *S;
     UnqualifiedId &Id;
     Decl *ObjCImpDecl;
-    bool HasTrailingLParen;
   };
 
   ExprResult BuildMemberReferenceExpr(
@@ -3756,8 +3756,7 @@ public:
                                    CXXScopeSpec &SS,
                                    SourceLocation TemplateKWLoc,
                                    UnqualifiedId &Member,
-                                   Decl *ObjCImpDecl,
-                                   bool HasTrailingLParen);
+                                   Decl *ObjCImpDecl);
 
   void ActOnDefaultCtorInitializers(Decl *CDtorDecl);
   bool ConvertArgumentsForCall(CallExpr *Call, Expr *Fn,
@@ -4615,8 +4614,6 @@ public:
                                           ParsedType &ObjectType,
                                           bool &MayBePseudoDestructor);
 
-  ExprResult DiagnoseDtorReference(SourceLocation NameLoc, Expr *MemExpr);
-
   ExprResult BuildPseudoDestructorExpr(Expr *Base,
                                        SourceLocation OpLoc,
                                        tok::TokenKind OpKind,
@@ -4624,8 +4621,7 @@ public:
                                        TypeSourceInfo *ScopeType,
                                        SourceLocation CCLoc,
                                        SourceLocation TildeLoc,
-                                     PseudoDestructorTypeStorage DestroyedType,
-                                       bool HasTrailingLParen);
+                                     PseudoDestructorTypeStorage DestroyedType);
 
   ExprResult ActOnPseudoDestructorExpr(Scope *S, Expr *Base,
                                        SourceLocation OpLoc,
@@ -4634,15 +4630,13 @@ public:
                                        UnqualifiedId &FirstTypeName,
                                        SourceLocation CCLoc,
                                        SourceLocation TildeLoc,
-                                       UnqualifiedId &SecondTypeName,
-                                       bool HasTrailingLParen);
+                                       UnqualifiedId &SecondTypeName);
 
   ExprResult ActOnPseudoDestructorExpr(Scope *S, Expr *Base,
                                        SourceLocation OpLoc,
                                        tok::TokenKind OpKind,
                                        SourceLocation TildeLoc,
-                                       const DeclSpec& DS,
-                                       bool HasTrailingLParen);
+                                       const DeclSpec& DS);
 
   /// MaybeCreateExprWithCleanups - If the current full-expression
   /// requires any cleanups, surround it with a ExprWithCleanups node.
@@ -8656,6 +8650,7 @@ public:
     FST_Strfmon,
     FST_Kprintf,
     FST_FreeBSDKPrintf,
+    FST_OSTrace,
     FST_Unknown
   };
   static FormatStringType GetFormatStringType(const FormatAttr *Format);
@@ -8942,8 +8937,19 @@ public:
   Decl* ActOnFrameDefinition(Scope* S,
                              SourceLocation FrameLoc,
                              IdentifierInfo* Name,
-                             SourceLocation NameLoc,
-                             Expr* Spec);
+                             SourceLocation NameLoc);
+    
+  void PopFrameContext(FrameDecl* F);
+
+  void AddFrameVarType(Scope* Scope, FrameDecl* FD, const char* Name, QualType Type);
+  
+  void AddFrameFunction(Scope* Scope,
+                        FrameDecl* FD,
+                        const char* Name,
+                        QualType RetTy,
+                        std::vector<QualType> ArgTys);
+  
+  bool InitFrame(Scope* Scope, FrameDecl* F, Expr* Spec);
   
   //  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
   //                                      SourceLocation L, SourceLocation R,
