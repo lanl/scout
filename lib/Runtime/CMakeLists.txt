@@ -104,6 +104,10 @@ if (SCOUT_ENABLE_PLOT)
   list(APPEND rt_srcs ${rt_srcs_plot})
 endif()
 
+#plot2
+file(GLOB rt_srcs_plot2 plot2/*.cpp)
+list(APPEND rt_srcs ${rt_srcs_plot2})
+
 if (SCOUT_ENABLE_OPENGL)
 
   # Add OpenGL source files to the build...

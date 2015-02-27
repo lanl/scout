@@ -470,6 +470,7 @@ bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
                       SC_None);
       
       PushOnScopeChains(VD, Scope, true);
+      F->addVar(k, VD);
     }
   }
   

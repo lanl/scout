@@ -22,6 +22,7 @@
 #include "Scout/CGMeshLayout.h"
 #include "Scout/CGScoutRuntime.h"
 #include "Scout/CGPlotRuntime.h"
+#include "Scout/CGPlot2Runtime.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include <stdio.h>
 
