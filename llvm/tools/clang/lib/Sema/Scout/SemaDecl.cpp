@@ -340,7 +340,7 @@ Decl* Sema::ActOnFrameDefinition(Scope* S,
   AddFrameVarType(S, FD, "Timestep", Context.IntTy);
   AddFrameVarType(S, FD, "Temperature", Context.DoubleTy);
   
-  AddFrameFunction(S, FD, "sum", vt, {Context.DoubleTy});
+  AddFrameFunction(S, FD, "sum", vt, {vt});
   
   return FD;
 }
@@ -376,7 +376,7 @@ void Sema::AddFrameFunction(Scope* Scope,
                        FT, Context.getTrivialTypeSourceInfo(FT),
                        SC_Extern, true);
   
-  F->addAttr(F->getAttr<DLLExportAttr>());
+  //F->addAttr(F->getAttr<DLLExportAttr>());
   
   vector<ParmVarDecl*> params;
   
@@ -398,6 +398,8 @@ void Sema::AddFrameFunction(Scope* Scope,
   }
    
   F->setParams(params);
+  
+  F->setBody(new (Context) NullStmt(SourceLocation()));
   
   PushOnScopeChains(F, Scope, true);
 }
