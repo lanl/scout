@@ -1298,6 +1298,12 @@ bool CompilerInstance::loadModuleFile(StringRef FileName) {
     bool needsImportVisitation() const override { return true; }
 
     void visitImport(StringRef FileName) override {
+      if (!CI.ExplicitlyLoadedModuleFiles.insert(FileName).second) {
+        if (ModuleFileStack.size() == 0)
+          TopFileIsModule = true;
+        return;
+      }
+
       ModuleFileStack.push_back(FileName);
       if (ASTReader::readASTFileControlBlock(FileName, CI.getFileManager(),
                                              *this)) {

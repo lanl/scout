@@ -370,8 +370,8 @@ public:
   /// \p Phase on the \p Input, taking in to account arguments
   /// like -fsyntax-only or --analyze.
   std::unique_ptr<Action>
-  ConstructPhaseAction(const llvm::opt::ArgList &Args, phases::ID Phase,
-                       std::unique_ptr<Action> Input) const;
+  ConstructPhaseAction(const ToolChain &TC, const llvm::opt::ArgList &Args,
+                       phases::ID Phase, std::unique_ptr<Action> Input) const;
 
   /// BuildJobsForAction - Construct the jobs to perform for the
   /// action \p A.
@@ -415,7 +415,7 @@ public:
   /// handle this action.
   bool ShouldUseClangCompiler(const JobAction &JA) const;
 
-  bool IsUsingLTO(const llvm::opt::ArgList &Args) const;
+  bool IsUsingLTO(const ToolChain &TC, const llvm::opt::ArgList &Args) const;
 
 private:
   /// \brief Retrieves a ToolChain for a particular target triple.

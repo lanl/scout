@@ -3325,6 +3325,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-fdata-sections");
   }
 
+  if (!Args.hasFlag(options::OPT_funique_section_names,
+                    options::OPT_fno_unique_section_names, true))
+    CmdArgs.push_back("-fno-unique-section-names");
+
   Args.AddAllArgs(CmdArgs, options::OPT_finstrument_functions);
 
   if (Args.hasArg(options::OPT_fprofile_instr_generate) &&
@@ -4099,6 +4103,11 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                    IsWindowsMSVC))
     CmdArgs.push_back("-fms-extensions");
 
+  // -fno-use-line-directives is default.
+  if (Args.hasFlag(options::OPT_fuse_line_directives,
+                   options::OPT_fno_use_line_directives, false))
+    CmdArgs.push_back("-fuse-line-directives");
+
   // -fms-compatibility=0 is default.
   if (Args.hasFlag(options::OPT_fms_compatibility,
                    options::OPT_fno_ms_compatibility,
@@ -4127,7 +4136,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       Ver = getMSCompatibilityVersion(MSCVersion->getValue());
 
     if (Ver.empty())
-      CmdArgs.push_back("-fms-compatibility-version=17.00");
+      CmdArgs.push_back("-fms-compatibility-version=18.00");
     else
       CmdArgs.push_back(Args.MakeArgString("-fms-compatibility-version=" + Ver));
   }
@@ -4254,15 +4263,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   if (!Args.hasFlag(options::OPT_fassume_sane_operator_new,
                     options::OPT_fno_assume_sane_operator_new))
     CmdArgs.push_back("-fno-assume-sane-operator-new");
-  
-  // -fno-sized-deallocation: disable sized delete.
-  if (Args.hasArg(options::OPT_fno_sized_deallocation))
-    CmdArgs.push_back("-fno-sized-deallocation");
-  
-  // -fdefine-sized-deallocation: default implementation of sized delete as a
-  // weak definition.
-  if (Args.hasArg(options::OPT_fdefine_sized_deallocation))
-    CmdArgs.push_back("-fdefine-sized-deallocation");
 
   // -fconstant-cfstrings is default, and may be subject to argument translation
   // on Darwin.
@@ -5643,8 +5643,8 @@ bool mips::isFPXXDefault(const llvm::Triple &Triple, StringRef CPUName,
 
   return llvm::StringSwitch<bool>(CPUName)
              .Cases("mips2", "mips3", "mips4", "mips5", true)
-             .Cases("mips32", "mips32r2", true)
-             .Cases("mips64", "mips64r2", true)
+             .Cases("mips32", "mips32r2", "mips32r3", "mips32r5", true)
+             .Cases("mips64", "mips64r2", "mips64r3", "mips64r5", true)
              .Default(false);
 }
 
@@ -5849,7 +5849,8 @@ void darwin::Link::AddLinkArgs(Compilation &C,
   // If we are using LTO, then automatically create a temporary file path for
   // the linker to use, so that it's lifetime will extend past a possible
   // dsymutil step.
-  if (Version[0] >= 116 && D.IsUsingLTO(Args) && NeedsTempPath(Inputs)) {
+  if (Version[0] >= 116 && D.IsUsingLTO(getToolChain(), Args) &&
+      NeedsTempPath(Inputs)) {
     const char *TmpPath = C.getArgs().MakeArgString(
       D.GetTemporaryPath("cc", types::getTypeTempSuffix(types::TY_Object)));
     C.addTempFile(TmpPath);
@@ -6874,7 +6875,7 @@ void freebsd::Link::ConstructJob(Compilation &C, const JobAction &JA,
   Args.AddAllArgs(CmdArgs, options::OPT_Z_Flag);
   Args.AddAllArgs(CmdArgs, options::OPT_r);
 
-  if (D.IsUsingLTO(Args))
+  if (D.IsUsingLTO(getToolChain(), Args))
     AddGoldPlugin(ToolChain, Args, CmdArgs);
 
   bool NeedsSanitizerDeps = addSanitizerRuntimes(ToolChain, Args, CmdArgs);
@@ -7710,7 +7711,7 @@ void gnutools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   for (const auto &Path : Paths)
     CmdArgs.push_back(Args.MakeArgString(StringRef("-L") + Path));
 
-  if (D.IsUsingLTO(Args))
+  if (D.IsUsingLTO(getToolChain(), Args))
     AddGoldPlugin(ToolChain, Args, CmdArgs);
 
   if (Args.hasArg(options::OPT_Z_Xlinker__no_demangle))

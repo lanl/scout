@@ -868,6 +868,8 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
       return RValue::get(Builder.CreateZExt(Result, Int64Ty, "extend.zext"));
   }
   case Builtin::BI__builtin_setjmp: {
+    if (!getTargetHooks().hasSjLjLowering(*this))
+      break;
     // Buffer is a void**.
     Value *Buf = EmitScalarExpr(E->getArg(0));
 
@@ -890,6 +892,8 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
     return RValue::get(Builder.CreateCall(F, Buf));
   }
   case Builtin::BI__builtin_longjmp: {
+    if (!getTargetHooks().hasSjLjLowering(*this))
+      break;
     Value *Buf = EmitScalarExpr(E->getArg(0));
     Buf = Builder.CreateBitCast(Buf, Int8PtrTy);
 
@@ -2613,7 +2617,7 @@ Function *CodeGenFunction::LookupNeonLLVMIntrinsic(unsigned IntrinsicID,
   // Return type.
   SmallVector<llvm::Type *, 3> Tys;
   if (Modifier & AddRetType) {
-    llvm::Type *Ty = ConvertType(E->getCallReturnType());
+    llvm::Type *Ty = ConvertType(E->getCallReturnType(getContext()));
     if (Modifier & VectorizeRetType)
       Ty = llvm::VectorType::get(
           Ty, VectorSize ? VectorSize / Ty->getPrimitiveSizeInBits() : 1);
@@ -4327,36 +4331,36 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
   case NEON::BI__builtin_neon_vceqzs_f32:
     Ops.push_back(EmitScalarExpr(E->getArg(0)));
     return EmitAArch64CompareBuiltinExpr(
-        Ops[0], ConvertType(E->getCallReturnType()), ICmpInst::FCMP_OEQ,
-        ICmpInst::ICMP_EQ, "vceqz");
+        Ops[0], ConvertType(E->getCallReturnType(getContext())),
+        ICmpInst::FCMP_OEQ, ICmpInst::ICMP_EQ, "vceqz");
   case NEON::BI__builtin_neon_vcgezd_s64:
   case NEON::BI__builtin_neon_vcgezd_f64:
   case NEON::BI__builtin_neon_vcgezs_f32:
     Ops.push_back(EmitScalarExpr(E->getArg(0)));
     return EmitAArch64CompareBuiltinExpr(
-        Ops[0], ConvertType(E->getCallReturnType()), ICmpInst::FCMP_OGE,
-        ICmpInst::ICMP_SGE, "vcgez");
+        Ops[0], ConvertType(E->getCallReturnType(getContext())),
+        ICmpInst::FCMP_OGE, ICmpInst::ICMP_SGE, "vcgez");
   case NEON::BI__builtin_neon_vclezd_s64:
   case NEON::BI__builtin_neon_vclezd_f64:
   case NEON::BI__builtin_neon_vclezs_f32:
     Ops.push_back(EmitScalarExpr(E->getArg(0)));
     return EmitAArch64CompareBuiltinExpr(
-        Ops[0], ConvertType(E->getCallReturnType()), ICmpInst::FCMP_OLE,
-        ICmpInst::ICMP_SLE, "vclez");
+        Ops[0], ConvertType(E->getCallReturnType(getContext())),
+        ICmpInst::FCMP_OLE, ICmpInst::ICMP_SLE, "vclez");
   case NEON::BI__builtin_neon_vcgtzd_s64:
   case NEON::BI__builtin_neon_vcgtzd_f64:
   case NEON::BI__builtin_neon_vcgtzs_f32:
     Ops.push_back(EmitScalarExpr(E->getArg(0)));
     return EmitAArch64CompareBuiltinExpr(
-        Ops[0], ConvertType(E->getCallReturnType()), ICmpInst::FCMP_OGT,
-        ICmpInst::ICMP_SGT, "vcgtz");
+        Ops[0], ConvertType(E->getCallReturnType(getContext())),
+        ICmpInst::FCMP_OGT, ICmpInst::ICMP_SGT, "vcgtz");
   case NEON::BI__builtin_neon_vcltzd_s64:
   case NEON::BI__builtin_neon_vcltzd_f64:
   case NEON::BI__builtin_neon_vcltzs_f32:
     Ops.push_back(EmitScalarExpr(E->getArg(0)));
     return EmitAArch64CompareBuiltinExpr(
-        Ops[0], ConvertType(E->getCallReturnType()), ICmpInst::FCMP_OLT,
-        ICmpInst::ICMP_SLT, "vcltz");
+        Ops[0], ConvertType(E->getCallReturnType(getContext())),
+        ICmpInst::FCMP_OLT, ICmpInst::ICMP_SLT, "vcltz");
 
   case NEON::BI__builtin_neon_vceqzd_u64: {
     llvm::Type *Ty = llvm::Type::getInt64Ty(getLLVMContext());
@@ -4808,7 +4812,7 @@ Value *CodeGenFunction::EmitAArch64BuiltinExpr(unsigned BuiltinID,
   case NEON::BI__builtin_neon_vfmad_lane_f64:
   case NEON::BI__builtin_neon_vfmad_laneq_f64: {
     Ops.push_back(EmitScalarExpr(E->getArg(3)));
-    llvm::Type *Ty = ConvertType(E->getCallReturnType());
+    llvm::Type *Ty = ConvertType(E->getCallReturnType(getContext()));
     Value *F = CGM.getIntrinsic(Intrinsic::fma, Ty);
     Ops[2] = Builder.CreateExtractElement(Ops[2], Ops[3], "extract");
     return Builder.CreateCall3(F, Ops[1], Ops[2], Ops[0]);

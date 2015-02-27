@@ -113,7 +113,7 @@ CodeGenFunction::~CodeGenFunction() {
     destroyBlockInfos(FirstBlockInfo);
 
   if (getLangOpts().OpenMP) {
-    CGM.getOpenMPRuntime().FunctionFinished(*this);
+    CGM.getOpenMPRuntime().functionFinished(*this);
   }
 }
 

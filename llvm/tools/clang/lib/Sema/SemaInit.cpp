@@ -3171,15 +3171,13 @@ static OverloadingResult
 ResolveConstructorOverload(Sema &S, SourceLocation DeclLoc,
                            MultiExprArg Args,
                            OverloadCandidateSet &CandidateSet,
-                           ArrayRef<NamedDecl *> Ctors,
+                           DeclContext::lookup_result Ctors,
                            OverloadCandidateSet::iterator &Best,
                            bool CopyInitializing, bool AllowExplicit,
                            bool OnlyListConstructors, bool IsListInit) {
   CandidateSet.clear();
 
-  for (ArrayRef<NamedDecl *>::iterator
-         Con = Ctors.begin(), ConEnd = Ctors.end(); Con != ConEnd; ++Con) {
-    NamedDecl *D = *Con;
+  for (NamedDecl *D : Ctors) {
     DeclAccessPair FoundDecl = DeclAccessPair::make(D, D->getAccess());
     bool SuppressUserConversions = false;
 
@@ -3195,9 +3193,9 @@ ResolveConstructorOverload(Sema &S, SourceLocation DeclLoc,
       // C++11 [over.best.ics]p4:
       //   ... and the constructor or user-defined conversion function is a
       //   candidate by
-      //   — 13.3.1.3, when the argument is the temporary in the second step
+      //   - 13.3.1.3, when the argument is the temporary in the second step
       //     of a class copy-initialization, or
-      //   — 13.3.1.4, 13.3.1.5, or 13.3.1.6 (in all cases),
+      //   - 13.3.1.4, 13.3.1.5, or 13.3.1.6 (in all cases),
       //   user-defined conversion sequences are not considered.
       // FIXME: This breaks backward compatibility, e.g. PR12117. As a
       //        temporary fix, let's re-instate the third bullet above until
@@ -3281,11 +3279,7 @@ static void TryConstructorInitialization(Sema &S,
   //   - Otherwise, if T is a class type, constructors are considered. The
   //     applicable constructors are enumerated, and the best one is chosen
   //     through overload resolution.
-  DeclContext::lookup_result R = S.LookupConstructors(DestRecordDecl);
-  // The container holding the constructors can under certain conditions
-  // be changed while iterating (e.g. because of deserialization).
-  // To be safe we copy the lookup results to a new container.
-  SmallVector<NamedDecl*, 16> Ctors(R.begin(), R.end());
+  DeclContext::lookup_result Ctors = S.LookupConstructors(DestRecordDecl);
 
   OverloadingResult Result = OR_No_Viable_Function;
   OverloadCandidateSet::iterator Best;
@@ -3663,14 +3657,7 @@ static OverloadingResult TryRefInitWithConversionFunction(Sema &S,
     // to see if there is a suitable conversion.
     CXXRecordDecl *T1RecordDecl = cast<CXXRecordDecl>(T1RecordType->getDecl());
 
-    DeclContext::lookup_result R = S.LookupConstructors(T1RecordDecl);
-    // The container holding the constructors can under certain conditions
-    // be changed while iterating (e.g. because of deserialization).
-    // To be safe we copy the lookup results to a new container.
-    SmallVector<NamedDecl*, 16> Ctors(R.begin(), R.end());
-    for (SmallVectorImpl<NamedDecl *>::iterator
-           CI = Ctors.begin(), CE = Ctors.end(); CI != CE; ++CI) {
-      NamedDecl *D = *CI;
+    for (NamedDecl *D : S.LookupConstructors(T1RecordDecl)) {
       DeclAccessPair FoundDecl = DeclAccessPair::make(D, D->getAccess());
 
       // Find the constructor (which may be a template).

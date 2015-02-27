@@ -394,10 +394,6 @@ def fasm_blocks : Flag<["-"], "fasm-blocks">, Group<f_Group>, Flags<[CC1Option]>
 def fno_asm_blocks : Flag<["-"], "fno-asm-blocks">, Group<f_Group>;
 
 def fassume_sane_operator_new : Flag<["-"], "fassume-sane-operator-new">, Group<f_Group>;
-def fno_sized_deallocation: Flag<["-"], "fno-sized-deallocation">, Group<f_Group>,
-  HelpText<"Disable sized deallocation functions">, Flags<[CC1Option]>;
-def fdefine_sized_deallocation: Flag<["-"], "fdefine-sized-deallocation">, Group<f_Group>,
-  HelpText<"Allow compiler-generated definition of sized deallocation functions">, Flags<[CC1Option]>;
 def fastcp : Flag<["-"], "fastcp">, Group<f_Group>;
 def fastf : Flag<["-"], "fastf">, Group<f_Group>;
 def fast : Flag<["-"], "fast">, Group<f_Group>;
@@ -437,12 +433,12 @@ def fborland_extensions : Flag<["-"], "fborland-extensions">, Group<f_Group>, Fl
 def fbuiltin : Flag<["-"], "fbuiltin">, Group<f_Group>;
 def fcaret_diagnostics : Flag<["-"], "fcaret-diagnostics">, Group<f_Group>;
 def fclasspath_EQ : Joined<["-"], "fclasspath=">, Group<f_Group>;
-def fcolor_diagnostics : Flag<["-"], "fcolor-diagnostics">, Group<f_Group>, Flags<[CC1Option]>,
-  HelpText<"Use colors in diagnostics">;
+def fcolor_diagnostics : Flag<["-"], "fcolor-diagnostics">, Group<f_Group>,
+  Flags<[CoreOption, CC1Option]>, HelpText<"Use colors in diagnostics">;
 def fdiagnostics_color : Flag<["-"], "fdiagnostics-color">, Group<f_Group>;
 def fdiagnostics_color_EQ : Joined<["-"], "fdiagnostics-color=">, Group<f_Group>;
-def fansi_escape_codes : Flag<["-"], "fansi-escape-codes">, Group<f_Group>, Flags<[CC1Option]>,
-  HelpText<"Use ANSI escape codes for diagnostics">;
+def fansi_escape_codes : Flag<["-"], "fansi-escape-codes">, Group<f_Group>,
+  Flags<[CoreOption, CC1Option]>, HelpText<"Use ANSI escape codes for diagnostics">;
 def fcomment_block_commands : CommaJoined<["-"], "fcomment-block-commands=">, Group<f_clang_Group>, Flags<[CC1Option]>,
   HelpText<"Treat each comma separated argument in <arg> as a documentation comment block command">,
   MetaVarName<"<arg>">;
@@ -599,6 +595,10 @@ def frewrite_map_file : Separate<["-"], "frewrite-map-file">,
 def frewrite_map_file_EQ : Joined<["-"], "frewrite-map-file=">,
                            Group<f_Group>,
                            Flags<[DriverOption]>;
+
+def fuse_line_directives : Flag<["-"], "fuse-line-directives">, Group<f_Group>,
+  Flags<[CC1Option]>;
+def fno_use_line_directives : Flag<["-"], "fno-use-line-directives">, Group<f_Group>;
 
 def ffreestanding : Flag<["-"], "ffreestanding">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Assert that the compilation takes place in a freestanding environment">;
@@ -1004,6 +1004,14 @@ def fdata_sections : Flag <["-"], "fdata-sections">, Group<f_Group>,
  Flags<[CC1Option]>, HelpText<"Place each data in its own section (ELF Only)">;
 def fno_data_sections : Flag <["-"], "fno-data-sections">, Group<f_Group>,
   Flags<[CC1Option]>;
+
+def funique_section_names : Flag <["-"], "funique-section-names">,
+  Group<f_Group>, Flags<[CC1Option]>,
+  HelpText<"Use unique names for text and data sections (ELF Only)">;
+def fno_unique_section_names : Flag <["-"], "fno-unique-section-names">,
+  Group<f_Group>, Flags<[CC1Option]>;
+
+
 def fdebug_types_section: Flag <["-"], "fdebug-types-section">, Group<f_Group>,
   Flags<[CC1Option]>, HelpText<"Place debug types in their own section (ELF Only)">;
 def fno_debug_types_section: Flag<["-"], "fno-debug-types-section">, Group<f_Group>,
@@ -1366,6 +1374,12 @@ def mips32 : Flag<["-"], "mips32">,
 def mips32r2 : Flag<["-"], "mips32r2">,
   Alias<march_EQ>, AliasArgs<["mips32r2"]>,
   HelpText<"Equivalent to -march=mips32r2">, Flags<[HelpHidden]>;
+def mips32r3 : Flag<["-"], "mips32r3">,
+  Alias<march_EQ>, AliasArgs<["mips32r3"]>,
+  HelpText<"Equivalent to -march=mips32r3">, Flags<[HelpHidden]>;
+def mips32r5 : Flag<["-"], "mips32r5">,
+  Alias<march_EQ>, AliasArgs<["mips32r5"]>,
+  HelpText<"Equivalent to -march=mips32r5">, Flags<[HelpHidden]>;
 def mips32r6 : Flag<["-"], "mips32r6">,
   Alias<march_EQ>, AliasArgs<["mips32r6"]>,
   HelpText<"Equivalent to -march=mips32r6">, Flags<[HelpHidden]>;
@@ -1375,6 +1389,12 @@ def mips64 : Flag<["-"], "mips64">,
 def mips64r2 : Flag<["-"], "mips64r2">,
   Alias<march_EQ>, AliasArgs<["mips64r2"]>,
   HelpText<"Equivalent to -march=mips64r2">, Flags<[HelpHidden]>;
+def mips64r3 : Flag<["-"], "mips64r3">,
+  Alias<march_EQ>, AliasArgs<["mips64r3"]>,
+  HelpText<"Equivalent to -march=mips64r3">, Flags<[HelpHidden]>;
+def mips64r5 : Flag<["-"], "mips64r5">,
+  Alias<march_EQ>, AliasArgs<["mips64r5"]>,
+  HelpText<"Equivalent to -march=mips64r5">, Flags<[HelpHidden]>;
 def mips64r6 : Flag<["-"], "mips64r6">,
   Alias<march_EQ>, AliasArgs<["mips64r6"]>,
   HelpText<"Equivalent to -march=mips64r6">, Flags<[HelpHidden]>;
