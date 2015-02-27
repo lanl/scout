@@ -955,7 +955,6 @@ CMIDriver::SetExitApplicationFlag(const bool vbForceExit)
     {
         CMIUtilThreadLock lock(m_threadMutex);
         m_bExitApp = true;
-        m_rStdin.OnExitHandler();
         return;
     }
 
@@ -970,7 +969,6 @@ CMIDriver::SetExitApplicationFlag(const bool vbForceExit)
     }
 
     m_bExitApp = true;
-    m_rStdin.OnExitHandler();
 }
 
 //++ ------------------------------------------------------------------------------------
@@ -1174,7 +1172,7 @@ CMIDriver::GetExecutableFileNamePathOnCmdLine(void) const
 bool
 CMIDriver::LocalDebugSessionStartupInjectCommands(void)
 {
-    const CMIUtilString strCmd(CMIUtilString::Format("-file-exec-and-symbols \"%s\"", m_strCmdLineArgExecuteableFileNamePath.c_str()));
+    const CMIUtilString strCmd(CMIUtilString::Format("-file-exec-and-symbols \"%s\"", m_strCmdLineArgExecuteableFileNamePath.AddSlashes().c_str()));
     const bool bOk = CMICmnStreamStdout::TextToStdout(strCmd);
     return (bOk && InterpretCommand(strCmd));
 }

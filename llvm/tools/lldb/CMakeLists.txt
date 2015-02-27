@@ -30,6 +30,9 @@ endif ()
 set(LLDB_ENABLE_PYTHON_SCRIPTS_SWIG_API_GENERATION ${LLDB_DEFAULT_ENABLE_PYTHON_SCRIPTS_SWIG_API_GENERATION} CACHE BOOL
   "Enables using new Python scripts for SWIG API generation .")  
 
+set(LLDB_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/source")
+set(LLDB_INCLUDE_ROOT "${LLDB_INCLUDE_ROOT}/include")
+
 # If we are not building as a part of LLVM, build LLDB as an
 # standalone project, using LLVM as an external library:
 if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
@@ -78,15 +81,17 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
   include(HandleLLVMOptions)
 
   # Verify that we can find a Python 2 interpreter.  Python 3 is unsupported.
-  set(Python_ADDITIONAL_VERSIONS 2.7 2.6 2.5)
-  include(FindPythonInterp)
-  if( NOT PYTHONINTERP_FOUND )
-    message(FATAL_ERROR
-  "Unable to find Python interpreter, required for builds and testing.
-
-  Please install Python or specify the PYTHON_EXECUTABLE CMake variable.")
+  if (PYTHON_EXECUTABLE STREQUAL "")
+    set(Python_ADDITIONAL_VERSIONS 2.7 2.6 2.5)
+    include(FindPythonInterp)
+    if( NOT PYTHONINTERP_FOUND )
+      message(FATAL_ERROR
+              "Unable to find Python interpreter, required for builds and testing.
+               Please install Python or specify the PYTHON_EXECUTABLE CMake variable.")
+    endif()
+  else()
+    message("-- Found PythonInterp: ${PYTHON_EXECUTABLE}")
   endif()
-
   # Import CMake library targets from LLVM and Clang.
   include("${LLDB_PATH_TO_LLVM_BUILD}/share/llvm/cmake/LLVMConfig.cmake")
   include("${LLDB_PATH_TO_CLANG_BUILD}/share/clang/cmake/ClangConfig.cmake")
@@ -115,9 +120,6 @@ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 set(LLDB_DISABLE_PYTHON 0 CACHE BOOL "Disables the Python scripting integration.")
-if (LLDB_DISABLE_PYTHON)
-  add_definitions( -DLLDB_DISABLE_PYTHON )
-endif()
 
 if ((NOT MSVC) OR MSVC12)
   add_definitions( -DHAVE_ROUND )
@@ -142,8 +144,25 @@ if (NOT LLDB_DISABLE_PYTHON)
       set(CMAKE_LIBRARY_ARCHITECTURE "x86_64-linux-gnu")
     endif()
   endif()
-  find_package(PythonLibs REQUIRED)
-  include_directories(${PYTHON_INCLUDE_DIRS})
+  if (MSVC)
+    if ("${PYTHON_INCLUDE_DIR}" STREQUAL "" OR "${PYTHON_LIBRARY}" STREQUAL "")
+      message("-- LLDB Embedded python disabled.  Embedding python on Windows requires "
+              "manually specifying PYTHON_INCLUDE_DIR *and* PYTHON_LIBRARY")
+      set(LLDB_DISABLE_PYTHON 1)
+    else()
+      message("-- Found PythonLibs: ${PYTHON_LIBRARY}")
+      include_directories(${PYTHON_INCLUDE_DIR})
+    endif()
+  else()
+    find_package(PythonLibs REQUIRED)
+    include_directories(${PYTHON_INCLUDE_DIRS})
+  endif()
+endif()
+
+if (LLDB_DISABLE_PYTHON)
+  unset(PYTHON_INCLUDE_DIR)
+  unset(PYTHON_LIBRARY)
+  add_definitions( -DLLDB_DISABLE_PYTHON )
 endif()
 
 include_directories(../clang/include)
@@ -245,12 +264,12 @@ macro(add_lldb_library name)
   # only supported parameters to this macro are the optional 
   # MODULE;SHARED;STATIC library type and source files
   cmake_parse_arguments(PARAM
-    "MODULE;SHARED;STATIC"
+    "MODULE;SHARED;STATIC;OBJECT"
     ""
     ""
     ${ARGN})
   llvm_process_sources(srcs ${PARAM_UNPARSED_ARGUMENTS})
-  
+
   if (MSVC_IDE OR XCODE)
     string(REGEX MATCHALL "/[^/]+" split_path ${CMAKE_CURRENT_SOURCE_DIR})
     list(GET split_path -1 dir)
@@ -264,6 +283,8 @@ macro(add_lldb_library name)
     set(libkind SHARED)
   elseif (PARAM_STATIC)
     set(libkind STATIC)
+  elseif (PARAM_OBJECT)
+    set(libkind OBJECT)
   else ()
     # library type unspecified - controlled by BUILD_SHARED_LIBS
     unset(libkind)
@@ -273,45 +294,43 @@ macro(add_lldb_library name)
   if (NOT MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
   endif()
-  llvm_add_library(${name} ${libkind} ${srcs})
-  #if (LLVM_COMMON_DEPENDS)
-  ##add_dependencies(${name} ${LLVM_COMMON_DEPENDS})
-  #endif()
 
-  if ("${libkind}" STREQUAL "STATIC")
-    set(lldb_library_keyword ${cmake_2_8_12_INTERFACE})
-  else ()
-    set(lldb_library_keyword ${cmake_2_8_12_PUBLIC})
-  endif ()
+  if (PARAM_OBJECT)
+    add_library(${name} ${libkind} ${srcs})
+  else()
+    llvm_add_library(${name} ${libkind} ${srcs})
 
-  if(LLDB_USED_LIBS)
-    # The Darwin linker doesn't understand --start-group/--end-group.
-    if (LLVM_COMPILER_IS_GCC_COMPATIBLE AND NOT "${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
-      target_link_libraries(${name} ${lldb_library_keyword}
-                            -Wl,--start-group ${LLDB_USED_LIBS} -Wl,--end-group)
-    else()
-      target_link_libraries(${name} ${lldb_library_keyword} ${LLDB_USED_LIBS})
+    if (PARAM_STATIC)
+      set(lldb_library_keyword ${cmake_2_8_12_INTERFACE})
+    else ()
+      set(lldb_library_keyword ${cmake_2_8_12_PUBLIC})
+    endif ()
+
+    if(LLDB_USED_LIBS)
+      # The Darwin linker doesn't understand --start-group/--end-group.
+      if (LLVM_COMPILER_IS_GCC_COMPATIBLE AND NOT "${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
+        target_link_libraries(${name} ${lldb_library_keyword}
+                              -Wl,--start-group ${LLDB_USED_LIBS} -Wl,--end-group)
+      else()
+        target_link_libraries(${name} ${lldb_library_keyword} ${LLDB_USED_LIBS})
+      endif()
     endif()
-  endif()
-  target_link_libraries(${name} ${lldb_library_keyword} ${CLANG_USED_LIBS})
-  target_link_libraries(${name} ${lldb_library_keyword} ${LLVM_USED_LIBS})
-  llvm_config(${name} ${LLVM_LINK_COMPONENTS})
-  target_link_libraries(${name} ${lldb_library_keyword} ${LLVM_COMMON_LIBS})
-  if (LLVM_COMMON_DEPENDS)
-    add_dependencies(${name} ${LLVM_COMMON_DEPENDS})
+
+    target_link_libraries(${name} ${lldb_library_keyword} ${CLANG_USED_LIBS})
+    target_link_libraries(${name} ${lldb_library_keyword} ${LLVM_USED_LIBS})
+    llvm_config(${name} ${LLVM_LINK_COMPONENTS})
+    target_link_libraries(${name} ${lldb_library_keyword} ${LLVM_COMMON_LIBS})
+
+    install(TARGETS ${name}
+      LIBRARY DESTINATION lib${LLVM_LIBDIR_SUFFIX}
+      ARCHIVE DESTINATION lib${LLVM_LIBDIR_SUFFIX})
   endif()
 
   # Hack: only some LLDB libraries depend on the clang autogenerated headers,
   # but it is simple enough to make all of LLDB depend on some of those
   # headers without negatively impacting much of anything.
-  set (LLDB_DEPENDENCIES
-    libclang
-    )
-  add_dependencies(${name} ${LLDB_DEPENDENCIES})
+  add_dependencies(${name} libclang)
 
-  install(TARGETS ${name}
-    LIBRARY DESTINATION lib${LLVM_LIBDIR_SUFFIX}
-    ARCHIVE DESTINATION lib${LLVM_LIBDIR_SUFFIX})
   set_target_properties(${name} PROPERTIES FOLDER "lldb libraries")
 endmacro(add_lldb_library)
 

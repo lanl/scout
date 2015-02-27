@@ -234,13 +234,10 @@ GDBRemoteCommunicationClient::QueryNoAckModeSupported ()
 
         const uint32_t minimum_timeout = 6;
         uint32_t old_timeout = GetPacketTimeoutInMicroSeconds() / lldb_private::TimeValue::MicroSecPerSec;
-        SetPacketTimeout (std::max (old_timeout, minimum_timeout));
+        GDBRemoteCommunication::ScopedTimeout timeout (*this, std::max (old_timeout, minimum_timeout));
 
         StringExtractorGDBRemote response;
-        PacketResult packet_send_result = SendPacketAndWaitForResponse("QStartNoAckMode", response, false);
-        SetPacketTimeout (old_timeout);
-
-        if (packet_send_result == PacketResult::Success)
+        if (SendPacketAndWaitForResponse("QStartNoAckMode", response, false) == PacketResult::Success)
         {
             if (response.IsOKResponse())
             {
@@ -2869,10 +2866,9 @@ GDBRemoteCommunicationClient::LaunchGDBserverAndGetPort (lldb::pid_t &pid, const
     int packet_len = stream.GetSize();
 
     // give the process a few seconds to startup
-    const uint32_t old_packet_timeout = SetPacketTimeout (10);
-    auto result = SendPacketAndWaitForResponse(packet, packet_len, response, false);
-    SetPacketTimeout (old_packet_timeout);
-    if (result == PacketResult::Success)
+    GDBRemoteCommunication::ScopedTimeout timeout (*this, 10);
+    
+    if (SendPacketAndWaitForResponse(packet, packet_len, response, false) == PacketResult::Success)
     {
         std::string name;
         std::string value;
@@ -3168,12 +3164,14 @@ GDBRemoteCommunicationClient::MakeDirectory (const char *path,
     const char *packet = stream.GetData();
     int packet_len = stream.GetSize();
     StringExtractorGDBRemote response;
-    if (SendPacketAndWaitForResponse(packet, packet_len, response, false) == PacketResult::Success)
-    {
-        return Error(response.GetHexMaxU32(false, UINT32_MAX), eErrorTypePOSIX);
-    }
-    return Error();
 
+    if (SendPacketAndWaitForResponse(packet, packet_len, response, false) != PacketResult::Success)
+        return Error("failed to send '%s' packet", packet);
+
+    if (response.GetChar() != 'F')
+        return Error("invalid response to '%s' packet", packet);
+
+    return Error(response.GetU32(UINT32_MAX), eErrorTypePOSIX);
 }
 
 Error
@@ -3188,12 +3186,14 @@ GDBRemoteCommunicationClient::SetFilePermissions (const char *path,
     const char *packet = stream.GetData();
     int packet_len = stream.GetSize();
     StringExtractorGDBRemote response;
-    if (SendPacketAndWaitForResponse(packet, packet_len, response, false) == PacketResult::Success)
-    {
-        return Error(response.GetHexMaxU32(false, UINT32_MAX), eErrorTypePOSIX);
-    }
-    return Error();
-    
+
+    if (SendPacketAndWaitForResponse(packet, packet_len, response, false) != PacketResult::Success)
+        return Error("failed to send '%s' packet", packet);
+
+    if (response.GetChar() != 'F')
+        return Error("invalid response to '%s' packet", packet);
+
+    return Error(response.GetU32(false, UINT32_MAX), eErrorTypePOSIX);
 }
 
 static uint64_t
@@ -3702,4 +3702,22 @@ GDBRemoteCommunicationClient::RestoreRegisterState (lldb::tid_t tid, uint32_t sa
         }
     }
     return false;
+}
+
+bool
+GDBRemoteCommunicationClient::GetModuleInfo (const char* module_path,
+                                             const lldb_private::ArchSpec& arch_spec,
+                                             StringExtractorGDBRemote &response)
+{
+    if (!(module_path && module_path[0]))
+        return false;
+
+    StreamString packet;
+    packet.PutCString("qModuleInfo:");
+    packet.PutBytesAsRawHex8(module_path, strlen(module_path));
+    packet.PutCString(";");
+    const auto& tripple = arch_spec.GetTriple().getTriple();
+    packet.PutBytesAsRawHex8(tripple.c_str(), tripple.size());
+
+    return SendPacketAndWaitForResponse (packet.GetData(), packet.GetSize(), response, false) == PacketResult::Success;
 }

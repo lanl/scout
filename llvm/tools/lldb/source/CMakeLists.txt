@@ -43,24 +43,27 @@ include(../cmake/LLDBDependencies.cmake)
 add_lldb_library(liblldb SHARED
   lldb.cpp
   lldb-log.cpp
+  $<TARGET_OBJECTS:lldbAPI>
   ${LLDB_WRAP_PYTHON}
   ${LLDB_VERS_GENERATED_FILE}
   )
 
-if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
-target_link_libraries(liblldb PRIVATE lldbAPI)
+set_target_properties(liblldb
+  PROPERTIES
+  VERSION ${LLDB_VERSION}
+  )
 
-set_target_properties(liblldb
-  PROPERTIES
-  OUTPUT_NAME liblldb
-  VERSION ${LLDB_VERSION}
-  )
+if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
+  # Only MSVC has the ABI compatibility problem and avoids using FindPythonLibs,
+  # so only it needs to explicitly link against ${PYTHON_LIBRARY}
+  if (MSVC AND NOT LLDB_DISABLE_PYTHON)
+    target_link_libraries(liblldb PRIVATE ${PYTHON_LIBRARY})
+  endif()
 else()
-set_target_properties(liblldb
-  PROPERTIES
-  OUTPUT_NAME lldb
-  VERSION ${LLDB_VERSION}
-  )
+  set_target_properties(liblldb
+    PROPERTIES
+    OUTPUT_NAME lldb
+    )
 endif()
 
 if (LLDB_WRAP_PYTHON OR LLDB_VERS_GENERATED_FILE)
