@@ -84,14 +84,14 @@ GDBRemoteCommunicationServerPlatform::Handle_qLaunchGDBServer (StringExtractorGD
 
     Log *log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_PLATFORM));
     if (log)
-        log->Printf ("LLGSPacketHandler::%s() called", __FUNCTION__);
+        log->Printf ("GDBRemoteCommunicationServerPlatform::%s() called", __FUNCTION__);
 
     // Sleep and wait a bit for debugserver to start to listen...
     ConnectionFileDescriptor file_conn;
     std::string hostname;
     // TODO: /tmp/ should not be hardcoded. User might want to override /tmp
     // with the TMPDIR environment variable
-    packet.SetFilePos(::strlen ("qLaunchLLGSPacketHandler;"));
+    packet.SetFilePos(::strlen ("qLaunchGDBServer;"));
     std::string name;
     std::string value;
     uint16_t port = UINT16_MAX;
@@ -154,7 +154,7 @@ GDBRemoteCommunicationServerPlatform::Handle_qLaunchGDBServer (StringExtractorGD
     if (error.Success())
     {
         if (log)
-            log->Printf ("LLGSPacketHandler::%s() debugserver launched successfully as pid %" PRIu64, __FUNCTION__, debugserver_pid);
+            log->Printf ("GDBRemoteCommunicationServerPlatform::%s() debugserver launched successfully as pid %" PRIu64, __FUNCTION__, debugserver_pid);
 
         char response[256];
         const int response_len = ::snprintf (response, sizeof(response), "pid:%" PRIu64 ";port:%u;", debugserver_pid, port + m_port_offset);
@@ -171,7 +171,7 @@ GDBRemoteCommunicationServerPlatform::Handle_qLaunchGDBServer (StringExtractorGD
     else
     {
         if (log)
-            log->Printf ("LLGSPacketHandler::%s() debugserver launch failed: %s", __FUNCTION__, error.AsCString ());
+            log->Printf ("GDBRemoteCommunicationServerPlatform::%s() debugserver launch failed: %s", __FUNCTION__, error.AsCString ());
     }
     return SendErrorResponse (9);
 #endif
@@ -218,7 +218,7 @@ GDBRemoteCommunicationServerPlatform::Handle_QSetWorkingDir (StringExtractorGDBR
 
 #ifdef _WIN32
     // Not implemented on Windows
-    return SendUnimplementedResponse ("LLGSPacketHandler::Handle_QSetWorkingDir unimplemented");
+    return SendUnimplementedResponse ("GDBRemoteCommunicationServerPlatform::Handle_QSetWorkingDir unimplemented");
 #else
     // If this packet is sent to a platform, then change the current working directory
     if (::chdir(path.c_str()) != 0)
