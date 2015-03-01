@@ -8951,6 +8951,8 @@ public:
   
   bool InitFrame(Scope* Scope, FrameDecl* F, Expr* Spec);
   
+  bool ActOnFrameFinishDefinition(Decl* FD);
+  
   //  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
   //                                      SourceLocation L, SourceLocation R,
   //                                      IdentifierInfo* MII, VarDecl* MVD,

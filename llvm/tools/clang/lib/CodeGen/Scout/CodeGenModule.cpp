@@ -70,6 +70,11 @@ void CodeGenModule::UpdateCompletedType(const MeshDecl *MD) {
   Types.UpdateCompletedType(MD);
 }
 
+void CodeGenModule::UpdateCompletedType(const FrameDecl *FD) {
+  // Make sure that this type is translated.
+  Types.UpdateCompletedType(FD);
+}
+
 llvm::Function *CodeGenModule::LegionMainFunction() {
 
   std::string funcName = "sclegion_main";

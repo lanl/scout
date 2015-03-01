@@ -1452,14 +1452,15 @@ Parser::ParseSimpleDeclaration(unsigned Context,
   // we have to check if we are parsing a mesh declaration and avoid
   // the call to hasTagDefinition() below which casts to a TagDecl and
   // will crash for a Mesh. Need to run this before ParseDeclarationSpecifiers()
-  bool isMeshDecl = false;
+  bool isScoutDecl = false;
   
   if(isScoutLang()){
-    isMeshDecl =
-        Tok.is(tok::kw_uniform) ||
-        Tok.is(tok::kw_structured) ||
-        Tok.is(tok::kw_unstructured) ||
-        Tok.is(tok::kw_rectilinear);
+    isScoutDecl =
+      Tok.is(tok::kw_uniform) ||
+      Tok.is(tok::kw_structured) ||
+      Tok.is(tok::kw_unstructured) ||
+      Tok.is(tok::kw_rectilinear) ||
+      Tok.is(tok::kw_frame);
   }
   // +======================================================================+
 
@@ -1475,7 +1476,7 @@ Parser::ParseSimpleDeclaration(unsigned Context,
   // for a Mesh, avoid the call to hasTagDefinition() which casts to a
   // TagDecl and will crash for a Mesh
   //if (DS.hasTagDefinition() &&
-  if (!isMeshDecl && DS.hasTagDefinition() &&
+  if (!isScoutDecl && DS.hasTagDefinition() &&
   // +======================================================================+
       DiagnoseMissingSemiAfterTagDefinition(DS, AS_none, DSContext))
     return DeclGroupPtrTy();
