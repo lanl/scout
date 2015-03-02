@@ -2926,6 +2926,47 @@ public:
 
   static bool classof(const RenderallMeshStmt *) { return true; }
 };
+ 
+class ScoutStmt : public Stmt {
+public:
+  
+  ScoutStmt()
+  : Stmt(ScoutStmtClass){}
+  
+  explicit ScoutStmt(EmptyShell Empty)
+  : Stmt(ScoutStmtClass, Empty){}
+  
+  static bool classof(const Stmt *T){
+    return T->getStmtClass() == ScoutStmtClass;
+  }
+  
+  SourceLocation getLocStart() const LLVM_READONLY{
+    return StartLoc;
+  }
+  
+  void setLocStart(SourceLocation Loc){
+    StartLoc = Loc;
+  }
+  
+  SourceLocation getLocEnd() const LLVM_READONLY{
+    return EndLoc;
+  }
+  
+  void setLocEnd(SourceLocation Loc){
+    EndLoc = Loc;
+  }
+  
+  static bool classof(const ScoutStmt *){ return true; }
+  
+  virtual child_range children(){
+    return child_range();
+  }
+  
+private:
+  SourceLocation StartLoc;
+  SourceLocation EndLoc;
+};
+  
 // +==========================================================================+
 
 

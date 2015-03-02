@@ -2306,6 +2306,9 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
     case STMT_FORALL_ARRAY:
       S = new (Context) ForallArrayStmt(Empty);
       break;
+    case STMT_SCOUT:
+      S = new (Context) ScoutStmt(Empty);
+      break;
     // +======================================================================+
 
     case STMT_GOTO:
@@ -3032,6 +3035,9 @@ void ASTStmtReader::VisitRenderallMeshStmt(RenderallMeshStmt *S) {
   VisitStmt(S);
 }
 void ASTStmtReader::VisitForallArrayStmt(ForallArrayStmt *S) {
+  VisitStmt(S);
+}
+void ASTStmtReader::VisitScoutStmt(ScoutStmt *S) {
   VisitStmt(S);
 }
 //void ASTStmtReader::VisitRenderAllStmt(RenderAllStmt *S) { }

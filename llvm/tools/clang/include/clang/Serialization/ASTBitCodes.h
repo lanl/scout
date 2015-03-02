@@ -1420,7 +1420,8 @@ namespace clang {
       // ===== Scout ================================
       STMT_FORALL_MESH,
       STMT_RENDERALL_MESH,
-      STMT_FORALL_ARRAY
+      STMT_FORALL_ARRAY,
+      STMT_SCOUT
       // ============================================
     };
 

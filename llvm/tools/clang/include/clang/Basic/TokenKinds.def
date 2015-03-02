@@ -276,6 +276,7 @@ SCOUT_KEYWORD(query)
 SCOUT_KEYWORD(select)
 SCOUT_KEYWORD(from)
 SCOUT_KEYWORD(frame)
+SCOUT_KEYWORD(into)
 // +==========================================================================+
 
 KEYWORD(auto                        , KEYALL)

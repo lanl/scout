@@ -4,6 +4,7 @@ set(LLVM_LINK_COMPONENTS support)
 
 add_clang_library(scoutAST
   ASTContext.cpp
+  ScoutStmt.cpp
   ForallStmt.cpp
   MeshDecl.cpp
   FrameDecl.cpp
