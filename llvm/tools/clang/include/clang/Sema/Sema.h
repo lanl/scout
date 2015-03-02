@@ -8954,6 +8954,8 @@ public:
   
   bool ActOnFrameFinishDefinition(Decl* FD);
   
+  StmtResult ActOnFrameCaptureStmt(const FrameDecl* F, SpecObjectExpr* S);
+  
   //  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
   //                                      SourceLocation L, SourceLocation R,
   //                                      IdentifierInfo* MII, VarDecl* MVD,

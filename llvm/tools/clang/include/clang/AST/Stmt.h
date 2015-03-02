@@ -59,6 +59,8 @@ namespace clang {
   class QueryExpr;
   class ScoutExpr;
   class StencilShiftExpr;
+  class FrameDecl;
+  class SpecObjectExpr;
   // =========================================================================+
 
   //===--------------------------------------------------------------------===//
@@ -2929,9 +2931,13 @@ public:
  
 class ScoutStmt : public Stmt {
 public:
+  enum ScoutStmtKind{
+    FrameCapture
+  };
   
-  ScoutStmt()
-  : Stmt(ScoutStmtClass){}
+  ScoutStmt(ScoutStmtKind K)
+  : Stmt(ScoutStmtClass),
+    Kind(K){}
   
   explicit ScoutStmt(EmptyShell Empty)
   : Stmt(ScoutStmtClass, Empty){}
@@ -2956,6 +2962,10 @@ public:
     EndLoc = Loc;
   }
   
+  ScoutStmtKind kind() const{
+    return Kind;
+  }
+  
   static bool classof(const ScoutStmt *){ return true; }
   
   virtual child_range children(){
@@ -2963,12 +2973,32 @@ public:
   }
   
 private:
+  ScoutStmtKind Kind;
   SourceLocation StartLoc;
   SourceLocation EndLoc;
 };
+
+class FrameCaptureStmt : public ScoutStmt{
+public:
+  FrameCaptureStmt(const FrameDecl* FD, SpecObjectExpr* S)
+  : ScoutStmt(FrameCapture),
+  Frame(FD),
+  Spec(S){}
+  
+  const FrameDecl* getFrame() const{
+    return Frame;
+  }
+  
+  const SpecObjectExpr* getSpec() const{
+    return Spec;
+  }
+  
+private:
+  const FrameDecl* Frame;
+  SpecObjectExpr* Spec;
+};
   
 // +==========================================================================+
-
 
 }  // end namespace clang
 
