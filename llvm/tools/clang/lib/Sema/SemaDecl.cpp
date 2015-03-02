@@ -3565,6 +3565,7 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
   TagDecl *Tag = nullptr;
   // +===== Scout ============================================================+
   MeshDecl *MD = 0;
+  FrameDecl *FD = 0;
   // +========================================================================+
   if (DS.getTypeSpecType() == DeclSpec::TST_class ||
       DS.getTypeSpecType() == DeclSpec::TST_struct ||
@@ -3605,7 +3606,26 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
       MD->setFreeStanding();
       if (MD->isInvalidDecl())
         return MD;
+    }
   }
+  else if (DS.getTypeSpecType() == DeclSpec::TST_frame) {
+    TagD = DS.getRepAsDecl();
+    
+    if (!TagD) // We probably had an error
+      return 0;
+    
+    // Note that the above type specs guarantee that the
+    // type rep is a Decl, whereas in many of the others
+    // it is a Type.
+    if (isa<FrameDecl>(TagD))
+      FD = cast<FrameDecl>(TagD);
+    
+    if (FD) {
+      HandleFrameNumbering(*this, FD);
+      FD->setFreeStanding();
+      if (FD->isInvalidDecl())
+        return FD;
+    }
   }
   // +========================================================================+
 

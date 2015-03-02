@@ -202,6 +202,17 @@ namespace clang {
     virtual void HandleMeshDeclRequiredDefinition(const MeshDecl *D) {
       Gen->HandleMeshDeclRequiredDefinition(D);
     }
+    
+    virtual void HandleFrameDeclDefinition(FrameDecl *D) {
+      PrettyStackTraceDecl CrashInfo(D, SourceLocation(),
+                                     Context->getSourceManager(),
+                                     "LLVM IR generation of declaration");
+      Gen->HandleFrameDeclDefinition(D);
+    }
+    
+    virtual void HandleFrameDeclRequiredDefinition(const FrameDecl *D) {
+      Gen->HandleFrameDeclRequiredDefinition(D);
+    }
     // +=============================================================+
 
     void CompleteTentativeDefinition(VarDecl *D) override {

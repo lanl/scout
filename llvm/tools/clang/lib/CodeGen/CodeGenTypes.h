@@ -177,6 +177,10 @@ class CodeGenTypes {
   /// MeshDecl.
   llvm::DenseMap<const Type*, llvm::StructType *> MeshDeclTypes;
 
+  /// FrameDeclTypes - This contains the LLVM IR type for any converted
+  /// FrameDecl.
+  llvm::DenseMap<const Type*, llvm::StructType *> FrameDeclTypes;
+  
   /// MeshesBeingLaidOut - This set keeps track of meshes that we're currently
   /// converting to an IR type -- mirrors the basic functionality of the
   /// records being laid out info...
@@ -254,6 +258,8 @@ public:
 
   // +===== Scout ============================================================+
   void UpdateCompletedType(const MeshDecl *MD);
+  
+  void UpdateCompletedType(const FrameDecl *FD);
   // +========================================================================+`
 
   /// getNullaryFunctionInfo - Get the function info for a void()
@@ -389,6 +395,9 @@ public:  // These are internal details of CGT that shouldn't be used externally.
   /// ConvertRecordDeclType - Lay out a mesh decl type.
   llvm::StructType *ConvertMeshDeclType(const MeshDecl *MD);
 
+  /// ConvertRecordDeclType - Lay out a mesh decl type.
+  llvm::StructType *ConvertFrameDeclType(const FrameDecl *MD);
+  
   bool isMeshLayoutComplete(const Type *Ty) const;
 
   bool noMeshesBeingLaidOut() const {

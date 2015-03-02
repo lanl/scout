@@ -231,6 +231,22 @@ void CodeGenTypes::UpdateCompletedType(const MeshDecl *MD) {
      DI->completeType(MD);
 }
 
+void CodeGenTypes::UpdateCompletedType(const FrameDecl *FD) {
+  
+  if (FD->isDependentType()) return;
+  
+  // Only complete it if we converted it already.  If we haven't converted it
+  // yet, we'll just do it lazily.
+  if (FrameDeclTypes.count(Context.getFrameDeclType(FD).getTypePtr()))
+    ConvertFrameDeclType(FD);
+  
+  // If necessary, provide the full definition of a type only used with a
+  // declaration so far.
+  if (CGDebugInfo *DI = CGM.getModuleDebugInfo())
+    assert(false);
+    //DI->completeType(FD);
+}
+
 void CodeGenTypes::addMeshTypeName(const MeshDecl *RD,
                                      llvm::StructType *Ty,
                                      StringRef suffix) {
@@ -386,6 +402,11 @@ llvm::StructType *CodeGenTypes::ConvertMeshDeclType(const MeshDecl *MD) {
       ConvertMeshDeclType(DeferredMeshes.pop_back_val());
 
   return Ty;
+}
+
+/// ConvertMeshDeclType - Layout a mesh decl type.
+llvm::StructType *CodeGenTypes::ConvertFrameDeclType(const FrameDecl *MD) {
+  assert(false && "unimplemented");
 }
 
 /// getCGMeshLayout - Return mesh layout info for the given mesh decl.

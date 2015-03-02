@@ -647,6 +647,10 @@ bool Parser::ParseFrameSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TI) {
 
   Actions.PopFrameContext(FD);
   
+  Actions.ActOnFrameFinishDefinition(FD);
+  
+  Actions.PushOnScopeChains(FD, getCurScope(), true);
+  
   const char* PrevSpec = 0;
   unsigned DiagID;
   

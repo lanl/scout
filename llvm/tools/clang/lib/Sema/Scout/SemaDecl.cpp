@@ -330,6 +330,8 @@ Decl* Sema::ActOnFrameDefinition(Scope* S,
                                  IdentifierInfo* Name,
                                  SourceLocation NameLoc){
   
+  LookupResult LR(*this, Name, NameLoc, LookupFrameName, Sema::NotForRedeclaration);
+  
   FrameDecl* FD =
   FrameDecl::Create(Context, CurContext, FrameLoc, NameLoc, Name, 0);
   
@@ -375,9 +377,7 @@ void Sema::AddFrameFunction(Scope* Scope,
                        DeclarationName(PP.getIdentifierInfo(Name)),
                        FT, Context.getTrivialTypeSourceInfo(FT),
                        SC_Extern, true);
-  
-  //F->addAttr(F->getAttr<DLLExportAttr>());
-  
+    
   vector<ParmVarDecl*> params;
   
   int i = 0;
@@ -470,11 +470,24 @@ bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
                       SC_None);
       
       PushOnScopeChains(VD, Scope, true);
+      F->addVar(k, VD);
     }
   }
   
-  F->setSpec(Spec);
-  F->completeDefinition();
+  if(valid){
+    F->setSpec(Spec);
+    F->completeDefinition();
+  }
   
   return valid;
+}
+
+bool Sema::ActOnFrameFinishDefinition(Decl* D){
+  FrameDecl* FD = cast<FrameDecl>(D);
+
+  if(!FD->isInvalidDecl()){
+    Consumer.HandleFrameDeclDefinition(FD);
+  }
+
+  return true;
 }

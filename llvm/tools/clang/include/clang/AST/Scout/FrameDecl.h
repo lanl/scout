@@ -74,7 +74,13 @@ namespace clang {
   class FrameDecl
     : public TypeDecl, public DeclContext, public Redeclarable<FrameDecl> {
 
+    struct Var{
+      uint32_t fieldId;
+      VarDecl* varDecl;
+    };
+      
   private:
+      
     bool IsCompleteDefinition : 1;
 
     bool IsBeingDefined : 1;
@@ -92,16 +98,6 @@ namespace clang {
     SourceLocation RBraceLoc;
 
     typedef QualifierInfo ExtInfo;
-
-    typedef std::set<VarDecl*> VarTypeSet;
-    
-    VarTypeSet varTypes;
-      
-    typedef std::map<std::string, VarDecl*> VarTypeMap;
-    
-    VarTypeMap varTypeMap;
-      
-    SpecObjectExpr* Spec;
       
     llvm::PointerUnion<TypedefNameDecl*, ExtInfo*> 
     TypedefNameDeclOrQualifier;
@@ -118,6 +114,23 @@ namespace clang {
       return TypedefNameDeclOrQualifier.get<ExtInfo*>();
     }
 
+      
+    typedef std::set<VarDecl*> VarTypeSet;
+      
+    VarTypeSet varTypes;
+      
+    typedef std::map<std::string, VarDecl*> VarTypeMap;
+      
+    VarTypeMap varTypeMap;
+    
+    SpecObjectExpr* Spec;
+    
+    typedef std::map<std::string, Var> VarMap;
+    
+    VarMap varMap;
+      
+    uint32_t nextVarId;
+      
   protected:
     FrameDecl(const ASTContext &ASTC,
               DeclContext    *DC,
@@ -135,6 +148,7 @@ namespace clang {
       IsFreeStanding                  = false;
       LoadedFieldsFromExternalStorage = false;
       setPreviousDecl(PrevDecl);
+      nextVarId = 0;
     }
 
     typedef Redeclarable<FrameDecl> redeclarable_base;
@@ -165,6 +179,14 @@ namespace clang {
       }
       
       return itr->second;
+    }
+    
+    void addVar(const std::string& name, VarDecl* v){
+      varMap.insert({name, Var{nextVarId++, v}});
+    }
+    
+    const VarMap& getVarMap() const{
+      return varMap;
     }
       
     void completeDefinition();

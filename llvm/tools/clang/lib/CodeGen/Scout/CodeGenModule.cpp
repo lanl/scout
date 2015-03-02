@@ -59,6 +59,7 @@
 #include "clang/AST/Scout/MeshDecl.h"
 #include "Scout/CGLegionCRuntime.h"
 #include "Scout/CGPlotRuntime.h"
+#include "Scout/CGPlot2Runtime.h"
 #include "CodeGenFunction.h"
 
 using namespace clang;
@@ -67,6 +68,11 @@ using namespace CodeGen;
 void CodeGenModule::UpdateCompletedType(const MeshDecl *MD) {
   // Make sure that this type is translated.
   Types.UpdateCompletedType(MD);
+}
+
+void CodeGenModule::UpdateCompletedType(const FrameDecl *FD) {
+  // Make sure that this type is translated.
+  Types.UpdateCompletedType(FD);
 }
 
 llvm::Function *CodeGenModule::LegionMainFunction() {
