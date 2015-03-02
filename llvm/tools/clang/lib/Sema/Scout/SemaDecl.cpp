@@ -328,13 +328,18 @@ bool Sema::IsValidRecordDeclInMesh(RecordDecl* RD) {
 Decl* Sema::ActOnFrameDefinition(Scope* S,
                                  SourceLocation FrameLoc,
                                  IdentifierInfo* Name,
-                                 SourceLocation NameLoc){
+                                 SourceLocation NameLoc,
+                                 MultiTemplateParamsArg TemplateParameterLists){
   
   LookupResult LR(*this, Name, NameLoc, LookupFrameName, Sema::NotForRedeclaration);
   
   FrameDecl* FD =
   FrameDecl::Create(Context, CurContext, FrameLoc, NameLoc, Name, 0);
   
+  PushOnScopeChains(FD, S, true);
+  
+  FD->completeDefinition();
+    
   PushDeclContext(S, FD);
   
   QualType vt = Context.getFrameVarType(0);
@@ -476,7 +481,6 @@ bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
   
   if(valid){
     F->setSpec(Spec);
-    F->completeDefinition();
   }
   
   return valid;

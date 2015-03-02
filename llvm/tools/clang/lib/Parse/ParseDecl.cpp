@@ -2904,6 +2904,13 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
         if (MeshLookup.getResultKind() == LookupResult::Found) {
           if(TryAnnotateName(false)) continue;
         }
+        
+        LookupResult FrameLookup(Actions, Tok.getIdentifierInfo(),
+                                 Tok.getLocation(), Sema::LookupFrameName);
+        Actions.LookupName(FrameLookup, getCurScope());
+        if (FrameLookup.getResultKind() == LookupResult::Found) {
+          if(TryAnnotateName(false)) continue;
+        }
       }
       // +========================================================================+
       // This identifier can only be a typedef name if we haven't already seen

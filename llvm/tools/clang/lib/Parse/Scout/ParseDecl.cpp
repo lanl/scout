@@ -626,13 +626,22 @@ bool Parser::ParseFrameSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TI) {
     return false;
   }
 
+  TemplateParameterLists* TemplateParams = TI.TemplateParams;
+  MultiTemplateParamsArg TParams;
+  if (TemplateParams) {
+    TParams = MultiTemplateParamsArg(&(*TemplateParams)[0],
+                                     TemplateParams->size());
+  }
+  
   //unsigned ScopeFlags = Scope::DeclScope | Scope::ControlScope;
   
   //ParseScope FrameScope(this, ScopeFlags);
   
   FrameDecl* FD =
   static_cast<FrameDecl*>(Actions.ActOnFrameDefinition(getCurScope(), FrameLoc,
-                                                       Name, NameLoc));
+                                                       Name, NameLoc, TParams));
+  
+  ParseScope FrameScope(this, Scope::ClassScope|Scope::DeclScope);
   
   ExprResult Result = ParseSpecObjectExpression();
   if(Result.isInvalid()){
@@ -645,11 +654,11 @@ bool Parser::ParseFrameSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TI) {
     return false;
   }
 
-  Actions.PopFrameContext(FD);
+  FrameScope.Exit();
   
   Actions.ActOnFrameFinishDefinition(FD);
   
-  Actions.PushOnScopeChains(FD, getCurScope(), true);
+  Actions.PopFrameContext(FD);
   
   const char* PrevSpec = 0;
   unsigned DiagID;

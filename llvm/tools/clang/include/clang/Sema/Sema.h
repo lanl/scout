@@ -8937,7 +8937,8 @@ public:
   Decl* ActOnFrameDefinition(Scope* S,
                              SourceLocation FrameLoc,
                              IdentifierInfo* Name,
-                             SourceLocation NameLoc);
+                             SourceLocation NameLoc,
+                             MultiTemplateParamsArg TemplateParameterLists);
     
   void PopFrameContext(FrameDecl* F);
 
