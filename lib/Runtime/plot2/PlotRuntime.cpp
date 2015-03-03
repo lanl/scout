@@ -60,7 +60,9 @@
 using namespace std;
 
 namespace{
-  
+
+  const size_t RESERVE = 1024;
+
   const int ELEMENT_INT32 = 0;
   const int ELEMENT_INT64 = 1;
   const int ELEMENT_FLOAT = 2;
@@ -71,17 +73,36 @@ namespace{
   template<class T>
   class Var : public VarBase{
   public:
-    
+    Var()
+      : i_(0){
+      v_.reserve(RESERVE);
+    }
+
+    void capture(T value){
+      v_.push_back(value);
+     
+      if(i_ == RESERVE){
+        v_.reserve(v_.size() + RESERVE);
+        i_ = 0;
+      }
+      else{
+        ++i_;
+      }
+    }
+
   private:
     vector<T> v_;
+    size_t i_;
   };
 
   class Frame{
   public:
     Frame(){}
 
-    void addField(uint32_t varId, int elementKind){
-      assert(varMap_.find(varId) == varMap_.end());
+    void addVar(uint32_t varId, int elementKind){
+      while(vars_.size() <= varId){
+        vars_.push_back(nullptr);
+      }
 
       VarBase* v;
 
@@ -102,13 +123,20 @@ namespace{
         assert(false && "invalid element kind");
       }
       
-      varMap_.insert({varId, v});
+      vars_[varId] = v;
+    }
+
+    template<class T>
+    void capture(uint32_t varId, T value){
+      assert(varId < vars_.size());
+      
+      static_cast<Var<T>*>(vars_[varId])->capture(value);
     }
 
   private:
-    typedef map<uint32_t, VarBase*> VarMap;
+    typedef vector<VarBase*> VarVec;
 
-    VarMap varMap_;
+    VarVec vars_;
   };
 
 } // end namespace
@@ -120,5 +148,25 @@ void* __scrt_create_frame(){
 
 extern "C"
 void __scrt_frame_add_var(void*f, uint32_t varId, uint32_t elementKind){
-  static_cast<Frame*>(f)->addField(varId, elementKind);
+  static_cast<Frame*>(f)->addVar(varId, elementKind);
+}
+
+extern "C"
+void __scrt_frame_capture_i32(void*f, uint32_t varId, int32_t value){
+  static_cast<Frame*>(f)->capture(varId, value);
+}
+
+extern "C"
+void __scrt_frame_capture_i64(void*f, uint32_t varId, int64_t value){
+  static_cast<Frame*>(f)->capture(varId, value);
+}
+
+extern "C"
+void __scrt_frame_capture_float(void*f, uint32_t varId, float value){
+  static_cast<Frame*>(f)->capture(varId, value);
+}
+
+extern "C"
+void __scrt_frame_capture_double(void*f, uint32_t varId, double value){
+  static_cast<Frame*>(f)->capture(varId, value);
 }

@@ -143,6 +143,9 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
   case Stmt::ForallArrayStmtClass:
     EmitForallArrayStmt(cast<ForallArrayStmt>(*S));
     break;
+  case Stmt::ScoutStmtClass:
+    EmitScoutStmt(cast<ScoutStmt>(*S));
+    break;
   //case Stmt::VolumeRenderAllStmtClass:
   //  EmitVolumeRenderAllStmt(cast<VolumeRenderAllStmt>(*S));
   //  break;

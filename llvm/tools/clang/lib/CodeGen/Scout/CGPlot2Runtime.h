@@ -86,6 +86,8 @@ namespace CodeGen {
     llvm::IntegerType* Int8Ty;
     llvm::IntegerType* Int32Ty;
     llvm::IntegerType* Int64Ty;
+    llvm::Type* FloatTy;
+    llvm::Type* DoubleTy;
     llvm::Type* VoidTy;
     llvm::Type* StringTy;
     
@@ -97,6 +99,11 @@ namespace CodeGen {
     llvm::Function* CreateFrameFunc();
 
     llvm::Function* FrameAddVarFunc();
+    
+    llvm::Function* FrameCaptureI32Func();
+    llvm::Function* FrameCaptureI64Func();
+    llvm::Function* FrameCaptureFloatFunc();
+    llvm::Function* FrameCaptureDoubleFunc();
     
   private:
     CodeGen::CodeGenModule& CGM;

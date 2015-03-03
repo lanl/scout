@@ -976,6 +976,5 @@ StmtResult Parser::ParseFrameCaptureStatement(ParsedAttributes &Attr){
   
   ScoutExpr* expr = cast<ScoutExpr>(result.get());
   SpecObjectExpr* Spec = static_cast<SpecObjectExpr*>(expr);
-  
-  return Actions.ActOnFrameCaptureStmt(FD, Spec);
+  return Actions.ActOnFrameCaptureStmt(VD, Spec);
 }
