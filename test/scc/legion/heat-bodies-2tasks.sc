@@ -60,7 +60,7 @@
 #include <assert.h>
 #include <stdio.h>
 
-const int MESH_DIM = 8;
+const int MESH_DIM = 512;
 
 uniform mesh HeatMesh {
   cells: 
@@ -102,7 +102,7 @@ task void init(HeatMesh *m) {
   }
 }
 task void work(HeatMesh *m) {
-  const int NTIME_STEPS = 1;
+  const int NTIME_STEPS = 100;
   const float VALUE = 87.899254;
 
   const float dx = 10.0f / width(*m);
@@ -128,7 +128,7 @@ task void work(HeatMesh *m) {
       if (position().x == 260 && position().y == 260 && t == NTIME_STEPS-1) {
          // if value does not match exit w/ error.
          if ((h - VALUE)*(h - VALUE) > 1e-10) {
-            //printf("%f %f\n", h, VALUE);
+           printf("%f %f\n", h, VALUE);
            assert(false); 
          } 
       }
