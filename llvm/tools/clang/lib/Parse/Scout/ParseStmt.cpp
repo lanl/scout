@@ -915,4 +915,67 @@ StmtResult Parser::ParseForallArrayStatement(ParsedAttributes &attrs) {
   return ForallArrayResult;
 }
 
-
+StmtResult Parser::ParseFrameCaptureStatement(ParsedAttributes &Attr){
+  assert(Tok.is(tok::kw_into) && "expected keyword into");
+  
+  SourceLocation IntoLoc = ConsumeToken();
+  
+  if (Tok.isNot(tok::identifier)) {
+    Diag(Tok, diag::err_expected_ident);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  IdentifierInfo  *IdentInfo = Tok.getIdentifierInfo();
+  SourceLocation   IdentLoc  = Tok.getLocation();
+  
+  VarDecl *VD = LookupScoutVarDecl(IdentInfo, IdentLoc);
+  
+  if(!VD){
+    Diag(Tok, diag::err_expected_frame);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  const FrameType* FT = dyn_cast<FrameType>(VD->getType().getTypePtr());
+  if(!FT){
+    Diag(Tok, diag::err_expected_frame);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  const FrameDecl* FD = FT->getDecl();
+  
+  SourceLocation FrameLoc = ConsumeToken();
+  
+  if (Tok.isNot(tok::identifier)) {
+    Diag(Tok, diag::err_frame_expected_capture);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  IdentInfo = Tok.getIdentifierInfo();
+  if(IdentInfo->getName().str() != "capture"){
+    Diag(Tok, diag::err_frame_expected_capture);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  SourceLocation CaptureLoc = ConsumeToken();
+  
+  if(Tok.isNot(tok::l_brace)){
+    Diag(Tok.getLocation(), diag::err_frame_expected_specifier);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  ExprResult result = ParseSpecObjectExpression();
+  if(result.isInvalid()){
+    return StmtError();
+  }
+  
+  ScoutExpr* expr = cast<ScoutExpr>(result.get());
+  SpecObjectExpr* Spec = static_cast<SpecObjectExpr*>(expr);
+  
+  return Actions.ActOnFrameCaptureStmt(FD, Spec);
+}

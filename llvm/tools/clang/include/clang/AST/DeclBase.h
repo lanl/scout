@@ -162,7 +162,7 @@ public:
     // +===== Scout ==========================================================+
     // SC_TODO : It is not entirely clear if we need this -- do we need an
     // identifier name space? 
-    // if we add this we need to bump up bitfield below from 12 to 13
+    // if we add this we need to bump up bitfield below from 12 to 14
     // comment above about 15bits for IDNS appears wrong
     IDNS_Mesh                = 0x1000,
     
@@ -293,8 +293,8 @@ protected:
   
   /// IdentifierNamespace - This specifies what IDNS_* namespace this lives in.
   // ===== Scout =============================================================
-  // need to increase this from 12 to 13 for mesh namespace
-  unsigned IdentifierNamespace : 13; 
+  // need to increase this from 12 to 14 for mesh and frame namespace
+  unsigned IdentifierNamespace : 14;
   // =========================================================================
 
   /// \brief If 0, we have not computed the linkage of this declaration.

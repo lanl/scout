@@ -1,9 +1,8 @@
-
 /*
  *
  * ###########################################################################
  *
- * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * Copyright (c) 2015, Los Alamos National Security, LLC.
  * All rights reserved.
  *
  *  Copyright 2013. Los Alamos National Security, LLC. This software was
@@ -51,34 +50,19 @@
  *
  */
 
-// Note - this file is included by the StmtProfile source file
-// one directory up (StmtProfile is all contained in a single
-// file there...).
-//
+#include "clang/AST/ASTContext.h"
+#include "clang/AST/ASTDiagnostic.h"
+#include "clang/AST/Expr.h"
+#include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprObjC.h"
+#include "clang/AST/Stmt.h"
+#include "clang/AST/StmtCXX.h"
+#include "clang/AST/StmtObjC.h"
+#include "clang/AST/Type.h"
+#include "clang/Basic/CharInfo.h"
+#include "clang/Basic/TargetInfo.h"
+#include "clang/Lex/Token.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/Support/raw_ostream.h"
+using namespace clang;
 
-void StmtProfiler::VisitForallStmt(const ForallStmt *S)
-{ VisitStmt(S); }
-
-void StmtProfiler::VisitForallMeshStmt(const ForallMeshStmt *S)
-{ VisitStmt(S); }
-
-void StmtProfiler::VisitForallArrayStmt(const ForallArrayStmt *S)
-{ VisitStmt(S); }
-
-void StmtProfiler::VisitScoutStmt(const ScoutStmt *S)
-{ VisitStmt(S); }
-
-void StmtProfiler::VisitRenderallStmt(const RenderallStmt *S)
-{ VisitStmt(S); }
-
-void StmtProfiler::VisitRenderallMeshStmt(const RenderallMeshStmt *S)
-{ VisitStmt(S); }
-
-void StmtProfiler::VisitQueryExpr(const QueryExpr *E)
-{ VisitExpr(E); }
-
-void StmtProfiler::VisitScoutExpr(const ScoutExpr *E)
-{ VisitExpr(E); }
-
-void StmtProfiler::VisitStencilShiftExpr(const StencilShiftExpr *E)
-{ VisitExpr(E); }

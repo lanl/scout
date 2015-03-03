@@ -1316,7 +1316,7 @@ bool Sema::LookupName(LookupResult &R, Scope *S, bool AllowBuiltinCreation) {
   // For a mesh always do the C style lookup otherwise
   // we would have to have a CXXMeshDecl like CXXRecordDecl
   bool CLookup = !getLangOpts().CPlusPlus;
-  if(NameKind == LookupMeshName) {
+  if(NameKind == LookupMeshName || NameKind == LookupFrameName) {
     CLookup = true;
   }
 

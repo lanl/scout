@@ -24,6 +24,7 @@ def ForallMeshStmt : DStmt<ForallStmt>;
 def ForallArrayStmt : DStmt<ForallStmt>;
 def RenderallStmt : Stmt<1>;
 def RenderallMeshStmt : DStmt<RenderallStmt>;
+def ScoutStmt : Stmt;
 // +=========================================================================+
 def GotoStmt : Stmt;
 def IndirectGotoStmt : Stmt;

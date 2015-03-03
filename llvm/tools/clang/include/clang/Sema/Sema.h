@@ -8937,7 +8937,8 @@ public:
   Decl* ActOnFrameDefinition(Scope* S,
                              SourceLocation FrameLoc,
                              IdentifierInfo* Name,
-                             SourceLocation NameLoc);
+                             SourceLocation NameLoc,
+                             MultiTemplateParamsArg TemplateParameterLists);
     
   void PopFrameContext(FrameDecl* F);
 
@@ -8952,6 +8953,8 @@ public:
   bool InitFrame(Scope* Scope, FrameDecl* F, Expr* Spec);
   
   bool ActOnFrameFinishDefinition(Decl* FD);
+  
+  StmtResult ActOnFrameCaptureStmt(const FrameDecl* F, SpecObjectExpr* S);
   
   //  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
   //                                      SourceLocation L, SourceLocation R,

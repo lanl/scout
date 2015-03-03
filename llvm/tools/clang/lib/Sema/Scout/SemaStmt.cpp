@@ -410,3 +410,6 @@ StmtResult Sema::ActOnRenderallMeshStmt(SourceLocation RenderallLoc,
   return RS;
 }
 
+StmtResult Sema::ActOnFrameCaptureStmt(const FrameDecl* F, SpecObjectExpr* S){
+  return new (Context) FrameCaptureStmt(F, S);
+}
