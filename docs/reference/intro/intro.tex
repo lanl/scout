@@ -4,31 +4,31 @@
 
 Scout is an experimental programming language that combines sequential and parallel
 general-purpose constructs with data analysis and visualization-centric features.  
-The language is an extension to the C/C++ programming languages, but 
+The language is an extension to the C programming language, but 
 it has also been influenced by many other languages and is fundamentally a higher-level 
-language than C/C++.  In this manual we assume the reader is familiar with parallel 
-programming and the basics of C/C++.  In this chapter we give a brief
+language than C.  In this manual we assume the reader is familiar with parallel 
+programming and the basics of C.  In this chapter we give a brief
 introduction to Scout's main features.
 The following chapters will provide more details about Scout's abstract 
-computational data structures and the parallel, data analysis and visualization specific 
+computational data structures and the parallel, data analysis, visualization and plotting 
 constructs.
 
-\section{Scout and the C/C++ Programming Languages}
+\section{Scout and the C Programming Language}
 \label{ch1:scout-clang}
 
-Scout extends the C/C++ programming languages to support a new set of abstractions and
+Scout extends the C programming language to support a new set of abstractions and
 domain-specific constructs.  Some of the main domain-specific constructs in Scout are
 explicit mesh declarations, instantiations and parallel
 computation over the various components of the mesh (e.g. cells, vertices, edges) or
-over array elements.  Scout builds upon the fundamental types of C/C++ to include higher-level 
+over array elements.  Scout builds upon the fundamental types of C to include higher-level 
 abstractions -- such 
 as computational meshes and the associated fields stored on a mesh.  From this perspective, 
-Scout is a higher-level language than C/C++.
+Scout is a higher-level language than C.
 
 Since Scout is based on the open-source Clang and LLVM Compiler Infrastructure, all of 
-the C/C++ language features are available. 
+the C language features are available. 
 Scout extends the fundamental data types
-available in C/C++ to include vector types of two, three, and four components.  Scout's 
+available in C to include vector types of two, three, and four components.  Scout's 
 syntax for vector types follows closely with those used by the OpenGL Shading Language
 and NVIDIA's C for CUDA.  Section~\ref{ch:datatypes} below covers these topics in more 
 detail.
@@ -38,7 +38,7 @@ detail.
 
 The best way to learn any programming language is to get your hands dirty.  The classic
 {hello world} program does not need to rewritten for Scout, since Scout fully supports
-C/C++.  Therefore, as an introductory program to Scout, Listing~\ref{lst-forallmesh}  
+C.  Therefore, as an introductory program to Scout, Listing~\ref{lst-forallmesh}  
 illustrates a simple one-dimensional mesh transformation.  It uses the \texttt{mesh}
 abstraction, the mesh's associated fields and the parallel \texttt{forall} construct.
 
@@ -57,7 +57,7 @@ int main(int argc, char** argv){
 
   // initialization of a and b not shown
 
-  forall cells c of m {
+  forall cells c in m {
     sum = a + b;
   }
 
@@ -77,15 +77,23 @@ executed from the command prompt:
 \fcolorbox{scoutblue}{lightgray}{
   \parbox{\textwidth-10pt}{%
     \texttt{\small \$ scc simplemesh.sc} \cmdcmt{compiler produces default executable ''a.out''...}\\      
-    \texttt{\small \$ a.out}\\
+    \texttt{\small \$ ./a.out}\\
     \texttt{\small \$ \_ }
   }
 }
 \par\bigskip\noindent
 
 The previous compilation of the Scout program creates an executable that is targeted to run
-sequentiall on a CPU.  Scout can also be enabled to run CPU multithreading via the \texttt{-mt}
-option to \texttt{scc} or run on an NVIDIA GPU via the \texttt{-gpu} option to \texttt{scc}.
+sequentially on a CPU.  
 
-See the on-line \texttt{scc} man page, or Appendix~\ref{app-scc} for more information on the
+%Scout can also be enabled to run CPU multithreading via the \texttt{-mt}
+%option to \texttt{scc} or run on an NVIDIA GPU via the \texttt{-gpu} option to \texttt{scc}.
+
+Scout can be enabled to run on an NVIDIA GPU via the \texttt{-gpu} option to \texttt{scc}.
+
+% Do we have an scc man page anywhere?
+%See the on-line \texttt{scc} man page, or Appendix~\ref{app-scc} for more information on the
+%available command line options.
+
+See the output to \texttt{scc -help} or Appendix~\ref{app-scc} for more information on the
 available command line options.

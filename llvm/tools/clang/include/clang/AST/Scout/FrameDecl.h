@@ -74,6 +74,7 @@ namespace clang {
   class FrameDecl
     : public TypeDecl, public DeclContext, public Redeclarable<FrameDecl> {
 
+  public:
     struct Var{
       uint32_t fieldId;
       VarDecl* varDecl;

@@ -1814,28 +1814,6 @@ Parser::DeclGroupPtrTy Parser::ParseDeclGroup(ParsingDeclSpec &DS,
 
   if (DeclEnd)
     *DeclEnd = Tok.getLocation();
-
-  // +====== Scout ===============================
-  /*
-  if(isScoutLang() && DeclsInGroup.size() == 1){
-    VarDecl* vd = dyn_cast<VarDecl>(DeclsInGroup[0]);
-    
-    if(vd){
-      const FrameType* ft = dyn_cast<FrameType>(vd->getType().getTypePtr());
-      
-      if(ft){
-        if(Tok.isNot(tok::l_brace)){
-          Diag(Tok.getLocation(), diag::err_frame_expected_specifier);
-        }
-        else{
-          ScoutExpr* expr = cast<ScoutExpr>(ParseSpecObjectExpression().get());
-          expr->printPretty();
-        }
-      }
-    }
-  }
-   */
-  // +============================================
   
   if (ExpectSemi &&
       ExpectAndConsumeSemi(Context == Declarator::FileContext
@@ -2902,6 +2880,13 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
             Tok.getLocation(), Sema::LookupMeshName);
         Actions.LookupName(MeshLookup, getCurScope());
         if (MeshLookup.getResultKind() == LookupResult::Found) {
+          if(TryAnnotateName(false)) continue;
+        }
+        
+        LookupResult FrameLookup(Actions, Tok.getIdentifierInfo(),
+                                 Tok.getLocation(), Sema::LookupFrameName);
+        Actions.LookupName(FrameLookup, getCurScope());
+        if (FrameLookup.getResultKind() == LookupResult::Found) {
           if(TryAnnotateName(false)) continue;
         }
       }

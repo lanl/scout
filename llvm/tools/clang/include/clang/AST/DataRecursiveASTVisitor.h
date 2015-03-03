@@ -2253,6 +2253,7 @@ DEF_TRAVERSE_STMT(CXXTemporaryObjectExpr, {
 DEF_TRAVERSE_STMT(ForallMeshStmt, { })
 DEF_TRAVERSE_STMT(ForallArrayStmt, { })
 DEF_TRAVERSE_STMT(RenderallMeshStmt, { })
+DEF_TRAVERSE_STMT(ScoutStmt, { })
 // ============================================
 
 // Walk only the visible parts of lambda expressions.

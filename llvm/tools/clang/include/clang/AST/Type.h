@@ -3893,7 +3893,7 @@ public:
   
   QualType desugar() const { return QualType(this, 0); }
   
-  const Type* getElementType(){
+  const Type* getElementType() const{
     return elementType;
   }
   

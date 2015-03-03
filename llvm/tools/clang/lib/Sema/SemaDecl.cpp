@@ -779,6 +779,24 @@ static bool isMeshTypeWithMissingMesh(Sema &SemaRef, LookupResult &Result,
   }
   return false;
 }
+
+static bool isFrameTypeWithMissingFrame(Sema &SemaRef, LookupResult &Result,
+                                        Scope *S, CXXScopeSpec &SS,
+                                        IdentifierInfo *&Name,
+                                        SourceLocation NameLoc) {
+  LookupResult R(SemaRef, Name, NameLoc, Sema::LookupFrameName);
+  
+  if(SemaRef.LookupParsedName(R, S, &SS)) {
+    if (FrameDecl *MD = R.getAsSingle<FrameDecl>()) {
+      (void)MD; //suppress warning
+      // unlike for a tag, we don't need a qualifer.
+      Result.clear(Sema::LookupFrameName); //change result to LookupMeshName type
+      Result.addAllDecls(R); // add results of lookup
+      return true;
+    }
+  }
+  return false;
+}
 // +==========================================================================+
 
 /// Build a ParsedType for a simple-type-specifier with a nested-name-specifier.
@@ -874,7 +892,8 @@ Corrected:
     // +===== Scout ==========================================================+
     // For a mesh it is normal to not have a qualifier like "uniform mesh" 
     if (isScoutLang(getLangOpts()) && !SecondTry &&
-        isMeshTypeWithMissingMesh(*this, Result, S, SS, Name, NameLoc)) {
+        (isMeshTypeWithMissingMesh(*this, Result, S, SS, Name, NameLoc) ||
+         isFrameTypeWithMissingFrame(*this, Result, S, SS, Name, NameLoc))) {
       break;
     }
     // +======================================================================+

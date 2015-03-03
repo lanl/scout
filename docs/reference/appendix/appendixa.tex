@@ -6,566 +6,363 @@
 \chapter*{Appendix A:  \texttt{scc} Command Line Options}
 \label{app-scc}
 
-Typing \texttt{scc -help} gives the summary of the command line options as shown 
-below.
+The most useful options will probably be \texttt{scc -sclegion} and \texttt{scc -gpu}.
+Typing \texttt{scc -help} gives the summary of all of the command line options as shown below.  There are so many because scc inherits the same options that clang has.
 
 \par\bigskip
 \begin{verbatim}
-OVERVIEW: clang "gcc-compatible" driver
 
-USAGE: scc [options] <inputs>
+OVERVIEW: clang LLVM compiler
+
+USAGE: scc-3 [options] <inputs>
 
 OPTIONS:
-  -###                    Print the commands to run for this compilation
+  -###                    Print (but do not run) the commands to run for this compilation
   --analyze               Run the static analyzer
-  --migrate               Run the migrator
-  --relocatable-pch       Build a relocatable precompiled header
-  --serialize-diagnostics <value>
-                          Serialize compiler diagnostics to a file
-  -Eonly                  Just run preprocessor, no output (for timings)
-  -E                      Only run the preprocessor
-  -F <value>              Add directory to framework include search path
-  -H                      Show header includes and nesting depth
-  -I <value>              Add directory to include search path
-  -MG                     Add missing headers to dependency list
-  -MP                     Create phony target for each dependency (other than main 
-                          file)
-  -MQ <value>             Specify target to quote for dependency
-  -MT <value>             Specify target for dependency
-  -ObjC++                 Treat source input files as Objective-C++ inputs
-  -ObjC                   Treat source input files as Objective-C inputs
-  -P                      Disable linemarker output in -E mode
-  -Qunused-arguments      Don't emit warning for unused driver arguments
-  -S                      Only run preprocess and compilation steps
-  -Wa,<arg>               Pass the comma separated arguments in <arg> to the 
-                          assembler
-  -Wl,<arg>               Pass the comma separated arguments in <arg> to the linker
-  -Wlarge-by-value-copy   Warn if a function definition returns or accepts an object 
-                          larger in bytes that a given value
-  -Wno-rewrite-macros     Silence ObjC rewriting warnings
-  -Wp,<arg>               Pass the comma separated arguments in <arg> to the 
-                          preprocessor
-  -Xanalyzer <arg>        Pass <arg> to the static analyzer
-  -Xassembler <arg>       Pass <arg> to the assembler
-  -Xclang <arg>           Pass <arg> to the clang compiler
-  -Xlinker <arg>          Pass <arg> to the linker
-  -Xpreprocessor <arg>    Pass <arg> to the preprocessor
-  -add-plugin <name>      Use the named plugin action in addition to the default 
-                          action
-  -analyze-function <value>
-                          Run analysis on specific function
-  -analyzer-checker-help  Display the list of analyzer checkers that are available
-  -analyzer-checker <value>
-                          Choose analyzer checkers to enable
-  -analyzer-constraints <value>
-                          Source Code Analysis - Symbolic Constraint Engines
-  -analyzer-disable-checker <value>
-                          Choose analyzer checkers to disable
-  -analyzer-disable-retry-exhausted
-                          Do not re-analyze paths leading to exhausted nodes with a 
-                          different strategy (may decrease code coverage)
-  -analyzer-display-progress
-                          Emit verbose output about the analyzer's progress
-  -analyzer-eagerly-assume
-                          Eagerly assume the truth/falseness of some symbolic 
-                          constraints
-  -analyzer-inline-max-function-size <value>
-                          Bound on the number of basic blocks in an inlined function 
-                          (200 by default)
-  -analyzer-inline-max-stack-depth <value>
-                          Bound on stack depth while inlining (4 by default)
-  -analyzer-inlining-mode <value>
-                          Specify the function selection heuristic used during 
-                          inlining
-  -analyzer-ipa <value>   Specify the inter-procedural analysis mode
-  -analyzer-max-loop <value>
-                          The maximum number of times the analyzer will go through a 
-                          loop
-  -analyzer-max-nodes <value>
-                          The maximum number of nodes the analyzer can generate 
-                          (150000 default, 0 = no limit)
-  -analyzer-no-eagerly-trim-egraph
-                          Don't eagerly remove uninteresting ExplodedNodes from the 
-                          ExplodedGraph
-  -analyzer-opt-analyze-headers
-                          Force the static analyzer to analyze functions defined in 
-                          header files
-  -analyzer-opt-analyze-nested-blocks
-                          Analyze the definitions of blocks in addition to functions
-  -analyzer-output <value>
-                          Source Code Analysis - Output Options
-  -analyzer-purge <value> Source Code Analysis - Dead Symbol Removal Frequency
-  -analyzer-stats         Print internal analyzer statistics.
-  -analyzer-store <value> Source Code Analysis - Abstract Memory Store Models
-  -analyzer-viz-egraph-graphviz
-                          Display exploded graph using GraphViz
-  -analyzer-viz-egraph-ubigraph
-                          Display exploded graph using Ubigraph
-  -analyze                Run static analysis engine
-  -arcmt-check            Check for ARC migration issues that need manual handling
   -arcmt-migrate-emit-errors
                           Emit ARC errors even if the migrator can fix them
   -arcmt-migrate-report-output <value>
                           Output path for the plist report
-  -arcmt-migrate          Apply modifications and produces temporary files that 
-                          conform to ARC
-  -arcmt-modify           Apply modifications to files to conform to ARC
-  -ast-dump-xml           Build ASTs and then debug dump them in a verbose XML format
-  -ast-dump               Build ASTs and then debug dump them
-  -ast-merge <ast file>   Merge the given AST file into the translation unit being 
-                          compiled.
-  -ast-print              Build ASTs and then pretty-print them
-  -ast-view               Build ASTs and view them with GraphViz
-  -backend-option <value> Additional arguments to forward to LLVM backend (during 
-                          code gen)
-  -c-isystem <directory>  Add directory to the C SYSTEM include search path
-  -cfg-add-implicit-dtors Add C++ implicit destructors to CFGs for all analyses
-  -cfg-add-initializers   Add C++ initializers to CFGs for all analyses
-  -chain-include <file>   Include and chain a header file after turning it into PCH
-  -cl-fast-relaxed-math   OpenCL only. Sets -cl-finite-math-only and 
-                          -cl-unsafe-math-optimizations, and defines 
-                          __FAST_RELAXED_MATH__
-  -cl-finite-math-only    OpenCL only. Allow floating-point optimizations that assume                          arguments and results are not NaNs or +-Inf.
-  -cl-mad-enable          OpenCL only. Enable less precise MAD instructions to be 
-                          generated.
-  -cl-opt-disable         OpenCL only. This option disables all optimizations. The 
-                          default is optimizations are enabled.
-  -cl-single-precision-constant
-                          OpenCL only. Treat double precision floating-point constant                          as single precision constant.
-  -cl-std=<value>         OpenCL language standard to compile for
-  -cl-unsafe-math-optimizations
-                          OpenCL only. Allow unsafe floating-point optimizations.  
-                          Also implies -cl-no-signed-zeros and -cl-mad-enable
-  -code-completion-at <file>:<line>:<column>
-                          Dump code-completion information at a location
-  -code-completion-brief-comments
-                          Include brief documentation comments in code-completion 
-                          results.
-  -code-completion-macros Include macros in code-completion results
-  -code-completion-patterns
-                          Include code patterns in code-completion results
-  -coverage-file <value>  Emit coverage data to this filename. The extension will be 
-                          replaced.
-  -cxx-abi <value>        Target a particular C++ ABI type
   -cxx-isystem <directory>
                           Add directory to the C++ SYSTEM include search path
   -c                      Only run preprocess, compile, and assemble steps
-  -dD                     Print macro definitions in -E mode in addition to normal 
-                          output
-  -dM                     Print macro definitions in -E mode instead of normal output
-  -debug-wait             Used to allow debugger to attach to the scc driver.
+  -dD                     Print macro definitions in -E mode in addition to normal output
+  -debug                  Stop and give PID to attach debugger to
   -dependency-dot <value> Filename to write DOT-formatted header dependencies to
   -dependency-file <value>
                           Filename (or -) to write dependency output to
-  -detailed-preprocessing-record
-                          include a detailed record of preprocessing actions
-  -diagnostic-log-file <value>
-                          Filename (or -) to log diagnostics to
-  -disable-free           Disable freeing of memory on exit
-  -disable-llvm-optzns    Don't run LLVM optimization passes
-  -disable-llvm-verifier  Don't run the LLVM IR verifier pass
-  -disable-red-zone       Do not emit code that uses the red zone.
-  -dump-build-information <filename>
-                          output a dump of some build information to a file
-  -dump-deserialized-decls
-                          Dump declarations that are deserialized from PCH, for 
-                          testing
-  -dump-raw-tokens        Lex file in raw mode and dump raw tokens
-  -dump-tokens            Run preprocessor, dump internal rep of tokens
-  -dwarf-debug-flags <value>
-                          The string to embed in the Dwarf debug flags record.
-  -emit-all-definitions   Emit all definitions regardless of it that definition was 
-                          used.
+  -dM                     Print macro definitions in -E mode instead of normal output
   -emit-ast               Emit Clang AST files for source inputs
-  -emit-codegen-only      Generate machine code, but discard output
-  -emit-html              Output input source as HTML
-  -emit-llvm-bc           Build ASTs then convert to LLVM, emit .bc file
-  -emit-llvm-only         Build ASTs and convert to LLVM, discarding output
   -emit-llvm              Use the LLVM representation for assembler and object files
-  -emit-module            Generate pre-compiled module file from a module map
-  -emit-obj               Emit native object files
-  -emit-pch               Generate pre-compiled header file
-  -emit-pth               Generate pre-tokenized header file
-  -error-on-deserialized-decl <value>
-                          Emit error if a specific declaration is deserialized from 
-                          PCH, for testing
-  -faddress-sanitizer     Enable AddressSanitizer instrumentation (memory error 
-                          detection)
+  -E                      Only run the preprocessor
   -faltivec               Enable AltiVec vector initializer syntax
+  -fansi-escape-codes     Use ANSI escape codes for diagnostics
   -fapple-kext            Use Apple's kernel extensions ABI
   -fapple-pragma-pack     Enable Apple gcc-compatible #pragma pack handling
-  -fblocks-runtime-optional
-                          Weakly link in the blocks runtime
   -fblocks                Enable the 'blocks' language feature
-  -fborland-extensions    Accept non-standard constructs supported by the Borland 
-                          compiler
-  -fbounds-checking       Enable run-time bounds checks.
-  -fcatch-undefined-behavior
-                          Generate runtime checks for undefined behavior.
+  -fborland-extensions    Accept non-standard constructs supported by the Borland compiler
+  -fbuild-session-file=<file>
+                          Use the last modification time of <file> as the build session timestamp
+  -fbuild-session-timestamp=<time since Epoch in seconds>
+                          Time when the current build session started
   -fcolor-diagnostics     Use colors in diagnostics
-  -fconst-strings         Use a const qualified type for string literals in C and 
-                          ObjC
-  -fconstant-string-class <class name>
-                          Specify the class to use for constant Objective-C string 
-                          objects.
-  -fconstexpr-backtrace-limit <N>
-                          Set the maximum number of entries to print in a constexpr 
-                          evaluation backtrace (0 = no limit).
-  -fconstexpr-depth <value>
-                          Maximum depth of recursive constexpr function calls
-  -fcuda-is-device        Generate code for CUDA device
+  -fcomment-block-commands=<arg>
+                          Treat each comma separated argument in <arg> as a documentation comment block command
+  -fcoverage-mapping      Generate coverage mapping to enable code coverage analysis
   -fcxx-exceptions        Enable C++ exceptions
   -fdata-sections         Place each data in its own section (ELF Only)
-  -fdebug-compilation-dir <value>
-                          The compilation directory to embed in the debug info.
-  -fdebugger-cast-result-to-id
-                          Enable casting unknown expression results to id
-  -fdebugger-objc-literal Enable special debugger support for objective-C 
-                          subscripting and literals
-  -fdebugger-support      Enable special debugger support behavior
+  -fdebug-types-section   Place debug types in their own section (ELF Only)
   -fdelayed-template-parsing
-                          Parse templated function definitions at the end of the 
-                          translation unit 
-  -fdeprecated-macro      Defines the __DEPRECATED macro
-  -fdiagnostics-format <value>
-                          Change diagnostic formatting to match IDE and command line 
-                          tools
+                          Parse templated function definitions at the end of the translation unit
   -fdiagnostics-parseable-fixits
                           Print fix-its in machine parseable form
   -fdiagnostics-print-source-range-info
                           Print source range spans in numeric form
-  -fdiagnostics-show-category <value>
-                          Print diagnostic category
-  -fdiagnostics-show-name Print diagnostic name
   -fdiagnostics-show-note-include-stack
                           Display include stacks for diagnostic notes
   -fdiagnostics-show-option
                           Print option name with mappable diagnostics
   -fdiagnostics-show-template-tree
                           Print a template comparison tree for differing templates
-  -fdisable-module-hash   Disable the module hash
   -fdollars-in-identifiers
                           Allow '$' in identifiers
-  -fdump-record-layouts-simple
-                          Dump record layout information in a simple form used for 
-                          testing
-  -fdump-record-layouts   Dump record layout information
-  -fdump-vtable-layouts   Dump the layouts of all vtables that will be emitted in a 
-                          translation unit
   -femit-all-decls        Emit all declarations, even if unused
-  -femit-coverage-data    Instrument the program to emit gcov coverage data when run.
-  -femit-coverage-notes   Emit a gcov coverage notes file when compiling.
-  -ferror-limit <N>       Set the maximum number of errors to emit before 
-                          stopping (0 = no limit).
   -fexceptions            Enable support for exception handling
-  -ffake-address-space-map
-                          Use a fake address space map; OpenCL testing purposes only
-  -ffast-math             Enable the *frontend*'s 'fast-math' mode. This has no 
-                          effect on optimizations, but provides a preprocessor macro 
-                          __FAST_MATH__ the same as GCC's -ffast-math flag.
-  -fforbid-guard-variables
-                          Emit an error if a C++ static local initializer would need 
-                          a guard variable
-  -ffp-contract=<value>   Form fused FP ops (e.g. FMAs): fast (everywhere) | on 
-                          (according to FP_CONTRACT pragma, default) | off (never 
-                          fuse)
-  -ffreestanding          Assert that the compilation takes place in a freestanding 
-                          environment
+  -ffast-math             Enable the *frontend*'s 'fast-math' mode. This has no effect on optimizations, but provides a preprocessor macro __FAST_MATH__ the same as GCC's -ffast-math flag
+  -ffixed-r9              Reserve the r9 register (ARM only)
+  -ffp-contract=<value>   Form fused FP ops (e.g. FMAs): fast (everywhere) | on (according to FP_CONTRACT pragma, default) | off (never fuse)
+  -ffreestanding          Assert that the compilation takes place in a freestanding environment
   -ffunction-sections     Place each function in its own section (ELF Only)
-  -fgnu-keywords          Allow GNU-extension keywords regardless of language 
-                          standard
-  -fgnu-runtime           Generate output compatible with the standard GNU 
-                          Objective-C runtime
+  -fgnu-keywords          Allow GNU-extension keywords regardless of language standard
+  -fgnu-runtime           Generate output compatible with the standard GNU Objective-C runtime
   -fgnu89-inline          Use the gnu89 inline semantics
-  -fhidden-weak-vtables   Generate weak vtables and RTTI with hidden visibility
   -finstrument-functions  Generate calls to instrument function entry and exit
-  -fix-only-warnings      Apply fix-it advice only for warnings, not errors
-  -fix-what-you-can       Apply fix-it advice even in the presence of unfixable 
-                          errors
-  -fixit-recompile        Apply fix-it changes and recompile
-  -fixit-to-temporary     Apply fix-it changes to temporary files
-  -fixit=<value>          Apply fix-it advice creating a file with the given suffix
-  -fixit                  Apply fix-it advice to the input source
-  -flimit-debug-info      Limit debug information produced to reduce size of debug 
-                          binary
-  -fmacro-backtrace-limit <N>
-                          Set the maximum number of entries to print in a macro 
-                          expansion backtrace (0 = no limit).
+  -fintegrated-as         Enable the integrated assembler
   -fmath-errno            Require math functions to indicate errors by setting errno
-  -fmessage-length <N>    Format message diagnostics so that they fit within N 
-                          columns or fewer, when possible.
-  -fmodule-cache-path <directory>
+  -fmax-type-align=<value>
+                          Specify the maximum alignment to enforce on pointers lacking an explicit alignment
+  -fmodule-file=<file>    Load this precompiled module file
+  -fmodule-map-file=<file>
+                          Load this module map file
+  -fmodule-maps           Read module maps to understand the structure of library headers
+  -fmodule-name= <name>   Specify the name of the module to build
+  -fmodules-cache-path=<directory>
                           Specify the module cache path
-  -fmodule-name=<name>    Specify the name of the module to build
+  -fmodules-decluse       Require declaration of modules used within a module
+  -fmodules-ignore-macro=<value>
+                          Ignore the definition of the given macro when building and loading modules
+  -fmodules-prune-after=<seconds>
+                          Specify the interval (in seconds) after which a module file will be considered unused
+  -fmodules-prune-interval=<seconds>
+                          Specify the interval (in seconds) between attempts to prune the module cache
+  -fmodules-search-all    Search even non-imported modules to resolve references
+  -fmodules-strict-decluse
+                          Like -fmodules-decluse but requires all headers to be in modules
+  -fmodules-user-build-path <directory>
+                          Specify the module user build path
+  -fmodules-validate-once-per-build-session
+                          Don't verify input files for the modules if the module has been successfully validated or loaded during this build session
+  -fmodules-validate-system-headers
+                          Validate the system headers that a module depends on when loading the module
   -fmodules               Enable the 'modules' language feature
-  -fms-compatibility      Enable Microsoft compatibility mode
-  -fms-extensions         Accept some non-standard constructs supported by the 
-                          Microsoft compiler
-  -fmsc-version=<value>   Version of the Microsoft C/C++ compiler to report in 
-                          _MSC_VER (0 = don't define it (default))
+  -fms-compatibility-version=<value>
+                          Dot-separated value representing the Microsoft compiler version number to report in _MSC_VER (0 = don't define it (default))
+  -fms-compatibility      Enable full Microsoft Visual C++ compatibility
+  -fms-extensions         Accept some non-standard constructs supported by the Microsoft compiler
+  -fmsc-version=<value>   Microsoft compiler version number to report in _MSC_VER (0 = don't define it (default))
   -fno-access-control     Disable C++ access control
   -fno-assume-sane-operator-new
-                          Don't assume that C++'s global operator new can't alias any
-                          pointer
-  -fno-bitfield-type-align
-                          Ignore bit-field types when aligning structures
+                          Don't assume that C++'s global operator new can't alias any pointer
+  -fno-autolink           Disable generation of linker directives for automatic library linking
+  -fno-builtin-<value>    Disable implicit builtin knowledge of a specific function
   -fno-builtin            Disable implicit builtin knowledge of functions
   -fno-common             Compile common globals like normal definitions
-  -fno-const-strings      Don't use a const qualified type for string literals in C 
-                          and ObjC
   -fno-constant-cfstrings Disable creation of CodeFoundation-type constant strings
-  -fno-deprecated-macro   Undefines the __DEPRECATED macro
   -fno-diagnostics-fixit-info
                           Do not include fixit information in diagnostics
-  -fno-diagnostics-show-note-include-stack
-                          Display include stacks for diagnostic notes
   -fno-dollars-in-identifiers
                           Disallow '$' in identifiers
   -fno-elide-constructors Disable C++ copy constructor elision
   -fno-elide-type         Do not elide types when printing diagnostics
+  -fno-integrated-as      Disable the integrated assembler
   -fno-lax-vector-conversions
-                          Disallow implicit conversions between vectors with a 
-                          different number of elements or different element types
-  -fno-limit-debug-info   Do not limit debug information produced to reduce size of 
-                          debug binary
+                          Disallow implicit conversions between vectors with a different number of elements or different element types
+  -fno-math-builtin       Disable implicit builtin knowledge of math functions
   -fno-merge-all-constants
-                          Disallow merging of constants.
+                          Disallow merging of constants
   -fno-objc-infer-related-result-type
-                          do not infer Objective-C related result type based on 
-                          method family
-  -fno-operator-names     Do not treat C++ operator name keywords as synonyms for 
-                          operators
+                          do not infer Objective-C related result type based on method family
+  -fno-operator-names     Do not treat C++ operator name keywords as synonyms for operators
+  -fno-reroll-loops       Turn off loop reroller
   -fno-rtti               Disable generation of rtti information
+  -fno-sanitize-blacklist Don't use blacklist file for sanitizers
+  -fno-sanitize-memory-track-origins
+                          Disable origins tracking in MemorySanitizer
+  -fno-sanitize-recover   Disable sanitizer check recovery
+  -fno-short-wchar        Force wchar_t to be an unsigned int
   -fno-show-column        Do not include column number on diagnostics
   -fno-show-source-location
                           Do not include source location information with diagnostics
   -fno-signed-char        Char is unsigned
   -fno-spell-checking     Disable spell-checking
-  -fno-threadsafe-statics Do not emit code to make initialization of local statics 
-                          thread safe
+  -fno-stack-protector    Disable the use of stack protectors
+  -fno-standalone-debug   Limit debug information produced to reduce size of debug binary
+  -fno-threadsafe-statics Do not emit code to make initialization of local statics thread safe
+  -fno-unroll-loops       Turn off loop unroller
   -fno-use-cxa-atexit     Don't use __cxa_atexit for calling destructors
-  -fno-validate-pch       Disable validation of precompiled headers
-  -fobjc-arc-cxxlib=<value>
-                          Objective-C++ Automatic Reference Counting standard library
-                          kind
-  -fobjc-arc-exceptions   Use EH-safe code when synthesizing retains and releases in
-                           -fobjc-arc
-  -fobjc-arc              Synthesize retain and release calls for Objective-C 
-                          pointers
-  -fobjc-default-synthesize-properties
-                          enable the default synthesis of Objective-C properties
-  -fobjc-dispatch-method=<value>
-                          Objective-C dispatch method to use
+  -fno-use-init-array     Don't use .init_array instead of .ctors
+  -fobjc-arc-exceptions   Use EH-safe code when synthesizing retains and releases in -fobjc-arc
+  -fobjc-arc              Synthesize retain and release calls for Objective-C pointers
   -fobjc-exceptions       Enable Objective-C exceptions
-  -fobjc-gc-only          Use GC exclusively for Objective-C related memory 
-                          management
+  -fobjc-gc-only          Use GC exclusively for Objective-C related memory management
   -fobjc-gc               Enable Objective-C garbage collection
-  -fobjc-runtime-has-weak The target Objective-C runtime supports ARC weak operations
   -fobjc-runtime=<value>  Specify the target Objective-C runtime kind and version
-  -foverride-record-layout=<value>
-                          Override record layouts with those in the given file
   -fpack-struct=<value>   Specify the default maximum struct packing alignment
   -fpascal-strings        Recognize and construct Pascal-style string literals
-  -fshort-enums           Allocate to an enum type only as many bytes as it needs for                          the declared range of possible values
+  -fpcc-struct-return     Override the default ABI to return all structs on the stack
+  -fprofile-instr-generate
+                          Generate instrumented code to collect execution counts
+  -fprofile-instr-use=<value>
+                          Use instrumentation data for profile-guided optimization
+  -fprofile-sample-use=<value>
+                          Enable sample-based profile guided optimizations
+  -freg-struct-return     Override the default ABI to return small structs in registers
+  -freroll-loops          Turn on loop reroller
+  -fsanitize-address-field-padding=<value>
+                          Level of field padding for AddressSanitizer
+  -fsanitize-blacklist=<value>
+                          Path to blacklist file for sanitizers
+  -fsanitize-coverage=<value>
+                          Enable coverage instrumentation for Sanitizers
+  -fsanitize-memory-track-origins=<value>
+                          Enable origins tracking in MemorySanitizer
+  -fsanitize-memory-track-origins
+                          Enable origins tracking in MemorySanitizer
+  -fsanitize=<check>      Enable runtime instrumentation for bug detection: address (memory errors) | thread (race detection) | undefined (miscellaneous undefined behavior)
+  -fshort-enums           Allocate to an enum type only as many bytes as it needs for the declared range of possible values
   -fshort-wchar           Force wchar_t to be a short unsigned int
   -fshow-overloads=<value>
-                          Which overload candidates to show when overload resolution                           fails: best|all; defaults to all
-  -fsjlj-exceptions       Use SjLj style exceptions
-  -fstrict-enums          Enable optimizations based on the strict definition of an 
-                          enum's value range.
-  -ftabstop <N>           Set the tab stop distance.
-  -ftemplate-backtrace-limit <N>
-                          Set the maximum number of entries to print in a template 
-                          instantiation backtrace (0 = no limit).
-  -ftemplate-depth <value>
-                          Maximum depth of recursive template instantiation
-  -fthread-sanitizer      Enable ThreadSanitizer instrumentation (race detection)
-  -ftrap-function=<value> Issue call to specified function rather than a trap 
-                          instruction
+                          Which overload candidates to show when overload resolution fails: best|all; defaults to all
+  -fslp-vectorize-aggressive
+                          Enable the BB vectorization passes
+  -fslp-vectorize         Enable the superword-level parallelism vectorization passes
+  -fstack-protector-all   Force the usage of stack protectors for all functions
+  -fstack-protector-strong
+                          Use a strong heuristic to apply stack protectors to functions
+  -fstack-protector       Enable stack protectors for functions potentially vulnerable to stack smashing
+  -fstandalone-debug      Emit full debug info for all types used by the program
+  -fstrict-enums          Enable optimizations based on the strict definition of an enum's value range
+  -ftrap-function=<value> Issue call to specified function rather than a trap instruction
   -ftrapv-handler=<function name>
-                          Specify the function to be called on overflow.
+                          Specify the function to be called on overflow
   -ftrapv                 Trap on integer overflow
-  -funknown-anytype       Enable parser support for the __unknown_anytype type; for 
-                          testing purposes only
   -funroll-loops          Turn on loop unroller
   -fuse-init-array        Use .init_array instead of .ctors
-  -fuse-register-sized-bitfield-access
-                          Use register sized accesses to bit-fields, when possible.
+  -fvectorize             Enable the loop vectorization passes
   -fvisibility-inlines-hidden
-                          Give inline C++ member functions default visibility by 
-                          default
-  -fvisibility <value>    Default symbol visibility
+                          Give inline C++ member functions default visibility by default
+  -fvisibility-ms-compat  Give global types 'default' visibility and global functions and variables 'hidden' visibility by default
+  -fvisibility=<value>    Set the default symbol visibility for all global declarations
   -fwrapv                 Treat signed integer overflow as two's complement
   -fwritable-strings      Store string literals as writable data
-  -gcc-toolchain <value>  Use the gcc toolchain at the given directory
+  -F <value>              Add directory to framework include search path
+  --gcc-toolchain=<value> Use the gcc toolchain at the given directory
+  -gdwarf-2               Generate source-level debug information with dwarf version 2
+  -gdwarf-3               Generate source-level debug information with dwarf version 3
+  -gdwarf-4               Generate source-level debug information with dwarf version 4
   -gline-tables-only      Emit debug line number tables only
-  -gpu                    Enable NVIDIA GPU support.
-  -g                      Generate source level debug information
-  -header-include-file <value>
-                          Filename (or -) to write header include output to
+  -gpu                    Enable NVIDIA gpu mode.
+  -g                      Generate source-level debug information
   -help                   Display available options
+  -H                      Show header includes and nesting depth
   -idirafter <value>      Add directory to AFTER include search path
-  -iframework<value>      Add directory to SYSTEM framework search path
+  -iframework <value>     Add directory to SYSTEM framework search path
   -imacros <file>         Include macros from file before parsing
   -include-pch <file>     Include precompiled header file
-  -include-pth <file>     Include file before parsing
   -include <file>         Include file before parsing
-  -index-header-map       Make the next included directory (-I or -F) an indexer 
-                          header map
-  -init-only              Only execute frontend initialization
-  -ino-system-prefix <prefix>
-                          Treat all #include paths starting with <prefix> as not 
-                          including a system header.
-  -internal-externc-isystem <directory>
-                          Add directory to the internal system include search path 
-                          with implicit extern "C" semantics; these are assumed to 
-                          not be user-provided and are used to model system and 
-                          standard headers' paths.
-  -internal-isystem <directory>
-                          Add directory to the internal system include search path; 
-                          these are assumed to not be user-provided and are used to 
-                          model system and standard headers' paths.
+  -index-header-map       Make the next included directory (-I or -F) an indexer header map
   -iprefix <dir>          Set the -iwithprefix/-iwithprefixbefore prefix
   -iquote <directory>     Add directory to QUOTE include search path
   -isysroot <dir>         Set the system root directory (usually /)
-  -isystem-prefix <prefix>
-                          Treat all #include paths starting with <prefix> as 
-                          including a system header.
   -isystem <directory>    Add directory to SYSTEM include search path
+  -ivfsoverlay <value>    Overlay the virtual filesystem described by file over the real file system
   -iwithprefixbefore <dir>
                           Set directory to include search path with prefix
   -iwithprefix <dir>      Set directory to SYSTEM include search path with prefix
   -iwithsysroot <directory>
-                          Add directory to SYSTEM include search path, absolute paths                          are relative to -isysroot
-  -load <dsopath>         Load the named plugin (dynamic shared object)
-  -main-file-name <value> Main file name to use for debug info
-  -masm-verbose           Generate verbose assembly output
-  -mcode-model <value>    The code model to use
-  -mconstructor-aliases   Emit complete constructors and destructors as aliases 
-                          when possible
-  -mdebug-pass <value>    Enable additional debug output
-  -mdisable-fp-elim       Disable frame pointer elimination optimization
-  -mdisable-tail-calls    Disable tail call optimization, keeping the call stack 
-                          accurate
-  -menable-no-infs        Allow optimization to assume there are no infinities.
-  -menable-no-nans        Allow optimization to assume there are no NaNs.
-  -menable-unsafe-fp-math Allow unsafe floating-point math optimizations which may 
-                          decrease precision
-  -mfloat-abi <value>     The float ABI to use
-  -migrate                Migrate source code
-  -mlimit-float-precision <value>
-                          Limit float precision to the given value
-  -mlink-bitcode-file <value>
-                          Link the given bitcode file before performing 
-                          optimizations.
+                          Add directory to SYSTEM include search path, absolute paths are relative to -isysroot
+  -I <value>              Add directory to include search path
+  -mabicalls              Enable SVR4-style position-independent code (Mips only)
+  -mcrc                   Allow use of CRC instructions (ARM only)
+  -MD                     Write a depfile containing user and system headers
+  -mfix-cortex-a53-835769 Workaround Cortex-A53 erratum 835769 (AArch64 only)
+  -mfp32                  Use 32-bit floating point registers (MIPS only)
+  -mfp64                  Use 64-bit floating point registers (MIPS only)
+  -MF <file>              Write depfile output from -MMD, -MD, -MM, or -M to <file>
+  -mgeneral-regs-only     Generate code which only uses the general purpose registers (AArch64 only)
+  -MG                     Add missing headers to depfile
+  --migrate               Run the migrator
   -mllvm <value>          Additional arguments to forward to LLVM's option processing
-  -mms-bitfields          Set the default structure layout to be compatible with the                           Microsoft compiler standard.
+  -mlong-calls            Generate an indirect jump to enable jumps further than 64M
+  -MMD                    Write a depfile containing user headers
+  -mms-bitfields          Set the default structure layout to be compatible with the Microsoft compiler standard
+  -mmsa                   Enable MSA ASE (MIPS only)
+  -MM                     Like -MMD, but also implies -E and writes to stdout by default
+  -mno-abicalls           Disable SVR4-style position-independent code (Mips only)
+  -mno-fix-cortex-a53-835769
+                          Don't workaround Cortex-A53 erratum 835769 (AArch64 only)
   -mno-global-merge       Disable merging of globals
   -mno-implicit-float     Don't generate implicit floating point instructions
-  -mno-zero-initialized-in-bss
-                          Do not put zero initialized data in the BSS
-  -mnoexecstack           Mark the file as not needing an executable stack
+  -mno-long-calls         Restore the default behaviour of not generating long calls
+  -mno-msa                Disable MSA ASE (MIPS only)
+  -mno-restrict-it        Allow generation of deprecated IT blocks for ARMv8. It is off by default for ARMv8 Thumb mode
+  -mno-unaligned-access   Force all memory accesses to be aligned (AArch32/AArch64 only)
+  -mnocrc                 Disallow use of CRC instructions (ARM only)
+  -module-dependency-dir <value>
+                          Directory to dump module dependencies to
   -momit-leaf-frame-pointer
-                          Omit frame pointer setup for leaf functions.
+                          Omit frame pointer setup for leaf functions
+  -MP                     Create phony target for each dependency (other than main file)
   -mqdsp6-compat          Enable hexagon-qdsp6 backward compatibility
-  -mregparm <value>       Limit the number of registers available for integer 
-                          arguments
+  -MQ <value>             Specify name of main file output to quote in depfile
   -mrelax-all             (integrated-as) Relax all machine instructions
-  -mrelocation-model <value>
-                          The relocation model to use
+  -mrestrict-it           Disallow generation of deprecated IT blocks for ARMv8. It is on by default for ARMv8 Thumb mode.
   -mrtd                   Make StdCall calling convention the default
-  -msave-temp-labels      (integrated-as) Save temporary labels
   -msoft-float            Use software floating point
   -mstack-alignment=<value>
                           Set the stack alignment
-  -mstackrealign          Force realign the stack at entry to every function.
-  -mt-migrate-directory <value>
-                          Directory for temporary files produced during ARC or ObjC 
-                          migration
-  -mt                     Enable CPU multithreading support.
-  -munwind-tables         Generate unwinding tables for all functions
-  -no-code-completion-globals
-                          Do not include global declarations in code-completion 
-                          results.
-  -no-finalize-removal    Do not remove finalize method in gc mode
-  -no-implicit-float      Don't generate implicit floating point instructions
-  -no-ns-alloc-error      Do not error on use of 
-                          NSAllocateCollectable/NSReallocateCollectable
+  -mstackrealign          Force realign the stack at entry to every function
+  -mthread-model <value>  The thread model to use, e.g. posix, single (posix by default)
+  -MT <value>             Specify name of main file output in depfile
+  -munaligned-access      Allow memory accesses to be unaligned (AArch32/AArch64 only)
+  -M                      Like -MD, but also implies -E and writes to stdout by default
+  --no-system-header-prefix=<prefix>
+                          Treat all #include paths starting with <prefix> as not including a system header.
   -nobuiltininc           Disable builtin #include directories
-  -nostdinc++             Disable standard #include directories for the C++ standard 
-                          library
-  -nostdsysteminc         Disable standard system #include directories
-  -objc-isystem <directory>
-                          Add directory to the ObjC SYSTEM include search path
+  -noscstdinc             Disable scout's default standard include directory.
+  -noscstdlib             Disable scout's automatic link-time inclusion of libraries.
+  -nostdinc++             Disable standard #include directories for the C++ standard library
+  -ObjC++                 Treat source input files as Objective-C++ inputs
+  -objcmt-atomic-property Make migration to 'atomic' properties
+  -objcmt-migrate-all     Enable migration to modern ObjC
+  -objcmt-migrate-annotation
+                          Enable migration to property and method annotations
+  -objcmt-migrate-designated-init
+                          Enable migration to infer NS_DESIGNATED_INITIALIZER for initializer methods
+  -objcmt-migrate-instancetype
+                          Enable migration to infer instancetype for method result type
   -objcmt-migrate-literals
                           Enable migration to modern ObjC literals
+  -objcmt-migrate-ns-macros
+                          Enable migration to NS_ENUM/NS_OPTIONS macros
+  -objcmt-migrate-property-dot-syntax
+                          Enable migration of setter/getter messages to property-dot syntax
+  -objcmt-migrate-property
+                          Enable migration to modern ObjC property
+  -objcmt-migrate-protocol-conformance
+                          Enable migration to add protocol conformance on classes
+  -objcmt-migrate-readonly-property
+                          Enable migration to modern ObjC readonly property
+  -objcmt-migrate-readwrite-property
+                          Enable migration to modern ObjC readwrite property
   -objcmt-migrate-subscripting
                           Enable migration to modern ObjC subscripting
-  -objcxx-isystem <directory>
-                          Add directory to the ObjC++ SYSTEM include search path
+  -objcmt-ns-nonatomic-iosonly
+                          Enable migration to use NS_NONATOMIC_IOSONLY macro for setting property's 'atomic' attribute
+  -objcmt-returns-innerpointer-property
+                          Enable migration to annotate property with NS_RETURNS_INNER_POINTER
+  -objcmt-whitelist-dir-path=<value>
+                          Only modify files with a filename contained in the provided directory path
+  -ObjC                   Treat source input files as Objective-C inputs
   -o <file>               Write output to <file>
   -pg                     Enable mcount instrumentation
-  -pic-level <value>      Value for __PIC__
-  -pie-level <value>      Value for __PIE__
   -pipe                   Use pipes between commands, when possible
-  -plugin-arg-<name> <arg>
-                          Pass <arg> to plugin <name>
-  -plugin <name>          Use the named plugin action instead of the default action 
-                          (use "help" to list available options)
-  -preamble-bytes=<value> Assume that the precompiled header is a precompiled 
-                          preamble covering the first N bytes of the main file
-  -print-decl-contexts    Print DeclContexts and their Decls
   -print-file-name=<file> Print the full library path of <file>
   -print-ivar-layout      Enable Objective-C Ivar layout bitmap print trace
   -print-libgcc-file-name Print the library path for "libgcc.a"
-  -print-preamble         Print the "preamble" of a file, which is a candidate for 
-                          implicit precompiled headers.
   -print-prog-name=<name> Print the full program path of <name>
   -print-search-dirs      Print the paths used for finding libraries and programs
-  -print-stats            Print performance metrics and statistics
   -pthread                Support POSIX threads in generated code
-  -relaxed-aliasing       Turn off Type Based Alias Analysis
+  -P                      Disable linemarker output in -E mode
+  -Qunused-arguments      Don't emit warning for unused driver arguments
   -relocatable-pch        Whether to build a relocatable precompiled header
-  -remap-file <from>;<to> Replace the contents of the <from> file with the contents 
-                          of the <to> file
-  -resource-dir <value>   The directory which holds the compiler resource files
   -rewrite-legacy-objc    Rewrite Legacy Objective-C source to C++
-  -rewrite-macros         Expand macros without full preprocessing
   -rewrite-objc           Rewrite Objective-C source to C++
-  -rewrite-test           Rewriter playground
+  -Rpass-analysis=<value> Report transformation analysis from optimization passes whose name matches the given POSIX regular expression
+  -Rpass-missed=<value>   Report missed transformations by optimization passes whose name matches the given POSIX regular expression
+  -Rpass=<value>          Report transformations performed by optimization passes whose name matches the given POSIX regular expression
+  -R<remark>              Enable the specified remark
   -save-temps             Save intermediate compilation results
-  -serialize-diagnostic-file <filename>
-                          File for serializing diagnostics in a binary format
-  -stack-protector <value>
-                          Enable stack protectors
-  -static-define          Should __STATIC__ be defined
+  -sclegion               Run Scout functions as Legion tasks.
+  -serialize-diagnostics <value>
+                          Serialize compiler diagnostics to a file
   -std=<value>            Language standard to compile for
   -stdlib=<value>         C++ standard library to use
-  -sys-header-deps        Include system headers in dependency output
-  -target-abi <value>     Target a particular ABI type
-  -target-cpu <value>     Target a specific cpu type
-  -target-feature <value> Target specific attributes
-  -target-linker-version <value>
-                          Target linker version
-  -target <value>         Generate code for the given target
+  --system-header-prefix=<prefix>
+                          Treat all #include paths starting with <prefix> as including a system header.
+  -S                      Only run preprocess and compilation steps
+  --target=<value>        Generate code for the given target
   -time                   Time individual commands
-  -token-cache <path>     Use specified token cache file
   -traditional-cpp        Enable some traditional CPP emulation
   -trigraphs              Process trigraph sequences
-  -trim-egraph            Only show error-related paths in the analysis graph
-  -triple <value>         Specify target triple (e.g. i686-apple-darwin9)
   -undef                  undef all system defines
-  -unoptimized-cfg        Generate unoptimized CFGs for all analyses
-  -vectorize              Enable autovectorize pass.
-  -verify                 Verify output using a verifier.
-  -version                Print the compiler version
-  -view-ast               View the AST of a parsed file with GraphViz
+  --verify-debug-info     Verify the binary representation of debug output
+  -verify-pch             Load and verify that a pre-compiled header file is not stale
   -v                      Show commands to run and use verbose output
+  -Wa,<arg>               Pass the comma separated arguments in <arg> to the assembler
+  -Wl,<arg>               Pass the comma separated arguments in <arg> to the linker
   -working-directory <value>
                           Resolve file paths relative to the specified directory
-  -w                      Suppress all warnings.
+  -Wp,<arg>               Pass the comma separated arguments in <arg> to the preprocessor
+  -W<warning>             Enable the specified warning
+  -w                      Suppress all warnings
+  -Xanalyzer <arg>        Pass <arg> to the static analyzer
+  -Xassembler <arg>       Pass <arg> to the assembler
+  -Xclang <arg>           Pass <arg> to the clang compiler
+  -Xlinker <arg>          Pass <arg> to the linker
+  -Xpreprocessor <arg>    Pass <arg> to the preprocessor
   -x <language>           Treat subsequent input files as having type <language>
-
+  -z <arg>                Pass -z <arg> to the linker
 \end{verbatim}
 
 

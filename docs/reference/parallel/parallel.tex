@@ -29,7 +29,7 @@ may be dropped within the body of the loop (e.g. \texttt{c.a = 0.0;} can be repl
 	};
   MeshType myMesh[16];
 
-	forall cells c of myMesh { // 'c' is the active cell.
+	forall cells c in myMesh { // 'c' is the active cell.
 		c.a = c.b = 0.0f;
 }
 \end{lstlisting}
@@ -37,7 +37,7 @@ may be dropped within the body of the loop (e.g. \texttt{c.a = 0.0;} can be repl
 
 Note that the code in the body of a \texttt{forall} construct must follow some
 constraints.  A field inside a \texttt{forall} construct body may only be
-read-only or write-only —code that does not satisfy this condition is rejected by the compiler. 
+read-only or write-only code that does not satisfy this condition is rejected by the compiler. 
 This limitation significantly reduces the complexity of analyzing data dependencies between 
 parallel constructs.  Another constraint is that if targeting the GPU, instructions for printing
 within the \texttt{forall} construct are not allowed.  Lastly, variables declared outside
@@ -47,13 +47,13 @@ construct body.
 Additional levels of parallelism can be introduced by nesting parallel constructs.  
 Specifically, the parallel operations over the cells of a mesh can be combined with  
 with a set of operations over the components of each individual cell. Listing~\ref{lst-nestforall} 
-shows such a nesting.  Note: this nesting is not implemented yet.
+shows such a nesting.  
 
 \par\bigskip
 \begin{lstlisting}[float=h,label=lst-nestforall,
 	caption={Nested \texttt{forall} loop construct over mesh components.}]
-forall cells c of myMesh { // 'c' is the active cell.
-	forall vertices v of c { // 'v' is the active vertex.
+forall cells c in myMesh { // 'c' is the active cell.
+	forall vertices v in c { // 'v' is the active vertex.
 	  c.a += v.a * v.a;
 	}
 	c.a = sqrt(c.a);
@@ -61,15 +61,45 @@ forall cells c of myMesh { // 'c' is the active cell.
 \end{lstlisting}
 \par\bigskip\noindent
 
-The \texttt{position} attribute of a cell is automatically provided to contain the coordinates of the
+Note that up to two levels of \texttt{forall} nesting are supported.  The complete listing of all two-level nested combinations is shown in Listing~\ref{lst-all-nestforall} .
+
+\par\bigskip
+\begin{lstlisting}[float=h,label=lst-all-nestforall,
+	caption={All supported two-level nested \texttt{forall} loop constructs over mesh components.}]
+forall edges e in m {
+  forall cells c in e {}}
+
+forall edges e in m {
+  forall vertices v in e {}}
+
+forall faces f in m {
+  forall cells c in f {}}
+
+forall vertices v in m{
+  forall cells c in v {}}
+
+forall cells c in m {
+  forall edges e in c {}}
+
+forall cells c in m {
+  forall faces f in c {}}
+
+forall cells c in m {
+ forall vertices v in c {}}
+\end{lstlisting}
+\par\bigskip\noindent
+
+% TODO Dean -- did I forget any?  Also, does this work for query?
+
+The \texttt{position()} built-in function of a cell is automatically provided to contain the coordinates of the
 current cell being processed. Listing~\ref{lst-position-forall} shows how positions can be
 used.
 
 \par\bigskip
 \begin{lstlisting}[float=h,label=lst-position-forall,
 	caption={Accessing the position of cells within \texttt{forall} loop construct.}]
-forall cells c of heat_mesh {
-  if (c.position.x > 0 && c.position.x < 1023)
+forall cells c in heat_mesh {
+  if (c.position().x > 0 && c.position().x < 1023)
     t1 = 0.0f;
   else
     t1 = MAX_TEMP;      
@@ -77,32 +107,69 @@ forall cells c of heat_mesh {
 \end{lstlisting}
 \par\bigskip\noindent
 
-A shortened version of the \texttt{forall} construct using different syntax is
-available.  In Listing~\ref{lst-forallshort}, a two-dimensional mesh can have
-a subrange of cells initialized.  Note that \texttt{width}, \texttt{height} and
-\texttt{depth} attributes are available for accessing the mesh sizes in each dimension.
-The range is specified by \texttt{[}\textit{first-index}\texttt{..}\textit{last-index}\texttt{]}.
-Note this is not fully implemented (all elements get initialized 
-instead of a subrange).
+The \texttt{width()}, \texttt{height()}, \texttt{depth()} and \texttt{rank()} 
+built-in functions are provided to enable
+the user to obtain the width, height, depth or rank of the mesh within a \texttt{forall} or outside of one.  
+When using the built-in functions outside of a \texttt{forall}, the mesh variable is given as an argument
+to the built-in function.  When used within a forall, the cell can be given as an argument or no argument 
+need be specified.
+Listing~\ref{lst-dims} shows how the dimension built-in functions can be used.
 
 \par\bigskip
-\begin{lstlisting}[float=h,label=lst-forallshort,
-	caption={\texttt{forall} short syntax for initialization.}]
-float MAX_TEMP = 1000;
-
-uniform mesh MyMesh{
-    cells:
-      float a;
+\begin{lstlisting}[float=h,label=lst-dims,
+	caption={Accessing the dimensions of a mesh.}]
+uniform mesh MyMesh {
+ cells: 
+  float a;
 };
 
-MyMesh m[512,512];
+MyMesh m[3,4];
+assert(width(m) == 3 && "bad width(m)"); 
+assert(height(m) == 4 && "bad height(m)"); 
+assert(depth(m) == 0 && "bad depth(m)");
+assert(rank(m) == 2 && "bad rank(m)"); 
 
-m.a[1..width-2][1..height-2] = MAX_TEMP;
+forall cells c in m {
+  assert(width() == 3 && "bad width()"); 
+  assert(height() == 4 && "bad height()"); 
+  assert(depth() == 0 && "bad depth()"); 
+  assert(rank() == 2 && "bad rank()"); 
+  assert(width(c) == 3 && "bad width(c)"); 
+  assert(height(c) == 4 && "bad height(c)"); 
+  assert(depth(c) == 0 && "bad depth(c)"); 
+  assert(rank(c) == 2 && "bad rank(c)"); 
+}
+
+}
 \end{lstlisting}
 \par\bigskip\noindent
 
+%A shortened version of the \texttt{forall} construct using different syntax is
+%available.  In Listing~\ref{lst-forallshort}, a two-dimensional mesh can have
+%a subrange of cells initialized.  Note that \texttt{width}, \texttt{height} and
+%\texttt{depth} attributes are available for accessing the mesh sizes in each dimension.
+%The range is specified by \texttt{[}\textit{first-index}\texttt{..}\textit{last-index}\texttt{]}.
+%Note this is not fully implemented (all elements get initialized 
+%instead of a subrange).
 
-Built-in functions can allow neighbors of a cell to be referenced.  The \texttt{cshift} 
+%\par\bigskip
+%\begin{lstlisting}[float=h,label=lst-forallshort,
+%	caption={\texttt{forall} short syntax for initialization.}]
+%float MAX_TEMP = 1000;
+
+%uniform mesh MyMesh{
+%    cells:
+%      float a;
+%};
+
+%MyMesh m[512,512];
+
+%m.a[1..width-2][1..height-2] = MAX_TEMP;
+%\end{lstlisting}
+%\par\bigskip\noindent
+
+
+Built-in functions can allow neighbors of a cell to be referenced.  The \texttt{cshift()} 
 (circular shift) built-in function is used to access neighboring cells in the mesh.
 For now this is implemented for uniform meshes.  This is like F90 but we shift index values 
 versus array duplication.  The following is a 2D mesh.  The \texttt{cshift}  function
@@ -113,9 +180,9 @@ function can be used.
 \par\bigskip
 \begin{lstlisting}[float=h,label=lst-cshiftforall,
 	caption={\texttt{forall} loop construct with use of cshift.}]
-forall cells c of heat_mesh {
-  if (c.position.x > 0 && c.position.x < heat_mesh.width-1 &&
-      c.position.y > 0 && c.position.y < heat_mesh.height-1) {
+forall cells c in heat_mesh {
+  if (c.position().x > 0 && c.position().x < heat_mesh.width()-1 &&
+      c.position().y > 0 && c.position().y < heat_mesh.height()-1) {
 
     float d2dx2 = cshift(c.t1, 1, 0) - 2.0f * c.t1 
                   + cshift(c.t1, -1, 0);
@@ -131,17 +198,24 @@ forall cells c of heat_mesh {
 \end{lstlisting}
 \par\bigskip\noindent
 
-The built-in function \texttt{sten()} also allows access to neighboring cells.  Note:  this is not yet 
-implemented.  Listing~\ref{lst-stenforall} shows how the \texttt{sten} function can be used.
+Stencil functions can be defined to access neighbors of a cell.  The stencil function \texttt{sten()} is shown in Listing~\ref{lst-stenforall} along with how it can be used.
 
 \par\bigskip
 \begin{lstlisting}[float=h,label=lst-stenforall,
-	caption={Nested \texttt{forall} loop construct with selection of neighboring cells.}]
-forall cells c of myMesh { // 'c' is the active cell.
-	forall n => sten(c) { // forall neighbors 'n' of cell 'c'.
-		...
-	}
-	...
+	caption={Nested \texttt{forall} loop construct with stencil.}]
+
+  stencil int sten(AMethType *c) {
+   return cshift(c->a,-1) - 2*c->a + cshift(c->a,1);
+  }
+
+  ...
+
+  forall cells c in m {
+    c.b = sten(&c);  // 
+  }
+  
+  ...
+	
 }
 \end{lstlisting}
 \par\bigskip\noindent
@@ -183,54 +257,201 @@ forall i,j,k in [0:2:1, 0:3:1, 0:4:1]{
 \end{lstlisting}
 \par\bigskip\noindent
 
+Meshes that have an array field can have nested \texttt{forall} constructs over the vertices,
+cells, edges or faces, and then an inner \texttt{forall} over the mesh field array elements.  
+The Listing~\ref{lst-forallmesharray} shows an example of this nesting.
+\par\bigskip
+\begin{lstlisting}[float=h,label=lst-forallmesharray,
+	caption={\texttt{forall} loop construct over mesh elements and mesh field array elements.}]
+uniform mesh MyMesh {
+ cells:
+  float a[4];
+};
+
+MyMesh m[8];
+
+forall cells c in m {
+  forall i in [:4:] {
+    a[i] = position().x + i;
+  }
+}
+\end{lstlisting}
+\par\bigskip\noindent
+
+Meshes can be passed as a parameter to a function.  They are passed as a pointer to a mesh.  When used with Scout built-in functions they are dereferenced.
+The Listing~\ref{lst-meshparam} shows an example of this.
+\par\bigskip
+\begin{lstlisting}[float=h,label=lst-meshparam,
+	caption={Meshes can be passed as a parameter to a function.}]
+uniform mesh MyMesh {
+  cells:
+    int val;
+};
+
+void func(MyMesh* mp)
+{
+  assert(rank(*mp) == 2 && "incorrect rank");
+
+  forall cells c in *mp {
+    printf("%d %d %d\n", width(), height(), rank());
+    assert(width() == 2 && "incorrect width"); 
+    assert(height() == 3 && "incorrect height"); 
+    assert(rank() == 2 && "incorrect rank"); 
+
+  }
+}
+
+int main(int argc, char *argv[])
+{
+  MyMesh m[2, 3];
+  func(&m);
+
+  return 0;
+}
+\end{lstlisting}
+\par\bigskip\noindent
+
 
 \section{Queries}
 
-The \texttt{where} keyword allows the user to specify a subset of mesh cells 
-to be processed.  Listing~\ref{lst-stream-forall} illustrates the use of
-the \texttt{where} keyword.  Note: this is parsed, but not yet implemented.
+%The \texttt{where} keyword allows the user to specify a subset of mesh cells 
+%to be processed.  Listing~\ref{lst-stream-forall} illustrates the use of
+%the \texttt{where} keyword.  Note: this is parsed, but not yet implemented.
+
+%\par\bigskip
+%\begin{lstlisting}[float=h,label=lst-stream-forall,
+%	caption={Streaming \texttt{forall} loop construct using \texttt{where}.}]
+%// Stream only a subset of cells of myMesh into the loop
+%// body for processing. 
+%forall cells c of myMesh where (c.a > 0.0) { 
+%	c.a = c.b / c.a;
+%}
+%\end{lstlisting}
+%\par\bigskip\noindent
+
+%The \texttt{select()} built-in function allows the user to specify a subset of mesh fields
+%to be processed.  Listing~\ref{lst-stream-forall2} illustrates the use ofthe \texttt{select} 
+%built-in function.  Note: this is not yet implemented.
+
+%\par\bigskip
+%\begin{lstlisting}[float=h,label=lst-stream-forall2,
+%	caption={Streaming \texttt{forall} loop construct using \texttt{select}.}]
+%// Stream only a subset of cells of myMesh into the loop
+%// body for processing. 
+%forall cells of myMesh(select(a, b)) { 
+%	a = b / a;
+%}
+%\end{lstlisting}
+%\par\bigskip\noindent
+
+%Expressions using the \texttt{expr} construct can be created to accomplish a similar effect as the
+%where clause above with the use of \texttt{apply} in the \texttt{forall} construct.  
+%Listing~\ref{lst-stream-forall3} illustrates the use ofthe \texttt{expr} construct.
+%Note:  this is not yet implemented.
+
+%\par\bigskip
+%\begin{lstlisting}[float=h,label=lst-stream-forall3,
+%	caption={Streaming \texttt{forall} loop construct using \texttt{expr}.}]
+%// Stream only a subset of cells of myMesh into the loop
+%// body for processing. 
+%expr e = where cells c of myMesh (a < 0.5);
+
+%forall cells of myMesh(apply e) { 
+%	a = b / a;
+%}
+%\end{lstlisting}
+%\par\bigskip\noindent
+
+The \texttt{query} construct can be used to name a selection of mesh fields.  
+The mesh fields are selected using \texttt{from}, \texttt{select}, and \texttt{where}.
+The resulting query can be used as a target for a \texttt{forall} construct.
+Listing~\ref{lst-query} illustrates the use of the \texttt{query} construct and its supporting constructs.
 
 \par\bigskip
-\begin{lstlisting}[float=h,label=lst-stream-forall,
-	caption={Streaming \texttt{forall} loop construct using \texttt{where}.}]
-// Stream only a subset of cells of myMesh into the loop
-// body for processing. 
-forall cells c of myMesh where (c.a > 0.0) { 
-	c.a = c.b / c.a;
+\begin{lstlisting}[float=h,label=lst-query,
+	caption={Subsetting using \texttt{query} construct.}]
+uniform mesh MyMesh {
+ edges:
+  float b;
+};
+
+MyMesh m[8];
+
+...
+
+query q = 
+  from edges e in m 
+  select e.b where 
+  e.b > 5.0;
+
+forall edges e in q {
+  e.b += 100;
+}
+
+\end{lstlisting}
+\par\bigskip\noindent
+
+\section{Tasks}
+
+The \texttt{task} construct is used to designate a function to be a Legion task.  In this scenario,
+the Legion runtime system will launch the task and schedule asyhronously so that data dependencies between tasks
+are honored.  This functionality is only available for functions that take meshes as arguments.
+Listing~\ref{lst-task} illustrates the use of the \texttt{task} construct. 
+
+\par\bigskip
+\begin{lstlisting}[float=h,label=lst-task,
+	caption={Specifying tasks using \texttt{task} construct.}]
+task void MyTask(MyMesh *m) {
+  
+  forall cells c in *m {
+    a = 0;
+    b = 1;
+  }
+
+  forall cells c in *m {
+    a += b;
+  }
+}
+
+int main(int argc, char** argv) {
+  MyMesh m[512];
+
+  MyTask(&m);
+  ...
 }
 \end{lstlisting}
 \par\bigskip\noindent
 
-The \texttt{select()} built-in function allows the user to specify a subset of mesh fields
-to be processed.  Listing~\ref{lst-stream-forall2} illustrates the use ofthe \texttt{select} 
-built-in function.  Note: this is not yet implemented.
+Tasks can also call other tasks.  
+Listing~\ref{lst-subtask} illustrates how you can create subtasks. 
 
 \par\bigskip
-\begin{lstlisting}[float=h,label=lst-stream-forall2,
-	caption={Streaming \texttt{forall} loop construct using \texttt{select}.}]
-// Stream only a subset of cells of myMesh into the loop
-// body for processing. 
-forall cells of myMesh(select(a, b)) { 
-	a = b / a;
+\begin{lstlisting}[float=h,label=lst-subtask,
+	caption={Specifying subtasks.}]
+task void MyTask2(MyMesh *m) {
+  forall cells c in *m {
+    a += b;
+  }
 }
+
+task void MyTask(MyMesh *m) {
+  
+  forall cells c in *m {
+    a = 0;
+    b = 1;
+  }
+
+  MyTask2(m);
+}
+
+int main(int argc, char** argv) {
+  MyMesh m[512];
+
+  MyTask(&m);
+  ...
+}
+
 \end{lstlisting}
 \par\bigskip\noindent
 
-Expressions using the \texttt{expr} construct can be created to accomplish a similar effect as the
-where clause above with the use of \texttt{apply} in the \texttt{forall} construct.  
-Listing~\ref{lst-stream-forall3} illustrates the use ofthe \texttt{expr} construct.
-Note:  this is not yet implemented.
-
-\par\bigskip
-\begin{lstlisting}[float=h,label=lst-stream-forall3,
-	caption={Streaming \texttt{forall} loop construct using \texttt{expr}.}]
-// Stream only a subset of cells of myMesh into the loop
-// body for processing. 
-expr e = where cells c of myMesh (a < 0.5);
-
-forall cells of myMesh(apply e) { 
-	a = b / a;
-}
-\end{lstlisting}
-\par\bigskip\noindent
 

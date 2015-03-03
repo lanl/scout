@@ -1137,7 +1137,7 @@ def err_invalid_query_field:Error<
 def err_invalid_query_predicate:Error<
 "invalid query predicate">;
 
-// +----- data/plotting errors --------------------------+-----------------+
+// +----- frame/plotting errors --------------------------+-----------------+
 def err_frame_expected_specifier:Error<
 "expected a frame specifier in declaration">;
 
@@ -1149,6 +1149,12 @@ def err_spec_invalid_object_key:Error<
 
 def err_spec_invalid_expected:Error<
 "invalid specifier, expected '%0'">;
+
+def err_expected_frame:Error<
+"expected a frame">;
+
+def err_frame_expected_capture:Error<
+"expected capture keyword">;
 
 // +=========================================================================+
 

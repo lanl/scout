@@ -69,6 +69,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Module.h"
 #include "clang/AST/Type.h"
+#include "Scout/CGPlot2Runtime.h"
 #include "Scout/CGScoutRuntime.h"
 #include "Scout/CGLegionCRuntime.h"
 #include <stdio.h>
@@ -664,8 +665,53 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
   }
   else if (Ty.getTypeClass() == Type::Frame) {
-    assert(false && "unimplemented");
+    using namespace std;
+    using namespace llvm;
+    
+    auto R = CGM.getPlot2Runtime();
+    
+    typedef vector<Value*> ValueVec;
+    
+    QualType T = D.getType();
+    const FrameType* FT = cast<FrameType>(T.getTypePtr());
+    FrameDecl* FD = FT->getDecl();
+  
+    ValueVec params;
+  
+    Value* fp = Builder.CreateCall(R.CreateFrameFunc(), params, "frame.ptr");
+    Builder.CreateStore(fp, Alloc);
+    
+    auto m = FD->getVarMap();
+    for(auto& itr : m){
+      const FrameDecl::Var& vi = itr.second;
+      VarDecl* vd = vi.varDecl;
+    
+      const FrameVarType* vt = dyn_cast<FrameVarType>(vd->getType().getTypePtr());
+      assert(vt && "expected a frame var type");
+      
+      const Type* et = vt->getElementType();
+      llvm::Type* lt = ConvertType(QualType(et, 0));
+      
+      llvm::Value* fieldType;
+      
+      if(lt->isIntegerTy(32)){
+        fieldType = R.ElementInt32Val;
+      }
+      else if(lt->isIntegerTy(64)){
+        fieldType = R.ElementInt64Val;
+      }
+      else if(lt->isFloatTy()){
+        fieldType = R.ElementFloatVal;
+      }
+      else if(lt->isDoubleTy()){
+        fieldType = R.ElementDoubleVal;
+      }
+      else{
+        assert(false && "invalid field type");
+      }
+      
+      params = {fp, Builder.getInt32(vi.fieldId), fieldType};
+      Builder.CreateCall(R.FrameAddVarFunc(), params);
+    }
   }
 }
-
-

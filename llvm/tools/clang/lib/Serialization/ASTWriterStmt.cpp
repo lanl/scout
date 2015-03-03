@@ -2189,6 +2189,10 @@ void ASTStmtWriter::VisitForallArrayStmt(ForallArrayStmt *S) {
   VisitStmt(S);
   Code = serialization::STMT_FORALL_ARRAY;
 }
+void ASTStmtWriter::VisitScoutStmt(ScoutStmt *S) {
+  VisitStmt(S);
+  Code = serialization::STMT_SCOUT;
+}
 //void ASTStmtWriter::VisitRenderAllStmt(RenderAllStmt *S) { }
 //void ASTStmtWriter::VisitVolumeRenderAllStmt(VolumeRenderAllStmt *S) { }
 // +==========================================================================+

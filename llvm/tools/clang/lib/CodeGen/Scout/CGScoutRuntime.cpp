@@ -307,8 +307,9 @@ llvm::Type *CGScoutRuntime::convertScoutSpecificType(const Type *T) {
     llvm::StructType* qt = llvm::StructType::create(Ctx, "scout.query_t");
     qt->setBody(CGM.VoidPtrTy, CGM.VoidPtrTy, NULL);
     return qt;
-  }
-  else {
+  } else if (T->isFrameType()) {
+    return CGM.VoidPtrTy;
+  } else {
     llvm_unreachable("Unexpected scout type!");
     return 0;
   }

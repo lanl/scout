@@ -2566,6 +2566,8 @@ private:
   }
   
   bool ParseFrameSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo);
+  
+  StmtResult ParseFrameCaptureStatement(ParsedAttributes &Attr);
   // +========================================================================+
 };
 
