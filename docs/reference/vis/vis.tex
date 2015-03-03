@@ -5,7 +5,9 @@
 
 A key feature of the Scout language is the incorporation of visualization and
 rendering operations directly within the syntax and semantics of the language 
-as first-class constructs.  Listing~\ref{renderall1} shows a simple example.
+as first-class constructs.  
+The \texttt{window} is also a Scout construct.  Windows are constructed so that images can be displayed on them.   Currently 2D rendering is supported.
+Listing~\ref{renderall1} shows a simple example.
 
 \par\bigskip
 \begin{lstlisting}[float=h,label=renderall1,
@@ -16,8 +18,9 @@ as first-class constructs.  Listing~\ref{renderall1} shows a simple example.
 	};
 
   meshType myMesh[16];
+  window win[1024,1024] {
 
-	renderall cells c of myMesh where (a < 0.5)
+	renderall cells c in myMesh to win
   {
 			color = rgb(1.0, 0.0, 0.0);
 		else
@@ -26,65 +29,26 @@ as first-class constructs.  Listing~\ref{renderall1} shows a simple example.
 \end{lstlisting}
 \par\bigskip\noindent
 
-In the case where the mesh is three-dimensional, the body of the \texttt{renderall}
-is essentially the transfer function for volume rendering.
-
-Isosurfacing is a built-in visualization function provided by Scout.
-Listing~\ref{renderall2} shows an example of isosurface computation.
-Note isosurfacing is not yet implemented.
+Note that when meshes are passed as parameters to functions, the \texttt{renderall} construct works via an indirection to a mesh pointer as well.
+Listing~\ref{renderall-meshptr} shows a simple example.
 
 \par\bigskip
-\begin{lstlisting}[float=h,label=renderall2,
-	caption={A \texttt{renderall} loop for viewing an isosurface.}]
-	
-	uniform mesh meshType{
-		cells: float a, b;
-	};
+\begin{lstlisting}[float=h,label=renderall-meshptr,
+	caption={A \texttt{renderall} loop construct on mesh parameter.}]
+void MyFunc(MyMesh *m) { 
+  window mywin[512,512]; 
+  
+  ...
 
-  meshType myMesh[16];
-	
-    // Compute two isosurfaces (values 0.5 and 1.0) and store them 
-    // in an unstructured mesh.
-	unstructured mesh mySurfaceType;
-  mySurfaceType mySurface = isosurface(myMesh.a, {0.5, 1.0});
-
-	renderall faces f of mySurface { // "solid" surface
-		...
-	}
-	
-	renderall edges e of mySurface {  // wireframe
-		...
-	}
-	
-	renderall cells c of myMesh {  // how do we volume render?
-		// If the selected mesh is three-dimensional 
-		// we just assume this is a volume rendering
-		// construct.
-		...
-	}
+  renderall vertices v in *m to mywin{
+    color = hsva(b/16.0f*360.0f, 1.0, 1.0, 1.0);
+  }
 \end{lstlisting}
 \par\bigskip\noindent
 
-The \texttt{camera} is also a Scout construct.  Cameras are constructed as in
-Listing~\ref{camera1}.
 
-\par\bigskip
-\begin{lstlisting}[float=h,label=camera1,
-	caption={How to construct a \texttt{camera}.}]
-  float3 mypos = float3(-300.0f, -300.0f, -300.0f);
-  float3 mylookat = float3(0.0f, 0.0f, 0.0f);
-  float3 myup = float3(0.0f, 0.0f, -1.0f);
-
-  camera cam {
-    near = 70.0;
-    far = 500.0;
-    fov = 40.0;
-    pos = mypos;
-    lookat = mylookat;
-    up = myup;
-  };
-\end{lstlisting}
-\par\bigskip\noindent
+%In the case where the mesh is three-dimensional, the body of the \texttt{renderall}
+%is essentially the transfer function for volume rendering.
 
 %% TBD
 %The \texttt{window} is also a Scout construct.  Windows are constructed so that images can

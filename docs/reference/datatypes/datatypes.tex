@@ -5,7 +5,7 @@
 \label{ch:datatypes}
 
 
-Those familiar with programming in C or C++ should find Scout's syntax and fundamental data 
+Those familiar with programming in C should find Scout's syntax and fundamental data 
 types to be very familiar.  In this section we quickly review Scout's additional composite data types.
 
 \section{Vectors}
@@ -27,7 +27,7 @@ int3    v; // three-component integer vector.
 double4 w; // four-component double-precision vector.
 
 // Vector declaration and initialization
-float3 foo = float3(1.0f, 2.0f, 3.0f);
+float3 foo = (float3){1.0f, 2.0f, 3.0f};
 
 // Another way to initialize a vector
 float4 bar;
@@ -43,10 +43,13 @@ bar.w = 4.0f;
 
 Computational science data structures are frequently based on the concept of a mesh.
 Scout directly follows this philosophy by introducing mesh-centric data types.  Scout supports 
-\texttt{uniform}, \texttt{rectilinear}, \texttt{structured}, and \texttt{unstructured} mesh types.  
+the \texttt{uniform} mesh type.  
+
+%\texttt{rectilinear}, \texttt{structured}, and \texttt{unstructured} 
+
 In addition, the language 
 provides constructs for defining the values stored on the various locations of the mesh (e.g.
-cell centers, vertices, edges).  Figure~\ref{fig:types:mesh-def} illustrates the layout of a mesh.
+cell centers, vertices, edges and faces).  Figure~\ref{fig:types:mesh-def} illustrates the layout of a mesh.
 Figure~\ref{fig:types:grid-positions} shows the field placement options within a mesh.
 
 \par\bigskip
@@ -61,11 +64,13 @@ Figure~\ref{fig:types:grid-positions} shows the field placement options within a
 
 \begin{figure}[h]
   \centering
-  \includegraphics[width=4.0in]{datatypes/figures/grid-positions.pdf} \\
+  \includegraphics[width=4.0in]{datatypes/figures/field-positions.pdf} \\
   \caption{Field placement options within a mesh.}
   \label{fig:types:grid-positions}
 \end{figure}
 \par\bigskip\noindent
+
+%TODO:  need a 2D picture that shows faces.
 
 Here is a code example showing a two-dimensional mesh and a mesh
 whose dimensions are defined by an input file.
@@ -80,19 +85,32 @@ Note that is is not yet implemented to read meshes from input files.
 uniform mesh MeshType {
 	cells:    float temperature;
 	          float presure;
-	vertices: float3 velocity;
-  edges:    float  h;
+	vertices: float3 vorticity;
+  edges:    float  velocity;
 };
 
 MeshType myMesh[512,512];
 
-// Structured mesh defined from input file. 
-structured mesh MeshType2 {
-	cells:    float temperature, density;
-};
-
-MeshType2 myMesh2("mesh-def.smd");
 \end{lstlisting}
 \par\bigskip\noindent
 
-Note: need examples here of how to declare rectilinear, structured and unstructured meshes.
+
+In addition, meshes dimensions can be specified using variables.
+Listing~\ref{lst-meshvar} shows this.
+
+\par\bigskip
+\begin{lstlisting}[float=h,label=lst-meshvar,
+    caption={Mesh declarations using variable.}]
+  int dim = 4;
+
+  uniform mesh HeatMeshType{
+  cells:
+    float t1, t2;
+  };
+
+  HeatMeshType heat_mesh[dim];
+\end{lstlisting}
+\par\bigskip\noindent
+
+
+%Note: need examples here of how to declare rectilinear, structured and unstructured meshes.
