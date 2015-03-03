@@ -55,6 +55,7 @@
 #include <cassert>
 #include <vector>
 #include <map>
+#include <stdint.h>
 
 using namespace std;
 
