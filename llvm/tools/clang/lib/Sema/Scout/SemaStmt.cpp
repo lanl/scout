@@ -410,6 +410,25 @@ StmtResult Sema::ActOnRenderallMeshStmt(SourceLocation RenderallLoc,
   return RS;
 }
 
-StmtResult Sema::ActOnFrameCaptureStmt(const FrameDecl* F, SpecObjectExpr* S){
-  return new (Context) FrameCaptureStmt(F, S);
+StmtResult Sema::ActOnFrameCaptureStmt(const VarDecl* VD, SpecObjectExpr* S){
+  using namespace std;
+  
+  const FrameType* ft = dyn_cast<FrameType>(VD->getType().getTypePtr());
+  const FrameDecl* fd = ft->getDecl();
+  
+  auto m = S->memberMap();
+  auto vm = fd->getVarMap();
+  
+  bool valid = true;
+  
+  for(auto& itr : m){
+    const string& k = itr.first;
+    
+    if(vm.find(k) == vm.end()){
+      Diag(S->getKeyLoc(k), diag::err_unknown_frame_variable) << k;
+      valid = false;
+    }
+  }
+  
+  return valid ? new (Context) FrameCaptureStmt(VD, S) : StmtError();
 }

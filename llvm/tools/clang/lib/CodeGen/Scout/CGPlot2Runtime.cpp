@@ -67,6 +67,8 @@ CGPlot2Runtime::CGPlot2Runtime(CodeGenModule& CGM) : CGM(CGM){
   Int8Ty = llvm::IntegerType::getInt8Ty(C);
   Int32Ty = llvm::IntegerType::getInt32Ty(C);
   Int64Ty = llvm::IntegerType::getInt64Ty(C);
+  FloatTy = llvm::Type::getFloatTy(C);
+  DoubleTy = llvm::Type::getDoubleTy(C);
   VoidTy = llvm::Type::getVoidTy(C);
   VoidPtrTy = PointerTy(Int8Ty);
   StringTy = PointerTy(Int8Ty);
@@ -120,4 +122,20 @@ CGPlot2Runtime::CreateFrameFunc(){
 llvm::Function*
 CGPlot2Runtime::FrameAddVarFunc(){
   return GetFunc("__scrt_frame_add_var", {VoidPtrTy, Int32Ty, Int32Ty});
+}
+
+llvm::Function* CGPlot2Runtime::FrameCaptureI32Func(){
+  return GetFunc("__scrt_frame_capture_i32", {VoidPtrTy, Int32Ty, Int32Ty});
+}
+
+llvm::Function* CGPlot2Runtime::FrameCaptureI64Func(){
+  return GetFunc("__scrt_frame_capture_i64", {VoidPtrTy, Int32Ty, Int64Ty});
+}
+
+llvm::Function* CGPlot2Runtime::FrameCaptureFloatFunc(){
+  return GetFunc("__scrt_frame_capture_float", {VoidPtrTy, Int32Ty, FloatTy});
+}
+
+llvm::Function* CGPlot2Runtime::FrameCaptureDoubleFunc(){
+  return GetFunc("__scrt_frame_capture_double", {VoidPtrTy, Int32Ty, DoubleTy});
 }

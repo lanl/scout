@@ -2980,13 +2980,13 @@ private:
 
 class FrameCaptureStmt : public ScoutStmt{
 public:
-  FrameCaptureStmt(const FrameDecl* FD, SpecObjectExpr* S)
+  FrameCaptureStmt(const VarDecl* FD, SpecObjectExpr* S)
   : ScoutStmt(FrameCapture),
-  Frame(FD),
+  FrameVar(FD),
   Spec(S){}
   
-  const FrameDecl* getFrame() const{
-    return Frame;
+  const VarDecl* getFrameVar() const{
+    return FrameVar;
   }
   
   const SpecObjectExpr* getSpec() const{
@@ -2994,7 +2994,7 @@ public:
   }
   
 private:
-  const FrameDecl* Frame;
+  const VarDecl* FrameVar;
   SpecObjectExpr* Spec;
 };
   

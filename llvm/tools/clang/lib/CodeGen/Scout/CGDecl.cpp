@@ -676,9 +676,8 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     const FrameType* FT = cast<FrameType>(T.getTypePtr());
     FrameDecl* FD = FT->getDecl();
   
-    ValueVec params;
-  
-    Value* fp = Builder.CreateCall(R.CreateFrameFunc(), params, "frame.ptr");
+    ValueVec args;
+    Value* fp = Builder.CreateCall(R.CreateFrameFunc(), args, "frame.ptr");
     Builder.CreateStore(fp, Alloc);
     
     auto m = FD->getVarMap();
@@ -710,8 +709,8 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
         assert(false && "invalid field type");
       }
       
-      params = {fp, Builder.getInt32(vi.fieldId), fieldType};
-      Builder.CreateCall(R.FrameAddVarFunc(), params);
+      args = {fp, Builder.getInt32(vi.fieldId), fieldType};
+      Builder.CreateCall(R.FrameAddVarFunc(), args);
     }
   }
 }

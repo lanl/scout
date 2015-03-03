@@ -77,6 +77,7 @@
 #include "CGBlocks.h"
 
 #include "Scout/CGScoutRuntime.h"
+#include "Scout/CGPlot2Runtime.h"
 #include "Scout/ASTVisitors.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include "Scout/CGLegionTask.h"
@@ -2345,4 +2346,70 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
   EmitBlock(LoopExit.getBlock(), true);
 }
 
+void CodeGenFunction::EmitScoutStmt(const ScoutStmt &S) {
+  switch(S.kind()){
+    case ScoutStmt::FrameCapture:
+      EmitFrameCaptureStmt(static_cast<const FrameCaptureStmt&>(S));
+      break;
+    default:
+      assert(false && "unhandled ScoutStmt");
+  }
+}
+
+void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
+  using namespace std;
+  using namespace llvm;
   
+  typedef vector<Value*> ValueVec;
+  
+  auto R = CGM.getPlot2Runtime();
+  
+  const VarDecl* vd = S.getFrameVar();
+  const FrameType* ft = dyn_cast<FrameType>(vd->getType().getTypePtr());
+  const FrameDecl* fd = ft->getDecl();
+
+  const SpecObjectExpr* spec = S.getSpec();
+  
+  Value* framePtr = LocalDeclMap.lookup(vd);
+  assert(framePtr);
+  
+  auto m = fd->getVarMap();
+  auto mm = spec->memberMap();
+  
+  for(auto& itr : mm){
+    const string& k = itr.first;
+    
+    auto mitr = m.find(k);
+    assert(mitr != m.end());
+    
+    uint32_t fieldId = mitr->second.fieldId;
+    VarDecl* varDecl = mitr->second.varDecl;
+    
+    const FrameVarType* vt = dyn_cast<FrameVarType>(varDecl->getType().getTypePtr());
+    assert(vt && "expected a frame var type");
+    
+    const Type* et = vt->getElementType();
+    llvm::Type* lt = ConvertType(QualType(et, 0));
+    
+    Value* val =
+    EmitAnyExprToTemp(itr.second->toExpr()).getScalarVal();
+    
+    ValueVec args = {framePtr, Builder.getInt32(fieldId), val};
+    
+    if(lt->isIntegerTy(32)){
+      Builder.CreateCall(R.FrameCaptureI32Func(), args);
+    }
+    else if(lt->isIntegerTy(64)){
+      Builder.CreateCall(R.FrameCaptureI64Func(), args);
+    }
+    else if(lt->isFloatTy()){
+      Builder.CreateCall(R.FrameCaptureFloatFunc(), args);
+    }
+    else if(lt->isDoubleTy()){
+      Builder.CreateCall(R.FrameCaptureDoubleFunc(), args);
+    }
+    else{
+      assert(false && "invalid field type");
+    }
+  }
+}

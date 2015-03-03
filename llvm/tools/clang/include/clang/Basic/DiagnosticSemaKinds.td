@@ -7703,7 +7703,9 @@ def err_plot_disabled : Error<
 "plot functionality disabled">;
 def err_invalid_frame_spec : Error<
 "invalid frame specification: %0">;
-    		  
+def err_unknown_frame_variable : Error<
+"unknown frame variable: %0">;
+
 def warn_no_scstdlib : Warning<
     "scout standard library inclusion and rt code generation disabled">;
     

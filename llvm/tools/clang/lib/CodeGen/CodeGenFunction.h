@@ -2254,6 +2254,10 @@ public:
   void EmitQueryExpr(const ValueDecl* VD, LValue LV, const QueryExpr* QE);
   
   //MeshFieldPair FindFieldDecl(MeshDecl *MD, llvm::StringRef &memberName);
+
+  void EmitScoutStmt(const ScoutStmt &S);
+  
+  void EmitFrameCaptureStmt(const FrameCaptureStmt &S);
   // +========================================================================+
 
   void EmitCondBrHints(llvm::LLVMContext &Context, llvm::BranchInst *CondBr,
