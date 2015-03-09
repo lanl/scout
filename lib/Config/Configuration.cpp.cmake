@@ -125,6 +125,12 @@ namespace scout {
       
       // add rpaths
       "-Wl,-rpath,${SCOUT_BUILD_DIR}/lib/",
+
+      // for linux so it can find libicu crud needed by Qt
+      // why does ubuntu have to use such obtuse paths?
+      #ifndef APPLE
+        "-Wl,-rpath,"/usr/lib/x86_64-linux-gnu".
+      #endif
       #ifdef SCOUT_ENABLE_CUDA    
         "-Wl,-rpath,${CUDA_LIBRARY_DIR}",
       #endif
