@@ -1,6 +1,6 @@
 #
 ###########################################################################
-# Copyright (c) 2010, Los Alamos National Security, LLC.
+# Copyright (c) 2014, Los Alamos National Security, LLC.
 # All rights reserved.
 # 
 #  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -49,34 +49,44 @@
 ###########################################################################
 #
 
-project(scout_rt_test)
+project(scout_rt_test_sclegion)
 
-if(CUDA_FOUND)
- #add_subdirectory(cuda)
+
+include_directories(
+  ${SCOUT_INSTALL_INCLUDE_DIR}
+  ${SCOUT_INSTALL_INCLUDE_DIR}/legion
+  ${SCOUT_INSTALL_INCLUDE_DIR}/legion/sclegion
+  ../../runtime
+)
+
+if(APPLE)
+  set(RT_LIB "")
+else()
+  set(RT_LIB "rt")
 endif()
 
-if(PNG_FOUND)
- #add_subdirectory(png)
-endif()
+set(LIBS
+  sclegion
+  pthread
+  stdc++
+  ${RT_LIB}
+)
 
-if(MPI_FOUND)
-# add_subdirectory(volren)
-endif()
+file(GLOB RT_SCLEGION_SRCS *.cpp)
 
-if(CUDA_FOUND)
-#  add_subdirectory(interop)
-endif()
+set(CMAKE_CXX_COMPILER "${SCOUT_BUILD_DIR}/../bin/clang")
 
-#add_subdirectory(display)
+# Add an executable and test entry for each source file...
+foreach (test ${RT_SCLEGION_SRCS})
+  get_filename_component(tname ${test} NAME_WE) 
+  if (NOT tname) 
+    message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
+  else (NOT tname)
+    add_executable(runtime_sclegion_${tname} ${test})
+    add_test(runtime_sclegion_${tname} ${TEST_BINARY_DIR}/runtime_sclegion_${tname})
+    message(" + added runtime regression test entry: ${tname}")
+    target_link_libraries(runtime_sclegion_${tname} ${LIBS})
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -L${SCOUT_INSTALL_LIB_DIR}")
+  endif(NOT tname)
+endforeach(test)
 
-if (THRUST_FOUND)
-#  add_subdirectory(isosurf)
-endif()
-
-#if (SCOUT_ENABLE_GLFW)
-#  add_subdirectory(glfw)
-# endif()
-
-if (SCOUT_ENABLE_LEGION)
-  add_subdirectory(sclegion)
-endif()  
