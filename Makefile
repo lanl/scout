@@ -87,12 +87,6 @@ else
   build_type  := DEBUG
 endif
 
-##### QT DIR 
-#
-ifdef QT_DIR
-  export CMAKE_PREFIX_PATH=$QT_DIR:$CMAKE_PREFIX_PATH
-endif
-
 #
 #####
 
@@ -117,7 +111,7 @@ stdlib_flags     :=
 
 runtime_dir := lib/Runtime
 runtime_build_dir := $(build_dir)/$(runtime_dir)
-runtime_flags := -DCMAKE_SCC_RUNTIME_ONLY=ON
+runtime_flags := -DCMAKE_SCC_RUNTIME_ONLY=ON 
 runtime_remove_flags := -UCMAKE_SCC_RUNTIME_ONLY
 
 test_dir := test
@@ -131,6 +125,7 @@ docs_build_dir := docs/_build
 cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) \
                -DCMAKE_INSTALL_PREFIX=$(build_dir) \
                -DCMAKE_SOURCE_DIR=$(src_dir) \
+               -DCMAKE_PREFIX_PATH="/usr/local/Qt/5.4/clang_64/;/usr/local/Qt/5.4/gnu_64/;$(SC_QT_DIR)"\
                $(SC_BUILD_CMAKE_FLAGS) \
                -Wno-dev
 
