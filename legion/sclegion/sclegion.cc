@@ -132,14 +132,14 @@ namespace{
 
       size_t count;
       LogicalRegion logicalRegion;
-      LogicalPartition disjointLogicalPartition, ghostLogicalPartition;
-      IndexPartition disjointIndexPartition, ghostIndexPartition;
+      LogicalPartition logicalPartition;
+      IndexPartition indexPartition;
       FieldSpace fieldSpace;
       Domain domain;
       IndexSpace indexSpace;
       FieldAllocator fieldAllocator;
       Domain colorDomain;
-      DomainColoring disjointColoring, ghostColoring;
+      DomainColoring coloring;
     };
 
     Mesh(HighLevelRuntime* runtime,
@@ -222,56 +222,78 @@ namespace{
       }
     }
 
-    size_t numItems(sclegion_element_kind_t elementKind) {
-      switch(elementKind) {
+    size_t numItems(sclegion_element_kind_t elementKind){
+      switch(elementKind){
       case SCLEGION_CELL:
-        return getNumCells(rank_);
+        return numCells();
       case SCLEGION_VERTEX:
-        return getNumVertices(rank_);
+        return numVertices();
       case SCLEGION_EDGE:
-        return getNumEdges(rank_);
+        return numEdges();
       case SCLEGION_FACE:
-        return getNumFaces(rank_);
+        return numFaces();
       default:
         assert(false && "invalid element kind");
       }
     }
 
-    size_t numCells() { return getNumCells(rank_); }
-    size_t numVertices() { return getNumVertices(rank_); }
-    size_t numEdges() { return getNumEdges(rank_); }
-    size_t numFaces() { return getNumFaces(rank_); }
-
-
-    //for 2-d partition we want # of elements in a col.
-    //for 3-d partition we want # if elements in a row x col "face"
-    size_t numSubItems(sclegion_element_kind_t elementKind) {
-      if (rank_ == 1) {
-        return 1;
-      } else {
-        switch (elementKind) {
-        case SCLEGION_CELL:
-          return getNumCells(rank_ - 1);
-        case SCLEGION_VERTEX:
-          return getNumVertices(rank_ - 1);
-        // SC_TODO: these cases get messy...
-        case SCLEGION_EDGE:
-          assert (false && "2/3D partition not working on edges");
-        case SCLEGION_FACE:
-          assert (false && "2/3D partition not working on faces");
-        default:
-          assert(false && "invalid element kind");
-        }
+    size_t numCells(){
+      switch(rank_){
+      case 1:
+        return width_;
+      case 2:
+        return width_ * height_;
+      case 3:
+        return width_ * height_ * depth_;
+      default:
+        assert(false && "invalid rank");
       }
     }
 
-    // in general partition will not fall on a 'boundary' so need to
-    // extend it by 1. for example in 2-d partition may not have
-    // fixed number of rows, it may have a partial row.
-    size_t numGhostItems(sclegion_element_kind_t elementKind, size_t maxshift) {
-      size_t addshift = 1;
-      if (rank_ == 1) addshift = 0;
-      return numSubItems(elementKind)*(maxshift+addshift);
+    size_t numVertices(){
+      switch(rank_){
+      case 1:
+        return width_ + 1;
+      case 2:
+        return (width_ + 1) * (height_ + 1);
+      case 3:
+        return (width_ + 1) * (height_ + 1) + (depth_ + 1);
+      default:
+        assert(false && "invalid rank");
+      }
+    }
+
+    size_t numEdges(){
+      switch(rank_){
+      case 1:
+        return width_;
+      case 2:
+        return (width_ + 1)*height_ + (height_ + 1)*width_;
+      case 3:{
+        size_t w1 = width_ + 1;
+        size_t h1 = height_ + 1;
+        return (w1*height_ + h1*width_)*(depth_ + 1) + w1*h1*depth_;
+      }
+      default:
+        assert(false && "invalid rank");
+      }
+    }
+
+    size_t numFaces(){
+      switch(rank_){
+      case 1:
+        return width_;
+      case 2:
+        return (width_ + 1)*height_ + (height_ + 1)*width_;
+      case 3:{
+        size_t w1 = width_ + 1;
+        size_t h1 = height_ + 1;
+        size_t d1 = depth_ + 1;
+        return w1*height_*depth_ + h1*width_*depth_ + d1*width_*height_;
+      }
+      default:
+        assert(false && "invalid rank");
+      }
     }
 
     void setMeshHeader(MeshHeader* header){
@@ -290,66 +312,6 @@ namespace{
 
     Element& getElement(sclegion_element_kind_t elementKind){
       return elements_[elementKind];
-    }
-
-  protected:
-    size_t getNumCells(size_t rank) {
-      switch(rank) {
-      case 1:
-        return width_;
-      case 2:
-        return width_ * height_;
-      case 3:
-        return width_ * height_ * depth_;
-      default:
-        assert(false && "invalid rank");
-      }
-    }
-
-    size_t getNumVertices(size_t rank) {
-      switch(rank) {
-      case 1:
-        return width_ + 1;
-      case 2:
-        return (width_ + 1) * (height_ + 1);
-      case 3:
-        return (width_ + 1) * (height_ + 1) + (depth_ + 1);
-      default:
-        assert(false && "invalid rank");
-      }
-    }
-
-    size_t getNumEdges(size_t rank) {
-      switch(rank) {
-      case 1:
-        return width_;
-      case 2:
-        return (width_ + 1)*height_ + (height_ + 1)*width_;
-      case 3:{
-        size_t w1 = width_ + 1;
-        size_t h1 = height_ + 1;
-        return (w1*height_ + h1*width_)*(depth_ + 1) + w1*h1*depth_;
-      }
-      default:
-        assert(false && "invalid rank");
-      }
-    }
-
-    size_t getNumFaces(size_t rank) {
-      switch(rank) {
-      case 1:
-        return width_;
-      case 2:
-        return (width_ + 1)*height_ + (height_ + 1)*width_;
-      case 3:{
-        size_t w1 = width_ + 1;
-        size_t h1 = height_ + 1;
-        size_t d1 = depth_ + 1;
-        return w1*height_*depth_ + h1*width_*depth_ + d1*width_*height_;
-      }
-      default:
-        assert(false && "invalid rank");
-      }
     }
 
   private:
@@ -439,7 +401,6 @@ namespace{
       void addFieldsToIndexLauncher(IndexLauncher& launcher,
                                     unsigned region) const{
         for(auto& f : fields_){
-          printf("add field %d\n", f.fieldId);
           launcher.region_requirements[region].add_field(f.fieldId);
         } 
       }
@@ -483,14 +444,12 @@ namespace{
       header->numFields = numFields_;
       args += sizeof(MeshHeader);
 
-      // currently, just partition with numSubregions = 1
-      size_t numSubregions = 1;
-      size_t maxShift = 0;
+      // currently, just partition with num parts = 1
+      size_t nc = 1;
 
       for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
-        sclegion_element_kind_t elemKind = sclegion_element_kind_t(i);
         Mesh::Element& element = 
-          mesh_->getElement(elemKind);
+          mesh_->getElement(sclegion_element_kind_t(i));
 
         args = regions_[i].addFieldInfo(args, i, element.count);
 
@@ -498,85 +457,36 @@ namespace{
           continue;
         }
 
-        size_t n = element.count / numSubregions + (element.count % numSubregions > 0 ? 1 : 0);
-        size_t lowerBound = element.count/numSubregions;
-        size_t upperBound = lowerBound+1;
-        size_t numberSmall = numSubregions - (element.count % numSubregions);
-/*
+        size_t n = element.count / nc + (element.count % nc > 0 ? 1 : 0); 
+
         element.domain = 
           Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(n - 1)));
-*/
+
         element.colorDomain = 
-          Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(numSubregions - 1)));
+          Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(nc - 1)));
 
-        size_t index = 0;
-        size_t numGhost = mesh_->numGhostItems(elemKind, maxShift);
-
-        for (size_t color = 0; color < numSubregions; color++) {
-          printf("color %d\n", color);
-          size_t numElmts = color < numberSmall ? lowerBound : upperBound;
-
-          printf("dr %d %d %d\n", color, index, index+numElmts-1);
-          Rect<1> subrect(Point<1>(index),Point<1>(index+numElmts-1));
-          element.disjointColoring[color] = Domain::from_rect<1>(subrect);
-          if (index < numGhost)
-          {
-            if ((index+numElmts+numGhost) > element.count)
-            {
-              // Clamp both
-              printf("gr 1 %d %d %d\n", color, 0, element.count-1);
-              Rect<1> ghost_rect(Point<1>(0),Point<1>(element.count-1));
-              element.ghostColoring[color] = Domain::from_rect<1>(ghost_rect);
-            }
-            else
-            {
-              // Clamp below
-              printf("gr 2 %d %d %d\n", color, 0, index+numElmts+numGhost-1);
-              Rect<1> ghost_rect(Point<1>(0),Point<1>(index+numElmts+numGhost-1));
-              element.ghostColoring[color] = Domain::from_rect<1>(ghost_rect);
-            }
+        int color = 0;
+        for(size_t i = 0; i < element.count; i += n){
+          size_t r = element.count - i;
+          if(r > n){
+            r = n;
           }
-          else
-          {
-            if ((index+numElmts+numGhost) > element.count)
-            {
-              // Clamp above
-              printf("gr 3 %d %d %d\n", color, index-numGhost, element.count-1);
-              Rect<1> ghost_rect(Point<1>(index-numGhost),Point<1>(element.count-1));
-              element.ghostColoring[color] = Domain::from_rect<1>(ghost_rect);
-            }
-            else
-            {
-              // Normal case
-              printf("gr 4 %d %d %d\n", color, index-numGhost, index+numElmts+numGhost-1);
-              Rect<1> ghost_rect(Point<1>(index-numGhost),Point<1>(index+numElmts+numGhost-1));
-              element.ghostColoring[color] = Domain::from_rect<1>(ghost_rect);
-            }
-          }
-          index += numElmts;
-        } // end for color
 
-        element.disjointIndexPartition =
+          Rect<1> sr(Point<1>(i), Point<1>(i + r - 1));
+          element.coloring[color] = Domain::from_rect<1>(sr);
+          ++color;
+        }
+
+        element.indexPartition = 
           runtime->create_index_partition(context, element.indexSpace,
                                           element.colorDomain,
-                                          element.disjointColoring, true);
-        element.ghostIndexPartition =
-          runtime->create_index_partition(context, element.indexSpace,
-                                          element.colorDomain,
-                                          element.ghostColoring, false);
+                                          element.coloring, true);
 
-        element.disjointLogicalPartition =
+        element.logicalPartition = 
           runtime->get_logical_partition(context,
                                          element.logicalRegion,
-                                         element.disjointIndexPartition);
-
-        element.ghostLogicalPartition =
-          runtime->get_logical_partition(context,
-                                         element.logicalRegion,
-                                         element.ghostIndexPartition);
-
+                                         element.indexPartition);
       }
-
 
       ArgumentMap argMap;
 
@@ -586,7 +496,6 @@ namespace{
       IndexLauncher launcher(taskId_, element.colorDomain, 
                              TaskArgument(argsPtr, argsLen), argMap);
 
-#if 0
       for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
 
         const Region& region = regions_[i]; 
@@ -596,44 +505,13 @@ namespace{
         }
 
         const Mesh::Element& element = 
-            mesh_->getElement(sclegion_element_kind_t(i));
+          mesh_->getElement(sclegion_element_kind_t(i));
 
-        printf("add ghost %d\n",i);
         launcher.add_region_requirement(
-            RegionRequirement(element.ghostLogicalPartition, 0,
-                READ_ONLY,
-                EXCLUSIVE,
-                element.logicalRegion));
-      }
-
-      for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
-        const Region& region = regions_[i];
-
-        if(region.legionMode() == NO_ACCESS){
-          continue;
-        }
-        printf("add ghost fields %d\n",i);
-        region.addFieldsToIndexLauncher(launcher, i);
-      }
-#endif
-
-      for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
-
-        const Region& region = regions_[i];
-
-        if(region.legionMode() == NO_ACCESS){
-          continue;
-        }
-
-        const Mesh::Element& element =
-            mesh_->getElement(sclegion_element_kind_t(i));
-
-        printf("add disjoint %d\n",i);
-        launcher.add_region_requirement(
-            RegionRequirement(element.disjointLogicalPartition, 0,
-                region.legionMode(),
-                EXCLUSIVE,
-                element.logicalRegion));
+                            RegionRequirement(element.logicalPartition, 0,
+                            region.legionMode(),
+                            EXCLUSIVE,
+                            element.logicalRegion));
       }
 
       for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
@@ -642,8 +520,7 @@ namespace{
         if(region.legionMode() == NO_ACCESS){
           continue;
         }
-
-        printf("add disjointfields %d\n",i);
+        
         region.addFieldsToIndexLauncher(launcher, i);
       }
 
