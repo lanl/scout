@@ -978,3 +978,99 @@ StmtResult Parser::ParseFrameCaptureStatement(ParsedAttributes &Attr){
   SpecObjectExpr* Spec = static_cast<SpecObjectExpr*>(expr);
   return Actions.ActOnFrameCaptureStmt(VD, Spec);
 }
+
+StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
+  assert(Tok.is(tok::kw_with) && "expected keyword with");
+  
+  SourceLocation WithLoc = ConsumeToken();
+  
+  if (Tok.isNot(tok::identifier)) {
+    Diag(Tok, diag::err_expected_ident);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  IdentifierInfo  *IdentInfo = Tok.getIdentifierInfo();
+  SourceLocation   IdentLoc  = Tok.getLocation();
+  
+  VarDecl *VD = LookupScoutVarDecl(IdentInfo, IdentLoc);
+  
+  if(!VD){
+    Diag(Tok, diag::err_expected_frame);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  const FrameType* FT = dyn_cast<FrameType>(VD->getType().getTypePtr());
+  if(!FT){
+    Diag(Tok, diag::err_expected_frame);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  FrameDecl* FD = FT->getDecl();
+  
+  SourceLocation FrameLoc = ConsumeToken();
+  
+  if(Tok.isNot(tok::kw_in)){
+    Diag(Tok, diag::err_plot_expected_kw_in);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  SourceLocation InLoc = ConsumeToken();
+  
+  if(Tok.isNot(tok::identifier)){
+    Diag(Tok, diag::err_expected_ident);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  IdentifierInfo* RenderTargetInfo = Tok.getIdentifierInfo();
+  SourceLocation  RenderTargetLoc  = Tok.getLocation();
+  
+  VarDecl* RTVD = LookupRenderTargetVarDecl(RenderTargetInfo, RenderTargetLoc);
+  if(RTVD == 0){
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  SourceLocation RTLoc = ConsumeToken();
+  
+  if (Tok.isNot(tok::identifier)) {
+    Diag(Tok, diag::err_frame_expected_capture);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  IdentInfo = Tok.getIdentifierInfo();
+  if(IdentInfo->getName().str() != "plot"){
+    Diag(Tok, diag::err_frame_expected_capture);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  SourceLocation PlotLoc = ConsumeToken();
+  
+  if(Tok.isNot(tok::l_brace)){
+    Diag(Tok.getLocation(), diag::err_plot_expected_specifier);
+    SkipUntil(tok::r_brace, StopBeforeMatch);
+    return StmtError();
+  }
+  
+  Sema::ContextRAII context(Actions, FD);
+  
+  //ParseScope FrameScope(this, Scope::ClassScope|Scope::DeclScope);
+  
+  //Actions.PushDeclContext(getCurScope(), FD);
+  ExprResult result = ParseSpecObjectExpression();
+  //Actions.PopDeclContext();
+
+  //FrameScope.Exit();
+  
+  if(result.isInvalid()){
+    return StmtError();
+  }
+    
+  return StmtError();
+}

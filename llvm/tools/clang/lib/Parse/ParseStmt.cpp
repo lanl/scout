@@ -287,6 +287,9 @@ Retry:
   case tok::kw_into: {
     return ParseFrameCaptureStatement(Attrs);
   }
+  case tok::kw_with: {
+    return ParsePlotStatement(Attrs);
+  }
   // +========================================================================+
 
   case tok::kw_goto:                // C99 6.8.6.1: goto-statement

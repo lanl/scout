@@ -87,6 +87,12 @@ else
   build_type  := DEBUG
 endif
 
+##### QT DIR 
+#
+ifdef QT_DIR
+  export CMAKE_PREFIX_PATH=$QT_DIR:$CMAKE_PREFIX_PATH
+endif
+
 #
 #####
 

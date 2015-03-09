@@ -1156,6 +1156,15 @@ def err_expected_frame:Error<
 def err_frame_expected_capture:Error<
 "expected capture keyword">;
 
+def err_plot_expected_kw_in:Error<
+"plot missing (expected) keyword: 'in'">;
+
+def err_plot_expected_plot:Error<
+"expected plot keyword">;
+
+def err_plot_expected_specifier:Error<
+"expected a plot specifier">;
+
 // +=========================================================================+
 
 def err_pragma_loop_missing_argument : Error<

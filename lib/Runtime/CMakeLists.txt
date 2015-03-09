@@ -56,7 +56,7 @@ SET(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 SET(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-find_library(GLFW glfw)
+find_package(Qt5Widgets)
 
 # Build w/ clang
 find_package(Clang)
@@ -65,7 +65,6 @@ set(CMAKE_CXX_COMPILER ${CLANGXX_COMMAND})
 include_directories(
   ${SCOUT_INCLUDE_DIR}
   ${SCOUT_BUILD_DIR}/config/include
-  ${GLFW_INCLUDE_DIR}
   ${PNG_INCLUDE_DIR}
   ${CUDA_INCLUDE_DIRS}
   ${R_INCLUDE_DIRS}
@@ -88,6 +87,10 @@ else()
     )
 endif()
 
+file(GLOB qt_hdrs
+   ${SCOUT_INCLUDE_DIR}/scout/Runtime/opengl/qt/*.h
+)
+
 #cpu
 file(GLOB rt_srcs_cpu cpu/*.cpp)
 list(APPEND rt_srcs ${rt_srcs_cpu})
@@ -107,6 +110,10 @@ endif()
 #plot2
 file(GLOB rt_srcs_plot2 plot2/*.cpp)
 list(APPEND rt_srcs ${rt_srcs_plot2})
+
+file(GLOB qt_srcs opengl/qt/*.cpp)
+
+qt5_wrap_cpp(moc_srcs ${qt_hdrs})
 
 if (SCOUT_ENABLE_OPENGL)
 
@@ -228,11 +235,6 @@ if (SCOUT_ENABLE_OPENGL)
   # hold the individual shaders...
   include_directories(${SCOUT_BUILD_DIR}/include)
 
-  if (SCOUT_ENABLE_GLFW)
-    file(GLOB glfw_hdrs ${SCOUT_INCLUDE_DIR}/runtime/opengl/glfw/*.h)
-    file(GLOB glfw_srcs opengl/glfw/*.cpp)
-  endif()
-
 endif()
 
 if (SCOUT_ENABLE_MPI)
@@ -249,15 +251,15 @@ endif()
 # the runtime...
 link_directories(${CUDA_LIBRARY_DIR})
 
-add_library(scRuntime SHARED ${rt_srcs} ${gl_srcs} ${glfw_srcs})
+add_library(scRuntime SHARED ${rt_srcs} ${gl_srcs} ${qt_srcs} ${moc_srcs})
+
 set_target_properties(scRuntime 
   PROPERTIES 
   POSITION_INDEPENDENT_CODE 1
   COMPILE_FLAGS "-fPIC"
   MACOSX_RPATH 1) 
 
-set(_link_libs ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${GLFW_LIBRARIES}
-${R_LIBRARIES})
+set(_link_libs ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${R_LIBRARIES} Qt5::Widgets)
 
 if (APPLE) 
   set(_link_libs ${_link_libs} "-framework Cocoa -framework Foundation -framework IOKit -framework CoreVideo")

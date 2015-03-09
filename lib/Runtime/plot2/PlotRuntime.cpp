@@ -147,26 +147,26 @@ void* __scrt_create_frame(){
 }
 
 extern "C"
-void __scrt_frame_add_var(void*f, uint32_t varId, uint32_t elementKind){
+void __scrt_frame_add_var(void* f, uint32_t varId, uint32_t elementKind){
   static_cast<Frame*>(f)->addVar(varId, elementKind);
 }
 
 extern "C"
-void __scrt_frame_capture_i32(void*f, uint32_t varId, int32_t value){
+void __scrt_frame_capture_i32(void* f, uint32_t varId, int32_t value){
   static_cast<Frame*>(f)->capture(varId, value);
 }
 
 extern "C"
-void __scrt_frame_capture_i64(void*f, uint32_t varId, int64_t value){
+void __scrt_frame_capture_i64(void* f, uint32_t varId, int64_t value){
   static_cast<Frame*>(f)->capture(varId, value);
 }
 
 extern "C"
-void __scrt_frame_capture_float(void*f, uint32_t varId, float value){
+void __scrt_frame_capture_float(void* f, uint32_t varId, float value){
   static_cast<Frame*>(f)->capture(varId, value);
 }
 
 extern "C"
-void __scrt_frame_capture_double(void*f, uint32_t varId, double value){
+void __scrt_frame_capture_double(void* f, uint32_t varId, double value){
   static_cast<Frame*>(f)->capture(varId, value);
 }

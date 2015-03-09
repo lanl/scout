@@ -1088,6 +1088,7 @@ public:
 ///   FunctionDecl
 ///   TagDecl
 ///   MeshDecl //Scout
+///   FrameDecl //Scout
 ///   ObjCMethodDecl
 ///   ObjCContainerDecl
 ///   LinkageSpecDecl

@@ -51,23 +51,22 @@
  */
 
 #include "scout/Runtime/GraphicsCInterface.h"
-#include "scout/Runtime/opengl/glfw/glfwDevice.h"
-#include "scout/Runtime/opengl/glfw/glfwWindow.h"
+#include "scout/Runtime/opengl/qt/QtWindow.h"
 #include "scout/Runtime/opengl/glUniformRenderable.h"
 
 using namespace scout;
 
 extern "C"
 void __scrt_init_graphics() {
-  // CMS:  We don't really need to keep track of this as a device
-  // but we do so since that was already built -- can change that.
-  glDevice* glDevice_ = glfwDevice::Instance();
+
 }
 
 extern "C"
 __scrt_target_t __scrt_create_window(unsigned short width, unsigned short height) {
   assert(width != 0 && height != 0);
-  glWindow *win = new glfwWindow(width, height);
+  QtWindow::init();
+  QtWindow* win = new QtWindow(width, height);
+  win->show();
   return (__scrt_target_t)win;
 }
 
@@ -75,8 +74,7 @@ static glUniformRenderable*
 get_renderable(unsigned int width,
                unsigned int height,
                void* renderTarget){
-
-  glWindow* window = (glWindow*)renderTarget;
+  QtWindow* window = (QtWindow*)renderTarget;
   window->makeContextCurrent();
 
   // TODO:  Check if there is already a quad renderable associated with this window 
@@ -94,7 +92,6 @@ get_renderable(unsigned int width,
 
     window->addRenderable(renderable);
     window->makeCurrentRenderable(renderable);
-
     renderable->initialize(NULL); // also does a clear
   }
 
@@ -107,7 +104,6 @@ __scrt_window_quad_renderable_colors(unsigned int width,
                                      unsigned int height,
                                      unsigned int depth,
                                      void* renderTarget){
-
   glUniformRenderable* renderable = 
     get_renderable(width, height, renderTarget);
 
@@ -148,7 +144,7 @@ __scrt_window_quad_renderable_edge_colors(unsigned int width,
 
 extern "C"
 void __scrt_window_paint(void* renderTarget) {
-  glWindow* window = (glWindow*)renderTarget;
+  QtWindow* window = (QtWindow*)renderTarget;
   // this is funky -- should be a separate function 
   // (__scrt_window_quad_renderable_unmap_colors)
   ((glUniformRenderable*)(window->getCurrentRenderable()))->unmap_colors();
@@ -161,5 +157,6 @@ void __scrt_window_paint(void* renderTarget) {
 
   window->paint();
   window->swapBuffers();
-  window->pollEvents();
+  
+  QtWindow::pollEvents();
 }
