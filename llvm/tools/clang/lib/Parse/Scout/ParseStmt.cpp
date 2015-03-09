@@ -1071,6 +1071,6 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
   if(result.isInvalid()){
     return StmtError();
   }
-    
+  
   return StmtError();
 }
