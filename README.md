@@ -65,7 +65,7 @@ CPU (x86) architectures (both single and multi-core):
 
   * [CMake](http:://cmake.org) -- version 2.8.12 or later. 
   
-  * [GLFW](http://www.glfw.org/) -- Note this needs to be built as a shared library
+  * [Qt](http://qt-project.org) -- version 5.4
 	
   * [OpenGL 3.X or higher](http://opengl.org) -- We **strongly** recommend having access to a system 
     with a GPU capable of supporting hardware accelerated OpenGL.  We are currently exploring the 
