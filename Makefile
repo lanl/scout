@@ -125,7 +125,7 @@ docs_build_dir := docs/_build
 cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) \
                -DCMAKE_INSTALL_PREFIX=$(build_dir) \
                -DCMAKE_SOURCE_DIR=$(src_dir) \
-               -DCMAKE_PREFIX_PATH="/usr/local/Qt/5.4/clang_64/;/usr/local/Qt/5.4/gnu_64/;$(SC_QT_DIR)"\
+               -DCMAKE_PREFIX_PATH="/usr/local/Qt/5.4/clang_64/;/usr/local/Qt/5.4/gcc_64/;$(SC_QT_DIR)"\
                $(SC_BUILD_CMAKE_FLAGS) \
                -Wno-dev
 
