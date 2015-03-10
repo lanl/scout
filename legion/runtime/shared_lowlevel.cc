@@ -2070,12 +2070,6 @@ namespace LegionRuntime {
                             orig->utility_finish();
                           }
                         }
-// +===== Scout ==============================================================+
-// this is a hack to deal w/ using apple frameworks like Cocoa  
-#if defined(__APPLE__)
-			exit(0);
-#endif                       	
-// +==========================================================================+
 			return true; // caller may have other stuff to clean up
                         //pthread_exit(NULL);	
 		}
