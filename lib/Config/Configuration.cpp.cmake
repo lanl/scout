@@ -133,7 +133,10 @@ namespace scout {
       #endif
 
       #ifdef APPLE
-      "-stdlib=libc++",
+        "-stdlib=libc++",
+      #else 
+        // qt needs libicu
+        "-Wl,-rpath,/usr/lib/x86_64-linux-gnu/",
       #endif // APPLE
 
       0 // end of link options. 
