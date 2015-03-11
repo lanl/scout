@@ -27,6 +27,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/DataTypes.h"
+#include <functional>
 
 namespace llvm {
 
@@ -330,6 +331,9 @@ public:
   /// target.
   bool shouldBuildLookupTables() const;
 
+  /// \brief Don't restrict interleaved unrolling to small loops.
+  bool enableAggressiveInterleaving(bool LoopHasReductions) const;
+
   /// \brief Return hardware support for population count.
   PopcntSupportKind getPopcntSupport(unsigned IntTyWidthInBit) const;
 
@@ -530,6 +534,7 @@ public:
   virtual unsigned getJumpBufAlignment() = 0;
   virtual unsigned getJumpBufSize() = 0;
   virtual bool shouldBuildLookupTables() = 0;
+  virtual bool enableAggressiveInterleaving(bool LoopHasReductions) = 0;
   virtual PopcntSupportKind getPopcntSupport(unsigned IntTyWidthInBit) = 0;
   virtual bool haveFastSqrt(Type *Ty) = 0;
   virtual unsigned getFPOpCost(Type *Ty) = 0;
@@ -646,6 +651,9 @@ public:
   unsigned getJumpBufSize() override { return Impl.getJumpBufSize(); }
   bool shouldBuildLookupTables() override {
     return Impl.shouldBuildLookupTables();
+  }
+  bool enableAggressiveInterleaving(bool LoopHasReductions) override {
+    return Impl.enableAggressiveInterleaving(LoopHasReductions);
   }
   PopcntSupportKind getPopcntSupport(unsigned IntTyWidthInBit) override {
     return Impl.getPopcntSupport(IntTyWidthInBit);
