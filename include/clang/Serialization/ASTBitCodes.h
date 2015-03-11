@@ -385,9 +385,7 @@ namespace clang {
       /// \brief Record code for the array of tentative definitions.
       TENTATIVE_DEFINITIONS = 9,
 
-      /// \brief Record code for the array of locally-scoped extern "C"
-      /// declarations.
-      LOCALLY_SCOPED_EXTERN_C_DECLS = 10,
+      // ID 10 used to be for a list of extern "C" declarations.
 
       /// \brief Record code for the table of offsets into the
       /// Objective-C method pool.
@@ -425,8 +423,7 @@ namespace clang {
       /// \brief Record code for the array of VTable uses.
       VTABLE_USES = 19,
 
-      /// \brief Record code for the array of dynamic classes.
-      DYNAMIC_CLASSES = 20,
+      // ID 20 used to be for a list of dynamic classes.
 
       /// \brief Record code for referenced selector pool.
       REFERENCED_SELECTOR_POOL = 21,
@@ -516,8 +513,7 @@ namespace clang {
       /// imported by the AST file.
       IMPORTED_MODULES = 43,
       
-      /// \brief Record code for the set of merged declarations in an AST file.
-      MERGED_DECLARATIONS = 44,
+      // ID 40 used to be a table of merged canonical declarations.
       
       /// \brief Record code for the array of redeclaration chains.
       ///
@@ -927,14 +923,17 @@ namespace clang {
       PREDEF_DECL_OBJC_INSTANCETYPE_ID = 8,
 
       /// \brief The internal '__builtin_va_list' typedef.
-      PREDEF_DECL_BUILTIN_VA_LIST_ID = 9
+      PREDEF_DECL_BUILTIN_VA_LIST_ID = 9,
+
+      /// \brief The extern "C" context.
+      PREDEF_DECL_EXTERN_C_CONTEXT_ID = 10,
     };
 
     /// \brief The number of declaration IDs that are predefined.
     ///
     /// For more information about predefined declarations, see the
     /// \c PredefinedDeclIDs type and the PREDEF_DECL_*_ID constants.
-    const unsigned int NUM_PREDEF_DECL_IDS = 10;
+    const unsigned int NUM_PREDEF_DECL_IDS = 11;
     
     /// \brief Record codes for each kind of declaration.
     ///

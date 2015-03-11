@@ -892,7 +892,6 @@ void ASTWriter::WriteBlockInfoBlock() {
   RECORD(STATISTICS);
   RECORD(TENTATIVE_DEFINITIONS);
   RECORD(UNUSED_FILESCOPED_DECLS);
-  RECORD(LOCALLY_SCOPED_EXTERN_C_DECLS);
   RECORD(SELECTOR_OFFSETS);
   RECORD(METHOD_POOL);
   RECORD(PP_COUNTER_VALUE);
@@ -924,7 +923,6 @@ void ASTWriter::WriteBlockInfoBlock() {
   RECORD(OBJC_CATEGORIES_MAP);
   RECORD(FILE_SORTED_DECLS);
   RECORD(IMPORTED_MODULES);
-  RECORD(MERGED_DECLARATIONS);
   RECORD(LOCAL_REDECLARATIONS);
   RECORD(OBJC_CATEGORIES);
   RECORD(MACRO_OFFSET);
@@ -3115,7 +3113,7 @@ static NamedDecl *getDeclForLocalLookup(const LangOptions &LangOpts,
     for (; Redecl; Redecl = Redecl->getPreviousDecl()) {
       if (!Redecl->isFromASTFile())
         return cast<NamedDecl>(Redecl);
-      // If we come up a decl from a (chained-)PCH stop since we won't find a
+      // If we find a decl from a (chained-)PCH stop since we won't find a
       // local one.
       if (D->getOwningModuleID() == 0)
         break;
@@ -3671,14 +3669,24 @@ void ASTWriter::visitLocalLookupResults(const DeclContext *ConstDC,
 
   SmallVector<DeclarationName, 16> ExternalNames;
   for (auto &Lookup : *DC->buildLookup()) {
-    // If there are no local declarations in our lookup result, we don't
-    // need to write an entry for the name at all unless we're rewriting
-    // the decl context.
-    if (!Lookup.second.hasLocalDecls() && !isRewritten(cast<Decl>(DC)))
-      continue;
-
     if (Lookup.second.hasExternalDecls() ||
         DC->NeedToReconcileExternalVisibleStorage) {
+      // If there are no local declarations in our lookup result, we don't
+      // need to write an entry for the name at all unless we're rewriting
+      // the decl context. If we can't write out a lookup set without
+      // performing more deserialization, just skip this entry.
+      if (!isRewritten(cast<Decl>(DC))) {
+        bool AllFromASTFile = true;
+        for (auto *D : Lookup.second.getLookupResult()) {
+          AllFromASTFile &=
+              getDeclForLocalLookup(getLangOpts(), D)->isFromASTFile();
+          if (!AllFromASTFile)
+            break;
+        }
+        if (AllFromASTFile)
+          continue;
+      }
+
       // We don't know for sure what declarations are found by this name,
       // because the external source might have a different set from the set
       // that are in the lookup map, and we can't update it now without
@@ -3892,18 +3900,6 @@ void ASTWriter::WriteRedeclarations() {
       }
     }
 
-    if (!First->isFromASTFile() && Chain) {
-      Decl *FirstFromAST = MostRecent;
-      for (Decl *Prev = MostRecent; Prev; Prev = Prev->getPreviousDecl()) {
-        if (Prev->isFromASTFile())
-          FirstFromAST = Prev;
-      }
-
-      // FIXME: Do we need to do this for the first declaration from each
-      // redeclaration chain that was merged into this one?
-      Chain->MergedDecls[FirstFromAST].push_back(getDeclID(First));
-    }
-
     LocalRedeclChains[Offset] = Size;
     
     // Reverse the set of local redeclarations, so that we store them in
@@ -3996,25 +3992,6 @@ void ASTWriter::WriteObjCCategories() {
   
   // Emit the category lists.
   Stream.EmitRecord(OBJC_CATEGORIES, Categories);
-}
-
-void ASTWriter::WriteMergedDecls() {
-  if (!Chain || Chain->MergedDecls.empty())
-    return;
-  
-  RecordData Record;
-  for (ASTReader::MergedDeclsMap::iterator I = Chain->MergedDecls.begin(),
-                                        IEnd = Chain->MergedDecls.end();
-       I != IEnd; ++I) {
-    DeclID CanonID = I->first->isFromASTFile()? I->first->getGlobalID()
-                                              : GetDeclRef(I->first);
-    assert(CanonID && "Merged declaration not known?");
-    
-    Record.push_back(CanonID);
-    Record.push_back(I->second.size());
-    Record.append(I->second.begin(), I->second.end());
-  }
-  Stream.EmitRecord(MERGED_DECLARATIONS, Record);
 }
 
 void ASTWriter::WriteLateParsedTemplates(Sema &SemaRef) {
@@ -4253,6 +4230,8 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
     DeclIDs[Context.ObjCInstanceTypeDecl] = PREDEF_DECL_OBJC_INSTANCETYPE_ID;
   if (Context.BuiltinVaListDecl)
     DeclIDs[Context.getBuiltinVaListDecl()] = PREDEF_DECL_BUILTIN_VA_LIST_ID;
+  if (Context.ExternCContext)
+    DeclIDs[Context.ExternCContext] = PREDEF_DECL_EXTERN_C_CONTEXT_ID;
 
   if (!Chain) {
     // Make sure that we emit IdentifierInfos (and any attached
@@ -4311,20 +4290,6 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
     }
   }
 
-  // Build a record containing all of the locally-scoped extern "C"
-  // declarations in this header file. Generally, this record will be
-  // empty.
-  RecordData LocallyScopedExternCDecls;
-  // FIXME: This is filling in the AST file in densemap order which is
-  // nondeterminstic!
-  for (llvm::DenseMap<DeclarationName, NamedDecl *>::iterator
-         TD = SemaRef.LocallyScopedExternCDecls.begin(),
-         TDEnd = SemaRef.LocallyScopedExternCDecls.end();
-       TD != TDEnd; ++TD) {
-    if (!TD->second->isFromASTFile())
-      AddDeclRef(TD->second, LocallyScopedExternCDecls);
-  }
-  
   // Build a record containing all of the ext_vector declarations.
   RecordData ExtVectorDecls;
   AddLazyVectorDecls(*this, SemaRef.ExtVectorDecls, ExtVectorDecls);
@@ -4343,10 +4308,6 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
   RecordData UnusedLocalTypedefNameCandidates;
   for (const TypedefNameDecl *TD : SemaRef.UnusedLocalTypedefNameCandidates)
     AddDeclRef(TD, UnusedLocalTypedefNameCandidates);
-
-  // Build a record containing all of dynamic classes declarations.
-  RecordData DynamicClasses;
-  AddLazyVectorDecls(*this, SemaRef.DynamicClasses, DynamicClasses);
 
   // Build a record containing all of pending implicit instantiations.
   RecordData PendingInstantiations;
@@ -4431,6 +4392,10 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
   Abv->Add(llvm::BitCodeAbbrevOp(llvm::BitCodeAbbrevOp::Blob));
   UpdateVisibleAbbrev = Stream.EmitAbbrev(Abv);
   WriteDeclContextVisibleUpdate(TU);
+
+  // If we have any extern "C" names, write out a visible update for them.
+  if (Context.ExternCContext)
+    WriteDeclContextVisibleUpdate(Context.ExternCContext);
   
   // If the translation unit has an anonymous namespace, and we don't already
   // have an update block for it, write it as an update block.
@@ -4463,16 +4428,19 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
 
   // Make sure all decls associated with an identifier are registered for
   // serialization.
+  llvm::SmallVector<const IdentifierInfo*, 256> IIsToVisit;
   for (IdentifierTable::iterator ID = PP.getIdentifierTable().begin(),
                               IDEnd = PP.getIdentifierTable().end();
        ID != IDEnd; ++ID) {
     const IdentifierInfo *II = ID->second;
-    if (!Chain || !II->isFromAST() || II->hasChangedSinceDeserialization()) {
-      for (IdentifierResolver::iterator D = SemaRef.IdResolver.begin(II),
-                                     DEnd = SemaRef.IdResolver.end();
-           D != DEnd; ++D) {
-        GetDeclRef(*D);
-      }
+    if (!Chain || !II->isFromAST() || II->hasChangedSinceDeserialization())
+      IIsToVisit.push_back(II);
+  }
+  for (const IdentifierInfo *II : IIsToVisit) {
+    for (IdentifierResolver::iterator D = SemaRef.IdResolver.begin(II),
+                                   DEnd = SemaRef.IdResolver.end();
+         D != DEnd; ++D) {
+      GetDeclRef(*D);
     }
   }
 
@@ -4615,11 +4583,6 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
     Stream.EmitRecord(WEAK_UNDECLARED_IDENTIFIERS,
                       WeakUndeclaredIdentifiers);
 
-  // Write the record containing locally-scoped extern "C" definitions.
-  if (!LocallyScopedExternCDecls.empty())
-    Stream.EmitRecord(LOCALLY_SCOPED_EXTERN_C_DECLS,
-                      LocallyScopedExternCDecls);
-
   // Write the record containing ext_vector type names.
   if (!ExtVectorDecls.empty())
     Stream.EmitRecord(EXT_VECTOR_DECLS, ExtVectorDecls);
@@ -4627,10 +4590,6 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
   // Write the record containing VTable uses information.
   if (!VTableUses.empty())
     Stream.EmitRecord(VTABLE_USES, VTableUses);
-
-  // Write the record containing dynamic classes declarations.
-  if (!DynamicClasses.empty())
-    Stream.EmitRecord(DYNAMIC_CLASSES, DynamicClasses);
 
   // Write the record containing potentially unused local typedefs.
   if (!UnusedLocalTypedefNameCandidates.empty())
@@ -4707,7 +4666,6 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
 
   WriteDeclReplacementsBlock();
   WriteRedeclarations();
-  WriteMergedDecls();
   WriteObjCCategories();
   WriteLateParsedTemplates(SemaRef);
   if(!WritingModule)
@@ -4806,6 +4764,10 @@ void ASTWriter::WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord) {
         break;
       }
 
+      case UPD_CXX_RESOLVED_DTOR_DELETE:
+        AddDeclRef(Update.getDecl(), Record);
+        break;
+
       case UPD_CXX_RESOLVED_EXCEPTION_SPEC:
         addExceptionSpec(
             *this,
@@ -4837,8 +4799,6 @@ void ASTWriter::WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord) {
       Record.push_back(Def->isInlined());
       AddSourceLocation(Def->getInnerLocStart(), Record);
       AddFunctionDefinition(Def, Record);
-      if (auto *DD = dyn_cast<CXXDestructorDecl>(Def))
-        Record.push_back(GetDeclRef(DD->getOperatorDelete()));
     }
 
     OffsetsRecord.push_back(GetDeclRef(D));
@@ -5853,6 +5813,22 @@ void ASTWriter::DeducedReturnType(const FunctionDecl *FD, QualType ReturnType) {
     return; // Not a function declared in PCH and defined outside.
 
   DeclUpdates[FD].push_back(DeclUpdate(UPD_CXX_DEDUCED_RETURN_TYPE, ReturnType));
+}
+
+void ASTWriter::ResolvedOperatorDelete(const CXXDestructorDecl *DD,
+                                       const FunctionDecl *Delete) {
+  assert(!WritingAST && "Already writing the AST!");
+  assert(Delete && "Not given an operator delete");
+  for (auto *D : DD->redecls()) {
+    if (D->isFromASTFile()) {
+      // We added an operator delete that some imported destructor didn't
+      // know about. Add an update record to let importers of us and that
+      // declaration know about it.
+      DeclUpdates[DD].push_back(
+          DeclUpdate(UPD_CXX_RESOLVED_DTOR_DELETE, Delete));
+      return;
+    }
+  }
 }
 
 void ASTWriter::CompletedImplicitDefinition(const FunctionDecl *D) {

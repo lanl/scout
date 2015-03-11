@@ -24,6 +24,7 @@
 #include "clang/Driver/SanitizerArgs.h"
 #include "clang/Driver/ToolChain.h"
 #include "clang/Driver/Util.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -3447,6 +3448,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     Args.AddLastArg(CmdArgs, options::OPT_objcmt_migrate_all);
     Args.AddLastArg(CmdArgs, options::OPT_objcmt_migrate_readonly_property);
     Args.AddLastArg(CmdArgs, options::OPT_objcmt_migrate_readwrite_property);
+    Args.AddLastArg(CmdArgs, options::OPT_objcmt_migrate_property_dot_syntax);
     Args.AddLastArg(CmdArgs, options::OPT_objcmt_migrate_annotation);
     Args.AddLastArg(CmdArgs, options::OPT_objcmt_migrate_instancetype);
     Args.AddLastArg(CmdArgs, options::OPT_objcmt_migrate_nsmacros);
@@ -4214,6 +4216,10 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
         << GCArg->getAsString(Args);
     }
   }
+
+  if (Args.hasFlag(options::OPT_fapplication_extension,
+                   options::OPT_fno_application_extension, false))
+    CmdArgs.push_back("-fapplication-extension");
 
   // Handle GCC-style exception args.
   if (!C.getDriver().IsCLMode())
@@ -5809,6 +5815,12 @@ void darwin::Link::AddLinkArgs(Compilation &C,
 
   if (Args.hasArg(options::OPT_rdynamic) && Version[0] >= 137)
     CmdArgs.push_back("-export_dynamic");
+
+  // If we are using App Extension restrictions, pass a flag to the linker
+  // telling it that the compiled code has been audited.
+  if (Args.hasFlag(options::OPT_fapplication_extension,
+                   options::OPT_fno_application_extension, false))
+    CmdArgs.push_back("-application_extension");
 
   // If we are using LTO, then automatically create a temporary file path for
   // the linker to use, so that it's lifetime will extend past a possible
@@ -7564,11 +7576,7 @@ void gnutools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   const bool IsPIE =
     !Args.hasArg(options::OPT_shared) &&
     !Args.hasArg(options::OPT_static) &&
-    (Args.hasArg(options::OPT_pie) || ToolChain.isPIEDefault() ||
-     // On Android every code is PIC so every executable is PIE
-     // Cannot use isPIEDefault here since otherwise
-     // PIE only logic will be enabled during compilation
-     isAndroid);
+    (Args.hasArg(options::OPT_pie) || ToolChain.isPIEDefault());
 
   ArgStringList CmdArgs;
 
@@ -7696,6 +7704,8 @@ void gnutools::Link::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("-Bdynamic");
     CmdArgs.push_back("-lm");
   }
+  // Silence warnings when linking C code with a C++ '-stdlib' argument.
+  Args.ClaimAllArgs(options::OPT_stdlib_EQ);
 
   if (!Args.hasArg(options::OPT_nostdlib)) {
     if (!Args.hasArg(options::OPT_nodefaultlibs)) {
@@ -8055,8 +8065,8 @@ void visualstudio::Link::ConstructJob(Compilation &C, const JobAction &JA,
   if (!llvm::sys::Process::GetEnv("LIB")) {
     // If the VC environment hasn't been configured (perhaps because the user
     // did not run vcvarsall), try to build a consistent link environment.  If
-    // the environment variable is set however, assume the user knows what he's
-    // doing.
+    // the environment variable is set however, assume the user knows what
+    // they're doing.
     std::string VisualStudioDir;
     const auto &MSVC = static_cast<const toolchains::MSVCToolChain &>(TC);
     if (MSVC.getVisualStudioInstallDir(VisualStudioDir)) {
@@ -8090,7 +8100,9 @@ void visualstudio::Link::ConstructJob(Compilation &C, const JobAction &JA,
   if (Args.hasArg(options::OPT_g_Group))
     CmdArgs.push_back("-debug");
 
-  bool DLL = Args.hasArg(options::OPT__SLASH_LD, options::OPT__SLASH_LDd);
+  bool DLL = Args.hasArg(options::OPT__SLASH_LD,
+                         options::OPT__SLASH_LDd,
+                         options::OPT_shared);
   if (DLL) {
     CmdArgs.push_back(Args.MakeArgString("-dll"));
 
