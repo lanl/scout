@@ -14,8 +14,10 @@
 // C Includes
 // C++ Includes
 // Other libraries and framework includes
+#include "clang/Basic/VersionTuple.h"
 // Project includes
 #include "lldb/Breakpoint/BreakpointLocation.h"
+#include "lldb/Breakpoint/BreakpointSite.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Error.h"
 #include "lldb/Core/Log.h"

@@ -1,8 +1,8 @@
 """
 Test case for testing the gdbremote protocol.
 
-Tests run against debugserver and lldb-gdbserver (llgs).
-lldb-gdbserver tests run where the lldb-gdbserver exe is
+Tests run against debugserver and lldb-server (llgs).
+lldb-server tests run where the lldb-server exe is
 available.
 
 This class will be broken into smaller test case classes by
@@ -52,8 +52,8 @@ class LldbGdbServerTestCase(gdbremote_testcase.GdbRemoteTestCaseBase):
 
         self.add_no_ack_remote_stream()
         self.test_sequence.add_log_lines(
-            ["lldb-gdbserver <  26> read packet: $QThreadSuffixSupported#e4",
-             "lldb-gdbserver <   6> send packet: $OK#9a"],
+            ["lldb-server <  26> read packet: $QThreadSuffixSupported#e4",
+             "lldb-server <   6> send packet: $OK#9a"],
             True)
 
         self.expect_gdbremote_sequence()
@@ -74,8 +74,8 @@ class LldbGdbServerTestCase(gdbremote_testcase.GdbRemoteTestCaseBase):
 
         self.add_no_ack_remote_stream()
         self.test_sequence.add_log_lines(
-            ["lldb-gdbserver <  27> read packet: $QListThreadsInStopReply#21",
-             "lldb-gdbserver <   6> send packet: $OK#9a"],
+            ["lldb-server <  27> read packet: $QListThreadsInStopReply#21",
+             "lldb-server <   6> send packet: $OK#9a"],
             True)
         self.expect_gdbremote_sequence()
 
@@ -89,12 +89,23 @@ class LldbGdbServerTestCase(gdbremote_testcase.GdbRemoteTestCaseBase):
         self.init_llgs_test()
         self.list_threads_in_stop_reply_supported()
 
+    def install_and_create_launch_args(self):
+        exe_path = os.path.abspath('a.out')
+        if not lldb.remote_platform:
+            return [exe_path]
+        remote_work_dir = lldb.remote_platform.GetWorkingDirectory()
+        remote_path = os.path.join(remote_work_dir, os.path.basename(exe_path))
+        remote_file_spec = lldb.SBFileSpec(remote_path, False)
+        err = lldb.remote_platform.Install(lldb.SBFileSpec(exe_path, True), remote_file_spec)
+        if err.Fail():
+            raise Exception("remote_platform.Install('%s', '%s') failed: %s" % (exe_path, remote_path, err))
+        return [remote_path]
+
     def start_inferior(self):
+        launch_args = self.install_and_create_launch_args()
+
         server = self.connect_to_debug_monitor()
         self.assertIsNotNone(server)
-
-        # build launch args
-        launch_args = [os.path.abspath('a.out')]
 
         self.add_no_ack_remote_stream()
         self.test_sequence.add_log_lines(
@@ -118,11 +129,10 @@ class LldbGdbServerTestCase(gdbremote_testcase.GdbRemoteTestCaseBase):
         self.start_inferior()
 
     def inferior_exit_0(self):
+        launch_args = self.install_and_create_launch_args()
+
         server = self.connect_to_debug_monitor()
         self.assertIsNotNone(server)
-
-        # build launch args
-        launch_args = [os.path.abspath('a.out')]
 
         self.add_no_ack_remote_stream()
         self.add_verified_launch_packets(launch_args)
@@ -148,13 +158,15 @@ class LldbGdbServerTestCase(gdbremote_testcase.GdbRemoteTestCaseBase):
         self.inferior_exit_0()
 
     def inferior_exit_42(self):
+        launch_args = self.install_and_create_launch_args()
+
         server = self.connect_to_debug_monitor()
         self.assertIsNotNone(server)
 
         RETVAL = 42
 
         # build launch args
-        launch_args = [os.path.abspath('a.out'), "retval:%d" % RETVAL]
+        launch_args += ["retval:%d" % RETVAL]
 
         self.add_no_ack_remote_stream()
         self.add_verified_launch_packets(launch_args)
@@ -180,11 +192,10 @@ class LldbGdbServerTestCase(gdbremote_testcase.GdbRemoteTestCaseBase):
         self.inferior_exit_42()
 
     def c_packet_works(self):
+        launch_args = self.install_and_create_launch_args()
+
         server = self.connect_to_debug_monitor()
         self.assertIsNotNone(server)
-
-        # build launch args
-        launch_args = [os.path.abspath('a.out')]
 
         self.add_no_ack_remote_stream()
         self.add_verified_launch_packets(launch_args)
@@ -210,11 +221,13 @@ class LldbGdbServerTestCase(gdbremote_testcase.GdbRemoteTestCaseBase):
         self.c_packet_works()
 
     def inferior_print_exit(self):
+        launch_args = self.install_and_create_launch_args()
+
         server = self.connect_to_debug_monitor()
         self.assertIsNotNone(server)
 
         # build launch args
-        launch_args = [os.path.abspath('a.out'), "hello, world"]
+        launch_args += ["hello, world"]
 
         self.add_no_ack_remote_stream()
         self.add_verified_launch_packets(launch_args)
@@ -242,11 +255,13 @@ class LldbGdbServerTestCase(gdbremote_testcase.GdbRemoteTestCaseBase):
         self.inferior_print_exit()
 
     def first_launch_stop_reply_thread_matches_first_qC(self):
+        launch_args = self.install_and_create_launch_args()
+
         server = self.connect_to_debug_monitor()
         self.assertIsNotNone(server)
 
         # build launch args
-        launch_args = [os.path.abspath('a.out'), "hello, world"]
+        launch_args += ["hello, world"]
 
         self.add_no_ack_remote_stream()
         self.add_verified_launch_packets(launch_args)
@@ -283,9 +298,10 @@ class LldbGdbServerTestCase(gdbremote_testcase.GdbRemoteTestCaseBase):
         # Wait a moment for completed and now-detached inferior process to clear.
         time.sleep(1)
 
-        # Process should be dead now.  Reap results.
-        poll_result = procs["inferior"].poll()
-        self.assertIsNotNone(poll_result)
+        if not lldb.remote_platform:
+            # Process should be dead now. Reap results.
+            poll_result = procs["inferior"].poll()
+            self.assertIsNotNone(poll_result)
 
         # Where possible, verify at the system level that the process is not running.
         self.assertFalse(lldbgdbserverutils.process_is_running(procs["inferior"].pid, False))
@@ -307,11 +323,10 @@ class LldbGdbServerTestCase(gdbremote_testcase.GdbRemoteTestCaseBase):
         self.attach_commandline_continue_app_exits()
 
     def qRegisterInfo_returns_one_valid_result(self):
+        launch_args = self.install_and_create_launch_args()
+
         server = self.connect_to_debug_monitor()
         self.assertIsNotNone(server)
-
-        # Build launch args
-        launch_args = [os.path.abspath('a.out')]
 
         # Build the expected protocol stream
         self.add_no_ack_remote_stream()
@@ -344,11 +359,10 @@ class LldbGdbServerTestCase(gdbremote_testcase.GdbRemoteTestCaseBase):
         self.qRegisterInfo_returns_one_valid_result()
 
     def qRegisterInfo_returns_all_valid_results(self):
+        launch_args = self.install_and_create_launch_args()
+
         server = self.connect_to_debug_monitor()
         self.assertIsNotNone(server)
-
-        # Build launch args.
-        launch_args = [os.path.abspath('a.out')]
 
         # Build the expected protocol stream.
         self.add_no_ack_remote_stream()
@@ -378,11 +392,10 @@ class LldbGdbServerTestCase(gdbremote_testcase.GdbRemoteTestCaseBase):
         self.qRegisterInfo_returns_all_valid_results()
 
     def qRegisterInfo_contains_required_generics(self):
+        launch_args = self.install_and_create_launch_args()
+
         server = self.connect_to_debug_monitor()
         self.assertIsNotNone(server)
-
-        # Build launch args
-        launch_args = [os.path.abspath('a.out')]
 
         # Build the expected protocol stream
         self.add_no_ack_remote_stream()
@@ -426,11 +439,10 @@ class LldbGdbServerTestCase(gdbremote_testcase.GdbRemoteTestCaseBase):
         self.qRegisterInfo_contains_required_generics()
 
     def qRegisterInfo_contains_at_least_one_register_set(self):
+        launch_args = self.install_and_create_launch_args()
+
         server = self.connect_to_debug_monitor()
         self.assertIsNotNone(server)
-
-        # Build launch args
-        launch_args = [os.path.abspath('a.out')]
 
         # Build the expected protocol stream
         self.add_no_ack_remote_stream()
@@ -463,11 +475,10 @@ class LldbGdbServerTestCase(gdbremote_testcase.GdbRemoteTestCaseBase):
         self.qRegisterInfo_contains_at_least_one_register_set()
 
     def qRegisterInfo_contains_avx_registers_on_linux_x86_64(self):
+        launch_args = self.install_and_create_launch_args()
+
         server = self.connect_to_debug_monitor()
         self.assertIsNotNone(server)
-
-        # Build launch args
-        launch_args = [os.path.abspath('a.out')]
 
         # Build the expected protocol stream
         self.add_no_ack_remote_stream()

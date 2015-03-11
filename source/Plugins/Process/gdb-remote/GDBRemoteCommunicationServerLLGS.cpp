@@ -23,6 +23,7 @@
 // Other libraries and framework includes
 #include "llvm/ADT/Triple.h"
 #include "lldb/Interpreter/Args.h"
+#include "lldb/Core/DataBuffer.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Log.h"
 #include "lldb/Core/State.h"
@@ -37,6 +38,7 @@
 #include "lldb/Host/StringConvert.h"
 #include "lldb/Host/TimeValue.h"
 #include "lldb/Target/FileAction.h"
+#include "lldb/Target/MemoryRegionInfo.h"
 #include "lldb/Target/Platform.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Host/common/NativeRegisterContext.h"

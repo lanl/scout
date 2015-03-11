@@ -26,6 +26,8 @@
 #include "lldb/Core/ModuleSpec.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Breakpoint/BreakpointLocation.h"
+#include "lldb/Breakpoint/BreakpointSite.h"
+#include "lldb/Target/Process.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -197,6 +199,17 @@ PlatformWindows::PlatformWindows (bool is_host) :
 //------------------------------------------------------------------
 PlatformWindows::~PlatformWindows()
 {
+}
+
+bool
+PlatformWindows::GetModuleSpec (const FileSpec& module_file_spec,
+                                const ArchSpec& arch,
+                                ModuleSpec &module_spec)
+{
+    if (m_remote_platform_sp)
+        return m_remote_platform_sp->GetModuleSpec (module_file_spec, arch, module_spec);
+
+    return Platform::GetModuleSpec (module_file_spec, arch, module_spec);
 }
 
 Error

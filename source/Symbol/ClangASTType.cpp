@@ -30,6 +30,8 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
 
+#include "llvm/Support/Format.h"
+#include "llvm/Support/Signals.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -43,8 +45,10 @@
 #include "lldb/Core/StreamString.h"
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/ClangExternalASTSourceCommon.h"
+#include "lldb/Symbol/Type.h"
 #include "lldb/Symbol/VerifyDecl.h"
 #include "lldb/Target/ExecutionContext.h"
+#include "lldb/Target/ObjCLanguageRuntime.h"
 #include "lldb/Target/Process.h"
 
 #include <iterator>
@@ -313,6 +317,18 @@ ClangASTType::IsVectorType (ClangASTType *element_type,
                 return true;
             }
                 break;
+            case clang::Type::ExtVector:
+            {
+                const clang::ExtVectorType *ext_vector_type = qual_type->getAs<clang::ExtVectorType>();
+                if (ext_vector_type)
+                {
+                    if (size)
+                        *size = ext_vector_type->getNumElements();
+                    if (element_type)
+                        *element_type = ClangASTType(m_ast, ext_vector_type->getElementType().getAsOpaquePtr());
+                }
+                return true;
+            }
             default:
                 break;
         }
@@ -2121,11 +2137,14 @@ ClangASTType::GetBitSize (ExecutionContextScope *exe_scope) const
                     if (!g_printed)
                     {
                         StreamString s;
-                        s.Printf("warning: trying to determine the size of type ");
                         DumpTypeDescription(&s);
-                        s.Printf("\n without a valid ExecutionContext. this is not reliable. please file a bug against LLDB.\nbacktrace:\n");
-                        Host::Backtrace(s, UINT32_MAX);
-                        printf("%s\n", s.GetData());
+
+                        llvm::outs() << "warning: trying to determine the size of type ";
+                        llvm::outs() << s.GetString() << "\n";
+                        llvm::outs() << "without a valid ExecutionContext. this is not reliable. please file a bug against LLDB.\n";
+                        llvm::outs() << "backtrace:\n";
+                        llvm::sys::PrintStackTrace(llvm::outs());
+                        llvm::outs() << "\n";
                         g_printed = true;
                     }
                 }
@@ -2151,6 +2170,7 @@ ClangASTType::GetByteSize (ExecutionContextScope *exe_scope) const
 {
     return (GetBitSize (exe_scope) + 7) / 8;
 }
+
 
 size_t
 ClangASTType::GetTypeBitAlign () const
