@@ -85,7 +85,6 @@ private:
   legacy::PassManager *getCodeGenPasses() const {
     if (!CodeGenPasses) {
       CodeGenPasses = new legacy::PassManager();
-      CodeGenPasses->add(new DataLayoutPass());
       CodeGenPasses->add(
           createTargetTransformInfoWrapperPass(getTargetIRAnalysis()));
     }
@@ -95,7 +94,6 @@ private:
   legacy::PassManager *getPerModulePasses() const {
     if (!PerModulePasses) {
       PerModulePasses = new legacy::PassManager();
-      PerModulePasses->add(new DataLayoutPass());
       PerModulePasses->add(
           createTargetTransformInfoWrapperPass(getTargetIRAnalysis()));
     }
@@ -105,7 +103,6 @@ private:
   legacy::FunctionPassManager *getPerFunctionPasses() const {
     if (!PerFunctionPasses) {
       PerFunctionPasses = new legacy::FunctionPassManager(TheModule);
-      PerFunctionPasses->add(new DataLayoutPass());
       PerFunctionPasses->add(
           createTargetTransformInfoWrapperPass(getTargetIRAnalysis()));
     }
