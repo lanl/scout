@@ -572,10 +572,13 @@ def X86GR32orGR64AsmOperand : AsmOperandClass {
 def GR32orGR64 : RegisterOperand<GR32> {
   let ParserMatchClass = X86GR32orGR64AsmOperand;
 }
-
+def AVX512RCOperand : AsmOperandClass {
+  let Name = "AVX512RC";
+}
 def AVX512RC : Operand<i32> {
   let PrintMethod = "printRoundingControl";
   let OperandType = "OPERAND_IMMEDIATE";
+  let ParserMatchClass = AVX512RCOperand;
 }
 
 // Sign-extended immediate classes. We don't need to define the full lattice
@@ -712,9 +715,6 @@ def tls64addr : ComplexPattern<i64, 5, "SelectTLSADDRAddr",
 
 def tls64baseaddr : ComplexPattern<i64, 5, "SelectTLSADDRAddr",
                                [tglobaltlsaddr], []>;
-
-def vectoraddr : ComplexPattern<iPTR, 5, "SelectAddr", [],[SDNPWantParent]>;
-//def vectoraddr : ComplexPattern<iPTR, 5, "SelectVectorAddr", [],[SDNPWantParent]>;
 
 //===----------------------------------------------------------------------===//
 // X86 Instruction Predicate Definitions.

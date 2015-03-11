@@ -124,7 +124,6 @@ protected:
   DwarfUnit(unsigned UID, dwarf::Tag, DICompileUnit CU, AsmPrinter *A,
             DwarfDebug *DW, DwarfFile *DWU);
 
-  void initSection(const MCSection *Section);
 
   /// Add a string attribute data and value.
   void addLocalString(DIE &Die, dwarf::Attribute Attribute, StringRef Str);
@@ -135,6 +134,8 @@ protected:
 
 public:
   virtual ~DwarfUnit();
+
+  void initSection(const MCSection *Section);
 
   const MCSection *getSection() const {
     assert(Section);
@@ -255,6 +256,9 @@ public:
   void addConstantFPValue(DIE &Die, const MachineOperand &MO);
   void addConstantFPValue(DIE &Die, const ConstantFP *CFP);
 
+  /// \brief Add a linkage name, if it isn't empty.
+  void addLinkageName(DIE &Die, StringRef LinkageName);
+
   /// addTemplateParams - Add template parameters in buffer.
   void addTemplateParams(DIE &Buffer, DIArray TParams);
 
@@ -325,7 +329,7 @@ public:
   }
 
   /// Emit the header for this unit, not including the initial length field.
-  virtual void emitHeader(const MCSymbol *ASectionSym) const;
+  virtual void emitHeader(bool UseOffsets);
 
   virtual DwarfCompileUnit &getCU() = 0;
 
@@ -437,12 +441,11 @@ public:
   void setType(const DIE *Ty) { this->Ty = Ty; }
 
   /// Emit the header for this unit, not including the initial length field.
-  void emitHeader(const MCSymbol *ASectionSym) const override;
+  void emitHeader(bool UseOffsets) override;
   unsigned getHeaderSize() const override {
     return DwarfUnit::getHeaderSize() + sizeof(uint64_t) + // Type Signature
            sizeof(uint32_t);                               // Type DIE Offset
   }
-  using DwarfUnit::initSection;
   DwarfCompileUnit &getCU() override { return CU; }
 };
 } // end llvm namespace

@@ -37,6 +37,10 @@ bool isPositiveHalfWord(SDNode *N);
       ADJDYNALLOC,
       ARGEXTEND,
 
+      PIC_ADD,
+      AT_GOT,
+      AT_PCREL,
+
       CMPICC,      // Compare two GPR operands, set icc.
       CMPFCC,      // Compare two FP operands, set fcc.
       BRICC,       // Branch to dest on icc condition
@@ -58,8 +62,17 @@ bool isPositiveHalfWord(SDNode *N);
       BARRIER,     // Memory barrier
       POPCOUNT,
       COMBINE,
-      WrapperJT,
-      WrapperCP,
+      PACKHL,
+      JT,
+      CP,
+      INSERT_ri,
+      INSERT_rd,
+      INSERT_riv,
+      INSERT_rdv,
+      EXTRACTU_ri,
+      EXTRACTU_rd,
+      EXTRACTU_riv,
+      EXTRACTU_rdv,
       WrapperCombineII,
       WrapperCombineRR,
       WrapperCombineRI_V4,
