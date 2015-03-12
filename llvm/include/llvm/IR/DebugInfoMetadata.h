@@ -503,6 +503,7 @@ public:
     return MD->getMetadataID() == MDDerivedTypeKind ||
            MD->getMetadataID() == MDCompositeTypeKind ||
     // +====== Scout =======================
+           MD->getMetadataID() == MDScoutDerivedTypeKind ||
            MD->getMetadataID() == MDScoutCompositeTypeKind ||
     // +====================================
            MD->getMetadataID() == MDSubroutineTypeKind;
