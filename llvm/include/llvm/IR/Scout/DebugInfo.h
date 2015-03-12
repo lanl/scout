@@ -153,8 +153,8 @@ namespace llvm {
     /// \brief Set the array of member DITypes.
     void setArraysHelper(MDNode *Elements, MDNode *TParams);
     
-    MDCompositeTypeBase *getRaw() const {
-      return dyn_cast_or_null<MDCompositeTypeBase>(get());
+    MDScoutCompositeType *getRaw() const {
+      return dyn_cast_or_null<MDScoutCompositeType>(get());
     }
     
   public:
@@ -197,7 +197,16 @@ namespace llvm {
     bool Verify() const;
     
     unsigned getDimension(int dim) const{
-      assert(false && "unimplemented");
+      switch(dim){
+        case 0:
+          RETURN_FROM_RAW(N->getDimX(), 0);
+        case 1:
+          RETURN_FROM_RAW(N->getDimY(), 0);
+        case 2:
+          RETURN_FROM_RAW(N->getDimZ(), 0);
+        default:
+          assert(false && "invalid dimension");
+      }
     }
   };
 
