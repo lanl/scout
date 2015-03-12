@@ -591,11 +591,16 @@ class MDScoutDerivedType : public MDDerivedTypeBase {
   friend class LLVMContextImpl;
   friend class MDNode;
   
+  unsigned ScoutFlags;
+  
   MDScoutDerivedType(LLVMContext &C, StorageType Storage, unsigned Tag,
                 unsigned Line, uint64_t SizeInBits, uint64_t AlignInBits,
-                uint64_t OffsetInBits, unsigned Flags, ArrayRef<Metadata *> Ops)
+                uint64_t OffsetInBits, unsigned Flags, unsigned ScoutFlags,
+                     ArrayRef<Metadata *> Ops)
   : MDDerivedTypeBase(C, MDScoutDerivedTypeKind, Storage, Tag, Line, SizeInBits,
-                      AlignInBits, OffsetInBits, Flags, Ops) {}
+                      AlignInBits, OffsetInBits, Flags, Ops),
+  ScoutFlags(ScoutFlags){}
+  
   ~MDScoutDerivedType() {}
   
   static MDScoutDerivedType *getImpl(LLVMContext &Context, unsigned Tag,
@@ -603,17 +608,19 @@ class MDScoutDerivedType : public MDDerivedTypeBase {
                                 Metadata *Scope, Metadata *BaseType,
                                 uint64_t SizeInBits, uint64_t AlignInBits,
                                 uint64_t OffsetInBits, unsigned Flags,
+                                unsigned ScoutFlags,
                                 Metadata *ExtraData, StorageType Storage,
                                 bool ShouldCreate = true) {
     return getImpl(Context, Tag, getCanonicalMDString(Context, Name), File,
                    Line, Scope, BaseType, SizeInBits, AlignInBits, OffsetInBits,
-                   Flags, ExtraData, Storage, ShouldCreate);
+                   Flags, ScoutFlags, ExtraData, Storage, ShouldCreate);
   }
   static MDScoutDerivedType *getImpl(LLVMContext &Context, unsigned Tag,
                                 MDString *Name, Metadata *File, unsigned Line,
                                 Metadata *Scope, Metadata *BaseType,
                                 uint64_t SizeInBits, uint64_t AlignInBits,
                                 uint64_t OffsetInBits, unsigned Flags,
+                                unsigned ScoutFlags,
                                 Metadata *ExtraData, StorageType Storage,
                                 bool ShouldCreate = true);
   
@@ -621,6 +628,7 @@ class MDScoutDerivedType : public MDDerivedTypeBase {
     return getTemporary(getContext(), getTag(), getName(), getFile(), getLine(),
                         getScope(), getBaseType(), getSizeInBits(),
                         getAlignInBits(), getOffsetInBits(), getFlags(),
+                        getScoutFlags(),
                         getExtraData());
   }
   
@@ -630,17 +638,19 @@ public:
                      unsigned Line, Metadata *Scope, Metadata *BaseType,
                      uint64_t SizeInBits, uint64_t AlignInBits,
                      uint64_t OffsetInBits, unsigned Flags,
+                     unsigned ScoutFlags,
                      Metadata *ExtraData = nullptr),
                     (Tag, Name, File, Line, Scope, BaseType, SizeInBits,
-                     AlignInBits, OffsetInBits, Flags, ExtraData))
+                     AlignInBits, OffsetInBits, Flags, ScoutFlags, ExtraData))
   DEFINE_MDNODE_GET(MDScoutDerivedType,
                     (unsigned Tag, StringRef Name, Metadata *File,
                      unsigned Line, Metadata *Scope, Metadata *BaseType,
                      uint64_t SizeInBits, uint64_t AlignInBits,
                      uint64_t OffsetInBits, unsigned Flags,
+                     unsigned ScoutFlags,
                      Metadata *ExtraData = nullptr),
                     (Tag, Name, File, Line, Scope, BaseType, SizeInBits,
-                     AlignInBits, OffsetInBits, Flags, ExtraData))
+                     AlignInBits, OffsetInBits, Flags, ScoutFlags, ExtraData))
   
   TempMDScoutDerivedType clone() const { return cloneImpl(); }
   
@@ -652,6 +662,10 @@ public:
   /// TODO: Separate out types that need this extra operand: pointer-to-member
   /// types and member fields (static members and ivars).
   Metadata *getExtraData() const { return getOperand(4); }
+  
+  unsigned getScoutFlags() const{
+    return ScoutFlags;
+  }
   
   static bool classof(const Metadata *MD) {
     return MD->getMetadataID() == MDScoutDerivedTypeKind;

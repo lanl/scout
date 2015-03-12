@@ -193,5 +193,7 @@ DIBuilder::createMeshMemberType(DIDescriptor Scope, StringRef Name,
                                 unsigned Flags,
                                 unsigned ScoutFlags,
                                 DIType Ty) {
-  assert(false && "unimplemented");
+  return MDScoutDerivedType::get(VMContext, dwarf::DW_TAG_member, Name, File, LineNumber,
+                                 DIScope(getNonCompileUnitScope(Scope)).getRef(), Ty.getRef(), SizeInBits,
+                                 AlignInBits, OffsetInBits, Flags, ScoutFlags);
 }

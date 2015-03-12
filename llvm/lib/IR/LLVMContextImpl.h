@@ -439,12 +439,13 @@ template <> struct MDNodeKeyImpl<MDScoutDerivedType> {
   uint64_t AlignInBits;
   uint64_t OffsetInBits;
   unsigned Flags;
+  unsigned ScoutFlags;
   Metadata *ExtraData;
   
   MDNodeKeyImpl(unsigned Tag, StringRef Name, Metadata *File, unsigned Line,
                 Metadata *Scope, Metadata *BaseType, uint64_t SizeInBits,
                 uint64_t AlignInBits, uint64_t OffsetInBits, unsigned Flags,
-                Metadata *ExtraData)
+                unsigned ScoutFlags, Metadata *ExtraData)
   : Tag(Tag), Name(Name), File(File), Line(Line), Scope(Scope),
   BaseType(BaseType), SizeInBits(SizeInBits), AlignInBits(AlignInBits),
   OffsetInBits(OffsetInBits), Flags(Flags), ExtraData(ExtraData) {}
@@ -453,6 +454,7 @@ template <> struct MDNodeKeyImpl<MDScoutDerivedType> {
   Line(N->getLine()), Scope(N->getScope()), BaseType(N->getBaseType()),
   SizeInBits(N->getSizeInBits()), AlignInBits(N->getAlignInBits()),
   OffsetInBits(N->getOffsetInBits()), Flags(N->getFlags()),
+  ScoutFlags(N->getScoutFlags()),
   ExtraData(N->getExtraData()) {}
   
   bool isKeyOf(const MDScoutDerivedType *RHS) const {
@@ -462,11 +464,12 @@ template <> struct MDNodeKeyImpl<MDScoutDerivedType> {
     SizeInBits == RHS->getSizeInBits() &&
     AlignInBits == RHS->getAlignInBits() &&
     OffsetInBits == RHS->getOffsetInBits() && Flags == RHS->getFlags() &&
+    ScoutFlags == RHS->getScoutFlags() &&
     ExtraData == RHS->getExtraData();
   }
   unsigned getHashValue() const {
     return hash_combine(Tag, Name, File, Line, Scope, BaseType, SizeInBits,
-                        AlignInBits, OffsetInBits, Flags, ExtraData);
+                        AlignInBits, OffsetInBits, Flags, ScoutFlags, ExtraData);
   }
 };
   

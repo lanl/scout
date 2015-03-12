@@ -179,15 +179,16 @@ MDScoutDerivedType *MDScoutDerivedType::getImpl(
     LLVMContext &Context, unsigned Tag, MDString *Name, Metadata *File,
     unsigned Line, Metadata *Scope, Metadata *BaseType, uint64_t SizeInBits,
     uint64_t AlignInBits, uint64_t OffsetInBits, unsigned Flags,
+    unsigned ScoutFlags,
     Metadata *ExtraData, StorageType Storage, bool ShouldCreate) {
   assert(isCanonical(Name) && "Expected canonical MDString");
   DEFINE_GETIMPL_LOOKUP(MDScoutDerivedType, (Tag, getString(Name), File, Line, Scope,
                                         BaseType, SizeInBits, AlignInBits,
-                                        OffsetInBits, Flags, ExtraData));
+                                        OffsetInBits, Flags, ScoutFlags, ExtraData));
   Metadata *Ops[] = {File, Scope, Name, BaseType, ExtraData};
   DEFINE_GETIMPL_STORE(
-                       MDScoutDerivedType, (Tag, Line, SizeInBits, AlignInBits, OffsetInBits, Flags),
-                       Ops);
+    MDScoutDerivedType, (Tag, Line, SizeInBits, AlignInBits, OffsetInBits, Flags, ScoutFlags),
+      Ops);
 }
 // +===============================================================
 
