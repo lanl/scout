@@ -902,6 +902,26 @@ static void WriteMDCompositeType(const MDCompositeType *N,
   Record.clear();
 }
 
+// +===== Scout ============================================
+
+static void WriteMDScoutDerivedType(const MDScoutDerivedType *N,
+                                    const ValueEnumerator &VE,
+                                    BitstreamWriter &Stream,
+                                    SmallVectorImpl<uint64_t> &Record,
+                                    unsigned Abbrev) {
+  assert(false && "unimplemented");
+}
+
+static void WriteMDScoutCompositeType(const MDScoutCompositeType *N,
+                                      const ValueEnumerator &VE,
+                                      BitstreamWriter &Stream,
+                                      SmallVectorImpl<uint64_t> &Record,
+                                      unsigned Abbrev) {
+  assert(false && "unimplemented");
+}
+
+// +=======================================================
+
 static void WriteMDSubroutineType(const MDSubroutineType *N,
                                   const ValueEnumerator &VE,
                                   BitstreamWriter &Stream,

@@ -10,6 +10,7 @@
 #include "UnwindAssembly-x86.h"
 
 #include "llvm-c/Disassembler.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/TargetSelect.h"
 
 #include "lldb/Core/Address.h"
@@ -17,6 +18,7 @@
 #include "lldb/Core/ArchSpec.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Symbol/UnwindPlan.h"
+#include "lldb/Target/ABI.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/RegisterContext.h"

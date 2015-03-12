@@ -305,6 +305,11 @@ public:
   /// getOrCreateContextDIE - Get context owner's DIE.
   DIE *createTypeDIE(DICompositeType Ty);
 
+  // +===== Scout ================================
+  /// getOrCreateContextDIE - Get context owner's DIE.
+  DIE *createTypeDIE(DIScoutCompositeType Ty);
+  // +============================================
+  
   /// getOrCreateContextDIE - Get context owner's DIE.
   DIE *getOrCreateContextDIE(DIScope Context);
 
@@ -336,6 +341,13 @@ public:
   /// constructTypeDIE - Construct type DIE from DICompositeType.
   void constructTypeDIE(DIE &Buffer, DICompositeType CTy);
 
+  // +===== Scout ============================================
+  
+  /// constructTypeDIE - Construct type DIE from DICompositeType.
+  void constructTypeDIE(DIE &Buffer, DIScoutCompositeType CTy);
+  
+  // +========================================================
+  
 protected:
   /// getOrCreateStaticMemberDIE - Create new static data member DIE.
   DIE *getOrCreateStaticMemberDIE(DIDerivedType DT);

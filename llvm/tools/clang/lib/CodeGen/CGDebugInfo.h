@@ -175,7 +175,7 @@ class CGDebugInfo {
   // +===== Scout ============================================================+
   llvm::DIType CreateType(const UniformMeshType *Ty);
   llvm::DIType CreateTypeDefinition(const UniformMeshType *Ty);
-  llvm::DICompositeType CreateLimitedType(const UniformMeshType *Ty);
+  llvm::DIScoutCompositeType CreateLimitedType(const UniformMeshType *Ty);
 
   llvm::DIType CreateType(const RectilinearMeshType *Ty);
   llvm::DIType CreateTypeDefinition(const RectilinearMeshType *Ty);
@@ -414,8 +414,8 @@ private:
   // to avoid a version per mesh type???
 
   /// \brief Create a forward decl for a uniform mesh in a given context.
-  llvm::DICompositeType getOrCreateMeshFwdDecl(const UniformMeshType *,
-                                               llvm::DIDescriptor);
+  llvm::DIScoutCompositeType getOrCreateMeshFwdDecl(const UniformMeshType *,
+                                                    llvm::DIDescriptor);
 
   /// \brief Create a forward decl for a rectilinear mesh in a given context.
   llvm::DICompositeType getOrCreateMeshFwdDecl(const RectilinearMeshType *,

@@ -2034,6 +2034,83 @@ void DwarfDebug::addDwarfTypeUnitType(DwarfCompileUnit &CU,
   CU.addDIETypeSignature(RefDie, NewTU);
 }
 
+// +===== Scout =================================================
+
+void DwarfDebug::addDwarfTypeUnitType(DwarfCompileUnit &CU,
+                                      StringRef Identifier, DIE &RefDie,
+                                      DIScoutCompositeType CTy) {
+  // Fast path if we're building some type units and one has already used the
+  // address pool we know we're going to throw away all this work anyway, so
+  // don't bother building dependent types.
+  if (!ScoutTypeUnitsUnderConstruction.empty() && AddrPool.hasBeenUsed())
+    return;
+  
+  const DwarfTypeUnit *&TU = DwarfTypeUnits[CTy];
+  if (TU) {
+    CU.addDIETypeSignature(RefDie, *TU);
+    return;
+  }
+  
+  bool TopLevelType = ScoutTypeUnitsUnderConstruction.empty();
+  AddrPool.resetUsedFlag();
+  
+  auto OwnedUnit = make_unique<DwarfTypeUnit>(
+                                              InfoHolder.getUnits().size() +ScoutTypeUnitsUnderConstruction.size(), CU, Asm,
+                                              this, &InfoHolder, getDwoLineTable(CU));
+  DwarfTypeUnit &NewTU = *OwnedUnit;
+  DIE &UnitDie = NewTU.getUnitDie();
+  TU = &NewTU;
+  ScoutTypeUnitsUnderConstruction.push_back(
+                                       std::make_pair(std::move(OwnedUnit), CTy));
+  
+  NewTU.addUInt(UnitDie, dwarf::DW_AT_language, dwarf::DW_FORM_data2,
+                CU.getLanguage());
+  
+  uint64_t Signature = makeTypeSignature(Identifier);
+  NewTU.setTypeSignature(Signature);
+  
+  if (useSplitDwarf())
+    NewTU.initSection(Asm->getObjFileLowering().getDwarfTypesDWOSection());
+  else {
+    CU.applyStmtList(UnitDie);
+    NewTU.initSection(
+                      Asm->getObjFileLowering().getDwarfTypesSection(Signature));
+  }
+  
+  NewTU.setType(NewTU.createTypeDIE(CTy));
+  
+  if (TopLevelType) {
+    auto TypeUnitsToAdd = std::move(ScoutTypeUnitsUnderConstruction);
+    ScoutTypeUnitsUnderConstruction.clear();
+    
+    // Types referencing entries in the address table cannot be placed in type
+    // units.
+    if (AddrPool.hasBeenUsed()) {
+      
+      // Remove all the types built while building this type.
+      // This is pessimistic as some of these types might not be dependent on
+      // the type that used an address.
+      for (const auto &TU : TypeUnitsToAdd)
+        DwarfTypeUnits.erase(TU.second);
+      
+      // Construct this type in the CU directly.
+      // This is inefficient because all the dependent types will be rebuilt
+      // from scratch, including building them in type units, discovering that
+      // they depend on addresses, throwing them out and rebuilding them.
+      CU.constructTypeDIE(RefDie, CTy);
+      return;
+    }
+    
+    // If the type wasn't dependent on fission addresses, finish adding the type
+    // and all its dependent types.
+    for (auto &TU : TypeUnitsToAdd)
+      InfoHolder.addUnit(std::move(TU.first));
+  }
+  CU.addDIETypeSignature(RefDie, NewTU);
+}
+
+// +==================================================================
+
 // Accelerator table mutators - add each name along with its companion
 // DIE to the proper table while ensuring that the name that we're going
 // to reference is in the string table. We do this since the names we

@@ -111,7 +111,7 @@ namespace {
 
 // ----------------------------------------------------
 
-DICompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
+DIScoutCompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
     StringRef Name, DIFile File,
     unsigned LineNumber,
     uint64_t SizeInBits,
@@ -125,38 +125,10 @@ DICompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
     DIType VTableHolder,
     StringRef UniqueIdentifier
 ) {
-  // TAG_structure_type is encoded in DICompositeType format.
-  Metadata *Elts[] = {
-    HeaderBuilder::get(dwarf::DW_TAG_SCOUT_uniform_mesh_type)
-    .concat(Name)
-    .concat(LineNumber)
-    .concat(SizeInBits)
-    .concat(AlignInBits)
-    .concat(0)
-    .concat(Flags)
-    .concat(RunTimeLang)
-    .get(VMContext),
-    File.getFileNode(), DIScope(getNonCompileUnitScope(Context)).getRef(),
-    DerivedFrom.getRef(), Elements, VTableHolder.getRef(), nullptr,
-    UniqueIdentifier.empty() ? nullptr
-    : MDString::get(VMContext, UniqueIdentifier),
-    // These are the Scout-specific fields, we need to keep an eye on this when we merge
-    // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
-    // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimX)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimY)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimZ))
-  };
-  DIScoutCompositeType R(MDNode::get(VMContext, Elts));
-  assert(R.isCompositeType() &&
-         "createUniformMeshType should return a DICompositeType");
-  if (!UniqueIdentifier.empty()){
-    retainType(R);
-  }
-  return R;
+  assert(false && "unimplemented");
 }
 
-DICompositeType DIBuilder::createStructuredMeshType(DIDescriptor Context,
+DIScoutCompositeType DIBuilder::createStructuredMeshType(DIDescriptor Context,
     StringRef Name, DIFile File,
     unsigned LineNumber,
     uint64_t SizeInBits,
@@ -169,38 +141,10 @@ DICompositeType DIBuilder::createStructuredMeshType(DIDescriptor Context,
     unsigned RunTimeLang,
     DIType VTableHolder,
     StringRef UniqueIdentifier) {
-  // TAG_structure_type is encoded in DICompositeType format.
-  Metadata *Elts[] = {
-    HeaderBuilder::get(dwarf::DW_TAG_SCOUT_uniform_mesh_type)
-    .concat(Name)
-    .concat(LineNumber)
-    .concat(SizeInBits)
-    .concat(AlignInBits)
-    .concat(0)
-    .concat(Flags)
-    .concat(RunTimeLang)
-    .get(VMContext),
-    File.getFileNode(), DIScope(getNonCompileUnitScope(Context)).getRef(),
-    DerivedFrom.getRef(), Elements, VTableHolder.getRef(), nullptr,
-    UniqueIdentifier.empty() ? nullptr
-    : MDString::get(VMContext, UniqueIdentifier),
-    // These are the Scout-specific fields, we need to keep an eye on this when we merge
-    // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
-    // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimX)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimY)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimZ))
-  };
-  DIScoutCompositeType R(MDNode::get(VMContext, Elts));
-  assert(R.isCompositeType() &&
-         "createStructuredMeshType should return a DICompositeType");
-  if (!UniqueIdentifier.empty()){
-    retainType(R);
-  }
-  return R;
+  assert(false && "unimplemented");
 }
 
-DICompositeType DIBuilder::createRectilinearMeshType(DIDescriptor Context,
+DIScoutCompositeType DIBuilder::createRectilinearMeshType(DIDescriptor Context,
     StringRef Name, DIFile File,
     unsigned LineNumber,
     uint64_t SizeInBits,
@@ -213,39 +157,10 @@ DICompositeType DIBuilder::createRectilinearMeshType(DIDescriptor Context,
     unsigned RunTimeLang,
     DIType VTableHolder,
     StringRef UniqueIdentifier) {
- // TAG_structure_type is encoded in DICompositeType format.
-  // TAG_structure_type is encoded in DICompositeType format.
-  Metadata *Elts[] = {
-    HeaderBuilder::get(dwarf::DW_TAG_SCOUT_uniform_mesh_type)
-    .concat(Name)
-    .concat(LineNumber)
-    .concat(SizeInBits)
-    .concat(AlignInBits)
-    .concat(0)
-    .concat(Flags)
-    .concat(RunTimeLang)
-    .get(VMContext),
-    File.getFileNode(), DIScope(getNonCompileUnitScope(Context)).getRef(),
-    DerivedFrom.getRef(), Elements, VTableHolder.getRef(), nullptr,
-    UniqueIdentifier.empty() ? nullptr
-    : MDString::get(VMContext, UniqueIdentifier),
-    // These are the Scout-specific fields, we need to keep an eye on this when we merge
-    // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
-    // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimX)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimY)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimZ))
-  };
-  DIScoutCompositeType R(MDNode::get(VMContext, Elts));
-  assert(R.isCompositeType() &&
-         "createRectilinearMeshType should return a DICompositeType");
-  if (!UniqueIdentifier.empty()){
-    retainType(R);
-  }
-  return R;
+  assert(false && "unimplemented");
 }
 
-DICompositeType DIBuilder::createUnstructuredMeshType(DIDescriptor Context,
+DIScoutCompositeType DIBuilder::createUnstructuredMeshType(DIDescriptor Context,
     StringRef Name, DIFile File,
     unsigned LineNumber,
     uint64_t SizeInBits,
@@ -258,35 +173,7 @@ DICompositeType DIBuilder::createUnstructuredMeshType(DIDescriptor Context,
     unsigned RunTimeLang,
     DIType VTableHolder,
     StringRef UniqueIdentifier) {
-  // TAG_structure_type is encoded in DICompositeType format.
-  Metadata *Elts[] = {
-    HeaderBuilder::get(dwarf::DW_TAG_SCOUT_uniform_mesh_type)
-    .concat(Name)
-    .concat(LineNumber)
-    .concat(SizeInBits)
-    .concat(AlignInBits)
-    .concat(0)
-    .concat(Flags)
-    .concat(RunTimeLang)
-    .get(VMContext),
-    File.getFileNode(), DIScope(getNonCompileUnitScope(Context)).getRef(),
-    DerivedFrom.getRef(), Elements, VTableHolder.getRef(), nullptr,
-    UniqueIdentifier.empty() ? nullptr
-    : MDString::get(VMContext, UniqueIdentifier),
-    // These are the Scout-specific fields, we need to keep an eye on this when we merge
-    // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
-    // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimX)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimY)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimZ))
-  };
-  DIScoutCompositeType R(MDNode::get(VMContext, Elts));
-  assert(R.isCompositeType() &&
-         "createUnstructuredMeshType should return a DICompositeType");
-  if (!UniqueIdentifier.empty()){
-    retainType(R);
-  }
-  return R;
+  assert(false && "unimplemented");
 }
 
 DIScoutDerivedType 
@@ -298,19 +185,5 @@ DIBuilder::createMeshMemberType(DIDescriptor Scope, StringRef Name,
                                 unsigned Flags,
                                 unsigned ScoutFlags,
                                 DIType Ty) {
-  // TAG_member is encoded in DIScoutDerivedType format.
-  Metadata *Elts[] = {HeaderBuilder::get(dwarf::DW_TAG_member)
-    .concat(Name)
-    .concat(LineNumber)
-    .concat(SizeInBits)
-    .concat(AlignInBits)
-    .concat(OffsetInBits)
-    .concat(Flags)
-    .get(VMContext),
-    File.getFileNode(),
-    DIScope(getNonCompileUnitScope(Scope)).getRef(),
-    Ty.getRef(),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext),
-                                             ScoutFlags))};
-  return DIScoutDerivedType(MDNode::get(VMContext, Elts));
+  assert(false && "unimplemented");
 }

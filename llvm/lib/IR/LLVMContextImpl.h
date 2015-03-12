@@ -426,6 +426,110 @@ template <> struct MDNodeKeyImpl<MDCompositeType> {
   }
 };
 
+// +====== Scout ==============================================
+
+template <> struct MDNodeKeyImpl<MDScoutDerivedType> {
+  unsigned Tag;
+  StringRef Name;
+  Metadata *File;
+  unsigned Line;
+  Metadata *Scope;
+  Metadata *BaseType;
+  uint64_t SizeInBits;
+  uint64_t AlignInBits;
+  uint64_t OffsetInBits;
+  unsigned Flags;
+  Metadata *ExtraData;
+  
+  MDNodeKeyImpl(unsigned Tag, StringRef Name, Metadata *File, unsigned Line,
+                Metadata *Scope, Metadata *BaseType, uint64_t SizeInBits,
+                uint64_t AlignInBits, uint64_t OffsetInBits, unsigned Flags,
+                Metadata *ExtraData)
+  : Tag(Tag), Name(Name), File(File), Line(Line), Scope(Scope),
+  BaseType(BaseType), SizeInBits(SizeInBits), AlignInBits(AlignInBits),
+  OffsetInBits(OffsetInBits), Flags(Flags), ExtraData(ExtraData) {}
+  MDNodeKeyImpl(const MDScoutDerivedType *N)
+  : Tag(N->getTag()), Name(N->getName()), File(N->getFile()),
+  Line(N->getLine()), Scope(N->getScope()), BaseType(N->getBaseType()),
+  SizeInBits(N->getSizeInBits()), AlignInBits(N->getAlignInBits()),
+  OffsetInBits(N->getOffsetInBits()), Flags(N->getFlags()),
+  ExtraData(N->getExtraData()) {}
+  
+  bool isKeyOf(const MDScoutDerivedType *RHS) const {
+    return Tag == RHS->getTag() && Name == RHS->getName() &&
+    File == RHS->getFile() && Line == RHS->getLine() &&
+    Scope == RHS->getScope() && BaseType == RHS->getBaseType() &&
+    SizeInBits == RHS->getSizeInBits() &&
+    AlignInBits == RHS->getAlignInBits() &&
+    OffsetInBits == RHS->getOffsetInBits() && Flags == RHS->getFlags() &&
+    ExtraData == RHS->getExtraData();
+  }
+  unsigned getHashValue() const {
+    return hash_combine(Tag, Name, File, Line, Scope, BaseType, SizeInBits,
+                        AlignInBits, OffsetInBits, Flags, ExtraData);
+  }
+};
+  
+template <> struct MDNodeKeyImpl<MDScoutCompositeType> {
+    unsigned Tag;
+    StringRef Name;
+    Metadata *File;
+    unsigned Line;
+    Metadata *Scope;
+    Metadata *BaseType;
+    uint64_t SizeInBits;
+    uint64_t AlignInBits;
+    uint64_t OffsetInBits;
+    unsigned Flags;
+    Metadata *Elements;
+    unsigned RuntimeLang;
+    Metadata *VTableHolder;
+    Metadata *TemplateParams;
+    StringRef Identifier;
+    
+    MDNodeKeyImpl(unsigned Tag, StringRef Name, Metadata *File, unsigned Line,
+                  Metadata *Scope, Metadata *BaseType, uint64_t SizeInBits,
+                  uint64_t AlignInBits, uint64_t OffsetInBits, unsigned Flags,
+                  Metadata *Elements, unsigned RuntimeLang,
+                  Metadata *VTableHolder, Metadata *TemplateParams,
+                  StringRef Identifier)
+    : Tag(Tag), Name(Name), File(File), Line(Line), Scope(Scope),
+    BaseType(BaseType), SizeInBits(SizeInBits), AlignInBits(AlignInBits),
+    OffsetInBits(OffsetInBits), Flags(Flags), Elements(Elements),
+    RuntimeLang(RuntimeLang), VTableHolder(VTableHolder),
+    TemplateParams(TemplateParams), Identifier(Identifier) {}
+    MDNodeKeyImpl(const MDScoutCompositeType *N)
+    : Tag(N->getTag()), Name(N->getName()), File(N->getFile()),
+    Line(N->getLine()), Scope(N->getScope()), BaseType(N->getBaseType()),
+    SizeInBits(N->getSizeInBits()), AlignInBits(N->getAlignInBits()),
+    OffsetInBits(N->getOffsetInBits()), Flags(N->getFlags()),
+    Elements(N->getElements()), RuntimeLang(N->getRuntimeLang()),
+    VTableHolder(N->getVTableHolder()),
+    TemplateParams(N->getTemplateParams()), Identifier(N->getIdentifier()) {
+    }
+    
+    bool isKeyOf(const MDScoutCompositeType *RHS) const {
+      return Tag == RHS->getTag() && Name == RHS->getName() &&
+      File == RHS->getFile() && Line == RHS->getLine() &&
+      Scope == RHS->getScope() && BaseType == RHS->getBaseType() &&
+      SizeInBits == RHS->getSizeInBits() &&
+      AlignInBits == RHS->getAlignInBits() &&
+      OffsetInBits == RHS->getOffsetInBits() && Flags == RHS->getFlags() &&
+      Elements == RHS->getElements() &&
+      RuntimeLang == RHS->getRuntimeLang() &&
+      VTableHolder == RHS->getVTableHolder() &&
+      TemplateParams == RHS->getTemplateParams() &&
+      Identifier == RHS->getIdentifier();
+    }
+    unsigned getHashValue() const {
+      return hash_combine(Tag, Name, File, Line, Scope, BaseType, SizeInBits,
+                          AlignInBits, OffsetInBits, Flags, Elements, RuntimeLang,
+                          VTableHolder, TemplateParams, Identifier);
+    }
+};
+
+// +==================================================================
+  
 template <> struct MDNodeKeyImpl<MDSubroutineType> {
   unsigned Flags;
   Metadata *TypeArray;

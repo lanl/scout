@@ -40,9 +40,10 @@
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "Plugins/Process/gdb-remote/GDBRemoteCommunicationServerLLGS.h"
 #include "Plugins/Process/gdb-remote/ProcessGDBRemoteLog.h"
+#include "Plugins/Process/Linux/NativeProcessLinux.h"
 
 #ifndef LLGS_PROGRAM_NAME
-#define LLGS_PROGRAM_NAME "lldb-gdbserver"
+#define LLGS_PROGRAM_NAME "lldb-server"
 #endif
 
 #ifndef LLGS_VERSION_STR
@@ -98,9 +99,9 @@ signal_handler(int signo)
 {
     Log *log (GetLogIfAnyCategoriesSet(LIBLLDB_LOG_PROCESS));
 
-    fprintf (stderr, "lldb-gdbserver:%s received signal %d\n", __FUNCTION__, signo);
+    fprintf (stderr, "lldb-server:%s received signal %d\n", __FUNCTION__, signo);
     if (log)
-        log->Printf ("lldb-gdbserver:%s received signal %d", __FUNCTION__, signo);
+        log->Printf ("lldb-server:%s received signal %d", __FUNCTION__, signo);
 
     switch (signo)
     {
@@ -112,7 +113,7 @@ signal_handler(int signo)
 
         // For now, swallow SIGHUP.
         if (log)
-            log->Printf ("lldb-gdbserver:%s swallowing SIGHUP (receive count=%d)", __FUNCTION__, g_sighup_received_count);
+            log->Printf ("lldb-server:%s swallowing SIGHUP (receive count=%d)", __FUNCTION__, g_sighup_received_count);
         signal (SIGHUP, signal_handler);
         break;
     }
@@ -481,17 +482,30 @@ ConnectToRemote (GDBRemoteCommunicationServerLLGS &gdb_server, bool reverse_conn
     }
 }
 
-//----------------------------------------------------------------------
-// main
-//----------------------------------------------------------------------
-int
-main_gdbserver (int argc, char *argv[])
+static void
+initialize ()
 {
 #ifndef _WIN32
     // Setup signal handlers first thing.
     signal (SIGPIPE, signal_handler);
     signal (SIGHUP, signal_handler);
 #endif
+
+#if defined (__linux__)
+    //----------------------------------------------------------------------
+    // Linux hosted plugins
+    //----------------------------------------------------------------------
+    NativeProcessLinux::Initialize();
+#endif
+}
+
+//----------------------------------------------------------------------
+// main
+//----------------------------------------------------------------------
+int
+main_gdbserver (int argc, char *argv[])
+{
+    initialize ();
 
     const char *progname = argv[0];
     const char *subcommand = argv[1];
@@ -506,8 +520,6 @@ main_gdbserver (int argc, char *argv[])
     std::string attach_target;
     std::string named_pipe_path;
     bool reverse_connect = false;
-
-    Debugger::Initialize (NULL);
 
     lldb::DebuggerSP debugger_sp = Debugger::CreateInstance ();
 
@@ -646,7 +658,7 @@ main_gdbserver (int argc, char *argv[])
     Log *log(lldb_private::GetLogIfAnyCategoriesSet (GDBR_LOG_VERBOSE));
     if (log)
     {
-        log->Printf ("lldb-gdbserver launch");
+        log->Printf ("lldb-server launch");
         for (int i = 0; i < argc; i++)
         {
             log->Printf ("argv[%i] = '%s'", i, argv[i]);
@@ -689,9 +701,7 @@ main_gdbserver (int argc, char *argv[])
 
     ConnectToRemote (gdb_server, reverse_connect, host_and_port, progname, subcommand, named_pipe_path.c_str ());
 
-    Debugger::Terminate ();
-
-    fprintf(stderr, "lldb-gdbserver exiting...\n");
+    fprintf(stderr, "lldb-server exiting...\n");
 
     return 0;
 }

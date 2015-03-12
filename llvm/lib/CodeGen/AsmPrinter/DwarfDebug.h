@@ -35,6 +35,10 @@
 #include "llvm/Support/Allocator.h"
 #include <memory>
 
+// +===== Scout ======================================
+#include "llvm/IR/Scout/DebugInfo.h"
+// +==================================================
+
 namespace llvm {
 
 class AsmPrinter;
@@ -267,7 +271,12 @@ class DwarfDebug : public AsmPrinterHandler {
 
   SmallVector<std::pair<std::unique_ptr<DwarfTypeUnit>, DICompositeType>, 1>
       TypeUnitsUnderConstruction;
-
+  
+  // +===== Scout ===========================================
+  SmallVector<std::pair<std::unique_ptr<DwarfTypeUnit>, DIScoutCompositeType>, 1>
+  ScoutTypeUnitsUnderConstruction;
+  // +=======================================================
+  
   // Whether to emit the pubnames/pubtypes sections.
   bool HasDwarfPubSections;
 
@@ -519,6 +528,11 @@ public:
   /// type units.
   void addDwarfTypeUnitType(DwarfCompileUnit &CU, StringRef Identifier,
                             DIE &Die, DICompositeType CTy);
+  
+  // +===== Scout =============================================
+  void addDwarfTypeUnitType(DwarfCompileUnit &CU, StringRef Identifier,
+                            DIE &Die, DIScoutCompositeType CTy);
+  // +=========================================================
 
   /// \brief Add a label so that arange data can be generated for it.
   void addArangeLabel(SymbolCU SCU) { ArangeLabels.push_back(SCU); }

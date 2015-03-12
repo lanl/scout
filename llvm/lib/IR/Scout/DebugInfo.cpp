@@ -69,17 +69,3 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 using namespace llvm::dwarf;
-
-bool DIDescriptor::isScoutCompositeType() const {
-  if (!DbgNode)
-    return false;
-  switch (getTag()) {
-  case dwarf::DW_TAG_SCOUT_uniform_mesh_type:
-  case dwarf::DW_TAG_SCOUT_structured_mesh_type:
-  case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
-  case dwarf::DW_TAG_SCOUT_unstructured_mesh_type:
-    return true;
-  default:
-    return false;
-  }
-}

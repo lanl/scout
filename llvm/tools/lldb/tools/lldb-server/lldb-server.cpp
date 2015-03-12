@@ -7,6 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "lldb/Core/Debugger.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -24,6 +26,18 @@ display_usage (const char *progname)
 int main_gdbserver (int argc, char *argv[]);
 int main_platform (int argc, char *argv[]);
 
+static void
+initialize ()
+{
+    lldb_private::Debugger::InitializeForLLGS(NULL);
+}
+
+static void
+terminate ()
+{
+    lldb_private::Debugger::Terminate();
+}
+
 //----------------------------------------------------------------------
 // main
 //----------------------------------------------------------------------
@@ -39,11 +53,15 @@ main (int argc, char *argv[])
     }
     else if (argv[1][0] == 'g')
     {
+        initialize();
         main_gdbserver(argc, argv);
+        terminate();
     }
     else if (argv[1][0] == 'p')
     {
+        initialize();
         main_platform(argc, argv);
+        terminate();
     }
     else {
         display_usage(progname);

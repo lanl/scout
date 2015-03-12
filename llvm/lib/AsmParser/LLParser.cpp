@@ -3450,6 +3450,16 @@ bool LLParser::ParseMDCompositeType(MDNode *&Result, bool IsDistinct) {
   return false;
 }
 
+// +====== Scout ==============================================
+bool LLParser::ParseMDScoutDerivedType(MDNode *&Result, bool IsDistinct) {
+  assert(false && "unimplemented");
+}
+
+bool LLParser::ParseMDScoutCompositeType(MDNode *&Result, bool IsDistinct) {
+  assert(false && "unimplemented");
+}
+// +========================================================
+
 bool LLParser::ParseMDSubroutineType(MDNode *&Result, bool IsDistinct) {
 #define VISIT_MD_FIELDS(OPTIONAL, REQUIRED)                                    \
   OPTIONAL(flags, DIFlagField, );                                              \

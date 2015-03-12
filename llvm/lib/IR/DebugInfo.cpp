@@ -308,6 +308,22 @@ bool DIDerivedType::Verify() const {
   return isTypeRef(N->getBaseType());
 }
 
+// +===== Scout ======================================
+bool DIScoutDerivedType::Verify() const {
+  auto *N = getRaw();
+  if (!N)
+    return false;
+  if (getTag() == dwarf::DW_TAG_ptr_to_member_type) {
+    auto *D = dyn_cast<MDScoutDerivedType>(N);
+    if (!D)
+      return false;
+    if (!isTypeRef(D->getExtraData()))
+      return false;
+  }
+  return isTypeRef(N->getBaseType());
+}
+// +=================================================
+
 bool DICompositeType::Verify() const {
   auto *N = getRaw();
   return N && isTypeRef(N->getBaseType()) && isTypeRef(N->getVTableHolder()) &&
@@ -425,6 +441,17 @@ void DICompositeType::setArraysHelper(MDNode *Elements, MDNode *TParams) {
     N->replaceTemplateParams(cast<MDTuple>(TParams));
   DbgNode = N;
 }
+
+// +===== Scout ========================================
+void DIScoutCompositeType::setArraysHelper(MDNode *Elements, MDNode *TParams) {
+  TypedTrackingMDRef<MDCompositeTypeBase> N(getRaw());
+  if (Elements)
+    N->replaceElements(cast<MDTuple>(Elements));
+  if (TParams)
+    N->replaceTemplateParams(cast<MDTuple>(TParams));
+  DbgNode = N;
+}
+// +====================================================
 
 DIScopeRef DIScope::getRef() const {
   if (!isCompositeType())

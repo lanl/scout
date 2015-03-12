@@ -269,10 +269,14 @@ class _LocalProcess(_BaseProcess):
         if self._proc.poll() == None:
             self._proc.terminate()
 
+    def poll(self):
+        return self._proc.poll()
+
 class _RemoteProcess(_BaseProcess):
 
-    def __init__(self):
+    def __init__(self, install_remote):
         self._pid = None
+        self._install_remote = install_remote
 
     @property
     def pid(self):
@@ -280,14 +284,18 @@ class _RemoteProcess(_BaseProcess):
 
     def launch(self, executable, args):
         remote_work_dir = lldb.remote_platform.GetWorkingDirectory()
-        src_path = executable
-        dst_path = os.path.join(remote_work_dir, os.path.basename(executable))
 
-        dst_file_spec = lldb.SBFileSpec(dst_path, False)
-        err = lldb.remote_platform.Install(lldb.SBFileSpec(src_path, True),
-                                           dst_file_spec)
-        if err.Fail():
-            raise Exception("remote_platform.Install('%s', '%s') failed: %s" % (src_path, dst_path, err))
+        if self._install_remote:
+            src_path = executable
+            dst_path = os.path.join(remote_work_dir, os.path.basename(executable))
+
+            dst_file_spec = lldb.SBFileSpec(dst_path, False)
+            err = lldb.remote_platform.Install(lldb.SBFileSpec(src_path, True), dst_file_spec)
+            if err.Fail():
+                raise Exception("remote_platform.Install('%s', '%s') failed: %s" % (src_path, dst_path, err))
+        else:
+            dst_path = executable
+            dst_file_spec = lldb.SBFileSpec(executable, False)
 
         launch_info = lldb.SBLaunchInfo(args)
         launch_info.SetExecutableFile(dst_file_spec, True)
@@ -303,9 +311,7 @@ class _RemoteProcess(_BaseProcess):
         self._pid = launch_info.GetProcessID()
 
     def terminate(self):
-        err = lldb.remote_platform.Kill(self._pid)
-        if err.Fail():
-            raise Exception("remote_platform.Kill(%d) failed: %s" % (self._pid, err))
+        lldb.remote_platform.Kill(self._pid)
 
 # From 2.7's subprocess.check_output() convenience function.
 # Return a tuple (stdoutdata, stderrdata).
@@ -494,7 +500,7 @@ def debugserver_test(func):
     return wrapper
 
 def llgs_test(func):
-    """Decorate the item as a lldb-gdbserver test."""
+    """Decorate the item as a lldb-server test."""
     if isinstance(func, type) and issubclass(func, unittest2.TestCase):
         raise Exception("@llgs_test can only be used to decorate a test method")
     @wraps(func)
@@ -595,7 +601,11 @@ def expectedFailureWindows(bugnumber=None, compilers=None):
 
 def expectedFailureLLGS(bugnumber=None, compilers=None):
     def fn(self):
-        return 'PLATFORM_LINUX_FORCE_LLGS_LOCAL' in os.environ and self.expectedCompiler(compilers)
+        # llgs local is only an option on Linux systems
+        if 'linux' not in sys.platform:
+            return False
+        self.runCmd('settings show platform.plugin.linux.use-llgs-for-local')
+        return 'true' in self.res.GetOutput() and self.expectedCompiler(compilers)
     if bugnumber: return expectedFailure(fn, bugnumber)
 
 def skipIfRemote(func):
@@ -1043,7 +1053,7 @@ class Base(unittest2.TestCase):
             if os.path.exists("/proc/" + str(pid)):
                 os.kill(pid, signal.SIGTERM)
 
-    def spawnSubprocess(self, executable, args=[]):
+    def spawnSubprocess(self, executable, args=[], install_remote=True):
         """ Creates a subprocess.Popen object with the specified executable and arguments,
             saves it in self.subprocesses, and returns the object.
             NOTE: if using this function, ensure you also call:
@@ -1052,7 +1062,7 @@ class Base(unittest2.TestCase):
 
             otherwise the test suite will leak processes.
         """
-        proc = _RemoteProcess() if lldb.remote_platform else _LocalProcess(self.TraceOn())
+        proc = _RemoteProcess(install_remote) if lldb.remote_platform else _LocalProcess(self.TraceOn())
         proc.launch(executable, args)
         self.subprocesses.append(proc)
         return proc

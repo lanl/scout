@@ -40,6 +40,7 @@
 #include "lldb/Host/ThreadLauncher.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Host/common/NativeRegisterContext.h"
+#include "lldb/Target/Process.h"
 #include "lldb/Target/ProcessLaunchInfo.h"
 #include "lldb/Utility/PseudoTerminal.h"
 
@@ -123,7 +124,8 @@
 
 // Try to define a macro to encapsulate the tgkill syscall
 // fall back on kill() if tgkill isn't available
-#define tgkill(pid, tid, sig)  syscall(SYS_tgkill, pid, tid, sig)
+#define tgkill(pid, tid, sig) \
+    syscall(SYS_tgkill, static_cast<::pid_t>(pid), static_cast<::pid_t>(tid), sig)
 
 // We disable the tracing of ptrace calls for integration builds to
 // avoid the additional indirection and checks.
@@ -140,6 +142,8 @@ namespace
 {
     using namespace lldb;
     using namespace lldb_private;
+
+    static void * const EXIT_OPERATION = nullptr;
 
     const UnixSignals&
     GetUnixSignals ()
@@ -178,7 +182,7 @@ namespace
 
         // Resolve the executable module.
         ModuleSP exe_module_sp;
-        ModuleSpec exe_module_spec(process_info.GetExecutableFile(), platform.GetSystemArchitecture ());
+        ModuleSpec exe_module_spec(process_info.GetExecutableFile(), process_info.GetArchitecture());
         FileSpecList executable_search_paths (Target::GetDefaultExecutableSearchPaths ());
         Error error = platform.ResolveExecutable(
             exe_module_spec,
@@ -1121,6 +1125,27 @@ NativeProcessLinux::AttachArgs::~AttachArgs()
 // Public Static Methods
 // -----------------------------------------------------------------------------
 
+void
+NativeProcessLinux::Initialize()
+{
+    static ConstString g_name("linux");
+    static bool g_initialized = false;
+
+    if (!g_initialized)
+    {
+        g_initialized = true;
+
+        Log::Callbacks log_callbacks = {
+            ProcessPOSIXLog::DisableLog,
+            ProcessPOSIXLog::EnableLog,
+            ProcessPOSIXLog::ListLogCategories
+        };
+
+        Log::RegisterLogChannel (g_name, log_callbacks);
+        ProcessPOSIXLog::RegisterPluginName (g_name);
+    }
+}
+
 lldb_private::Error
 NativeProcessLinux::LaunchProcess (
     lldb_private::Module *exe_module,
@@ -1393,7 +1418,7 @@ NativeProcessLinux::AttachToInferior (lldb::pid_t pid, lldb_private::Error &erro
     // Resolve the executable module
     ModuleSP exe_module_sp;
     FileSpecList executable_search_paths (Target::GetDefaultExecutableSearchPaths());
-    ModuleSpec exe_module_spec(process_info.GetExecutableFile(), HostInfo::GetArchitecture());
+    ModuleSpec exe_module_spec(process_info.GetExecutableFile(), process_info.GetArchitecture());
     error = platform_sp->ResolveExecutable(exe_module_spec, exe_module_sp,
                                            executable_search_paths.GetSize() ? &executable_search_paths : NULL);
     if (!error.Success())
@@ -3369,6 +3394,12 @@ NativeProcessLinux::ServeOperation(OperationArgs *args)
             assert(false && "Unexpected errno from sem_wait");
         }
 
+        // EXIT_OPERATION used to stop the operation thread because Cancel() isn't supported on
+        // android. We don't have to send a post to the m_operation_done semaphore because in this
+        // case the synchronization is achieved by a Join() call
+        if (monitor->m_operation == EXIT_OPERATION)
+            break;
+
         reinterpret_cast<Operation*>(monitor->m_operation)->Execute(monitor);
 
         // notify calling thread that operation is complete
@@ -3385,6 +3416,11 @@ NativeProcessLinux::DoOperation(void *op)
 
     // notify operation thread that an operation is ready to be processed
     sem_post(&m_operation_pending);
+
+    // Don't wait for the operation to complete in case of an exit operation. The operation thread
+    // will exit without posting to the semaphore
+    if (m_operation == EXIT_OPERATION)
+        return;
 
     // wait for operation to complete
     while (sem_wait(&m_operation_done))
@@ -3555,8 +3591,8 @@ void
 NativeProcessLinux::StopMonitor()
 {
     StopMonitoringChildProcess();
-    StopOpThread();
     StopCoordinatorThread ();
+    StopOpThread();
     sem_destroy(&m_operation_pending);
     sem_destroy(&m_operation_done);
 
@@ -3573,7 +3609,7 @@ NativeProcessLinux::StopOpThread()
     if (!m_operation_thread.IsJoinable())
         return;
 
-    m_operation_thread.Cancel();
+    DoOperation(EXIT_OPERATION);
     m_operation_thread.Join(nullptr);
 }
 

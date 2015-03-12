@@ -1447,6 +1447,14 @@ static void writeMDDerivedType(raw_ostream &Out, const MDDerivedType *N,
   Out << ")";
 }
 
+// +===== Scout ===========================================
+  static void writeMDScoutDerivedType(raw_ostream &Out, const MDScoutDerivedType *N,
+                                      TypePrinting *TypePrinter, SlotTracker *Machine,
+                                      const Module *Context) {
+    assert(false && "unimplemented");
+  }
+// +=======================================================
+  
 static void writeMDCompositeType(raw_ostream &Out, const MDCompositeType *N,
                                  TypePrinting *TypePrinter,
                                  SlotTracker *Machine, const Module *Context) {
@@ -1506,7 +1514,16 @@ static void writeMDCompositeType(raw_ostream &Out, const MDCompositeType *N,
   writeStringField(Out, FS, "identifier", N->getIdentifier());
   Out << ")";
 }
-
+  
+// +===== Scout ===========================================
+static void writeMDScoutCompositeType(raw_ostream &Out,
+                                      const MDScoutCompositeType *N,
+                                      TypePrinting *TypePrinter,
+                                      SlotTracker *Machine, const Module *Context) {
+  assert(false && "unimplemented");
+}
+// +=======================================================
+  
 static void writeMDSubroutineType(raw_ostream &Out, const MDSubroutineType *N,
                                   TypePrinting *TypePrinter,
                                   SlotTracker *Machine, const Module *Context) {

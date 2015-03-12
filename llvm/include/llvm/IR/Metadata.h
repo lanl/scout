@@ -66,6 +66,10 @@ public:
     MDBasicTypeKind,
     MDDerivedTypeKind,
     MDCompositeTypeKind,
+    // +===== Scout =============================
+    MDScoutDerivedTypeKind,
+    MDScoutCompositeTypeKind,
+    // +=========================================
     MDSubroutineTypeKind,
     MDFileKind,
     MDCompileUnitKind,

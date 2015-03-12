@@ -811,6 +811,24 @@ DIE *DwarfUnit::createTypeDIE(DICompositeType Ty) {
   return &TyDIE;
 }
 
+// +===== Scout =======================================
+DIE *DwarfUnit::createTypeDIE(DIScoutCompositeType Ty) {
+  DIScope Context = resolve(Ty.getContext());
+  DIE *ContextDIE = getOrCreateContextDIE(Context);
+  
+  if (DIE *TyDIE = getDIE(Ty))
+    return TyDIE;
+  
+  // Create new type.
+  DIE &TyDIE = createAndAddDIE(Ty.getTag(), *ContextDIE, Ty);
+  
+  constructTypeDIE(TyDIE, Ty);
+  
+  updateAcceleratorTables(Context, Ty, TyDIE);
+  return &TyDIE;
+}
+// +==================================================
+
 /// getOrCreateTypeDIE - Find existing DIE or create new DIE for the
 /// given DIType.
 DIE *DwarfUnit::getOrCreateTypeDIE(const MDNode *TyNode) {
@@ -1060,21 +1078,6 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, DICompositeType CTy) {
     if (CTy.isRValueReference())
       addFlag(Buffer, dwarf::DW_AT_rvalue_reference);
   } break;
-  // +===== Scout ==============================
-  case dwarf::DW_TAG_SCOUT_uniform_mesh_type:
-  case dwarf::DW_TAG_SCOUT_structured_mesh_type:
-  case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
-  case dwarf::DW_TAG_SCOUT_unstructured_mesh_type: {
-    // Add elements to mesh type.
-    DIArray Elements = CTy.getElements();
-    for (unsigned i = 0, N = Elements.getNumElements(); i < N; ++i) {
-      DIDescriptor Element = Elements.getElement(i);
-      DIScoutDerivedType DSDTy(Element);
-      constructMeshMemberDIE(Buffer, DSDTy);
-    }
-    break;
-  }
-  // +==========================================
   case dwarf::DW_TAG_structure_type:
   case dwarf::DW_TAG_union_type:
   case dwarf::DW_TAG_class_type: {
@@ -1190,6 +1193,39 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, DICompositeType CTy) {
               RLang);
   }
 }
+
+// +===== Scout ========================================================
+
+/// constructTypeDIE - Construct type DIE from DICompositeType.
+void DwarfUnit::constructTypeDIE(DIE &Buffer, DIScoutCompositeType CTy) {
+  // Add name if not anonymous or intermediate type.
+  StringRef Name = CTy.getName();
+  
+  uint64_t Size = CTy.getSizeInBits() >> 3;
+  uint16_t Tag = Buffer.getTag();
+  
+  switch (Tag) {
+    case dwarf::DW_TAG_SCOUT_uniform_mesh_type:
+    case dwarf::DW_TAG_SCOUT_structured_mesh_type:
+    case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
+    case dwarf::DW_TAG_SCOUT_unstructured_mesh_type: {
+      // Add elements to mesh type.
+      DIArray Elements = CTy.getElements();
+      for (unsigned i = 0, N = Elements.getNumElements(); i < N; ++i) {
+        DIDescriptor Element = Elements.getElement(i);
+        DIScoutDerivedType DSDTy(Element);
+        constructMeshMemberDIE(Buffer, DSDTy);
+      }
+      break;
+    }
+  }
+  
+  // Add name if not anonymous or intermediate type.
+  if (!Name.empty())
+    addString(Buffer, dwarf::DW_AT_name, Name);
+}
+
+// +=======================================================
 
 /// constructTemplateTypeParameterDIE - Construct new DIE for the given
 /// DITemplateTypeParameter.

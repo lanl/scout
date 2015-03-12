@@ -70,8 +70,14 @@ HANDLE_SPECIALIZED_MDNODE_BRANCH(MDType)
 HANDLE_SPECIALIZED_MDNODE_LEAF(MDBasicType)
 HANDLE_SPECIALIZED_MDNODE_BRANCH(MDDerivedTypeBase)
 HANDLE_SPECIALIZED_MDNODE_LEAF(MDDerivedType)
+// +===== Scout =======================================
+HANDLE_SPECIALIZED_MDNODE_LEAF(MDScoutDerivedType)
+// +===================================================
 HANDLE_SPECIALIZED_MDNODE_BRANCH(MDCompositeTypeBase)
 HANDLE_SPECIALIZED_MDNODE_LEAF(MDCompositeType)
+// +===== Scout =======================================
+HANDLE_SPECIALIZED_MDNODE_LEAF(MDScoutCompositeType)
+// +===================================================
 HANDLE_SPECIALIZED_MDNODE_LEAF(MDSubroutineType)
 HANDLE_SPECIALIZED_MDNODE_LEAF(MDFile)
 HANDLE_SPECIALIZED_MDNODE_LEAF(MDCompileUnit)

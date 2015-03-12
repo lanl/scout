@@ -691,6 +691,33 @@ void Verifier::visitMDCompositeType(const MDCompositeType &N) {
          "invalid tag", &N);
 }
 
+// +===== Scout =================================================
+
+void Verifier::visitMDScoutDerivedType(const MDScoutDerivedType &N) {
+  Assert(N.getTag() == dwarf::DW_TAG_typedef ||
+         N.getTag() == dwarf::DW_TAG_pointer_type ||
+         N.getTag() == dwarf::DW_TAG_ptr_to_member_type ||
+         N.getTag() == dwarf::DW_TAG_reference_type ||
+         N.getTag() == dwarf::DW_TAG_rvalue_reference_type ||
+         N.getTag() == dwarf::DW_TAG_const_type ||
+         N.getTag() == dwarf::DW_TAG_volatile_type ||
+         N.getTag() == dwarf::DW_TAG_restrict_type ||
+         N.getTag() == dwarf::DW_TAG_member ||
+         N.getTag() == dwarf::DW_TAG_inheritance ||
+         N.getTag() == dwarf::DW_TAG_friend,
+         "invalid tag", &N);
+}
+
+void Verifier::visitMDScoutCompositeType(const MDScoutCompositeType &N) {
+  Assert(N.getTag() == dwarf::DW_TAG_SCOUT_uniform_mesh_type ||
+         N.getTag() == dwarf::DW_TAG_SCOUT_structured_mesh_type ||
+         N.getTag() == dwarf::DW_TAG_SCOUT_rectilinear_mesh_type ||
+         N.getTag() == dwarf::DW_TAG_SCOUT_unstructured_mesh_type,
+         "invalid tag", &N);
+}
+
+// +============================================================
+
 void Verifier::visitMDSubroutineType(const MDSubroutineType &N) {
   Assert(N.getTag() == dwarf::DW_TAG_subroutine_type, "invalid tag", &N);
 }

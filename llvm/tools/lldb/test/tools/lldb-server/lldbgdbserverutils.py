@@ -1,4 +1,4 @@
-"""Module for supporting unit testing of the lldb-gdbserver debug monitor exe.
+"""Module for supporting unit testing of the lldb-server debug monitor exe.
 """
 
 import os
@@ -9,6 +9,7 @@ import re
 import socket_packet_pump
 import subprocess
 import time
+from lldbtest import *
 
 def _get_debug_monitor_from_lldb(lldb_exe, debug_monitor_basename):
     """Return the debug monitor exe path given the lldb exe path.
@@ -49,8 +50,8 @@ def _get_debug_monitor_from_lldb(lldb_exe, debug_monitor_basename):
         return None
 
 
-def get_lldb_gdbserver_exe():
-    """Return the lldb-gdbserver exe path.
+def get_lldb_server_exe():
+    """Return the lldb-server exe path.
 
     Returns:
         A path to the lldb-gdbserver exe if it is found to exist; otherwise,
@@ -86,7 +87,7 @@ def get_debugserver_exe():
         return None
 
 
-_LOG_LINE_REGEX = re.compile(r'^(lldb-gdbserver|debugserver)\s+<\s*(\d+)>' +
+_LOG_LINE_REGEX = re.compile(r'^(lldb-server|debugserver)\s+<\s*(\d+)>' +
     '\s+(read|send)\s+packet:\s+(.+)$')
 
 
@@ -808,12 +809,16 @@ def process_is_running(pid, unknown_value=True):
         If we don't know how to check running process ids on the given OS:
         return the value provided by the unknown_value arg.
     """
-    if type(pid) != int:
-        raise Exception("pid must be of type int")
+    if type(pid) not in [int, long]:
+        raise Exception("pid must be of type int (actual type: %s)" % str(type(pid)))
 
     process_ids = []
 
-    if platform.system() in ['Darwin', 'Linux', 'FreeBSD', 'NetBSD']:
+    if lldb.remote_platform:
+        # Don't know how to get list of running process IDs on a remote
+        # platform
+        return unknown_value
+    elif platform.system() in ['Darwin', 'Linux', 'FreeBSD', 'NetBSD']:
         # Build the list of running process ids
         output = subprocess.check_output("ps ax | awk '{ print $1; }'", shell=True)
         text_process_ids = output.split('\n')[1:]
@@ -831,8 +836,8 @@ def process_is_running(pid, unknown_value=True):
     return pid in process_ids
 
 if __name__ == '__main__':
-    EXE_PATH = get_lldb_gdbserver_exe()
+    EXE_PATH = get_lldb_server_exe()
     if EXE_PATH:
-        print "lldb-gdbserver path detected: {}".format(EXE_PATH)
+        print "lldb-server path detected: {}".format(EXE_PATH)
     else:
-        print "lldb-gdbserver could not be found"
+        print "lldb-server could not be found"

@@ -277,7 +277,7 @@ llvm::DIType CGDebugInfo::CreateType(const UniformMeshType *Ty) {
   // complete when in limit-debug-info mode.  If the type is later
   // found to be required to be complete this declaration will be
   // upgraded to a definition by 'completeRequiredType'.
-  llvm::DICompositeType T(getTypeOrNull(QualType(Ty, 0)));
+  llvm::DIScoutCompositeType T(getTypeOrNull(QualType(Ty, 0)));
 
   // If we're already emitted the type just use that, even if it is only a
   // declaration.  The completeType(), completeRequiredType(), and
@@ -340,7 +340,7 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
 }
 
 // TODO: Currently used for context chains when limiting debug info.
-llvm::DICompositeType
+llvm::DIScoutCompositeType
 CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
   UniformMeshDecl *MD = Ty->getDecl();
 
@@ -361,7 +361,7 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
   // destined for completion (might still have an issue if this caller only
   // required a declaration but the context construction ended up creating a
   // definition)
-  llvm::DICompositeType T(
+  llvm::DIScoutCompositeType T(
       getTypeOrNull(CGM.getContext().getUniformMeshType(MD)));
   if (T && (!T.isForwardDecl() || !MD->getDefinition()))
       return T;
@@ -373,7 +373,7 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
 
   uint64_t Size = CGM.getContext().getTypeSize(Ty);
   uint64_t Align = CGM.getContext().getTypeAlign(Ty);
-  llvm::DICompositeType RealDecl;
+  llvm::DIScoutCompositeType RealDecl;
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
@@ -412,12 +412,12 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
 }
 
 // Creates a forward declaration for a uniform mesh the given context.
-llvm::DICompositeType
+llvm::DIScoutCompositeType
 CGDebugInfo::getOrCreateMeshFwdDecl(const UniformMeshType *Ty,
                                     llvm::DIDescriptor Ctx) {
   const UniformMeshDecl *MD = Ty->getDecl();
   if (llvm::DIType T = getTypeOrNull(CGM.getContext().getUniformMeshType(MD)))
-    return llvm::DICompositeType(T);
+    return llvm::DIScoutCompositeType(T);
 
   llvm::DIFile DefUnit = getOrCreateFile(MD->getLocation());
   unsigned Line = getLineNumber(MD->getLocation());
@@ -427,8 +427,8 @@ CGDebugInfo::getOrCreateMeshFwdDecl(const UniformMeshType *Ty,
 
   // Create the type.
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
-  return DBuilder.createForwardDecl(Tag, MDName, Ctx, DefUnit, Line, 0, 0, 0,
-                                    FullName);
+  return DBuilder.createScoutForwardDecl(Tag, MDName, Ctx, DefUnit, Line, 0, 0, 0,
+                                         FullName);
 }
 
 /// getOrCreateLimitedType - Get the type from the cache or create a new
@@ -445,7 +445,7 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const UniformMeshType *Ty,
   if (T && !T.isForwardDecl()) return T;
 
   // Otherwise create the type.
-  llvm::DICompositeType Res = CreateLimitedType(Ty);
+  llvm::DIScoutCompositeType Res = CreateLimitedType(Ty);
 
   // Propagate members from the declaration to the definition
   // CreateType(const MeshType*) will overwrite this with the members in the
@@ -465,192 +465,34 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const UniformMeshType *Ty,
 // ------ CreateType
 //
 llvm::DIType CGDebugInfo::CreateType(const RectilinearMeshType *Ty) {
-
-  RectilinearMeshDecl *MD = Ty->getDecl();
-
-  // Always emit declarations for types that aren't required to be
-  // complete when in limit-debug-info mode.  If the type is later
-  // found to be required to be complete this declaration will be
-  // upgraded to a definition by 'completeRequiredType'.
-  llvm::DICompositeType T(getTypeOrNull(QualType(Ty, 0)));
-
-  // If we're already emitted the type just use that, even if it is only a
-  // declaration.  The completeType(), completeRequiredType(), and
-  // completeClassData() callbacks will handle promoting the declaration
-  // to a definition.
-  if (T) {
-
-    llvm::DIDescriptor FDContext =
-      getContextDescriptor(cast<Decl>(MD->getDeclContext()));
-    if (!T)
-      T = getOrCreateMeshFwdDecl(Ty, FDContext);
-    return T;
-  }
-
-  return CreateTypeDefinition(Ty);
+  assert(false && "unimplemented");
 }
 
 // ------ CreateTypeDefinition
 //
 llvm::DIType CGDebugInfo::CreateTypeDefinition(const RectilinearMeshType *Ty) {
-  RectilinearMeshDecl *MD = Ty->getDecl();
-
-  // Get overall information about the mesh type for the debug info.
-  llvm::DIFile DefUnit = getOrCreateFile(MD->getLocation());
-
-  // Meshes can be recursive.  To handle them, we first generate a
-  // debug descriptor for the mesh as a forward declaration.  Then
-  // (if it is a definition) we go through and get debug information
-  // for all of its members.  Finally, we create a descriptor for the
-  // complete type (which may refer to forward decl if it is recursive)
-  // and replace all uses of the forward declaration with the final
-  // definition.
-
-  llvm::DICompositeType FwdDecl(getOrCreateLimitedType(Ty, DefUnit));
-  assert(FwdDecl.isCompositeType() &&
-    "The debug type of RectilinearMeshType should be a llvm::DICompositeType");
-
-  if (FwdDecl.isForwardDecl())
-    return FwdDecl;
-
-  // Push the mesh on region stack.
-  LexicalBlockStack.emplace_back(&*FwdDecl);
-  RegionMap[Ty->getDecl()].reset(FwdDecl);
-
-  // Convert all the elements.
-  SmallVector<llvm::Metadata *, 16> EltTys;
-  // what about nested types?
-
-  // Collect data fields (including static variables and any initializers).
-  CollectMeshFields(MD, DefUnit, EltTys, FwdDecl);
-
-  LexicalBlockStack.pop_back();
-  RegionMap.erase(Ty->getDecl());
-
-  llvm::DIArray Elements = DBuilder.getOrCreateArray(EltTys);
-  DBuilder.replaceArrays(FwdDecl, Elements);
-
-  RegionMap[Ty->getDecl()].reset(FwdDecl);
-  return FwdDecl;
+  assert(false && "unimplemented");
 }
 
 
 // TODO: Currently used for context chains when limiting debug info.
 llvm::DICompositeType
 CGDebugInfo::CreateLimitedType(const RectilinearMeshType *Ty) {
-  RectilinearMeshDecl *MD = Ty->getDecl();
-
-  // Get overall information about the mesh type for the debug info.
-  llvm::DIFile DefUnit = getOrCreateFile(MD->getLocation());
-  unsigned Line = getLineNumber(MD->getLocation());
-  StringRef MDName = MD->getName();
-
-  llvm::DIDescriptor MDContext =
-      getContextDescriptor(cast<Decl>(MD->getDeclContext()));
-
-  // If we ended up creating the type during the context chain construction,
-  // just return that.
-  // FIXME: this could be dealt with better if the type was recorded as
-  // completed before we started this (see the CompletedTypeCache usage in
-  // CGDebugInfo::CreateTypeDefinition(const MeshType*) - that would need to
-  // be pushed to before context creation, but after it was known to be
-  // destined for completion (might still have an issue if this caller only
-  // required a declaration but the context construction ended up creating a
-  // definition)
-  llvm::DICompositeType T(
-      getTypeOrNull(CGM.getContext().getRectilinearMeshType(MD)));
-  if (T && (!T.isForwardDecl() || !MD->getDefinition()))
-      return T;
-
-  // If this is just a forward declaration, construct an appropriately
-  // marked node and just return it.
-  if (!MD->getDefinition())
-    return getOrCreateMeshFwdDecl(Ty, MDContext);
-
-  uint64_t Size = CGM.getContext().getTypeSize(Ty);
-  uint64_t Align = CGM.getContext().getTypeAlign(Ty);
-  llvm::DICompositeType RealDecl;
-
-  SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
-
-  MeshType::MeshDimensions dims = Ty->dimensions();
-  unsigned dimX = 0;
-  unsigned dimY = 0;
-  unsigned dimZ = 0;
-
-  for(size_t i = 0; i < dims.size(); ++i){
-    llvm::APSInt d;
-    bool success = dims[i]->EvaluateAsInt(d, CGM.getContext());
-    assert(success && "Failed to evaluate mesh dimension");
-
-    switch(i){
-    case 0:
-      dimX = d.getLimitedValue();
-      break;
-    case 1:
-      dimY = d.getLimitedValue();
-      break;
-    case 2:
-      dimZ = d.getLimitedValue();
-      break;
-    }
-  }
-
-  RealDecl = DBuilder.createRectilinearMeshType(MDContext, MDName, DefUnit, Line,
-                                                Size, Align, 0, llvm::DIType(),
-                                                llvm::DIArray(), dimX, dimY, dimZ, 0,
-                                                llvm::DIType(), FullName);
-
-  RegionMap[Ty->getDecl()].reset(RealDecl);
-  TypeCache[QualType(Ty, 0).getAsOpaquePtr()].reset(RealDecl);
-
-  return RealDecl;
+  assert(false && "unimplemented");
 }
 
 // Creates a forward declaration for a rectilinear mesh the given context.
 llvm::DICompositeType
 CGDebugInfo::getOrCreateMeshFwdDecl(const RectilinearMeshType *Ty,
                                     llvm::DIDescriptor Ctx) {
-  const RectilinearMeshDecl *MD = Ty->getDecl();
-  if (llvm::DIType T = getTypeOrNull(CGM.getContext().getRectilinearMeshType(MD)))
-    return llvm::DICompositeType(T);
-
-  llvm::DIFile DefUnit = getOrCreateFile(MD->getLocation());
-  unsigned Line = getLineNumber(MD->getLocation());
-  StringRef MDName = MD->getName();
-
-  unsigned Tag = llvm::dwarf::DW_TAG_structure_type;
-
-  // Create the type.
-  SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
-  return DBuilder.createForwardDecl(Tag, MDName, Ctx, DefUnit, Line, 0, 0, 0,
-                                    FullName);
+  assert(false && "unimplemented");
 }
 
 /// getOrCreateLimitedType - Get the type from the cache or create a new
 /// limited type if necessary.
 llvm::DIType CGDebugInfo::getOrCreateLimitedType(const RectilinearMeshType *Ty,
                                                  llvm::DIFile Unit) {
-  QualType QTy(Ty, 0);
-
-  llvm::DICompositeType T(getTypeOrNull(QTy));
-
-  // We may have cached a forward decl when we could have created
-  // a non-forward decl. Go ahead and create a non-forward decl
-  // now.
-  if (T && !T.isForwardDecl()) return T;
-
-  // Otherwise create the type.
-  llvm::DICompositeType Res = CreateLimitedType(Ty);
-
-  // Propagate members from the declaration to the definition
-  // CreateType(const MeshType*) will overwrite this with the members in the
-  // correct order if the full type is needed.
-  DBuilder.replaceArrays(Res, T.getElements());
-
-  // And update the type cache.
-  TypeCache[QTy.getAsOpaquePtr()].reset(Res);
-  return Res;
+  assert(false && "unimplemented");
 }
 
 
@@ -661,194 +503,35 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const RectilinearMeshType *Ty,
 // ------ CreateType
 //
 llvm::DIType CGDebugInfo::CreateType(const StructuredMeshType *Ty) {
-
-  StructuredMeshDecl *MD = Ty->getDecl();
-
-  // Always emit declarations for types that aren't required to be
-  // complete when in limit-debug-info mode.  If the type is later
-  // found to be required to be complete this declaration will be
-  // upgraded to a definition by 'completeRequiredType'.
-  llvm::DICompositeType T(getTypeOrNull(QualType(Ty, 0)));
-
-  // If we're already emitted the type just use that, even if it is only a
-  // declaration.  The completeType(), completeRequiredType(), and
-  // completeClassData() callbacks will handle promoting the declaration
-  // to a definition.
-  if (T) {
-    llvm::DIDescriptor FDContext =
-      getContextDescriptor(cast<Decl>(MD->getDeclContext()));
-    if (!T)
-      T = getOrCreateMeshFwdDecl(Ty, FDContext);
-    return T;
-  }
-
-  return CreateTypeDefinition(Ty);
+  assert(false && "unimplemented");
 }
 
 
 // ------ CreateTypeDefinition
 //
 llvm::DIType CGDebugInfo::CreateTypeDefinition(const StructuredMeshType *Ty) {
-  StructuredMeshDecl *MD = Ty->getDecl();
-
-  // Get overall information about the mesh type for the debug info.
-  llvm::DIFile DefUnit = getOrCreateFile(MD->getLocation());
-
-  // Meshes can be recursive.  To handle them, we first generate a
-  // debug descriptor for the mesh as a forward declaration.  Then
-  // (if it is a definition) we go through and get debug information
-  // for all of its members.  Finally, we create a descriptor for the
-  // complete type (which may refer to forward decl if it is recursive)
-  // and replace all uses of the forward declaration with the final
-  // definition.
-
-  llvm::DICompositeType FwdDecl(getOrCreateLimitedType(Ty, DefUnit));
-  assert(FwdDecl.isCompositeType() &&
-    "The debug type of StructuredMeshType should be a llvm::DICompositeType");
-
-  if (FwdDecl.isForwardDecl())
-    return FwdDecl;
-
-  // Push the mesh on region stack.
-  LexicalBlockStack.emplace_back(&*FwdDecl);
-  RegionMap[Ty->getDecl()].reset(FwdDecl);
-
-  // Convert all the elements.
-  SmallVector<llvm::Metadata *, 16> EltTys;
-  // what about nested types?
-
-  // Collect data fields (including static variables and any initializers).
-  CollectMeshFields(MD, DefUnit, EltTys, FwdDecl);
-
-  LexicalBlockStack.pop_back();
-  RegionMap.erase(Ty->getDecl());
-
-  llvm::DIArray Elements = DBuilder.getOrCreateArray(EltTys);
-  DBuilder.replaceArrays(FwdDecl, Elements);
-
-  RegionMap[Ty->getDecl()].reset(FwdDecl);
-  return FwdDecl;
+  assert(false && "unimplemented");
 }
 
 
 // TODO: Currently used for context chains when limiting debug info.
 llvm::DICompositeType
 CGDebugInfo::CreateLimitedType(const StructuredMeshType *Ty) {
-  StructuredMeshDecl *MD = Ty->getDecl();
-
-  // Get overall information about the mesh type for the debug info.
-  llvm::DIFile DefUnit = getOrCreateFile(MD->getLocation());
-  unsigned Line = getLineNumber(MD->getLocation());
-  StringRef MDName = MD->getName();
-
-  llvm::DIDescriptor MDContext =
-      getContextDescriptor(cast<Decl>(MD->getDeclContext()));
-
-  // If we ended up creating the type during the context chain construction,
-  // just return that.
-  // FIXME: this could be dealt with better if the type was recorded as
-  // completed before we started this (see the CompletedTypeCache usage in
-  // CGDebugInfo::CreateTypeDefinition(const MeshType*) - that would need to
-  // be pushed to before context creation, but after it was known to be
-  // destined for completion (might still have an issue if this caller only
-  // required a declaration but the context construction ended up creating a
-  // definition)
-  llvm::DICompositeType T(
-      getTypeOrNull(CGM.getContext().getStructuredMeshType(MD)));
-
-  if (T && (!T.isForwardDecl() || !MD->getDefinition()))
-      return T;
-
-  // If this is just a forward declaration, construct an appropriately
-  // marked node and just return it.
-  if (!MD->getDefinition())
-    return getOrCreateMeshFwdDecl(Ty, MDContext);
-
-  uint64_t Size = CGM.getContext().getTypeSize(Ty);
-  uint64_t Align = CGM.getContext().getTypeAlign(Ty);
-  llvm::DICompositeType RealDecl;
-
-  SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
-
-  MeshType::MeshDimensions dims = Ty->dimensions();
-  unsigned dimX = 0;
-  unsigned dimY = 0;
-  unsigned dimZ = 0;
-
-  for(size_t i = 0; i < dims.size(); ++i){
-    llvm::APSInt d;
-    bool success = dims[i]->EvaluateAsInt(d, CGM.getContext());
-    assert(success && "Failed to evaluate mesh dimension");
-
-    switch(i){
-    case 0:
-      dimX = d.getLimitedValue();
-      break;
-    case 1:
-      dimY = d.getLimitedValue();
-      break;
-    case 2:
-      dimZ = d.getLimitedValue();
-      break;
-    }
-  }
-
-  RealDecl = DBuilder.createStructuredMeshType(MDContext, MDName, DefUnit, Line,
-                                               Size, Align, 0, llvm::DIType(),
-                                               llvm::DIArray(), dimX, dimY, dimZ, 0,
-                                               llvm::DIType(), FullName);
-
-  RegionMap[Ty->getDecl()].reset(RealDecl);
-  TypeCache[QualType(Ty, 0).getAsOpaquePtr()].reset(RealDecl);
-
-  return RealDecl;
+  assert(false && "unimplemented");
 }
 
 // Creates a forward declaration for a unstructured mesh the given context.
 llvm::DICompositeType
 CGDebugInfo::getOrCreateMeshFwdDecl(const StructuredMeshType *Ty,
                                     llvm::DIDescriptor Ctx) {
-  const StructuredMeshDecl *MD = Ty->getDecl();
-  if (llvm::DIType T = getTypeOrNull(
-        CGM.getContext().getStructuredMeshType(MD)))
-    return llvm::DICompositeType(T);
-
-  llvm::DIFile DefUnit = getOrCreateFile(MD->getLocation());
-  unsigned Line = getLineNumber(MD->getLocation());
-  StringRef MDName = MD->getName();
-
-  unsigned Tag = llvm::dwarf::DW_TAG_structure_type;
-
-  // Create the type.
-  SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
-  return DBuilder.createForwardDecl(Tag, MDName, Ctx, DefUnit, Line, 0, 0, 0,
-                                    FullName);
+  assert(false && "unimplemented");
 }
 
 /// getOrCreateLimitedType - Get the type from the cache or create a new
 /// limited type if necessary.
 llvm::DIType CGDebugInfo::getOrCreateLimitedType(const StructuredMeshType *Ty,
                                                  llvm::DIFile Unit) {
-  QualType QTy(Ty, 0);
-
-  llvm::DICompositeType T(getTypeOrNull(QTy));
-
-  // We may have cached a forward decl when we could have created
-  // a non-forward decl. Go ahead and create a non-forward decl
-  // now.
-  if (T && !T.isForwardDecl()) return T;
-
-  // Otherwise create the type.
-  llvm::DICompositeType Res = CreateLimitedType(Ty);
-
-  // Propagate members from the declaration to the definition
-  // CreateType(const MeshType*) will overwrite this with the members in the
-  // correct order if the full type is needed.
-  DBuilder.replaceArrays(Res, T.getElements());
-
-  // And update the type cache.
-  TypeCache[QTy.getAsOpaquePtr()].reset(Res);
-  return Res;
+  assert(false && "unimplemented");
 }
 
 
@@ -859,100 +542,13 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const StructuredMeshType *Ty,
 // ----- CreateType
 //
 llvm::DIType CGDebugInfo::CreateType(const UnstructuredMeshType *Ty) {
-
-  UnstructuredMeshDecl *MD = Ty->getDecl();
-
-  // Always emit declarations for types that aren't required to be
-  // complete when in limit-debug-info mode.  If the type is later
-  // found to be required to be complete this declaration will be
-  // upgraded to a definition by 'completeRequiredType'.
-  llvm::DICompositeType T(getTypeOrNull(QualType(Ty, 0)));
-
-  // If we're already emitted the type just use that, even if it is only a
-  // declaration.  The completeType(), completeRequiredType(), and
-  // completeClassData() callbacks will handle promoting the declaration
-  // to a definition.
-  if (T) {
-    llvm::DIDescriptor FDContext =
-      getContextDescriptor(cast<Decl>(MD->getDeclContext()));
-    if (!T)
-      T = getOrCreateMeshFwdDecl(Ty, FDContext);
-    return T;
-  }
-
-  return CreateTypeDefinition(Ty);
+  assert(false && "unimplemented");
 }
 
 // TODO: Currently used for context chains when limiting debug info.
 llvm::DICompositeType
 CGDebugInfo::CreateLimitedType(const UnstructuredMeshType *Ty) {
-  UnstructuredMeshDecl *MD = Ty->getDecl();
-
-  // Get overall information about the mesh type for the debug info.
-  llvm::DIFile DefUnit = getOrCreateFile(MD->getLocation());
-  unsigned Line = getLineNumber(MD->getLocation());
-  StringRef MDName = MD->getName();
-
-  llvm::DIDescriptor MDContext =
-      getContextDescriptor(cast<Decl>(MD->getDeclContext()));
-
-  // If we ended up creating the type during the context chain construction,
-  // just return that.
-  // FIXME: this could be dealt with better if the type was recorded as
-  // completed before we started this (see the CompletedTypeCache usage in
-  // CGDebugInfo::CreateTypeDefinition(const MeshType*) - that would need to
-  // be pushed to before context creation, but after it was known to be
-  // destined for completion (might still have an issue if this caller only
-  // required a declaration but the context construction ended up creating a
-  // definition)
-  llvm::DICompositeType T(
-      getTypeOrNull(CGM.getContext().getUnstructuredMeshType(MD)));
-  if (T && (!T.isForwardDecl() || !MD->getDefinition()))
-      return T;
-
-  // If this is just a forward declaration, construct an appropriately
-  // marked node and just return it.
-  if (!MD->getDefinition())
-    return getOrCreateMeshFwdDecl(Ty, MDContext);
-
-  uint64_t Size = CGM.getContext().getTypeSize(Ty);
-  uint64_t Align = CGM.getContext().getTypeAlign(Ty);
-  llvm::DICompositeType RealDecl;
-
-  SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
-
-  MeshType::MeshDimensions dims = Ty->dimensions();
-  unsigned dimX = 0;
-  unsigned dimY = 0;
-  unsigned dimZ = 0;
-
-  for(size_t i = 0; i < dims.size(); ++i){
-    llvm::APSInt d;
-    bool success = dims[i]->EvaluateAsInt(d, CGM.getContext());
-    assert(success && "Failed to evaluate mesh dimension");
-
-    switch(i){
-    case 0:
-      dimX = d.getLimitedValue();
-      break;
-    case 1:
-      dimY = d.getLimitedValue();
-      break;
-    case 2:
-      dimZ = d.getLimitedValue();
-      break;
-    }
-  }
-
-  RealDecl = DBuilder.createUnstructuredMeshType(MDContext, MDName, DefUnit, Line,
-                                                 Size, Align, 0, llvm::DIType(),
-                                                 llvm::DIArray(), dimX, dimY, dimZ, 0,
-                                                 llvm::DIType(), FullName);
-
-  RegionMap[Ty->getDecl()].reset(RealDecl);
-  TypeCache[QualType(Ty, 0).getAsOpaquePtr()].reset(RealDecl);
-
-  return RealDecl;
+  assert(false && "unimplemented");
 }
 
 
@@ -960,90 +556,21 @@ CGDebugInfo::CreateLimitedType(const UnstructuredMeshType *Ty) {
 /// limited type if necessary.
 llvm::DIType CGDebugInfo::getOrCreateLimitedType(const UnstructuredMeshType *Ty,
                                                  llvm::DIFile Unit) {
-  QualType QTy(Ty, 0);
-
-  llvm::DICompositeType T(getTypeOrNull(QTy));
-
-  // We may have cached a forward decl when we could have created
-  // a non-forward decl. Go ahead and create a non-forward decl
-  // now.
-  if (T && !T.isForwardDecl()) return T;
-
-  // Otherwise create the type.
-  llvm::DICompositeType Res = CreateLimitedType(Ty);
-
-  // Propagate members from the declaration to the definition
-  // CreateType(const MeshType*) will overwrite this with the members in the
-  // correct order if the full type is needed.
-  DBuilder.replaceArrays(Res, T.getElements());
-
-  // And update the type cache.
-  TypeCache[QTy.getAsOpaquePtr()].reset(Res);
-  return Res;
+  assert(false && "unimplemented");
 }
 
 
 // ----- CreateTypeDefinition
 //
 llvm::DIType CGDebugInfo::CreateTypeDefinition(const UnstructuredMeshType *Ty) {
-  UnstructuredMeshDecl *MD = Ty->getDecl();
-
-  // Get overall information about the mesh type for the debug info.
-  llvm::DIFile DefUnit = getOrCreateFile(MD->getLocation());
-
-  // Meshes can be recursive.  To handle them, we first generate a
-  // debug descriptor for the mesh as a forward declaration.  Then
-  // (if it is a definition) we go through and get debug information
-  // for all of its members.  Finally, we create a descriptor for the
-  // complete type (which may refer to forward decl if it is recursive)
-  // and replace all uses of the forward declaration with the final
-  // definition.
-
-  llvm::DICompositeType FwdDecl(getOrCreateLimitedType(Ty, DefUnit));
-  assert(FwdDecl.isCompositeType() &&
-    "The debug type of UnstructuredMeshType should be a llvm::DICompositeType");
-
-  if (FwdDecl.isForwardDecl())
-    return FwdDecl;
-
-  // Push the mesh on region stack.
-  LexicalBlockStack.emplace_back(&*FwdDecl);
-  RegionMap[Ty->getDecl()].reset(FwdDecl);
-
-  // Convert all the elements.
-  SmallVector<llvm::Metadata *, 16> EltTys;
-  // what about nested types?
-
-  // Collect data fields (including static variables and any initializers).
-  CollectMeshFields(MD, DefUnit, EltTys, FwdDecl);
-
-  LexicalBlockStack.pop_back();
-  RegionMap.erase(Ty->getDecl());
-
-  llvm::DIArray Elements = DBuilder.getOrCreateArray(EltTys);
-  DBuilder.replaceArrays(FwdDecl, Elements);
-
-  RegionMap[Ty->getDecl()].reset(FwdDecl);
-  return FwdDecl;
+  assert(false && "unimplemented");
 }
 
 // Creates a forward declaration for a RecordDecl in the given context.
 llvm::DICompositeType
 CGDebugInfo::getOrCreateMeshFwdDecl(const UnstructuredMeshType *Ty,
                                     llvm::DIDescriptor Ctx) {
-  const UnstructuredMeshDecl *MD = Ty->getDecl();
-  if (llvm::DIType T = getTypeOrNull(
-        CGM.getContext().getUnstructuredMeshType(MD)))
-    return llvm::DICompositeType(T);
-  llvm::DIFile DefUnit = getOrCreateFile(MD->getLocation());
-  unsigned Line = getLineNumber(MD->getLocation());
-  StringRef MDName = MD->getName();
-
-  unsigned Tag = llvm::dwarf::DW_TAG_structure_type;
-  // Create the type.
-  SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
-  return DBuilder.createForwardDecl(Tag, MDName, Ctx, DefUnit, Line, 0, 0, 0,
-                                    FullName);
+  assert(false && "unimplemented");
 }
 
 

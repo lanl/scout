@@ -174,6 +174,23 @@ MDDerivedType *MDDerivedType::getImpl(
       Ops);
 }
 
+// +===== Scout ===================================================
+MDScoutDerivedType *MDScoutDerivedType::getImpl(
+    LLVMContext &Context, unsigned Tag, MDString *Name, Metadata *File,
+    unsigned Line, Metadata *Scope, Metadata *BaseType, uint64_t SizeInBits,
+    uint64_t AlignInBits, uint64_t OffsetInBits, unsigned Flags,
+    Metadata *ExtraData, StorageType Storage, bool ShouldCreate) {
+  assert(isCanonical(Name) && "Expected canonical MDString");
+  DEFINE_GETIMPL_LOOKUP(MDScoutDerivedType, (Tag, getString(Name), File, Line, Scope,
+                                        BaseType, SizeInBits, AlignInBits,
+                                        OffsetInBits, Flags, ExtraData));
+  Metadata *Ops[] = {File, Scope, Name, BaseType, ExtraData};
+  DEFINE_GETIMPL_STORE(
+                       MDScoutDerivedType, (Tag, Line, SizeInBits, AlignInBits, OffsetInBits, Flags),
+                       Ops);
+}
+// +===============================================================
+
 MDCompositeType *MDCompositeType::getImpl(
     LLVMContext &Context, unsigned Tag, MDString *Name, Metadata *File,
     unsigned Line, Metadata *Scope, Metadata *BaseType, uint64_t SizeInBits,
@@ -193,6 +210,28 @@ MDCompositeType *MDCompositeType::getImpl(
                                          AlignInBits, OffsetInBits, Flags),
                        Ops);
 }
+
+// +===== Scout ===================================================
+MDScoutCompositeType *MDScoutCompositeType::getImpl(
+  LLVMContext &Context, unsigned Tag, MDString *Name, Metadata *File,
+  unsigned Line, Metadata *Scope, Metadata *BaseType, uint64_t SizeInBits,
+  uint64_t AlignInBits, uint64_t OffsetInBits, unsigned Flags,
+  Metadata *Elements, unsigned RuntimeLang, Metadata *VTableHolder,
+  Metadata *TemplateParams, MDString *Identifier, StorageType Storage,
+  bool ShouldCreate) {
+  assert(isCanonical(Name) && "Expected canonical MDString");
+  DEFINE_GETIMPL_LOOKUP(MDScoutCompositeType,
+                        (Tag, getString(Name), File, Line, Scope, BaseType,
+                         SizeInBits, AlignInBits, OffsetInBits, Flags, Elements,
+                         RuntimeLang, VTableHolder, TemplateParams,
+                         getString(Identifier)));
+  Metadata *Ops[] = {File,     Scope,        Name,           BaseType,
+    Elements, VTableHolder, TemplateParams, Identifier};
+  DEFINE_GETIMPL_STORE(MDScoutCompositeType, (Tag, Line, RuntimeLang, SizeInBits,
+                                         AlignInBits, OffsetInBits, Flags),
+                       Ops);
+}
+// +===============================================================
 
 MDSubroutineType *MDSubroutineType::getImpl(LLVMContext &Context,
                                             unsigned Flags, Metadata *TypeArray,

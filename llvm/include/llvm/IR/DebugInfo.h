@@ -224,6 +224,15 @@ public:
   bool isCompositeType() const {
     return get() && isa<MDCompositeTypeBase>(get());
   }
+  
+  // +===== Scout =============================
+  bool isScoutDerivedType() const { return get() && isa<MDDerivedTypeBase>(get()); }
+  
+  bool isScoutCompositeType() const {
+    return get() && isa<MDScoutCompositeType>(get());
+  }
+  // +=========================================
+  
   bool isSubroutineType() const {
     return get() && isa<MDSubroutineType>(get());
   }
