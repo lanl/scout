@@ -486,18 +486,23 @@ template <> struct MDNodeKeyImpl<MDScoutCompositeType> {
     Metadata *VTableHolder;
     Metadata *TemplateParams;
     StringRef Identifier;
-    
+    unsigned DimX;
+    unsigned DimY;
+    unsigned DimZ;
+  
     MDNodeKeyImpl(unsigned Tag, StringRef Name, Metadata *File, unsigned Line,
                   Metadata *Scope, Metadata *BaseType, uint64_t SizeInBits,
                   uint64_t AlignInBits, uint64_t OffsetInBits, unsigned Flags,
                   Metadata *Elements, unsigned RuntimeLang,
                   Metadata *VTableHolder, Metadata *TemplateParams,
-                  StringRef Identifier)
+                  StringRef Identifier,
+                  unsigned DimX, unsigned DimY, unsigned DimZ)
     : Tag(Tag), Name(Name), File(File), Line(Line), Scope(Scope),
     BaseType(BaseType), SizeInBits(SizeInBits), AlignInBits(AlignInBits),
     OffsetInBits(OffsetInBits), Flags(Flags), Elements(Elements),
     RuntimeLang(RuntimeLang), VTableHolder(VTableHolder),
-    TemplateParams(TemplateParams), Identifier(Identifier) {}
+    TemplateParams(TemplateParams), Identifier(Identifier),
+    DimX(DimX), DimY(DimY), DimZ(DimZ){}
     MDNodeKeyImpl(const MDScoutCompositeType *N)
     : Tag(N->getTag()), Name(N->getName()), File(N->getFile()),
     Line(N->getLine()), Scope(N->getScope()), BaseType(N->getBaseType()),
@@ -505,7 +510,8 @@ template <> struct MDNodeKeyImpl<MDScoutCompositeType> {
     OffsetInBits(N->getOffsetInBits()), Flags(N->getFlags()),
     Elements(N->getElements()), RuntimeLang(N->getRuntimeLang()),
     VTableHolder(N->getVTableHolder()),
-    TemplateParams(N->getTemplateParams()), Identifier(N->getIdentifier()) {
+    TemplateParams(N->getTemplateParams()), Identifier(N->getIdentifier()),
+    DimX(N->getDimX()), DimY(N->getDimY()), DimZ(N->getDimZ()){
     }
     
     bool isKeyOf(const MDScoutCompositeType *RHS) const {
@@ -519,12 +525,16 @@ template <> struct MDNodeKeyImpl<MDScoutCompositeType> {
       RuntimeLang == RHS->getRuntimeLang() &&
       VTableHolder == RHS->getVTableHolder() &&
       TemplateParams == RHS->getTemplateParams() &&
-      Identifier == RHS->getIdentifier();
+      Identifier == RHS->getIdentifier() &&
+      DimX == RHS->getDimX() &&
+      DimY == RHS->getDimY() &&
+      DimZ == RHS->getDimZ();
     }
     unsigned getHashValue() const {
       return hash_combine(Tag, Name, File, Line, Scope, BaseType, SizeInBits,
                           AlignInBits, OffsetInBits, Flags, Elements, RuntimeLang,
-                          VTableHolder, TemplateParams, Identifier);
+                          VTableHolder, TemplateParams, Identifier,
+                          DimX, DimY, DimZ);
     }
 };
 

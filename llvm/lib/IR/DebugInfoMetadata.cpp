@@ -217,18 +217,20 @@ MDScoutCompositeType *MDScoutCompositeType::getImpl(
   unsigned Line, Metadata *Scope, Metadata *BaseType, uint64_t SizeInBits,
   uint64_t AlignInBits, uint64_t OffsetInBits, unsigned Flags,
   Metadata *Elements, unsigned RuntimeLang, Metadata *VTableHolder,
-  Metadata *TemplateParams, MDString *Identifier, StorageType Storage,
-  bool ShouldCreate) {
+  Metadata *TemplateParams, MDString *Identifier,
+  unsigned DimX, unsigned DimY, unsigned DimZ,
+  StorageType Storage, bool ShouldCreate) {
   assert(isCanonical(Name) && "Expected canonical MDString");
   DEFINE_GETIMPL_LOOKUP(MDScoutCompositeType,
                         (Tag, getString(Name), File, Line, Scope, BaseType,
                          SizeInBits, AlignInBits, OffsetInBits, Flags, Elements,
                          RuntimeLang, VTableHolder, TemplateParams,
-                         getString(Identifier)));
+                         getString(Identifier), DimX, DimY, DimZ));
   Metadata *Ops[] = {File,     Scope,        Name,           BaseType,
     Elements, VTableHolder, TemplateParams, Identifier};
   DEFINE_GETIMPL_STORE(MDScoutCompositeType, (Tag, Line, RuntimeLang, SizeInBits,
-                                         AlignInBits, OffsetInBits, Flags),
+                                         AlignInBits, OffsetInBits, Flags,
+                                         DimX, DimY, DimZ),
                        Ops);
 }
 // +===============================================================

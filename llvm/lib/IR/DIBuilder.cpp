@@ -547,7 +547,7 @@ DIBuilder::createScoutForwardDecl(unsigned Tag, StringRef Name, DIDescriptor Sco
                             VMContext, Tag, Name, F.getFileNode(), Line,
                             DIScope(getNonCompileUnitScope(Scope)).getRef(), nullptr, SizeInBits,
                             AlignInBits, 0, DIDescriptor::FlagFwdDecl, nullptr, RuntimeLang, nullptr,
-                            nullptr, UniqueIdentifier);
+                            nullptr, UniqueIdentifier, 0, 0, 0);
   if (!UniqueIdentifier.empty())
     retainType(RetTy);
   trackIfUnresolved(RetTy);
@@ -579,10 +579,10 @@ DIScoutCompositeType DIBuilder::createReplaceableScoutCompositeType(
     unsigned Flags, StringRef UniqueIdentifier) {
   DIScoutCompositeType RetTy =
   MDScoutCompositeType::getTemporary(
-                                VMContext, Tag, Name, F.getFileNode(), Line,
-                                DIScope(getNonCompileUnitScope(Scope)).getRef(), nullptr, SizeInBits,
-                                AlignInBits, 0, Flags, nullptr, RuntimeLang,
-                                nullptr, nullptr, UniqueIdentifier).release();
+                  VMContext, Tag, Name, F.getFileNode(), Line,
+                  DIScope(getNonCompileUnitScope(Scope)).getRef(), nullptr, SizeInBits,
+                  AlignInBits, 0, Flags, nullptr, RuntimeLang,
+                  nullptr, nullptr, UniqueIdentifier, 0, 0, 0).release();
   if (!UniqueIdentifier.empty())
     retainType(RetTy);
   trackIfUnresolved(RetTy);

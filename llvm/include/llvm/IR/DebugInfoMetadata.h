@@ -800,13 +800,22 @@ class MDScoutCompositeType : public MDCompositeTypeBase {
   friend class LLVMContextImpl;
   friend class MDNode;
   
+  unsigned DimX;
+  unsigned DimY;
+  unsigned DimZ;
+  
   MDScoutCompositeType(LLVMContext &C, StorageType Storage, unsigned Tag,
                   unsigned Line, unsigned RuntimeLang, uint64_t SizeInBits,
                   uint64_t AlignInBits, uint64_t OffsetInBits, unsigned Flags,
+                  unsigned DimX, unsigned DimY, unsigned DimZ,
                   ArrayRef<Metadata *> Ops)
   : MDCompositeTypeBase(C, MDScoutCompositeTypeKind, Storage, Tag, Line,
                         RuntimeLang, SizeInBits, AlignInBits, OffsetInBits,
-                        Flags, Ops) {}
+                        Flags, Ops),
+  DimX(DimX),
+  DimY(DimY),
+  DimZ(DimZ){}
+  
   ~MDScoutCompositeType() {}
   
   static MDScoutCompositeType *
@@ -815,12 +824,15 @@ class MDScoutCompositeType : public MDCompositeTypeBase {
           uint64_t SizeInBits, uint64_t AlignInBits, uint64_t OffsetInBits,
           uint64_t Flags, Metadata *Elements, unsigned RuntimeLang,
           Metadata *VTableHolder, Metadata *TemplateParams,
-          StringRef Identifier, StorageType Storage, bool ShouldCreate = true) {
+          StringRef Identifier,
+          unsigned DimX, unsigned DimY, unsigned DimZ,
+          StorageType Storage, bool ShouldCreate = true) {
     return getImpl(Context, Tag, getCanonicalMDString(Context, Name), File,
                    Line, Scope, BaseType, SizeInBits, AlignInBits, OffsetInBits,
                    Flags, Elements, RuntimeLang, VTableHolder, TemplateParams,
-                   getCanonicalMDString(Context, Identifier), Storage,
-                   ShouldCreate);
+                   getCanonicalMDString(Context, Identifier),
+                   DimX, DimY, DimZ,
+                   Storage, ShouldCreate);
   }
   static MDScoutCompositeType *
   getImpl(LLVMContext &Context, unsigned Tag, MDString *Name, Metadata *File,
@@ -828,14 +840,17 @@ class MDScoutCompositeType : public MDCompositeTypeBase {
           uint64_t SizeInBits, uint64_t AlignInBits, uint64_t OffsetInBits,
           unsigned Flags, Metadata *Elements, unsigned RuntimeLang,
           Metadata *VTableHolder, Metadata *TemplateParams,
-          MDString *Identifier, StorageType Storage, bool ShouldCreate = true);
+          MDString *Identifier,
+          unsigned DimX, unsigned DimY, unsigned DimZ,
+          StorageType Storage, bool ShouldCreate = true);
   
   TempMDScoutCompositeType cloneImpl() const {
     return getTemporary(getContext(), getTag(), getName(), getFile(), getLine(),
                         getScope(), getBaseType(), getSizeInBits(),
                         getAlignInBits(), getOffsetInBits(), getFlags(),
                         getElements(), getRuntimeLang(), getVTableHolder(),
-                        getTemplateParams(), getIdentifier());
+                        getTemplateParams(), getIdentifier(),
+                        getDimX(), getDimY(), getDimZ());
   }
   
 public:
@@ -844,25 +859,43 @@ public:
                      unsigned Line, Metadata *Scope, Metadata *BaseType,
                      uint64_t SizeInBits, uint64_t AlignInBits,
                      uint64_t OffsetInBits, unsigned Flags, Metadata *Elements,
-                     unsigned RuntimeLang, Metadata *VTableHolder,
-                     Metadata *TemplateParams = nullptr,
-                     StringRef Identifier = ""),
+                     unsigned RuntimeLang,
+                     Metadata *VTableHolder,
+                     Metadata *TemplateParams,
+                     StringRef Identifier,
+                     unsigned DimX, unsigned DimY, unsigned DimZ),
                     (Tag, Name, File, Line, Scope, BaseType, SizeInBits,
                      AlignInBits, OffsetInBits, Flags, Elements, RuntimeLang,
-                     VTableHolder, TemplateParams, Identifier))
+                     VTableHolder, TemplateParams, Identifier,
+                     DimX, DimY, DimZ))
   DEFINE_MDNODE_GET(MDScoutCompositeType,
                     (unsigned Tag, MDString *Name, Metadata *File,
                      unsigned Line, Metadata *Scope, Metadata *BaseType,
                      uint64_t SizeInBits, uint64_t AlignInBits,
                      uint64_t OffsetInBits, unsigned Flags, Metadata *Elements,
-                     unsigned RuntimeLang, Metadata *VTableHolder,
-                     Metadata *TemplateParams = nullptr,
-                     MDString *Identifier = nullptr),
+                     unsigned RuntimeLang,
+                     Metadata *VTableHolder,
+                     Metadata *TemplateParams,
+                     MDString *Identifier,
+                     unsigned DimX, unsigned DimY, unsigned DimZ),
                     (Tag, Name, File, Line, Scope, BaseType, SizeInBits,
                      AlignInBits, OffsetInBits, Flags, Elements, RuntimeLang,
-                     VTableHolder, TemplateParams, Identifier))
+                     VTableHolder, TemplateParams, Identifier,
+                     DimX, DimY, DimZ))
   
   TempMDScoutCompositeType clone() const { return cloneImpl(); }
+  
+  unsigned getDimX() const{
+    return DimX;
+  }
+  
+  unsigned getDimY() const{
+    return DimY;
+  }
+  
+  unsigned getDimZ() const{
+    return DimZ;
+  }
   
   static bool classof(const Metadata *MD) {
     return MD->getMetadataID() == MDScoutCompositeTypeKind;
