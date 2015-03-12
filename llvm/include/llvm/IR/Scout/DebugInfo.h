@@ -84,8 +84,8 @@ namespace llvm {
   // DIScoutDerivedType is a proper subclass of DIDerivedType
 
   class DIScoutDerivedType : public DIType {
-    MDDerivedTypeBase *getRaw() const {
-      return dyn_cast_or_null<MDDerivedTypeBase>(get());
+    MDScoutDerivedType *getRaw() const {
+      return dyn_cast_or_null<MDScoutDerivedType>(get());
     }
     
   public:
@@ -96,7 +96,7 @@ namespace llvm {
       FlagMeshFieldFaceLocated     = 1 << 3
     };
     
-    unsigned getScoutFlags() const { assert(false);/*return getUnsignedField(4);*/ }
+    unsigned getScoutFlags() const { RETURN_FROM_RAW(N->getScoutFlags(), 0); }
     
     bool isCellLocated() const {
       return (getScoutFlags() & FlagMeshFieldCellLocated) != 0;

@@ -134,7 +134,7 @@ void DwarfUnit::constructMeshMemberDIE(DIE &Buffer, DIScoutDerivedType DT) {
 
   addUInt(*MemberDie, dwarf::DW_AT_accessibility, dwarf::DW_FORM_data1,
       dwarf::DW_ACCESS_public);
-
+  
   addUInt(*MemberDie, dwarf::DW_AT_SCOUT_mesh_field_flags, None, DT.getScoutFlags());
 }
 
