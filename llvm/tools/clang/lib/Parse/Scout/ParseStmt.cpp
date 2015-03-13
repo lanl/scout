@@ -1073,6 +1073,9 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
   if(result.isInvalid()){
     return StmtError();
   }
+
+  ScoutExpr* SE = cast<ScoutExpr>(result.get());
+  SpecObjectExpr* Spec = static_cast<SpecObjectExpr*>(SE);
   
-  return StmtError();
+  return Actions.ActOnPlotStmt(WithLoc, FrameLoc, RTVD, VD, Spec);
 }

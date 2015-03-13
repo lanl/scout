@@ -432,3 +432,11 @@ StmtResult Sema::ActOnFrameCaptureStmt(const VarDecl* VD, SpecObjectExpr* S){
   
   return valid ? new (Context) FrameCaptureStmt(VD, S) : StmtError();
 }
+
+StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
+                               SourceLocation FrameLoc,
+                               VarDecl* RenderTarget,
+                               VarDecl* Frame,
+                               SpecObjectExpr* Spec){
+  assert(false);
+}

@@ -2932,7 +2932,8 @@ public:
 class ScoutStmt : public Stmt {
 public:
   enum ScoutStmtKind{
-    FrameCapture
+    FrameCapture,
+    Plot
   };
   
   ScoutStmt(ScoutStmtKind K)
@@ -2980,9 +2981,9 @@ private:
 
 class FrameCaptureStmt : public ScoutStmt{
 public:
-  FrameCaptureStmt(const VarDecl* FD, SpecObjectExpr* S)
+  FrameCaptureStmt(const VarDecl* FV, SpecObjectExpr* S)
   : ScoutStmt(FrameCapture),
-  FrameVar(FD),
+  FrameVar(FV),
   Spec(S){}
   
   const VarDecl* getFrameVar() const{
@@ -2995,6 +2996,32 @@ public:
   
 private:
   const VarDecl* FrameVar;
+  SpecObjectExpr* Spec;
+};
+  
+class PlotStmt : public ScoutStmt{
+public:
+  PlotStmt(const VarDecl* FV, const VarDecl* RV, SpecObjectExpr* S)
+  : ScoutStmt(Plot),
+  FrameVar(FV),
+  RenderTargetVar(RV),
+  Spec(S){}
+  
+  const VarDecl* getFrameVar() const{
+    return FrameVar;
+  }
+  
+  const VarDecl* getRenderTargetVar() const{
+    return RenderTargetVar;
+  }
+  
+  const SpecObjectExpr* getSpec() const{
+    return Spec;
+  }
+  
+private:
+  const VarDecl* FrameVar;
+  const VarDecl* RenderTargetVar;
   SpecObjectExpr* Spec;
 };
   

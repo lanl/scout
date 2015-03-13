@@ -8949,6 +8949,12 @@ public:
   
   StmtResult ActOnFrameCaptureStmt(const VarDecl* F, SpecObjectExpr* S);
   
+  StmtResult ActOnPlotStmt(SourceLocation WithLoc,
+                           SourceLocation FrameLoc,
+                           VarDecl* RenderTarget,
+                           VarDecl* Frame,
+                           SpecObjectExpr* Spec);
+  
   //  StmtResult ActOnVolumeRenderAllStmt(Scope* S, SourceLocation VolRenLoc,
   //                                      SourceLocation L, SourceLocation R,
   //                                      IdentifierInfo* MII, VarDecl* MVD,
