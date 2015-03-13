@@ -3452,11 +3452,59 @@ bool LLParser::ParseMDCompositeType(MDNode *&Result, bool IsDistinct) {
 
 // +====== Scout ==============================================
 bool LLParser::ParseMDScoutDerivedType(MDNode *&Result, bool IsDistinct) {
-  assert(false && "unimplemented");
+#define VISIT_MD_FIELDS(OPTIONAL, REQUIRED)                                  \
+REQUIRED(tag, DwarfTagField, );                                              \
+OPTIONAL(name, MDStringField, );                                             \
+OPTIONAL(file, MDField, );                                                   \
+OPTIONAL(line, LineField, );                                                 \
+OPTIONAL(scope, MDField, );                                                  \
+REQUIRED(baseType, MDField, );                                               \
+OPTIONAL(size, MDUnsignedField, (0, UINT64_MAX));                            \
+OPTIONAL(align, MDUnsignedField, (0, UINT64_MAX));                           \
+OPTIONAL(offset, MDUnsignedField, (0, UINT64_MAX));                          \
+OPTIONAL(flags, DIFlagField, );                                              \
+OPTIONAL(scoutFlags, MDUnsignedField, (0, UINT64_MAX));                      \
+OPTIONAL(extraData, MDField, );
+  PARSE_MD_FIELDS();
+#undef VISIT_MD_FIELDS
+  
+  Result = GET_OR_DISTINCT(MDScoutDerivedType,
+                           (Context, tag.Val, name.Val, file.Val, line.Val,
+                            scope.Val, baseType.Val, size.Val, align.Val,
+                            offset.Val, flags.Val, scoutFlags.Val, extraData.Val));
+  return false;
 }
 
 bool LLParser::ParseMDScoutCompositeType(MDNode *&Result, bool IsDistinct) {
-  assert(false && "unimplemented");
+#define VISIT_MD_FIELDS(OPTIONAL, REQUIRED)                                  \
+REQUIRED(tag, DwarfTagField, );                                              \
+OPTIONAL(name, MDStringField, );                                             \
+OPTIONAL(file, MDField, );                                                   \
+OPTIONAL(line, LineField, );                                                 \
+OPTIONAL(scope, MDField, );                                                  \
+OPTIONAL(baseType, MDField, );                                               \
+OPTIONAL(size, MDUnsignedField, (0, UINT64_MAX));                            \
+OPTIONAL(align, MDUnsignedField, (0, UINT64_MAX));                           \
+OPTIONAL(offset, MDUnsignedField, (0, UINT64_MAX));                          \
+OPTIONAL(flags, DIFlagField, );                                              \
+OPTIONAL(elements, MDField, );                                               \
+OPTIONAL(runtimeLang, DwarfLangField, );                                     \
+OPTIONAL(vtableHolder, MDField, );                                           \
+OPTIONAL(templateParams, MDField, );                                         \
+OPTIONAL(identifier, MDStringField, );                                       \
+OPTIONAL(dimX, MDUnsignedField, (0, UINT64_MAX));                            \
+OPTIONAL(dimY, MDUnsignedField, (0, UINT64_MAX));                            \
+OPTIONAL(dimZ, MDUnsignedField, (0, UINT64_MAX));                            
+  PARSE_MD_FIELDS();
+#undef VISIT_MD_FIELDS
+  
+  Result = GET_OR_DISTINCT(
+                           MDScoutCompositeType,
+                           (Context, tag.Val, name.Val, file.Val, line.Val, scope.Val, baseType.Val,
+                            size.Val, align.Val, offset.Val, flags.Val, elements.Val,
+                            runtimeLang.Val, vtableHolder.Val, templateParams.Val,
+                            identifier.Val, dimX.Val, dimY.Val, dimZ.Val));
+  return false;
 }
 // +========================================================
 

@@ -197,3 +197,55 @@ DIBuilder::createMeshMemberType(DIDescriptor Scope, StringRef Name,
                                  DIScope(getNonCompileUnitScope(Scope)).getRef(), Ty.getRef(), SizeInBits,
                                  AlignInBits, OffsetInBits, Flags, ScoutFlags);
 }
+
+DIScoutCompositeType
+DIBuilder::createScoutForwardDecl(unsigned Tag, StringRef Name, DIDescriptor Scope,
+                                  DIFile F, unsigned Line, unsigned RuntimeLang,
+                                  uint64_t SizeInBits, uint64_t AlignInBits,
+                                  StringRef UniqueIdentifier) {
+  // FIXME: Define in terms of createReplaceableForwardDecl() by calling
+  // replaceWithUniqued().
+  DIScoutCompositeType RetTy =
+  MDScoutCompositeType::get(
+                            VMContext, Tag, Name, F.getFileNode(), Line,
+                            DIScope(getNonCompileUnitScope(Scope)).getRef(), nullptr, SizeInBits,
+                            AlignInBits, 0, DIDescriptor::FlagFwdDecl, nullptr, RuntimeLang, nullptr,
+                            nullptr, UniqueIdentifier, 0, 0, 0);
+  if (!UniqueIdentifier.empty())
+    retainType(RetTy);
+  trackIfUnresolved(RetTy);
+  return RetTy;
+}
+
+DIScoutCompositeType DIBuilder::createReplaceableScoutCompositeType(
+                                                                    unsigned Tag, StringRef Name, DIDescriptor Scope, DIFile F, unsigned Line,
+                                                                    unsigned RuntimeLang, uint64_t SizeInBits, uint64_t AlignInBits,
+                                                                    unsigned Flags, StringRef UniqueIdentifier) {
+  DIScoutCompositeType RetTy =
+  MDScoutCompositeType::getTemporary(
+                                     VMContext, Tag, Name, F.getFileNode(), Line,
+                                     DIScope(getNonCompileUnitScope(Scope)).getRef(), nullptr, SizeInBits,
+                                     AlignInBits, 0, Flags, nullptr, RuntimeLang,
+                                     nullptr, nullptr, UniqueIdentifier, 0, 0, 0).release();
+  if (!UniqueIdentifier.empty())
+    retainType(RetTy);
+  trackIfUnresolved(RetTy);
+  return RetTy;
+}
+
+void DIBuilder::replaceArrays(DIScoutCompositeType &T, DIArray Elements,
+                              DIArray TParams) {
+  T.setArrays(Elements, TParams);
+  
+  // If T isn't resolved, there's no problem.
+  if (!T->isResolved())
+    return;
+  
+  // If "T" is resolved, it may be due to a self-reference cycle.  Track the
+  // arrays explicitly if they're unresolved, or else the cycles will be
+  // orphaned.
+  if (Elements)
+    trackIfUnresolved(Elements);
+  if (TParams)
+    trackIfUnresolved(TParams);
+}
