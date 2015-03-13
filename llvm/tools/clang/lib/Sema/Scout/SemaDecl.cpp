@@ -360,7 +360,7 @@ void Sema::AddFrameVarType(Scope* Scope,
   VarDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
                   PP.getIdentifierInfo(Name), Type,
                   Context.getTrivialTypeSourceInfo(Type),
-                  SC_None);
+                  SC_Static);
   FD->addVarType(VD);
   
   PushOnScopeChains(VD, Scope, true);
@@ -381,7 +381,7 @@ void Sema::AddFrameFunction(Scope* Scope,
   FunctionDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
                        DeclarationName(PP.getIdentifierInfo(Name)),
                        FT, Context.getTrivialTypeSourceInfo(FT),
-                       SC_Extern, true);
+                       SC_Static, true);
     
   vector<ParmVarDecl*> params;
   
@@ -395,7 +395,7 @@ void Sema::AddFrameFunction(Scope* Scope,
     ParmVarDecl::Create(Context, F, SourceLocation(), SourceLocation(),
                         PP.getIdentifierInfo(nb),
                         t, Context.getTrivialTypeSourceInfo(t),
-                        SC_Extern, 0);
+                        SC_Static, 0);
     
     params.push_back(P);
     
