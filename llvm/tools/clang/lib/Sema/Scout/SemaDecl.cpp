@@ -472,7 +472,7 @@ bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
       VarDecl::Create(Context, F, SourceLocation(), SourceLocation(),
                       PP.getIdentifierInfo(k), vt,
                       Context.getTrivialTypeSourceInfo(vt),
-                      SC_None);
+                      SC_Static);
       
       PushOnScopeChains(VD, Scope, true);
       F->addVar(k, VD);

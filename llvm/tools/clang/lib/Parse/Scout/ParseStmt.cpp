@@ -1057,16 +1057,18 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
     SkipUntil(tok::r_brace, StopBeforeMatch);
     return StmtError();
   }
-  
-  Sema::ContextRAII context(Actions, FD);
-  
-  //ParseScope FrameScope(this, Scope::ClassScope|Scope::DeclScope);
-  
-  //Actions.PushDeclContext(getCurScope(), FD);
-  ExprResult result = ParseSpecObjectExpression();
-  //Actions.PopDeclContext();
 
-  //FrameScope.Exit();
+  ParseScope FrameScope(this, Scope::ControlScope|Scope::DeclScope);
+  
+  auto& M = FD->getVarMap();
+  
+  for(auto& itr : M){
+    Actions.PushOnScopeChains(itr.second.varDecl, getCurScope(), false);
+  }
+  
+  ExprResult result = ParseSpecObjectExpression();
+  
+  FrameScope.Exit();
   
   if(result.isInvalid()){
     return StmtError();
