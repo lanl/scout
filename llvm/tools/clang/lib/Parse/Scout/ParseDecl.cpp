@@ -639,6 +639,8 @@ bool Parser::ParseFrameSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TI) {
   
   ParseScope FrameScope(this, Scope::ControlScope|Scope::DeclScope);
   
+  Actions.InitFrameDefinitions(getCurScope(), FD);
+  
   ExprResult Result = ParseSpecObjectExpression();
   if(Result.isInvalid()){
     Actions.PopFrameContext(FD);

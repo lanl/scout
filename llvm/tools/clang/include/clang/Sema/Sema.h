@@ -8930,7 +8930,9 @@ public:
                              IdentifierInfo* Name,
                              SourceLocation NameLoc,
                              MultiTemplateParamsArg TemplateParameterLists);
-    
+  
+  void InitFrameDefinitions(Scope* S, FrameDecl* FD);
+  
   void PopFrameContext(FrameDecl* F);
 
   void AddFrameVarType(Scope* Scope, FrameDecl* FD, const char* Name, QualType Type);

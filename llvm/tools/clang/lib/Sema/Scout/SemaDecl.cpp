@@ -342,14 +342,16 @@ Decl* Sema::ActOnFrameDefinition(Scope* S,
     
   PushDeclContext(S, FD);
   
+  return FD;
+}
+
+void Sema::InitFrameDefinitions(Scope* S, FrameDecl* FD){
   QualType vt = Context.getFrameVarType(0);
   
   AddFrameVarType(S, FD, "Timestep", Context.IntTy);
   AddFrameVarType(S, FD, "Temperature", Context.DoubleTy);
   
   AddFrameFunction(S, FD, "sum", vt, {vt});
-  
-  return FD;
 }
 
 void Sema::AddFrameVarType(Scope* Scope,
