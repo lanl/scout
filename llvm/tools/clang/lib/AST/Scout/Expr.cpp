@@ -114,6 +114,24 @@ SpecValueExpr* SpecExpr::toValue(){
   return static_cast<SpecValueExpr*>(this);
 }
 
+bool SpecValueExpr::isFrameVar(){
+  DeclRefExpr* dr = dyn_cast<DeclRefExpr>(Exp);
+  
+  if(!dr){
+    return false;
+  }
+  
+  return isa<FrameVarType>(dr->getDecl()->getType().getTypePtr());
+}
+
+bool SpecValueExpr::isInteger(){
+  return isa<IntegerLiteral>(Exp);
+}
+
+bool SpecValueExpr::isString(){
+  return isa<StringLiteral>(Exp);
+}
+
 Expr* SpecExpr::toExpr(){
   SpecValueExpr* v = toValue();
   if(v){
@@ -137,4 +155,31 @@ SpecArrayExpr* SpecExpr::toArray(){
   }
   
   return static_cast<SpecArrayExpr*>(this);
+}
+
+bool SpecExpr::isFrameVar(){
+  SpecValueExpr* v = toValue();
+  if(v){
+    return v->isFrameVar();
+  }
+  
+  return false;
+}
+
+bool SpecExpr::isInteger(){
+  SpecValueExpr* v = toValue();
+  if(v){
+    return v->isInteger();
+  }
+  
+  return false;
+}
+
+bool SpecExpr::isString(){
+  SpecValueExpr* v = toValue();
+  if(v){
+    return v->isString();
+  }
+  
+  return false;
 }

@@ -4930,6 +4930,11 @@ public:
   
   SpecArrayExpr* toArray();
   
+  bool isFrameVar();
+  
+  bool isInteger();
+  
+  bool isString();
 };
 
 class SpecObjectExpr : public SpecExpr{
@@ -4984,6 +4989,12 @@ public:
   Expr* getExpression(){
     return Exp;
   }
+  
+  bool isFrameVar();
+  
+  bool isInteger();
+  
+  bool isString();
   
 private:
   Expr* Exp;
