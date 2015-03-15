@@ -105,6 +105,11 @@ namespace CodeGen {
     llvm::Function* FrameCaptureFloatFunc();
     llvm::Function* FrameCaptureDoubleFunc();
     
+    llvm::Function* PlotInitFunc();
+    llvm::Function* PlotAddLinesFunc();
+    llvm::Function* PlotAddAxisFunc();
+    llvm::Function* PlotRenderFunc();
+    
   private:
     CodeGen::CodeGenModule& CGM;
   };

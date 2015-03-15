@@ -4932,9 +4932,15 @@ public:
   
   bool isFrameVar();
   
+  VarDecl* getFrameVar();
+  
   bool isInteger();
   
+  int64_t getInteger();
+  
   bool isString();
+  
+  std::string getString();
 };
 
 class SpecObjectExpr : public SpecExpr{
@@ -4951,8 +4957,7 @@ public:
   }
   
   bool has(const std::string& K){
-    auto itr = MM.find(K);
-    return itr != MM.end();
+    return MM.find(K) != MM.end();
   }
 
   const MemberMap& memberMap() const{
@@ -4992,9 +4997,15 @@ public:
   
   bool isFrameVar();
   
+  VarDecl* getFrameVar();
+  
   bool isInteger();
   
+  int64_t getInteger();
+  
   bool isString();
+  
+  std::string getString();
   
 private:
   Expr* Exp;

@@ -124,12 +124,35 @@ bool SpecValueExpr::isFrameVar(){
   return isa<FrameVarType>(dr->getDecl()->getType().getTypePtr());
 }
 
+VarDecl* SpecValueExpr::getFrameVar(){
+  DeclRefExpr* dr = dyn_cast<DeclRefExpr>(Exp);
+  assert(dr);
+  
+  assert(isa<FrameVarType>(dr->getDecl()->getType().getTypePtr()));
+  
+  return cast<VarDecl>(dr->getDecl());
+}
+
 bool SpecValueExpr::isInteger(){
   return isa<IntegerLiteral>(Exp);
 }
 
+int64_t SpecValueExpr::getInteger(){
+  IntegerLiteral* i = dyn_cast<IntegerLiteral>(Exp);
+  assert(i);
+  
+  return i->getValue().getSExtValue();
+}
+
 bool SpecValueExpr::isString(){
   return isa<StringLiteral>(Exp);
+}
+
+std::string SpecValueExpr::getString(){
+  StringLiteral* s = dyn_cast<StringLiteral>(Exp);
+  assert(s);
+  
+  return s->getString().str();
 }
 
 Expr* SpecExpr::toExpr(){
@@ -166,6 +189,12 @@ bool SpecExpr::isFrameVar(){
   return false;
 }
 
+VarDecl* SpecExpr::getFrameVar(){
+  SpecValueExpr* v = toValue();
+  assert(v);
+  return v->getFrameVar();
+}
+
 bool SpecExpr::isInteger(){
   SpecValueExpr* v = toValue();
   if(v){
@@ -175,6 +204,13 @@ bool SpecExpr::isInteger(){
   return false;
 }
 
+int64_t SpecExpr::getInteger(){
+  SpecValueExpr* v = toValue();
+  assert(v);
+  
+  return v->getInteger();
+}
+
 bool SpecExpr::isString(){
   SpecValueExpr* v = toValue();
   if(v){
@@ -182,4 +218,11 @@ bool SpecExpr::isString(){
   }
   
   return false;
+}
+
+std::string SpecExpr::getString(){
+  SpecValueExpr* v = toValue();
+  assert(v);
+  
+  return v->getString();
 }

@@ -128,7 +128,10 @@ namespace clang {
     
     typedef std::map<std::string, Var> VarMap;
     
+    typedef std::map<VarDecl*, uint32_t> VarIdMap;
+      
     VarMap varMap;
+    VarIdMap varIdMap;
       
     uint32_t nextVarId;
       
@@ -183,9 +186,18 @@ namespace clang {
     }
     
     void addVar(const std::string& name, VarDecl* v){
-      varMap.insert({name, Var{nextVarId++, v}});
+      uint32_t varId = nextVarId++;
+      varMap.insert({name, Var{varId, v}});
+      varIdMap.insert({v, varId});
     }
     
+    uint32_t getVarId(VarDecl* v) const{
+      auto itr = varIdMap.find(v);
+      assert(itr != varIdMap.end());
+      
+      return itr->second;
+    }
+      
     const VarMap& getVarMap() const{
       return varMap;
     }

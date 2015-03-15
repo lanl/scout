@@ -2260,6 +2260,8 @@ public:
   void EmitScoutStmt(const ScoutStmt &S);
   
   void EmitFrameCaptureStmt(const FrameCaptureStmt &S);
+  
+  void EmitPlotStmt(const PlotStmt &S);
   // +========================================================================+
 
   void EmitCondBrHints(llvm::LLVMContext &Context, llvm::BranchInst *CondBr,

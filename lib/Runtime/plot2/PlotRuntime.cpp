@@ -141,32 +141,46 @@ namespace{
 
 } // end namespace
 
-extern "C"
-void* __scrt_create_frame(){
-  return new Frame();
-}
+extern "C"{
 
-extern "C"
-void __scrt_frame_add_var(void* f, uint32_t varId, uint32_t elementKind){
-  static_cast<Frame*>(f)->addVar(varId, elementKind);
-}
+  void* __scrt_create_frame(){
+    return new Frame();
+  }
 
-extern "C"
-void __scrt_frame_capture_i32(void* f, uint32_t varId, int32_t value){
-  static_cast<Frame*>(f)->capture(varId, value);
-}
+  void __scrt_frame_add_var(void* f, uint32_t varId, uint32_t elementKind){
+    static_cast<Frame*>(f)->addVar(varId, elementKind);
+  }
 
-extern "C"
-void __scrt_frame_capture_i64(void* f, uint32_t varId, int64_t value){
-  static_cast<Frame*>(f)->capture(varId, value);
-}
+  void __scrt_frame_capture_i32(void* f, uint32_t varId, int32_t value){
+    static_cast<Frame*>(f)->capture(varId, value);
+  }
 
-extern "C"
-void __scrt_frame_capture_float(void* f, uint32_t varId, float value){
-  static_cast<Frame*>(f)->capture(varId, value);
-}
+  void __scrt_frame_capture_i64(void* f, uint32_t varId, int64_t value){
+    static_cast<Frame*>(f)->capture(varId, value);
+  }
 
-extern "C"
-void __scrt_frame_capture_double(void* f, uint32_t varId, double value){
-  static_cast<Frame*>(f)->capture(varId, value);
-}
+  void __scrt_frame_capture_float(void* f, uint32_t varId, float value){
+    static_cast<Frame*>(f)->capture(varId, value);
+  }
+
+  void __scrt_frame_capture_double(void* f, uint32_t varId, double value){
+    static_cast<Frame*>(f)->capture(varId, value);
+  }
+
+  void* __scrt_plot_init(void* frame, void* window){
+
+  }
+
+  void __scrt_plot_add_lines(void* plot, uint32_t xVarId, uint32_t yVarId){
+
+  }
+
+  void __scrt_plot_add_axis(void* plot, uint32_t dim, const char* label){
+
+  }
+
+  void __scrt_plot_render(void* plot){
+
+  }
+
+} // end extern "C"
