@@ -58,6 +58,7 @@
 #include <cstdint>
 #include <iostream>
 #include <algorithm>
+#include <sstream>
 
 #include <QtGui>
 
@@ -107,7 +108,7 @@ namespace{
       r.first = r2.first;
     }
 
-    if(r2.second > r2.second){
+    if(r2.second > r.second){
       r.second = r2.second;
     }
   }
@@ -238,6 +239,42 @@ namespace{
     VarVec vars_;
   };
 
+  void drawText(QPainter& painter,
+                const QString& text,
+                const QPointF& point,
+                bool right=false,
+                bool bottom=false){
+
+    QRect bounds = painter.fontMetrics().boundingRect(text);
+
+    QRectF frame(point.x(), point.y(), bounds.width() + 5, bounds.height());
+
+    QTextOption textOption;
+
+    Qt::Alignment alignment = 0;
+
+    if(right){
+      frame.translate(-frame.width(), 0.0);
+      alignment |= Qt::AlignRight;
+    }
+
+    if(bottom){
+      frame.translate(0.0, -frame.height());
+      alignment |= Qt::AlignBottom;
+    }
+
+    textOption.setAlignment(alignment);
+
+    painter.drawText(frame, text, textOption);
+  }
+
+  QString toLabel(double value){
+    stringstream sstr;
+    sstr << value;
+
+    return sstr.str().c_str();
+  }
+
   class Plot : public PlotRenderer{
   public:
     class Element{
@@ -276,12 +313,10 @@ namespace{
         window_(window){}
 
     void addLines(VarId xVarId, VarId yVarId){
-      nlog("add2");
       elements_.push_back(new Lines(xVarId, yVarId)); 
     }
 
     void addAxis(uint32_t dim, const string& label){
-      nlog("add");
       elements_.push_back(new Axis(dim, label)); 
     }
 
@@ -311,10 +346,14 @@ namespace{
       double xSpan;
       double ySpan;
 
+      size_t size;
+
       for(Element* e : elements_){
         if(Lines* l = dynamic_cast<Lines*>(e)){
           VarBase* x = frame_->getVar(l->xVarId);
           VarBase* y = frame_->getVar(l->yVarId);
+
+          size = x->size();
 
           updateRange(xRange, x->range());
           updateRange(yRange, y->range());
@@ -344,9 +383,47 @@ namespace{
         if(Axis* a = dynamic_cast<Axis*>(e)){
           if(a->dim == 1){
             painter.drawLine(origin, xEnd);
+
+            size_t inc = size / X_LABELS;
+            double xc;
+            for(size_t i = 0; i < size; i += inc){
+              xc = origin.x() + double(i)/size * xLen;
+
+              drawText(painter,
+                       toLabel(xRange.first + (double(i)/size)*xSpan),
+                       QPointF(xc, height - BOTTOM_MARGIN + 3));
+            }
+            
+            inc = size / X_TICKS;
+            for(size_t i = 0; i < size; i += inc){
+              xc = origin.x() + double(i)/size * xLen;
+
+              painter.drawLine(QPointF(xc, height - BOTTOM_MARGIN + 3),
+                               QPointF(xc, height - BOTTOM_MARGIN - 3));
+            }
           }
           else if(a->dim == 2){
             painter.drawLine(origin, yEnd);
+
+            size_t inc = size / Y_LABELS;
+            double yc;
+            double yv;
+            for(size_t i = 0; i <= size; i += inc){
+              yv = yRange.first + ySpan * double(i)/size;
+              yc = origin.y() - double(i)/size * yLen;
+
+              drawText(painter,
+                       toLabel(yv),
+                       QPointF(LEFT_MARGIN - 5, yc), true);
+            }
+
+            inc = size / Y_TICKS;
+            for(size_t i = 0; i < size; i += inc){
+              yc = origin.y() - double(i)/size * yLen;
+
+              painter.drawLine(QPointF(LEFT_MARGIN - 3, yc),
+                               QPointF(LEFT_MARGIN + 3, yc));
+            }
           }
           else{
             assert(false && "invalid axis dim");
@@ -375,11 +452,7 @@ namespace{
           QPointF lastPoint;
           QPointF point;
 
-          size_t n = x->size();
-
-          ndump(n);
-
-          for(size_t i = 0; i < n; ++i){
+          for(size_t i = 0; i < size; ++i){
             point.setX(origin.x() + ((x->get(i) - xRange.first)/xSpan) * xLen);
             point.setY(origin.y() - ((y->get(i) - yRange.first)/ySpan) * yLen);
 
@@ -402,6 +475,17 @@ namespace{
               painter.setPen(linePen);
               painter.drawLine(point, lastPoint);
             }
+
+            lastPoint = point;
+          }
+
+          for(size_t i = 0; i < size; ++i){
+            point.setX(origin.x() + ((x->get(i) - xRange.first)/xSpan) * xLen);
+            point.setY(origin.y() - ((y->get(i) - yRange.first)/ySpan) * yLen);
+
+            painter.setPen(linePen);
+            painter.setBrush(pointBrush);
+            painter.drawEllipse(point, 3.0, 3.0);
 
             lastPoint = point;
           }
