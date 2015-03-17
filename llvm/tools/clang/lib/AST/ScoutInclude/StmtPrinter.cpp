@@ -170,7 +170,7 @@ void StmtPrinter::VisitScoutExpr(ScoutExpr *Node) {
         
         OS << itr.first << ":";
 
-        PrintExpr(itr.second);
+        PrintExpr(itr.second.second);
       }
       
       OS << "}";

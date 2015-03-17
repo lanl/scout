@@ -646,6 +646,17 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
     return StmtError();
   }
 
+  const WindowType* wt = dyn_cast<WindowType>(RTVD->getType().getTypePtr());
+  if(wt){
+    if(wt->getUsage() == WindowType::Plot){
+      Diag(Tok, diag::err_window_renderall_and_plot);
+      return StmtError();
+    }
+    else{
+      wt->setUsage(WindowType::Renderall);
+    }
+  }
+  
   // this does not work from within LLDB because normally the render target type is
   // window - but from within LLDB it is a: struct __scout_win_t *
   // since we are not doing anything wih the RenderTargetType, this is commented
@@ -1033,6 +1044,17 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
   if(RTVD == 0){
     SkipUntil(tok::r_brace, StopBeforeMatch);
     return StmtError();
+  }
+  
+  const WindowType* wt = dyn_cast<WindowType>(RTVD->getType().getTypePtr());
+  if(wt){
+    if(wt->getUsage() == WindowType::Renderall){
+      Diag(Tok, diag::err_window_renderall_and_plot);
+      return StmtError();
+    }
+    else{
+      wt->setUsage(WindowType::Plot);
+    }
   }
   
   SourceLocation RTLoc = ConsumeToken();
