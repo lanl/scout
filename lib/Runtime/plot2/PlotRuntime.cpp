@@ -57,8 +57,12 @@
 #include <map>
 #include <cstdint>
 #include <iostream>
+#include <algorithm>
+
+#include <QtGui>
 
 #include "scout/Runtime/opengl/qt/QtWindow.h"
+#include "scout/Runtime/opengl/qt/PlotWindow.h"
 #include "scout/Runtime/opengl/qt/PlotWidget.h"
 #include "scout/Runtime/opengl/qt/PlotRenderer.h"
 
@@ -80,11 +84,41 @@ namespace{
   const int ELEMENT_FLOAT = 2;
   const int ELEMENT_DOUBLE = 3;
 
+  const double LEFT_MARGIN = 100.0;
+  const double RIGHT_MARGIN = 50.0;
+  const double TOP_MARGIN = 50.0;
+  const double BOTTOM_MARGIN = 50.0;
+
+  const size_t X_LABELS = 10;
+  const size_t Y_LABELS = 10;
+  const size_t X_TICKS = 20;
+  const size_t Y_TICKS = 20;
+
   typedef uint32_t VarId;
+
+  template<class T>
+  constexpr pair<T, T> initRange(){
+    return {numeric_limits<T>::max(), numeric_limits<T>::min()};
+  }
+
+  template<class T>
+  void updateRange(pair<T, T>& r, const pair<T, T>& r2){
+    if(r2.first < r.first){
+      r.first = r2.first;
+    }
+
+    if(r2.second > r2.second){
+      r.second = r2.second;
+    }
+  }
 
   class VarBase{
   public:
     virtual size_t size() const = 0;
+    
+    virtual pair<double, double> range() const = 0;
+
+    virtual double get(size_t i) const = 0;
   };
 
   template<class T>
@@ -107,8 +141,43 @@ namespace{
       }
     }
 
+    pair<T, T> range_() const{
+      auto ret = initRange<T>();
+      
+      size_t size = v_.size();
+      assert(size > 0 && "empty frame variable");
+
+      T vi;
+      for(size_t i = 0; i < size; ++i){
+        vi = v_[i];
+
+        if(vi < ret.first){
+          ret.first = vi;
+        }
+        
+        if(vi > ret.second){
+          ret.second = vi;
+        }
+      }
+
+      return ret;
+    }
+
+    pair<double, double> range() const{
+      auto r = range_();
+      return {r.first, r.second};
+    }
+
     size_t size() const{
       return v_.size();
+    }
+
+    size_t size_() const{
+      return v_.size();
+    }
+
+    double get(size_t i) const{
+      return v_[i];
     }
 
   private:
@@ -158,6 +227,11 @@ namespace{
       return vars_[0]->size();
     }
 
+    VarBase* getVar(VarId varId){
+      assert(varId < vars_.size());
+      return vars_[varId];
+    }
+
   private:
     typedef vector<VarBase*> VarVec;
 
@@ -166,7 +240,10 @@ namespace{
 
   class Plot : public PlotRenderer{
   public:
-    class Element{};
+    class Element{
+    public:
+      virtual int priority() = 0;
+    };
 
     class Lines : public Element{
     public:
@@ -175,6 +252,10 @@ namespace{
 
       VarId xVarId;
       VarId yVarId;
+
+      int priority(){
+        return 1;
+      }
     };
 
     class Axis : public Element{
@@ -184,39 +265,157 @@ namespace{
 
       uint32_t dim;
       string label;
+
+      int priority(){
+        return 2;
+      }
     };
 
-    Plot(Frame* frame, QtWindow* window)
+    Plot(Frame* frame, PlotWindow* window)
       : frame_(frame),
         window_(window){}
 
     void addLines(VarId xVarId, VarId yVarId){
+      nlog("add2");
       elements_.push_back(new Lines(xVarId, yVarId)); 
     }
 
     void addAxis(uint32_t dim, const string& label){
+      nlog("add");
       elements_.push_back(new Axis(dim, label)); 
     }
 
     void finalize(){
       QtWindow::init();
 
-      //PlotWidget* widget = new PlotWidget(window_);
-      //widget->setRenderer(this);
+      widget_ = new PlotWidget(window_);
+      widget_->setRenderer(this);
 
-      //window_->show();
+      window_->show();
+
+      QtWindow::pollEvents();
     }
 
     void render(){
-      nlog("rendering!!!!");
+      QPainter painter(widget_);
+      painter.setRenderHint(QPainter::Antialiasing, true);
+
+      sort(elements_.begin(), elements_.end(),
+           [](Element* a, Element* b){
+             return a->priority() > b->priority();
+           });
+
+      auto xRange = initRange<double>();
+      auto yRange = initRange<double>();
+      
+      double xSpan;
+      double ySpan;
+
+      for(Element* e : elements_){
+        if(Lines* l = dynamic_cast<Lines*>(e)){
+          VarBase* x = frame_->getVar(l->xVarId);
+          VarBase* y = frame_->getVar(l->yVarId);
+
+          updateRange(xRange, x->range());
+          updateRange(yRange, y->range());
+        }
+      }
+
+      xSpan = xRange.second - xRange.first;
+      ySpan = yRange.second - yRange.first;
+
+      QSize frame = widget_->frameSize();
+      
+      double width = frame.width();
+      double height = frame.height();
+
+      QPointF origin(LEFT_MARGIN, height - BOTTOM_MARGIN);
+  
+      double xLen = width - LEFT_MARGIN - RIGHT_MARGIN;
+      double yLen = height - TOP_MARGIN - BOTTOM_MARGIN;
+
+      QPointF xEnd = origin;
+      xEnd += QPointF(xLen, 0.0);
+
+      QPointF yEnd = origin;
+      yEnd -= QPointF(0.0, yLen);
+      
+      for(Element* e : elements_){
+        if(Axis* a = dynamic_cast<Axis*>(e)){
+          if(a->dim == 1){
+            painter.drawLine(origin, xEnd);
+          }
+          else if(a->dim == 2){
+            painter.drawLine(origin, yEnd);
+          }
+          else{
+            assert(false && "invalid axis dim");
+          }
+        }
+      }
+
+      for(Element* e : elements_){
+        if(Lines* l = dynamic_cast<Lines*>(e)){
+          VarBase* x = frame_->getVar(l->xVarId);
+          VarBase* y = frame_->getVar(l->yVarId);
+
+          QBrush pointBrush(Qt::SolidPattern);
+          pointBrush.setColor(QColor(0, 0, 0));
+
+          QPen linePen;
+          linePen.setWidthF(1.0);
+          linePen.setColor(QColor(0, 0, 0));
+
+          QPen noPen(Qt::NoPen);
+
+          QBrush brush;
+
+          painter.setBrush(brush);
+
+          QPointF lastPoint;
+          QPointF point;
+
+          size_t n = x->size();
+
+          ndump(n);
+
+          for(size_t i = 0; i < n; ++i){
+            point.setX(origin.x() + ((x->get(i) - xRange.first)/xSpan) * xLen);
+            point.setY(origin.y() - ((y->get(i) - yRange.first)/ySpan) * yLen);
+
+            if(i > 0){
+              QPolygonF poly;
+              poly << lastPoint << point << 
+                QPointF(point.x(), origin.y()) << 
+                QPointF(lastPoint.x(), origin.y());
+      
+              QColor color(255, 0, 0);
+              QBrush brush(color);
+      
+              painter.setPen(noPen);
+              painter.setBrush(brush);
+      
+              painter.drawPolygon(poly);
+            }
+
+            if(i > 0){
+              painter.setPen(linePen);
+              painter.drawLine(point, lastPoint);
+            }
+
+            lastPoint = point;
+          }
+        }
+      }
     }
 
   private:
     typedef vector<Element*> ElementVec_;
 
     Frame* frame_;
-    QtWindow* window_;
-    
+    PlotWindow* window_;
+    PlotWidget* widget_;
+
     ElementVec_ elements_;
   };
 
@@ -250,7 +449,7 @@ extern "C"{
 
   void* __scrt_plot_init(void* frame, void* window){
     return new Plot(static_cast<Frame*>(frame),
-                    static_cast<QtWindow*>(window));
+                    static_cast<PlotWindow*>(window));
   }
 
   void __scrt_plot_add_lines(void* plot, VarId xVarId, VarId yVarId){

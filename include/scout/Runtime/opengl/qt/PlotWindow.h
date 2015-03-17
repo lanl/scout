@@ -55,11 +55,11 @@
 #ifndef __SC_PLOT_WINDOW_H__
 #define __SC_PLOT_WINDOW_H__
 
-#include <QWidget>
+#include <QMainWindow>
 
 namespace scout{
 
-  class PlotWindow : public QWidget{
+  class PlotWindow : public QMainWindow{
     Q_OBJECT
 
   public:

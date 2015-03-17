@@ -4869,7 +4869,8 @@ public:
     Spec,
     SpecObject,
     SpecValue,
-    SpecArray
+    SpecArray,
+    SpecMulti
   };
   
   ScoutExpr(ScoutExprKind K, SourceLocation LocStart)
@@ -4908,6 +4909,7 @@ private:
 class SpecObjectExpr;
 class SpecArrayExpr;
 class SpecValueExpr;
+class SpecMultiExpr;
 
 class SpecExpr : public ScoutExpr{
 public:
@@ -4943,6 +4945,42 @@ public:
   std::string getString();
 };
 
+class SpecMultiExpr : public SpecExpr{
+public:
+  typedef std::vector<SpecExpr*> ExprVec;
+  typedef std::vector<SourceLocation> LocationVec;
+  
+  SpecMultiExpr(SourceLocation LocStart)
+  : SpecExpr(ScoutExpr::SpecMulti, LocStart){}
+  
+  void add(SpecExpr* e, SourceLocation loc){
+    V.push_back(e);
+    LV.push_back(loc);
+  }
+  
+  size_t size(){
+    return V.size();
+  }
+  
+  SpecExpr* get(size_t i){
+    assert(i < V.size() && "invalid index");
+    return V[i];
+  }
+  
+  SourceLocation getLocation(size_t i){
+    assert(i < LV.size() && "invalid index");
+    return LV[i];
+  }
+  
+  const ExprVec& elements() const{
+    return V;
+  }
+  
+private:
+  ExprVec V;
+  LocationVec LV;
+};
+
 class SpecObjectExpr : public SpecExpr{
 public:
   typedef std::map<std::string, SpecExpr*> MemberMap;
@@ -4952,8 +4990,25 @@ public:
   : SpecExpr(ScoutExpr::SpecObject, LocStart){}
   
   void insert(const std::string& K, SourceLocation KeyLoc, SpecExpr* V){
-    MM.insert({K, V});
-    KM.insert({K, KeyLoc});
+    auto itr = MM.find(K);
+    if(itr == MM.end()){
+      MM.insert({K, V});
+      KM.insert({K, KeyLoc});
+      return;
+    }
+
+    SpecExpr* S = itr->second;
+    if(S->kind() == SpecMulti){
+      SpecMultiExpr* MS = static_cast<SpecMultiExpr*>(S);
+      MS->add(V, KeyLoc);
+    }
+    else{
+      SpecMultiExpr* MS = new SpecMultiExpr(KeyLoc);
+      MS->add(S, KM[K]);
+      MS->add(V, KeyLoc);
+      MM.erase(itr);
+      MM.insert({K, MS});
+    }
   }
   
   bool has(const std::string& K){

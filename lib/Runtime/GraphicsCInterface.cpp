@@ -72,7 +72,6 @@ __scrt_target_t __scrt_create_window(unsigned short width,
 
   if(plot){
     PlotWindow* win = new PlotWindow(width, height);
-    win->show();
     return (__scrt_target_t)win;
   }
   else{

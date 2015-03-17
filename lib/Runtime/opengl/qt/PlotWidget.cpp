@@ -62,7 +62,7 @@ using namespace scout;
 PlotWidget::PlotWidget(QWidget* parent)
   : QWidget(parent),
     renderer_(0){
-  setGeometry(parent->geometry());
+  setGeometry(0, 0, parent->width(), parent->height());
 }
 
 PlotWidget::~PlotWidget(){}
