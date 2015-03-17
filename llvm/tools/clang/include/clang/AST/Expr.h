@@ -4945,74 +4945,19 @@ public:
   std::string getString();
 };
 
-class SpecMultiExpr : public SpecExpr{
-public:
-  typedef std::vector<SpecExpr*> ExprVec;
-  typedef std::vector<SourceLocation> LocationVec;
-  
-  SpecMultiExpr(SourceLocation LocStart)
-  : SpecExpr(ScoutExpr::SpecMulti, LocStart){}
-  
-  void add(SpecExpr* e, SourceLocation loc){
-    V.push_back(e);
-    LV.push_back(loc);
-  }
-  
-  size_t size(){
-    return V.size();
-  }
-  
-  SpecExpr* get(size_t i){
-    assert(i < V.size() && "invalid index");
-    return V[i];
-  }
-  
-  SourceLocation getLocation(size_t i){
-    assert(i < LV.size() && "invalid index");
-    return LV[i];
-  }
-  
-  const ExprVec& elements() const{
-    return V;
-  }
-  
-private:
-  ExprVec V;
-  LocationVec LV;
-};
-
 class SpecObjectExpr : public SpecExpr{
 public:
-  typedef std::map<std::string, SpecExpr*> MemberMap;
-  typedef std::map<std::string, SourceLocation> KeyLocMap;
+  typedef std::multimap<std::string, std::pair<SourceLocation, SpecExpr*>> MemberMap;
   
   SpecObjectExpr(SourceLocation LocStart)
   : SpecExpr(ScoutExpr::SpecObject, LocStart){}
   
   void insert(const std::string& K, SourceLocation KeyLoc, SpecExpr* V){
-    auto itr = MM.find(K);
-    if(itr == MM.end()){
-      MM.insert({K, V});
-      KM.insert({K, KeyLoc});
-      return;
-    }
-
-    SpecExpr* S = itr->second;
-    if(S->kind() == SpecMulti){
-      SpecMultiExpr* MS = static_cast<SpecMultiExpr*>(S);
-      MS->add(V, KeyLoc);
-    }
-    else{
-      SpecMultiExpr* MS = new SpecMultiExpr(KeyLoc);
-      MS->add(S, KM[K]);
-      MS->add(V, KeyLoc);
-      MM.erase(itr);
-      MM.insert({K, MS});
-    }
+    MM.insert({K, {KeyLoc, V}});
   }
   
   bool has(const std::string& K){
-    return MM.find(K) != MM.end();
+    return MM.count(K) > 0;
   }
 
   const MemberMap& memberMap() const{
@@ -5020,24 +4965,31 @@ public:
   }
   
   SpecExpr* get(const std::string& K){
-    auto itr = MM.find(K);
-    
-    if(itr != MM.end()){
-      return itr->second;
+    auto p = MM.equal_range(K);
+    auto itr = p.first;
+    assert(distance(p.first, p.second) <= 1 && "multiple keys");
+    while(itr != p.second){
+      return itr->second.second;
     }
     
     return 0;
   }
   
-  SourceLocation getKeyLoc(const std::string& K){
-    auto itr = KM.find(K);
-    assert(itr != KM.end() && "invalid key");
-    return itr->second;
+  SourceLocation getLoc(const std::string& K){
+    auto p = MM.equal_range(K);
+    auto itr = p.first;
+    
+    assert(distance(p.first, p.second) <= 1 && "multiple keys");
+    
+    while(itr != p.second){
+      return itr->second.first;
+    }
+    
+    return SourceLocation();
   }
   
 private:
   MemberMap MM;
-  KeyLocMap KM;
 };
 
 class SpecValueExpr : public SpecExpr{

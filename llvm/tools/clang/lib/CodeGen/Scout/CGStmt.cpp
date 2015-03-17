@@ -2396,7 +2396,7 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
     llvm::Type* lt = ConvertType(QualType(et, 0));
     
     Value* val =
-    EmitAnyExprToTemp(itr.second->toExpr()).getScalarVal();
+    EmitAnyExprToTemp(itr.second.second->toExpr()).getScalarVal();
     
     ValueVec args = {framePtr, Builder.getInt32(fieldId), val};
     
@@ -2450,7 +2450,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   for(auto& itr : m){
     const string& k = itr.first;
-    SpecExpr* v = itr.second;
+    SpecExpr* v = itr.second.second;
     
     if(k == "lines"){
       SpecArrayExpr* pa = v->toObject()->get("position")->toArray();

@@ -423,9 +423,10 @@ StmtResult Sema::ActOnFrameCaptureStmt(const VarDecl* VD, SpecObjectExpr* S){
   
   for(auto& itr : m){
     const string& k = itr.first;
+    SourceLocation loc = itr.second.first;
     
     if(vm.find(k) == vm.end()){
-      Diag(S->getKeyLoc(k), diag::err_unknown_frame_variable) << k;
+      Diag(loc, diag::err_unknown_frame_variable) << k;
       valid = false;
     }
   }
@@ -446,7 +447,8 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
   
   for(auto& itr : m){
     const string& k = itr.first;
-    SpecExpr* v = itr.second;
+    SourceLocation loc = itr.second.first;
+    SpecExpr* v = itr.second.second;
     
     if(k == "lines"){
       SpecObjectExpr* lv = v->toObject();
@@ -516,7 +518,7 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
       }
     }
     else{
-      Diag(Spec->getKeyLoc(k), diag::err_invalid_plot_spec_key) << k;
+      Diag(loc, diag::err_invalid_plot_spec_key) << k;
       valid = false;
     }
   }

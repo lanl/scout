@@ -426,13 +426,14 @@ bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
   
   for(auto& itr : m){
     const string& k = itr.first;
+    SourceLocation loc = itr.second.first;
     
     if(!SpecExpr::isSymbol(k)){
-      Diag(Spec->getKeyLoc(k), diag::err_invalid_frame_spec) << "invalid frame variable";
+      Diag(loc, diag::err_invalid_frame_spec) << "invalid frame variable";
       valid = false;
     }
     
-    SpecExpr* v = itr.second;
+    SpecExpr* v = itr.second.second;
 
     SpecObjectExpr* vo = v->toObject();
     
