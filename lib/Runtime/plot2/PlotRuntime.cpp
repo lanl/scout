@@ -270,6 +270,7 @@ namespace{
 
   QString toLabel(double value){
     stringstream sstr;
+    sstr.precision(4);
     sstr << value;
 
     return sstr.str().c_str();
@@ -323,10 +324,10 @@ namespace{
     void finalize(){
       QtWindow::init();
 
-      widget_ = new PlotWidget(window_);
+      widget_ = window_->getWidget();
       widget_->setRenderer(this);
-
       window_->show();
+      window_->repaint();
 
       QtWindow::pollEvents();
     }

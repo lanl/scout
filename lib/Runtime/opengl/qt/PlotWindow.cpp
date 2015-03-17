@@ -52,6 +52,8 @@
 
 #include "scout/Runtime/opengl/qt/PlotWindow.h"
 
+#include "scout/Runtime/opengl/qt/PlotWidget.h"
+
 using namespace std;
 using namespace scout;
 
@@ -59,9 +61,11 @@ PlotWindow::PlotWindow(unsigned short width,
                        unsigned short height,
                        QWidget* parent)
   : QMainWindow(parent){
-  
+
   setWindowTitle("Plot");
   resize(width, height);
+
+  widget_ = new PlotWidget(this);
 }
 
 PlotWindow::~PlotWindow(){}

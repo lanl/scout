@@ -59,6 +59,8 @@
 
 namespace scout{
 
+  class PlotWidget;
+
   class PlotWindow : public QMainWindow{
     Q_OBJECT
 
@@ -66,9 +68,13 @@ namespace scout{
     PlotWindow(unsigned short width, unsigned short height, QWidget* parent=0);
 
     ~PlotWindow();
+    
+    PlotWidget* getWidget(){
+      return widget_;
+    }
 
   private:
-
+    PlotWidget* widget_;
   };
 
 } // end namespace scout
