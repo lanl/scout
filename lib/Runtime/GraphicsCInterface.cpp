@@ -52,6 +52,7 @@
 
 #include "scout/Runtime/GraphicsCInterface.h"
 #include "scout/Runtime/opengl/qt/QtWindow.h"
+#include "scout/Runtime/opengl/qt/PlotWindow.h"
 #include "scout/Runtime/opengl/glUniformRenderable.h"
 
 using namespace scout;
@@ -62,12 +63,23 @@ void __scrt_init_graphics() {
 }
 
 extern "C"
-__scrt_target_t __scrt_create_window(unsigned short width, unsigned short height) {
+__scrt_target_t __scrt_create_window(unsigned short width,
+                                     unsigned short height,
+                                     uint8_t plot) {
   assert(width != 0 && height != 0);
+
   QtWindow::init();
-  QtWindow* win = new QtWindow(width, height);
-  win->show();
-  return (__scrt_target_t)win;
+
+  if(plot){
+    PlotWindow* win = new PlotWindow(width, height);
+    win->show();
+    return (__scrt_target_t)win;
+  }
+  else{
+    QtWindow* win = new QtWindow(width, height);
+    win->show();
+    return (__scrt_target_t)win;
+  }
 }
 
 static glUniformRenderable*

@@ -1120,7 +1120,8 @@ def err_expected_star_mesh:Error<
     "expected a mesh, perhaps a missing *?">;          
 def err_expected_mesh_var_decl:Error<
     "expected mesh variable declaration">;
-
+def err_window_renderall_and_plot:Error<
+"window cannot be used for both renderall and plotting">;
 // +----- query errors -----------------------------------------------------+
 def err_query_expected_mesh_element_kw:Error<
 "expected mesh element keyword">;

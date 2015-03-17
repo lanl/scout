@@ -2375,7 +2375,8 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
   
   Value* framePtr = LocalDeclMap.lookup(vd);
   assert(framePtr);
-  
+  framePtr = Builder.CreateLoad(framePtr, "frame.ptr");
+
   auto m = fd->getVarMap();
   auto mm = spec->memberMap();
   
@@ -2431,12 +2432,13 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   Value* framePtr = LocalDeclMap.lookup(frame);
   assert(framePtr);
-  framePtr = Builder.CreateBitCast(framePtr, R.VoidPtrTy, "frame.ptr");
+  framePtr = Builder.CreateLoad(framePtr, "frame.ptr");
   
   const VarDecl* target = S.getRenderTargetVar();
   Value* targetPtr = LocalDeclMap.lookup(target);
   assert(targetPtr);
-  targetPtr = Builder.CreateBitCast(targetPtr, R.VoidPtrTy, "target.ptr");
+  targetPtr = Builder.CreateBitCast(Builder.CreateLoad(targetPtr),
+                                    R.VoidPtrTy, "target.ptr");
   
   const SpecObjectExpr* spec = S.getSpec();
   
