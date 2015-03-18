@@ -62,10 +62,10 @@
     DepthOffset,
     RankOffset,
     XStartOffset,
-    XSizeOffset,
     YStartOffset,
-    YSizeOffset,
     ZStartOffset,
+    XSizeOffset,
+    YSizeOffset,
     ZSizeOffset,
     EndOffset
   };
