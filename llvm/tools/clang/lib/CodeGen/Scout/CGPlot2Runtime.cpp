@@ -145,7 +145,13 @@ llvm::Function* CGPlot2Runtime::PlotInitFunc(){
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddLinesFunc(){
-  return GetFunc("__scrt_plot_add_lines", {VoidPtrTy, Int32Ty, Int32Ty});
+  return GetFunc("__scrt_plot_add_lines",
+                 {VoidPtrTy, Int32Ty, Int32Ty, DoubleTy});
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddPointsFunc(){
+  return GetFunc("__scrt_plot_add_points",
+                 {VoidPtrTy, Int32Ty, Int32Ty, DoubleTy});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddAxisFunc(){

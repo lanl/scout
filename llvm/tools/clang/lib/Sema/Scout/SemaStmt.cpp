@@ -450,7 +450,7 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
     SourceLocation loc = itr.second.first;
     SpecExpr* v = itr.second.second;
     
-    if(k == "lines"){
+    if(k == "lines" || k == "points"){
       SpecObjectExpr* lv = v->toObject();
       
       if(lv){
@@ -491,6 +491,15 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
         "expected an object specifier";
         valid = false;
+      }
+      
+      SpecExpr* s = lv->get("size");
+      if(s){
+        if(!s->isNumeric() || s->getNumeric() < 0){
+          Diag(s->getLocStart(), diag::err_invalid_plot_spec) <<
+          "invalid 'size' key";
+          valid = false;
+        }
       }
     }
     else if(k == "axis"){

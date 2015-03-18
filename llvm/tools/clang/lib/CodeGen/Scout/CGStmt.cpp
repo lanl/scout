@@ -2452,16 +2452,34 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     const string& k = itr.first;
     SpecExpr* v = itr.second.second;
     
-    if(k == "lines"){
-      SpecArrayExpr* pa = v->toObject()->get("position")->toArray();
+    if(k == "lines" || k == "points"){
+      SpecObjectExpr* o = v->toObject();
+      
+      SpecArrayExpr* pa = o->get("position")->toArray();
       uint32_t x = fd->getVarId(pa->get(0)->getFrameVar());
       Value* xv = ConstantInt::get(R.Int32Ty, x);
       
       uint32_t y = fd->getVarId(pa->get(1)->getFrameVar());
       Value* yv = ConstantInt::get(R.Int32Ty, y);
       
-      args = {plotPtr, xv, yv};
-      Builder.CreateCall(R.PlotAddLinesFunc(), args);
+      double size;
+      if(o->has("size")){
+        size = o->get("size")->getNumeric();
+      }
+      else{
+        size = 1;
+      }
+      
+      Value* sv = ConstantFP::get(R.DoubleTy, size);
+      
+      args = {plotPtr, xv, yv, sv};
+      
+      if(k == "lines"){
+        Builder.CreateCall(R.PlotAddLinesFunc(), args);
+      }
+      else{
+        Builder.CreateCall(R.PlotAddPointsFunc(), args);
+      }
     }
     else if(k == "axis"){
       SpecObjectExpr* av = v->toObject();

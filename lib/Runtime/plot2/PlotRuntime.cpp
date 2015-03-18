@@ -3,7 +3,7 @@
  * Copyright (c) 2015, Los Alamos National Security, LLC.
  * All rights reserved.
  *
- *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *  Copyright 2015. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
  *  National Security, LLC for the U.S. Department of Energy. The
@@ -90,6 +90,9 @@ namespace{
   const double TOP_MARGIN = 50.0;
   const double BOTTOM_MARGIN = 50.0;
 
+  const double MIN = numeric_limits<double>::min();
+  const double MAX = numeric_limits<double>::max();
+
   const size_t X_LABELS = 10;
   const size_t Y_LABELS = 10;
   const size_t X_TICKS = 20;
@@ -97,27 +100,13 @@ namespace{
 
   typedef uint32_t VarId;
 
-  template<class T>
-  constexpr pair<T, T> initRange(){
-    return {numeric_limits<T>::max(), numeric_limits<T>::min()};
-  }
-
-  template<class T>
-  void updateRange(pair<T, T>& r, const pair<T, T>& r2){
-    if(r2.first < r.first){
-      r.first = r2.first;
-    }
-
-    if(r2.second > r.second){
-      r.second = r2.second;
-    }
-  }
-
   class VarBase{
   public:
     virtual size_t size() const = 0;
     
-    virtual pair<double, double> range() const = 0;
+    virtual double min() const = 0;
+
+    virtual double max() const = 0;
 
     virtual double get(size_t i) const = 0;
   };
@@ -126,54 +115,39 @@ namespace{
   class Var : public VarBase{
   public:
     Var()
-      : i_(0){
-      v_.reserve(RESERVE);
+      : i_(RESERVE),
+        min_(numeric_limits<T>::max()),
+        max_(numeric_limits<T>::min()){
     }
 
     void capture(T value){
-      v_.push_back(value);
-     
       if(i_ == RESERVE){
         v_.reserve(v_.size() + RESERVE);
         i_ = 0;
+
+        if(value < min_){
+          min_ = value;
+        }
+        
+        if(value > max_){
+          max_ = value;
+        }
       }
       else{
         ++i_;
-      }
-    }
 
-    pair<T, T> range_() const{
-      auto ret = initRange<T>();
-      
-      size_t size = v_.size();
-      assert(size > 0 && "empty frame variable");
-
-      T vi;
-      for(size_t i = 0; i < size; ++i){
-        vi = v_[i];
-
-        if(vi < ret.first){
-          ret.first = vi;
+        if(value < min_){
+          min_ = value;
         }
-        
-        if(vi > ret.second){
-          ret.second = vi;
+        else if(value > max_){
+          max_ = value;
         }
       }
 
-      return ret;
-    }
-
-    pair<double, double> range() const{
-      auto r = range_();
-      return {r.first, r.second};
+      v_.push_back(value);
     }
 
     size_t size() const{
-      return v_.size();
-    }
-
-    size_t size_() const{
       return v_.size();
     }
 
@@ -181,9 +155,19 @@ namespace{
       return v_[i];
     }
 
+    double min() const{
+      return min_;
+    }
+
+    double max() const{
+      return max_;
+    }
+
   private:
     vector<T> v_;
     size_t i_;
+    T min_;
+    T max_;
   };
 
   class Frame{
@@ -280,19 +264,34 @@ namespace{
   public:
     class Element{
     public:
-      virtual int priority() = 0;
+      virtual int order() = 0;
     };
 
     class Lines : public Element{
     public:
-      Lines(VarId xVarId, VarId yVarId)
-        : xVarId(xVarId), yVarId(yVarId){}
+      Lines(VarId xVarId, VarId yVarId, double size)
+        : xVarId(xVarId), yVarId(yVarId), size(size){}
 
       VarId xVarId;
       VarId yVarId;
+      double size;
 
-      int priority(){
+      int order(){
         return 1;
+      }
+    };
+
+    class Points : public Element{
+    public:
+      Points(VarId xVarId, VarId yVarId, double size)
+        : xVarId(xVarId), yVarId(yVarId), size(size){}
+
+      VarId xVarId;
+      VarId yVarId;
+      double size;
+
+      int order(){
+        return 2;
       }
     };
 
@@ -304,8 +303,8 @@ namespace{
       uint32_t dim;
       string label;
 
-      int priority(){
-        return 2;
+      int order(){
+        return 3;
       }
     };
 
@@ -313,8 +312,12 @@ namespace{
       : frame_(frame),
         window_(window){}
 
-    void addLines(VarId xVarId, VarId yVarId){
-      elements_.push_back(new Lines(xVarId, yVarId)); 
+    void addLines(VarId xVarId, VarId yVarId, double size){
+      elements_.push_back(new Lines(xVarId, yVarId, size)); 
+    }
+
+    void addPoints(VarId xVarId, VarId yVarId, double size){
+      elements_.push_back(new Points(xVarId, yVarId, size)); 
     }
 
     void addAxis(uint32_t dim, const string& label){
@@ -327,25 +330,24 @@ namespace{
       widget_ = window_->getWidget();
       widget_->setRenderer(this);
       window_->show();
-      window_->repaint();
+      window_->update();
 
       QtWindow::pollEvents();
     }
-
+    
     void render(){
       QPainter painter(widget_);
       painter.setRenderHint(QPainter::Antialiasing, true);
 
       sort(elements_.begin(), elements_.end(),
            [](Element* a, Element* b){
-             return a->priority() > b->priority();
+             return a->order() > b->order();
            });
 
-      auto xRange = initRange<double>();
-      auto yRange = initRange<double>();
-      
-      double xSpan;
-      double ySpan;
+      double xMin = MAX;
+      double xMax = MIN;
+      double yMin = MAX;
+      double yMax = MIN;
 
       size_t size;
 
@@ -356,13 +358,48 @@ namespace{
 
           size = x->size();
 
-          updateRange(xRange, x->range());
-          updateRange(yRange, y->range());
+          if(x->min() < xMin){
+            xMin = x->min();
+          }
+
+          if(x->max() > xMax){
+            xMax = x->max();
+          }
+
+          if(y->min() < yMin){
+            yMin = y->min();
+          }
+
+          if(y->max() > yMax){
+            yMax = y->max();
+          }
+        }
+        else if(Points* p = dynamic_cast<Points*>(e)){
+          VarBase* x = frame_->getVar(p->xVarId);
+          VarBase* y = frame_->getVar(p->yVarId);
+
+          size = x->size();
+
+          if(x->min() < xMin){
+            xMin = x->min();
+          }
+
+          if(x->max() > xMax){
+            xMax = x->max();
+          }
+
+          if(y->min() < yMin){
+            yMin = y->min();
+          }
+
+          if(y->max() > yMax){
+            yMax = y->max();
+          }
         }
       }
 
-      xSpan = xRange.second - xRange.first;
-      ySpan = yRange.second - yRange.first;
+      double xSpan = xMax - xMin;
+      double ySpan = yMax - yMin;
 
       QSize frame = widget_->frameSize();
       
@@ -391,7 +428,7 @@ namespace{
               xc = origin.x() + double(i)/size * xLen;
 
               drawText(painter,
-                       toLabel(xRange.first + (double(i)/size)*xSpan),
+                       toLabel(xMin + (double(i)/size)*xSpan),
                        QPointF(xc, height - BOTTOM_MARGIN + 3));
             }
             
@@ -410,7 +447,7 @@ namespace{
             double yc;
             double yv;
             for(size_t i = 0; i <= size; i += inc){
-              yv = yRange.first + ySpan * double(i)/size;
+              yv = yMin + ySpan * double(i)/size;
               yc = origin.y() - double(i)/size * yLen;
 
               drawText(painter,
@@ -437,25 +474,23 @@ namespace{
           VarBase* x = frame_->getVar(l->xVarId);
           VarBase* y = frame_->getVar(l->yVarId);
 
-          QBrush pointBrush(Qt::SolidPattern);
-          pointBrush.setColor(QColor(0, 0, 0));
-
-          QPen linePen;
-          linePen.setWidthF(1.0);
-          linePen.setColor(QColor(0, 0, 0));
+          QPen pen;
+          pen.setWidthF(l->size);
+          pen.setColor(QColor(0, 0, 0));
 
           QPen noPen(Qt::NoPen);
-
-          QBrush brush;
-
-          painter.setBrush(brush);
 
           QPointF lastPoint;
           QPointF point;
 
+          QColor color(255, 0, 0);
+          QBrush brush(color);
+      
+          painter.setBrush(brush);
+
           for(size_t i = 0; i < size; ++i){
-            point.setX(origin.x() + ((x->get(i) - xRange.first)/xSpan) * xLen);
-            point.setY(origin.y() - ((y->get(i) - yRange.first)/ySpan) * yLen);
+            point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
+            point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
 
             if(i > 0){
               QPolygonF poly;
@@ -463,32 +498,38 @@ namespace{
                 QPointF(point.x(), origin.y()) << 
                 QPointF(lastPoint.x(), origin.y());
       
-              QColor color(255, 0, 0);
-              QBrush brush(color);
-      
               painter.setPen(noPen);
-              painter.setBrush(brush);
-      
               painter.drawPolygon(poly);
             }
 
             if(i > 0){
-              painter.setPen(linePen);
+              painter.setPen(pen);
               painter.drawLine(point, lastPoint);
             }
 
             lastPoint = point;
           }
+        }
+        else if(Points* p = dynamic_cast<Points*>(e)){
+          VarBase* x = frame_->getVar(p->xVarId);
+          VarBase* y = frame_->getVar(p->yVarId);
+
+          QPen pen;
+          pen.setWidthF(1.0);
+          pen.setColor(QColor(0, 0, 0));
+
+          QPointF point;
+
+          QColor color(0, 0, 0);
+          QBrush brush(color);
+                
+          painter.setBrush(brush);
 
           for(size_t i = 0; i < size; ++i){
-            point.setX(origin.x() + ((x->get(i) - xRange.first)/xSpan) * xLen);
-            point.setY(origin.y() - ((y->get(i) - yRange.first)/ySpan) * yLen);
+            point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
+            point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
 
-            painter.setPen(linePen);
-            painter.setBrush(pointBrush);
-            painter.drawEllipse(point, 3.0, 3.0);
-
-            lastPoint = point;
+            painter.drawEllipse(point, p->size, p->size);
           }
         }
       }
@@ -537,8 +578,18 @@ extern "C"{
                     static_cast<PlotWindow*>(window));
   }
 
-  void __scrt_plot_add_lines(void* plot, VarId xVarId, VarId yVarId){
-    static_cast<Plot*>(plot)->addLines(xVarId, yVarId);
+  void __scrt_plot_add_lines(void* plot,
+                             VarId xVarId,
+                             VarId yVarId,
+                             double size){
+    static_cast<Plot*>(plot)->addLines(xVarId, yVarId, size);
+  }
+
+  void __scrt_plot_add_points(void* plot,
+                              VarId xVarId,
+                              VarId yVarId,
+                              double size){
+    static_cast<Plot*>(plot)->addPoints(xVarId, yVarId, size);
   }
 
   void __scrt_plot_add_axis(void* plot, uint32_t dim, const char* label){
