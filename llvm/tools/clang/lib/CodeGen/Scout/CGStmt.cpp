@@ -217,7 +217,7 @@ void CodeGenFunction::SetMeshBounds(llvm::Value* MeshBaseAddr) {
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
   MeshRank = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields + MeshParameterOffset::RankOffset, IRNameStr);
   
-  unsigned start = nfields + MeshParameterOffset::WidthOffset;
+  unsigned start = nfields + MeshParameterOffset::XSizeOffset;
   
   // Extract width/height/depth from the mesh
   // note: width/height depth are stored after mesh fields

@@ -178,21 +178,21 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
 
     // also store width/height/depth in sizes
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), SizeNames[i]);
-    llvm::Value *size = Builder.CreateConstInBoundsGEP2_32(MeshAddr, 0, sizestart+1, IRNameStr);
+    llvm::Value *size = Builder.CreateConstInBoundsGEP2_32(MeshAddr, 0, sizestart+i, IRNameStr);
     Builder.CreateStore(intValue, size);
 
   }
-  // set unused dimensions to 0, sizes to 1
+  // set unused dimensions/sizes to 0
   llvm::Value* ConstantZero =  llvm::ConstantInt::get(Int32Ty, 0);
-  llvm::Value* ConstantOne =  llvm::ConstantInt::get(Int32Ty, 1);
+
   for(size_t i = rank; i< 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
     llvm::Value *x = Builder.CreateConstInBoundsGEP2_32(MeshAddr, 0, start+i, IRNameStr);
     Builder.CreateStore(ConstantZero, x);
 
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), SizeNames[i]);
-    llvm::Value *size = Builder.CreateConstInBoundsGEP2_32(MeshAddr, 0, sizestart+1, IRNameStr);
-    Builder.CreateStore(ConstantOne, size);
+    llvm::Value *size = Builder.CreateConstInBoundsGEP2_32(MeshAddr, 0, sizestart+i, IRNameStr);
+    Builder.CreateStore(ConstantZero, size);
   }
 
   //set rank this makes Codegen easier for rank() builtin

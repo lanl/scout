@@ -828,18 +828,16 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   *meshTailPtr = getStart(n, point, header->numColors);
   ++meshTailPtr;
 
+  *meshTailPtr = 0; //y
+  ++meshTailPtr;
+
+  *meshTailPtr = 0; //z
+  ++meshTailPtr;
+
   *meshTailPtr = getSize(n, point, header->numColors);
   ++meshTailPtr;
 
-  //y
-  *meshTailPtr = 0;
-  ++meshTailPtr;
-
   *meshTailPtr = header->height;
-  ++meshTailPtr;
-
-  //z
-  *meshTailPtr = 0;
   ++meshTailPtr;
 
   *meshTailPtr = header->depth;
