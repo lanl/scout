@@ -269,11 +269,12 @@ namespace{
 
     class Lines : public Element{
     public:
-      Lines(VarId xVarId, VarId yVarId)
-        : xVarId(xVarId), yVarId(yVarId){}
+      Lines(VarId xVarId, VarId yVarId, double size)
+        : xVarId(xVarId), yVarId(yVarId), size(size){}
 
       VarId xVarId;
       VarId yVarId;
+      double size;
 
       int order(){
         return 1;
@@ -282,11 +283,12 @@ namespace{
 
     class Points : public Element{
     public:
-      Points(VarId xVarId, VarId yVarId)
-        : xVarId(xVarId), yVarId(yVarId){}
+      Points(VarId xVarId, VarId yVarId, double size)
+        : xVarId(xVarId), yVarId(yVarId), size(size){}
 
       VarId xVarId;
       VarId yVarId;
+      double size;
 
       int order(){
         return 2;
@@ -310,12 +312,12 @@ namespace{
       : frame_(frame),
         window_(window){}
 
-    void addLines(VarId xVarId, VarId yVarId){
-      elements_.push_back(new Lines(xVarId, yVarId)); 
+    void addLines(VarId xVarId, VarId yVarId, double size){
+      elements_.push_back(new Lines(xVarId, yVarId, size)); 
     }
 
-    void addPoints(VarId xVarId, VarId yVarId){
-      elements_.push_back(new Points(xVarId, yVarId)); 
+    void addPoints(VarId xVarId, VarId yVarId, double size){
+      elements_.push_back(new Points(xVarId, yVarId, size)); 
     }
 
     void addAxis(uint32_t dim, const string& label){
@@ -473,7 +475,7 @@ namespace{
           VarBase* y = frame_->getVar(l->yVarId);
 
           QPen pen;
-          pen.setWidthF(1.0);
+          pen.setWidthF(l->size);
           pen.setColor(QColor(0, 0, 0));
 
           QPen noPen(Qt::NoPen);
@@ -520,14 +522,14 @@ namespace{
 
           QColor color(0, 0, 0);
           QBrush brush(color);
-      
+                
           painter.setBrush(brush);
 
           for(size_t i = 0; i < size; ++i){
             point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
             point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
 
-            painter.drawEllipse(point, 3.0, 3.0);
+            painter.drawEllipse(point, p->size, p->size);
           }
         }
       }
@@ -576,12 +578,18 @@ extern "C"{
                     static_cast<PlotWindow*>(window));
   }
 
-  void __scrt_plot_add_lines(void* plot, VarId xVarId, VarId yVarId){
-    static_cast<Plot*>(plot)->addLines(xVarId, yVarId);
+  void __scrt_plot_add_lines(void* plot,
+                             VarId xVarId,
+                             VarId yVarId,
+                             double size){
+    static_cast<Plot*>(plot)->addLines(xVarId, yVarId, size);
   }
 
-  void __scrt_plot_add_points(void* plot, VarId xVarId, VarId yVarId){
-    static_cast<Plot*>(plot)->addPoints(xVarId, yVarId);
+  void __scrt_plot_add_points(void* plot,
+                              VarId xVarId,
+                              VarId yVarId,
+                              double size){
+    static_cast<Plot*>(plot)->addPoints(xVarId, yVarId, size);
   }
 
   void __scrt_plot_add_axis(void* plot, uint32_t dim, const char* label){

@@ -4940,6 +4940,10 @@ public:
   
   int64_t getInteger();
   
+  bool isNumeric();
+  
+  double getNumeric();
+  
   bool isString();
   
   std::string getString();
@@ -4960,6 +4964,10 @@ public:
     return MM.count(K) > 0;
   }
 
+  size_t count(const std::string& K){
+    return MM.count(K);
+  }
+  
   const MemberMap& memberMap() const{
     return MM;
   }
@@ -4967,7 +4975,6 @@ public:
   SpecExpr* get(const std::string& K){
     auto p = MM.equal_range(K);
     auto itr = p.first;
-    assert(distance(p.first, p.second) <= 1 && "multiple keys");
     while(itr != p.second){
       return itr->second.second;
     }
@@ -4978,8 +4985,6 @@ public:
   SourceLocation getLoc(const std::string& K){
     auto p = MM.equal_range(K);
     auto itr = p.first;
-    
-    assert(distance(p.first, p.second) <= 1 && "multiple keys");
     
     while(itr != p.second){
       return itr->second.first;
@@ -5009,6 +5014,10 @@ public:
   bool isInteger();
   
   int64_t getInteger();
+  
+  bool isNumeric();
+  
+  double getNumeric();
   
   bool isString();
   

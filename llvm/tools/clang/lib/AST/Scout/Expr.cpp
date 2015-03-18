@@ -144,6 +144,24 @@ int64_t SpecValueExpr::getInteger(){
   return i->getValue().getSExtValue();
 }
 
+bool SpecValueExpr::isNumeric(){
+  return isa<FloatingLiteral>(Exp) || isa<IntegerLiteral>(Exp);
+}
+
+double SpecValueExpr::getNumeric(){
+  IntegerLiteral* i = dyn_cast<IntegerLiteral>(Exp);
+  if(i){
+    return i->getValue().getSExtValue();
+  }
+
+  FloatingLiteral* f = dyn_cast<FloatingLiteral>(Exp);
+  if(f){
+    return f->getValue().convertToDouble();
+  }
+
+  assert(false && "non-numeric value");
+}
+
 bool SpecValueExpr::isString(){
   return isa<StringLiteral>(Exp);
 }
@@ -209,6 +227,22 @@ int64_t SpecExpr::getInteger(){
   assert(v);
   
   return v->getInteger();
+}
+
+bool SpecExpr::isNumeric(){
+  SpecValueExpr* v = toValue();
+  if(v){
+    return v->isNumeric();
+  }
+  
+  return false;
+}
+
+double SpecExpr::getNumeric(){
+  SpecValueExpr* v = toValue();
+  assert(v);
+  
+  return v->getNumeric();
 }
 
 bool SpecExpr::isString(){
