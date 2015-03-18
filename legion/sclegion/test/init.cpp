@@ -12,6 +12,9 @@ struct MyMesh{
   uint32_t height;
   uint32_t depth;
   uint32_t rank;
+  uint32_t xstart, xsize;
+  uint32_t ystart, ysize;
+  uint32_t zstart, zsize;
 };
 
 void MyTask(MyMesh* m){
