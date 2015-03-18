@@ -90,6 +90,7 @@ namespace CodeGen {
     llvm::Type* DoubleTy;
     llvm::Type* VoidTy;
     llvm::Type* StringTy;
+    llvm::FunctionType* PlotFuncTy;
     
     llvm::Value* ElementInt32Val;
     llvm::Value* ElementInt64Val;
@@ -106,6 +107,7 @@ namespace CodeGen {
     llvm::Function* FrameCaptureDoubleFunc();
     
     llvm::Function* PlotInitFunc();
+    llvm::Function* PlotAddComputedVarFunc();
     llvm::Function* PlotAddLinesFunc();
     llvm::Function* PlotAddPointsFunc();
     llvm::Function* PlotAddAxisFunc();

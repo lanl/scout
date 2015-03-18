@@ -73,6 +73,10 @@ CGPlot2Runtime::CGPlot2Runtime(CodeGenModule& CGM) : CGM(CGM){
   VoidPtrTy = PointerTy(Int8Ty);
   StringTy = PointerTy(Int8Ty);
   
+  TypeVec params = {VoidPtrTy, Int64Ty};
+  
+  PlotFuncTy = llvm::FunctionType::get(llvm::Type::getVoidTy(C), params, false);
+  
   ElementInt32Val = ConstantInt::get(C, APInt(32, 0));
   ElementInt64Val = ConstantInt::get(C, APInt(32, 1));
   ElementFloatVal = ConstantInt::get(C, APInt(32, 2));
@@ -142,6 +146,10 @@ llvm::Function* CGPlot2Runtime::FrameCaptureDoubleFunc(){
 
 llvm::Function* CGPlot2Runtime::PlotInitFunc(){
   return GetFunc("__scrt_plot_init", {VoidPtrTy, VoidPtrTy}, VoidPtrTy);
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddComputedVarFunc(){
+  return GetFunc("__scrt_plot_add_computed_var", {VoidPtrTy, Int32Ty, PlotFuncTy});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddLinesFunc(){

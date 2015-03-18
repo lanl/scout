@@ -76,6 +76,8 @@ __PRETTY_FUNCTION__ << ": " << X << std::endl
 using namespace std;
 using namespace scout;
 
+typedef double (*__sc_plot_func)(void*, uint64_t);
+
 namespace{
 
   const size_t RESERVE = 1024;
@@ -99,6 +101,8 @@ namespace{
   const size_t Y_TICKS = 20;
 
   typedef uint32_t VarId;
+
+  const uint32_t COMPUTED_VAR_BEGIN = 65536;
 
   class VarBase{
   public:
@@ -310,7 +314,23 @@ namespace{
 
     Plot(Frame* frame, PlotWindow* window)
       : frame_(frame),
+        computedFrame_(0),
         window_(window){}
+
+    ~Plot(){
+      if(computedFrame_){
+        delete computedFrame_;
+      }
+    }
+
+    VarBase* getVar(VarId varId){
+      if(varId >= COMPUTED_VAR_BEGIN){
+        assert(computedFrame_);
+        return computedFrame_->getVar(varId - COMPUTED_VAR_BEGIN);
+      }
+
+      return frame_->getVar(varId);
+    }
 
     void addLines(VarId xVarId, VarId yVarId, double size){
       elements_.push_back(new Lines(xVarId, yVarId, size)); 
@@ -324,8 +344,30 @@ namespace{
       elements_.push_back(new Axis(dim, label)); 
     }
 
+    void addComputedVar(VarId varId, __sc_plot_func fp){
+      if(!computedFrame_){
+        computedFrame_ = new Frame;
+      }
+
+      computedFrame_->addVar(varId - COMPUTED_VAR_BEGIN, ELEMENT_DOUBLE);
+      varFuncMap_[varId] = fp;
+    }
+
     void finalize(){
       QtWindow::init();
+
+      if(computedFrame_){
+        size_t size = frame_->size();
+
+        for(auto& itr : varFuncMap_){
+          VarId varId = itr.first - COMPUTED_VAR_BEGIN;
+          
+          for(size_t i = 0; i < size; ++i){
+            double value = (*itr.second)(frame_, i);
+            computedFrame_->capture(varId, value);
+          }
+        }
+      }
 
       widget_ = window_->getWidget();
       widget_->setRenderer(this);
@@ -353,8 +395,8 @@ namespace{
 
       for(Element* e : elements_){
         if(Lines* l = dynamic_cast<Lines*>(e)){
-          VarBase* x = frame_->getVar(l->xVarId);
-          VarBase* y = frame_->getVar(l->yVarId);
+          VarBase* x = getVar(l->xVarId);
+          VarBase* y = getVar(l->yVarId);
 
           size = x->size();
 
@@ -375,8 +417,8 @@ namespace{
           }
         }
         else if(Points* p = dynamic_cast<Points*>(e)){
-          VarBase* x = frame_->getVar(p->xVarId);
-          VarBase* y = frame_->getVar(p->yVarId);
+          VarBase* x = getVar(p->xVarId);
+          VarBase* y = getVar(p->yVarId);
 
           size = x->size();
 
@@ -471,8 +513,8 @@ namespace{
 
       for(Element* e : elements_){
         if(Lines* l = dynamic_cast<Lines*>(e)){
-          VarBase* x = frame_->getVar(l->xVarId);
-          VarBase* y = frame_->getVar(l->yVarId);
+          VarBase* x = getVar(l->xVarId);
+          VarBase* y = getVar(l->yVarId);
 
           QPen pen;
           pen.setWidthF(l->size);
@@ -511,8 +553,8 @@ namespace{
           }
         }
         else if(Points* p = dynamic_cast<Points*>(e)){
-          VarBase* x = frame_->getVar(p->xVarId);
-          VarBase* y = frame_->getVar(p->yVarId);
+          VarBase* x = getVar(p->xVarId);
+          VarBase* y = getVar(p->yVarId);
 
           QPen pen;
           pen.setWidthF(1.0);
@@ -537,8 +579,13 @@ namespace{
 
   private:
     typedef vector<Element*> ElementVec_;
+    typedef map<VarId, __sc_plot_func> VarFuncMap_;
 
     Frame* frame_;
+    
+    Frame* computedFrame_;
+    VarFuncMap_ varFuncMap_;
+
     PlotWindow* window_;
     PlotWidget* widget_;
 
@@ -576,6 +623,12 @@ extern "C"{
   void* __scrt_plot_init(void* frame, void* window){
     return new Plot(static_cast<Frame*>(frame),
                     static_cast<PlotWindow*>(window));
+  }
+
+  void __scrt_plot_add_computed_var(void* plot,
+                                    VarId varId,
+                                    __sc_plot_func fp){
+    static_cast<Plot*>(plot)->addComputedVar(varId, fp);
   }
 
   void __scrt_plot_add_lines(void* plot,
