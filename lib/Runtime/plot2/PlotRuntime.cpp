@@ -90,6 +90,9 @@ namespace{
   const double TOP_MARGIN = 50.0;
   const double BOTTOM_MARGIN = 50.0;
 
+  const double MIN = numeric_limits<double>::min();
+  const double MAX = numeric_limits<double>::max();
+
   const size_t X_LABELS = 10;
   const size_t Y_LABELS = 10;
   const size_t X_TICKS = 20;
@@ -97,27 +100,13 @@ namespace{
 
   typedef uint32_t VarId;
 
-  template<class T>
-  constexpr pair<T, T> initRange(){
-    return {numeric_limits<T>::max(), numeric_limits<T>::min()};
-  }
-
-  template<class T>
-  void updateRange(pair<T, T>& r, const pair<T, T>& r2){
-    if(r2.first < r.first){
-      r.first = r2.first;
-    }
-
-    if(r2.second > r.second){
-      r.second = r2.second;
-    }
-  }
-
   class VarBase{
   public:
     virtual size_t size() const = 0;
     
-    virtual pair<double, double> range() const = 0;
+    virtual double min() const = 0;
+
+    virtual double max() const = 0;
 
     virtual double get(size_t i) const = 0;
   };
@@ -126,54 +115,39 @@ namespace{
   class Var : public VarBase{
   public:
     Var()
-      : i_(0){
-      v_.reserve(RESERVE);
+      : i_(RESERVE),
+        min_(numeric_limits<T>::max()),
+        max_(numeric_limits<T>::min()){
     }
 
     void capture(T value){
-      v_.push_back(value);
-     
       if(i_ == RESERVE){
         v_.reserve(v_.size() + RESERVE);
         i_ = 0;
+
+        if(value < min_){
+          min_ = value;
+        }
+        
+        if(value > max_){
+          max_ = value;
+        }
       }
       else{
         ++i_;
-      }
-    }
 
-    pair<T, T> range_() const{
-      auto ret = initRange<T>();
-      
-      size_t size = v_.size();
-      assert(size > 0 && "empty frame variable");
-
-      T vi;
-      for(size_t i = 0; i < size; ++i){
-        vi = v_[i];
-
-        if(vi < ret.first){
-          ret.first = vi;
+        if(value < min_){
+          min_ = value;
         }
-        
-        if(vi > ret.second){
-          ret.second = vi;
+        else if(value > max_){
+          max_ = value;
         }
       }
 
-      return ret;
-    }
-
-    pair<double, double> range() const{
-      auto r = range_();
-      return {r.first, r.second};
+      v_.push_back(value);
     }
 
     size_t size() const{
-      return v_.size();
-    }
-
-    size_t size_() const{
       return v_.size();
     }
 
@@ -181,9 +155,19 @@ namespace{
       return v_[i];
     }
 
+    double min() const{
+      return min_;
+    }
+
+    double max() const{
+      return max_;
+    }
+
   private:
     vector<T> v_;
     size_t i_;
+    T min_;
+    T max_;
   };
 
   class Frame{
@@ -341,11 +325,10 @@ namespace{
              return a->priority() > b->priority();
            });
 
-      auto xRange = initRange<double>();
-      auto yRange = initRange<double>();
-      
-      double xSpan;
-      double ySpan;
+      double xMin = MAX;
+      double xMax = MIN;
+      double yMin = MAX;
+      double yMax = MIN;
 
       size_t size;
 
@@ -356,13 +339,26 @@ namespace{
 
           size = x->size();
 
-          updateRange(xRange, x->range());
-          updateRange(yRange, y->range());
+          if(x->min() < xMin){
+            xMin = x->min();
+          }
+
+          if(x->max() > xMax){
+            xMax = x->max();
+          }
+
+          if(y->min() < yMin){
+            yMin = y->min();
+          }
+
+          if(y->max() > yMax){
+            yMax = y->max();
+          }
         }
       }
 
-      xSpan = xRange.second - xRange.first;
-      ySpan = yRange.second - yRange.first;
+      double xSpan = xMax - xMin;
+      double ySpan = yMax - yMin;
 
       QSize frame = widget_->frameSize();
       
@@ -391,7 +387,7 @@ namespace{
               xc = origin.x() + double(i)/size * xLen;
 
               drawText(painter,
-                       toLabel(xRange.first + (double(i)/size)*xSpan),
+                       toLabel(xMin + (double(i)/size)*xSpan),
                        QPointF(xc, height - BOTTOM_MARGIN + 3));
             }
             
@@ -410,7 +406,7 @@ namespace{
             double yc;
             double yv;
             for(size_t i = 0; i <= size; i += inc){
-              yv = yRange.first + ySpan * double(i)/size;
+              yv = yMin + ySpan * double(i)/size;
               yc = origin.y() - double(i)/size * yLen;
 
               drawText(painter,
@@ -446,16 +442,17 @@ namespace{
 
           QPen noPen(Qt::NoPen);
 
-          QBrush brush;
-
-          painter.setBrush(brush);
-
           QPointF lastPoint;
           QPointF point;
 
+          QColor color(255, 0, 0);
+          QBrush brush(color);
+      
+          painter.setBrush(brush);
+
           for(size_t i = 0; i < size; ++i){
-            point.setX(origin.x() + ((x->get(i) - xRange.first)/xSpan) * xLen);
-            point.setY(origin.y() - ((y->get(i) - yRange.first)/ySpan) * yLen);
+            point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
+            point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
 
             if(i > 0){
               QPolygonF poly;
@@ -463,12 +460,7 @@ namespace{
                 QPointF(point.x(), origin.y()) << 
                 QPointF(lastPoint.x(), origin.y());
       
-              QColor color(255, 0, 0);
-              QBrush brush(color);
-      
               painter.setPen(noPen);
-              painter.setBrush(brush);
-      
               painter.drawPolygon(poly);
             }
 
@@ -480,12 +472,13 @@ namespace{
             lastPoint = point;
           }
 
-          for(size_t i = 0; i < size; ++i){
-            point.setX(origin.x() + ((x->get(i) - xRange.first)/xSpan) * xLen);
-            point.setY(origin.y() - ((y->get(i) - yRange.first)/ySpan) * yLen);
+          painter.setPen(linePen);
+          painter.setBrush(pointBrush);
 
-            painter.setPen(linePen);
-            painter.setBrush(pointBrush);
+          for(size_t i = 0; i < size; ++i){
+            point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
+            point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
+
             painter.drawEllipse(point, 3.0, 3.0);
 
             lastPoint = point;
