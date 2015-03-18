@@ -205,8 +205,8 @@ void CodeGenFunction::SetMeshBounds(llvm::Value* MeshBaseAddr) {
   llvm::StructType* structTy =
   cast<llvm::StructType>(pointerTy->getElementType());
 
-  // find total number of fields
-  unsigned int nfields = structTy->getNumElements();
+  // find number of mesh fields (struct fields - the fixed ones like width/height/depth)
+  unsigned int nfields = structTy->getNumElements() - MeshParameterOffset::EndOffset;
   
   llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
@@ -215,9 +215,9 @@ void CodeGenFunction::SetMeshBounds(llvm::Value* MeshBaseAddr) {
   
   // extract rank from mesh stored after width/height/depth
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
-  MeshRank = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields - MeshParameterEndOffset::RankEndOffset, IRNameStr);
+  MeshRank = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields + MeshParameterOffset::RankOffset, IRNameStr);
   
-  unsigned start = nfields - MeshParameterEndOffset::WidthEndOffset;
+  unsigned start = nfields + MeshParameterOffset::WidthOffset;
   
   // Extract width/height/depth from the mesh
   // note: width/height depth are stored after mesh fields

@@ -60,14 +60,16 @@
     WidthOffset = 0,
     HeightOffset,
     DepthOffset,
-    RankOffset
+    RankOffset,
+    XStartOffset,
+    XSizeOffset,
+    YStartOffset,
+    YSizeOffset,
+    ZStartOffset,
+    ZSizeOffset,
+    EndOffset
   };
 
-  enum MeshParameterEndOffset {
-    RankEndOffset = 1,
-    DepthEndOffset,
-    HeightEndOffset,
-    WidthEndOffset
-  };
+
 
 #endif

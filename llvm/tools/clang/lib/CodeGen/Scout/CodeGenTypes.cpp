@@ -199,7 +199,7 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   
   if (isa<UniformMeshType>(meshType) || isa<RectilinearMeshType>(meshType)) {
     // put width/height/depth/rank after fields
-    for(size_t i = 0; i < 4; ++i) {
+    for(size_t i = 0; i <  MeshParameterOffset::EndOffset; ++i) {
       eltTys.push_back(llvm::IntegerType::get(getLLVMContext(), 32));
     }
   }

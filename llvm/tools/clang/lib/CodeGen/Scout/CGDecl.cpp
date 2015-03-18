@@ -80,6 +80,7 @@ using namespace clang;
 using namespace CodeGen;
 
 static const char *DimNames[]   = { "width", "height", "depth" };
+static const char *BoundsNames[]   = { "xstart", "xsize", "ystart", "ysize", "zstart", "zsize" };
 
 // We use 'IRNameStr' to hold the generated names we use for
 // various values in the IR building.  We've added a static
@@ -182,6 +183,13 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
   llvm::Value *Rank = Builder.CreateConstInBoundsGEP2_32(MeshAddr, 0, nfields+3, IRNameStr);
   Builder.CreateStore(llvm::ConstantInt::get(Int32Ty, rank), Rank);
+
+  for(size_t i = 0; i< 6; i++) {
+    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), BoundsNames[i]);
+    llvm::Value *x = Builder.CreateConstInBoundsGEP2_32(MeshAddr, 0, nfields+4+i, IRNameStr);
+    llvm::Value* ConstantZero =  llvm::ConstantInt::get(Int32Ty, 0);
+    Builder.CreateStore(ConstantZero, x);
+  }
 }
 
 // SC_TODO: this should not be a member function, as it calls dims.size()
