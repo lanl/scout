@@ -450,7 +450,7 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
     SourceLocation loc = itr.second.first;
     SpecExpr* v = itr.second.second;
     
-    if(k == "lines"){
+    if(k == "lines" || k == "points"){
       SpecObjectExpr* lv = v->toObject();
       
       if(lv){

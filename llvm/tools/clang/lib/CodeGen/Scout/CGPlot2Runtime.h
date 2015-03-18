@@ -107,6 +107,7 @@ namespace CodeGen {
     
     llvm::Function* PlotInitFunc();
     llvm::Function* PlotAddLinesFunc();
+    llvm::Function* PlotAddPointsFunc();
     llvm::Function* PlotAddAxisFunc();
     llvm::Function* PlotRenderFunc();
     

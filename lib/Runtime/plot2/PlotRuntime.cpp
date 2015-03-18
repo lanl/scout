@@ -3,7 +3,7 @@
  * Copyright (c) 2015, Los Alamos National Security, LLC.
  * All rights reserved.
  *
- *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *  Copyright 2015. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
  *  National Security, LLC for the U.S. Department of Energy. The
@@ -264,7 +264,7 @@ namespace{
   public:
     class Element{
     public:
-      virtual int priority() = 0;
+      virtual int order() = 0;
     };
 
     class Lines : public Element{
@@ -275,8 +275,21 @@ namespace{
       VarId xVarId;
       VarId yVarId;
 
-      int priority(){
+      int order(){
         return 1;
+      }
+    };
+
+    class Points : public Element{
+    public:
+      Points(VarId xVarId, VarId yVarId)
+        : xVarId(xVarId), yVarId(yVarId){}
+
+      VarId xVarId;
+      VarId yVarId;
+
+      int order(){
+        return 2;
       }
     };
 
@@ -288,8 +301,8 @@ namespace{
       uint32_t dim;
       string label;
 
-      int priority(){
-        return 2;
+      int order(){
+        return 3;
       }
     };
 
@@ -299,6 +312,10 @@ namespace{
 
     void addLines(VarId xVarId, VarId yVarId){
       elements_.push_back(new Lines(xVarId, yVarId)); 
+    }
+
+    void addPoints(VarId xVarId, VarId yVarId){
+      elements_.push_back(new Points(xVarId, yVarId)); 
     }
 
     void addAxis(uint32_t dim, const string& label){
@@ -311,18 +328,18 @@ namespace{
       widget_ = window_->getWidget();
       widget_->setRenderer(this);
       window_->show();
-      window_->repaint();
+      window_->update();
 
       QtWindow::pollEvents();
     }
-
+    
     void render(){
       QPainter painter(widget_);
       painter.setRenderHint(QPainter::Antialiasing, true);
 
       sort(elements_.begin(), elements_.end(),
            [](Element* a, Element* b){
-             return a->priority() > b->priority();
+             return a->order() > b->order();
            });
 
       double xMin = MAX;
@@ -336,6 +353,28 @@ namespace{
         if(Lines* l = dynamic_cast<Lines*>(e)){
           VarBase* x = frame_->getVar(l->xVarId);
           VarBase* y = frame_->getVar(l->yVarId);
+
+          size = x->size();
+
+          if(x->min() < xMin){
+            xMin = x->min();
+          }
+
+          if(x->max() > xMax){
+            xMax = x->max();
+          }
+
+          if(y->min() < yMin){
+            yMin = y->min();
+          }
+
+          if(y->max() > yMax){
+            yMax = y->max();
+          }
+        }
+        else if(Points* p = dynamic_cast<Points*>(e)){
+          VarBase* x = frame_->getVar(p->xVarId);
+          VarBase* y = frame_->getVar(p->yVarId);
 
           size = x->size();
 
@@ -433,12 +472,9 @@ namespace{
           VarBase* x = frame_->getVar(l->xVarId);
           VarBase* y = frame_->getVar(l->yVarId);
 
-          QBrush pointBrush(Qt::SolidPattern);
-          pointBrush.setColor(QColor(0, 0, 0));
-
-          QPen linePen;
-          linePen.setWidthF(1.0);
-          linePen.setColor(QColor(0, 0, 0));
+          QPen pen;
+          pen.setWidthF(1.0);
+          pen.setColor(QColor(0, 0, 0));
 
           QPen noPen(Qt::NoPen);
 
@@ -465,23 +501,33 @@ namespace{
             }
 
             if(i > 0){
-              painter.setPen(linePen);
+              painter.setPen(pen);
               painter.drawLine(point, lastPoint);
             }
 
             lastPoint = point;
           }
+        }
+        else if(Points* p = dynamic_cast<Points*>(e)){
+          VarBase* x = frame_->getVar(p->xVarId);
+          VarBase* y = frame_->getVar(p->yVarId);
 
-          painter.setPen(linePen);
-          painter.setBrush(pointBrush);
+          QPen pen;
+          pen.setWidthF(1.0);
+          pen.setColor(QColor(0, 0, 0));
+
+          QPointF point;
+
+          QColor color(0, 0, 0);
+          QBrush brush(color);
+      
+          painter.setBrush(brush);
 
           for(size_t i = 0; i < size; ++i){
             point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
             point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
 
             painter.drawEllipse(point, 3.0, 3.0);
-
-            lastPoint = point;
           }
         }
       }
@@ -532,6 +578,10 @@ extern "C"{
 
   void __scrt_plot_add_lines(void* plot, VarId xVarId, VarId yVarId){
     static_cast<Plot*>(plot)->addLines(xVarId, yVarId);
+  }
+
+  void __scrt_plot_add_points(void* plot, VarId xVarId, VarId yVarId){
+    static_cast<Plot*>(plot)->addPoints(xVarId, yVarId);
   }
 
   void __scrt_plot_add_axis(void* plot, uint32_t dim, const char* label){
