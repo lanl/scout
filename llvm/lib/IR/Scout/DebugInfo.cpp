@@ -53,33 +53,55 @@
  */
 
 #include "llvm/IR/DebugInfo.h"
+#include "LLVMContextImpl.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/ValueHandle.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Dwarf.h"
-#include "llvm/IR/ValueHandle.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 using namespace llvm::dwarf;
 
-bool DIDescriptor::isScoutCompositeType() const {
-  if (!DbgNode)
-    return false;
-  switch (getTag()) {
-  case dwarf::DW_TAG_SCOUT_uniform_mesh_type:
-  case dwarf::DW_TAG_SCOUT_structured_mesh_type:
-  case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
-  case dwarf::DW_TAG_SCOUT_unstructured_mesh_type:
+/// \brief Check if a value can be a reference to a type.
+static bool isTypeRef(const Metadata *MD) {
+  if (!MD)
     return true;
-  default:
-    return false;
-  }
+  if (auto *S = dyn_cast<MDString>(MD))
+    return !S->getString().empty();
+  return isa<MDType>(MD);
 }
+
+bool DIScoutDerivedType::Verify() const {
+  auto *N = getRaw();
+  if (!N)
+    return false;
+  if (getTag() == dwarf::DW_TAG_ptr_to_member_type) {
+    auto *D = dyn_cast<MDScoutDerivedType>(N);
+    if (!D)
+      return false;
+    if (!isTypeRef(D->getExtraData()))
+      return false;
+  }
+  return isTypeRef(N->getBaseType());
+}
+
+void DIScoutCompositeType::setArraysHelper(MDNode *Elements, MDNode *TParams) {
+  TypedTrackingMDRef<MDCompositeTypeBase> N(getRaw());
+  if (Elements)
+    N->replaceElements(cast<MDTuple>(Elements));
+  if (TParams)
+    N->replaceTemplateParams(cast<MDTuple>(TParams));
+  DbgNode = N;
+}
+

@@ -342,14 +342,16 @@ Decl* Sema::ActOnFrameDefinition(Scope* S,
     
   PushDeclContext(S, FD);
   
+  return FD;
+}
+
+void Sema::InitFrameDefinitions(Scope* S, FrameDecl* FD){
   QualType vt = Context.getFrameVarType(0);
   
   AddFrameVarType(S, FD, "Timestep", Context.IntTy);
   AddFrameVarType(S, FD, "Temperature", Context.DoubleTy);
   
   AddFrameFunction(S, FD, "sum", vt, {vt});
-  
-  return FD;
 }
 
 void Sema::AddFrameVarType(Scope* Scope,
@@ -360,7 +362,7 @@ void Sema::AddFrameVarType(Scope* Scope,
   VarDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
                   PP.getIdentifierInfo(Name), Type,
                   Context.getTrivialTypeSourceInfo(Type),
-                  SC_None);
+                  SC_Static);
   FD->addVarType(VD);
   
   PushOnScopeChains(VD, Scope, true);
@@ -381,7 +383,7 @@ void Sema::AddFrameFunction(Scope* Scope,
   FunctionDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
                        DeclarationName(PP.getIdentifierInfo(Name)),
                        FT, Context.getTrivialTypeSourceInfo(FT),
-                       SC_Extern, true);
+                       SC_Static, true);
     
   vector<ParmVarDecl*> params;
   
@@ -395,7 +397,7 @@ void Sema::AddFrameFunction(Scope* Scope,
     ParmVarDecl::Create(Context, F, SourceLocation(), SourceLocation(),
                         PP.getIdentifierInfo(nb),
                         t, Context.getTrivialTypeSourceInfo(t),
-                        SC_Extern, 0);
+                        SC_Static, 0);
     
     params.push_back(P);
     
@@ -424,13 +426,14 @@ bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
   
   for(auto& itr : m){
     const string& k = itr.first;
+    SourceLocation loc = itr.second.first;
     
     if(!SpecExpr::isSymbol(k)){
-      Diag(Spec->getKeyLoc(k), diag::err_invalid_frame_spec) << "invalid frame variable";
+      Diag(loc, diag::err_invalid_frame_spec) << "invalid frame variable";
       valid = false;
     }
     
-    SpecExpr* v = itr.second;
+    SpecExpr* v = itr.second.second;
 
     SpecObjectExpr* vo = v->toObject();
     
@@ -472,7 +475,7 @@ bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
       VarDecl::Create(Context, F, SourceLocation(), SourceLocation(),
                       PP.getIdentifierInfo(k), vt,
                       Context.getTrivialTypeSourceInfo(vt),
-                      SC_None);
+                      SC_Static);
       
       PushOnScopeChains(VD, Scope, true);
       F->addVar(k, VD);

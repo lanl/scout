@@ -26,6 +26,7 @@
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/ScriptInterpreter.h"
 #include "lldb/lldb-private-log.h"
+#include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/SymbolContext.h"
@@ -38,6 +39,9 @@
 #include "lldb/Symbol/SymbolFile.h"
 
 #include "Plugins/ObjectFile/JIT/ObjectFileJIT.h"
+
+#include "llvm/Support/raw_os_ostream.h"
+#include "llvm/Support/Signals.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -145,7 +149,7 @@ Module::Module (const ModuleSpec &module_spec) :
     m_object_mod_time (),
     m_objfile_sp (),
     m_symfile_ap (),
-    m_ast (),
+    m_ast (new ClangASTContext),
     m_source_mappings (),
     m_sections_ap(),
     m_did_load_objfile (false),
@@ -249,7 +253,7 @@ Module::Module(const FileSpec& file_spec,
     m_object_mod_time (),
     m_objfile_sp (),
     m_symfile_ap (),
-    m_ast (),
+    m_ast (new ClangASTContext),
     m_source_mappings (),
     m_sections_ap(),
     m_did_load_objfile (false),
@@ -295,7 +299,7 @@ Module::Module () :
     m_object_mod_time (),
     m_objfile_sp (),
     m_symfile_ap (),
-    m_ast (),
+    m_ast (new ClangASTContext),
     m_source_mappings (),
     m_sections_ap(),
     m_did_load_objfile (false),
@@ -440,10 +444,10 @@ Module::GetClangASTContext ()
                     object_arch.GetTriple().setOS(llvm::Triple::MacOSX);
                 }
             }
-            m_ast.SetArchitecture (object_arch);
+            m_ast->SetArchitecture (object_arch);
         }
     }
-    return m_ast;
+    return *m_ast;
 }
 
 void
@@ -1233,7 +1237,12 @@ Module::LogMessageVerboseBacktrace (Log *log, const char *format, ...)
         log_message.PrintfVarArg (format, args);
         va_end (args);
         if (log->GetVerbose())
-            Host::Backtrace (log_message, 1024);
+        {
+            std::string back_trace;
+            llvm::raw_string_ostream stream(back_trace);
+            llvm::sys::PrintStackTrace(stream);
+            log_message.PutCString(back_trace.c_str());
+        }
         log->PutCString(log_message.GetString().c_str());
     }
 }

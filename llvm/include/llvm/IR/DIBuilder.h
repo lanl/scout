@@ -339,7 +339,7 @@ namespace llvm {
     /// @param Elements     Struct elements.
     /// @param RunTimeLang  Optional parameter, Objective-C runtime version.
     /// @param UniqueIdentifier A unique identifier for the struct.
-    DICompositeType createUniformMeshType(DIDescriptor Scope, StringRef Name,
+    DIScoutCompositeType createUniformMeshType(DIDescriptor Scope, StringRef Name,
                                           DIFile File, unsigned LineNumber,
                                           uint64_t SizeInBits, uint64_t AlignInBits,
                                           unsigned Flags, DIType DerivedFrom,
@@ -362,7 +362,7 @@ namespace llvm {
     /// @param Elements     Struct elements.
     /// @param RunTimeLang  Optional parameter, Objective-C runtime version.
     /// @param UniqueIdentifier A unique identifier for the struct.
-    DICompositeType createStructuredMeshType(DIDescriptor Scope, StringRef Name,
+    DIScoutCompositeType createStructuredMeshType(DIDescriptor Scope, StringRef Name,
                                              DIFile File, unsigned LineNumber,
                                              uint64_t SizeInBits, uint64_t AlignInBits,
                                              unsigned Flags, DIType DerivedFrom,
@@ -385,7 +385,7 @@ namespace llvm {
     /// @param Elements     Struct elements.
     /// @param RunTimeLang  Optional parameter, Objective-C runtime version.
     /// @param UniqueIdentifier A unique identifier for the struct.
-    DICompositeType createRectilinearMeshType(DIDescriptor Scope, StringRef Name,
+    DIScoutCompositeType createRectilinearMeshType(DIDescriptor Scope, StringRef Name,
                                              DIFile File, unsigned LineNumber,
                                              uint64_t SizeInBits, uint64_t AlignInBits,
                                              unsigned Flags, DIType DerivedFrom,
@@ -408,7 +408,7 @@ namespace llvm {
     /// @param Elements     Struct elements.
     /// @param RunTimeLang  Optional parameter, Objective-C runtime version.
     /// @param UniqueIdentifier A unique identifier for the struct.
-    DICompositeType createUnstructuredMeshType(DIDescriptor Scope, StringRef Name,
+    DIScoutCompositeType createUnstructuredMeshType(DIDescriptor Scope, StringRef Name,
                                                DIFile File, unsigned LineNumber,
                                                uint64_t SizeInBits, uint64_t AlignInBits,
                                                unsigned Flags, DIType DerivedFrom,
@@ -534,6 +534,15 @@ namespace llvm {
                                       uint64_t SizeInBits = 0,
                                       uint64_t AlignInBits = 0,
                                       StringRef UniqueIdentifier = StringRef());
+    
+    // +===== Scout ===============================================
+    DIScoutCompositeType createScoutForwardDecl(unsigned Tag, StringRef Name,
+                                                DIDescriptor Scope, DIFile F,
+                                                unsigned Line, unsigned RuntimeLang = 0,
+                                                uint64_t SizeInBits = 0,
+                                                uint64_t AlignInBits = 0,
+                                                StringRef UniqueIdentifier = StringRef());
+    // +===========================================================
 
     /// \brief Create a temporary forward-declared type.
     DICompositeType createReplaceableCompositeType(
@@ -541,6 +550,14 @@ namespace llvm {
         unsigned Line, unsigned RuntimeLang = 0, uint64_t SizeInBits = 0,
         uint64_t AlignInBits = 0, unsigned Flags = DIDescriptor::FlagFwdDecl,
         StringRef UniqueIdentifier = StringRef());
+    
+    // +====== Scout =========================================
+    DIScoutCompositeType createReplaceableScoutCompositeType(
+      unsigned Tag, StringRef Name, DIDescriptor Scope, DIFile F,
+      unsigned Line, unsigned RuntimeLang = 0, uint64_t SizeInBits = 0,
+      uint64_t AlignInBits = 0, unsigned Flags = DIDescriptor::FlagFwdDecl,
+      StringRef UniqueIdentifier = StringRef());
+    // +======================================================
 
     /// retainType - Retain DIType in a module even if it is not referenced
     /// through debug info anchors.
@@ -814,6 +831,13 @@ namespace llvm {
     /// resolve cycles.
     void replaceArrays(DICompositeType &T, DIArray Elements,
                        DIArray TParems = DIArray());
+    
+    // +===== Scout =============================
+    
+    void replaceArrays(DIScoutCompositeType &T, DIArray Elements,
+                       DIArray TParems = DIArray());
+    
+    // +=========================================
   };
 } // end namespace llvm
 

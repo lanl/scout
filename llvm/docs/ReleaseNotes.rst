@@ -7,7 +7,7 @@ LLVM 3.7 Release Notes
 
 .. warning::
    These are in-progress notes for the upcoming LLVM 3.7 release.  You may
-   prefer the `LLVM 3.5 Release Notes <http://llvm.org/releases/3.5.0/docs
+   prefer the `LLVM 3.6 Release Notes <http://llvm.org/releases/3.6.0/docs
    /ReleaseNotes.html>`_.
 
 
@@ -43,6 +43,11 @@ Non-comprehensive list of changes in this release
 
 * The minimum required Visual Studio version for building LLVM is now 2013
   Update 4.
+
+* A new documentation page, :doc:`Frontend/PerformanceTips`, contains a 
+  collection of tips for frontend authors on how to generate IR which LLVM is 
+  able to effectively optimize.
+
 
 * ... next change ...
 

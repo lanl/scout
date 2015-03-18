@@ -34,7 +34,9 @@
 #include "lldb/Core/Timer.h"
 #include "lldb/Core/ValueObject.h"
 #include "lldb/Expression/ClangASTSource.h"
+#include "lldb/Expression/ClangPersistentVariables.h"
 #include "lldb/Expression/ClangUserExpression.h"
+#include "lldb/Expression/ClangModulesDeclVendor.h"
 #include "lldb/Host/FileSpec.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
@@ -43,7 +45,10 @@
 #include "lldb/Interpreter/OptionValues.h"
 #include "lldb/Interpreter/Property.h"
 #include "lldb/lldb-private-log.h"
+#include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/ObjectFile.h"
+#include "lldb/Target/LanguageRuntime.h"
+#include "lldb/Target/ObjCLanguageRuntime.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/SectionLoadList.h"
 #include "lldb/Target/StackFrame.h"
@@ -83,7 +88,7 @@ Target::Target(Debugger &debugger, const ArchSpec &target_arch, const lldb::Plat
     m_scratch_ast_context_ap (),
     m_scratch_ast_source_ap (),
     m_ast_importer_ap (),
-    m_persistent_variables (),
+    m_persistent_variables (new ClangPersistentVariables),
     m_source_manager_ap(),
     m_stop_hooks (),
     m_stop_hook_next_id (0),
@@ -226,7 +231,7 @@ Target::Destroy()
     m_last_created_watchpoint.reset();
     m_search_filter_sp.reset();
     m_image_search_paths.Clear(notify);
-    m_persistent_variables.Clear();
+    m_persistent_variables->Clear();
     m_stop_hooks.clear();
     m_stop_hook_next_id = 0;
     m_suppress_stop_hooks = false;
@@ -1232,8 +1237,7 @@ Target::ModulesDidLoad (ModuleList &module_list)
         {
             m_process_sp->ModulesDidLoad (module_list);
         }
-        // TODO: make event data that packages up the module_list
-        BroadcastEvent (eBroadcastBitModulesLoaded, NULL);
+        BroadcastEvent (eBroadcastBitModulesLoaded, new TargetEventData (this->shared_from_this(), module_list));
     }
 }
 
@@ -1253,7 +1257,7 @@ Target::SymbolsDidLoad (ModuleList &module_list)
         }
         
         m_breakpoint_list.UpdateBreakpoints (module_list, true, false);
-        BroadcastEvent(eBroadcastBitSymbolsLoaded, NULL);
+        BroadcastEvent (eBroadcastBitSymbolsLoaded, new TargetEventData (this->shared_from_this(), module_list));
     }
 }
 
@@ -1264,8 +1268,7 @@ Target::ModulesDidUnload (ModuleList &module_list, bool delete_locations)
     {
         UnloadModuleSections (module_list);
         m_breakpoint_list.UpdateBreakpoints (module_list, false, delete_locations);
-        // TODO: make event data that packages up the module_list
-        BroadcastEvent (eBroadcastBitModulesUnloaded, NULL);
+        BroadcastEvent (eBroadcastBitModulesUnloaded, new TargetEventData (this->shared_from_this(), module_list));
     }
 }
 
@@ -1953,7 +1956,7 @@ Target::EvaluateExpression
     lldb::ClangExpressionVariableSP persistent_var_sp;
     // Only check for persistent variables the expression starts with a '$' 
     if (expr_cstr[0] == '$')
-        persistent_var_sp = m_persistent_variables.GetVariable (expr_cstr);
+        persistent_var_sp = m_persistent_variables->GetVariable (expr_cstr);
 
     if (persistent_var_sp)
     {
@@ -1975,6 +1978,12 @@ Target::EvaluateExpression
     m_suppress_stop_hooks = old_suppress_value;
     
     return execution_results;
+}
+
+ClangPersistentVariables &
+Target::GetPersistentVariables()
+{
+    return *m_persistent_variables;
 }
 
 lldb::addr_t
@@ -2720,6 +2729,12 @@ Target::StopHook::StopHook (const StopHook &rhs) :
 
 Target::StopHook::~StopHook ()
 {
+}
+
+void
+Target::StopHook::SetSpecifier(SymbolContextSpecifier *specifier)
+{
+    m_specifier_sp.reset(specifier);
 }
 
 void
@@ -3525,6 +3540,25 @@ TargetProperties::DisableSTDIOValueChangedCallback(void *target_property_ptr, Op
 //----------------------------------------------------------------------
 // Target::TargetEventData
 //----------------------------------------------------------------------
+
+Target::TargetEventData::TargetEventData (const lldb::TargetSP &target_sp) :
+    EventData (),
+    m_target_sp (target_sp),
+    m_module_list ()
+{
+}
+
+Target::TargetEventData::TargetEventData (const lldb::TargetSP &target_sp, const ModuleList &module_list) :
+    EventData (),
+    m_target_sp (target_sp),
+    m_module_list (module_list)
+{
+}
+
+Target::TargetEventData::~TargetEventData()
+{
+}
+
 const ConstString &
 Target::TargetEventData::GetFlavorString ()
 {
@@ -3532,39 +3566,9 @@ Target::TargetEventData::GetFlavorString ()
     return g_flavor;
 }
 
-const ConstString &
-Target::TargetEventData::GetFlavor () const
-{
-    return TargetEventData::GetFlavorString ();
-}
-
-Target::TargetEventData::TargetEventData (const lldb::TargetSP &new_target_sp) :
-    EventData(),
-    m_target_sp (new_target_sp)
-{
-}
-
-Target::TargetEventData::~TargetEventData()
-{
-
-}
-
 void
 Target::TargetEventData::Dump (Stream *s) const
 {
-
-}
-
-const TargetSP
-Target::TargetEventData::GetTargetFromEvent (const lldb::EventSP &event_sp)
-{
-    TargetSP target_sp;
-
-    const TargetEventData *data = GetEventDataFromEvent (event_sp.get());
-    if (data)
-        target_sp = data->m_target_sp;
-
-    return target_sp;
 }
 
 const Target::TargetEventData *
@@ -3579,3 +3583,22 @@ Target::TargetEventData::GetEventDataFromEvent (const Event *event_ptr)
     return NULL;
 }
 
+TargetSP
+Target::TargetEventData::GetTargetFromEvent (const Event *event_ptr)
+{
+    TargetSP target_sp;
+    const TargetEventData *event_data = GetEventDataFromEvent (event_ptr);
+    if (event_data)
+        target_sp = event_data->m_target_sp;
+    return target_sp;
+}
+
+ModuleList
+Target::TargetEventData::GetModuleListFromEvent (const Event *event_ptr)
+{
+    ModuleList module_list;
+    const TargetEventData *event_data = GetEventDataFromEvent (event_ptr);
+    if (event_data)
+        module_list = event_data->m_module_list;
+    return module_list;
+}

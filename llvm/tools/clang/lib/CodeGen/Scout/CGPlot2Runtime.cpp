@@ -139,3 +139,25 @@ llvm::Function* CGPlot2Runtime::FrameCaptureFloatFunc(){
 llvm::Function* CGPlot2Runtime::FrameCaptureDoubleFunc(){
   return GetFunc("__scrt_frame_capture_double", {VoidPtrTy, Int32Ty, DoubleTy});
 }
+
+llvm::Function* CGPlot2Runtime::PlotInitFunc(){
+  return GetFunc("__scrt_plot_init", {VoidPtrTy, VoidPtrTy}, VoidPtrTy);
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddLinesFunc(){
+  return GetFunc("__scrt_plot_add_lines",
+                 {VoidPtrTy, Int32Ty, Int32Ty, DoubleTy});
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddPointsFunc(){
+  return GetFunc("__scrt_plot_add_points",
+                 {VoidPtrTy, Int32Ty, Int32Ty, DoubleTy});
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddAxisFunc(){
+  return GetFunc("__scrt_plot_add_axis", {VoidPtrTy, Int32Ty, StringTy});
+}
+
+llvm::Function* CGPlot2Runtime::PlotRenderFunc(){
+  return GetFunc("__scrt_plot_render", {VoidPtrTy});
+}

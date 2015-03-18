@@ -30,6 +30,7 @@
 #include "lldb/Symbol/ClangNamespaceDecl.h"
 #include "lldb/Symbol/DWARFCallFrameInfo.h"
 #include "lldb/Symbol/ObjectFile.h"
+#include "lldb/Target/MemoryRegionInfo.h"
 #include "lldb/Target/Platform.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/SectionLoadList.h"
@@ -994,7 +995,8 @@ ObjectFileMachO::GetModuleSpecifications (const lldb_private::FileSpec& file,
                 ModuleSpec spec;
                 spec.GetFileSpec() = file;
                 spec.SetObjectOffset(file_offset);
-                
+                spec.SetObjectSize(length);
+
                 if (GetArchitecture (header, data, data_offset, spec.GetArchitecture()))
                 {
                     if (spec.GetArchitecture().IsValid())
@@ -3200,6 +3202,7 @@ ObjectFileMachO::ParseSymtab ()
                                                         break;
                                                         
                                                     case N_UNDF:
+                                                        if (symbol_name && symbol_name[0])
                                                         {
                                                             ConstString undefined_name(symbol_name + ((symbol_name[0] == '_') ? 1 : 0));
                                                             undefined_name_to_desc[undefined_name] = nlist.n_desc;
@@ -4040,6 +4043,7 @@ ObjectFileMachO::ParseSymtab ()
                         break;
 
                     case N_UNDF:
+                        if (symbol_name && symbol_name[0])
                         {
                             ConstString undefined_name(symbol_name + ((symbol_name[0] == '_') ? 1 : 0));
                             undefined_name_to_desc[undefined_name] = nlist.n_desc;

@@ -114,6 +114,65 @@ SpecValueExpr* SpecExpr::toValue(){
   return static_cast<SpecValueExpr*>(this);
 }
 
+bool SpecValueExpr::isFrameVar(){
+  DeclRefExpr* dr = dyn_cast<DeclRefExpr>(Exp);
+  
+  if(!dr){
+    return false;
+  }
+  
+  return isa<FrameVarType>(dr->getDecl()->getType().getTypePtr());
+}
+
+VarDecl* SpecValueExpr::getFrameVar(){
+  DeclRefExpr* dr = dyn_cast<DeclRefExpr>(Exp);
+  assert(dr);
+  
+  assert(isa<FrameVarType>(dr->getDecl()->getType().getTypePtr()));
+  
+  return cast<VarDecl>(dr->getDecl());
+}
+
+bool SpecValueExpr::isInteger(){
+  return isa<IntegerLiteral>(Exp);
+}
+
+int64_t SpecValueExpr::getInteger(){
+  IntegerLiteral* i = dyn_cast<IntegerLiteral>(Exp);
+  assert(i);
+  
+  return i->getValue().getSExtValue();
+}
+
+bool SpecValueExpr::isNumeric(){
+  return isa<FloatingLiteral>(Exp) || isa<IntegerLiteral>(Exp);
+}
+
+double SpecValueExpr::getNumeric(){
+  IntegerLiteral* i = dyn_cast<IntegerLiteral>(Exp);
+  if(i){
+    return i->getValue().getSExtValue();
+  }
+
+  FloatingLiteral* f = dyn_cast<FloatingLiteral>(Exp);
+  if(f){
+    return f->getValue().convertToDouble();
+  }
+
+  assert(false && "non-numeric value");
+}
+
+bool SpecValueExpr::isString(){
+  return isa<StringLiteral>(Exp);
+}
+
+std::string SpecValueExpr::getString(){
+  StringLiteral* s = dyn_cast<StringLiteral>(Exp);
+  assert(s);
+  
+  return s->getString().str();
+}
+
 Expr* SpecExpr::toExpr(){
   SpecValueExpr* v = toValue();
   if(v){
@@ -137,4 +196,67 @@ SpecArrayExpr* SpecExpr::toArray(){
   }
   
   return static_cast<SpecArrayExpr*>(this);
+}
+
+bool SpecExpr::isFrameVar(){
+  SpecValueExpr* v = toValue();
+  if(v){
+    return v->isFrameVar();
+  }
+  
+  return false;
+}
+
+VarDecl* SpecExpr::getFrameVar(){
+  SpecValueExpr* v = toValue();
+  assert(v);
+  return v->getFrameVar();
+}
+
+bool SpecExpr::isInteger(){
+  SpecValueExpr* v = toValue();
+  if(v){
+    return v->isInteger();
+  }
+  
+  return false;
+}
+
+int64_t SpecExpr::getInteger(){
+  SpecValueExpr* v = toValue();
+  assert(v);
+  
+  return v->getInteger();
+}
+
+bool SpecExpr::isNumeric(){
+  SpecValueExpr* v = toValue();
+  if(v){
+    return v->isNumeric();
+  }
+  
+  return false;
+}
+
+double SpecExpr::getNumeric(){
+  SpecValueExpr* v = toValue();
+  assert(v);
+  
+  return v->getNumeric();
+}
+
+bool SpecExpr::isString(){
+  SpecValueExpr* v = toValue();
+  if(v){
+    return v->isString();
+  }
+  
+  return false;
+}
+
+std::string SpecExpr::getString(){
+  SpecValueExpr* v = toValue();
+  assert(v);
+  
+  return v->getString();
 }

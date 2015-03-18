@@ -2351,6 +2351,9 @@ void CodeGenFunction::EmitScoutStmt(const ScoutStmt &S) {
     case ScoutStmt::FrameCapture:
       EmitFrameCaptureStmt(static_cast<const FrameCaptureStmt&>(S));
       break;
+    case ScoutStmt::Plot:
+      EmitPlotStmt(static_cast<const PlotStmt&>(S));
+      break;
     default:
       assert(false && "unhandled ScoutStmt");
   }
@@ -2372,7 +2375,8 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
   
   Value* framePtr = LocalDeclMap.lookup(vd);
   assert(framePtr);
-  
+  framePtr = Builder.CreateLoad(framePtr, "frame.ptr");
+
   auto m = fd->getVarMap();
   auto mm = spec->memberMap();
   
@@ -2392,7 +2396,7 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
     llvm::Type* lt = ConvertType(QualType(et, 0));
     
     Value* val =
-    EmitAnyExprToTemp(itr.second->toExpr()).getScalarVal();
+    EmitAnyExprToTemp(itr.second.second->toExpr()).getScalarVal();
     
     ValueVec args = {framePtr, Builder.getInt32(fieldId), val};
     
@@ -2412,4 +2416,83 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
       assert(false && "invalid field type");
     }
   }
+}
+
+void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
+  using namespace std;
+  using namespace llvm;
+  
+  typedef vector<Value*> ValueVec;
+  
+  auto R = CGM.getPlot2Runtime();
+
+  const VarDecl* frame = S.getFrameVar();
+  const FrameType* ft = dyn_cast<FrameType>(frame->getType().getTypePtr());
+  const FrameDecl* fd = ft->getDecl();
+  
+  Value* framePtr = LocalDeclMap.lookup(frame);
+  assert(framePtr);
+  framePtr = Builder.CreateLoad(framePtr, "frame.ptr");
+  
+  const VarDecl* target = S.getRenderTargetVar();
+  Value* targetPtr = LocalDeclMap.lookup(target);
+  assert(targetPtr);
+  targetPtr = Builder.CreateBitCast(Builder.CreateLoad(targetPtr),
+                                    R.VoidPtrTy, "target.ptr");
+  
+  const SpecObjectExpr* spec = S.getSpec();
+  
+  ValueVec args = {framePtr, targetPtr};
+  
+  Value* plotPtr = Builder.CreateCall(R.PlotInitFunc(), args);
+  
+  auto m = spec->memberMap();
+  
+  for(auto& itr : m){
+    const string& k = itr.first;
+    SpecExpr* v = itr.second.second;
+    
+    if(k == "lines" || k == "points"){
+      SpecObjectExpr* o = v->toObject();
+      
+      SpecArrayExpr* pa = o->get("position")->toArray();
+      uint32_t x = fd->getVarId(pa->get(0)->getFrameVar());
+      Value* xv = ConstantInt::get(R.Int32Ty, x);
+      
+      uint32_t y = fd->getVarId(pa->get(1)->getFrameVar());
+      Value* yv = ConstantInt::get(R.Int32Ty, y);
+      
+      double size;
+      if(o->has("size")){
+        size = o->get("size")->getNumeric();
+      }
+      else{
+        size = 1;
+      }
+      
+      Value* sv = ConstantFP::get(R.DoubleTy, size);
+      
+      args = {plotPtr, xv, yv, sv};
+      
+      if(k == "lines"){
+        Builder.CreateCall(R.PlotAddLinesFunc(), args);
+      }
+      else{
+        Builder.CreateCall(R.PlotAddPointsFunc(), args);
+      }
+    }
+    else if(k == "axis"){
+      SpecObjectExpr* av = v->toObject();
+      uint32_t dim = av->get("dim")->getInteger();
+      string label = av->get("label")->getString();
+      
+      args =
+      {plotPtr, ConstantInt::get(R.Int32Ty, dim),
+        Builder.CreateGlobalStringPtr(label)};
+      Builder.CreateCall(R.PlotAddAxisFunc(), args);
+    }
+  }
+  
+  args = {plotPtr};
+  Builder.CreateCall(R.PlotRenderFunc(), args);
 }

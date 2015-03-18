@@ -111,52 +111,32 @@ namespace {
 
 // ----------------------------------------------------
 
-DICompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
+DIScoutCompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
     StringRef Name, DIFile File,
     unsigned LineNumber,
     uint64_t SizeInBits,
     uint64_t AlignInBits,
     unsigned Flags, DIType DerivedFrom,
     DIArray Elements,
-    unsigned dimX,
-    unsigned dimY,
-    unsigned dimZ,
+    unsigned DimX,
+    unsigned DimY,
+    unsigned DimZ,
     unsigned RunTimeLang,
     DIType VTableHolder,
     StringRef UniqueIdentifier
 ) {
-  // TAG_structure_type is encoded in DICompositeType format.
-  Metadata *Elts[] = {
-    HeaderBuilder::get(dwarf::DW_TAG_SCOUT_uniform_mesh_type)
-    .concat(Name)
-    .concat(LineNumber)
-    .concat(SizeInBits)
-    .concat(AlignInBits)
-    .concat(0)
-    .concat(Flags)
-    .concat(RunTimeLang)
-    .get(VMContext),
-    File.getFileNode(), DIScope(getNonCompileUnitScope(Context)).getRef(),
-    DerivedFrom.getRef(), Elements, VTableHolder.getRef(), nullptr,
-    UniqueIdentifier.empty() ? nullptr
-    : MDString::get(VMContext, UniqueIdentifier),
-    // These are the Scout-specific fields, we need to keep an eye on this when we merge
-    // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
-    // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimX)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimY)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimZ))
-  };
-  DIScoutCompositeType R(MDNode::get(VMContext, Elts));
-  assert(R.isCompositeType() &&
-         "createUniformMeshType should return a DICompositeType");
-  if (!UniqueIdentifier.empty()){
+  DIScoutCompositeType R = MDScoutCompositeType::get(
+    VMContext, dwarf::DW_TAG_SCOUT_uniform_mesh_type, Name, File, LineNumber,
+    DIScope(getNonCompileUnitScope(Context)).getRef(), DerivedFrom.getRef(),
+    SizeInBits, AlignInBits, 0, Flags, Elements, RunTimeLang,
+    VTableHolder.getRef(), nullptr, UniqueIdentifier, DimX, DimY, DimZ);
+  if (!UniqueIdentifier.empty())
     retainType(R);
-  }
+  trackIfUnresolved(R);
   return R;
 }
 
-DICompositeType DIBuilder::createStructuredMeshType(DIDescriptor Context,
+DIScoutCompositeType DIBuilder::createStructuredMeshType(DIDescriptor Context,
     StringRef Name, DIFile File,
     unsigned LineNumber,
     uint64_t SizeInBits,
@@ -169,38 +149,10 @@ DICompositeType DIBuilder::createStructuredMeshType(DIDescriptor Context,
     unsigned RunTimeLang,
     DIType VTableHolder,
     StringRef UniqueIdentifier) {
-  // TAG_structure_type is encoded in DICompositeType format.
-  Metadata *Elts[] = {
-    HeaderBuilder::get(dwarf::DW_TAG_SCOUT_uniform_mesh_type)
-    .concat(Name)
-    .concat(LineNumber)
-    .concat(SizeInBits)
-    .concat(AlignInBits)
-    .concat(0)
-    .concat(Flags)
-    .concat(RunTimeLang)
-    .get(VMContext),
-    File.getFileNode(), DIScope(getNonCompileUnitScope(Context)).getRef(),
-    DerivedFrom.getRef(), Elements, VTableHolder.getRef(), nullptr,
-    UniqueIdentifier.empty() ? nullptr
-    : MDString::get(VMContext, UniqueIdentifier),
-    // These are the Scout-specific fields, we need to keep an eye on this when we merge
-    // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
-    // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimX)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimY)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimZ))
-  };
-  DIScoutCompositeType R(MDNode::get(VMContext, Elts));
-  assert(R.isCompositeType() &&
-         "createStructuredMeshType should return a DICompositeType");
-  if (!UniqueIdentifier.empty()){
-    retainType(R);
-  }
-  return R;
+  assert(false && "unimplemented");
 }
 
-DICompositeType DIBuilder::createRectilinearMeshType(DIDescriptor Context,
+DIScoutCompositeType DIBuilder::createRectilinearMeshType(DIDescriptor Context,
     StringRef Name, DIFile File,
     unsigned LineNumber,
     uint64_t SizeInBits,
@@ -213,39 +165,10 @@ DICompositeType DIBuilder::createRectilinearMeshType(DIDescriptor Context,
     unsigned RunTimeLang,
     DIType VTableHolder,
     StringRef UniqueIdentifier) {
- // TAG_structure_type is encoded in DICompositeType format.
-  // TAG_structure_type is encoded in DICompositeType format.
-  Metadata *Elts[] = {
-    HeaderBuilder::get(dwarf::DW_TAG_SCOUT_uniform_mesh_type)
-    .concat(Name)
-    .concat(LineNumber)
-    .concat(SizeInBits)
-    .concat(AlignInBits)
-    .concat(0)
-    .concat(Flags)
-    .concat(RunTimeLang)
-    .get(VMContext),
-    File.getFileNode(), DIScope(getNonCompileUnitScope(Context)).getRef(),
-    DerivedFrom.getRef(), Elements, VTableHolder.getRef(), nullptr,
-    UniqueIdentifier.empty() ? nullptr
-    : MDString::get(VMContext, UniqueIdentifier),
-    // These are the Scout-specific fields, we need to keep an eye on this when we merge
-    // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
-    // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimX)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimY)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimZ))
-  };
-  DIScoutCompositeType R(MDNode::get(VMContext, Elts));
-  assert(R.isCompositeType() &&
-         "createRectilinearMeshType should return a DICompositeType");
-  if (!UniqueIdentifier.empty()){
-    retainType(R);
-  }
-  return R;
+  assert(false && "unimplemented");
 }
 
-DICompositeType DIBuilder::createUnstructuredMeshType(DIDescriptor Context,
+DIScoutCompositeType DIBuilder::createUnstructuredMeshType(DIDescriptor Context,
     StringRef Name, DIFile File,
     unsigned LineNumber,
     uint64_t SizeInBits,
@@ -258,35 +181,7 @@ DICompositeType DIBuilder::createUnstructuredMeshType(DIDescriptor Context,
     unsigned RunTimeLang,
     DIType VTableHolder,
     StringRef UniqueIdentifier) {
-  // TAG_structure_type is encoded in DICompositeType format.
-  Metadata *Elts[] = {
-    HeaderBuilder::get(dwarf::DW_TAG_SCOUT_uniform_mesh_type)
-    .concat(Name)
-    .concat(LineNumber)
-    .concat(SizeInBits)
-    .concat(AlignInBits)
-    .concat(0)
-    .concat(Flags)
-    .concat(RunTimeLang)
-    .get(VMContext),
-    File.getFileNode(), DIScope(getNonCompileUnitScope(Context)).getRef(),
-    DerivedFrom.getRef(), Elements, VTableHolder.getRef(), nullptr,
-    UniqueIdentifier.empty() ? nullptr
-    : MDString::get(VMContext, UniqueIdentifier),
-    // These are the Scout-specific fields, we need to keep an eye on this when we merge
-    // with LLVM/Clang in case new fields are added to DICompositeType, we need to add them
-    // here and update the accessor methods on DIScoutCompositeType to reflect layout changes
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimX)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimY)),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext), dimZ))
-  };
-  DIScoutCompositeType R(MDNode::get(VMContext, Elts));
-  assert(R.isCompositeType() &&
-         "createUnstructuredMeshType should return a DICompositeType");
-  if (!UniqueIdentifier.empty()){
-    retainType(R);
-  }
-  return R;
+  assert(false && "unimplemented");
 }
 
 DIScoutDerivedType 
@@ -298,19 +193,59 @@ DIBuilder::createMeshMemberType(DIDescriptor Scope, StringRef Name,
                                 unsigned Flags,
                                 unsigned ScoutFlags,
                                 DIType Ty) {
-  // TAG_member is encoded in DIScoutDerivedType format.
-  Metadata *Elts[] = {HeaderBuilder::get(dwarf::DW_TAG_member)
-    .concat(Name)
-    .concat(LineNumber)
-    .concat(SizeInBits)
-    .concat(AlignInBits)
-    .concat(OffsetInBits)
-    .concat(Flags)
-    .get(VMContext),
-    File.getFileNode(),
-    DIScope(getNonCompileUnitScope(Scope)).getRef(),
-    Ty.getRef(),
-    ConstantAsMetadata::get(ConstantInt::get(Type::getInt32Ty(VMContext),
-                                             ScoutFlags))};
-  return DIScoutDerivedType(MDNode::get(VMContext, Elts));
+  return MDScoutDerivedType::get(VMContext, dwarf::DW_TAG_member, Name, File, LineNumber,
+                                 DIScope(getNonCompileUnitScope(Scope)).getRef(), Ty.getRef(), SizeInBits,
+                                 AlignInBits, OffsetInBits, Flags, ScoutFlags);
+}
+
+DIScoutCompositeType
+DIBuilder::createScoutForwardDecl(unsigned Tag, StringRef Name, DIDescriptor Scope,
+                                  DIFile F, unsigned Line, unsigned RuntimeLang,
+                                  uint64_t SizeInBits, uint64_t AlignInBits,
+                                  StringRef UniqueIdentifier) {
+  // FIXME: Define in terms of createReplaceableForwardDecl() by calling
+  // replaceWithUniqued().
+  DIScoutCompositeType RetTy =
+  MDScoutCompositeType::get(
+                            VMContext, Tag, Name, F.getFileNode(), Line,
+                            DIScope(getNonCompileUnitScope(Scope)).getRef(), nullptr, SizeInBits,
+                            AlignInBits, 0, DIDescriptor::FlagFwdDecl, nullptr, RuntimeLang, nullptr,
+                            nullptr, UniqueIdentifier, 0, 0, 0);
+  if (!UniqueIdentifier.empty())
+    retainType(RetTy);
+  trackIfUnresolved(RetTy);
+  return RetTy;
+}
+
+DIScoutCompositeType DIBuilder::createReplaceableScoutCompositeType(
+                                                                    unsigned Tag, StringRef Name, DIDescriptor Scope, DIFile F, unsigned Line,
+                                                                    unsigned RuntimeLang, uint64_t SizeInBits, uint64_t AlignInBits,
+                                                                    unsigned Flags, StringRef UniqueIdentifier) {
+  DIScoutCompositeType RetTy =
+  MDScoutCompositeType::getTemporary(
+                                     VMContext, Tag, Name, F.getFileNode(), Line,
+                                     DIScope(getNonCompileUnitScope(Scope)).getRef(), nullptr, SizeInBits,
+                                     AlignInBits, 0, Flags, nullptr, RuntimeLang,
+                                     nullptr, nullptr, UniqueIdentifier, 0, 0, 0).release();
+  if (!UniqueIdentifier.empty())
+    retainType(RetTy);
+  trackIfUnresolved(RetTy);
+  return RetTy;
+}
+
+void DIBuilder::replaceArrays(DIScoutCompositeType &T, DIArray Elements,
+                              DIArray TParams) {
+  T.setArrays(Elements, TParams);
+  
+  // If T isn't resolved, there's no problem.
+  if (!T->isResolved())
+    return;
+  
+  // If "T" is resolved, it may be due to a self-reference cycle.  Track the
+  // arrays explicitly if they're unresolved, or else the cycles will be
+  // orphaned.
+  if (Elements)
+    trackIfUnresolved(Elements);
+  if (TParams)
+    trackIfUnresolved(TParams);
 }

@@ -3771,15 +3771,25 @@ class RenderTargetType : public Type {
   };
 };
 
-  
+// SC_TODO: the usage of plot vs. renderall is a temporary solution
+// to address a problem with that fact that we cannot use the same
+// Qt window type to do both plotting and OpenGL. Eventually, we need to
+// fix this.
 class WindowType :  public RenderTargetType {
-  
  public:
+  enum Usage{
+    None,
+    Renderall,
+    Plot
+  };
+  
   WindowType()
-      : RenderTargetType(Window, QualType()) { }
+  : RenderTargetType(Window, QualType()),
+  usage(None){ }
 
   WindowType(Expr *WE, Expr *HE)
-      : RenderTargetType(Window, WE, HE, QualType()) { }  
+  : RenderTargetType(Window, WE, HE, QualType()),
+  usage(None){ }
 
   static bool classof(const WindowType *T) { return true; }
   
@@ -3794,6 +3804,17 @@ class WindowType :  public RenderTargetType {
   bool isSugared() const { return false; }
   
   QualType desugar() const { return QualType(this, 0); }
+  
+  Usage getUsage() const{
+    return usage;
+  }
+  
+  void setUsage(Usage U) const{
+    usage = U;
+  }
+  
+private:
+  mutable Usage usage;
 };
 
   

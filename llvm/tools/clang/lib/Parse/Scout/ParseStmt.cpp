@@ -646,6 +646,17 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
     return StmtError();
   }
 
+  const WindowType* wt = dyn_cast<WindowType>(RTVD->getType().getTypePtr());
+  if(wt){
+    if(wt->getUsage() == WindowType::Plot){
+      Diag(Tok, diag::err_window_renderall_and_plot);
+      return StmtError();
+    }
+    else{
+      wt->setUsage(WindowType::Renderall);
+    }
+  }
+  
   // this does not work from within LLDB because normally the render target type is
   // window - but from within LLDB it is a: struct __scout_win_t *
   // since we are not doing anything wih the RenderTargetType, this is commented
@@ -1035,6 +1046,17 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
     return StmtError();
   }
   
+  const WindowType* wt = dyn_cast<WindowType>(RTVD->getType().getTypePtr());
+  if(wt){
+    if(wt->getUsage() == WindowType::Renderall){
+      Diag(Tok, diag::err_window_renderall_and_plot);
+      return StmtError();
+    }
+    else{
+      wt->setUsage(WindowType::Plot);
+    }
+  }
+  
   SourceLocation RTLoc = ConsumeToken();
   
   if (Tok.isNot(tok::identifier)) {
@@ -1057,20 +1079,25 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
     SkipUntil(tok::r_brace, StopBeforeMatch);
     return StmtError();
   }
-  
-  Sema::ContextRAII context(Actions, FD);
-  
-  //ParseScope FrameScope(this, Scope::ClassScope|Scope::DeclScope);
-  
-  //Actions.PushDeclContext(getCurScope(), FD);
-  ExprResult result = ParseSpecObjectExpression();
-  //Actions.PopDeclContext();
 
-  //FrameScope.Exit();
+  ParseScope FrameScope(this, Scope::ControlScope|Scope::DeclScope);
+  
+  auto& M = FD->getVarMap();
+  
+  for(auto& itr : M){
+    Actions.PushOnScopeChains(itr.second.varDecl, getCurScope(), false);
+  }
+  
+  ExprResult result = ParseSpecObjectExpression();
+  
+  FrameScope.Exit();
   
   if(result.isInvalid()){
     return StmtError();
   }
+
+  ScoutExpr* SE = cast<ScoutExpr>(result.get());
+  SpecObjectExpr* Spec = static_cast<SpecObjectExpr*>(SE);
   
-  return StmtError();
+  return Actions.ActOnPlotStmt(WithLoc, FrameLoc, RTVD, VD, Spec);
 }

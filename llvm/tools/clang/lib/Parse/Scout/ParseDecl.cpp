@@ -633,15 +633,13 @@ bool Parser::ParseFrameSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TI) {
                                      TemplateParams->size());
   }
   
-  //unsigned ScopeFlags = Scope::DeclScope | Scope::ControlScope;
-  
-  //ParseScope FrameScope(this, ScopeFlags);
-  
   FrameDecl* FD =
   static_cast<FrameDecl*>(Actions.ActOnFrameDefinition(getCurScope(), FrameLoc,
                                                        Name, NameLoc, TParams));
   
-  ParseScope FrameScope(this, Scope::ClassScope|Scope::DeclScope);
+  ParseScope FrameScope(this, Scope::ControlScope|Scope::DeclScope);
+  
+  Actions.InitFrameDefinitions(getCurScope(), FD);
   
   ExprResult Result = ParseSpecObjectExpression();
   if(Result.isInvalid()){

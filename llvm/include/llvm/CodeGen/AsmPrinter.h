@@ -16,6 +16,7 @@
 #ifndef LLVM_CODEGEN_ASMPRINTER_H
 #define LLVM_CODEGEN_ASMPRINTER_H
 
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/IR/InlineAsm.h"
@@ -29,6 +30,8 @@ class ByteStreamer;
 class GCStrategy;
 class Constant;
 class ConstantArray;
+class DIE;
+class DIEAbbrev;
 class GCMetadataPrinter;
 class GlobalValue;
 class GlobalVariable;
@@ -100,9 +103,12 @@ public:
   /// Map global GOT equivalent MCSymbols to GlobalVariables and keep track of
   /// its number of uses by other globals.
   typedef std::pair<const GlobalVariable *, unsigned> GOTEquivUsePair;
-  DenseMap<const MCSymbol *, GOTEquivUsePair> GlobalGOTEquivs;
+  MapVector<const MCSymbol *, GOTEquivUsePair> GlobalGOTEquivs;
 
 private:
+  MCSymbol *CurrentFnBegin;
+  MCSymbol *CurrentFnEnd;
+
   // The garbage collection metadata printer table.
   void *GCMetadataPrinters; // Really a DenseMap.
 
@@ -145,6 +151,9 @@ public:
   /// Return a unique ID for the current function.
   ///
   unsigned getFunctionNumber() const;
+
+  MCSymbol *getFunctionBegin() const { return CurrentFnBegin; }
+  MCSymbol *getFunctionEnd() const { return CurrentFnEnd; }
 
   /// Return information about object file lowering.
   const TargetLoweringObjectFile &getObjFileLowering() const;
@@ -331,6 +340,8 @@ public:
   /// Return an assembler temporary label with the specified stem.
   MCSymbol *GetTempSymbol(const Twine &Name) const;
 
+  MCSymbol *createTempSymbol(const Twine &Name, unsigned ID) const;
+
   /// Return the MCSymbol for a private symbol with global value name as its
   /// base, with the specified suffix.
   MCSymbol *getSymbolWithGlobalValueBase(const GlobalValue *GV,
@@ -417,37 +428,10 @@ public:
   /// Emit the 4-byte offset of Label from the start of its section.  This can
   /// be done with a special directive if the target supports it (e.g. cygwin)
   /// or by emitting it as an offset from a label at the start of the section.
-  ///
-  /// SectionLabel is a temporary label emitted at the start of the section
-  /// that Label lives in.
-  void EmitSectionOffset(const MCSymbol *Label,
-                         const MCSymbol *SectionLabel) const;
+  void emitSectionOffset(const MCSymbol *Label) const;
 
   /// Get the value for DW_AT_APPLE_isa. Zero if no isa encoding specified.
   virtual unsigned getISAEncoding(const Function *) { return 0; }
-
-  /// Emit a dwarf register operation for describing
-  /// - a small value occupying only part of a register or
-  /// - a register representing only part of a value.
-  void EmitDwarfOpPiece(ByteStreamer &Streamer, unsigned SizeInBits,
-                        unsigned OffsetInBits = 0) const;
-
-
-  /// \brief Emit a partial DWARF register operation.
-  /// \param MLoc             the register
-  /// \param PieceSize        size and
-  /// \param PieceOffset      offset of the piece in bits, if this is one
-  ///                         piece of an aggregate value.
-  ///
-  /// If size and offset is zero an operation for the entire
-  /// register is emitted: Some targets do not provide a DWARF
-  /// register number for every register.  If this is the case, this
-  /// function will attempt to emit a DWARF register by emitting a
-  /// piece of a super-register or by piecing together multiple
-  /// subregisters that alias the register.
-  void EmitDwarfRegOpPiece(ByteStreamer &BS, const MachineLocation &MLoc,
-                           unsigned PieceSize = 0,
-                           unsigned PieceOffset = 0) const;
 
   /// EmitDwarfRegOp - Emit a dwarf register operation.
   virtual void EmitDwarfRegOp(ByteStreamer &BS,
@@ -459,6 +443,12 @@ public:
 
   /// \brief Emit frame instruction to describe the layout of the frame.
   void emitCFIInstruction(const MCCFIInstruction &Inst) const;
+
+  /// \brief Emit Dwarf abbreviation table.
+  void emitDwarfAbbrevs(const std::vector<DIEAbbrev *>& Abbrevs) const;
+
+  /// \brief Recursively emit Dwarf DIE tree.
+  void emitDwarfDIE(const DIE &Die) const;
 
   //===------------------------------------------------------------------===//
   // Inline Asm Support

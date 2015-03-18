@@ -135,6 +135,10 @@ public:
     case MDBasicTypeKind:
     case MDDerivedTypeKind:
     case MDCompositeTypeKind:
+    // +====== Scout ==========================
+    case MDScoutCompositeTypeKind:
+    case MDScoutDerivedTypeKind:
+    // +=======================================
     case MDSubroutineTypeKind:
     case MDFileKind:
     case MDCompileUnitKind:
@@ -330,7 +334,16 @@ protected:
   ~MDScope() {}
 
 public:
-  Metadata *getFile() const { return getOperand(0); }
+  /// \brief Return the underlying file.
+  ///
+  /// An \a MDFile is an \a MDScope, but it doesn't point at a separate file
+  /// (it\em is the file).  If \c this is an \a MDFile, we need to return \c
+  /// this.  Otherwise, return the first operand, which is where all other
+  /// subclasses store their file pointer.
+  Metadata *getFile() const {
+    return isa<MDFile>(this) ? const_cast<MDScope *>(this)
+                             : static_cast<Metadata *>(getOperand(0));
+  }
 
   static bool classof(const Metadata *MD) {
     switch (MD->getMetadataID()) {
@@ -339,6 +352,10 @@ public:
     case MDBasicTypeKind:
     case MDDerivedTypeKind:
     case MDCompositeTypeKind:
+// +====== Scout =======================
+    case MDScoutDerivedTypeKind:
+    case MDScoutCompositeTypeKind:
+// +====================================
     case MDSubroutineTypeKind:
     case MDFileKind:
     case MDCompileUnitKind:
@@ -373,6 +390,10 @@ protected:
   ~MDType() {}
 
 public:
+  TempMDType clone() const {
+    return TempMDType(cast<MDType>(MDNode::clone().release()));
+  }
+
   unsigned getLine() const { return Line; }
   uint64_t getSizeInBits() const { return SizeInBits; }
   uint64_t getAlignInBits() const { return AlignInBits; }
@@ -384,6 +405,11 @@ public:
 
   MDString *getRawName() const { return getOperandAs<MDString>(2); }
 
+  void setFlags(unsigned NewFlags) {
+    assert(!isUniqued() && "Cannot set flags on uniqued nodes");
+    Flags = NewFlags;
+  }
+
   static bool classof(const Metadata *MD) {
     switch (MD->getMetadataID()) {
     default:
@@ -391,6 +417,10 @@ public:
     case MDBasicTypeKind:
     case MDDerivedTypeKind:
     case MDCompositeTypeKind:
+// +====== Scout =======================
+    case MDScoutDerivedTypeKind:
+    case MDScoutCompositeTypeKind:
+// +====================================
     case MDSubroutineTypeKind:
       return true;
     }
@@ -433,6 +463,8 @@ class MDBasicType : public MDType {
   }
 
 public:
+  DEFINE_MDNODE_GET(MDBasicType, (unsigned Tag, StringRef Name),
+                    (Tag, Name, 0, 0, 0))
   DEFINE_MDNODE_GET(MDBasicType,
                     (unsigned Tag, StringRef Name, uint64_t SizeInBits,
                      uint64_t AlignInBits, unsigned Encoding),
@@ -470,6 +502,10 @@ public:
   static bool classof(const Metadata *MD) {
     return MD->getMetadataID() == MDDerivedTypeKind ||
            MD->getMetadataID() == MDCompositeTypeKind ||
+    // +====== Scout =======================
+           MD->getMetadataID() == MDScoutDerivedTypeKind ||
+           MD->getMetadataID() == MDScoutCompositeTypeKind ||
+    // +====================================
            MD->getMetadataID() == MDSubroutineTypeKind;
   }
 };
@@ -551,6 +587,94 @@ public:
   }
 };
 
+// +===== Scout ==============================================
+class MDScoutDerivedType : public MDDerivedTypeBase {
+  friend class LLVMContextImpl;
+  friend class MDNode;
+  
+  unsigned ScoutFlags;
+  
+  MDScoutDerivedType(LLVMContext &C, StorageType Storage, unsigned Tag,
+                unsigned Line, uint64_t SizeInBits, uint64_t AlignInBits,
+                uint64_t OffsetInBits, unsigned Flags, unsigned ScoutFlags,
+                     ArrayRef<Metadata *> Ops)
+  : MDDerivedTypeBase(C, MDScoutDerivedTypeKind, Storage, Tag, Line, SizeInBits,
+                      AlignInBits, OffsetInBits, Flags, Ops),
+  ScoutFlags(ScoutFlags){}
+  
+  ~MDScoutDerivedType() {}
+  
+  static MDScoutDerivedType *getImpl(LLVMContext &Context, unsigned Tag,
+                                StringRef Name, Metadata *File, unsigned Line,
+                                Metadata *Scope, Metadata *BaseType,
+                                uint64_t SizeInBits, uint64_t AlignInBits,
+                                uint64_t OffsetInBits, unsigned Flags,
+                                unsigned ScoutFlags,
+                                Metadata *ExtraData, StorageType Storage,
+                                bool ShouldCreate = true) {
+    return getImpl(Context, Tag, getCanonicalMDString(Context, Name), File,
+                   Line, Scope, BaseType, SizeInBits, AlignInBits, OffsetInBits,
+                   Flags, ScoutFlags, ExtraData, Storage, ShouldCreate);
+  }
+  static MDScoutDerivedType *getImpl(LLVMContext &Context, unsigned Tag,
+                                MDString *Name, Metadata *File, unsigned Line,
+                                Metadata *Scope, Metadata *BaseType,
+                                uint64_t SizeInBits, uint64_t AlignInBits,
+                                uint64_t OffsetInBits, unsigned Flags,
+                                unsigned ScoutFlags,
+                                Metadata *ExtraData, StorageType Storage,
+                                bool ShouldCreate = true);
+  
+  TempMDScoutDerivedType cloneImpl() const {
+    return getTemporary(getContext(), getTag(), getName(), getFile(), getLine(),
+                        getScope(), getBaseType(), getSizeInBits(),
+                        getAlignInBits(), getOffsetInBits(), getFlags(),
+                        getScoutFlags(),
+                        getExtraData());
+  }
+  
+public:
+  DEFINE_MDNODE_GET(MDScoutDerivedType,
+                    (unsigned Tag, MDString *Name, Metadata *File,
+                     unsigned Line, Metadata *Scope, Metadata *BaseType,
+                     uint64_t SizeInBits, uint64_t AlignInBits,
+                     uint64_t OffsetInBits, unsigned Flags,
+                     unsigned ScoutFlags,
+                     Metadata *ExtraData = nullptr),
+                    (Tag, Name, File, Line, Scope, BaseType, SizeInBits,
+                     AlignInBits, OffsetInBits, Flags, ScoutFlags, ExtraData))
+  DEFINE_MDNODE_GET(MDScoutDerivedType,
+                    (unsigned Tag, StringRef Name, Metadata *File,
+                     unsigned Line, Metadata *Scope, Metadata *BaseType,
+                     uint64_t SizeInBits, uint64_t AlignInBits,
+                     uint64_t OffsetInBits, unsigned Flags,
+                     unsigned ScoutFlags,
+                     Metadata *ExtraData = nullptr),
+                    (Tag, Name, File, Line, Scope, BaseType, SizeInBits,
+                     AlignInBits, OffsetInBits, Flags, ScoutFlags, ExtraData))
+  
+  TempMDScoutDerivedType clone() const { return cloneImpl(); }
+  
+  /// \brief Get extra data associated with this derived type.
+  ///
+  /// Class type for pointer-to-members, objective-c property node for ivars,
+  /// or global constant wrapper for static members.
+  ///
+  /// TODO: Separate out types that need this extra operand: pointer-to-member
+  /// types and member fields (static members and ivars).
+  Metadata *getExtraData() const { return getOperand(4); }
+  
+  unsigned getScoutFlags() const{
+    return ScoutFlags;
+  }
+  
+  static bool classof(const Metadata *MD) {
+    return MD->getMetadataID() == MDScoutDerivedTypeKind;
+  }
+};
+// +=========================================================
+  
+  
 /// \brief Base class for MDCompositeType and MDSubroutineType.
 ///
 /// TODO: Delete; they're not really related.
@@ -602,6 +726,9 @@ public:
 
   static bool classof(const Metadata *MD) {
     return MD->getMetadataID() == MDCompositeTypeKind ||
+    // +====== Scout ==========================================
+           MD->getMetadataID() == MDScoutCompositeTypeKind ||
+    // +=======================================================
            MD->getMetadataID() == MDSubroutineTypeKind;
   }
 };
@@ -683,6 +810,114 @@ public:
   }
 };
 
+// +===== Scout ===========================================
+class MDScoutCompositeType : public MDCompositeTypeBase {
+  friend class LLVMContextImpl;
+  friend class MDNode;
+  
+  unsigned DimX;
+  unsigned DimY;
+  unsigned DimZ;
+  
+  MDScoutCompositeType(LLVMContext &C, StorageType Storage, unsigned Tag,
+                  unsigned Line, unsigned RuntimeLang, uint64_t SizeInBits,
+                  uint64_t AlignInBits, uint64_t OffsetInBits, unsigned Flags,
+                  unsigned DimX, unsigned DimY, unsigned DimZ,
+                  ArrayRef<Metadata *> Ops)
+  : MDCompositeTypeBase(C, MDScoutCompositeTypeKind, Storage, Tag, Line,
+                        RuntimeLang, SizeInBits, AlignInBits, OffsetInBits,
+                        Flags, Ops),
+  DimX(DimX),
+  DimY(DimY),
+  DimZ(DimZ){}
+  
+  ~MDScoutCompositeType() {}
+  
+  static MDScoutCompositeType *
+  getImpl(LLVMContext &Context, unsigned Tag, StringRef Name, Metadata *File,
+          unsigned Line, Metadata *Scope, Metadata *BaseType,
+          uint64_t SizeInBits, uint64_t AlignInBits, uint64_t OffsetInBits,
+          uint64_t Flags, Metadata *Elements, unsigned RuntimeLang,
+          Metadata *VTableHolder, Metadata *TemplateParams,
+          StringRef Identifier,
+          unsigned DimX, unsigned DimY, unsigned DimZ,
+          StorageType Storage, bool ShouldCreate = true) {
+    return getImpl(Context, Tag, getCanonicalMDString(Context, Name), File,
+                   Line, Scope, BaseType, SizeInBits, AlignInBits, OffsetInBits,
+                   Flags, Elements, RuntimeLang, VTableHolder, TemplateParams,
+                   getCanonicalMDString(Context, Identifier),
+                   DimX, DimY, DimZ,
+                   Storage, ShouldCreate);
+  }
+  static MDScoutCompositeType *
+  getImpl(LLVMContext &Context, unsigned Tag, MDString *Name, Metadata *File,
+          unsigned Line, Metadata *Scope, Metadata *BaseType,
+          uint64_t SizeInBits, uint64_t AlignInBits, uint64_t OffsetInBits,
+          unsigned Flags, Metadata *Elements, unsigned RuntimeLang,
+          Metadata *VTableHolder, Metadata *TemplateParams,
+          MDString *Identifier,
+          unsigned DimX, unsigned DimY, unsigned DimZ,
+          StorageType Storage, bool ShouldCreate = true);
+  
+  TempMDScoutCompositeType cloneImpl() const {
+    return getTemporary(getContext(), getTag(), getName(), getFile(), getLine(),
+                        getScope(), getBaseType(), getSizeInBits(),
+                        getAlignInBits(), getOffsetInBits(), getFlags(),
+                        getElements(), getRuntimeLang(), getVTableHolder(),
+                        getTemplateParams(), getIdentifier(),
+                        getDimX(), getDimY(), getDimZ());
+  }
+  
+public:
+  DEFINE_MDNODE_GET(MDScoutCompositeType,
+                    (unsigned Tag, StringRef Name, Metadata *File,
+                     unsigned Line, Metadata *Scope, Metadata *BaseType,
+                     uint64_t SizeInBits, uint64_t AlignInBits,
+                     uint64_t OffsetInBits, unsigned Flags, Metadata *Elements,
+                     unsigned RuntimeLang,
+                     Metadata *VTableHolder,
+                     Metadata *TemplateParams,
+                     StringRef Identifier,
+                     unsigned DimX, unsigned DimY, unsigned DimZ),
+                    (Tag, Name, File, Line, Scope, BaseType, SizeInBits,
+                     AlignInBits, OffsetInBits, Flags, Elements, RuntimeLang,
+                     VTableHolder, TemplateParams, Identifier,
+                     DimX, DimY, DimZ))
+  DEFINE_MDNODE_GET(MDScoutCompositeType,
+                    (unsigned Tag, MDString *Name, Metadata *File,
+                     unsigned Line, Metadata *Scope, Metadata *BaseType,
+                     uint64_t SizeInBits, uint64_t AlignInBits,
+                     uint64_t OffsetInBits, unsigned Flags, Metadata *Elements,
+                     unsigned RuntimeLang,
+                     Metadata *VTableHolder,
+                     Metadata *TemplateParams,
+                     MDString *Identifier,
+                     unsigned DimX, unsigned DimY, unsigned DimZ),
+                    (Tag, Name, File, Line, Scope, BaseType, SizeInBits,
+                     AlignInBits, OffsetInBits, Flags, Elements, RuntimeLang,
+                     VTableHolder, TemplateParams, Identifier,
+                     DimX, DimY, DimZ))
+  
+  TempMDScoutCompositeType clone() const { return cloneImpl(); }
+  
+  unsigned getDimX() const{
+    return DimX;
+  }
+  
+  unsigned getDimY() const{
+    return DimY;
+  }
+  
+  unsigned getDimZ() const{
+    return DimZ;
+  }
+  
+  static bool classof(const Metadata *MD) {
+    return MD->getMetadataID() == MDScoutCompositeTypeKind;
+  }
+};
+// +=============================================================
+  
 /// \brief Type array for a subprogram.
 ///
 /// TODO: Detach from CompositeType, and fold the array of types in directly
@@ -1406,6 +1641,18 @@ public:
   unsigned getArg() const { return Arg; }
   unsigned getFlags() const { return Flags; }
   Metadata *getInlinedAt() const { return getOperand(4); }
+
+  /// \brief Get an inlined version of this variable.
+  ///
+  /// Returns a version of this with \a getAlinedAt() set to \c InlinedAt.
+  MDLocalVariable *withInline(MDLocation *InlinedAt) const {
+    if (InlinedAt == getInlinedAt())
+      return const_cast<MDLocalVariable *>(this);
+    auto Temp = clone();
+    Temp->replaceOperandWith(4, InlinedAt);
+    return replaceWithUniqued(std::move(Temp));
+  }
+  MDLocalVariable *withoutInline() const { return withInline(nullptr); }
 
   static bool classof(const Metadata *MD) {
     return MD->getMetadataID() == MDLocalVariableKind;

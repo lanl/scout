@@ -31,6 +31,7 @@
 #include "lldb/Host/StringConvert.h"
 #include "lldb/Host/TimeValue.h"
 #include "lldb/Target/Target.h"
+#include "lldb/Target/MemoryRegionInfo.h"
 
 // Project includes
 #include "Utility/StringExtractorGDBRemote.h"
@@ -3639,7 +3640,7 @@ GDBRemoteCommunicationClient::SaveRegisterState (lldb::tid_t tid, uint32_t &save
             if (thread_suffix_supported)
                 ::snprintf (packet, sizeof(packet), "QSaveRegisterState;thread:%4.4" PRIx64 ";", tid);
             else
-                ::strncpy (packet, "QSaveRegisterState", sizeof(packet));
+                ::snprintf(packet, sizeof(packet), "QSaveRegisterState");
             
             StringExtractorGDBRemote response;
 
@@ -3719,5 +3720,6 @@ GDBRemoteCommunicationClient::GetModuleInfo (const char* module_path,
     const auto& tripple = arch_spec.GetTriple().getTriple();
     packet.PutBytesAsRawHex8(tripple.c_str(), tripple.size());
 
-    return SendPacketAndWaitForResponse (packet.GetData(), packet.GetSize(), response, false) == PacketResult::Success;
+    return SendPacketAndWaitForResponse (packet.GetData(), packet.GetSize(), response, false) == PacketResult::Success &&
+        !response.IsErrorResponse ();
 }

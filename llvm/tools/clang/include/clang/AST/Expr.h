@@ -4869,7 +4869,8 @@ public:
     Spec,
     SpecObject,
     SpecValue,
-    SpecArray
+    SpecArray,
+    SpecMulti
   };
   
   ScoutExpr(ScoutExprKind K, SourceLocation LocStart)
@@ -4908,6 +4909,7 @@ private:
 class SpecObjectExpr;
 class SpecArrayExpr;
 class SpecValueExpr;
+class SpecMultiExpr;
 
 class SpecExpr : public ScoutExpr{
 public:
@@ -4930,49 +4932,69 @@ public:
   
   SpecArrayExpr* toArray();
   
+  bool isFrameVar();
+  
+  VarDecl* getFrameVar();
+  
+  bool isInteger();
+  
+  int64_t getInteger();
+  
+  bool isNumeric();
+  
+  double getNumeric();
+  
+  bool isString();
+  
+  std::string getString();
 };
 
 class SpecObjectExpr : public SpecExpr{
 public:
-  typedef std::map<std::string, SpecExpr*> MemberMap;
-  typedef std::map<std::string, SourceLocation> KeyLocMap;
+  typedef std::multimap<std::string, std::pair<SourceLocation, SpecExpr*>> MemberMap;
   
   SpecObjectExpr(SourceLocation LocStart)
   : SpecExpr(ScoutExpr::SpecObject, LocStart){}
   
   void insert(const std::string& K, SourceLocation KeyLoc, SpecExpr* V){
-    MM.insert({K, V});
-    KM.insert({K, KeyLoc});
+    MM.insert({K, {KeyLoc, V}});
   }
   
   bool has(const std::string& K){
-    auto itr = MM.find(K);
-    return itr != MM.end();
+    return MM.count(K) > 0;
   }
 
+  size_t count(const std::string& K){
+    return MM.count(K);
+  }
+  
   const MemberMap& memberMap() const{
     return MM;
   }
   
   SpecExpr* get(const std::string& K){
-    auto itr = MM.find(K);
-    
-    if(itr != MM.end()){
-      return itr->second;
+    auto p = MM.equal_range(K);
+    auto itr = p.first;
+    while(itr != p.second){
+      return itr->second.second;
     }
     
     return 0;
   }
   
-  SourceLocation getKeyLoc(const std::string& K){
-    auto itr = KM.find(K);
-    assert(itr != KM.end() && "invalid key");
-    return itr->second;
+  SourceLocation getLoc(const std::string& K){
+    auto p = MM.equal_range(K);
+    auto itr = p.first;
+    
+    while(itr != p.second){
+      return itr->second.first;
+    }
+    
+    return SourceLocation();
   }
   
 private:
   MemberMap MM;
-  KeyLocMap KM;
 };
 
 class SpecValueExpr : public SpecExpr{
@@ -4984,6 +5006,22 @@ public:
   Expr* getExpression(){
     return Exp;
   }
+  
+  bool isFrameVar();
+  
+  VarDecl* getFrameVar();
+  
+  bool isInteger();
+  
+  int64_t getInteger();
+  
+  bool isNumeric();
+  
+  double getNumeric();
+  
+  bool isString();
+  
+  std::string getString();
   
 private:
   Expr* Exp;

@@ -62,10 +62,8 @@ const int Hexagon_MEMB_AUTOINC_MIN = -8;
 void HexagonInstrInfo::anchor() {}
 
 HexagonInstrInfo::HexagonInstrInfo(HexagonSubtarget &ST)
-  : HexagonGenInstrInfo(Hexagon::ADJCALLSTACKDOWN, Hexagon::ADJCALLSTACKUP),
-    RI(ST), Subtarget(ST) {
-}
-
+    : HexagonGenInstrInfo(Hexagon::ADJCALLSTACKDOWN, Hexagon::ADJCALLSTACKUP),
+      RI(), Subtarget(ST) {}
 
 /// isLoadFromStackSlot - If the specified machine instruction is a direct
 /// load from a stack slot, return the virtual or physical register number of
@@ -211,9 +209,11 @@ bool HexagonInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
       return false;
     --I;
   }
-
+  
+  bool JumpToBlock = I->getOpcode() == Hexagon::J2_jump &&
+                     I->getOperand(0).isMBB();
   // Delete the JMP if it's equivalent to a fall-through.
-  if (AllowModify && I->getOpcode() == Hexagon::J2_jump &&
+  if (AllowModify && JumpToBlock &&
       MBB.isLayoutSuccessor(I->getOperand(0).getMBB())) {
     DEBUG(dbgs()<< "\nErasing the jump to successor block\n";);
     I->eraseFromParent();
@@ -243,6 +243,14 @@ bool HexagonInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
   } while(I);
 
   int LastOpcode = LastInst->getOpcode();
+  int SecLastOpcode = SecondLastInst ? SecondLastInst->getOpcode() : 0;
+  // If the branch target is not a basic block, it could be a tail call.
+  // (It is, if the target is a function.)
+  if (LastOpcode == Hexagon::J2_jump && !LastInst->getOperand(0).isMBB())
+    return true;
+  if (SecLastOpcode == Hexagon::J2_jump &&
+      !SecondLastInst->getOperand(0).isMBB())
+    return true;
 
   bool LastOpcodeHasJMP_c = PredOpcodeHasJMP_c(LastOpcode);
   bool LastOpcodeHasNot = PredOpcodeHasNot(LastOpcode);
@@ -269,8 +277,6 @@ bool HexagonInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
     // Otherwise, don't know what this is.
     return true;
   }
-
-  int SecLastOpcode = SecondLastInst->getOpcode();
 
   bool SecLastOpcodeHasJMP_c = PredOpcodeHasJMP_c(SecLastOpcode);
   bool SecLastOpcodeHasNot = PredOpcodeHasNot(SecLastOpcode);
@@ -549,12 +555,26 @@ void HexagonInstrInfo::loadRegFromAddr(MachineFunction &MF, unsigned DestReg,
                                  SmallVectorImpl<MachineInstr*> &NewMIs) const {
   llvm_unreachable("Unimplemented");
 }
+bool
+HexagonInstrInfo::expandPostRAPseudo(MachineBasicBlock::iterator MI) const {
+  unsigned Opc = MI->getOpcode();
 
+  switch (Opc) {
+    case Hexagon::TCRETURNi:
+      MI->setDesc(get(Hexagon::J2_jump));
+      return true;
+    case Hexagon::TCRETURNr:
+      MI->setDesc(get(Hexagon::J2_jumpr));
+      return true;
+  }
+
+  return false;
+}
 
 MachineInstr *HexagonInstrInfo::foldMemoryOperandImpl(MachineFunction &MF,
-                                                    MachineInstr* MI,
-                                          const SmallVectorImpl<unsigned> &Ops,
-                                                    int FI) const {
+                                                      MachineInstr *MI,
+                                                      ArrayRef<unsigned> Ops,
+                                                      int FI) const {
   // Hexagon_TODO: Implement.
   return nullptr;
 }
@@ -641,7 +661,7 @@ bool HexagonInstrInfo::isPredicable(MachineInstr *MI) const {
 
   switch(Opc) {
   case Hexagon::A2_tfrsi:
-    return isInt<12>(MI->getOperand(1).getImm());
+    return (isOperandExtended(MI, 1) && isConstExtended(MI)) || isInt<12>(MI->getOperand(1).getImm());
 
   case Hexagon::S2_storerd_io:
     return isShiftedUInt<6,3>(MI->getOperand(1).getImm());
@@ -1647,7 +1667,7 @@ bool HexagonInstrInfo::isConstExtended(MachineInstr *MI) const {
   // We currently only handle isGlobal() because it is the only kind of
   // object we are going to end up with here for now.
   // In the future we probably should add isSymbol(), etc.
-  if (MO.isGlobal() || MO.isSymbol())
+  if (MO.isGlobal() || MO.isSymbol() || MO.isBlockAddress())
     return true;
 
   // If the extendable operand is not 'Immediate' type, the instruction should

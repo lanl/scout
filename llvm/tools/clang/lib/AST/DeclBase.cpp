@@ -343,20 +343,34 @@ bool Decl::isReferenced() const {
 static AvailabilityResult CheckAvailability(ASTContext &Context,
                                             const AvailabilityAttr *A,
                                             std::string *Message) {
-  StringRef TargetPlatform = Context.getTargetInfo().getPlatformName();
-  StringRef PrettyPlatformName
-    = AvailabilityAttr::getPrettyPlatformName(TargetPlatform);
-  if (PrettyPlatformName.empty())
-    PrettyPlatformName = TargetPlatform;
+  VersionTuple TargetMinVersion =
+    Context.getTargetInfo().getPlatformMinVersion();
 
-  VersionTuple TargetMinVersion = Context.getTargetInfo().getPlatformMinVersion();
   if (TargetMinVersion.empty())
     return AR_Available;
 
+  // Check if this is an App Extension "platform", and if so chop off
+  // the suffix for matching with the actual platform.
+  StringRef ActualPlatform = A->getPlatform()->getName();
+  StringRef RealizedPlatform = ActualPlatform;
+  if (Context.getLangOpts().AppExt) {
+    size_t suffix = RealizedPlatform.rfind("_app_extension");
+    if (suffix != StringRef::npos)
+      RealizedPlatform = RealizedPlatform.slice(0, suffix);
+  }
+
+  StringRef TargetPlatform = Context.getTargetInfo().getPlatformName();
+
   // Match the platform name.
-  if (A->getPlatform()->getName() != TargetPlatform)
+  if (RealizedPlatform != TargetPlatform)
     return AR_Available;
-  
+
+  StringRef PrettyPlatformName
+    = AvailabilityAttr::getPrettyPlatformName(ActualPlatform);
+
+  if (PrettyPlatformName.empty())
+    PrettyPlatformName = ActualPlatform;
+
   std::string HintMessage;
   if (!A->getMessage().empty()) {
     HintMessage = " - ";
@@ -606,6 +620,7 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case Block:
     case Captured:
     case TranslationUnit:
+    case ExternCContext:
 
     case UsingDirective:
     case ClassTemplateSpecialization:
@@ -916,6 +931,7 @@ bool DeclContext::Encloses(const DeclContext *DC) const {
 DeclContext *DeclContext::getPrimaryContext() {
   switch (DeclKind) {
   case Decl::TranslationUnit:
+  case Decl::ExternCContext:
   case Decl::LinkageSpec:
   case Decl::Block:
   case Decl::Captured:

@@ -16,7 +16,8 @@ class MiSignalTestCase(lldbmi_testcase.MiTestCaseBase):
 
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
-    @unittest2.skipUnless(sys.platform.startswith("darwin"), "requires Darwin")
+    @skipIfFreeBSD # llvm.org/pr22411: Fails on FreeBSD apparently due to thread race conditions
+    @skipIfLinux # llvm.org/pr22841: lldb-mi tests fail on all Linux buildbots
     def test_lldbmi_stopped_when_interrupt(self):
         """Test that 'lldb-mi --interpreter' interrupt and resume a looping app."""
 
@@ -54,6 +55,7 @@ class MiSignalTestCase(lldbmi_testcase.MiTestCaseBase):
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @skipIfFreeBSD # llvm.org/pr22411: Fails on FreeBSD apparently due to thread race conditions
+    @skipIfLinux # llvm.org/pr22841: lldb-mi tests fail on all Linux buildbots
     def test_lldbmi_stopped_when_stopatentry_local(self):
         """Test that 'lldb-mi --interpreter' notifies after it was stopped on entry (local)."""
 
@@ -70,8 +72,9 @@ class MiSignalTestCase(lldbmi_testcase.MiTestCaseBase):
         # Test that *stopped is printed
         # Note that message is different in Darwin and Linux:
         # Darwin: "*stopped,reason=\"signal-received\",signal-name=\"SIGINT\",signal-meaning=\"Interrupt\",frame={level=\"0\",addr=\"0x[0-9a-f]+\",func=\"_dyld_start\",file=\"??\",fullname=\"??\",line=\"-1\"},thread-id=\"1\",stopped-threads=\"all\"
-        # Linux:  "*stopped,reason=\"end-stepping-range\",frame={addr=\"0x[0-9a-f]+\",func=\"??\",args=\[\],file=\"??\",fullname=\"??\",line=\"-1\"},thread-id=\"1\",stopped-threads=\"all\"
-        self.expect("\*stopped,reason=\"(signal-received|end-stepping-range)\",.+,thread-id=\"1\",stopped-threads=\"all\"")
+        # Linux:  "*stopped,reason=\"end-stepping-range\",frame={addr=\"0x[0-9a-f]+\",func=\"??\",args=[],file=\"??\",fullname=\"??\",line=\"-1\"},thread-id=\"1\",stopped-threads=\"all\"
+        self.expect([ "\*stopped,reason=\"signal-received\",signal-name=\"SIGINT\",signal-meaning=\"Interrupt\",frame=\{level=\"0\",addr=\"0x[0-9a-f]+\",func=\"_dyld_start\",file=\"\?\?\",fullname=\"\?\?\",line=\"-1\"\},thread-id=\"1\",stopped-threads=\"all\"",
+                      "\*stopped,reason=\"end-stepping-range\",frame={addr=\"0x[0-9a-f]+\",func=\"\?\?\",args=\[\],file=\"\?\?\",fullname=\"\?\?\",line=\"-1\"},thread-id=\"1\",stopped-threads=\"all\"" ])
 
         # Run to main to make sure we have not exited the application
         self.runCmd("-break-insert -f main")
@@ -87,7 +90,7 @@ class MiSignalTestCase(lldbmi_testcase.MiTestCaseBase):
         """Test that 'lldb-mi --interpreter' notifies after it was stopped on entry (remote)."""
 
         # Prepare debugserver
-        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "lldb-gdbserver")))
+        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "lldb-server")))
         import lldbgdbserverutils
         debugserver_exe = lldbgdbserverutils.get_debugserver_exe()
         if not debugserver_exe:
@@ -127,6 +130,7 @@ class MiSignalTestCase(lldbmi_testcase.MiTestCaseBase):
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
+    @skipIfLinux # llvm.org/pr22841: lldb-mi tests fail on all Linux buildbots
     def test_lldbmi_stopped_when_segfault_local(self):
         """Test that 'lldb-mi --interpreter' notifies after it was stopped when segfault occurred (local)."""
 
@@ -150,7 +154,11 @@ class MiSignalTestCase(lldbmi_testcase.MiTestCaseBase):
         self.expect("\^running")
 
         # Test that *stopped is printed
-        self.expect("\*stopped,reason=\"exception-received\",exception=\"(EXC_BAD_ACCESS \(code=1, address=0x0\)|invalid address \(fault address: 0x0\))\",thread-id=\"1\",stopped-threads=\"all\"")
+        # Note that message is different in Darwin and Linux:
+        # Darwin: "*stopped,reason=\"exception-received\",exception=\"EXC_BAD_ACCESS (code=1, address=0x0)\",thread-id=\"1\",stopped-threads=\"all\""
+        # Linux:  "*stopped,reason=\"exception-received\",exception=\"invalid address (fault address: 0x0)\",thread-id=\"1\",stopped-threads=\"all\""
+        self.expect([ "\*stopped,reason=\"exception-received\",exception=\"EXC_BAD_ACCESS \(code=1, address=0x0\)\",thread-id=\"1\",stopped-threads=\"all\"",
+                      "\*stopped,reason=\"exception-received\",exception=\"invalid address \(fault address: 0x0\)\",thread-id=\"1\",stopped-threads=\"all\"" ])
 
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
@@ -159,7 +167,7 @@ class MiSignalTestCase(lldbmi_testcase.MiTestCaseBase):
         """Test that 'lldb-mi --interpreter' notifies after it was stopped when segfault occurred (remote)."""
 
         # Prepare debugserver
-        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "lldb-gdbserver")))
+        sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "lldb-server")))
         import lldbgdbserverutils
         debugserver_exe = lldbgdbserverutils.get_debugserver_exe()
         if not debugserver_exe:

@@ -602,19 +602,15 @@ public:
     assert(target && "failed to find NVPTX target");
 
     TargetMachine* targetMachine = createTargetMachine(target);
+    const DataLayout* dataLayout = targetMachine->getDataLayout();
+
+    assert(dataLayout && "failed to get data layout");
+
+    kernelModule_.setDataLayout(*dataLayout);
 
     llvm::legacy::PassManager passManager;
 
     passManager.add(createVerifierPass());
-
-    const DataLayout* dataLayout = 
-      targetMachine->getDataLayout();
-
-    kernelModule_.setDataLayout(dataLayout);
-
-    assert(dataLayout && "failed to get data layout");
-
-    passManager.add(new DataLayoutPass());
 
     string ptxCode;
     raw_string_ostream rstr(ptxCode);

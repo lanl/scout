@@ -35,6 +35,10 @@
 #include "llvm/Support/Allocator.h"
 #include <memory>
 
+// +===== Scout ======================================
+#include "llvm/IR/Scout/DebugInfo.h"
+// +==================================================
+
 namespace llvm {
 
 class AsmPrinter;
@@ -243,18 +247,6 @@ class DwarfDebug : public AsmPrinterHandler {
   // If nonnull, stores the CU in which the previous subprogram was contained.
   const DwarfCompileUnit *PrevCU;
 
-  // Section Symbols: these are assembler temporary labels that are emitted at
-  // the beginning of each supported dwarf section.  These are used to form
-  // section offsets and are created by EmitSectionLabels.
-  MCSymbol *DwarfInfoSectionSym, *DwarfAbbrevSectionSym;
-  MCSymbol *DwarfStrSectionSym, *TextSectionSym, *DwarfDebugRangeSectionSym;
-  MCSymbol *DwarfDebugLocSectionSym, *DwarfLineSectionSym, *DwarfAddrSectionSym;
-  MCSymbol *FunctionBeginSym, *FunctionEndSym;
-  MCSymbol *DwarfInfoDWOSectionSym, *DwarfAbbrevDWOSectionSym;
-  MCSymbol *DwarfTypesDWOSectionSym;
-  MCSymbol *DwarfStrDWOSectionSym;
-  MCSymbol *DwarfGnuPubNamesSectionSym, *DwarfGnuPubTypesSectionSym;
-
   // As an optimization, there is no need to emit an entry in the directory
   // table for the same directory as DW_AT_comp_dir.
   StringRef CompilationDir;
@@ -279,7 +271,12 @@ class DwarfDebug : public AsmPrinterHandler {
 
   SmallVector<std::pair<std::unique_ptr<DwarfTypeUnit>, DICompositeType>, 1>
       TypeUnitsUnderConstruction;
-
+  
+  // +===== Scout ===========================================
+  SmallVector<std::pair<std::unique_ptr<DwarfTypeUnit>, DIScoutCompositeType>, 1>
+  ScoutTypeUnitsUnderConstruction;
+  // +=======================================================
+  
   // Whether to emit the pubnames/pubtypes sections.
   bool HasDwarfPubSections;
 
@@ -289,6 +286,9 @@ class DwarfDebug : public AsmPrinterHandler {
   // Whether we emitted a function into a section other than the default
   // text.
   bool UsedNonDefaultText;
+
+  // Whether to use the GNU TLS opcode (instead of the standard opcode).
+  bool UseGNUTLSOpcode;
 
   // Version of dwarf we're emitting.
   unsigned DwarfVersion;
@@ -318,6 +318,7 @@ class DwarfDebug : public AsmPrinterHandler {
   // True iff there are multiple CUs in this module.
   bool SingleCU;
   bool IsDarwin;
+  bool IsPS4;
 
   AddressPool AddrPool;
 
@@ -346,9 +347,6 @@ class DwarfDebug : public AsmPrinterHandler {
 
   /// \brief Construct a DIE for this abstract scope.
   void constructAbstractSubprogramScopeDIE(LexicalScope *Scope);
-
-  /// \brief Emit initial Dwarf sections with a label at the start of each one.
-  void emitSectionLabels();
 
   /// \brief Compute the size and offset of a DIE given an incoming Offset.
   unsigned computeSizeAndOffset(DIE *Die, unsigned Offset);
@@ -379,7 +377,7 @@ class DwarfDebug : public AsmPrinterHandler {
 
   /// \brief Emit a specified accelerator table.
   void emitAccel(DwarfAccelTable &Accel, const MCSection *Section,
-                 StringRef TableName, StringRef SymName);
+                 StringRef TableName);
 
   /// \brief Emit visible names into a hashed accelerator table section.
   void emitAccelNames();
@@ -530,6 +528,11 @@ public:
   /// type units.
   void addDwarfTypeUnitType(DwarfCompileUnit &CU, StringRef Identifier,
                             DIE &Die, DICompositeType CTy);
+  
+  // +===== Scout =============================================
+  void addDwarfTypeUnitType(DwarfCompileUnit &CU, StringRef Identifier,
+                            DIE &Die, DIScoutCompositeType CTy);
+  // +=========================================================
 
   /// \brief Add a label so that arange data can be generated for it.
   void addArangeLabel(SymbolCU SCU) { ArangeLabels.push_back(SCU); }
@@ -540,8 +543,9 @@ public:
     SymSize[Sym] = Size;
   }
 
-  /// \brief Recursively Emits a debug information entry.
-  void emitDIE(DIE &Die);
+  /// \brief Returns whether to use DW_OP_GNU_push_tls_address, instead of the
+  /// standard DW_OP_form_tls_address opcode
+  bool useGNUTLSOpcode() const { return UseGNUTLSOpcode; }
 
   // Experimental DWARF5 features.
 
@@ -556,15 +560,6 @@ public:
   /// Returns the Dwarf Version.
   unsigned getDwarfVersion() const { return DwarfVersion; }
 
-  /// Returns the section symbol for the .debug_loc section.
-  MCSymbol *getDebugLocSym() const { return DwarfDebugLocSectionSym; }
-
-  /// Returns the section symbol for the .debug_str section.
-  MCSymbol *getDebugStrSym() const { return DwarfStrSectionSym; }
-
-  /// Returns the section symbol for the .debug_ranges section.
-  MCSymbol *getRangeSectionSym() const { return DwarfDebugRangeSectionSym; }
-
   /// Returns the previous CU that was being updated
   const DwarfCompileUnit *getPrevCU() const { return PrevCU; }
   void setPrevCU(const DwarfCompileUnit *PrevCU) { this->PrevCU = PrevCU; }
@@ -577,7 +572,8 @@ public:
 
   /// \brief Emit an entry for the debug loc section. This can be used to
   /// handle an entry that's going to be emitted into the debug loc section.
-  void emitDebugLocEntry(ByteStreamer &Streamer, const DebugLocEntry &Entry);
+  void emitDebugLocEntry(ByteStreamer &Streamer,
+                         const DebugLocEntry &Entry);
   /// \brief emit a single value for the debug loc section.
   void emitDebugLocValue(ByteStreamer &Streamer,
                          const DebugLocEntry::Value &Value,
@@ -621,8 +617,6 @@ public:
   void addAccelType(StringRef Name, const DIE &Die, char Flags);
 
   const MachineFunction *getCurrentFunction() const { return CurFn; }
-  const MCSymbol *getFunctionBeginSym() const { return FunctionBeginSym; }
-  const MCSymbol *getFunctionEndSym() const { return FunctionEndSym; }
 
   iterator_range<ImportedEntityMap::const_iterator>
   findImportedEntitiesForScope(const MDNode *Scope) const {

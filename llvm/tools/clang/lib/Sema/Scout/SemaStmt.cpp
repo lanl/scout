@@ -423,12 +423,114 @@ StmtResult Sema::ActOnFrameCaptureStmt(const VarDecl* VD, SpecObjectExpr* S){
   
   for(auto& itr : m){
     const string& k = itr.first;
+    SourceLocation loc = itr.second.first;
     
     if(vm.find(k) == vm.end()){
-      Diag(S->getKeyLoc(k), diag::err_unknown_frame_variable) << k;
+      Diag(loc, diag::err_unknown_frame_variable) << k;
       valid = false;
     }
   }
   
   return valid ? new (Context) FrameCaptureStmt(VD, S) : StmtError();
+}
+
+StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
+                               SourceLocation FrameLoc,
+                               VarDecl* RenderTarget,
+                               VarDecl* Frame,
+                               SpecObjectExpr* Spec){
+  using namespace std;
+  
+  bool valid = true;
+  
+  auto m = Spec->memberMap();
+  
+  for(auto& itr : m){
+    const string& k = itr.first;
+    SourceLocation loc = itr.second.first;
+    SpecExpr* v = itr.second.second;
+    
+    if(k == "lines" || k == "points"){
+      SpecObjectExpr* lv = v->toObject();
+      
+      if(lv){
+        SpecExpr* p = lv->get("position");
+        
+        if(p){
+          SpecArrayExpr* pa = p->toArray();
+          if(pa && pa->size() == 2){
+            SpecExpr* pv = pa->get(0);
+            
+            if(!pv->isFrameVar()){
+              Diag(pv->getLocStart(), diag::err_invalid_plot_spec) <<
+              "expected an frame variable";
+              valid = false;
+            }
+            
+            pv = pa->get(1);
+            
+            if(!pv->isFrameVar()){
+              Diag(pv->getLocStart(), diag::err_invalid_plot_spec) <<
+              "expected an frame variable";
+              valid = false;
+            }
+          }
+          else{
+            Diag(lv->getLocStart(), diag::err_invalid_plot_spec) <<
+            "expected a 'position' array of size 2";
+            valid = false;
+          }
+        }
+        else{
+          Diag(lv->getLocStart(), diag::err_invalid_plot_spec) <<
+          "expected a 'position' key";
+          valid = false;
+        }
+      }
+      else{
+        Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected an object specifier";
+        valid = false;
+      }
+      
+      SpecExpr* s = lv->get("size");
+      if(s){
+        if(!s->isNumeric() || s->getNumeric() < 0){
+          Diag(s->getLocStart(), diag::err_invalid_plot_spec) <<
+          "invalid 'size' key";
+          valid = false;
+        }
+      }
+    }
+    else if(k == "axis"){
+      SpecObjectExpr* av = v->toObject();
+      
+      if(av){
+        SpecExpr* d = av->get("dim");
+        if(!(d && d->isInteger())){
+          Diag(av->getLocStart(), diag::err_invalid_plot_spec) <<
+          "expected a 'dim' integer key";
+          valid = false;
+        }
+        
+        SpecExpr* l = av->get("label");
+        if(!(l && l->isString())){
+          Diag(av->getLocStart(), diag::err_invalid_plot_spec) <<
+          "expected a 'label' string key";
+          valid = false;
+        }
+      }
+      else{
+        Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected an object specifier";
+        valid = false;
+      }
+    }
+    else{
+      Diag(loc, diag::err_invalid_plot_spec_key) << k;
+      valid = false;
+    }
+  }
+  
+  return valid ? new (Context) PlotStmt(Frame, RenderTarget, Spec) : StmtError();
 }

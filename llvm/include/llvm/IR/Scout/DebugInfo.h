@@ -57,6 +57,25 @@
 
 #include "llvm/IR/DebugInfo.h"
 
+#define RETURN_FROM_RAW(VALID, DEFAULT)                                        \
+  do {                                                                         \
+    if (auto *N = getRaw())                                                    \
+      return VALID;                                                            \
+    return DEFAULT;                                                            \
+  } while (false)
+#define RETURN_DESCRIPTOR_FROM_RAW(DESC, VALID)                                \
+  do {                                                                         \
+    if (auto *N = getRaw())                                                    \
+      return DESC(dyn_cast_or_null<MDNode>(VALID));                            \
+    return DESC(static_cast<const MDNode *>(nullptr));                         \
+  } while (false)
+#define RETURN_REF_FROM_RAW(REF, VALID)                                        \
+  do {                                                                         \
+    if (auto *N = getRaw())                                                    \
+      return REF::get(VALID);                                                  \
+    return REF::get(nullptr);                                                  \
+  } while (false)
+
 namespace llvm {
 
   // Note: the layout of the metadata must be kept in sync. with the
@@ -64,7 +83,11 @@ namespace llvm {
   // to the DIDerivedType, and we need to maintain the ability that
   // DIScoutDerivedType is a proper subclass of DIDerivedType
 
-  class DIScoutDerivedType : public DIDerivedType {
+  class DIScoutDerivedType : public DIType {
+    MDScoutDerivedType *getRaw() const {
+      return dyn_cast_or_null<MDScoutDerivedType>(get());
+    }
+    
   public:
     enum {
       FlagMeshFieldCellLocated     = 1 << 0,
@@ -72,46 +95,125 @@ namespace llvm {
       FlagMeshFieldEdgeLocated     = 1 << 2,
       FlagMeshFieldFaceLocated     = 1 << 3
     };
-
-    explicit DIScoutDerivedType(const MDNode* N = 0) : DIDerivedType(N) {}
-
-    unsigned getScoutFlags() const { return getUnsignedField(4); }
-
-    bool isCellLocated() const { 
+    
+    unsigned getScoutFlags() const { RETURN_FROM_RAW(N->getScoutFlags(), 0); }
+    
+    bool isCellLocated() const {
       return (getScoutFlags() & FlagMeshFieldCellLocated) != 0;
     }
-
-    bool isVertexLocated() const { 
+    
+    bool isVertexLocated() const {
       return (getScoutFlags() & FlagMeshFieldVertexLocated) != 0;
     }
-
-    bool isEdgeLocated() const { 
+    
+    bool isEdgeLocated() const {
       return (getScoutFlags() & FlagMeshFieldEdgeLocated) != 0;
     }
-
-    bool isFaceLocated() const { 
+    
+    bool isFaceLocated() const {
       return (getScoutFlags() & FlagMeshFieldFaceLocated) != 0;
     }
+    
+    explicit DIScoutDerivedType(const MDNode *N = nullptr) : DIType(N) {}
+    DIScoutDerivedType(const MDDerivedTypeBase *N) : DIType(N) {}
+    
+    DITypeRef getTypeDerivedFrom() const {
+      RETURN_REF_FROM_RAW(DITypeRef, N->getBaseType());
+    }
+    
+    /// \brief Return property node, if this ivar is associated with one.
+    MDNode *getObjCProperty() const {
+      if (auto *N = dyn_cast_or_null<MDScoutDerivedType>(get()))
+        return dyn_cast_or_null<MDNode>(N->getExtraData());
+      return nullptr;
+    }
+    
+    DITypeRef getClassType() const {
+      assert(getTag() == dwarf::DW_TAG_ptr_to_member_type);
+      if (auto *N = dyn_cast_or_null<MDScoutDerivedType>(get()))
+        return DITypeRef::get(N->getExtraData());
+      return DITypeRef::get(nullptr);
+    }
+    
+    Constant *getConstant() const {
+      assert((getTag() == dwarf::DW_TAG_member) && isStaticMember());
+      if (auto *N = dyn_cast_or_null<MDScoutDerivedType>(get()))
+        if (auto *C = dyn_cast_or_null<ConstantAsMetadata>(N->getExtraData()))
+          return C->getValue();
+      
+      return nullptr;
+    }
+    
+    bool Verify() const;
   };
 
-  class DIScoutCompositeType : public DICompositeType {
+  class DIScoutCompositeType : public DIDerivedType {
+    friend class DIBuilder;
+    
+    /// \brief Set the array of member DITypes.
+    void setArraysHelper(MDNode *Elements, MDNode *TParams);
+    
+    MDScoutCompositeType *getRaw() const {
+      return dyn_cast_or_null<MDScoutCompositeType>(get());
+    }
+    
   public:
-    explicit DIScoutCompositeType(const MDNode* N = 0) : DICompositeType(N) {}
-
-    unsigned getDimension(int dim) const {
+    explicit DIScoutCompositeType(const MDNode *N = nullptr) : DIDerivedType(N) {}
+    DIScoutCompositeType(const MDCompositeTypeBase *N) : DIDerivedType(N) {}
+    
+    DIArray getElements() const {
+      assert(!isSubroutineType() && "no elements for DISubroutineType");
+      RETURN_DESCRIPTOR_FROM_RAW(DIArray, N->getElements());
+    }
+    
+  private:
+    template <typename T>
+    void setArrays(DITypedArray<T> Elements, DIArray TParams = DIArray()) {
+      assert(
+             (!TParams || DbgNode->getNumOperands() == 8) &&
+             "If you're setting the template parameters this should include a slot "
+             "for that!");
+      setArraysHelper(Elements, TParams);
+    }
+    
+  public:
+    unsigned getRunTimeLang() const { RETURN_FROM_RAW(N->getRuntimeLang(), 0); }
+    DITypeRef getContainingType() const {
+      RETURN_REF_FROM_RAW(DITypeRef, N->getVTableHolder());
+    }
+    
+  private:
+    /// \brief Set the containing type.
+    void setContainingType(DIScoutCompositeType ContainingType);
+    
+  public:
+    DIArray getTemplateParams() const {
+      RETURN_DESCRIPTOR_FROM_RAW(DIArray, N->getTemplateParams());
+    }
+    MDString *getIdentifier() const {
+      RETURN_FROM_RAW(N->getRawIdentifier(), nullptr);
+    }
+    
+    bool Verify() const;
+    
+    unsigned getDimension(int dim) const{
       switch(dim){
-      case 0:
-        return getUnsignedField(8);
-      case 1:
-        return getUnsignedField(9);
-      case 2:
-        return getUnsignedField(10);
-      default:
-        assert(false && "Invalid mesh dimension");
+        case 0:
+          RETURN_FROM_RAW(N->getDimX(), 0);
+        case 1:
+          RETURN_FROM_RAW(N->getDimY(), 0);
+        case 2:
+          RETURN_FROM_RAW(N->getDimZ(), 0);
+        default:
+          assert(false && "invalid dimension");
       }
     }
   };
 
 } // end namespace llvm
+
+#undef RETURN_FROM_RAW
+#undef RETURN_DESCRIPTOR_FROM_RAW
+#undef RETURN_REF_FROM_RAW
 
 #endif

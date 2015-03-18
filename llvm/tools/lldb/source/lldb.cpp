@@ -37,7 +37,6 @@
 #include "Plugins/DynamicLoader/POSIX-DYLD/DynamicLoaderPOSIXDYLD.h"
 #include "Plugins/Instruction/ARM/EmulateInstructionARM.h"
 #include "Plugins/Instruction/ARM64/EmulateInstructionARM64.h"
-#include "Plugins/SymbolVendor/MacOSX/SymbolVendorMacOSX.h"
 #include "Plugins/JITLoader/GDB/JITLoaderGDB.h"
 #include "Plugins/LanguageRuntime/CPlusPlus/ItaniumABI/ItaniumABILanguageRuntime.h"
 #include "Plugins/ObjectContainer/BSD-Archive/ObjectContainerBSDArchive.h"
@@ -61,23 +60,24 @@
 #ifndef LLDB_DISABLE_PYTHON
 #include "Plugins/OperatingSystem/Python/OperatingSystemPython.h"
 #endif
-#if defined (__APPLE__)
+
 #include "Plugins/DynamicLoader/MacOSX-DYLD/DynamicLoaderMacOSXDYLD.h"
-#include "Plugins/DynamicLoader/Darwin-Kernel/DynamicLoaderDarwinKernel.h"
 #include "Plugins/LanguageRuntime/ObjC/AppleObjCRuntime/AppleObjCRuntimeV1.h"
 #include "Plugins/LanguageRuntime/ObjC/AppleObjCRuntime/AppleObjCRuntimeV2.h"
 #include "Plugins/ObjectContainer/Universal-Mach-O/ObjectContainerUniversalMachO.h"
-#include "Plugins/ObjectFile/Mach-O/ObjectFileMachO.h"
-#include "Plugins/Process/MacOSX-Kernel/ProcessKDP.h"
 #include "Plugins/Platform/MacOSX/PlatformMacOSX.h"
 #include "Plugins/Platform/MacOSX/PlatformRemoteiOS.h"
-#include "Plugins/Platform/MacOSX/PlatformDarwinKernel.h"
 #include "Plugins/Platform/MacOSX/PlatformiOSSimulator.h"
 #include "Plugins/SystemRuntime/MacOSX/SystemRuntimeMacOSX.h"
-#endif
 
+#if defined (__APPLE__)
+#include "Plugins/DynamicLoader/Darwin-Kernel/DynamicLoaderDarwinKernel.h"
+#include "Plugins/ObjectFile/Mach-O/ObjectFileMachO.h"
+#include "Plugins/Platform/MacOSX/PlatformDarwinKernel.h"
 #include "Plugins/Process/mach-core/ProcessMachCore.h"
-
+#include "Plugins/Process/MacOSX-Kernel/ProcessKDP.h"
+#include "Plugins/SymbolVendor/MacOSX/SymbolVendorMacOSX.h"
+#endif
 
 #if defined (__linux__)
 #include "Plugins/Process/Linux/ProcessLinux.h"
@@ -109,17 +109,17 @@ static void fatal_error_handler(void *user_data, const std::string& reason,
     ::abort();
 }
 
+static bool g_inited_for_llgs = false;
 void
-lldb_private::Initialize ()
+lldb_private::InitializeForLLGS ()
 {
     // Make sure we initialize only once
     static Mutex g_inited_mutex(Mutex::eMutexTypeRecursive);
-    static bool g_inited = false;
 
     Mutex::Locker locker(g_inited_mutex);
-    if (!g_inited)
+    if (!g_inited_for_llgs)
     {
-        g_inited = true;
+        g_inited_for_llgs = true;
 
 #if defined(_MSC_VER)
         const char *disable_crash_dialog_var = getenv("LLDB_DISABLE_CRASH_DIALOG");
@@ -141,24 +141,13 @@ lldb_private::Initialize ()
 
         Log::Initialize();
         HostInfo::Initialize();
-        Timer::Initialize ();
-        Timer scoped_timer (__PRETTY_FUNCTION__, __PRETTY_FUNCTION__);
+        Timer::Initialize();
+        Timer scoped_timer(__PRETTY_FUNCTION__, __PRETTY_FUNCTION__);
 
-        // Initialize LLVM and Clang
-        llvm::InitializeAllTargets();
-        llvm::InitializeAllAsmPrinters();
-        llvm::InitializeAllTargetMCs();
-        llvm::InitializeAllDisassemblers();
         llvm::install_fatal_error_handler(fatal_error_handler, 0);
 
         // Initialize plug-ins
-        ABIMacOSX_i386::Initialize();
-        ABIMacOSX_arm::Initialize();
-        ABIMacOSX_arm64::Initialize();
-        ABISysV_x86_64::Initialize();
-        ABISysV_ppc::Initialize();
-        ABISysV_ppc64::Initialize();
-        DisassemblerLLVMC::Initialize();
+
         ObjectContainerBSDArchive::Initialize();
         ObjectFileELF::Initialize();
         SymbolVendorELF::Initialize();
@@ -166,10 +155,10 @@ lldb_private::Initialize ()
         SymbolFileSymtab::Initialize();
         UnwindAssemblyInstEmulation::Initialize();
         UnwindAssembly_x86::Initialize();
-        EmulateInstructionARM::Initialize ();
-        EmulateInstructionARM64::Initialize ();
-        ObjectFilePECOFF::Initialize ();
-        DynamicLoaderPOSIXDYLD::Initialize ();
+        EmulateInstructionARM::Initialize();
+        EmulateInstructionARM64::Initialize();
+        ObjectFilePECOFF::Initialize();
+        DynamicLoaderPOSIXDYLD::Initialize();
         PlatformFreeBSD::Initialize();
         PlatformLinux::Initialize();
         PlatformWindows::Initialize();
@@ -177,34 +166,65 @@ lldb_private::Initialize ()
         PlatformAndroid::Initialize();
         SymbolFileDWARFDebugMap::Initialize();
         ItaniumABILanguageRuntime::Initialize();
-#ifndef LLDB_DISABLE_PYTHON
-        ScriptInterpreterPython::InitializePrivate();
-        OperatingSystemPython::Initialize();
-#endif
-        JITLoaderGDB::Initialize();
-        ProcessElfCore::Initialize();
-        MemoryHistoryASan::Initialize();
-        AddressSanitizerRuntime::Initialize();
-        
-#if defined (__APPLE__)
+
         //----------------------------------------------------------------------
         // Apple/Darwin hosted plugins
         //----------------------------------------------------------------------
         DynamicLoaderMacOSXDYLD::Initialize();
-        DynamicLoaderDarwinKernel::Initialize();
         AppleObjCRuntimeV2::Initialize();
         AppleObjCRuntimeV1::Initialize();
         ObjectContainerUniversalMachO::Initialize();
-        ObjectFileMachO::Initialize();
-        ProcessKDP::Initialize();
-        ProcessMachCore::Initialize();
-        SymbolVendorMacOSX::Initialize();
-        PlatformDarwinKernel::Initialize();
+
         PlatformRemoteiOS::Initialize();
         PlatformMacOSX::Initialize();
         PlatformiOSSimulator::Initialize();
         SystemRuntimeMacOSX::Initialize();
+
+#if defined (__APPLE__)
+        SymbolVendorMacOSX::Initialize();
+        DynamicLoaderDarwinKernel::Initialize();
+        PlatformDarwinKernel::Initialize();
+        ObjectFileMachO::Initialize();
 #endif
+#ifndef LLDB_DISABLE_PYTHON
+        ScriptInterpreterPython::InitializePrivate();
+        OperatingSystemPython::Initialize();
+#endif
+    }
+}
+
+static bool g_inited = false;
+void
+lldb_private::Initialize ()
+{
+    // Make sure we initialize only once
+    static Mutex g_inited_mutex(Mutex::eMutexTypeRecursive);
+
+    InitializeForLLGS();
+    Mutex::Locker locker(g_inited_mutex);
+    if (!g_inited)
+    {
+        g_inited = true;
+
+        // Initialize LLVM and Clang
+        llvm::InitializeAllTargets();
+        llvm::InitializeAllAsmPrinters();
+        llvm::InitializeAllTargetMCs();
+        llvm::InitializeAllDisassemblers();
+
+        ABIMacOSX_i386::Initialize();
+        ABIMacOSX_arm::Initialize();
+        ABIMacOSX_arm64::Initialize();
+        ABISysV_x86_64::Initialize();
+        ABISysV_ppc::Initialize();
+        ABISysV_ppc64::Initialize();
+        DisassemblerLLVMC::Initialize();
+
+        JITLoaderGDB::Initialize();
+        ProcessElfCore::Initialize();
+        MemoryHistoryASan::Initialize();
+        AddressSanitizerRuntime::Initialize();
+
 #if defined (__linux__)
         //----------------------------------------------------------------------
         // Linux hosted plugins
@@ -218,11 +238,15 @@ lldb_private::Initialize ()
 #if defined (__FreeBSD__)
         ProcessFreeBSD::Initialize();
 #endif
-
+#if defined (__APPLE__)
+        ProcessKDP::Initialize();
+        ProcessMachCore::Initialize();
+#endif
         //----------------------------------------------------------------------
         // Platform agnostic plugins
         //----------------------------------------------------------------------
-        PlatformRemoteGDBServer::Initialize ();
+        PlatformRemoteGDBServer::Initialize();
+
         ProcessGDBRemote::Initialize();
         DynamicLoaderStatic::Initialize();
 
@@ -231,8 +255,9 @@ lldb_private::Initialize ()
 
         // The process settings need to know about installed plug-ins, so the Settings must be initialized
         // AFTER PluginManager::Initialize is called.
-        
+
         Debugger::SettingsInitialize();
+
     }
 }
 
@@ -243,81 +268,101 @@ lldb_private::WillTerminate()
 }
 
 void
+lldb_private::TerminateLLGS ()
+{
+    if (g_inited_for_llgs)
+    {
+        g_inited_for_llgs = false;
+
+        Timer scoped_timer (__PRETTY_FUNCTION__, __PRETTY_FUNCTION__);
+        ObjectContainerBSDArchive::Terminate();
+        ObjectFileELF::Terminate();
+        SymbolVendorELF::Terminate();
+        SymbolFileDWARF::Terminate();
+        SymbolFileSymtab::Terminate();
+        UnwindAssembly_x86::Terminate();
+        UnwindAssemblyInstEmulation::Terminate();
+        EmulateInstructionARM::Terminate ();
+        EmulateInstructionARM64::Terminate ();
+        ObjectFilePECOFF::Terminate ();
+        DynamicLoaderPOSIXDYLD::Terminate ();
+        PlatformFreeBSD::Terminate();
+        PlatformLinux::Terminate();
+        PlatformWindows::Terminate();
+        PlatformKalimba::Terminate();
+        PlatformAndroid::Terminate();
+        SymbolFileDWARFDebugMap::Terminate();
+        ItaniumABILanguageRuntime::Terminate();
+        DynamicLoaderMacOSXDYLD::Terminate();
+        AppleObjCRuntimeV2::Terminate();
+        AppleObjCRuntimeV1::Terminate();
+        ObjectContainerUniversalMachO::Terminate();
+        PlatformMacOSX::Terminate();
+        PlatformRemoteiOS::Terminate();
+        PlatformiOSSimulator::Terminate();
+        SystemRuntimeMacOSX::Terminate();
+
+#if defined (__APPLE__)
+        DynamicLoaderDarwinKernel::Terminate();
+        ObjectFileMachO::Terminate();
+        PlatformDarwinKernel::Terminate();
+        SymbolVendorMacOSX::Terminate();
+#endif
+
+#ifndef LLDB_DISABLE_PYTHON
+        OperatingSystemPython::Terminate();
+#endif
+
+        Log::Terminate();
+    }
+}
+
+void
 lldb_private::Terminate ()
 {
-    Timer scoped_timer (__PRETTY_FUNCTION__, __PRETTY_FUNCTION__);
-    
-    // Terminate and unload and loaded system or user LLDB plug-ins
-    PluginManager::Terminate();
-    ABIMacOSX_i386::Terminate();
-    ABIMacOSX_arm::Terminate();
-    ABIMacOSX_arm64::Terminate();
-    ABISysV_x86_64::Terminate();
-    ABISysV_ppc::Terminate();
-    ABISysV_ppc64::Terminate();
-    DisassemblerLLVMC::Terminate();
-    ObjectContainerBSDArchive::Terminate();
-    ObjectFileELF::Terminate();
-    SymbolVendorELF::Terminate();
-    SymbolFileDWARF::Terminate();
-    SymbolFileSymtab::Terminate();
-    UnwindAssembly_x86::Terminate();
-    UnwindAssemblyInstEmulation::Terminate();
-    EmulateInstructionARM::Terminate ();
-    EmulateInstructionARM64::Terminate ();
-    ObjectFilePECOFF::Terminate ();
-    DynamicLoaderPOSIXDYLD::Terminate ();
-    PlatformFreeBSD::Terminate();
-    PlatformLinux::Terminate();
-    PlatformWindows::Terminate();
-    PlatformKalimba::Terminate();
-    PlatformAndroid::Terminate();
-    SymbolFileDWARFDebugMap::Terminate();
-    ItaniumABILanguageRuntime::Terminate();
-#ifndef LLDB_DISABLE_PYTHON
-    OperatingSystemPython::Terminate();
-#endif
-    JITLoaderGDB::Terminate();
-    ProcessElfCore::Terminate();
-    MemoryHistoryASan::Terminate();
-    AddressSanitizerRuntime::Terminate();
-    
+    if (g_inited)
+    {
+        g_inited = false;
+
+        Timer scoped_timer (__PRETTY_FUNCTION__, __PRETTY_FUNCTION__);
+        // Terminate and unload and loaded system or user LLDB plug-ins
+        PluginManager::Terminate();
+        ABIMacOSX_i386::Terminate();
+        ABIMacOSX_arm::Terminate();
+        ABIMacOSX_arm64::Terminate();
+        ABISysV_x86_64::Terminate();
+        ABISysV_ppc::Terminate();
+        ABISysV_ppc64::Terminate();
+        DisassemblerLLVMC::Terminate();
+
+        JITLoaderGDB::Terminate();
+        ProcessElfCore::Terminate();
+        MemoryHistoryASan::Terminate();
+        AddressSanitizerRuntime::Terminate();
+
 #if defined (__APPLE__)
-    DynamicLoaderMacOSXDYLD::Terminate();
-    DynamicLoaderDarwinKernel::Terminate();
-    AppleObjCRuntimeV2::Terminate();
-    AppleObjCRuntimeV1::Terminate();
-    ObjectContainerUniversalMachO::Terminate();
-    ObjectFileMachO::Terminate();
-    ProcessMachCore::Terminate();
-    ProcessKDP::Terminate();
-    SymbolVendorMacOSX::Terminate();
-    PlatformMacOSX::Terminate();
-    PlatformDarwinKernel::Terminate();
-    PlatformRemoteiOS::Terminate();
-    PlatformiOSSimulator::Terminate();
-    SystemRuntimeMacOSX::Terminate();
+        ProcessMachCore::Terminate();
+        ProcessKDP::Terminate();
 #endif
-
-    Debugger::SettingsTerminate ();
-
 #if defined(_MSC_VER)
-    DynamicLoaderWindows::Terminate();
+        DynamicLoaderWindows::Terminate();
 #endif
 
 #if defined (__linux__)
-    ProcessLinux::Terminate();
+        ProcessLinux::Terminate();
 #endif
 
 #if defined (__FreeBSD__)
-    ProcessFreeBSD::Terminate();
+        ProcessFreeBSD::Terminate();
 #endif
+        Debugger::SettingsTerminate ();
 
-    PlatformRemoteGDBServer::Terminate();
-    ProcessGDBRemote::Terminate();
-    DynamicLoaderStatic::Terminate();
+        PlatformRemoteGDBServer::Terminate();
+        ProcessGDBRemote::Terminate();
+        DynamicLoaderStatic::Terminate();
 
-    Log::Terminate();
+        TerminateLLGS();
+    }
 }
 
 #if defined (__APPLE__)
@@ -364,13 +409,13 @@ lldb_private::GetVersion ()
         
         const char *newline_loc = strchr(version_string, '\n');
         
-        size_t version_len = sizeof(g_version_string);
+        size_t version_len = sizeof(g_version_string) - 1;
         
         if (newline_loc &&
             (newline_loc - version_string < static_cast<ptrdiff_t>(version_len)))
             version_len = newline_loc - version_string;
         
-        ::strncpy(g_version_string, version_string, version_len);
+        ::snprintf(g_version_string, version_len + 1, "%s", version_string);
     }
 
     return g_version_string;
