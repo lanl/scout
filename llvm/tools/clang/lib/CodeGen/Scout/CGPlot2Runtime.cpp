@@ -144,6 +144,10 @@ llvm::Function* CGPlot2Runtime::FrameCaptureDoubleFunc(){
   return GetFunc("__scrt_frame_capture_double", {VoidPtrTy, Int32Ty, DoubleTy});
 }
 
+llvm::Function* CGPlot2Runtime::FrameGetDoubleFunc(){
+  return GetFunc("__scrt_frame_get_double", {VoidPtrTy, Int32Ty, Int64Ty});
+}
+
 llvm::Function* CGPlot2Runtime::PlotInitFunc(){
   return GetFunc("__scrt_plot_init", {VoidPtrTy, VoidPtrTy}, VoidPtrTy);
 }

@@ -221,6 +221,10 @@ namespace{
       return vars_[varId];
     }
 
+    double get(VarId varId, size_t index){
+      return getVar(varId)->get(index);
+    }
+
   private:
     typedef vector<VarBase*> VarVec;
 
@@ -618,6 +622,10 @@ extern "C"{
 
   void __scrt_frame_capture_double(void* f, VarId varId, double value){
     static_cast<Frame*>(f)->capture(varId, value);
+  }
+
+  double __scrt_frame_get_double(void* f, VarId varId, uint64_t index){
+    static_cast<Frame*>(f)->get(varId, index);
   }
 
   void* __scrt_plot_init(void* frame, void* window){
