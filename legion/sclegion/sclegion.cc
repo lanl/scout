@@ -484,7 +484,13 @@ namespace{
       args += sizeof(MeshHeader);
 
       // number of subregions
+
       size_t numSubregions = 1;
+      char *p;
+      p = getenv("SC_NTHREADS");
+      if (p != NULL) {
+        numSubregions = atoi(p);
+      }
       header->numColors = numSubregions;
       size_t maxShift = 0;
 
