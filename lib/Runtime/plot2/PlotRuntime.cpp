@@ -116,6 +116,8 @@ namespace{
     virtual double max() const = 0;
 
     virtual double get(size_t i) const = 0;
+
+    virtual void compute(void* frame, uint64_t index) = 0;
   };
 
   template<class T>
@@ -201,10 +203,6 @@ namespace{
       }
     }
 
-    void init(){
-      ready_ = true;
-    }
-
     void addVar(VarId varId, int elementKind){
       while(vars_.size() <= varId){
         vars_.push_back(nullptr);
@@ -237,6 +235,19 @@ namespace{
       assert(varId < vars_.size());
       
       static_cast<Var<T>*>(vars_[varId])->capture(value);
+    }
+
+    void compute(Frame* parentFrame){
+      ready_ = true;
+
+      size_t end = parentFrame->size();
+      size_t n = vars_.size();
+      
+      for(size_t i = size(); i < end; ++i){
+        for(size_t j = 0; j < n; ++j){
+          vars_[j]->compute(parentFrame, i);
+        }
+      }
     }
 
     size_t size() const{
@@ -279,7 +290,7 @@ namespace{
         return;
       }
 
-      itr->second->init();
+      itr->second->compute(this);
     }
 
   private:

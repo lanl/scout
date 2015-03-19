@@ -74,8 +74,10 @@ CGPlot2Runtime::CGPlot2Runtime(CodeGenModule& CGM) : CGM(CGM){
   StringTy = PointerTy(Int8Ty);
   
   TypeVec params = {VoidPtrTy, Int64Ty};
-  
-  PlotFuncTy = llvm::FunctionType::get(llvm::Type::getVoidTy(C), params, false);
+  PlotFuncI32Ty = llvm::FunctionType::get(Int32Ty, params, false);
+  PlotFuncI64Ty = llvm::FunctionType::get(Int64Ty, params, false);
+  PlotFuncFloatTy = llvm::FunctionType::get(FloatTy, params, false);
+  PlotFuncDoubleTy = llvm::FunctionType::get(DoubleTy, params, false);
   
   ElementInt32Val = ConstantInt::get(C, APInt(32, 0));
   ElementInt64Val = ConstantInt::get(C, APInt(32, 1));
@@ -152,10 +154,6 @@ llvm::Function* CGPlot2Runtime::PlotInitFunc(){
   return GetFunc("__scrt_plot_init", {Int32Ty, VoidPtrTy, VoidPtrTy}, VoidPtrTy);
 }
 
-llvm::Function* CGPlot2Runtime::PlotAddComputedVarFunc(){
-  return GetFunc("__scrt_plot_add_computed_var", {VoidPtrTy, Int32Ty, PlotFuncTy});
-}
-
 llvm::Function* CGPlot2Runtime::PlotAddLinesFunc(){
   return GetFunc("__scrt_plot_add_lines",
                  {VoidPtrTy, Int32Ty, Int32Ty, DoubleTy});
@@ -172,4 +170,20 @@ llvm::Function* CGPlot2Runtime::PlotAddAxisFunc(){
 
 llvm::Function* CGPlot2Runtime::PlotRenderFunc(){
   return GetFunc("__scrt_plot_render", {VoidPtrTy});
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddVarI32Func(){
+  return GetFunc("__scrt_plot_add_var_i32", {VoidPtrTy, Int32Ty, PlotFuncI32Ty});
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddVarI64Func(){
+  return GetFunc("__scrt_plot_add_var_i64", {VoidPtrTy, Int32Ty, PlotFuncI64Ty});
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddVarFloatFunc(){
+  return GetFunc("__scrt_plot_add_var_float", {VoidPtrTy, Int32Ty, PlotFuncFloatTy});
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddVarDoubleFunc(){
+  return GetFunc("__scrt_plot_add_var_double", {VoidPtrTy, Int32Ty, PlotFuncDoubleTy});
 }
