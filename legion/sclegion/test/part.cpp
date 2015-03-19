@@ -3,7 +3,7 @@
 #include "sclegion.h"
 #include "legion_c.h"
 
-static const size_t SIZE = 128;
+static const size_t SIZE = 100;
 
 struct MyMesh{
   float* a;
@@ -21,19 +21,22 @@ void MyTask(MyMesh* m){
   printf("height: %d\n", m->height);
   printf("depth: %d\n", m->depth);
   printf("rank: %d\n", m->rank);
-
-  for(size_t i = 0; i < SIZE; ++i){
-    m->a[i] = 3;
+  printf("start: %d\n", m->xstart);
+  printf("size: %d\n", m->xsize);
+ 
+  for(size_t i = 0; i < m->xsize; ++i){
+    m->a[i] = i + m->xstart;
   }
 
-  for(size_t i = 0; i < SIZE; ++i){
-    m->b[i] = 9;
+  for(size_t i = 0 ; i < m->xsize; ++i){
+    m->b[i] = 2*(i + m->xstart);
   }
 
-  for(int i = 0; i < SIZE; ++i){
-    printf("a[%d] = %f\n", i, m->a[i]);
-    printf("b[%d] = %f\n", i, m->b[i]);
+  for(int i = 0; i < m->xsize; ++i){
+    printf("a[%d] = %f\n", i+m->xstart, m->a[i]);
+    printf("b[%d] = %f\n", i+m->xstart, m->b[i]);
   }
+
 }
 
 void LegionTaskFunction(const legion_task_t task,
