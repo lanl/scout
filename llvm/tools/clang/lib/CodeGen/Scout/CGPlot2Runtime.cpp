@@ -149,7 +149,7 @@ llvm::Function* CGPlot2Runtime::FrameGetDoubleFunc(){
 }
 
 llvm::Function* CGPlot2Runtime::PlotInitFunc(){
-  return GetFunc("__scrt_plot_init", {VoidPtrTy, VoidPtrTy}, VoidPtrTy);
+  return GetFunc("__scrt_plot_init", {Int32Ty, VoidPtrTy, VoidPtrTy}, VoidPtrTy);
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddComputedVarFunc(){

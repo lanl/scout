@@ -2442,7 +2442,9 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   const SpecObjectExpr* spec = S.getSpec();
   
-  ValueVec args = {framePtr, targetPtr};
+  ValueVec args =
+  {ConstantInt::get(R.Int32Ty, S.getLocStart().getRawEncoding()),
+    framePtr, targetPtr};
   
   Value* plotPtr = Builder.CreateCall(R.PlotInitFunc(), args);
   

@@ -76,7 +76,10 @@ __PRETTY_FUNCTION__ << ": " << X << std::endl
 using namespace std;
 using namespace scout;
 
-typedef double (*__sc_plot_func)(void*, uint64_t);
+typedef int32_t (*__sc_plot_func_i32)(void*, uint64_t);
+typedef int64_t (*__sc_plot_func_i64)(void*, uint64_t);
+typedef float (*__sc_plot_func_float)(void*, uint64_t);
+typedef double (*__sc_plot_func_double)(void*, uint64_t);
 
 namespace{
 
@@ -102,7 +105,7 @@ namespace{
 
   typedef uint32_t VarId;
 
-  const uint32_t COMPUTED_VAR_BEGIN = 65536;
+  const uint32_t PLOT_VAR_BEGIN = 65536;
 
   class VarBase{
   public:
@@ -119,7 +122,15 @@ namespace{
   class Var : public VarBase{
   public:
     Var()
-      : i_(RESERVE),
+      : fp_(0),
+        i_(RESERVE),
+        min_(numeric_limits<T>::max()),
+        max_(numeric_limits<T>::min()){
+    }
+
+    Var(T (*fp)(void*, uint64_t))
+      : fp_(fp),
+        i_(RESERVE),
         min_(numeric_limits<T>::max()),
         max_(numeric_limits<T>::min()){
     }
@@ -151,6 +162,10 @@ namespace{
       v_.push_back(value);
     }
 
+    void compute(void* frame, uint64_t index){
+      capture((*fp_)(frame, index));
+    }
+
     size_t size() const{
       return v_.size();
     }
@@ -172,11 +187,23 @@ namespace{
     size_t i_;
     T min_;
     T max_;
+    T (*fp_)(void*, uint64_t);
   };
 
   class Frame{
   public:
-    Frame(){}
+    Frame()
+      : ready_(false){}
+
+    ~Frame(){
+      for(auto& itr : plotFrameMap_){
+        delete itr.second;
+      }
+    }
+
+    void init(){
+      ready_ = true;
+    }
 
     void addVar(VarId varId, int elementKind){
       while(vars_.size() <= varId){
@@ -225,10 +252,43 @@ namespace{
       return getVar(varId)->get(index);
     }
 
+    template<class T>
+    void addPlotVar(uint32_t plotId, VarId varId, T (*fp)(void*, uint64_t)){
+      Frame* frame;
+
+      auto itr = plotFrameMap_.find(plotId);
+      if(itr == plotFrameMap_.end()){
+        frame = new Frame;
+        plotFrameMap_[plotId] = frame;
+      }
+      else{
+        frame = itr->second;
+        
+        if(frame->ready_){
+          return;
+        }
+      }
+      
+      VarBase* v = new Var<T>(fp);
+      vars_[varId - PLOT_VAR_BEGIN] = v;
+    }
+
+    void initPlotFrame(uint32_t plotId){
+      auto itr = plotFrameMap_.find(plotId);
+      if(itr == plotFrameMap_.end()){
+        return;
+      }
+
+      itr->second->init();
+    }
+
   private:
     typedef vector<VarBase*> VarVec;
+    typedef map<uint32_t, Frame*> PlotFrameMap;
 
     VarVec vars_;
+    PlotFrameMap plotFrameMap_;
+    bool ready_;
   };
 
   void drawText(QPainter& painter,
@@ -316,24 +376,20 @@ namespace{
       }
     };
 
-    Plot(Frame* frame, PlotWindow* window)
-      : frame_(frame),
-        computedFrame_(0),
+    Plot(uint32_t plotId, Frame* frame, PlotWindow* window)
+      : plotId_(plotId),
+        frame_(frame),
         window_(window){}
 
-    ~Plot(){
-      if(computedFrame_){
-        delete computedFrame_;
-      }
-    }
+    ~Plot(){}
 
     VarBase* getVar(VarId varId){
-      if(varId >= COMPUTED_VAR_BEGIN){
-        assert(computedFrame_);
-        return computedFrame_->getVar(varId - COMPUTED_VAR_BEGIN);
-      }
-
       return frame_->getVar(varId);
+    }
+
+    template<class T>
+    void addVar(VarId varId, T (*fp)(void*, uint64_t)){
+      frame_->addPlotVar(plotId_, varId, fp);
     }
 
     void addLines(VarId xVarId, VarId yVarId, double size){
@@ -348,31 +404,11 @@ namespace{
       elements_.push_back(new Axis(dim, label)); 
     }
 
-    void addComputedVar(VarId varId, __sc_plot_func fp){
-      if(!computedFrame_){
-        computedFrame_ = new Frame;
-      }
-
-      computedFrame_->addVar(varId - COMPUTED_VAR_BEGIN, ELEMENT_DOUBLE);
-      varFuncMap_[varId] = fp;
-    }
-
     void finalize(){
       QtWindow::init();
 
-      if(computedFrame_){
-        size_t size = frame_->size();
-
-        for(auto& itr : varFuncMap_){
-          VarId varId = itr.first - COMPUTED_VAR_BEGIN;
-          
-          for(size_t i = 0; i < size; ++i){
-            double value = (*itr.second)(frame_, i);
-            computedFrame_->capture(varId, value);
-          }
-        }
-      }
-
+      frame_->initPlotFrame(plotId_);
+     
       widget_ = window_->getWidget();
       widget_->setRenderer(this);
       window_->show();
@@ -583,13 +619,9 @@ namespace{
 
   private:
     typedef vector<Element*> ElementVec_;
-    typedef map<VarId, __sc_plot_func> VarFuncMap_;
 
+    uint32_t plotId_;
     Frame* frame_;
-    
-    Frame* computedFrame_;
-    VarFuncMap_ varFuncMap_;
-
     PlotWindow* window_;
     PlotWidget* widget_;
 
@@ -628,15 +660,34 @@ extern "C"{
     static_cast<Frame*>(f)->get(varId, index);
   }
 
-  void* __scrt_plot_init(void* frame, void* window){
-    return new Plot(static_cast<Frame*>(frame),
+  void* __scrt_plot_init(uint32_t plotId, void* frame, void* window){
+    return new Plot(plotId,
+                    static_cast<Frame*>(frame),
                     static_cast<PlotWindow*>(window));
   }
 
-  void __scrt_plot_add_computed_var(void* plot,
-                                    VarId varId,
-                                    __sc_plot_func fp){
-    static_cast<Plot*>(plot)->addComputedVar(varId, fp);
+  void __scrt_plot_add_var_i32(void* plot,
+                               VarId varId,
+                               __sc_plot_func_i32 fp){
+    static_cast<Plot*>(plot)->addVar(varId, fp);
+  }
+
+  void __scrt_plot_add_var_i64(void* plot,
+                               VarId varId,
+                               __sc_plot_func_i64 fp){
+    static_cast<Plot*>(plot)->addVar(varId, fp);
+  }
+
+  void __scrt_plot_add_var_float(void* plot,
+                               VarId varId,
+                               __sc_plot_func_float fp){
+    static_cast<Plot*>(plot)->addVar(varId, fp);
+  }
+
+  void __scrt_plot_add_var_double(void* plot,
+                                  VarId varId,
+                                  __sc_plot_func_double fp){
+    static_cast<Plot*>(plot)->addVar(varId, fp);
   }
 
   void __scrt_plot_add_lines(void* plot,
