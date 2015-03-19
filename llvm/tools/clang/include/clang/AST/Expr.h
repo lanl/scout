@@ -4943,6 +4943,8 @@ public:
   bool isString();
   
   std::string getString();
+  
+  VarDecl* getVar();
 };
 
 class SpecObjectExpr : public SpecExpr{
@@ -5018,6 +5020,8 @@ public:
   bool isString();
   
   std::string getString();
+  
+  VarDecl* getVar();
   
 private:
   Expr* Exp;

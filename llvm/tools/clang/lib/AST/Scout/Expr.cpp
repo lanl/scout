@@ -154,6 +154,23 @@ std::string SpecValueExpr::getString(){
   return s->getString().str();
 }
 
+VarDecl* SpecValueExpr::getVar(){
+  DeclRefExpr* dr;
+  
+  if(ImplicitCastExpr* c = dyn_cast<ImplicitCastExpr>(Exp)){
+    dr = dyn_cast<DeclRefExpr>(c->getSubExprAsWritten());
+  }
+  else{
+    dr = dyn_cast<DeclRefExpr>(Exp);
+  }
+  
+  if(!dr){
+    return 0;
+  }
+  
+  return dyn_cast<VarDecl>(dr->getDecl());
+}
+
 Expr* SpecExpr::toExpr(){
   SpecValueExpr* v = toValue();
   if(v){
@@ -225,4 +242,13 @@ std::string SpecExpr::getString(){
   assert(v);
   
   return v->getString();
+}
+
+VarDecl* SpecExpr::getVar(){
+  SpecValueExpr* v = toValue();
+  if(v){
+    return v->getVar();
+  }
+  
+  return 0;
 }

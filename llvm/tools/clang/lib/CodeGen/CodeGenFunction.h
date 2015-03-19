@@ -2262,6 +2262,8 @@ public:
   void EmitFrameCaptureStmt(const FrameCaptureStmt &S);
   
   void EmitPlotStmt(const PlotStmt &S);
+  
+  llvm::Value* EmitSpecExpr(SpecExpr* E);
   // +========================================================================+
 
   void EmitCondBrHints(llvm::LLVMContext &Context, llvm::BranchInst *CondBr,

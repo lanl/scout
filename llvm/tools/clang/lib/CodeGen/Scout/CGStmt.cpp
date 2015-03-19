@@ -2454,21 +2454,34 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       SpecObjectExpr* o = v->toObject();
       
       SpecArrayExpr* pa = o->get("position")->toArray();
-      //uint32_t x = fd->getVarId(pa->get(0)->getFrameVar());
-      Value* xv = ConstantInt::get(R.Int32Ty, 0);
       
-      //uint32_t y = fd->getVarId(pa->get(1)->getFrameVar());
-      Value* yv = ConstantInt::get(R.Int32Ty, 0);
+      Value* xv;
+      VarDecl* vd;
       
-      double size;
-      if(o->has("size")){
-        size = o->get("size")->getNumeric();
+      if((vd = pa->get(0)->getVar()) && fd->hasVar(vd)){
+        xv = ConstantInt::get(R.Int32Ty, fd->getVarId(vd));
       }
       else{
-        size = 1;
+        assert(false);
+      }
+
+      Value* yv;
+      
+      if((vd = pa->get(1)->getVar()) && fd->hasVar(vd)){
+        yv = ConstantInt::get(R.Int32Ty, fd->getVarId(vd));
+      }
+      else{
+        assert(false);
       }
       
-      Value* sv = ConstantFP::get(R.DoubleTy, size);
+      Value* sv;
+      
+      if(o->has("size")){
+        sv = EmitSpecExpr(o->get("size"));
+      }
+      else{
+        sv = ConstantFP::get(R.DoubleTy, 1.0);
+      }
       
       args = {plotPtr, xv, yv, sv};
       

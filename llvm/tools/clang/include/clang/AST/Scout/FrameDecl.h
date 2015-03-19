@@ -191,6 +191,10 @@ namespace clang {
       varIdMap.insert({v, varId});
     }
     
+    bool hasVar(VarDecl* v) const{
+      return varIdMap.find(v) != varIdMap.end();
+    }
+      
     uint32_t getVarId(VarDecl* v) const{
       auto itr = varIdMap.find(v);
       assert(itr != varIdMap.end());
