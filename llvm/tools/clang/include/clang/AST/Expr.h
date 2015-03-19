@@ -4932,10 +4932,6 @@ public:
   
   SpecArrayExpr* toArray();
   
-  bool isFrameVar();
-  
-  VarDecl* getFrameVar();
-  
   bool isInteger();
   
   int64_t getInteger();
@@ -5007,9 +5003,9 @@ public:
     return Exp;
   }
   
-  bool isFrameVar();
-  
-  VarDecl* getFrameVar();
+  void setExpression(Expr* E){
+    Exp = E;
+  }
   
   bool isInteger();
   

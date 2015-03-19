@@ -8919,6 +8919,8 @@ public:
                             Expr* Field,
                             Expr* Predicate);
   
+  bool ValidateSpecExpr(SpecExpr* E, QualType t);
+  
   ExprResult ActOnSpecObjectExpr(SourceLocation BraceLoc);
 
   ExprResult ActOnSpecArrayExpr(SourceLocation BracketLoc);

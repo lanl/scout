@@ -718,11 +718,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       const FrameDecl::Var& vi = itr.second;
       VarDecl* vd = vi.varDecl;
     
-      const FrameVarType* vt = dyn_cast<FrameVarType>(vd->getType().getTypePtr());
-      assert(vt && "expected a frame var type");
-      
-      const Type* et = vt->getElementType();
-      llvm::Type* lt = ConvertType(QualType(et, 0));
+      llvm::Type* lt = ConvertType(QualType(vd->getType().getTypePtr(), 0));
       
       llvm::Value* fieldType;
       

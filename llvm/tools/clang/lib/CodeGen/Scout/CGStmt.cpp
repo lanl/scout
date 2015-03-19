@@ -2389,11 +2389,7 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
     uint32_t fieldId = mitr->second.fieldId;
     VarDecl* varDecl = mitr->second.varDecl;
     
-    const FrameVarType* vt = dyn_cast<FrameVarType>(varDecl->getType().getTypePtr());
-    assert(vt && "expected a frame var type");
-    
-    const Type* et = vt->getElementType();
-    llvm::Type* lt = ConvertType(QualType(et, 0));
+    llvm::Type* lt = ConvertType(QualType(varDecl->getType().getTypePtr(), 0));
     
     Value* val =
     EmitAnyExprToTemp(itr.second.second->toExpr()).getScalarVal();
@@ -2458,11 +2454,11 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       SpecObjectExpr* o = v->toObject();
       
       SpecArrayExpr* pa = o->get("position")->toArray();
-      uint32_t x = fd->getVarId(pa->get(0)->getFrameVar());
-      Value* xv = ConstantInt::get(R.Int32Ty, x);
+      //uint32_t x = fd->getVarId(pa->get(0)->getFrameVar());
+      Value* xv = ConstantInt::get(R.Int32Ty, 0);
       
-      uint32_t y = fd->getVarId(pa->get(1)->getFrameVar());
-      Value* yv = ConstantInt::get(R.Int32Ty, y);
+      //uint32_t y = fd->getVarId(pa->get(1)->getFrameVar());
+      Value* yv = ConstantInt::get(R.Int32Ty, 0);
       
       double size;
       if(o->has("size")){

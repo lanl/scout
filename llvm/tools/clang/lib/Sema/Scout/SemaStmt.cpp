@@ -226,6 +226,23 @@ ExprResult Sema::ActOnQueryExpr(SourceLocation FromLoc,
   return QE;
 }
 
+bool Sema::ValidateSpecExpr(SpecExpr* E, QualType t){
+  SpecValueExpr* v = E->toValue();
+  if(!v){
+    return false;
+  }
+  
+  ExprResult rc =
+  PerformImplicitConversion(v->getExpression(), t, Sema::AA_Converting, true);
+  if(rc.isInvalid()){
+    return false;
+  }
+  
+  v->setExpression(rc.get());
+  
+  return true;
+}
+
 ExprResult Sema::ActOnSpecObjectExpr(SourceLocation BraceLoc){
   return new (Context) SpecObjectExpr(BraceLoc);
 }
@@ -459,19 +476,10 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         if(p){
           SpecArrayExpr* pa = p->toArray();
           if(pa && pa->size() == 2){
-            SpecExpr* pv = pa->get(0);
-            
-            if(!pv->isFrameVar()){
-              Diag(pv->getLocStart(), diag::err_invalid_plot_spec) <<
-              "expected an frame variable";
-              valid = false;
-            }
-            
-            pv = pa->get(1);
-            
-            if(!pv->isFrameVar()){
-              Diag(pv->getLocStart(), diag::err_invalid_plot_spec) <<
-              "expected an frame variable";
+            if(!ValidateSpecExpr(pa->get(0), Context.DoubleTy) ||
+               !ValidateSpecExpr(pa->get(1), Context.DoubleTy)){
+              Diag(pa->getLocStart(), diag::err_invalid_plot_spec) <<
+              "invalid 'position'";
               valid = false;
             }
           }
@@ -495,7 +503,7 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
       
       SpecExpr* s = lv->get("size");
       if(s){
-        if(!s->isNumeric() || s->getNumeric() < 0){
+        if(!ValidateSpecExpr(s, Context.DoubleTy)){
           Diag(s->getLocStart(), diag::err_invalid_plot_spec) <<
           "invalid 'size' key";
           valid = false;
