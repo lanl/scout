@@ -1174,6 +1174,3 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   LocalDeclMap[VD] = qp;
 }
 
-llvm::Value* CodeGenFunction::EmitSpecExpr(SpecExpr* E){
-  return EmitAnyExprToTemp(E->toExpr()).getScalarVal();
-}

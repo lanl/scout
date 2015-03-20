@@ -2414,11 +2414,44 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
   }
 }
 
+llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
+                                           SpecExpr* E,
+                                           uint32_t& varId){
+  using namespace std;
+  using namespace llvm;
+  
+  typedef vector<Value*> ValueVec;
+  typedef vector<llvm::Type*> TypeVec;
+  
+  auto R = CGM.getPlot2Runtime();
+  
+  if(E->isInteger()){
+    return ConstantInt::get(R.Int32Ty, E->getInteger());
+  }
+  else if(E->isNumeric()){
+    return ConstantFP::get(R.DoubleTy, E->getNumeric());
+  }
+  else if(E->isString()){
+    return Builder.CreateGlobalStringPtr(E->getString());
+  }
+  
+  const FrameType* ft = dyn_cast<FrameType>(Frame->getType().getTypePtr());
+  const FrameDecl* fd = ft->getDecl();
+  
+  VarDecl* vd = E->getVar();
+  if(vd && fd->hasVar(vd)){
+    return ConstantInt::get(R.Int32Ty, fd->getVarId(vd));
+  }
+  
+  return EmitAnyExprToTemp(E->toExpr()).getScalarVal();
+}
+
 void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   using namespace std;
   using namespace llvm;
   
   typedef vector<Value*> ValueVec;
+  typedef vector<llvm::Type*> TypeVec;
   
   auto R = CGM.getPlot2Runtime();
 
@@ -2444,6 +2477,8 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   Value* plotPtr = Builder.CreateCall(R.PlotInitFunc(), args);
   
+  uint32_t varId = 65536;
+  
   auto m = spec->memberMap();
   
   for(auto& itr : m){
@@ -2455,29 +2490,13 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       
       SpecArrayExpr* pa = o->get("position")->toArray();
       
-      Value* xv;
-      VarDecl* vd;
-      
-      if((vd = pa->get(0)->getVar()) && fd->hasVar(vd)){
-        xv = ConstantInt::get(R.Int32Ty, fd->getVarId(vd));
-      }
-      else{
-        assert(false);
-      }
+      Value* xv = EmitPlotExpr(frame, pa->get(0), varId);
+      Value* yv = EmitPlotExpr(frame, pa->get(1), varId);
 
-      Value* yv;
-      
-      if((vd = pa->get(1)->getVar()) && fd->hasVar(vd)){
-        yv = ConstantInt::get(R.Int32Ty, fd->getVarId(vd));
-      }
-      else{
-        assert(false);
-      }
-      
       Value* sv;
       
       if(o->has("size")){
-        sv = EmitSpecExpr(o->get("size"));
+        sv = EmitPlotExpr(frame, o->get("size"), varId);
       }
       else{
         sv = ConstantFP::get(R.DoubleTy, 1.0);

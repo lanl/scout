@@ -2263,7 +2263,11 @@ public:
   
   void EmitPlotStmt(const PlotStmt &S);
   
-  llvm::Value* EmitSpecExpr(SpecExpr* E);
+  llvm::Function* CreatePlotFunction(Expr* E);
+  
+  llvm::Value* EmitPlotExpr(const VarDecl* Frame,
+                            SpecExpr* E,
+                            uint32_t& varId);
   // +========================================================================+
 
   void EmitCondBrHints(llvm::LLVMContext &Context, llvm::BranchInst *CondBr,
