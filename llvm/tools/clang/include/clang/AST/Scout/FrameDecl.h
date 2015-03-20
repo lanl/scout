@@ -190,13 +190,13 @@ namespace clang {
       varMap.insert({name, Var{varId, v}});
       varIdMap.insert({v, varId});
     }
-    
-    bool hasVar(VarDecl* v) const{
-      return varIdMap.find(v) != varIdMap.end();
+      
+    bool hasVar(const VarDecl* v) const{
+      return varIdMap.find(const_cast<VarDecl*>(v)) != varIdMap.end();
     }
       
-    uint32_t getVarId(VarDecl* v) const{
-      auto itr = varIdMap.find(v);
+    uint32_t getVarId(const VarDecl* v) const{
+      auto itr = varIdMap.find(const_cast<VarDecl*>(v));
       assert(itr != varIdMap.end());
       
       return itr->second;

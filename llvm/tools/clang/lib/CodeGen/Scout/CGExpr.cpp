@@ -83,6 +83,58 @@ CodeGenFunction::EmitColorDeclRefLValue(const NamedDecl *ND) {
   return MakeAddrLValue(ep, VD->getType(), Alignment);
 }
 
+LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
+  using namespace std;
+  using namespace llvm;
+  
+  llvm::Function* func = Builder.GetInsertBlock()->getParent();
+  
+  auto aitr = func->arg_begin();
+  
+  Value* framePtr = aitr++;
+  Value* index = aitr++;
+  
+  typedef vector<Value*> ValueVec;
+  
+  auto R = CGM.getPlot2Runtime();
+  
+  assert(CurrentFrame);
+  
+  const FrameType* ft = dyn_cast<FrameType>(CurrentFrame->getType().getTypePtr());
+  const FrameDecl* fd = ft->getDecl();
+  
+  uint32_t varId = fd->getVarId(VD);
+  
+  ValueVec args = {framePtr, ConstantInt::get(R.Int32Ty, varId), index};
+  
+  llvm::Type* rt = ConvertType(VD->getType());
+  
+  Value* ret;
+  
+  if(rt->isIntegerTy(32)){
+    ret = Builder.CreateCall(R.FrameGetI32Func(), args);
+  }
+  else if(rt->isIntegerTy(64)){
+    ret = Builder.CreateCall(R.FrameGetI64Func(), args);
+  }
+  else if(rt->isFloatTy()){
+    ret = Builder.CreateCall(R.FrameGetFloatFunc(), args);
+  }
+  else if(rt->isDoubleTy()){
+    ret = Builder.CreateCall(R.FrameGetDoubleFunc(), args);
+  }
+  else{
+    assert(false && "invalid frame var type");
+  }
+  
+  CharUnits Alignment = getContext().getDeclAlign(VD);
+  
+  Value* addr = Builder.CreateAlloca(ret->getType());
+  Builder.CreateStore(ret, addr);
+  
+  return MakeAddrLValue(addr, VD->getType(), Alignment);
+}
+
 LValue
 CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
 

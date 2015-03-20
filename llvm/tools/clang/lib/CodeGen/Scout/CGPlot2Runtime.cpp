@@ -146,8 +146,20 @@ llvm::Function* CGPlot2Runtime::FrameCaptureDoubleFunc(){
   return GetFunc("__scrt_frame_capture_double", {VoidPtrTy, Int32Ty, DoubleTy});
 }
 
+llvm::Function* CGPlot2Runtime::FrameGetI32Func(){
+  return GetFunc("__scrt_frame_get_i32", {VoidPtrTy, Int32Ty, Int64Ty}, Int32Ty);
+}
+
+llvm::Function* CGPlot2Runtime::FrameGetI64Func(){
+  return GetFunc("__scrt_frame_get_i64", {VoidPtrTy, Int32Ty, Int64Ty}, Int64Ty);
+}
+
+llvm::Function* CGPlot2Runtime::FrameGetFloatFunc(){
+  return GetFunc("__scrt_frame_get_float", {VoidPtrTy, Int32Ty, Int64Ty}, FloatTy);
+}
+
 llvm::Function* CGPlot2Runtime::FrameGetDoubleFunc(){
-  return GetFunc("__scrt_frame_get_double", {VoidPtrTy, Int32Ty, Int64Ty});
+  return GetFunc("__scrt_frame_get_double", {VoidPtrTy, Int32Ty, Int64Ty}, DoubleTy);
 }
 
 llvm::Function* CGPlot2Runtime::PlotInitFunc(){
@@ -156,12 +168,12 @@ llvm::Function* CGPlot2Runtime::PlotInitFunc(){
 
 llvm::Function* CGPlot2Runtime::PlotAddLinesFunc(){
   return GetFunc("__scrt_plot_add_lines",
-                 {VoidPtrTy, Int32Ty, Int32Ty, DoubleTy});
+                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddPointsFunc(){
   return GetFunc("__scrt_plot_add_points",
-                 {VoidPtrTy, Int32Ty, Int32Ty, DoubleTy});
+                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddAxisFunc(){

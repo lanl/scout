@@ -1935,12 +1935,20 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     if (VD->getStorageClass() == SC_Register &&
         VD->hasAttr<AsmLabelAttr>() && !VD->isLocalVarDecl())
       return EmitGlobalNamedRegister(VD, CGM, Alignment);
-
+    
     // +==== Scout ==========================================================+
     // Check if this is a 'color' expression.
     if (isScoutLang(getLangOpts()) && ND->getDeclName().isIdentifier()) {
       if (isa<ImplicitColorParamDecl>(ND)) {
 	return EmitColorDeclRefLValue(ND);
+      }
+    }
+    
+    if(CurrentFrame){
+      const FrameType* ft = dyn_cast<FrameType>(CurrentFrame->getType().getTypePtr());
+      const FrameDecl* fd = ft->getDecl();
+      if(fd->hasVar(VD)){
+        return EmitFrameVarDeclRefLValue(VD);
       }
     }
     // =======================================================================

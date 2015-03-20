@@ -358,6 +358,8 @@ public:
   llvm::Value* GPUThreadInc;
   llvm::Value* GPUNumThreads;
   
+  const VarDecl* CurrentFrame = nullptr;
+  
   //renderall color buffer
   llvm::Value *Color;
 
@@ -2268,6 +2270,8 @@ public:
   llvm::Value* EmitPlotExpr(const VarDecl* Frame,
                             SpecExpr* E,
                             uint32_t& varId);
+  
+  LValue EmitFrameVarDeclRefLValue(const VarDecl* ND);
   // +========================================================================+
 
   void EmitCondBrHints(llvm::LLVMContext &Context, llvm::BranchInst *CondBr,

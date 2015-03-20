@@ -176,6 +176,10 @@ namespace{
       return v_[i];
     }
 
+    T get_(size_t i) const{
+      return v_[i];
+    }
+
     double min() const{
       return min_;
     }
@@ -259,8 +263,9 @@ namespace{
       return vars_[varId];
     }
 
-    double get(VarId varId, size_t index){
-      return getVar(varId)->get(index);
+    template<class T>
+    T get(VarId varId, size_t index){
+      return static_cast<Var<T>*>(getVar(varId))->get_(index);
     }
 
     template<class T>
@@ -348,12 +353,12 @@ namespace{
 
     class Lines : public Element{
     public:
-      Lines(VarId xVarId, VarId yVarId, double size)
-        : xVarId(xVarId), yVarId(yVarId), size(size){}
+      Lines(VarId x, VarId y, VarId size)
+        : x(x), y(y), size(size){}
 
-      VarId xVarId;
-      VarId yVarId;
-      double size;
+      VarId x;
+      VarId y;
+      VarId size;
 
       int order(){
         return 1;
@@ -362,12 +367,12 @@ namespace{
 
     class Points : public Element{
     public:
-      Points(VarId xVarId, VarId yVarId, double size)
-        : xVarId(xVarId), yVarId(yVarId), size(size){}
+      Points(VarId x, VarId y, VarId size)
+        : x(x), y(y), size(size){}
 
-      VarId xVarId;
-      VarId yVarId;
-      double size;
+      VarId x;
+      VarId y;
+      VarId size;
 
       int order(){
         return 2;
@@ -446,8 +451,8 @@ namespace{
 
       for(Element* e : elements_){
         if(Lines* l = dynamic_cast<Lines*>(e)){
-          VarBase* x = getVar(l->xVarId);
-          VarBase* y = getVar(l->yVarId);
+          VarBase* x = getVar(l->x);
+          VarBase* y = getVar(l->y);
 
           size = x->size();
 
@@ -468,8 +473,8 @@ namespace{
           }
         }
         else if(Points* p = dynamic_cast<Points*>(e)){
-          VarBase* x = getVar(p->xVarId);
-          VarBase* y = getVar(p->yVarId);
+          VarBase* x = getVar(p->x);
+          VarBase* y = getVar(p->y);
 
           size = x->size();
 
@@ -564,11 +569,11 @@ namespace{
 
       for(Element* e : elements_){
         if(Lines* l = dynamic_cast<Lines*>(e)){
-          VarBase* x = getVar(l->xVarId);
-          VarBase* y = getVar(l->yVarId);
+          VarBase* x = getVar(l->x);
+          VarBase* y = getVar(l->y);
 
           QPen pen;
-          pen.setWidthF(l->size);
+          pen.setWidthF(1.9);
           pen.setColor(QColor(0, 0, 0));
 
           QPen noPen(Qt::NoPen);
@@ -604,8 +609,8 @@ namespace{
           }
         }
         else if(Points* p = dynamic_cast<Points*>(e)){
-          VarBase* x = getVar(p->xVarId);
-          VarBase* y = getVar(p->yVarId);
+          VarBase* x = getVar(p->x);
+          VarBase* y = getVar(p->y);
 
           QPen pen;
           pen.setWidthF(1.0);
@@ -622,7 +627,7 @@ namespace{
             point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
             point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
 
-            painter.drawEllipse(point, p->size, p->size);
+            painter.drawEllipse(point, 1.9, 1.9);
           }
         }
       }
@@ -667,8 +672,20 @@ extern "C"{
     static_cast<Frame*>(f)->capture(varId, value);
   }
 
+  int32_t __scrt_frame_get_i32(void* f, VarId varId, uint64_t index){
+    static_cast<Frame*>(f)->get<int32_t>(varId, index);
+  }
+
+  int64_t __scrt_frame_get_i64(void* f, VarId varId, uint64_t index){
+    static_cast<Frame*>(f)->get<int64_t>(varId, index);
+  }
+
+  float __scrt_frame_get_float(void* f, VarId varId, uint64_t index){
+    static_cast<Frame*>(f)->get<float>(varId, index);
+  }
+
   double __scrt_frame_get_double(void* f, VarId varId, uint64_t index){
-    static_cast<Frame*>(f)->get(varId, index);
+    static_cast<Frame*>(f)->get<double>(varId, index);
   }
 
   void* __scrt_plot_init(uint32_t plotId, void* frame, void* window){
@@ -702,17 +719,17 @@ extern "C"{
   }
 
   void __scrt_plot_add_lines(void* plot,
-                             VarId xVarId,
-                             VarId yVarId,
-                             double size){
-    static_cast<Plot*>(plot)->addLines(xVarId, yVarId, size);
+                             VarId x,
+                             VarId y,
+                             VarId size){
+    static_cast<Plot*>(plot)->addLines(x, y, size);
   }
 
   void __scrt_plot_add_points(void* plot,
-                              VarId xVarId,
-                              VarId yVarId,
+                              VarId x,
+                              VarId y,
                               double size){
-    static_cast<Plot*>(plot)->addPoints(xVarId, yVarId, size);
+    static_cast<Plot*>(plot)->addPoints(x, y, size);
   }
 
   void __scrt_plot_add_axis(void* plot, uint32_t dim, const char* label){

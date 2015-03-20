@@ -2425,16 +2425,6 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
   
   auto R = CGM.getPlot2Runtime();
   
-  if(E->isInteger()){
-    return ConstantInt::get(R.Int32Ty, E->getInteger());
-  }
-  else if(E->isNumeric()){
-    return ConstantFP::get(R.DoubleTy, E->getNumeric());
-  }
-  else if(E->isString()){
-    return Builder.CreateGlobalStringPtr(E->getString());
-  }
-  
   const FrameType* ft = dyn_cast<FrameType>(Frame->getType().getTypePtr());
   const FrameDecl* fd = ft->getDecl();
   
@@ -2443,7 +2433,36 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
     return ConstantInt::get(R.Int32Ty, fd->getVarId(vd));
   }
   
-  return EmitAnyExprToTemp(E->toExpr()).getScalarVal();
+  BasicBlock* prevBlock = Builder.GetInsertBlock();
+  BasicBlock::iterator prevPoint = Builder.GetInsertPoint();
+  
+  llvm::Type* rt = ConvertType(E->toExpr()->getType());
+  
+  TypeVec params = {R.VoidPtrTy, R.Int64Ty};
+  llvm::FunctionType* funcType = llvm::FunctionType::get(rt, params, false);
+  
+  llvm::Function* func =
+  llvm::Function::Create(funcType,
+                         llvm::Function::ExternalLinkage,
+                         "plot.func",
+                         &CGM.getModule());
+  
+  auto aitr = func->arg_begin();
+  
+  BasicBlock* entry = BasicBlock::Create(CGM.getLLVMContext(), "entry", func);
+  Builder.SetInsertPoint(entry);
+  
+  E->toExpr()->dump();
+  
+  CurrentFrame = Frame;
+  Builder.CreateRet(EmitAnyExpr(E->toExpr()).getScalarVal());
+  CurrentFrame = nullptr;
+  
+  Builder.SetInsertPoint(prevBlock, prevPoint);
+  
+  uint32_t vid = varId++;
+  
+  return ConstantInt::get(R.Int32Ty, vid);
 }
 
 void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
