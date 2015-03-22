@@ -2268,6 +2268,7 @@ public:
   llvm::Function* CreatePlotFunction(Expr* E);
   
   llvm::Value* EmitPlotExpr(const VarDecl* Frame,
+                            llvm::Value* PlotPtr,
                             SpecExpr* E,
                             uint32_t& varId);
   

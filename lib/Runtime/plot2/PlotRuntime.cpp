@@ -207,6 +207,14 @@ namespace{
       }
     }
 
+    void addVar(VarId varId, VarBase* v){
+      while(vars_.size() <= varId){
+        vars_.push_back(nullptr);
+      }
+
+      vars_[varId] = v;
+    }
+
     void addVar(VarId varId, int elementKind){
       while(vars_.size() <= varId){
         vars_.push_back(nullptr);
@@ -286,16 +294,17 @@ namespace{
       }
       
       VarBase* v = new Var<T>(fp);
-      vars_[varId - PLOT_VAR_BEGIN] = v;
+      frame->addVar(varId - PLOT_VAR_BEGIN, v);
     }
 
-    void initPlotFrame(uint32_t plotId){
+    Frame* initPlotFrame(uint32_t plotId){
       auto itr = plotFrameMap_.find(plotId);
       if(itr == plotFrameMap_.end()){
-        return;
+        return 0;
       }
 
       itr->second->compute(this);
+      return itr->second;
     }
 
   private:
@@ -395,12 +404,14 @@ namespace{
     Plot(uint32_t plotId, Frame* frame, PlotWindow* window)
       : plotId_(plotId),
         frame_(frame),
+        plotFrame_(0),
         window_(window){}
 
     ~Plot(){}
 
     VarBase* getVar(VarId varId){
-      return frame_->getVar(varId);
+      return varId >= PLOT_VAR_BEGIN ? 
+        plotFrame_->getVar(varId - PLOT_VAR_BEGIN) : frame_->getVar(varId);
     }
 
     template<class T>
@@ -423,7 +434,7 @@ namespace{
     void finalize(){
       QtWindow::init();
 
-      frame_->initPlotFrame(plotId_);
+      plotFrame_ = frame_->initPlotFrame(plotId_);
      
       widget_ = window_->getWidget();
       widget_->setRenderer(this);
@@ -571,10 +582,7 @@ namespace{
         if(Lines* l = dynamic_cast<Lines*>(e)){
           VarBase* x = getVar(l->x);
           VarBase* y = getVar(l->y);
-
-          QPen pen;
-          pen.setWidthF(1.9);
-          pen.setColor(QColor(0, 0, 0));
+          VarBase* s = getVar(l->size);
 
           QPen noPen(Qt::NoPen);
 
@@ -589,6 +597,10 @@ namespace{
           for(size_t i = 0; i < size; ++i){
             point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
             point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
+
+            QPen pen;
+            pen.setWidthF(s->get(i));
+            pen.setColor(QColor(0, 0, 0));
 
             if(i > 0){
               QPolygonF poly;
@@ -611,6 +623,7 @@ namespace{
         else if(Points* p = dynamic_cast<Points*>(e)){
           VarBase* x = getVar(p->x);
           VarBase* y = getVar(p->y);
+          VarBase* s = getVar(p->size);
 
           QPen pen;
           pen.setWidthF(1.0);
@@ -627,7 +640,7 @@ namespace{
             point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
             point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
 
-            painter.drawEllipse(point, 1.9, 1.9);
+            painter.drawEllipse(point, s->get(i), s->get(i));
           }
         }
       }
@@ -638,6 +651,7 @@ namespace{
 
     uint32_t plotId_;
     Frame* frame_;
+    Frame* plotFrame_;
     PlotWindow* window_;
     PlotWidget* widget_;
 
@@ -673,19 +687,19 @@ extern "C"{
   }
 
   int32_t __scrt_frame_get_i32(void* f, VarId varId, uint64_t index){
-    static_cast<Frame*>(f)->get<int32_t>(varId, index);
+    return static_cast<Frame*>(f)->get<int32_t>(varId, index);
   }
 
   int64_t __scrt_frame_get_i64(void* f, VarId varId, uint64_t index){
-    static_cast<Frame*>(f)->get<int64_t>(varId, index);
+    return static_cast<Frame*>(f)->get<int64_t>(varId, index);
   }
 
   float __scrt_frame_get_float(void* f, VarId varId, uint64_t index){
-    static_cast<Frame*>(f)->get<float>(varId, index);
+    return static_cast<Frame*>(f)->get<float>(varId, index);
   }
 
   double __scrt_frame_get_double(void* f, VarId varId, uint64_t index){
-    static_cast<Frame*>(f)->get<double>(varId, index);
+    return static_cast<Frame*>(f)->get<double>(varId, index);
   }
 
   void* __scrt_plot_init(uint32_t plotId, void* frame, void* window){

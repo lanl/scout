@@ -185,17 +185,21 @@ llvm::Function* CGPlot2Runtime::PlotRenderFunc(){
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddVarI32Func(){
-  return GetFunc("__scrt_plot_add_var_i32", {VoidPtrTy, Int32Ty, PlotFuncI32Ty});
+  return GetFunc("__scrt_plot_add_var_i32",
+  {VoidPtrTy, Int32Ty, PointerTy(PlotFuncI32Ty)});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddVarI64Func(){
-  return GetFunc("__scrt_plot_add_var_i64", {VoidPtrTy, Int32Ty, PlotFuncI64Ty});
+  return GetFunc("__scrt_plot_add_var_i64",
+  {VoidPtrTy, Int32Ty, PointerTy(PlotFuncI64Ty)});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddVarFloatFunc(){
-  return GetFunc("__scrt_plot_add_var_float", {VoidPtrTy, Int32Ty, PlotFuncFloatTy});
+  return GetFunc("__scrt_plot_add_var_float",
+  {VoidPtrTy, Int32Ty, PointerTy(PlotFuncFloatTy)});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddVarDoubleFunc(){
-  return GetFunc("__scrt_plot_add_var_double", {VoidPtrTy, Int32Ty, PlotFuncDoubleTy});
+  return GetFunc("__scrt_plot_add_var_double",
+  {VoidPtrTy, Int32Ty, PointerTy(PlotFuncDoubleTy)});
 }

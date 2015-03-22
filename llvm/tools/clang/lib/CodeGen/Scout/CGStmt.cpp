@@ -2415,6 +2415,7 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
 }
 
 llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
+                                           llvm::Value* PlotPtr,
                                            SpecExpr* E,
                                            uint32_t& varId){
   using namespace std;
@@ -2448,21 +2449,42 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
                          &CGM.getModule());
   
   auto aitr = func->arg_begin();
+  aitr->setName("frame.ptr");
+  aitr++;
+  aitr->setName("index");
   
   BasicBlock* entry = BasicBlock::Create(CGM.getLLVMContext(), "entry", func);
   Builder.SetInsertPoint(entry);
-  
-  E->toExpr()->dump();
   
   CurrentFrame = Frame;
   Builder.CreateRet(EmitAnyExpr(E->toExpr()).getScalarVal());
   CurrentFrame = nullptr;
   
+  //func->dump();
+  
   Builder.SetInsertPoint(prevBlock, prevPoint);
   
-  uint32_t vid = varId++;
+  Value* vid = ConstantInt::get(R.Int32Ty, varId++);
   
-  return ConstantInt::get(R.Int32Ty, vid);
+  ValueVec args = {PlotPtr, vid, func};
+    
+  if(rt->isIntegerTy(32)){
+    Builder.CreateCall(R.PlotAddVarI32Func(), args);
+  }
+  else if(rt->isIntegerTy(64)){
+    Builder.CreateCall(R.PlotAddVarI64Func(), args);
+  }
+  else if(rt->isFloatTy()){
+    Builder.CreateCall(R.PlotAddVarFloatFunc(), args);
+  }
+  else if(rt->isDoubleTy()){
+    Builder.CreateCall(R.PlotAddVarDoubleFunc(), args);
+  }
+  else{
+    assert(false && "invalid plot var type");
+  }
+    
+  return vid;
 }
 
 void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
@@ -2509,13 +2531,13 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       
       SpecArrayExpr* pa = o->get("position")->toArray();
       
-      Value* xv = EmitPlotExpr(frame, pa->get(0), varId);
-      Value* yv = EmitPlotExpr(frame, pa->get(1), varId);
+      Value* xv = EmitPlotExpr(frame, plotPtr, pa->get(0), varId);
+      Value* yv = EmitPlotExpr(frame, plotPtr, pa->get(1), varId);
 
       Value* sv;
       
       if(o->has("size")){
-        sv = EmitPlotExpr(frame, o->get("size"), varId);
+        sv = EmitPlotExpr(frame, plotPtr, o->get("size"), varId);
       }
       else{
         sv = ConstantFP::get(R.DoubleTy, 1.0);
