@@ -2434,6 +2434,9 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
     return ConstantInt::get(R.Int32Ty, fd->getVarId(vd));
   }
   
+  PlotExprVisitor v(fd);
+  v.Visit(E->toExpr());
+  
   BasicBlock* prevBlock = Builder.GetInsertBlock();
   BasicBlock::iterator prevPoint = Builder.GetInsertPoint();
   
@@ -2466,7 +2469,8 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
   
   Value* vid = ConstantInt::get(R.Int32Ty, varId++);
   
-  ValueVec args = {PlotPtr, vid, func};
+  ValueVec args =
+  {PlotPtr, vid, func, ConstantInt::get(R.Int32Ty, v.isConstant() ? 1 : 0)};
     
   if(rt->isIntegerTy(32)){
     Builder.CreateCall(R.PlotAddVarI32Func(), args);

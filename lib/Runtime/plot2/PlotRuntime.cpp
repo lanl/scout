@@ -106,11 +106,11 @@ namespace{
   typedef uint32_t VarId;
 
   const uint32_t PLOT_VAR_BEGIN = 65536;
+  
+  const uint32_t FLAG_VAR_CONSTANT = 0x00000001; 
 
   class VarBase{
-  public:
-    virtual size_t size() const = 0;
-    
+  public:    
     virtual double min() const = 0;
 
     virtual double max() const = 0;
@@ -118,6 +118,8 @@ namespace{
     virtual double get(size_t i) const = 0;
 
     virtual void compute(void* frame, uint64_t index) = 0;
+
+    virtual size_t size() const = 0;
   };
 
   template<class T>
@@ -168,10 +170,6 @@ namespace{
       capture((*fp_)(frame, index));
     }
 
-    size_t size() const{
-      return v_.size();
-    }
-
     double get(size_t i) const{
       return v_[i];
     }
@@ -188,12 +186,44 @@ namespace{
       return max_;
     }
 
+    size_t size() const{
+      return v_.size();
+    }
+
   private:
     vector<T> v_;
     size_t i_;
     T min_;
     T max_;
     T (*fp_)(void*, uint64_t);
+  };
+
+  template<class T>
+  class ConstVar : public VarBase{
+  public:
+    ConstVar(T value)
+      : value_(value){}
+
+    void compute(void* frame, uint64_t index){}
+
+    double get(size_t i) const{
+      return value_;
+    }
+
+    double min() const{
+      return value_;
+    }
+
+    double max() const{
+      return value_;
+    }
+
+    size_t size() const{
+      return 0;
+    }
+
+  private:
+    T value_;
   };
 
   class Frame{
@@ -263,7 +293,17 @@ namespace{
     }
 
     size_t size() const{
-      return vars_[0]->size();
+      size_t n = vars_.size();
+      size_t m;
+      
+      for(size_t i = 0; i < n; ++i){
+        m = vars_[i]->size();
+        if(m > 0){
+          return m;
+        }
+      }
+
+      return 0;
     }
 
     VarBase* getVar(VarId varId){
@@ -277,7 +317,10 @@ namespace{
     }
 
     template<class T>
-    void addPlotVar(uint32_t plotId, VarId varId, T (*fp)(void*, uint64_t)){
+    void addPlotVar(uint32_t plotId,
+                    VarId varId,
+                    T (*fp)(void*, uint64_t),
+                    uint32_t flags){
       Frame* frame;
 
       auto itr = plotFrameMap_.find(plotId);
@@ -292,8 +335,15 @@ namespace{
           return;
         }
       }
-      
-      VarBase* v = new Var<T>(fp);
+
+      VarBase* v;
+      if(flags & FLAG_VAR_CONSTANT){
+        v = new ConstVar<T>((*fp)(0, 0));
+      }
+      else{
+        v = new Var<T>(fp);
+      }
+
       frame->addVar(varId - PLOT_VAR_BEGIN, v);
     }
 
@@ -415,16 +465,16 @@ namespace{
     }
 
     template<class T>
-    void addVar(VarId varId, T (*fp)(void*, uint64_t)){
-      frame_->addPlotVar(plotId_, varId, fp);
+    void addVar(VarId varId, T (*fp)(void*, uint64_t), uint32_t flags){
+      frame_->addPlotVar(plotId_, varId, fp, flags);
     }
 
-    void addLines(VarId xVarId, VarId yVarId, double size){
-      elements_.push_back(new Lines(xVarId, yVarId, size)); 
+    void addLines(VarId x, VarId y, VarId size){
+      elements_.push_back(new Lines(x, y, size)); 
     }
 
-    void addPoints(VarId xVarId, VarId yVarId, double size){
-      elements_.push_back(new Points(xVarId, yVarId, size)); 
+    void addPoints(VarId x, VarId y, VarId size){
+      elements_.push_back(new Points(x, y, size)); 
     }
 
     void addAxis(uint32_t dim, const string& label){
@@ -445,6 +495,12 @@ namespace{
     }
     
     void render(){
+      size_t size = frame_->size();
+      
+      if(size == 0){
+        return;
+      }
+
       QPainter painter(widget_);
       painter.setRenderHint(QPainter::Antialiasing, true);
 
@@ -458,14 +514,10 @@ namespace{
       double yMin = MAX;
       double yMax = MIN;
 
-      size_t size;
-
       for(Element* e : elements_){
         if(Lines* l = dynamic_cast<Lines*>(e)){
           VarBase* x = getVar(l->x);
           VarBase* y = getVar(l->y);
-
-          size = x->size();
 
           if(x->min() < xMin){
             xMin = x->min();
@@ -486,8 +538,6 @@ namespace{
         else if(Points* p = dynamic_cast<Points*>(e)){
           VarBase* x = getVar(p->x);
           VarBase* y = getVar(p->y);
-
-          size = x->size();
 
           if(x->min() < xMin){
             xMin = x->min();
@@ -710,26 +760,30 @@ extern "C"{
 
   void __scrt_plot_add_var_i32(void* plot,
                                VarId varId,
-                               __sc_plot_func_i32 fp){
-    static_cast<Plot*>(plot)->addVar(varId, fp);
+                               __sc_plot_func_i32 fp,
+                               uint32_t flags){
+    static_cast<Plot*>(plot)->addVar(varId, fp, flags);
   }
 
   void __scrt_plot_add_var_i64(void* plot,
                                VarId varId,
-                               __sc_plot_func_i64 fp){
-    static_cast<Plot*>(plot)->addVar(varId, fp);
+                               __sc_plot_func_i64 fp,
+                               uint32_t flags){
+    static_cast<Plot*>(plot)->addVar(varId, fp, flags);
   }
 
   void __scrt_plot_add_var_float(void* plot,
-                               VarId varId,
-                               __sc_plot_func_float fp){
-    static_cast<Plot*>(plot)->addVar(varId, fp);
+                                 VarId varId,
+                                 __sc_plot_func_float fp,
+                                 uint32_t flags){
+    static_cast<Plot*>(plot)->addVar(varId, fp, flags);
   }
 
   void __scrt_plot_add_var_double(void* plot,
                                   VarId varId,
-                                  __sc_plot_func_double fp){
-    static_cast<Plot*>(plot)->addVar(varId, fp);
+                                  __sc_plot_func_double fp,
+                                  uint32_t flags){
+    static_cast<Plot*>(plot)->addVar(varId, fp, flags);
   }
 
   void __scrt_plot_add_lines(void* plot,
@@ -742,7 +796,7 @@ extern "C"{
   void __scrt_plot_add_points(void* plot,
                               VarId x,
                               VarId y,
-                              double size){
+                              VarId size){
     static_cast<Plot*>(plot)->addPoints(x, y, size);
   }
 
