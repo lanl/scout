@@ -67,7 +67,6 @@ namespace scout {
     bool Configuration::CUDASupport   = ${SCOUT_ENABLE_CUDA};
     bool Configuration::NUMASupport   = ${SCOUT_ENABLE_NUMA};
     bool Configuration::MPISupport    = ${SCOUT_ENABLE_MPI};
-    bool Configuration::GLFWSupport   = ${SCOUT_ENABLE_GLFW};
     bool Configuration::PNGSupport    = ${SCOUT_ENABLE_PNG};
     bool Configuration::OpenCLSupport = ${SCOUT_ENABLE_OPENCL};
 
@@ -114,10 +113,6 @@ namespace scout {
       "-I${PNG_PNG_INCLUDE_DIR}",
       #endif
 
-      #ifdef SCOUT_ENABLE_GLFW
-      "-I${GLFW_INCLUDE_DIR}",
-      #endif
-
       0 // end of include paths. 
     };
 
@@ -127,9 +122,6 @@ namespace scout {
       "-Wl,-rpath,${SCOUT_BUILD_DIR}/lib/",
       #ifdef SCOUT_ENABLE_CUDA    
         "-Wl,-rpath,${CUDA_LIBRARY_DIR}",
-      #endif
-      #ifdef SCOUT_ENABLE_GLFW
-        "-Wl,-rpath,${GLFW_LIBRARY_DIR}",
       #endif
 
       #ifdef APPLE
@@ -169,10 +161,6 @@ namespace scout {
       "${MPI_CXX_LINK_DIRS}",
       #endif
    
-      #ifdef SCOUT_ENABLE_GLFW
-      "-L${GLFW_LIBRARY_DIR}",
-      #endif
-
       0 // mark end of library paths.
     };
   
@@ -221,14 +209,6 @@ namespace scout {
     
       #ifdef SCOUT_ENABLE_PNG
       "${PNG_LINK_LIBS}",
-      #endif
-
-      #ifdef SCOUT_ENABLE_GLFW
-        #ifndef APPLE
-          //glfw requires Xrandr,Xxf86vm,Xi,Xcursor
-          "-lXrandr -lXxf86vm -lXi -lXcursor -lX11 -lrt", 
-        #endif
-      "${GLFW_LIBRARIES}",
       #endif
 
       0 // mark end of library paths.      
