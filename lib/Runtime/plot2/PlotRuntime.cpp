@@ -754,7 +754,7 @@ namespace{
     void render(){
       size_t size = frame_->size();
 
-      if(size == 0){
+      if(size < 2){
         return;
       }
 
@@ -839,6 +839,11 @@ namespace{
             painter.drawLine(origin, xEnd);
 
             size_t inc = size / X_LABELS;
+
+            if(inc == 0){
+              inc = 1;
+            }
+
             double xc;
             for(size_t i = 0; i < size; i += inc){
               xc = origin.x() + double(i)/size * xLen;
@@ -849,6 +854,11 @@ namespace{
             }
             
             inc = size / X_TICKS;
+
+            if(inc == 0){
+              inc = 1;
+            }
+
             for(size_t i = 0; i < size; i += inc){
               xc = origin.x() + double(i)/size * xLen;
 
@@ -860,6 +870,11 @@ namespace{
             painter.drawLine(origin, yEnd);
 
             size_t inc = size / Y_LABELS;
+
+            if(inc == 0){
+              inc = 1;
+            }
+
             double yc;
             double yv;
             for(size_t i = 0; i <= size; i += inc){
@@ -872,6 +887,11 @@ namespace{
             }
 
             inc = size / Y_TICKS;
+            
+            if(inc == 0){
+              inc = 1;
+            }
+
             for(size_t i = 0; i < size; i += inc){
               yc = origin.y() - double(i)/size * yLen;
 
