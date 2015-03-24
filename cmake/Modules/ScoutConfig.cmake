@@ -277,37 +277,34 @@ endif()
   set(SCOUT_ENABLE_MPI OFF CACHE BOOL "Enable MPI runtime support.")
   #endif()
 
-  # --- GLFW support.
-  find_package(GLFW REQUIRED)
-  if (GLFW_FOUND)
+  # --- QTsupport.
+  # SC_TODO: add findQT5 module...
+  #find_package(QT5 REQUIRED)
+  #if (QT5_FOUND)
     if(APPLE)
-      # GLFW needs COCOA, IOKIT and COREVIDEO on the mac.
+      # QT5 needs COCOA, IOKIT and COREVIDEO on the mac.
       find_library(COCOA_LIBRARY Cocoa)
       find_library(IOKIT_LIBRARY IOKit)
       find_library(COREVIDEO_LIBRARY CoreVideo)
       find_library(COREFOUNDATION_FRAMEWORK CoreFoundation)
       if(COCOA_LIBRARY AND IOKIT_LIBRARY AND COREVIDEO_LIBRARY AND COREFOUNDATION_FRAMEWORK)
-          message(STATUS "scout: GLFW, COCOA, IOKIT, COREVIDEO and COREFOUNDATION found.")
-          message(STATUS "scout: GLFW include path: ${GLFW_INCLUDE_DIR}")
-          message(STATUS "scout: enabling GLFW runtime support.")
-          set(SCOUT_ENABLE_GLFW ON CACHE BOOL
-            "Enable GLFW runtime support.")
-        else()
-          message(STATUS "scout: COCOA, IOKIT, COREVIDEO or COREFOUNDATION not found, disabling GLFW support.")
-          set(SCOUT_ENABLE_GLFW OFF CACHE BOOL
-            "Enable GLFW runtime support.")
-        endif()
+          set(SCOUT_ENABLE_QT5 ON CACHE BOOL
+            "Enable QT runtime support.")
+      else()
+          message(STATUS "scout: COCOA, IOKIT, COREVIDEO or COREFOUNDATION not found, disabling QT5 support.")
+          set(SCOUT_ENABLE_QT5 OFF CACHE BOOL
+            "Enable QT5 runtime support.")
+      endif()
     else()    
-        message(STATUS "scout: GLFW found, enabling runtime support.")
-        message(STATUS "scout: GLFW include path: ${GLFW_INCLUDE_DIR}")
-        set(SCOUT_ENABLE_GLFW ON CACHE BOOL
-          "Enable GLFW runtime support.")
+        message(STATUS "scout: QT5 found, enabling runtime support.")
+        set(SCOUT_ENABLE_QT5 ON CACHE BOOL
+          "Enable QT5 runtime support.")
     endif()
-  else()
-    message(STATUS "scout: GLFW not found, disabling support.")
-    set(SCOUT_ENABLE_GLFW OFF CACHE BOOL
-      "Enable GLFW runtime support.")
-  endif()
+  #else()
+  #  message(STATUS "scout: QT5 not found, disabling support.")
+  #  set(SCOUT_ENABLE_QT5 OFF CACHE BOOL
+  #    "Enable QT5 runtime support.")
+  #endif()
 
 
   # Disable PNG for now -- some Linux systems are having a hard time
@@ -404,7 +401,7 @@ endif()
   #setup RPATH
   set(CMAKE_SKIP_BUILD_RPATH FALSE)
   set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
-  set(CMAKE_INSTALL_RPATH ${SCOUT_BUILD_DIR}/lib ${CUDA_LIBRARY_DIR} ${GLFW_LIBRARY_DIR})
+  set(CMAKE_INSTALL_RPATH ${SCOUT_BUILD_DIR}/lib ${CUDA_LIBRARY_DIR})
 
 
 #
