@@ -8920,6 +8920,8 @@ public:
                             Expr* Predicate);
   
   bool ValidateSpecExpr(SpecExpr* E, QualType t);
+
+  bool ValidateSpecExpr(SpecExpr* E, QualType t, size_t n);
   
   ExprResult ActOnSpecObjectExpr(SourceLocation BraceLoc);
 

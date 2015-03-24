@@ -243,6 +243,27 @@ bool Sema::ValidateSpecExpr(SpecExpr* E, QualType t){
   return true;
 }
 
+bool Sema::ValidateSpecExpr(SpecExpr* E, QualType t, size_t n){
+  SpecValueExpr* v = E->toValue();
+  if(v){
+    return ValidateSpecExpr(E,
+              Context.getVectorType(t, n, VectorType::GenericVector));
+  }
+  
+  SpecArrayExpr* a = E->toArray();
+  if(a->size() != n){
+    return false;
+  }
+  
+  for(size_t i = 0; i < n; ++i){
+    if(!ValidateSpecExpr(a->get(i), t)){
+      return false;
+    }
+  }
+  
+  return true;
+}
+
 ExprResult Sema::ActOnSpecObjectExpr(SourceLocation BraceLoc){
   return new (Context) SpecObjectExpr(BraceLoc);
 }
@@ -553,8 +574,7 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
       
       SpecExpr* c = lv->get("color");
       if(c){
-        if(!ValidateSpecExpr(c, Context.getVectorType(Context.FloatTy, 4,
-                                                      VectorType::GenericVector))){
+        if(!ValidateSpecExpr(c, Context.FloatTy, 4)){
           Diag(c->getLocStart(), diag::err_invalid_plot_spec) <<
           "invalid 'color'";
           valid = false;
