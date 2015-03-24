@@ -998,6 +998,7 @@ CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
     }
     
     llvm::Value* numItems;
+
     SetMeshBounds(meshAddr);
     
     llvm::Value* elementKind;
