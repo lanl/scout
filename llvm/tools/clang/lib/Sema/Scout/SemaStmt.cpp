@@ -320,6 +320,10 @@ SpecValueExpr* Sema::CreateSpecValueExpr(const std::string& value){
   return new (Context) SpecValueExpr(l);
 }
 
+SpecArrayExpr* Sema::CreateSpecArrayExpr(){
+  return new (Context) SpecArrayExpr(SourceLocation());
+}
+
 // Check forall array for shadowing
 bool Sema::CheckForallArray(Scope* S,
                                   IdentifierInfo* InductionVarInfo,
@@ -579,6 +583,14 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
           "invalid 'color'";
           valid = false;
         }
+      }
+      else{
+        SpecArrayExpr* color = CreateSpecArrayExpr();
+        color->add(CreateSpecValueExpr(0.0));
+        color->add(CreateSpecValueExpr(0.0));
+        color->add(CreateSpecValueExpr(0.0));
+        color->add(CreateSpecValueExpr(1.0));
+        lv->put("color", color);
       }
     }
     else if(k == "axis"){

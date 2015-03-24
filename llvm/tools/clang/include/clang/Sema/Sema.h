@@ -8935,6 +8935,8 @@ public:
   
   SpecValueExpr* CreateSpecValueExpr(const std::string& value);
   
+  SpecArrayExpr* CreateSpecArrayExpr();
+  
   Decl* ActOnFrameDefinition(Scope* S,
                              SourceLocation FrameLoc,
                              IdentifierInfo* Name,
