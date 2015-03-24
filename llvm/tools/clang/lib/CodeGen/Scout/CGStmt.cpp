@@ -2434,13 +2434,30 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
     return ConstantInt::get(R.Int32Ty, fd->getVarId(vd));
   }
   
-  PlotExprVisitor v(fd);
-  v.Visit(E->toExpr());
+  SpecArrayExpr* array = E->toArray();
+  
+  bool isConstant;
+  if(array){
+    isConstant = true;
+  }
+  else{
+    PlotExprVisitor v(fd);
+    v.Visit(E->toExpr());
+    isConstant = v.isConstant();
+  }
   
   BasicBlock* prevBlock = Builder.GetInsertBlock();
   BasicBlock::iterator prevPoint = Builder.GetInsertPoint();
   
-  llvm::Type* rt = ConvertType(E->toExpr()->getType());
+  llvm::Type* rt;
+  
+  if(array){
+    llvm::Type* st = ConvertType(array->get(0)->toExpr()->getType());
+    rt = llvm::VectorType::get(st, array->size());
+  }
+  else{
+    rt = ConvertType(E->toExpr()->getType());
+  }
   
   TypeVec params = {R.VoidPtrTy, R.Int64Ty};
   
@@ -2480,13 +2497,23 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
   
   CurrentFrame = Frame;
   
-  Value* val = EmitAnyExpr(E->toExpr()).getScalarVal();
-  
   if(isVec){
-    Builder.CreateStore(val, Builder.CreateBitCast(vecPtr, R.PointerTy(rt)));
+    if(array){
+      for(size_t i = 0; i < array->size(); ++i){
+        Value* ai = EmitAnyExpr(array->get(i)->toExpr()).getScalarVal();
+        Value* vi = Builder.CreateGEP(vecPtr, ConstantInt::get(R.Int32Ty, i));
+        Builder.CreateStore(ai, vi);
+      }
+    }
+    else{
+      Value* val = EmitAnyExpr(E->toExpr()).getScalarVal();
+      Builder.CreateStore(val, Builder.CreateBitCast(vecPtr, R.PointerTy(rt)));
+    }
+    
     Builder.CreateRetVoid();
   }
   else{
+    Value* val = EmitAnyExpr(E->toExpr()).getScalarVal();
     Builder.CreateRet(val);
   }
   
@@ -2504,11 +2531,11 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
     args =
     {PlotPtr, vid, func,
       ConstantInt::get(R.Int32Ty, rt->getVectorNumElements()),
-      ConstantInt::get(R.Int32Ty, v.isConstant() ? 1 : 0)};
+      ConstantInt::get(R.Int32Ty, isConstant ? 1 : 0)};
   }
   else{
     args =
-    {PlotPtr, vid, func, ConstantInt::get(R.Int32Ty, v.isConstant() ? 1 : 0)};
+    {PlotPtr, vid, func, ConstantInt::get(R.Int32Ty, isConstant ? 1 : 0)};
   }
   
   if(rt->isIntegerTy(32)){
