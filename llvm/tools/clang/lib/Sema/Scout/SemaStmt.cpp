@@ -239,6 +239,27 @@ bool Sema::ValidateSpecExpr(SpecExpr* E, QualType t){
   }
   
   v->setExpression(rc.get());
+    
+  return true;
+}
+
+bool Sema::ValidateSpecExpr(SpecExpr* E, QualType t, size_t n){
+  SpecValueExpr* v = E->toValue();
+  if(v){
+    return ValidateSpecExpr(E,
+              Context.getVectorType(t, n, VectorType::GenericVector));
+  }
+  
+  SpecArrayExpr* a = E->toArray();
+  if(a->size() != n){
+    return false;
+  }
+  
+  for(size_t i = 0; i < n; ++i){
+    if(!ValidateSpecExpr(a->get(i), t)){
+      return false;
+    }
+  }
   
   return true;
 }
@@ -259,6 +280,44 @@ ExprResult Sema::ActOnSpecValueExpr(Expr* E){
   }
   
   return new (Context) SpecValueExpr(result.get());
+}
+
+SpecValueExpr* Sema::CreateSpecValueExpr(double value){
+  FloatingLiteral* l =
+  FloatingLiteral::Create(Context,
+                          llvm::APFloat(value),
+                          false,
+                          Context.DoubleTy,
+                          SourceLocation());
+  
+  return new (Context) SpecValueExpr(l);
+}
+
+SpecValueExpr* Sema::CreateSpecValueExpr(int64_t value){
+  IntegerLiteral* l =
+  IntegerLiteral::Create(Context,
+                         llvm::APInt(64, value, true),
+                         Context.LongTy,
+                         SourceLocation());
+  
+  return new (Context) SpecValueExpr(l);
+}
+
+SpecValueExpr* Sema::CreateSpecValueExpr(const std::string& value){
+  llvm::APInt len(32, value.length() + 1);
+  
+  QualType t = Context.CharTy.withConst();
+  t = Context.getConstantArrayType(t, len, ArrayType::Normal, 0);
+  
+  StringLiteral* l =
+  StringLiteral::Create(Context,
+                        value.c_str(),
+                        StringLiteral::Ascii,
+                        false,
+                        t,
+                        SourceLocation());
+  
+  return new (Context) SpecValueExpr(l);
 }
 
 // Check forall array for shadowing
@@ -506,6 +565,18 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         if(!ValidateSpecExpr(s, Context.DoubleTy)){
           Diag(s->getLocStart(), diag::err_invalid_plot_spec) <<
           "invalid 'size' key";
+          valid = false;
+        }
+      }
+      else{
+        lv->put("size", CreateSpecValueExpr(1.0));
+      }
+      
+      SpecExpr* c = lv->get("color");
+      if(c){
+        if(!ValidateSpecExpr(c, Context.FloatTy, 4)){
+          Diag(c->getLocStart(), diag::err_invalid_plot_spec) <<
+          "invalid 'color'";
           valid = false;
         }
       }

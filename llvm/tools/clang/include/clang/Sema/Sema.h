@@ -8920,12 +8920,20 @@ public:
                             Expr* Predicate);
   
   bool ValidateSpecExpr(SpecExpr* E, QualType t);
+
+  bool ValidateSpecExpr(SpecExpr* E, QualType t, size_t n);
   
   ExprResult ActOnSpecObjectExpr(SourceLocation BraceLoc);
 
   ExprResult ActOnSpecArrayExpr(SourceLocation BracketLoc);
   
   ExprResult ActOnSpecValueExpr(Expr* E);
+  
+  SpecValueExpr* CreateSpecValueExpr(double value);
+  
+  SpecValueExpr* CreateSpecValueExpr(int64_t value);
+  
+  SpecValueExpr* CreateSpecValueExpr(const std::string& value);
   
   Decl* ActOnFrameDefinition(Scope* S,
                              SourceLocation FrameLoc,

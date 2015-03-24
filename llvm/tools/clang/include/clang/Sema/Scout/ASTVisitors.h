@@ -308,7 +308,7 @@ private:
   bool meshAccess_;
 
 };
-
+  
 } // end namespace sema
 } // end namespace clang
 

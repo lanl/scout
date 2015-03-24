@@ -79,6 +79,18 @@ CGPlot2Runtime::CGPlot2Runtime(CodeGenModule& CGM) : CGM(CGM){
   PlotFuncFloatTy = llvm::FunctionType::get(FloatTy, params, false);
   PlotFuncDoubleTy = llvm::FunctionType::get(DoubleTy, params, false);
   
+  params = {VoidPtrTy, Int64Ty, PointerTy(Int32Ty)};
+  PlotFuncI32VecTy = llvm::FunctionType::get(VoidTy, params, false);
+  
+  params = {VoidPtrTy, Int64Ty, PointerTy(Int64Ty)};
+  PlotFuncI64VecTy = llvm::FunctionType::get(VoidTy, params, false);
+  
+  params = {VoidPtrTy, Int64Ty, PointerTy(FloatTy)};
+  PlotFuncFloatVecTy = llvm::FunctionType::get(VoidTy, params, false);
+  
+  params = {VoidPtrTy, Int64Ty, PointerTy(DoubleTy)};
+  PlotFuncDoubleVecTy = llvm::FunctionType::get(VoidTy, params, false);
+  
   ElementInt32Val = ConstantInt::get(C, APInt(32, 0));
   ElementInt64Val = ConstantInt::get(C, APInt(32, 1));
   ElementFloatVal = ConstantInt::get(C, APInt(32, 2));
@@ -168,12 +180,12 @@ llvm::Function* CGPlot2Runtime::PlotInitFunc(){
 
 llvm::Function* CGPlot2Runtime::PlotAddLinesFunc(){
   return GetFunc("__scrt_plot_add_lines",
-                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
+                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddPointsFunc(){
   return GetFunc("__scrt_plot_add_points",
-                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
+                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddAxisFunc(){
@@ -186,20 +198,44 @@ llvm::Function* CGPlot2Runtime::PlotRenderFunc(){
 
 llvm::Function* CGPlot2Runtime::PlotAddVarI32Func(){
   return GetFunc("__scrt_plot_add_var_i32",
-  {VoidPtrTy, Int32Ty, PointerTy(PlotFuncI32Ty)});
+  {VoidPtrTy, Int32Ty, PointerTy(PlotFuncI32Ty), Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddVarI64Func(){
   return GetFunc("__scrt_plot_add_var_i64",
-  {VoidPtrTy, Int32Ty, PointerTy(PlotFuncI64Ty)});
+  {VoidPtrTy, Int32Ty, PointerTy(PlotFuncI64Ty), Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddVarFloatFunc(){
   return GetFunc("__scrt_plot_add_var_float",
-  {VoidPtrTy, Int32Ty, PointerTy(PlotFuncFloatTy)});
+  {VoidPtrTy, Int32Ty, PointerTy(PlotFuncFloatTy), Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddVarDoubleFunc(){
   return GetFunc("__scrt_plot_add_var_double",
-  {VoidPtrTy, Int32Ty, PointerTy(PlotFuncDoubleTy)});
+  {VoidPtrTy, Int32Ty, PointerTy(PlotFuncDoubleTy), Int32Ty});
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddVarI32VecFunc(){
+  return GetFunc("__scrt_plot_add_var_i32_vec",
+                 {VoidPtrTy, Int32Ty, PointerTy(PlotFuncI32VecTy),
+                   Int32Ty, Int32Ty});
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddVarI64VecFunc(){
+  return GetFunc("__scrt_plot_add_var_i64_vec",
+                 {VoidPtrTy, Int32Ty, PointerTy(PlotFuncI64VecTy),
+                   Int32Ty, Int32Ty});
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddVarFloatVecFunc(){
+  return GetFunc("__scrt_plot_add_var_float_vec",
+                 {VoidPtrTy, Int32Ty, PointerTy(PlotFuncFloatVecTy),
+                   Int32Ty, Int32Ty});
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddVarDoubleVecFunc(){
+  return GetFunc("__scrt_plot_add_var_double_vec",
+                 {VoidPtrTy, Int32Ty, PointerTy(PlotFuncDoubleVecTy),
+                   Int32Ty, Int32Ty});
 }

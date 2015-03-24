@@ -287,6 +287,13 @@ void FunctionArgVisitor::VisitMemberExpr(MemberExpr *E) {
   }
 }
 
+void PlotExprVisitor::VisitDeclRefExpr(DeclRefExpr* E){
+  VarDecl* VD = dyn_cast<VarDecl>(E->getDecl());
+  if(VD && FD_->hasVar(VD)){
+    isConstant_ = false;
+  }
+}
+  
 } // end namespace CodeGen
 } // end namespace clang
 

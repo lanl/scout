@@ -81,6 +81,11 @@ typedef int64_t (*__sc_plot_func_i64)(void*, uint64_t);
 typedef float (*__sc_plot_func_float)(void*, uint64_t);
 typedef double (*__sc_plot_func_double)(void*, uint64_t);
 
+typedef void (*__sc_plot_func_i32_vec)(void*, uint64_t, int32_t*);
+typedef void (*__sc_plot_func_i64_vec)(void*, uint64_t, int64_t*);
+typedef void (*__sc_plot_func_float_vec)(void*, uint64_t, float*);
+typedef void (*__sc_plot_func_double_vec)(void*, uint64_t, double*);
+
 namespace{
 
   const size_t RESERVE = 1024;
@@ -106,18 +111,90 @@ namespace{
   typedef uint32_t VarId;
 
   const uint32_t PLOT_VAR_BEGIN = 65536;
+  
+  const uint32_t FLAG_VAR_CONSTANT = 0x00000001; 
+
+  typedef vector<double> DoubleVec;
+
+ template<typename T, size_t N>
+  class Vec{
+  public:
+    Vec(){}
+
+    Vec(T* v){
+      for(size_t i = 0; i < N; ++i){
+        vc_[i] = v[i];
+      }
+    }
+
+    Vec& operator=(T* v){
+      for(size_t i = 0; i < N; ++i){
+        vc_[i] = v[i];
+      }
+      
+      return *this;
+    }
+
+    Vec& operator=(const Vec& v){
+      for(size_t i = 0; i < N; ++i){
+        vc_[i] = v[i];
+      }
+      
+      return *this;
+    }
+
+    static size_t size(){
+      return N;
+    }
+
+    T& operator[](size_t i){
+      return vc_[i];
+    }
+
+    const T& operator[](size_t i) const{
+      return vc_[i];
+    }
+    
+   T* raw(){
+     return vc_;
+   }
+
+   void get(DoubleVec& v) const{
+     v.reserve(N);
+     for(size_t i = 0; i < N; ++i){
+       v.push_back(vc_[i]);
+     }
+   }
+
+   void dump(){
+     cerr << "[";
+     for(size_t i = 0; i < N; ++i){
+       if(i > 0){
+         cerr << ",";
+       }
+
+       cerr << vc_[i];
+     }
+     cerr << "]";
+   }
+
+  private:
+    T vc_[N] __attribute__ ((aligned (16)));
+  };
 
   class VarBase{
-  public:
-    virtual size_t size() const = 0;
-    
+  public:    
     virtual double min() const = 0;
 
     virtual double max() const = 0;
 
     virtual double get(size_t i) const = 0;
 
+    virtual void getVec(size_t i, DoubleVec& v) const = 0;
+
     virtual void compute(void* frame, uint64_t index) = 0;
+
+    virtual size_t size() const = 0;
   };
 
   template<class T>
@@ -168,12 +245,12 @@ namespace{
       capture((*fp_)(frame, index));
     }
 
-    size_t size() const{
-      return v_.size();
-    }
-
     double get(size_t i) const{
       return v_[i];
+    }
+
+    void getVec(size_t i, DoubleVec& v) const{
+      assert(false && "not a vector");
     }
 
     T get_(size_t i) const{
@@ -188,12 +265,138 @@ namespace{
       return max_;
     }
 
+    size_t size() const{
+      return v_.size();
+    }
+
   private:
     vector<T> v_;
     size_t i_;
     T min_;
     T max_;
     T (*fp_)(void*, uint64_t);
+  };
+
+  template<class T, size_t N>
+  class VecVar : public VarBase{
+  public:
+    VecVar()
+      : fp_(0),
+        i_(RESERVE){
+    }
+
+    VecVar(void (*fp)(void*, uint64_t, T*))
+      : fp_(fp),
+        i_(RESERVE){
+    }
+
+    void capture(const Vec<T, N>& value){
+      if(i_ == RESERVE){
+        v_.reserve(v_.size() + RESERVE);
+        i_ = 0;
+      }
+      else{
+        ++i_;
+      }
+
+      v_.push_back(value);
+    }
+
+    void compute(void* frame, uint64_t index){
+      Vec<T, N> v;
+      (*fp_)(frame, index, v.raw());
+
+      capture(v);
+    }
+
+    double get(size_t i) const{
+      assert(false && "attempt to get scalar from vector");
+    }
+
+    void getVec(size_t i, DoubleVec& v) const{
+      v_[i].get(v);
+    }
+
+    double min() const{
+      assert(false && "attempt to get min from vector");
+    }
+
+    double max() const{
+      assert(false && "attempt to get max from vector");
+    }
+
+    size_t size() const{
+      return v_.size();
+    }
+
+  private:
+    vector<Vec<T, N>> v_;
+    size_t i_;
+    void (*fp_)(void*, uint64_t, T*);
+  };
+
+  template<class T>
+  class ConstVar : public VarBase{
+  public:
+    ConstVar(T value)
+      : value_(value){}
+
+    void compute(void* frame, uint64_t index){}
+
+    double get(size_t i) const{
+      return value_;
+    }
+
+    void getVec(size_t i, DoubleVec& v) const{
+      assert(false && "not a vector");
+    }
+
+    double min() const{
+      return value_;
+    }
+
+    double max() const{
+      return value_;
+    }
+
+    size_t size() const{
+      return 0;
+    }
+
+  private:
+    T value_;
+  };
+
+  template<class T, size_t N>
+  class ConstVecVar : public VarBase{
+  public:
+    ConstVecVar(const Vec<T, N>& v)
+      : v_(v){}
+
+    void compute(void* frame, uint64_t index){}
+
+    double get(size_t i) const{
+      assert(false && "attempt to get scalar from vector");
+    }
+
+    void getVec(size_t i, DoubleVec& v) const{
+      v_.get(v);
+    }
+
+    double min() const{
+      assert(false && "attempt to get min from vector");
+    }
+
+    double max() const{
+      assert(false && "attempt to get max from vector");
+    }
+
+    size_t size() const{
+      return 0;
+    }
+
+  private:
+    Vec<T, N> v_;
   };
 
   class Frame{
@@ -263,7 +466,17 @@ namespace{
     }
 
     size_t size() const{
-      return vars_[0]->size();
+      size_t n = vars_.size();
+      size_t m;
+      
+      for(size_t i = 0; i < n; ++i){
+        m = vars_[i]->size();
+        if(m > 0){
+          return m;
+        }
+      }
+
+      return 0;
     }
 
     VarBase* getVar(VarId varId){
@@ -277,7 +490,10 @@ namespace{
     }
 
     template<class T>
-    void addPlotVar(uint32_t plotId, VarId varId, T (*fp)(void*, uint64_t)){
+    void addPlotVar(uint32_t plotId,
+                    VarId varId,
+                    T (*fp)(void*, uint64_t),
+                    uint32_t flags){
       Frame* frame;
 
       auto itr = plotFrameMap_.find(plotId);
@@ -292,8 +508,81 @@ namespace{
           return;
         }
       }
+
+      VarBase* v;
+      if(flags & FLAG_VAR_CONSTANT){
+        v = new ConstVar<T>((*fp)(0, 0));
+      }
+      else{
+        v = new Var<T>(fp);
+      }
+
+      frame->addVar(varId - PLOT_VAR_BEGIN, v);
+    }
+
+    template<class T>
+    void addPlotVecVar(uint32_t plotId,
+                       VarId varId,
+                       void (*fp)(void*, uint64_t, T*),
+                       uint32_t dim,
+                       uint32_t flags){
+      Frame* frame;
+
+      auto itr = plotFrameMap_.find(plotId);
+      if(itr == plotFrameMap_.end()){
+        frame = new Frame;
+        plotFrameMap_[plotId] = frame;
+      }
+      else{
+        frame = itr->second;
+        
+        if(frame->ready_){
+          return;
+        }
+      }
+
+      VarBase* v;
       
-      VarBase* v = new Var<T>(fp);
+      if(flags & FLAG_VAR_CONSTANT){
+        switch(dim){
+        case 2:{
+          Vec<T, 2> x;
+          (*fp)(0, 0, x.raw());
+          v = new ConstVecVar<T, 2>(x);
+          break;
+        }
+        case 3:{
+          Vec<T, 3> x;
+          (*fp)(0, 0, x.raw());
+          v = new ConstVecVar<T, 3>(x);
+          break;
+        }
+        case 4:{
+          Vec<T, 4> x;
+          (*fp)(0, 0, x.raw());
+          v = new ConstVecVar<T, 4>(x);
+          break;
+        }
+        default:
+          assert(false && "invalid vector size");
+        }
+      }
+      else{
+        switch(dim){
+        case 2:
+          v = new VecVar<T, 2>(fp);
+          break;
+        case 3:
+          v = new VecVar<T, 3>(fp);
+          break;
+        case 4:
+          v = new VecVar<T, 4>(fp);
+          break;
+        default:
+          assert(false && "invalid vector size");
+        }
+      }
+
       frame->addVar(varId - PLOT_VAR_BEGIN, v);
     }
 
@@ -345,6 +634,12 @@ namespace{
     painter.drawText(frame, text, textOption);
   }
 
+  QColor toQColor(DoubleVec& v){
+    assert(v.size() == 4);
+    
+    return QColor(v[0]*255, v[1]*255, v[2]*255, v[3]*255);
+  }
+
   QString toLabel(double value){
     stringstream sstr;
     sstr.precision(4);
@@ -362,12 +657,13 @@ namespace{
 
     class Lines : public Element{
     public:
-      Lines(VarId x, VarId y, VarId size)
-        : x(x), y(y), size(size){}
+      Lines(VarId x, VarId y, VarId size, VarId color)
+        : x(x), y(y), size(size), color(color){}
 
       VarId x;
       VarId y;
       VarId size;
+      VarId color;
 
       int order(){
         return 1;
@@ -376,12 +672,13 @@ namespace{
 
     class Points : public Element{
     public:
-      Points(VarId x, VarId y, VarId size)
-        : x(x), y(y), size(size){}
+      Points(VarId x, VarId y, VarId size, VarId color)
+        : x(x), y(y), size(size), color(color){}
 
       VarId x;
       VarId y;
       VarId size;
+      VarId color;
 
       int order(){
         return 2;
@@ -415,16 +712,26 @@ namespace{
     }
 
     template<class T>
-    void addVar(VarId varId, T (*fp)(void*, uint64_t)){
-      frame_->addPlotVar(plotId_, varId, fp);
+    void addVar(VarId varId,
+                T (*fp)(void*, uint64_t),
+                uint32_t flags){
+      frame_->addPlotVar(plotId_, varId, fp, flags);
     }
 
-    void addLines(VarId xVarId, VarId yVarId, double size){
-      elements_.push_back(new Lines(xVarId, yVarId, size)); 
+    template<class T>
+    void addVecVar(VarId varId,
+                   void (*fp)(void*, uint64_t, T*),
+                   uint32_t dim,
+                   uint32_t flags){
+      frame_->addPlotVecVar(plotId_, varId, fp, dim, flags);
     }
 
-    void addPoints(VarId xVarId, VarId yVarId, double size){
-      elements_.push_back(new Points(xVarId, yVarId, size)); 
+    void addLines(VarId x, VarId y, VarId size, VarId color){
+      elements_.push_back(new Lines(x, y, size, color)); 
+    }
+
+    void addPoints(VarId x, VarId y, VarId size, VarId color){
+      elements_.push_back(new Points(x, y, size, color)); 
     }
 
     void addAxis(uint32_t dim, const string& label){
@@ -445,6 +752,12 @@ namespace{
     }
     
     void render(){
+      size_t size = frame_->size();
+
+      if(size < 2){
+        return;
+      }
+
       QPainter painter(widget_);
       painter.setRenderHint(QPainter::Antialiasing, true);
 
@@ -458,14 +771,10 @@ namespace{
       double yMin = MAX;
       double yMax = MIN;
 
-      size_t size;
-
       for(Element* e : elements_){
         if(Lines* l = dynamic_cast<Lines*>(e)){
           VarBase* x = getVar(l->x);
           VarBase* y = getVar(l->y);
-
-          size = x->size();
 
           if(x->min() < xMin){
             xMin = x->min();
@@ -486,8 +795,6 @@ namespace{
         else if(Points* p = dynamic_cast<Points*>(e)){
           VarBase* x = getVar(p->x);
           VarBase* y = getVar(p->y);
-
-          size = x->size();
 
           if(x->min() < xMin){
             xMin = x->min();
@@ -532,6 +839,11 @@ namespace{
             painter.drawLine(origin, xEnd);
 
             size_t inc = size / X_LABELS;
+
+            if(inc == 0){
+              inc = 1;
+            }
+
             double xc;
             for(size_t i = 0; i < size; i += inc){
               xc = origin.x() + double(i)/size * xLen;
@@ -542,6 +854,11 @@ namespace{
             }
             
             inc = size / X_TICKS;
+
+            if(inc == 0){
+              inc = 1;
+            }
+
             for(size_t i = 0; i < size; i += inc){
               xc = origin.x() + double(i)/size * xLen;
 
@@ -553,6 +870,11 @@ namespace{
             painter.drawLine(origin, yEnd);
 
             size_t inc = size / Y_LABELS;
+
+            if(inc == 0){
+              inc = 1;
+            }
+
             double yc;
             double yv;
             for(size_t i = 0; i <= size; i += inc){
@@ -565,6 +887,11 @@ namespace{
             }
 
             inc = size / Y_TICKS;
+            
+            if(inc == 0){
+              inc = 1;
+            }
+
             for(size_t i = 0; i < size; i += inc){
               yc = origin.y() - double(i)/size * yLen;
 
@@ -583,6 +910,7 @@ namespace{
           VarBase* x = getVar(l->x);
           VarBase* y = getVar(l->y);
           VarBase* s = getVar(l->size);
+          VarBase* c = getVar(l->color);
 
           QPen noPen(Qt::NoPen);
 
@@ -600,7 +928,10 @@ namespace{
 
             QPen pen;
             pen.setWidthF(s->get(i));
-            pen.setColor(QColor(0, 0, 0));
+
+            DoubleVec cv;
+            c->getVec(i, cv);
+            pen.setColor(toQColor(cv));
 
             if(i > 0){
               QPolygonF poly;
@@ -624,22 +955,19 @@ namespace{
           VarBase* x = getVar(p->x);
           VarBase* y = getVar(p->y);
           VarBase* s = getVar(p->size);
-
-          QPen pen;
-          pen.setWidthF(1.0);
-          pen.setColor(QColor(0, 0, 0));
+          VarBase* c = getVar(p->color);
 
           QPointF point;
-
-          QColor color(0, 0, 0);
-          QBrush brush(color);
-                
-          painter.setBrush(brush);
 
           for(size_t i = 0; i < size; ++i){
             point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
             point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
 
+            DoubleVec cv;
+            c->getVec(i, cv);
+
+            QBrush brush(toQColor(cv));
+            painter.setBrush(brush);
             painter.drawEllipse(point, s->get(i), s->get(i));
           }
         }
@@ -710,40 +1038,78 @@ extern "C"{
 
   void __scrt_plot_add_var_i32(void* plot,
                                VarId varId,
-                               __sc_plot_func_i32 fp){
-    static_cast<Plot*>(plot)->addVar(varId, fp);
+                               __sc_plot_func_i32 fp,
+                               uint32_t flags){
+    static_cast<Plot*>(plot)->addVar(varId, fp, flags);
   }
 
   void __scrt_plot_add_var_i64(void* plot,
                                VarId varId,
-                               __sc_plot_func_i64 fp){
-    static_cast<Plot*>(plot)->addVar(varId, fp);
+                               __sc_plot_func_i64 fp,
+                               uint32_t flags){
+    static_cast<Plot*>(plot)->addVar(varId, fp, flags);
   }
 
   void __scrt_plot_add_var_float(void* plot,
-                               VarId varId,
-                               __sc_plot_func_float fp){
-    static_cast<Plot*>(plot)->addVar(varId, fp);
+                                 VarId varId,
+                                 __sc_plot_func_float fp,
+                                 uint32_t flags){
+    static_cast<Plot*>(plot)->addVar(varId, fp, flags);
   }
 
   void __scrt_plot_add_var_double(void* plot,
                                   VarId varId,
-                                  __sc_plot_func_double fp){
-    static_cast<Plot*>(plot)->addVar(varId, fp);
+                                  __sc_plot_func_double fp,
+                                  uint32_t flags){
+    static_cast<Plot*>(plot)->addVar(varId, fp, flags);
+  }
+
+  void __scrt_plot_add_var_i32_vec(void* plot,
+                                   VarId varId,
+                                   __sc_plot_func_i32_vec fp,
+                                   uint32_t dim,
+                                   uint32_t flags){
+    static_cast<Plot*>(plot)->addVecVar(varId, fp, dim, flags);
+  }
+
+  void __scrt_plot_add_var_i64_vec(void* plot,
+                                   VarId varId,
+                                   __sc_plot_func_i64_vec fp,
+                                   uint32_t dim,
+                                   uint32_t flags){
+    static_cast<Plot*>(plot)->addVecVar(varId, fp, dim, flags);
+  }
+
+  void __scrt_plot_add_var_float_vec(void* plot,
+                                 VarId varId,
+                                 __sc_plot_func_float_vec fp,
+                                 uint32_t dim,
+                                 uint32_t flags){
+    static_cast<Plot*>(plot)->addVecVar(varId, fp, dim, flags);
+  }
+
+  void __scrt_plot_add_var_double_vec(void* plot,
+                                      VarId varId,
+                                      __sc_plot_func_double_vec fp,
+                                      uint32_t dim,
+                                      uint32_t flags){
+    static_cast<Plot*>(plot)->addVecVar(varId, fp, dim, flags);
   }
 
   void __scrt_plot_add_lines(void* plot,
                              VarId x,
                              VarId y,
-                             VarId size){
-    static_cast<Plot*>(plot)->addLines(x, y, size);
+                             VarId size,
+                             VarId color){
+    static_cast<Plot*>(plot)->addLines(x, y, size, color);
   }
 
   void __scrt_plot_add_points(void* plot,
                               VarId x,
                               VarId y,
-                              double size){
-    static_cast<Plot*>(plot)->addPoints(x, y, size);
+                              VarId size,
+                              VarId color){
+    static_cast<Plot*>(plot)->addPoints(x, y, size, color);
   }
 
   void __scrt_plot_add_axis(void* plot, uint32_t dim, const char* label){

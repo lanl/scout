@@ -242,6 +242,38 @@ private:
   MeshFieldMap RHS_;
 };
 
+class PlotExprVisitor : public StmtVisitor<PlotExprVisitor> {
+public:
+  
+  PlotExprVisitor(const FrameDecl* FD)
+  : FD_(FD), isConstant_(true){}
+  
+  void VisitDeclRefExpr(DeclRefExpr* E);
+  
+  bool isConstant() const{
+    return isConstant_;
+  }
+  
+  void VisitChildren(Stmt* S) {
+    if(S){
+      for(Stmt::child_iterator I = S->child_begin(),
+          E = S->child_end(); I != E; ++I){
+        if(Stmt* child = *I){
+          Visit(child);
+        }
+      }
+    }
+  }
+  
+  void VisitStmt(Stmt* S) {
+    VisitChildren(S);
+  }
+  
+private:
+  const FrameDecl* FD_;
+  bool isConstant_;
+};
+  
 } // end namespace CodeGen
 } // end namespace clang
 
