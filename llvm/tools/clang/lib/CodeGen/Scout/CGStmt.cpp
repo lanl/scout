@@ -2443,7 +2443,18 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
   llvm::Type* rt = ConvertType(E->toExpr()->getType());
   
   TypeVec params = {R.VoidPtrTy, R.Int64Ty};
-  llvm::FunctionType* funcType = llvm::FunctionType::get(rt, params, false);
+  
+  llvm::FunctionType* funcType;
+
+  bool isVec = rt->isVectorTy();
+  
+  if(isVec){
+    params.push_back(R.PointerTy(rt->getScalarType()));
+    funcType = llvm::FunctionType::get(R.VoidTy, params, false);
+  }
+  else{
+    funcType = llvm::FunctionType::get(rt, params, false);
+  }
   
   llvm::Function* func =
   llvm::Function::Create(funcType,
@@ -2456,11 +2467,29 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
   aitr++;
   aitr->setName("index");
   
+  Value* vecPtr;
+  
+  if(isVec){
+    aitr++;
+    aitr->setName("vec.ptr");
+    vecPtr = aitr;
+  }
+  
   BasicBlock* entry = BasicBlock::Create(CGM.getLLVMContext(), "entry", func);
   Builder.SetInsertPoint(entry);
   
   CurrentFrame = Frame;
-  Builder.CreateRet(EmitAnyExpr(E->toExpr()).getScalarVal());
+  
+  Value* val = EmitAnyExpr(E->toExpr()).getScalarVal();
+  
+  if(isVec){
+    Builder.CreateStore(val, Builder.CreateBitCast(vecPtr, R.PointerTy(rt)));
+    Builder.CreateRetVoid();
+  }
+  else{
+    Builder.CreateRet(val);
+  }
+  
   CurrentFrame = nullptr;
   
   //func->dump();
@@ -2469,9 +2498,19 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
   
   Value* vid = ConstantInt::get(R.Int32Ty, varId++);
   
-  ValueVec args =
-  {PlotPtr, vid, func, ConstantInt::get(R.Int32Ty, v.isConstant() ? 1 : 0)};
-    
+  ValueVec args;
+  
+  if(isVec){
+    args =
+    {PlotPtr, vid, func,
+      ConstantInt::get(R.Int32Ty, rt->getVectorNumElements()),
+      ConstantInt::get(R.Int32Ty, v.isConstant() ? 1 : 0)};
+  }
+  else{
+    args =
+    {PlotPtr, vid, func, ConstantInt::get(R.Int32Ty, v.isConstant() ? 1 : 0)};
+  }
+  
   if(rt->isIntegerTy(32)){
     Builder.CreateCall(R.PlotAddVarI32Func(), args);
   }
@@ -2483,6 +2522,25 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
   }
   else if(rt->isDoubleTy()){
     Builder.CreateCall(R.PlotAddVarDoubleFunc(), args);
+  }
+  else if(isVec){
+    llvm::Type* st = rt->getScalarType();
+    
+    if(st->isIntegerTy(32)){
+      Builder.CreateCall(R.PlotAddVarI32VecFunc(), args);
+    }
+    else if(st->isIntegerTy(64)){
+      Builder.CreateCall(R.PlotAddVarI64VecFunc(), args);
+    }
+    else if(st->isFloatTy()){
+      Builder.CreateCall(R.PlotAddVarFloatVecFunc(), args);
+    }
+    else if(st->isDoubleTy()){
+      Builder.CreateCall(R.PlotAddVarDoubleVecFunc(), args);
+    }
+    else{
+      assert(false && "invalid plot var vector type");
+    }
   }
   else{
     assert(false && "invalid plot var type");
@@ -2534,20 +2592,13 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       SpecObjectExpr* o = v->toObject();
       
       SpecArrayExpr* pa = o->get("position")->toArray();
-      
+            
       Value* xv = EmitPlotExpr(frame, plotPtr, pa->get(0), varId);
       Value* yv = EmitPlotExpr(frame, plotPtr, pa->get(1), varId);
-
-      Value* sv;
+      Value* sv = EmitPlotExpr(frame, plotPtr, o->get("size"), varId);
+      Value* cv = EmitPlotExpr(frame, plotPtr, o->get("color"), varId);
       
-      if(o->has("size")){
-        sv = EmitPlotExpr(frame, plotPtr, o->get("size"), varId);
-      }
-      else{
-        sv = ConstantFP::get(R.DoubleTy, 1.0);
-      }
-      
-      args = {plotPtr, xv, yv, sv};
+      args = {plotPtr, xv, yv, sv, cv};
       
       if(k == "lines"){
         Builder.CreateCall(R.PlotAddLinesFunc(), args);

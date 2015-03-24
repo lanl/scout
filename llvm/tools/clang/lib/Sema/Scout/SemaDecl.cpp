@@ -351,6 +351,9 @@ void Sema::InitFrameDefinitions(Scope* S, FrameDecl* FD){
   AddFrameVarType(S, FD, "Timestep", Context.IntTy);
   AddFrameVarType(S, FD, "Temperature", Context.DoubleTy);
   
+  AddFrameVarType(S, FD, "Double", Context.DoubleTy);
+  AddFrameVarType(S, FD, "Integer", Context.IntTy);
+  
   AddFrameFunction(S, FD, "sum", vt, {vt});
 }
 

@@ -4958,6 +4958,10 @@ public:
     MM.insert({K, {KeyLoc, V}});
   }
   
+  void put(const std::string& K, SpecExpr* V){
+    insert(K, SourceLocation(), V);
+  }
+  
   bool has(const std::string& K){
     return MM.count(K) > 0;
   }

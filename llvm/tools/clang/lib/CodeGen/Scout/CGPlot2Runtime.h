@@ -94,6 +94,11 @@ namespace CodeGen {
     llvm::FunctionType* PlotFuncI64Ty;
     llvm::FunctionType* PlotFuncFloatTy;
     llvm::FunctionType* PlotFuncDoubleTy;
+
+    llvm::FunctionType* PlotFuncI32VecTy;
+    llvm::FunctionType* PlotFuncI64VecTy;
+    llvm::FunctionType* PlotFuncFloatVecTy;
+    llvm::FunctionType* PlotFuncDoubleVecTy;
     
     llvm::Value* ElementInt32Val;
     llvm::Value* ElementInt64Val;
@@ -122,6 +127,11 @@ namespace CodeGen {
     llvm::Function* PlotAddVarI64Func();
     llvm::Function* PlotAddVarFloatFunc();
     llvm::Function* PlotAddVarDoubleFunc();
+    
+    llvm::Function* PlotAddVarI32VecFunc();
+    llvm::Function* PlotAddVarI64VecFunc();
+    llvm::Function* PlotAddVarFloatVecFunc();
+    llvm::Function* PlotAddVarDoubleVecFunc();
     
   private:
     CodeGen::CodeGenModule& CGM;

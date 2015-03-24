@@ -8927,6 +8927,12 @@ public:
   
   ExprResult ActOnSpecValueExpr(Expr* E);
   
+  SpecValueExpr* CreateSpecValueExpr(double value);
+  
+  SpecValueExpr* CreateSpecValueExpr(int64_t value);
+  
+  SpecValueExpr* CreateSpecValueExpr(const std::string& value);
+  
   Decl* ActOnFrameDefinition(Scope* S,
                              SourceLocation FrameLoc,
                              IdentifierInfo* Name,
