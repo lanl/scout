@@ -184,9 +184,9 @@ namespace{
 
   class VarBase{
   public:    
-    virtual double min() const = 0;
+    virtual double min() = 0;
 
-    virtual double max() const = 0;
+    virtual double max() = 0;
 
     virtual double get(size_t i) const = 0;
 
@@ -196,6 +196,16 @@ namespace{
 
     virtual size_t size() const = 0;
   };
+
+  template<typename T>
+  size_t maxSize(T* v){
+    return v->size();
+  }
+
+  template<typename T, typename... TS>
+  size_t maxSize(T* v, TS... vs){
+    return max(v->size(), maxSize(vs...));
+  }
 
   template<class T>
   class Var : public VarBase{
@@ -257,11 +267,11 @@ namespace{
       return v_[i];
     }
 
-    double min() const{
+    double min(){
       return min_;
     }
 
-    double max() const{
+    double max(){
       return max_;
     }
 
@@ -275,6 +285,75 @@ namespace{
     T min_;
     T max_;
     T (*fp_)(void*, uint64_t);
+  };
+
+  template<class T>
+  class ArrayVar : public VarBase{
+  public:
+    ArrayVar(T* array, size_t size)
+      : v_(array),
+        size_(size),
+        ready_(false){}
+
+    void compute(void* frame, uint64_t index){}
+
+    double get(size_t i) const{
+      return v_[i];
+    }
+
+    void getVec(size_t i, DoubleVec& v) const{
+      assert(false && "not a vector");
+    }
+
+    T get_(size_t i) const{
+      return v_[i];
+    }
+
+    double min(){
+      if(!ready_){
+        init();
+      }
+
+      return min_;
+    }
+
+    double max(){
+      if(!ready_){
+        init();
+      }
+
+      return max_;
+    }
+
+    size_t size() const{
+      return size_;
+    }
+
+    void init(){
+      min_ = v_[0];
+      max_ = v_[1];
+
+      T vi;
+      for(size_t i = 1; i < size_; ++i){
+        vi = v_[i];
+        
+        if(vi < min_){
+          min_ = vi;
+        }
+        else if(vi > max_){
+          max_ = vi;
+        }
+      }
+
+      ready_ = true;
+    }
+
+  private:
+    T* v_;
+    size_t size_;
+    T min_;
+    T max_;
+    bool ready_;
   };
 
   template<class T, size_t N>
@@ -317,11 +396,11 @@ namespace{
       v_[i].get(v);
     }
 
-    double min() const{
+    double min(){
       assert(false && "attempt to get min from vector");
     }
 
-    double max() const{
+    double max(){
       assert(false && "attempt to get max from vector");
     }
 
@@ -351,11 +430,11 @@ namespace{
       assert(false && "not a vector");
     }
 
-    double min() const{
+    double min(){
       return value_;
     }
 
-    double max() const{
+    double max(){
       return value_;
     }
 
@@ -383,11 +462,11 @@ namespace{
       v_.get(v);
     }
 
-    double min() const{
+    double min(){
       assert(false && "attempt to get min from vector");
     }
 
-    double max() const{
+    double max(){
       assert(false && "attempt to get max from vector");
     }
 
@@ -445,6 +524,33 @@ namespace{
       vars_[varId] = v;
     }
 
+    void addArrayVar(VarId varId, int elementKind, void* array, size_t size){
+      while(vars_.size() <= varId){
+        vars_.push_back(nullptr);
+      }
+
+      VarBase* v;
+
+      switch(elementKind){
+      case ELEMENT_INT32:
+        v = new ArrayVar<int32_t>((int32_t*)array, size);
+        break;
+      case ELEMENT_INT64:
+        v = new ArrayVar<int64_t>((int64_t*)array, size);
+        break;
+      case ELEMENT_FLOAT:
+        v = new ArrayVar<float>((float*)array, size);
+        break;
+      case ELEMENT_DOUBLE:
+        v = new ArrayVar<double>((double*)array, size);
+        break;
+      default:
+        assert(false && "invalid element kind");
+      }
+      
+      vars_[varId] = v;
+    }
+
     template<class T>
     void capture(VarId varId, T value){
       assert(varId < vars_.size());
@@ -467,16 +573,16 @@ namespace{
 
     size_t size() const{
       size_t n = vars_.size();
-      size_t m;
+      size_t m = 0;
       
       for(size_t i = 0; i < n; ++i){
-        m = vars_[i]->size();
-        if(m > 0){
-          return m;
+        size_t mi = vars_[i]->size();
+        if(mi > m){
+          m = mi;
         }
       }
 
-      return 0;
+      return m;
     }
 
     VarBase* getVar(VarId varId){
@@ -752,9 +858,9 @@ namespace{
     }
     
     void render(){
-      size_t size = frame_->size();
+      size_t frameSize = frame_->size();
 
-      if(size < 2){
+      if(frameSize == 0){
         return;
       }
 
@@ -838,29 +944,29 @@ namespace{
           if(a->dim == 1){
             painter.drawLine(origin, xEnd);
 
-            size_t inc = size / X_LABELS;
+            size_t inc = frameSize / X_LABELS;
 
             if(inc == 0){
               inc = 1;
             }
 
             double xc;
-            for(size_t i = 0; i < size; i += inc){
-              xc = origin.x() + double(i)/size * xLen;
+            for(size_t i = 0; i < frameSize; i += inc){
+              xc = origin.x() + double(i)/frameSize * xLen;
 
               drawText(painter,
-                       toLabel(xMin + (double(i)/size)*xSpan),
+                       toLabel(xMin + (double(i)/frameSize)*xSpan),
                        QPointF(xc, height - BOTTOM_MARGIN + 3));
             }
             
-            inc = size / X_TICKS;
+            inc = frameSize / X_TICKS;
 
             if(inc == 0){
               inc = 1;
             }
 
-            for(size_t i = 0; i < size; i += inc){
-              xc = origin.x() + double(i)/size * xLen;
+            for(size_t i = 0; i < frameSize; i += inc){
+              xc = origin.x() + double(i)/frameSize * xLen;
 
               painter.drawLine(QPointF(xc, height - BOTTOM_MARGIN + 3),
                                QPointF(xc, height - BOTTOM_MARGIN - 3));
@@ -869,7 +975,7 @@ namespace{
           else if(a->dim == 2){
             painter.drawLine(origin, yEnd);
 
-            size_t inc = size / Y_LABELS;
+            size_t inc = frameSize / Y_LABELS;
 
             if(inc == 0){
               inc = 1;
@@ -877,23 +983,23 @@ namespace{
 
             double yc;
             double yv;
-            for(size_t i = 0; i <= size; i += inc){
-              yv = yMin + ySpan * double(i)/size;
-              yc = origin.y() - double(i)/size * yLen;
+            for(size_t i = 0; i <= frameSize; i += inc){
+              yv = yMin + ySpan * double(i)/frameSize;
+              yc = origin.y() - double(i)/frameSize * yLen;
 
               drawText(painter,
                        toLabel(yv),
                        QPointF(LEFT_MARGIN - 5, yc), true);
             }
 
-            inc = size / Y_TICKS;
+            inc = frameSize / Y_TICKS;
             
             if(inc == 0){
               inc = 1;
             }
 
-            for(size_t i = 0; i < size; i += inc){
-              yc = origin.y() - double(i)/size * yLen;
+            for(size_t i = 0; i < frameSize; i += inc){
+              yc = origin.y() - double(i)/frameSize * yLen;
 
               painter.drawLine(QPointF(LEFT_MARGIN - 3, yc),
                                QPointF(LEFT_MARGIN + 3, yc));
@@ -911,6 +1017,8 @@ namespace{
           VarBase* y = getVar(l->y);
           VarBase* s = getVar(l->size);
           VarBase* c = getVar(l->color);
+
+          size_t size = maxSize(x, y, s, c);
 
           QPen noPen(Qt::NoPen);
 
@@ -957,6 +1065,8 @@ namespace{
           VarBase* s = getVar(p->size);
           VarBase* c = getVar(p->color);
 
+          size_t size = maxSize(x, y, s, c);
+
           QPointF point;
 
           for(size_t i = 0; i < size; ++i){
@@ -996,6 +1106,14 @@ extern "C"{
 
   void __scrt_frame_add_var(void* f, VarId varId, VarId elementKind){
     static_cast<Frame*>(f)->addVar(varId, elementKind);
+  }
+
+  void __scrt_frame_add_array_var(void* f,
+                                  VarId varId,
+                                  VarId elementKind,
+                                  void* array,
+                                  size_t size){
+    static_cast<Frame*>(f)->addArrayVar(varId, elementKind, array, size);
   }
 
   void __scrt_frame_capture_i32(void* f, VarId varId, int32_t value){

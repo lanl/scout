@@ -108,6 +108,7 @@ namespace CodeGen {
     llvm::Function* CreateFrameFunc();
 
     llvm::Function* FrameAddVarFunc();
+    llvm::Function* FrameAddArrayVarFunc();
     
     llvm::Function* FrameCaptureI32Func();
     llvm::Function* FrameCaptureI64Func();

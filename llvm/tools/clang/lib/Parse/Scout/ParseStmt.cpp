@@ -1012,14 +1012,25 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
     return StmtError();
   }
   
-  const FrameType* FT = dyn_cast<FrameType>(VD->getType().getTypePtr());
-  if(!FT){
-    Diag(Tok, diag::err_expected_frame);
-    SkipUntil(tok::r_brace, StopBeforeMatch);
-    return StmtError();
-  }
+  FrameDecl* FD;
   
-  FrameDecl* FD = FT->getDecl();
+  const FrameType* FT = dyn_cast<FrameType>(VD->getType().getTypePtr());
+  
+  if(FT){
+    FD = FT->getDecl();
+  }
+  else{
+    const UniformMeshType* MT =
+    dyn_cast<UniformMeshType>(VD->getType().getTypePtr());
+    
+    MT->dump();
+    
+    if(!MT){
+      Diag(Tok, diag::err_expected_frame_or_mesh);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
+      return StmtError();
+    }
+  }
   
   SourceLocation FrameLoc = ConsumeToken();
   

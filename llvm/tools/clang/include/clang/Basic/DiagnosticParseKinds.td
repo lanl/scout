@@ -1157,6 +1157,9 @@ def err_spec_invalid_expected:Error<
 def err_expected_frame:Error<
 "expected a frame">;
 
+def err_expected_frame_or_mesh:Error<
+"expected a frame or mesh">;
+
 def err_frame_expected_capture:Error<
 "expected capture keyword">;
 

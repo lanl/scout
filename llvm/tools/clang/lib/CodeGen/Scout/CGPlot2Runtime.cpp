@@ -142,6 +142,12 @@ CGPlot2Runtime::FrameAddVarFunc(){
   return GetFunc("__scrt_frame_add_var", {VoidPtrTy, Int32Ty, Int32Ty});
 }
 
+llvm::Function*
+CGPlot2Runtime::FrameAddArrayVarFunc(){
+  return GetFunc("__scrt_frame_add_array_var",
+                 {VoidPtrTy, Int32Ty, Int32Ty, VoidPtrTy, Int64Ty});
+}
+
 llvm::Function* CGPlot2Runtime::FrameCaptureI32Func(){
   return GetFunc("__scrt_frame_capture_i32", {VoidPtrTy, Int32Ty, Int32Ty});
 }
