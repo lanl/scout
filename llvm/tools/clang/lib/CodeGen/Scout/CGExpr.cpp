@@ -908,18 +908,21 @@ RValue CodeGenFunction::EmitPlotExpr(ArgIterator argsBegin, ArgIterator argsEnd)
   }
   
   llvm::Value* numItems;
-  SetMeshBounds(meshAddr);
   
   if(field->isCellLocated()){
+    SetMeshBounds(ForallMeshStmt::MeshElementType::Cells, meshAddr);
     GetNumMeshItems(&numItems, 0, 0, 0);
   }
   else if(field->isVertexLocated()){
+    SetMeshBounds(ForallMeshStmt::MeshElementType::Vertices, meshAddr);
     GetNumMeshItems(0, &numItems, 0, 0);
   }
   else if(field->isEdgeLocated()){
+    SetMeshBounds(ForallMeshStmt::MeshElementType::Edges, meshAddr);
     GetNumMeshItems(0, 0, &numItems, 0);
   }
   else if(field->isFaceLocated()){
+    SetMeshBounds(ForallMeshStmt::MeshElementType::Faces, meshAddr);
     GetNumMeshItems(0, 0, 0, &numItems);
   }
   else{
@@ -998,24 +1001,25 @@ CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
     }
     
     llvm::Value* numItems;
-
-    SetMeshBounds(meshAddr);
-    
     llvm::Value* elementKind;
     
     if(field->isCellLocated()){
+      SetMeshBounds(ForallMeshStmt::MeshElementType::Cells, meshAddr);
       GetNumMeshItems(&numItems, 0, 0, 0);
       elementKind = r.CellVal;
     }
     else if(field->isVertexLocated()){
+      SetMeshBounds(ForallMeshStmt::MeshElementType::Vertices, meshAddr);
       GetNumMeshItems(0, &numItems, 0, 0);
       elementKind = r.VertexVal;
     }
     else if(field->isEdgeLocated()){
+      SetMeshBounds(ForallMeshStmt::MeshElementType::Edges, meshAddr);
       GetNumMeshItems(0, 0, &numItems, 0);
       elementKind = r.EdgeVal;
     }
     else if(field->isFaceLocated()){
+      SetMeshBounds(ForallMeshStmt::MeshElementType::Faces, meshAddr);
       GetNumMeshItems(0, 0, 0, &numItems);
       elementKind = r.FaceVal;
     }

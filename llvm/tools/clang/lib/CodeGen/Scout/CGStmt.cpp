@@ -193,16 +193,24 @@ unsigned int GetMeshNFields(const Stmt &S) {
 }
 
 
-// modifies meshDims, MeshDimsP1, LoopBoundsCells, Rank
 void CodeGenFunction::SetMeshBounds(const Stmt &S) {
-  //get mesh Base Addr
   llvm::Value *MeshBaseAddr;
   GetMeshBaseAddr(S, MeshBaseAddr);
-  SetMeshBounds(MeshBaseAddr);
+
+  int MET;
+  if (const ForallMeshStmt *FAMS = dyn_cast<ForallMeshStmt>(&S)) {
+    MET = FAMS->getMeshElementRef();
+  }  else if (const RenderallMeshStmt *RAMS = dyn_cast<RenderallMeshStmt>(&S)) {
+    MET = RAMS->getMeshElementRef();
+  } else {
+    assert(false && "non-mesh stmt in SetMeshBounds()");
+  }
+  SetMeshBounds(MET, MeshBaseAddr);
 }
 
+
 // modifies meshDims, MeshDimsP1, LoopBoundsCells, Rank
-void CodeGenFunction::SetMeshBounds(llvm::Value* MeshBaseAddr) {
+void CodeGenFunction::SetMeshBounds(int MeshKind, llvm::Value* MeshBaseAddr) {
   llvm::PointerType* pointerTy = cast<llvm::PointerType>(MeshBaseAddr->getType());
   
   llvm::StructType* structTy =
