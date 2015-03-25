@@ -94,10 +94,11 @@ project(scout_test_scc)
 
   add_subdirectory(debug) 
 
-  find_package(OpenGLVersion)
-  if(OPENGL_VERSION_MAJOR EQUAL 3 OR OPENGL_VERSION_MAJOR GREATER 3)
+  # this depends on glfw which we are no longer using
+  #find_package(OpenGLVersion)
+  #if(OPENGL_VERSION_MAJOR EQUAL 3 OR OPENGL_VERSION_MAJOR GREATER 3)
     add_subdirectory(display) 
-  endif()
+  #endif()
 
   add_subdirectory(driver) 
   if (SCOUT_ENABLE_LEGION MATCHES "ON")
