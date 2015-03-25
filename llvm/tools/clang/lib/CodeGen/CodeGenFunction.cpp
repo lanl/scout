@@ -89,9 +89,13 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
     // to call -- may not be a rock solid plan but working
     // for now...
 
-    LoopBoundsCells.push_back(0);
     MeshDims.push_back(0);
     MeshDimsP1.push_back(0);
+    MeshStart.push_back(0);
+    MeshSize.push_back(0);
+    MeshDimsCells.push_back(0);
+    LoopBoundsCells.push_back(0);
+    LoopBoundsVert.push_back(0);
   }
   for(unsigned i = 0; i <= 3; ++i) {
     ScoutABIInductionVarDecl.push_back(0);
