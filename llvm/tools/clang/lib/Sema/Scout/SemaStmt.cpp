@@ -504,9 +504,21 @@ StmtResult Sema::ActOnFrameCaptureStmt(const VarDecl* VD, SpecObjectExpr* S){
   for(auto& itr : m){
     const string& k = itr.first;
     SourceLocation loc = itr.second.first;
+    SpecExpr* e = itr.second.second;
     
-    if(vm.find(k) == vm.end()){
+    auto vitr = vm.find(k);
+    
+    if(vitr == vm.end()){
       Diag(loc, diag::err_unknown_frame_variable) << k;
+      valid = false;
+      continue;
+    }
+    
+    VarDecl* vd = vitr->second.varDecl;
+    
+    if(!ValidateSpecExpr(e, vd->getType())){
+      Diag(loc, diag::err_invalid_frame_capture) <<
+      "type mismatch";
       valid = false;
     }
   }

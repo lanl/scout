@@ -7716,6 +7716,8 @@ def err_invalid_plot_spec_key : Error<
 "invalid plot specification key: %0">;
 def err_invalid_plot_spec : Error<
 "invalid plot specification: %0">;
+def err_invalid_frame_capture : Error<
+"invalid frame variable capture: %0">;
 
 def warn_no_scstdlib : Warning<
     "scout standard library inclusion and rt code generation disabled">;
