@@ -348,10 +348,9 @@ public:
   llvm::SmallVector< llvm::Value *, 3 > MeshSize;
   // MeshDims where 0 is replaced by 1
   llvm::SmallVector< llvm::Value *, 3 > MeshDimsCells;
-  // loopbounds for forall cells
-  llvm::SmallVector< llvm::Value *, 3 > LoopBoundsCells;
-  // loopbounds for forall vertices
-  llvm::SmallVector< llvm::Value *, 3 > LoopBoundsVert;
+  // loopbounds for forall cells/vertices
+  llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
+
   llvm::Value *MeshRank = 0;
 
   llvm::Value* InnerInductionVar;
@@ -2165,7 +2164,12 @@ public:
   void GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& BaseAddr);
 
   void SetMeshBounds(const Stmt &S);
-  void SetMeshBounds(int meshKind, llvm::Value* meshAddr);
+  void SetMeshBounds(ForallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr);
+  void SetMeshBounds(RenderallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr);
+private:
+  void SetMeshBoundsImpl(bool isForall, int MeshType, llvm::Value* MeshBaseAddr);
+public:
+
   void ResetMeshBounds(void);
 
   void EmitLegionTask(const FunctionDecl* FD, llvm::Function* taskFunc);

@@ -94,8 +94,7 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
     MeshStart.push_back(0);
     MeshSize.push_back(0);
     MeshDimsCells.push_back(0);
-    LoopBoundsCells.push_back(0);
-    LoopBoundsVert.push_back(0);
+    LoopBounds.push_back(0);
   }
   for(unsigned i = 0; i <= 3; ++i) {
     ScoutABIInductionVarDecl.push_back(0);
