@@ -350,9 +350,13 @@ void Sema::InitFrameDefinitions(Scope* S, FrameDecl* FD){
   
   AddFrameVarType(S, FD, "Timestep", Context.IntTy);
   AddFrameVarType(S, FD, "Temperature", Context.DoubleTy);
-  
+
+  AddFrameVarType(S, FD, "Float", Context.FloatTy);
   AddFrameVarType(S, FD, "Double", Context.DoubleTy);
   AddFrameVarType(S, FD, "Integer", Context.IntTy);
+
+  AddFrameVarType(S, FD, "Int32", Context.IntTy);
+  AddFrameVarType(S, FD, "Int64", Context.LongTy);
   
   AddFrameFunction(S, FD, "sum", vt, {vt});
 }
@@ -426,6 +430,16 @@ bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
   SpecObjectExpr* Spec = static_cast<SpecObjectExpr*>(SE);
   
   auto& m = Spec->memberMap();
+  
+  VarDecl* indexType = F->getVarType("Int64");
+  VarDecl* index =
+  VarDecl::Create(Context, F, SourceLocation(), SourceLocation(),
+                  PP.getIdentifierInfo("index"), indexType->getType(),
+                  Context.getTrivialTypeSourceInfo(indexType->getType()),
+                  SC_Static);
+  
+  PushOnScopeChains(index, Scope, true);
+  F->addVar("index", index);
   
   for(auto& itr : m){
     const string& k = itr.first;
