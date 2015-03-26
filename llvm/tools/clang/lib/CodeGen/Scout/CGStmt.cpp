@@ -261,11 +261,6 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int MeshType, llvm::Value
   }
 
   for(unsigned int i = 0; i < 3; i++) {
-  // dimensions + 1 are used in many places so cache them
-     MeshDimsP1[i] = CreateTempAlloca(Int32Ty, "meshdimsp1.ptr");
-     llvm::Value *incr = Builder.CreateAdd(Builder.CreateLoad(MeshDims[i]), ConstantOne);
-     Builder.CreateStore(incr, MeshDimsP1[i]);
-
 
      if(isForall == true) { // forall
        if  (MeshType == ForallMeshStmt::MeshElementType::Cells) {
@@ -288,13 +283,6 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int MeshType, llvm::Value
        llvm::Value *x = Builder.CreateSelect(Check, ConstantOne, dim);
        Builder.CreateStore(x, LoopBounds[i]);
      }
-
-
-     MeshDimsCells[i] = CreateTempAlloca(Int32Ty, "meshDimsCells.ptr");
-     llvm::Value *dim2 = Builder.CreateLoad(MeshDims[i]);
-     llvm::Value *Check2 = Builder.CreateICmpEQ(dim2, ConstantZero);
-     llvm::Value *x2 = Builder.CreateSelect(Check2, ConstantOne, dim2);
-     Builder.CreateStore(x2, MeshDimsCells[i]);
    }
 }
 
@@ -312,24 +300,36 @@ llvm::Value *CodeGenFunction::GetNumLocalMeshItems(llvm::Value *d1, llvm::Value 
 void CodeGenFunction::GetNumMeshItems(llvm::Value** numCells, llvm::Value** numVertices,
     llvm::Value** numEdges, llvm::Value** numFaces) {
 
+  llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
+  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+
   llvm::Value *width, *height, *depth, *n;
   llvm::Value *width1, *height1, *depth1;
   llvm::Value *p1, *p2, *p3;
 
   // find number of cells
   if(numCells) {
-    width = Builder.CreateLoad(MeshDimsCells[0], "width");
-    height = Builder.CreateLoad(MeshDimsCells[1], "height");
-    depth = Builder.CreateLoad(MeshDimsCells[2], "depth");
+    llvm::Value *w = Builder.CreateLoad(MeshDims[0]);
+    llvm::Value *Checkw = Builder.CreateICmpEQ(w, ConstantZero);
+    width = Builder.CreateSelect(Checkw, ConstantOne, w);
+
+    llvm::Value *h = Builder.CreateLoad(MeshDims[1]);
+    llvm::Value *Checkh = Builder.CreateICmpEQ(h, ConstantZero);
+    height = Builder.CreateSelect(Checkh, ConstantOne, h);
+
+    llvm::Value *d = Builder.CreateLoad(MeshDims[2]);
+    llvm::Value *Checkd = Builder.CreateICmpEQ(d, ConstantZero);
+    depth = Builder.CreateSelect(Checkd, ConstantOne, d);
+
     n = Builder.CreateMul(depth, Builder.CreateMul(height, width));
     *numCells = Builder.CreateZExt(n, Int64Ty, "numCells");
   }
 
   // find number of vertices
   if(numVertices) {
-    width = Builder.CreateLoad(MeshDimsP1[0], "width");
-    height = Builder.CreateLoad(MeshDimsP1[1], "height");
-    depth = Builder.CreateLoad(MeshDimsP1[2], "depth");
+    width = Builder.CreateAdd(Builder.CreateLoad(MeshDims[0]), ConstantOne, "width");
+    height = Builder.CreateAdd(Builder.CreateLoad(MeshDims[1]), ConstantOne, "height");
+    depth = Builder.CreateAdd(Builder.CreateLoad(MeshDims[2]), ConstantOne, "depth");
     n = Builder.CreateMul(depth, Builder.CreateMul(height, width));
     *numVertices = Builder.CreateZExt(n, Int64Ty, "numVertices");
   }
@@ -337,11 +337,11 @@ void CodeGenFunction::GetNumMeshItems(llvm::Value** numCells, llvm::Value** numV
   // find number of edges
   if(numEdges) {
     width = Builder.CreateLoad(MeshDims[0], "width");
-    width1 = Builder.CreateLoad(MeshDimsP1[0], "width1");
+    width1 = Builder.CreateAdd(width, ConstantOne, "width1");
     height = Builder.CreateLoad(MeshDims[1], "height");
-    height1 = Builder.CreateLoad(MeshDimsP1[1], "height1");
+    height1 = Builder.CreateAdd(height, ConstantOne, "height1");
     depth = Builder.CreateLoad(MeshDims[2], "depth");
-    depth1 = Builder.CreateLoad(MeshDimsP1[2], "depth1");
+    depth1 = Builder.CreateAdd(depth, ConstantOne, "depth1");
     p1 = Builder.CreateMul(width, Builder.CreateMul(height1, depth1));
     p2 = Builder.CreateMul(width1, Builder.CreateMul(height, depth1));
     p3 = Builder.CreateMul(width1, Builder.CreateMul(height1, depth));
@@ -353,11 +353,11 @@ void CodeGenFunction::GetNumMeshItems(llvm::Value** numCells, llvm::Value** numV
   if(numFaces) {
     llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
     width = Builder.CreateLoad(MeshDims[0], "width");
-    width1 = Builder.CreateLoad(MeshDimsP1[0], "width1");
+    width1 = Builder.CreateAdd(width, ConstantOne,"width1");
     height = Builder.CreateLoad(MeshDims[1], "height");
-    height1 = Builder.CreateLoad(MeshDimsP1[1], "height1");
+    height1 = Builder.CreateAdd(height, ConstantOne,"height1");
     depth = Builder.CreateLoad(MeshDims[2], "depth");
-    depth1 = Builder.CreateLoad(MeshDimsP1[2], "depth1");
+    depth1 = Builder.CreateAdd(depth, ConstantOne, "depth1");
 
     llvm::BasicBlock *Then = createBasicBlock("numfaces.then");
     llvm::BasicBlock *Else = createBasicBlock("numfaces.else");
@@ -390,6 +390,7 @@ void CodeGenFunction::GetNumMeshItems(llvm::Value** numCells, llvm::Value** numV
 }
 
 void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
+  llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
   EmitMarkerBlock("forall.vertices.entry");
 
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
@@ -407,8 +408,9 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
   llvm::Value* indVar =  Builder.CreateLoad(InductionVar[3], "indVar");
 
-  llvm::Value* width1 = Builder.CreateLoad(MeshDimsP1[0], "widthp1");
-  llvm::Value* height1 = Builder.CreateLoad(MeshDimsP1[1], "height1");
+  llvm::Value* width1 = Builder.CreateAdd(width, ConstantOne, "width1");
+  llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
+  llvm::Value* height1 = Builder.CreateAdd(height, ConstantOne, "height1");
   llvm::Value* idvw = Builder.CreateUDiv(indVar, width, "idvw");
   llvm::Value* wh1 = Builder.CreateMul(width1, height1);
   llvm::Value *v1, *v2, *v3, *v4, *v5;
@@ -652,9 +654,10 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
 
 void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
 
+  llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
   EmitMarkerBlock("forall.edges.entry");
 
-  llvm::Value *width, *height, *width1, *height1, *w1h, *i, *j, *k ,*a, *b, *c;
+  llvm::Value *width, *height, *depth, *width1, *height1, *w1h, *i, *j, *k ,*a, *b, *c;
   llvm::Value *edgePos, *Cond, *x, *y, *z, *c1, *c2, *e1, *e2, *v1;
   llvm::Value *newEdgePos, *newEdgeIndex, *edgePosPtr;
 
@@ -683,11 +686,11 @@ void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
   Builder.CreateStore(Zero, edgePosPtr);
 
   width = Builder.CreateLoad(MeshDims[0], "width");
-  width1 = Builder.CreateLoad(MeshDimsP1[0], "width1");
+  width1 = Builder.CreateAdd(width, ConstantOne, "width1");
   height = Builder.CreateLoad(MeshDims[1], "height");
-  height1 = Builder.CreateLoad(MeshDimsP1[1], "height1");
-
-  llvm::Value* depth1 = Builder.CreateLoad(MeshDimsP1[2], "depth1");
+  height1 = Builder.CreateAdd(height, ConstantOne, "height1");
+  depth = Builder.CreateLoad(MeshDims[2], "depth");
+  llvm::Value* depth1 = Builder.CreateAdd(depth, ConstantOne, "depth1");
 
   w1h = Builder.CreateMul(width1, height, "w1h");
   llvm::Value* h1w = Builder.CreateMul(height1, width, "h1w");
@@ -786,7 +789,7 @@ void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
 
   width = Builder.CreateLoad(MeshDims[0], "width");
   height = Builder.CreateLoad(MeshDims[1], "height");
-  width1 =  Builder.CreateLoad(MeshDimsP1[0], "width1");
+  width1 =  Builder.CreateAdd(width, ConstantOne,"width1");
   w1h = Builder.CreateMul(width1, height, "w1h");
   i = Builder.CreateLoad(InductionVar[0], "i");
   j = Builder.CreateLoad(InductionVar[1], "j");
@@ -840,6 +843,7 @@ void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
 }
 
 void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
+  llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
 
   EmitMarkerBlock("forall.faces.entry");
 
@@ -885,7 +889,7 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
 
   llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
   llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
-  llvm::Value* width1 =  Builder.CreateLoad(MeshDimsP1[0], "width1");
+  llvm::Value* width1 =  Builder.CreateAdd(width, ConstantOne, "width1");
   llvm::Value* w1h = Builder.CreateMul(width1, height, "w1h");
   llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
   llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
@@ -1454,13 +1458,12 @@ void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
   SmallVector<llvm::Value*, 3> Dimensions;
   GetMeshDimensions(S.getMeshType(), Dimensions);
 
-  
   ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
 
-  Builder.CreateLoad(MeshDimsCells[0], "TheMesh.width");
-  Builder.CreateLoad(MeshDimsCells[1], "TheMesh.height");
-  Builder.CreateLoad(MeshDimsCells[2], "TheMesh.depth");
-  
+  Builder.CreateLoad(LoopBounds[0], "TheMesh.width");
+  Builder.CreateLoad(LoopBounds[1], "TheMesh.height");
+  Builder.CreateLoad(LoopBounds[2], "TheMesh.depth");
+
   llvm::Value* numItems;
   
   switch(FET){
@@ -1911,18 +1914,14 @@ llvm::Value* CodeGenFunction::EmitForallQueryCall(const ForallMeshStmt& S,
 void CodeGenFunction::ResetMeshBounds(void) {
 
     MeshDims.clear();
-    MeshDimsP1.clear();
     MeshStart.clear();
     MeshSize.clear();
-    MeshDimsCells.clear();
     LoopBounds.clear();
     InductionVar.clear();
     for(unsigned int i = 0; i < 3; i++) {
        MeshDims.push_back(0);
-       MeshDimsP1.push_back(0);
        MeshStart.push_back(0);
        MeshSize.push_back(0);
-       MeshDimsCells.push_back(0);
        LoopBounds.push_back(0);
        InductionVar.push_back(0);
     }

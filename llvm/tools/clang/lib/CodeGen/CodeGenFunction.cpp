@@ -90,10 +90,8 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
     // for now...
 
     MeshDims.push_back(0);
-    MeshDimsP1.push_back(0);
     MeshStart.push_back(0);
     MeshSize.push_back(0);
-    MeshDimsCells.push_back(0);
     LoopBounds.push_back(0);
   }
   for(unsigned i = 0; i <= 3; ++i) {

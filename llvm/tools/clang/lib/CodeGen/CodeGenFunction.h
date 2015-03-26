@@ -341,13 +341,9 @@ public:
   llvm::SmallVector< llvm::Value *, 4 > InductionVar;
   // mesh dimension sizes
   llvm::SmallVector< llvm::Value *, 3 > MeshDims;
-  // mesh dimension sizes + 1
-  llvm::SmallVector< llvm::Value *, 3 > MeshDimsP1;
   // for threaded case
   llvm::SmallVector< llvm::Value *, 3 > MeshStart;
   llvm::SmallVector< llvm::Value *, 3 > MeshSize;
-  // MeshDims where 0 is replaced by 1
-  llvm::SmallVector< llvm::Value *, 3 > MeshDimsCells;
   // loopbounds for forall cells/vertices
   llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
 
