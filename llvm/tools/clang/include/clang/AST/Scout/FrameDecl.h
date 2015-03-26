@@ -115,7 +115,6 @@ namespace clang {
       return TypedefNameDeclOrQualifier.get<ExtInfo*>();
     }
 
-      
     typedef std::set<VarDecl*> VarTypeSet;
       
     VarTypeSet varTypes;
@@ -152,7 +151,7 @@ namespace clang {
       IsFreeStanding                  = false;
       LoadedFieldsFromExternalStorage = false;
       setPreviousDecl(PrevDecl);
-      nextVarId = 0;
+      nextVarId = 1;
     }
 
     typedef Redeclarable<FrameDecl> redeclarable_base;

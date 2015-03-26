@@ -105,6 +105,16 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
   
   uint32_t varId = fd->getVarId(VD);
   
+  // var id 0 is the 'index' var that simply returns the current index
+  if(varId == 0){
+    Value* addr = Builder.CreateAlloca(R.Int64Ty);
+    Builder.CreateStore(index, addr);
+    
+    CharUnits Alignment = getContext().getDeclAlign(VD);
+    
+    return MakeAddrLValue(addr, VD->getType(), Alignment);
+  }
+  
   ValueVec args = {framePtr, ConstantInt::get(R.Int32Ty, varId), index};
   
   llvm::Type* rt = ConvertType(VD->getType());
