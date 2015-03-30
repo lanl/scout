@@ -519,6 +519,21 @@ namespace llvm {
                                       std::vector<SDValue> &Ops,
                                       SelectionDAG &DAG) const override;
 
+    unsigned getInlineAsmMemConstraint(
+        const std::string &ConstraintCode) const override {
+      if (ConstraintCode == "es")
+        return InlineAsm::Constraint_es;
+      else if (ConstraintCode == "o")
+        return InlineAsm::Constraint_o;
+      else if (ConstraintCode == "Q")
+        return InlineAsm::Constraint_Q;
+      else if (ConstraintCode == "Z")
+        return InlineAsm::Constraint_Z;
+      else if (ConstraintCode == "Zy")
+        return InlineAsm::Constraint_Zy;
+      return TargetLowering::getInlineAsmMemConstraint(ConstraintCode);
+    }
+
     /// isLegalAddressingMode - Return true if the addressing mode represented
     /// by AM is legal for this target, for a load/store of the specified type.
     bool isLegalAddressingMode(const AddrMode &AM, Type *Ty) const override;

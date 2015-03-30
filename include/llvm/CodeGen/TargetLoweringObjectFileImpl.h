@@ -147,6 +147,14 @@ public:
                            SectionKind Kind, Mangler &Mang,
                            const TargetMachine &TM) const override;
 
+  void getNameWithPrefix(SmallVectorImpl<char> &OutName, const GlobalValue *GV,
+                         bool CannotUsePrivateLabel, Mangler &Mang,
+                         const TargetMachine &TM) const override;
+
+  const MCSection *
+  getSectionForJumpTable(const Function &F, Mangler &Mang,
+                         const TargetMachine &TM) const override;
+
   /// Extract the dependent library name from a linker option string. Returns
   /// StringRef() if the option does not specify a library.
   StringRef getDepLibFromLinkerOpt(StringRef LinkerOption) const override;

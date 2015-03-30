@@ -366,10 +366,6 @@ void MipsTargetAsmStreamer::emitDirectiveSetFp(
   OS << ABIFlagsSection.getFpABIString(Value) << "\n";
 }
 
-void MipsTargetAsmStreamer::emitMipsAbiFlags() {
-  // No action required for text output.
-}
-
 void MipsTargetAsmStreamer::emitDirectiveModuleOddSPReg(bool Enabled,
                                                         bool IsO32ABI) {
   MipsTargetStreamer::emitDirectiveModuleOddSPReg(Enabled, IsO32ABI);
@@ -382,9 +378,7 @@ MipsTargetELFStreamer::MipsTargetELFStreamer(MCStreamer &S,
                                              const MCSubtargetInfo &STI)
     : MipsTargetStreamer(S), MicroMipsEnabled(false), STI(STI) {
   MCAssembler &MCA = getStreamer().getAssembler();
-  Pic = (MCA.getContext().getObjectFileInfo()->getRelocM() == Reloc::PIC_)
-            ? true
-            : false;
+  Pic = MCA.getContext().getObjectFileInfo()->getRelocM() == Reloc::PIC_;
 
   uint64_t Features = STI.getFeatureBits();
 

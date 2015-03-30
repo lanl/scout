@@ -88,7 +88,8 @@ public:
     : Var(V), Expr(1, E), TheDIE(nullptr), DotDebugLocOffset(~0U),
       MInsn(nullptr), DD(DD) {
     FrameIndex.push_back(FI);
-    assert(Var.Verify() && E.Verify());
+    assert(Var.Verify());
+    assert(!E || E->isValid());
   }
 
   /// Construct a DbgVariable from a DEBUG_VALUE.
@@ -247,9 +248,6 @@ class DwarfDebug : public AsmPrinterHandler {
   // table for the same directory as DW_AT_comp_dir.
   StringRef CompilationDir;
 
-  // Counter for assigning globally unique IDs for ranges.
-  unsigned GlobalRangeCount;
-
   // Holder for the file specific debug information.
   DwarfFile InfoHolder;
 
@@ -361,10 +359,6 @@ class DwarfDebug : public AsmPrinterHandler {
 
   /// \brief Emit the abbreviation section.
   void emitAbbreviations();
-
-  /// \brief Emit the last address of the section and the end of
-  /// the line matrix.
-  void emitEndOfLineMatrix(unsigned SectionEnd);
 
   /// \brief Emit a specified accelerator table.
   void emitAccel(DwarfAccelTable &Accel, const MCSection *Section,
@@ -621,12 +615,6 @@ public:
 
   /// \brief Return Label immediately following the instruction.
   MCSymbol *getLabelAfterInsn(const MachineInstr *MI);
-
-  // FIXME: Consider rolling ranges up into DwarfDebug since we use a single
-  // range_base anyway, so there's no need to keep them as separate per-CU range
-  // lists. (though one day we might end up with a range.dwo section, in which
-  // case it'd go to DwarfFile)
-  unsigned getNextRangeNumber() { return GlobalRangeCount++; }
 
   // FIXME: Sink these functions down into DwarfFile/Dwarf*Unit.
 
