@@ -15,6 +15,8 @@ endif ()
 add_subdirectory(source)
 add_subdirectory(test)
 add_subdirectory(tools)
+add_subdirectory(unittests)
+add_subdirectory(lit)
 
 if ( LLDB_ENABLE_PYTHON_SCRIPTS_SWIG_API_GENERATION AND NOT LLDB_DISABLE_PYTHON )
 	# Add a Post-Build Event to copy over Python files and create the symlink to liblldb.so for the Python API(hardlink on Windows)

@@ -7,23 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-//++
-// File:        MIUtilStreamStdin.cpp
-//
-// Overview:    CMICmnStreamStdin implementation.
-//
-// Environment: Compilers:  Visual C++ 12.
-//                          gcc (Ubuntu/Linaro 4.8.1-10ubuntu9) 4.8.1
-//              Libraries:  See MIReadmetxt.
-//
-// Copyright:   None.
-//--
-
 // In-house headers:
 #include "MICmnStreamStdin.h"
 #include "MICmnStreamStdout.h"
 #include "MICmnResources.h"
 #include "MICmnLog.h"
+#include "MIDriver.h"
 #include "MIUtilSingletonHelper.h"
 #include <string.h> // For std::strerror()
 
@@ -217,7 +206,12 @@ CMICmnStreamStdin::ReadLine(CMIUtilString &vwErrMsg)
     const MIchar *pText = ::fgets(&m_pCmdBuffer[0], m_constBufferSize, stdin);
     if (pText == nullptr)
     {
-        if (::ferror(stdin) != 0)
+        if (::feof(stdin))
+        {
+            const bool bForceExit = true;
+            CMIDriver::Instance().SetExitApplicationFlag(bForceExit);
+        }
+        else if (::ferror(stdin) != 0)
             vwErrMsg = ::strerror(errno);
         return nullptr;
     }

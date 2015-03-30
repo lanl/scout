@@ -7,22 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-//++
-// File:        MICmdCmdBreak.cpp
-//
 // Overview:    CMICmdCmdBreakInsert            implementation.
 //              CMICmdCmdBreakDelete            implementation.
 //              CMICmdCmdBreakDisable           implementation.
 //              CMICmdCmdBreakEnable            implementation.
 //              CMICmdCmdBreakAfter             implementation.
 //              CMICmdCmdBreakCondition         implementation.
-//
-// Environment: Compilers:  Visual C++ 12.
-//                          gcc (Ubuntu/Linaro 4.8.1-10ubuntu9) 4.8.1
-//              Libraries:  See MIReadmetxt.
-//
-// Copyright:   None.
-//--
 
 // Third Party Headers:
 #include "lldb/API/SBBreakpointLocation.h"
@@ -242,7 +232,7 @@ CMICmdCmdBreakInsert::Execute(void)
             m_brkPt = sbTarget.BreakpointCreateByLocation(fileName.c_str(), nFileLine);
             break;
         case eBreakPoint_ByName:
-            m_brkPt = sbTarget.BreakpointCreateByName(m_brkName.c_str(), sbTarget.GetExecutable().GetFilename());
+            m_brkPt = sbTarget.BreakpointCreateByName(m_brkName.c_str(), nullptr);
             break;
         case eBreakPoint_count:
         case eBreakPoint_NotDefineYet:
@@ -334,7 +324,7 @@ CMICmdCmdBreakInsert::Acknowledge(void)
     sBrkPtInfo.m_nBrkPtThreadId = m_nBrkPtThreadId;
 
     // MI print
-    // "^done,bkpt={number=\"%d\",type=\"breakpoint\",disp=\"%s\",enabled=\"%c\",addr=\"0x%08x\",func=\"%s\",file=\"%s\",fullname=\"%s/%s\",line=\"%d\",thread-groups=[\"%s\"],times=\"%d\",original-location=\"%s\"}"
+    // "^done,bkpt={number=\"%d\",type=\"breakpoint\",disp=\"%s\",enabled=\"%c\",addr=\"0x%016" PRIx64 "\",func=\"%s\",file=\"%s\",fullname=\"%s/%s\",line=\"%d\",thread-groups=[\"%s\"],times=\"%d\",original-location=\"%s\"}"
     CMICmnMIValueTuple miValueTuple;
     if (!rSessionInfo.MIResponseFormBrkPtInfo(sBrkPtInfo, miValueTuple))
     {

@@ -14,53 +14,12 @@
 
 #include "lldb/Core/Broadcaster.h"
 #include "lldb/Core/Error.h"
+#include "lldb/Core/StructuredData.h"
 
 #include "lldb/Utility/PseudoTerminal.h"
 
 
 namespace lldb_private {
-
-class ScriptInterpreterObject
-{
-public:
-    ScriptInterpreterObject() :
-    m_object(NULL)
-    {}
-    
-    ScriptInterpreterObject(void* obj) :
-    m_object(obj)
-    {}
-    
-    ScriptInterpreterObject(const ScriptInterpreterObject& rhs)
-    : m_object(rhs.m_object)
-    {}
-    
-    virtual void*
-    GetObject()
-    {
-        return m_object;
-    }
-    
-    explicit operator bool ()
-    {
-        return m_object != NULL;
-    }
-    
-    ScriptInterpreterObject&
-    operator = (const ScriptInterpreterObject& rhs)
-    {
-        if (this != &rhs)
-            m_object = rhs.m_object;
-        return *this;
-    }
-        
-    virtual
-    ~ScriptInterpreterObject()
-    {}
-    
-protected:
-    void* m_object;
-};
     
 class ScriptInterpreterLocker
 {
@@ -105,6 +64,10 @@ public:
                                                         const char *session_dictionary_name,
                                                         const lldb::ValueObjectSP& valobj_sp);
 
+    typedef void* (*SWIGPythonCreateCommandObject) (const char *python_class_name,
+                                                    const char *session_dictionary_name,
+                                                    const lldb::DebuggerSP debugger_sp);
+    
     typedef void* (*SWIGPythonCreateScriptedThreadPlan) (const char *python_class_name,
                                                         const char *session_dictionary_name,
                                                         const lldb::ThreadPlanSP& thread_plan_sp);
@@ -115,7 +78,7 @@ public:
                                                const char *session_dictionary_name,
                                                const lldb::ProcessSP& process_sp);
     
-    typedef uint32_t        (*SWIGPythonCalculateNumChildren)                   (void *implementor);
+    typedef size_t          (*SWIGPythonCalculateNumChildren)                   (void *implementor);
     typedef void*           (*SWIGPythonGetChildAtIndex)                        (void *implementor, uint32_t idx);
     typedef int             (*SWIGPythonGetIndexOfChildWithName)                (void *implementor, const char* child_name);
     typedef void*           (*SWIGPythonCastPyObjectToSBValue)                  (void* data);
@@ -130,6 +93,13 @@ public:
                                                                  const char* args,
                                                                  lldb_private::CommandReturnObject& cmd_retobj,
                                                                  lldb::ExecutionContextRefSP exe_ctx_ref_sp);
+
+    typedef bool            (*SWIGPythonCallCommandObject)        (void *implementor,
+                                                                   lldb::DebuggerSP& debugger,
+                                                                   const char* args,
+                                                                   lldb_private::CommandReturnObject& cmd_retobj,
+                                                                   lldb::ExecutionContextRefSP exe_ctx_ref_sp);
+
     
     typedef bool            (*SWIGPythonCallModuleInit)         (const char *python_module_name,
                                                                  const char *session_dictionary_name,
@@ -324,95 +294,87 @@ public:
     {
         return false;
     }
-    
-    virtual lldb::ScriptInterpreterObjectSP
-    CreateSyntheticScriptedProvider (const char *class_name,
-                                     lldb::ValueObjectSP valobj)
+
+    virtual StructuredData::ObjectSP
+    CreateSyntheticScriptedProvider(const char *class_name, lldb::ValueObjectSP valobj)
     {
-        return lldb::ScriptInterpreterObjectSP();
+        return StructuredData::ObjectSP();
     }
-    
-    virtual lldb::ScriptInterpreterObjectSP
+
+    virtual StructuredData::GenericSP
+    CreateScriptCommandObject (const char *class_name)
+    {
+        return StructuredData::GenericSP();
+    }
+
+    virtual StructuredData::GenericSP
     OSPlugin_CreatePluginObject (const char *class_name,
                                  lldb::ProcessSP process_sp)
     {
-        return lldb::ScriptInterpreterObjectSP();
-    }
-    
-    virtual lldb::ScriptInterpreterObjectSP
-    OSPlugin_RegisterInfo (lldb::ScriptInterpreterObjectSP os_plugin_object_sp)
-    {
-        return lldb::ScriptInterpreterObjectSP();
-    }
-    
-    virtual lldb::ScriptInterpreterObjectSP
-    OSPlugin_ThreadsInfo (lldb::ScriptInterpreterObjectSP os_plugin_object_sp)
-    {
-        return lldb::ScriptInterpreterObjectSP();
-    }
-    
-    virtual lldb::ScriptInterpreterObjectSP
-    OSPlugin_RegisterContextData (lldb::ScriptInterpreterObjectSP os_plugin_object_sp,
-                                  lldb::tid_t thread_id)
-    {
-        return lldb::ScriptInterpreterObjectSP();
+        return StructuredData::GenericSP();
     }
 
-    virtual lldb::ScriptInterpreterObjectSP
-    OSPlugin_CreateThread (lldb::ScriptInterpreterObjectSP os_plugin_object_sp,
-                           lldb::tid_t tid,
-                           lldb::addr_t context)
+    virtual StructuredData::DictionarySP
+    OSPlugin_RegisterInfo(StructuredData::ObjectSP os_plugin_object_sp)
     {
-        return lldb::ScriptInterpreterObjectSP();
+        return StructuredData::DictionarySP();
     }
-    
-    virtual lldb::ScriptInterpreterObjectSP
-    CreateScriptedThreadPlan (const char *class_name,
-                              lldb::ThreadPlanSP thread_plan_sp)
+
+    virtual StructuredData::ArraySP
+    OSPlugin_ThreadsInfo(StructuredData::ObjectSP os_plugin_object_sp)
     {
-        return lldb::ScriptInterpreterObjectSP();
+        return StructuredData::ArraySP();
+    }
+
+    virtual StructuredData::StringSP
+    OSPlugin_RegisterContextData(StructuredData::ObjectSP os_plugin_object_sp, lldb::tid_t thread_id)
+    {
+        return StructuredData::StringSP();
+    }
+
+    virtual StructuredData::DictionarySP
+    OSPlugin_CreateThread(StructuredData::ObjectSP os_plugin_object_sp, lldb::tid_t tid, lldb::addr_t context)
+    {
+        return StructuredData::DictionarySP();
+    }
+
+    virtual StructuredData::ObjectSP
+    CreateScriptedThreadPlan(const char *class_name, lldb::ThreadPlanSP thread_plan_sp)
+    {
+        return StructuredData::ObjectSP();
     }
 
     virtual bool
-    ScriptedThreadPlanExplainsStop (lldb::ScriptInterpreterObjectSP implementor_sp,
-                                    Event *event,
-                                    bool &script_error)
+    ScriptedThreadPlanExplainsStop(StructuredData::ObjectSP implementor_sp, Event *event, bool &script_error)
     {
         script_error = true;
         return true;
     }
 
     virtual bool
-    ScriptedThreadPlanShouldStop (lldb::ScriptInterpreterObjectSP implementor_sp,
-                                  Event *event,
-                                  bool &script_error)
+    ScriptedThreadPlanShouldStop(StructuredData::ObjectSP implementor_sp, Event *event, bool &script_error)
     {
         script_error = true;
         return true;
     }
 
     virtual lldb::StateType
-    ScriptedThreadPlanGetRunState (lldb::ScriptInterpreterObjectSP implementor_sp,
-                                   bool &script_error)
+    ScriptedThreadPlanGetRunState(StructuredData::ObjectSP implementor_sp, bool &script_error)
     {
         script_error = true;
         return lldb::eStateStepping;
     }
 
-    virtual lldb::ScriptInterpreterObjectSP
-    LoadPluginModule (const FileSpec& file_spec,
-                     lldb_private::Error& error)
+    virtual StructuredData::ObjectSP
+    LoadPluginModule(const FileSpec &file_spec, lldb_private::Error &error)
     {
-        return lldb::ScriptInterpreterObjectSP();
+        return StructuredData::ObjectSP();
     }
-    
-    virtual lldb::ScriptInterpreterObjectSP
-    GetDynamicSettings (lldb::ScriptInterpreterObjectSP plugin_module_sp,
-                        Target* target,
-                        const char* setting_name,
-                        lldb_private::Error& error)
+
+    virtual StructuredData::DictionarySP
+    GetDynamicSettings(StructuredData::ObjectSP plugin_module_sp, Target *target, const char *setting_name, lldb_private::Error &error)
     {
-        return lldb::ScriptInterpreterObjectSP();
+        return StructuredData::DictionarySP();
     }
 
     virtual Error
@@ -464,13 +426,10 @@ public:
     {
         return;
     }
-    
+
     virtual bool
-    GetScriptedSummary (const char *function_name,
-                        lldb::ValueObjectSP valobj,
-                        lldb::ScriptInterpreterObjectSP& callee_wrapper_sp,
-                        const TypeSummaryOptions& options,
-                        std::string& retval)
+    GetScriptedSummary(const char *function_name, lldb::ValueObjectSP valobj, StructuredData::ObjectSP &callee_wrapper_sp,
+                       const TypeSummaryOptions &options, std::string &retval)
     {
         return false;
     }
@@ -480,45 +439,56 @@ public:
     {
         // Clean up any ref counts to SBObjects that might be in global variables
     }
-    
+
     virtual size_t
-    CalculateNumChildren (const lldb::ScriptInterpreterObjectSP& implementor)
+    CalculateNumChildren(const StructuredData::ObjectSP &implementor)
     {
         return 0;
     }
-    
+
     virtual lldb::ValueObjectSP
-    GetChildAtIndex (const lldb::ScriptInterpreterObjectSP& implementor, uint32_t idx)
+    GetChildAtIndex(const StructuredData::ObjectSP &implementor, uint32_t idx)
     {
         return lldb::ValueObjectSP();
     }
-    
+
     virtual int
-    GetIndexOfChildWithName (const lldb::ScriptInterpreterObjectSP& implementor, const char* child_name)
+    GetIndexOfChildWithName(const StructuredData::ObjectSP &implementor, const char *child_name)
     {
         return UINT32_MAX;
     }
-    
+
     virtual bool
-    UpdateSynthProviderInstance (const lldb::ScriptInterpreterObjectSP& implementor)
+    UpdateSynthProviderInstance(const StructuredData::ObjectSP &implementor)
     {
         return false;
     }
-    
+
     virtual bool
-    MightHaveChildrenSynthProviderInstance (const lldb::ScriptInterpreterObjectSP& implementor)
+    MightHaveChildrenSynthProviderInstance(const StructuredData::ObjectSP &implementor)
     {
         return true;
     }
-    
+
     virtual lldb::ValueObjectSP
-    GetSyntheticValue (const lldb::ScriptInterpreterObjectSP& implementor)
+    GetSyntheticValue(const StructuredData::ObjectSP &implementor)
     {
         return nullptr;
     }
     
     virtual bool
     RunScriptBasedCommand (const char* impl_function,
+                           const char* args,
+                           ScriptedCommandSynchronicity synchronicity,
+                           lldb_private::CommandReturnObject& cmd_retobj,
+                           Error& error,
+                           const lldb_private::ExecutionContext& exe_ctx)
+    {
+        return false;
+    }
+    
+    virtual bool
+    RunScriptBasedCommand (StructuredData::GenericSP impl_obj_sp,
                            const char* args,
                            ScriptedCommandSynchronicity synchronicity,
                            lldb_private::CommandReturnObject& cmd_retobj,
@@ -586,17 +556,30 @@ public:
     }
     
     virtual bool
+    GetShortHelpForCommandObject (StructuredData::GenericSP cmd_obj_sp,
+                                  std::string& dest)
+    {
+        dest.clear();
+        return false;
+    }
+
+    virtual bool
+    GetLongHelpForCommandObject (StructuredData::GenericSP cmd_obj_sp,
+                                 std::string& dest)
+    {
+        dest.clear();
+        return false;
+    }
+    
+    virtual bool
     CheckObjectExists (const char* name)
     {
         return false;
     }
 
     virtual bool
-    LoadScriptingModule (const char* filename,
-                         bool can_reload,
-                         bool init_session,
-                         lldb_private::Error& error,
-                         lldb::ScriptInterpreterObjectSP* module_sp = nullptr)
+    LoadScriptingModule(const char *filename, bool can_reload, bool init_session, lldb_private::Error &error,
+                        StructuredData::ObjectSP *module_sp = nullptr)
     {
         error.SetErrorString("loading unimplemented");
         return false;
@@ -606,12 +589,6 @@ public:
     IsReservedWord (const char* word)
     {
         return false;
-    }
-
-    virtual lldb::ScriptInterpreterObjectSP
-    MakeScriptObject (void* object)
-    {
-        return lldb::ScriptInterpreterObjectSP(new ScriptInterpreterObject(object));
     }
     
     virtual std::unique_ptr<ScriptInterpreterLocker>
@@ -635,6 +612,7 @@ public:
                            SWIGWatchpointCallbackFunction swig_watchpoint_callback,
                            SWIGPythonTypeScriptCallbackFunction swig_typescript_callback,
                            SWIGPythonCreateSyntheticProvider swig_synthetic_script,
+                           SWIGPythonCreateCommandObject swig_create_cmd,
                            SWIGPythonCalculateNumChildren swig_calc_children,
                            SWIGPythonGetChildAtIndex swig_get_child_index,
                            SWIGPythonGetIndexOfChildWithName swig_get_index_child,
@@ -644,6 +622,7 @@ public:
                            SWIGPythonMightHaveChildrenSynthProviderInstance swig_mighthavechildren_provider,
                            SWIGPythonGetValueSynthProviderInstance swig_getvalue_provider,
                            SWIGPythonCallCommand swig_call_command,
+                           SWIGPythonCallCommandObject swig_call_command_object,
                            SWIGPythonCallModuleInit swig_call_module_init,
                            SWIGPythonCreateOSPlugin swig_create_os_plugin,
                            SWIGPythonScriptKeyword_Process swig_run_script_keyword_process,

@@ -21,10 +21,10 @@ class HostInfoAndroid : public HostInfoLinux
 
   public:
     static FileSpec GetDefaultShell();
+    static FileSpec ResolveLibraryPath (const std::string& path, const ArchSpec& arch);
 
   protected:
     static void ComputeHostArchitectureSupport(ArchSpec &arch_32, ArchSpec &arch_64);
-    static bool ComputeSupportExeDirectory(FileSpec &file_spec);
 };
 
 } // end of namespace lldb_private

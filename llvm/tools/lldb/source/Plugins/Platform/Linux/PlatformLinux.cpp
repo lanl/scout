@@ -307,9 +307,7 @@ PlatformLinux::ResolveExecutable (const ModuleSpec &ms,
     {
         if (m_remote_platform_sp)
         {
-            error = m_remote_platform_sp->ResolveExecutable (ms,
-                                                             exe_module_sp,
-                                                             NULL);
+            error = GetCachedExecutable (resolved_module_spec, exe_module_sp, nullptr, *m_remote_platform_sp);
         }
         else
         {
@@ -588,6 +586,7 @@ PlatformLinux::GetSoftwareBreakpointTrapOpcode (Target &target,
         }
         break;
     case llvm::Triple::mips64:
+    case llvm::Triple::mips64el:
         {
             static const uint8_t g_hex_opcode[] = { 0x00, 0x00, 0x00, 0x0d };
             trap_opcode = g_hex_opcode;

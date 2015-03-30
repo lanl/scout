@@ -7,22 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-//++
-// File:        MICmdCmdStack.cpp
-//
 // Overview:    CMICmdCmdStackInfoDepth         implementation.
 //              CMICmdCmdStackInfoFrame         implementation.
 //              CMICmdCmdStackListFrames        implementation.
 //              CMICmdCmdStackListArguments     implementation.
 //              CMICmdCmdStackListLocals        implementation.
 //              CMICmdCmdStackSelectFrame       implementation.
-//
-// Environment: Compilers:  Visual C++ 12.
-//                          gcc (Ubuntu/Linaro 4.8.1-10ubuntu9) 4.8.1
-//              Libraries:  See MIReadmetxt.
-//
-// Copyright:   None.
-//--
 
 // Third Party Headers:
 #include "lldb/API/SBThread.h"
@@ -462,6 +452,8 @@ CMICmdCmdStackListArguments::CMICmdCmdStackListArguments(void)
     , m_constStrArgNoValues("no-values")
     , m_constStrArgAllValues("all-values")
     , m_constStrArgSimpleValues("simple-values")
+    , m_constStrArgFrameLow("low-frame")
+    , m_constStrArgFrameHigh("high-frame")
 {
     // Command factory matches this name with that received from the stdin stream
     m_strMiCmd = "stack-list-arguments";
@@ -499,6 +491,8 @@ CMICmdCmdStackListArguments::ParseArgs(void)
     bOk = bOk && m_setCmdArgs.Add(*(new CMICmdArgValOptionLong(m_constStrArgNoValues, false, true)));
     bOk = bOk && m_setCmdArgs.Add(*(new CMICmdArgValOptionLong(m_constStrArgAllValues, false, true)));
     bOk = bOk && m_setCmdArgs.Add(*(new CMICmdArgValOptionLong(m_constStrArgSimpleValues, false, true)));
+    bOk = bOk && m_setCmdArgs.Add(*(new CMICmdArgValNumber(m_constStrArgFrameLow, false, true)));
+    bOk = bOk && m_setCmdArgs.Add(*(new CMICmdArgValNumber(m_constStrArgFrameHigh, false, true)));
     return (bOk && ParseValidateCmdOptions());
 }
 
@@ -519,6 +513,8 @@ CMICmdCmdStackListArguments::Execute(void)
     CMICMDBASE_GETOPTION(pArgNoValues, OptionLong, m_constStrArgNoValues);
     CMICMDBASE_GETOPTION(pArgAllValues, OptionLong, m_constStrArgAllValues);
     CMICMDBASE_GETOPTION(pArgSimpleValues, OptionLong, m_constStrArgSimpleValues);
+    CMICMDBASE_GETOPTION(pArgFrameLow, Number, m_constStrArgFrameLow);
+    CMICMDBASE_GETOPTION(pArgFrameHigh, Number, m_constStrArgFrameHigh);
 
     // Retrieve the --thread option's thread ID (only 1)
     MIuint64 nThreadId = UINT64_MAX;
@@ -554,6 +550,20 @@ CMICmdCmdStackListArguments::Execute(void)
         return MIstatus::failure;
     }
 
+    MIuint nFrameLow = 0;
+    MIuint nFrameHigh = UINT32_MAX;
+    if (pArgFrameLow->GetFound() && pArgFrameHigh->GetFound())
+    {
+        nFrameLow = pArgFrameLow->GetValue();
+        nFrameHigh = pArgFrameHigh->GetValue() + 1;
+    }
+    else if (pArgFrameLow->GetFound() || pArgFrameHigh->GetFound())
+    {
+        // Only low-frame or high-frame was specified but both are required
+        SetError(CMIUtilString::Format(MIRSRC(IDS_CMD_ERR_THREAD_FRAME_RANGE_INVALID), m_cmdData.strMiCmd.c_str()));
+        return MIstatus::failure;
+    }
+
     CMICmnLLDBDebugSessionInfo &rSessionInfo(CMICmnLLDBDebugSessionInfo::Instance());
     lldb::SBProcess sbProcess = rSessionInfo.GetProcess();
     lldb::SBThread thread = (nThreadId != UINT64_MAX) ? sbProcess.GetThreadByIndexID(nThreadId) : sbProcess.GetSelectedThread();
@@ -569,7 +579,15 @@ CMICmdCmdStackListArguments::Execute(void)
     }
 
     const MIuint nFrames = thread.GetNumFrames();
-    for (MIuint i = 0; i < nFrames; i++)
+    if (nFrameLow >= nFrames)
+    {
+        // The low-frame is larger than the actual number of frames
+        SetError(CMIUtilString::Format(MIRSRC(IDS_CMD_ERR_THREAD_FRAME_RANGE_INVALID), m_cmdData.strMiCmd.c_str()));
+        return MIstatus::failure;
+    }
+
+    nFrameHigh = std::min(nFrameHigh, nFrames);
+    for (MIuint i = nFrameLow; i < nFrameHigh; i++)
     {
         lldb::SBFrame frame = thread.GetFrameAtIndex(i);
         CMICmnMIValueList miValueList(true);
