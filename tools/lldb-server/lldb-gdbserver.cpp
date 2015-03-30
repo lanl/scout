@@ -23,7 +23,6 @@
 // C++ Includes
 
 // Other libraries and framework includes
-#include "lldb/lldb-private-log.h"
 #include "lldb/Core/Error.h"
 #include "lldb/Core/ConnectionMachPort.h"
 #include "lldb/Core/Debugger.h"
@@ -40,7 +39,6 @@
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "Plugins/Process/gdb-remote/GDBRemoteCommunicationServerLLGS.h"
 #include "Plugins/Process/gdb-remote/ProcessGDBRemoteLog.h"
-#include "Plugins/Process/Linux/NativeProcessLinux.h"
 
 #ifndef LLGS_PROGRAM_NAME
 #define LLGS_PROGRAM_NAME "lldb-server"
@@ -482,30 +480,17 @@ ConnectToRemote (GDBRemoteCommunicationServerLLGS &gdb_server, bool reverse_conn
     }
 }
 
-static void
-initialize ()
-{
-#ifndef _WIN32
-    // Setup signal handlers first thing.
-    signal (SIGPIPE, signal_handler);
-    signal (SIGHUP, signal_handler);
-#endif
-
-#if defined (__linux__)
-    //----------------------------------------------------------------------
-    // Linux hosted plugins
-    //----------------------------------------------------------------------
-    NativeProcessLinux::Initialize();
-#endif
-}
-
 //----------------------------------------------------------------------
 // main
 //----------------------------------------------------------------------
 int
 main_gdbserver (int argc, char *argv[])
 {
-    initialize ();
+#ifndef _WIN32
+    // Setup signal handlers first thing.
+    signal (SIGPIPE, signal_handler);
+    signal (SIGHUP, signal_handler);
+#endif
 
     const char *progname = argv[0];
     const char *subcommand = argv[1];

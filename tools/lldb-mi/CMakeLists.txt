@@ -1,7 +1,6 @@
 set(LLVM_NO_RTTI 1)
 
 set(LLDB_MI_SOURCES
-  Driver.cpp
   MICmdArgContext.cpp
   MICmdArgSet.cpp
   MICmdArgValBase.cpp
@@ -24,6 +23,7 @@ set(LLDB_MI_SOURCES
   MICmdCmdFile.cpp
   MICmdCmdGdbInfo.cpp
   MICmdCmdGdbSet.cpp
+  MICmdCmdGdbShow.cpp
   MICmdCmdGdbThread.cpp
   MICmdCmdMiscellanous.cpp
   MICmdCmdStack.cpp
@@ -74,7 +74,6 @@ set(LLDB_MI_SOURCES
   MIUtilSystemLinux.cpp
   MIUtilSystemOsx.cpp
   MIUtilSystemWindows.cpp
-  MIUtilTermios.cpp
   MIUtilThreadBaseStd.cpp
   MIUtilVariant.cpp
   Platform.cpp

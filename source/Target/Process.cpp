@@ -10,15 +10,13 @@
 #include "lldb/lldb-python.h"
 
 #include "lldb/Target/Process.h"
-
-#include "lldb/lldb-private-log.h"
-
 #include "lldb/Breakpoint/StoppointCallbackContext.h"
 #include "lldb/Breakpoint/BreakpointLocation.h"
 #include "lldb/Core/Event.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Log.h"
 #include "lldb/Core/Module.h"
+#include "lldb/Core/ModuleSpec.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/State.h"
 #include "lldb/Core/StreamFile.h"
@@ -54,6 +52,7 @@
 #include "lldb/Target/ThreadPlan.h"
 #include "lldb/Target/ThreadPlanBase.h"
 #include "lldb/Target/UnixSignals.h"
+#include "lldb/Utility/NameMatches.h"
 #include "Plugins/Process/Utility/InferiorCallPOSIX.h"
 
 using namespace lldb;
@@ -704,7 +703,7 @@ Process::Process(Target &target, Listener &listener) :
 Process::Process(Target &target, Listener &listener, const UnixSignalsSP &unix_signals_sp) :
     ProcessProperties (this),
     UserID (LLDB_INVALID_PROCESS_ID),
-    Broadcaster (&(target.GetDebugger()), "lldb.process"),
+    Broadcaster (&(target.GetDebugger()), Process::GetStaticBroadcasterClass().AsCString()),
     m_target (target),
     m_public_state (eStateUnloaded),
     m_private_state (eStateUnloaded),
@@ -823,6 +822,7 @@ Process::GetGlobalProperties()
 void
 Process::Finalize()
 {
+    // Destroy this process if needed
     switch (GetPrivateState())
     {
         case eStateConnected:
@@ -833,14 +833,7 @@ Process::Finalize()
         case eStateStepping:
         case eStateCrashed:
         case eStateSuspended:
-            if (GetShouldDetach())
-            {
-                // FIXME: This will have to be a process setting:
-                bool keep_stopped = false;
-                Detach(keep_stopped);
-            }
-            else
-                Destroy();
+            Destroy();
             break;
             
         case eStateInvalid:
@@ -3953,6 +3946,13 @@ Process::Destroy ()
     // that might hinder the destruction.  Remember to set this back to false when we are done.  That way if the attempt
     // failed and the process stays around for some reason it won't be in a confused state.
     
+    if (GetShouldDetach())
+    {
+        // FIXME: This will have to be a process setting:
+        bool keep_stopped = false;
+        Detach(keep_stopped);
+    }
+
     m_destroy_in_process = true;
 
     Error error (WillDestroy());
@@ -4060,12 +4060,14 @@ Process::ShouldBroadcastEvent (Event *event_ptr)
     
     switch (state)
     {
-        case eStateConnected:
-        case eStateAttaching:
-        case eStateLaunching:
         case eStateDetached:
         case eStateExited:
         case eStateUnloaded:
+            m_stdio_communication.SynchronizeWithReadThread();
+            // fall-through
+        case eStateConnected:
+        case eStateAttaching:
+        case eStateLaunching:
             // These events indicate changes in the state of the debugging session, always report them.
             return_value = true;
             break;
@@ -4125,6 +4127,7 @@ Process::ShouldBroadcastEvent (Event *event_ptr)
             // If we aren't going to stop, let the thread plans decide if we're going to report this event.
             // If no thread has an opinion, we don't report it.
 
+            m_stdio_communication.SynchronizeWithReadThread();
             RefreshStateAfterStop ();
             if (ProcessEventData::GetInterruptedFromEvent (event_ptr))
             {
@@ -6473,4 +6476,13 @@ Process::GetInstrumentationRuntime(lldb::InstrumentationRuntimeType type)
     }
     else
         return (*pos).second;
+}
+
+bool
+Process::GetModuleSpec(const FileSpec& module_file_spec,
+                       const ArchSpec& arch,
+                       ModuleSpec& module_spec)
+{
+    module_spec.Clear();
+    return false;
 }

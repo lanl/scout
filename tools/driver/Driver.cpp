@@ -51,7 +51,6 @@ static void reset_stdin_termios ();
 static bool g_old_stdin_termios_is_valid = false;
 static struct termios g_old_stdin_termios;
 
-static char *g_debugger_name =  (char *) "";
 static Driver *g_driver = NULL;
 
 // In the Driver::MainLoop, we change the terminal settings.  This function is
@@ -146,16 +145,12 @@ Driver::Driver () :
     // We want to be able to handle CTRL+D in the terminal to have it terminate
     // certain input
     m_debugger.SetCloseInputOnEOF (false);
-    g_debugger_name = (char *) m_debugger.GetInstanceName();
-    if (g_debugger_name == NULL)
-        g_debugger_name = (char *) "";
     g_driver = this;
 }
 
 Driver::~Driver ()
 {
     g_driver = NULL;
-    g_debugger_name = NULL;
 }
 
 
@@ -887,9 +882,9 @@ PrepareCommandsForSourcing (const char *commands_data, size_t commands_size, int
         ssize_t nrwr = write(fds[WRITE], commands_data, commands_size);
         if (nrwr < 0)
         {
-            fprintf(stderr, "error: write(%i, %p, %zd) failed (errno = %i) "
+            fprintf(stderr, "error: write(%i, %p, %" PRIu64 ") failed (errno = %i) "
                             "when trying to open LLDB commands pipe\n",
-                    fds[WRITE], commands_data, commands_size, errno);
+                    fds[WRITE], commands_data, static_cast<uint64_t>(commands_size), errno);
             success = false;
         }
         else if (static_cast<size_t>(nrwr) == commands_size)

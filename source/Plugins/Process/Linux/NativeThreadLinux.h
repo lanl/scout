@@ -14,6 +14,7 @@
 #include "lldb/Host/common/NativeThreadProtocol.h"
 
 #include <map>
+#include <string>
 
 namespace lldb_private
 {
@@ -76,7 +77,7 @@ namespace lldb_private
         SetStoppedByBreakpoint ();
 
         void
-        SetStoppedByWatchpoint ();
+        SetStoppedByWatchpoint (uint32_t wp_index);
 
         bool
         IsStoppedAtBreakpoint ();

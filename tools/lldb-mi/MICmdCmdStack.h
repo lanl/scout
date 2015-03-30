@@ -7,9 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-//++
-// File:        MICmdCmdStack.h
-//
 // Overview:    CMICmdCmdStackInfoDepth         interface.
 //              CMICmdCmdStackInfoFrame         interface.
 //              CMICmdCmdStackListFrames        interface.
@@ -25,13 +22,6 @@
 //                  MICmdCmd.h / .cpp
 //              For an introduction to adding a new command see CMICmdCmdSupportInfoMiCmdQuery
 //              command class as an example.
-//
-// Environment: Compilers:  Visual C++ 12.
-//                          gcc (Ubuntu/Linaro 4.8.1-10ubuntu9) 4.8.1
-//              Libraries:  See MIReadmetxt.
-//
-// Copyright:   None.
-//--
 
 #pragma once
 
@@ -179,6 +169,8 @@ class CMICmdCmdStackListArguments : public CMICmdBase
     const CMIUtilString m_constStrArgNoValues;
     const CMIUtilString m_constStrArgAllValues;
     const CMIUtilString m_constStrArgSimpleValues;
+    const CMIUtilString m_constStrArgFrameLow;
+    const CMIUtilString m_constStrArgFrameHigh;
 };
 
 //++ ============================================================================

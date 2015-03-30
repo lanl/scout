@@ -10,7 +10,6 @@
 #include "lldb/lldb-python.h"
 
 #include "lldb/lldb-types.h"
-#include "lldb/Core/Communication.h"
 #include "lldb/Core/SourceManager.h"
 #include "lldb/Core/Listener.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
@@ -21,6 +20,7 @@
 #include "lldb/API/SBBroadcaster.h"
 #include "lldb/API/SBCommandReturnObject.h"
 #include "lldb/API/SBCommandInterpreter.h"
+#include "lldb/API/SBEvent.h"
 #include "lldb/API/SBExecutionContext.h"
 #include "lldb/API/SBProcess.h"
 #include "lldb/API/SBTarget.h"
@@ -447,6 +447,21 @@ SBCommandInterpreter::GetDebugger ()
     return sb_debugger;
 }
 
+bool
+SBCommandInterpreter::GetPromptOnQuit()
+{
+    if (m_opaque_ptr)
+        return m_opaque_ptr->GetPromptOnQuit();
+    return false;
+}
+
+void
+SBCommandInterpreter::SetPromptOnQuit (bool b)
+{
+    if (m_opaque_ptr)
+        m_opaque_ptr->SetPromptOnQuit(b);
+}
+
 CommandInterpreter *
 SBCommandInterpreter::get ()
 {
@@ -533,7 +548,7 @@ SBCommandInterpreter::GetBroadcaster ()
 const char *
 SBCommandInterpreter::GetBroadcasterClass ()
 {
-    return Communication::GetStaticBroadcasterClass().AsCString();
+    return CommandInterpreter::GetStaticBroadcasterClass().AsCString();
 }
 
 const char * 
@@ -546,6 +561,12 @@ const char *
 SBCommandInterpreter::GetArgumentDescriptionAsCString (const lldb::CommandArgumentType arg_type)
 {
     return CommandObject::GetArgumentDescriptionAsCString (arg_type);
+}
+
+bool
+SBCommandInterpreter::EventIsCommandInterpreterEvent (const lldb::SBEvent &event)
+{
+    return event.GetBroadcasterClass() == SBCommandInterpreter::GetBroadcasterClass();
 }
 
 bool
@@ -603,6 +624,10 @@ LLDBSwigPythonCreateSyntheticProvider (const char *python_class_name,
                                        const char *session_dictionary_name,
                                        const lldb::ValueObjectSP& valobj_sp);
 
+extern "C" void*
+LLDBSwigPythonCreateCommandObject (const char *python_class_name,
+                                   const char *session_dictionary_name,
+                                   const lldb::DebuggerSP debugger_sp);
 
 extern "C" void*
 LLDBSwigPythonCreateScriptedThreadPlan (const char *python_class_name,
@@ -615,7 +640,7 @@ LLDBSWIGPythonCallThreadPlan (void *implementor,
                               Event *event_sp,
                               bool &got_error);
 
-extern "C" uint32_t
+extern "C" size_t
 LLDBSwigPython_CalculateNumChildren (void *implementor);
 
 extern "C" void *
@@ -646,6 +671,13 @@ LLDBSwigPythonCallCommand (const char *python_function_name,
                            const char* args,
                            lldb_private::CommandReturnObject &cmd_retobj,
                            lldb::ExecutionContextRefSP exe_ctx_ref_sp);
+
+extern "C" bool
+LLDBSwigPythonCallCommandObject (void *implementor,
+                                 lldb::DebuggerSP& debugger,
+                                 const char* args,
+                                 lldb_private::CommandReturnObject& cmd_retobj,
+                                 lldb::ExecutionContextRefSP exe_ctx_ref_sp);
 
 extern "C" bool
 LLDBSwigPythonCallModuleInit (const char *python_module_name,
@@ -708,6 +740,7 @@ SBCommandInterpreter::InitializeSWIG ()
                                                   LLDBSwigPythonWatchpointCallbackFunction,
                                                   LLDBSwigPythonCallTypeScript,
                                                   LLDBSwigPythonCreateSyntheticProvider,
+                                                  LLDBSwigPythonCreateCommandObject,
                                                   LLDBSwigPython_CalculateNumChildren,
                                                   LLDBSwigPython_GetChildAtIndex,
                                                   LLDBSwigPython_GetIndexOfChildWithName,
@@ -717,6 +750,7 @@ SBCommandInterpreter::InitializeSWIG ()
                                                   LLDBSwigPython_MightHaveChildrenSynthProviderInstance,
                                                   LLDBSwigPython_GetValueSynthProviderInstance,
                                                   LLDBSwigPythonCallCommand,
+                                                  LLDBSwigPythonCallCommandObject,
                                                   LLDBSwigPythonCallModuleInit,
                                                   LLDBSWIGPythonCreateOSPlugin,
                                                   LLDBSWIGPythonRunScriptKeywordProcess,
@@ -781,6 +815,28 @@ SBCommand::GetHelp ()
     return NULL;
 }
 
+const char*
+SBCommand::GetHelpLong ()
+{
+    if (IsValid ())
+        return m_opaque_sp->GetHelpLong ();
+    return NULL;
+}
+
+void
+SBCommand::SetHelp (const char* help)
+{
+    if (IsValid())
+        m_opaque_sp->SetHelp(help);
+}
+
+void
+SBCommand::SetHelpLong (const char* help)
+{
+    if (IsValid())
+        m_opaque_sp->SetHelpLong(help);
+}
+
 lldb::SBCommand
 SBCommand::AddMultiwordCommand (const char* name, const char* help)
 {
@@ -809,4 +865,3 @@ SBCommand::AddCommand (const char* name, lldb::SBCommandPluginInterface *impl, c
         return lldb::SBCommand(new_command_sp);
     return lldb::SBCommand();
 }
-

@@ -2,10 +2,6 @@
 Test lldb-mi -var-xxx commands.
 """
 
-# adjust path for lldbmi_testcase.py
-import sys, os.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import lldbmi_testcase
 from lldbtest import *
 import unittest2
@@ -17,7 +13,6 @@ class MiVarTestCase(lldbmi_testcase.MiTestCaseBase):
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
-    @skipIfLinux # llvm.org/pr22841: lldb-mi tests fail on all Linux buildbots
     def test_lldbmi_eval(self):
         """Test that 'lldb-mi --interpreter' works for evaluating."""
 

@@ -247,28 +247,29 @@ Platform::LocateExecutableScriptingResources (Target *target, Module &module, St
 
 Error
 Platform::GetSharedModule (const ModuleSpec &module_spec,
+                           Process* process,
                            ModuleSP &module_sp,
                            const FileSpecList *module_search_paths_ptr,
                            ModuleSP *old_module_sp_ptr,
                            bool *did_create_ptr)
 {
-    if (!IsHost () && GetGlobalPlatformProperties ()->GetUseModuleCache ())
-    {
-        // Use caching only when talking to a remote platform.
-        if (GetCachedSharedModule (module_spec, module_sp))
-        {
-            if (did_create_ptr)
-                *did_create_ptr = true;
+    if (IsHost ())
+        return ModuleList::GetSharedModule (module_spec,
+                                            module_sp,
+                                            module_search_paths_ptr,
+                                            old_module_sp_ptr,
+                                            did_create_ptr,
+                                            false);
 
-            return Error ();
-        }
-    }
-    return ModuleList::GetSharedModule (module_spec, 
-                                        module_sp,
-                                        module_search_paths_ptr,
-                                        old_module_sp_ptr,
-                                        did_create_ptr,
-                                        false);
+    return GetRemoteSharedModule (module_spec,
+                                  process,
+                                  module_sp,
+                                  [&](const ModuleSpec &spec)
+                                  {
+                                      return ModuleList::GetSharedModule (
+                                          spec, module_sp, module_search_paths_ptr, old_module_sp_ptr, did_create_ptr, false);
+                                  },
+                                  did_create_ptr);
 }
 
 bool
@@ -1752,51 +1753,106 @@ Platform::GetTrapHandlerSymbolNames ()
     return m_trap_handlers;
 }
 
-bool
-Platform::GetCachedSharedModule (const ModuleSpec &module_spec,
-                                 lldb::ModuleSP &module_sp)
+Error
+Platform::GetCachedExecutable (ModuleSpec &module_spec,
+                               lldb::ModuleSP &module_sp,
+                               const FileSpecList *module_search_paths_ptr,
+                               Platform &remote_platform)
 {
-    FileSpec cached_file_spec;
-    if (m_module_cache && GetFileFromLocalCache (module_spec, cached_file_spec))
+    const auto platform_spec = module_spec.GetFileSpec ();
+    const auto error = LoadCachedExecutable (module_spec,
+                                             module_sp,
+                                             module_search_paths_ptr,
+                                             remote_platform);
+    if (error.Success ())
     {
-        auto cached_module_spec (module_spec);
-        cached_module_spec.GetFileSpec () = cached_file_spec;
-        cached_module_spec.GetPlatformFileSpec () = module_spec.GetFileSpec ();
-        module_sp.reset (new Module (cached_module_spec));
-
-        return true;
+        module_spec.GetFileSpec () = module_sp->GetFileSpec ();
+        module_spec.GetPlatformFileSpec () = platform_spec;
     }
-    return false;
+
+    return error;
+}
+
+Error
+Platform::LoadCachedExecutable (const ModuleSpec &module_spec,
+                                lldb::ModuleSP &module_sp,
+                                const FileSpecList *module_search_paths_ptr,
+                                Platform &remote_platform)
+{
+    return GetRemoteSharedModule (module_spec,
+                                  nullptr,
+                                  module_sp,
+                                  [&](const ModuleSpec &spec)
+                                  {
+                                      return remote_platform.ResolveExecutable (
+                                          spec, module_sp, module_search_paths_ptr);
+                                  },
+                                  nullptr);
+}
+
+Error
+Platform::GetRemoteSharedModule (const ModuleSpec &module_spec,
+                                 Process* process,
+                                 lldb::ModuleSP &module_sp,
+                                 const ModuleResolver &module_resolver,
+                                 bool *did_create_ptr)
+{
+    // Get module information from a target.
+    ModuleSpec resolved_module_spec;
+    bool got_module_spec = false;
+    if (process)
+    {
+        // Try to get module information from the process
+        if (process->GetModuleSpec (module_spec.GetFileSpec (), module_spec.GetArchitecture (), resolved_module_spec))
+          got_module_spec = true;
+    }
+
+    if (!got_module_spec)
+    {
+        // Get module information from a target.
+        if (!GetModuleSpec (module_spec.GetFileSpec (), module_spec.GetArchitecture (), resolved_module_spec))
+            return module_resolver (module_spec);
+    }
+
+    // Trying to find a module by UUID on local file system.
+    const auto error = module_resolver (resolved_module_spec);
+    if (error.Fail ())
+     {
+          if (GetCachedSharedModule (resolved_module_spec, module_sp, did_create_ptr))
+              return Error ();
+     }
+
+    return error;
 }
 
 bool
-Platform::GetFileFromLocalCache (const ModuleSpec& module_spec,
-                                 FileSpec &cached_file_spec)
+Platform::GetCachedSharedModule (const ModuleSpec &module_spec,
+                                 lldb::ModuleSP &module_sp,
+                                 bool *did_create_ptr)
 {
-    Log *log = GetLogIfAnyCategoriesSet (LIBLLDB_LOG_PLATFORM);
-
-    // Get module information from a target.
-    ModuleSpec resolved_module_spec;
-    if (!GetModuleSpec (module_spec.GetFileSpec (), module_spec.GetArchitecture (), resolved_module_spec))
+    if (IsHost() ||
+        !GetGlobalPlatformProperties ()->GetUseModuleCache ())
         return false;
+
+    Log *log = GetLogIfAnyCategoriesSet (LIBLLDB_LOG_PLATFORM);
 
     // Check local cache for a module.
     auto error = m_module_cache->Get (GetModuleCacheRoot (),
-                                      GetHostname (),
-                                      resolved_module_spec.GetUUID (),
-                                      resolved_module_spec.GetFileSpec (),
-                                      cached_file_spec);
+                                      GetCacheHostname (),
+                                      module_spec,
+                                      module_sp,
+                                      did_create_ptr);
     if (error.Success ())
         return true;
 
     if (log)
         log->Printf("Platform::%s - module %s not found in local cache: %s",
-                    __FUNCTION__, resolved_module_spec.GetUUID ().GetAsString ().c_str (), error.AsCString ());
+                    __FUNCTION__, module_spec.GetUUID ().GetAsString ().c_str (), error.AsCString ());
 
     // Get temporary file name for a downloaded module.
     llvm::SmallString<PATH_MAX> tmp_download_file_path;
     const auto err_code = llvm::sys::fs::createTemporaryFile (
-        "lldb", resolved_module_spec.GetUUID ().GetAsString ().c_str (), tmp_download_file_path);
+        "lldb", module_spec.GetUUID ().GetAsString ().c_str (), tmp_download_file_path);
     if (err_code)
     {
         if (log)
@@ -1809,9 +1865,9 @@ Platform::GetFileFromLocalCache (const ModuleSpec& module_spec,
 
     const FileSpec tmp_download_file_spec (tmp_download_file_path.c_str (), true);
     // Download a module file.
-    error = DownloadModuleSlice (resolved_module_spec.GetFileSpec (),
-                                 resolved_module_spec.GetObjectOffset (),
-                                 resolved_module_spec.GetObjectSize (),
+    error = DownloadModuleSlice (module_spec.GetFileSpec (),
+                                 module_spec.GetObjectOffset (),
+                                 module_spec.GetObjectSize (),
                                  tmp_download_file_spec);
     if (error.Fail ())
     {
@@ -1824,24 +1880,23 @@ Platform::GetFileFromLocalCache (const ModuleSpec& module_spec,
 
     // Put downloaded file into local module cache.
     error = m_module_cache->Put (GetModuleCacheRoot (),
-                                 GetHostname (),
-                                 resolved_module_spec.GetUUID (),
-                                 resolved_module_spec.GetFileSpec (),
+                                 GetCacheHostname (),
+                                 module_spec,
                                  tmp_download_file_spec);
     if (error.Fail ())
     {
         if (log)
             log->Printf("Platform::%s - failed to put module %s into cache: %s",
-                        __FUNCTION__, resolved_module_spec.GetUUID ().GetAsString ().c_str (),
+                        __FUNCTION__, module_spec.GetUUID ().GetAsString ().c_str (),
                         error.AsCString ());
         return false;
     }
 
     error = m_module_cache->Get (GetModuleCacheRoot (),
-                                 GetHostname (),
-                                 resolved_module_spec.GetUUID (),
-                                 resolved_module_spec.GetFileSpec (),
-                                 cached_file_spec);
+                                 GetCacheHostname (),
+                                 module_spec,
+                                 module_sp,
+                                 did_create_ptr);
     return error.Success ();
 }
 
@@ -1902,4 +1957,10 @@ Platform::GetModuleCacheRoot ()
     auto dir_spec = GetGlobalPlatformProperties ()->GetModuleCacheDirectory ();
     dir_spec.AppendPathComponent (GetName ().AsCString ());
     return dir_spec;
+}
+
+const char *
+Platform::GetCacheHostname ()
+{
+    return GetHostname ();
 }

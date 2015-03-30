@@ -247,9 +247,7 @@ PlatformWindows::ResolveExecutable (const ModuleSpec &ms,
     {
         if (m_remote_platform_sp)
         {
-            error = m_remote_platform_sp->ResolveExecutable (ms,
-                                                             exe_module_sp,
-                                                             NULL);
+            error = GetCachedExecutable (resolved_module_spec, exe_module_sp, nullptr, *m_remote_platform_sp);
         }
         else
         {
@@ -619,6 +617,7 @@ PlatformWindows::GetFileWithUUID (const FileSpec &platform_file,
 
 Error
 PlatformWindows::GetSharedModule (const ModuleSpec &module_spec,
+                                  Process* process,
                                   ModuleSP &module_sp,
                                   const FileSpecList *module_search_paths_ptr,
                                   ModuleSP *old_module_sp_ptr,
@@ -634,6 +633,7 @@ PlatformWindows::GetSharedModule (const ModuleSpec &module_spec,
         if (m_remote_platform_sp)
         {
             error = m_remote_platform_sp->GetSharedModule (module_spec,
+                                                           process,
                                                            module_sp,
                                                            module_search_paths_ptr,
                                                            old_module_sp_ptr,
@@ -645,6 +645,7 @@ PlatformWindows::GetSharedModule (const ModuleSpec &module_spec,
     {
         // Fall back to the local platform and find the file locally
         error = Platform::GetSharedModule (module_spec,
+                                           process,
                                            module_sp,
                                            module_search_paths_ptr,
                                            old_module_sp_ptr,

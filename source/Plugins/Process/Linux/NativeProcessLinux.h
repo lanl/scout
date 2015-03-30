@@ -45,12 +45,6 @@ namespace lldb_private
     {
     public:
 
-        // ---------------------------------------------------------------------
-        // Public Static Methods
-        // ---------------------------------------------------------------------
-        static void
-        Initialize();
-
         static lldb_private::Error
         LaunchProcess (
             Module *exe_module,
@@ -163,7 +157,10 @@ namespace lldb_private
         /// For instance, the extended floating-point register set.
         Error
         WriteRegisterSet(lldb::tid_t tid, void *buf, size_t buf_size, unsigned int regset);
-        
+
+        Error
+        GetLoadedModuleFileSpec(const char* module_path, FileSpec& file_spec) override;
+
     protected:
         // ---------------------------------------------------------------------
         // NativeProcessProtocol protected interface
@@ -263,7 +260,7 @@ namespace lldb_private
             Error &error);
 
         /// Attaches to an existing process.  Forms the
-        /// implementation of Process::DoLaunch.
+        /// implementation of Process::DoAttach
         void
         AttachToInferior (lldb::pid_t pid, Error &error);
 
@@ -302,6 +299,15 @@ namespace lldb_private
         MonitorSIGTRAP(const siginfo_t *info, lldb::pid_t pid);
 
         void
+        MonitorTrace(lldb::pid_t pid, NativeThreadProtocolSP thread_sp);
+
+        void
+        MonitorBreakpoint(lldb::pid_t pid, NativeThreadProtocolSP thread_sp);
+
+        void
+        MonitorWatchpoint(lldb::pid_t pid, NativeThreadProtocolSP thread_sp, uint32_t wp_index);
+
+        void
         MonitorSignal(const siginfo_t *info, lldb::pid_t pid, bool exited);
 
 #if 0
@@ -323,7 +329,7 @@ namespace lldb_private
 
         /// Stops the child monitor thread.
         void
-        StopMonitoringChildProcess();
+        StopMonitorThread();
 
         /// Stops the operation thread used to attach/launch a process.
         void

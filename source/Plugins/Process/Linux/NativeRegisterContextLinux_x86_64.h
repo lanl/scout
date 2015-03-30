@@ -46,10 +46,13 @@ namespace lldb_private
         WriteAllRegisterValues (const lldb::DataBufferSP &data_sp) override;
 
         Error
-        IsWatchpointHit(uint8_t wp_index);
+        IsWatchpointHit(uint32_t wp_index, bool &is_hit) override;
 
         Error
-        IsWatchpointVacant(uint32_t wp_index);
+        GetWatchpointHitIndex(uint32_t &wp_index) override;
+
+        Error
+        IsWatchpointVacant(uint32_t wp_index, bool &is_vacant) override;
 
         bool
         ClearHardwareWatchpoint(uint32_t wp_index) override;
@@ -66,7 +69,7 @@ namespace lldb_private
                 uint32_t watch_flags) override;
 
         lldb::addr_t
-        GetWatchpointAddress(uint32_t wp_index);
+        GetWatchpointAddress(uint32_t wp_index) override;
 
         uint32_t
         NumSupportedHardwareWatchpoints() override;

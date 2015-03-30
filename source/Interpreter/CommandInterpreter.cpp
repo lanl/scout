@@ -109,7 +109,7 @@ CommandInterpreter::CommandInterpreter
     ScriptLanguage script_language,
     bool synchronous_execution
 ) :
-    Broadcaster (&debugger, "lldb.command-interpreter"),
+    Broadcaster (&debugger, CommandInterpreter::GetStaticBroadcasterClass().AsCString()),
     Properties(OptionValuePropertiesSP(new OptionValueProperties(ConstString("interpreter")))),
     IOHandlerDelegate (IOHandlerDelegate::Completion::LLDBCommand),
     m_debugger (debugger),
@@ -147,6 +147,13 @@ CommandInterpreter::GetPromptOnQuit () const
 {
     const uint32_t idx = ePropertyPromptOnQuit;
     return m_collection_sp->GetPropertyAtIndexAsBoolean (nullptr, idx, g_properties[idx].default_uint_value != 0);
+}
+
+void
+CommandInterpreter::SetPromptOnQuit (bool b)
+{
+    const uint32_t idx = ePropertyPromptOnQuit;
+    m_collection_sp->SetPropertyAtIndexAsBoolean (nullptr, idx, b);
 }
 
 bool

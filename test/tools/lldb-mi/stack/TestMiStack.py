@@ -2,10 +2,6 @@
 Test lldb-mi -stack-xxx commands.
 """
 
-# adjust path for lldbmi_testcase.py
-import sys, os.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import lldbmi_testcase
 from lldbtest import *
 import unittest2
@@ -17,7 +13,6 @@ class MiStackTestCase(lldbmi_testcase.MiTestCaseBase):
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
-    @skipIfLinux # llvm.org/pr22841: lldb-mi tests fail on all Linux buildbots
     def test_lldbmi_stack_list_arguments(self):
         """Test that 'lldb-mi --interpreter' can shows arguments."""
 
@@ -34,28 +29,54 @@ class MiStackTestCase(lldbmi_testcase.MiTestCaseBase):
         self.expect("\^running")
         self.expect("\*stopped,reason=\"breakpoint-hit\"")
 
-        # Test -stack-list-arguments: use 0 or --no-values
+        # Test that -stack-list-arguments lists empty stack arguments if range is empty
+        self.runCmd("-stack-list-arguments 0 1 0")
+        self.expect("\^done,stack-args=\[\]")
+
+        # Test that -stack-list-arguments lists stack arguments without values
+        # (and that low-frame and high-frame are optional)
         self.runCmd("-stack-list-arguments 0")
         self.expect("\^done,stack-args=\[frame={level=\"0\",args=\[name=\"argc\",name=\"argv\"\]}")
         self.runCmd("-stack-list-arguments --no-values")
         self.expect("\^done,stack-args=\[frame={level=\"0\",args=\[name=\"argc\",name=\"argv\"\]}")
 
-        # Test -stack-list-arguments: use 1 or --all-values
-        self.runCmd("-stack-list-arguments 1")
-        self.expect("\^done,stack-args=\[frame={level=\"0\",args=\[{name=\"argc\",value=\"1\"},{name=\"argv\",value=\".*\"}\]}")
-        self.runCmd("-stack-list-arguments --all-values")
-        self.expect("\^done,stack-args=\[frame={level=\"0\",args=\[{name=\"argc\",value=\"1\"},{name=\"argv\",value=\".*\"}\]}")
+        # Test that -stack-list-arguments lists stack arguments with all values
+        self.runCmd("-stack-list-arguments 1 0 0")
+        self.expect("\^done,stack-args=\[frame={level=\"0\",args=\[{name=\"argc\",value=\"1\"},{name=\"argv\",value=\".*\"}\]}\]")
+        # FIXME: first 0 is treated as --no-values
+        self.runCmd("-stack-list-arguments --all-values 0 0")
+        #self.expect("\^done,stack-args=\[frame={level=\"0\",args=\[{name=\"argc\",value=\"1\"},{name=\"argv\",value=\".*\"}\]}\]")
 
-        # Test -stack-list-arguments: use 2 or --simple-values
-        self.runCmd("-stack-list-arguments 2")
+        # Test that -stack-list-arguments lists stack arguments with simple values
+        self.runCmd("-stack-list-arguments 2 0 1")
         self.expect("\^done,stack-args=\[frame={level=\"0\",args=\[{name=\"argc\",value=\"1\"},{name=\"argv\",value=\".*\"}\]}")
-        self.runCmd("-stack-list-arguments --simple-values")
-        self.expect("\^done,stack-args=\[frame={level=\"0\",args=\[{name=\"argc\",value=\"1\"},{name=\"argv\",value=\".*\"}\]}")
+        # FIXME: first 0 is treated as --no-values
+        self.runCmd("-stack-list-arguments --simple-values 0 1")
+        #self.expect("\^done,stack-args=\[frame={level=\"0\",args=\[{name=\"argc\",value=\"1\"},{name=\"argv\",value=\".*\"}\]}")
+
+        # Test that an invalid low-frame is handled 
+        # FIXME: -1 is treated as unsigned int
+        self.runCmd("-stack-list-arguments 0 -1 0")
+        #self.expect("\^error")
+        self.runCmd("-stack-list-arguments 0 0")
+        self.expect("\^error,msg=\"Command 'stack-list-arguments'. Thread frame range invalid\"")
+
+        # Test that an invalid high-frame is handled
+        # FIXME: -1 is treated as unsigned int
+        self.runCmd("-stack-list-arguments 0 0 -1")
+        #self.expect("\^error")
+
+        # Test that a missing low-frame or high-frame is handled
+        self.runCmd("-stack-list-arguments 0 0")
+        self.expect("\^error,msg=\"Command 'stack-list-arguments'. Thread frame range invalid\"")
+
+        # Test that an invalid low-frame is handled 
+        self.runCmd("-stack-list-arguments 0 0")
+        self.expect("\^error,msg=\"Command 'stack-list-arguments'. Thread frame range invalid\"")
 
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
-    @skipIfLinux # llvm.org/pr22841: lldb-mi tests fail on all Linux buildbots
     def test_lldbmi_stack_list_locals(self):
         """Test that 'lldb-mi --interpreter' can shows local variables."""
 
@@ -183,7 +204,6 @@ class MiStackTestCase(lldbmi_testcase.MiTestCaseBase):
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
-    @skipIfLinux # llvm.org/pr22841: lldb-mi tests fail on all Linux buildbots
     def test_lldbmi_stack_info_depth(self):
         """Test that 'lldb-mi --interpreter' can shows depth of the stack."""
 
@@ -218,8 +238,7 @@ class MiStackTestCase(lldbmi_testcase.MiTestCaseBase):
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
-    @skipIfLinux # llvm.org/pr22841: lldb-mi tests fail on all Linux buildbots
-    @unittest2.skipUnless(sys.platform.startswith("darwin"), "requires Darwin")
+    @skipUnlessDarwin
     def test_lldbmi_stack_info_frame(self):
         """Test that 'lldb-mi --interpreter' can show information about current frame."""
 
@@ -260,7 +279,6 @@ class MiStackTestCase(lldbmi_testcase.MiTestCaseBase):
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
-    @skipIfLinux # llvm.org/pr22841: lldb-mi tests fail on all Linux buildbots
     def test_lldbmi_stack_list_frames(self):
         """Test that 'lldb-mi --interpreter' can lists the frames on the stack."""
 
@@ -284,7 +302,6 @@ class MiStackTestCase(lldbmi_testcase.MiTestCaseBase):
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
-    @skipIfLinux # llvm.org/pr22841: lldb-mi tests fail on all Linux buildbots
     def test_lldbmi_stack_select_frame(self):
         """Test that 'lldb-mi --interpreter' can choose current frame."""
 

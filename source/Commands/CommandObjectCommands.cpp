@@ -29,7 +29,6 @@
 #include "lldb/Interpreter/OptionValueUInt64.h"
 #include "lldb/Interpreter/Options.h"
 #include "lldb/Interpreter/ScriptInterpreter.h"
-#include "lldb/Interpreter/ScriptInterpreterPython.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -1430,6 +1429,128 @@ protected:
     
 };
 
+class CommandObjectScriptingObject : public CommandObjectRaw
+{
+private:
+    StructuredData::GenericSP m_cmd_obj_sp;
+    ScriptedCommandSynchronicity m_synchro;
+    bool m_fetched_help_short:1;
+    bool m_fetched_help_long:1;
+    
+public:
+    
+    CommandObjectScriptingObject (CommandInterpreter &interpreter,
+                                  std::string name,
+                                  StructuredData::GenericSP cmd_obj_sp,
+                                  ScriptedCommandSynchronicity synch) :
+    CommandObjectRaw (interpreter,
+                      name.c_str(),
+                      NULL,
+                      NULL),
+    m_cmd_obj_sp(cmd_obj_sp),
+    m_synchro(synch),
+    m_fetched_help_short(false),
+    m_fetched_help_long(false)
+    {
+        StreamString stream;
+        stream.Printf("For more information run 'help %s'",name.c_str());
+        SetHelp(stream.GetData());
+    }
+    
+    virtual
+    ~CommandObjectScriptingObject ()
+    {
+    }
+    
+    virtual bool
+    IsRemovable () const
+    {
+        return true;
+    }
+    
+    StructuredData::GenericSP
+    GetImplementingObject ()
+    {
+        return m_cmd_obj_sp;
+    }
+    
+    ScriptedCommandSynchronicity
+    GetSynchronicity ()
+    {
+        return m_synchro;
+    }
+
+    virtual const char *
+    GetHelp ()
+    {
+        if (!m_fetched_help_short)
+        {
+            ScriptInterpreter* scripter = m_interpreter.GetScriptInterpreter();
+            if (scripter)
+            {
+                std::string docstring;
+                m_fetched_help_short = scripter->GetShortHelpForCommandObject(m_cmd_obj_sp,docstring);
+                if (!docstring.empty())
+                    SetHelp(docstring);
+            }
+        }
+        return CommandObjectRaw::GetHelp();
+    }
+    
+    virtual const char *
+    GetHelpLong ()
+    {
+        if (!m_fetched_help_long)
+        {
+            ScriptInterpreter* scripter = m_interpreter.GetScriptInterpreter();
+            if (scripter)
+            {
+                std::string docstring;
+                m_fetched_help_long = scripter->GetLongHelpForCommandObject(m_cmd_obj_sp,docstring);
+                if (!docstring.empty())
+                    SetHelpLong(docstring);
+            }
+        }
+        return CommandObjectRaw::GetHelpLong();
+    }
+    
+protected:
+    virtual bool
+    DoExecute (const char *raw_command_line, CommandReturnObject &result)
+    {
+        ScriptInterpreter* scripter = m_interpreter.GetScriptInterpreter();
+        
+        Error error;
+        
+        result.SetStatus(eReturnStatusInvalid);
+        
+        if (!scripter || scripter->RunScriptBasedCommand(m_cmd_obj_sp,
+                                                         raw_command_line,
+                                                         m_synchro,
+                                                         result,
+                                                         error,
+                                                         m_exe_ctx) == false)
+        {
+            result.AppendError(error.AsCString());
+            result.SetStatus(eReturnStatusFailed);
+        }
+        else
+        {
+            // Don't change the status if the command already set it...
+            if (result.GetStatus() == eReturnStatusInvalid)
+            {
+                if (result.GetOutputData() == NULL || result.GetOutputData()[0] == '\0')
+                    result.SetStatus(eReturnStatusSuccessFinishNoResult);
+                else
+                    result.SetStatus(eReturnStatusSuccessFinishResult);
+            }
+        }
+        
+        return result.Succeeded();
+    }
+    
+};
+
 //-------------------------------------------------------------------------
 // CommandObjectCommandsScriptImport
 //-------------------------------------------------------------------------
@@ -1652,7 +1773,11 @@ protected:
     public:
         
         CommandOptions (CommandInterpreter &interpreter) :
-            Options (interpreter)
+            Options (interpreter),
+            m_class_name(),
+            m_funct_name(),
+            m_short_help(),
+            m_synchronicity(eScriptedCommandSynchronicitySynchronous)
         {
         }
         
@@ -1670,6 +1795,10 @@ protected:
                 case 'f':
                     if (option_arg)
                         m_funct_name.assign(option_arg);
+                    break;
+                case 'c':
+                    if (option_arg)
+                        m_class_name.assign(option_arg);
                     break;
                 case 'h':
                     if (option_arg)
@@ -1691,6 +1820,7 @@ protected:
         void
         OptionParsingStarting ()
         {
+            m_class_name.clear();
             m_funct_name.clear();
             m_short_help.clear();
             m_synchronicity = eScriptedCommandSynchronicitySynchronous;
@@ -1708,6 +1838,7 @@ protected:
         
         // Instance variables to hold the values for command options.
         
+        std::string m_class_name;
         std::string m_funct_name;
         std::string m_short_help;
         ScriptedCommandSynchronicity m_synchronicity;
@@ -1812,20 +1943,55 @@ protected:
         m_short_help.assign(m_options.m_short_help);
         m_synchronicity = m_options.m_synchronicity;
         
-        if (m_options.m_funct_name.empty())
+        if (m_options.m_class_name.empty())
         {
-            m_interpreter.GetPythonCommandsFromIOHandler ("     ",  // Prompt
-                                                          *this,    // IOHandlerDelegate
-                                                          true,     // Run IOHandler in async mode
-                                                          NULL);    // Baton for the "io_handler" that will be passed back into our IOHandlerDelegate functions
+            if (m_options.m_funct_name.empty())
+            {
+                m_interpreter.GetPythonCommandsFromIOHandler ("     ",  // Prompt
+                                                              *this,    // IOHandlerDelegate
+                                                              true,     // Run IOHandler in async mode
+                                                              NULL);    // Baton for the "io_handler" that will be passed back into our IOHandlerDelegate functions
+            }
+            else
+            {
+                CommandObjectSP new_cmd(new CommandObjectPythonFunction(m_interpreter,
+                                                                        m_cmd_name,
+                                                                        m_options.m_funct_name,
+                                                                        m_options.m_short_help,
+                                                                        m_synchronicity));
+                if (m_interpreter.AddUserCommand(m_cmd_name, new_cmd, true))
+                {
+                    result.SetStatus (eReturnStatusSuccessFinishNoResult);
+                }
+                else
+                {
+                    result.AppendError("cannot add command");
+                    result.SetStatus (eReturnStatusFailed);
+                }
+            }
         }
         else
         {
-            CommandObjectSP new_cmd(new CommandObjectPythonFunction(m_interpreter,
-                                                                    m_cmd_name,
-                                                                    m_options.m_funct_name,
-                                                                    m_options.m_short_help,
-                                                                    m_synchronicity));
+            ScriptInterpreter *interpreter = GetCommandInterpreter().GetScriptInterpreter();
+            if (!interpreter)
+            {
+                result.AppendError("cannot find ScriptInterpreter");
+                result.SetStatus(eReturnStatusFailed);
+                return false;
+            }
+            
+            auto cmd_obj_sp = interpreter->CreateScriptCommandObject(m_options.m_class_name.c_str());
+            if (!cmd_obj_sp)
+            {
+                result.AppendError("cannot create helper object");
+                result.SetStatus(eReturnStatusFailed);
+                return false;
+            }
+            
+            CommandObjectSP new_cmd(new CommandObjectScriptingObject(m_interpreter,
+                                                                     m_cmd_name,
+                                                                     cmd_obj_sp,
+                                                                     m_synchronicity));
             if (m_interpreter.AddUserCommand(m_cmd_name, new_cmd, true))
             {
                 result.SetStatus (eReturnStatusSuccessFinishNoResult);
@@ -1859,8 +2025,9 @@ OptionDefinition
 CommandObjectCommandsScriptAdd::CommandOptions::g_option_table[] =
 {
     { LLDB_OPT_SET_1, false, "function", 'f', OptionParser::eRequiredArgument, NULL, NULL, 0, eArgTypePythonFunction,        "Name of the Python function to bind to this command name."},
+    { LLDB_OPT_SET_2, false, "class", 'c', OptionParser::eRequiredArgument, NULL, NULL, 0, eArgTypePythonClass,        "Name of the Python class to bind to this command name."},
     { LLDB_OPT_SET_1, false, "help"  , 'h', OptionParser::eRequiredArgument, NULL, NULL, 0, eArgTypeHelpText, "The help text to display for this command."},
-    { LLDB_OPT_SET_1, false, "synchronicity", 's', OptionParser::eRequiredArgument, NULL, g_script_synchro_type, 0, eArgTypeScriptedCommandSynchronicity,        "Set the synchronicity of this command's executions with regard to LLDB event system."},
+    { LLDB_OPT_SET_ALL, false, "synchronicity", 's', OptionParser::eRequiredArgument, NULL, g_script_synchro_type, 0, eArgTypeScriptedCommandSynchronicity,        "Set the synchronicity of this command's executions with regard to LLDB event system."},
     { 0, false, NULL, 0, 0, NULL, NULL, 0, eArgTypeNone, NULL }
 };
 
