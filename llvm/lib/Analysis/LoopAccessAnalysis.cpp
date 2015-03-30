@@ -15,11 +15,13 @@
 #include "llvm/Analysis/LoopAccessAnalysis.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/ScalarEvolutionExpander.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/VectorUtils.h"
 using namespace llvm;
 
@@ -960,6 +962,12 @@ void LoopAccessInfo::analyzeLoop(const ValueToValueMap &Strides) {
         // the flag. Therefore, it is safe to ignore this read from memory.
         CallInst *Call = dyn_cast<CallInst>(it);
         if (Call && getIntrinsicIDForCall(Call, TLI))
+          continue;
+
+        // If the function has an explicit vectorized counterpart, we can safely
+        // assume that it can be vectorized.
+        if (Call && !Call->isNoBuiltin() && Call->getCalledFunction() &&
+            TLI->isFunctionVectorizable(Call->getCalledFunction()->getName()))
           continue;
 
         LoadInst *Ld = dyn_cast<LoadInst>(it);

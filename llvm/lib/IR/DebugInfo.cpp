@@ -92,7 +92,7 @@ bool DIDescriptor::Verify() const {
           DIObjCProperty(DbgNode).Verify() ||
           DITemplateTypeParameter(DbgNode).Verify() ||
           DITemplateValueParameter(DbgNode).Verify() ||
-          DIImportedEntity(DbgNode).Verify() || DIExpression(DbgNode).Verify());
+          DIImportedEntity(DbgNode).Verify());
 }
 
 static Metadata *getField(const MDNode *DbgNode, unsigned Elt) {
@@ -260,42 +260,48 @@ static bool isDescriptorRef(const Metadata *MD) {
 #endif
 
 bool DIType::Verify() const {
-  auto *N = getRaw();
+  auto *N = dyn_cast_or_null<MDType>(DbgNode);
   if (!N)
     return false;
   if (!isScopeRef(N->getScope()))
-    return false;
-
-  // FIXME: Sink this into the various subclass verifies.
-  uint16_t Tag = getTag();
-  if (!isBasicType() && Tag != dwarf::DW_TAG_const_type &&
-      Tag != dwarf::DW_TAG_volatile_type && Tag != dwarf::DW_TAG_pointer_type &&
-      Tag != dwarf::DW_TAG_ptr_to_member_type &&
-      Tag != dwarf::DW_TAG_reference_type &&
-      Tag != dwarf::DW_TAG_rvalue_reference_type &&
-      Tag != dwarf::DW_TAG_restrict_type && Tag != dwarf::DW_TAG_array_type &&
-      Tag != dwarf::DW_TAG_enumeration_type &&
-      Tag != dwarf::DW_TAG_subroutine_type &&
-      Tag != dwarf::DW_TAG_inheritance && Tag != dwarf::DW_TAG_friend &&
-      getFilename().empty())
     return false;
 
   // DIType is abstract, it should be a BasicType, a DerivedType or
   // a CompositeType.
   if (isBasicType())
     return DIBasicType(DbgNode).Verify();
-  else if (isCompositeType())
+
+  // FIXME: Sink this into the various subclass verifies.
+  if (getFilename().empty()) {
+    // Check whether the filename is allowed to be empty.
+    uint16_t Tag = getTag();
+    if (Tag != dwarf::DW_TAG_const_type && Tag != dwarf::DW_TAG_volatile_type &&
+        Tag != dwarf::DW_TAG_pointer_type &&
+        Tag != dwarf::DW_TAG_ptr_to_member_type &&
+        Tag != dwarf::DW_TAG_reference_type &&
+        Tag != dwarf::DW_TAG_rvalue_reference_type &&
+        Tag != dwarf::DW_TAG_restrict_type && Tag != dwarf::DW_TAG_array_type &&
+        Tag != dwarf::DW_TAG_enumeration_type &&
+        Tag != dwarf::DW_TAG_subroutine_type &&
+        Tag != dwarf::DW_TAG_inheritance && Tag != dwarf::DW_TAG_friend &&
+        Tag != dwarf::DW_TAG_structure_type && Tag != dwarf::DW_TAG_member &&
+        Tag != dwarf::DW_TAG_typedef)
+      return false;
+  }
+
+  if (isCompositeType())
     return DICompositeType(DbgNode).Verify();
-  else if (isDerivedType())
+  if (isDerivedType())
     return DIDerivedType(DbgNode).Verify();
-  else
-    return false;
+  return false;
 }
 
-bool DIBasicType::Verify() const { return getRaw(); }
+bool DIBasicType::Verify() const {
+  return dyn_cast_or_null<MDBasicType>(DbgNode);
+}
 
 bool DIDerivedType::Verify() const {
-  auto *N = getRaw();
+  auto *N = dyn_cast_or_null<MDDerivedTypeBase>(DbgNode);
   if (!N)
     return false;
   if (getTag() == dwarf::DW_TAG_ptr_to_member_type) {
@@ -309,13 +315,13 @@ bool DIDerivedType::Verify() const {
 }
 
 bool DICompositeType::Verify() const {
-  auto *N = getRaw();
+  auto *N = dyn_cast_or_null<MDCompositeTypeBase>(DbgNode);
   return N && isTypeRef(N->getBaseType()) && isTypeRef(N->getVTableHolder()) &&
          !(isLValueReference() && isRValueReference());
 }
 
 bool DISubprogram::Verify() const {
-  auto *N = getRaw();
+  auto *N = dyn_cast_or_null<MDSubprogram>(DbgNode);
   if (!N)
     return false;
 
@@ -337,24 +343,17 @@ bool DISubprogram::Verify() const {
   if (auto *F = getFunction()) {
     for (auto &BB : *F) {
       for (auto &I : BB) {
-        DebugLoc DL = I.getDebugLoc();
-        if (DL.isUnknown())
+        MDLocation *DL =
+            cast_or_null<MDLocation>(I.getDebugLoc().getAsMDNode());
+        if (!DL)
           continue;
 
-        MDNode *Scope = nullptr;
-        MDNode *IA = nullptr;
         // walk the inlined-at scopes
-        while ((IA = DL.getInlinedAt()))
-          DL = DebugLoc::getFromDILocation(IA);
-        DL.getScopeAndInlinedAt(Scope, IA);
+        MDScope *Scope = DL->getInlinedAtScope();
         if (!Scope)
           return false;
-        assert(!IA);
-        while (!DIDescriptor(Scope).isSubprogram()) {
-          DILexicalBlockFile D(Scope);
-          Scope = D.isLexicalBlockFile()
-                      ? D.getScope()
-                      : DebugLoc::getFromDILexicalBlock(Scope).getScope();
+        while (!isa<MDSubprogram>(Scope)) {
+          Scope = cast<MDLexicalBlockBase>(Scope)->getScope();
           if (!Scope)
             return false;
         }
@@ -368,7 +367,7 @@ bool DISubprogram::Verify() const {
 }
 
 bool DIGlobalVariable::Verify() const {
-  auto *N = getRaw();
+  auto *N = dyn_cast_or_null<MDGlobalVariable>(DbgNode);
 
   if (!N)
     return false;
@@ -388,7 +387,7 @@ bool DIGlobalVariable::Verify() const {
 }
 
 bool DIVariable::Verify() const {
-  auto *N = getRaw();
+  auto *N = dyn_cast_or_null<MDLocalVariable>(DbgNode);
 
   if (!N)
     return false;
@@ -400,25 +399,37 @@ bool DIVariable::Verify() const {
   return isTypeRef(N->getType());
 }
 
-bool DIExpression::Verify() const {
-  // FIXME: This should return false if it's null!
-  auto *N = getRaw();
-  return !N || N->isValid();
+bool DILocation::Verify() const {
+  return dyn_cast_or_null<MDLocation>(DbgNode);
+}
+bool DINameSpace::Verify() const {
+  return dyn_cast_or_null<MDNamespace>(DbgNode);
+}
+bool DIFile::Verify() const { return dyn_cast_or_null<MDFile>(DbgNode); }
+bool DIEnumerator::Verify() const {
+  return dyn_cast_or_null<MDEnumerator>(DbgNode);
+}
+bool DISubrange::Verify() const {
+  return dyn_cast_or_null<MDSubrange>(DbgNode);
+}
+bool DILexicalBlock::Verify() const {
+  return dyn_cast_or_null<MDLexicalBlock>(DbgNode);
+}
+bool DILexicalBlockFile::Verify() const {
+  return dyn_cast_or_null<MDLexicalBlockFile>(DbgNode);
+}
+bool DITemplateTypeParameter::Verify() const {
+  return dyn_cast_or_null<MDTemplateTypeParameter>(DbgNode);
+}
+bool DITemplateValueParameter::Verify() const {
+  return dyn_cast_or_null<MDTemplateValueParameter>(DbgNode);
+}
+bool DIImportedEntity::Verify() const {
+  return dyn_cast_or_null<MDImportedEntity>(DbgNode);
 }
 
-bool DILocation::Verify() const { return getRaw(); }
-bool DINameSpace::Verify() const { return getRaw(); }
-bool DIFile::Verify() const { return getRaw(); }
-bool DIEnumerator::Verify() const { return getRaw(); }
-bool DISubrange::Verify() const { return getRaw(); }
-bool DILexicalBlock::Verify() const { return getRaw(); }
-bool DILexicalBlockFile::Verify() const { return getRaw(); }
-bool DITemplateTypeParameter::Verify() const { return getRaw(); }
-bool DITemplateValueParameter::Verify() const { return getRaw(); }
-bool DIImportedEntity::Verify() const { return getRaw(); }
-
 void DICompositeType::setArraysHelper(MDNode *Elements, MDNode *TParams) {
-  TypedTrackingMDRef<MDCompositeTypeBase> N(getRaw());
+  TypedTrackingMDRef<MDCompositeTypeBase> N(get());
   if (Elements)
     N->replaceElements(cast<MDTuple>(Elements));
   if (TParams)
@@ -436,7 +447,7 @@ DIScopeRef DIScope::getRef() const {
 }
 
 void DICompositeType::setContainingType(DICompositeType ContainingType) {
-  TypedTrackingMDRef<MDCompositeTypeBase> N(getRaw());
+  TypedTrackingMDRef<MDCompositeTypeBase> N(get());
   N->replaceVTableHolder(ContainingType.getRef());
   DbgNode = N;
 }
@@ -451,7 +462,7 @@ bool DIVariable::isInlinedFnArgument(const Function *CurFn) {
 }
 
 Function *DISubprogram::getFunction() const {
-  if (auto *N = getRaw())
+  if (auto *N = get())
     if (auto *C = dyn_cast_or_null<ConstantAsMetadata>(N->getFunction()))
       return dyn_cast<Function>(C->getValue());
   return nullptr;
@@ -508,26 +519,25 @@ StringRef DIScope::getName() const {
 }
 
 StringRef DIScope::getFilename() const {
-  if (auto *N = getRaw())
+  if (auto *N = get())
     return ::getStringField(dyn_cast_or_null<MDNode>(N->getFile()), 0);
   return "";
 }
 
 StringRef DIScope::getDirectory() const {
-  if (auto *N = getRaw())
+  if (auto *N = get())
     return ::getStringField(dyn_cast_or_null<MDNode>(N->getFile()), 1);
   return "";
 }
 
 void DICompileUnit::replaceSubprograms(DIArray Subprograms) {
   assert(Verify() && "Expected compile unit");
-  getRaw()->replaceSubprograms(cast_or_null<MDTuple>(Subprograms.get()));
+  get()->replaceSubprograms(cast_or_null<MDTuple>(Subprograms.get()));
 }
 
 void DICompileUnit::replaceGlobalVariables(DIArray GlobalVariables) {
   assert(Verify() && "Expected compile unit");
-  getRaw()->replaceGlobalVariables(
-      cast_or_null<MDTuple>(GlobalVariables.get()));
+  get()->replaceGlobalVariables(cast_or_null<MDTuple>(GlobalVariables.get()));
 }
 
 DILocation DILocation::copyWithNewScope(LLVMContext &Ctx,
@@ -678,6 +688,8 @@ void DebugInfoFinder::processModule(const Module &M) {
       DIArray Imports = CU.getImportedEntities();
       for (unsigned i = 0, e = Imports.getNumElements(); i != e; ++i) {
         DIImportedEntity Import = DIImportedEntity(Imports.getElement(i));
+        if (!Import)
+          continue;
         DIDescriptor Entity = Import.getEntity().resolve(TypeIdentifierMap);
         if (Entity.isType())
           processType(DIType(Entity));
@@ -877,21 +889,24 @@ void DIDescriptor::print(raw_ostream &OS) const {
 
 static void printDebugLoc(DebugLoc DL, raw_ostream &CommentOS,
                           const LLVMContext &Ctx) {
-  if (!DL.isUnknown()) { // Print source line info.
-    DIScope Scope(DL.getScope(Ctx));
-    assert(Scope.isScope() && "Scope of a DebugLoc should be a DIScope.");
-    // Omit the directory, because it's likely to be long and uninteresting.
-    CommentOS << Scope.getFilename();
-    CommentOS << ':' << DL.getLine();
-    if (DL.getCol() != 0)
-      CommentOS << ':' << DL.getCol();
-    DebugLoc InlinedAtDL = DebugLoc::getFromDILocation(DL.getInlinedAt(Ctx));
-    if (!InlinedAtDL.isUnknown()) {
-      CommentOS << " @[ ";
-      printDebugLoc(InlinedAtDL, CommentOS, Ctx);
-      CommentOS << " ]";
-    }
-  }
+  if (DL.isUnknown())
+    return;
+
+  DIScope Scope(DL.getScope(Ctx));
+  assert(Scope.isScope() && "Scope of a DebugLoc should be a DIScope.");
+  // Omit the directory, because it's likely to be long and uninteresting.
+  CommentOS << Scope.getFilename();
+  CommentOS << ':' << DL.getLine();
+  if (DL.getCol() != 0)
+    CommentOS << ':' << DL.getCol();
+
+  DebugLoc InlinedAtDL = DebugLoc::getFromDILocation(DL.getInlinedAt(Ctx));
+  if (InlinedAtDL.isUnknown())
+    return;
+
+  CommentOS << " @[ ";
+  printDebugLoc(InlinedAtDL, CommentOS, Ctx);
+  CommentOS << " ]";
 }
 
 void DIVariable::printExtendedName(raw_ostream &OS) const {

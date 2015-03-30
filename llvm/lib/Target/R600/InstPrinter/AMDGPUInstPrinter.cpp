@@ -20,7 +20,7 @@
 using namespace llvm;
 
 void AMDGPUInstPrinter::printInst(const MCInst *MI, raw_ostream &OS,
-                             StringRef Annot) {
+                                  StringRef Annot, const MCSubtargetInfo &STI) {
   OS.flush();
   printInstruction(MI, OS);
 
@@ -212,6 +212,16 @@ void AMDGPUInstPrinter::printRegOperand(unsigned reg, raw_ostream &O) {
   }
 
   O << Type << '[' << RegIdx << ':' << (RegIdx + NumRegs - 1) << ']';
+}
+
+void AMDGPUInstPrinter::printVOPDst(const MCInst *MI, unsigned OpNo,
+                                    raw_ostream &O) {
+  if (MII.get(MI->getOpcode()).TSFlags & SIInstrFlags::VOP3)
+    O << "_e64 ";
+  else
+    O << "_e32 ";
+
+  printOperand(MI, OpNo, O);
 }
 
 void AMDGPUInstPrinter::printImmediate32(uint32_t Imm, raw_ostream &O) {

@@ -103,12 +103,12 @@ static unsigned getGVAlignmentLog2(const GlobalValue *GV, const DataLayout &DL,
 AsmPrinter::AsmPrinter(TargetMachine &tm, std::unique_ptr<MCStreamer> Streamer)
     : MachineFunctionPass(ID), TM(tm), MAI(tm.getMCAsmInfo()),
       OutContext(Streamer->getContext()), OutStreamer(*Streamer.release()),
-      LastMI(nullptr), LastFn(0), Counter(~0U), SetCounter(0) {
+      LastMI(nullptr), LastFn(0), Counter(~0U) {
   DD = nullptr;
   MMI = nullptr;
   LI = nullptr;
   MF = nullptr;
-  CurrentFnSym = CurrentFnSymForSize = nullptr;
+  CurExceptionSym = CurrentFnSym = CurrentFnSymForSize = nullptr;
   CurrentFnBegin = nullptr;
   CurrentFnEnd = nullptr;
   GCMetadataPrinters = nullptr;
@@ -221,9 +221,13 @@ bool AsmPrinter::doInitialization(Module &M) {
 
   // Emit module-level inline asm if it exists.
   if (!M.getModuleInlineAsm().empty()) {
+    // We're at the module level. Construct MCSubtarget from the default CPU
+    // and target triple.
+    std::unique_ptr<MCSubtargetInfo> STI(TM.getTarget().createMCSubtargetInfo(
+        TM.getTargetTriple(), TM.getTargetCPU(), TM.getTargetFeatureString()));
     OutStreamer.AddComment("Start of file scope inline assembly");
     OutStreamer.AddBlankLine();
-    EmitInlineAsm(M.getModuleInlineAsm()+"\n");
+    EmitInlineAsm(M.getModuleInlineAsm()+"\n", *STI);
     OutStreamer.AddComment("End of file scope inline assembly");
     OutStreamer.AddBlankLine();
   }
@@ -527,7 +531,8 @@ void AsmPrinter::EmitFunctionHeader() {
   EmitVisibility(CurrentFnSym, F->getVisibility());
 
   EmitLinkage(F, CurrentFnSym);
-  EmitAlignment(MF->getAlignment(), F);
+  if (MAI->hasFunctionAlignment())
+    EmitAlignment(MF->getAlignment(), F);
 
   if (MAI->hasDotTypeDotSizeDirective())
     OutStreamer.EmitSymbolAttribute(CurrentFnSym, MCSA_ELF_TypeFunction);
@@ -777,6 +782,8 @@ void AsmPrinter::emitFrameAlloc(const MachineInstr &MI) {
 /// EmitFunctionBody - This method emits the body and trailer for a
 /// function.
 void AsmPrinter::EmitFunctionBody() {
+  EmitFunctionHeader();
+
   // Emit target-specific gunk before the function body.
   EmitFunctionBodyStart();
 
@@ -883,7 +890,7 @@ void AsmPrinter::EmitFunctionBody() {
   if (!MMI->getLandingPads().empty() || MMI->hasDebugInfo() ||
       MAI->hasDotTypeDotSizeDirective()) {
     // Create a symbol for the end of function.
-    CurrentFnEnd = createTempSymbol("func_end", getFunctionNumber());
+    CurrentFnEnd = createTempSymbol("func_end");
     OutStreamer.EmitLabel(CurrentFnEnd);
   }
 
@@ -950,7 +957,7 @@ static bool isGOTEquivalentCandidate(const GlobalVariable *GV,
   // To be a got equivalent, at least one of its users need to be a constant
   // expression used by another global variable.
   for (auto *U : GV->users())
-    NumGOTEquivUsers += getNumGlobalVariableUses(cast<Constant>(U));
+    NumGOTEquivUsers += getNumGlobalVariableUses(dyn_cast<Constant>(U));
 
   return NumGOTEquivUsers > 0;
 }
@@ -997,6 +1004,11 @@ void AsmPrinter::emitGlobalGOTEquivs() {
 }
 
 bool AsmPrinter::doFinalization(Module &M) {
+  // Set the MachineFunction to nullptr so that we can catch attempted
+  // accesses to MF specific features at the module level and so that
+  // we can conditionalize accesses based on whether or not it is nullptr.
+  MF = nullptr;
+
   // Gather all GOT equivalent globals in the module. We really need two
   // passes over the globals: one to compute and another to avoid its emission
   // in EmitGlobalVariable, otherwise we would not be able to handle cases
@@ -1124,16 +1136,23 @@ bool AsmPrinter::doFinalization(Module &M) {
   return false;
 }
 
+MCSymbol *AsmPrinter::getCurExceptionSym() {
+  if (!CurExceptionSym)
+    CurExceptionSym = createTempSymbol("exception");
+  return CurExceptionSym;
+}
+
 void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
   this->MF = &MF;
   // Get the function symbol.
   CurrentFnSym = getSymbol(MF.getFunction());
   CurrentFnSymForSize = CurrentFnSym;
   CurrentFnBegin = nullptr;
+  CurExceptionSym = nullptr;
   bool NeedsLocalForSize = MAI->needsLocalForSize();
   if (!MMI->getLandingPads().empty() || MMI->hasDebugInfo() ||
       NeedsLocalForSize) {
-    CurrentFnBegin = createTempSymbol("func_begin", getFunctionNumber());
+    CurrentFnBegin = createTempSymbol("func_begin");
     if (NeedsLocalForSize)
       CurrentFnSymForSize = CurrentFnBegin;
   }
@@ -1563,7 +1582,7 @@ void AsmPrinter::EmitLabelDifference(const MCSymbol *Hi, const MCSymbol *Lo,
   }
 
   // Otherwise, emit with .set (aka assignment).
-  MCSymbol *SetLabel = GetTempSymbol("set", SetCounter++);
+  MCSymbol *SetLabel = createTempSymbol("set");
   OutStreamer.EmitAssignment(SetLabel, Diff);
   OutStreamer.EmitSymbolValue(SetLabel, Size);
 }
@@ -2238,24 +2257,8 @@ void AsmPrinter::printOffset(int64_t Offset, raw_ostream &OS) const {
 // Symbol Lowering Routines.
 //===----------------------------------------------------------------------===//
 
-/// GetTempSymbol - Return the MCSymbol corresponding to the assembler
-/// temporary label with the specified stem and unique ID.
-MCSymbol *AsmPrinter::GetTempSymbol(const Twine &Name, unsigned ID) const {
-  const DataLayout *DL = TM.getDataLayout();
-  return OutContext.GetOrCreateSymbol(Twine(DL->getPrivateGlobalPrefix()) +
-                                      Name + Twine(ID));
-}
-
-/// GetTempSymbol - Return an assembler temporary label with the specified
-/// stem.
-MCSymbol *AsmPrinter::GetTempSymbol(const Twine &Name) const {
-  const DataLayout *DL = TM.getDataLayout();
-  return OutContext.GetOrCreateSymbol(Twine(DL->getPrivateGlobalPrefix())+
-                                      Name);
-}
-
-MCSymbol *AsmPrinter::createTempSymbol(const Twine &Name, unsigned ID) const {
-  return OutContext.createTempSymbol(Name + Twine(ID));
+MCSymbol *AsmPrinter::createTempSymbol(const Twine &Name) const {
+  return OutContext.createTempSymbol(Name, true);
 }
 
 MCSymbol *AsmPrinter::GetBlockAddressSymbol(const BlockAddress *BA) const {
@@ -2299,7 +2302,7 @@ MCSymbol *AsmPrinter::getSymbolWithGlobalValueBase(const GlobalValue *GV,
 MCSymbol *AsmPrinter::GetExternalSymbolSymbol(StringRef Sym) const {
   SmallString<60> NameStr;
   Mang->getNameWithPrefix(NameStr, Sym);
-  return OutContext.GetOrCreateSymbol(NameStr.str());
+  return OutContext.GetOrCreateSymbol(NameStr);
 }
 
 

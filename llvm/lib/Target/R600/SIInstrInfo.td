@@ -287,6 +287,8 @@ def ClampMod : Operand <i1> {
 
 } // End OperandType = "OPERAND_IMMEDIATE"
 
+def VOPDstS64 : VOPDstOperand <SReg_64>;
+
 //===----------------------------------------------------------------------===//
 // Complex patterns
 //===----------------------------------------------------------------------===//
@@ -318,6 +320,7 @@ def SIOperand {
 
 def SRCMODS {
   int NONE = 0;
+  int NEG = 1;
 }
 
 def DSTCLAMP {
@@ -519,7 +522,7 @@ multiclass SOP2_64_32 <sop2 op, string opName, list<dag> pattern> : SOP2_m <
 class SOPC_Helper <bits<7> op, RegisterOperand rc, ValueType vt,
                     string opName, PatLeaf cond> : SOPC <
   op, (outs SCCReg:$dst), (ins rc:$src0, rc:$src1),
-  opName#" $dst, $src0, $src1", []>;
+  opName#" $src0, $src1", []>;
 
 class SOPC_32<bits<7> op, string opName, PatLeaf cond = COND_NULL>
   : SOPC_Helper<op, SSrc_32, i32, opName, cond>;
@@ -640,9 +643,9 @@ class getNumSrcArgs<ValueType Src1, ValueType Src2> {
 // Returns the register class to use for the destination of VOP[123C]
 // instructions for the given VT.
 class getVALUDstForVT<ValueType VT> {
-  RegisterClass ret = !if(!eq(VT.Size, 32), VGPR_32,
-                          !if(!eq(VT.Size, 64), VReg_64,
-                            SReg_64)); // else VT == i1
+  RegisterOperand ret = !if(!eq(VT.Size, 32), VOPDstOperand<VGPR_32>,
+                          !if(!eq(VT.Size, 64), VOPDstOperand<VReg_64>,
+                            VOPDstOperand<SReg_64>)); // else VT == i1
 }
 
 // Returns the register class to use for source 0 of VOP[12C]
@@ -720,7 +723,7 @@ class getIns64 <RegisterOperand Src0RC, RegisterOperand Src1RC,
 class getAsm32 <int NumSrcArgs> {
   string src1 = ", $src1";
   string src2 = ", $src2";
-  string ret = " $dst, $src0"#
+  string ret = "$dst, $src0"#
                !if(!eq(NumSrcArgs, 1), "", src1)#
                !if(!eq(NumSrcArgs, 3), src2, "");
 }
@@ -736,7 +739,7 @@ class getAsm64 <int NumSrcArgs, bit HasModifiers> {
   string ret =
   !if(!eq(HasModifiers, 0),
       getAsm32<NumSrcArgs>.ret,
-      " $dst, "#src0#src1#src2#"$clamp"#"$omod");
+      "$dst, "#src0#src1#src2#"$clamp"#"$omod");
 }
 
 
@@ -748,7 +751,7 @@ class VOPProfile <list<ValueType> _ArgVT> {
   field ValueType Src0VT = ArgVT[1];
   field ValueType Src1VT = ArgVT[2];
   field ValueType Src2VT = ArgVT[3];
-  field RegisterClass DstRC = getVALUDstForVT<DstVT>.ret;
+  field RegisterOperand DstRC = getVALUDstForVT<DstVT>.ret;
   field RegisterOperand Src0RC32 = getVOPSrc0ForVT<Src0VT>.ret;
   field RegisterClass Src1RC32 = getVOPSrc1ForVT<Src1VT>.ret;
   field RegisterOperand Src0RC64 = getVOP3SrcForVT<Src0VT>.ret;
@@ -764,7 +767,7 @@ class VOPProfile <list<ValueType> _ArgVT> {
   field dag Ins64 = getIns64<Src0RC64, Src1RC64, Src2RC64, NumSrcArgs,
                              HasModifiers>.ret;
 
-  field string Asm32 = "_e32"#getAsm32<NumSrcArgs>.ret;
+  field string Asm32 = getAsm32<NumSrcArgs>.ret;
   field string Asm64 = getAsm64<NumSrcArgs, HasModifiers>.ret;
 }
 
@@ -791,12 +794,12 @@ def VOP_I32_I32_I32_VCC : VOPProfile <[i32, i32, i32, untyped]> {
 
 def VOP_I1_F32_I32 : VOPProfile <[i1, f32, i32, untyped]> {
   let Ins64 = (ins InputModsNoDefault:$src0_modifiers, Src0RC64:$src0, Src1RC64:$src1);
-  let Asm64 = " $dst, $src0_modifiers, $src1";
+  let Asm64 = "$dst, $src0_modifiers, $src1";
 }
 
 def VOP_I1_F64_I32 : VOPProfile <[i1, f64, i32, untyped]> {
   let Ins64 = (ins InputModsNoDefault:$src0_modifiers, Src0RC64:$src0, Src1RC64:$src1);
-  let Asm64 = " $dst, $src0_modifiers, $src1";
+  let Asm64 = "$dst, $src0_modifiers, $src1";
 }
 
 def VOP_I64_I64_I32 : VOPProfile <[i64, i64, i32, untyped]>;
@@ -805,13 +808,13 @@ def VOP_I64_I64_I64 : VOPProfile <[i64, i64, i64, untyped]>;
 def VOP_CNDMASK : VOPProfile <[i32, i32, i32, untyped]> {
   let Ins32 = (ins Src0RC32:$src0, Src1RC32:$src1, VCCReg:$src2);
   let Ins64 = (ins Src0RC64:$src0, Src1RC64:$src1, SSrc_64:$src2);
-  let Asm64 = " $dst, $src0, $src1, $src2";
+  let Asm64 = "$dst, $src0, $src1, $src2";
 }
 
 def VOP_F32_F32_F32_F32 : VOPProfile <[f32, f32, f32, f32]>;
 def VOP_MADK : VOPProfile <[f32, f32, f32, f32]> {
   field dag Ins = (ins VCSrc_32:$src0, VGPR_32:$vsrc1, u32imm:$src2);
-  field string Asm = " $dst, $src0, $vsrc1, $src2";
+  field string Asm = "$dst, $src0, $vsrc1, $src2";
 }
 def VOP_F64_F64_F64_F64 : VOPProfile <[f64, f64, f64, f64]>;
 def VOP_I32_I32_I32_I32 : VOPProfile <[i32, i32, i32, i32]>;
@@ -843,23 +846,28 @@ class VOP1_Pseudo <dag outs, dag ins, list<dag> pattern, string opName> :
   field bits<9> src0;
 }
 
+class VOP1_Real_si <string opName, vop1 op, dag outs, dag ins, string asm> :
+  VOP1<op.SI, outs, ins, asm, []>,
+  SIMCInstr <opName#"_e32", SISubtarget.SI>;
+
+class VOP1_Real_vi <string opName, vop1 op, dag outs, dag ins, string asm> :
+  VOP1<op.VI, outs, ins, asm, []>,
+  SIMCInstr <opName#"_e32", SISubtarget.VI>;
+
 multiclass VOP1_m <vop1 op, dag outs, dag ins, string asm, list<dag> pattern,
                    string opName> {
   def "" : VOP1_Pseudo <outs, ins, pattern, opName>;
 
-  def _si : VOP1<op.SI, outs, ins, asm, []>,
-            SIMCInstr <opName#"_e32", SISubtarget.SI>;
-  def _vi : VOP1<op.VI, outs, ins, asm, []>,
-            SIMCInstr <opName#"_e32", SISubtarget.VI>;
+  def _si : VOP1_Real_si <opName, op, outs, ins, asm>;
+
+  def _vi : VOP1_Real_vi <opName, op, outs, ins, asm>;
 }
 
 multiclass VOP1SI_m <vop1 op, dag outs, dag ins, string asm, list<dag> pattern,
                    string opName> {
   def "" : VOP1_Pseudo <outs, ins, pattern, opName>;
 
-  def _si : VOP1<op.SI, outs, ins, asm, []>,
-            SIMCInstr <opName#"_e32", SISubtarget.SI>;
-  // No VI instruction. This class is for SI only.
+  def _si : VOP1_Real_si <opName, op, outs, ins, asm>;
 }
 
 class VOP2_Pseudo <dag outs, dag ins, list<dag> pattern, string opName> :
@@ -870,13 +878,20 @@ class VOP2_Pseudo <dag outs, dag ins, list<dag> pattern, string opName> :
   let isCodeGenOnly = 1;
 }
 
+class VOP2_Real_si <string opName, vop2 op, dag outs, dag ins, string asm> :
+  VOP2 <op.SI, outs, ins, opName#asm, []>,
+  SIMCInstr <opName#"_e32", SISubtarget.SI>;
+
+class VOP2_Real_vi <string opName, vop2 op, dag outs, dag ins, string asm> :
+  VOP2 <op.VI, outs, ins, opName#asm, []>,
+  SIMCInstr <opName#"_e32", SISubtarget.VI>;
+
 multiclass VOP2SI_m <vop2 op, dag outs, dag ins, string asm, list<dag> pattern,
                      string opName, string revOp> {
   def "" : VOP2_Pseudo <outs, ins, pattern, opName>,
            VOP2_REV<revOp#"_e32", !eq(revOp, opName)>;
 
-  def _si : VOP2 <op.SI, outs, ins, opName#asm, []>,
-            SIMCInstr <opName#"_e32", SISubtarget.SI>;
+  def _si : VOP2_Real_si <opName, op, outs, ins, asm>;
 }
 
 multiclass VOP2_m <vop2 op, dag outs, dag ins, string asm, list<dag> pattern,
@@ -884,10 +899,10 @@ multiclass VOP2_m <vop2 op, dag outs, dag ins, string asm, list<dag> pattern,
   def "" : VOP2_Pseudo <outs, ins, pattern, opName>,
            VOP2_REV<revOp#"_e32", !eq(revOp, opName)>;
 
-  def _si : VOP2 <op.SI, outs, ins, opName#asm, []>,
-            SIMCInstr <opName#"_e32", SISubtarget.SI>;
-  def _vi : VOP2 <op.VI, outs, ins, opName#asm, []>,
-            SIMCInstr <opName#"_e32", SISubtarget.VI>;
+  def _si : VOP2_Real_si <opName, op, outs, ins, asm>;
+
+  def _vi : VOP2_Real_vi <opName, op, outs, ins, asm>;
+
 }
 
 class VOP3DisableFields <bit HasSrc1, bit HasSrc2, bit HasModifiers> {
@@ -1055,9 +1070,10 @@ multiclass VOP3b_3_m <vop op, dag outs, dag ins, string asm,
 
 multiclass VOP3_C_m <vop op, dag outs, dag ins, string asm,
                      list<dag> pattern, string opName,
-                     bit HasMods, bit defExec> {
+                     bit HasMods, bit defExec, string revOp> {
 
-  def "" : VOP3_Pseudo <outs, ins, pattern, opName>;
+  def "" : VOP3_Pseudo <outs, ins, pattern, opName>,
+           VOP2_REV<revOp#"_e64", !eq(revOp, opName)>;
 
   def _si : VOP3_Real_si <op.SI3, outs, ins, asm, opName>,
             VOP3DisableFields<1, 0, HasMods> {
@@ -1094,7 +1110,7 @@ multiclass VOP1_Helper <vop1 op, string opName, dag outs,
 
   defm _e32 : VOP1_m <op, outs, ins32, opName#asm32, pat32, opName>;
 
-  defm _e64 : VOP3_1_m <op, outs, ins64, opName#"_e64"#asm64, pat64, opName, HasMods>;
+  defm _e64 : VOP3_1_m <op, outs, ins64, opName#asm64, pat64, opName, HasMods>;
 }
 
 multiclass VOP1Inst <vop1 op, string opName, VOPProfile P,
@@ -1129,7 +1145,7 @@ multiclass VOP2_Helper <vop2 op, string opName, dag outs,
   defm _e32 : VOP2_m <op, outs, ins32, asm32, pat32, opName, revOp>;
 
   defm _e64 : VOP3_2_m <op,
-    outs, ins64, opName#"_e64"#asm64, pat64, opName, revOp, HasMods
+    outs, ins64, opName#asm64, pat64, opName, revOp, HasMods
   >;
 }
 
@@ -1153,7 +1169,7 @@ multiclass VOP2InstSI <vop2 op, string opName, VOPProfile P,
                        string revOp = opName> {
   defm _e32 : VOP2SI_m <op, P.Outs, P.Ins32, P.Asm32, [], opName, revOp>;
 
-  defm _e64 : VOP3SI_2_m <op, P.Outs, P.Ins64, opName#"_e64"#P.Asm64,
+  defm _e64 : VOP3SI_2_m <op, P.Outs, P.Ins64, opName#P.Asm64,
     !if(P.HasModifiers,
         [(set P.DstVT:$dst,
              (node (P.Src0VT (VOP3Mods0 P.Src0VT:$src0, i32:$src0_modifiers,
@@ -1171,7 +1187,7 @@ multiclass VOP2b_Helper <vop2 op, string opName, dag outs,
   defm _e32 : VOP2_m <op, outs, ins32, asm32, pat32, opName, revOp>;
 
   defm _e64 : VOP3b_2_m <op,
-    outs, ins64, opName#"_e64"#asm64, pat64, opName, revOp, HasMods
+    outs, ins64, opName#asm64, pat64, opName, revOp, HasMods
   >;
 }
 
@@ -1197,7 +1213,7 @@ multiclass VOP2_VI3_Helper <vop23 op, string opName, dag outs,
                             string revOp, bit HasMods> {
   defm _e32 : VOP2SI_m <op, outs, ins32, asm32, pat32, opName, revOp>;
 
-  defm _e64 : VOP3_2_m <op, outs, ins64, opName#"_e64"#asm64, pat64, opName,
+  defm _e64 : VOP3_2_m <op, outs, ins64, opName#asm64, pat64, opName,
                         revOp, HasMods>;
 }
 
@@ -1243,28 +1259,30 @@ class VOPC_Pseudo <dag outs, dag ins, list<dag> pattern, string opName> :
 }
 
 multiclass VOPC_m <vopc op, dag outs, dag ins, string asm, list<dag> pattern,
-                   string opName, bit DefExec> {
+                   string opName, bit DefExec, string revOpName = ""> {
   def "" : VOPC_Pseudo <outs, ins, pattern, opName>;
 
   def _si : VOPC<op.SI, ins, asm, []>,
             SIMCInstr <opName#"_e32", SISubtarget.SI> {
     let Defs = !if(DefExec, [EXEC], []);
+    let hasSideEffects = DefExec;
   }
 
   def _vi : VOPC<op.VI, ins, asm, []>,
             SIMCInstr <opName#"_e32", SISubtarget.VI> {
     let Defs = !if(DefExec, [EXEC], []);
+    let hasSideEffects = DefExec;
   }
 }
 
 multiclass VOPC_Helper <vopc op, string opName,
                         dag ins32, string asm32, list<dag> pat32,
                         dag out64, dag ins64, string asm64, list<dag> pat64,
-                        bit HasMods, bit DefExec> {
+                        bit HasMods, bit DefExec, string revOp> {
   defm _e32 : VOPC_m <op, (outs), ins32, opName#asm32, pat32, opName, DefExec>;
 
-  defm _e64 : VOP3_C_m <op, out64, ins64, opName#"_e64"#asm64, pat64,
-                        opName, HasMods, DefExec>;
+  defm _e64 : VOP3_C_m <op, out64, ins64, opName#asm64, pat64,
+                        opName, HasMods, DefExec, revOp>;
 }
 
 // Special case for class instructions which only have modifiers on
@@ -1272,20 +1290,21 @@ multiclass VOPC_Helper <vopc op, string opName,
 multiclass VOPC_Class_Helper <vopc op, string opName,
                              dag ins32, string asm32, list<dag> pat32,
                              dag out64, dag ins64, string asm64, list<dag> pat64,
-                             bit HasMods, bit DefExec> {
+                             bit HasMods, bit DefExec, string revOp> {
   defm _e32 : VOPC_m <op, (outs), ins32, opName#asm32, pat32, opName, DefExec>;
 
-  defm _e64 : VOP3_C_m <op, out64, ins64, opName#"_e64"#asm64, pat64,
-                        opName, HasMods, DefExec>,
+  defm _e64 : VOP3_C_m <op, out64, ins64, opName#asm64, pat64,
+                        opName, HasMods, DefExec, revOp>,
                         VOP3DisableModFields<1, 0, 0>;
 }
 
 multiclass VOPCInst <vopc op, string opName,
                      VOPProfile P, PatLeaf cond = COND_NULL,
+                     string revOp = opName,
                      bit DefExec = 0> : VOPC_Helper <
   op, opName,
   P.Ins32, P.Asm32, [],
-  (outs SReg_64:$dst), P.Ins64, P.Asm64,
+  (outs VOPDstS64:$dst), P.Ins64, P.Asm64,
   !if(P.HasModifiers,
       [(set i1:$dst,
           (setcc (P.Src0VT (VOP3Mods0 P.Src0VT:$src0, i32:$src0_modifiers,
@@ -1293,54 +1312,55 @@ multiclass VOPCInst <vopc op, string opName,
                  (P.Src1VT (VOP3Mods P.Src1VT:$src1, i32:$src1_modifiers)),
                  cond))],
       [(set i1:$dst, (setcc P.Src0VT:$src0, P.Src1VT:$src1, cond))]),
-  P.HasModifiers, DefExec
+  P.HasModifiers, DefExec, revOp
 >;
 
 multiclass VOPCClassInst <vopc op, string opName, VOPProfile P,
                      bit DefExec = 0> : VOPC_Class_Helper <
   op, opName,
   P.Ins32, P.Asm32, [],
-  (outs SReg_64:$dst), P.Ins64, P.Asm64,
+  (outs VOPDstS64:$dst), P.Ins64, P.Asm64,
   !if(P.HasModifiers,
       [(set i1:$dst,
           (AMDGPUfp_class (P.Src0VT (VOP3Mods0Clamp0OMod P.Src0VT:$src0, i32:$src0_modifiers)), P.Src1VT:$src1))],
       [(set i1:$dst, (AMDGPUfp_class P.Src0VT:$src0, P.Src1VT:$src1))]),
-  P.HasModifiers, DefExec
+  P.HasModifiers, DefExec, opName
 >;
 
 
-multiclass VOPC_F32 <vopc op, string opName, PatLeaf cond = COND_NULL> :
-  VOPCInst <op, opName, VOP_F32_F32_F32, cond>;
+multiclass VOPC_F32 <vopc op, string opName, PatLeaf cond = COND_NULL, string revOp = opName> :
+  VOPCInst <op, opName, VOP_F32_F32_F32, cond, revOp>;
 
-multiclass VOPC_F64 <vopc op, string opName, PatLeaf cond = COND_NULL> :
-  VOPCInst <op, opName, VOP_F64_F64_F64, cond>;
+multiclass VOPC_F64 <vopc op, string opName, PatLeaf cond = COND_NULL, string revOp = opName> :
+  VOPCInst <op, opName, VOP_F64_F64_F64, cond, revOp>;
 
-multiclass VOPC_I32 <vopc op, string opName, PatLeaf cond = COND_NULL> :
-  VOPCInst <op, opName, VOP_I32_I32_I32, cond>;
+multiclass VOPC_I32 <vopc op, string opName, PatLeaf cond = COND_NULL, string revOp = opName> :
+  VOPCInst <op, opName, VOP_I32_I32_I32, cond, revOp>;
 
-multiclass VOPC_I64 <vopc op, string opName, PatLeaf cond = COND_NULL> :
-  VOPCInst <op, opName, VOP_I64_I64_I64, cond>;
+multiclass VOPC_I64 <vopc op, string opName, PatLeaf cond = COND_NULL, string revOp = opName> :
+  VOPCInst <op, opName, VOP_I64_I64_I64, cond, revOp>;
 
 
 multiclass VOPCX <vopc op, string opName, VOPProfile P,
-                  PatLeaf cond = COND_NULL>
-  : VOPCInst <op, opName, P, cond, 1>;
+                  PatLeaf cond = COND_NULL,
+                  string revOp = "">
+  : VOPCInst <op, opName, P, cond, revOp, 1>;
 
-multiclass VOPCX_F32 <vopc op, string opName, PatLeaf cond = COND_NULL> :
-  VOPCX <op, opName, VOP_F32_F32_F32, cond>;
+multiclass VOPCX_F32 <vopc op, string opName, string revOp = opName> :
+  VOPCX <op, opName, VOP_F32_F32_F32, COND_NULL, revOp>;
 
-multiclass VOPCX_F64 <vopc op, string opName, PatLeaf cond = COND_NULL> :
-  VOPCX <op, opName, VOP_F64_F64_F64, cond>;
+multiclass VOPCX_F64 <vopc op, string opName, string revOp = opName> :
+  VOPCX <op, opName, VOP_F64_F64_F64, COND_NULL, revOp>;
 
-multiclass VOPCX_I32 <vopc op, string opName, PatLeaf cond = COND_NULL> :
-  VOPCX <op, opName, VOP_I32_I32_I32, cond>;
+multiclass VOPCX_I32 <vopc op, string opName, string revOp = opName> :
+  VOPCX <op, opName, VOP_I32_I32_I32, COND_NULL, revOp>;
 
-multiclass VOPCX_I64 <vopc op, string opName, PatLeaf cond = COND_NULL> :
-  VOPCX <op, opName, VOP_I64_I64_I64, cond>;
+multiclass VOPCX_I64 <vopc op, string opName, string revOp = opName> :
+  VOPCX <op, opName, VOP_I64_I64_I64, COND_NULL, revOp>;
 
 multiclass VOP3_Helper <vop3 op, string opName, dag outs, dag ins, string asm,
                         list<dag> pat, int NumSrcArgs, bit HasMods> : VOP3_m <
-    op, outs, ins, opName#asm, pat, opName, NumSrcArgs, HasMods
+    op, outs, ins, opName#" "#asm, pat, opName, NumSrcArgs, HasMods
 >;
 
 multiclass VOPC_CLASS_F32 <vopc op, string opName> :
@@ -1357,7 +1377,7 @@ multiclass VOPCX_CLASS_F64 <vopc op, string opName> :
 
 multiclass VOP3Inst <vop3 op, string opName, VOPProfile P,
                      SDPatternOperator node = null_frag> : VOP3_Helper <
-  op, opName, P.Outs, P.Ins64, P.Asm64,
+  op, opName, (outs P.DstRC.RegClass:$dst), P.Ins64, P.Asm64,
   !if(!eq(P.NumSrcArgs, 3),
     !if(P.HasModifiers,
         [(set P.DstVT:$dst,
@@ -1389,7 +1409,7 @@ multiclass VOP3_VCC_Inst <vop3 op, string opName,
                           VOPProfile P,
                           SDPatternOperator node = null_frag> : VOP3_Helper <
   op, opName,
-  P.Outs,
+  (outs P.DstRC.RegClass:$dst),
   (ins InputModsNoDefault:$src0_modifiers, P.Src0RC64:$src0,
        InputModsNoDefault:$src1_modifiers, P.Src1RC64:$src1,
        InputModsNoDefault:$src2_modifiers, P.Src2RC64:$src2,
@@ -2195,15 +2215,6 @@ def getVOPe32 : InstrMapping {
   let ValueCols = [["4"]];
 }
 
-// Maps an original opcode to its commuted version
-def getCommuteRev : InstrMapping {
-  let FilterClass = "VOP2_REV";
-  let RowFields = ["RevOp"];
-  let ColFields = ["IsOrig"];
-  let KeyCol = ["1"];
-  let ValueCols = [["0"]];
-}
-
 def getMaskedMIMGOp : InstrMapping {
   let FilterClass = "MIMG_Mask";
   let RowFields = ["Op"];
@@ -2220,6 +2231,33 @@ def getCommuteOrig : InstrMapping {
   let KeyCol = ["0"];
   let ValueCols = [["1"]];
 }
+
+// Maps an original opcode to its commuted version
+def getCommuteRev : InstrMapping {
+  let FilterClass = "VOP2_REV";
+  let RowFields = ["RevOp"];
+  let ColFields = ["IsOrig"];
+  let KeyCol = ["1"];
+  let ValueCols = [["0"]];
+}
+
+def getCommuteCmpOrig : InstrMapping {
+  let FilterClass = "VOP2_REV";
+  let RowFields = ["RevOp"];
+  let ColFields = ["IsOrig"];
+  let KeyCol = ["0"];
+  let ValueCols = [["1"]];
+}
+
+// Maps an original opcode to its commuted version
+def getCommuteCmpRev : InstrMapping {
+  let FilterClass = "VOP2_REV";
+  let RowFields = ["RevOp"];
+  let ColFields = ["IsOrig"];
+  let KeyCol = ["1"];
+  let ValueCols = [["0"]];
+}
+
 
 def getMCOpcodeGen : InstrMapping {
   let FilterClass = "SIMCInstr";

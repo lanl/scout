@@ -976,6 +976,15 @@ public:
     return false;
   }
 
+  /// Return true if the pointer arguments to CI should be aligned by aligning
+  /// the object whose address is being passed. If so then MinSize is set to the
+  /// minimum size the object must be to be aligned and PrefAlign is set to the
+  /// preferred alignment.
+  virtual bool shouldAlignPointerArgs(CallInst * /*CI*/, unsigned & /*MinSize*/,
+                                      unsigned & /*PrefAlign*/) const {
+    return false;
+  }
+
   //===--------------------------------------------------------------------===//
   /// \name Helpers for TargetTransformInfo implementations
   /// @{
@@ -1070,6 +1079,11 @@ public:
   virtual bool shouldExpandAtomicStoreInIR(StoreInst *SI) const {
     return false;
   }
+
+  /// Returns true if arguments should be sign-extended in lib calls.
+  virtual bool shouldSignExtendTypeInLibCall(EVT Type, bool IsSigned) const {
+    return IsSigned;
+ }
 
   /// Returns true if the given (atomic) load should be expanded by the
   /// IR-level AtomicExpand pass into a load-linked instruction
@@ -2016,6 +2030,7 @@ public:
                            ISD::CondCode &CCCode, SDLoc DL) const;
 
   /// Returns a pair of (return value, chain).
+  /// It is an error to pass RTLIB::UNKNOWN_LIBCALL as \p LC.
   std::pair<SDValue, SDValue> makeLibCall(SelectionDAG &DAG, RTLIB::Libcall LC,
                                           EVT RetVT, const SDValue *Ops,
                                           unsigned NumOps, bool isSigned,
@@ -2624,6 +2639,15 @@ public:
   virtual std::pair<unsigned, const TargetRegisterClass *>
   getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
                                const std::string &Constraint, MVT VT) const;
+
+  virtual unsigned
+  getInlineAsmMemConstraint(const std::string &ConstraintCode) const {
+    if (ConstraintCode == "i")
+      return InlineAsm::Constraint_i;
+    else if (ConstraintCode == "m")
+      return InlineAsm::Constraint_m;
+    return InlineAsm::Constraint_Unknown;
+  }
 
   /// Try to replace an X constraint, which matches anything, with another that
   /// has more specific requirements based on the type of the corresponding
