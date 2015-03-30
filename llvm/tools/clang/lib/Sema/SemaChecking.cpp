@@ -362,6 +362,15 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
     if (SemaBuiltinLongjmp(TheCall))
       return ExprError();
     break;
+  case Builtin::BI__builtin_setjmp:
+    if (SemaBuiltinSetjmp(TheCall))
+      return ExprError();
+    break;
+  case Builtin::BI_setjmp:
+  case Builtin::BI_setjmpex:
+    if (checkArgCount(*this, TheCall, 1))
+      return true;
+    break;
 
   case Builtin::BI__builtin_classify_type:
     if (checkArgCount(*this, TheCall, 1)) return true;
@@ -541,6 +550,19 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
       return ExprError();
     break;
   }
+
+  case Builtin::BI__GetExceptionInfo:
+    if (checkArgCount(*this, TheCall, 1))
+      return ExprError();
+
+    if (CheckCXXThrowOperand(
+            TheCall->getLocStart(),
+            Context.getExceptionObjectType(FDecl->getParamDecl(0)->getType()),
+            TheCall))
+      return ExprError();
+
+    TheCall->setType(Context.VoidPtrTy);
+    break;
 
   }
 
@@ -921,11 +943,6 @@ bool Sema::CheckX86BuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall) {
   switch (BuiltinID) {
   default: return false;
   case X86::BI_mm_prefetch: i = 1; l = 0; u = 3; break;
-  case X86::BI__builtin_ia32_vextractf128_pd256:
-  case X86::BI__builtin_ia32_vextractf128_ps256:
-  case X86::BI__builtin_ia32_vextractf128_si256:
-  case X86::BI__builtin_ia32_extract128i256: i = 1, l = 0, u = 1; break;
-  case X86::BI__builtin_ia32_insert128i256: i = 2, l = 0; u = 1; break;
   case X86::BI__builtin_ia32_sha1rnds4: i = 2, l = 0; u = 3; break;
   case X86::BI__builtin_ia32_vpermil2pd:
   case X86::BI__builtin_ia32_vpermil2pd256:
@@ -1349,9 +1366,10 @@ ExprResult Sema::SemaAtomicOpsOverloaded(ExprResult TheCallResult,
   //   M is C if C is an integer, and ptrdiff_t if C is a pointer, and
   //   the int parameters are for orderings.
 
-  assert(AtomicExpr::AO__c11_atomic_init == 0 &&
-         AtomicExpr::AO__c11_atomic_fetch_xor + 1 == AtomicExpr::AO__atomic_load
-         && "need to update code for modified C11 atomics");
+  static_assert(AtomicExpr::AO__c11_atomic_init == 0 &&
+                    AtomicExpr::AO__c11_atomic_fetch_xor + 1 ==
+                        AtomicExpr::AO__atomic_load,
+                "need to update code for modified C11 atomics");
   bool IsC11 = Op >= AtomicExpr::AO__c11_atomic_init &&
                Op <= AtomicExpr::AO__c11_atomic_fetch_xor;
   bool IsN = Op == AtomicExpr::AO__atomic_load_n ||
@@ -2500,8 +2518,13 @@ bool Sema::SemaBuiltinConstantArgRange(CallExpr *TheCall, int ArgNum,
 }
 
 /// SemaBuiltinLongjmp - Handle __builtin_longjmp(void *env[5], int val).
-/// This checks that val is a constant 1.
+/// This checks that the target supports __builtin_longjmp and
+/// that val is a constant 1.
 bool Sema::SemaBuiltinLongjmp(CallExpr *TheCall) {
+  if (!Context.getTargetInfo().hasSjLjLowering())
+    return Diag(TheCall->getLocStart(), diag::err_builtin_longjmp_unsupported)
+             << SourceRange(TheCall->getLocStart(), TheCall->getLocEnd());
+
   Expr *Arg = TheCall->getArg(1);
   llvm::APSInt Result;
 
@@ -2513,6 +2536,16 @@ bool Sema::SemaBuiltinLongjmp(CallExpr *TheCall) {
     return Diag(TheCall->getLocStart(), diag::err_builtin_longjmp_invalid_val)
              << SourceRange(Arg->getLocStart(), Arg->getLocEnd());
 
+  return false;
+}
+
+
+/// SemaBuiltinSetjmp - Handle __builtin_setjmp(void *env[5]).
+/// This checks that the target supports __builtin_setjmp.
+bool Sema::SemaBuiltinSetjmp(CallExpr *TheCall) {
+  if (!Context.getTargetInfo().hasSjLjLowering())
+    return Diag(TheCall->getLocStart(), diag::err_builtin_setjmp_unsupported)
+             << SourceRange(TheCall->getLocStart(), TheCall->getLocEnd());
   return false;
 }
 
@@ -4660,7 +4693,7 @@ static const CXXRecordDecl *getContainedDynamicClass(QualType T,
 
 /// \brief If E is a sizeof expression, returns its argument expression,
 /// otherwise returns NULL.
-static const Expr *getSizeOfExprArg(const Expr* E) {
+static const Expr *getSizeOfExprArg(const Expr *E) {
   if (const UnaryExprOrTypeTraitExpr *SizeOf =
       dyn_cast<UnaryExprOrTypeTraitExpr>(E))
     if (SizeOf->getKind() == clang::UETT_SizeOf && !SizeOf->isArgumentType())
@@ -4670,7 +4703,7 @@ static const Expr *getSizeOfExprArg(const Expr* E) {
 }
 
 /// \brief If E is a sizeof expression, returns its argument type.
-static QualType getSizeOfArgType(const Expr* E) {
+static QualType getSizeOfArgType(const Expr *E) {
   if (const UnaryExprOrTypeTraitExpr *SizeOf =
       dyn_cast<UnaryExprOrTypeTraitExpr>(E))
     if (SizeOf->getKind() == clang::UETT_SizeOf)
@@ -4716,8 +4749,9 @@ void Sema::CheckMemaccessArguments(const CallExpr *Call,
     SourceRange ArgRange = Call->getArg(ArgIdx)->getSourceRange();
 
     QualType DestTy = Dest->getType();
+    QualType PointeeTy;
     if (const PointerType *DestPtrTy = DestTy->getAs<PointerType>()) {
-      QualType PointeeTy = DestPtrTy->getPointeeType();
+      PointeeTy = DestPtrTy->getPointeeType();
 
       // Never warn about void type pointers. This can be used to suppress
       // false positives.
@@ -4797,47 +4831,53 @@ void Sema::CheckMemaccessArguments(const CallExpr *Call,
           break;
         }
       }
+    } else if (DestTy->isArrayType()) {
+      PointeeTy = DestTy;
+    }
 
-      // Always complain about dynamic classes.
-      bool IsContained;
-      if (const CXXRecordDecl *ContainedRD =
-              getContainedDynamicClass(PointeeTy, IsContained)) {
+    if (PointeeTy == QualType())
+      continue;
 
-        unsigned OperationType = 0;
-        // "overwritten" if we're warning about the destination for any call
-        // but memcmp; otherwise a verb appropriate to the call.
-        if (ArgIdx != 0 || BId == Builtin::BImemcmp) {
-          if (BId == Builtin::BImemcpy)
-            OperationType = 1;
-          else if(BId == Builtin::BImemmove)
-            OperationType = 2;
-          else if (BId == Builtin::BImemcmp)
-            OperationType = 3;
-        }
-          
-        DiagRuntimeBehavior(
-          Dest->getExprLoc(), Dest,
-          PDiag(diag::warn_dyn_class_memaccess)
-            << (BId == Builtin::BImemcmp ? ArgIdx + 2 : ArgIdx)
-            << FnName << IsContained << ContainedRD << OperationType
-            << Call->getCallee()->getSourceRange());
-      } else if (PointeeTy.hasNonTrivialObjCLifetime() &&
-               BId != Builtin::BImemset)
-        DiagRuntimeBehavior(
-          Dest->getExprLoc(), Dest,
-          PDiag(diag::warn_arc_object_memaccess)
-            << ArgIdx << FnName << PointeeTy
-            << Call->getCallee()->getSourceRange());
-      else
-        continue;
+    // Always complain about dynamic classes.
+    bool IsContained;
+    if (const CXXRecordDecl *ContainedRD =
+            getContainedDynamicClass(PointeeTy, IsContained)) {
 
+      unsigned OperationType = 0;
+      // "overwritten" if we're warning about the destination for any call
+      // but memcmp; otherwise a verb appropriate to the call.
+      if (ArgIdx != 0 || BId == Builtin::BImemcmp) {
+        if (BId == Builtin::BImemcpy)
+          OperationType = 1;
+        else if(BId == Builtin::BImemmove)
+          OperationType = 2;
+        else if (BId == Builtin::BImemcmp)
+          OperationType = 3;
+      }
+        
       DiagRuntimeBehavior(
         Dest->getExprLoc(), Dest,
-        PDiag(diag::note_bad_memaccess_silence)
-          << FixItHint::CreateInsertion(ArgRange.getBegin(), "(void*)"));
-      break;
-    }
+        PDiag(diag::warn_dyn_class_memaccess)
+          << (BId == Builtin::BImemcmp ? ArgIdx + 2 : ArgIdx)
+          << FnName << IsContained << ContainedRD << OperationType
+          << Call->getCallee()->getSourceRange());
+    } else if (PointeeTy.hasNonTrivialObjCLifetime() &&
+             BId != Builtin::BImemset)
+      DiagRuntimeBehavior(
+        Dest->getExprLoc(), Dest,
+        PDiag(diag::warn_arc_object_memaccess)
+          << ArgIdx << FnName << PointeeTy
+          << Call->getCallee()->getSourceRange());
+    else
+      continue;
+
+    DiagRuntimeBehavior(
+      Dest->getExprLoc(), Dest,
+      PDiag(diag::note_bad_memaccess_silence)
+        << FixItHint::CreateInsertion(ArgRange.getBegin(), "(void*)"));
+    break;
   }
+
 }
 
 // A little helper routine: ignore addition and subtraction of integer literals.
@@ -8641,7 +8681,7 @@ bool ShouldDiagnoseEmptyStmtBody(const SourceManager &SourceMgr,
 
   // Get line numbers of statement and body.
   bool StmtLineInvalid;
-  unsigned StmtLine = SourceMgr.getSpellingLineNumber(StmtLoc,
+  unsigned StmtLine = SourceMgr.getPresumedLineNumber(StmtLoc,
                                                       &StmtLineInvalid);
   if (StmtLineInvalid)
     return false;

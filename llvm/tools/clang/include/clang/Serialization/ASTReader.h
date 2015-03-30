@@ -124,8 +124,8 @@ public:
   ///
   /// \returns true to indicate the target options are invalid, or false
   /// otherwise.
-  virtual bool ReadTargetOptions(const TargetOptions &TargetOpts,
-                                 bool Complain) {
+  virtual bool ReadTargetOptions(const TargetOptions &TargetOpts, bool Complain,
+                                 bool AllowCompatibleDifferences) {
     return false;
   }
 
@@ -223,8 +223,8 @@ public:
   void ReadModuleMapFile(StringRef ModuleMapPath) override;
   bool ReadLanguageOptions(const LangOptions &LangOpts, bool Complain,
                            bool AllowCompatibleDifferences) override;
-  bool ReadTargetOptions(const TargetOptions &TargetOpts,
-                         bool Complain) override;
+  bool ReadTargetOptions(const TargetOptions &TargetOpts, bool Complain,
+                         bool AllowCompatibleDifferences) override;
   bool ReadDiagnosticOptions(IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts,
                              bool Complain) override;
   bool ReadFileSystemOptions(const FileSystemOptions &FSOpts,
@@ -257,8 +257,8 @@ public:
 
   bool ReadLanguageOptions(const LangOptions &LangOpts, bool Complain,
                            bool AllowCompatibleDifferences) override;
-  bool ReadTargetOptions(const TargetOptions &TargetOpts,
-                         bool Complain) override;
+  bool ReadTargetOptions(const TargetOptions &TargetOpts, bool Complain,
+                         bool AllowCompatibleDifferences) override;
   bool ReadDiagnosticOptions(IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts,
                              bool Complain) override;
   bool ReadPreprocessorOptions(const PreprocessorOptions &PPOpts, bool Complain,
@@ -446,6 +446,12 @@ private:
   /// that we needed but hadn't loaded yet.
   llvm::DenseMap<void *, PendingFakeDefinitionKind> PendingFakeDefinitionData;
 
+  /// \brief Exception specification updates that have been loaded but not yet
+  /// propagated across the relevant redeclaration chain. The map key is the
+  /// canonical declaration (used only for deduplication) and the value is a
+  /// declaration that has an exception specification.
+  llvm::SmallMapVector<Decl *, FunctionDecl *, 4> PendingExceptionSpecUpdates;
+
   struct ReplacedDeclInfo {
     ModuleFile *Mod;
     uint64_t Offset;
@@ -538,6 +544,14 @@ private:
   /// MacroInfo for the identifier with ID=I+1 that has already
   /// been loaded.
   std::vector<MacroInfo *> MacrosLoaded;
+
+  typedef std::pair<IdentifierInfo *, serialization::SubmoduleID>
+      LoadedMacroInfo;
+
+  /// \brief A set of #undef directives that we have loaded; used to
+  /// deduplicate the same #undef information coming from multiple module
+  /// files.
+  llvm::DenseSet<LoadedMacroInfo> LoadedUndefs;
 
   typedef ContinuousRangeMap<serialization::MacroID, ModuleFile *, 4>
     GlobalMacroMapType;
@@ -929,9 +943,6 @@ private:
   /// passing decls to consumer.
   bool PassingDeclsToConsumer;
 
-  /// Number of CXX base specifiers currently loaded
-  unsigned NumCXXBaseSpecifiersLoaded;
-
   /// \brief The set of identifiers that were read while the AST reader was
   /// (recursively) loading declarations.
   ///
@@ -939,6 +950,11 @@ private:
   /// loaded once the recursive loading has completed.
   llvm::MapVector<IdentifierInfo *, SmallVector<uint32_t, 4> >
     PendingIdentifierInfos;
+
+  /// \brief The set of lookup results that we have faked in order to support
+  /// merging of partially deserialized decls but that we have not yet removed.
+  llvm::SmallMapVector<IdentifierInfo *, SmallVector<NamedDecl*, 2>, 16>
+    PendingFakeLookupResults;
 
   /// \brief The generation number of each identifier, which keeps track of
   /// the last time we loaded information about this identifier.
@@ -1132,7 +1148,8 @@ private:
                                    ASTReaderListener &Listener,
                                    bool AllowCompatibleDifferences);
   static bool ParseTargetOptions(const RecordData &Record, bool Complain,
-                                 ASTReaderListener &Listener);
+                                 ASTReaderListener &Listener,
+                                 bool AllowCompatibleDifferences);
   static bool ParseDiagnosticOptions(const RecordData &Record, bool Complain,
                                      ASTReaderListener &Listener);
   static bool ParseFileSystemOptions(const RecordData &Record, bool Complain,
@@ -1164,6 +1181,18 @@ private:
   /// of a redeclarable kind) that is either local or has already been loaded
   /// merged into its redecl chain.
   Decl *getMostRecentExistingDecl(Decl *D);
+
+  template <typename Fn>
+  void forEachFormerlyCanonicalImportedDecl(const Decl *D, Fn Visit) {
+    D = D->getCanonicalDecl();
+    if (D->isFromASTFile())
+      Visit(D);
+
+    auto It = MergedDecls.find(const_cast<Decl*>(D));
+    if (It != MergedDecls.end())
+      for (auto ID : It->second)
+        Visit(GetExistingDecl(ID));
+  }
 
   RecordLocation DeclCursorForID(serialization::DeclID ID,
                                  unsigned &RawLocation);
@@ -1551,11 +1580,6 @@ public:
     return Result;
   }
 
-  /// \brief Returns the number of C++ base specifiers found in the chain.
-  unsigned getTotalNumCXXBaseSpecifiers() const {
-    return NumCXXBaseSpecifiersLoaded;
-  }
-
   /// \brief Reads a TemplateArgumentLocInfo appropriate for the
   /// given TemplateArgument kind.
   TemplateArgumentLocInfo
@@ -1808,8 +1832,8 @@ public:
                                            SourceLocation> > &Pending) override;
 
   void ReadLateParsedTemplates(
-                         llvm::DenseMap<const FunctionDecl *,
-                                        LateParsedTemplate *> &LPTMap) override;
+      llvm::MapVector<const FunctionDecl *, LateParsedTemplate *> &LPTMap)
+      override;
 
   /// \brief Load a selector from disk, registering its ID if it exists.
   void LoadSelector(Selector Sel);
@@ -1844,7 +1868,8 @@ public:
   serialization::IdentifierID getGlobalIdentifierID(ModuleFile &M,
                                                     unsigned LocalID);
 
-  ModuleMacroInfo *getModuleMacro(const PendingMacroInfo &PMInfo);
+  ModuleMacroInfo *getModuleMacro(IdentifierInfo *II,
+                                  const PendingMacroInfo &PMInfo);
 
   void resolvePendingMacro(IdentifierInfo *II, const PendingMacroInfo &PMInfo);
 
@@ -1960,9 +1985,17 @@ public:
                                         const RecordData &Record,unsigned &Idx);
 
   /// \brief Read a CXXCtorInitializer array.
-  std::pair<CXXCtorInitializer **, unsigned>
+  CXXCtorInitializer **
   ReadCXXCtorInitializers(ModuleFile &F, const RecordData &Record,
                           unsigned &Idx);
+
+  /// \brief Read a CXXCtorInitializers ID from the given record and
+  /// return its global bit offset.
+  uint64_t ReadCXXCtorInitializersRef(ModuleFile &M, const RecordData &Record,
+                                      unsigned &Idx);
+
+  /// \brief Read the contents of a CXXCtorInitializer array.
+  CXXCtorInitializer **GetExternalCXXCtorInitializers(uint64_t Offset) override;
 
   /// \brief Read a source location from raw form.
   SourceLocation ReadSourceLocation(ModuleFile &ModuleFile, unsigned Raw) const {

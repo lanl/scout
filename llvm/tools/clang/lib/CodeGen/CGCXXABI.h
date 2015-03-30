@@ -216,6 +216,7 @@ public:
                                        const CXXDestructorDecl *Dtor) = 0;
   virtual void emitRethrow(CodeGenFunction &CGF, bool isNoReturn) = 0;
   virtual void emitThrow(CodeGenFunction &CGF, const CXXThrowExpr *E) = 0;
+  virtual llvm::GlobalVariable *getThrowInfo(QualType T) { return nullptr; }
 
   virtual void emitBeginCatch(CodeGenFunction &CGF, const CXXCatchStmt *C) = 0;
 
@@ -224,6 +225,8 @@ public:
                                       llvm::Value *Exn);
 
   virtual llvm::Constant *getAddrOfRTTIDescriptor(QualType Ty) = 0;
+  virtual llvm::Constant *
+  getAddrOfCXXCatchHandlerType(QualType Ty, QualType CatchHandlerType) = 0;
 
   virtual bool shouldTypeidBeNullChecked(bool IsDeref,
                                          QualType SrcRecordTy) = 0;

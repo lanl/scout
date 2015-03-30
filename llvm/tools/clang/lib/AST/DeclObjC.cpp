@@ -1213,16 +1213,6 @@ bool ObjCInterfaceDecl::hasDesignatedInitializers() const {
   return data().HasDesignatedInitializers;
 }
 
-bool ObjCInterfaceDecl::hasDesignatedInitializersInSuperClass() const {
-  ObjCInterfaceDecl *OSC = getSuperClass();
-  while (OSC) {
-    if (OSC->hasDesignatedInitializers())
-      return true;
-    OSC = OSC->getSuperClass();
-  }
-  return false;
-}
-
 StringRef
 ObjCInterfaceDecl::getObjCRuntimeNameAsString() const {
   if (ObjCRuntimeNameAttr *ObjCRTName = getAttr<ObjCRuntimeNameAttr>())
@@ -1828,6 +1818,11 @@ void ObjCImplementationDecl::setIvarInitializers(ASTContext &C,
            numInitializers * sizeof(CXXCtorInitializer*));
     IvarInitializers = ivarInitializers;
   }
+}
+
+ObjCImplementationDecl::init_const_iterator
+ObjCImplementationDecl::init_begin() const {
+  return IvarInitializers.get(getASTContext().getExternalSource());
 }
 
 raw_ostream &clang::operator<<(raw_ostream &OS,
