@@ -58,7 +58,7 @@ set(CMAKE_MODULE_PATH
 
 project(scout_test_scc C SCC)
 
-  cmake_minimum_required(VERSION 2.8.12)
+  cmake_minimum_required(VERSION 2.8.12.2)
   set(DART_TESTING_TIMEOUT "300" CACHE STRING "" FORCE)
   include(CTest)
   
