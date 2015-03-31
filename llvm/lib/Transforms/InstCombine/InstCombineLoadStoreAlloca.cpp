@@ -164,47 +164,65 @@ isOnlyCopiedFromConstantGlobal(AllocaInst *AI,
   return nullptr;
 }
 
-Instruction *InstCombiner::visitAllocaInst(AllocaInst &AI) {
-  // Ensure that the alloca array size argument has type intptr_t, so that
-  // any casting is exposed early.
-  Type *IntPtrTy = DL.getIntPtrType(AI.getType());
-  if (AI.getArraySize()->getType() != IntPtrTy) {
-    Value *V = Builder->CreateIntCast(AI.getArraySize(), IntPtrTy, false);
+static Instruction *simplifyAllocaArraySize(InstCombiner &IC, AllocaInst &AI) {
+  // Check for array size of 1 (scalar allocation).
+  if (!AI.isArrayAllocation()) {
+    // i32 1 is the canonical array size for scalar allocations.
+    if (AI.getArraySize()->getType()->isIntegerTy(32))
+      return nullptr;
+
+    // Canonicalize it.
+    Value *V = IC.Builder->getInt32(1);
     AI.setOperand(0, V);
     return &AI;
   }
 
   // Convert: alloca Ty, C - where C is a constant != 1 into: alloca [C x Ty], 1
-  if (AI.isArrayAllocation()) {  // Check C != 1
-    if (const ConstantInt *C = dyn_cast<ConstantInt>(AI.getArraySize())) {
-      Type *NewTy =
-        ArrayType::get(AI.getAllocatedType(), C->getZExtValue());
-      AllocaInst *New = Builder->CreateAlloca(NewTy, nullptr, AI.getName());
-      New->setAlignment(AI.getAlignment());
+  if (const ConstantInt *C = dyn_cast<ConstantInt>(AI.getArraySize())) {
+    Type *NewTy = ArrayType::get(AI.getAllocatedType(), C->getZExtValue());
+    AllocaInst *New = IC.Builder->CreateAlloca(NewTy, nullptr, AI.getName());
+    New->setAlignment(AI.getAlignment());
 
-      // Scan to the end of the allocation instructions, to skip over a block of
-      // allocas if possible...also skip interleaved debug info
-      //
-      BasicBlock::iterator It = New;
-      while (isa<AllocaInst>(*It) || isa<DbgInfoIntrinsic>(*It)) ++It;
+    // Scan to the end of the allocation instructions, to skip over a block of
+    // allocas if possible...also skip interleaved debug info
+    //
+    BasicBlock::iterator It = New;
+    while (isa<AllocaInst>(*It) || isa<DbgInfoIntrinsic>(*It))
+      ++It;
 
-      // Now that I is pointing to the first non-allocation-inst in the block,
-      // insert our getelementptr instruction...
-      //
-      Type *IdxTy = DL.getIntPtrType(AI.getType());
-      Value *NullIdx = Constant::getNullValue(IdxTy);
-      Value *Idx[2] = { NullIdx, NullIdx };
-      Instruction *GEP =
+    // Now that I is pointing to the first non-allocation-inst in the block,
+    // insert our getelementptr instruction...
+    //
+    Type *IdxTy = IC.getDataLayout().getIntPtrType(AI.getType());
+    Value *NullIdx = Constant::getNullValue(IdxTy);
+    Value *Idx[2] = {NullIdx, NullIdx};
+    Instruction *GEP =
         GetElementPtrInst::CreateInBounds(New, Idx, New->getName() + ".sub");
-      InsertNewInstBefore(GEP, *It);
+    IC.InsertNewInstBefore(GEP, *It);
 
-      // Now make everything use the getelementptr instead of the original
-      // allocation.
-      return ReplaceInstUsesWith(AI, GEP);
-    } else if (isa<UndefValue>(AI.getArraySize())) {
-      return ReplaceInstUsesWith(AI, Constant::getNullValue(AI.getType()));
-    }
+    // Now make everything use the getelementptr instead of the original
+    // allocation.
+    return IC.ReplaceInstUsesWith(AI, GEP);
   }
+
+  if (isa<UndefValue>(AI.getArraySize()))
+    return IC.ReplaceInstUsesWith(AI, Constant::getNullValue(AI.getType()));
+
+  // Ensure that the alloca array size argument has type intptr_t, so that
+  // any casting is exposed early.
+  Type *IntPtrTy = IC.getDataLayout().getIntPtrType(AI.getType());
+  if (AI.getArraySize()->getType() != IntPtrTy) {
+    Value *V = IC.Builder->CreateIntCast(AI.getArraySize(), IntPtrTy, false);
+    AI.setOperand(0, V);
+    return &AI;
+  }
+
+  return nullptr;
+}
+
+Instruction *InstCombiner::visitAllocaInst(AllocaInst &AI) {
+  if (auto *I = simplifyAllocaArraySize(*this, AI))
+    return I;
 
   if (AI.getAllocatedType()->isSized()) {
     // If the alignment is 0 (unspecified), assign it the preferred alignment.
@@ -800,6 +818,30 @@ static bool combineStoreToValueType(InstCombiner &IC, StoreInst &SI) {
   return false;
 }
 
+static bool unpackStoreToAggregate(InstCombiner &IC, StoreInst &SI) {
+  // FIXME: We could probably with some care handle both volatile and atomic
+  // stores here but it isn't clear that this is important.
+  if (!SI.isSimple())
+    return false;
+
+  Value *V = SI.getValueOperand();
+  Type *T = V->getType();
+
+  if (!T->isAggregateType())
+    return false;
+
+  if (StructType *ST = dyn_cast<StructType>(T)) {
+    // If the struct only have one element, we unpack.
+    if (ST->getNumElements() == 1) {
+      V = IC.Builder->CreateExtractValue(V, 0);
+      combineStoreToNewValue(IC, SI, V);
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /// equivalentAddressValues - Test if A and B will obviously have the same
 /// value. This includes recognizing that %t0 and %t1 will have the same
 /// value in code like this:
@@ -848,6 +890,10 @@ Instruction *InstCombiner::visitStoreInst(StoreInst &SI) {
     SI.setAlignment(KnownAlign);
   else if (StoreAlign == 0)
     SI.setAlignment(EffectiveStoreAlign);
+
+  // Try to canonicalize the stored type.
+  if (unpackStoreToAggregate(*this, SI))
+    return EraseInstFromFunction(SI);
 
   // Replace GEP indices if possible.
   if (Instruction *NewGEPI = replaceGEPIdxWithZero(*this, Ptr, SI)) {

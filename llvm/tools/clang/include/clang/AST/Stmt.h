@@ -388,6 +388,7 @@ public:
   void dump() const;
   void dump(SourceManager &SM) const;
   void dump(raw_ostream &OS, SourceManager &SM) const;
+  void dump(raw_ostream &OS) const;
 
   /// dumpColor - same as dump(), but forces color highlighting.
   void dumpColor() const;

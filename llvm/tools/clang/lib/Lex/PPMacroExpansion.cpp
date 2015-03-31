@@ -598,7 +598,7 @@ MacroArgs *Preprocessor::ReadFunctionLikeMacroArgs(Token &MacroName,
         // If this is a comment token in the argument list and we're just in
         // -C mode (not -CC mode), discard the comment.
         continue;
-      } else if (Tok.getIdentifierInfo() != nullptr) {
+      } else if (!Tok.isAnnotation() && Tok.getIdentifierInfo() != nullptr) {
         // Reading macro arguments can cause macros that we are currently
         // expanding from to be popped off the expansion stack.  Doing so causes
         // them to be reenabled for expansion.  Here we record whether any
@@ -1073,6 +1073,9 @@ static bool EvaluateHasIncludeCommon(Token &Tok,
   // These expressions are only allowed within a preprocessor directive.
   if (!PP.isParsingIfOrElifDirective()) {
     PP.Diag(LParenLoc, diag::err_pp_directive_required) << II->getName();
+    // Return a valid identifier token.
+    assert(Tok.is(tok::identifier));
+    Tok.setIdentifierInfo(II);
     return false;
   }
 
@@ -1131,7 +1134,7 @@ static bool EvaluateHasIncludeCommon(Token &Tok,
       Tok.setKind(tok::eod);
       return false;   // Found <eod> but no ">"?  Diagnostic already emitted.
     }
-    Filename = FilenameBuffer.str();
+    Filename = FilenameBuffer;
     break;
   default:
     PP.Diag(Tok.getLocation(), diag::err_pp_expects_filename);
@@ -1461,9 +1464,11 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
       Value = EvaluateHasInclude(Tok, II, *this);
     else
       Value = EvaluateHasIncludeNext(Tok, II, *this);
+
+    if (Tok.isNot(tok::r_paren))
+      return;
     OS << (int)Value;
-    if (Tok.is(tok::r_paren))
-      Tok.setKind(tok::numeric_constant);
+    Tok.setKind(tok::numeric_constant);
   } else if (II == Ident__has_warning) {
     // The argument should be a parenthesized string literal.
     // The argument to these builtins should be a parenthesized identifier.

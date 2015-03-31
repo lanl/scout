@@ -580,6 +580,7 @@ protected:
         if (m_step_type == eStepTypeInto)
         {
             StackFrame *frame = thread->GetStackFrameAtIndex(0).get();
+            assert(frame != nullptr);
 
             if (frame->HasDebugInformation ())
             {

@@ -16,6 +16,7 @@
 #include "UnwrappedLineParser.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 
 #define DEBUG_TYPE "format-parser"
 
@@ -419,7 +420,7 @@ void UnwrappedLineParser::parseBlock(bool MustBeDeclaration, bool AddLevel,
   Line->Level = InitialLevel;
 }
 
-static bool IsGoogScope(const UnwrappedLine &Line) {
+static bool isGoogScope(const UnwrappedLine &Line) {
   // FIXME: Closure-library specific stuff should not be hard-coded but be
   // configurable.
   if (Line.Tokens.size() < 4)
@@ -455,12 +456,13 @@ void UnwrappedLineParser::parseChildBlock() {
   nextToken();
   {
     bool GoogScope =
-        Style.Language == FormatStyle::LK_JavaScript && IsGoogScope(*Line);
+        Style.Language == FormatStyle::LK_JavaScript && isGoogScope(*Line);
     ScopedLineState LineState(*this);
     ScopedDeclarationState DeclarationState(*Line, DeclarationScopeStack,
                                             /*MustBeDeclaration=*/false);
     Line->Level += GoogScope ? 0 : 1;
     parseLevel(/*HasOpeningBrace=*/true);
+    flushComments(isOnNewLine(*FormatTok));
     Line->Level -= GoogScope ? 0 : 1;
   }
   nextToken();
@@ -868,6 +870,9 @@ void UnwrappedLineParser::parseStructuralElement() {
     case tok::l_square:
       parseSquare();
       break;
+    case tok::kw_new:
+      parseNew();
+      break;
     default:
       nextToken();
       break;
@@ -1272,6 +1277,31 @@ void UnwrappedLineParser::parseNamespace() {
     addUnwrappedLine();
   }
   // FIXME: Add error handling.
+}
+
+void UnwrappedLineParser::parseNew() {
+  assert(FormatTok->is(tok::kw_new) && "'new' expected");
+  nextToken();
+  if (Style.Language != FormatStyle::LK_Java)
+    return;
+
+  // In Java, we can parse everything up to the parens, which aren't optional.
+  do {
+    // There should not be a ;, { or } before the new's open paren.
+    if (FormatTok->isOneOf(tok::semi, tok::l_brace, tok::r_brace))
+      return;
+
+    // Consume the parens.
+    if (FormatTok->is(tok::l_paren)) {
+      parseParens();
+
+      // If there is a class body of an anonymous class, consume that as child.
+      if (FormatTok->is(tok::l_brace))
+        parseChildBlock();
+      return;
+    }
+    nextToken();
+  } while (!eof());
 }
 
 void UnwrappedLineParser::parseForOrWhileLoop() {

@@ -1076,23 +1076,24 @@ DeclContext::BuildDeclChain(ArrayRef<Decl*> Decls,
 /// built a lookup map. For every name in the map, pull in the new names from
 /// the external storage.
 void DeclContext::reconcileExternalVisibleStorage() const {
-  assert(NeedToReconcileExternalVisibleStorage && LookupPtr.getPointer());
+  assert(NeedToReconcileExternalVisibleStorage && LookupPtr);
   NeedToReconcileExternalVisibleStorage = false;
 
-  for (auto &Lookup : *LookupPtr.getPointer())
+  for (auto &Lookup : *LookupPtr)
     Lookup.second.setHasExternalDecls();
 }
 
 /// \brief Load the declarations within this lexical storage from an
 /// external source.
-void
+/// \return \c true if any declarations were added.
+bool
 DeclContext::LoadLexicalDeclsFromExternalStorage() const {
   ExternalASTSource *Source = getParentASTContext().getExternalSource();
   assert(hasExternalLexicalStorage() && Source && "No external storage?");
 
   // Notify that we have a DeclContext that is initializing.
   ExternalASTSource::Deserializing ADeclContext(Source);
-  
+
   // Load the external declarations, if any.
   SmallVector<Decl*, 64> Decls;
   ExternalLexicalStorage = false;
@@ -1102,11 +1103,11 @@ DeclContext::LoadLexicalDeclsFromExternalStorage() const {
     
   case ELR_Failure:
   case ELR_AlreadyLoaded:
-    return;
+    return false;
   }
 
   if (Decls.empty())
-    return;
+    return false;
 
   // We may have already loaded just the fields of this record, in which case
   // we need to ignore them.
@@ -1123,6 +1124,7 @@ DeclContext::LoadLexicalDeclsFromExternalStorage() const {
   FirstDecl = ExternalFirst;
   if (!LastDecl)
     LastDecl = ExternalLast;
+  return true;
 }
 
 DeclContext::lookup_result
@@ -1130,7 +1132,7 @@ ExternalASTSource::SetNoExternalVisibleDeclsForName(const DeclContext *DC,
                                                     DeclarationName Name) {
   ASTContext &Context = DC->getParentASTContext();
   StoredDeclsMap *Map;
-  if (!(Map = DC->LookupPtr.getPointer()))
+  if (!(Map = DC->LookupPtr))
     Map = DC->CreateStoredDeclsMap(Context);
   if (DC->NeedToReconcileExternalVisibleStorage)
     DC->reconcileExternalVisibleStorage();
@@ -1146,7 +1148,7 @@ ExternalASTSource::SetExternalVisibleDeclsForName(const DeclContext *DC,
                                                   ArrayRef<NamedDecl*> Decls) {
   ASTContext &Context = DC->getParentASTContext();
   StoredDeclsMap *Map;
-  if (!(Map = DC->LookupPtr.getPointer()))
+  if (!(Map = DC->LookupPtr))
     Map = DC->CreateStoredDeclsMap(Context);
   if (DC->NeedToReconcileExternalVisibleStorage)
     DC->reconcileExternalVisibleStorage();
@@ -1240,7 +1242,7 @@ void DeclContext::removeDecl(Decl *D) {
     // Remove only decls that have a name
     if (!ND->getDeclName()) return;
 
-    StoredDeclsMap *Map = getPrimaryContext()->LookupPtr.getPointer();
+    StoredDeclsMap *Map = getPrimaryContext()->LookupPtr;
     if (!Map) return;
 
     StoredDeclsMap::iterator Pos = Map->find(ND->getDeclName());
@@ -1328,32 +1330,38 @@ static bool shouldBeHidden(NamedDecl *D) {
 StoredDeclsMap *DeclContext::buildLookup() {
   assert(this == getPrimaryContext() && "buildLookup called on non-primary DC");
 
-  // FIXME: Should we keep going if hasExternalVisibleStorage?
-  if (!LookupPtr.getInt())
-    return LookupPtr.getPointer();
+  if (!HasLazyLocalLexicalLookups && !HasLazyExternalLexicalLookups)
+    return LookupPtr;
 
   SmallVector<DeclContext *, 2> Contexts;
   collectAllContexts(Contexts);
-  for (unsigned I = 0, N = Contexts.size(); I != N; ++I)
-    buildLookupImpl<&DeclContext::decls_begin,
-                    &DeclContext::decls_end>(Contexts[I], false);
+
+  if (HasLazyExternalLexicalLookups) {
+    HasLazyExternalLexicalLookups = false;
+    for (auto *DC : Contexts) {
+      if (DC->hasExternalLexicalStorage())
+        HasLazyLocalLexicalLookups |=
+            DC->LoadLexicalDeclsFromExternalStorage();
+    }
+
+    if (!HasLazyLocalLexicalLookups)
+      return LookupPtr;
+  }
+
+  for (auto *DC : Contexts)
+    buildLookupImpl(DC, hasExternalVisibleStorage());
 
   // We no longer have any lazy decls.
-  LookupPtr.setInt(false);
-  return LookupPtr.getPointer();
+  HasLazyLocalLexicalLookups = false;
+  return LookupPtr;
 }
 
 /// buildLookupImpl - Build part of the lookup data structure for the
 /// declarations contained within DCtx, which will either be this
 /// DeclContext, a DeclContext linked to it, or a transparent context
 /// nested within it.
-template<DeclContext::decl_iterator (DeclContext::*Begin)() const,
-         DeclContext::decl_iterator (DeclContext::*End)() const>
 void DeclContext::buildLookupImpl(DeclContext *DCtx, bool Internal) {
-  for (decl_iterator I = (DCtx->*Begin)(), E = (DCtx->*End)();
-       I != E; ++I) {
-    Decl *D = *I;
-
+  for (Decl *D : DCtx->noload_decls()) {
     // Insert this declaration into the lookup structure, but only if
     // it's semantically within its decl context. Any other decls which
     // should be found in this context are added eagerly.
@@ -1374,7 +1382,7 @@ void DeclContext::buildLookupImpl(DeclContext *DCtx, bool Internal) {
     // context (recursively).
     if (DeclContext *InnerCtx = dyn_cast<DeclContext>(D))
       if (InnerCtx->isTransparentContext() || InnerCtx->isInlineNamespace())
-        buildLookupImpl<Begin, End>(InnerCtx, Internal);
+        buildLookupImpl(InnerCtx, Internal);
   }
 }
 
@@ -1402,9 +1410,9 @@ DeclContext::lookup(DeclarationName Name) const {
     if (NeedToReconcileExternalVisibleStorage)
       reconcileExternalVisibleStorage();
 
-    StoredDeclsMap *Map = LookupPtr.getPointer();
+    StoredDeclsMap *Map = LookupPtr;
 
-    if (LookupPtr.getInt())
+    if (HasLazyLocalLexicalLookups || HasLazyExternalLexicalLookups)
       // FIXME: Make buildLookup const?
       Map = const_cast<DeclContext*>(this)->buildLookup();
 
@@ -1418,7 +1426,7 @@ DeclContext::lookup(DeclarationName Name) const {
       return R.first->second.getLookupResult();
 
     if (Source->FindExternalVisibleDeclsByName(this, Name) || !R.second) {
-      if (StoredDeclsMap *Map = LookupPtr.getPointer()) {
+      if (StoredDeclsMap *Map = LookupPtr) {
         StoredDeclsMap::iterator I = Map->find(Name);
         if (I != Map->end())
           return I->second.getLookupResult();
@@ -1428,8 +1436,8 @@ DeclContext::lookup(DeclarationName Name) const {
     return lookup_result();
   }
 
-  StoredDeclsMap *Map = LookupPtr.getPointer();
-  if (LookupPtr.getInt())
+  StoredDeclsMap *Map = LookupPtr;
+  if (HasLazyLocalLexicalLookups || HasLazyExternalLexicalLookups)
     Map = const_cast<DeclContext*>(this)->buildLookup();
 
   if (!Map)
@@ -1446,33 +1454,23 @@ DeclContext::lookup_result
 DeclContext::noload_lookup(DeclarationName Name) {
   assert(DeclKind != Decl::LinkageSpec &&
          "Should not perform lookups into linkage specs!");
-  if (!hasExternalVisibleStorage())
-    return lookup(Name);
 
   DeclContext *PrimaryContext = getPrimaryContext();
   if (PrimaryContext != this)
     return PrimaryContext->noload_lookup(Name);
 
-  StoredDeclsMap *Map = LookupPtr.getPointer();
-  if (LookupPtr.getInt()) {
-    // Carefully build the lookup map, without deserializing anything.
+  // If we have any lazy lexical declarations not in our lookup map, add them
+  // now. Don't import any external declarations, not even if we know we have
+  // some missing from the external visible lookups.
+  if (HasLazyLocalLexicalLookups) {
     SmallVector<DeclContext *, 2> Contexts;
     collectAllContexts(Contexts);
     for (unsigned I = 0, N = Contexts.size(); I != N; ++I)
-      buildLookupImpl<&DeclContext::noload_decls_begin,
-                      &DeclContext::noload_decls_end>(Contexts[I], true);
-
-    // We no longer have any lazy decls.
-    LookupPtr.setInt(false);
-
-    // There may now be names for which we have local decls but are
-    // missing the external decls. FIXME: Just set the hasExternalDecls
-    // flag on those names that have external decls.
-    NeedToReconcileExternalVisibleStorage = true;
-
-    Map = LookupPtr.getPointer();
+      buildLookupImpl(Contexts[I], hasExternalVisibleStorage());
+    HasLazyLocalLexicalLookups = false;
   }
 
+  StoredDeclsMap *Map = LookupPtr;
   if (!Map)
     return lookup_result();
 
@@ -1494,8 +1492,9 @@ void DeclContext::localUncachedLookup(DeclarationName Name,
   }
 
   // If we have a lookup table, check there first. Maybe we'll get lucky.
-  if (Name && !LookupPtr.getInt()) {
-    if (StoredDeclsMap *Map = LookupPtr.getPointer()) {
+  // FIXME: Should we be checking these flags on the primary context?
+  if (Name && !HasLazyLocalLexicalLookups && !HasLazyExternalLexicalLookups) {
+    if (StoredDeclsMap *Map = LookupPtr) {
       StoredDeclsMap::iterator Pos = Map->find(Name);
       if (Pos != Map->end()) {
         Results.insert(Results.end(),
@@ -1508,6 +1507,8 @@ void DeclContext::localUncachedLookup(DeclarationName Name,
 
   // Slow case: grovel through the declarations in our chain looking for 
   // matches.
+  // FIXME: If we have lazy external declarations, this will not find them!
+  // FIXME: Should we CollectAllContexts and walk them all here?
   for (Decl *D = FirstDecl; D; D = D->getNextDeclInContext()) {
     if (NamedDecl *ND = dyn_cast<NamedDecl>(D))
       if (ND->getDeclName() == Name)
@@ -1588,7 +1589,7 @@ void DeclContext::makeDeclVisibleInContextWithFlags(NamedDecl *D, bool Internal,
   // FIXME: As a performance hack, don't add such decls into the translation
   // unit unless we're in C++, since qualified lookup into the TU is never
   // performed.
-  if (LookupPtr.getPointer() || hasExternalVisibleStorage() ||
+  if (LookupPtr || hasExternalVisibleStorage() ||
       ((!Recoverable || D->getDeclContext() != D->getLexicalDeclContext()) &&
        (getParentASTContext().getLangOpts().CPlusPlus ||
         !isTranslationUnit()))) {
@@ -1598,7 +1599,7 @@ void DeclContext::makeDeclVisibleInContextWithFlags(NamedDecl *D, bool Internal,
     buildLookup();
     makeDeclVisibleInContextImpl(D, Internal);
   } else {
-    LookupPtr.setInt(true);
+    HasLazyLocalLexicalLookups = true;
   }
 
   // If we are a transparent context or inline namespace, insert into our
@@ -1616,7 +1617,7 @@ void DeclContext::makeDeclVisibleInContextWithFlags(NamedDecl *D, bool Internal,
 
 void DeclContext::makeDeclVisibleInContextImpl(NamedDecl *D, bool Internal) {
   // Find or create the stored declaration map.
-  StoredDeclsMap *Map = LookupPtr.getPointer();
+  StoredDeclsMap *Map = LookupPtr;
   if (!Map) {
     ASTContext *C = &getParentASTContext();
     Map = CreateStoredDeclsMap(*C);
@@ -1678,7 +1679,7 @@ DeclContext::udir_range DeclContext::using_directives() const {
 //===----------------------------------------------------------------------===//
 
 StoredDeclsMap *DeclContext::CreateStoredDeclsMap(ASTContext &C) const {
-  assert(!LookupPtr.getPointer() && "context already has a decls map");
+  assert(!LookupPtr && "context already has a decls map");
   assert(getPrimaryContext() == this &&
          "creating decls map on non-primary context");
 
@@ -1690,7 +1691,7 @@ StoredDeclsMap *DeclContext::CreateStoredDeclsMap(ASTContext &C) const {
     M = new StoredDeclsMap();
   M->Previous = C.LastSDM;
   C.LastSDM = llvm::PointerIntPair<StoredDeclsMap*,1>(M, Dependent);
-  LookupPtr.setPointer(M);
+  LookupPtr = M;
   return M;
 }
 
@@ -1722,11 +1723,11 @@ DependentDiagnostic *DependentDiagnostic::Create(ASTContext &C,
   assert(Parent->isDependentContext()
          && "cannot iterate dependent diagnostics of non-dependent context");
   Parent = Parent->getPrimaryContext();
-  if (!Parent->LookupPtr.getPointer())
+  if (!Parent->LookupPtr)
     Parent->CreateStoredDeclsMap(C);
 
-  DependentStoredDeclsMap *Map
-    = static_cast<DependentStoredDeclsMap*>(Parent->LookupPtr.getPointer());
+  DependentStoredDeclsMap *Map =
+      static_cast<DependentStoredDeclsMap *>(Parent->LookupPtr);
 
   // Allocate the copy of the PartialDiagnostic via the ASTContext's
   // BumpPtrAllocator, rather than the ASTContext itself.

@@ -13,7 +13,7 @@ class AbbreviationsTestCase(TestBase):
     mydir = TestBase.compute_mydir(__file__)
 
     @expectedFailureFreeBSD("llvm.org/pr22611 thread race condition breaks prompt setting")
-    @unittest2.skipIf(sys.platform.startswith("win32"), "one-shot script commands deadlock on Windows.")
+    @skipIfWindows # one-shot script commands deadlock on Windows.
     def test_nonrunning_command_abbreviations (self):
         self.expect("ap script",
                     startstr = "The following built-in commands may relate to 'script':",
@@ -78,13 +78,14 @@ class AbbreviationsTestCase(TestBase):
         self.runCmd (r'''sc print "\n\n\tHello!\n"''')
 
 
-    @unittest2.skipUnless(sys.platform.startswith("darwin"), "requires Darwin")
+    @skipUnlessDarwin
     @dsym_test
     def test_with_dsym (self):
         self.buildDsym ()
         self.running_abbreviations ()
 
     @dwarf_test
+    @expectedFailureLinux # not related to abbreviations, "dis -f" output has int3 in it
     def test_with_dwarf (self):
         self.buildDwarf ()
         self.running_abbreviations ()
@@ -136,7 +137,6 @@ class AbbreviationsTestCase(TestBase):
         # The test framework relies on detecting either "run" or "process launch"
         # command to automatically kill the inferior upon tear down.
         # But we'll be using "pro la" command to launch the inferior.
-        self.addTearDownHook(lambda: self.runCmd("process kill"))
         self.expect("pro la",
                     patterns = [ "Process .* launched: "])
 
@@ -149,12 +149,18 @@ class AbbreviationsTestCase(TestBase):
                                  "stop reason = breakpoint 2.1" ])
 
         # ARCH, if not specified, defaults to x86_64.
+        self.runCmd("dis -f")
+        disassembly = self.res.GetOutput()
         if self.getArchitecture() in ["", 'x86_64', 'i386']:
-            self.expect("dis -f",
+            # hey! we shouldn't have a software breakpoint in here
+            self.assertFalse("int3" in disassembly)
+            self.expect(disassembly, exe=False,
                         startstr = "a.out`sum(int, int)",
                         substrs = [' mov',
                                    ' addl ',
                                    'ret'])
+        else:
+            self.fail('unimplemented for arch = "{arch}"'.format(arch=self.getArchitecture()))
 
         self.expect("i d l main.cpp",
                     patterns = ["Line table for .*main.cpp in `a.out"])

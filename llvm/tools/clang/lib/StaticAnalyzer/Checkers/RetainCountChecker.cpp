@@ -2821,29 +2821,6 @@ static bool wasLoadedFromIvar(SymbolRef Sym) {
   return false;
 }
 
-/// Returns the property that claims this instance variable, if any.
-static const ObjCPropertyDecl *findPropForIvar(const ObjCIvarDecl *Ivar) {
-  auto IsPropertyForIvar = [Ivar](const ObjCPropertyDecl *Prop) -> bool {
-    return Prop->getPropertyIvarDecl() == Ivar;
-  };
-
-  const ObjCInterfaceDecl *Interface = Ivar->getContainingInterface();
-  auto PropIter = std::find_if(Interface->prop_begin(), Interface->prop_end(),
-                               IsPropertyForIvar);
-  if (PropIter != Interface->prop_end()) {
-    return *PropIter;
-  }
-  
-  for (auto Extension : Interface->visible_extensions()) {
-    PropIter = std::find_if(Extension->prop_begin(), Extension->prop_end(),
-                            IsPropertyForIvar);
-    if (PropIter != Extension->prop_end())
-      return *PropIter;
-  }
-
-  return nullptr;
-}
-
 void RetainCountChecker::checkPostStmt(const ObjCIvarRefExpr *IRE,
                                        CheckerContext &C) const {
   Optional<Loc> IVarLoc = C.getSVal(IRE).getAs<Loc>();
@@ -2880,13 +2857,6 @@ void RetainCountChecker::checkPostStmt(const ObjCIvarRefExpr *IRE,
       return;
     }
 
-    // Also don't do anything if the ivar is unretained. If so, we know that
-    // there's no outstanding retain count for the value.
-    if (Kind == RetEffect::ObjC)
-      if (const ObjCPropertyDecl *Prop = findPropForIvar(IRE->getDecl()))
-        if (!Prop->isRetaining())
-          return;
-
     // Note that this value has been loaded from an ivar.
     C.addTransition(setRefBinding(State, Sym, RV->withIvarAccess()));
     return;
@@ -2900,18 +2870,7 @@ void RetainCountChecker::checkPostStmt(const ObjCIvarRefExpr *IRE,
     return;
   }
 
-  // Try to find the property associated with this ivar.
-  if (Kind != RetEffect::ObjC) {
-    State = setRefBinding(State, Sym, PlusZero.withIvarAccess());
-  } else {
-    const ObjCPropertyDecl *Prop = findPropForIvar(IRE->getDecl());
-
-    if (Prop && !Prop->isRetaining())
-      State = setRefBinding(State, Sym, PlusZero);
-    else
-      State = setRefBinding(State, Sym, PlusZero.withIvarAccess());
-  }
-
+  State = setRefBinding(State, Sym, PlusZero.withIvarAccess());
   C.addTransition(State);
 }
 
@@ -3278,6 +3237,16 @@ void RetainCountChecker::processNonLeakError(ProgramStateRef St,
                                              RefVal::Kind ErrorKind,
                                              SymbolRef Sym,
                                              CheckerContext &C) const {
+  // HACK: Ignore retain-count issues on values accessed through ivars,
+  // because of cases like this:
+  //   [_contentView retain];
+  //   [_contentView removeFromSuperview];
+  //   [self addSubview:_contentView]; // invalidates 'self'
+  //   [_contentView release];
+  if (const RefVal *RV = getRefBinding(St, Sym))
+    if (RV->getIvarAccessHistory() != RefVal::IvarAccessHistory::None)
+      return;
+
   ExplodedNode *N = C.generateSink(St);
   if (!N)
     return;
@@ -3504,6 +3473,15 @@ void RetainCountChecker::checkReturnWithRetEffect(const ReturnStmt *S,
                                                   RetEffect RE, RefVal X,
                                                   SymbolRef Sym,
                                               ProgramStateRef state) const {
+  // HACK: Ignore retain-count issues on values accessed through ivars,
+  // because of cases like this:
+  //   [_contentView retain];
+  //   [_contentView removeFromSuperview];
+  //   [self addSubview:_contentView]; // invalidates 'self'
+  //   [_contentView release];
+  if (X.getIvarAccessHistory() != RefVal::IvarAccessHistory::None)
+    return;
+
   // Any leaks or other errors?
   if (X.isReturnedOwned() && X.getCount() == 0) {
     if (RE.getKind() != RetEffect::NoRet) {
@@ -3741,6 +3719,15 @@ RetainCountChecker::handleAutoreleaseCounts(ProgramStateRef state,
     return setRefBinding(state, Sym, V);
   }
 
+  // HACK: Ignore retain-count issues on values accessed through ivars,
+  // because of cases like this:
+  //   [_contentView retain];
+  //   [_contentView removeFromSuperview];
+  //   [self addSubview:_contentView]; // invalidates 'self'
+  //   [_contentView release];
+  if (V.getIvarAccessHistory() != RefVal::IvarAccessHistory::None)
+    return state;
+
   // Woah!  More autorelease counts then retain counts left.
   // Emit hard error.
   V = V ^ RefVal::ErrorOverAutorelease;
@@ -3774,11 +3761,22 @@ ProgramStateRef
 RetainCountChecker::handleSymbolDeath(ProgramStateRef state,
                                       SymbolRef sid, RefVal V,
                                     SmallVectorImpl<SymbolRef> &Leaked) const {
-  bool hasLeak = false;
-  if (V.isOwned())
+  bool hasLeak;
+
+  // HACK: Ignore retain-count issues on values accessed through ivars,
+  // because of cases like this:
+  //   [_contentView retain];
+  //   [_contentView removeFromSuperview];
+  //   [self addSubview:_contentView]; // invalidates 'self'
+  //   [_contentView release];
+  if (V.getIvarAccessHistory() != RefVal::IvarAccessHistory::None)
+    hasLeak = false;
+  else if (V.isOwned())
     hasLeak = true;
   else if (V.isNotOwned() || V.isReturnedOwned())
     hasLeak = (V.getCount() > 0);
+  else
+    hasLeak = false;
 
   if (!hasLeak)
     return removeRefBinding(state, sid);

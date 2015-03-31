@@ -47,6 +47,8 @@ using namespace llvm;
 static cl::opt<std::string>
 DefaultGCOVVersion("default-gcov-version", cl::init("402*"), cl::Hidden,
                    cl::ValueRequired);
+static cl::opt<bool> DefaultExitBlockBeforeBody("gcov-exit-block-before-body",
+                                                cl::init(false), cl::Hidden);
 
 GCOVOptions GCOVOptions::getDefault() {
   GCOVOptions Options;
@@ -55,6 +57,7 @@ GCOVOptions GCOVOptions::getDefault() {
   Options.UseCfgChecksum = false;
   Options.NoRedZone = false;
   Options.FunctionNamesInData = true;
+  Options.ExitBlockBeforeBody = DefaultExitBlockBeforeBody;
 
   if (DefaultGCOVVersion.size() != 4) {
     llvm::report_fatal_error(std::string("Invalid -default-gcov-version: ") +
@@ -307,7 +310,7 @@ namespace {
   class GCOVFunction : public GCOVRecord {
    public:
      GCOVFunction(DISubprogram SP, raw_ostream *os, uint32_t Ident,
-                  bool UseCfgChecksum)
+                  bool UseCfgChecksum, bool ExitBlockBeforeBody)
          : SP(SP), Ident(Ident), UseCfgChecksum(UseCfgChecksum), CfgChecksum(0),
            ReturnBlock(1, os) {
       this->os = os;
@@ -317,11 +320,13 @@ namespace {
 
       uint32_t i = 0;
       for (auto &BB : *F) {
-        // Skip index 1 (0, 2, 3, 4, ...) because that's assigned to the
-        // ReturnBlock.
-        bool first = i == 0;
-        Blocks.insert(std::make_pair(&BB, GCOVBlock(i++ + !first, os)));
+        // Skip index 1 if it's assigned to the ReturnBlock.
+        if (i == 1 && ExitBlockBeforeBody)
+          ++i;
+        Blocks.insert(std::make_pair(&BB, GCOVBlock(i++, os)));
       }
+      if (!ExitBlockBeforeBody)
+        ReturnBlock.Number = i;
 
       std::string FunctionNameAndLine;
       raw_string_ostream FNLOS(FunctionNameAndLine);
@@ -437,7 +442,7 @@ std::string GCOVProfiler::mangleName(DICompileUnit CU, const char *NewStem) {
   StringRef FName = sys::path::filename(Filename);
   SmallString<128> CurPath;
   if (sys::fs::current_path(CurPath)) return FName;
-  sys::path::append(CurPath, FName.str());
+  sys::path::append(CurPath, FName);
   return CurPath.str();
 }
 
@@ -461,10 +466,11 @@ static bool functionHasLines(Function *F) {
       if (isa<DbgInfoIntrinsic>(I)) continue;
 
       const DebugLoc &Loc = I->getDebugLoc();
-      if (Loc.isUnknown()) continue;
+      if (!Loc)
+        continue;
 
       // Artificial lines such as calls to the global constructors.
-      if (Loc.getLine() == 0) continue; 
+      if (Loc.getLine() == 0) continue;
 
       return true;
     }
@@ -508,7 +514,8 @@ void GCOVProfiler::emitProfileNotes() {
       EntryBlock.splitBasicBlock(It);
 
       Funcs.push_back(make_unique<GCOVFunction>(SP, &out, FunctionIdent++,
-                                                Options.UseCfgChecksum));
+                                                Options.UseCfgChecksum,
+                                                Options.ExitBlockBeforeBody));
       GCOVFunction &Func = *Funcs.back();
 
       for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
@@ -530,14 +537,16 @@ void GCOVProfiler::emitProfileNotes() {
           if (isa<DbgInfoIntrinsic>(I)) continue;
 
           const DebugLoc &Loc = I->getDebugLoc();
-          if (Loc.isUnknown()) continue;
+          if (!Loc)
+            continue;
 
           // Artificial lines such as calls to the global constructors.
           if (Loc.getLine() == 0) continue;
 
           if (Line == Loc.getLine()) continue;
           Line = Loc.getLine();
-          if (SP != getDISubprogram(Loc.getScope(*Ctx))) continue;
+          if (SP != getDISubprogram(Loc.getScope()))
+            continue;
 
           GCOVLines &Lines = Block.getFile(SP.getFilename());
           Lines.addLine(Loc.getLine());

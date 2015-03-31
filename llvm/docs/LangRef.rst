@@ -998,7 +998,7 @@ Currently, only the following parameter attributes are defined:
     This indicates that the parameter or return pointer is not null. This
     attribute may only be applied to pointer typed parameters. This is not
     checked or enforced by LLVM, the caller must ensure that the pointer
-    passed in is non-null, or the callee must ensure that the returned pointer 
+    passed in is non-null, or the callee must ensure that the returned pointer
     is non-null.
 
 ``dereferenceable(<n>)``
@@ -1024,12 +1024,12 @@ string:
 
     define void @f() gc "name" { ... }
 
-The supported values of *name* includes those :ref:`built in to LLVM 
+The supported values of *name* includes those :ref:`built in to LLVM
 <builtin-gc-strategies>` and any provided by loaded plugins.  Specifying a GC
-strategy will cause the compiler to alter its output in order to support the 
-named garbage collection algorithm.  Note that LLVM itself does not contain a 
+strategy will cause the compiler to alter its output in order to support the
+named garbage collection algorithm.  Note that LLVM itself does not contain a
 garbage collector, this functionality is restricted to generating machine code
-which can interoperate with a collector provided externally.  
+which can interoperate with a collector provided externally.
 
 .. _prefixdata:
 
@@ -1526,11 +1526,12 @@ the code generator should use.
 Instead, if specified, the target data layout is required to match what
 the ultimate *code generator* expects. This string is used by the
 mid-level optimizers to improve code, and this only works if it matches
-what the ultimate code generator uses. If you would like to generate IR
-that does not embed this target-specific detail into the IR, then you
-don't have to specify the string. This will disable some optimizations
-that require precise layout information, but this also prevents those
-optimizations from introducing target specificity into the IR.
+what the ultimate code generator uses. There is no way to generate IR
+that does not embed this target-specific detail into the IR. If you
+don't specify the string, the default specifications will be used to
+generate a Data Layout and the optimization phases will operate
+accordingly and introduce target specificity into the IR with respect to
+these default specifications.
 
 .. _langref_triple:
 
@@ -2707,11 +2708,11 @@ The following is the syntax for constant expressions:
     Convert a constant pointer or constant vector of pointer, CST, to another
     TYPE in a different address space. The constraints of the operands are the
     same as those for the :ref:`addrspacecast instruction <i_addrspacecast>`.
-``getelementptr (CSTPTR, IDX0, IDX1, ...)``, ``getelementptr inbounds (CSTPTR, IDX0, IDX1, ...)``
+``getelementptr (TY, CSTPTR, IDX0, IDX1, ...)``, ``getelementptr inbounds (TY, CSTPTR, IDX0, IDX1, ...)``
     Perform the :ref:`getelementptr operation <i_getelementptr>` on
     constants. As with the :ref:`getelementptr <i_getelementptr>`
     instruction, the index list may have zero or more indexes, which are
-    required to make sense for the type of "CSTPTR".
+    required to make sense for the type of "pointer to TY".
 ``select (COND, VAL1, VAL2)``
     Perform the :ref:`select operation <i_select>` on constants.
 ``icmp COND (VAL1, VAL2)``
@@ -2896,6 +2897,8 @@ attached to the ``add`` instruction using the ``!dbg`` identifier:
 More information about specific metadata nodes recognized by the
 optimizers and code generator is found below.
 
+.. _specialized-metadata:
+
 Specialized Metadata Nodes
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -2905,6 +2908,8 @@ order.
 
 These aren't inherently debug info centric, but currently all the specialized
 metadata nodes are related to debug info.
+
+.. _MDCompileUnit:
 
 MDCompileUnit
 """""""""""""
@@ -2923,6 +2928,14 @@ references to them from instructions).
                         enums: !2, retainedTypes: !3, subprograms: !4,
                         globals: !5, imports: !6)
 
+Compile unit descriptors provide the root scope for objects declared in a
+specific compilation unit.  File descriptors are defined using this scope.
+These descriptors are collected by a named metadata ``!llvm.dbg.cu``.  They
+keep track of subprograms, global variables, type information, and imported
+entities (declarations and namespaces).
+
+.. _MDFile:
+
 MDFile
 """"""
 
@@ -2932,19 +2945,35 @@ MDFile
 
     !0 = !MDFile(filename: "path/to/file", directory: "/path/to/dir")
 
+Files are sometimes used in ``scope:`` fields, and are the only valid target
+for ``file:`` fields.
+
 .. _MDLocation:
 
 MDBasicType
 """""""""""
 
-``MDBasicType`` nodes represent primitive types.  ``tag:`` defaults to
-``DW_TAG_base_type``.
+``MDBasicType`` nodes represent primitive types, such as ``int``, ``bool`` and
+``float``.  ``tag:`` defaults to ``DW_TAG_base_type``.
 
 .. code-block:: llvm
 
     !0 = !MDBasicType(name: "unsigned char", size: 8, align: 8,
                       encoding: DW_ATE_unsigned_char)
     !1 = !MDBasicType(tag: DW_TAG_unspecified_type, name: "decltype(nullptr)")
+
+The ``encoding:`` describes the details of the type.  Usually it's one of the
+following:
+
+.. code-block:: llvm
+
+  DW_ATE_address       = 1
+  DW_ATE_boolean       = 2
+  DW_ATE_float         = 4
+  DW_ATE_signed        = 5
+  DW_ATE_signed_char   = 6
+  DW_ATE_unsigned      = 7
+  DW_ATE_unsigned_char = 8
 
 .. _MDSubroutineType:
 
@@ -2962,6 +2991,8 @@ represents a function with no return value (such as ``void foo() {}`` in C++).
     !1 = !BasicType(name: "char", size: 8, align: 8, DW_ATE_signed_char)
     !2 = !MDSubroutineType(types: !{null, !0, !1}) ; void (int, char)
 
+.. _MDDerivedType:
+
 MDDerivedType
 """""""""""""
 
@@ -2974,6 +3005,34 @@ qualified types.
                       encoding: DW_ATE_unsigned_char)
     !1 = !MDDerivedType(tag: DW_TAG_pointer_type, baseType: !0, size: 32,
                         align: 32)
+
+The following ``tag:`` values are valid:
+
+.. code-block:: llvm
+
+  DW_TAG_formal_parameter   = 5
+  DW_TAG_member             = 13
+  DW_TAG_pointer_type       = 15
+  DW_TAG_reference_type     = 16
+  DW_TAG_typedef            = 22
+  DW_TAG_ptr_to_member_type = 31
+  DW_TAG_const_type         = 38
+  DW_TAG_volatile_type      = 53
+  DW_TAG_restrict_type      = 55
+
+``DW_TAG_member`` is used to define a member of a :ref:`composite type
+<MDCompositeType>` or :ref:`subprogram <MDSubprogram>`.  The type of the member
+is the ``baseType:``.  The ``offset:`` is the member's bit offset.
+``DW_TAG_formal_parameter`` is used to define a member which is a formal
+argument of a subprogram.
+
+``DW_TAG_typedef`` is used to provide a name for the ``baseType:``.
+
+``DW_TAG_pointer_type``, ``DW_TAG_reference_type``, ``DW_TAG_const_type``,
+``DW_TAG_volatile_type`` and ``DW_TAG_restrict_type`` are used to qualify the
+``baseType:``.
+
+Note that the ``void *`` type is expressed as a type derived from NULL.
 
 .. _MDCompositeType:
 
@@ -2997,6 +3056,35 @@ can refer to composite types indirectly via a :ref:`metadata string
                           line: 2, size: 32, align: 32, identifier: "_M4Enum",
                           elements: !{!0, !1, !2})
 
+The following ``tag:`` values are valid:
+
+.. code-block:: llvm
+
+  DW_TAG_array_type       = 1
+  DW_TAG_class_type       = 2
+  DW_TAG_enumeration_type = 4
+  DW_TAG_structure_type   = 19
+  DW_TAG_union_type       = 23
+  DW_TAG_subroutine_type  = 21
+  DW_TAG_inheritance      = 28
+
+
+For ``DW_TAG_array_type``, the ``elements:`` should be :ref:`subrange
+descriptors <MDSubrange>`, each representing the range of subscripts at that
+level of indexing.  The ``DIFlagVector`` flag to ``flags:`` indicates that an
+array type is a native packed vector.
+
+For ``DW_TAG_enumeration_type``, the ``elements:`` should be :ref:`enumerator
+descriptors <MDEnumerator>`, each representing the definition of an enumeration
+value for the set.  All enumeration type descriptors are collected in the
+``enums:`` field of the :ref:`compile unit <MDCompileUnit>`.
+
+For ``DW_TAG_structure_type``, ``DW_TAG_class_type``, and
+``DW_TAG_union_type``, the ``elements:`` should be :ref:`derived types
+<MDDerivedType>` with ``tag: DW_TAG_member`` or ``tag: DW_TAG_inheritance``.
+
+.. _MDSubrange:
+
 MDSubrange
 """"""""""
 
@@ -3008,6 +3096,8 @@ MDSubrange
     !0 = !MDSubrange(count: 5, lowerBound: 0) ; array counting from 0
     !1 = !MDSubrange(count: 5, lowerBound: 1) ; array counting from 1
     !2 = !MDSubrange(count: -1) ; empty array.
+
+.. _MDEnumerator:
 
 MDEnumerator
 """"""""""""
@@ -3066,6 +3156,9 @@ MDGlobalVariable
                            isDefinition: false, variable: i32* @foo,
                            declaration: !4)
 
+All global variables should be referenced by the `globals:` field of a
+:ref:`compile unit <MDCompileUnit>`.
+
 .. _MDSubprogram:
 
 MDSubprogram
@@ -3091,12 +3184,17 @@ retained, even if their IR counterparts are optimized out of the IR.  The
 MDLexicalBlock
 """"""""""""""
 
-``MDLexicalBlock`` nodes represent lexical blocks in the source language (a
-scope).
+``MDLexicalBlock`` nodes describe nested blocks within a :ref:`subprogram
+<MDSubprogram>`.  The line number and column numbers are used to dinstinguish
+two lexical blocks at same depth.  They are valid targets for ``scope:``
+fields.
 
 .. code-block:: llvm
 
-    !0 = !MDLexicalBlock(scope: !1, file: !2, line: 7, column: 35)
+    !0 = distinct !MDLexicalBlock(scope: !1, file: !2, line: 7, column: 35)
+
+Usually lexical blocks are ``distinct`` to prevent node merging based on
+operands.
 
 .. _MDLexicalBlockFile:
 
@@ -3539,28 +3637,28 @@ for optimizations are prefixed with ``llvm.mem``.
 '``llvm.mem.parallel_loop_access``' Metadata
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The ``llvm.mem.parallel_loop_access`` metadata refers to a loop identifier, 
-or metadata containing a list of loop identifiers for nested loops. 
-The metadata is attached to memory accessing instructions and denotes that 
-no loop carried memory dependence exist between it and other instructions denoted 
+The ``llvm.mem.parallel_loop_access`` metadata refers to a loop identifier,
+or metadata containing a list of loop identifiers for nested loops.
+The metadata is attached to memory accessing instructions and denotes that
+no loop carried memory dependence exist between it and other instructions denoted
 with the same loop identifier.
 
-Precisely, given two instructions ``m1`` and ``m2`` that both have the 
-``llvm.mem.parallel_loop_access`` metadata, with ``L1`` and ``L2`` being the 
-set of loops associated with that metadata, respectively, then there is no loop 
-carried dependence between ``m1`` and ``m2`` for loops in both ``L1`` and 
+Precisely, given two instructions ``m1`` and ``m2`` that both have the
+``llvm.mem.parallel_loop_access`` metadata, with ``L1`` and ``L2`` being the
+set of loops associated with that metadata, respectively, then there is no loop
+carried dependence between ``m1`` and ``m2`` for loops in both ``L1`` and
 ``L2``.
 
-As a special case, if all memory accessing instructions in a loop have 
-``llvm.mem.parallel_loop_access`` metadata that refers to that loop, then the 
-loop has no loop carried memory dependences and is considered to be a parallel 
-loop.  
+As a special case, if all memory accessing instructions in a loop have
+``llvm.mem.parallel_loop_access`` metadata that refers to that loop, then the
+loop has no loop carried memory dependences and is considered to be a parallel
+loop.
 
-Note that if not all memory access instructions have such metadata referring to 
-the loop, then the loop is considered not being trivially parallel. Additional 
-memory dependence analysis is required to make that determination.  As a fail 
-safe mechanism, this causes loops that were originally parallel to be considered 
-sequential (if optimization passes that are unaware of the parallel semantics 
+Note that if not all memory access instructions have such metadata referring to
+the loop, then the loop is considered not being trivially parallel. Additional
+memory dependence analysis is required to make that determination.  As a fail
+safe mechanism, this causes loops that were originally parallel to be considered
+sequential (if optimization passes that are unaware of the parallel semantics
 insert new memory instructions into the loop body).
 
 Example of a loop that is considered parallel due to its correct use of
@@ -5604,17 +5702,17 @@ metadata name ``<index>`` corresponding to a metadata node with no
 entries. The existence of the ``!invariant.load`` metadata on the
 instruction tells the optimizer and code generator that the address
 operand to this load points to memory which can be assumed unchanged.
-Being invariant does not imply that a location is dereferenceable, 
-but it does imply that once the location is known dereferenceable 
-its value is henceforth unchanging.  
+Being invariant does not imply that a location is dereferenceable,
+but it does imply that once the location is known dereferenceable
+its value is henceforth unchanging.
 
 The optional ``!nonnull`` metadata must reference a single
 metadata name ``<index>`` corresponding to a metadata node with no
 entries. The existence of the ``!nonnull`` metadata on the
 instruction tells the optimizer that the value loaded is known to
 never be null.  This is analogous to the ''nonnull'' attribute
-on parameters and return values.  This metadata can only be applied 
-to loads of a pointer type.  
+on parameters and return values.  This metadata can only be applied
+to loads of a pointer type.
 
 Semantics:
 """"""""""
@@ -7414,8 +7512,8 @@ Accurate Garbage Collection Intrinsics
 --------------------------------------
 
 LLVM's support for `Accurate Garbage Collection <GarbageCollection.html>`_
-(GC) requires the frontend to generate code containing appropriate intrinsic 
-calls and select an appropriate GC strategy which knows how to lower these 
+(GC) requires the frontend to generate code containing appropriate intrinsic
+calls and select an appropriate GC strategy which knows how to lower these
 intrinsics in a manner which is appropriate for the target collector.
 
 These intrinsics allow identification of :ref:`GC roots on the
@@ -7429,11 +7527,11 @@ Experimental Statepoint Intrinsics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 LLVM provides an second experimental set of intrinsics for describing garbage
-collection safepoints in compiled code.  These intrinsics are an alternative 
-to the ``llvm.gcroot`` intrinsics, but are compatible with the ones for 
-:ref:`read <int_gcread>` and :ref:`write <int_gcwrite>` barriers.  The 
-differences in approach are covered in the `Garbage Collection with LLVM 
-<GarbageCollection.html>`_ documentation.  The intrinsics themselves are 
+collection safepoints in compiled code.  These intrinsics are an alternative
+to the ``llvm.gcroot`` intrinsics, but are compatible with the ones for
+:ref:`read <int_gcread>` and :ref:`write <int_gcwrite>` barriers.  The
+differences in approach are covered in the `Garbage Collection with LLVM
+<GarbageCollection.html>`_ documentation.  The intrinsics themselves are
 described in :doc:`Statepoints`.
 
 .. _int_gcroot:
@@ -9690,7 +9788,7 @@ The result of this operation is equivalent to a regular vector load instruction 
 ::
 
        %res = call <16 x float> @llvm.masked.load.v16f32 (<16 x float>* %ptr, i32 4, <16 x i1>%mask, <16 x float> %passthru)
-       
+
        ;; The result of the two following instructions is identical aside from potential memory access exception
        %loadlal = load <16 x float>, <16 x float>* %ptr, align 4
        %res = select <16 x i1> %mask, <16 x float> %loadlal, <16 x float> %passthru
@@ -9729,7 +9827,7 @@ The result of this operation is equivalent to a load-modify-store sequence. Howe
 ::
 
        call void @llvm.masked.store.v16f32(<16 x float> %value, <16 x float>* %ptr, i32 4,  <16 x i1> %mask)
-       
+
        ;; The result of the following instructions is identical aside from potential data races and memory access exceptions
        %oldval = load <16 x float>, <16 x float>* %ptr, align 4
        %res = select <16 x i1> %mask, <16 x float> %value, <16 x float> %oldval

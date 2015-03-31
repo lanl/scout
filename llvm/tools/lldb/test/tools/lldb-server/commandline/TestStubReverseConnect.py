@@ -1,9 +1,3 @@
-# Add the directory above ours to the python library path since we
-# will import from there.
-import os.path
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-
 import gdbremote_testcase
 import lldbgdbserverutils
 import re
@@ -52,6 +46,10 @@ class TestStubReverseConnect(gdbremote_testcase.GdbRemoteTestCaseBase):
 
         self.stub_hostname = "127.0.0.1"
         self.port = self.listener_port
+
+        triple = self.dbg.GetSelectedPlatform().GetTriple()
+        if re.match(".*-.*-.*-android", triple):
+            self.forward_adb_port(self.port, self.port, "reverse")
 
         # Start the stub.
         server = self.launch_debug_monitor(logfile=sys.stdout)

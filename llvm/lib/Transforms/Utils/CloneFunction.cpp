@@ -392,6 +392,14 @@ void PruningFunctionCloner::CloneBlock(const BasicBlock *BB,
     // terminator into the new basic block in this case.
     if (Action == CloningDirector::StopCloningBB)
       return;
+    if (Action == CloningDirector::CloneSuccessors) {
+      // If the director says to skip with a terminate instruction, we still
+      // need to clone this block's successors.
+      const TerminatorInst *TI = BB->getTerminator();
+      for (unsigned i = 0, e = TI->getNumSuccessors(); i != e; ++i)
+        ToClone.push_back(TI->getSuccessor(i));
+      return;
+    }
     assert(Action != CloningDirector::SkipInstruction && 
            "SkipInstruction is not valid for terminators.");
   }
@@ -516,11 +524,18 @@ void llvm::CloneAndPruneIntoFromInst(Function *NewFunc, const Function *OldFunc,
 
     // Handle PHI nodes specially, as we have to remove references to dead
     // blocks.
-    for (BasicBlock::const_iterator I = BI->begin(), E = BI->end(); I != E; ++I)
-      if (const PHINode *PN = dyn_cast<PHINode>(I))
-        PHIToResolve.push_back(PN);
-      else
+    for (BasicBlock::const_iterator I = BI->begin(), E = BI->end(); I != E; ++I) {
+      // PHI nodes may have been remapped to non-PHI nodes by the caller or
+      // during the cloning process.
+      if (const PHINode *PN = dyn_cast<PHINode>(I)) {
+        if (isa<PHINode>(VMap[PN]))
+          PHIToResolve.push_back(PN);
+        else
+          break;
+      } else {
         break;
+      }
+    }
 
     // Finally, remap the terminator instructions, as those can't be remapped
     // until all BBs are mapped.

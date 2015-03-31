@@ -65,11 +65,7 @@ class CGOpenMPRuntime {
     // Call to kmp_int32 __kmpc_cancel_barrier(ident_t *loc, kmp_int32
     // global_tid);
     OMPRTL__kmpc_cancel_barrier,
-    // Calls for static scheduling 'omp for' loops.
-    OMPRTL__kmpc_for_static_init_4,
-    OMPRTL__kmpc_for_static_init_4u,
-    OMPRTL__kmpc_for_static_init_8,
-    OMPRTL__kmpc_for_static_init_8u,
+    // Call to void __kmpc_for_static_fini(ident_t *loc, kmp_int32 global_tid);
     OMPRTL__kmpc_for_static_fini,
     // Call to void __kmpc_serialized_parallel(ident_t *loc, kmp_int32
     // global_tid);
@@ -100,6 +96,10 @@ class CGOpenMPRuntime {
     // Call to kmp_int32 __kmpc_omp_task(ident_t *, kmp_int32 gtid, kmp_task_t *
     // new_task);
     OMPRTL__kmpc_omp_task,
+    // Call to void __kmpc_copyprivate(ident_t *loc, kmp_int32 global_tid,
+    // kmp_int32 cpy_size, void *cpy_data, void(*cpy_func)(void *, void *),
+    // kmp_int32 didit);
+    OMPRTL__kmpc_copyprivate,
   };
 
   /// \brief Values for bit flags used in the ident_t to describe the fields.
@@ -222,6 +222,18 @@ class CGOpenMPRuntime {
   /// \return Specified function.
   llvm::Constant *createRuntimeFunction(OpenMPRTLFunction Function);
 
+  /// \brief Returns __kmpc_for_static_init_* runtime function for the specified
+  /// size \a IVSize and sign \a IVSigned.
+  llvm::Constant *createForStaticInitFunction(unsigned IVSize, bool IVSigned);
+
+  /// \brief Returns __kmpc_dispatch_init_* runtime function for the specified
+  /// size \a IVSize and sign \a IVSigned.
+  llvm::Constant *createDispatchInitFunction(unsigned IVSize, bool IVSigned);
+
+  /// \brief Returns __kmpc_dispatch_next_* runtime function for the specified
+  /// size \a IVSize and sign \a IVSigned.
+  llvm::Constant *createDispatchNextFunction(unsigned IVSize, bool IVSigned);
+
   /// \brief If the specified mangled name is not in the module, create and
   /// return threadprivate cache object. This object is a pointer's worth of
   /// storage that's reserved for use by the OpenMP runtime.
@@ -270,6 +282,7 @@ class CGOpenMPRuntime {
 public:
   explicit CGOpenMPRuntime(CodeGenModule &CGM);
   virtual ~CGOpenMPRuntime() {}
+  virtual void clear();
 
   /// \brief Emits outlined function for the specified OpenMP directive \a D.
   /// This outlined function has type void(*)(kmp_int32 *ThreadID, kmp_int32
@@ -339,13 +352,18 @@ public:
   /// single region.
   virtual void emitSingleRegion(CodeGenFunction &CGF,
                                 const std::function<void()> &SingleOpGen,
-                                SourceLocation Loc);
+                                SourceLocation Loc,
+                                ArrayRef<const Expr *> CopyprivateVars,
+                                ArrayRef<const Expr *> SrcExprs,
+                                ArrayRef<const Expr *> DstExprs,
+                                ArrayRef<const Expr *> AssignmentOps);
 
-  /// \brief Emits explicit barrier for OpenMP threads.
-  /// \param IsExplicit true, if it is explicitly specified barrier.
+  /// \brief Emit an implicit/explicit barrier for OpenMP threads.
+  /// \param Kind Directive for which this implicit barrier call must be
+  /// generated. Must be OMPD_barrier for explicit barrier generation.
   ///
   virtual void emitBarrierCall(CodeGenFunction &CGF, SourceLocation Loc,
-                               bool IsExplicit = true);
+                               OpenMPDirectiveKind Kind);
 
   /// \brief Check if the specified \a ScheduleKind is static non-chunked.
   /// This kind of worksharing directive is emitted without outer loop.
@@ -399,6 +417,25 @@ public:
   ///
   virtual void emitForFinish(CodeGenFunction &CGF, SourceLocation Loc,
                              OpenMPScheduleClauseKind ScheduleKind);
+
+  /// Call __kmpc_dispatch_next(
+  ///          ident_t *loc, kmp_int32 tid, kmp_int32 *p_lastiter,
+  ///          kmp_int[32|64] *p_lower, kmp_int[32|64] *p_upper,
+  ///          kmp_int[32|64] *p_stride);
+  /// \param IVSize Size of the iteration variable in bits.
+  /// \param IVSigned Sign of the interation variable.
+  /// \param IL Address of the output variable in which the flag of the
+  /// last iteration is returned.
+  /// \param LB Address of the output variable in which the lower iteration
+  /// number is returned.
+  /// \param UB Address of the output variable in which the upper iteration
+  /// number is returned.
+  /// \param ST Address of the output variable in which the stride value is
+  /// returned.
+  virtual llvm::Value *emitForNext(CodeGenFunction &CGF, SourceLocation Loc,
+                                   unsigned IVSize, bool IVSigned,
+                                   llvm::Value *IL, llvm::Value *LB,
+                                   llvm::Value *UB, llvm::Value *ST);
 
   /// \brief Emits call to void __kmpc_push_num_threads(ident_t *loc, kmp_int32
   /// global_tid, kmp_int32 num_threads) to generate code for 'num_threads'
