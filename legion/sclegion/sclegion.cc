@@ -484,7 +484,6 @@ namespace{
       args += sizeof(MeshHeader);
 
       // number of subregions
-
       size_t numSubregions = 1;
       char *p;
       p = getenv("SC_NTHREADS");
@@ -765,7 +764,6 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   const int point = ht->index_point.point_data[0];
   printf("index point %d\n",point);
 
-
   size_t argsLen = legion_task_get_arglen(task);
 
   char* args = (char*)legion_task_get_args(task);
@@ -834,13 +832,14 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   *meshTailPtr = 0; //z
   ++meshTailPtr;
 
+  printf("size %d %d %d \n", getSize(n, point, header->numColors), header->height, header->depth);
   *meshTailPtr = getSize(n, point, header->numColors);
   ++meshTailPtr;
 
-  *meshTailPtr = header->height;
+  *meshTailPtr = 1;
   ++meshTailPtr;
 
-  *meshTailPtr = header->depth;
+  *meshTailPtr = 1;
   ++meshTailPtr;
 
   return ret;

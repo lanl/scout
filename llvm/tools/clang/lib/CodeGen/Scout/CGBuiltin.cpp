@@ -87,7 +87,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
      for (unsigned i = 0; i <= 3; ++i) {
        if (i == 3) sprintf(IRNameStr, "forall.linearidx");
        else sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
-       LoadInst *LI = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
+       LoadInst *LI = Builder.CreateLoad(LookupPosition(i), IRNameStr);
 
        sprintf(IRNameStr, "position.%s", IndexNames[i]);
        Result = Builder.CreateInsertElement(Result, LI,
@@ -98,22 +98,22 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   }
 
   case Builtin::BIpositionx: {
-    *RV = RValue::get(Builder.CreateLoad(LookupInductionVar(0), "forall.induct.x"));
+    *RV = RValue::get(Builder.CreateLoad(LookupPosition(0), "forall.induct.x"));
     return true;
   }
 
   case Builtin::BIpositiony: {
-    *RV = RValue::get(Builder.CreateLoad(LookupInductionVar(1), "forall.induct.y"));
+    *RV = RValue::get(Builder.CreateLoad(LookupPosition(1), "forall.induct.y"));
     return true;
   }
 
   case Builtin::BIpositionz: {
-    *RV = RValue::get(Builder.CreateLoad(LookupInductionVar(2), "forall.induct.z"));
+    *RV = RValue::get(Builder.CreateLoad(LookupPosition(2), "forall.induct.z"));
     return true;
   }
 
   case Builtin::BIpositionw: {
-    *RV = RValue::get(Builder.CreateLoad(LookupInductionVar(3), "forall.linearidx"));
+    *RV = RValue::get(Builder.CreateLoad(LookupPosition(3), "forall.linearidx"));
     return true;
   }
 

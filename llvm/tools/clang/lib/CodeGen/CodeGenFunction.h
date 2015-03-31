@@ -366,6 +366,7 @@ public:
   llvm::Value *Color;
 
   llvm::Value *LookupInductionVar(unsigned int index);
+  llvm::Value *LookupPosition(unsigned int index);
   llvm::Value *LookupMeshDim(unsigned int index);
 
   inline llvm::Value *getLinearIdx() {
