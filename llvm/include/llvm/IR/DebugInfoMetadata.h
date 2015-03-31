@@ -666,7 +666,8 @@ public:
   ///
   /// TODO: Separate out types that need this extra operand: pointer-to-member
   /// types and member fields (static members and ivars).
-  Metadata *getExtraData() const { return getOperand(4); }
+  Metadata *getExtraData() const { return getRawExtraData(); }
+  Metadata *getRawExtraData() const { return getOperand(4); }
   
   unsigned getScoutFlags() const{
     return ScoutFlags;

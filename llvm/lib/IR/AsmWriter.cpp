@@ -1557,40 +1557,20 @@ static void writeMDDerivedType(raw_ostream &Out, const MDDerivedType *N,
                                       TypePrinting *TypePrinter, SlotTracker *Machine,
                                       const Module *Context) {
     Out << "!MDScoutDerivedType(";
-    FieldSeparator FS;
-    writeTag(Out, FS, N);
-    writeStringField(Out, FS, "name", N->getName());
-    if (N->getScope()) {
-      Out << FS << "scope: ";
-      writeMetadataAsOperand(Out, N->getScope(), TypePrinter, Machine, Context);
-    }
-    if (N->getFile()) {
-      Out << FS << "file: ";
-      writeMetadataAsOperand(Out, N->getFile(), TypePrinter, Machine,
-                             Context);
-    }
-    if (N->getLine())
-      Out << FS << "line: " << N->getLine();
-    Out << FS << "baseType: ";
-    writeMetadataAsOperand(Out, N->getBaseType(), TypePrinter, Machine, Context);
-    if (N->getSizeInBits())
-      Out << FS << "size: " << N->getSizeInBits();
-    if (N->getAlignInBits())
-      Out << FS << "align: " << N->getAlignInBits();
-    if (N->getOffsetInBits())
-      Out << FS << "offset: " << N->getOffsetInBits();
-    if (auto Flags = N->getFlags()) {
-      Out << FS << "flags: ";
-      writeDIFlags(Out, Flags);
-    }
-    if (N->getScoutFlags()) {
-      Out << FS << "scoutFlags: " << N->getScoutFlags();
-    }
-    if (N->getExtraData()) {
-      Out << FS << "extraData: ";
-      writeMetadataAsOperand(Out, N->getExtraData(), TypePrinter, Machine,
-                             Context);
-    }
+    MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
+    Printer.printTag(N);
+    Printer.printString("name", N->getName());
+    Printer.printMetadata("scope", N->getRawScope());
+    Printer.printMetadata("file", N->getRawFile());
+    Printer.printInt("line", N->getLine());
+    Printer.printMetadata("baseType", N->getRawBaseType(),
+                          /* ShouldSkipNull */ false);
+    Printer.printInt("size", N->getSizeInBits());
+    Printer.printInt("align", N->getAlignInBits());
+    Printer.printInt("offset", N->getOffsetInBits());
+    Printer.printDIFlags("flags", N->getFlags());
+    Printer.printMetadata("extraData", N->getRawExtraData());
+    Printer.printInt("scoutFlags", N->getScoutFlags());
     Out << ")";
   }
 // +=======================================================
@@ -1625,67 +1605,26 @@ static void writeMDScoutCompositeType(raw_ostream &Out,
                                       TypePrinting *TypePrinter,
                                       SlotTracker *Machine, const Module *Context) {
   Out << "!MDScoutCompositeType(";
-  FieldSeparator FS;
-  writeTag(Out, FS, N);
-  writeStringField(Out, FS, "name", N->getName());
-  if (N->getScope()) {
-    Out << FS << "scope: ";
-    writeMetadataAsOperand(Out, N->getScope(), TypePrinter, Machine, Context);
-  }
-  if (N->getFile()) {
-    Out << FS << "file: ";
-    writeMetadataAsOperand(Out, N->getFile(), TypePrinter, Machine,
-                           Context);
-  }
-  if (N->getLine())
-    Out << FS << "line: " << N->getLine();
-  if (N->getBaseType()) {
-    Out << FS << "baseType: ";
-    writeMetadataAsOperand(Out, N->getBaseType(), TypePrinter, Machine,
-                           Context);
-  }
-  if (N->getSizeInBits())
-    Out << FS << "size: " << N->getSizeInBits();
-  if (N->getAlignInBits())
-    Out << FS << "align: " << N->getAlignInBits();
-  if (N->getOffsetInBits())
-    Out << FS << "offset: " << N->getOffsetInBits();
-  if (auto Flags = N->getFlags()) {
-    Out << FS << "flags: ";
-    writeDIFlags(Out, Flags);
-  }
-  
-  if (N->getDimX())
-    Out << FS << "dimX: " << N->getDimX();
-  if (N->getDimY())
-    Out << FS << "dimY: " << N->getDimY();
-  if (N->getDimZ())
-    Out << FS << "dimZ: " << N->getDimZ();
-  
-  if (N->getElements()) {
-    Out << FS << "elements: ";
-    writeMetadataAsOperand(Out, N->getElements(), TypePrinter, Machine,
-                           Context);
-  }
-  if (unsigned Lang = N->getRuntimeLang()) {
-    Out << FS << "runtimeLang: ";
-    if (const char *S = dwarf::LanguageString(Lang))
-      Out << S;
-    else
-      Out << Lang;
-  }
-  
-  if (N->getVTableHolder()) {
-    Out << FS << "vtableHolder: ";
-    writeMetadataAsOperand(Out, N->getVTableHolder(), TypePrinter, Machine,
-                           Context);
-  }
-  if (N->getTemplateParams()) {
-    Out << FS << "templateParams: ";
-    writeMetadataAsOperand(Out, N->getTemplateParams(), TypePrinter, Machine,
-                           Context);
-  }
-  writeStringField(Out, FS, "identifier", N->getIdentifier());
+  MDFieldPrinter Printer(Out, TypePrinter, Machine, Context);
+  Printer.printTag(N);
+  Printer.printString("name", N->getName());
+  Printer.printMetadata("scope", N->getRawScope());
+  Printer.printMetadata("file", N->getRawFile());
+  Printer.printInt("line", N->getLine());
+  Printer.printMetadata("baseType", N->getRawBaseType());
+  Printer.printInt("size", N->getSizeInBits());
+  Printer.printInt("align", N->getAlignInBits());
+  Printer.printInt("offset", N->getOffsetInBits());
+  Printer.printDIFlags("flags", N->getFlags());
+  Printer.printMetadata("elements", N->getRawElements());
+  Printer.printDwarfEnum("runtimeLang", N->getRuntimeLang(),
+                         dwarf::LanguageString);
+  Printer.printMetadata("vtableHolder", N->getRawVTableHolder());
+  Printer.printMetadata("templateParams", N->getRawTemplateParams());
+  Printer.printString("identifier", N->getIdentifier());
+  Printer.printInt("dimX", N->getDimX());
+  Printer.printInt("dimY", N->getDimY());
+  Printer.printInt("dimZ", N->getDimZ());
   Out << ")";
 }
 // +=======================================================

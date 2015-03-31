@@ -106,22 +106,15 @@ namespace {
     KEYOPENCL = 0x200,
     KEYC11 = 0x400,
     KEYARC = 0x800,
-<<<<<<< HEAD
-    KEYNOMS = 0x01000,
-    WCHARSUPPORT = 0x02000,
-    HALFSUPPORT = 0x04000,
-    // +===== Scout ==========================================================+
-    KEYSCOUT   = 0x08000,
-    // +======================================================================+
-    KEYALL = (0xffff & ~KEYNOMS) // Because KEYNOMS is used to exclude.
-=======
     KEYNOMS18 = 0x01000,
     KEYNOOPENCL = 0x02000,
     WCHARSUPPORT = 0x04000,
     HALFSUPPORT = 0x08000,
-    KEYALL = (0xffff & ~KEYNOMS18 &
+// +===== Scout ==========================================================+
+    KEYSCOUT   = 0x10000,
+// +======================================================================+
+    KEYALL = (0xfffff & ~KEYNOMS18 &
               ~KEYNOOPENCL) // KEYNOMS18 and KEYNOOPENCL are used to exclude.
->>>>>>> bc535f3868a355a294b90e40994337e66cfec38c
   };
 
   /// \brief How a keyword is treated in the selected standard.

@@ -76,6 +76,7 @@ ExprResult LookupMemberExpr(Sema &S, LookupResult &R,
 
 ExprResult
 BuildFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
+                        SourceLocation OpLoc,
                         const CXXScopeSpec &SS, FieldDecl *Field,
                         DeclAccessPair FoundDecl,
                         const DeclarationNameInfo &MemberNameInfo);
@@ -85,13 +86,19 @@ BuildMSPropertyRefExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
                        MSPropertyDecl *PD,
                        const DeclarationNameInfo &NameInfo);
 
-MemberExpr *
-BuildMemberExpr(Sema &SemaRef, ASTContext &C, Expr *Base, bool isArrow,
-                const CXXScopeSpec &SS, SourceLocation TemplateKWLoc,
-                ValueDecl *Member, DeclAccessPair FoundDecl,
-                const DeclarationNameInfo &MemberNameInfo, QualType Ty,
-                ExprValueKind VK, ExprObjectKind OK,
-                const TemplateArgumentListInfo *TemplateArgs = nullptr);
+static MemberExpr *BuildMemberExpr(
+                                   Sema &SemaRef, ASTContext &C, Expr *Base, bool isArrow,
+                                   SourceLocation OpLoc, const CXXScopeSpec &SS, SourceLocation TemplateKWLoc,
+                                   ValueDecl *Member, DeclAccessPair FoundDecl,
+                                   const DeclarationNameInfo &MemberNameInfo, QualType Ty, ExprValueKind VK,
+                                   ExprObjectKind OK, const TemplateArgumentListInfo *TemplateArgs = nullptr) {
+  assert((!isArrow || Base->isRValue()) && "-> base must be a pointer rvalue");
+  MemberExpr *E = MemberExpr::Create(
+                                     C, Base, isArrow, OpLoc, SS.getWithLocInContext(C), TemplateKWLoc, Member,
+                                     FoundDecl, MemberNameInfo, TemplateArgs, Ty, VK, OK);
+  SemaRef.MarkMemberReferenced(E);
+  return E;
+}
 
 ExprResult
 BuildMeshFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
@@ -150,7 +157,8 @@ BuildMeshFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
   if (Base.isInvalid())
     return ExprError();
 
-  return BuildMemberExpr(S, S.Context, Base.get(), IsArrow, SS,
+  return BuildMemberExpr(S, S.Context, Base.get(), IsArrow,
+                         SourceLocation(), SS,
                          /*TemplateKWLoc=*/SourceLocation(),
                          Field, FoundDecl, MemberNameInfo,
                          MemberType, VK, OK);
@@ -442,6 +450,7 @@ Sema::BuildMeshMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
 
   if (FieldDecl *FD = dyn_cast<FieldDecl>(MemberDecl))
     return BuildFieldReferenceExpr(*this, BaseExpr, IsArrow,
+                                   SourceLocation(),
                                    SS, FD, FoundDecl, MemberNameInfo);
 
   if (MSPropertyDecl *PD = dyn_cast<MSPropertyDecl>(MemberDecl))
@@ -456,10 +465,11 @@ Sema::BuildMeshMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
                                                     OpLoc);
 
   if (VarDecl *Var = dyn_cast<VarDecl>(MemberDecl)) {
-    return BuildMemberExpr(*this, Context, BaseExpr, IsArrow, SS,
-                                 TemplateKWLoc, Var, FoundDecl, MemberNameInfo,
-                                 Var->getType().getNonReferenceType(),
-                                 VK_LValue, OK_Ordinary);
+    return BuildMemberExpr(*this, Context, BaseExpr, IsArrow,
+                           SourceLocation(), SS,
+                           TemplateKWLoc, Var, FoundDecl, MemberNameInfo,
+                           Var->getType().getNonReferenceType(),
+                           VK_LValue, OK_Ordinary);
   }
 
   if (CXXMethodDecl *MemberFn = dyn_cast<CXXMethodDecl>(MemberDecl)) {
@@ -473,17 +483,19 @@ Sema::BuildMeshMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
       type = MemberFn->getType();
     }
 
-    return BuildMemberExpr(*this, Context, BaseExpr, IsArrow, SS,
-                                 TemplateKWLoc, MemberFn, FoundDecl,
-                                 MemberNameInfo, type, valueKind,
-                                 OK_Ordinary);
+    return BuildMemberExpr(*this, Context, BaseExpr, IsArrow,
+                           SourceLocation(), SS,
+                           TemplateKWLoc, MemberFn, FoundDecl,
+                           MemberNameInfo, type, valueKind,
+                           OK_Ordinary);
   }
   assert(!isa<FunctionDecl>(MemberDecl) && "member function not C++ method?");
 
   if (EnumConstantDecl *Enum = dyn_cast<EnumConstantDecl>(MemberDecl)) {
-    return BuildMemberExpr(*this, Context, BaseExpr, IsArrow, SS,
-                                 TemplateKWLoc, Enum, FoundDecl, MemberNameInfo,
-                                 Enum->getType(), VK_RValue, OK_Ordinary);
+    return BuildMemberExpr(*this, Context, BaseExpr, IsArrow,
+                           SourceLocation(), SS,
+                           TemplateKWLoc, Enum, FoundDecl, MemberNameInfo,
+                           Enum->getType(), VK_RValue, OK_Ordinary);
   }
 
   // We found something that we didn't expect. Complain.
