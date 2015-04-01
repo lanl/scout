@@ -104,9 +104,13 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   return InductionVar[index];
 }
 
-//SC_TODO: need to offset by X,Y,ZStart
-llvm::Value *CodeGenFunction::LookupPosition(unsigned int index) {
-  return LookupInductionVar(index);
+llvm::Value *CodeGenFunction::LookupMeshStart(unsigned int index) {
+  llvm::Value *V = LocalDeclMap.lookup(ScoutABIMeshStartDecl[index]);
+  if(V) {
+    sprintf(IRNameStr, "stencil.induct.%s.ptr", IndexNames[index]);
+    return Builder.CreateLoad(V, IRNameStr);
+  }
+  return MeshStart[index];
 }
 
 // If in Stencil then lookup and load Mesh Dimension, otherwise return it directly

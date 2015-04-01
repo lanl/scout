@@ -522,6 +522,7 @@ namespace{
           printf("dr %d %d %d\n", color, index, index+numElmts-1);
           Rect<1> subrect(Point<1>(index),Point<1>(index+numElmts-1));
           element.disjointColoring[color] = Domain::from_rect<1>(subrect);
+#if 0
           if (index < numGhost)
           {
             if ((index+numElmts+numGhost) > element.count)
@@ -556,6 +557,7 @@ namespace{
               element.ghostColoring[color] = Domain::from_rect<1>(ghost_rect);
             }
           }
+#endif
           index += numElmts;
         } // end for color
 
@@ -563,21 +565,23 @@ namespace{
           runtime->create_index_partition(context, element.indexSpace,
                                           element.colorDomain,
                                           element.disjointColoring, true);
-
+#if 0
         element.ghostIndexPartition =
           runtime->create_index_partition(context, element.indexSpace,
                                           element.colorDomain,
                                           element.ghostColoring, false);
+#endif
 
         element.disjointLogicalPartition =
           runtime->get_logical_partition(context,
                                          element.logicalRegion,
                                          element.disjointIndexPartition);
-
+#if 0
         element.ghostLogicalPartition =
           runtime->get_logical_partition(context,
                                          element.logicalRegion,
                                          element.ghostIndexPartition);
+#endif
 
       }
 

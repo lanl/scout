@@ -87,10 +87,19 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
      for (unsigned i = 0; i <= 3; ++i) {
        if (i == 3) sprintf(IRNameStr, "forall.linearidx");
        else sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
-       LoadInst *LI = Builder.CreateLoad(LookupPosition(i), IRNameStr);
+
+       llvm::Value *Val;
+       if (i == 3) {
+         Val = Builder.CreateLoad(LookupInductionVar(i),IRNameStr);
+       } else {
+         Val = Builder.CreateAdd(
+             Builder.CreateLoad(LookupInductionVar(i)),
+             Builder.CreateLoad(LookupMeshStart(i)),
+             IRNameStr);
+       }
 
        sprintf(IRNameStr, "position.%s", IndexNames[i]);
-       Result = Builder.CreateInsertElement(Result, LI,
+       Result = Builder.CreateInsertElement(Result, Val,
             Builder.getInt32(i), IRNameStr);
      }
      *RV = RValue::get(Result);
@@ -98,22 +107,34 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   }
 
   case Builtin::BIpositionx: {
-    *RV = RValue::get(Builder.CreateLoad(LookupPosition(0), "forall.induct.x"));
+    llvm::Value *X = Builder.CreateAdd(
+        Builder.CreateLoad(LookupInductionVar(0)),
+        Builder.CreateLoad(LookupMeshStart(0)),
+        "position.x");
+    *RV = RValue::get(X);
     return true;
   }
 
   case Builtin::BIpositiony: {
-    *RV = RValue::get(Builder.CreateLoad(LookupPosition(1), "forall.induct.y"));
+    llvm::Value *Y = Builder.CreateAdd(
+           Builder.CreateLoad(LookupInductionVar(1)),
+           Builder.CreateLoad(LookupMeshStart(1)),
+           "position.y");
+    *RV = RValue::get(Y);
     return true;
   }
 
   case Builtin::BIpositionz: {
-    *RV = RValue::get(Builder.CreateLoad(LookupPosition(2), "forall.induct.z"));
+    llvm::Value *Z = Builder.CreateAdd(
+           Builder.CreateLoad(LookupInductionVar(2)),
+           Builder.CreateLoad(LookupMeshStart(2)),
+           "position.z");
+    *RV = RValue::get(Z);
     return true;
   }
 
   case Builtin::BIpositionw: {
-    *RV = RValue::get(Builder.CreateLoad(LookupPosition(3), "forall.linearidx"));
+    *RV = RValue::get(Builder.CreateLoad(LookupInductionVar(3), "forall.linearidx"));
     return true;
   }
 
