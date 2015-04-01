@@ -513,6 +513,7 @@ namespace{
 
         size_t index = 0;
         size_t numGhost = mesh_->numGhostItems(elemKind, maxShift);
+        printf("nGhost %d\n", numGhost);
 
         for (size_t color = 0; color < numSubregions; color++) {
           printf("color %d\n", color);
@@ -836,10 +837,10 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   *meshTailPtr = getSize(n, point, header->numColors);
   ++meshTailPtr;
 
-  *meshTailPtr = 1;
+  *meshTailPtr = header->height;
   ++meshTailPtr;
 
-  *meshTailPtr = 1;
+  *meshTailPtr = header->depth;
   ++meshTailPtr;
 
   return ret;

@@ -99,6 +99,7 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   }
   for(unsigned i = 0; i < 3; ++i) {
     ScoutABIMeshDimDecl.push_back(0);
+    ScoutABIMeshStartDecl.push_back(0);
   }
 
   // +=====================================================+ 

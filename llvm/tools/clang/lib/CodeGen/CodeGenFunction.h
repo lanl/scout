@@ -1098,6 +1098,7 @@ private:
   // +===== Scout ==========================================================+
   llvm::SmallVector<ImplicitParamDecl*, 4 > ScoutABIInductionVarDecl;
   llvm::SmallVector<ImplicitParamDecl*, 3 > ScoutABIMeshDimDecl;
+  llvm::SmallVector<ImplicitParamDecl*, 3 > ScoutABIMeshStartDecl;
   // +======================================================================+
 
   /// The value of 'this' to use when evaluating CXXDefaultInitExprs within
