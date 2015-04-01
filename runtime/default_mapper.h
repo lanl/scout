@@ -1,4 +1,4 @@
-/* Copyright 2014 Stanford University
+/* Copyright 2015 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,7 +39,7 @@ namespace LegionRuntime {
      */
     class DefaultMapper : public Mapper {
     public:
-      DefaultMapper(Machine *machine, HighLevelRuntime *rt, Processor local);
+      DefaultMapper(Machine machine, HighLevelRuntime *rt, Processor local);
       DefaultMapper(const DefaultMapper &rhs);
       virtual ~DefaultMapper(void);
     public:
@@ -89,13 +89,16 @@ namespace LegionRuntime {
       virtual void handle_message(Processor source,
                                   const void *message,
                                   size_t length);
+      virtual void handle_mapper_task_result(MapperEvent event,
+                                             const void *result,
+                                             size_t result_size);
     public:
       // Helper methods for building other kinds of mappers, made static 
       // so they can be used in non-derived classes
       // Pick a random processor of a given kind
       static Processor select_random_processor(
                               const std::set<Processor> &options, 
-                              Processor::Kind filter, Machine *machine);
+                              Processor::Kind filter, Machine machine);
       // Break an IndexSpace of tasks into IndexSplits
       static void decompose_index_space(const Domain &domain, 
                               const std::vector<Processor> &targets,
@@ -104,7 +107,7 @@ namespace LegionRuntime {
     protected:
       const Processor local_proc;
       const Processor::Kind local_kind;
-      Machine *const machine;
+      const Machine machine;
       // The maximum number of tasks a mapper will allow to be stolen at a time
       // Controlled by -dm:thefts
       unsigned max_steals_per_theft;

@@ -1,4 +1,4 @@
-/* Copyright 2014 Stanford University
+/* Copyright 2015 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,8 @@
 
 #include "legion.h"
 #include "legion_c.h"
+#include "mapping_utilities.h"
+#include "default_mapper.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -126,6 +128,14 @@ namespace LegionRuntime {
       NEW_OPAQUE_WRAPPER(legion_accessor_array_t, AccessorArray *);
       NEW_OPAQUE_WRAPPER(legion_index_iterator_t, IndexIterator *);
       NEW_OPAQUE_WRAPPER(legion_task_t, Task *);
+      NEW_OPAQUE_WRAPPER(legion_inline_t, Inline *);
+      NEW_OPAQUE_WRAPPER(legion_mappable_t, Mappable *);
+      NEW_OPAQUE_WRAPPER(legion_region_requirement_t , RegionRequirement *);
+      NEW_OPAQUE_WRAPPER(legion_machine_t, Machine *);
+      NEW_OPAQUE_WRAPPER(legion_mapper_t, Mapper *);
+      NEW_OPAQUE_WRAPPER(legion_machine_query_interface_t,
+                         MappingUtilities::MachineQueryInterface*);
+      NEW_OPAQUE_WRAPPER(legion_default_mapper_t, DefaultMapper*);
 #undef NEW_OPAQUE_WRAPPER
 
       static legion_ptr_t
@@ -177,6 +187,16 @@ namespace LegionRuntime {
       NEW_RECT_WRAPPER(legion_rect_3d_t, Rect<3>);
 #undef NEW_RECT_WRAPPER
 
+#define NEW_BLOCKIFY_WRAPPER(T_, T)                     \
+      static T unwrap(T_ t_) {                          \
+        T t(unwrap(t_.block_size));                     \
+        return t;                                       \
+      }
+
+      NEW_BLOCKIFY_WRAPPER(legion_blockify_1d_t, Blockify<1>);
+      NEW_BLOCKIFY_WRAPPER(legion_blockify_2d_t, Blockify<2>);
+      NEW_BLOCKIFY_WRAPPER(legion_blockify_3d_t, Blockify<3>);
+#undef NEW_RECT_WRAPPER
       static legion_domain_t
       wrap(Domain domain) {
         legion_domain_t domain_;
@@ -193,6 +213,22 @@ namespace LegionRuntime {
         domain.dim = domain_.dim;
         std::copy(domain_.rect_data, domain_.rect_data + 2 * MAX_RECT_DIM, domain.rect_data);
         return domain;
+      }
+
+      static legion_domain_point_t
+      wrap(DomainPoint dp) {
+        legion_domain_point_t dp_;
+        dp_.dim = dp.dim;
+        std::copy(dp.point_data, dp.point_data + MAX_POINT_DIM, dp_.point_data);
+        return dp_;
+      }
+
+      static DomainPoint
+      unwrap(legion_domain_point_t dp_) {
+        DomainPoint dp;
+        dp.dim = dp_.dim;
+        std::copy(dp_.point_data, dp_.point_data + MAX_POINT_DIM, dp.point_data);
+        return dp;
       }
 
       static legion_index_space_t
@@ -384,6 +420,22 @@ namespace LegionRuntime {
         return options;
       }
 
+      static legion_processor_t
+      wrap(Processor proc)
+      {
+        legion_processor_t proc_;
+        proc_.id = proc.id;
+        return proc_;
+      }
+
+      static Processor
+      unwrap(legion_processor_t proc_)
+      {
+        Processor proc;
+        proc.id = proc_.id;
+        return proc;
+      }
+
       static legion_processor_kind_t
       wrap(Processor::Kind options)
       {
@@ -396,6 +448,53 @@ namespace LegionRuntime {
         return static_cast<Processor::Kind>(options_);
       }
 
+      static legion_memory_t
+      wrap(Memory mem)
+      {
+        legion_memory_t mem_;
+        mem_.id = mem.id;
+        return mem_;
+      }
+
+      static Memory
+      unwrap(legion_memory_t mem_)
+      {
+        Memory mem;
+        mem.id = mem_.id;
+        return mem;
+      }
+
+      static legion_memory_kind_t
+      wrap(Memory::Kind options)
+      {
+        return static_cast<legion_memory_kind_t>(options);
+      }
+
+      static Memory::Kind
+      unwrap(legion_memory_kind_t options_)
+      {
+        return static_cast<Memory::Kind>(options_);
+      }
+
+      static legion_domain_split_t
+      wrap(Mapper::DomainSplit domain_split) {
+        legion_domain_split_t domain_split_;
+        domain_split_.domain = wrap(domain_split.domain);
+        domain_split_.proc = wrap(domain_split.proc);
+        domain_split_.recurse = domain_split.recurse;
+        domain_split_.stealable = domain_split.stealable;
+        return domain_split_;
+      }
+
+      static Mapper::DomainSplit
+      unwrap(legion_domain_split_t domain_split_) {
+        Mapper::DomainSplit domain_split(
+            unwrap(domain_split_.domain),
+            unwrap(domain_split_.proc),
+            domain_split_.recurse,
+            domain_split_.stealable);
+        return domain_split;
+      }
     };
   }
 }

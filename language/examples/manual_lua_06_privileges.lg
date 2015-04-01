@@ -1,0 +1,1 @@
+../../bindings/terra/examples/lua/06_privileges/privileges.t

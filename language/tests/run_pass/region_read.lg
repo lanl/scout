@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -14,7 +14,8 @@
 
 import "legion"
 
-task g(r : region(int), p : ptr(int, r)) : int, reads(r)
+task g(r : region(int), p : ptr(int, r)) : int
+where reads(r) do
   return @p
 end
 
@@ -26,6 +27,6 @@ task f() : int
 end
 
 task main()
-  assert(f() == 5)
+  legionlib.assert(f() == 5, "test failed")
 end
 legionlib.start(main)

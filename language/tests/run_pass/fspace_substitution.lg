@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -21,9 +21,8 @@ fspace s(a : region(int)) {
   x : ptr(int, a),
 }
 
-task f(b : region(int), c : region(s(b)), y : ptr(s(b), c)) : int,
-  reads(b, c)
-
+task f(b : region(int), c : region(s(b)), y : ptr(s(b), c)) : int
+where reads(b, c) do
   return @(y.x)
 end
 
@@ -38,6 +37,6 @@ task g() : int
 end
 
 task main()
-  assert(g() == 7)
+  legionlib.assert(g() == 7, "test failed")
 end
 legionlib.start(main)

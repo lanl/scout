@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 
 -- Legion Symbol Table
 
-local log = terralib.require("legion/log")
+local log = require("legion/log")
 
 local symbol_table = {}
 symbol_table.__index = symbol_table

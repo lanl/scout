@@ -1,0 +1,1 @@
+../../bindings/terra/examples/terra/00_hello_world/hello_world.t

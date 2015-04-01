@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -14,13 +14,18 @@
 
 -- Legion Language Entry Point
 
-local ast = terralib.require("legion/ast")
-local builtins = terralib.require("legion/builtins")
-local codegen = terralib.require("legion/codegen")
-local parser = terralib.require("legion/parser")
-local specialize = terralib.require("legion/specialize")
-local std = terralib.require("legion/std")
-local type_check = terralib.require("legion/type_check")
+local ast = require("legion/ast")
+local builtins = require("legion/builtins")
+local codegen = require("legion/codegen")
+local optimize_config_options = require("legion/optimize_config_options")
+local optimize_futures = require("legion/optimize_futures")
+local optimize_inlines = require("legion/optimize_inlines")
+local optimize_loops = require("legion/optimize_loops")
+local parser = require("legion/parser")
+local specialize = require("legion/specialize")
+local std = require("legion/std")
+local type_check = require("legion/type_check")
+local vectorize_loops = require("legion/vectorize_loops")
 
 -- Add Language Builtins to Global Environment
 
@@ -39,10 +44,15 @@ function compile(lex)
   local node = parser:parse(lex)
   local function ctor(environment_function)
     local env = environment_function()
-    local specialized = specialize.entry(env, node)
-    local typed = type_check.entry(specialized)
-    local code = codegen.entry(typed)
-    return code
+    local ast = specialize.entry(env, node)
+    ast = type_check.entry(ast)
+    ast = optimize_loops.entry(ast)
+    ast = optimize_futures.entry(ast)
+    ast = optimize_inlines.entry(ast)
+    ast = optimize_config_options.entry(ast)
+    ast = vectorize_loops.entry(ast)
+    ast = codegen.entry(ast)
+    return ast
   end
   return ctor, {node.name}
 end
@@ -56,13 +66,25 @@ local language = {
     "fspace",
   },
   keywords = {
+    "__context",
+    "__demand",
+    "__fields",
+    "__parallel",
+    "__vectorize",
+    "__physical",
+    "__runtime",
+    "cross_product",
+    "dynamic_cast",
     "isnull",
+    "max",
+    "min",
     "new",
     "null",
     "partition",
     "reads",
     "reduces",
     "region",
+    "static_cast",
     "where",
     "writes",
   },
