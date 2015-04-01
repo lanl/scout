@@ -1,4 +1,4 @@
-/* Copyright 2014 Stanford University
+/* Copyright 2015 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -385,22 +385,22 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     Future::Impl::Impl(Runtime *rt, bool register_future, DistributedID did, 
                        AddressSpaceID own_space, AddressSpaceID loc_space,
-                       TaskOp *t /*= NULL*/)
+                       Operation *o /*= NULL*/)
       : DistributedCollectable(rt, did, own_space, loc_space),
-        task(t), task_gen((t == NULL) ? 0 : t->get_generation()),
+        producer_op(o), op_gen((o == NULL) ? 0 : o->get_generation()),
         ready_event(UserEvent::create_user_event()), result(NULL),
         result_size(0), empty(true), sampled(false)
     //--------------------------------------------------------------------------
     {
       if (register_future)
         runtime->register_future(did, this);
-      if (task != NULL)
-        task->add_mapping_reference(task_gen);
+      if (producer_op != NULL)
+        producer_op->add_mapping_reference(op_gen);
     }
 
     //--------------------------------------------------------------------------
     Future::Impl::Impl(const Future::Impl &rhs)
-      : DistributedCollectable(NULL, 0, 0, 0), task(NULL), task_gen(0)
+      : DistributedCollectable(NULL, 0, 0, 0), producer_op(NULL), op_gen(0)
     //--------------------------------------------------------------------------
     {
       // should never be called
@@ -421,8 +421,8 @@ namespace LegionRuntime {
         result = NULL;
         result_size = 0;
       }
-      if (task != NULL)
-        task->remove_mapping_reference(task_gen);
+      if (producer_op != NULL)
+        producer_op->remove_mapping_reference(op_gen);
     }
 
     //--------------------------------------------------------------------------
@@ -440,43 +440,44 @@ namespace LegionRuntime {
     {
       if (!ready_event.has_triggered())
       {
-        Processor exec_proc = Machine::get_executing_processor();
+        Processor exec_proc = Processor::get_executing_processor();
 #ifdef LEGION_LOGGING
         LegionLogging::log_future_wait_begin(exec_proc,
-                                      task->get_parent()->get_unique_task_id(),
-                                      task->get_unique_task_id());
+                              producer_op->get_parent()->get_unique_task_id(),
+                              producer_op->get_unique_op_id());
 #endif
 #ifdef LEGION_PROF
-        LegionProf::register_event(task->get_parent()->get_unique_task_id(), 
-                                   PROF_BEGIN_WAIT);
+        LegionProf::register_event(
+                              producer_op->get_parent()->get_unique_task_id(), 
+                              PROF_BEGIN_WAIT);
 #endif
         runtime->pre_wait(exec_proc);
         ready_event.wait();
         runtime->post_wait(exec_proc);
 #ifdef LEGION_LOGGING
         LegionLogging::log_future_wait_end(exec_proc,
-                                       task->get_parent()->get_unique_task_id(),
-                                       task->get_unique_task_id());
+                               producer_op->get_parent()->get_unique_task_id(),
+                               producer_op->get_unique_op_id());
 #endif
 #ifdef LEGION_PROF
-        LegionProf::register_event(task->get_parent()->get_unique_task_id(), 
-                                   PROF_END_WAIT);
+        LegionProf::register_event(
+                              producer_op->get_parent()->get_unique_task_id(), 
+                              PROF_END_WAIT);
 #endif
       }
 #ifdef LEGION_LOGGING
       else {
-        Processor exec_proc = Machine::get_executing_processor();
+        Processor exec_proc = Processor::get_executing_processor();
         LegionLogging::log_future_nowait(exec_proc,
-                                       task->get_parent()->get_unique_task_id(),
-                                       task->get_unique_task_id());
+                               producer_op->get_parent()->get_unique_task_id(),
+                               producer_op->get_unique_op_id());
       }
 #endif
       if (empty)
       {
-        log_run(LEVEL_ERROR,"Accessing empty future from task %s "
-                            "(UID %lld)",
-                            task->variants->name,
-                            task->get_unique_task_id());
+        if (producer_op != NULL)
+          log_run(LEVEL_ERROR,"Accessing empty future! (UID %lld)",
+                              producer_op->get_unique_op_id());
 #ifdef DEBUG_HIGH_LEVEL
         assert(false);
 #endif
@@ -491,43 +492,44 @@ namespace LegionRuntime {
     {
       if (!ready_event.has_triggered())
       {
-        Processor exec_proc = Machine::get_executing_processor();
+        Processor exec_proc = Processor::get_executing_processor();
 #ifdef LEGION_LOGGING
         LegionLogging::log_future_wait_begin(exec_proc,
-                                       task->get_parent()->get_unique_task_id(),
-                                       task->get_unique_task_id());
+                               producer_op->get_parent()->get_unique_task_id(),
+                               producer_op->get_unique_op_id());
 #endif
 #ifdef LEGION_PROF
-        LegionProf::register_event(task->get_parent()->get_unique_task_id(), 
-                                   PROF_BEGIN_WAIT);
+        LegionProf::register_event(
+                              producer_op->get_parent()->get_unique_task_id(), 
+                              PROF_BEGIN_WAIT);
 #endif
         runtime->pre_wait(exec_proc);
         ready_event.wait();
         runtime->post_wait(exec_proc);
 #ifdef LEGION_LOGGING
         LegionLogging::log_future_wait_end(exec_proc,
-                                       task->get_parent()->get_unique_task_id(),
-                                       task->get_unique_task_id());
+                               producer_op->get_parent()->get_unique_task_id(),
+                               producer_op->get_unique_op_id());
 #endif
 #ifdef LEGION_PROF
-        LegionProf::register_event(task->get_parent()->get_unique_task_id(), 
-                                   PROF_END_WAIT);
+        LegionProf::register_event(
+                              producer_op->get_parent()->get_unique_task_id(), 
+                              PROF_END_WAIT);
 #endif
       }
 #ifdef LEGION_LOGGING
       else {
-        Processor exec_proc = Machine::get_executing_processor();
+        Processor exec_proc = Processor::get_executing_processor();
         LegionLogging::log_future_nowait(exec_proc,
-                                       task->get_parent()->get_unique_task_id(),
-                                       task->get_unique_task_id());
+                               prodcuer_op->get_parent()->get_unique_task_id(),
+                               producer_op->get_unique_op_id());
       }
 #endif
       if (empty)
       {
-        log_run(LEVEL_ERROR,"Accessing empty future from task %s "
-                            "(UID %lld)",
-                            task->variants->name,
-                            task->get_unique_task_id());
+        if (producer_op != NULL)
+          log_run(LEVEL_ERROR,"Accessing empty future! (UID %lld)",
+                              producer_op->get_unique_op_id());
 #ifdef DEBUG_HIGH_LEVEL
         assert(false);
 #endif
@@ -552,35 +554,37 @@ namespace LegionRuntime {
     {
       if (block && !ready_event.has_triggered())
       {
-        Processor exec_proc = Machine::get_executing_processor();
+        Processor exec_proc = Processor::get_executing_processor();
 #ifdef LEGION_LOGGING
         LegionLogging::log_future_wait_begin(exec_proc,
-                                       task->get_parent()->get_unique_task_id(),
-                                       task->get_unique_task_id());
+                               producer_op->get_parent()->get_unique_task_id(),
+                               producer_op->get_unique_op_id());
 #endif
 #ifdef LEGION_PROF
-        LegionProf::register_event(task->get_parent()->get_unique_task_id(), 
-                                   PROF_BEGIN_WAIT);
+        LegionProf::register_event(
+                              producer_op->get_parent()->get_unique_task_id(), 
+                              PROF_BEGIN_WAIT);
 #endif
         runtime->pre_wait(exec_proc);
         ready_event.wait();
         runtime->post_wait(exec_proc);
 #ifdef LEGION_LOGGING
         LegionLogging::log_future_wait_end(exec_proc,
-                                       task->get_parent()->get_unique_task_id(),
-                                       task->get_unique_task_id());
+                               producer_op->get_parent()->get_unique_task_id(),
+                               producer_op->get_unique_op_id());
 #endif
 #ifdef LEGION_PROF
-        LegionProf::register_event(task->get_parent()->get_unique_task_id(), 
-                                   PROF_END_WAIT);
+        LegionProf::register_event(
+                              producer_op->get_parent()->get_unique_task_id(), 
+                              PROF_END_WAIT);
 #endif
       }
 #ifdef LEGION_LOGGING
       else if (block) {
-        Processor exec_proc = Machine::get_executing_processor();
+        Processor exec_proc = Processor::get_executing_processor();
         LegionLogging::log_future_nowait(exec_proc,
-                                       task->get_parent()->get_unique_task_id(),
-                                       task->get_unique_task_id());
+                               producer_op->get_parent()->get_unique_task_id(),
+                               producer_op->get_unique_op_id());
       }
 #endif
       if (block)
@@ -705,6 +709,18 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       // do nothing 
+    }
+
+    //--------------------------------------------------------------------------
+    void Future::Impl::register_dependence(Operation *consumer_op)
+    //--------------------------------------------------------------------------
+    {
+      if (producer_op != NULL)
+        consumer_op->register_dependence(producer_op, op_gen);
+#ifdef DEBUG_HIGH_LEVEL
+      else
+        assert(!empty); // better not be empty if it doesn't have an op
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -888,6 +904,42 @@ namespace LegionRuntime {
       Future::Impl *future = runtime->find_future(did);
       future->register_waiter(subscriber); 
     }
+
+    //--------------------------------------------------------------------------
+    void Future::Impl::contribute_to_collective(Barrier bar, unsigned count)
+    //--------------------------------------------------------------------------
+    {
+      if (!ready_event.has_triggered())
+      {
+        // If we're not done then defer the operation until we are triggerd
+        // First add a garbage collection reference so we don't get
+        // collected while we are waiting for the contribution task to run
+        add_gc_reference();
+        ContributeCollectiveArgs args;
+        args.hlr_id = HLR_CONTRIBUTE_COLLECTIVE_ID;
+        args.impl = this;
+        args.barrier = bar;
+        args.count = count;
+        Processor proc = runtime->find_utility_group();
+        // Spawn the task dependent on the future being ready
+        proc.spawn(HLR_TASK_ID, &args, sizeof(args), ready_event);
+      }
+      else // If we've already triggered, then we can do the arrival now
+        bar.arrive(count, Event::NO_EVENT, result, result_size);
+    }
+
+    //--------------------------------------------------------------------------
+    /*static*/ void Future::Impl::handle_contribute_to_collective(
+                                                               const void *args)
+    //--------------------------------------------------------------------------
+    {
+      const ContributeCollectiveArgs *cargs = (ContributeCollectiveArgs*)args;
+      cargs->impl->contribute_to_collective(cargs->barrier, cargs->count);
+      // Now remote the garbage collection reference and see if we can 
+      // reclaim the future
+      if (cargs->impl->remove_gc_reference())
+        delete cargs->impl;
+    }
       
     /////////////////////////////////////////////////////////////
     // Future Map Impl 
@@ -1015,7 +1067,7 @@ namespace LegionRuntime {
         {
           Processor proc = context->get_executing_processor();
 #ifdef LEGION_LOGGING
-          Processor exec_proc = Machine::get_executing_processor();
+          Processor exec_proc = Processor::get_executing_processor();
           LegionLogging::log_future_wait_begin(exec_proc,
                                           context->get_unique_task_id(),
                                           task->get_unique_task_id());
@@ -1113,8 +1165,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     PhysicalRegion::Impl::Impl(const PhysicalRegion::Impl &rhs)
       : Collectable(), runtime(NULL), context(NULL), map_id(0), tag(0),
-        ready_event(Event::NO_EVENT), mapped(false), valid(false),
-        leaf_region(false), trigger_on_unmap(false)
+        leaf_region(false), ready_event(Event::NO_EVENT), mapped(false),
+        valid(false), trigger_on_unmap(false)
     //--------------------------------------------------------------------------
     {
       // should never be called
@@ -1211,11 +1263,16 @@ namespace LegionRuntime {
         runtime->pre_wait(proc);
         // If we need a lock for this instance taken it
         // once the reference event is ready
-        if (reference.has_required_lock())
+        if (reference.has_required_locks())
         {
-          Reservation req_lock = reference.get_required_lock();
-          Event locked_event = 
-            req_lock.acquire(0, true/*exclusive*/, ref_ready);
+          std::map<Reservation,bool> required_locks;
+          reference.update_atomic_locks(required_locks, true/*exclusive*/);
+          Event locked_event = ref_ready;
+          for (std::map<Reservation,bool>::const_iterator it = 
+                required_locks.begin(); it != required_locks.end(); it++)
+          {
+            locked_event = it->first.acquire(0, it->second, locked_event);
+          }
           locked_event.wait();
         }
         else
@@ -1347,10 +1404,15 @@ namespace LegionRuntime {
       // Before unmapping, make sure any previous mappings have finished
       wait_until_valid();
       // Unlock our lock now that we're done
-      if (reference.has_required_lock())
+      if (reference.has_required_locks())
       {
-        Reservation req_lock = reference.get_required_lock();
-        req_lock.release();
+        std::map<Reservation,bool> required_locks;
+        reference.update_atomic_locks(required_locks,true/*doesn't matter*/);
+        for (std::map<Reservation,bool>::const_iterator it = 
+              required_locks.begin(); it != required_locks.end(); it++)
+        {
+          it->first.release();
+        }
       }
       mapped = false;
       valid = false;
@@ -1677,7 +1739,8 @@ namespace LegionRuntime {
         mapper_locks(
             std::vector<Reservation>(def_mappers,Reservation::NO_RESERVATION)),
         mapper_messages(std::vector<std::vector<MapperMessage> >(def_mappers)),
-        inside_mapper_call(std::vector<bool>(def_mappers,false))
+        inside_mapper_call(std::vector<bool>(def_mappers,false)),
+        defer_mapper_event(std::vector<Event>(def_mappers,Event::NO_EVENT))
     //--------------------------------------------------------------------------
     {
       for (unsigned idx = 0; idx < def_mappers; idx++)
@@ -1691,8 +1754,8 @@ namespace LegionRuntime {
       this->message_lock = Reservation::create_reservation();
       this->stealing_lock = Reservation::create_reservation();
       this->thieving_lock = Reservation::create_reservation();
-      context_states.resize(MAX_CONTEXTS);
-      dependence_preconditions.resize(MAX_CONTEXTS, Event::NO_EVENT);
+      context_states.resize(DEFAULT_CONTEXTS);
+      dependence_preconditions.resize(DEFAULT_CONTEXTS, Event::NO_EVENT);
       local_scheduler_preconditions.resize(superscalar_width, Event::NO_EVENT);
     }
 
@@ -1774,6 +1837,7 @@ namespace LegionRuntime {
         mapper_locks.resize(mid+1);
         mapper_messages.resize(mid+1);
         inside_mapper_call.resize(mid+1);
+        defer_mapper_event.resize(mid+1);
         ready_queues.resize(mid+1);
         for (unsigned int i=old_size; i<(mid+1); i++)
         {
@@ -1781,6 +1845,7 @@ namespace LegionRuntime {
           mapper_locks[i].destroy_reservation();
           mapper_locks[i] = Reservation::NO_RESERVATION;
           inside_mapper_call[i] = false;
+          defer_mapper_event[i] = Event::NO_EVENT;
           ready_queues[i].clear();
           outstanding_steal_requests[i] = std::set<Processor>();
         }
@@ -1816,107 +1881,456 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void ProcessorManager::invoke_mapper_set_task_options(TaskOp *task)
+    template<typename T1, void (Mapper::*CALL)(T1), bool BLOCK>
+    void ProcessorManager::invoke_mapper(MapperID map_id, const T1 &arg1)
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      assert(task->map_id < mapper_objects.size());
-      assert(mapper_objects[task->map_id] != NULL);
+      assert(map_id < mapper_objects.size());
+      assert(mapper_objects[map_id] != NULL);
 #endif
+      Mapper *mapper = mapper_objects[map_id];
       std::vector<MapperMessage> messages;
+      Event wait_on = defer_mapper_event[map_id];
+      do
       {
-        AutoLock m_lock(mapper_locks[task->map_id]);
-        inside_mapper_call[task->map_id] = true; 
-        mapper_objects[task->map_id]->select_task_options(task);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[task->map_id] = false;
-        if (!mapper_messages[task->map_id].empty())
+        if (BLOCK && wait_on.exists())
         {
-          messages = mapper_messages[task->map_id];
-          mapper_messages[task->map_id].clear();
+          // Always send messages before waiting
+          if (!messages.empty())
+            send_mapper_messages(map_id, messages);
+          wait_on.wait(false/*block*/);
         }
-      }
+        AutoLock m_lock(mapper_locks[map_id]);
+        inside_mapper_call[map_id] = true;
+        (mapper->*CALL)(arg1);
+        inside_mapper_call[map_id] = false;
+        if (defer_mapper_event[map_id].exists())
+        {
+          wait_on = defer_mapper_event[map_id];
+          defer_mapper_event[map_id] = Event::NO_EVENT;
+        }
+        AutoLock g_lock(message_lock);
+        if (!mapper_messages[map_id].empty())
+        {
+          messages = mapper_messages[map_id];
+          mapper_messages[map_id].clear();
+        }
+      } while (BLOCK && wait_on.exists());
+      if (!BLOCK && wait_on.exists())
+        log_run(LEVEL_WARNING,
+                    "Ignoring wait request in scheduling mapper call!");
       if (!messages.empty())
-        send_mapper_messages(task->map_id, messages);
+        send_mapper_messages(map_id, messages);
+    }
+
+    //--------------------------------------------------------------------------
+    template<typename T, typename T1, T (Mapper::*CALL)(T1), bool BLOCK>
+    T ProcessorManager::invoke_mapper(MapperID map_id, T init, const T1 &arg1)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(map_id < mapper_objects.size());
+      assert(mapper_objects[map_id] != NULL);
+#endif
+      Mapper *mapper = mapper_objects[map_id];
+      std::vector<MapperMessage> messages;
+      Event wait_on = defer_mapper_event[map_id];
+      T result = init;
+      do
+      {
+        if (BLOCK && wait_on.exists())
+        {
+          // Always send messages before waiting
+          if (!messages.empty())
+            send_mapper_messages(map_id, messages);
+          wait_on.wait(false/*block*/);
+        }
+        AutoLock m_lock(mapper_locks[map_id]);
+        inside_mapper_call[map_id] = true;
+        result = (mapper->*CALL)(arg1);
+        inside_mapper_call[map_id] = false;
+        if (defer_mapper_event[map_id].exists())
+        {
+          wait_on = defer_mapper_event[map_id];
+          defer_mapper_event[map_id] = Event::NO_EVENT;
+        }
+        AutoLock g_lock(message_lock);
+        if (!mapper_messages[map_id].empty())
+        {
+          messages = mapper_messages[map_id];
+          mapper_messages[map_id].clear();
+        }
+      } while (BLOCK && wait_on.exists());
+      if (!BLOCK && wait_on.exists())
+        log_run(LEVEL_WARNING,
+                    "Ignoring wait request in scheduling mapper call!");
+      if (!messages.empty())
+        send_mapper_messages(map_id, messages);
+      return result;
+    }
+
+    //--------------------------------------------------------------------------
+    template<typename T1, typename T2, void (Mapper::*CALL)(T1,T2), bool BLOCK>
+    void ProcessorManager::invoke_mapper(MapperID map_id, 
+                                         const T1 &arg1, const T2 &arg2)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(map_id < mapper_objects.size());
+      assert(mapper_objects[map_id] != NULL);
+#endif
+      Mapper *mapper = mapper_objects[map_id];
+      std::vector<MapperMessage> messages;
+      Event wait_on = defer_mapper_event[map_id];
+      do
+      {
+        if (BLOCK && wait_on.exists())
+        {
+          // Always send messages before waiting
+          if (!messages.empty())
+            send_mapper_messages(map_id, messages);
+          wait_on.wait(false/*block*/);
+        }
+        AutoLock m_lock(mapper_locks[map_id]);
+        inside_mapper_call[map_id] = true;
+        (mapper->*CALL)(arg1, arg2);
+        inside_mapper_call[map_id] = false;
+        if (defer_mapper_event[map_id].exists())
+        {
+          wait_on = defer_mapper_event[map_id];
+          defer_mapper_event[map_id] = Event::NO_EVENT;
+        }
+        AutoLock g_lock(message_lock);
+        if (!mapper_messages[map_id].empty())
+        {
+          messages = mapper_messages[map_id];
+          mapper_messages[map_id].clear();
+        }
+      } while (BLOCK && wait_on.exists());
+      if (!BLOCK && wait_on.exists())
+        log_run(LEVEL_WARNING,
+                    "Ignoring wait request in scheduling mapper call!");
+      if (!messages.empty())
+        send_mapper_messages(map_id, messages);
+    }
+
+    //--------------------------------------------------------------------------
+    template<typename T, typename T1, typename T2, 
+             T (Mapper::*CALL)(T1,T2), bool BLOCK>
+    T ProcessorManager::invoke_mapper(MapperID map_id, T init, 
+                                      const T1 &arg1, const T2 &arg2)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(map_id < mapper_objects.size());
+      assert(mapper_objects[map_id] != NULL);
+#endif
+      Mapper *mapper = mapper_objects[map_id];
+      std::vector<MapperMessage> messages;
+      Event wait_on = defer_mapper_event[map_id];
+      T result = init;
+      do
+      {
+        if (BLOCK && wait_on.exists())
+        {
+          // Always send messages before waiting
+          if (!messages.empty())
+            send_mapper_messages(map_id, messages);
+          wait_on.wait(false/*block*/);
+        }
+        AutoLock m_lock(mapper_locks[map_id]);
+        inside_mapper_call[map_id] = true;
+        result = (mapper->*CALL)(arg1, arg2);
+        inside_mapper_call[map_id] = false;
+        if (defer_mapper_event[map_id].exists())
+        {
+          wait_on = defer_mapper_event[map_id];
+          defer_mapper_event[map_id] = Event::NO_EVENT;
+        }
+        AutoLock g_lock(message_lock);
+        if (!mapper_messages[map_id].empty())
+        {
+          messages = mapper_messages[map_id];
+          mapper_messages[map_id].clear();
+        }
+      } while (BLOCK && wait_on.exists());
+      if (!BLOCK && wait_on.exists())
+        log_run(LEVEL_WARNING,
+                    "Ignoring wait request in scheduling mapper call!");
+      if (!messages.empty())
+        send_mapper_messages(map_id, messages);
+      return result;
+    }
+
+    //--------------------------------------------------------------------------
+    template<typename T1, typename T2, 
+             typename T3, void (Mapper::*CALL)(T1,T2,T3), bool BLOCK>
+    void ProcessorManager::invoke_mapper(MapperID map_id, const T1 &arg1,
+                                         const T2 &arg2, const T3 &arg3)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(map_id < mapper_objects.size());
+      assert(mapper_objects[map_id] != NULL);
+#endif
+      Mapper *mapper = mapper_objects[map_id];
+      std::vector<MapperMessage> messages;
+      Event wait_on = defer_mapper_event[map_id];
+      do
+      {
+        if (BLOCK && wait_on.exists())
+        {
+          // Always send messages before waiting
+          if (!messages.empty())
+            send_mapper_messages(map_id, messages);
+          wait_on.wait(false/*block*/);
+        }
+        AutoLock m_lock(mapper_locks[map_id]);
+        inside_mapper_call[map_id] = true;
+        (mapper->*CALL)(arg1, arg2, arg3);
+        inside_mapper_call[map_id] = false;
+        if (defer_mapper_event[map_id].exists())
+        {
+          wait_on = defer_mapper_event[map_id];
+          defer_mapper_event[map_id] = Event::NO_EVENT;
+        }
+        AutoLock g_lock(message_lock);
+        if (!mapper_messages[map_id].empty())
+        {
+          messages = mapper_messages[map_id];
+          mapper_messages[map_id].clear();
+        }
+      } while (BLOCK && wait_on.exists());
+      if (!BLOCK && wait_on.exists())
+        log_run(LEVEL_WARNING,
+                    "Ignoring wait request in scheduling mapper call!");
+      if (!messages.empty())
+        send_mapper_messages(map_id, messages);
+    }
+
+    //--------------------------------------------------------------------------
+    template<typename T, typename T1, typename T2, 
+             typename T3, T (Mapper::*CALL)(T1,T2,T3), bool BLOCK>
+    T ProcessorManager::invoke_mapper(MapperID map_id, T init, const T1 &arg1,
+                                      const T2 &arg2, const T3 &arg3)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(map_id < mapper_objects.size());
+      assert(mapper_objects[map_id] != NULL);
+#endif
+      Mapper *mapper = mapper_objects[map_id];
+      std::vector<MapperMessage> messages;
+      Event wait_on = defer_mapper_event[map_id];
+      T result = init;
+      do
+      {
+        if (BLOCK && wait_on.exists())
+        {
+          // Always send messages before waiting
+          if (!messages.empty())
+            send_mapper_messages(map_id, messages);
+          wait_on.wait(false/*block*/);
+        }
+        AutoLock m_lock(mapper_locks[map_id]);
+        inside_mapper_call[map_id] = true;
+        result = (mapper->*CALL)(arg1, arg2, arg3);
+        inside_mapper_call[map_id] = false;
+        if (defer_mapper_event[map_id].exists())
+        {
+          wait_on = defer_mapper_event[map_id];
+          defer_mapper_event[map_id] = Event::NO_EVENT;
+        }
+        AutoLock g_lock(message_lock);
+        if (!mapper_messages[map_id].empty())
+        {
+          messages = mapper_messages[map_id];
+          mapper_messages[map_id].clear();
+        }
+      } while (BLOCK && wait_on.exists());
+      if (!BLOCK && wait_on.exists())
+        log_run(LEVEL_WARNING,
+                    "Ignoring wait request in scheduling mapper call!");
+      if (!messages.empty())
+        send_mapper_messages(map_id, messages);
+      return result;
+    }
+
+    //--------------------------------------------------------------------------
+    template<typename T1, typename T2, typename T3, 
+             typename T4, void (Mapper::*CALL)(T1,T2,T3,T4), bool BLOCK>
+    void ProcessorManager::invoke_mapper(MapperID map_id, const T1 &arg1,
+                                 const T2 &arg2, const T3 &arg3, const T4 &arg4)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(map_id < mapper_objects.size());
+      assert(mapper_objects[map_id] != NULL);
+#endif
+      Mapper *mapper = mapper_objects[map_id];
+      std::vector<MapperMessage> messages;
+      Event wait_on = defer_mapper_event[map_id];
+      do
+      {
+        if (BLOCK && wait_on.exists())
+        {
+          // Always send messages before waiting
+          if (!messages.empty())
+            send_mapper_messages(map_id, messages);
+          wait_on.wait(false/*block*/);
+        }
+        AutoLock m_lock(mapper_locks[map_id]);
+        inside_mapper_call[map_id] = true;
+        (mapper->*CALL)(arg1, arg2, arg3, arg4);
+        inside_mapper_call[map_id] = false;
+        if (defer_mapper_event[map_id].exists())
+        {
+          wait_on = defer_mapper_event[map_id];
+          defer_mapper_event[map_id] = Event::NO_EVENT;
+        }
+        AutoLock g_lock(message_lock);
+        if (!mapper_messages[map_id].empty())
+        {
+          messages = mapper_messages[map_id];
+          mapper_messages[map_id].clear();
+        }
+      } while (BLOCK && wait_on.exists());
+      if (!BLOCK && wait_on.exists())
+        log_run(LEVEL_WARNING,
+                    "Ignoring wait request in scheduling mapper call!");
+      if (!messages.empty())
+        send_mapper_messages(map_id, messages);
+    }
+
+    //--------------------------------------------------------------------------
+    template<typename T, typename T1, typename T2, typename T3,
+             typename T4, T (Mapper::*CALL)(T1,T2,T3,T4), bool BLOCK>
+    T ProcessorManager::invoke_mapper(MapperID map_id, T init, const T1 &arg1,
+                                const T2 &arg2, const T3 &arg3, const T4 &arg4)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(map_id < mapper_objects.size());
+      assert(mapper_objects[map_id] != NULL);
+#endif
+      Mapper *mapper = mapper_objects[map_id];
+      std::vector<MapperMessage> messages;
+      Event wait_on = defer_mapper_event[map_id];
+      T result = init;
+      do
+      {
+        if (BLOCK && wait_on.exists())
+        {
+          // Always send messages before waiting
+          if (!messages.empty())
+            send_mapper_messages(map_id, messages);
+          wait_on.wait(false/*block*/);
+        }
+        AutoLock m_lock(mapper_locks[map_id]);
+        inside_mapper_call[map_id] = true;
+        result = (mapper->*CALL)(arg1, arg2, arg3, arg4);
+        inside_mapper_call[map_id] = false;
+        if (defer_mapper_event[map_id].exists())
+        {
+          wait_on = defer_mapper_event[map_id];
+          defer_mapper_event[map_id] = Event::NO_EVENT;
+        }
+        AutoLock g_lock(message_lock);
+        if (!mapper_messages[map_id].empty())
+        {
+          messages = mapper_messages[map_id];
+          mapper_messages[map_id].clear();
+        }
+      } while (BLOCK && wait_on.exists());
+      if (!BLOCK && wait_on.exists())
+        log_run(LEVEL_WARNING,
+                    "Ignoring wait request in scheduling mapper call!");
+      if (!messages.empty())
+        send_mapper_messages(map_id, messages);
+      return result;
+    }
+
+    //--------------------------------------------------------------------------
+    void ProcessorManager::invoke_mapper_set_task_options(TaskOp *task)
+    //--------------------------------------------------------------------------
+    {
+      invoke_mapper<Task*,&Mapper::select_task_options,
+                    true/*block*/>(task->map_id, task);
     }
 
     //--------------------------------------------------------------------------
     bool ProcessorManager::invoke_mapper_pre_map_task(TaskOp *task)
     //--------------------------------------------------------------------------
     {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(task->map_id < mapper_objects.size());
-      assert(mapper_objects[task->map_id] != NULL);
-#endif
-      bool result;
-      std::vector<MapperMessage> messages;
-      {
-        AutoLock m_lock(mapper_locks[task->map_id]);
-        inside_mapper_call[task->map_id] = true;
-        result = mapper_objects[task->map_id]->pre_map_task(task);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[task->map_id] = false;
-        if (!mapper_messages[task->map_id].empty())
-        {
-          messages = mapper_messages[task->map_id];
-          mapper_messages[task->map_id].clear();
-        }
-      }
-      if (!messages.empty())
-        send_mapper_messages(task->map_id, messages);
-      return result;
+      return invoke_mapper<bool,Task*,&Mapper::pre_map_task,
+                           true/*block*/>(task->map_id, false/*init*/, task);
     }
 
     //--------------------------------------------------------------------------
     void ProcessorManager::invoke_mapper_select_variant(TaskOp *task)
     //--------------------------------------------------------------------------
     {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(task->map_id < mapper_objects.size());
-      assert(mapper_objects[task->map_id] != NULL);
-#endif
-      std::vector<MapperMessage> messages;
-      {
-        AutoLock m_lock(mapper_locks[task->map_id]);
-        inside_mapper_call[task->map_id] = true;
-        mapper_objects[task->map_id]->select_task_variant(task);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[task->map_id] = false;
-        if (!mapper_messages[task->map_id].empty())
-        {
-          messages = mapper_messages[task->map_id];
-          mapper_messages[task->map_id].clear();
-        }
-      }
-      if (!messages.empty())
-        send_mapper_messages(task->map_id, messages);
+      invoke_mapper<Task*,&Mapper::select_task_variant,
+                    true/*block*/>(task->map_id, task);
     }
 
     //--------------------------------------------------------------------------
     bool ProcessorManager::invoke_mapper_map_task(TaskOp *task)
     //--------------------------------------------------------------------------
     {
+      // This one is special since it both maps a task and picks its variant
+      // This will be fixed with the new mapper interface so keep it for now
 #ifdef DEBUG_HIGH_LEVEL
       assert(task->map_id < mapper_objects.size());
       assert(mapper_objects[task->map_id] != NULL);
 #endif
-      bool result;
+      // actually set on all possible paths below, but compiler can't tell
+      bool result = false;  
       std::vector<MapperMessage> messages;
+      Event wait_on = Event::NO_EVENT;
+      do
       {
+        if (wait_on.exists())
+        {
+          // Always send messages before waiting
+          if (!messages.empty())
+            send_mapper_messages(task->map_id, messages);
+          wait_on.wait(false/*block*/);
+        }
         AutoLock m_lock(mapper_locks[task->map_id]);
         inside_mapper_call[task->map_id] = true;
         // First select the variant
         mapper_objects[task->map_id]->select_task_variant(task);
-        // Then perform the mapping
-        result = mapper_objects[task->map_id]->map_task(task);
-        AutoLock g_lock(message_lock);
         inside_mapper_call[task->map_id] = false;
+        if (defer_mapper_event[task->map_id].exists())
+        {
+          wait_on = defer_mapper_event[task->map_id];
+          defer_mapper_event[task->map_id] = Event::NO_EVENT;
+          AutoLock g_lock(message_lock);
+          if (!mapper_messages[task->map_id].empty())
+          {
+            messages = mapper_messages[task->map_id];
+            mapper_messages[task->map_id].clear();
+          }
+          continue;
+        }
+        // Then perform the mapping
+        inside_mapper_call[task->map_id] = true;
+        result = mapper_objects[task->map_id]->map_task(task);
+        inside_mapper_call[task->map_id] = false;
+        if (defer_mapper_event[task->map_id].exists())
+        {
+          wait_on = defer_mapper_event[task->map_id];
+          defer_mapper_event[task->map_id] = Event::NO_EVENT;
+        }
+        AutoLock g_lock(message_lock);
         if (!mapper_messages[task->map_id].empty())
         {
           messages = mapper_messages[task->map_id];
           mapper_messages[task->map_id].clear();
         }
-      }
+      } while (wait_on.exists());
       if (!messages.empty())
         send_mapper_messages(task->map_id, messages);
       return result;
@@ -1926,50 +2340,16 @@ namespace LegionRuntime {
     void ProcessorManager::invoke_mapper_failed_mapping(Mappable *mappable)
     //--------------------------------------------------------------------------
     {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(mappable->map_id < mapper_objects.size());
-      assert(mapper_objects[mappable->map_id] != NULL);
-#endif
-      std::vector<MapperMessage> messages;
-      {
-        AutoLock m_lock(mapper_locks[mappable->map_id]);     
-        inside_mapper_call[mappable->map_id] = true;
-        mapper_objects[mappable->map_id]->notify_mapping_failed(mappable);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[mappable->map_id] = false;
-        if (!mapper_messages[mappable->map_id].empty())
-        {
-          messages = mapper_messages[mappable->map_id];
-          mapper_messages[mappable->map_id].clear();
-        }
-      }
-      if (!messages.empty())
-        send_mapper_messages(mappable->map_id, messages);
+      invoke_mapper<const Mappable*,&Mapper::notify_mapping_failed,
+                    true/*block*/>(mappable->map_id, mappable);
     }
 
     //--------------------------------------------------------------------------
     void ProcessorManager::invoke_mapper_notify_result(Mappable *mappable)
     //--------------------------------------------------------------------------
     {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(mappable->map_id < mapper_objects.size());
-      assert(mapper_objects[mappable->map_id] != NULL);
-#endif
-      std::vector<MapperMessage> messages;
-      {
-        AutoLock m_lock(mapper_locks[mappable->map_id]);
-        inside_mapper_call[mappable->map_id] = true;
-        mapper_objects[mappable->map_id]->notify_mapping_result(mappable);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[mappable->map_id] = false;
-        if (!mapper_messages[mappable->map_id].empty())
-        {
-          messages = mapper_messages[mappable->map_id];
-          mapper_messages[mappable->map_id].clear();
-        }
-      }
-      if (!messages.empty())
-        send_mapper_messages(mappable->map_id, messages);
+      invoke_mapper<const Mappable*,&Mapper::notify_mapping_result,
+                    true/*block*/>(mappable->map_id, mappable);
     }
 
     //--------------------------------------------------------------------------
@@ -1977,132 +2357,42 @@ namespace LegionRuntime {
                                       std::vector<Mapper::DomainSplit> &splits)
     //--------------------------------------------------------------------------
     {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(task->map_id < mapper_objects.size());
-      assert(mapper_objects[task->map_id] != NULL);
-#endif
-      std::vector<MapperMessage> messages;
-      {
-        AutoLock m_lock(mapper_locks[task->map_id]);
-        inside_mapper_call[task->map_id] = true;
-        mapper_objects[task->map_id]->slice_domain(task, 
-                                                   task->index_domain, splits);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[task->map_id] = false;
-        if (!mapper_messages[task->map_id].empty())
-        {
-          messages = mapper_messages[task->map_id];
-          mapper_messages[task->map_id].clear();
-        }
-      }
-      if (!messages.empty())
-        send_mapper_messages(task->map_id, messages);
+      invoke_mapper<const Task*,const Domain&,std::vector<Mapper::DomainSplit>&,
+                    &Mapper::slice_domain,true/*block*/>(
+                              task->map_id, task, task->index_domain, splits);
     }
 
     //--------------------------------------------------------------------------
     bool ProcessorManager::invoke_mapper_map_inline(Inline *op)
     //--------------------------------------------------------------------------
     {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(op->map_id < mapper_objects.size());
-      assert(mapper_objects[op->map_id] != NULL);
-#endif
-      bool result;
-      std::vector<MapperMessage> messages;
-      {
-        AutoLock m_lock(mapper_locks[op->map_id]);
-        inside_mapper_call[op->map_id] = true;
-        result = mapper_objects[op->map_id]->map_inline(op);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[op->map_id] = false;
-        if (!mapper_messages[op->map_id].empty())
-        {
-          messages = mapper_messages[op->map_id];
-          mapper_messages[op->map_id].clear();
-        }
-      }
-      if (!messages.empty())
-        send_mapper_messages(op->map_id, messages);
-      return result;
+      return invoke_mapper<bool,Inline*,&Mapper::map_inline,
+                           true/*block*/>(op->map_id, false/*init*/, op);
     }
 
     //--------------------------------------------------------------------------
     bool ProcessorManager::invoke_mapper_map_copy(Copy *op)
     //--------------------------------------------------------------------------
     {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(op->map_id < mapper_objects.size());
-      assert(mapper_objects[op->map_id] != NULL);
-#endif
-      bool result;
-      std::vector<MapperMessage> messages;
-      {
-        AutoLock m_lock(mapper_locks[op->map_id]);
-        inside_mapper_call[op->map_id] = true;
-        result = mapper_objects[op->map_id]->map_copy(op);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[op->map_id] = false;
-        if (!mapper_messages[op->map_id].empty())
-        {
-          messages = mapper_messages[op->map_id];
-          mapper_messages[op->map_id].clear();
-        }
-      }
-      if (!messages.empty())
-        send_mapper_messages(op->map_id, messages);
-      return result;
+      return invoke_mapper<bool,Copy*,&Mapper::map_copy,
+                           true/*block*/>(op->map_id, false/*init*/, op);
     }
 
     //--------------------------------------------------------------------------
     bool ProcessorManager::invoke_mapper_speculate(Mappable *op, bool &value)
     //--------------------------------------------------------------------------
     {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(op->map_id < mapper_objects.size());
-      assert(mapper_objects[op->map_id] != NULL);
-#endif
-      bool result;
-      std::vector<MapperMessage> messages;
-      {
-        AutoLock m_lock(mapper_locks[op->map_id]);
-        inside_mapper_call[op->map_id] = true;
-        result = mapper_objects[op->map_id]->speculate_on_predicate(op, value);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[op->map_id] = false;
-        if (!mapper_messages[op->map_id].empty())
-        {
-          messages = mapper_messages[op->map_id];
-          mapper_messages[op->map_id].clear();
-        }
-      }
-      if (!messages.empty())
-        send_mapper_messages(op->map_id, messages);
-      return result;
+      return invoke_mapper<bool,const Mappable*,bool&,
+                           &Mapper::speculate_on_predicate, true/*block*/>(
+                               op->map_id, false/*init*/, op, value);
     }
 
     //--------------------------------------------------------------------------
     void ProcessorManager::invoke_mapper_configure_context(TaskOp *task)
     //--------------------------------------------------------------------------
     {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(task->map_id < mapper_objects.size());
-      assert(mapper_objects[task->map_id] != NULL);
-#endif
-      std::vector<MapperMessage> messages;
-      {
-        AutoLock m_lock(mapper_locks[task->map_id]);
-        inside_mapper_call[task->map_id] = true;
-        mapper_objects[task->map_id]->configure_context(task);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[task->map_id] = false;
-        if (!mapper_messages[task->map_id].empty())
-        {
-          messages = mapper_messages[task->map_id];
-          mapper_messages[task->map_id].clear();
-        }
-      }
-      if (!messages.empty())
-        send_mapper_messages(task->map_id, messages);
+      invoke_mapper<Task*,&Mapper::configure_context,
+                    true/*block*/>(task->map_id, task);
     }
 
     //--------------------------------------------------------------------------
@@ -2117,26 +2407,40 @@ namespace LegionRuntime {
                                            size_t &blocking_factor)
     //--------------------------------------------------------------------------
     {
+      // Don't both updating this one, it is going away soon
 #ifdef DEBUG_HIGH_LEVEL
       assert(mappable->map_id < mapper_objects.size());
       assert(mapper_objects[mappable->map_id] != NULL);
 #endif
       bool result;
       std::vector<MapperMessage> messages;
+      Event wait_on = Event::NO_EVENT;
+      do
       {
+        if (wait_on.exists())
+        {
+          if (!messages.empty())
+            send_mapper_messages(mappable->map_id, messages);
+          wait_on.wait(false/*block*/);
+        }
         AutoLock m_lock(mapper_locks[mappable->map_id]);
         inside_mapper_call[mappable->map_id] = true;
         result = mapper_objects[mappable->map_id]->rank_copy_targets(mappable,
             handle, memories, complete, max_blocking_factor, to_reuse, 
             to_create, create_one, blocking_factor);
-        AutoLock g_lock(message_lock);
         inside_mapper_call[mappable->map_id] = false;
+        if (defer_mapper_event[mappable->map_id].exists())
+        {
+          wait_on = defer_mapper_event[mappable->map_id];
+          defer_mapper_event[mappable->map_id] = Event::NO_EVENT;
+        }
+        AutoLock g_lock(message_lock);
         if (!mapper_messages[mappable->map_id].empty())
         {
           messages = mapper_messages[mappable->map_id];
           mapper_messages[mappable->map_id].clear();
         }
-      }
+      } while (wait_on.exists());
       if (!messages.empty())
         send_mapper_messages(mappable->map_id, messages);
       return result;
@@ -2149,51 +2453,17 @@ namespace LegionRuntime {
                                            std::vector<Memory> &order)
     //--------------------------------------------------------------------------
     {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(mappable->map_id < mapper_objects.size());
-      assert(mapper_objects[mappable->map_id] != NULL);
-#endif
-      std::vector<MapperMessage> messages;
-      {
-        AutoLock m_lock(mapper_locks[mappable->map_id]);
-        inside_mapper_call[mappable->map_id] = true;
-        mapper_objects[mappable->map_id]->rank_copy_sources(mappable,
-            memories, destination, order);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[mappable->map_id] = false;
-        if (!mapper_messages[mappable->map_id].empty())
-        {
-          messages = mapper_messages[mappable->map_id];
-          mapper_messages[mappable->map_id].clear();
-        }
-      }
-      if (!messages.empty())
-        send_mapper_messages(mappable->map_id, messages);
+      invoke_mapper<const Mappable*,const std::set<Memory>&,Memory,
+            std::vector<Memory>&,&Mapper::rank_copy_sources,true/*block*/>(
+                    mappable->map_id, mappable, memories, destination, order);
     }
 
     //--------------------------------------------------------------------------
     void ProcessorManager::invoke_mapper_notify_profiling(TaskOp *task)
     //--------------------------------------------------------------------------
     {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(task->map_id < mapper_objects.size());
-      assert(mapper_objects[task->map_id] != NULL);
-#endif
-      std::vector<MapperMessage> messages;
-      {
-        AutoLock m_lock(mapper_locks[task->map_id]);
-        inside_mapper_call[task->map_id] = true;
-        mapper_objects[task->map_id]->notify_profiling_info(task);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[task->map_id] = false;
-        if (!mapper_messages[task->map_id].empty())
-        {
-          messages = mapper_messages[task->map_id];
-          mapper_messages[task->map_id].clear();
-        }
-      }
-      if (!messages.empty())
-        send_mapper_messages(task->map_id, messages);
+      invoke_mapper<const Task*,&Mapper::notify_profiling_info,true/*block*/>(
+                                                          task->map_id, task);
     }
 
     //--------------------------------------------------------------------------
@@ -2203,27 +2473,10 @@ namespace LegionRuntime {
         MapperID map_id, MappingTagID tag)
     //--------------------------------------------------------------------------
     {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(map_id < mapper_objects.size());
-      assert(mapper_objects[map_id] != NULL);
-#endif
-      bool result;
-      std::vector<MapperMessage> messages;
-      {
-        AutoLock m_lock(mapper_locks[map_id]);
-        inside_mapper_call[map_id] = true;
-        result = mapper_objects[map_id]->map_must_epoch(tasks,constraints,tag);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[map_id] = false;
-        if (!mapper_messages[map_id].empty())
-        {
-          messages = mapper_messages[map_id];
-          mapper_messages[map_id].clear();
-        }
-      }
-      if (!messages.empty())
-        send_mapper_messages(map_id, messages);
-      return result;
+      return invoke_mapper<bool,const std::vector<Task*>&,
+                const std::vector<Mapper::MappingConstraint>&,MappingTagID,
+                &Mapper::map_must_epoch,true/*block*/>(map_id, false/*init*/, 
+                                                      tasks, constraints, tag);
     }
 
     //--------------------------------------------------------------------------
@@ -2233,27 +2486,9 @@ namespace LegionRuntime {
                                                           MappingTagID tag)
     //--------------------------------------------------------------------------
     {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(map_id < mapper_objects.size());
-      assert(mapper_objects[map_id] != NULL);
-#endif
-      int result;
-      std::vector<MapperMessage> messages;
-      {
-        AutoLock m_lock(mapper_locks[map_id]);
-        inside_mapper_call[map_id] = true;
-        result = mapper_objects[map_id]->get_tunable_value(task, tid, tag);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[map_id] = false;
-        if (!mapper_messages[map_id].empty())
-        {
-          messages = mapper_messages[map_id];
-          mapper_messages[map_id].clear();
-        }
-      }
-      if (!messages.empty())
-        send_mapper_messages(map_id, messages);
-      return result;
+      return invoke_mapper<int,const Task*,TunableID,MappingTagID,
+                &Mapper::get_tunable_value,true/*block*/>(map_id, 0/*init*/, 
+                                                          task, tid, tag);
     }
 
     //--------------------------------------------------------------------------
@@ -2263,25 +2498,52 @@ namespace LegionRuntime {
                                                         size_t length)
     //--------------------------------------------------------------------------
     {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(map_id < mapper_objects.size());
-      assert(mapper_objects[map_id] != NULL);
-#endif
-      std::vector<MapperMessage> messages;
-      {
-        AutoLock m_lock(mapper_locks[map_id]);
-        inside_mapper_call[map_id] = true;
-        mapper_objects[map_id]->handle_message(source, message, length);
-        AutoLock g_lock(message_lock);
-        inside_mapper_call[map_id] = false;
-        if (!mapper_messages[map_id].empty())
-        {
-          messages = mapper_messages[map_id];
-          mapper_messages[map_id].clear();
-        }
-      }
-      if (!messages.empty())
-        send_mapper_messages(map_id, messages);
+      invoke_mapper<Processor,const void*,size_t,
+                    &Mapper::handle_message,true/*block*/>(
+                                          map_id, source, message, length);
+    }
+
+    //--------------------------------------------------------------------------
+    void ProcessorManager::invoke_mapper_task_result(MapperID map_id,
+                                                     Event event,
+                                                     const void *result,
+                                                     size_t result_size)
+    //--------------------------------------------------------------------------
+    {
+      invoke_mapper<MapperEvent,const void*,size_t,
+        &Mapper::handle_mapper_task_result,true/*block*/>(map_id, event, 
+                                                          result, result_size);
+    }
+
+    //--------------------------------------------------------------------------
+    void ProcessorManager::invoke_mapper_permit_task_steal(MapperID map_id,
+                Processor thief, const std::vector<const Task*> &stealable,
+                std::set<const Task*> &to_steal)
+    //--------------------------------------------------------------------------
+    {
+      invoke_mapper<Processor,const std::vector<const Task*>&,
+            std::set<const Task*>&,&Mapper::permit_task_steal,true/*block*/>(
+                        map_id, thief, stealable, to_steal);
+    }
+
+    //--------------------------------------------------------------------------
+    void ProcessorManager::invoke_mapper_target_task_steal(MapperID map_id, 
+                                         const std::set<Processor> &blacklist,
+                                         std::set<Processor> &steal_targets)
+    //--------------------------------------------------------------------------
+    {
+      invoke_mapper<const std::set<Processor>&,std::set<Processor>&,
+                    &Mapper::target_task_steal,false/*block*/>(map_id,
+                                                    blacklist, steal_targets);
+    }
+
+    //--------------------------------------------------------------------------
+    void ProcessorManager::invoke_mapper_select_tasks_to_schedule(
+                          MapperID map_id, const std::list<Task*> &ready_tasks)
+    //--------------------------------------------------------------------------
+    {
+      invoke_mapper<const std::list<Task*>&,&Mapper::select_tasks_to_schedule,
+                    false/*block*/>(map_id, ready_tasks);
     }
 
     //--------------------------------------------------------------------------
@@ -2314,6 +2576,49 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void ProcessorManager::defer_mapper_broadcast(MapperID map_id, 
+                                                  const void *message,
+                                                  size_t length, int radix)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(map_id < mapper_messages.size());
+#endif
+      // Handle bad cases here
+      if (radix < 2)
+        radix = 2;
+      // Take the message lock
+      AutoLock g_lock(message_lock);
+      // Check to see if we are inside of a mapper call
+      if (inside_mapper_call[map_id])
+      {
+        // Need to make a copy of the message here
+        void *copy = malloc(length);
+        memcpy(copy, message, length);
+        mapper_messages[map_id].push_back(MapperMessage(copy, length, radix));
+      }
+      else
+      {
+        // Otherwise the application has explicitly invoked one of its
+        // mapper calls, so we can safely send the message now without
+        // needing to worry about deadlock.
+        runtime->invoke_mapper_broadcast(map_id, local_proc, 
+                                         message, length, radix, 1/*index*/);
+      }
+    }
+
+    //--------------------------------------------------------------------------
+    void ProcessorManager::defer_mapper_call(MapperID map_id, Event wait_on)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(map_id < mapper_messages.size());
+      assert(inside_mapper_call[map_id]);
+#endif
+      defer_mapper_event[map_id] = wait_on;
+    }
+
+    //--------------------------------------------------------------------------
     void ProcessorManager::send_mapper_messages(MapperID map_id, 
                                            std::vector<MapperMessage> &messages)
     //--------------------------------------------------------------------------
@@ -2321,8 +2626,14 @@ namespace LegionRuntime {
       for (std::vector<MapperMessage>::iterator it = messages.begin();
             it != messages.end(); it++)
       {
-        runtime->invoke_mapper_handle_message(it->target, map_id, local_proc,
-                                              it->message, it->length);
+        // Check to see if this a specific message or a broadcast
+        if (it->target.exists())
+          runtime->invoke_mapper_handle_message(it->target, map_id, local_proc,
+                                                it->message, it->length);
+        else
+          runtime->invoke_mapper_broadcast(map_id, local_proc, 
+                                           it->message, it->length, 
+                                           it->radix, 1/*index*/);
         // After we are done sending the message, we can free the memory
         free(it->message);
       }
@@ -2369,10 +2680,8 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       ContextID ctx_id = context->get_context_id();
-      // We can do this without holding the lock because we know
-      // the size of this vector is fixed
-      ContextState &state = context_states[ctx_id];
       AutoLock q_lock(queue_lock); 
+      ContextState &state = context_states[ctx_id];
 #ifdef DEBUG_HIGH_LEVEL
       assert(!state.active);
 #endif
@@ -2388,14 +2697,26 @@ namespace LegionRuntime {
       ContextID ctx_id = context->get_context_id();
       // We can do this without holding the lock because we know
       // the size of this vector is fixed
-      ContextState &state = context_states[ctx_id];
       AutoLock q_lock(queue_lock); 
+      ContextState &state = context_states[ctx_id];
 #ifdef DEBUG_HIGH_LEVEL
       assert(state.active);
 #endif
       state.active = false;
       if (state.owned_tasks > 0)
         decrement_active_contexts();
+    }
+
+    //--------------------------------------------------------------------------
+    void ProcessorManager::update_max_context_count(unsigned max_contexts)
+    //--------------------------------------------------------------------------
+    {
+      {
+        AutoLock d_lock(dependence_lock);
+        dependence_preconditions.resize(max_contexts, Event::NO_EVENT);
+      }
+      AutoLock q_lock(queue_lock);
+      context_states.resize(max_contexts);
     }
 
     //--------------------------------------------------------------------------
@@ -2467,9 +2788,8 @@ namespace LegionRuntime {
             *((std::set<const Task*>*)(&to_steal));
           std::vector<const Task*> &stealable = 
             *((std::vector<const Task*>*)(&mapper_tasks));
-          AutoLock map_lock(mapper_locks[stealer]);
-          mapper_objects[stealer]->permit_task_steal(
-                                        thief, stealable, to_steal_prime);
+          invoke_mapper_permit_task_steal(stealer, thief, stealable,
+                                          to_steal_prime);
         }
         std::deque<TaskOp*> temp_stolen;
         if (!to_steal.empty())
@@ -2528,8 +2848,8 @@ namespace LegionRuntime {
             // the ready queue
             temp_stolen[idx]->schedule = false;
             ContextID ctx_id = temp_stolen[idx]->get_parent()->get_context_id();
-            ContextState &state = context_states[ctx_id];
             AutoLock q_lock(queue_lock);
+            ContextState &state = context_states[ctx_id];
             ready_queues[stealer].push_front(temp_stolen[idx]);
             if (state.active && (state.owned_tasks == 0))
               increment_active_contexts();
@@ -2615,8 +2935,8 @@ namespace LegionRuntime {
       // We can do this without holding the lock because the
       // vector is of a fixed size
       ContextID ctx_id = task->get_parent()->get_context_id();
-      ContextState &state = context_states[ctx_id];
       AutoLock q_lock(queue_lock);
+      ContextState &state = context_states[ctx_id];
       if (prev_failure)
         ready_queues[task->map_id].push_front(task);
       else
@@ -2710,15 +3030,46 @@ namespace LegionRuntime {
             visible_generations[idx] = (*it)->get_generation();
           }
         }
-        // Watch me stomp all over the C++ type system here
-        const std::list<Task*> &ready_tasks = 
+        // Ask the mapper which tasks it would like to schedule
+        if (!visible_tasks.empty())
+        {
+          // Watch me stomp all over the C++ type system here
+          const std::list<Task*> &ready_tasks = 
                                 *((std::list<Task*>*)(&(visible_tasks)));
+          invoke_mapper_select_tasks_to_schedule(map_id, ready_tasks); 
+        }
+        if (!stealing_disabled)
+        {
+          std::set<Processor> black_copy;
+          // Make a local copy of our blacklist
+          {
+            AutoLock steal_lock(stealing_lock,1,false/*exclusive*/);
+            black_copy = outstanding_steal_requests[map_id];
+          }
+          std::set<Processor> steal_targets;
+          invoke_mapper_target_task_steal(map_id, black_copy, steal_targets);
+          AutoLock steal_lock(stealing_lock);
+          std::set<Processor> &blacklist = outstanding_steal_requests[map_id];
+          for (std::set<Processor>::const_iterator it = 
+                steal_targets.begin(); it != steal_targets.end(); it++)
+          {
+            if (it->exists() && ((*it) != local_proc) &&
+                (blacklist.find(*it) == blacklist.end()))
+            {
+              stealing_targets.insert(std::pair<Processor,MapperID>(
+                                                        *it,map_id));
+              blacklist.insert(*it);
+            }
+          }
+        }
         // Acquire the mapper lock and ask the mapper about scheduling
         // and then about stealing if not disabled
+#if 0
         {
           AutoLock map_lock(mapper_locks[map_id]);
           if (!visible_tasks.empty())
           {
+            // TODO
             mapper_objects[map_id]->select_tasks_to_schedule(ready_tasks);
           }
           if (!stealing_disabled)
@@ -2728,6 +3079,7 @@ namespace LegionRuntime {
             if (blacklist.size() < max_outstanding_steals)
             {
               std::set<Processor> steal_targets;
+              // TODO
               mapper_objects[map_id]->target_task_steal(blacklist, 
                                                         steal_targets);
               for (std::set<Processor>::const_iterator it = 
@@ -2744,6 +3096,7 @@ namespace LegionRuntime {
             }
           }
         }
+#endif
         // Process the results first remove the operations that were
         // selected to be mapped from the queue.  Note its possible
         // that we can't actually find the task because it has been
@@ -2812,46 +3165,22 @@ namespace LegionRuntime {
         for (std::list<TaskOp*>::iterator vis_it = visible_tasks.begin();
               vis_it != visible_tasks.end(); vis_it++)
         {
-          // If we're trying to schedule or send this task somewhere
-          // ask it what it wants to do
-          if ((*vis_it)->schedule || ((*vis_it)->target_proc != local_proc))
-          {
-            // If we made it in here then we have definitely
-            // pulled the task off of the ready queue
-            (*vis_it)->deactivate_outstanding_task();
-            bool defer = (*vis_it)->defer_mapping();
-            // If the task elected to defer itself or opted to
-            // not map then it is responsible for putting
-            // itself back on the list of tasks to map.
-            if (defer)
-              continue;
-            // We give a slight priority to triggering the execution
-            // of tasks relative to other runtime operations because
-            // they actually have a feedback mechanism controlling
-            // how far they get ahead.  We give a slight edge in priority
-            // to tasks being sent remotely to get them in flight.
-            // Give priority to things which are getting sent remotely
-            args.op = *vis_it;
-            int priority = ((*vis_it)->target_proc != local_proc) ? 2 : 1;
-            utility_proc.spawn(HLR_TASK_ID, &args, sizeof(args),
-                               Event::NO_EVENT, priority);
-            continue;
-#if 0
-            bool executed = (*vis_it)->trigger_execution();
-            if (executed)
-              continue;
+#ifdef DEBUG_HIGH_LEVEL
+          assert((*vis_it)->schedule || 
+                 ((*vis_it)->target_proc != local_proc));
 #endif
-          }
-          // Otherwise if we make it here, then we didn't map it and we
-          // didn't send it so put it back on the ready queue
-          (*vis_it)->schedule = false;
-          ContextID ctx_id = (*vis_it)->get_parent()->get_context_id();
-          ContextState &state = context_states[ctx_id];
-          AutoLock q_lock(queue_lock);
-          ready_queues[map_id].push_front(*vis_it);
-          if (state.active && (state.owned_tasks == 0))
-            increment_active_contexts();
-          state.owned_tasks++;
+          (*vis_it)->deactivate_outstanding_task();
+          Event wait_on = (*vis_it)->defer_mapping();
+          // We give a slight priority to triggering the execution
+          // of tasks relative to other runtime operations because
+          // they actually have a feedback mechanism controlling
+          // how far they get ahead.  We give a slight edge in priority
+          // to tasks being sent remotely to get them in flight.
+          // Give priority to things which are getting sent remotely
+          args.op = *vis_it;
+          int priority = ((*vis_it)->target_proc != local_proc) ? 2 : 1;
+          utility_proc.spawn(HLR_TASK_ID, &args, sizeof(args),
+                             wait_on, priority);
         }
       }
 
@@ -2904,7 +3233,7 @@ namespace LegionRuntime {
 
     //--------------------------------------------------------------------------
     MemoryManager::MemoryManager(Memory m, Runtime *rt)
-      : memory(m), capacity(rt->machine->get_memory_size(m)),
+      : memory(m), capacity(m.capacity()),
         remaining_capacity(capacity), runtime(rt), 
         manager_lock(Reservation::create_reservation())
     //--------------------------------------------------------------------------
@@ -3413,6 +3742,13 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void MessageManager::send_back_atomic(Serializer &rez, bool flush)
+    //--------------------------------------------------------------------------
+    {
+      package_message(rez, SEND_BACK_ATOMIC, flush);
+    }
+
+    //--------------------------------------------------------------------------
     void MessageManager::send_subscriber(Serializer &rez, bool flush)
     //--------------------------------------------------------------------------
     {
@@ -3595,6 +3931,13 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void MessageManager::send_mapper_broadcast(Serializer &rez, bool flush)
+    //--------------------------------------------------------------------------
+    {
+      package_message(rez, SEND_MAPPER_BROADCAST, flush);
+    }
+
+    //--------------------------------------------------------------------------
     void MessageManager::send_index_space_semantic_info(Serializer &rez, 
                                                         bool flush)
     //--------------------------------------------------------------------------
@@ -3640,6 +3983,28 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       package_message(rez, SEND_LOGICAL_PARTITION_SEMANTIC_INFO, flush);
+    }
+
+    //--------------------------------------------------------------------------
+    void MessageManager::send_free_remote_context(Serializer &rez, bool flush)
+    //--------------------------------------------------------------------------
+    {
+      package_message(rez, SEND_FREE_REMOTE_CONTEXT, flush);
+    }
+
+    //--------------------------------------------------------------------------
+    void MessageManager::send_validate_remote_state(Serializer &rez, bool flush)
+    //--------------------------------------------------------------------------
+    {
+      package_message(rez, SEND_VALIDATE_REMOTE_STATE, flush);
+    }
+
+    //--------------------------------------------------------------------------
+    void MessageManager::send_invalidate_remote_state(Serializer &rez, 
+                                                      bool flush)
+    //--------------------------------------------------------------------------
+    {
+      package_message(rez, SEND_INVALIDATE_REMOTE_STATE, flush);
     }
 
     //--------------------------------------------------------------------------
@@ -3883,7 +4248,8 @@ namespace LegionRuntime {
             }
           case INDIVIDUAL_REMOTE_MAPPED:
             {
-              runtime->handle_individual_remote_mapped(derez);
+              runtime->handle_individual_remote_mapped(derez, 
+                                                       remote_address_space);
               break;
             }
           case INDIVIDUAL_REMOTE_COMPLETE:
@@ -3898,7 +4264,7 @@ namespace LegionRuntime {
             }
           case SLICE_REMOTE_MAPPED:
             {
-              runtime->handle_slice_remote_mapped(derez);
+              runtime->handle_slice_remote_mapped(derez, remote_address_space);
               break;
             }
           case SLICE_REMOTE_COMPLETE:
@@ -3940,6 +4306,11 @@ namespace LegionRuntime {
           case SEND_BACK_USER:
             {
               runtime->handle_send_back_user(derez, remote_address_space);
+              break;
+            }
+          case SEND_BACK_ATOMIC:
+            {
+              runtime->handle_send_back_atomic(derez, remote_address_space);
               break;
             }
           case SEND_SUBSCRIBER:
@@ -4083,6 +4454,11 @@ namespace LegionRuntime {
               runtime->handle_mapper_message(derez);
               break;
             }
+          case SEND_MAPPER_BROADCAST:
+            {
+              runtime->handle_mapper_broadcast(derez);
+              break;
+            }
           case SEND_INDEX_SPACE_SEMANTIC_INFO:
             {
               runtime->handle_index_space_semantic_info(derez);
@@ -4111,6 +4487,23 @@ namespace LegionRuntime {
           case SEND_LOGICAL_PARTITION_SEMANTIC_INFO:
             {
               runtime->handle_logical_partition_semantic_info(derez);
+              break;
+            }
+          case SEND_FREE_REMOTE_CONTEXT:
+            {
+              runtime->handle_free_remote_context(derez);
+              break;
+            }
+          case SEND_VALIDATE_REMOTE_STATE:
+            {
+              runtime->handle_validate_remote_state(derez, 
+                                                    remote_address_space);
+              break;
+            }
+          case SEND_INVALIDATE_REMOTE_STATE:
+            {
+              runtime->handle_invalidate_remote_state(derez,
+                                                      remote_address_space);
               break;
             }
           default:
@@ -4154,6 +4547,13 @@ namespace LegionRuntime {
       // Copy the data in
       memcpy(receiving_buffer+receiving_index,args,arglen);
       receiving_index += arglen;
+    }
+
+    //--------------------------------------------------------------------------
+    Event MessageManager::notify_pending_shutdown(void)
+    //--------------------------------------------------------------------------
+    {
+      return last_message_event;
     }
 
     /////////////////////////////////////////////////////////////
@@ -4255,7 +4655,7 @@ namespace LegionRuntime {
     /////////////////////////////////////////////////////////////
 
     //--------------------------------------------------------------------------
-    Runtime::Runtime(Machine *m, AddressSpaceID unique,
+    Runtime::Runtime(Machine m, AddressSpaceID unique,
                      const std::set<Processor> &locals,
                      const std::set<Processor> &local_utilities,
                      const std::set<AddressSpaceID> &address_spaces,
@@ -4263,28 +4663,30 @@ namespace LegionRuntime {
                      Processor cleanup, Processor gc, Processor message)
       : high_level(new HighLevelRuntime(this)), machine(m), 
         address_space(unique), runtime_stride(address_spaces.size()),
-        forest(new RegionTreeForest(this)),
+        forest(new RegionTreeForest(this)), outstanding_top_level_tasks(1),
 #ifdef SPECIALIZED_UTIL_PROCS
         cleanup_proc(cleanup), gc_proc(gc), message_proc(message),
 #endif
         local_procs(locals), local_utils(local_utilities),
-        proc_spaces(processor_spaces),
         memory_manager_lock(Reservation::create_reservation()),
+        message_manager_lock(Reservation::create_reservation()),
+        proc_spaces(processor_spaces),
+        mapper_info_lock(Reservation::create_reservation()),
         unique_partition_id((unique == 0) ? runtime_stride : unique), 
         unique_field_space_id((unique == 0) ? runtime_stride : unique),
         unique_tree_id((unique == 0) ? runtime_stride : unique),
         unique_operation_id((unique == 0) ? runtime_stride : unique),
         unique_field_id((unique == 0) ? runtime_stride : unique),
-        mapper_info_lock(Reservation::create_reservation()),
         available_lock(Reservation::create_reservation()), total_contexts(0),
         group_lock(Reservation::create_reservation()),
         distributed_id_lock(Reservation::create_reservation()),
+        unique_distributed_id((unique == 0) ? runtime_stride : unique),
         distributed_collectable_lock(Reservation::create_reservation()),
         hierarchical_collectable_lock(Reservation::create_reservation()),
         gc_epoch_lock(Reservation::create_reservation()), gc_epoch_counter(0),
         future_lock(Reservation::create_reservation()),
-        unique_distributed_id((unique == 0) ? runtime_stride : unique),
         remote_lock(Reservation::create_reservation()),
+        random_lock(Reservation::create_reservation()),
         individual_task_lock(Reservation::create_reservation()), 
         point_task_lock(Reservation::create_reservation()),
         index_task_lock(Reservation::create_reservation()), 
@@ -4296,7 +4698,9 @@ namespace LegionRuntime {
         fence_op_lock(Reservation::create_reservation()),
         frame_op_lock(Reservation::create_reservation()),
         deletion_op_lock(Reservation::create_reservation()), 
-        close_op_lock(Reservation::create_reservation()), 
+        inter_close_op_lock(Reservation::create_reservation()), 
+        post_close_op_lock(Reservation::create_reservation()),
+        dynamic_collective_op_lock(Reservation::create_reservation()),
         future_pred_op_lock(Reservation::create_reservation()), 
         not_pred_op_lock(Reservation::create_reservation()),
         and_pred_op_lock(Reservation::create_reservation()),
@@ -4313,7 +4717,7 @@ namespace LegionRuntime {
 #ifdef LEGION_LOGGING
       // Initialize a logger if we have one
       {
-        std::set<Processor> all_locals(local_procsbegin(), local_procs.end());
+        std::set<Processor> all_locals(local_procs.begin(), local_procs.end());
         all_locals.insert(local_utils.begin(), local_utils.end());
         LegionLogging::initialize_legion_logging(unique, all_locals);
       }
@@ -4351,25 +4755,27 @@ namespace LegionRuntime {
         for (std::set<Processor>::const_iterator it = local_procs.begin();
               it != local_procs.end(); it++)
         {
-          Processor::Kind kind = machine->get_processor_kind(*it);
+          Processor::Kind kind = it->kind();
           assert(kind != Processor::UTIL_PROC);
           LegionProf::initialize_processor(*it, false/*util*/, kind);
         }
         for (std::set<Processor>::const_iterator it = local_utils.begin();
               it != local_utils.end(); it++)
         {
-          Processor::Kind kind = machine->get_processor_kind(*it);
+          Processor::Kind kind = it->kind();
           assert(kind == Processor::UTIL_PROC);
           LegionProf::initialize_processor(*it, true/*util*/, kind);
         }
         // Tell the profiler about all the memories and their kinds
-        const std::set<Memory> &all_mems = machine->get_all_memories();
+        std::set<Memory> all_mems;
+	machine.get_all_memories(all_mems);
         for (std::set<Memory>::const_iterator it = all_mems.begin();
               it != all_mems.end(); it++)
         {
-          Memory::Kind kind = machine->get_memory_kind(*it);
+          Memory::Kind kind = it->kind();
           LegionProf::initialize_memory(*it, kind);
         } 
+        LegionProf::initialize_copy_processor();
       }
 #endif
       // Construct a local utility processor group
@@ -4403,47 +4809,25 @@ namespace LegionRuntime {
             it != local_procs.end(); it++)
       {
 #ifdef DEBUG_HIGH_LEVEL
-        assert(machine->get_processor_kind(*it) != Processor::UTIL_PROC);
+        assert((*it).kind() != Processor::UTIL_PROC);
 #endif
+	std::set<Processor> all_procs;
+	machine.get_all_processors(all_procs);
         ProcessorManager *manager = new ProcessorManager(*it,
-                                    machine->get_processor_kind(*it), this,
+				    (*it).kind(), this,
                                     superscalar_width,
                                     DEFAULT_MAPPER_SLOTS, 
                                     stealing_disabled,
-                                    machine->get_all_processors().size()-1);
+				    all_procs.size()-1);
         proc_managers[*it] = manager;
         manager->add_mapper(0, new DefaultMapper(machine, high_level, *it),
                             false/*needs check*/);
       }
-      // For each of the other address spaces, construct a 
-      // message manager for handling communication
-      for (std::set<AddressSpaceID>::const_iterator it = 
-            address_spaces.begin(); it != address_spaces.end(); it++)
-      {
-        // We don't need to make a message manager for ourself
-        if (address_space == (*it))
-          continue;
-        // Construct the set of processors in the remote address space
-        std::set<Processor> remote_procs;
-        std::set<Processor> remote_util_procs;
-        for (std::map<Processor,AddressSpaceID>::const_iterator pit = 
-              processor_spaces.begin(); pit != processor_spaces.end(); pit++)
-        {
-          if (pit->second != (*it))
-            continue;
-          Processor::Kind k = machine->get_processor_kind(pit->first);
-          if (k == Processor::UTIL_PROC)
-            remote_util_procs.insert(pit->first);
-          else
-            remote_procs.insert(pit->first);
-        }
-#ifdef DEBUG_HIGH_LEVEL
-        assert(!remote_procs.empty() || !remote_util_procs.empty());
-#endif
-        message_managers[(*it)] = new MessageManager(*it, this, 
-            max_message_size, (remote_util_procs.empty() ? 
-              remote_procs : remote_util_procs));
-      }
+      // Initialize the message manager array so that we can construct
+      // message managers lazily as they are needed
+      for (unsigned idx = 0; idx < MAX_NUM_NODES; idx++)
+        message_managers[idx] = NULL;
+      
       // Make the default number of contexts
       // No need to hold the lock yet because nothing is running
       for (total_contexts = 0; total_contexts < DEFAULT_CONTEXTS; 
@@ -4454,6 +4838,13 @@ namespace LegionRuntime {
       // Create our first GC epoch
       current_gc_epoch = new GarbageCollectionEpoch(this);
       pending_gc_epochs.insert(current_gc_epoch);
+      // Initialize our random number generator state
+      random_state[0] = address_space & 0xFFFF; // low-order bits of node ID 
+      random_state[1] = (address_space >> 16) & 0xFFFF; // high-order bits
+      random_state[2] = LEGION_INIT_SEED;
+      // Do some mixing
+      for (int i = 0; i < 256; i++)
+        nrand48(random_state);
 
 #ifdef DEBUG_HIGH_LEVEL
       if (logging_region_tree_state)
@@ -4484,7 +4875,7 @@ namespace LegionRuntime {
 
     //--------------------------------------------------------------------------
     Runtime::Runtime(const Runtime &rhs)
-      : high_level(NULL), machine(NULL), address_space(0), 
+      : high_level(NULL), machine(rhs.machine), address_space(0), 
         runtime_stride(0), forest(NULL),
         local_procs(rhs.local_procs), proc_spaces(rhs.proc_spaces)
 #ifdef SPECIALIZE_UTIL_PROCS
@@ -4514,17 +4905,18 @@ namespace LegionRuntime {
         for (std::set<Processor>::const_iterator it = local_procs.begin();
               it != local_procs.end(); it++)
         {
-          Processor::Kind kind = machine->get_processor_kind(*it);
+          Processor::Kind kind = it->kind();
           assert(kind != Processor::UTIL_PROC);
           LegionProf::finalize_processor(*it);
         }
         for (std::set<Processor>::const_iterator it = local_utils.begin();
               it != local_utils.end(); it++)
         {
-          Processor::Kind kind = machine->get_processor_kind(*it);
+          Processor::Kind kind = it->kind();
           assert(kind == Processor::UTIL_PROC);
           LegionProf::finalize_processor(*it);
         }
+        LegionProf::finalize_copy_profiler();
       }
 #endif
       delete high_level;
@@ -4534,10 +4926,10 @@ namespace LegionRuntime {
         delete it->second;
       }
       proc_managers.clear();
-      for (std::map<AddressSpaceID,MessageManager*>::const_iterator it = 
-            message_managers.begin(); it != message_managers.end(); it++)
+      for (unsigned idx = 0; idx < MAX_NUM_NODES; idx++)
       {
-        delete it->second;
+        if (message_managers[idx] != NULL)
+          delete message_managers[idx];
       }
       for (std::map<ProjectionID,ProjectionFunctor*>::const_iterator it = 
             projection_functors.begin(); it != projection_functors.end(); it++)
@@ -4546,8 +4938,9 @@ namespace LegionRuntime {
       }
       memory_manager_lock.destroy_reservation();
       memory_manager_lock = Reservation::NO_RESERVATION;
+      message_manager_lock.destroy_reservation();
+      message_manager_lock = Reservation::NO_RESERVATION;
       memory_managers.clear();
-      message_managers.clear();
       projection_functors.clear();
       mapper_info_lock.destroy_reservation();
       mapper_info_lock = Reservation::NO_RESERVATION;
@@ -4666,15 +5059,33 @@ namespace LegionRuntime {
       available_deletion_ops.clear();
       deletion_op_lock.destroy_reservation();
       deletion_op_lock = Reservation::NO_RESERVATION;
-      for (std::deque<CloseOp*>::const_iterator it = 
-            available_close_ops.begin(); it !=
-            available_close_ops.end(); it++)
+      for (std::deque<InterCloseOp*>::const_iterator it = 
+            available_inter_close_ops.begin(); it !=
+            available_inter_close_ops.end(); it++)
       {
         delete *it;
       }
-      available_close_ops.clear();
-      close_op_lock.destroy_reservation();
-      close_op_lock = Reservation::NO_RESERVATION;
+      available_inter_close_ops.clear();
+      inter_close_op_lock.destroy_reservation();
+      inter_close_op_lock = Reservation::NO_RESERVATION;
+      for (std::deque<PostCloseOp*>::const_iterator it = 
+            available_post_close_ops.begin(); it !=
+            available_post_close_ops.end(); it++)
+      {
+        delete *it;
+      }
+      available_post_close_ops.clear();
+      post_close_op_lock.destroy_reservation();
+      post_close_op_lock = Reservation::NO_RESERVATION;
+      for (std::deque<DynamicCollectiveOp*>::const_iterator it = 
+            available_dynamic_collective_ops.begin(); it !=
+            available_dynamic_collective_ops.end(); it++)
+      {
+        delete *it;
+      }
+      available_dynamic_collective_ops.end();
+      dynamic_collective_op_lock.destroy_reservation();
+      dynamic_collective_op_lock = Reservation::NO_RESERVATION;
       for (std::deque<FuturePredOp*>::const_iterator it = 
             available_future_pred_ops.begin(); it !=
             available_future_pred_ops.end(); it++)
@@ -4794,7 +5205,8 @@ namespace LegionRuntime {
         args.mpi_rank = rank;
         args.source_space = address_space;
         std::set<AddressSpace> sent_targets;
-        const std::set<Processor> &all_procs = machine->get_all_processors();
+        std::set<Processor> all_procs;
+	machine.get_all_processors(all_procs);
         for (std::set<Processor>::const_iterator it = all_procs.begin();
               it != all_procs.end(); it++)
         {
@@ -4803,7 +5215,7 @@ namespace LegionRuntime {
             continue;
           if (sent_targets.find(target_space) != sent_targets.end())
             continue;
-          Processor::Kind kind = machine->get_processor_kind(*it);
+          Processor::Kind kind = it->kind();
           if (kind != Processor::LOC_PROC)
             continue;
           it->spawn(HLR_TASK_ID, &args, sizeof(args));
@@ -4813,7 +5225,7 @@ namespace LegionRuntime {
         Runtime::mpi_rank_table[rank] = address_space;
         unsigned count = 
           __sync_add_and_fetch(&Runtime::remaining_mpi_notifications, 1);
-        const size_t total_ranks = machine->get_address_space_count();
+        const size_t total_ranks = machine.get_address_space_count();
         if (count == total_ranks)
           Runtime::mpi_rank_event.trigger();
         // Wait on the event
@@ -4847,8 +5259,7 @@ namespace LegionRuntime {
         // Get an individual task to be the top-level task
         IndividualTask *top_task = get_available_individual_task();
         // Get a remote task to serve as the top of the top-level task
-        RemoteTask *top_context = 
-          find_or_init_remote_context(top_task->get_unique_task_id());
+        RemoteTask *top_context = find_or_init_remote_context(0/*fake uid*/);
         // Set the executing processor
         top_context->set_executing_processor(proc);
         TaskLauncher launcher(Runtime::legion_main_id, TaskArgument());
@@ -4882,19 +5293,66 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    Event Runtime::launch_mapper_task(Mapper *mapper, Processor proc, 
+                                      Processor::TaskFuncID tid,
+                                      const TaskArgument &arg, MapperID map_id)
+    //--------------------------------------------------------------------------
+    {
+      // Get an individual task to be the top-level task
+      IndividualTask *mapper_task = get_available_individual_task();
+      // Get a remote task to serve as the top of the top-level task
+      RemoteTask *map_context = find_or_init_remote_context(0/*fake uid*/);
+      map_context->set_executing_processor(proc);
+      TaskLauncher launcher(tid, arg, Predicate::TRUE_PRED, map_id);
+      Future f = mapper_task->initialize_task(map_context, launcher, 
+                                   false/*check priv*/, false/*track parent*/);
+      mapper_task->depth = 0;
+#ifdef DEBUG_HIGH_LEVEL
+      assert(proc_managers.find(proc) != proc_managers.end());
+#endif
+      proc_managers[proc]->invoke_mapper_set_task_options(mapper_task);
+      invoke_mapper_configure_context(proc, mapper_task);
+      // Create a temporary event to name the result since we 
+      // have to pack it in the task that runs, but it also depends
+      // on the task being reported back to the mapper
+      UserEvent result = UserEvent::create_user_event();
+      // Add a reference to the future impl to prevent it being collected
+      f.impl->add_gc_reference();
+      // Create a meta-task to return the results to the mapper
+      MapperTaskArgs args;
+      args.hlr_id = HLR_MAPPER_TASK_ID;
+      args.future = f.impl;
+      args.map_id = map_id;
+      args.proc = proc;
+      args.event = result;
+      Processor util = find_utility_group();
+      Event pre = f.impl->get_ready_event();
+      Event post = util.spawn(HLR_TASK_ID, &args, sizeof(args), pre);
+      // Chain the events properly
+      result.trigger(post);
+      // Mark that we have another outstanding top level task
+      increment_outstanding_top_level_tasks();
+      // Now we can put it on the queue
+      add_to_ready_queue(proc, mapper_task, false/*prev failure*/);
+      return result;
+    }
+
+    //--------------------------------------------------------------------------
     void Runtime::perform_one_time_logging(void)
     //--------------------------------------------------------------------------
     {
 #ifdef LEGION_LOGGING
       // First log information about the machine 
-      const std::set<Processor> &all_procs = machine->get_all_processors();
+      std::set<Processor> all_procs;
+      machine.get_all_processors(all_procs);
       // Log all the memories
-      const std::set<Memory> &all_mems = machine->get_all_memories();
+      std::set<Memory> all_mems;
+      machine.get_all_memories(all_mems);
       for (std::set<Memory>::const_iterator it = all_mems.begin();
             it != all_mems.end(); it++)
       {
-        Memory::Kind kind = machine->get_memory_kind(*it);
-        size_t mem_size = machine->get_memory_size(*it);
+        Memory::Kind kind = (*it).kind();
+        size_t mem_size = (*it).capacity();
         LegionLogging::log_memory(*it, kind, mem_size);
       }
       // Log processor-memory affinities
@@ -4902,7 +5360,7 @@ namespace LegionRuntime {
             pit != all_procs.end(); pit++)
       {
         std::vector<ProcessorMemoryAffinity> affinities;
-        machine->get_proc_mem_affinity(affinities, *pit);
+        machine.get_proc_mem_affinity(affinities, *pit);
         for (std::vector<ProcessorMemoryAffinity>::const_iterator it = 
               affinities.begin(); it != affinities.end(); it++)
         {
@@ -4916,7 +5374,7 @@ namespace LegionRuntime {
             mit != all_mems.begin(); mit++)
       {
         std::vector<MemoryMemoryAffinity> affinities;
-        machine->get_mem_mem_affinity(affinities, *mit);
+        machine.get_mem_mem_affinity(affinities, *mit);
         for (std::vector<MemoryMemoryAffinity>::const_iterator it = 
               affinities.begin(); it != affinities.end(); it++)
         {
@@ -5544,6 +6002,7 @@ namespace LegionRuntime {
                     {
                       Rect<3> d1 = it3->get_rect<3>();
                       Rect<3> d2 = it4->get_rect<3>();
+                      overlaps = d1.overlaps(d2);
                       break;
                     }
                   default:
@@ -6103,12 +6562,7 @@ namespace LegionRuntime {
 #endif
       if (pointer.is_null())
         return pointer;
-      Domain domain = get_index_space_domain(ctx, region.get_index_space()); 
-      DomainPoint point(pointer.value);
-      if (domain.contains(point))
-        return pointer;
-      else
-        return ptr_t::nil();
+      return ctx->perform_safe_cast(region.get_index_space(), pointer);
     }
 
     //--------------------------------------------------------------------------
@@ -6122,11 +6576,7 @@ namespace LegionRuntime {
 #endif
       if (point.is_null())
         return point;
-      Domain domain = get_index_space_domain(ctx, region.get_index_space());
-      if (domain.contains(point))
-        return point;
-      else
-        return DomainPoint::nil();
+      return ctx->perform_safe_cast(region.get_index_space(), point);
     }
 
     //--------------------------------------------------------------------------
@@ -6692,7 +7142,7 @@ namespace LegionRuntime {
         }
         // Otherwise check to see if we have a value
         Future::Impl *result = legion_new<Future::Impl>(this, true/*register*/,
-              get_available_distributed_id(), address_space, address_space);
+          get_available_distributed_id(), address_space, address_space);
         if (launcher.predicate_false_result.get_size() > 0)
           result->set_result(launcher.predicate_false_result.get_ptr(),
                              launcher.predicate_false_result.get_size(),
@@ -6903,7 +7353,7 @@ namespace LegionRuntime {
           return launcher.predicate_false_future;
         // Otherwise check to see if we have a value
         Future::Impl *result = legion_new<Future::Impl>(this, true/*register*/, 
-              get_available_distributed_id(), address_space, address_space);
+          get_available_distributed_id(), address_space, address_space);
         if (launcher.predicate_false_result.get_size() > 0)
           result->set_result(launcher.predicate_false_result.get_ptr(),
                              launcher.predicate_false_result.get_size(),
@@ -6983,7 +7433,7 @@ namespace LegionRuntime {
       // Quick out for predicate false
       if (predicate == Predicate::FALSE_PRED)
         return Future(legion_new<Future::Impl>(this, true/*register*/,
-              get_available_distributed_id(), address_space, address_space));
+          get_available_distributed_id(), address_space, address_space));
       IndividualTask *task = get_available_individual_task();
 #ifdef DEBUG_HIGH_LEVEL
       if (ctx == DUMMY_CONTEXT)
@@ -7099,7 +7549,7 @@ namespace LegionRuntime {
       // Quick out for predicate false
       if (predicate == Predicate::FALSE_PRED)
         return Future(legion_new<Future::Impl>(this, true/*register*/,
-              get_available_distributed_id(), address_space, address_space));
+          get_available_distributed_id(), address_space, address_space));
       IndexTask *task = get_available_index_task();
 #ifdef DEBUG_HIGH_LEVEL
       if (ctx == DUMMY_CONTEXT)
@@ -7359,39 +7809,10 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void Runtime::map_all_regions(Context ctx)
-    //--------------------------------------------------------------------------
-    {
-      const std::vector<PhysicalRegion> &regions = ctx->get_physical_regions();
-      for (unsigned idx = 0; idx < regions.size(); idx++)
-      {
-        if (regions[idx].impl->is_mapped())
-          continue;
-        MapOp *map_op = get_available_map_op();
-        map_op->initialize(ctx, regions[idx]);
-        add_to_dependence_queue(ctx->get_executing_processor(), map_op);
-      }
-#ifdef INORDER_EXECUTION
-      if (program_order_execution)
-      {
-        for (unsigned idx = 0; idx < regions.size(); idx++)
-        {
-          regions[idx].impl->wait_until_valid();
-        }
-      }
-#endif
-    }
-
-    //--------------------------------------------------------------------------
     void Runtime::unmap_all_regions(Context ctx)
     //--------------------------------------------------------------------------
     {
-      const std::vector<PhysicalRegion> &regions = ctx->get_physical_regions();
-      for (unsigned idx = 0; idx < regions.size(); idx++)
-      {
-        if (regions[idx].impl->is_mapped())
-          regions[idx].impl->unmap_region();
-      }
+      ctx->unmap_all_mapped_regions();
     }
 
     //--------------------------------------------------------------------------
@@ -7429,7 +7850,8 @@ namespace LegionRuntime {
       // Check to see if we need to do any unmappings and remappings
       // before we can issue this copy operation
       std::vector<PhysicalRegion> unmapped_regions;
-      ctx->find_conflicting_regions(copy_op, unmapped_regions);
+      if (!unsafe_launch)
+        ctx->find_conflicting_regions(copy_op, unmapped_regions);
       if (!unmapped_regions.empty())
       {
         // Unmap any regions which are conflicting
@@ -7725,38 +8147,205 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    PhaseBarrier Runtime::create_phase_barrier(Context ctx, 
-                                                        unsigned participants)
+    PhaseBarrier Runtime::create_phase_barrier(Context ctx, unsigned arrivals) 
     //--------------------------------------------------------------------------
     {
-      Barrier result = Barrier::create_barrier(participants);
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create phase barrier!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+      log_run(LEVEL_DEBUG,"Creating phase barrier in task %s (ID %lld)",
+                          ctx->variants->name, ctx->get_unique_task_id());
+#endif
+      Barrier result = Barrier::create_barrier(arrivals);
 #ifdef LEGION_SPY
       LegionSpy::log_phase_barrier(result);
 #endif
-      return PhaseBarrier(result, participants);
+      return PhaseBarrier(result);
     }
 
     //--------------------------------------------------------------------------
     void Runtime::destroy_phase_barrier(Context ctx, PhaseBarrier pb)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context destroy phase barrier!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+      log_run(LEVEL_DEBUG,"Destroying phase barrier in task %s (ID %lld)",
+                          ctx->variants->name, ctx->get_unique_task_id());
+#endif
       ctx->destroy_user_barrier(pb.phase_barrier);
     }
 
     //--------------------------------------------------------------------------
-    PhaseBarrier Runtime::advance_phase_barrier(Context ctx, 
-                                                         PhaseBarrier pb)
+    PhaseBarrier Runtime::advance_phase_barrier(Context ctx, PhaseBarrier pb)
     //--------------------------------------------------------------------------
     {
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context advance phase barrier!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+      log_run(LEVEL_DEBUG,"Advancing phase barrier in task %s (ID %lld)",
+                          ctx->variants->name, ctx->get_unique_task_id());
+#endif
       Barrier bar = pb.phase_barrier;
-      // Mark that one of the expected arrivals has arrived
-      // TODO: put this back in once Sean fixes barriers
-      //bar.arrive();
       Barrier new_bar = bar.advance_barrier();
 #ifdef LEGION_SPY
       LegionSpy::log_event_dependence(bar, new_bar);
 #endif
-      return PhaseBarrier(new_bar, pb.participant_count());
+      return PhaseBarrier(new_bar);
+    }
+
+    //--------------------------------------------------------------------------
+    DynamicCollective Runtime::create_dynamic_collective(Context ctx,
+                                                         unsigned arrivals,
+                                                         ReductionOpID redop,
+                                                         const void *init_value,
+                                                         size_t init_size)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context create dynamic collective!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+      log_run(LEVEL_DEBUG,"Creating dynamic collective in task %s (ID %lld)",
+                          ctx->variants->name, ctx->get_unique_task_id());
+#endif
+      Barrier result = Barrier::create_barrier(arrivals, redop, 
+                                               init_value, init_size);
+#ifdef LEGION_SPY
+      LegionSpy::log_phase_barrier(result);
+#endif
+      return DynamicCollective(result, redop);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::destroy_dynamic_collective(Context ctx, DynamicCollective dc)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context destroy "
+                            "dynamic collective!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+      log_run(LEVEL_DEBUG,"Destroying dynamic collective in task %s (ID %lld)",
+                          ctx->variants->name, ctx->get_unique_task_id());
+#endif
+      ctx->destroy_user_barrier(dc.phase_barrier);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::arrive_dynamic_collective(Context ctx, DynamicCollective dc,
+                                            const void *buffer, size_t size,
+                                            unsigned count)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context arrive dynamic collective!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+      log_run(LEVEL_DEBUG,"Arrive dynamic collective in task %s (ID %lld)",
+                          ctx->variants->name, ctx->get_unique_task_id());
+#endif
+      dc.phase_barrier.arrive(count, Event::NO_EVENT, buffer, size);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::defer_dynamic_collective_arrival(Context ctx, 
+                                                   DynamicCollective dc,
+                                                   Future f, unsigned count)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context defer dynamic "
+                            "collective arrival!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+      log_run(LEVEL_DEBUG,"Defer dynamic collective arrival in "
+                          "task %s (ID %lld)",
+                          ctx->variants->name, ctx->get_unique_task_id());
+#endif
+      f.impl->contribute_to_collective(dc.phase_barrier, count);
+    }
+
+    //--------------------------------------------------------------------------
+    Future Runtime::get_dynamic_collective_result(Context ctx, 
+                                                  DynamicCollective dc)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context get dynamic "
+                            "collective result!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+      log_run(LEVEL_DEBUG,"Get dynamic collective result in task %s (ID %lld)",
+                          ctx->variants->name, ctx->get_unique_task_id());
+#endif
+      DynamicCollectiveOp *collective = get_available_dynamic_collective_op();
+      Future result = collective->initialize(ctx, dc);
+#ifdef INORDER_EXECUTION
+      Event term_event = collective->get_completion_event();
+#endif
+      Processor proc = ctx->get_executing_processor();
+      add_to_dependence_queue(proc, collective);
+#ifdef INORDER_EXECUTION
+      if (program_order_execution && !term_event.has_triggered())
+      {
+        pre_wait(proc);
+        term_event.wait();
+        post_wait(proc);
+      }
+#endif
+      return result;
+    }
+
+    //--------------------------------------------------------------------------
+    DynamicCollective Runtime::advance_dynamic_collective(Context ctx,
+                                                          DynamicCollective dc)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      if (ctx == DUMMY_CONTEXT)
+      {
+        log_run(LEVEL_ERROR,"Illegal dummy context advance dynamic "
+                            "collective!");
+        assert(false);
+        exit(ERROR_DUMMY_CONTEXT_OPERATION);
+      }
+      log_run(LEVEL_DEBUG,"Advancing dynamic collective in task %s (ID %lld)",
+                          ctx->variants->name, ctx->get_unique_task_id());
+#endif
+      Barrier bar = dc.phase_barrier;
+      Barrier new_bar = bar.advance_barrier();
+#ifdef LEGION_SPY
+      LegionSpy::log_event_dependence(bar, new_bar);
+#endif
+      return DynamicCollective(new_bar, dc.redop);
     }
 
     //--------------------------------------------------------------------------
@@ -7792,7 +8381,8 @@ namespace LegionRuntime {
       // Check to see if we need to do any unmappings and remappings
       // before we can issue this acquire operation.
       std::vector<PhysicalRegion> unmapped_regions;
-      ctx->find_conflicting_regions(acquire_op, unmapped_regions);
+      if (!unsafe_launch)
+        ctx->find_conflicting_regions(acquire_op, unmapped_regions);
       if (!unmapped_regions.empty())
       {
         for (unsigned idx = 0; idx < unmapped_regions.size(); idx++)
@@ -7890,7 +8480,8 @@ namespace LegionRuntime {
       // Check to see if we need to do any unmappings and remappings
       // before we can issue the release operation
       std::vector<PhysicalRegion> unmapped_regions;
-      ctx->find_conflicting_regions(release_op, unmapped_regions);
+      if (!unsafe_launch)
+        ctx->find_conflicting_regions(release_op, unmapped_regions);
       if (!unmapped_regions.empty())
       {
         for (unsigned idx = 0; idx < unmapped_regions.size(); idx++)
@@ -7978,7 +8569,7 @@ namespace LegionRuntime {
         exit(ERROR_LEAF_TASK_VIOLATION);
       }
 #endif
-      fence_op->initialize(ctx, true/*mapping fence*/);
+      fence_op->initialize(ctx, FenceOp::MAPPING_FENCE);
 #ifdef INORDER_EXECUTION
       Event term_event = fence_op->get_completion_event();
 #endif
@@ -8017,7 +8608,7 @@ namespace LegionRuntime {
         exit(ERROR_LEAF_TASK_VIOLATION);
       }
 #endif
-      fence_op->initialize(ctx, false/*mapping fence*/);
+      fence_op->initialize(ctx, FenceOp::EXECUTION_FENCE);
 #ifdef INORDER_EXECUTION
       Event term_event = fence_op->get_completion_event();
 #endif
@@ -8092,7 +8683,7 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void Runtime::issue_frame(Context ctx)
+    void Runtime::complete_frame(Context ctx)
     //--------------------------------------------------------------------------
     {
       FrameOp *frame_op = get_available_frame_op();
@@ -8169,7 +8760,8 @@ namespace LegionRuntime {
       epoch_op->set_task_options(manager);
       // Now find all the parent task regions we need to invalidate
       std::vector<PhysicalRegion> unmapped_regions;
-      epoch_op->find_conflicted_regions(unmapped_regions);
+      if (!unsafe_launch)
+        epoch_op->find_conflicted_regions(unmapped_regions);
       if (!unmapped_regions.empty())
       {
         for (unsigned idx = 0; idx < unmapped_regions.size(); idx++)
@@ -8414,9 +9006,9 @@ namespace LegionRuntime {
                                               const void *buffer, size_t size)
     //--------------------------------------------------------------------------
     {
-      NodeMask mask;
-      mask.set_bit(address_space);
-      forest->attach_semantic_information(handle, tag, mask, buffer, size);
+      NodeSet node_set;
+      node_set.add(address_space);
+      forest->attach_semantic_information(handle, tag, node_set, buffer, size);
     }
 
     //--------------------------------------------------------------------------
@@ -8425,9 +9017,9 @@ namespace LegionRuntime {
                                               const void *buffer, size_t size)
     //--------------------------------------------------------------------------
     {
-      NodeMask mask;
-      mask.set_bit(address_space);
-      forest->attach_semantic_information(handle, tag, mask, buffer, size);
+      NodeSet node_set;
+      node_set.add(address_space);
+      forest->attach_semantic_information(handle, tag, node_set, buffer, size);
     }
 
     //--------------------------------------------------------------------------
@@ -8436,9 +9028,9 @@ namespace LegionRuntime {
                                               const void *buffer, size_t size)
     //--------------------------------------------------------------------------
     {
-      NodeMask mask;
-      mask.set_bit(address_space);
-      forest->attach_semantic_information(handle, tag, mask, buffer, size);
+      NodeSet node_set;
+      node_set.add(address_space);
+      forest->attach_semantic_information(handle, tag, node_set, buffer, size);
     }
 
     //--------------------------------------------------------------------------
@@ -8447,9 +9039,10 @@ namespace LegionRuntime {
                                               const void *buffer, size_t size)
     //--------------------------------------------------------------------------
     {
-      NodeMask mask;
-      mask.set_bit(address_space);
-      forest->attach_semantic_information(handle, fid, tag, mask, buffer, size);
+      NodeSet node_set;
+      node_set.add(address_space);
+      forest->attach_semantic_information(handle, fid, tag, 
+                                          node_set, buffer, size);
     }
 
     //--------------------------------------------------------------------------
@@ -8458,9 +9051,9 @@ namespace LegionRuntime {
                                               const void *buffer, size_t size)
     //--------------------------------------------------------------------------
     {
-      NodeMask mask;
-      mask.set_bit(address_space);
-      forest->attach_semantic_information(handle, tag, mask, buffer, size);
+      NodeSet node_set;
+      node_set.add(address_space);
+      forest->attach_semantic_information(handle, tag, node_set, buffer, size);
     }
 
     //--------------------------------------------------------------------------
@@ -8469,9 +9062,9 @@ namespace LegionRuntime {
                                               const void *buffer, size_t size)
     //--------------------------------------------------------------------------
     {
-      NodeMask mask;
-      mask.set_bit(address_space);
-      forest->attach_semantic_information(handle, tag, mask, buffer, size);
+      NodeSet node_set;
+      node_set.add(address_space);
+      forest->attach_semantic_information(handle, tag, node_set, buffer, size);
     }
 
     //--------------------------------------------------------------------------
@@ -8837,19 +9430,53 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    MessageManager* Runtime::find_messenger(AddressSpaceID sid) const
+    MessageManager* Runtime::find_messenger(AddressSpaceID sid)
     //--------------------------------------------------------------------------
     {
-      std::map<AddressSpaceID,MessageManager*>::const_iterator finder = 
-        message_managers.find(sid);
 #ifdef DEBUG_HIGH_LEVEL
-      assert(finder != message_managers.end());
+      assert(sid < MAX_NUM_NODES);
+      assert(sid != address_space); // shouldn't be sending messages to ourself
 #endif
-      return finder->second;
+      MessageManager *result = message_managers[sid];
+      if (result != NULL)
+        return result;
+      // If we made it here, then we don't have a message manager yet
+      // re-take the lock and re-check to see if we don't have a manager
+      // If we still don't then we need to make one
+      AutoLock m_lock(message_manager_lock);
+      // Re-check to see if we lost the race, force the compiler
+      // to re-load the value here
+      result = *(((MessageManager**volatile)message_managers)+sid);
+      // If we're still NULL then we need to make the message manager
+      if (result == NULL)
+      {
+        // Compute the set of processors in the remote address space
+        std::set<Processor> remote_procs;
+        std::set<Processor> remote_util_procs;
+        for (std::map<Processor,AddressSpaceID>::const_iterator it = 
+              proc_spaces.begin(); it != proc_spaces.end(); it++)
+        {
+          if (it->second != sid)
+            continue;
+          Processor::Kind k = it->first.kind();
+          if (k == Processor::UTIL_PROC)
+            remote_util_procs.insert(it->first);
+          else
+            remote_procs.insert(it->first);
+        }
+#ifdef DEBUG_HIGH_LEVEL
+        assert(!remote_procs.empty() || !remote_util_procs.empty());
+#endif
+        result = new MessageManager(sid, this, max_message_size,
+            (remote_util_procs.empty() ? remote_procs : remote_util_procs));
+        // Save the result
+        message_managers[sid] = result;
+      }
+      return result;
     }
 
     //--------------------------------------------------------------------------
-    MessageManager* Runtime::find_messenger(Processor target) const
+    MessageManager* Runtime::find_messenger(Processor target)
     //--------------------------------------------------------------------------
     {
       return find_messenger(find_address_space(target));
@@ -9241,6 +9868,13 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void Runtime::send_back_atomic(AddressSpaceID target, Serializer &rez)
+    //--------------------------------------------------------------------------
+    {
+      find_messenger(target)->send_back_atomic(rez, false/*flush*/);
+    }
+
+    //--------------------------------------------------------------------------
     void Runtime::send_subscriber(AddressSpaceID target, Serializer &rez)
     //--------------------------------------------------------------------------
     {
@@ -9430,6 +10064,13 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void Runtime::send_mapper_broadcast(AddressSpaceID target, Serializer &rez)
+    //--------------------------------------------------------------------------
+    {
+      find_messenger(target)->send_mapper_broadcast(rez, true/*flush*/);
+    }
+
+    //--------------------------------------------------------------------------
     void Runtime::send_index_space_semantic_info(AddressSpaceID target,
                                                  Serializer &rez)
     //--------------------------------------------------------------------------
@@ -9478,6 +10119,30 @@ namespace LegionRuntime {
     {
       find_messenger(target)->send_logical_partition_semantic_info(rez,
                                                                  true/*flush*/);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::send_free_remote_context(AddressSpaceID target, 
+                                           Serializer &rez)
+    //--------------------------------------------------------------------------
+    {
+      find_messenger(target)->send_free_remote_context(rez, true/*flush*/);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::send_validate_remote_state(AddressSpaceID target,
+                                             Serializer &rez)
+    //--------------------------------------------------------------------------
+    {
+      find_messenger(target)->send_validate_remote_state(rez, false/*flush*/);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::send_invalidate_remote_state(AddressSpaceID target,
+                                               Serializer &rez)
+    //--------------------------------------------------------------------------
+    {
+      find_messenger(target)->send_invalidate_remote_state(rez, true/*flush*/);
     }
 
     //--------------------------------------------------------------------------
@@ -9642,10 +10307,11 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void Runtime::handle_individual_remote_mapped(Deserializer &derez)
+    void Runtime::handle_individual_remote_mapped(Deserializer &derez,
+                                                  AddressSpaceID source)
     //--------------------------------------------------------------------------
     {
-      IndividualTask::process_unpack_remote_mapped(derez);
+      IndividualTask::process_unpack_remote_mapped(derez, source);
     }
 
     //--------------------------------------------------------------------------
@@ -9663,10 +10329,11 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void Runtime::handle_slice_remote_mapped(Deserializer &derez)
+    void Runtime::handle_slice_remote_mapped(Deserializer &derez,
+                                             AddressSpaceID source)
     //--------------------------------------------------------------------------
     {
-      IndexTask::process_slice_mapped(derez);
+      IndexTask::process_slice_mapped(derez, source);
     }
 
     //--------------------------------------------------------------------------
@@ -9726,6 +10393,14 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       LogicalView::handle_send_back_user(forest, derez, source);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::handle_send_back_atomic(Deserializer &derez,
+                                          AddressSpaceID source)
+    //--------------------------------------------------------------------------
+    {
+      MaterializedView::handle_send_back_atomic(forest, derez);
     }
 
     //--------------------------------------------------------------------------
@@ -9934,10 +10609,30 @@ namespace LegionRuntime {
       derez.deserialize(map_id);
       Processor source;
       derez.deserialize(source);
-      size_t length = derez.get_remaining_bytes();
+      size_t length;
+      derez.deserialize(length);
       const void *message = derez.get_current_pointer();
       derez.advance_pointer(length);
       invoke_mapper_handle_message(target, map_id, source, message, length);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::handle_mapper_broadcast(Deserializer &derez)
+    //--------------------------------------------------------------------------
+    {
+      DerezCheck z(derez);
+      MapperID map_id;
+      derez.deserialize(map_id);
+      Processor source;
+      derez.deserialize(source);
+      int radix, offset;
+      derez.deserialize(radix);
+      derez.deserialize(offset);
+      size_t length;
+      derez.deserialize(length);
+      const void *message = derez.get_current_pointer();
+      derez.advance_pointer(length);
+      invoke_mapper_broadcast(map_id, source, message, length, radix, offset);
     }
 
     //--------------------------------------------------------------------------
@@ -9980,6 +10675,45 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       PartitionNode::handle_semantic_info(forest, derez);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::handle_free_remote_context(Deserializer &derez)
+    //--------------------------------------------------------------------------
+    {
+      DerezCheck z(derez);
+      UniqueID remote_owner_uid;
+      derez.deserialize(remote_owner_uid);
+      // First find it and remove it from the table
+      RemoteTask *remote_task;
+      {
+        AutoLock rem_lock(remote_lock);
+        std::map<UniqueID,RemoteTask*>::iterator finder = 
+          remote_contexts.find(remote_owner_uid);
+#ifdef DEBUG_HIGH_LEVEL
+        assert(finder != remote_contexts.end());
+#endif
+        remote_task = finder->second;
+        remote_contexts.erase(finder);
+      }
+      // Now we can deactivate it
+      remote_task->deactivate();
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::handle_validate_remote_state(Deserializer &derez,
+                                               AddressSpaceID source)
+    //--------------------------------------------------------------------------
+    {
+      forest->validate_remote_state(derez, source); 
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::handle_invalidate_remote_state(Deserializer &derez,
+                                                 AddressSpaceID source)
+    //--------------------------------------------------------------------------
+    {
+      forest->invalidate_remote_state(derez, source);
     }
 
 #ifdef SPECIALIZED_UTIL_PROCS
@@ -10035,7 +10769,7 @@ namespace LegionRuntime {
 #ifdef LEGION_LOGGING
       // Note we can't actually trust the 'proc' variable here since
       // it may be the utility processor making this call
-      LegionLogging::log_timing_event(Machine::get_executing_processor(),
+      LegionLogging::log_timing_event(Processor::get_executing_processor(),
                                       0/*unique id*/, BEGIN_SCHEDULING);
 #endif
 #ifdef LEGION_PROF
@@ -10056,7 +10790,7 @@ namespace LegionRuntime {
         dump_allocation_info();
 #endif
 #ifdef LEGION_LOGGING
-      LegionLogging::log_timing_event(Machine::get_executing_processor(),
+      LegionLogging::log_timing_event(Processor::get_executing_processor(),
                                       0/*unique id*/, END_SCHEDULING);
 #endif
 #ifdef LEGION_PROF
@@ -10128,7 +10862,8 @@ namespace LegionRuntime {
         // Normal task launch, iterate over the context task's
         // regions and see if we need to unmap any of them
         std::vector<PhysicalRegion> unmapped_regions;
-        ctx->find_conflicting_regions(task, unmapped_regions);
+        if (!unsafe_launch)
+          ctx->find_conflicting_regions(task, unmapped_regions);
         if (!unmapped_regions.empty())
         {
           for (unsigned idx = 0; idx < unmapped_regions.size(); idx++)
@@ -10192,7 +10927,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      assert(machine->get_processor_kind(p) != Processor::UTIL_PROC);
+      assert(p.kind() != Processor::UTIL_PROC);
       assert(proc_managers.find(p) != proc_managers.end());
 #endif
       proc_managers[p]->add_to_dependence_queue(op);
@@ -10204,7 +10939,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      assert(machine->get_processor_kind(p) != Processor::UTIL_PROC);
+      assert(p.kind() != Processor::UTIL_PROC);
       assert(proc_managers.find(p) != proc_managers.end());
 #endif
       proc_managers[p]->add_to_ready_queue(op, prev_fail);
@@ -10216,7 +10951,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      assert(machine->get_processor_kind(p) != Processor::UTIL_PROC);
+      assert(p.kind() != Processor::UTIL_PROC);
       assert(proc_managers.find(p) != proc_managers.end());
 #endif
       proc_managers[p]->add_to_local_ready_queue(op, prev_fail);
@@ -10434,6 +11169,7 @@ namespace LegionRuntime {
           rez.serialize(target);
           rez.serialize(map_id);
           rez.serialize(source);
+          rez.serialize(length);
           rez.serialize(message,length);
         }
         send_mapper_message(find_address_space(target), rez);
@@ -10441,23 +11177,79 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void Runtime::invoke_mapper_broadcast(MapperID map_id, Processor source,
+                                          const void *message, size_t length, 
+                                          int radix, int index)
+    //--------------------------------------------------------------------------
+    {
+      // First send the message on to any other remote nodes
+      int base = index * radix;
+      int init = source.address_space();
+      // The runtime stride is the same as the total number of address spaces
+      const int total_address_spaces = runtime_stride;
+      for (int r = 0; r < radix; r++)
+      {
+        int offset = base + r; 
+        // If we've handled all of our address spaces then we are done
+        if (offset > total_address_spaces)
+          break;
+        AddressSpaceID target = (init + offset - 1) % total_address_spaces; 
+        Serializer rez;
+        {
+          RezCheck z(rez);
+          rez.serialize(map_id);
+          rez.serialize(source);
+          rez.serialize(radix);
+          rez.serialize(offset);
+          rez.serialize(length);
+          rez.serialize(message,length);
+        }
+        send_mapper_broadcast(target, rez);
+      }
+      // Then send it to all of our local processors
+      for (std::map<Processor,ProcessorManager*>::const_iterator it = 
+            proc_managers.begin(); it != proc_managers.end(); it++)
+      {
+        it->second->invoke_mapper_handle_message(map_id, source, 
+                                                 message, length);
+      }
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::invoke_mapper_task_result(MapperID map_id, Processor proc,
+                                            Event event, const void *result,
+                                            size_t result_size)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(proc_managers.find(proc) != proc_managers.end());
+#endif
+      proc_managers[proc]->invoke_mapper_task_result(map_id, event, 
+                                                     result, result_size);
+    }
+
+    //--------------------------------------------------------------------------
+    Processor Runtime::locate_mapper_info(Mapper *mapper, MapperID &map_id)
+    //--------------------------------------------------------------------------
+    {
+      AutoLock m_lock(mapper_info_lock,1,false/*exclusive*/);
+      std::map<Mapper*,MapperInfo>::const_iterator finder = 
+        mapper_infos.find(mapper);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(finder != mapper_infos.end());
+#endif
+      map_id = finder->second.map_id;
+      return finder->second.proc;
+    }
+
+    //--------------------------------------------------------------------------
     void Runtime::handle_mapper_send_message(Mapper *mapper, Processor target,
                                              const void *message, size_t length)
     //--------------------------------------------------------------------------
     {
-      Processor source;
       MapperID map_id;
       // Find the source processor and the corresponding mapper ID
-      {
-        AutoLock m_lock(mapper_info_lock,1,false/*exclusive*/);
-        std::map<Mapper*,MapperInfo>::const_iterator finder = 
-          mapper_infos.find(mapper);
-#ifdef DEBUG_HIGH_LEVEL
-        assert(finder != mapper_infos.end());
-#endif
-        source = finder->second.proc;
-        map_id = finder->second.map_id;
-      }
+      Processor source = locate_mapper_info(mapper, map_id);
       // Note we can't actually send the message without risking deadlock
       // so instead lookup the processor manager for the mapper and 
       // tell it that it has a pending message to send when the mapper
@@ -10467,6 +11259,46 @@ namespace LegionRuntime {
 #endif
       proc_managers[source]->defer_mapper_message(target, map_id, 
                                                   message, length);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::handle_mapper_broadcast(Mapper *mapper, const void *message,
+                                          size_t length, int radix)
+    //--------------------------------------------------------------------------
+    {
+      MapperID map_id;
+      // Find the source processor and the corresponding mapper ID
+      Processor source = locate_mapper_info(mapper, map_id);
+      // Note that we can't actually send the broadcast without risking 
+      // deadlock so instead we're going to defer it until the mapper
+      // call finishes running.
+#ifdef DEBUG_HIGH_LEVEL
+      assert(proc_managers.find(source) != proc_managers.end());
+#endif
+      proc_managers[source]->defer_mapper_broadcast(map_id, message, 
+                                                    length, radix);
+    }
+
+    //--------------------------------------------------------------------------
+    Event Runtime::launch_mapper_task(Mapper *mapper, Processor::TaskFuncID tid,
+                                      const TaskArgument &arg)
+    //--------------------------------------------------------------------------
+    {
+      MapperID map_id;
+      Processor source = locate_mapper_info(mapper, map_id);
+      return launch_mapper_task(mapper, source, tid, arg, map_id);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::defer_mapper_call(Mapper *mapper, Event wait_on)
+    //--------------------------------------------------------------------------
+    {
+      MapperID map_id;
+      Processor source = locate_mapper_info(mapper, map_id);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(proc_managers.find(source) != proc_managers.end());
+#endif
+      proc_managers[source]->defer_mapper_call(map_id, wait_on);
     }
 
     //--------------------------------------------------------------------------
@@ -10488,11 +11320,11 @@ namespace LegionRuntime {
       }
       uint64_t hash = local_mask.get_hash_key();
       AutoLock g_lock(group_lock);
-      std::map<uint64_t,std::deque<ProcessorGroupInfo> >::iterator finder = 
-        processor_groups.find(hash);
+      std::map<uint64_t,LegionDeque<ProcessorGroupInfo>::aligned >::iterator 
+        finder = processor_groups.find(hash);
       if (finder != processor_groups.end())
       {
-        for (std::deque<ProcessorGroupInfo>::const_iterator it = 
+        for (LegionDeque<ProcessorGroupInfo>::aligned::const_iterator it = 
               finder->second.begin(); it != finder->second.end(); it++)
         {
           if (local_mask == it->processor_mask)
@@ -10532,8 +11364,8 @@ namespace LegionRuntime {
       // Mark that we doubled the total number of contexts
       // Very important that we do this before calling the
       // RegionTreeForest's resize method!
-      unsigned current_contexts = total_contexts;
-      __sync_fetch_and_add(&total_contexts,current_contexts);
+      total_contexts *= 2;
+#if 0
       if (total_contexts > MAX_CONTEXTS)
       {
         log_run(LEVEL_ERROR,"ERROR: Maximum number of allowed contexts %d "
@@ -10550,12 +11382,16 @@ namespace LegionRuntime {
 #endif
         exit(ERROR_EXCEEDED_MAX_CONTEXTS);
       }
+#endif
 #ifdef DEBUG_HIGH_LEVEL
       assert(!available_contexts.empty());
 #endif
-      // Tell the forest to resize the number of available contexts
-      // on all the nodes
-      forest->resize_node_contexts(current_contexts);
+      // Tell all the processor managers about the additional contexts
+      for (std::map<Processor,ProcessorManager*>::const_iterator it = 
+            proc_managers.begin(); it != proc_managers.end(); it++)
+      {
+        it->second->update_max_context_count(total_contexts); 
+      }
     }
 
     //--------------------------------------------------------------------------
@@ -10613,7 +11449,7 @@ namespace LegionRuntime {
         DeferredRecycleArgs deferred_recycle_args;
         deferred_recycle_args.hlr_id = HLR_DEFERRED_RECYCLE_ID;
         deferred_recycle_args.did = did;
-        Processor proc = Machine::get_executing_processor(); 
+        Processor proc = Processor::get_executing_processor(); 
         proc.spawn(HLR_TASK_ID, &deferred_recycle_args,
                   sizeof(deferred_recycle_args), recycle_event);
       }
@@ -10778,7 +11614,7 @@ namespace LegionRuntime {
       if (to_trigger != NULL)
       {
 #ifdef SPECIALIZED_UTIL_PROCS
-        Processor util = get_gc_proc(Machine::get_executing_processor());
+        Processor util = get_gc_proc(Processor::get_executing_processor());
 #else
         Processor util = find_utility_group();
 #endif
@@ -10802,6 +11638,32 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    void Runtime::increment_outstanding_top_level_tasks(void)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      unsigned previous = 
+#endif
+      __sync_fetch_and_add(&outstanding_top_level_tasks,1);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(previous > 0);
+#endif
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::decrement_outstanding_top_level_tasks(void)
+    //--------------------------------------------------------------------------
+    {
+      unsigned previous = __sync_fetch_and_sub(&outstanding_top_level_tasks,1);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(previous > 0);
+#endif
+      // If there was only one left before, we're now at zero so we're done
+      if (previous == 1)
+        initiate_runtime_shutdown();
+    }
+
+    //--------------------------------------------------------------------------
     void Runtime::initiate_runtime_shutdown(void)
     //--------------------------------------------------------------------------
     {
@@ -10815,13 +11677,25 @@ namespace LegionRuntime {
       }
       // Launch our last garbage collection epoch
 #ifdef SPECIALIZED_UTIL_PROCS
-      Processor util = get_gc_proc(Machine::get_executing_processor());
+      Processor util = get_gc_proc(Processor::get_executing_processor());
 #else
       Processor util = find_utility_group();
 #endif
       current_gc_epoch->launch(util, 0/*priority*/);
+      // Make sure any messages that we have sent anywhere are handled
+      std::set<Event> shutdown_preconditions;
+      for (unsigned idx = 0; idx < MAX_NUM_NODES; idx++)
+      {
+        if (message_managers[idx] != NULL)
+        {
+          Event last_event = message_managers[idx]->notify_pending_shutdown();
+          shutdown_preconditions.insert(last_event);
+        }
+      }
+      Event shutdown_precondition = Event::merge_events(shutdown_preconditions);
+      shutdown_precondition.wait();
       // Finally shutdown the low-level runtime
-      machine->shutdown();
+      LLRuntime::get_runtime().shutdown();
     }
 
     //--------------------------------------------------------------------------
@@ -11084,20 +11958,64 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    CloseOp* Runtime::get_available_close_op(void)
+    InterCloseOp* Runtime::get_available_inter_close_op(void)
     //--------------------------------------------------------------------------
     {
-      CloseOp *result = NULL;
+      InterCloseOp *result = NULL;
       {
-        AutoLock c_lock(close_op_lock);
-        if (!available_close_ops.empty())
+        AutoLock i_lock(inter_close_op_lock);
+        if (!available_inter_close_ops.empty())
         {
-          result = available_close_ops.front();
-          available_close_ops.pop_front();
+          result = available_inter_close_ops.front();
+          available_inter_close_ops.pop_front();
         }
       }
       if (result == NULL)
-        result = legion_new<CloseOp>(this);
+        result = legion_new<InterCloseOp>(this);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(result != NULL);
+#endif
+      result->activate();
+      return result;
+    }
+
+    //--------------------------------------------------------------------------
+    PostCloseOp* Runtime::get_available_post_close_op(void)
+    //--------------------------------------------------------------------------
+    {
+      PostCloseOp *result = NULL;
+      {
+        AutoLock p_lock(post_close_op_lock);
+        if (!available_post_close_ops.empty())
+        {
+          result = available_post_close_ops.front();
+          available_post_close_ops.pop_front();
+        }
+      }
+      if (result == NULL)
+        result = legion_new<PostCloseOp>(this);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(result != NULL);
+#endif
+      result->activate();
+      return result;
+    }
+
+    //--------------------------------------------------------------------------
+    DynamicCollectiveOp* Runtime::get_available_dynamic_collective_op(void)
+    //--------------------------------------------------------------------------
+    {
+      DynamicCollectiveOp *result = NULL;
+      {
+        AutoLock dc_lock(dynamic_collective_op_lock);
+        if (!available_dynamic_collective_ops.empty())
+        {
+          result = available_dynamic_collective_ops.front();
+          available_dynamic_collective_ops.pop_front();
+        }
+      }
+      if (result == NULL)
+        result = legion_new<DynamicCollectiveOp>(this);
 #ifdef DEBUG_HIGH_LEVEL
       assert(result != NULL);
 #endif
@@ -11323,10 +12241,17 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       AutoLock p_lock(point_task_lock);
-      available_point_tasks.push_front(task);
 #if defined(DEBUG_HIGH_LEVEL) || defined(HANG_TRACE)
       out_point_tasks.erase(task);
 #endif
+      // Note that we can safely delete point tasks because they are
+      // never registered in the logical state of the region tree
+      // as part of the dependence analysis. This does not apply
+      // to all operation objects.
+      if (available_point_tasks.size() == LEGION_MAX_RECYCLABLE_OBJECTS)
+        legion_delete(task);
+      else
+        available_point_tasks.push_front(task);
     }
 
     //--------------------------------------------------------------------------
@@ -11345,29 +12270,32 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       AutoLock s_lock(slice_task_lock);
-      available_slice_tasks.push_front(task);
 #if defined(DEBUG_HIGH_LEVEL) || defined(HANG_TRACE)
       out_slice_tasks.erase(task);
 #endif
+      // Note that we can safely delete slice tasks because they are
+      // never registered in the logical state of the region tree
+      // as part of the dependence analysis. This does not apply
+      // to all operation objects.
+      if (available_slice_tasks.size() == LEGION_MAX_RECYCLABLE_OBJECTS)
+        legion_delete(task);
+      else
+        available_slice_tasks.push_front(task);
     }
 
     //--------------------------------------------------------------------------
     void Runtime::free_remote_task(RemoteTask *task)
     //--------------------------------------------------------------------------
     {
-      // First remove it from the list of remote tasks
-      {
-        AutoLock rem_lock(remote_lock);
-        std::map<UniqueID,RemoteTask*>::iterator finder = 
-          remote_contexts.find(task->get_unique_task_id());
-#ifdef DEBUG_HIGH_LEVEL
-        assert(finder != remote_contexts.end());
-#endif
-        remote_contexts.erase(finder);
-      }
-      // Then we can put it back on the list of available remote tasks
       AutoLock r_lock(remote_task_lock);
-      available_remote_tasks.push_front(task);
+      // Note that we can safely delete remote tasks because they are
+      // never registered in the logical state of the region tree
+      // as part of the dependence analysis. This does not apply
+      // to all operation objects.
+      if (available_remote_tasks.size() == LEGION_MAX_RECYCLABLE_OBJECTS)
+        legion_delete(task);
+      else
+        available_remote_tasks.push_front(task);
     }
 
     //--------------------------------------------------------------------------
@@ -11375,7 +12303,14 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       AutoLock i_lock(inline_task_lock);
-      available_inline_tasks.push_front(task);
+      // Note that we can safely delete inline tasks because they are
+      // never registered in the logical state of the region tree
+      // as part of the dependence analysis. This does not apply
+      // to all operation objects.
+      if (available_inline_tasks.size() == LEGION_MAX_RECYCLABLE_OBJECTS)
+        legion_delete(task);
+      else
+        available_inline_tasks.push_front(task);
     }
 
     //--------------------------------------------------------------------------
@@ -11419,11 +12354,27 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void Runtime::free_close_op(CloseOp *op)
+    void Runtime::free_inter_close_op(InterCloseOp *op)
     //--------------------------------------------------------------------------
     {
-      AutoLock c_lock(close_op_lock);
-      available_close_ops.push_front(op);
+      AutoLock i_lock(inter_close_op_lock);
+      available_inter_close_ops.push_front(op);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::free_post_close_op(PostCloseOp *op)
+    //--------------------------------------------------------------------------
+    {
+      AutoLock p_lock(post_close_op_lock);
+      available_post_close_ops.push_front(op);
+    }
+
+    //--------------------------------------------------------------------------
+    void Runtime::free_dynamic_collective_op(DynamicCollectiveOp *op)
+    //--------------------------------------------------------------------------
+    {
+      AutoLock dc_lock(dynamic_collective_op_lock);
+      available_dynamic_collective_ops.push_front(op);
     }
 
     //--------------------------------------------------------------------------
@@ -11512,7 +12463,7 @@ namespace LegionRuntime {
         return finder->second;
       // Otherwise we need to make one
       RemoteTask *result = get_available_remote_task();
-      result->initialize_remote(uid);
+      result->initialize_remote();
       // Put it in the map
       remote_contexts[uid] = result;
       return result;
@@ -11661,12 +12612,12 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    Future Runtime::help_create_future(TaskOp *task /*= NULL*/)
+    Future Runtime::help_create_future(Operation *op /*= NULL*/)
     //--------------------------------------------------------------------------
     {
       return Future(legion_new<Future::Impl>(this, true/*register*/,
                                      get_available_distributed_id(),
-                                     address_space, address_space, task));
+                                     address_space, address_space, op));
     }
 
     //--------------------------------------------------------------------------
@@ -11681,6 +12632,15 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       return f.impl->reset_future();
+    }
+
+    //--------------------------------------------------------------------------
+    unsigned Runtime::generate_random_integer(void)
+    //--------------------------------------------------------------------------
+    {
+      AutoLock r_lock(random_lock);
+      unsigned result = nrand48(random_state);
+      return result;
     }
 
 #ifdef DYNAMIC_TESTS
@@ -11743,7 +12703,7 @@ namespace LegionRuntime {
         it->second.diff_allocations = 0;
         it->second.diff_bytes = 0;
       }
-      log_allocation(LEVEL_INFO,"");
+      log_allocation(LEVEL_INFO," ");
     }
 
     //--------------------------------------------------------------------------
@@ -11820,10 +12780,14 @@ namespace LegionRuntime {
           return "Copy Op";
         case FENCE_OP_ALLOC:
           return "Fence Op";
+        case FRAME_OP_ALLOC:
+          return "Frame Op";
         case DELETION_OP_ALLOC:
           return "Deletion Op";
         case CLOSE_OP_ALLOC:
           return "Close Op";
+        case DYNAMIC_COLLECTIVE_OP_ALLOC:
+          return "Dynamic Collective Op";
         case FUTURE_PRED_OP_ALLOC:
           return "Future Pred Op";
         case NOT_PRED_OP_ALLOC:
@@ -11862,6 +12826,8 @@ namespace LegionRuntime {
           return "Current Logical Users";
         case PREV_LOGICAL_ALLOC:
           return "Previous Logical Users";
+        case CLOSE_LOGICAL_ALLOC:
+          return "Close Logical Users";
         case VALID_VIEW_ALLOC:
           return "Valid Instance Views";
         case VALID_REDUCTION_ALLOC:
@@ -11916,6 +12882,14 @@ namespace LegionRuntime {
           return "Task Inline Tasks";
         case SEMANTIC_INFO_ALLOC:
           return "Semantic Information";
+        case DIRECTORY_ALLOC:
+          return "State Directory";
+        case DENSE_INDEX_ALLOC:
+          return "Dense Index Set";
+        case LOGICAL_STATE_ALLOC:
+          return "Logical State";
+        case PHYSICAL_STATE_ALLOC:
+          return "Physical State";
         default:
           assert(false); // should never get here
       }
@@ -12069,7 +13043,7 @@ namespace LegionRuntime {
                 it->second->wait_barriers.begin(); bit !=
                 it->second->wait_barriers.end(); bit++)
           {
-            Event e = bit->get_barrier().get_previous_phase();
+            Event e = bit->phase_barrier.get_previous_phase();
             fprintf(f,"Preceding barrier (" IDFMT ",%d) has triggered %d\n",
                     e.id, e.gen, e.has_triggered());
           }
@@ -12158,7 +13132,6 @@ namespace LegionRuntime {
 #endif
 
     /*static*/ Runtime *Runtime::runtime_map[(MAX_NUM_PROCS+1)];
-    /*static*/ unsigned Runtime::startup_arrivals = 0;
     /*static*/ volatile RegistrationCallbackFnptr Runtime::
                                               registration_callback = NULL;
     /*static*/ Processor::TaskFuncID Runtime::legion_main_id = 0;
@@ -12170,6 +13143,8 @@ namespace LegionRuntime {
                                       DEFAULT_TASK_WINDOW_HYSTERESIS;
     /*static*/ unsigned Runtime::initial_tasks_to_schedule = 
                                       DEFAULT_MIN_TASKS_TO_SCHEDULE;
+    /*static*/ unsigned Runtime::initial_directory_size = 
+                                      DEFAULT_MAX_DIRECTORY_SIZE;
     /*static*/ unsigned Runtime::superscalar_width = 
                                       DEFAULT_SUPERSCALAR_WIDTH;
     /*static*/ unsigned Runtime::max_message_size = 
@@ -12180,8 +13155,10 @@ namespace LegionRuntime {
                                       DEFAULT_GC_EPOCH_SIZE;
     /*static*/ bool Runtime::enable_imprecise_filter = false;
     /*static*/ bool Runtime::separate_runtime_instances = false;
+    /*static*/ bool Runtime::record_registration = false;
     /*sattic*/ bool Runtime::stealing_disabled = false;
     /*static*/ bool Runtime::resilient_mode = false;
+    /*static*/ bool Runtime::unsafe_launch = false;
     /*static*/ unsigned Runtime::shutdown_counter = 0;
     /*static*/ int Runtime::mpi_rank = -1;
     /*static*/ unsigned Runtime::mpi_rank_table[MAX_NUM_NODES];
@@ -12241,7 +13218,6 @@ namespace LegionRuntime {
       LEGION_STATIC_ASSERT((1 << FIELD_LOG2) == MAX_FIELDS);
       LEGION_STATIC_ASSERT(MAX_NUM_NODES > 0);
       LEGION_STATIC_ASSERT(MAX_NUM_PROCS > 0);
-      LEGION_STATIC_ASSERT(MAX_CONTEXTS > 0);
       LEGION_STATIC_ASSERT(DEFAULT_MAX_TASK_WINDOW > 0);
       LEGION_STATIC_ASSERT(DEFAULT_MIN_TASKS_TO_SCHEDULE > 0);
       LEGION_STATIC_ASSERT(DEFAULT_SUPERSCALAR_WIDTH > 0);
@@ -12250,9 +13226,27 @@ namespace LegionRuntime {
       // their values as they might be changed by GASNet or MPI or whatever.
       // Note that the logger isn't initialized until after this call returns 
       // which means any logging that occurs before this has undefined behavior.
-      Machine *m = new Machine(&argc, &argv, 
-                      Runtime::get_task_table(true/*add runtime tasks*/), 
-		      Runtime::get_reduction_table(), false/*cps style*/);
+      LLRuntime ll;
+
+      bool ok = ll.init(&argc, &argv);
+      assert(ok);
+
+      // register tasks and reduction ops with LLR
+      {
+	const Processor::TaskIDTable& task_table =
+	  get_task_table(true/*add runtime tasks*/);
+	for(Processor::TaskIDTable::const_iterator it = task_table.begin();
+	    it != task_table.end();
+	    it++)
+	  ll.register_task(it->first, it->second);
+      
+	const LowLevel::ReductionOpTable& red_table = get_reduction_table();
+	for(LowLevel::ReductionOpTable::const_iterator it = red_table.begin();
+	    it != red_table.end();
+	    it++)
+	  ll.register_reduction(it->first, it->second);
+      }
+      
       // Parse any inputs for the high level runtime
       {
 #define INT_ARG(argname, varname) do { \
@@ -12270,13 +13264,15 @@ namespace LegionRuntime {
         // Set these values here before parsing the input arguments
         // so that we don't need to trust the C runtime to do 
         // static initialization properly (always risky).
-        startup_arrivals = 0;
         separate_runtime_instances = false;
+        record_registration = false;
         stealing_disabled = false;
         resilient_mode = false;
+        unsafe_launch = false;
         initial_task_window_size = DEFAULT_MAX_TASK_WINDOW;
         initial_task_window_hysteresis = DEFAULT_TASK_WINDOW_HYSTERESIS;
         initial_tasks_to_schedule = DEFAULT_MIN_TASKS_TO_SCHEDULE;
+        initial_directory_size = DEFAULT_MAX_DIRECTORY_SIZE;
         superscalar_width = DEFAULT_SUPERSCALAR_WIDTH;
         max_message_size = DEFAULT_MAX_MESSAGE_SIZE;
         max_filter_size = DEFAULT_MAX_FILTER_SIZE;
@@ -12303,8 +13299,10 @@ namespace LegionRuntime {
         {
           BOOL_ARG("-hl:imprecise",enable_imprecise_filter);
           BOOL_ARG("-hl:separate",separate_runtime_instances);
+          BOOL_ARG("-hl:registration",record_registration);
           BOOL_ARG("-hl:nosteal",stealing_disabled);
           BOOL_ARG("-hl:resilient",resilient_mode);
+          BOOL_ARG("-hl:unsafe_launch",unsafe_launch);
 #ifdef INORDER_EXECUTION
           if (!strcmp(argv[i],"-hl:outorder"))
             program_order_execution = false;
@@ -12312,6 +13310,7 @@ namespace LegionRuntime {
           INT_ARG("-hl:window", initial_task_window_size);
           INT_ARG("-hl:hysteresis", initial_task_window_hysteresis);
           INT_ARG("-hl:sched", initial_tasks_to_schedule);
+          INT_ARG("-hl:directory", initial_directory_size);
           INT_ARG("-hl:width", superscalar_width);
           INT_ARG("-hl:message",max_message_size);
           INT_ARG("-hl:filter", max_filter_size);
@@ -12368,8 +13367,33 @@ namespace LegionRuntime {
 #ifdef HANG_TRACE
       signal(SIGTERM, catch_hang); 
 #endif
+      if (Runtime::record_registration)
+      {
+        log_run(LEVEL_PRINT,"High-level runtime initialization task "
+                            "has low-level ID %d", INIT_FUNC_ID);
+        log_run(LEVEL_PRINT,"High-level runtime shutdown task has "
+                            "low-level ID %d", SHUTDOWN_FUNC_ID);
+        log_run(LEVEL_PRINT,"Runtime meta-task has low-level ID %d", 
+                            HLR_TASK_ID);
+        std::map<Processor::TaskFuncID,TaskVariantCollection*>& 
+          variant_table = Runtime::get_collection_table(); 
+        for (std::map<Processor::TaskFuncID,TaskVariantCollection*>::
+              const_iterator vit = variant_table.begin(); vit !=
+              variant_table.end(); vit++)
+        {
+          TaskVariantCollection *collection = vit->second;
+          for (std::map<VariantID,TaskVariantCollection::Variant>::
+                const_iterator it = collection->variants.begin(); it != 
+                collection->variants.end(); it++)
+          {
+            log_run(LEVEL_PRINT,"Task variant %s (ID %ld) is mapped to "
+                                "low-level task ID %d", collection->name, 
+                                it->first, it->second.low_id);
+          }
+        }
+      } 
       // Kick off the low-level machine
-      m->run(0, Machine::ONE_TASK_ONLY, 0, 0, background);
+      ll.run(0, LLRuntime::ONE_TASK_ONLY, 0, 0, background);
       // We should only make it here if the machine thread is backgrounded
       assert(background);
       if (background)
@@ -12382,8 +13406,7 @@ namespace LegionRuntime {
     /*static*/ void Runtime::wait_for_shutdown(void)
     //--------------------------------------------------------------------------
     {
-      Machine *machine = Machine::get_machine();
-      machine->wait_for_shutdown();
+      LLRuntime::get_runtime().wait_for_shutdown();
     }
 
     //--------------------------------------------------------------------------
@@ -12851,15 +13874,21 @@ namespace LegionRuntime {
 #endif
 
     //--------------------------------------------------------------------------
+    /*static*/ int* Runtime::get_startup_arrivals(void)
+    //--------------------------------------------------------------------------
+    {
+      static int startup_arrivals = 0;
+      return &startup_arrivals;
+    }
+
+    //--------------------------------------------------------------------------
     /*static*/ Processor::TaskIDTable& Runtime::get_task_table(
                                             bool add_runtime_tasks /*= true*/)
     //--------------------------------------------------------------------------
     {
       static Processor::TaskIDTable table;
       if (add_runtime_tasks)
-      {
-        Runtime::register_runtime_tasks(table);
-      }
+        Runtime::register_runtime_tasks(table); 
       return table;
     }
 
@@ -12941,32 +13970,34 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    /*static*/ void Runtime::log_machine(Machine *machine)
+    /*static*/ void Runtime::log_machine(Machine machine)
     //--------------------------------------------------------------------------
     {
 #ifdef LEGION_SPY
-      const std::set<Processor> &all_procs = machine->get_all_processors();
+      std::set<Processor> all_procs;
+      machine.get_all_processors(all_procs);
       // Log processors
       for (std::set<Processor>::const_iterator it = all_procs.begin();
             it != all_procs.end(); it++)
       {
-        Processor::Kind k = machine->get_processor_kind(*it);
+        Processor::Kind k = it->kind();
         if (k == Processor::UTIL_PROC)
           LegionSpy::log_utility_processor(it->id);
         else
           LegionSpy::log_processor(it->id, k); 
       }
       // Log memories
-      const std::set<Memory> &all_mems = machine->get_all_memories();
+      std::set<Memory> all_mems;
+      machine.get_all_memories(all_mems);
       for (std::set<Memory>::const_iterator it = all_mems.begin();
             it != all_mems.end(); it++)
-        LegionSpy::log_memory(it->id, machine->get_memory_size(*it));
+        LegionSpy::log_memory(it->id, it->capacity());
       // Log Proc-Mem Affinity
       for (std::set<Processor>::const_iterator pit = all_procs.begin();
             pit != all_procs.end(); pit++)
       {
         std::vector<ProcessorMemoryAffinity> affinities;
-        machine->get_proc_mem_affinity(affinities, *pit);
+        machine.get_proc_mem_affinity(affinities, *pit);
         for (std::vector<ProcessorMemoryAffinity>::const_iterator it = 
               affinities.begin(); it != affinities.end(); it++)
         {
@@ -12979,7 +14010,7 @@ namespace LegionRuntime {
             mit != all_mems.begin(); mit++)
       {
         std::vector<MemoryMemoryAffinity> affinities;
-        machine->get_mem_mem_affinity(affinities, *mit);
+        machine.get_mem_mem_affinity(affinities, *mit);
         for (std::vector<MemoryMemoryAffinity>::const_iterator it = 
               affinities.begin(); it != affinities.end(); it++)
         {
@@ -13060,9 +14091,10 @@ namespace LegionRuntime {
     {
       // Always enable the idle task for any processor 
       // that is not a utility processor
-      Machine *machine = Machine::get_machine();
-      const std::set<Processor> &all_procs = machine->get_all_processors();
-      Processor::Kind proc_kind = machine->get_processor_kind(p);
+      Machine machine = Machine::get_machine();
+      std::set<Processor> all_procs;
+      machine.get_all_processors(all_procs);
+      Processor::Kind proc_kind = p.kind();
       // Make separate runtime instances if they are requested,
       // otherwise only make a runtime instances for each of the
       // separate nodes in the machine.  To do this we exploit a
@@ -13072,11 +14104,26 @@ namespace LegionRuntime {
 #ifdef DEBUG_HIGH_LEVEL
       assert(p.local_id() < (MAX_NUM_PROCS+1));
 #endif 
-#ifndef SHARED_LOWLEVEL
-      if (separate_runtime_instances || (p.local_id() == 0))
-#else
-      if (separate_runtime_instances || (p.local_id() == 1))
-#endif
+      // Figure out if we are the first processor on this node in 
+      // the list of all processors. We can skip this computation 
+      // if we are doing separate runtime instances.
+      bool first_local_proc = false;
+      if (!separate_runtime_instances)
+      {
+        AddressSpaceID local_addr_space = p.address_space();
+        for (std::set<Processor>::const_iterator it = all_procs.begin();
+              it != all_procs.end(); it++)
+        {
+          // See if this is the same address space as us
+          if (it->address_space() == local_addr_space)
+          {
+            if ((*it) == p)
+              first_local_proc = true;
+            break;
+          }
+        }
+      }
+      if (separate_runtime_instances || first_local_proc)
       {
         // Compute these three data structures necessary for
         // constructing a runtime instance
@@ -13102,7 +14149,7 @@ namespace LegionRuntime {
           for (std::set<Processor>::const_iterator it = all_procs.begin();
                 it != all_procs.end(); it++,sid++)
           {
-            Processor::Kind k = machine->get_processor_kind(*it);
+            Processor::Kind k = it->kind();
             if (k == Processor::UTIL_PROC)
             {
               log_run(LEVEL_ERROR,"Separate runtime instances are not "
@@ -13121,7 +14168,6 @@ namespace LegionRuntime {
         }
         else
         {
-#ifndef SHARED_LOWLEVEL
           std::map<unsigned,AddressSpaceID> address_space_indexes;
           // Compute an index for each address space
           for (std::set<Processor>::const_iterator it = all_procs.begin();
@@ -13152,25 +14198,12 @@ namespace LegionRuntime {
             proc_spaces[*it] = sid;
             if (sid == local_space_id)
             {
-              if (machine->get_processor_kind(*it) == Processor::UTIL_PROC)
+              if (it->kind() == Processor::UTIL_PROC)
                 local_util_procs.insert(*it);
               else
                 local_procs.insert(*it);
             }
           }
-#else
-          // There is only one space so let local space ID be zero
-          address_spaces.insert(local_space_id);
-          for (std::set<Processor>::const_iterator it = all_procs.begin();
-                it != all_procs.end(); it++)
-          {
-            proc_spaces[*it] = local_space_id;
-            if (machine->get_processor_kind(*it) == Processor::UTIL_PROC)
-              local_util_procs.insert(*it);
-            else
-              local_procs.insert(*it);
-          }
-#endif
         }
         if (local_procs.size() > MAX_NUM_PROCS)
         {
@@ -13210,19 +14243,17 @@ namespace LegionRuntime {
         }
       }
       // Arrive at the barrier
-      __sync_fetch_and_add(&Runtime::startup_arrivals, 1);
+      __sync_fetch_and_add(Runtime::get_startup_arrivals(), 1);
       // Compute the number of processors we need to wait for
-      unsigned needed_count = 0;
+      int needed_count = 0;
       {
         std::set<Processor> utility_procs;
         const unsigned local_space = p.address_space();
         for (std::set<Processor>::const_iterator it = all_procs.begin();
               it != all_procs.end(); it++)
         {
-#ifndef SHARED_LOWLEVEL
           if (local_space != it->address_space())
             continue;
-#endif
           needed_count++;
         }
       }
@@ -13233,7 +14264,7 @@ namespace LegionRuntime {
       // Have a spinning barrier here to wait for all processors
       // to finish initializing before continuing
 #ifndef VALGRIND
-      while (__sync_fetch_and_add(&Runtime::startup_arrivals, 0) 
+      while (__sync_fetch_and_add(Runtime::get_startup_arrivals(), 0) 
               != needed_count) { }
 #endif
       // Call in the runtime to see if we should launch the top-level task
@@ -13463,9 +14494,36 @@ namespace LegionRuntime {
             unsigned count = 
               __sync_fetch_and_add(&Runtime::remaining_mpi_notifications, 1);
             const size_t total_ranks = 
-              Machine::get_machine()->get_address_space_count();
+              Machine::get_machine().get_address_space_count();
             if (count == total_ranks)
               Runtime::mpi_rank_event.trigger();
+            break;
+          }
+        case HLR_CONTRIBUTE_COLLECTIVE_ID:
+          {
+            Future::Impl::handle_contribute_to_collective(args);
+            break;
+          }
+        case HLR_CHECK_STATE_ID:
+          {
+            TaskOp::CheckStateArgs *cargs = (TaskOp::CheckStateArgs*)args;
+            cargs->task_op->check_state(cargs->ready_event);
+            break;
+          }
+        case HLR_MAPPER_TASK_ID:
+          {
+            MapperTaskArgs *margs = (MapperTaskArgs*)args;
+            // Tell the mapper about the result
+            Runtime *rt = Runtime::get_runtime(p);       
+            size_t result_size = margs->future->get_untyped_size();
+            const void *result = margs->future->get_untyped_result();
+            rt->invoke_mapper_task_result(margs->map_id, margs->proc,
+                                          margs->event, result, result_size);
+            // Now indicate that we are done with the future
+            if (margs->future->remove_gc_reference())
+              delete margs->future;
+            // Finally tell the runtime we have one less top level task
+            rt->decrement_outstanding_top_level_tasks();
             break;
           }
         default:
@@ -13479,7 +14537,7 @@ namespace LegionRuntime {
                                        AllocationType a, size_t size, int elems)
     //--------------------------------------------------------------------------
     {
-      Runtime *rt = Runtime::get_runtime(Machine::get_executing_processor());
+      Runtime *rt = Runtime::get_runtime(Processor::get_executing_processor());
       if (rt != NULL)
         rt->trace_allocation(a, size, elems);
     }
@@ -13489,7 +14547,7 @@ namespace LegionRuntime {
                                                  size_t size, int elems)
     //--------------------------------------------------------------------------
     {
-      Runtime *rt = Runtime::get_runtime(Machine::get_executing_processor());
+      Runtime *rt = Runtime::get_runtime(Processor::get_executing_processor());
       if (rt != NULL)
         rt->trace_free(a, size, elems);
     }
@@ -13498,7 +14556,7 @@ namespace LegionRuntime {
     /*static*/ Runtime* LegionAllocation::find_runtime(void)
     //--------------------------------------------------------------------------
     {
-      return Runtime::get_runtime(Machine::get_executing_processor());
+      return Runtime::get_runtime(Processor::get_executing_processor());
     }
 
     //--------------------------------------------------------------------------

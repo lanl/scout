@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -22,7 +22,8 @@ fspace k (r : region(int)) {
   x : ptr(int, s),
 }
 
-task g(a : region(int), b : k(a)) : int, writes(a)
+task g(a : region(int), b : k(a)) : int
+where writes(a) do
   var { c = s, y = x } = b
   @y = 0
 end

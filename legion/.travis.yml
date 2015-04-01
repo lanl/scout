@@ -1,0 +1,19 @@
+language: cpp
+os:
+  - linux
+  - osx
+compiler:
+  - gcc
+  - clang
+env:
+  - CC_FLAGS=
+  - CC_FLAGS=-DPRIVILEGE_CHECKS
+  - CC_FLAGS=-DBOUNDS_CHECKS
+  - CC_FLAGS=-DLEGION_PROF
+  - CC_FLAGS=-DLEGION_SPY
+  - CC_FLAGS=-std=c++0x
+matrix:
+  exclude:
+    - os: osx
+      compiler: gcc
+script: ./language/travis.py

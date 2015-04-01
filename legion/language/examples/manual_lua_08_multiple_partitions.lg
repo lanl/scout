@@ -1,0 +1,1 @@
+../../bindings/terra/examples/lua/08_multiple_partitions/multiple_partitions.t

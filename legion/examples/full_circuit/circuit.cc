@@ -1,4 +1,4 @@
-/* Copyright 2014 Stanford University
+/* Copyright 2015 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ LegionRuntime::Logger::Category log_circuit("circuit");
 void parse_input_args(char **argv, int argc, int &num_loops, int &num_pieces,
                       int &nodes_per_piece, int &wires_per_piece,
                       int &pct_wire_in_piece, int &random_seed,
-		      int &steps, int &sync, bool &perform_checks);
+                      int &steps, int &sync, bool &perform_checks, bool &dump_values);
 
 Partitions load_circuit(Circuit &ckt, std::vector<CircuitPiece> &pieces, Context ctx,
                         HighLevelRuntime *runtime, int num_pieces, int nodes_per_piece,
@@ -59,6 +59,7 @@ void top_level_task(const Task *task,
   int steps = STEPS;
   int sync = 0;
   bool perform_checks = false;
+  bool dump_values = false;
   {
     const InputArgs &command_args = HighLevelRuntime::get_input_args();
     char **argv = command_args.argv;
@@ -66,7 +67,7 @@ void top_level_task(const Task *task,
 
     parse_input_args(argv, argc, num_loops, num_pieces, nodes_per_piece, 
 		     wires_per_piece, pct_wire_in_piece, random_seed,
-		     steps, sync, perform_checks);
+		     steps, sync, perform_checks, dump_values);
 
     log_circuit(LEVEL_PRINT,"circuit settings: loops=%d pieces=%d nodes/piece=%d "
                             "wires/piece=%d pct_in_piece=%d seed=%d",
@@ -172,6 +173,34 @@ void top_level_task(const Task *task,
   }
   log_circuit(LEVEL_PRINT,"simulation complete - destroying regions");
 
+  if (dump_values)
+  {
+    RegionRequirement wires_req(circuit.all_wires, READ_ONLY, EXCLUSIVE, circuit.all_wires);
+    for (int i = 0; i < WIRE_SEGMENTS; i++)
+      wires_req.add_field(FID_CURRENT+i);
+    for (int i = 0; i < (WIRE_SEGMENTS-1); i++)
+      wires_req.add_field(FID_WIRE_VOLTAGE+i);
+    PhysicalRegion wires = runtime->map_region(ctx, wires_req);
+    wires.wait_until_valid();
+    RegionAccessor<AccessorType::Generic, float> fa_wire_currents[WIRE_SEGMENTS];
+    for (int i = 0; i < WIRE_SEGMENTS; i++)
+      fa_wire_currents[i] = wires.get_field_accessor(FID_CURRENT+i).typeify<float>();
+    RegionAccessor<AccessorType::Generic, float> fa_wire_voltages[WIRE_SEGMENTS-1];
+    for (int i = 0; i < (WIRE_SEGMENTS-1); i++)
+      fa_wire_voltages[i] = wires.get_field_accessor(FID_WIRE_VOLTAGE+i).typeify<float>();
+    IndexIterator itr(circuit.all_wires.get_index_space());
+    while (itr.has_next())
+    {
+      ptr_t wire_ptr = itr.next();
+      for (int i = 0; i < WIRE_SEGMENTS; ++i)
+        printf(" %.5g", fa_wire_currents[i].read(wire_ptr));
+      for (int i = 0; i < WIRE_SEGMENTS - 1; ++i)
+        printf(" %.5g", fa_wire_voltages[i].read(wire_ptr));
+      printf("\n");
+    }
+    runtime->unmap_region(ctx, wires);
+  }
+
   // Now we can destroy all the things that we made
   {
     runtime->destroy_logical_region(ctx,circuit.all_nodes);
@@ -185,7 +214,7 @@ void top_level_task(const Task *task,
   }
 }
 
-static void update_mappers(Machine *machine, HighLevelRuntime *rt,
+static void update_mappers(Machine machine, HighLevelRuntime *rt,
                            const std::set<Processor> &local_procs)
 {
   for (std::set<Processor>::const_iterator it = local_procs.begin();
@@ -221,7 +250,8 @@ int main(int argc, char **argv)
 void parse_input_args(char **argv, int argc, int &num_loops, int &num_pieces,
                       int &nodes_per_piece, int &wires_per_piece,
                       int &pct_wire_in_piece, int &random_seed,
-		      int &steps, int &sync, bool &perform_checks)
+                      int &steps, int &sync, bool &perform_checks,
+                      bool &dump_values)
 {
   for (int i = 1; i < argc; i++) 
   {
@@ -278,6 +308,12 @@ void parse_input_args(char **argv, int argc, int &num_loops, int &num_pieces,
       perform_checks = true;
       continue;
     }
+
+    if(!strcmp(argv[i], "-dump"))
+    {
+      dump_values = true;
+      continue;
+    }
   }
 }
 
@@ -330,7 +366,7 @@ void allocate_wire_fields(Context ctx, HighLevelRuntime *runtime, FieldSpace wir
 void allocate_locator_fields(Context ctx, HighLevelRuntime *runtime, FieldSpace locator_space)
 {
   FieldAllocator allocator = runtime->create_field_allocator(ctx, locator_space);
-  allocator.allocate_field(sizeof(float), FID_LOCATOR);
+  allocator.allocate_field(sizeof(PointerLocation), FID_LOCATOR);
   runtime->attach_name(locator_space, FID_LOCATOR, "locator");
 }
 
@@ -407,6 +443,8 @@ Partitions load_circuit(Circuit &ckt, std::vector<CircuitPiece> &pieces, Context
   Coloring locator_node_map;
 
   Coloring privacy_map;
+  privacy_map[0];
+  privacy_map[1];
 
   // keep a O(1) indexable list of nodes in each piece for connecting wires
   std::vector<std::vector<ptr_t> > piece_node_ptrs(num_pieces);

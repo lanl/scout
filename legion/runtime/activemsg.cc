@@ -1,4 +1,4 @@
-/* Copyright 2014 Stanford University
+/* Copyright 2015 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,9 @@
 
 #include <queue>
 #include <cassert>
+#ifdef REALM_PROFILE_AM_HANDLERS
+#include <math.h>
+#endif
 
 #include "lowlevel_impl.h"
 
@@ -45,6 +48,10 @@ void record_am_handler(int handler_id, const char *description, bool reply)
 }
 #endif
 
+#ifdef REALM_PROFILE_AM_HANDLERS
+/*extern*/ ActiveMsgHandlerStats handler_stats[256];
+#endif
+
 static const int DEFERRED_FREE_COUNT = 128;
 gasnet_hsl_t deferred_free_mutex;
 int deferred_free_pos;
@@ -55,7 +62,7 @@ gasnet_seginfo_t *segment_info = 0;
 static bool is_registered(void *ptr)
 {
   off_t offset = ((char *)ptr) - ((char *)(segment_info[gasnet_mynode()].addr));
-  if((offset >= 0) && (offset < segment_info[gasnet_mynode()].size))
+  if((offset >= 0) && ((size_t)offset < segment_info[gasnet_mynode()].size))
     return true;
   return false;
 }
@@ -92,7 +99,8 @@ public:
   virtual ~PayloadSource(void) { }
 public:
   virtual void copy_data(void *dest) = 0;
-  virtual void *get_contig_pointer(void) { return 0; }
+  virtual void *get_contig_pointer(void) { assert(false); return 0; }
+  virtual int get_payload_mode(void) { assert(false); return PAYLOAD_NONE; }
 };
 
 class ContiguousPayload : public PayloadSource {
@@ -101,6 +109,7 @@ public:
   virtual ~ContiguousPayload(void) { }
   virtual void copy_data(void *dest);
   virtual void *get_contig_pointer(void) { return srcptr; }
+  virtual int get_payload_mode(void) { return mode; }
 protected:
   void *srcptr;
   size_t size;
@@ -137,6 +146,7 @@ struct OutgoingMessage {
 
   void set_payload(PayloadSource *_payload, size_t _payload_size,
 		   int _payload_mode, void *_dstptr = 0);
+  inline void set_payload_empty(void) { payload_mode = PAYLOAD_EMPTY; }
   void reserve_srcdata(void);
 #if 0
   void set_payload(void *_payload, size_t _payload_size,
@@ -1212,14 +1222,12 @@ void OutgoingMessage::set_payload(PayloadSource *_payload_src,
 {
   // die if a payload has already been attached
   assert(payload_mode == PAYLOAD_NONE);
-
-  // no payload?  easy case
-  if(_payload_mode == PAYLOAD_NONE)
-    return;
+  // We should never be called if either of these are true
+  assert(_payload_mode != PAYLOAD_NONE);
+  assert(_payload_size > 0);
 
   // payload must be non-empty, and fit in the LMB unless we have a dstptr for it
   log_sdp.info("setting payload (%zd, %d)", _payload_size, _payload_mode);
-  assert(_payload_size > 0);
   assert((_dstptr != 0) || (_payload_size <= lmb_size));
 
   // just copy down everything - we won't attempt to grab a srcptr until
@@ -1236,8 +1244,9 @@ void OutgoingMessage::set_payload(PayloadSource *_payload_src,
 //  need us to go out the door to remove the blockage)
 void OutgoingMessage::reserve_srcdata(void)
 {
-  // no payload case is easy
-  if(payload_mode == PAYLOAD_NONE) return;
+  // no or empty payload cases are easy
+  if((payload_mode == PAYLOAD_NONE) ||
+     (payload_mode == PAYLOAD_EMPTY)) return;
 
   // if the payload is stable and in registered memory AND contiguous, we can
   //  just use it
@@ -1296,6 +1305,7 @@ void OutgoingMessage::reserve_srcdata(void)
     if(payload_src->get_contig_pointer() &&
        (payload_mode != PAYLOAD_COPY)) {
       payload = payload_src->get_contig_pointer();
+      payload_mode = payload_src->get_payload_mode();
       delete payload_src;
       payload_src = 0;
     } else {
@@ -1331,7 +1341,7 @@ public:
     outstanding_messages = (int*)malloc(num_endpoints*sizeof(int));
     for (int i = 0; i < num_endpoints; i++)
     {
-      if (i == gasnet_mynode())
+      if (((unsigned)i) == gasnet_mynode())
         endpoints[i] = 0;
       else
         endpoints[i] = new ActiveMessageEndpoint(i);
@@ -1551,10 +1561,10 @@ void init_endpoints(gasnet_handlerentry_t *handlers, int hcount,
   CHECK_GASNET( gasnet_getSegmentInfo(segment_info, gasnet_nodes()) );
 
   char *my_segment = (char *)(segment_info[gasnet_mynode()].addr);
-  char *gasnet_mem_base = my_segment;  my_segment += (gasnet_mem_size_in_mb << 20);
-  char *reg_mem_base = my_segment;  my_segment += (registered_mem_size_in_mb << 20);
+  /*char *gasnet_mem_base = my_segment;*/  my_segment += (gasnet_mem_size_in_mb << 20);
+  /*char *reg_mem_base = my_segment;*/  my_segment += (registered_mem_size_in_mb << 20);
   char *srcdatapool_base = my_segment;  my_segment += srcdatapool_size;
-  char *lmb_base = my_segment;  my_segment += total_lmb_size;
+  /*char *lmb_base = my_segment;*/  my_segment += total_lmb_size;
   assert(my_segment <= ((char *)(segment_info[gasnet_mynode()].addr) + segment_info[gasnet_mynode()].size)); 
 
 #ifndef NO_SRCDATAPOOL
@@ -1611,9 +1621,8 @@ void start_polling_threads(int count)
   }
 }
 
-static void* sender_thread_loop(void *index)
+static void* sender_thread_loop(void * /*unused*/)
 {
-  long idx = (long)index;
   while (!thread_shutdown_flag) {
     endpoint_manager->push_messages(10000,true);
   }
@@ -1625,7 +1634,7 @@ void start_sending_threads(void)
   num_sending_threads = gasnet_nodes();
   sending_threads = new pthread_t[num_sending_threads];
 
-  for (int i = 0; i < gasnet_nodes(); i++)
+  for (unsigned i = 0; i < gasnet_nodes(); i++)
   {
     if (i == gasnet_mynode()) continue;
     pthread_attr_t attr;
@@ -1663,6 +1672,18 @@ void stop_activemsg_threads(void)
     delete[] sending_threads;
   }
 
+#ifdef REALM_PROFILE_AM_HANDLERS
+  for(int i = 0; i < 256; i++) {
+    if(!handler_stats[i].count) continue;
+    double avg = ((double)handler_stats[i].sum) / ((double)handler_stats[i].count);
+    double stddev = sqrt((((double)handler_stats[i].sum2) / ((double)handler_stats[i].count)) -
+                         avg * avg);
+    printf("AM profiling: node %d, msg %d: count = %10zd, avg = %8.2f, dev = %8.2f, min = %8zd, max = %8zd\n",
+           gasnet_mynode(), i,
+           handler_stats[i].count, avg, stddev, handler_stats[i].minval, handler_stats[i].maxval);
+  }
+#endif
+
   thread_shutdown_flag = false;
 }
 	
@@ -1683,9 +1704,15 @@ void enqueue_message(gasnet_node_t target, int msgid,
     payload_mode = PAYLOAD_KEEPREG;
 
   if (payload_mode != PAYLOAD_NONE)
-    hdr->set_payload(new ContiguousPayload((void *)payload, payload_size, payload_mode),
-                     payload_size, payload_mode,
-                     dstptr);
+  {
+    if (payload_size > 0) {
+      PayloadSource *payload_src = 
+        new ContiguousPayload((void *)payload, payload_size, payload_mode);
+      hdr->set_payload(payload_src, payload_size, payload_mode, dstptr);
+    } else {
+      hdr->set_payload_empty();
+    }
+  }
 
   endpoint_manager->enqueue_message(target, hdr, true); // TODO: decide when OOO is ok?
 }
@@ -1703,10 +1730,16 @@ void enqueue_message(gasnet_node_t target, int msgid,
 					     args);
 
   if (payload_mode != PAYLOAD_NONE)
-    hdr->set_payload(new TwoDPayload(payload, line_size, 
-                                     line_count, line_stride, payload_mode),
-                                     line_size * line_count, payload_mode, dstptr);
-
+  {
+    size_t payload_size = line_size * line_count;
+    if (payload_size > 0) {
+      PayloadSource *payload_src = new TwoDPayload(payload, line_size, 
+                                       line_count, line_stride, payload_mode);
+      hdr->set_payload(payload_src, payload_size, payload_mode, dstptr);
+    } else {
+      hdr->set_payload_empty();
+    }
+  }
   endpoint_manager->enqueue_message(target, hdr, true); // TODO: decide when OOO is ok?
 }
 
@@ -1722,9 +1755,14 @@ void enqueue_message(gasnet_node_t target, int msgid,
   					     args);
 
   if (payload_mode != PAYLOAD_NONE)
-    hdr->set_payload(new SpanPayload(spans, payload_size, payload_mode),
-                     payload_size, payload_mode,
-                     dstptr);
+  {
+    if (payload_size > 0) {
+      PayloadSource *payload_src = new SpanPayload(spans, payload_size, payload_mode);
+      hdr->set_payload(payload_src, payload_size, payload_mode, dstptr);
+    } else {
+      hdr->set_payload_empty();
+    }
+  }
 
   endpoint_manager->enqueue_message(target, hdr, true); // TODO: decide when OOO is ok?
 }
@@ -1792,10 +1830,11 @@ void SpanPayload::copy_data(void *dest)
   char *dst_c = (char *)dest;
   off_t bytes_left = size;
   for(SpanList::const_iterator it = spans.begin(); it != spans.end(); it++) {
-    assert(it->second <= bytes_left);
+    assert(it->second <= (size_t)bytes_left);
     memcpy(dst_c, it->first, it->second);
     dst_c += it->second;
     bytes_left -= it->second;
+    assert(bytes_left >= 0);
   }
   assert(bytes_left == 0);
 }
@@ -1803,6 +1842,11 @@ void SpanPayload::copy_data(void *dest)
 extern bool adjust_long_msgsize(gasnet_node_t source, void *&ptr, size_t &buffer_size,
                                 const void *args, size_t arglen)
 {
+  // special case: if the buffer size is zero, it's an empty message and no adjustment
+  //   is needed
+  if(buffer_size == 0)
+    return true;
+
   assert(source != gasnet_mynode());
   assert(arglen >= 2*sizeof(int));
   const int *arg_ptr = (const int*)args;

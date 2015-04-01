@@ -1,4 +1,4 @@
-/* Copyright 2014 Stanford University
+/* Copyright 2015 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,6 +30,11 @@
 
 #include "lowlevel.h"
 
+#define NO_USE_REALMS_NODESET
+#ifdef USE_REALMS_NODESET
+#include "realm/dynamic_set.h"
+#endif
+
 #include <assert.h>
 
 #ifndef NO_INCLUDE_GASNET
@@ -50,19 +55,16 @@ GASNETT_THREADKEY_DECLARE(cur_thread);
 #include <set>
 #include <list>
 #include <map>
+#include <aio.h>
+
+#if __cplusplus >= 201103L
+#define typeof decltype
+#endif
 
 #define CHECK_PTHREAD(cmd) do { \
   int ret = (cmd); \
   if(ret != 0) { \
     fprintf(stderr, "PTHREAD: %s = %d (%s)\n", #cmd, ret, strerror(ret)); \
-    exit(1); \
-  } \
-} while(0)
-
-#define CHECK_GASNET(cmd) do { \
-  int ret = (cmd); \
-  if(ret != GASNET_OK) { \
-    fprintf(stderr, "GASNET: %s = %d (%s, %s)\n", #cmd, ret, gasnet_ErrorName(ret), gasnet_ErrorDesc(ret)); \
     exit(1); \
   } \
 } while(0)
@@ -108,6 +110,21 @@ namespace LegionRuntime {
     };
 #endif
 
+    // gasnet_hsl_t in object form for templating goodness
+    class GASNetHSL {
+    public:
+      GASNetHSL(void) { gasnet_hsl_init(&mutex); }
+      ~GASNetHSL(void) { gasnet_hsl_destroy(&mutex); }
+
+      void lock(void) { gasnet_hsl_lock(&mutex); }
+      void unlock(void) { gasnet_hsl_unlock(&mutex); }
+
+    protected:
+      friend class AutoHSLLock;
+      friend class GASNetCondVar;
+      gasnet_hsl_t mutex;
+    };
+
     class AutoHSLLock {
     public:
       AutoHSLLock(gasnet_hsl_t &mutex) : mutexp(&mutex), held(true)
@@ -119,6 +136,14 @@ namespace LegionRuntime {
 	//printf("[%d] MUTEX LOCK HELD %p\n", gasnet_mynode(), mutexp);
       }
       AutoHSLLock(gasnet_hsl_t *_mutexp) : mutexp(_mutexp), held(true)
+      { 
+	log_mutex(LEVEL_SPEW, "MUTEX LOCK IN %p", mutexp);
+	//printf("[%d] MUTEX LOCK IN %p\n", gasnet_mynode(), mutexp);
+	gasnet_hsl_lock(mutexp); 
+	log_mutex(LEVEL_SPEW, "MUTEX LOCK HELD %p", mutexp);
+	//printf("[%d] MUTEX LOCK HELD %p\n", gasnet_mynode(), mutexp);
+      }
+      AutoHSLLock(GASNetHSL &mutex) : mutexp(&mutex.mutex), held(true)
       { 
 	log_mutex(LEVEL_SPEW, "MUTEX LOCK IN %p", mutexp);
 	//printf("[%d] MUTEX LOCK IN %p\n", gasnet_mynode(), mutexp);
@@ -150,21 +175,50 @@ namespace LegionRuntime {
       bool held;
     };
 
+    class GASNetCondVar {
+    public:
+      GASNetCondVar(GASNetHSL &_mutex) 
+	: mutex(_mutex)
+      {
+	gasnett_cond_init(&cond);
+      }
+
+      ~GASNetCondVar(void)
+      {
+	gasnett_cond_destroy(&cond);
+      }
+
+      // these require that you hold the lock when you call
+      void signal(void)
+      {
+	gasnett_cond_signal(&cond);
+      }
+
+      void wait(void)
+      {
+	gasnett_cond_wait(&cond, &mutex.mutex.lock);
+      }
+
+    public:
+      GASNetHSL &mutex;
+
+    protected:
+      gasnett_cond_t cond;
+    };
+
     typedef LegionRuntime::HighLevel::BitMask<NODE_MASK_TYPE,MAX_NUM_NODES,
                                               NODE_MASK_SHIFT,NODE_MASK_MASK> NodeMask;
 
-    // gasnet_hsl_t in object form for templating goodness
-    class GASNetHSL {
-    public:
-      GASNetHSL(void) { gasnet_hsl_init(&mutex); }
-      ~GASNetHSL(void) { gasnet_hsl_destroy(&mutex); }
-
-      void lock(void) { gasnet_hsl_lock(&mutex); }
-      void unlock(void) { gasnet_hsl_unlock(&mutex); }
-
-    protected:
-      gasnet_hsl_t mutex;
-    };
+#ifdef USE_REALMS_NODESET
+#if MAX_NUM_NODES <= 65536
+    typedef DynamicSet<unsigned short> NodeSet;
+#else
+    // possibly unnecessary future-proofing...
+    typedef DynamicSet<unsigned int> NodeSet;
+#endif
+#else
+    typedef LegionRuntime::HighLevel::NodeSet NodeSet;
+#endif
 
     // we have a base type that's element-type agnostic
     template <typename LT, typename IT>
@@ -251,7 +305,7 @@ namespace LegionRuntime {
       if(level > 0) {
 	// an inner node - we can create that ourselves
 	typename ALLOCATOR::INNER_TYPE *inner = new typename ALLOCATOR::INNER_TYPE(level, first_index, last_index);
-	for(IT i = 0; i < ALLOCATOR::INNER_TYPE::SIZE; i++)
+	for(size_t i = 0; i < ALLOCATOR::INNER_TYPE::SIZE; i++)
 	  inner->elems[i] = 0;
 	return inner;
       } else {
@@ -297,7 +351,7 @@ namespace LegionRuntime {
 
 	IT i = ((index >> (ALLOCATOR::LEAF_BITS + (n->level - 1) * ALLOCATOR::INNER_BITS)) &
 		((((IT)1) << ALLOCATOR::INNER_BITS) - 1));
-	assert((i >= 0) && (i < ALLOCATOR::INNER_TYPE::SIZE));
+	assert((i >= 0) && (((size_t)i) < ALLOCATOR::INNER_TYPE::SIZE));
 
 	NodeBase *child = inner->elems[i];
 	if(child == 0) {
@@ -362,7 +416,7 @@ namespace LegionRuntime {
 
 	IT i = ((index >> (ALLOCATOR::LEAF_BITS + (n->level - 1) * ALLOCATOR::INNER_BITS)) &
 		((((IT)1) << ALLOCATOR::INNER_BITS) - 1));
-	assert((i >= 0) && (i < ALLOCATOR::INNER_TYPE::SIZE));
+	assert((i >= 0) && (((size_t)i) < ALLOCATOR::INNER_TYPE::SIZE));
 
 	NodeBase *child = inner->elems[i];
 	if(child == 0) {
@@ -416,7 +470,7 @@ namespace LegionRuntime {
 	next_alloc += ((IT)1) << ALLOCATOR::LEAF_BITS; // do this before letting go of lock
 	lock.unlock();
 	typename DynamicTable<ALLOCATOR>::ET *dummy = table.lookup_entry(to_lookup, owner, this);
-
+	assert(dummy != 0);
 	// can't actually use dummy because we let go of lock - retake lock and hopefully find non-empty
 	//  list next time
 	lock.lock();
@@ -527,7 +581,7 @@ namespace LegionRuntime {
 	ID_SPECIAL,
 	ID_UNUSED_1,
 	ID_EVENT,
-	ID_UNUSED_3,
+	ID_BARRIER,
 	ID_LOCK,
 	ID_UNUSED_5,
 	ID_MEMORY,
@@ -563,6 +617,8 @@ namespace LegionRuntime {
 		(_index_h << INDEX_L_BITS) |
 		_index_l) {}
 
+      bool operator==(const ID& rhs) const { return value == rhs.value; }
+
       IDType id(void) const { return value; }
       ID_Types type(void) const { return (ID_Types)(value >> (NODE_BITS + INDEX_BITS)); }
       unsigned node(void) const { return ((value >> INDEX_BITS) & ((1U << NODE_BITS)-1)); }
@@ -571,76 +627,136 @@ namespace LegionRuntime {
       IDType index_l(void) const { return (value & ((((IDType)1) << INDEX_L_BITS) - 1)); }
 
       template <class T>
-      T convert(void) const { T thing_to_return = { value }; return thing_to_return; }
-      
+      T convert(void) const { T thing_to_return; thing_to_return.id = value; return thing_to_return; }
+
     protected:
       IDType value;
     };
     
+    template <>
+    inline ID ID::convert<ID>(void) const { return *this; }
+      
+    class EventWaiter {
+    public:
+      virtual ~EventWaiter(void) {}
+      virtual bool event_triggered(void) = 0;
+      virtual void print_info(FILE *f) = 0;
+    };
+
+    // parent class of GenEventImpl and BarrierImpl
     class Event::Impl {
     public:
-      Impl(void);
-
-      static const ID::ID_Types ID_TYPE = ID::ID_EVENT;
-
-      void init(Event _me, unsigned _init_owner);
-
-      static Event create_event(void);
-
       // test whether an event has triggered without waiting
-      // make this a volatile method so that if we poll it
-      // then it will do the right thing
-      bool has_triggered(Event::gen_t needed_gen) volatile;
+      virtual bool has_triggered(Event::gen_t needed_gen) = 0;
 
       // causes calling thread to block until event has occurred
       //void wait(Event::gen_t needed_gen);
 
-      void external_wait(Event::gen_t needed_gen);
+      virtual void external_wait(Event::gen_t needed_gen) = 0;
+
+      virtual bool add_waiter(Event::gen_t needed_gen, EventWaiter *waiter/*, bool pre_subscribed = false*/) = 0;
+    };
+
+    class GenEventImpl : public Event::Impl {
+    public:
+      static const ID::ID_Types ID_TYPE = ID::ID_EVENT;
+
+      GenEventImpl(void);
+
+      void init(ID _me, unsigned _init_owner);
+
+      static GenEventImpl *create_genevent(void);
+
+      // get the Event (id+generation) for the current (i.e. untriggered) generation
+      Event current_event(void) const { Event e = me.convert<Event>(); e.gen = generation+1; return e; }
+
+      // test whether an event has triggered without waiting
+      virtual bool has_triggered(Event::gen_t needed_gen);
+
+      virtual void external_wait(Event::gen_t needed_gen);
+
+      virtual bool add_waiter(Event::gen_t needed_gen, EventWaiter *waiter/*, bool pre_subscribed = false*/);
 
       // creates an event that won't trigger until all input events have
       static Event merge_events(const std::set<Event>& wait_for);
       static Event merge_events(Event ev1, Event ev2,
-				Event ev3 = NO_EVENT, Event ev4 = NO_EVENT,
-				Event ev5 = NO_EVENT, Event ev6 = NO_EVENT);
+				Event ev3 = Event::NO_EVENT, Event ev4 = Event::NO_EVENT,
+				Event ev5 = Event::NO_EVENT, Event ev6 = Event::NO_EVENT);
 
       // record that the event has triggered and notify anybody who cares
-      void trigger(Event::gen_t gen_triggered, int trigger_node, Event wait_on = NO_EVENT);
+      void trigger(Event::gen_t gen_triggered, int trigger_node, Event wait_on = Event::NO_EVENT);
+
+      // if you KNOW you want to trigger the current event (which by definition cannot
+      //   have already been triggered) - this is quicker:
+      void trigger_current(void);
+
+      void check_for_catchup(Event::gen_t implied_trigger_gen);
+
+    public: //protected:
+      ID me;
+      unsigned owner;
+      Event::gen_t generation, gen_subscribed;
+      GenEventImpl *next_free;
+
+      GASNetHSL mutex; // controls which local thread has access to internal data (not runtime-visible event)
+
+      NodeSet remote_waiters;
+      std::vector<EventWaiter *> local_waiters; // set of local threads that are waiting on event
+    };
+
+    class BarrierImpl : public Event::Impl {
+    public:
+      static const ID::ID_Types ID_TYPE = ID::ID_BARRIER;
+
+      BarrierImpl(void);
+
+      void init(ID _me, unsigned _init_owner);
+
+      static BarrierImpl *create_barrier(unsigned expected_arrivals, ReductionOpID redopid,
+					 const void *initial_value = 0, size_t initial_value_size = 0);
+
+      // test whether an event has triggered without waiting
+      virtual bool has_triggered(Event::gen_t needed_gen);
+
+      virtual void external_wait(Event::gen_t needed_gen);
+
+      virtual bool add_waiter(Event::gen_t needed_gen, EventWaiter *waiter/*, bool pre_subscribed = false*/);
 
       // used to adjust a barrier's arrival count either up or down
       // if delta > 0, timestamp is current time (on requesting node)
       // if delta < 0, timestamp says which positive adjustment this arrival must wait for
       void adjust_arrival(Event::gen_t barrier_gen, int delta, 
-			  Barrier::timestamp_t timestamp, Event wait_on = NO_EVENT);
+			  Barrier::timestamp_t timestamp, Event wait_on,
+			  const void *reduce_value, size_t reduce_value_size);
 
-      class EventWaiter {
-      public:
-        EventWaiter(void) { }
-        virtual ~EventWaiter(void) { }
-      public:
-	virtual bool event_triggered(void) = 0;
-	virtual void print_info(FILE *f) = 0;
-      };
-
-      void add_waiter(Event event, EventWaiter *waiter, bool pre_subscribed = false);
+      bool get_result(Event::gen_t result_gen, void *value, size_t value_size);
 
     public: //protected:
-      Event me;
+      ID me;
       unsigned owner;
-      Event::gen_t generation, gen_subscribed, free_generation;
-      Event::Impl *next_free;
-      //static Event::Impl *first_free;
-      //static gasnet_hsl_t freelist_mutex;
+      Event::gen_t generation, gen_subscribed;
+      Event::gen_t first_generation, free_generation;
+      BarrierImpl *next_free;
 
-      gasnet_hsl_t *mutex; // controls which local thread has access to internal data (not runtime-visible event)
+      GASNetHSL mutex; // controls which local thread has access to internal data (not runtime-visible event)
 
-      std::map<Event::gen_t,NodeMask> remote_waiters;
-      std::map<Event::gen_t, std::vector<EventWaiter *> > local_waiters; // set of local threads that are waiting on event (keyed by generation)
+      // class to track per-generation status
+      class Generation;
 
-      // for barriers
-      unsigned base_arrival_count, current_arrival_count;
+      std::map<Event::gen_t, Generation *> generations;
 
-      class PendingUpdates;
-      std::map<Event::gen_t, PendingUpdates *> pending_updates;
+      // a list of remote waiters and the latest generation they're interested in
+      // also the latest generation that each node (that has ever subscribed) has been told about
+      std::map<unsigned, Event::gen_t> remote_subscribe_gens, remote_trigger_gens;
+      std::map<Event::gen_t, Event::gen_t> held_triggers;
+
+      unsigned base_arrival_count;
+      ReductionOpID redop_id;
+      const ReductionOpUntyped *redop;
+      char *initial_value;  // for reduction barriers
+
+      unsigned value_capacity; // how many values the two allocations below can hold
+      char *final_values;   // results of completed reductions
     };
 
     struct ElementMaskImpl {
@@ -685,9 +801,9 @@ namespace LegionRuntime {
       gasnet_hsl_t *mutex; // controls which local thread has access to internal data (not runtime-visible lock)
 
       // bitmasks of which remote nodes are waiting on a lock (or sharing it)
-      NodeMask remote_waiter_mask, remote_sharer_mask;
+      NodeSet remote_waiter_mask, remote_sharer_mask;
       //std::list<LockWaiter *> local_waiters; // set of local threads that are waiting on lock
-      std::map<unsigned, std::deque<Event> > local_waiters;
+      std::map<unsigned, std::deque<GenEventImpl *> > local_waiters;
       bool requested; // do we have a request for the lock in flight?
 
       // local data protected by lock
@@ -699,39 +815,34 @@ namespace LegionRuntime {
       static Reservation::Impl *first_free;
       Reservation::Impl *next_free;
 
+      // created a GenEventImpl if needed to describe when reservation is granted
       Event acquire(unsigned new_mode, bool exclusive,
-		 Event after_lock = Event::NO_EVENT);
+		    GenEventImpl *after_lock = 0);
 
-      bool select_local_waiters(std::deque<Event>& to_wake);
+      bool select_local_waiters(std::deque<GenEventImpl *>& to_wake);
 
       void release(void);
 
       bool is_locked(unsigned check_mode, bool excl_ok);
 
       void release_reservation(void);
+
+      struct PackFunctor {
+      public:
+        PackFunctor(int *p) : pos(p) { }
+      public:
+        inline void apply(int target) { *pos++ = target; }
+      public:
+        int *pos;
+      };
     };
 
-    template <class T>
+    template <typename T>
     class StaticAccess {
     public:
       typedef typename T::StaticData StaticData;
 
-      // if already_valid, just check that data is already valid
-      StaticAccess(T* thing_with_data, bool already_valid = false)
-	: data(&thing_with_data->locked_data)
-      {
-	if(already_valid) {
-	  assert(data->valid);
-	} else {
-	  if(!data->valid) {
-	    // get a valid copy of the static data by taking and then releasing
-	    //  a shared lock
-	    thing_with_data->lock.acquire(1, false).wait(true);// TODO: must this be blocking?
-	    thing_with_data->lock.release();
-	    assert(data->valid);
-	  }
-	}
-      }
+      StaticAccess(T* thing_with_data, bool already_valid = false);
 
       ~StaticAccess(void) {}
 
@@ -741,21 +852,12 @@ namespace LegionRuntime {
       StaticData *data;
     };
 
-    template <class T>
+    template <typename T>
     class SharedAccess {
     public:
       typedef typename T::CoherentData CoherentData;
 
-      // if already_held, just check that it's held (if in debug mode)
-      SharedAccess(T* thing_with_data, bool already_held = false)
-	: data(&thing_with_data->locked_data), lock(&thing_with_data->lock)
-      {
-	if(already_held) {
-	  assert(lock->is_locked(1, true));
-	} else {
-	  lock->acquire(1, false).wait();
-	}
-      }
+      SharedAccess(T* thing_with_data, bool already_held = false);
 
       ~SharedAccess(void)
       {
@@ -774,16 +876,7 @@ namespace LegionRuntime {
     public:
       typedef typename T::CoherentData CoherentData;
 
-      // if already_held, just check that it's held (if in debug mode)
-      ExclusiveAccess(T* thing_with_data, bool already_held = false)
-	: data(&thing_with_data->locked_data), lock(&thing_with_data->lock)
-      {
-	if(already_held) {
-	  assert(lock->is_locked(0, true));
-	} else {
-	  lock->acquire(0, true).wait();
-	}
-      }
+      ExclusiveAccess(T* thing_with_data, bool already_held = false);
 
       ~ExclusiveAccess(void)
       {
@@ -812,7 +905,9 @@ namespace LegionRuntime {
       int num_local_procs;
       bool valid;
       std::vector<int> local_proc_assignments;
+#ifndef __MACH__
       cpu_set_t leftover_procs;
+#endif
     };
     extern ProcessorAssignment *proc_assignment;
 
@@ -844,7 +939,7 @@ namespace LegionRuntime {
 
     class Processor::Impl {
     public:
-      Impl(Processor _me, Processor::Kind _kind, Processor _util = Processor::NO_PROC);
+      Impl(Processor _me, Processor::Kind _kind);
 
       virtual ~Impl(void);
 
@@ -869,17 +964,9 @@ namespace LegionRuntime {
 	  run_counter->decrement();
       }
 
-      void set_utility_processor(UtilityProcessor *_util_proc);
-
-      virtual void enable_idle_task(void) { assert(0); }
-      virtual void disable_idle_task(void) { assert(0); }
-      virtual bool is_idle_task_enabled(void) { return(false); }
-
     public:
       Processor me;
       Processor::Kind kind;
-      Processor util;
-      UtilityProcessor *util_proc;
       Atomic<int> *run_counter;
     }; 
 
@@ -895,6 +982,15 @@ namespace LegionRuntime {
       void insert(JOBTYPE *job, int priority);
 
       JOBTYPE *pop(void);
+
+      struct WaitingJob : public EventWaiter {
+	JOBTYPE *job;
+	int priority;
+	JobQueue *queue;
+
+	virtual bool event_triggered(void);
+	virtual void print_info(FILE *f);
+      };
 
       std::map<int, std::deque<JOBTYPE*> > ready;
     };
@@ -1035,9 +1131,6 @@ namespace LegionRuntime {
 
       void request_shutdown(void);
 
-      void enable_idle_task(Processor::Impl *proc);
-      void disable_idle_task(Processor::Impl *proc);
-
       void wait_for_shutdown(void);
 
       class UtilityThread;
@@ -1055,14 +1148,9 @@ namespace LegionRuntime {
       gasnet_hsl_t mutex;
       gasnett_cond_t condvar;
 
-      Task *idle_task;
-
       std::set<UtilityThread *> threads;
 
       JobQueue<Task> task_queue;
-
-      std::set<Processor::Impl *> idle_procs;
-      std::set<Processor::Impl *> procs_in_idle_task;
     };
 
     class Memory::Impl {
@@ -1076,13 +1164,12 @@ namespace LegionRuntime {
 	MKIND_GPUFB,   // GPU framebuffer memory (accessible via cudaMemcpy)
 #endif
 	MKIND_ZEROCOPY, // CPU memory, pinned for GPU access
+        MKIND_DISK,    // disk memory accessible by owner node
       };
 
-    Impl(Memory _me, size_t _size, MemoryKind _kind, size_t _alignment, Kind _lowlevel_kind)
-      : me(_me), size(_size), kind(_kind), alignment(_alignment), lowlevel_kind(_lowlevel_kind)
-      {
-	gasnet_hsl_init(&mutex);
-      }
+      Impl(Memory _me, size_t _size, MemoryKind _kind, size_t _alignment, Kind _lowlevel_kind);
+
+      virtual ~Impl(void);
 
       unsigned add_instance(RegionInstance::Impl *i);
 
@@ -1156,6 +1243,9 @@ namespace LegionRuntime {
       gasnet_hsl_t mutex; // protection for resizing vectors
       std::vector<RegionInstance::Impl *> instances;
       std::map<off_t, off_t> free_blocks;
+#ifdef REALM_PROFILE_MEMORY_USAGE
+      size_t usage, peak_usage, peak_footprint;
+#endif
     };
 
     class GASNetMemory : public Memory::Impl {
@@ -1208,6 +1298,79 @@ namespace LegionRuntime {
       //std::map<off_t, off_t> free_blocks;
     };
 
+    class DiskMemory : public Memory::Impl {
+    public:
+      static const size_t ALIGNMENT = 256;
+
+      DiskMemory(Memory _me, size_t _size, std::string _file);
+
+      virtual ~DiskMemory(void);
+
+      virtual RegionInstance create_instance(IndexSpace is,
+                                            const int *linearization_bits,
+                                            size_t bytes_needed,
+                                            size_t block_size,
+                                            size_t element_size,
+                                            const std::vector<size_t>& field_sizes,
+                                            ReductionOpID redopid,
+                                            off_t list_size,
+                                            RegionInstance parent_inst);
+
+      virtual void destroy_instance(RegionInstance i,
+                                    bool local_destroy);
+
+      virtual off_t alloc_bytes(size_t size);
+
+      virtual void free_bytes(off_t offset, size_t size);
+
+      virtual void get_bytes(off_t offset, void *dst, size_t size);
+
+      virtual void put_bytes(off_t offset, const void *src, size_t size);
+
+      virtual void apply_reduction_list(off_t offset, const ReductionOpUntyped *redop,
+                                       size_t count, const void *entry_buffer);
+
+      virtual void *get_direct_ptr(off_t offset, size_t size);
+      virtual int get_home_node(off_t offset, size_t size);
+
+    public:
+      int fd; // file descriptor
+      std::string file;  // file name
+    };
+
+    class MetadataBase {
+    public:
+      MetadataBase(void);
+      ~MetadataBase(void);
+
+      enum State { STATE_INVALID,
+		   STATE_VALID,
+		   STATE_REQUESTED,
+		   STATE_INVALIDATE,  // if invalidate passes normal request response
+		   STATE_CLEANUP };
+
+      bool is_valid(void) const { return state == STATE_VALID; }
+
+      void mark_valid(void); // used by owner
+      void handle_request(int requestor);
+
+      // returns an Event for when data will be valid
+      Event request_data(int owner, IDType id);
+      void await_data(bool block = true);  // request must have already been made
+      void handle_response(void);
+      void handle_invalidate(void);
+
+      // these return true once all remote copies have been invalidated
+      bool initiate_cleanup(IDType id);
+      bool handle_inval_ack(int sender);
+
+    protected:
+      GASNetHSL mutex;
+      State state;  // current state
+      GenEventImpl *valid_event; // event to track receipt of in-flight request (if any)
+      NodeSet remote_copies;
+    };
+
     class RegionInstance::Impl {
     public:
       Impl(RegionInstance _me, IndexSpace _is, Memory _memory, off_t _offset, size_t _size, ReductionOpID _redopid,
@@ -1238,33 +1401,34 @@ namespace LegionRuntime {
       bool get_strided_parameters(void *&base, size_t &stride,
 				  off_t field_offset);
 
+      Event request_metadata(void) { return metadata.request_data(ID(me).node(), me.id); }
+
     public: //protected:
       friend class RegionInstance;
 
       RegionInstance me;
-      Memory memory;
-      DomainLinearization linearization;
+      Memory memory; // not part of metadata because it's determined from ID alone
 
-      static const unsigned MAX_FIELDS_PER_INST = 2048;
-      static const unsigned MAX_LINEARIZATION_LEN = 16;
+      class Metadata : public MetadataBase {
+      public:
+	void *serialize(size_t& out_size) const;
+	void deserialize(const void *in_data, size_t in_size);
 
-      struct StaticData {
 	IndexSpace is;
-	off_t alloc_offset; //, access_offset;
+	off_t alloc_offset;
 	size_t size;
-	//size_t first_elmt, last_elmt;
-	//bool is_reduction;
 	ReductionOpID redopid;
 	off_t count_offset;
 	off_t red_list_size;
 	size_t block_size, elmt_size;
-	int field_sizes[MAX_FIELDS_PER_INST];
+	std::vector<size_t> field_sizes;
 	RegionInstance parent_inst;
-	int linearization_bits[MAX_LINEARIZATION_LEN];
-        // This had better damn well be the last field
-        // in the struct in order to avoid race conditions!
-	bool valid;
-      } locked_data;
+	DomainLinearization linearization;
+      };
+
+      Metadata metadata;
+
+      static const unsigned MAX_LINEARIZATION_LEN = 16;
 
       Reservation::Impl lock;
     };
@@ -1314,7 +1478,7 @@ namespace LegionRuntime {
       ElementMask *valid_mask;
       int valid_mask_count;
       bool valid_mask_complete;
-      Event valid_mask_event;
+      GenEventImpl *valid_mask_event;
       int valid_mask_first, valid_mask_last;
       bool valid_mask_contig;
       ElementMask *avail_mask;
@@ -1359,7 +1523,8 @@ namespace LegionRuntime {
       }
     };
 
-    typedef DynamicTableAllocator<Event::Impl, 10, 8> EventTableAllocator;
+    typedef DynamicTableAllocator<GenEventImpl, 10, 8> EventTableAllocator;
+    typedef DynamicTableAllocator<BarrierImpl, 10, 4> BarrierTableAllocator;
     typedef DynamicTableAllocator<Reservation::Impl, 10, 8> ReservationTableAllocator;
     typedef DynamicTableAllocator<IndexSpace::Impl, 10, 4> IndexSpaceTableAllocator;
     typedef DynamicTableAllocator<ProcessorGroup, 10, 4> ProcessorGroupTableAllocator;
@@ -1374,16 +1539,72 @@ namespace LegionRuntime {
       std::vector<Processor::Impl *> processors;
 
       DynamicTable<EventTableAllocator> events;
+      DynamicTable<BarrierTableAllocator> barriers;
       DynamicTable<ReservationTableAllocator> reservations;
       DynamicTable<IndexSpaceTableAllocator> index_spaces;
       DynamicTable<ProcessorGroupTableAllocator> proc_groups;
     };
 
-    class Runtime {
-    public:
-      static Runtime *get_runtime(void) { return runtime; }
+    struct NodeAnnounceData;
 
-      Event::Impl *get_event_impl(ID id);
+    class Machine::Impl {
+    public:
+      void get_all_memories(std::set<Memory>& mset) const;
+      void get_all_processors(std::set<Processor>& pset) const;
+
+      // Return the set of memories visible from a processor
+      void get_visible_memories(Processor p, std::set<Memory>& mset) const;
+
+      // Return the set of memories visible from a memory
+      void get_visible_memories(Memory m, std::set<Memory>& mset) const;
+
+      // Return the set of processors which can all see a given memory
+      void get_shared_processors(Memory m, std::set<Processor>& pset) const;
+
+      int get_proc_mem_affinity(std::vector<Machine::ProcessorMemoryAffinity>& result,
+				Processor restrict_proc /*= Processor::NO_PROC*/,
+				Memory restrict_memory /*= Memory::NO_MEMORY*/) const;
+
+      int get_mem_mem_affinity(std::vector<Machine::MemoryMemoryAffinity>& result,
+			       Memory restrict_mem1 /*= Memory::NO_MEMORY*/,
+			       Memory restrict_mem2 /*= Memory::NO_MEMORY*/) const;
+      
+      void parse_node_announce_data(const void *args, size_t arglen,
+				    const NodeAnnounceData& annc_data,
+				    bool remote);
+    protected:
+      std::vector<Machine::ProcessorMemoryAffinity> proc_mem_affinities;
+      std::vector<Machine::MemoryMemoryAffinity> mem_mem_affinities;
+    };
+
+    extern Machine::Impl *machine_singleton;
+    inline Machine::Impl *get_machine(void) { return machine_singleton; }
+
+    class Runtime::Impl {
+    public:
+      Impl(void);
+      ~Impl(void);
+
+      bool init(int *argc, char ***argv);
+
+      bool register_task(Processor::TaskFuncID taskid, Processor::TaskFuncPtr taskptr);
+      bool register_reduction(ReductionOpID redop_id, const ReductionOpUntyped *redop);
+
+      void run(Processor::TaskFuncID task_id = 0, RunStyle style = Runtime::ONE_TASK_ONLY,
+	       const void *args = 0, size_t arglen = 0, bool background = false);
+
+      // requests a shutdown of the runtime
+      void shutdown(bool local_request);
+
+      void wait_for_shutdown(void);
+
+      // three event-related impl calls - get_event_impl() will give you either
+      //  a normal event or a barrier, but you won't be able to do specific things
+      //  (e.g. trigger a GenEventImpl or adjust a BarrierImpl)
+      Event::Impl *get_event_impl(Event e);
+      GenEventImpl *get_genevent_impl(Event e);
+      BarrierImpl *get_barrier_impl(Event e);
+
       Reservation::Impl *get_lock_impl(ID id);
       Memory::Impl *get_memory_impl(ID id);
       Processor::Impl *get_processor_impl(ID id);
@@ -1396,7 +1617,11 @@ namespace LegionRuntime {
 
     protected:
     public:
-      static Runtime *runtime;
+      Machine::Impl *machine;
+
+      Processor::TaskIDTable task_table;
+      ReductionOpTable reduce_op_table;
+
 #ifdef NODE_LOGGING
       static const char *prefix;
 #endif
@@ -1405,16 +1630,76 @@ namespace LegionRuntime {
       Node *nodes;
       Memory::Impl *global_memory;
       EventTableAllocator::FreeList *local_event_free_list;
+      BarrierTableAllocator::FreeList *local_barrier_free_list;
       ReservationTableAllocator::FreeList *local_reservation_free_list;
       IndexSpaceTableAllocator::FreeList *local_index_space_free_list;
       ProcessorGroupTableAllocator::FreeList *local_proc_group_free_list;
 
+      pthread_t *background_pthread;
 #ifdef DEADLOCK_TRACE
       unsigned next_thread;
       pthread_t all_threads[MAX_NUM_THREADS];
       unsigned thread_counts[MAX_NUM_THREADS];
 #endif
     };
+
+    extern Runtime::Impl *runtime_singleton;
+    inline Runtime::Impl *get_runtime(void) { return runtime_singleton; }
+
+    template <typename T>
+    StaticAccess<T>::StaticAccess(T* thing_with_data, bool already_valid /*= false*/)
+      : data(&thing_with_data->locked_data)
+    {
+      // if already_valid, just check that data is already valid
+      if(already_valid) {
+	assert(data->valid);
+      } else {
+	if(!data->valid) {
+	  // get a valid copy of the static data by taking and then releasing
+	  //  a shared lock
+	  Event e = thing_with_data->lock.acquire(1, false);
+	  if(!e.has_triggered()) {
+	    GenEventImpl *e_impl = get_runtime()->get_genevent_impl(e);
+	    e_impl->external_wait(e.gen);// TODO: must this be blocking?
+	  }
+	  thing_with_data->lock.release();
+	  assert(data->valid);
+	}
+      }
+    }
+
+    template <typename T>
+    SharedAccess<T>::SharedAccess(T* thing_with_data, bool already_held /*= false*/)
+      : data(&thing_with_data->locked_data), lock(&thing_with_data->lock)
+    {
+      // if already_held, just check that it's held (if in debug mode)
+      if(already_held) {
+	assert(lock->is_locked(1, true));
+      } else {
+	Event e = thing_with_data->lock.acquire(1, false);
+	if(!e.has_triggered()) {
+	  GenEventImpl *e_impl = get_runtime()->get_genevent_impl(e);
+	  e_impl->external_wait(e.gen);// TODO: must this be blocking?
+	}
+      }
+    }
+
+    template <typename T>
+    ExclusiveAccess<T>::ExclusiveAccess(T* thing_with_data, bool already_held /*= false*/)
+      : data(&thing_with_data->locked_data), lock(&thing_with_data->lock)
+    {
+      // if already_held, just check that it's held (if in debug mode)
+      if(already_held) {
+	assert(lock->is_locked(0, true));
+      } else {
+	Event e = thing_with_data->lock.acquire(0, true);
+	if(!e.has_triggered()) {
+	  GenEventImpl *e_impl = get_runtime()->get_genevent_impl(e);
+	  e_impl->external_wait(e.gen);// TODO: must this be blocking?
+	}
+      }
+    }
+
 
   }; // namespace LowLevel
 }; // namespace LegionRuntime

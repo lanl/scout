@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -21,10 +21,12 @@ fspace k (r : region(int)) {
   s : region(int),
 }
 
-task f(m : region(int)), reads(m)
+task f(m : region(int))
+where reads(m) do
 end
 
-task g(a : region(int), b : k(a)), reads(a)
+task g(a : region(int), b : k(a))
+where reads(a) do
   var c = b.s
   return f(c)
 end

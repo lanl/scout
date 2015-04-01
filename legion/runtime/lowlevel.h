@@ -1,4 +1,4 @@
-/* Copyright 2014 Stanford University
+/* Copyright 2015 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,307 +47,13 @@ namespace LegionRuntime {
     class RegionInstance;
 
     class Machine;
+    class Runtime;
 
     typedef ::legion_lowlevel_id_t IDType;
     typedef ::legion_lowlevel_address_space_t AddressSpace;
-
-    class Event {
-    public:
-      typedef IDType id_t;
-      typedef unsigned gen_t;
-
-      id_t id;
-      gen_t gen;
-      bool operator<(const Event& rhs) const 
-      { 
-        if (id < rhs.id)
-          return true;
-        else if (id > rhs.id)
-          return false;
-        else
-          return (gen < rhs.gen);
-      }
-      bool operator==(const Event& rhs) const { return (id == rhs.id) && (gen == rhs.gen); }
-      bool operator!=(const Event& rhs) const { return (id != rhs.id) || (gen != rhs.gen); }
-
-      class Impl;
-      Impl *impl(void) const;
-
-      static const Event NO_EVENT;
-
-      bool exists(void) const { return id != 0; }
-
-      // test whether an event has triggered without waiting
-      bool has_triggered(void) const;
-
-      // causes calling thread to block until event has occurred
-      void wait(bool block = false) const;
-
-      // used by non-legion threads to wait on an event - always blocking
-      void external_wait(void) const;
-
-      // creates an event that won't trigger until all input events have
-      static Event merge_events(const std::set<Event>& wait_for);
-      static Event merge_events(Event ev1, Event ev2,
-				Event ev3 = NO_EVENT, Event ev4 = NO_EVENT,
-				Event ev5 = NO_EVENT, Event ev6 = NO_EVENT);
-    };
-
-    // A user level event has all the properties of event, except
-    // it can be triggered by the user.  This prevents users from
-    // triggering arbitrary events without doing something like
-    // an unsafe cast.
-    class UserEvent : public Event {
-    public:
-      static UserEvent create_user_event(void);
-      void trigger(Event wait_on = Event::NO_EVENT) const;
-
-      static const UserEvent NO_USER_EVENT;
-    };
-
-    // a Barrier is similar to a UserEvent, except that it has a count of how
-    //  many threads (or whatever) need to "trigger" before the actual trigger
-    //  occurs
-    class Barrier : public Event {
-    public:
-      typedef unsigned long long timestamp_t; // used to avoid race conditions with arrival adjustments
-
-      timestamp_t timestamp;
-
-      static Barrier create_barrier(unsigned expected_arrivals);
-      void destroy_barrier(void);
-
-      Barrier advance_barrier(void) const;
-      Barrier alter_arrival_count(int delta) const;
-      Event get_previous_phase(void) const;
-
-      void arrive(unsigned count = 1, Event wait_on = Event::NO_EVENT) const;
-    };
-
-    class Reservation {
-    public:
-      typedef IDType id_t;
-      id_t id;
-      bool operator<(const Reservation& rhs) const { return id < rhs.id; }
-      bool operator==(const Reservation& rhs) const { return id == rhs.id; }
-      bool operator!=(const Reservation& rhs) const { return id != rhs.id; }
-
-      class Impl;
-      Impl *impl(void) const;
-
-      static const Reservation NO_RESERVATION;
-
-      bool exists(void) const { return id != 0; }
-
-      // requests ownership (either exclusive or shared) of the reservation with a 
-      //   specified mode - returns an event that will trigger when the reservation 
-      //   is granted
-      Event acquire(unsigned mode = 0, bool exclusive = true, Event wait_on = Event::NO_EVENT) const;
-      // releases a held reservation - release can be deferred until an event triggers
-      void release(Event wait_on = Event::NO_EVENT) const;
-
-      // Create a new reservation, destroy an existing reservation 
-      static Reservation create_reservation(size_t _data_size = 0);
-      void destroy_reservation();
-
-      size_t data_size(void) const;
-      void *data_ptr(void) const;
-    };
-
-    class Processor {
-    public:
-      typedef IDType id_t;
-      id_t id;
-      bool operator<(const Processor& rhs) const { return id < rhs.id; }
-      bool operator==(const Processor& rhs) const { return id == rhs.id; }
-      bool operator!=(const Processor& rhs) const { return id != rhs.id; }
-
-      class Impl;
-      Impl *impl(void) const;
-
-      static const Processor NO_PROC;
-
-      bool exists(void) const { return id != 0; }
-
-      Processor get_utility_processor(void) const;
-
-      typedef ::legion_lowlevel_task_func_id_t TaskFuncID;
-      typedef void (*TaskFuncPtr)(const void *args, size_t arglen, Processor proc);
-      typedef std::map<TaskFuncID, TaskFuncPtr> TaskIDTable;
-
-      // Different Processor types
-      // Keep this in sync with legion_processor_kind_t in lowlevel_config.h
-      enum Kind {
-        TOC_PROC = ::TOC_PROC, // Throughput core
-        LOC_PROC = ::LOC_PROC, // Latency core
-        UTIL_PROC = ::UTIL_PROC, // Utility core
-        PROC_GROUP = ::PROC_GROUP, // Processor group
-      };
-
-      void enable_idle_task(void);
-      void disable_idle_task(void);
-
-      // Return the address space for this processor
-      AddressSpace address_space(void) const;
-      // Return the local ID within the address space
-      IDType local_id(void) const;
-
-      static Processor create_group(const std::vector<Processor>& members);
-      void get_group_members(std::vector<Processor>& members);
-
-      // special task IDs
-      enum {
-        // Save ID 0 for the force shutdown function
-	TASK_ID_REQUEST_SHUTDOWN   = 0,
-	TASK_ID_PROCESSOR_INIT     = 1, // only called by utility processors
-	TASK_ID_PROCESSOR_SHUTDOWN = 2, // only called by utility processors
-	TASK_ID_PROCESSOR_IDLE     = 3, // typically used for high-level scheduler, only called by utility processors
-	TASK_ID_FIRST_AVAILABLE    = 4,
-      };
-
-      Event spawn(TaskFuncID func_id, const void *args, size_t arglen,
-		  Event wait_on = Event::NO_EVENT, int priority = 0) const;
-    };
-
-    class Memory {
-    public:
-      typedef IDType id_t;
-      id_t id;
-      bool operator<(const Memory &rhs) const { return id < rhs.id; }
-      bool operator==(const Memory &rhs) const { return id == rhs.id; }
-      bool operator!=(const Memory &rhs) const { return id != rhs.id; }
-
-      class Impl;
-      Impl *impl(void) const;
-
-      static const Memory NO_MEMORY;
-
-      bool exists(void) const { return id != 0; }
-
-      // Return the address space for this memory
-      AddressSpace address_space(void) const;
-      // Return the local ID within the address space
-      IDType local_id(void) const;
-
-      // Different Memory types
-      enum Kind {
-        GLOBAL_MEM, // Guaranteed visible to all processors on all nodes (e.g. GASNet memory, universally slow)
-        SYSTEM_MEM, // Visible to all processors on a node
-        REGDMA_MEM, // Registered memory visible to all processors on a node, can be a target of RDMA
-        SOCKET_MEM, // Memory visible to all processors within a node, better performance to processors on same socket 
-        Z_COPY_MEM, // Zero-Copy memory visible to all CPUs within a node and one or more GPUs 
-        GPU_FB_MEM,   // Framebuffer memory for one GPU and all its SMs
-        LEVEL3_CACHE, // CPU L3 Visible to all processors on the node, better performance to processors on same socket 
-        LEVEL2_CACHE, // CPU L2 Visible to all processors on the node, better performance to one processor
-        LEVEL1_CACHE, // CPU L1 Visible to all processors on the node, better performance to one processor
-      };
-    };
-
-    class ElementMask {
-    public:
-      ElementMask(void);
-      explicit ElementMask(int num_elements, int first_element = 0);
-      ElementMask(const ElementMask &copy_from, int num_elements = -1, int first_element = 0);
-      ~ElementMask(void);
-
-      void init(int _first_element, int _num_elements, Memory _memory, off_t _offset);
-
-      int get_num_elmts(void) const { return num_elements; }
-
-      void enable(int start, int count = 1);
-      void disable(int start, int count = 1);
-
-      int find_enabled(int count = 1, int start = 0) const;
-      int find_disabled(int count = 1, int start = 0) const;
-      
-      bool is_set(int ptr) const;
-      size_t pop_count(bool enabled = true) const;
-      bool operator!(void) const;
-      bool operator==(const ElementMask &other) const;
-      bool operator!=(const ElementMask &other) const;
-      // union/intersect/subtract?
-      ElementMask operator|(const ElementMask &other) const;
-      ElementMask operator&(const ElementMask &other) const;
-      ElementMask operator-(const ElementMask &other) const;
-
-      ElementMask& operator|=(const ElementMask &other);
-      ElementMask& operator&=(const ElementMask &other);
-      ElementMask& operator-=(const ElementMask &other);
-
-      int first_enabled(void) const { return first_enabled_elmt; }
-      int last_enabled(void) const { return last_enabled_elmt; }
-
-      ElementMask& operator=(const ElementMask &rhs);
-
-      enum OverlapResult { OVERLAP_NO, OVERLAP_MAYBE, OVERLAP_YES };
-
-      OverlapResult overlaps_with(const ElementMask& other,
-				  off_t max_effort = -1) const;
-
-      ElementMask intersect_with(const ElementMask &other);
-
-      class Enumerator {
-      public:
-	Enumerator(const ElementMask& _mask, int _start, int _polarity);
-	~Enumerator(void);
-
-	bool get_next(int &position, int &length);
-	bool peek_next(int &position, int &length);
-
-      protected:
-	const ElementMask& mask;
-	int pos;
-	int polarity;
-      };
-
-      Enumerator *enumerate_enabled(int start = 0) const;
-      Enumerator *enumerate_disabled(int start = 0) const;
-
-      size_t raw_size(void) const;
-      const void *get_raw(void) const;
-      void set_raw(const void *data);
-
-      // Implementations below
-      template <class T>
-      static int forall_ranges(T &executor,
-			       const ElementMask &mask,
-			       int start = 0, int count = -1,
-			       bool do_enabled = true);
-
-      template <class T>
-      static int forall_ranges(T &executor,
-			       const ElementMask &mask1, 
-			       const ElementMask &mask2,
-			       int start = 0, int count = -1,
-			       bool do_enabled1 = true,
-			       bool do_enabled2 = true);
-
-    public:
-      friend class Enumerator;
-      int first_element;
-      int num_elements;
-      Memory memory;
-      off_t offset;
-      void *raw_data;
-      int first_enabled_elmt, last_enabled_elmt;
-    };
-
-    // a reduction op needs to look like this
-#ifdef NOT_REALLY_CODE
-    class MyReductionOp {
-    public:
-      typedef int LHS;
-      typedef int RHS;
-
-      static void apply(LHS& lhs, RHS rhs);
-
-      // both of these are optional
-      static const RHS identity;
-      static void fold(RHS& rhs1, RHS rhs2);
-    };
-#endif
-
     typedef legion_lowlevel_reduction_op_id_t ReductionOpID;
+
+    typedef int ReductionOpID;
     class ReductionOpUntyped {
     public:
       size_t sizeof_lhs;
@@ -532,6 +238,312 @@ namespace LegionRuntime {
       return redop;
     }
 
+    typedef unsigned int AddressSpace;
+
+    class Event {
+    public:
+      typedef IDType id_t;
+      typedef unsigned gen_t;
+
+      id_t id;
+      gen_t gen;
+      bool operator<(const Event& rhs) const 
+      { 
+        if (id < rhs.id)
+          return true;
+        else if (id > rhs.id)
+          return false;
+        else
+          return (gen < rhs.gen);
+      }
+      bool operator==(const Event& rhs) const { return (id == rhs.id) && (gen == rhs.gen); }
+      bool operator!=(const Event& rhs) const { return (id != rhs.id) || (gen != rhs.gen); }
+
+      class Impl;
+      Impl *impl(void) const;
+
+      static const Event NO_EVENT;
+
+      bool exists(void) const { return id != 0; }
+
+      // test whether an event has triggered without waiting
+      bool has_triggered(void) const;
+
+      // causes calling thread to block until event has occurred
+      void wait(bool block = false) const;
+
+      // used by non-legion threads to wait on an event - always blocking
+      void external_wait(void) const;
+
+      // creates an event that won't trigger until all input events have
+      static Event merge_events(const std::set<Event>& wait_for);
+      static Event merge_events(Event ev1, Event ev2,
+				Event ev3 = NO_EVENT, Event ev4 = NO_EVENT,
+				Event ev5 = NO_EVENT, Event ev6 = NO_EVENT);
+    };
+
+    // A user level event has all the properties of event, except
+    // it can be triggered by the user.  This prevents users from
+    // triggering arbitrary events without doing something like
+    // an unsafe cast.
+    class UserEvent : public Event {
+    public:
+      static UserEvent create_user_event(void);
+      void trigger(Event wait_on = Event::NO_EVENT) const;
+
+      static const UserEvent NO_USER_EVENT;
+    };
+
+    // a Barrier is similar to a UserEvent, except that it has a count of how
+    //  many threads (or whatever) need to "trigger" before the actual trigger
+    //  occurs
+    class Barrier : public Event {
+    public:
+      typedef unsigned long long timestamp_t; // used to avoid race conditions with arrival adjustments
+
+      timestamp_t timestamp;
+
+      static Barrier create_barrier(unsigned expected_arrivals, ReductionOpID redop_id = 0,
+				    const void *initial_value = 0, size_t initial_value_size = 0);
+      void destroy_barrier(void);
+
+      Barrier advance_barrier(void) const;
+      Barrier alter_arrival_count(int delta) const;
+      Barrier get_previous_phase(void) const;
+
+      void arrive(unsigned count = 1, Event wait_on = Event::NO_EVENT,
+		  const void *reduce_value = 0, size_t reduce_value_size = 0) const;
+
+      bool get_result(void *value, size_t value_size) const;
+    };
+
+    class Reservation {
+    public:
+      typedef IDType id_t;
+      id_t id;
+      bool operator<(const Reservation& rhs) const { return id < rhs.id; }
+      bool operator==(const Reservation& rhs) const { return id == rhs.id; }
+      bool operator!=(const Reservation& rhs) const { return id != rhs.id; }
+
+      class Impl;
+      Impl *impl(void) const;
+
+      static const Reservation NO_RESERVATION;
+
+      bool exists(void) const { return id != 0; }
+
+      // requests ownership (either exclusive or shared) of the reservation with a 
+      //   specified mode - returns an event that will trigger when the reservation 
+      //   is granted
+      Event acquire(unsigned mode = 0, bool exclusive = true, Event wait_on = Event::NO_EVENT) const;
+      // releases a held reservation - release can be deferred until an event triggers
+      void release(Event wait_on = Event::NO_EVENT) const;
+
+      // Create a new reservation, destroy an existing reservation 
+      static Reservation create_reservation(size_t _data_size = 0);
+      void destroy_reservation();
+
+      size_t data_size(void) const;
+      void *data_ptr(void) const;
+    };
+
+    class Processor {
+    public:
+      typedef IDType id_t;
+      id_t id;
+      bool operator<(const Processor& rhs) const { return id < rhs.id; }
+      bool operator==(const Processor& rhs) const { return id == rhs.id; }
+      bool operator!=(const Processor& rhs) const { return id != rhs.id; }
+
+      class Impl;
+      Impl *impl(void) const;
+
+      static const Processor NO_PROC;
+
+      bool exists(void) const { return id != 0; }
+
+      typedef ::legion_lowlevel_task_func_id_t TaskFuncID;
+      typedef void (*TaskFuncPtr)(const void *args, size_t arglen, Processor proc);
+      typedef std::map<TaskFuncID, TaskFuncPtr> TaskIDTable;
+
+      // Different Processor types
+      // Keep this in sync with legion_processor_kind_t in lowlevel_config.h
+      enum Kind {
+        TOC_PROC = ::TOC_PROC, // Throughput core
+        LOC_PROC = ::LOC_PROC, // Latency core
+        UTIL_PROC = ::UTIL_PROC, // Utility core
+        PROC_GROUP = ::PROC_GROUP, // Processor group
+      };
+
+      // Return what kind of processor this is
+      Kind kind(void) const;
+      // Return the address space for this processor
+      AddressSpace address_space(void) const;
+      // Return the local ID within the address space
+      IDType local_id(void) const;
+
+      static Processor create_group(const std::vector<Processor>& members);
+      void get_group_members(std::vector<Processor>& members);
+
+      // special task IDs
+      enum {
+        // Save ID 0 for the force shutdown function
+	TASK_ID_REQUEST_SHUTDOWN   = 0,
+	TASK_ID_PROCESSOR_INIT     = 1, // only called by utility processors
+	TASK_ID_PROCESSOR_SHUTDOWN = 2, // only called by utility processors
+	TASK_ID_FIRST_AVAILABLE    = 4,
+      };
+
+      Event spawn(TaskFuncID func_id, const void *args, size_t arglen,
+		  Event wait_on = Event::NO_EVENT, int priority = 0) const;
+
+      static Processor get_executing_processor(void);
+    };
+
+    class Memory {
+    public:
+      typedef IDType id_t;
+      id_t id;
+      bool operator<(const Memory &rhs) const { return id < rhs.id; }
+      bool operator==(const Memory &rhs) const { return id == rhs.id; }
+      bool operator!=(const Memory &rhs) const { return id != rhs.id; }
+
+      class Impl;
+      Impl *impl(void) const;
+
+      static const Memory NO_MEMORY;
+
+      bool exists(void) const { return id != 0; }
+
+      // Return the address space for this memory
+      AddressSpace address_space(void) const;
+      // Return the local ID within the address space
+      IDType local_id(void) const;
+
+      // Different Memory types
+      enum Kind {
+        GLOBAL_MEM, // Guaranteed visible to all processors on all nodes (e.g. GASNet memory, universally slow)
+        SYSTEM_MEM, // Visible to all processors on a node
+        REGDMA_MEM, // Registered memory visible to all processors on a node, can be a target of RDMA
+        SOCKET_MEM, // Memory visible to all processors within a node, better performance to processors on same socket 
+        Z_COPY_MEM, // Zero-Copy memory visible to all CPUs within a node and one or more GPUs 
+        GPU_FB_MEM,   // Framebuffer memory for one GPU and all its SMs
+        DISK_MEM,   // Disk memory visible to all processors on a node
+        LEVEL3_CACHE, // CPU L3 Visible to all processors on the node, better performance to processors on same socket 
+        LEVEL2_CACHE, // CPU L2 Visible to all processors on the node, better performance to one processor
+        LEVEL1_CACHE, // CPU L1 Visible to all processors on the node, better performance to one processor
+      };
+
+      // Return what kind of memory this is
+      Kind kind(void) const;
+      // Return the maximum capacity of this memory
+      size_t capacity(void) const;
+    };
+
+    class ElementMask {
+    public:
+      ElementMask(void);
+      explicit ElementMask(int num_elements, int first_element = 0);
+      ElementMask(const ElementMask &copy_from, int num_elements = -1, int first_element = 0);
+      ~ElementMask(void);
+
+      void init(int _first_element, int _num_elements, Memory _memory, off_t _offset);
+
+      int get_num_elmts(void) const { return num_elements; }
+
+      void enable(int start, int count = 1);
+      void disable(int start, int count = 1);
+
+      int find_enabled(int count = 1, int start = 0) const;
+      int find_disabled(int count = 1, int start = 0) const;
+      
+      bool is_set(int ptr) const;
+      size_t pop_count(bool enabled = true) const;
+      bool operator!(void) const;
+      bool operator==(const ElementMask &other) const;
+      bool operator!=(const ElementMask &other) const;
+      // union/intersect/subtract?
+      ElementMask operator|(const ElementMask &other) const;
+      ElementMask operator&(const ElementMask &other) const;
+      ElementMask operator-(const ElementMask &other) const;
+
+      ElementMask& operator|=(const ElementMask &other);
+      ElementMask& operator&=(const ElementMask &other);
+      ElementMask& operator-=(const ElementMask &other);
+
+      int first_enabled(void) const { return first_enabled_elmt; }
+      int last_enabled(void) const { return last_enabled_elmt; }
+
+      ElementMask& operator=(const ElementMask &rhs);
+
+      enum OverlapResult { OVERLAP_NO, OVERLAP_MAYBE, OVERLAP_YES };
+
+      OverlapResult overlaps_with(const ElementMask& other,
+				  off_t max_effort = -1) const;
+
+      ElementMask intersect_with(const ElementMask &other);
+
+      class Enumerator {
+      public:
+	Enumerator(const ElementMask& _mask, int _start, int _polarity);
+	~Enumerator(void);
+
+	bool get_next(int &position, int &length);
+	bool peek_next(int &position, int &length);
+
+      protected:
+	const ElementMask& mask;
+	int pos;
+	int polarity;
+      };
+
+      Enumerator *enumerate_enabled(int start = 0) const;
+      Enumerator *enumerate_disabled(int start = 0) const;
+
+      size_t raw_size(void) const;
+      const void *get_raw(void) const;
+      void set_raw(const void *data);
+
+      // Implementations below
+      template <class T>
+      static int forall_ranges(T &executor,
+			       const ElementMask &mask,
+			       int start = 0, int count = -1,
+			       bool do_enabled = true);
+
+      template <class T>
+      static int forall_ranges(T &executor,
+			       const ElementMask &mask1, 
+			       const ElementMask &mask2,
+			       int start = 0, int count = -1,
+			       bool do_enabled1 = true,
+			       bool do_enabled2 = true);
+
+    public:
+      friend class Enumerator;
+      int first_element;
+      int num_elements;
+      Memory memory;
+      off_t offset;
+      void *raw_data;
+      int first_enabled_elmt, last_enabled_elmt;
+    };
+
+    // a reduction op needs to look like this
+#ifdef NOT_REALLY_CODE
+    class MyReductionOp {
+    public:
+      typedef int LHS;
+      typedef int RHS;
+
+      static void apply(LHS& lhs, RHS rhs);
+
+      // both of these are optional
+      static const RHS identity;
+      static void fold(RHS& rhs1, RHS rhs2);
+    };
+#endif
+
     class RegionInstance {
     public:
       typedef IDType id_t;
@@ -590,8 +602,17 @@ namespace LegionRuntime {
     public:
       enum { MAX_POINT_DIM = 3 };
 
-      DomainPoint(void) : dim(0) { point_data[0] = 0; }
-      DomainPoint(int index) : dim(0) { point_data[0] = index; }
+      DomainPoint(void) : dim(0) 
+      { 
+        for (int i = 0; i < MAX_POINT_DIM; i++)
+          point_data[i] = 0; 
+      }
+      DomainPoint(int index) : dim(0) 
+      { 
+        point_data[0] = index; 
+        for (int i = 1; i < MAX_POINT_DIM; i++)
+          point_data[i] = 0;
+      }
 
       DomainPoint(const DomainPoint &rhs) : dim(rhs.dim)
       {
@@ -919,17 +940,23 @@ namespace LegionRuntime {
 
       LegionRuntime::LowLevel::IndexSpace get_index_space(void) const
       {
-	assert(is_id);
-	IndexSpace is = { static_cast<IDType>(is_id) };
-	return is;
+        if (is_id)
+        {
+          IndexSpace is;
+          is.id = static_cast<IDType>(is_id);
+          return is;
+        }
+        return IndexSpace::NO_SPACE;
       }
 
       LegionRuntime::LowLevel::IndexSpace get_index_space(bool create_if_needed = false)
       {
 	IndexSpace is;
 	if(!is_id) {
-	  assert(create_if_needed);
-	  is_id = IndexSpace::create_index_space(1).id;
+          if (create_if_needed)
+            is_id = IndexSpace::create_index_space(1).id;
+          else
+            return IndexSpace::NO_SPACE;
 	}
 	is.id = is_id;
 	return is;
@@ -977,7 +1004,7 @@ namespace LegionRuntime {
 
       int get_dim(void) const { return dim; }
 
-      int get_volume(void) const
+      size_t get_volume(void) const
       {
         switch (dim)
         {
@@ -1547,59 +1574,29 @@ namespace LegionRuntime {
 
     class Machine {
     public:
-      Machine(int *argc, char ***argv,
-	      const Processor::TaskIDTable &task_table,
-	      const ReductionOpTable &redop_table,
-	      bool cps_style = false, Processor::TaskFuncID init_id = 0);
-      ~Machine(void);
+      class Impl;  // hidden internal implementation
 
-      // there are three potentially interesting ways to start the initial
-      // tasks:
-      enum RunStyle {
-	ONE_TASK_ONLY,  // a single task on a single node of the machine
-	ONE_TASK_PER_NODE, // one task running on one proc of each node
-	ONE_TASK_PER_PROC, // a task for every processor in the machine
-      };
+      explicit Machine(Impl *_impl) : impl(_impl) {}
+      Machine(const Machine& m) : impl(m.impl) {}
+      Machine& operator=(const Machine& m) { impl = m.impl; return *this; }
+      ~Machine(void) {}
 
+      static Machine get_machine(void);
 
-      void run(Processor::TaskFuncID task_id = 0, RunStyle style = ONE_TASK_ONLY,
-	       const void *args = 0, size_t arglen = 0, bool background = false);
+      void get_all_memories(std::set<Memory>& mset) const;
+      void get_all_processors(std::set<Processor>& pset) const;
 
-      // requests a shutdown of all the processors
-      void shutdown(bool local_request = true);
-
-      void wait_for_shutdown(void);
-
-    public:
-      const std::set<Memory>&    get_all_memories(void) const { return memories; }
-      const std::set<Processor>& get_all_processors(void) const { return procs; }
       // Return the set of memories visible from a processor
-      const std::set<Memory>&    get_visible_memories(Processor p) const
-      { return visible_memories_from_procs.find(p)->second; }
+      void get_visible_memories(Processor p, std::set<Memory>& mset) const;
 
       // Return the set of memories visible from a memory
-      const std::set<Memory>&    get_visible_memories(Memory m) const
-      { return visible_memories_from_memory.find(m)->second; }
+      void get_visible_memories(Memory m, std::set<Memory>& mset) const;
 
       // Return the set of processors which can all see a given memory
-      const std::set<Processor>& get_shared_processors(Memory m) const
-      { return visible_procs_from_memory.find(m)->second; }
-
-      // Return the set of processors "local" to a given other one
-      const std::set<Processor>& get_local_processors(Processor p) const;
-      // Return whether or not the machine is running with explicit utility processors
-      bool has_explicit_utility_processors(void) const { return explicit_utility_procs; }
-
-      Processor::Kind get_processor_kind(Processor p) const;
-      Memory::Kind get_memory_kind(Memory m) const;
-      size_t get_memory_size(const Memory m) const;
+      void get_shared_processors(Memory m, std::set<Processor>& pset) const;
 
       size_t get_address_space_count(void) const;
 
-      //void add_processor(Processor p) { procs.insert(p); }
-      static Machine* get_machine(void);
-
-      static Processor get_executing_processor(void);
     public:
       struct ProcessorMemoryAffinity {
 	Processor p;
@@ -1616,28 +1613,51 @@ namespace LegionRuntime {
 
       int get_proc_mem_affinity(std::vector<ProcessorMemoryAffinity>& result,
 				Processor restrict_proc = Processor::NO_PROC,
-				Memory restrict_memory = Memory::NO_MEMORY);
+				Memory restrict_memory = Memory::NO_MEMORY) const;
 
       int get_mem_mem_affinity(std::vector<MemoryMemoryAffinity>& result,
 			       Memory restrict_mem1 = Memory::NO_MEMORY,
-			       Memory restrict_mem2 = Memory::NO_MEMORY);
+			       Memory restrict_mem2 = Memory::NO_MEMORY) const;
 
     protected:
-      std::set<Processor> procs;
-      std::set<Memory> memories;
-      std::vector<ProcessorMemoryAffinity> proc_mem_affinities;
-      std::vector<MemoryMemoryAffinity> mem_mem_affinities;
-      std::map<Processor,std::set<Memory> > visible_memories_from_procs;
-      std::map<Memory,std::set<Memory> > visible_memories_from_memory;
-      std::map<Memory,std::set<Processor> > visible_procs_from_memory;
-      bool explicit_utility_procs;
-      void *background_pthread; // pointer to pthread_t in the background
-    public:
-      struct NodeAnnounceData;
+      Impl *impl;
+    };
 
-      void parse_node_announce_data(const void *args, size_t arglen,
-				    const NodeAnnounceData& annc_data,
-				    bool remote);
+    class Runtime {
+    public:
+      Runtime(void);
+      Runtime(const Runtime& r) : impl(r.impl) {}
+      Runtime& operator=(const Runtime& r) { impl = r.impl; return *this; }
+
+      ~Runtime(void) {}
+
+      static Runtime get_runtime(void);
+
+      bool init(int *argc, char ***argv);
+
+      bool register_task(Processor::TaskFuncID taskid, Processor::TaskFuncPtr taskptr);
+      bool register_reduction(ReductionOpID redop_id, const ReductionOpUntyped *redop);
+
+      // there are three potentially interesting ways to start the initial
+      // tasks:
+      enum RunStyle {
+	ONE_TASK_ONLY,  // a single task on a single node of the machine
+	ONE_TASK_PER_NODE, // one task running on one proc of each node
+	ONE_TASK_PER_PROC, // a task for every processor in the machine
+      };
+
+
+      void run(Processor::TaskFuncID task_id = 0, RunStyle style = ONE_TASK_ONLY,
+	       const void *args = 0, size_t arglen = 0, bool background = false);
+
+      // requests a shutdown of the runtime
+      void shutdown(void);
+
+      void wait_for_shutdown(void);
+
+      class Impl;
+    protected:
+      Impl *impl;
     };
 
     // Implementations for template functions

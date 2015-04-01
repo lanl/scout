@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -14,10 +14,10 @@
 
 -- Legion Type Checker
 
-local ast = terralib.require("legion/ast")
-local log = terralib.require("legion/log")
-local std = terralib.require("legion/std")
-local symbol_table = terralib.require("legion/symbol_table")
+local ast = require("legion/ast")
+local log = require("legion/log")
+local std = require("legion/std")
+local symbol_table = require("legion/symbol_table")
 
 local type_check = {}
 
@@ -29,7 +29,9 @@ function context:new_local_scope()
     type_env = self.type_env:new_local_scope(),
     privileges = self.privileges,
     constraints = self.constraints,
+    region_universe = self.region_universe,
     expected_return_type = self.expected_return_type,
+    fixup_nodes = self.fixup_nodes,
   }
   setmetatable(cx, context)
   return cx
@@ -40,7 +42,9 @@ function context:new_task_scope(expected_return_type)
     type_env = self.type_env:new_local_scope(),
     privileges = {},
     constraints = {},
-    expected_return_type = { [ 1 ] = expected_return_type },
+    region_universe = {},
+    expected_return_type = {expected_return_type},
+    fixup_nodes = terralib.newlist(),
   }
   setmetatable(cx, context)
   return cx
@@ -52,6 +56,11 @@ function context.new_global_scope(type_env)
   }
   setmetatable(cx, context)
   return cx
+end
+
+function context:intern_region(region_type)
+  assert(self.region_universe)
+  self.region_universe[region_type] = true
 end
 
 function context:get_return_type()
@@ -137,11 +146,22 @@ function type_check.expr_index_access(cx, node)
   local index = type_check.expr(cx, node.index)
   local index_type = std.check_read(cx, index.expr_type)
 
-  if std.is_partition(value_type) then
+  if std.is_partition(value_type) or std.is_cross_product(value_type) or
+    (std.is_region(value_type) and value_type:has_default_partition())
+  then
     if index:is(ast.typed.ExprConstant) then
       local parent = value_type:parent_region()
       local subregion = value_type:subregion_constant(index.value)
       std.add_constraint(cx, subregion, parent, "<=", false)
+
+      if value_type:is_disjoint() then
+        local other_subregions = value_type:subregions_constant()
+        for other_index, other_subregion in pairs(other_subregions) do
+          if index.value ~= other_index then
+            std.add_constraint(cx, subregion, other_subregion, "*", true)
+          end
+        end
+      end
 
       return ast.typed.ExprIndexAccess {
         value = value,
@@ -149,7 +169,15 @@ function type_check.expr_index_access(cx, node)
         expr_type = subregion,
       }
     else
-      error("unimplemented index access over non-constant indices")
+      local parent = value_type:parent_region()
+      local subregion = value_type:subregion_dynamic()
+      std.add_constraint(cx, subregion, parent, "<=", false)
+
+      return ast.typed.ExprIndexAccess {
+        value = value,
+        index = index,
+        expr_type = subregion,
+      }
     end
   else
     -- Ask the Terra compiler to kindly tell us what type this operator returns.
@@ -205,7 +233,6 @@ function type_check.expr_method_call(cx, node)
   }
 end
 
-
 function type_check.expr_call(cx, node)
   local fn = type_check.expr(cx, node.fn)
   local args = node.args:map(
@@ -237,7 +264,9 @@ function type_check.expr_call(cx, node)
       if valid then
         fn_type = result_type
       else
-        log.error("no applicable overloaded function for arguments " .. arg_types:mkstring(", "))
+        local func_name = string.gsub(fn.value.name, "^std[.]", "legionlib.")
+        log.error("no applicable overloaded function " .. tostring(func_name) ..
+                  " for arguments " .. arg_types:mkstring(", "))
       end
     elseif std.is_task(fn.value) then
       fn_type = fn.value:gettype()
@@ -254,7 +283,12 @@ function type_check.expr_call(cx, node)
   -- Store the determined type back into the AST node for the function.
   fn.expr_type = fn_type
 
-  local param_symbols = std.fn_param_symbols(fn_type)
+  local param_symbols
+  if std.is_task(fn.value) then
+    param_symbols = fn.value:get_param_symbols()
+  else
+    param_symbols = std.fn_param_symbols(fn_type)
+  end
   local arg_symbols = terralib.newlist()
   for i, arg in ipairs(args) do
     local arg_type = arg_types[i]
@@ -267,15 +301,17 @@ function type_check.expr_call(cx, node)
   local expr_type = std.validate_args(
     param_symbols, arg_symbols, fn_type.isvararg, fn_type.returntype, {}, true)
 
-  local privileges = std.is_task(fn.value) and fn.value:getprivileges()
-  if privileges then
+  if std.is_task(fn.value) then
     local mapping = {}
     for i, arg_symbol in ipairs(arg_symbols) do
+      local param_symbol = param_symbols[i]
       local param_type = fn_type.parameters[i]
+      mapping[param_symbol] = arg_symbol
       mapping[param_type] = arg_symbol
     end
 
-    for _, privilege_list in ipairs(fn.value.privileges) do
+    local privileges = fn.value:getprivileges()
+    for _, privilege_list in ipairs(privileges) do
       for _, privilege in ipairs(privilege_list) do
         local privilege_type = privilege.privilege
         local region = privilege.region
@@ -294,13 +330,24 @@ function type_check.expr_call(cx, node)
         end
       end
     end
+
+    local constraints = fn.value:get_param_constraints()
+    local satisfied, constraint = std.check_constraints(cx, constraints, mapping)
+    if not satisfied then
+      log.error("invalid call missing constraint " .. tostring(constraint.lhs) ..
+                  " " .. tostring(constraint.op) .. " " .. tostring(constraint.rhs))
+    end
   end
 
-  return ast.typed.ExprCall {
+  local result = ast.typed.ExprCall {
     fn = fn,
     args = args,
     expr_type = expr_type,
   }
+  if expr_type == untyped then
+    cx.fixup_nodes:insert(result)
+  end
+  return result
 end
 
 function type_check.expr_cast(cx, node)
@@ -388,6 +435,7 @@ function type_check.expr_ctor_field(cx, node)
   elseif node:is(ast.specialized.ExprCtorRecField) then
     return type_check.expr_ctor_rec_field(cx, node)
   else
+    assert(false)
   end
 end
 
@@ -412,6 +460,58 @@ function type_check.expr_ctor(cx, node)
   }
 end
 
+function type_check.expr_raw_context(cx, node)
+  return ast.typed.ExprRawContext {
+    expr_type = std.c.legion_context_t,
+  }
+end
+
+function type_check.expr_raw_fields(cx, node)
+  local region = type_check.expr(cx, node.region)
+  local region_type = std.check_read(cx, region.expr_type)
+
+  local field_paths, _ = std.flatten_struct_fields(region_type.element_type)
+  local privilege_fields = terralib.newlist()
+  for _, field_path in ipairs(field_paths) do
+    if std.check_any_privilege(cx, region_type, field_path) then
+      privilege_fields:insert(field_path)
+    end
+  end
+  local fields_type = std.c.legion_field_id_t[#privilege_fields]
+
+  return ast.typed.ExprRawFields {
+    region = region,
+    fields = privilege_fields,
+    expr_type = fields_type,
+  }
+end
+
+function type_check.expr_raw_physical(cx, node)
+  local region = type_check.expr(cx, node.region)
+  local region_type = std.check_read(cx, region.expr_type)
+
+  local field_paths, _ = std.flatten_struct_fields(region_type.element_type)
+  local privilege_fields = terralib.newlist()
+  for _, field_path in ipairs(field_paths) do
+    if std.check_any_privilege(cx, region_type, field_path) then
+      privilege_fields:insert(field_path)
+    end
+  end
+  local physical_type = std.c.legion_physical_region_t[#privilege_fields]
+
+  return ast.typed.ExprRawPhysical {
+    region = region,
+    fields = privilege_fields,
+    expr_type = physical_type,
+  }
+end
+
+function type_check.expr_raw_runtime(cx, node)
+  return ast.typed.ExprRawRuntime {
+    expr_type = std.c.legion_runtime_t,
+  }
+end
+
 function type_check.expr_isnull(cx, node)
   local pointer = type_check.expr(cx, node.pointer)
   local pointer_type = std.check_read(cx, pointer.expr_type)
@@ -432,9 +532,74 @@ function type_check.expr_new(cx, node)
 end
 
 function type_check.expr_null(cx, node)
+  if not std.is_ptr(node.pointer_type) then
+    log.error("null requires ptr type, got " .. tostring(node.pointer_type))
+  end
   return ast.typed.ExprNull {
     pointer_type = node.pointer_type,
     expr_type = node.pointer_type,
+  }
+end
+
+function type_check.expr_dynamic_cast(cx, node)
+  local value = type_check.expr(cx, node.value)
+  local value_type = std.check_read(cx, value.expr_type)
+
+  if not std.is_ptr(node.expr_type) then
+    log.error("dynamic_cast requires ptr type as argument 1, got " .. tostring(node.expr_type))
+  end
+  if not std.is_ptr(value_type) then
+    log.error("dynamic_cast requires ptr as argument 2, got " .. tostring(value_type))
+  end
+  if not std.type_eq(node.expr_type.points_to_type, value_type.points_to_type) then
+    log.error("incompatible pointers for dynamic_cast: " .. tostring(node.expr_type) .. " and " .. tostring(value_type))
+  end
+
+  return ast.typed.ExprDynamicCast {
+    value = value,
+    expr_type = node.expr_type,
+  }
+end
+
+function type_check.expr_static_cast(cx, node)
+  local value = type_check.expr(cx, node.value)
+  local value_type = std.check_read(cx, value.expr_type)
+  local expr_type = node.expr_type
+
+  if not std.is_ptr(expr_type) then
+    log.error("static_cast requires ptr type as argument 1, got " .. tostring(expr_type))
+  end
+  if not std.is_ptr(value_type) then
+    log.error("static_cast requires ptr as argument 2, got " .. tostring(value_type))
+  end
+  if not std.type_eq(expr_type.points_to_type, value_type.points_to_type) then
+    log.error("incompatible pointers for static_cast: " .. tostring(expr_type) .. " and " .. tostring(value_type))
+  end
+
+  local parent_region_map = {}
+  for i, value_region_symbol in ipairs(value_type.points_to_region_symbols) do
+    local has_bound = false
+    for j, expr_region_symbol in ipairs(expr_type.points_to_region_symbols) do
+      local constraint = {
+        lhs = value_region_symbol,
+        rhs = expr_region_symbol,
+        op = "<="
+      }
+      if std.check_constraint(cx, constraint) then
+        parent_region_map[i] = j
+        has_bound = true
+        break
+      end
+    end
+    if not has_bound then
+      log.error("invalid constraint in static_cast: region " .. tostring(value_region_symbol) .. " has no parent in " .. tostring(expr_type.points_to_region_symbols:mkstring(", ")))
+    end
+  end
+
+  return ast.typed.ExprStaticCast {
+    value = value,
+    parent_region_map = parent_region_map,
+    expr_type = expr_type,
   }
 end
 
@@ -445,6 +610,17 @@ function type_check.expr_region(cx, node)
   local region = node.expr_type
   std.add_privilege(cx, "reads", region, std.newtuple())
   std.add_privilege(cx, "writes", region, std.newtuple())
+  -- Freshly created regions are, by definition, disjoint from all
+  -- other regions.
+  for other_region, _ in pairs(cx.region_universe) do
+    assert(not std.type_eq(region, other_region))
+    -- But still, don't bother litering the constraint space with
+    -- trivial constraints.
+    if std.type_maybe_eq(region.element_type, other_region.element_type) then
+      std.add_constraint(cx, region, other_region, "*", true)
+    end
+  end
+  cx:intern_region(region)
 
   return ast.typed.ExprRegion {
     element_type = node.element_type,
@@ -461,6 +637,7 @@ function type_check.expr_partition(cx, node)
   local coloring = type_check.expr(cx, node.coloring)
   local coloring_type = std.check_read(cx, coloring.expr_type)
 
+  -- Note: This test can't fail because disjointness is tested in specialize.
   if not (disjointness == std.disjoint or disjointness == std.aliased) then
     log.error("type mismatch in argument 1: expected disjoint or aliased but got " ..
                 tostring(disjointness))
@@ -481,6 +658,30 @@ function type_check.expr_partition(cx, node)
     disjointness = disjointness,
     region = region,
     coloring = coloring,
+    expr_type = node.expr_type,
+  }
+end
+
+function type_check.expr_cross_product(cx, node)
+  local lhs = type_check.expr(cx, node.lhs)
+  local lhs_type = std.check_read(cx, lhs.expr_type)
+
+  local rhs = type_check.expr(cx, node.rhs)
+  local rhs_type = std.check_read(cx, rhs.expr_type)
+
+  if not std.is_partition(lhs_type) then
+    log.error("type mismatch in argument 1: expected partition but got " ..
+                tostring(lhs_type))
+  end
+
+  if not std.is_partition(rhs_type) then
+    log.error("type mismatch in argument 1: expected partition but got " ..
+                tostring(rhs_type))
+  end
+
+  return ast.typed.ExprCrossProduct {
+    lhs = lhs,
+    rhs = rhs,
     expr_type = node.expr_type,
   }
 end
@@ -571,6 +772,8 @@ local binary_ops = {
   ["~="] = binary_equality("~="),
   ["and"] = binary_op_type("and"),
   ["or"] = binary_op_type("or"),
+  ["max"] = binary_op_type("max"),
+  ["min"] = binary_op_type("min"),
 }
 
 function type_check.expr_binary(cx, node)
@@ -598,7 +801,7 @@ function type_check.expr_deref(cx, node)
     log.error("dereference of non-pointer type " .. tostring(value_type))
   end
 
-  local expr_type = std.ref(value_type.points_to_type, value_type.points_to_region_symbol)
+  local expr_type = std.ref(value_type)
 
   return ast.typed.ExprDeref {
     value = value,
@@ -634,6 +837,18 @@ function type_check.expr(cx, node)
   elseif node:is(ast.specialized.ExprCtor) then
     return type_check.expr_ctor(cx, node)
 
+  elseif node:is(ast.specialized.ExprRawContext) then
+    return type_check.expr_raw_context(cx, node)
+
+  elseif node:is(ast.specialized.ExprRawFields) then
+    return type_check.expr_raw_fields(cx, node)
+
+  elseif node:is(ast.specialized.ExprRawPhysical) then
+    return type_check.expr_raw_physical(cx, node)
+
+  elseif node:is(ast.specialized.ExprRawRuntime) then
+    return type_check.expr_raw_runtime(cx, node)
+
   elseif node:is(ast.specialized.ExprIsnull) then
     return type_check.expr_isnull(cx, node)
 
@@ -643,11 +858,20 @@ function type_check.expr(cx, node)
   elseif node:is(ast.specialized.ExprNull) then
     return type_check.expr_null(cx, node)
 
+  elseif node:is(ast.specialized.ExprDynamicCast) then
+    return type_check.expr_dynamic_cast(cx, node)
+
+  elseif node:is(ast.specialized.ExprStaticCast) then
+    return type_check.expr_static_cast(cx, node)
+
   elseif node:is(ast.specialized.ExprRegion) then
     return type_check.expr_region(cx, node)
 
   elseif node:is(ast.specialized.ExprPartition) then
     return type_check.expr_partition(cx, node)
+
+  elseif node:is(ast.specialized.ExprCrossProduct) then
+    return type_check.expr_cross_product(cx, node)
 
   elseif node:is(ast.specialized.ExprUnary) then
     return type_check.expr_unary(cx, node)
@@ -740,6 +964,7 @@ function type_check.stat_for_num(cx, node)
     symbol = node.symbol,
     values = values,
     block = type_check.block(cx, node.block),
+    parallel = node.parallel,
   }
 end
 
@@ -755,8 +980,14 @@ function type_check.stat_for_list(cx, node)
   local cx = cx:new_local_scope()
   local var_type = node.symbol.type
   if not var_type then
-    local region = value_type
-    var_type = std.ptr(region.element_type, terralib.newsymbol(region))
+    -- Hack: Try to recover the original symbol for this region if possible
+    local region
+    if value:is(ast.typed.ExprID) then
+      region = value.value
+    else
+      region = terralib.newsymbol(value_type)
+    end
+    var_type = std.ptr(value_type.element_type, region)
   end
   if not std.is_ptr(var_type) then
     log.error("iterator for loop expected pointer type, got " .. tostring(var_type))
@@ -773,6 +1004,7 @@ function type_check.stat_for_list(cx, node)
     symbol = node.symbol,
     value = value,
     block = type_check.block(cx, node.block),
+    vectorize = node.vectorize,
   }
 end
 
@@ -1036,13 +1268,14 @@ function type_check.stat_task(cx, node)
 
   local params = node.params:map(
     function(param) return type_check.stat_task_param(cx, param) end)
-  local privileges = node.privileges
   local prototype = node.prototype
+  prototype:set_param_symbols(params:map(function(param) return param.symbol end))
 
   local task_type = terralib.types.functype(
     params:map(function(param) return param.param_type end), return_type, false)
   prototype:settype(task_type)
 
+  local privileges = node.privileges
   for _, privilege_list in ipairs(privileges) do
     for _, privilege in ipairs(privilege_list) do
       local privilege_type = privilege.privilege
@@ -1050,9 +1283,14 @@ function type_check.stat_task(cx, node)
       local field_path = privilege.field_path
       assert(std.is_region(region.type))
       std.add_privilege(cx, privilege_type, region.type, field_path)
+      cx:intern_region(region.type)
     end
   end
   prototype:setprivileges(privileges)
+
+  local constraints = node.constraints
+  std.add_constraints(cx, constraints)
+  prototype:set_param_constraints(constraints)
 
   local body = type_check.block(cx, node.body)
 
@@ -1064,14 +1302,31 @@ function type_check.stat_task(cx, node)
     params:map(function(param) return param.param_type end), return_type, false)
   prototype:settype(task_type)
 
+  for _, fixup_node in ipairs(cx.fixup_nodes) do
+    if fixup_node:is(ast.typed.ExprCall) then
+      local fn_type = fixup_node.fn.value:gettype()
+      assert(fn_type.returntype ~= untyped)
+      fixup_node.expr_type = fn_type.returntype
+    else
+      assert(false)
+    end
+  end
+
   prototype:set_constraints(cx.constraints)
+  prototype:set_region_universe(cx.region_universe)
 
   return ast.typed.StatTask {
     name = node.name,
     params = params,
     return_type = return_type,
     privileges = privileges,
+    constraints = constraints,
     body = body,
+    config_options = ast.typed.StatTaskConfigOptions {
+      leaf = false,
+      inner = false,
+      idempotent = false,
+    },
     prototype = prototype,
   }
 end
