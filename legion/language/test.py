@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright 2014 Stanford University
+# Copyright 2015 Stanford University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-import argparse, multiprocessing, os, optparse, re, subprocess, sys, traceback
+import argparse, json, multiprocessing, os, optparse, re, subprocess, sys, traceback
 from collections import OrderedDict
 import legion
 
@@ -26,30 +26,32 @@ class TestFailure(Exception):
         self.output = output
 
 def run(filename, verbose, flags):
-    args = [os.path.basename(filename)] + flags
+    args = [os.path.basename(filename)] + flags + (
+        [] if verbose else ['-level', '5'])
     proc = legion.legion(
         args,
         stdout = None if verbose else subprocess.PIPE,
         stderr = None if verbose else subprocess.STDOUT,
-        cwd = os.path.dirname(os.path.realpath(filename)))
+        cwd = os.path.dirname(os.path.abspath(filename)))
     output, _ = proc.communicate()
     retcode = proc.wait()
     if retcode != 0:
         raise TestFailure(' '.join(args), str(output))
 
-_re_expected_failure = re.compile(r'^[ \t\r]*--[ \t]+fails-with:[ \t\r]*$\n((^[ \t\r]*--.*$\n)+)', re.MULTILINE)
-def find_expected_failure(filename):
+_re_label = r'^[ \t\r]*--[ \t]+{label}:[ \t\r]*$\n((^[ \t\r]*--.*$\n)+)'
+def find_labeled_prefix(filename, label):
+    re_label = re.compile(_re_label.format(label = label), re.MULTILINE)
     with open(filename, 'rb') as f:
         program_text = f.read()
-    expected_failure_match = re.search(_re_expected_failure, program_text)
-    if expected_failure_match is None:
+    match = re.search(re_label, program_text)
+    if match is None:
         return None
-    expected_failure_lines = expected_failure_match.group(1).strip().split('\n')
-    expected_failure = '\n'.join([line.strip()[2:].strip() for line in expected_failure_lines])
-    return expected_failure
+    match_lines = match.group(1).strip().split('\n')
+    match_text = '\n'.join([line.strip()[2:].strip() for line in match_lines])
+    return match_text
 
 def test_compile_fail(filename, verbose, flags):
-    expected_failure = find_expected_failure(filename)
+    expected_failure = find_labeled_prefix(filename, 'fails-with')
     if expected_failure is None:
         raise Exception('No fails-with declaration in compile_fail test')
 
@@ -63,7 +65,13 @@ def test_compile_fail(filename, verbose, flags):
         raise Exception('Expected failure, but test passed')
 
 def test_run_pass(filename, verbose, flags):
-    run(filename, verbose, flags)
+    runs_with = [[]]
+    runs_with_text = find_labeled_prefix(filename, 'runs-with')
+    if runs_with_text is not None:
+        runs_with = json.loads(runs_with_text)
+
+    for params in runs_with:
+        run(filename, verbose, flags + params)
 
 red = "\033[1;31m"
 green = "\033[1;32m"
@@ -185,6 +193,7 @@ def run_all_tests(thread_count, verbose):
         print
         print 'For detailed information on test failures, run:'
         print '    ./test.py -j1 -v'
+        sys.exit(1)
 
 def test_driver(argv):
     parser = argparse.ArgumentParser(description = 'Legion compiler test suite')

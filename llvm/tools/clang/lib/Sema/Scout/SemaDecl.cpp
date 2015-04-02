@@ -63,6 +63,11 @@
 #include <algorithm>
 #include <cstring>
 #include <functional>
+
+// +===== Scout =======================
+#include <sstream>
+// +===================================
+
 using namespace clang;
 using namespace sema;
 
@@ -337,8 +342,7 @@ bool Sema::IsValidRecordDeclInMesh(RecordDecl* RD) {
 Decl* Sema::ActOnFrameDefinition(Scope* S,
                                  SourceLocation FrameLoc,
                                  IdentifierInfo* Name,
-                                 SourceLocation NameLoc,
-                                 MultiTemplateParamsArg TemplateParameterLists){
+                                 SourceLocation NameLoc){
   
   LookupResult LR(*this, Name, NameLoc, LookupFrameName, Sema::NotForRedeclaration);
   
@@ -349,6 +353,28 @@ Decl* Sema::ActOnFrameDefinition(Scope* S,
   
   FD->completeDefinition();
     
+  PushDeclContext(S, FD);
+  
+  return FD;
+}
+
+Decl* Sema::ActOnFrameDefinition(Scope* S,
+                                 UniformMeshDecl* MD,
+                                 SourceLocation WithLoc){
+
+  // create a unique name for the mesh - the mesh name is never referred to
+  // directly - but we need to pass one to create the frame decl
+  std::stringstream sstr;
+  sstr << "__frame_" << MD->getName().str() << "_" << WithLoc.getRawEncoding();
+  
+  FrameDecl* FD =
+  FrameDecl::Create(Context, CurContext, SourceLocation(),
+                    SourceLocation(), PP.getIdentifierInfo(sstr.str()), 0);
+  
+  PushOnScopeChains(FD, S, true);
+  
+  FD->completeDefinition();
+  
   PushDeclContext(S, FD);
   
   return FD;
@@ -436,19 +462,19 @@ bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
   
   bool valid = true;
   
-  SpecObjectExpr* Spec = static_cast<SpecObjectExpr*>(SE);
-  
-  auto& m = Spec->memberMap();
-  
   VarDecl* indexType = F->getVarType("Int64");
   VarDecl* index =
   VarDecl::Create(Context, F, SourceLocation(), SourceLocation(),
-                  PP.getIdentifierInfo("index"), indexType->getType(),
+                  PP.getIdentifierInfo("rowIndex"), indexType->getType(),
                   Context.getTrivialTypeSourceInfo(indexType->getType()),
                   SC_Static);
   
   PushOnScopeChains(index, Scope, true);
-  F->addVar("index", index);
+  F->addVar("rowIndex", index);
+  
+  SpecObjectExpr* Spec = static_cast<SpecObjectExpr*>(SE);
+  
+  auto& m = Spec->memberMap();
   
   for(auto& itr : m){
     const string& k = itr.first;
@@ -513,6 +539,56 @@ bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
   }
   
   return valid;
+}
+
+void Sema::InitFrameFromMesh(Scope* Scope, FrameDecl* FD, MeshDecl* MD){
+  using namespace std;
+  
+  VarDecl* indexType = FD->getVarType("Int64");
+  VarDecl* index =
+  VarDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
+                  PP.getIdentifierInfo("rowIndex"), indexType->getType(),
+                  Context.getTrivialTypeSourceInfo(indexType->getType()),
+                  SC_Static);
+  
+  PushOnScopeChains(index, Scope, true);
+  FD->addVar("rowIndex", index);
+  
+  for(auto itr = MD->field_begin(), itrEnd = MD->field_end();
+      itr != itrEnd; ++itr){
+    const MeshFieldDecl* fd = *itr;
+    const BuiltinType* t = dyn_cast<BuiltinType>(fd->getType().getTypePtr());
+    assert(t && "expected a BuiltinType");
+
+    VarDecl* fieldType;
+    
+    switch(t->getKind()){
+      case BuiltinType::Int:
+        fieldType = FD->getVarType("Int32");
+        break;
+      case BuiltinType::Long:
+        fieldType = FD->getVarType("Int64");
+        break;
+      case BuiltinType::Float:
+        fieldType = FD->getVarType("Float");
+        break;
+      case BuiltinType::Double:
+        fieldType = FD->getVarType("Double");
+        break;
+      default:
+        fd->getType().dump();
+        assert(false && "unhandled builtin type");
+    }
+                                 
+    VarDecl* field =
+    VarDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
+                    PP.getIdentifierInfo(fd->getName()), fieldType->getType(),
+                    Context.getTrivialTypeSourceInfo(fieldType->getType()),
+                    SC_Static);
+    
+    PushOnScopeChains(field, Scope, true);
+    FD->addVar(fd->getName().str(), field);
+  }
 }
 
 bool Sema::ActOnFrameFinishDefinition(Decl* D){

@@ -3338,7 +3338,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     }
         
     case tok::kw_frame: {
-      ParseFrameSpecifier(DS, TemplateInfo);
+      ParseFrameSpecifier(DS);
       continue;
     }
         

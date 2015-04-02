@@ -1,4 +1,4 @@
-/* Copyright 2014 Stanford University
+/* Copyright 2015 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ using namespace LegionRuntime::HighLevel;
 
 class CircuitMapper : public DefaultMapper {
 public:
-  CircuitMapper(Machine *machine, HighLevelRuntime *runtime, Processor local);
+  CircuitMapper(Machine machine, HighLevelRuntime *runtime, Processor local);
 public:
   virtual void slice_domain(const Task *task, const Domain &domain,
                             std::vector<DomainSplit> &slices);

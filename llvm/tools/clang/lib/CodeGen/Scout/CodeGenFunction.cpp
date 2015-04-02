@@ -93,7 +93,7 @@ void CodeGenFunction::EmitTaskMDBlock(const FunctionDecl *FD) {
 
 }
 
-// If in Stencil then lookup and load InductionVar, otherwize return it directly
+// If in Stencil then lookup and load InductionVar, otherwise return it directly
 llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   llvm::Value *V = LocalDeclMap.lookup(ScoutABIInductionVarDecl[index]);
   if(V) {
@@ -102,6 +102,15 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     return Builder.CreateLoad(V, IRNameStr);
   }
   return InductionVar[index];
+}
+
+llvm::Value *CodeGenFunction::LookupMeshStart(unsigned int index) {
+  llvm::Value *V = LocalDeclMap.lookup(ScoutABIMeshStartDecl[index]);
+  if(V) {
+    sprintf(IRNameStr, "stencil.induct.%s.ptr", IndexNames[index]);
+    return Builder.CreateLoad(V, IRNameStr);
+  }
+  return MeshStart[index];
 }
 
 // If in Stencil then lookup and load Mesh Dimension, otherwise return it directly

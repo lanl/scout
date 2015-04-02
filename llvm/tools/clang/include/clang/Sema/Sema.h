@@ -8867,8 +8867,9 @@ public:
   Decl* ActOnFrameDefinition(Scope* S,
                              SourceLocation FrameLoc,
                              IdentifierInfo* Name,
-                             SourceLocation NameLoc,
-                             MultiTemplateParamsArg TemplateParameterLists);
+                             SourceLocation NameLoc);
+  
+  Decl* ActOnFrameDefinition(Scope* S, UniformMeshDecl* MD, SourceLocation WithLoc);
   
   void InitFrameDefinitions(Scope* S, FrameDecl* FD);
   
@@ -8883,6 +8884,8 @@ public:
                         std::vector<QualType> ArgTys);
   
   bool InitFrame(Scope* Scope, FrameDecl* F, Expr* Spec);
+
+  void InitFrameFromMesh(Scope* Scope, FrameDecl* FD, MeshDecl* MD);
   
   bool ActOnFrameFinishDefinition(Decl* FD);
   

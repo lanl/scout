@@ -1,4 +1,4 @@
-/* Copyright 2014 Stanford University
+/* Copyright 2015 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -285,8 +285,6 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       runtime->register_distributed_collectable(did, this);
-      // We always know there is an instance on the owner node
-      remote_spaces.insert(owner_space);
       // If we are not the owner node then set our resource reference
       // count to one reflecting the fact that we can be collected
       // only once the manager on the owner node is collected.
@@ -296,6 +294,8 @@ namespace LegionRuntime {
         // Make a user event for telling our owner node when we
         // have been deleted
         destruction_event = UserEvent::create_user_event();
+        // We always know there is an instance on the owner node
+        remote_spaces.insert(owner_space);
       }
       else
         destruction_event = UserEvent::NO_USER_EVENT; // make a no-user event

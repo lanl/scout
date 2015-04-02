@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -17,7 +17,8 @@
 
 import "legion"
 
-task f(r : region(int), p : ptr(int, r)), reduces *(r)
+task f(r : region(int), p : ptr(int, r))
+where reduces*(r) do
   @p += 1
 end
 f:compile()

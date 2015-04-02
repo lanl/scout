@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -19,8 +19,14 @@ fspace tree(rtop : region(tree(wild))) {
   rright : region(tree(wild)),
   left : ptr(tree(rleft), rleft),
   right : ptr(tree(rright), rright),
-} where rleft <= rtop, rright <= rtop, rleft * rright
+}
+where
+  rleft <= rtop,
+  rright <= rtop,
+  rleft * rright
+end
 
-task f(rtop : region(tree(rtop)), t : ptr(tree(rtop), rtop)), reads(rtop)
+task f(rtop : region(tree(rtop)), t : ptr(tree(rtop), rtop))
+where reads(rtop) do
 end
 f:compile()

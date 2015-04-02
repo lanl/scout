@@ -96,6 +96,10 @@ public:
     return CGF.ScoutABIMeshDimDecl[index];
   }
 
+  ImplicitParamDecl *&getMeshStartDecl(CodeGenFunction &CGF, unsigned int index) {
+      return CGF.ScoutABIMeshStartDecl[index];
+    }
+
   void buildImplicitStencilParams(CodeGenFunction &CGF, FunctionArgList &Params);
 
 };

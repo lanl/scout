@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -14,9 +14,9 @@
 
 -- Legion Parser
 
-local parsing = terralib.require("parsing")
-local ast = terralib.require("legion/ast")
-local std = terralib.require("legion/std")
+local parsing = require("parsing")
+local ast = require("legion/ast")
+local std = require("legion/std")
 
 local parser = {}
 
@@ -186,6 +186,58 @@ function parser.expr_simple(p)
       expr_type = bool,
     }
 
+  elseif p:nextif("max") then
+    p:expect("(")
+    local lhs = p:expr()
+    p:expect(",")
+    local rhs = p:expr()
+    p:expect(")")
+    return ast.unspecialized.ExprBinary {
+      op = "max",
+      lhs = lhs,
+      rhs = rhs,
+    }
+
+  elseif p:nextif("min") then
+    p:expect("(")
+    local lhs = p:expr()
+    p:expect(",")
+    local rhs = p:expr()
+    p:expect(")")
+    return ast.unspecialized.ExprBinary {
+      op = "min",
+      lhs = lhs,
+      rhs = rhs,
+    }
+
+  elseif p:nextif("__context") then
+    p:expect("(")
+    p:expect(")")
+    return ast.unspecialized.ExprRawContext {
+    }
+
+  elseif p:nextif("__fields") then
+    p:expect("(")
+    local region = p:expr()
+    p:expect(")")
+    return ast.unspecialized.ExprRawFields {
+      region = region,
+    }
+
+  elseif p:nextif("__physical") then
+    p:expect("(")
+    local region = p:expr()
+    p:expect(")")
+    return ast.unspecialized.ExprRawPhysical {
+      region = region,
+    }
+
+  elseif p:nextif("__runtime") then
+    p:expect("(")
+    p:expect(")")
+    return ast.unspecialized.ExprRawRuntime {
+    }
+
   elseif p:nextif("isnull") then
     p:expect("(")
     local pointer = p:expr()
@@ -208,6 +260,28 @@ function parser.expr_simple(p)
     p:expect(")")
     return ast.unspecialized.ExprNull {
       pointer_type_expr = pointer_type_expr,
+    }
+
+  elseif p:nextif("dynamic_cast") then
+    p:expect("(")
+    local type_expr = p:luaexpr()
+    p:expect(",")
+    local value = p:expr()
+    p:expect(")")
+    return ast.unspecialized.ExprDynamicCast {
+      type_expr = type_expr,
+      value = value,
+    }
+
+  elseif p:nextif("static_cast") then
+    p:expect("(")
+    local type_expr = p:luaexpr()
+    p:expect(",")
+    local value = p:expr()
+    p:expect(")")
+    return ast.unspecialized.ExprStaticCast {
+      type_expr = type_expr,
+      value = value,
     }
 
   elseif p:nextif("region") then
@@ -233,6 +307,17 @@ function parser.expr_simple(p)
       disjointness_expr = disjointness_expr,
       region_type_expr = region_type_expr,
       coloring = coloring,
+    }
+
+  elseif p:nextif("cross_product") then
+    p:expect("(")
+    local lhs_type_expr = p:luaexpr()
+    p:expect(",")
+    local rhs_type_expr = p:luaexpr()
+    p:expect(")")
+    return ast.unspecialized.ExprCrossProduct {
+      lhs_type_expr = lhs_type_expr,
+      rhs_type_expr = rhs_type_expr,
     }
 
   elseif p:matches("{") then
@@ -360,7 +445,7 @@ function parser.stat_while(p)
   }
 end
 
-function parser.stat_for_num(p, name, type_expr)
+function parser.stat_for_num(p, name, type_expr, parallel)
   local values = p:expr_list()
 
   if #values < 2 or #values > 3 then
@@ -375,10 +460,11 @@ function parser.stat_for_num(p, name, type_expr)
     type_expr = type_expr,
     values = values,
     block = block,
+    parallel = parallel,
   }
 end
 
-function parser.stat_for_list(p, name, type_expr)
+function parser.stat_for_list(p, name, type_expr, vectorize)
   local value = p:expr()
 
   p:expect("do")
@@ -389,10 +475,28 @@ function parser.stat_for_list(p, name, type_expr)
     type_expr = type_expr,
     value = value,
     block = block,
+    vectorize = vectorize
   }
 end
 
 function parser.stat_for(p)
+  local parallel = false
+  local vectorize = false
+  if p:nextif("__demand") then
+    p:expect("(")
+    if p:matches("__parallel") then
+      p:expect("__parallel")
+      p:expect(")")
+      parallel = "demand"
+    elseif p:matches("__vectorize") then
+      p:expect("__vectorize")
+      p:expect(")")
+      vectorize = "demand"
+    else
+      p:error("expected __parallel or __vectorize")
+    end
+  end
+
   p:expect("for")
 
   local name = p:expect(p.name).value
@@ -404,9 +508,9 @@ function parser.stat_for(p)
   end
 
   if p:nextif("=") then
-    return p:stat_for_num(name, type_expr)
+    return p:stat_for_num(name, type_expr, parallel)
   elseif p:nextif("in") then
-    return p:stat_for_list(name, type_expr)
+    return p:stat_for_list(name, type_expr, vectorize)
   else
     p:error("expected = or in")
   end
@@ -514,6 +618,10 @@ parser.stat_expr_assignment = function(p, first_lhs)
       op = "*"
     elseif p:nextif("/") then
       op = "/"
+    elseif p:nextif("max") then
+      op = "max"
+    elseif p:nextif("min") then
+      op = "min"
     else
       -- Fall through as if this were the normal = case.
     end
@@ -544,7 +652,9 @@ function parser.stat_expr(p)
     (p:matches("+") and p:lookahead("=")) or
     (p:matches("-") and p:lookahead("=")) or
     (p:matches("*") and p:lookahead("=")) or
-    (p:matches("/") and p:lookahead("="))
+    (p:matches("/") and p:lookahead("=")) or
+    (p:matches("max") and p:lookahead("=")) or
+    (p:matches("min") and p:lookahead("="))
   then
     return p:stat_expr_assignment(first_lhs)
   else
@@ -560,6 +670,11 @@ function parser.stat(p)
 
   elseif p:matches("while") then
     return p:stat_while()
+
+  -- Technically this could be written anywhere but for now it only
+  -- applies to for loops.
+  elseif p:matches("__demand") then
+    return p:stat_for()
 
   elseif p:matches("for") then
     return p:stat_for()
@@ -609,45 +724,45 @@ function parser.stat_task_return(p)
   return function(env) return std.untyped end
 end
 
-function parser.stat_task_privilege_region_field(p)
+function parser.privilege_region_field(p)
   local field_name = p:expect(p.name).value
   local fields = false -- sentinel for all fields
   if p:nextif(".") then
-    fields = p:stat_task_privilege_region_fields()
+    fields = p:privilege_region_fields()
   end
-  return ast.unspecialized.StatTaskPrivilegeRegionField {
+  return ast.unspecialized.PrivilegeRegionField {
     field_name = field_name,
     fields = fields,
   }
 end
 
-function parser.stat_task_privilege_region_fields(p)
+function parser.privilege_region_fields(p)
   local fields = terralib.newlist()
   if p:nextif("{") then
     repeat
       if p:matches("}") then break end
-      fields:insert(p:stat_task_privilege_region_field())
+      fields:insert(p:privilege_region_field())
     until not p:sep()
     p:expect("}")
   else
-    fields:insert(p:stat_task_privilege_region_field())
+    fields:insert(p:privilege_region_field())
   end
   return fields
 end
 
-function parser.stat_task_privilege_region(p)
+function parser.privilege_region(p)
   local region_name = p:expect(p.name).value
   local fields = false -- sentinel for all fields
   if p:nextif(".") then
-    fields = p:stat_task_privilege_region_fields()
+    fields = p:privilege_region_fields()
   end
-  return ast.unspecialized.StatTaskPrivilegeRegion {
+  return ast.unspecialized.PrivilegeRegion {
     region_name = region_name,
     fields = fields,
   }
 end
 
-function parser.stat_task_privilege(p)
+function parser.privilege(p)
   local privilege
   local op = false
   if p:nextif("reads") then
@@ -664,6 +779,10 @@ function parser.stat_task_privilege(p)
       op = "*"
     elseif p:nextif("/") then
       op = "/"
+    elseif p:nextif("max") then
+      op = "max"
+    elseif p:nextif("min") then
+      op = "min"
     else
       p:error("expected operator")
     end
@@ -674,24 +793,50 @@ function parser.stat_task_privilege(p)
   p:expect("(")
   local regions = terralib.newlist()
   repeat
-    local region = p:stat_task_privilege_region()
+    local region = p:privilege_region()
     regions:insert(region)
   until not p:nextif(",")
   p:expect(")")
 
-  return ast.unspecialized.StatTaskPrivilege {
+  return ast.unspecialized.Privilege {
     privilege = privilege,
     op = op,
     regions = regions,
   }
 end
 
-function parser.stat_task_privileges(p)
-  local privileges = terralib.newlist()
-  while p:nextif(",") do
-    privileges:insert(p:stat_task_privilege())
+function parser.constraint(p)
+  local lhs = p:expect(p.name).value
+  local op
+  if p:nextif("<=") then
+    op = "<="
+  elseif p:nextif("*") then
+    op = "*"
+  else
+    p:error("unexpected token in constraint")
   end
-  return privileges
+  local rhs = p:expect(p.name).value
+  return ast.unspecialized.Constraint {
+    lhs = lhs,
+    op = op,
+    rhs = rhs,
+  }
+end
+
+function parser.stat_task_privileges_and_constraints(p)
+  local privileges = terralib.newlist()
+  local constraints = terralib.newlist()
+  if p:nextif("where") then
+    repeat
+      if p:matches("reads") or p:matches("writes") or p:matches("reduces") then
+        privileges:insert(p:privilege())
+      else
+        constraints:insert(p:constraint())
+      end
+    until not p:nextif(",")
+    p:expect("do")
+  end
+  return privileges, constraints
 end
 
 function parser.stat_task(p)
@@ -699,7 +844,7 @@ function parser.stat_task(p)
   local name = p:expect(p.name).value
   local params = p:stat_task_params()
   local return_type = p:stat_task_return()
-  local privileges = p:stat_task_privileges()
+  local privileges, constraints = p:stat_task_privileges_and_constraints()
   local body = p:block()
   p:expect("end")
 
@@ -707,7 +852,8 @@ function parser.stat_task(p)
     name = name,
     params = params,
     return_type_expr = return_type,
-    privilege_exprs = privileges,
+    privileges = privileges,
+    constraints = constraints,
     body = body,
   }
 end
@@ -753,22 +899,9 @@ function parser.stat_fspace_constraints(p)
   local constraints = terralib.newlist()
   if p:nextif("where") then
     repeat
-      local lhs = p:expect(p.name).value
-      local op
-      if p:nextif("<=") then
-        op = "<="
-      elseif p:nextif("*") then
-        op = "*"
-      else
-        p:error("unexpected token in constraint")
-      end
-      local rhs = p:expect(p.name).value
-      constraints:insert(ast.unspecialized.StatFspaceConstraint {
-        lhs = lhs,
-        op = op,
-        rhs = rhs,
-      })
+      constraints:insert(p:constraint())
     until not p:nextif(",")
+    p:expect("end")
   end
   return constraints
 end

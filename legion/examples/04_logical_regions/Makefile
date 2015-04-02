@@ -1,4 +1,4 @@
-# Copyright 2014 Stanford University
+# Copyright 2015 Stanford University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ GEN_GPU_SRC	:=				# .cu files
 
 # You can modify these variables, some will be appended to by the runtime makefile
 INC_FLAGS	:=
-CC_FLAGS	:=
+CC_FLAGS	?=
 NVCC_FLAGS	:=
 GASNET_FLAGS	:=
 LD_FLAGS	:=

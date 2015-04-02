@@ -484,7 +484,6 @@ namespace{
       args += sizeof(MeshHeader);
 
       // number of subregions
-
       size_t numSubregions = 1;
       char *p;
       p = getenv("SC_NTHREADS");
@@ -514,6 +513,7 @@ namespace{
 
         size_t index = 0;
         size_t numGhost = mesh_->numGhostItems(elemKind, maxShift);
+        printf("nGhost %d\n", numGhost);
 
         for (size_t color = 0; color < numSubregions; color++) {
           printf("color %d\n", color);
@@ -522,6 +522,7 @@ namespace{
           printf("dr %d %d %d\n", color, index, index+numElmts-1);
           Rect<1> subrect(Point<1>(index),Point<1>(index+numElmts-1));
           element.disjointColoring[color] = Domain::from_rect<1>(subrect);
+#if 0
           if (index < numGhost)
           {
             if ((index+numElmts+numGhost) > element.count)
@@ -556,6 +557,7 @@ namespace{
               element.ghostColoring[color] = Domain::from_rect<1>(ghost_rect);
             }
           }
+#endif
           index += numElmts;
         } // end for color
 
@@ -563,21 +565,23 @@ namespace{
           runtime->create_index_partition(context, element.indexSpace,
                                           element.colorDomain,
                                           element.disjointColoring, true);
-
+#if 0
         element.ghostIndexPartition =
           runtime->create_index_partition(context, element.indexSpace,
                                           element.colorDomain,
                                           element.ghostColoring, false);
+#endif
 
         element.disjointLogicalPartition =
           runtime->get_logical_partition(context,
                                          element.logicalRegion,
                                          element.disjointIndexPartition);
-
+#if 0
         element.ghostLogicalPartition =
           runtime->get_logical_partition(context,
                                          element.logicalRegion,
                                          element.ghostIndexPartition);
+#endif
 
       }
 
@@ -765,7 +769,6 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   const int point = ht->index_point.point_data[0];
   printf("index point %d\n",point);
 
-
   size_t argsLen = legion_task_get_arglen(task);
 
   char* args = (char*)legion_task_get_args(task);
@@ -834,6 +837,7 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   *meshTailPtr = 0; //z
   ++meshTailPtr;
 
+  printf("size %d %d %d \n", getSize(n, point, header->numColors), header->height, header->depth);
   *meshTailPtr = getSize(n, point, header->numColors);
   ++meshTailPtr;
 

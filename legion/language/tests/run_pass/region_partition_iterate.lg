@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -35,17 +35,16 @@ task f() : int
 
   -- Check that pointer shows up in parent.
   @x = 20
-  var t = 0
   for y in r do
     s += @y
   end
 
   -- And of course pointer itself should be accessible.
   @x = 3
-  return s + t + @x
+  return s + @x
 end
 
 task main()
-  assert(f() == 123)
+  legionlib.assert(f() == 123, "test failed")
 end
 legionlib.start(main)
