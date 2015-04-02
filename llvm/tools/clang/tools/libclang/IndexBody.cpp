@@ -166,6 +166,8 @@ public:
   //
   bool TraverseUniformMeshType(UniformMeshType*)
   { return true; }
+  bool TraverseALEMeshType(ALEMeshType*)
+  { return true; }
   bool TraverseStructuredMeshType(StructuredMeshType*)
   { return true; }
   bool TraverseRectilinearMeshType(RectilinearMeshType*)
@@ -175,6 +177,8 @@ public:
 
   bool TraverseUniformMeshTypeLoc(UniformMeshTypeLoc*)
   { return true; }
+  bool TraverseALEMeshTypeLoc(ALEMeshTypeLoc*)
+  { return true; }
   bool TraverseStructuredMeshTypeLoc(StructuredMeshTypeLoc*)
   { return true; }
   bool TraverseRectilinearMeshTypeLoc(RectilinearMeshTypeLoc*)
@@ -182,6 +186,8 @@ public:
   bool TraverseUnstructuredMeshTypeLoc(UnstructuredMeshTypeLoc*)
   { return true; }
   bool TraverseUniformMeshDecl(UniformMeshDecl*)
+  { return true; }
+  bool TraverseALEMeshDecl(ALEMeshDecl*)
   { return true; }
   bool TraverseStructuredMeshDecl(StructuredMeshDecl*)
   { return true; }

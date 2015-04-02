@@ -1142,6 +1142,9 @@ public:
   QualType getUniformMeshType(const UniformMeshDecl *Decl) const;
   QualType getUniformMeshType(const UniformMeshDecl *Decl,
                               const MeshType::MeshDimensions &dims) const;
+  QualType getALEMeshType(const ALEMeshDecl *Decl) const;
+  QualType getALEMeshType(const ALEMeshDecl *Decl,
+                              const MeshType::MeshDimensions &dims) const;
   
   QualType getStructuredMeshType(const StructuredMeshDecl *Decl) const;
   QualType getRectilinearMeshType(const RectilinearMeshDecl *Decl) const;
@@ -1265,6 +1268,7 @@ public:
   // SC_TODO : Do we really need to specialize on all mesh types here???
   QualType getMeshDeclType(const MeshDecl *MD) const;
   QualType getUniformMeshDeclType(const UniformMeshDecl *Decl) const;
+  QualType getALEMeshDeclType(const ALEMeshDecl *Decl) const;
   QualType getStructuredMeshDeclType(const StructuredMeshDecl *Decl) const;
   QualType getRectilinearMeshDeclType(const RectilinearMeshDecl *Decl) const;
   QualType getUnstructuredMeshDeclType(const UnstructuredMeshDecl *Decl) const;

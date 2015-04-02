@@ -590,6 +590,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T, bool isStencil) {
   // meshes. For some of our explorations (e.g. SOA vs. AOS) we will
   // need to find a more flexible approach for this...
   case Type::UniformMesh:
+  case Type::ALEMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh:

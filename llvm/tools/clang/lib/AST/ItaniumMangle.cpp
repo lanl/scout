@@ -1512,6 +1512,7 @@ bool CXXNameMangler::mangleUnresolvedTypeOrSimpleId(QualType Ty,
 
   // +===== Scout ==========================================================+
     case Type::UniformMesh:
+    case Type::ALEMesh:
     case Type::StructuredMesh:
     case Type::RectilinearMesh:
     case Type::UnstructuredMesh:
@@ -2120,6 +2121,10 @@ void CXXNameMangler::mangleType(const TagType *T) {
 
 // ===== Scout - Mesh name mangling support ===================================
 void CXXNameMangler::mangleType(const UniformMeshType *T) {
+  mangleName(static_cast<const NamedDecl*>(T->getDecl()));
+}
+
+void CXXNameMangler::mangleType(const ALEMeshType *T) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 

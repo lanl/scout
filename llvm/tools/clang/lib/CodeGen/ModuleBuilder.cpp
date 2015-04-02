@@ -215,6 +215,8 @@ namespace {
       if (CodeGen::CGDebugInfo *DI = Builder->getModuleDebugInfo()) {
         if (const UniformMeshDecl *UMD = dyn_cast<UniformMeshDecl>(D))
           DI->completeRequiredType(UMD);
+        if (const ALEMeshDecl *AMD = dyn_cast<ALEMeshDecl>(D))
+          DI->completeRequiredType(AMD);
         if (const RectilinearMeshDecl *RMD = dyn_cast<RectilinearMeshDecl>(D))
           DI->completeRequiredType(RMD);
         if (const StructuredMeshDecl *SMD = dyn_cast<StructuredMeshDecl>(D))

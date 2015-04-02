@@ -93,6 +93,7 @@ TYPE(Enum, TagType)
 // +==== Scout ===============================================================+
 ABSTRACT_TYPE(Mesh, Type)
   TYPE(UniformMesh, MeshType)
+  TYPE(ALEMesh, MeshType)
   TYPE(RectilinearMesh, MeshType)
   TYPE(StructuredMesh, MeshType)
   TYPE(UnstructuredMesh, MeshType)
@@ -135,6 +136,7 @@ LEAF_TYPE(TemplateTypeParm)
 
 // +==== Scout ===============================================================+
 LEAF_TYPE(UniformMesh)
+LEAF_TYPE(ALEMesh)
 LEAF_TYPE(StructuredMesh)
 LEAF_TYPE(RectilinearMesh)
 LEAF_TYPE(UnstructuredMesh)

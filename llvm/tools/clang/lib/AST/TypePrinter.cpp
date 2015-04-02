@@ -184,6 +184,7 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
 
     // +===== Scout ==========================================================+
     case Type::UniformMesh:
+    case Type::ALEMesh:
     case Type::StructuredMesh:
     case Type::RectilinearMesh:
     case Type::UnstructuredMesh:

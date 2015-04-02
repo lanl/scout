@@ -138,6 +138,24 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
       }
     }
       break;
+
+    case tok::kw_ALE: {
+      ALEMeshDecl *AMD;
+      AMD = static_cast<ALEMeshDecl*>(
+                                          Actions.ActOnMeshDefinition(getCurScope(),
+                                                                      MeshType, MeshTypeLocation,
+                                                                      Name, NameLoc, TParams));
+      AMD->completeDefinition();
+      if (ParseMeshBody(MeshLocation, AMD)) {
+        DS.SetTypeSpecType(DeclSpec::TST_ALE_mesh,
+                           MeshLocation, PrevSpec,
+                           DiagID, AMD, true, Policy);
+        return true;
+      } else {
+        return false;
+      }
+    }
+      break;
       
     case tok::kw_rectilinear: {
       RectilinearMeshDecl *RMD;

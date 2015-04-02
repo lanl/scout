@@ -1769,6 +1769,21 @@ TypeInfo ASTContext::getTypeInfoImpl(const Type *T) const {
     break;
   }
 
+  case Type::ALEMesh: {
+    const MeshType *MT = cast<MeshType>(T);
+    if (MT->getDecl()->isInvalidDecl()) {
+      Width = 8;
+      Align = 8;
+      break;
+    }
+
+    const ALEMeshType *UMT = dyn_cast<ALEMeshType>(MT);
+    const ASTMeshLayout &Layout = getASTMeshLayout(UMT->getDecl());
+    Width = toBits(Layout.getSize());
+    Align = toBits(Layout.getAlignment());
+    break;
+  }
+
   case Type::RectilinearMesh:
   case Type::StructuredMesh:
   case Type::UnstructuredMesh: {
@@ -2638,6 +2653,7 @@ QualType ASTContext::getVariableArrayDecayedType(QualType type) const {
   // +==== Scout =============================================================+
   // Meshes are not variably-modified
   case Type::UniformMesh:
+  case Type::ALEMesh:
   case Type::RectilinearMesh:
   case Type::StructuredMesh:
   case Type::UnstructuredMesh:
@@ -3168,6 +3184,8 @@ QualType ASTContext::getTypeDeclTypeSlow(const TypeDecl *Decl) const {
   // +===== Scout ============================================================+
   } else if (const UniformMeshDecl *Mesh = dyn_cast<UniformMeshDecl>(Decl)) {
     return getUniformMeshType(Mesh);
+  } else if (const ALEMeshDecl *Mesh = dyn_cast<ALEMeshDecl>(Decl)) {
+    return getALEMeshType(Mesh);
   } else if (const RectilinearMeshDecl *Mesh = dyn_cast<RectilinearMeshDecl>(Decl)) {
     return getRectilinearMeshType(Mesh);
   } else if (const StructuredMeshDecl *Mesh = dyn_cast<StructuredMeshDecl>(Decl)) {
@@ -5840,6 +5858,7 @@ void ASTContext::getObjCEncodingForTypeImpl(QualType T, std::string& S,
     llvm_unreachable("@encode for dependent type!");
   // +===== Scout ============================================================+
   case Type::UniformMesh:
+  case Type::ALEMesh:
   case Type::RectilinearMesh:
   case Type::StructuredMesh:
   case Type::UnstructuredMesh:
@@ -7506,6 +7525,7 @@ QualType ASTContext::mergeTypes(QualType LHS, QualType RHS,
     return mergeFunctionTypes(LHS, RHS, OfBlockPointer, Unqualified);
   // +=== Scout ==============================================================+
   case Type::UniformMesh:
+  case Type::ALEMesh:
   case Type::RectilinearMesh:
   case Type::StructuredMesh:
   case Type::UnstructuredMesh:

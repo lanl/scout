@@ -37,6 +37,7 @@ namespace clang {
   // +===== Scout ============================================================+
   class MeshDecl;
   class UniformMeshDecl;
+  class ALEMeshDecl;
   class RectilinearMeshDecl;
   class StructuredMeshDecl;
   class UnstructuredMeshDecl;
@@ -62,6 +63,11 @@ public:
   /// \brief A new UniformMeshDecl definition was completed.
   virtual void
   CompletedUniformMeshDefinition(const UniformMeshDecl *D)
+  { }
+  
+  /// \brief A new ALEMeshDecl definition was completed.
+  virtual void
+  CompletedALEMeshDefinition(const ALEMeshDecl *D)
   { }
 
   /// \brief A new RectilinearMeshDecl definition was completed.

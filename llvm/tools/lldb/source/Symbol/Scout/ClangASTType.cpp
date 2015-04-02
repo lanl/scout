@@ -136,6 +136,10 @@ ClangASTType::CompleteMeshDeclarationDefinition ()
           mesh_decl->completeDefinition();
           return true;
         }
+        else if(ALEMeshDecl *mesh_decl = qual_type->getAsALEMeshDecl()){
+          mesh_decl->completeDefinition();
+          return true;
+        }
         else if(StructuredMeshDecl *mesh_decl = qual_type->getAsStructuredMeshDecl()){
           mesh_decl->completeDefinition();
           return true;

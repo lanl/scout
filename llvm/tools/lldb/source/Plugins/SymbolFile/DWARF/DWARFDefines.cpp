@@ -448,6 +448,7 @@ get_tag_category (uint16_t tag)
       case DW_TAG_structure_type             : return TagCategoryType;
       // +===== Scout ========================================================
       case DW_TAG_SCOUT_uniform_mesh_type      : return TagCategoryType;
+      case DW_TAG_SCOUT_ALE_mesh_type          : return TagCategoryType;
       case DW_TAG_SCOUT_structured_mesh_type   : return TagCategoryType;
       case DW_TAG_SCOUT_rectilinear_mesh_type  : return TagCategoryType;
       case DW_TAG_SCOUT_unstructured_mesh_type : return TagCategoryType;

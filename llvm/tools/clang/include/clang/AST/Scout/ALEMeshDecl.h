@@ -23,7 +23,7 @@
  *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -52,16 +52,68 @@
  * #####
  */
 
-#ifndef __SC_CLANG_MESH_DECLS_H__
-#define __SC_CLANG_MESH_DECLS_H__
+#ifndef __SC_CLANG_ALE_MESH_DECL_H__
+#define __SC_CLANG_ALE_MESH_DECL_H__
 
-#include "clang/AST/Scout/UniformMeshDecl.h"
-#include "clang/AST/Scout/ALEMeshDecl.h"
-#include "clang/AST/Scout/UnstructuredMeshDecl.h"
-#include "clang/AST/Scout/StructuredMeshDecl.h"
-#include "clang/AST/Scout/RectilinearMeshDecl.h"
+
+#include "clang/AST/Scout/MeshDecl.h"
+
+namespace clang {
+
+// ----- ALEMeshDecl
+//
+  class ALEMeshDecl : public MeshDecl {
+
+    friend void MeshDecl::startDefinition();
+
+   protected:
+    ALEMeshDecl(const ASTContext &C,
+                    DeclContext* DC,
+                    SourceLocation L,
+                    SourceLocation StartL,
+                    IdentifierInfo* Id,
+                    ALEMeshDecl* PrevDecl);
+
+   public:
+    static ALEMeshDecl *Create(const ASTContext &C,
+                                   DeclContext *DC,
+                                   SourceLocation StartLoc,
+                                   SourceLocation IdLoc,
+                                   IdentifierInfo *Id,
+                                   ALEMeshDecl* PrevDecl = 0);
+
+    static ALEMeshDecl *CreateDeserialized(const ASTContext &C,
+                                               unsigned ID);
+
+    const ALEMeshDecl *getPreviousDecl() const {
+      return cast_or_null<ALEMeshDecl>(MeshDecl::getPreviousDecl());
+    }
+
+    ALEMeshDecl *getPreviousDecl() {
+      return cast_or_null<ALEMeshDecl>(MeshDecl::getPreviousDecl());
+    }
+
+    const ALEMeshDecl *getMostRecentDecl() const {
+      return cast<ALEMeshDecl>(MeshDecl::getMostRecentDecl());
+    }
+
+    ALEMeshDecl *getMostRecentDecl() {
+      return cast<ALEMeshDecl>(MeshDecl::getMostRecentDecl());
+    }
+
+    void completeDefinition() {
+      assert(!isCompleteDefinition() && "Cannot redefine ALE mesh!");
+      MeshDecl::completeDefinition();
+    }
+
+
+    //void addMember(Decl *D);
+
+    static bool classof(const Decl* D) { return classofKind(D->getKind()); }
+    static bool classof(const ALEMeshDecl* D) { return true; }
+    static bool classofKind(Kind K) { return K == ALEMesh; }
+  };
+
+} // end namespace clang
 
 #endif
-
-
-

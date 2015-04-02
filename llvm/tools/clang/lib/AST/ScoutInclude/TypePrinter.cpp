@@ -63,6 +63,14 @@ TypePrinter::printUniformMeshBefore(const UniformMeshType *T,
 }
 
 void
+TypePrinter::printALEMeshBefore(const ALEMeshType *T,
+                                    raw_ostream &OS)
+{
+  MeshDecl* MD = T->getDecl();
+  OS << MD->getIdentifier()->getName().str() << " ";
+}
+
+void
 TypePrinter::printStructuredMeshBefore(const StructuredMeshType *T,
                                        raw_ostream &OS)
 {
@@ -135,6 +143,22 @@ TypePrinter::printUniformMeshAfter(const UniformMeshType *T,
   for (dimiter = dv.begin();
       dimiter != dv.end();
       dimiter++){
+    (*dimiter)->printPretty(OS, 0, Policy);
+    if (dimiter+1 != dv.end()) OS << ',';
+  }
+  OS << ']';
+}
+
+void
+TypePrinter::printALEMeshAfter(const ALEMeshType *T,
+                                   raw_ostream &OS)
+{
+  OS << '[';
+  MeshType::MeshDimensions dv = T->dimensions();
+  MeshType::MeshDimensions::iterator dimiter;
+  for (dimiter = dv.begin();
+       dimiter != dv.end();
+       dimiter++){
     (*dimiter)->printPretty(OS, 0, Policy);
     if (dimiter+1 != dv.end()) OS << ',';
   }

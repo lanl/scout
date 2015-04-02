@@ -445,6 +445,7 @@ private:
 
   // +==== Scout =============================================================+
   bool TraverseUniformMeshHelper(UniformMeshDecl* D);
+  bool TraverseALEMeshHelper(ALEMeshDecl* D);
   bool TraverseStructuredMeshHelper(StructuredMeshDecl* D);
   bool TraverseRectilinearMeshHelper(RectilinearMeshDecl* D);
   bool TraverseUnstructuredMeshHelper(UnstructuredMeshDecl* D);
@@ -989,6 +990,7 @@ DEF_TRAVERSE_TYPE(SubstTemplateTypeParmPackType, {})
 
 // +==== Scout ===============================================================+
 DEF_TRAVERSE_TYPE(UniformMeshType, { })
+DEF_TRAVERSE_TYPE(ALEMeshType, { })
 DEF_TRAVERSE_TYPE(StructuredMeshType, { })
 DEF_TRAVERSE_TYPE(RectilinearMeshType, { })
 DEF_TRAVERSE_TYPE(UnstructuredMeshType, { })
@@ -1217,6 +1219,7 @@ DEF_TRAVERSE_TYPELOC(SubstTemplateTypeParmPackType, {})
 
 // +==== Scout ===============================================================+
 DEF_TRAVERSE_TYPELOC(UniformMeshType, { })
+DEF_TRAVERSE_TYPELOC(ALEMeshType, { })
 DEF_TRAVERSE_TYPELOC(StructuredMeshType, { })
 DEF_TRAVERSE_TYPELOC(RectilinearMeshType, { })
 DEF_TRAVERSE_TYPELOC(UnstructuredMeshType, { })
@@ -1676,6 +1679,18 @@ DEF_TRAVERSE_DECL(UniformMeshDecl, {
   TRY_TO(TraverseUniformMeshHelper(D));
 })
 
+template<typename Derived> bool
+RecursiveASTVisitor<Derived>::TraverseALEMeshHelper(ALEMeshDecl *D) {
+  // We shouldn't traverse D->getTypeForDecl(); it's a result of
+  // declaring the type, not something that was written in the source.
+  TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
+  return true;
+}
+
+DEF_TRAVERSE_DECL(ALEMeshDecl, {
+  TRY_TO(TraverseALEMeshHelper(D));
+})
+  
 template<typename Derived> bool
 RecursiveASTVisitor<Derived>::TraverseStructuredMeshHelper(
                                                        StructuredMeshDecl *D) {

@@ -176,7 +176,11 @@ class CGDebugInfo {
   llvm::DIType CreateType(const UniformMeshType *Ty);
   llvm::DIType CreateTypeDefinition(const UniformMeshType *Ty);
   llvm::DIScoutCompositeType CreateLimitedType(const UniformMeshType *Ty);
-
+  
+  llvm::DIType CreateType(const ALEMeshType *Ty);
+  llvm::DIType CreateTypeDefinition(const ALEMeshType *Ty);
+  llvm::DICompositeType CreateLimitedType(const ALEMeshType *Ty);
+  
   llvm::DIType CreateType(const RectilinearMeshType *Ty);
   llvm::DIType CreateTypeDefinition(const RectilinearMeshType *Ty);
   llvm::DICompositeType CreateLimitedType(const RectilinearMeshType *Ty);
@@ -372,11 +376,13 @@ public:
   // +===== Scout ============================================================+
   void completeType(const MeshDecl *MD);
   void completeRequiredType(const UniformMeshDecl *MD);
+  void completeRequiredType(const ALEMeshDecl *MD);
   void completeRequiredType(const RectilinearMeshDecl *MD);
   void completeRequiredType(const StructuredMeshDecl *MD);
   void completeRequiredType(const UnstructuredMeshDecl *MD);
   void completeRequiredType(const FrameDecl *FD);
   void completeClassData(const UniformMeshDecl *MD);
+  void completeClassData(const ALEMeshDecl *MD);
   void completeClassData(const  RectilinearMeshDecl *MD);
   void completeClassData(const  StructuredMeshDecl *MD);
   void completeClassData(const  UnstructuredMeshDecl *MD);
@@ -417,6 +423,10 @@ private:
   llvm::DIScoutCompositeType getOrCreateMeshFwdDecl(const UniformMeshType *,
                                                     llvm::DIDescriptor);
 
+  /// \brief Create a forward decl for a uniform mesh in a given context.
+  llvm::DICompositeType getOrCreateMeshFwdDecl(const ALEMeshType *,
+                                                    llvm::DIDescriptor);
+  
   /// \brief Create a forward decl for a rectilinear mesh in a given context.
   llvm::DICompositeType getOrCreateMeshFwdDecl(const RectilinearMeshType *,
                                                llvm::DIDescriptor);
@@ -463,6 +473,7 @@ private:
   /// getOrCreateLimitedType - Get the type from the cache or create a new
   /// partial type if necessary.
   llvm::DIType getOrCreateLimitedType(const UniformMeshType *, llvm::DIFile);
+  llvm::DIType getOrCreateLimitedType(const ALEMeshType *, llvm::DIFile);
   llvm::DIType getOrCreateLimitedType(const RectilinearMeshType *, llvm::DIFile);
   llvm::DIType getOrCreateLimitedType(const StructuredMeshType *, llvm::DIFile);
   llvm::DIType getOrCreateLimitedType(const UnstructuredMeshType *, llvm::DIFile);

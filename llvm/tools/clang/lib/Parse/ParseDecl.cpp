@@ -6108,6 +6108,7 @@ void Parser::ParseMisplacedBracketDeclarator(Declarator &D) {
     case DeclaratorChunk::Paren:
     // +===== Scout ==============================================================+
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::ALEMesh:
     case DeclaratorChunk::UnstructuredMesh:
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:

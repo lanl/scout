@@ -74,6 +74,9 @@ bool ASTNodeImporter::ImportDefinition(MeshDecl *From, MeshDecl *To,
   if(UniformMeshDecl* MD = dyn_cast<UniformMeshDecl>(To)){
     MD->completeDefinition();
   }
+  else if(ALEMeshDecl* MD = dyn_cast<ALEMeshDecl>(To)){
+    MD->completeDefinition();
+  }
   else if(StructuredMeshDecl* MD = dyn_cast<StructuredMeshDecl>(To)){
     MD->completeDefinition();
   }
@@ -112,6 +115,18 @@ ASTNodeImporter::VisitUniformMeshType(const UniformMeshType *T) {
     return QualType();
 
   return Importer.getToContext().getUniformMeshType(ToDecl, T->dimensions());
+}
+
+QualType
+ASTNodeImporter::VisitALEMeshType(const ALEMeshType *T) {
+  assert(T != 0);
+  
+  ALEMeshDecl *ToDecl;
+  ToDecl = dyn_cast_or_null<ALEMeshDecl>(Importer.Import(T->getDecl()));
+  if (!ToDecl)
+    return QualType();
+  
+  return Importer.getToContext().getALEMeshType(ToDecl, T->dimensions());
 }
 
 QualType
@@ -220,6 +235,48 @@ Decl *ASTNodeImporter::VisitUniformMeshDecl(UniformMeshDecl *D) {
 
   return D2;
 }
+
+Decl *ASTNodeImporter::VisitALEMeshDecl(ALEMeshDecl *D) {
+  MeshDecl *Definition = D->getDefinition();
+  if (Definition && Definition != D) {
+    Decl *ImportedDef = Importer.Import(Definition);
+    if (!ImportedDef)
+      return 0;
+    
+    return Importer.Imported(D, ImportedDef);
+  }
+  
+  // Import the major distinguishing characteristics of this record.
+  DeclContext *DC, *LexicalDC;
+  DeclarationName Name;
+  SourceLocation Loc;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, Loc))
+    return 0;
+  
+  SourceLocation StartLoc = Importer.Import(D->getLocStart());
+  ALEMeshDecl *D2 =
+  ALEMeshDecl::Create(Importer.getToContext(),
+                          DC,
+                          StartLoc, Loc,
+                          Name.getAsIdentifierInfo());
+  D2->setAccess(D->getAccess());
+  D2->setQualifierInfo(Importer.Import(D->getQualifierLoc()));
+  D2->setLexicalDeclContext(LexicalDC);
+  LexicalDC->addDeclInternal(D2);
+  
+  D2->setHasCellData(D->hasCellData());
+  D2->setHasVertexData(D->hasVertexData());
+  D2->setHasEdgeData(D->hasEdgeData());
+  D2->setHasFaceData(D->hasFaceData());
+  
+  Importer.Imported(D, D2);
+  
+  if (D->isCompleteDefinition() && ImportDefinition(D, D2, IDK_Default))
+    return 0;
+  
+  return D2;
+}
+
 
 Decl *ASTNodeImporter::VisitStructuredMeshDecl(StructuredMeshDecl *D) {
   MeshDecl *Definition = D->getDefinition();

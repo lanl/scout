@@ -874,22 +874,24 @@ namespace clang {
       // ===== Scout ===========================
       /// \brief An Uniform Mesh type.
       TYPE_UNIFORM_MESH       = 43,
+      /// \brief An ALE Mesh type.
+      TYPE_ALE_MESH           = 44,
       /// \brief A Rectilinear Mesh type.
-      TYPE_RECTILINEAR_MESH   = 44,
+      TYPE_RECTILINEAR_MESH   = 45,
       /// \brief A Structured Mesh type.
-      TYPE_STRUCTURED_MESH    = 45,
+      TYPE_STRUCTURED_MESH    = 46,
       /// \brief An Unstructured Mesh type.
-      TYPE_UNSTRUCTURED_MESH  = 46,
+      TYPE_UNSTRUCTURED_MESH  = 47,
       /// \brief A Window type.
-      TYPE_WINDOW             = 47,
+      TYPE_WINDOW             = 48,
       /// \brief A Image type.
-      TYPE_IMAGE              = 48,
+      TYPE_IMAGE              = 49,
       /// \brief A Query type.
-      TYPE_QUERY              = 49,
+      TYPE_QUERY              = 50,
       /// \brief A Frame type.
-      TYPE_FRAME              = 50,
+      TYPE_FRAME              = 51,
       /// \brief A FrameVar type.
-      TYPE_FRAME_VAR          = 51
+      TYPE_FRAME_VAR          = 52
       // =======================================
     };
 

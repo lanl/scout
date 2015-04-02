@@ -1654,6 +1654,10 @@ bool CursorVisitor::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL) {
   return false;
 }
 
+bool CursorVisitor::VisitALEMeshTypeLoc(ALEMeshTypeLoc TL) {
+  return false;
+}
+
 bool CursorVisitor::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL) {
   return false;
 }
@@ -4253,6 +4257,8 @@ CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
   // +== Scout ===============================================================+
   case CXCursor_UniformMeshDecl:
     return cxstring::createRef("UniformMeshDecl");
+  case CXCursor_ALEMeshDecl:
+    return cxstring::createRef("ALEMeshDecl");
   case CXCursor_RectilinearMeshDecl:
     return cxstring::createRef("RectilinearMeshDecl");
   case CXCursor_StructuredMeshDecl:
@@ -5046,6 +5052,7 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::ImplicitColorParam:
   case Decl::MeshField:
   case Decl::UniformMesh:
+  case Decl::ALEMesh:
   case Decl::RectilinearMesh:
   case Decl::StructuredMesh:
   case Decl::UnstructuredMesh:

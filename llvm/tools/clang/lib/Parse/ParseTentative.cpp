@@ -1441,6 +1441,7 @@ Parser::isCXXDeclarationSpecifier(Parser::TPResult BracedCastResult,
   case tok::kw_double:
   // +===== Scout ============================================================+
   case tok::kw_mesh:
+  case tok::kw_ALE:
   case tok::kw_uniform:
   case tok::kw_rectilinear:
   case tok::kw_structured:

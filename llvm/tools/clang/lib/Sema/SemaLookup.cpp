@@ -2274,6 +2274,13 @@ addAssociatedClassesAndNamespaces(AssociatedLookup &Result, QualType Ty) {
       addAssociatedClassesAndNamespaces(Result, UMD);
       break;
     }
+        
+    case Type::ALEMesh: {
+      ALEMeshDecl *AMD;
+      AMD = cast<ALEMeshDecl>(cast<ALEMeshType>(T)->getDecl());
+      addAssociatedClassesAndNamespaces(Result, AMD);
+      break;
+    }
 
     case Type::RectilinearMesh: {
       RectilinearMeshDecl *RMD;

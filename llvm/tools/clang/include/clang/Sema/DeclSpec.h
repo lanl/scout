@@ -297,6 +297,7 @@ public:
 
   // +===== Scout ============================================================+
   static const TST TST_uniform_mesh      = clang::TST_uniform_mesh;
+  static const TST TST_ALE_mesh          = clang::TST_ALE_mesh;
   static const TST TST_structured_mesh   = clang::TST_structured_mesh;
   static const TST TST_rectilinear_mesh  = clang::TST_rectilinear_mesh;
   static const TST TST_unstructured_mesh = clang::TST_unstructured_mesh;
@@ -439,6 +440,7 @@ public:
   // +===== Scout ==================================================+
    static bool isMeshDeclRep(TST T) {
      return ( T == TST_uniform_mesh     || T == TST_structured_mesh ||
+            T == TST_ALE_mesh ||
             T == TST_rectilinear_mesh || T == TST_unstructured_mesh);
    }
   
@@ -1123,7 +1125,7 @@ struct DeclaratorChunk {
   enum {
     Pointer, Reference, Array, Function, BlockPointer, MemberPointer, Paren,
     // +===== Scout ==========================================================+
-    UniformMesh, UnstructuredMesh, RectilinearMesh, StructuredMesh,
+    UniformMesh, ALEMesh, UnstructuredMesh, RectilinearMesh, StructuredMesh,
     Window, Image, Query, Frame, FrameVar
     // +======================================================================+
   } Kind;
@@ -1193,6 +1195,25 @@ struct DeclaratorChunk {
   // +===== Scout ============================================================+
 
   struct UniformMeshTypeInfo : TypeInfoCommon {
+    // parsed constant expressions for each dim
+
+    MeshType::MeshDimensions Dims() const {
+      MeshType::MeshDimensions dims;
+      if (NumDims > 0)  dims.push_back(Expr0);
+      if (NumDims > 1)  dims.push_back(Expr1);
+      if (NumDims > 2)  dims.push_back(Expr2);
+      return dims;
+    }
+
+    unsigned NumDims;
+    Expr *Expr0;
+    Expr *Expr1;
+    Expr *Expr2;
+
+    void destroy() {}
+  };
+
+  struct ALEMeshTypeInfo : TypeInfoCommon {
     // parsed constant expressions for each dim
 
     MeshType::MeshDimensions Dims() const {
@@ -1549,6 +1570,7 @@ struct DeclaratorChunk {
     MemberPointerTypeInfo Mem;
     // +===== Scout ==========================================================+
     UniformMeshTypeInfo        Unimsh;
+    ALEMeshTypeInfo            ALEmsh;
     RectilinearMeshTypeInfo    Rectmsh;
     UnstructuredMeshTypeInfo   Unsmsh;
     StructuredMeshTypeInfo     Strmsh;
@@ -1571,6 +1593,7 @@ struct DeclaratorChunk {
     case DeclaratorChunk::Paren:         return;
     // +==== Scout ===========================================================+
     case DeclaratorChunk::UniformMesh:        return Unimsh.destroy();
+    case DeclaratorChunk::ALEMesh:            return ALEmsh.destroy();
     case DeclaratorChunk::RectilinearMesh:    return Rectmsh.destroy();
     case DeclaratorChunk::UnstructuredMesh:   return Unsmsh.destroy();
     case DeclaratorChunk::StructuredMesh:     return Strmsh.destroy();
@@ -1719,6 +1742,21 @@ struct DeclaratorChunk {
     if (I.Unimsh.NumDims > 0) I.Unimsh.Expr0 = dims[0];
     if (I.Unimsh.NumDims > 1) I.Unimsh.Expr1 = dims[1];
     if (I.Unimsh.NumDims > 2) I.Unimsh.Expr2 = dims[2];
+
+    return I;
+  }
+
+  static DeclaratorChunk getALEMesh(const MeshType::MeshDimensions &dims,
+                                        SourceLocation LBLoc,
+                                        SourceLocation RBLoc) {
+    DeclaratorChunk I;
+    I.Kind          = ALEMesh;
+    I.Loc           = LBLoc;
+    I.EndLoc        = RBLoc;
+    I.ALEmsh.NumDims = dims.size();
+    if (I.ALEmsh.NumDims > 0) I.ALEmsh.Expr0 = dims[0];
+    if (I.ALEmsh.NumDims > 1) I.ALEmsh.Expr1 = dims[1];
+    if (I.ALEmsh.NumDims > 2) I.ALEmsh.Expr2 = dims[2];
 
     return I;
   }
@@ -2280,6 +2318,7 @@ public:
       case DeclaratorChunk::MemberPointer:
       // +===== Scout ========================================================+
       case DeclaratorChunk::UniformMesh:
+      case DeclaratorChunk::ALEMesh:
       case DeclaratorChunk::UnstructuredMesh:
       case DeclaratorChunk::StructuredMesh:
       case DeclaratorChunk::RectilinearMesh:

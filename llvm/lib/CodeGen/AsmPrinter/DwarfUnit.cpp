@@ -1206,6 +1206,7 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, DIScoutCompositeType CTy) {
   
   switch (Tag) {
     case dwarf::DW_TAG_SCOUT_uniform_mesh_type:
+    case dwarf::DW_TAG_SCOUT_ALE_mesh_type:
     case dwarf::DW_TAG_SCOUT_structured_mesh_type:
     case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
     case dwarf::DW_TAG_SCOUT_unstructured_mesh_type: {

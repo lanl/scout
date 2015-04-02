@@ -155,6 +155,7 @@ TypeEvaluationKind CodeGenFunction::getEvaluationKind(QualType type) {
 
   // +==== Scout =============================================================+
   case Type::UniformMesh:
+  case Type::ALEMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
@@ -1564,6 +1565,7 @@ void CodeGenFunction::EmitVariablyModifiedType(QualType type) {
     // These types are never variably-modified.
     // +==== Scout ===========================================================+
     case Type::UniformMesh:
+    case Type::ALEMesh:
     case Type::StructuredMesh:
     case Type::RectilinearMesh:
     case Type::UnstructuredMesh:

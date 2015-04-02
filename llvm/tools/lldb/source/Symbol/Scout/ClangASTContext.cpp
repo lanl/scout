@@ -96,6 +96,7 @@
 #include "clang/Frontend/LangStandard.h"
 
 #include "clang/AST/Scout/UniformMeshDecl.h"
+#include "clang/AST/Scout/ALEMeshDecl.h"
 #include "clang/AST/Scout/StructuredMeshDecl.h"
 #include "clang/AST/Scout/RectilinearMeshDecl.h"
 #include "clang/AST/Scout/UnstructuredMeshDecl.h"
@@ -188,6 +189,67 @@ ClangASTContext::CreateUniformMeshType (DeclContext *decl_ctx,
         return ClangASTType(ast, ast->getUniformMeshType(decl, dims).getAsOpaquePtr());
     }
     return ClangASTType();
+}
+
+ClangASTType
+ClangASTContext::CreateALEMeshType (DeclContext *decl_ctx,
+                                        AccessType access_type,
+                                        const char *name,
+                                        unsigned dimX,
+                                        unsigned dimY,
+                                        unsigned dimZ,
+                                        LanguageType language,
+                                        ClangASTMetadata *metadata)
+{
+  ASTContext *ast = getASTContext();
+  assert (ast != NULL);
+  
+  if (decl_ctx == NULL)
+    decl_ctx = ast->getTranslationUnitDecl();
+  
+  ALEMeshDecl *decl = ALEMeshDecl::Create (*ast,
+                                                   decl_ctx,
+                                                   SourceLocation(),
+                                                   SourceLocation(),
+                                                   name && name[0] ? &ast->Idents.get(name) : NULL);
+  
+  if (decl)
+  {
+    if (metadata)
+      SetMetadata(ast, decl, *metadata);
+    
+    if (access_type != eAccessNone)
+      decl->setAccess (ConvertAccessTypeToAccessSpecifier (access_type));
+    
+    if (decl_ctx)
+      decl_ctx->addDecl (decl);
+    
+    MeshType::MeshDimensions dims;
+    for(size_t i = 0; i < 3; ++i){
+      unsigned dim;
+      
+      switch(i){
+        case 0:
+          dim = dimX;
+          break;
+        case 1:
+          dim = dimY;
+          break;
+        case 2:
+          dim = dimZ;
+          break;
+      }
+      
+      if(dim == 0){
+        break;
+      }
+      
+      dims.push_back(IntegerLiteral::Create(*ast, APInt(32, dim), ast->UnsignedIntTy, SourceLocation()));
+    }
+    
+    return ClangASTType(ast, ast->getALEMeshType(decl, dims).getAsOpaquePtr());
+  }
+  return ClangASTType();
 }
 
 ClangASTType

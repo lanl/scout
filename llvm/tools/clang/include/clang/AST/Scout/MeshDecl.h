@@ -509,11 +509,13 @@ namespace clang {
     void setMeshKind(MeshKind TK) { MeshDeclKind = TK; }
 
     bool isUniformMesh() const { return getMeshKind() == TTK_UniformMesh;  }
+    bool isALEMesh() const { return getMeshKind() == TTK_ALEMesh;  }
     bool isStructuredMesh() const { return getMeshKind() == TTK_StructuredMesh; }
     bool isRectilinearMesh() const{ return getMeshKind() == TTK_RectilinearMesh; }
     bool isUnstructuredMesh() const { return getMeshKind() == TTK_UnstructuredMesh; }
     bool isMesh() const {
       return isUniformMesh()     ||
+             isALEMesh()  ||
              isStructuredMesh()  ||
              isRectilinearMesh() ||
              isUnstructuredMesh();

@@ -291,6 +291,17 @@ public:
                            unsigned dimZ,
                            lldb::LanguageType language,
                            ClangASTMetadata *metadata = NULL);
+  
+    ClangASTType
+    CreateALEMeshType (clang::DeclContext *decl_ctx,
+                           lldb::AccessType access_type,
+                           const char *name,
+                           unsigned dimX,
+                           unsigned dimY,
+                           unsigned dimZ,
+                           lldb::LanguageType language,
+                           ClangASTMetadata *metadata = NULL);
+
 
     ClangASTType
     CreateStructuredMeshType (clang::DeclContext *decl_ctx,

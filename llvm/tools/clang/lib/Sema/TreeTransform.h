@@ -806,6 +806,10 @@ public:
     QualType RebuildUniformMeshType(UniformMeshDecl *UMD) {
       return SemaRef.Context.getTypeDeclType(UMD);
     }
+  
+    QualType RebuildALEMeshType(ALEMeshDecl *AMD) {
+      return SemaRef.Context.getTypeDeclType(AMD);
+    }
 
     QualType RebuildStructuredMeshType(StructuredMeshDecl *SMD) {
       return SemaRef.Context.getTypeDeclType(SMD);
@@ -5043,6 +5047,31 @@ QualType
   return Result;
 }
 
+template<typename Derived>
+QualType
+TreeTransform<Derived>::TransformALEMeshType(TypeLocBuilder &TLB,
+                                                 ALEMeshTypeLoc TL) {
+  const ALEMeshType *T = TL.getTypePtr();
+  ALEMeshDecl *UMD;
+  UMD = cast_or_null<ALEMeshDecl>(getDerived().TransformDecl(TL.getNameLoc(),
+                                                                 T->getDecl()));
+  if (!UMD)
+    return QualType();
+  
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      UMD != T->getDecl()) {
+    Result = getDerived().RebuildALEMeshType(UMD);
+    if (Result.isNull())
+      return QualType();
+  }
+  
+  ALEMeshTypeLoc NewTL = TLB.push<ALEMeshTypeLoc>(Result);
+  NewTL.setNameLoc(TL.getNameLoc());
+  
+  return Result;
+}
+  
 template<typename Derived>
 QualType
 TreeTransform<Derived>::TransformStructuredMeshType(TypeLocBuilder &TLB,

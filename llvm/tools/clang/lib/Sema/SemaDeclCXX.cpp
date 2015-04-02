@@ -6972,6 +6972,7 @@ void Sema::CheckConversionDeclarator(Declarator &D, QualType &R,
         break;
       // ===== Scout ========================
       case DeclaratorChunk::UniformMesh:
+      case DeclaratorChunk::ALEMesh:
       case DeclaratorChunk::UnstructuredMesh:
       case DeclaratorChunk::RectilinearMesh:
       case DeclaratorChunk::StructuredMesh:

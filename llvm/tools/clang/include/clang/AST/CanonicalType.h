@@ -556,6 +556,13 @@ struct CanProxyAdaptor<UniformMeshType> :
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(UniformMeshDecl *, getDecl)
   LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
 };
+  
+template <>
+struct CanProxyAdaptor<ALEMeshType> :
+    public CanProxyBase<ALEMeshType> {
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(ALEMeshDecl *, getDecl)
+  LLVM_CLANG_CANPROXY_SIMPLE_ACCESSOR(bool, isBeingDefined)
+};
 
 template <>
 struct CanProxyAdaptor<RectilinearMeshType> :

@@ -12687,6 +12687,7 @@ bool Sema::tryCaptureVariable(VarDecl *Var, SourceLocation ExprLoc,
         case Type::ObjCObjectPointer:
         // +===== Scout ==============================================================+
         case Type::UniformMesh:
+        case Type::ALEMesh:
         case Type::RectilinearMesh:
         case Type::StructuredMesh:
         case Type::UnstructuredMesh:

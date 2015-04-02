@@ -585,6 +585,7 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
 
     // +==== Scout ===========================================================+
     case UniformMesh:
+    case ALEMesh:
     case StructuredMesh:
     case RectilinearMesh:
     case UnstructuredMesh:

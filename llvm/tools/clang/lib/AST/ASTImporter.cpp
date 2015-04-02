@@ -74,6 +74,7 @@ namespace clang {
     // FIXME: DependentDecltypeType
     // +==== Scout ===========================================================+
     QualType VisitUniformMeshType(const UniformMeshType* T);
+    QualType VisitALEMeshType(const ALEMeshType* T);
     QualType VisitStructuredMeshType(const StructuredMeshType* T);
     QualType VisitRectilinearMeshType(const RectilinearMeshType* T);
     QualType VisitUnstructuredMeshType(const UnstructuredMeshType* T);
@@ -161,6 +162,7 @@ namespace clang {
     Decl *VisitRecordDecl(RecordDecl *D);
     // +==== Scout ===========================================================+
     Decl* VisitUniformMeshDecl(UniformMeshDecl* D);
+    Decl* VisitALEMeshDecl(ALEMeshDecl* D);
     Decl* VisitStructuredMeshDecl(StructuredMeshDecl* D);
     Decl* VisitRectilinearMeshDecl(RectilinearMeshDecl* D);
     Decl* VisitUnstructuredMeshDecl(UnstructuredMeshDecl* D);
@@ -683,6 +685,7 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   // 
   // SC_TODO - Not sure why we state this...  Why no equivalance?
   case Type::UniformMesh:
+  case Type::ALEMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh:

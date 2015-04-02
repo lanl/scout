@@ -1,9 +1,11 @@
 /*
+ *
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ *
+ * Copyright (c) 2013, Los Alamos National Security, LLC.
  * All rights reserved.
  *
- *  Copyright 2010. Los Alamos National Security, LLC. This software was
+ *  Copyright 2013. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
  *  National Security, LLC for the U.S. Department of Energy. The
@@ -45,77 +47,66 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ###########################################################################
  *
- * Notes: See the various mesh types in AST/Types.h for some
- * -----  more details on Scout's mesh types.  It is important
- *        to keep a connection between the various Decls in this
- *        file and those types.
- *
- * #####
  */
-
+#include "clang/AST/Decl.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/ASTMutationListener.h"
 #include "clang/AST/Attr.h"
-#include "clang/AST/CharUnits.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
+#include "clang/AST/ExprCXX.h"
 #include "clang/AST/PrettyPrinter.h"
-#include "clang/AST/Type.h"
-#include "clang/AST/TypeVisitor.h"
+#include "clang/AST/Stmt.h"
+#include "clang/AST/TypeLoc.h"
+#include "clang/AST/Scout/ALEMeshDecl.h"
+#include "clang/Basic/Builtins.h"
+#include "clang/Basic/IdentifierTable.h"
+#include "clang/Basic/Module.h"
 #include "clang/Basic/Specifiers.h"
-#include "llvm/ADT/APSInt.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/raw_ostream.h"
-
-// +===== Scout ==============================================================+
-#include "clang/AST/Scout/MeshDecl.h"
-// +==========================================================================+
-
-
+#include "clang/Basic/TargetInfo.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/type_traits.h"
 #include <algorithm>
+
 using namespace clang;
 
-UniformMeshDecl *Type::getAsUniformMeshDecl() const {
-  if (const UniformMeshType *RT = getAs<UniformMeshType>())
-    return dyn_cast<UniformMeshDecl>(RT->getDecl());
-  else
-    return 0;
+//===----------------------------------------------------------------------===//
+// ALEMeshDecl Implementation
+//===----------------------------------------------------------------------===//
+//
+//
+ALEMeshDecl::ALEMeshDecl(const ASTContext &C,
+                                 DeclContext     *DC,
+                                 SourceLocation  StartLoc,
+                                 SourceLocation  IdLoc,
+                                 IdentifierInfo  *Id,
+                                 ALEMeshDecl *PrevDecl)
+  : MeshDecl(ALEMesh, TTK_ALEMesh, C, DC, IdLoc, Id, PrevDecl, StartLoc) { }
+
+ALEMeshDecl *ALEMeshDecl::Create(const ASTContext &C,
+                                         DeclContext *DC,
+                                         SourceLocation StartLoc,
+                                         SourceLocation IdLoc,
+                                         IdentifierInfo *Id,
+                                         ALEMeshDecl* PrevDecl) {
+
+  ALEMeshDecl* M = new (C, DC) ALEMeshDecl(C, DC,
+                                               StartLoc,
+                                               IdLoc, Id,
+                                               PrevDecl);
+  M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
+  C.getTypeDeclType(M, PrevDecl);
+  return M;
 }
 
-ALEMeshDecl *Type::getAsALEMeshDecl() const {
-  if (const ALEMeshType *RT = getAs<ALEMeshType>())
-    return dyn_cast<ALEMeshDecl>(RT->getDecl());
-  else
-    return 0;
+ALEMeshDecl *ALEMeshDecl::CreateDeserialized(const ASTContext &C,
+                                                     unsigned ID) {
+  ALEMeshDecl *M = new (C, ID) ALEMeshDecl(C, 0, SourceLocation(),
+                                                 SourceLocation(), 0, 0);
+  M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
+  return M;
 }
 
-StructuredMeshDecl *Type::getAsStructuredMeshDecl() const {
-  if (const StructuredMeshType *RT = getAs<StructuredMeshType>())
-    return dyn_cast<StructuredMeshDecl>(RT->getDecl());
-  else
-    return 0;
-}
-
-RectilinearMeshDecl *Type::getAsRectilinearMeshDecl() const {
-  if (const RectilinearMeshType *RT = getAs<RectilinearMeshType>())
-    return dyn_cast<RectilinearMeshDecl>(RT->getDecl());
-  else
-    return 0;
-}
-
-UnstructuredMeshDecl *Type::getAsUnstructuredMeshDecl() const {
-  if (const UnstructuredMeshType *RT = getAs<UnstructuredMeshType>())
-    return dyn_cast<UnstructuredMeshDecl>(RT->getDecl());
-  else
-    return 0;
-}
-
-FrameDecl *Type::getAsFrameDecl() const {
-  if (const FrameType *FT = getAs<FrameType>())
-    return dyn_cast<FrameDecl>(FT->getDecl());
-  else
-    return 0;
-}

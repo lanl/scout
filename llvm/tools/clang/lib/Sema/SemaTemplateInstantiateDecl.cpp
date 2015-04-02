@@ -79,6 +79,12 @@ bool TemplateDeclInstantiator::SubstQualifier(const UniformMeshDecl *OldDecl,
   return false;
 }
 
+bool TemplateDeclInstantiator::SubstQualifier(const ALEMeshDecl *OldDecl,
+                                              ALEMeshDecl *NewDecl) {
+  assert(false && "parsing Scout in C++ mode");
+  return false;
+}
+
 bool TemplateDeclInstantiator::SubstQualifier(const RectilinearMeshDecl *OldDecl,
                                               RectilinearMeshDecl *NewDecl) {
   assert(false && "parsing Scout in C++ mode");
@@ -1334,6 +1340,10 @@ Decl *TemplateDeclInstantiator::VisitUniformMeshDecl(UniformMeshDecl *D) {
   return nullptr;
 }
 
+Decl *TemplateDeclInstantiator::VisitALEMeshDecl(ALEMeshDecl *D) {
+  assert(false && "parsing Scout in C++ mode");
+  return nullptr;
+}
 
 Decl *
 TemplateDeclInstantiator::VisitRectilinearMeshDecl(RectilinearMeshDecl *D) {

@@ -2504,6 +2504,7 @@ SymbolFileDWARF::ResolveClangOpaqueTypeDefinition (ClangASTType &clang_type)
     {
     // +===== Scout =======================
     case DW_TAG_SCOUT_uniform_mesh_type:
+    case DW_TAG_SCOUT_ALE_mesh_type:
     case DW_TAG_SCOUT_structured_mesh_type:
     case DW_TAG_SCOUT_rectilinear_mesh_type:
     case DW_TAG_SCOUT_unstructured_mesh_type:
@@ -5983,6 +5984,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                 break;
             // +===== Scout =============
             case DW_TAG_SCOUT_uniform_mesh_type:
+            case DW_TAG_SCOUT_ALE_mesh_type:
             case DW_TAG_SCOUT_structured_mesh_type:
             case DW_TAG_SCOUT_rectilinear_mesh_type:
             case DW_TAG_SCOUT_unstructured_mesh_type:
@@ -6123,6 +6125,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                     }
                     // +===== Scout ======================
                     else if (tag == DW_TAG_SCOUT_uniform_mesh_type ||
+                             tag == DW_TAG_SCOUT_ALE_mesh_type ||
                              tag == DW_TAG_SCOUT_structured_mesh_type ||
                              tag == DW_TAG_SCOUT_rectilinear_mesh_type ||
                              tag == DW_TAG_SCOUT_unstructured_mesh_type){
@@ -6314,6 +6317,18 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                                                                         class_language,
                                                                         &metadata);
                                 break;
+                                  
+                              case DW_TAG_SCOUT_ALE_mesh_type:
+                                clang_type = ast.CreateALEMeshType (decl_ctx,
+                                                                        accessibility,
+                                                                        type_name_cstr,
+                                                                        dimX,
+                                                                        dimY,
+                                                                        dimZ,
+                                                                        class_language,
+                                                                        &metadata);
+                                break;
+
                               case DW_TAG_SCOUT_structured_mesh_type:
                                 clang_type = ast.CreateStructuredMeshType (decl_ctx,
                                                                            accessibility,

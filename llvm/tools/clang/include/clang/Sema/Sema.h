@@ -1143,6 +1143,9 @@ public:
   QualType BuildUniformMeshType(QualType T,
                                 const MeshType::MeshDimensions &dims,
                                 SourceRange Brackets, DeclarationName Entity);
+  QualType BuildALEMeshType(QualType T,
+                                const MeshType::MeshDimensions &dims,
+                                SourceRange Brackets, DeclarationName Entity);
   QualType BuildRectilinearMeshType(QualType T,
                                 const MeshType::MeshDimensions &dims,
                                 SourceRange Brackets, DeclarationName Entity);

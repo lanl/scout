@@ -811,6 +811,7 @@ void Verifier::visitMDScoutDerivedType(const MDScoutDerivedType &N) {
 
 void Verifier::visitMDScoutCompositeType(const MDScoutCompositeType &N) {
   Assert(N.getTag() == dwarf::DW_TAG_SCOUT_uniform_mesh_type ||
+         N.getTag() == dwarf::DW_TAG_SCOUT_ALE_mesh_type ||
          N.getTag() == dwarf::DW_TAG_SCOUT_structured_mesh_type ||
          N.getTag() == dwarf::DW_TAG_SCOUT_rectilinear_mesh_type ||
          N.getTag() == dwarf::DW_TAG_SCOUT_unstructured_mesh_type,

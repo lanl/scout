@@ -2521,6 +2521,7 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty) {
 
   // ===== Scout ========================
   case Type::UniformMesh:
+  case Type::ALEMesh:
   case Type::UnstructuredMesh:
   case Type::RectilinearMesh:
   case Type::StructuredMesh:
@@ -2752,6 +2753,7 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(QualType Ty, bool Force) {
   
 // ===== Scout ========================
   case Type::UniformMesh:
+  case Type::ALEMesh:
   case Type::UnstructuredMesh:
   case Type::RectilinearMesh:
   case Type::StructuredMesh:

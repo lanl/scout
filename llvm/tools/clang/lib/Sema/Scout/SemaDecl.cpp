@@ -87,6 +87,15 @@ Decl* Sema::ActOnMeshDefinition(Scope* S,
       PushOnScopeChains(MD, S, true);
       return MD;
     }
+      
+    case tok::kw_ALE: {
+      //llvm::errs() << "create ALE mesh " << Name->getName() << "\n";
+      ALEMeshDecl* MD;
+      MD = ALEMeshDecl::Create(Context, CurContext,
+                                   KWLoc, NameLoc, Name, 0);
+      PushOnScopeChains(MD, S, true);
+      return MD;
+    }
 
     case tok::kw_structured: {
       StructuredMeshDecl* USMD;
