@@ -1,4 +1,4 @@
-/* Copyright 2014 Stanford University
+/* Copyright 2015 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,6 +35,11 @@ using namespace LegionRuntime::Accessor;
 #include "legion_logging.h"
 
 using namespace LegionRuntime::HighLevel::LegionLogging;
+#endif
+#ifdef LEGION_PROF
+#include "legion_profiling.h"
+using namespace LegionRuntime::HighLevel;
+using namespace LegionRuntime::HighLevel::LegionProf;
 #endif
 
 #include "atomics.h"
@@ -106,7 +111,7 @@ namespace LegionRuntime {
       int priority;
       Event after_copy;
 
-      class Waiter : public Event::Impl::EventWaiter {
+      class Waiter : public EventWaiter {
       public:
         Waiter(void) { }
         virtual ~Waiter(void) { }
@@ -327,7 +332,9 @@ namespace LegionRuntime {
 
       oas_by_inst = new OASByInst;
 
+#ifdef USE_CUDA
       int priority = 0;
+#endif
 
       while(((idata - ((const IDType *)data))*sizeof(IDType)) < datalen) {
 	RegionInstance src_inst = ID((IDType)*idata++).convert<RegionInstance>();
@@ -414,7 +421,7 @@ namespace LegionRuntime {
 					    Reservation l /*= Reservation::NO_RESERVATION*/)
     {
       current_lock = l;
-      e.impl()->add_waiter(e, this);
+      e.impl()->add_waiter(e.gen, this);
     }
 
     bool DmaRequest::Waiter::event_triggered(void)
@@ -487,42 +494,30 @@ namespace LegionRuntime {
 	  RegionInstance::Impl *src_impl = it->first.first.impl();
 	  RegionInstance::Impl *dst_impl = it->first.second.impl();
 
-	  if(!src_impl->locked_data.valid) {
-	    log_dma.info("dma request %p - no src instance (" IDFMT ") metadata yet", this, it->first.first.id);
-	    if(just_check) return false;
-
-	    Event e = src_impl->lock.acquire(1, false);
-	    if(e.has_triggered()) {
-	      log_dma.info("request %p - src instance metadata invalid - instant trigger", this);
-	      src_impl->lock.release();
-	    } else {
-	      log_dma.info("request %p - src instance metadata invalid - sleeping on lock " IDFMT "", this, src_impl->lock.me.id);
-	      waiter.sleep_on_event(e, src_impl->lock.me);
+	  {
+	    Event e = src_impl->request_metadata();
+	    if(!e.has_triggered()) {
+	      if(just_check) {
+		log_dma.info("dma request %p - no src instance (" IDFMT ") metadata yet", this, src_impl->me.id);
+		return false;
+	      }
+	      log_dma.info("request %p - src instance metadata invalid - sleeping on event " IDFMT "/%d", this, e.id, e.gen);
+	      waiter.sleep_on_event(e);
 	      return false;
 	    }
 	  }
-	  if(!src_impl->linearization.valid()) {
-	    //printf("deserializing linearizer\n");
-	    src_impl->linearization.deserialize(src_impl->locked_data.linearization_bits);
-	  }
 
-	  if(!dst_impl->locked_data.valid) {
-	    log_dma.info("dma request %p - no dst instance (" IDFMT ") metadata yet", this, it->first.second.id);
-	    if(just_check) return false;
-
-	    Event e = dst_impl->lock.acquire(1, false);
-	    if(e.has_triggered()) {
-	      log_dma.info("request %p - dst instance metadata invalid - instant trigger", this);
-	      dst_impl->lock.release();
-	    } else {
-	      log_dma.info("request %p - dst instance metadata invalid - sleeping on lock " IDFMT "", this, dst_impl->lock.me.id);
-	      waiter.sleep_on_event(e, dst_impl->lock.me);
+	  {
+	    Event e = dst_impl->request_metadata();
+	    if(!e.has_triggered()) {
+	      if(just_check) {
+		log_dma.info("dma request %p - no dst instance (" IDFMT ") metadata yet", this, dst_impl->me.id);
+		return false;
+	      }
+	      log_dma.info("request %p - dst instance metadata invalid - sleeping on event " IDFMT "/%d", this, e.id, e.gen);
+	      waiter.sleep_on_event(e);
 	      return false;
 	    }
-	  }
-	  if(!dst_impl->linearization.valid()) {
-	    //printf("deserializing linearizer\n");
-	    dst_impl->linearization.deserialize(dst_impl->locked_data.linearization_bits);
 	  }
 	}
 
@@ -601,8 +596,6 @@ namespace LegionRuntime {
 					     Event event);
 
     extern void do_remote_fence(Memory mem, unsigned sequence_id, unsigned count, Event event);
-
-    extern ReductionOpTable reduce_op_table;
 
 
     namespace RangeExecutors {
@@ -956,7 +949,7 @@ namespace LegionRuntime {
 
 	  // if we don't have an event for our completion, we need one now
 	  if(!event.exists())
-	    event = Event::Impl::create_event();
+	    event = GenEventImpl::create_genevent()->current_event();
 
 	  DetailedTimer::ScopedPush sp(TIME_SYSTEM);
 	  do_remote_write(tgt_mem, tgt_offset + byte_offset,
@@ -1000,19 +993,22 @@ namespace LegionRuntime {
     };
 
     // helper function to figure out which field we're in
-    static void find_field_start(const int *field_sizes, off_t byte_offset, size_t size, off_t& field_start, int& field_size)
+    static void find_field_start(const std::vector<size_t>& field_sizes, off_t byte_offset,
+				 size_t size, off_t& field_start, int& field_size)
     {
       off_t start = 0;
-      for(unsigned i = 0; i < RegionInstance::Impl::MAX_FIELDS_PER_INST; i++) {
-	assert(field_sizes[i] > 0);
-	if(byte_offset < field_sizes[i]) {
-	  assert((int)(byte_offset + size) <= field_sizes[i]);
+      for(std::vector<size_t>::const_iterator it = field_sizes.begin();
+	  it != field_sizes.end();
+	  it++) {
+	assert((*it) > 0);
+	if(byte_offset < (off_t)(*it)) {
+	  assert((byte_offset + size) <= (*it));
 	  field_start = start;
-	  field_size = field_sizes[i];
+	  field_size = (*it);
 	  return;
 	}
-	start += field_sizes[i];
-	byte_offset -= field_sizes[i];
+	start += (*it);
+	byte_offset -= (*it);
       }
       assert(0);
     }
@@ -1040,11 +1036,8 @@ namespace LegionRuntime {
 	: span_copier(_span_copier), src_inst(_src_inst.impl()), 
           dst_inst(_dst_inst.impl()), oas_vec(_oas_vec)
       {
-	StaticAccess<RegionInstance::Impl> src_idata(src_inst);
-	assert(src_idata->valid);
-
-	StaticAccess<RegionInstance::Impl> dst_idata(dst_inst);
-	assert(dst_idata->valid);
+	assert(src_inst->metadata.is_valid());
+	assert(dst_inst->metadata.is_valid());
 
         // Precompute our field offset information
         src_start.resize(oas_vec.size());
@@ -1054,9 +1047,9 @@ namespace LegionRuntime {
 	partial_field.resize(oas_vec.size());
         for (unsigned idx = 0; idx < oas_vec.size(); idx++)
         {
-          find_field_start(src_idata->field_sizes, oas_vec[idx].src_offset,
+          find_field_start(src_inst->metadata.field_sizes, oas_vec[idx].src_offset,
                             oas_vec[idx].size, src_start[idx], src_size[idx]);
-          find_field_start(dst_idata->field_sizes, oas_vec[idx].dst_offset,
+          find_field_start(dst_inst->metadata.field_sizes, oas_vec[idx].dst_offset,
                             oas_vec[idx].size, dst_start[idx], dst_size[idx]);
 
 	  // mark an OASVec entry as being "partial" if src and/or dst don't fill the whole instance field
@@ -1075,14 +1068,15 @@ namespace LegionRuntime {
         unsigned src_offset = oas_vec[offset_index].src_offset;
         unsigned dst_offset = oas_vec[offset_index].dst_offset;
         unsigned bytes = oas_vec[offset_index].size;
-	StaticAccess<RegionInstance::Impl> src_idata(src_inst);
-	StaticAccess<RegionInstance::Impl> dst_idata(dst_inst);
+
+	assert(src_inst->metadata.is_valid());
+	assert(dst_inst->metadata.is_valid());
 
 	off_t src_field_start, dst_field_start;
 	int src_field_size, dst_field_size;
 
-	//find_field_start(src_idata->field_sizes, src_offset, bytes, src_field_start, src_field_size);
-	//find_field_start(dst_idata->field_sizes, dst_offset, bytes, dst_field_start, dst_field_size);
+	//find_field_start(src_inst->metadata.field_sizes, src_offset, bytes, src_field_start, src_field_size);
+	//find_field_start(dst_inst->metadata.field_sizes, dst_offset, bytes, dst_field_start, dst_field_size);
         src_field_start = src_start[offset_index];
         dst_field_start = dst_start[offset_index];
         src_field_size = src_size[offset_index];
@@ -1094,27 +1088,27 @@ namespace LegionRuntime {
 	  // let's see how many we can copy
 	  int done = 0;
 	  while(done < elem_count) {
-	    int src_in_this_block = src_idata->block_size - ((src_index + done) % src_idata->block_size);
-	    int dst_in_this_block = dst_idata->block_size - ((dst_index + done) % dst_idata->block_size);
+	    int src_in_this_block = src_inst->metadata.block_size - ((src_index + done) % src_inst->metadata.block_size);
+	    int dst_in_this_block = dst_inst->metadata.block_size - ((dst_index + done) % dst_inst->metadata.block_size);
 	    int todo = min(elem_count - done, min(src_in_this_block, dst_in_this_block));
 
 	    //printf("copying range of %d elements (%d, %d, %d)\n", todo, src_index, dst_index, done);
 
-	    off_t src_start = calc_mem_loc(src_idata->alloc_offset + (src_offset - src_field_start),
-					   src_field_start, src_field_size, src_idata->elmt_size,
-					   src_idata->block_size, src_index + done);
-	    off_t dst_start = calc_mem_loc(dst_idata->alloc_offset + (dst_offset - dst_field_start),
-					   dst_field_start, dst_field_size, dst_idata->elmt_size,
-					   dst_idata->block_size, dst_index + done);
+	    off_t src_start = calc_mem_loc(src_inst->metadata.alloc_offset + (src_offset - src_field_start),
+					   src_field_start, src_field_size, src_inst->metadata.elmt_size,
+					   src_inst->metadata.block_size, src_index + done);
+	    off_t dst_start = calc_mem_loc(dst_inst->metadata.alloc_offset + (dst_offset - dst_field_start),
+					   dst_field_start, dst_field_size, dst_inst->metadata.elmt_size,
+					   dst_inst->metadata.block_size, dst_index + done);
 
 	    // sanity check that the range we calculated really is contiguous
-	    assert(calc_mem_loc(src_idata->alloc_offset + (src_offset - src_field_start),
-				src_field_start, src_field_size, src_idata->elmt_size,
-				src_idata->block_size, src_index + done + todo - 1) == 
+	    assert(calc_mem_loc(src_inst->metadata.alloc_offset + (src_offset - src_field_start),
+				src_field_start, src_field_size, src_inst->metadata.elmt_size,
+				src_inst->metadata.block_size, src_index + done + todo - 1) == 
 		   (src_start + (todo - 1) * bytes));
-	    assert(calc_mem_loc(dst_idata->alloc_offset + (dst_offset - dst_field_start),
-				dst_field_start, dst_field_size, dst_idata->elmt_size,
-				dst_idata->block_size, dst_index + done + todo - 1) == 
+	    assert(calc_mem_loc(dst_inst->metadata.alloc_offset + (dst_offset - dst_field_start),
+				dst_field_start, dst_field_size, dst_inst->metadata.elmt_size,
+				dst_inst->metadata.block_size, dst_index + done + todo - 1) == 
 		   (dst_start + (todo - 1) * bytes));
 
 #ifdef NEW2D_DEBUG
@@ -1129,12 +1123,12 @@ namespace LegionRuntime {
 	} else {
 	  // fallback - calculate each address separately
 	  for(int i = 0; i < elem_count; i++) {
-	    off_t src_start = calc_mem_loc(src_idata->alloc_offset + (src_offset - src_field_start),
-					   src_field_start, src_field_size, src_idata->elmt_size,
-					   src_idata->block_size, src_index + i);
-	    off_t dst_start = calc_mem_loc(dst_idata->alloc_offset + (dst_offset - dst_field_start),
-					   dst_field_start, dst_field_size, dst_idata->elmt_size,
-					   dst_idata->block_size, dst_index + i);
+	    off_t src_start = calc_mem_loc(src_inst->metadata.alloc_offset + (src_offset - src_field_start),
+					   src_field_start, src_field_size, src_inst->metadata.elmt_size,
+					   src_inst->metadata.block_size, src_index + i);
+	    off_t dst_start = calc_mem_loc(dst_inst->metadata.alloc_offset + (dst_offset - dst_field_start),
+					   dst_field_start, dst_field_size, dst_inst->metadata.elmt_size,
+					   dst_inst->metadata.block_size, dst_index + i);
 
 #ifdef NEW2D_DEBUG
 	    printf("ZZZ: %zd %zd %d\n", src_start, dst_start, bytes);
@@ -1150,11 +1144,11 @@ namespace LegionRuntime {
       {
 	// first check - if the span we're copying straddles a block boundary
 	//  go back to old way - block size of 1 is ok only if both are
-	StaticAccess<RegionInstance::Impl> src_idata(src_inst);
-	StaticAccess<RegionInstance::Impl> dst_idata(dst_inst);
+	assert(src_inst->metadata.is_valid());
+	assert(dst_inst->metadata.is_valid());
 
-	size_t src_bsize = src_idata->block_size;
-	size_t dst_bsize = dst_idata->block_size;
+	size_t src_bsize = src_inst->metadata.block_size;
+	size_t dst_bsize = dst_inst->metadata.block_size;
 
 	if(((src_bsize == 1) != (dst_bsize == 1)) ||
 	   ((src_bsize > 1) && ((src_index / src_bsize) != ((src_index + elem_count - 1) / src_bsize))) ||
@@ -1233,16 +1227,16 @@ namespace LegionRuntime {
 	  }
 
 	  // now we can copy something
-	  off_t src_start = calc_mem_loc(src_idata->alloc_offset + (src_offset - src_field_start),
-					 src_field_start, src_field_size, src_idata->elmt_size,
-					 src_idata->block_size, src_index);
-	  off_t dst_start = calc_mem_loc(dst_idata->alloc_offset + (dst_offset - dst_field_start),
-					 dst_field_start, dst_field_size, dst_idata->elmt_size,
-					 dst_idata->block_size, dst_index);
+	  off_t src_start = calc_mem_loc(src_inst->metadata.alloc_offset + (src_offset - src_field_start),
+					 src_field_start, src_field_size, src_inst->metadata.elmt_size,
+					 src_inst->metadata.block_size, src_index);
+	  off_t dst_start = calc_mem_loc(dst_inst->metadata.alloc_offset + (dst_offset - dst_field_start),
+					 dst_field_start, dst_field_size, dst_inst->metadata.elmt_size,
+					 dst_inst->metadata.block_size, dst_index);
 
 	  // AOS merging doesn't work if we don't end up with the full element
 	  if((src_bsize == 1) && 
-	     ((total_bytes < src_idata->elmt_size) || (total_bytes < dst_idata->elmt_size)) &&
+	     ((total_bytes < src_inst->metadata.elmt_size) || (total_bytes < dst_inst->metadata.elmt_size)) &&
 	     (elem_count > 1)) {
 	    printf("help: AOS tried to merge subset of fields with multiple elements - not contiguous!\n");
 	    assert(0);
@@ -1271,11 +1265,11 @@ namespace LegionRuntime {
       {
 	// first check - if the span we're copying straddles a block boundary
 	//  go back to old way - block size of 1 is ok only if both are
-	StaticAccess<RegionInstance::Impl> src_idata(src_inst);
-	StaticAccess<RegionInstance::Impl> dst_idata(dst_inst);
+	assert(src_inst->metadata.is_valid());
+	assert(dst_inst->metadata.is_valid());
 
-	size_t src_bsize = src_idata->block_size;
-	size_t dst_bsize = dst_idata->block_size;
+	size_t src_bsize = src_inst->metadata.block_size;
+	size_t dst_bsize = dst_inst->metadata.block_size;
 
 	int src_last = src_index + (count_per_line - 1) + (lines - 1) * src_stride;
 	int dst_last = dst_index + (count_per_line - 1) + (lines - 1) * dst_stride;
@@ -1356,16 +1350,16 @@ namespace LegionRuntime {
 	  }
 
 	  // now we can copy something
-	  off_t src_start = calc_mem_loc(src_idata->alloc_offset + (src_offset - src_field_start),
-					 src_field_start, src_field_size, src_idata->elmt_size,
-					 src_idata->block_size, src_index);
-	  off_t dst_start = calc_mem_loc(dst_idata->alloc_offset + (dst_offset - dst_field_start),
-					 dst_field_start, dst_field_size, dst_idata->elmt_size,
-					 dst_idata->block_size, dst_index);
+	  off_t src_start = calc_mem_loc(src_inst->metadata.alloc_offset + (src_offset - src_field_start),
+					 src_field_start, src_field_size, src_inst->metadata.elmt_size,
+					 src_inst->metadata.block_size, src_index);
+	  off_t dst_start = calc_mem_loc(dst_inst->metadata.alloc_offset + (dst_offset - dst_field_start),
+					 dst_field_start, dst_field_size, dst_inst->metadata.elmt_size,
+					 dst_inst->metadata.block_size, dst_index);
 
 	  // AOS merging doesn't work if we don't end up with the full element
 	  if((src_bsize == 1) && 
-	     ((total_bytes < src_idata->elmt_size) || (total_bytes < dst_idata->elmt_size)) &&
+	     ((total_bytes < src_inst->metadata.elmt_size) || (total_bytes < dst_inst->metadata.elmt_size)) &&
 	     (count_per_line > 1)) {
 	    printf("help: AOS tried to merge subset of fields with multiple elements - not contiguous!\n");
 	    assert(0);
@@ -1489,7 +1483,7 @@ namespace LegionRuntime {
         report_bytes(after_copy);
 #endif
 	if(after_copy.exists())
-	  after_copy.impl()->trigger(after_copy.gen, gasnet_mynode());
+	  get_runtime()->get_genevent_impl(after_copy)->trigger(after_copy.gen, gasnet_mynode());
       }
 #ifdef EVENT_GRAPH_TRACE
     public:
@@ -1625,7 +1619,7 @@ namespace LegionRuntime {
 	dst_base = (char *)(dst_impl->get_direct_ptr(0, dst_impl->size));
 	assert(dst_base);
 
-	redop = reduce_op_table[redop_id];
+	redop = get_runtime()->reduce_op_table[redop_id];
 	fold = _fold;
       }
 
@@ -1690,7 +1684,7 @@ namespace LegionRuntime {
       {
 	src_mem = _src_mem.impl();
 	dst_mem = _dst_mem.impl();
-	redop = reduce_op_table[redop_id];
+	redop = get_runtime()->reduce_op_table[redop_id];
 	fold = _fold;
 
 	src_buffer = new char[buffer_size * redop->sizeof_rhs];
@@ -1774,13 +1768,13 @@ namespace LegionRuntime {
 	//  of the after_copy event (if it exists)
 	if(after_copy.exists()) {
 	  if(events.size() > 0) {
-	    Event merged = Event::merge_events(events);
+	    Event merged = GenEventImpl::merge_events(events);
 
 	    // deferred trigger based on this merged event
-	    after_copy.impl()->trigger(after_copy.gen, gasnet_mynode(), merged);
+	    get_runtime()->get_genevent_impl(after_copy)->trigger(after_copy.gen, gasnet_mynode(), merged);
 	  } else {
 	    // no actual copies occurred, so manually trigger event ourselves
-	    after_copy.impl()->trigger(after_copy.gen, gasnet_mynode());
+	    get_runtime()->get_genevent_impl(after_copy)->trigger(after_copy.gen, gasnet_mynode());
 	  }
 	} else {
 	  if(events.size() > 0) {
@@ -1824,7 +1818,7 @@ namespace LegionRuntime {
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes)
       {
-	Event e = Event::Impl::create_event();
+	Event e = GenEventImpl::create_genevent()->current_event();
 	//printf("gpu write of %zd bytes\n", bytes);
 	gpu->copy_to_fb(dst_offset, src_base + src_offset, bytes, Event::NO_EVENT, e);
 #ifdef EVENT_GRAPH_TRACE
@@ -1836,7 +1830,7 @@ namespace LegionRuntime {
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
 		     off_t src_stride, off_t dst_stride, size_t lines)
       {
-        Event e = Event::Impl::create_event();
+	Event e = GenEventImpl::create_genevent()->current_event();
         gpu->copy_to_fb_2d(dst_offset, src_base + src_offset,
                            dst_stride, src_stride, bytes, lines,
                            Event::NO_EVENT, e);
@@ -1872,7 +1866,7 @@ namespace LegionRuntime {
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes)
       {
-	Event e = Event::Impl::create_event();
+	Event e = GenEventImpl::create_genevent()->current_event();
 	//printf("gpu read of %zd bytes\n", bytes);
 	gpu->copy_from_fb(dst_base + dst_offset, src_offset, bytes, Event::NO_EVENT, e);
 #ifdef EVENT_GRAPH_TRACE
@@ -1885,7 +1879,7 @@ namespace LegionRuntime {
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
 		     off_t src_stride, off_t dst_stride, size_t lines)
       {
-        Event e = Event::Impl::create_event();
+	Event e = GenEventImpl::create_genevent()->current_event();
         gpu->copy_from_fb_2d(dst_base + dst_offset, src_offset,
                              dst_stride, src_stride, bytes, lines,
                              Event::NO_EVENT, e);
@@ -1918,7 +1912,7 @@ namespace LegionRuntime {
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes)
       {
-	Event e = Event::Impl::create_event();
+	Event e = GenEventImpl::create_genevent()->current_event();
 	//printf("gpu write of %zd bytes\n", bytes);
 	gpu->copy_within_fb(dst_offset, src_offset, bytes, Event::NO_EVENT, e);
 #ifdef EVENT_GRAPH_TRACE
@@ -1931,7 +1925,7 @@ namespace LegionRuntime {
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
 		     off_t src_stride, off_t dst_stride, size_t lines)
       {
-        Event e = Event::Impl::create_event();
+	Event e = GenEventImpl::create_genevent()->current_event();
         gpu->copy_within_fb_2d(dst_offset, src_offset,
                                dst_stride, src_stride, bytes, lines,
                                Event::NO_EVENT, e);
@@ -1963,7 +1957,7 @@ namespace LegionRuntime {
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes)
       {
-        Event e = Event::Impl::create_event();
+	Event e = GenEventImpl::create_genevent()->current_event();
         src->copy_to_peer(dst, dst_offset, src_offset, bytes, Event::NO_EVENT, e);
 #ifdef EVENT_GRAPH_TRACE
         record_bytes(bytes);
@@ -1974,7 +1968,7 @@ namespace LegionRuntime {
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
                      off_t src_stride, off_t dst_stride, size_t lines)
       {
-        Event e = Event::Impl::create_event();
+	Event e = GenEventImpl::create_genevent()->current_event();
         src->copy_to_peer_2d(dst, dst_offset, src_offset,
                              dst_stride, src_stride, bytes, lines,
                              Event::NO_EVENT, e);
@@ -2077,7 +2071,7 @@ namespace LegionRuntime {
 	  g->dst_size += bytes;
 
 	  // is this span big enough to push now?
-	  if(g->dst_size >= TARGET_XFER_SIZE) {
+	  if((size_t)g->dst_size >= TARGET_XFER_SIZE) {
 	    // yes, copy it
 	    copy_gather(g);
 	    delete g;
@@ -2096,14 +2090,14 @@ namespace LegionRuntime {
 		     off_t src_stride, off_t dst_stride, size_t lines)
       {
 	// case 1: although described as 2D, both src and dst coalesce
-	if((src_stride == bytes) && (dst_stride == bytes)) {
+	if(((size_t)src_stride == bytes) && ((size_t)dst_stride == bytes)) {
 	  copy_span(src_offset, dst_offset, bytes * lines);
 	  return;
 	}
 
 	// case 2: if dst coalesces, we'll let the RDMA code do the gather for us -
 	//  this won't merge with any other copies though
-	if(dst_stride == bytes) {
+	if((size_t)dst_stride == bytes) {
 #ifdef NEW2D_DEBUG
 	  printf("GATHER copy\n");
 #endif
@@ -2216,7 +2210,7 @@ namespace LegionRuntime {
             if(num_writes == 0) {
               // an empty dma - no need to send a fence - we can trigger the
               //  completion event here and save a message
-              after_copy.impl()->trigger(after_copy.gen, gasnet_mynode());
+	      get_runtime()->get_genevent_impl(after_copy)->trigger(after_copy.gen, gasnet_mynode());
             } else {
 #ifdef DEBUG_REMOTE_WRITES
 	      printf("remote write fence: " IDFMT "/%d\n", after_copy.id, after_copy.gen);
@@ -2261,7 +2255,7 @@ namespace LegionRuntime {
 	dst_mem = _dst_mem.impl();
 
 	redop_id = _redop_id;
-	redop = reduce_op_table[redop_id];
+	redop = get_runtime()->reduce_op_table[redop_id];
 	fold = _fold;
 
 	sequence_id = __sync_fetch_and_add(&rdma_sequence_no, 1);
@@ -2325,6 +2319,104 @@ namespace LegionRuntime {
       const ReductionOpUntyped *redop;
       bool fold;
     };
+
+    // MemPairCopier from disk memory to cpu memory
+    class DisktoCPUMemPairCopier : public MemPairCopier {
+    public:
+      DisktoCPUMemPairCopier(int _fd, Memory _dst_mem)
+      {
+        Memory::Impl *dst_impl = _dst_mem.impl();
+        dst_base = (char *)(dst_impl->get_direct_ptr(0, dst_impl->size));
+        assert(dst_base);
+        fd = _fd;
+      }
+
+      virtual ~DisktoCPUMemPairCopier(void)
+      {
+      }
+
+      virtual InstPairCopier *inst_pair(RegionInstance src_inst, RegionInstance dst_inst,
+                                        OASVec &osa_vec)
+      {
+        return new SpanBasedInstPairCopier<DisktoCPUMemPairCopier>(this, src_inst,
+                                           dst_inst, osa_vec);
+      }
+
+      void copy_span(off_t src_offset, off_t dst_offset, size_t bytes)
+      {
+        aiocb cb;
+        memset(&cb, 0, sizeof(cb));
+        cb.aio_nbytes = bytes;
+        cb.aio_fildes = fd;
+        cb.aio_offset = src_offset;
+        cb.aio_buf = dst_base + dst_offset;
+        assert(aio_read(&cb) != -1);
+        while (aio_error(&cb) == EINPROGRESS) {}
+        assert((size_t)aio_return(&cb) == bytes);
+      }
+
+      void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
+                     off_t src_stride, off_t dst_stride, size_t lines)
+      {
+        while(lines-- > 0) {
+          copy_span(src_offset, dst_offset, bytes);
+          src_offset += src_stride;
+          dst_offset += dst_stride;
+        }
+      }
+    protected:
+      char *dst_base;
+      int fd; // file descriptor
+    };
+
+    // MemPairCopier from disk memory to cpu memory
+    class DiskfromCPUMemPairCopier : public MemPairCopier {
+    public:
+      DiskfromCPUMemPairCopier(Memory _src_mem, int _fd)
+      { 
+        Memory::Impl *src_impl = _src_mem.impl();
+        src_base = (char *)(src_impl->get_direct_ptr(0, src_impl->size));
+        assert(src_base);
+        fd = _fd;
+      }
+
+      virtual ~DiskfromCPUMemPairCopier(void)
+      {
+      }
+
+      virtual InstPairCopier *inst_pair(RegionInstance src_inst, RegionInstance dst_inst,
+                                        OASVec &osa_vec)
+      {
+        return new SpanBasedInstPairCopier<DiskfromCPUMemPairCopier>(this, src_inst,
+                                           dst_inst, osa_vec);
+      }
+
+      void copy_span(off_t src_offset, off_t dst_offset, size_t bytes)
+      {
+        aiocb cb;
+        memset(&cb, 0, sizeof(cb));
+        cb.aio_nbytes = bytes;
+        cb.aio_fildes = fd;
+        cb.aio_offset = dst_offset;
+        cb.aio_buf = src_base + src_offset;
+        assert(aio_write(&cb) != -1);
+        while (aio_error(&cb) == EINPROGRESS) {}
+        assert((size_t)aio_return(&cb) == bytes);
+      }
+
+      void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
+                     off_t src_stride, off_t dst_stride, size_t lines)
+      {
+        while(lines-- > 0) {
+          copy_span(src_offset, dst_offset, bytes);
+          src_offset += src_stride;
+          dst_offset += dst_stride;
+        }
+      }
+    protected:
+      char *src_base;
+      int fd; // file descriptor
+    };
      
     MemPairCopier *MemPairCopier::create_copier(Memory src_mem, Memory dst_mem,
 						ReductionOpID redop_id /*= 0*/,
@@ -2344,6 +2436,21 @@ namespace LegionRuntime {
 	   ((dst_kind == Memory::Impl::MKIND_SYSMEM) || (dst_kind == Memory::Impl::MKIND_ZEROCOPY))) {
 	  return new MemcpyMemPairCopier(src_mem, dst_mem);
 	}
+
+        // can we perform transfer between disk and cpu memory
+        if (((src_kind == Memory::Impl::MKIND_SYSMEM) || (src_kind == Memory::Impl::MKIND_ZEROCOPY)) &&
+            (dst_kind == Memory::Impl::MKIND_DISK)) {
+          printf("Create DiskfromCPUMemPairCopier\n");
+          int fd = ((DiskMemory *)dst_impl)->fd;
+          return new DiskfromCPUMemPairCopier(src_mem, fd);
+        }
+
+        if ((src_kind == Memory::Impl::MKIND_DISK) &&
+            ((dst_kind == Memory::Impl::MKIND_SYSMEM) || (dst_kind == Memory::Impl::MKIND_ZEROCOPY))) {
+          printf("Create DisktoCPUMemPairCopier\n");
+          int fd = ((DiskMemory *)src_impl)->fd;
+          return new DisktoCPUMemPairCopier(fd, dst_mem);
+        }
 
 #ifdef USE_CUDA
 	// copy to a framebuffer
@@ -2428,7 +2535,7 @@ namespace LegionRuntime {
 	  }
 
       int curdim = -1;
-      unsigned exp1, exp2;
+      unsigned exp1 = 0, exp2 = 0;
 
       // now go through dimensions, collapsing each if it matches the expected stride for
       //  both sets (can't collapse for first)
@@ -2468,15 +2575,15 @@ namespace LegionRuntime {
 	InstPairCopier *ipc = mpc->inst_pair(src_inst, dst_inst, oasvec);
 
 	// index space instances use 1D linearizations for translation
-	Arrays::Mapping<1, 1> *src_linearization = src_inst.impl()->linearization.get_mapping<1>();
-	Arrays::Mapping<1, 1> *dst_linearization = dst_inst.impl()->linearization.get_mapping<1>();
+	Arrays::Mapping<1, 1> *src_linearization = src_inst.impl()->metadata.linearization.get_mapping<1>();
+	Arrays::Mapping<1, 1> *dst_linearization = dst_inst.impl()->metadata.linearization.get_mapping<1>();
 
 	// does the destination instance space's index space match what we're copying?  if so,
 	//  it's ok to copy extra elements (to decrease sparsity) because they're unused in
 	//  the destination
-	StaticAccess<RegionInstance::Impl> dst_idata(dst_inst.impl(), true /*must be valid already*/);
+	assert(dst_inst.impl()->metadata.is_valid());
 	int rlen_target;
-	if(ispace->me == dst_idata->is) {
+	if(ispace->me == dst_inst.impl()->metadata.is) {
 	  rlen_target = 32768 / 4; // aim for ~32KB transfers at least
 	} else {
 	  rlen_target = 1;
@@ -2529,8 +2636,14 @@ namespace LegionRuntime {
 
 	InstPairCopier *ipc = mpc->inst_pair(src_inst, dst_inst, oasvec);
 
-	Arrays::Mapping<DIM, 1> *src_linearization = src_inst.impl()->linearization.get_mapping<DIM>();
-	Arrays::Mapping<DIM, 1> *dst_linearization = dst_inst.impl()->linearization.get_mapping<DIM>();
+	RegionInstance::Impl *src_impl = src_inst.impl();
+	RegionInstance::Impl *dst_impl = dst_inst.impl();
+	
+	assert(src_impl->metadata.is_valid());
+	assert(dst_impl->metadata.is_valid());
+
+	Arrays::Mapping<DIM, 1> *src_linearization = src_impl->metadata.linearization.get_mapping<DIM>();
+	Arrays::Mapping<DIM, 1> *dst_linearization = dst_impl->metadata.linearization.get_mapping<DIM>();
 
 	// see what linear subrects we can get - again, iterate over destination first for gathering
 	for(typename Arrays::Mapping<DIM, 1>::LinearSubrectIterator lso(orig_rect, *dst_linearization); lso; lso++) {
@@ -2602,7 +2715,7 @@ namespace LegionRuntime {
     }
 
 #ifdef LEGION_LOGGING
-    class CopyCompletionLogger : public Event::Impl::EventWaiter {
+    class CopyCompletionLogger : public EventWaiter {
     public:
       CopyCompletionLogger(Event _event) : event(_event) {}
 
@@ -2624,6 +2737,29 @@ namespace LegionRuntime {
     };
 #endif
 
+#ifdef LEGION_PROF
+    class CopyCompletionProfiler : public EventWaiter {
+      public:
+        CopyCompletionProfiler(Event _event) : event(_event) {}
+
+        virtual ~CopyCompletionProfiler(void) { }
+
+        virtual bool event_triggered(void)
+        {
+          register_copy_event(PROF_END_COPY);
+          return true;
+        }
+
+        virtual void print_info(FILE *f)
+        {
+	        fprintf(f, "copy completion profiler - " IDFMT "/%d\n",
+              event.id, event.gen);
+        }
+      protected:
+        Event event;
+    };
+#endif
+
     void CopyRequest::perform_dma(void)
     {
       log_dma.info("request %p executing", this);
@@ -2633,7 +2769,13 @@ namespace LegionRuntime {
 
       // the copy might not actually finish in this thread, so set up an event waiter
       //  to log the completion
-      after_copy.impl()->add_waiter(after_copy, new CopyCompletionLogger(after_copy));
+      after_copy.impl()->add_waiter(after_copy.gen,
+          new CopyCompletionLogger(after_copy));
+#endif
+#ifdef BUGGY_LEGION_PROF
+      register_copy_event(PROF_BEGIN_COPY);
+      after_copy.impl()->add_waiter(after_copy.gen,
+          new CopyCompletionProfiler(after_copy));
 #endif
 
       DetailedTimer::ScopedPush sp(TIME_COPY);
@@ -2690,7 +2832,7 @@ namespace LegionRuntime {
       // code path for copies to/from reduction-only instances not done yet
       // are we doing a reduction?
       const ReductionOpUntyped *redop = ((src_data->redopid >= 0) ?
-					   reduce_op_table[src_data->redopid] :
+					   get_runtime()->reduce_op_table[src_data->redopid] :
 					   0);
       bool red_fold = (tgt_data->redopid >= 0);
       // if destination is a reduction, source must be also and must match
@@ -2816,7 +2958,7 @@ namespace LegionRuntime {
 		log_dma.info("triggering event " IDFMT "/%d after empty remote copy",
 			     finish_event.id, finish_event.gen);
 		assert(finish_event == after_copy);
-		finish_event.impl()->trigger(finish_event.gen, gasnet_mynode());
+		get_runtime()->get_singleevent_impl(finish_event)->trigger(finish_event.gen, gasnet_mynode());
 	      }
 	      
 	      return;
@@ -3123,46 +3265,34 @@ namespace LegionRuntime {
 	    it++) {
 	  RegionInstance::Impl *src_impl = it->inst.impl();
 
-	  if(!src_impl->locked_data.valid) {
-	    log_dma.info("dma request %p - no src instance (" IDFMT ") metadata yet", this, it->inst.id);
-	    if(just_check) return false;
-
-	    Event e = src_impl->lock.acquire(1, false);
-	    if(e.has_triggered()) {
-	      log_dma.info("request %p - src instance metadata invalid - instant trigger", this);
-	      src_impl->lock.release();
-	    } else {
-	      log_dma.info("request %p - src instance metadata invalid - sleeping on lock " IDFMT "", this, src_impl->lock.me.id);
-	      waiter.sleep_on_event(e, src_impl->lock.me);
+	  {
+	    Event e = src_impl->request_metadata();
+	    if(!e.has_triggered()) {
+	      if(just_check) {
+		log_dma.info("dma request %p - no src instance (" IDFMT ") metadata yet", this, src_impl->me.id);
+		return false;
+	      }
+	      log_dma.info("request %p - src instance metadata invalid - sleeping on event " IDFMT "/%d", this, e.id, e.gen);
+	      waiter.sleep_on_event(e);
 	      return false;
 	    }
-	  }
-	  if(!src_impl->linearization.valid()) {
-	    //printf("deserializing linearizer\n");
-	    src_impl->linearization.deserialize(src_impl->locked_data.linearization_bits);
 	  }
 	}
 
 	{
 	  RegionInstance::Impl *dst_impl = dst.inst.impl();
 
-	  if(!dst_impl->locked_data.valid) {
-	    log_dma.info("dma request %p - no dst instance (" IDFMT ") metadata yet", this, dst.inst.id);
-	    if(just_check) return false;
-
-	    Event e = dst_impl->lock.acquire(1, false);
-	    if(e.has_triggered()) {
-	      log_dma.info("request %p - dst instance metadata invalid - instant trigger", this);
-	      dst_impl->lock.release();
-	    } else {
-	      log_dma.info("request %p - dst instance metadata invalid - sleeping on lock " IDFMT "", this, dst_impl->lock.me.id);
-	      waiter.sleep_on_event(e, dst_impl->lock.me);
+	  {
+	    Event e = dst_impl->request_metadata();
+	    if(!e.has_triggered()) {
+	      if(just_check) {
+		log_dma.info("dma request %p - no dst instance (" IDFMT ") metadata yet", this, dst_impl->me.id);
+		return false;
+	      }
+	      log_dma.info("request %p - dst instance metadata invalid - sleeping on event " IDFMT "/%d", this, e.id, e.gen);
+	      waiter.sleep_on_event(e);
 	      return false;
 	    }
-	  }
-	  if(!dst_impl->linearization.valid()) {
-	    //printf("deserializing linearizer\n");
-	    dst_impl->linearization.deserialize(dst_impl->locked_data.linearization_bits);
 	  }
 	}
 
@@ -3235,7 +3365,7 @@ namespace LegionRuntime {
     {
       Arrays::Rect<DIM> orig_rect = domain.get_rect<DIM>();
 
-      const ReductionOpUntyped *redop = reduce_op_table[redop_id];
+      const ReductionOpUntyped *redop = get_runtime()->reduce_op_table[redop_id];
 
       // single source field for now
       assert(srcs.size() == 1);
@@ -3251,8 +3381,14 @@ namespace LegionRuntime {
 
       InstPairCopier *ipc = mpc->inst_pair(src_inst, dst_inst, oasvec);
 
-      Arrays::Mapping<DIM, 1> *src_linearization = src_inst.impl()->linearization.get_mapping<DIM>();
-      Arrays::Mapping<DIM, 1> *dst_linearization = dst_inst.impl()->linearization.get_mapping<DIM>();
+      RegionInstance::Impl *src_impl = src_inst.impl();
+      RegionInstance::Impl *dst_impl = dst_inst.impl();
+
+      assert(src_impl->metadata.is_valid());
+      assert(dst_impl->metadata.is_valid());
+
+      Arrays::Mapping<DIM, 1> *src_linearization = src_impl->metadata.linearization.get_mapping<DIM>();
+      Arrays::Mapping<DIM, 1> *dst_linearization = dst_impl->metadata.linearization.get_mapping<DIM>();
 
       // see what linear subrects we can get - again, iterate over destination first for gathering
       for(typename Arrays::Mapping<DIM, 1>::LinearSubrectIterator lso(orig_rect, *dst_linearization); lso; lso++) {
@@ -3330,7 +3466,13 @@ namespace LegionRuntime {
 
       // the copy might not actually finish in this thread, so set up an event waiter
       //  to log the completion
-      after_copy.impl()->add_waiter(after_copy, new CopyCompletionLogger(after_copy));
+      after_copy.impl()->add_waiter(after_copy.gen,
+          new CopyCompletionLogger(after_copy));
+#endif
+#ifdef BUGGY_LEGION_PROF
+      register_copy_event(PROF_BEGIN_COPY);
+      after_copy.impl()->add_waiter(after_copy.gen,
+          new CopyCompletionProfiler(after_copy));
 #endif
 
       DetailedTimer::ScopedPush sp(TIME_COPY);
@@ -3343,7 +3485,7 @@ namespace LegionRuntime {
       Memory::Impl::MemoryKind src_kind = src_mem.impl()->kind;
       Memory::Impl::MemoryKind dst_kind = dst_mem.impl()->kind;
 
-      const ReductionOpUntyped *redop = reduce_op_table[redop_id];
+      const ReductionOpUntyped *redop = get_runtime()->reduce_op_table[redop_id];
 
       //printf("kinds: " IDFMT "=%d " IDFMT "=%d\n", src_mem.id, src_mem.impl()->kind, dst_mem.id, dst_mem.impl()->kind);
 
@@ -3391,7 +3533,7 @@ namespace LegionRuntime {
 	      }
 
 	      // all done - we can trigger the event locally in this case
-	      after_copy.impl()->trigger(after_copy.gen, gasnet_mynode());
+	      get_runtime()->get_genevent_impl(after_copy)->trigger(after_copy.gen, gasnet_mynode());
               delete e;
 	      break;
 	    }
@@ -3399,16 +3541,17 @@ namespace LegionRuntime {
 	  case Memory::Impl::MKIND_REMOTE:
             {
 	      // we need to figure out how to calculate offsets in the destination memory
-	      StaticAccess<RegionInstance::Impl> dst_idata(dst.inst.impl());
-	      assert(dst_idata->valid);
+	      RegionInstance::Impl *dst_impl = dst.inst.impl();
+
+	      assert(dst_impl->metadata.is_valid());
 
 	      off_t dst_field_start;
 	      int dst_field_size;
-	      find_field_start(dst_idata->field_sizes, dst.offset, dst.size, dst_field_start, dst_field_size);
-	      assert(dst.size == dst_field_size);
+	      find_field_start(dst_impl->metadata.field_sizes, dst.offset, dst.size, dst_field_start, dst_field_size);
+	      assert(dst.size == (size_t)dst_field_size);
 
 	      // index space instances use 1D linearizations for translation
-	      Arrays::Mapping<1, 1> *dst_linearization = dst.inst.impl()->linearization.get_mapping<1>();
+	      Arrays::Mapping<1, 1> *dst_linearization = dst_impl->metadata.linearization.get_mapping<1>();
 
 	      ElementMask::Enumerator *e = ispace->valid_mask->enumerate_enabled();
 	      int rstart, rlen;
@@ -3444,16 +3587,16 @@ namespace LegionRuntime {
 		// now do an offset calculation for the destination
 		off_t dst_offset;
 		off_t dst_stride;
-		if(dst_idata->block_size > 1) {
+		if(dst_impl->metadata.block_size > 1) {
 		  // straddling a block boundary is complicated
-		  assert((dstart / dst_idata->block_size) == ((dstart + rlen - 1) / dst_idata->block_size));
-		  dst_offset = calc_mem_loc(dst_idata->alloc_offset, dst_field_start, dst_field_size,
-					    dst_idata->elmt_size, dst_idata->block_size, dstart);
+		  assert((dstart / dst_impl->metadata.block_size) == ((dstart + rlen - 1) / dst_impl->metadata.block_size));
+		  dst_offset = calc_mem_loc(dst_impl->metadata.alloc_offset, dst_field_start, dst_field_size,
+					    dst_impl->metadata.elmt_size, dst_impl->metadata.block_size, dstart);
 		  dst_stride = dst_field_size;
 		} else {
 		  // easy case
-		  dst_offset = dst_idata->alloc_offset + (dstart * dst_idata->elmt_size) + dst_field_start;
-		  dst_stride = dst_idata->elmt_size;
+		  dst_offset = dst_impl->metadata.alloc_offset + (dstart * dst_impl->metadata.elmt_size) + dst_field_start;
+		  dst_stride = dst_impl->metadata.elmt_size;
 		}
 
 		rdma_count += do_remote_reduce(dst_mem, dst_offset, redop_id, red_fold,
@@ -3466,7 +3609,7 @@ namespace LegionRuntime {
 	      if(rdma_count > 0) {
 		do_remote_fence(dst_mem, sequence_id, rdma_count, after_copy);
 	      } else {
-		after_copy.impl()->trigger(after_copy.gen, gasnet_mynode());
+		get_runtime()->get_genevent_impl(after_copy)->trigger(after_copy.gen, gasnet_mynode());
 	      }
               delete e;
 	      break;
@@ -3479,16 +3622,16 @@ namespace LegionRuntime {
 
 	      // we need to figure out how to calculate offsets in the destination memory
 	      RegionInstance::Impl *dst_impl = dst.inst.impl();
-	      StaticAccess<RegionInstance::Impl> dst_idata(dst_impl);
-	      assert(dst_idata->valid);
+
+	      assert(dst_impl->metadata.is_valid());
 
 	      off_t dst_field_start;
 	      int dst_field_size;
-	      find_field_start(dst_idata->field_sizes, dst.offset, dst.size, dst_field_start, dst_field_size);
-	      assert(dst.size == dst_field_size);
+	      find_field_start(dst_impl->metadata.field_sizes, dst.offset, dst.size, dst_field_start, dst_field_size);
+	      assert(dst.size == (size_t)dst_field_size);
 
 	      // index space instances use 1D linearizations for translation
-	      Arrays::Mapping<1, 1> *dst_linearization = dst_impl->linearization.get_mapping<1>();
+	      Arrays::Mapping<1, 1> *dst_linearization = dst_impl->metadata.linearization.get_mapping<1>();
 
 	      // if source and dest are ok, we can just walk the index space's spans
 	      ElementMask::Enumerator *e = ispace->valid_mask->enumerate_enabled();
@@ -3500,16 +3643,16 @@ namespace LegionRuntime {
 		// now do an offset calculation for the destination
 		off_t dst_offset;
 		off_t dst_stride;
-		if(dst_idata->block_size > 1) {
+		if(dst_impl->metadata.block_size > 1) {
 		  // straddling a block boundary is complicated
-		  assert((dstart / dst_idata->block_size) == ((dstart + rlen - 1) / dst_idata->block_size));
-		  dst_offset = calc_mem_loc(dst_idata->alloc_offset, dst_field_start, dst_field_size,
-					    dst_idata->elmt_size, dst_idata->block_size, dstart);
+		  assert((dstart / dst_impl->metadata.block_size) == ((dstart + rlen - 1) / dst_impl->metadata.block_size));
+		  dst_offset = calc_mem_loc(dst_impl->metadata.alloc_offset, dst_field_start, dst_field_size,
+					    dst_impl->metadata.elmt_size, dst_impl->metadata.block_size, dstart);
 		  dst_stride = dst_field_size;
 		} else {
 		  // easy case
-		  dst_offset = dst_idata->alloc_offset + (dstart * dst_idata->elmt_size) + dst_field_start;
-		  dst_stride = dst_idata->elmt_size;
+		  dst_offset = dst_impl->metadata.alloc_offset + (dstart * dst_impl->metadata.elmt_size) + dst_field_start;
+		  dst_stride = dst_impl->metadata.elmt_size;
 		}
 
 		// get a temporary buffer in local memory
@@ -3537,7 +3680,7 @@ namespace LegionRuntime {
 	      }
 
 	      // all done - we can trigger the event locally in this case
-	      after_copy.impl()->trigger(after_copy.gen, gasnet_mynode());
+	      get_runtime()->get_genevent_impl(after_copy)->trigger(after_copy.gen, gasnet_mynode());
 
 	      // also release the instance lock
 	      dst_impl->lock.release();
@@ -3625,7 +3768,7 @@ namespace LegionRuntime {
 				      dma_worker_thread_loop, dma_queue) );
 	CHECK_PTHREAD( pthread_attr_destroy(&attr) );
 #ifdef DEADLOCK_TRACE
-        Runtime::get_runtime()->add_thread(&worker_threads[i]);
+        get_runtime()->add_thread(&worker_threads[i]);
 #endif
       }
     }
@@ -3784,7 +3927,7 @@ namespace LegionRuntime {
 	  Memory dst_mem = it->first.second;
 	  OASByInst *oas_by_inst = it->second;
 
-	  Event ev = Event::Impl::create_event();
+	  Event ev = GenEventImpl::create_genevent()->current_event();
 #ifdef EVENT_GRAPH_TRACE
           Event enclosing = find_enclosing_termination_event();
           log_event_graph.info("Copy Request: (" IDFMT ",%d) (" IDFMT ",%d) "
@@ -3809,7 +3952,7 @@ namespace LegionRuntime {
 	  int dma_node = select_dma_node(src_mem, dst_mem, redop_id, red_fold);
 	  log_dma.info("copy: srcmem=" IDFMT " dstmem=" IDFMT " node=%d", src_mem.id, dst_mem.id, dma_node);
 	  
-	  if(dma_node == gasnet_mynode()) {
+	  if(((unsigned)dma_node) == gasnet_mynode()) {
 	    log_dma.info("performing copy on local node");
 	  
 	    r->check_readiness(false, dma_queue);
@@ -3839,7 +3982,7 @@ namespace LegionRuntime {
 	}
 
 	// final event is merge of all individual copies' events
-	return Event::Impl::merge_events(finish_events);
+	return GenEventImpl::merge_events(finish_events);
       } else {
 	// we're doing a reduction - the semantics require that all source fields be pulled
 	//  together and applied as a "structure" to the reduction op
@@ -3866,7 +4009,7 @@ namespace LegionRuntime {
 	Memory::Impl::MemoryKind dst_kind = dsts[0].inst.impl()->memory.impl()->kind;
 	bool inst_lock_needed = (dst_kind == Memory::Impl::MKIND_GLOBAL);
 
-	Event ev = Event::Impl::create_event();
+	Event ev = GenEventImpl::create_genevent()->current_event();
 
 	ReduceRequest *r = new ReduceRequest(*this, 
 					     srcs, dsts[0],
@@ -3875,7 +4018,7 @@ namespace LegionRuntime {
 					     wait_on, ev,
 					     0 /*priority*/);
 
-	if(src_node == gasnet_mynode()) {
+	if(((unsigned)src_node) == gasnet_mynode()) {
 	  log_dma.info("performing reduction on local node");
 	  
 	  r->check_readiness(false, dma_queue);

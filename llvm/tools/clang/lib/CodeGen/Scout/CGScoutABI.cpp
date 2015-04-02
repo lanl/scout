@@ -83,6 +83,7 @@ void CGScoutABI::buildImplicitStencilParams(CodeGenFunction &CGF, FunctionArgLis
     params.insert(params.begin(), D);
     getMeshDimDecl(CGF, 2-i) = D;
   }
+  // SC_TODO: need to add MeshStartDecls here as well.
 }
 
 CodeGen::CGScoutABI *CodeGen::createScoutABI(CodeGenModule &CGM) {

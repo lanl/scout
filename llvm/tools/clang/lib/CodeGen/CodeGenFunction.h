@@ -367,6 +367,7 @@ public:
 
   llvm::Value *LookupInductionVar(unsigned int index);
   llvm::Value *LookupMeshDim(unsigned int index);
+  llvm::Value *LookupMeshStart(unsigned int index);
 
   inline llvm::Value *getLinearIdx() {
     return Builder.CreateLoad(LookupInductionVar(3), "Xall.linearidx");
@@ -1097,6 +1098,7 @@ private:
   // +===== Scout ==========================================================+
   llvm::SmallVector<ImplicitParamDecl*, 4 > ScoutABIInductionVarDecl;
   llvm::SmallVector<ImplicitParamDecl*, 3 > ScoutABIMeshDimDecl;
+  llvm::SmallVector<ImplicitParamDecl*, 3 > ScoutABIMeshStartDecl;
   // +======================================================================+
 
   /// The value of 'this' to use when evaluating CXXDefaultInitExprs within

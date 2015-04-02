@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -18,7 +18,8 @@ task f(s : region(int)) : ptr(int, s)
   return new(ptr(int, s))
 end
 
-task g(t : region(int), y : ptr(int, t)) : int, reads(t)
+task g(t : region(int), y : ptr(int, t)) : int
+where reads(t) do
   return @y
 end
 
@@ -30,6 +31,6 @@ task h() : int
 end
 
 task main()
-  assert(h() == 5)
+  legionlib.assert(h() == 5, "test failed")
 end
 legionlib.start(main)

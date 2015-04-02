@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -14,10 +14,10 @@
 
 -- Legion Specialization Pass
 
-local ast = terralib.require("legion/ast")
-local log = terralib.require("legion/log")
-local std = terralib.require("legion/std")
-local symbol_table = terralib.require("legion/symbol_table")
+local ast = require("legion/ast")
+local log = require("legion/log")
+local std = require("legion/std")
+local symbol_table = require("legion/symbol_table")
 
 local specialize = {}
 
@@ -217,6 +217,28 @@ function specialize.expr_ctor(cx, node)
   }
 end
 
+function specialize.expr_raw_context(cx, node)
+  return ast.specialized.ExprRawContext {
+  }
+end
+
+function specialize.expr_raw_fields(cx, node)
+  return ast.specialized.ExprRawFields {
+    region = specialize.expr(cx, node.region),
+  }
+end
+
+function specialize.expr_raw_physical(cx, node)
+  return ast.specialized.ExprRawPhysical {
+    region = specialize.expr(cx, node.region),
+  }
+end
+
+function specialize.expr_raw_runtime(cx, node)
+  return ast.specialized.ExprRawRuntime {
+  }
+end
+
 function specialize.expr_isnull(cx, node)
   local pointer = specialize.expr(cx, node.pointer)
   return ast.specialized.ExprIsnull {
@@ -227,8 +249,12 @@ end
 function specialize.expr_new(cx, node)
   local pointer_type = node.pointer_type_expr(cx.env:env())
   assert(std.is_ptr(pointer_type))
+  local regions = pointer_type.points_to_region_symbols
+  if #regions ~= 1 then
+   log.error("new requires pointer type with exactly one region, got " .. tostring(pointer_type))
+  end
   local region = ast.specialized.ExprID {
-    value = pointer_type.points_to_region_symbol,
+    value = regions[1],
   }
   return ast.specialized.ExprNew {
     pointer_type = pointer_type,
@@ -238,9 +264,26 @@ end
 
 function specialize.expr_null(cx, node)
   local pointer_type = node.pointer_type_expr(cx.env:env())
-  assert(std.is_ptr(pointer_type))
   return ast.specialized.ExprNull {
     pointer_type = pointer_type,
+  }
+end
+
+function specialize.expr_dynamic_cast(cx, node)
+  local expr_type = node.type_expr(cx.env:env())
+  local value = specialize.expr(cx, node.value)
+  return ast.specialized.ExprDynamicCast {
+    value = value,
+    expr_type = expr_type,
+  }
+end
+
+function specialize.expr_static_cast(cx, node)
+  local expr_type = node.type_expr(cx.env:env())
+  local value = specialize.expr(cx, node.value)
+  return ast.specialized.ExprStaticCast {
+    value = value,
+    expr_type = expr_type,
   }
 end
 
@@ -257,6 +300,12 @@ end
 function specialize.expr_partition(cx, node)
   local disjointness = node.disjointness_expr(cx.env:env())
   local region_type = node.region_type_expr(cx.env:env())
+  -- Hack: Need to do this type checking early because otherwise we
+  -- can't construct a type here.
+  if disjointness ~= std.disjoint and disjointness ~= std.aliased then
+    log.error("type mismatch in argument 1: expected disjoint or aliased but got " ..
+                tostring(disjointness))
+  end
   local expr_type = std.partition(disjointness, region_type)
   local region = ast.specialized.ExprID {
     value = expr_type.parent_region_symbol,
@@ -265,6 +314,23 @@ function specialize.expr_partition(cx, node)
     disjointness = disjointness,
     region = region,
     coloring = specialize.expr(cx, node.coloring),
+    expr_type = expr_type,
+  }
+end
+
+function specialize.expr_cross_product(cx, node)
+  local lhs_type = node.lhs_type_expr(cx.env:env())
+  local rhs_type = node.rhs_type_expr(cx.env:env())
+  local expr_type = std.cross_product(lhs_type, rhs_type)
+  local lhs = ast.specialized.ExprID {
+    value = expr_type.lhs_partition_symbol,
+  }
+  local rhs = ast.specialized.ExprID {
+    value = expr_type.rhs_partition_symbol,
+  }
+  return ast.specialized.ExprCrossProduct {
+    lhs = lhs,
+    rhs = rhs,
     expr_type = expr_type,
   }
 end
@@ -315,6 +381,18 @@ function specialize.expr(cx, node)
   elseif node:is(ast.unspecialized.ExprCtor) then
     return specialize.expr_ctor(cx, node)
 
+  elseif node:is(ast.unspecialized.ExprRawContext) then
+    return specialize.expr_raw_context(cx, node)
+
+  elseif node:is(ast.unspecialized.ExprRawFields) then
+    return specialize.expr_raw_fields(cx, node)
+
+  elseif node:is(ast.unspecialized.ExprRawPhysical) then
+    return specialize.expr_raw_physical(cx, node)
+
+  elseif node:is(ast.unspecialized.ExprRawRuntime) then
+    return specialize.expr_raw_runtime(cx, node)
+
   elseif node:is(ast.unspecialized.ExprIsnull) then
     return specialize.expr_isnull(cx, node)
 
@@ -324,11 +402,20 @@ function specialize.expr(cx, node)
   elseif node:is(ast.unspecialized.ExprNull) then
     return specialize.expr_null(cx, node)
 
+  elseif node:is(ast.unspecialized.ExprDynamicCast) then
+    return specialize.expr_dynamic_cast(cx, node)
+
+  elseif node:is(ast.unspecialized.ExprStaticCast) then
+    return specialize.expr_static_cast(cx, node)
+
   elseif node:is(ast.unspecialized.ExprRegion) then
     return specialize.expr_region(cx, node)
 
   elseif node:is(ast.unspecialized.ExprPartition) then
     return specialize.expr_partition(cx, node)
+
+  elseif node:is(ast.unspecialized.ExprCrossProduct) then
+    return specialize.expr_cross_product(cx, node)
 
   elseif node:is(ast.unspecialized.ExprUnary) then
     return specialize.expr_unary(cx, node)
@@ -397,6 +484,7 @@ function specialize.stat_for_num(cx, node)
     symbol = symbol,
     values = values,
     block = block,
+    parallel = node.parallel,
   }
 end
 
@@ -420,6 +508,7 @@ function specialize.stat_for_list(cx, node)
     symbol = symbol,
     value = value,
     block = block,
+    vectorize = node.vectorize,
   }
 end
 
@@ -570,19 +659,19 @@ function specialize.stat(cx, node)
   end
 end
 
-function specialize.stat_task_privilege_region_field(cx, node)
+function specialize.privilege_region_field(cx, node)
   local prefix = std.newtuple(node.field_name)
-  local fields = specialize.stat_task_privilege_region_fields(cx, node.fields)
+  local fields = specialize.privilege_region_fields(cx, node.fields)
   return fields:map(
     function(field) return prefix .. field end)
 end
 
-function specialize.stat_task_privilege_region_fields(cx, node)
+function specialize.privilege_region_fields(cx, node)
   if not node then
     return terralib.newlist({std.newtuple()})
   end
   local fields = node:map(
-    function(field) return specialize.stat_task_privilege_region_field(cx, field) end)
+    function(field) return specialize.privilege_region_field(cx, field) end)
   local result = terralib.newlist()
   for _, f in ipairs(fields) do
     result:insertall(f)
@@ -590,9 +679,9 @@ function specialize.stat_task_privilege_region_fields(cx, node)
   return result
 end
 
-function specialize.stat_task_privilege_region(cx, node)
+function specialize.privilege_region(cx, node)
   local region = cx.env:lookup(node.region_name)
-  local fields = specialize.stat_task_privilege_region_fields(cx, node.fields)
+  local fields = specialize.privilege_region_fields(cx, node.fields)
 
   return {
     region = region,
@@ -600,7 +689,7 @@ function specialize.stat_task_privilege_region(cx, node)
   }
 end
 
-function specialize.stat_task_privilege(cx, node)
+function specialize.privilege(cx, node)
   local privilege
   if node.privilege == "reads" then
     privilege = std.reads
@@ -613,8 +702,15 @@ function specialize.stat_task_privilege(cx, node)
   end
 
   local region_fields = node.regions:map(
-    function(region) return specialize.stat_task_privilege_region(cx, region) end)
+    function(region) return specialize.privilege_region(cx, region) end)
   return std.privilege(privilege, region_fields)
+end
+
+function specialize.constraint(cx, node)
+  local lhs = cx.env:lookup(node.lhs)
+  local rhs = cx.env:lookup(node.rhs)
+
+  return std.constraint(lhs, rhs, node.op)
 end
 
 function specialize.stat_task_param(cx, node)
@@ -640,8 +736,10 @@ function specialize.stat_task(cx, node)
   local params = node.params:map(
     function(param) return specialize.stat_task_param(cx, param) end)
   local return_type = node.return_type_expr(cx.env:env())
-  local privileges = node.privilege_exprs:map(
-    function(privilege) return specialize.stat_task_privilege(cx, privilege) end)
+  local privileges = node.privileges:map(
+    function(privilege) return specialize.privilege(cx, privilege) end)
+  local constraints = node.constraints:map(
+    function(constraint) return specialize.constraint(cx, constraint) end)
   local body = specialize.block(cx, node.body)
 
   return ast.specialized.StatTask {
@@ -649,6 +747,7 @@ function specialize.stat_task(cx, node)
     params = params,
     return_type = return_type,
     privileges = privileges,
+    constraints = constraints,
     body = body,
     prototype = proto,
   }
@@ -679,17 +778,6 @@ function specialize.stat_fspace_field(cx, node)
   }
 end
 
-function specialize.stat_fspace_constraint(cx, node)
-  local lhs = cx.env:lookup(node.lhs)
-  local rhs = cx.env:lookup(node.rhs)
-
-  return  {
-    lhs = lhs,
-    rhs = rhs,
-    op = node.op,
-  }
-end
-
 function specialize.stat_fspace(cx, node)
   local cx = cx:new_local_scope()
   local fs = std.newfspace(node.name, #node.params > 0)
@@ -700,7 +788,7 @@ function specialize.stat_fspace(cx, node)
   fs.fields = node.fields:map(
       function(field) return specialize.stat_fspace_field(cx, field) end)
   fs.constraints = node.constraints:map(
-      function(constraint) return specialize.stat_fspace_constraint(cx, constraint) end)
+      function(constraint) return specialize.constraint(cx, constraint) end)
 
   return ast.specialized.StatFspace {
     name = node.name,

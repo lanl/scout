@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright 2014 Stanford University
+# Copyright 2015 Stanford University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 # limitations under the License.
 #
 
+from __future__ import print_function
 import os, platform, subprocess, sys
 
 os_name = platform.system()
@@ -23,18 +24,15 @@ root_dir = os.path.realpath(os.path.dirname(__file__))
 legion_dir = os.path.dirname(root_dir)
 
 terra_dir = os.path.join(root_dir, 'terra')
-luabind_dir = os.path.join(root_dir, 'luabind', 'install_dir')
-luajit_dir = os.path.join(root_dir, 'luabind', 'fake_luajit_dir')
 
 runtime_dir = os.path.join(legion_dir, 'runtime')
-bindings_dir = os.path.join(legion_dir, 'bindings', 'lua')
+bindings_dir = os.path.join(legion_dir, 'bindings', 'terra')
 
 terra_path = [
-    '?.lua',
     '?.t',
     os.path.join(root_dir, 'src', '?.t'),
     os.path.join(terra_dir, 'tests', 'lib', '?.t'),
-    os.path.join(bindings_dir, '?.lua'),
+    os.path.join(terra_dir, 'release', 'include', '?.t'),
     os.path.join(bindings_dir, '?.t'),
 ]
 
@@ -44,8 +42,6 @@ include_path = [
 ]
 
 lib_path = [
-    os.path.join(luabind_dir, 'lib'),
-    os.path.join(luajit_dir, 'lib'),
     os.path.join(terra_dir, 'build'),
     bindings_dir,
 ]
@@ -56,13 +52,22 @@ if os_name == 'Darwin':
 
 terra_exe = os.path.join(terra_dir, 'terra')
 terra_env = dict(os.environ.items() + [
-    ('LUA_PATH', ';'.join(terra_path)),
+    ('TERRA_PATH', ';'.join(terra_path)),
     (LD_LIBRARY_PATH, ':'.join(lib_path)),
     ('INCLUDE_PATH', ';'.join(include_path)),
 ])
 
 def legion(args, **kwargs):
-    return subprocess.Popen([terra_exe] + args, env = terra_env, **kwargs)
+    cmd = []
+    if 'USE_MPIRUN' in os.environ and int(os.environ['USE_MPIRUN']) == 1:
+        mpirun_flags = (
+            (os.environ['MPIRUN_FLAGS'].split()
+             if 'MPIRUN_FLAGS' in os.environ else []) +
+            ['-x', 'TERRA_PATH', '-x', LD_LIBRARY_PATH, '-x', 'INCLUDE_PATH'])
+        cmd = cmd + ['mpirun'] + mpirun_flags
+    cmd = cmd + [terra_exe] + args
+    return subprocess.Popen(
+        cmd, env = terra_env, **kwargs)
 
 if __name__ == '__main__':
     sys.exit(legion(sys.argv[1:]).wait())

@@ -1,4 +1,4 @@
-/* Copyright 2014 Stanford University
+/* Copyright 2015 Stanford University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ namespace LegionRuntime {
      */
     class ShimMapper : public DefaultMapper {
     public:
-      ShimMapper(Machine *machine, HighLevelRuntime *rt, Processor local);
+      ShimMapper(Machine machine, HighLevelRuntime *rt, Processor local);
       ShimMapper(const ShimMapper &rhs);
       virtual ~ShimMapper(void);
     public:

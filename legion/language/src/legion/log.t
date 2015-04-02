@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -15,6 +15,11 @@
 -- Legion Logging
 
 local log = {}
+
+log.warn = function(...)
+  io.stderr:write(...)
+  io.stderr:write("\n")
+end
 
 log.error = function(...)
   io.stderr:write(...)

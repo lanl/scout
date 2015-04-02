@@ -1,4 +1,4 @@
--- Copyright 2014 Stanford University
+-- Copyright 2015 Stanford University
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -17,10 +17,12 @@
 
 import "legion"
 
-task f(r : region(int)), writes(r)
+task f(r : region(int))
+where writes(r) do
 end
 
-task g(s : region(int)), reads(s)
+task g(s : region(int))
+where reads(s) do
   return f(s)
 end
 g:compile()
