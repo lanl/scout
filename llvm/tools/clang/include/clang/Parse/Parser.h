@@ -2572,7 +2572,7 @@ private:
     return clang::isScoutLang(getLangOpts());
   }
   
-  bool ParseFrameSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo);
+  bool ParseFrameSpecifier(DeclSpec &DS);
   
   StmtResult ParseFrameCaptureStatement(ParsedAttributes &Attr);
   
