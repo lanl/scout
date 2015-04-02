@@ -598,7 +598,7 @@ void Parser::ParseMeshParameterDeclaration(DeclSpec& DS) {
   }
 }
 
-bool Parser::ParseFrameSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TI) {
+bool Parser::ParseFrameSpecifier(DeclSpec &DS) {
   assert(Tok.is(tok::kw_frame) && "expected frame keyword");
   
   SourceLocation FrameLoc = ConsumeToken();
@@ -625,17 +625,10 @@ bool Parser::ParseFrameSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TI) {
     SkipUntil(tok::semi);
     return false;
   }
-
-  TemplateParameterLists* TemplateParams = TI.TemplateParams;
-  MultiTemplateParamsArg TParams;
-  if (TemplateParams) {
-    TParams = MultiTemplateParamsArg(&(*TemplateParams)[0],
-                                     TemplateParams->size());
-  }
   
   FrameDecl* FD =
   static_cast<FrameDecl*>(Actions.ActOnFrameDefinition(getCurScope(), FrameLoc,
-                                                       Name, NameLoc, TParams));
+                                                       Name, NameLoc));
   
   ParseScope FrameScope(this, Scope::ControlScope|Scope::DeclScope);
   
