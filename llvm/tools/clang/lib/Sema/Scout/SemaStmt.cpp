@@ -529,6 +529,7 @@ StmtResult Sema::ActOnFrameCaptureStmt(const VarDecl* VD, SpecObjectExpr* S){
 StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
                                SourceLocation FrameLoc,
                                VarDecl* RenderTarget,
+                               FrameDecl* FD,
                                VarDecl* Frame,
                                SpecObjectExpr* Spec){
   using namespace std;
@@ -635,5 +636,5 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
     }
   }
   
-  return valid ? new (Context) PlotStmt(Frame, RenderTarget, Spec) : StmtError();
+  return valid ? new (Context) PlotStmt(FD, Frame, RenderTarget, Spec) : StmtError();
 }

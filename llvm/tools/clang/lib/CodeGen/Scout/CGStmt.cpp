@@ -2642,12 +2642,51 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   auto R = CGM.getPlot2Runtime();
 
   const VarDecl* frame = S.getFrameVar();
-  const FrameType* ft = dyn_cast<FrameType>(frame->getType().getTypePtr());
-  const FrameDecl* fd = ft->getDecl();
   
-  Value* framePtr = LocalDeclMap.lookup(frame);
-  assert(framePtr);
-  framePtr = Builder.CreateLoad(framePtr, "frame.ptr");
+  const FrameDecl* fd = S.getFrameDecl();
+  
+  const FrameType* ft = dyn_cast<FrameType>(frame->getType().getTypePtr());
+  
+  Value* framePtr;
+  
+  if(ft){
+    framePtr = LocalDeclMap.lookup(frame);
+    assert(framePtr);
+    framePtr = Builder.CreateLoad(framePtr, "frame.ptr");
+  }
+  else{
+    const MeshType* mt = dyn_cast<MeshType>(frame->getType().getTypePtr());
+    assert(mt && "expected a frame or mesh");
+    
+    MeshDecl* MD = mt->getDecl();
+    
+    PlotVarsVisitor visitor(fd);
+    
+    visitor.Visit(const_cast<SpecObjectExpr*>(S.getSpec()));
+    
+    auto vs = visitor.getVarSet();
+    
+    map<string, VarDecl*> ns;
+    for(VarDecl* vd : vs){
+      ns.insert({vd->getName().str(), vd});
+    }
+    
+    ValueVec args;
+    framePtr = Builder.CreateCall(R.CreateFrameFunc(), args, "frame.ptr");
+    
+    for(MeshDecl::field_iterator fitr = MD->field_begin(),
+        fitrEnd = MD->field_end(); fitr != fitrEnd; ++fitr){
+      MeshFieldDecl* field = *fitr;
+    
+      auto itr = ns.find(field->getName().str());
+      
+      if(itr == ns.end()){
+        continue;
+      }
+      
+      uint32_t varId = fd->getVarId(itr->second);
+    }
+  }
   
   const VarDecl* target = S.getRenderTargetVar();
   Value* targetPtr = LocalDeclMap.lookup(target);

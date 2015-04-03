@@ -274,6 +274,41 @@ private:
   bool isConstant_;
 };
   
+class PlotVarsVisitor : public StmtVisitor<PlotVarsVisitor> {
+public:
+  typedef std::set<VarDecl*> VarSet;
+  
+  PlotVarsVisitor(const FrameDecl* FD)
+  : FD_(FD){}
+  
+  void VisitDeclRefExpr(DeclRefExpr* E);
+  
+  void VisitScoutExpr(ScoutExpr* S);
+  
+  void VisitChildren(Stmt* S){
+    if(S){
+      for(Stmt::child_iterator I = S->child_begin(),
+          E = S->child_end(); I != E; ++I){
+        if(Stmt* child = *I){
+          Visit(child);
+        }
+      }
+    }
+  }
+  
+  void VisitStmt(Stmt* S){
+    VisitChildren(S);
+  }
+  
+  const VarSet& getVarSet(){
+    return varSet_;
+  }
+  
+private:
+  VarSet varSet_;
+  const FrameDecl* FD_;
+};
+  
 } // end namespace CodeGen
 } // end namespace clang
 

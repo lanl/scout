@@ -3002,11 +3002,16 @@ private:
   
 class PlotStmt : public ScoutStmt{
 public:
-  PlotStmt(const VarDecl* FV, const VarDecl* RV, SpecObjectExpr* S)
+  PlotStmt(const FrameDecl* FD, const VarDecl* FV, const VarDecl* RV, SpecObjectExpr* S)
   : ScoutStmt(Plot),
+  Frame(FD),
   FrameVar(FV),
   RenderTargetVar(RV),
   Spec(S){}
+
+  const FrameDecl* getFrameDecl() const{
+    return Frame;
+  }
   
   const VarDecl* getFrameVar() const{
     return FrameVar;
@@ -3021,6 +3026,7 @@ public:
   }
   
 private:
+  const FrameDecl* Frame;
   const VarDecl* FrameVar;
   const VarDecl* RenderTargetVar;
   SpecObjectExpr* Spec;

@@ -8894,6 +8894,7 @@ public:
   StmtResult ActOnPlotStmt(SourceLocation WithLoc,
                            SourceLocation FrameLoc,
                            VarDecl* RenderTarget,
+                           FrameDecl* FD,
                            VarDecl* Frame,
                            SpecObjectExpr* Spec);
   

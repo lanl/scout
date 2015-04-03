@@ -1124,5 +1124,5 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
   ScoutExpr* SE = cast<ScoutExpr>(result.get());
   SpecObjectExpr* Spec = static_cast<SpecObjectExpr*>(SE);
   
-  return Actions.ActOnPlotStmt(WithLoc, FrameLoc, RTVD, VD, Spec);
+  return Actions.ActOnPlotStmt(WithLoc, FrameLoc, RTVD, FD, VD, Spec);
 }
