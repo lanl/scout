@@ -45,6 +45,8 @@ T tmain() {
     vec[0] = t_var;
     s_arr[0] = var;
   }
+#pragma omp parallel firstprivate(t_var)
+  {}
   return T();
 }
 
@@ -52,7 +54,7 @@ int main() {
 #ifdef LAMBDA
   // LAMBDA: [[G:@.+]] = global i{{[0-9]+}} 1212,
   // LAMBDA-LABEL: @main
-  // LAMBDA: call void [[OUTER_LAMBDA:@.+]](
+  // LAMBDA: call{{( x86_thiscallcc)?}} void [[OUTER_LAMBDA:@.+]](
   [&]() {
   // LAMBDA: define{{.*}} internal{{.*}} void [[OUTER_LAMBDA]](
   // LAMBDA: [[G_LOCAL_REF:%.+]] = getelementptr inbounds %{{.+}}, %{{.+}}* [[AGG_CAPTURED:%.+]], i{{[0-9]+}} 0, i{{[0-9]+}} 0
@@ -74,7 +76,7 @@ int main() {
     // LAMBDA: store volatile i{{[0-9]+}} 1, i{{[0-9]+}}* [[G_PRIVATE_ADDR]],
     // LAMBDA: [[G_PRIVATE_ADDR_REF:%.+]] = getelementptr inbounds %{{.+}}, %{{.+}}* [[ARG:%.+]], i{{[0-9]+}} 0, i{{[0-9]+}} 0
     // LAMBDA: store i{{[0-9]+}}* [[G_PRIVATE_ADDR]], i{{[0-9]+}}** [[G_PRIVATE_ADDR_REF]]
-    // LAMBDA: call void [[INNER_LAMBDA:@.+]](%{{.+}}* [[ARG]])
+    // LAMBDA: call{{( x86_thiscallcc)?}} void [[INNER_LAMBDA:@.+]](%{{.+}}* [[ARG]])
     [&]() {
       // LAMBDA: define {{.+}} void [[INNER_LAMBDA]](%{{.+}}* [[ARG_PTR:%.+]])
       // LAMBDA: store %{{.+}}* [[ARG_PTR]], %{{.+}}** [[ARG_PTR_REF:%.+]],
@@ -136,6 +138,8 @@ int main() {
     vec[0] = t_var;
     s_arr[0] = var;
   }
+#pragma omp parallel firstprivate(t_var)
+  {}
   return tmain<int>();
 #endif
 }

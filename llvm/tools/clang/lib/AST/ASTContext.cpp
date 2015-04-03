@@ -3516,7 +3516,7 @@ ASTContext::getElaboratedType(ElaboratedTypeKeyword Keyword,
     (void)CheckT;
   }
 
-  T = new (*this) ElaboratedType(Keyword, NNS, NamedType, Canon);
+  T = new (*this, TypeAlignment) ElaboratedType(Keyword, NNS, NamedType, Canon);
   Types.push_back(T);
   ElaboratedTypes.InsertNode(T, InsertPos);
   return QualType(T, 0);
@@ -3540,7 +3540,7 @@ ASTContext::getParenType(QualType InnerType) const {
     (void)CheckT;
   }
 
-  T = new (*this) ParenType(InnerType, Canon);
+  T = new (*this, TypeAlignment) ParenType(InnerType, Canon);
   Types.push_back(T);
   ParenTypes.InsertNode(T, InsertPos);
   return QualType(T, 0);
@@ -3569,7 +3569,7 @@ QualType ASTContext::getDependentNameType(ElaboratedTypeKeyword Keyword,
   if (T)
     return QualType(T, 0);
 
-  T = new (*this) DependentNameType(Keyword, NNS, Name, Canon);
+  T = new (*this, TypeAlignment) DependentNameType(Keyword, NNS, Name, Canon);
   Types.push_back(T);
   DependentNameTypes.InsertNode(T, InsertPos);
   return QualType(T, 0);
@@ -3671,7 +3671,8 @@ QualType ASTContext::getPackExpansionType(QualType Pattern,
     }
   }
 
-  T = new (*this) PackExpansionType(Pattern, Canon, NumExpansions);
+  T = new (*this, TypeAlignment)
+      PackExpansionType(Pattern, Canon, NumExpansions);
   Types.push_back(T);
   PackExpansionTypes.InsertNode(T, InsertPos);
   return QualType(T, 0);

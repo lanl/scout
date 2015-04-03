@@ -235,6 +235,7 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const LangOptions &Lang,
     case llvm::Triple::NetBSD:
     case llvm::Triple::OpenBSD:
     case llvm::Triple::Bitrig:
+    case llvm::Triple::NaCl:
       break;
     default:
       // FIXME: temporary hack: hard-coded paths.
@@ -443,6 +444,7 @@ void InitHeaderSearch::AddDefaultCIncludePaths(const LangOptions &Lang,
   switch (os) {
   case llvm::Triple::CloudABI:
   case llvm::Triple::RTEMS:
+  case llvm::Triple::NaCl:
     break;
   default:
     AddPath("/usr/include", ExternCSystem, false);
