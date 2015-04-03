@@ -362,8 +362,8 @@ def system(commands, **kwargs):
             print >> sbuf
             print >> sbuf, "os command:", shellCommand
             print >> sbuf, "with pid:", pid
-            print >> sbuf, "stdout:", output
-            print >> sbuf, "stderr:", error
+            print >> sbuf, "stdout:", this_output
+            print >> sbuf, "stderr:", this_error
             print >> sbuf, "retcode:", retcode
             print >> sbuf
 
@@ -593,7 +593,7 @@ def expectedFailureOS(oslist, bugnumber=None, compilers=None):
 
 def expectedFailureDarwin(bugnumber=None, compilers=None):
     # For legacy reasons, we support both "darwin" and "macosx" as OS X triples.
-    return expectedFailureOS(['darwin', 'macosx'], bugnumber, compilers)
+    return expectedFailureOS(getDarwinOSTriples(), bugnumber, compilers)
 
 def expectedFailureFreeBSD(bugnumber=None, compilers=None):
     return expectedFailureOS(['freebsd'], bugnumber, compilers)
@@ -664,9 +664,12 @@ def skipIfFreeBSD(func):
     """Decorate the item to skip tests that should be skipped on FreeBSD."""
     return skipIfPlatform(["freebsd"])(func)
 
+def getDarwinOSTriples():
+    return ['darwin', 'macosx', 'ios']
+
 def skipIfDarwin(func):
     """Decorate the item to skip tests that should be skipped on Darwin."""
-    return skipIfPlatform(["darwin", "macosx"])(func)
+    return skipIfPlatform(getDarwinOSTriples())(func)
 
 def skipIfLinux(func):
     """Decorate the item to skip tests that should be skipped on Linux."""
@@ -678,7 +681,7 @@ def skipIfWindows(func):
 
 def skipUnlessDarwin(func):
     """Decorate the item to skip tests that should be skipped on any non Darwin platform."""
-    return skipUnlessPlatform(["darwin", "macosx"])(func)
+    return skipUnlessPlatform(getDarwinOSTriples())(func)
 
 def skipIfPlatform(oslist):
     """Decorate the item to skip tests if running on one of the listed platforms."""
@@ -1387,9 +1390,22 @@ class Base(unittest2.TestCase):
                 version = m.group(1)
         return version
 
+    def platformIsDarwin(self):
+        """Returns true if the OS triple for the selected platform is any valid apple OS"""
+        platform_name = self.getPlatform()
+        return platform_name in getDarwinOSTriples()
+
+    def platformIsLinux(self):
+        """Returns true if the OS triple for the selected platform is any valid apple OS"""
+        platform_name = self.getPlatform()
+        return platform_name == "linux"
+
     def getPlatform(self):
         """Returns the platform the test suite is running on."""
-        return lldb.DBG.GetSelectedPlatform().GetTriple().split('-')[2]
+        platform = lldb.DBG.GetSelectedPlatform().GetTriple().split('-')[2]
+        if platform.startswith('freebsd'):
+            platform = 'freebsd'
+        return platform
 
     def isIntelCompiler(self):
         """ Returns true if using an Intel (ICC) compiler, false otherwise. """

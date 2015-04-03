@@ -39,6 +39,7 @@
 
 using namespace lldb;
 using namespace lldb_private;
+using namespace lldb_private::process_gdb_remote;
 
 //----------------------------------------------------------------------
 // option descriptors for getopt_long_only()
@@ -253,7 +254,12 @@ main_platform (int argc, char *argv[])
     Socket *socket = nullptr;
     printf ("Listening for a connection from %s...\n", listen_host_port.c_str());
     const bool children_inherit_listen_socket = false;
-    error = Socket::TcpListen(listen_host_port.c_str(), children_inherit_listen_socket, socket, NULL);
+
+    // the test suite makes many connections in parallel, let's not miss any.
+    // The highest this should get reasonably is a function of the number 
+    // of target CPUs.  For now, let's just use 100
+    const int backlog = 100;
+    error = Socket::TcpListen(listen_host_port.c_str(), children_inherit_listen_socket, socket, NULL, backlog);
     if (error.Fail())
     {
         printf("error: %s\n", error.AsCString());
@@ -287,6 +293,10 @@ main_platform (int argc, char *argv[])
             while (waitpid(-1, nullptr, WNOHANG) > 0);
             if (fork())
             {
+                // Parent doesn't need a connection to the lldb client
+                delete socket;
+                socket = nullptr;
+
                 // Parent will continue to listen for new connections.
                 continue;
             }

@@ -13,6 +13,7 @@
 
 // C++ Includes
 #include "llvm/Support/MathExtras.h"
+#include <mutex>
 
 // Other libraries and framework includes
 #include "lldb/Core/DataBuffer.h"
@@ -483,15 +484,13 @@ ProcessMachCore::Clear()
 void
 ProcessMachCore::Initialize()
 {
-    static bool g_initialized = false;
-    
-    if (g_initialized == false)
-    {
-        g_initialized = true;
+    static std::once_flag g_once_flag;
+
+    std::call_once(g_once_flag, []() {
         PluginManager::RegisterPlugin (GetPluginNameStatic(),
                                        GetPluginDescriptionStatic(),
-                                       CreateInstance);        
-    }
+                                       CreateInstance);
+    });
 }
 
 addr_t

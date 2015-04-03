@@ -35,13 +35,15 @@ namespace lldb_private {
 
     // Constants from <mach-o/compact_unwind_encoding.h>
 
-    enum {
+    FLAGS_ANONYMOUS_ENUM()
+    {
         UNWIND_IS_NOT_FUNCTION_START           = 0x80000000,
         UNWIND_HAS_LSDA                        = 0x40000000,
         UNWIND_PERSONALITY_MASK                = 0x30000000,
     };
 
-    enum {
+    FLAGS_ANONYMOUS_ENUM()
+    {
         UNWIND_X86_MODE_MASK                         = 0x0F000000,
         UNWIND_X86_MODE_EBP_FRAME                    = 0x01000000,
         UNWIND_X86_MODE_STACK_IMMD                   = 0x02000000,
@@ -59,7 +61,8 @@ namespace lldb_private {
         UNWIND_X86_DWARF_SECTION_OFFSET              = 0x00FFFFFF,
     };
 
-    enum {
+    enum
+    {
         UNWIND_X86_REG_NONE     = 0,
         UNWIND_X86_REG_EBX      = 1,
         UNWIND_X86_REG_ECX      = 2,
@@ -68,7 +71,9 @@ namespace lldb_private {
         UNWIND_X86_REG_ESI      = 5,
         UNWIND_X86_REG_EBP      = 6,
     };
-    enum {
+
+    FLAGS_ANONYMOUS_ENUM()
+    {
         UNWIND_X86_64_MODE_MASK                         = 0x0F000000,
         UNWIND_X86_64_MODE_RBP_FRAME                    = 0x01000000,
         UNWIND_X86_64_MODE_STACK_IMMD                   = 0x02000000,
@@ -86,7 +91,8 @@ namespace lldb_private {
         UNWIND_X86_64_DWARF_SECTION_OFFSET              = 0x00FFFFFF,
     };
 
-    enum {
+    enum
+    {
         UNWIND_X86_64_REG_NONE       = 0,
         UNWIND_X86_64_REG_RBX        = 1,
         UNWIND_X86_64_REG_R12        = 2,
@@ -283,9 +289,17 @@ CompactUnwindInfo::ScanIndex (const ProcessSP &process_sp)
 
         uint32_t indexCount = m_unwindinfo_data.GetU32(&offset);
 
-        if (m_unwind_header.version != 1)
+        if (m_unwind_header.common_encodings_array_offset > m_unwindinfo_data.GetByteSize()
+            || m_unwind_header.personality_array_offset > m_unwindinfo_data.GetByteSize()
+            || indexSectionOffset > m_unwindinfo_data.GetByteSize()
+            || offset > m_unwindinfo_data.GetByteSize())
         {
+            Host::SystemLog (Host::eSystemLogError,
+                    "error: Invalid offset encountered in compact unwind info, skipping\n");
+            // don't trust anything from this compact_unwind section if it looks
+            // blatently invalid data in the header.
             m_indexes_computed = eLazyBoolNo;
+            return;
         }
 
         // Parse the basic information from the indexes

@@ -138,6 +138,7 @@
 
 using namespace lldb;
 using namespace lldb_private;
+using namespace lldb_private::process_linux;
 using namespace llvm;
 
 // Private bits we only need internally.
@@ -178,7 +179,7 @@ namespace
         // Grab process info for the running process.
         ProcessInstanceInfo process_info;
         if (!platform.GetProcessInfo (pid, process_info))
-            return lldb_private::Error("failed to get process info");
+            return Error("failed to get process info");
 
         // Resolve the executable module.
         ModuleSP exe_module_sp;
@@ -201,7 +202,7 @@ namespace
     }
 
     void
-    DisplayBytes (lldb_private::StreamString &s, void *bytes, uint32_t count)
+    DisplayBytes (StreamString &s, void *bytes, uint32_t count)
     {
         uint8_t *ptr = (uint8_t *)bytes;
         const uint32_t loop_count = std::min<uint32_t>(DEBUG_PTRACE_MAXBYTES, count);
@@ -631,7 +632,7 @@ namespace
             PTRACE(PTRACE_GETREGSET, m_tid, &regset, &ioVec, sizeof regs, m_error);
             if (m_error.Success())
             {
-                lldb_private::ArchSpec arch;
+                ArchSpec arch;
                 if (monitor->GetArchitecture(arch))
                     m_value.SetBytes((void *)(((unsigned char *)(&regs)) + offset), 16, arch.GetByteOrder());
                 else
@@ -649,12 +650,23 @@ namespace
             PTRACE(PTRACE_GETREGSET, m_tid, &regset, &ioVec, sizeof regs, m_error);
             if (m_error.Success())
             {
-                lldb_private::ArchSpec arch;
+                ArchSpec arch;
                 if (monitor->GetArchitecture(arch))
                     m_value.SetBytes((void *)(((unsigned char *)(regs)) + m_offset), 8, arch.GetByteOrder());
                 else
                     m_error.SetErrorString("failed to get architecture");
             }
+        }
+#elif defined (__mips__)
+        elf_gregset_t regs;
+        PTRACE(PTRACE_GETREGS, m_tid, NULL, &regs, sizeof regs, m_error);
+        if (m_error.Success())
+        {
+            lldb_private::ArchSpec arch;
+            if (monitor->GetArchitecture(arch))
+                m_value.SetBytes((void *)(((unsigned char *)(regs)) + m_offset), 8, arch.GetByteOrder());
+            else
+                m_error.SetErrorString("failed to get architecture");
         }
 #else
         Log *log (ProcessPOSIXLog::GetLogIfAllCategoriesSet (POSIX_LOG_REGISTERS));
@@ -731,6 +743,14 @@ namespace
                 ::memcpy((void *)(((unsigned char *)(&regs)) + m_offset), m_value.GetBytes(), 8);
                 PTRACE(PTRACE_SETREGSET, m_tid, &regset, &ioVec, sizeof regs, m_error);
             }
+        }
+#elif defined (__mips__)
+        elf_gregset_t regs;
+        PTRACE(PTRACE_GETREGS, m_tid, NULL, &regs, sizeof regs, m_error);
+        if (m_error.Success())
+        {
+            ::memcpy((void *)(((unsigned char *)(&regs)) + m_offset), m_value.GetBytes(), 8);
+            PTRACE(PTRACE_SETREGS, m_tid, NULL, &regs, sizeof regs, m_error);
         }
 #else
         void* buf;
@@ -1086,14 +1106,14 @@ NativeProcessLinux::OperationArgs::~OperationArgs()
 }
 
 NativeProcessLinux::LaunchArgs::LaunchArgs(NativeProcessLinux *monitor,
-                                       lldb_private::Module *module,
+                                       Module *module,
                                        char const **argv,
                                        char const **envp,
                                        const std::string &stdin_path,
                                        const std::string &stdout_path,
                                        const std::string &stderr_path,
                                        const char *working_dir,
-                                       const lldb_private::ProcessLaunchInfo &launch_info)
+                                       const ProcessLaunchInfo &launch_info)
     : OperationArgs(monitor),
       m_module(module),
       m_argv(argv),
@@ -1120,11 +1140,11 @@ NativeProcessLinux::AttachArgs::~AttachArgs()
 // Public Static Methods
 // -----------------------------------------------------------------------------
 
-lldb_private::Error
+Error
 NativeProcessLinux::LaunchProcess (
-    lldb_private::Module *exe_module,
-    lldb_private::ProcessLaunchInfo &launch_info,
-    lldb_private::NativeProcessProtocol::NativeDelegate &native_delegate,
+    Module *exe_module,
+    ProcessLaunchInfo &launch_info,
+    NativeProcessProtocol::NativeDelegate &native_delegate,
     NativeProcessProtocolSP &native_process_sp)
 {
     Log *log (GetLogIfAllCategoriesSet (LIBLLDB_LOG_PROCESS));
@@ -1143,7 +1163,7 @@ NativeProcessLinux::LaunchProcess (
       }
     }
 
-    const lldb_private::FileAction *file_action;
+    const FileAction *file_action;
 
     // Default of NULL will mean to use existing open file descriptors.
     std::string stdin_path;
@@ -1224,10 +1244,10 @@ NativeProcessLinux::LaunchProcess (
     return error;
 }
 
-lldb_private::Error
+Error
 NativeProcessLinux::AttachToProcess (
     lldb::pid_t pid,
-    lldb_private::NativeProcessProtocol::NativeDelegate &native_delegate,
+    NativeProcessProtocol::NativeDelegate &native_delegate,
     NativeProcessProtocolSP &native_process_sp)
 {
     Log *log (GetLogIfAllCategoriesSet (LIBLLDB_LOG_PROCESS));
@@ -1304,8 +1324,8 @@ NativeProcessLinux::LaunchInferior (
     const std::string &stdout_path,
     const std::string &stderr_path,
     const char *working_dir,
-    const lldb_private::ProcessLaunchInfo &launch_info,
-    lldb_private::Error &error)
+    const ProcessLaunchInfo &launch_info,
+    Error &error)
 {
     if (module)
         m_arch = module->GetArchitecture ();
@@ -1363,7 +1383,7 @@ WAIT_AGAIN:
 }
 
 void
-NativeProcessLinux::AttachToInferior (lldb::pid_t pid, lldb_private::Error &error)
+NativeProcessLinux::AttachToInferior (lldb::pid_t pid, Error &error)
 {
     Log *log (GetLogIfAllCategoriesSet (LIBLLDB_LOG_PROCESS));
     if (log)
@@ -1744,7 +1764,7 @@ NativeProcessLinux::Launch(LaunchArgs *args)
 }
 
 void
-NativeProcessLinux::StartAttachOpThread(AttachArgs *args, lldb_private::Error &error)
+NativeProcessLinux::StartAttachOpThread(AttachArgs *args, Error &error)
 {
     static const char *g_thread_name = "lldb.process.linux.operation";
 
@@ -3563,7 +3583,7 @@ NativeProcessLinux::GetEventMessage(lldb::tid_t tid, unsigned long *message)
     return op.GetError();
 }
 
-lldb_private::Error
+Error
 NativeProcessLinux::Detach(lldb::tid_t tid)
 {
     if (tid == LLDB_INVALID_THREAD_ID)
@@ -3960,7 +3980,7 @@ NativeProcessLinux::CallAfterRunningThreadsStopWithSkipTID (lldb::tid_t deferred
                                                                CoordinatorErrorHandler);
 }
 
-lldb_private::Error
+Error
 NativeProcessLinux::RequestThreadStop (const lldb::pid_t pid, const lldb::tid_t tid)
 {
     Log* log (GetLogIfAllCategoriesSet (LIBLLDB_LOG_THREAD));
