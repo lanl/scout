@@ -90,12 +90,6 @@ namespace llvm {
     static DebugLoc get(unsigned Line, unsigned Col, MDNode *Scope,
                         MDNode *InlinedAt = nullptr);
 
-    /// \brief Translate the DILexicalBlock into a DebugLoc.
-    ///
-    /// FIXME: Remove this.  It has only one user, and the user just wants to
-    /// pass an \a MDScope around.
-    static DebugLoc getFromDILexicalBlock(MDNode *N);
-
     unsigned getLine() const;
     unsigned getCol() const;
     MDNode *getScope() const;
@@ -125,24 +119,6 @@ namespace llvm {
 
     /// \brief prints source location /path/to/file.exe:line:col @[inlined at]
     void print(raw_ostream &OS) const;
-
-    // FIXME: Remove this old API once callers have been updated.
-    static DebugLoc getFromDILocation(MDNode *N) { return DebugLoc(N); }
-    bool isUnknown() const { return !Loc; }
-    MDNode *getScope(const LLVMContext &) const { return getScope(); }
-    MDNode *getInlinedAt(const LLVMContext &) const;
-    void getScopeAndInlinedAt(MDNode *&Scope, MDNode *&IA) const;
-    void getScopeAndInlinedAt(MDNode *&Scope, MDNode *&IA,
-                              const LLVMContext &) const {
-      return getScopeAndInlinedAt(Scope, IA);
-    }
-    MDNode *getScopeNode() const { return getInlinedAtScope(); }
-    MDNode *getScopeNode(const LLVMContext &) const { return getScopeNode(); }
-    DebugLoc getFnDebugLoc(const LLVMContext &) const {
-      return getFnDebugLoc();
-    }
-    MDNode *getAsMDNode(LLVMContext &) const { return getAsMDNode(); }
-    void dump(const LLVMContext &) const { dump(); }
   };
 
 } // end namespace llvm

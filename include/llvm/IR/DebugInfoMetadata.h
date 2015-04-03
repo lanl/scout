@@ -78,6 +78,16 @@ protected:
 public:
   unsigned getTag() const { return SubclassData16; }
 
+  /// \brief Debug info flags.
+  ///
+  /// The three accessibility flags are mutually exclusive and rolled together
+  /// in the first two bits.
+  enum DIFlags {
+#define HANDLE_DI_FLAG(ID, NAME) Flag##NAME = ID,
+#include "llvm/IR/DebugInfoFlags.def"
+    FlagAccessibility = FlagPrivate | FlagProtected | FlagPublic
+  };
+
   static bool classof(const Metadata *MD) {
     switch (MD->getMetadataID()) {
     default:
@@ -889,6 +899,12 @@ protected:
   ~MDLocalScope() {}
 
 public:
+  /// \brief Get the subprogram for this scope.
+  ///
+  /// Return this if it's an \a MDSubprogram; otherwise, look up the scope
+  /// chain.
+  MDSubprogram *getSubprogram() const;
+
   static bool classof(const Metadata *MD) {
     return MD->getMetadataID() == MDSubprogramKind ||
            MD->getMetadataID() == MDLexicalBlockKind ||
@@ -1570,6 +1586,14 @@ public:
   }
 
   Metadata *getRawInlinedAt() const { return getOperand(4); }
+
+  /// \brief Check that a location is valid for this variable.
+  ///
+  /// Check that \c DL has the same inlined-at location as this variable,
+  /// making them valid for the same \a DbgInfoIntrinsic.
+  bool isValidLocationForIntrinsic(const MDLocation *DL) const {
+    return getInlinedAt() == (DL ? DL->getInlinedAt() : nullptr);
+  }
 
   /// \brief Get an inlined version of this variable.
   ///

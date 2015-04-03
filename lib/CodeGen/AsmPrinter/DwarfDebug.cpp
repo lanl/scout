@@ -704,7 +704,8 @@ void DwarfDebug::ensureAbstractVariableIsCreated(const DIVariable &DV,
   if (getExistingAbstractVariable(DV, Cleansed))
     return;
 
-  createAbstractVariable(Cleansed, LScopes.getOrCreateAbstractScope(ScopeNode));
+  createAbstractVariable(Cleansed, LScopes.getOrCreateAbstractScope(
+                                       cast<MDLocalScope>(ScopeNode)));
 }
 
 void
@@ -714,7 +715,8 @@ DwarfDebug::ensureAbstractVariableIsCreatedIfScoped(const DIVariable &DV,
   if (getExistingAbstractVariable(DV, Cleansed))
     return;
 
-  if (LexicalScope *Scope = LScopes.findAbstractScope(ScopeNode))
+  if (LexicalScope *Scope =
+          LScopes.findAbstractScope(cast_or_null<MDLocalScope>(ScopeNode)))
     createAbstractVariable(Cleansed, Scope);
 }
 
@@ -732,6 +734,8 @@ void DwarfDebug::collectVariableInfoFromMMITable(
       continue;
 
     DIVariable DV(VI.Var);
+    assert(DV->isValidLocationForIntrinsic(VI.Loc) &&
+           "Expected inlined-at fields to agree");
     DIExpression Expr(VI.Expr);
     ensureAbstractVariableIsCreatedIfScoped(DV, Scope->getScopeNode());
     auto RegVar = make_unique<DbgVariable>(DV, Expr, this, VI.Slot);
@@ -901,10 +905,10 @@ DwarfDebug::collectVariableInfo(DwarfCompileUnit &TheCU, DISubprogram SP,
       continue;
 
     LexicalScope *Scope = nullptr;
-    if (MDNode *IA = DV.getInlinedAt())
-      Scope = LScopes.findInlinedScope(DV.getContext(), IA);
+    if (MDLocation *IA = DV.get()->getInlinedAt())
+      Scope = LScopes.findInlinedScope(DV.get()->getScope(), IA);
     else
-      Scope = LScopes.findLexicalScope(DV.getContext());
+      Scope = LScopes.findLexicalScope(DV.get()->getScope());
     // If variable scope is not found then skip this variable.
     if (!Scope)
       continue;
@@ -943,7 +947,7 @@ DwarfDebug::collectVariableInfo(DwarfCompileUnit &TheCU, DISubprogram SP,
     assert(DV.isVariable());
     if (!Processed.insert(DV).second)
       continue;
-    if (LexicalScope *Scope = LScopes.findLexicalScope(DV.getContext())) {
+    if (LexicalScope *Scope = LScopes.findLexicalScope(DV.get()->getScope())) {
       ensureAbstractVariableIsCreatedIfScoped(DV, Scope->getScopeNode());
       DIExpression NoExpr;
       ConcreteVariables.push_back(make_unique<DbgVariable>(DV, NoExpr, this));
@@ -1168,13 +1172,11 @@ void DwarfDebug::beginFunction(const MachineFunction *MF) {
 
   // Record beginning of function.
   PrologEndLoc = findPrologueEndLoc(MF);
-  if (PrologEndLoc) {
-    DebugLoc FnStartDL = PrologEndLoc.getFnDebugLoc();
-
+  if (MDLocation *L = PrologEndLoc) {
     // We'd like to list the prologue as "not statements" but GDB behaves
     // poorly if we do that. Revisit this with caution/GDB (7.5+) testing.
-    recordSourceLine(FnStartDL.getLine(), FnStartDL.getCol(),
-                     FnStartDL.getScope(), DWARF2_FLAG_IS_STMT);
+    auto *SP = L->getInlinedAtScope()->getSubprogram();
+    recordSourceLine(SP->getScopeLine(), 0, SP, DWARF2_FLAG_IS_STMT);
   }
 }
 
