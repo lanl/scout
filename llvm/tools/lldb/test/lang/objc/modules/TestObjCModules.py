@@ -14,8 +14,9 @@ class ObjCModulesTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @unittest2.skipUnless(sys.platform.startswith("darwin"), "requires Darwin")
+    @skipUnlessDarwin
     @dsym_test
+    @unittest2.expectedFailure("rdar://20416388")
     def test_expr_with_dsym(self):
         self.buildDsym()
         self.expr()
@@ -23,6 +24,7 @@ class ObjCModulesTestCase(TestBase):
     @dwarf_test
     @skipIfFreeBSD
     @skipIfLinux
+    @unittest2.expectedFailure("rdar://20416388")
     def test_expr_with_dwarf(self):
         self.buildDwarf()
         self.expr()
@@ -73,6 +75,12 @@ class ObjCModulesTestCase(TestBase):
 
         self.expect("expr array.count", VARIABLES_DISPLAYED_CORRECTLY,
             substrs = ["NSUInteger", "3"])
+
+        self.expect("p *[NSURL URLWithString:@\"http://lldb.llvm.org\"]", VARIABLES_DISPLAYED_CORRECTLY,
+            substrs = ["NSURL", "isa", "_urlString"])
+
+        self.expect("p [NSURL URLWithString:@\"http://lldb.llvm.org\"].scheme", VARIABLES_DISPLAYED_CORRECTLY,
+            substrs = ["http"])
             
 if __name__ == '__main__':
     import atexit

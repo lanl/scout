@@ -18,6 +18,7 @@
 #include "Plugins/Process/Linux/NativeProcessLinux.h"
 
 using namespace lldb_private;
+using namespace lldb_private::process_linux;
 
 // ----------------------------------------------------------------------------
 // Private namespace.
@@ -103,7 +104,7 @@ NativeRegisterContextLinux_mips64::GetRegisterSetCount () const
     return k_num_register_sets;
 }
 
-const lldb_private::RegisterSet *
+const RegisterSet *
 NativeRegisterContextLinux_mips64::GetRegisterSet (uint32_t set_index) const
 {
     if (set_index >= k_num_register_sets)
@@ -123,22 +124,111 @@ NativeRegisterContextLinux_mips64::GetRegisterSet (uint32_t set_index) const
 }
 
 lldb_private::Error
+NativeRegisterContextLinux_mips64::ReadRegisterRaw (uint32_t reg_index, RegisterValue &reg_value)
+{
+    Error error;
+
+    const RegisterInfo *const reg_info = GetRegisterInfoAtIndex (reg_index);
+    if (!reg_info)
+    {
+        error.SetErrorStringWithFormat ("register %" PRIu32 " not found", reg_index);
+        return error;
+    }
+
+    NativeProcessProtocolSP process_sp (m_thread.GetProcess ());
+    if (!process_sp)
+    {
+        error.SetErrorString ("NativeProcessProtocol is NULL");
+        return error;
+    }
+
+    NativeProcessLinux *const process_p = reinterpret_cast<NativeProcessLinux*> (process_sp.get ());
+    return process_p->ReadRegisterValue(m_thread.GetID(),
+                                        reg_info->byte_offset,
+                                        reg_info->name,
+                                        reg_info->byte_size,
+                                        reg_value);
+}
+
+lldb_private::Error
 NativeRegisterContextLinux_mips64::ReadRegister (const RegisterInfo *reg_info, RegisterValue &reg_value)
 {
     Error error;
-    error.SetErrorString ("MIPS TODO: NativeRegisterContextLinux_mips64::ReadRegister not implemented");
+
+    if (!reg_info)
+    {
+        error.SetErrorString ("reg_info NULL");
+        return error;
+    }
+
+    const uint32_t reg = reg_info->kinds[lldb::eRegisterKindLLDB];
+    if (reg == LLDB_INVALID_REGNUM)
+    {
+        // This is likely an internal register for lldb use only and should not be directly queried.
+        error.SetErrorStringWithFormat ("register \"%s\" is an internal-only lldb register, cannot read directly", reg_info->name);
+        return error;
+    }
+
+    error = ReadRegisterRaw(reg, reg_value);
+
+    if (error.Success ())
+    {
+        // If our return byte size was greater than the return value reg size, then
+        // use the type specified by reg_info rather than the uint64_t default
+        if (reg_value.GetByteSize() > reg_info->byte_size)
+            reg_value.SetType(reg_info);
+    }
+
     return error;
 }
+
+lldb_private::Error
+NativeRegisterContextLinux_mips64::WriteRegister(const uint32_t reg,
+                                                 const RegisterValue &value)
+{
+    Error error;
+
+    uint32_t reg_to_write = reg;
+    RegisterValue value_to_write = value;
+
+    NativeProcessProtocolSP process_sp (m_thread.GetProcess ());
+    if (!process_sp)
+    {
+        error.SetErrorString ("NativeProcessProtocol is NULL");
+        return error;
+    }
+
+    const RegisterInfo *const register_to_write_info_p = GetRegisterInfoAtIndex (reg_to_write);
+    assert (register_to_write_info_p && "register to write does not have valid RegisterInfo");
+    if (!register_to_write_info_p)
+    {
+        error.SetErrorStringWithFormat ("NativeRegisterContextLinux_mips64::%s failed to get RegisterInfo for write register index %" PRIu32, __FUNCTION__, reg_to_write);
+        return error;
+    }
+
+    NativeProcessLinux *const process_p = reinterpret_cast<NativeProcessLinux*> (process_sp.get ());
+    return process_p->WriteRegisterValue(m_thread.GetID(),
+                                         register_to_write_info_p->byte_offset,
+                                         register_to_write_info_p->name,
+                                         value_to_write);
+}
+
+
 
 lldb_private::Error
 NativeRegisterContextLinux_mips64::WriteRegister (const RegisterInfo *reg_info, const RegisterValue &reg_value)
 {
-    Error error;
-    error.SetErrorString ("MIPS TODO: NativeRegisterContextLinux_mips64::WriteRegister not implemented");
-    return error;
+    assert (reg_info && "reg_info is null");
+
+    const uint32_t reg_index = reg_info->kinds[lldb::eRegisterKindLLDB];
+
+    if (reg_index == LLDB_INVALID_REGNUM)
+        return Error ("no lldb regnum for %s", reg_info && reg_info->name ? reg_info->name : "<unknown register>");
+
+    return WriteRegister(reg_index, reg_value);
 }
 
-lldb_private::Error
+Error
 NativeRegisterContextLinux_mips64::ReadAllRegisterValues (lldb::DataBufferSP &data_sp)
 {
     Error error;
@@ -146,7 +236,7 @@ NativeRegisterContextLinux_mips64::ReadAllRegisterValues (lldb::DataBufferSP &da
     return error;
 }
 
-lldb_private::Error
+Error
 NativeRegisterContextLinux_mips64::WriteAllRegisterValues (const lldb::DataBufferSP &data_sp)
 {
     Error error;
