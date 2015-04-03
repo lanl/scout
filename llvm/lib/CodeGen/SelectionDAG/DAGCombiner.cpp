@@ -2154,7 +2154,7 @@ SDValue DAGCombiner::visitSDIV(SDNode *N) {
     return DAG.getNode(ISD::SUB, SDLoc(N), VT, DAG.getConstant(0, VT), SRA);
   }
 
-  // if integer divide is expensive and we satisfy the requirements, emit an
+  // If integer divide is expensive and we satisfy the requirements, emit an
   // alternate sequence.
   if (N1C && !TLI.isIntDivCheap()) {
     SDValue Op = BuildSDIV(N);
@@ -2449,8 +2449,8 @@ SDValue DAGCombiner::visitSMUL_LOHI(SDNode *N) {
   EVT VT = N->getValueType(0);
   SDLoc DL(N);
 
-  // If the type twice as wide is legal, transform the mulhu to a wider multiply
-  // plus a shift.
+  // If the type is twice as wide is legal, transform the mulhu to a wider
+  // multiply plus a shift.
   if (VT.isSimple() && !VT.isVector()) {
     MVT Simple = VT.getSimpleVT();
     unsigned SimpleSize = Simple.getSizeInBits();
@@ -2479,8 +2479,8 @@ SDValue DAGCombiner::visitUMUL_LOHI(SDNode *N) {
   EVT VT = N->getValueType(0);
   SDLoc DL(N);
 
-  // If the type twice as wide is legal, transform the mulhu to a wider multiply
-  // plus a shift.
+  // If the type is twice as wide is legal, transform the mulhu to a wider
+  // multiply plus a shift.
   if (VT.isSimple() && !VT.isVector()) {
     MVT Simple = VT.getSimpleVT();
     unsigned SimpleSize = Simple.getSizeInBits();
@@ -7024,7 +7024,6 @@ ConstantFoldBITCASTofBUILD_VECTOR(SDNode *BV, EVT DstEltVT) {
 
   // Finally, this must be the case where we are shrinking elements: each input
   // turns into multiple outputs.
-  bool isS2V = ISD::isScalarToVector(BV);
   unsigned NumOutputsPerInput = SrcBitSize/DstBitSize;
   EVT VT = EVT::getVectorVT(*DAG.getContext(), DstEltVT,
                             NumOutputsPerInput*BV->getNumOperands());
@@ -7042,10 +7041,6 @@ ConstantFoldBITCASTofBUILD_VECTOR(SDNode *BV, EVT DstEltVT) {
     for (unsigned j = 0; j != NumOutputsPerInput; ++j) {
       APInt ThisVal = OpVal.trunc(DstBitSize);
       Ops.push_back(DAG.getConstant(ThisVal, DstEltVT));
-      if (isS2V && i == 0 && j == 0 && ThisVal.zext(SrcBitSize) == OpVal)
-        // Simply turn this into a SCALAR_TO_VECTOR of the new type.
-        return DAG.getNode(ISD::SCALAR_TO_VECTOR, SDLoc(BV), VT,
-                           Ops[0]);
       OpVal = OpVal.lshr(DstBitSize);
     }
 
@@ -11983,6 +11978,43 @@ SDValue DAGCombiner::visitVECTOR_SHUFFLE(SDNode *N) {
 
     if (V.getNode())
       return V;
+  }
+
+  // Attempt to combine a shuffle of 2 inputs of 'scalar sources' -
+  // BUILD_VECTOR or SCALAR_TO_VECTOR into a single BUILD_VECTOR.
+  if (Level < AfterLegalizeVectorOps && TLI.isTypeLegal(VT)) {
+    SmallVector<SDValue, 8> Ops;
+    for (int M : SVN->getMask()) {
+      SDValue Op = DAG.getUNDEF(VT.getScalarType());
+      if (M >= 0) {
+        int Idx = M % NumElts;
+        SDValue &S = (M < (int)NumElts ? N0 : N1);
+        if (S.getOpcode() == ISD::BUILD_VECTOR && S.hasOneUse()) {
+          Op = S.getOperand(Idx);
+        } else if (S.getOpcode() == ISD::SCALAR_TO_VECTOR && S.hasOneUse()) {
+          if (Idx == 0)
+            Op = S.getOperand(0);
+        } else {
+          // Operand can't be combined - bail out.
+          break;
+        }
+      }
+      Ops.push_back(Op);
+    }
+    if (Ops.size() == VT.getVectorNumElements()) {
+      // BUILD_VECTOR requires all inputs to be of the same type, find the
+      // maximum type and extend them all.
+      EVT SVT = VT.getScalarType();
+      if (SVT.isInteger())
+        for (SDValue &Op : Ops)
+          SVT = (SVT.bitsLT(Op.getValueType()) ? Op.getValueType() : SVT);
+      if (SVT != VT.getScalarType())
+        for (SDValue &Op : Ops)
+          Op = TLI.isZExtFree(Op.getValueType(), SVT)
+                   ? DAG.getZExtOrTrunc(Op, SDLoc(N), SVT)
+                   : DAG.getSExtOrTrunc(Op, SDLoc(N), SVT);
+      return DAG.getNode(ISD::BUILD_VECTOR, SDLoc(N), VT, Ops);
+    }
   }
 
   // If this shuffle only has a single input that is a bitcasted shuffle,

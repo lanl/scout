@@ -16,6 +16,7 @@
 #include "llvm/Bitcode/LLVMBitCodes.h"
 #include "llvm/IR/AutoUpgrade.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/DiagnosticPrinter.h"
@@ -218,6 +219,8 @@ class BitcodeReader : public GVMaterializer {
   /// True if any Metadata block has been materialized.
   bool IsMetadataMaterialized;
 
+  bool StripDebugInfo = false;
+
 public:
   std::error_code Error(BitcodeError E, const Twine &Message);
   std::error_code Error(BitcodeError E);
@@ -254,6 +257,8 @@ public:
 
   /// Materialize any deferred Metadata block.
   std::error_code materializeMetadata() override;
+
+  void setStripDebugInfo() override;
 
 private:
   std::vector<StructType *> IdentifiedStructTypes;
@@ -2308,14 +2313,17 @@ std::error_code BitcodeReader::ParseConstants() {
         Elts.push_back(ValueList.getConstantFwdRef(Record[OpNum++], ElTy));
       }
 
-      ArrayRef<Constant *> Indices(Elts.begin() + 1, Elts.end());
-      V = ConstantExpr::getGetElementPtr(Elts[0], Indices,
-                                         BitCode ==
-                                           bitc::CST_CODE_CE_INBOUNDS_GEP);
       if (PointeeType &&
-          PointeeType != cast<GEPOperator>(V)->getSourceElementType())
+          PointeeType !=
+              cast<SequentialType>(Elts[0]->getType()->getScalarType())
+                  ->getElementType())
         return Error("Explicit gep operator type does not match pointee type "
                      "of pointer operand");
+
+      ArrayRef<Constant *> Indices(Elts.begin() + 1, Elts.end());
+      V = ConstantExpr::getGetElementPtr(PointeeType, Elts[0], Indices,
+                                         BitCode ==
+                                             bitc::CST_CODE_CE_INBOUNDS_GEP);
       break;
     }
     case bitc::CST_CODE_CE_SELECT: {  // CE_SELECT: [opval#, opval#, opval#]
@@ -2608,6 +2616,8 @@ std::error_code BitcodeReader::materializeMetadata() {
   DeferredMetadataInfo.clear();
   return std::error_code();
 }
+
+void BitcodeReader::setStripDebugInfo() { StripDebugInfo = true; }
 
 /// RememberAndSkipFunctionBody - When we see the block for a function body,
 /// remember where it is and then skip it.  This lets us lazily deserialize the
@@ -4304,6 +4314,9 @@ std::error_code BitcodeReader::materialize(GlobalValue *GV) {
   if (std::error_code EC = ParseFunctionBody(F))
     return EC;
   F->setIsMaterializable(false);
+
+  if (StripDebugInfo)
+    stripDebugInfo(*F);
 
   // Upgrade any old intrinsic calls in the function.
   for (UpgradedIntrinsicMap::iterator I = UpgradedIntrinsics.begin(),
