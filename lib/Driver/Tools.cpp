@@ -1418,6 +1418,18 @@ static const char *getSystemZTargetCPU(const ArgList &Args) {
   return "z10";
 }
 
+static void getSystemZTargetFeatures(const ArgList &Args,
+                                     std::vector<const char *> &Features) {
+  // -m(no-)htm overrides use of the transactional-execution facility.
+  if (Arg *A = Args.getLastArg(options::OPT_mhtm,
+                               options::OPT_mno_htm)) {
+    if (A->getOption().matches(options::OPT_mhtm))
+      Features.push_back("+transactional-execution");
+    else
+      Features.push_back("-transactional-execution");
+  }
+}
+
 static const char *getX86TargetCPU(const ArgList &Args,
                                    const llvm::Triple &Triple) {
   if (const Arg *A = Args.getLastArg(options::OPT_march_EQ)) {
@@ -1566,6 +1578,17 @@ static void AddGoldPlugin(const ToolChain &ToolChain, const ArgList &Args,
 static void getX86TargetFeatures(const Driver &D, const llvm::Triple &Triple,
                                  const ArgList &Args,
                                  std::vector<const char *> &Features) {
+  // If -march=native, autodetect the feature list.
+  if (const Arg *A = Args.getLastArg(options::OPT_march_EQ)) {
+    if (StringRef(A->getValue()) == "native") {
+      llvm::StringMap<bool> HostFeatures;
+      if (llvm::sys::getHostCPUFeatures(HostFeatures))
+        for (auto &F : HostFeatures)
+          Features.push_back(Args.MakeArgString((F.second ? "+" : "-") +
+                                                F.first()));
+    }
+  }
+
   if (Triple.getArchName() == "x86_64h") {
     // x86_64h implies quite a few of the more modern subtarget features
     // for Haswell class CPUs, but not all of them. Opt-out of a few.
@@ -1884,6 +1907,9 @@ static void getTargetFeatures(const Driver &D, const llvm::Triple &Triple,
   case llvm::Triple::sparc:
   case llvm::Triple::sparcv9:
     getSparcTargetFeatures(Args, Features);
+    break;
+  case llvm::Triple::systemz:
+    getSystemZTargetFeatures(Args, Features);
     break;
   case llvm::Triple::aarch64:
   case llvm::Triple::aarch64_be:
@@ -2281,18 +2307,10 @@ collectSanitizerRuntimes(const ToolChain &TC, const ArgList &Args,
     StaticRuntimes.push_back("msan");
   if (SanArgs.needsTsanRt())
     StaticRuntimes.push_back("tsan");
-  // WARNING: UBSan should always go last.
   if (SanArgs.needsUbsanRt()) {
-    // Check if UBSan is combined with another sanitizers.
-    if (StaticRuntimes.empty()) {
-      StaticRuntimes.push_back("ubsan_standalone");
-      if (SanArgs.linkCXXRuntimes())
-        StaticRuntimes.push_back("ubsan_standalone_cxx");
-    } else {
-      StaticRuntimes.push_back("ubsan");
-      if (SanArgs.linkCXXRuntimes())
-        StaticRuntimes.push_back("ubsan_cxx");
-    }
+    StaticRuntimes.push_back("ubsan_standalone");
+    if (SanArgs.linkCXXRuntimes())
+      StaticRuntimes.push_back("ubsan_standalone_cxx");
   }
 }
 
@@ -7910,6 +7928,172 @@ void gnutools::Link::ConstructJob(Compilation &C, const JobAction &JA,
   C.addCommand(
       llvm::make_unique<Command>(JA, *this, ToolChain.Linker.c_str(), CmdArgs));
 }
+
+
+// NaCl ARM assembly (inline or standalone) can be written with a set of macros
+// for the various SFI requirements like register masking. The assembly tool
+// inserts the file containing the macros as an input into all the assembly
+// jobs.
+void nacltools::AssembleARM::ConstructJob(Compilation &C, const JobAction &JA,
+                                          const InputInfo &Output,
+                                          const InputInfoList &Inputs,
+                                          const ArgList &Args,
+                                          const char *LinkingOutput) const {
+  const toolchains::NaCl_TC& ToolChain =
+    static_cast<const toolchains::NaCl_TC&>(getToolChain());
+  InputInfo NaClMacros(ToolChain.GetNaClArmMacrosPath(), types::TY_PP_Asm,
+                       "nacl-arm-macros.s");
+  InputInfoList NewInputs;
+  NewInputs.push_back(NaClMacros);
+  NewInputs.append(Inputs.begin(), Inputs.end());
+  gnutools::Assemble::ConstructJob(C, JA, Output, NewInputs, Args,
+                                   LinkingOutput);
+}
+
+
+// This is quite similar to gnutools::link::ConstructJob with changes that
+// we use static by default, do not yet support sanitizers or LTO, and a few
+// others. Eventually we can support more of that and hopefully migrate back
+// to gnutools::link.
+void nacltools::Link::ConstructJob(Compilation &C, const JobAction &JA,
+                                  const InputInfo &Output,
+                                  const InputInfoList &Inputs,
+                                  const ArgList &Args,
+                                  const char *LinkingOutput) const {
+
+  const toolchains::NaCl_TC& ToolChain =
+    static_cast<const toolchains::NaCl_TC&>(getToolChain());
+  const Driver &D = ToolChain.getDriver();
+  const bool IsStatic =
+    !Args.hasArg(options::OPT_dynamic) &&
+    !Args.hasArg(options::OPT_shared);
+
+  ArgStringList CmdArgs;
+
+  // Silence warning for "clang -g foo.o -o foo"
+  Args.ClaimAllArgs(options::OPT_g_Group);
+  // and "clang -emit-llvm foo.o -o foo"
+  Args.ClaimAllArgs(options::OPT_emit_llvm);
+  // and for "clang -w foo.o -o foo". Other warning options are already
+  // handled somewhere else.
+  Args.ClaimAllArgs(options::OPT_w);
+
+  if (!D.SysRoot.empty())
+    CmdArgs.push_back(Args.MakeArgString("--sysroot=" + D.SysRoot));
+
+  if (Args.hasArg(options::OPT_rdynamic))
+    CmdArgs.push_back("-export-dynamic");
+
+  if (Args.hasArg(options::OPT_s))
+    CmdArgs.push_back("-s");
+
+  // NaCl_TC doesn't have ExtraOpts like Linux; the only relevant flag from
+  // there is --build-id, which we do want.
+  CmdArgs.push_back("--build-id");
+
+  if (!IsStatic)
+    CmdArgs.push_back("--eh-frame-hdr");
+
+  CmdArgs.push_back("-m");
+  if (ToolChain.getArch() == llvm::Triple::x86)
+    CmdArgs.push_back("elf_i386_nacl");
+  else if (ToolChain.getArch() == llvm::Triple::arm)
+    CmdArgs.push_back("armelf_nacl");
+  else if (ToolChain.getArch() == llvm::Triple::x86_64)
+    CmdArgs.push_back("elf_x86_64_nacl");
+  else
+    D.Diag(diag::err_target_unsupported_arch) << ToolChain.getArchName() <<
+        "Native Client";
+
+
+  if (IsStatic)
+    CmdArgs.push_back("-static");
+  else if (Args.hasArg(options::OPT_shared))
+    CmdArgs.push_back("-shared");
+
+  CmdArgs.push_back("-o");
+  CmdArgs.push_back(Output.getFilename());
+  if (!Args.hasArg(options::OPT_nostdlib) &&
+      !Args.hasArg(options::OPT_nostartfiles)) {
+    if (!Args.hasArg(options::OPT_shared))
+      CmdArgs.push_back(Args.MakeArgString(ToolChain.GetFilePath("crt1.o")));
+    CmdArgs.push_back(Args.MakeArgString(ToolChain.GetFilePath("crti.o")));
+
+    const char *crtbegin;
+    if (IsStatic)
+      crtbegin = "crtbeginT.o";
+    else if (Args.hasArg(options::OPT_shared))
+      crtbegin = "crtbeginS.o";
+    else
+      crtbegin = "crtbegin.o";
+    CmdArgs.push_back(Args.MakeArgString(ToolChain.GetFilePath(crtbegin)));
+  }
+
+  Args.AddAllArgs(CmdArgs, options::OPT_L);
+  Args.AddAllArgs(CmdArgs, options::OPT_u);
+
+  const ToolChain::path_list &Paths = ToolChain.getFilePaths();
+
+  for (const auto &Path : Paths)
+    CmdArgs.push_back(Args.MakeArgString(StringRef("-L") + Path));
+
+  if (Args.hasArg(options::OPT_Z_Xlinker__no_demangle))
+    CmdArgs.push_back("--no-demangle");
+
+  AddLinkerInputs(ToolChain, Inputs, Args, CmdArgs);
+
+  if (D.CCCIsCXX() &&
+      !Args.hasArg(options::OPT_nostdlib) &&
+      !Args.hasArg(options::OPT_nodefaultlibs)) {
+    bool OnlyLibstdcxxStatic = Args.hasArg(options::OPT_static_libstdcxx) &&
+      !IsStatic;
+    if (OnlyLibstdcxxStatic)
+      CmdArgs.push_back("-Bstatic");
+    ToolChain.AddCXXStdlibLibArgs(Args, CmdArgs);
+    if (OnlyLibstdcxxStatic)
+      CmdArgs.push_back("-Bdynamic");
+    CmdArgs.push_back("-lm");
+  }
+
+  if (!Args.hasArg(options::OPT_nostdlib)) {
+    if (!Args.hasArg(options::OPT_nodefaultlibs)) {
+      // Always use groups, since it has no effect on dynamic libraries.
+      CmdArgs.push_back("--start-group");
+      CmdArgs.push_back("-lc");
+      // NaCl's libc++ currently requires libpthread, so just always include it
+      // in the group for C++.
+      if (Args.hasArg(options::OPT_pthread) ||
+          Args.hasArg(options::OPT_pthreads) ||
+          D.CCCIsCXX()) {
+        CmdArgs.push_back("-lpthread");
+      }
+
+      CmdArgs.push_back("-lgcc");
+      CmdArgs.push_back("--as-needed");
+      if (IsStatic)
+        CmdArgs.push_back("-lgcc_eh");
+      else
+        CmdArgs.push_back("-lgcc_s");
+      CmdArgs.push_back("--no-as-needed");
+      CmdArgs.push_back("--end-group");
+    }
+
+    if (!Args.hasArg(options::OPT_nostartfiles)) {
+      const char *crtend;
+      if (Args.hasArg(options::OPT_shared))
+        crtend = "crtendS.o";
+      else
+        crtend = "crtend.o";
+
+      CmdArgs.push_back(Args.MakeArgString(ToolChain.GetFilePath(crtend)));
+      CmdArgs.push_back(Args.MakeArgString(ToolChain.GetFilePath("crtn.o")));
+    }
+  }
+
+  C.addCommand(llvm::make_unique<Command>(JA, *this,
+                                          ToolChain.Linker.c_str(), CmdArgs));
+}
+
 
 void minix::Assemble::ConstructJob(Compilation &C, const JobAction &JA,
                                    const InputInfo &Output,
