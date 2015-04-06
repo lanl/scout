@@ -2470,7 +2470,7 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
   }
 }
 
-llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
+llvm::Value* CodeGenFunction::EmitPlotExpr(const FrameDecl* FD,
                                            llvm::Value* PlotPtr,
                                            SpecExpr* E,
                                            uint32_t& varId){
@@ -2482,12 +2482,9 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
   
   auto R = CGM.getPlot2Runtime();
   
-  const FrameType* ft = dyn_cast<FrameType>(Frame->getType().getTypePtr());
-  const FrameDecl* fd = ft->getDecl();
-  
   VarDecl* vd = E->getVar();
-  if(vd && fd->hasVar(vd)){
-    return ConstantInt::get(R.Int32Ty, fd->getVarId(vd));
+  if(vd && FD->hasVar(vd)){
+    return ConstantInt::get(R.Int32Ty, FD->getVarId(vd));
   }
   
   SpecArrayExpr* array = E->toArray();
@@ -2497,7 +2494,7 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
     isConstant = true;
   }
   else{
-    PlotExprVisitor v(fd);
+    PlotExprVisitor v(FD);
     v.Visit(E->toExpr());
     isConstant = v.isConstant();
   }
@@ -2551,7 +2548,7 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
   BasicBlock* entry = BasicBlock::Create(CGM.getLLVMContext(), "entry", func);
   Builder.SetInsertPoint(entry);
   
-  CurrentFrame = Frame;
+  CurrentFrameDecl = FD;
   
   if(isVec){
     if(array){
@@ -2573,7 +2570,7 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const VarDecl* Frame,
     Builder.CreateRet(val);
   }
   
-  CurrentFrame = nullptr;
+  CurrentFrameDecl = nullptr;
   
   //func->dump();
   
@@ -2674,6 +2671,44 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     ValueVec args;
     framePtr = Builder.CreateCall(R.CreateFrameFunc(), args, "frame.ptr");
     
+    bool hasCells = false;
+    bool hasVertices = false;
+    bool hasEdges = false;
+    bool hasFaces = false;
+    
+    for(MeshDecl::field_iterator fitr = MD->field_begin(),
+        fitrEnd = MD->field_end(); fitr != fitrEnd; ++fitr){
+      if(fitr->isCellLocated()){
+        hasCells = true;
+      }
+      else if(fitr->isVertexLocated()){
+        hasVertices = true;
+      }
+      else if(fitr->isEdgeLocated()){
+        hasEdges = true;
+      }
+      else if(fitr->isFaceLocated()){
+        hasFaces = true;
+      }
+      else{
+        assert(false && "unrecognized element");
+      }
+    }
+    
+    SmallVector<Value*, 3> Dimensions;
+    GetMeshDimensions(mt, Dimensions);
+    
+    llvm::Value* numCells = 0;
+    llvm::Value* numVertices = 0;
+    llvm::Value* numEdges = 0;
+    llvm::Value* numFaces = 0;
+    
+    GetNumMeshItems(Dimensions,
+                    hasCells ? &numCells : 0,
+                    hasVertices ? &numVertices : 0,
+                    hasEdges ? &numEdges : 0,
+                    hasFaces ? &numFaces : 0);
+    
     for(MeshDecl::field_iterator fitr = MD->field_begin(),
         fitrEnd = MD->field_end(); fitr != fitrEnd; ++fitr){
       MeshFieldDecl* field = *fitr;
@@ -2684,7 +2719,57 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         continue;
       }
       
-      uint32_t varId = fd->getVarId(itr->second);
+      llvm::Value* varId = ConstantInt::get(R.Int32Ty, fd->getVarId(itr->second));
+      
+      Value* meshPtr;
+      
+      GetMeshBaseAddr(frame, meshPtr);
+      
+      Value* fieldPtr = Builder.CreateStructGEP(meshPtr, field->getFieldIndex());
+      fieldPtr = Builder.CreateLoad(fieldPtr);
+      
+      llvm::PointerType* pt = dyn_cast<llvm::PointerType>(fieldPtr->getType());
+
+      fieldPtr = Builder.CreateBitCast(fieldPtr, R.VoidPtrTy, "field.ptr");
+      
+      llvm::Type* et = pt->getElementType();
+      
+      llvm::Value* fieldType;
+      
+      if(et->isIntegerTy(32)){
+        fieldType = R.ElementInt32Val;
+      }
+      else if(et->isIntegerTy(64)){
+        fieldType = R.ElementInt64Val;
+      }
+      else if(et->isFloatTy()){
+        fieldType = R.ElementFloatVal;
+      }
+      else if(et->isDoubleTy()){
+        fieldType = R.ElementDoubleVal;
+      }
+      else{
+        assert(false && "unrecognized mesh field type");
+      }
+      
+      llvm::Value* numElements = 0;
+      
+      if(field->isCellLocated()){
+        numElements = numCells;
+      }
+      else if(field->isVertexLocated()){
+        numElements = numVertices;
+      }
+      else if(field->isEdgeLocated()){
+        numElements = numEdges;
+      }
+      else if(field->isFaceLocated()){
+        numElements = numFaces;
+      }
+      
+      ValueVec args = {framePtr, varId, fieldType, fieldPtr, numElements};
+
+      Builder.CreateCall(R.FrameAddArrayVarFunc(), args);
     }
   }
   
@@ -2715,10 +2800,10 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       
       SpecArrayExpr* pa = o->get("position")->toArray();
             
-      Value* xv = EmitPlotExpr(frame, plotPtr, pa->get(0), varId);
-      Value* yv = EmitPlotExpr(frame, plotPtr, pa->get(1), varId);
-      Value* sv = EmitPlotExpr(frame, plotPtr, o->get("size"), varId);
-      Value* cv = EmitPlotExpr(frame, plotPtr, o->get("color"), varId);
+      Value* xv = EmitPlotExpr(fd, plotPtr, pa->get(0), varId);
+      Value* yv = EmitPlotExpr(fd, plotPtr, pa->get(1), varId);
+      Value* sv = EmitPlotExpr(fd, plotPtr, o->get("size"), varId);
+      Value* cv = EmitPlotExpr(fd, plotPtr, o->get("color"), varId);
       
       args = {plotPtr, xv, yv, sv, cv};
       

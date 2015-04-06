@@ -98,12 +98,9 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
   
   auto R = CGM.getPlot2Runtime();
   
-  assert(CurrentFrame);
+  assert(CurrentFrameDecl);
   
-  const FrameType* ft = dyn_cast<FrameType>(CurrentFrame->getType().getTypePtr());
-  const FrameDecl* fd = ft->getDecl();
-  
-  uint32_t varId = fd->getVarId(VD);
+  uint32_t varId = CurrentFrameDecl->getVarId(VD);
   
   // var id 0 is the 'index' var that simply returns the current index
   if(varId == 0){

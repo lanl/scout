@@ -1947,10 +1947,8 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
       }
     }
     
-    if(CurrentFrame){
-      const FrameType* ft = dyn_cast<FrameType>(CurrentFrame->getType().getTypePtr());
-      const FrameDecl* fd = ft->getDecl();
-      if(fd->hasVar(VD)){
+    if(CurrentFrameDecl){
+      if(CurrentFrameDecl->hasVar(VD)){
         return EmitFrameVarDeclRefLValue(VD);
       }
     }
