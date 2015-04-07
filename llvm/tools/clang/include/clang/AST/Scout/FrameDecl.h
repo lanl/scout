@@ -151,7 +151,7 @@ namespace clang {
       IsFreeStanding                  = false;
       LoadedFieldsFromExternalStorage = false;
       setPreviousDecl(PrevDecl);
-      nextVarId = 1;
+      nextVarId = 0;
     }
 
     typedef Redeclarable<FrameDecl> redeclarable_base;
