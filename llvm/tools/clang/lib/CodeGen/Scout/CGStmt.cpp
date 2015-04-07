@@ -2795,23 +2795,28 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     const string& k = itr.first;
     SpecExpr* v = itr.second.second;
     
-    if(k == "lines" || k == "points"){
+    if(k == "lines" || k == "points" || k == "area"){
       SpecObjectExpr* o = v->toObject();
       
       SpecArrayExpr* pa = o->get("position")->toArray();
             
       Value* xv = EmitPlotExpr(fd, plotPtr, pa->get(0), varId);
       Value* yv = EmitPlotExpr(fd, plotPtr, pa->get(1), varId);
-      Value* sv = EmitPlotExpr(fd, plotPtr, o->get("size"), varId);
       Value* cv = EmitPlotExpr(fd, plotPtr, o->get("color"), varId);
       
-      args = {plotPtr, xv, yv, sv, cv};
-      
       if(k == "lines"){
+        Value* sv = EmitPlotExpr(fd, plotPtr, o->get("size"), varId);
+        args = {plotPtr, xv, yv, sv, cv};
         Builder.CreateCall(R.PlotAddLinesFunc(), args);
       }
-      else{
+      else if(k == "points"){
+        Value* sv = EmitPlotExpr(fd, plotPtr, o->get("size"), varId);
+        args = {plotPtr, xv, yv, sv, cv};
         Builder.CreateCall(R.PlotAddPointsFunc(), args);
+      }
+      else{
+        args = {plotPtr, xv, yv, cv};
+        Builder.CreateCall(R.PlotAddAreaFunc(), args);
       }
     }
     else if(k == "axis"){

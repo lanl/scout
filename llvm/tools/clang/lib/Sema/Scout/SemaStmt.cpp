@@ -543,7 +543,7 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
     SourceLocation loc = itr.second.first;
     SpecExpr* v = itr.second.second;
     
-    if(k == "lines" || k == "points"){
+    if(k == "lines" || k == "points" || k == "area"){
       SpecObjectExpr* lv = v->toObject();
       
       if(lv){
@@ -577,16 +577,18 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         valid = false;
       }
       
-      SpecExpr* s = lv->get("size");
-      if(s){
-        if(!ValidateSpecExpr(s, Context.DoubleTy)){
-          Diag(s->getLocStart(), diag::err_invalid_plot_spec) <<
-          "invalid 'size' key";
-          valid = false;
+      if(k == "lines" || k == "points"){
+        SpecExpr* s = lv->get("size");
+        if(s){
+          if(!ValidateSpecExpr(s, Context.DoubleTy)){
+            Diag(s->getLocStart(), diag::err_invalid_plot_spec) <<
+            "invalid 'size' key";
+            valid = false;
+          }
         }
-      }
-      else{
-        lv->put("size", CreateSpecValueExpr(1.0));
+        else{
+          lv->put("size", CreateSpecValueExpr(1.0));
+        }
       }
       
       SpecExpr* c = lv->get("color");

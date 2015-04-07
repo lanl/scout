@@ -42,6 +42,9 @@ int main(int argc, char** argv){
     }
 
     with f in win plot{
+      area: {position:[timestep, cos(temperature)],
+              color: [1.0, 0.0, 0.0, 1.0]},
+
       lines: {position:[timestep, cos(temperature)], size: 3.0,
               color: [0.0, 0.0, 1.0, 1.0]},
 
