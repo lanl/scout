@@ -33,6 +33,7 @@
 #include "llvm/CodeGen/SchedulerRegistry.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
+#include "llvm/CodeGen/WinEHFuncInfo.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Function.h"
@@ -500,12 +501,14 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
       MachineBasicBlock::iterator InsertPos = Def;
       const MDNode *Variable = MI->getDebugVariable();
       const MDNode *Expr = MI->getDebugExpression();
+      DebugLoc DL = MI->getDebugLoc();
       bool IsIndirect = MI->isIndirectDebugValue();
       unsigned Offset = IsIndirect ? MI->getOperand(1).getImm() : 0;
+      assert(DIVariable(Variable)->isValidLocationForIntrinsic(DL) &&
+             "Expected inlined-at fields to agree");
       // Def is never a terminator here, so it is ok to increment InsertPos.
-      BuildMI(*EntryMBB, ++InsertPos, MI->getDebugLoc(),
-              TII->get(TargetOpcode::DBG_VALUE), IsIndirect, LDI->second, Offset,
-              Variable, Expr);
+      BuildMI(*EntryMBB, ++InsertPos, DL, TII->get(TargetOpcode::DBG_VALUE),
+              IsIndirect, LDI->second, Offset, Variable, Expr);
 
       // If this vreg is directly copied into an exported register then
       // that COPY instructions also need DBG_VALUE, if it is the only
@@ -523,9 +526,10 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
         CopyUseMI = nullptr; break;
       }
       if (CopyUseMI) {
+        // Use MI's debug location, which describes where Variable was
+        // declared, rather than whatever is attached to CopyUseMI.
         MachineInstr *NewMI =
-            BuildMI(*MF, CopyUseMI->getDebugLoc(),
-                    TII->get(TargetOpcode::DBG_VALUE), IsIndirect,
+            BuildMI(*MF, DL, TII->get(TargetOpcode::DBG_VALUE), IsIndirect,
                     CopyUseMI->getOperand(0).getReg(), Offset, Variable, Expr);
         MachineBasicBlock::iterator Pos = CopyUseMI;
         EntryMBB->insertAfter(Pos, NewMI);
@@ -987,6 +991,10 @@ void SelectionDAGISel::PrepareEHLandingPad() {
     FuncInfo->MBB = MBB;
     FuncInfo->InsertPt = MBB->end();
     return;
+  }
+  if (MF->getMMI().getPersonalityType() == EHPersonality::MSVC_CXX) {
+    WinEHFuncInfo &FuncInfo = MF->getMMI().getWinEHFuncInfo(MF->getFunction());
+    MF->getMMI().addWinEHState(MBB, FuncInfo.LandingPadStateMap[LPadInst]);
   }
 
   // Mark exception register as live in.

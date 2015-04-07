@@ -2033,6 +2033,64 @@ class UniformMeshTypeLoc :
 
 };
 
+
+struct ALEMeshLocInfo {
+  SourceLocation LBracketLoc, RBracketLoc;
+  MeshType::MeshDimensions Dims;
+};
+
+class ALEMeshTypeLoc :
+  public ConcreteTypeLoc<MeshTypeLoc,
+  ALEMeshTypeLoc,
+  ALEMeshType,
+  ALEMeshLocInfo> {
+    public:
+      ALEMeshDecl* getDecl() const { return getTypePtr()->getDecl(); }
+
+      /// \brief True if the tag was defined in this type specifier.
+      bool isDefinition() const {
+        ALEMeshDecl *D = getDecl();
+        return D->isCompleteDefinition();
+      }
+
+      SourceLocation getLBracketLoc() const {
+        return getLocalData()->LBracketLoc;
+      }
+
+      void setLBracketLoc(SourceLocation Loc) {
+        getLocalData()->LBracketLoc = Loc;
+      }
+
+      SourceLocation getRBracketLoc() const {
+        return getLocalData()->RBracketLoc;
+      }
+      void setRBracketLoc(SourceLocation Loc) {
+        getLocalData()->RBracketLoc = Loc;
+      }
+
+      SourceRange getParensRange() const {
+        return SourceRange(getLBracketLoc(), getRBracketLoc());
+      }
+
+      MeshType::MeshDimensions &getDims() const {
+        return getLocalData()->Dims;
+      }
+
+      void setDims(const MeshType::MeshDimensions &Dims) {
+        new (&(getLocalData()->Dims)) MeshType::MeshDimensions(Dims);
+      }
+
+      SourceRange getLocalSourceRange() const {
+        return SourceRange(getLBracketLoc(), getRBracketLoc());
+      }
+
+      void initializeLocal(ASTContext &Context, SourceLocation Loc) {
+        setLBracketLoc(Loc);
+        setRBracketLoc(Loc);
+      }
+
+  };
+
 class StructuredMeshTypeLoc :
   public InheritingConcreteTypeLoc<MeshTypeLoc,
                                    StructuredMeshTypeLoc,

@@ -85,6 +85,13 @@ UniformMeshDecl *Type::getAsUniformMeshDecl() const {
     return 0;
 }
 
+ALEMeshDecl *Type::getAsALEMeshDecl() const {
+  if (const ALEMeshType *RT = getAs<ALEMeshType>())
+    return dyn_cast<ALEMeshDecl>(RT->getDecl());
+  else
+    return 0;
+}
+
 StructuredMeshDecl *Type::getAsStructuredMeshDecl() const {
   if (const StructuredMeshType *RT = getAs<StructuredMeshType>())
     return dyn_cast<StructuredMeshDecl>(RT->getDecl());

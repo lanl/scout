@@ -25,6 +25,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/GVMaterializer.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/ValueHandle.h"
 #include "llvm/Support/Debug.h"
@@ -219,17 +220,10 @@ void DIDescriptor::replaceAllUsesWith(MDNode *D) {
   Node->replaceAllUsesWith(D);
 }
 
-bool DICompileUnit::Verify() const {
-  if (!isCompileUnit())
-    return false;
-
-  // Don't bother verifying the compilation directory or producer string
-  // as those could be empty.
-  return !getFilename().empty();
-}
-
+bool DICompileUnit::Verify() const { return isCompileUnit(); }
 bool DIObjCProperty::Verify() const { return isObjCProperty(); }
 
+#ifndef NDEBUG
 /// \brief Check if a value can be a reference to a type.
 static bool isTypeRef(const Metadata *MD) {
   if (!MD)
@@ -248,7 +242,6 @@ static bool isScopeRef(const Metadata *MD) {
   return isa<MDScope>(MD);
 }
 
-#ifndef NDEBUG
 /// \brief Check if a value can be a DescriptorRef.
 static bool isDescriptorRef(const Metadata *MD) {
   if (!MD)
@@ -259,144 +252,13 @@ static bool isDescriptorRef(const Metadata *MD) {
 }
 #endif
 
-bool DIType::Verify() const {
-  auto *N = dyn_cast_or_null<MDType>(DbgNode);
-  if (!N)
-    return false;
-  if (!isScopeRef(N->getScope()))
-    return false;
-
-  // DIType is abstract, it should be a BasicType, a DerivedType or
-  // a CompositeType.
-  if (isBasicType())
-    return DIBasicType(DbgNode).Verify();
-
-  // FIXME: Sink this into the various subclass verifies.
-  if (getFilename().empty()) {
-    // Check whether the filename is allowed to be empty.
-    uint16_t Tag = getTag();
-    if (Tag != dwarf::DW_TAG_const_type && Tag != dwarf::DW_TAG_volatile_type &&
-        Tag != dwarf::DW_TAG_pointer_type &&
-        Tag != dwarf::DW_TAG_ptr_to_member_type &&
-        Tag != dwarf::DW_TAG_reference_type &&
-        Tag != dwarf::DW_TAG_rvalue_reference_type &&
-        Tag != dwarf::DW_TAG_restrict_type && Tag != dwarf::DW_TAG_array_type &&
-        Tag != dwarf::DW_TAG_enumeration_type &&
-        Tag != dwarf::DW_TAG_subroutine_type &&
-        Tag != dwarf::DW_TAG_inheritance && Tag != dwarf::DW_TAG_friend &&
-        Tag != dwarf::DW_TAG_structure_type && Tag != dwarf::DW_TAG_member &&
-        Tag != dwarf::DW_TAG_typedef)
-      return false;
-  }
-
-  if (isCompositeType())
-    return DICompositeType(DbgNode).Verify();
-  if (isDerivedType())
-    return DIDerivedType(DbgNode).Verify();
-  return false;
-}
-
-bool DIBasicType::Verify() const {
-  return dyn_cast_or_null<MDBasicType>(DbgNode);
-}
-
-bool DIDerivedType::Verify() const {
-  auto *N = dyn_cast_or_null<MDDerivedTypeBase>(DbgNode);
-  if (!N)
-    return false;
-  if (getTag() == dwarf::DW_TAG_ptr_to_member_type) {
-    auto *D = dyn_cast<MDDerivedType>(N);
-    if (!D)
-      return false;
-    if (!isTypeRef(D->getExtraData()))
-      return false;
-  }
-  return isTypeRef(N->getBaseType());
-}
-
-bool DICompositeType::Verify() const {
-  auto *N = dyn_cast_or_null<MDCompositeTypeBase>(DbgNode);
-  return N && isTypeRef(N->getBaseType()) && isTypeRef(N->getVTableHolder()) &&
-         !(isLValueReference() && isRValueReference());
-}
-
-bool DISubprogram::Verify() const {
-  auto *N = dyn_cast_or_null<MDSubprogram>(DbgNode);
-  if (!N)
-    return false;
-
-  if (!isScopeRef(N->getScope()))
-    return false;
-
-  if (auto *Op = N->getType())
-    if (!isa<MDNode>(Op))
-      return false;
-
-  if (!isTypeRef(getContainingType()))
-    return false;
-
-  if (isLValueReference() && isRValueReference())
-    return false;
-
-  // If a DISubprogram has an llvm::Function*, then scope chains from all
-  // instructions within the function should lead to this DISubprogram.
-  if (auto *F = getFunction()) {
-    for (auto &BB : *F) {
-      for (auto &I : BB) {
-        MDLocation *DL = I.getDebugLoc();
-        if (!DL)
-          continue;
-
-        // walk the inlined-at scopes
-        MDScope *Scope = DL->getInlinedAtScope();
-        if (!Scope)
-          return false;
-        while (!isa<MDSubprogram>(Scope)) {
-          Scope = cast<MDLexicalBlockBase>(Scope)->getScope();
-          if (!Scope)
-            return false;
-        }
-        if (!DISubprogram(Scope).describes(F))
-          return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-bool DIGlobalVariable::Verify() const {
-  auto *N = dyn_cast_or_null<MDGlobalVariable>(DbgNode);
-
-  if (!N)
-    return false;
-
-  if (N->getDisplayName().empty())
-    return false;
-
-  if (auto *Op = N->getScope())
-    if (!isa<MDNode>(Op))
-      return false;
-
-  if (auto *Op = N->getStaticDataMemberDeclaration())
-    if (!isa<MDNode>(Op))
-      return false;
-
-  return isTypeRef(N->getType());
-}
-
-bool DIVariable::Verify() const {
-  auto *N = dyn_cast_or_null<MDLocalVariable>(DbgNode);
-
-  if (!N)
-    return false;
-
-  if (auto *Op = N->getScope())
-    if (!isa<MDNode>(Op))
-      return false;
-
-  return isTypeRef(N->getType());
-}
+bool DIType::Verify() const { return isType(); }
+bool DIBasicType::Verify() const { return isBasicType(); }
+bool DIDerivedType::Verify() const { return isDerivedType(); }
+bool DICompositeType::Verify() const { return isCompositeType(); }
+bool DISubprogram::Verify() const { return isSubprogram(); }
+bool DIGlobalVariable::Verify() const { return isGlobalVariable(); }
+bool DIVariable::Verify() const { return isVariable(); }
 
 bool DILocation::Verify() const {
   return dyn_cast_or_null<MDLocation>(DbgNode);
@@ -567,17 +429,9 @@ DIVariable llvm::cleanseInlinedVariable(MDNode *DV, LLVMContext &VMContext) {
 }
 
 DISubprogram llvm::getDISubprogram(const MDNode *Scope) {
-  DIDescriptor D(Scope);
-  if (D.isSubprogram())
-    return DISubprogram(Scope);
-
-  if (D.isLexicalBlockFile())
-    return getDISubprogram(DILexicalBlockFile(Scope).getContext());
-
-  if (D.isLexicalBlock())
-    return getDISubprogram(DILexicalBlock(Scope).getContext());
-
-  return DISubprogram();
+  if (auto *LocalScope = dyn_cast_or_null<MDLocalScope>(Scope))
+    return LocalScope->getSubprogram();
+  return nullptr;
 }
 
 DISubprogram llvm::getDISubprogram(const Function *F) {
@@ -945,6 +799,19 @@ template <> DITypeRef DIDescriptor::getFieldAs<DITypeRef>(unsigned Elt) const {
   return DITypeRef(cast_or_null<Metadata>(getField(DbgNode, Elt)));
 }
 
+bool llvm::stripDebugInfo(Function &F) {
+  bool Changed = false;
+  for (BasicBlock &BB : F) {
+    for (Instruction &I : BB) {
+      if (I.getDebugLoc()) {
+        Changed = true;
+        I.setDebugLoc(DebugLoc());
+      }
+    }
+  }
+  return Changed;
+}
+
 bool llvm::StripDebugInfo(Module &M) {
   bool Changed = false;
 
@@ -978,16 +845,11 @@ bool llvm::StripDebugInfo(Module &M) {
     }
   }
 
-  for (Module::iterator MI = M.begin(), ME = M.end(); MI != ME; ++MI)
-    for (Function::iterator FI = MI->begin(), FE = MI->end(); FI != FE;
-         ++FI)
-      for (BasicBlock::iterator BI = FI->begin(), BE = FI->end(); BI != BE;
-           ++BI) {
-        if (BI->getDebugLoc()) {
-          Changed = true;
-          BI->setDebugLoc(DebugLoc());
-        }
-      }
+  for (Function &F : M)
+    Changed |= stripDebugInfo(F);
+
+  if (GVMaterializer *Materializer = M.getMaterializer())
+    Materializer->setStripDebugInfo();
 
   return Changed;
 }

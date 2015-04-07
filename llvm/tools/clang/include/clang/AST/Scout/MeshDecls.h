@@ -56,6 +56,7 @@
 #define __SC_CLANG_MESH_DECLS_H__
 
 #include "clang/AST/Scout/UniformMeshDecl.h"
+#include "clang/AST/Scout/ALEMeshDecl.h"
 #include "clang/AST/Scout/UnstructuredMeshDecl.h"
 #include "clang/AST/Scout/StructuredMeshDecl.h"
 #include "clang/AST/Scout/RectilinearMeshDecl.h"

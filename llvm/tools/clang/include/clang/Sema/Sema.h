@@ -1143,6 +1143,9 @@ public:
   QualType BuildUniformMeshType(QualType T,
                                 const MeshType::MeshDimensions &dims,
                                 SourceRange Brackets, DeclarationName Entity);
+  QualType BuildALEMeshType(QualType T,
+                                const MeshType::MeshDimensions &dims,
+                                SourceRange Brackets, DeclarationName Entity);
   QualType BuildRectilinearMeshType(QualType T,
                                 const MeshType::MeshDimensions &dims,
                                 SourceRange Brackets, DeclarationName Entity);
@@ -7482,6 +7485,13 @@ public:
 
   /// \brief Initialization of captured region for OpenMP region.
   void ActOnOpenMPRegionStart(OpenMPDirectiveKind DKind, Scope *CurScope);
+  /// \brief End of OpenMP region.
+  ///
+  /// \param S Statement associated with the current OpenMP region.
+  /// \param Clauses List of clauses for the current OpenMP region.
+  ///
+  /// \returns Statement for finished OpenMP region.
+  StmtResult ActOnOpenMPRegionEnd(StmtResult S, ArrayRef<OMPClause *> Clauses);
   StmtResult ActOnOpenMPExecutableDirective(OpenMPDirectiveKind Kind,
                                             const DeclarationNameInfo &DirName,
                                             ArrayRef<OMPClause *> Clauses,
@@ -8523,6 +8533,7 @@ private:
 
   bool CheckAArch64BuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckMipsBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
+  bool CheckSystemZBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckX86BuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckPPCBuiltinFunctionCall(unsigned BuiltinID, CallExpr *TheCall);
   
@@ -8864,8 +8875,9 @@ public:
   Decl* ActOnFrameDefinition(Scope* S,
                              SourceLocation FrameLoc,
                              IdentifierInfo* Name,
-                             SourceLocation NameLoc,
-                             MultiTemplateParamsArg TemplateParameterLists);
+                             SourceLocation NameLoc);
+  
+  Decl* ActOnFrameDefinition(Scope* S, UniformMeshDecl* MD, SourceLocation WithLoc);
   
   void InitFrameDefinitions(Scope* S, FrameDecl* FD);
   
@@ -8880,6 +8892,8 @@ public:
                         std::vector<QualType> ArgTys);
   
   bool InitFrame(Scope* Scope, FrameDecl* F, Expr* Spec);
+
+  void InitFrameFromMesh(Scope* Scope, FrameDecl* FD, MeshDecl* MD);
   
   bool ActOnFrameFinishDefinition(Decl* FD);
   
@@ -8888,6 +8902,7 @@ public:
   StmtResult ActOnPlotStmt(SourceLocation WithLoc,
                            SourceLocation FrameLoc,
                            VarDecl* RenderTarget,
+                           FrameDecl* FD,
                            VarDecl* Frame,
                            SpecObjectExpr* Spec);
   

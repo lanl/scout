@@ -293,7 +293,46 @@ void PlotExprVisitor::VisitDeclRefExpr(DeclRefExpr* E){
     isConstant_ = false;
   }
 }
+
+void PlotVarsVisitor::VisitDeclRefExpr(DeclRefExpr* E){
+  VarDecl* VD = dyn_cast<VarDecl>(E->getDecl());
+  if(VD && FD_->hasVar(VD)){
+    varSet_.insert(VD);
+  }
+}
+  
+void PlotVarsVisitor::VisitScoutExpr(ScoutExpr* S){
+  switch(S->kind()){
+    case ScoutExpr::SpecObject:{
+      SpecObjectExpr* o = static_cast<SpecObjectExpr*>(S);
+      
+      auto m = o->memberMap();
+      for(auto& itr : m){
+        Visit(itr.second.second);
+      }
+      
+      break;
+    }
+    case ScoutExpr::SpecValue:{
+      SpecValueExpr* o = static_cast<SpecValueExpr*>(S);
+      Visit(o->getExpression());
+      break;
+    }
+    case ScoutExpr::SpecArray:{
+      SpecArrayExpr* o = static_cast<SpecArrayExpr*>(S);
+      
+      auto v = o->elements();
+      
+      for(size_t i = 0; i < v.size(); ++i){
+        Visit(v[i]);
+      }
+      
+      break;
+    }
+    default:
+      assert(false && "unimplemented");
+  }
+}
   
 } // end namespace CodeGen
 } // end namespace clang
-

@@ -102,6 +102,7 @@ namespace clang {
   class VarDecl;
   class MeshDecl;
   class UniformMeshDecl;
+  class ALEMeshDecl;
   class StructuredMeshDecl;
   class RectilinearMeshDecl;
   class UnstructuredMeshDecl;
@@ -1629,6 +1630,7 @@ public:
   // +===== Scout ==============================================================+
   bool isMeshType() const;
   bool isUniformMeshType() const;
+  bool isALEMeshType() const;
   bool isRectilinearMeshType() const;
   bool isStructuredMeshType() const;
   bool isUnstructuredMeshType() const;
@@ -1743,6 +1745,8 @@ public:
 
   // +===== Scout ===========================
   UniformMeshDecl* getAsUniformMeshDecl() const;
+    
+  ALEMeshDecl* getAsALEMeshDecl() const;
 
   StructuredMeshDecl* getAsStructuredMeshDecl() const;
 
@@ -3544,6 +3548,7 @@ class MeshType : public Type {
   }
 
   bool isUniform() const;
+  bool isALE() const;
   bool isRectilinear() const;
   bool isStructured() const;
   bool isUnstructured() const;
@@ -3590,6 +3595,49 @@ class UniformMeshType : public MeshType {
   bool isSugared() const { return false; }
   QualType desugar() const { return QualType(this, 0); }
 };
+  
+  
+// ALEMeshType - This type represents an mesh used for Arbitrary Lagrangian
+// Eulerian finite element techniques.  It is an instance of a uniform mesh that
+// is either one-, two-, or three-dimensional.  These meshes are similar to uniform
+// meshes in that they simple mimic arrays with an additional
+// ability to store fields at the cell, vertex, edge, or face locations.  The
+// dimensions of the mesh are provided in terms of cell counts.
+//
+//     +---+---+---+---+
+//     | c | c | c | c |     (cell located data)
+//     +---+---+---+---+
+//     e   e   e   e   e     (edge located data)
+//     +---+---+---+---+
+//     f   |   |   |   f     (face located data)
+//     v---v---v---v---v     (vertex located data)
+//
+// An ALE mesh has an implicit topology but point (vertex) data is explicit.
+// ALE meshes are used when you want to move the mesh with the simulation,
+// such as with a hydrodynamics code, then snap the mesh back to a straight
+// grid, like uniform mesh.
+//
+class ALEMeshType : public MeshType {
+public:
+  ALEMeshType(const ALEMeshDecl* Decl)
+  : MeshType(ALEMesh,
+             reinterpret_cast<const MeshDecl*>(Decl), QualType()) {
+  }
+  
+  ALEMeshDecl* getDecl() const {
+    return reinterpret_cast<ALEMeshDecl*>(MeshType::getDecl());
+  }
+  
+  static bool classof(const ALEMeshType* T) { return true; }
+  
+  static bool classof(const Type *T) {
+    return T->getTypeClass() == ALEMesh;
+  }
+  
+  bool isSugared() const { return false; }
+  QualType desugar() const { return QualType(this, 0); }
+};
+
 
 // RectilinearMesh - This type represents an instance of a rectilinear mesh
 // that is either one-, two-, or three-dimensional.  These meshes are defined
@@ -4500,7 +4548,9 @@ enum TagTypeKind {
 /// \brief The kind of mesh type.
 enum MeshTypeKind {
     /// \brief The "uniform mesh" 'keyword'.
-  TTK_UniformMesh, 
+  TTK_UniformMesh,
+  /// \brief The "ALE mesh" 'keyword'.
+  TTK_ALEMesh,
   /// \brief The "structured mesh" 'keyword'.
   TTK_StructuredMesh,
   /// \brief The "rectilinear mesh" 'keyword'.
@@ -5626,6 +5676,7 @@ inline bool Type::isOpenCLSpecificType() const {
 // +===== Scout ===========================================================+
 inline bool Type::isMeshType() const {
   return isUniformMeshType() ||
+         isALEMeshType() ||
          isRectilinearMeshType() ||
          isStructuredMeshType() ||
          isUnstructuredMeshType();
@@ -5633,6 +5684,10 @@ inline bool Type::isMeshType() const {
 
 inline bool Type::isUniformMeshType() const {
   return isa<UniformMeshType>(CanonicalType);  
+}
+  
+inline bool Type::isALEMeshType() const {
+  return isa<ALEMeshType>(CanonicalType);
 }
 
 inline bool Type::isRectilinearMeshType() const {

@@ -1829,6 +1829,11 @@ void MicrosoftCXXNameMangler::mangleType(const UniformMeshType *T,
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
+void MicrosoftCXXNameMangler::mangleType(const ALEMeshType *T,
+                                         SourceRange) {
+  mangleName(static_cast<const NamedDecl*>(T->getDecl()));
+}
+
 void MicrosoftCXXNameMangler::mangleType(const StructuredMeshType *T,
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
@@ -1848,6 +1853,9 @@ void MicrosoftCXXNameMangler::mangleType(const MeshType *T) {
   switch(T->getDecl()->getMeshKind()) {
     case TTK_UniformMesh:
       Out << "UNM";
+      break;
+    case TTK_ALEMesh:
+      Out << "ANM";
       break;
     case TTK_RectilinearMesh:
       Out << "RCM";

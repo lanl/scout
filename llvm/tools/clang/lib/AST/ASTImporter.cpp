@@ -74,6 +74,7 @@ namespace clang {
     // FIXME: DependentDecltypeType
     // +==== Scout ===========================================================+
     QualType VisitUniformMeshType(const UniformMeshType* T);
+    QualType VisitALEMeshType(const ALEMeshType* T);
     QualType VisitStructuredMeshType(const StructuredMeshType* T);
     QualType VisitRectilinearMeshType(const RectilinearMeshType* T);
     QualType VisitUnstructuredMeshType(const UnstructuredMeshType* T);
@@ -83,6 +84,7 @@ namespace clang {
     // +======================================================================+
     QualType VisitRecordType(const RecordType *T);
     QualType VisitEnumType(const EnumType *T);
+    QualType VisitAttributedType(const AttributedType *T);
     // FIXME: TemplateTypeParmType
     // FIXME: SubstTemplateTypeParmType
     QualType VisitTemplateSpecializationType(const TemplateSpecializationType *T);
@@ -161,6 +163,7 @@ namespace clang {
     Decl *VisitRecordDecl(RecordDecl *D);
     // +==== Scout ===========================================================+
     Decl* VisitUniformMeshDecl(UniformMeshDecl* D);
+    Decl* VisitALEMeshDecl(ALEMeshDecl* D);
     Decl* VisitStructuredMeshDecl(StructuredMeshDecl* D);
     Decl* VisitRectilinearMeshDecl(RectilinearMeshDecl* D);
     Decl* VisitUnstructuredMeshDecl(UnstructuredMeshDecl* D);
@@ -683,6 +686,7 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   // 
   // SC_TODO - Not sure why we state this...  Why no equivalance?
   case Type::UniformMesh:
+  case Type::ALEMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh:
@@ -1776,6 +1780,27 @@ QualType ASTNodeImporter::VisitEnumType(const EnumType *T) {
     return QualType();
 
   return Importer.getToContext().getTagDeclType(ToDecl);
+}
+
+QualType ASTNodeImporter::VisitAttributedType(const AttributedType *T) {
+  QualType FromModifiedType = T->getModifiedType();
+  QualType FromEquivalentType = T->getEquivalentType();
+  QualType ToModifiedType;
+  QualType ToEquivalentType;
+
+  if (!FromModifiedType.isNull()) {
+    ToModifiedType = Importer.Import(FromModifiedType);
+    if (ToModifiedType.isNull())
+      return QualType();
+  }
+  if (!FromEquivalentType.isNull()) {
+    ToEquivalentType = Importer.Import(FromEquivalentType);
+    if (ToEquivalentType.isNull())
+      return QualType();
+  }
+
+  return Importer.getToContext().getAttributedType(T->getAttrKind(),
+    ToModifiedType, ToEquivalentType);
 }
 
 QualType ASTNodeImporter::VisitTemplateSpecializationType(

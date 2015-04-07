@@ -547,6 +547,7 @@ DeclSpec::TST Sema::isMeshName(IdentifierInfo &II, Scope *S) {
     if (const MeshDecl *MD = R.getAsSingle<MeshDecl>()) {
       switch(MD->getMeshKind()) {
         case TTK_UniformMesh:      return DeclSpec::TST_uniform_mesh;
+        case TTK_ALEMesh:      return DeclSpec::TST_ALE_mesh;
         case TTK_RectilinearMesh:  return DeclSpec::TST_rectilinear_mesh;
         case TTK_StructuredMesh:   return DeclSpec::TST_structured_mesh;
         case TTK_UnstructuredMesh: return DeclSpec::TST_unstructured_mesh;
@@ -3687,6 +3688,7 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
       Tag = CTD->getTemplatedDecl();
   // +===== Scout ============================================================+
   } else if (DS.getTypeSpecType() == DeclSpec::TST_uniform_mesh     ||
+             DS.getTypeSpecType() == DeclSpec::TST_ALE_mesh     ||
              DS.getTypeSpecType() == DeclSpec::TST_structured_mesh  ||
              DS.getTypeSpecType() == DeclSpec::TST_rectilinear_mesh ||
              DS.getTypeSpecType() == DeclSpec::TST_unstructured_mesh) {
@@ -3886,6 +3888,7 @@ Decl *Sema::ParsedFreeStandingDeclSpec(Scope *S, AccessSpecifier AS,
     // Do not emit empty declaration warning if this is a mesh.
     //
     if (DS.getTypeSpecType() != DeclSpec::TST_uniform_mesh      &&
+        DS.getTypeSpecType() != DeclSpec::TST_ALE_mesh      &&
         DS.getTypeSpecType() != DeclSpec::TST_structured_mesh   &&
         DS.getTypeSpecType() != DeclSpec::TST_rectilinear_mesh  &&
         DS.getTypeSpecType() != DeclSpec::TST_unstructured_mesh) {

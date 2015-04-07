@@ -136,6 +136,32 @@ DIScoutCompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
   return R;
 }
 
+DIScoutCompositeType DIBuilder::createALEMeshType(DIDescriptor Context,
+                                                      StringRef Name, DIFile File,
+                                                      unsigned LineNumber,
+                                                      uint64_t SizeInBits,
+                                                      uint64_t AlignInBits,
+                                                      unsigned Flags, DIType DerivedFrom,
+                                                      DIArray Elements,
+                                                      unsigned DimX,
+                                                      unsigned DimY,
+                                                      unsigned DimZ,
+                                                      unsigned RunTimeLang,
+                                                      DIType VTableHolder,
+                                                      StringRef UniqueIdentifier
+                                                      ) {
+  DIScoutCompositeType R = MDScoutCompositeType::get(
+                                                     VMContext, dwarf::DW_TAG_SCOUT_ALE_mesh_type, Name, File, LineNumber,
+                                                     DIScope(getNonCompileUnitScope(Context)).getRef(), DerivedFrom.getRef(),
+                                                     SizeInBits, AlignInBits, 0, Flags, Elements, RunTimeLang,
+                                                     VTableHolder.getRef(), nullptr, UniqueIdentifier, DimX, DimY, DimZ);
+  if (!UniqueIdentifier.empty())
+    retainType(R);
+  trackIfUnresolved(R);
+  return R;
+}
+
+
 DIScoutCompositeType DIBuilder::createStructuredMeshType(DIDescriptor Context,
     StringRef Name, DIFile File,
     unsigned LineNumber,

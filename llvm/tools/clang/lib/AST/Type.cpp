@@ -943,6 +943,15 @@ bool Type::isIncompleteType(NamedDecl **Def) const {
     return !UMD->isCompleteDefinition();
   }
 
+  case ALEMesh: {
+    // A uniform mesh type is incomplete if the decl is a forward declaration,
+    // but not a full definition (borrowed from C99 6.2.5p22).
+    ALEMeshDecl *AMD = cast<ALEMeshType>(CanonicalType)->getDecl();
+    if (Def)
+      *Def = AMD;
+    return !AMD->isCompleteDefinition();
+  }
+
   case RectilinearMesh: {
     // A rectilinear mesh type is incomplete if the decl is a forward
     // declaration, but not a full definition (borrowed from C99 6.2.5p22).
@@ -1424,6 +1433,7 @@ TypeWithKeyword::getKeywordForTypeSpec(unsigned TypeSpec) {
 // +===== Scout ==============================================================+
 // treat mesh like typename?
   case TST_uniform_mesh:
+  case TST_ALE_mesh:
   case TST_structured_mesh:
   case TST_rectilinear_mesh:
   case TST_unstructured_mesh:
@@ -1456,6 +1466,7 @@ MeshTypeKind
 TypeWithKeyword::getMeshTypeKindForTypeSpec(unsigned TypeSpec) {
   switch(TypeSpec) {
     case TST_uniform_mesh: return TTK_UniformMesh;
+    case TST_ALE_mesh: return TTK_ALEMesh;
     case TST_structured_mesh: return TTK_StructuredMesh;
     case TST_rectilinear_mesh: return TTK_RectilinearMesh;
     case TST_unstructured_mesh: return TTK_UnstructuredMesh;
@@ -2256,6 +2267,7 @@ static CachedProperties computeCachedProperties(const Type *T) {
 
   // ===== Scout =============================================================
   case Type::UniformMesh:
+  case Type::ALEMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh: {
@@ -2428,6 +2440,7 @@ static LinkageInfo computeLinkageInfo(const Type *T) {
 
   // +===== Scout ============================================================+
   case Type::UniformMesh:
+  case Type::ALEMesh:
   case Type::StructuredMesh:
   case Type::RectilinearMesh:
   case Type::UnstructuredMesh:

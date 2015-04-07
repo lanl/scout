@@ -360,7 +360,7 @@ public:
   llvm::Value* GPUThreadInc;
   llvm::Value* GPUNumThreads;
   
-  const VarDecl* CurrentFrame = nullptr;
+  const FrameDecl* CurrentFrameDecl = nullptr;
   
   //renderall color buffer
   llvm::Value *Color;
@@ -2231,7 +2231,7 @@ public:
   
   llvm::Function* CreatePlotFunction(Expr* E);
   
-  llvm::Value* EmitPlotExpr(const VarDecl* Frame,
+  llvm::Value* EmitPlotExpr(const FrameDecl* FD,
                             llvm::Value* PlotPtr,
                             SpecExpr* E,
                             uint32_t& varId);
@@ -2708,6 +2708,7 @@ public:
   llvm::Value *EmitX86BuiltinExpr(unsigned BuiltinID, const CallExpr *E);
   llvm::Value *EmitPPCBuiltinExpr(unsigned BuiltinID, const CallExpr *E);
   llvm::Value *EmitR600BuiltinExpr(unsigned BuiltinID, const CallExpr *E);
+  llvm::Value *EmitSystemZBuiltinExpr(unsigned BuiltinID, const CallExpr *E);
 
   llvm::Value *EmitObjCProtocolExpr(const ObjCProtocolExpr *E);
   llvm::Value *EmitObjCStringLiteral(const ObjCStringLiteral *E);

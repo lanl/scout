@@ -3338,7 +3338,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
     }
         
     case tok::kw_frame: {
-      ParseFrameSpecifier(DS, TemplateInfo);
+      ParseFrameSpecifier(DS);
       continue;
     }
         
@@ -6108,6 +6108,7 @@ void Parser::ParseMisplacedBracketDeclarator(Declarator &D) {
     case DeclaratorChunk::Paren:
     // +===== Scout ==============================================================+
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::ALEMesh:
     case DeclaratorChunk::UnstructuredMesh:
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:

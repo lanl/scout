@@ -284,6 +284,7 @@ bool Declarator::isDeclarationOfFunction() const {
 
     // +===== Scout ==========================================================+
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::ALEMesh:
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:
     case DeclaratorChunk::UnstructuredMesh:
@@ -315,6 +316,7 @@ bool Declarator::isDeclarationOfFunction() const {
 
     // +===== Scout ==========================================================+
     case TST_uniform_mesh:
+    case TST_ALE_mesh:
     case TST_structured_mesh:
     case TST_rectilinear_mesh:
     case TST_unstructured_mesh:
@@ -492,6 +494,7 @@ const char *DeclSpec::getSpecifierName(DeclSpec::TST T,
 
   // +===== Scout ============================================================+
   case DeclSpec::TST_uniform_mesh:      return "uniform mesh";
+  case DeclSpec::TST_ALE_mesh:      return "uniform mesh";
   case DeclSpec::TST_rectilinear_mesh:  return "rectilinear mesh";
   case DeclSpec::TST_structured_mesh:   return "structured mesh";
   case DeclSpec::TST_unstructured_mesh: return "unstructured mesh";

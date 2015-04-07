@@ -59,6 +59,7 @@ namespace clang {
     TST_typeofExpr,
     // +==== Scout ===========================================================+
     TST_uniform_mesh,
+    TST_ALE_mesh,
     TST_structured_mesh,
     TST_rectilinear_mesh,
     TST_unstructured_mesh,

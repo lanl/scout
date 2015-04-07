@@ -743,6 +743,7 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
     break;
 // ===== Scout ======================
   case TST_uniform_mesh:
+  case TST_ALE_mesh:
   case TST_structured_mesh:
   case TST_rectilinear_mesh:
   case TST_unstructured_mesh:
@@ -764,6 +765,7 @@ bool Sema::containsUnexpandedParameterPacks(Declarator &D) {
     case DeclaratorChunk::BlockPointer:
 // ===== Scout ========================
     case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::ALEMesh:
     case DeclaratorChunk::UnstructuredMesh:
     case DeclaratorChunk::RectilinearMesh:
     case DeclaratorChunk::StructuredMesh:

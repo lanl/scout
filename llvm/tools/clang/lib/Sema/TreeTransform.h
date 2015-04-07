@@ -806,6 +806,10 @@ public:
     QualType RebuildUniformMeshType(UniformMeshDecl *UMD) {
       return SemaRef.Context.getTypeDeclType(UMD);
     }
+  
+    QualType RebuildALEMeshType(ALEMeshDecl *AMD) {
+      return SemaRef.Context.getTypeDeclType(AMD);
+    }
 
     QualType RebuildStructuredMeshType(StructuredMeshDecl *SMD) {
       return SemaRef.Context.getTypeDeclType(SMD);
@@ -2643,6 +2647,31 @@ public:
                                         /*SuperLoc=*/SourceLocation(),
                                         Sel, Method, LBracLoc, SelectorLocs,
                                         RBracLoc, Args);
+  }
+
+  /// \brief Build a new Objective-C instance/class message to 'super'.
+  ExprResult RebuildObjCMessageExpr(SourceLocation SuperLoc,
+                                    Selector Sel,
+                                    ArrayRef<SourceLocation> SelectorLocs,
+                                    ObjCMethodDecl *Method,
+                                    SourceLocation LBracLoc,
+                                    MultiExprArg Args,
+                                    SourceLocation RBracLoc) {
+    ObjCInterfaceDecl *Class = Method->getClassInterface();
+    QualType ReceiverTy = SemaRef.Context.getObjCInterfaceType(Class);
+    
+    return Method->isInstanceMethod() ? SemaRef.BuildInstanceMessage(nullptr,
+                                          ReceiverTy,
+                                          SuperLoc,
+                                          Sel, Method, LBracLoc, SelectorLocs,
+                                          RBracLoc, Args)
+                                      : SemaRef.BuildClassMessage(nullptr,
+                                          ReceiverTy,
+                                          SuperLoc,
+                                          Sel, Method, LBracLoc, SelectorLocs,
+                                          RBracLoc, Args);
+
+      
   }
 
   /// \brief Build a new Objective-C ivar reference expression.
@@ -5045,6 +5074,31 @@ QualType
 
 template<typename Derived>
 QualType
+TreeTransform<Derived>::TransformALEMeshType(TypeLocBuilder &TLB,
+                                                 ALEMeshTypeLoc TL) {
+  const ALEMeshType *T = TL.getTypePtr();
+  ALEMeshDecl *UMD;
+  UMD = cast_or_null<ALEMeshDecl>(getDerived().TransformDecl(TL.getNameLoc(),
+                                                                 T->getDecl()));
+  if (!UMD)
+    return QualType();
+  
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      UMD != T->getDecl()) {
+    Result = getDerived().RebuildALEMeshType(UMD);
+    if (Result.isNull())
+      return QualType();
+  }
+  
+  ALEMeshTypeLoc NewTL = TLB.push<ALEMeshTypeLoc>(Result);
+  NewTL.setNameLoc(TL.getNameLoc());
+  
+  return Result;
+}
+  
+template<typename Derived>
+QualType
 TreeTransform<Derived>::TransformStructuredMeshType(TypeLocBuilder &TLB,
                                                     StructuredMeshTypeLoc TL) {
 const StructuredMeshType *T = TL.getTypePtr();
@@ -6875,7 +6929,16 @@ StmtResult TreeTransform<Derived>::TransformOMPExecutableDirective(
     if (!D->getAssociatedStmt()) {
       return StmtError();
     }
-    AssociatedStmt = getDerived().TransformStmt(D->getAssociatedStmt());
+    getDerived().getSema().ActOnOpenMPRegionStart(D->getDirectiveKind(),
+                                                  /*CurScope=*/nullptr);
+    StmtResult Body;
+    {
+      Sema::CompoundScopeRAII CompoundScope(getSema());
+      Body = getDerived().TransformStmt(
+          cast<CapturedStmt>(D->getAssociatedStmt())->getCapturedStmt());
+    }
+    AssociatedStmt =
+        getDerived().getSema().ActOnOpenMPRegionEnd(Body, TClauses);
     if (AssociatedStmt.isInvalid()) {
       return StmtError();
     }
@@ -10270,6 +10333,19 @@ TreeTransform<Derived>::TransformObjCMessageExpr(ObjCMessageExpr *E) {
     SmallVector<SourceLocation, 16> SelLocs;
     E->getSelectorLocs(SelLocs);
     return getDerived().RebuildObjCMessageExpr(ReceiverTypeInfo,
+                                               E->getSelector(),
+                                               SelLocs,
+                                               E->getMethodDecl(),
+                                               E->getLeftLoc(),
+                                               Args,
+                                               E->getRightLoc());
+  }
+  else if (E->getReceiverKind() == ObjCMessageExpr::SuperClass ||
+           E->getReceiverKind() == ObjCMessageExpr::SuperInstance) {
+    // Build a new class message send to 'super'.
+    SmallVector<SourceLocation, 16> SelLocs;
+    E->getSelectorLocs(SelLocs);
+    return getDerived().RebuildObjCMessageExpr(E->getSuperLoc(),
                                                E->getSelector(),
                                                SelLocs,
                                                E->getMethodDecl(),

@@ -1021,15 +1021,29 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
   }
   else{
     const UniformMeshType* MT =
-    dyn_cast<UniformMeshType>(VD->getType().getTypePtr());
-    
-    MT->dump();
+    dyn_cast<UniformMeshType>(VD->getType().getCanonicalType().getTypePtr());
     
     if(!MT){
       Diag(Tok, diag::err_expected_frame_or_mesh);
       SkipUntil(tok::r_brace, StopBeforeMatch);
       return StmtError();
     }
+    
+    UniformMeshDecl* MD = MT->getDecl();
+    
+    FD = static_cast<FrameDecl*>(Actions.ActOnFrameDefinition(getCurScope(), MD, WithLoc));
+    
+    ParseScope FrameScope(this, Scope::ControlScope|Scope::DeclScope);
+    
+    Actions.InitFrameDefinitions(getCurScope(), FD);
+    
+    Actions.InitFrameFromMesh(getCurScope(), FD, MD);
+    
+    FrameScope.Exit();
+    
+    Actions.ActOnFrameFinishDefinition(FD);
+    
+    Actions.PopFrameContext(FD);
   }
   
   SourceLocation FrameLoc = ConsumeToken();
@@ -1110,5 +1124,5 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
   ScoutExpr* SE = cast<ScoutExpr>(result.get());
   SpecObjectExpr* Spec = static_cast<SpecObjectExpr*>(SE);
   
-  return Actions.ActOnPlotStmt(WithLoc, FrameLoc, RTVD, VD, Spec);
+  return Actions.ActOnPlotStmt(WithLoc, FrameLoc, RTVD, FD, VD, Spec);
 }

@@ -5504,6 +5504,15 @@ QualType ASTReader::readTypeRecord(unsigned Index) {
     const_cast<Type*>(T.getTypePtr())->setDependent(IsDependent);
     return T;
   }
+  case TYPE_ALE_MESH: {
+    unsigned Idx = 0;
+    bool IsDependent = Record[Idx++];
+    ALEMeshDecl *RD = ReadDeclAs<ALEMeshDecl>(*Loc.F, Record, Idx);
+    RD = cast_or_null<ALEMeshDecl>(RD->getCanonicalDecl());
+    QualType T = Context.getALEMeshType(RD);
+    const_cast<Type*>(T.getTypePtr())->setDependent(IsDependent);
+    return T;
+  }
   case TYPE_RECTILINEAR_MESH: {
     unsigned Idx = 0;
     bool IsDependent = Record[Idx++];
@@ -5920,6 +5929,9 @@ void TypeLocReader::VisitRecordTypeLoc(RecordTypeLoc TL) {
 // +===== Scout ==============================================================+
 // SC_TODO: untested
 void TypeLocReader::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL) {
+  TL.setNameLoc(ReadSourceLocation(Record, Idx));
+}
+void TypeLocReader::VisitALEMeshTypeLoc(ALEMeshTypeLoc TL) {
   TL.setNameLoc(ReadSourceLocation(Record, Idx));
 }
 void TypeLocReader::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL) {

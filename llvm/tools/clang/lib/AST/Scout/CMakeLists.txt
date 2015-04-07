@@ -16,6 +16,7 @@ add_clang_library(scoutAST
   RenderTargetType.cpp
   StructuredMeshDecl.cpp
   UniformMeshDecl.cpp
+  ALEMeshDecl.cpp
   UnstructuredMeshDecl.cpp
   VolumeRenderAllStmt.cpp
   Type.cpp

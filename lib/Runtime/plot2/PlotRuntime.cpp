@@ -761,7 +761,14 @@ namespace{
       virtual int order() = 0;
     };
 
-    class Lines : public Element{
+    class RangeElement : public Element{
+    public:
+      virtual VarId getX() = 0;
+
+      virtual VarId getY() = 0;
+    };
+
+    class Lines : public RangeElement{
     public:
       Lines(VarId x, VarId y, VarId size, VarId color)
         : x(x), y(y), size(size), color(color){}
@@ -774,9 +781,17 @@ namespace{
       int order(){
         return 1;
       }
+
+      VarId getX(){
+        return x;
+      }
+
+      VarId getY(){
+        return y;
+      }
     };
 
-    class Points : public Element{
+    class Points : public RangeElement{
     public:
       Points(VarId x, VarId y, VarId size, VarId color)
         : x(x), y(y), size(size), color(color){}
@@ -788,6 +803,36 @@ namespace{
 
       int order(){
         return 2;
+      }
+
+      VarId getX(){
+        return x;
+      }
+
+      VarId getY(){
+        return y;
+      }
+    };
+
+    class Area : public RangeElement{
+    public:
+      Area(VarId x, VarId y, VarId color)
+        : x(x), y(y), color(color){}
+
+      VarId x;
+      VarId y;
+      VarId color;
+
+      int order(){
+        return 0;
+      }
+
+      VarId getX(){
+        return x;
+      }
+
+      VarId getY(){
+        return y;
       }
     };
 
@@ -840,6 +885,10 @@ namespace{
       elements_.push_back(new Points(x, y, size, color)); 
     }
 
+    void addArea(VarId x, VarId y, VarId color){
+      elements_.push_back(new Area(x, y, color)); 
+    }
+
     void addAxis(uint32_t dim, const string& label){
       elements_.push_back(new Axis(dim, label)); 
     }
@@ -869,7 +918,7 @@ namespace{
 
       sort(elements_.begin(), elements_.end(),
            [](Element* a, Element* b){
-             return a->order() > b->order();
+             return a->order() < b->order();
            });
 
       double xMin = MAX;
@@ -878,29 +927,9 @@ namespace{
       double yMax = MIN;
 
       for(Element* e : elements_){
-        if(Lines* l = dynamic_cast<Lines*>(e)){
-          VarBase* x = getVar(l->x);
-          VarBase* y = getVar(l->y);
-
-          if(x->min() < xMin){
-            xMin = x->min();
-          }
-
-          if(x->max() > xMax){
-            xMax = x->max();
-          }
-
-          if(y->min() < yMin){
-            yMin = y->min();
-          }
-
-          if(y->max() > yMax){
-            yMax = y->max();
-          }
-        }
-        else if(Points* p = dynamic_cast<Points*>(e)){
-          VarBase* x = getVar(p->x);
-          VarBase* y = getVar(p->y);
+        if(RangeElement* r = dynamic_cast<RangeElement*>(e)){
+          VarBase* x = getVar(r->getX());
+          VarBase* y = getVar(r->getY());
 
           if(x->min() < xMin){
             xMin = x->min();
@@ -1020,40 +1049,56 @@ namespace{
 
           size_t size = maxSize(x, y, s, c);
 
-          QPen noPen(Qt::NoPen);
-
           QPointF lastPoint;
           QPointF point;
-
-          QColor color(255, 0, 0);
-          QBrush brush(color);
-      
-          painter.setBrush(brush);
+          QPen pen;
 
           for(size_t i = 0; i < size; ++i){
             point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
             point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
 
-            QPen pen;
             pen.setWidthF(s->get(i));
 
-            DoubleVec cv;
-            c->getVec(i, cv);
-            pen.setColor(toQColor(cv));
+            if(i > 0){
+              DoubleVec cv;
+              c->getVec(i, cv);
+              pen.setColor(toQColor(cv));
+              painter.setPen(pen);
+              painter.drawLine(point, lastPoint);
+            }
+
+            lastPoint = point;
+          }
+        }
+        else if(Area* a = dynamic_cast<Area*>(e)){
+          VarBase* x = getVar(a->x);
+          VarBase* y = getVar(a->y);
+          VarBase* c = getVar(a->color);
+
+          size_t size = maxSize(x, y, c);
+
+          QPen noPen(Qt::NoPen);
+          painter.setPen(noPen);
+
+          QPointF lastPoint;
+          QPointF point;
+
+          for(size_t i = 0; i < size; ++i){
+            point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
+            point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
 
             if(i > 0){
+              DoubleVec cv;
+              c->getVec(i, cv);
+              QBrush brush(toQColor(cv));
+              painter.setBrush(brush);
+
               QPolygonF poly;
               poly << lastPoint << point << 
                 QPointF(point.x(), origin.y()) << 
                 QPointF(lastPoint.x(), origin.y());
       
-              painter.setPen(noPen);
               painter.drawPolygon(poly);
-            }
-
-            if(i > 0){
-              painter.setPen(pen);
-              painter.drawLine(point, lastPoint);
             }
 
             lastPoint = point;
@@ -1068,6 +1113,9 @@ namespace{
           size_t size = maxSize(x, y, s, c);
 
           QPointF point;
+
+          QPen noPen(Qt::NoPen);
+          painter.setPen(noPen);
 
           for(size_t i = 0; i < size; ++i){
             point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
@@ -1228,6 +1276,13 @@ extern "C"{
                               VarId size,
                               VarId color){
     static_cast<Plot*>(plot)->addPoints(x, y, size, color);
+  }
+
+  void __scrt_plot_add_area(void* plot,
+                              VarId x,
+                              VarId y,
+                              VarId color){
+    static_cast<Plot*>(plot)->addArea(x, y, color);
   }
 
   void __scrt_plot_add_axis(void* plot, uint32_t dim, const char* label){

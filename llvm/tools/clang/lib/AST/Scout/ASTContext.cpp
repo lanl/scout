@@ -88,6 +88,12 @@ bool ASTContext::CompareMeshTypes(const Type *T1, const Type *T2) {
           T2->getAsUniformMeshDecl()->getName()) {
     return true;
   }
+  
+  if (T1->isALEMeshType() && T2->isALEMeshType()
+      && T1->getAsALEMeshDecl()->getName() ==
+      T2->getAsALEMeshDecl()->getName()) {
+    return true;
+  }
 
   if (T1->isRectilinearMeshType() && T2->isRectilinearMeshType()
       && T1->getAsRectilinearMeshDecl()->getName() ==
@@ -126,6 +132,12 @@ QualType
 ASTContext::getUniformMeshDeclType(const UniformMeshDecl *Decl) const {
   assert (Decl != 0);
   return getTypeDeclType(const_cast<UniformMeshDecl*>(Decl));
+}
+
+QualType
+ASTContext::getALEMeshDeclType(const ALEMeshDecl *Decl) const {
+  assert (Decl != 0);
+  return getTypeDeclType(const_cast<ALEMeshDecl*>(Decl));
 }
 
 QualType
@@ -189,6 +201,46 @@ QualType ASTContext::getUniformMeshType(const UniformMeshDecl *Decl,
   UniformMeshType *newType;
   newType = new (*this, TypeAlignment) UniformMeshType(Decl);
   newType->setDimensions(dims);    
+  Decl->TypeForDecl = newType;
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}
+
+QualType ASTContext::getALEMeshType(const ALEMeshDecl *Decl) const {
+  assert(Decl != 0);
+  
+  if (Decl->TypeForDecl)
+    return QualType(Decl->TypeForDecl, 0);
+  
+  ALEMeshType *newType;
+  newType = new (*this, TypeAlignment) ALEMeshType(Decl);
+  Decl->TypeForDecl = newType;
+  Types.push_back(newType);
+  return QualType(newType, 0);
+}
+
+QualType ASTContext::getALEMeshType(const ALEMeshDecl *Decl,
+                                        const MeshType::MeshDimensions &dims) const {
+  assert(Decl != 0);
+  
+  if (Decl->TypeForDecl) {
+    // There is a previous type stored -- however, we're not sure
+    // that it represents an exact type match until we check the
+    // dimensions of the mesh (note we are checking for duplicates
+    // here but don't go all the way down to checking equivalence
+    // of the expressions).
+    //
+    // SC_TODO - is it worth the effort of checking expressions for
+    // equivalence here?
+    const ALEMeshType *UMT = dyn_cast<ALEMeshType>(Decl->TypeForDecl);
+    if (UMT->dimensions() == dims) {
+      return QualType(Decl->TypeForDecl, 0);
+    }
+  }
+  
+  ALEMeshType *newType;
+  newType = new (*this, TypeAlignment) ALEMeshType(Decl);
+  newType->setDimensions(dims);
   Decl->TypeForDecl = newType;
   Types.push_back(newType);
   return QualType(newType, 0);

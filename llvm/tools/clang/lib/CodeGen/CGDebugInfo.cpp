@@ -2179,6 +2179,8 @@ llvm::DIType CGDebugInfo::CreateTypeNode(QualType Ty, llvm::DIFile Unit) {
   // +==== Scout =============================================================+
   case Type::UniformMesh:
     return CreateType(cast<UniformMeshType>(Ty));
+  case Type::ALEMesh:
+    return CreateType(cast<ALEMeshType>(Ty));
   case Type::StructuredMesh:
     return CreateType(cast<StructuredMeshType>(Ty));
   case Type::RectilinearMesh:

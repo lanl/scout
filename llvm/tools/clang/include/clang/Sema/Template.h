@@ -500,6 +500,8 @@ namespace clang {
     // +===== Scout ==========================================================+
     bool SubstQualifier(const UniformMeshDecl *OldDecl,
                         UniformMeshDecl *NewDecl);
+    bool SubstQualifier(const ALEMeshDecl *OldDecl,
+                        ALEMeshDecl *NewDecl);
     bool SubstQualifier(const RectilinearMeshDecl *OldDecl,
                         RectilinearMeshDecl *NewDecl);
     bool SubstQualifier(const StructuredMeshDecl *OldDecl,

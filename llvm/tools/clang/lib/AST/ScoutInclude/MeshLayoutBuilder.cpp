@@ -638,6 +638,7 @@ MeshLayoutBuilder::updateExternalFieldOffset(const MeshFieldDecl *Field,
 static int getPaddingDiagFromMeshKind(MeshTypeKind MK) {
   switch (MK) {
     case TTK_UniformMesh: return 0;
+    case TTK_ALEMesh: return 0;
     case TTK_RectilinearMesh: return 0;
     case TTK_StructuredMesh: return 0;
     case TTK_UnstructuredMesh: return 0;

@@ -120,9 +120,10 @@ HANDLE_DW_TAG(0x4200, APPLE_property)
 
 // +===== Scout ====================
 HANDLE_DW_TAG(0x9000, SCOUT_uniform_mesh_type)
-HANDLE_DW_TAG(0x9001, SCOUT_structured_mesh_type)
-HANDLE_DW_TAG(0x9002, SCOUT_rectilinear_mesh_type)
-HANDLE_DW_TAG(0x9003, SCOUT_unstructured_mesh_type)
+HANDLE_DW_TAG(0x9001, SCOUT_ALE_mesh_type)
+HANDLE_DW_TAG(0x9002, SCOUT_structured_mesh_type)
+HANDLE_DW_TAG(0x9003, SCOUT_rectilinear_mesh_type)
+HANDLE_DW_TAG(0x9004, SCOUT_unstructured_mesh_type)
 // +=================================
 
 HANDLE_DW_OP(0x03, addr)

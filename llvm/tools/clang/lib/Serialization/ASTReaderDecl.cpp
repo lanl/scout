@@ -276,6 +276,7 @@ namespace clang {
     // +===== Scout ==========================================================+
     RedeclarableResult VisitMeshDecl(MeshDecl *MD);
     RedeclarableResult VisitUniformMeshDeclImpl(UniformMeshDecl *UMD);
+    RedeclarableResult VisitALEMeshDeclImpl(ALEMeshDecl *AMD);
     RedeclarableResult VisitRectilinearMeshDeclImpl(RectilinearMeshDecl *RMD);
     RedeclarableResult VisitStructuredMeshDeclImpl(StructuredMeshDecl *SMD);
     RedeclarableResult
@@ -283,6 +284,8 @@ namespace clang {
     
     void VisitUniformMeshDecl(UniformMeshDecl *UMD)
     { VisitUniformMeshDeclImpl(UMD); }
+    void VisitALEMeshDecl(ALEMeshDecl *AMD)
+    { VisitALEMeshDeclImpl(AMD); }
     void VisitRectilinearMeshDecl(RectilinearMeshDecl *RMD)
     { VisitRectilinearMeshDeclImpl(RMD); }
     void VisitStructuredMeshDecl(StructuredMeshDecl *SMD)
@@ -647,6 +650,12 @@ ASTDeclReader::VisitMeshDecl(MeshDecl *MD) {
 ASTDeclReader::RedeclarableResult
 ASTDeclReader::VisitUniformMeshDeclImpl(UniformMeshDecl *UMD) {
   RedeclarableResult Redecl = VisitMeshDecl(UMD);
+  return Redecl;
+}
+
+ASTDeclReader::RedeclarableResult
+ASTDeclReader::VisitALEMeshDeclImpl(ALEMeshDecl *AMD) {
+  RedeclarableResult Redecl = VisitMeshDecl(AMD);
   return Redecl;
 }
 

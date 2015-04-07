@@ -136,6 +136,8 @@ void CGDebugInfo::completeType(const MeshDecl *MD) {
       !CGM.getLangOpts().CPlusPlus) {
     if(const UniformMeshDecl *UMD = dyn_cast<UniformMeshDecl>(MD))
       completeRequiredType(UMD);
+    if(const ALEMeshDecl *AMD = dyn_cast<ALEMeshDecl>(MD))
+      completeRequiredType(AMD);
     if (const RectilinearMeshDecl *RMD = dyn_cast<RectilinearMeshDecl>(MD))
       completeRequiredType(RMD);
     if (const StructuredMeshDecl *SMD = dyn_cast<StructuredMeshDecl>(MD))
@@ -161,6 +163,12 @@ void CGDebugInfo::completeRequiredType(const UniformMeshDecl *MD) {
     completeClassData(MD);
 }
 
+void CGDebugInfo::completeRequiredType(const ALEMeshDecl *MD) {
+  QualType Ty = CGM.getContext().getALEMeshType(MD);
+  llvm::DIType T = getTypeOrNull(Ty);
+  if (T && T.isForwardDecl())
+    completeClassData(MD);
+}
 void CGDebugInfo::completeRequiredType(const RectilinearMeshDecl *MD) {
   QualType Ty = CGM.getContext().getRectilinearMeshType(MD);
   llvm::DIType T = getTypeOrNull(Ty);
@@ -200,6 +208,20 @@ void CGDebugInfo::completeClassData(const UniformMeshDecl *MD) {
       !llvm::DIType(cast<llvm::MDNode>(I->second)).isForwardDecl())
     return;
   llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
+  assert(!Res.isForwardDecl());
+  TypeCache[TyPtr].reset(Res);
+}
+
+void CGDebugInfo::completeClassData(const ALEMeshDecl *MD) {
+  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+    return;
+  QualType Ty = CGM.getContext().getALEMeshType(MD);
+  void* TyPtr = Ty.getAsOpaquePtr();
+  auto I = TypeCache.find(TyPtr);
+  if (I != TypeCache.end() &&
+      !llvm::DIType(cast<llvm::MDNode>(I->second)).isForwardDecl())
+    return;
+  llvm::DIType Res = CreateTypeDefinition(Ty->castAs<ALEMeshType>());
   assert(!Res.isForwardDecl());
   TypeCache[TyPtr].reset(Res);
 }
@@ -456,6 +478,44 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const UniformMeshType *Ty,
   TypeCache[QTy.getAsOpaquePtr()].reset(Res);
   return Res;
 }
+
+//===----------------------------------------------------------------------===//
+// ALE Mesh debug support
+//===----------------------------------------------------------------------===//
+
+// ------ CreateType
+//
+llvm::DIType CGDebugInfo::CreateType(const ALEMeshType *Ty) {
+  assert(false && "unimplemented");
+}
+
+// ------ CreateTypeDefinition
+//
+llvm::DIType CGDebugInfo::CreateTypeDefinition(const ALEMeshType *Ty) {
+  assert(false && "unimplemented");
+}
+
+
+// TODO: Currently used for context chains when limiting debug info.
+llvm::DICompositeType
+CGDebugInfo::CreateLimitedType(const ALEMeshType *Ty) {
+  assert(false && "unimplemented");
+}
+
+// Creates a forward declaration for a rectilinear mesh the given context.
+llvm::DICompositeType
+CGDebugInfo::getOrCreateMeshFwdDecl(const ALEMeshType *Ty,
+                                    llvm::DIDescriptor Ctx) {
+  assert(false && "unimplemented");
+}
+
+/// getOrCreateLimitedType - Get the type from the cache or create a new
+/// limited type if necessary.
+llvm::DIType CGDebugInfo::getOrCreateLimitedType(const ALEMeshType *Ty,
+                                                 llvm::DIFile Unit) {
+  assert(false && "unimplemented");
+}
+
 
 
 //===----------------------------------------------------------------------===//

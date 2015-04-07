@@ -4049,7 +4049,10 @@ bool
 UnnamedLocalNoLinkageFinder::VisitUniformMeshType(const UniformMeshType* T) {
   return VisitMeshDecl(T->getDecl());
 }
-
+bool
+UnnamedLocalNoLinkageFinder::VisitALEMeshType(const ALEMeshType* T) {
+  return VisitMeshDecl(T->getDecl());
+}
 bool
 UnnamedLocalNoLinkageFinder::VisitRectilinearMeshType(const RectilinearMeshType* T) {
   return VisitMeshDecl(T->getDecl());

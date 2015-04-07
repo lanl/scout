@@ -201,6 +201,43 @@ UniformMeshDecl *UniformMeshDecl::CreateDeserialized(const ASTContext &C,
 }
 
 
+//===----------------------------------------------------------------------===//
+// ALEMeshDecl Implementation
+//===----------------------------------------------------------------------===//
+//
+//
+ALEMeshDecl::ALEMeshDecl(const ASTContext &C,
+                                 DeclContext     *DC,
+                                 SourceLocation  StartLoc,
+                                 SourceLocation  IdLoc,
+                                 IdentifierInfo  *Id,
+                                 ALEMeshDecl *PrevDecl)
+: MeshDecl(ALEMesh, TTK_ALEMesh, C, DC, IdLoc, Id, PrevDecl, StartLoc) { }
+
+ALEMeshDecl *ALEMeshDecl::Create(const ASTContext &C,
+                                         DeclContext *DC,
+                                         SourceLocation StartLoc,
+                                         SourceLocation IdLoc,
+                                         IdentifierInfo *Id,
+                                         ALEMeshDecl* PrevDecl) {
+  
+  ALEMeshDecl* M = new (C, DC) ALEMeshDecl(C, DC,
+                                                   StartLoc,
+                                                   IdLoc, Id,
+                                                   PrevDecl);
+  M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
+  C.getTypeDeclType(M, PrevDecl);
+  return M;
+}
+
+ALEMeshDecl *ALEMeshDecl::CreateDeserialized(const ASTContext &C,
+                                                     unsigned ID) {
+  ALEMeshDecl *M = new (C, ID) ALEMeshDecl(C, 0, SourceLocation(),
+                                                   SourceLocation(), 0, 0);
+  M->MayHaveOutOfDateDef = C.getLangOpts().Modules;
+  return M;
+}
+
 
 //===----------------------------------------------------------------------===//
 // RectilinearMeshDecl Implementation

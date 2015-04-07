@@ -431,6 +431,7 @@ private:
 
  // +===== Scout ============================================================+
   bool TraverseUniformMeshHelper(UniformMeshDecl *D);
+  bool TraverseALEMeshHelper(ALEMeshDecl *D);
   bool TraverseRectilinearMeshHelper(RectilinearMeshDecl *D);
   bool TraverseStructuredMeshHelper(StructuredMeshDecl *D);
   bool TraverseUnstructuredMeshHelper(UnstructuredMeshDecl *D);
@@ -923,6 +924,7 @@ DEF_TRAVERSE_TYPE(SubstTemplateTypeParmPackType, {})
 
 // +===== Scout ==============================================================+
 DEF_TRAVERSE_TYPE(UniformMeshType, { })
+DEF_TRAVERSE_TYPE(ALEMeshType, { })
 DEF_TRAVERSE_TYPE(RectilinearMeshType, { })
 DEF_TRAVERSE_TYPE(StructuredMeshType, { })
 DEF_TRAVERSE_TYPE(UnstructuredMeshType, { })
@@ -1151,6 +1153,7 @@ DEF_TRAVERSE_TYPELOC(SubstTemplateTypeParmPackType, {})
 
 // +===== Scout ==============================================================+
 DEF_TRAVERSE_TYPELOC(UniformMeshType, { })
+DEF_TRAVERSE_TYPELOC(ALEMeshType, { })
 DEF_TRAVERSE_TYPELOC(RectilinearMeshType, { })
 DEF_TRAVERSE_TYPELOC(StructuredMeshType, { })
 DEF_TRAVERSE_TYPELOC(UnstructuredMeshType, { })
@@ -1638,6 +1641,15 @@ bool DataRecursiveASTVisitor<Derived>::TraverseUniformMeshHelper(UniformMeshDecl
 }
 
 template<typename Derived>
+bool DataRecursiveASTVisitor<Derived>::TraverseALEMeshHelper(ALEMeshDecl *D) {
+  // We shouldn't traverse D->getTypeForDecl(); it's a result of
+  // declaring the type, not something that was written in the
+  // source.
+  TRY_TO(TraverseNestedNameSpecifierLoc(D->getQualifierLoc()));
+  return true;
+}
+
+template<typename Derived>
 bool DataRecursiveASTVisitor<Derived>::TraverseRectilinearMeshHelper(RectilinearMeshDecl *D) {
   // We shouldn't traverse D->getTypeForDecl(); it's a result of
   // declaring the type, not something that was written in the
@@ -1694,6 +1706,10 @@ DEF_TRAVERSE_DECL(RecordDecl, { TRY_TO(TraverseRecordHelper(D)); })
 // +===== Scout ==============================================================+
 DEF_TRAVERSE_DECL(UniformMeshDecl, {
     TRY_TO(TraverseUniformMeshHelper(D));
+  })
+  
+DEF_TRAVERSE_DECL(ALEMeshDecl, {
+    TRY_TO(TraverseALEMeshHelper(D));
   })
 
 DEF_TRAVERSE_DECL(RectilinearMeshDecl, {

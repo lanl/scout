@@ -32,6 +32,7 @@ def Named : Decl<1>;
     // +==== Scout ========================================================+
     def Mesh : DDecl<Type, 1>, DeclContext;
       def UniformMesh : DDecl<Mesh>;
+      def ALEMesh : DDecl<Mesh>;
       def StructuredMesh : DDecl<Mesh>;
       def RectilinearMesh : DDecl<Mesh>;
       def UnstructuredMesh : DDecl<Mesh>;

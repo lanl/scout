@@ -306,7 +306,10 @@ void ASTTypeWriter::VisitUniformMeshType(const UniformMeshType *T) {
   VisitMeshType(T);
   Code = TYPE_UNIFORM_MESH;
 }
-
+void ASTTypeWriter::VisitALEMeshType(const ALEMeshType *T) {
+  VisitMeshType(T);
+  Code = TYPE_ALE_MESH;
+}
 void ASTTypeWriter::VisitStructuredMeshType(const StructuredMeshType *T) {
   VisitMeshType(T);
   Code = TYPE_STRUCTURED_MESH;
@@ -628,6 +631,8 @@ void TypeLocWriter::VisitAutoTypeLoc(AutoTypeLoc TL) {
 // +===== Scout ==============================================================+
 // SC_TODO - implement these
 void TypeLocWriter::VisitUniformMeshTypeLoc(UniformMeshTypeLoc TL)
+{ }
+void TypeLocWriter::VisitALEMeshTypeLoc(ALEMeshTypeLoc TL)
 { }
 void TypeLocWriter::VisitStructuredMeshTypeLoc(StructuredMeshTypeLoc TL)
 { }

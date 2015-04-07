@@ -2284,11 +2284,12 @@ enum CXCursorKind {
 
   /* +===== Scout =========================================================+ */
   CXCursor_UniformMeshDecl               = 800,
-  CXCursor_StructuredMeshDecl            = 801,
-  CXCursor_RectilinearMeshDecl           = 802,
-  CXCursor_UnstructuredMeshDecl          = 803,
-  CXCursor_MeshFieldDecl                 = 804,
-  CXCursor_FrameDecl                     = 805,
+  CXCursor_ALEMeshDecl                   = 801,
+  CXCursor_StructuredMeshDecl            = 802,
+  CXCursor_RectilinearMeshDecl           = 803,
+  CXCursor_UnstructuredMeshDecl          = 804,
+  CXCursor_MeshFieldDecl                 = 805,
+  CXCursor_FrameDecl                     = 806,
   CXCursor_FirstMeshDecl                 = CXCursor_UniformMeshDecl,
   CXCursor_LastMeshDecl                  = CXCursor_UnstructuredMeshDecl
   /* +=====================================================================+ */
