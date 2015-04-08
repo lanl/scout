@@ -220,6 +220,46 @@ namespace{
           runtime_->create_logical_region(context_,
                                           element.indexSpace,
                                           element.fieldSpace);
+
+        // number of subregions
+        size_t numSubregions = 1;
+        char *p;
+        p = getenv("SC_NTHREADS");
+        if (p != NULL) {
+          numSubregions = atoi(p);
+        }
+
+        element.colorDomain =
+                 Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(numSubregions - 1)));
+
+        size_t lowerBound = element.count/numSubregions;
+        size_t upperBound = lowerBound+1;
+        size_t numberSmall = numSubregions - (element.count % numSubregions);
+
+        element.colorDomain =
+            Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(numSubregions - 1)));
+
+        size_t index = 0;
+
+        for (size_t color = 0; color < numSubregions; color++) {
+          printf("color %d\n", color);
+          size_t numElmts = color < numberSmall ? lowerBound : upperBound;
+
+          printf("dr %d %d %d\n", color, index, index+numElmts-1);
+          Rect<1> subrect(Point<1>(index),Point<1>(index+numElmts-1));
+          element.disjointColoring[color] = Domain::from_rect<1>(subrect);
+          index += numElmts;
+        } // end for color
+
+        element.disjointIndexPartition =
+            runtime_->create_index_partition(context_, element.indexSpace,
+                element.colorDomain,
+                element.disjointColoring, true);
+
+        element.disjointLogicalPartition =
+            runtime_->get_logical_partition(context_,
+                element.logicalRegion,
+                element.disjointIndexPartition);
       }
     }
 
@@ -503,88 +543,7 @@ namespace{
         if(element.count == 0){
           continue;
         }
-
-        size_t lowerBound = element.count/numSubregions;
-        size_t upperBound = lowerBound+1;
-        size_t numberSmall = numSubregions - (element.count % numSubregions);
-
-        element.colorDomain = 
-          Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(numSubregions - 1)));
-
-        size_t index = 0;
-        size_t numGhost = mesh_->numGhostItems(elemKind, maxShift);
-        printf("nGhost %d\n", numGhost);
-
-        for (size_t color = 0; color < numSubregions; color++) {
-          printf("color %d\n", color);
-          size_t numElmts = color < numberSmall ? lowerBound : upperBound;
-
-          printf("dr %d %d %d\n", color, index, index+numElmts-1);
-          Rect<1> subrect(Point<1>(index),Point<1>(index+numElmts-1));
-          element.disjointColoring[color] = Domain::from_rect<1>(subrect);
-#if 0
-          if (index < numGhost)
-          {
-            if ((index+numElmts+numGhost) > element.count)
-            {
-              // Clamp both
-              printf("gr 1 %d %d %d\n", color, 0, element.count-1);
-              Rect<1> ghost_rect(Point<1>(0),Point<1>(element.count-1));
-              element.ghostColoring[color] = Domain::from_rect<1>(ghost_rect);
-            }
-            else
-            {
-              // Clamp below
-              printf("gr 2 %d %d %d\n", color, 0, index+numElmts+numGhost-1);
-              Rect<1> ghost_rect(Point<1>(0),Point<1>(index+numElmts+numGhost-1));
-              element.ghostColoring[color] = Domain::from_rect<1>(ghost_rect);
-            }
-          }
-          else
-          {
-            if ((index+numElmts+numGhost) > element.count)
-            {
-              // Clamp above
-              printf("gr 3 %d %d %d\n", color, index-numGhost, element.count-1);
-              Rect<1> ghost_rect(Point<1>(index-numGhost),Point<1>(element.count-1));
-              element.ghostColoring[color] = Domain::from_rect<1>(ghost_rect);
-            }
-            else
-            {
-              // Normal case
-              printf("gr 4 %d %d %d\n", color, index-numGhost, index+numElmts+numGhost-1);
-              Rect<1> ghost_rect(Point<1>(index-numGhost),Point<1>(index+numElmts+numGhost-1));
-              element.ghostColoring[color] = Domain::from_rect<1>(ghost_rect);
-            }
-          }
-#endif
-          index += numElmts;
-        } // end for color
-
-        element.disjointIndexPartition =
-          runtime->create_index_partition(context, element.indexSpace,
-                                          element.colorDomain,
-                                          element.disjointColoring, true);
-#if 0
-        element.ghostIndexPartition =
-          runtime->create_index_partition(context, element.indexSpace,
-                                          element.colorDomain,
-                                          element.ghostColoring, false);
-#endif
-
-        element.disjointLogicalPartition =
-          runtime->get_logical_partition(context,
-                                         element.logicalRegion,
-                                         element.disjointIndexPartition);
-#if 0
-        element.ghostLogicalPartition =
-          runtime->get_logical_partition(context,
-                                         element.logicalRegion,
-                                         element.ghostIndexPartition);
-#endif
-
       }
-
 
       ArgumentMap argMap;
 
@@ -594,36 +553,6 @@ namespace{
       IndexLauncher launcher(taskId_, element.colorDomain, 
                              TaskArgument(argsPtr, argsLen), argMap);
 
-#if 0
-      for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
-
-        const Region& region = regions_[i]; 
-
-        if(region.legionMode() == NO_ACCESS){
-          continue;
-        }
-
-        const Mesh::Element& element = 
-            mesh_->getElement(sclegion_element_kind_t(i));
-
-        printf("add read only %d\n",i);
-        launcher.add_region_requirement(
-            RegionRequirement(element.ghostLogicalPartition, 0,
-                READ_ONLY,
-                EXCLUSIVE,
-                element.logicalRegion));
-      }
-
-      for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
-        const Region& region = regions_[i];
-
-        if(region.legionMode() == NO_ACCESS){
-          continue;
-        }
-        printf("add read only fields %d\n",i);
-        region.addFieldsToIndexLauncher(launcher, i);
-      }
-#endif
 
       for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
 
