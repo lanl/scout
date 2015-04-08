@@ -8864,11 +8864,11 @@ public:
   
   ExprResult ActOnSpecValueExpr(Expr* E);
   
-  SpecValueExpr* CreateSpecValueExpr(double value);
+  SpecValueExpr* CreateSpecDoubleExpr(double value);
   
-  SpecValueExpr* CreateSpecValueExpr(int64_t value);
+  SpecValueExpr* CreateSpecIntExpr(int64_t value);
   
-  SpecValueExpr* CreateSpecValueExpr(const std::string& value);
+  SpecValueExpr* CreateSpecStringExpr(const std::string& value);
   
   SpecArrayExpr* CreateSpecArrayExpr();
   

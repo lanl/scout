@@ -836,6 +836,43 @@ namespace{
       }
     };
 
+    class Interval : public RangeElement{
+    public:
+      Interval(VarId x, VarId y, VarId color)
+        : x(x), y(y), color(color){}
+
+      VarId x;
+      VarId y;
+      VarId color;
+
+      int order(){
+        return 0;
+      }
+
+      VarId getX(){
+        return x;
+      }
+
+      VarId getY(){
+        return y;
+      }
+    };
+
+    class Bins : public Element{
+    public:
+      Bins(VarId varIn, VarId xOut, VarId yOut, uint32_t n)
+        : varIn(varIn), xOut(xOut), yOut(yOut), n(n){}
+
+      VarId varIn;
+      VarId xOut;
+      VarId yOut;
+      uint32_t n;
+
+      int order(){
+        return 0;
+      }
+    };
+
     class Axis : public Element{
     public:
       Axis(uint32_t dim, const string& label)
@@ -887,6 +924,14 @@ namespace{
 
     void addArea(VarId x, VarId y, VarId color){
       elements_.push_back(new Area(x, y, color)); 
+    }
+
+    void addInterval(VarId x, VarId y, VarId color){
+      elements_.push_back(new Interval(x, y, color)); 
+    }
+
+    void addBins(VarId varIn, VarId xOut, VarId yOut, uint32_t n){
+      elements_.push_back(new Bins(varIn, xOut, yOut, n)); 
     }
 
     void addAxis(uint32_t dim, const string& label){
@@ -1283,6 +1328,21 @@ extern "C"{
                               VarId y,
                               VarId color){
     static_cast<Plot*>(plot)->addArea(x, y, color);
+  }
+
+  void __scrt_plot_add_interval(void* plot,
+                                VarId x,
+                                VarId y,
+                                VarId color){
+    static_cast<Plot*>(plot)->addInterval(x, y, color);
+  }
+
+  void __scrt_plot_add_bins(void* plot,
+                            VarId varIn,
+                            VarId xOut,
+                            VarId yOut,
+                            uint32_t n){
+    static_cast<Plot*>(plot)->addBins(varIn, xOut, yOut, n);
   }
 
   void __scrt_plot_add_axis(void* plot, uint32_t dim, const char* label){

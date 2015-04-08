@@ -199,6 +199,16 @@ llvm::Function* CGPlot2Runtime::PlotAddAreaFunc(){
                  {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
 }
 
+llvm::Function* CGPlot2Runtime::PlotAddIntervalFunc(){
+  return GetFunc("__scrt_plot_add_interval",
+                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddBinsFunc(){
+  return GetFunc("__scrt_plot_add_bins",
+                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty});
+}
+
 llvm::Function* CGPlot2Runtime::PlotAddAxisFunc(){
   return GetFunc("__scrt_plot_add_axis", {VoidPtrTy, Int32Ty, StringTy});
 }

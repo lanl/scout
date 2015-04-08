@@ -2795,13 +2795,30 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     const string& k = itr.first;
     SpecExpr* v = itr.second.second;
     
-    if(k == "lines" || k == "points" || k == "area"){
+    if(k == "lines" || k == "points" || k == "area" || k == "interval"){
       SpecObjectExpr* o = v->toObject();
       
       SpecArrayExpr* pa = o->get("position")->toArray();
-            
-      Value* xv = EmitPlotExpr(fd, plotPtr, pa->get(0), varId);
-      Value* yv = EmitPlotExpr(fd, plotPtr, pa->get(1), varId);
+      
+      Value* xv;
+      Value* yv;
+      
+      if(pa){
+        xv = EmitPlotExpr(fd, plotPtr, pa->get(0), varId);
+        yv = EmitPlotExpr(fd, plotPtr, pa->get(1), varId);
+      }
+      else if(k == "interval"){
+        SpecObjectExpr* bo = o->get("position")->toObject();
+        
+        Value* vi = EmitPlotExpr(fd, plotPtr, bo->get("bin"), varId);
+        xv = ConstantInt::get(R.Int32Ty, varId++);
+        yv = ConstantInt::get(R.Int32Ty, varId++);
+        Value* n = ConstantInt::get(R.Int32Ty, bo->get("n")->getInteger());
+        
+        args = {plotPtr, vi, xv, yv, n};
+        Builder.CreateCall(R.PlotAddBinsFunc(), args);
+      }
+      
       Value* cv = EmitPlotExpr(fd, plotPtr, o->get("color"), varId);
       
       if(k == "lines"){
@@ -2814,9 +2831,13 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         args = {plotPtr, xv, yv, sv, cv};
         Builder.CreateCall(R.PlotAddPointsFunc(), args);
       }
-      else{
+      else if(k == "area"){
         args = {plotPtr, xv, yv, cv};
         Builder.CreateCall(R.PlotAddAreaFunc(), args);
+      }
+      else{
+        args = {plotPtr, xv, yv, cv};
+        Builder.CreateCall(R.PlotAddIntervalFunc(), args);
       }
     }
     else if(k == "axis"){

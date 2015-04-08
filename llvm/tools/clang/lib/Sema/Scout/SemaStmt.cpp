@@ -282,7 +282,7 @@ ExprResult Sema::ActOnSpecValueExpr(Expr* E){
   return new (Context) SpecValueExpr(result.get());
 }
 
-SpecValueExpr* Sema::CreateSpecValueExpr(double value){
+SpecValueExpr* Sema::CreateSpecDoubleExpr(double value){
   FloatingLiteral* l =
   FloatingLiteral::Create(Context,
                           llvm::APFloat(value),
@@ -293,7 +293,7 @@ SpecValueExpr* Sema::CreateSpecValueExpr(double value){
   return new (Context) SpecValueExpr(l);
 }
 
-SpecValueExpr* Sema::CreateSpecValueExpr(int64_t value){
+SpecValueExpr* Sema::CreateSpecIntExpr(int64_t value){
   IntegerLiteral* l =
   IntegerLiteral::Create(Context,
                          llvm::APInt(64, value, true),
@@ -303,7 +303,7 @@ SpecValueExpr* Sema::CreateSpecValueExpr(int64_t value){
   return new (Context) SpecValueExpr(l);
 }
 
-SpecValueExpr* Sema::CreateSpecValueExpr(const std::string& value){
+SpecValueExpr* Sema::CreateSpecStringExpr(const std::string& value){
   llvm::APInt len(32, value.length() + 1);
   
   QualType t = Context.CharTy.withConst();
@@ -543,37 +543,65 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
     SourceLocation loc = itr.second.first;
     SpecExpr* v = itr.second.second;
     
-    if(k == "lines" || k == "points" || k == "area"){
+    if(k == "lines" || k == "points" || k == "area" || k == "interval"){
       SpecObjectExpr* lv = v->toObject();
       
-      if(lv){
-        SpecExpr* p = lv->get("position");
-        
-        if(p){
-          SpecArrayExpr* pa = p->toArray();
-          if(pa && pa->size() == 2){
-            if(!ValidateSpecExpr(pa->get(0), Context.DoubleTy) ||
-               !ValidateSpecExpr(pa->get(1), Context.DoubleTy)){
-              Diag(pa->getLocStart(), diag::err_invalid_plot_spec) <<
-              "invalid 'position'";
-              valid = false;
-            }
-          }
-          else{
-            Diag(lv->getLocStart(), diag::err_invalid_plot_spec) <<
-            "expected a 'position' array of size 2";
+      if(!lv){
+        Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected an object specifier";
+        valid = false;
+        continue;
+      }
+      
+      SpecExpr* p = lv->get("position");
+      
+      if(p){
+        SpecArrayExpr* pa = p->toArray();
+        if(pa && pa->size() == 2){
+          if(!ValidateSpecExpr(pa->get(0), Context.DoubleTy) ||
+             !ValidateSpecExpr(pa->get(1), Context.DoubleTy)){
+            Diag(pa->getLocStart(), diag::err_invalid_plot_spec) <<
+            "invalid 'position'";
             valid = false;
+          }
+        }
+        else if(k == "interval"){
+          SpecObjectExpr* bv = p->toObject();
+          if(!bv){
+            Diag(bv->getLocStart(), diag::err_invalid_plot_spec) <<
+            "expected an object specifier";
+            valid = false;
+            continue;
+          }
+          
+          SpecExpr* b = bv->get("bin");
+          if(!b){
+            Diag(bv->getLocStart(), diag::err_invalid_plot_spec) <<
+            "expected a 'bin' object specifier";
+            valid = false;
+            continue;
+          }
+          
+          if(!ValidateSpecExpr(b, Context.DoubleTy)){
+            Diag(bv->getLocStart(), diag::err_invalid_plot_spec) <<
+            "invalid 'bin' object specifier";
+            valid = false;
+            continue;
+          }
+          
+          if(!bv->has("n")){
+            bv->put("n", CreateSpecIntExpr(0));
           }
         }
         else{
           Diag(lv->getLocStart(), diag::err_invalid_plot_spec) <<
-          "expected a 'position' key";
+          "expected a 'position' array of size 2";
           valid = false;
         }
       }
       else{
-        Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
-        "expected an object specifier";
+        Diag(lv->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected a 'position' key";
         valid = false;
       }
       
@@ -587,7 +615,7 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
           }
         }
         else{
-          lv->put("size", CreateSpecValueExpr(1.0));
+          lv->put("size", CreateSpecDoubleExpr(1.0));
         }
       }
       
@@ -601,10 +629,10 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
       }
       else{
         SpecArrayExpr* color = CreateSpecArrayExpr();
-        color->add(CreateSpecValueExpr(0.0));
-        color->add(CreateSpecValueExpr(0.0));
-        color->add(CreateSpecValueExpr(0.0));
-        color->add(CreateSpecValueExpr(1.0));
+        color->add(CreateSpecDoubleExpr(0.0));
+        color->add(CreateSpecDoubleExpr(0.0));
+        color->add(CreateSpecDoubleExpr(0.0));
+        color->add(CreateSpecDoubleExpr(1.0));
         lv->put("color", color);
       }
     }
