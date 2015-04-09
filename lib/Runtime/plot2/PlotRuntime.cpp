@@ -102,6 +102,7 @@ namespace{
 
   const double MIN = numeric_limits<double>::min();
   const double MAX = numeric_limits<double>::max();
+  const double EPSILON = 0.000001;
 
   const size_t X_LABELS = 10;
   const size_t Y_LABELS = 10;
@@ -252,7 +253,9 @@ namespace{
     }
 
     void compute(void* frame, uint64_t index){
-      capture((*fp_)(frame, index));
+      if(fp_){
+        capture((*fp_)(frame, index));
+      }
     }
 
     double get(size_t i) const{
@@ -277,6 +280,13 @@ namespace{
 
     size_t size() const{
       return v_.size();
+    }
+
+    void clear(){
+      v_.clear();
+      i_ = RESERVE;
+      min_ = numeric_limits<T>::max();
+      max_ = numeric_limits<T>::min();
     }
 
   private:
@@ -627,6 +637,26 @@ namespace{
     }
 
     template<class T>
+    void addPlotVar(uint32_t plotId, VarId varId){
+      Frame* frame;
+
+      auto itr = plotFrameMap_.find(plotId);
+      if(itr == plotFrameMap_.end()){
+        frame = new Frame;
+        plotFrameMap_[plotId] = frame;
+      }
+      else{
+        frame = itr->second;
+        
+        if(frame->ready_){
+          return;
+        }
+      }
+
+      frame->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
+    }
+
+    template<class T>
     void addPlotVecVar(uint32_t plotId,
                        VarId varId,
                        void (*fp)(void*, uint64_t, T*),
@@ -931,7 +961,9 @@ namespace{
     }
 
     void addBins(VarId varIn, VarId xOut, VarId yOut, uint32_t n){
-      elements_.push_back(new Bins(varIn, xOut, yOut, n)); 
+      elements_.push_back(new Bins(varIn, xOut, yOut, n));
+      frame_->addPlotVar<double>(plotId_, xOut);
+      frame_->addPlotVar<double>(plotId_, yOut);
     }
 
     void addAxis(uint32_t dim, const string& label){
@@ -942,7 +974,7 @@ namespace{
       QtWindow::init();
 
       plotFrame_ = frame_->initPlotFrame(plotId_);
-     
+
       widget_ = window_->getWidget();
       widget_->setRenderer(this);
       window_->show();
@@ -970,6 +1002,49 @@ namespace{
       double xMax = MIN;
       double yMin = MAX;
       double yMax = MIN;
+
+      for(Element* e : elements_){
+        if(Bins* b = dynamic_cast<Bins*>(e)){
+          VarBase* varIn = getVar(b->varIn);
+
+          size_t size = varIn->size();
+
+          if(size < 2){
+            continue;
+          }
+
+          Var<double>* xOut = static_cast<Var<double>*>(getVar(b->xOut));
+          Var<double>* yOut = static_cast<Var<double>*>(getVar(b->yOut));
+
+          double min = varIn->min();
+          double max = varIn->max();
+
+          typedef map<double, size_t> BinMap;
+          BinMap binMap;
+
+          double binWidth = (max - min)/b->n;
+          double start = min + binWidth + EPSILON;
+
+          for(size_t i = 0; i < b->n; ++i){
+            binMap.insert({start, 0});
+            start += binWidth;
+          }
+
+          for(size_t i = 0; i < size; ++i){
+            auto itr = binMap.lower_bound(varIn->get(i));
+            assert(itr != binMap.end());
+            ++itr->second;
+          }
+            
+          xOut->clear();
+          yOut->clear();
+            
+          for(auto& itr : binMap){
+            xOut->capture(itr.first);
+            yOut->capture(itr.second);
+          }
+        }
+      }
 
       for(Element* e : elements_){
         if(RangeElement* r = dynamic_cast<RangeElement*>(e)){
@@ -1172,6 +1247,43 @@ namespace{
             QBrush brush(toQColor(cv));
             painter.setBrush(brush);
             painter.drawEllipse(point, s->get(i), s->get(i));
+          }
+        }
+        else if(Interval* i = dynamic_cast<Interval*>(e)){
+          VarBase* x = getVar(i->x);
+          VarBase* y = getVar(i->y);
+          VarBase* c = getVar(i->color);
+
+          size_t size = maxSize(x, y, c);
+
+          if(size < 2){
+            continue;
+          }
+
+          double xMin = x->min();
+          double xMax = x->max();
+
+          double yMin = y->min();
+          double yMax = y->max();
+
+          double xSpan = xMax - xMin;
+          double ySpan = yMax - yMin;
+
+          double width = xLen/size;
+
+          for(size_t j = 0; j < size; ++j){
+            double xv = x->get(j);
+            double yv = y->get(j);
+
+            double xc = origin.x() + xLen*(xv - xMin)/xSpan;
+            double yc = origin.y() - yLen*(yv - yMin)/ySpan;
+
+            double height = yLen * (yv - yMin)/ySpan;
+
+            DoubleVec cv;
+            c->getVec(j, cv);
+
+            painter.fillRect(QRectF(xc, yc, width, height), toQColor(cv));
           }
         }
       }
