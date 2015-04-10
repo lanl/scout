@@ -636,6 +636,51 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         lv->put("color", color);
       }
     }
+    else if(k == "pie"){
+      SpecObjectExpr* o = v->toObject();
+      
+      if(!o){
+        Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected an object specifier";
+        valid = false;
+        continue;
+      }
+      
+      SpecExpr* p = o->get("proportion");
+  
+      if(p){
+        SpecArrayExpr* pa = p->toArray();
+        
+        if(pa){
+          for(size_t i = 0; i < pa->size(); ++i){
+            if(!ValidateSpecExpr(pa->get(i), Context.IntTy)){
+              Diag(pa->get(i)->getLocStart(), diag::err_invalid_plot_spec) <<
+              "invalid 'proportion' value";
+              valid = false;
+            }
+          }
+        }
+        else{
+          Diag(p->getLocStart(), diag::err_invalid_plot_spec) <<
+          "expected a 'proportion' array";
+          valid = false;
+        }
+      }
+      else{
+        Diag(o->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected a 'proportion' key";
+        valid = false;
+      }
+      
+      SpecExpr* c = o->get("color");
+      if(c){
+        if(!ValidateSpecExpr(c, Context.FloatTy, 4)){
+          Diag(c->getLocStart(), diag::err_invalid_plot_spec) <<
+          "invalid 'color'";
+          valid = false;
+        }
+      }
+    }
     else if(k == "axis"){
       SpecObjectExpr* av = v->toObject();
       

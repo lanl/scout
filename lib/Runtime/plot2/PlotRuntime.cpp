@@ -888,6 +888,19 @@ namespace{
       }
     };
 
+    class Pie : public Element{
+    public:
+      Pie(VarId count, VarId color)
+        : count(count), color(color){}
+
+      VarId count;
+      VarId color;
+
+      int order(){
+        return 0;
+      }
+    };
+
     class Bins : public Element{
     public:
       Bins(VarId varIn, VarId xOut, VarId yOut, uint32_t n)
@@ -901,6 +914,26 @@ namespace{
       int order(){
         return 0;
       }
+    };
+
+    class Proportion : public Element{
+    public:
+      Proportion(VarId xOut, VarId yOut)
+        : xOut(xOut), yOut(yOut){}
+
+      void addVar(VarId var){
+        vars.push_back(var);
+      }
+
+      int order(){
+        return 0;
+      }
+
+      VarId xOut;
+      VarId yOut;
+
+      typedef vector<VarId> VarVec;
+      VarVec vars;
     };
 
     class Axis : public Element{
@@ -960,10 +993,24 @@ namespace{
       elements_.push_back(new Interval(x, y, color)); 
     }
 
+    void addPie(VarId count, VarId color){
+      elements_.push_back(new Pie(count, color)); 
+    }
+
     void addBins(VarId varIn, VarId xOut, VarId yOut, uint32_t n){
       elements_.push_back(new Bins(varIn, xOut, yOut, n));
       frame_->addPlotVar<double>(plotId_, xOut);
       frame_->addPlotVar<double>(plotId_, yOut);
+    }
+
+    Proportion* addProportion(VarId xOut, VarId yOut){
+      Proportion* p = new Proportion(xOut, yOut);
+      elements_.push_back(p);
+
+      frame_->addPlotVar<double>(plotId_, xOut);
+      frame_->addPlotVar<double>(plotId_, yOut);
+
+      return p;
     }
 
     void addAxis(uint32_t dim, const string& label){
@@ -1449,12 +1496,26 @@ extern "C"{
     static_cast<Plot*>(plot)->addInterval(x, y, color);
   }
 
+  void __scrt_plot_add_pie(void* plot,
+                           VarId count,
+                           VarId color){
+    static_cast<Plot*>(plot)->addPie(count, color);
+  }
+
   void __scrt_plot_add_bins(void* plot,
                             VarId varIn,
                             VarId xOut,
                             VarId yOut,
                             uint32_t n){
     static_cast<Plot*>(plot)->addBins(varIn, xOut, yOut, n);
+  }
+
+  void* __scrt_plot_add_proportion(void* plot, VarId xOut, VarId yOut){
+    return static_cast<Plot*>(plot)->addProportion(xOut, yOut);
+  }
+
+  void __scrt_plot_proportion_add_var(void* proportion, VarId var){
+    return static_cast<Plot::Proportion*>(proportion)->addVar(var);
   }
 
   void __scrt_plot_add_axis(void* plot, uint32_t dim, const char* label){

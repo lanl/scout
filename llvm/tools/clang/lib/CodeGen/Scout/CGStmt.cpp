@@ -2785,7 +2785,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   {ConstantInt::get(R.Int32Ty, S.getLocStart().getRawEncoding()),
     framePtr, targetPtr};
   
-  Value* plotPtr = Builder.CreateCall(R.PlotInitFunc(), args);
+  Value* plotPtr = Builder.CreateCall(R.PlotInitFunc(), args, "plot.ptr");
   
   uint32_t varId = 65536;
   
@@ -2839,6 +2839,35 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         args = {plotPtr, xv, yv, cv};
         Builder.CreateCall(R.PlotAddIntervalFunc(), args);
       }
+    }
+    else if(k == "pie"){
+      SpecObjectExpr* o = v->toObject();
+      
+      Value* xv = ConstantInt::get(R.Int32Ty, varId++);
+      Value* yv = ConstantInt::get(R.Int32Ty, varId++);
+      
+      args = {plotPtr, xv, yv};
+      Value* propPtr = Builder.CreateCall(R.PlotAddProportionFunc(), args);
+      
+      SpecArrayExpr* pa = o->get("proportion")->toArray();
+      
+      for(size_t i = 0; i < pa->size(); ++i){
+        Value* pv = EmitPlotExpr(fd, plotPtr, pa->get(i), varId);
+        args = {propPtr, pv};
+        Builder.CreateCall(R.PlotProportionAddVarFunc(), args);
+      }
+      
+      Value* cv;
+      SpecExpr* c = o->get("color");
+      if(c){
+        cv = EmitPlotExpr(fd, plotPtr, c, varId);
+      }
+      else{
+        cv = ConstantInt::get(R.Int32Ty, 0);
+      }
+      
+      args = {plotPtr, yv, cv};
+      Builder.CreateCall(R.PlotAddPieFunc(), args);
     }
     else if(k == "axis"){
       SpecObjectExpr* av = v->toObject();

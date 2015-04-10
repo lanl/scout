@@ -204,9 +204,24 @@ llvm::Function* CGPlot2Runtime::PlotAddIntervalFunc(){
                  {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
 }
 
+llvm::Function* CGPlot2Runtime::PlotAddPieFunc(){
+  return GetFunc("__scrt_plot_add_pie",
+                 {VoidPtrTy, Int32Ty, Int32Ty});
+}
+
 llvm::Function* CGPlot2Runtime::PlotAddBinsFunc(){
   return GetFunc("__scrt_plot_add_bins",
                  {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty});
+}
+
+llvm::Function* CGPlot2Runtime::PlotAddProportionFunc(){
+  return GetFunc("__scrt_plot_add_proportion",
+                 {VoidPtrTy, Int32Ty, Int32Ty}, VoidPtrTy);
+}
+
+llvm::Function* CGPlot2Runtime::PlotProportionAddVarFunc(){
+  return GetFunc("__scrt_plot_proportion_add_var",
+                 {VoidPtrTy, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddAxisFunc(){
