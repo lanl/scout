@@ -59,6 +59,8 @@
 #include <iostream>
 #include <algorithm>
 #include <sstream>
+#include <functional>
+#include <random>
 
 #include <QtGui>
 
@@ -117,7 +119,37 @@ namespace{
 
   typedef vector<double> DoubleVec;
 
- template<typename T, size_t N>
+  class Random{
+  public:
+    Random(uint64_t seed=0)
+    : uniform_(0, 1){
+      rng_.seed(seed);
+    }
+    
+    ~Random(){}
+    
+    void setSeed(int64_t seed){
+      rng_.seed(seed);
+    }
+        
+    double uniform(){
+      return uniform_(rng_);
+    }
+    
+    double uniform(double a, double b){
+      return a + (b - a) * uniform();
+    }
+    
+    int64_t equilikely(int64_t a, int64_t b){
+      return a + int64_t((b - a + 1) * uniform());
+    }
+  
+  private:
+    std::mt19937_64 rng_;
+    std::uniform_real_distribution<double> uniform_;
+  };
+
+  template<typename T, size_t N>
   class Vec{
   public:
     Vec(){}
@@ -191,6 +223,8 @@ namespace{
 
     virtual double get(size_t i) const = 0;
 
+    virtual size_t hash(size_t i) const = 0;
+
     virtual void getVec(size_t i, DoubleVec& v) const = 0;
 
     virtual void compute(void* frame, uint64_t index) = 0;
@@ -262,6 +296,10 @@ namespace{
       return v_[i];
     }
 
+    size_t hash(size_t i) const{
+      return std::hash<T>()(v_[i]);
+    }
+
     void getVec(size_t i, DoubleVec& v) const{
       assert(false && "not a vector");
     }
@@ -309,6 +347,10 @@ namespace{
 
     double get(size_t i) const{
       return v_[i];
+    }
+
+    size_t hash(size_t i) const{
+      return std::hash<T>()(v_[i]);
     }
 
     void getVec(size_t i, DoubleVec& v) const{
@@ -402,6 +444,10 @@ namespace{
       assert(false && "attempt to get scalar from vector");
     }
 
+    size_t hash(size_t i) const{
+      assert(false && "attempt to hash from vector");
+    }
+
     void getVec(size_t i, DoubleVec& v) const{
       v_[i].get(v);
     }
@@ -436,6 +482,10 @@ namespace{
       return value_;
     }
 
+    size_t hash(size_t i) const{
+      return std::hash<T>()(value_);
+    }
+
     void getVec(size_t i, DoubleVec& v) const{
       assert(false && "not a vector");
     }
@@ -466,6 +516,10 @@ namespace{
 
     double get(size_t i) const{
       assert(false && "attempt to get scalar from vector");
+    }
+
+    size_t hash(size_t i) const{
+      assert(false && "attempt to hash from vector");
     }
 
     void getVec(size_t i, DoubleVec& v) const{
@@ -1091,6 +1145,47 @@ namespace{
             yOut->capture(itr.second);
           }
         }
+        else if(Proportion* p = dynamic_cast<Proportion*>(e)){
+          typedef vector<VarBase*> VarVec;
+          VarVec vs;
+
+          for(VarId var : p->vars){
+            vs.push_back(getVar(var));
+          }
+
+          size_t n = vs.size();
+          size_t size = vs[0]->size();
+
+          typedef map<size_t, size_t> PropMap;
+          PropMap propMap;
+
+          for(size_t i = 0; i < size; ++i){
+            size_t h = 0;
+            for(size_t j = 0; j < n; ++j){
+              h ^= vs[j]->hash(i);
+            }
+
+            auto itr = propMap.find(h);
+            if(itr == propMap.end()){
+              propMap[h] = 1;
+            }
+            else{
+              ++itr->second;
+            }
+          }
+
+          Var<double>* xOut = static_cast<Var<double>*>(getVar(p->xOut));
+          Var<double>* yOut = static_cast<Var<double>*>(getVar(p->yOut));
+
+          xOut->clear();
+          yOut->clear();
+            
+          size_t i = 0;
+          for(auto& itr : propMap){
+            xOut->capture(i++);
+            yOut->capture(itr.second);
+          }
+        }
       }
 
       for(Element* e : elements_){
@@ -1331,6 +1426,48 @@ namespace{
             c->getVec(j, cv);
 
             painter.fillRect(QRectF(xc, yc, width, height), toQColor(cv));
+          }
+        }
+        else if(Pie* p = dynamic_cast<Pie*>(e)){
+          VarBase* n = getVar(p->count);
+          VarBase* c = p->color > 0 ? getVar(p->color) : nullptr;
+
+          size_t size = n->size();
+
+          double total = 0;
+          for(size_t i = 0; i < size; ++i){
+            total += n->get(i);
+          }
+
+          double side = min(width - LEFT_MARGIN - RIGHT_MARGIN,
+                            height - TOP_MARGIN - BOTTOM_MARGIN);
+
+          QRectF rect(LEFT_MARGIN, TOP_MARGIN, side, side);
+          
+          Random rng;
+
+          int startAngle = 0;
+          for(size_t i = 0; i < size; ++i){
+            if(c){
+              DoubleVec cv;
+              c->getVec(i, cv);
+              
+              QBrush brush(toQColor(cv));
+              painter.setBrush(brush);
+            }
+            else{
+              QColor color(rng.equilikely(0, 255),
+                           rng.equilikely(0, 255),
+                           rng.equilikely(0, 255));
+
+              QBrush brush(color);
+              painter.setBrush(brush);
+            }
+
+            int spanAngle = n->get(i)/total * 360 * 16;
+            painter.drawPie(rect, startAngle, spanAngle);
+
+            startAngle += spanAngle;
           }
         }
       }
