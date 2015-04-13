@@ -194,6 +194,12 @@ llvm::Function* CGPlot2Runtime::PlotAddPointsFunc(){
                  {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty});
 }
 
+llvm::Function* CGPlot2Runtime::PlotAddLineFunc(){
+  return GetFunc("__scrt_plot_add_line",
+                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty,
+                   Int32Ty, Int32Ty, Int32Ty});
+}
+
 llvm::Function* CGPlot2Runtime::PlotAddAreaFunc(){
   return GetFunc("__scrt_plot_add_area",
                  {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});

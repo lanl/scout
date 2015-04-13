@@ -121,6 +121,7 @@ namespace CodeGen {
     
     llvm::Function* PlotInitFunc();
     llvm::Function* PlotAddLinesFunc();
+    llvm::Function* PlotAddLineFunc();
     llvm::Function* PlotAddPointsFunc();
     llvm::Function* PlotAddAreaFunc();
     llvm::Function* PlotAddIntervalFunc();

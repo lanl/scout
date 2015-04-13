@@ -875,6 +875,23 @@ namespace{
       }
     };
 
+    class Line : public Element{
+    public:
+      Line(VarId x1, VarId y1, VarId x2, VarId y2, VarId size, VarId color)
+        : x1(x1), y1(y1), x2(x2), y2(y2), size(size), color(color){}
+
+      VarId x1;
+      VarId y1;
+      VarId x2;
+      VarId y2;
+      VarId size;
+      VarId color;
+
+      int order(){
+        return 1;
+      }
+    };
+
     class Points : public RangeElement{
     public:
       Points(VarId x, VarId y, VarId size, VarId color)
@@ -1033,6 +1050,15 @@ namespace{
 
     void addLines(VarId x, VarId y, VarId size, VarId color){
       elements_.push_back(new Lines(x, y, size, color)); 
+    }
+
+    void addLine(VarId x1,
+                 VarId y1,
+                 VarId x2,
+                 VarId y2,
+                 VarId size,
+                 VarId color){
+      elements_.push_back(new Line(x1, y1, x2, y2, size, color)); 
     }
 
     void addPoints(VarId x, VarId y, VarId size, VarId color){
@@ -1208,6 +1234,45 @@ namespace{
           if(y->max() > yMax){
             yMax = y->max();
           }
+          else if(Line* l = dynamic_cast<Line*>(e)){
+            VarBase* x1 = getVar(l->x1);
+            VarBase* y1 = getVar(l->y1);
+
+            if(x1->min() < xMin){
+              xMin = x1->min();
+            }
+
+            if(x1->max() > xMax){
+              xMax = x1->max();
+            }
+
+            if(y1->min() < yMin){
+              yMin = y1->min();
+            }
+
+            if(y1->max() > yMax){
+              yMax = y1->max();
+            }
+
+            VarBase* x2 = getVar(l->x2);
+            VarBase* y2 = getVar(l->y2);
+
+            if(x2->min() < xMin){
+              xMin = x2->min();
+            }
+
+            if(x2->max() > xMax){
+              xMax = x2->max();
+            }
+
+            if(y2->min() < yMin){
+              yMin = y2->min();
+            }
+
+            if(y2->max() > yMax){
+              yMax = y2->max();
+            }
+          }
         }
       }
 
@@ -1330,6 +1395,42 @@ namespace{
             }
 
             lastPoint = point;
+          }
+        }
+        else if(Line* l = dynamic_cast<Line*>(e)){
+          VarBase* x1 = getVar(l->x1);
+          VarBase* y1 = getVar(l->y1);
+          VarBase* x2 = getVar(l->x2);
+          VarBase* y2 = getVar(l->y2);
+          VarBase* s = getVar(l->size);
+          VarBase* c = getVar(l->color);
+
+          size_t size = maxSize(x1, y1, x2, y2, s, c);
+
+          if(size == 0){
+            size = 1;
+          }
+
+          ndump(size);
+
+          QPointF p1;
+          QPointF p2;
+          QPen pen;
+
+          for(size_t i = 0; i < size; ++i){
+            p1.setX(origin.x() + ((x1->get(i) - xMin)/xSpan) * xLen);
+            p1.setY(origin.y() - ((y1->get(i) - yMin)/ySpan) * yLen);
+
+            p2.setX(origin.x() + ((x2->get(i) - xMin)/xSpan) * xLen);
+            p2.setY(origin.y() - ((y2->get(i) - yMin)/ySpan) * yLen);
+
+            pen.setWidthF(s->get(i));
+
+            DoubleVec cv;
+            c->getVec(i, cv);
+            pen.setColor(toQColor(cv));
+            painter.setPen(pen);
+            painter.drawLine(p1, p2);
           }
         }
         else if(Area* a = dynamic_cast<Area*>(e)){
@@ -1609,6 +1710,16 @@ extern "C"{
                              VarId size,
                              VarId color){
     static_cast<Plot*>(plot)->addLines(x, y, size, color);
+  }
+
+  void __scrt_plot_add_line(void* plot,
+                            VarId x1,
+                            VarId y1,
+                            VarId x2,
+                            VarId y2,
+                            VarId size,
+                            VarId color){
+    static_cast<Plot*>(plot)->addLine(x1, y1, x2, y2, size, color);
   }
 
   void __scrt_plot_add_points(void* plot,

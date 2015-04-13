@@ -681,6 +681,93 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         }
       }
     }
+    else if(k == "line"){
+      SpecObjectExpr* lv = v->toObject();
+      
+      if(!lv){
+        Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected an object specifier";
+        valid = false;
+        continue;
+      }
+      
+      SpecExpr* p = lv->get("start");
+      
+      if(p){
+        SpecArrayExpr* pa = p->toArray();
+        if(pa && pa->size() == 2){
+          if(!ValidateSpecExpr(pa->get(0), Context.DoubleTy) ||
+             !ValidateSpecExpr(pa->get(1), Context.DoubleTy)){
+            Diag(pa->getLocStart(), diag::err_invalid_plot_spec) <<
+            "invalid 'start'";
+            valid = false;
+          }
+        }
+        else{
+          Diag(lv->getLocStart(), diag::err_invalid_plot_spec) <<
+          "expected a 'start' array of size 2";
+          valid = false;
+        }
+      }
+      else{
+        Diag(lv->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected a 'start' key";
+        valid = false;
+      }
+      
+      p = lv->get("end");
+      
+      if(p){
+        SpecArrayExpr* pa = p->toArray();
+        if(pa && pa->size() == 2){
+          if(!ValidateSpecExpr(pa->get(0), Context.DoubleTy) ||
+             !ValidateSpecExpr(pa->get(1), Context.DoubleTy)){
+            Diag(pa->getLocStart(), diag::err_invalid_plot_spec) <<
+            "invalid 'end'";
+            valid = false;
+          }
+        }
+        else{
+          Diag(lv->getLocStart(), diag::err_invalid_plot_spec) <<
+          "expected a 'end' array of size 2";
+          valid = false;
+        }
+      }
+      else{
+        Diag(lv->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected an 'end' key";
+        valid = false;
+      }
+      
+      SpecExpr* s = lv->get("size");
+      if(s){
+        if(!ValidateSpecExpr(s, Context.DoubleTy)){
+          Diag(s->getLocStart(), diag::err_invalid_plot_spec) <<
+          "invalid 'size' key";
+          valid = false;
+        }
+      }
+      else{
+        lv->put("size", CreateSpecDoubleExpr(1.0));
+      }
+      
+      SpecExpr* c = lv->get("color");
+      if(c){
+        if(!ValidateSpecExpr(c, Context.FloatTy, 4)){
+          Diag(c->getLocStart(), diag::err_invalid_plot_spec) <<
+          "invalid 'color'";
+          valid = false;
+        }
+      }
+      else{
+        SpecArrayExpr* color = CreateSpecArrayExpr();
+        color->add(CreateSpecDoubleExpr(0.0));
+        color->add(CreateSpecDoubleExpr(0.0));
+        color->add(CreateSpecDoubleExpr(0.0));
+        color->add(CreateSpecDoubleExpr(1.0));
+        lv->put("color", color);
+      }
+    }
     else if(k == "axis"){
       SpecObjectExpr* av = v->toObject();
       

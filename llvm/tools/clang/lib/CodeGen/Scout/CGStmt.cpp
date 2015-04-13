@@ -2869,6 +2869,25 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       args = {plotPtr, yv, cv};
       Builder.CreateCall(R.PlotAddPieFunc(), args);
     }
+    else if(k == "line"){
+      SpecObjectExpr* o = v->toObject();
+      
+      SpecArrayExpr* pa = o->get("start")->toArray();
+      
+      Value* x1 = EmitPlotExpr(fd, plotPtr, pa->get(0), varId);
+      Value* y1 = EmitPlotExpr(fd, plotPtr, pa->get(1), varId);
+      
+      pa = o->get("end")->toArray();
+      
+      Value* x2 = EmitPlotExpr(fd, plotPtr, pa->get(0), varId);
+      Value* y2 = EmitPlotExpr(fd, plotPtr, pa->get(1), varId);
+      
+      Value* cv = EmitPlotExpr(fd, plotPtr, o->get("color"), varId);
+      Value* sv = EmitPlotExpr(fd, plotPtr, o->get("size"), varId);
+      
+      args = {plotPtr, x1, y1, x2, y2, sv, cv};
+      Builder.CreateCall(R.PlotAddLineFunc(), args);
+    }
     else if(k == "axis"){
       SpecObjectExpr* av = v->toObject();
       uint32_t dim = av->get("dim")->getInteger();
