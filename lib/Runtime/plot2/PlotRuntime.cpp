@@ -1411,8 +1411,6 @@ namespace{
             size = 1;
           }
 
-          ndump(size);
-
           QPointF p1;
           QPointF p2;
           QPen pen;

@@ -26,7 +26,20 @@ int main(int argc, char** argv){
   }
 
   with m in win plot{
-    points: {position:[rowIndex % WIDTH, rowIndex / HEIGHT], size: a}
+    points: {position:[rowIndex % WIDTH + 0.5, rowIndex / HEIGHT + 0.5],
+                 size: a},
+
+      line: {start:[rowIndex % WIDTH, rowIndex / HEIGHT],
+               end:[rowIndex % WIDTH + 1.0, rowIndex / HEIGHT]
+            },
+
+      line: {start:[rowIndex % WIDTH, rowIndex / HEIGHT],
+               end:[rowIndex % WIDTH, rowIndex / HEIGHT + 1.0]
+            },
+
+      line: {start:[WIDTH, 0], end:[WIDTH, HEIGHT]},
+
+      line: {start:[0, HEIGHT], end:[WIDTH, HEIGHT]}
   } 
 
   sleep(2);
