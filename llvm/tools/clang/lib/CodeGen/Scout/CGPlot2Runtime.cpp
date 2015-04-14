@@ -138,6 +138,12 @@ CGPlot2Runtime::CreateFrameFunc(){
 }
 
 llvm::Function*
+CGPlot2Runtime::CreateMeshFrameFunc(){
+  return GetFunc("__scrt_create_mesh_frame", {Int32Ty, Int32Ty, Int32Ty},
+                 VoidPtrTy);
+}
+
+llvm::Function*
 CGPlot2Runtime::FrameAddVarFunc(){
   return GetFunc("__scrt_frame_add_var", {VoidPtrTy, Int32Ty, Int32Ty});
 }

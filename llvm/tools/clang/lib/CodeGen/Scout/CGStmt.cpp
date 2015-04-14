@@ -2668,8 +2668,8 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       ns.insert({vd->getName().str(), vd});
     }
     
-    ValueVec args;
-    framePtr = Builder.CreateCall(R.CreateFrameFunc(), args, "frame.ptr");
+    SmallVector<Value*, 3> Dimensions;
+    GetMeshDimensions(mt, Dimensions);
     
     bool hasCells = false;
     bool hasVertices = false;
@@ -2695,9 +2695,6 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       }
     }
     
-    SmallVector<Value*, 3> Dimensions;
-    GetMeshDimensions(mt, Dimensions);
-    
     llvm::Value* numCells = 0;
     llvm::Value* numVertices = 0;
     llvm::Value* numEdges = 0;
@@ -2708,6 +2705,17 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
                     hasVertices ? &numVertices : 0,
                     hasEdges ? &numEdges : 0,
                     hasFaces ? &numFaces : 0);
+
+    while(Dimensions.size() < 3){
+      Dimensions.push_back(ConstantInt::get(R.Int64Ty, 0));
+    }
+    
+    ValueVec args =
+    {Builder.CreateTrunc(Dimensions[0], R.Int32Ty, "width"),
+      Builder.CreateTrunc(Dimensions[1], R.Int32Ty, "height"),
+      Builder.CreateTrunc(Dimensions[2], R.Int32Ty, "depth")};
+
+    framePtr = Builder.CreateCall(R.CreateMeshFrameFunc(), args, "frame.ptr");
     
     for(MeshDecl::field_iterator fitr = MD->field_begin(),
         fitrEnd = MD->field_end(); fitr != fitrEnd; ++fitr){

@@ -544,8 +544,21 @@ namespace{
 
   class Frame{
   public:
+    Frame(uint32_t width, uint32_t height, uint32_t depth)
+      : ready_(false),
+        width_(width),
+        height_(height),
+        depth_(depth){
+      ndump(width_);
+      ndump(height_);
+      ndump(depth_);
+    }
+
     Frame()
-      : ready_(false){}
+      : ready_(false),
+        width_(0),
+        height_(0),
+        depth_(0){}
 
     ~Frame(){
       for(auto& itr : plotFrameMap_){
@@ -793,6 +806,9 @@ namespace{
     VarVec vars_;
     PlotFrameMap plotFrameMap_;
     bool ready_;
+    uint32_t width_;
+    uint32_t height_;
+    uint32_t depth_;
   };
 
   void drawText(QPainter& painter,
@@ -1590,6 +1606,12 @@ extern "C"{
 
   void* __scrt_create_frame(){
     return new Frame();
+  }
+
+  void* __scrt_create_mesh_frame(uint32_t width,
+                                 uint32_t height,
+                                 uint32_t depth){
+    return new Frame(width, height, depth);
   }
 
   void __scrt_frame_add_var(void* f, VarId varId, VarId elementKind){

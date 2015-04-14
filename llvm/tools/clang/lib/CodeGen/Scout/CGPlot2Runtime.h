@@ -106,7 +106,8 @@ namespace CodeGen {
     llvm::Value* ElementDoubleVal;
 
     llvm::Function* CreateFrameFunc();
-
+    llvm::Function* CreateMeshFrameFunc();
+    
     llvm::Function* FrameAddVarFunc();
     llvm::Function* FrameAddArrayVarFunc();
     
