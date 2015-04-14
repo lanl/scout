@@ -340,6 +340,8 @@ llvm::Value *CodeGenFunction::getMeshIndex(const MeshFieldDecl* MFD) {
 llvm::Value *
 CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
 
+  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+
   //get the dimensions (Width, Height, Depth)
   SmallVector< llvm::Value *, 3 > dims;
   for(unsigned i = 0; i < args.size(); ++i) {
@@ -356,9 +358,14 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
     sprintf(IRNameStr, "cshift.rawindex.%s", IndexNames[i]);
     llvm::Value *rawIndex = Builder.CreateAdd(iv, args[i], IRNameStr);
 
+
     // make sure it is in range or wrap
     sprintf(IRNameStr, "cshift.index.%s", IndexNames[i]);
-    indices.push_back(Builder.CreateURem(rawIndex, dims[i], IRNameStr));
+    llvm::Value *y = Builder.CreateSRem(rawIndex, dims[i], IRNameStr);
+    llvm::Value *Check = Builder.CreateICmpSLT(y, ConstantZero);
+    llvm::Value *x = Builder.CreateSelect(Check,
+        Builder.CreateAdd(dims[i], y), y);
+    indices.push_back(x);
   }
 
   switch(args.size()) {
@@ -489,7 +496,7 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 				 sprintf(IRNameStr, "eoshift.rawindex.%s", IndexNames[i]);
 				 rawindices.push_back(Builder.CreateAdd(iv, args[i], IRNameStr));
 
-				 // module to find if index will wrap
+				 // find if index will wrap
 				 sprintf(IRNameStr, "eoshift.index.%s", IndexNames[i]);
 				 indices.push_back(Builder.CreateURem(rawindices[i], dims[i], IRNameStr));
        }
