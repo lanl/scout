@@ -88,7 +88,6 @@ public:
     : Var(V), Expr(1, E), TheDIE(nullptr), DotDebugLocOffset(~0U),
       MInsn(nullptr), DD(DD) {
     FrameIndex.push_back(FI);
-    assert(Var.Verify());
     assert(!E || E->isValid());
   }
 
@@ -108,7 +107,7 @@ public:
   DIE *getDIE() const { return TheDIE; }
   void setDotDebugLocOffset(unsigned O) { DotDebugLocOffset = O; }
   unsigned getDotDebugLocOffset() const { return DotDebugLocOffset; }
-  StringRef getName() const { return Var.getName(); }
+  StringRef getName() const { return Var->getName(); }
   const MachineInstr *getMInsn() const { return MInsn; }
   const ArrayRef<int> getFrameIndex() const { return FrameIndex; }
 
@@ -124,21 +123,21 @@ public:
       FrameIndex.append(FI.begin(), FI.end());
     }
     assert(Expr.size() > 1
-           ? std::all_of(Expr.begin(), Expr.end(),
-                         [](DIExpression &E) { return E.isBitPiece(); })
-           : (true && "conflicting locations for variable"));
+               ? std::all_of(Expr.begin(), Expr.end(),
+                             [](DIExpression &E) { return E->isBitPiece(); })
+               : (true && "conflicting locations for variable"));
   }
 
   // Translate tag to proper Dwarf tag.
   dwarf::Tag getTag() const {
-    if (Var.getTag() == dwarf::DW_TAG_arg_variable)
+    if (Var->getTag() == dwarf::DW_TAG_arg_variable)
       return dwarf::DW_TAG_formal_parameter;
 
     return dwarf::DW_TAG_variable;
   }
   /// \brief Return true if DbgVariable is artificial.
   bool isArtificial() const {
-    if (Var.isArtificial())
+    if (Var->isArtificial())
       return true;
     if (getType().isArtificial())
       return true;
@@ -146,7 +145,7 @@ public:
   }
 
   bool isObjectPointer() const {
-    if (Var.isObjectPointer())
+    if (Var->isObjectPointer())
       return true;
     if (getType().isObjectPointer())
       return true;
@@ -154,10 +153,10 @@ public:
   }
 
   bool variableHasComplexAddress() const {
-    assert(Var.isVariable() && "Invalid complex DbgVariable!");
+    assert(Var && "Invalid complex DbgVariable!");
     assert(Expr.size() == 1 &&
            "variableHasComplexAddress() invoked on multi-FI variable");
-    return Expr.back().getNumElements() > 0;
+    return Expr.back()->getNumElements() > 0;
   }
   bool isBlockByrefVariable() const;
   DIType getType() const;
@@ -568,6 +567,9 @@ public:
 
   /// Find the MDNode for the given reference.
   template <typename T> T resolve(DIRef<T> Ref) const {
+    return Ref.resolve(TypeIdentifierMap);
+  }
+  template <typename T> T *resolve(TypedDebugNodeRef<T> Ref) const {
     return Ref.resolve(TypeIdentifierMap);
   }
 

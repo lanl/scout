@@ -20,12 +20,11 @@ namespace llvm {
 
 StringRef WinCodeViewLineTables::getFullFilepath(const MDNode *S) {
   assert(S);
-  DIDescriptor D(S);
-  assert((D.isCompileUnit() || D.isFile() || D.isSubprogram() ||
-          D.isLexicalBlockFile() || D.isLexicalBlock()) &&
+  assert((isa<MDCompileUnit>(S) || isa<MDFile>(S) || isa<MDSubprogram>(S) ||
+          isa<MDLexicalBlockBase>(S)) &&
          "Unexpected scope info");
 
-  DIScope Scope(S);
+  DIScope Scope = cast<MDScope>(S);
   StringRef Dir = Scope.getDirectory(),
             Filename = Scope.getFilename();
   char *&Result = DirAndFilenameToFilepathMap[std::make_pair(Dir, Filename)];
@@ -193,7 +192,7 @@ void WinCodeViewLineTables::emitDebugInfoForFunction(const Function *GV) {
   StringRef GVName = GV->getName();
   StringRef FuncName;
   if (DISubprogram SP = getDISubprogram(GV))
-    FuncName = SP.getDisplayName();
+    FuncName = SP->getDisplayName();
 
   // FIXME Clang currently sets DisplayName to "bar" for a C++
   // "namespace_foo::bar" function, see PR21528.  Luckily, dbghelp.dll is trying

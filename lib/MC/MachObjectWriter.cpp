@@ -660,6 +660,7 @@ void MachObjectWriter::ExecutePostLayoutBinding(MCAssembler &Asm,
 bool MachObjectWriter::
 IsSymbolRefDifferenceFullyResolvedImpl(const MCAssembler &Asm,
                                        const MCSymbolData &DataA,
+                                       const MCSymbolData *DataB,
                                        const MCFragment &FB,
                                        bool InSet,
                                        bool IsPCRel) const {
@@ -1006,7 +1007,7 @@ void MachObjectWriter::WriteObject(MCAssembler &Asm,
 }
 
 MCObjectWriter *llvm::createMachObjectWriter(MCMachObjectTargetWriter *MOTW,
-                                             raw_ostream &OS,
+                                             raw_pwrite_stream &OS,
                                              bool IsLittleEndian) {
   return new MachObjectWriter(MOTW, OS, IsLittleEndian);
 }

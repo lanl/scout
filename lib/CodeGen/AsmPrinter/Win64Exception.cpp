@@ -343,7 +343,13 @@ void Win64Exception::emitCXXFrameHandler3Table(const MachineFunction *MF) {
     }
   }
 
-  if (ParentF != F)
+  // Defer emission until we've visited the parent function and all the catch
+  // handlers.  Cleanups don't contribute to the ip2state table yet, so don't
+  // count them.
+  if (ParentF != F && !FuncInfo.CatchHandlerMaxState.count(F))
+    return;
+  ++FuncInfo.NumIPToStateFuncsVisited;
+  if (FuncInfo.NumIPToStateFuncsVisited != FuncInfo.CatchHandlerMaxState.size())
     return;
 
   MCSymbol *UnwindMapXData = nullptr;
@@ -421,11 +427,16 @@ void Win64Exception::emitCXXFrameHandler3Table(const MachineFunction *MF) {
 
       HandlerMaps.push_back(HandlerMapXData);
 
+      int CatchHigh = -1;
+      for (WinEHHandlerType &HT : TBME.HandlerArray)
+        CatchHigh =
+            std::max(CatchHigh, FuncInfo.CatchHandlerMaxState[HT.Handler]);
+
       assert(TBME.TryLow <= TBME.TryHigh);
-      assert(TBME.CatchHigh > TBME.TryHigh);
+      assert(CatchHigh > TBME.TryHigh);
       OS.EmitIntValue(TBME.TryLow, 4);                    // TryLow
       OS.EmitIntValue(TBME.TryHigh, 4);                   // TryHigh
-      OS.EmitIntValue(TBME.CatchHigh, 4);                 // CatchHigh
+      OS.EmitIntValue(CatchHigh, 4);                      // CatchHigh
       OS.EmitIntValue(TBME.HandlerArray.size(), 4);       // NumCatches
       OS.EmitValue(createImageRel32(HandlerMapXData), 4); // HandlerArray
     }
@@ -450,9 +461,24 @@ void Win64Exception::emitCXXFrameHandler3Table(const MachineFunction *MF) {
         const MCSymbolRefExpr *ParentFrameOffsetRef = MCSymbolRefExpr::Create(
             ParentFrameOffset, MCSymbolRefExpr::VK_None, Asm->OutContext);
 
+        // Get the frame escape label with the offset of the catch object. If
+        // the index is -1, then there is no catch object, and we should emit an
+        // offset of zero, indicating that no copy will occur.
+        const MCExpr *FrameAllocOffsetRef = nullptr;
+        if (HT.CatchObjRecoverIdx >= 0) {
+          MCSymbol *FrameAllocOffset =
+              Asm->OutContext.getOrCreateFrameAllocSymbol(
+                  GlobalValue::getRealLinkageName(F->getName()),
+                  HT.CatchObjRecoverIdx);
+          FrameAllocOffsetRef = MCSymbolRefExpr::Create(
+              FrameAllocOffset, MCSymbolRefExpr::VK_None, Asm->OutContext);
+        } else {
+          FrameAllocOffsetRef = MCConstantExpr::Create(0, Asm->OutContext);
+        }
+
         OS.EmitIntValue(HT.Adjectives, 4);                    // Adjectives
         OS.EmitValue(createImageRel32(HT.TypeDescriptor), 4); // Type
-        OS.EmitIntValue(HT.CatchObjOffset, 4);                // CatchObjOffset
+        OS.EmitValue(FrameAllocOffsetRef, 4);                 // CatchObjOffset
         OS.EmitValue(createImageRel32(HT.Handler), 4);        // Handler
         OS.EmitValue(ParentFrameOffsetRef, 4);                // ParentFrameOffset
       }

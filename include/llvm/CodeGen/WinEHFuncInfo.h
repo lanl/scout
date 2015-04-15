@@ -75,6 +75,7 @@ public:
 
   void setExceptionVar(const Value *Val) { ExceptionObjectVar = Val; }
   void setExceptionVarIndex(int Index) { ExceptionObjectIndex = Index;  }
+  int getExceptionVarIndex() const { return ExceptionObjectIndex; }
   void setReturnTargets(TinyPtrVector<BasicBlock *> &Targets) {
     ReturnTargets = Targets;
   }
@@ -120,15 +121,13 @@ struct WinEHUnwindMapEntry {
 struct WinEHHandlerType {
   int Adjectives;
   GlobalVariable *TypeDescriptor;
-  int CatchObjIdx;
-  int CatchObjOffset;
+  int CatchObjRecoverIdx;
   Function *Handler;
 };
 
 struct WinEHTryBlockMapEntry {
   int TryLow;
   int TryHigh;
-  int CatchHigh;
   SmallVector<WinEHHandlerType, 1> HandlerArray;
 };
 
@@ -136,13 +135,18 @@ struct WinEHFuncInfo {
   DenseMap<const LandingPadInst *, int> LandingPadStateMap;
   DenseMap<const Function *, int> CatchHandlerParentFrameObjIdx;
   DenseMap<const Function *, int> CatchHandlerParentFrameObjOffset;
+  DenseMap<const Function *, int> CatchHandlerMaxState;
   SmallVector<WinEHUnwindMapEntry, 4> UnwindMap;
   SmallVector<WinEHTryBlockMapEntry, 4> TryBlockMap;
   SmallVector<std::pair<MCSymbol *, int>, 4> IPToStateList;
   int UnwindHelpFrameIdx;
   int UnwindHelpFrameOffset;
 
-  WinEHFuncInfo() : UnwindHelpFrameIdx(INT_MAX), UnwindHelpFrameOffset(-1) {}
+  unsigned NumIPToStateFuncsVisited;
+
+  WinEHFuncInfo()
+      : UnwindHelpFrameIdx(INT_MAX), UnwindHelpFrameOffset(-1),
+        NumIPToStateFuncsVisited(0) {}
 };
 
 }

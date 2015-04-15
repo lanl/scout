@@ -38,7 +38,7 @@ $_TI1H = comdat any
 ; CHECK-NEXT:        .long   0
 ; CHECK-NEXT:        .long   1
 ; CHECK-NEXT:        .long   ("$ip2state$?test1@@YAXXZ")@IMGREL
-; CHECK-NEXT:        .long   64
+; CHECK-NEXT:        .long   32
 ; CHECK-NEXT:        .long   0
 ; CHECK-NEXT:        .long   1
 ; CHECK-NEXT:"$stateUnwindMap$?test1@@YAXXZ":
@@ -98,7 +98,7 @@ entry:
 ; CHECK-NEXT:        .long   0
 ; CHECK-NEXT:        .long   4
 ; CHECK-NEXT:        .long   ("$ip2state$?test2@@YAX_N@Z")@IMGREL
-; CHECK-NEXT:        .long   64
+; CHECK-NEXT:        .long   40
 ; CHECK-NEXT:        .long   0
 ; CHECK-NEXT:        .long   1
 ; CHECK-NEXT:"$stateUnwindMap$?test2@@YAX_N@Z":
@@ -117,8 +117,6 @@ entry:
 ; CHECK-NEXT:        .long   0
 
 define void @"\01?test2@@YAX_N@Z"(i1 zeroext %b) #2 {
-entry:
-  %unwindhelp = alloca i64
   %b.addr = alloca i8, align 1
   %s = alloca %struct.S, align 1
   %exn.slot = alloca i8*
@@ -126,10 +124,7 @@ entry:
   %s1 = alloca %struct.S, align 1
   %frombool = zext i1 %b to i8
   store i8 %frombool, i8* %b.addr, align 1
-  %0 = bitcast i64* %unwindhelp to i8*
-  store volatile i64 -2, i64* %unwindhelp
   call void (...)* @llvm.frameescape(%struct.S* %s, %struct.S* %s1)
-  call void @llvm.eh.unwindhelp(i8* %0)
   call void @"\01?may_throw@@YAXXZ"()
   invoke void @"\01?may_throw@@YAXXZ"()
           to label %invoke.cont unwind label %lpad1
@@ -204,7 +199,16 @@ entry:
   %s.i8 = call i8* @llvm.framerecover(i8* bitcast (void (i1)* @"\01?test2@@YAX_N@Z" to i8*), i8* %1, i32 0)
   %s = bitcast i8* %s.i8 to %struct.S*
   call void @"\01??_DS@@QEAA@XZ"(%struct.S* %s) #4
+  invoke void @llvm.donothing()
+          to label %entry.split unwind label %stub
+
+entry.split:                                      ; preds = %entry
   ret void
+
+stub:                                             ; preds = %entry
+  %2 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__CxxFrameHandler3 to i8*)
+          cleanup
+  unreachable
 }
 
 define internal void @"\01?test2@@YAX_N@Z.cleanup1"(i8*, i8*) #7 {
@@ -212,8 +216,19 @@ entry:
   %s1.i8 = call i8* @llvm.framerecover(i8* bitcast (void (i1)* @"\01?test2@@YAX_N@Z" to i8*), i8* %1, i32 1)
   %s1 = bitcast i8* %s1.i8 to %struct.S*
   call void @"\01??_DS@@QEAA@XZ"(%struct.S* %s1) #4
+  invoke void @llvm.donothing()
+          to label %entry.split unwind label %stub
+
+entry.split:                                      ; preds = %entry
   ret void
+
+stub:                                             ; preds = %entry
+  %2 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__CxxFrameHandler3 to i8*)
+          cleanup
+  unreachable
 }
+
+declare void @llvm.donothing()
 
 attributes #0 = { "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-realign-stack" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" "wineh-parent"="?test1@@YAXXZ" }
 attributes #1 = { nounwind "less-precise-fpmad"="false" "no-frame-pointer-elim"="false" "no-infs-fp-math"="false" "no-nans-fp-math"="false" "no-realign-stack" "stack-protector-buffer-size"="8" "unsafe-fp-math"="false" "use-soft-float"="false" }

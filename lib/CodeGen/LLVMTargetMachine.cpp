@@ -140,12 +140,9 @@ static MCContext *addPassesToGenerateCode(LLVMTargetMachine *TM,
   return &MMI->getContext();
 }
 
-bool LLVMTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
-                                            formatted_raw_ostream &Out,
-                                            CodeGenFileType FileType,
-                                            bool DisableVerify,
-                                            AnalysisID StartAfter,
-                                            AnalysisID StopAfter) {
+bool LLVMTargetMachine::addPassesToEmitFile(
+    PassManagerBase &PM, raw_pwrite_stream &Out, CodeGenFileType FileType,
+    bool DisableVerify, AnalysisID StartAfter, AnalysisID StopAfter) {
   // Add common CodeGen passes.
   MCContext *Context = addPassesToGenerateCode(this, PM, DisableVerify,
                                                StartAfter, StopAfter);
@@ -184,8 +181,9 @@ bool LLVMTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
 
     MCAsmBackend *MAB = getTarget().createMCAsmBackend(MRI, getTargetTriple(),
                                                        TargetCPU);
+    auto FOut = llvm::make_unique<formatted_raw_ostream>(Out);
     MCStreamer *S = getTarget().createAsmStreamer(
-        *Context, Out, Options.MCOptions.AsmVerbose,
+        *Context, std::move(FOut), Options.MCOptions.AsmVerbose,
         Options.MCOptions.MCUseDwarfDirectory, InstPrinter, MCE, MAB,
         Options.MCOptions.ShowMCInst);
     AsmStreamer.reset(S);
@@ -229,9 +227,8 @@ bool LLVMTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
 /// code is not supported. It fills the MCContext Ctx pointer which can be
 /// used to build custom MCStreamer.
 ///
-bool LLVMTargetMachine::addPassesToEmitMC(PassManagerBase &PM,
-                                          MCContext *&Ctx,
-                                          raw_ostream &Out,
+bool LLVMTargetMachine::addPassesToEmitMC(PassManagerBase &PM, MCContext *&Ctx,
+                                          raw_pwrite_stream &Out,
                                           bool DisableVerify) {
   // Add common CodeGen passes.
   Ctx = addPassesToGenerateCode(this, PM, DisableVerify, nullptr, nullptr);

@@ -119,7 +119,7 @@ class MachObjectWriter : public MCObjectWriter {
   MachSymbolData *findSymbolData(const MCSymbol &Sym);
 
 public:
-  MachObjectWriter(MCMachObjectTargetWriter *MOTW, raw_ostream &OS,
+  MachObjectWriter(MCMachObjectTargetWriter *MOTW, raw_pwrite_stream &OS,
                    bool IsLittleEndian)
       : MCObjectWriter(OS, IsLittleEndian), TargetObjectWriter(MOTW) {}
 
@@ -262,6 +262,7 @@ public:
 
   bool IsSymbolRefDifferenceFullyResolvedImpl(const MCAssembler &Asm,
                                               const MCSymbolData &DataA,
+                                              const MCSymbolData *DataB,
                                               const MCFragment &FB,
                                               bool InSet,
                                               bool IsPCRel) const override;
@@ -278,7 +279,8 @@ public:
 /// \param OS - The stream to write to.
 /// \returns The constructed object writer.
 MCObjectWriter *createMachObjectWriter(MCMachObjectTargetWriter *MOTW,
-                                       raw_ostream &OS, bool IsLittleEndian);
+                                       raw_pwrite_stream &OS,
+                                       bool IsLittleEndian);
 
 } // End llvm namespace
 
