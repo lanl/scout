@@ -2184,7 +2184,7 @@ bool Driver::GetReleaseVersion(const char *Str, unsigned &Major,
 
   Major = Minor = Micro = 0;
   if (*Str == '\0')
-    return true;
+    return false;
 
   char *End;
   Major = (unsigned) strtol(Str, &End, 10);
