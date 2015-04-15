@@ -452,22 +452,22 @@ template <> struct MDNodeKeyImpl<MDScoutDerivedType> {
   BaseType(BaseType), SizeInBits(SizeInBits), AlignInBits(AlignInBits),
   OffsetInBits(OffsetInBits), Flags(Flags), ExtraData(ExtraData) {}
   MDNodeKeyImpl(const MDScoutDerivedType *N)
-  : Tag(N->getTag()), Name(N->getName()), File(N->getFile()),
-  Line(N->getLine()), Scope(N->getScope()), BaseType(N->getBaseType()),
+  : Tag(N->getTag()), Name(N->getName()), File(N->getRawFile()),
+  Line(N->getLine()), Scope(N->getRawScope()), BaseType(N->getRawBaseType()),
   SizeInBits(N->getSizeInBits()), AlignInBits(N->getAlignInBits()),
   OffsetInBits(N->getOffsetInBits()), Flags(N->getFlags()),
   ScoutFlags(N->getScoutFlags()),
-  ExtraData(N->getExtraData()) {}
+  ExtraData(N->getRawExtraData()) {}
   
   bool isKeyOf(const MDScoutDerivedType *RHS) const {
     return Tag == RHS->getTag() && Name == RHS->getName() &&
-    File == RHS->getFile() && Line == RHS->getLine() &&
-    Scope == RHS->getScope() && BaseType == RHS->getBaseType() &&
+    File == RHS->getRawFile() && Line == RHS->getLine() &&
+    Scope == RHS->getRawScope() && BaseType == RHS->getRawBaseType() &&
     SizeInBits == RHS->getSizeInBits() &&
     AlignInBits == RHS->getAlignInBits() &&
     OffsetInBits == RHS->getOffsetInBits() && Flags == RHS->getFlags() &&
     ScoutFlags == RHS->getScoutFlags() &&
-    ExtraData == RHS->getExtraData();
+    ExtraData == RHS->getRawExtraData();
   }
   unsigned getHashValue() const {
     return hash_combine(Tag, Name, File, Line, Scope, BaseType, SizeInBits,
@@ -509,27 +509,27 @@ template <> struct MDNodeKeyImpl<MDScoutCompositeType> {
     TemplateParams(TemplateParams), Identifier(Identifier),
     DimX(DimX), DimY(DimY), DimZ(DimZ){}
     MDNodeKeyImpl(const MDScoutCompositeType *N)
-    : Tag(N->getTag()), Name(N->getName()), File(N->getFile()),
-    Line(N->getLine()), Scope(N->getScope()), BaseType(N->getBaseType()),
+    : Tag(N->getTag()), Name(N->getName()), File(N->getRawFile()),
+    Line(N->getLine()), Scope(N->getRawScope()), BaseType(N->getRawBaseType()),
     SizeInBits(N->getSizeInBits()), AlignInBits(N->getAlignInBits()),
     OffsetInBits(N->getOffsetInBits()), Flags(N->getFlags()),
-    Elements(N->getElements()), RuntimeLang(N->getRuntimeLang()),
-    VTableHolder(N->getVTableHolder()),
-    TemplateParams(N->getTemplateParams()), Identifier(N->getIdentifier()),
+    Elements(N->getRawElements()), RuntimeLang(N->getRuntimeLang()),
+    VTableHolder(N->getRawVTableHolder()),
+    TemplateParams(N->getRawTemplateParams()), Identifier(N->getIdentifier()),
     DimX(N->getDimX()), DimY(N->getDimY()), DimZ(N->getDimZ()){
     }
     
     bool isKeyOf(const MDScoutCompositeType *RHS) const {
       return Tag == RHS->getTag() && Name == RHS->getName() &&
-      File == RHS->getFile() && Line == RHS->getLine() &&
-      Scope == RHS->getScope() && BaseType == RHS->getBaseType() &&
+      File == RHS->getRawFile() && Line == RHS->getLine() &&
+      Scope == RHS->getRawScope() && BaseType == RHS->getRawBaseType() &&
       SizeInBits == RHS->getSizeInBits() &&
       AlignInBits == RHS->getAlignInBits() &&
       OffsetInBits == RHS->getOffsetInBits() && Flags == RHS->getFlags() &&
-      Elements == RHS->getElements() &&
+      Elements == RHS->getRawElements() &&
       RuntimeLang == RHS->getRuntimeLang() &&
-      VTableHolder == RHS->getVTableHolder() &&
-      TemplateParams == RHS->getTemplateParams() &&
+      VTableHolder == RHS->getRawVTableHolder() &&
+      TemplateParams == RHS->getRawTemplateParams() &&
       Identifier == RHS->getIdentifier() &&
       DimX == RHS->getDimX() &&
       DimY == RHS->getDimY() &&

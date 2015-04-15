@@ -78,23 +78,32 @@ using namespace llvm::dwarf;
 // -------------- The following functions were copied from LLVM
 // DIBuilder.cpp and must be kept in sync in the event of changes.
 
-static MDNode *getNonCompileUnitScope(MDNode *N) {
-  if (DIDescriptor(N).isCompileUnit())
-    return NULL;
-  return N;
+static MDScope *getNonCompileUnitScope(MDNode *N) {
+  if (!N || isa<MDCompileUnit>(N))
+    return nullptr;
+  return cast<MDScope>(N);
 }
 
 namespace {
   class HeaderBuilder {
+    /// \brief Whether there are any fields yet.
+    ///
+    /// Note that this is not equivalent to \c Chars.empty(), since \a concat()
+    /// may have been called already with an empty string.
+    bool IsEmpty;
     SmallVector<char, 256> Chars;
     
   public:
-    explicit HeaderBuilder(Twine T) { T.toVector(Chars); }
-    HeaderBuilder(const HeaderBuilder &X) : Chars(X.Chars) {}
-    HeaderBuilder(HeaderBuilder &&X) : Chars(std::move(X.Chars)) {}
+    HeaderBuilder() : IsEmpty(true) {}
+    HeaderBuilder(const HeaderBuilder &X) : IsEmpty(X.IsEmpty), Chars(X.Chars) {}
+    HeaderBuilder(HeaderBuilder &&X)
+    : IsEmpty(X.IsEmpty), Chars(std::move(X.Chars)) {}
     
     template <class Twineable> HeaderBuilder &concat(Twineable &&X) {
-      Chars.push_back(0);
+      if (IsEmpty)
+        IsEmpty = false;
+      else
+        Chars.push_back(0);
       Twine(X).toVector(Chars);
       return *this;
     }
@@ -104,7 +113,7 @@ namespace {
     }
     
     static HeaderBuilder get(unsigned Tag) {
-      return HeaderBuilder("0x" + Twine::utohexstr(Tag));
+      return HeaderBuilder().concat("0x" + Twine::utohexstr(Tag));
     }
   };
 }
@@ -127,9 +136,9 @@ DIScoutCompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
 ) {
   DIScoutCompositeType R = MDScoutCompositeType::get(
     VMContext, dwarf::DW_TAG_SCOUT_uniform_mesh_type, Name, File, LineNumber,
-    DIScope(getNonCompileUnitScope(Context)).getRef(), DerivedFrom.getRef(),
+    MDScopeRef::get(DIScope(getNonCompileUnitScope(Context))), MDTypeRef::get(DerivedFrom),
     SizeInBits, AlignInBits, 0, Flags, Elements, RunTimeLang,
-    VTableHolder.getRef(), nullptr, UniqueIdentifier, DimX, DimY, DimZ);
+    MDTypeRef::get(VTableHolder), nullptr, UniqueIdentifier, DimX, DimY, DimZ);
   if (!UniqueIdentifier.empty())
     retainType(R);
   trackIfUnresolved(R);
@@ -150,15 +159,7 @@ DIScoutCompositeType DIBuilder::createALEMeshType(DIDescriptor Context,
                                                       DIType VTableHolder,
                                                       StringRef UniqueIdentifier
                                                       ) {
-  DIScoutCompositeType R = MDScoutCompositeType::get(
-                                                     VMContext, dwarf::DW_TAG_SCOUT_ALE_mesh_type, Name, File, LineNumber,
-                                                     DIScope(getNonCompileUnitScope(Context)).getRef(), DerivedFrom.getRef(),
-                                                     SizeInBits, AlignInBits, 0, Flags, Elements, RunTimeLang,
-                                                     VTableHolder.getRef(), nullptr, UniqueIdentifier, DimX, DimY, DimZ);
-  if (!UniqueIdentifier.empty())
-    retainType(R);
-  trackIfUnresolved(R);
-  return R;
+  assert(false && "unimplemented");
 }
 
 
@@ -220,7 +221,8 @@ DIBuilder::createMeshMemberType(DIDescriptor Scope, StringRef Name,
                                 unsigned ScoutFlags,
                                 DIType Ty) {
   return MDScoutDerivedType::get(VMContext, dwarf::DW_TAG_member, Name, File, LineNumber,
-                                 DIScope(getNonCompileUnitScope(Scope)).getRef(), Ty.getRef(), SizeInBits,
+                                 MDScopeRef::get(DIScope(getNonCompileUnitScope(Scope))),
+                                 MDTypeRef::get(Ty), SizeInBits,
                                  AlignInBits, OffsetInBits, Flags, ScoutFlags);
 }
 
@@ -233,9 +235,9 @@ DIBuilder::createScoutForwardDecl(unsigned Tag, StringRef Name, DIDescriptor Sco
   // replaceWithUniqued().
   DIScoutCompositeType RetTy =
   MDScoutCompositeType::get(
-                            VMContext, Tag, Name, F.getFileNode(), Line,
-                            DIScope(getNonCompileUnitScope(Scope)).getRef(), nullptr, SizeInBits,
-                            AlignInBits, 0, DIDescriptor::FlagFwdDecl, nullptr, RuntimeLang, nullptr,
+                            VMContext, Tag, Name, F, Line,
+                            MDScopeRef::get(DIScope(getNonCompileUnitScope(Scope))), nullptr,
+                            SizeInBits, AlignInBits, 0, DIDescriptor::FlagFwdDecl, nullptr, RuntimeLang, nullptr,
                             nullptr, UniqueIdentifier, 0, 0, 0);
   if (!UniqueIdentifier.empty())
     retainType(RetTy);
@@ -249,10 +251,11 @@ DIScoutCompositeType DIBuilder::createReplaceableScoutCompositeType(
                                                                     unsigned Flags, StringRef UniqueIdentifier) {
   DIScoutCompositeType RetTy =
   MDScoutCompositeType::getTemporary(
-                                     VMContext, Tag, Name, F.getFileNode(), Line,
-                                     DIScope(getNonCompileUnitScope(Scope)).getRef(), nullptr, SizeInBits,
-                                     AlignInBits, 0, Flags, nullptr, RuntimeLang,
-                                     nullptr, nullptr, UniqueIdentifier, 0, 0, 0).release();
+                                     VMContext, Tag, Name, F, Line,
+                                     MDScopeRef::get(DIScope(getNonCompileUnitScope(Scope))),
+                                     nullptr, SizeInBits, AlignInBits, 0, Flags,
+                                     nullptr, RuntimeLang, nullptr, nullptr,
+                                     UniqueIdentifier, 0, 0, 0).release();
   if (!UniqueIdentifier.empty())
     retainType(RetTy);
   trackIfUnresolved(RetTy);
@@ -261,7 +264,14 @@ DIScoutCompositeType DIBuilder::createReplaceableScoutCompositeType(
 
 void DIBuilder::replaceArrays(DIScoutCompositeType &T, DIArray Elements,
                               DIArray TParams) {
-  T.setArrays(Elements, TParams);
+  {
+    TypedTrackingMDRef<MDScoutCompositeType> N(T);
+    if (Elements)
+      N->replaceElements(Elements);
+    if (TParams)
+      N->replaceTemplateParams(MDTemplateParameterArray(TParams));
+    T = N.get();
+  }
   
   // If T isn't resolved, there's no problem.
   if (!T->isResolved())
@@ -271,7 +281,7 @@ void DIBuilder::replaceArrays(DIScoutCompositeType &T, DIArray Elements,
   // arrays explicitly if they're unresolved, or else the cycles will be
   // orphaned.
   if (Elements)
-    trackIfUnresolved(Elements);
+    trackIfUnresolved(Elements.get());
   if (TParams)
-    trackIfUnresolved(TParams);
+    trackIfUnresolved(TParams.get());
 }

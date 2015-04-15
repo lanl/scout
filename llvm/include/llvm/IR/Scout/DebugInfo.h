@@ -84,19 +84,40 @@ namespace llvm {
   // DIScoutDerivedType is a proper subclass of DIDerivedType
 
   class DIScoutDerivedType : public DIType {
-    MDScoutDerivedType *getRaw() const {
-      return dyn_cast_or_null<MDScoutDerivedType>(get());
+  public:
+    DIScoutDerivedType() = default;
+    DIScoutDerivedType(const MDScoutDerivedType *N) : DIType(N) {}
+    
+    MDScoutDerivedType *get() const {
+      return cast_or_null<MDScoutDerivedType>(DIDescriptor::get());
+    }
+    operator MDScoutDerivedType *() const { return get(); }
+    MDScoutDerivedType *operator->() const { return get(); }
+    MDScoutDerivedType &operator*() const { return *get(); }
+    
+    DITypeRef getTypeDerivedFrom() const { return get()->getBaseType(); }
+    
+    /// \brief Return property node, if this ivar is associated with one.
+    MDObjCProperty *getObjCProperty() const {
+      return cast<MDDerivedType>(get())->getObjCProperty();
     }
     
-  public:
+    DITypeRef getClassType() const {
+      return cast<MDDerivedType>(get())->getClassType();
+    }
+    
+    Constant *getConstant() const {
+      return cast<MDDerivedType>(get())->getConstant();
+    }
+    
+    unsigned getScoutFlags() const { return get()->getScoutFlags(); }
+    
     enum {
       FlagMeshFieldCellLocated     = 1 << 0,
       FlagMeshFieldVertexLocated   = 1 << 1,
       FlagMeshFieldEdgeLocated     = 1 << 2,
       FlagMeshFieldFaceLocated     = 1 << 3
     };
-    
-    unsigned getScoutFlags() const { RETURN_FROM_RAW(N->getScoutFlags(), 0); }
     
     bool isCellLocated() const {
       return (getScoutFlags() & FlagMeshFieldCellLocated) != 0;
@@ -113,103 +134,44 @@ namespace llvm {
     bool isFaceLocated() const {
       return (getScoutFlags() & FlagMeshFieldFaceLocated) != 0;
     }
-    
-    explicit DIScoutDerivedType(const MDNode *N = nullptr) : DIType(N) {}
-    DIScoutDerivedType(const MDDerivedTypeBase *N) : DIType(N) {}
-    
-    DITypeRef getTypeDerivedFrom() const {
-      RETURN_REF_FROM_RAW(DITypeRef, N->getBaseType());
-    }
-    
-    /// \brief Return property node, if this ivar is associated with one.
-    MDNode *getObjCProperty() const {
-      if (auto *N = dyn_cast_or_null<MDScoutDerivedType>(get()))
-        return dyn_cast_or_null<MDNode>(N->getExtraData());
-      return nullptr;
-    }
-    
-    DITypeRef getClassType() const {
-      assert(getTag() == dwarf::DW_TAG_ptr_to_member_type);
-      if (auto *N = dyn_cast_or_null<MDScoutDerivedType>(get()))
-        return DITypeRef::get(N->getExtraData());
-      return DITypeRef::get(nullptr);
-    }
-    
-    Constant *getConstant() const {
-      assert((getTag() == dwarf::DW_TAG_member) && isStaticMember());
-      if (auto *N = dyn_cast_or_null<MDScoutDerivedType>(get()))
-        if (auto *C = dyn_cast_or_null<ConstantAsMetadata>(N->getExtraData()))
-          return C->getValue();
-      
-      return nullptr;
-    }
-    
-    bool Verify() const;
   };
 
   class DIScoutCompositeType : public DIDerivedType {
     friend class DIBuilder;
     
-    /// \brief Set the array of member DITypes.
-    void setArraysHelper(MDNode *Elements, MDNode *TParams);
-    
-    MDScoutCompositeType *getRaw() const {
-      return dyn_cast_or_null<MDScoutCompositeType>(get());
-    }
-    
   public:
-    explicit DIScoutCompositeType(const MDNode *N = nullptr) : DIDerivedType(N) {}
-    DIScoutCompositeType(const MDCompositeTypeBase *N) : DIDerivedType(N) {}
+    DIScoutCompositeType() = default;
+    DIScoutCompositeType(const MDScoutCompositeType *N) : DIDerivedType(N) {}
     
-    DIArray getElements() const {
-      assert(!isSubroutineType() && "no elements for DISubroutineType");
-      RETURN_DESCRIPTOR_FROM_RAW(DIArray, N->getElements());
+    MDScoutCompositeType *get() const {
+      return cast_or_null<MDScoutCompositeType>(DIDescriptor::get());
     }
+    operator MDScoutCompositeType *() const { return get(); }
+    MDScoutCompositeType *operator->() const { return get(); }
+    MDScoutCompositeType &operator*() const { return *get(); }
     
-  private:
-    template <typename T>
-    void setArrays(DITypedArray<T> Elements, DIArray TParams = DIArray()) {
-      assert(
-             (!TParams || DbgNode->getNumOperands() == 8) &&
-             "If you're setting the template parameters this should include a slot "
-             "for that!");
-      setArraysHelper(Elements, TParams);
-    }
+    DIArray getElements() const { return get()->getElements(); }
     
-  public:
-    unsigned getRunTimeLang() const { RETURN_FROM_RAW(N->getRuntimeLang(), 0); }
-    DITypeRef getContainingType() const {
-      RETURN_REF_FROM_RAW(DITypeRef, N->getVTableHolder());
-    }
+    unsigned getRunTimeLang() const { return get()->getRuntimeLang(); }
+    DITypeRef getContainingType() const { return get()->getVTableHolder(); }
     
-  private:
-    /// \brief Set the containing type.
-    void setContainingType(DIScoutCompositeType ContainingType);
-    
-  public:
-    DIArray getTemplateParams() const {
-      RETURN_DESCRIPTOR_FROM_RAW(DIArray, N->getTemplateParams());
-    }
-    MDString *getIdentifier() const {
-      RETURN_FROM_RAW(N->getRawIdentifier(), nullptr);
-    }
-    
-    bool Verify() const;
+    DIArray getTemplateParams() const { return get()->getTemplateParams(); }
+    MDString *getIdentifier() const { return get()->getRawIdentifier(); }
     
     unsigned getDimension(int dim) const{
       switch(dim){
         case 0:
-          RETURN_FROM_RAW(N->getDimX(), 0);
+          return get()->getDimX();
         case 1:
-          RETURN_FROM_RAW(N->getDimY(), 0);
+          return get()->getDimY();
         case 2:
-          RETURN_FROM_RAW(N->getDimZ(), 0);
+          return get()->getDimZ();
         default:
           assert(false && "invalid dimension");
       }
     }
   };
-
+  
 } // end namespace llvm
 
 #undef RETURN_FROM_RAW

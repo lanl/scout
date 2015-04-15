@@ -1183,10 +1183,10 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, DIScoutCompositeType CTy) {
     case dwarf::DW_TAG_SCOUT_unstructured_mesh_type: {
       // Add elements to mesh type.
       DIArray Elements = CTy.getElements();
-      for (unsigned i = 0, N = Elements.getNumElements(); i < N; ++i) {
-        DIDescriptor Element = Elements.getElement(i);
-        DIScoutDerivedType DSDTy(Element);
-        constructMeshMemberDIE(Buffer, DSDTy);
+      for (unsigned i = 0, N = Elements.size(); i < N; ++i) {
+        DIDescriptor Element = Elements[i];
+        DIScoutDerivedType DDTy = dyn_cast<MDScoutDerivedType>(Element);
+        constructMeshMemberDIE(Buffer, DDTy);
       }
       break;
     }

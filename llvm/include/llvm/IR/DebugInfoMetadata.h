@@ -803,7 +803,7 @@ class MDScoutDerivedType : public MDDerivedTypeBase {
   
   static MDScoutDerivedType *getImpl(LLVMContext &Context, unsigned Tag,
                                 StringRef Name, Metadata *File, unsigned Line,
-                                Metadata *Scope, Metadata *BaseType,
+                                MDScopeRef Scope, MDTypeRef BaseType,
                                 uint64_t SizeInBits, uint64_t AlignInBits,
                                 uint64_t OffsetInBits, unsigned Flags,
                                 unsigned ScoutFlags,
@@ -841,8 +841,8 @@ public:
                     (Tag, Name, File, Line, Scope, BaseType, SizeInBits,
                      AlignInBits, OffsetInBits, Flags, ScoutFlags, ExtraData))
   DEFINE_MDNODE_GET(MDScoutDerivedType,
-                    (unsigned Tag, StringRef Name, Metadata *File,
-                     unsigned Line, Metadata *Scope, Metadata *BaseType,
+                    (unsigned Tag, StringRef Name, MDFile *File,
+                     unsigned Line, MDScopeRef Scope, MDTypeRef BaseType,
                      uint64_t SizeInBits, uint64_t AlignInBits,
                      uint64_t OffsetInBits, unsigned Flags,
                      unsigned ScoutFlags,
@@ -861,6 +861,23 @@ public:
   /// types and member fields (static members and ivars).
   Metadata *getExtraData() const { return getRawExtraData(); }
   Metadata *getRawExtraData() const { return getOperand(4); }
+  
+  /// \brief Get casted version of extra data.
+  /// @{
+  MDTypeRef getClassType() const {
+    assert(getTag() == dwarf::DW_TAG_ptr_to_member_type);
+    return MDTypeRef(getExtraData());
+  }
+  MDObjCProperty *getObjCProperty() const {
+    return dyn_cast_or_null<MDObjCProperty>(getExtraData());
+  }
+  Constant *getConstant() const {
+    assert(getTag() == dwarf::DW_TAG_member && isStaticMember());
+    if (auto *C = cast_or_null<ConstantAsMetadata>(getExtraData()))
+      return C->getValue();
+    return nullptr;
+  }
+  /// @}
   
   unsigned getScoutFlags() const{
     return ScoutFlags;
@@ -1041,20 +1058,20 @@ class MDScoutCompositeType : public MDCompositeTypeBase {
   DimY(DimY),
   DimZ(DimZ){}
   
-  ~MDScoutCompositeType() {}
+  ~MDScoutCompositeType() = default;
   
   static MDScoutCompositeType *
   getImpl(LLVMContext &Context, unsigned Tag, StringRef Name, Metadata *File,
-          unsigned Line, Metadata *Scope, Metadata *BaseType,
+          unsigned Line, MDScopeRef Scope, MDTypeRef BaseType,
           uint64_t SizeInBits, uint64_t AlignInBits, uint64_t OffsetInBits,
-          uint64_t Flags, Metadata *Elements, unsigned RuntimeLang,
-          Metadata *VTableHolder, Metadata *TemplateParams,
+          uint64_t Flags, DebugNodeArray Elements, unsigned RuntimeLang,
+          MDTypeRef VTableHolder, MDTemplateParameterArray TemplateParams,
           StringRef Identifier,
           unsigned DimX, unsigned DimY, unsigned DimZ,
           StorageType Storage, bool ShouldCreate = true) {
     return getImpl(Context, Tag, getCanonicalMDString(Context, Name), File,
                    Line, Scope, BaseType, SizeInBits, AlignInBits, OffsetInBits,
-                   Flags, Elements, RuntimeLang, VTableHolder, TemplateParams,
+                   Flags, Elements.get(), RuntimeLang, VTableHolder, TemplateParams.get(),
                    getCanonicalMDString(Context, Identifier),
                    DimX, DimY, DimZ,
                    Storage, ShouldCreate);
@@ -1080,13 +1097,13 @@ class MDScoutCompositeType : public MDCompositeTypeBase {
   
 public:
   DEFINE_MDNODE_GET(MDScoutCompositeType,
-                    (unsigned Tag, StringRef Name, Metadata *File,
-                     unsigned Line, Metadata *Scope, Metadata *BaseType,
+                    (unsigned Tag, StringRef Name, MDFile *File,
+                     unsigned Line, MDScopeRef Scope, MDTypeRef BaseType,
                      uint64_t SizeInBits, uint64_t AlignInBits,
-                     uint64_t OffsetInBits, unsigned Flags, Metadata *Elements,
+                     uint64_t OffsetInBits, unsigned Flags, DebugNodeArray Elements,
                      unsigned RuntimeLang,
-                     Metadata *VTableHolder,
-                     Metadata *TemplateParams,
+                     MDTypeRef VTableHolder,
+                     MDTemplateParameterArray TemplateParams,
                      StringRef Identifier,
                      unsigned DimX, unsigned DimY, unsigned DimZ),
                     (Tag, Name, File, Line, Scope, BaseType, SizeInBits,
