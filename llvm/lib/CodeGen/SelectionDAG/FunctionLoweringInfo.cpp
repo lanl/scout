@@ -202,9 +202,7 @@ void FunctionLoweringInfo::set(const Function &fn, MachineFunction &mf,
       // during the initial isel pass through the IR so that it is done
       // in a predictable order.
       if (const DbgDeclareInst *DI = dyn_cast<DbgDeclareInst>(I)) {
-        DIVariable DIVar(DI->getVariable());
-        assert((!DIVar || DIVar.isVariable()) &&
-          "Variable in DbgDeclareInst should be either null or a DIVariable.");
+        DIVariable DIVar = DI->getVariable();
         if (MMI.hasDebugInfo() && DIVar && DI->getDebugLoc()) {
           // Don't handle byval struct arguments or VLAs, for example.
           // Non-byval arguments are handled here (they refer to the stack
@@ -277,11 +275,15 @@ void FunctionLoweringInfo::set(const Function &fn, MachineFunction &mf,
       MBBMap[Invoke->getSuccessor(1)]->setIsLandingPad();
 
   // Calculate EH numbers for WinEH.
-  if (fn.getFnAttribute("wineh-parent").getValueAsString() == fn.getName()) {
-    WinEHNumbering Num(MMI.getWinEHFuncInfo(&fn));
-    Num.calculateStateNumbers(fn);
-    // Pop everything on the handler stack.
-    Num.processCallSite(None, ImmutableCallSite());
+  if (fn.hasFnAttribute("wineh-parent")) {
+    const Function *WinEHParentFn = MMI.getWinEHParent(&fn);
+    WinEHFuncInfo &FI = MMI.getWinEHFuncInfo(WinEHParentFn);
+    if (FI.LandingPadStateMap.empty()) {
+      WinEHNumbering Num(FI);
+      Num.calculateStateNumbers(*WinEHParentFn);
+      // Pop everything on the handler stack.
+      Num.processCallSite(None, ImmutableCallSite());
+    }
   }
 }
 
@@ -300,11 +302,7 @@ void WinEHNumbering::createTryBlockMapEntry(int TryLow, int TryHigh,
   WinEHTryBlockMapEntry TBME;
   TBME.TryLow = TryLow;
   TBME.TryHigh = TryHigh;
-  // FIXME: This should be revisited when we want to throw inside a catch
-  // handler.
-  TBME.CatchHigh = INT_MAX;
   assert(TBME.TryLow <= TBME.TryHigh);
-  assert(TBME.CatchHigh > TBME.TryHigh);
   for (CatchHandler *CH : Handlers) {
     WinEHHandlerType HT;
     if (CH->getSelector()->isNullValue()) {
@@ -321,9 +319,7 @@ void WinEHNumbering::createTryBlockMapEntry(int TryLow, int TryHigh,
           cast<GlobalVariable>(CS->getAggregateElement(1)->stripPointerCasts());
     }
     HT.Handler = cast<Function>(CH->getHandlerBlockOrFunc());
-    // FIXME: We don't support catching objects yet!
-    HT.CatchObjIdx = INT_MAX;
-    HT.CatchObjOffset = 0;
+    HT.CatchObjRecoverIdx = CH->getExceptionVarIndex();
     TBME.HandlerArray.push_back(HT);
   }
   FuncInfo.TryBlockMap.push_back(TBME);
@@ -446,6 +442,8 @@ void WinEHNumbering::calculateStateNumbers(const Function &F) {
     ActionList.clear();
     FuncInfo.LandingPadStateMap[LPI] = currentEHNumber();
   }
+
+  FuncInfo.CatchHandlerMaxState[&F] = NextState - 1;
 }
 
 /// clear - Clear out all the function-specific state. This returns this

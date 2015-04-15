@@ -163,6 +163,67 @@ which will cause the fuzzer to exit on the first new synthesised input::
 
   N=100; M=4; ./pcre_fuzzer ./CORPUS -jobs=$N -workers=$M -exit_on_first=1
 
+Heartbleed
+----------
+Remember Heartbleed_?
+As it was recently `shown <https://blog.hboeck.de/archives/868-How-Heartbleed-couldve-been-found.html>`_,
+fuzzing with AddressSanitizer can find Heartbleed. Indeed, here are the step-by-step instructions
+to find Heartbleed with LibFuzzer::
+
+  wget https://www.openssl.org/source/openssl-1.0.1f.tar.gz
+  tar xf openssl-1.0.1f.tar.gz
+  COV_FLAGS="-fsanitize-coverage=4" # -mllvm -sanitizer-coverage-8bit-counters=1"
+  (cd openssl-1.0.1f/ && ./config &&
+    make -j 32 CC="clang -g -fsanitize=address $COV_FLAGS")
+  # Get and build LibFuzzer
+  svn co http://llvm.org/svn/llvm-project/llvm/trunk/lib/Fuzzer
+  clang -c -g -O2 -std=c++11 Fuzzer/*.cpp -IFuzzer
+  # Get examples of key/pem files.
+  git clone   https://github.com/hannob/selftls
+  cp selftls/server* . -v
+  cat << EOF > handshake-fuzz.cc
+  #include <openssl/ssl.h>
+  #include <openssl/err.h>
+  #include <assert.h>
+  SSL_CTX *sctx;
+  int Init() {
+    SSL_library_init();
+    SSL_load_error_strings();
+    ERR_load_BIO_strings();
+    OpenSSL_add_all_algorithms();
+    assert (sctx = SSL_CTX_new(TLSv1_method()));
+    assert (SSL_CTX_use_certificate_file(sctx, "server.pem", SSL_FILETYPE_PEM));
+    assert (SSL_CTX_use_PrivateKey_file(sctx, "server.key", SSL_FILETYPE_PEM));
+    return 0;
+  }
+  extern "C" void TestOneInput(unsigned char *Data, size_t Size) {
+    static int unused = Init();
+    SSL *server = SSL_new(sctx);
+    BIO *sinbio = BIO_new(BIO_s_mem());
+    BIO *soutbio = BIO_new(BIO_s_mem());
+    SSL_set_bio(server, sinbio, soutbio);
+    SSL_set_accept_state(server);
+    BIO_write(sinbio, Data, Size);
+    SSL_do_handshake(server);
+    SSL_free(server);
+  }
+  EOF
+  # Build the fuzzer. 
+  clang++ -g handshake-fuzz.cc  -fsanitize=address \
+    openssl-1.0.1f/libssl.a openssl-1.0.1f/libcrypto.a Fuzzer*.o
+  # Run 20 independent fuzzer jobs.
+  ./a.out  -jobs=20 -workers=20
+
+Voila::
+
+  #1048576        pulse  cov 3424 bits 0 units 9 exec/s 24385
+  =================================================================
+  ==17488==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x629000004748 at pc 0x00000048c979 bp 0x7fffe3e864f0 sp 0x7fffe3e85ca8
+  READ of size 60731 at 0x629000004748 thread T0
+      #0 0x48c978 in __asan_memcpy
+      #1 0x4db504 in tls1_process_heartbeat openssl-1.0.1f/ssl/t1_lib.c:2586:3
+      #2 0x580be3 in ssl3_read_bytes openssl-1.0.1f/ssl/s3_pkt.c:1092:4
+
 Advanced features
 =================
 
@@ -184,6 +245,31 @@ The fuzzer itself will still be mutating a string of bytes
 but before passing this input to the target library it will replace every byte ``b`` with the ``b``-th token.
 If there are less than ``b`` tokens, a space will be added instead.
 
+AFL compatibility
+-----------------
+LibFuzzer can be used in parallel with AFL_ on the same test corpus.
+Both fuzzers expect the test corpus to reside in a directory, one file per input.
+You can run both fuzzers on the same corpus in parallel::
+
+  ./afl-fuzz -i testcase_dir -o findings_dir /path/to/program -r @@
+  ./llvm-fuzz testcase_dir findings_dir  # Will write new tests to testcase_dir
+
+Periodically restart both fuzzers so that they can use each other's findings.
+
+How good is my fuzzer?
+----------------------
+
+Once you implement your target function ``TestOneInput`` and fuzz it to death,
+you will want to know whether the function or the corpus can be improved further.
+One easy to use metric is, of course, code coverage.
+You can get the coverage for your corpus like this::
+
+  ASAN_OPTIONS=coverage_pcs=1 ./fuzzer CORPUS_DIR -runs=0
+
+This will run all the tests in the CORPUS_DIR but will not generate any new tests
+and dump covered PCs to disk before exiting.
+Then you can subtract the set of covered PCs from the set of all instrumented PCs in the binary,
+see SanitizerCoverage_ for details.
 
 Fuzzing components of LLVM
 ==========================
@@ -274,3 +360,5 @@ Examples: regular expression matchers, text or binary format parsers.
 .. _AFL: http://lcamtuf.coredump.cx/afl/
 
 .. _SanitizerCoverage: https://code.google.com/p/address-sanitizer/wiki/AsanCoverage
+
+.. _Heartbleed: http://en.wikipedia.org/wiki/Heartbleed

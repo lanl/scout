@@ -129,10 +129,7 @@ void NVPTXAsmPrinter::emitLineNumberAsDotLoc(const MachineInstr &MI) {
   if (!curLoc)
     return;
 
-  DIScope Scope(curLoc.getScope());
-
-  assert((!Scope || Scope.isScope()) &&
-    "Scope of a DebugLoc should be null or a DIScope.");
+  DIScope Scope = cast_or_null<MDScope>(curLoc.getScope());
   if (!Scope)
      return;
 
@@ -791,9 +788,9 @@ void NVPTXAsmPrinter::recordAndEmitFilenames(Module &M) {
     ++i;
   }
 
-  for (DISubprogram SP : DbgFinder.subprograms()) {
-    StringRef Filename(SP.getFilename());
-    StringRef Dirname(SP.getDirectory());
+  for (MDSubprogram *SP : DbgFinder.subprograms()) {
+    StringRef Filename = SP->getFilename();
+    StringRef Dirname = SP->getDirectory();
     SmallString<128> FullPathName = Dirname;
     if (!Dirname.empty() && !sys::path::is_absolute(Filename)) {
       sys::path::append(FullPathName, Filename);
@@ -1768,12 +1765,11 @@ void NVPTXAsmPrinter::bufferLEByte(const Constant *CPV, int Bytes,
   case Type::IntegerTyID: {
     const Type *ETy = CPV->getType();
     if (ETy == Type::getInt8Ty(CPV->getContext())) {
-      unsigned char c =
-          (unsigned char)(dyn_cast<ConstantInt>(CPV))->getZExtValue();
+      unsigned char c = (unsigned char)cast<ConstantInt>(CPV)->getZExtValue();
       ptr = &c;
       aggBuffer->addBytes(ptr, 1, Bytes);
     } else if (ETy == Type::getInt16Ty(CPV->getContext())) {
-      short int16 = (short)(dyn_cast<ConstantInt>(CPV))->getZExtValue();
+      short int16 = (short)cast<ConstantInt>(CPV)->getZExtValue();
       ptr = (unsigned char *)&int16;
       aggBuffer->addBytes(ptr, 2, Bytes);
     } else if (ETy == Type::getInt32Ty(CPV->getContext())) {

@@ -504,7 +504,7 @@ bool SelectionDAGISel::runOnMachineFunction(MachineFunction &mf) {
       DebugLoc DL = MI->getDebugLoc();
       bool IsIndirect = MI->isIndirectDebugValue();
       unsigned Offset = IsIndirect ? MI->getOperand(1).getImm() : 0;
-      assert(DIVariable(Variable)->isValidLocationForIntrinsic(DL) &&
+      assert(cast<MDLocalVariable>(Variable)->isValidLocationForIntrinsic(DL) &&
              "Expected inlined-at fields to agree");
       // Def is never a terminator here, so it is ok to increment InsertPos.
       BuildMI(*EntryMBB, ++InsertPos, DL, TII->get(TargetOpcode::DBG_VALUE),
@@ -2560,7 +2560,7 @@ public:
     SelectionDAG::DAGUpdateListener(DAG),
     RecordedNodes(RN), MatchScopes(MS) { }
 
-  void NodeDeleted(SDNode *N, SDNode *E) {
+  void NodeDeleted(SDNode *N, SDNode *E) override {
     // Some early-returns here to avoid the search if we deleted the node or
     // if the update comes from MorphNodeTo (MorphNodeTo is the last thing we
     // do, so it's unnecessary to update matching state at that point).

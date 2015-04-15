@@ -2143,6 +2143,7 @@ CreateCopyOfByValArgument(SDValue Src, SDValue Dst, SDValue Chain,
 
   return DAG.getMemcpy(Chain, dl, Dst, Src, SizeNode, Flags.getByValAlign(),
                        /*isVolatile*/false, /*AlwaysInline=*/true,
+                       /*isTailCall*/false,
                        MachinePointerInfo(), MachinePointerInfo());
 }
 
@@ -2265,12 +2266,6 @@ static ArrayRef<MCPhysReg> get64BitArgumentXMMs(MachineFunction &MF,
     X86::XMM4, X86::XMM5, X86::XMM6, X86::XMM7
   };
   return makeArrayRef(std::begin(XMMArgRegs64Bit), std::end(XMMArgRegs64Bit));
-}
-
-static bool isOutlinedHandler(const MachineFunction &MF) {
-  const MachineModuleInfo &MMI = MF.getMMI();
-  const Function *F = MF.getFunction();
-  return MMI.getWinEHParent(F) != F;
 }
 
 SDValue
@@ -2424,6 +2419,13 @@ X86TargetLowering::LowerFormalArguments(SDValue Chain,
         MFI->CreateFixedObject(1, StackSize, true));
   }
 
+  MachineModuleInfo &MMI = MF.getMMI();
+  const Function *WinEHParent = nullptr;
+  if (IsWin64 && MMI.hasWinEHFuncInfo(Fn))
+    WinEHParent = MMI.getWinEHParent(Fn);
+  bool IsWinEHOutlined = WinEHParent && WinEHParent != Fn;
+  bool IsWinEHParent = WinEHParent && WinEHParent == Fn;
+
   // Figure out if XMM registers are in use.
   assert(!(MF.getTarget().Options.UseSoftFloat &&
            Fn->hasFnAttribute(Attribute::NoImplicitFloat)) &&
@@ -2512,14 +2514,13 @@ X86TargetLowering::LowerFormalArguments(SDValue Chain,
 
     if (!MemOps.empty())
       Chain = DAG.getNode(ISD::TokenFactor, dl, MVT::Other, MemOps);
-  } else if (IsWin64 && isOutlinedHandler(MF)) {
+  } else if (IsWinEHOutlined) {
     // Get to the caller-allocated home save location.  Add 8 to account
     // for the return address.
     int HomeOffset = TFI.getOffsetOfLocalArea() + 8;
     FuncInfo->setRegSaveFrameIndex(MFI->CreateFixedObject(
         /*Size=*/1, /*SPOffset=*/HomeOffset + 8, /*Immutable=*/false));
 
-    MachineModuleInfo &MMI = MF.getMMI();
     MMI.getWinEHFuncInfo(Fn)
         .CatchHandlerParentFrameObjIdx[const_cast<Function *>(Fn)] =
         FuncInfo->getRegSaveFrameIndex();
@@ -2599,6 +2600,17 @@ X86TargetLowering::LowerFormalArguments(SDValue Chain,
   }
 
   FuncInfo->setArgumentStackSize(StackSize);
+
+  if (IsWinEHParent) {
+    int UnwindHelpFI = MFI->CreateStackObject(8, 8, /*isSS=*/false);
+    SDValue StackSlot = DAG.getFrameIndex(UnwindHelpFI, MVT::i64);
+    MMI.getWinEHFuncInfo(MF.getFunction()).UnwindHelpFrameIdx = UnwindHelpFI;
+    SDValue Neg2 = DAG.getConstant(-2, MVT::i64);
+    Chain = DAG.getStore(Chain, dl, Neg2, StackSlot,
+                         MachinePointerInfo::getFixedStack(UnwindHelpFI),
+                         /*isVolatile=*/true,
+                         /*isNonTemporal=*/false, /*Alignment=*/0);
+  }
 
   return Chain;
 }
@@ -4449,6 +4461,29 @@ static SDValue LowerBuildVectorv16i8(SDValue Op, unsigned NonZeros,
   SDLoc dl(Op);
   SDValue V;
   bool First = true;
+
+  // SSE4.1 - use PINSRB to insert each byte directly.
+  if (Subtarget->hasSSE41()) {
+    for (unsigned i = 0; i < 16; ++i) {
+      bool isNonZero = (NonZeros & (1 << i)) != 0;
+      if (isNonZero) {
+        if (First) {
+          if (NumZero)
+            V = getZeroVector(MVT::v16i8, Subtarget, DAG, dl);
+          else
+            V = DAG.getUNDEF(MVT::v16i8);
+          First = false;
+        }
+        V = DAG.getNode(ISD::INSERT_VECTOR_ELT, dl,
+                        MVT::v16i8, V, Op.getOperand(i),
+                        DAG.getIntPtrConstant(i));
+      }
+    }
+
+    return V;
+  }
+
+  // Pre-SSE4.1 - merge byte pairs and insert with PINSRW.
   for (unsigned i = 0; i < 16; ++i) {
     bool ThisIsNonZero = (NonZeros & (1 << i)) != 0;
     if (ThisIsNonZero && First) {
@@ -11936,7 +11971,7 @@ static  SDValue LowerZERO_EXTEND_AVX512(SDValue Op,
   // Now we have only mask extension
   assert(InVT.getVectorElementType() == MVT::i1);
   SDValue Cst = DAG.getTargetConstant(1, ExtVT.getScalarType());
-  const Constant *C = (dyn_cast<ConstantSDNode>(Cst))->getConstantIntValue();
+  const Constant *C = cast<ConstantSDNode>(Cst)->getConstantIntValue();
   SDValue CP = DAG.getConstantPool(C, TLI.getPointerTy());
   unsigned Alignment = cast<ConstantPoolSDNode>(CP)->getAlignment();
   SDValue Ld = DAG.getLoad(Cst.getValueType(), DL, DAG.getEntryNode(), CP,
@@ -12012,7 +12047,7 @@ SDValue X86TargetLowering::LowerTRUNCATE(SDValue Op, SelectionDAG &DAG) const {
     }
 
     SDValue Cst = DAG.getTargetConstant(1, InVT.getVectorElementType());
-    const Constant *C = (dyn_cast<ConstantSDNode>(Cst))->getConstantIntValue();
+    const Constant *C = cast<ConstantSDNode>(Cst)->getConstantIntValue();
     SDValue CP = DAG.getConstantPool(C, getPointerTy());
     unsigned Alignment = cast<ConstantPoolSDNode>(CP)->getAlignment();
     SDValue Ld = DAG.getLoad(Cst.getValueType(), DL, DAG.getEntryNode(), CP,
@@ -12781,6 +12816,16 @@ SDValue X86TargetLowering::getRecipEstimate(SDValue Op,
     return DCI.DAG.getNode(X86ISD::FRCP, SDLoc(Op), VT, Op);
   }
   return SDValue();
+}
+
+/// If we have at least two divisions that use the same divisor, convert to
+/// multplication by a reciprocal. This may need to be adjusted for a given
+/// CPU if a division's cost is not at least twice the cost of a multiplication.
+/// This is because we still need one division to calculate the reciprocal and
+/// then we need two multiplies by that reciprocal as replacements for the
+/// original divisions.
+bool X86TargetLowering::combineRepeatedFPDivisors(unsigned NumUsers) const {
+  return NumUsers > 1;
 }
 
 static bool isAllOnes(SDValue V) {
@@ -14460,7 +14505,7 @@ static SDValue LowerVACOPY(SDValue Op, const X86Subtarget *Subtarget,
 
   return DAG.getMemcpy(Chain, DL, DstPtr, SrcPtr,
                        DAG.getIntPtrConstant(24), 8, /*isVolatile*/false,
-                       false,
+                       false, false,
                        MachinePointerInfo(DstSV), MachinePointerInfo(SrcSV));
 }
 
@@ -15253,10 +15298,8 @@ static SDValue LowerINTRINSIC_W_CHAIN(SDValue Op, const X86Subtarget *Subtarget,
   }
   case PREFETCH: {
     SDValue Hint = Op.getOperand(6);
-    unsigned HintVal;
-    if (dyn_cast<ConstantSDNode> (Hint) == nullptr ||
-        (HintVal = dyn_cast<ConstantSDNode> (Hint)->getZExtValue()) > 1)
-      llvm_unreachable("Wrong prefetch hint in intrinsic: should be 0 or 1");
+    unsigned HintVal = cast<ConstantSDNode>(Hint)->getZExtValue();
+    assert(HintVal < 2 && "Wrong prefetch hint in intrinsic: should be 0 or 1");
     unsigned Opcode = (HintVal ? IntrData->Opc1 : IntrData->Opc0);
     SDValue Chain = Op.getOperand(0);
     SDValue Mask  = Op.getOperand(2);
@@ -24208,7 +24251,7 @@ TargetLowering::ConstraintWeight
     break;
   case 'G':
   case 'C':
-    if (dyn_cast<ConstantFP>(CallOperandVal)) {
+    if (isa<ConstantFP>(CallOperandVal)) {
       weight = CW_Constant;
     }
     break;
