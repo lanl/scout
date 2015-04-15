@@ -17,6 +17,7 @@
 
 #include "Plugins/DynamicLoader/MacOSX-DYLD/DynamicLoaderMacOSXDYLD.h"
 #include "Plugins/DynamicLoader/POSIX-DYLD/DynamicLoaderPOSIXDYLD.h"
+#include "Plugins/Instruction/ARM/EmulateInstructionARM.h"
 #include "Plugins/ObjectContainer/BSD-Archive/ObjectContainerBSDArchive.h"
 #include "Plugins/ObjectContainer/Universal-Mach-O/ObjectContainerUniversalMachO.h"
 #include "Plugins/ObjectFile/ELF/ObjectFileELF.h"
@@ -45,6 +46,7 @@
 
 #if defined(_MSC_VER)
 #include "lldb/Host/windows/windows.h"
+#include "Plugins/Process/Windows/ProcessWindowsLog.h"
 #endif
 
 #include "llvm/Support/TargetSelect.h"
@@ -109,6 +111,8 @@ SystemInitializerCommon::Initialize()
     PlatformKalimba::Initialize();
     platform_android::PlatformAndroid::Initialize();
 
+    EmulateInstructionARM::Initialize();
+
     //----------------------------------------------------------------------
     // Apple/Darwin hosted plugins
     //----------------------------------------------------------------------
@@ -127,6 +131,9 @@ SystemInitializerCommon::Initialize()
 #if defined(__linux__)
     static ConstString g_linux_log_name("linux");
     ProcessPOSIXLog::Initialize(g_linux_log_name);
+#endif
+#if defined(_MSC_VER)
+    ProcessWindowsLog::Initialize();
 #endif
 #ifndef LLDB_DISABLE_PYTHON
     ScriptInterpreterPython::InitializePrivate();
@@ -152,6 +159,8 @@ SystemInitializerCommon::Terminate()
     PlatformMacOSX::Terminate();
     PlatformRemoteiOS::Terminate();
     PlatformiOSSimulator::Terminate();
+
+    EmulateInstructionARM::Terminate();
 
 #if defined(__APPLE__)
     DynamicLoaderDarwinKernel::Terminate();

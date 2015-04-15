@@ -16,7 +16,6 @@ class CModulesTestCase(TestBase):
 
     @skipUnlessDarwin
     @dsym_test
-    @unittest2.expectedFailure("rdar://20416388")
     def test_expr_with_dsym(self):
         self.buildDsym()
         self.expr()
@@ -24,7 +23,6 @@ class CModulesTestCase(TestBase):
     @dwarf_test
     @skipIfFreeBSD
     @skipIfLinux
-    @unittest2.expectedFailure("rdar://20416388")
     def test_expr_with_dwarf(self):
         self.buildDwarf()
         self.expr()
@@ -75,6 +73,9 @@ class CModulesTestCase(TestBase):
 
         self.expect("expr *myFile", VARIABLES_DISPLAYED_CORRECTLY,
             substrs = ["a", "5", "b", "9"])
+
+        self.expect("expr MIN((uint64_t)2, (uint64_t)3)", VARIABLES_DISPLAYED_CORRECTLY,
+            substrs = ["uint64_t", "2"])
             
 if __name__ == '__main__':
     import atexit

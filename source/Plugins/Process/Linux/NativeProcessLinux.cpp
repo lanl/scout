@@ -24,6 +24,7 @@
 
 // Other libraries and framework includes
 #include "lldb/Core/Debugger.h"
+#include "lldb/Core/EmulateInstruction.h"
 #include "lldb/Core/Error.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/ModuleSpec.h"
@@ -2375,6 +2376,19 @@ NativeProcessLinux::MonitorBreakpoint(lldb::pid_t pid, NativeThreadProtocolSP th
             if (log)
                 log->Printf("NativeProcessLinux::%s() pid = %" PRIu64 " fixup: %s",
                         __FUNCTION__, pid, error.AsCString());
+
+        auto it = m_threads_stepping_with_breakpoint.find(pid);
+        if (it != m_threads_stepping_with_breakpoint.end())
+        {
+            Error error = RemoveBreakpoint (it->second);
+            if (error.Fail())
+                if (log)
+                    log->Printf("NativeProcessLinux::%s() pid = %" PRIu64 " remove stepping breakpoint: %s",
+                            __FUNCTION__, pid, error.AsCString());
+
+            m_threads_stepping_with_breakpoint.erase(it);
+            std::static_pointer_cast<NativeThreadLinux>(thread_sp)->SetStoppedByTrace();
+        }
     }
     else
         if (log)
@@ -3189,7 +3203,7 @@ NativeProcessLinux::GetArchitecture (ArchSpec &arch) const
 }
 
 Error
-NativeProcessLinux::GetSoftwareBreakpointSize (NativeRegisterContextSP context_sp, uint32_t &actual_opcode_size)
+NativeProcessLinux::GetSoftwareBreakpointPCOffset (NativeRegisterContextSP context_sp, uint32_t &actual_opcode_size)
 {
     // FIXME put this behind a breakpoint protocol class that can be
     // set per architecture.  Need ARM, MIPS support here.
@@ -3200,6 +3214,10 @@ NativeProcessLinux::GetSoftwareBreakpointSize (NativeRegisterContextSP context_s
     {
         case llvm::Triple::aarch64:
             actual_opcode_size = static_cast<uint32_t> (sizeof(g_aarch64_opcode));
+            return Error ();
+
+        case llvm::Triple::arm:
+            actual_opcode_size = 0; // On arm the PC don't get updated for breakpoint hits
             return Error ();
 
         case llvm::Triple::x86:
@@ -3223,13 +3241,20 @@ NativeProcessLinux::SetBreakpoint (lldb::addr_t addr, uint32_t size, bool hardwa
 }
 
 Error
-NativeProcessLinux::GetSoftwareBreakpointTrapOpcode (size_t trap_opcode_size_hint, size_t &actual_opcode_size, const uint8_t *&trap_opcode_bytes)
+NativeProcessLinux::GetSoftwareBreakpointTrapOpcode (size_t trap_opcode_size_hint,
+                                                     size_t &actual_opcode_size,
+                                                     const uint8_t *&trap_opcode_bytes)
 {
-    // FIXME put this behind a breakpoint protocol class that can be
-    // set per architecture.  Need ARM, MIPS support here.
+    // FIXME put this behind a breakpoint protocol class that can be set per
+    // architecture.  Need MIPS support here.
     static const uint8_t g_aarch64_opcode[] = { 0x00, 0x00, 0x20, 0xd4 };
+    // The ARM reference recommends the use of 0xe7fddefe and 0xdefe but the
+    // linux kernel does otherwise.
+    static const uint8_t g_arm_breakpoint_opcode[] = { 0xf0, 0x01, 0xf0, 0xe7 };
     static const uint8_t g_i386_opcode [] = { 0xCC };
     static const uint8_t g_mips64_opcode[] = { 0x00, 0x00, 0x00, 0x0d };
+    static const uint8_t g_mips64el_opcode[] = { 0x0d, 0x00, 0x00, 0x00 };
+    static const uint8_t g_thumb_breakpoint_opcode[] = { 0x01, 0xde };
 
     switch (m_arch.GetMachine ())
     {
@@ -3238,6 +3263,22 @@ NativeProcessLinux::GetSoftwareBreakpointTrapOpcode (size_t trap_opcode_size_hin
         actual_opcode_size = sizeof(g_aarch64_opcode);
         return Error ();
 
+    case llvm::Triple::arm:
+        switch (trap_opcode_size_hint)
+        {
+        case 2:
+            trap_opcode_bytes = g_thumb_breakpoint_opcode;
+            actual_opcode_size = sizeof(g_thumb_breakpoint_opcode);
+            return Error ();
+        case 4:
+            trap_opcode_bytes = g_arm_breakpoint_opcode;
+            actual_opcode_size = sizeof(g_arm_breakpoint_opcode);
+            return Error ();
+        default:
+            assert(false && "Unrecognised trap opcode size hint!");
+            return Error ("Unrecognised trap opcode size hint!");
+        }
+
     case llvm::Triple::x86:
     case llvm::Triple::x86_64:
         trap_opcode_bytes = g_i386_opcode;
@@ -3245,9 +3286,13 @@ NativeProcessLinux::GetSoftwareBreakpointTrapOpcode (size_t trap_opcode_size_hin
         return Error ();
 
     case llvm::Triple::mips64:
-    case llvm::Triple::mips64el:
         trap_opcode_bytes = g_mips64_opcode;
         actual_opcode_size = sizeof(g_mips64_opcode);
+        return Error ();
+
+    case llvm::Triple::mips64el:
+        trap_opcode_bytes = g_mips64el_opcode;
+        actual_opcode_size = sizeof(g_mips64el_opcode);
         return Error ();
 
     default:
@@ -3559,6 +3604,151 @@ NativeProcessLinux::Resume (lldb::tid_t tid, uint32_t signo)
     return op.GetError();
 }
 
+#if defined(__arm__)
+
+namespace {
+
+struct EmulatorBaton
+{
+    NativeProcessLinux* m_process;
+    NativeRegisterContext* m_reg_context;
+    RegisterValue m_pc;
+    RegisterValue m_cpsr;
+
+    EmulatorBaton(NativeProcessLinux* process, NativeRegisterContext* reg_context) : 
+            m_process(process), m_reg_context(reg_context) {}
+};
+
+} // anonymous namespace
+
+static size_t
+ReadMemoryCallback (EmulateInstruction *instruction,
+                    void *baton,
+                    const EmulateInstruction::Context &context, 
+                    lldb::addr_t addr, 
+                    void *dst,
+                    size_t length)
+{
+    EmulatorBaton* emulator_baton = static_cast<EmulatorBaton*>(baton);
+
+    lldb::addr_t bytes_read;
+    emulator_baton->m_process->ReadMemory(addr, dst, length, bytes_read);
+    return bytes_read;
+}
+
+static bool
+ReadRegisterCallback (EmulateInstruction *instruction,
+                      void *baton,
+                      const RegisterInfo *reg_info,
+                      RegisterValue &reg_value)
+{
+    EmulatorBaton* emulator_baton = static_cast<EmulatorBaton*>(baton);
+
+    // The emulator only fill in the dwarf regsiter numbers (and in some case
+    // the generic register numbers). Get the full register info from the
+    // register context based on the dwarf register numbers.
+    const RegisterInfo* full_reg_info = emulator_baton->m_reg_context->GetRegisterInfo(
+            eRegisterKindDWARF, reg_info->kinds[eRegisterKindDWARF]);
+
+    Error error = emulator_baton->m_reg_context->ReadRegister(full_reg_info, reg_value);
+    return error.Success();
+}
+
+static bool
+WriteRegisterCallback (EmulateInstruction *instruction,
+                       void *baton,
+                       const EmulateInstruction::Context &context,
+                       const RegisterInfo *reg_info,
+                       const RegisterValue &reg_value)
+{
+    EmulatorBaton* emulator_baton = static_cast<EmulatorBaton*>(baton);
+
+    switch (reg_info->kinds[eRegisterKindGeneric])
+    {
+    case LLDB_REGNUM_GENERIC_PC:
+        emulator_baton->m_pc = reg_value;
+        break;
+    case LLDB_REGNUM_GENERIC_FLAGS:
+        emulator_baton->m_cpsr = reg_value;
+        break;
+    }
+
+    return true;
+}
+
+static size_t WriteMemoryCallback (EmulateInstruction *instruction,
+                                   void *baton,
+                                   const EmulateInstruction::Context &context, 
+                                   lldb::addr_t addr, 
+                                   const void *dst,
+                                   size_t length)
+{
+    return length;
+}
+
+Error
+NativeProcessLinux::SingleStep(lldb::tid_t tid, uint32_t signo)
+{
+    Error error;
+    NativeRegisterContextSP register_context_sp = GetThreadByID(tid)->GetRegisterContext();
+
+    std::unique_ptr<EmulateInstruction> emulator_ap(
+        EmulateInstruction::FindPlugin(m_arch, eInstructionTypePCModifying, nullptr));
+
+    if (emulator_ap == nullptr)
+        return Error("Instrunction emulator not found!");
+
+    EmulatorBaton baton(this, register_context_sp.get());
+    emulator_ap->SetBaton(&baton);
+    emulator_ap->SetReadMemCallback(&ReadMemoryCallback);
+    emulator_ap->SetReadRegCallback(&ReadRegisterCallback);
+    emulator_ap->SetWriteMemCallback(&WriteMemoryCallback);
+    emulator_ap->SetWriteRegCallback(&WriteRegisterCallback);
+
+    if (!emulator_ap->ReadInstruction())
+        return Error("Read instruction failed!");
+
+    if (!emulator_ap->EvaluateInstruction(eEmulateInstructionOptionAutoAdvancePC))
+        return Error("Evaluate instrcution failed!");
+
+    lldb::addr_t next_pc = baton.m_pc.GetAsUInt32();
+    lldb::addr_t next_cpsr = 0;
+    if (baton.m_cpsr.GetType() != RegisterValue::eTypeInvalid)
+    {
+        next_cpsr = baton.m_cpsr.GetAsUInt32();
+    }
+    else
+    {
+        const RegisterInfo* cpsr_info = register_context_sp->GetRegisterInfo(
+            eRegisterKindGeneric, LLDB_REGNUM_GENERIC_FLAGS);
+        next_cpsr = register_context_sp->ReadRegisterAsUnsigned(cpsr_info, LLDB_INVALID_ADDRESS);
+    }
+
+    if (next_cpsr & 0x20)
+    {
+        // Thumb mode
+        error = SetBreakpoint(next_pc, 2, false);
+    }
+    else
+    {
+        // Arm mode
+        error = SetBreakpoint(next_pc, 4, false);
+    }
+
+    if (error.Fail())
+        return error;
+
+    m_threads_stepping_with_breakpoint.emplace(tid, next_pc);
+
+    error = Resume(tid, signo);
+    if (error.Fail())
+        return error;
+
+    return Error();
+}
+
+#else // defined(__arm__)
+
 Error
 NativeProcessLinux::SingleStep(lldb::tid_t tid, uint32_t signo)
 {
@@ -3566,6 +3756,8 @@ NativeProcessLinux::SingleStep(lldb::tid_t tid, uint32_t signo)
     DoOperation(&op);
     return op.GetError();
 }
+
+#endif // defined(__arm__)
 
 Error
 NativeProcessLinux::GetSignalInfo(lldb::tid_t tid, void *siginfo)
@@ -3853,7 +4045,7 @@ NativeProcessLinux::FixupBreakpointPCAsNeeded (NativeThreadProtocolSP &thread_sp
     }
 
     uint32_t breakpoint_size = 0;
-    error = GetSoftwareBreakpointSize (context_sp, breakpoint_size);
+    error = GetSoftwareBreakpointPCOffset (context_sp, breakpoint_size);
     if (error.Fail ())
     {
         if (log)

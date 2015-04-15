@@ -22,7 +22,6 @@
 #include "Plugins/ABI/SysV-ppc64/ABISysV_ppc64.h"
 #include "Plugins/Disassembler/llvm/DisassemblerLLVMC.h"
 #include "Plugins/DynamicLoader/Static/DynamicLoaderStatic.h"
-#include "Plugins/Instruction/ARM/EmulateInstructionARM.h"
 #include "Plugins/Instruction/ARM64/EmulateInstructionARM64.h"
 #include "Plugins/Instruction/MIPS64/EmulateInstructionMIPS64.h"
 #include "Plugins/InstrumentationRuntime/AddressSanitizer/AddressSanitizerRuntime.h"
@@ -30,6 +29,7 @@
 #include "Plugins/LanguageRuntime/CPlusPlus/ItaniumABI/ItaniumABILanguageRuntime.h"
 #include "Plugins/LanguageRuntime/ObjC/AppleObjCRuntime/AppleObjCRuntimeV1.h"
 #include "Plugins/LanguageRuntime/ObjC/AppleObjCRuntime/AppleObjCRuntimeV2.h"
+#include "Plugins/LanguageRuntime/RenderScript/RenderScriptRuntime/RenderScriptRuntime.h"
 #include "Plugins/MemoryHistory/asan/MemoryHistoryASan.h"
 #include "Plugins/Platform/gdb-server/PlatformRemoteGDBServer.h"
 #include "Plugins/Process/elf-core/ProcessElfCore.h"
@@ -250,7 +250,6 @@ SystemInitializerFull::Initialize()
     SymbolFileSymtab::Initialize();
     UnwindAssemblyInstEmulation::Initialize();
     UnwindAssembly_x86::Initialize();
-    EmulateInstructionARM::Initialize();
     EmulateInstructionARM64::Initialize();
     EmulateInstructionMIPS64::Initialize();
     SymbolFileDWARFDebugMap::Initialize();
@@ -258,6 +257,7 @@ SystemInitializerFull::Initialize()
     AppleObjCRuntimeV2::Initialize();
     AppleObjCRuntimeV1::Initialize();
     SystemRuntimeMacOSX::Initialize();
+    RenderScriptRuntime::Initialize();
 
 #if defined(__linux__)
     //----------------------------------------------------------------------
@@ -353,7 +353,6 @@ SystemInitializerFull::Terminate()
     SymbolFileSymtab::Terminate();
     UnwindAssembly_x86::Terminate();
     UnwindAssemblyInstEmulation::Terminate();
-    EmulateInstructionARM::Terminate();
     EmulateInstructionARM64::Terminate();
     EmulateInstructionMIPS64::Terminate();
     SymbolFileDWARFDebugMap::Terminate();
@@ -361,6 +360,7 @@ SystemInitializerFull::Terminate()
     AppleObjCRuntimeV2::Terminate();
     AppleObjCRuntimeV1::Terminate();
     SystemRuntimeMacOSX::Terminate();
+    RenderScriptRuntime::Terminate();
 
 #if defined(__APPLE__)
     ProcessMachCore::Terminate();

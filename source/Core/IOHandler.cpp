@@ -1080,7 +1080,7 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
         ~WindowDelegate()
         {
         }
-        
+
         virtual bool
         WindowDelegateDraw (Window &window, bool force)
         {
@@ -1112,14 +1112,13 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
     public:
         HelpDialogDelegate (const char *text, KeyHelp *key_help_array);
         
-        virtual
-        ~HelpDialogDelegate();
+        ~HelpDialogDelegate() override;
         
-        virtual bool
-        WindowDelegateDraw (Window &window, bool force);
+        bool
+        WindowDelegateDraw (Window &window, bool force) override;
         
-        virtual HandleCharResult
-        WindowDelegateHandleChar (Window &window, int key);
+        HandleCharResult
+        WindowDelegateHandleChar (Window &window, int key) override;
         
         size_t
         GetNumLines() const
@@ -1787,8 +1786,7 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
               int key_value,
               uint64_t identifier);
         
-        virtual ~
-        Menu ()
+        ~Menu () override
         {
         }
 
@@ -1816,11 +1814,11 @@ type summary add -s "${var.origin%S} ${var.size%S}" curses::Rect
         void
         DrawMenuTitle (Window &window, bool highlight);
 
-        virtual bool
-        WindowDelegateDraw (Window &window, bool force);
+        bool
+        WindowDelegateDraw (Window &window, bool force) override;
         
-        virtual HandleCharResult
-        WindowDelegateHandleChar (Window &window, int key);
+        HandleCharResult
+        WindowDelegateHandleChar (Window &window, int key) override;
 
         MenuActionResult
         ActionPrivate (Menu &menu)
@@ -2924,8 +2922,6 @@ public:
             return this;
         if (m_children.empty())
             return NULL;
-        if (static_cast<uint32_t>(m_children.back().m_row_idx) < row_idx)
-            return NULL;
         if (IsExpanded())
         {
             for (auto &item : m_children)
@@ -3005,8 +3001,8 @@ public:
         return m_max_y - m_min_y;
     }
 
-    virtual bool
-    WindowDelegateDraw (Window &window, bool force)
+    bool
+    WindowDelegateDraw (Window &window, bool force) override
     {
         ExecutionContext exe_ctx (m_debugger.GetCommandInterpreter().GetExecutionContext());
         Process *process = exe_ctx.GetProcessPtr();
@@ -3071,14 +3067,14 @@ public:
     }
     
     
-    virtual const char *
-    WindowDelegateGetHelpText ()
+    const char *
+    WindowDelegateGetHelpText () override
     {
         return "Thread window keyboard shortcuts:";
     }
     
-    virtual KeyHelp *
-    WindowDelegateGetKeyHelp ()
+    KeyHelp *
+    WindowDelegateGetKeyHelp () override
     {
         static curses::KeyHelp g_source_view_key_help[] = {
             { KEY_UP, "Select previous item" },
@@ -3096,8 +3092,8 @@ public:
         return g_source_view_key_help;
     }
     
-    virtual HandleCharResult
-    WindowDelegateHandleChar (Window &window, int c)
+    HandleCharResult
+    WindowDelegateHandleChar (Window &window, int c) override
     {
         switch(c)
         {
@@ -3221,12 +3217,12 @@ public:
                              m_format);
     }
     
-    virtual ~FrameTreeDelegate()
+    ~FrameTreeDelegate() override
     {
     }
     
-    virtual void
-    TreeDelegateDrawTreeItem (TreeItem &item, Window &window)
+    void
+    TreeDelegateDrawTreeItem (TreeItem &item, Window &window) override
     {
         Thread* thread = (Thread*)item.GetUserData();
         if (thread)
@@ -3246,14 +3242,14 @@ public:
             }
         }
     }
-    virtual void
-    TreeDelegateGenerateChildren (TreeItem &item)
+    void
+    TreeDelegateGenerateChildren (TreeItem &item)  override
     {
         // No children for frames yet...
     }
     
-    virtual bool
-    TreeDelegateItemSelected (TreeItem &item)
+    bool
+    TreeDelegateItemSelected (TreeItem &item) override
     {
         Thread* thread = (Thread*)item.GetUserData();
         if (thread)
@@ -3282,8 +3278,7 @@ public:
                              m_format);
     }
     
-    virtual
-    ~ThreadTreeDelegate()
+    ~ThreadTreeDelegate()  override
     {
     }
     
@@ -3302,8 +3297,8 @@ public:
         return ThreadSP();
     }
     
-    virtual void
-    TreeDelegateDrawTreeItem (TreeItem &item, Window &window)
+    void
+    TreeDelegateDrawTreeItem (TreeItem &item, Window &window) override
     {
         ThreadSP thread_sp = GetThread (item);
         if (thread_sp)
@@ -3317,8 +3312,8 @@ public:
             }
         }
     }
-    virtual void
-    TreeDelegateGenerateChildren (TreeItem &item)
+    void
+    TreeDelegateGenerateChildren (TreeItem &item) override
     {
         ProcessSP process_sp = GetProcess ();
         if (process_sp && process_sp->IsAlive())
@@ -3355,8 +3350,8 @@ public:
         item.ClearChildren();
     }
     
-    virtual bool
-    TreeDelegateItemSelected (TreeItem &item)
+    bool
+    TreeDelegateItemSelected (TreeItem &item) override
     {
         ProcessSP process_sp = GetProcess ();
         if (process_sp && process_sp->IsAlive())
@@ -3403,8 +3398,7 @@ public:
                             m_format);
     }
     
-    virtual
-    ~ThreadsTreeDelegate()
+    ~ThreadsTreeDelegate() override
     {
     }
     
@@ -3414,8 +3408,8 @@ public:
         return m_debugger.GetCommandInterpreter().GetExecutionContext().GetProcessSP();
     }
 
-    virtual void
-    TreeDelegateDrawTreeItem (TreeItem &item, Window &window)
+    void
+    TreeDelegateDrawTreeItem (TreeItem &item, Window &window) override
     {
         ProcessSP process_sp = GetProcess ();
         if (process_sp && process_sp->IsAlive())
@@ -3430,8 +3424,8 @@ public:
         }
     }
 
-    virtual void
-    TreeDelegateGenerateChildren (TreeItem &item)
+    void
+    TreeDelegateGenerateChildren (TreeItem &item) override
     {
         ProcessSP process_sp = GetProcess ();
         if (process_sp && process_sp->IsAlive())
@@ -3468,8 +3462,8 @@ public:
         item.ClearChildren();
     }
     
-    virtual bool
-    TreeDelegateItemSelected (TreeItem &item)
+    bool
+    TreeDelegateItemSelected (TreeItem &item) override
     {
         return false;
     }
@@ -3510,8 +3504,7 @@ public:
         SetValues (valobj_list);
     }
     
-    virtual
-    ~ValueObjectListDelegate()
+    ~ValueObjectListDelegate() override
     {
     }
 
@@ -3529,8 +3522,8 @@ public:
             m_rows.push_back(Row(m_valobj_list.GetValueObjectAtIndex(i), NULL));
     }
     
-    virtual bool
-    WindowDelegateDraw (Window &window, bool force)
+    bool
+    WindowDelegateDraw (Window &window, bool force) override
     {
         m_num_rows = 0;
         m_min_x = 2;
@@ -3572,8 +3565,8 @@ public:
         return true; // Drawing handled
     }
     
-    virtual KeyHelp *
-    WindowDelegateGetKeyHelp ()
+    KeyHelp *
+    WindowDelegateGetKeyHelp () override
     {
         static curses::KeyHelp g_source_view_key_help[] = {
             { KEY_UP, "Select previous item" },
@@ -3607,8 +3600,8 @@ public:
     }
 
     
-    virtual HandleCharResult
-    WindowDelegateHandleChar (Window &window, int c)
+    HandleCharResult
+    WindowDelegateHandleChar (Window &window, int c) override
     {
         switch(c)
         {
@@ -3911,19 +3904,18 @@ public:
     {
     }
     
-    virtual
-    ~FrameVariablesWindowDelegate()
+    ~FrameVariablesWindowDelegate() override
     {
     }
     
-    virtual const char *
-    WindowDelegateGetHelpText ()
+    const char *
+    WindowDelegateGetHelpText () override
     {
         return "Frame variable window keyboard shortcuts:";
     }
     
-    virtual bool
-    WindowDelegateDraw (Window &window, bool force)
+    bool
+    WindowDelegateDraw (Window &window, bool force) override
     {
         ExecutionContext exe_ctx (m_debugger.GetCommandInterpreter().GetExecutionContext());
         Process *process = exe_ctx.GetProcessPtr();
@@ -3944,6 +3936,7 @@ public:
                 return true; // Don't do any updating when we are running
             }
         }
+
         
         ValueObjectList local_values;
         if (frame_block)
@@ -3959,7 +3952,18 @@ public:
                     const DynamicValueType use_dynamic = eDynamicDontRunTarget;
                     const size_t num_locals = locals->GetSize();
                     for (size_t i=0; i<num_locals; ++i)
-                        local_values.Append(frame->GetValueObjectForFrameVariable (locals->GetVariableAtIndex(i), use_dynamic));
+                    {
+                        ValueObjectSP value_sp = frame->GetValueObjectForFrameVariable (locals->GetVariableAtIndex(i), use_dynamic);
+                        if (value_sp)
+                        {
+                            ValueObjectSP synthetic_value_sp = value_sp->GetSyntheticValue();
+                            if (synthetic_value_sp)
+                                local_values.Append(synthetic_value_sp);
+                            else
+                                local_values.Append(value_sp);
+
+                        }
+                    }
                     // Update the values
                     SetValues(local_values);
                 }
@@ -3990,20 +3994,19 @@ public:
         m_debugger (debugger)
     {
     }
-    
-    virtual
+
     ~RegistersWindowDelegate()
     {
     }
     
-    virtual const char *
-    WindowDelegateGetHelpText ()
+    const char *
+    WindowDelegateGetHelpText () override
     {
         return "Register window keyboard shortcuts:";
     }
 
-    virtual bool
-    WindowDelegateDraw (Window &window, bool force)
+    bool
+    WindowDelegateDraw (Window &window, bool force) override
     {
         ExecutionContext exe_ctx (m_debugger.GetCommandInterpreter().GetExecutionContext());
         StackFrame *frame = exe_ctx.GetFramePtr();
@@ -4309,18 +4312,18 @@ public:
     {
     }
     
-    virtual
     ~ApplicationDelegate ()
     {
     }
-    virtual bool
-    WindowDelegateDraw (Window &window, bool force)
+
+    bool
+    WindowDelegateDraw (Window &window, bool force) override
     {
         return false; // Drawing not handled, let standard window drawing happen
     }
     
-    virtual HandleCharResult
-    WindowDelegateHandleChar (Window &window, int key)
+    HandleCharResult
+    WindowDelegateHandleChar (Window &window, int key) override
     {
         switch (key)
         {
@@ -4342,8 +4345,8 @@ public:
     }
     
     
-    virtual const char *
-    WindowDelegateGetHelpText ()
+    const char *
+    WindowDelegateGetHelpText () override
     {
         return "Welcome to the LLDB curses GUI.\n\n"
         "Press the TAB key to change the selected view.\n"
@@ -4351,8 +4354,8 @@ public:
         "Common key bindings for all views:";
     }
     
-    virtual KeyHelp *
-    WindowDelegateGetKeyHelp ()
+    KeyHelp *
+    WindowDelegateGetKeyHelp () override
     {
         static curses::KeyHelp g_source_view_key_help[] = {
             { '\t', "Select next view" },
@@ -4370,8 +4373,8 @@ public:
         return g_source_view_key_help;
     }
     
-    virtual MenuActionResult
-    MenuDelegateAction (Menu &menu)
+    MenuActionResult
+    MenuDelegateAction (Menu &menu) override
     {
         switch (menu.GetIdentifier())
         {
@@ -4647,12 +4650,12 @@ public:
                             m_format);
     }
     
-    virtual
     ~StatusBarWindowDelegate ()
     {
     }
-    virtual bool
-    WindowDelegateDraw (Window &window, bool force)
+
+    bool
+    WindowDelegateDraw (Window &window, bool force) override
     {
         ExecutionContext exe_ctx = m_debugger.GetCommandInterpreter().GetExecutionContext();
         Process *process = exe_ctx.GetProcessPtr();
@@ -4723,8 +4726,7 @@ public:
     {
     }
 
-    virtual
-    ~SourceFileWindowDelegate()
+    ~SourceFileWindowDelegate() override
     {
     }
 
@@ -4740,14 +4742,14 @@ public:
         return m_max_y - m_min_y;
     }
 
-    virtual const char *
-    WindowDelegateGetHelpText ()
+    const char *
+    WindowDelegateGetHelpText () override
     {
         return "Source/Disassembly window keyboard shortcuts:";
     }
 
-    virtual KeyHelp *
-    WindowDelegateGetKeyHelp ()
+    KeyHelp *
+    WindowDelegateGetKeyHelp () override
     {
         static curses::KeyHelp g_source_view_key_help[] = {
             { KEY_RETURN, "Run to selected line with one shot breakpoint" },
@@ -4773,8 +4775,8 @@ public:
         return g_source_view_key_help;
     }
 
-    virtual bool
-    WindowDelegateDraw (Window &window, bool force)
+    bool
+    WindowDelegateDraw (Window &window, bool force) override
     {
         ExecutionContext exe_ctx = m_debugger.GetCommandInterpreter().GetExecutionContext();
         Process *process = exe_ctx.GetProcessPtr();
@@ -5259,8 +5261,8 @@ public:
         return 0;
     }
 
-    virtual HandleCharResult
-    WindowDelegateHandleChar (Window &window, int c)
+    HandleCharResult
+    WindowDelegateHandleChar (Window &window, int c) override
     {
         const uint32_t num_visible_lines = NumVisibleLines();
         const size_t num_lines = GetNumLines ();
