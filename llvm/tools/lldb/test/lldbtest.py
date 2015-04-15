@@ -255,6 +255,7 @@ class _LocalProcess(_BaseProcess):
     def __init__(self, trace_on):
         self._proc = None
         self._trace_on = trace_on
+        self._delayafterterminate = 0.1
 
     @property
     def pid(self):
@@ -267,7 +268,25 @@ class _LocalProcess(_BaseProcess):
 
     def terminate(self):
         if self._proc.poll() == None:
+            # Terminate _proc like it does the pexpect
+            self._proc.send_signal(signal.SIGHUP)
+            time.sleep(self._delayafterterminate)
+            if self._proc.poll() != None:
+                return
+            self._proc.send_signal(signal.SIGCONT)
+            time.sleep(self._delayafterterminate)
+            if self._proc.poll() != None:
+                return
+            self._proc.send_signal(signal.SIGINT)
+            time.sleep(self._delayafterterminate)
+            if self._proc.poll() != None:
+                return
             self._proc.terminate()
+            time.sleep(self._delayafterterminate)
+            if self._proc.poll() != None:
+                return
+            self._proc.kill()
+            time.sleep(self._delayafterterminate)
 
     def poll(self):
         return self._proc.poll()
@@ -606,8 +625,8 @@ def expectedFailureWindows(bugnumber=None, compilers=None):
 
 def expectedFailureLLGS(bugnumber=None, compilers=None):
     def fn(self):
-        # llgs local is only an option on Linux systems
-        if 'linux' not in sys.platform:
+        # llgs local is only an option on Linux targets
+        if not self.platformIsLinux():
             return False
         self.runCmd('settings show platform.plugin.linux.use-llgs-for-local')
         return 'true' in self.res.GetOutput() and self.expectedCompiler(compilers)
@@ -683,33 +702,21 @@ def skipUnlessDarwin(func):
     """Decorate the item to skip tests that should be skipped on any non Darwin platform."""
     return skipUnlessPlatform(getDarwinOSTriples())(func)
 
+def getPlatform():
+    platform = lldb.DBG.GetSelectedPlatform().GetTriple().split('-')[2]
+    if platform.startswith('freebsd'):
+        platform = 'freebsd'
+    return platform
+
 def skipIfPlatform(oslist):
     """Decorate the item to skip tests if running on one of the listed platforms."""
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            from unittest2 import case
-            self = args[0]
-            if self.getPlatform() in oslist:
-                self.skipTest("skip on %s" % (", ".join(oslist)))
-            else:
-                func(*args, **kwargs)
-        return wrapper
-    return decorator
+    return unittest2.skipIf(getPlatform() in oslist,
+                            "skip on %s" % (", ".join(oslist)))
 
 def skipUnlessPlatform(oslist):
     """Decorate the item to skip tests unless running on one of the listed platforms."""
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            from unittest2 import case
-            self = args[0]
-            if not (self.getPlatform() in oslist):
-                self.skipTest("requires one of %s" % (", ".join(oslist)))
-            else:
-                func(*args, **kwargs)
-        return wrapper
-    return decorator
+    return unittest2.skipUnless(getPlatform() in oslist,
+                                "requires on of %s" % (", ".join(oslist)))
 
 def skipIfLinuxClang(func):
     """Decorate the item to skip tests that should be skipped if building on 
@@ -1364,7 +1371,10 @@ class Base(unittest2.TestCase):
     def getArchitecture(self):
         """Returns the architecture in effect the test suite is running with."""
         module = builder_module()
-        return module.getArchitecture()
+        arch = module.getArchitecture()
+        if arch == 'amd64':
+            arch = 'x86_64'
+        return arch
 
     def getCompiler(self):
         """Returns the compiler in effect the test suite is running with."""
@@ -1402,10 +1412,7 @@ class Base(unittest2.TestCase):
 
     def getPlatform(self):
         """Returns the platform the test suite is running on."""
-        platform = lldb.DBG.GetSelectedPlatform().GetTriple().split('-')[2]
-        if platform.startswith('freebsd'):
-            platform = 'freebsd'
-        return platform
+        return getPlatform()
 
     def isIntelCompiler(self):
         """ Returns true if using an Intel (ICC) compiler, false otherwise. """

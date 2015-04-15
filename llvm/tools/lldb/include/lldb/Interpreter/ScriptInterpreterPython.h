@@ -346,10 +346,9 @@ public:
 
     StringList
     ReadCommandInputFromUser (FILE *in_file);
-    
-    virtual void
-    ResetOutputFileHandle (FILE *new_fh) override;
-    
+
+    void ResetOutputFileHandle(FILE *new_fh) override;
+
     static void
     InitializePrivate ();
 
@@ -491,6 +490,13 @@ public:
         PyGILState_STATE         m_GILState;
 	};
 protected:
+    enum class AddLocation
+    {
+        Beginning,
+        End
+    };
+
+    static void AddToSysPath(AddLocation location, std::string path);
 
     uint32_t
     IsExecutingPython () const

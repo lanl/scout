@@ -583,8 +583,7 @@ PlatformLinux::GetSoftwareBreakpointTrapOpcode (Target &target,
                 addr_class = bp_loc_sp->GetAddress ().GetAddressClass ();
 
             if (addr_class == eAddressClassCodeAlternateISA
-                || (addr_class == eAddressClassUnknown
-                    && bp_loc_sp->GetAddress().GetOffset() & 1))
+                || (addr_class == eAddressClassUnknown && (bp_site->GetLoadAddress() & 1)))
             {
                 trap_opcode = g_thumb_breakpoint_opcode;
                 trap_opcode_size = sizeof(g_thumb_breakpoint_opcode);
@@ -597,9 +596,15 @@ PlatformLinux::GetSoftwareBreakpointTrapOpcode (Target &target,
         }
         break;
     case llvm::Triple::mips64:
-    case llvm::Triple::mips64el:
         {
             static const uint8_t g_hex_opcode[] = { 0x00, 0x00, 0x00, 0x0d };
+            trap_opcode = g_hex_opcode;
+            trap_opcode_size = sizeof(g_hex_opcode);
+        }
+        break;
+    case llvm::Triple::mips64el:
+        {
+            static const uint8_t g_hex_opcode[] = { 0x0d, 0x00, 0x00, 0x00 };
             trap_opcode = g_hex_opcode;
             trap_opcode_size = sizeof(g_hex_opcode);
         }
