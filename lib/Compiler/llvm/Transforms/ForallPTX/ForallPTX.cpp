@@ -614,7 +614,7 @@ public:
 
     string ptxCode;
     raw_string_ostream rstr(ptxCode);
-    formatted_raw_ostream fstr(rstr);
+    buffer_ostream fstr(rstr);
 
     targetMachine->addPassesToEmitFile(passManager,
                                        fstr,
