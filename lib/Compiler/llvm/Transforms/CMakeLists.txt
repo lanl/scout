@@ -10,7 +10,7 @@
 
 
 # Is this all CUDA-dependent?
-#add_subdirectory(Driver)
+add_subdirectory(Driver)
 
 if(${SCOUT_ENABLE_CUDA})
    add_subdirectory(ForallPTX)

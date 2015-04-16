@@ -205,7 +205,8 @@ void CudaDriver::create(Function *func,
   // Calculate the total number of mesh elements.
   int meshSize = getLinearizedMeshSize();
 
-  Value* image = _builder.CreateConstInBoundsGEP2_32(ptxAsm, 0, 0);
+  Value* image =
+  _builder.CreateConstInBoundsGEP2_32(0, ptxAsm, 0, 0);
 
   // Load module, add memcpy's, and launch kernel.
   llvm::Value *cuModule = _builder.CreateAlloca(getPtrTy(getCUmoduleTy()), 0, "cuModule");

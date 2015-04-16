@@ -233,7 +233,11 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int MeshType, llvm::Value
   
   // extract rank from mesh stored after width/height/depth
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
-  MeshRank = Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, nfields + MeshParameterOffset::RankOffset, IRNameStr);
+  MeshRank =
+  Builder.CreateConstInBoundsGEP2_32(0,
+                                     MeshBaseAddr, 0,
+                                     nfields + MeshParameterOffset::RankOffset,
+                                     IRNameStr);
   
   unsigned start = nfields + MeshParameterOffset::WidthOffset;
   
@@ -242,7 +246,8 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int MeshType, llvm::Value
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
     MeshDims[i] =
-    Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, start + i, IRNameStr);
+    Builder.CreateConstInBoundsGEP2_32(0,
+                                       MeshBaseAddr, 0, start + i, IRNameStr);
 
   }
 
@@ -250,14 +255,16 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int MeshType, llvm::Value
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), StartNames[i]);
     MeshStart[i] =
-        Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, start + i, IRNameStr);
+        Builder.CreateConstInBoundsGEP2_32(0,
+                                           MeshBaseAddr, 0, start + i, IRNameStr);
   }
 
   start =  nfields + MeshParameterOffset::XSizeOffset;
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), SizeNames[i]);
     MeshSize[i] =
-        Builder.CreateConstInBoundsGEP2_32(MeshBaseAddr, 0, start + i, IRNameStr);
+        Builder.CreateConstInBoundsGEP2_32(0,
+                                           MeshBaseAddr, 0, start + i, IRNameStr);
   }
 
   for(unsigned int i = 0; i < 3; i++) {
@@ -1887,11 +1894,11 @@ llvm::Value* CodeGenFunction::EmitForallQueryCall(const ForallMeshStmt& S,
   
   Value* qp = LocalDeclMap[qd];
   
-  Value* rawFuncPtr = B.CreateStructGEP(qp, 0);
+  Value* rawFuncPtr = B.CreateStructGEP(0, qp, 0);
   rawFuncPtr = B.CreateLoad(rawFuncPtr, "query.func.ptr");
   Value* funcPtr = B.CreateBitCast(rawFuncPtr, llvm::PointerType::get(ft, 0));
   
-  Value* rawMeshPtr = B.CreateStructGEP(qp, 1, "query.mesh.ptr");
+  Value* rawMeshPtr = B.CreateStructGEP(0, qp, 1, "query.mesh.ptr");
   rawMeshPtr = B.CreateLoad(rawMeshPtr);
   Value* meshPtr = B.CreateBitCast(rawMeshPtr, mpt);
   
@@ -2733,7 +2740,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       
       GetMeshBaseAddr(frame, meshPtr);
       
-      Value* fieldPtr = Builder.CreateStructGEP(meshPtr, field->getFieldIndex());
+      Value* fieldPtr = Builder.CreateStructGEP(0, meshPtr, field->getFieldIndex());
       fieldPtr = Builder.CreateLoad(fieldPtr);
       
       llvm::PointerType* pt = dyn_cast<llvm::PointerType>(fieldPtr->getType());

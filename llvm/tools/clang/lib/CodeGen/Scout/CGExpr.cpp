@@ -221,7 +221,7 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
     if (Idx != 0)
       // For structs, we GEP to the field that the record layout suggests.
       sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(),FieldName.str().c_str());
-      Addr = Builder.CreateStructGEP(Addr, Idx, IRNameStr);
+      Addr = Builder.CreateStructGEP(0, Addr, Idx, IRNameStr);
     // Get the access type.
     llvm::Type *PtrTy = llvm::Type::getIntNPtrTy(
       getLLVMContext(), Info.StorageSize,
@@ -251,7 +251,7 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
   unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
 
   sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(),FieldName.str().c_str());
-  addr = Builder.CreateStructGEP(addr, idx, IRNameStr);
+  addr = Builder.CreateStructGEP(0, addr, idx, IRNameStr);
 
   // If this is a reference field, load the reference right now.
   if (const ReferenceType *refType = type->getAs<ReferenceType>()) {
@@ -649,7 +649,7 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
 
 
       sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), names[offset]);
-      value = Builder.CreateConstInBoundsGEP2_32(BaseAddr, 0, nfields+offset, IRNameStr);
+      value = Builder.CreateConstInBoundsGEP2_32(0, BaseAddr, 0, nfields+offset, IRNameStr);
 
       sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), names[offset]);
       value = Builder.CreateLoad(value, IRNameStr);
@@ -892,7 +892,7 @@ RValue CodeGenFunction::EmitPlotExpr(ArgIterator argsBegin, ArgIterator argsEnd)
   
   unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
   
-  llvm::Value* fieldAddr = Builder.CreateStructGEP(meshAddr, idx);
+  llvm::Value* fieldAddr = Builder.CreateStructGEP(0, meshAddr, idx);
   fieldAddr = Builder.CreateLoad(fieldAddr, "mesh.field");
   
   llvm::Type* fieldTy = structTy->getContainedType(idx);
@@ -987,7 +987,7 @@ CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
     
     unsigned idx = CGM.getTypes().getCGMeshLayout(md).getLLVMFieldNo(field);
     
-    llvm::Value* fieldAddr = Builder.CreateStructGEP(meshAddr, idx);
+    llvm::Value* fieldAddr = Builder.CreateStructGEP(0, meshAddr, idx);
     fieldAddr = Builder.CreateLoad(fieldAddr, "mesh.field");
     
     llvm::Type* fieldTy = structTy->getContainedType(idx);
@@ -1078,7 +1078,7 @@ RValue CodeGenFunction::EmitSwapFieldsExpr(ArgIterator argsBegin, ArgIterator ar
     const MeshDecl* mesh = field->getParent();
     unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
     
-    fieldPtr[i] = Builder.CreateStructGEP(meshAddr, idx);
+    fieldPtr[i] = Builder.CreateStructGEP(0, meshAddr, idx);
     
     ++argsBegin;
   }
@@ -1236,8 +1236,8 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   Value* qp = LV.getAddress();
 
-  Value* funcField = B.CreateStructGEP(qp, 0, "query.func.ptr");
-  Value* meshPtrField = B.CreateStructGEP(qp, 1, "query.mesh.ptr");
+  Value* funcField = B.CreateStructGEP(0, qp, 0, "query.func.ptr");
+  Value* meshPtrField = B.CreateStructGEP(0, qp, 1, "query.mesh.ptr");
   
   B.CreateStore(B.CreateBitCast(queryFunc, CGM.VoidPtrTy), funcField);
   B.CreateStore(B.CreateBitCast(baseAddr, CGM.VoidPtrTy), meshPtrField);
