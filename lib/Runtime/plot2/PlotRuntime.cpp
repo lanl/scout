@@ -128,7 +128,7 @@ namespace{
     
     ~Random(){}
     
-    void setSeed(int64_t seed){
+    void setSeed(uint64_t seed){
       rng_.seed(seed);
     }
         

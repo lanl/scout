@@ -406,7 +406,7 @@ public:
         Value* fieldName = builder.CreateGlobalStringPtr(field->name());
         fieldName = builder.CreateBitCast(fieldName, m_.stringTy);
 
-        Value* hostPtr = builder.CreateStructGEP(meshPtr, field->position());
+        Value* hostPtr = builder.CreateStructGEP(0, meshPtr, field->position());
         hostPtr = builder.CreateLoad(hostPtr);
         hostPtr = builder.CreateBitCast(hostPtr, m_.voidPtrTy);
 
