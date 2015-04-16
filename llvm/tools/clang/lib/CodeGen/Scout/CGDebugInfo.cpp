@@ -205,7 +205,7 @@ void CGDebugInfo::completeClassData(const UniformMeshDecl *MD) {
   void* TyPtr = Ty.getAsOpaquePtr();
   auto I = TypeCache.find(TyPtr);
   if (I != TypeCache.end() &&
-      !llvm::DIType(cast<llvm::MDNode>(I->second)).isForwardDecl())
+      !llvm::DIType(cast<llvm::MDType>(I->second)).isForwardDecl())
     return;
   llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
   assert(!Res.isForwardDecl());
@@ -219,7 +219,7 @@ void CGDebugInfo::completeClassData(const ALEMeshDecl *MD) {
   void* TyPtr = Ty.getAsOpaquePtr();
   auto I = TypeCache.find(TyPtr);
   if (I != TypeCache.end() &&
-      !llvm::DIType(cast<llvm::MDNode>(I->second)).isForwardDecl())
+      !llvm::DIType(cast<llvm::MDType>(I->second)).isForwardDecl())
     return;
   llvm::DIType Res = CreateTypeDefinition(Ty->castAs<ALEMeshType>());
   assert(!Res.isForwardDecl());
@@ -233,7 +233,7 @@ void CGDebugInfo::completeClassData(const RectilinearMeshDecl *MD) {
   void* TyPtr = Ty.getAsOpaquePtr();
   auto I = TypeCache.find(TyPtr);
   if (I != TypeCache.end() &&
-      !llvm::DIType(cast<llvm::MDNode>(I->second)).isForwardDecl())
+      !llvm::DIType(cast<llvm::MDType>(I->second)).isForwardDecl())
     return;
   llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
   assert(!Res.isForwardDecl());
@@ -247,7 +247,7 @@ void CGDebugInfo::completeClassData(const StructuredMeshDecl *MD) {
   void* TyPtr = Ty.getAsOpaquePtr();
   auto I = TypeCache.find(TyPtr);
   if (I != TypeCache.end() &&
-      !llvm::DIType(cast<llvm::MDNode>(I->second)).isForwardDecl())
+      !llvm::DIType(cast<llvm::MDType>(I->second)).isForwardDecl())
     return;
   llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
   assert(!Res.isForwardDecl());
@@ -261,7 +261,7 @@ void CGDebugInfo::completeClassData(const UnstructuredMeshDecl *MD) {
   void* TyPtr = Ty.getAsOpaquePtr();
   auto I = TypeCache.find(TyPtr);
   if (I != TypeCache.end() &&
-      !llvm::DIType(cast<llvm::MDNode>(I->second)).isForwardDecl())
+      !llvm::DIType(cast<llvm::MDType>(I->second)).isForwardDecl())
     return;
   llvm::DIType Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
   assert(!Res.isForwardDecl());
@@ -299,7 +299,7 @@ llvm::DIType CGDebugInfo::CreateType(const UniformMeshType *Ty) {
   // complete when in limit-debug-info mode.  If the type is later
   // found to be required to be complete this declaration will be
   // upgraded to a definition by 'completeRequiredType'.
-  llvm::DIScoutCompositeType T(getTypeOrNull(QualType(Ty, 0)));
+  llvm::DIType T(getTypeOrNull(QualType(Ty, 0)));
 
   // If we're already emitted the type just use that, even if it is only a
   // declaration.  The completeType(), completeRequiredType(), and
@@ -333,9 +333,8 @@ llvm::DIType CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
   // and replace all uses of the forward declaration with the final
   // definition.
 
-  llvm::DICompositeType FwdDecl(getOrCreateLimitedType(Ty, DefUnit));
-  assert(FwdDecl.isCompositeType() &&
-    "The debug type of UniformMeshType should be a llvm::DICompositeType");
+  llvm::DICompositeType FwdDecl =
+  cast<llvm::MDCompositeTypeBase>(getOrCreateLimitedType(Ty, DefUnit));
 
   if (FwdDecl.isForwardDecl())
     return FwdDecl;
@@ -376,15 +375,10 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
 
   // If we ended up creating the type during the context chain construction,
   // just return that.
-  // FIXME: this could be dealt with better if the type was recorded as
-  // completed before we started this (see the CompletedTypeCache usage in
-  // CGDebugInfo::CreateTypeDefinition(const MeshType*) - that would need to
-  // be pushed to before context creation, but after it was known to be
-  // destined for completion (might still have an issue if this caller only
-  // required a declaration but the context construction ended up creating a
-  // definition)
-  llvm::DIScoutCompositeType T(
-      getTypeOrNull(CGM.getContext().getUniformMeshType(MD)));
+  llvm::DIScoutCompositeType T =
+  cast_or_null<llvm::MDScoutCompositeType>(
+                                           getTypeOrNull(CGM.getContext().getUniformMeshType(MD)));
+  
   if (T && (!T.isForwardDecl() || !MD->getDefinition()))
       return T;
 
@@ -439,7 +433,7 @@ CGDebugInfo::getOrCreateMeshFwdDecl(const UniformMeshType *Ty,
                                     llvm::DIDescriptor Ctx) {
   const UniformMeshDecl *MD = Ty->getDecl();
   if (llvm::DIType T = getTypeOrNull(CGM.getContext().getUniformMeshType(MD)))
-    return llvm::DIScoutCompositeType(T);
+    return cast<llvm::MDScoutCompositeType>(T);
 
   llvm::DIFile DefUnit = getOrCreateFile(MD->getLocation());
   unsigned Line = getLineNumber(MD->getLocation());
@@ -459,12 +453,14 @@ llvm::DIType CGDebugInfo::getOrCreateLimitedType(const UniformMeshType *Ty,
                                                  llvm::DIFile Unit) {
   QualType QTy(Ty, 0);
 
-  llvm::DICompositeType T(getTypeOrNull(QTy));
+  llvm::DICompositeType T =
+  cast_or_null<llvm::MDCompositeTypeBase>(getTypeOrNull(QTy));
 
   // We may have cached a forward decl when we could have created
   // a non-forward decl. Go ahead and create a non-forward decl
   // now.
-  if (T && !T.isForwardDecl()) return T;
+  if (T && !T.isForwardDecl())
+    return T;
 
   // Otherwise create the type.
   llvm::DIScoutCompositeType Res = CreateLimitedType(Ty);
