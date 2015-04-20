@@ -1,9 +1,10 @@
+#include <unistd.h>
 #include <stdio.h>
 
 #include "sclegion.h"
 #include "legion_c.h"
 
-static const size_t SIZE = 100;
+static const size_t SIZE = 10;
 
 struct MyMesh{
   float* a;
@@ -29,14 +30,29 @@ void MyTask(MyMesh* m){
   }
 
   for(size_t i = 0 ; i < m->xsize; ++i){
-    m->b[i] = 2*(i + m->xstart);
+    m->b[i] = 2+(i + m->xstart);
   }
 
   for(int i = 0; i < m->xsize; ++i){
     printf("a[%d] = %f\n", i+m->xstart, m->a[i]);
     printf("b[%d] = %f\n", i+m->xstart, m->b[i]);
+    sleep(1);
   }
+}
 
+void MyTask2(MyMesh* m){
+  printf("width2: %d\n", m->width);
+  printf("height2: %d\n", m->height);
+  printf("depth2: %d\n", m->depth);
+  printf("rank2: %d\n", m->rank);
+  printf("start2: %d\n", m->xstart);
+  printf("size2: %d\n", m->xsize);
+ 
+  for(int i = 0; i < m->xsize; ++i){
+    printf("a2[%d] = %f\n", i+m->xstart, m->a[i]);
+    printf("b2[%d] = %f\n", i+m->xstart, m->b[i]);
+    sleep(1);
+  }
 }
 
 void LegionTaskFunction(const legion_task_t task,
@@ -50,12 +66,23 @@ void LegionTaskFunction(const legion_task_t task,
   MyTask(m);
 }
 
-void LegionTaskInitFunction(sclegion_uniform_mesh_t mesh,
+void LegionTaskFunction2(const legion_task_t task,
+                        const legion_physical_region_t* region,
+                        unsigned numRegions,
+                        legion_context_t context,
+                        legion_runtime_t runtime){
+  MyMesh* m = 
+    (MyMesh*)sclegion_uniform_mesh_reconstruct(task, region, numRegions,
+                                               context, runtime);
+  MyTask2(m);
+}
+
+void LegionTaskInitFunction(int task_id,sclegion_uniform_mesh_t mesh,
                             legion_context_t context,
                             legion_runtime_t runtime){
 
   sclegion_uniform_mesh_launcher_t launcher =
-    sclegion_uniform_mesh_create_launcher(mesh, 1);
+    sclegion_uniform_mesh_create_launcher(mesh, task_id);
 
   sclegion_uniform_mesh_launcher_add_field(launcher, "a", READ_WRITE);
   sclegion_uniform_mesh_launcher_add_field(launcher, "b", READ_WRITE);
@@ -78,13 +105,15 @@ void main_task(const legion_task_t task,
 
   sclegion_uniform_mesh_init(mesh);
 
-  LegionTaskInitFunction(mesh, context, runtime);
+  LegionTaskInitFunction(1,mesh, context, runtime);
+  LegionTaskInitFunction(2,mesh, context, runtime);
 }
 
 int lsci_main(int argc, char** argv){
   sclegion_init("main_task", main_task);
 
   sclegion_register_task(1, "LegionTaskFunction", LegionTaskFunction); 
+  sclegion_register_task(2, "LegionTaskFunction2", LegionTaskFunction2); 
 
   return sclegion_start(argc, argv);
 }

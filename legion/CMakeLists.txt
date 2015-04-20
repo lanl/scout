@@ -53,7 +53,7 @@ project(lsci)
 
 # Build w/ clang ignoring any delete-non-virtual-dtor warnings
 find_package(Clang)
-set(CMAKE_C_COMPILER ${CLANG_COMMAND})
+set(CMAKE_C_COMPILER ${CLANGXX_COMMAND})
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DSHARED_LOWLEVEL -Wno-delete-non-virtual-dtor -Wno-format")
 set(CMAKE_CXX_COMPILER ${CLANGXX_COMMAND})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSHARED_LOWLEVEL -Wno-delete-non-virtual-dtor -Wno-format")
