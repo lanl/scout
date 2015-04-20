@@ -74,7 +74,7 @@ set(LIBS
 
 file(GLOB RT_SCLEGION_SRCS *.cpp)
 
-set(CMAKE_CXX_COMPILER "${SCOUT_BUILD_DIR}/../bin/clang")
+set(CMAKE_CXX_COMPILER "${SCOUT_BUILD_DIR}/../bin/clang++")
 
 # Add an executable and test entry for each source file...
 foreach (test ${RT_SCLEGION_SRCS})
