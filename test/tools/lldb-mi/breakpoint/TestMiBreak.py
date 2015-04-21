@@ -13,7 +13,6 @@ class MiBreakTestCase(lldbmi_testcase.MiTestCaseBase):
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
-    @expectedFailureGcc #xfail to get buildbot green, test failed with gcc4.8.2
     def test_lldbmi_break_insert_function_pending(self):
         """Test that 'lldb-mi --interpreter' works for pending function breakpoints."""
 
@@ -23,16 +22,21 @@ class MiBreakTestCase(lldbmi_testcase.MiTestCaseBase):
         self.expect("\^done")
 
         self.runCmd("-break-insert -f printf")
-        self.expect("\^done,bkpt={number=\"1\"")
+        #FIXME function name is unknown on Darwin, fullname should be ??, line is -1
+        #self.expect("\^done,bkpt={number=\"1\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"0xffffffffffffffff\",func=\"printf\",file=\"\?\?\",fullname=\"\?\?\",line=\"-1\",pending=\[\"printf\"\],times=\"0\",original-location=\"printf\"}")
+        self.expect("\^done,bkpt={number=\"1\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"0xffffffffffffffff\",func=\"\?\?\",file=\"\?\?\",fullname=\"\?\?/\?\?\",line=\"0\",pending=\[\"printf\"\],times=\"0\",original-location=\"printf\"}")
+        #FIXME function name is unknown on Darwin, =breakpoint-created is treated as =breakpoint-modified, fullname should be ??, line -1
+        #self.expect("=breakpoint-created,bkpt={number=\"1\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"0xffffffffffffffff\",func=\"printf\",file=\"\?\?\",fullname=\"\?\?\",line=\"-1\",pending=\[\"printf\"\],times=\"0\",original-location=\"printf\"}")
+        self.expect("=breakpoint-modified,bkpt={number=\"1\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"0xffffffffffffffff\",func=\"\?\?\",file=\"\?\?\",fullname=\"\?\?/\?\?\",line=\"0\",pending=\[\"printf\"\],times=\"0\",original-location=\"printf\"}")
 
         self.runCmd("-exec-run")
         self.expect("\^running")
+        self.expect("=breakpoint-modified,bkpt={number=\"1\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"(?!0xffffffffffffffff)0x[0-9a-f]+\",func=\".+?\",file=\".+?\",fullname=\".+?\",line=\"(-1|\d+)\",pending=\[\"printf\"\],times=\"0\",original-location=\"printf\"}")
         self.expect("\*stopped,reason=\"breakpoint-hit\"")
 
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
-    @expectedFailureGcc #xfail to get buildbot green, test failed with gcc4.8.2
     def test_lldbmi_break_insert_function(self):
         """Test that 'lldb-mi --interpreter' works for function breakpoints."""
 
@@ -42,14 +46,28 @@ class MiBreakTestCase(lldbmi_testcase.MiTestCaseBase):
         self.expect("\^done")
 
         self.runCmd("-break-insert -f main")
-        self.expect("\^done,bkpt={number=\"1\"")
+        #FIXME main wasn't resolved
+        #self.expect("\^done,bkpt={number=\"1\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"(?!0xffffffffffffffff)0x[0-9a-f]+\",func=\"main\",file=\"main\.cpp\",fullname=\".+?main\.cpp\",line=\"15\",pending=\[\"main\"\],times=\"0\",original-location=\"main\"}")
+        self.expect("\^done,bkpt={number=\"1\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"0xffffffffffffffff\",func=\"main\",file=\"main\.cpp\",fullname=\".+?main\.cpp\",line=\"15\",pending=\[\"main\"\],times=\"0\",original-location=\"main\"}")
+        #FIXME main wasn't resolved, =breakpoint-created is treated as =breakpoint-modified
+        #self.expect("=breakpoint-created,bkpt={number=\"1\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"(?!0xffffffffffffffff)0x[0-9a-f]+\",func=\"main\",file=\"main\.cpp\",fullname=\".+?main\.cpp\",line=\"15\",pending=\[\"main\"\],times=\"0\",original-location=\"main\"}")
+        self.expect("=breakpoint-modified,bkpt={number=\"1\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"0xffffffffffffffff\",func=\"main\",file=\"main\.cpp\",fullname=\".+?main\.cpp\",line=\"15\",pending=\[\"main\"\],times=\"0\",original-location=\"main\"}")
 
         self.runCmd("-exec-run")
         self.expect("\^running")
+        self.expect("=breakpoint-modified,bkpt={number=\"1\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"(?!0xffffffffffffffff)0x[0-9a-f]+\",func=\"main\",file=\"main\.cpp\",fullname=\".+?main\.cpp\",line=\"15\",pending=\[\"main\"\],times=\"0\",original-location=\"main\"}")
         self.expect("\*stopped,reason=\"breakpoint-hit\"")
 
         self.runCmd("-break-insert printf")
-        self.expect("\^done,bkpt={number=\"2\"")
+        #FIXME function name is unknown on Darwin
+        #self.expect("\^done,bkpt={number=\"2\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"(?!0xffffffffffffffff)0x[0-9a-f]+\",func=\"printf\",file=\".+?\",fullname=\".+?\",line=\"(-1|\d+)\",times=\"0\",original-location=\"printf\"}")
+        self.expect("\^done,bkpt={number=\"2\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"(?!0xffffffffffffffff)0x[0-9a-f]+\",func=\".+?\",file=\".+?\",fullname=\".+?\",line=\"(-1|\d+)\",times=\"0\",original-location=\"printf\"}")
+        #FIXME function name is unknown on Darwin, =breakpoint-created is treated as =breakpoint-modified
+        #self.expect("=breakpoint-created,bkpt={number=\"2\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"(?!0xffffffffffffffff)0x[0-9a-f]+\",func=\"printf\",file=\".+?\",fullname=\".+?\",line=\"(-1|\d+)\",times=\"0\",original-location=\"printf\"}")
+        self.expect("=breakpoint-modified,bkpt={number=\"2\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"(?!0xffffffffffffffff)0x[0-9a-f]+\",func=\".+?\",file=\".+?\",fullname=\".+?\",line=\"(-1|\d+)\",times=\"0\",original-location=\"printf\"}")
+        # FIXME function name is unknown on Darwin
+        #self.expect("=breakpoint-modified,bkpt={number=\"2\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"(?!0xffffffffffffffff)0x[0-9a-f]+\",func=\"printf\",file=\".+?\",fullname=\".+?\",line=\"(-1|\d+)\",times=\"0\",original-location=\"printf\"}")
+        self.expect("=breakpoint-modified,bkpt={number=\"2\",type=\"breakpoint\",disp=\"keep\",enabled=\"y\",addr=\"(?!0xffffffffffffffff)0x[0-9a-f]+\",func=\".+?\",file=\".+?\",fullname=\".+?\",line=\"(-1|\d+)\",times=\"0\",original-location=\"printf\"}")
 
         self.runCmd("-exec-continue")
         self.expect("\^running")
@@ -79,7 +97,6 @@ class MiBreakTestCase(lldbmi_testcase.MiTestCaseBase):
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
-    @expectedFailureGcc #xfail to get buildbot green, test failed with gcc4.8.2
     def test_lldbmi_break_insert_file_line(self):
         """Test that 'lldb-mi --interpreter' works for file:line breakpoints."""
 

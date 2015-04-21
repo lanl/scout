@@ -189,7 +189,7 @@ Target::DeleteCurrentProcess ()
     {
         m_section_load_history.Clear();
         if (m_process_sp->IsAlive())
-            m_process_sp->Destroy();
+            m_process_sp->Destroy(false);
         
         m_process_sp->Finalize();
 
@@ -1259,24 +1259,6 @@ Target::ModulesDidLoad (ModuleList &module_list)
         if (m_process_sp)
         {
             m_process_sp->ModulesDidLoad (module_list);
-
-            // This assumes there can only be one libobjc loaded.
-            ObjCLanguageRuntime *objc_runtime = m_process_sp->GetObjCLanguageRuntime ();
-            if (objc_runtime && !objc_runtime->HasReadObjCLibrary ())
-            {
-                Mutex::Locker locker (module_list.GetMutex ());
-
-                size_t num_modules = module_list.GetSize();
-                for (size_t i = 0; i < num_modules; i++)
-                {
-                    auto mod = module_list.GetModuleAtIndex (i);
-                    if (objc_runtime->IsModuleObjCLibrary (mod))
-                    {
-                        objc_runtime->ReadObjCLibrary (mod);
-                        break;
-                    }
-                }
-            }
         }
         BroadcastEvent (eBroadcastBitModulesLoaded, new TargetEventData (this->shared_from_this(), module_list));
     }
@@ -2771,7 +2753,7 @@ Target::Attach (ProcessAttachInfo &attach_info, Stream *stream)
                 error.SetErrorStringWithFormat ("attach failed: %s", exit_desc);
             else
                 error.SetErrorString ("attach failed: process did not stop (no such process or permission problem?)");
-            process_sp->Destroy ();
+            process_sp->Destroy (false);
         }
     }
     return error;
@@ -2945,6 +2927,7 @@ g_properties[] =
     { "exec-search-paths"                  , OptionValue::eTypeFileSpecList, false, 0                       , NULL, NULL, "Executable search paths to use when locating executable files whose paths don't match the local file system." },
     { "debug-file-search-paths"            , OptionValue::eTypeFileSpecList, false, 0                       , NULL, NULL, "List of directories to be searched when locating debug symbol files." },
     { "clang-module-search-paths"          , OptionValue::eTypeFileSpecList, false, 0                       , NULL, NULL, "List of directories to be searched when locating modules for Clang." },
+    { "auto-import-clang-modules"          , OptionValue::eTypeBoolean   , false, false                     , NULL, NULL, "Automatically load Clang modules referred to by the program." },
     { "max-children-count"                 , OptionValue::eTypeSInt64    , false, 256                       , NULL, NULL, "Maximum number of children to expand in any level of depth." },
     { "max-string-summary-length"          , OptionValue::eTypeSInt64    , false, 1024                      , NULL, NULL, "Maximum number of characters to show when using %s in summary strings." },
     { "max-memory-read-size"               , OptionValue::eTypeSInt64    , false, 1024                      , NULL, NULL, "Maximum number of bytes that 'memory read' will fetch before --force must be specified." },
@@ -2996,6 +2979,7 @@ enum
     ePropertyExecutableSearchPaths,
     ePropertyDebugFileSearchPaths,
     ePropertyClangModuleSearchPaths,
+    ePropertyAutoImportClangModules,
     ePropertyMaxChildrenCount,
     ePropertyMaxSummaryLength,
     ePropertyMaxMemReadSize,
@@ -3347,6 +3331,13 @@ TargetProperties::GetClangModuleSearchPaths ()
     OptionValueFileSpecList *option_value = m_collection_sp->GetPropertyAtIndexAsOptionValueFileSpecList (NULL, false, idx);
     assert(option_value);
     return option_value->GetCurrentValue();
+}
+
+bool
+TargetProperties::GetEnableAutoImportClangModules() const
+{
+    const uint32_t idx = ePropertyAutoImportClangModules;
+    return m_collection_sp->GetPropertyAtIndexAsBoolean (NULL, idx, g_properties[idx].default_uint_value != 0);
 }
 
 bool

@@ -836,7 +836,7 @@ Process::Finalize()
         case eStateStepping:
         case eStateCrashed:
         case eStateSuspended:
-            Destroy();
+            Destroy(false);
             break;
             
         case eStateInvalid:
@@ -3160,7 +3160,7 @@ Process::Launch (ProcessLaunchInfo &launch_info)
                         // catch the initial stop.
                         error.SetErrorString ("failed to catch stop after launch");
                         SetExitStatus (0, "failed to catch stop after launch");
-                        Destroy();
+                        Destroy(false);
                     }
                     else if (state == eStateStopped || state == eStateCrashed)
                     {
@@ -3787,7 +3787,7 @@ Process::Halt (bool clear_thread_plans)
                 RestorePrivateProcessEvents();
                 restored_process_events = true;
                 SetExitStatus(SIGKILL, "Cancelled async attach.");
-                Destroy ();
+                Destroy (false);
             }
             else
             {
@@ -3961,12 +3961,15 @@ Process::Detach (bool keep_stopped)
 }
 
 Error
-Process::Destroy ()
+Process::Destroy (bool force_kill)
 {
     
     // Tell ourselves we are in the process of destroying the process, so that we don't do any unnecessary work
     // that might hinder the destruction.  Remember to set this back to false when we are done.  That way if the attempt
     // failed and the process stays around for some reason it won't be in a confused state.
+
+    if (force_kill)
+        m_should_detach = false;
     
     if (GetShouldDetach())
     {
@@ -6469,13 +6472,29 @@ Process::ModulesDidLoad (ModuleList &module_list)
         runtime->ModulesDidLoad(module_list);
     }
 
+    // Let any language runtimes we have already created know
+    // about the modules that loaded.
+    
+    // Iterate over a copy of this language runtime list in case
+    // the language runtime ModulesDidLoad somehow causes the language
+    // riuntime to be unloaded.
+    LanguageRuntimeCollection language_runtimes(m_language_runtimes);
+    for (const auto &pair: language_runtimes)
+    {
+        // We must check language_runtime_sp to make sure it is not
+        // NULL as we might cache the fact that we didn't have a
+        // language runtime for a language.
+        LanguageRuntimeSP language_runtime_sp = pair.second;
+        if (language_runtime_sp)
+            language_runtime_sp->ModulesDidLoad(module_list);
+    }
 }
 
 ThreadCollectionSP
 Process::GetHistoryThreads(lldb::addr_t addr)
 {
     ThreadCollectionSP threads;
-    
+
     const MemoryHistorySP &memory_history = MemoryHistory::FindPlugin(shared_from_this());
     
     if (! memory_history.get()) {

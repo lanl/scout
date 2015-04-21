@@ -91,6 +91,9 @@ public:
     static const char *
     GetNameForLanguageType (lldb::LanguageType language);
 
+    static void
+    PrintAllLanguages (Stream &s, const char *prefix, const char *suffix);
+
     static bool
     LanguageIsCPlusPlus (lldb::LanguageType language);
     
@@ -117,6 +120,12 @@ public:
     IsRuntimeSupportValue (ValueObject& valobj)
     {
         return false;
+    }
+
+    virtual void
+    ModulesDidLoad (const ModuleList &module_list)
+    {
+        return;
     }
 
 protected:
