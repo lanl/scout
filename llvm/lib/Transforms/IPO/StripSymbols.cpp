@@ -305,13 +305,10 @@ bool StripDeadDebugInfo::runOnModule(Module &M) {
   SmallVector<Metadata *, 64> LiveSubprograms;
   DenseSet<const MDNode *> VisitedSet;
 
-  for (DICompileUnit DIC : F.compile_units()) {
+  for (MDCompileUnit *DIC : F.compile_units()) {
     // Create our live subprogram list.
-    MDSubprogramArray SPs = DIC->getSubprograms();
     bool SubprogramChange = false;
-    for (unsigned i = 0, e = SPs.size(); i != e; ++i) {
-      DISubprogram DISP = SPs[i];
-
+    for (MDSubprogram *DISP : DIC->getSubprograms()) {
       // Make sure we visit each subprogram only once.
       if (!VisitedSet.insert(DISP).second)
         continue;
@@ -345,12 +342,12 @@ bool StripDeadDebugInfo::runOnModule(Module &M) {
     // subprogram list/global variable list with our new live subprogram/global
     // variable list.
     if (SubprogramChange) {
-      DIC.replaceSubprograms(MDTuple::get(C, LiveSubprograms));
+      DIC->replaceSubprograms(MDTuple::get(C, LiveSubprograms));
       Changed = true;
     }
 
     if (GlobalVariableChange) {
-      DIC.replaceGlobalVariables(MDTuple::get(C, LiveGlobalVariables));
+      DIC->replaceGlobalVariables(MDTuple::get(C, LiveGlobalVariables));
       Changed = true;
     }
 
