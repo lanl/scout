@@ -27,7 +27,6 @@
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Target/SectionLoadList.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Host/HostInfo.h"
 
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/StringRef.h"
@@ -673,14 +672,7 @@ ObjectFileELF::GetModuleSpecifications (const lldb_private::FileSpec& file,
 
                     GetSectionHeaderInfo(section_headers, data, header, uuid, gnu_debuglink_file, gnu_debuglink_crc, spec.GetArchitecture ());
 
-                    // If the module vendor is not set and the module OS matches this host OS, set the module vendor to the host vendor.
                     llvm::Triple &spec_triple = spec.GetArchitecture ().GetTriple ();
-                    if (spec_triple.getVendor () == llvm::Triple::VendorType::UnknownVendor)
-                    {
-                        const llvm::Triple &host_triple = HostInfo::GetArchitecture().GetTriple();
-                        if (spec_triple.getOS () == host_triple.getOS ())
-                            spec_triple.setVendor (host_triple.getVendor ());
-                    }
 
                     if (log)
                         log->Printf ("ObjectFileELF::%s file '%s' module set to triple: %s (architecture %s)", __FUNCTION__, file.GetPath ().c_str (), spec_triple.getTriple ().c_str (), spec.GetArchitecture ().GetArchitectureName ());
@@ -1392,30 +1384,6 @@ ObjectFileELF::GetSectionHeaderInfo(SectionHeaderColl &section_headers,
     {
         const uint32_t sub_type = subTypeFromElfHeader(header);
         arch_spec.SetArchitecture (eArchTypeELF, header.e_machine, sub_type);
-
-        switch (arch_spec.GetAddressByteSize())
-        {
-        case 4:
-            {
-                const ArchSpec host_arch32 = HostInfo::GetArchitecture(HostInfo::eArchKind32);
-                if (host_arch32.GetCore() == arch_spec.GetCore())
-                {
-                    arch_spec.GetTriple().setOSName(HostInfo::GetOSString().data());
-                    arch_spec.GetTriple().setVendorName(HostInfo::GetVendorString().data());
-                }
-            }
-            break;
-        case 8:
-            {
-                const ArchSpec host_arch64 = HostInfo::GetArchitecture(HostInfo::eArchKind64);
-                if (host_arch64.GetCore() == arch_spec.GetCore())
-                {
-                    arch_spec.GetTriple().setOSName(HostInfo::GetOSString().data());
-                    arch_spec.GetTriple().setVendorName(HostInfo::GetVendorString().data());
-                }
-            }
-            break;
-        }
     }
 
     // If there are no section headers we are done.
@@ -1878,23 +1846,26 @@ ObjectFileELF::ParseSymbols (Symtab *symtab,
                     // These are reserved for the specification (e.g.: mapping
                     // symbols). We don't want to add them to the symbol table.
 
-                    llvm::StringRef symbol_name_ref(symbol_name);
-                    if (symbol_name_ref == "$a" || symbol_name_ref.startswith("$a."))
+                    if (symbol_type == eSymbolTypeCode)
                     {
-                        // $a[.<any>]* - marks an ARM instruction sequence
-                        m_address_class_map[symbol.st_value] = eAddressClassCode;
-                    }
-                    else if (symbol_name_ref == "$b" || symbol_name_ref.startswith("$b.") ||
-                             symbol_name_ref == "$t" || symbol_name_ref.startswith("$t."))
-                    {
-                        // $b[.<any>]* - marks a THUMB BL instruction sequence
-                        // $t[.<any>]* - marks a THUMB instruction sequence
-                        m_address_class_map[symbol.st_value] = eAddressClassCodeAlternateISA;
-                    }
-                    else if (symbol_name_ref == "$d" || symbol_name_ref.startswith("$d."))
-                    {
-                        // $d[.<any>]* - marks a data item sequence (e.g. lit pool)
-                        m_address_class_map[symbol.st_value] = eAddressClassData;
+                        llvm::StringRef symbol_name_ref(symbol_name);
+                        if (symbol_name_ref == "$a" || symbol_name_ref.startswith("$a."))
+                        {
+                            // $a[.<any>]* - marks an ARM instruction sequence
+                            m_address_class_map[symbol.st_value] = eAddressClassCode;
+                        }
+                        else if (symbol_name_ref == "$b" || symbol_name_ref.startswith("$b.") ||
+                                 symbol_name_ref == "$t" || symbol_name_ref.startswith("$t."))
+                        {
+                            // $b[.<any>]* - marks a THUMB BL instruction sequence
+                            // $t[.<any>]* - marks a THUMB instruction sequence
+                            m_address_class_map[symbol.st_value] = eAddressClassCodeAlternateISA;
+                        }
+                        else if (symbol_name_ref == "$d" || symbol_name_ref.startswith("$d."))
+                        {
+                            // $d[.<any>]* - marks a data item sequence (e.g. lit pool)
+                            m_address_class_map[symbol.st_value] = eAddressClassData;
+                        }
                     }
 
                     continue;
@@ -1907,16 +1878,19 @@ ObjectFileELF::ParseSymbols (Symtab *symtab,
                     // These are reserved for the specification (e.g.: mapping
                     // symbols). We don't want to add them to the symbol table.
 
-                    llvm::StringRef symbol_name_ref(symbol_name);
-                    if (symbol_name_ref == "$x" || symbol_name_ref.startswith("$x."))
+                    if (symbol_type == eSymbolTypeCode)
                     {
-                        // $x[.<any>]* - marks an A64 instruction sequence
-                        m_address_class_map[symbol.st_value] = eAddressClassCode;
-                    }
-                    else if (symbol_name_ref == "$d" || symbol_name_ref.startswith("$d."))
-                    {
-                        // $d[.<any>]* - marks a data item sequence (e.g. lit pool)
-                        m_address_class_map[symbol.st_value] = eAddressClassData;
+                        llvm::StringRef symbol_name_ref(symbol_name);
+                        if (symbol_name_ref == "$x" || symbol_name_ref.startswith("$x."))
+                        {
+                            // $x[.<any>]* - marks an A64 instruction sequence
+                            m_address_class_map[symbol.st_value] = eAddressClassCode;
+                        }
+                        else if (symbol_name_ref == "$d" || symbol_name_ref.startswith("$d."))
+                        {
+                            // $d[.<any>]* - marks a data item sequence (e.g. lit pool)
+                            m_address_class_map[symbol.st_value] = eAddressClassData;
+                        }
                     }
 
                     continue;
@@ -1963,7 +1937,7 @@ ObjectFileELF::ParseSymbols (Symtab *symtab,
 
         // symbol_value_offset may contain 0 for ARM symbols or -1 for
         // THUMB symbols. See above for more details.
-        uint64_t symbol_value = symbol.st_value | symbol_value_offset;
+        uint64_t symbol_value = symbol.st_value + symbol_value_offset;
         if (symbol_section_sp && CalculateType() != ObjectFile::Type::eTypeObjectFile)
             symbol_value -= symbol_section_sp->GetFileAddress();
         bool is_global = symbol.getBinding() == STB_GLOBAL;

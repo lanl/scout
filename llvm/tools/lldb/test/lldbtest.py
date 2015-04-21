@@ -582,6 +582,19 @@ def expectedFailureCompiler(compiler, compiler_version=None, bugnumber=None):
         return compiler in self.getCompiler() and self.expectedCompilerVersion(compiler_version)
     return expectedFailure(fn, bugnumber)
 
+# provide a function to xfail on defined oslist, compiler version, and archs
+# if none is specified for any argument, that argument won't be checked and thus means for all
+# for example,
+# @expectedFailureAll, xfail for all platform/compiler/arch,
+# @expectedFailureAll(compiler='gcc'), xfail for gcc on all platform/architecture
+# @expectedFailureAll(bugnumber, ["linux"], "gcc", ['>=', '4.9'], ['i386']), xfail for gcc>=4.9 on linux with i386
+def expectedFailureAll(bugnumber=None, oslist=None, compiler=None, compiler_version=None, archs=None):
+    def fn(self):
+        return ((oslist is None or self.getPlatform() in oslist) and
+                (compiler is None or (compiler in self.getCompiler() and self.expectedCompilerVersion(compiler_version))) and
+                self.expectedArch(archs))
+    return expectedFailure(fn, bugnumber)
+
 # to XFAIL a specific clang versions, try this
 # @expectedFailureClang('bugnumber', ['<=', '3.4'])
 def expectedFailureClang(bugnumber=None, compiler_version=None):
@@ -626,7 +639,7 @@ def expectedFailureWindows(bugnumber=None, compilers=None):
 def expectedFailureLLGS(bugnumber=None, compilers=None):
     def fn(self):
         # llgs local is only an option on Linux targets
-        if not self.platformIsLinux():
+        if self.getPlatform() != 'linux':
             return False
         self.runCmd('settings show platform.plugin.linux.use-llgs-for-local')
         return 'true' in self.res.GetOutput() and self.expectedCompiler(compilers)
@@ -703,10 +716,15 @@ def skipUnlessDarwin(func):
     return skipUnlessPlatform(getDarwinOSTriples())(func)
 
 def getPlatform():
+    """Returns the target platform the test suite is running on."""
     platform = lldb.DBG.GetSelectedPlatform().GetTriple().split('-')[2]
     if platform.startswith('freebsd'):
         platform = 'freebsd'
     return platform
+
+def platformIsDarwin():
+    """Returns true if the OS triple for the selected platform is any valid apple OS"""
+    return getPlatform() in getDarwinOSTriples()
 
 def skipIfPlatform(oslist):
     """Decorate the item to skip tests if running on one of the listed platforms."""
@@ -735,6 +753,37 @@ def skipIfLinuxClang(func):
         else:
             func(*args, **kwargs)
     return wrapper
+
+# provide a function to skip on defined oslist, compiler version, and archs
+# if none is specified for any argument, that argument won't be checked and thus means for all
+# for example,
+# @skipIf, skip for all platform/compiler/arch,
+# @skipIf(compiler='gcc'), skip for gcc on all platform/architecture
+# @skipIf(bugnumber, ["linux"], "gcc", ['>=', '4.9'], ['i386']), skip for gcc>=4.9 on linux with i386
+
+# TODO: refactor current code, to make skipIfxxx functions to call this function
+def skipIf(bugnumber=None, oslist=None, compiler=None, compiler_version=None, archs=None):
+    def fn(self):
+        return ((oslist is None or self.getPlatform() in oslist) and
+                (compiler is None or (compiler in self.getCompiler() and self.expectedCompilerVersion(compiler_version))) and
+                self.expectedArch(archs))
+    return skipTestIfFn(fn, bugnumber, skipReason="skipping because os:%s compiler: %s %s arch: %s"%(oslist, compiler, compiler_version, archs))
+
+def skipTestIfFn(expected_fn, bugnumber=None, skipReason=None):
+    def skipTestIfFn_impl(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            from unittest2 import case
+            self = args[0]
+            if expected_fn(self):
+               self.skipTest(skipReason)
+            else:
+                func(*args, **kwargs)
+        return wrapper
+    if callable(bugnumber):
+        return skipTestIfFn_impl(bugnumber)
+    else:
+        return skipTestIfFn_impl
 
 def skipIfGcc(func):
     """Decorate the item to skip tests that should be skipped if building with gcc ."""
@@ -868,9 +917,9 @@ class Base(unittest2.TestCase):
             os.chdir(os.path.join(os.environ["LLDB_TEST"], cls.mydir))
 
         # Set platform context.
-        if sys.platform.startswith('darwin'):
+        if platformIsDarwin():
             cls.platformContext = _PlatformContext('DYLD_LIBRARY_PATH', 'lib', 'dylib')
-        elif sys.platform.startswith('linux') or sys.platform.startswith('freebsd'):
+        elif getPlatform() == "linux" or getPlatform() == "freebsd":
             cls.platformContext = _PlatformContext('LD_LIBRARY_PATH', 'lib', 'so')
         else:
             cls.platformContext = None
@@ -1402,16 +1451,10 @@ class Base(unittest2.TestCase):
 
     def platformIsDarwin(self):
         """Returns true if the OS triple for the selected platform is any valid apple OS"""
-        platform_name = self.getPlatform()
-        return platform_name in getDarwinOSTriples()
-
-    def platformIsLinux(self):
-        """Returns true if the OS triple for the selected platform is any valid apple OS"""
-        platform_name = self.getPlatform()
-        return platform_name == "linux"
+        return platformIsDarwin()
 
     def getPlatform(self):
-        """Returns the platform the test suite is running on."""
+        """Returns the target platform the test suite is running on."""
         return getPlatform()
 
     def isIntelCompiler(self):
@@ -1450,6 +1493,17 @@ class Base(unittest2.TestCase):
 
         for compiler in compilers:
             if compiler in self.getCompiler():
+                return True
+
+        return False
+
+    def expectedArch(self, archs):
+        """Returns True iff any element of archs is a sub-string of the current architecture."""
+        if (archs == None):
+            return True
+
+        for arch in archs:
+            if arch in self.getArchitecture():
                 return True
 
         return False
