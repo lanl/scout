@@ -193,8 +193,8 @@ bool AddDiscriminators::runOnFunction(Function &F) {
         // Create a new lexical scope and compute a new discriminator
         // number for it.
         StringRef Filename = FirstDIL->getFilename();
-        DIScope Scope = FirstDIL->getScope();
-        DIFile File = Builder.createFile(Filename, Scope.getDirectory());
+        auto *Scope = FirstDIL->getScope();
+        auto *File = Builder.createFile(Filename, Scope->getDirectory());
 
         // FIXME: Calculate the discriminator here, based on local information,
         // and delete MDLocation::computeNewDiscriminator().  The current
@@ -202,7 +202,7 @@ bool AddDiscriminators::runOnFunction(Function &F) {
         // same context.  All we really need is to discriminate between
         // FirstDIL and LastDIL -- a local map would suffice.
         unsigned Discriminator = FirstDIL->computeNewDiscriminator();
-        DILexicalBlockFile NewScope =
+        auto *NewScope =
             Builder.createLexicalBlockFile(Scope, File, Discriminator);
         auto *NewDIL =
             MDLocation::get(Ctx, FirstDIL->getLine(), FirstDIL->getColumn(),

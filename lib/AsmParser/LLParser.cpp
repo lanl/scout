@@ -976,6 +976,7 @@ bool LLParser::ParseFnAttributeValuePairs(AttrBuilder &B,
       break;
     case lltok::kw_byval:
     case lltok::kw_dereferenceable:
+    case lltok::kw_dereferenceable_or_null:
     case lltok::kw_inalloca:
     case lltok::kw_nest:
     case lltok::kw_noalias:
@@ -1220,9 +1221,16 @@ bool LLParser::ParseOptionalParamAttrs(AttrBuilder &B) {
     case lltok::kw_byval:           B.addAttribute(Attribute::ByVal); break;
     case lltok::kw_dereferenceable: {
       uint64_t Bytes;
-      if (ParseOptionalDereferenceableBytes(Bytes))
+      if (ParseOptionalDerefAttrBytes(lltok::kw_dereferenceable, Bytes))
         return true;
       B.addDereferenceableAttr(Bytes);
+      continue;
+    }
+    case lltok::kw_dereferenceable_or_null: {
+      uint64_t Bytes;
+      if (ParseOptionalDerefAttrBytes(lltok::kw_dereferenceable_or_null, Bytes))
+        return true;
+      B.addDereferenceableOrNullAttr(Bytes);
       continue;
     }
     case lltok::kw_inalloca:        B.addAttribute(Attribute::InAlloca); break;
@@ -1284,9 +1292,16 @@ bool LLParser::ParseOptionalReturnAttrs(AttrBuilder &B) {
       return HaveError;
     case lltok::kw_dereferenceable: {
       uint64_t Bytes;
-      if (ParseOptionalDereferenceableBytes(Bytes))
+      if (ParseOptionalDerefAttrBytes(lltok::kw_dereferenceable, Bytes))
         return true;
       B.addDereferenceableAttr(Bytes);
+      continue;
+    }
+    case lltok::kw_dereferenceable_or_null: {
+      uint64_t Bytes;
+      if (ParseOptionalDerefAttrBytes(lltok::kw_dereferenceable_or_null, Bytes))
+        return true;
+      B.addDereferenceableOrNullAttr(Bytes);
       continue;
     }
     case lltok::kw_inreg:           B.addAttribute(Attribute::InReg); break;
@@ -1516,12 +1531,19 @@ bool LLParser::ParseOptionalAlignment(unsigned &Alignment) {
   return false;
 }
 
-/// ParseOptionalDereferenceableBytes
+/// ParseOptionalDerefAttrBytes
 ///   ::= /* empty */
-///   ::= 'dereferenceable' '(' 4 ')'
-bool LLParser::ParseOptionalDereferenceableBytes(uint64_t &Bytes) {
+///   ::= AttrKind '(' 4 ')'
+///
+/// where AttrKind is either 'dereferenceable' or 'dereferenceable_or_null'.
+bool LLParser::ParseOptionalDerefAttrBytes(lltok::Kind AttrKind,
+                                           uint64_t &Bytes) {
+  assert((AttrKind == lltok::kw_dereferenceable ||
+          AttrKind == lltok::kw_dereferenceable_or_null) &&
+         "contract!");
+
   Bytes = 0;
-  if (!EatIfPresent(lltok::kw_dereferenceable))
+  if (!EatIfPresent(AttrKind))
     return false;
   LocTy ParenLoc = Lex.getLoc();
   if (!EatIfPresent(lltok::lparen))
@@ -3680,8 +3702,7 @@ bool LLParser::ParseMDGlobalVariable(MDNode *&Result, bool IsDistinct) {
 
 /// ParseMDLocalVariable:
 ///   ::= !MDLocalVariable(tag: DW_TAG_arg_variable, scope: !0, name: "foo",
-///                        file: !1, line: 7, type: !2, arg: 2, flags: 7,
-///                        inlinedAt: !3)
+///                        file: !1, line: 7, type: !2, arg: 2, flags: 7)
 bool LLParser::ParseMDLocalVariable(MDNode *&Result, bool IsDistinct) {
 #define VISIT_MD_FIELDS(OPTIONAL, REQUIRED)                                    \
   REQUIRED(tag, DwarfTagField, );                                              \
@@ -3691,14 +3712,13 @@ bool LLParser::ParseMDLocalVariable(MDNode *&Result, bool IsDistinct) {
   OPTIONAL(line, LineField, );                                                 \
   OPTIONAL(type, MDField, );                                                   \
   OPTIONAL(arg, MDUnsignedField, (0, UINT8_MAX));                              \
-  OPTIONAL(flags, DIFlagField, );                                              \
-  OPTIONAL(inlinedAt, MDField, );
+  OPTIONAL(flags, DIFlagField, );
   PARSE_MD_FIELDS();
 #undef VISIT_MD_FIELDS
 
-  Result = GET_OR_DISTINCT(
-      MDLocalVariable, (Context, tag.Val, scope.Val, name.Val, file.Val,
-                        line.Val, type.Val, arg.Val, flags.Val, inlinedAt.Val));
+  Result = GET_OR_DISTINCT(MDLocalVariable,
+                           (Context, tag.Val, scope.Val, name.Val, file.Val,
+                            line.Val, type.Val, arg.Val, flags.Val));
   return false;
 }
 
@@ -5140,10 +5160,8 @@ bool LLParser::ParseCall(Instruction *&Inst, PerFunctionState &PFS,
   // If RetType is a non-function pointer type, then this is the short syntax
   // for the call, which means that RetType is just the return type.  Infer the
   // rest of the function argument types from the arguments that are present.
-  PointerType *PFTy = nullptr;
-  FunctionType *Ty = nullptr;
-  if (!(PFTy = dyn_cast<PointerType>(RetType)) ||
-      !(Ty = dyn_cast<FunctionType>(PFTy->getElementType()))) {
+  FunctionType *Ty = dyn_cast<FunctionType>(RetType);
+  if (!Ty) {
     // Pull out the types of all of the arguments...
     std::vector<Type*> ParamTypes;
     for (unsigned i = 0, e = ArgList.size(); i != e; ++i)
@@ -5153,12 +5171,12 @@ bool LLParser::ParseCall(Instruction *&Inst, PerFunctionState &PFS,
       return Error(RetTypeLoc, "Invalid result type for LLVM function");
 
     Ty = FunctionType::get(RetType, ParamTypes, false);
-    PFTy = PointerType::getUnqual(Ty);
   }
 
   // Look up the callee.
   Value *Callee;
-  if (ConvertValIDToValue(PFTy, CalleeID, Callee, &PFS)) return true;
+  if (ConvertValIDToValue(PointerType::getUnqual(Ty), CalleeID, Callee, &PFS))
+    return true;
 
   // Set up the Attribute for the function.
   SmallVector<AttributeSet, 8> Attrs;
@@ -5524,13 +5542,10 @@ int LLParser::ParseGetElementPtr(Instruction *&Inst, PerFunctionState &PFS) {
   }
 
   SmallPtrSet<const Type*, 4> Visited;
-  if (!Indices.empty() &&
-      !BasePointerType->getElementType()->isSized(&Visited))
+  if (!Indices.empty() && !Ty->isSized(&Visited))
     return Error(Loc, "base element of getelementptr must be sized");
 
-  if (!GetElementPtrInst::getIndexedType(
-          cast<PointerType>(BaseType->getScalarType())->getElementType(),
-          Indices))
+  if (!GetElementPtrInst::getIndexedType(Ty, Indices))
     return Error(Loc, "invalid getelementptr indices");
   Inst = GetElementPtrInst::Create(Ty, Ptr, Indices);
   if (InBounds)

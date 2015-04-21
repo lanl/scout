@@ -228,14 +228,16 @@ protected:
     IRBuilder<> IBuilder(C);
 
     // Function DI
-    DIFile File = DBuilder.createFile("filename.c", "/file/dir/");
+    auto *File = DBuilder.createFile("filename.c", "/file/dir/");
     DITypeArray ParamTypes = DBuilder.getOrCreateTypeArray(None);
-    DICompositeType FuncType = DBuilder.createSubroutineType(File, ParamTypes);
-    DICompileUnit CU = DBuilder.createCompileUnit(dwarf::DW_LANG_C99,
-        "filename.c", "/file/dir", "CloneFunc", false, "", 0);
+    MDSubroutineType *FuncType =
+        DBuilder.createSubroutineType(File, ParamTypes);
+    auto *CU =
+        DBuilder.createCompileUnit(dwarf::DW_LANG_C99, "filename.c",
+                                   "/file/dir", "CloneFunc", false, "", 0);
 
-    DISubprogram Subprogram = DBuilder.createFunction(CU, "f", "f", File, 4,
-        FuncType, true, true, 3, 0, false, OldFunc);
+    auto *Subprogram = DBuilder.createFunction(
+        CU, "f", "f", File, 4, FuncType, true, true, 3, 0, false, OldFunc);
 
     // Function body
     BasicBlock* Entry = BasicBlock::Create(C, "", OldFunc);
@@ -250,13 +252,15 @@ protected:
     Instruction* Terminator = IBuilder.CreateRetVoid();
 
     // Create a local variable around the alloca
-    DIType IntType = DBuilder.createBasicType("int", 32, 0,
-        dwarf::DW_ATE_signed);
+    auto *IntType =
+        DBuilder.createBasicType("int", 32, 0, dwarf::DW_ATE_signed);
     DIExpression E = DBuilder.createExpression();
     DIVariable Variable = DBuilder.createLocalVariable(
       dwarf::DW_TAG_auto_variable, Subprogram, "x", File, 5, IntType, true);
-    DBuilder.insertDeclare(Alloca, Variable, E, Store);
-    DBuilder.insertDbgValueIntrinsic(AllocaContent, 0, Variable, E, Terminator);
+    auto *DL = MDLocation::get(Subprogram->getContext(), 5, 0, Subprogram);
+    DBuilder.insertDeclare(Alloca, Variable, E, DL, Store);
+    DBuilder.insertDbgValueIntrinsic(AllocaContent, 0, Variable, E, DL,
+                                     Terminator);
     // Finalize the debug info
     DBuilder.finalize();
 
@@ -300,9 +304,9 @@ TEST_F(CloneFunc, Subprogram) {
   EXPECT_EQ(2U, SubprogramCount);
 
   auto Iter = Finder->subprograms().begin();
-  DISubprogram Sub1 = cast<MDSubprogram>(*Iter);
+  auto *Sub1 = cast<MDSubprogram>(*Iter);
   Iter++;
-  DISubprogram Sub2 = cast<MDSubprogram>(*Iter);
+  auto *Sub2 = cast<MDSubprogram>(*Iter);
 
   EXPECT_TRUE(
       (Sub1->getFunction() == OldFunc && Sub2->getFunction() == NewFunc) ||
@@ -317,11 +321,11 @@ TEST_F(CloneFunc, SubprogramInRightCU) {
   EXPECT_EQ(2U, Finder->compile_unit_count());
 
   auto Iter = Finder->compile_units().begin();
-  DICompileUnit CU1 = cast<MDCompileUnit>(*Iter);
+  auto *CU1 = cast<MDCompileUnit>(*Iter);
   Iter++;
-  DICompileUnit CU2 = cast<MDCompileUnit>(*Iter);
-  EXPECT_TRUE(CU1.getSubprograms().size() == 0 ||
-              CU2.getSubprograms().size() == 0);
+  auto *CU2 = cast<MDCompileUnit>(*Iter);
+  EXPECT_TRUE(CU1->getSubprograms().size() == 0 ||
+              CU2->getSubprograms().size() == 0);
 }
 
 // Test that instructions in the old function still belong to it in the

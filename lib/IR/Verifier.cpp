@@ -1075,9 +1075,6 @@ void Verifier::visitMDLocalVariable(const MDLocalVariable &N) {
          "invalid tag", &N);
   Assert(N.getRawScope() && isa<MDLocalScope>(N.getRawScope()),
          "local variable requires a valid scope", &N, N.getRawScope());
-  if (auto *IA = N.getRawInlinedAt())
-    Assert(isa<MDLocation>(IA), "local variable requires a valid scope", &N,
-           IA);
 }
 
 void Verifier::visitMDExpression(const MDExpression &N) {
@@ -2454,8 +2451,7 @@ void Verifier::visitGetElementPtrInst(GetElementPtrInst &GEP) {
 
   Assert(isa<PointerType>(TargetTy),
          "GEP base pointer is not a vector or a vector of pointers", &GEP);
-  Assert(cast<PointerType>(TargetTy)->getElementType()->isSized(),
-         "GEP into unsized type!", &GEP);
+  Assert(GEP.getSourceElementType()->isSized(), "GEP into unsized type!", &GEP);
   Assert(GEP.getPointerOperandType()->isVectorTy() ==
              GEP.getType()->isVectorTy(),
          "Vector GEP must return a vector value", &GEP);
@@ -2466,8 +2462,7 @@ void Verifier::visitGetElementPtrInst(GetElementPtrInst &GEP) {
   Assert(ElTy, "Invalid indices for GEP pointer type!", &GEP);
 
   Assert(GEP.getType()->getScalarType()->isPointerTy() &&
-             cast<PointerType>(GEP.getType()->getScalarType())
-                     ->getElementType() == ElTy,
+             GEP.getResultElementType() == ElTy,
          "GEP is not of right type for indices!", &GEP, ElTy);
 
   if (GEP.getPointerOperandType()->isVectorTy()) {
@@ -3361,6 +3356,25 @@ void Verifier::visitIntrinsicFunctionCall(Intrinsic::ID ID, CallInst &CI) {
   };
 }
 
+/// \brief Carefully grab the subprogram from a local scope.
+///
+/// This carefully grabs the subprogram from a local scope, avoiding the
+/// built-in assertions that would typically fire.
+static MDSubprogram *getSubprogram(Metadata *LocalScope) {
+  if (!LocalScope)
+    return nullptr;
+
+  if (auto *SP = dyn_cast<MDSubprogram>(LocalScope))
+    return SP;
+
+  if (auto *LB = dyn_cast<MDLexicalBlockBase>(LocalScope))
+    return getSubprogram(LB->getRawScope());
+
+  // Just return null; broken scope chains are checked elsewhere.
+  assert(!isa<MDLocalScope>(LocalScope) && "Unknown type of local scope");
+  return nullptr;
+}
+
 template <class DbgIntrinsicTy>
 void Verifier::visitDbgIntrinsic(StringRef Kind, DbgIntrinsicTy &DII) {
   auto *MD = cast<MetadataAsValue>(DII.getArgOperand(0))->getMetadata();
@@ -3379,14 +3393,24 @@ void Verifier::visitDbgIntrinsic(StringRef Kind, DbgIntrinsicTy &DII) {
     if (!isa<MDLocation>(N))
       return;
 
-  // The inlined-at attachments for variables and !dbg attachments must agree.
-  MDLocalVariable *Var = DII.getVariable();
-  MDLocation *VarIA = Var->getInlinedAt();
-  MDLocation *Loc = DII.getDebugLoc();
-  MDLocation *LocIA = Loc ? Loc->getInlinedAt() : nullptr;
   BasicBlock *BB = DII.getParent();
-  Assert(VarIA == LocIA, "mismatched variable and !dbg inlined-at", &DII, BB,
-         BB ? BB->getParent() : nullptr, Var, VarIA, Loc, LocIA);
+  Function *F = BB ? BB->getParent() : nullptr;
+
+  // The scopes for variables and !dbg attachments must agree.
+  MDLocalVariable *Var = DII.getVariable();
+  MDLocation *Loc = DII.getDebugLoc();
+  Assert(Loc, "llvm.dbg." + Kind + " intrinsic requires a !dbg attachment",
+         &DII, BB, F);
+
+  MDSubprogram *VarSP = getSubprogram(Var->getRawScope());
+  MDSubprogram *LocSP = getSubprogram(Loc->getRawScope());
+  if (!VarSP || !LocSP)
+    return; // Broken scope chains are checked elsewhere.
+
+  Assert(VarSP == LocSP, "mismatched subprogram between llvm.dbg." + Kind +
+                             " variable and !dbg attachment",
+         &DII, BB, F, Var, Var->getScope()->getSubprogram(), Loc,
+         Loc->getScope()->getSubprogram());
 }
 
 template <class MapTy>

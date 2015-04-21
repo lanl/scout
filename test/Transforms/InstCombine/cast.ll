@@ -93,9 +93,9 @@ declare void @varargs(i32, ...)
 
 define void @test11(i32* %P) {
         %c = bitcast i32* %P to i16*            ; <i16*> [#uses=1]
-        call void (i32, ...)* @varargs( i32 5, i16* %c )
+        call void (i32, ...) @varargs( i32 5, i16* %c )
         ret void
-; CHECK: call void (i32, ...)* @varargs(i32 5, i32* %P)
+; CHECK: call void (i32, ...) @varargs(i32 5, i32* %P)
 ; CHECK: ret void
 }
 
@@ -1103,4 +1103,13 @@ define i32 @PR21388(i32* %v) {
 ; CHECK-NEXT: %[[icmp:.*]] = icmp slt i32* %v, null
 ; CHECK-NEXT: %[[sext:.*]] = sext i1 %[[icmp]] to i32
 ; CHECK-NEXT: ret i32 %[[sext]]
+}
+
+define float @sitofp_zext(i16 %a) {
+; CHECK-LABEL: @sitofp_zext(
+; CHECK-NEXT: %[[sitofp:.*]] = uitofp i16 %a to float
+; CHECK-NEXT: ret float %[[sitofp]]
+  %zext = zext i16 %a to i32
+  %sitofp = sitofp i32 %zext to float
+  ret float %sitofp
 }

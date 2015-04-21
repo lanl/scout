@@ -299,9 +299,9 @@ private:
       // have.
       ResVal = getFnValueByID(ValNo, nullptr);
       return ResVal == nullptr;
-    } else if (Slot == Record.size()) {
-      return true;
     }
+    if (Slot == Record.size())
+      return true;
 
     unsigned TypeNo = (unsigned)Record[Slot++];
     ResVal = getFnValueByID(ValNo, getTypeByID(TypeNo));
@@ -1098,6 +1098,8 @@ static Attribute::AttrKind GetAttrFromCode(uint64_t Code) {
     return Attribute::NonNull;
   case bitc::ATTR_KIND_DEREFERENCEABLE:
     return Attribute::Dereferenceable;
+  case bitc::ATTR_KIND_DEREFERENCEABLE_OR_NULL:
+    return Attribute::DereferenceableOrNull;
   case bitc::ATTR_KIND_NO_RED_ZONE:
     return Attribute::NoRedZone;
   case bitc::ATTR_KIND_NO_RETURN:
@@ -1214,6 +1216,8 @@ std::error_code BitcodeReader::ParseAttributeGroupBlock() {
             B.addStackAlignmentAttr(Record[++i]);
           else if (Kind == Attribute::Dereferenceable)
             B.addDereferenceableAttr(Record[++i]);
+          else if (Kind == Attribute::DereferenceableOrNull)
+            B.addDereferenceableOrNullAttr(Record[++i]);
         } else {                     // String attribute
           assert((Record[i] == 3 || Record[i] == 4) &&
                  "Invalid attribute group entry");
@@ -1911,7 +1915,8 @@ std::error_code BitcodeReader::ParseMetadata() {
       break;
     }
     case bitc::METADATA_LOCAL_VAR: {
-      if (Record.size() != 10)
+      // 10th field is for the obseleted 'inlinedAt:' field.
+      if (Record.size() != 9 && Record.size() != 10)
         return Error("Invalid record");
 
       MDValueList.AssignValue(
@@ -1919,7 +1924,7 @@ std::error_code BitcodeReader::ParseMetadata() {
                           (Context, Record[1], getMDOrNull(Record[2]),
                            getMDString(Record[3]), getMDOrNull(Record[4]),
                            Record[5], getMDOrNull(Record[6]), Record[7],
-                           Record[8], getMDOrNull(Record[9]))),
+                           Record[8])),
           NextMDValueNo++);
       break;
     }
@@ -2930,10 +2935,9 @@ std::error_code BitcodeReader::ParseModule(bool Resume,
       Type *Ty = getTypeByID(Record[0]);
       if (!Ty)
         return Error("Invalid record");
-      if (!Ty->isPointerTy())
-        return Error("Invalid type for value");
-      FunctionType *FTy =
-        dyn_cast<FunctionType>(cast<PointerType>(Ty)->getElementType());
+      if (auto *PTy = dyn_cast<PointerType>(Ty))
+        Ty = PTy->getElementType();
+      auto *FTy = dyn_cast<FunctionType>(Ty);
       if (!FTy)
         return Error("Invalid type for value");
 
@@ -3998,15 +4002,16 @@ std::error_code BitcodeReader::ParseFunctionBody(Function *F) {
       Type *Ty = nullptr;
       if (OpNum + 3 == Record.size())
         Ty = getTypeByID(Record[OpNum++]);
+      if (!Ty)
+        Ty = cast<PointerType>(Op->getType())->getElementType();
+      else if (Ty != cast<PointerType>(Op->getType())->getElementType())
+        return Error("Explicit load type does not match pointee type of "
+                     "pointer operand");
 
       unsigned Align;
       if (std::error_code EC = parseAlignmentValue(Record[OpNum], Align))
         return EC;
-      I = new LoadInst(Op, "", Record[OpNum+1], Align);
-
-      if (Ty && Ty != I->getType())
-        return Error("Explicit load type does not match pointee type of "
-                     "pointer operand");
+      I = new LoadInst(Ty, Op, "", Record[OpNum + 1], Align);
 
       InstructionList.push_back(I);
       break;
@@ -4163,19 +4168,32 @@ std::error_code BitcodeReader::ParseFunctionBody(Function *F) {
       if (Record.size() < 3)
         return Error("Invalid record");
 
-      AttributeSet PAL = getAttributes(Record[0]);
-      unsigned CCInfo = Record[1];
+      unsigned OpNum = 0;
+      AttributeSet PAL = getAttributes(Record[OpNum++]);
+      unsigned CCInfo = Record[OpNum++];
 
-      unsigned OpNum = 2;
+      FunctionType *FTy = nullptr;
+      if (CCInfo >> 15 & 1 &&
+          !(FTy = dyn_cast<FunctionType>(getTypeByID(Record[OpNum++]))))
+        return Error("Explicit call type is not a function type");
+
       Value *Callee;
       if (getValueTypePair(Record, OpNum, NextValueNo, Callee))
         return Error("Invalid record");
 
       PointerType *OpTy = dyn_cast<PointerType>(Callee->getType());
-      FunctionType *FTy = nullptr;
-      if (OpTy) FTy = dyn_cast<FunctionType>(OpTy->getElementType());
-      if (!FTy || Record.size() < FTy->getNumParams()+OpNum)
-        return Error("Invalid record");
+      if (!OpTy)
+        return Error("Callee is not a pointer type");
+      FunctionType *PFTy = dyn_cast<FunctionType>(OpTy->getElementType());
+      if (!PFTy)
+        return Error("Callee is not of pointer to function type");
+      if (!FTy)
+        FTy = PFTy;
+      if (PFTy != FTy)
+        return Error("Explicit call type does not match pointee type of "
+                     "callee operand");
+      if (Record.size() < FTy->getNumParams() + OpNum)
+        return Error("Insufficient operands to call");
 
       SmallVector<Value*, 16> Args;
       // Read the fixed params.
