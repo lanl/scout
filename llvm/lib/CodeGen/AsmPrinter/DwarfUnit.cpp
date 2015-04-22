@@ -734,15 +734,15 @@ DIE *DwarfUnit::createTypeDIE(const MDCompositeType *Ty) {
 }
 
 // +===== Scout =======================================
-DIE *DwarfUnit::createTypeDIE(MDScoutCompositeType *Ty) {
-  auto *Context = resolve(Ty.getScope());
+DIE *DwarfUnit::createTypeDIE(const MDScoutCompositeType *Ty) {
+  auto *Context = resolve(Ty->getScope());
   DIE *ContextDIE = getOrCreateContextDIE(Context);
   
   if (DIE *TyDIE = getDIE(Ty))
     return TyDIE;
   
   // Create new type.
-  DIE &TyDIE = createAndAddDIE(Ty.getTag(), *ContextDIE, Ty);
+  DIE &TyDIE = createAndAddDIE(Ty->getTag(), *ContextDIE, Ty);
   
   constructTypeDIE(TyDIE, cast<MDScoutCompositeType>(Ty));
   
@@ -793,7 +793,7 @@ DIE *DwarfUnit::getOrCreateTypeDIE(const MDNode *TyNode) {
         // Skip updating the accelerator tables since this is not the full type.
         return &TyDIE;
       }
-    constructScoutTypeDIE(TyDIE, CTy)
+    constructScoutTypeDIE(TyDIE, CTy);
   }
   // +=====================================================
   else if (auto *CTy = dyn_cast<MDCompositeType>(Ty)) {
@@ -1092,11 +1092,11 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, const MDCompositeType *CTy) {
 // +===== Scout ========================================================
 
 /// constructTypeDIE - Construct type DIE from DICompositeType.
-void DwarfUnit::constructTypeDIE(DIE &Buffer, DIScoutCompositeType CTy) {
+void DwarfUnit::constructTypeDIE(DIE &Buffer, const MDScoutCompositeType *CTy) {
   // Add name if not anonymous or intermediate type.
-  StringRef Name = CTy.getName();
+  StringRef Name = CTy->getName();
   
-  uint64_t Size = CTy.getSizeInBits() >> 3;
+  uint64_t Size = CTy->getSizeInBits() >> 3;
   uint16_t Tag = Buffer.getTag();
   
   switch (Tag) {
@@ -1106,10 +1106,9 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, DIScoutCompositeType CTy) {
     case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
     case dwarf::DW_TAG_SCOUT_unstructured_mesh_type: {
       // Add elements to mesh type.
-      DIArray Elements = CTy.getElements();
-      for (unsigned i = 0, N = Elements.size(); i < N; ++i) {
-        DIDescriptor Element = Elements[i];
-        DIScoutDerivedType DDTy = dyn_cast<MDScoutDerivedType>(Element);
+      DIArray Elements = CTy->getElements();
+      for (const auto *Element : Elements) {
+        auto *DDTy = dyn_cast<MDScoutDerivedType>(Element);
         constructMeshMemberDIE(Buffer, DDTy);
       }
       break;

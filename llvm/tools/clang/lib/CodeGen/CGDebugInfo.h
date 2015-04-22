@@ -184,33 +184,33 @@ class CGDebugInfo {
   
   llvm::MDType *CreateType(const ALEMeshType *Ty);
   llvm::MDType *CreateTypeDefinition(const ALEMeshType *Ty);
-  llvm::MDCompositeType *CreateLimitedType(const ALEMeshType *Ty);
+  llvm::MDScoutCompositeType *CreateLimitedType(const ALEMeshType *Ty);
   
   llvm::MDType *CreateType(const RectilinearMeshType *Ty);
   llvm::MDType *CreateTypeDefinition(const RectilinearMeshType *Ty);
-  llvm::MDCompositeType *CreateLimitedType(const RectilinearMeshType *Ty);
+  llvm::MDScoutCompositeType *CreateLimitedType(const RectilinearMeshType *Ty);
 
   llvm::MDType *CreateType(const StructuredMeshType *Ty);
   llvm::MDType *CreateTypeDefinition(const StructuredMeshType *Ty);
-  llvm::MDCompositeType *CreateLimitedType(const StructuredMeshType *Ty);
+  llvm::MDScoutCompositeType *CreateLimitedType(const StructuredMeshType *Ty);
 
   llvm::MDType *CreateType(const UnstructuredMeshType *Ty);
   llvm::MDType *CreateTypeDefinition(const UnstructuredMeshType *Ty);
-  llvm::MDCompositeType *CreateLimitedType(const UnstructuredMeshType *Ty);
+  llvm::MDScoutCompositeType *CreateLimitedType(const UnstructuredMeshType *Ty);
 
 
   void CollectMeshFields(const MeshDecl *Decl,
                          llvm::MDFile* F,
                          SmallVectorImpl<llvm::Metadata *> &E,
-                         llvm::MDType* RecordTy);
+                         llvm::MDScoutCompositeType *MeshTy);
   void CollectMeshStaticField(const VarDecl *Var,
                               SmallVectorImpl<llvm::Metadata *> &E,
-                              llvm::MDType* MeshTy);
+                              llvm::MDScoutCompositeType *MeshTy);
   void CollectMeshNormalField(const MeshFieldDecl *Field,
                               uint64_t OffsetInBits,
                               llvm::MDFile* F,
                               SmallVectorImpl<llvm::Metadata *> &E,
-                              llvm::MDType* RecordTy);
+                             llvm::MDScoutCompositeType *MeshTy);
 
   llvm::MDType 
   *createMeshFieldType(const MeshFieldDecl *field,
@@ -410,10 +410,6 @@ private:
 
   llvm::MDScope *getCurrentContextDescriptor(const Decl *Decl);
 
-  /// \brief Create a forward decl for a RecordType in a given context.
-  llvm::DICompositeType getOrCreateRecordFwdDecl(const RecordType *,
-                                                 llvm::DIDescriptor);
-
   // +===== Scout ============================================================+
   //
 
@@ -423,25 +419,25 @@ private:
   /// \brief Create a forward decl for a uniform mesh in a given context.
   llvm::MDScoutCompositeType *getOrCreateMeshFwdDecl(const UniformMeshType *,
                                                      llvm::MDScope *);
-
+  
   /// \brief Create a forward decl for a uniform mesh in a given context.
-  llvm::MDCompositeType *getOrCreateMeshFwdDecl(const ALEMeshType *,
-                                                llvm::MDScope *);
+  llvm::MDScoutCompositeType *getOrCreateMeshFwdDecl(const ALEMeshType *,
+                                                     llvm::MDScope *);
   
   /// \brief Create a forward decl for a rectilinear mesh in a given context.
-  llvm::MDCompositeType *getOrCreateMeshFwdDecl(const RectilinearMeshType *,
-                                                llvm::MDScope *);
-
-  /// \brief Create a forward decl for a structured mesh in a given context.
-  llvm::MDCompositeType *getOrCreateMeshFwdDecl(const StructuredMeshType *,
-                                                llvm::MDScope *);
-
-  /// \brief Create a forward decl for a unstructured mesh in a given context.
-  llvm::MDCompositeType *getOrCreateMeshFwdDecl(const UnstructuredMeshType *,
-                                                llvm::MDScope *);
+  llvm::MDScoutCompositeType *getOrCreateMeshFwdDecl(const RectilinearMeshType *,
+                                                     llvm::MDScope *);
   
-  llvm::MDCompositeType *getOrCreateFrameFwdDecl(const FrameType *,
-                                                 llvm::MDScope *);
+  /// \brief Create a forward decl for a structured mesh in a given context.
+  llvm::MDScoutCompositeType *getOrCreateMeshFwdDecl(const StructuredMeshType *,
+                                                     llvm::MDScope *);
+  
+  /// \brief Create a forward decl for a unstructured mesh in a given context.
+  llvm::MDScoutCompositeType *getOrCreateMeshFwdDecl(const UnstructuredMeshType *,
+                                                     llvm::MDScope *);
+  
+  llvm::MDScoutCompositeType *getOrCreateFrameFwdDecl(const FrameType *,
+                                                      llvm::MDScope *);
 
   // +========================================================================+
 
@@ -472,12 +468,12 @@ private:
   // +===== Scout ============================================================+
   /// getOrCreateLimitedType - Get the type from the cache or create a new
   /// partial type if necessary.
-  llvm::DIType getOrCreateLimitedType(const UniformMeshType *, llvm::DIFile);
-  llvm::DIType getOrCreateLimitedType(const ALEMeshType *, llvm::DIFile);
-  llvm::DIType getOrCreateLimitedType(const RectilinearMeshType *, llvm::DIFile);
-  llvm::DIType getOrCreateLimitedType(const StructuredMeshType *, llvm::DIFile);
-  llvm::DIType getOrCreateLimitedType(const UnstructuredMeshType *, llvm::DIFile);
-  llvm::DIType getOrCreateLimitedType(const FrameType *, llvm::DIFile);
+  llvm::MDType *getOrCreateLimitedType(const UniformMeshType *Ty, llvm::MDFile *F);
+  llvm::MDType *getOrCreateLimitedType(const ALEMeshType *Ty, llvm::MDFile *F);
+  llvm::MDType *getOrCreateLimitedType(const RectilinearMeshType *Ty, llvm::MDFile *F);
+  llvm::MDType *getOrCreateLimitedType(const StructuredMeshType *Ty, llvm::MDFile *F);
+  llvm::MDType *getOrCreateLimitedType(const UnstructuredMeshType *Ty, llvm::MDFile *F);
+  llvm::MDType *getOrCreateLimitedType(const FrameType *Ty, llvm::MDFile *F);
   // +========================================================================+
 
   /// CreateTypeNode - Create type metadata for a source language type.

@@ -66,8 +66,6 @@
 
 #include <map>
 
-#include "llvm/IR/Scout/DebugInfo.h"
-
 //#define ENABLE_DEBUG_PRINTF // COMMENT OUT THIS LINE PRIOR TO CHECKIN
 
 #ifdef ENABLE_DEBUG_PRINTF

@@ -26,10 +26,6 @@
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCSection.h"
 
-// +===== Scout ======================
-#include "llvm/IR/Scout/DebugInfo.h"
-// +==================================
-
 namespace llvm {
 
 class MachineLocation;
@@ -349,7 +345,7 @@ public:
   // +===== Scout ============================================
   
   /// constructTypeDIE - Construct type DIE from DICompositeType.
-  void constructTypeDIE(DIE &Buffer, DIScoutCompositeType CTy);
+  void constructTypeDIE(DIE &Buffer, const MDScoutCompositeType *CTy);
   
   // +========================================================
   
@@ -370,12 +366,12 @@ protected:
 private:
   // +===== Scout ====================================
   /// constructScoutTypeDIE - Construct type DIE from DIScoutCompositeType.
-  void constructScoutTypeDIE(DIE &Buffer, MDScoutCompositeType* CTy);
+  void constructScoutTypeDIE(DIE &Buffer, const MDScoutCompositeType* CTy);
   // +================================================
 
   // +===== Scout ==========================
   /// constructMeshMemberDIE - Construct member DIE from DIDerivedType.
-  void constructMeshMemberDIE(DIE &Buffer, MDScoutDerivedType* DT);
+  void constructMeshMemberDIE(DIE &Buffer, const MDScoutDerivedType* DT);
   // +======================================
 
   void constructTypeDIE(DIE &Buffer, const MDBasicType *BTy);

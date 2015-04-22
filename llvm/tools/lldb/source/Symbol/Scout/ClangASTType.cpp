@@ -76,6 +76,7 @@
 
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 
 #include "lldb/Core/ConstString.h"
 #include "lldb/Core/DataBufferHeap.h"
@@ -90,8 +91,6 @@
 #include "lldb/Symbol/VerifyDecl.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
-
-#include "llvm/IR/Scout/DebugInfo.h"
 
 #include <mutex>
 
@@ -199,19 +198,19 @@ ClangASTType::AddFieldToMeshType (const char *name,
       VerifyDecl(field);
 #endif
 
-      if(field_flags & llvm::DIScoutDerivedType::FlagMeshFieldCellLocated){
+      if(field_flags & llvm::MDScoutDerivedType::FlagMeshFieldCellLocated){
         field->setCellLocated(true);
         mesh_decl->setHasCellData(true);
       }
-      else if(field_flags & llvm::DIScoutDerivedType::FlagMeshFieldVertexLocated){
+      else if(field_flags & llvm::MDScoutDerivedType::FlagMeshFieldVertexLocated){
         field->setVertexLocated(true);
         mesh_decl->setHasVertexData(true);
       }
-      else if(field_flags & llvm::DIScoutDerivedType::FlagMeshFieldEdgeLocated){
+      else if(field_flags & llvm::MDScoutDerivedType::FlagMeshFieldEdgeLocated){
         field->setEdgeLocated(true);
         mesh_decl->setHasEdgeData(true);
       }
-      else if(field_flags & llvm::DIScoutDerivedType::FlagMeshFieldFaceLocated){
+      else if(field_flags & llvm::MDScoutDerivedType::FlagMeshFieldFaceLocated){
         field->setFaceLocated(true);
         mesh_decl->setHasFaceData(true);
       }

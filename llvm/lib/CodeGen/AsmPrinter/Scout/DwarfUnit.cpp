@@ -106,42 +106,42 @@ static uint64_t getBaseTypeSize(DwarfDebug *DD, DIDerivedType Ty) {
 }
 #endif
 
-void DwarfUnit::constructMeshMemberDIE(DIE &Buffer, DIScoutDerivedType DT) {
+void DwarfUnit::constructMeshMemberDIE(DIE &Buffer, const MDScoutDerivedType *DT) {
   // This method is modeled after constructMemberDIE - which is called for
   // constructing the DWARF info for the members of a struct/class but
   // is simpler because we do not have classes which have virtual members,
   // access/visibility, etc.
 
-  DIE *MemberDie = &createAndAddDIE(DT.getTag(), Buffer);
-  StringRef Name = DT.getName();
+  DIE &MemberDie = createAndAddDIE(DT->getTag(), Buffer);
+  StringRef Name = DT->getName();
   if (!Name.empty())
-    addString(*MemberDie, dwarf::DW_AT_name, Name);
+    addString(MemberDie, dwarf::DW_AT_name, Name);
 
-  addType(*MemberDie, resolve(DT.getTypeDerivedFrom()));
+  addType(MemberDie, resolve(DT->getBaseType()));
 
-  addSourceLine(*MemberDie, DT);
+  addSourceLine(MemberDie, DT);
 
-  uint64_t OffsetInBytes = DT.getOffsetInBits() >> 3;
+  uint64_t OffsetInBytes = DT->getOffsetInBits() >> 3;
 
   if (DD->getDwarfVersion() <= 2) {
-    DIEBlock *MemLocationDie = new (DIEValueAllocator) DIEBlock();
+    DIELoc *MemLocationDie = new (DIEValueAllocator) DIELoc();
     addUInt(*MemLocationDie, dwarf::DW_FORM_data1, dwarf::DW_OP_plus_uconst);
     addUInt(*MemLocationDie, dwarf::DW_FORM_udata, OffsetInBytes);
-    addBlock(*MemberDie, dwarf::DW_AT_data_member_location, MemLocationDie);
+    addBlock(MemberDie, dwarf::DW_AT_data_member_location, MemLocationDie);
   } else
-    addUInt(*MemberDie, dwarf::DW_AT_data_member_location, None,
-        OffsetInBytes);
+    addUInt(MemberDie, dwarf::DW_AT_data_member_location, None,
+            OffsetInBytes);
 
-  addUInt(*MemberDie, dwarf::DW_AT_accessibility, dwarf::DW_FORM_data1,
+  addUInt(MemberDie, dwarf::DW_AT_accessibility, dwarf::DW_FORM_data1,
       dwarf::DW_ACCESS_public);
   
-  addUInt(*MemberDie, dwarf::DW_AT_SCOUT_mesh_field_flags, None, DT.getScoutFlags());
+  addUInt(MemberDie, dwarf::DW_AT_SCOUT_mesh_field_flags, None, DT->getScoutFlags());
 }
 
 /// constructTypeDIE - Construct type DIE from DIScoutCompositeType.
-void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, DIScoutCompositeType CTy) {
+void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, const MDScoutCompositeType *CTy) {
   // Add name if not anonymous or intermediate type.
-  StringRef Name = CTy.getName();
+  StringRef Name = CTy->getName();
 
   //uint64_t Size = CTy.getSizeInBits() >> 3;
   uint16_t Tag = Buffer.getTag();
@@ -153,10 +153,9 @@ void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, DIScoutCompositeType CTy) {
   case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
   case dwarf::DW_TAG_SCOUT_unstructured_mesh_type: {
     // Add elements to mesh type.
-    DIArray Elements = CTy.getElements();
-    for (unsigned i = 0, N = Elements.size(); i < N; ++i) {
-      DIDescriptor Element = Elements[i];
-      DIScoutDerivedType DDTy = dyn_cast<MDScoutDerivedType>(Element);
+    DIArray Elements = CTy->getElements();
+    for (const auto *Element : Elements) {
+      auto *DDTy = dyn_cast<MDScoutDerivedType>(Element);
       constructMeshMemberDIE(Buffer, DDTy);
     }
     break;
@@ -167,7 +166,7 @@ void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, DIScoutCompositeType CTy) {
   if (!Name.empty())
     addString(Buffer, dwarf::DW_AT_name, Name);
 
-  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_x, None, CTy.getDimension(0));
-  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_y, None, CTy.getDimension(1));
-  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_z, None, CTy.getDimension(2));
+  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_x, None, CTy->getDimX());
+  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_y, None, CTy->getDimY());
+  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_z, None, CTy->getDimZ());
 }

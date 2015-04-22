@@ -35,10 +35,6 @@
 #include "llvm/Support/Allocator.h"
 #include <memory>
 
-// +===== Scout ======================================
-#include "llvm/IR/Scout/DebugInfo.h"
-// +==================================================
-
 namespace llvm {
 
 class AsmPrinter;
@@ -277,7 +273,7 @@ class DwarfDebug : public AsmPrinterHandler {
       TypeUnitsUnderConstruction;
   
   // +===== Scout ===========================================
-  SmallVector<std::pair<std::unique_ptr<DwarfTypeUnit>, DIScoutCompositeType>, 1>
+  SmallVector<std::pair<std::unique_ptr<DwarfTypeUnit>, const MDScoutCompositeType *>, 1>
   ScoutTypeUnitsUnderConstruction;
   // +=======================================================
   

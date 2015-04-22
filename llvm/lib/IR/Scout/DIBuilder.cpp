@@ -120,23 +120,23 @@ namespace {
 
 // ----------------------------------------------------
 
-DIScoutCompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
-    StringRef Name, DIFile File,
+MDScoutCompositeType *DIBuilder::createUniformMeshType(MDScope *Context,
+    StringRef Name, MDFile *File,
     unsigned LineNumber,
     uint64_t SizeInBits,
     uint64_t AlignInBits,
-    unsigned Flags, DIType DerivedFrom,
+    unsigned Flags, MDType *DerivedFrom,
     DIArray Elements,
     unsigned DimX,
     unsigned DimY,
     unsigned DimZ,
     unsigned RunTimeLang,
-    DIType VTableHolder,
+    MDType* VTableHolder,
     StringRef UniqueIdentifier
 ) {
-  DIScoutCompositeType R = MDScoutCompositeType::get(
+  auto *R = MDScoutCompositeType::get(
     VMContext, dwarf::DW_TAG_SCOUT_uniform_mesh_type, Name, File, LineNumber,
-    MDScopeRef::get(DIScope(getNonCompileUnitScope(Context))), MDTypeRef::get(DerivedFrom),
+    MDScopeRef::get(getNonCompileUnitScope(Context)), MDTypeRef::get(DerivedFrom),
     SizeInBits, AlignInBits, 0, Flags, Elements, RunTimeLang,
     MDTypeRef::get(VTableHolder), nullptr, UniqueIdentifier, DimX, DimY, DimZ);
   if (!UniqueIdentifier.empty())
@@ -145,99 +145,102 @@ DIScoutCompositeType DIBuilder::createUniformMeshType(DIDescriptor Context,
   return R;
 }
 
-DIScoutCompositeType DIBuilder::createALEMeshType(DIDescriptor Context,
-                                                      StringRef Name, DIFile File,
-                                                      unsigned LineNumber,
-                                                      uint64_t SizeInBits,
-                                                      uint64_t AlignInBits,
-                                                      unsigned Flags, DIType DerivedFrom,
-                                                      DIArray Elements,
-                                                      unsigned DimX,
-                                                      unsigned DimY,
-                                                      unsigned DimZ,
-                                                      unsigned RunTimeLang,
-                                                      DIType VTableHolder,
-                                                      StringRef UniqueIdentifier
-                                                      ) {
+MDScoutCompositeType *DIBuilder::createALEMeshType(MDScope *Scope,
+                                                   StringRef Name, MDFile *File,
+                                                   unsigned LineNumber,
+                                                   uint64_t SizeInBits,
+                                                   uint64_t AlignInBits,
+                                                   unsigned Flags, MDType *DerivedFrom,
+                                                   DIArray Elements,
+                                                   unsigned DimX,
+                                                   unsigned DimY,
+                                                   unsigned DimZ,
+                                                   unsigned RunTimeLang,
+                                                   MDType* VTableHolder,
+                                                   StringRef UniqueIdentifier
+) {
   assert(false && "unimplemented");
 }
 
 
-DIScoutCompositeType DIBuilder::createStructuredMeshType(DIDescriptor Context,
-    StringRef Name, DIFile File,
-    unsigned LineNumber,
-    uint64_t SizeInBits,
-    uint64_t AlignInBits,
-    unsigned Flags, DIType DerivedFrom,
-    DIArray Elements,
-    unsigned dimX,
-    unsigned dimY,
-    unsigned dimZ,
-    unsigned RunTimeLang,
-    DIType VTableHolder,
-    StringRef UniqueIdentifier) {
+MDScoutCompositeType *DIBuilder::createStructuredMeshType(MDScope *Scope,
+                                                          StringRef Name, MDFile *File,
+                                                          unsigned LineNumber,
+                                                          uint64_t SizeInBits,
+                                                          uint64_t AlignInBits,
+                                                          unsigned Flags, MDType *DerivedFrom,
+                                                          DIArray Elements,
+                                                          unsigned DimX,
+                                                          unsigned DimY,
+                                                          unsigned DimZ,
+                                                          unsigned RunTimeLang,
+                                                          MDType* VTableHolder,
+                                                          StringRef UniqueIdentifier
+) {
   assert(false && "unimplemented");
 }
 
-DIScoutCompositeType DIBuilder::createRectilinearMeshType(DIDescriptor Context,
-    StringRef Name, DIFile File,
-    unsigned LineNumber,
-    uint64_t SizeInBits,
-    uint64_t AlignInBits,
-    unsigned Flags, DIType DerivedFrom,
-    DIArray Elements,
-    unsigned dimX,
-    unsigned dimY,
-    unsigned dimZ,
-    unsigned RunTimeLang,
-    DIType VTableHolder,
-    StringRef UniqueIdentifier) {
+MDScoutCompositeType *DIBuilder::createRectilinearMeshType(MDScope *Scope,
+                                                           StringRef Name, MDFile *File,
+                                                           unsigned LineNumber,
+                                                           uint64_t SizeInBits,
+                                                           uint64_t AlignInBits,
+                                                           unsigned Flags, MDType *DerivedFrom,
+                                                           DIArray Elements,
+                                                           unsigned DimX,
+                                                           unsigned DimY,
+                                                           unsigned DimZ,
+                                                           unsigned RunTimeLang,
+                                                           MDType* VTableHolder,
+                                                           StringRef UniqueIdentifier
+) {
   assert(false && "unimplemented");
 }
 
-DIScoutCompositeType DIBuilder::createUnstructuredMeshType(DIDescriptor Context,
-    StringRef Name, DIFile File,
-    unsigned LineNumber,
-    uint64_t SizeInBits,
-    uint64_t AlignInBits,
-    unsigned Flags, DIType DerivedFrom,
-    DIArray Elements,
-    unsigned dimX,
-    unsigned dimY,
-    unsigned dimZ,
-    unsigned RunTimeLang,
-    DIType VTableHolder,
-    StringRef UniqueIdentifier) {
+MDScoutCompositeType *DIBuilder::createUnstructuredMeshType(MDScope *Scope,
+                                                            StringRef Name, MDFile *File,
+                                                            unsigned LineNumber,
+                                                            uint64_t SizeInBits,
+                                                            uint64_t AlignInBits,
+                                                            unsigned Flags, MDType *DerivedFrom,
+                                                            DIArray Elements,
+                                                            unsigned DimX,
+                                                            unsigned DimY,
+                                                            unsigned DimZ,
+                                                            unsigned RunTimeLang,
+                                                            MDType* VTableHolder,
+                                                            StringRef UniqueIdentifier
+) {
   assert(false && "unimplemented");
 }
 
-DIScoutDerivedType 
-DIBuilder::createMeshMemberType(DIDescriptor Scope, StringRef Name,
-                                DIFile File, unsigned LineNumber,
-                                uint64_t SizeInBits,
-                                uint64_t AlignInBits,
-                                uint64_t OffsetInBits,
-                                unsigned Flags,
-                                unsigned ScoutFlags,
-                                DIType Ty) {
+MDScoutDerivedType
+*DIBuilder::createMeshMemberType(MDScope *Scope, StringRef Name,
+                                 MDFile *File, unsigned LineNumber,
+                                 uint64_t SizeInBits,
+                                 uint64_t AlignInBits,
+                                 uint64_t OffsetInBits,
+                                 unsigned Flags,
+                                 unsigned ScoutFlags,
+                                 MDType *Ty) {
   return MDScoutDerivedType::get(VMContext, dwarf::DW_TAG_member, Name, File, LineNumber,
-                                 MDScopeRef::get(DIScope(getNonCompileUnitScope(Scope))),
+                                 MDScopeRef::get(getNonCompileUnitScope(Scope)),
                                  MDTypeRef::get(Ty), SizeInBits,
                                  AlignInBits, OffsetInBits, Flags, ScoutFlags);
 }
 
-DIScoutCompositeType
-DIBuilder::createScoutForwardDecl(unsigned Tag, StringRef Name, DIDescriptor Scope,
-                                  DIFile F, unsigned Line, unsigned RuntimeLang,
-                                  uint64_t SizeInBits, uint64_t AlignInBits,
-                                  StringRef UniqueIdentifier) {
+MDScoutCompositeType
+*DIBuilder::createScoutForwardDecl(unsigned Tag, StringRef Name, MDScope* Scope,
+                                   MDFile* F, unsigned Line, unsigned RuntimeLang,
+                                   uint64_t SizeInBits, uint64_t AlignInBits,
+                                   StringRef UniqueIdentifier) {
   // FIXME: Define in terms of createReplaceableForwardDecl() by calling
   // replaceWithUniqued().
-  DIScoutCompositeType RetTy =
+  auto *RetTy =
   MDScoutCompositeType::get(
                             VMContext, Tag, Name, F, Line,
-                            MDScopeRef::get(DIScope(getNonCompileUnitScope(Scope))), nullptr,
-                            SizeInBits, AlignInBits, 0, DIDescriptor::FlagFwdDecl, nullptr, RuntimeLang, nullptr,
+                            MDScopeRef::get(getNonCompileUnitScope(Scope)), nullptr,
+                            SizeInBits, AlignInBits, 0, DebugNode::FlagFwdDecl, nullptr, RuntimeLang, nullptr,
                             nullptr, UniqueIdentifier, 0, 0, 0);
   if (!UniqueIdentifier.empty())
     retainType(RetTy);
@@ -245,14 +248,14 @@ DIBuilder::createScoutForwardDecl(unsigned Tag, StringRef Name, DIDescriptor Sco
   return RetTy;
 }
 
-DIScoutCompositeType DIBuilder::createReplaceableScoutCompositeType(
-                                                                    unsigned Tag, StringRef Name, DIDescriptor Scope, DIFile F, unsigned Line,
-                                                                    unsigned RuntimeLang, uint64_t SizeInBits, uint64_t AlignInBits,
-                                                                    unsigned Flags, StringRef UniqueIdentifier) {
-  DIScoutCompositeType RetTy =
+MDScoutCompositeType *DIBuilder::createReplaceableScoutCompositeType(
+  unsigned Tag, StringRef Name, MDScope *Scope, MDFile* F, unsigned Line,
+  unsigned RuntimeLang, uint64_t SizeInBits, uint64_t AlignInBits,
+  unsigned Flags, StringRef UniqueIdentifier) {
+  auto *RetTy =
   MDScoutCompositeType::getTemporary(
                                      VMContext, Tag, Name, F, Line,
-                                     MDScopeRef::get(DIScope(getNonCompileUnitScope(Scope))),
+                                     MDScopeRef::get(getNonCompileUnitScope(Scope)),
                                      nullptr, SizeInBits, AlignInBits, 0, Flags,
                                      nullptr, RuntimeLang, nullptr, nullptr,
                                      UniqueIdentifier, 0, 0, 0).release();
@@ -262,7 +265,7 @@ DIScoutCompositeType DIBuilder::createReplaceableScoutCompositeType(
   return RetTy;
 }
 
-void DIBuilder::replaceArrays(DIScoutCompositeType &T, DIArray Elements,
+void DIBuilder::replaceArrays(MDScoutCompositeType* &T, DIArray Elements,
                               DIArray TParams) {
   {
     TypedTrackingMDRef<MDScoutCompositeType> N(T);

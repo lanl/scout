@@ -883,6 +883,29 @@ public:
     return ScoutFlags;
   }
   
+  enum {
+    FlagMeshFieldCellLocated     = 1 << 0,
+    FlagMeshFieldVertexLocated   = 1 << 1,
+    FlagMeshFieldEdgeLocated     = 1 << 2,
+    FlagMeshFieldFaceLocated     = 1 << 3
+  };
+  
+  bool isCellLocated() const {
+    return (getScoutFlags() & FlagMeshFieldCellLocated) != 0;
+  }
+  
+  bool isVertexLocated() const {
+    return (getScoutFlags() & FlagMeshFieldVertexLocated) != 0;
+  }
+  
+  bool isEdgeLocated() const {
+    return (getScoutFlags() & FlagMeshFieldEdgeLocated) != 0;
+  }
+  
+  bool isFaceLocated() const {
+    return (getScoutFlags() & FlagMeshFieldFaceLocated) != 0;
+  }
+  
   static bool classof(const Metadata *MD) {
     return MD->getMetadataID() == MDScoutDerivedTypeKind;
   }
