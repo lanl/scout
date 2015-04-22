@@ -403,9 +403,9 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
   llvm::MDScoutCompositeType *RealDecl =
-  DBuilder.createReplaceableScoutCompositeType(
+  DBuilder.createScoutForwardDecl(
     llvm::dwarf::DW_TAG_SCOUT_uniform_mesh_type, MDName, MDContext,
-    DefUnit, Line, 0, Size, Align, 0, FullName);
+    DefUnit, Line, 0, Size, Align, FullName);
   
   MeshType::MeshDimensions dims = Ty->dimensions();
   unsigned dimX = 0;
@@ -463,11 +463,6 @@ CGDebugInfo::getOrCreateMeshFwdDecl(const UniformMeshType *Ty,
   DBuilder.createReplaceableScoutCompositeType(
     llvm::dwarf::DW_TAG_SCOUT_uniform_mesh_type, MDName, Ctx,
     DefUnit, Line, 0, Size, Align, llvm::DebugNode::FlagFwdDecl, FullName);
-  /*
-  ReplaceMap.emplace_back(
-                          std::piecewise_construct, std::make_tuple(Ty),
-                          std::make_tuple(static_cast<llvm::Metadata *>(RetTy)));
-  */
   return RetTy;
 }
 
