@@ -101,7 +101,7 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
   assert(CurrentFrameDecl);
   
   uint32_t varId = CurrentFrameDecl->getVarId(VD);
-    
+  
   ValueVec args = {framePtr, ConstantInt::get(R.Int32Ty, varId), index};
   
   llvm::Type* rt = ConvertType(VD->getType());

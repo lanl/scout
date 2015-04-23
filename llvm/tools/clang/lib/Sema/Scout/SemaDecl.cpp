@@ -462,15 +462,7 @@ bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
   
   bool valid = true;
   
-  VarDecl* indexType = F->getVarType("Int64");
-  VarDecl* index =
-  VarDecl::Create(Context, F, SourceLocation(), SourceLocation(),
-                  PP.getIdentifierInfo("rowIndex"), indexType->getType(),
-                  Context.getTrivialTypeSourceInfo(indexType->getType()),
-                  SC_Static);
-  
-  PushOnScopeChains(index, Scope, true);
-  F->addVar("rowIndex", index);
+  AddFrameVar(Scope, F, "Int64", "rowIndex");
   
   SpecObjectExpr* Spec = static_cast<SpecObjectExpr*>(SE);
   
@@ -541,18 +533,31 @@ bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
   return valid;
 }
 
+void Sema::AddFrameVar(Scope* Scope,
+                       FrameDecl* FD,
+                       const std::string& typeName,
+                       const std::string& varName){
+  VarDecl* type = FD->getVarType(typeName);
+  VarDecl* v =
+  VarDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
+                  PP.getIdentifierInfo(varName), type->getType(),
+                  Context.getTrivialTypeSourceInfo(type->getType()),
+                  SC_Static);
+  
+  PushOnScopeChains(v, Scope, true);
+  FD->addVar(varName, v);
+}
+
 void Sema::InitFrameFromMesh(Scope* Scope, FrameDecl* FD, MeshDecl* MD){
   using namespace std;
   
-  VarDecl* indexType = FD->getVarType("Int64");
-  VarDecl* index =
-  VarDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
-                  PP.getIdentifierInfo("rowIndex"), indexType->getType(),
-                  Context.getTrivialTypeSourceInfo(indexType->getType()),
-                  SC_Static);
-  
-  PushOnScopeChains(index, Scope, true);
-  FD->addVar("rowIndex", index);
+  AddFrameVar(Scope, FD, "Int64", "rowIndex");
+  AddFrameVar(Scope, FD, "Int32", "width");
+  AddFrameVar(Scope, FD, "Int32", "height");
+  AddFrameVar(Scope, FD, "Int32", "depth");
+  AddFrameVar(Scope, FD, "Int32", "xpos");
+  AddFrameVar(Scope, FD, "Int32", "ypos");
+  AddFrameVar(Scope, FD, "Int32", "zpos");
   
   for(auto itr = MD->field_begin(), itrEnd = MD->field_end();
       itr != itrEnd; ++itr){

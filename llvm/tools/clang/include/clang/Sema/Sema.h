@@ -8898,6 +8898,11 @@ public:
 
   void InitFrameFromMesh(Scope* Scope, FrameDecl* FD, MeshDecl* MD);
   
+  void AddFrameVar(Scope* Scope,
+                   FrameDecl* FD,
+                   const std::string& typeName,
+                   const std::string& varName);
+      
   bool ActOnFrameFinishDefinition(Decl* FD);
   
   StmtResult ActOnFrameCaptureStmt(const VarDecl* F, SpecObjectExpr* S);

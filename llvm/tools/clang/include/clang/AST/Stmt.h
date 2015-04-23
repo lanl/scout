@@ -2937,6 +2937,8 @@ public:
   : Stmt(ScoutStmtClass),
     Kind(K){}
   
+  virtual ~ScoutStmt(){}
+  
   explicit ScoutStmt(EmptyShell Empty)
   : Stmt(ScoutStmtClass, Empty){}
   

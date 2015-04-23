@@ -291,6 +291,91 @@ namespace{
     uint64_t max_;
   };
 
+  class XPosVar : public ScalarVar<uint32_t>{
+  public:
+    XPosVar(uint32_t width)
+      : width_(width){}
+
+    uint32_t at(size_t i) const{
+      return i % width_;
+    }
+    
+    double min(){
+      return 0;
+    }
+
+    double max(){
+      return width_ - 1;
+    }
+
+    void compute(void* frame, uint64_t index){}
+
+    size_t size() const{
+      return 0;
+    }
+
+  private:
+    uint32_t width_;
+  };
+
+  class YPosVar : public ScalarVar<uint32_t>{
+  public:
+    YPosVar(uint32_t width, uint32_t height)
+      : width_(width),
+        h1_(height - 1){}
+
+    uint32_t at(size_t i) const{
+      return i / width_;
+    }
+    
+    double min(){
+      return 0;
+    }
+
+    double max(){
+      return h1_;
+    }
+
+    void compute(void* frame, uint64_t index){}
+
+    size_t size() const{
+      return 0;
+    }
+
+  private:
+    uint32_t width_;
+    uint32_t h1_;
+  };
+
+  class ZPosVar : public ScalarVar<uint32_t>{
+  public:
+    ZPosVar(uint32_t width, uint32_t height, uint32_t depth)
+      : wh_(width * height),
+        d1_(depth - 1){}
+
+    uint32_t at(size_t i) const{
+      return i / wh_;
+    }
+    
+    double min(){
+      return 0;
+    }
+
+    double max(){
+      return d1_;
+    }
+
+    void compute(void* frame, uint64_t index){}
+
+    size_t size() const{
+      return 0;
+    }
+
+  private:
+    uint32_t wh_;
+    uint32_t d1_;
+  };
+
   template<class T>
   class Var : public ScalarVar<T>{
   public:
@@ -575,6 +660,7 @@ namespace{
         height_(height),
         depth_(depth){
       addBuiltinVars();
+      addMeshBuiltinVars(width, height, depth);
     }
 
     Frame()
@@ -600,6 +686,15 @@ namespace{
     void addBuiltinVars(){
       indexVar_ = new IndexVar;
       addVar(0, indexVar_);
+    }
+
+    void addMeshBuiltinVars(uint32_t width, uint32_t height, uint32_t depth){
+      addVar(1, new ConstVar<uint32_t>(width));
+      addVar(2, new ConstVar<uint32_t>(height));
+      addVar(3, new ConstVar<uint32_t>(depth));
+      addVar(4, new XPosVar(width));
+      addVar(5, new YPosVar(width, height));
+      addVar(6, new ZPosVar(width, height, depth));
     }
     
     void updateIndexVar(size_t size){
