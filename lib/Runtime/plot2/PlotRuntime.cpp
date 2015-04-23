@@ -215,6 +215,16 @@ namespace{
     T vc_[N] __attribute__ ((aligned (16)));
   };
 
+  template<typename T>
+  size_t maxSize(T* v){
+    return v->size();
+  }
+
+  template<typename T, typename... TS>
+  size_t maxSize(T* v, TS... vs){
+    return max(v->size(), maxSize(vs...));
+  }
+
   class VarBase{
   public:    
     virtual double min() = 0;
@@ -232,18 +242,57 @@ namespace{
     virtual size_t size() const = 0;
   };
 
-  template<typename T>
-  size_t maxSize(T* v){
-    return v->size();
-  }
+  template<class T>
+  class ScalarVar : public VarBase{
+  public:
+    virtual T at(size_t i) const = 0;
 
-  template<typename T, typename... TS>
-  size_t maxSize(T* v, TS... vs){
-    return max(v->size(), maxSize(vs...));
-  }
+    double get(size_t i) const{
+      return at(i);
+    }
+
+    size_t hash(size_t i) const{
+      return std::hash<T>()(at(i));
+    }
+
+    void getVec(size_t i, DoubleVec& v) const{
+      assert(false && "not a vector");
+    }
+  };
+
+  class IndexVar : public ScalarVar<uint64_t>{
+  public:
+    IndexVar()
+      : max_(0){}
+
+    uint64_t at(size_t i) const{
+      return i;
+    }
+    
+    double min(){
+      return 0;
+    }
+
+    double max(){
+      return max_;
+    }
+
+    void setMax(uint64_t max){
+      max_ = max;
+    }
+
+    void compute(void* frame, uint64_t index){}
+
+    size_t size() const{
+      return 0;
+    }
+
+  private:
+    uint64_t max_;
+  };
 
   template<class T>
-  class Var : public VarBase{
+  class Var : public ScalarVar<T>{
   public:
     Var()
       : fp_(0),
@@ -292,20 +341,12 @@ namespace{
       }
     }
 
-    double get(size_t i) const{
+    T at(size_t i) const{
       return v_[i];
     }
 
     size_t hash(size_t i) const{
       return std::hash<T>()(v_[i]);
-    }
-
-    void getVec(size_t i, DoubleVec& v) const{
-      assert(false && "not a vector");
-    }
-
-    T get_(size_t i) const{
-      return v_[i];
     }
 
     double min(){
@@ -336,7 +377,7 @@ namespace{
   };
 
   template<class T>
-  class ArrayVar : public VarBase{
+  class ArrayVar : public ScalarVar<T>{
   public:
     ArrayVar(T* array, size_t size)
       : v_(array),
@@ -349,15 +390,7 @@ namespace{
       return v_[i];
     }
 
-    size_t hash(size_t i) const{
-      return std::hash<T>()(v_[i]);
-    }
-
-    void getVec(size_t i, DoubleVec& v) const{
-      assert(false && "not a vector");
-    }
-
-    T get_(size_t i) const{
+    T at(size_t i) const{
       return v_[i];
     }
 
@@ -471,23 +504,15 @@ namespace{
   };
 
   template<class T>
-  class ConstVar : public VarBase{
+  class ConstVar : public ScalarVar<T>{
   public:
     ConstVar(T value)
       : value_(value){}
 
     void compute(void* frame, uint64_t index){}
 
-    double get(size_t i) const{
+    T at(size_t i) const{
       return value_;
-    }
-
-    size_t hash(size_t i) const{
-      return std::hash<T>()(value_);
-    }
-
-    void getVec(size_t i, DoubleVec& v) const{
-      assert(false && "not a vector");
     }
 
     double min(){
@@ -549,12 +574,18 @@ namespace{
         width_(width),
         height_(height),
         depth_(depth){
-      ndump(width_);
-      ndump(height_);
-      ndump(depth_);
+      addBuiltinVars();
     }
 
     Frame()
+      : ready_(false),
+        width_(0),
+        height_(0),
+        depth_(0){
+      addBuiltinVars();
+    }
+
+    Frame(bool plotFrame)
       : ready_(false),
         width_(0),
         height_(0),
@@ -564,6 +595,15 @@ namespace{
       for(auto& itr : plotFrameMap_){
         delete itr.second;
       }
+    }
+
+    void addBuiltinVars(){
+      indexVar_ = new IndexVar;
+      addVar(0, indexVar_);
+    }
+    
+    void updateIndexVar(size_t size){
+      indexVar_->setMax(size);
     }
 
     void addVar(VarId varId, VarBase* v){
@@ -669,7 +709,7 @@ namespace{
 
     template<class T>
     T get(VarId varId, size_t index){
-      return static_cast<Var<T>*>(getVar(varId))->get_(index);
+      return static_cast<ScalarVar<T>*>(getVar(varId))->at(index);
     }
 
     template<class T>
@@ -681,7 +721,7 @@ namespace{
 
       auto itr = plotFrameMap_.find(plotId);
       if(itr == plotFrameMap_.end()){
-        frame = new Frame;
+        frame = new Frame(true);
         plotFrameMap_[plotId] = frame;
       }
       else{
@@ -709,7 +749,7 @@ namespace{
 
       auto itr = plotFrameMap_.find(plotId);
       if(itr == plotFrameMap_.end()){
-        frame = new Frame;
+        frame = new Frame(true);
         plotFrameMap_[plotId] = frame;
       }
       else{
@@ -733,7 +773,7 @@ namespace{
 
       auto itr = plotFrameMap_.find(plotId);
       if(itr == plotFrameMap_.end()){
-        frame = new Frame;
+        frame = new Frame(true);
         plotFrameMap_[plotId] = frame;
       }
       else{
@@ -809,6 +849,7 @@ namespace{
     uint32_t width_;
     uint32_t height_;
     uint32_t depth_;
+    IndexVar* indexVar_;
   };
 
   void drawText(QPainter& painter,
@@ -1132,6 +1173,8 @@ namespace{
       if(frameSize == 0){
         return;
       }
+
+      frame_->updateIndexVar(frameSize);
 
       QPainter painter(widget_);
       painter.setRenderHint(QPainter::Antialiasing, true);
