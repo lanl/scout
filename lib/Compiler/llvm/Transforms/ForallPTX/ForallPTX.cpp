@@ -608,23 +608,28 @@ public:
 
     kernelModule_.setDataLayout(*dataLayout);
 
-    llvm::legacy::PassManager passManager;
+    legacy::PassManager* passManager = new legacy::PassManager;
 
-    passManager.add(createVerifierPass());
+    passManager->add(createVerifierPass());
 
-    string ptxCode;
-    raw_string_ostream rstr(ptxCode);
-    buffer_ostream fstr(rstr);
-
-    targetMachine->addPassesToEmitFile(passManager,
-                                       fstr,
+    SmallVector<char, 65536> buf;
+    raw_svector_ostream ostr(buf);
+    
+    bool fail =
+    targetMachine->addPassesToEmitFile(*passManager,
+                                       ostr,
                                        TargetMachine::CGFT_AssemblyFile,
-                                       true);
+                                       false);
 
-    passManager.run(kernelModule_);
-    fstr.flush();
-
-    return ptxCode;
+    assert(!fail);
+    
+    passManager->run(kernelModule_);
+    
+    ostr.flush();
+    
+    delete passManager;
+        
+    return ostr.str().str();
   }
 
   Function* createFunction(const string& name,
