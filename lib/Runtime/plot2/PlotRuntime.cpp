@@ -775,7 +775,7 @@ namespace{
 
       size_t end = parentFrame->size();
       size_t n = vars_.size();
-      
+
       for(size_t i = size(); i < end; ++i){
         for(size_t j = 0; j < n; ++j){
           vars_[j]->compute(parentFrame, i);
@@ -787,7 +787,7 @@ namespace{
       size_t n = vars_.size();
       size_t m = 0;
       
-      for(size_t i = 1; i < n; ++i){
+      for(size_t i = 0; i < n; ++i){
         size_t mi = vars_[i]->size();
         if(mi > m){
           m = mi;
@@ -1265,7 +1265,7 @@ namespace{
     void render(){
       size_t frameSize = frame_->size();
 
-      if(frameSize == 0){
+      if(frameSize < 2){
         return;
       }
 

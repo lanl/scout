@@ -299,6 +299,19 @@ ExprResult Parser::ParseSpecObjectExpression(){
     else{
       SpecExpr* value = cast<SpecExpr>(valueResult.get());
       obj->insert(key, keyLoc, value);
+      
+      if(key == "var"){
+        if(SpecObjectExpr* o = value->toObject()){
+          auto m = o->memberMap();
+          
+          for(auto& itr : m){
+            VarDecl* v =
+            Actions.ActOnSpecVarDef(itr.first, itr.second.second->toExpr());
+            
+            SpecVars.push_back(v);
+          }
+        }
+      }
     }
   }
   

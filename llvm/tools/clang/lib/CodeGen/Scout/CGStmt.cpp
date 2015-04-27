@@ -2477,7 +2477,7 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
   }
 }
 
-llvm::Value* CodeGenFunction::EmitPlotExpr(const FrameDecl* FD,
+llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
                                            llvm::Value* PlotPtr,
                                            SpecExpr* E,
                                            uint32_t& varId){
@@ -2489,9 +2489,18 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const FrameDecl* FD,
   
   auto R = CGM.getPlot2Runtime();
   
+  const FrameDecl* FD = S.getFrameDecl();
+  
   VarDecl* vd = E->getVar();
-  if(vd && FD->hasVar(vd)){
-    return ConstantInt::get(R.Int32Ty, FD->getVarId(vd));
+  if(vd){
+    if(FD->hasVar(vd)){
+      return ConstantInt::get(R.Int32Ty, FD->getVarId(vd));
+    }
+    
+    uint32_t varId = S.getVarId(vd);
+    if(varId != 0){
+      return ConstantInt::get(R.Int32Ty, varId);
+    }
   }
   
   SpecArrayExpr* array = E->toArray();
@@ -2642,6 +2651,8 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   typedef vector<Value*> ValueVec;
   typedef vector<llvm::Type*> TypeVec;
+  
+  CurrentPlotStmt = &S;
   
   auto R = CGM.getPlot2Runtime();
 
@@ -2802,9 +2813,34 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   Value* plotPtr = Builder.CreateCall(R.PlotInitFunc(), args, "plot.ptr");
   
-  uint32_t varId = 65536;
+  uint32_t varId;
   
   auto m = spec->memberMap();
+  
+  auto vm = S.varMap();
+
+  for(auto& itr : m){
+    const string& k = itr.first;
+    SpecExpr* v = itr.second.second;
+   
+    if(k == "var"){
+      SpecObjectExpr* vo = v->toObject();
+      
+      auto& m = vo->memberMap();
+      
+      for(auto& itr : m){
+        const string& k = itr.first;
+        SpecExpr* e = itr.second.second;
+        
+        auto vitr = vm.find(k);
+        assert(vitr != vm.end());
+        varId = vitr->second.second;
+        EmitPlotExpr(S, plotPtr, e, varId);
+      }
+    }
+  }
+  
+  varId = S.getVarId();
   
   for(auto& itr : m){
     const string& k = itr.first;
@@ -2819,13 +2855,13 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       Value* yv;
       
       if(pa){
-        xv = EmitPlotExpr(fd, plotPtr, pa->get(0), varId);
-        yv = EmitPlotExpr(fd, plotPtr, pa->get(1), varId);
+        xv = EmitPlotExpr(S, plotPtr, pa->get(0), varId);
+        yv = EmitPlotExpr(S, plotPtr, pa->get(1), varId);
       }
       else if(k == "interval"){
         SpecObjectExpr* bo = o->get("position")->toObject();
         
-        Value* vi = EmitPlotExpr(fd, plotPtr, bo->get("bin"), varId);
+        Value* vi = EmitPlotExpr(S, plotPtr, bo->get("bin"), varId);
         xv = ConstantInt::get(R.Int32Ty, varId++);
         yv = ConstantInt::get(R.Int32Ty, varId++);
         Value* n = ConstantInt::get(R.Int32Ty, bo->get("n")->getInteger());
@@ -2834,15 +2870,15 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         Builder.CreateCall(R.PlotAddBinsFunc(), args);
       }
       
-      Value* cv = EmitPlotExpr(fd, plotPtr, o->get("color"), varId);
+      Value* cv = EmitPlotExpr(S, plotPtr, o->get("color"), varId);
       
       if(k == "lines"){
-        Value* sv = EmitPlotExpr(fd, plotPtr, o->get("size"), varId);
+        Value* sv = EmitPlotExpr(S, plotPtr, o->get("size"), varId);
         args = {plotPtr, xv, yv, sv, cv};
         Builder.CreateCall(R.PlotAddLinesFunc(), args);
       }
       else if(k == "points"){
-        Value* sv = EmitPlotExpr(fd, plotPtr, o->get("size"), varId);
+        Value* sv = EmitPlotExpr(S, plotPtr, o->get("size"), varId);
         args = {plotPtr, xv, yv, sv, cv};
         Builder.CreateCall(R.PlotAddPointsFunc(), args);
       }
@@ -2867,7 +2903,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       SpecArrayExpr* pa = o->get("proportion")->toArray();
       
       for(size_t i = 0; i < pa->size(); ++i){
-        Value* pv = EmitPlotExpr(fd, plotPtr, pa->get(i), varId);
+        Value* pv = EmitPlotExpr(S, plotPtr, pa->get(i), varId);
         args = {propPtr, pv};
         Builder.CreateCall(R.PlotProportionAddVarFunc(), args);
       }
@@ -2875,7 +2911,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       Value* cv;
       SpecExpr* c = o->get("color");
       if(c){
-        cv = EmitPlotExpr(fd, plotPtr, c, varId);
+        cv = EmitPlotExpr(S, plotPtr, c, varId);
       }
       else{
         cv = ConstantInt::get(R.Int32Ty, 0);
@@ -2889,16 +2925,16 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       
       SpecArrayExpr* pa = o->get("start")->toArray();
       
-      Value* x1 = EmitPlotExpr(fd, plotPtr, pa->get(0), varId);
-      Value* y1 = EmitPlotExpr(fd, plotPtr, pa->get(1), varId);
+      Value* x1 = EmitPlotExpr(S, plotPtr, pa->get(0), varId);
+      Value* y1 = EmitPlotExpr(S, plotPtr, pa->get(1), varId);
       
       pa = o->get("end")->toArray();
       
-      Value* x2 = EmitPlotExpr(fd, plotPtr, pa->get(0), varId);
-      Value* y2 = EmitPlotExpr(fd, plotPtr, pa->get(1), varId);
+      Value* x2 = EmitPlotExpr(S, plotPtr, pa->get(0), varId);
+      Value* y2 = EmitPlotExpr(S, plotPtr, pa->get(1), varId);
       
-      Value* cv = EmitPlotExpr(fd, plotPtr, o->get("color"), varId);
-      Value* sv = EmitPlotExpr(fd, plotPtr, o->get("size"), varId);
+      Value* cv = EmitPlotExpr(S, plotPtr, o->get("color"), varId);
+      Value* sv = EmitPlotExpr(S, plotPtr, o->get("size"), varId);
       
       args = {plotPtr, x1, y1, x2, y2, sv, cv};
       Builder.CreateCall(R.PlotAddLineFunc(), args);
@@ -2917,4 +2953,6 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   args = {plotPtr};
   Builder.CreateCall(R.PlotRenderFunc(), args);
+  
+  CurrentPlotStmt = nullptr;
 }

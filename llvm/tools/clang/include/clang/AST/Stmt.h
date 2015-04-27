@@ -3000,12 +3000,15 @@ private:
   
 class PlotStmt : public ScoutStmt{
 public:
+  typedef std::map<std::string, std::pair<const VarDecl*, uint32_t>> VarMap;
+  
   PlotStmt(const FrameDecl* FD, const VarDecl* FV, const VarDecl* RV, SpecObjectExpr* S)
   : ScoutStmt(Plot),
   Frame(FD),
   FrameVar(FV),
   RenderTargetVar(RV),
-  Spec(S){}
+  Spec(S),
+  nextVarId_(65536){}
 
   const FrameDecl* getFrameDecl() const{
     return Frame;
@@ -3023,11 +3026,35 @@ public:
     return Spec;
   }
   
+  void addVar(const VarDecl* v);
+  
+  const VarMap& varMap() const{
+    return VMap;
+  }
+  
+  uint32_t getVarId(const VarDecl* v) const{
+    for(auto& itr : VMap){
+      if(itr.second.first == v){
+        return itr.second.second;
+      }
+    }
+    
+    return 0;
+  }
+  
+  uint32_t getVarId() const{
+    return nextVarId_;
+  }
+  
 private:
   const FrameDecl* Frame;
   const VarDecl* FrameVar;
   const VarDecl* RenderTargetVar;
   SpecObjectExpr* Spec;
+  
+  uint32_t nextVarId_;
+  
+  VarMap VMap;
 };
   
 // +==========================================================================+

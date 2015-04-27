@@ -792,6 +792,34 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         valid = false;
       }
     }
+    else if(k == "var"){
+      SpecObjectExpr* vo = v->toObject();
+      if(vo){
+        if(vo->size() > 0){
+          auto m = vo->memberMap();
+          
+          for(auto& itr : m){
+            SpecExpr* e = itr.second.second;
+            
+            if(!e->toExpr()){
+              Diag(e->getLocStart(), diag::err_invalid_plot_spec) <<
+              "invalid variable expression";
+              valid = false;
+            }
+          }
+        }
+        else{
+          Diag(vo->getLocStart(), diag::err_invalid_plot_spec) <<
+          "expected one or more variable definitions";
+          valid = false;
+        }
+      }
+      else{
+        Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected an object specifier";
+        valid = false;
+      }
+    }
     else{
       Diag(loc, diag::err_invalid_plot_spec_key) << k;
       valid = false;

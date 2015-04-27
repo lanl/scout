@@ -4977,6 +4977,10 @@ public:
     return MM;
   }
   
+  size_t size() const{
+    return MM.size();
+  }
+  
   SpecExpr* get(const std::string& K){
     auto p = MM.equal_range(K);
     auto itr = p.first;

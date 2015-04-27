@@ -605,3 +605,15 @@ bool Sema::ActOnFrameFinishDefinition(Decl* D){
 
   return true;
 }
+
+VarDecl* Sema::ActOnSpecVarDef(const std::string& varName, Expr* expr){
+  VarDecl* v =
+  VarDecl::Create(Context, CurContext, SourceLocation(), SourceLocation(),
+                  PP.getIdentifierInfo(varName), expr->getType(),
+                  Context.getTrivialTypeSourceInfo(expr->getType()),
+                  SC_Static);
+  
+  PushOnScopeChains(v, getCurScope(), false);
+  
+  return v;
+}

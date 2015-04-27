@@ -365,6 +365,7 @@ public:
   llvm::Value* GPUNumThreads;
   
   const FrameDecl* CurrentFrameDecl = nullptr;
+  const PlotStmt* CurrentPlotStmt = nullptr;
   
   //renderall color buffer
   llvm::Value *Color;
@@ -2226,7 +2227,7 @@ public:
   
   llvm::Function* CreatePlotFunction(Expr* E);
   
-  llvm::Value* EmitPlotExpr(const FrameDecl* FD,
+  llvm::Value* EmitPlotExpr(const PlotStmt &S,
                             llvm::Value* PlotPtr,
                             SpecExpr* E,
                             uint32_t& varId);
