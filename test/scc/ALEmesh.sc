@@ -1,11 +1,9 @@
 /*
- *
  * ###########################################################################
- *
- * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * Copyright (c) 2015, Los Alamos National Security, LLC.
  * All rights reserved.
- *
- *  Copyright 2013. Los Alamos National Security, LLC. This software was
+ * 
+ *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
  *  National Security, LLC for the U.S. Department of Energy. The
@@ -22,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- *
+ * 
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided
+ *      disclaimer in the documentation and/or other materials provided 
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -33,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- *
+ * 
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -47,91 +45,47 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ########################################################################### 
+ * 
+ * Notes
  *
- */
+ * ##### 
+ */ 
 
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/Attr.h"
-#include "clang/AST/CharUnits.h"
-#include "clang/AST/DeclCXX.h"
-#include "clang/AST/DeclObjC.h"
-#include "clang/AST/DeclTemplate.h"
-#include "clang/AST/Expr.h"
-#include "clang/AST/PrettyPrinter.h"
-#include "clang/AST/Type.h"
-#include "clang/AST/TypeVisitor.h"
-#include "clang/Basic/Specifiers.h"
-#include "llvm/ADT/APSInt.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/raw_ostream.h"
-#include <algorithm>
-using namespace clang;
+#include <stdio.h>
+#include <assert.h>
 
-MeshType::MeshType(TypeClass TC, const MeshDecl *D, QualType can)
-    : Type(TC, can, D->isDependentType(),
-        /*InstantiationDependent=*/D->isDependentType(),
-        /*VariablyModified=*/false,
-        /*ContainsUnexpandedParameterPack=*/false),
-      decl(const_cast<MeshDecl*>(D)) {}
+ALE mesh AMeshType{
+cells:
+  int field;
+};
 
 
-static MeshDecl *getInterestingMeshDecl(MeshDecl *decl) {
-  for (MeshDecl::redecl_iterator I = decl->redecls_begin(),
-       E = decl->redecls_end();
-       I != E; ++I) {
-    if (I->isCompleteDefinition() || I->isBeingDefined())
-      return *I;
+int main(int argc, char *argv[])
+{
+  AMeshType m1[2];
+  AMeshType m2[2, 3];
+  AMeshType m3[2, 3, 4];
+
+  int val = 0;
+  forall cells c in m1 {
+    val++;
+    field = val;
   }
-  // If there's no definition (not even in progress), return what we have.
-  return decl;
+  assert(val==2 && "bad number of cells r=1"); 
+
+  val = 0;
+  forall cells c in m2 {
+    val++;
+    field = val;
+  }
+  assert(val==6 && "bad number of cells r=2"); 
+
+  val = 0;
+  forall cells c in m3 {
+    val++;
+    field = val;
+  }
+  assert(val==24 && "bad number of cells r=3"); 
+  return 0;
 }
-
-MeshDecl *MeshType::getDecl() const {
-  return getInterestingMeshDecl(decl);
-}
-
-StringRef MeshType::getName() const {
-  return getDecl()->getIdentifier()->getName();
-}
-
-bool MeshType::isBeingDefined() const {
-  return getDecl()->isBeingDefined();
-}
-
-bool MeshType::hasCellData() const {
-  return getDecl()->hasCellData();
-}
-
-bool MeshType::hasVertexData() const {
-  return getDecl()->hasVertexData();
-}
-
-bool MeshType::hasEdgeData() const {
-  return getDecl()->hasEdgeData();
-}
-
-bool MeshType::hasFaceData() const {
-  return getDecl()->hasFaceData();
-}
-
-bool MeshType::isUniform() const {
-  return getDecl()->isUniformMesh();
-}
-
-bool MeshType::isALE() const {
-  return getDecl()->isALEMesh();
-}
-
-bool MeshType::isRectilinear() const {
-  return getDecl()->isRectilinearMesh();
-}
-
-bool MeshType::isStructured() const {
-  return getDecl()->isStructuredMesh();
-}
-
-bool MeshType::isUnstructured() const {
-  return getDecl()->isUnstructuredMesh();
-}
-
-

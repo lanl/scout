@@ -196,35 +196,34 @@ unsigned int GetMeshNFields(const Stmt &S) {
 void CodeGenFunction::SetMeshBounds(const Stmt &S) {
   llvm::Value *MeshBaseAddr;
   GetMeshBaseAddr(S, MeshBaseAddr);
+  const MeshType* mt;
 
   if (const ForallMeshStmt *FAMS = dyn_cast<ForallMeshStmt>(&S)) {
-    SetMeshBounds(FAMS->getMeshElementRef(), MeshBaseAddr);
+    mt = FAMS->getMeshType();
+    SetMeshBounds(FAMS->getMeshElementRef(), MeshBaseAddr, mt);
   }  else if (const RenderallMeshStmt *RAMS = dyn_cast<RenderallMeshStmt>(&S)) {
-    SetMeshBounds(RAMS->getMeshElementRef(), MeshBaseAddr);
+    mt = RAMS->getMeshType();
+    SetMeshBounds(RAMS->getMeshElementRef(), MeshBaseAddr, mt);
   } else {
     assert(false && "non-mesh stmt in SetMeshBounds()");
   }
 }
 
 
-void CodeGenFunction::SetMeshBounds(ForallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr) {
-  SetMeshBoundsImpl(true, type, MeshBaseAddr);
+void CodeGenFunction::SetMeshBounds(ForallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr, const MeshType* mt) {
+  SetMeshBoundsImpl(true, type, MeshBaseAddr, mt);
 }
 
 
-void CodeGenFunction::SetMeshBounds(RenderallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr) {
-  SetMeshBoundsImpl(false, type, MeshBaseAddr);
+void CodeGenFunction::SetMeshBounds(RenderallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr, const MeshType* mt) {
+  SetMeshBoundsImpl(false, type, MeshBaseAddr, mt);
 }
 
 // deal w/ differences in Renderall/Forall cases
-void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int MeshType, llvm::Value* MeshBaseAddr) {
-  llvm::PointerType* pointerTy = cast<llvm::PointerType>(MeshBaseAddr->getType());
-  
-  llvm::StructType* structTy =
-  cast<llvm::StructType>(pointerTy->getElementType());
+void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value* MeshBaseAddr, const MeshType* mt) {
 
   // find number of mesh fields (struct fields - the fixed ones like width/height/depth)
-  unsigned int nfields = structTy->getNumElements() - MeshParameterOffset::EndOffset;
+  unsigned int nfields = mt->getDecl()->fields();
 
   llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
@@ -270,14 +269,14 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int MeshType, llvm::Value
   for(unsigned int i = 0; i < 3; i++) {
 
      if(isForall == true) { // forall
-       if  (MeshType == ForallMeshStmt::MeshElementType::Cells) {
+       if  (meshType == ForallMeshStmt::MeshElementType::Cells) {
          // if LoopBound == 0 then set it to 1 (for cells)
          LoopBounds[i] = CreateTempAlloca(Int32Ty, "loopbound.ptr");
          llvm::Value *dim = Builder.CreateLoad(MeshSize[i]);
          llvm::Value *Check = Builder.CreateICmpEQ(dim, ConstantZero);
          llvm::Value *x = Builder.CreateSelect(Check, ConstantOne, dim);
          Builder.CreateStore(x, LoopBounds[i]);
-       } else if  (MeshType == ForallMeshStmt::MeshElementType::Vertices) {
+       } else if  (meshType == ForallMeshStmt::MeshElementType::Vertices) {
          LoopBounds[i] = CreateTempAlloca(Int32Ty, "loopbounds.ptr");
          llvm::Value *incr = Builder.CreateAdd(Builder.CreateLoad(MeshSize[i]), ConstantOne);
          Builder.CreateStore(incr, LoopBounds[i]);

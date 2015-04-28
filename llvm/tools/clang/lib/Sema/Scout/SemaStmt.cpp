@@ -143,6 +143,13 @@ bool Sema::ActOnForallMeshRefVariable(Scope* S,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<UniformMeshType>(MT),0), VD);
+  } else if (MT->isALE()) {
+    D = ImplicitMeshParamDecl::Create(Context,
+                                      CurContext,
+                                      ET,
+                                      RefVarLoc,
+                                      RefVarInfo,
+                                      QualType(cast<ALEMeshType>(MT),0), VD);
   } else if (MT->isStructured()) {
     D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
@@ -409,6 +416,13 @@ bool Sema::ActOnRenderallMeshRefVariable(Scope* S,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<UniformMeshType>(MT),0), VD);
+  } else if (MT->isALE()) {
+    D = ImplicitMeshParamDecl::Create(Context,
+                                      CurContext,
+                                      ET,
+                                      RefVarLoc,
+                                      RefVarInfo,
+                                      QualType(cast<ALEMeshType>(MT),0), VD);
   } else if (MT->isStructured()) {
     D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,

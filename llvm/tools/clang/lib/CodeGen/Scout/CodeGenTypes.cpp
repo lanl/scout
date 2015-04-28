@@ -109,6 +109,7 @@ void CodeGenTypes::AddMeshFieldMetadata(const char *locationName,
 // Handle the cases for converting the following scout mesh
 // types:
 //  Type::UniformMesh
+//  Type::ALEMesh
 //  Type::StructuredMesh
 //  Type::RectlinearMesh
 //  Type::UnstructuredMesh
@@ -139,6 +140,8 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   llvm::MDString *MDKind;
   if (meshType->isUniform()) 
     MDKind = llvm::MDString::get(getLLVMContext(), "uniform");
+  else if (meshType->isALE())
+    MDKind = llvm::MDString::get(getLLVMContext(), "ALE");
   else if (meshType->isRectilinear())
     MDKind = llvm::MDString::get(getLLVMContext(), "rectilinear");
   else if (meshType->isStructured())
@@ -197,10 +200,18 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
 
   MeshMD->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Metadata*>(MeshInfoMD)));
   
-  if (isa<UniformMeshType>(meshType) || isa<RectilinearMeshType>(meshType)) {
+  if (isa<UniformMeshType>(meshType) || isa<ALEMeshType>(meshType) || isa<RectilinearMeshType>(meshType)) {
     // put width/height/depth/rank after fields
     for(size_t i = 0; i <  MeshParameterOffset::EndOffset; ++i) {
       eltTys.push_back(llvm::IntegerType::get(getLLVMContext(), 32));
+    }
+  }
+
+  // put x, y and z of vertex positions in for ALE mesh
+  if (isa<ALEMeshType>(meshType)) {
+    llvm::Type* floatTy = llvm::Type::getFloatTy(CGM.getModule().getContext());
+    for(size_t i = 0; i < 3; ++i) {
+      eltTys.push_back(llvm::PointerType::getUnqual(floatTy));
     }
   }
 

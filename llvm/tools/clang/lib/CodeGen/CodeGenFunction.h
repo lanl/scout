@@ -2113,10 +2113,10 @@ public:
   void GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& BaseAddr);
 
   void SetMeshBounds(const Stmt &S);
-  void SetMeshBounds(ForallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr);
-  void SetMeshBounds(RenderallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr);
+  void SetMeshBounds(ForallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr, const MeshType* mt);
+  void SetMeshBounds(RenderallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr, const MeshType* mt);
 private:
-  void SetMeshBoundsImpl(bool isForall, int MeshType, llvm::Value* MeshBaseAddr);
+  void SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value* MeshBaseAddr, const MeshType* mt);
 public:
 
   void ResetMeshBounds(void);
