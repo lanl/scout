@@ -115,12 +115,12 @@ namespace CodeGen {
     llvm::Function* FrameCaptureI64Func();
     llvm::Function* FrameCaptureFloatFunc();
     llvm::Function* FrameCaptureDoubleFunc();
-    llvm::Function* FrameGetI32Func();
-    llvm::Function* FrameGetI64Func();
-    llvm::Function* FrameGetFloatFunc();
-    llvm::Function* FrameGetDoubleFunc();
-    
+
     llvm::Function* PlotInitFunc();
+    llvm::Function* PlotGetI32Func();
+    llvm::Function* PlotGetI64Func();
+    llvm::Function* PlotGetFloatFunc();
+    llvm::Function* PlotGetDoubleFunc();
     llvm::Function* PlotAddLinesFunc();
     llvm::Function* PlotAddLineFunc();
     llvm::Function* PlotAddPointsFunc();

@@ -245,8 +245,8 @@ private:
 class PlotExprVisitor : public StmtVisitor<PlotExprVisitor> {
 public:
   
-  PlotExprVisitor(const FrameDecl* FD)
-  : FD_(FD), isConstant_(true){}
+  PlotExprVisitor(const PlotStmt& S)
+  : S_(S), isConstant_(true){}
   
   void VisitDeclRefExpr(DeclRefExpr* E);
   
@@ -270,7 +270,7 @@ public:
   }
   
 private:
-  const FrameDecl* FD_;
+  const PlotStmt& S_;
   bool isConstant_;
 };
   

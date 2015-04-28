@@ -91,7 +91,7 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
   
   auto aitr = func->arg_begin();
   
-  Value* framePtr = aitr++;
+  Value* plotPtr = aitr++;
   Value* index = aitr++;
   
   typedef vector<Value*> ValueVec;
@@ -107,23 +107,23 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
     varId = CurrentFrameDecl->getVarId(VD);
   }
   
-  ValueVec args = {framePtr, ConstantInt::get(R.Int32Ty, varId), index};
+  ValueVec args = {plotPtr, ConstantInt::get(R.Int32Ty, varId), index};
   
   llvm::Type* rt = ConvertType(VD->getType());
   
   Value* ret;
   
   if(rt->isIntegerTy(32)){
-    ret = Builder.CreateCall(R.FrameGetI32Func(), args);
+    ret = Builder.CreateCall(R.PlotGetI32Func(), args);
   }
   else if(rt->isIntegerTy(64)){
-    ret = Builder.CreateCall(R.FrameGetI64Func(), args);
+    ret = Builder.CreateCall(R.PlotGetI64Func(), args);
   }
   else if(rt->isFloatTy()){
-    ret = Builder.CreateCall(R.FrameGetFloatFunc(), args);
+    ret = Builder.CreateCall(R.PlotGetFloatFunc(), args);
   }
   else if(rt->isDoubleTy()){
-    ret = Builder.CreateCall(R.FrameGetDoubleFunc(), args);
+    ret = Builder.CreateCall(R.PlotGetDoubleFunc(), args);
   }
   else{
     assert(false && "invalid frame var type");

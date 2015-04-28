@@ -237,7 +237,7 @@ namespace{
 
     virtual void getVec(size_t i, DoubleVec& v) const = 0;
 
-    virtual void compute(void* frame, uint64_t index) = 0;
+    virtual void compute(void* plot, uint64_t index) = 0;
 
     virtual size_t size() const = 0;
   };
@@ -281,7 +281,7 @@ namespace{
       max_ = max;
     }
 
-    void compute(void* frame, uint64_t index){}
+    void compute(void* plot, uint64_t index){}
 
     size_t size() const{
       return 0;
@@ -308,7 +308,7 @@ namespace{
       return width_ - 1;
     }
 
-    void compute(void* frame, uint64_t index){}
+    void compute(void* plot, uint64_t index){}
 
     size_t size() const{
       return 0;
@@ -336,7 +336,7 @@ namespace{
       return h1_;
     }
 
-    void compute(void* frame, uint64_t index){}
+    void compute(void* plot, uint64_t index){}
 
     size_t size() const{
       return 0;
@@ -365,7 +365,7 @@ namespace{
       return d1_;
     }
 
-    void compute(void* frame, uint64_t index){}
+    void compute(void* plot, uint64_t index){}
 
     size_t size() const{
       return 0;
@@ -420,9 +420,9 @@ namespace{
       v_.push_back(value);
     }
 
-    void compute(void* frame, uint64_t index){
+    void compute(void* plot, uint64_t index){
       if(fp_){
-        capture((*fp_)(frame, index));
+        capture((*fp_)(plot, index));
       }
     }
 
@@ -469,7 +469,7 @@ namespace{
         size_(size),
         ready_(false){}
 
-    void compute(void* frame, uint64_t index){}
+    void compute(void* plot, uint64_t index){}
 
     double get(size_t i) const{
       return v_[i];
@@ -551,9 +551,9 @@ namespace{
       v_.push_back(value);
     }
 
-    void compute(void* frame, uint64_t index){
+    void compute(void* plot, uint64_t index){
       Vec<T, N> v;
-      (*fp_)(frame, index, v.raw());
+      (*fp_)(plot, index, v.raw());
 
       capture(v);
     }
@@ -594,7 +594,7 @@ namespace{
     ConstVar(T value)
       : value_(value){}
 
-    void compute(void* frame, uint64_t index){}
+    void compute(void* plot, uint64_t index){}
 
     T at(size_t i) const{
       return value_;
@@ -622,7 +622,7 @@ namespace{
     ConstVecVar(const Vec<T, N>& v)
       : v_(v){}
 
-    void compute(void* frame, uint64_t index){}
+    void compute(void* plot, uint64_t index){}
 
     double get(size_t i) const{
       assert(false && "attempt to get scalar from vector");
@@ -651,6 +651,8 @@ namespace{
   private:
     Vec<T, N> v_;
   };
+
+  class Plot;
 
   class Frame{
   public:
@@ -770,7 +772,7 @@ namespace{
       static_cast<Var<T>*>(vars_[varId])->capture(value);
     }
 
-    void compute(Frame* parentFrame){
+    void compute(Plot* plot, Frame* parentFrame){
       ready_ = true;
 
       size_t end = parentFrame->size();
@@ -778,7 +780,7 @@ namespace{
 
       for(size_t i = size(); i < end; ++i){
         for(size_t j = 0; j < n; ++j){
-          vars_[j]->compute(parentFrame, i);
+          vars_[j]->compute(plot, i);
         }
       }
     }
@@ -924,13 +926,13 @@ namespace{
       frame->addVar(varId - PLOT_VAR_BEGIN, v);
     }
 
-    Frame* initPlotFrame(uint32_t plotId){
+    Frame* initPlotFrame(Plot* plot, uint32_t plotId){
       auto itr = plotFrameMap_.find(plotId);
       if(itr == plotFrameMap_.end()){
         return 0;
       }
 
-      itr->second->compute(this);
+      itr->second->compute(plot, this);
       return itr->second;
     }
 
@@ -1180,6 +1182,13 @@ namespace{
 
     ~Plot(){}
 
+    template<class T>
+    T get(VarId varId, size_t index){
+      return varId >= PLOT_VAR_BEGIN ? 
+        plotFrame_->get<T>(varId - PLOT_VAR_BEGIN, index) : 
+        frame_->get<T>(varId, index);
+    }
+
     VarBase* getVar(VarId varId){
       return varId >= PLOT_VAR_BEGIN ? 
         plotFrame_->getVar(varId - PLOT_VAR_BEGIN) : frame_->getVar(varId);
@@ -1252,7 +1261,7 @@ namespace{
     void finalize(){
       QtWindow::init();
 
-      plotFrame_ = frame_->initPlotFrame(plotId_);
+      plotFrame_ = frame_->initPlotFrame(this, plotId_);
 
       widget_ = window_->getWidget();
       widget_->setRenderer(this);
@@ -1780,20 +1789,20 @@ extern "C"{
     static_cast<Frame*>(f)->capture(varId, value);
   }
 
-  int32_t __scrt_frame_get_i32(void* f, VarId varId, uint64_t index){
-    return static_cast<Frame*>(f)->get<int32_t>(varId, index);
+  int32_t __scrt_plot_get_i32(void* plot, VarId varId, uint64_t index){
+    return static_cast<Plot*>(plot)->get<int32_t>(varId, index);
   }
 
-  int64_t __scrt_frame_get_i64(void* f, VarId varId, uint64_t index){
-    return static_cast<Frame*>(f)->get<int64_t>(varId, index);
+  int64_t __scrt_plot_get_i64(void* plot, VarId varId, uint64_t index){
+    return static_cast<Plot*>(plot)->get<int64_t>(varId, index);
   }
 
-  float __scrt_frame_get_float(void* f, VarId varId, uint64_t index){
-    return static_cast<Frame*>(f)->get<float>(varId, index);
+  float __scrt_plot_get_float(void* plot, VarId varId, uint64_t index){
+    return static_cast<Plot*>(plot)->get<float>(varId, index);
   }
 
-  double __scrt_frame_get_double(void* f, VarId varId, uint64_t index){
-    return static_cast<Frame*>(f)->get<double>(varId, index);
+  double __scrt_plot_get_double(void* plot, VarId varId, uint64_t index){
+    return static_cast<Plot*>(plot)->get<double>(varId, index);
   }
 
   void* __scrt_plot_init(uint32_t plotId, void* frame, void* window){

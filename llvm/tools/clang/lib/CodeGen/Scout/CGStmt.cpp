@@ -2510,7 +2510,7 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
     isConstant = true;
   }
   else{
-    PlotExprVisitor v(FD);
+    PlotExprVisitor v(S);
     v.Visit(E->toExpr());
     isConstant = v.isConstant();
   }
@@ -2549,7 +2549,7 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
                          &CGM.getModule());
   
   auto aitr = func->arg_begin();
-  aitr->setName("frame.ptr");
+  aitr->setName("plot.ptr");
   aitr++;
   aitr->setName("index");
   
