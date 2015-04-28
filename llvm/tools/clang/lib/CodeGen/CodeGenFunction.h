@@ -364,7 +364,6 @@ public:
   llvm::Value* GPUThreadInc;
   llvm::Value* GPUNumThreads;
   
-  const FrameDecl* CurrentFrameDecl = nullptr;
   const PlotStmt* CurrentPlotStmt = nullptr;
   
   //renderall color buffer

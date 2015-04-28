@@ -2563,8 +2563,6 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
   BasicBlock* entry = BasicBlock::Create(CGM.getLLVMContext(), "entry", func);
   Builder.SetInsertPoint(entry);
   
-  CurrentFrameDecl = FD;
-  
   if(isVec){
     if(array){
       for(size_t i = 0; i < array->size(); ++i){
@@ -2584,9 +2582,7 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
     Value* val = EmitAnyExpr(E->toExpr()).getScalarVal();
     Builder.CreateRet(val);
   }
-  
-  CurrentFrameDecl = nullptr;
-  
+    
   //func->dump();
   
   Builder.SetInsertPoint(prevBlock, prevPoint);

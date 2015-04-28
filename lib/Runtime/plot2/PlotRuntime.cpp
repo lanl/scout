@@ -926,13 +926,12 @@ namespace{
       frame->addVar(varId - PLOT_VAR_BEGIN, v);
     }
 
-    Frame* initPlotFrame(Plot* plot, uint32_t plotId){
+    Frame* getPlotFrame(uint32_t plotId){
       auto itr = plotFrameMap_.find(plotId);
       if(itr == plotFrameMap_.end()){
-        return 0;
+        return nullptr;
       }
-
-      itr->second->compute(plot, this);
+      
       return itr->second;
     }
 
@@ -1261,7 +1260,10 @@ namespace{
     void finalize(){
       QtWindow::init();
 
-      plotFrame_ = frame_->initPlotFrame(this, plotId_);
+      plotFrame_ = frame_->getPlotFrame(plotId_);
+      if(plotFrame_){
+        plotFrame_->compute(this, frame_);
+      }
 
       widget_ = window_->getWidget();
       widget_->setRenderer(this);
