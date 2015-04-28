@@ -1943,12 +1943,12 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     // Check if this is a 'color' expression.
     if (isScoutLang(getLangOpts()) && ND->getDeclName().isIdentifier()) {
       if (isa<ImplicitColorParamDecl>(ND)) {
-	return EmitColorDeclRefLValue(ND);
+        return EmitColorDeclRefLValue(ND);
       }
     }
     
     if(CurrentFrameDecl){
-      if(CurrentFrameDecl->hasVar(VD)){
+      if(CurrentFrameDecl->hasVar(VD) || CurrentPlotStmt->getVarId(VD) > 0){
         return EmitFrameVarDeclRefLValue(VD);
       }
     }

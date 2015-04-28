@@ -66,3 +66,6 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 
+void PlotStmt::addVar(const VarDecl* v){
+  VMap.insert({v->getName().str(), {v, nextVarId_++}});
+}

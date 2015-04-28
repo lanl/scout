@@ -99,8 +99,13 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
   auto R = CGM.getPlot2Runtime();
   
   assert(CurrentFrameDecl);
+  assert(CurrentPlotStmt);
   
-  uint32_t varId = CurrentFrameDecl->getVarId(VD);
+  uint32_t varId = CurrentPlotStmt->getVarId(VD);
+  
+  if(varId == 0){
+    varId = CurrentFrameDecl->getVarId(VD);
+  }
   
   ValueVec args = {framePtr, ConstantInt::get(R.Int32Ty, varId), index};
   

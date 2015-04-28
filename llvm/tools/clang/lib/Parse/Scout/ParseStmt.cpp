@@ -1113,6 +1113,8 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
     Actions.PushOnScopeChains(itr.second.varDecl, getCurScope(), false);
   }
   
+  SpecVars.clear();
+  
   ExprResult result = ParseSpecObjectExpression();
   
   FrameScope.Exit();
@@ -1124,5 +1126,20 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
   ScoutExpr* SE = cast<ScoutExpr>(result.get());
   SpecObjectExpr* Spec = static_cast<SpecObjectExpr*>(SE);
   
-  return Actions.ActOnPlotStmt(WithLoc, FrameLoc, RTVD, FD, VD, Spec);
+  StmtResult stmtResult = Actions.ActOnPlotStmt(WithLoc, FrameLoc, RTVD, FD, VD, Spec);
+  
+  if(stmtResult.isInvalid()){
+    return stmtResult;
+  }
+  
+  ScoutStmt* SS = cast<ScoutStmt>(stmtResult.get());
+  PlotStmt* PS = static_cast<PlotStmt*>(SS);
+  
+  for(VarDecl* pv : SpecVars){
+    PS->addVar(pv);
+  }
+  
+  SpecVars.clear();
+  
+  return stmtResult;
 }

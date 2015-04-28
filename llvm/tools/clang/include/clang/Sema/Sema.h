@@ -8907,6 +8907,8 @@ public:
   
   StmtResult ActOnFrameCaptureStmt(const VarDecl* F, SpecObjectExpr* S);
   
+  VarDecl* ActOnSpecVarDef(const std::string& varName, Expr* expr);
+      
   StmtResult ActOnPlotStmt(SourceLocation WithLoc,
                            SourceLocation FrameLoc,
                            VarDecl* RenderTarget,

@@ -2581,6 +2581,8 @@ private:
   StmtResult ParseFrameCaptureStatement(ParsedAttributes &Attr);
   
   StmtResult ParsePlotStatement(ParsedAttributes &Attr);
+  
+  std::vector<VarDecl*> SpecVars;
   // +========================================================================+
 };
 
