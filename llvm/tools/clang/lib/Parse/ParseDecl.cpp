@@ -1497,6 +1497,7 @@ Parser::ParseSimpleDeclaration(unsigned Context,
   if(isScoutLang()){
     isScoutDecl =
       Tok.is(tok::kw_uniform) ||
+      Tok.is(tok::kw_ALE) ||
       Tok.is(tok::kw_structured) ||
       Tok.is(tok::kw_unstructured) ||
       Tok.is(tok::kw_rectilinear) ||
@@ -3350,6 +3351,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
 
     // +===== Scout ==========================================================+
     case tok::kw_uniform:
+    case tok::kw_ALE:
     case tok::kw_rectilinear:
     case tok::kw_structured:
     case tok::kw_unstructured: {
@@ -4243,6 +4245,7 @@ bool Parser::isKnownToBeTypeSpecifier(const Token &Tok) const {
   // +===== Scout ============================================================+
   case tok::kw_mesh:
   case tok::kw_uniform:
+  case tok::kw_ALE:
   case tok::kw_rectilinear:
   case tok::kw_structured:
   case tok::kw_unstructured:
@@ -4328,6 +4331,7 @@ bool Parser::isTypeSpecifierQualifier() {
   // +===== Scout ============================================================+
   case tok::kw_mesh:
   case tok::kw_uniform:
+  case tok::kw_ALE:
   case tok::kw_structured:
   case tok::kw_unstructured:
   case tok::kw_rectilinear:
@@ -4481,6 +4485,7 @@ bool Parser::isDeclarationSpecifier(bool DisambiguatingWithExpression) {
   // +===== Scout ============================================================+
   case tok::kw_mesh:
   case tok::kw_uniform:
+  case tok::kw_ALE:
   case tok::kw_rectilinear:
   case tok::kw_structured:
   case tok::kw_unstructured:
@@ -5968,7 +5973,7 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
   if (CheckProhibitedCXX11Attribute())
     return;
   // +===== Scout ==========================================================+
-  // Parse Scout declarators for UniformMesh, Window and Image
+  // Parse Scout declarators for UniformMesh, ALEMesh, Window and Image
   if (isScoutLang()) {
     const DeclSpec& DS = D.getDeclSpec();
     DeclSpec::TST tst = DS.getTypeSpecType();
@@ -5976,7 +5981,7 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
     switch(tst) {
     case DeclSpec::TST_typename: {
       const Type *T = DS.getRepAsType().get().getCanonicalType().getTypePtr();
-      if (T->isUniformMeshType()) {
+      if (T->isUniformMeshType() || T->isALEMeshType()) {
         ParseMeshVarBracketDeclarator(D);
         return;
       }

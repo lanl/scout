@@ -389,7 +389,7 @@ void Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
   DeclSpec& DS = D.getMutableDeclSpec();
 
   const Type *Ty = DS.getRepAsType().get().getCanonicalType().getTypePtr();
-  if (Ty->isUniformMeshType()) {
+  if (Ty->isUniformMeshType() || Ty->isALEMeshType()) {
     BalancedDelimiterTracker T(*this, tok::l_square);
     T.consumeOpen();
 
@@ -435,8 +435,13 @@ void Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
     // set dims on type
     ParsedAttributes attrs(AttrFactory);
 
-    DeclaratorChunk DC =
-      DeclaratorChunk::getUniformMesh(dims, T.getOpenLocation(), T.getCloseLocation());
+    DeclaratorChunk DC;
+    if (Ty->isUniformMeshType()) {
+      DC = DeclaratorChunk::getUniformMesh(dims, T.getOpenLocation(), T.getCloseLocation());
+    }
+    if (Ty->isALEMeshType()) {
+      DC = DeclaratorChunk::getALEMesh(dims, T.getOpenLocation(), T.getCloseLocation());
+    }
 
     D.AddTypeInfo(DC, attrs, T.getCloseLocation());
 

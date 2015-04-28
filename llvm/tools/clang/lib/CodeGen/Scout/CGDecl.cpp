@@ -139,12 +139,12 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
   const MeshType* MT = cast<MeshType>(T.getTypePtr());
   llvm::StringRef MeshName  = MeshAddr->getName();
   MeshDecl* MD = MT->getDecl();
-  unsigned int nfields = MD->fields();
 
   MeshType::MeshDimensions dims;
   dims = cast<MeshType>(T.getTypePtr())->dimensions();
   unsigned int rank = dims.size();
 
+  unsigned int nfields = MD->fields();
   size_t start = nfields +  MeshParameterOffset::WidthOffset;
   size_t sizestart = nfields +  MeshParameterOffset::XSizeOffset;
 
@@ -371,7 +371,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
   // SC_TODO - we need to handle the other mesh types here...
   //
-  if (Ty.getTypeClass() == Type::UniformMesh) {
+  if ((Ty.getTypeClass() == Type::UniformMesh) || (Ty.getTypeClass() == Type::ALEMesh)) {
     // For mesh types each mesh field becomes a pointer to the allocated
     // field.
     //
@@ -442,7 +442,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       if(itr->isCellLocated()){
         hasCells = true;
       }
-      else if(itr->isVertexLocated()){
+      else if(itr->isVertexLocated()) {
         hasVertices = true;
       }
       else if(itr->isEdgeLocated()){
@@ -451,6 +451,11 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       else if(itr->isFaceLocated()){
         hasFaces = true;
       }
+    }
+
+    // Get number vertices for ALE mesh 
+    if (Ty.getTypeClass() == Type::ALEMesh) {
+      hasVertices = true;
     }
 
     llvm::Value* numCells = 0;
@@ -528,7 +533,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
         llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(0, Alloc, 0, i, IRNameStr);
         Builder.CreateStore(val, field);
       }
-      
+
       if(CGM.getCodeGenOpts().ScoutLegionSupport) {
         llvm::SmallVector< llvm::Value *, 4 > Args;
         llvm::Function *F = CGM.getLegionCRuntime().ScUniformMeshAddFieldFunc();
@@ -583,7 +588,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
         Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args));
       }
     }
-    
+   
     if(CGM.getCodeGenOpts().ScoutLegionSupport) {
       llvm::Function *F = CGM.getLegionCRuntime().ScUniformMeshInitFunc();
     
@@ -599,7 +604,46 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     // The mesh really used by forall gets made later.
     EmitMeshParameters(Alloc, D);
 
+    // If ALE mesh, we need to allocate up to three dimensions for x, y and z coordinates
+#if 0
+    if (Ty.getTypeClass() == Type::ALEMesh) {
+      // TODO: make separate function for this called EmitMeshVertexPositions(Alloc, D);
 
+      unsigned int rank = Dimensions.size();
+
+      size_t start = nfields +  MeshParameterOffset::EndOffset;
+
+      uint64_t fieldTyBytes;
+
+      llvm::Type* floatTy = llvm::Type::getFloatTy(CGM.getModule().getContext());
+      fieldTyBytes = CGM.getDataLayout().getTypeAllocSize(floatTy);
+
+      llvm::Value *fieldTotalBytes = 0;
+      llvm::Value *fieldTyBytesValue = Builder.getInt64(fieldTyBytes);
+
+      llvm::Value* numElements = numVertices;
+      assert(numElements && "invalid numElements");
+
+      fieldTotalBytes = Builder.CreateNUWMul(numElements, fieldTyBytesValue);
+
+      if (!(CGM.getCodeGenOpts().ScoutLegionSupport)) {
+        for(size_t i = 0; i < rank; ++i) {
+          // Dynamically allocate memory.
+          llvm::SmallVector< llvm::Value *, 3 > Args;
+          Args.push_back(fieldTotalBytes);
+          llvm::Function *MallocFunc = CGM.getScoutRuntime().MemAllocFunction();
+          llvm::Value *val = Builder.CreateCall(MallocFunc, ArrayRef<llvm::Value *>(Args));
+          val = Builder.CreateBitCast(val, structTy->getContainedType(start+i));
+
+          sprintf(IRNameStr, "%s.ALEVertexPos.Dim%zu.ptr", MeshName.str().c_str(), i);
+          llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(0, Alloc, 0, start+i, IRNameStr);
+          Builder.CreateStore(val, field);
+        }
+      } else {
+        CGM.ErrorUnsupported(&D, "No Legion support for ALE mesh yet.");
+      }
+    }
+#endif
   } else if (Ty.getTypeClass() == Type::Window) {
     //llvm::Type *voidPtrTy = llvm::PointerType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()),0);
     //llvm::Value *voidPtr  = Builder.CreateAlloca(voidPtrTy, 0, "void.ptr");

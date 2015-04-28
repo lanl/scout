@@ -151,6 +151,8 @@ const char *MeshDecl::getKindName() const {
 
   if (isUniformMesh()) {
     return "uniform mesh";
+  } else if (isALEMesh()) {
+    return "ALE mesh";
   } else if (isRectilinearMesh()) {
     return "rectilinear mesh";
   } else if (isStructuredMesh()) {

@@ -841,6 +841,7 @@ Parser::ParseDeclOrFunctionDefInternal(ParsedAttributesWithRange &attrs,
   if(isScoutLang()){
     isScoutDecl =
     Tok.is(tok::kw_uniform) ||
+    Tok.is(tok::kw_ALE) ||
     Tok.is(tok::kw_structured) ||
     Tok.is(tok::kw_unstructured) ||
     Tok.is(tok::kw_rectilinear) ||
