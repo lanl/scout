@@ -426,7 +426,9 @@ void Sema::AddFrameFunction(Scope* Scope,
                        DeclarationName(PP.getIdentifierInfo(Name)),
                        FT, Context.getTrivialTypeSourceInfo(FT),
                        SC_Static, true);
-    
+  
+  F->setImplicit();
+  
   vector<ParmVarDecl*> params;
   
   int i = 0;
@@ -448,9 +450,12 @@ void Sema::AddFrameFunction(Scope* Scope,
    
   F->setParams(params);
   
+  AddKnownFunctionAttributes(F);
+  RegisterLocallyScopedExternCDecl(F, Scope);
+  
   F->setBody(new (Context) NullStmt(SourceLocation()));
   
-  PushOnScopeChains(F, Scope, true);
+  PushOnScopeChains(F, TUScope, true);
 }
 
 void Sema::PopFrameContext(FrameDecl* F){
