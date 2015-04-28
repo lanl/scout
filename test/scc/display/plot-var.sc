@@ -41,7 +41,7 @@ int main(int argc, char** argv){
       var: {x: temperature + 100}, 
 
       points: {position:[timestep, x - 50],
-               color: [0.0, 0.5, 1.0, 1.0],
+               color: [timestep/500.0, 0.5, 1.0, 1.0],
                size: 5.0},
 
       axis: {dim:1, label:"Timestep"},

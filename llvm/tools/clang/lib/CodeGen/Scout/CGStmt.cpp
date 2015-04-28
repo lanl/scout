@@ -2507,6 +2507,16 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
   bool isConstant;
   if(array){
     isConstant = true;
+    
+    for(size_t i = 0; i < array->size(); ++i){
+      PlotExprVisitor v(S);
+      v.Visit(array->get(i)->toExpr());
+    
+      if(!v.isConstant()){
+        isConstant = false;
+        break;
+      }
+    }
   }
   else{
     PlotExprVisitor v(S);
