@@ -3205,7 +3205,7 @@ RValue CodeGenFunction::EmitCallExpr(const CallExpr *E,
 
     return RValue::get(nullptr);
   }
-
+  
   llvm::Value *Callee = EmitScalarExpr(E->getCallee());
   return EmitCall(E->getCallee()->getType(), Callee, E, ReturnValue,
                   TargetDecl);
@@ -3448,6 +3448,9 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
       // Add induction vars to args
       for(unsigned i = 0; i <= 3; i++)
         Args.add(RValue::get(InductionVar[i]), T);
+    }
+    else if(CurrentPlotStmt && CurrentPlotStmt->getFrameDecl()->hasFunc(FD)){
+      return EmitPlotCall(E);
     }
   }
   // +==========================================================================+

@@ -128,11 +128,15 @@ namespace clang {
     typedef std::map<std::string, Var> VarMap;
     
     typedef std::map<VarDecl*, uint32_t> VarIdMap;
+    
+    using FuncSet = std::set<FunctionDecl*>;
       
     VarMap varMap;
     VarIdMap varIdMap;
       
     uint32_t nextVarId;
+      
+    FuncSet funcSet_;
       
   protected:
     FrameDecl(const ASTContext &ASTC,
@@ -192,6 +196,14 @@ namespace clang {
       
     bool hasVar(const VarDecl* v) const{
       return varIdMap.find(const_cast<VarDecl*>(v)) != varIdMap.end();
+    }
+    
+    void addFunc(FunctionDecl* fd){
+      funcSet_.insert(fd);
+    }
+    
+    bool hasFunc(const FunctionDecl* fd) const{
+      return funcSet_.find(const_cast<FunctionDecl*>(fd)) != funcSet_.end();
     }
       
     uint32_t getVarId(const VarDecl* v) const{

@@ -2228,8 +2228,9 @@ public:
   
   llvm::Value* EmitPlotExpr(const PlotStmt &S,
                             llvm::Value* PlotPtr,
-                            SpecExpr* E,
-                            uint32_t& varId);
+                            SpecExpr* E);
+  
+  RValue EmitPlotCall(const CallExpr* C);
   
   LValue EmitFrameVarDeclRefLValue(const VarDecl* ND);
   // +========================================================================+

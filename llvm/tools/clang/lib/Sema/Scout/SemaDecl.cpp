@@ -381,8 +381,6 @@ Decl* Sema::ActOnFrameDefinition(Scope* S,
 }
 
 void Sema::InitFrameDefinitions(Scope* S, FrameDecl* FD){
-  QualType vt = Context.getFrameVarType(0);
-  
   AddFrameVarType(S, FD, "Timestep", Context.IntTy);
   AddFrameVarType(S, FD, "Temperature", Context.DoubleTy);
 
@@ -392,8 +390,11 @@ void Sema::InitFrameDefinitions(Scope* S, FrameDecl* FD){
 
   AddFrameVarType(S, FD, "Int32", Context.IntTy);
   AddFrameVarType(S, FD, "Int64", Context.LongTy);
-  
-  AddFrameFunction(S, FD, "sum", vt, {vt});
+
+  AddFrameFunction(S, FD, "sum", Context.IntTy, {Context.IntTy});
+  AddFrameFunction(S, FD, "sum", Context.LongTy, {Context.LongTy});
+  AddFrameFunction(S, FD, "sum", Context.FloatTy, {Context.FloatTy});
+  AddFrameFunction(S, FD, "sum", Context.DoubleTy, {Context.DoubleTy});
 }
 
 void Sema::AddFrameVarType(Scope* Scope,
@@ -456,6 +457,8 @@ void Sema::AddFrameFunction(Scope* Scope,
   F->setBody(new (Context) NullStmt(SourceLocation()));
   
   PushOnScopeChains(F, TUScope, true);
+  
+  FD->addFunc(F);
 }
 
 void Sema::PopFrameContext(FrameDecl* F){

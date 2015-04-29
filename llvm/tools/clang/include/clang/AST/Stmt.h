@@ -3008,6 +3008,7 @@ public:
   FrameVar(FV),
   RenderTargetVar(RV),
   Spec(S),
+  startVarId_(65536),
   nextVarId_(65536){}
 
   const FrameDecl* getFrameDecl() const{
@@ -3041,9 +3042,9 @@ public:
     
     return 0;
   }
-  
-  uint32_t getVarId() const{
-    return nextVarId_;
+    
+  uint32_t nextVarId() const{
+    return nextVarId_++;
   }
   
 private:
@@ -3052,7 +3053,8 @@ private:
   const VarDecl* RenderTargetVar;
   SpecObjectExpr* Spec;
   
-  uint32_t nextVarId_;
+  uint32_t startVarId_;
+  mutable uint32_t nextVarId_;
   
   VarMap VMap;
 };
