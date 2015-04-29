@@ -2650,17 +2650,26 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
 }
 
 RValue CodeGenFunction::EmitPlotCall(const CallExpr* C){
-  assert(false);
+  using namespace std;
+  using namespace llvm;
   
   const FunctionDecl* F = C->getDirectCallee();
   
   DeclarationNameInfo nameInfo = F->getNameInfo();
+  
+  string name = nameInfo.getName().getAsString();
+  
+  if(name == "sum"){
+    assert(false);
+  }
   
   QualType rt = F->getReturnType();
   unsigned n = C->getNumArgs();
   for(unsigned i = 0; i < n; ++i){
     const Expr* ei = C->getArg(i);
   }
+  
+  assert(false);
 }
 
 void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {

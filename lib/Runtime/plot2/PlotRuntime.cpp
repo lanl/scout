@@ -860,6 +860,25 @@ namespace{
       frame->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
     }
 
+    void addPlotVar(uint32_t kind, uint32_t plotId, VarId varId){
+      switch(kind){
+      case ELEMENT_INT32:
+        addPlotVar<int32_t>(plotId, varId);
+        break;
+      case ELEMENT_INT64:
+        addPlotVar<int64_t>(plotId, varId);
+        break;
+      case ELEMENT_FLOAT:
+        addPlotVar<float>(plotId, varId);
+        break;
+      case ELEMENT_DOUBLE:
+        addPlotVar<double>(plotId, varId);
+        break;
+      default:
+        assert(false && "invalid kind");
+      }
+    }
+
     template<class T>
     void addPlotVecVar(uint32_t plotId,
                        VarId varId,
@@ -1140,6 +1159,32 @@ namespace{
       }
     };
 
+    class Aggregate : public Element{
+    public:
+      Aggregate(const char* type)
+        : type_(type){}
+
+      void addInVar(VarId varId){
+        inVars_.push_back(varId);
+      }
+
+      void addOutVar(VarId varId){
+        outVars_.push_back(varId);
+      }
+
+      int order(){
+        return 0;
+      }
+
+    private:
+      typedef vector<VarId> VarIdVec_;
+
+      const char* type_;
+
+      VarIdVec_ inVars_;
+      VarIdVec_ outVars_;
+    };
+
     class Proportion : public Element{
     public:
       Proportion(VarId xOut, VarId yOut)
@@ -1241,6 +1286,12 @@ namespace{
       elements_.push_back(new Bins(varIn, xOut, yOut, n));
       frame_->addPlotVar<double>(plotId_, xOut);
       frame_->addPlotVar<double>(plotId_, yOut);
+    }
+
+    Aggregate* addAggregate(const char* type){
+      Aggregate* a = new Aggregate(type);
+      elements_.push_back(a);
+      return a;
     }
 
     Proportion* addProportion(VarId xOut, VarId yOut){
@@ -1769,7 +1820,7 @@ extern "C"{
 
   void __scrt_frame_add_array_var(void* f,
                                   VarId varId,
-                                  VarId elementKind,
+                                  uint32_t elementKind,
                                   void* array,
                                   size_t size){
     static_cast<Frame*>(f)->addArrayVar(varId, elementKind, array, size);
@@ -1925,6 +1976,18 @@ extern "C"{
                             VarId yOut,
                             uint32_t n){
     static_cast<Plot*>(plot)->addBins(varIn, xOut, yOut, n);
+  }
+
+  void* __scrt_plot_add_aggregate(void* plot, const char* type){
+    return static_cast<Plot*>(plot)->addAggregate(type);
+  }
+
+  void __scrt_aggregate_add_in_var(void* aggregate, VarId varIn){
+    static_cast<Plot::Aggregate*>(aggregate)->addInVar(varIn);
+  }
+
+  void __scrt_aggregate_add_out_var(void* aggregate, VarId varOut){
+    static_cast<Plot::Aggregate*>(aggregate)->addOutVar(varOut);
   }
 
   void* __scrt_plot_add_proportion(void* plot, VarId xOut, VarId yOut){
