@@ -122,6 +122,7 @@ struct Field {
   sclegion_element_kind_t elementKind;
   sclegion_field_kind_t fieldKind;
   legion_field_id_t fieldId;
+  legion_privilege_mode_t mode;
 };
 
 typedef vector<Field> FieldVec;
@@ -148,8 +149,8 @@ public:
 
   Mesh(HighLevelRuntime* runtime, Context context, size_t rank, size_t width,
       size_t height, size_t depth) :
-      runtime_(runtime), context_(context), rank_(rank), width_(width),
-      height_(height), depth_(depth), nextFieldId_(0) {
+      runtime_(runtime), context_(context), nextFieldId_(0),
+      rank_(rank), width_(width), height_(height), depth_(depth) {
 
   }
 
@@ -237,21 +238,34 @@ public:
       size_t index = 0;
 
       for (size_t color = 0; color < numSubregions; color++) {
-        printf("color %d\n", color);
+
+        printf("color %zu\n", color);
+
+        element.ghostColoring[color] = Domain::from_rect<1>(
+            Rect<1>(Point<1>(0),
+            Point<1>(element.count-1)));
+
         size_t numElmts = color < numberSmall ? lowerBound : upperBound;
 
-        printf("dr %d %d %d\n", color, index, index + numElmts - 1);
+        printf("dr %zu %zu %zu\n", color, index, index + numElmts - 1);
         Rect<1> subrect(Point<1>(index), Point<1>(index + numElmts - 1));
         element.disjointColoring[color] = Domain::from_rect<1>(subrect);
         index += numElmts;
       } // end for color
 
-      element.disjointIndexPartition = runtime_->create_index_partition(
+      element.ghostIndexPartition = runtime_->create_index_partition(
           context_, element.indexSpace, element.colorDomain,
-          element.disjointColoring, true);
+          element.ghostColoring, true);
 
-      element.disjointLogicalPartition = runtime_->get_logical_partition(
-          context_, element.logicalRegion, element.disjointIndexPartition);
+      element.ghostLogicalPartition = runtime_->get_logical_partition(
+          context_, element.logicalRegion, element.ghostIndexPartition);
+
+      element.disjointIndexPartition = runtime_->create_index_partition(
+               context_, element.indexSpace, element.colorDomain,
+               element.disjointColoring, true);
+
+       element.disjointLogicalPartition = runtime_->get_logical_partition(
+               context_, element.logicalRegion, element.disjointIndexPartition);
     }
   }
 
@@ -428,6 +442,9 @@ public:
     void addField(const Field& field, legion_privilege_mode_t mode) {
       fieldSet_.insert(field.fieldName);
 
+      printf("region add Field %d %d\n", field.fieldId, mode);
+      fields_[field.fieldId].mode = mode;
+
       switch (mode) {
       case READ_ONLY:
         mode_ |= READ_MASK;
@@ -458,31 +475,44 @@ public:
       }
     }
 
-    char* addFieldInfo(char* args, size_t region, size_t count) {
+    char* addFieldInfo(char* args, size_t region, size_t count,
+        legion_privilege_mode_t mode) {
       for (auto f : fields_) {
-        MeshFieldInfo* info = (MeshFieldInfo*) args;
-        info->region = region;
-        info->fieldKind = f.fieldKind;
+        if ( f.mode == mode) {
+          MeshFieldInfo* info = (MeshFieldInfo*) args;
 
-        if (fieldSet_.find(f.fieldName) != fieldSet_.end()) {
-          info->count = count;
-        } else {
-          info->count = 0;
+          info->region = region;
+          info->fieldKind = f.fieldKind;
+
+          if (fieldSet_.find(f.fieldName) != fieldSet_.end()) {
+            info->count = count;
+          } else {
+            info->count = 0;
+          }
+
+          info->fieldId = f.fieldId;
+
+          printf("in addFieldInfo n=%s r=%zu fk=%d c=%zu id=%zu\n",
+              f.fieldName.c_str(), info->region, info->fieldKind,
+              info->count, info->fieldId);
+
+          args += sizeof(MeshFieldInfo);
         }
-
-        info->fieldId = f.fieldId;
-        args += sizeof(MeshFieldInfo);
       }
-
       return args;
     }
 
     void addFieldsToIndexLauncher(IndexLauncher& launcher,
-        unsigned region) const {
-      for (auto& f : fields_) {
-        launcher.region_requirements[region].add_field(f.fieldId);
+        unsigned region, legion_privilege_mode_t mode) const {
+      for (int i = 0; i < fields_.size(); i++) {
+        if (fields_[i].mode == mode) {
+          printf("addFieldsToIndexLauncher %d %d region %u\n",
+              mode, fields_[i].fieldId,region);
+          launcher.region_requirements[region].add_field(fields_[i].fieldId);
+        }
       }
     }
+
 
   private:
     typedef set<string> FieldSet_;
@@ -499,17 +529,29 @@ public:
     for (size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i) {
       FieldVec fields;
       mesh->getFields(sclegion_element_kind_t(i), fields);
-      regions_[i].setFields(fields);
+      regions_[2*i].setFields(fields);
+      regions_[2*i+1].setFields(fields);
       numFields_ += fields.size();
     }
   }
 
+  // Launcher addField
   void addField(const string& fieldName, legion_privilege_mode_t mode) {
     const Field& field = mesh_->getField(fieldName);
-    regions_[field.elementKind].addField(field, mode);
+    if (mode == READ_ONLY) {
+      printf("launcher ro addField %s %d region %d\n",fieldName.c_str(), mode, 2*field.elementKind);
+      regions_[2*field.elementKind].addField(field, mode);
+    } else if (mode == READ_WRITE) {
+      printf("launcher rw addField %s %d region %d\n",fieldName.c_str(), mode, 2*field.elementKind+1);
+      regions_[2*field.elementKind+1].addField(field, mode);
+    } else {
+      assert (false && "bad mode");
+    }
   }
 
   void execute(legion_context_t ctx, legion_runtime_t rt) {
+    printf("execute\n");
+
     HighLevelRuntime* runtime = static_cast<HighLevelRuntime*>(rt.impl);
     Context context = static_cast<Context>(ctx.impl);
 
@@ -523,17 +565,22 @@ public:
 
     size_t numSubregions = mesh_->getNumSubregions();
     header->numColors = numSubregions;
-    size_t maxShift = 0;
+    //size_t maxShift = 0;
 
     for (size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i) {
       sclegion_element_kind_t elemKind = sclegion_element_kind_t(i);
       Mesh::Element& element = mesh_->getElement(elemKind);
 
-      args = regions_[i].addFieldInfo(args, i, element.count);
-
       if (element.count == 0) {
         continue;
       }
+
+
+      printf("addFieldInfo ro %zu\n",2*i);
+      args = regions_[2*i].addFieldInfo(args, 2*i, element.count, READ_ONLY);
+      printf("addFieldInfo rw %zu\n",2*i+1);
+      args = regions_[2*i+1].addFieldInfo(args, 2*i+1, element.count, READ_WRITE);
+
     }
 
     ArgumentMap argMap;
@@ -545,30 +592,36 @@ public:
 
     for (size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i) {
 
-      const Region& region = regions_[i];
+      const Region& roregion = regions_[2*i];
+      const Region& rwregion = regions_[2*i+1];
 
-      if (region.legionMode() == NO_ACCESS) {
+      if (roregion.legionMode() == NO_ACCESS &&
+          rwregion.legionMode() == NO_ACCESS) {
         continue;
       }
+
+      printf("region i %zu romode %d rwmode %d\n",i, roregion.legionMode(),
+          rwregion.legionMode());
 
       const Mesh::Element& element = mesh_->getElement(
           sclegion_element_kind_t(i));
 
-      printf("add read write %d\n", i);
+      // read only fields
       launcher.add_region_requirement(
-          RegionRequirement(element.disjointLogicalPartition, 0,
-              region.legionMode(), EXCLUSIVE, element.logicalRegion));
-    }
+          RegionRequirement(element.ghostLogicalPartition,
+              0/*projection ID*/,
+              READ_ONLY, EXCLUSIVE, element.logicalRegion));
+      printf("ro add %lu\n",2*i);
+      roregion.addFieldsToIndexLauncher(launcher, 2*i, READ_ONLY);
 
-    for (size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i) {
-      const Region& region = regions_[i];
+      // read write fields
+      launcher.add_region_requirement(
+          RegionRequirement(element.disjointLogicalPartition,
+              0/*projection ID*/,
+              READ_WRITE, EXCLUSIVE, element.logicalRegion));
+      printf("rw add %lu\n",2*i+1);
+      rwregion.addFieldsToIndexLauncher(launcher, 2*i+1, READ_WRITE);
 
-      if (region.legionMode() == NO_ACCESS) {
-        continue;
-      }
-
-      printf("add read write fields %d\n", i);
-      region.addFieldsToIndexLauncher(launcher, i);
     }
 
     runtime->execute_index_space(context, launcher);
@@ -577,7 +630,7 @@ public:
 private:
   Mesh* mesh_;
   legion_task_id_t taskId_;
-  Region regions_[SCLEGION_ELEMENT_MAX];
+  Region regions_[2*SCLEGION_ELEMENT_MAX];
   size_t numFields_;
 };
 
@@ -670,7 +723,7 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   const int point = ht->index_point.point_data[0];
   printf("index point %d\n", point);
 
-  size_t argsLen = legion_task_get_arglen(task);
+  //size_t argsLen = legion_task_get_arglen(task);
 
   char* args = (char*) legion_task_get_args(task);
   MeshHeader* header = (MeshHeader*) args;
@@ -683,6 +736,8 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
 
   MeshFieldInfo* fi;
   size_t numFields = header->numFields;
+
+  size_t start = getStart(header->width, point, header->numColors); // 1-d cells only.
 
   for (size_t i = 0; i < numFields; ++i) {
     fi = (MeshFieldInfo*) args;
@@ -706,6 +761,7 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
       RA fm = hp->get_field_accessor(fi->fieldId).typeify<float>();
 
       *meshPtr = fm.raw_rect_ptr<1>(r, sr, bo);
+      if (fi->region == 0) *meshPtr = (char *)(*meshPtr) + start*sizeof(float);
     }
 
     args += sizeof(MeshFieldInfo);
@@ -726,8 +782,7 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   *meshTailPtr = header->rank;
   ++meshTailPtr;
 
-  size_t n = header->width; // 1-d cells only.
-  *meshTailPtr = getStart(n, point, header->numColors);
+  *meshTailPtr = start;
   ++meshTailPtr;
 
   *meshTailPtr = 0; //y
@@ -736,9 +791,7 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   *meshTailPtr = 0; //z
   ++meshTailPtr;
 
-  printf("size %d %d %d \n", getSize(n, point, header->numColors),
-      header->height, header->depth);
-  *meshTailPtr = getSize(n, point, header->numColors);
+  *meshTailPtr = getSize(header->width, point, header->numColors);
   ++meshTailPtr;
 
   *meshTailPtr = header->height;
@@ -758,6 +811,7 @@ sclegion_uniform_mesh_launcher_t sclegion_uniform_mesh_create_launcher(
 void sclegion_uniform_mesh_launcher_add_field(
     sclegion_uniform_mesh_launcher_t launcher, const char* field_name,
     legion_privilege_mode_t mode) {
+  printf("uniform_mesh_launcher_add_field %s %d\n",field_name, mode);
   static_cast<Launcher*>(launcher.impl)->addField(field_name, mode);
 }
 
