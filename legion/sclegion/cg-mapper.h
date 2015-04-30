@@ -36,167 +36,154 @@
 #include <iostream>
 
 enum {
-    SUBREGION_TUNABLE
+  SUBREGION_TUNABLE
 };
 
-class CGMapper : public LegionRuntime::HighLevel::DefaultMapper {
-    LegionRuntime::HighLevel::Memory localSysMem;
+class CGMapper: public LegionRuntime::HighLevel::DefaultMapper {
+  LegionRuntime::HighLevel::Memory localSysMem;
 public:
-    CGMapper(LegionRuntime::HighLevel::Machine machine,
-             LegionRuntime::HighLevel::HighLevelRuntime *rt,
-             LegionRuntime::HighLevel::Processor p) :
-        LegionRuntime::HighLevel::DefaultMapper(machine, rt, p) {
-        using namespace LegionRuntime::HighLevel;
-        using namespace LegionRuntime::Accessor;
-        using namespace LegionRuntime::Arrays;
-        std::set<Processor> allProcs;
-        machine.get_all_processors(allProcs);
-        if ((*(allProcs.begin())) == local_proc) {
-            std::set<Memory> allMems; 
-            machine.get_all_memories(allMems);
-            std::set<Memory> visMems;
-            machine.get_visible_memories(local_proc, visMems);
-        }
-        localSysMem = machine_interface.find_memory_kind(
-                           local_proc, Memory::SYSTEM_MEM
-                      );
+  CGMapper(LegionRuntime::HighLevel::Machine machine,
+      LegionRuntime::HighLevel::HighLevelRuntime *rt,
+      LegionRuntime::HighLevel::Processor p) :
+      LegionRuntime::HighLevel::DefaultMapper(machine, rt, p) {
+    using namespace LegionRuntime::HighLevel;
+    using namespace LegionRuntime::Accessor;
+    using namespace LegionRuntime::Arrays;
+    std::set<Processor> allProcs;
+    machine.get_all_processors(allProcs);
+    if ((*(allProcs.begin())) == local_proc) {
+      std::set<Memory> allMems;
+      machine.get_all_memories(allMems);
+      std::set<Memory> visMems;
+      machine.get_visible_memories(local_proc, visMems);
     }
+    localSysMem = machine_interface.find_memory_kind(local_proc,
+        Memory::SYSTEM_MEM);
+  }
 
 #if 0
-    virtual void
-    select_task_options(Task *task);
+  virtual void
+  select_task_options(Task *task);
 
-    virtual void
-    slice_domain(const Task *task, const Domain &domain,
-                 std::vector<DomainSplit> &slices);
+  virtual void
+  slice_domain(const Task *task, const Domain &domain,
+      std::vector<DomainSplit> &slices);
 
-    virtual void
-    notify_mapping_result(const Mappable *mappable);
+  virtual void
+  notify_mapping_result(const Mappable *mappable);
 #endif
-    virtual bool
-    map_task(LegionRuntime::HighLevel::Task *task);
+  virtual bool
+  map_task(LegionRuntime::HighLevel::Task *task);
 
-    virtual bool
-    map_copy(LegionRuntime::HighLevel::Copy *copy);
+  virtual bool
+  map_copy(LegionRuntime::HighLevel::Copy *copy);
 
-    virtual bool
-    map_inline(LegionRuntime::HighLevel::Inline *inline_operation);
+  virtual bool
+  map_inline(LegionRuntime::HighLevel::Inline *inline_operation);
 
-    virtual int
-    get_tunable_value(const LegionRuntime::HighLevel::Task *task,
-                      LegionRuntime::HighLevel::TunableID tid,
-                      LegionRuntime::HighLevel::MappingTagID tag);
+  virtual int
+  get_tunable_value(const LegionRuntime::HighLevel::Task *task,
+      LegionRuntime::HighLevel::TunableID tid,
+      LegionRuntime::HighLevel::MappingTagID tag);
 };
 
-void
-mapperRegistration(LegionRuntime::HighLevel::Machine machine,
-                    LegionRuntime::HighLevel::HighLevelRuntime *rt,
-                    const std::set<LegionRuntime::HighLevel::Processor> &lProcs)
-{
-    using namespace LegionRuntime::HighLevel;
-    using namespace std;
-    for (set<Processor>::const_iterator it = lProcs.begin();
-         it != lProcs.end(); it++) {
-        rt->replace_default_mapper(new CGMapper(machine, rt, *it), *it);
-    }
+void mapperRegistration(LegionRuntime::HighLevel::Machine machine,
+    LegionRuntime::HighLevel::HighLevelRuntime *rt,
+    const std::set<LegionRuntime::HighLevel::Processor> &lProcs) {
+  using namespace LegionRuntime::HighLevel;
+  using namespace std;
+  for (set<Processor>::const_iterator it = lProcs.begin(); it != lProcs.end();
+      it++) {
+    rt->replace_default_mapper(new CGMapper(machine, rt, *it), *it);
+  }
 }
 
-int
-CGMapper::get_tunable_value(const LegionRuntime::HighLevel::Task *task,
-                            LegionRuntime::HighLevel::TunableID tid,
-                            LegionRuntime::HighLevel::MappingTagID tag)
-{
-    using namespace LegionRuntime::HighLevel;
-    using std::set;
+int CGMapper::get_tunable_value(const LegionRuntime::HighLevel::Task *task,
+    LegionRuntime::HighLevel::TunableID tid,
+    LegionRuntime::HighLevel::MappingTagID tag) {
+  using namespace LegionRuntime::HighLevel;
+  using std::set;
 
-    if (SUBREGION_TUNABLE == tid) {
-        const set<Processor> &cpuProcs =
-            machine_interface.filter_processors(Processor::LOC_PROC);
-        return cpuProcs.size();
-    }
-   // should never get here
-   assert(false);
-   return 0;
+  if (SUBREGION_TUNABLE == tid) {
+    const set<Processor> &cpuProcs = machine_interface.filter_processors(
+        Processor::LOC_PROC);
+    return cpuProcs.size();
+  }
+  // should never get here
+  assert(false);
+  return 0;
 }
 
-bool
-CGMapper::map_task(LegionRuntime::HighLevel::Task *task)
-{
-    using namespace LegionRuntime::HighLevel;
-    // put everything in the system memory
-    assert(localSysMem.exists());
-    for (unsigned idx = 0; idx < task->regions.size(); idx++) {
-        task->regions[idx].target_ranking.push_back(localSysMem);
-        task->regions[idx].virtual_map = false;
-        task->regions[idx].enable_WAR_optimization = war_enabled;
-        task->regions[idx].reduction_list = false;
-        // make everything SOA
-        task->regions[idx].blocking_factor =
-            task->regions[idx].max_blocking_factor;
-    }
-    return true;
+bool CGMapper::map_task(LegionRuntime::HighLevel::Task *task) {
+  using namespace LegionRuntime::HighLevel;
+  // put everything in the system memory
+  assert(localSysMem.exists());
+  for (unsigned idx = 0; idx < task->regions.size(); idx++) {
+    task->regions[idx].target_ranking.push_back(localSysMem);
+    task->regions[idx].virtual_map = false;
+    task->regions[idx].enable_WAR_optimization = war_enabled;
+    task->regions[idx].reduction_list = false;
+    // make everything SOA
+    task->regions[idx].blocking_factor = task->regions[idx].max_blocking_factor;
+  }
+  return true;
 }
 
-bool
-CGMapper::map_copy(LegionRuntime::HighLevel::Copy *copy)
-{
-    using namespace LegionRuntime::HighLevel;
-    using std::vector;
+bool CGMapper::map_copy(LegionRuntime::HighLevel::Copy *copy) {
+  using namespace LegionRuntime::HighLevel;
+  using std::vector;
 
-    vector<Memory> localStack;
-    machine_interface.find_memory_stack(local_proc, localStack,
-                                        (local_kind == Processor::LOC_PROC));
-    assert(copy->src_requirements.size() == copy->dst_requirements.size());
-    for (unsigned idx = 0; idx < copy->src_requirements.size(); idx++) {
-        copy->src_requirements[idx].virtual_map = false;
-        copy->src_requirements[idx].early_map = false;
-        copy->src_requirements[idx].enable_WAR_optimization = war_enabled;
-        copy->src_requirements[idx].reduction_list = false;
-        copy->src_requirements[idx].make_persistent = false;
-        if (!copy->src_requirements[idx].restricted) {
-            copy->src_requirements[idx].target_ranking = localStack;
-        }
-        else {
-            assert(copy->src_requirements[idx].current_instances.size() == 1);
-            Memory target =
-                copy->src_requirements[idx].current_instances.begin()->first;
-            copy->src_requirements[idx].target_ranking.push_back(target);
-        }
-        copy->dst_requirements[idx].virtual_map = false;
-        copy->dst_requirements[idx].early_map = false;
-        copy->dst_requirements[idx].enable_WAR_optimization = war_enabled;
-        copy->dst_requirements[idx].reduction_list = false;
-        copy->dst_requirements[idx].make_persistent = false;
-
-        if (!copy->dst_requirements[idx].restricted) {
-            copy->dst_requirements[idx].target_ranking = localStack;
-        }
-        else {
-            assert(copy->dst_requirements[idx].current_instances.size() == 1);
-            Memory target =
-                copy->dst_requirements[idx].current_instances.begin()->first;
-            copy->dst_requirements[idx].target_ranking.push_back(target);
-        }
-        // make it SOA
-        copy->src_requirements[idx].blocking_factor =
-            copy->src_requirements[idx].max_blocking_factor;
-        // make it SOA
-        copy->dst_requirements[idx].blocking_factor =
-            copy->dst_requirements[idx].max_blocking_factor;
+  vector<Memory> localStack;
+  machine_interface.find_memory_stack(local_proc, localStack,
+      (local_kind == Processor::LOC_PROC));
+  assert(copy->src_requirements.size() == copy->dst_requirements.size());
+  for (unsigned idx = 0; idx < copy->src_requirements.size(); idx++) {
+    copy->src_requirements[idx].virtual_map = false;
+    copy->src_requirements[idx].early_map = false;
+    copy->src_requirements[idx].enable_WAR_optimization = war_enabled;
+    copy->src_requirements[idx].reduction_list = false;
+    copy->src_requirements[idx].make_persistent = false;
+    if (!copy->src_requirements[idx].restricted) {
+      copy->src_requirements[idx].target_ranking = localStack;
+    } else {
+      assert(copy->src_requirements[idx].current_instances.size() == 1);
+      Memory target =
+          copy->src_requirements[idx].current_instances.begin()->first;
+      copy->src_requirements[idx].target_ranking.push_back(target);
     }
-    // no profiling on copies yet
-    return true;
+    copy->dst_requirements[idx].virtual_map = false;
+    copy->dst_requirements[idx].early_map = false;
+    copy->dst_requirements[idx].enable_WAR_optimization = war_enabled;
+    copy->dst_requirements[idx].reduction_list = false;
+    copy->dst_requirements[idx].make_persistent = false;
+
+    if (!copy->dst_requirements[idx].restricted) {
+      copy->dst_requirements[idx].target_ranking = localStack;
+    } else {
+      assert(copy->dst_requirements[idx].current_instances.size() == 1);
+      Memory target =
+          copy->dst_requirements[idx].current_instances.begin()->first;
+      copy->dst_requirements[idx].target_ranking.push_back(target);
+    }
+    // make it SOA
+    copy->src_requirements[idx].blocking_factor =
+        copy->src_requirements[idx].max_blocking_factor;
+    // make it SOA
+    copy->dst_requirements[idx].blocking_factor =
+        copy->dst_requirements[idx].max_blocking_factor;
+  }
+  // no profiling on copies yet
+  return true;
 }
 
-bool
-CGMapper::map_inline(LegionRuntime::HighLevel::Inline *inline_operation) {
-    using namespace LegionRuntime::HighLevel;
-    // let the default mapper do its thing,
-    bool ret = DefaultMapper::map_inline(inline_operation);
-    // then override the blocking factor to force SOA
-    RegionRequirement& req = inline_operation->requirement;
-    req.blocking_factor = req.max_blocking_factor;
-    return ret;
+bool CGMapper::map_inline(LegionRuntime::HighLevel::Inline *inline_operation) {
+  using namespace LegionRuntime::HighLevel;
+  // let the default mapper do its thing,
+  bool ret = DefaultMapper::map_inline(inline_operation);
+  // then override the blocking factor to force SOA
+  RegionRequirement& req = inline_operation->requirement;
+  req.blocking_factor = req.max_blocking_factor;
+  return ret;
 }
 
 #endif
