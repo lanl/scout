@@ -119,6 +119,8 @@ namespace{
 
   typedef vector<double> DoubleVec;
 
+  const uint64_t AGG_SUM = 6716694111845535935ULL;
+
   class Random{
   public:
     Random(uint64_t seed=0)
@@ -258,6 +260,35 @@ namespace{
     void getVec(size_t i, DoubleVec& v) const{
       assert(false && "not a vector");
     }
+  };
+
+  template<class T>
+  class SingleScalarVar : public ScalarVar<T>{
+  public:
+    T at(size_t i) const{
+      return value_;
+    }
+
+    double min(){
+      return value_;
+    }
+
+    double max(){
+      return value_;
+    }
+
+    void compute(void* plot, uint64_t index){}
+
+    size_t size() const{
+      return 0;
+    }
+
+    void set(T v){
+      value_ = v;
+    }
+
+  private:
+    T value_;
   };
 
   class IndexVar : public ScalarVar<uint64_t>{
@@ -841,7 +872,7 @@ namespace{
     }
 
     template<class T>
-    void addPlotVar(uint32_t plotId, VarId varId){
+    void addPlotVar(uint32_t plotId, VarId varId, bool single=false){
       Frame* frame;
 
       auto itr = plotFrameMap_.find(plotId);
@@ -857,22 +888,49 @@ namespace{
         }
       }
 
-      frame->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
+      if(single){
+        frame->addVar(varId - PLOT_VAR_BEGIN, new SingleScalarVar<T>());
+      }
+      else{
+        frame->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
+      }
     }
 
-    void addPlotVar(uint32_t plotId, uint32_t kind, VarId varId){
+    void addPlotVar(uint32_t plotId, VarId varId, VarBase* v){
+      Frame* frame;
+
+      auto itr = plotFrameMap_.find(plotId);
+      if(itr == plotFrameMap_.end()){
+        frame = new Frame(true);
+        plotFrameMap_[plotId] = frame;
+      }
+      else{
+        frame = itr->second;
+        
+        if(frame->ready_){
+          return;
+        }
+      }
+
+      frame->addVar(varId - PLOT_VAR_BEGIN, v);
+    }
+    
+    void addPlotVar(uint32_t plotId,
+                    uint32_t kind,
+                    VarId varId,
+                    bool single=false){
       switch(kind){
       case ELEMENT_INT32:
-        addPlotVar<int32_t>(plotId, varId);
+        addPlotVar<int32_t>(plotId, varId, single);
         break;
       case ELEMENT_INT64:
-        addPlotVar<int64_t>(plotId, varId);
+        addPlotVar<int64_t>(plotId, varId, single);
         break;
       case ELEMENT_FLOAT:
-        addPlotVar<float>(plotId, varId);
+        addPlotVar<float>(plotId, varId, single);
         break;
       case ELEMENT_DOUBLE:
-        addPlotVar<double>(plotId, varId);
+        addPlotVar<double>(plotId, varId, single);
         break;
       default:
         assert(false && "invalid kind");
@@ -1159,7 +1217,28 @@ namespace{
       }
     };
 
-    class Aggregate : public Element{
+    class AggregateBase : public Element{
+    public:
+      typedef vector<VarId> VarIdVec;
+
+      virtual void compute(Plot* plot) = 0;
+
+      void addVar(VarId varId){
+        vars.push_back(varId);
+      }
+      
+      int order(){
+        return 0;
+      }
+
+      virtual VarBase* createRetVar() = 0;
+
+    protected:
+      VarIdVec vars;
+    };
+
+    template<class T>
+    class Aggregate : public AggregateBase{
     public:
       typedef vector<VarId> VarIdVec;
 
@@ -1167,18 +1246,28 @@ namespace{
         : type(type),
           ret(ret){}
 
-      void addVar(VarId varId){
-        vars.push_back(varId);
+      void compute(Plot* plot){
+        switch(type){
+        case AGG_SUM:
+          nlog("made it");
+          break;
+        default:
+          assert(false && "invalid aggregate type");
+        }
       }
 
-      int order(){
-        return 0;
+      VarBase* createRetVar(){
+        switch(type){
+        case AGG_SUM:
+          return new SingleScalarVar<T>();
+        default:
+          assert(false && "invalid aggregate type");
+        }
       }
-
-    private:
+    
+    protected:
       uint64_t type;
       VarId ret;
-      VarIdVec vars;
     };
 
     class Proportion : public Element{
@@ -1284,12 +1373,32 @@ namespace{
       frame_->addPlotVar<double>(plotId_, yOut);
     }
 
-    Aggregate* addAggregate(uint64_t type,
-                            uint32_t retKind,
-                            uint32_t retVarId){
-      Aggregate* a = new Aggregate(type, retVarId);
-      frame_->addPlotVar(plotId_, retKind, retVarId);
+    AggregateBase* addAggregate(uint64_t type,
+                                uint32_t retKind,
+                                uint32_t retVarId){
+      AggregateBase* a;
+
+      switch(retKind){
+      case ELEMENT_INT32:
+        a = new Aggregate<int32_t>(type, retVarId);
+        break;
+      case ELEMENT_INT64:
+        a = new Aggregate<int64_t>(type, retVarId);
+        break;
+      case ELEMENT_FLOAT:
+        a = new Aggregate<float>(type, retVarId);
+        break;
+      case ELEMENT_DOUBLE:
+        a = new Aggregate<double>(type, retVarId);
+        break;
+      default:
+        assert(false && "invalid aggregate return kind");
+      }
+
+      frame_->addPlotVar(plotId_, retVarId, a->createRetVar());
+
       elements_.push_back(a);
+      
       return a;
     }
 
@@ -1344,6 +1453,12 @@ namespace{
       double xMax = MIN;
       double yMin = MAX;
       double yMax = MIN;
+
+      for(Element* e : elements_){
+        if(AggregateBase* a = dynamic_cast<AggregateBase*>(e)){
+          a->compute(this);
+        }
+      }
 
       for(Element* e : elements_){
         if(Bins* b = dynamic_cast<Bins*>(e)){
@@ -1985,7 +2100,7 @@ extern "C"{
   }
 
   void __scrt_aggregate_add_var(void* aggregate, VarId varId){
-    static_cast<Plot::Aggregate*>(aggregate)->addVar(varId);
+    static_cast<Plot::AggregateBase*>(aggregate)->addVar(varId);
   }
 
   void* __scrt_plot_add_proportion(void* plot, VarId xOut, VarId yOut){

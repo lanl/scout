@@ -2501,6 +2501,14 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
     }
   }
   
+  if(CallExpr* c = dyn_cast_or_null<CallExpr>(E->toExpr())){
+    uint32_t varId = S.getVarId(c);
+    
+    if(varId != 0){
+      return ConstantInt::get(R.Int32Ty, varId);
+    }
+  }
+  
   SpecArrayExpr* array = E->toArray();
   
   bool isConstant;
