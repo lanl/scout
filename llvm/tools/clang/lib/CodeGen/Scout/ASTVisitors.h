@@ -278,10 +278,14 @@ class PlotVarsVisitor : public StmtVisitor<PlotVarsVisitor> {
 public:
   typedef std::set<VarDecl*> VarSet;
   
-  PlotVarsVisitor(const FrameDecl* FD)
-  : FD_(FD){}
+  typedef std::set<CallExpr*> CallSet;
+  
+  PlotVarsVisitor(const PlotStmt& S)
+  : S_(S){}
   
   void VisitDeclRefExpr(DeclRefExpr* E);
+  
+  void VisitCallExpr(CallExpr* E);
   
   void VisitScoutExpr(ScoutExpr* S);
   
@@ -300,13 +304,18 @@ public:
     VisitChildren(S);
   }
   
-  const VarSet& getVarSet(){
+  const VarSet& getVarSet() const{
     return varSet_;
+  }
+  
+  const CallSet& getCallSet() const{
+    return callSet_;
   }
   
 private:
   VarSet varSet_;
-  const FrameDecl* FD_;
+  CallSet callSet_;
+  const PlotStmt& S_;
 };
   
 } // end namespace CodeGen

@@ -860,7 +860,7 @@ namespace{
       frame->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
     }
 
-    void addPlotVar(uint32_t kind, uint32_t plotId, VarId varId){
+    void addPlotVar(uint32_t plotId, uint32_t kind, VarId varId){
       switch(kind){
       case ELEMENT_INT32:
         addPlotVar<int32_t>(plotId, varId);
@@ -1161,15 +1161,14 @@ namespace{
 
     class Aggregate : public Element{
     public:
-      Aggregate(const char* type)
-        : type_(type){}
+      typedef vector<VarId> VarIdVec;
 
-      void addInVar(VarId varId){
-        inVars_.push_back(varId);
-      }
+      Aggregate(uint64_t type, VarId ret)
+        : type(type),
+          ret(ret){}
 
-      void addOutVar(VarId varId){
-        outVars_.push_back(varId);
+      void addVar(VarId varId){
+        vars.push_back(varId);
       }
 
       int order(){
@@ -1177,12 +1176,9 @@ namespace{
       }
 
     private:
-      typedef vector<VarId> VarIdVec_;
-
-      const char* type_;
-
-      VarIdVec_ inVars_;
-      VarIdVec_ outVars_;
+      uint64_t type;
+      VarId ret;
+      VarIdVec vars;
     };
 
     class Proportion : public Element{
@@ -1288,8 +1284,11 @@ namespace{
       frame_->addPlotVar<double>(plotId_, yOut);
     }
 
-    Aggregate* addAggregate(const char* type){
-      Aggregate* a = new Aggregate(type);
+    Aggregate* addAggregate(uint64_t type,
+                            uint32_t retKind,
+                            uint32_t retVarId){
+      Aggregate* a = new Aggregate(type, retVarId);
+      frame_->addPlotVar(plotId_, retKind, retVarId);
       elements_.push_back(a);
       return a;
     }
@@ -1978,16 +1977,15 @@ extern "C"{
     static_cast<Plot*>(plot)->addBins(varIn, xOut, yOut, n);
   }
 
-  void* __scrt_plot_add_aggregate(void* plot, const char* type){
-    return static_cast<Plot*>(plot)->addAggregate(type);
+  void* __scrt_plot_add_aggregate(void* plot,
+                                  uint64_t type,
+                                  uint32_t retKind,
+                                  uint32_t retVarId){
+    return static_cast<Plot*>(plot)->addAggregate(type, retKind, retVarId);
   }
 
-  void __scrt_aggregate_add_in_var(void* aggregate, VarId varIn){
-    static_cast<Plot::Aggregate*>(aggregate)->addInVar(varIn);
-  }
-
-  void __scrt_aggregate_add_out_var(void* aggregate, VarId varOut){
-    static_cast<Plot::Aggregate*>(aggregate)->addOutVar(varOut);
+  void __scrt_aggregate_add_var(void* aggregate, VarId varId){
+    static_cast<Plot::Aggregate*>(aggregate)->addVar(varId);
   }
 
   void* __scrt_plot_add_proportion(void* plot, VarId xOut, VarId yOut){

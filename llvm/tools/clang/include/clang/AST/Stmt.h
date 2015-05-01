@@ -61,6 +61,7 @@ namespace clang {
   class StencilShiftExpr;
   class FrameDecl;
   class SpecObjectExpr;
+  class CallExpr;
   // =========================================================================+
 
   //===--------------------------------------------------------------------===//
@@ -3000,7 +3001,9 @@ private:
   
 class PlotStmt : public ScoutStmt{
 public:
-  typedef std::map<std::string, std::pair<const VarDecl*, uint32_t>> VarMap;
+  
+  using CallMap = std::map<const CallExpr*, uint32_t>;
+  using VarMap = std::map<std::string, std::pair<const VarDecl*, uint32_t>>;
   
   PlotStmt(const FrameDecl* FD, const VarDecl* FV, const VarDecl* RV, SpecObjectExpr* S)
   : ScoutStmt(Plot),
@@ -3042,9 +3045,27 @@ public:
     
     return 0;
   }
+  
+  uint32_t getVarId(const CallExpr* c) const{
+    auto itr = CMap.find(c);
+    if(itr == CMap.end()){
+      return 0;
+    }
     
+    return itr->second;
+  }
+  
   uint32_t nextVarId() const{
     return nextVarId_++;
+  }
+  
+  void addCall(const CallExpr* c, uint32_t retVarId) const{
+    assert(CMap.find(c) == CMap.end());
+    CMap.insert({c, retVarId});
+  }
+  
+  const CallMap& callMap() const{
+    return CMap;
   }
   
 private:
@@ -3057,6 +3078,7 @@ private:
   mutable uint32_t nextVarId_;
   
   VarMap VMap;
+  mutable CallMap CMap;
 };
   
 // +==========================================================================+
