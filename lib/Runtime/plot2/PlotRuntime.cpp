@@ -260,6 +260,17 @@ namespace{
     void getVec(size_t i, DoubleVec& v) const{
       assert(false && "not a vector");
     }
+
+    virtual T sum(){
+      T ret = 0;
+      size_t n = size();
+
+      for(size_t i = 0; i < n; ++i){
+        ret += at(i);
+      }
+
+      return ret;
+    }
   };
 
   template<class T>
@@ -280,7 +291,7 @@ namespace{
     void compute(void* plot, uint64_t index){}
 
     size_t size() const{
-      return 0;
+      return 1;
     }
 
     void set(T v){
@@ -1248,9 +1259,16 @@ namespace{
 
       void compute(Plot* plot){
         switch(type){
-        case AGG_SUM:
-          nlog("made it");
+        case AGG_SUM:{
+          Var<T>* r = 
+            static_cast<Var<T>*>(plot->getVar(ret));
+          
+          ScalarVar<T>* x = 
+            static_cast<ScalarVar<T>*>(plot->getVar(vars[0]));
+
+          r->capture(x->sum());
           break;
+        }
         default:
           assert(false && "invalid aggregate type");
         }
@@ -1259,7 +1277,7 @@ namespace{
       VarBase* createRetVar(){
         switch(type){
         case AGG_SUM:
-          return new SingleScalarVar<T>();
+          return new Var<T>();
         default:
           assert(false && "invalid aggregate type");
         }
@@ -1420,7 +1438,14 @@ namespace{
       QtWindow::init();
 
       plotFrame_ = frame_->getPlotFrame(plotId_);
+
       if(plotFrame_){
+        for(Element* e : elements_){
+          if(AggregateBase* a = dynamic_cast<AggregateBase*>(e)){
+            a->compute(this);
+          }
+        }
+
         plotFrame_->compute(this, frame_);
       }
 
@@ -1431,7 +1456,7 @@ namespace{
 
       QtWindow::pollEvents();
     }
-    
+
     void render(){
       size_t frameSize = frame_->size();
 
@@ -1453,12 +1478,6 @@ namespace{
       double xMax = MIN;
       double yMin = MAX;
       double yMax = MIN;
-
-      for(Element* e : elements_){
-        if(AggregateBase* a = dynamic_cast<AggregateBase*>(e)){
-          a->compute(this);
-        }
-      }
 
       for(Element* e : elements_){
         if(Bins* b = dynamic_cast<Bins*>(e)){
