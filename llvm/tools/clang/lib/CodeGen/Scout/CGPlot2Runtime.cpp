@@ -287,3 +287,13 @@ llvm::Function* CGPlot2Runtime::PlotAddVarDoubleVecFunc(){
                  {VoidPtrTy, Int32Ty, PointerTy(PlotFuncDoubleVecTy),
                    Int32Ty, Int32Ty});
 }
+
+llvm::Function* CGPlot2Runtime::PlotAddAggregateFunc(){
+  return GetFunc("__scrt_plot_add_aggregate",
+                 {VoidPtrTy, Int64Ty, Int32Ty, Int32Ty}, VoidPtrTy);
+}
+
+llvm::Function* CGPlot2Runtime::AggregateAddVarFunc(){
+  return GetFunc("__scrt_aggregate_add_var",
+                 {VoidPtrTy, Int32Ty});
+}

@@ -297,8 +297,20 @@ void PlotExprVisitor::VisitDeclRefExpr(DeclRefExpr* E){
 
 void PlotVarsVisitor::VisitDeclRefExpr(DeclRefExpr* E){
   VarDecl* VD = dyn_cast<VarDecl>(E->getDecl());
-  if(VD && FD_->hasVar(VD)){
+  if(VD && S_.getFrameDecl()->hasVar(VD)){
     varSet_.insert(VD);
+  }
+}
+  
+void PlotVarsVisitor::VisitCallExpr(CallExpr* E){
+  FunctionDecl* F = E->getDirectCallee();
+  
+  if(!F){
+    return;
+  }
+  
+  if(S_.getFrameDecl()->hasFunc(F)){
+    callSet_.insert(E);
   }
 }
   

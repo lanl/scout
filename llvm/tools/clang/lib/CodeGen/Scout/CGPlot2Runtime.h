@@ -136,6 +136,8 @@ namespace CodeGen {
     llvm::Function* PlotAddVarI64Func();
     llvm::Function* PlotAddVarFloatFunc();
     llvm::Function* PlotAddVarDoubleFunc();
+    llvm::Function* PlotAddAggregateFunc();
+    llvm::Function* AggregateAddVarFunc();
     
     llvm::Function* PlotAddVarI32VecFunc();
     llvm::Function* PlotAddVarI64VecFunc();

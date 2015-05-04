@@ -119,6 +119,10 @@ namespace{
 
   typedef vector<double> DoubleVec;
 
+  const uint64_t AGG_SUM = 6716694111845535935ULL;
+  const uint64_t AGG_MEAN = 8849440314945535285ULL;
+  const uint64_t AGG_VARIANCE = 14523147045845051570ULL;
+
   class Random{
   public:
     Random(uint64_t seed=0)
@@ -258,6 +262,46 @@ namespace{
     void getVec(size_t i, DoubleVec& v) const{
       assert(false && "not a vector");
     }
+
+    virtual T sum(){
+      T ret = 0;
+      size_t n = size();
+
+      for(size_t i = 0; i < n; ++i){
+        ret += at(i);
+      }
+
+      return ret;
+    }
+  };
+
+  template<class T>
+  class SingleScalarVar : public ScalarVar<T>{
+  public:
+    T at(size_t i) const{
+      return value_;
+    }
+
+    double min(){
+      return value_;
+    }
+
+    double max(){
+      return value_;
+    }
+
+    void compute(void* plot, uint64_t index){}
+
+    size_t size() const{
+      return 1;
+    }
+
+    void set(T v){
+      value_ = v;
+    }
+
+  private:
+    T value_;
   };
 
   class IndexVar : public ScalarVar<uint64_t>{
@@ -778,9 +822,11 @@ namespace{
       size_t end = parentFrame->size();
       size_t n = vars_.size();
 
-      for(size_t i = size(); i < end; ++i){
-        for(size_t j = 0; j < n; ++j){
-          vars_[j]->compute(plot, i);
+      for(size_t i = 0; i < n; ++i){
+        VarBase* v = vars_[i];
+
+        for(size_t j = v->size(); j < end; ++j){
+          v->compute(plot, j);
         }
       }
     }
@@ -841,7 +887,7 @@ namespace{
     }
 
     template<class T>
-    void addPlotVar(uint32_t plotId, VarId varId){
+    void addPlotVar(uint32_t plotId, VarId varId, bool single=false){
       Frame* frame;
 
       auto itr = plotFrameMap_.find(plotId);
@@ -857,22 +903,49 @@ namespace{
         }
       }
 
-      frame->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
+      if(single){
+        frame->addVar(varId - PLOT_VAR_BEGIN, new SingleScalarVar<T>());
+      }
+      else{
+        frame->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
+      }
     }
 
-    void addPlotVar(uint32_t kind, uint32_t plotId, VarId varId){
+    void addPlotVar(uint32_t plotId, VarId varId, VarBase* v){
+      Frame* frame;
+
+      auto itr = plotFrameMap_.find(plotId);
+      if(itr == plotFrameMap_.end()){
+        frame = new Frame(true);
+        plotFrameMap_[plotId] = frame;
+      }
+      else{
+        frame = itr->second;
+        
+        if(frame->ready_){
+          return;
+        }
+      }
+
+      frame->addVar(varId - PLOT_VAR_BEGIN, v);
+    }
+    
+    void addPlotVar(uint32_t plotId,
+                    uint32_t kind,
+                    VarId varId,
+                    bool single=false){
       switch(kind){
       case ELEMENT_INT32:
-        addPlotVar<int32_t>(plotId, varId);
+        addPlotVar<int32_t>(plotId, varId, single);
         break;
       case ELEMENT_INT64:
-        addPlotVar<int64_t>(plotId, varId);
+        addPlotVar<int64_t>(plotId, varId, single);
         break;
       case ELEMENT_FLOAT:
-        addPlotVar<float>(plotId, varId);
+        addPlotVar<float>(plotId, varId, single);
         break;
       case ELEMENT_DOUBLE:
-        addPlotVar<double>(plotId, varId);
+        addPlotVar<double>(plotId, varId, single);
         break;
       default:
         assert(false && "invalid kind");
@@ -1159,30 +1232,110 @@ namespace{
       }
     };
 
-    class Aggregate : public Element{
+    class AggregateBase : public Element{
     public:
-      Aggregate(const char* type)
-        : type_(type){}
+      typedef vector<VarId> VarIdVec;
 
-      void addInVar(VarId varId){
-        inVars_.push_back(varId);
+      virtual void compute(Plot* plot) = 0;
+
+      void addVar(VarId varId){
+        vars.push_back(varId);
       }
-
-      void addOutVar(VarId varId){
-        outVars_.push_back(varId);
-      }
-
+      
       int order(){
         return 0;
       }
 
-    private:
-      typedef vector<VarId> VarIdVec_;
+      virtual VarBase* createRetVar() = 0;
 
-      const char* type_;
+    protected:
+      VarIdVec vars;
+    };
 
-      VarIdVec_ inVars_;
-      VarIdVec_ outVars_;
+    template<class T>
+    class Aggregate : public AggregateBase{
+    public:
+      Aggregate(uint64_t type, VarId ret)
+        : type(type),
+          ret(ret){}
+
+      void compute(Plot* plot){
+        switch(type){
+        case AGG_SUM:{
+          Var<T>* r = 
+            static_cast<Var<T>*>(plot->getVar(ret));
+          
+          ScalarVar<T>* x = 
+            static_cast<ScalarVar<T>*>(plot->getVar(vars[0]));
+
+          r->capture(x->sum());
+
+          break;
+        }
+        case AGG_MEAN:{
+          Var<T>* r = 
+            static_cast<Var<T>*>(plot->getVar(ret));
+          
+          ScalarVar<T>* x = 
+            static_cast<ScalarVar<T>*>(plot->getVar(vars[0]));
+
+          size_t size = x->size();
+
+          if(size < 1){
+            r->capture(0);
+            break;
+          }
+
+          r->capture(x->sum() / size);
+
+          break;
+        }
+        case AGG_VARIANCE:{
+          Var<T>* r = 
+            static_cast<Var<T>*>(plot->getVar(ret));
+          
+          ScalarVar<T>* x = 
+            static_cast<ScalarVar<T>*>(plot->getVar(vars[0]));
+
+          size_t size = x->size();
+
+          if(size < 2){
+            r->capture(0);
+            break;
+          }
+
+          T m = x->sum() / size;
+          T t = 0;
+          for(size_t i = 0; i < size; ++i){
+            T d = x->at(i) - m;
+            t += d * d;
+          }
+
+          r->capture(t/(size - 1));
+
+          break;
+        }
+        default:
+          assert(false && "invalid aggregate type");
+        }
+      }
+
+      VarBase* createRetVar(){
+        switch(type){
+        case AGG_SUM:
+          return new Var<T>();
+        case AGG_MEAN:
+          return new Var<T>();
+        case AGG_VARIANCE:
+          return new Var<T>();
+        default:
+          assert(false && "invalid aggregate type");
+        }
+      }
+    
+    protected:
+      uint64_t type;
+      VarId ret;
     };
 
     class Proportion : public Element{
@@ -1288,9 +1441,32 @@ namespace{
       frame_->addPlotVar<double>(plotId_, yOut);
     }
 
-    Aggregate* addAggregate(const char* type){
-      Aggregate* a = new Aggregate(type);
+    AggregateBase* addAggregate(uint64_t type,
+                                uint32_t retKind,
+                                uint32_t retVarId){
+      AggregateBase* a;
+
+      switch(retKind){
+      case ELEMENT_INT32:
+        a = new Aggregate<int32_t>(type, retVarId);
+        break;
+      case ELEMENT_INT64:
+        a = new Aggregate<int64_t>(type, retVarId);
+        break;
+      case ELEMENT_FLOAT:
+        a = new Aggregate<float>(type, retVarId);
+        break;
+      case ELEMENT_DOUBLE:
+        a = new Aggregate<double>(type, retVarId);
+        break;
+      default:
+        assert(false && "invalid aggregate return kind");
+      }
+
+      frame_->addPlotVar(plotId_, retVarId, a->createRetVar());
+
       elements_.push_back(a);
+      
       return a;
     }
 
@@ -1312,7 +1488,14 @@ namespace{
       QtWindow::init();
 
       plotFrame_ = frame_->getPlotFrame(plotId_);
+
       if(plotFrame_){
+        for(Element* e : elements_){
+          if(AggregateBase* a = dynamic_cast<AggregateBase*>(e)){
+            a->compute(this);
+          }
+        }
+
         plotFrame_->compute(this, frame_);
       }
 
@@ -1323,7 +1506,7 @@ namespace{
 
       QtWindow::pollEvents();
     }
-    
+
     void render(){
       size_t frameSize = frame_->size();
 
@@ -1978,16 +2161,15 @@ extern "C"{
     static_cast<Plot*>(plot)->addBins(varIn, xOut, yOut, n);
   }
 
-  void* __scrt_plot_add_aggregate(void* plot, const char* type){
-    return static_cast<Plot*>(plot)->addAggregate(type);
+  void* __scrt_plot_add_aggregate(void* plot,
+                                  uint64_t type,
+                                  uint32_t retKind,
+                                  uint32_t retVarId){
+    return static_cast<Plot*>(plot)->addAggregate(type, retKind, retVarId);
   }
 
-  void __scrt_aggregate_add_in_var(void* aggregate, VarId varIn){
-    static_cast<Plot::Aggregate*>(aggregate)->addInVar(varIn);
-  }
-
-  void __scrt_aggregate_add_out_var(void* aggregate, VarId varOut){
-    static_cast<Plot::Aggregate*>(aggregate)->addOutVar(varOut);
+  void __scrt_aggregate_add_var(void* aggregate, VarId varId){
+    static_cast<Plot::AggregateBase*>(aggregate)->addVar(varId);
   }
 
   void* __scrt_plot_add_proportion(void* plot, VarId xOut, VarId yOut){

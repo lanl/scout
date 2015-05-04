@@ -2501,6 +2501,14 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
     }
   }
   
+  if(CallExpr* c = dyn_cast_or_null<CallExpr>(E->toExpr())){
+    uint32_t varId = S.getVarId(c);
+    
+    if(varId != 0){
+      return ConstantInt::get(R.Int32Ty, varId);
+    }
+  }
+  
   SpecArrayExpr* array = E->toArray();
   
   bool isConstant;
@@ -2653,23 +2661,47 @@ RValue CodeGenFunction::EmitPlotCall(const CallExpr* C){
   using namespace std;
   using namespace llvm;
   
+  llvm::Function* func = Builder.GetInsertBlock()->getParent();
+  
+  auto aitr = func->arg_begin();
+  
+  Value* plotPtr = aitr++;
+  Value* index = aitr++;
+  
+  typedef vector<Value*> ValueVec;
+  
+  auto R = CGM.getPlot2Runtime();
+  
+  assert(CurrentPlotStmt);
+  
+  uint32_t varId = CurrentPlotStmt->getVarId(C);
+  assert(varId != 0);
+  
   const FunctionDecl* F = C->getDirectCallee();
   
-  DeclarationNameInfo nameInfo = F->getNameInfo();
+  ValueVec args = {plotPtr, ConstantInt::get(R.Int32Ty, varId), index};
   
-  string name = nameInfo.getName().getAsString();
+  llvm::Type* rt = ConvertType(F->getReturnType());
   
-  if(name == "sum"){
-    assert(false);
+  Value* ret;
+  
+  if(rt->isIntegerTy(32)){
+    ret = Builder.CreateCall(R.PlotGetI32Func(), args);
+  }
+  else if(rt->isIntegerTy(64)){
+    ret = Builder.CreateCall(R.PlotGetI64Func(), args);
+  }
+  else if(rt->isFloatTy()){
+    ret = Builder.CreateCall(R.PlotGetFloatFunc(), args);
+  }
+  else if(rt->isDoubleTy()){
+    ret = Builder.CreateCall(R.PlotGetDoubleFunc(), args);
+  }
+  else{
+    assert(false && "invalid frame var type");
   }
   
-  QualType rt = F->getReturnType();
-  unsigned n = C->getNumArgs();
-  for(unsigned i = 0; i < n; ++i){
-    const Expr* ei = C->getArg(i);
-  }
-  
-  assert(false);
+  return RValue::get(ret);
 }
 
 void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
@@ -2691,6 +2723,9 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   Value* framePtr;
   
+  PlotVarsVisitor visitor(S);
+  visitor.Visit(const_cast<SpecObjectExpr*>(S.getSpec()));
+  
   if(ft){
     framePtr = LocalDeclMap.lookup(frame);
     assert(framePtr);
@@ -2701,10 +2736,6 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     assert(mt && "expected a frame or mesh");
     
     MeshDecl* MD = mt->getDecl();
-    
-    PlotVarsVisitor visitor(fd);
-    
-    visitor.Visit(const_cast<SpecObjectExpr*>(S.getSpec()));
     
     auto vs = visitor.getVarSet();
     
@@ -2839,11 +2870,17 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     framePtr, targetPtr};
   
   Value* plotPtr = Builder.CreateCall(R.PlotInitFunc(), args, "plot.ptr");
+
+  auto cs = visitor.getCallSet();
+  
+  for(const CallExpr* c : cs){
+    S.addCall(c, S.nextVarId());
+  }
   
   auto m = spec->memberMap();
   
   auto vm = S.varMap();
-
+  
   for(auto& itr : m){
     const string& k = itr.first;
     SpecExpr* v = itr.second.second;
@@ -2861,6 +2898,54 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         assert(vitr != vm.end());
         EmitPlotExpr(S, plotPtr, e);
       }
+    }
+  }
+  
+  auto cm = S.callMap();
+  
+  for(auto& itr : cm){
+    const CallExpr* c = itr.first;
+    uint32_t retVarId = itr.second;
+    
+    const FunctionDecl* func = c->getDirectCallee();
+    DeclarationNameInfo nameInfo = func->getNameInfo();
+    string name = nameInfo.getName().getAsString();
+
+    //llvm::errs() << "hash for '" << name << "' = " <<
+    //hash<string>()(name) << "\n";
+    
+    args = {plotPtr, ConstantInt::get(R.Int64Ty, hash<string>()(name))};
+    
+    llvm::Type* rt = ConvertType(func->getReturnType());
+    
+    if(rt->isIntegerTy(32)){
+      args.push_back(R.ElementInt32Val);
+    }
+    else if(rt->isIntegerTy(64)){
+      args.push_back(R.ElementInt64Val);
+    }
+    else if(rt->isFloatTy()){
+      args.push_back(R.ElementFloatVal);
+    }
+    else if(rt->isDoubleTy()){
+      args.push_back(R.ElementDoubleVal);
+    }
+    else{
+      assert(false && "invalid aggregate return type");
+    }
+    
+    args.push_back(ConstantInt::get(R.Int32Ty, retVarId));
+    
+    Value* aggPtr = Builder.CreateCall(R.PlotAddAggregateFunc(), args, "agg.ptr");
+    
+    unsigned n = c->getNumArgs();
+    for(unsigned i = 0; i < n; ++i){
+      const Expr* ei = c->getArg(i);
+      SpecValueExpr se(const_cast<Expr*>(ei));
+      
+      Value* argVarId = EmitPlotExpr(S, plotPtr, &se);
+      args = {aggPtr, argVarId};
+      Builder.CreateCall(R.AggregateAddVarFunc(), args);
     }
   }
   

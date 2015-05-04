@@ -395,6 +395,16 @@ void Sema::InitFrameDefinitions(Scope* S, FrameDecl* FD){
   AddFrameFunction(S, FD, "sum", Context.LongTy, {Context.LongTy});
   AddFrameFunction(S, FD, "sum", Context.FloatTy, {Context.FloatTy});
   AddFrameFunction(S, FD, "sum", Context.DoubleTy, {Context.DoubleTy});
+  
+  AddFrameFunction(S, FD, "mean", Context.IntTy, {Context.IntTy});
+  AddFrameFunction(S, FD, "mean", Context.LongTy, {Context.LongTy});
+  AddFrameFunction(S, FD, "mean", Context.FloatTy, {Context.FloatTy});
+  AddFrameFunction(S, FD, "mean", Context.DoubleTy, {Context.DoubleTy});
+  
+  AddFrameFunction(S, FD, "variance", Context.IntTy, {Context.IntTy});
+  AddFrameFunction(S, FD, "variance", Context.LongTy, {Context.LongTy});
+  AddFrameFunction(S, FD, "variance", Context.FloatTy, {Context.FloatTy});
+  AddFrameFunction(S, FD, "variance", Context.DoubleTy, {Context.DoubleTy});
 }
 
 void Sema::AddFrameVarType(Scope* Scope,
