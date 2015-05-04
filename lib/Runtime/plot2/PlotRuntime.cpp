@@ -275,35 +275,6 @@ namespace{
     }
   };
 
-  template<class T>
-  class SingleScalarVar : public ScalarVar<T>{
-  public:
-    T at(size_t i) const{
-      return value_;
-    }
-
-    double min(){
-      return value_;
-    }
-
-    double max(){
-      return value_;
-    }
-
-    void compute(void* plot, uint64_t index){}
-
-    size_t size() const{
-      return 1;
-    }
-
-    void set(T v){
-      value_ = v;
-    }
-
-  private:
-    T value_;
-  };
-
   class IndexVar : public ScalarVar<uint64_t>{
   public:
     IndexVar()
@@ -656,6 +627,10 @@ namespace{
       return 0;
     }
 
+    void set(T v){
+      value_ = v;
+    }
+
   private:
     T value_;
   };
@@ -887,7 +862,7 @@ namespace{
     }
 
     template<class T>
-    void addPlotVar(uint32_t plotId, VarId varId, bool single=false){
+    void addPlotVar(uint32_t plotId, VarId varId){
       Frame* frame;
 
       auto itr = plotFrameMap_.find(plotId);
@@ -903,12 +878,7 @@ namespace{
         }
       }
 
-      if(single){
-        frame->addVar(varId - PLOT_VAR_BEGIN, new SingleScalarVar<T>());
-      }
-      else{
-        frame->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
-      }
+      frame->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
     }
 
     void addPlotVar(uint32_t plotId, VarId varId, VarBase* v){
@@ -932,20 +902,19 @@ namespace{
     
     void addPlotVar(uint32_t plotId,
                     uint32_t kind,
-                    VarId varId,
-                    bool single=false){
+                    VarId varId){
       switch(kind){
       case ELEMENT_INT32:
-        addPlotVar<int32_t>(plotId, varId, single);
+        addPlotVar<int32_t>(plotId, varId);
         break;
       case ELEMENT_INT64:
-        addPlotVar<int64_t>(plotId, varId, single);
+        addPlotVar<int64_t>(plotId, varId);
         break;
       case ELEMENT_FLOAT:
-        addPlotVar<float>(plotId, varId, single);
+        addPlotVar<float>(plotId, varId);
         break;
       case ELEMENT_DOUBLE:
-        addPlotVar<double>(plotId, varId, single);
+        addPlotVar<double>(plotId, varId);
         break;
       default:
         assert(false && "invalid kind");
@@ -1372,7 +1341,8 @@ namespace{
     };
 
     Plot(uint32_t plotId, Frame* frame, PlotWindow* window)
-      : plotId_(plotId),
+      : ready_(false), 
+        plotId_(plotId),
         frame_(frame),
         plotFrame_(0),
         window_(window){}
@@ -1507,7 +1477,37 @@ namespace{
       QtWindow::pollEvents();
     }
 
+    void init(){
+      sort(elements_.begin(), elements_.end(),
+           [](Element* a, Element* b){
+             return a->order() < b->order();
+           });
+
+      QSize frame = widget_->frameSize();
+      
+      double width = frame.width();
+      double height = frame.height();
+
+      origin_.setX(LEFT_MARGIN);
+      origin_.setY(height - BOTTOM_MARGIN);
+  
+      xLen_ = width - LEFT_MARGIN - RIGHT_MARGIN;
+      yLen_ = height - TOP_MARGIN - BOTTOM_MARGIN;
+
+      xEnd_ = origin_;
+      xEnd_ += QPointF(xLen_, 0.0);
+
+      yEnd_ = origin_;
+      yEnd_ -= QPointF(0.0, yLen_);
+
+      ready_ = true;
+    }
+
     void render(){
+      if(!ready_){
+        init();
+      }
+
       size_t frameSize = frame_->size();
 
       if(frameSize < 2){
@@ -1518,11 +1518,6 @@ namespace{
 
       QPainter painter(widget_);
       painter.setRenderHint(QPainter::Antialiasing, true);
-
-      sort(elements_.begin(), elements_.end(),
-           [](Element* a, Element* b){
-             return a->order() < b->order();
-           });
 
       double xMin = MAX;
       double xMax = MIN;
@@ -1677,27 +1672,11 @@ namespace{
 
       double xSpan = xMax - xMin;
       double ySpan = yMax - yMin;
-
-      QSize frame = widget_->frameSize();
-      
-      double width = frame.width();
-      double height = frame.height();
-
-      QPointF origin(LEFT_MARGIN, height - BOTTOM_MARGIN);
-  
-      double xLen = width - LEFT_MARGIN - RIGHT_MARGIN;
-      double yLen = height - TOP_MARGIN - BOTTOM_MARGIN;
-
-      QPointF xEnd = origin;
-      xEnd += QPointF(xLen, 0.0);
-
-      QPointF yEnd = origin;
-      yEnd -= QPointF(0.0, yLen);
       
       for(Element* e : elements_){
         if(Axis* a = dynamic_cast<Axis*>(e)){
           if(a->dim == 1){
-            painter.drawLine(origin, xEnd);
+            painter.drawLine(origin_, xEnd_);
 
             size_t inc = frameSize / X_LABELS;
 
@@ -1707,11 +1686,11 @@ namespace{
 
             double xc;
             for(size_t i = 0; i < frameSize; i += inc){
-              xc = origin.x() + double(i)/frameSize * xLen;
+              xc = origin_.x() + double(i)/frameSize * xLen_;
 
               drawText(painter,
                        toLabel(xMin + (double(i)/frameSize)*xSpan),
-                       QPointF(xc, height - BOTTOM_MARGIN + 3));
+                       QPointF(xc, origin_.y() + 3));
             }
             
             inc = frameSize / X_TICKS;
@@ -1721,14 +1700,14 @@ namespace{
             }
 
             for(size_t i = 0; i < frameSize; i += inc){
-              xc = origin.x() + double(i)/frameSize * xLen;
+              xc = origin_.x() + double(i)/frameSize * xLen_;
 
-              painter.drawLine(QPointF(xc, height - BOTTOM_MARGIN + 3),
-                               QPointF(xc, height - BOTTOM_MARGIN - 3));
+              painter.drawLine(QPointF(xc, origin_.y() + 3),
+                               QPointF(xc, origin_.y() - 3));
             }
           }
           else if(a->dim == 2){
-            painter.drawLine(origin, yEnd);
+            painter.drawLine(origin_, yEnd_);
 
             size_t inc = frameSize / Y_LABELS;
 
@@ -1740,7 +1719,7 @@ namespace{
             double yv;
             for(size_t i = 0; i <= frameSize; i += inc){
               yv = yMin + ySpan * double(i)/frameSize;
-              yc = origin.y() - double(i)/frameSize * yLen;
+              yc = origin_.y() - double(i)/frameSize * yLen_;
 
               drawText(painter,
                        toLabel(yv),
@@ -1754,7 +1733,7 @@ namespace{
             }
 
             for(size_t i = 0; i < frameSize; i += inc){
-              yc = origin.y() - double(i)/frameSize * yLen;
+              yc = origin_.y() - double(i)/frameSize * yLen_;
 
               painter.drawLine(QPointF(LEFT_MARGIN - 3, yc),
                                QPointF(LEFT_MARGIN + 3, yc));
@@ -1780,8 +1759,8 @@ namespace{
           QPen pen;
 
           for(size_t i = 0; i < size; ++i){
-            point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
-            point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
+            point.setX(origin_.x() + ((x->get(i) - xMin)/xSpan) * xLen_);
+            point.setY(origin_.y() - ((y->get(i) - yMin)/ySpan) * yLen_);
 
             pen.setWidthF(s->get(i));
 
@@ -1815,11 +1794,11 @@ namespace{
           QPen pen;
 
           for(size_t i = 0; i < size; ++i){
-            p1.setX(origin.x() + ((x1->get(i) - xMin)/xSpan) * xLen);
-            p1.setY(origin.y() - ((y1->get(i) - yMin)/ySpan) * yLen);
+            p1.setX(origin_.x() + ((x1->get(i) - xMin)/xSpan) * xLen_);
+            p1.setY(origin_.y() - ((y1->get(i) - yMin)/ySpan) * yLen_);
 
-            p2.setX(origin.x() + ((x2->get(i) - xMin)/xSpan) * xLen);
-            p2.setY(origin.y() - ((y2->get(i) - yMin)/ySpan) * yLen);
+            p2.setX(origin_.x() + ((x2->get(i) - xMin)/xSpan) * xLen_);
+            p2.setY(origin_.y() - ((y2->get(i) - yMin)/ySpan) * yLen_);
 
             pen.setWidthF(s->get(i));
 
@@ -1844,8 +1823,8 @@ namespace{
           QPointF point;
 
           for(size_t i = 0; i < size; ++i){
-            point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
-            point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
+            point.setX(origin_.x() + ((x->get(i) - xMin)/xSpan) * xLen_);
+            point.setY(origin_.y() - ((y->get(i) - yMin)/ySpan) * yLen_);
 
             if(i > 0){
               DoubleVec cv;
@@ -1855,8 +1834,8 @@ namespace{
 
               QPolygonF poly;
               poly << lastPoint << point << 
-                QPointF(point.x(), origin.y()) << 
-                QPointF(lastPoint.x(), origin.y());
+                QPointF(point.x(), origin_.y()) << 
+                QPointF(lastPoint.x(), origin_.y());
       
               painter.drawPolygon(poly);
             }
@@ -1878,8 +1857,8 @@ namespace{
           painter.setPen(noPen);
 
           for(size_t i = 0; i < size; ++i){
-            point.setX(origin.x() + ((x->get(i) - xMin)/xSpan) * xLen);
-            point.setY(origin.y() - ((y->get(i) - yMin)/ySpan) * yLen);
+            point.setX(origin_.x() + ((x->get(i) - xMin)/xSpan) * xLen_);
+            point.setY(origin_.y() - ((y->get(i) - yMin)/ySpan) * yLen_);
 
             DoubleVec cv;
             c->getVec(i, cv);
@@ -1909,16 +1888,16 @@ namespace{
           double xSpan = xMax - xMin;
           double ySpan = yMax - yMin;
 
-          double width = xLen/size;
+          double width = xLen_/size;
 
           for(size_t j = 0; j < size; ++j){
             double xv = x->get(j);
             double yv = y->get(j);
 
-            double xc = origin.x() + xLen*(xv - xMin)/xSpan;
-            double yc = origin.y() - yLen*(yv - yMin)/ySpan;
+            double xc = origin_.x() + xLen_*(xv - xMin)/xSpan;
+            double yc = origin_.y() - yLen_*(yv - yMin)/ySpan;
 
-            double height = yLen * (yv - yMin)/ySpan;
+            double height = yLen_ * (yv - yMin)/ySpan;
 
             DoubleVec cv;
             c->getVec(j, cv);
@@ -1937,8 +1916,7 @@ namespace{
             total += n->get(i);
           }
 
-          double side = min(width - LEFT_MARGIN - RIGHT_MARGIN,
-                            height - TOP_MARGIN - BOTTOM_MARGIN);
+          double side = min(xEnd_.x() - origin_.x(), origin_.y() - yEnd_.y());
 
           QRectF rect(LEFT_MARGIN, TOP_MARGIN, side, side);
           
@@ -1974,6 +1952,7 @@ namespace{
   private:
     typedef vector<Element*> ElementVec_;
 
+    bool ready_;
     uint32_t plotId_;
     Frame* frame_;
     Frame* plotFrame_;
@@ -1981,6 +1960,11 @@ namespace{
     PlotWidget* widget_;
 
     ElementVec_ elements_;
+    double xLen_;
+    double yLen_;
+    QPointF origin_;
+    QPointF xEnd_;
+    QPointF yEnd_;
   };
 
 } // end namespace
