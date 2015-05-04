@@ -475,32 +475,19 @@ public:
       }
     }
 
-    char* addFieldInfo(char* args, size_t region, size_t count,
-        legion_privilege_mode_t mode) {
-      for (auto f : fields_) {
-        if ( f.mode == mode) {
-          MeshFieldInfo* info = (MeshFieldInfo*) args;
-
-          info->region = region;
-          info->fieldKind = f.fieldKind;
-
-          if (fieldSet_.find(f.fieldName) != fieldSet_.end()) {
-            info->count = count;
-          } else {
-            info->count = 0;
-          }
-
-          info->fieldId = f.fieldId;
-
-          printf("in addFieldInfo n=%s r=%zu fk=%d c=%zu id=%zu\n",
-              f.fieldName.c_str(), info->region, info->fieldKind,
-              info->count, info->fieldId);
-
-          args += sizeof(MeshFieldInfo);
-        }
+    bool isFieldUsed(size_t index) {
+      auto f = fields_[index];
+      if (fieldSet_.find(f.fieldName) != fieldSet_.end()) {
+        return true;
+      } else {
+        return false;
       }
-      return args;
     }
+
+    sclegion_field_kind_t getFieldKind(size_t index) {
+      return fields_[index].fieldKind;
+    }
+
 
     void addFieldsToIndexLauncher(IndexLauncher& launcher,
         unsigned region, legion_privilege_mode_t mode) const {
@@ -541,9 +528,9 @@ public:
     if (mode == READ_ONLY) {
       printf("launcher ro addField %s %d region %d\n",fieldName.c_str(), mode, 2*field.elementKind);
       regions_[2*field.elementKind].addField(field, mode);
-    } else if (mode == READ_WRITE) {
+    } else if (mode == WRITE_ONLY || mode == READ_WRITE) {
       printf("launcher rw addField %s %d region %d\n",fieldName.c_str(), mode, 2*field.elementKind+1);
-      regions_[2*field.elementKind+1].addField(field, mode);
+      regions_[2*field.elementKind+1].addField(field, READ_WRITE);
     } else {
       assert (false && "bad mode");
     }
@@ -575,12 +562,33 @@ public:
         continue;
       }
 
+      for (auto fi = 0; fi < numFields_; fi++) {
+        MeshFieldInfo* info = (MeshFieldInfo*) args;
 
-      printf("addFieldInfo ro %zu\n",2*i);
-      args = regions_[2*i].addFieldInfo(args, 2*i, element.count, READ_ONLY);
-      printf("addFieldInfo rw %zu\n",2*i+1);
-      args = regions_[2*i+1].addFieldInfo(args, 2*i+1, element.count, READ_WRITE);
+        bool isro  = regions_[2*i].isFieldUsed(fi);
+        bool isrw  = regions_[2*i+1].isFieldUsed(fi);
 
+        if (isro) info->region = 2*i;
+        else if (isrw) info->region = 2*i+1;
+        else info->region = -1;
+
+        info->fieldKind = regions_[2*i].getFieldKind(fi);
+
+        if (isro || isrw) {
+          info->count = element.count;
+        } else {
+          info->count = 0;
+        }
+
+        info->fieldId = fi;
+
+        printf("addFieldInfo r=%zu fk=%d c=%zu id=%zu\n",
+                    info->region, info->fieldKind,
+                    info->count, info->fieldId);
+
+       args += sizeof(MeshFieldInfo);
+
+      }
     }
 
     ArgumentMap argMap;
@@ -614,7 +622,7 @@ public:
       printf("ro add %lu\n",2*i);
       roregion.addFieldsToIndexLauncher(launcher, 2*i, READ_ONLY);
 
-      // read write fields
+      // read write or write only fields
       launcher.add_region_requirement(
           RegionRequirement(element.disjointLogicalPartition,
               0/*projection ID*/,
@@ -736,11 +744,14 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
 
   MeshFieldInfo* fi;
   size_t numFields = header->numFields;
+  printf("numFields %zu\n",numFields);
 
   size_t start = getStart(header->width, point, header->numColors); // 1-d cells only.
 
   for (size_t i = 0; i < numFields; ++i) {
     fi = (MeshFieldInfo*) args;
+
+    printf("i %zu c=%zu\n",i, fi->count);
 
     if (fi->count == 0) {
       *meshPtr = 0;
