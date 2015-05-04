@@ -2910,6 +2910,9 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     const FunctionDecl* func = c->getDirectCallee();
     DeclarationNameInfo nameInfo = func->getNameInfo();
     string name = nameInfo.getName().getAsString();
+
+    //llvm::errs() << "hash for '" << name << "' = " <<
+    //hash<string>()(name) << "\n";
     
     args = {plotPtr, ConstantInt::get(R.Int64Ty, hash<string>()(name))};
     

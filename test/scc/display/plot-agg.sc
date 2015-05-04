@@ -38,7 +38,7 @@ int main(int argc, char** argv){
     }
 
     with f in win plot{
-      var: {x: sum(temperature) - 2.0},
+      var: {x: variance(temperature) - 2.0},
  
       lines: {position: [timestep, x + 50.0],
                  color: [0.3, 0.5, 1.0, 1.0],

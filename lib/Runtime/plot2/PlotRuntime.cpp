@@ -120,6 +120,8 @@ namespace{
   typedef vector<double> DoubleVec;
 
   const uint64_t AGG_SUM = 6716694111845535935ULL;
+  const uint64_t AGG_MEAN = 8849440314945535285ULL;
+  const uint64_t AGG_VARIANCE = 14523147045845051570ULL;
 
   class Random{
   public:
@@ -1253,8 +1255,6 @@ namespace{
     template<class T>
     class Aggregate : public AggregateBase{
     public:
-      typedef vector<VarId> VarIdVec;
-
       Aggregate(uint64_t type, VarId ret)
         : type(type),
           ret(ret){}
@@ -1272,6 +1272,49 @@ namespace{
 
           break;
         }
+        case AGG_MEAN:{
+          Var<T>* r = 
+            static_cast<Var<T>*>(plot->getVar(ret));
+          
+          ScalarVar<T>* x = 
+            static_cast<ScalarVar<T>*>(plot->getVar(vars[0]));
+
+          size_t size = x->size();
+
+          if(size < 1){
+            r->capture(0);
+            break;
+          }
+
+          r->capture(x->sum() / size);
+
+          break;
+        }
+        case AGG_VARIANCE:{
+          Var<T>* r = 
+            static_cast<Var<T>*>(plot->getVar(ret));
+          
+          ScalarVar<T>* x = 
+            static_cast<ScalarVar<T>*>(plot->getVar(vars[0]));
+
+          size_t size = x->size();
+
+          if(size < 2){
+            r->capture(0);
+            break;
+          }
+
+          T m = x->sum() / size;
+          T t = 0;
+          for(size_t i = 0; i < size; ++i){
+            T d = x->at(i) - m;
+            t += d * d;
+          }
+
+          r->capture(t/(size - 1));
+
+          break;
+        }
         default:
           assert(false && "invalid aggregate type");
         }
@@ -1280,6 +1323,10 @@ namespace{
       VarBase* createRetVar(){
         switch(type){
         case AGG_SUM:
+          return new Var<T>();
+        case AGG_MEAN:
+          return new Var<T>();
+        case AGG_VARIANCE:
           return new Var<T>();
         default:
           assert(false && "invalid aggregate type");
