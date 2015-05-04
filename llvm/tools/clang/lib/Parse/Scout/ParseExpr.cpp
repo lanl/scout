@@ -238,7 +238,8 @@ ExprResult Parser::ParseSpecExpression(){
 ExprResult Parser::ParseSpecObjectExpression(){
   assert(Tok.is(tok::l_brace) && "expected '{'");
 
-  ConsumeBrace();
+  BalancedDelimiterTracker T(*this, tok::l_brace);
+  T.consumeOpen();
   
   SpecObjectExpr* obj =
   cast<SpecObjectExpr>(Actions.ActOnSpecObjectExpr(Tok.getLocation()).get());
@@ -249,7 +250,7 @@ ExprResult Parser::ParseSpecObjectExpression(){
   
   for(;;){
     if(Tok.is(tok::r_brace)){
-      ConsumeBrace();
+      T.consumeClose();
       break;
     }
     
@@ -258,6 +259,7 @@ ExprResult Parser::ParseSpecObjectExpression(){
     }
     else{
       if(Tok.isNot(tok::comma)){
+        T.skipToEnd();
         Diag(Tok, diag::err_spec_invalid_expected) << ",";
         return ExprError();
       }
@@ -277,14 +279,17 @@ ExprResult Parser::ParseSpecObjectExpression(){
       ExprResult StringResult = ParseStringLiteralExpression();
       StringLiteral* literal = cast<StringLiteral>(StringResult.get());
       key = literal->getString().str();
+      ConsumeToken();
     }
     else{
       Diag(Tok, diag::err_spec_invalid_object_key);
+      T.skipToEnd();
       return ExprError();
     }
     
     if(Tok.isNot(tok::colon)){
       Diag(Tok, diag::err_spec_invalid_expected) << ":";
+      T.skipToEnd();
       return ExprError();
     }
     
@@ -294,7 +299,7 @@ ExprResult Parser::ParseSpecObjectExpression(){
     
     if(valueResult.isInvalid()){
       isValid = false;
-      SkipUntil(tok::comma, tok::r_brace, StopBeforeMatch);
+      T.skipToEnd();
     }
     else{
       SpecExpr* value = cast<SpecExpr>(valueResult.get());
@@ -331,7 +336,8 @@ ExprResult Parser::ParseSpecValueExpression(){
 ExprResult Parser::ParseSpecArrayExpression(){
   assert(Tok.is(tok::l_square) && "expected '['");
   
-  ConsumeBracket();
+  BalancedDelimiterTracker T(*this, tok::l_square);
+  T.consumeOpen();
   
   SpecArrayExpr* array =
   cast<SpecArrayExpr>(Actions.ActOnSpecArrayExpr(Tok.getLocation()).get());
@@ -343,7 +349,7 @@ ExprResult Parser::ParseSpecArrayExpression(){
     
     if(valueResult.isInvalid()){
       isValid = false;
-      SkipUntil(tok::comma, tok::r_square, StopBeforeMatch);
+      T.skipToEnd();
     }
     else{
       SpecExpr* value = cast<SpecExpr>(valueResult.get());
@@ -351,10 +357,11 @@ ExprResult Parser::ParseSpecArrayExpression(){
     }
     
     if(Tok.is(tok::r_square)){
-      ConsumeBracket();
+      T.consumeClose();
       break;
     }
     else if(Tok.isNot(tok::comma)){
+      T.skipToEnd();
       Diag(Tok, diag::err_spec_invalid_expected) << ",";
       return ExprError();
     }
