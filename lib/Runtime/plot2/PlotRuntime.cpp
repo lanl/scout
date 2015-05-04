@@ -820,9 +820,11 @@ namespace{
       size_t end = parentFrame->size();
       size_t n = vars_.size();
 
-      for(size_t i = size(); i < end; ++i){
-        for(size_t j = 0; j < n; ++j){
-          vars_[j]->compute(plot, i);
+      for(size_t i = 0; i < n; ++i){
+        VarBase* v = vars_[i];
+
+        for(size_t j = v->size(); j < end; ++j){
+          v->compute(plot, j);
         }
       }
     }
@@ -1267,6 +1269,7 @@ namespace{
             static_cast<ScalarVar<T>*>(plot->getVar(vars[0]));
 
           r->capture(x->sum());
+
           break;
         }
         default:
