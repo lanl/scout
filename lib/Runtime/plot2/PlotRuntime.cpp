@@ -706,8 +706,7 @@ namespace{
   class Frame{
   public:
     Frame(uint32_t width, uint32_t height, uint32_t depth)
-      : ready_(false),
-        width_(width),
+      : width_(width),
         height_(height),
         depth_(depth){
       addBuiltinVars();
@@ -715,16 +714,14 @@ namespace{
     }
 
     Frame()
-      : ready_(false),
-        width_(0),
+      : width_(0),
         height_(0),
         depth_(0){
       addBuiltinVars();
     }
 
     Frame(bool plotFrame)
-      : ready_(false),
-        width_(0),
+      : width_(0),
         height_(0),
         depth_(0){}
 
@@ -822,8 +819,6 @@ namespace{
     }
 
     void compute(Plot* plot, Frame* parentFrame){
-      ready_ = true;
-
       size_t end = parentFrame->size();
       size_t n = vars_.size();
 
@@ -874,10 +869,6 @@ namespace{
       }
       else{
         frame = itr->second;
-        
-        if(frame->ready_){
-          return;
-        }
       }
 
       VarBase* v;
@@ -902,10 +893,6 @@ namespace{
       }
       else{
         frame = itr->second;
-        
-        if(frame->ready_){
-          return;
-        }
       }
 
       frame->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
@@ -921,10 +908,6 @@ namespace{
       }
       else{
         frame = itr->second;
-        
-        if(frame->ready_){
-          return;
-        }
       }
 
       frame->addVar(varId - PLOT_VAR_BEGIN, v);
@@ -966,10 +949,6 @@ namespace{
       }
       else{
         frame = itr->second;
-        
-        if(frame->ready_){
-          return;
-        }
       }
 
       VarBase* v;
@@ -1032,7 +1011,6 @@ namespace{
 
     VarVec vars_;
     PlotFrameMap plotFrameMap_;
-    bool ready_;
     uint32_t width_;
     uint32_t height_;
     uint32_t depth_;
@@ -1371,7 +1349,7 @@ namespace{
     };
 
     Plot(uint64_t plotId)
-      : ready_(false),
+      : first_(true),
         hasXLabel_(false),
         hasYLabel_(false),
         plotId_(plotId),
@@ -1387,7 +1365,7 @@ namespace{
     }
 
     bool ready(){
-      return ready_;
+      return frame_;
     }
 
     template<class T>
@@ -1528,7 +1506,7 @@ namespace{
       QtWindow::pollEvents();
     }
 
-    void init(){
+    void prepare(){
       sort(elements_.begin(), elements_.end(),
            [](Element* a, Element* b){
              return a->order() < b->order();
@@ -1562,12 +1540,12 @@ namespace{
       yEnd_ = origin_;
       yEnd_ -= QPointF(0.0, yLen_);
 
-      ready_ = true;
+      first_ = false;
     }
 
     void render(){
-      if(!ready_){
-        init();
+      if(first_){
+        prepare();
       }
 
       size_t frameSize = frame_->size();
@@ -1984,6 +1962,10 @@ namespace{
           
           Random rng;
 
+          QPen pen;
+          pen.setWidthF(3.0);
+          painter.setPen(pen);
+
           int startAngle = 0;
           for(size_t i = 0; i < size; ++i){
             if(c){
@@ -2014,7 +1996,7 @@ namespace{
   private:
     typedef vector<Element*> ElementVec_;
 
-    bool ready_;
+    bool first_;
     uint64_t plotId_;
     Frame* frame_;
     Frame* plotFrame_;
@@ -2073,22 +2055,6 @@ extern "C"{
     static_cast<Frame*>(f)->capture(varId, value);
   }
 
-  int32_t __scrt_plot_get_i32(void* plot, VarId varId, uint64_t index){
-    return static_cast<Plot*>(plot)->get<int32_t>(varId, index);
-  }
-
-  int64_t __scrt_plot_get_i64(void* plot, VarId varId, uint64_t index){
-    return static_cast<Plot*>(plot)->get<int64_t>(varId, index);
-  }
-
-  float __scrt_plot_get_float(void* plot, VarId varId, uint64_t index){
-    return static_cast<Plot*>(plot)->get<float>(varId, index);
-  }
-
-  double __scrt_plot_get_double(void* plot, VarId varId, uint64_t index){
-    return static_cast<Plot*>(plot)->get<double>(varId, index);
-  }
-
   void* __scrt_plot_get(uint64_t plotId){
     _mutex.lock();
     
@@ -2119,6 +2085,22 @@ extern "C"{
 
   bool __scrt_plot_ready(void* plot){
     return static_cast<Plot*>(plot)->ready();
+  }
+
+  int32_t __scrt_plot_get_i32(void* plot, VarId varId, uint64_t index){
+    return static_cast<Plot*>(plot)->get<int32_t>(varId, index);
+  }
+
+  int64_t __scrt_plot_get_i64(void* plot, VarId varId, uint64_t index){
+    return static_cast<Plot*>(plot)->get<int64_t>(varId, index);
+  }
+
+  float __scrt_plot_get_float(void* plot, VarId varId, uint64_t index){
+    return static_cast<Plot*>(plot)->get<float>(varId, index);
+  }
+
+  double __scrt_plot_get_double(void* plot, VarId varId, uint64_t index){
+    return static_cast<Plot*>(plot)->get<double>(varId, index);
   }
 
   void __scrt_plot_add_var_i32(void* plot,
