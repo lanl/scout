@@ -725,11 +725,7 @@ namespace{
         height_(0),
         depth_(0){}
 
-    ~Frame(){
-      for(auto& itr : plotFrameMap_){
-        delete itr.second;
-      }
-    }
+    ~Frame(){}
 
     void addBuiltinVars(){
       indexVar_ = new IndexVar;
@@ -854,163 +850,11 @@ namespace{
     T get(VarId varId, size_t index){
       return static_cast<ScalarVar<T>*>(getVar(varId))->at(index);
     }
-
-    template<class T>
-    void addPlotVar(uint64_t plotId,
-                    VarId varId,
-                    T (*fp)(void*, uint64_t),
-                    uint32_t flags){
-      Frame* frame;
-
-      auto itr = plotFrameMap_.find(plotId);
-      if(itr == plotFrameMap_.end()){
-        frame = new Frame(true);
-        plotFrameMap_[plotId] = frame;
-      }
-      else{
-        frame = itr->second;
-      }
-
-      VarBase* v;
-      if(flags & FLAG_VAR_CONSTANT){
-        v = new ConstVar<T>((*fp)(0, 0));
-      }
-      else{
-        v = new Var<T>(fp);
-      }
-
-      frame->addVar(varId - PLOT_VAR_BEGIN, v);
-    }
-
-    template<class T>
-    void addPlotVar(uint64_t plotId, VarId varId){
-      Frame* frame;
-
-      auto itr = plotFrameMap_.find(plotId);
-      if(itr == plotFrameMap_.end()){
-        frame = new Frame(true);
-        plotFrameMap_[plotId] = frame;
-      }
-      else{
-        frame = itr->second;
-      }
-
-      frame->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
-    }
-
-    void addPlotVar(uint64_t plotId, VarId varId, VarBase* v){
-      Frame* frame;
-
-      auto itr = plotFrameMap_.find(plotId);
-      if(itr == plotFrameMap_.end()){
-        frame = new Frame(true);
-        plotFrameMap_[plotId] = frame;
-      }
-      else{
-        frame = itr->second;
-      }
-
-      frame->addVar(varId - PLOT_VAR_BEGIN, v);
-    }
     
-    void addPlotVar(uint64_t plotId,
-                    uint32_t kind,
-                    VarId varId){
-      switch(kind){
-      case ELEMENT_INT32:
-        addPlotVar<int32_t>(plotId, varId);
-        break;
-      case ELEMENT_INT64:
-        addPlotVar<int64_t>(plotId, varId);
-        break;
-      case ELEMENT_FLOAT:
-        addPlotVar<float>(plotId, varId);
-        break;
-      case ELEMENT_DOUBLE:
-        addPlotVar<double>(plotId, varId);
-        break;
-      default:
-        assert(false && "invalid kind");
-      }
-    }
-
-    template<class T>
-    void addPlotVecVar(uint64_t plotId,
-                       VarId varId,
-                       void (*fp)(void*, uint64_t, T*),
-                       uint32_t dim,
-                       uint32_t flags){
-      Frame* frame;
-
-      auto itr = plotFrameMap_.find(plotId);
-      if(itr == plotFrameMap_.end()){
-        frame = new Frame(true);
-        plotFrameMap_[plotId] = frame;
-      }
-      else{
-        frame = itr->second;
-      }
-
-      VarBase* v;
-      
-      if(flags & FLAG_VAR_CONSTANT){
-        switch(dim){
-        case 2:{
-          Vec<T, 2> x;
-          (*fp)(0, 0, x.raw());
-          v = new ConstVecVar<T, 2>(x);
-          break;
-        }
-        case 3:{
-          Vec<T, 3> x;
-          (*fp)(0, 0, x.raw());
-          v = new ConstVecVar<T, 3>(x);
-          break;
-        }
-        case 4:{
-          Vec<T, 4> x;
-          (*fp)(0, 0, x.raw());
-          v = new ConstVecVar<T, 4>(x);
-          break;
-        }
-        default:
-          assert(false && "invalid vector size");
-        }
-      }
-      else{
-        switch(dim){
-        case 2:
-          v = new VecVar<T, 2>(fp);
-          break;
-        case 3:
-          v = new VecVar<T, 3>(fp);
-          break;
-        case 4:
-          v = new VecVar<T, 4>(fp);
-          break;
-        default:
-          assert(false && "invalid vector size");
-        }
-      }
-
-      frame->addVar(varId - PLOT_VAR_BEGIN, v);
-    }
-
-    Frame* getPlotFrame(uint64_t plotId){
-      auto itr = plotFrameMap_.find(plotId);
-      if(itr == plotFrameMap_.end()){
-        return nullptr;
-      }
-      
-      return itr->second;
-    }
-
   private:
     typedef vector<VarBase*> VarVec;
-    typedef map<uint32_t, Frame*> PlotFrameMap;
 
     VarVec vars_;
-    PlotFrameMap plotFrameMap_;
     uint32_t width_;
     uint32_t height_;
     uint32_t depth_;
@@ -1381,10 +1225,39 @@ namespace{
     }
 
     template<class T>
+    void addVar(VarId varId){
+      if(!plotFrame_){
+        plotFrame_ = new Frame(true);
+      }
+
+      plotFrame_->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
+    }
+
+    void addVar(VarId varId, VarBase* v){
+      if(!plotFrame_){
+        plotFrame_ = new Frame(true);
+      }
+
+      plotFrame_->addVar(varId - PLOT_VAR_BEGIN, v);
+    }
+
+    template<class T>
     void addVar(VarId varId,
                 T (*fp)(void*, uint64_t),
                 uint32_t flags){
-      frame_->addPlotVar(plotId_, varId, fp, flags);
+      if(!plotFrame_){
+        plotFrame_ = new Frame(true);
+      }
+
+      VarBase* v;
+      if(flags & FLAG_VAR_CONSTANT){
+        v = new ConstVar<T>((*fp)(0, 0));
+      }
+      else{
+        v = new Var<T>(fp);
+      }
+
+      plotFrame_->addVar(varId - PLOT_VAR_BEGIN, v);
     }
 
     template<class T>
@@ -1392,7 +1265,72 @@ namespace{
                    void (*fp)(void*, uint64_t, T*),
                    uint32_t dim,
                    uint32_t flags){
-      frame_->addPlotVecVar(plotId_, varId, fp, dim, flags);
+      if(!plotFrame_){
+        plotFrame_ = new Frame(true);
+      }
+
+      VarBase* v;
+      
+      if(flags & FLAG_VAR_CONSTANT){
+        switch(dim){
+        case 2:{
+          Vec<T, 2> x;
+          (*fp)(0, 0, x.raw());
+          v = new ConstVecVar<T, 2>(x);
+          break;
+        }
+        case 3:{
+          Vec<T, 3> x;
+          (*fp)(0, 0, x.raw());
+          v = new ConstVecVar<T, 3>(x);
+          break;
+        }
+        case 4:{
+          Vec<T, 4> x;
+          (*fp)(0, 0, x.raw());
+          v = new ConstVecVar<T, 4>(x);
+          break;
+        }
+        default:
+          assert(false && "invalid vector size");
+        }
+      }
+      else{
+        switch(dim){
+        case 2:
+          v = new VecVar<T, 2>(fp);
+          break;
+        case 3:
+          v = new VecVar<T, 3>(fp);
+          break;
+        case 4:
+          v = new VecVar<T, 4>(fp);
+          break;
+        default:
+          assert(false && "invalid vector size");
+        }
+      }
+
+      plotFrame_->addVar(varId - PLOT_VAR_BEGIN, v);
+    }
+
+    void addVar(uint32_t kind, VarId varId){
+      switch(kind){
+      case ELEMENT_INT32:
+        addVar<int32_t>(varId);
+        break;
+      case ELEMENT_INT64:
+        addVar<int64_t>(varId);
+        break;
+      case ELEMENT_FLOAT:
+        addVar<float>(varId);
+        break;
+      case ELEMENT_DOUBLE:
+        addVar<double>(varId);
+        break;
+      default:
+        assert(false && "invalid kind");
+      }
     }
 
     void addLines(VarId x, VarId y, VarId size, VarId color){
@@ -1426,8 +1364,8 @@ namespace{
 
     void addBins(VarId varIn, VarId xOut, VarId yOut, uint32_t n){
       elements_.push_back(new Bins(varIn, xOut, yOut, n));
-      frame_->addPlotVar<double>(plotId_, xOut);
-      frame_->addPlotVar<double>(plotId_, yOut);
+      addVar<double>(xOut);
+      addVar<double>(yOut);
     }
 
     AggregateBase* addAggregate(uint64_t type,
@@ -1452,7 +1390,7 @@ namespace{
         assert(false && "invalid aggregate return kind");
       }
 
-      frame_->addPlotVar(plotId_, retVarId, a->createRetVar());
+      addVar(retVarId, a->createRetVar());
 
       elements_.push_back(a);
       
@@ -1463,8 +1401,8 @@ namespace{
       Proportion* p = new Proportion(xOut, yOut);
       elements_.push_back(p);
 
-      frame_->addPlotVar<double>(plotId_, xOut);
-      frame_->addPlotVar<double>(plotId_, yOut);
+      addVar<double>(xOut);
+      addVar<double>(yOut);
 
       return p;
     }
@@ -1485,8 +1423,6 @@ namespace{
 
     void finalize(){
       QtWindow::init();
-
-      plotFrame_ = frame_->getPlotFrame(plotId_);
 
       if(plotFrame_){
         for(Element* e : elements_){
@@ -1528,7 +1464,7 @@ namespace{
         origin_.setY(height - BOTTOM_MARGIN - 15);
       }
       else{
-        origin_.setY(height - BOTTOM_MARGIN - 15);
+        origin_.setY(height - BOTTOM_MARGIN);
       }
 
       xLen_ = width - LEFT_MARGIN - RIGHT_MARGIN;
