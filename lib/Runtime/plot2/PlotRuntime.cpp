@@ -273,7 +273,7 @@ namespace{
 
     virtual void getVec(size_t i, DoubleVec& v) const = 0;
 
-    virtual void compute(void* plot, uint64_t index) = 0;
+    virtual void compute(void* plot, uint64_t index){};
 
     virtual size_t size() const = 0;
   };
@@ -328,8 +328,6 @@ namespace{
       max_ = max;
     }
 
-    void compute(void* plot, uint64_t index){}
-
     size_t size() const{
       return 0;
     }
@@ -354,8 +352,6 @@ namespace{
     double max(){
       return width_ - 1;
     }
-
-    void compute(void* plot, uint64_t index){}
 
     size_t size() const{
       return 0;
@@ -383,8 +379,6 @@ namespace{
       return h1_;
     }
 
-    void compute(void* plot, uint64_t index){}
-
     size_t size() const{
       return 0;
     }
@@ -411,8 +405,6 @@ namespace{
     double max(){
       return d1_;
     }
-
-    void compute(void* plot, uint64_t index){}
 
     size_t size() const{
       return 0;
@@ -516,8 +508,6 @@ namespace{
         size_(size),
         ready_(false){}
 
-    void compute(void* plot, uint64_t index){}
-
     double get(size_t i) const{
       return v_[i];
     }
@@ -599,10 +589,12 @@ namespace{
     }
 
     void compute(void* plot, uint64_t index){
-      Vec<T, N> v;
-      (*fp_)(plot, index, v.raw());
+      if(fp_){
+        Vec<T, N> v;
+        (*fp_)(plot, index, v.raw());
 
-      capture(v);
+        capture(v);
+      }
     }
 
     double get(size_t i) const{
@@ -641,8 +633,6 @@ namespace{
     ConstVar(T value)
       : value_(value){}
 
-    void compute(void* plot, uint64_t index){}
-
     T at(size_t i) const{
       return value_;
     }
@@ -672,8 +662,6 @@ namespace{
   public:
     ConstVecVar(const Vec<T, N>& v)
       : v_(v){}
-
-    void compute(void* plot, uint64_t index){}
 
     double get(size_t i) const{
       assert(false && "attempt to get scalar from vector");
