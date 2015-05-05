@@ -2715,6 +2715,20 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   auto R = CGM.getPlot2Runtime();
 
+  ValueVec args = {ConstantInt::get(R.Int64Ty, uint64_t(&S))};
+  
+  Value* plotPtr = Builder.CreateCall(R.PlotGetFunc(), args, "plot.ptr");
+  
+  args = {plotPtr};
+  Value* ready = Builder.CreateCall(R.PlotReadyFunc(), args, "ready");
+  
+  BasicBlock* mergeBlock = createBasicBlock("merge");
+  BasicBlock* initBlock = createBasicBlock("init");
+  
+  Builder.CreateCondBr(ready, mergeBlock, initBlock);
+  
+  EmitBlock(initBlock);
+  
   const VarDecl* frame = S.getFrameVar();
   
   const FrameDecl* fd = S.getFrameDecl();
@@ -2863,14 +2877,11 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   targetPtr = Builder.CreateBitCast(Builder.CreateLoad(targetPtr),
                                     R.VoidPtrTy, "target.ptr");
   
+  args = {plotPtr, framePtr, targetPtr};
+  Builder.CreateCall(R.PlotInitFunc(), args);
+  
   const SpecObjectExpr* spec = S.getSpec();
   
-  ValueVec args =
-  {ConstantInt::get(R.Int32Ty, S.getLocStart().getRawEncoding()),
-    framePtr, targetPtr};
-  
-  Value* plotPtr = Builder.CreateCall(R.PlotInitFunc(), args, "plot.ptr");
-
   auto cs = visitor.getCallSet();
   
   for(const CallExpr* c : cs){
@@ -3057,6 +3068,9 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       Builder.CreateCall(R.PlotAddAxisFunc(), args);
     }
   }
+  
+  Builder.CreateBr(mergeBlock);
+  EmitBlock(mergeBlock);
   
   args = {plotPtr};
   Builder.CreateCall(R.PlotRenderFunc(), args);

@@ -55,12 +55,14 @@
 #include <cassert>
 #include <vector>
 #include <map>
+#include <unordered_map>
 #include <cstdint>
 #include <iostream>
 #include <algorithm>
 #include <sstream>
 #include <functional>
 #include <random>
+#include <mutex>
 
 #include <QtGui>
 
@@ -152,6 +154,36 @@ namespace{
     std::mt19937_64 rng_;
     std::uniform_real_distribution<double> uniform_;
   };
+
+  class Plot;
+  
+  class Global{
+  public:
+    Global(){}
+
+    Plot* getPlot(uint64_t plotId){
+      auto itr = plotMap_.find(plotId);
+
+      if(itr == plotMap_.end()){
+        return nullptr;
+      }
+
+      return itr->second;
+    }
+
+    void putPlot(uint64_t plotId, Plot* plot){
+      plotMap_[plotId] = plot;
+    }
+
+  private:
+    using PlotMap_ = unordered_map<uint64_t, Plot*>;
+
+    PlotMap_ plotMap_;
+  };
+
+  Global* _global = 0;
+
+  mutex _mutex;
 
   template<typename T, size_t N>
   class Vec{
@@ -671,8 +703,6 @@ namespace{
     Vec<T, N> v_;
   };
 
-  class Plot;
-
   class Frame{
   public:
     Frame(uint32_t width, uint32_t height, uint32_t depth)
@@ -831,7 +861,7 @@ namespace{
     }
 
     template<class T>
-    void addPlotVar(uint32_t plotId,
+    void addPlotVar(uint64_t plotId,
                     VarId varId,
                     T (*fp)(void*, uint64_t),
                     uint32_t flags){
@@ -862,7 +892,7 @@ namespace{
     }
 
     template<class T>
-    void addPlotVar(uint32_t plotId, VarId varId){
+    void addPlotVar(uint64_t plotId, VarId varId){
       Frame* frame;
 
       auto itr = plotFrameMap_.find(plotId);
@@ -881,7 +911,7 @@ namespace{
       frame->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
     }
 
-    void addPlotVar(uint32_t plotId, VarId varId, VarBase* v){
+    void addPlotVar(uint64_t plotId, VarId varId, VarBase* v){
       Frame* frame;
 
       auto itr = plotFrameMap_.find(plotId);
@@ -900,7 +930,7 @@ namespace{
       frame->addVar(varId - PLOT_VAR_BEGIN, v);
     }
     
-    void addPlotVar(uint32_t plotId,
+    void addPlotVar(uint64_t plotId,
                     uint32_t kind,
                     VarId varId){
       switch(kind){
@@ -922,7 +952,7 @@ namespace{
     }
 
     template<class T>
-    void addPlotVecVar(uint32_t plotId,
+    void addPlotVecVar(uint64_t plotId,
                        VarId varId,
                        void (*fp)(void*, uint64_t, T*),
                        uint32_t dim,
@@ -987,7 +1017,7 @@ namespace{
       frame->addVar(varId - PLOT_VAR_BEGIN, v);
     }
 
-    Frame* getPlotFrame(uint32_t plotId){
+    Frame* getPlotFrame(uint64_t plotId){
       auto itr = plotFrameMap_.find(plotId);
       if(itr == plotFrameMap_.end()){
         return nullptr;
@@ -1340,14 +1370,25 @@ namespace{
       }
     };
 
-    Plot(uint32_t plotId, Frame* frame, PlotWindow* window)
-      : ready_(false), 
+    Plot(uint64_t plotId)
+      : ready_(false),
+        hasXLabel_(false),
+        hasYLabel_(false),
         plotId_(plotId),
-        frame_(frame),
+        frame_(nullptr),
         plotFrame_(0),
-        window_(window){}
+        window_(nullptr){}
 
     ~Plot(){}
+
+    void init(Frame* frame, PlotWindow* window){
+      frame_ = frame;
+      window_ = window;
+    }
+
+    bool ready(){
+      return ready_;
+    }
 
     template<class T>
     T get(VarId varId, size_t index){
@@ -1451,7 +1492,17 @@ namespace{
     }
 
     void addAxis(uint32_t dim, const string& label){
-      elements_.push_back(new Axis(dim, label)); 
+      elements_.push_back(new Axis(dim, label));
+      switch(dim){
+      case 1:
+        hasXLabel_ = !label.empty();
+        break;
+      case 2:
+        hasYLabel_ = !label.empty();
+        break;
+      default:
+        assert(false && "invalid axis dim");
+      }
     }
 
     void finalize(){
@@ -1488,9 +1539,20 @@ namespace{
       double width = frame.width();
       double height = frame.height();
 
-      origin_.setX(LEFT_MARGIN);
-      origin_.setY(height - BOTTOM_MARGIN);
-  
+      if(hasYLabel_){
+        origin_.setX(LEFT_MARGIN + 15);
+      }
+      else{
+        origin_.setX(LEFT_MARGIN);
+      }
+
+      if(hasXLabel_){
+        origin_.setY(height - BOTTOM_MARGIN - 15);
+      }
+      else{
+        origin_.setY(height - BOTTOM_MARGIN - 15);
+      }
+
       xLen_ = width - LEFT_MARGIN - RIGHT_MARGIN;
       yLen_ = height - TOP_MARGIN - BOTTOM_MARGIN;
 
@@ -1953,7 +2015,7 @@ namespace{
     typedef vector<Element*> ElementVec_;
 
     bool ready_;
-    uint32_t plotId_;
+    uint64_t plotId_;
     Frame* frame_;
     Frame* plotFrame_;
     PlotWindow* window_;
@@ -1965,6 +2027,8 @@ namespace{
     QPointF origin_;
     QPointF xEnd_;
     QPointF yEnd_;
+    bool hasXLabel_;
+    bool hasYLabel_;
   };
 
 } // end namespace
@@ -2025,10 +2089,36 @@ extern "C"{
     return static_cast<Plot*>(plot)->get<double>(varId, index);
   }
 
-  void* __scrt_plot_init(uint32_t plotId, void* frame, void* window){
-    return new Plot(plotId,
-                    static_cast<Frame*>(frame),
-                    static_cast<PlotWindow*>(window));
+  void* __scrt_plot_get(uint64_t plotId){
+    _mutex.lock();
+    
+    if(!_global){
+      _global = new Global;
+    }
+    
+    Plot* plot = _global->getPlot(plotId);
+    
+    if(plot){
+      _mutex.unlock();
+      return plot;
+    }
+    else{
+      plot = new Plot(plotId);
+      _global->putPlot(plotId, plot);
+    }
+
+    _mutex.unlock();
+    
+    return plot;
+  }
+
+  void __scrt_plot_init(void* plot, void* frame, void* window){
+    return static_cast<Plot*>(plot)->init(static_cast<Frame*>(frame),
+                                          static_cast<PlotWindow*>(window));
+  }
+
+  bool __scrt_plot_ready(void* plot){
+    return static_cast<Plot*>(plot)->ready();
   }
 
   void __scrt_plot_add_var_i32(void* plot,
