@@ -10,6 +10,7 @@ static const size_t SIZE = 10;
 struct MyMesh{
   float* a;
   float* b;
+  float* c;
   uint32_t width;
   uint32_t height;
   uint32_t depth;
@@ -31,7 +32,7 @@ void MyTask(MyMesh* m){
   }
 
   for(size_t i = 0 ; i < m->xsize; ++i){
-    m->b[i] = 17;
+    m->c[i] = 2+(i + m->xstart);
   }
 }
 
@@ -45,7 +46,7 @@ void MyTask2(MyMesh* m){
  
   for(int i = 0; i < m->xsize; ++i){
     assert(m->a[i] == i + m->xstart);
-    assert(m->b[i] == 17);
+    assert(m->c[i] == 2+(i + m->xstart));
   }
 }
 
@@ -80,7 +81,7 @@ void LegionTaskInitFunction(int task_id, legion_privilege_mode_t* mode,
     sclegion_uniform_mesh_create_launcher(mesh, task_id);
 
   sclegion_uniform_mesh_launcher_add_field(launcher, "a", mode[0]);
-  sclegion_uniform_mesh_launcher_add_field(launcher, "b", mode[1]);
+  sclegion_uniform_mesh_launcher_add_field(launcher, "c", mode[1]);
 
   sclegion_uniform_mesh_launcher_execute(context, runtime, launcher);
 }
@@ -96,6 +97,7 @@ void main_task(const legion_task_t task,
 
   sclegion_uniform_mesh_add_field(mesh, "a", SCLEGION_CELL, SCLEGION_FLOAT);
   sclegion_uniform_mesh_add_field(mesh, "b", SCLEGION_CELL, SCLEGION_FLOAT);
+  sclegion_uniform_mesh_add_field(mesh, "c", SCLEGION_CELL, SCLEGION_FLOAT);
 
   sclegion_uniform_mesh_init(mesh);
 
