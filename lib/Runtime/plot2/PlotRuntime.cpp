@@ -276,6 +276,10 @@ namespace{
     virtual void compute(void* plot, uint64_t index){};
 
     virtual size_t size() const = 0;
+    
+    virtual bool isConst() const{
+      return false;
+    }
   };
 
   template<class T>
@@ -653,6 +657,10 @@ namespace{
       value_ = v;
     }
 
+    bool isConst() const{
+      return true;
+    }
+
   private:
     T value_;
   };
@@ -685,6 +693,10 @@ namespace{
 
     size_t size() const{
       return 0;
+    }
+
+    bool isConst() const{
+      return true;
     }
 
   private:
@@ -1531,6 +1543,14 @@ namespace{
       first_ = false;
     }
 
+    double toX(double dx){
+      return origin_.x() + ((dx - xMin_)/xSpan_) * xLen_;
+    }
+
+    double toY(double dy){
+      return origin_.y() - ((dy - yMin_)/ySpan_) * yLen_;
+    }
+
     void render(){
       if(first_){
         prepare();
@@ -1547,10 +1567,10 @@ namespace{
       QPainter painter(widget_);
       painter.setRenderHint(QPainter::Antialiasing, true);
 
-      double xMin = MAX;
-      double xMax = MIN;
-      double yMin = MAX;
-      double yMax = MIN;
+      xMin_ = MAX;
+      xMax_ = MIN;
+      yMin_ = MAX;
+      yMax_ = MIN;
 
       for(Element* e : elements_){
         if(Bins* b = dynamic_cast<Bins*>(e)){
@@ -1641,65 +1661,65 @@ namespace{
           VarBase* x = getVar(r->getX());
           VarBase* y = getVar(r->getY());
 
-          if(x->min() < xMin){
-            xMin = x->min();
+          if(x->min() < xMin_){
+            xMin_ = x->min();
           }
 
-          if(x->max() > xMax){
-            xMax = x->max();
+          if(x->max() > xMax_){
+            xMax_ = x->max();
           }
 
-          if(y->min() < yMin){
-            yMin = y->min();
+          if(y->min() < yMin_){
+            yMin_ = y->min();
           }
 
-          if(y->max() > yMax){
-            yMax = y->max();
+          if(y->max() > yMax_){
+            yMax_ = y->max();
           }
           else if(Line* l = dynamic_cast<Line*>(e)){
             VarBase* x1 = getVar(l->x1);
             VarBase* y1 = getVar(l->y1);
 
-            if(x1->min() < xMin){
-              xMin = x1->min();
+            if(x1->min() < xMin_){
+              xMin_ = x1->min();
             }
 
-            if(x1->max() > xMax){
-              xMax = x1->max();
+            if(x1->max() > xMax_){
+              xMax_ = x1->max();
             }
 
-            if(y1->min() < yMin){
-              yMin = y1->min();
+            if(y1->min() < yMin_){
+              yMin_ = y1->min();
             }
 
-            if(y1->max() > yMax){
-              yMax = y1->max();
+            if(y1->max() > yMax_){
+              yMax_ = y1->max();
             }
 
             VarBase* x2 = getVar(l->x2);
             VarBase* y2 = getVar(l->y2);
 
-            if(x2->min() < xMin){
-              xMin = x2->min();
+            if(x2->min() < xMin_){
+              xMin_ = x2->min();
             }
 
-            if(x2->max() > xMax){
-              xMax = x2->max();
+            if(x2->max() > xMax_){
+              xMax_ = x2->max();
             }
 
-            if(y2->min() < yMin){
-              yMin = y2->min();
+            if(y2->min() < yMin_){
+              yMin_ = y2->min();
             }
 
-            if(y2->max() > yMax){
-              yMax = y2->max();
+            if(y2->max() > yMax_){
+              yMax_ = y2->max();
             }
           }
         }
       }
 
-      double xSpan = xMax - xMin;
-      double ySpan = yMax - yMin;
+      xSpan_ = xMax_ - xMin_;
+      ySpan_ = yMax_ - yMin_;
       
       for(Element* e : elements_){
         if(Axis* a = dynamic_cast<Axis*>(e)){
@@ -1717,7 +1737,7 @@ namespace{
               xc = origin_.x() + double(i)/frameSize * xLen_;
 
               drawText(painter,
-                       toLabel(xMin + (double(i)/frameSize)*xSpan),
+                       toLabel(xMin_ + (double(i)/frameSize)*xSpan_),
                        QPointF(xc, origin_.y() + 3));
             }
             
@@ -1746,12 +1766,12 @@ namespace{
             double yc;
             double yv;
             for(size_t i = 0; i <= frameSize; i += inc){
-              yv = yMin + ySpan * double(i)/frameSize;
+              yv = yMin_ + ySpan_ * double(i)/frameSize;
               yc = origin_.y() - double(i)/frameSize * yLen_;
 
               drawText(painter,
                        toLabel(yv),
-                       QPointF(LEFT_MARGIN - 5, yc), true);
+                       QPointF(origin_.x() - 5, yc), true);
             }
 
             inc = frameSize / Y_TICKS;
@@ -1763,8 +1783,8 @@ namespace{
             for(size_t i = 0; i < frameSize; i += inc){
               yc = origin_.y() - double(i)/frameSize * yLen_;
 
-              painter.drawLine(QPointF(LEFT_MARGIN - 3, yc),
-                               QPointF(LEFT_MARGIN + 3, yc));
+              painter.drawLine(QPointF(origin_.x() - 3, yc),
+                               QPointF(origin_.x() + 3, yc));
             }
           }
           else{
@@ -1786,21 +1806,39 @@ namespace{
           QPointF point;
           QPen pen;
 
-          for(size_t i = 0; i < size; ++i){
-            point.setX(origin_.x() + ((x->get(i) - xMin)/xSpan) * xLen_);
-            point.setY(origin_.y() - ((y->get(i) - yMin)/ySpan) * yLen_);
+          lastPoint.setX(toX(x->get(0)));
+          lastPoint.setY(toY(y->get(0)));
 
-            pen.setWidthF(s->get(i));
+          if(s->isConst() && c->isConst()){
+            pen.setWidthF(s->get(0));
 
-            if(i > 0){
+            DoubleVec cv;
+            c->getVec(0, cv);
+            pen.setColor(toQColor(cv));
+            painter.setPen(pen);
+
+            for(size_t i = 1; i < size; ++i){
+              point.setX(toX(x->get(i)));
+              point.setY(toY(y->get(i)));
+              painter.drawLine(point, lastPoint);
+              lastPoint = point;
+            }
+          }
+          else{
+            for(size_t i = 1; i < size; ++i){
+              point.setX(toX(x->get(i)));
+              point.setY(toY(y->get(i)));
+
+              pen.setWidthF(s->get(i));
+
               DoubleVec cv;
               c->getVec(i, cv);
               pen.setColor(toQColor(cv));
               painter.setPen(pen);
               painter.drawLine(point, lastPoint);
+            
+              lastPoint = point;
             }
-
-            lastPoint = point;
           }
         }
         else if(Line* l = dynamic_cast<Line*>(e)){
@@ -1822,11 +1860,11 @@ namespace{
           QPen pen;
 
           for(size_t i = 0; i < size; ++i){
-            p1.setX(origin_.x() + ((x1->get(i) - xMin)/xSpan) * xLen_);
-            p1.setY(origin_.y() - ((y1->get(i) - yMin)/ySpan) * yLen_);
+            p1.setX(toX(x1->get(i)));
+            p1.setY(toY(y1->get(i)));
 
-            p2.setX(origin_.x() + ((x2->get(i) - xMin)/xSpan) * xLen_);
-            p2.setY(origin_.y() - ((y2->get(i) - yMin)/ySpan) * yLen_);
+            p2.setX(toX(x2->get(i)));
+            p2.setY(toY(y2->get(i)));
 
             pen.setWidthF(s->get(i));
 
@@ -1850,11 +1888,34 @@ namespace{
           QPointF lastPoint;
           QPointF point;
 
-          for(size_t i = 0; i < size; ++i){
-            point.setX(origin_.x() + ((x->get(i) - xMin)/xSpan) * xLen_);
-            point.setY(origin_.y() - ((y->get(i) - yMin)/ySpan) * yLen_);
+          lastPoint.setX(toX(x->get(0)));
+          lastPoint.setY(toY(y->get(0)));
 
-            if(i > 0){
+          if(c->isConst()){
+            DoubleVec cv;
+            c->getVec(0, cv);
+            QBrush brush(toQColor(cv));
+            painter.setBrush(brush);
+
+            for(size_t i = 1; i < size; ++i){
+              point.setX(toX(x->get(i)));
+              point.setY(toY(y->get(i)));
+
+              QPolygonF poly;
+              poly << lastPoint << point << 
+                QPointF(point.x(), origin_.y()) << 
+                QPointF(lastPoint.x(), origin_.y());
+      
+              painter.drawPolygon(poly);
+
+              lastPoint = point;
+            }
+          }
+          else{
+            for(size_t i = 1; i < size; ++i){
+              point.setX(toX(x->get(i)));
+              point.setY(toY(y->get(i)));
+
               DoubleVec cv;
               c->getVec(i, cv);
               QBrush brush(toQColor(cv));
@@ -1866,9 +1927,9 @@ namespace{
                 QPointF(lastPoint.x(), origin_.y());
       
               painter.drawPolygon(poly);
-            }
 
-            lastPoint = point;
+              lastPoint = point;
+            }
           }
         }
         else if(Points* p = dynamic_cast<Points*>(e)){
@@ -1884,16 +1945,35 @@ namespace{
           QPen noPen(Qt::NoPen);
           painter.setPen(noPen);
 
-          for(size_t i = 0; i < size; ++i){
-            point.setX(origin_.x() + ((x->get(i) - xMin)/xSpan) * xLen_);
-            point.setY(origin_.y() - ((y->get(i) - yMin)/ySpan) * yLen_);
-
+          if(s->isConst() && c->isConst()){
             DoubleVec cv;
-            c->getVec(i, cv);
-
+            c->getVec(0, cv);
+            
             QBrush brush(toQColor(cv));
             painter.setBrush(brush);
-            painter.drawEllipse(point, s->get(i), s->get(i));
+
+            double ps = s->get(0);
+
+            for(size_t i = 0; i < size; ++i){
+              point.setX(toX(x->get(i)));
+              point.setY(toY(y->get(i)));
+              painter.drawEllipse(point, ps, ps);
+            }            
+          }
+          else{
+            for(size_t i = 0; i < size; ++i){
+              point.setX(toX(x->get(i)));
+              point.setY(toY(y->get(i)));
+
+              DoubleVec cv;
+              c->getVec(i, cv);
+
+              QBrush brush(toQColor(cv));
+              painter.setBrush(brush);
+          
+              double size = s->get(i);
+              painter.drawEllipse(point, size, size);
+            }
           }
         }
         else if(Interval* i = dynamic_cast<Interval*>(e)){
@@ -1946,7 +2026,7 @@ namespace{
 
           double side = min(xEnd_.x() - origin_.x(), origin_.y() - yEnd_.y());
 
-          QRectF rect(LEFT_MARGIN, TOP_MARGIN, side, side);
+          QRectF rect(origin_.x(), yEnd_.y(), side, side);
           
           Random rng;
 
@@ -1999,6 +2079,12 @@ namespace{
     QPointF yEnd_;
     bool hasXLabel_;
     bool hasYLabel_;
+    double xMin_;
+    double xMax_;
+    double xSpan_;
+    double yMin_;
+    double yMax_;
+    double ySpan_;
   };
 
 } // end namespace
