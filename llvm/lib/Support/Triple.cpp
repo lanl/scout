@@ -37,6 +37,7 @@ const char *Triple::getArchTypeName(ArchType Kind) {
   case amdgcn:      return "amdgcn";
   case sparc:       return "sparc";
   case sparcv9:     return "sparcv9";
+  case sparcel:     return "sparcel";
   case systemz:     return "s390x";
   case tce:         return "tce";
   case thumb:       return "thumb";
@@ -90,6 +91,7 @@ const char *Triple::getArchTypePrefix(ArchType Kind) {
   case bpf:         return "bpf";
 
   case sparcv9:
+  case sparcel:
   case sparc:       return "sparc";
 
   case systemz:     return "s390";
@@ -210,6 +212,7 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     .Case("amdgcn", amdgcn)
     .Case("hexagon", hexagon)
     .Case("sparc", sparc)
+    .Case("sparcel", sparcel)
     .Case("sparcv9", sparcv9)
     .Case("systemz", systemz)
     .Case("tce", tce)
@@ -276,9 +279,10 @@ static Triple::ArchType parseARMArch(StringRef ArchName) {
     .Cases("v3", "v3m", isThumb ? Triple::UnknownArch : arch)
     .Cases("v4", "v4t", arch)
     .Cases("v5", "v5e", "v5t", "v5te", "v5tej", arch)
-    .Cases("v6", "v6j", "v6k", "v6m", "v6sm", arch)
+    .Cases("v6", "v6hl", "v6j", "v6k", arch)
+    .Cases("v6m", "v6sm", arch)
     .Cases("v6t2", "v6z", "v6zk", arch)
-    .Cases("v7", "v7a", "v7em", "v7l", arch)
+    .Cases("v7", "v7a", "v7em", "v7hl", "v7l", arch)
     .Cases("v7m", "v7r", "v7s", arch)
     .Cases("v8", "v8a", arch)
     .Cases("v8.1", "v8.1a", arch)
@@ -312,6 +316,7 @@ static Triple::ArchType parseArch(StringRef ArchName) {
     .Case("hexagon", Triple::hexagon)
     .Case("s390x", Triple::systemz)
     .Case("sparc", Triple::sparc)
+    .Case("sparcel", Triple::sparcel)
     .Cases("sparcv9", "sparc64", Triple::sparcv9)
     .Case("tce", Triple::tce)
     .Case("xcore", Triple::xcore)
@@ -918,6 +923,7 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   case llvm::Triple::ppc:
   case llvm::Triple::r600:
   case llvm::Triple::sparc:
+  case llvm::Triple::sparcel:
   case llvm::Triple::tce:
   case llvm::Triple::thumb:
   case llvm::Triple::thumbeb:
@@ -990,6 +996,7 @@ Triple Triple::get32BitArchVariant() const {
   case Triple::ppc:
   case Triple::r600:
   case Triple::sparc:
+  case Triple::sparcel:
   case Triple::tce:
   case Triple::thumb:
   case Triple::thumbeb:
@@ -1026,6 +1033,7 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::thumb:
   case Triple::thumbeb:
   case Triple::xcore:
+  case Triple::sparcel:
     T.setArch(UnknownArch);
     break;
 
