@@ -75,9 +75,10 @@ public:
 /// - Variables that are described by multiple MMI table entries have multiple
 ///   expressions and frame indices.
 class DbgVariable {
-  DIVariable Var;                    /// Variable Descriptor.
-  DILocation IA;                     /// Inlined at location.
-  SmallVector<DIExpression, 1> Expr; /// Complex address location expression.
+  const DILocalVariable *Var; /// Variable Descriptor.
+  const DILocation *IA;       /// Inlined at location.
+  SmallVector<const DIExpression *, 1>
+      Expr;                          /// Complex address location expression.
   DIE *TheDIE;                /// Variable DIE.
   unsigned DebugLocListIndex;        /// Offset in DebugLocs.
   const MachineInstr *MInsn;  /// DBG_VALUE instruction of the variable.
@@ -85,9 +86,9 @@ class DbgVariable {
   DwarfDebug *DD;
 
 public:
-  /// Construct a DbgVariable from a DIVariable.
-  DbgVariable(DIVariable V, DILocation IA, DIExpression E, DwarfDebug *DD,
-              int FI = ~0)
+  /// Construct a DbgVariable from a variable.
+  DbgVariable(const DILocalVariable *V, const DILocation *IA,
+              const DIExpression *E, DwarfDebug *DD, int FI = ~0)
       : Var(V), IA(IA), Expr(1, E), TheDIE(nullptr), DebugLocListIndex(~0U),
         MInsn(nullptr), DD(DD) {
     FrameIndex.push_back(FI);
@@ -105,9 +106,9 @@ public:
   }
 
   // Accessors.
-  DIVariable getVariable() const { return Var; }
-  DILocation getInlinedAt() const { return IA; }
-  const ArrayRef<DIExpression> getExpression() const { return Expr; }
+  const DILocalVariable *getVariable() const { return Var; }
+  const DILocation *getInlinedAt() const { return IA; }
+  const ArrayRef<const DIExpression *> getExpression() const { return Expr; }
   void setDIE(DIE &D) { TheDIE = &D; }
   DIE *getDIE() const { return TheDIE; }
   void setDebugLocListIndex(unsigned O) { DebugLocListIndex = O; }
@@ -119,7 +120,7 @@ public:
   void addMMIEntry(const DbgVariable &V) {
     assert(DebugLocListIndex == ~0U && !MInsn && "not an MMI entry");
     assert(V.DebugLocListIndex == ~0U && !V.MInsn && "not an MMI entry");
-    assert(V.Var == Var && "conflicting DIVariable");
+    assert(V.Var == Var && "conflicting variable");
     assert(V.IA == IA && "conflicting inlined-at location");
 
     if (V.getFrameIndex().back() != ~0) {
@@ -128,10 +129,11 @@ public:
       Expr.append(E.begin(), E.end());
       FrameIndex.append(FI.begin(), FI.end());
     }
-    assert(Expr.size() > 1
-               ? std::all_of(Expr.begin(), Expr.end(),
-                             [](DIExpression &E) { return E->isBitPiece(); })
-               : (true && "conflicting locations for variable"));
+    assert(Expr.size() > 1 ? std::all_of(Expr.begin(), Expr.end(),
+                                         [](const DIExpression *E) {
+                                           return E->isBitPiece();
+                                         })
+                           : (true && "conflicting locations for variable"));
   }
 
   // Translate tag to proper Dwarf tag.
@@ -165,12 +167,12 @@ public:
     return Expr.back()->getNumElements() > 0;
   }
   bool isBlockByrefVariable() const;
-  const MDType *getType() const;
+  const DIType *getType() const;
 
 private:
   /// resolve - Look in the DwarfDebug map for the MDNode that
   /// corresponds to the reference.
-  template <typename T> T *resolve(TypedDebugNodeRef<T> Ref) const;
+  template <typename T> T *resolve(TypedDINodeRef<T> Ref) const;
 };
 
 
@@ -269,7 +271,7 @@ class DwarfDebug : public AsmPrinterHandler {
   DenseMap<const MDNode *, const DwarfTypeUnit *> DwarfTypeUnits;
 
   SmallVector<
-      std::pair<std::unique_ptr<DwarfTypeUnit>, const MDCompositeType *>, 1>
+      std::pair<std::unique_ptr<DwarfTypeUnit>, const DICompositeType *>, 1>
       TypeUnitsUnderConstruction;
 
   // Whether to emit the pubnames/pubtypes sections.
@@ -322,7 +324,7 @@ class DwarfDebug : public AsmPrinterHandler {
   DwarfAccelTable AccelNamespace;
   DwarfAccelTable AccelTypes;
 
-  DenseMap<const Function *, MDSubprogram *> FunctionDIs;
+  DenseMap<const Function *, DISubprogram *> FunctionDIs;
 
   MCDwarfDwoLineTable *getDwoLineTable(const DwarfCompileUnit &);
 
@@ -334,9 +336,9 @@ class DwarfDebug : public AsmPrinterHandler {
 
   /// \brief Find abstract variable associated with Var.
   DbgVariable *getExistingAbstractVariable(InlinedVariable IV,
-                                           DIVariable &Cleansed);
+                                           const DILocalVariable *&Cleansed);
   DbgVariable *getExistingAbstractVariable(InlinedVariable IV);
-  void createAbstractVariable(const DIVariable &DV, LexicalScope *Scope);
+  void createAbstractVariable(const DILocalVariable *DV, LexicalScope *Scope);
   void ensureAbstractVariableIsCreated(InlinedVariable Var,
                                        const MDNode *Scope);
   void ensureAbstractVariableIsCreatedIfScoped(InlinedVariable Var,
@@ -451,11 +453,11 @@ class DwarfDebug : public AsmPrinterHandler {
 
   /// \brief Create new DwarfCompileUnit for the given metadata node with tag
   /// DW_TAG_compile_unit.
-  DwarfCompileUnit &constructDwarfCompileUnit(const MDCompileUnit *DIUnit);
+  DwarfCompileUnit &constructDwarfCompileUnit(const DICompileUnit *DIUnit);
 
   /// \brief Construct imported_module or imported_declaration DIE.
   void constructAndAddImportedEntityDIE(DwarfCompileUnit &TheCU,
-                                        const MDNode *N);
+                                        const DIImportedEntity *N);
 
   /// \brief Register a source line with debug info. Returns the unique
   /// label that was emitted and which provides correspondence to the
@@ -468,7 +470,7 @@ class DwarfDebug : public AsmPrinterHandler {
   void identifyScopeMarkers();
 
   /// \brief Populate LexicalScope entries with variables' info.
-  void collectVariableInfo(DwarfCompileUnit &TheCU, const MDSubprogram *SP,
+  void collectVariableInfo(DwarfCompileUnit &TheCU, const DISubprogram *SP,
                            DenseSet<InlinedVariable> &ProcessedVars);
 
   /// \brief Build the location list for all DBG_VALUEs in the
@@ -520,7 +522,7 @@ public:
   /// \brief Add a DIE to the set of types that we're going to pull into
   /// type units.
   void addDwarfTypeUnitType(DwarfCompileUnit &CU, StringRef Identifier,
-                            DIE &Die, const MDCompositeType *CTy);
+                            DIE &Die, const DICompositeType *CTy);
 
   /// \brief Add a label so that arange data can be generated for it.
   void addArangeLabel(SymbolCU SCU) { ArangeLabels.push_back(SCU); }
@@ -564,7 +566,7 @@ public:
   void emitDebugLocEntryLocation(const DebugLocStream::Entry &Entry);
 
   /// Find the MDNode for the given reference.
-  template <typename T> T *resolve(TypedDebugNodeRef<T> Ref) const {
+  template <typename T> T *resolve(TypedDINodeRef<T> Ref) const {
     return Ref.resolve(TypeIdentifierMap);
   }
 
@@ -581,7 +583,7 @@ public:
   /// or another context nested inside a subprogram.
   bool isSubprogramContext(const MDNode *Context);
 
-  void addSubprogramNames(const MDSubprogram *SP, DIE &Die);
+  void addSubprogramNames(const DISubprogram *SP, DIE &Die);
 
   AddressPool &getAddressPool() { return AddrPool; }
 
