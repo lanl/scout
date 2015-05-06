@@ -1467,6 +1467,11 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
         // normalized.
         if (SO1->getType() != GO1->getType())
           return nullptr;
+        // Only do the combine when GO1 and SO1 are both constants. Only in
+        // this case, we are sure the cost after the merge is never more than
+        // that before the merge.
+        if (!isa<Constant>(GO1) || !isa<Constant>(SO1))
+          return nullptr;
         Sum = Builder->CreateAdd(SO1, GO1, PtrOp->getName()+".sum");
       }
 
@@ -1597,6 +1602,7 @@ Instruction *InstCombiner::visitGetElementPtrInst(GetElementPtrInst &GEP) {
             // is a leading zero) we can fold the cast into this GEP.
             if (StrippedPtrTy->getAddressSpace() == GEP.getAddressSpace()) {
               GEP.setOperand(0, StrippedPtr);
+              GEP.setSourceElementType(XATy);
               return &GEP;
             }
             // Cannot replace the base pointer directly because StrippedPtr's

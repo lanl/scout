@@ -81,7 +81,7 @@ static std::string computeDataLayout(const Triple &TT) {
 
   // The stack is aligned to 32 bits on some ABIs and 128 bits on others.
   if (!TT.isArch64Bit() && TT.isOSWindows())
-    Ret += "-S32";
+    Ret += "-a:0:32-S32";
   else
     Ret += "-S128";
 
@@ -185,6 +185,7 @@ public:
   void addIRPasses() override;
   bool addInstSelector() override;
   bool addILPOpts() override;
+  bool addPreISel() override;
   void addPreRegAlloc() override;
   void addPostRegAlloc() override;
   void addPreEmitPass() override;
@@ -217,6 +218,14 @@ bool X86PassConfig::addInstSelector() {
 
 bool X86PassConfig::addILPOpts() {
   addPass(&EarlyIfConverterID);
+  return true;
+}
+
+bool X86PassConfig::addPreISel() {
+  // Only add this pass for 32-bit x86.
+  Triple TT(TM->getTargetTriple());
+  if (TT.getArch() == Triple::x86)
+    addPass(createX86WinEHStatePass());
   return true;
 }
 

@@ -5791,6 +5791,16 @@ ExprResult Sema::BuildCXXMemberCallExpr(Expr *E, NamedDecl *FoundDecl,
 
 ExprResult Sema::BuildCXXNoexceptExpr(SourceLocation KeyLoc, Expr *Operand,
                                       SourceLocation RParen) {
+  // If the operand is an unresolved lookup expression, the expression is ill-
+  // formed per [over.over]p1, because overloaded function names cannot be used
+  // without arguments except in explicit contexts.
+  ExprResult R = CheckPlaceholderExpr(Operand);
+  if (R.isInvalid())
+    return R;
+
+  // The operand may have been modified when checking the placeholder type.
+  Operand = R.get();
+
   if (ActiveTemplateInstantiations.empty() &&
       Operand->HasSideEffects(Context, false)) {
     // The expression operand for noexcept is in an unevaluated expression
@@ -6128,6 +6138,8 @@ public:
 class TransformTypos : public TreeTransform<TransformTypos> {
   typedef TreeTransform<TransformTypos> BaseTransform;
 
+  VarDecl *InitDecl; // A decl to avoid as a correction because it is in the
+                     // process of being initialized.
   llvm::function_ref<ExprResult(Expr *)> ExprFilter;
   llvm::SmallSetVector<TypoExpr *, 2> TypoExprs, AmbiguousTypoExprs;
   llvm::SmallDenseMap<TypoExpr *, ExprResult, 2> TransformCache;
@@ -6206,8 +6218,8 @@ class TransformTypos : public TreeTransform<TransformTypos> {
   }
 
 public:
-  TransformTypos(Sema &SemaRef, llvm::function_ref<ExprResult(Expr *)> Filter)
-      : BaseTransform(SemaRef), ExprFilter(Filter) {}
+  TransformTypos(Sema &SemaRef, VarDecl *InitDecl, llvm::function_ref<ExprResult(Expr *)> Filter)
+      : BaseTransform(SemaRef), InitDecl(InitDecl), ExprFilter(Filter) {}
 
   ExprResult RebuildCallExpr(Expr *Callee, SourceLocation LParenLoc,
                                    MultiExprArg Args,
@@ -6286,6 +6298,8 @@ public:
     // For the first TypoExpr and an uncached TypoExpr, find the next likely
     // typo correction and return it.
     while (TypoCorrection TC = State.Consumer->getNextCorrection()) {
+      if (InitDecl && TC.getCorrectionDecl() == InitDecl)
+        continue;
       ExprResult NE = State.RecoveryHandler ?
           State.RecoveryHandler(SemaRef, E, TC) :
           attemptRecovery(SemaRef, *State.Consumer, TC);
@@ -6310,8 +6324,9 @@ public:
 };
 }
 
-ExprResult Sema::CorrectDelayedTyposInExpr(
-    Expr *E, llvm::function_ref<ExprResult(Expr *)> Filter) {
+ExprResult
+Sema::CorrectDelayedTyposInExpr(Expr *E, VarDecl *InitDecl,
+                                llvm::function_ref<ExprResult(Expr *)> Filter) {
   // If the current evaluation context indicates there are uncorrected typos
   // and the current expression isn't guaranteed to not have typos, try to
   // resolve any TypoExpr nodes that might be in the expression.
@@ -6322,7 +6337,7 @@ ExprResult Sema::CorrectDelayedTyposInExpr(
     assert(TyposInContext < ~0U && "Recursive call of CorrectDelayedTyposInExpr");
     ExprEvalContexts.back().NumTypos = ~0U;
     auto TyposResolved = DelayedTypos.size();
-    auto Result = TransformTypos(*this, Filter).Transform(E);
+    auto Result = TransformTypos(*this, InitDecl, Filter).Transform(E);
     ExprEvalContexts.back().NumTypos = TyposInContext;
     TyposResolved -= DelayedTypos.size();
     if (Result.isInvalid() || Result.get() != E) {

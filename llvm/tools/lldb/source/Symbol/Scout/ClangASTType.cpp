@@ -198,19 +198,19 @@ ClangASTType::AddFieldToMeshType (const char *name,
       VerifyDecl(field);
 #endif
 
-      if(field_flags & llvm::MDScoutDerivedType::FlagMeshFieldCellLocated){
+      if(field_flags & llvm::DIScoutDerivedType::FlagMeshFieldCellLocated){
         field->setCellLocated(true);
         mesh_decl->setHasCellData(true);
       }
-      else if(field_flags & llvm::MDScoutDerivedType::FlagMeshFieldVertexLocated){
+      else if(field_flags & llvm::DIScoutDerivedType::FlagMeshFieldVertexLocated){
         field->setVertexLocated(true);
         mesh_decl->setHasVertexData(true);
       }
-      else if(field_flags & llvm::MDScoutDerivedType::FlagMeshFieldEdgeLocated){
+      else if(field_flags & llvm::DIScoutDerivedType::FlagMeshFieldEdgeLocated){
         field->setEdgeLocated(true);
         mesh_decl->setHasEdgeData(true);
       }
-      else if(field_flags & llvm::MDScoutDerivedType::FlagMeshFieldFaceLocated){
+      else if(field_flags & llvm::DIScoutDerivedType::FlagMeshFieldFaceLocated){
         field->setFaceLocated(true);
         mesh_decl->setHasFaceData(true);
       }

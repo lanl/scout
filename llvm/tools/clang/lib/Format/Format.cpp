@@ -174,6 +174,7 @@ template <> struct MappingTraits<FormatStyle> {
     IO.mapOptional("AlignEscapedNewlinesLeft", Style.AlignEscapedNewlinesLeft);
     IO.mapOptional("AlignOperands", Style.AlignOperands);
     IO.mapOptional("AlignTrailingComments", Style.AlignTrailingComments);
+    IO.mapOptional("AlignConsecutiveAssignments", Style.AlignConsecutiveAssignments);
     IO.mapOptional("AllowAllParametersOfDeclarationOnNextLine",
                    Style.AllowAllParametersOfDeclarationOnNextLine);
     IO.mapOptional("AllowShortBlocksOnASingleLine",
@@ -329,6 +330,7 @@ FormatStyle getLLVMStyle() {
   LLVMStyle.AlignAfterOpenBracket = true;
   LLVMStyle.AlignOperands = true;
   LLVMStyle.AlignTrailingComments = true;
+  LLVMStyle.AlignConsecutiveAssignments = false;
   LLVMStyle.AllowAllParametersOfDeclarationOnNextLine = true;
   LLVMStyle.AllowShortFunctionsOnASingleLine = FormatStyle::SFS_All;
   LLVMStyle.AllowShortBlocksOnASingleLine = false;
@@ -780,7 +782,7 @@ private:
       return false;
 
     FormatToken *EndBacktick = Tokens.back();
-    // Backticks get lexed as tok:unknown tokens. If a template string contains
+    // Backticks get lexed as tok::unknown tokens. If a template string contains
     // a comment start, it gets lexed as a tok::comment, or tok::unknown if
     // unterminated.
     if (!EndBacktick->isOneOf(tok::comment, tok::unknown))
@@ -793,7 +795,8 @@ private:
 
     unsigned TokenCount = 0;
     bool IsMultiline = false;
-    unsigned EndColumnInFirstLine = 0;
+    unsigned EndColumnInFirstLine =
+        EndBacktick->OriginalColumn + EndBacktick->ColumnWidth;
     for (auto I = Tokens.rbegin() + 1, E = Tokens.rend(); I != E; I++) {
       ++TokenCount;
       if (I[0]->NewlinesBefore > 0 || I[0]->IsMultiline)
@@ -831,6 +834,15 @@ private:
       Tokens.back()->TokenText =
           StringRef(Tokens.back()->TokenText.data(),
                     EndOffset - Tokens.back()->TokenText.data());
+
+      unsigned EndOriginalColumn = EndBacktick->OriginalColumn;
+      if (EndOriginalColumn == 0) {
+        SourceLocation Loc = EndBacktick->Tok.getLocation();
+        EndOriginalColumn = SourceMgr.getSpellingColumnNumber(Loc);
+      }
+      // If the ` is further down within the token (e.g. in a comment).
+      EndOriginalColumn += CommentBacktickPos;
+
       if (IsMultiline) {
         // ColumnWidth is from backtick to last token in line.
         // LastLineColumnWidth is 0 to backtick.
@@ -838,12 +850,12 @@ private:
         //     until here`;
         Tokens.back()->ColumnWidth =
             EndColumnInFirstLine - Tokens.back()->OriginalColumn;
-        Tokens.back()->LastLineColumnWidth = EndBacktick->OriginalColumn;
+        Tokens.back()->LastLineColumnWidth = EndOriginalColumn;
         Tokens.back()->IsMultiline = true;
       } else {
         // Token simply spans from start to end, +1 for the ` itself.
         Tokens.back()->ColumnWidth =
-            EndBacktick->OriginalColumn - Tokens.back()->OriginalColumn + 1;
+            EndOriginalColumn - Tokens.back()->OriginalColumn + 1;
       }
       return true;
     }
@@ -988,18 +1000,25 @@ private:
     // Consume and record whitespace until we find a significant token.
     unsigned WhitespaceLength = TrailingWhitespace;
     while (FormatTok->Tok.is(tok::unknown)) {
+      StringRef Text = FormatTok->TokenText;
+      auto EscapesNewline = [&](int pos) {
+        // A '\r' here is just part of '\r\n'. Skip it.
+        if (pos >= 0 && Text[pos] == '\r')
+          --pos;
+        // See whether there is an odd number of '\' before this.
+        unsigned count = 0;
+        for (; pos >= 0; --pos, ++count)
+          if (Text[count] != '\\')
+            break;
+        return count & 1;
+      };
       // FIXME: This miscounts tok:unknown tokens that are not just
       // whitespace, e.g. a '`' character.
-      for (int i = 0, e = FormatTok->TokenText.size(); i != e; ++i) {
-        switch (FormatTok->TokenText[i]) {
+      for (int i = 0, e = Text.size(); i != e; ++i) {
+        switch (Text[i]) {
         case '\n':
           ++FormatTok->NewlinesBefore;
-          // FIXME: This is technically incorrect, as it could also
-          // be a literal backslash at the end of the line.
-          if (i == 0 || (FormatTok->TokenText[i - 1] != '\\' &&
-                         (FormatTok->TokenText[i - 1] != '\r' || i == 1 ||
-                          FormatTok->TokenText[i - 2] != '\\')))
-            FormatTok->HasUnescapedNewline = true;
+          FormatTok->HasUnescapedNewline = !EscapesNewline(i - 1);
           FormatTok->LastNewlineOffset = WhitespaceLength + i + 1;
           Column = 0;
           break;
@@ -1018,8 +1037,7 @@ private:
           Column += Style.TabWidth - Column % Style.TabWidth;
           break;
         case '\\':
-          if (i + 1 == e || (FormatTok->TokenText[i + 1] != '\r' &&
-                             FormatTok->TokenText[i + 1] != '\n'))
+          if (i + 1 == e || (Text[i + 1] != '\r' && Text[i + 1] != '\n'))
             FormatTok->Type = TT_ImplicitStringLiteral;
           break;
         default:
@@ -1044,6 +1062,7 @@ private:
            FormatTok->TokenText[1] == '\n') {
       ++FormatTok->NewlinesBefore;
       WhitespaceLength += 2;
+      FormatTok->LastNewlineOffset = 2;
       Column = 0;
       FormatTok->TokenText = FormatTok->TokenText.substr(2);
     }
@@ -1103,9 +1122,9 @@ private:
       Column = FormatTok->LastLineColumnWidth;
     }
 
-    FormatTok->IsForEachMacro =
-        std::binary_search(ForEachMacros.begin(), ForEachMacros.end(),
-                           FormatTok->Tok.getIdentifierInfo());
+    if (std::find(ForEachMacros.begin(), ForEachMacros.end(),
+                  FormatTok->Tok.getIdentifierInfo()) != ForEachMacros.end())
+      FormatTok->Type = TT_ForEachMacro;
 
     return FormatTok;
   }
@@ -1206,7 +1225,7 @@ public:
 
     UnwrappedLineParser Parser(Style, Tokens.getKeywords(), Tokens.lex(),
                                *this);
-    bool StructuralError = Parser.parse();
+    Parser.parse();
     assert(UnwrappedLines.rbegin()->empty());
     for (unsigned Run = 0, RunE = UnwrappedLines.size(); Run + 1 != RunE;
          ++Run) {
@@ -1215,8 +1234,7 @@ public:
       for (unsigned i = 0, e = UnwrappedLines[Run].size(); i != e; ++i) {
         AnnotatedLines.push_back(new AnnotatedLine(UnwrappedLines[Run][i]));
       }
-      tooling::Replacements RunResult =
-          format(AnnotatedLines, StructuralError, Tokens);
+      tooling::Replacements RunResult = format(AnnotatedLines, Tokens);
       DEBUG({
         llvm::dbgs() << "Replacements for run " << Run << ":\n";
         for (tooling::Replacements::iterator I = RunResult.begin(),
@@ -1235,7 +1253,7 @@ public:
   }
 
   tooling::Replacements format(SmallVectorImpl<AnnotatedLine *> &AnnotatedLines,
-                               bool StructuralError, FormatTokenLexer &Tokens) {
+                               FormatTokenLexer &Tokens) {
     TokenAnnotator Annotator(Style, Tokens.getKeywords());
     for (unsigned i = 0, e = AnnotatedLines.size(); i != e; ++i) {
       Annotator.annotate(*AnnotatedLines[i]);
@@ -1468,15 +1486,6 @@ private:
 };
 
 } // end anonymous namespace
-
-tooling::Replacements reformat(const FormatStyle &Style, Lexer &Lex,
-                               SourceManager &SourceMgr,
-                               ArrayRef<CharSourceRange> Ranges) {
-  if (Style.DisableFormat)
-    return tooling::Replacements();
-  return reformat(Style, SourceMgr,
-                  SourceMgr.getFileID(Lex.getSourceLocation()), Ranges);
-}
 
 tooling::Replacements reformat(const FormatStyle &Style,
                                SourceManager &SourceMgr, FileID ID,

@@ -61,7 +61,7 @@ entry:
   %.i8 = call i8* @llvm.framerecover(i8* bitcast (void ()* @"\01?f@@YAXXZ" to i8*), i8* %1, i32 1)
   %2 = bitcast i8* %.i8 to double*
   %3 = bitcast double* %2 to i8*
-  invoke void (...)* @llvm.donothing()
+  invoke void (...) @llvm.donothing()
           to label %done unwind label %lpad
 
 done:
@@ -70,6 +70,7 @@ done:
 lpad:                                             ; preds = %entry
   %4 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__CxxFrameHandler3 to i8*)
           cleanup
+  %recover = call i8* (...) @llvm.eh.actions()
   unreachable
 }
 

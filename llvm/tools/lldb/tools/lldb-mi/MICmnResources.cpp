@@ -64,6 +64,7 @@ const CMICmnResources::SRsrcTextData CMICmnResources::ms_pResourceId2TextData[] 
     {IDE_MI_APP_ARG_INTERPRETER, "--interpreter\n\t This option is kept for backward compatibility. This executable always run in MI mode"},
     {IDE_MI_APP_ARG_EXECUTEABLE, "--executable\n\tUse the MI Driver in MI mode for the debugging the specified executable." },
     {IDE_MI_APP_ARG_APP_LOG, "--log\n\tUse this argument to tell the MI Driver to update it's log\n\tfile '%s'."},
+    {IDE_MI_APP_ARG_APP_LOG_DIR, "--log-dir\n\tUse this argument to specify the directory the MI Driver\n\twill place the log file in, i.e --log-dir=/tmp." },
     {IDE_MI_APP_ARG_EXAMPLE, "Example MI command:\n\t3-info-gdb-mi-command gdb-set\n\t3^done,command={exists=\"true\"}"},
     {IDE_MI_APP_ARG_EXECUTABLE, "executable (NOT IMPLEMENTED)\n\tThe file path to the executable i.e. '\"C:\\My Dev\\foo.exe\"'."},
     {IDS_STDIN_ERR_INVALID_PROMPT, "Stdin. Invalid prompt description '%s'"},
@@ -235,6 +236,7 @@ const CMICmnResources::SRsrcTextData CMICmnResources::ms_pResourceId2TextData[] 
     {IDS_CMD_ERR_LLDB_ERR_READ_MEM_BYTES, "Command '%s'. Unable to read memory block of %u bytes at address 0x%016" PRIx64 ": %s "},
     {IDS_CMD_ERR_INVALID_PROCESS, "Command '%s'. Invalid process during debug session"},
     {IDS_CMD_ERR_INVALID_PRINT_VALUES, "Command '%s'. Unknown value for PRINT_VALUES: must be: 0 or \"--no-values\", 1 or \"--all-values\", 2 or \"--simple-values\""},
+    {IDS_CMD_ERR_INVALID_LOCATION_FORMAT, "Command '%s'. Invalid location format '%s'"},
     {IDS_CMD_ERR_INVALID_FORMAT_TYPE, "Command '%s'. Invalid var format type '%s'"},
     {IDS_CMD_ERR_BRKPT_INFO_OBJ_NOT_FOUND, "Command '%s'. Breakpoint information for breakpoint ID %d not found"},
     {IDS_CMD_ERR_LLDB_ERR_WRITE_MEM_BYTES, "Command '%s'. Unable to write memory block of %u bytes at address 0x%016" PRIx64 ": %s "},
@@ -243,7 +245,11 @@ const CMICmnResources::SRsrcTextData CMICmnResources::ms_pResourceId2TextData[] 
     {IDS_CMD_ERR_INFO_PRINTFN_NOT_FOUND, "The request '%s' was not recogised, not implemented"},
     {IDS_CMD_ERR_INFO_PRINTFN_FAILED, "The request '%s' failed."},
     {IDS_CMD_ERR_GDBSET_OPT_TARGETASYNC, "'target-async' expects \"on\" or \"off\""},
-    {IDS_CMD_ERR_GDBSET_OPT_SOLIBSEARCHPATH, "'solib-search-path' requires at least one argument"}};
+    {IDS_CMD_ERR_GDBSET_OPT_SOLIBSEARCHPATH, "'solib-search-path' requires at least one argument"},
+    {IDS_CMD_ERR_GDBSET_OPT_PRINT_BAD_ARGS, "'print' expects option-name and \"on\" or \"off\""},
+    {IDS_CMD_ERR_GDBSET_OPT_PRINT_UNKNOWN_OPTION, "'print' error. The option '%s' not found"},
+    {IDS_CMD_ERR_GDBSHOW_OPT_PRINT_BAD_ARGS, "'print' expects option-name and \"on\" or \"off\""},
+    {IDS_CMD_ERR_GDBSHOW_OPT_PRINT_UNKNOWN_OPTION, "'print' error. The option '%s' not found"}};
 
 //++ ------------------------------------------------------------------------------------
 // Details: CMICmnResources constructor.

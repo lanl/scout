@@ -170,8 +170,16 @@ llvm::Function* CGPlot2Runtime::FrameCaptureDoubleFunc(){
   return GetFunc("__scrt_frame_capture_double", {VoidPtrTy, Int32Ty, DoubleTy});
 }
 
+llvm::Function* CGPlot2Runtime::PlotGetFunc(){
+  return GetFunc("__scrt_plot_get", {Int64Ty}, VoidPtrTy);
+}
+
 llvm::Function* CGPlot2Runtime::PlotInitFunc(){
-  return GetFunc("__scrt_plot_init", {Int32Ty, VoidPtrTy, VoidPtrTy}, VoidPtrTy);
+  return GetFunc("__scrt_plot_init", {VoidPtrTy, VoidPtrTy, VoidPtrTy});
+}
+
+llvm::Function* CGPlot2Runtime::PlotReadyFunc(){
+  return GetFunc("__scrt_plot_ready", {VoidPtrTy}, Int1Ty);
 }
 
 llvm::Function* CGPlot2Runtime::PlotGetI32Func(){

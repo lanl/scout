@@ -80,6 +80,27 @@ static const MCSymbolRefExpr *getGlobalOffsetTable(MCContext &Context) {
                                  Context);
 }
 
+// MI loads the high part of a vector from memory.  Return an instruction
+// that uses replicating vector load Opcode to do the same thing.
+static MCInst lowerSubvectorLoad(const MachineInstr *MI, unsigned Opcode) {
+  return MCInstBuilder(Opcode)
+    .addReg(SystemZMC::getRegAsVR128(MI->getOperand(0).getReg()))
+    .addReg(MI->getOperand(1).getReg())
+    .addImm(MI->getOperand(2).getImm())
+    .addReg(MI->getOperand(3).getReg());
+}
+
+// MI stores the high part of a vector to memory.  Return an instruction
+// that uses elemental vector store Opcode to do the same thing.
+static MCInst lowerSubvectorStore(const MachineInstr *MI, unsigned Opcode) {
+  return MCInstBuilder(Opcode)
+    .addReg(SystemZMC::getRegAsVR128(MI->getOperand(0).getReg()))
+    .addReg(MI->getOperand(1).getReg())
+    .addImm(MI->getOperand(2).getImm())
+    .addReg(MI->getOperand(3).getReg())
+    .addImm(0);
+}
+
 void SystemZAsmPrinter::EmitInstruction(const MachineInstr *MI) {
   SystemZMCInstLower Lower(MF->getContext(), *this);
   MCInst LoweredMI;
@@ -151,6 +172,51 @@ void SystemZAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     LoweredMI = lowerRIEfLow(MI, SystemZ::RISBLG);
     break;
 
+  case SystemZ::VLVGP32:
+    LoweredMI = MCInstBuilder(SystemZ::VLVGP)
+      .addReg(MI->getOperand(0).getReg())
+      .addReg(SystemZMC::getRegAsGR64(MI->getOperand(1).getReg()))
+      .addReg(SystemZMC::getRegAsGR64(MI->getOperand(2).getReg()));
+    break;
+
+  case SystemZ::VLR32:
+  case SystemZ::VLR64:
+    LoweredMI = MCInstBuilder(SystemZ::VLR)
+      .addReg(SystemZMC::getRegAsVR128(MI->getOperand(0).getReg()))
+      .addReg(SystemZMC::getRegAsVR128(MI->getOperand(1).getReg()));
+    break;
+
+  case SystemZ::VL32:
+    LoweredMI = lowerSubvectorLoad(MI, SystemZ::VLREPF);
+    break;
+
+  case SystemZ::VL64:
+    LoweredMI = lowerSubvectorLoad(MI, SystemZ::VLREPG);
+    break;
+
+  case SystemZ::VST32:
+    LoweredMI = lowerSubvectorStore(MI, SystemZ::VSTEF);
+    break;
+
+  case SystemZ::VST64:
+    LoweredMI = lowerSubvectorStore(MI, SystemZ::VSTEG);
+    break;
+
+  case SystemZ::LFER:
+    LoweredMI = MCInstBuilder(SystemZ::VLGVF)
+      .addReg(SystemZMC::getRegAsGR64(MI->getOperand(0).getReg()))
+      .addReg(SystemZMC::getRegAsVR128(MI->getOperand(1).getReg()))
+      .addReg(0).addImm(0);
+    break;
+
+  case SystemZ::LEFR:
+    LoweredMI = MCInstBuilder(SystemZ::VLVGF)
+      .addReg(SystemZMC::getRegAsVR128(MI->getOperand(0).getReg()))
+      .addReg(SystemZMC::getRegAsVR128(MI->getOperand(0).getReg()))
+      .addReg(MI->getOperand(1).getReg())
+      .addReg(0).addImm(0);
+    break;
+
 #define LOWER_LOW(NAME)                                                 \
   case SystemZ::NAME##64: LoweredMI = lowerRILow(MI, SystemZ::NAME); break
 
@@ -198,7 +264,7 @@ void SystemZAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     Lower.lower(MI, LoweredMI);
     break;
   }
-  EmitToStreamer(OutStreamer, LoweredMI);
+  EmitToStreamer(*OutStreamer, LoweredMI);
 }
 
 // Convert a SystemZ-specific constant pool modifier into the associated
@@ -224,7 +290,7 @@ EmitMachineConstantPoolValue(MachineConstantPoolValue *MCPV) {
                             OutContext);
   uint64_t Size = TM.getDataLayout()->getTypeAllocSize(ZCPV->getType());
 
-  OutStreamer.EmitValue(Expr, Size);
+  OutStreamer->EmitValue(Expr, Size);
 }
 
 bool SystemZAsmPrinter::PrintAsmOperand(const MachineInstr *MI,

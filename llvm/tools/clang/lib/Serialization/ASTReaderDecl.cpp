@@ -499,7 +499,7 @@ void ASTDeclReader::VisitDecl(Decl *D) {
           
           // Note that this declaration was hidden because its owning module is 
           // not yet visible.
-          Reader.HiddenNamesMap[Owner].HiddenDecls.push_back(D);
+          Reader.HiddenNamesMap[Owner].push_back(D);
         }
       }
     }
@@ -1485,8 +1485,8 @@ void ASTDeclReader::MergeDefinitionData(
       else {
         auto SubmoduleID = MergeDD.Definition->getOwningModuleID();
         assert(SubmoduleID && "hidden definition in no module");
-        Reader.HiddenNamesMap[Reader.getSubmodule(SubmoduleID)]
-              .HiddenDecls.push_back(DD.Definition);
+        Reader.HiddenNamesMap[Reader.getSubmodule(SubmoduleID)].push_back(
+            DD.Definition);
       }
     }
   }
@@ -3914,7 +3914,7 @@ void ASTDeclReader::UpdateDecl(Decl *D, ModuleFile &ModuleFile,
       if (Owner && Owner->NameVisibility != Module::AllVisible) {
         // If Owner is made visible at some later point, make this declaration
         // visible too.
-        Reader.HiddenNamesMap[Owner].HiddenDecls.push_back(D);
+        Reader.HiddenNamesMap[Owner].push_back(D);
       } else {
         // The declaration is now visible.
         D->Hidden = false;

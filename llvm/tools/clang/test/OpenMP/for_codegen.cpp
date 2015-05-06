@@ -8,7 +8,11 @@
 #define HEADER
 
 // CHECK: [[IDENT_T_TY:%.+]] = type { i32, i32, i32, i32, i8* }
-// CHECK: [[IMPLICIT_BARRIER_LOC:@.+]] = private unnamed_addr constant %{{.+}} { i32 0, i32 66, i32 0, i32 0, i8*
+// CHECK-DAG: [[IMPLICIT_BARRIER_LOC:@.+]] = private unnamed_addr constant %{{.+}} { i32 0, i32 66, i32 0, i32 0, i8*
+// CHECK-DAG: [[I:@.+]] = global i8 1,
+// CHECK-DAG: [[J:@.+]] = global i8 2,
+// CHECK-DAG: [[K:@.+]] = global i8 3,
+
 // CHECK-LABEL: define {{.*void}} @{{.*}}without_schedule_clause{{.*}}(float* {{.+}}, float* {{.+}}, float* {{.+}}, float* {{.+}})
 void without_schedule_clause(float *a, float *b, float *c, float *d) {
 // CHECK: [[GTID:%.+]] = call i32 @__kmpc_global_thread_num([[IDENT_T_TY]]* [[DEFAULT_LOC:[@%].+]])
@@ -315,6 +319,31 @@ void runtime(float *a, float *b, float *c, float *d) {
 // CHECK: ret void
 }
 
+// CHECK-LABEL: test_precond
+void test_precond() {
+  // CHECK: [[A_ADDR:%.+]] = alloca i8,
+  // CHECK: [[I_ADDR:%.+]] = alloca i8,
+  char a = 0;
+  // CHECK: store i32 0, i32* [[IV_ADDR:%.+]],
+  // CHECK: [[A:%.+]] = load i8, i8* [[A_ADDR]],
+  // CHECK: [[CONV:%.+]] = sext i8 [[A]] to i32
+  // CHECK: [[IV:%.+]] = load i32, i32* [[IV_ADDR]],
+  // CHECK: [[MUL:%.+]] = mul nsw i32 [[IV]], 1
+  // CHECK: [[ADD:%.+]] = add nsw i32 [[CONV]], [[MUL]]
+  // CHECK: [[CONV:%.+]] = trunc i32 [[ADD]] to i8
+  // CHECK: store i8 [[CONV]], i8* [[I_ADDR]],
+  // CHECK: [[A:%.+]] = load i8, i8* [[A_ADDR]],
+  // CHECK: [[CONV:%.+]] = sext i8 [[A]] to i32
+  // CHECK: [[CMP:%.+]] = icmp slt i32 [[CONV]], 10
+  // CHECK: br i1 [[CMP]], label %[[PRECOND_THEN:[^,]+]], label %[[PRECOND_END:[^,]+]]
+  // CHECK: [[PRECOND_THEN]]
+  // CHECK: call void @__kmpc_for_static_init_4
+#pragma omp for
+  for(char i = a; i < 10; ++i);
+  // CHECK: call void @__kmpc_for_static_fini
+  // CHECK: [[PRECOND_END]]
+}
+
 // TERM_DEBUG-LABEL: foo
 int foo() {return 0;};
 
@@ -336,9 +365,45 @@ void parallel_for(float *a) {
     a[i] += foo();
 }
 // Check source line corresponds to "#pragma omp for schedule(static, 5)" above:
-// TERM_DEBUG-DAG: [[DBG_LOC_START]] = !MDLocation(line: [[@LINE-15]],
-// TERM_DEBUG-DAG: [[DBG_LOC_END]] = !MDLocation(line: [[@LINE-16]],
-// TERM_DEBUG-DAG: [[DBG_LOC_CANCEL]] = !MDLocation(line: [[@LINE-17]],
+// TERM_DEBUG-DAG: [[DBG_LOC_START]] = !DILocation(line: [[@LINE-15]],
+// TERM_DEBUG-DAG: [[DBG_LOC_END]] = !DILocation(line: [[@LINE-16]],
+// TERM_DEBUG-DAG: [[DBG_LOC_CANCEL]] = !DILocation(line: [[@LINE-17]],
+
+char i = 1, j = 2, k = 3;
+// CHECK-LABEL: for_with_global_lcv
+void for_with_global_lcv() {
+// CHECK: [[I_ADDR:%.+]] = alloca i8,
+// CHECK: [[J_ADDR:%.+]] = alloca i8,
+
+// CHECK: call void @__kmpc_for_static_init_4(
+// CHECK-NOT: [[I]]
+// CHECK: store i8 %{{.+}}, i8* [[I_ADDR]]
+// CHECK-NOT: [[I]]
+// CHECK: [[I_VAL:%.+]] = load i8, i8* [[I_ADDR]],
+// CHECK-NOT: [[I]]
+// CHECK: store i8 [[I_VAL]], i8* [[K]]
+// CHECK-NOT: [[I]]
+// CHECK: call void @__kmpc_for_static_fini(
+#pragma omp for
+  for (i = 0; i < 2; ++i) {
+    k = i;
+  }
+// CHECK: call void @__kmpc_for_static_init_4(
+// CHECK-NOT: [[J]]
+// CHECK: store i8 %{{.+}}, i8* [[J_ADDR]]
+// CHECK-NOT: [[J]]
+// CHECK: [[J_VAL:%.+]] = load i8, i8* [[J_ADDR]],
+// CHECK-NOT: [[J]]
+// CHECK: store i8 [[J_VAL]], i8* [[K]]
+// CHECK-NOT: [[J]]
+// CHECK: call void @__kmpc_for_static_fini(
+#pragma omp for collapse(2)
+  for (int i = 0; i < 2; ++i)
+  for (j = 0; j < 2; ++j) {
+    k = i;
+    k = j;
+  }
+}
 
 #endif // HEADER
 

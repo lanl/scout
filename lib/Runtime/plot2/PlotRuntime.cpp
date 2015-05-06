@@ -55,12 +55,14 @@
 #include <cassert>
 #include <vector>
 #include <map>
+#include <unordered_map>
 #include <cstdint>
 #include <iostream>
 #include <algorithm>
 #include <sstream>
 #include <functional>
 #include <random>
+#include <mutex>
 
 #include <QtGui>
 
@@ -153,6 +155,36 @@ namespace{
     std::uniform_real_distribution<double> uniform_;
   };
 
+  class Plot;
+  
+  class Global{
+  public:
+    Global(){}
+
+    Plot* getPlot(uint64_t plotId){
+      auto itr = plotMap_.find(plotId);
+
+      if(itr == plotMap_.end()){
+        return nullptr;
+      }
+
+      return itr->second;
+    }
+
+    void putPlot(uint64_t plotId, Plot* plot){
+      plotMap_[plotId] = plot;
+    }
+
+  private:
+    using PlotMap_ = unordered_map<uint64_t, Plot*>;
+
+    PlotMap_ plotMap_;
+  };
+
+  Global* _global = 0;
+
+  mutex _mutex;
+
   template<typename T, size_t N>
   class Vec{
   public:
@@ -241,9 +273,13 @@ namespace{
 
     virtual void getVec(size_t i, DoubleVec& v) const = 0;
 
-    virtual void compute(void* plot, uint64_t index) = 0;
+    virtual void compute(void* plot, uint64_t index){};
 
     virtual size_t size() const = 0;
+    
+    virtual bool isConst() const{
+      return false;
+    }
   };
 
   template<class T>
@@ -296,8 +332,6 @@ namespace{
       max_ = max;
     }
 
-    void compute(void* plot, uint64_t index){}
-
     size_t size() const{
       return 0;
     }
@@ -322,8 +356,6 @@ namespace{
     double max(){
       return width_ - 1;
     }
-
-    void compute(void* plot, uint64_t index){}
 
     size_t size() const{
       return 0;
@@ -351,8 +383,6 @@ namespace{
       return h1_;
     }
 
-    void compute(void* plot, uint64_t index){}
-
     size_t size() const{
       return 0;
     }
@@ -379,8 +409,6 @@ namespace{
     double max(){
       return d1_;
     }
-
-    void compute(void* plot, uint64_t index){}
 
     size_t size() const{
       return 0;
@@ -484,8 +512,6 @@ namespace{
         size_(size),
         ready_(false){}
 
-    void compute(void* plot, uint64_t index){}
-
     double get(size_t i) const{
       return v_[i];
     }
@@ -567,10 +593,12 @@ namespace{
     }
 
     void compute(void* plot, uint64_t index){
-      Vec<T, N> v;
-      (*fp_)(plot, index, v.raw());
+      if(fp_){
+        Vec<T, N> v;
+        (*fp_)(plot, index, v.raw());
 
-      capture(v);
+        capture(v);
+      }
     }
 
     double get(size_t i) const{
@@ -609,8 +637,6 @@ namespace{
     ConstVar(T value)
       : value_(value){}
 
-    void compute(void* plot, uint64_t index){}
-
     T at(size_t i) const{
       return value_;
     }
@@ -631,6 +657,10 @@ namespace{
       value_ = v;
     }
 
+    bool isConst() const{
+      return true;
+    }
+
   private:
     T value_;
   };
@@ -640,8 +670,6 @@ namespace{
   public:
     ConstVecVar(const Vec<T, N>& v)
       : v_(v){}
-
-    void compute(void* plot, uint64_t index){}
 
     double get(size_t i) const{
       assert(false && "attempt to get scalar from vector");
@@ -667,17 +695,18 @@ namespace{
       return 0;
     }
 
+    bool isConst() const{
+      return true;
+    }
+
   private:
     Vec<T, N> v_;
   };
 
-  class Plot;
-
   class Frame{
   public:
     Frame(uint32_t width, uint32_t height, uint32_t depth)
-      : ready_(false),
-        width_(width),
+      : width_(width),
         height_(height),
         depth_(depth){
       addBuiltinVars();
@@ -685,24 +714,18 @@ namespace{
     }
 
     Frame()
-      : ready_(false),
-        width_(0),
+      : width_(0),
         height_(0),
         depth_(0){
       addBuiltinVars();
     }
 
     Frame(bool plotFrame)
-      : ready_(false),
-        width_(0),
+      : width_(0),
         height_(0),
         depth_(0){}
 
-    ~Frame(){
-      for(auto& itr : plotFrameMap_){
-        delete itr.second;
-      }
-    }
+    ~Frame(){}
 
     void addBuiltinVars(){
       indexVar_ = new IndexVar;
@@ -792,8 +815,6 @@ namespace{
     }
 
     void compute(Plot* plot, Frame* parentFrame){
-      ready_ = true;
-
       size_t end = parentFrame->size();
       size_t n = vars_.size();
 
@@ -829,180 +850,11 @@ namespace{
     T get(VarId varId, size_t index){
       return static_cast<ScalarVar<T>*>(getVar(varId))->at(index);
     }
-
-    template<class T>
-    void addPlotVar(uint32_t plotId,
-                    VarId varId,
-                    T (*fp)(void*, uint64_t),
-                    uint32_t flags){
-      Frame* frame;
-
-      auto itr = plotFrameMap_.find(plotId);
-      if(itr == plotFrameMap_.end()){
-        frame = new Frame(true);
-        plotFrameMap_[plotId] = frame;
-      }
-      else{
-        frame = itr->second;
-        
-        if(frame->ready_){
-          return;
-        }
-      }
-
-      VarBase* v;
-      if(flags & FLAG_VAR_CONSTANT){
-        v = new ConstVar<T>((*fp)(0, 0));
-      }
-      else{
-        v = new Var<T>(fp);
-      }
-
-      frame->addVar(varId - PLOT_VAR_BEGIN, v);
-    }
-
-    template<class T>
-    void addPlotVar(uint32_t plotId, VarId varId){
-      Frame* frame;
-
-      auto itr = plotFrameMap_.find(plotId);
-      if(itr == plotFrameMap_.end()){
-        frame = new Frame(true);
-        plotFrameMap_[plotId] = frame;
-      }
-      else{
-        frame = itr->second;
-        
-        if(frame->ready_){
-          return;
-        }
-      }
-
-      frame->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
-    }
-
-    void addPlotVar(uint32_t plotId, VarId varId, VarBase* v){
-      Frame* frame;
-
-      auto itr = plotFrameMap_.find(plotId);
-      if(itr == plotFrameMap_.end()){
-        frame = new Frame(true);
-        plotFrameMap_[plotId] = frame;
-      }
-      else{
-        frame = itr->second;
-        
-        if(frame->ready_){
-          return;
-        }
-      }
-
-      frame->addVar(varId - PLOT_VAR_BEGIN, v);
-    }
     
-    void addPlotVar(uint32_t plotId,
-                    uint32_t kind,
-                    VarId varId){
-      switch(kind){
-      case ELEMENT_INT32:
-        addPlotVar<int32_t>(plotId, varId);
-        break;
-      case ELEMENT_INT64:
-        addPlotVar<int64_t>(plotId, varId);
-        break;
-      case ELEMENT_FLOAT:
-        addPlotVar<float>(plotId, varId);
-        break;
-      case ELEMENT_DOUBLE:
-        addPlotVar<double>(plotId, varId);
-        break;
-      default:
-        assert(false && "invalid kind");
-      }
-    }
-
-    template<class T>
-    void addPlotVecVar(uint32_t plotId,
-                       VarId varId,
-                       void (*fp)(void*, uint64_t, T*),
-                       uint32_t dim,
-                       uint32_t flags){
-      Frame* frame;
-
-      auto itr = plotFrameMap_.find(plotId);
-      if(itr == plotFrameMap_.end()){
-        frame = new Frame(true);
-        plotFrameMap_[plotId] = frame;
-      }
-      else{
-        frame = itr->second;
-        
-        if(frame->ready_){
-          return;
-        }
-      }
-
-      VarBase* v;
-      
-      if(flags & FLAG_VAR_CONSTANT){
-        switch(dim){
-        case 2:{
-          Vec<T, 2> x;
-          (*fp)(0, 0, x.raw());
-          v = new ConstVecVar<T, 2>(x);
-          break;
-        }
-        case 3:{
-          Vec<T, 3> x;
-          (*fp)(0, 0, x.raw());
-          v = new ConstVecVar<T, 3>(x);
-          break;
-        }
-        case 4:{
-          Vec<T, 4> x;
-          (*fp)(0, 0, x.raw());
-          v = new ConstVecVar<T, 4>(x);
-          break;
-        }
-        default:
-          assert(false && "invalid vector size");
-        }
-      }
-      else{
-        switch(dim){
-        case 2:
-          v = new VecVar<T, 2>(fp);
-          break;
-        case 3:
-          v = new VecVar<T, 3>(fp);
-          break;
-        case 4:
-          v = new VecVar<T, 4>(fp);
-          break;
-        default:
-          assert(false && "invalid vector size");
-        }
-      }
-
-      frame->addVar(varId - PLOT_VAR_BEGIN, v);
-    }
-
-    Frame* getPlotFrame(uint32_t plotId){
-      auto itr = plotFrameMap_.find(plotId);
-      if(itr == plotFrameMap_.end()){
-        return nullptr;
-      }
-      
-      return itr->second;
-    }
-
   private:
     typedef vector<VarBase*> VarVec;
-    typedef map<uint32_t, Frame*> PlotFrameMap;
 
     VarVec vars_;
-    PlotFrameMap plotFrameMap_;
-    bool ready_;
     uint32_t width_;
     uint32_t height_;
     uint32_t depth_;
@@ -1340,14 +1192,25 @@ namespace{
       }
     };
 
-    Plot(uint32_t plotId, Frame* frame, PlotWindow* window)
-      : ready_(false), 
+    Plot(uint64_t plotId)
+      : first_(true),
+        hasXLabel_(false),
+        hasYLabel_(false),
         plotId_(plotId),
-        frame_(frame),
+        frame_(nullptr),
         plotFrame_(0),
-        window_(window){}
+        window_(nullptr){}
 
     ~Plot(){}
+
+    void init(Frame* frame, PlotWindow* window){
+      frame_ = frame;
+      window_ = window;
+    }
+
+    bool ready(){
+      return frame_;
+    }
 
     template<class T>
     T get(VarId varId, size_t index){
@@ -1362,10 +1225,39 @@ namespace{
     }
 
     template<class T>
+    void addVar(VarId varId){
+      if(!plotFrame_){
+        plotFrame_ = new Frame(true);
+      }
+
+      plotFrame_->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
+    }
+
+    void addVar(VarId varId, VarBase* v){
+      if(!plotFrame_){
+        plotFrame_ = new Frame(true);
+      }
+
+      plotFrame_->addVar(varId - PLOT_VAR_BEGIN, v);
+    }
+
+    template<class T>
     void addVar(VarId varId,
                 T (*fp)(void*, uint64_t),
                 uint32_t flags){
-      frame_->addPlotVar(plotId_, varId, fp, flags);
+      if(!plotFrame_){
+        plotFrame_ = new Frame(true);
+      }
+
+      VarBase* v;
+      if(flags & FLAG_VAR_CONSTANT){
+        v = new ConstVar<T>((*fp)(0, 0));
+      }
+      else{
+        v = new Var<T>(fp);
+      }
+
+      plotFrame_->addVar(varId - PLOT_VAR_BEGIN, v);
     }
 
     template<class T>
@@ -1373,7 +1265,72 @@ namespace{
                    void (*fp)(void*, uint64_t, T*),
                    uint32_t dim,
                    uint32_t flags){
-      frame_->addPlotVecVar(plotId_, varId, fp, dim, flags);
+      if(!plotFrame_){
+        plotFrame_ = new Frame(true);
+      }
+
+      VarBase* v;
+      
+      if(flags & FLAG_VAR_CONSTANT){
+        switch(dim){
+        case 2:{
+          Vec<T, 2> x;
+          (*fp)(0, 0, x.raw());
+          v = new ConstVecVar<T, 2>(x);
+          break;
+        }
+        case 3:{
+          Vec<T, 3> x;
+          (*fp)(0, 0, x.raw());
+          v = new ConstVecVar<T, 3>(x);
+          break;
+        }
+        case 4:{
+          Vec<T, 4> x;
+          (*fp)(0, 0, x.raw());
+          v = new ConstVecVar<T, 4>(x);
+          break;
+        }
+        default:
+          assert(false && "invalid vector size");
+        }
+      }
+      else{
+        switch(dim){
+        case 2:
+          v = new VecVar<T, 2>(fp);
+          break;
+        case 3:
+          v = new VecVar<T, 3>(fp);
+          break;
+        case 4:
+          v = new VecVar<T, 4>(fp);
+          break;
+        default:
+          assert(false && "invalid vector size");
+        }
+      }
+
+      plotFrame_->addVar(varId - PLOT_VAR_BEGIN, v);
+    }
+
+    void addVar(uint32_t kind, VarId varId){
+      switch(kind){
+      case ELEMENT_INT32:
+        addVar<int32_t>(varId);
+        break;
+      case ELEMENT_INT64:
+        addVar<int64_t>(varId);
+        break;
+      case ELEMENT_FLOAT:
+        addVar<float>(varId);
+        break;
+      case ELEMENT_DOUBLE:
+        addVar<double>(varId);
+        break;
+      default:
+        assert(false && "invalid kind");
+      }
     }
 
     void addLines(VarId x, VarId y, VarId size, VarId color){
@@ -1407,8 +1364,8 @@ namespace{
 
     void addBins(VarId varIn, VarId xOut, VarId yOut, uint32_t n){
       elements_.push_back(new Bins(varIn, xOut, yOut, n));
-      frame_->addPlotVar<double>(plotId_, xOut);
-      frame_->addPlotVar<double>(plotId_, yOut);
+      addVar<double>(xOut);
+      addVar<double>(yOut);
     }
 
     AggregateBase* addAggregate(uint64_t type,
@@ -1433,7 +1390,7 @@ namespace{
         assert(false && "invalid aggregate return kind");
       }
 
-      frame_->addPlotVar(plotId_, retVarId, a->createRetVar());
+      addVar(retVarId, a->createRetVar());
 
       elements_.push_back(a);
       
@@ -1444,20 +1401,28 @@ namespace{
       Proportion* p = new Proportion(xOut, yOut);
       elements_.push_back(p);
 
-      frame_->addPlotVar<double>(plotId_, xOut);
-      frame_->addPlotVar<double>(plotId_, yOut);
+      addVar<double>(xOut);
+      addVar<double>(yOut);
 
       return p;
     }
 
     void addAxis(uint32_t dim, const string& label){
-      elements_.push_back(new Axis(dim, label)); 
+      elements_.push_back(new Axis(dim, label));
+      switch(dim){
+      case 1:
+        hasXLabel_ = !label.empty();
+        break;
+      case 2:
+        hasYLabel_ = !label.empty();
+        break;
+      default:
+        assert(false && "invalid axis dim");
+      }
     }
 
     void finalize(){
       QtWindow::init();
-
-      plotFrame_ = frame_->getPlotFrame(plotId_);
 
       if(plotFrame_){
         for(Element* e : elements_){
@@ -1477,7 +1442,7 @@ namespace{
       QtWindow::pollEvents();
     }
 
-    void init(){
+    void prepare(){
       sort(elements_.begin(), elements_.end(),
            [](Element* a, Element* b){
              return a->order() < b->order();
@@ -1488,9 +1453,20 @@ namespace{
       double width = frame.width();
       double height = frame.height();
 
-      origin_.setX(LEFT_MARGIN);
-      origin_.setY(height - BOTTOM_MARGIN);
-  
+      if(hasYLabel_){
+        origin_.setX(LEFT_MARGIN + 15);
+      }
+      else{
+        origin_.setX(LEFT_MARGIN);
+      }
+
+      if(hasXLabel_){
+        origin_.setY(height - BOTTOM_MARGIN - 15);
+      }
+      else{
+        origin_.setY(height - BOTTOM_MARGIN);
+      }
+
       xLen_ = width - LEFT_MARGIN - RIGHT_MARGIN;
       yLen_ = height - TOP_MARGIN - BOTTOM_MARGIN;
 
@@ -1500,12 +1476,20 @@ namespace{
       yEnd_ = origin_;
       yEnd_ -= QPointF(0.0, yLen_);
 
-      ready_ = true;
+      first_ = false;
+    }
+
+    double toX(double dx){      
+      return origin_.x() + xm_ * (dx - xMin_);
+    }
+
+    double toY(double dy){
+      return origin_.y() - ym_ * (dy - yMin_);
     }
 
     void render(){
-      if(!ready_){
-        init();
+      if(first_){
+        prepare();
       }
 
       size_t frameSize = frame_->size();
@@ -1519,10 +1503,10 @@ namespace{
       QPainter painter(widget_);
       painter.setRenderHint(QPainter::Antialiasing, true);
 
-      double xMin = MAX;
-      double xMax = MIN;
-      double yMin = MAX;
-      double yMax = MIN;
+      xMin_ = MAX;
+      xMax_ = MIN;
+      yMin_ = MAX;
+      yMax_ = MIN;
 
       for(Element* e : elements_){
         if(Bins* b = dynamic_cast<Bins*>(e)){
@@ -1613,66 +1597,68 @@ namespace{
           VarBase* x = getVar(r->getX());
           VarBase* y = getVar(r->getY());
 
-          if(x->min() < xMin){
-            xMin = x->min();
+          if(x->min() < xMin_){
+            xMin_ = x->min();
           }
 
-          if(x->max() > xMax){
-            xMax = x->max();
+          if(x->max() > xMax_){
+            xMax_ = x->max();
           }
 
-          if(y->min() < yMin){
-            yMin = y->min();
+          if(y->min() < yMin_){
+            yMin_ = y->min();
           }
 
-          if(y->max() > yMax){
-            yMax = y->max();
+          if(y->max() > yMax_){
+            yMax_ = y->max();
           }
           else if(Line* l = dynamic_cast<Line*>(e)){
             VarBase* x1 = getVar(l->x1);
             VarBase* y1 = getVar(l->y1);
 
-            if(x1->min() < xMin){
-              xMin = x1->min();
+            if(x1->min() < xMin_){
+              xMin_ = x1->min();
             }
 
-            if(x1->max() > xMax){
-              xMax = x1->max();
+            if(x1->max() > xMax_){
+              xMax_ = x1->max();
             }
 
-            if(y1->min() < yMin){
-              yMin = y1->min();
+            if(y1->min() < yMin_){
+              yMin_ = y1->min();
             }
 
-            if(y1->max() > yMax){
-              yMax = y1->max();
+            if(y1->max() > yMax_){
+              yMax_ = y1->max();
             }
 
             VarBase* x2 = getVar(l->x2);
             VarBase* y2 = getVar(l->y2);
 
-            if(x2->min() < xMin){
-              xMin = x2->min();
+            if(x2->min() < xMin_){
+              xMin_ = x2->min();
             }
 
-            if(x2->max() > xMax){
-              xMax = x2->max();
+            if(x2->max() > xMax_){
+              xMax_ = x2->max();
             }
 
-            if(y2->min() < yMin){
-              yMin = y2->min();
+            if(y2->min() < yMin_){
+              yMin_ = y2->min();
             }
 
-            if(y2->max() > yMax){
-              yMax = y2->max();
+            if(y2->max() > yMax_){
+              yMax_ = y2->max();
             }
           }
         }
       }
 
-      double xSpan = xMax - xMin;
-      double ySpan = yMax - yMin;
-      
+      xSpan_ = xMax_ - xMin_;
+      ySpan_ = yMax_ - yMin_;
+      xm_ = xLen_/xSpan_;
+      ym_ = yLen_/ySpan_;
+
       for(Element* e : elements_){
         if(Axis* a = dynamic_cast<Axis*>(e)){
           if(a->dim == 1){
@@ -1689,7 +1675,7 @@ namespace{
               xc = origin_.x() + double(i)/frameSize * xLen_;
 
               drawText(painter,
-                       toLabel(xMin + (double(i)/frameSize)*xSpan),
+                       toLabel(xMin_ + (double(i)/frameSize)*xSpan_),
                        QPointF(xc, origin_.y() + 3));
             }
             
@@ -1718,12 +1704,12 @@ namespace{
             double yc;
             double yv;
             for(size_t i = 0; i <= frameSize; i += inc){
-              yv = yMin + ySpan * double(i)/frameSize;
+              yv = yMin_ + ySpan_ * double(i)/frameSize;
               yc = origin_.y() - double(i)/frameSize * yLen_;
 
               drawText(painter,
                        toLabel(yv),
-                       QPointF(LEFT_MARGIN - 5, yc), true);
+                       QPointF(origin_.x() - 5, yc), true);
             }
 
             inc = frameSize / Y_TICKS;
@@ -1735,8 +1721,8 @@ namespace{
             for(size_t i = 0; i < frameSize; i += inc){
               yc = origin_.y() - double(i)/frameSize * yLen_;
 
-              painter.drawLine(QPointF(LEFT_MARGIN - 3, yc),
-                               QPointF(LEFT_MARGIN + 3, yc));
+              painter.drawLine(QPointF(origin_.x() - 3, yc),
+                               QPointF(origin_.x() + 3, yc));
             }
           }
           else{
@@ -1758,21 +1744,39 @@ namespace{
           QPointF point;
           QPen pen;
 
-          for(size_t i = 0; i < size; ++i){
-            point.setX(origin_.x() + ((x->get(i) - xMin)/xSpan) * xLen_);
-            point.setY(origin_.y() - ((y->get(i) - yMin)/ySpan) * yLen_);
+          lastPoint.setX(toX(x->get(0)));
+          lastPoint.setY(toY(y->get(0)));
 
-            pen.setWidthF(s->get(i));
+          if(s->isConst() && c->isConst()){
+            pen.setWidthF(s->get(0));
 
-            if(i > 0){
+            DoubleVec cv;
+            c->getVec(0, cv);
+            pen.setColor(toQColor(cv));
+            painter.setPen(pen);
+
+            for(size_t i = 1; i < size; ++i){
+              point.setX(toX(x->get(i)));
+              point.setY(toY(y->get(i)));
+              painter.drawLine(point, lastPoint);
+              lastPoint = point;
+            }
+          }
+          else{
+            for(size_t i = 1; i < size; ++i){
+              point.setX(toX(x->get(i)));
+              point.setY(toY(y->get(i)));
+
+              pen.setWidthF(s->get(i));
+
               DoubleVec cv;
               c->getVec(i, cv);
               pen.setColor(toQColor(cv));
               painter.setPen(pen);
               painter.drawLine(point, lastPoint);
+            
+              lastPoint = point;
             }
-
-            lastPoint = point;
           }
         }
         else if(Line* l = dynamic_cast<Line*>(e)){
@@ -1794,11 +1798,11 @@ namespace{
           QPen pen;
 
           for(size_t i = 0; i < size; ++i){
-            p1.setX(origin_.x() + ((x1->get(i) - xMin)/xSpan) * xLen_);
-            p1.setY(origin_.y() - ((y1->get(i) - yMin)/ySpan) * yLen_);
+            p1.setX(toX(x1->get(i)));
+            p1.setY(toY(y1->get(i)));
 
-            p2.setX(origin_.x() + ((x2->get(i) - xMin)/xSpan) * xLen_);
-            p2.setY(origin_.y() - ((y2->get(i) - yMin)/ySpan) * yLen_);
+            p2.setX(toX(x2->get(i)));
+            p2.setY(toY(y2->get(i)));
 
             pen.setWidthF(s->get(i));
 
@@ -1822,11 +1826,34 @@ namespace{
           QPointF lastPoint;
           QPointF point;
 
-          for(size_t i = 0; i < size; ++i){
-            point.setX(origin_.x() + ((x->get(i) - xMin)/xSpan) * xLen_);
-            point.setY(origin_.y() - ((y->get(i) - yMin)/ySpan) * yLen_);
+          lastPoint.setX(toX(x->get(0)));
+          lastPoint.setY(toY(y->get(0)));
 
-            if(i > 0){
+          if(c->isConst()){
+            DoubleVec cv;
+            c->getVec(0, cv);
+            QBrush brush(toQColor(cv));
+            painter.setBrush(brush);
+
+            for(size_t i = 1; i < size; ++i){
+              point.setX(toX(x->get(i)));
+              point.setY(toY(y->get(i)));
+
+              QPolygonF poly;
+              poly << lastPoint << point << 
+                QPointF(point.x(), origin_.y()) << 
+                QPointF(lastPoint.x(), origin_.y());
+      
+              painter.drawPolygon(poly);
+
+              lastPoint = point;
+            }
+          }
+          else{
+            for(size_t i = 1; i < size; ++i){
+              point.setX(toX(x->get(i)));
+              point.setY(toY(y->get(i)));
+
               DoubleVec cv;
               c->getVec(i, cv);
               QBrush brush(toQColor(cv));
@@ -1838,9 +1865,9 @@ namespace{
                 QPointF(lastPoint.x(), origin_.y());
       
               painter.drawPolygon(poly);
-            }
 
-            lastPoint = point;
+              lastPoint = point;
+            }
           }
         }
         else if(Points* p = dynamic_cast<Points*>(e)){
@@ -1856,16 +1883,35 @@ namespace{
           QPen noPen(Qt::NoPen);
           painter.setPen(noPen);
 
-          for(size_t i = 0; i < size; ++i){
-            point.setX(origin_.x() + ((x->get(i) - xMin)/xSpan) * xLen_);
-            point.setY(origin_.y() - ((y->get(i) - yMin)/ySpan) * yLen_);
-
+          if(s->isConst() && c->isConst()){
             DoubleVec cv;
-            c->getVec(i, cv);
-
+            c->getVec(0, cv);
+            
             QBrush brush(toQColor(cv));
             painter.setBrush(brush);
-            painter.drawEllipse(point, s->get(i), s->get(i));
+
+            double ps = s->get(0);
+
+            for(size_t i = 0; i < size; ++i){
+              point.setX(toX(x->get(i)));
+              point.setY(toY(y->get(i)));
+              painter.drawEllipse(point, ps, ps);
+            }            
+          }
+          else{
+            for(size_t i = 0; i < size; ++i){
+              point.setX(toX(x->get(i)));
+              point.setY(toY(y->get(i)));
+
+              DoubleVec cv;
+              c->getVec(i, cv);
+
+              QBrush brush(toQColor(cv));
+              painter.setBrush(brush);
+          
+              double size = s->get(i);
+              painter.drawEllipse(point, size, size);
+            }
           }
         }
         else if(Interval* i = dynamic_cast<Interval*>(e)){
@@ -1918,9 +1964,13 @@ namespace{
 
           double side = min(xEnd_.x() - origin_.x(), origin_.y() - yEnd_.y());
 
-          QRectF rect(LEFT_MARGIN, TOP_MARGIN, side, side);
+          QRectF rect(origin_.x(), yEnd_.y(), side, side);
           
           Random rng;
+
+          QPen pen;
+          pen.setWidthF(3.0);
+          painter.setPen(pen);
 
           int startAngle = 0;
           for(size_t i = 0; i < size; ++i){
@@ -1952,8 +2002,8 @@ namespace{
   private:
     typedef vector<Element*> ElementVec_;
 
-    bool ready_;
-    uint32_t plotId_;
+    bool first_;
+    uint64_t plotId_;
     Frame* frame_;
     Frame* plotFrame_;
     PlotWindow* window_;
@@ -1965,6 +2015,16 @@ namespace{
     QPointF origin_;
     QPointF xEnd_;
     QPointF yEnd_;
+    bool hasXLabel_;
+    bool hasYLabel_;
+    double xMin_;
+    double xMax_;
+    double xSpan_;
+    double yMin_;
+    double yMax_;
+    double ySpan_;
+    double xm_;
+    double ym_;
   };
 
 } // end namespace
@@ -2009,6 +2069,38 @@ extern "C"{
     static_cast<Frame*>(f)->capture(varId, value);
   }
 
+  void* __scrt_plot_get(uint64_t plotId){
+    _mutex.lock();
+    
+    if(!_global){
+      _global = new Global;
+    }
+    
+    Plot* plot = _global->getPlot(plotId);
+    
+    if(plot){
+      _mutex.unlock();
+      return plot;
+    }
+    else{
+      plot = new Plot(plotId);
+      _global->putPlot(plotId, plot);
+    }
+
+    _mutex.unlock();
+    
+    return plot;
+  }
+
+  void __scrt_plot_init(void* plot, void* frame, void* window){
+    return static_cast<Plot*>(plot)->init(static_cast<Frame*>(frame),
+                                          static_cast<PlotWindow*>(window));
+  }
+
+  bool __scrt_plot_ready(void* plot){
+    return static_cast<Plot*>(plot)->ready();
+  }
+
   int32_t __scrt_plot_get_i32(void* plot, VarId varId, uint64_t index){
     return static_cast<Plot*>(plot)->get<int32_t>(varId, index);
   }
@@ -2023,12 +2115,6 @@ extern "C"{
 
   double __scrt_plot_get_double(void* plot, VarId varId, uint64_t index){
     return static_cast<Plot*>(plot)->get<double>(varId, index);
-  }
-
-  void* __scrt_plot_init(uint32_t plotId, void* frame, void* window){
-    return new Plot(plotId,
-                    static_cast<Frame*>(frame),
-                    static_cast<PlotWindow*>(window));
   }
 
   void __scrt_plot_add_var_i32(void* plot,

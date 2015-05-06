@@ -74,6 +74,8 @@ private:
   bool IsGCN;
   bool GCN1Encoding;
   bool GCN3Encoding;
+  bool CIInsts;
+  bool FeatureDisable;
 
   AMDGPUFrameLowering FrameLowering;
   std::unique_ptr<AMDGPUTargetLowering> TLInfo;
@@ -180,6 +182,14 @@ public:
   }
 
   bool hasFFBH() const {
+    return (getGeneration() >= EVERGREEN);
+  }
+
+  bool hasCARRY() const {
+    return (getGeneration() >= EVERGREEN);
+  }
+
+  bool hasBORROW() const {
     return (getGeneration() >= EVERGREEN);
   }
 

@@ -60,8 +60,9 @@ class GdbRemoteTestCaseBase(TestBase):
         self.named_pipe = None
         self.named_pipe_fd = None
         self.stub_sends_two_stop_notifications_on_kill = False
-        if lldb.platfrom_url:
-            self.stub_hostname = re.match(".*://(.*):[0-9]+", lldb.platfrom_url).group(1)
+        if lldb.platform_url:
+            scheme, host = re.match('(.+)://(.+):\d+', lldb.platform_url).groups()
+            self.stub_hostname = 'localhost' if scheme == 'adb' else host
         else:
             self.stub_hostname = "localhost"
 

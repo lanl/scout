@@ -523,11 +523,23 @@ Target::CreateFuncRegexBreakpoint (const FileSpecList *containingModules,
 }
 
 lldb::BreakpointSP
-Target::CreateExceptionBreakpoint (enum lldb::LanguageType language, bool catch_bp, bool throw_bp, bool internal)
+Target::CreateExceptionBreakpoint (enum lldb::LanguageType language, bool catch_bp, bool throw_bp, bool internal, Args *additional_args, Error *error)
 {
-    return LanguageRuntime::CreateExceptionBreakpoint (*this, language, catch_bp, throw_bp, internal);
+    BreakpointSP exc_bkpt_sp = LanguageRuntime::CreateExceptionBreakpoint (*this, language, catch_bp, throw_bp, internal);
+    if (exc_bkpt_sp && additional_args)
+    {
+        Breakpoint::BreakpointPreconditionSP precondition_sp = exc_bkpt_sp->GetPrecondition();
+        if (precondition_sp && additional_args)
+        {
+            if (error)
+                *error = precondition_sp->ConfigurePrecondition(*additional_args);
+            else
+                precondition_sp->ConfigurePrecondition(*additional_args);
+        }
+    }
+    return exc_bkpt_sp;
 }
-    
+
 BreakpointSP
 Target::CreateBreakpoint (SearchFilterSP &filter_sp, BreakpointResolverSP &resolver_sp, bool internal, bool request_hardware, bool resolve_indirect_symbols)
 {
@@ -2366,6 +2378,7 @@ Target::Install (ProcessLaunchInfo *launch_info)
                                     module_sp->SetPlatformFileSpec(remote_file);
                                     if (is_main_executable)
                                     {
+                                        platform_sp->SetFilePermissions(remote_file.GetPath(false).c_str(), 0700);
                                         if (launch_info)
                                             launch_info->SetExecutableFile(remote_file, false);
                                     }
