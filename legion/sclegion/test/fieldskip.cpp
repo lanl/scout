@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "sclegion.h"
 #include "legion_c.h"
@@ -117,5 +118,6 @@ int lsci_main(int argc, char** argv){
 }
 
 int main(int argc, char** argv){
+  setenv("SC_NTHREADS","4",true);
   return lsci_main(argc, argv);
 }
