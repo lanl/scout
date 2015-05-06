@@ -1978,7 +1978,7 @@ void DwarfDebug::addDwarfTypeUnitType(DwarfCompileUnit &CU,
 
 void DwarfDebug::addDwarfTypeUnitType(DwarfCompileUnit &CU,
                                       StringRef Identifier, DIE &RefDie,
-                                      const MDScoutCompositeType *CTy) {
+                                      const DIScoutCompositeType *CTy) {
   // Fast path if we're building some type units and one has already used the
   // address pool we know we're going to throw away all this work anyway, so
   // don't bother building dependent types.
@@ -2037,7 +2037,7 @@ void DwarfDebug::addDwarfTypeUnitType(DwarfCompileUnit &CU,
       // This is inefficient because all the dependent types will be rebuilt
       // from scratch, including building them in type units, discovering that
       // they depend on addresses, throwing them out and rebuilding them.
-      CU.constructTypeDIE(RefDie, cast<MDScoutCompositeType>(CTy));
+      CU.constructTypeDIE(RefDie, cast<DIScoutCompositeType>(CTy));
       return;
     }
     

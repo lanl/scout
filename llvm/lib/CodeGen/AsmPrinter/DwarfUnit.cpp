@@ -734,7 +734,7 @@ DIE *DwarfUnit::createTypeDIE(const DICompositeType *Ty) {
 }
 
 // +===== Scout =======================================
-DIE *DwarfUnit::createTypeDIE(const MDScoutCompositeType *Ty) {
+DIE *DwarfUnit::createTypeDIE(const DIScoutCompositeType *Ty) {
   auto *Context = resolve(Ty->getScope());
   DIE *ContextDIE = getOrCreateContextDIE(Context);
   
@@ -744,7 +744,7 @@ DIE *DwarfUnit::createTypeDIE(const MDScoutCompositeType *Ty) {
   // Create new type.
   DIE &TyDIE = createAndAddDIE(Ty->getTag(), *ContextDIE, Ty);
   
-  constructTypeDIE(TyDIE, cast<MDScoutCompositeType>(Ty));
+  constructTypeDIE(TyDIE, cast<DIScoutCompositeType>(Ty));
   
   updateAcceleratorTables(Context, Ty, TyDIE);
   return &TyDIE;
@@ -1105,7 +1105,7 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, const DIScoutCompositeType *CTy) {
     case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
     case dwarf::DW_TAG_SCOUT_unstructured_mesh_type: {
       // Add elements to mesh type.
-      DIArray Elements = CTy->getElements();
+      DINodeArray Elements = CTy->getElements();
       for (const auto *Element : Elements) {
         auto *DDTy = dyn_cast<DIScoutDerivedType>(Element);
         constructMeshMemberDIE(Buffer, DDTy);

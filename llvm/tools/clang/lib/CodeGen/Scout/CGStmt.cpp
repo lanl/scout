@@ -2015,8 +2015,7 @@ void CodeGenFunction::EmitForallArrayStmt(const ForallArrayStmt &S) {
 }
 
 void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) {
-  RegionCounter Cnt = getPGORegionCounter(&S);
-  (void)Cnt; //suppress warning
+  incrementProfileCounter(&S);
   
   CGDebugInfo *DI = getDebugInfo();
 

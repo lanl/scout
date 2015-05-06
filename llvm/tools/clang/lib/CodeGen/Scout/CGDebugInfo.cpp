@@ -104,7 +104,7 @@ static bool shouldOmitDefinition(CodeGenOptions::DebugInfoKind DebugKind,
 /// on their mangled names, if they're external.
 static SmallString<256>
 getUniqueMeshTypeName(const MeshType *Ty, CodeGenModule &CGM,
-                     llvm::MDCompileUnit *TheCU) {
+                     llvm::DICompileUnit *TheCU) {
   SmallString<256> FullName;
   // FIXME: ODR should apply to ObjC++ exactly the same wasy it does to C++.
   // For now, only apply ODR with C++.
@@ -126,7 +126,7 @@ getUniqueMeshTypeName(const MeshType *Ty, CodeGenModule &CGM,
 
 static SmallString<256>
 getUniqueFrameName(const FrameType *Ty, CodeGenModule &CGM,
-                  llvm::MDCompileUnit *TheCU) {
+                  llvm::DICompileUnit *TheCU) {
   SmallString<256> FullName;
   // FIXME: ODR should apply to ObjC++ exactly the same wasy it does to C++.
   // For now, only apply ODR with C++.
@@ -176,7 +176,7 @@ void CGDebugInfo::completeRequiredType(const UniformMeshDecl *MD) {
     return;
   
   QualType Ty = CGM.getContext().getUniformMeshType(MD);
-  llvm::MDType *T = getTypeOrNull(Ty);
+  llvm::DIType *T = getTypeOrNull(Ty);
   if (T && T->isForwardDecl())
     completeClassData(MD);
 }
@@ -186,7 +186,7 @@ void CGDebugInfo::completeRequiredType(const ALEMeshDecl *MD) {
     return;
   
   QualType Ty = CGM.getContext().getALEMeshType(MD);
-  llvm::MDType *T = getTypeOrNull(Ty);
+  llvm::DIType *T = getTypeOrNull(Ty);
   if (T && T->isForwardDecl())
     completeClassData(MD);
 }
@@ -195,7 +195,7 @@ void CGDebugInfo::completeRequiredType(const RectilinearMeshDecl *MD) {
     return;
   
   QualType Ty = CGM.getContext().getRectilinearMeshType(MD);
-  llvm::MDType *T = getTypeOrNull(Ty);
+  llvm::DIType *T = getTypeOrNull(Ty);
   if (T && T->isForwardDecl())
     completeClassData(MD);
 }
@@ -205,7 +205,7 @@ void CGDebugInfo::completeRequiredType(const StructuredMeshDecl *MD) {
     return;
   
   QualType Ty = CGM.getContext().getStructuredMeshType(MD);
-  llvm::MDType *T = getTypeOrNull(Ty);
+  llvm::DIType *T = getTypeOrNull(Ty);
   if (T && T->isForwardDecl())
     completeClassData(MD);
 }
@@ -216,7 +216,7 @@ void CGDebugInfo::completeRequiredType(const UnstructuredMeshDecl *MD) {
     return;
   
   QualType Ty = CGM.getContext().getUnstructuredMeshType(MD);
-  llvm::MDType *T = getTypeOrNull(Ty);
+  llvm::DIType *T = getTypeOrNull(Ty);
   if (T && T->isForwardDecl())
     completeClassData(MD);
 }
@@ -226,7 +226,7 @@ void CGDebugInfo::completeRequiredType(const FrameDecl *FD) {
     return;
   
   QualType Ty = CGM.getContext().getFrameType(FD);
-  llvm::MDType *T = getTypeOrNull(Ty);
+  llvm::DIType *T = getTypeOrNull(Ty);
   if (T && T->isForwardDecl())
     completeClassData(FD);
 }
@@ -238,9 +238,9 @@ void CGDebugInfo::completeClassData(const UniformMeshDecl *MD) {
   void* TyPtr = Ty.getAsOpaquePtr();
   auto I = TypeCache.find(TyPtr);
   if (I != TypeCache.end() &&
-      !cast<llvm::MDType>(I->second)->isForwardDecl())
+      !cast<llvm::DIType>(I->second)->isForwardDecl())
     return;
-  llvm::MDType *Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
+  llvm::DIType *Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
   assert(!Res->isForwardDecl());
   TypeCache[TyPtr].reset(Res);
 }
@@ -252,9 +252,9 @@ void CGDebugInfo::completeClassData(const ALEMeshDecl *MD) {
   void* TyPtr = Ty.getAsOpaquePtr();
   auto I = TypeCache.find(TyPtr);
   if (I != TypeCache.end() &&
-      !cast<llvm::MDType>(I->second)->isForwardDecl())
+      !cast<llvm::DIType>(I->second)->isForwardDecl())
     return;
-  llvm::MDType *Res = CreateTypeDefinition(Ty->castAs<ALEMeshType>());
+  llvm::DIType *Res = CreateTypeDefinition(Ty->castAs<ALEMeshType>());
   assert(!Res->isForwardDecl());
   TypeCache[TyPtr].reset(Res);
 }
@@ -266,9 +266,9 @@ void CGDebugInfo::completeClassData(const RectilinearMeshDecl *MD) {
   void* TyPtr = Ty.getAsOpaquePtr();
   auto I = TypeCache.find(TyPtr);
   if (I != TypeCache.end() &&
-      !cast<llvm::MDType>(I->second)->isForwardDecl())
+      !cast<llvm::DIType>(I->second)->isForwardDecl())
     return;
-  llvm::MDType *Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
+  llvm::DIType *Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
   assert(!Res->isForwardDecl());
   TypeCache[TyPtr].reset(Res);
 }
@@ -280,9 +280,9 @@ void CGDebugInfo::completeClassData(const StructuredMeshDecl *MD) {
   void* TyPtr = Ty.getAsOpaquePtr();
   auto I = TypeCache.find(TyPtr);
   if (I != TypeCache.end() &&
-      !cast<llvm::MDType>(I->second)->isForwardDecl())
+      !cast<llvm::DIType>(I->second)->isForwardDecl())
     return;
-  llvm::MDType *Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
+  llvm::DIType *Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
   assert(!Res->isForwardDecl());
   TypeCache[TyPtr].reset(Res);
 }
@@ -294,9 +294,9 @@ void CGDebugInfo::completeClassData(const UnstructuredMeshDecl *MD) {
   void* TyPtr = Ty.getAsOpaquePtr();
   auto I = TypeCache.find(TyPtr);
   if (I != TypeCache.end() &&
-      !cast<llvm::MDType>(I->second)->isForwardDecl())
+      !cast<llvm::DIType>(I->second)->isForwardDecl())
     return;
-  llvm::MDType *Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
+  llvm::DIType *Res = CreateTypeDefinition(Ty->castAs<UniformMeshType>());
   assert(!Res->isForwardDecl());
   TypeCache[TyPtr].reset(Res);
 }
@@ -312,10 +312,10 @@ void CGDebugInfo::completeClassData(const FrameDecl *MD) {
 
 // ----- CreateType
 //
-llvm::MDType *CGDebugInfo::CreateType(const UniformMeshType *Ty) {
+llvm::DIType *CGDebugInfo::CreateType(const UniformMeshType *Ty) {
   UniformMeshDecl *MD = Ty->getDecl();
 
-  llvm::MDType *T = cast_or_null<llvm::MDType>(getTypeOrNull(QualType(Ty, 0)));
+  llvm::DIType *T = cast_or_null<llvm::DIType>(getTypeOrNull(QualType(Ty, 0)));
   
   if (T || shouldOmitDefinition(DebugKind, MD, CGM.getLangOpts())) {
     if (!T)
@@ -329,11 +329,11 @@ llvm::MDType *CGDebugInfo::CreateType(const UniformMeshType *Ty) {
 
 // ----- CreateTypeDefinition
 //
-llvm::MDType *CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
+llvm::DIType *CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
   UniformMeshDecl *MD = Ty->getDecl();
 
   // Get overall information about the mesh type for the debug info.
-  llvm::MDFile *DefUnit = getOrCreateFile(MD->getLocation());
+  llvm::DIFile *DefUnit = getOrCreateFile(MD->getLocation());
 
   // Meshes can be recursive.  To handle them, we first generate a
   // debug descriptor for the mesh as a forward declaration.  Then
@@ -344,7 +344,7 @@ llvm::MDType *CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
   // definition.
 
   auto *FwdDecl =
-  cast<llvm::MDScoutCompositeType>(getOrCreateLimitedType(Ty, DefUnit));
+  cast<llvm::DIScoutCompositeType>(getOrCreateLimitedType(Ty, DefUnit));
 
   const MeshDecl *D = MD->getDefinition();
   if (!D || !D->isCompleteDefinition())
@@ -364,7 +364,7 @@ llvm::MDType *CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
   LexicalBlockStack.pop_back();
   RegionMap.erase(Ty->getDecl());
 
-  llvm::DIArray Elements = DBuilder.getOrCreateArray(EltTys);
+  llvm::DINodeArray Elements = DBuilder.getOrCreateArray(EltTys);
   DBuilder.replaceArrays(FwdDecl, Elements);
 
   RegionMap[Ty->getDecl()].reset(FwdDecl);
@@ -372,21 +372,21 @@ llvm::MDType *CGDebugInfo::CreateTypeDefinition(const UniformMeshType *Ty) {
 }
 
 // TODO: Currently used for context chains when limiting debug info.
-llvm::MDScoutCompositeType*
+llvm::DIScoutCompositeType*
 CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
   UniformMeshDecl *MD = Ty->getDecl();
 
   // Get overall information about the mesh type for the debug info.
-  llvm::MDFile *DefUnit = getOrCreateFile(MD->getLocation());
+  llvm::DIFile *DefUnit = getOrCreateFile(MD->getLocation());
   unsigned Line = getLineNumber(MD->getLocation());
   StringRef MDName = MD->getName();
 
-  llvm::MDScope *MDContext =
+  llvm::DIScope *MDContext =
   getContextDescriptor(cast<Decl>(MD->getDeclContext()));
 
   // If we ended up creating the type during the context chain construction,
   // just return that.
-  auto *T = cast_or_null<llvm::MDScoutCompositeType>(
+  auto *T = cast_or_null<llvm::DIScoutCompositeType>(
     getTypeOrNull(CGM.getContext().getUniformMeshType(MD)));
   if (T && (!T->isForwardDecl() || !MD->getDefinition()))
     return T;
@@ -402,7 +402,7 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
 
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
 
-  llvm::MDScoutCompositeType *RealDecl =
+  llvm::DIScoutCompositeType *RealDecl =
   DBuilder.createScoutForwardDecl(
     llvm::dwarf::DW_TAG_SCOUT_uniform_mesh_type, MDName, MDContext,
     DefUnit, Line, 0, Size, Align, FullName);
@@ -437,14 +437,14 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
 }
 
 // Creates a forward declaration for a uniform mesh the given context.
-llvm::MDScoutCompositeType*
+llvm::DIScoutCompositeType*
 CGDebugInfo::getOrCreateMeshFwdDecl(const UniformMeshType *Ty,
-                                    llvm::MDScope *Ctx) {
+                                    llvm::DIScope *Ctx) {
   const UniformMeshDecl *MD = Ty->getDecl();
-  if (llvm::MDType *T = getTypeOrNull(CGM.getContext().getUniformMeshType(MD)))
-    return cast<llvm::MDScoutCompositeType>(T);
+  if (llvm::DIType *T = getTypeOrNull(CGM.getContext().getUniformMeshType(MD)))
+    return cast<llvm::DIScoutCompositeType>(T);
   
-  llvm::MDFile *DefUnit = getOrCreateFile(MD->getLocation());
+  llvm::DIFile *DefUnit = getOrCreateFile(MD->getLocation());
   unsigned Line = getLineNumber(MD->getLocation());
   StringRef MDName = MD->getName();
 
@@ -459,20 +459,20 @@ CGDebugInfo::getOrCreateMeshFwdDecl(const UniformMeshType *Ty,
   
   // Create the type.
   SmallString<256> FullName = getUniqueMeshTypeName(Ty, CGM, TheCU);
-  llvm::MDScoutCompositeType *RetTy =
+  llvm::DIScoutCompositeType *RetTy =
   DBuilder.createReplaceableScoutCompositeType(
     llvm::dwarf::DW_TAG_SCOUT_uniform_mesh_type, MDName, Ctx,
-    DefUnit, Line, 0, Size, Align, llvm::DebugNode::FlagFwdDecl, FullName);
+    DefUnit, Line, 0, Size, Align, llvm::DINode::FlagFwdDecl, FullName);
   return RetTy;
 }
 
 /// getOrCreateLimitedType - Get the type from the cache or create a new
 /// limited type if necessary.
-llvm::MDType *CGDebugInfo::getOrCreateLimitedType(const UniformMeshType *Ty,
-                                                  llvm::MDFile *Unit) {
+llvm::DIType *CGDebugInfo::getOrCreateLimitedType(const UniformMeshType *Ty,
+                                                  llvm::DIFile *Unit) {
   QualType QTy(Ty, 0);
 
-  auto *T = cast_or_null<llvm::MDScoutCompositeType>(getTypeOrNull(QTy));
+  auto *T = cast_or_null<llvm::DIScoutCompositeType>(getTypeOrNull(QTy));
 
   // We may have cached a forward decl when we could have created
   // a non-forward decl. Go ahead and create a non-forward decl
@@ -481,12 +481,12 @@ llvm::MDType *CGDebugInfo::getOrCreateLimitedType(const UniformMeshType *Ty,
     return T;
 
   // Otherwise create the type.
-  llvm::MDScoutCompositeType *Res = CreateLimitedType(Ty);
+  llvm::DIScoutCompositeType *Res = CreateLimitedType(Ty);
 
   // Propagate members from the declaration to the definition
   // CreateType(const MeshType*) will overwrite this with the members in the
   // correct order if the full type is needed.
-  DBuilder.replaceArrays(Res, T ? T->getElements() : llvm::DIArray());
+  DBuilder.replaceArrays(Res, T ? T->getElements() : llvm::DINodeArray());
 
   // And update the type cache.
   TypeCache[QTy.getAsOpaquePtr()].reset(Res);
@@ -499,34 +499,34 @@ llvm::MDType *CGDebugInfo::getOrCreateLimitedType(const UniformMeshType *Ty,
 
 // ------ CreateType
 //
-llvm::MDType *CGDebugInfo::CreateType(const ALEMeshType *Ty) {
+llvm::DIType *CGDebugInfo::CreateType(const ALEMeshType *Ty) {
   assert(false && "unimplemented");
 }
 
 // ------ CreateTypeDefinition
 //
-llvm::MDType *CGDebugInfo::CreateTypeDefinition(const ALEMeshType *Ty) {
+llvm::DIType *CGDebugInfo::CreateTypeDefinition(const ALEMeshType *Ty) {
   assert(false && "unimplemented");
 }
 
 
 // TODO: Currently used for context chains when limiting debug info.
-llvm::MDScoutCompositeType*
+llvm::DIScoutCompositeType*
 CGDebugInfo::CreateLimitedType(const ALEMeshType *Ty) {
   assert(false && "unimplemented");
 }
 
 // Creates a forward declaration for a rectilinear mesh the given context.
-llvm::MDScoutCompositeType
+llvm::DIScoutCompositeType
 *CGDebugInfo::getOrCreateMeshFwdDecl(const ALEMeshType *Ty,
-                                     llvm::MDScope *Ctx) {
+                                     llvm::DIScope *Ctx) {
   assert(false && "unimplemented");
 }
 
 /// getOrCreateLimitedType - Get the type from the cache or create a new
 /// limited type if necessary.
-llvm::MDType *CGDebugInfo::getOrCreateLimitedType(const ALEMeshType *Ty,
-                                                 llvm::MDFile *Unit) {
+llvm::DIType *CGDebugInfo::getOrCreateLimitedType(const ALEMeshType *Ty,
+                                                 llvm::DIFile *Unit) {
   assert(false && "unimplemented");
 }
 
@@ -538,34 +538,34 @@ llvm::MDType *CGDebugInfo::getOrCreateLimitedType(const ALEMeshType *Ty,
 
 // ------ CreateType
 //
-llvm::MDType *CGDebugInfo::CreateType(const RectilinearMeshType *Ty) {
+llvm::DIType *CGDebugInfo::CreateType(const RectilinearMeshType *Ty) {
   assert(false && "unimplemented");
 }
 
 // ------ CreateTypeDefinition
 //
-llvm::MDType *CGDebugInfo::CreateTypeDefinition(const RectilinearMeshType *Ty) {
+llvm::DIType *CGDebugInfo::CreateTypeDefinition(const RectilinearMeshType *Ty) {
   assert(false && "unimplemented");
 }
 
 
 // TODO: Currently used for context chains when limiting debug info.
-llvm::MDScoutCompositeType
+llvm::DIScoutCompositeType
 *CGDebugInfo::CreateLimitedType(const RectilinearMeshType *Ty) {
   assert(false && "unimplemented");
 }
 
 // Creates a forward declaration for a rectilinear mesh the given context.
-llvm::MDScoutCompositeType*
+llvm::DIScoutCompositeType*
 CGDebugInfo::getOrCreateMeshFwdDecl(const RectilinearMeshType *Ty,
-                                    llvm::MDScope *Ctx) {
+                                    llvm::DIScope *Ctx) {
   assert(false && "unimplemented");
 }
 
 /// getOrCreateLimitedType - Get the type from the cache or create a new
 /// limited type if necessary.
-llvm::MDType *CGDebugInfo::getOrCreateLimitedType(const RectilinearMeshType *Ty,
-                                                  llvm::MDFile *Unit) {
+llvm::DIType *CGDebugInfo::getOrCreateLimitedType(const RectilinearMeshType *Ty,
+                                                  llvm::DIFile *Unit) {
   assert(false && "unimplemented");
 }
 
@@ -576,35 +576,35 @@ llvm::MDType *CGDebugInfo::getOrCreateLimitedType(const RectilinearMeshType *Ty,
 
 // ------ CreateType
 //
-llvm::MDType *CGDebugInfo::CreateType(const StructuredMeshType *Ty) {
+llvm::DIType *CGDebugInfo::CreateType(const StructuredMeshType *Ty) {
   assert(false && "unimplemented");
 }
 
 
 // ------ CreateTypeDefinition
 //
-llvm::MDType *CGDebugInfo::CreateTypeDefinition(const StructuredMeshType *Ty) {
+llvm::DIType *CGDebugInfo::CreateTypeDefinition(const StructuredMeshType *Ty) {
   assert(false && "unimplemented");
 }
 
 
 // TODO: Currently used for context chains when limiting debug info.
-llvm::MDScoutCompositeType
+llvm::DIScoutCompositeType
 *CGDebugInfo::CreateLimitedType(const StructuredMeshType *Ty) {
   assert(false && "unimplemented");
 }
 
 // Creates a forward declaration for a unstructured mesh the given context.
-llvm::MDScoutCompositeType*
+llvm::DIScoutCompositeType*
 CGDebugInfo::getOrCreateMeshFwdDecl(const StructuredMeshType *Ty,
-                                    llvm::MDScope *Ctx) {
+                                    llvm::DIScope *Ctx) {
   assert(false && "unimplemented");
 }
 
 /// getOrCreateLimitedType - Get the type from the cache or create a new
 /// limited type if necessary.
-llvm::MDType *CGDebugInfo::getOrCreateLimitedType(const StructuredMeshType *Ty,
-                                                  llvm::MDFile *Unit) {
+llvm::DIType *CGDebugInfo::getOrCreateLimitedType(const StructuredMeshType *Ty,
+                                                  llvm::DIFile *Unit) {
   assert(false && "unimplemented");
 }
 
@@ -615,12 +615,12 @@ llvm::MDType *CGDebugInfo::getOrCreateLimitedType(const StructuredMeshType *Ty,
 
 // ----- CreateType
 //
-llvm::MDType *CGDebugInfo::CreateType(const UnstructuredMeshType *Ty) {
+llvm::DIType *CGDebugInfo::CreateType(const UnstructuredMeshType *Ty) {
   assert(false && "unimplemented");
 }
 
 // TODO: Currently used for context chains when limiting debug info.
-llvm::MDScoutCompositeType*
+llvm::DIScoutCompositeType*
 CGDebugInfo::CreateLimitedType(const UnstructuredMeshType *Ty) {
   assert(false && "unimplemented");
 }
@@ -628,22 +628,22 @@ CGDebugInfo::CreateLimitedType(const UnstructuredMeshType *Ty) {
 
 /// getOrCreateLimitedType - Get the type from the cache or create a new
 /// limited type if necessary.
-llvm::MDType *CGDebugInfo::getOrCreateLimitedType(const UnstructuredMeshType *Ty,
-                                                  llvm::MDFile *Unit) {
+llvm::DIType *CGDebugInfo::getOrCreateLimitedType(const UnstructuredMeshType *Ty,
+                                                  llvm::DIFile *Unit) {
   assert(false && "unimplemented");
 }
 
 
 // ----- CreateTypeDefinition
 //
-llvm::MDType *CGDebugInfo::CreateTypeDefinition(const UnstructuredMeshType *Ty) {
+llvm::DIType *CGDebugInfo::CreateTypeDefinition(const UnstructuredMeshType *Ty) {
   assert(false && "unimplemented");
 }
 
 // Creates a forward declaration for a RecordDecl in the given context.
-llvm::MDScoutCompositeType*
+llvm::DIScoutCompositeType*
 CGDebugInfo::getOrCreateMeshFwdDecl(const UnstructuredMeshType *Ty,
-                                    llvm::MDScope *Ctx) {
+                                    llvm::DIScope *Ctx) {
   assert(false && "unimplemented");
 }
 
@@ -664,9 +664,9 @@ CGDebugInfo::getOrCreateMeshFwdDecl(const UnstructuredMeshType *Ty,
 /// mesh fields. This is used while creating debug info entry for a
 /// Mesh.
 void CGDebugInfo::
-CollectMeshFields(const MeshDecl *mesh, llvm::MDFile *tunit,
+CollectMeshFields(const MeshDecl *mesh, llvm::DIFile *tunit,
                   SmallVectorImpl<llvm::Metadata *> &elements,
-                  llvm::MDScoutCompositeType *MeshTy) {
+                  llvm::DIScoutCompositeType *MeshTy) {
 
   const ASTMeshLayout &layout = CGM.getContext().getASTMeshLayout(mesh);
 
@@ -693,9 +693,9 @@ CollectMeshFields(const MeshDecl *mesh, llvm::MDFile *tunit,
 /// CollectMeshNormalField - Helper for CollectMeshFields.
 void CGDebugInfo::
 CollectMeshNormalField(const MeshFieldDecl *field, uint64_t OffsetInBits,
-                       llvm::MDFile *tunit,
+                       llvm::DIFile *tunit,
                        SmallVectorImpl<llvm::Metadata *> &elements,
-                       llvm::MDScoutCompositeType *MeshTy) {
+                       llvm::DIScoutCompositeType *MeshTy) {
   StringRef name = field->getName();
   QualType type = field->getType();
 
@@ -705,7 +705,7 @@ CollectMeshNormalField(const MeshFieldDecl *field, uint64_t OffsetInBits,
     assert(SizeInBitsOverride && "found named 0-width bitfield");
   }
 
-  llvm::MDType *fieldType;
+  llvm::DIType *fieldType;
   fieldType = createMeshFieldType(field, name, type, SizeInBitsOverride,
                                   field->getLocation(), field->getAccess(),
                                   OffsetInBits, tunit, MeshTy);
@@ -717,11 +717,11 @@ CollectMeshNormalField(const MeshFieldDecl *field, uint64_t OffsetInBits,
 void CGDebugInfo::
 CollectMeshStaticField(const VarDecl *Var,
                        SmallVectorImpl<llvm::Metadata *> &elements,
-                       llvm::MDScoutCompositeType *MeshTy) {
+                       llvm::DIScoutCompositeType *MeshTy) {
   // Create the descriptor for the static variable, with or without
   // constant initializers.
-  llvm::MDFile *VUnit = getOrCreateFile(Var->getLocation());
-  llvm::MDType *VTy = getOrCreateType(Var->getType(), VUnit);
+  llvm::DIFile *VUnit = getOrCreateFile(Var->getLocation());
+  llvm::DIType *VTy = getOrCreateType(Var->getType(), VUnit);
 
   // Do not describe enums as static members.
   if (VTy->getTag() == llvm::dwarf::DW_TAG_enumeration_type)
@@ -741,13 +741,13 @@ CollectMeshStaticField(const VarDecl *Var,
   }
 
   unsigned Flags = 0;
-  llvm::MDType *GV = DBuilder.createStaticMemberType(MeshTy, VName, VUnit,
+  llvm::DIType *GV = DBuilder.createStaticMemberType(MeshTy, VName, VUnit,
                                                     LineNumber, VTy, Flags, C);
   elements.push_back(GV);
   StaticDataMemberCache[Var->getCanonicalDecl()].reset(GV);
 }
 
-llvm::MDType
+llvm::DIType
 *CGDebugInfo::createMeshFieldType(const MeshFieldDecl *field,
                                   StringRef name,
                                   QualType type,
@@ -755,12 +755,12 @@ llvm::MDType
                                   SourceLocation loc,
                                   AccessSpecifier AS,
                                   uint64_t offsetInBits,
-                                  llvm::MDFile *tunit,
-                                  llvm::MDScope *scope) {
-  llvm::MDType *debugType = getOrCreateType(type, tunit);
+                                  llvm::DIFile *tunit,
+                                  llvm::DIScope *scope) {
+  llvm::DIType *debugType = getOrCreateType(type, tunit);
 
   // Get the location for the field.
-  llvm::MDFile *file = getOrCreateFile(loc);
+  llvm::DIFile *file = getOrCreateFile(loc);
   unsigned line = getLineNumber(loc);
 
   uint64_t sizeInBits = 0;
@@ -774,20 +774,20 @@ llvm::MDType
       sizeInBits = sizeInBitsOverride;
   }
 
-  unsigned flags = llvm::DebugNode::FlagPublic;
+  unsigned flags = llvm::DINode::FlagPublic;
 
   unsigned scoutFlags = 0;
   if(field->isCellLocated()){
-    scoutFlags |= llvm::MDScoutDerivedType::FlagMeshFieldCellLocated;
+    scoutFlags |= llvm::DIScoutDerivedType::FlagMeshFieldCellLocated;
   }
   else if(field->isVertexLocated()){
-    scoutFlags |= llvm::MDScoutDerivedType::FlagMeshFieldVertexLocated;
+    scoutFlags |= llvm::DIScoutDerivedType::FlagMeshFieldVertexLocated;
   }
   else if(field->isEdgeLocated()){
-    scoutFlags |= llvm::MDScoutDerivedType::FlagMeshFieldEdgeLocated;
+    scoutFlags |= llvm::DIScoutDerivedType::FlagMeshFieldEdgeLocated;
   }
   else if(field->isFaceLocated()){
-    scoutFlags |= llvm::MDScoutDerivedType::FlagMeshFieldFaceLocated;
+    scoutFlags |= llvm::DIScoutDerivedType::FlagMeshFieldFaceLocated;
   }
 
   return 
@@ -802,11 +802,11 @@ llvm::MDType
 //===----------------------------------------------------------------------===//
 
 
-llvm::MDType *CGDebugInfo::CreateType(const WindowType *Ty) {
+llvm::DIType *CGDebugInfo::CreateType(const WindowType *Ty) {
   return getOrCreateStructPtrType("__scout_win_t", WindowDITy);
 }
 
-llvm::MDType *CGDebugInfo::CreateType(const ImageType *Ty) {
+llvm::DIType *CGDebugInfo::CreateType(const ImageType *Ty) {
   return getOrCreateStructPtrType("__scout_win_t", ImageDITy);
 }
 
@@ -814,7 +814,7 @@ llvm::MDType *CGDebugInfo::CreateType(const ImageType *Ty) {
 // Query debug support
 //===----------------------------------------------------------------------===//
 
-llvm::MDType *CGDebugInfo::CreateType(const QueryType *Ty) {
+llvm::DIType *CGDebugInfo::CreateType(const QueryType *Ty) {
   return getOrCreateStructPtrType("__scout_query_t", QueryDITy);
 }
 
@@ -822,7 +822,7 @@ llvm::MDType *CGDebugInfo::CreateType(const QueryType *Ty) {
 // Frame debug support
 //===----------------------------------------------------------------------===//
 
-llvm::MDType *CGDebugInfo::CreateType(const FrameType *Ty) {
+llvm::DIType *CGDebugInfo::CreateType(const FrameType *Ty) {
   assert(false && "unimplemented");
 }
 
@@ -830,7 +830,7 @@ llvm::MDType *CGDebugInfo::CreateType(const FrameType *Ty) {
 // FrameVar debug support
 //===----------------------------------------------------------------------===//
 
-llvm::MDType *CGDebugInfo::CreateType(const FrameVarType *Ty) {
+llvm::DIType *CGDebugInfo::CreateType(const FrameVarType *Ty) {
   assert(false && "unimplemented");
 }
 
@@ -841,7 +841,7 @@ llvm::MDType *CGDebugInfo::CreateType(const FrameVarType *Ty) {
 
 // ----- CreateTypeDefinition
 //
-llvm::MDType *CGDebugInfo::CreateTypeDefinition(const FrameType *Ty) {
+llvm::DIType *CGDebugInfo::CreateTypeDefinition(const FrameType *Ty) {
   FrameDecl *FD = Ty->getDecl();
   
   // Get overall information about the mesh type for the debug info.
@@ -884,7 +884,7 @@ CGDebugInfo::getOrCreateFrameFwdDecl(const FrameType *Ty,
 
 /// getOrCreateLimitedType - Get the type from the cache or create a new
 /// limited type if necessary.
-llvm::MDType *CGDebugInfo::getOrCreateLimitedType(const FrameType *Ty,
+llvm::DIType *CGDebugInfo::getOrCreateLimitedType(const FrameType *Ty,
                                                  llvm::DIFile Unit) {
   assert(false && "unimplemented");
 }

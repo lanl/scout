@@ -209,7 +209,8 @@ Decl *ASTNodeImporter::VisitUniformMeshDecl(UniformMeshDecl *D) {
   DeclContext *DC, *LexicalDC;
   DeclarationName Name;
   SourceLocation Loc;
-  if (ImportDeclParts(D, DC, LexicalDC, Name, Loc))
+  NamedDecl *ToD;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, ToD, Loc))
     return 0;
 
   SourceLocation StartLoc = Importer.Import(D->getLocStart());
@@ -250,7 +251,8 @@ Decl *ASTNodeImporter::VisitALEMeshDecl(ALEMeshDecl *D) {
   DeclContext *DC, *LexicalDC;
   DeclarationName Name;
   SourceLocation Loc;
-  if (ImportDeclParts(D, DC, LexicalDC, Name, Loc))
+  NamedDecl *ToD;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, ToD, Loc))
     return 0;
   
   SourceLocation StartLoc = Importer.Import(D->getLocStart());
@@ -292,7 +294,8 @@ Decl *ASTNodeImporter::VisitStructuredMeshDecl(StructuredMeshDecl *D) {
   DeclContext *DC, *LexicalDC;
   DeclarationName Name;
   SourceLocation Loc;
-  if (ImportDeclParts(D, DC, LexicalDC, Name, Loc))
+  NamedDecl *ToD;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, ToD, Loc))
     return 0;
 
   SourceLocation StartLoc = Importer.Import(D->getLocStart());
@@ -333,7 +336,8 @@ Decl *ASTNodeImporter::VisitRectilinearMeshDecl(RectilinearMeshDecl *D) {
   DeclContext *DC, *LexicalDC;
   DeclarationName Name;
   SourceLocation Loc;
-  if (ImportDeclParts(D, DC, LexicalDC, Name, Loc))
+  NamedDecl *ToD;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, ToD, Loc))
     return 0;
 
   SourceLocation StartLoc = Importer.Import(D->getLocStart());
@@ -374,7 +378,8 @@ Decl *ASTNodeImporter::VisitUnstructuredMeshDecl(UnstructuredMeshDecl *D) {
   DeclContext *DC, *LexicalDC;
   DeclarationName Name;
   SourceLocation Loc;
-  if (ImportDeclParts(D, DC, LexicalDC, Name, Loc))
+  NamedDecl *ToD;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, ToD, Loc))
     return 0;
 
   SourceLocation StartLoc = Importer.Import(D->getLocStart());
@@ -406,7 +411,8 @@ Decl *ASTNodeImporter::VisitMeshFieldDecl(MeshFieldDecl *D) {
   DeclContext *DC, *LexicalDC;
   DeclarationName Name;
   SourceLocation Loc;
-  if (ImportDeclParts(D, DC, LexicalDC, Name, Loc))
+  NamedDecl *ToD;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, ToD, Loc))
     return 0;
 
   // Determine whether we've already imported this field.
@@ -486,7 +492,8 @@ Decl *ASTNodeImporter::VisitFrameDecl(FrameDecl *D) {
   DeclContext *DC, *LexicalDC;
   DeclarationName Name;
   SourceLocation Loc;
-  if (ImportDeclParts(D, DC, LexicalDC, Name, Loc))
+  NamedDecl *ToD;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, ToD, Loc))
     return 0;
   
   SourceLocation StartLoc = Importer.Import(D->getLocStart());

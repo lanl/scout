@@ -1479,12 +1479,12 @@ namespace{
       first_ = false;
     }
 
-    double toX(double dx){
-      return origin_.x() + ((dx - xMin_)/xSpan_) * xLen_;
+    double toX(double dx){      
+      return origin_.x() + xm_ * (dx - xMin_);
     }
 
     double toY(double dy){
-      return origin_.y() - ((dy - yMin_)/ySpan_) * yLen_;
+      return origin_.y() - ym_ * (dy - yMin_);
     }
 
     void render(){
@@ -1656,7 +1656,9 @@ namespace{
 
       xSpan_ = xMax_ - xMin_;
       ySpan_ = yMax_ - yMin_;
-      
+      xm_ = xLen_/xSpan_;
+      ym_ = yLen_/ySpan_;
+
       for(Element* e : elements_){
         if(Axis* a = dynamic_cast<Axis*>(e)){
           if(a->dim == 1){
@@ -2021,6 +2023,8 @@ namespace{
     double yMin_;
     double yMax_;
     double ySpan_;
+    double xm_;
+    double ym_;
   };
 
 } // end namespace

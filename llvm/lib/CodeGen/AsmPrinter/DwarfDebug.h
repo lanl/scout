@@ -275,7 +275,7 @@ class DwarfDebug : public AsmPrinterHandler {
       TypeUnitsUnderConstruction;
   
   // +===== Scout ===========================================
-  SmallVector<std::pair<std::unique_ptr<DwarfTypeUnit>, const MDScoutCompositeType *>, 1>
+  SmallVector<std::pair<std::unique_ptr<DwarfTypeUnit>, const DIScoutCompositeType *>, 1>
   ScoutTypeUnitsUnderConstruction;
   // +=======================================================
   
@@ -531,7 +531,7 @@ public:
 
   // +===== Scout =============================================
   void addDwarfTypeUnitType(DwarfCompileUnit &CU, StringRef Identifier,
-                            DIE &Die, const MDScoutCompositeType* CTy);
+                            DIE &Die, const DIScoutCompositeType* CTy);
   // +=========================================================
 
   /// \brief Add a label so that arange data can be generated for it.

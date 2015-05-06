@@ -200,11 +200,11 @@ namespace llvm {
                                     DIType *Ty);
 
     // +===== Scout ==============================
-    MDScoutDerivedType
-    *createMeshMemberType(MDScope *Scope, StringRef Name, MDFile *File,
+    DIScoutDerivedType
+    *createMeshMemberType(DIScope *Scope, StringRef Name, DIFile *File,
                           unsigned LineNo, uint64_t SizeInBits,
                           uint64_t AlignInBits, uint64_t OffsetInBits,
-                          unsigned Flags, unsigned ScoutFlags, MDType *Ty);
+                          unsigned Flags, unsigned ScoutFlags, DIType *Ty);
     // +==========================================
 
     /// createStaticMemberType - Create debugging information entry for a
@@ -310,16 +310,16 @@ namespace llvm {
     /// @param Elements     Struct elements.
     /// @param RunTimeLang  Optional parameter, Objective-C runtime version.
     /// @param UniqueIdentifier A unique identifier for the struct.
-    MDScoutCompositeType *createUniformMeshType(MDScope *Scope, StringRef Name,
-                                                MDFile *File, unsigned LineNumber,
+    DIScoutCompositeType *createUniformMeshType(DIScope *Scope, StringRef Name,
+                                                DIFile *File, unsigned LineNumber,
                                                 uint64_t SizeInBits, uint64_t AlignInBits,
-                                                unsigned Flags, MDType *DerivedFrom,
-                                                DIArray Elements,
+                                                unsigned Flags, DIType *DerivedFrom,
+                                                DINodeArray Elements,
                                                 unsigned dimX,
                                                 unsigned dimY,
                                                 unsigned dimZ,
                                                 unsigned RunTimeLang = 0,
-                                                MDType* VTableHolder = nullptr,
+                                                DIType* VTableHolder = nullptr,
                                                 StringRef UniqueIdentifier = "");
     
    
@@ -334,16 +334,16 @@ namespace llvm {
    /// @param Elements     Struct elements.
    /// @param RunTimeLang  Optional parameter, Objective-C runtime version.
    /// @param UniqueIdentifier A unique identifier for the struct.
-   MDScoutCompositeType *createALEMeshType(MDScope *Scope, StringRef Name,
-                                           MDFile *File, unsigned LineNumber,
+   DIScoutCompositeType *createALEMeshType(DIScope *Scope, StringRef Name,
+                                           DIFile *File, unsigned LineNumber,
                                            uint64_t SizeInBits, uint64_t AlignInBits,
-                                           unsigned Flags, MDType *DerivedFrom,
-                                           DIArray Elements,
+                                           unsigned Flags, DIType *DerivedFrom,
+                                           DINodeArray Elements,
                                            unsigned dimX,
                                            unsigned dimY,
                                            unsigned dimZ,
                                            unsigned RunTimeLang = 0,
-                                           MDType* VTableHolder = nullptr,
+                                           DIType* VTableHolder = nullptr,
                                            StringRef UniqueIdentifier = "");
 
     /// createStructuredMeshType - Create debugging information entry for a Scout mesh.
@@ -357,16 +357,16 @@ namespace llvm {
     /// @param Elements     Struct elements.
     /// @param RunTimeLang  Optional parameter, Objective-C runtime version.
     /// @param UniqueIdentifier A unique identifier for the struct.
-    MDScoutCompositeType *createStructuredMeshType(MDScope *Scope, StringRef Name,
-                                                   MDFile *File, unsigned LineNumber,
+    DIScoutCompositeType *createStructuredMeshType(DIScope *Scope, StringRef Name,
+                                                   DIFile *File, unsigned LineNumber,
                                                    uint64_t SizeInBits, uint64_t AlignInBits,
-                                                   unsigned Flags, MDType *DerivedFrom,
-                                                   DIArray Elements,
+                                                   unsigned Flags, DIType *DerivedFrom,
+                                                   DINodeArray Elements,
                                                    unsigned dimX,
                                                    unsigned dimY,
                                                    unsigned dimZ,
                                                    unsigned RunTimeLang = 0,
-                                                   MDType* VTableHolder = nullptr,
+                                                   DIType* VTableHolder = nullptr,
                                                    StringRef UniqueIdentifier = "");
 
     /// createRectilinearMeshType - Create debugging information entry for a Scout mesh.
@@ -380,16 +380,16 @@ namespace llvm {
     /// @param Elements     Struct elements.
     /// @param RunTimeLang  Optional parameter, Objective-C runtime version.
     /// @param UniqueIdentifier A unique identifier for the struct.
-    MDScoutCompositeType *createRectilinearMeshType(MDScope *Scope, StringRef Name,
-                                                    MDFile *File, unsigned LineNumber,
+    DIScoutCompositeType *createRectilinearMeshType(DIScope *Scope, StringRef Name,
+                                                    DIFile *File, unsigned LineNumber,
                                                     uint64_t SizeInBits, uint64_t AlignInBits,
-                                                    unsigned Flags, MDType *DerivedFrom,
-                                                    DIArray Elements,
+                                                    unsigned Flags, DIType *DerivedFrom,
+                                                    DINodeArray Elements,
                                                     unsigned dimX,
                                                     unsigned dimY,
                                                     unsigned dimZ,
                                                     unsigned RunTimeLang = 0,
-                                                    MDType* VTableHolder = nullptr,
+                                                    DIType* VTableHolder = nullptr,
                                                     StringRef UniqueIdentifier = "");
 
     /// createUnstructuredMeshType - Create debugging information entry for a Scout mesh.
@@ -403,16 +403,16 @@ namespace llvm {
     /// @param Elements     Struct elements.
     /// @param RunTimeLang  Optional parameter, Objective-C runtime version.
     /// @param UniqueIdentifier A unique identifier for the struct.
-    MDScoutCompositeType *createUnstructuredMeshType(MDScope *Scope, StringRef Name,
-                                                     MDFile *File, unsigned LineNumber,
+    DIScoutCompositeType *createUnstructuredMeshType(DIScope *Scope, StringRef Name,
+                                                     DIFile *File, unsigned LineNumber,
                                                      uint64_t SizeInBits, uint64_t AlignInBits,
-                                                     unsigned Flags, MDType *DerivedFrom,
-                                                     DIArray Elements,
+                                                     unsigned Flags, DIType *DerivedFrom,
+                                                     DINodeArray Elements,
                                                      unsigned dimX,
                                                      unsigned dimY,
                                                      unsigned dimZ,
                                                      unsigned RunTimeLang = 0,
-                                                     MDType* VTableHolder = nullptr,
+                                                     DIType* VTableHolder = nullptr,
                                                      StringRef UniqueIdentifier = "");
 
     // +========================================================================
@@ -532,8 +532,8 @@ namespace llvm {
                                        StringRef UniqueIdentifier = "");
 
     // +===== Scout ===============================================
-    MDScoutCompositeType *createScoutForwardDecl(unsigned Tag, StringRef Name,
-                                                 MDScope* Scope, MDFile* F,
+    DIScoutCompositeType *createScoutForwardDecl(unsigned Tag, StringRef Name,
+                                                 DIScope* Scope, DIFile* F,
                                                  unsigned Line,
                                                  unsigned RuntimeLang = 0,
                                                  uint64_t SizeInBits = 0,
@@ -552,11 +552,11 @@ namespace llvm {
     DIScoutCompositeType* createReplaceableScoutCompositeType(
       unsigned Tag, StringRef Name, DIScope* Scope, DIFile* F,
       unsigned Line, unsigned RuntimeLang = 0, uint64_t SizeInBits = 0,
-      uint64_t AlignInBits = 0, unsigned Flags = DebugNode::FlagFwdDecl,
+      uint64_t AlignInBits = 0, unsigned Flags = DINode::FlagFwdDecl,
       StringRef UniqueIdentifier = "");
     // +======================================================
 
-    /// retainType - Retain MDType* in a module even if it is not referenced
+    /// retainType - Retain DIType* in a module even if it is not referenced
     /// through debug info anchors.
     void retainType(DIType *T);
 
@@ -819,7 +819,7 @@ namespace llvm {
     // +===== Scout =============================
     
     void replaceArrays(DIScoutCompositeType *&T, DINodeArray Elements,
-                       DINodeArray TParems = DIArray());
+                       DINodeArray TParems = DINodeArray());
     
     // +=========================================
 

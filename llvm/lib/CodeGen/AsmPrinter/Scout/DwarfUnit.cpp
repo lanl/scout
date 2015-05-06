@@ -106,7 +106,7 @@ static uint64_t getBaseTypeSize(DwarfDebug *DD, DIDerivedType Ty) {
 }
 #endif
 
-void DwarfUnit::constructMeshMemberDIE(DIE &Buffer, const MDScoutDerivedType *DT) {
+void DwarfUnit::constructMeshMemberDIE(DIE &Buffer, const DIScoutDerivedType *DT) {
   // This method is modeled after constructMemberDIE - which is called for
   // constructing the DWARF info for the members of a struct/class but
   // is simpler because we do not have classes which have virtual members,
@@ -139,7 +139,7 @@ void DwarfUnit::constructMeshMemberDIE(DIE &Buffer, const MDScoutDerivedType *DT
 }
 
 /// constructTypeDIE - Construct type DIE from DIScoutCompositeType.
-void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, const MDScoutCompositeType *CTy) {
+void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, const DIScoutCompositeType *CTy) {
   // Add name if not anonymous or intermediate type.
   StringRef Name = CTy->getName();
 
@@ -153,9 +153,9 @@ void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, const MDScoutCompositeType *C
   case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
   case dwarf::DW_TAG_SCOUT_unstructured_mesh_type: {
     // Add elements to mesh type.
-    DIArray Elements = CTy->getElements();
+    DINodeArray Elements = CTy->getElements();
     for (const auto *Element : Elements) {
-      auto *DDTy = dyn_cast<MDScoutDerivedType>(Element);
+      auto *DDTy = dyn_cast<DIScoutDerivedType>(Element);
       constructMeshMemberDIE(Buffer, DDTy);
     }
     break;

@@ -428,10 +428,9 @@ template <> struct MDNodeKeyImpl<DICompositeType> {
   }
 };
 
-<<<<<<< HEAD
 // +====== Scout ==============================================
 
-template <> struct MDNodeKeyImpl<MDScoutDerivedType> {
+template <> struct MDNodeKeyImpl<DIScoutDerivedType> {
   unsigned Tag;
   StringRef Name;
   Metadata *File;
@@ -452,7 +451,7 @@ template <> struct MDNodeKeyImpl<MDScoutDerivedType> {
   : Tag(Tag), Name(Name), File(File), Line(Line), Scope(Scope),
   BaseType(BaseType), SizeInBits(SizeInBits), AlignInBits(AlignInBits),
   OffsetInBits(OffsetInBits), Flags(Flags), ExtraData(ExtraData) {}
-  MDNodeKeyImpl(const MDScoutDerivedType *N)
+  MDNodeKeyImpl(const DIScoutDerivedType *N)
   : Tag(N->getTag()), Name(N->getName()), File(N->getRawFile()),
   Line(N->getLine()), Scope(N->getRawScope()), BaseType(N->getRawBaseType()),
   SizeInBits(N->getSizeInBits()), AlignInBits(N->getAlignInBits()),
@@ -460,7 +459,7 @@ template <> struct MDNodeKeyImpl<MDScoutDerivedType> {
   ScoutFlags(N->getScoutFlags()),
   ExtraData(N->getRawExtraData()) {}
   
-  bool isKeyOf(const MDScoutDerivedType *RHS) const {
+  bool isKeyOf(const DIScoutDerivedType *RHS) const {
     return Tag == RHS->getTag() && Name == RHS->getName() &&
     File == RHS->getRawFile() && Line == RHS->getLine() &&
     Scope == RHS->getRawScope() && BaseType == RHS->getRawBaseType() &&
@@ -476,7 +475,7 @@ template <> struct MDNodeKeyImpl<MDScoutDerivedType> {
   }
 };
   
-template <> struct MDNodeKeyImpl<MDScoutCompositeType> {
+template <> struct MDNodeKeyImpl<DIScoutCompositeType> {
     unsigned Tag;
     StringRef Name;
     Metadata *File;
@@ -509,7 +508,7 @@ template <> struct MDNodeKeyImpl<MDScoutCompositeType> {
     RuntimeLang(RuntimeLang), VTableHolder(VTableHolder),
     TemplateParams(TemplateParams), Identifier(Identifier),
     DimX(DimX), DimY(DimY), DimZ(DimZ){}
-    MDNodeKeyImpl(const MDScoutCompositeType *N)
+    MDNodeKeyImpl(const DIScoutCompositeType *N)
     : Tag(N->getTag()), Name(N->getName()), File(N->getRawFile()),
     Line(N->getLine()), Scope(N->getRawScope()), BaseType(N->getRawBaseType()),
     SizeInBits(N->getSizeInBits()), AlignInBits(N->getAlignInBits()),
@@ -520,7 +519,7 @@ template <> struct MDNodeKeyImpl<MDScoutCompositeType> {
     DimX(N->getDimX()), DimY(N->getDimY()), DimZ(N->getDimZ()){
     }
     
-    bool isKeyOf(const MDScoutCompositeType *RHS) const {
+    bool isKeyOf(const DIScoutCompositeType *RHS) const {
       return Tag == RHS->getTag() && Name == RHS->getName() &&
       File == RHS->getRawFile() && Line == RHS->getLine() &&
       Scope == RHS->getRawScope() && BaseType == RHS->getRawBaseType() &&
@@ -546,10 +545,7 @@ template <> struct MDNodeKeyImpl<MDScoutCompositeType> {
 
 // +==================================================================
   
-template <> struct MDNodeKeyImpl<MDSubroutineType> {
-=======
 template <> struct MDNodeKeyImpl<DISubroutineType> {
->>>>>>> b788acf9e97f8345bf04291f9af94f68558d2486
   unsigned Flags;
   Metadata *TypeArray;
 

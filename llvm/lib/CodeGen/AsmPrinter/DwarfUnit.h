@@ -311,7 +311,7 @@ public:
 
   // +===== Scout ================================
   /// getOrCreateContextDIE - Get context owner's DIE.
-  DIE *createTypeDIE(const MDScoutCompositeType *Ty);
+  DIE *createTypeDIE(const DIScoutCompositeType *Ty);
   // +============================================
 
   /// \brief Get context owner's DIE.
@@ -345,7 +345,7 @@ public:
   // +===== Scout ============================================
   
   /// constructTypeDIE - Construct type DIE from DICompositeType.
-  void constructTypeDIE(DIE &Buffer, const MDScoutCompositeType *CTy);
+  void constructTypeDIE(DIE &Buffer, const DIScoutCompositeType *CTy);
   
   // +========================================================
   
@@ -364,25 +364,16 @@ protected:
   }
 
 private:
-<<<<<<< HEAD
   // +===== Scout ====================================
   /// constructScoutTypeDIE - Construct type DIE from DIScoutCompositeType.
-  void constructScoutTypeDIE(DIE &Buffer, const MDScoutCompositeType* CTy);
+  void constructScoutTypeDIE(DIE &Buffer, const DIScoutCompositeType* CTy);
   // +================================================
-
+  
   // +===== Scout ==========================
   /// constructMeshMemberDIE - Construct member DIE from DIDerivedType.
-  void constructMeshMemberDIE(DIE &Buffer, const MDScoutDerivedType* DT);
+  void constructMeshMemberDIE(DIE &Buffer, const DIScoutDerivedType* DT);
   // +======================================
-
-  void constructTypeDIE(DIE &Buffer, const MDBasicType *BTy);
-  void constructTypeDIE(DIE &Buffer, const MDDerivedType *DTy);
-  void constructTypeDIE(DIE &Buffer, const MDSubroutineType *DTy);
-  void constructSubrangeDIE(DIE &Buffer, DISubrange SR, DIE *IndexTy);
-  void constructArrayTypeDIE(DIE &Buffer, const MDCompositeType *CTy);
-  void constructEnumTypeDIE(DIE &Buffer, const MDCompositeType *CTy);
-  void constructMemberDIE(DIE &Buffer, const MDDerivedType *DT);
-=======
+  
   void constructTypeDIE(DIE &Buffer, const DIBasicType *BTy);
   void constructTypeDIE(DIE &Buffer, const DIDerivedType *DTy);
   void constructTypeDIE(DIE &Buffer, const DISubroutineType *DTy);
@@ -390,7 +381,7 @@ private:
   void constructArrayTypeDIE(DIE &Buffer, const DICompositeType *CTy);
   void constructEnumTypeDIE(DIE &Buffer, const DICompositeType *CTy);
   void constructMemberDIE(DIE &Buffer, const DIDerivedType *DT);
->>>>>>> b788acf9e97f8345bf04291f9af94f68558d2486
+
   void constructTemplateTypeParameterDIE(DIE &Buffer,
                                          const DITemplateTypeParameter *TP);
   void constructTemplateValueParameterDIE(DIE &Buffer,

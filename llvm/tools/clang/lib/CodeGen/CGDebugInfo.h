@@ -68,11 +68,11 @@ class CGDebugInfo {
   llvm::DIType *BlockLiteralGeneric = nullptr;
 
   // +==== Scout =============================================================+
-  llvm::MDType *WindowDITy;
-  llvm::MDType *ImageDITy;
-  llvm::MDType *QueryDITy;
-  llvm::MDType *FrameDITy;
-  llvm::MDType *FrameVarDITy;
+  llvm::DIType *WindowDITy;
+  llvm::DIType *ImageDITy;
+  llvm::DIType *QueryDITy;
+  llvm::DIType *FrameDITy;
+  llvm::DIType *FrameVarDITy;
   // +========================================================================+
 
   /// \brief Cache of previously constructed Types.
@@ -178,25 +178,25 @@ class CGDebugInfo {
                                               llvm::DIType *RecordTy);
 
   // +===== Scout ============================================================+
-  llvm::MDType *CreateType(const UniformMeshType *Ty);
-  llvm::MDType *CreateTypeDefinition(const UniformMeshType *Ty);
-  llvm::MDScoutCompositeType *CreateLimitedType(const UniformMeshType *Ty);
+  llvm::DIType *CreateType(const UniformMeshType *Ty);
+  llvm::DIType *CreateTypeDefinition(const UniformMeshType *Ty);
+  llvm::DIScoutCompositeType *CreateLimitedType(const UniformMeshType *Ty);
   
-  llvm::MDType *CreateType(const ALEMeshType *Ty);
-  llvm::MDType *CreateTypeDefinition(const ALEMeshType *Ty);
-  llvm::MDScoutCompositeType *CreateLimitedType(const ALEMeshType *Ty);
+  llvm::DIType *CreateType(const ALEMeshType *Ty);
+  llvm::DIType *CreateTypeDefinition(const ALEMeshType *Ty);
+  llvm::DIScoutCompositeType *CreateLimitedType(const ALEMeshType *Ty);
   
-  llvm::MDType *CreateType(const RectilinearMeshType *Ty);
-  llvm::MDType *CreateTypeDefinition(const RectilinearMeshType *Ty);
-  llvm::MDScoutCompositeType *CreateLimitedType(const RectilinearMeshType *Ty);
+  llvm::DIType *CreateType(const RectilinearMeshType *Ty);
+  llvm::DIType *CreateTypeDefinition(const RectilinearMeshType *Ty);
+  llvm::DIScoutCompositeType *CreateLimitedType(const RectilinearMeshType *Ty);
 
-  llvm::MDType *CreateType(const StructuredMeshType *Ty);
-  llvm::MDType *CreateTypeDefinition(const StructuredMeshType *Ty);
-  llvm::MDScoutCompositeType *CreateLimitedType(const StructuredMeshType *Ty);
+  llvm::DIType *CreateType(const StructuredMeshType *Ty);
+  llvm::DIType *CreateTypeDefinition(const StructuredMeshType *Ty);
+  llvm::DIScoutCompositeType *CreateLimitedType(const StructuredMeshType *Ty);
 
-  llvm::MDType *CreateType(const UnstructuredMeshType *Ty);
-  llvm::MDType *CreateTypeDefinition(const UnstructuredMeshType *Ty);
-  llvm::MDScoutCompositeType *CreateLimitedType(const UnstructuredMeshType *Ty);
+  llvm::DIType *CreateType(const UnstructuredMeshType *Ty);
+  llvm::DIType *CreateTypeDefinition(const UnstructuredMeshType *Ty);
+  llvm::DIScoutCompositeType *CreateLimitedType(const UnstructuredMeshType *Ty);
 
 
   void CollectMeshFields(const MeshDecl *Decl,
@@ -359,9 +359,9 @@ public:
 
   // +===== Scout ============================================================+
   /// getOrCreateMeshType - Emit mesh type's standalone debug info.
-  llvm::MDType *getOrCreateMeshType(QualType Ty, SourceLocation L);
+  llvm::DIType *getOrCreateMeshType(QualType Ty, SourceLocation L);
   
-  llvm::MDType *getOrCreateFrameType(QualType Ty, SourceLocation L);
+  llvm::DIType *getOrCreateFrameType(QualType Ty, SourceLocation L);
   // +========================================================================+
 
   /// getOrCreateInterfaceType - Emit an objective c interface type standalone
@@ -469,12 +469,12 @@ private:
   // +===== Scout ============================================================+
   /// getOrCreateLimitedType - Get the type from the cache or create a new
   /// partial type if necessary.
-  llvm::MDType *getOrCreateLimitedType(const UniformMeshType *Ty, llvm::MDFile *F);
-  llvm::MDType *getOrCreateLimitedType(const ALEMeshType *Ty, llvm::MDFile *F);
-  llvm::MDType *getOrCreateLimitedType(const RectilinearMeshType *Ty, llvm::MDFile *F);
-  llvm::MDType *getOrCreateLimitedType(const StructuredMeshType *Ty, llvm::MDFile *F);
-  llvm::MDType *getOrCreateLimitedType(const UnstructuredMeshType *Ty, llvm::MDFile *F);
-  llvm::MDType *getOrCreateLimitedType(const FrameType *Ty, llvm::MDFile *F);
+  llvm::DIType *getOrCreateLimitedType(const UniformMeshType *Ty, llvm::DIFile *F);
+  llvm::DIType *getOrCreateLimitedType(const ALEMeshType *Ty, llvm::DIFile *F);
+  llvm::DIType *getOrCreateLimitedType(const RectilinearMeshType *Ty, llvm::DIFile *F);
+  llvm::DIType *getOrCreateLimitedType(const StructuredMeshType *Ty, llvm::DIFile *F);
+  llvm::DIType *getOrCreateLimitedType(const UnstructuredMeshType *Ty, llvm::DIFile *F);
+  llvm::DIType *getOrCreateLimitedType(const FrameType *Ty, llvm::DIFile *F);
   // +========================================================================+
 
   /// CreateTypeNode - Create type metadata for a source language type.
