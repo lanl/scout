@@ -1605,7 +1605,7 @@ static void writeDICompositeType(raw_ostream &Out, const DICompositeType *N,
 }
   
 // +===== Scout ===========================================
-static void writeMDScoutCompositeType(raw_ostream &Out,
+static void writeDIScoutCompositeType(raw_ostream &Out,
                                       const DIScoutCompositeType *N,
                                       TypePrinting *TypePrinter,
                                       SlotTracker *Machine, const Module *Context) {

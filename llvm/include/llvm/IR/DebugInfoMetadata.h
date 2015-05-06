@@ -789,15 +789,15 @@ class DIScoutDerivedType : public DIDerivedTypeBase {
                 unsigned Line, uint64_t SizeInBits, uint64_t AlignInBits,
                 uint64_t OffsetInBits, unsigned Flags, unsigned ScoutFlags,
                      ArrayRef<Metadata *> Ops)
-  : MDDerivedTypeBase(C, DIScoutDerivedTypeKind, Storage, Tag, Line, SizeInBits,
+  : DIDerivedTypeBase(C, DIScoutDerivedTypeKind, Storage, Tag, Line, SizeInBits,
                       AlignInBits, OffsetInBits, Flags, Ops),
   ScoutFlags(ScoutFlags){}
   
   ~DIScoutDerivedType() {}
   
   static DIScoutDerivedType *getImpl(LLVMContext &Context, unsigned Tag,
-                                StringRef Name, Metadata *File, unsigned Line,
-                                MDScopeRef Scope, MDTypeRef BaseType,
+                                StringRef Name, DIFile *File, unsigned Line,
+                                DIScopeRef Scope, DITypeRef BaseType,
                                 uint64_t SizeInBits, uint64_t AlignInBits,
                                 uint64_t OffsetInBits, unsigned Flags,
                                 unsigned ScoutFlags,
@@ -835,8 +835,8 @@ public:
                     (Tag, Name, File, Line, Scope, BaseType, SizeInBits,
                      AlignInBits, OffsetInBits, Flags, ScoutFlags, ExtraData))
   DEFINE_MDNODE_GET(DIScoutDerivedType,
-                    (unsigned Tag, StringRef Name, MDFile *File,
-                     unsigned Line, MDScopeRef Scope, MDTypeRef BaseType,
+                    (unsigned Tag, StringRef Name, DIFile *File,
+                     unsigned Line, DIScopeRef Scope, DITypeRef BaseType,
                      uint64_t SizeInBits, uint64_t AlignInBits,
                      uint64_t OffsetInBits, unsigned Flags,
                      unsigned ScoutFlags,
@@ -858,12 +858,12 @@ public:
   
   /// \brief Get casted version of extra data.
   /// @{
-  MDTypeRef getClassType() const {
+  DITypeRef getClassType() const {
     assert(getTag() == dwarf::DW_TAG_ptr_to_member_type);
-    return MDTypeRef(getExtraData());
+    return DITypeRef(getExtraData());
   }
-  MDObjCProperty *getObjCProperty() const {
-    return dyn_cast_or_null<MDObjCProperty>(getExtraData());
+  DIObjCProperty *getObjCProperty() const {
+    return dyn_cast_or_null<DIObjCProperty>(getExtraData());
   }
   Constant *getConstant() const {
     assert(getTag() == dwarf::DW_TAG_member && isStaticMember());
@@ -1067,7 +1067,7 @@ class DIScoutCompositeType : public DICompositeTypeBase {
                   uint64_t AlignInBits, uint64_t OffsetInBits, unsigned Flags,
                   unsigned DimX, unsigned DimY, unsigned DimZ,
                   ArrayRef<Metadata *> Ops)
-  : MDCompositeTypeBase(C, DIScoutCompositeTypeKind, Storage, Tag, Line,
+  : DICompositeTypeBase(C, DIScoutCompositeTypeKind, Storage, Tag, Line,
                         RuntimeLang, SizeInBits, AlignInBits, OffsetInBits,
                         Flags, Ops),
   DimX(DimX),
@@ -1078,10 +1078,10 @@ class DIScoutCompositeType : public DICompositeTypeBase {
   
   static DIScoutCompositeType *
   getImpl(LLVMContext &Context, unsigned Tag, StringRef Name, Metadata *File,
-          unsigned Line, MDScopeRef Scope, MDTypeRef BaseType,
+          unsigned Line, DIScopeRef Scope, DITypeRef BaseType,
           uint64_t SizeInBits, uint64_t AlignInBits, uint64_t OffsetInBits,
-          uint64_t Flags, DebugNodeArray Elements, unsigned RuntimeLang,
-          MDTypeRef VTableHolder, MDTemplateParameterArray TemplateParams,
+          uint64_t Flags, DINodeArray Elements, unsigned RuntimeLang,
+          DITypeRef VTableHolder, DITemplateParameterArray TemplateParams,
           StringRef Identifier,
           unsigned DimX, unsigned DimY, unsigned DimZ,
           StorageType Storage, bool ShouldCreate = true) {
@@ -1113,13 +1113,13 @@ class DIScoutCompositeType : public DICompositeTypeBase {
   
 public:
   DEFINE_MDNODE_GET(DIScoutCompositeType,
-                    (unsigned Tag, StringRef Name, MDFile *File,
-                     unsigned Line, MDScopeRef Scope, MDTypeRef BaseType,
+                    (unsigned Tag, StringRef Name, DIFile *File,
+                     unsigned Line, DIScopeRef Scope, DITypeRef BaseType,
                      uint64_t SizeInBits, uint64_t AlignInBits,
-                     uint64_t OffsetInBits, unsigned Flags, DebugNodeArray Elements,
+                     uint64_t OffsetInBits, unsigned Flags, DINodeArray Elements,
                      unsigned RuntimeLang,
-                     MDTypeRef VTableHolder,
-                     MDTemplateParameterArray TemplateParams,
+                     DITypeRef VTableHolder,
+                     DITemplateParameterArray TemplateParams,
                      StringRef Identifier,
                      unsigned DimX, unsigned DimY, unsigned DimZ),
                     (Tag, Name, File, Line, Scope, BaseType, SizeInBits,
