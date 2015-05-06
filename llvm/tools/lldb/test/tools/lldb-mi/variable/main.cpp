@@ -34,6 +34,33 @@ var_update_test(void)
     // BP_var_update_test_complx_array
 }
 
+void
+gdb_set_show_print_char_array_as_string_test(void)
+{
+    const char *string_ptr = "string - const char *";
+    const char string_arr[] = "string - char []";
+
+    // BP_gdb_set_show_print_char_array_as_string_test
+}
+
+void
+gdb_set_show_print_expand_aggregates(void)
+{
+    complex_type complx = { 3, { 3L }, &complx };
+    complex_type complx_array[2] = { { 4, { 4L }, &complx_array[1] }, { 5, { 5 }, &complx_array[0] } };
+
+    // BP_gdb_set_show_print_expand_aggregates
+}
+
+void
+gdb_set_show_print_aggregate_field_names(void)
+{
+    complex_type complx = { 3, { 3L }, &complx };
+    complex_type complx_array[2] = { { 4, { 4L }, &complx_array[1] }, { 5, { 5 }, &complx_array[0] } };
+
+    // BP_gdb_set_show_print_aggregate_field_names
+}
+
 int g_MyVar = 3;
 static int s_MyVar = 4;
 
@@ -43,5 +70,8 @@ main(int argc, char const *argv[])
     int a = 10, b = 20;
     s_MyVar = a + b;
     var_update_test();
+    gdb_set_show_print_char_array_as_string_test();
+    gdb_set_show_print_expand_aggregates();
+    gdb_set_show_print_aggregate_field_names();
     return 0; // BP_return
 }
