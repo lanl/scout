@@ -1777,6 +1777,8 @@ CodeGenModule::GetOrCreateLLVMGlobal(StringRef MangledName,
     // handling.
     GV->setConstant(isTypeConstant(D->getType(), false));
 
+    GV->setAlignment(getContext().getDeclAlign(D).getQuantity());
+
     setLinkageAndVisibilityForGV(GV, D);
 
     if (D->getTLSKind()) {
@@ -2521,7 +2523,7 @@ void CodeGenModule::EmitAliasDefinition(GlobalDecl GD) {
 
   // Create the new alias itself, but don't set a name yet.
   auto *GA = llvm::GlobalAlias::create(
-      cast<llvm::PointerType>(Aliasee->getType())->getElementType(), 0,
+      cast<llvm::PointerType>(Aliasee->getType()),
       llvm::Function::ExternalLinkage, "", Aliasee, &getModule());
 
   if (Entry) {
@@ -3354,6 +3356,9 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
     break;
 
   case Decl::FileScopeAsm: {
+    // File-scope asm is ignored during device-side CUDA compilation.
+    if (LangOpts.CUDA && LangOpts.CUDAIsDevice)
+      break;
     auto *AD = cast<FileScopeAsmDecl>(D);
     getModule().appendModuleInlineAsm(AD->getAsmString()->getString());
     break;

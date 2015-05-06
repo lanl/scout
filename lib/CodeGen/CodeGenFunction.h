@@ -210,8 +210,7 @@ public:
 
     /// \brief Emit the captured statement body.
     virtual void EmitBody(CodeGenFunction &CGF, const Stmt *S) {
-      RegionCounter Cnt = CGF.getPGORegionCounter(S);
-      Cnt.beginRegion(CGF.Builder);
+      CGF.incrementProfileCounter(S);
       CGF.EmitStmt(S);
     }
 
@@ -890,12 +889,39 @@ private:
 
   CodeGenPGO PGO;
 
+  /// Calculate branch weights appropriate for PGO data
+  llvm::MDNode *createProfileWeights(uint64_t TrueCount, uint64_t FalseCount);
+  llvm::MDNode *createProfileWeights(ArrayRef<uint64_t> Weights);
+  llvm::MDNode *createProfileWeightsForLoop(const Stmt *Cond,
+                                            uint64_t LoopCount);
+
 public:
-  /// Get a counter for instrumentation of the region associated with the given
-  /// statement.
-  RegionCounter getPGORegionCounter(const Stmt *S) {
-    return RegionCounter(PGO, S);
+  /// Increment the profiler's counter for the given statement.
+  void incrementProfileCounter(const Stmt *S) {
+    if (CGM.getCodeGenOpts().ProfileInstrGenerate)
+      PGO.emitCounterIncrement(Builder, S);
+    PGO.setCurrentStmt(S);
   }
+
+  /// Get the profiler's count for the given statement.
+  uint64_t getProfileCount(const Stmt *S) {
+    Optional<uint64_t> Count = PGO.getStmtCount(S);
+    if (!Count.hasValue())
+      return 0;
+    return *Count;
+  }
+
+  /// Set the profiler's current count.
+  void setCurrentProfileCount(uint64_t Count) {
+    PGO.setCurrentRegionCount(Count);
+  }
+
+  /// Get the profiler's current count. This is generally the count for the most
+  /// recently incremented counter.
+  uint64_t getCurrentProfileCount() {
+    return PGO.getCurrentRegionCount();
+  }
+
 private:
 
   /// SwitchInsn - This is nearest current switch instruction. It is null if
@@ -1221,7 +1247,7 @@ public:
   void EmitDestructorBody(FunctionArgList &Args);
   void emitImplicitAssignmentOperatorBody(FunctionArgList &Args);
   void EmitFunctionBody(FunctionArgList &Args, const Stmt *Body);
-  void EmitBlockWithFallThrough(llvm::BasicBlock *BB, RegionCounter &Cnt);
+  void EmitBlockWithFallThrough(llvm::BasicBlock *BB, const Stmt *S);
 
   void EmitForwardingCallToLambda(const CXXMethodDecl *LambdaCallOperator,
                                   CallArgList &CallArgs);
@@ -1730,6 +1756,9 @@ public:
   void EmitCXXTemporary(const CXXTemporary *Temporary, QualType TempType,
                         llvm::Value *Ptr);
 
+  llvm::Value *EmitLifetimeStart(uint64_t Size, llvm::Value *Addr);
+  void EmitLifetimeEnd(llvm::Value *Size, llvm::Value *Addr);
+
   llvm::Value *EmitCXXNewExpr(const CXXNewExpr *E);
   void EmitCXXDeleteExpr(const CXXDeleteExpr *E);
 
@@ -2060,7 +2089,9 @@ public:
   /// \param AO Atomic ordering of the generated atomic instructions.
   /// \param CommonGen Code generator for complex expressions that cannot be
   /// expressed through atomicrmw instruction.
-  void EmitOMPAtomicSimpleUpdateExpr(
+  /// \returns <true, OldAtomicValue> if simple 'atomicrmw' instruction was
+  /// generated, <false, RValue::get(nullptr)> otherwise.
+  std::pair<bool, RValue> EmitOMPAtomicSimpleUpdateExpr(
       LValue X, RValue E, BinaryOperatorKind BO, bool IsXLHSInRHSPart,
       llvm::AtomicOrdering AO, SourceLocation Loc,
       const llvm::function_ref<RValue(RValue)> &CommonGen);
@@ -2139,10 +2170,21 @@ public:
   void EmitOMPTargetDirective(const OMPTargetDirective &S);
   void EmitOMPTeamsDirective(const OMPTeamsDirective &S);
 
-  void
-  EmitOMPInnerLoop(const Stmt &S, bool RequiresCleanup, const Expr *LoopCond,
-                   const Expr *IncExpr,
-                   const llvm::function_ref<void(CodeGenFunction &)> &BodyGen);
+  /// \brief Emit inner loop of the worksharing/simd construct.
+  ///
+  /// \param S Directive, for which the inner loop must be emitted.
+  /// \param RequiresCleanup true, if directive has some associated private
+  /// variables.
+  /// \param LoopCond Bollean condition for loop continuation.
+  /// \param IncExpr Increment expression for loop control variable.
+  /// \param BodyGen Generator for the inner body of the inner loop.
+  /// \param PostIncGen Genrator for post-increment code (required for ordered
+  /// loop directvies).
+  void EmitOMPInnerLoop(
+      const Stmt &S, bool RequiresCleanup, const Expr *LoopCond,
+      const Expr *IncExpr,
+      const llvm::function_ref<void(CodeGenFunction &)> &BodyGen,
+      const llvm::function_ref<void(CodeGenFunction &)> &PostIncGen);
 
 private:
 

@@ -250,6 +250,8 @@ def MQ : JoinedOrSeparate<["-"], "MQ">, Group<M_Group>, Flags<[CC1Option]>,
     HelpText<"Specify name of main file output to quote in depfile">;
 def MT : JoinedOrSeparate<["-"], "MT">, Group<M_Group>, Flags<[CC1Option]>,
     HelpText<"Specify name of main file output in depfile">;
+def MV : Flag<["-"], "MV">, Group<M_Group>, Flags<[CC1Option]>,
+    HelpText<"Use NMake/Jom format for the depfile">;
 def Mach : Flag<["-"], "Mach">;
 def O0 : Flag<["-"], "O0">, Group<O_Group>, Flags<[CC1Option]>;
 def O4 : Flag<["-"], "O4">, Group<O_Group>, Flags<[CC1Option]>;
@@ -416,7 +418,10 @@ def fauto_profile_EQ : Joined<["-"], "fauto-profile=">,
     Alias<fprofile_sample_use_EQ>;
 def fprofile_instr_generate : Flag<["-"], "fprofile-instr-generate">,
     Group<f_Group>, Flags<[CC1Option]>,
-    HelpText<"Generate instrumented code to collect execution counts">;
+    HelpText<"Generate instrumented code to collect execution counts into default.profraw file (overriden by '=' form of option or LLVM_PROFILE_FILE env var)">;
+def fprofile_instr_generate_EQ : Joined<["-"], "fprofile-instr-generate=">,
+    Group<f_Group>, Flags<[CC1Option]>, MetaVarName<"<file>">,
+    HelpText<"Generate instrumented code to collect execution counts into <file> (overridden by LLVM_PROFILE_FILE env var)">;
 def fprofile_instr_use : Flag<["-"], "fprofile-instr-use">, Group<f_Group>;
 def fprofile_instr_use_EQ : Joined<["-"], "fprofile-instr-use=">,
     Group<f_Group>, Flags<[CC1Option]>,
@@ -462,7 +467,7 @@ def fdebug_pass_arguments : Flag<["-"], "fdebug-pass-arguments">, Group<f_Group>
 def fdebug_pass_structure : Flag<["-"], "fdebug-pass-structure">, Group<f_Group>;
 def fdiagnostics_fixit_info : Flag<["-"], "fdiagnostics-fixit-info">, Group<f_clang_Group>;
 def fdiagnostics_parseable_fixits : Flag<["-"], "fdiagnostics-parseable-fixits">, Group<f_clang_Group>,
-    Flags<[CC1Option]>, HelpText<"Print fix-its in machine parseable form">;
+    Flags<[CoreOption, CC1Option]>, HelpText<"Print fix-its in machine parseable form">;
 def fdiagnostics_print_source_range_info : Flag<["-"], "fdiagnostics-print-source-range-info">,
     Group<f_clang_Group>,  Flags<[CC1Option]>,
     HelpText<"Print source range spans in numeric form">;
@@ -1304,6 +1309,9 @@ def faltivec : Flag<["-"], "faltivec">, Group<f_Group>, Flags<[CC1Option]>,
 def fno_altivec : Flag<["-"], "fno-altivec">, Group<f_Group>, Flags<[CC1Option]>;
 def maltivec : Flag<["-"], "maltivec">, Alias<faltivec>;
 def mno_altivec : Flag<["-"], "mno-altivec">, Alias<fno_altivec>;
+
+def mvx : Flag<["-"], "mvx">, Group<m_Group>;
+def mno_vx : Flag<["-"], "mno-vx">, Group<m_Group>;
 
 def mno_warn_nonportable_cfstrings : Flag<["-"], "mno-warn-nonportable-cfstrings">, Group<m_Group>;
 def mno_omit_leaf_frame_pointer : Flag<["-"], "mno-omit-leaf-frame-pointer">, Group<m_Group>;

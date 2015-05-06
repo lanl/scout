@@ -338,6 +338,7 @@ void Clang::AddPreprocessingOptions(Compilation &C,
   }
 
   Args.AddLastArg(CmdArgs, options::OPT_MP);
+  Args.AddLastArg(CmdArgs, options::OPT_MV);
 
   // Convert all -MQ <target> args to -MT <quoted target>
   for (arg_iterator it = Args.filtered_begin(options::OPT_MT,
@@ -1441,6 +1442,14 @@ static void getSystemZTargetFeatures(const ArgList &Args,
     else
       Features.push_back("-transactional-execution");
   }
+  // -m(no-)vx overrides use of the vector facility.
+  if (Arg *A = Args.getLastArg(options::OPT_mvx,
+                               options::OPT_mno_vx)) {
+    if (A->getOption().matches(options::OPT_mvx))
+      Features.push_back("+vector");
+    else
+      Features.push_back("-vector");
+  }
 }
 
 static const char *getX86TargetCPU(const ArgList &Args,
@@ -2250,6 +2259,7 @@ static void addProfileRT(const ToolChain &TC, const ArgList &Args,
                      false) ||
         Args.hasArg(options::OPT_fprofile_generate) ||
         Args.hasArg(options::OPT_fprofile_instr_generate) ||
+        Args.hasArg(options::OPT_fprofile_instr_generate_EQ) ||
         Args.hasArg(options::OPT_fcreate_profile) ||
         Args.hasArg(options::OPT_coverage)))
     return;
@@ -2325,10 +2335,16 @@ collectSanitizerRuntimes(const ToolChain &TC, const ArgList &Args,
     StaticRuntimes.push_back("dfsan");
   if (SanArgs.needsLsanRt())
     StaticRuntimes.push_back("lsan");
-  if (SanArgs.needsMsanRt())
+  if (SanArgs.needsMsanRt()) {
     StaticRuntimes.push_back("msan");
-  if (SanArgs.needsTsanRt())
+    if (SanArgs.linkCXXRuntimes())
+      StaticRuntimes.push_back("msan_cxx");
+  }
+  if (SanArgs.needsTsanRt()) {
     StaticRuntimes.push_back("tsan");
+    if (SanArgs.linkCXXRuntimes())
+      StaticRuntimes.push_back("tsan_cxx");
+  }
   if (SanArgs.needsUbsanRt()) {
     StaticRuntimes.push_back("ubsan_standalone");
     if (SanArgs.linkCXXRuntimes())
@@ -3390,13 +3406,17 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   Args.AddAllArgs(CmdArgs, options::OPT_finstrument_functions);
 
-  if (Args.hasArg(options::OPT_fprofile_instr_generate) &&
+  if ((Args.hasArg(options::OPT_fprofile_instr_generate) ||
+       Args.hasArg(options::OPT_fprofile_instr_generate_EQ)) &&
       (Args.hasArg(options::OPT_fprofile_instr_use) ||
        Args.hasArg(options::OPT_fprofile_instr_use_EQ)))
     D.Diag(diag::err_drv_argument_not_allowed_with)
       << "-fprofile-instr-generate" << "-fprofile-instr-use";
 
-  Args.AddAllArgs(CmdArgs, options::OPT_fprofile_instr_generate);
+  if (Arg *A = Args.getLastArg(options::OPT_fprofile_instr_generate_EQ))
+    A->render(Args, CmdArgs);
+  else
+    Args.AddAllArgs(CmdArgs, options::OPT_fprofile_instr_generate);
 
   if (Arg *A = Args.getLastArg(options::OPT_fprofile_instr_use_EQ))
     A->render(Args, CmdArgs);
@@ -3412,7 +3432,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-femit-coverage-data");
 
   if (Args.hasArg(options::OPT_fcoverage_mapping) &&
-      !Args.hasArg(options::OPT_fprofile_instr_generate))
+      !(Args.hasArg(options::OPT_fprofile_instr_generate) ||
+        Args.hasArg(options::OPT_fprofile_instr_generate_EQ)))
     D.Diag(diag::err_drv_argument_only_allowed_with)
       << "-fcoverage-mapping" << "-fprofile-instr-generate";
 

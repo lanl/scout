@@ -865,7 +865,7 @@ bool ItaniumCXXABI::classifyReturnType(CGFunctionInfo &FI) const {
 /// The Itanium ABI requires non-zero initialization only for data
 /// member pointers, for which '0' is a valid offset.
 bool ItaniumCXXABI::isZeroInitializable(const MemberPointerType *MPT) {
-  return MPT->getPointeeType()->isFunctionType();
+  return MPT->isMemberFunctionPointer();
 }
 
 /// The Itanium ABI always places an offset to the complete object
@@ -3220,8 +3220,8 @@ static void emitConstructorDestructorAlias(CodeGenModule &CGM,
   llvm::PointerType *AliasType = Aliasee->getType();
 
   // Create the alias with no name.
-  auto *Alias = llvm::GlobalAlias::create(
-      AliasType->getElementType(), 0, Linkage, "", Aliasee, &CGM.getModule());
+  auto *Alias = llvm::GlobalAlias::create(AliasType, Linkage, "", Aliasee,
+                                          &CGM.getModule());
 
   // Switch any previous uses to the alias.
   if (Entry) {

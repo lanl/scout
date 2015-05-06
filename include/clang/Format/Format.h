@@ -247,6 +247,17 @@ struct FormatStyle {
   /// \brief If \c true, aligns trailing comments.
   bool AlignTrailingComments;
 
+  /// \brief If \c true, aligns consecutive assignments.
+  ///
+  /// This will align the assignment operators of consecutive lines. This
+  /// will result in formattings like
+  /// \code
+  /// int aaaa = 12;
+  /// int b    = 23;
+  /// int ccc  = 23;
+  /// \endcode
+  bool AlignConsecutiveAssignments;
+
   /// \brief If \c true, aligns escaped newlines as far left as possible.
   /// Otherwise puts them into the right-most column.
   bool AlignEscapedNewlinesLeft;
@@ -526,14 +537,6 @@ std::error_code parseConfiguration(StringRef Text, FormatStyle *Style);
 
 /// \brief Gets configuration in a YAML string.
 std::string configurationAsText(const FormatStyle &Style);
-
-/// \brief Reformats the given \p Ranges in the token stream coming out of
-/// \c Lex.
-///
-/// DEPRECATED: Do not use.
-tooling::Replacements reformat(const FormatStyle &Style, Lexer &Lex,
-                               SourceManager &SourceMgr,
-                               ArrayRef<CharSourceRange> Ranges);
 
 /// \brief Reformats the given \p Ranges in the file \p ID.
 ///

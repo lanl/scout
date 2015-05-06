@@ -4804,6 +4804,9 @@ static void checkDLLAttribute(Sema &S, CXXRecordDecl *Class) {
       }
     }
 
+    if (!cast<NamedDecl>(Member)->isExternallyVisible())
+      continue;
+
     if (!getDLLAttr(Member)) {
       auto *NewAttr =
           cast<InheritableAttr>(ClassAttr->clone(S.getASTContext()));
@@ -10211,7 +10214,9 @@ void Sema::DefineImplicitCopyAssignment(SourceLocation CurrentLocation,
   
   // Assign non-static members.
   for (auto *Field : ClassDecl->fields()) {
-    if (Field->isUnnamedBitfield())
+    // FIXME: We should form some kind of AST representation for the implied
+    // memcpy in a union copy operation.
+    if (Field->isUnnamedBitfield() || Field->getParent()->isUnion())
       continue;
 
     if (Field->isInvalidDecl()) {
@@ -10641,7 +10646,9 @@ void Sema::DefineImplicitMoveAssignment(SourceLocation CurrentLocation,
 
   // Assign non-static members.
   for (auto *Field : ClassDecl->fields()) {
-    if (Field->isUnnamedBitfield())
+    // FIXME: We should form some kind of AST representation for the implied
+    // memcpy in a union copy operation.
+    if (Field->isUnnamedBitfield() || Field->getParent()->isUnion())
       continue;
 
     if (Field->isInvalidDecl()) {

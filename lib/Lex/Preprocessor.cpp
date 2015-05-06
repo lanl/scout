@@ -322,7 +322,7 @@ StringRef Preprocessor::getLastMacroWithSpelling(
   for (Preprocessor::macro_iterator I = macro_begin(), E = macro_end();
        I != E; ++I) {
     const MacroDirective::DefInfo
-      Def = I->second->findDirectiveAtLoc(Loc, SourceMgr);
+      Def = I->second.findDirectiveAtLoc(Loc, SourceMgr);
     if (!Def || !Def.getMacroInfo())
       continue;
     if (!Def.getMacroInfo()->isObjectLike())
@@ -622,8 +622,9 @@ bool Preprocessor::HandleIdentifier(Token &Identifier) {
   }
 
   // If this is a macro to be expanded, do it.
-  if (MacroDirective *MD = getMacroDirective(&II)) {
-    MacroInfo *MI = MD->getMacroInfo();
+  if (MacroDefinition MD = getMacroDefinition(&II)) {
+    auto *MI = MD.getMacroInfo();
+    assert(MI && "macro definition with no macro info?");
     if (!DisableMacroExpansion) {
       if (!Identifier.isExpandDisabled() && MI->isEnabled()) {
         // C99 6.10.3p10: If the preprocessing token immediately after the
@@ -748,14 +749,34 @@ void Preprocessor::LexAfterModuleImport(Token &Result) {
   // If we have a non-empty module path, load the named module.
   if (!ModuleImportPath.empty()) {
     Module *Imported = nullptr;
-    if (getLangOpts().Modules)
+    if (getLangOpts().Modules) {
       Imported = TheModuleLoader.loadModule(ModuleImportLoc,
                                             ModuleImportPath,
-                                            Module::MacrosVisible,
+                                            Module::Hidden,
                                             /*IsIncludeDirective=*/false);
+      if (Imported)
+        makeModuleVisible(Imported, ModuleImportLoc);
+    }
     if (Callbacks && (getLangOpts().Modules || getLangOpts().DebuggerSupport))
       Callbacks->moduleImport(ModuleImportLoc, ModuleImportPath, Imported);
   }
+}
+
+void Preprocessor::makeModuleVisible(Module *M, SourceLocation Loc) {
+  VisibleModules.setVisible(
+      M, Loc, [](Module *) {},
+      [&](ArrayRef<Module *> Path, Module *Conflict, StringRef Message) {
+        // FIXME: Include the path in the diagnostic.
+        // FIXME: Include the import location for the conflicting module.
+        Diag(ModuleImportLoc, diag::warn_module_conflict)
+            << Path[0]->getFullModuleName()
+            << Conflict->getFullModuleName()
+            << Message;
+      });
+
+  // Add this module to the imports list of the currently-built submodule.
+  if (!BuildingSubmoduleStack.empty())
+    BuildingSubmoduleStack.back().M->Imports.insert(M);
 }
 
 bool Preprocessor::FinishLexStringLiteral(Token &Result, std::string &String,
