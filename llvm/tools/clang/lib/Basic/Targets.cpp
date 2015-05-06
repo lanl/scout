@@ -1703,6 +1703,10 @@ class R600TargetInfo : public TargetInfo {
     GK_SEA_ISLANDS
   } GPU;
 
+  bool hasFP64:1;
+  bool hasFMAF:1;
+  bool hasLDEXPF:1;
+
 public:
   R600TargetInfo(const llvm::Triple &Triple)
       : TargetInfo(Triple) {
@@ -1710,9 +1714,15 @@ public:
     if (Triple.getArch() == llvm::Triple::amdgcn) {
       DescriptionString = DescriptionStringSI;
       GPU = GK_SOUTHERN_ISLANDS;
+      hasFP64 = true;
+      hasFMAF = true;
+      hasLDEXPF = true;
     } else {
       DescriptionString = DescriptionStringR600;
       GPU = GK_R600;
+      hasFP64 = false;
+      hasFMAF = false;
+      hasLDEXPF = false;
     }
     AddrSpaceMap = &R600AddrSpaceMap;
     UseAddrSpaceMapMangling = true;
@@ -1759,8 +1769,13 @@ public:
   void getTargetDefines(const LangOptions &Opts,
                         MacroBuilder &Builder) const override {
     Builder.defineMacro("__R600__");
-    if (GPU >= GK_SOUTHERN_ISLANDS && Opts.OpenCL)
+    if (hasFMAF)
+      Builder.defineMacro("__HAS_FMAF__");
+    if (hasLDEXPF)
+      Builder.defineMacro("__HAS_LDEXPF__");
+    if (hasFP64 && Opts.OpenCL) {
       Builder.defineMacro("cl_khr_fp64");
+    }
   }
 
   BuiltinVaListKind getBuiltinVaListKind() const override {
@@ -1818,16 +1833,25 @@ public:
     case GK_EVERGREEN:
     case GK_NORTHERN_ISLANDS:
       DescriptionString = DescriptionStringR600;
+      hasFP64 = false;
+      hasFMAF = false;
+      hasLDEXPF = false;
       break;
     case GK_R600_DOUBLE_OPS:
     case GK_R700_DOUBLE_OPS:
     case GK_EVERGREEN_DOUBLE_OPS:
     case GK_CAYMAN:
       DescriptionString = DescriptionStringR600DoubleOps;
+      hasFP64 = true;
+      hasFMAF = true;
+      hasLDEXPF = false;
       break;
     case GK_SOUTHERN_ISLANDS:
     case GK_SEA_ISLANDS:
       DescriptionString = DescriptionStringSI;
+      hasFP64 = true;
+      hasFMAF = true;
+      hasLDEXPF = true;
       break;
     }
 
@@ -3558,8 +3582,9 @@ public:
     DoubleAlign = LongLongAlign = 64;
     bool IsWinCOFF =
         getTriple().isOSWindows() && getTriple().isOSBinFormatCOFF();
-    DescriptionString = IsWinCOFF ? "e-m:x-p:32:32-i64:64-f80:32-n8:16:32-S32"
-                                  : "e-m:e-p:32:32-i64:64-f80:32-n8:16:32-S32";
+    DescriptionString = IsWinCOFF
+                            ? "e-m:x-p:32:32-i64:64-f80:32-n8:16:32-a:0:32-S32"
+                            : "e-m:e-p:32:32-i64:64-f80:32-n8:16:32-a:0:32-S32";
   }
   void getTargetDefines(const LangOptions &Opts,
                         MacroBuilder &Builder) const override {
@@ -3638,7 +3663,7 @@ public:
     TLSSupported = false;
     WCharType = UnsignedShort;
     DoubleAlign = LongLongAlign = 64;
-    DescriptionString = "e-m:x-p:32:32-i64:64-f80:32-n8:16:32-S32";
+    DescriptionString = "e-m:x-p:32:32-i64:64-f80:32-n8:16:32-a:0:32-S32";
   }
   void getTargetDefines(const LangOptions &Opts,
                         MacroBuilder &Builder) const override {
@@ -4190,12 +4215,8 @@ public:
       Features["neon"] = true;
       Features["hwdiv"] = true;
       Features["hwdiv-arm"] = true;
-    } else if (CPU == "cyclone") {
-      Features["v8fp"] = true;
-      Features["neon"] = true;
-      Features["hwdiv"] = true;
-      Features["hwdiv-arm"] = true;
-    } else if (CPU == "cortex-a53" || CPU == "cortex-a57" || CPU == "cortex-a72") {
+    } else if (CPU == "cyclone" || CPU == "cortex-a53" || CPU == "cortex-a57" ||
+               CPU == "cortex-a72") {
       Features["fp-armv8"] = true;
       Features["neon"] = true;
       Features["hwdiv"] = true;
@@ -4932,6 +4953,12 @@ public:
 
     if (Crypto)
       Builder.defineMacro("__ARM_FEATURE_CRYPTO");
+
+    // All of the __sync_(bool|val)_compare_and_swap_(1|2|4|8) builtins work.
+    Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1");
+    Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2");
+    Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_4");
+    Builder.defineMacro("__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8");
   }
 
   void getTargetBuiltins(const Builtin::Info *&Records,
@@ -5346,9 +5373,11 @@ public:
   bool handleTargetFeatures(std::vector<std::string> &Features,
                             DiagnosticsEngine &Diags) override {
     SoftFloat = false;
-    for (unsigned i = 0, e = Features.size(); i != e; ++i)
-      if (Features[i] == "+soft-float")
-        SoftFloat = true;
+    auto Feature = std::find(Features.begin(), Features.end(), "+soft-float");
+    if (Feature != Features.end()) {
+      SoftFloat = true;
+      Features.erase(Feature);
+    }
     return true;
   }
   void getTargetDefines(const LangOptions &Opts,
@@ -5535,10 +5564,11 @@ class SystemZTargetInfo : public TargetInfo {
   static const char *const GCCRegNames[];
   std::string CPU;
   bool HasTransactionalExecution;
+  bool HasVector;
 
 public:
   SystemZTargetInfo(const llvm::Triple &Triple)
-    : TargetInfo(Triple), CPU("z10"), HasTransactionalExecution(false) {
+    : TargetInfo(Triple), CPU("z10"), HasTransactionalExecution(false), HasVector(false) {
     IntMaxType = SignedLong;
     Int64Type = SignedLong;
     TLSSupported = true;
@@ -5548,6 +5578,7 @@ public:
     LongDoubleWidth = 128;
     LongDoubleAlign = 64;
     LongDoubleFormat = &llvm::APFloat::IEEEquad;
+    DefaultAlignForAttributeAligned = 64;
     MinGlobalAlign = 16;
     DescriptionString = "E-m:e-i1:8:16-i8:8:16-i64:64-f128:64-a:8:16-n32:64";
     MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 64;
@@ -5590,6 +5621,7 @@ public:
       .Case("z10", true)
       .Case("z196", true)
       .Case("zEC12", true)
+      .Case("z13", true)
       .Default(false);
 
     return CPUKnown;
@@ -5597,6 +5629,10 @@ public:
   void getDefaultFeatures(llvm::StringMap<bool> &Features) const override {
     if (CPU == "zEC12")
       Features["transactional-execution"] = true;
+    if (CPU == "z13") {
+      Features["transactional-execution"] = true;
+      Features["vector"] = true;
+    }
   }
 
   bool handleTargetFeatures(std::vector<std::string> &Features,
@@ -5605,6 +5641,14 @@ public:
     for (unsigned i = 0, e = Features.size(); i != e; ++i) {
       if (Features[i] == "+transactional-execution")
         HasTransactionalExecution = true;
+      if (Features[i] == "+vector")
+        HasVector = true;
+    }
+    // If we use the vector ABI, vector types are 64-bit aligned.
+    if (HasVector) {
+      MaxVectorAlign = 64;
+      DescriptionString = "E-m:e-i1:8:16-i8:8:16-i64:64-f128:64"
+                          "-v128:64-a:8:16-n32:64";
     }
     return true;
   }
@@ -5613,7 +5657,14 @@ public:
     return llvm::StringSwitch<bool>(Feature)
         .Case("systemz", true)
         .Case("htm", HasTransactionalExecution)
+        .Case("vx", HasVector)
         .Default(false);
+  }
+
+  StringRef getABI() const override {
+    if (HasVector)
+      return "vector";
+    return "";
   }
 };
 

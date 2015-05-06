@@ -756,7 +756,7 @@ public:
                               bool IsInclusionDirective) override;
 
   void makeModuleVisible(Module *Mod, Module::NameVisibilityKind Visibility,
-                         SourceLocation ImportLoc, bool Complain) override;
+                         SourceLocation ImportLoc) override;
 
   bool hadModuleLoaderFatalFailure() const {
     return ModuleLoader::HadFatalFailure;

@@ -400,7 +400,7 @@ void Preprocessor::HandlePragmaPoison(Token &PoisonTok) {
     if (II->isPoisoned()) continue;
 
     // If this is a macro identifier, emit a warning.
-    if (II->hasMacroDefinition())
+    if (isMacroDefined(II))
       Diag(Tok, diag::pp_poisoning_existing_macro);
 
     // Finally, poison it!
@@ -590,8 +590,7 @@ void Preprocessor::HandlePragmaPopMacro(Token &PopMacroTok) {
     PragmaPushMacroInfo.find(IdentInfo);
   if (iter != PragmaPushMacroInfo.end()) {
     // Forget the MacroInfo currently associated with IdentInfo.
-    if (MacroDirective *CurrentMD = getMacroDirective(IdentInfo)) {
-      MacroInfo *MI = CurrentMD->getMacroInfo();
+    if (MacroInfo *MI = getMacroInfo(IdentInfo)) {
       if (MI->isWarnIfUnused())
         WarnUnusedMacroLocs.erase(MI->getDefinitionLoc());
       appendMacroDirective(IdentInfo, AllocateUndefMacroDirective(MessageLoc));
@@ -600,11 +599,9 @@ void Preprocessor::HandlePragmaPopMacro(Token &PopMacroTok) {
     // Get the MacroInfo we want to reinstall.
     MacroInfo *MacroToReInstall = iter->second.back();
 
-    if (MacroToReInstall) {
+    if (MacroToReInstall)
       // Reinstall the previously pushed macro.
-      appendDefMacroDirective(IdentInfo, MacroToReInstall, MessageLoc,
-                              /*isImported=*/false, /*Overrides*/None);
-    }
+      appendDefMacroDirective(IdentInfo, MacroToReInstall, MessageLoc);
 
     // Pop PragmaPushMacroInfo stack.
     iter->second.pop_back();
@@ -878,6 +875,14 @@ struct PragmaDebugHandler : public PragmaHandler {
       llvm::report_fatal_error("#pragma clang __debug llvm_fatal_error");
     } else if (II->isStr("llvm_unreachable")) {
       llvm_unreachable("#pragma clang __debug llvm_unreachable");
+    } else if (II->isStr("macro")) {
+      Token MacroName;
+      PP.LexUnexpandedToken(MacroName);
+      auto *MacroII = MacroName.getIdentifierInfo();
+      if (MacroII)
+        PP.dumpMacroInfo(MacroII);
+      else
+        PP.Diag(MacroName, diag::warn_pragma_diagnostic_invalid);
     } else if (II->isStr("overflow_stack")) {
       DebugOverflowStack();
     } else if (II->isStr("handle_crash")) {
