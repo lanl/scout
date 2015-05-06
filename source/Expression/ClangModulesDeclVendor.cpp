@@ -446,23 +446,16 @@ ClangModulesDeclVendorImpl::ForEachMacro(const ClangModulesDeclVendor::ModuleVec
         ssize_t found_priority = -1;
         clang::MacroInfo *info = nullptr;
         
-        for (clang::MacroDirective *directive = m_compiler_instance->getPreprocessor().getMacroDirectiveHistory(ii);
-             directive != nullptr;
-             directive = directive->getPrevious())
+        for (clang::ModuleMacro *macro : m_compiler_instance->getPreprocessor().getLeafModuleMacros(ii))
         {
-            unsigned module_id = directive->getOwningModuleID();
-            
-            if (!module_id)
-                continue;
-            
-            clang::Module *module = m_compiler_instance->getModuleManager()->getModule(module_id);
+            clang::Module *module = macro->getOwningModule();
             
             {
                 ModulePriorityMap::iterator pi = module_priorities.find(reinterpret_cast<ModuleID>(module));
                 
                 if (pi != module_priorities.end() && pi->second > found_priority)
                 {
-                    info = directive->getMacroInfo();
+                    info = macro->getMacroInfo();
                     found_priority = pi->second;
                 }
             }
@@ -475,7 +468,7 @@ ClangModulesDeclVendorImpl::ForEachMacro(const ClangModulesDeclVendor::ModuleVec
 
                 if ((pi != module_priorities.end()) && pi->second > found_priority)
                 {
-                    info = directive->getMacroInfo();
+                    info = macro->getMacroInfo();
                     found_priority = pi->second;
                 }
             }
@@ -486,12 +479,12 @@ ClangModulesDeclVendorImpl::ForEachMacro(const ClangModulesDeclVendor::ModuleVec
             continue;
         }
         
-        if (mi->second->getKind() == clang::MacroDirective::MD_Define)
+        if (mi->second.getLatest()->getKind() == clang::MacroDirective::MD_Define)
         {            
             std::string macro_expansion = "#define ";
             macro_expansion.append(mi->first->getName().str().c_str());
                 
-            if (clang::MacroInfo *macro_info = mi->second->getMacroInfo())
+            if (clang::MacroInfo *macro_info = mi->second.getLatest()->getMacroInfo())
             {
                 if (macro_info->isFunctionLike())
                 {

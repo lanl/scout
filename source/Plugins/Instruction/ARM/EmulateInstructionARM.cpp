@@ -1357,7 +1357,11 @@ EmulateInstructionARM::EmulateADDSPImm (const uint32_t opcode, const ARMEncoding
         addr_t addr = sp + sp_offset; // the adjusted stack pointer value
         
         EmulateInstruction::Context context;
-        context.type = EmulateInstruction::eContextAdjustStackPointer;
+        if (d == 13)
+            context.type = EmulateInstruction::eContextAdjustStackPointer;
+        else
+            context.type = EmulateInstruction::eContextRegisterPlusOffset;
+
         RegisterInfo sp_reg;
         GetRegisterInfo (eRegisterKindDWARF, dwarf_sp, sp_reg);
         context.SetRegisterPlusOffset (sp_reg, sp_offset);
@@ -1496,6 +1500,7 @@ EmulateInstructionARM::EmulateBLXImmediate (const uint32_t opcode, const ARMEnco
             uint32_t imm25 = (S << 24) | (I1 << 23) | (I2 << 22) | (imm10 << 12) | (imm11 << 1);
             imm32 = llvm::SignExtend32<25>(imm25);
             target = pc + imm32;
+            SelectInstrSet (eModeThumb);
             context.SetISAAndImmediateSigned (eModeThumb, 4 + imm32);
             if (InITBlock() && !LastInITBlock())
                 return false;
@@ -1514,6 +1519,7 @@ EmulateInstructionARM::EmulateBLXImmediate (const uint32_t opcode, const ARMEnco
             uint32_t imm25 = (S << 24) | (I1 << 23) | (I2 << 22) | (imm10H << 12) | (imm10L << 2);
             imm32 = llvm::SignExtend32<25>(imm25);
             target = Align(pc, 4) + imm32;
+            SelectInstrSet (eModeARM);
             context.SetISAAndImmediateSigned (eModeARM, 4 + imm32);
             if (InITBlock() && !LastInITBlock())
                 return false;
@@ -1523,12 +1529,14 @@ EmulateInstructionARM::EmulateBLXImmediate (const uint32_t opcode, const ARMEnco
             lr = pc - 4; // return address
             imm32 = llvm::SignExtend32<26>(Bits32(opcode, 23, 0) << 2);
             target = Align(pc, 4) + imm32;
+            SelectInstrSet (eModeARM);
             context.SetISAAndImmediateSigned (eModeARM, 8 + imm32);
             break;
         case eEncodingA2:
             lr = pc - 4; // return address
             imm32 = llvm::SignExtend32<26>(Bits32(opcode, 23, 0) << 2 | Bits32(opcode, 24, 24) << 1);
             target = pc + imm32;
+            SelectInstrSet (eModeThumb);
             context.SetISAAndImmediateSigned (eModeThumb, 8 + imm32);
             break;
         default:
@@ -1538,6 +1546,9 @@ EmulateInstructionARM::EmulateBLXImmediate (const uint32_t opcode, const ARMEnco
             return false;
         if (!BranchWritePC(context, target))
             return false;
+        if (m_opcode_cpsr != m_new_inst_cpsr)
+            if (!WriteRegisterUnsigned (context, eRegisterKindGeneric, LLDB_REGNUM_GENERIC_FLAGS, m_new_inst_cpsr))
+                return false;
     }
     return true;
 }
@@ -12338,9 +12349,9 @@ EmulateInstructionARM::GetARMOpcodeForInstruction (const uint32_t opcode, uint32
         //----------------------------------------------------------------------
         // Branch instructions
         //----------------------------------------------------------------------
-        { 0x0f000000, 0x0a000000, ARMvAll,       eEncodingA1, No_VFP, eSize32, &EmulateInstructionARM::EmulateB, "b #imm24"},
-        // To resolve ambiguity, "blx <label>" should come before "bl <label>".
+        // To resolve ambiguity, "blx <label>" should come before "b #imm24" and "bl <label>".
         { 0xfe000000, 0xfa000000, ARMV5_ABOVE,   eEncodingA2, No_VFP, eSize32, &EmulateInstructionARM::EmulateBLXImmediate, "blx <label>"},
+        { 0x0f000000, 0x0a000000, ARMvAll,       eEncodingA1, No_VFP, eSize32, &EmulateInstructionARM::EmulateB, "b #imm24"},
         { 0x0f000000, 0x0b000000, ARMvAll,       eEncodingA1, No_VFP, eSize32, &EmulateInstructionARM::EmulateBLXImmediate, "bl <label>"},
         { 0x0ffffff0, 0x012fff30, ARMV5_ABOVE,   eEncodingA1, No_VFP, eSize32, &EmulateInstructionARM::EmulateBLXRm, "blx <Rm>"},
         // for example, "bx lr"
@@ -13025,8 +13036,7 @@ EmulateInstructionARM::ConditionPassed (const uint32_t opcode, bool *is_conditio
         // opcodes different meanings, but always means execution happens.
         if (is_conditional)
             *is_conditional = false;
-        result = true; 
-        break;
+        return true;
     }
 
     if (cond & 1)

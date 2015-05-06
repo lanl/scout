@@ -747,8 +747,8 @@ def skipIfLinuxClang(func):
         from unittest2 import case
         self = args[0]
         compiler = self.getCompiler()
-        platform = sys.platform
-        if "clang" in compiler and "linux" in platform:
+        platform = self.getPlatform()
+        if "clang" in compiler and platform == "linux":
             self.skipTest("skipping because Clang is used on Linux")
         else:
             func(*args, **kwargs)
@@ -1425,6 +1425,30 @@ class Base(unittest2.TestCase):
             arch = 'x86_64'
         return arch
 
+    def getLldbArchitecture(self):
+        """Returns the architecture of the lldb binary."""
+        if not hasattr(self, 'lldbArchitecture'):
+
+            # spawn local process
+            command = [
+                self.lldbHere,
+                "-o",
+                "file " + self.lldbHere,
+                "-o",
+                "quit"
+            ]
+
+            output = check_output(command)
+            str = output.decode("utf-8");
+
+            for line in str.splitlines():
+                m = re.search("Current executable set to '.*' \\((.*)\\)\\.", line)
+                if m:
+                    self.lldbArchitecture = m.group(1)
+                    break
+
+        return self.lldbArchitecture
+
     def getCompiler(self):
         """Returns the compiler in effect the test suite is running with."""
         module = builder_module()
@@ -1713,7 +1737,7 @@ class Base(unittest2.TestCase):
             return self.lib_dir
 
     def getLibcPlusPlusLibs(self):
-        if sys.platform.startswith('freebsd'):
+        if sys.platform.startswith('freebsd') or sys.platform.startswith('linux'):
             return ['libc++.so.1']
         else:
             return ['libc++.1.dylib','libc++abi.dylib']
