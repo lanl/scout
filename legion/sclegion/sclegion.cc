@@ -729,9 +729,6 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   Context hc = static_cast<Context>(context.impl);
   Task* ht = static_cast<Task*>(task.impl);
   const int point = ht->index_point.point_data[0];
-  printf("index point %d\n", point);
-
-  //size_t argsLen = legion_task_get_arglen(task);
 
   char* args = (char*) legion_task_get_args(task);
   MeshHeader* header = (MeshHeader*) args;
@@ -744,14 +741,12 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
 
   MeshFieldInfo* fi;
   size_t numFields = header->numFields;
-  printf("numFields %zu\n",numFields);
 
   size_t start = getStart(header->width, point, header->numColors); // 1-d cells only.
+  printf("color %d/%d start %d size %d\n",point+1,header->numColors,start,getSize(header->width, point, header->numColors));
 
   for (size_t i = 0; i < numFields; ++i) {
     fi = (MeshFieldInfo*) args;
-
-    printf("i %zu c=%zu\n",i, fi->count);
 
     if (fi->count == 0) {
       *meshPtr = 0;
@@ -759,20 +754,44 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
       PhysicalRegion* hp = static_cast<PhysicalRegion*>(region[fi->region].impl);
 
       IndexSpace is = ht->regions[fi->region].region.get_index_space();
-      printf("color %d\n", hr->get_index_space_color(hc, is));
       Domain d = hr->get_index_space_domain(hc, is);
-
-      printf("rect %d %d\n", d.rect_data[0], d.rect_data[1]);
 
       Rect<1> r = d.get_rect<1>();
       Rect<1> sr;
       ByteOffset bo[1];
 
-      typedef RegionAccessor<AccessorType::Generic, float> RA;
-      RA fm = hp->get_field_accessor(fi->fieldId).typeify<float>();
-
-      *meshPtr = fm.raw_rect_ptr<1>(r, sr, bo);
-      if (fi->region == 0) *meshPtr = (char *)(*meshPtr) + start*sizeof(float);
+      switch(fi->fieldKind) {
+        case SCLEGION_INT32: {
+          RegionAccessor<AccessorType::Generic, int32_t> fm;
+          fm = hp->get_field_accessor(fi->fieldId).typeify<int32_t>();
+          *meshPtr = fm.raw_rect_ptr<1>(r, sr, bo);
+          if (fi->region%2 == 0) *meshPtr = (char *)(*meshPtr) + start*sizeof(int32_t);
+          break;
+        }
+        case SCLEGION_INT64: {
+          RegionAccessor<AccessorType::Generic, int64_t> fm;
+          fm = hp->get_field_accessor(fi->fieldId).typeify<int64_t>();
+          *meshPtr = fm.raw_rect_ptr<1>(r, sr, bo);
+          if (fi->region%2 == 0) *meshPtr = (char *)(*meshPtr) + start*sizeof(int64_t);
+          break;
+        }
+        case SCLEGION_FLOAT: {
+          RegionAccessor<AccessorType::Generic, float> fm;
+          fm = hp->get_field_accessor(fi->fieldId).typeify<float>();
+          *meshPtr = fm.raw_rect_ptr<1>(r, sr, bo);
+          if (fi->region%2 == 0) *meshPtr = (char *)(*meshPtr) + start*sizeof(float);
+          break;
+        }
+        case SCLEGION_DOUBLE: {
+          RegionAccessor<AccessorType::Generic, double> fm;
+          fm = hp->get_field_accessor(fi->fieldId).typeify<double>();
+          *meshPtr = fm.raw_rect_ptr<1>(r, sr, bo);
+          if (fi->region%2 == 0) *meshPtr = (char *)(*meshPtr) + start*sizeof(double);
+          break;
+        }
+        default:
+          assert(false && "invalid field kind");
+      }
     }
 
     args += sizeof(MeshFieldInfo);
