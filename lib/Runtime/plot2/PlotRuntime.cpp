@@ -869,7 +869,9 @@ namespace{
 
     QRect bounds = painter.fontMetrics().boundingRect(text);
 
-    QRectF frame(point.x(), point.y(), bounds.width() + 5, bounds.height());
+    QRectF frame(point.x() - bounds.width()/2.0 - 2.5,
+                 point.y(),
+                 bounds.width() + 5.0, bounds.height());
 
     QTextOption textOption;
 
@@ -1450,8 +1452,8 @@ namespace{
 
       QSize frame = widget_->frameSize();
       
-      double width = frame.width();
-      double height = frame.height();
+      width_ = frame.width();
+      height_ = frame.height();
 
       if(hasYLabel_){
         origin_.setX(LEFT_MARGIN + 15);
@@ -1461,14 +1463,14 @@ namespace{
       }
 
       if(hasXLabel_){
-        origin_.setY(height - BOTTOM_MARGIN - 15);
+        origin_.setY(height_ - BOTTOM_MARGIN - 15);
       }
       else{
-        origin_.setY(height - BOTTOM_MARGIN);
+        origin_.setY(height_ - BOTTOM_MARGIN);
       }
 
-      xLen_ = width - LEFT_MARGIN - RIGHT_MARGIN;
-      yLen_ = height - TOP_MARGIN - BOTTOM_MARGIN;
+      xLen_ = width_ - LEFT_MARGIN - RIGHT_MARGIN;
+      yLen_ = height_ - TOP_MARGIN - BOTTOM_MARGIN;
 
       xEnd_ = origin_;
       xEnd_ += QPointF(xLen_, 0.0);
@@ -1676,7 +1678,7 @@ namespace{
 
               drawText(painter,
                        toLabel(xMin_ + (double(i)/frameSize)*xSpan_),
-                       QPointF(xc, origin_.y() + 3));
+                       QPointF(xc, origin_.y() + 10.0));
             }
             
             inc = frameSize / X_TICKS;
@@ -1690,6 +1692,19 @@ namespace{
 
               painter.drawLine(QPointF(xc, origin_.y() + 3),
                                QPointF(xc, origin_.y() - 3));
+            }
+
+            if(!a->label.empty()){
+              QFont oldFont = painter.font();
+              QFont font = oldFont;
+              font.setPointSize(24);
+              painter.setFont(font);
+
+              drawText(painter, a->label.c_str(),
+                       QPointF(origin_.x() + xLen_/2.0,
+                               origin_.y() + 30));
+
+              painter.setFont(oldFont);
             }
           }
           else if(a->dim == 2){
@@ -1709,7 +1724,7 @@ namespace{
 
               drawText(painter,
                        toLabel(yv),
-                       QPointF(origin_.x() - 5, yc), true);
+                       QPointF(origin_.x(), yc), true);
             }
 
             inc = frameSize / Y_TICKS;
@@ -1723,6 +1738,21 @@ namespace{
 
               painter.drawLine(QPointF(origin_.x() - 3, yc),
                                QPointF(origin_.x() + 3, yc));
+            }
+
+            if(!a->label.empty()){
+              painter.rotate(-90);
+              QFont oldFont = painter.font();
+              QFont font = oldFont;
+              font.setPointSize(24);
+              painter.setFont(font);
+
+              drawText(painter, a->label.c_str(),
+                       QPointF(origin_.y() - yLen_/2 - height_,
+                               origin_.x() - 90));
+
+              painter.setFont(oldFont);
+              painter.resetTransform();
             }
           }
           else{
@@ -2025,6 +2055,8 @@ namespace{
     double ySpan_;
     double xm_;
     double ym_;
+    double width_;
+    double height_;
   };
 
 } // end namespace
