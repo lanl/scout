@@ -3066,6 +3066,10 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         Builder.CreateGlobalStringPtr(label)};
       Builder.CreateCall(R.PlotAddAxisFunc(), args);
     }
+    else if(k == "antialiased"){
+      args = {plotPtr, ConstantInt::get(R.Int1Ty, v->getBool())};
+      Builder.CreateCall(R.PlotSetAntialiasedFunc(), args);
+    }
   }
   
   Builder.CreateBr(mergeBlock);

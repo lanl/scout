@@ -143,6 +143,15 @@ double SpecValueExpr::getNumeric(){
   assert(false && "non-numeric value");
 }
 
+bool SpecValueExpr::isBool(){
+  return isa<CXXBoolLiteralExpr>(Exp);
+}
+
+bool SpecValueExpr::getBool(){
+  CXXBoolLiteralExpr* b = dyn_cast<CXXBoolLiteralExpr>(Exp);
+  return b->getValue();
+}
+
 bool SpecValueExpr::isString(){
   return isa<StringLiteral>(Exp);
 }
@@ -242,6 +251,21 @@ std::string SpecExpr::getString(){
   assert(v);
   
   return v->getString();
+}
+
+bool SpecExpr::isBool(){
+  SpecValueExpr* v = toValue();
+  if(v){
+    return v->isBool();
+  }
+  
+  return false;
+}
+
+bool SpecExpr::getBool(){
+  SpecValueExpr* v = toValue();
+  assert(v);
+  return v->getBool();
 }
 
 VarDecl* SpecExpr::getVar(){

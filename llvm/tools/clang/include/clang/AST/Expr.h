@@ -4946,6 +4946,10 @@ public:
   bool isString();
   
   std::string getString();
+
+  bool isBool();
+  
+  bool getBool();
   
   VarDecl* getVar();
 };
@@ -5031,6 +5035,10 @@ public:
   bool isString();
   
   std::string getString();
+
+  bool isBool();
+  
+  bool getBool();
   
   VarDecl* getVar();
   

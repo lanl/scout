@@ -1201,7 +1201,8 @@ namespace{
         plotId_(plotId),
         frame_(nullptr),
         plotFrame_(0),
-        window_(nullptr){}
+        window_(nullptr),
+        antialiased_(true){}
 
     ~Plot(){}
 
@@ -1212,6 +1213,10 @@ namespace{
 
     bool ready(){
       return frame_;
+    }
+
+    void setAntialiased(bool flag){
+      antialiased_ = flag;
     }
 
     template<class T>
@@ -1503,7 +1508,8 @@ namespace{
       frame_->updateIndexVar(frameSize);
 
       QPainter painter(widget_);
-      painter.setRenderHint(QPainter::Antialiasing, true);
+      
+      painter.setRenderHint(QPainter::Antialiasing, antialiased_);
 
       xMin_ = MAX;
       xMax_ = MIN;
@@ -1672,12 +1678,20 @@ namespace{
               inc = 1;
             }
 
+            bool shouldRound = xSpan_ > X_TICKS;
+
             double xc;
+            double xv; 
             for(size_t i = 0; i < frameSize; i += inc){
+              xv = xMin_ + (double(i)/frameSize)*xSpan_;
               xc = origin_.x() + double(i)/frameSize * xLen_;
 
+              if(shouldRound){
+                xv = round(xv);
+              }
+              
               drawText(painter,
-                       toLabel(xMin_ + (double(i)/frameSize)*xSpan_),
+                       toLabel(xv),
                        QPointF(xc, origin_.y() + 10.0));
             }
             
@@ -1716,11 +1730,17 @@ namespace{
               inc = 1;
             }
 
+            bool shouldRound = ySpan_ > Y_TICKS;
+
             double yc;
             double yv;
             for(size_t i = 0; i <= frameSize; i += inc){
               yv = yMin_ + ySpan_ * double(i)/frameSize;
-              yc = origin_.y() - double(i)/frameSize * yLen_;
+              yc = origin_.y() - double(i)/frameSize * yLen_ - 8;
+
+              if(shouldRound){
+                yv = round(yv);
+              }
 
               drawText(painter,
                        toLabel(yv),
@@ -2057,6 +2077,7 @@ namespace{
     double ym_;
     double width_;
     double height_;
+    bool antialiased_;
   };
 
 } // end namespace
@@ -2215,6 +2236,10 @@ extern "C"{
                              VarId size,
                              VarId color){
     static_cast<Plot*>(plot)->addLines(x, y, size, color);
+  }
+
+  void __scrt_plot_set_antialiased(void* plot, bool flag){
+    static_cast<Plot*>(plot)->setAntialiased(flag);
   }
 
   void __scrt_plot_add_line(void* plot,

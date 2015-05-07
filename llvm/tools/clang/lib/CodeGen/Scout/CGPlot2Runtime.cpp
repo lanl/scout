@@ -305,3 +305,8 @@ llvm::Function* CGPlot2Runtime::AggregateAddVarFunc(){
   return GetFunc("__scrt_aggregate_add_var",
                  {VoidPtrTy, Int32Ty});
 }
+
+llvm::Function* CGPlot2Runtime::PlotSetAntialiasedFunc(){
+  return GetFunc("__scrt_plot_set_antialiased",
+                 {VoidPtrTy, Int1Ty});
+}

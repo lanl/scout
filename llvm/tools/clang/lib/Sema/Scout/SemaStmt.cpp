@@ -834,6 +834,13 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         valid = false;
       }
     }
+    else if(k == "antialiased"){
+      if(!v->isBool()){
+        Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected a bool";
+        valid = false;
+      }
+    }
     else{
       Diag(loc, diag::err_invalid_plot_spec_key) << k;
       valid = false;
