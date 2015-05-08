@@ -800,6 +800,7 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
 
   uint32_t* meshTailPtr = (uint32_t*) meshPtr;
 
+  //SC_TODO: partition is only working for 1-D mesh right now.
   *meshTailPtr = header->width;
   ++meshTailPtr;
 
