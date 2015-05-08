@@ -76,7 +76,8 @@ using namespace LegionRuntime;
 using namespace LegionRuntime::HighLevel;
 using namespace LegionRuntime::Accessor;
 
-namespace {
+
+//namespace {
 
 typedef LegionRuntime::HighLevel::HighLevelRuntime HLR;
 
@@ -94,6 +95,7 @@ struct MeshHeader {
   uint32_t numFields;
   uint32_t numColors;
 };
+
 
 struct MeshFieldInfo {
   size_t region;
@@ -126,6 +128,8 @@ struct Field {
 };
 
 typedef vector<Field> FieldVec;
+
+size_t getOffset(MeshHeader *header, size_t index, size_t numSubregions);
 
 class Mesh {
 public:
@@ -248,9 +252,12 @@ public:
       element.colorDomain = Domain::from_rect<1>(
           Rect<1>(Point<1>(0), Point<1>(numSubregions - 1)));
 
-      size_t lowerBound = element.count / numSubregions;
-      size_t upperBound = lowerBound + 1;
-      size_t numberSmall = numSubregions - (element.count % numSubregions);
+      MeshHeader header;
+      header.width = width_;
+      header.height = height_;
+      header.depth = depth_;
+      header.rank = rank_;
+      header.numColors = numSubregions;
 
       element.colorDomain = Domain::from_rect<1>(
           Rect<1>(Point<1>(0), Point<1>(numSubregions - 1)));
@@ -265,12 +272,12 @@ public:
             Rect<1>(Point<1>(0),
             Point<1>(element.count-1)));
 
-        size_t numElmts = color < numberSmall ? lowerBound : upperBound;
+        size_t endindex = getOffset(&header, color+1, numSubregions);
 
-        printf("dr %zu %zu %zu\n", color, index, index + numElmts - 1);
-        Rect<1> subrect(Point<1>(index), Point<1>(index + numElmts - 1));
+        printf("dr %zu %zu %zu\n", color, index, endindex - 1);
+        Rect<1> subrect(Point<1>(index), Point<1>(endindex - 1));
         element.disjointColoring[color] = Domain::from_rect<1>(subrect);
-        index += numElmts;
+        index = endindex;
       } // end for color
 
       element.ghostIndexPartition = runtime_->create_index_partition(
@@ -652,7 +659,7 @@ private:
   size_t numFields_;
 };
 
-} // end namespace
+//} // end namespace
 
 void sclegion_init(const char* main_task_name,
     legion_task_pointer_void_t main_task_pointer) {
