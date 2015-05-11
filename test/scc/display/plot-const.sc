@@ -25,7 +25,7 @@ frame MyFrame{
 int main(int argc, char** argv){
   MyFrame f;
   
-  window win[1024, 1024];
+  window win[512, 512];
 
   double t = 0.0;
 
