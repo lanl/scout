@@ -99,10 +99,11 @@ namespace{
   const int ELEMENT_FLOAT = 2;
   const int ELEMENT_DOUBLE = 3;
 
-  const double LEFT_MARGIN = 100.0;
-  const double RIGHT_MARGIN = 50.0;
-  const double TOP_MARGIN = 50.0;
-  const double BOTTOM_MARGIN = 50.0;
+  const double MARGIN = 50.0;
+  const double AXIS_LABEL_SIZE = 24.0;
+  const double TICK_LABEL_SIZE = 12.0;
+  const double MIN_FONT_SIZE = 8.0;
+  const double MAX_FONT_SIZE = 28.0;
 
   const double MIN = numeric_limits<double>::min();
   const double MAX = numeric_limits<double>::max();
@@ -1456,33 +1457,53 @@ namespace{
       QtWindow::pollEvents();
     }
 
-    void prepare(){
+    void prepare(QPainter& painter){
+      QSize frame = widget_->frameSize();
+      width_ = frame.width();
+      height_ = frame.height();
+      scale_ = min(width_, height_)/1024.0;
+
       sort(elements_.begin(), elements_.end(),
            [](Element* a, Element* b){
              return a->order() < b->order();
            });
 
-      QSize frame = widget_->frameSize();
-      
-      width_ = frame.width();
-      height_ = frame.height();
+      QFont prevFont = painter.font();
+      QFont font = prevFont;
+
+      tickLabelSize_ = scaleFont(TICK_LABEL_SIZE);
+      font.setPointSize(tickLabelSize_);
+      painter.setFont(font);
+      QRect bounds = painter.fontMetrics().boundingRect("?????????");
+      tickLabelWidth_ = bounds.width();
+      tickLabelHeight_ = bounds.height();
+
+      axisLabelSize_ = scaleFont(AXIS_LABEL_SIZE);
+      font.setPointSize(axisLabelSize_);
+      painter.setFont(font);
+      bounds = painter.fontMetrics().boundingRect("???");
+      axisLabelHeight_ = bounds.height();
+
+      painter.setFont(prevFont);
+
+      double m = scale(MARGIN);
 
       if(hasYLabel_){
-        origin_.setX(LEFT_MARGIN + 15);
+        origin_.setX(m + tickLabelWidth_ + axisLabelHeight_);
       }
       else{
-        origin_.setX(LEFT_MARGIN);
+        origin_.setX(m + tickLabelWidth_);
       }
 
       if(hasXLabel_){
-        origin_.setY(height_ - BOTTOM_MARGIN - 15);
+        origin_.setY(height_ - m - tickLabelHeight_ - axisLabelHeight_);
       }
       else{
-        origin_.setY(height_ - BOTTOM_MARGIN);
+        origin_.setY(height_ - m - tickLabelHeight_);
       }
 
-      xLen_ = width_ - LEFT_MARGIN - RIGHT_MARGIN;
-      yLen_ = height_ - TOP_MARGIN - BOTTOM_MARGIN;
+      xLen_ = width_ - origin_.x() - m;
+      yLen_ = origin_.y() - m;
 
       xEnd_ = origin_;
       xEnd_ += QPointF(xLen_, 0.0);
@@ -1501,9 +1522,28 @@ namespace{
       return origin_.y() - ym_ * (dy - yMin_);
     }
 
+    double scaleFont(double x){
+      x *= scale_;
+
+      if(x < MIN_FONT_SIZE){
+        return MIN_FONT_SIZE;
+      }
+      else if(x > MAX_FONT_SIZE){
+        return MAX_FONT_SIZE;
+      }
+
+      return x;
+    }
+
+    double scale(double x){
+      return x * scale_;
+    }
+
     void render(){
+      QPainter painter(widget_);
+
       if(first_){
-        prepare();
+        prepare(painter);
       }
 
       size_t frameSize = frame_->size();
@@ -1513,8 +1553,6 @@ namespace{
       }
 
       frame_->updateIndexVar(frameSize);
-
-      QPainter painter(widget_);
       
       painter.setRenderHint(QPainter::Antialiasing, antialiased_);
 
@@ -1676,7 +1714,13 @@ namespace{
 
       for(Element* e : elements_){
         if(Axis* a = dynamic_cast<Axis*>(e)){
+          QFont prevFont = painter.font();
+
           if(a->dim == 1){
+            QFont font = prevFont;
+            font.setPointSize(tickLabelSize_);
+            painter.setFont(font);
+
             painter.drawLine(origin_, xEnd_);
 
             size_t inc = frameSize / X_LABELS;
@@ -1699,7 +1743,7 @@ namespace{
               
               drawText(painter,
                        toLabel(xv),
-                       QPointF(xc, origin_.y() + 10.0));
+                       QPointF(xc, origin_.y() + 3.0));
             }
             
             inc = frameSize / X_TICKS;
@@ -1708,27 +1752,28 @@ namespace{
               inc = 1;
             }
 
-            for(size_t i = 0; i < frameSize; i += inc){
-              xc = origin_.x() + double(i)/frameSize * xLen_;
-
-              painter.drawLine(QPointF(xc, origin_.y() + 3),
-                               QPointF(xc, origin_.y() - 3));
-            }
+           for(size_t i = 0; i < frameSize; i += inc){
+             xc = origin_.x() + double(i)/frameSize * xLen_;
+             
+             painter.drawLine(QPointF(xc, origin_.y() + 3),
+                              QPointF(xc, origin_.y() - 3));
+           }
 
             if(!a->label.empty()){
-              QFont oldFont = painter.font();
-              QFont font = oldFont;
-              font.setPointSize(24);
+              QFont font = prevFont;
+              font.setPointSize(axisLabelSize_);
               painter.setFont(font);
 
               drawText(painter, a->label.c_str(),
                        QPointF(origin_.x() + xLen_/2.0,
-                               origin_.y() + 30));
-
-              painter.setFont(oldFont);
+                               origin_.y() + tickLabelHeight_));
             }
           }
           else if(a->dim == 2){
+            QFont font = prevFont;
+            font.setPointSize(tickLabelSize_);
+            painter.setFont(font);
+
             painter.drawLine(origin_, yEnd_);
 
             size_t inc = frameSize / Y_LABELS;
@@ -1743,7 +1788,7 @@ namespace{
             double yv;
             for(size_t i = 0; i <= frameSize; i += inc){
               yv = yMin_ + ySpan_ * double(i)/frameSize;
-              yc = origin_.y() - double(i)/frameSize * yLen_ - 8;
+              yc = origin_.y() - double(i)/frameSize * yLen_;
 
               if(shouldRound){
                 yv = round(yv);
@@ -1768,23 +1813,24 @@ namespace{
             }
 
             if(!a->label.empty()){
-              painter.rotate(-90);
-              QFont oldFont = painter.font();
-              QFont font = oldFont;
-              font.setPointSize(24);
+              QFont font = prevFont;
+              font.setPointSize(axisLabelSize_);
               painter.setFont(font);
+              painter.rotate(-90);
 
               drawText(painter, a->label.c_str(),
                        QPointF(origin_.y() - yLen_/2 - height_,
-                               origin_.x() - 90));
+                               origin_.x() - 
+                               tickLabelWidth_ - axisLabelHeight_));
 
-              painter.setFont(oldFont);
               painter.resetTransform();
             }
           }
           else{
             assert(false && "invalid axis dim");
           }
+
+          painter.setFont(prevFont);
         }
       }
 
@@ -2085,6 +2131,12 @@ namespace{
     double width_;
     double height_;
     bool antialiased_;
+    double scale_;
+    double tickLabelSize_;
+    double tickLabelWidth_;
+    double tickLabelHeight_;
+    double axisLabelSize_;
+    double axisLabelHeight_;
   };
 
 } // end namespace
