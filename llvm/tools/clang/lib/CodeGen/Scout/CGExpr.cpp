@@ -347,6 +347,14 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
     dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
   }
 
+  SmallVector< llvm::Value *, 3 > start;
+  if(CGM.getCodeGenOpts().ScoutLegionSupport) {
+    for(unsigned i = 0; i < args.size(); ++i) {
+      sprintf(IRNameStr, "start.%s", DimNames[i]);
+      start.push_back(Builder.CreateLoad(LookupMeshStart(i), IRNameStr));
+    }
+  }
+
   SmallVector< llvm::Value *, 3 > indices;
   for(unsigned i = 0; i < args.size(); ++i) {
     sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
@@ -354,16 +362,29 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
 
     // take index and add offset from cshift
     sprintf(IRNameStr, "cshift.rawindex.%s", IndexNames[i]);
-    llvm::Value *rawIndex = Builder.CreateAdd(iv, args[i], IRNameStr);
 
+    llvm::Value *Index;
+    if(CGM.getCodeGenOpts().ScoutLegionSupport) {
+      // add starting offset (for legion mode)
+      Index = Builder.CreateAdd(Builder.CreateAdd(iv, args[i]), start[i], IRNameStr);
+    } else {
+      Index = Builder.CreateAdd(iv, args[i], IRNameStr);
+    }
 
     // make sure it is in range or wrap
     sprintf(IRNameStr, "cshift.index.%s", IndexNames[i]);
-    llvm::Value *y = Builder.CreateSRem(rawIndex, dims[i], IRNameStr);
+    llvm::Value *y = Builder.CreateSRem(Index, dims[i], IRNameStr);
     llvm::Value *Check = Builder.CreateICmpSLT(y, ConstantZero);
     llvm::Value *x = Builder.CreateSelect(Check,
         Builder.CreateAdd(dims[i], y), y);
-    indices.push_back(x);
+
+    if(CGM.getCodeGenOpts().ScoutLegionSupport) {
+      //remove starting offset (legion mode)
+      llvm::Value *x2 = Builder.CreateSub(x, start[i]);
+      indices.push_back(x2);
+    } else {
+      indices.push_back(x);
+    }
   }
 
   switch(args.size()) {
