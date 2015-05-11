@@ -307,6 +307,10 @@ public:
   const VarSet& getVarSet() const{
     return varSet_;
   }
+
+  const VarSet& getExtVarSet() const{
+    return extVarSet_;
+  }
   
   const CallSet& getCallSet() const{
     return callSet_;
@@ -314,6 +318,7 @@ public:
   
 private:
   VarSet varSet_;
+  VarSet extVarSet_;
   CallSet callSet_;
   const PlotStmt& S_;
 };

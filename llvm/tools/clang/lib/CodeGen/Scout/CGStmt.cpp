@@ -2498,6 +2498,11 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
     if(varId != 0){
       return ConstantInt::get(R.Int32Ty, varId);
     }
+    
+    varId = S.getExtVarId(vd);
+    if(varId != 0){
+      return ConstantInt::get(R.Int32Ty, varId);
+    }
   }
   
   if(CallExpr* c = dyn_cast_or_null<CallExpr>(E->toExpr())){
@@ -2879,6 +2884,36 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   args = {plotPtr, framePtr, targetPtr};
   Builder.CreateCall(R.PlotInitFunc(), args);
   
+  auto ev = visitor.getExtVarSet();
+  
+  for(VarDecl* vd : ev){
+    llvm::Type* t = ConvertType(vd->getType());
+    
+    llvm::Value* type;
+    if(t->isIntegerTy(32)){
+      type = R.ElementInt32Val;
+    }
+    else if(t->isIntegerTy(64)){
+      type = R.ElementInt64Val;
+    }
+    else if(t->isFloatTy()){
+      type = R.ElementFloatVal;
+    }
+    else if(t->isDoubleTy()){
+      type = R.ElementDoubleVal;
+    }
+    else{
+      assert(false && "invalid external var type");
+    }
+    
+    uint32_t vid = S.nextVarId();
+    
+    args = {plotPtr, ConstantInt::get(R.Int32Ty, vid), type};
+    Builder.CreateCall(R.PlotAddVarFunc(), args);
+    
+    S.addExtVar(vd, vid);
+  }
+  
   const SpecObjectExpr* spec = S.getSpec();
   
   auto cs = visitor.getCallSet();
@@ -3074,6 +3109,37 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   Builder.CreateBr(mergeBlock);
   EmitBlock(mergeBlock);
+  
+  auto em = S.extVarMap();
+  for(auto& itr : em){
+    const VarDecl* vd = itr.first;
+    uint32_t vid = itr.second;
+
+    Value* vp = LocalDeclMap[vd];
+    assert(vp);
+    
+    Value* v = Builder.CreateLoad(vp);
+    
+    args = {plotPtr, ConstantInt::get(R.Int32Ty, vid), v};
+    
+    llvm::Type* t = ConvertType(vd->getType());
+    
+    if(t->isIntegerTy(32)){
+      Builder.CreateCall(R.PlotCaptureI32Func(), args);
+    }
+    else if(t->isIntegerTy(64)){
+      Builder.CreateCall(R.PlotCaptureI64Func(), args);
+    }
+    else if(t->isFloatTy()){
+      Builder.CreateCall(R.PlotCaptureFloatFunc(), args);
+    }
+    else if(t->isDoubleTy()){
+      Builder.CreateCall(R.PlotCaptureDoubleFunc(), args);
+    }
+    else{
+      assert(false && "invalid external var type");
+    }
+  }
   
   args = {plotPtr};
   Builder.CreateCall(R.PlotRenderFunc(), args);

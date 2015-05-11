@@ -290,15 +290,19 @@ void FunctionArgVisitor::VisitMemberExpr(MemberExpr *E) {
 void PlotExprVisitor::VisitDeclRefExpr(DeclRefExpr* E){
   const FrameDecl* FD = S_.getFrameDecl();
   VarDecl* VD = dyn_cast<VarDecl>(E->getDecl());
-  if(VD && (FD->hasVar(VD) || S_.getVarId(VD) != 0)){
+  if(VD && (FD->hasVar(VD) || S_.getVarId(VD) != 0 || S_.getExtVarId(VD) != 0)){
     isConstant_ = false;
   }
 }
 
 void PlotVarsVisitor::VisitDeclRefExpr(DeclRefExpr* E){
-  VarDecl* VD = dyn_cast<VarDecl>(E->getDecl());
-  if(VD && S_.getFrameDecl()->hasVar(VD)){
-    varSet_.insert(VD);
+  if(VarDecl* VD = dyn_cast<VarDecl>(E->getDecl())){
+    if(S_.getFrameDecl()->hasVar(VD)){
+      varSet_.insert(VD);
+    }
+    else if(S_.getVarId(VD) == 0){
+      extVarSet_.insert(VD);
+    }
   }
 }
   

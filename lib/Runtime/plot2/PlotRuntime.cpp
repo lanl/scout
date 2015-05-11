@@ -1340,6 +1340,13 @@ namespace{
       }
     }
 
+    template<class T>
+    void capture(VarId varId, T value){
+      assert(plotFrame_);
+      
+      plotFrame_->capture(varId - PLOT_VAR_BEGIN, value);
+    }
+
     void addLines(VarId x, VarId y, VarId size, VarId color){
       elements_.push_back(new Lines(x, y, size, color)); 
     }
@@ -2094,7 +2101,7 @@ extern "C"{
     return new Frame(width, height, depth);
   }
 
-  void __scrt_frame_add_var(void* f, VarId varId, VarId elementKind){
+  void __scrt_frame_add_var(void* f, VarId varId, uint32_t elementKind){
     static_cast<Frame*>(f)->addVar(varId, elementKind);
   }
 
@@ -2168,6 +2175,26 @@ extern "C"{
 
   double __scrt_plot_get_double(void* plot, VarId varId, uint64_t index){
     return static_cast<Plot*>(plot)->get<double>(varId, index);
+  }
+
+  void __scrt_plot_add_var(void* plot, VarId varId, uint32_t elementKind){
+    static_cast<Plot*>(plot)->addVar(elementKind, varId);
+  }
+
+  void __scrt_plot_capture_i32(void* plot, VarId varId, int32_t value){
+    static_cast<Plot*>(plot)->capture(varId, value);
+  }
+
+  void __scrt_plot_capture_i64(void* plot, VarId varId, int64_t value){
+    static_cast<Plot*>(plot)->capture(varId, value);
+  }
+
+  void __scrt_plot_capture_float(void* plot, VarId varId, float value){
+    static_cast<Plot*>(plot)->capture(varId, value);
+  }
+
+  void __scrt_plot_capture_double(void* plot, VarId varId, double value){
+    static_cast<Plot*>(plot)->capture(varId, value);
   }
 
   void __scrt_plot_add_var_i32(void* plot,

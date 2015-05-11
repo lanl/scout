@@ -18,7 +18,6 @@ void nsleep(double dt){
 }
 
 frame MyFrame{
-  timestep: {type:Timestep},
   temperature: {type:Temperature}
 };
 
@@ -33,15 +32,14 @@ int main(int argc, char** argv){
     t += urand(-0.9, 1.0);
 
     into f capture{
-      timestep: i,
       temperature: t
     }
 
     with f in win plot{
       var: {x: temperature + 100}, 
 
-      points: {position: [timestep, x - 50],
-               color: [timestep/500.0, 0.5, 1.0, 1.0],
+      points: {position: [i, x - 50],
+               color: [i/500.0, 0.5, 1.0, 1.0],
                size: 5.0},
 
       axis: {dim:1, label:"Timestep"},

@@ -3009,6 +3009,7 @@ public:
   
   using CallMap = std::map<const CallExpr*, uint32_t>;
   using VarMap = std::map<std::string, std::pair<const VarDecl*, uint32_t>>;
+  using VarIdMap = std::map<const VarDecl*, uint32_t>;
   
   PlotStmt(const FrameDecl* FD, const VarDecl* FV, const VarDecl* RV, SpecObjectExpr* S)
   : ScoutStmt(Plot),
@@ -3073,6 +3074,23 @@ public:
     return CMap;
   }
   
+  void addExtVar(const VarDecl* v, uint32_t varId) const{
+    ExtVarMap[v] = varId;
+  }
+  
+  uint32_t getExtVarId(const VarDecl* v) const{
+    auto itr = ExtVarMap.find(v);
+    if(itr == ExtVarMap.end()){
+      return 0;
+    }
+    
+    return itr->second;
+  }
+  
+  const VarIdMap& extVarMap() const{
+    return ExtVarMap;
+  }
+  
 private:
   const FrameDecl* Frame;
   const VarDecl* FrameVar;
@@ -3084,6 +3102,8 @@ private:
   
   VarMap VMap;
   mutable CallMap CMap;
+  
+  mutable VarIdMap ExtVarMap;
 };
   
 // +==========================================================================+

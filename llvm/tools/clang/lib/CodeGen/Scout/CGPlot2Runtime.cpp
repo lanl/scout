@@ -310,3 +310,28 @@ llvm::Function* CGPlot2Runtime::PlotSetAntialiasedFunc(){
   return GetFunc("__scrt_plot_set_antialiased",
                  {VoidPtrTy, Int1Ty});
 }
+
+Function* CGPlot2Runtime::PlotAddVarFunc(){
+  return GetFunc("__scrt_plot_add_var",
+                 {VoidPtrTy, Int32Ty, Int32Ty});
+}
+
+Function* CGPlot2Runtime::PlotCaptureI32Func(){
+  return GetFunc("__scrt_plot_capture_i32",
+                 {VoidPtrTy, Int32Ty, Int32Ty});
+}
+
+Function* CGPlot2Runtime::PlotCaptureI64Func(){
+  return GetFunc("__scrt_plot_capture_i64",
+                 {VoidPtrTy, Int32Ty, Int64Ty});
+}
+
+Function* CGPlot2Runtime::PlotCaptureFloatFunc(){
+  return GetFunc("__scrt_plot_capture_float",
+                 {VoidPtrTy, Int32Ty, FloatTy});
+}
+
+Function* CGPlot2Runtime::PlotCaptureDoubleFunc(){
+  return GetFunc("__scrt_plot_capture_double",
+                 {VoidPtrTy, Int32Ty, DoubleTy});
+}

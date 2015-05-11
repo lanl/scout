@@ -146,6 +146,12 @@ namespace CodeGen {
     llvm::Function* PlotAddVarFloatVecFunc();
     llvm::Function* PlotAddVarDoubleVecFunc();
     
+    llvm::Function* PlotAddVarFunc();
+    llvm::Function* PlotCaptureI32Func();
+    llvm::Function* PlotCaptureI64Func();
+    llvm::Function* PlotCaptureFloatFunc();
+    llvm::Function* PlotCaptureDoubleFunc();
+    
     llvm::Function* PlotSetAntialiasedFunc();
     
   private:

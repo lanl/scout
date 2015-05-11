@@ -1949,6 +1949,7 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     
     if(CurrentPlotStmt &&
        (CurrentPlotStmt->getVarId(VD) != 0 ||
+        CurrentPlotStmt->getExtVarId(VD) != 0 ||
         CurrentPlotStmt->getFrameDecl()->hasVar(VD))){
       return EmitFrameVarDeclRefLValue(VD);
     }
