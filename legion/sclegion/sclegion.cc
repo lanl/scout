@@ -778,7 +778,7 @@ size_t getStartOffset(MeshHeader *header, size_t color) {
   default:
     assert(false && "bad rank");
   }
-  printf("START OFF %u\n",offset);
+  //printf("START OFF %u\n",offset);
   return offset;
 }
 
@@ -841,7 +841,7 @@ size_t getEndOffset(MeshHeader *header, size_t color) {
   default:
     assert(false && "bad rank");
   }
-  printf("END OFF %u\n",offset);
+  //printf("END OFF %u\n",offset);
   return offset;
 }
 
@@ -942,27 +942,27 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   ++meshTailPtr;
 
   *meshTailPtr = getStart(header, 0, color);
-  printf("xstart %u\n",*meshTailPtr);
+  //printf("xstart %u\n",*meshTailPtr);
   ++meshTailPtr;
 
   *meshTailPtr = getStart(header, 1, color);
-  printf("ystart %u\n",*meshTailPtr);
+  //printf("ystart %u\n",*meshTailPtr);
   ++meshTailPtr;
 
   *meshTailPtr = getStart(header, 2, color);
-  printf("zstart %u\n",*meshTailPtr);
+  //printf("zstart %u\n",*meshTailPtr);
   ++meshTailPtr;
 
   *meshTailPtr = getSize(header, 0,  color);
-  printf("xsize %u\n",*meshTailPtr);
+  //printf("xsize %u\n",*meshTailPtr);
   ++meshTailPtr;
 
   *meshTailPtr = getSize(header, 1,  color);
-  printf("ysize %u\n",*meshTailPtr);
+  //printf("ysize %u\n",*meshTailPtr);
   ++meshTailPtr;
 
   *meshTailPtr = getSize(header, 2,  color);
-  printf("zsize %u\n",*meshTailPtr);
+  //printf("zsize %u\n",*meshTailPtr);
   ++meshTailPtr;
 
   return ret;
