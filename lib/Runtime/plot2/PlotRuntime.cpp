@@ -815,7 +815,7 @@ namespace{
       static_cast<Var<T>*>(vars_[varId])->capture(value);
     }
 
-    void compute(Plot* plot, Frame* parentFrame){
+    void compute(Plot* plot, Frame* parentFrame){ 
       size_t end = parentFrame->size();
       size_t n = vars_.size();
 
@@ -1213,7 +1213,7 @@ namespace{
     }
 
     bool ready(){
-      return frame_;
+      return window_;
     }
 
     void setAntialiased(bool flag){
@@ -1446,7 +1446,7 @@ namespace{
           }
         }
 
-        plotFrame_->compute(this, frame_);
+        plotFrame_->compute(this, frame_ ? frame_ : plotFrame_);
       }
 
       widget_ = window_->getWidget();
@@ -1546,13 +1546,15 @@ namespace{
         prepare(painter);
       }
 
-      size_t frameSize = frame_->size();
+      size_t frameSize = frame_ ? frame_->size() : plotFrame_->size();
 
       if(frameSize < 2){
         return;
       }
 
-      frame_->updateIndexVar(frameSize);
+      if(frame_){
+        frame_->updateIndexVar(frameSize);
+      }
       
       painter.setRenderHint(QPainter::Antialiasing, antialiased_);
 

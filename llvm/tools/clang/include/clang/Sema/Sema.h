@@ -8922,7 +8922,9 @@ public:
                              SourceLocation NameLoc);
   
   Decl* ActOnFrameDefinition(Scope* S, UniformMeshDecl* MD, SourceLocation WithLoc);
-  
+
+  Decl* ActOnFrameDefinition(Scope* S, SourceLocation InLoc);
+      
   void InitFrameDefinitions(Scope* S, FrameDecl* FD);
   
   void PopFrameContext(FrameDecl* F);
