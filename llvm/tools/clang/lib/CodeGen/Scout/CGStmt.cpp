@@ -3109,6 +3109,10 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       args = {plotPtr, ConstantInt::get(R.Int1Ty, v->getBool())};
       Builder.CreateCall(R.PlotSetAntialiasedFunc(), args);
     }
+    else if(k == "output"){
+      args = {plotPtr, Builder.CreateGlobalStringPtr(v->getString())};
+      Builder.CreateCall(R.PlotSetOutputFunc(), args);
+    }
   }
   
   Builder.CreateBr(mergeBlock);

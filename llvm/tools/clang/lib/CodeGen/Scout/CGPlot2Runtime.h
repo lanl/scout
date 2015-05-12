@@ -153,6 +153,7 @@ namespace CodeGen {
     llvm::Function* PlotCaptureDoubleFunc();
     
     llvm::Function* PlotSetAntialiasedFunc();
+    llvm::Function* PlotSetOutputFunc();
     
   private:
     CodeGen::CodeGenModule& CGM;

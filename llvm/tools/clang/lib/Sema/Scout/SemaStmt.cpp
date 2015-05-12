@@ -841,6 +841,13 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         valid = false;
       }
     }
+    else if(k == "output"){
+      if(!v->isString()){
+        Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected file path string";
+        valid = false;
+      }
+    }
     else{
       Diag(loc, diag::err_invalid_plot_spec_key) << k;
       valid = false;

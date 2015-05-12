@@ -1205,7 +1205,11 @@ namespace{
         window_(nullptr),
         antialiased_(true){}
 
-    ~Plot(){}
+    ~Plot(){
+      if(pdfWriter_){
+        delete pdfWriter_;
+      }
+    }
 
     void init(Frame* frame, PlotWindow* window){
       frame_ = frame;
@@ -1218,6 +1222,10 @@ namespace{
 
     void setAntialiased(bool flag){
       antialiased_ = flag;
+    }
+
+    void setOutputPath(const string& path){
+      outputPath_ = path;
     }
 
     template<class T>
@@ -1458,9 +1466,8 @@ namespace{
     }
 
     void prepare(QPainter& painter){
-      QSize frame = widget_->frameSize();
-      width_ = frame.width();
-      height_ = frame.height();
+      width_ = painter.device()->width();
+      height_ = painter.device()->height();
       scale_ = min(width_, height_)/1024.0;
 
       sort(elements_.begin(), elements_.end(),
@@ -1540,7 +1547,22 @@ namespace{
     }
 
     void render(){
-      QPainter painter(widget_);
+      QPaintDevice* device;
+      if(outputPath_.empty()){
+        device = widget_;
+      }
+      else{
+        if(!pdfWriter_){
+          pdfWriter_= new QPdfWriter(outputPath_.c_str());
+          QSizeF size(widget_->width(), widget_->height());
+          pdfWriter_->setPageSize(QPageSize(size, QPageSize::Point));
+          pdfWriter_->setResolution(74);
+        }
+
+        device = pdfWriter_;
+      }
+
+      QPainter painter(device);
 
       if(first_){
         prepare(painter);
@@ -2113,6 +2135,7 @@ namespace{
     Frame* plotFrame_;
     PlotWindow* window_;
     PlotWidget* widget_;
+    QPdfWriter* pdfWriter_ = nullptr;
 
     ElementVec_ elements_;
     double xLen_;
@@ -2133,6 +2156,7 @@ namespace{
     double width_;
     double height_;
     bool antialiased_;
+    string outputPath_;
     double scale_;
     double tickLabelSize_;
     double tickLabelWidth_;
@@ -2321,6 +2345,10 @@ extern "C"{
 
   void __scrt_plot_set_antialiased(void* plot, bool flag){
     static_cast<Plot*>(plot)->setAntialiased(flag);
+  }
+
+  void __scrt_plot_set_output(void* plot, char* path){
+    static_cast<Plot*>(plot)->setOutputPath(path);
   }
 
   void __scrt_plot_add_line(void* plot,
