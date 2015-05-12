@@ -1546,6 +1546,11 @@ namespace{
       return x * scale_;
     }
 
+    double scaleSize(double x){
+      x *= scale_;
+      return x < 1.0 ? 1.0 : x; 
+    }
+
     void render(){
       QPaintDevice* device;
       if(outputPath_.empty()){
@@ -1875,7 +1880,7 @@ namespace{
           lastPoint.setY(toY(y->get(0)));
 
           if(s->isConst() && c->isConst()){
-            pen.setWidthF(s->get(0));
+            pen.setWidthF(scaleSize(s->get(0)));
 
             DoubleVec cv;
             c->getVec(0, cv);
@@ -1894,7 +1899,7 @@ namespace{
               point.setX(toX(x->get(i)));
               point.setY(toY(y->get(i)));
 
-              pen.setWidthF(s->get(i));
+              pen.setWidthF(scaleSize(s->get(i)));
 
               DoubleVec cv;
               c->getVec(i, cv);
@@ -1931,7 +1936,7 @@ namespace{
             p2.setX(toX(x2->get(i)));
             p2.setY(toY(y2->get(i)));
 
-            pen.setWidthF(s->get(i));
+            pen.setWidthF(scaleSize(s->get(i)));
 
             DoubleVec cv;
             c->getVec(i, cv);
@@ -2017,7 +2022,7 @@ namespace{
             QBrush brush(toQColor(cv));
             painter.setBrush(brush);
 
-            double ps = s->get(0);
+            double ps = scaleSize(s->get(0));
 
             for(size_t i = 0; i < size; ++i){
               point.setX(toX(x->get(i)));
@@ -2036,8 +2041,8 @@ namespace{
               QBrush brush(toQColor(cv));
               painter.setBrush(brush);
           
-              double size = s->get(i);
-              painter.drawEllipse(point, size, size);
+              double ps = scaleSize(s->get(i));
+              painter.drawEllipse(point, ps, ps);
             }
           }
         }
