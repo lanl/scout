@@ -311,6 +311,11 @@ llvm::Function* CGPlot2Runtime::PlotSetAntialiasedFunc(){
                  {VoidPtrTy, Int1Ty});
 }
 
+llvm::Function* CGPlot2Runtime::PlotSetOutputFunc(){
+  return GetFunc("__scrt_plot_set_output",
+                 {VoidPtrTy, StringTy});
+}
+
 Function* CGPlot2Runtime::PlotAddVarFunc(){
   return GetFunc("__scrt_plot_add_var",
                  {VoidPtrTy, Int32Ty, Int32Ty});

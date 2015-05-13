@@ -287,6 +287,7 @@ Retry:
   case tok::kw_into: {
     return ParseFrameCaptureStatement(Attrs);
   }
+  case tok::kw_in:
   case tok::kw_with: {
     return ParsePlotStatement(Attrs);
   }

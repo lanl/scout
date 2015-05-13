@@ -2736,143 +2736,147 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   const VarDecl* frame = S.getFrameVar();
   
   const FrameDecl* fd = S.getFrameDecl();
-  
-  const FrameType* ft = dyn_cast<FrameType>(frame->getType().getTypePtr());
-  
+    
   Value* framePtr;
   
   PlotVarsVisitor visitor(S);
   visitor.Visit(const_cast<SpecObjectExpr*>(S.getSpec()));
   
-  if(ft){
-    framePtr = LocalDeclMap.lookup(frame);
-    assert(framePtr);
-    framePtr = Builder.CreateLoad(framePtr, "frame.ptr");
+  if(frame){
+    const FrameType* ft = dyn_cast<FrameType>(frame->getType().getTypePtr());
+    if(ft){
+      framePtr = LocalDeclMap.lookup(frame);
+      assert(framePtr);
+      framePtr = Builder.CreateLoad(framePtr, "frame.ptr");
+    }
+    else{
+      const MeshType* mt = dyn_cast<MeshType>(frame->getType().getTypePtr());
+      assert(mt && "expected a frame or mesh");
+      
+      MeshDecl* MD = mt->getDecl();
+      
+      auto vs = visitor.getVarSet();
+      
+      map<string, VarDecl*> ns;
+      for(VarDecl* vd : vs){
+        ns.insert({vd->getName().str(), vd});
+      }
+      
+      SmallVector<Value*, 3> Dimensions;
+      GetMeshDimensions(mt, Dimensions);
+      
+      bool hasCells = false;
+      bool hasVertices = false;
+      bool hasEdges = false;
+      bool hasFaces = false;
+      
+      for(MeshDecl::field_iterator fitr = MD->field_begin(),
+          fitrEnd = MD->field_end(); fitr != fitrEnd; ++fitr){
+        if(fitr->isCellLocated()){
+          hasCells = true;
+        }
+        else if(fitr->isVertexLocated()){
+          hasVertices = true;
+        }
+        else if(fitr->isEdgeLocated()){
+          hasEdges = true;
+        }
+        else if(fitr->isFaceLocated()){
+          hasFaces = true;
+        }
+        else{
+          assert(false && "unrecognized element");
+        }
+      }
+      
+      llvm::Value* numCells = 0;
+      llvm::Value* numVertices = 0;
+      llvm::Value* numEdges = 0;
+      llvm::Value* numFaces = 0;
+      
+      GetNumMeshItems(Dimensions,
+                      hasCells ? &numCells : 0,
+                      hasVertices ? &numVertices : 0,
+                      hasEdges ? &numEdges : 0,
+                      hasFaces ? &numFaces : 0);
+      
+      while(Dimensions.size() < 3){
+        Dimensions.push_back(ConstantInt::get(R.Int64Ty, 0));
+      }
+      
+      ValueVec args =
+      {Builder.CreateTrunc(Dimensions[0], R.Int32Ty, "width"),
+        Builder.CreateTrunc(Dimensions[1], R.Int32Ty, "height"),
+        Builder.CreateTrunc(Dimensions[2], R.Int32Ty, "depth")};
+      
+      framePtr = Builder.CreateCall(R.CreateMeshFrameFunc(), args, "frame.ptr");
+      
+      for(MeshDecl::field_iterator fitr = MD->field_begin(),
+          fitrEnd = MD->field_end(); fitr != fitrEnd; ++fitr){
+        MeshFieldDecl* field = *fitr;
+        
+        auto itr = ns.find(field->getName().str());
+        
+        if(itr == ns.end()){
+          continue;
+        }
+        
+        llvm::Value* varId = ConstantInt::get(R.Int32Ty, fd->getVarId(itr->second));
+        
+        Value* meshPtr;
+        
+        GetMeshBaseAddr(frame, meshPtr);
+        
+        Value* fieldPtr = Builder.CreateStructGEP(0, meshPtr, field->getFieldIndex());
+        fieldPtr = Builder.CreateLoad(fieldPtr);
+        
+        llvm::PointerType* pt = dyn_cast<llvm::PointerType>(fieldPtr->getType());
+        
+        fieldPtr = Builder.CreateBitCast(fieldPtr, R.VoidPtrTy, "field.ptr");
+        
+        llvm::Type* et = pt->getElementType();
+        
+        llvm::Value* fieldType;
+        
+        if(et->isIntegerTy(32)){
+          fieldType = R.ElementInt32Val;
+        }
+        else if(et->isIntegerTy(64)){
+          fieldType = R.ElementInt64Val;
+        }
+        else if(et->isFloatTy()){
+          fieldType = R.ElementFloatVal;
+        }
+        else if(et->isDoubleTy()){
+          fieldType = R.ElementDoubleVal;
+        }
+        else{
+          assert(false && "unrecognized mesh field type");
+        }
+        
+        llvm::Value* numElements = 0;
+        
+        if(field->isCellLocated()){
+          numElements = numCells;
+        }
+        else if(field->isVertexLocated()){
+          numElements = numVertices;
+        }
+        else if(field->isEdgeLocated()){
+          numElements = numEdges;
+        }
+        else if(field->isFaceLocated()){
+          numElements = numFaces;
+        }
+        
+        ValueVec args = {framePtr, varId, fieldType, fieldPtr, numElements};
+        
+        Builder.CreateCall(R.FrameAddArrayVarFunc(), args);
+      }
+    }
   }
   else{
-    const MeshType* mt = dyn_cast<MeshType>(frame->getType().getTypePtr());
-    assert(mt && "expected a frame or mesh");
-    
-    MeshDecl* MD = mt->getDecl();
-    
-    auto vs = visitor.getVarSet();
-    
-    map<string, VarDecl*> ns;
-    for(VarDecl* vd : vs){
-      ns.insert({vd->getName().str(), vd});
-    }
-    
-    SmallVector<Value*, 3> Dimensions;
-    GetMeshDimensions(mt, Dimensions);
-    
-    bool hasCells = false;
-    bool hasVertices = false;
-    bool hasEdges = false;
-    bool hasFaces = false;
-    
-    for(MeshDecl::field_iterator fitr = MD->field_begin(),
-        fitrEnd = MD->field_end(); fitr != fitrEnd; ++fitr){
-      if(fitr->isCellLocated()){
-        hasCells = true;
-      }
-      else if(fitr->isVertexLocated()){
-        hasVertices = true;
-      }
-      else if(fitr->isEdgeLocated()){
-        hasEdges = true;
-      }
-      else if(fitr->isFaceLocated()){
-        hasFaces = true;
-      }
-      else{
-        assert(false && "unrecognized element");
-      }
-    }
-    
-    llvm::Value* numCells = 0;
-    llvm::Value* numVertices = 0;
-    llvm::Value* numEdges = 0;
-    llvm::Value* numFaces = 0;
-    
-    GetNumMeshItems(Dimensions,
-                    hasCells ? &numCells : 0,
-                    hasVertices ? &numVertices : 0,
-                    hasEdges ? &numEdges : 0,
-                    hasFaces ? &numFaces : 0);
-
-    while(Dimensions.size() < 3){
-      Dimensions.push_back(ConstantInt::get(R.Int64Ty, 0));
-    }
-    
-    ValueVec args =
-    {Builder.CreateTrunc(Dimensions[0], R.Int32Ty, "width"),
-      Builder.CreateTrunc(Dimensions[1], R.Int32Ty, "height"),
-      Builder.CreateTrunc(Dimensions[2], R.Int32Ty, "depth")};
-
-    framePtr = Builder.CreateCall(R.CreateMeshFrameFunc(), args, "frame.ptr");
-    
-    for(MeshDecl::field_iterator fitr = MD->field_begin(),
-        fitrEnd = MD->field_end(); fitr != fitrEnd; ++fitr){
-      MeshFieldDecl* field = *fitr;
-    
-      auto itr = ns.find(field->getName().str());
-      
-      if(itr == ns.end()){
-        continue;
-      }
-      
-      llvm::Value* varId = ConstantInt::get(R.Int32Ty, fd->getVarId(itr->second));
-      
-      Value* meshPtr;
-      
-      GetMeshBaseAddr(frame, meshPtr);
-      
-      Value* fieldPtr = Builder.CreateStructGEP(0, meshPtr, field->getFieldIndex());
-      fieldPtr = Builder.CreateLoad(fieldPtr);
-      
-      llvm::PointerType* pt = dyn_cast<llvm::PointerType>(fieldPtr->getType());
-
-      fieldPtr = Builder.CreateBitCast(fieldPtr, R.VoidPtrTy, "field.ptr");
-      
-      llvm::Type* et = pt->getElementType();
-      
-      llvm::Value* fieldType;
-      
-      if(et->isIntegerTy(32)){
-        fieldType = R.ElementInt32Val;
-      }
-      else if(et->isIntegerTy(64)){
-        fieldType = R.ElementInt64Val;
-      }
-      else if(et->isFloatTy()){
-        fieldType = R.ElementFloatVal;
-      }
-      else if(et->isDoubleTy()){
-        fieldType = R.ElementDoubleVal;
-      }
-      else{
-        assert(false && "unrecognized mesh field type");
-      }
-      
-      llvm::Value* numElements = 0;
-      
-      if(field->isCellLocated()){
-        numElements = numCells;
-      }
-      else if(field->isVertexLocated()){
-        numElements = numVertices;
-      }
-      else if(field->isEdgeLocated()){
-        numElements = numEdges;
-      }
-      else if(field->isFaceLocated()){
-        numElements = numFaces;
-      }
-      
-      ValueVec args = {framePtr, varId, fieldType, fieldPtr, numElements};
-
-      Builder.CreateCall(R.FrameAddArrayVarFunc(), args);
-    }
+    framePtr = ConstantPointerNull::get(R.VoidPtrTy);
   }
   
   const VarDecl* target = S.getRenderTargetVar();
@@ -3104,6 +3108,10 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     else if(k == "antialiased"){
       args = {plotPtr, ConstantInt::get(R.Int1Ty, v->getBool())};
       Builder.CreateCall(R.PlotSetAntialiasedFunc(), args);
+    }
+    else if(k == "output"){
+      args = {plotPtr, Builder.CreateGlobalStringPtr(v->getString())};
+      Builder.CreateCall(R.PlotSetOutputFunc(), args);
     }
   }
   

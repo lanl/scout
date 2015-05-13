@@ -380,6 +380,26 @@ Decl* Sema::ActOnFrameDefinition(Scope* S,
   return FD;
 }
 
+Decl* Sema::ActOnFrameDefinition(Scope* S,
+                                 SourceLocation InLoc){
+  
+  // create a unique name for the frame
+  std::stringstream sstr;
+  sstr << "__frame_" << InLoc.getRawEncoding();
+  
+  FrameDecl* FD =
+  FrameDecl::Create(Context, CurContext, SourceLocation(),
+                    SourceLocation(), PP.getIdentifierInfo(sstr.str()), 0);
+  
+  PushOnScopeChains(FD, S, true);
+  
+  FD->completeDefinition();
+  
+  PushDeclContext(S, FD);
+  
+  return FD;
+}
+
 void Sema::InitFrameDefinitions(Scope* S, FrameDecl* FD){
   AddFrameVarType(S, FD, "Timestep", Context.IntTy);
   AddFrameVarType(S, FD, "Temperature", Context.DoubleTy);
