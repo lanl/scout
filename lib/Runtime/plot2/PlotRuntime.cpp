@@ -644,16 +644,11 @@ namespace{
       double yMax_ = MIN;
     }  
 
-    void transform(const QPointF& t, const QPointF& s){
+    void transform(const QTransform& t){
       size_t n = dataVec_.size();
 
-      QPointF pi;
       for(size_t i = 0; i < n; ++i){
-        pi = dataVec_[i];
-        pi += t;
-        pi.rx() *= s.x();
-        pi.ry() *= s.y();
-        plotVec_[i] = pi;
+        plotVec_[i] = t.map(dataVec_[i]);
       }
     }
 
@@ -1757,8 +1752,9 @@ namespace{
       transform.translate(origin_.x(), origin_.y());
       painter.setWorldTransform(transform);
 
-      QPointF translate(-xMin_, -yMin_);
-      QPointF scale(xm_, -ym_);
+      QTransform posTransform;
+      posTransform.scale(xm_, -ym_);
+      posTransform.translate(-xMin_, -yMin_);
       
       for(Element* e : elements_){
         QTransform t;
@@ -1888,7 +1884,7 @@ namespace{
       for(Element* e : elements_){
         if(Lines* l = dynamic_cast<Lines*>(e)){
           PositionVar* p = getPos(l->pos);
-          p->transform(translate, scale);
+          p->transform(posTransform);
           QPointF* points = p->getPoints();
 
           VarBase* s = getVar(l->size);
@@ -1915,10 +1911,10 @@ namespace{
         }
         else if(Line* l = dynamic_cast<Line*>(e)){
           PositionVar* p1 = getPos(l->pos1);
-          p1->transform(translate, scale);
+          p1->transform(posTransform);
 
           PositionVar* p2 = getPos(l->pos2);
-          p2->transform(translate, scale);
+          p2->transform(posTransform);
           
           VarBase* s = getVar(l->size);
           VarBase* c = getVar(l->color);
@@ -1940,7 +1936,7 @@ namespace{
         }
         else if(Area* a = dynamic_cast<Area*>(e)){
           PositionVar* p = getPos(a->pos);
-          p->transform(translate, scale);
+          p->transform(posTransform);
           QPointF* points = p->getPoints();
 
           VarBase* c = getVar(a->color);
@@ -1979,7 +1975,7 @@ namespace{
         }
         else if(Points* p = dynamic_cast<Points*>(e)){
           PositionVar* pv = getPos(p->pos);
-          pv->transform(translate, scale);
+          pv->transform(posTransform);
           QPointF* points = pv->getPoints();
 
           VarBase* s = getVar(p->size);
@@ -2008,7 +2004,7 @@ namespace{
         }
         else if(Interval* i = dynamic_cast<Interval*>(e)){
           PositionVar* p = getPos(i->pos);
-          p->transform(translate, scale);
+          p->transform(posTransform);
 
           VarBase* c = getVar(i->color);
 
