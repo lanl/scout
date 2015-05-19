@@ -2257,7 +2257,9 @@ public:
   
   llvm::Value* EmitPlotExpr(const PlotStmt &S,
                             llvm::Value* PlotPtr,
-                            SpecExpr* E);
+                            SpecExpr* E,
+                            uint32_t flags=0,
+                            uint32_t varId=0);
   
   RValue EmitPlotCall(const CallExpr* C);
   

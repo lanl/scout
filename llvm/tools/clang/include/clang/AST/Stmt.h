@@ -3017,7 +3017,6 @@ public:
   FrameVar(FV),
   RenderTargetVar(RV),
   Spec(S),
-  startVarId_(65536),
   nextVarId_(65536){}
 
   const FrameDecl* getFrameDecl() const{
@@ -3065,17 +3064,21 @@ public:
     return nextVarId_++;
   }
   
-  void addCall(const CallExpr* c, uint32_t retVarId) const{
+  uint32_t addCall(const CallExpr* c) const{
+    uint32_t varId = nextVarId_++;
     assert(CMap.find(c) == CMap.end());
-    CMap.insert({c, retVarId});
+    CMap.insert({c, varId});
+    return varId;
   }
   
   const CallMap& callMap() const{
     return CMap;
   }
   
-  void addExtVar(const VarDecl* v, uint32_t varId) const{
+  uint32_t addExtVar(const VarDecl* v) const{
+    uint32_t varId = nextVarId_++;
     ExtVarMap[v] = varId;
+    return varId;
   }
   
   uint32_t getExtVarId(const VarDecl* v) const{
@@ -3097,7 +3100,6 @@ private:
   const VarDecl* RenderTargetVar;
   SpecObjectExpr* Spec;
   
-  uint32_t startVarId_;
   mutable uint32_t nextVarId_;
   
   VarMap VMap;

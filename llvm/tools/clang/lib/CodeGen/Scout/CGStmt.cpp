@@ -96,6 +96,13 @@ static const uint8_t FIELD_VERTEX = 1;
 static const uint8_t FIELD_EDGE = 2;
 static const uint8_t FIELD_FACE = 3;
 
+namespace{
+
+const uint32_t FLAG_VAR_CONSTANT = 0x00000001;
+const uint32_t FLAG_VAR_POSITION = 0x00000002;
+
+} // namespace
+  
 // We use 'IRNameStr' to hold the generated names we use for
 // various values in the IR building.  We've added a static
 // buffer to avoid the need for a lot of fine-grained new and
@@ -2477,7 +2484,9 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
 
 llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
                                            llvm::Value* PlotPtr,
-                                           SpecExpr* E){
+                                           SpecExpr* E,
+                                           uint32_t flags,
+                                           uint32_t useVarId){
   using namespace std;
   using namespace llvm;
   
@@ -2608,19 +2617,25 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
   
   Builder.SetInsertPoint(prevBlock, prevPoint);
   
-  Value* vid = ConstantInt::get(R.Int32Ty, S.nextVarId());
+  Value* vid =
+  ConstantInt::get(R.Int32Ty, useVarId == 0 ? S.nextVarId() : useVarId);
   
   ValueVec args;
+
+  uint32_t allFlags = flags;
+  if(isConstant){
+    allFlags |= FLAG_VAR_CONSTANT;
+  }
   
   if(isVec){
     args =
     {PlotPtr, vid, func,
       ConstantInt::get(R.Int32Ty, rt->getVectorNumElements()),
-      ConstantInt::get(R.Int32Ty, isConstant ? 1 : 0)};
+      ConstantInt::get(R.Int32Ty, allFlags)};
   }
   else{
     args =
-    {PlotPtr, vid, func, ConstantInt::get(R.Int32Ty, isConstant ? 1 : 0)};
+    {PlotPtr, vid, func, ConstantInt::get(R.Int32Ty, allFlags)};
   }
   
   if(rt->isIntegerTy(32)){
@@ -2910,12 +2925,10 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       assert(false && "invalid external var type");
     }
     
-    uint32_t vid = S.nextVarId();
+    uint32_t vid = S.addExtVar(vd);
     
     args = {plotPtr, ConstantInt::get(R.Int32Ty, vid), type};
     Builder.CreateCall(R.PlotAddVarFunc(), args);
-    
-    S.addExtVar(vd, vid);
   }
   
   const SpecObjectExpr* spec = S.getSpec();
@@ -2923,7 +2936,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   auto cs = visitor.getCallSet();
   
   for(const CallExpr* c : cs){
-    S.addCall(c, S.nextVarId());
+    S.addCall(c);
   }
   
   auto m = spec->memberMap();
@@ -2945,7 +2958,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         
         auto vitr = vm.find(k);
         assert(vitr != vm.end());
-        EmitPlotExpr(S, plotPtr, e);
+        EmitPlotExpr(S, plotPtr, e, 0, vitr->second.second);
       }
     }
   }
@@ -3005,55 +3018,49 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     if(k == "lines" || k == "points" || k == "area" || k == "interval"){
       SpecObjectExpr* o = v->toObject();
       
-      SpecArrayExpr* pa = o->get("position")->toArray();
-      
-      Value* xv;
-      Value* yv;
-      
-      if(pa){
-        xv = EmitPlotExpr(S, plotPtr, pa->get(0));
-        yv = EmitPlotExpr(S, plotPtr, pa->get(1));
-      }
-      else if(k == "interval"){
-        SpecObjectExpr* bo = o->get("position")->toObject();
-        
-        Value* vi = EmitPlotExpr(S, plotPtr, bo->get("bin"));
-        xv = ConstantInt::get(R.Int32Ty, S.nextVarId());
-        yv = ConstantInt::get(R.Int32Ty, S.nextVarId());
-        Value* n = ConstantInt::get(R.Int32Ty, bo->get("n")->getInteger());
-        
-        args = {plotPtr, vi, xv, yv, n};
-        Builder.CreateCall(R.PlotAddBinsFunc(), args);
-      }
-      
       Value* cv = EmitPlotExpr(S, plotPtr, o->get("color"));
+      Value* xy;
+      
+      if(k == "interval"){
+        xy = ConstantInt::get(R.Int32Ty, S.nextVarId());
+      }
+      else{
+        xy = EmitPlotExpr(S, plotPtr, o->get("position"), FLAG_VAR_POSITION);
+      }
       
       if(k == "lines"){
         Value* sv = EmitPlotExpr(S, plotPtr, o->get("size"));
-        args = {plotPtr, xv, yv, sv, cv};
+        args = {plotPtr, xy, sv, cv};
         Builder.CreateCall(R.PlotAddLinesFunc(), args);
       }
       else if(k == "points"){
         Value* sv = EmitPlotExpr(S, plotPtr, o->get("size"));
-        args = {plotPtr, xv, yv, sv, cv};
+        args = {plotPtr, xy, sv, cv};
         Builder.CreateCall(R.PlotAddPointsFunc(), args);
       }
       else if(k == "area"){
-        args = {plotPtr, xv, yv, cv};
+        args = {plotPtr, xy, cv};
         Builder.CreateCall(R.PlotAddAreaFunc(), args);
       }
       else{
-        args = {plotPtr, xv, yv, cv};
+        SpecObjectExpr* bo = o->get("position")->toObject();
+        
+        Value* vi = EmitPlotExpr(S, plotPtr, bo->get("bin"));
+        Value* n = ConstantInt::get(R.Int32Ty, bo->get("n")->getInteger());
+        
+        args = {plotPtr, vi, xy, n};
+        Builder.CreateCall(R.PlotAddBinsFunc(), args);
+        
+        args = {plotPtr, xy, cv};
         Builder.CreateCall(R.PlotAddIntervalFunc(), args);
       }
     }
     else if(k == "pie"){
       SpecObjectExpr* o = v->toObject();
       
-      Value* xv = ConstantInt::get(R.Int32Ty, S.nextVarId());
-      Value* yv = ConstantInt::get(R.Int32Ty, S.nextVarId());
+      Value* xy = ConstantInt::get(R.Int32Ty, S.nextVarId());
       
-      args = {plotPtr, xv, yv};
+      args = {plotPtr, xy};
       Value* propPtr = Builder.CreateCall(R.PlotAddProportionFunc(), args);
       
       SpecArrayExpr* pa = o->get("proportion")->toArray();
@@ -3073,26 +3080,18 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         cv = ConstantInt::get(R.Int32Ty, 0);
       }
       
-      args = {plotPtr, yv, cv};
+      args = {plotPtr, xy, cv};
       Builder.CreateCall(R.PlotAddPieFunc(), args);
     }
     else if(k == "line"){
       SpecObjectExpr* o = v->toObject();
       
-      SpecArrayExpr* pa = o->get("start")->toArray();
-      
-      Value* x1 = EmitPlotExpr(S, plotPtr, pa->get(0));
-      Value* y1 = EmitPlotExpr(S, plotPtr, pa->get(1));
-      
-      pa = o->get("end")->toArray();
-      
-      Value* x2 = EmitPlotExpr(S, plotPtr, pa->get(0));
-      Value* y2 = EmitPlotExpr(S, plotPtr, pa->get(1));
-      
-      Value* cv = EmitPlotExpr(S, plotPtr, o->get("color"));
+      Value* xy1 = EmitPlotExpr(S, plotPtr, o->get("start"), FLAG_VAR_POSITION);
+      Value* xy2 = EmitPlotExpr(S, plotPtr, o->get("end"), FLAG_VAR_POSITION);
       Value* sv = EmitPlotExpr(S, plotPtr, o->get("size"));
-      
-      args = {plotPtr, x1, y1, x2, y2, sv, cv};
+      Value* cv = EmitPlotExpr(S, plotPtr, o->get("color"));
+
+      args = {plotPtr, xy1, xy2, sv, cv};
       Builder.CreateCall(R.PlotAddLineFunc(), args);
     }
     else if(k == "axis"){

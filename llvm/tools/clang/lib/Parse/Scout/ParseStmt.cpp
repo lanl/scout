@@ -1163,6 +1163,6 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
   }
   
   SpecVars.clear();
-  
+    
   return stmtResult;
 }

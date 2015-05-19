@@ -572,9 +572,8 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
       if(p){
         SpecArrayExpr* pa = p->toArray();
         if(pa && pa->size() == 2){
-          if(!ValidateSpecExpr(pa->get(0), Context.DoubleTy) ||
-             !ValidateSpecExpr(pa->get(1), Context.DoubleTy)){
-            Diag(pa->getLocStart(), diag::err_invalid_plot_spec) <<
+          if(!ValidateSpecExpr(pa, Context.DoubleTy, 2)){
+            Diag(p->getLocStart(), diag::err_invalid_plot_spec) <<
             "invalid 'position'";
             valid = false;
           }
@@ -647,6 +646,7 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         color->add(CreateSpecDoubleExpr(0.0));
         color->add(CreateSpecDoubleExpr(0.0));
         color->add(CreateSpecDoubleExpr(1.0));
+        ValidateSpecExpr(color, Context.FloatTy, 4);
         lv->put("color", color);
       }
     }
@@ -710,9 +710,8 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
       if(p){
         SpecArrayExpr* pa = p->toArray();
         if(pa && pa->size() == 2){
-          if(!ValidateSpecExpr(pa->get(0), Context.DoubleTy) ||
-             !ValidateSpecExpr(pa->get(1), Context.DoubleTy)){
-            Diag(pa->getLocStart(), diag::err_invalid_plot_spec) <<
+          if(!ValidateSpecExpr(pa, Context.DoubleTy, 2)){
+            Diag(p->getLocStart(), diag::err_invalid_plot_spec) <<
             "invalid 'start'";
             valid = false;
           }
@@ -734,9 +733,8 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
       if(p){
         SpecArrayExpr* pa = p->toArray();
         if(pa && pa->size() == 2){
-          if(!ValidateSpecExpr(pa->get(0), Context.DoubleTy) ||
-             !ValidateSpecExpr(pa->get(1), Context.DoubleTy)){
-            Diag(pa->getLocStart(), diag::err_invalid_plot_spec) <<
+          if(!ValidateSpecExpr(pa, Context.DoubleTy, 2)){
+            Diag(p->getLocStart(), diag::err_invalid_plot_spec) <<
             "invalid 'end'";
             valid = false;
           }
@@ -779,6 +777,7 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         color->add(CreateSpecDoubleExpr(0.0));
         color->add(CreateSpecDoubleExpr(0.0));
         color->add(CreateSpecDoubleExpr(1.0));
+        ValidateSpecExpr(color, Context.FloatTy, 4);
         lv->put("color", color);
       }
     }
