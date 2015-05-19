@@ -1843,7 +1843,7 @@ namespace{
 
               drawText(painter,
                        toLabel(yv),
-                       QPointF(origin_.x(), yc), true);
+                       QPointF(origin_.x(), yc - scale(8.0)), true);
             }
 
             inc = frameSize / Y_TICKS;
@@ -1927,11 +1927,22 @@ namespace{
           QPointF* points2 = p2->getPoints();
           QPen pen;
 
-          for(size_t i = 0; i < size; ++i){
-            pen.setWidthF(s->get(i));
-            pen.setColor(toQColor(c->getVec(i)));
+          if(s->isConst() && c->isConst()){
+            pen.setWidthF(s->get(0));
+            pen.setColor(toQColor(c->getVec(0)));
             painter.setPen(pen);
-            painter.drawLine(points1[i], points2[i]);
+            
+            for(size_t i = 0; i < size; ++i){
+              painter.drawLine(points1[i], points2[i]);
+            }
+          }
+          else{
+            for(size_t i = 0; i < size; ++i){
+              pen.setWidthF(s->get(i));
+              pen.setColor(toQColor(c->getVec(i)));
+              painter.setPen(pen);
+              painter.drawLine(points1[i], points2[i]);
+            }
           }
         }
         else if(Area* a = dynamic_cast<Area*>(e)){
