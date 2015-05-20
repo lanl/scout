@@ -105,9 +105,6 @@ public:
     
     Error
     WillLaunchOrAttach ();
-
-    Error
-    DoAttachToProcessWithID (lldb::pid_t pid) override;
     
     Error
     DoAttachToProcessWithID (lldb::pid_t pid, const ProcessAttachInfo &attach_info) override;
@@ -241,14 +238,15 @@ public:
                   const ArchSpec& arch,
                   ModuleSpec &module_spec) override;
 
-    // query remote gdbserver for information
-    bool
-    GetGDBServerInfo ( );
+    virtual size_t
+    LoadModules () override;
 
 protected:
     friend class ThreadGDBRemote;
     friend class GDBRemoteCommunicationClient;
     friend class GDBRemoteRegisterContext;
+
+    class GDBLoadedModuleInfoList;
 
     //----------------------------------------------------------------------
     // Accessors
@@ -357,6 +355,7 @@ protected:
     bool m_destroy_tried_resuming;
     lldb::CommandObjectSP m_command_sp;
     int64_t m_breakpoint_pc_offset;
+    lldb::tid_t m_initial_tid; // The inital thread ID, given by stub on attach
 
     bool
     StartAsyncThread ();
@@ -378,6 +377,9 @@ protected:
     SetThreadStopInfo (StringExtractor& stop_packet);
 
     void
+    HandleStopReplySequence ();
+
+    void
     ClearThreadIDList ();
 
     bool
@@ -395,6 +397,17 @@ protected:
 
     DynamicLoader *
     GetDynamicLoader () override;
+
+    // Query remote GDBServer for register information
+    bool
+    GetGDBServerRegisterInfo ();
+
+    // Query remote GDBServer for a detailed loaded library list
+    Error
+    GetLoadedModuleList (GDBLoadedModuleInfoList &);
+
+    lldb::ModuleSP
+    LoadModuleAtAddress (const FileSpec &file, lldb::addr_t base_addr);
 
 private:
     //------------------------------------------------------------------

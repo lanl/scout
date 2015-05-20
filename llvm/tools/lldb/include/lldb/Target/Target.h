@@ -64,9 +64,15 @@ public:
     void
     SetDefaultArchitecture (const ArchSpec& arch);
 
+    bool
+    GetMoveToNearestCode () const;
+
     lldb::DynamicValueType
     GetPreferDynamicValue() const;
-    
+
+    bool
+    SetPreferDynamicValue (lldb::DynamicValueType d);
+
     bool
     GetDisableASLR () const;
     
@@ -189,6 +195,9 @@ public:
 
     void
     SetUserSpecifiedTrapHandlerNames (const Args &args);
+
+    bool
+    GetNonStopModeEnabled () const;
     
     bool
     GetDisplayRuntimeSupportValues () const;
@@ -695,7 +704,8 @@ public:
                       LazyBool check_inlines,
                       LazyBool skip_prologue,
                       bool internal,
-                      bool request_hardware);
+                      bool request_hardware,
+                      LazyBool move_to_nearest_code);
 
     // Use this to create breakpoint that matches regex against the source lines in files given in source_file_list:
     lldb::BreakpointSP
@@ -703,7 +713,8 @@ public:
                                  const FileSpecList *source_file_list,
                                  RegularExpression &source_regex,
                                  bool internal,
-                                 bool request_hardware);
+                                 bool request_hardware,
+                                 LazyBool move_to_nearest_code);
 
     // Use this to create a breakpoint from a load address
     lldb::BreakpointSP
@@ -730,7 +741,8 @@ public:
 
     // Use this to create a function breakpoint by name in containingModule, or all modules if it is NULL
     // When "skip_prologue is set to eLazyBoolCalculate, we use the current target 
-    // setting, else we use the values passed in
+    // setting, else we use the values passed in.
+    // func_name_type_mask is or'ed values from the FunctionNameType enum.
     lldb::BreakpointSP
     CreateBreakpoint (const FileSpecList *containingModules,
                       const FileSpecList *containingSourceFiles,
@@ -751,6 +763,7 @@ public:
     // This is the same as the func_name breakpoint except that you can specify a vector of names.  This is cheaper
     // than a regular expression breakpoint in the case where you just want to set a breakpoint on a set of names
     // you already know.
+    // func_name_type_mask is or'ed values from the FunctionNameType enum.
     lldb::BreakpointSP
     CreateBreakpoint (const FileSpecList *containingModules,
                       const FileSpecList *containingSourceFiles,
