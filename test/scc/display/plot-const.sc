@@ -31,7 +31,7 @@ int main(int argc, char** argv){
       
       lines: {position: [timestep, temperature],
                color: [0.7, 0.5, 0.3, 1.0],
-               size: 1.0},
+               size: 5.0},
 
       axis: {dim:1, label:"Timestep"},
       axis: {dim:2, label:"Temperature"}  
