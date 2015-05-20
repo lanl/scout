@@ -997,7 +997,7 @@ void DwarfDebug::beginInstruction(const MachineInstr *MI) {
     return;
 
   if (!PrevLabel) {
-    PrevLabel = MMI->getContext().CreateTempSymbol();
+    PrevLabel = MMI->getContext().createTempSymbol();
     Asm->OutStreamer->EmitLabel(PrevLabel);
   }
   I->second = PrevLabel;
@@ -1025,7 +1025,7 @@ void DwarfDebug::endInstruction() {
 
   // We need a label after this instruction.
   if (!PrevLabel) {
-    PrevLabel = MMI->getContext().CreateTempSymbol();
+    PrevLabel = MMI->getContext().createTempSymbol();
     Asm->OutStreamer->EmitLabel(PrevLabel);
   }
   I->second = PrevLabel;
@@ -1545,16 +1545,13 @@ void DebugLocEntry::finalize(const AsmPrinter &AP, DebugLocStream &Locs,
 }
 
 void DwarfDebug::emitDebugLocEntryLocation(const DebugLocStream::Entry &Entry) {
+  // Emit the size.
   Asm->OutStreamer->AddComment("Loc expr size");
-  MCSymbol *begin = Asm->OutStreamer->getContext().CreateTempSymbol();
-  MCSymbol *end = Asm->OutStreamer->getContext().CreateTempSymbol();
-  Asm->EmitLabelDifference(end, begin, 2);
-  Asm->OutStreamer->EmitLabel(begin);
+  Asm->EmitInt16(DebugLocs.getBytes(Entry).size());
+
   // Emit the entry.
   APByteStreamer Streamer(*Asm);
   emitDebugLocEntry(Streamer, Entry);
-  // Close the range.
-  Asm->OutStreamer->EmitLabel(end);
 }
 
 // Emit locations into the debug loc section.

@@ -19,11 +19,21 @@
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallSite.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/Compiler.h"
 
 namespace llvm {
+/// The statepoint intrinsic accepts a set of flags as its third argument.
+/// Valid values come out of this set.
+enum class StatepointFlags {
+  None = 0,
+  GCTransition = 1, ///< Indicates that this statepoint is a transition from
+                    ///< GC-aware code to code that is not GC-aware.
+
+  MaskAll = GCTransition ///< A bitmask that includes all valid flags.
+};
 
 class GCRelocateOperands;
 class ImmutableStatepoint;
@@ -64,13 +74,36 @@ public:
   typedef typename CallSiteTy::arg_iterator arg_iterator;
 
   enum {
-    ActualCalleePos = 0,
-    NumCallArgsPos = 1,
-    CallArgsBeginPos = 3,
+    IDPos = 0,
+    NumPatchBytesPos = 1,
+    ActualCalleePos = 2,
+    NumCallArgsPos = 3,
+    FlagsPos = 4,
+    CallArgsBeginPos = 5,
   };
 
   /// Return the underlying CallSite.
   CallSiteTy getCallSite() { return StatepointCS; }
+
+  uint64_t getFlags() const {
+    return cast<ConstantInt>(StatepointCS.getArgument(FlagsPos))
+        ->getZExtValue();
+  }
+
+  /// Return the ID associated with this statepoint.
+  uint64_t getID() {
+    const Value *IDVal = StatepointCS.getArgument(IDPos);
+    return cast<ConstantInt>(IDVal)->getZExtValue();
+  }
+
+  /// Return the number of patchable bytes associated with this statepoint.
+  uint32_t getNumPatchBytes() {
+    const Value *NumPatchBytesVal = StatepointCS.getArgument(NumPatchBytesPos);
+    uint64_t NumPatchBytes =
+      cast<ConstantInt>(NumPatchBytesVal)->getZExtValue();
+    assert(isInt<32>(NumPatchBytes) && "should fit in 32 bits!");
+    return NumPatchBytes;
+  }
 
   /// Return the value actually being called or invoked.
   ValueTy *getActualCallee() {
@@ -96,9 +129,9 @@ public:
     return StatepointCS.arg_begin() + CallArgsBeginPos;
   }
   typename CallSiteTy::arg_iterator call_args_end() {
-    int Offset = CallArgsBeginPos + getNumCallArgs();
-    assert(Offset <= (int)StatepointCS.arg_size());
-    return StatepointCS.arg_begin() + Offset;
+    auto I = call_args_begin() + getNumCallArgs();
+    assert((StatepointCS.arg_end() - I) >= 0);
+    return I;
   }
 
   /// range adapter for call arguments
@@ -106,18 +139,44 @@ public:
     return iterator_range<arg_iterator>(call_args_begin(), call_args_end());
   }
 
+  /// Number of GC transition args.
+  int getNumTotalGCTransitionArgs() {
+    const Value *NumGCTransitionArgs = *call_args_end();
+    return cast<ConstantInt>(NumGCTransitionArgs)->getZExtValue();
+  }
+  typename CallSiteTy::arg_iterator gc_transition_args_begin() {
+    auto I = call_args_end() + 1;
+    assert((StatepointCS.arg_end() - I) >= 0);
+    return I;
+  }
+  typename CallSiteTy::arg_iterator gc_transition_args_end() {
+    auto I = gc_transition_args_begin() + getNumTotalGCTransitionArgs();
+    assert((StatepointCS.arg_end() - I) >= 0);
+    return I;
+  }
+
+  /// range adapter for GC transition arguments
+  iterator_range<arg_iterator> gc_transition_args() {
+    return iterator_range<arg_iterator>(gc_transition_args_begin(),
+                                        gc_transition_args_end());
+  }
+
   /// Number of additional arguments excluding those intended
   /// for garbage collection.
   int getNumTotalVMSArgs() {
-    Value *NumVMSArgs = *call_args_end();
+    const Value *NumVMSArgs = *gc_transition_args_end();
     return cast<ConstantInt>(NumVMSArgs)->getZExtValue();
   }
 
-  typename CallSiteTy::arg_iterator vm_state_begin() { return call_args_end(); }
+  typename CallSiteTy::arg_iterator vm_state_begin() {
+    auto I = gc_transition_args_end() + 1;
+    assert((StatepointCS.arg_end() - I) >= 0);
+    return I;
+  }
   typename CallSiteTy::arg_iterator vm_state_end() {
-    int Offset = CallArgsBeginPos + getNumCallArgs() + 1 + getNumTotalVMSArgs();
-    assert(Offset <= (int)StatepointCS.arg_size());
-    return StatepointCS.arg_begin() + Offset;
+    auto I = vm_state_begin() + getNumTotalVMSArgs();
+    assert((StatepointCS.arg_end() - I) >= 0);
+    return I;
   }
 
   /// range adapter for vm state arguments
@@ -152,6 +211,8 @@ public:
     // The internal asserts in the iterator accessors do the rest.
     (void)call_args_begin();
     (void)call_args_end();
+    (void)gc_transition_args_begin();
+    (void)gc_transition_args_end();
     (void)vm_state_begin();
     (void)vm_state_end();
     (void)gc_args_begin();

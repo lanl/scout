@@ -22,12 +22,11 @@ namespace llvm {
   class MachineFunction;
   class StringRef;
 
-  // Possible float ABI settings. Used with FloatABIType in TargetOptions.h.
   namespace FloatABI {
     enum ABIType {
-      Default, // Target-specific (either soft or hard depending on triple,etc).
-      Soft, // Soft float.
-      Hard  // Hard float.
+      Default, // Target-specific (either soft or hard depending on triple, etc).
+      Soft,    // Soft float.
+      Hard     // Hard float.
     };
   }
 
@@ -63,7 +62,7 @@ namespace llvm {
         : PrintMachineCode(false), NoFramePointerElim(false),
           LessPreciseFPMADOption(false), UnsafeFPMath(false),
           NoInfsFPMath(false), NoNaNsFPMath(false),
-          HonorSignDependentRoundingFPMathOption(false), UseSoftFloat(false),
+          HonorSignDependentRoundingFPMathOption(false),
           NoZerosInBSS(false),
           GuaranteedTailCallOpt(false),
           DisableTailCalls(false), StackAlignmentOverride(0),
@@ -126,12 +125,6 @@ namespace llvm {
     /// assume that the rounding mode may dynamically change.
     unsigned HonorSignDependentRoundingFPMathOption : 1;
     bool HonorSignDependentRoundingFPMath() const;
-
-    /// UseSoftFloat - This flag is enabled when the -soft-float flag is
-    /// specified on the command line.  When this flag is on, the code generator
-    /// will generate libcalls to the software floating point library instead of
-    /// target FP instructions.
-    unsigned UseSoftFloat : 1;
 
     /// NoZerosInBSS - By default some codegens place zero-initialized data to
     /// .bss section. This flag disables such behaviour (necessary, e.g. for
@@ -240,7 +233,6 @@ inline bool operator==(const TargetOptions &LHS,
     ARE_EQUAL(NoInfsFPMath) &&
     ARE_EQUAL(NoNaNsFPMath) &&
     ARE_EQUAL(HonorSignDependentRoundingFPMathOption) &&
-    ARE_EQUAL(UseSoftFloat) &&
     ARE_EQUAL(NoZerosInBSS) &&
     ARE_EQUAL(GuaranteedTailCallOpt) &&
     ARE_EQUAL(DisableTailCalls) &&

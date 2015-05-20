@@ -38,12 +38,19 @@ STATISTIC(NumOfStatepoints, "Number of statepoint nodes encountered");
 STATISTIC(StatepointMaxSlotsRequired,
           "Maximum number of stack slots required for a singe statepoint");
 
+static void pushStackMapConstant(SmallVectorImpl<SDValue>& Ops,
+                                 SelectionDAGBuilder &Builder, uint64_t Value) {
+  SDLoc L = Builder.getCurSDLoc();
+  Ops.push_back(Builder.DAG.getTargetConstant(StackMaps::ConstantOp, L,
+                                              MVT::i64));
+  Ops.push_back(Builder.DAG.getTargetConstant(Value, L, MVT::i64));
+}
+
 void StatepointLoweringState::startNewStatepoint(SelectionDAGBuilder &Builder) {
   // Consistency check
   assert(PendingGCRelocateCalls.empty() &&
          "Trying to visit statepoint before finished processing previous one");
   Locations.clear();
-  RelocLocations.clear();
   NextSlotToAllocate = 0;
   // Need to resize this on each safepoint - we need the two to stay in
   // sync and the clear patterns of a SelectionDAGBuilder have no relation
@@ -53,9 +60,9 @@ void StatepointLoweringState::startNewStatepoint(SelectionDAGBuilder &Builder) {
     AllocatedStackSlots[i] = false;
   }
 }
+
 void StatepointLoweringState::clear() {
   Locations.clear();
-  RelocLocations.clear();
   AllocatedStackSlots.clear();
   assert(PendingGCRelocateCalls.empty() &&
          "cleared before statepoint sequence completed");
@@ -386,12 +393,7 @@ static void lowerIncomingStatepointValue(SDValue Incoming,
     // such in the stackmap.  This is required so that the consumer can
     // parse any internal format to the deopt state.  It also handles null
     // pointers and other constant pointers in GC states
-    Ops.push_back(Builder.DAG.getTargetConstant(StackMaps::ConstantOp,
-                                                Builder.getCurSDLoc(),
-                                                MVT::i64));
-    Ops.push_back(Builder.DAG.getTargetConstant(C->getSExtValue(),
-                                                Builder.getCurSDLoc(),
-                                                MVT::i64));
+    pushStackMapConstant(Ops, Builder, C->getSExtValue());
   } else if (FrameIndexSDNode *FI = dyn_cast<FrameIndexSDNode>(Incoming)) {
     // This handles allocas as arguments to the statepoint (this is only
     // really meaningful for a deopt value.  For GC, we'd be trying to
@@ -466,32 +468,26 @@ static void lowerStatepointMetaArgs(SmallVectorImpl<SDValue> &Ops,
   // particular value.  This is purely an optimization over the code below and
   // doesn't change semantics at all.  It is important for performance that we
   // reserve slots for both deopt and gc values before lowering either.
-  for (auto I = StatepointSite.vm_state_begin() + 1,
-            E = StatepointSite.vm_state_end();
-       I != E; ++I) {
-    Value *V = *I;
+  for (const Value *V : StatepointSite.vm_state_args()) {
     SDValue Incoming = Builder.getValue(V);
     reservePreviousStackSlotForValue(Incoming, Builder);
   }
-  for (unsigned i = 0; i < Bases.size() * 2; ++i) {
-    // Even elements will contain base, odd elements - derived ptr
-    const Value *V = i % 2 ? Bases[i / 2] : Ptrs[i / 2];
-    SDValue Incoming = Builder.getValue(V);
-    reservePreviousStackSlotForValue(Incoming, Builder);
+  for (unsigned i = 0; i < Bases.size(); ++i) {
+    const Value *Base = Bases[i];
+    reservePreviousStackSlotForValue(Builder.getValue(Base), Builder);
+
+    const Value *Ptr = Ptrs[i];
+    reservePreviousStackSlotForValue(Builder.getValue(Ptr), Builder);
   }
 
   // First, prefix the list with the number of unique values to be
   // lowered.  Note that this is the number of *Values* not the
   // number of SDValues required to lower them.
   const int NumVMSArgs = StatepointSite.getNumTotalVMSArgs();
-  Ops.push_back( Builder.DAG.getTargetConstant(StackMaps::ConstantOp,
-                                               Builder.getCurSDLoc(),
-                                               MVT::i64));
-  Ops.push_back(Builder.DAG.getTargetConstant(NumVMSArgs, Builder.getCurSDLoc(),
-                                              MVT::i64));
+  pushStackMapConstant(Ops, Builder, NumVMSArgs);
 
-  assert(NumVMSArgs + 1 == std::distance(StatepointSite.vm_state_begin(),
-                                         StatepointSite.vm_state_end()));
+  assert(NumVMSArgs == std::distance(StatepointSite.vm_state_begin(),
+                                     StatepointSite.vm_state_end()));
 
   // The vm state arguments are lowered in an opaque manner.  We do
   // not know what type of values are contained within.  We skip the
@@ -499,10 +495,7 @@ static void lowerStatepointMetaArgs(SmallVectorImpl<SDValue> &Ops,
   // explicitly just above.  We could have left it in the loop and
   // not done it explicitly, but it's far easier to understand this
   // way.
-  for (auto I = StatepointSite.vm_state_begin() + 1,
-            E = StatepointSite.vm_state_end();
-       I != E; ++I) {
-    const Value *V = *I;
+  for (const Value *V : StatepointSite.vm_state_args()) {
     SDValue Incoming = Builder.getValue(V);
     lowerIncomingStatepointValue(Incoming, Ops, Builder);
   }
@@ -512,11 +505,12 @@ static void lowerStatepointMetaArgs(SmallVectorImpl<SDValue> &Ops,
   // arrays interwoven with each (lowered) base pointer immediately followed by
   // it's (lowered) derived pointer.  i.e
   // (base[0], ptr[0], base[1], ptr[1], ...)
-  for (unsigned i = 0; i < Bases.size() * 2; ++i) {
-    // Even elements will contain base, odd elements - derived ptr
-    const Value *V = i % 2 ? Bases[i / 2] : Ptrs[i / 2];
-    SDValue Incoming = Builder.getValue(V);
-    lowerIncomingStatepointValue(Incoming, Ops, Builder);
+  for (unsigned i = 0; i < Bases.size(); ++i) {
+    const Value *Base = Bases[i];
+    lowerIncomingStatepointValue(Builder.getValue(Base), Ops, Builder);
+
+    const Value *Ptr = Ptrs[i];
+    lowerIncomingStatepointValue(Builder.getValue(Ptr), Ops, Builder);
   }
 
   // If there are any explicit spill slots passed to the statepoint, record
@@ -530,6 +524,41 @@ static void lowerStatepointMetaArgs(SmallVectorImpl<SDValue> &Ops,
       // This handles allocas as arguments to the statepoint
       Ops.push_back(Builder.DAG.getTargetFrameIndex(FI->getIndex(),
                                                     Incoming.getValueType()));
+    }
+  }
+
+  // Record computed locations for all lowered values.
+  // This can not be embedded in lowering loops as we need to record *all*
+  // values, while previous loops account only values with unique SDValues.
+  const Instruction *StatepointInstr =
+    StatepointSite.getCallSite().getInstruction();
+  FunctionLoweringInfo::StatepointSpilledValueMapTy &SpillMap =
+    Builder.FuncInfo.StatepointRelocatedValues[StatepointInstr];
+
+  for (GCRelocateOperands RelocateOpers :
+       StatepointSite.getRelocates(StatepointSite)) {
+    const Value *V = RelocateOpers.getDerivedPtr();
+    SDValue SDV = Builder.getValue(V);
+    SDValue Loc = Builder.StatepointLowering.getLocation(SDV);
+
+    if (Loc.getNode()) {
+      SpillMap[V] = cast<FrameIndexSDNode>(Loc)->getIndex();
+    } else {
+      // Record value as visited, but not spilled. This is case for allocas
+      // and constants. For this values we can avoid emiting spill load while
+      // visiting corresponding gc_relocate.
+      // Actually we do not need to record them in this map at all.
+      // We do this only to check that we are not relocating any unvisited value.
+      SpillMap[V] = None;
+
+      // Default llvm mechanisms for exporting values which are used in
+      // different basic blocks does not work for gc relocates.
+      // Note that it would be incorrect to teach llvm that all relocates are
+      // uses of the corresponging values so that it would automatically
+      // export them. Relocates of the spilled values does not use original
+      // value.
+      if (StatepointSite.getCallSite().isInvoke())
+        Builder.ExportFromCurrentBlock(V);
     }
   }
 }
@@ -555,11 +584,14 @@ void SelectionDAGBuilder::LowerStatepoint(
   ImmutableCallSite CS(ISP.getCallSite());
 
 #ifndef NDEBUG
-  // Consistency check
-  for (const User *U : CS->users()) {
-    const CallInst *Call = cast<CallInst>(U);
-    if (isGCRelocate(Call))
-      StatepointLowering.scheduleRelocCall(*Call);
+  // Consistency check. Don't do this for invokes. It would be too
+  // expensive to preserve this information across different basic blocks
+  if (!CS.isInvoke()) {
+    for (const User *U : CS->users()) {
+      const CallInst *Call = cast<CallInst>(U);
+      if (isGCRelocate(Call))
+        StatepointLowering.scheduleRelocCall(*Call);
+    }
   }
 #endif
 
@@ -570,9 +602,6 @@ void SelectionDAGBuilder::LowerStatepoint(
   ISP.verify();
 
   // Check that the associated GCStrategy expects to encounter statepoints.
-  // TODO: This if should become an assert.  For now, we allow the GCStrategy
-  // to be optional for backwards compatibility.  This will only last a short
-  // period (i.e. a couple of weeks).
   assert(GFI->getStrategy().useStatepoints() &&
          "GCStrategy does not expect to encounter statepoints");
 #endif
@@ -585,24 +614,69 @@ void SelectionDAGBuilder::LowerStatepoint(
   SDNode *CallNode =
       lowerCallFromStatepoint(ISP, LandingPad, *this, PendingExports);
 
-  // Construct the actual STATEPOINT node with all the appropriate arguments
-  // and return values.
+  // Construct the actual GC_TRANSITION_START, STATEPOINT, and GC_TRANSITION_END
+  // nodes with all the appropriate arguments and return values.
+
+  // Call Node: Chain, Target, {Args}, RegMask, [Glue]
+  SDValue Chain = CallNode->getOperand(0);
+
+  SDValue Glue;
+  bool CallHasIncomingGlue = CallNode->getGluedNode();
+  if (CallHasIncomingGlue) {
+    // Glue is always last operand
+    Glue = CallNode->getOperand(CallNode->getNumOperands() - 1);
+  }
+
+  // Build the GC_TRANSITION_START node if necessary.
+  //
+  // The operands to the GC_TRANSITION_{START,END} nodes are laid out in the
+  // order in which they appear in the call to the statepoint intrinsic. If
+  // any of the operands is a pointer-typed, that operand is immediately
+  // followed by a SRCVALUE for the pointer that may be used during lowering
+  // (e.g. to form MachinePointerInfo values for loads/stores).
+  const bool IsGCTransition =
+      (ISP.getFlags() & (uint64_t)StatepointFlags::GCTransition) ==
+          (uint64_t)StatepointFlags::GCTransition;
+  if (IsGCTransition) {
+    SmallVector<SDValue, 8> TSOps;
+
+    // Add chain
+    TSOps.push_back(Chain);
+
+    // Add GC transition arguments
+    for (const Value *V : ISP.gc_transition_args()) {
+      TSOps.push_back(getValue(V));
+      if (V->getType()->isPointerTy())
+        TSOps.push_back(DAG.getSrcValue(V));
+    }
+
+    // Add glue if necessary
+    if (CallHasIncomingGlue)
+      TSOps.push_back(Glue);
+
+    SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
+
+    SDValue GCTransitionStart =
+        DAG.getNode(ISD::GC_TRANSITION_START, getCurSDLoc(), NodeTys, TSOps);
+
+    Chain = GCTransitionStart.getValue(0);
+    Glue = GCTransitionStart.getValue(1);
+  }
 
   // TODO: Currently, all of these operands are being marked as read/write in
   // PrologEpilougeInserter.cpp, we should special case the VMState arguments
   // and flags to be read-only.
   SmallVector<SDValue, 40> Ops;
 
+  // Add the <id> and <numBytes> constants.
+  Ops.push_back(DAG.getTargetConstant(ISP.getID(), getCurSDLoc(), MVT::i64));
+  Ops.push_back(
+      DAG.getTargetConstant(ISP.getNumPatchBytes(), getCurSDLoc(), MVT::i32));
+
   // Calculate and push starting position of vmstate arguments
-  // Call Node: Chain, Target, {Args}, RegMask, [Glue]
-  SDValue Glue;
-  if (CallNode->getGluedNode()) {
-    // Glue is always last operand
-    Glue = CallNode->getOperand(CallNode->getNumOperands() - 1);
-  }
   // Get number of arguments incoming directly into call node
   unsigned NumCallRegArgs =
-      CallNode->getNumOperands() - (Glue.getNode() ? 4 : 3);
+      CallNode->getNumOperands() - (CallHasIncomingGlue ? 4 : 3);
   Ops.push_back(DAG.getTargetConstant(NumCallRegArgs, getCurSDLoc(), MVT::i32));
 
   // Add call target
@@ -612,21 +686,21 @@ void SelectionDAGBuilder::LowerStatepoint(
   // Add call arguments
   // Get position of register mask in the call
   SDNode::op_iterator RegMaskIt;
-  if (Glue.getNode())
+  if (CallHasIncomingGlue)
     RegMaskIt = CallNode->op_end() - 2;
   else
     RegMaskIt = CallNode->op_end() - 1;
   Ops.insert(Ops.end(), CallNode->op_begin() + 2, RegMaskIt);
 
-  // Add a leading constant argument with the Flags and the calling convention
-  // masked together
-  CallingConv::ID CallConv = CS.getCallingConv();
-  int Flags = cast<ConstantInt>(CS.getArgument(2))->getZExtValue();
-  assert(Flags == 0 && "not expected to be used");
-  Ops.push_back(DAG.getTargetConstant(StackMaps::ConstantOp, getCurSDLoc(),
-                                      MVT::i64));
-  Ops.push_back(DAG.getTargetConstant(Flags | ((unsigned)CallConv << 1),
-                                      getCurSDLoc(), MVT::i64));
+  // Add a constant argument for the calling convention
+  pushStackMapConstant(Ops, *this, CS.getCallingConv());
+
+  // Add a constant argument for the flags
+  uint64_t Flags = ISP.getFlags();
+  assert(
+      ((Flags & ~(uint64_t)StatepointFlags::MaskAll) == 0)
+          && "unknown flag used");
+  pushStackMapConstant(Ops, *this, Flags);
 
   // Insert all vmstate and gcstate arguments
   Ops.insert(Ops.end(), LoweredMetaArgs.begin(), LoweredMetaArgs.end());
@@ -635,7 +709,7 @@ void SelectionDAGBuilder::LowerStatepoint(
   Ops.push_back(*RegMaskIt);
 
   // Add chain
-  Ops.push_back(CallNode->getOperand(0));
+  Ops.push_back(Chain);
 
   // Same for the glue, but we add it only if original call had it
   if (Glue.getNode())
@@ -648,8 +722,38 @@ void SelectionDAGBuilder::LowerStatepoint(
   SDNode *StatepointMCNode =
       DAG.getMachineNode(TargetOpcode::STATEPOINT, getCurSDLoc(), NodeTys, Ops);
 
+  SDNode *SinkNode = StatepointMCNode;
+
+  // Build the GC_TRANSITION_END node if necessary.
+  //
+  // See the comment above regarding GC_TRANSITION_START for the layout of
+  // the operands to the GC_TRANSITION_END node.
+  if (IsGCTransition) {
+    SmallVector<SDValue, 8> TEOps;
+
+    // Add chain
+    TEOps.push_back(SDValue(StatepointMCNode, 0));
+
+    // Add GC transition arguments
+    for (const Value *V : ISP.gc_transition_args()) {
+      TEOps.push_back(getValue(V));
+      if (V->getType()->isPointerTy())
+        TEOps.push_back(DAG.getSrcValue(V));
+    }
+
+    // Add glue
+    TEOps.push_back(SDValue(StatepointMCNode, 1));
+
+    SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
+
+    SDValue GCTransitionStart =
+        DAG.getNode(ISD::GC_TRANSITION_END, getCurSDLoc(), NodeTys, TEOps);
+
+    SinkNode = GCTransitionStart.getNode();
+  }
+
   // Replace original call
-  DAG.ReplaceAllUsesWith(CallNode, StatepointMCNode); // This may update Root
+  DAG.ReplaceAllUsesWith(CallNode, SinkNode); // This may update Root
   // Remove originall call node
   DAG.DeleteNode(CallNode);
 
@@ -689,42 +793,50 @@ void SelectionDAGBuilder::visitGCResult(const CallInst &CI) {
 }
 
 void SelectionDAGBuilder::visitGCRelocate(const CallInst &CI) {
+  GCRelocateOperands RelocateOpers(&CI);
+
 #ifndef NDEBUG
   // Consistency check
-  StatepointLowering.relocCallVisited(CI);
+  // We skip this check for invoke statepoints. It would be too expensive to
+  // preserve validation info through different basic blocks.
+  if (!RelocateOpers.isTiedToInvoke()) {
+    StatepointLowering.relocCallVisited(CI);
+  }
 #endif
 
-  GCRelocateOperands relocateOpers(&CI);
-  SDValue SD = getValue(relocateOpers.getDerivedPtr());
+  const Value *DerivedPtr = RelocateOpers.getDerivedPtr();
+  SDValue SD = getValue(DerivedPtr);
 
-  if (isa<ConstantSDNode>(SD) || isa<FrameIndexSDNode>(SD)) {
-    // We didn't need to spill these special cases (constants and allocas).
-    // See the handling in spillIncomingValueForStatepoint for detail.
+  FunctionLoweringInfo::StatepointSpilledValueMapTy &SpillMap =
+    FuncInfo.StatepointRelocatedValues[RelocateOpers.getStatepoint()];
+
+  // We should have recorded location for this pointer
+  assert(SpillMap.count(DerivedPtr) && "Relocating not lowered gc value");
+  Optional<int> DerivedPtrLocation = SpillMap[DerivedPtr];
+
+  // We didn't need to spill these special cases (constants and allocas).
+  // See the handling in spillIncomingValueForStatepoint for detail.
+  if (!DerivedPtrLocation) {
     setValue(&CI, SD);
     return;
   }
 
-  SDValue Loc = StatepointLowering.getRelocLocation(SD);
-  // Emit new load if we did not emit it before
-  if (!Loc.getNode()) {
-    SDValue SpillSlot = StatepointLowering.getLocation(SD);
-    int FI = cast<FrameIndexSDNode>(SpillSlot)->getIndex();
+  SDValue SpillSlot = DAG.getTargetFrameIndex(*DerivedPtrLocation,
+                                              SD.getValueType());
 
-    // Be conservative: flush all pending loads
-    // TODO: Probably we can be less restrictive on this,
-    // it may allow more scheduling opprtunities
-    SDValue Chain = getRoot();
+  // Be conservative: flush all pending loads
+  // TODO: Probably we can be less restrictive on this,
+  // it may allow more scheduling opprtunities
+  SDValue Chain = getRoot();
 
-    Loc = DAG.getLoad(SpillSlot.getValueType(), getCurSDLoc(), Chain, SpillSlot,
-                      MachinePointerInfo::getFixedStack(FI), false, false,
-                      false, 0);
+  SDValue SpillLoad =
+    DAG.getLoad(SpillSlot.getValueType(), getCurSDLoc(), Chain, SpillSlot,
+                MachinePointerInfo::getFixedStack(*DerivedPtrLocation),
+                false, false, false, 0);
 
-    StatepointLowering.setRelocLocation(SD, Loc);
+  // Again, be conservative, don't emit pending loads
+  DAG.setRoot(SpillLoad.getValue(1));
 
-    // Again, be conservative, don't emit pending loads
-    DAG.setRoot(Loc.getValue(1));
-  }
-
-  assert(Loc.getNode());
-  setValue(&CI, Loc);
+  assert(SpillLoad.getNode());
+  setValue(&CI, SpillLoad);
 }

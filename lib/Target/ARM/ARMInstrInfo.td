@@ -33,13 +33,12 @@ def SDT_ARMCMov    : SDTypeProfile<1, 3,
 def SDT_ARMBrcond  : SDTypeProfile<0, 2,
                                    [SDTCisVT<0, OtherVT>, SDTCisVT<1, i32>]>;
 
-def SDT_ARMBrJT    : SDTypeProfile<0, 3,
+def SDT_ARMBrJT    : SDTypeProfile<0, 2,
+                                  [SDTCisPtrTy<0>, SDTCisVT<1, i32>]>;
+
+def SDT_ARMBr2JT   : SDTypeProfile<0, 3,
                                   [SDTCisPtrTy<0>, SDTCisVT<1, i32>,
                                    SDTCisVT<2, i32>]>;
-
-def SDT_ARMBr2JT   : SDTypeProfile<0, 4,
-                                  [SDTCisPtrTy<0>, SDTCisVT<1, i32>,
-                                   SDTCisVT<2, i32>, SDTCisVT<3, i32>]>;
 
 def SDT_ARMBCC_i64 : SDTypeProfile<0, 6,
                                   [SDTCisVT<0, i32>,
@@ -96,7 +95,7 @@ def ARMSmlal         : SDNode<"ARMISD::SMLAL", SDT_ARM64bitmlal>;
 // Node definitions.
 def ARMWrapper       : SDNode<"ARMISD::Wrapper",     SDTIntUnaryOp>;
 def ARMWrapperPIC    : SDNode<"ARMISD::WrapperPIC",  SDTIntUnaryOp>;
-def ARMWrapperJT     : SDNode<"ARMISD::WrapperJT",   SDTIntBinOp>;
+def ARMWrapperJT     : SDNode<"ARMISD::WrapperJT",   SDTIntUnaryOp>;
 
 def ARMcallseq_start : SDNode<"ISD::CALLSEQ_START", SDT_ARMCallSeqStart,
                               [SDNPHasChain, SDNPSideEffect, SDNPOutGlue]>;
@@ -1827,6 +1826,32 @@ def CONSTPOOL_ENTRY :
 PseudoInst<(outs), (ins cpinst_operand:$instid, cpinst_operand:$cpidx,
                     i32imm:$size), NoItinerary, []>;
 
+/// A jumptable consisting of direct 32-bit addresses of the destination basic
+/// blocks (either absolute, or relative to the start of the jump-table in PIC
+/// mode). Used mostly in ARM and Thumb-1 modes.
+def JUMPTABLE_ADDRS :
+PseudoInst<(outs), (ins cpinst_operand:$instid, cpinst_operand:$cpidx,
+                        i32imm:$size), NoItinerary, []>;
+
+/// A jumptable consisting of 32-bit jump instructions. Used for Thumb-2 tables
+/// that cannot be optimised to use TBB or TBH.
+def JUMPTABLE_INSTS :
+PseudoInst<(outs), (ins cpinst_operand:$instid, cpinst_operand:$cpidx,
+                        i32imm:$size), NoItinerary, []>;
+
+/// A jumptable consisting of 8-bit unsigned integers representing offsets from
+/// a TBB instruction.
+def JUMPTABLE_TBB :
+PseudoInst<(outs), (ins cpinst_operand:$instid, cpinst_operand:$cpidx,
+                        i32imm:$size), NoItinerary, []>;
+
+/// A jumptable consisting of 16-bit unsigned integers representing offsets from
+/// a TBH instruction.
+def JUMPTABLE_TBH :
+PseudoInst<(outs), (ins cpinst_operand:$instid, cpinst_operand:$cpidx,
+                        i32imm:$size), NoItinerary, []>;
+
+
 // FIXME: Marking these as hasSideEffects is necessary to prevent machine DCE
 // from removing one half of the matched pairs. That breaks PEI, which assumes
 // these will always be in pairs, and asserts if it finds otherwise. Better way?
@@ -2090,7 +2115,7 @@ def LEApcrel : ARMPseudoInst<(outs GPR:$Rd), (ins i32imm:$label, pred:$p),
                     4, IIC_iALUi, []>, Sched<[WriteALU, ReadALU]>;
 
 def LEApcrelJT : ARMPseudoInst<(outs GPR:$Rd),
-                      (ins i32imm:$label, nohash_imm:$id, pred:$p),
+                      (ins i32imm:$label, pred:$p),
                       4, IIC_iALUi, []>, Sched<[WriteALU, ReadALU]>;
 }
 
@@ -2225,24 +2250,24 @@ let isBranch = 1, isTerminator = 1 in {
                 [(br bb:$target)], (Bcc br_target:$target, (ops 14, zero_reg))>,
                 Sched<[WriteBr]>;
 
-    let isNotDuplicable = 1, isIndirectBranch = 1 in {
+    let Size = 4, isNotDuplicable = 1, isIndirectBranch = 1 in {
     def BR_JTr : ARMPseudoInst<(outs),
-                      (ins GPR:$target, i32imm:$jt, i32imm:$id),
+                      (ins GPR:$target, i32imm:$jt),
                       0, IIC_Br,
-                      [(ARMbrjt GPR:$target, tjumptable:$jt, imm:$id)]>,
+                      [(ARMbrjt GPR:$target, tjumptable:$jt)]>,
                       Sched<[WriteBr]>;
     // FIXME: This shouldn't use the generic "addrmode2," but rather be split
     // into i12 and rs suffixed versions.
     def BR_JTm : ARMPseudoInst<(outs),
-                     (ins addrmode2:$target, i32imm:$jt, i32imm:$id),
+                     (ins addrmode2:$target, i32imm:$jt),
                      0, IIC_Br,
-                     [(ARMbrjt (i32 (load addrmode2:$target)), tjumptable:$jt,
-                       imm:$id)]>, Sched<[WriteBrTbl]>;
+                     [(ARMbrjt (i32 (load addrmode2:$target)),
+                               tjumptable:$jt)]>, Sched<[WriteBrTbl]>;
     def BR_JTadd : ARMPseudoInst<(outs),
-                   (ins GPR:$target, GPR:$idx, i32imm:$jt, i32imm:$id),
+                   (ins GPR:$target, GPR:$idx, i32imm:$jt),
                    0, IIC_Br,
-                   [(ARMbrjt (add GPR:$target, GPR:$idx), tjumptable:$jt,
-                     imm:$id)]>, Sched<[WriteBrTbl]>;
+                   [(ARMbrjt (add GPR:$target, GPR:$idx), tjumptable:$jt)]>,
+                   Sched<[WriteBrTbl]>;
     } // isNotDuplicable = 1, isIndirectBranch = 1
   } // isBarrier = 1
 
@@ -5339,8 +5364,8 @@ def MOV_ga_pcrel_ldr : PseudoInst<(outs GPR:$dst), (ins i32imm:$addr),
 def : ARMPat<(ARMWrapper  tconstpool  :$dst), (LEApcrel tconstpool  :$dst)>;
 def : ARMPat<(ARMWrapper  tglobaladdr :$dst), (MOVi32imm tglobaladdr :$dst)>,
             Requires<[IsARM, UseMovt]>;
-def : ARMPat<(ARMWrapperJT tjumptable:$dst, imm:$id),
-             (LEApcrelJT tjumptable:$dst, imm:$id)>;
+def : ARMPat<(ARMWrapperJT tjumptable:$dst),
+             (LEApcrelJT tjumptable:$dst)>;
 
 // TODO: add,sub,and, 3-instr forms?
 

@@ -22,7 +22,7 @@ static Fuzzer *F;
 Fuzzer::Fuzzer(UserCallback Callback, FuzzingOptions Options)
     : Callback(Callback), Options(Options) {
   SetDeathCallback();
-  InitializeDFSan();
+  InitializeTraceState();
   assert(!F);
   F = this;
 }
@@ -60,16 +60,20 @@ void Fuzzer::StaticAlarmCallback() {
 }
 
 void Fuzzer::AlarmCallback() {
+  assert(Options.UnitTimeoutSec > 0);
   size_t Seconds =
       duration_cast<seconds>(system_clock::now() - UnitStartTime).count();
-  std::cerr << "ALARM: working on the last Unit for " << Seconds << " seconds"
-            << std::endl;
-  if (Seconds >= 3) {
+  if (Seconds == 0) return;
+  if (Options.Verbosity >= 2)
+    std::cerr << "AlarmCallback " << Seconds << "\n";
+  if (Seconds >= (size_t)Options.UnitTimeoutSec) {
+    std::cerr << "ALARM: working on the last Unit for " << Seconds << " seconds"
+              << std::endl;
     Print(CurrentUnit, "\n");
     PrintUnitInASCIIOrTokens(CurrentUnit, "\n");
     WriteToCrash(CurrentUnit, "timeout-");
+    exit(1);
   }
-  exit(1);
 }
 
 void Fuzzer::PrintStats(const char *Where, size_t Cov, const char *End) {
@@ -84,6 +88,34 @@ void Fuzzer::PrintStats(const char *Where, size_t Cov, const char *End) {
       << " units " << Corpus.size()
       << " exec/s " << ExecPerSec
       << End;
+}
+
+void Fuzzer::RereadOutputCorpus() {
+  if (Options.OutputCorpus.empty()) return;
+  std::vector<Unit> AdditionalCorpus;
+  ReadDirToVectorOfUnits(Options.OutputCorpus.c_str(), &AdditionalCorpus,
+                         &EpochOfLastReadOfOutputCorpus);
+  if (Corpus.empty()) {
+    Corpus = AdditionalCorpus;
+    return;
+  }
+  if (!Options.Reload) return;
+  if (Options.Verbosity >= 2)
+    std::cerr << "Reload: read " << AdditionalCorpus.size() << " new units.\n";
+  for (auto &X : AdditionalCorpus) {
+    if (X.size() > (size_t)Options.MaxLen)
+      X.resize(Options.MaxLen);
+    if (UnitHashesAddedToCorpus.insert(Hash(X)).second) {
+      CurrentUnit.clear();
+      CurrentUnit.insert(CurrentUnit.begin(), X.begin(), X.end());
+      size_t NewCoverage = RunOne(CurrentUnit);
+      if (NewCoverage) {
+        Corpus.push_back(X);
+        if (Options.Verbosity >= 1)
+          PrintStats("RELOAD", NewCoverage);
+      }
+    }
+  }
 }
 
 void Fuzzer::ShuffleAndMinimize() {
@@ -118,6 +150,8 @@ void Fuzzer::ShuffleAndMinimize() {
     }
   }
   Corpus = NewCorpus;
+  for (auto &X : Corpus)
+    UnitHashesAddedToCorpus.insert(Hash(X));
   PrintStats("INITED", MaxCov);
 }
 
@@ -141,6 +175,12 @@ size_t Fuzzer::RunOne(const Unit &U) {
     Print(U, "\n");
   }
   return Res;
+}
+
+void Fuzzer::RunOneAndUpdateCorpus(const Unit &U) {
+  if (TotalNumberOfRuns >= Options.MaxNumberOfRuns)
+    return;
+  ReportNewCoverage(RunOne(U), U);
 }
 
 static uintptr_t HashOfArrayOfPCs(uintptr_t *PCs, uintptr_t NumPCs) {
@@ -259,55 +299,68 @@ void Fuzzer::SaveCorpus() {
               << Options.OutputCorpus << "\n";
 }
 
-size_t Fuzzer::MutateAndTestOne(Unit *U) {
-  size_t NewUnits = 0;
-  for (int i = 0; i < Options.MutateDepth; i++) {
-    if (TotalNumberOfRuns >= Options.MaxNumberOfRuns)
-      return NewUnits;
-    MutateWithDFSan(U);
-    Mutate(U, Options.MaxLen);
-    size_t NewCoverage = RunOne(*U);
-    if (NewCoverage) {
-      Corpus.push_back(*U);
-      NewUnits++;
-      PrintStats("NEW   ", NewCoverage, "");
-      if (Options.Verbosity) {
-        std::cerr << " L: " << U->size();
-        if (U->size() < 30) {
-          std::cerr << " ";
-          PrintUnitInASCIIOrTokens(*U, "\t");
-          Print(*U);
-        }
-        std::cerr << "\n";
-      }
-      WriteToOutputCorpus(*U);
-      if (Options.ExitOnFirst)
-        exit(0);
+void Fuzzer::ReportNewCoverage(size_t NewCoverage, const Unit &U) {
+  if (!NewCoverage) return;
+  Corpus.push_back(U);
+  UnitHashesAddedToCorpus.insert(Hash(U));
+  PrintStats("NEW   ", NewCoverage, "");
+  if (Options.Verbosity) {
+    std::cerr << " L: " << U.size();
+    if (U.size() < 30) {
+      std::cerr << " ";
+      PrintUnitInASCIIOrTokens(U, "\t");
+      Print(U);
     }
+    std::cerr << "\n";
   }
-  return NewUnits;
+  WriteToOutputCorpus(U);
+  if (Options.ExitOnFirst)
+    exit(0);
 }
 
-size_t Fuzzer::Loop(size_t NumIterations) {
-  size_t NewUnits = 0;
+void Fuzzer::MutateAndTestOne(Unit *U) {
+  for (int i = 0; i < Options.MutateDepth; i++) {
+    StartTraceRecording();
+    Mutate(U, Options.MaxLen);
+    RunOneAndUpdateCorpus(*U);
+    size_t NumTraceBasedMutations = StopTraceRecording();
+    for (size_t j = 0; j < NumTraceBasedMutations; j++) {
+      ApplyTraceBasedMutation(j, U);
+      RunOneAndUpdateCorpus(*U);
+    }
+  }
+}
+
+void Fuzzer::Loop(size_t NumIterations) {
   for (size_t i = 1; i <= NumIterations; i++) {
     for (size_t J1 = 0; J1 < Corpus.size(); J1++) {
+      SyncCorpus();
+      RereadOutputCorpus();
       if (TotalNumberOfRuns >= Options.MaxNumberOfRuns)
-        return NewUnits;
+        return;
       // First, simply mutate the unit w/o doing crosses.
       CurrentUnit = Corpus[J1];
-      NewUnits += MutateAndTestOne(&CurrentUnit);
+      MutateAndTestOne(&CurrentUnit);
       // Now, cross with others.
       if (Options.DoCrossOver) {
         for (size_t J2 = 0; J2 < Corpus.size(); J2++) {
           CurrentUnit.clear();
           CrossOver(Corpus[J1], Corpus[J2], &CurrentUnit, Options.MaxLen);
-          NewUnits += MutateAndTestOne(&CurrentUnit);
+          MutateAndTestOne(&CurrentUnit);
         }
       }
     }
   }
-  return NewUnits;
+}
+
+void Fuzzer::SyncCorpus() {
+  if (Options.SyncCommand.empty() || Options.OutputCorpus.empty()) return;
+  auto Now = system_clock::now();
+  if (duration_cast<seconds>(Now - LastExternalSync).count() <
+      Options.SyncTimeout)
+    return;
+  LastExternalSync = Now;
+  ExecuteCommand(Options.SyncCommand + " " + Options.OutputCorpus);
 }
 
 }  // namespace fuzzer
