@@ -43,3 +43,6 @@ namespace G {
   typedef enum { i, j } k;
   typedef enum {} l;
 }
+
+template<typename T = int, int N = 3, template<typename> class K = F> int H(int a = 1);
+template<typename T = int, int N = 3, template<typename> class K = F> using I = decltype(H<T, N, K>());
