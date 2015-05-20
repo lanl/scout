@@ -14,13 +14,14 @@ This library is intended primarily for in-process coverage-guided fuzz testing
 * Build the Fuzzer library as a static archive (or just a set of .o files).
   Note that the Fuzzer contains the main() function.
   Preferably do *not* use sanitizers while building the Fuzzer.
-* Build the library you are going to test with -fsanitize-coverage=[234]
+* Build the library you are going to test with
+  `-fsanitize-coverage={bb,edge}[,indirect-calls]`
   and one of the sanitizers. We recommend to build the library in several
   different modes (e.g. asan, msan, lsan, ubsan, etc) and even using different
   optimizations options (e.g. -O0, -O1, -O2) to diversify testing.
 * Build a test driver using the same options as the library.
   The test driver is a C/C++ file containing interesting calls to the library
-  inside a single function  ``extern "C" void TestOneInput(const uint8_t *Data, size_t Size);``
+  inside a single function  ``extern "C" void LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size);``
 * Link the Fuzzer, the library and the driver together into an executable
   using the same sanitizer options as for the library.
 * Collect the initial corpus of inputs for the
@@ -56,7 +57,7 @@ Toy example
 A simple function that does something interesting if it receives the input "HI!"::
 
   cat << EOF >> test_fuzzer.cc
-  extern "C" void TestOneInput(const unsigned char *data, unsigned long size) {
+  extern "C" void LLVMFuzzerTestOneInput(const unsigned char *data, unsigned long size) {
     if (size > 0 && data[0] == 'H')
       if (size > 1 && data[1] == 'I')
          if (size > 2 && data[2] == '!')
@@ -68,7 +69,7 @@ A simple function that does something interesting if it receives the input "HI!"
   # Build lib/Fuzzer files.
   clang -c -g -O2 -std=c++11 Fuzzer/*.cpp -IFuzzer
   # Build test_fuzzer.cc with asan and link against lib/Fuzzer.
-  clang++ -fsanitize=address -fsanitize-coverage=3 test_fuzzer.cc Fuzzer*.o
+  clang++ -fsanitize=address -fsanitize-coverage=edge test_fuzzer.cc Fuzzer*.o
   # Run the fuzzer with no corpus.
   ./a.out
 
@@ -79,7 +80,7 @@ PCRE2
 
 Here we show how to use lib/Fuzzer on something real, yet simple: pcre2_::
 
-  COV_FLAGS=" -fsanitize-coverage=4 -mllvm -sanitizer-coverage-8bit-counters=1"
+  COV_FLAGS=" -fsanitize-coverage=edge,indirect-calls,8bit-counters"
   # Get PCRE2
   svn co svn://vcs.exim.org/pcre2/code/trunk pcre
   # Get lib/Fuzzer. Assuming that you already have fresh clang in PATH.
@@ -92,7 +93,7 @@ Here we show how to use lib/Fuzzer on something real, yet simple: pcre2_::
   cat << EOF > pcre_fuzzer.cc
   #include <string.h>
   #include "pcre2posix.h"
-  extern "C" void TestOneInput(const unsigned char *data, size_t size) {
+  extern "C" void LLVMFuzzerTestOneInput(const unsigned char *data, size_t size) {
     if (size < 1) return;
     char *str = new char[size+1];
     memcpy(str, data, size);
@@ -151,17 +152,21 @@ Now, interrupt the fuzzer and run it again the same way. You will see::
 This time you were running the fuzzer with a non-empty input corpus (564 items).
 As the first step, the fuzzer minimized the set to produce 344 interesting items (the ``INITED`` line)
 
+It is quite convenient to store test corpuses in git.
+As an example, here is a git repository with test inputs for the above PCRE2 fuzzer::
+
+  git clone https://github.com/kcc/fuzzing-with-sanitizers.git
+  ./pcre_fuzzer ./fuzzing-with-sanitizers/pcre2/C1/
+
 You may run ``N`` independent fuzzer jobs in parallel on ``M`` CPUs::
 
   N=100; M=4; ./pcre_fuzzer ./CORPUS -jobs=$N -workers=$M
 
-This is useful when you already have an exhaustive test corpus.
-If you've just started fuzzing with no good corpus running independent
-jobs will create a corpus with too many duplicates.
-One way to avoid this and still use all of your CPUs is to use the flag ``-exit_on_first=1``
-which will cause the fuzzer to exit on the first new synthesised input::
+By default (``-reload=1``) the fuzzer processes will periodically scan the CORPUS directory
+and reload any new tests. This way the test inputs found by one process will be picked up
+by all others.
 
-  N=100; M=4; ./pcre_fuzzer ./CORPUS -jobs=$N -workers=$M -exit_on_first=1
+If ``-workers=$M`` is not supplied, ``min($N,NumberOfCpuCore/2)`` will be used.
 
 Heartbleed
 ----------
@@ -172,7 +177,7 @@ to find Heartbleed with LibFuzzer::
 
   wget https://www.openssl.org/source/openssl-1.0.1f.tar.gz
   tar xf openssl-1.0.1f.tar.gz
-  COV_FLAGS="-fsanitize-coverage=4" # -mllvm -sanitizer-coverage-8bit-counters=1"
+  COV_FLAGS="-fsanitize-coverage=edge,indirect-calls" # -fsanitize-coverage=8bit-counters
   (cd openssl-1.0.1f/ && ./config &&
     make -j 32 CC="clang -g -fsanitize=address $COV_FLAGS")
   # Get and build LibFuzzer
@@ -196,7 +201,7 @@ to find Heartbleed with LibFuzzer::
     assert (SSL_CTX_use_PrivateKey_file(sctx, "server.key", SSL_FILETYPE_PEM));
     return 0;
   }
-  extern "C" void TestOneInput(unsigned char *Data, size_t Size) {
+  extern "C" void LLVMFuzzerTestOneInput(unsigned char *Data, size_t Size) {
     static int unused = Init();
     SSL *server = SSL_new(sctx);
     BIO *sinbio = BIO_new(BIO_s_mem());
@@ -259,7 +264,7 @@ Periodically restart both fuzzers so that they can use each other's findings.
 How good is my fuzzer?
 ----------------------
 
-Once you implement your target function ``TestOneInput`` and fuzz it to death,
+Once you implement your target function ``LLVMFuzzerTestOneInput`` and fuzz it to death,
 you will want to know whether the function or the corpus can be improved further.
 One easy to use metric is, of course, code coverage.
 You can get the coverage for your corpus like this::
@@ -298,6 +303,24 @@ The default behavior is very similar to ``clang-format-fuzzer``.
 Clang can also be fuzzed with Tokens_ using ``-tokens=$LLVM/lib/Fuzzer/cxx_fuzzer_tokens.txt`` option.
 
 Tracking bug: https://llvm.org/bugs/show_bug.cgi?id=23057
+
+Buildbot
+--------
+
+We have a buildbot that runs the above fuzzers for LLVM components
+24/7/365 at http://lab.llvm.org:8011/builders/sanitizer-x86_64-linux-fuzzer .
+
+Pre-fuzzed test inputs in git
+-----------------------------
+
+The buildbot occumulates large test corpuses over time.
+The corpuses are stored in git on github and can be used like this::
+
+  git clone https://github.com/kcc/fuzzing-with-sanitizers.git
+  bin/clang-format-fuzzer fuzzing-with-sanitizers/llvm/clang-format/C1
+  bin/clang-fuzzer        fuzzing-with-sanitizers/llvm/clang/C1/
+  bin/clang-fuzzer        fuzzing-with-sanitizers/llvm/clang/TOK1  -tokens=$LLVM/llvm/lib/Fuzzer/cxx_fuzzer_tokens.txt
+
 
 FAQ
 =========================

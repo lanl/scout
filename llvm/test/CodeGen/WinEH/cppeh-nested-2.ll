@@ -111,10 +111,10 @@ lpad:                                             ; preds = %try.cont, %entry
 ; CHECK-NEXT:           catch i8* bitcast (i8** @_ZTIi to i8*)
 ; CHECK-NEXT:           catch i8* bitcast (i8** @_ZTIf to i8*)
 ; CHECK-NEXT:   [[RECOVER1:\%.+]] = call i8* (...) @llvm.eh.actions(
-; CHECK-SAME:       i32 1, i8* bitcast (i8** @_ZTIi to i8*), i32 1, i8* (i8*, i8*)* @_Z4testv.catch1,
+; CHECK-SAME:       i32 1, i8* bitcast (i8** @_ZTIi to i8*), i32 1, i8* (i8*, i8*)* @_Z4testv.catch.1,
 ; CHECK-SAME:       i32 0, void (i8*, i8*)* @_Z4testv.cleanup,
 ; CHECK-SAME:       i32 1, i8* bitcast (i8** @_ZTIf to i8*), i32 0, i8* (i8*, i8*)* @_Z4testv.catch)
-; CHECK-NEXT:   indirectbr i8* [[RECOVER1]], [label %try.cont, label %try.cont19]
+; CHECK-NEXT:   indirectbr i8* [[RECOVER1]], [label %try.cont19, label %try.cont]
 
 lpad1:                                            ; preds = %invoke.cont4, %invoke.cont
   %tmp3 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__CxxFrameHandler3 to i8*)
@@ -133,11 +133,11 @@ lpad1:                                            ; preds = %invoke.cont4, %invo
 ; CHECK-NEXT:           catch i8* bitcast (i8** @_ZTIi to i8*)
 ; CHECK-NEXT:           catch i8* bitcast (i8** @_ZTIf to i8*)
 ; CHECK-NEXT:   [[RECOVER3:\%.+]] = call i8* (...) @llvm.eh.actions(
-; CHECK-SAME:       i32 0, void (i8*, i8*)* @_Z4testv.cleanup2,
-; CHECK-SAME:       i32 1, i8* bitcast (i8** @_ZTIi to i8*), i32 1, i8* (i8*, i8*)* @_Z4testv.catch1,
+; CHECK-SAME:       i32 0, void (i8*, i8*)* @_Z4testv.cleanup.2,
+; CHECK-SAME:       i32 1, i8* bitcast (i8** @_ZTIi to i8*), i32 1, i8* (i8*, i8*)* @_Z4testv.catch.1,
 ; CHECK-SAME:       i32 0, void (i8*, i8*)* @_Z4testv.cleanup,
 ; CHECK-SAME:       i32 1, i8* bitcast (i8** @_ZTIf to i8*), i32 0, i8* (i8*, i8*)* @_Z4testv.catch)
-; CHECK-NEXT:   indirectbr i8* [[RECOVER3]], [label %try.cont, label %try.cont19]
+; CHECK-NEXT:   indirectbr i8* [[RECOVER3]], [label %try.cont19, label %try.cont]
 
 lpad3:                                            ; preds = %invoke.cont2
   %tmp6 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__CxxFrameHandler3 to i8*)
@@ -251,7 +251,7 @@ eh.resume:                                        ; preds = %catch.dispatch11
 ; CHECK: }
 
 ; This catch handler should be outlined.
-; CHECK: define internal i8* @_Z4testv.catch1(i8*, i8*)
+; CHECK: define internal i8* @_Z4testv.catch.1(i8*, i8*)
 ; CHECK: entry:
 ; CHECK:   [[RECOVER_I:\%.+]] = call i8* @llvm.framerecover(i8* bitcast (void ()* @_Z4testv to i8*), i8* %1, i32 1)
 ; CHECK:   [[I_PTR:\%.+]] = bitcast i8* [[RECOVER_I]] to i32*
@@ -277,7 +277,7 @@ eh.resume:                                        ; preds = %catch.dispatch11
 ; CHECK: }
 
 ; This cleanup handler should be outlined.
-; CHECK: define internal void @_Z4testv.cleanup2(i8*, i8*)
+; CHECK: define internal void @_Z4testv.cleanup.2(i8*, i8*)
 ; CHECK: entry:
 ; CHECK:   [[RECOVER_INNER:\%.+]] = call i8* @llvm.framerecover(i8* bitcast (void ()* @_Z4testv to i8*), i8* %1, i32 3)
 ; CHECK:   [[INNER_PTR:\%.+]] = bitcast i8* [[RECOVER_INNER]] to %class.Inner*

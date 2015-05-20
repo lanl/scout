@@ -1081,7 +1081,7 @@ public:
   }
 };
 
-/// Abstact virtual class for operations for memory operations
+/// This is an abstract virtual class for memory operations.
 class MemSDNode : public SDNode {
 private:
   // VT of in-memory value.
@@ -1198,7 +1198,7 @@ public:
   }
 };
 
-/// A SDNode reprenting atomic operations.
+/// This is an SDNode representing atomic operations.
 class AtomicSDNode : public MemSDNode {
   SDUse Ops[4];
 
@@ -1429,9 +1429,9 @@ public:
 class ConstantFPSDNode : public SDNode {
   const ConstantFP *Value;
   friend class SelectionDAG;
-  ConstantFPSDNode(bool isTarget, const ConstantFP *val, EVT VT)
+  ConstantFPSDNode(bool isTarget, const ConstantFP *val, DebugLoc DL, EVT VT)
     : SDNode(isTarget ? ISD::TargetConstantFP : ISD::ConstantFP,
-             0, DebugLoc(), getSDVTList(VT)), Value(val) {
+             0, DL, getSDVTList(VT)), Value(val) {
   }
 public:
 

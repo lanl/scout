@@ -13,6 +13,7 @@
 #include "FuzzerInternal.h"
 
 #include <cstring>
+#include <chrono>
 #include <unistd.h>
 #include <iostream>
 #include <thread>
@@ -122,9 +123,18 @@ static void ParseFlags(int argc, char **argv) {
   }
 }
 
+static std::mutex Mu;
+
+static void PulseThread() {
+  while (true) {
+    std::this_thread::sleep_for(std::chrono::seconds(600));
+    std::lock_guard<std::mutex> Lock(Mu);
+    std::cerr << "pulse...\n";
+  }
+}
+
 static void WorkerThread(const std::string &Cmd, std::atomic<int> *Counter,
                         int NumJobs, std::atomic<bool> *HasErrors) {
-  static std::mutex CerrMutex;
   while (true) {
     int C = (*Counter)++;
     if (C >= NumJobs) break;
@@ -135,7 +145,7 @@ static void WorkerThread(const std::string &Cmd, std::atomic<int> *Counter,
     int ExitCode = system(ToRun.c_str());
     if (ExitCode != 0)
       *HasErrors = true;
-    std::lock_guard<std::mutex> Lock(CerrMutex);
+    std::lock_guard<std::mutex> Lock(Mu);
     std::cerr << "================== Job " << C
               << " exited with exit code " << ExitCode
               << " =================\n";
@@ -154,6 +164,8 @@ static int RunInMultipleProcesses(int argc, char **argv, int NumWorkers,
     Cmd += " ";
   }
   std::vector<std::thread> V;
+  std::thread Pulse(PulseThread);
+  Pulse.detach();
   for (int i = 0; i < NumWorkers; i++)
     V.push_back(std::thread(WorkerThread, Cmd, &Counter, NumJobs, &HasErrors));
   for (auto &T : V)
@@ -191,26 +203,37 @@ int FuzzerDriver(int argc, char **argv, UserCallback Callback) {
     return 0;
   }
 
+  if (Flags.jobs > 0 && Flags.workers == 0) {
+    Flags.workers = std::min(NumberOfCpuCores() / 2, Flags.jobs);
+    if (Flags.workers > 1)
+      std::cerr << "Running " << Flags.workers << " workers\n";
+  }
+
   if (Flags.workers > 0 && Flags.jobs > 0)
     return RunInMultipleProcesses(argc, argv, Flags.workers, Flags.jobs);
 
   Fuzzer::FuzzingOptions Options;
   Options.Verbosity = Flags.verbosity;
   Options.MaxLen = Flags.max_len;
+  Options.UnitTimeoutSec = Flags.timeout;
   Options.DoCrossOver = Flags.cross_over;
   Options.MutateDepth = Flags.mutate_depth;
   Options.ExitOnFirst = Flags.exit_on_first;
   Options.UseCounters = Flags.use_counters;
+  Options.UseTraces = Flags.use_traces;
   Options.UseFullCoverageSet = Flags.use_full_coverage_set;
   Options.UseCoveragePairs = Flags.use_coverage_pairs;
-  Options.UseDFSan = Flags.dfsan;
   Options.PreferSmallDuringInitialShuffle =
       Flags.prefer_small_during_initial_shuffle;
   Options.Tokens = ReadTokensFile(Flags.tokens);
+  Options.Reload = Flags.reload;
   if (Flags.runs >= 0)
     Options.MaxNumberOfRuns = Flags.runs;
   if (!inputs.empty())
     Options.OutputCorpus = inputs[0];
+  if (Flags.sync_command)
+    Options.SyncCommand = Flags.sync_command;
+  Options.SyncTimeout = Flags.sync_timeout;
   Fuzzer F(Callback, Options);
 
   unsigned seed = Flags.seed;
@@ -223,7 +246,7 @@ int FuzzerDriver(int argc, char **argv, UserCallback Callback) {
 
   // Timer
   if (Flags.timeout > 0)
-    SetTimer(Flags.timeout);
+    SetTimer(Flags.timeout / 2 + 1);
 
   if (Flags.verbosity >= 2) {
     std::cerr << "Tokens: {";
@@ -235,8 +258,10 @@ int FuzzerDriver(int argc, char **argv, UserCallback Callback) {
   if (Flags.apply_tokens)
     return ApplyTokens(F, Flags.apply_tokens);
 
+  F.RereadOutputCorpus();
   for (auto &inp : inputs)
-    F.ReadDir(inp);
+    if (inp != Options.OutputCorpus)
+      F.ReadDir(inp, nullptr);
 
   if (F.CorpusSize() == 0)
     F.AddToCorpus(Unit());  // Can't fuzz empty corpus, so add an empty input.

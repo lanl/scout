@@ -2185,6 +2185,7 @@ bool X86FastISel::X86SelectTrunc(const Instruction *I) {
     return true;
   }
 
+  bool KillInputReg = false;
   if (!Subtarget->is64Bit()) {
     // If we're on x86-32; we can't extract an i8 from a general register.
     // First issue a copy to GR16_ABCD or GR32_ABCD.
@@ -2194,11 +2195,12 @@ bool X86FastISel::X86SelectTrunc(const Instruction *I) {
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
             TII.get(TargetOpcode::COPY), CopyReg).addReg(InputReg);
     InputReg = CopyReg;
+    KillInputReg = true;
   }
 
   // Issue an extract_subreg.
   unsigned ResultReg = fastEmitInst_extractsubreg(MVT::i8,
-                                                  InputReg, /*Kill=*/true,
+                                                  InputReg, KillInputReg,
                                                   X86::sub_8bit);
   if (!ResultReg)
     return false;
@@ -2252,7 +2254,7 @@ bool X86FastISel::fastLowerIntrinsicCall(const IntrinsicInst *II) {
   default: return false;
   case Intrinsic::convert_from_fp16:
   case Intrinsic::convert_to_fp16: {
-    if (TM.Options.UseSoftFloat || !Subtarget->hasF16C())
+    if (Subtarget->useSoftFloat() || !Subtarget->hasF16C())
       return false;
 
     const Value *Op = II->getArgOperand(0);
@@ -3533,6 +3535,23 @@ bool X86FastISel::tryToFoldLoadIntoMI(MachineInstr *MI, unsigned OpNo,
                               Size, Alignment, /*AllowCommute=*/true);
   if (!Result)
     return false;
+
+  // The index register could be in the wrong register class.  Unfortunately,
+  // foldMemoryOperandImpl could have commuted the instruction so its not enough
+  // to just look at OpNo + the offset to the index reg.  We actually need to
+  // scan the instruction to find the index reg and see if its the correct reg
+  // class.
+  for (MIOperands MO(Result); MO.isValid(); ++MO) {
+    if (!MO->isReg() || MO->isDef() || MO->getReg() != AM.IndexReg)
+      continue;
+    // Found the index reg, now try to rewrite it.
+    unsigned OpNo = MO.getOperandNo();
+    unsigned IndexReg = constrainOperandRegClass(Result->getDesc(),
+                                                 MO->getReg(), OpNo);
+    if (IndexReg == MO->getReg())
+      continue;
+    MO->setReg(IndexReg);
+  }
 
   Result->addMemOperand(*FuncInfo.MF, createMachineMemOperandFor(LI));
   FuncInfo.MBB->insert(FuncInfo.InsertPt, Result);
