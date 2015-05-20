@@ -3021,6 +3021,18 @@ ASTReader::ReadASTBlock(ModuleFile &F, unsigned ClientLoadCapabilities) {
             ReadSourceLocation(F, Record, I).getRawEncoding());
       }
       break;
+    case DELETE_EXPRS_TO_ANALYZE:
+      for (unsigned I = 0, N = Record.size(); I != N;) {
+        DelayedDeleteExprs.push_back(getGlobalDeclID(F, Record[I++]));
+        const uint64_t Count = Record[I++];
+        DelayedDeleteExprs.push_back(Count);
+        for (uint64_t C = 0; C < Count; ++C) {
+          DelayedDeleteExprs.push_back(ReadSourceLocation(F, Record, I).getRawEncoding());
+          bool IsArrayForm = Record[I++] == 1;
+          DelayedDeleteExprs.push_back(IsArrayForm);
+        }
+      }
+      break;
 
     case IMPORTED_MODULES: {
       if (F.Kind != MK_ImplicitModule && F.Kind != MK_ExplicitModule) {
@@ -4270,10 +4282,12 @@ ASTReader::ReadSubmoduleBlock(ModuleFile &F, unsigned ClientLoadCapabilities) {
     }
         
     case SUBMODULE_UMBRELLA_HEADER: {
-      if (const FileEntry *Umbrella = PP.getFileManager().getFile(Blob)) {
+      std::string Filename = Blob;
+      ResolveImportedPath(F, Filename);
+      if (auto *Umbrella = PP.getFileManager().getFile(Filename)) {
         if (!CurrentModule->getUmbrellaHeader())
-          ModMap.setUmbrellaHeader(CurrentModule, Umbrella);
-        else if (CurrentModule->getUmbrellaHeader() != Umbrella) {
+          ModMap.setUmbrellaHeader(CurrentModule, Umbrella, Blob);
+        else if (CurrentModule->getUmbrellaHeader().Entry != Umbrella) {
           // This can be a spurious difference caused by changing the VFS to
           // point to a different copy of the file, and it is too late to
           // to rebuild safely.
@@ -4306,11 +4320,12 @@ ASTReader::ReadSubmoduleBlock(ModuleFile &F, unsigned ClientLoadCapabilities) {
     }
 
     case SUBMODULE_UMBRELLA_DIR: {
-      if (const DirectoryEntry *Umbrella
-                                  = PP.getFileManager().getDirectory(Blob)) {
+      std::string Dirname = Blob;
+      ResolveImportedPath(F, Dirname);
+      if (auto *Umbrella = PP.getFileManager().getDirectory(Dirname)) {
         if (!CurrentModule->getUmbrellaDir())
-          ModMap.setUmbrellaDir(CurrentModule, Umbrella);
-        else if (CurrentModule->getUmbrellaDir() != Umbrella) {
+          ModMap.setUmbrellaDir(CurrentModule, Umbrella, Blob);
+        else if (CurrentModule->getUmbrellaDir().Entry != Umbrella) {
           if ((ClientLoadCapabilities & ARR_OutOfDate) == 0)
             Error("mismatched umbrella directories in submodule");
           return OutOfDate;
@@ -6142,10 +6157,7 @@ namespace {
         PredefsVisited[I] = false;
     }
 
-    static bool visit(ModuleFile &M, bool Preorder, void *UserData) {
-      if (Preorder)
-        return false;
-
+    static bool visitPostorder(ModuleFile &M, void *UserData) {
       FindExternalLexicalDeclsVisitor *This
         = static_cast<FindExternalLexicalDeclsVisitor *>(UserData);
 
@@ -6187,7 +6199,8 @@ ExternalLoadResult ASTReader::FindExternalLexicalDecls(const DeclContext *DC,
   // There might be lexical decls in multiple modules, for the TU at
   // least. Walk all of the modules in the order they were loaded.
   FindExternalLexicalDeclsVisitor Visitor(*this, DC, isKindWeWant, Decls);
-  ModuleMgr.visitDepthFirst(&FindExternalLexicalDeclsVisitor::visit, &Visitor);
+  ModuleMgr.visitDepthFirst(
+      nullptr, &FindExternalLexicalDeclsVisitor::visitPostorder, &Visitor);
   ++NumLexicalDeclContextsRead;
   return ELR_Success;
 }
@@ -7010,6 +7023,21 @@ void ASTReader::ReadUndefinedButUsed(
     SourceLocation Loc =
         SourceLocation::getFromRawEncoding(UndefinedButUsed[Idx++]);
     Undefined.insert(std::make_pair(D, Loc));
+  }
+}
+
+void ASTReader::ReadMismatchingDeleteExpressions(llvm::MapVector<
+    FieldDecl *, llvm::SmallVector<std::pair<SourceLocation, bool>, 4>> &
+                                                     Exprs) {
+  for (unsigned Idx = 0, N = DelayedDeleteExprs.size(); Idx != N;) {
+    FieldDecl *FD = cast<FieldDecl>(GetDecl(DelayedDeleteExprs[Idx++]));
+    uint64_t Count = DelayedDeleteExprs[Idx++];
+    for (uint64_t C = 0; C < Count; ++C) {
+      SourceLocation DeleteLoc =
+          SourceLocation::getFromRawEncoding(DelayedDeleteExprs[Idx++]);
+      const bool IsArrayForm = DelayedDeleteExprs[Idx++];
+      Exprs[FD].push_back(std::make_pair(DeleteLoc, IsArrayForm));
+    }
   }
 }
 
@@ -7997,7 +8025,7 @@ void ASTReader::getInputFiles(ModuleFile &F,
 
 std::string ASTReader::getOwningModuleNameForDiagnostic(const Decl *D) {
   // If we know the owning module, use it.
-  if (Module *M = D->getOwningModule())
+  if (Module *M = D->getImportedOwningModule())
     return M->getFullModuleName();
 
   // Otherwise, use the name of the top-level module the decl is within.
@@ -8168,6 +8196,11 @@ void ASTReader::finishPendingActions() {
       MD->setLazyBody(PB->second);
   }
   PendingBodies.clear();
+
+  // Do some cleanup.
+  for (auto *ND : PendingMergedDefinitionsToDeduplicate)
+    getContext().deduplicateMergedDefinitonsFor(ND);
+  PendingMergedDefinitionsToDeduplicate.clear();
 }
 
 void ASTReader::diagnoseOdrViolations() {

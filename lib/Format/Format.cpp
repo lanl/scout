@@ -752,7 +752,7 @@ private:
     unsigned LastColumn = Tokens.back()->OriginalColumn;
     for (auto I = Tokens.rbegin() + 1, E = Tokens.rend(); I != E; ++I) {
       ++TokenCount;
-      if (I[0]->is(tok::slash) && I + 1 != E &&
+      if (I[0]->isOneOf(tok::slash, tok::slashequal) && I + 1 != E &&
           (I[1]->isOneOf(tok::l_paren, tok::semi, tok::l_brace, tok::r_brace,
                          tok::exclaim, tok::l_square, tok::colon, tok::comma,
                          tok::question, tok::kw_return) ||
@@ -1008,7 +1008,7 @@ private:
         // See whether there is an odd number of '\' before this.
         unsigned count = 0;
         for (; pos >= 0; --pos, ++count)
-          if (Text[count] != '\\')
+          if (Text[pos] != '\\')
             break;
         return count & 1;
       };
@@ -1219,7 +1219,7 @@ public:
                        << "\n");
   }
 
-  tooling::Replacements format() {
+  tooling::Replacements format(bool *IncompleteFormat) {
     tooling::Replacements Result;
     FormatTokenLexer Tokens(SourceMgr, ID, Style, Encoding);
 
@@ -1234,7 +1234,8 @@ public:
       for (unsigned i = 0, e = UnwrappedLines[Run].size(); i != e; ++i) {
         AnnotatedLines.push_back(new AnnotatedLine(UnwrappedLines[Run][i]));
       }
-      tooling::Replacements RunResult = format(AnnotatedLines, Tokens);
+      tooling::Replacements RunResult =
+          format(AnnotatedLines, Tokens, IncompleteFormat);
       DEBUG({
         llvm::dbgs() << "Replacements for run " << Run << ":\n";
         for (tooling::Replacements::iterator I = RunResult.begin(),
@@ -1253,7 +1254,7 @@ public:
   }
 
   tooling::Replacements format(SmallVectorImpl<AnnotatedLine *> &AnnotatedLines,
-                               FormatTokenLexer &Tokens) {
+                               FormatTokenLexer &Tokens, bool *IncompleteFormat) {
     TokenAnnotator Annotator(Style, Tokens.getKeywords());
     for (unsigned i = 0, e = AnnotatedLines.size(); i != e; ++i) {
       Annotator.annotate(*AnnotatedLines[i]);
@@ -1268,9 +1269,9 @@ public:
     ContinuationIndenter Indenter(Style, Tokens.getKeywords(), SourceMgr,
                                   Whitespaces, Encoding,
                                   BinPackInconclusiveFunctions);
-    UnwrappedLineFormatter Formatter(&Indenter, &Whitespaces, Style,
-                                     Tokens.getKeywords());
-    Formatter.format(AnnotatedLines, /*DryRun=*/false);
+    UnwrappedLineFormatter(&Indenter, &Whitespaces, Style, Tokens.getKeywords(),
+                           IncompleteFormat)
+        .format(AnnotatedLines);
     return Whitespaces.generateReplacements();
   }
 
@@ -1489,16 +1490,18 @@ private:
 
 tooling::Replacements reformat(const FormatStyle &Style,
                                SourceManager &SourceMgr, FileID ID,
-                               ArrayRef<CharSourceRange> Ranges) {
+                               ArrayRef<CharSourceRange> Ranges,
+                               bool *IncompleteFormat) {
   if (Style.DisableFormat)
     return tooling::Replacements();
   Formatter formatter(Style, SourceMgr, ID, Ranges);
-  return formatter.format();
+  return formatter.format(IncompleteFormat);
 }
 
 tooling::Replacements reformat(const FormatStyle &Style, StringRef Code,
                                ArrayRef<tooling::Range> Ranges,
-                               StringRef FileName) {
+                               StringRef FileName,
+                               bool *IncompleteFormat) {
   if (Style.DisableFormat)
     return tooling::Replacements();
 
@@ -1521,7 +1524,7 @@ tooling::Replacements reformat(const FormatStyle &Style, StringRef Code,
     SourceLocation End = Start.getLocWithOffset(Range.getLength());
     CharRanges.push_back(CharSourceRange::getCharRange(Start, End));
   }
-  return reformat(Style, SourceMgr, ID, CharRanges);
+  return reformat(Style, SourceMgr, ID, CharRanges, IncompleteFormat);
 }
 
 LangOptions getFormattingLangOpts(const FormatStyle &Style) {

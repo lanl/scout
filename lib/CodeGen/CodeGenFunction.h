@@ -2198,9 +2198,9 @@ private:
   bool EmitOMPWorksharingLoop(const OMPLoopDirective &S);
   void EmitOMPForOuterLoop(OpenMPScheduleClauseKind ScheduleKind,
                            const OMPLoopDirective &S,
-                           OMPPrivateScope &LoopScope, llvm::Value *LB,
-                           llvm::Value *UB, llvm::Value *ST, llvm::Value *IL,
-                           llvm::Value *Chunk);
+                           OMPPrivateScope &LoopScope, bool Ordered,
+                           llvm::Value *LB, llvm::Value *UB, llvm::Value *ST,
+                           llvm::Value *IL, llvm::Value *Chunk);
 
 public:
 
@@ -2272,7 +2272,7 @@ public:
       bool IsWeak = false, AggValueSlot Slot = AggValueSlot::ignored());
 
   void EmitAtomicUpdate(LValue LVal, llvm::AtomicOrdering AO,
-                        const std::function<RValue(RValue)> &UpdateOp,
+                        const llvm::function_ref<RValue(RValue)> &UpdateOp,
                         bool IsVolatile);
 
   /// EmitToMemory - Change a scalar value from its value
@@ -2835,7 +2835,7 @@ public:
   /// \brief Create a basic block that will call a handler function in a
   /// sanitizer runtime with the provided arguments, and create a conditional
   /// branch to it.
-  void EmitCheck(ArrayRef<std::pair<llvm::Value *, SanitizerKind>> Checked,
+  void EmitCheck(ArrayRef<std::pair<llvm::Value *, SanitizerMask>> Checked,
                  StringRef CheckName, ArrayRef<llvm::Constant *> StaticArgs,
                  ArrayRef<llvm::Value *> DynamicArgs);
 

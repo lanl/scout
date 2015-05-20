@@ -35,7 +35,7 @@ IdentifierInfo::IdentifierInfo() {
   HasMacro = false;
   HadMacro = false;
   IsExtension = false;
-  IsCXX11CompatKeyword = false;
+  IsFutureCompatKeyword = false;
   IsPoisoned = false;
   IsCPPOperatorKeyword = false;
   NeedsHandleIdentifier = false;
@@ -157,7 +157,7 @@ static void AddKeyword(StringRef Keyword,
 
   // Don't add this keyword under MSVCCompat.
   if (LangOpts.MSVCCompat && (Flags & KEYNOMS18) &&
-      !LangOpts.isCompatibleWithMSVC(19))
+      !LangOpts.isCompatibleWithMSVC(LangOptions::MSVC2015))
     return;
 
   // Don't add this keyword under OpenCL.
@@ -170,7 +170,7 @@ static void AddKeyword(StringRef Keyword,
   IdentifierInfo &Info =
       Table.get(Keyword, AddResult == KS_Future ? tok::identifier : TokenCode);
   Info.setIsExtensionToken(AddResult == KS_Extension);
-  Info.setIsCXX11CompatKeyword(AddResult == KS_Future);
+  Info.setIsFutureCompatKeyword(AddResult == KS_Future);
 }
 
 /// AddCXXOperatorKeyword - Register a C++ operator keyword alternative

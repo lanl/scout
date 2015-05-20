@@ -930,6 +930,8 @@ number of cases where the compilation environment is tightly controlled
 and the precompiled header cannot be generated after headers have been
 installed.
 
+.. _controlling-code-generation:
+
 Controlling Code Generation
 ---------------------------
 
@@ -1096,6 +1098,11 @@ are listed below.
    except for ``-fsanitize=return`` and ``-fsanitize=unreachable``. Some
    sanitizers (e.g. :doc:`AddressSanitizer`) may not support recovery,
    and always crash the program after the issue is detected.
+
+**-f[no-]sanitize-coverage=[type,features,...]**
+
+   Enable simple code coverage in addition to certain sanitizers.
+   See :doc:`SanitizerCoverage` for more details.
 
 .. option:: -fno-assume-sane-operator-new
 

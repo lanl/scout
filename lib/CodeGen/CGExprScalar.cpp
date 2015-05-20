@@ -85,7 +85,7 @@ public:
     return CGF.EmitCheckedLValue(E, TCK);
   }
 
-  void EmitBinOpCheck(ArrayRef<std::pair<Value *, SanitizerKind>> Checks,
+  void EmitBinOpCheck(ArrayRef<std::pair<Value *, SanitizerMask>> Checks,
                       const BinOpInfo &Info);
 
   Value *EmitLoadOfLValue(LValue LV, SourceLocation Loc) {
@@ -916,7 +916,7 @@ Value *ScalarExprEmitter::EmitNullValue(QualType Ty) {
 /// operation). The check passes if all values in \p Checks (which are \c i1),
 /// are \c true.
 void ScalarExprEmitter::EmitBinOpCheck(
-    ArrayRef<std::pair<Value *, SanitizerKind>> Checks, const BinOpInfo &Info) {
+    ArrayRef<std::pair<Value *, SanitizerMask>> Checks, const BinOpInfo &Info) {
   assert(CGF.IsSanitizerScope);
   StringRef CheckName;
   SmallVector<llvm::Constant *, 4> StaticData;
@@ -2231,7 +2231,7 @@ Value *ScalarExprEmitter::EmitCompoundAssign(const CompoundAssignOperator *E,
 
 void ScalarExprEmitter::EmitUndefinedBehaviorIntegerDivAndRemCheck(
     const BinOpInfo &Ops, llvm::Value *Zero, bool isDiv) {
-  SmallVector<std::pair<llvm::Value *, SanitizerKind>, 2> Checks;
+  SmallVector<std::pair<llvm::Value *, SanitizerMask>, 2> Checks;
 
   if (CGF.SanOpts.has(SanitizerKind::IntegerDivideByZero)) {
     Checks.push_back(std::make_pair(Builder.CreateICmpNE(Ops.RHS, Zero),
@@ -2343,7 +2343,7 @@ Value *ScalarExprEmitter::EmitOverflowCheckedBinOp(const BinOpInfo &Ops) {
 
   llvm::Function *intrinsic = CGF.CGM.getIntrinsic(IID, opTy);
 
-  Value *resultAndOverflow = Builder.CreateCall2(intrinsic, Ops.LHS, Ops.RHS);
+  Value *resultAndOverflow = Builder.CreateCall(intrinsic, {Ops.LHS, Ops.RHS});
   Value *result = Builder.CreateExtractValue(resultAndOverflow, 0);
   Value *overflow = Builder.CreateExtractValue(resultAndOverflow, 1);
 
@@ -2356,7 +2356,7 @@ Value *ScalarExprEmitter::EmitOverflowCheckedBinOp(const BinOpInfo &Ops) {
     if (!isSigned || CGF.SanOpts.has(SanitizerKind::SignedIntegerOverflow)) {
       CodeGenFunction::SanitizerScope SanScope(&CGF);
       llvm::Value *NotOverflow = Builder.CreateNot(overflow);
-      SanitizerKind Kind = isSigned ? SanitizerKind::SignedIntegerOverflow
+      SanitizerMask Kind = isSigned ? SanitizerKind::SignedIntegerOverflow
                               : SanitizerKind::UnsignedIntegerOverflow;
       EmitBinOpCheck(std::make_pair(NotOverflow, Kind), Ops);
     } else
@@ -2523,10 +2523,9 @@ static Value* buildFMulAdd(llvm::BinaryOperator *MulOp, Value *Addend,
         "neg");
   }
 
-  Value *FMulAdd =
-    Builder.CreateCall3(
+  Value *FMulAdd = Builder.CreateCall(
       CGF.CGM.getIntrinsic(llvm::Intrinsic::fmuladd, Addend->getType()),
-                           MulOp0, MulOp1, Addend);
+      {MulOp0, MulOp1, Addend});
    MulOp->eraseFromParent();
 
    return FMulAdd;
@@ -2721,7 +2720,7 @@ Value *ScalarExprEmitter::EmitShl(const BinOpInfo &Ops) {
   else if ((SanitizeBase || SanitizeExponent) &&
            isa<llvm::IntegerType>(Ops.LHS->getType())) {
     CodeGenFunction::SanitizerScope SanScope(&CGF);
-    SmallVector<std::pair<Value *, SanitizerKind>, 2> Checks;
+    SmallVector<std::pair<Value *, SanitizerMask>, 2> Checks;
     llvm::Value *WidthMinusOne = GetWidthMinusOneValue(Ops.LHS, RHS);
     llvm::Value *ValidExponent = Builder.CreateICmpULE(RHS, WidthMinusOne);
 
@@ -2904,7 +2903,7 @@ Value *ScalarExprEmitter::EmitCompare(const BinaryOperator *E,unsigned UICmpOpc,
 
       Value *CR6Param = Builder.getInt32(CR6);
       llvm::Function *F = CGF.CGM.getIntrinsic(ID);
-      Result = Builder.CreateCall3(F, CR6Param, FirstVecArg, SecondVecArg, "");
+      Result = Builder.CreateCall(F, {CR6Param, FirstVecArg, SecondVecArg});
       return EmitScalarConversion(Result, CGF.getContext().BoolTy, E->getType());
     }
 
