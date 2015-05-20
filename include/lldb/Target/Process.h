@@ -685,7 +685,20 @@ public:
         else
             m_running_user_expression--;
     }
-    
+
+    void
+    SetStopEventForLastNaturalStopID (lldb::EventSP event_sp)
+    {
+        m_last_natural_stop_event = event_sp;
+    }
+
+    lldb::EventSP GetStopEventForStopID (uint32_t stop_id) const
+    {
+        if (stop_id == m_last_natural_stop_id)
+            return m_last_natural_stop_event;
+        return lldb::EventSP();
+    }
+
 private:
     uint32_t m_stop_id;
     uint32_t m_last_natural_stop_id;
@@ -693,6 +706,7 @@ private:
     uint32_t m_memory_id;
     uint32_t m_last_user_expression_resume;
     uint32_t m_running_user_expression;
+    lldb::EventSP m_last_natural_stop_event;
 };
 inline bool operator== (const ProcessModID &lhs, const ProcessModID &rhs)
 {
@@ -1121,6 +1135,22 @@ public:
     virtual const lldb::DataBufferSP
     GetAuxvData();
 
+    //------------------------------------------------------------------
+    /// Sometimes processes know how to retrieve and load shared libraries.
+    /// This is normally done by DynamicLoader plug-ins, but sometimes the
+    /// connection to the process allows retrieving this information. The
+    /// dynamic loader plug-ins can use this function if they can't
+    /// determine the current shared library load state.
+    ///
+    /// @return
+    ///    The number of shared libraries that were loaded
+    //------------------------------------------------------------------
+    virtual size_t
+    LoadModules ()
+    {
+        return 0;
+    }
+
 protected:
     virtual JITLoaderList &
     GetJITLoaders ();
@@ -1437,31 +1467,14 @@ public:
     /// @param[in] pid
     ///     The process ID that we should attempt to attach to.
     ///
-    /// @return
-    ///     Returns \a pid if attaching was successful, or
-    ///     LLDB_INVALID_PROCESS_ID if attaching fails.
-    //------------------------------------------------------------------
-    virtual Error
-    DoAttachToProcessWithID (lldb::pid_t pid)
-    {
-        Error error;
-        error.SetErrorStringWithFormat("error: %s does not support attaching to a process by pid", GetPluginName().GetCString());
-        return error;
-    }
-
-    //------------------------------------------------------------------
-    /// Attach to an existing process using a process ID.
-    ///
-    /// @param[in] pid
-    ///     The process ID that we should attempt to attach to.
-    ///
     /// @param[in] attach_info
     ///     Information on how to do the attach. For example, GetUserID()
     ///     will return the uid to attach as.
     ///
     /// @return
-    ///     Returns \a pid if attaching was successful, or
-    ///     LLDB_INVALID_PROCESS_ID if attaching fails.
+    ///     Returns a successful Error attaching was successful, or
+    ///     an appropriate (possibly platform-specific) error code if
+    ///     attaching fails.
     /// hanming : need flag
     //------------------------------------------------------------------
     virtual Error
@@ -1483,7 +1496,9 @@ public:
     ///     will return the uid to attach as.
     ///
     /// @return
-    ///     Returns an error object.
+    ///     Returns a successful Error attaching was successful, or
+    ///     an appropriate (possibly platform-specific) error code if
+    ///     attaching fails.
     //------------------------------------------------------------------
     virtual Error
     DoAttachToProcessWithName (const char *process_name, const ProcessAttachInfo &attach_info)
@@ -1953,11 +1968,17 @@ public:
     }
     
     uint32_t
-    GetLastNaturalStopID()
+    GetLastNaturalStopID() const
     {
         return m_mod_id.GetLastNaturalStopID();
     }
-    
+
+    lldb::EventSP
+    GetStopEventForStopID (uint32_t stop_id) const
+    {
+        return m_mod_id.GetStopEventForStopID(stop_id);
+    }
+
     //------------------------------------------------------------------
     /// Set accessor for the process exit status (return code).
     ///

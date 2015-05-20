@@ -20,6 +20,7 @@
 // Project includes
 #include "lldb/Breakpoint/BreakpointIDList.h"
 #include "lldb/Core/DataBufferHeap.h"
+#include "lldb/Core/Debugger.h"
 #include "lldb/Core/Error.h"
 #include "lldb/Core/Log.h"
 #include "lldb/Core/Module.h"
@@ -39,6 +40,11 @@
 #include "llvm/Support/FileSystem.h"
 
 #include "Utility/ModuleCache.h"
+
+// Define these constants from POSIX mman.h rather than include the file
+// so that they will be correct even when compiled on Linux.
+#define MAP_PRIVATE 2
+#define MAP_ANON 0x1000
 
 using namespace lldb;
 using namespace lldb_private;
@@ -870,17 +876,12 @@ Platform::SetWorkingDirectory (const ConstString &path)
         Log *log = GetLogIfAnyCategoriesSet(LIBLLDB_LOG_PLATFORM);
         if (log)
             log->Printf("Platform::SetWorkingDirectory('%s')", path.GetCString());
-#ifdef _WIN32
-        // Not implemented on Windows
-        return false;
-#else
         if (path)
         {
             if (chdir(path.GetCString()) == 0)
                 return true;
         }
         return false;
-#endif
     }
     else
     {
@@ -1252,10 +1253,27 @@ Platform::KillProcess (const lldb::pid_t pid)
     if (log)
         log->Printf ("Platform::%s, pid %" PRIu64, __FUNCTION__, pid);
 
-    if (!IsHost ())
-        return Error ("base lldb_private::Platform class can't launch remote processes");
+    // Try to find a process plugin to handle this Kill request.  If we can't, fall back to
+    // the default OS implementation.
+    size_t num_debuggers = Debugger::GetNumDebuggers();
+    for (size_t didx = 0; didx < num_debuggers; ++didx)
+    {
+        DebuggerSP debugger = Debugger::GetDebuggerAtIndex(didx);
+        lldb_private::TargetList &targets = debugger->GetTargetList();
+        for (int tidx = 0; tidx < targets.GetNumTargets(); ++tidx)
+        {
+            ProcessSP process = targets.GetTargetAtIndex(tidx)->GetProcessSP();
+            if (process->GetID() == pid)
+                return process->Destroy(true);
+        }
+    }
 
-    Host::Kill (pid, SIGTERM);
+    if (!IsHost())
+    {
+        return Error("base lldb_private::Platform class can't kill remote processes unless "
+                     "they are controlled by a process plugin");
+    }
+    Host::Kill(pid, SIGTERM);
     return Error();
 }
 
@@ -1480,7 +1498,16 @@ Platform::Unlink (const char *path)
     return error;
 }
 
-
+uint64_t
+Platform::ConvertMmapFlagsToPlatform(unsigned flags)
+{
+    uint64_t flags_platform = 0;
+    if (flags & eMmapFlagsPrivate)
+        flags_platform |= MAP_PRIVATE;
+    if (flags & eMmapFlagsAnon)
+        flags_platform |= MAP_ANON;
+    return flags_platform;
+}
 
 lldb_private::Error
 Platform::RunShellCommand (const char *command,           // Shouldn't be NULL
@@ -1840,16 +1867,8 @@ Platform::GetCachedSharedModule (const ModuleSpec &module_spec,
         GetModuleCacheRoot (),
         GetCacheHostname (),
         module_spec,
-        [=](const ModuleSpec &module_spec, FileSpec &tmp_download_file_spec)
+        [=](const ModuleSpec &module_spec, const FileSpec &tmp_download_file_spec)
         {
-            // Get temporary file name for a downloaded module.
-            llvm::SmallString<PATH_MAX> tmp_download_file_path;
-            const auto err_code = llvm::sys::fs::createTemporaryFile (
-                "lldb", module_spec.GetUUID ().GetAsString ().c_str (), tmp_download_file_path);
-            if (err_code)
-                return Error ("Failed to create temp file: %s", err_code.message ().c_str ());
-
-            tmp_download_file_spec.SetFile (tmp_download_file_path.c_str (), true);
             return DownloadModuleSlice (module_spec.GetFileSpec (),
                                         module_spec.GetObjectOffset (),
                                         module_spec.GetObjectSize (),

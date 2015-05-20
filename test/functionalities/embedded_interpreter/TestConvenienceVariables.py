@@ -20,7 +20,7 @@ class ConvenienceVariablesCase(TestBase):
     @dwarf_test
     @skipIfFreeBSD # llvm.org/pr17228
     @skipIfRemote
-    @expectedFailureLinux("llvm.org/pr20276") # intermittent failure on Linux
+    @expectedFailureAll("llvm.org/pr23560", oslist=["linux"], compiler="gcc", compiler_version=[">=","4.9"], archs=["i386"])
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     def test_with_dwarf_and_run_commands(self):
         """Test convenience variables lldb.debugger, lldb.target, lldb.process, lldb.thread, and lldb.frame."""
@@ -41,7 +41,7 @@ class ConvenienceVariablesCase(TestBase):
         python_prompt = ">>> "
 
         # So that the child gets torn down after the test.
-        self.child = pexpect.spawn('%s %s %s' % (self.lldbHere, self.lldbOption, exe))
+        self.child = pexpect.spawn('%s %s %s' % (lldbtest_config.lldbExec, self.lldbOption, exe))
         child = self.child
         # Turn on logging for what the child sends back.
         if self.TraceOn():

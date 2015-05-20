@@ -37,6 +37,11 @@ namespace lldb_private {
 
 class ModuleCache;
 
+    enum MmapFlags {
+      eMmapFlagsPrivate = 1,
+      eMmapFlagsAnon = 2
+    };
+
     class PlatformProperties : public Properties
     {
     public:
@@ -745,6 +750,9 @@ class ModuleCache;
         virtual Error
         Unlink (const char *path);
 
+        virtual uint64_t
+        ConvertMmapFlagsToPlatform(unsigned flags);
+
         virtual bool
         GetSupportsRSync ()
         {
@@ -1131,7 +1139,7 @@ class ModuleCache;
                              const FileSpecList *module_search_paths_ptr,
                              Platform &remote_platform);
 
-        Error
+        virtual Error
         DownloadModuleSlice (const FileSpec& src_file_spec,
                              const uint64_t src_offset,
                              const uint64_t src_size,
