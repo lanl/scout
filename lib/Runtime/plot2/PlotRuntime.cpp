@@ -77,6 +77,11 @@ __PRETTY_FUNCTION__ << ": " << #X << " = " << X << std::endl
 #define nlog(X) std::cout << __FILE__ << ":" << __LINE__ << ": " << \
 __PRETTY_FUNCTION__ << ": " << X << std::endl
 
+// hack around linux stupidity 
+#undef major
+#undef minor
+
+
 using namespace std;
 using namespace scout;
 
