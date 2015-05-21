@@ -3098,10 +3098,14 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       SpecObjectExpr* av = v->toObject();
       uint32_t dim = av->get("dim")->getInteger();
       string label = av->get("label")->getString();
+      uint32_t major = av->get("major")->getInteger();
+      uint32_t minor = av->get("minor")->getInteger();
       
       args =
       {plotPtr, ConstantInt::get(R.Int32Ty, dim),
-        Builder.CreateGlobalStringPtr(label)};
+        Builder.CreateGlobalStringPtr(label),
+        ConstantInt::get(R.Int32Ty, major),
+        ConstantInt::get(R.Int32Ty, minor)};
       Builder.CreateCall(R.PlotAddAxisFunc(), args);
     }
     else if(k == "antialiased"){
@@ -3111,6 +3115,20 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     else if(k == "output"){
       args = {plotPtr, Builder.CreateGlobalStringPtr(v->getString())};
       Builder.CreateCall(R.PlotSetOutputFunc(), args);
+    }
+    else if(k == "range"){
+      SpecObjectExpr* o = v->toObject();
+      
+      for(size_t i = 0; i < 2; ++i){
+        bool x = i == 0;
+        SpecExpr* d = x ? o->get("x") : o->get("y");
+        SpecArrayExpr* a = d->toArray();
+        Value* min = EmitAnyExpr(a->get(0)->toExpr()).getScalarVal();
+        Value* max = EmitAnyExpr(a->get(1)->toExpr()).getScalarVal();
+        args =
+        {plotPtr, ConstantInt::get(R.Int1Ty, x), min, max};
+        Builder.CreateCall(R.PlotSetRangeFunc(), args);
+      }
     }
   }
   

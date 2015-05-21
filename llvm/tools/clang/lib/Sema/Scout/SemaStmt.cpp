@@ -798,6 +798,30 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
           "expected a 'label' string key";
           valid = false;
         }
+        
+        SpecExpr* m = av->get("major");
+        if(m){
+          if(!m->isInteger()){
+            Diag(m->getLocStart(), diag::err_invalid_plot_spec) <<
+            "'major' must be an integer";
+            valid = false;
+          }
+        }
+        else{
+          av->put("major", CreateSpecIntExpr(10));
+        }
+        
+        m = av->get("minor");
+        if(m){
+          if(!m->isInteger()){
+            Diag(m->getLocStart(), diag::err_invalid_plot_spec) <<
+            "'minor' must be an integer";
+            valid = false;
+          }
+        }
+        else{
+          av->put("minor", CreateSpecIntExpr(4));
+        }
       }
       else{
         Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
@@ -844,6 +868,46 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
       if(!v->isString()){
         Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
         "expected file path string";
+        valid = false;
+      }
+    }
+    else if(k == "range"){
+      SpecObjectExpr* vo = v->toObject();
+      
+      if(vo){
+        bool found = false;
+        
+        for(size_t i = 0; i < 2; ++i){
+          SpecExpr* d = i == 0 ? vo->get("x") : vo->get("y");
+          if(d){
+            found = true;
+            
+            SpecArrayExpr* a = d->toArray();
+            if(!(a && a->size() == 2)){
+              Diag(d->getLocStart(), diag::err_invalid_plot_spec) <<
+              "expected a 2d range array";
+              valid = false;
+              continue;
+            }
+            
+            for(size_t i = 0; i < 2; ++i){
+              if(!ValidateSpecExpr(a->get(i), Context.DoubleTy)){
+                Diag(a->get(i)->getLocStart(), diag::err_invalid_plot_spec) <<
+                "invalid range element";
+                valid = false;
+              }
+            }
+          }
+          
+          if(!found){
+            Diag(vo->getLocStart(), diag::err_invalid_plot_spec) <<
+            "expected x/y range specifier(s)";
+          }
+        }
+      }
+      else{
+        Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected an object specifier";
         valid = false;
       }
     }

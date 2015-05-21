@@ -244,7 +244,8 @@ llvm::Function* CGPlot2Runtime::PlotProportionAddVarFunc(){
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddAxisFunc(){
-  return GetFunc("__scrt_plot_add_axis", {VoidPtrTy, Int32Ty, StringTy});
+  return GetFunc("__scrt_plot_add_axis",
+                 {VoidPtrTy, Int32Ty, StringTy, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotRenderFunc(){
@@ -313,6 +314,11 @@ llvm::Function* CGPlot2Runtime::PlotSetAntialiasedFunc(){
 llvm::Function* CGPlot2Runtime::PlotSetOutputFunc(){
   return GetFunc("__scrt_plot_set_output",
                  {VoidPtrTy, StringTy});
+}
+
+llvm::Function* CGPlot2Runtime::PlotSetRangeFunc(){
+  return GetFunc("__scrt_plot_set_range",
+                 {VoidPtrTy, Int1Ty, DoubleTy, DoubleTy});
 }
 
 Function* CGPlot2Runtime::PlotAddVarFunc(){
