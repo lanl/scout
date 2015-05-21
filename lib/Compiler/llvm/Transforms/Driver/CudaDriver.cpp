@@ -454,7 +454,7 @@ void CudaDriver::initialize() {
   assert(func != NULL && "Could not find main()!\n");
   BasicBlock *bb = func->begin();
   _builder.SetInsertPoint(bb, bb->begin());
-  _builder.CreateCall(init);
+  _builder.CreateCall(init, ArrayRef<Value*>());
 
   // Generate finalization for CUDA.
   finalize();
@@ -488,7 +488,7 @@ void CudaDriver::finalize() {
     if(isa< ReturnInst >(bb->getTerminator())) break;
   }
   _builder.SetInsertPoint(bb, bb->getTerminator());
-  _builder.CreateCall(fin);
+  _builder.CreateCall(fin, ArrayRef<Value*>());
 }
 
 void CudaDriver::destroy() {

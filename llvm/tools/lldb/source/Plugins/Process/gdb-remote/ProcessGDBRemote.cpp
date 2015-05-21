@@ -174,6 +174,107 @@ namespace {
     
 } // anonymous namespace end
 
+class ProcessGDBRemote::GDBLoadedModuleInfoList
+{
+public:
+
+    class LoadedModuleInfo
+    {
+    public:
+
+        enum e_data_point
+        {
+            e_has_name      = 0,
+            e_has_base      ,
+            e_has_dynamic   ,
+            e_has_link_map  ,
+            e_num
+        };
+
+        LoadedModuleInfo ()
+        {
+            for (uint32_t i = 0; i < e_num; ++i)
+                m_has[i] = false;
+        };
+
+        void set_name (const std::string & name)
+        {
+            m_name = name;
+            m_has[e_has_name] = true;
+        }
+        bool get_name (std::string & out) const
+        {
+            out = m_name;
+            return m_has[e_has_name];
+        }
+
+        void set_base (const lldb::addr_t base)
+        {
+            m_base = base;
+            m_has[e_has_base] = true;
+        }
+        bool get_base (lldb::addr_t & out) const
+        {
+            out = m_base;
+            return m_has[e_has_base];
+        }
+
+        void set_link_map (const lldb::addr_t addr)
+        {
+            m_link_map = addr;
+            m_has[e_has_link_map] = true;
+        }
+        bool get_link_map (lldb::addr_t & out) const
+        {
+            out = m_link_map;
+            return m_has[e_has_link_map];
+        }
+
+        void set_dynamic (const lldb::addr_t addr)
+        {
+            m_dynamic = addr;
+            m_has[e_has_dynamic] = true;
+        }
+        bool get_dynamic (lldb::addr_t & out) const
+        {
+            out = m_dynamic;
+            return m_has[e_has_dynamic];
+        }
+
+        bool has_info (e_data_point datum)
+        {
+            assert (datum < e_num);
+            return m_has[datum];
+        }
+
+    protected:
+
+        bool m_has[e_num];
+        std::string m_name;
+        lldb::addr_t m_link_map;
+        lldb::addr_t m_base;
+        lldb::addr_t m_dynamic;
+    };
+
+    GDBLoadedModuleInfoList ()
+        : m_list ()
+        , m_link_map (LLDB_INVALID_ADDRESS)
+    {}
+
+    void add (const LoadedModuleInfo & mod)
+    {
+        m_list.push_back (mod);
+    }
+
+    void clear ()
+    {
+        m_list.clear ();
+    }
+
+    std::vector<LoadedModuleInfo> m_list;
+    lldb::addr_t m_link_map;
+};
+
 // TODO Randomly assigning a port is unsafe.  We should get an unused
 // ephemeral port from the kernel and make sure we reserve it before passing
 // it to debugserver.
@@ -290,7 +391,8 @@ ProcessGDBRemote::ProcessGDBRemote(Target& target, Listener &listener) :
     m_waiting_for_attach (false),
     m_destroy_tried_resuming (false),
     m_command_sp (),
-    m_breakpoint_pc_offset (0)
+    m_breakpoint_pc_offset (0),
+    m_initial_tid (LLDB_INVALID_THREAD_ID)
 {
     m_async_broadcaster.SetEventName (eBroadcastBitAsyncThreadShouldExit,   "async thread should exit");
     m_async_broadcaster.SetEventName (eBroadcastBitAsyncContinue,           "async thread continue");
@@ -575,7 +677,7 @@ ProcessGDBRemote::BuildDynamicRegisterInfo (bool force)
     if (reg_num == 0)
     {
         // try to extract information from servers target.xml
-        if ( GetGDBServerInfo( ) )
+        if (GetGDBServerRegisterInfo ())
             return;
 
         FileSpec target_definition_fspec = GetGlobalPluginProperties()->GetTargetDefinitionFile ();
@@ -668,8 +770,13 @@ ProcessGDBRemote::DoConnectRemote (Stream *strm, const char *remote_url)
         // We have a valid process
         SetID (pid);
         GetThreadList();
-        if (m_gdb_comm.SendPacketAndWaitForResponse("?", 1, m_last_stop_packet, false) == GDBRemoteCommunication::PacketResult::Success)
+        if (m_gdb_comm.GetStopReply(m_last_stop_packet))
         {
+
+            // '?' Packets must be handled differently in non-stop mode
+            if (GetTarget().GetNonStopModeEnabled())
+                HandleStopReplySequence();
+
             if (!m_target.GetArchitecture().IsValid()) 
             {
                 if (m_gdb_comm.GetProcessArchitecture().IsValid())
@@ -951,8 +1058,13 @@ ProcessGDBRemote::DoLaunch (Module *exe_module, ProcessLaunchInfo &launch_info)
                 return error;
             }
 
-            if (m_gdb_comm.SendPacketAndWaitForResponse("?", 1, m_last_stop_packet, false) == GDBRemoteCommunication::PacketResult::Success)
+            if (m_gdb_comm.GetStopReply(m_last_stop_packet))
             {
+
+                // '?' Packets must be handled differently in non-stop mode
+                if (GetTarget().GetNonStopModeEnabled())
+                    HandleStopReplySequence();
+
                 const ArchSpec &process_arch = m_gdb_comm.GetProcessArchitecture();
 
                 if (process_arch.IsValid())
@@ -1052,12 +1164,22 @@ ProcessGDBRemote::ConnectToDebugserver (const char *connect_url)
             error.SetErrorString("not connected to remote gdb server");
         return error;
     }
+
+    // Send $QNonStop:1 packet on startup if required
+    if (GetTarget().GetNonStopModeEnabled())
+        m_gdb_comm.SetNonStopMode(true);
+
     m_gdb_comm.GetThreadSuffixSupported ();
     m_gdb_comm.GetListThreadsInStopReplySupported ();
     m_gdb_comm.GetHostInfo ();
     m_gdb_comm.GetVContSupported ('c');
     m_gdb_comm.GetVAttachOrWaitSupported();
-    
+
+    // Ask the remote server for the default thread id
+    if (GetTarget().GetNonStopModeEnabled())
+        m_gdb_comm.GetDefaultThreadId(m_initial_tid);
+
+
     size_t num_cmds = GetExtraStartupCommands().GetArgumentCount();
     for (size_t idx = 0; idx < num_cmds; idx++)
     {
@@ -1176,13 +1298,6 @@ ProcessGDBRemote::DidLaunch ()
 {
     ArchSpec process_arch;
     DidLaunchOrAttach (process_arch);
-}
-
-Error
-ProcessGDBRemote::DoAttachToProcessWithID (lldb::pid_t attach_pid)
-{
-    ProcessAttachInfo attach_info;
-    return DoAttachToProcessWithID(attach_pid, attach_info);
 }
 
 Error
@@ -1329,11 +1444,12 @@ ProcessGDBRemote::DoResume ()
         bool continue_packet_error = false;
         if (m_gdb_comm.HasAnyVContSupport ())
         {
-            if (m_continue_c_tids.size() == num_threads ||
+            if (!GetTarget().GetNonStopModeEnabled() &&
+                (m_continue_c_tids.size() == num_threads ||
                 (m_continue_c_tids.empty() &&
                  m_continue_C_tids.empty() &&
                  m_continue_s_tids.empty() &&
-                 m_continue_S_tids.empty()))
+                 m_continue_S_tids.empty())))
             {
                 // All threads are continuing, just send a "c" packet
                 continue_packet.PutCString ("c");
@@ -1558,6 +1674,27 @@ ProcessGDBRemote::DoResume ()
     }
 
     return error;
+}
+
+void
+ProcessGDBRemote::HandleStopReplySequence ()
+{
+    while(true)
+    {
+        // Send vStopped
+        StringExtractorGDBRemote response;
+        m_gdb_comm.SendPacketAndWaitForResponse("vStopped", response, false);
+
+        // OK represents end of signal list
+        if (response.IsOKResponse())
+            break;
+
+        // If not OK or a normal packet we have a problem
+        if (!response.IsNormalResponse())
+            break;
+
+        SetLastStopPacket(response);
+    }
 }
 
 void
@@ -1954,7 +2091,9 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                         lldb::StopInfoSP stop_info_sp (thread_sp->GetStopInfo ());
                         if (stop_info_sp)
                         {
-                            stop_info_sp->SetDescription (description.c_str());
+                            const char *stop_info_desc = stop_info_sp->GetDescription();
+                            if (!stop_info_desc || !stop_info_desc[0])
+                                stop_info_sp->SetDescription (description.c_str());
                         }
                         else
                         {
@@ -1992,6 +2131,13 @@ ProcessGDBRemote::RefreshStateAfterStop ()
     {
         // No, we need to fetch the thread list manually
         UpdateThreadIDList();
+    }
+
+    // If we have queried for a default thread id
+    if (m_initial_tid != LLDB_INVALID_THREAD_ID)
+    {
+        m_thread_list.SetSelectedThreadByID(m_initial_tid);
+        m_initial_tid = LLDB_INVALID_THREAD_ID;
     }
 
     // Let all threads recover from stopping and do any clean up based
@@ -2281,7 +2427,18 @@ ProcessGDBRemote::IsAlive ()
 addr_t
 ProcessGDBRemote::GetImageInfoAddress()
 {
-    return m_gdb_comm.GetShlibInfoAddr();
+    // request the link map address via the $qShlibInfoAddr packet
+    lldb::addr_t addr = m_gdb_comm.GetShlibInfoAddr();
+
+    // the loaded module list can also provides a link map address
+    if (addr == LLDB_INVALID_ADDRESS)
+    {
+        GDBLoadedModuleInfoList list;
+        if (GetLoadedModuleList (list).Success())
+            addr = list.m_link_map;
+    }
+
+    return addr;
 }
 
 //------------------------------------------------------------------
@@ -3855,7 +4012,7 @@ libxml2NullErrorFunc (void *ctx, const char *msg, ...)
 // return:  'true'  on success
 //          'false' on failure
 bool
-ProcessGDBRemote::GetGDBServerInfo ()
+ProcessGDBRemote::GetGDBServerRegisterInfo ()
 {
 
     // redirect libxml2's error handler since the default prints to stdout
@@ -3928,12 +4085,139 @@ ProcessGDBRemote::GetGDBServerInfo ()
     return true;
 }
 
+Error
+ProcessGDBRemote::GetLoadedModuleList (GDBLoadedModuleInfoList & list)
+{
+    Log *log = GetLogIfAnyCategoriesSet (LIBLLDB_LOG_PROCESS);
+    if (log)
+        log->Printf ("ProcessGDBRemote::%s", __FUNCTION__);
+
+    // redirect libxml2's error handler since the default prints to stdout
+    xmlGenericErrorFunc func = libxml2NullErrorFunc;
+    initGenericErrorDefaultFunc (&func);
+
+    GDBRemoteCommunicationClient & comm = m_gdb_comm;
+
+    // check that we have extended feature read support
+    if (!comm.GetQXferLibrariesSVR4ReadSupported ())
+        return Error (0, ErrorType::eErrorTypeGeneric);
+
+    list.clear ();
+
+    // request the loaded library list
+    std::string raw;
+    lldb_private::Error lldberr;
+    if (!comm.ReadExtFeature (ConstString ("libraries-svr4"), ConstString (""), raw, lldberr))
+        return Error (0, ErrorType::eErrorTypeGeneric);
+
+    // parse the xml file in memory
+    if (log)
+        log->Printf ("parsing: %s", raw.c_str());
+    xmlDocPtr doc = xmlReadMemory (raw.c_str(), raw.size(), "noname.xml", nullptr, 0);
+    if (doc == nullptr)
+        return Error (0, ErrorType::eErrorTypeGeneric);
+
+    xmlNodePtr elm = xmlExFindElement (doc->children, {"library-list-svr4"});
+    if (!elm)
+        return Error();
+
+    // main link map structure
+    xmlAttr * attr = xmlExFindAttribute (elm, "main-lm");
+    if (attr)
+    {
+        std::string val = xmlExGetTextContent (attr);
+        if (val.length() > 2)
+        {
+            uint32_t process_lm = std::stoul (val.c_str()+2, 0, 16);
+            list.m_link_map = process_lm;
+        }
+    }
+
+    // parse individual library entries
+    for (xmlNode * child = elm->children; child; child=child->next)
+    {
+        if (!child->name)
+            continue;
+
+        if (strcmp ((const char*)child->name, "library") != 0)
+            continue;
+
+        GDBLoadedModuleInfoList::LoadedModuleInfo module;
+
+        for (xmlAttrPtr prop = child->properties; prop; prop=prop->next)
+        {
+            if (strcmp ((const char*)prop->name, "name") == 0)
+                module.set_name (xmlExGetTextContent (prop));
+
+            // the address of the link_map struct.
+            if (strcmp ((const char*)prop->name, "lm") == 0)
+            {
+                std::string val = xmlExGetTextContent (prop);
+                if (val.length() > 2)
+                {
+                    uint32_t module_lm = std::stoul (val.c_str()+2, 0, 16);
+                    module.set_link_map (module_lm);
+                }
+            }
+
+            // the displacement as read from the field 'l_addr' of the link_map struct.
+            if (strcmp ((const char*)prop->name, "l_addr") == 0)
+            {
+                std::string val = xmlExGetTextContent (prop);
+                if (val.length() > 2)
+                {
+                    uint32_t module_base = std::stoul (val.c_str()+2, 0, 16);
+                    module.set_base (module_base);
+                }
+            }
+
+            // the memory address of the libraries PT_DYAMIC section.
+            if (strcmp ((const char*)prop->name, "l_ld") == 0)
+            {
+                std::string val = xmlExGetTextContent (prop);
+                if (val.length() > 2)
+                {
+                    uint32_t module_dyn = std::stoul (val.c_str()+2, 0, 16);
+                    module.set_dynamic (module_dyn);
+                }
+            }
+        }
+
+        if (log)
+        {
+            std::string name ("");
+            lldb::addr_t lm=0, base=0, ld=0;
+
+            module.get_name (name);
+            module.get_link_map (lm);
+            module.get_base (base);
+            module.get_dynamic (ld);
+
+            log->Printf ("found (link_map:0x08%" PRIx64 ", base:0x08%" PRIx64 ", ld:0x08%" PRIx64 ", name:'%s')", lm, base, ld, name.c_str());
+        }
+
+        list.add (module);
+    }
+
+    if (log)
+        log->Printf ("found %" PRId32 " modules in total", (int) list.m_list.size());
+
+    return Error();
+}
+
 #else // if defined( LIBXML2_DEFINED )
 
-using namespace lldb_private::process_gdb_remote;
+Error
+ProcessGDBRemote::GetLoadedModuleList (GDBLoadedModuleInfoList &)
+{
+    // stub (libxml2 not present)
+    Error err;
+    err.SetError (0, ErrorType::eErrorTypeGeneric);
+    return err;
+}
 
 bool
-ProcessGDBRemote::GetGDBServerInfo ()
+ProcessGDBRemote::GetGDBServerRegisterInfo ()
 {
     // stub (libxml2 not present)
     return false;
@@ -3941,6 +4225,91 @@ ProcessGDBRemote::GetGDBServerInfo ()
 
 #endif // if defined( LIBXML2_DEFINED )
 
+lldb::ModuleSP
+ProcessGDBRemote::LoadModuleAtAddress (const FileSpec &file, lldb::addr_t base_addr)
+{
+    Target &target = m_process->GetTarget();
+    ModuleList &modules = target.GetImages();
+    ModuleSP module_sp;
+
+    bool changed = false;
+
+    ModuleSpec module_spec (file, target.GetArchitecture());
+    if ((module_sp = modules.FindFirstModule (module_spec)))
+    {
+        module_sp->SetLoadAddress (target, base_addr, true, changed);
+    }
+    else if ((module_sp = target.GetSharedModule (module_spec)))
+    {
+        module_sp->SetLoadAddress (target, base_addr, true, changed);
+    }
+
+    return module_sp;
+}
+
+size_t
+ProcessGDBRemote::LoadModules ()
+{
+    using lldb_private::process_gdb_remote::ProcessGDBRemote;
+
+    // request a list of loaded libraries from GDBServer
+    GDBLoadedModuleInfoList module_list;
+    if (GetLoadedModuleList (module_list).Fail())
+        return 0;
+
+    // get a list of all the modules
+    ModuleList new_modules;
+
+    for (GDBLoadedModuleInfoList::LoadedModuleInfo & modInfo : module_list.m_list)
+    {
+        std::string  mod_name;
+        lldb::addr_t mod_base;
+
+        bool valid = true;
+        valid &= modInfo.get_name (mod_name);
+        valid &= modInfo.get_base (mod_base);
+        if (!valid)
+            continue;
+
+        // hack (cleaner way to get file name only?) (win/unix compat?)
+        size_t marker = mod_name.rfind ('/');
+        if (marker == std::string::npos)
+            marker = 0;
+        else
+            marker += 1;
+
+        FileSpec file (mod_name.c_str()+marker, true);
+        lldb::ModuleSP module_sp = LoadModuleAtAddress (file, mod_base);
+
+        if (module_sp.get())
+            new_modules.Append (module_sp);
+    }
+
+    if (new_modules.GetSize() > 0)
+    {
+        Target & target = m_target;
+
+        new_modules.ForEach ([&target](const lldb::ModuleSP module_sp) -> bool
+        {
+            lldb_private::ObjectFile * obj = module_sp->GetObjectFile ();
+            if (!obj)
+                return true;
+
+            if (obj->GetType () != ObjectFile::Type::eTypeExecutable)
+                return true;
+
+            lldb::ModuleSP module_copy_sp = module_sp;
+            target.SetExecutableModule (module_copy_sp, false);
+            return false;
+        });
+
+        ModuleList &loaded_modules = m_process->GetTarget().GetImages();
+        loaded_modules.AppendIfNeeded (new_modules);
+        m_process->GetTarget().ModulesDidLoad (new_modules);
+    }
+
+    return new_modules.GetSize();
+}
 
 class CommandObjectProcessGDBRemotePacketHistory : public CommandObjectParsed
 {

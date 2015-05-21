@@ -273,10 +273,13 @@ Target::CreateSourceRegexBreakpoint (const FileSpecList *containingModules,
                                      const FileSpecList *source_file_spec_list,
                                      RegularExpression &source_regex,
                                      bool internal,
-                                     bool hardware)
+                                     bool hardware,
+                                     LazyBool move_to_nearest_code)
 {
     SearchFilterSP filter_sp(GetSearchFilterForModuleAndCUList (containingModules, source_file_spec_list));
-    BreakpointResolverSP resolver_sp(new BreakpointResolverFileRegex (NULL, source_regex));
+    if (move_to_nearest_code == eLazyBoolCalculate)
+        move_to_nearest_code = GetMoveToNearestCode() ? eLazyBoolYes : eLazyBoolNo;
+    BreakpointResolverSP resolver_sp(new BreakpointResolverFileRegex (NULL, source_regex, !static_cast<bool>(move_to_nearest_code)));
     return CreateBreakpoint (filter_sp, resolver_sp, internal, hardware, true);
 }
 
@@ -288,7 +291,8 @@ Target::CreateBreakpoint (const FileSpecList *containingModules,
                           LazyBool check_inlines,
                           LazyBool skip_prologue,
                           bool internal,
-                          bool hardware)
+                          bool hardware,
+                          LazyBool move_to_nearest_code)
 {
     if (check_inlines == eLazyBoolCalculate)
     {
@@ -325,12 +329,15 @@ Target::CreateBreakpoint (const FileSpecList *containingModules,
     }
     if (skip_prologue == eLazyBoolCalculate)
         skip_prologue = GetSkipPrologue() ? eLazyBoolYes : eLazyBoolNo;
+    if (move_to_nearest_code == eLazyBoolCalculate)
+        move_to_nearest_code = GetMoveToNearestCode() ? eLazyBoolYes : eLazyBoolNo;
 
     BreakpointResolverSP resolver_sp(new BreakpointResolverFileLine (NULL,
                                                                      file,
                                                                      line_no,
                                                                      check_inlines,
-                                                                     skip_prologue));
+                                                                     skip_prologue,
+                                                                     !static_cast<bool>(move_to_nearest_code)));
     return CreateBreakpoint (filter_sp, resolver_sp, internal, hardware, true);
 }
 
@@ -1057,13 +1064,24 @@ Target::IgnoreWatchpointByID (lldb::watch_id_t watch_id, uint32_t ignore_count)
 ModuleSP
 Target::GetExecutableModule ()
 {
-    return m_images.GetModuleAtIndex(0);
+    // search for the first executable in the module list
+    for (size_t i = 0; i < m_images.GetSize(); ++i)
+    {
+        ModuleSP module_sp = m_images.GetModuleAtIndex (i);
+        lldb_private::ObjectFile * obj = module_sp->GetObjectFile();
+        if (obj == nullptr)
+            continue;
+        if (obj->GetType() == ObjectFile::Type::eTypeExecutable)
+            return module_sp;
+    }
+    // as fall back return the first module loaded
+    return m_images.GetModuleAtIndex (0);
 }
 
 Module*
 Target::GetExecutableModulePointer ()
 {
-    return m_images.GetModulePointerAtIndex(0);
+    return GetExecutableModule().get();
 }
 
 static void
@@ -2366,8 +2384,9 @@ Target::Install (ProcessLaunchInfo *launch_info)
                                 if (is_main_executable) // TODO: add setting for always installing main executable???
                                 {
                                     // Always install the main executable
+                                    remote_file = FileSpec(module_sp->GetFileSpec().GetFilename().AsCString(),
+                                                           false, module_sp->GetArchitecture());
                                     remote_file.GetDirectory() = platform_sp->GetWorkingDirectory();
-                                    remote_file.GetFilename() = module_sp->GetFileSpec().GetFilename();
                                 }
                             }
                             if (remote_file)
@@ -2598,7 +2617,6 @@ Target::Launch (ProcessLaunchInfo &launch_info, Stream *stream)
     {
         if (synchronous_execution || launch_info.GetFlags().Test(eLaunchFlagStopAtEntry) == false)
         {
-            EventSP event_sp;
             ListenerSP hijack_listener_sp (launch_info.GetHijackListener());
             if (!hijack_listener_sp)
             {
@@ -2607,7 +2625,7 @@ Target::Launch (ProcessLaunchInfo &launch_info, Stream *stream)
                 m_process_sp->HijackProcessEvents(hijack_listener_sp.get());
             }
 
-            StateType state = m_process_sp->WaitForProcessToStop (NULL, &event_sp, false, hijack_listener_sp.get(), NULL);
+            StateType state = m_process_sp->WaitForProcessToStop (NULL, NULL, false, hijack_listener_sp.get(), NULL);
             
             if (state == eStateStopped)
             {
@@ -2630,13 +2648,6 @@ Target::Launch (ProcessLaunchInfo &launch_info, Stream *stream)
                     {
                         m_process_sp->RestoreProcessEvents();
                         error = m_process_sp->PrivateResume();
-                        if (error.Success())
-                        {
-                            // there is a race condition where this thread will return up the call stack to the main command
-                            // handler and show an (lldb) prompt before HandlePrivateEvent (from PrivateStateThread) has
-                            // a chance to call PushProcessIOHandler()
-                            m_process_sp->SyncIOHandler(2000);
-                        }
                     }
                     if (!error.Success())
                     {
@@ -2644,19 +2655,6 @@ Target::Launch (ProcessLaunchInfo &launch_info, Stream *stream)
                         error2.SetErrorStringWithFormat("process resume at entry point failed: %s", error.AsCString());
                         error = error2;
                     }
-                }
-                else
-                {
-                    assert(synchronous_execution && launch_info.GetFlags().Test(eLaunchFlagStopAtEntry));
-
-                    // Target was stopped at entry as was intended. Need to notify the listeners about it.
-                    m_process_sp->RestoreProcessEvents();
-                    m_process_sp->HandlePrivateEvent(event_sp);
-
-                    // there is a race condition where this thread will return up the call stack to the main command
-                    // handler and show an (lldb) prompt before HandlePrivateEvent (from PrivateStateThread) has
-                    // a chance to call PushProcessIOHandler()
-                    m_process_sp->SyncIOHandler(2000);
                 }
             }
             else if (state == eStateExited)
@@ -2928,6 +2926,7 @@ static PropertyDefinition
 g_properties[] =
 {
     { "default-arch"                       , OptionValue::eTypeArch      , true , 0                         , NULL, NULL, "Default architecture to choose, when there's a choice." },
+    { "move-to-nearest-code"               , OptionValue::eTypeBoolean   , false, true                      , NULL, NULL, "Move breakpoints to nearest code." },
     { "expr-prefix"                        , OptionValue::eTypeFileSpec  , false, 0                         , NULL, NULL, "Path to a file containing expressions to be prepended to all expressions." },
     { "prefer-dynamic-value"               , OptionValue::eTypeEnum      , false, eDynamicDontRunTarget     , NULL, g_dynamic_value_types, "Should printed values be shown as their dynamic value." },
     { "enable-synthetic-value"             , OptionValue::eTypeBoolean   , false, true                      , NULL, NULL, "Should synthetic values be used by default whenever available." },
@@ -2978,12 +2977,14 @@ g_properties[] =
     { "display-expression-in-crashlogs"    , OptionValue::eTypeBoolean   , false, false,                      NULL, NULL, "Expressions that crash will show up in crash logs if the host system supports executable specific crash log strings and this setting is set to true." },
     { "trap-handler-names"                 , OptionValue::eTypeArray     , true,  OptionValue::eTypeString,   NULL, NULL, "A list of trap handler function names, e.g. a common Unix user process one is _sigtramp." },
     { "display-runtime-support-values"     , OptionValue::eTypeBoolean   , false, false,                      NULL, NULL, "If true, LLDB will show variables that are meant to support the operation of a language's runtime support." },
+    { "non-stop-mode"                      , OptionValue::eTypeBoolean   , false, 0,                          NULL, NULL, "Disable lock-step debugging, instead control threads independently." },
     { NULL                                 , OptionValue::eTypeInvalid   , false, 0                         , NULL, NULL, NULL }
 };
 
 enum
 {
     ePropertyDefaultArch,
+    ePropertyMoveToNearestCode,
     ePropertyExprPrefix,
     ePropertyPreferDynamic,
     ePropertyEnableSynthetic,
@@ -3016,7 +3017,8 @@ enum
     ePropertyMemoryModuleLoadLevel,
     ePropertyDisplayExpressionsInCrashlogs,
     ePropertyTrapHandlerNames,
-    ePropertyDisplayRuntimeSupportValues
+    ePropertyDisplayRuntimeSupportValues,
+    ePropertyNonStopModeEnabled
 };
 
 
@@ -3191,12 +3193,27 @@ TargetProperties::SetDefaultArchitecture (const ArchSpec& arch)
         return value->SetCurrentValue(arch, true);
 }
 
+bool
+TargetProperties::GetMoveToNearestCode() const
+{
+    const uint32_t idx = ePropertyMoveToNearestCode;
+    return m_collection_sp->GetPropertyAtIndexAsBoolean (NULL, idx, g_properties[idx].default_uint_value != 0);
+}
+
 lldb::DynamicValueType
 TargetProperties::GetPreferDynamicValue() const
 {
     const uint32_t idx = ePropertyPreferDynamic;
     return (lldb::DynamicValueType)m_collection_sp->GetPropertyAtIndexAsEnumeration (NULL, idx, g_properties[idx].default_uint_value);
 }
+
+bool
+TargetProperties::SetPreferDynamicValue (lldb::DynamicValueType d)
+{
+    const uint32_t idx = ePropertyPreferDynamic;
+    return m_collection_sp->SetPropertyAtIndexAsEnumeration(NULL, idx, d);
+}
+
 
 bool
 TargetProperties::GetDisableASLR () const
@@ -3513,6 +3530,13 @@ TargetProperties::SetDisplayRuntimeSupportValues (bool b)
 {
     const uint32_t idx = ePropertyDisplayRuntimeSupportValues;
     m_collection_sp->SetPropertyAtIndexAsBoolean (NULL, idx, b);
+}
+
+bool
+TargetProperties::GetNonStopModeEnabled () const
+{
+    const uint32_t idx = ePropertyNonStopModeEnabled;
+    return m_collection_sp->GetPropertyAtIndexAsBoolean (NULL, idx, false);
 }
 
 const ProcessLaunchInfo &

@@ -271,9 +271,8 @@ public:
   /// MachineInstr.
   const MCInstrDesc &getDesc() const { return *MCID; }
 
-  /// getOpcode - Returns the opcode of this MachineInstr.
-  ///
-  int getOpcode() const { return MCID->Opcode; }
+  /// Returns the opcode of this MachineInstr.
+  unsigned getOpcode() const { return MCID->Opcode; }
 
   /// Access to explicit operands of the instruction.
   ///
@@ -1068,8 +1067,7 @@ public:
   /// isSafeToMove - Return true if it is safe to move this instruction. If
   /// SawStore is set to true, it means that there is a store (or call) between
   /// the instruction's location and its intended destination.
-  bool isSafeToMove(const TargetInstrInfo *TII, AliasAnalysis *AA,
-                    bool &SawStore) const;
+  bool isSafeToMove(AliasAnalysis *AA, bool &SawStore) const;
 
   /// hasOrderedMemoryRef - Return true if this instruction may have an ordered
   /// or volatile memory reference, or if the information describing the memory
@@ -1171,12 +1169,6 @@ public:
     NumMemRefs = 0;
   }
 
-private:
-  /// getRegInfo - If this instruction is embedded into a MachineFunction,
-  /// return the MachineRegisterInfo object for the current function, otherwise
-  /// return null.
-  MachineRegisterInfo *getRegInfo();
-
   /// untieRegOperand - Break any tie involving OpIdx.
   void untieRegOperand(unsigned OpIdx) {
     MachineOperand &MO = getOperand(OpIdx);
@@ -1185,6 +1177,13 @@ private:
       MO.TiedTo = 0;
     }
   }
+
+
+private:
+  /// getRegInfo - If this instruction is embedded into a MachineFunction,
+  /// return the MachineRegisterInfo object for the current function, otherwise
+  /// return null.
+  MachineRegisterInfo *getRegInfo();
 
   /// addImplicitDefUseOperands - Add all implicit def and use operands to
   /// this instruction.

@@ -1548,10 +1548,24 @@ Process::UpdateThreadListIfNeeded ()
                         for (size_t i=0; i<num_old_threads; ++i)
                             old_thread_list.GetThreadAtIndex(i, false)->ClearBackingThread();
 
+                        // Turn off dynamic types to ensure we don't run any expressions. Objective C
+                        // can run an expression to determine if a SBValue is a dynamic type or not
+                        // and we need to avoid this. OperatingSystem plug-ins can't run expressions
+                        // that require running code...
+
+                        Target &target = GetTarget();
+                        const lldb::DynamicValueType saved_prefer_dynamic = target.GetPreferDynamicValue ();
+                        if (saved_prefer_dynamic != lldb::eNoDynamicValues)
+                            target.SetPreferDynamicValue(lldb::eNoDynamicValues);
+
                         // Now let the OperatingSystem plug-in update the thread list
+
                         os->UpdateThreadList (old_thread_list,  // Old list full of threads created by OS plug-in
                                               real_thread_list, // The actual thread list full of threads created by each lldb_private::Process subclass
                                               new_thread_list); // The new thread list that we will show to the user that gets filled in
+
+                        if (saved_prefer_dynamic != lldb::eNoDynamicValues)
+                            target.SetPreferDynamicValue(saved_prefer_dynamic);
                     }
                     else
                     {
@@ -1782,6 +1796,7 @@ Process::SetPrivateState (StateType new_state)
     if (state_changed)
     {
         m_private_state.SetValueNoLock (new_state);
+        EventSP event_sp (new Event (eBroadcastBitStateChanged, new ProcessEventData (shared_from_this(), new_state)));
         if (StateIsStoppedState(new_state, false))
         {
             // Note, this currently assumes that all threads in the list
@@ -1798,15 +1813,18 @@ Process::SetPrivateState (StateType new_state)
             m_thread_list.DidStop();
 
             m_mod_id.BumpStopID();
+            if (!m_mod_id.IsLastResumeForUserExpression())
+                m_mod_id.SetStopEventForLastNaturalStopID(event_sp);
             m_memory_cache.Clear();
             if (log)
                 log->Printf("Process::SetPrivateState (%s) stop_id = %u", StateAsCString(new_state), m_mod_id.GetStopID());
         }
+
         // Use our target to get a shared pointer to ourselves...
         if (m_finalize_called && PrivateStateThreadIsValid() == false)
-            BroadcastEvent (eBroadcastBitStateChanged, new ProcessEventData (shared_from_this(), new_state));
+            BroadcastEvent (event_sp);
         else
-            m_private_state_broadcaster.BroadcastEvent (eBroadcastBitStateChanged, new ProcessEventData (shared_from_this(), new_state));
+            m_private_state_broadcaster.BroadcastEvent (event_sp);
     }
     else
     {
@@ -3318,6 +3336,9 @@ Process::AttachCompletionHandler::PerformAction (lldb::EventSP &event_sp)
 
     switch (state)
     {
+        case eStateAttaching:
+            return eEventActionSuccess;
+
         case eStateRunning:
         case eStateConnected:
             return eEventActionRetry;
@@ -4439,7 +4460,8 @@ Process::HandlePrivateEvent (EventSP &event_sp)
             // Only push the input handler if we aren't fowarding events,
             // as this means the curses GUI is in use...
             // Or don't push it if we are launching since it will come up stopped.
-            if (!GetTarget().GetDebugger().IsForwardingEvents() && new_state != eStateLaunching)
+            if (!GetTarget().GetDebugger().IsForwardingEvents() && new_state != eStateLaunching &&
+                new_state != eStateAttaching)
                 PushProcessIOHandler ();
             m_iohandler_sync.SetValue(true, eBroadcastAlways);
         }

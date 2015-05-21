@@ -120,19 +120,19 @@ void MCObjectStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
     return;
   }
   DF->getFixups().push_back(
-      MCFixup::Create(DF->getContents().size(), Value,
+      MCFixup::create(DF->getContents().size(), Value,
                       MCFixup::getKindForSize(Size, false), Loc));
   DF->getContents().resize(DF->getContents().size() + Size, 0);
 }
 
 void MCObjectStreamer::EmitCFIStartProcImpl(MCDwarfFrameInfo &Frame) {
   // We need to create a local symbol to avoid relocations.
-  Frame.Begin = getContext().CreateTempSymbol();
+  Frame.Begin = getContext().createTempSymbol();
   EmitLabel(Frame.Begin);
 }
 
 void MCObjectStreamer::EmitCFIEndProcImpl(MCDwarfFrameInfo &Frame) {
-  Frame.End = getContext().CreateTempSymbol();
+  Frame.End = getContext().createTempSymbol();
   EmitLabel(Frame.End);
 }
 
@@ -256,7 +256,7 @@ void MCObjectStreamer::EmitInstToFragment(const MCInst &Inst,
 
   SmallString<128> Code;
   raw_svector_ostream VecOS(Code);
-  getAssembler().getEmitter().EncodeInstruction(Inst, VecOS, IF->getFixups(),
+  getAssembler().getEmitter().encodeInstruction(Inst, VecOS, IF->getFixups(),
                                                 STI);
   VecOS.flush();
   IF->getContents().append(Code.begin(), Code.end());
@@ -375,7 +375,7 @@ bool MCObjectStreamer::EmitValueToOffset(const MCExpr *Offset,
     return false;
   }
 
-  MCSymbol *CurrentPos = getContext().CreateTempSymbol();
+  MCSymbol *CurrentPos = getContext().createTempSymbol();
   EmitLabel(CurrentPos);
   MCSymbolRefExpr::VariantKind Variant = MCSymbolRefExpr::VK_None;
   const MCExpr *Ref =
@@ -393,7 +393,7 @@ bool MCObjectStreamer::EmitValueToOffset(const MCExpr *Offset,
 void MCObjectStreamer::EmitGPRel32Value(const MCExpr *Value) {
   MCDataFragment *DF = getOrCreateDataFragment();
 
-  DF->getFixups().push_back(MCFixup::Create(DF->getContents().size(), 
+  DF->getFixups().push_back(MCFixup::create(DF->getContents().size(), 
                                             Value, FK_GPRel_4));
   DF->getContents().resize(DF->getContents().size() + 4, 0);
 }
@@ -402,7 +402,7 @@ void MCObjectStreamer::EmitGPRel32Value(const MCExpr *Value) {
 void MCObjectStreamer::EmitGPRel64Value(const MCExpr *Value) {
   MCDataFragment *DF = getOrCreateDataFragment();
 
-  DF->getFixups().push_back(MCFixup::Create(DF->getContents().size(), 
+  DF->getFixups().push_back(MCFixup::create(DF->getContents().size(), 
                                             Value, FK_GPRel_4));
   DF->getContents().resize(DF->getContents().size() + 8, 0);
 }

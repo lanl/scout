@@ -28,6 +28,7 @@
 #include "lldb/Target/MemoryRegionInfo.h"
 
 #include "lldb/Host/common/NativeProcessProtocol.h"
+#include "NativeThreadLinux.h"
 
 namespace lldb_private {
     class Error;
@@ -149,6 +150,16 @@ namespace process_linux {
         /// Reads generic floating point registers into the specified buffer.
         Error
         ReadFPR(lldb::tid_t tid, void *buf, size_t buf_size);
+
+        /// Reads hardware breakpoints and watchpoints capability information.
+        Error
+        ReadHardwareDebugInfo (lldb::tid_t tid, unsigned int &watch_count ,
+                               unsigned int &break_count);
+
+        /// Write hardware breakpoint/watchpoint control and address registers.
+        Error
+        WriteHardwareDebugRegs (lldb::tid_t tid, lldb::addr_t *addr_buf,
+                                uint32_t *cntrl_buf, int type, int count);
 
         /// Reads the specified register set into the specified buffer.
         /// For instance, the extended floating-point register set.
@@ -345,235 +356,59 @@ namespace process_linux {
         Error
         SingleStep(lldb::tid_t tid, uint32_t signo);
 
-        // ThreadStateCoordinator helper methods.
-        void
-        NotifyThreadCreateStopped (lldb::tid_t tid);
-
-        void
-        NotifyThreadCreateRunning (lldb::tid_t tid);
-
         void
         NotifyThreadDeath (lldb::tid_t tid);
-
-        void
-        NotifyThreadStop (lldb::tid_t tid);
-
-        void
-        StopRunningThreads (lldb::tid_t triggering_tid);
-
-        void
-        StopRunningThreadsWithSkipTID (lldb::tid_t deferred_signal_tid,
-                                                lldb::tid_t skip_stop_request_tid);
 
         Error
         Detach(lldb::tid_t tid);
 
-        Error
-        RequestThreadStop (const lldb::pid_t pid, const lldb::tid_t tid);
 
-
-    public:
         // Typedefs.
         typedef std::unordered_set<lldb::tid_t> ThreadIDSet;
 
-        // Callback/block definitions.
-        typedef std::function<void (const char *format, va_list args)> LogFunction;
-        typedef std::function<void (const std::string &error_message)> ErrorFunction;
-        typedef std::function<Error (lldb::tid_t tid)> StopThreadFunction;
-        typedef std::function<Error (lldb::tid_t tid, bool supress_signal)> ResumeThreadFunction;
-
-    private:
-        // Notify the coordinator when a thread is created and/or starting to be
-        // tracked.  is_stopped should be true if the thread is currently stopped;
-        // otherwise, it should be set false if it is already running.  Will
-        // call the error function if the thread id is already tracked.
+        // This method is requests a stop on all threads which are still running. It sets up a
+        // deferred delegate notification, which will fire once threads report as stopped. The
+        // triggerring_tid will be set as the current thread (main stop reason).
         void
-        NotifyThreadCreate (lldb::tid_t tid,
-                            bool is_stopped,
-                            const ErrorFunction &error_function);
-
-        // Notify the coordinator when a previously-existing thread should no
-        // longer be tracked.  The error_function will trigger if the thread
-        // is not being tracked.
-        void
-        NotifyThreadDeath (lldb::tid_t tid,
-                           const ErrorFunction &error_function);
-
-
-        // Notify the delegate after a given set of threads stops. The triggering_tid will be set
-        // as the current thread. The error_function will be fired if either the triggering tid
-        // or any of the wait_for_stop_tids are unknown.
-        void
-        StopThreads(lldb::tid_t triggering_tid,
-                              const ThreadIDSet &wait_for_stop_tids,
-                              const StopThreadFunction &request_thread_stop_function,
-                              const ErrorFunction &error_function);
-
-        // Notify the delegate after all non-stopped threads stop. The triggering_tid will be set
-        // as the current thread. The error_function will be fired if the triggering tid
-        // is unknown.
-        void
-        StopRunningThreads(lldb::tid_t triggering_tid,
-                                     const StopThreadFunction &request_thread_stop_function,
-                                     const ErrorFunction &error_function);
-
-        // Notify the delegate after all non-stopped threads stop. The triggering_tid will be set
-        // as the current thread. The error_function will be fired if either the triggering tid
-        // or any of the wait_for_stop_tids are unknown.  This variant will send stop requests to
-        // all non-stopped threads except for any contained in skip_stop_request_tids.
-        void
-        StopRunningThreadsWithSkipTID(lldb::tid_t triggering_tid,
-                                                 const ThreadIDSet &skip_stop_request_tids,
-                                                 const StopThreadFunction &request_thread_stop_function,
-                                                 const ErrorFunction &error_function);
-
-        // Notify the thread stopped.  Will trigger error at time of execution if we
-        // already think it is stopped.
-        void
-        NotifyThreadStop (lldb::tid_t tid,
-                          bool initiated_by_llgs,
-                          const ErrorFunction &error_function);
-
-        // Request that the given thread id should have the request_thread_resume_function
-        // called.  Will trigger the error_function if the thread is thought to be running
-        // already at that point.  This call signals an error if the thread resume is for
-        // a thread that is already in a running state.
-        void
-        RequestThreadResume (lldb::tid_t tid,
-                             const ResumeThreadFunction &request_thread_resume_function,
-                             const ErrorFunction &error_function);
-
-        // Request that the given thread id should have the request_thread_resume_function
-        // called.  Will trigger the error_function if the thread is thought to be running
-        // already at that point.  This call ignores threads that are already running and
-        // does not trigger an error in that case.
-        void
-        RequestThreadResumeAsNeeded (lldb::tid_t tid,
-                                     const ResumeThreadFunction &request_thread_resume_function,
-                                     const ErrorFunction &error_function);
-
-        // Indicate the calling process did an exec and that the thread state
-        // should be 100% cleared.
-        void
-        ResetForExec ();
-
-        // Enable/disable verbose logging of event processing.
-        void
-        LogEnableEventProcessing (bool enabled);
-
-    private:
-
-        enum class ThreadState
-        {
-            Running,
-            Stopped
-        };
-
-        struct ThreadContext
-        {
-            ThreadState m_state;
-            bool m_stop_requested = false;
-            ResumeThreadFunction m_request_resume_function;
-        };
-        typedef std::unordered_map<lldb::tid_t, ThreadContext> TIDContextMap;
+        StopRunningThreads(lldb::tid_t triggering_tid);
 
         struct PendingNotification
         {
-            PendingNotification (lldb::tid_t triggering_tid,
-                                       const ThreadIDSet &wait_for_stop_tids,
-                                       const StopThreadFunction &request_thread_stop_function,
-                                       const ErrorFunction &error_function):
-            triggering_tid (triggering_tid),
-            wait_for_stop_tids (wait_for_stop_tids),
-            original_wait_for_stop_tids (wait_for_stop_tids),
-            request_thread_stop_function (request_thread_stop_function),
-            error_function (error_function),
-            request_stop_on_all_unstopped_threads (false),
-            skip_stop_request_tids ()
-            {
-            }
-
-            PendingNotification (lldb::tid_t triggering_tid,
-                                       const StopThreadFunction &request_thread_stop_function,
-                                       const ErrorFunction &error_function) :
-            triggering_tid (triggering_tid),
-            wait_for_stop_tids (),
-            original_wait_for_stop_tids (),
-            request_thread_stop_function (request_thread_stop_function),
-            error_function (error_function),
-            request_stop_on_all_unstopped_threads (true),
-            skip_stop_request_tids ()
-            {
-            }
-
-            PendingNotification (lldb::tid_t triggering_tid,
-                                       const StopThreadFunction &request_thread_stop_function,
-                                       const ThreadIDSet &skip_stop_request_tids,
-                                       const ErrorFunction &error_function) :
-            triggering_tid (triggering_tid),
-            wait_for_stop_tids (),
-            original_wait_for_stop_tids (),
-            request_thread_stop_function (request_thread_stop_function),
-            error_function (error_function),
-            request_stop_on_all_unstopped_threads (true),
-            skip_stop_request_tids (skip_stop_request_tids)
+            PendingNotification (lldb::tid_t triggering_tid):
+                triggering_tid (triggering_tid),
+                wait_for_stop_tids ()
             {
             }
 
             const lldb::tid_t  triggering_tid;
             ThreadIDSet        wait_for_stop_tids;
-            const ThreadIDSet  original_wait_for_stop_tids;
-            StopThreadFunction request_thread_stop_function;
-            ErrorFunction      error_function;
-            const bool         request_stop_on_all_unstopped_threads;
-            ThreadIDSet        skip_stop_request_tids;
         };
         typedef std::unique_ptr<PendingNotification> PendingNotificationUP;
 
-        // Fire pending notification if no pending thread stops remain.
-        void SignalIfRequirementsSatisfied();
-
-        bool
-        RequestStopOnAllSpecifiedThreads();
+        // Notify the delegate if all threads have stopped.
+        void SignalIfAllThreadsStopped();
 
         void
         RequestStopOnAllRunningThreads();
 
-        void
-        RequestThreadStop (lldb::tid_t tid, ThreadContext& context);
+        Error
+        ThreadDidStop(lldb::tid_t tid, bool initiated_by_llgs);
 
-        std::mutex m_event_mutex; // Serializes execution of ProcessEvent. XXX
-
-        void
-        ThreadDidStop (lldb::tid_t tid, bool initiated_by_llgs, const ErrorFunction &error_function);
-
-        void
-        DoResume(lldb::tid_t tid, ResumeThreadFunction request_thread_resume_function,
-                ErrorFunction error_function, bool error_when_already_running);
+        // Resume the thread with the given thread id using the request_thread_resume_function
+        // called. If error_when_already_running is then then an error is raised if we think this
+        // thread is already running.
+        Error
+        ResumeThread(lldb::tid_t tid, NativeThreadLinux::ResumeThreadFunction request_thread_resume_function,
+                bool error_when_already_running);
 
         void
         DoStopThreads(PendingNotificationUP &&notification_up);
 
         void
-        ThreadWasCreated (lldb::tid_t tid, bool is_stopped, const ErrorFunction &error_function);
-
-        void
-        ThreadDidDie (lldb::tid_t tid, const ErrorFunction &error_function);
-
-        bool
-        IsKnownThread(lldb::tid_t tid) const;
-
-        void
-        TSCLog (const char *format, ...);
+        ThreadWasCreated (lldb::tid_t tid);
 
         // Member variables.
-        LogFunction m_log_function;
         PendingNotificationUP m_pending_notification_up;
-
-        // Maps known TIDs to ThreadContext.
-        TIDContextMap m_tid_map;
-
-        bool m_log_event_processing;
     };
 
 } // namespace process_linux

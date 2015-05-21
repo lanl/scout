@@ -108,6 +108,8 @@ static const char *const DWARFGroupName = "DWARF Emission";
 static const char *const DbgTimerName = "DWARF Debug Writer";
 
 void DebugLocDwarfExpression::EmitOp(uint8_t Op, const char *Comment) {
+  if (!PrintComments)
+    return BS.EmitInt8(Op, Twine());
   BS.EmitInt8(
       Op, Comment ? Twine(Comment) + " " + dwarf::OperationEncodingString(Op)
                   : dwarf::OperationEncodingString(Op));
@@ -997,7 +999,7 @@ void DwarfDebug::beginInstruction(const MachineInstr *MI) {
     return;
 
   if (!PrevLabel) {
-    PrevLabel = MMI->getContext().CreateTempSymbol();
+    PrevLabel = MMI->getContext().createTempSymbol();
     Asm->OutStreamer->EmitLabel(PrevLabel);
   }
   I->second = PrevLabel;
@@ -1025,7 +1027,7 @@ void DwarfDebug::endInstruction() {
 
   // We need a label after this instruction.
   if (!PrevLabel) {
-    PrevLabel = MMI->getContext().CreateTempSymbol();
+    PrevLabel = MMI->getContext().createTempSymbol();
     Asm->OutStreamer->EmitLabel(PrevLabel);
   }
   I->second = PrevLabel;
@@ -1477,6 +1479,7 @@ static void emitDebugLocValue(const AsmPrinter &AP, const DIBasicType *BT,
                               unsigned PieceOffsetInBits) {
   DebugLocDwarfExpression DwarfExpr(*AP.MF->getSubtarget().getRegisterInfo(),
                                     AP.getDwarfDebug()->getDwarfVersion(),
+                                    AP.OutStreamer->hasRawTextSupport(),
                                     Streamer);
   // Regular entry.
   if (Value.isInt()) {
@@ -1530,6 +1533,7 @@ void DebugLocEntry::finalize(const AsmPrinter &AP, DebugLocStream &Locs,
         // The DWARF spec seriously mandates pieces with no locations for gaps.
         DebugLocDwarfExpression Expr(*AP.MF->getSubtarget().getRegisterInfo(),
                                      AP.getDwarfDebug()->getDwarfVersion(),
+                                     AP.OutStreamer->hasRawTextSupport(),
                                      Streamer);
         Expr.AddOpPiece(PieceOffset-Offset, 0);
         Offset += PieceOffset-Offset;
@@ -1545,16 +1549,13 @@ void DebugLocEntry::finalize(const AsmPrinter &AP, DebugLocStream &Locs,
 }
 
 void DwarfDebug::emitDebugLocEntryLocation(const DebugLocStream::Entry &Entry) {
+  // Emit the size.
   Asm->OutStreamer->AddComment("Loc expr size");
-  MCSymbol *begin = Asm->OutStreamer->getContext().CreateTempSymbol();
-  MCSymbol *end = Asm->OutStreamer->getContext().CreateTempSymbol();
-  Asm->EmitLabelDifference(end, begin, 2);
-  Asm->OutStreamer->EmitLabel(begin);
+  Asm->EmitInt16(DebugLocs.getBytes(Entry).size());
+
   // Emit the entry.
   APByteStreamer Streamer(*Asm);
   emitDebugLocEntry(Streamer, Entry);
-  // Close the range.
-  Asm->OutStreamer->EmitLabel(end);
 }
 
 // Emit locations into the debug loc section.

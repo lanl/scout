@@ -651,8 +651,8 @@ public:
   CXXRecordDecl *getCanonicalDecl() override {
     return cast<CXXRecordDecl>(RecordDecl::getCanonicalDecl());
   }
-  virtual const CXXRecordDecl *getCanonicalDecl() const {
-    return cast<CXXRecordDecl>(RecordDecl::getCanonicalDecl());
+  const CXXRecordDecl *getCanonicalDecl() const {
+    return const_cast<CXXRecordDecl*>(this)->getCanonicalDecl();
   }
 
   CXXRecordDecl *getPreviousDecl() {
@@ -1781,7 +1781,7 @@ public:
   CXXMethodDecl *getCanonicalDecl() override {
     return cast<CXXMethodDecl>(FunctionDecl::getCanonicalDecl());
   }
-  const CXXMethodDecl *getCanonicalDecl() const override {
+  const CXXMethodDecl *getCanonicalDecl() const {
     return const_cast<CXXMethodDecl*>(this)->getCanonicalDecl();
   }
 
@@ -2084,7 +2084,7 @@ public:
   /// This can only be called once for each initializer; it cannot be called
   /// on an initializer having a positive number of (implicit) array indices.
   ///
-  /// This assumes that the initialzier was written in the source code, and
+  /// This assumes that the initializer was written in the source code, and
   /// ensures that isWritten() returns true.
   void setSourceOrder(int pos) {
     assert(!IsWritten &&
@@ -2326,11 +2326,11 @@ public:
   /// \brief Set the constructor that this inheriting constructor is based on.
   void setInheritedConstructor(const CXXConstructorDecl *BaseCtor);
 
-  const CXXConstructorDecl *getCanonicalDecl() const override {
-    return cast<CXXConstructorDecl>(FunctionDecl::getCanonicalDecl());
-  }
   CXXConstructorDecl *getCanonicalDecl() override {
     return cast<CXXConstructorDecl>(FunctionDecl::getCanonicalDecl());
+  }
+  const CXXConstructorDecl *getCanonicalDecl() const {
+    return const_cast<CXXConstructorDecl*>(this)->getCanonicalDecl();
   }
 
   // Implement isa/cast/dyncast/etc.

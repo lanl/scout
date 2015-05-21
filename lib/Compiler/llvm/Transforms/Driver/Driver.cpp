@@ -96,7 +96,7 @@ Function *Driver::declareFunction(Type *result,
 }
 
 Value *Driver::insertCall(StringRef name) {
-  return _builder.CreateCall(_module.getFunction(name));
+  return _builder.CreateCall(_module.getFunction(name), ArrayRef<Value*>());
 }
 
 Value *Driver::insertCall(StringRef name,
