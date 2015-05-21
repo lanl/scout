@@ -109,11 +109,6 @@ namespace{
   const double MAX = numeric_limits<double>::max();
   const double EPSILON = 0.000001;
 
-  const size_t X_LABELS = 10;
-  const size_t Y_LABELS = 10;
-  const size_t X_TICKS = 20;
-  const size_t Y_TICKS = 20;
-
   typedef uint32_t VarId;
 
   const uint32_t PLOT_VAR_BEGIN = 65536;
@@ -1214,11 +1209,16 @@ namespace{
 
     class Axis : public Element{
     public:
-      Axis(uint32_t dim, const string& label)
-        : dim(dim), label(label){}
+      Axis(uint32_t dim, const string& label, uint32_t major, uint32_t minor)
+        : dim(dim),
+          label(label),
+          major(major),
+          minor(minor){}
 
       uint32_t dim;
       string label;
+      uint32_t major;
+      uint32_t minor;
 
       int order(){
         return 3;
@@ -1516,8 +1516,11 @@ namespace{
       return p;
     }
 
-    void addAxis(uint32_t dim, const string& label){
-      elements_.push_back(new Axis(dim, label));
+    void addAxis(uint32_t dim,
+                 const string& label,
+                 uint32_t major,
+                 uint32_t minor){
+      elements_.push_back(new Axis(dim, label, major, minor));
       switch(dim){
       case 1:
         hasXLabel_ = !label.empty();
@@ -1917,13 +1920,13 @@ namespace{
 
             painter.drawLine(origin_, xEnd_);
 
-            size_t inc = frameSize / X_LABELS;
+            size_t inc = double(frameSize) / a->major;
 
             if(inc == 0){
               inc = 1;
             }
 
-            bool shouldRound = xSpan_ > X_TICKS;
+            bool shouldRound = xSpan_ > a->major;
 
             double xc;
             double xv; 
@@ -1940,7 +1943,7 @@ namespace{
                        QPointF(xc, origin_.y() + 3.0));
             }
             
-            inc = frameSize / X_TICKS;
+            inc = double(frameSize) / (a->minor * a->major);
 
             if(inc == 0){
               inc = 1;
@@ -1970,13 +1973,13 @@ namespace{
 
             painter.drawLine(origin_, yEnd_);
 
-            size_t inc = frameSize / Y_LABELS;
+            size_t inc = double(frameSize) / a->major;
 
             if(inc == 0){
               inc = 1;
             }
 
-            bool shouldRound = ySpan_ > Y_TICKS;
+            bool shouldRound = ySpan_ > a->major;
 
             double yc;
             double yv;
@@ -1993,7 +1996,7 @@ namespace{
                        QPointF(origin_.x(), yc - scale(8.0)), true);
             }
 
-            inc = frameSize / Y_TICKS;
+            inc = double(frameSize) / (a->minor * a->major);
             
             if(inc == 0){
               inc = 1;
@@ -2541,8 +2544,12 @@ extern "C"{
     return static_cast<Plot::Proportion*>(proportion)->addVar(var);
   }
 
-  void __scrt_plot_add_axis(void* plot, uint32_t dim, const char* label){
-    static_cast<Plot*>(plot)->addAxis(dim, label);
+  void __scrt_plot_add_axis(void* plot,
+                            uint32_t dim,
+                            const char* label,
+                            uint32_t major,
+                            uint32_t minor){
+    static_cast<Plot*>(plot)->addAxis(dim, label, major, minor);
   }
 
   void __scrt_plot_render(void* plot){

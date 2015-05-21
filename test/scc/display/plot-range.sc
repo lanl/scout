@@ -26,17 +26,15 @@ int main(int argc, char** argv){
       temperature: t
     }
 
-    with f in win plot{
-      antialiased: false,
-        
+    with f in win plot{        
       range: {x: [0, 250], y: [0, 10]},
       
       lines: {position: [timestep, temperature],
                color: [0.7, 0.5, 0.3, 1.0],
                size: 5.0},
 
-      axis: {dim:1, label:"Timestep"},
-      axis: {dim:2, label:"Temperature"}  
+      axis: {dim:1, label:"Timestep", major: 10},
+      axis: {dim:2, label:"Temperature", major: 20, minor: 2}  
     }
   }
   

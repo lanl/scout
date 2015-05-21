@@ -244,7 +244,8 @@ llvm::Function* CGPlot2Runtime::PlotProportionAddVarFunc(){
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddAxisFunc(){
-  return GetFunc("__scrt_plot_add_axis", {VoidPtrTy, Int32Ty, StringTy});
+  return GetFunc("__scrt_plot_add_axis",
+                 {VoidPtrTy, Int32Ty, StringTy, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotRenderFunc(){

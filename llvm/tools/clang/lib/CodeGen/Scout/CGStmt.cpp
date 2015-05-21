@@ -3098,10 +3098,14 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       SpecObjectExpr* av = v->toObject();
       uint32_t dim = av->get("dim")->getInteger();
       string label = av->get("label")->getString();
+      uint32_t major = av->get("major")->getInteger();
+      uint32_t minor = av->get("minor")->getInteger();
       
       args =
       {plotPtr, ConstantInt::get(R.Int32Ty, dim),
-        Builder.CreateGlobalStringPtr(label)};
+        Builder.CreateGlobalStringPtr(label),
+        ConstantInt::get(R.Int32Ty, major),
+        ConstantInt::get(R.Int32Ty, minor)};
       Builder.CreateCall(R.PlotAddAxisFunc(), args);
     }
     else if(k == "antialiased"){

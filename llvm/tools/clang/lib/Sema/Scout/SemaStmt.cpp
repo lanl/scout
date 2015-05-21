@@ -798,6 +798,30 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
           "expected a 'label' string key";
           valid = false;
         }
+        
+        SpecExpr* m = av->get("major");
+        if(m){
+          if(!m->isInteger()){
+            Diag(m->getLocStart(), diag::err_invalid_plot_spec) <<
+            "'major' must be an integer";
+            valid = false;
+          }
+        }
+        else{
+          av->put("major", CreateSpecIntExpr(10));
+        }
+        
+        m = av->get("minor");
+        if(m){
+          if(!m->isInteger()){
+            Diag(m->getLocStart(), diag::err_invalid_plot_spec) <<
+            "'minor' must be an integer";
+            valid = false;
+          }
+        }
+        else{
+          av->put("minor", CreateSpecIntExpr(4));
+        }
       }
       else{
         Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
