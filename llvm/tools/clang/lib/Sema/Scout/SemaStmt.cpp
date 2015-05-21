@@ -847,6 +847,46 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         valid = false;
       }
     }
+    else if(k == "range"){
+      SpecObjectExpr* vo = v->toObject();
+      
+      if(vo){
+        bool found = false;
+        
+        for(size_t i = 0; i < 2; ++i){
+          SpecExpr* d = i == 0 ? vo->get("x") : vo->get("y");
+          if(d){
+            found = true;
+            
+            SpecArrayExpr* a = d->toArray();
+            if(!(a && a->size() == 2)){
+              Diag(d->getLocStart(), diag::err_invalid_plot_spec) <<
+              "expected a 2d range array";
+              valid = false;
+              continue;
+            }
+            
+            for(size_t i = 0; i < 2; ++i){
+              if(!ValidateSpecExpr(a->get(i), Context.DoubleTy)){
+                Diag(a->get(i)->getLocStart(), diag::err_invalid_plot_spec) <<
+                "invalid range element";
+                valid = false;
+              }
+            }
+          }
+          
+          if(!found){
+            Diag(vo->getLocStart(), diag::err_invalid_plot_spec) <<
+            "expected x/y range specifier(s)";
+          }
+        }
+      }
+      else{
+        Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected an object specifier";
+        valid = false;
+      }
+    }
     else{
       Diag(loc, diag::err_invalid_plot_spec_key) << k;
       valid = false;

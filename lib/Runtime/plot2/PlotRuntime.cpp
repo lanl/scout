@@ -280,6 +280,10 @@ namespace{
 
     virtual void compute(void* plot, uint64_t index){};
 
+    virtual void compute(const QTransform& t, void* plot, uint64_t index){
+      compute(plot, index);
+    };
+
     virtual size_t size() const = 0;
     
     virtual bool isConst() const{
@@ -599,6 +603,20 @@ namespace{
       plotVec_.push_back(p);
     }
 
+    void capture(const QTransform& t, const QPointF& p){
+      if(i_ == RESERVE){
+        size_t n = plotVec_.size();
+
+        plotVec_.reserve(n + RESERVE);
+        i_ = 0;
+      }
+      else{
+        ++i_;
+      }
+
+      plotVec_.emplace_back(t.map(p));
+    }
+
     void compute(void* plot, uint64_t index) override{
       if(fp_){
         QPointF v;
@@ -606,6 +624,14 @@ namespace{
         capture(v);
       }
     }
+
+    void compute(const QTransform& t, void* plot, uint64_t index) override{
+      if(fp_){
+        QPointF v;
+        (*fp_)(plot, index, (double*)&v);
+        capture(t, v);
+      }
+    };
 
     size_t hash(size_t i) const{
       assert(false && "attempt to hash from vector");
@@ -632,7 +658,7 @@ namespace{
     }
 
     size_t size() const{
-      return dataVec_.size();
+      return plotVec_.size();
     }
 
     void clear(){
@@ -839,6 +865,19 @@ namespace{
 
         for(size_t j = v->size(); j < end; ++j){
           v->compute(plot, j);
+        }
+      }
+    }
+
+    void compute(Plot* plot, Frame* parentFrame, const QTransform& t){ 
+      size_t end = parentFrame->size();
+      size_t n = vars_.size();
+
+      for(size_t i = 0; i < n; ++i){
+        VarBase* v = vars_[i];
+
+        for(size_t j = v->size(); j < end; ++j){
+          v->compute(t, plot, j);
         }
       }
     }
@@ -1219,6 +1258,19 @@ namespace{
       outputPath_ = path;
     }
 
+    void setRange(bool x, double min, double max){
+      if(x){
+        hasXRange_ = true;
+        xRangeMin_ = min;
+        xRangeMax_ = max; 
+      }
+      else{
+        hasYRange_ = true;
+        yRangeMin_ = min;
+        yRangeMax_ = max;  
+      }
+    }
+
     template<class T>
     T get(VarId varId, size_t index){
       return varId >= PLOT_VAR_BEGIN ? 
@@ -1487,8 +1539,14 @@ namespace{
             a->compute(this);
           }
         }
-
-        plotFrame_->compute(this, frame_ ? frame_ : plotFrame_);
+        
+        if(hasXRange_ && hasYRange_){
+          plotFrame_->compute(this, frame_ ? frame_ : plotFrame_,
+                              posTransform_);
+        }
+        else{
+          plotFrame_->compute(this, frame_ ? frame_ : plotFrame_);
+        }
       }
 
       widget_ = window_->getWidget();
@@ -1577,6 +1635,120 @@ namespace{
       return x < 1.0 ? 1.0 : x;
     }
 
+    void calculateRanges(){
+      xMin_ = MAX;
+      xMax_ = MIN;
+      yMin_ = MAX;
+      yMax_ = MIN;
+
+      for(Element* e : elements_){
+        if(RangeElement* r = dynamic_cast<RangeElement*>(e)){
+          PositionVar* p = getPos(r->getPos());
+
+          if(p->xMin() < xMin_){
+            xMin_ = p->xMin();
+          }
+
+          if(p->xMax() > xMax_){
+            xMax_ = p->xMax();
+          }
+
+          if(p->yMin() < yMin_){
+            yMin_ = p->yMin();
+          }
+
+          if(p->yMax() > yMax_){
+            yMax_ = p->yMax();
+          }
+        }
+        else if(Line* l = dynamic_cast<Line*>(e)){
+          for(size_t i = 0; i < 2; ++i){
+            PositionVar* p = getPos(i == 0 ? l->pos1 : l->pos2);
+
+            if(p->xMin() < xMin_){
+              xMin_ = p->xMin();
+            }
+
+            if(p->xMax() > xMax_){
+              xMax_ = p->xMax();
+            }
+
+            if(p->yMin() < yMin_){
+              yMin_ = p->yMin();
+            }
+
+            if(p->yMax() > yMax_){
+              yMax_ = p->yMax();
+            }
+          }
+        }
+      }
+    }
+
+    void calculateXRange(){
+      xMin_ = MAX;
+      xMax_ = MIN;
+
+      for(Element* e : elements_){
+        if(RangeElement* r = dynamic_cast<RangeElement*>(e)){
+          PositionVar* p = getPos(r->getPos());
+
+          if(p->xMin() < xMin_){
+            xMin_ = p->xMin();
+          }
+
+          if(p->xMax() > xMax_){
+            xMax_ = p->xMax();
+          }
+        }
+        else if(Line* l = dynamic_cast<Line*>(e)){
+          for(size_t i = 0; i < 2; ++i){
+            PositionVar* p = getPos(i == 0 ? l->pos1 : l->pos2);
+
+            if(p->xMin() < xMin_){
+              xMin_ = p->xMin();
+            }
+
+            if(p->xMax() > xMax_){
+              xMax_ = p->xMax();
+            }
+          }
+        }
+      }
+    }
+
+    void calculateYRange(){
+      yMin_ = MAX;
+      yMax_ = MIN;
+
+      for(Element* e : elements_){
+        if(RangeElement* r = dynamic_cast<RangeElement*>(e)){
+          PositionVar* p = getPos(r->getPos());
+
+          if(p->yMin() < yMin_){
+            yMin_ = p->yMin();
+          }
+
+          if(p->yMax() > yMax_){
+            yMax_ = p->yMax();
+          }
+        }
+        else if(Line* l = dynamic_cast<Line*>(e)){
+          for(size_t i = 0; i < 2; ++i){
+            PositionVar* p = getPos(i == 0 ? l->pos1 : l->pos2);
+
+            if(p->yMin() < yMin_){
+              yMin_ = p->yMin();
+            }
+
+            if(p->yMax() > yMax_){
+              yMax_ = p->yMax();
+            }
+          }
+        }
+      }
+    }
+
     void render(){
       QPaintDevice* device;
       if(outputPath_.empty()){
@@ -1606,11 +1778,6 @@ namespace{
       }
 
       painter.setRenderHint(QPainter::Antialiasing, antialiased_);
-
-      xMin_ = MAX;
-      xMax_ = MIN;
-      yMin_ = MAX;
-      yMax_ = MIN;
 
       for(Element* e : elements_){
         if(Bins* b = dynamic_cast<Bins*>(e)){
@@ -1699,47 +1866,27 @@ namespace{
         }
       }
 
-      for(Element* e : elements_){
-        if(RangeElement* r = dynamic_cast<RangeElement*>(e)){
-          PositionVar* p = getPos(r->getPos());
+      bool shouldTransform = true;
 
-          if(p->xMin() < xMin_){
-            xMin_ = p->xMin();
-          }
-
-          if(p->xMax() > xMax_){
-            xMax_ = p->xMax();
-          }
-
-          if(p->yMin() < yMin_){
-            yMin_ = p->yMin();
-          }
-
-          if(p->yMax() > yMax_){
-            yMax_ = p->yMax();
-          }
+      if(hasXRange_){
+        xMin_ = xRangeMin_;
+        xMax_ = xRangeMax_;
+        if(hasYRange_){
+          yMin_ = yRangeMin_;
+          yMax_ = yRangeMax_;
+          shouldTransform = false;
         }
-        else if(Line* l = dynamic_cast<Line*>(e)){
-          for(size_t i = 0; i < 2; ++i){
-            PositionVar* p = getPos(i == 0 ? l->pos1 : l->pos2);
-
-            if(p->xMin() < xMin_){
-              xMin_ = p->xMin();
-            }
-
-            if(p->xMax() > xMax_){
-              xMax_ = p->xMax();
-            }
-
-            if(p->yMin() < yMin_){
-              yMin_ = p->yMin();
-            }
-
-            if(p->yMax() > yMax_){
-              yMax_ = p->yMax();
-            }
-          }
+        else{
+          calculateYRange();
         }
+      }
+      else if(hasYRange_){
+        yMin_ = yRangeMin_;
+        yMax_ = yRangeMax_;
+        calculateXRange();
+      }
+      else{
+        calculateRanges();
       }
 
       xSpan_ = xMax_ - xMin_;
@@ -1752,9 +1899,9 @@ namespace{
       transform.translate(origin_.x(), origin_.y());
       painter.setWorldTransform(transform);
 
-      QTransform posTransform;
-      posTransform.scale(xm_, -ym_);
-      posTransform.translate(-xMin_, -yMin_);
+      posTransform_.reset();
+      posTransform_.scale(xm_, -ym_);
+      posTransform_.translate(-xMin_, -yMin_);
       
       for(Element* e : elements_){
         QTransform t;
@@ -1884,7 +2031,11 @@ namespace{
       for(Element* e : elements_){
         if(Lines* l = dynamic_cast<Lines*>(e)){
           PositionVar* p = getPos(l->pos);
-          p->transform(posTransform);
+
+          if(shouldTransform){
+            p->transform(posTransform_);
+          }
+
           QPointF* points = p->getPoints();
 
           VarBase* s = getVar(l->size);
@@ -1911,10 +2062,12 @@ namespace{
         }
         else if(Line* l = dynamic_cast<Line*>(e)){
           PositionVar* p1 = getPos(l->pos1);
-          p1->transform(posTransform);
-
           PositionVar* p2 = getPos(l->pos2);
-          p2->transform(posTransform);
+
+          if(shouldTransform){
+            p1->transform(posTransform_);
+            p2->transform(posTransform_);
+          }
           
           VarBase* s = getVar(l->size);
           VarBase* c = getVar(l->color);
@@ -1947,7 +2100,11 @@ namespace{
         }
         else if(Area* a = dynamic_cast<Area*>(e)){
           PositionVar* p = getPos(a->pos);
-          p->transform(posTransform);
+          
+          if(shouldTransform){
+            p->transform(posTransform_);
+          }
+          
           QPointF* points = p->getPoints();
 
           VarBase* c = getVar(a->color);
@@ -1986,7 +2143,11 @@ namespace{
         }
         else if(Points* p = dynamic_cast<Points*>(e)){
           PositionVar* pv = getPos(p->pos);
-          pv->transform(posTransform);
+          
+          if(shouldTransform){
+            pv->transform(posTransform_);
+          }
+          
           QPointF* points = pv->getPoints();
 
           VarBase* s = getVar(p->size);
@@ -2015,7 +2176,10 @@ namespace{
         }
         else if(Interval* i = dynamic_cast<Interval*>(e)){
           PositionVar* p = getPos(i->pos);
-          p->transform(posTransform);
+
+          if(shouldTransform){
+            p->transform(posTransform_);
+          }
 
           VarBase* c = getVar(i->color);
 
@@ -2120,6 +2284,13 @@ namespace{
     double tickLabelHeight_;
     double axisLabelSize_;
     double axisLabelHeight_;
+    bool hasXRange_ = false;
+    double xRangeMin_;
+    double xRangeMax_;
+    bool hasYRange_ = false;
+    double yRangeMin_;
+    double yRangeMax_;
+    QTransform posTransform_;
   };
 
 } // end namespace
@@ -2305,6 +2476,10 @@ extern "C"{
 
   void __scrt_plot_set_output(void* plot, char* path){
     static_cast<Plot*>(plot)->setOutputPath(path);
+  }
+
+  void __scrt_plot_set_range(void* plot, bool x, double min, double max){
+    static_cast<Plot*>(plot)->setRange(x, min, max);
   }
 
   void __scrt_plot_add_line(void* plot,

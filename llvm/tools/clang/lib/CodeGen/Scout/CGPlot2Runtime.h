@@ -154,6 +154,7 @@ namespace CodeGen {
     
     llvm::Function* PlotSetAntialiasedFunc();
     llvm::Function* PlotSetOutputFunc();
+    llvm::Function* PlotSetRangeFunc();
     
   private:
     CodeGen::CodeGenModule& CGM;

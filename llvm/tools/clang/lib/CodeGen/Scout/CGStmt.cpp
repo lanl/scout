@@ -3112,6 +3112,20 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
       args = {plotPtr, Builder.CreateGlobalStringPtr(v->getString())};
       Builder.CreateCall(R.PlotSetOutputFunc(), args);
     }
+    else if(k == "range"){
+      SpecObjectExpr* o = v->toObject();
+      
+      for(size_t i = 0; i < 2; ++i){
+        bool x = i == 0;
+        SpecExpr* d = x ? o->get("x") : o->get("y");
+        SpecArrayExpr* a = d->toArray();
+        Value* min = EmitAnyExpr(a->get(0)->toExpr()).getScalarVal();
+        Value* max = EmitAnyExpr(a->get(1)->toExpr()).getScalarVal();
+        args =
+        {plotPtr, ConstantInt::get(R.Int1Ty, x), min, max};
+        Builder.CreateCall(R.PlotSetRangeFunc(), args);
+      }
+    }
   }
   
   Builder.CreateBr(mergeBlock);

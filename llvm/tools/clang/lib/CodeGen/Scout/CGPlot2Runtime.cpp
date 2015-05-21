@@ -315,6 +315,11 @@ llvm::Function* CGPlot2Runtime::PlotSetOutputFunc(){
                  {VoidPtrTy, StringTy});
 }
 
+llvm::Function* CGPlot2Runtime::PlotSetRangeFunc(){
+  return GetFunc("__scrt_plot_set_range",
+                 {VoidPtrTy, Int1Ty, DoubleTy, DoubleTy});
+}
+
 Function* CGPlot2Runtime::PlotAddVarFunc(){
   return GetFunc("__scrt_plot_add_var",
                  {VoidPtrTy, Int32Ty, Int32Ty});
