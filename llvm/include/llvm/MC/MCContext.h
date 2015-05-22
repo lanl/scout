@@ -45,10 +45,12 @@ namespace llvm {
   /// sections that it creates.
   ///
   class MCContext {
-    MCContext(const MCContext&) = delete;
-    MCContext &operator=(const MCContext&) = delete;
+    MCContext(const MCContext &) = delete;
+    MCContext &operator=(const MCContext &) = delete;
+
   public:
-    typedef StringMap<MCSymbol*, BumpPtrAllocator&> SymbolTable;
+    typedef StringMap<MCSymbol *, BumpPtrAllocator &> SymbolTable;
+
   private:
     /// The SourceMgr for this object, if any.
     const SourceMgr *SrcMgr;
@@ -73,7 +75,7 @@ namespace llvm {
 
     /// ELF sections can have a corresponding symbol. This maps one to the
     /// other.
-    DenseMap<const MCSectionELF*, MCSymbol*> SectionSymbols;
+    DenseMap<const MCSectionELF *, MCSymbol *> SectionSymbols;
 
     /// A mapping from a local label number and an instance count to a symbol.
     /// For example, in the assembly
@@ -81,11 +83,11 @@ namespace llvm {
     ///     2:
     ///     1:
     /// We have three labels represented by the pairs (1, 0), (2, 0) and (1, 1)
-    DenseMap<std::pair<unsigned, unsigned>, MCSymbol*> LocalSymbols;
+    DenseMap<std::pair<unsigned, unsigned>, MCSymbol *> LocalSymbols;
 
     /// Keeps tracks of names that were used both for used declared and
     /// artificial symbols.
-    StringMap<bool, BumpPtrAllocator&> UsedNames;
+    StringMap<bool, BumpPtrAllocator &> UsedNames;
 
     /// The next ID to dole out to an unnamed assembler temporary symbol with
     /// a given prefix.
@@ -136,8 +138,8 @@ namespace llvm {
 
     /// Symbols created for the start and end of each section, used for
     /// generating the .debug_ranges and .debug_aranges sections.
-    MapVector<const MCSection *, std::pair<MCSymbol *, MCSymbol *> >
-    SectionStartEndSyms;
+    MapVector<const MCSection *, std::pair<MCSymbol *, MCSymbol *>>
+        SectionStartEndSyms;
 
     /// The information gathered from labels that will have dwarf label
     /// entries when generating dwarf assembly source files.
@@ -158,6 +160,7 @@ namespace llvm {
     /// differences between temporary and non-temporary labels (primarily on
     /// Darwin).
     bool AllowTemporaryLabels;
+    bool UseNamesOnTempLabels = true;
 
     /// The Compile Unit ID that we are currently processing.
     unsigned DwarfCompileUnitID;
@@ -196,7 +199,7 @@ namespace llvm {
       }
     };
 
-    StringMap<const MCSectionMachO*> MachOUniquingMap;
+    StringMap<const MCSectionMachO *> MachOUniquingMap;
     std::map<ELFSectionKey, const MCSectionELF *> ELFUniquingMap;
     std::map<COFFSectionKey, const MCSectionCOFF *> COFFUniquingMap;
     StringMap<bool> ELFRelSecNames;
@@ -224,6 +227,7 @@ namespace llvm {
     const MCObjectFileInfo *getObjectFileInfo() const { return MOFI; }
 
     void setAllowTemporaryLabels(bool Value) { AllowTemporaryLabels = Value; }
+    void setUseNamesOnTempLabels(bool Value) { UseNamesOnTempLabels = Value; }
 
     /// \name Module Lifetime Management
     /// @{
@@ -239,27 +243,27 @@ namespace llvm {
 
     /// Create and return a new linker temporary symbol with a unique but
     /// unspecified name.
-    MCSymbol *CreateLinkerPrivateTempSymbol();
+    MCSymbol *createLinkerPrivateTempSymbol();
 
     /// Create and return a new assembler temporary symbol with a unique but
     /// unspecified name.
-    MCSymbol *CreateTempSymbol();
+    MCSymbol *createTempSymbol();
 
     MCSymbol *createTempSymbol(const Twine &Name, bool AlwaysAddSuffix);
 
     /// Create the definition of a directional local symbol for numbered label
     /// (used for "1:" definitions).
-    MCSymbol *CreateDirectionalLocalSymbol(unsigned LocalLabelVal);
+    MCSymbol *createDirectionalLocalSymbol(unsigned LocalLabelVal);
 
     /// Create and return a directional local symbol for numbered label (used
     /// for "1b" or 1f" references).
-    MCSymbol *GetDirectionalLocalSymbol(unsigned LocalLabelVal, bool Before);
+    MCSymbol *getDirectionalLocalSymbol(unsigned LocalLabelVal, bool Before);
 
     /// Lookup the symbol inside with the specified \p Name.  If it exists,
     /// return it.  If not, create a forward reference and return it.
     ///
     /// \param Name - The symbol name, which must be unique across all symbols.
-    MCSymbol *GetOrCreateSymbol(const Twine &Name);
+    MCSymbol *getOrCreateSymbol(const Twine &Name);
 
     MCSymbol *getOrCreateSectionSymbol(const MCSectionELF &Section);
 
@@ -272,15 +276,13 @@ namespace llvm {
     MCSymbol *getOrCreateParentFrameOffsetSymbol(StringRef FuncName);
 
     /// Get the symbol for \p Name, or null.
-    MCSymbol *LookupSymbol(const Twine &Name) const;
+    MCSymbol *lookupSymbol(const Twine &Name) const;
 
     /// getSymbols - Get a reference for the symbol table for clients that
     /// want to, for example, iterate over all symbols. 'const' because we
     /// still want any modifications to the table itself to use the MCContext
     /// APIs.
-    const SymbolTable &getSymbols() const {
-      return Symbols;
-    }
+    const SymbolTable &getSymbols() const { return Symbols; }
 
     /// @}
 
@@ -399,7 +401,7 @@ namespace llvm {
     void setMainFileName(StringRef S) { MainFileName = S; }
 
     /// Creates an entry in the dwarf file and directory tables.
-    unsigned GetDwarfFile(StringRef Directory, StringRef FileName,
+    unsigned getDwarfFile(StringRef Directory, StringRef FileName,
                           unsigned FileNumber, unsigned CUID);
 
     bool isValidDwarfFileNumber(unsigned FileNumber, unsigned CUID = 0);
@@ -431,9 +433,7 @@ namespace llvm {
           return true;
       return false;
     }
-    unsigned getDwarfCompileUnitID() {
-      return DwarfCompileUnitID;
-    }
+    unsigned getDwarfCompileUnitID() { return DwarfCompileUnitID; }
     void setDwarfCompileUnitID(unsigned CUIndex) {
       DwarfCompileUnitID = CUIndex;
     }
@@ -456,7 +456,7 @@ namespace llvm {
       CurrentDwarfLoc.setDiscriminator(Discriminator);
       DwarfLocSeen = true;
     }
-    void ClearDwarfLocSeen() { DwarfLocSeen = false; }
+    void clearDwarfLocSeen() { DwarfLocSeen = false; }
 
     bool getDwarfLocSeen() { return DwarfLocSeen; }
     const MCDwarfLoc &getCurrentDwarfLoc() { return CurrentDwarfLoc; }
@@ -467,12 +467,12 @@ namespace llvm {
     void setGenDwarfFileNumber(unsigned FileNumber) {
       GenDwarfFileNumber = FileNumber;
     }
-    MapVector<const MCSection *, std::pair<MCSymbol *, MCSymbol *> > &
+    MapVector<const MCSection *, std::pair<MCSymbol *, MCSymbol *>> &
     getGenDwarfSectionSyms() {
       return SectionStartEndSyms;
     }
     std::pair<MapVector<const MCSection *,
-                        std::pair<MCSymbol *, MCSymbol *> >::iterator,
+                        std::pair<MCSymbol *, MCSymbol *>>::iterator,
               bool>
     addGenDwarfSection(const MCSection *Sec) {
       return SectionStartEndSyms.insert(
@@ -500,23 +500,19 @@ namespace llvm {
     char *getSecureLogFile() { return SecureLogFile; }
     raw_ostream *getSecureLog() { return SecureLog; }
     bool getSecureLogUsed() { return SecureLogUsed; }
-    void setSecureLog(raw_ostream *Value) {
-      SecureLog = Value;
-    }
-    void setSecureLogUsed(bool Value) {
-      SecureLogUsed = Value;
-    }
+    void setSecureLog(raw_ostream *Value) { SecureLog = Value; }
+    void setSecureLogUsed(bool Value) { SecureLogUsed = Value; }
 
-    void *Allocate(unsigned Size, unsigned Align = 8) {
+    void *allocate(unsigned Size, unsigned Align = 8) {
       return Allocator.Allocate(Size, Align);
     }
-    void Deallocate(void *Ptr) {
-    }
+    void deallocate(void *Ptr) {}
 
     // Unrecoverable error has occurred. Display the best diagnostic we can
     // and bail via exit(1). For now, most MC backend errors are unrecoverable.
     // FIXME: We should really do something about that.
-    LLVM_ATTRIBUTE_NORETURN void FatalError(SMLoc L, const Twine &Msg) const;
+    LLVM_ATTRIBUTE_NORETURN void reportFatalError(SMLoc L,
+                                                  const Twine &Msg) const;
   };
 
 } // end namespace llvm
@@ -531,10 +527,10 @@ namespace llvm {
 /// this ever changes, this operator will have to be changed, too.)
 /// Usage looks like this (assuming there's an MCContext 'Context' in scope):
 /// \code
-/// // Default alignment (16)
+/// // Default alignment (8)
 /// IntegerLiteral *Ex = new (Context) IntegerLiteral(arguments);
 /// // Specific alignment
-/// IntegerLiteral *Ex2 = new (Context, 8) IntegerLiteral(arguments);
+/// IntegerLiteral *Ex2 = new (Context, 4) IntegerLiteral(arguments);
 /// \endcode
 /// Please note that you cannot use delete on the pointer; it must be
 /// deallocated using an explicit destructor call followed by
@@ -546,8 +542,8 @@ namespace llvm {
 ///                  allocator supports it).
 /// \return The allocated memory. Could be NULL.
 inline void *operator new(size_t Bytes, llvm::MCContext &C,
-                          size_t Alignment = 16) throw () {
-  return C.Allocate(Bytes, Alignment);
+                          size_t Alignment = 8) throw() {
+  return C.allocate(Bytes, Alignment);
 }
 /// \brief Placement delete companion to the new above.
 ///
@@ -557,7 +553,7 @@ inline void *operator new(size_t Bytes, llvm::MCContext &C,
 /// the MCContext throws in the object constructor.
 inline void operator delete(void *Ptr, llvm::MCContext &C, size_t)
               throw () {
-  C.Deallocate(Ptr);
+  C.deallocate(Ptr);
 }
 
 /// This placement form of operator new[] uses the MCContext's allocator for
@@ -565,10 +561,10 @@ inline void operator delete(void *Ptr, llvm::MCContext &C, size_t)
 /// null on error.
 /// Usage looks like this (assuming there's an MCContext 'Context' in scope):
 /// \code
-/// // Default alignment (16)
+/// // Default alignment (8)
 /// char *data = new (Context) char[10];
 /// // Specific alignment
-/// char *data = new (Context, 8) char[10];
+/// char *data = new (Context, 4) char[10];
 /// \endcode
 /// Please note that you cannot use delete on the pointer; it must be
 /// deallocated using an explicit destructor call followed by
@@ -580,8 +576,8 @@ inline void operator delete(void *Ptr, llvm::MCContext &C, size_t)
 ///                  allocator supports it).
 /// \return The allocated memory. Could be NULL.
 inline void *operator new[](size_t Bytes, llvm::MCContext& C,
-                            size_t Alignment = 16) throw () {
-  return C.Allocate(Bytes, Alignment);
+                            size_t Alignment = 8) throw() {
+  return C.allocate(Bytes, Alignment);
 }
 
 /// \brief Placement delete[] companion to the new[] above.
@@ -591,7 +587,7 @@ inline void *operator new[](size_t Bytes, llvm::MCContext& C,
 /// is called implicitly by the compiler if a placement new[] expression using
 /// the MCContext throws in the object constructor.
 inline void operator delete[](void *Ptr, llvm::MCContext &C) throw () {
-  C.Deallocate(Ptr);
+  C.deallocate(Ptr);
 }
 
 #endif

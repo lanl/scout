@@ -1,5 +1,5 @@
-// RUN: %clang_cc1 -verify -triple x86_64-apple-darwin10 -fopenmp=libiomp5 -fexceptions -fcxx-exceptions -x c++ -emit-llvm %s -o - | FileCheck %s
-// RUN: %clang_cc1 -verify -triple x86_64-apple-darwin10 -fopenmp=libiomp5 -fexceptions -fcxx-exceptions -gline-tables-only -x c++ -emit-llvm %s -o - | FileCheck %s --check-prefix=TERM_DEBUG
+// RUN: %clang_cc1 -verify -triple x86_64-apple-darwin10 -fopenmp -fexceptions -fcxx-exceptions -x c++ -emit-llvm %s -o - | FileCheck %s
+// RUN: %clang_cc1 -verify -triple x86_64-apple-darwin10 -fopenmp -fexceptions -fcxx-exceptions -gline-tables-only -x c++ -emit-llvm %s -o - | FileCheck %s --check-prefix=TERM_DEBUG
 // expected-no-diagnostics
 
 int a;
@@ -37,6 +37,8 @@ void parallel_atomic_ewc() {
       // CHECK: [[OMP_UPDATE]]
       // CHECK: [[OLD_PHI_VAL:%.+]] = phi i32 [ [[OLD_VAL]], %{{.+}} ], [ [[NEW_OLD_VAL:%.+]], %[[OMP_UPDATE]] ]
       // CHECK: [[NEW_VAL:%.+]] = srem i32 [[OLD_PHI_VAL]], [[B_VAL]]
+      // CHECK: store i32 [[NEW_VAL]], i32* [[TEMP:%.+]],
+      // CHECK: [[NEW_VAL:%.+]] = load i32, i32* [[TEMP]],
       // CHECK: [[RES:%.+]] = cmpxchg i32* [[SCALAR_ADDR]], i32 [[OLD_PHI_VAL]], i32 [[NEW_VAL]] monotonic monotonic
       // CHECK: [[NEW_OLD_VAL]] = extractvalue { i32, i1 } [[RES]], 0
       // CHECK: [[COND:%.+]] = extractvalue { i32, i1 } [[RES]], 1
@@ -52,13 +54,15 @@ void parallel_atomic_ewc() {
       // CHECK: br label %[[OMP_UPDATE:.+]]
       // CHECK: [[OMP_UPDATE]]
       // CHECK: [[OLD_PHI_VAL:%.+]] = phi i32 [ [[OLD_VAL]], %{{.+}} ], [ [[NEW_OLD_VAL:%.+]], %[[OMP_UPDATE]] ]
-      // CHECK: [[NEW_VAL:%.+]] = srem i32 [[OLD_PHI_VAL]], [[B_VAL]]
+      // CHECK: [[NEW_CALC_VAL:%.+]] = srem i32 [[OLD_PHI_VAL]], [[B_VAL]]
+      // CHECK: store i32 [[NEW_CALC_VAL]], i32* [[TEMP:%.+]],
+      // CHECK: [[NEW_VAL:%.+]] = load i32, i32* [[TEMP]],
       // CHECK: [[RES:%.+]] = cmpxchg i32* [[SCALAR_ADDR]], i32 [[OLD_PHI_VAL]], i32 [[NEW_VAL]] monotonic monotonic
       // CHECK: [[NEW_OLD_VAL]] = extractvalue { i32, i1 } [[RES]], 0
       // CHECK: [[COND:%.+]] = extractvalue { i32, i1 } [[RES]], 1
       // CHECK: br i1 [[COND]], label %[[OMP_DONE:.+]], label %[[OMP_UPDATE]]
       // CHECK: [[OMP_DONE]]
-      // CHECK: store i32 [[NEW_VAL]], i32* @a,
+      // CHECK: store i32 [[NEW_CALC_VAL]], i32* @a,
       // CHECK: invoke void @_ZN2StD1Ev(%struct.St* [[TEMP_ST_ADDR]])
 #pragma omp atomic capture
       a = St().get() %= b;

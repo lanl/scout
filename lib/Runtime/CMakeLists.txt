@@ -56,8 +56,6 @@ SET(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 SET(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-find_package(Qt5Widgets)
-
 # Build w/ clang
 find_package(Clang)
 set(CMAKE_CXX_COMPILER ${CLANGXX_COMMAND})
@@ -87,10 +85,6 @@ else()
     )
 endif()
 
-file(GLOB qt_hdrs
-   ${SCOUT_INCLUDE_DIR}/scout/Runtime/opengl/qt/*.h
-)
-
 #cpu
 file(GLOB rt_srcs_cpu cpu/*.cpp)
 list(APPEND rt_srcs ${rt_srcs_cpu})
@@ -108,12 +102,20 @@ if (SCOUT_ENABLE_PLOT)
 endif()
 
 #plot2
-file(GLOB rt_srcs_plot2 plot2/*.cpp)
-list(APPEND rt_srcs ${rt_srcs_plot2})
+find_package(QT5 REQUIRED)
+if (QT5_FOUND)
+  find_package(Qt5Widgets)
+  find_package(Qt5Gui)
+  
+  file(GLOB qt_hdrs
+   ${SCOUT_INCLUDE_DIR}/scout/Runtime/opengl/qt/*.h)
+  file(GLOB rt_srcs_plot2 plot2/*.cpp)
+  list(APPEND rt_srcs ${rt_srcs_plot2})
 
-file(GLOB qt_srcs opengl/qt/*.cpp)
+  file(GLOB qt_srcs opengl/qt/*.cpp)
 
-qt5_wrap_cpp(moc_srcs ${qt_hdrs})
+  qt5_wrap_cpp(moc_srcs ${qt_hdrs})
+endif()  
 
 if (SCOUT_ENABLE_OPENGL)
 
@@ -234,7 +236,6 @@ if (SCOUT_ENABLE_OPENGL)
   # Update the include path to include the generated include files that
   # hold the individual shaders...
   include_directories(${SCOUT_BUILD_DIR}/include)
-
 endif()
 
 if (SCOUT_ENABLE_MPI)
@@ -259,7 +260,7 @@ set_target_properties(scRuntime
   COMPILE_FLAGS "-fPIC"
   MACOSX_RPATH 1) 
 
-set(_link_libs ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${R_LIBRARIES} Qt5::Widgets)
+set(_link_libs ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${R_LIBRARIES} Qt5::Widgets Qt5::Gui)
 
 if (APPLE) 
   set(_link_libs ${_link_libs} "-framework Cocoa -framework Foundation -framework IOKit -framework CoreVideo")

@@ -2642,7 +2642,11 @@ EmulateInstructionARM::EmulateADDImmARM (const uint32_t opcode, const ARMEncodin
         AddWithCarryResult res = AddWithCarry(val1, imm32, 0);
 
         EmulateInstruction::Context context;
-        context.type = eContextArithmetic;
+        if (Rd == 13)
+            context.type = EmulateInstruction::eContextAdjustStackPointer;
+        else
+            context.type = EmulateInstruction::eContextRegisterPlusOffset;
+
         RegisterInfo dwarf_reg;
         GetRegisterInfo (eRegisterKindDWARF, Rn, dwarf_reg);
         context.SetRegisterPlusOffset (dwarf_reg, imm32);
@@ -9165,46 +9169,55 @@ EmulateInstructionARM::EmulateSUBImmARM (const uint32_t opcode, const ARMEncodin
 
     bool success = false;
 
-    uint32_t Rd; // the destination register
-    uint32_t Rn; // the first operand
-    bool setflags;
-    uint32_t imm32; // the immediate value to be subtracted from the value obtained from Rn
-    switch (encoding) {
-    case eEncodingA1:
-        Rd = Bits32(opcode, 15, 12);
-        Rn = Bits32(opcode, 19, 16);
-        setflags = BitIsSet(opcode, 20);
-        imm32 = ARMExpandImm(opcode); // imm32 = ARMExpandImm(imm12)
+    if (ConditionPassed(opcode))
+    {
+        uint32_t Rd; // the destination register
+        uint32_t Rn; // the first operand
+        bool setflags;
+        uint32_t imm32; // the immediate value to be subtracted from the value obtained from Rn
+        switch (encoding) {
+        case eEncodingA1:
+            Rd = Bits32(opcode, 15, 12);
+            Rn = Bits32(opcode, 19, 16);
+            setflags = BitIsSet(opcode, 20);
+            imm32 = ARMExpandImm(opcode); // imm32 = ARMExpandImm(imm12)
 
-        // if Rn == '1111' && S == '0' then SEE ADR;
-        if (Rn == 15 && !setflags)
-            return EmulateADR (opcode, eEncodingA2);
+            // if Rn == '1111' && S == '0' then SEE ADR;
+            if (Rn == 15 && !setflags)
+                return EmulateADR (opcode, eEncodingA2);
 
-        // if Rn == '1101' then SEE SUB (SP minus immediate);
-        if (Rn == 13)
-            return EmulateSUBSPImm (opcode, eEncodingA1);
+            // if Rn == '1101' then SEE SUB (SP minus immediate);
+            if (Rn == 13)
+                return EmulateSUBSPImm (opcode, eEncodingA1);
 
-        // if Rd == '1111' && S == '1' then SEE SUBS PC, LR and related instructions;
-        if (Rd == 15 && setflags)
-            return EmulateSUBSPcLrEtc (opcode, encoding);
-        break;
-    default:
-        return false;
+            // if Rd == '1111' && S == '1' then SEE SUBS PC, LR and related instructions;
+            if (Rd == 15 && setflags)
+                return EmulateSUBSPcLrEtc (opcode, encoding);
+            break;
+        default:
+            return false;
+        }
+        // Read the register value from the operand register Rn.
+        uint32_t reg_val = ReadCoreReg(Rn, &success);
+        if (!success)
+            return false;
+
+        AddWithCarryResult res = AddWithCarry(reg_val, ~imm32, 1);
+
+        EmulateInstruction::Context context;
+        if (Rd == 13)
+            context.type = EmulateInstruction::eContextAdjustStackPointer;
+        else
+            context.type = EmulateInstruction::eContextRegisterPlusOffset;
+
+        RegisterInfo dwarf_reg;
+        GetRegisterInfo (eRegisterKindDWARF, Rn, dwarf_reg);
+        int64_t imm32_signed = imm32;
+        context.SetRegisterPlusOffset (dwarf_reg, -imm32_signed);
+
+        if (!WriteCoreRegOptionalFlags(context, res.result, Rd, setflags, res.carry_out, res.overflow))
+            return false;
     }
-    // Read the register value from the operand register Rn.
-    uint32_t reg_val = ReadCoreReg(Rn, &success);
-    if (!success)
-        return false;
-                  
-    AddWithCarryResult res = AddWithCarry(reg_val, ~imm32, 1);
-
-    EmulateInstruction::Context context;
-    context.type = EmulateInstruction::eContextImmediate;
-    context.SetNoArgs ();
-
-    if (!WriteCoreRegOptionalFlags(context, res.result, Rd, setflags, res.carry_out, res.overflow))
-        return false;
-
     return true;
 }
 
@@ -12611,7 +12624,7 @@ EmulateInstructionARM::GetThumbOpcodeForInstruction (const uint32_t opcode, uint
         { 0xf800d001, 0xf000c000, ARMV5_ABOVE,   eEncodingT2, No_VFP, eSize32, &EmulateInstructionARM::EmulateBLXImmediate, "blx <label>"},
         { 0xffffff87, 0x00004780, ARMV5_ABOVE,   eEncodingT1, No_VFP, eSize16, &EmulateInstructionARM::EmulateBLXRm, "blx <Rm>"},
         // for example, "bx lr"
-        { 0xffffff87, 0x00004700, ARMvAll,       eEncodingA1, No_VFP, eSize32, &EmulateInstructionARM::EmulateBXRm, "bx <Rm>"},
+        { 0xffffff87, 0x00004700, ARMvAll,       eEncodingT1, No_VFP, eSize32, &EmulateInstructionARM::EmulateBXRm, "bx <Rm>"},
         // bxj
         { 0xfff0ffff, 0xf3c08f00, ARMV5J_ABOVE,  eEncodingT1, No_VFP, eSize32, &EmulateInstructionARM::EmulateBXJRm, "bxj <Rm>"},
         // compare and branch
@@ -13062,8 +13075,8 @@ EmulateInstructionARM::CurrentCond (const uint32_t opcode)
             const uint32_t byte_size = m_opcode.GetByteSize();
             if (byte_size == 2)
             {
-                if (Bits32(opcode, 15, 12) == 0x0d && Bits32(opcode, 11, 7) != 0x0f)
-                    return Bits32(opcode, 11, 7);
+                if (Bits32(opcode, 15, 12) == 0x0d && Bits32(opcode, 11, 8) != 0x0f)
+                    return Bits32(opcode, 11, 8);
             }
             else if (byte_size == 4)
             {

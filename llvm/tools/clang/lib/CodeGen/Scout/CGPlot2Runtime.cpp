@@ -200,28 +200,27 @@ llvm::Function* CGPlot2Runtime::PlotGetDoubleFunc(){
 
 llvm::Function* CGPlot2Runtime::PlotAddLinesFunc(){
   return GetFunc("__scrt_plot_add_lines",
-                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty});
+                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddPointsFunc(){
   return GetFunc("__scrt_plot_add_points",
-                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty});
+                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddLineFunc(){
   return GetFunc("__scrt_plot_add_line",
-                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty,
-                   Int32Ty, Int32Ty, Int32Ty});
+                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddAreaFunc(){
   return GetFunc("__scrt_plot_add_area",
-                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
+                 {VoidPtrTy, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddIntervalFunc(){
   return GetFunc("__scrt_plot_add_interval",
-                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
+                 {VoidPtrTy, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddPieFunc(){
@@ -231,12 +230,12 @@ llvm::Function* CGPlot2Runtime::PlotAddPieFunc(){
 
 llvm::Function* CGPlot2Runtime::PlotAddBinsFunc(){
   return GetFunc("__scrt_plot_add_bins",
-                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty});
+                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddProportionFunc(){
   return GetFunc("__scrt_plot_add_proportion",
-                 {VoidPtrTy, Int32Ty, Int32Ty}, VoidPtrTy);
+                 {VoidPtrTy, Int32Ty}, VoidPtrTy);
 }
 
 llvm::Function* CGPlot2Runtime::PlotProportionAddVarFunc(){
@@ -245,7 +244,8 @@ llvm::Function* CGPlot2Runtime::PlotProportionAddVarFunc(){
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddAxisFunc(){
-  return GetFunc("__scrt_plot_add_axis", {VoidPtrTy, Int32Ty, StringTy});
+  return GetFunc("__scrt_plot_add_axis",
+                 {VoidPtrTy, Int32Ty, StringTy, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotRenderFunc(){
@@ -314,6 +314,11 @@ llvm::Function* CGPlot2Runtime::PlotSetAntialiasedFunc(){
 llvm::Function* CGPlot2Runtime::PlotSetOutputFunc(){
   return GetFunc("__scrt_plot_set_output",
                  {VoidPtrTy, StringTy});
+}
+
+llvm::Function* CGPlot2Runtime::PlotSetRangeFunc(){
+  return GetFunc("__scrt_plot_set_range",
+                 {VoidPtrTy, Int1Ty, DoubleTy, DoubleTy});
 }
 
 Function* CGPlot2Runtime::PlotAddVarFunc(){

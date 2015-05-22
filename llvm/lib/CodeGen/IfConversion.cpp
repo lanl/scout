@@ -24,7 +24,6 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/TargetSchedule.h"
-#include "llvm/MC/MCInstrItineraries.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -980,10 +979,10 @@ static void UpdatePredRedefs(MachineInstr *MI, LivePhysRegs &Redefs) {
 
   // Now add the implicit uses for each of the clobbered values.
   for (auto Reg : Clobbers) {
-    const MachineOperand &Op = *Reg.second;
     // FIXME: Const cast here is nasty, but better than making StepForward
     // take a mutable instruction instead of const.
-    MachineInstr *OpMI = const_cast<MachineInstr*>(Op.getParent());
+    MachineOperand &Op = const_cast<MachineOperand&>(*Reg.second);
+    MachineInstr *OpMI = Op.getParent();
     MachineInstrBuilder MIB(*OpMI->getParent()->getParent(), OpMI);
     if (Op.isRegMask()) {
       // First handle regmasks.  They clobber any entries in the mask which
@@ -999,6 +998,12 @@ static void UpdatePredRedefs(MachineInstr *MI, LivePhysRegs &Redefs) {
       continue;
     }
     assert(Op.isReg() && "Register operand required");
+    if (Op.isDead()) {
+      // If we found a dead def, but it needs to be live, then remove the dead
+      // flag.
+      if (Redefs.contains(Op.getReg()))
+        Op.setIsDead(false);
+    }
     MIB.addReg(Reg.first, RegState::Implicit | RegState::Undef);
   }
 }
@@ -1514,10 +1519,9 @@ bool IfConverter::IfConvertDiamond(BBInfo &BBI, IfcvtKind Kind,
 }
 
 static bool MaySpeculate(const MachineInstr *MI,
-                         SmallSet<unsigned, 4> &LaterRedefs,
-                         const TargetInstrInfo *TII) {
+                         SmallSet<unsigned, 4> &LaterRedefs) {
   bool SawStore = true;
-  if (!MI->isSafeToMove(TII, nullptr, SawStore))
+  if (!MI->isSafeToMove(nullptr, SawStore))
     return false;
 
   for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
@@ -1548,7 +1552,7 @@ void IfConverter::PredicateBlock(BBInfo &BBI,
     // It may be possible not to predicate an instruction if it's the 'true'
     // side of a diamond and the 'false' side may re-define the instruction's
     // defs.
-    if (MaySpec && MaySpeculate(I, *LaterRedefs, TII)) {
+    if (MaySpec && MaySpeculate(I, *LaterRedefs)) {
       AnyUnpred = true;
       continue;
     }

@@ -62,7 +62,12 @@ class GdbRemoteTestCaseBase(TestBase):
         self.stub_sends_two_stop_notifications_on_kill = False
         if lldb.platform_url:
             scheme, host = re.match('(.+)://(.+):\d+', lldb.platform_url).groups()
-            self.stub_hostname = 'localhost' if scheme == 'adb' else host
+            if scheme == 'adb':
+                self.stub_device = host
+                self.stub_hostname = 'localhost'
+            else:
+                self.stub_device = None
+                self.stub_hostname = host
         else:
             self.stub_hostname = "localhost"
 
@@ -154,15 +159,15 @@ class GdbRemoteTestCaseBase(TestBase):
             err = platform.Run(shell_command)
             if err.Fail():
                 raise Exception("remote_platform.RunShellCommand('readlink /proc/%d/exe') failed: %s" % (pid, err))
-            self.debug_monitor_exe = shell_command.GetOutput().strip()
-            dname = self.dbg.GetSelectedPlatform().GetWorkingDirectory()
+            # If the binary has been deleted, the link name has " (deleted)" appended.
+            # Remove if it's there.
+            self.debug_monitor_exe = re.sub(r' \(deleted\)$', '', shell_command.GetOutput().strip())
         else:
             self.debug_monitor_exe = get_lldb_server_exe()
             if not self.debug_monitor_exe:
                 self.skipTest("lldb-server exe not found")
-            dname = os.path.join(os.environ["LLDB_TEST"], os.environ["LLDB_SESSION_DIRNAME"])
 
-        self.debug_monitor_extra_args = ["gdbserver", "-c", "log enable -T -f {}/process-{}.log lldb break process thread".format(dname, self.id()), "-c", "log enable -T -f {}/packets-{}.log gdb-remote packets".format(dname, self.id())]
+        self.debug_monitor_extra_args = ["gdbserver"]
         if use_named_pipe:
             (self.named_pipe_path, self.named_pipe, self.named_pipe_fd) = self.create_named_pipe()
 
@@ -177,11 +182,12 @@ class GdbRemoteTestCaseBase(TestBase):
         # when the process truly dies.
         self.stub_sends_two_stop_notifications_on_kill = True
 
-    def forward_adb_port(self, source, target, direction):
+    def forward_adb_port(self, source, target, direction, device):
+        adb = [ 'adb' ] + ([ '-s', device ] if device else []) + [ direction ]
         def remove_port_forward():
-            subprocess.call(["adb", direction, "--remove", "tcp:%d" % source])
-        
-        subprocess.call(["adb", direction, "tcp:%d" % source, "tcp:%d" % target])
+            subprocess.call(adb + [ "--remove", "tcp:%d" % source])
+
+        subprocess.call(adb + [ "tcp:%d" % source, "tcp:%d" % target])
         self.addTearDownHook(remove_port_forward)
 
     def create_socket(self):
@@ -190,7 +196,7 @@ class GdbRemoteTestCaseBase(TestBase):
 
         triple = self.dbg.GetSelectedPlatform().GetTriple()
         if re.match(".*-.*-.*-android", triple):
-            self.forward_adb_port(self.port, self.port, "forward")
+            self.forward_adb_port(self.port, self.port, "forward", self.stub_device)
 
         connect_info = (self.stub_hostname, self.port)
         sock.connect(connect_info)
@@ -381,8 +387,7 @@ class GdbRemoteTestCaseBase(TestBase):
                 inferior_exe_path = os.path.abspath("a.out")
 
             if lldb.remote_platform:
-                remote_work_dir = lldb.remote_platform.GetWorkingDirectory()
-                remote_path = os.path.join(remote_work_dir, os.path.basename(inferior_exe_path))
+                remote_path = lldbutil.append_to_remote_wd(os.path.basename(inferior_exe_path))
                 remote_file_spec = lldb.SBFileSpec(remote_path, False)
                 err = lldb.remote_platform.Install(lldb.SBFileSpec(inferior_exe_path, True), remote_file_spec)
                 if err.Fail():

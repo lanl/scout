@@ -217,6 +217,7 @@ const CMICmnResources::SRsrcTextData CMICmnResources::ms_pResourceId2TextData[] 
     {IDS_CMD_ERR_NOT_IMPLEMENTED_DEPRECATED, "Command '%s'. Command not implemented as it has been deprecated"},
     {IDS_CMD_ERR_CREATE_TARGET, "Command '%s'. Create target failed: %s"},
     {IDS_CMD_ERR_BRKPT_LOCATION_FORMAT, "Command '%s'. Incorrect format for breakpoint location '%s'"},
+    {IDS_CMD_ERR_BRKPT_LOCATION_NOT_FOUND, "Command '%s'. Breakpoint location '%s' not found"},
     {IDS_CMD_ERR_BRKPT_INVALID, "Command '%s'. Breakpoint '%s' invalid"},
     {IDS_CMD_ERR_BRKPT_CNT_EXCEEDED, "Command '%s'. Number of valid breakpoint exceeded %d. Cannot create new breakpoint '%s'"},
     {IDS_CMD_ERR_SOME_ERROR, "Command '%s'. Error: %s"},
@@ -227,6 +228,7 @@ const CMICmnResources::SRsrcTextData CMICmnResources::ms_pResourceId2TextData[] 
     {IDS_CMD_ERR_VARIABLE_ENUM_INVALID, "Command '%s'. Invalid enumeration for variable '%s' formatted string '%s'"},
     {IDS_CMD_ERR_VARIABLE_EXPRESSIONPATH, "Command '%s'. Failed to get expression for variable '%s'"},
     {IDS_CMD_ERR_VARIABLE_CREATION_FAILED, "Failed to create variable object for '%s'"},
+    {IDS_CMD_ERR_VARIABLE_CHILD_RANGE_INVALID, "Command '%s'. Variable children range invalid"},
     {IDS_CMD_ERR_CMD_RUN_BUT_NO_ACTION, "<Error: Command run but command did not do anything useful. No MI response formed>"},
     {IDS_CMD_ERR_EVENT_HANDLED_BUT_NO_ACTION, "<Error: Command run and event caught, did nothing useful. No MI Out-of-Bound formed>"},
     {IDS_CMD_ERR_DISASM_ADDR_START_INVALID, "Command '%s'. Invalid start value '%s'"},
@@ -249,7 +251,10 @@ const CMICmnResources::SRsrcTextData CMICmnResources::ms_pResourceId2TextData[] 
     {IDS_CMD_ERR_GDBSET_OPT_PRINT_BAD_ARGS, "'print' expects option-name and \"on\" or \"off\""},
     {IDS_CMD_ERR_GDBSET_OPT_PRINT_UNKNOWN_OPTION, "'print' error. The option '%s' not found"},
     {IDS_CMD_ERR_GDBSHOW_OPT_PRINT_BAD_ARGS, "'print' expects option-name and \"on\" or \"off\""},
-    {IDS_CMD_ERR_GDBSHOW_OPT_PRINT_UNKNOWN_OPTION, "'print' error. The option '%s' not found"}};
+    {IDS_CMD_ERR_GDBSHOW_OPT_PRINT_UNKNOWN_OPTION, "'print' error. The option '%s' not found"},
+    {IDS_CMD_ERR_EXPR_INVALID, "Failed to evaluate expression: %s"},
+    {IDS_CMD_ERR_ATTACH_FAILED, "Command '%s'. Attach to processs failed: %s"},
+    {IDS_CMD_ERR_ATTACH_BAD_ARGS, "Command '%s'. Must specify either a PID or a Name"}};
 
 //++ ------------------------------------------------------------------------------------
 // Details: CMICmnResources constructor.

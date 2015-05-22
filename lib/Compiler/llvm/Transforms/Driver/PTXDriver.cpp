@@ -41,7 +41,7 @@ llvm::Value *PTXDriver::insertGetThreadIdx(int dim) {
     
   }
 
-  return getBuilder().CreateCall(function);
+  return getBuilder().CreateCall(function, ArrayRef<llvm::Value*>());
 }
 
 llvm::Value *PTXDriver::insertGetBlockDim(int dim) {
@@ -63,7 +63,7 @@ llvm::Value *PTXDriver::insertGetBlockDim(int dim) {
                              f, &getModule());
   }
 
-  return getBuilder().CreateCall(function);  
+  return getBuilder().CreateCall(function, ArrayRef<llvm::Value*>());  
 }
 
 llvm::Value *PTXDriver::insertGetBlockIdx(int dim) {
@@ -85,7 +85,7 @@ llvm::Value *PTXDriver::insertGetBlockIdx(int dim) {
                              f, &getModule());
   }
 
-  return getBuilder().CreateCall(function);
+  return getBuilder().CreateCall(function, ArrayRef<llvm::Value*>());
 }
 
 llvm::Value *PTXDriver::insertGetGridDim(int dim) {
@@ -107,7 +107,7 @@ llvm::Value *PTXDriver::insertGetGridDim(int dim) {
                              f, &getModule());
   }
 
-  return getBuilder().CreateCall(function);
+  return getBuilder().CreateCall(function, ArrayRef<llvm::Value*>());
 }
 
 void PTXDriver::setBlocksInY(const unsigned blocksInY) {

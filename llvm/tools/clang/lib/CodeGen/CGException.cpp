@@ -60,7 +60,10 @@ llvm::Constant *CodeGenModule::getTerminateFn() {
     name = "_ZSt9terminatev";
   } else if (getLangOpts().CPlusPlus &&
              getTarget().getCXXABI().isMicrosoft()) {
-    name = "\01?terminate@@YAXXZ";
+    if (getLangOpts().isCompatibleWithMSVC(LangOptions::MSVC2015))
+      name = "__std_terminate";
+    else
+      name = "\01?terminate@@YAXXZ";
   } else if (getLangOpts().ObjC1 &&
              getLangOpts().ObjCRuntime.hasTerminate())
     name = "objc_terminate";
@@ -1410,9 +1413,9 @@ void CodeGenFunction::EmitCapturedLocals(CodeGenFunction &ParentCGF,
         InsertPair.first->second = ParentCGF.EscapedLocals.size() - 1;
       int FrameEscapeIdx = InsertPair.first->second;
       // call i8* @llvm.framerecover(i8* bitcast(@parentFn), i8* %fp, i32 N)
-      RecoverCall =
-          Builder.CreateCall3(FrameRecoverFn, ParentI8Fn, ParentFP,
-                              llvm::ConstantInt::get(Int32Ty, FrameEscapeIdx));
+      RecoverCall = Builder.CreateCall(
+          FrameRecoverFn, {ParentI8Fn, ParentFP,
+                           llvm::ConstantInt::get(Int32Ty, FrameEscapeIdx)});
 
     } else {
       // If the parent didn't have an alloca, we're doing some nested outlining.

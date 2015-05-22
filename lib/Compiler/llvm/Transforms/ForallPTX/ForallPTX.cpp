@@ -573,8 +573,8 @@ public:
   }
 
   const Target* findPTXTarget(){
-    for(TargetRegistry::iterator itr = TargetRegistry::begin(),
-          itrEnd = TargetRegistry::end(); itr != itrEnd; ++itr) {
+    for(TargetRegistry::iterator itr =  TargetRegistry::targets().begin(),
+          itrEnd =  TargetRegistry::targets().end(); itr != itrEnd; ++itr) {
       if(strcmp(itr->getName(), "nvptx64") == 0) {
         return &*itr;
       }

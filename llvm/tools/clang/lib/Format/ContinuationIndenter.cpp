@@ -172,7 +172,11 @@ bool ContinuationIndenter::mustBreak(const LineState &State) {
 
   if (State.Column < getNewLineColumn(State))
     return false;
-  if (Style.BreakBeforeBinaryOperators == FormatStyle::BOS_None) {
+
+  // Using CanBreakBefore here and below takes care of the decision whether the
+  // current style uses wrapping before or after operators for the given
+  // operator.
+  if (Previous.is(TT_BinaryOperator) && Current.CanBreakBefore) {
     // If we need to break somewhere inside the LHS of a binary expression, we
     // should also break after the operator. Otherwise, the formatting would
     // hide the operator precedence, e.g. in:
@@ -188,16 +192,13 @@ bool ContinuationIndenter::mustBreak(const LineState &State) {
                         Previous.Previous->isNot(TT_BinaryOperator); // For >>.
     bool LHSIsBinaryExpr =
         Previous.Previous && Previous.Previous->EndsBinaryExpression;
-    if (Previous.is(TT_BinaryOperator) && (!IsComparison || LHSIsBinaryExpr) &&
-        Current.isNot(TT_BinaryOperator) && // For >>.
-        !Current.isTrailingComment() && !Previous.is(tok::lessless) &&
+    if ((!IsComparison || LHSIsBinaryExpr) && !Current.isTrailingComment() &&
         Previous.getPrecedence() != prec::Assignment &&
         State.Stack.back().BreakBeforeParameter)
       return true;
-  } else {
-    if (Current.is(TT_BinaryOperator) && Previous.EndsBinaryExpression &&
-        State.Stack.back().BreakBeforeParameter)
-      return true;
+  } else if (Current.is(TT_BinaryOperator) && Current.CanBreakBefore &&
+             State.Stack.back().BreakBeforeParameter) {
+    return true;
   }
 
   // Same as above, but for the first "<<" operator.
@@ -207,7 +208,12 @@ bool ContinuationIndenter::mustBreak(const LineState &State) {
     return true;
 
   if (Current.NestingLevel == 0 && !Current.isTrailingComment()) {
+    // Always break after "template <...>" and leading annotations. This is only
+    // for cases where the entire line does not fit on a single line as a
+    // different LineFormatter would be used otherwise.
     if (Previous.ClosesTemplateDeclaration)
+      return true;
+    if (Previous.is(TT_FunctionAnnotationRParen))
       return true;
     if (Previous.is(TT_LeadingJavaAnnotation) && Current.isNot(tok::l_paren) &&
         Current.isNot(TT_LeadingJavaAnnotation))
@@ -420,7 +426,11 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
         State.Stack.back().AlignColons = false;
       } else {
         State.Stack.back().ColonPos =
-            State.Stack.back().Indent + NextNonComment->LongestObjCSelectorName;
+            (Style.IndentWrappedFunctionNames
+                 ? std::max(State.Stack.back().Indent,
+                            State.FirstIndent + Style.ContinuationIndentWidth)
+                 : State.Stack.back().Indent) +
+            NextNonComment->LongestObjCSelectorName;
       }
     } else if (State.Stack.back().AlignColons &&
                State.Stack.back().ColonPos <= NextNonComment->ColumnWidth) {
@@ -482,8 +492,9 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
       !PreviousNonComment->isOneOf(tok::comma, tok::semi) &&
       (PreviousNonComment->isNot(TT_TemplateCloser) ||
        Current.NestingLevel != 0) &&
-      !PreviousNonComment->isOneOf(TT_BinaryOperator, TT_JavaAnnotation,
-                                   TT_LeadingJavaAnnotation) &&
+      !PreviousNonComment->isOneOf(
+          TT_BinaryOperator, TT_FunctionAnnotationRParen, TT_JavaAnnotation,
+          TT_LeadingJavaAnnotation) &&
       Current.isNot(TT_BinaryOperator) && !PreviousNonComment->opensScope())
     State.Stack.back().BreakBeforeParameter = true;
 
@@ -543,6 +554,9 @@ unsigned ContinuationIndenter::getNewLineColumn(const LineState &State) {
     return State.Stack.back().Indent;
   if (NextNonComment->isStringLiteral() && State.StartOfStringLiteral != 0)
     return State.StartOfStringLiteral;
+  if (NextNonComment->is(TT_ObjCStringLiteral) &&
+      State.StartOfStringLiteral != 0)
+    return State.StartOfStringLiteral - 1;
   if (NextNonComment->is(tok::lessless) &&
       State.Stack.back().FirstLessLess != 0)
     return State.Stack.back().FirstLessLess;
@@ -560,8 +574,9 @@ unsigned ContinuationIndenter::getNewLineColumn(const LineState &State) {
     return State.Stack.back().VariablePos;
   if ((PreviousNonComment &&
        (PreviousNonComment->ClosesTemplateDeclaration ||
-        PreviousNonComment->isOneOf(TT_AttributeParen, TT_JavaAnnotation,
-                                    TT_LeadingJavaAnnotation))) ||
+        PreviousNonComment->isOneOf(
+            TT_AttributeParen, TT_FunctionAnnotationRParen, TT_JavaAnnotation,
+            TT_LeadingJavaAnnotation))) ||
       (!Style.IndentWrappedFunctionNames &&
        NextNonComment->isOneOf(tok::kw_operator, TT_FunctionDeclarationName)))
     return std::max(State.Stack.back().LastSpace, State.Stack.back().Indent);
@@ -569,7 +584,10 @@ unsigned ContinuationIndenter::getNewLineColumn(const LineState &State) {
     if (!State.Stack.back().ObjCSelectorNameFound) {
       if (NextNonComment->LongestObjCSelectorName == 0)
         return State.Stack.back().Indent;
-      return State.Stack.back().Indent +
+      return (Style.IndentWrappedFunctionNames
+                  ? std::max(State.Stack.back().Indent,
+                             State.FirstIndent + Style.ContinuationIndentWidth)
+                  : State.Stack.back().Indent) +
              NextNonComment->LongestObjCSelectorName -
              NextNonComment->ColumnWidth;
     }
@@ -584,9 +602,13 @@ unsigned ContinuationIndenter::getNewLineColumn(const LineState &State) {
       return State.Stack.back().StartOfArraySubscripts;
     return ContinuationIndent;
   }
-  if (NextNonComment->is(TT_StartOfName) && NextNonComment->Next &&
-      NextNonComment->Next->is(TT_ObjCMethodExpr))
+
+  // This ensure that we correctly format ObjC methods calls without inputs,
+  // i.e. where the last element isn't selector like: [callee method];
+  if (NextNonComment->is(tok::identifier) && NextNonComment->FakeRParens == 0 &&
+      NextNonComment->Next && NextNonComment->Next->is(TT_ObjCMethodExpr))
     return State.Stack.back().Indent;
+
   if (NextNonComment->isOneOf(TT_StartOfName, TT_PointerOrReference) ||
       Previous.isOneOf(tok::coloncolon, tok::equal))
     return ContinuationIndent;
@@ -653,6 +675,9 @@ unsigned ContinuationIndenter::moveStateToNextToken(LineState &State,
       State.Stack.back().AvoidBinPacking = true;
     State.Stack.back().BreakBeforeParameter = false;
   }
+  if (Current.isOneOf(TT_BinaryOperator, TT_ConditionalExpr) && Newline)
+    State.Stack.back().NestedBlockIndent =
+        State.Column + Current.ColumnWidth + 1;
 
   // Insert scopes created by fake parenthesis.
   const FormatToken *Previous = Current.getPreviousNonComment();
@@ -685,12 +710,13 @@ unsigned ContinuationIndenter::moveStateToNextToken(LineState &State,
   moveStatePastScopeCloser(State);
   moveStatePastFakeRParens(State);
 
-  if (Current.isStringLiteral() && State.StartOfStringLiteral == 0) {
+  if (Current.isStringLiteral() && State.StartOfStringLiteral == 0)
     State.StartOfStringLiteral = State.Column;
-  } else if (!Current.isOneOf(tok::comment, tok::identifier, tok::hash) &&
-             !Current.isStringLiteral()) {
+  if (Current.is(TT_ObjCStringLiteral) && State.StartOfStringLiteral == 0)
+    State.StartOfStringLiteral = State.Column + 1;
+  else if (!Current.isOneOf(tok::comment, tok::identifier, tok::hash) &&
+             !Current.isStringLiteral())
     State.StartOfStringLiteral = 0;
-  }
 
   State.Column += Current.ColumnWidth;
   State.NextToken = State.NextToken->Next;

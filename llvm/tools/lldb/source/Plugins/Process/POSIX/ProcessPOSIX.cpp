@@ -33,6 +33,8 @@
 #include "Plugins/Process/Linux/ProcessMonitor.h"
 #include "POSIXThread.h"
 
+#include "lldb/Host/posix/Fcntl.h"
+
 using namespace lldb;
 using namespace lldb_private;
 
@@ -83,7 +85,7 @@ ProcessPOSIX::CanDebug(Target &target, bool plugin_specified_by_name)
 }
 
 Error
-ProcessPOSIX::DoAttachToProcessWithID(lldb::pid_t pid)
+ProcessPOSIX::DoAttachToProcessWithID (lldb::pid_t pid,  const ProcessAttachInfo &attach_info)
 {
     Error error;
     assert(m_monitor == NULL);
@@ -129,12 +131,6 @@ ProcessPOSIX::DoAttachToProcessWithID(lldb::pid_t pid)
     SetID(pid);
 
     return error;
-}
-
-Error
-ProcessPOSIX::DoAttachToProcessWithID (lldb::pid_t pid,  const ProcessAttachInfo &attach_info)
-{
-    return DoAttachToProcessWithID(pid);
 }
 
 Error

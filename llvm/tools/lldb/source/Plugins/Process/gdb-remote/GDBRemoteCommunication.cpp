@@ -259,7 +259,7 @@ GDBRemoteCommunication::SendPacketNoLock (const char *payload, size_t payload_le
                 strm.Printf("<%4" PRIu64 "> send packet: %.*s", (uint64_t)bytes_written, (int)binary_start_offset, packet_data);
                 const uint8_t *p;
                 // Print binary data exactly as sent
-                for (p = (uint8_t*)packet_data + binary_start_offset; *p != '#'; ++p)
+                for (p = (const uint8_t*)packet_data + binary_start_offset; *p != '#'; ++p)
                     strm.Printf("\\x%2.2x", *p);
                 // Print the checksum
                 strm.Printf("%*s", (int)3, p);
@@ -424,6 +424,7 @@ GDBRemoteCommunication::CheckForPacket (const uint8_t *src, size_t src_len, Stri
                 content_length = total_length = 1;  // The command is one byte long...
                 break;
 
+            case '%': // Async notify packet
             case '$':
                 // Look for a standard gdb packet?
                 {
@@ -466,6 +467,7 @@ GDBRemoteCommunication::CheckForPacket (const uint8_t *src, size_t src_len, Stri
                         case '+':
                         case '-':
                         case '\x03':
+                        case '%':
                         case '$':
                             done = true;
                             break;
@@ -586,7 +588,7 @@ GDBRemoteCommunication::CheckForPacket (const uint8_t *src, size_t src_len, Stri
                 }
             }
 
-            if (m_bytes[0] == '$')
+            if (m_bytes[0] == '$' || m_bytes[0] == '%')
             {
                 assert (checksum_idx < m_bytes.size());
                 if (::isxdigit (m_bytes[checksum_idx+0]) || 
@@ -772,48 +774,40 @@ GDBRemoteCommunication::StartDebugserverProcess (const char *hostname,
         llvm::SmallString<PATH_MAX> named_pipe_path;
         Pipe port_pipe;
 
-        bool listen = false;
-        if (host_and_port[0])
+        if (host_and_port[0] && in_port == 0)
         {
             // Create a temporary file to get the stdout/stderr and redirect the
             // output of the command into this file. We will later read this file
             // if all goes well and fill the data into "command_output_ptr"
 
-            if (in_port == 0)
+            // Binding to port zero, we need to figure out what port it ends up
+            // using using a named pipe...
+            error = port_pipe.CreateWithUniqueName("debugserver-named-pipe", false, named_pipe_path);
+            if (error.Success())
             {
-                // Binding to port zero, we need to figure out what port it ends up
-                // using using a named pipe...
-                error = port_pipe.CreateWithUniqueName("debugserver-named-pipe", false, named_pipe_path);
-                if (error.Success())
-                {
-                    debugserver_args.AppendArgument("--named-pipe");
-                    debugserver_args.AppendArgument(named_pipe_path.c_str());
-                }
-                else
-                {
-                    if (log)
-                        log->Printf("GDBRemoteCommunication::%s() "
-                                "named pipe creation failed: %s",
-                                __FUNCTION__, error.AsCString());
-                    // let's try an unnamed pipe
-                    error = port_pipe.CreateNew(true);
-                    if (error.Fail())
-                    {
-                        if (log)
-                            log->Printf("GDBRemoteCommunication::%s() "
-                                    "unnamed pipe creation failed: %s",
-                                    __FUNCTION__, error.AsCString());
-                        return error;
-                    }
-                    int write_fd = port_pipe.GetWriteFileDescriptor();
-                    debugserver_args.AppendArgument("--pipe");
-                    debugserver_args.AppendArgument(std::to_string(write_fd).c_str());
-                    launch_info.AppendCloseFileAction(port_pipe.GetReadFileDescriptor());
-                }
+                debugserver_args.AppendArgument("--named-pipe");
+                debugserver_args.AppendArgument(named_pipe_path.c_str());
             }
             else
             {
-                listen = true;
+                if (log)
+                    log->Printf("GDBRemoteCommunication::%s() "
+                            "named pipe creation failed: %s",
+                            __FUNCTION__, error.AsCString());
+                // let's try an unnamed pipe
+                error = port_pipe.CreateNew(true);
+                if (error.Fail())
+                {
+                    if (log)
+                        log->Printf("GDBRemoteCommunication::%s() "
+                                "unnamed pipe creation failed: %s",
+                                __FUNCTION__, error.AsCString());
+                    return error;
+                }
+                int write_fd = port_pipe.GetWriteFileDescriptor();
+                debugserver_args.AppendArgument("--pipe");
+                debugserver_args.AppendArgument(std::to_string(write_fd).c_str());
+                launch_info.AppendCloseFileAction(port_pipe.GetReadFileDescriptor());
             }
         }
         else
@@ -822,7 +816,11 @@ GDBRemoteCommunication::StartDebugserverProcess (const char *hostname,
             // connect to us..
             error = StartListenThread ("127.0.0.1", 0);
             if (error.Fail())
+            {
+                if (log)
+                    log->Printf ("GDBRemoteCommunication::%s() unable to start listen thread: %s", __FUNCTION__, error.AsCString());
                 return error;
+            }
 
             ConnectionFileDescriptor *connection = (ConnectionFileDescriptor *)GetConnection ();
             // Wait for 10 seconds to resolve the bound port
@@ -839,6 +837,8 @@ GDBRemoteCommunication::StartDebugserverProcess (const char *hostname,
             else
             {
                 error.SetErrorString ("failed to bind to port 0 on 127.0.0.1");
+                if (log)
+                    log->Printf ("GDBRemoteCommunication::%s() failed: %s", __FUNCTION__, error.AsCString());
                 return error;
             }
         }
@@ -850,12 +850,21 @@ GDBRemoteCommunication::StartDebugserverProcess (const char *hostname,
             debugserver_args.AppendArgument(arg_cstr);
         }
         
+#if defined(__APPLE__)
         const char *env_debugserver_log_flags = getenv("LLDB_DEBUGSERVER_LOG_FLAGS");
         if (env_debugserver_log_flags)
         {
             ::snprintf (arg_cstr, sizeof(arg_cstr), "--log-flags=%s", env_debugserver_log_flags);
             debugserver_args.AppendArgument(arg_cstr);
         }
+#else
+        const char *env_debugserver_log_channels = getenv("LLDB_SERVER_LOG_CHANNELS");
+        if (env_debugserver_log_channels)
+        {
+            ::snprintf (arg_cstr, sizeof(arg_cstr), "--log-channels=%s", env_debugserver_log_channels);
+            debugserver_args.AppendArgument(arg_cstr);
+        }
+#endif
 
         // Add additional args, starting with LLDB_DEBUGSERVER_EXTRA_ARG_1 until an env var doesn't come back.
         uint32_t env_var_index = 1;
@@ -948,6 +957,13 @@ GDBRemoteCommunication::StartDebugserverProcess (const char *hostname,
     {
         error.SetErrorStringWithFormat ("unable to locate " DEBUGSERVER_BASENAME );
     }
+
+    if (error.Fail())
+    {
+        if (log)
+            log->Printf ("GDBRemoteCommunication::%s() failed: %s", __FUNCTION__, error.AsCString());
+    }
+
     return error;
 }
 
