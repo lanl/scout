@@ -777,6 +777,14 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       else if(lt->isDoubleTy()){
         fieldType = R.ElementDoubleVal;
       }
+      else if(lt->isPointerTy()){
+        if(lt->getPointerElementType()->isIntegerTy(8)){
+          fieldType = R.ElementStringVal;
+        }
+        else{
+          assert(false && "invalid field type");
+        }
+      }
       else{
         assert(false && "invalid field type");
       }

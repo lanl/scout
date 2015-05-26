@@ -2476,6 +2476,14 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
     else if(lt->isDoubleTy()){
       Builder.CreateCall(R.FrameCaptureDoubleFunc(), args);
     }
+    else if(lt->isPointerTy()){
+      if(lt->getPointerElementType()->isIntegerTy(8)){
+        Builder.CreateCall(R.FrameCaptureStringFunc(), args);
+      }
+      else{
+        assert(false && "invalid field type");
+      }
+    }
     else{
       assert(false && "invalid field type");
     }
@@ -3028,15 +3036,26 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         xy = EmitPlotExpr(S, plotPtr, o->get("position"), FLAG_VAR_POSITION);
       }
       
-      if(k == "lines"){
+      if(k == "lines" || k == "points"){
         Value* sv = EmitPlotExpr(S, plotPtr, o->get("size"));
-        args = {plotPtr, xy, sv, cv};
-        Builder.CreateCall(R.PlotAddLinesFunc(), args);
-      }
-      else if(k == "points"){
-        Value* sv = EmitPlotExpr(S, plotPtr, o->get("size"));
-        args = {plotPtr, xy, sv, cv};
-        Builder.CreateCall(R.PlotAddPointsFunc(), args);
+        
+        Value* l;
+        
+        if(o->has("label")){
+          l = EmitPlotExpr(S, plotPtr, o->get("label"));
+        }
+        else{
+          l = ConstantInt::get(R.Int32Ty, 0);
+        }
+        
+        args = {plotPtr, xy, sv, cv, l};
+        
+        if(k == "lines"){
+          Builder.CreateCall(R.PlotAddLinesFunc(), args);
+        }
+        else{
+          Builder.CreateCall(R.PlotAddPointsFunc(), args);
+        }
       }
       else if(k == "area"){
         args = {plotPtr, xy, cv};
