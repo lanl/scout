@@ -63,6 +63,7 @@
 #include <functional>
 #include <random>
 #include <mutex>
+#include <limits>
 
 #include <QtGui>
 
@@ -125,6 +126,8 @@ namespace{
   const uint64_t AGG_SUM = 6716694111845535935ULL;
   const uint64_t AGG_MEAN = 8849440314945535285ULL;
   const uint64_t AGG_VARIANCE = 14523147045845051570ULL;
+
+  VarId nullVarId = numeric_limits<VarId>::max();
 
   class Random{
   public:
@@ -780,6 +783,10 @@ namespace{
       v_.clear();
     }
 
+    const string& getString(size_t i) const{
+      return v_[i];
+    }
+
   private:
     using StringVec = vector<string>;
     
@@ -1339,6 +1346,10 @@ namespace{
 
     PositionVar* getPos(VarId varId){
       return static_cast<PositionVar*>(getVar(varId));
+    }
+
+    StringVar* getStringVar(VarId varId){
+      return static_cast<StringVar*>(getVar(varId));
     }
 
     template<class T>
@@ -2116,6 +2127,20 @@ namespace{
               painter.drawLine(points[i - 1], points[i]);
             }
           }
+
+          if(l->label != nullVarId){
+            QFont prevFont = painter.font();
+            QFont font = prevFont;
+            font.setPointSize(tickLabelSize_);
+            painter.setFont(font);
+
+            StringVar* label = getStringVar(l->label);
+            for(size_t i = 0; i < size; ++i){
+              drawText(painter, label->getString(i).c_str(), points[i]);
+            }
+            
+            painter.setFont(prevFont);
+          }
         }
         else if(Line* l = dynamic_cast<Line*>(e)){
           PositionVar* p1 = getPos(l->pos1);
@@ -2229,6 +2254,20 @@ namespace{
               painter.setPen(pen);
               painter.drawPoint(points[i]);
             }
+          }
+
+          if(p->label != nullVarId){
+            QFont prevFont = painter.font();
+            QFont font = prevFont;
+            font.setPointSize(tickLabelSize_);
+            painter.setFont(font);
+
+            StringVar* l = getStringVar(p->label);
+            for(size_t i = 0; i < size; ++i){
+              drawText(painter, l->getString(i).c_str(), points[i]);
+            }
+
+            painter.setFont(prevFont);
           }
         }
         else if(Interval* i = dynamic_cast<Interval*>(e)){
