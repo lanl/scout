@@ -63,6 +63,7 @@
 #include <functional>
 #include <random>
 #include <mutex>
+#include <limits>
 
 #include <QtGui>
 
@@ -103,6 +104,7 @@ namespace{
   const int ELEMENT_INT64 = 1;
   const int ELEMENT_FLOAT = 2;
   const int ELEMENT_DOUBLE = 3;
+  const int ELEMENT_STRING = 4;
 
   const double MARGIN = 50.0;
   const double AXIS_LABEL_SIZE = 24.0;
@@ -124,6 +126,8 @@ namespace{
   const uint64_t AGG_SUM = 6716694111845535935ULL;
   const uint64_t AGG_MEAN = 8849440314945535285ULL;
   const uint64_t AGG_VARIANCE = 14523147045845051570ULL;
+
+  VarId nullVarId = numeric_limits<VarId>::max();
 
   class Random{
   public:
@@ -749,6 +753,47 @@ namespace{
     Vec<T, N> v_;
   };
 
+  class StringVar : public VarBase{
+  public:
+    StringVar()
+      : i_(RESERVE){}
+
+    void capture(const char* s){
+      if(i_ == RESERVE){
+        size_t n = v_.size();
+        v_.reserve(n + RESERVE);
+        i_ = 0;
+      }
+      else{
+        ++i_;
+      }
+      
+      v_.emplace_back(s);
+    }
+
+    size_t hash(size_t i) const{
+      return std::hash<string>()(v_[i]);
+    }
+
+    size_t size() const{
+      return v_.size();
+    }
+
+    void clear(){
+      v_.clear();
+    }
+
+    const string& getString(size_t i) const{
+      return v_[i];
+    }
+
+  private:
+    using StringVec = vector<string>;
+    
+    StringVec v_;
+    size_t i_;
+  };
+
   class Frame{
   public:
     Frame(uint32_t width, uint32_t height, uint32_t depth)
@@ -815,6 +860,9 @@ namespace{
       case ELEMENT_DOUBLE:
         v = new Var<double>();
         break;
+      case ELEMENT_STRING:
+        v = new StringVar();
+        break;
       default:
         assert(false && "invalid element kind");
       }
@@ -854,6 +902,12 @@ namespace{
       assert(varId < vars_.size());
       
       static_cast<Var<T>*>(vars_[varId])->capture(value);
+    }
+
+    void capture(VarId varId, const char* value){
+      assert(varId < vars_.size());
+      
+      static_cast<StringVar*>(vars_[varId])->capture(value);
     }
 
     void compute(Plot* plot, Frame* parentFrame){ 
@@ -977,12 +1031,13 @@ namespace{
 
     class Lines : public RangeElement{
     public:
-      Lines(VarId pos, VarId size, VarId color)
-        : pos(pos), size(size), color(color){}
+      Lines(VarId pos, VarId size, VarId color, VarId label)
+        : pos(pos), size(size), color(color), label(label){}
 
       VarId pos;
       VarId size;
       VarId color;
+      VarId label;
 
       int order(){
         return 1;
@@ -1010,12 +1065,13 @@ namespace{
 
     class Points : public RangeElement{
     public:
-      Points(VarId pos, VarId size, VarId color)
-        : pos(pos), size(size), color(color){}
+      Points(VarId pos, VarId size, VarId color, VarId label)
+        : pos(pos), size(size), color(color), label(label){}
 
       VarId pos;
       VarId size;
       VarId color;
+      VarId label;
 
       int order(){
         return 2;
@@ -1292,6 +1348,10 @@ namespace{
       return static_cast<PositionVar*>(getVar(varId));
     }
 
+    StringVar* getStringVar(VarId varId){
+      return static_cast<StringVar*>(getVar(varId));
+    }
+
     template<class T>
     void addVar(VarId varId){
       if(!plotFrame_){
@@ -1451,8 +1511,8 @@ namespace{
       plotFrame_->capture(varId - PLOT_VAR_BEGIN, value);
     }
 
-    void addLines(VarId pos, VarId size, VarId color){
-      elements_.push_back(new Lines(pos, size, color)); 
+    void addLines(VarId pos, VarId size, VarId color, VarId label){
+      elements_.push_back(new Lines(pos, size, color, label)); 
     }
 
     void addLine(VarId pos1,
@@ -1462,8 +1522,8 @@ namespace{
       elements_.push_back(new Line(pos1, pos2, size, color)); 
     }
 
-    void addPoints(VarId pos, VarId size, VarId color){
-      elements_.push_back(new Points(pos, size, color)); 
+    void addPoints(VarId pos, VarId size, VarId color, VarId label){
+      elements_.push_back(new Points(pos, size, color, label)); 
     }
 
     void addArea(VarId pos, VarId color){
@@ -2067,6 +2127,20 @@ namespace{
               painter.drawLine(points[i - 1], points[i]);
             }
           }
+
+          if(l->label != nullVarId){
+            QFont prevFont = painter.font();
+            QFont font = prevFont;
+            font.setPointSize(tickLabelSize_);
+            painter.setFont(font);
+
+            StringVar* label = getStringVar(l->label);
+            for(size_t i = 0; i < size; ++i){
+              drawText(painter, label->getString(i).c_str(), points[i]);
+            }
+            
+            painter.setFont(prevFont);
+          }
         }
         else if(Line* l = dynamic_cast<Line*>(e)){
           PositionVar* p1 = getPos(l->pos1);
@@ -2180,6 +2254,20 @@ namespace{
               painter.setPen(pen);
               painter.drawPoint(points[i]);
             }
+          }
+
+          if(p->label != nullVarId){
+            QFont prevFont = painter.font();
+            QFont font = prevFont;
+            font.setPointSize(tickLabelSize_);
+            painter.setFont(font);
+
+            StringVar* l = getStringVar(p->label);
+            for(size_t i = 0; i < size; ++i){
+              drawText(painter, l->getString(i).c_str(), points[i]);
+            }
+
+            painter.setFont(prevFont);
           }
         }
         else if(Interval* i = dynamic_cast<Interval*>(e)){
@@ -2343,6 +2431,10 @@ extern "C"{
     static_cast<Frame*>(f)->capture(varId, value);
   }
 
+  void __scrt_frame_capture_string(void* f, VarId varId, const char* value){
+    static_cast<Frame*>(f)->capture(varId, value);
+  }
+
   void* __scrt_plot_get(uint64_t plotId){
     _mutex.lock();
     
@@ -2474,8 +2566,9 @@ extern "C"{
   void __scrt_plot_add_lines(void* plot,
                              VarId pos,
                              VarId size,
-                             VarId color){
-    static_cast<Plot*>(plot)->addLines(pos, size, color);
+                             VarId color,
+                             VarId label){
+    static_cast<Plot*>(plot)->addLines(pos, size, color, label);
   }
 
   void __scrt_plot_set_antialiased(void* plot, bool flag){
@@ -2501,8 +2594,9 @@ extern "C"{
   void __scrt_plot_add_points(void* plot,
                               VarId pos,
                               VarId size,
-                              VarId color){
-    static_cast<Plot*>(plot)->addPoints(pos, size, color);
+                              VarId color,
+                              VarId label){
+    static_cast<Plot*>(plot)->addPoints(pos, size, color, label);
   }
 
   void __scrt_plot_add_area(void* plot,

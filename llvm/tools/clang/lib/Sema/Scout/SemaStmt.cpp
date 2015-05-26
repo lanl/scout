@@ -630,6 +630,15 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         else{
           lv->put("size", CreateSpecDoubleExpr(1.0));
         }
+        
+        SpecExpr* label = lv->get("label");
+        if(label){
+          if(!ValidateSpecExpr(label, Context.getPointerType(Context.CharTy))){
+            Diag(label->getLocStart(), diag::err_invalid_plot_spec) <<
+            "invalid 'label' key, expected a string";
+            valid = false;
+          }
+        }
       }
       
       SpecExpr* c = lv->get("color");

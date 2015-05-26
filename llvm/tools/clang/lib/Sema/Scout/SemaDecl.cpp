@@ -411,6 +411,8 @@ void Sema::InitFrameDefinitions(Scope* S, FrameDecl* FD){
   AddFrameVarType(S, FD, "Int32", Context.IntTy);
   AddFrameVarType(S, FD, "Int64", Context.LongTy);
 
+  AddFrameVarType(S, FD, "String", Context.getPointerType(Context.CharTy));
+  
   AddFrameFunction(S, FD, "sum", Context.IntTy, {Context.IntTy});
   AddFrameFunction(S, FD, "sum", Context.LongTy, {Context.LongTy});
   AddFrameFunction(S, FD, "sum", Context.FloatTy, {Context.FloatTy});

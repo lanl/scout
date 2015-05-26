@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <math.h>
+#include <stdio.h>
 
 double urand(double a, double b){
   return a + (b - a) * drand48();

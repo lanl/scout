@@ -95,6 +95,7 @@ CGPlot2Runtime::CGPlot2Runtime(CodeGenModule& CGM) : CGM(CGM){
   ElementInt64Val = ConstantInt::get(C, APInt(32, 1));
   ElementFloatVal = ConstantInt::get(C, APInt(32, 2));
   ElementDoubleVal = ConstantInt::get(C, APInt(32, 3));
+  ElementStringVal = ConstantInt::get(C, APInt(32, 4));
 }
 
 CGPlot2Runtime::~CGPlot2Runtime(){}
@@ -170,6 +171,10 @@ llvm::Function* CGPlot2Runtime::FrameCaptureDoubleFunc(){
   return GetFunc("__scrt_frame_capture_double", {VoidPtrTy, Int32Ty, DoubleTy});
 }
 
+llvm::Function* CGPlot2Runtime::FrameCaptureStringFunc(){
+  return GetFunc("__scrt_frame_capture_string", {VoidPtrTy, Int32Ty, StringTy});
+}
+
 llvm::Function* CGPlot2Runtime::PlotGetFunc(){
   return GetFunc("__scrt_plot_get", {Int64Ty}, VoidPtrTy);
 }
@@ -200,12 +205,12 @@ llvm::Function* CGPlot2Runtime::PlotGetDoubleFunc(){
 
 llvm::Function* CGPlot2Runtime::PlotAddLinesFunc(){
   return GetFunc("__scrt_plot_add_lines",
-                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
+                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddPointsFunc(){
   return GetFunc("__scrt_plot_add_points",
-                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
+                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty, Int32Ty});
 }
 
 llvm::Function* CGPlot2Runtime::PlotAddLineFunc(){
