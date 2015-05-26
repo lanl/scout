@@ -227,6 +227,8 @@ class CGDebugInfo {
   llvm::DIType *CreateType(const QueryType *Ty);
   
   llvm::DIType *CreateType(const FrameType *Ty);
+  llvm::DIType *CreateTypeDefinition(const FrameType *Ty);
+  llvm::DIScoutCompositeType *CreateLimitedType(const FrameType *Ty);
   
   llvm::DIType *CreateType(const FrameVarType *Ty);
   // +========================================================================+
@@ -376,6 +378,7 @@ public:
 
   // +===== Scout ============================================================+
   void completeType(const MeshDecl *MD);
+  void completeType(const FrameDecl *FD);
   void completeRequiredType(const UniformMeshDecl *MD);
   void completeRequiredType(const ALEMeshDecl *MD);
   void completeRequiredType(const RectilinearMeshDecl *MD);

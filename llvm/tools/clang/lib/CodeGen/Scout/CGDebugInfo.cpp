@@ -162,14 +162,12 @@ void CGDebugInfo::completeType(const MeshDecl *MD) {
   }
 }
 
-/*
 void CGDebugInfo::completeType(const FrameDecl *FD) {
   if (DebugKind > CodeGenOptions::LimitedDebugInfo ||
       !CGM.getLangOpts().CPlusPlus) {
-    completeRequiredType(FD);
+      completeRequiredType(FD);
   }
 }
- */
 
 void CGDebugInfo::completeRequiredType(const UniformMeshDecl *MD) {
   if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
@@ -301,8 +299,18 @@ void CGDebugInfo::completeClassData(const UnstructuredMeshDecl *MD) {
   TypeCache[TyPtr].reset(Res);
 }
 
-void CGDebugInfo::completeClassData(const FrameDecl *MD) {
-  assert(false && "unimplemented");
+void CGDebugInfo::completeClassData(const FrameDecl *FD) {
+  if (DebugKind <= CodeGenOptions::DebugLineTablesOnly)
+    return;
+  QualType Ty = CGM.getContext().getFrameType(FD);
+  void* TyPtr = Ty.getAsOpaquePtr();
+  auto I = TypeCache.find(TyPtr);
+  if (I != TypeCache.end() &&
+      !cast<llvm::DIType>(I->second)->isForwardDecl())
+    return;
+  llvm::DIType *Res = CreateTypeDefinition(Ty->castAs<FrameType>());
+  assert(!Res->isForwardDecl());
+  TypeCache[TyPtr].reset(Res);
 }
 
 //===----------------------------------------------------------------------===//
@@ -647,10 +655,13 @@ CGDebugInfo::getOrCreateMeshFwdDecl(const UnstructuredMeshType *Ty,
   assert(false && "unimplemented");
 }
 
+//===----------------------------------------------------------------------===//
+// Frame support routines
+//===----------------------------------------------------------------------===//
 
-
-
-
+llvm::DIType *CGDebugInfo::CreateTypeDefinition(const FrameType *Ty) {
+  assert(false && "unimplemented");
+}
 
 //===----------------------------------------------------------------------===//
 // Mesh & field support routines
