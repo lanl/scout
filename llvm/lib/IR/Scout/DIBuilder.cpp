@@ -214,6 +214,29 @@ DIScoutCompositeType *DIBuilder::createUnstructuredMeshType(DIScope *Scope,
   assert(false && "unimplemented");
 }
 
+DIScoutCompositeType *DIBuilder::createFrameType(DIScope *Context,
+                                                 StringRef Name, DIFile *File,
+                                                 unsigned LineNumber,
+                                                 uint64_t SizeInBits,
+                                                 uint64_t AlignInBits,
+                                                 unsigned Flags, DIType *DerivedFrom,
+                                                 DINodeArray Elements,
+                                                 unsigned RunTimeLang,
+                                                 DIType* VTableHolder,
+                                                 StringRef UniqueIdentifier
+                                                 ) {
+  auto *R = DIScoutCompositeType::get(
+                                      VMContext, dwarf::DW_TAG_SCOUT_frame_type, Name, File, LineNumber,
+                                      DIScopeRef::get(getNonCompileUnitScope(Context)), DITypeRef::get(DerivedFrom),
+                                      SizeInBits, AlignInBits, 0, Flags, Elements, RunTimeLang,
+                                      DITypeRef::get(VTableHolder), nullptr, UniqueIdentifier, 0, 0, 0);
+  if (!UniqueIdentifier.empty())
+    retainType(R);
+  trackIfUnresolved(R);
+  return R;
+}
+
+
 DIScoutDerivedType
 *DIBuilder::createMeshMemberType(DIScope *Scope, StringRef Name,
                                  DIFile *File, unsigned LineNumber,

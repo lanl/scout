@@ -6080,6 +6080,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
             case DW_TAG_SCOUT_structured_mesh_type:
             case DW_TAG_SCOUT_rectilinear_mesh_type:
             case DW_TAG_SCOUT_unstructured_mesh_type:
+            case DW_TAG_SCOUT_frame_type:
             // +=========================
             case DW_TAG_structure_type:
             case DW_TAG_union_type:
@@ -6196,7 +6197,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                     int tag_decl_kind = -1;
 
                     // +===== Scout ======================
-                    bool isScoutMesh = false;
+                    bool isScoutType = false;
                     // +==================================
 
                     AccessType default_accessibility = eAccessNone;
@@ -6220,8 +6221,9 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                              tag == DW_TAG_SCOUT_ALE_mesh_type ||
                              tag == DW_TAG_SCOUT_structured_mesh_type ||
                              tag == DW_TAG_SCOUT_rectilinear_mesh_type ||
-                             tag == DW_TAG_SCOUT_unstructured_mesh_type){
-                      isScoutMesh = true;
+                             tag == DW_TAG_SCOUT_unstructured_mesh_type ||
+                             tag == DW_TAG_SCOUT_frame_type){
+                      isScoutType = true;
                       default_accessibility = eAccessPublic;
                     }
                     // +==================================
@@ -6338,7 +6340,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                             return type_sp;
                         }
                     }
-                    assert (/* +===== Scout ======= */ isScoutMesh || /* +============ */ tag_decl_kind != -1);
+                    assert (/* +===== Scout ======= */ isScoutType || /* +============ */ tag_decl_kind != -1);
                     bool clang_type_was_created = false;
                     clang_type.SetClangType(ast.getASTContext(), m_forward_decl_die_to_clang_type.lookup (die));
                     if (!clang_type)
@@ -6385,7 +6387,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                         if (!clang_type_was_created)
                         {
                             // +===== Scout =================
-                            if(isScoutMesh){
+                            if(isScoutType){
 
                               const uint32_t dimX =
                                   die->GetAttributeValueAsUnsigned(this, dwarf_cu, DW_AT_SCOUT_mesh_dim_x, 0);
@@ -6451,8 +6453,15 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                                                                              class_language,
                                                                              &metadata);
                                 break;
+                                case DW_TAG_SCOUT_frame_type:
+                                  clang_type = ast.CreateFrameType (decl_ctx,
+                                                                    accessibility,
+                                                                    type_name_cstr,
+                                                                    class_language,
+                                                                    &metadata);
+                                  break;
                               default:
-                                assert(false && "Invalid mesh type");
+                                assert(false && "Invalid Scout type");
                               }
 
                               clang_type_was_created = true;
@@ -6539,7 +6548,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                         {
                             // No children for this struct/union/class, lets finish it
                             // +===== Scout ==========================
-                            if(isScoutMesh){
+                            if(isScoutType){
                               clang_type.StartMeshDeclarationDefinition ();
                               clang_type.CompleteMeshDeclarationDefinition ();
                             }
@@ -6570,7 +6579,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                             if (class_language != eLanguageTypeObjC &&
                                 class_language != eLanguageTypeObjC_plus_plus){
                               // +===== Scout =========================
-                              if(isScoutMesh)
+                              if(isScoutType)
                                 clang_type.StartMeshDeclarationDefinition ();
                               else
                                 clang_type.StartTagDeclarationDefinition ();

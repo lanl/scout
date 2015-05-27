@@ -124,6 +124,7 @@ HANDLE_DW_TAG(0x9001, SCOUT_ALE_mesh_type)
 HANDLE_DW_TAG(0x9002, SCOUT_structured_mesh_type)
 HANDLE_DW_TAG(0x9003, SCOUT_rectilinear_mesh_type)
 HANDLE_DW_TAG(0x9004, SCOUT_unstructured_mesh_type)
+HANDLE_DW_TAG(0x9005, SCOUT_frame_type)
 // +=================================
 
 HANDLE_DW_OP(0x03, addr)
