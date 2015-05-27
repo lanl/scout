@@ -2906,8 +2906,19 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   }
   
   const VarDecl* target = S.getRenderTargetVar();
-  Value* targetPtr = LocalDeclMap.lookup(target);
+  
+  Value* targetPtr;
+  
+  if ((target->hasLinkage() || target->isStaticDataMember())
+      && target->getTLSKind() != VarDecl::TLS_Dynamic) {
+    targetPtr = CGM.GetAddrOfGlobalVar(target);
+  }
+  else{
+    targetPtr = LocalDeclMap.lookup(target);
+  }
+  
   assert(targetPtr);
+  
   targetPtr = Builder.CreateBitCast(Builder.CreateLoad(targetPtr),
                                     R.VoidPtrTy, "target.ptr");
   
