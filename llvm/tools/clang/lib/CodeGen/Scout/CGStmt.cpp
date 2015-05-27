@@ -2628,6 +2628,10 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
   
   Builder.SetInsertPoint(prevBlock, prevPoint);
   
+  Value* funcAlloc = Builder.CreateAlloca(func->getType());
+  Builder.CreateStore(func, funcAlloc);
+  Value* funcPtr = Builder.CreateBitCast(Builder.CreateLoad(funcAlloc), R.VoidPtrTy, "func.ptr");
+  
   Value* vid =
   ConstantInt::get(R.Int32Ty, useVarId == 0 ? S.nextVarId() : useVarId);
   
@@ -2640,13 +2644,13 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
   
   if(isVec){
     args =
-    {PlotPtr, vid, func,
+    {PlotPtr, vid, funcPtr,
       ConstantInt::get(R.Int32Ty, rt->getVectorNumElements()),
       ConstantInt::get(R.Int32Ty, allFlags)};
   }
   else{
     args =
-    {PlotPtr, vid, func, ConstantInt::get(R.Int32Ty, allFlags)};
+    {PlotPtr, vid, funcPtr, ConstantInt::get(R.Int32Ty, allFlags)};
   }
   
   if(rt->isIntegerTy(32)){
