@@ -371,7 +371,7 @@ private:
   
   // +===== Scout ==========================
   /// constructMeshMemberDIE - Construct member DIE from DIDerivedType.
-  void constructMeshMemberDIE(DIE &Buffer, const DIScoutDerivedType* DT);
+  void constructScoutMemberDIE(DIE &Buffer, const DIScoutDerivedType* DT);
   // +======================================
   
   void constructTypeDIE(DIE &Buffer, const DIBasicType *BTy);

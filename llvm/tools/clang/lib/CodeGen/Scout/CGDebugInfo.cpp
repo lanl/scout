@@ -675,7 +675,44 @@ CGDebugInfo::getOrCreateMeshFwdDecl(const UnstructuredMeshType *Ty,
 //===----------------------------------------------------------------------===//
 
 llvm::DIType *CGDebugInfo::CreateTypeDefinition(const FrameType *Ty) {
-  assert(false && "unimplemented");
+  FrameDecl *FD = Ty->getDecl();
+  
+  // Get overall information about the mesh type for the debug info.
+  llvm::DIFile *DefUnit = getOrCreateFile(FD->getLocation());
+  
+  // Meshes can be recursive.  To handle them, we first generate a
+  // debug descriptor for the mesh as a forward declaration.  Then
+  // (if it is a definition) we go through and get debug information
+  // for all of its members.  Finally, we create a descriptor for the
+  // complete type (which may refer to forward decl if it is recursive)
+  // and replace all uses of the forward declaration with the final
+  // definition.
+  
+  auto *FwdDecl =
+  cast<llvm::DIScoutCompositeType>(getOrCreateLimitedType(Ty, DefUnit));
+  
+  const FrameDecl *D = FD->getDefinition();
+  if (!D || !D->isCompleteDefinition())
+    return FwdDecl;
+  
+  // Push the mesh on region stack.
+  LexicalBlockStack.emplace_back(&*FwdDecl);
+  RegionMap[Ty->getDecl()].reset(FwdDecl);
+  
+  // Convert all the elements.
+  SmallVector<llvm::Metadata *, 16> EltTys;
+  // what about nested types?
+  
+  CollectFrameFields(FD, DefUnit, EltTys, FwdDecl);
+  
+  LexicalBlockStack.pop_back();
+  RegionMap.erase(Ty->getDecl());
+  
+  llvm::DINodeArray Elements = DBuilder.getOrCreateArray(EltTys);
+  DBuilder.replaceArrays(FwdDecl, Elements);
+  
+  RegionMap[Ty->getDecl()].reset(FwdDecl);
+  return FwdDecl;
 }
 
 //===----------------------------------------------------------------------===//
@@ -872,7 +909,7 @@ CGDebugInfo::getOrCreateFrameFwdDecl(const FrameType *Ty,
   SmallString<256> FullName = getUniqueFrameTypeName(Ty, CGM, TheCU);
   llvm::DIScoutCompositeType *RetTy =
   DBuilder.createReplaceableScoutCompositeType(
-                                               llvm::dwarf::DW_TAG_SCOUT_uniform_mesh_type, MDName, Ctx,
+                                               llvm::dwarf::DW_TAG_SCOUT_frame_type, MDName, Ctx,
                                                DefUnit, Line, 0, Size, Align, llvm::DINode::FlagFwdDecl, FullName);
   return RetTy;
 }
@@ -934,7 +971,7 @@ CGDebugInfo::CreateLimitedType(const FrameType *Ty) {
   // If we ended up creating the type during the context chain construction,
   // just return that.
   auto *T = cast_or_null<llvm::DIScoutCompositeType>(
-                                                     getTypeOrNull(CGM.getContext().getFrameType(FD)));
+                          getTypeOrNull(CGM.getContext().getFrameType(FD)));
   if (T && (!T->isForwardDecl() || !FD->getDefinition()))
     return T;
   
@@ -960,6 +997,45 @@ CGDebugInfo::CreateLimitedType(const FrameType *Ty) {
   return RealDecl;
 }
 
+void CGDebugInfo::
+CollectFrameFields(const FrameDecl *frame, llvm::DIFile *tunit,
+                   SmallVectorImpl<llvm::Metadata *> &elements,
+                   llvm::DIScoutCompositeType *FrameTy) {
+  
+  // Field number for non-static fields.
+  unsigned fieldNo = 0;
+  
+  // Static and non-static members should appear in the same order as
+  // the corresponding declarations in the source program.
+  for (FrameDecl::decl_iterator I = frame->decls_begin(),
+       E = frame->decls_end(); I != E; ++I) {
+    if (const VarDecl *V = dyn_cast<VarDecl>(*I)){
+      llvm::DIType *GV =
+      createFrameFieldType(V->getName(), V->getType(), V->getLocation(), tunit, FrameTy);
+      
+      elements.push_back(GV);
+    }
+    ++fieldNo;
+  }
+}
+
+llvm::DIType
+*CGDebugInfo::createFrameFieldType(StringRef name,
+                                   QualType type,
+                                   SourceLocation loc,
+                                   llvm::DIFile *tunit,
+                                   llvm::DIScope *scope) {
+  
+  llvm::DIType *debugType = getOrCreateType(type, tunit);
+  
+  // Get the location for the field.
+  llvm::DIFile *file = getOrCreateFile(loc);
+  unsigned line = getLineNumber(loc);
+  
+  return
+  DBuilder.createFrameMemberType(scope, name, file, line, debugType);
+}
+
 //===----------------------------------------------------------------------===//
 // FrameVar debug support
 //===----------------------------------------------------------------------===//
@@ -967,59 +1043,3 @@ CGDebugInfo::CreateLimitedType(const FrameType *Ty) {
 llvm::DIType *CGDebugInfo::CreateType(const FrameVarType *Ty) {
   assert(false && "unimplemented");
 }
-
-
-/*
-// ----- CreateType
-//
-
-// ----- CreateTypeDefinition
-//
-llvm::DIType *CGDebugInfo::CreateTypeDefinition(const FrameType *Ty) {
-  FrameDecl *FD = Ty->getDecl();
-  
-  // Get overall information about the mesh type for the debug info.
-  llvm::DIFile DefUnit = getOrCreateFile(FD->getLocation());
-  
-  // Meshes can be recursive.  To handle them, we first generate a
-  // debug descriptor for the mesh as a forward declaration.  Then
-  // (if it is a definition) we go through and get debug information
-  // for all of its members.  Finally, we create a descriptor for the
-  // complete type (which may refer to forward decl if it is recursive)
-  // and replace all uses of the forward declaration with the final
-  // definition.
-  
-  llvm::DICompositeType FwdDecl(getOrCreateLimitedType(Ty, DefUnit));
-  assert(FwdDecl.isCompositeType() &&
-         "The debug type of UniformMeshType should be a llvm::DICompositeType");
-  
-  if (FwdDecl.isForwardDecl())
-    return FwdDecl;
-  
-  // Push the mesh on region stack.
-  LexicalBlockStack.emplace_back(&*FwdDecl);
-  RegionMap[Ty->getDecl()].reset(FwdDecl);
-
-  return FwdDecl;
-}
-
-// TODO: Currently used for context chains when limiting debug info.
-llvm::DICompositeType
-CGDebugInfo::CreateLimitedType(const FrameType *Ty) {
-  assert(false && "unimplemented");
-}
-
-// Creates a forward declaration for a uniform mesh the given context.
-llvm::DICompositeType
-CGDebugInfo::getOrCreateFrameFwdDecl(const FrameType *Ty,
-                                    llvm::DIDescriptor Ctx) {
-  assert(false && "unimplemented");
-}
-
-/// getOrCreateLimitedType - Get the type from the cache or create a new
-/// limited type if necessary.
-llvm::DIType *CGDebugInfo::getOrCreateLimitedType(const FrameType *Ty,
-                                                 llvm::DIFile Unit) {
-  assert(false && "unimplemented");
-}
-*/

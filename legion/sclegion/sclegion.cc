@@ -566,7 +566,8 @@ public:
 
     size_t numSubregions = mesh_->getNumSubregions();
     header->numColors = numSubregions;
-    //size_t maxShift = 0;
+
+    size_t fields_used = 0;
 
     for (size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i) {
       sclegion_element_kind_t elemKind = sclegion_element_kind_t(i);
@@ -590,20 +591,23 @@ public:
 
         if (isro || isrw) {
           info->count = element.count;
+          fields_used++;
         } else {
           info->count = 0;
         }
 
         info->fieldId = fi;
 
-        printf("addFieldInfo r=%zu fk=%d c=%zu id=%zu\n",
+        printf("addFieldInfo r=%zu fk=%d c=%zu id=%zu fi=%zu i=%zu\n",
                     info->region, info->fieldKind,
-                    info->count, info->fieldId);
+                    info->count, info->fieldId,fi,i);
 
        args += sizeof(MeshFieldInfo);
 
       }
     }
+
+    assert (fields_used != 0 && "no fields used in forall!");
 
     ArgumentMap argMap;
 

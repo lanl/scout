@@ -245,8 +245,6 @@ ExprResult Parser::ParseSpecObjectExpression(){
   cast<SpecObjectExpr>(Actions.ActOnSpecObjectExpr(Tok.getLocation()).get());
   
   bool first = true;
-
-  bool isValid = true;
   
   for(;;){
     if(Tok.is(tok::r_brace)){
@@ -298,29 +296,28 @@ ExprResult Parser::ParseSpecObjectExpression(){
     ExprResult valueResult = ParseSpecExpression();
     
     if(valueResult.isInvalid()){
-      isValid = false;
       T.skipToEnd();
+      return ExprError();
     }
-    else{
-      SpecExpr* value = cast<SpecExpr>(valueResult.get());
-      obj->insert(key, keyLoc, value);
-      
-      if(key == "var"){
-        if(SpecObjectExpr* o = value->toObject()){
-          auto m = o->memberMap();
+  
+    SpecExpr* value = cast<SpecExpr>(valueResult.get());
+    obj->insert(key, keyLoc, value);
+    
+    if(key == "var"){
+      if(SpecObjectExpr* o = value->toObject()){
+        auto m = o->memberMap();
+        
+        for(auto& itr : m){
+          VarDecl* v =
+          Actions.ActOnSpecVarDef(itr.first, itr.second.second->toExpr());
           
-          for(auto& itr : m){
-            VarDecl* v =
-            Actions.ActOnSpecVarDef(itr.first, itr.second.second->toExpr());
-            
-            SpecVars.push_back(v);
-          }
+          SpecVars.push_back(v);
         }
       }
     }
   }
   
-  return isValid ? obj : ExprError();
+  return obj;
 }
 
 ExprResult Parser::ParseSpecValueExpression(){
@@ -350,6 +347,7 @@ ExprResult Parser::ParseSpecArrayExpression(){
     if(valueResult.isInvalid()){
       isValid = false;
       T.skipToEnd();
+      return ExprError();
     }
     else{
       SpecExpr* value = cast<SpecExpr>(valueResult.get());

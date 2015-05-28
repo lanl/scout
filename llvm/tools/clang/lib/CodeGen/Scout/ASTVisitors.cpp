@@ -75,6 +75,7 @@ void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
     nodeType_ = NodeLHS;
     break;
   default:
+    nodeType_ = NodeRHS;
     break;
   }
 

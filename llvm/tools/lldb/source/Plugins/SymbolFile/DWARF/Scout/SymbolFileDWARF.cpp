@@ -200,7 +200,7 @@ SymbolFileDWARF::ParseMeshChildMembers
                     member_byte_offset = form_value.Unsigned();
                   }
                   break;
-                case DW_AT_SCOUT_mesh_field_flags:
+                case DW_AT_SCOUT_field_flags:
                   fieldFlags = form_value.Unsigned();
                   break;
                 }

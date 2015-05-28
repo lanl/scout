@@ -1104,11 +1104,12 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, const DIScoutCompositeType *CTy) {
     case dwarf::DW_TAG_SCOUT_structured_mesh_type:
     case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
     case dwarf::DW_TAG_SCOUT_unstructured_mesh_type: {
+    case dwarf::DW_TAG_SCOUT_frame_type:
       // Add elements to mesh type.
       DINodeArray Elements = CTy->getElements();
       for (const auto *Element : Elements) {
         auto *DDTy = dyn_cast<DIScoutDerivedType>(Element);
-        constructMeshMemberDIE(Buffer, DDTy);
+        constructScoutMemberDIE(Buffer, DDTy);
       }
       break;
     }
