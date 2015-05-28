@@ -2913,9 +2913,9 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   Value* targetPtr;
   
-  if ((target->hasLinkage() || target->isStaticDataMember())
-      && target->getTLSKind() != VarDecl::TLS_Dynamic) {
-    targetPtr = CGM.GetAddrOfGlobalVar(target);
+  if((target->hasLinkage() || target->isStaticDataMember())
+     && target->getTLSKind() != VarDecl::TLS_Dynamic){
+    targetPtr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(target));
   }
   else{
     targetPtr = LocalDeclMap.lookup(target);

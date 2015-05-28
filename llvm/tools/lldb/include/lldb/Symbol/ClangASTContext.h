@@ -332,6 +332,13 @@ public:
                                 unsigned dimZ,
                                 lldb::LanguageType language,
                                 ClangASTMetadata *metadata = NULL);
+  
+  ClangASTType
+  CreateFrameType (clang::DeclContext *decl_ctx,
+                   lldb::AccessType access_type,
+                   const char *name,
+                   lldb::LanguageType language,
+                   ClangASTMetadata *metadata = NULL);
     // +=================================================
     
     class TemplateParameterInfos

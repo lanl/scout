@@ -902,7 +902,8 @@ void Verifier::visitDIScoutCompositeType(const DIScoutCompositeType &N) {
          N.getTag() == dwarf::DW_TAG_SCOUT_ALE_mesh_type ||
          N.getTag() == dwarf::DW_TAG_SCOUT_structured_mesh_type ||
          N.getTag() == dwarf::DW_TAG_SCOUT_rectilinear_mesh_type ||
-         N.getTag() == dwarf::DW_TAG_SCOUT_unstructured_mesh_type,
+         N.getTag() == dwarf::DW_TAG_SCOUT_unstructured_mesh_type ||
+         N.getTag() == dwarf::DW_TAG_SCOUT_frame_type,
          "invalid tag", &N);
 
   Assert(!N.getRawElements() || isa<MDTuple>(N.getRawElements()),

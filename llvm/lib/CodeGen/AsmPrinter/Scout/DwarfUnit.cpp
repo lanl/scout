@@ -146,6 +146,8 @@ void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, const DIScoutCompositeType *C
   //uint64_t Size = CTy.getSizeInBits() >> 3;
   uint16_t Tag = Buffer.getTag();
 
+  bool isMesh = false;
+  
   switch (Tag) {
   case dwarf::DW_TAG_SCOUT_uniform_mesh_type:
   case dwarf::DW_TAG_SCOUT_ALE_mesh_type:
@@ -158,6 +160,7 @@ void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, const DIScoutCompositeType *C
       auto *DDTy = dyn_cast<DIScoutDerivedType>(Element);
       constructMeshMemberDIE(Buffer, DDTy);
     }
+    isMesh = true;
     break;
   }
   }
@@ -166,7 +169,9 @@ void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, const DIScoutCompositeType *C
   if (!Name.empty())
     addString(Buffer, dwarf::DW_AT_name, Name);
 
-  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_x, None, CTy->getDimX());
-  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_y, None, CTy->getDimY());
-  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_z, None, CTy->getDimZ());
+  if(isMesh){
+    addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_x, None, CTy->getDimX());
+    addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_y, None, CTy->getDimY());
+    addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_z, None, CTy->getDimZ());
+  }
 }
