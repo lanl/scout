@@ -131,6 +131,7 @@ task void check(HeatMesh *m) {
     if (position().x == 260 && position().y == 260) {
        // if value does not match exit w/ error.
        if ((h - VALUE)*(h - VALUE) > 1e-10) {
+         printf("%f %f\n", h, VALUE);
          assert(false); 
        } 
     }
