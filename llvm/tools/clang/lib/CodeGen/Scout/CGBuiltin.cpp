@@ -175,6 +175,10 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
       // get the correct element of the mpositionx field depending on the index
       sprintf(IRNameStr, "%s.%s.element.ptr", MeshName.str().c_str(), "mpositionx");
       value = Builder.CreateInBoundsGEP(value, Idx, IRNameStr);
+
+      sprintf(IRNameStr, "%s.%s.element", MeshName.str().c_str(), "mpositionx");
+      value = Builder.CreateLoad(value, IRNameStr);
+
       *RV = RValue::get(value);
 
     } else {

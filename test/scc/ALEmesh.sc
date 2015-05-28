@@ -56,36 +56,22 @@
 #include <assert.h>
 
 ALE mesh AMeshType{
-cells:
-  int field;
+vertices:
+  float foo;
 };
 
 
 int main(int argc, char *argv[])
 {
   AMeshType m1[2];
-  AMeshType m2[2, 3];
-  AMeshType m3[2, 3, 4];
 
-  int val = 0;
-  forall cells c in m1 {
-    val++;
-    field = val;
-  }
-  assert(val==2 && "bad number of cells r=1"); 
+  float val = 0;
 
-  val = 0;
-  forall cells c in m2 {
-    val++;
-    field = val;
+  forall vertices v in m1{
+    val += mpositionx();
   }
-  assert(val==6 && "bad number of cells r=2"); 
 
-  val = 0;
-  forall cells c in m3 {
-    val++;
-    field = val;
-  }
-  assert(val==24 && "bad number of cells r=3"); 
+  printf("val: %f\n", val);
+
   return 0;
 }

@@ -7767,6 +7767,8 @@ def warn_forall_non_edges : Warning<
     "calling head/tail in forall faces">; 
 def err_forall_non_cells_vertices : Error<
      "calling position outside of forall cells/vertices">; 
+def err_forall_non_vertices : Error<
+     "calling mposition outside of forall vertices">; 
 def err_invalid_mesh_specifier : Error<
      "invalid mesh specifier">;
 def err_invalid_plot_call : Error<

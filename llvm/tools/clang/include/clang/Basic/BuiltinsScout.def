@@ -58,11 +58,12 @@ BUILTIN(positiony, "i", "n")
 BUILTIN(positionz, "i", "n")
 BUILTIN(positionw, "i", "n")
 
-BUILTIN(mposition, "E4i", "n")
-BUILTIN(mpositionx, "i", "n")
-BUILTIN(mpositiony, "i", "n")
-BUILTIN(mpositionz, "i", "n")
-BUILTIN(mpositionw, "i", "n")
+//0 args
+BUILTIN(mposition, "E4f", "n")
+BUILTIN(mpositionx, "f", "n")
+BUILTIN(mpositiony, "f", "n")
+BUILTIN(mpositionz, "f", "n")
+BUILTIN(mpositionw, "f", "n")
 
 BUILTIN(head, "E4i", "n")
 BUILTIN(tail, "E4i", "n")
