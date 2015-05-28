@@ -675,7 +675,42 @@ CGDebugInfo::getOrCreateMeshFwdDecl(const UnstructuredMeshType *Ty,
 //===----------------------------------------------------------------------===//
 
 llvm::DIType *CGDebugInfo::CreateTypeDefinition(const FrameType *Ty) {
-  assert(false && "unimplemented");
+  FrameDecl *FD = Ty->getDecl();
+  
+  // Get overall information about the mesh type for the debug info.
+  llvm::DIFile *DefUnit = getOrCreateFile(FD->getLocation());
+  
+  // Meshes can be recursive.  To handle them, we first generate a
+  // debug descriptor for the mesh as a forward declaration.  Then
+  // (if it is a definition) we go through and get debug information
+  // for all of its members.  Finally, we create a descriptor for the
+  // complete type (which may refer to forward decl if it is recursive)
+  // and replace all uses of the forward declaration with the final
+  // definition.
+  
+  auto *FwdDecl =
+  cast<llvm::DIScoutCompositeType>(getOrCreateLimitedType(Ty, DefUnit));
+  
+  const FrameDecl *D = FD->getDefinition();
+  if (!D || !D->isCompleteDefinition())
+    return FwdDecl;
+  
+  // Push the mesh on region stack.
+  LexicalBlockStack.emplace_back(&*FwdDecl);
+  RegionMap[Ty->getDecl()].reset(FwdDecl);
+  
+  // Convert all the elements.
+  SmallVector<llvm::Metadata *, 16> EltTys;
+  // what about nested types?
+  
+  LexicalBlockStack.pop_back();
+  RegionMap.erase(Ty->getDecl());
+  
+  llvm::DINodeArray Elements = DBuilder.getOrCreateArray(EltTys);
+  DBuilder.replaceArrays(FwdDecl, Elements);
+  
+  RegionMap[Ty->getDecl()].reset(FwdDecl);
+  return FwdDecl;
 }
 
 //===----------------------------------------------------------------------===//

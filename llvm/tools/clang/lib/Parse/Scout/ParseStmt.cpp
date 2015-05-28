@@ -159,6 +159,28 @@ const QueryType* Parser::LookupQueryType(VarDecl *VD,
   return 0;
 }
 
+// ---- LookupFrameType
+//
+const FrameType* Parser::LookupFrameType(VarDecl *VD,
+                                         IdentifierInfo *FrameInfo) {
+  assert(VD != 0 && "null var decl passed for frame type lookup");
+  if (VD) {
+    const Type* T = VD->getType().getCanonicalType().getTypePtr();
+    
+    while(T->isPointerType() || T->isReferenceType()) {
+      T = T->getPointeeType().getTypePtr();
+    }
+    
+    if (!T->isFrameType()) {
+      return 0;
+    } else {
+      return const_cast<FrameType *>(cast<FrameType>(T));
+    }
+  }
+  
+  return 0;
+}
+
 static ForallMeshStmt::MeshElementType setMeshElementType(tok::TokenKind tkind) {
 
   switch (tkind) {
@@ -1019,7 +1041,7 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
       return StmtError();
     }
     
-    const FrameType* FT = dyn_cast<FrameType>(VD->getType().getTypePtr());
+    const FrameType* FT = LookupFrameType(VD, IdentInfo);
     
     if(FT){
       FD = FT->getDecl();
