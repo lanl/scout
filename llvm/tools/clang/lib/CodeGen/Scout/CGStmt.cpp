@@ -71,6 +71,7 @@
 
 #include <stdio.h>
 #include <cassert>
+#include <limits>
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/Expr.h"
@@ -96,6 +97,15 @@ static const uint8_t FIELD_VERTEX = 1;
 static const uint8_t FIELD_EDGE = 2;
 static const uint8_t FIELD_FACE = 3;
 
+namespace{
+
+const uint32_t FLAG_VAR_CONSTANT = 0x00000001;
+const uint32_t FLAG_VAR_POSITION = 0x00000002;
+
+const uint32_t nullVarId = std::numeric_limits<uint32_t>::max();
+  
+} // namespace
+  
 // We use 'IRNameStr' to hold the generated names we use for
 // various values in the IR building.  We've added a static
 // buffer to avoid the need for a lot of fine-grained new and
@@ -2472,6 +2482,14 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
     else if(lt->isDoubleTy()){
       Builder.CreateCall(R.FrameCaptureDoubleFunc(), args);
     }
+    else if(lt->isPointerTy()){
+      if(lt->getPointerElementType()->isIntegerTy(8)){
+        Builder.CreateCall(R.FrameCaptureStringFunc(), args);
+      }
+      else{
+        assert(false && "invalid field type");
+      }
+    }
     else{
       assert(false && "invalid field type");
     }
@@ -2480,7 +2498,9 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
 
 llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
                                            llvm::Value* PlotPtr,
-                                           SpecExpr* E){
+                                           SpecExpr* E,
+                                           uint32_t flags,
+                                           uint32_t useVarId){
   using namespace std;
   using namespace llvm;
   
@@ -2498,6 +2518,11 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
     }
     
     uint32_t varId = S.getVarId(vd);
+    if(varId != 0){
+      return ConstantInt::get(R.Int32Ty, varId);
+    }
+    
+    varId = S.getExtVarId(vd);
     if(varId != 0){
       return ConstantInt::get(R.Int32Ty, varId);
     }
@@ -2606,19 +2631,29 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
   
   Builder.SetInsertPoint(prevBlock, prevPoint);
   
-  Value* vid = ConstantInt::get(R.Int32Ty, S.nextVarId());
+  Value* funcAlloc = Builder.CreateAlloca(func->getType());
+  Builder.CreateStore(func, funcAlloc);
+  Value* funcPtr = Builder.CreateBitCast(Builder.CreateLoad(funcAlloc), R.VoidPtrTy, "func.ptr");
+  
+  Value* vid =
+  ConstantInt::get(R.Int32Ty, useVarId == 0 ? S.nextVarId() : useVarId);
   
   ValueVec args;
+
+  uint32_t allFlags = flags;
+  if(isConstant){
+    allFlags |= FLAG_VAR_CONSTANT;
+  }
   
   if(isVec){
     args =
-    {PlotPtr, vid, func,
+    {PlotPtr, vid, funcPtr,
       ConstantInt::get(R.Int32Ty, rt->getVectorNumElements()),
-      ConstantInt::get(R.Int32Ty, isConstant ? 1 : 0)};
+      ConstantInt::get(R.Int32Ty, allFlags)};
   }
   else{
     args =
-    {PlotPtr, vid, func, ConstantInt::get(R.Int32Ty, isConstant ? 1 : 0)};
+    {PlotPtr, vid, funcPtr, ConstantInt::get(R.Int32Ty, allFlags)};
   }
   
   if(rt->isIntegerTy(32)){
@@ -2734,160 +2769,203 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   const VarDecl* frame = S.getFrameVar();
   
   const FrameDecl* fd = S.getFrameDecl();
-  
-  const FrameType* ft = dyn_cast<FrameType>(frame->getType().getTypePtr());
-  
+    
   Value* framePtr;
   
   PlotVarsVisitor visitor(S);
   visitor.Visit(const_cast<SpecObjectExpr*>(S.getSpec()));
   
-  if(ft){
-    framePtr = LocalDeclMap.lookup(frame);
-    assert(framePtr);
-    framePtr = Builder.CreateLoad(framePtr, "frame.ptr");
+  if(frame){
+    const FrameType* ft = dyn_cast<FrameType>(frame->getType().getTypePtr());
+    if(ft){
+      framePtr = LocalDeclMap.lookup(frame);
+      assert(framePtr);
+      framePtr = Builder.CreateLoad(framePtr, "frame.ptr");
+    }
+    else{
+      const MeshType* mt = dyn_cast<MeshType>(frame->getType().getTypePtr());
+      assert(mt && "expected a frame or mesh");
+      
+      MeshDecl* MD = mt->getDecl();
+      
+      auto vs = visitor.getVarSet();
+      
+      map<string, VarDecl*> ns;
+      for(VarDecl* vd : vs){
+        ns.insert({vd->getName().str(), vd});
+      }
+      
+      SmallVector<Value*, 3> Dimensions;
+      GetMeshDimensions(mt, Dimensions);
+      
+      bool hasCells = false;
+      bool hasVertices = false;
+      bool hasEdges = false;
+      bool hasFaces = false;
+      
+      for(MeshDecl::field_iterator fitr = MD->field_begin(),
+          fitrEnd = MD->field_end(); fitr != fitrEnd; ++fitr){
+        if(fitr->isCellLocated()){
+          hasCells = true;
+        }
+        else if(fitr->isVertexLocated()){
+          hasVertices = true;
+        }
+        else if(fitr->isEdgeLocated()){
+          hasEdges = true;
+        }
+        else if(fitr->isFaceLocated()){
+          hasFaces = true;
+        }
+        else{
+          assert(false && "unrecognized element");
+        }
+      }
+      
+      llvm::Value* numCells = 0;
+      llvm::Value* numVertices = 0;
+      llvm::Value* numEdges = 0;
+      llvm::Value* numFaces = 0;
+      
+      GetNumMeshItems(Dimensions,
+                      hasCells ? &numCells : 0,
+                      hasVertices ? &numVertices : 0,
+                      hasEdges ? &numEdges : 0,
+                      hasFaces ? &numFaces : 0);
+      
+      while(Dimensions.size() < 3){
+        Dimensions.push_back(ConstantInt::get(R.Int64Ty, 0));
+      }
+      
+      ValueVec args =
+      {Builder.CreateTrunc(Dimensions[0], R.Int32Ty, "width"),
+        Builder.CreateTrunc(Dimensions[1], R.Int32Ty, "height"),
+        Builder.CreateTrunc(Dimensions[2], R.Int32Ty, "depth")};
+      
+      framePtr = Builder.CreateCall(R.CreateMeshFrameFunc(), args, "frame.ptr");
+      
+      for(MeshDecl::field_iterator fitr = MD->field_begin(),
+          fitrEnd = MD->field_end(); fitr != fitrEnd; ++fitr){
+        MeshFieldDecl* field = *fitr;
+        
+        auto itr = ns.find(field->getName().str());
+        
+        if(itr == ns.end()){
+          continue;
+        }
+        
+        llvm::Value* varId = ConstantInt::get(R.Int32Ty, fd->getVarId(itr->second));
+        
+        Value* meshPtr;
+        
+        GetMeshBaseAddr(frame, meshPtr);
+        
+        Value* fieldPtr = Builder.CreateStructGEP(0, meshPtr, field->getFieldIndex());
+        fieldPtr = Builder.CreateLoad(fieldPtr);
+        
+        llvm::PointerType* pt = dyn_cast<llvm::PointerType>(fieldPtr->getType());
+        
+        fieldPtr = Builder.CreateBitCast(fieldPtr, R.VoidPtrTy, "field.ptr");
+        
+        llvm::Type* et = pt->getElementType();
+        
+        llvm::Value* fieldType;
+        
+        if(et->isIntegerTy(32)){
+          fieldType = R.ElementInt32Val;
+        }
+        else if(et->isIntegerTy(64)){
+          fieldType = R.ElementInt64Val;
+        }
+        else if(et->isFloatTy()){
+          fieldType = R.ElementFloatVal;
+        }
+        else if(et->isDoubleTy()){
+          fieldType = R.ElementDoubleVal;
+        }
+        else{
+          assert(false && "unrecognized mesh field type");
+        }
+        
+        llvm::Value* numElements = 0;
+        
+        if(field->isCellLocated()){
+          numElements = numCells;
+        }
+        else if(field->isVertexLocated()){
+          numElements = numVertices;
+        }
+        else if(field->isEdgeLocated()){
+          numElements = numEdges;
+        }
+        else if(field->isFaceLocated()){
+          numElements = numFaces;
+        }
+        
+        ValueVec args = {framePtr, varId, fieldType, fieldPtr, numElements};
+        
+        Builder.CreateCall(R.FrameAddArrayVarFunc(), args);
+      }
+    }
   }
   else{
-    const MeshType* mt = dyn_cast<MeshType>(frame->getType().getTypePtr());
-    assert(mt && "expected a frame or mesh");
-    
-    MeshDecl* MD = mt->getDecl();
-    
-    auto vs = visitor.getVarSet();
-    
-    map<string, VarDecl*> ns;
-    for(VarDecl* vd : vs){
-      ns.insert({vd->getName().str(), vd});
-    }
-    
-    SmallVector<Value*, 3> Dimensions;
-    GetMeshDimensions(mt, Dimensions);
-    
-    bool hasCells = false;
-    bool hasVertices = false;
-    bool hasEdges = false;
-    bool hasFaces = false;
-    
-    for(MeshDecl::field_iterator fitr = MD->field_begin(),
-        fitrEnd = MD->field_end(); fitr != fitrEnd; ++fitr){
-      if(fitr->isCellLocated()){
-        hasCells = true;
-      }
-      else if(fitr->isVertexLocated()){
-        hasVertices = true;
-      }
-      else if(fitr->isEdgeLocated()){
-        hasEdges = true;
-      }
-      else if(fitr->isFaceLocated()){
-        hasFaces = true;
-      }
-      else{
-        assert(false && "unrecognized element");
-      }
-    }
-    
-    llvm::Value* numCells = 0;
-    llvm::Value* numVertices = 0;
-    llvm::Value* numEdges = 0;
-    llvm::Value* numFaces = 0;
-    
-    GetNumMeshItems(Dimensions,
-                    hasCells ? &numCells : 0,
-                    hasVertices ? &numVertices : 0,
-                    hasEdges ? &numEdges : 0,
-                    hasFaces ? &numFaces : 0);
-
-    while(Dimensions.size() < 3){
-      Dimensions.push_back(ConstantInt::get(R.Int64Ty, 0));
-    }
-    
-    ValueVec args =
-    {Builder.CreateTrunc(Dimensions[0], R.Int32Ty, "width"),
-      Builder.CreateTrunc(Dimensions[1], R.Int32Ty, "height"),
-      Builder.CreateTrunc(Dimensions[2], R.Int32Ty, "depth")};
-
-    framePtr = Builder.CreateCall(R.CreateMeshFrameFunc(), args, "frame.ptr");
-    
-    for(MeshDecl::field_iterator fitr = MD->field_begin(),
-        fitrEnd = MD->field_end(); fitr != fitrEnd; ++fitr){
-      MeshFieldDecl* field = *fitr;
-    
-      auto itr = ns.find(field->getName().str());
-      
-      if(itr == ns.end()){
-        continue;
-      }
-      
-      llvm::Value* varId = ConstantInt::get(R.Int32Ty, fd->getVarId(itr->second));
-      
-      Value* meshPtr;
-      
-      GetMeshBaseAddr(frame, meshPtr);
-      
-      Value* fieldPtr = Builder.CreateStructGEP(0, meshPtr, field->getFieldIndex());
-      fieldPtr = Builder.CreateLoad(fieldPtr);
-      
-      llvm::PointerType* pt = dyn_cast<llvm::PointerType>(fieldPtr->getType());
-
-      fieldPtr = Builder.CreateBitCast(fieldPtr, R.VoidPtrTy, "field.ptr");
-      
-      llvm::Type* et = pt->getElementType();
-      
-      llvm::Value* fieldType;
-      
-      if(et->isIntegerTy(32)){
-        fieldType = R.ElementInt32Val;
-      }
-      else if(et->isIntegerTy(64)){
-        fieldType = R.ElementInt64Val;
-      }
-      else if(et->isFloatTy()){
-        fieldType = R.ElementFloatVal;
-      }
-      else if(et->isDoubleTy()){
-        fieldType = R.ElementDoubleVal;
-      }
-      else{
-        assert(false && "unrecognized mesh field type");
-      }
-      
-      llvm::Value* numElements = 0;
-      
-      if(field->isCellLocated()){
-        numElements = numCells;
-      }
-      else if(field->isVertexLocated()){
-        numElements = numVertices;
-      }
-      else if(field->isEdgeLocated()){
-        numElements = numEdges;
-      }
-      else if(field->isFaceLocated()){
-        numElements = numFaces;
-      }
-      
-      ValueVec args = {framePtr, varId, fieldType, fieldPtr, numElements};
-
-      Builder.CreateCall(R.FrameAddArrayVarFunc(), args);
-    }
+    framePtr = ConstantPointerNull::get(R.VoidPtrTy);
   }
   
   const VarDecl* target = S.getRenderTargetVar();
-  Value* targetPtr = LocalDeclMap.lookup(target);
+  
+  Value* targetPtr;
+  
+  if((target->hasLinkage() || target->isStaticDataMember())
+     && target->getTLSKind() != VarDecl::TLS_Dynamic){
+    targetPtr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(target));
+  }
+  else{
+    targetPtr = LocalDeclMap.lookup(target);
+  }
+  
   assert(targetPtr);
+  
   targetPtr = Builder.CreateBitCast(Builder.CreateLoad(targetPtr),
                                     R.VoidPtrTy, "target.ptr");
   
   args = {plotPtr, framePtr, targetPtr};
   Builder.CreateCall(R.PlotInitFunc(), args);
   
+  auto ev = visitor.getExtVarSet();
+  
+  for(VarDecl* vd : ev){
+    llvm::Type* t = ConvertType(vd->getType());
+    
+    llvm::Value* type;
+    if(t->isIntegerTy(32)){
+      type = R.ElementInt32Val;
+    }
+    else if(t->isIntegerTy(64)){
+      type = R.ElementInt64Val;
+    }
+    else if(t->isFloatTy()){
+      type = R.ElementFloatVal;
+    }
+    else if(t->isDoubleTy()){
+      type = R.ElementDoubleVal;
+    }
+    else{
+      assert(false && "invalid external var type");
+    }
+    
+    uint32_t vid = S.addExtVar(vd);
+    
+    args = {plotPtr, ConstantInt::get(R.Int32Ty, vid), type};
+    Builder.CreateCall(R.PlotAddVarFunc(), args);
+  }
+  
   const SpecObjectExpr* spec = S.getSpec();
   
   auto cs = visitor.getCallSet();
   
   for(const CallExpr* c : cs){
-    S.addCall(c, S.nextVarId());
+    S.addCall(c);
   }
   
   auto m = spec->memberMap();
@@ -2909,7 +2987,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         
         auto vitr = vm.find(k);
         assert(vitr != vm.end());
-        EmitPlotExpr(S, plotPtr, e);
+        EmitPlotExpr(S, plotPtr, e, 0, vitr->second.second);
       }
     }
   }
@@ -2969,55 +3047,60 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     if(k == "lines" || k == "points" || k == "area" || k == "interval"){
       SpecObjectExpr* o = v->toObject();
       
-      SpecArrayExpr* pa = o->get("position")->toArray();
-      
-      Value* xv;
-      Value* yv;
-      
-      if(pa){
-        xv = EmitPlotExpr(S, plotPtr, pa->get(0));
-        yv = EmitPlotExpr(S, plotPtr, pa->get(1));
-      }
-      else if(k == "interval"){
-        SpecObjectExpr* bo = o->get("position")->toObject();
-        
-        Value* vi = EmitPlotExpr(S, plotPtr, bo->get("bin"));
-        xv = ConstantInt::get(R.Int32Ty, S.nextVarId());
-        yv = ConstantInt::get(R.Int32Ty, S.nextVarId());
-        Value* n = ConstantInt::get(R.Int32Ty, bo->get("n")->getInteger());
-        
-        args = {plotPtr, vi, xv, yv, n};
-        Builder.CreateCall(R.PlotAddBinsFunc(), args);
-      }
-      
       Value* cv = EmitPlotExpr(S, plotPtr, o->get("color"));
+      Value* xy;
       
-      if(k == "lines"){
-        Value* sv = EmitPlotExpr(S, plotPtr, o->get("size"));
-        args = {plotPtr, xv, yv, sv, cv};
-        Builder.CreateCall(R.PlotAddLinesFunc(), args);
+      if(k == "interval"){
+        xy = ConstantInt::get(R.Int32Ty, S.nextVarId());
       }
-      else if(k == "points"){
+      else{
+        xy = EmitPlotExpr(S, plotPtr, o->get("position"), FLAG_VAR_POSITION);
+      }
+      
+      if(k == "lines" || k == "points"){
         Value* sv = EmitPlotExpr(S, plotPtr, o->get("size"));
-        args = {plotPtr, xv, yv, sv, cv};
-        Builder.CreateCall(R.PlotAddPointsFunc(), args);
+        
+        Value* l;
+        
+        if(o->has("label")){
+          l = EmitPlotExpr(S, plotPtr, o->get("label"));
+        }
+        else{
+          l = ConstantInt::get(R.Int32Ty, nullVarId);
+        }
+        
+        args = {plotPtr, xy, sv, cv, l};
+        
+        if(k == "lines"){
+          Builder.CreateCall(R.PlotAddLinesFunc(), args);
+        }
+        else{
+          Builder.CreateCall(R.PlotAddPointsFunc(), args);
+        }
       }
       else if(k == "area"){
-        args = {plotPtr, xv, yv, cv};
+        args = {plotPtr, xy, cv};
         Builder.CreateCall(R.PlotAddAreaFunc(), args);
       }
       else{
-        args = {plotPtr, xv, yv, cv};
+        SpecObjectExpr* bo = o->get("position")->toObject();
+        
+        Value* vi = EmitPlotExpr(S, plotPtr, bo->get("bin"));
+        Value* n = ConstantInt::get(R.Int32Ty, bo->get("n")->getInteger());
+        
+        args = {plotPtr, vi, xy, n};
+        Builder.CreateCall(R.PlotAddBinsFunc(), args);
+        
+        args = {plotPtr, xy, cv};
         Builder.CreateCall(R.PlotAddIntervalFunc(), args);
       }
     }
     else if(k == "pie"){
       SpecObjectExpr* o = v->toObject();
       
-      Value* xv = ConstantInt::get(R.Int32Ty, S.nextVarId());
-      Value* yv = ConstantInt::get(R.Int32Ty, S.nextVarId());
+      Value* xy = ConstantInt::get(R.Int32Ty, S.nextVarId());
       
-      args = {plotPtr, xv, yv};
+      args = {plotPtr, xy};
       Value* propPtr = Builder.CreateCall(R.PlotAddProportionFunc(), args);
       
       SpecArrayExpr* pa = o->get("proportion")->toArray();
@@ -3037,46 +3120,91 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         cv = ConstantInt::get(R.Int32Ty, 0);
       }
       
-      args = {plotPtr, yv, cv};
+      args = {plotPtr, xy, cv};
       Builder.CreateCall(R.PlotAddPieFunc(), args);
     }
     else if(k == "line"){
       SpecObjectExpr* o = v->toObject();
       
-      SpecArrayExpr* pa = o->get("start")->toArray();
-      
-      Value* x1 = EmitPlotExpr(S, plotPtr, pa->get(0));
-      Value* y1 = EmitPlotExpr(S, plotPtr, pa->get(1));
-      
-      pa = o->get("end")->toArray();
-      
-      Value* x2 = EmitPlotExpr(S, plotPtr, pa->get(0));
-      Value* y2 = EmitPlotExpr(S, plotPtr, pa->get(1));
-      
-      Value* cv = EmitPlotExpr(S, plotPtr, o->get("color"));
+      Value* xy1 = EmitPlotExpr(S, plotPtr, o->get("start"), FLAG_VAR_POSITION);
+      Value* xy2 = EmitPlotExpr(S, plotPtr, o->get("end"), FLAG_VAR_POSITION);
       Value* sv = EmitPlotExpr(S, plotPtr, o->get("size"));
-      
-      args = {plotPtr, x1, y1, x2, y2, sv, cv};
+      Value* cv = EmitPlotExpr(S, plotPtr, o->get("color"));
+
+      args = {plotPtr, xy1, xy2, sv, cv};
       Builder.CreateCall(R.PlotAddLineFunc(), args);
     }
     else if(k == "axis"){
       SpecObjectExpr* av = v->toObject();
       uint32_t dim = av->get("dim")->getInteger();
       string label = av->get("label")->getString();
+      uint32_t major = av->get("major")->getInteger();
+      uint32_t minor = av->get("minor")->getInteger();
       
       args =
       {plotPtr, ConstantInt::get(R.Int32Ty, dim),
-        Builder.CreateGlobalStringPtr(label)};
+        Builder.CreateGlobalStringPtr(label),
+        ConstantInt::get(R.Int32Ty, major),
+        ConstantInt::get(R.Int32Ty, minor)};
       Builder.CreateCall(R.PlotAddAxisFunc(), args);
     }
     else if(k == "antialiased"){
       args = {plotPtr, ConstantInt::get(R.Int1Ty, v->getBool())};
       Builder.CreateCall(R.PlotSetAntialiasedFunc(), args);
     }
+    else if(k == "output"){
+      args = {plotPtr, Builder.CreateGlobalStringPtr(v->getString())};
+      Builder.CreateCall(R.PlotSetOutputFunc(), args);
+    }
+    else if(k == "range"){
+      SpecObjectExpr* o = v->toObject();
+      
+      for(size_t i = 0; i < 2; ++i){
+        bool x = i == 0;
+        SpecExpr* d = x ? o->get("x") : o->get("y");
+        SpecArrayExpr* a = d->toArray();
+        Value* min = EmitAnyExpr(a->get(0)->toExpr()).getScalarVal();
+        Value* max = EmitAnyExpr(a->get(1)->toExpr()).getScalarVal();
+        args =
+        {plotPtr, ConstantInt::get(R.Int1Ty, x), min, max};
+        Builder.CreateCall(R.PlotSetRangeFunc(), args);
+      }
+    }
   }
   
   Builder.CreateBr(mergeBlock);
   EmitBlock(mergeBlock);
+  
+  auto em = S.extVarMap();
+  for(auto& itr : em){
+    const VarDecl* vd = itr.first;
+    uint32_t vid = itr.second;
+
+    Value* vp = LocalDeclMap[vd];
+    assert(vp);
+    
+    Value* v = Builder.CreateLoad(vp);
+    
+    args = {plotPtr, ConstantInt::get(R.Int32Ty, vid), v};
+    
+    llvm::Type* t = ConvertType(vd->getType());
+    
+    if(t->isIntegerTy(32)){
+      Builder.CreateCall(R.PlotCaptureI32Func(), args);
+    }
+    else if(t->isIntegerTy(64)){
+      Builder.CreateCall(R.PlotCaptureI64Func(), args);
+    }
+    else if(t->isFloatTy()){
+      Builder.CreateCall(R.PlotCaptureFloatFunc(), args);
+    }
+    else if(t->isDoubleTy()){
+      Builder.CreateCall(R.PlotCaptureDoubleFunc(), args);
+    }
+    else{
+      assert(false && "invalid external var type");
+    }
+  }
   
   args = {plotPtr};
   Builder.CreateCall(R.PlotRenderFunc(), args);

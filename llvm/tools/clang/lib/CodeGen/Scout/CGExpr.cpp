@@ -103,8 +103,14 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
   uint32_t varId = CurrentPlotStmt->getVarId(VD);
   
   if(varId == 0){
+    varId = CurrentPlotStmt->getExtVarId(VD);
+  }
+  
+  if(varId == 0){
     varId = CurrentPlotStmt->getFrameDecl()->getVarId(VD);
   }
+  
+  assert(varId != 0);
   
   ValueVec args = {plotPtr, ConstantInt::get(R.Int32Ty, varId), index};
   

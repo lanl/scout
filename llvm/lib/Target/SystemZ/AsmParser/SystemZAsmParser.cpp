@@ -120,11 +120,11 @@ private:
   void addExpr(MCInst &Inst, const MCExpr *Expr) const {
     // Add as immediates when possible.  Null MCExpr = 0.
     if (!Expr)
-      Inst.addOperand(MCOperand::CreateImm(0));
+      Inst.addOperand(MCOperand::createImm(0));
     else if (auto *CE = dyn_cast<MCConstantExpr>(Expr))
-      Inst.addOperand(MCOperand::CreateImm(CE->getValue()));
+      Inst.addOperand(MCOperand::createImm(CE->getValue()));
     else
-      Inst.addOperand(MCOperand::CreateExpr(Expr));
+      Inst.addOperand(MCOperand::createExpr(Expr));
   }
 
 public:
@@ -253,9 +253,9 @@ public:
   void addBDVAddrOperands(MCInst &Inst, unsigned N) const {
     assert(N == 3 && "Invalid number of operands");
     assert(isMem(BDVMem) && "Invalid operand type");
-    Inst.addOperand(MCOperand::CreateReg(Mem.Base));
+    Inst.addOperand(MCOperand::createReg(Mem.Base));
     addExpr(Inst, Mem.Disp);
-    Inst.addOperand(MCOperand::CreateReg(Mem.Index));
+    Inst.addOperand(MCOperand::createReg(Mem.Index));
   }
 
   // Override MCParsedAsmOperand.
@@ -267,12 +267,12 @@ public:
   // to an instruction.
   void addRegOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands");
-    Inst.addOperand(MCOperand::CreateReg(getReg()));
+    Inst.addOperand(MCOperand::createReg(getReg()));
   }
   void addAccessRegOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands");
     assert(Kind == KindAccessReg && "Invalid operand type");
-    Inst.addOperand(MCOperand::CreateImm(AccessReg));
+    Inst.addOperand(MCOperand::createImm(AccessReg));
   }
   void addImmOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands");
@@ -281,20 +281,20 @@ public:
   void addBDAddrOperands(MCInst &Inst, unsigned N) const {
     assert(N == 2 && "Invalid number of operands");
     assert(isMem(BDMem) && "Invalid operand type");
-    Inst.addOperand(MCOperand::CreateReg(Mem.Base));
+    Inst.addOperand(MCOperand::createReg(Mem.Base));
     addExpr(Inst, Mem.Disp);
   }
   void addBDXAddrOperands(MCInst &Inst, unsigned N) const {
     assert(N == 3 && "Invalid number of operands");
     assert(isMem(BDXMem) && "Invalid operand type");
-    Inst.addOperand(MCOperand::CreateReg(Mem.Base));
+    Inst.addOperand(MCOperand::createReg(Mem.Base));
     addExpr(Inst, Mem.Disp);
-    Inst.addOperand(MCOperand::CreateReg(Mem.Index));
+    Inst.addOperand(MCOperand::createReg(Mem.Index));
   }
   void addBDLAddrOperands(MCInst &Inst, unsigned N) const {
     assert(N == 3 && "Invalid number of operands");
     assert(isMem(BDLMem) && "Invalid operand type");
-    Inst.addOperand(MCOperand::CreateReg(Mem.Base));
+    Inst.addOperand(MCOperand::createReg(Mem.Base));
     addExpr(Inst, Mem.Disp);
     addExpr(Inst, Mem.Length);
   }
@@ -863,7 +863,7 @@ SystemZAsmParser::parsePCRel(OperandVector &Operands, int64_t MinVal,
       Error(StartLoc, "offset out of range");
       return MatchOperand_ParseFail;
     }
-    MCSymbol *Sym = Ctx.CreateTempSymbol();
+    MCSymbol *Sym = Ctx.createTempSymbol();
     Out.EmitLabel(Sym);
     const MCExpr *Base = MCSymbolRefExpr::Create(Sym, MCSymbolRefExpr::VK_None,
                                                  Ctx);
@@ -904,7 +904,7 @@ SystemZAsmParser::parsePCRel(OperandVector &Operands, int64_t MinVal,
     }
 
     StringRef Identifier = Parser.getTok().getString();
-    Sym = MCSymbolRefExpr::Create(Ctx.GetOrCreateSymbol(Identifier),
+    Sym = MCSymbolRefExpr::Create(Ctx.getOrCreateSymbol(Identifier),
                                   Kind, Ctx);
     Parser.Lex();
   }

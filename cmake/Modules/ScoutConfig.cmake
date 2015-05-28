@@ -278,9 +278,8 @@ endif()
   #endif()
 
   # --- QTsupport.
-  # SC_TODO: add findQT5 module...
-  #find_package(QT5 REQUIRED)
-  #if (QT5_FOUND)
+  find_package(QT5 REQUIRED)
+  if (QT5_FOUND)
     if(APPLE)
       # QT5 needs COCOA, IOKIT and COREVIDEO on the mac.
       find_library(COCOA_LIBRARY Cocoa)
@@ -300,11 +299,11 @@ endif()
         set(SCOUT_ENABLE_QT5 ON CACHE BOOL
           "Enable QT5 runtime support.")
     endif()
-  #else()
-  #  message(STATUS "scout: QT5 not found, disabling support.")
-  #  set(SCOUT_ENABLE_QT5 OFF CACHE BOOL
-  #    "Enable QT5 runtime support.")
-  #endif()
+  else()
+    message(STATUS "scout: Required QT5 not found.")
+    set(SCOUT_ENABLE_QT5 OFF CACHE BOOL
+      "Enable QT5 runtime support.")
+  endif()
 
 
   # Disable PNG for now -- some Linux systems are having a hard time

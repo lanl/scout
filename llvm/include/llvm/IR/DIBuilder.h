@@ -205,6 +205,10 @@ namespace llvm {
                           unsigned LineNo, uint64_t SizeInBits,
                           uint64_t AlignInBits, uint64_t OffsetInBits,
                           unsigned Flags, unsigned ScoutFlags, DIType *Ty);
+    
+    DIScoutDerivedType
+    *createFrameMemberType(DIScope *Scope, StringRef Name, DIFile *File,
+                           unsigned LineNo, DIType *Ty);
     // +==========================================
 
     /// createStaticMemberType - Create debugging information entry for a
@@ -414,6 +418,26 @@ namespace llvm {
                                                      unsigned RunTimeLang = 0,
                                                      DIType* VTableHolder = nullptr,
                                                      StringRef UniqueIdentifier = "");
+    
+    /// createFrameType - Create debugging information entry for a Scout frame.
+    /// @param Scope        Scope in which this struct is defined.
+    /// @param Name         Struct name.
+    /// @param File         File where this member is defined.
+    /// @param LineNumber   Line number.
+    /// @param SizeInBits   Member size.
+    /// @param AlignInBits  Member alignment.
+    /// @param Flags        Flags to encode member attribute, e.g. private
+    /// @param Elements     Struct elements.
+    /// @param RunTimeLang  Optional parameter, Objective-C runtime version.
+    /// @param UniqueIdentifier A unique identifier for the struct.
+    DIScoutCompositeType *createFrameType(DIScope *Scope, StringRef Name,
+                                          DIFile *File, unsigned LineNumber,
+                                          uint64_t SizeInBits, uint64_t AlignInBits,
+                                          unsigned Flags, DIType *DerivedFrom,
+                                          DINodeArray Elements,
+                                          unsigned RunTimeLang = 0,
+                                          DIType* VTableHolder = nullptr,
+                                          StringRef UniqueIdentifier = "");
 
     // +========================================================================
 

@@ -199,7 +199,7 @@ const char *llvm::dwarf::AttributeString(unsigned Attribute) {
   case DW_AT_GNU_pubnames:               return "DW_AT_GNU_pubnames";
   case DW_AT_GNU_pubtypes:               return "DW_AT_GNU_pubtypes";
   // +===== Scout ======================================
-  case DW_AT_SCOUT_mesh_field_flags:     return "DW_AT_SCOUT_mesh_field_flags";
+  case DW_AT_SCOUT_field_flags:          return "DW_AT_SCOUT_field_flags";
   case DW_AT_SCOUT_mesh_dim_x:           return "DW_AT_SCOUT_mesh_dim_x";
   case DW_AT_SCOUT_mesh_dim_y:           return "DW_AT_SCOUT_mesh_dim_y";
   case DW_AT_SCOUT_mesh_dim_z:           return "DW_AT_SCOUT_mesh_dim_z";
@@ -239,6 +239,10 @@ const char *llvm::dwarf::FormEncodingString(unsigned Encoding) {
     // DWARF5 Fission Extension Forms
   case DW_FORM_GNU_addr_index:           return "DW_FORM_GNU_addr_index";
   case DW_FORM_GNU_str_index:            return "DW_FORM_GNU_str_index";
+
+  // Alternate debug sections proposal (output of "dwz" tool).
+  case DW_FORM_GNU_ref_alt:              return "DW_FORM_GNU_ref_alt";
+  case DW_FORM_GNU_strp_alt:             return "DW_FORM_GNU_strp_alt";
   }
   return nullptr;
 }

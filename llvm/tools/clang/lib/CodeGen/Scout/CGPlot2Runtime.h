@@ -104,7 +104,8 @@ namespace CodeGen {
     llvm::Value* ElementInt64Val;
     llvm::Value* ElementFloatVal;
     llvm::Value* ElementDoubleVal;
-
+    llvm::Value* ElementStringVal;
+    
     llvm::Function* CreateFrameFunc();
     llvm::Function* CreateMeshFrameFunc();
     
@@ -115,7 +116,8 @@ namespace CodeGen {
     llvm::Function* FrameCaptureI64Func();
     llvm::Function* FrameCaptureFloatFunc();
     llvm::Function* FrameCaptureDoubleFunc();
-
+    llvm::Function* FrameCaptureStringFunc();
+    
     llvm::Function* PlotGetFunc();
     llvm::Function* PlotInitFunc();
     llvm::Function* PlotReadyFunc();
@@ -146,7 +148,15 @@ namespace CodeGen {
     llvm::Function* PlotAddVarFloatVecFunc();
     llvm::Function* PlotAddVarDoubleVecFunc();
     
+    llvm::Function* PlotAddVarFunc();
+    llvm::Function* PlotCaptureI32Func();
+    llvm::Function* PlotCaptureI64Func();
+    llvm::Function* PlotCaptureFloatFunc();
+    llvm::Function* PlotCaptureDoubleFunc();
+    
     llvm::Function* PlotSetAntialiasedFunc();
+    llvm::Function* PlotSetOutputFunc();
+    llvm::Function* PlotSetRangeFunc();
     
   private:
     CodeGen::CodeGenModule& CGM;

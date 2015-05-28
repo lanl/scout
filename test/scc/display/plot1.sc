@@ -6,17 +6,6 @@ double urand(double a, double b){
   return a + (b - a) * drand48();
 }
 
-void nsleep(double dt){
-  double sec = floor(dt);
-  double fsec = dt - sec;
-  
-  struct timespec ts;
-  ts.tv_sec = sec;
-  ts.tv_nsec = fsec*1e9;
-  
-  nanosleep(&ts, 0);
-}
-
 frame MyFrame{
   timestep: {type:Timestep},
   temperature: {type:Temperature},

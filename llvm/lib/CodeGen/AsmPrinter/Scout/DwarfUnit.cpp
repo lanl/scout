@@ -106,7 +106,7 @@ static uint64_t getBaseTypeSize(DwarfDebug *DD, DIDerivedType Ty) {
 }
 #endif
 
-void DwarfUnit::constructMeshMemberDIE(DIE &Buffer, const DIScoutDerivedType *DT) {
+void DwarfUnit::constructScoutMemberDIE(DIE &Buffer, const DIScoutDerivedType *DT) {
   // This method is modeled after constructMemberDIE - which is called for
   // constructing the DWARF info for the members of a struct/class but
   // is simpler because we do not have classes which have virtual members,
@@ -135,7 +135,7 @@ void DwarfUnit::constructMeshMemberDIE(DIE &Buffer, const DIScoutDerivedType *DT
   addUInt(MemberDie, dwarf::DW_AT_accessibility, dwarf::DW_FORM_data1,
       dwarf::DW_ACCESS_public);
   
-  addUInt(MemberDie, dwarf::DW_AT_SCOUT_mesh_field_flags, None, DT->getScoutFlags());
+  addUInt(MemberDie, dwarf::DW_AT_SCOUT_field_flags, None, DT->getScoutFlags());
 }
 
 /// constructTypeDIE - Construct type DIE from DIScoutCompositeType.
@@ -146,18 +146,22 @@ void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, const DIScoutCompositeType *C
   //uint64_t Size = CTy.getSizeInBits() >> 3;
   uint16_t Tag = Buffer.getTag();
 
+  bool isMesh = false;
+  
   switch (Tag) {
   case dwarf::DW_TAG_SCOUT_uniform_mesh_type:
   case dwarf::DW_TAG_SCOUT_ALE_mesh_type:
   case dwarf::DW_TAG_SCOUT_structured_mesh_type:
   case dwarf::DW_TAG_SCOUT_rectilinear_mesh_type:
-  case dwarf::DW_TAG_SCOUT_unstructured_mesh_type: {
+  case dwarf::DW_TAG_SCOUT_unstructured_mesh_type:
+  case dwarf::DW_TAG_SCOUT_frame_type:{
     // Add elements to mesh type.
     DINodeArray Elements = CTy->getElements();
     for (const auto *Element : Elements) {
       auto *DDTy = dyn_cast<DIScoutDerivedType>(Element);
-      constructMeshMemberDIE(Buffer, DDTy);
+      constructScoutMemberDIE(Buffer, DDTy);
     }
+    isMesh = Tag != dwarf::DW_TAG_SCOUT_frame_type;
     break;
   }
   }
@@ -166,7 +170,9 @@ void DwarfUnit::constructScoutTypeDIE(DIE &Buffer, const DIScoutCompositeType *C
   if (!Name.empty())
     addString(Buffer, dwarf::DW_AT_name, Name);
 
-  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_x, None, CTy->getDimX());
-  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_y, None, CTy->getDimY());
-  addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_z, None, CTy->getDimZ());
+  if(isMesh){
+    addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_x, None, CTy->getDimX());
+    addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_y, None, CTy->getDimY());
+    addUInt(Buffer, dwarf::DW_AT_SCOUT_mesh_dim_z, None, CTy->getDimZ());
+  }
 }

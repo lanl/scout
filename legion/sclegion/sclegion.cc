@@ -566,7 +566,8 @@ public:
 
     size_t numSubregions = mesh_->getNumSubregions();
     header->numColors = numSubregions;
-    //size_t maxShift = 0;
+
+    size_t fields_used = 0;
 
     for (size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i) {
       sclegion_element_kind_t elemKind = sclegion_element_kind_t(i);
@@ -590,20 +591,23 @@ public:
 
         if (isro || isrw) {
           info->count = element.count;
+          fields_used++;
         } else {
           info->count = 0;
         }
 
         info->fieldId = fi;
 
-        printf("addFieldInfo r=%zu fk=%d c=%zu id=%zu\n",
+        printf("addFieldInfo r=%zu fk=%d c=%zu id=%zu fi=%zu i=%zu\n",
                     info->region, info->fieldKind,
-                    info->count, info->fieldId);
+                    info->count, info->fieldId,fi,i);
 
        args += sizeof(MeshFieldInfo);
 
       }
     }
+
+    assert (fields_used != 0 && "no fields used in forall!");
 
     ArgumentMap argMap;
 
@@ -712,17 +716,18 @@ void sclegion_uniform_mesh_init(sclegion_uniform_mesh_t mesh) {
 //SC_TODO: partition is only working for 1-D cell mesh right now.
 size_t getStart(MeshHeader *header, size_t dim, size_t color) {
   size_t start = 0;
-  size_t c, lowerBound,  upperBound, numberSmall, numSubregions;
+  size_t c, lowerBound, upperBound, numberSmall, numElmts;
+
+  size_t numSubregions = header->numColors;
 
   switch(header->rank) {
   case 1:
     if (dim == 0) {
-      numSubregions = header->numColors;
       lowerBound = header->width / numSubregions;
       upperBound = lowerBound + 1;
       numberSmall = numSubregions - (header->width % numSubregions);
       for (c = 0; c < color; c++) {
-        size_t numElmts = c < numberSmall ? lowerBound : upperBound;
+        numElmts = c < numberSmall ? lowerBound : upperBound;
         start += numElmts;
       }
     } else {
@@ -730,34 +735,54 @@ size_t getStart(MeshHeader *header, size_t dim, size_t color) {
     }
     break;
   case 2:
-    // no partitioning for these cases yet
-    start = 0;
+    if (dim == 1) {
+      lowerBound = header->height / numSubregions;
+      upperBound = lowerBound + 1;
+      numberSmall = numSubregions - (header->height % numSubregions);
+      for (c = 0; c < color; c++) {
+        numElmts = c < numberSmall ? lowerBound : upperBound;
+        start += numElmts;
+      }
+    } else {
+      start = 0;
+    }
     break;
   case 3:
-    start = 0;
+    if (dim == 2) {
+      lowerBound = header->depth / numSubregions;
+      upperBound = lowerBound + 1;
+      numberSmall = numSubregions - (header->depth % numSubregions);
+      for (c = 0; c < color; c++) {
+        numElmts = c < numberSmall ? lowerBound : upperBound;
+        start += numElmts;
+      }
+    } else {
+      start = 0;
+    }
     break;
   default:
       assert(false && "bad rank");
   }
+  //printf("START %u\n",start);
   return start;
 }
 
-size_t getOffset(MeshHeader *header, size_t color) {
+size_t getStartOffset(MeshHeader *header, size_t color) {
   size_t offset = 0;
   switch (header->rank) {
   case 1:
     offset = getStart(header, 0, color);
     break;
   case 2:
-    // no partitioning for these cases yet
-    offset = 0;
+    offset = header->width * getStart(header, 1, color);
     break;
   case 3:
-    offset = 0;
+    offset =  header->width * header->height * getStart(header, 2, color);
     break;
   default:
     assert(false && "bad rank");
   }
+  //printf("START OFF %u\n",offset);
   return offset;
 }
 
@@ -774,7 +799,35 @@ size_t getEnd(MeshHeader *header, size_t dim, size_t color) {
       assert(false && "bad rank");
     }
   }
-  return getStart(header, dim, color + 1);
+
+  switch (header->rank) {
+  case 1:
+    return getStart(header, dim, color + 1);
+  case 2:
+    switch(dim+1) {
+    case 1:
+      return header->width;
+    case 2:
+      return getStart(header, 1, color + 1);
+    case 3:
+      return 0;
+    default:
+       assert(false && "bad rank");
+    }
+  case 3:
+    switch(dim+1) {
+    case 1:
+      return header->width;
+    case 2:
+      return header->height;
+    case 3:
+      return getStart(header, 2, color + 1);
+    default:
+       assert(false && "bad rank");
+    }
+  default:
+    assert(false && "bad rank");
+  }
 }
 
 size_t getEndOffset(MeshHeader *header, size_t color) {
@@ -784,15 +837,15 @@ size_t getEndOffset(MeshHeader *header, size_t color) {
     offset = getEnd(header, 0, color);
     break;
   case 2:
-    // no partitioning for these cases yet
-    offset = header->width * header->height;
+    offset = header->width * getEnd(header, 1, color);
     break;
   case 3:
-    offset = header->width * header->height * header->depth;
+    offset = header->width * header->height * getEnd(header, 2, color);
     break;
   default:
     assert(false && "bad rank");
   }
+  //printf("END OFF %u\n",offset);
   return offset;
 }
 
@@ -823,7 +876,7 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   MeshFieldInfo* fi;
   size_t numFields = header->numFields;
 
-  size_t offset = getOffset(header, color);
+  size_t offset = getStartOffset(header, color);
 
   for (size_t i = 0; i < numFields; ++i) {
     fi = (MeshFieldInfo*) args;

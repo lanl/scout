@@ -203,6 +203,7 @@ class CGDebugInfo {
                          llvm::DIFile* F,
                          SmallVectorImpl<llvm::Metadata *> &E,
                          llvm::DIScoutCompositeType *MeshTy);
+  
   void CollectMeshStaticField(const VarDecl *Var,
                               SmallVectorImpl<llvm::Metadata *> &E,
                               llvm::DIScoutCompositeType *MeshTy);
@@ -227,8 +228,21 @@ class CGDebugInfo {
   llvm::DIType *CreateType(const QueryType *Ty);
   
   llvm::DIType *CreateType(const FrameType *Ty);
+  llvm::DIType *CreateTypeDefinition(const FrameType *Ty);
+  llvm::DIScoutCompositeType *CreateLimitedType(const FrameType *Ty);
   
   llvm::DIType *CreateType(const FrameVarType *Ty);
+  
+  void CollectFrameFields(const FrameDecl *Decl,
+                          llvm::DIFile* F,
+                          SmallVectorImpl<llvm::Metadata *> &E,
+                          llvm::DIScoutCompositeType *FrameTy);
+  
+  llvm::DIType
+  *createFrameFieldType(StringRef name, QualType type,
+                        SourceLocation loc,
+                        llvm::DIFile* tunit,
+                        llvm::DIScope* scope);
   // +========================================================================+
 
   void CollectCXXMemberFunctions(const CXXRecordDecl *Decl, llvm::DIFile *F,
@@ -376,6 +390,7 @@ public:
 
   // +===== Scout ============================================================+
   void completeType(const MeshDecl *MD);
+  void completeType(const FrameDecl *FD);
   void completeRequiredType(const UniformMeshDecl *MD);
   void completeRequiredType(const ALEMeshDecl *MD);
   void completeRequiredType(const RectilinearMeshDecl *MD);

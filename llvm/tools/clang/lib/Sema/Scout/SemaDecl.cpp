@@ -424,6 +424,26 @@ Decl* Sema::ActOnFrameDefinition(Scope* S,
   return FD;
 }
 
+Decl* Sema::ActOnFrameDefinition(Scope* S,
+                                 SourceLocation InLoc){
+  
+  // create a unique name for the frame
+  std::stringstream sstr;
+  sstr << "__frame_" << InLoc.getRawEncoding();
+  
+  FrameDecl* FD =
+  FrameDecl::Create(Context, CurContext, SourceLocation(),
+                    SourceLocation(), PP.getIdentifierInfo(sstr.str()), 0);
+  
+  PushOnScopeChains(FD, S, true);
+  
+  FD->completeDefinition();
+  
+  PushDeclContext(S, FD);
+  
+  return FD;
+}
+
 void Sema::InitFrameDefinitions(Scope* S, FrameDecl* FD){
   AddFrameVarType(S, FD, "Timestep", Context.IntTy);
   AddFrameVarType(S, FD, "Temperature", Context.DoubleTy);
@@ -435,6 +455,8 @@ void Sema::InitFrameDefinitions(Scope* S, FrameDecl* FD){
   AddFrameVarType(S, FD, "Int32", Context.IntTy);
   AddFrameVarType(S, FD, "Int64", Context.LongTy);
 
+  AddFrameVarType(S, FD, "String", Context.getPointerType(Context.CharTy));
+  
   AddFrameFunction(S, FD, "sum", Context.IntTy, {Context.IntTy});
   AddFrameFunction(S, FD, "sum", Context.LongTy, {Context.LongTy});
   AddFrameFunction(S, FD, "sum", Context.FloatTy, {Context.FloatTy});

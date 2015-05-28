@@ -2523,16 +2523,16 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
     }
 
     // Emit the umbrella header, if there is one.
-    if (const FileEntry *UmbrellaHeader = Mod->getUmbrellaHeader()) {
+    if (auto UmbrellaHeader = Mod->getUmbrellaHeader()) {
       Record.clear();
       Record.push_back(SUBMODULE_UMBRELLA_HEADER);
-      Stream.EmitRecordWithBlob(UmbrellaAbbrev, Record, 
-                                UmbrellaHeader->getName());
-    } else if (const DirectoryEntry *UmbrellaDir = Mod->getUmbrellaDir()) {
+      Stream.EmitRecordWithBlob(UmbrellaAbbrev, Record,
+                                UmbrellaHeader.NameAsWritten);
+    } else if (auto UmbrellaDir = Mod->getUmbrellaDir()) {
       Record.clear();
       Record.push_back(SUBMODULE_UMBRELLA_DIR);
       Stream.EmitRecordWithBlob(UmbrellaDirAbbrev, Record, 
-                                UmbrellaDir->getName());      
+                                UmbrellaDir.NameAsWritten);
     }
 
     // Emit the headers.
@@ -2580,8 +2580,7 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
       Record.clear();
       for (unsigned I = 0, N = Mod->Exports.size(); I != N; ++I) {
         if (Module *Exported = Mod->Exports[I].getPointer()) {
-          unsigned ExportedID = SubmoduleIDs[Exported];
-          assert(ExportedID > 0 && "Unknown submodule ID?");
+          unsigned ExportedID = getSubmoduleID(Exported);
           Record.push_back(ExportedID);
         } else {
           Record.push_back(0);
@@ -2632,9 +2631,14 @@ void ASTWriter::WriteSubmodules(Module *WritingModule) {
   }
   
   Stream.ExitBlock();
-  
-  assert((NextSubmoduleID - FirstSubmoduleID
-            == getNumberOfModules(WritingModule)) && "Wrong # of submodules");
+
+  // FIXME: This can easily happen, if we have a reference to a submodule that
+  // did not result in us loading a module file for that submodule. For
+  // instance, a cross-top-level-module 'conflict' declaration will hit this.
+  assert((NextSubmoduleID - FirstSubmoduleID ==
+          getNumberOfModules(WritingModule)) &&
+         "Wrong # of submodules; found a reference to a non-local, "
+         "non-imported submodule?");
 }
 
 serialization::SubmoduleID 
@@ -4235,6 +4239,20 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
     AddSourceLocation(I->second, UndefinedButUsed);
   }
 
+  // Build a record containing all delete-expressions that we would like to
+  // analyze later in AST.
+  RecordData DeleteExprsToAnalyze;
+
+  for (const auto &DeleteExprsInfo :
+       SemaRef.getMismatchingDeleteExpressions()) {
+    AddDeclRef(DeleteExprsInfo.first, DeleteExprsToAnalyze);
+    DeleteExprsToAnalyze.push_back(DeleteExprsInfo.second.size());
+    for (const auto &DeleteLoc : DeleteExprsInfo.second) {
+      AddSourceLocation(DeleteLoc.first, DeleteExprsToAnalyze);
+      DeleteExprsToAnalyze.push_back(DeleteLoc.second);
+    }
+  }
+
   // Write the control block
   WriteControlBlock(PP, Context, isysroot, OutputFile);
 
@@ -4504,7 +4522,10 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
   // Write the undefined internal functions and variables, and inline functions.
   if (!UndefinedButUsed.empty())
     Stream.EmitRecord(UNDEFINED_BUT_USED, UndefinedButUsed);
-  
+
+  if (!DeleteExprsToAnalyze.empty())
+    Stream.EmitRecord(DELETE_EXPRS_TO_ANALYZE, DeleteExprsToAnalyze);
+
   // Write the visible updates to DeclContexts.
   for (auto *DC : UpdatedDeclContexts)
     WriteDeclContextVisibleUpdate(DC);
@@ -4678,7 +4699,7 @@ void ASTWriter::WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord) {
         break;
 
       case UPD_DECL_EXPORTED:
-        Record.push_back(inferSubmoduleIDFromLocation(Update.getLoc()));
+        Record.push_back(getSubmoduleID(Update.getModule()));
         break;
       }
     }
@@ -5823,10 +5844,11 @@ void ASTWriter::DeclarationMarkedOpenMPThreadPrivate(const Decl *D) {
   DeclUpdates[D].push_back(DeclUpdate(UPD_DECL_MARKED_OPENMP_THREADPRIVATE));
 }
 
-void ASTWriter::RedefinedHiddenDefinition(const NamedDecl *D,
-                                          SourceLocation Loc) {
+void ASTWriter::RedefinedHiddenDefinition(const NamedDecl *D, Module *M) {
   assert(!WritingAST && "Already writing the AST!");
   assert(D->isHidden() && "expected a hidden declaration");
-  assert(D->isFromASTFile() && "hidden decl not from AST file");
-  DeclUpdates[D].push_back(DeclUpdate(UPD_DECL_EXPORTED, Loc));
+  if (!D->isFromASTFile())
+    return;
+
+  DeclUpdates[D].push_back(DeclUpdate(UPD_DECL_EXPORTED, M));
 }

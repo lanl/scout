@@ -63,6 +63,7 @@
 #include <functional>
 #include <random>
 #include <mutex>
+#include <limits>
 
 #include <QtGui>
 
@@ -76,6 +77,11 @@ __PRETTY_FUNCTION__ << ": " << #X << " = " << X << std::endl
 
 #define nlog(X) std::cout << __FILE__ << ":" << __LINE__ << ": " << \
 __PRETTY_FUNCTION__ << ": " << X << std::endl
+
+// hack around linux stupidity 
+#undef major
+#undef minor
+
 
 using namespace std;
 using namespace scout;
@@ -98,32 +104,30 @@ namespace{
   const int ELEMENT_INT64 = 1;
   const int ELEMENT_FLOAT = 2;
   const int ELEMENT_DOUBLE = 3;
+  const int ELEMENT_STRING = 4;
 
-  const double LEFT_MARGIN = 100.0;
-  const double RIGHT_MARGIN = 50.0;
-  const double TOP_MARGIN = 50.0;
-  const double BOTTOM_MARGIN = 50.0;
+  const double MARGIN = 50.0;
+  const double AXIS_LABEL_SIZE = 24.0;
+  const double TICK_LABEL_SIZE = 12.0;
+  const double MIN_FONT_SIZE = 8.0;
+  const double MAX_FONT_SIZE = 28.0;
 
   const double MIN = numeric_limits<double>::min();
   const double MAX = numeric_limits<double>::max();
   const double EPSILON = 0.000001;
-
-  const size_t X_LABELS = 10;
-  const size_t Y_LABELS = 10;
-  const size_t X_TICKS = 20;
-  const size_t Y_TICKS = 20;
 
   typedef uint32_t VarId;
 
   const uint32_t PLOT_VAR_BEGIN = 65536;
   
   const uint32_t FLAG_VAR_CONSTANT = 0x00000001; 
-
-  typedef vector<double> DoubleVec;
+  const uint32_t FLAG_VAR_POSITION = 0x00000002; 
 
   const uint64_t AGG_SUM = 6716694111845535935ULL;
   const uint64_t AGG_MEAN = 8849440314945535285ULL;
   const uint64_t AGG_VARIANCE = 14523147045845051570ULL;
+
+  VarId nullVarId = numeric_limits<VarId>::max();
 
   class Random{
   public:
@@ -196,6 +200,10 @@ namespace{
       }
     }
 
+    Vec(initializer_list<T> il){
+      copy(il.begin(), il.end(), vc_);
+    }
+
     Vec& operator=(T* v){
       for(size_t i = 0; i < N; ++i){
         vc_[i] = v[i];
@@ -228,13 +236,6 @@ namespace{
      return vc_;
    }
 
-   void get(DoubleVec& v) const{
-     v.reserve(N);
-     for(size_t i = 0; i < N; ++i){
-       v.push_back(vc_[i]);
-     }
-   }
-
    void dump(){
      cerr << "[";
      for(size_t i = 0; i < N; ++i){
@@ -247,9 +248,17 @@ namespace{
      cerr << "]";
    }
 
+    void scale(const Vec& v){
+      for(size_t i = 0; i < N; ++i){
+        vc_[i] *= v.vc_[i];
+      }
+    }
+
   private:
     T vc_[N] __attribute__ ((aligned (16)));
   };
+
+  using double2 = Vec<double, 2>;
 
   template<typename T>
   size_t maxSize(T* v){
@@ -263,17 +272,21 @@ namespace{
 
   class VarBase{
   public:    
-    virtual double min() = 0;
-
-    virtual double max() = 0;
-
-    virtual double get(size_t i) const = 0;
+    virtual double get(size_t i) const{
+      assert(false && "not a scalar");
+    }
 
     virtual size_t hash(size_t i) const = 0;
 
-    virtual void getVec(size_t i, DoubleVec& v) const = 0;
+    virtual void* getVec(size_t i){
+      assert(false && "not a vector");
+    }
 
     virtual void compute(void* plot, uint64_t index){};
+
+    virtual void compute(const QTransform& t, void* plot, uint64_t index){
+      compute(plot, index);
+    };
 
     virtual size_t size() const = 0;
     
@@ -295,10 +308,6 @@ namespace{
       return std::hash<T>()(at(i));
     }
 
-    void getVec(size_t i, DoubleVec& v) const{
-      assert(false && "not a vector");
-    }
-
     virtual T sum(){
       T ret = 0;
       size_t n = size();
@@ -308,6 +317,26 @@ namespace{
       }
 
       return ret;
+    }
+
+    virtual pair<T, T> minMax(){
+      T min = numeric_limits<T>::max();
+      T max = numeric_limits<T>::min();
+      
+      size_t n = size();
+
+      for(size_t i = 0; i < n; ++i){
+        T x = at(i);
+        if(x < min){
+          min = x;
+        }
+
+        if(x > max){
+          max = x;
+        }
+      }
+
+      return {min, max};
     }
   };
 
@@ -320,18 +349,6 @@ namespace{
       return i;
     }
     
-    double min(){
-      return 0;
-    }
-
-    double max(){
-      return max_;
-    }
-
-    void setMax(uint64_t max){
-      max_ = max;
-    }
-
     size_t size() const{
       return 0;
     }
@@ -349,14 +366,6 @@ namespace{
       return i % width_;
     }
     
-    double min(){
-      return 0;
-    }
-
-    double max(){
-      return width_ - 1;
-    }
-
     size_t size() const{
       return 0;
     }
@@ -368,48 +377,29 @@ namespace{
   class YPosVar : public ScalarVar<uint32_t>{
   public:
     YPosVar(uint32_t width, uint32_t height)
-      : width_(width),
-        h1_(height - 1){}
+      : width_(width){}
 
     uint32_t at(size_t i) const{
       return i / width_;
     }
     
-    double min(){
-      return 0;
-    }
-
-    double max(){
-      return h1_;
-    }
-
     size_t size() const{
       return 0;
     }
 
   private:
     uint32_t width_;
-    uint32_t h1_;
   };
 
   class ZPosVar : public ScalarVar<uint32_t>{
   public:
-    ZPosVar(uint32_t width, uint32_t height, uint32_t depth)
-      : wh_(width * height),
-        d1_(depth - 1){}
+    ZPosVar(uint32_t width, uint32_t height)
+      : wh_(width * height){}
 
     uint32_t at(size_t i) const{
       return i / wh_;
     }
     
-    double min(){
-      return 0;
-    }
-
-    double max(){
-      return d1_;
-    }
-
     size_t size() const{
       return 0;
     }
@@ -424,40 +414,21 @@ namespace{
   public:
     Var()
       : fp_(0),
-        i_(RESERVE),
-        min_(numeric_limits<T>::max()),
-        max_(numeric_limits<T>::min()){
+        i_(RESERVE){
     }
 
     Var(T (*fp)(void*, uint64_t))
       : fp_(fp),
-        i_(RESERVE),
-        min_(numeric_limits<T>::max()),
-        max_(numeric_limits<T>::min()){
+        i_(RESERVE){
     }
 
     void capture(T value){
       if(i_ == RESERVE){
         v_.reserve(v_.size() + RESERVE);
         i_ = 0;
-
-        if(value < min_){
-          min_ = value;
-        }
-        
-        if(value > max_){
-          max_ = value;
-        }
       }
       else{
         ++i_;
-
-        if(value < min_){
-          min_ = value;
-        }
-        else if(value > max_){
-          max_ = value;
-        }
       }
 
       v_.push_back(value);
@@ -477,14 +448,6 @@ namespace{
       return std::hash<T>()(v_[i]);
     }
 
-    double min(){
-      return min_;
-    }
-
-    double max(){
-      return max_;
-    }
-
     size_t size() const{
       return v_.size();
     }
@@ -492,15 +455,11 @@ namespace{
     void clear(){
       v_.clear();
       i_ = RESERVE;
-      min_ = numeric_limits<T>::max();
-      max_ = numeric_limits<T>::min();
     }
 
   private:
     vector<T> v_;
     size_t i_;
-    T min_;
-    T max_;
     T (*fp_)(void*, uint64_t);
   };
 
@@ -509,8 +468,7 @@ namespace{
   public:
     ArrayVar(T* array, size_t size)
       : v_(array),
-        size_(size),
-        ready_(false){}
+        size_(size){}
 
     double get(size_t i) const{
       return v_[i];
@@ -520,51 +478,13 @@ namespace{
       return v_[i];
     }
 
-    double min(){
-      if(!ready_){
-        init();
-      }
-
-      return min_;
-    }
-
-    double max(){
-      if(!ready_){
-        init();
-      }
-
-      return max_;
-    }
-
     size_t size() const{
       return size_;
-    }
-
-    void init(){
-      min_ = v_[0];
-      max_ = v_[1];
-
-      T vi;
-      for(size_t i = 1; i < size_; ++i){
-        vi = v_[i];
-        
-        if(vi < min_){
-          min_ = vi;
-        }
-        else if(vi > max_){
-          max_ = vi;
-        }
-      }
-
-      ready_ = true;
     }
 
   private:
     T* v_;
     size_t size_;
-    T min_;
-    T max_;
-    bool ready_;
   };
 
   template<class T, size_t N>
@@ -580,7 +500,7 @@ namespace{
         i_(RESERVE){
     }
 
-    void capture(const Vec<T, N>& value){
+    virtual void capture(const Vec<T, N>& value){
       if(i_ == RESERVE){
         v_.reserve(v_.size() + RESERVE);
         i_ = 0;
@@ -601,34 +521,184 @@ namespace{
       }
     }
 
-    double get(size_t i) const{
-      assert(false && "attempt to get scalar from vector");
-    }
-
     size_t hash(size_t i) const{
       assert(false && "attempt to hash from vector");
     }
 
-    void getVec(size_t i, DoubleVec& v) const{
-      v_[i].get(v);
+    void* getVec(size_t i){
+      return v_[i].raw();
     }
 
-    double min(){
-      assert(false && "attempt to get min from vector");
-    }
-
-    double max(){
-      assert(false && "attempt to get max from vector");
+    T* raw(){
+      return reinterpret_cast<T*>(v_.data()); 
     }
 
     size_t size() const{
       return v_.size();
     }
 
+    void clear(){
+      v_.clear();
+    }
+
   private:
     vector<Vec<T, N>> v_;
     size_t i_;
     void (*fp_)(void*, uint64_t, T*);
+  };
+
+  class PositionVar : public VarBase{
+  public:
+    PositionVar(void (*fp)(void*, uint64_t, double*))
+      : fp_(fp),
+        i_(RESERVE){}
+
+    PositionVar(const QPointF& p)
+      : fp_(nullptr),
+        i_(RESERVE){
+      capture(p);
+    }
+    
+    PositionVar()
+      : fp_(nullptr),
+      i_(RESERVE){}
+
+    void capture(const QPointF& p){
+      if(i_ == RESERVE){
+        size_t n = dataVec_.size();
+
+        dataVec_.reserve(n + RESERVE);
+        plotVec_.reserve(n + RESERVE);
+        i_ = 0;
+
+        if(p.x() < xMin_){
+          xMin_ = p.x();
+        }
+        if(p.x() > xMax_){
+          xMax_ = p.x();
+        }
+
+        if(p.y() < yMin_){
+          yMin_ = p.y();
+        }
+        if(p.y() > yMax_){
+          yMax_ = p.y();
+        }
+      }
+      else{
+        ++i_;
+
+        if(p.x() < xMin_){
+          xMin_ = p.x();
+        }
+        else if(p.x() > xMax_){
+          xMax_ = p.x();
+        }
+
+        if(p.y() < yMin_){
+          yMin_ = p.y();
+        }
+        else if(p.y() > yMax_){
+          yMax_ = p.y();
+        }
+      }
+
+      dataVec_.push_back(p);
+      plotVec_.push_back(p);
+    }
+
+    void capture(const QTransform& t, const QPointF& p){
+      if(i_ == RESERVE){
+        size_t n = plotVec_.size();
+
+        plotVec_.reserve(n + RESERVE);
+        i_ = 0;
+      }
+      else{
+        ++i_;
+      }
+
+      plotVec_.emplace_back(t.map(p));
+    }
+
+    void compute(void* plot, uint64_t index) override{
+      if(fp_){
+        QPointF v;
+        (*fp_)(plot, index, (double*)&v);
+        capture(v);
+      }
+    }
+
+    void compute(const QTransform& t, void* plot, uint64_t index) override{
+      if(fp_){
+        QPointF v;
+        (*fp_)(plot, index, (double*)&v);
+        capture(t, v);
+      }
+    };
+
+    size_t hash(size_t i) const{
+      assert(false && "attempt to hash from vector");
+    }
+
+    double xMin() const{
+      return xMin_;
+    }
+
+    double xMax() const{
+      return xMax_;
+    }
+
+    double yMin() const{
+      return yMin_;
+    }
+
+    double yMax() const{
+      return yMax_;
+    }
+
+    QPointF* getPoints(){
+      return plotVec_.data();
+    }
+
+    size_t size() const{
+      return plotVec_.size();
+    }
+
+    void clear(){
+      dataVec_.clear();
+      plotVec_.clear();
+      double xMin_ = MAX;
+      double xMax_ = MIN;
+      double yMin_ = MAX;
+      double yMax_ = MIN;
+    }  
+
+    void transform(const QTransform& t){
+      size_t n = dataVec_.size();
+
+      for(size_t i = 0; i < n; ++i){
+        plotVec_[i] = t.map(dataVec_[i]);
+      }
+    }
+
+    bool isConst() const override{
+      return !fp_;
+    }
+
+  private:
+    using PointVec = vector<QPointF>;
+
+    void (*fp_)(void*, uint64_t, double*);
+
+    PointVec dataVec_;
+    PointVec plotVec_;
+
+    double xMin_ = MAX;
+    double xMax_ = MIN;
+    double yMin_ = MAX;
+    double yMax_ = MIN;
+    size_t i_;
   };
 
   template<class T>
@@ -638,14 +708,6 @@ namespace{
       : value_(value){}
 
     T at(size_t i) const{
-      return value_;
-    }
-
-    double min(){
-      return value_;
-    }
-
-    double max(){
       return value_;
     }
 
@@ -671,24 +733,12 @@ namespace{
     ConstVecVar(const Vec<T, N>& v)
       : v_(v){}
 
-    double get(size_t i) const{
-      assert(false && "attempt to get scalar from vector");
-    }
-
     size_t hash(size_t i) const{
       assert(false && "attempt to hash from vector");
     }
 
-    void getVec(size_t i, DoubleVec& v) const{
-      v_.get(v);
-    }
-
-    double min(){
-      assert(false && "attempt to get min from vector");
-    }
-
-    double max(){
-      assert(false && "attempt to get max from vector");
+    void* getVec(size_t i){
+      return v_.raw();
     }
 
     size_t size() const{
@@ -701,6 +751,47 @@ namespace{
 
   private:
     Vec<T, N> v_;
+  };
+
+  class StringVar : public VarBase{
+  public:
+    StringVar()
+      : i_(RESERVE){}
+
+    void capture(const char* s){
+      if(i_ == RESERVE){
+        size_t n = v_.size();
+        v_.reserve(n + RESERVE);
+        i_ = 0;
+      }
+      else{
+        ++i_;
+      }
+      
+      v_.emplace_back(s);
+    }
+
+    size_t hash(size_t i) const{
+      return std::hash<string>()(v_[i]);
+    }
+
+    size_t size() const{
+      return v_.size();
+    }
+
+    void clear(){
+      v_.clear();
+    }
+
+    const string& getString(size_t i) const{
+      return v_[i];
+    }
+
+  private:
+    using StringVec = vector<string>;
+    
+    StringVec v_;
+    size_t i_;
   };
 
   class Frame{
@@ -738,13 +829,9 @@ namespace{
       addVar(3, new ConstVar<uint32_t>(depth));
       addVar(4, new XPosVar(width));
       addVar(5, new YPosVar(width, height));
-      addVar(6, new ZPosVar(width, height, depth));
+      addVar(6, new ZPosVar(width, height));
     }
     
-    void updateIndexVar(size_t size){
-      indexVar_->setMax(size);
-    }
-
     void addVar(VarId varId, VarBase* v){
       while(vars_.size() <= varId){
         vars_.push_back(nullptr);
@@ -772,6 +859,9 @@ namespace{
         break;
       case ELEMENT_DOUBLE:
         v = new Var<double>();
+        break;
+      case ELEMENT_STRING:
+        v = new StringVar();
         break;
       default:
         assert(false && "invalid element kind");
@@ -814,7 +904,13 @@ namespace{
       static_cast<Var<T>*>(vars_[varId])->capture(value);
     }
 
-    void compute(Plot* plot, Frame* parentFrame){
+    void capture(VarId varId, const char* value){
+      assert(varId < vars_.size());
+      
+      static_cast<StringVar*>(vars_[varId])->capture(value);
+    }
+
+    void compute(Plot* plot, Frame* parentFrame){ 
       size_t end = parentFrame->size();
       size_t n = vars_.size();
 
@@ -823,6 +919,19 @@ namespace{
 
         for(size_t j = v->size(); j < end; ++j){
           v->compute(plot, j);
+        }
+      }
+    }
+
+    void compute(Plot* plot, Frame* parentFrame, const QTransform& t){ 
+      size_t end = parentFrame->size();
+      size_t n = vars_.size();
+
+      for(size_t i = 0; i < n; ++i){
+        VarBase* v = vars_[i];
+
+        for(size_t j = v->size(); j < end; ++j){
+          v->compute(t, plot, j);
         }
       }
     }
@@ -892,10 +1001,12 @@ namespace{
     painter.drawText(frame, text, textOption);
   }
 
-  QColor toQColor(DoubleVec& v){
-    assert(v.size() == 4);
-    
+  QColor toQColor(float* v){    
     return QColor(v[0]*255, v[1]*255, v[2]*255, v[3]*255);
+  }
+
+  QColor toQColor(void* v){    
+    return toQColor(static_cast<float*>(v));
   }
 
   QString toLabel(double value){
@@ -915,43 +1026,35 @@ namespace{
 
     class RangeElement : public Element{
     public:
-      virtual VarId getX() = 0;
-
-      virtual VarId getY() = 0;
+      virtual VarId getPos() = 0;
     };
 
     class Lines : public RangeElement{
     public:
-      Lines(VarId x, VarId y, VarId size, VarId color)
-        : x(x), y(y), size(size), color(color){}
+      Lines(VarId pos, VarId size, VarId color, VarId label)
+        : pos(pos), size(size), color(color), label(label){}
 
-      VarId x;
-      VarId y;
+      VarId pos;
       VarId size;
       VarId color;
+      VarId label;
 
       int order(){
         return 1;
       }
 
-      VarId getX(){
-        return x;
-      }
-
-      VarId getY(){
-        return y;
+      VarId getPos(){
+        return pos;
       }
     };
 
     class Line : public Element{
     public:
-      Line(VarId x1, VarId y1, VarId x2, VarId y2, VarId size, VarId color)
-        : x1(x1), y1(y1), x2(x2), y2(y2), size(size), color(color){}
+      Line(VarId pos1, VarId pos2, VarId size, VarId color)
+        : pos1(pos1), pos2(pos2), size(size), color(color){}
 
-      VarId x1;
-      VarId y1;
-      VarId x2;
-      VarId y2;
+      VarId pos1;
+      VarId pos2;
       VarId size;
       VarId color;
 
@@ -962,68 +1065,54 @@ namespace{
 
     class Points : public RangeElement{
     public:
-      Points(VarId x, VarId y, VarId size, VarId color)
-        : x(x), y(y), size(size), color(color){}
+      Points(VarId pos, VarId size, VarId color, VarId label)
+        : pos(pos), size(size), color(color), label(label){}
 
-      VarId x;
-      VarId y;
+      VarId pos;
       VarId size;
       VarId color;
+      VarId label;
 
       int order(){
         return 2;
       }
 
-      VarId getX(){
-        return x;
-      }
-
-      VarId getY(){
-        return y;
+      VarId getPos(){
+        return pos;
       }
     };
 
     class Area : public RangeElement{
     public:
-      Area(VarId x, VarId y, VarId color)
-        : x(x), y(y), color(color){}
+      Area(VarId pos, VarId color)
+        : pos(pos), color(color){}
 
-      VarId x;
-      VarId y;
+      VarId pos;
       VarId color;
 
       int order(){
         return 0;
       }
 
-      VarId getX(){
-        return x;
-      }
-
-      VarId getY(){
-        return y;
+      VarId getPos(){
+        return pos;
       }
     };
 
     class Interval : public RangeElement{
     public:
-      Interval(VarId x, VarId y, VarId color)
-        : x(x), y(y), color(color){}
+      Interval(VarId pos, VarId color)
+        : pos(pos), color(color){}
 
-      VarId x;
-      VarId y;
+      VarId pos;
       VarId color;
 
       int order(){
         return 0;
       }
 
-      VarId getX(){
-        return x;
-      }
-
-      VarId getY(){
-        return y;
+      VarId getPos(){
+        return pos;
       }
     };
 
@@ -1042,12 +1131,11 @@ namespace{
 
     class Bins : public Element{
     public:
-      Bins(VarId varIn, VarId xOut, VarId yOut, uint32_t n)
-        : varIn(varIn), xOut(xOut), yOut(yOut), n(n){}
+      Bins(VarId varIn, VarId posOut, uint32_t n)
+        : varIn(varIn), posOut(posOut), n(n){}
 
       VarId varIn;
-      VarId xOut;
-      VarId yOut;
+      VarId posOut;
       uint32_t n;
 
       int order(){
@@ -1163,8 +1251,8 @@ namespace{
 
     class Proportion : public Element{
     public:
-      Proportion(VarId xOut, VarId yOut)
-        : xOut(xOut), yOut(yOut){}
+      Proportion(VarId posOut)
+        : posOut(posOut){}
 
       void addVar(VarId var){
         vars.push_back(var);
@@ -1174,8 +1262,7 @@ namespace{
         return 0;
       }
 
-      VarId xOut;
-      VarId yOut;
+      VarId posOut;
 
       typedef vector<VarId> VarVec;
       VarVec vars;
@@ -1183,11 +1270,16 @@ namespace{
 
     class Axis : public Element{
     public:
-      Axis(uint32_t dim, const string& label)
-        : dim(dim), label(label){}
+      Axis(uint32_t dim, const string& label, uint32_t major, uint32_t minor)
+        : dim(dim),
+          label(label),
+          major(major),
+          minor(minor){}
 
       uint32_t dim;
       string label;
+      uint32_t major;
+      uint32_t minor;
 
       int order(){
         return 3;
@@ -1204,7 +1296,11 @@ namespace{
         window_(nullptr),
         antialiased_(true){}
 
-    ~Plot(){}
+    ~Plot(){
+      if(pdfWriter_){
+        delete pdfWriter_;
+      }
+    }
 
     void init(Frame* frame, PlotWindow* window){
       frame_ = frame;
@@ -1212,11 +1308,28 @@ namespace{
     }
 
     bool ready(){
-      return frame_;
+      return window_;
     }
 
     void setAntialiased(bool flag){
       antialiased_ = flag;
+    }
+
+    void setOutputPath(const string& path){
+      outputPath_ = path;
+    }
+
+    void setRange(bool x, double min, double max){
+      if(x){
+        hasXRange_ = true;
+        xRangeMin_ = min;
+        xRangeMax_ = max; 
+      }
+      else{
+        hasYRange_ = true;
+        yRangeMin_ = min;
+        yRangeMax_ = max;  
+      }
     }
 
     template<class T>
@@ -1231,6 +1344,14 @@ namespace{
         plotFrame_->getVar(varId - PLOT_VAR_BEGIN) : frame_->getVar(varId);
     }
 
+    PositionVar* getPos(VarId varId){
+      return static_cast<PositionVar*>(getVar(varId));
+    }
+
+    StringVar* getStringVar(VarId varId){
+      return static_cast<StringVar*>(getVar(varId));
+    }
+
     template<class T>
     void addVar(VarId varId){
       if(!plotFrame_){
@@ -1238,6 +1359,15 @@ namespace{
       }
 
       plotFrame_->addVar(varId - PLOT_VAR_BEGIN, new Var<T>());
+    }
+
+    template<class T, size_t N>
+    void addVecVar(VarId varId){
+      if(!plotFrame_){
+        plotFrame_ = new Frame(true);
+      }
+
+      plotFrame_->addVar(varId - PLOT_VAR_BEGIN, new VecVar<T, N>());
     }
 
     void addVar(VarId varId, VarBase* v){
@@ -1267,11 +1397,45 @@ namespace{
       plotFrame_->addVar(varId - PLOT_VAR_BEGIN, v);
     }
 
+    void addPos(VarId varId, 
+                void (*fp)(void*, uint64_t, double*),
+                uint32_t flags){
+      if(!plotFrame_){
+        plotFrame_ = new Frame(true);
+      }
+
+      VarBase* v;
+
+      if(flags & FLAG_VAR_CONSTANT){
+        QPointF p;
+        (*fp)(0, 0, (double*)&p);
+        v = new PositionVar(p);
+      }
+      else{
+        v = new PositionVar(fp);
+      }
+
+      plotFrame_->addVar(varId - PLOT_VAR_BEGIN, v);
+    }
+
+    void addPos(VarId varId){
+      if(!plotFrame_){
+        plotFrame_ = new Frame(true);
+      }
+
+      plotFrame_->addVar(varId - PLOT_VAR_BEGIN, new PositionVar);
+    }
+
     template<class T>
     void addVecVar(VarId varId,
                    void (*fp)(void*, uint64_t, T*),
                    uint32_t dim,
                    uint32_t flags){
+      if(flags & FLAG_VAR_POSITION){
+        addPos(varId, (void (*)(void*, uint64_t, double*))fp, flags);
+        return;
+      }
+
       if(!plotFrame_){
         plotFrame_ = new Frame(true);
       }
@@ -1340,39 +1504,43 @@ namespace{
       }
     }
 
-    void addLines(VarId x, VarId y, VarId size, VarId color){
-      elements_.push_back(new Lines(x, y, size, color)); 
+    template<class T>
+    void capture(VarId varId, T value){
+      assert(plotFrame_);
+      
+      plotFrame_->capture(varId - PLOT_VAR_BEGIN, value);
     }
 
-    void addLine(VarId x1,
-                 VarId y1,
-                 VarId x2,
-                 VarId y2,
+    void addLines(VarId pos, VarId size, VarId color, VarId label){
+      elements_.push_back(new Lines(pos, size, color, label)); 
+    }
+
+    void addLine(VarId pos1,
+                 VarId pos2,
                  VarId size,
                  VarId color){
-      elements_.push_back(new Line(x1, y1, x2, y2, size, color)); 
+      elements_.push_back(new Line(pos1, pos2, size, color)); 
     }
 
-    void addPoints(VarId x, VarId y, VarId size, VarId color){
-      elements_.push_back(new Points(x, y, size, color)); 
+    void addPoints(VarId pos, VarId size, VarId color, VarId label){
+      elements_.push_back(new Points(pos, size, color, label)); 
     }
 
-    void addArea(VarId x, VarId y, VarId color){
-      elements_.push_back(new Area(x, y, color)); 
+    void addArea(VarId pos, VarId color){
+      elements_.push_back(new Area(pos, color)); 
     }
 
-    void addInterval(VarId x, VarId y, VarId color){
-      elements_.push_back(new Interval(x, y, color)); 
+    void addInterval(VarId pos, VarId color){
+      elements_.push_back(new Interval(pos, color)); 
     }
 
     void addPie(VarId count, VarId color){
       elements_.push_back(new Pie(count, color)); 
     }
 
-    void addBins(VarId varIn, VarId xOut, VarId yOut, uint32_t n){
-      elements_.push_back(new Bins(varIn, xOut, yOut, n));
-      addVar<double>(xOut);
-      addVar<double>(yOut);
+    void addBins(VarId varIn, VarId posOut, uint32_t n){
+      elements_.push_back(new Bins(varIn, posOut, n));
+      addPos(posOut);
     }
 
     AggregateBase* addAggregate(uint64_t type,
@@ -1404,18 +1572,20 @@ namespace{
       return a;
     }
 
-    Proportion* addProportion(VarId xOut, VarId yOut){
-      Proportion* p = new Proportion(xOut, yOut);
+    Proportion* addProportion(VarId posOut){
+      Proportion* p = new Proportion(posOut);
       elements_.push_back(p);
 
-      addVar<double>(xOut);
-      addVar<double>(yOut);
+      addPos(posOut);
 
       return p;
     }
 
-    void addAxis(uint32_t dim, const string& label){
-      elements_.push_back(new Axis(dim, label));
+    void addAxis(uint32_t dim,
+                 const string& label,
+                 uint32_t major,
+                 uint32_t minor){
+      elements_.push_back(new Axis(dim, label, major, minor));
       switch(dim){
       case 1:
         hasXLabel_ = !label.empty();
@@ -1437,8 +1607,14 @@ namespace{
             a->compute(this);
           }
         }
-
-        plotFrame_->compute(this, frame_);
+        
+        if(hasXRange_ && hasYRange_){
+          plotFrame_->compute(this, frame_ ? frame_ : plotFrame_,
+                              posTransform_);
+        }
+        else{
+          plotFrame_->compute(this, frame_ ? frame_ : plotFrame_);
+        }
       }
 
       widget_ = window_->getWidget();
@@ -1449,33 +1625,52 @@ namespace{
       QtWindow::pollEvents();
     }
 
-    void prepare(){
+    void prepare(QPainter& painter){
+      width_ = painter.device()->width();
+      height_ = painter.device()->height();
+      scale_ = min(width_, height_)/1024.0;
+
       sort(elements_.begin(), elements_.end(),
            [](Element* a, Element* b){
              return a->order() < b->order();
            });
 
-      QSize frame = widget_->frameSize();
-      
-      width_ = frame.width();
-      height_ = frame.height();
+      QFont prevFont = painter.font();
+      QFont font = prevFont;
+
+      tickLabelSize_ = scaleFont(TICK_LABEL_SIZE);
+      font.setPointSize(tickLabelSize_);
+      painter.setFont(font);
+      QRect bounds = painter.fontMetrics().boundingRect("?????????");
+      tickLabelWidth_ = bounds.width();
+      tickLabelHeight_ = bounds.height();
+
+      axisLabelSize_ = scaleFont(AXIS_LABEL_SIZE);
+      font.setPointSize(axisLabelSize_);
+      painter.setFont(font);
+      bounds = painter.fontMetrics().boundingRect("???");
+      axisLabelHeight_ = bounds.height();
+
+      painter.setFont(prevFont);
+
+      double m = scale(MARGIN);
 
       if(hasYLabel_){
-        origin_.setX(LEFT_MARGIN + 15);
+        origin_.setX(m + tickLabelWidth_ + axisLabelHeight_);
       }
       else{
-        origin_.setX(LEFT_MARGIN);
+        origin_.setX(m + tickLabelWidth_);
       }
 
       if(hasXLabel_){
-        origin_.setY(height_ - BOTTOM_MARGIN - 15);
+        origin_.setY(height_ - m - tickLabelHeight_ - axisLabelHeight_);
       }
       else{
-        origin_.setY(height_ - BOTTOM_MARGIN);
+        origin_.setY(height_ - m - tickLabelHeight_);
       }
 
-      xLen_ = width_ - LEFT_MARGIN - RIGHT_MARGIN;
-      yLen_ = height_ - TOP_MARGIN - BOTTOM_MARGIN;
+      xLen_ = width_ - origin_.x() - m;
+      yLen_ = origin_.y() - m;
 
       xEnd_ = origin_;
       xEnd_ += QPointF(xLen_, 0.0);
@@ -1486,35 +1681,171 @@ namespace{
       first_ = false;
     }
 
-    double toX(double dx){      
-      return origin_.x() + xm_ * (dx - xMin_);
+    double scaleFont(double x){
+      x *= scale_;
+
+      if(x < MIN_FONT_SIZE){
+        return MIN_FONT_SIZE;
+      }
+      else if(x > MAX_FONT_SIZE){
+        return MAX_FONT_SIZE;
+      }
+
+      return x;
     }
 
-    double toY(double dy){
-      return origin_.y() - ym_ * (dy - yMin_);
+    double scale(double x){
+      return x * scale_;
+    }
+
+    double scaleSize(double x){
+      x *= sizeScale_;
+      return x < 1.0 ? 1.0 : x;
+    }
+
+    void calculateRanges(){
+      xMin_ = MAX;
+      xMax_ = MIN;
+      yMin_ = MAX;
+      yMax_ = MIN;
+
+      for(Element* e : elements_){
+        if(RangeElement* r = dynamic_cast<RangeElement*>(e)){
+          PositionVar* p = getPos(r->getPos());
+
+          if(p->xMin() < xMin_){
+            xMin_ = p->xMin();
+          }
+
+          if(p->xMax() > xMax_){
+            xMax_ = p->xMax();
+          }
+
+          if(p->yMin() < yMin_){
+            yMin_ = p->yMin();
+          }
+
+          if(p->yMax() > yMax_){
+            yMax_ = p->yMax();
+          }
+        }
+        else if(Line* l = dynamic_cast<Line*>(e)){
+          for(size_t i = 0; i < 2; ++i){
+            PositionVar* p = getPos(i == 0 ? l->pos1 : l->pos2);
+
+            if(p->xMin() < xMin_){
+              xMin_ = p->xMin();
+            }
+
+            if(p->xMax() > xMax_){
+              xMax_ = p->xMax();
+            }
+
+            if(p->yMin() < yMin_){
+              yMin_ = p->yMin();
+            }
+
+            if(p->yMax() > yMax_){
+              yMax_ = p->yMax();
+            }
+          }
+        }
+      }
+    }
+
+    void calculateXRange(){
+      xMin_ = MAX;
+      xMax_ = MIN;
+
+      for(Element* e : elements_){
+        if(RangeElement* r = dynamic_cast<RangeElement*>(e)){
+          PositionVar* p = getPos(r->getPos());
+
+          if(p->xMin() < xMin_){
+            xMin_ = p->xMin();
+          }
+
+          if(p->xMax() > xMax_){
+            xMax_ = p->xMax();
+          }
+        }
+        else if(Line* l = dynamic_cast<Line*>(e)){
+          for(size_t i = 0; i < 2; ++i){
+            PositionVar* p = getPos(i == 0 ? l->pos1 : l->pos2);
+
+            if(p->xMin() < xMin_){
+              xMin_ = p->xMin();
+            }
+
+            if(p->xMax() > xMax_){
+              xMax_ = p->xMax();
+            }
+          }
+        }
+      }
+    }
+
+    void calculateYRange(){
+      yMin_ = MAX;
+      yMax_ = MIN;
+
+      for(Element* e : elements_){
+        if(RangeElement* r = dynamic_cast<RangeElement*>(e)){
+          PositionVar* p = getPos(r->getPos());
+
+          if(p->yMin() < yMin_){
+            yMin_ = p->yMin();
+          }
+
+          if(p->yMax() > yMax_){
+            yMax_ = p->yMax();
+          }
+        }
+        else if(Line* l = dynamic_cast<Line*>(e)){
+          for(size_t i = 0; i < 2; ++i){
+            PositionVar* p = getPos(i == 0 ? l->pos1 : l->pos2);
+
+            if(p->yMin() < yMin_){
+              yMin_ = p->yMin();
+            }
+
+            if(p->yMax() > yMax_){
+              yMax_ = p->yMax();
+            }
+          }
+        }
+      }
     }
 
     void render(){
-      if(first_){
-        prepare();
+      QPaintDevice* device;
+      if(outputPath_.empty()){
+        device = widget_;
+      }
+      else{
+        if(!pdfWriter_){
+          pdfWriter_= new QPdfWriter(outputPath_.c_str());
+          QSizeF size(widget_->width(), widget_->height());
+          pdfWriter_->setPageSize(QPageSize(size, QPageSize::Point));
+          pdfWriter_->setResolution(74);
+        }
+
+        device = pdfWriter_;
       }
 
-      size_t frameSize = frame_->size();
+      QPainter painter(device);
+
+      if(first_){
+        prepare(painter);
+      }
+
+      size_t frameSize = frame_ ? frame_->size() : plotFrame_->size();
 
       if(frameSize < 2){
         return;
       }
 
-      frame_->updateIndexVar(frameSize);
-
-      QPainter painter(widget_);
-      
       painter.setRenderHint(QPainter::Antialiasing, antialiased_);
-
-      xMin_ = MAX;
-      xMax_ = MIN;
-      yMin_ = MAX;
-      yMax_ = MIN;
 
       for(Element* e : elements_){
         if(Bins* b = dynamic_cast<Bins*>(e)){
@@ -1526,11 +1857,20 @@ namespace{
             continue;
           }
 
-          Var<double>* xOut = static_cast<Var<double>*>(getVar(b->xOut));
-          Var<double>* yOut = static_cast<Var<double>*>(getVar(b->yOut));
+          PositionVar* posOut = getPos(b->posOut);
 
-          double min = varIn->min();
-          double max = varIn->max();
+          double min = MAX;
+          double max = MIN;
+          for(size_t i = 0; i < size; ++i){
+            double x = varIn->get(i);
+            if(x < min){
+              min = x;
+            }
+
+            if(x > max){
+              max = x;
+            }
+          }
 
           typedef map<double, size_t> BinMap;
           BinMap binMap;
@@ -1549,12 +1889,10 @@ namespace{
             ++itr->second;
           }
             
-          xOut->clear();
-          yOut->clear();
+          posOut->clear();
             
           for(auto& itr : binMap){
-            xOut->capture(itr.first);
-            yOut->capture(itr.second);
+            posOut->capture({double(itr.first), double(itr.second)});
           }
         }
         else if(Proportion* p = dynamic_cast<Proportion*>(e)){
@@ -1586,99 +1924,74 @@ namespace{
             }
           }
 
-          Var<double>* xOut = static_cast<Var<double>*>(getVar(p->xOut));
-          Var<double>* yOut = static_cast<Var<double>*>(getVar(p->yOut));
-
-          xOut->clear();
-          yOut->clear();
+          PositionVar* posOut = getPos(p->posOut);
+          posOut->clear();
             
           size_t i = 0;
           for(auto& itr : propMap){
-            xOut->capture(i++);
-            yOut->capture(itr.second);
+            posOut->capture({double(i++), double(itr.second)});
           }
         }
       }
 
-      for(Element* e : elements_){
-        if(RangeElement* r = dynamic_cast<RangeElement*>(e)){
-          VarBase* x = getVar(r->getX());
-          VarBase* y = getVar(r->getY());
+      bool shouldTransform = true;
 
-          if(x->min() < xMin_){
-            xMin_ = x->min();
-          }
-
-          if(x->max() > xMax_){
-            xMax_ = x->max();
-          }
-
-          if(y->min() < yMin_){
-            yMin_ = y->min();
-          }
-
-          if(y->max() > yMax_){
-            yMax_ = y->max();
-          }
-          else if(Line* l = dynamic_cast<Line*>(e)){
-            VarBase* x1 = getVar(l->x1);
-            VarBase* y1 = getVar(l->y1);
-
-            if(x1->min() < xMin_){
-              xMin_ = x1->min();
-            }
-
-            if(x1->max() > xMax_){
-              xMax_ = x1->max();
-            }
-
-            if(y1->min() < yMin_){
-              yMin_ = y1->min();
-            }
-
-            if(y1->max() > yMax_){
-              yMax_ = y1->max();
-            }
-
-            VarBase* x2 = getVar(l->x2);
-            VarBase* y2 = getVar(l->y2);
-
-            if(x2->min() < xMin_){
-              xMin_ = x2->min();
-            }
-
-            if(x2->max() > xMax_){
-              xMax_ = x2->max();
-            }
-
-            if(y2->min() < yMin_){
-              yMin_ = y2->min();
-            }
-
-            if(y2->max() > yMax_){
-              yMax_ = y2->max();
-            }
-          }
+      if(hasXRange_){
+        xMin_ = xRangeMin_;
+        xMax_ = xRangeMax_;
+        if(hasYRange_){
+          yMin_ = yRangeMin_;
+          yMax_ = yRangeMax_;
+          shouldTransform = false;
         }
+        else{
+          calculateYRange();
+        }
+      }
+      else if(hasYRange_){
+        yMin_ = yRangeMin_;
+        yMax_ = yRangeMax_;
+        calculateXRange();
+      }
+      else{
+        calculateRanges();
       }
 
       xSpan_ = xMax_ - xMin_;
       ySpan_ = yMax_ - yMin_;
       xm_ = xLen_/xSpan_;
       ym_ = yLen_/ySpan_;
+      sizeScale_ = min(width_, height_)/1024.0;
 
+      QTransform transform;
+      transform.translate(origin_.x(), origin_.y());
+      painter.setWorldTransform(transform);
+
+      posTransform_.reset();
+      posTransform_.scale(xm_, -ym_);
+      posTransform_.translate(-xMin_, -yMin_);
+      
       for(Element* e : elements_){
+        QTransform t;
+        painter.setWorldTransform(t);
+
         if(Axis* a = dynamic_cast<Axis*>(e)){
+          QFont prevFont = painter.font();
+
           if(a->dim == 1){
+            QFont font = prevFont;
+            font.setPointSize(tickLabelSize_);
+            painter.setFont(font);
+
             painter.drawLine(origin_, xEnd_);
 
-            size_t inc = frameSize / X_LABELS;
+            size_t inc = double(frameSize) / a->major;
 
             if(inc == 0){
               inc = 1;
             }
 
-            bool shouldRound = xSpan_ > X_TICKS;
+            bool shouldRound = xSpan_ > a->major;
 
             double xc;
             double xv; 
@@ -1692,51 +2005,52 @@ namespace{
               
               drawText(painter,
                        toLabel(xv),
-                       QPointF(xc, origin_.y() + 10.0));
+                       QPointF(xc, origin_.y() + 3.0));
             }
             
-            inc = frameSize / X_TICKS;
+            inc = double(frameSize) / (a->minor * a->major);
 
             if(inc == 0){
               inc = 1;
             }
 
-            for(size_t i = 0; i < frameSize; i += inc){
-              xc = origin_.x() + double(i)/frameSize * xLen_;
-
-              painter.drawLine(QPointF(xc, origin_.y() + 3),
-                               QPointF(xc, origin_.y() - 3));
-            }
+           for(size_t i = 0; i < frameSize; i += inc){
+             xc = origin_.x() + double(i)/frameSize * xLen_;
+             
+             painter.drawLine(QPointF(xc, origin_.y() + 3),
+                              QPointF(xc, origin_.y() - 3));
+           }
 
             if(!a->label.empty()){
-              QFont oldFont = painter.font();
-              QFont font = oldFont;
-              font.setPointSize(24);
+              QFont font = prevFont;
+              font.setPointSize(axisLabelSize_);
               painter.setFont(font);
 
               drawText(painter, a->label.c_str(),
                        QPointF(origin_.x() + xLen_/2.0,
-                               origin_.y() + 30));
-
-              painter.setFont(oldFont);
+                               origin_.y() + tickLabelHeight_));
             }
           }
           else if(a->dim == 2){
+            QFont font = prevFont;
+            font.setPointSize(tickLabelSize_);
+            painter.setFont(font);
+
             painter.drawLine(origin_, yEnd_);
 
-            size_t inc = frameSize / Y_LABELS;
+            size_t inc = double(frameSize) / a->major;
 
             if(inc == 0){
               inc = 1;
             }
 
-            bool shouldRound = ySpan_ > Y_TICKS;
+            bool shouldRound = ySpan_ > a->major;
 
             double yc;
             double yv;
             for(size_t i = 0; i <= frameSize; i += inc){
               yv = yMin_ + ySpan_ * double(i)/frameSize;
-              yc = origin_.y() - double(i)/frameSize * yLen_ - 8;
+              yc = origin_.y() - double(i)/frameSize * yLen_;
 
               if(shouldRound){
                 yv = round(yv);
@@ -1744,10 +2058,10 @@ namespace{
 
               drawText(painter,
                        toLabel(yv),
-                       QPointF(origin_.x(), yc), true);
+                       QPointF(origin_.x(), yc - scale(8.0)), true);
             }
 
-            inc = frameSize / Y_TICKS;
+            inc = double(frameSize) / (a->minor * a->major);
             
             if(inc == 0){
               inc = 1;
@@ -1761,260 +2075,242 @@ namespace{
             }
 
             if(!a->label.empty()){
-              painter.rotate(-90);
-              QFont oldFont = painter.font();
-              QFont font = oldFont;
-              font.setPointSize(24);
+              QFont font = prevFont;
+              font.setPointSize(axisLabelSize_);
               painter.setFont(font);
+              painter.rotate(-90);
 
               drawText(painter, a->label.c_str(),
                        QPointF(origin_.y() - yLen_/2 - height_,
-                               origin_.x() - 90));
-
-              painter.setFont(oldFont);
-              painter.resetTransform();
+                               origin_.x() - 
+                               tickLabelWidth_ - axisLabelHeight_));
             }
           }
           else{
             assert(false && "invalid axis dim");
           }
+
+          painter.setFont(prevFont);
         }
+
+        painter.setWorldTransform(transform);
       }
 
       for(Element* e : elements_){
         if(Lines* l = dynamic_cast<Lines*>(e)){
-          VarBase* x = getVar(l->x);
-          VarBase* y = getVar(l->y);
+          PositionVar* p = getPos(l->pos);
+
+          if(shouldTransform){
+            p->transform(posTransform_);
+          }
+
+          QPointF* points = p->getPoints();
+
           VarBase* s = getVar(l->size);
           VarBase* c = getVar(l->color);
 
-          size_t size = maxSize(x, y, s, c);
+          size_t size = p->size();
 
-          QPointF lastPoint;
-          QPointF point;
           QPen pen;
 
-          lastPoint.setX(toX(x->get(0)));
-          lastPoint.setY(toY(y->get(0)));
-
           if(s->isConst() && c->isConst()){
-            pen.setWidthF(s->get(0));
-
-            DoubleVec cv;
-            c->getVec(0, cv);
-            pen.setColor(toQColor(cv));
+            pen.setWidthF(scaleSize(s->get(0)));
+            pen.setColor(toQColor(c->getVec(0)));
             painter.setPen(pen);
-
-            for(size_t i = 1; i < size; ++i){
-              point.setX(toX(x->get(i)));
-              point.setY(toY(y->get(i)));
-              painter.drawLine(point, lastPoint);
-              lastPoint = point;
-            }
+            painter.drawPolyline(points, size);
           }
           else{
             for(size_t i = 1; i < size; ++i){
-              point.setX(toX(x->get(i)));
-              point.setY(toY(y->get(i)));
-
-              pen.setWidthF(s->get(i));
-
-              DoubleVec cv;
-              c->getVec(i, cv);
-              pen.setColor(toQColor(cv));
+              pen.setWidthF(scaleSize(s->get(i)));
+              pen.setColor(toQColor(c->getVec(i)));
               painter.setPen(pen);
-              painter.drawLine(point, lastPoint);
-            
-              lastPoint = point;
+              painter.drawLine(points[i - 1], points[i]);
             }
+          }
+
+          if(l->label != nullVarId){
+            QFont prevFont = painter.font();
+            QFont font = prevFont;
+            font.setPointSize(tickLabelSize_);
+            painter.setFont(font);
+
+            StringVar* label = getStringVar(l->label);
+            for(size_t i = 0; i < size; ++i){
+              drawText(painter, label->getString(i).c_str(), points[i]);
+            }
+            
+            painter.setFont(prevFont);
           }
         }
         else if(Line* l = dynamic_cast<Line*>(e)){
-          VarBase* x1 = getVar(l->x1);
-          VarBase* y1 = getVar(l->y1);
-          VarBase* x2 = getVar(l->x2);
-          VarBase* y2 = getVar(l->y2);
+          PositionVar* p1 = getPos(l->pos1);
+          PositionVar* p2 = getPos(l->pos2);
+
+          if(shouldTransform){
+            p1->transform(posTransform_);
+            p2->transform(posTransform_);
+          }
+          
           VarBase* s = getVar(l->size);
           VarBase* c = getVar(l->color);
 
-          size_t size = maxSize(x1, y1, x2, y2, s, c);
+          assert(p1->size() == p2->size());
+          
+          size_t size = p1->size();
 
-          if(size == 0){
-            size = 1;
-          }
-
-          QPointF p1;
-          QPointF p2;
+          QPointF* points1 = p1->getPoints();
+          QPointF* points2 = p2->getPoints();
           QPen pen;
 
-          for(size_t i = 0; i < size; ++i){
-            p1.setX(toX(x1->get(i)));
-            p1.setY(toY(y1->get(i)));
-
-            p2.setX(toX(x2->get(i)));
-            p2.setY(toY(y2->get(i)));
-
-            pen.setWidthF(s->get(i));
-
-            DoubleVec cv;
-            c->getVec(i, cv);
-            pen.setColor(toQColor(cv));
+          if(s->isConst() && c->isConst()){
+            pen.setWidthF(s->get(0));
+            pen.setColor(toQColor(c->getVec(0)));
             painter.setPen(pen);
-            painter.drawLine(p1, p2);
+            
+            for(size_t i = 0; i < size; ++i){
+              painter.drawLine(points1[i], points2[i]);
+            }
+          }
+          else{
+            for(size_t i = 0; i < size; ++i){
+              pen.setWidthF(s->get(i));
+              pen.setColor(toQColor(c->getVec(i)));
+              painter.setPen(pen);
+              painter.drawLine(points1[i], points2[i]);
+            }
           }
         }
         else if(Area* a = dynamic_cast<Area*>(e)){
-          VarBase* x = getVar(a->x);
-          VarBase* y = getVar(a->y);
+          PositionVar* p = getPos(a->pos);
+          
+          if(shouldTransform){
+            p->transform(posTransform_);
+          }
+          
+          QPointF* points = p->getPoints();
+
           VarBase* c = getVar(a->color);
 
-          size_t size = maxSize(x, y, c);
+          size_t size = p->size();
 
           QPen noPen(Qt::NoPen);
           painter.setPen(noPen);
 
-          QPointF lastPoint;
-          QPointF point;
-
-          lastPoint.setX(toX(x->get(0)));
-          lastPoint.setY(toY(y->get(0)));
-
           if(c->isConst()){
-            DoubleVec cv;
-            c->getVec(0, cv);
-            QBrush brush(toQColor(cv));
+            QBrush brush(toQColor(c->getVec(0)));
             painter.setBrush(brush);
 
             for(size_t i = 1; i < size; ++i){
-              point.setX(toX(x->get(i)));
-              point.setY(toY(y->get(i)));
-
               QPolygonF poly;
-              poly << lastPoint << point << 
-                QPointF(point.x(), origin_.y()) << 
-                QPointF(lastPoint.x(), origin_.y());
+              poly << points[i - 1] << points[i] << 
+                QPointF(points[i].x(), yMin_) << 
+                QPointF(points[i - 1].x(), yMin_);
       
               painter.drawPolygon(poly);
-
-              lastPoint = point;
             }
           }
           else{
             for(size_t i = 1; i < size; ++i){
-              point.setX(toX(x->get(i)));
-              point.setY(toY(y->get(i)));
-
-              DoubleVec cv;
-              c->getVec(i, cv);
-              QBrush brush(toQColor(cv));
+              QBrush brush(toQColor(c->getVec(i)));
               painter.setBrush(brush);
 
               QPolygonF poly;
-              poly << lastPoint << point << 
-                QPointF(point.x(), origin_.y()) << 
-                QPointF(lastPoint.x(), origin_.y());
+              poly << points[i - 1] << points[i] << 
+                QPointF(points[i].x(), yMin_) << 
+                QPointF(points[i - 1].x(), yMin_);
       
               painter.drawPolygon(poly);
-
-              lastPoint = point;
             }
           }
         }
         else if(Points* p = dynamic_cast<Points*>(e)){
-          VarBase* x = getVar(p->x);
-          VarBase* y = getVar(p->y);
+          PositionVar* pv = getPos(p->pos);
+          
+          if(shouldTransform){
+            pv->transform(posTransform_);
+          }
+          
+          QPointF* points = pv->getPoints();
+
           VarBase* s = getVar(p->size);
           VarBase* c = getVar(p->color);
 
-          size_t size = maxSize(x, y, s, c);
+          size_t size = pv->size();
 
           QPointF point;
-
-          QPen noPen(Qt::NoPen);
-          painter.setPen(noPen);
-
+          QPen pen;
+          pen.setCapStyle(Qt::RoundCap);
+          
           if(s->isConst() && c->isConst()){
-            DoubleVec cv;
-            c->getVec(0, cv);
-            
-            QBrush brush(toQColor(cv));
-            painter.setBrush(brush);
-
-            double ps = s->get(0);
-
-            for(size_t i = 0; i < size; ++i){
-              point.setX(toX(x->get(i)));
-              point.setY(toY(y->get(i)));
-              painter.drawEllipse(point, ps, ps);
-            }            
+            pen.setColor(toQColor(c->getVec(0)));
+            pen.setWidth(scaleSize(s->get(0)));
+            painter.setPen(pen);
+            painter.drawPoints(points, size);
           }
           else{
             for(size_t i = 0; i < size; ++i){
-              point.setX(toX(x->get(i)));
-              point.setY(toY(y->get(i)));
-
-              DoubleVec cv;
-              c->getVec(i, cv);
-
-              QBrush brush(toQColor(cv));
-              painter.setBrush(brush);
-          
-              double size = s->get(i);
-              painter.drawEllipse(point, size, size);
+              pen.setColor(toQColor(c->getVec(i)));
+              pen.setWidth(scaleSize(s->get(i)));
+              painter.setPen(pen);
+              painter.drawPoint(points[i]);
             }
+          }
+
+          if(p->label != nullVarId){
+            QFont prevFont = painter.font();
+            QFont font = prevFont;
+            font.setPointSize(tickLabelSize_);
+            painter.setFont(font);
+
+            StringVar* l = getStringVar(p->label);
+            for(size_t i = 0; i < size; ++i){
+              drawText(painter, l->getString(i).c_str(), points[i]);
+            }
+
+            painter.setFont(prevFont);
           }
         }
         else if(Interval* i = dynamic_cast<Interval*>(e)){
-          VarBase* x = getVar(i->x);
-          VarBase* y = getVar(i->y);
+          PositionVar* p = getPos(i->pos);
+
+          if(shouldTransform){
+            p->transform(posTransform_);
+          }
+
           VarBase* c = getVar(i->color);
 
-          size_t size = maxSize(x, y, c);
+          size_t size = p->size();
 
           if(size < 2){
             continue;
           }
 
-          double xMin = x->min();
-          double xMax = x->max();
-
-          double yMin = y->min();
-          double yMax = y->max();
-
-          double xSpan = xMax - xMin;
-          double ySpan = yMax - yMin;
+          QPointF* points = p->getPoints();
 
           double width = xLen_/size;
 
           for(size_t j = 0; j < size; ++j){
-            double xv = x->get(j);
-            double yv = y->get(j);
-
-            double xc = origin_.x() + xLen_*(xv - xMin)/xSpan;
-            double yc = origin_.y() - yLen_*(yv - yMin)/ySpan;
-
-            double height = yLen_ * (yv - yMin)/ySpan;
-
-            DoubleVec cv;
-            c->getVec(j, cv);
-
-            painter.fillRect(QRectF(xc, yc, width, height), toQColor(cv));
+            painter.fillRect(QRectF(points[j].x(), 0,
+                                    width, points[j].y()),
+                             toQColor(c->getVec(j)));
           }
         }
         else if(Pie* p = dynamic_cast<Pie*>(e)){
-          VarBase* n = getVar(p->count);
+          PositionVar* pn = getPos(p->count);
           VarBase* c = p->color > 0 ? getVar(p->color) : nullptr;
+          
+          QPointF* points = pn->getPoints();
 
-          size_t size = n->size();
+          size_t size = pn->size();
 
           double total = 0;
           for(size_t i = 0; i < size; ++i){
-            total += n->get(i);
+            total += points[i].y();
           }
 
           double side = min(xEnd_.x() - origin_.x(), origin_.y() - yEnd_.y());
 
-          QRectF rect(origin_.x(), yEnd_.y(), side, side);
+          QRectF rect(0, 0, side, -side);
           
           Random rng;
 
@@ -2024,11 +2320,8 @@ namespace{
 
           int startAngle = 0;
           for(size_t i = 0; i < size; ++i){
-            if(c){
-              DoubleVec cv;
-              c->getVec(i, cv);
-              
-              QBrush brush(toQColor(cv));
+            if(c){              
+              QBrush brush(toQColor(c->getVec(i)));
               painter.setBrush(brush);
             }
             else{
@@ -2040,7 +2333,7 @@ namespace{
               painter.setBrush(brush);
             }
 
-            int spanAngle = n->get(i)/total * 360 * 16;
+            int spanAngle = points[i].y()/total * 360 * 16;
             painter.drawPie(rect, startAngle, spanAngle);
 
             startAngle += spanAngle;
@@ -2058,6 +2351,7 @@ namespace{
     Frame* plotFrame_;
     PlotWindow* window_;
     PlotWidget* widget_;
+    QPdfWriter* pdfWriter_ = nullptr;
 
     ElementVec_ elements_;
     double xLen_;
@@ -2078,6 +2372,21 @@ namespace{
     double width_;
     double height_;
     bool antialiased_;
+    string outputPath_;
+    double scale_;
+    double sizeScale_;
+    double tickLabelSize_;
+    double tickLabelWidth_;
+    double tickLabelHeight_;
+    double axisLabelSize_;
+    double axisLabelHeight_;
+    bool hasXRange_ = false;
+    double xRangeMin_;
+    double xRangeMax_;
+    bool hasYRange_ = false;
+    double yRangeMin_;
+    double yRangeMax_;
+    QTransform posTransform_;
   };
 
 } // end namespace
@@ -2094,7 +2403,7 @@ extern "C"{
     return new Frame(width, height, depth);
   }
 
-  void __scrt_frame_add_var(void* f, VarId varId, VarId elementKind){
+  void __scrt_frame_add_var(void* f, VarId varId, uint32_t elementKind){
     static_cast<Frame*>(f)->addVar(varId, elementKind);
   }
 
@@ -2119,6 +2428,10 @@ extern "C"{
   }
 
   void __scrt_frame_capture_double(void* f, VarId varId, double value){
+    static_cast<Frame*>(f)->capture(varId, value);
+  }
+
+  void __scrt_frame_capture_string(void* f, VarId varId, const char* value){
     static_cast<Frame*>(f)->capture(varId, value);
   }
 
@@ -2168,6 +2481,26 @@ extern "C"{
 
   double __scrt_plot_get_double(void* plot, VarId varId, uint64_t index){
     return static_cast<Plot*>(plot)->get<double>(varId, index);
+  }
+
+  void __scrt_plot_add_var(void* plot, VarId varId, uint32_t elementKind){
+    static_cast<Plot*>(plot)->addVar(elementKind, varId);
+  }
+
+  void __scrt_plot_capture_i32(void* plot, VarId varId, int32_t value){
+    static_cast<Plot*>(plot)->capture(varId, value);
+  }
+
+  void __scrt_plot_capture_i64(void* plot, VarId varId, int64_t value){
+    static_cast<Plot*>(plot)->capture(varId, value);
+  }
+
+  void __scrt_plot_capture_float(void* plot, VarId varId, float value){
+    static_cast<Plot*>(plot)->capture(varId, value);
+  }
+
+  void __scrt_plot_capture_double(void* plot, VarId varId, double value){
+    static_cast<Plot*>(plot)->capture(varId, value);
   }
 
   void __scrt_plot_add_var_i32(void* plot,
@@ -2231,47 +2564,51 @@ extern "C"{
   }
 
   void __scrt_plot_add_lines(void* plot,
-                             VarId x,
-                             VarId y,
+                             VarId pos,
                              VarId size,
-                             VarId color){
-    static_cast<Plot*>(plot)->addLines(x, y, size, color);
+                             VarId color,
+                             VarId label){
+    static_cast<Plot*>(plot)->addLines(pos, size, color, label);
   }
 
   void __scrt_plot_set_antialiased(void* plot, bool flag){
     static_cast<Plot*>(plot)->setAntialiased(flag);
   }
 
+  void __scrt_plot_set_output(void* plot, char* path){
+    static_cast<Plot*>(plot)->setOutputPath(path);
+  }
+
+  void __scrt_plot_set_range(void* plot, bool x, double min, double max){
+    static_cast<Plot*>(plot)->setRange(x, min, max);
+  }
+
   void __scrt_plot_add_line(void* plot,
-                            VarId x1,
-                            VarId y1,
-                            VarId x2,
-                            VarId y2,
+                            VarId pos1,
+                            VarId pos2,
                             VarId size,
                             VarId color){
-    static_cast<Plot*>(plot)->addLine(x1, y1, x2, y2, size, color);
+    static_cast<Plot*>(plot)->addLine(pos1, pos2, size, color);
   }
 
   void __scrt_plot_add_points(void* plot,
-                              VarId x,
-                              VarId y,
+                              VarId pos,
                               VarId size,
-                              VarId color){
-    static_cast<Plot*>(plot)->addPoints(x, y, size, color);
+                              VarId color,
+                              VarId label){
+    static_cast<Plot*>(plot)->addPoints(pos, size, color, label);
   }
 
   void __scrt_plot_add_area(void* plot,
-                              VarId x,
-                              VarId y,
-                              VarId color){
-    static_cast<Plot*>(plot)->addArea(x, y, color);
+                            VarId pos,
+                            VarId color){
+    static_cast<Plot*>(plot)->addArea(pos, color);
   }
 
   void __scrt_plot_add_interval(void* plot,
-                                VarId x,
-                                VarId y,
+                                VarId pos,
                                 VarId color){
-    static_cast<Plot*>(plot)->addInterval(x, y, color);
+    static_cast<Plot*>(plot)->addInterval(pos, color);
   }
 
   void __scrt_plot_add_pie(void* plot,
@@ -2282,10 +2619,9 @@ extern "C"{
 
   void __scrt_plot_add_bins(void* plot,
                             VarId varIn,
-                            VarId xOut,
-                            VarId yOut,
+                            VarId posOut,
                             uint32_t n){
-    static_cast<Plot*>(plot)->addBins(varIn, xOut, yOut, n);
+    static_cast<Plot*>(plot)->addBins(varIn, posOut, n);
   }
 
   void* __scrt_plot_add_aggregate(void* plot,
@@ -2299,16 +2635,20 @@ extern "C"{
     static_cast<Plot::AggregateBase*>(aggregate)->addVar(varId);
   }
 
-  void* __scrt_plot_add_proportion(void* plot, VarId xOut, VarId yOut){
-    return static_cast<Plot*>(plot)->addProportion(xOut, yOut);
+  void* __scrt_plot_add_proportion(void* plot, VarId posOut){
+    return static_cast<Plot*>(plot)->addProportion(posOut);
   }
 
   void __scrt_plot_proportion_add_var(void* proportion, VarId var){
     return static_cast<Plot::Proportion*>(proportion)->addVar(var);
   }
 
-  void __scrt_plot_add_axis(void* plot, uint32_t dim, const char* label){
-    static_cast<Plot*>(plot)->addAxis(dim, label);
+  void __scrt_plot_add_axis(void* plot,
+                            uint32_t dim,
+                            const char* label,
+                            uint32_t major,
+                            uint32_t minor){
+    static_cast<Plot*>(plot)->addAxis(dim, label, major, minor);
   }
 
   void __scrt_plot_render(void* plot){

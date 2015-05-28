@@ -254,8 +254,7 @@ void CodeGenTypes::UpdateCompletedType(const FrameDecl *FD) {
   // If necessary, provide the full definition of a type only used with a
   // declaration so far.
   if (CGDebugInfo *DI = CGM.getModuleDebugInfo())
-    assert(false);
-    //DI->completeType(FD);
+    DI->completeType(FD);
 }
 
 void CodeGenTypes::addMeshTypeName(const MeshDecl *RD,

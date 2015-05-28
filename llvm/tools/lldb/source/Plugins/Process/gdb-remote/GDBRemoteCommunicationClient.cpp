@@ -1312,7 +1312,7 @@ GDBRemoteCommunicationClient::SendArgumentsPacket (const ProcessLaunchInfo &laun
     const char *arg = NULL;
     const Args &launch_args = launch_info.GetArguments();
     if (exe_file)
-        exe_path = exe_file.GetPath(false);
+        exe_path = exe_file.GetPath();
     else
     {
         arg = launch_args.GetArgumentAtIndex(0);
@@ -1618,6 +1618,22 @@ GDBRemoteCommunicationClient::GetGDBServerProgramVersion()
     if (GetGDBServerVersion())
         return m_gdb_server_version;
     return 0;
+}
+
+bool
+GDBRemoteCommunicationClient::GetDefaultThreadId (lldb::tid_t &tid)
+{
+    StringExtractorGDBRemote response;
+    if (SendPacketAndWaitForResponse("qC",response,false) !=  PacketResult::Success)
+        return false;
+
+    if (!response.IsNormalResponse())
+        return false;
+
+    if (response.GetChar() == 'Q' && response.GetChar() == 'C')
+        tid = response.GetHexMaxU32(true, -1);
+
+    return true;
 }
 
 bool
@@ -2678,6 +2694,9 @@ GDBRemoteCommunicationClient::FindProcesses (const ProcessInstanceInfoMatch &mat
             }
         }
         StringExtractorGDBRemote response;
+        // Increase timeout as the first qfProcessInfo packet takes a long time
+        // on Android. The value of 1min was arrived at empirically.
+        GDBRemoteCommunication::ScopedTimeout timeout (*this, 60);
         if (SendPacketAndWaitForResponse (packet.GetData(), packet.GetSize(), response, false) == PacketResult::Success)
         {
             do
@@ -2757,6 +2776,25 @@ GDBRemoteCommunicationClient::GetGroupName (uint32_t gid, std::string &name)
         }
     }
     return false;
+}
+
+bool
+GDBRemoteCommunicationClient::SetNonStopMode (const bool enable)
+{
+    // Form non-stop packet request
+    char packet[32];
+    const int packet_len = ::snprintf(packet, sizeof(packet), "QNonStop:%1d", (int)enable);
+    assert(packet_len < (int)sizeof(packet));
+
+    StringExtractorGDBRemote response;
+    // Send to target
+    if (SendPacketAndWaitForResponse(packet, packet_len, response, false) == PacketResult::Success)
+        if (response.IsOKResponse())
+            return true;
+
+    // Failed or not supported
+    return false;
+
 }
 
 void
@@ -3744,8 +3782,8 @@ GDBRemoteCommunicationClient::GetModuleInfo (const FileSpec& module_file_spec,
     packet.PutCString("qModuleInfo:");
     packet.PutCStringAsRawHex8(module_path.c_str());
     packet.PutCString(";");
-    const auto& tripple = arch_spec.GetTriple().getTriple();
-    packet.PutBytesAsRawHex8(tripple.c_str(), tripple.size());
+    const auto& triple = arch_spec.GetTriple().getTriple();
+    packet.PutBytesAsRawHex8(triple.c_str(), triple.size());
 
     StringExtractorGDBRemote response;
     if (SendPacketAndWaitForResponse (packet.GetData(), packet.GetSize(), response, false) != PacketResult::Success)
@@ -3795,7 +3833,7 @@ GDBRemoteCommunicationClient::GetModuleInfo (const FileSpec& module_file_spec,
             extractor.GetStringRef ().swap (value);
             extractor.SetFilePos (0);
             extractor.GetHexByteString (value);
-            module_spec.GetFileSpec () = FileSpec (value.c_str(), false);
+            module_spec.GetFileSpec() = FileSpec(value.c_str(), false, arch_spec);
         }
     }
 

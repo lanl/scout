@@ -572,9 +572,8 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
       if(p){
         SpecArrayExpr* pa = p->toArray();
         if(pa && pa->size() == 2){
-          if(!ValidateSpecExpr(pa->get(0), Context.DoubleTy) ||
-             !ValidateSpecExpr(pa->get(1), Context.DoubleTy)){
-            Diag(pa->getLocStart(), diag::err_invalid_plot_spec) <<
+          if(!ValidateSpecExpr(pa, Context.DoubleTy, 2)){
+            Diag(p->getLocStart(), diag::err_invalid_plot_spec) <<
             "invalid 'position'";
             valid = false;
           }
@@ -631,6 +630,15 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         else{
           lv->put("size", CreateSpecDoubleExpr(1.0));
         }
+        
+        SpecExpr* label = lv->get("label");
+        if(label){
+          if(!ValidateSpecExpr(label, Context.getPointerType(Context.CharTy))){
+            Diag(label->getLocStart(), diag::err_invalid_plot_spec) <<
+            "invalid 'label' key, expected a string";
+            valid = false;
+          }
+        }
       }
       
       SpecExpr* c = lv->get("color");
@@ -647,6 +655,7 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         color->add(CreateSpecDoubleExpr(0.0));
         color->add(CreateSpecDoubleExpr(0.0));
         color->add(CreateSpecDoubleExpr(1.0));
+        ValidateSpecExpr(color, Context.FloatTy, 4);
         lv->put("color", color);
       }
     }
@@ -710,9 +719,8 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
       if(p){
         SpecArrayExpr* pa = p->toArray();
         if(pa && pa->size() == 2){
-          if(!ValidateSpecExpr(pa->get(0), Context.DoubleTy) ||
-             !ValidateSpecExpr(pa->get(1), Context.DoubleTy)){
-            Diag(pa->getLocStart(), diag::err_invalid_plot_spec) <<
+          if(!ValidateSpecExpr(pa, Context.DoubleTy, 2)){
+            Diag(p->getLocStart(), diag::err_invalid_plot_spec) <<
             "invalid 'start'";
             valid = false;
           }
@@ -734,9 +742,8 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
       if(p){
         SpecArrayExpr* pa = p->toArray();
         if(pa && pa->size() == 2){
-          if(!ValidateSpecExpr(pa->get(0), Context.DoubleTy) ||
-             !ValidateSpecExpr(pa->get(1), Context.DoubleTy)){
-            Diag(pa->getLocStart(), diag::err_invalid_plot_spec) <<
+          if(!ValidateSpecExpr(pa, Context.DoubleTy, 2)){
+            Diag(p->getLocStart(), diag::err_invalid_plot_spec) <<
             "invalid 'end'";
             valid = false;
           }
@@ -779,6 +786,7 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
         color->add(CreateSpecDoubleExpr(0.0));
         color->add(CreateSpecDoubleExpr(0.0));
         color->add(CreateSpecDoubleExpr(1.0));
+        ValidateSpecExpr(color, Context.FloatTy, 4);
         lv->put("color", color);
       }
     }
@@ -798,6 +806,30 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
           Diag(av->getLocStart(), diag::err_invalid_plot_spec) <<
           "expected a 'label' string key";
           valid = false;
+        }
+        
+        SpecExpr* m = av->get("major");
+        if(m){
+          if(!m->isInteger()){
+            Diag(m->getLocStart(), diag::err_invalid_plot_spec) <<
+            "'major' must be an integer";
+            valid = false;
+          }
+        }
+        else{
+          av->put("major", CreateSpecIntExpr(10));
+        }
+        
+        m = av->get("minor");
+        if(m){
+          if(!m->isInteger()){
+            Diag(m->getLocStart(), diag::err_invalid_plot_spec) <<
+            "'minor' must be an integer";
+            valid = false;
+          }
+        }
+        else{
+          av->put("minor", CreateSpecIntExpr(4));
         }
       }
       else{
@@ -838,6 +870,53 @@ StmtResult Sema::ActOnPlotStmt(SourceLocation WithLoc,
       if(!v->isBool()){
         Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
         "expected a bool";
+        valid = false;
+      }
+    }
+    else if(k == "output"){
+      if(!v->isString()){
+        Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected file path string";
+        valid = false;
+      }
+    }
+    else if(k == "range"){
+      SpecObjectExpr* vo = v->toObject();
+      
+      if(vo){
+        bool found = false;
+        
+        for(size_t i = 0; i < 2; ++i){
+          SpecExpr* d = i == 0 ? vo->get("x") : vo->get("y");
+          if(d){
+            found = true;
+            
+            SpecArrayExpr* a = d->toArray();
+            if(!(a && a->size() == 2)){
+              Diag(d->getLocStart(), diag::err_invalid_plot_spec) <<
+              "expected a 2d range array";
+              valid = false;
+              continue;
+            }
+            
+            for(size_t i = 0; i < 2; ++i){
+              if(!ValidateSpecExpr(a->get(i), Context.DoubleTy)){
+                Diag(a->get(i)->getLocStart(), diag::err_invalid_plot_spec) <<
+                "invalid range element";
+                valid = false;
+              }
+            }
+          }
+          
+          if(!found){
+            Diag(vo->getLocStart(), diag::err_invalid_plot_spec) <<
+            "expected x/y range specifier(s)";
+          }
+        }
+      }
+      else{
+        Diag(v->getLocStart(), diag::err_invalid_plot_spec) <<
+        "expected an object specifier";
         valid = false;
       }
     }

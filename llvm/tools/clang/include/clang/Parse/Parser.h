@@ -2535,7 +2535,10 @@ private:
                                  IdentifierInfo *MeshInfo);
 
   const QueryType* LookupQueryType(VarDecl *VD,
-                                 IdentifierInfo *QueryInfo);
+                                   IdentifierInfo *QueryInfo);
+
+  const FrameType* LookupFrameType(VarDecl *VD,
+                                   IdentifierInfo *FrameInfo);
   
   VarDecl* LookupScoutVarDecl(IdentifierInfo *MeshInfo,
                              SourceLocation MeshLoc);

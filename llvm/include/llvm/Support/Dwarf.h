@@ -255,7 +255,7 @@ enum Attribute : uint16_t {
   DW_AT_APPLE_property = 0x3fed,
 
   // +===== Scout =====================
-  DW_AT_SCOUT_mesh_field_flags = 0x9000,
+  DW_AT_SCOUT_field_flags = 0x9000,
   DW_AT_SCOUT_mesh_dim_x = 0x9001,
   DW_AT_SCOUT_mesh_dim_y = 0x9002,
   DW_AT_SCOUT_mesh_dim_z = 0x9003
@@ -292,7 +292,11 @@ enum Form : uint16_t {
 
   // Extensions for Fission proposal
   DW_FORM_GNU_addr_index = 0x1f01,
-  DW_FORM_GNU_str_index = 0x1f02
+  DW_FORM_GNU_str_index = 0x1f02,
+
+  // Alternate debug sections proposal (output of "dwz" tool).
+  DW_FORM_GNU_ref_alt = 0x1f20,
+  DW_FORM_GNU_strp_alt = 0x1f21
 };
 
 enum LocationAtom {

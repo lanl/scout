@@ -3009,6 +3009,7 @@ public:
   
   using CallMap = std::map<const CallExpr*, uint32_t>;
   using VarMap = std::map<std::string, std::pair<const VarDecl*, uint32_t>>;
+  using VarIdMap = std::map<const VarDecl*, uint32_t>;
   
   PlotStmt(const FrameDecl* FD, const VarDecl* FV, const VarDecl* RV, SpecObjectExpr* S)
   : ScoutStmt(Plot),
@@ -3016,7 +3017,6 @@ public:
   FrameVar(FV),
   RenderTargetVar(RV),
   Spec(S),
-  startVarId_(65536),
   nextVarId_(65536){}
 
   const FrameDecl* getFrameDecl() const{
@@ -3064,13 +3064,34 @@ public:
     return nextVarId_++;
   }
   
-  void addCall(const CallExpr* c, uint32_t retVarId) const{
+  uint32_t addCall(const CallExpr* c) const{
+    uint32_t varId = nextVarId_++;
     assert(CMap.find(c) == CMap.end());
-    CMap.insert({c, retVarId});
+    CMap.insert({c, varId});
+    return varId;
   }
   
   const CallMap& callMap() const{
     return CMap;
+  }
+  
+  uint32_t addExtVar(const VarDecl* v) const{
+    uint32_t varId = nextVarId_++;
+    ExtVarMap[v] = varId;
+    return varId;
+  }
+  
+  uint32_t getExtVarId(const VarDecl* v) const{
+    auto itr = ExtVarMap.find(v);
+    if(itr == ExtVarMap.end()){
+      return 0;
+    }
+    
+    return itr->second;
+  }
+  
+  const VarIdMap& extVarMap() const{
+    return ExtVarMap;
   }
   
 private:
@@ -3079,11 +3100,12 @@ private:
   const VarDecl* RenderTargetVar;
   SpecObjectExpr* Spec;
   
-  uint32_t startVarId_;
   mutable uint32_t nextVarId_;
   
   VarMap VMap;
   mutable CallMap CMap;
+  
+  mutable VarIdMap ExtVarMap;
 };
   
 // +==========================================================================+

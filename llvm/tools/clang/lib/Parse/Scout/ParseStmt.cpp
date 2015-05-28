@@ -159,6 +159,28 @@ const QueryType* Parser::LookupQueryType(VarDecl *VD,
   return 0;
 }
 
+// ---- LookupFrameType
+//
+const FrameType* Parser::LookupFrameType(VarDecl *VD,
+                                         IdentifierInfo *FrameInfo) {
+  assert(VD != 0 && "null var decl passed for frame type lookup");
+  if (VD) {
+    const Type* T = VD->getType().getCanonicalType().getTypePtr();
+    
+    while(T->isPointerType() || T->isReferenceType()) {
+      T = T->getPointeeType().getTypePtr();
+    }
+    
+    if (!T->isFrameType()) {
+      return 0;
+    } else {
+      return const_cast<FrameType *>(cast<FrameType>(T));
+    }
+  }
+  
+  return 0;
+}
+
 static ForallMeshStmt::MeshElementType setMeshElementType(tok::TokenKind tkind) {
 
   switch (tkind) {
@@ -991,53 +1013,86 @@ StmtResult Parser::ParseFrameCaptureStatement(ParsedAttributes &Attr){
 }
 
 StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
-  assert(Tok.is(tok::kw_with) && "expected keyword with");
+  assert((Tok.is(tok::kw_with) || Tok.is(tok::kw_in)) && "expected keyword with or in");
   
-  SourceLocation WithLoc = ConsumeToken();
+  SourceLocation WithLoc;
+  SourceLocation FrameLoc;
   
-  if (Tok.isNot(tok::identifier)) {
-    Diag(Tok, diag::err_expected_ident);
-    SkipUntil(tok::r_brace, StopBeforeMatch);
-    return StmtError();
-  }
-  
-  IdentifierInfo  *IdentInfo = Tok.getIdentifierInfo();
-  SourceLocation   IdentLoc  = Tok.getLocation();
-  
-  VarDecl *VD = LookupScoutVarDecl(IdentInfo, IdentLoc);
-  
-  if(!VD){
-    Diag(Tok, diag::err_expected_frame);
-    SkipUntil(tok::r_brace, StopBeforeMatch);
-    return StmtError();
-  }
-  
+  VarDecl *VD;
   FrameDecl* FD;
   
-  const FrameType* FT = dyn_cast<FrameType>(VD->getType().getTypePtr());
-  
-  if(FT){
-    FD = FT->getDecl();
-  }
-  else{
-    const UniformMeshType* MT =
-    dyn_cast<UniformMeshType>(VD->getType().getCanonicalType().getTypePtr());
+  if(Tok.is(tok::kw_with)){
+    WithLoc = ConsumeToken();
     
-    if(!MT){
-      Diag(Tok, diag::err_expected_frame_or_mesh);
+    if (Tok.isNot(tok::identifier)) {
+      Diag(Tok, diag::err_expected_ident);
       SkipUntil(tok::r_brace, StopBeforeMatch);
       return StmtError();
     }
     
-    UniformMeshDecl* MD = MT->getDecl();
+    IdentifierInfo  *IdentInfo = Tok.getIdentifierInfo();
+    SourceLocation   IdentLoc  = Tok.getLocation();
     
-    FD = static_cast<FrameDecl*>(Actions.ActOnFrameDefinition(getCurScope(), MD, WithLoc));
+    VD = LookupScoutVarDecl(IdentInfo, IdentLoc);
     
+    if(!VD){
+      Diag(Tok, diag::err_expected_frame);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
+      return StmtError();
+    }
+    
+    const FrameType* FT = LookupFrameType(VD, IdentInfo);
+    
+    if(FT){
+      FD = FT->getDecl();
+    }
+    else{
+      const UniformMeshType* MT =
+      dyn_cast<UniformMeshType>(VD->getType().getCanonicalType().getTypePtr());
+      
+      if(!MT){
+        Diag(Tok, diag::err_expected_frame_or_mesh);
+        SkipUntil(tok::r_brace, StopBeforeMatch);
+        return StmtError();
+      }
+      
+      UniformMeshDecl* MD = MT->getDecl();
+      
+      FD = static_cast<FrameDecl*>(Actions.ActOnFrameDefinition(getCurScope(), MD, WithLoc));
+      
+      ParseScope FrameScope(this, Scope::ControlScope|Scope::DeclScope);
+      
+      Actions.InitFrameDefinitions(getCurScope(), FD);
+      
+      Actions.InitFrameFromMesh(getCurScope(), FD, MD);
+      
+      FrameScope.Exit();
+      
+      Actions.ActOnFrameFinishDefinition(FD);
+      
+      Actions.PopFrameContext(FD);
+    }
+    
+    FrameLoc = ConsumeToken();
+    
+    if(Tok.isNot(tok::kw_in)){
+      Diag(Tok, diag::err_plot_expected_kw_in);
+      SkipUntil(tok::r_brace, StopBeforeMatch);
+      return StmtError();
+    }
+    
+    SourceLocation InLoc = ConsumeToken();
+  }
+  else{
+    SourceLocation InLoc = ConsumeToken();
+    WithLoc = InLoc;
+    FrameLoc = SourceLocation();
+    
+    VD = nullptr;
+    FD = static_cast<FrameDecl*>(Actions.ActOnFrameDefinition(getCurScope(), InLoc));
     ParseScope FrameScope(this, Scope::ControlScope|Scope::DeclScope);
     
     Actions.InitFrameDefinitions(getCurScope(), FD);
-    
-    Actions.InitFrameFromMesh(getCurScope(), FD, MD);
     
     FrameScope.Exit();
     
@@ -1045,16 +1100,6 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
     
     Actions.PopFrameContext(FD);
   }
-  
-  SourceLocation FrameLoc = ConsumeToken();
-  
-  if(Tok.isNot(tok::kw_in)){
-    Diag(Tok, diag::err_plot_expected_kw_in);
-    SkipUntil(tok::r_brace, StopBeforeMatch);
-    return StmtError();
-  }
-  
-  SourceLocation InLoc = ConsumeToken();
   
   if(Tok.isNot(tok::identifier)){
     Diag(Tok, diag::err_expected_ident);
@@ -1090,7 +1135,7 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
     return StmtError();
   }
   
-  IdentInfo = Tok.getIdentifierInfo();
+  IdentifierInfo* IdentInfo = Tok.getIdentifierInfo();
   if(IdentInfo->getName().str() != "plot"){
     Diag(Tok, diag::err_frame_expected_capture);
     SkipUntil(tok::r_brace, StopBeforeMatch);
@@ -1104,7 +1149,7 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
     SkipUntil(tok::r_brace, StopBeforeMatch);
     return StmtError();
   }
-
+  
   ParseScope FrameScope(this, Scope::ControlScope|Scope::DeclScope);
   
   auto& M = FD->getVarMap();
@@ -1140,6 +1185,6 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
   }
   
   SpecVars.clear();
-  
+    
   return stmtResult;
 }

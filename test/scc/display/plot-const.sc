@@ -6,17 +6,6 @@ double urand(double a, double b){
   return a + (b - a) * drand48();
 }
 
-void nsleep(double dt){
-  double sec = floor(dt);
-  double fsec = dt - sec;
-  
-  struct timespec ts;
-  ts.tv_sec = sec;
-  ts.tv_nsec = fsec*1e9;
-  
-  nanosleep(&ts, 0);
-}
-
 frame MyFrame{
   timestep: {type:Timestep},
   temperature: {type:Temperature}
@@ -25,7 +14,7 @@ frame MyFrame{
 int main(int argc, char** argv){
   MyFrame f;
   
-  window win[1024, 1024];
+  window win[512, 512];
 
   double t = 0.0;
 
@@ -42,7 +31,7 @@ int main(int argc, char** argv){
       
       lines: {position: [timestep, temperature],
                color: [0.7, 0.5, 0.3, 1.0],
-               size: 1.0},
+               size: 5.0},
 
       axis: {dim:1, label:"Timestep"},
       axis: {dim:2, label:"Temperature"}  

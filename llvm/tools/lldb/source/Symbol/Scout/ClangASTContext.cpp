@@ -365,3 +365,38 @@ ClangASTContext::CreateUnstructuredMeshType (DeclContext *decl_ctx,
     }
     return ClangASTType();
 }
+
+ClangASTType
+ClangASTContext::CreateFrameType (DeclContext *decl_ctx,
+                                  AccessType access_type,
+                                  const char *name,
+                                  LanguageType language,
+                                  ClangASTMetadata *metadata)
+{
+  ASTContext *ast = getASTContext();
+  assert (ast != NULL);
+  
+  if (decl_ctx == NULL)
+    decl_ctx = ast->getTranslationUnitDecl();
+  
+  FrameDecl *decl = FrameDecl::Create (*ast,
+                                       decl_ctx,
+                                       SourceLocation(),
+                                       SourceLocation(),
+                                       name && name[0] ? &ast->Idents.get(name) : NULL);
+  
+  if (decl)
+  {
+    if (metadata)
+      SetMetadata(ast, decl, *metadata);
+    
+    if (access_type != eAccessNone)
+      decl->setAccess (ConvertAccessTypeToAccessSpecifier (access_type));
+    
+    if (decl_ctx)
+      decl_ctx->addDecl (decl);
+    
+    return ClangASTType(ast, ast->getFrameType(decl).getAsOpaquePtr());
+  }
+  return ClangASTType();
+}

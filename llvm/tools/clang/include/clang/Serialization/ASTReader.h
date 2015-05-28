@@ -516,6 +516,10 @@ private:
   /// \brief Functions or methods that have bodies that will be attached.
   PendingBodiesMap PendingBodies;
 
+  /// \brief Definitions for which we have added merged definitions but not yet
+  /// performed deduplication.
+  llvm::SetVector<NamedDecl*> PendingMergedDefinitionsToDeduplicate;
+
   /// \brief Read the records that describe the contents of declcontexts.
   bool ReadDeclContextStorage(ModuleFile &M,
                               llvm::BitstreamCursor &Cursor,
@@ -755,6 +759,9 @@ private:
   /// \brief A list of undefined decls with internal linkage followed by the
   /// SourceLocation of a matching ODR-use.
   SmallVector<uint64_t, 8> UndefinedButUsed;
+
+  /// \brief Delete expressions to analyze at the end of translation unit.
+  SmallVector<uint64_t, 8> DelayedDeleteExprs;
 
   // \brief A list of late parsed template function data.
   SmallVector<uint64_t, 1> LateParsedTemplates;
@@ -1735,6 +1742,10 @@ public:
 
   void ReadUndefinedButUsed(
                llvm::DenseMap<NamedDecl *, SourceLocation> &Undefined) override;
+
+  void ReadMismatchingDeleteExpressions(llvm::MapVector<
+      FieldDecl *, llvm::SmallVector<std::pair<SourceLocation, bool>, 4>> &
+                                            Exprs) override;
 
   void ReadTentativeDefinitions(
                             SmallVectorImpl<VarDecl *> &TentativeDefs) override;
