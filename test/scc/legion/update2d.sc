@@ -55,8 +55,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-const int Size = 10;
-const int TimeSteps = 10;
+const int Size = 100;
+const int TimeSteps = 100;
 
 uniform mesh MyMesh {
  cells:
@@ -81,9 +81,14 @@ task void MyUpdateTask(MyMesh *m) {
 
 task void MyCheckTask(MyMesh *m) {
   forall cells c in *m {
-    //printf("%d %d\n", c.a, c.b);
-    assert(c.a == position().x + 10*position().y + TimeSteps && "bad a value");
-    assert(c.b == position().x + 10*position().y + TimeSteps && "bad b value");
+    if (c.a != position().x + 10*position().y + TimeSteps) {
+       printf("%d\n", c.a);
+       assert(false && "bad a value");
+    }
+    if (c.b != position().x + 10*position().y + TimeSteps) {
+       printf("%d\n", c.b);
+       assert(false && "bad b value");
+    }
   }
 }
 
