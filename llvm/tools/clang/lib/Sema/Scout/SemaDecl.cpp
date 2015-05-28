@@ -138,6 +138,11 @@ Decl *Sema::ActOnMeshField(Scope *S, Decl *MeshD,
   return Res;
 }
 
+Decl *Sema::ActOnBuiltinMeshField(Decl *meshDecl, StringRef fieldName, const Type* fieldTy) {
+  MeshFieldDecl *Res = HandleBuiltinMeshField(cast_or_null<MeshDecl>(meshDecl), fieldName, fieldTy);
+  return Res;
+}
+
 // scout - Scout Mesh
 void Sema::ActOnMeshStartDefinition(Scope *S, Decl *MeshD) {
   MeshDecl *Mesh = cast<MeshDecl>(MeshD);
@@ -185,6 +190,45 @@ MeshFieldDecl *Sema::HandleMeshField(Scope *S, MeshDecl *Mesh,
     PushOnScopeChains(NewFD, S);
   } else
     Mesh->addDecl(NewFD);
+
+  return NewFD;
+}
+
+MeshFieldDecl *Sema::HandleBuiltinMeshField(MeshDecl *meshDecl, StringRef fieldName, const Type* fieldTy) {
+  MeshFieldDecl *NewFD = MeshFieldDecl::Create(
+      /* const ASTContext &C */   Context, 
+      /* DeclContext* DC*/          meshDecl,
+      /* SourceLocation StartLoc*/        SourceLocation(), 
+      /* SourceLocation IdLoc*/        SourceLocation(), 
+      /* IdentifierInfo* Id*/       PP.getIdentifierInfo(fieldName.str()), 
+      /* QualType T*/              QualType(fieldTy, 0), 
+      /* TypeSourceInfo* Tinfo*/       Context.getTrivialTypeSourceInfo(QualType(fieldTy,0)), 
+      /* Expr* BW*/                 0, 
+      /* bool Mutable */               true, 
+      /* InClassInitStyle InitStyle*/      ICIS_NoInit);
+
+
+/* void Sema::AddFrameVar(Scope* Scope,
+                       FrameDecl* FD,
+                       const std::string& typeName,
+                       const std::string& varName){
+  VarDecl* type = FD->getVarType(typeName);
+  VarDecl* v =
+  VarDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
+                  PP.getIdentifierInfo(varName), type->getType(),
+                  Context.getTrivialTypeSourceInfo(type->getType()),
+                  SC_Static);
+  
+  PushOnScopeChains(v, Scope, true);
+  FD->addVar(varName, v);
+} 
+    
+    VarDecl::Create(ASTContext &C, DeclContext *DC,
+                         SourceLocation StartL, SourceLocation IdL,
+                         IdentifierInfo *Id, QualType T, TypeSourceInfo *TInfo,
+                         StorageClass S)  */
+
+  meshDecl->addDecl(NewFD);
 
   return NewFD;
 }

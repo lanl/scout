@@ -106,6 +106,15 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
      return true;
   }
 
+#if 0
+    //if (MeshTy.getTypeClass() == Type::UniformMesh) 
+     else if (Ty.getTypeClass() == Type::ALEMesh) {
+      // do similar but different
+      // get the position as before, but then use it to index into an array of vertices 
+    }
+#endif
+
+  
   case Builtin::BIpositionx: {
     llvm::Value *X = Builder.CreateAdd(
         Builder.CreateLoad(LookupInductionVar(0)),
@@ -138,6 +147,45 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     return true;
   }
 
+  case Builtin::BImpositionx: {
+
+    llvm::Value *index = Builder.CreateAdd(
+        Builder.CreateLoad(LookupInductionVar(0)),
+        Builder.CreateLoad(LookupMeshStart(0)),
+        "mposition.index.x");
+
+    // number of args is already known to be 0 or 1 as it was checked in sema
+    if(E->getNumArgs() == 0) { //inside forall/renderall/stencil
+      // if we can lookup the LoopBound Decl then we must be in a stencil function
+      llvm::Value *BaseAddr;
+      GetMeshBaseAddr(CurrentMeshVarDecl, BaseAddr);
+      llvm::StringRef MeshName = BaseAddr->getName();
+      // We GEP to the 0th field of the record 
+      sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), "mpositionx");
+      llvm::Value* value = Builder.CreateConstInBoundsGEP2_32(0, BaseAddr, 0, 0, IRNameStr);
+
+      // load that address value
+      sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), "mpositionx");
+      value = Builder.CreateLoad(value, IRNameStr);
+
+      // work around bug in llvm, this is similar to what a for loop appears to do
+      // see EmitArraySubscriptExpr()
+      llvm::Value *Idx = Builder.CreateSExt(index, IntPtrTy, "Xall.linearidx.mpositionx"); //forall or renderall
+
+      // get the correct element of the mpositionx field depending on the index
+      sprintf(IRNameStr, "%s.%s.element.ptr", MeshName.str().c_str(), "mpositionx");
+      value = Builder.CreateInBoundsGEP(value, Idx, IRNameStr);
+      *RV = RValue::get(value);
+
+    } else {
+       CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
+       *RV = RValue::get(llvm::ConstantFP::get(FloatTy, 0));
+    }
+
+    return true;
+  }
+
+  
   case Builtin::BIhead:
     *RV = EmitHeadExpr();
     return true;
@@ -147,7 +195,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   }
 
   case Builtin::BIwidth: {
-    // number of args is already known to be 0 or 1 as it was checked in sema
+     // number of args is already known to be 0 or 1 as it was checked in sema
     if(E->getNumArgs() == 0) { //inside forall/renderall/stencil
       // if we can lookup the LoopBound Decl then we must be in a stencil function
       if (MeshDims[0] || LocalDeclMap.lookup(ScoutABIMeshDimDecl[0])) {

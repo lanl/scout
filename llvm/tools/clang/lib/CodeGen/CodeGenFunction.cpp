@@ -87,6 +87,7 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   CellIndex = 0;
   EdgeIndex = 0;
   FaceIndex = 0;
+  MeshTy = NULL;
   for(unsigned i = 0; i < 3; ++i) {
     // We use MeshDims[0] == 0 as a test for being in a
     // valid mesh/forall state where instrinsics are safe

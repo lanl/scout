@@ -128,7 +128,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
                                                                       MeshType, MeshTypeLocation,
                                                                       Name, NameLoc, TParams));
       UMD->completeDefinition();
-      if (ParseMeshBody(MeshLocation, UMD)) {
+      if (ParseMeshBody(MeshLocation, UMD, DeclSpec::TST_uniform_mesh)) {
         DS.SetTypeSpecType(DeclSpec::TST_uniform_mesh,
                            MeshLocation, PrevSpec,
                            DiagID, UMD, true, Policy);
@@ -146,7 +146,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
                                                                       MeshType, MeshTypeLocation,
                                                                       Name, NameLoc, TParams));
       AMD->completeDefinition();
-      if (ParseMeshBody(MeshLocation, AMD)) {
+      if (ParseMeshBody(MeshLocation, AMD, DeclSpec::TST_ALE_mesh)) {
         DS.SetTypeSpecType(DeclSpec::TST_ALE_mesh,
                            MeshLocation, PrevSpec,
                            DiagID, AMD, true, Policy);
@@ -164,7 +164,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
                                                                           MeshType, MeshTypeLocation,
                                                                           Name, NameLoc, TParams));
       RMD->completeDefinition();
-      if (ParseMeshBody(MeshLocation, RMD)) {
+      if (ParseMeshBody(MeshLocation, RMD, DeclSpec::TST_rectilinear_mesh)) {
         DS.SetTypeSpecType(DeclSpec::TST_rectilinear_mesh,
                            MeshLocation, PrevSpec,
                            DiagID, RMD, true, Policy);
@@ -182,7 +182,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
                                                                          MeshType, MeshTypeLocation,
                                                                          Name, NameLoc, TParams));
       SMD->completeDefinition();
-      if (ParseMeshBody(MeshLocation, SMD)) {
+      if (ParseMeshBody(MeshLocation, SMD, DeclSpec::TST_structured_mesh)) {
         DS.SetTypeSpecType(DeclSpec::TST_structured_mesh,
                            MeshLocation, PrevSpec,
                            DiagID, SMD, true, Policy);
@@ -200,7 +200,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
                                                                             MeshType, MeshTypeLocation,
                                                                             Name, NameLoc, TParams));
       USMD->completeDefinition();
-      if (ParseMeshBody(MeshLocation, USMD)) {
+      if (ParseMeshBody(MeshLocation, USMD, DeclSpec::TST_unstructured_mesh)) {
         DS.SetTypeSpecType(DeclSpec::TST_unstructured_mesh,
                            MeshLocation, PrevSpec, 
                            DiagID, USMD, true, Policy);
@@ -218,7 +218,7 @@ bool Parser::ParseMeshSpecifier(DeclSpec &DS,
   }
 }
 
-bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
+bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec, TypeSpecifierType typeSpecType) {
   
   PrettyDeclStackTraceEntry CrashInfo(Actions, Dec, StartLoc,
                                       "parsing Scout mesh body");
@@ -230,7 +230,41 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
   bool valid = true;
   
   llvm::SmallVector<Decl *, 32> FieldDecls;
-  
+
+  // If it's an ALEmesh type, before we actually parse the fields, 
+  // add in some built-in ones for variable vertex positions.
+
+  //ParsingDeclSpec DS(*this);
+  //const Type *Ty = DS.getRepAsType().get().getCanonicalType().getTypePtr();
+  if (typeSpecType==TST_ALE_mesh) {
+
+    // x movable position field
+    Decl* field = Actions.ActOnBuiltinMeshField(Dec, StringRef("__x"), Actions.Context.FloatTy->getTypePtr());
+    MeshFieldDecl* FDecl = cast<MeshFieldDecl>(field);
+    FDecl->setImplicit(false);
+    FDecl->setVertexLocated(true);
+    // SC_TODO - is this a potential bug?  FIXME -- PM
+    //FDecl->setExternAlloc(externAlloc);
+    FieldDecls.push_back(field);
+    // not sure I need this
+    // FD.complete(field);
+
+    // y movable position field
+    field = Actions.ActOnBuiltinMeshField(Dec, StringRef("__y"), Actions.Context.FloatTy->getTypePtr());
+    FDecl = cast<MeshFieldDecl>(field);
+    FDecl->setImplicit(false);
+    FDecl->setVertexLocated(true);
+    FieldDecls.push_back(field);
+
+    // z movable position field
+    field = Actions.ActOnBuiltinMeshField(Dec, StringRef("__z"), Actions.Context.FloatTy->getTypePtr());
+    FDecl = cast<MeshFieldDecl>(field);
+    FDecl->setImplicit(false);
+    FDecl->setVertexLocated(true);
+    FieldDecls.push_back(field);
+
+  }
+
   while(Tok.isNot(tok::r_brace) && Tok.isNot(tok::eof)) {
     
     if (Tok.is(tok::kw_cells)) {
@@ -308,7 +342,8 @@ bool Parser::ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec) {
       Diag(Tok, diag::err_extern_mesh_field);
       ConsumeToken();
     }
-    
+  
+    // Parses mesh field declarations using callback 
     ParseMeshDeclaration(DS, CFieldCallback);
     
     
