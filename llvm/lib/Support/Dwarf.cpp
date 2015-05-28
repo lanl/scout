@@ -199,7 +199,7 @@ const char *llvm::dwarf::AttributeString(unsigned Attribute) {
   case DW_AT_GNU_pubnames:               return "DW_AT_GNU_pubnames";
   case DW_AT_GNU_pubtypes:               return "DW_AT_GNU_pubtypes";
   // +===== Scout ======================================
-  case DW_AT_SCOUT_mesh_field_flags:     return "DW_AT_SCOUT_mesh_field_flags";
+  case DW_AT_SCOUT_field_flags:          return "DW_AT_SCOUT_field_flags";
   case DW_AT_SCOUT_mesh_dim_x:           return "DW_AT_SCOUT_mesh_dim_x";
   case DW_AT_SCOUT_mesh_dim_y:           return "DW_AT_SCOUT_mesh_dim_y";
   case DW_AT_SCOUT_mesh_dim_z:           return "DW_AT_SCOUT_mesh_dim_z";

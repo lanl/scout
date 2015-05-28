@@ -252,6 +252,15 @@ DIScoutDerivedType
                                  AlignInBits, OffsetInBits, Flags, ScoutFlags);
 }
 
+DIScoutDerivedType
+*DIBuilder::createFrameMemberType(DIScope *Scope, StringRef Name,
+                                  DIFile *File, unsigned LineNumber,
+                                  DIType *Ty) {
+  return DIScoutDerivedType::get(VMContext, dwarf::DW_TAG_member, Name, File, LineNumber,
+                                 DIScopeRef::get(getNonCompileUnitScope(Scope)),
+                                 DITypeRef::get(Ty), 0, 0, 0, 0, 0);
+}
+
 DIScoutCompositeType
 *DIBuilder::createScoutForwardDecl(unsigned Tag, StringRef Name, DIScope* Scope,
                                    DIFile* F, unsigned Line, unsigned RuntimeLang,

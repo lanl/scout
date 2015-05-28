@@ -203,6 +203,7 @@ class CGDebugInfo {
                          llvm::DIFile* F,
                          SmallVectorImpl<llvm::Metadata *> &E,
                          llvm::DIScoutCompositeType *MeshTy);
+  
   void CollectMeshStaticField(const VarDecl *Var,
                               SmallVectorImpl<llvm::Metadata *> &E,
                               llvm::DIScoutCompositeType *MeshTy);
@@ -231,6 +232,17 @@ class CGDebugInfo {
   llvm::DIScoutCompositeType *CreateLimitedType(const FrameType *Ty);
   
   llvm::DIType *CreateType(const FrameVarType *Ty);
+  
+  void CollectFrameFields(const FrameDecl *Decl,
+                          llvm::DIFile* F,
+                          SmallVectorImpl<llvm::Metadata *> &E,
+                          llvm::DIScoutCompositeType *FrameTy);
+  
+  llvm::DIType
+  *createFrameFieldType(StringRef name, QualType type,
+                        SourceLocation loc,
+                        llvm::DIFile* tunit,
+                        llvm::DIScope* scope);
   // +========================================================================+
 
   void CollectCXXMemberFunctions(const CXXRecordDecl *Decl, llvm::DIFile *F,

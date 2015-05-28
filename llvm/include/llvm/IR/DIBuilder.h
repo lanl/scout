@@ -205,6 +205,10 @@ namespace llvm {
                           unsigned LineNo, uint64_t SizeInBits,
                           uint64_t AlignInBits, uint64_t OffsetInBits,
                           unsigned Flags, unsigned ScoutFlags, DIType *Ty);
+    
+    DIScoutDerivedType
+    *createFrameMemberType(DIScope *Scope, StringRef Name, DIFile *File,
+                           unsigned LineNo, DIType *Ty);
     // +==========================================
 
     /// createStaticMemberType - Create debugging information entry for a
