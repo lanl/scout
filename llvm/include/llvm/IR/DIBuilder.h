@@ -207,7 +207,8 @@ namespace llvm {
                           unsigned Flags, unsigned ScoutFlags, DIType *Ty);
     
     DIScoutDerivedType
-    *createFrameMemberType(DIScope *Scope, StringRef Name, DIFile *File,
+    *createFrameMemberType(DIScope *Scope, StringRef Name,
+                           uint32_t varId, DIFile *File,
                            unsigned LineNo, DIType *Ty);
     // +==========================================
 

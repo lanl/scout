@@ -1742,10 +1742,16 @@ ClangExpressionDeclMap::AddOneVariable (NameSearchContext &context, VariableSP v
         else if (const MeshType *mesh_type = dyn_cast<MeshType>(parser_type)){
           CompleteType(mesh_type->getDecl());
         }
+        else if (const FrameType *frame_type = dyn_cast<FrameType>(parser_type)){
+          CompleteType(frame_type->getDecl());
+        }
         else if (parser_type->isPointerType() || parser_type->isReferenceType()) {
           const clang::Type* pt = parser_type->getPointeeType().getTypePtr();
           if (const MeshType *mesh_type = dyn_cast<MeshType>(pt)){
             CompleteType(mesh_type->getDecl());
+          }
+          else if (const FrameType *frame_type = dyn_cast<FrameType>(pt)){
+            CompleteType(frame_type->getDecl());
           }
         }
         // +================================

@@ -100,7 +100,7 @@ using namespace clang;
 using namespace llvm;
 
 bool
-ClangASTType::StartMeshDeclarationDefinition ()
+ClangASTType::StartScoutDeclarationDefinition ()
 {
     if (IsValid())
     {
@@ -119,13 +119,25 @@ ClangASTType::StartMeshDeclarationDefinition ()
                     return true;
                 }
             }
+          
+            const FrameType *frame_type = dyn_cast<FrameType>(t);
+          
+            if (frame_type)
+            {
+              FrameDecl *frame_decl = frame_type->getDecl();
+              if (frame_decl)
+              {
+                frame_decl->startDefinition();
+                return true;
+              }
+            }
         }
     }
     return false;
 }
 
 bool
-ClangASTType::CompleteMeshDeclarationDefinition ()
+ClangASTType::CompleteScoutDeclarationDefinition ()
 {
     if (IsValid())
     {
@@ -149,6 +161,11 @@ ClangASTType::CompleteMeshDeclarationDefinition ()
         }
         else if(UnstructuredMeshDecl *mesh_decl = qual_type->getAsUnstructuredMeshDecl()){
           mesh_decl->completeDefinition();
+          return true;
+        }
+        else if(FrameDecl *frame_decl = qual_type->getAsFrameDecl()){
+          llvm::errs() << "t9\n";
+          frame_decl->completeDefinition();
           return true;
         }
     }
@@ -226,4 +243,36 @@ ClangASTType::GetAsMeshDecl () const
     if (mesh_type)
         return mesh_type->getDecl();
     return NULL;
+}
+
+clang::FrameDecl *
+ClangASTType::GetAsFrameDecl () const
+{
+  const FrameType *frame_type = dyn_cast<FrameType>(GetCanonicalQualType());
+  if (frame_type)
+    return frame_type->getDecl();
+  return NULL;
+}
+
+clang::VarDecl*
+ClangASTType::AddFieldToFrameType (const char *name,
+                                   const ClangASTType &field_clang_type,
+                                   AccessType access,
+                                   uint32_t varId)
+{
+  if (!IsValid() || !field_clang_type.IsValid())
+    return NULL;
+  
+  FrameDecl *frame_decl = GetAsFrameDecl ();
+  assert(frame_decl && "Expected a FrameDecl");
+
+  VarDecl* VD =
+  VarDecl::Create(*m_ast, frame_decl, SourceLocation(), SourceLocation(),
+                  &m_ast->Idents.get(name),
+                  field_clang_type.GetQualType(),
+                  m_ast->getTrivialTypeSourceInfo(field_clang_type.GetQualType()),
+                  SC_Static);
+
+  frame_decl->addVar(name, VD, varId);
+  frame_decl->addDecl(VD);
 }

@@ -112,9 +112,43 @@ GetCompleteQualType (clang::ASTContext *ast, clang::QualType qual_type, bool all
                 }
             }
         }
+        case clang::Type::Frame:
+        {
+          const clang::FrameType *frame_type =
+          llvm::dyn_cast<clang::FrameType>(qual_type.getTypePtr());
+          
+          if (frame_type)
+          {
+            clang::FrameDecl *frame_decl = frame_type->getDecl();
+            if (frame_decl)
+            {
+              if (frame_decl->isCompleteDefinition())
+                return true;
+              
+              if (!allow_completion)
+                return false;
+              
+              if (frame_decl->hasExternalLexicalStorage())
+              {
+                if (ast)
+                {
+                  clang::ExternalASTSource *external_ast_source =
+                  ast->getExternalSource();
+                  
+                  if (external_ast_source)
+                  {
+                    external_ast_source->CompleteType(frame_decl);
+                    return !frame_type->isIncompleteType();
+                  }
+                }
+              }
+              return false;
+            }
+          }
+        }
             break;
         // +=====================================================
-            
+        
         case clang::Type::Record:
         case clang::Type::Enum:
         {
@@ -876,6 +910,7 @@ ClangASTType::IsDefined() const
     const clang::TagType *tag_type = llvm::dyn_cast<clang::TagType>(qual_type.getTypePtr());
     // +===== Scout ==========================
     const clang::MeshType* mesh_type;
+    const clang::FrameType* frame_type;
     // +======================================
     if (tag_type)
     {
@@ -891,6 +926,13 @@ ClangASTType::IsDefined() const
         if (mesh_decl)
             return mesh_decl->isCompleteDefinition();
         return false;
+    }
+    else if ((frame_type = llvm::dyn_cast<clang::FrameType>(qual_type.getTypePtr())))
+    {
+      clang::FrameDecl *frame_decl = frame_type->getDecl();
+      if (frame_decl)
+        return frame_decl->isCompleteDefinition();
+      return false;
     }
     // +================================================
     else
@@ -1691,6 +1733,7 @@ ClangASTType::GetTypeClass () const
         case clang::Type::StructuredMesh:           break;
         case clang::Type::RectilinearMesh:          break;
         case clang::Type::UnstructuredMesh:         break;
+        case clang::Type::Frame:                    break;
         case clang::Type::Image:                    break;
         case clang::Type::Window:                   break;
         case clang::Type::Query:                    break;
@@ -2380,6 +2423,7 @@ ClangASTType::GetEncoding (uint64_t &count) const
         case clang::Type::StructuredMesh:           break;
         case clang::Type::RectilinearMesh:          break;
         case clang::Type::UnstructuredMesh:         break;
+        case clang::Type::Frame:                    break;
         case clang::Type::Image:                    break;
         case clang::Type::Window:                   break;
         case clang::Type::Query:                    break;
@@ -2581,6 +2625,9 @@ ClangASTType::GetNumChildren (bool omit_empty_base_classes) const
             for (field = mesh_decl->field_begin(), field_end = mesh_decl->field_end(); field != field_end; ++field)
                 ++num_children;
           }
+          break;
+        case clang::Type::Frame:
+          assert(false && "unimplemented");
           break;
         // ==============================================
 

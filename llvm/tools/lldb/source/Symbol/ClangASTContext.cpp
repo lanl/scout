@@ -2099,6 +2099,18 @@ ClangASTContext::GetCompleteDecl (clang::ASTContext *ast,
 
         return !mesh_decl->getTypeForDecl()->isIncompleteType();
     }
+    else if (clang::FrameDecl *frame_decl = llvm::dyn_cast<clang::FrameDecl>(decl))
+    {
+      if (frame_decl->isCompleteDefinition())
+        return true;
+      
+      if (!frame_decl->hasExternalLexicalStorage())
+        return false;
+      
+      ast_source->CompleteType(frame_decl);
+      
+      return !frame_decl->getTypeForDecl()->isIncompleteType();
+    }
     // +===================================
     else if (clang::ObjCInterfaceDecl *objc_interface_decl = llvm::dyn_cast<clang::ObjCInterfaceDecl>(decl))
     {

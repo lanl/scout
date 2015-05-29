@@ -179,6 +179,9 @@ public:
     virtual void
     CompleteType (clang::MeshDecl *Mesh) override;
 
+    virtual void
+    CompleteType (clang::FrameDecl *Frame) override;
+  
     // +================================================
 
     //------------------------------------------------------------------

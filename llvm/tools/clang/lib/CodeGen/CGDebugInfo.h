@@ -241,6 +241,7 @@ class CGDebugInfo {
   llvm::DIType
   *createFrameFieldType(StringRef name, QualType type,
                         SourceLocation loc,
+                        uint32_t varId,
                         llvm::DIFile* tunit,
                         llvm::DIScope* scope);
   // +========================================================================+

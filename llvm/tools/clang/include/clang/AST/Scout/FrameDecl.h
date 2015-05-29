@@ -76,7 +76,7 @@ namespace clang {
 
   public:
     struct Var{
-      uint32_t fieldId;
+      uint32_t varId;
       VarDecl* varDecl;
     };
       
@@ -190,6 +190,11 @@ namespace clang {
     
     void addVar(const std::string& name, VarDecl* v){
       uint32_t varId = nextVarId++;
+      varMap.insert({name, Var{varId, v}});
+      varIdMap.insert({v, varId});
+    }
+      
+    void addVar(const std::string& name, VarDecl* v, uint32_t varId){
       varMap.insert({name, Var{varId, v}});
       varIdMap.insert({v, varId});
     }
