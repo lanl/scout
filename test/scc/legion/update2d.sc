@@ -81,14 +81,8 @@ task void MyUpdateTask(MyMesh *m) {
 
 task void MyCheckTask(MyMesh *m) {
   forall cells c in *m {
-    if (c.a != position().x + 10*position().y + TimeSteps) {
-       printf("%d\n", c.a);
-       assert(false && "bad a value");
-    }
-    if (c.b != position().x + 10*position().y + TimeSteps) {
-       printf("%d\n", c.b);
-       assert(false && "bad b value");
-    }
+    assert (c.a == position().x + 10*position().y + TimeSteps && "bad a value"); 
+    assert (c.b == position().x + 10*position().y + TimeSteps && "bad b value"); 
   }
 }
 

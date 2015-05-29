@@ -349,6 +349,8 @@ public:
   llvm::SmallVector< llvm::Value *, 3 > MeshSize;
   // loopbounds for forall cells/vertices
   llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
+  const MeshType* MeshTy;
+  const VarDecl* CurrentMeshVarDecl;
 
   llvm::Value *MeshRank = 0;
 

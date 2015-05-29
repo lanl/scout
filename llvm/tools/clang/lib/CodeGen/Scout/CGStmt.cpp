@@ -232,6 +232,8 @@ void CodeGenFunction::SetMeshBounds(RenderallMeshStmt::MeshElementType type, llv
 // deal w/ differences in Renderall/Forall cases
 void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value* MeshBaseAddr, const MeshType* mt) {
 
+  MeshTy = mt;
+
   // find number of mesh fields (struct fields - the fixed ones like width/height/depth)
   unsigned int nfields = mt->getDecl()->fields();
 
@@ -1929,6 +1931,7 @@ llvm::Value* CodeGenFunction::EmitForallQueryCall(const ForallMeshStmt& S,
 // reset Loopbounds, mesh dimensions, rank and induction var
 void CodeGenFunction::ResetMeshBounds(void) {
 
+    MeshTy = NULL;
     MeshDims.clear();
     MeshStart.clear();
     MeshSize.clear();

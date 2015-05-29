@@ -8848,6 +8848,9 @@ public:
   Decl* ActOnMeshField(Scope *S, Decl *MeshD,
                        SourceLocation DeclStart, Declarator &D);
 
+  Decl* ActOnBuiltinMeshField(Decl *meshDecl, StringRef fieldName, 
+      const Type* fieldTy);
+
   void ActOnMeshStartDefinition(Scope *S, Decl *TagD);
 
   bool ActOnMeshFinishDefinition(Scope *S, Decl *MeshD,
@@ -8855,6 +8858,9 @@ public:
 
   MeshFieldDecl* HandleMeshField(Scope *S, MeshDecl *MeshD,
                              SourceLocation DeclStart, Declarator &D);
+
+  MeshFieldDecl* HandleBuiltinMeshField(MeshDecl *meshDecl, 
+      StringRef fieldName, const Type* fieldTy); 
 
 
   MeshFieldDecl* CheckMeshFieldDecl(DeclarationName Name, QualType T,

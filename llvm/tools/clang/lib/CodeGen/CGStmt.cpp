@@ -135,7 +135,10 @@ void CodeGenFunction::EmitStmt(const Stmt *S) {
 
   // +===== Scout ============================================================+
   case Stmt::ForallMeshStmtClass:
+    // Store MeshVarDecl here for use by builtins within the forall
+    CurrentMeshVarDecl = (cast<ForallMeshStmt>(*S)).getMeshVarDecl();
     EmitForallMeshStmt(cast<ForallMeshStmt>(*S));
+    CurrentMeshVarDecl = nullptr;
     break;
   case Stmt::RenderallMeshStmtClass:
   	EmitRenderallStmt(cast<RenderallMeshStmt>(*S));

@@ -2545,7 +2545,7 @@ private:
 
   bool ParseMeshSpecifier(DeclSpec &DS, const ParsedTemplateInfo &TemplateInfo);
   
-  bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec);
+  bool ParseMeshBody(SourceLocation StartLoc, MeshDecl* Dec, TypeSpecifierType typeSpecType);
 
   void ParseMeshDeclaration(ParsingDeclSpec &DS,
          llvm::function_ref<void(ParsingFieldDeclarator &)> FieldsCallback);
