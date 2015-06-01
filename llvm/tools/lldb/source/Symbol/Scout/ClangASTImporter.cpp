@@ -112,3 +112,48 @@ ClangASTImporter::CompleteMeshDeclWithOrigin(clang::MeshDecl *decl, clang::MeshD
 
     return true;
 }
+
+bool
+ClangASTImporter::CompleteFrameDecl (clang::FrameDecl *decl)
+{
+  ClangASTMetrics::RegisterDeclCompletion();
+  
+  DeclOrigin decl_origin = GetDeclOrigin(decl);
+  
+  if (!decl_origin.Valid())
+    return false;
+  
+  if (!ClangASTContext::GetCompleteDecl(decl_origin.ctx, decl_origin.decl))
+    return false;
+  
+  MinionSP minion_sp (GetMinion(&decl->getASTContext(), decl_origin.ctx));
+  
+  if (minion_sp)
+    minion_sp->ImportDefinitionTo(decl, decl_origin.decl);
+  
+  return true;
+}
+
+bool
+ClangASTImporter::CompleteFrameDeclWithOrigin(clang::FrameDecl *decl, clang::FrameDecl *origin_decl)
+{
+  ClangASTMetrics::RegisterDeclCompletion();
+  
+  clang::ASTContext *origin_ast_ctx = &origin_decl->getASTContext();
+  
+  if (!ClangASTContext::GetCompleteDecl(origin_ast_ctx, origin_decl))
+    return false;
+  
+  MinionSP minion_sp (GetMinion(&decl->getASTContext(), origin_ast_ctx));
+  
+  if (minion_sp)
+    minion_sp->ImportDefinitionTo(decl, origin_decl);
+  
+  ASTContextMetadataSP context_md = GetContextMetadata(&decl->getASTContext());
+  
+  OriginMap &origins = context_md->m_origins;
+  
+  origins[decl] = DeclOrigin(origin_ast_ctx, origin_decl);
+  
+  return true;
+}

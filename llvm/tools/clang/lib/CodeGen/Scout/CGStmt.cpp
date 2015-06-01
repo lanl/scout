@@ -2460,7 +2460,7 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
     auto mitr = m.find(k);
     assert(mitr != m.end());
     
-    uint32_t fieldId = mitr->second.fieldId;
+    uint32_t varId = mitr->second.varId;
     VarDecl* varDecl = mitr->second.varDecl;
     
     llvm::Type* lt = ConvertType(QualType(varDecl->getType().getTypePtr(), 0));
@@ -2468,7 +2468,7 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
     Value* val =
     EmitAnyExprToTemp(itr.second.second->toExpr()).getScalarVal();
     
-    ValueVec args = {framePtr, Builder.getInt32(fieldId), val};
+    ValueVec args = {framePtr, Builder.getInt32(varId), val};
     
     if(lt->isIntegerTy(32)){
       Builder.CreateCall(R.FrameCaptureI32Func(), args);

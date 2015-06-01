@@ -254,11 +254,12 @@ DIScoutDerivedType
 
 DIScoutDerivedType
 *DIBuilder::createFrameMemberType(DIScope *Scope, StringRef Name,
+                                  uint32_t varId,
                                   DIFile *File, unsigned LineNumber,
                                   DIType *Ty) {
   return DIScoutDerivedType::get(VMContext, dwarf::DW_TAG_member, Name, File, LineNumber,
                                  DIScopeRef::get(getNonCompileUnitScope(Scope)),
-                                 DITypeRef::get(Ty), 0, 0, 0, 0, 0);
+                                 DITypeRef::get(Ty), 0, 0, 0, 0, varId);
 }
 
 DIScoutCompositeType

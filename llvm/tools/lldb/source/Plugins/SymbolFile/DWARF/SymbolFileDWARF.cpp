@@ -2497,9 +2497,10 @@ SymbolFileDWARF::HasForwardDeclForClangType (const ClangASTType &clang_type)
 bool
 SymbolFileDWARF::ResolveClangOpaqueTypeDefinition (ClangASTType &clang_type)
 {
-    // We have a struct/union/class/enum that needs to be fully resolved.
-    ClangASTType clang_type_no_qualifiers = clang_type.RemoveFastQualifiers();
-    const DWARFDebugInfoEntry* die = m_forward_decl_clang_type_to_die.lookup (clang_type_no_qualifiers.GetOpaqueQualType());
+  // We have a struct/union/class/enum that needs to be fully resolved.
+  ClangASTType clang_type_no_qualifiers = clang_type.RemoveFastQualifiers();
+
+  const DWARFDebugInfoEntry* die = m_forward_decl_clang_type_to_die.lookup (clang_type_no_qualifiers.GetOpaqueQualType());
     if (die == NULL)
     {
         // We have already resolved this type...
@@ -2531,7 +2532,7 @@ SymbolFileDWARF::ResolveClangOpaqueTypeDefinition (ClangASTType &clang_type)
                                                                   type->GetName().AsCString());
     assert (clang_type);
     DWARFDebugInfoEntry::Attributes attributes;
-
+  
     switch (tag)
     {
     // +===== Scout =======================
@@ -2560,7 +2561,7 @@ SymbolFileDWARF::ResolveClangOpaqueTypeDefinition (ClangASTType &clang_type)
           }
       }
 
-      clang_type.CompleteMeshDeclarationDefinition ();
+      clang_type.CompleteScoutDeclarationDefinition ();
 
       if (!layout_info.field_offsets.empty())
       {
@@ -2598,6 +2599,24 @@ SymbolFileDWARF::ResolveClangOpaqueTypeDefinition (ClangASTType &clang_type)
           }
           m_mesh_decl_to_layout_map.insert(std::make_pair(mesh_decl, layout_info));
       }
+      return (bool)clang_type;
+    }
+    case DW_TAG_SCOUT_frame_type:
+    {
+      if (die->HasChildren())
+      {
+        
+        AccessType default_accessibility = eAccessPublic;
+        
+        SymbolContext sc(GetCompUnitForDWARFCompUnit(dwarf_cu));
+        
+        ParseFrameChildMembers (sc,
+                                dwarf_cu,
+                                die,
+                                clang_type,
+                                default_accessibility);
+      }
+      
       return (bool)clang_type;
     }
     // +===================================
@@ -6549,8 +6568,8 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                             // No children for this struct/union/class, lets finish it
                             // +===== Scout ==========================
                             if(isScoutType){
-                              clang_type.StartMeshDeclarationDefinition ();
-                              clang_type.CompleteMeshDeclarationDefinition ();
+                              clang_type.StartScoutDeclarationDefinition ();
+                              clang_type.CompleteScoutDeclarationDefinition ();
                             }
                             else{
                               clang_type.StartTagDeclarationDefinition ();
@@ -6580,7 +6599,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                                 class_language != eLanguageTypeObjC_plus_plus){
                               // +===== Scout =========================
                               if(isScoutType)
-                                clang_type.StartMeshDeclarationDefinition ();
+                                clang_type.StartScoutDeclarationDefinition ();
                               else
                                 clang_type.StartTagDeclarationDefinition ();
                               // +=====================================
@@ -6591,6 +6610,7 @@ SymbolFileDWARF::ParseType (const SymbolContext& sc, DWARFCompileUnit* dwarf_cu,
                             // will automatically call the SymbolFile virtual function
                             // "SymbolFileDWARF::ResolveClangOpaqueTypeDefinition(Type *)"
                             // When the definition needs to be defined.
+                          
                             m_forward_decl_die_to_clang_type[die] = clang_type.GetOpaqueQualType();
                             m_forward_decl_clang_type_to_die[clang_type.RemoveFastQualifiers().GetOpaqueQualType()] = die;
                             clang_type.SetHasExternalStorage (true);

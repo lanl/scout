@@ -463,6 +463,12 @@ public:
                         lldb::AccessType access,
                         uint32_t bitfield_bit_size,
                         uint32_t field_flags);
+  
+    clang::VarDecl*
+    AddFieldToFrameType (const char *name,
+                         const ClangASTType &field_type,
+                         lldb::AccessType access,
+                         uint32_t varId);
     // +=======================================================
 
 
@@ -552,10 +558,10 @@ public:
 
     // +===== Scout ===========================
     bool
-    StartMeshDeclarationDefinition ();
+    StartScoutDeclarationDefinition ();
 
     bool
-    CompleteMeshDeclarationDefinition ();
+    CompleteScoutDeclarationDefinition ();
     // +========================================
     
     //----------------------------------------------------------------------
@@ -668,6 +674,9 @@ public:
     // +===== Scout =====================
     clang::MeshDecl *
     GetAsMeshDecl () const;
+  
+    clang::FrameDecl *
+    GetAsFrameDecl () const;
     // +=================================
 
     void

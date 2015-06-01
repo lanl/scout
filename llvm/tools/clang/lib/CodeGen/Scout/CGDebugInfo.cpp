@@ -1002,20 +1002,15 @@ CollectFrameFields(const FrameDecl *frame, llvm::DIFile *tunit,
                    SmallVectorImpl<llvm::Metadata *> &elements,
                    llvm::DIScoutCompositeType *FrameTy) {
   
-  // Field number for non-static fields.
-  unsigned fieldNo = 0;
-  
-  // Static and non-static members should appear in the same order as
-  // the corresponding declarations in the source program.
-  for (FrameDecl::decl_iterator I = frame->decls_begin(),
-       E = frame->decls_end(); I != E; ++I) {
-    if (const VarDecl *V = dyn_cast<VarDecl>(*I)){
-      llvm::DIType *GV =
-      createFrameFieldType(V->getName(), V->getType(), V->getLocation(), tunit, FrameTy);
-      
-      elements.push_back(GV);
-    }
-    ++fieldNo;
+  auto m = frame->getVarMap();
+  for(auto& itr : m){
+    const VarDecl* vd = itr.second.varDecl;
+    
+    llvm::DIType *GV =
+    createFrameFieldType(vd->getName(), vd->getType(),
+                         vd->getLocation(), itr.second.varId, tunit, FrameTy);
+    
+    elements.push_back(GV);
   }
 }
 
@@ -1023,6 +1018,7 @@ llvm::DIType
 *CGDebugInfo::createFrameFieldType(StringRef name,
                                    QualType type,
                                    SourceLocation loc,
+                                   uint32_t varId,
                                    llvm::DIFile *tunit,
                                    llvm::DIScope *scope) {
   
@@ -1033,7 +1029,7 @@ llvm::DIType
   unsigned line = getLineNumber(loc);
   
   return
-  DBuilder.createFrameMemberType(scope, name, file, line, debugType);
+  DBuilder.createFrameMemberType(scope, name, varId, file, line, debugType);
 }
 
 //===----------------------------------------------------------------------===//

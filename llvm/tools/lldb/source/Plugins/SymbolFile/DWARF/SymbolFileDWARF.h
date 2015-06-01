@@ -376,6 +376,13 @@ protected:
                                 lldb_private::ClangASTType &class_clang_type,
                                 lldb::AccessType &default_accessibility,
                                 MeshLayoutInfo &layout_info);
+  
+  size_t                  ParseFrameChildMembers(
+                                const lldb_private::SymbolContext& sc,
+                                DWARFCompileUnit* dwarf_cu,
+                                const DWARFDebugInfoEntry *die,
+                                lldb_private::ClangASTType &class_clang_type,
+                                lldb::AccessType &default_accessibility);
     // +=====================================================================
 
     size_t                  ParseChildParameters(
