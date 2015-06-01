@@ -7787,6 +7787,8 @@ def err_forall_non_vertices : Error<
      "calling mposition outside of forall vertices">; 
 def err_invalid_mesh_specifier : Error<
      "invalid mesh specifier">;
+def err_invalid_mposition_call : Error<
+"invalid mposition call: %0">;
 def err_invalid_plot_call : Error<
 "invalid plot call: %0">;
 def err_invalid_save_mesh_call : Error<
