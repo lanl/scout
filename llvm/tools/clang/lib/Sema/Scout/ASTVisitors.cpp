@@ -226,6 +226,10 @@ void ForallVisitor::VisitCallExpr(CallExpr* E) {
       }
 
     } else if (isMPosition(id)) {
+     
+      // is this where I need to check that we are in a forall in an ALE mesh? 
+      
+      // right now only allow this builtin on vertices
       switch(FET) {
       case ForallMeshStmt::Vertices:
         break;

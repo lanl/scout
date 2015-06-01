@@ -207,27 +207,6 @@ MeshFieldDecl *Sema::HandleBuiltinMeshField(MeshDecl *meshDecl, StringRef fieldN
       /* bool Mutable */               true, 
       /* InClassInitStyle InitStyle*/      ICIS_NoInit);
 
-
-/* void Sema::AddFrameVar(Scope* Scope,
-                       FrameDecl* FD,
-                       const std::string& typeName,
-                       const std::string& varName){
-  VarDecl* type = FD->getVarType(typeName);
-  VarDecl* v =
-  VarDecl::Create(Context, FD, SourceLocation(), SourceLocation(),
-                  PP.getIdentifierInfo(varName), type->getType(),
-                  Context.getTrivialTypeSourceInfo(type->getType()),
-                  SC_Static);
-  
-  PushOnScopeChains(v, Scope, true);
-  FD->addVar(varName, v);
-} 
-    
-    VarDecl::Create(ASTContext &C, DeclContext *DC,
-                         SourceLocation StartL, SourceLocation IdL,
-                         IdentifierInfo *Id, QualType T, TypeSourceInfo *TInfo,
-                         StorageClass S)  */
-
   meshDecl->addDecl(NewFD);
 
   return NewFD;

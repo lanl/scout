@@ -65,13 +65,22 @@ int main(int argc, char *argv[])
 {
   AMeshType m1[2];
 
-  float val = 0;
+  float val = 43;
+  float valarray[3] = {2, 3, 4};
+  float* valptr = &val;
+  float sumval = 0;
 
   forall vertices v in m1{
-    val += mpositionx();
+    //mpositionx('c');  //breaks
+    //mpositionx(valarray[0]);  // ok
+    //mpositionx(5); //breaks
+    //mpositionx(5.0); //ok
+    //mpositionx(*valptr); //ok
+    mpositionx(val); //ok
+    sumval += mpositionx();
   }
 
-  printf("val: %f\n", val);
+  printf("val: %f\n", sumval);
 
   return 0;
 }
