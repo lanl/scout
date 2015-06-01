@@ -222,6 +222,10 @@ namespace clang {
       return varMap;
     }
       
+    VarMap& getVarMap(){
+      return varMap;
+    }
+      
     void completeDefinition();
 
     typedef redeclarable_base::redecl_iterator redecl_iterator;

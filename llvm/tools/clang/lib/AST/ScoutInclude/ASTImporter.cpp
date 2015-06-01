@@ -506,6 +506,12 @@ Decl *ASTNodeImporter::VisitFrameDecl(FrameDecl *D) {
   D2->setQualifierInfo(Importer.Import(D->getQualifierLoc()));
   D2->setLexicalDeclContext(LexicalDC);
   LexicalDC->addDeclInternal(D2);
+
+  auto m = D->getVarMap();
+  
+  for(auto& itr : m){
+    D2->addVar(itr.first, nullptr, itr.second.varId);
+  }
   
   Importer.Imported(D, D2);
   
