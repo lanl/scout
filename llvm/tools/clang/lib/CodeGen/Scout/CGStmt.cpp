@@ -232,6 +232,8 @@ void CodeGenFunction::SetMeshBounds(RenderallMeshStmt::MeshElementType type, llv
 // deal w/ differences in Renderall/Forall cases
 void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value* MeshBaseAddr, const MeshType* mt) {
 
+  MeshTy = mt;
+
   // find number of mesh fields (struct fields - the fixed ones like width/height/depth)
   unsigned int nfields = mt->getDecl()->fields();
 
@@ -1929,6 +1931,7 @@ llvm::Value* CodeGenFunction::EmitForallQueryCall(const ForallMeshStmt& S,
 // reset Loopbounds, mesh dimensions, rank and induction var
 void CodeGenFunction::ResetMeshBounds(void) {
 
+    MeshTy = NULL;
     MeshDims.clear();
     MeshStart.clear();
     MeshSize.clear();
@@ -2457,7 +2460,7 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
     auto mitr = m.find(k);
     assert(mitr != m.end());
     
-    uint32_t fieldId = mitr->second.fieldId;
+    uint32_t varId = mitr->second.varId;
     VarDecl* varDecl = mitr->second.varDecl;
     
     llvm::Type* lt = ConvertType(QualType(varDecl->getType().getTypePtr(), 0));
@@ -2465,7 +2468,7 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
     Value* val =
     EmitAnyExprToTemp(itr.second.second->toExpr()).getScalarVal();
     
-    ValueVec args = {framePtr, Builder.getInt32(fieldId), val};
+    ValueVec args = {framePtr, Builder.getInt32(varId), val};
     
     if(lt->isIntegerTy(32)){
       Builder.CreateCall(R.FrameCaptureI32Func(), args);

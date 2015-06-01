@@ -131,6 +131,13 @@ public:
 
     bool
     CompleteMeshDeclWithOrigin (clang::MeshDecl *decl, clang::MeshDecl *origin);
+  
+  
+    bool
+    CompleteFrameDecl (clang::FrameDecl *decl);
+  
+    bool
+    CompleteFrameDeclWithOrigin (clang::FrameDecl *decl, clang::FrameDecl *origin);
     // +=================================================
     
     bool

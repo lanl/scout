@@ -789,7 +789,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
         assert(false && "invalid field type");
       }
       
-      args = {fp, Builder.getInt32(vi.fieldId), fieldType};
+      args = {fp, Builder.getInt32(vi.varId), fieldType};
       Builder.CreateCall(R.FrameAddVarFunc(), args);
     }
   }

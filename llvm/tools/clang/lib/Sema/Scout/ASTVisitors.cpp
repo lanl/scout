@@ -67,6 +67,13 @@ bool isPosition(unsigned id) {
   return false;
 }
 
+bool isMPosition(unsigned id) {
+  if (id == Builtin::BImposition || id == Builtin::BImpositionx
+      || id == Builtin::BImpositiony || id == Builtin::BImpositionz
+      || id == Builtin::BImpositionw) return true;
+  return false;
+}
+
 bool isCShift(unsigned id) {
   if (id == Builtin::BIcshift || id == Builtin::BIcshifti
       || id == Builtin::BIcshiftf || id == Builtin::BIcshiftd ) return true;
@@ -218,6 +225,18 @@ void ForallVisitor::VisitCallExpr(CallExpr* E) {
         assert(false && "invalid forall case");
       }
 
+    } else if (isMPosition(id)) {
+      switch(FET) {
+      case ForallMeshStmt::Vertices:
+        break;
+      case ForallMeshStmt::Faces:
+      case ForallMeshStmt::Cells:
+      case ForallMeshStmt::Edges:
+        sema_.Diag(E->getExprLoc(), diag::err_forall_non_vertices);
+        break;
+      default:
+        assert(false && "invalid forall case");
+      }
     }
   }
 
