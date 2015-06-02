@@ -63,7 +63,7 @@ vertices:
 
 int main(int argc, char *argv[])
 {
-  AMeshType m1[2];
+  AMeshType m1[1];
 
   float val = 43;
   float valarray[3] = {2, 3, 4};
@@ -76,11 +76,30 @@ int main(int argc, char *argv[])
     //mpositionx(5); //breaks
     //mpositionx(5.0); //ok
     //mpositionx(*valptr); //ok
-    mpositionx(val); //ok
+    //mpositionx(val); //ok
+    //mpositionx(3.0);
+    //sumval += mpositionx();
+    //mpositiony(val+5); //ok
+    //sumval += mpositiony();
+    //mpositionz(val+7); //ok
+    //sumval += mpositionz();
+    mpositionx(2.0);
+    mpositiony(4.0);
+    mpositionz(6.0);
     sumval += mpositionx();
+    sumval += mpositiony();
+    sumval += mpositionz();
+    //mpositionz(4.0);
+    //float4 mposVector;
+    //mposVector.x = mposition().x;
+    //mposVector.y = mposition().y;
+    //mposVector.z = mposition().z;
+    //sumval += mposVector.x; // not working
+    //sumval += mposVector.y; // not working
+    //sumval += mposVector.z; // not working
   }
 
-  printf("val: %f\n", sumval);
-
+  printf("sumval: %f\n", sumval);
+  
   return 0;
 }

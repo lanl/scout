@@ -1266,3 +1266,129 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   LocalDeclMap[VD] = qp;
 }
 
+RValue CodeGenFunction::EmitMPosition(const CallExpr *E , unsigned int index) {
+
+  static const char *IndexNames[] = { "x", "y", "z", "w"};
+
+  // check if we are NOT in a forall or renderall
+  if (!CurrentMeshVarDecl) {
+    CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
+    return RValue::get(llvm::ConstantFP::get(FloatTy, 0));
+  }
+
+  // check if this is an ALE mesh
+  const ALEMeshType* aleMeshType = dyn_cast<ALEMeshType>(CurrentMeshVarDecl->getType().getTypePtr());
+  if (!aleMeshType) {
+    CGM.getDiags().Report(E->getExprLoc(), diag::err_invalid_mposition_call); // "must operate on ALE mesh vertices"
+    return RValue::get(llvm::ConstantFP::get(FloatTy, 0));
+  }
+
+  // otherwise, we compute the index of the mpositionx
+  sprintf(IRNameStr, "mposition.index.%s", IndexNames[index]);
+  llvm::Value *indexVal = Builder.CreateAdd(
+      Builder.CreateLoad(LookupInductionVar(index)),
+      Builder.CreateLoad(LookupMeshStart(index)),
+      IRNameStr);
+
+
+  llvm::Value *BaseAddr;
+  GetMeshBaseAddr(CurrentMeshVarDecl, BaseAddr);
+  llvm::StringRef MeshName = BaseAddr->getName();
+
+  // We GEP to the index-th field of the record 
+  sprintf(IRNameStr, "%s.%s.ptr.%s", MeshName.str().c_str(), "mposition", IndexNames[index]);
+  llvm::Value* value = Builder.CreateConstInBoundsGEP2_32(0, BaseAddr, 0, index, IRNameStr);
+
+  // load that address value
+  sprintf(IRNameStr, "%s.%s.%s", MeshName.str().c_str(), "mposition", IndexNames[index]);
+  value = Builder.CreateLoad(value, IRNameStr);
+
+  // work around bug in llvm, this is similar to what a for loop appears to do
+  // see EmitArraySubscriptExpr()
+  sprintf(IRNameStr, "Xall.linearidx.mposition.%s", IndexNames[index]);
+  llvm::Value *Idx = Builder.CreateSExt(indexVal, IntPtrTy, IRNameStr); //forall or renderall
+
+  // get the correct element of the mposition field depending on the index
+  sprintf(IRNameStr, "%s.%s.%s.element.ptr", MeshName.str().c_str(), "mposition", IndexNames[index]);
+  llvm::Value *valueptr = Builder.CreateInBoundsGEP(value, Idx, IRNameStr);
+
+  // number of args is already known to be 0 or 1 as it was checked in sema
+  // return the value of the mposition if it has no arguments
+  if(E->getNumArgs() == 0) { 
+    sprintf(IRNameStr, "%s.%s.%s.element", MeshName.str().c_str(), "mposition", IndexNames[index]);
+    value = Builder.CreateLoad(valueptr, IRNameStr);
+    return RValue::get(value);
+
+  } else { // otherwise, set the mpositionx to the argument
+
+    RValue argval = EmitAnyExpr(E->getArg(0));
+    llvm::Value* newvalue;
+    if(argval.isAggregate()) { 
+      llvm::Value* addr = argval.getAggregateAddr();
+      sprintf(IRNameStr, "%s.%s.%s.newaggvalue", MeshName.str().c_str(), "mposition", IndexNames[index]);
+      newvalue = Builder.CreateLoad(addr, IRNameStr);
+      sprintf(IRNameStr, "%s.%s.%s.newcastedaggvalue", MeshName.str().c_str(), "mposition", IndexNames[index]);
+      newvalue = Builder.CreateFPCast(newvalue, FloatTy, IRNameStr);
+    } else {
+      newvalue = argval.getScalarVal();
+      sprintf(IRNameStr, "%s.%s.%s.newcastedscalarvalue", MeshName.str().c_str(), "mposition", IndexNames[index]);
+      newvalue = Builder.CreateFPCast(newvalue, FloatTy, IRNameStr);
+    }
+    Builder.CreateStore(newvalue, valueptr);
+    return RValue::get(newvalue);
+  }
+}
+
+RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
+  static const char *IndexNames[] = { "x", "y", "z", "w"};
+  llvm::Value *Result =
+    llvm::UndefValue::get(llvm::VectorType::get(FloatTy, 4));
+
+  for (unsigned i = 0; i <= 3; ++i) {
+    // otherwise, we compute the index of the mpositionx
+    llvm::Value *indexVal;
+    if (i == 3) {
+      sprintf(IRNameStr, "mposition.linearindex.%s", IndexNames[i]);
+      indexVal = Builder.CreateLoad(LookupInductionVar(i),IRNameStr);
+    } else {
+      sprintf(IRNameStr, "mposition.index.%s", IndexNames[i]);
+      indexVal = Builder.CreateAdd(
+        Builder.CreateLoad(LookupInductionVar(i)),
+        Builder.CreateLoad(LookupMeshStart(i)),
+        IRNameStr);
+    }
+    llvm::Value *BaseAddr;
+    GetMeshBaseAddr(CurrentMeshVarDecl, BaseAddr);
+    llvm::StringRef MeshName = BaseAddr->getName();
+
+    // We GEP to the ith field of the record 
+    sprintf(IRNameStr, "%s.%s.ptr.%s", MeshName.str().c_str(), "mposition", IndexNames[i]);
+    llvm::Value* value = Builder.CreateConstInBoundsGEP2_32(0, BaseAddr, 0, i, IRNameStr);
+
+    // load that address value
+    sprintf(IRNameStr, "%s.%s.%s", MeshName.str().c_str(), "mposition", IndexNames[i]);
+    value = Builder.CreateLoad(value, IRNameStr);
+
+    // work around bug in llvm, this is similar to what a for loop appears to do
+    // see EmitArraySubscriptExpr()
+    sprintf(IRNameStr, "Xall.linearidx.mposition.%s", IndexNames[i]);
+    llvm::Value *Idx = Builder.CreateSExt(indexVal, IntPtrTy, IRNameStr); //forall or renderall
+
+    // get the correct element of the mposition field depending on the index
+    sprintf(IRNameStr, "%s.%s.%s.element.ptr", MeshName.str().c_str(), "mposition", IndexNames[i]);
+    llvm::Value *valueptr = Builder.CreateInBoundsGEP(value, Idx, IRNameStr);
+
+    // number of args is already known to be 0 or 1 as it was checked in sema
+    // return the value of the mposition if it has no arguments
+    if(E->getNumArgs() == 0) { 
+      sprintf(IRNameStr, "%s.%s.%s.element", MeshName.str().c_str(), "mposition", IndexNames[i]);
+      value = Builder.CreateLoad(valueptr, IRNameStr);
+      sprintf(IRNameStr, "%s.%s.%s.insertelement", MeshName.str().c_str(), "mposition", IndexNames[i]);
+      value = Builder.CreateInsertElement(Result, value, Builder.getInt32(i), IRNameStr);
+    } else { // otherwise, set the mposition to the argument
+
+    }
+  }
+  return RValue::get(Result);
+}
+

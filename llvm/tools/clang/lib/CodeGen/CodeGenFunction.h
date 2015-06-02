@@ -2254,6 +2254,9 @@ public:
   void EmitFrameCaptureStmt(const FrameCaptureStmt &S);
   
   void EmitPlotStmt(const PlotStmt &S);
+
+  RValue EmitMPosition(const CallExpr *E , unsigned int index);
+  RValue EmitMPositionVector(const CallExpr *E);
   
   llvm::Function* CreatePlotFunction(Expr* E);
   
