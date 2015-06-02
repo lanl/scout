@@ -2606,16 +2606,15 @@ SymbolFileDWARF::ResolveClangOpaqueTypeDefinition (ClangASTType &clang_type)
       if (die->HasChildren())
       {
         
-        AccessType default_accessibility = eAccessPublic;
-        
         SymbolContext sc(GetCompUnitForDWARFCompUnit(dwarf_cu));
         
         ParseFrameChildMembers (sc,
                                 dwarf_cu,
                                 die,
-                                clang_type,
-                                default_accessibility);
+                                clang_type);
       }
+      
+      clang_type.CompleteScoutDeclarationDefinition ();
       
       return (bool)clang_type;
     }

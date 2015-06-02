@@ -381,8 +381,7 @@ protected:
                                 const lldb_private::SymbolContext& sc,
                                 DWARFCompileUnit* dwarf_cu,
                                 const DWARFDebugInfoEntry *die,
-                                lldb_private::ClangASTType &class_clang_type,
-                                lldb::AccessType &default_accessibility);
+                                lldb_private::ClangASTType &class_clang_type);
     // +=====================================================================
 
     size_t                  ParseChildParameters(

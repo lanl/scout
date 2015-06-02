@@ -2141,7 +2141,8 @@ public:
   //
   void GetMeshBaseAddr(const Stmt &S, llvm::Value *&BaseAddr);
   void GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& BaseAddr);
-
+  void GetFrameBaseAddr(const VarDecl *FrameVarDecl, llvm::Value*& BaseAddr);
+  
   void SetMeshBounds(const Stmt &S);
   void SetMeshBounds(ForallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr, const MeshType* mt);
   void SetMeshBounds(RenderallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr, const MeshType* mt);

@@ -246,8 +246,7 @@ SymbolFileDWARF::ParseFrameChildMembers
  const SymbolContext& sc,
  DWARFCompileUnit* dwarf_cu,
  const DWARFDebugInfoEntry *parent_die,
- ClangASTType &class_clang_type,
- AccessType& default_accessibility)
+ ClangASTType &class_clang_type)
 {
   if (parent_die == NULL)
     return 0;
@@ -345,9 +344,6 @@ SymbolFileDWARF::ParseFrameChildMembers
           {
             if (member_type)
             {
-              if (accessibility == eAccessNone)
-                accessibility = default_accessibility;
-              
               uint64_t field_bit_offset = (member_byte_offset == UINT32_MAX ? 0 : (member_byte_offset * 8));
               
               last_field_info.Clear();
@@ -356,7 +352,6 @@ SymbolFileDWARF::ParseFrameChildMembers
               
               class_clang_type.AddFieldToFrameType (name,
                                                     member_clang_type,
-                                                    accessibility,
                                                     varId);
             }
           }

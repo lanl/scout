@@ -173,6 +173,48 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& 
   }
 }
 
+void CodeGenFunction::GetFrameBaseAddr(const VarDecl *FrameVarDecl, llvm::Value*& BaseAddr) {
+  // is a global. SC_TODO why not MeshVarDecl->hasGlobalStorage()?
+  if ((FrameVarDecl->hasLinkage() || FrameVarDecl->isStaticDataMember())
+      && FrameVarDecl->getTLSKind() != VarDecl::TLS_Dynamic) {
+    
+    BaseAddr = CGM.GetAddrOfGlobalVar(FrameVarDecl);
+    
+    // If BaseAddr is an external global then it is assumed that we are within LLDB
+    // and we need to load the Frame base address because it is passed as a global
+    // reference.
+    if(inLLDB()){
+      llvm::Value* V = LocalDeclMap.lookup(FrameVarDecl);
+      if(V){
+        BaseAddr = V;
+        return;
+      }
+      
+      while(llvm::PointerType* PT =
+            dyn_cast<llvm::PointerType>(BaseAddr->getType())){
+        
+        if(!PT->getElementType()->isPointerTy()){
+          break;
+        }
+        
+        BaseAddr = Builder.CreateLoad(BaseAddr);
+      }
+      
+      LocalDeclMap[FrameVarDecl] = BaseAddr;
+      return;
+    }
+  } else {
+    BaseAddr = LocalDeclMap[FrameVarDecl];
+    BaseAddr = Builder.CreateLoad(BaseAddr);
+    
+    // If Frame ptr then load
+    const Type *T = FrameVarDecl->getType().getTypePtr();
+    if(T->isAnyPointerType() || T->isReferenceType()) {
+      BaseAddr = Builder.CreateLoad(BaseAddr);
+    }
+  }
+}
+
 //from Stmt get base addr of mesh
 void CodeGenFunction::GetMeshBaseAddr(const Stmt &S, llvm::Value*& BaseAddr) {
 
@@ -2776,11 +2818,11 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   visitor.Visit(const_cast<SpecObjectExpr*>(S.getSpec()));
   
   if(frame){
-    const FrameType* ft = dyn_cast<FrameType>(frame->getType().getTypePtr());
+    const FrameType* ft =
+    dyn_cast<FrameType>(frame->getType().getNonReferenceType().getTypePtr());
+    
     if(ft){
-      framePtr = LocalDeclMap.lookup(frame);
-      assert(framePtr);
-      framePtr = Builder.CreateLoad(framePtr, "frame.ptr");
+      GetFrameBaseAddr(frame, framePtr);
     }
     else{
       const MeshType* mt = dyn_cast<MeshType>(frame->getType().getTypePtr());
