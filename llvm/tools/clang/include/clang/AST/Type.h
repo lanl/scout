@@ -3826,19 +3826,11 @@ class RenderTargetType : public Type {
 // fix this.
 class WindowType :  public RenderTargetType {
  public:
-  enum Usage{
-    None,
-    Renderall,
-    Plot
-  };
-  
   WindowType()
-  : RenderTargetType(Window, QualType()),
-  usage(None){ }
+  : RenderTargetType(Window, QualType()){ }
 
   WindowType(Expr *WE, Expr *HE)
-  : RenderTargetType(Window, WE, HE, QualType()),
-  usage(None){ }
+  : RenderTargetType(Window, WE, HE, QualType()){}
 
   static bool classof(const WindowType *T) { return true; }
   
@@ -3853,17 +3845,6 @@ class WindowType :  public RenderTargetType {
   bool isSugared() const { return false; }
   
   QualType desugar() const { return QualType(this, 0); }
-  
-  Usage getUsage() const{
-    return usage;
-  }
-  
-  void setUsage(Usage U) const{
-    usage = U;
-  }
-  
-private:
-  mutable Usage usage;
 };
 
   

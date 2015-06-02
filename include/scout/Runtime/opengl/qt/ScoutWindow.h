@@ -1,11 +1,9 @@
 /*
- *
  * ###########################################################################
- *
- * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * Copyright (c) 2015, Los Alamos National Security, LLC.
  * All rights reserved.
  *
- *  Copyright 2013. Los Alamos National Security, LLC. This software was
+ *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
  *  National Security, LLC for the U.S. Department of Energy. The
@@ -47,63 +45,64 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
+ * ###########################################################################
  *
+ * Notes
+ *
+ * #####
  */
 
-#ifndef __SCOUT_GRAPHICS_H__ 
-#define __SCOUT_GRAPHICS_H__
+#ifndef __SC_SCOUT_WINDOW_H__
+#define __SC_SCOUT_WINDOW_H__
 
-#include <stdint.h>
+#include <iostream>
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
+#include "scout/Runtime/opengl/qt/QtWindow.h"
+#include "scout/Runtime/opengl/qt/PlotWindow.h"
 
-  // These interface calls were prototyped by Pat McCormick in NewRuntime.
+namespace scout{
 
-  // This call initializes the underlying graphics system.  It should
-  // be called prior to any graphics operations -- in our case we hook
-  // it into being run before the user's main() function is executed. 
-  // 
-  // CMS:  I made this return void.  Should make it return bool?  What would we do if it fails?
-  void __scrt_init_graphics();
+  class ScoutWindow{
+  public:
+    ScoutWindow(unsigned short width,
+                unsigned short height)
+      : width_(width),
+        height_(height),
+        window_(nullptr){}
 
-  // This is our sole opaque type for dealing with render targets
-  // within the runtime.  Note that we also maintain a C-compatible
-  // calling interface so we can support both Scout C and Scout C++
-  // without multiple libraries.  That said, we use C++ under the hood
-  // and thus C programs have to link with C++ (which we handle within
-  // 'scc' so it should hopefully be transparent to the programmer).
-  typedef void* __scrt_target_t;
+    PlotWindow* getPlotWindow(){      
+      if(window_){
+        return static_cast<PlotWindow*>(window_);
+      }
 
-  /// Create an on screen (window-based) rendering target of the given
-  /// width and height in pixels.
-  __scrt_target_t __scrt_create_window(unsigned short width,
-                                       unsigned short height);
+      QtWindow::init();
 
-  float*
-  __scrt_window_quad_renderable_colors(unsigned int width,
-                                       unsigned int height, 
-                                       unsigned int depth,
-                                       void* renderTarget);
-  
-  float*
-  __scrt_window_quad_renderable_vertex_colors(unsigned int width,
-                                              unsigned int height, 
-                                              unsigned int depth,
-                                              void* renderTarget);
+      PlotWindow* window = new PlotWindow(width_, height_);
+      window_ = window;
+      
+      return window;
+    }
 
-  float*
-  __scrt_window_quad_renderable_edge_colors(unsigned int width,
-                                            unsigned int height, 
-                                            unsigned int depth,
-                                            void* renderTarget);
+    QtWindow* getQtWindow(){
+      if(window_){
+        return static_cast<QtWindow*>(window_);
+      }
+      
+      QtWindow::init();
 
-  void __scrt_window_paint(void* renderTarget);
+      QtWindow* window = new QtWindow(width_, height_);
+      window->show();
+      window_ = window;
+      
+      return window;
+    }
 
-#if defined(__cplusplus)
-}
-#endif
+  private:
+    unsigned short width_;
+    unsigned short height_;
+    void* window_;
+  };
 
-#endif
+} // end namespace scout
 
+#endif // __SC_SCOUT_WINDOW_H__
