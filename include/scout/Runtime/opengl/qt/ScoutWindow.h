@@ -1,8 +1,8 @@
 /*
  * ###########################################################################
- * Copyright (c) 2013, Los Alamos National Security, LLC.
+ * Copyright (c) 2015, Los Alamos National Security, LLC.
  * All rights reserved.
- * 
+ *
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- * 
+ *
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided 
+ *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- * 
+ *
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -45,49 +45,64 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ########################################################################### 
- * 
+ * ###########################################################################
+ *
  * Notes
- * See Builtins.def for documentation of BUILTIN macro
- * ##### 
- */ 
+ *
+ * #####
+ */
 
-BUILTIN(position, "E4i", "n")
-BUILTIN(positionx, "i", "n")
-BUILTIN(positiony, "i", "n")
-BUILTIN(positionz, "i", "n")
-BUILTIN(positionw, "i", "n")
+#ifndef __SC_SCOUT_WINDOW_H__
+#define __SC_SCOUT_WINDOW_H__
 
-//0 or 1 args
-BUILTIN(mposition, "E4f.", "n")
-BUILTIN(mpositionx, "f.", "n")
-BUILTIN(mpositiony, "f.", "n")
-BUILTIN(mpositionz, "f.", "n")
-BUILTIN(mpositionw, "f.", "n")
+#include <iostream>
 
-BUILTIN(head, "E4i", "n")
-BUILTIN(tail, "E4i", "n")
+#include "scout/Runtime/opengl/qt/QtWindow.h"
+#include "scout/Runtime/opengl/qt/PlotWindow.h"
 
-//0 or 1 args
-BUILTIN(width, "i.", "n")
-BUILTIN(height, "i.", "n")
-BUILTIN(depth, "i.", "n")
-BUILTIN(rank, "i.", "n") 
+namespace scout{
 
-// circular shift builtins
-// "template like" CShift that works for all types
-// "t" is the magic to make this work
-BUILTIN(cshift, "vvi.", "t") // generic 
-BUILTIN(cshifti, "iii.", "n") // just for int
-BUILTIN(cshiftf, "ffi.", "n") // just for float
-BUILTIN(cshiftd, "ddi.", "n") // just for double
+  class ScoutWindow{
+  public:
+    ScoutWindow(unsigned short width,
+                unsigned short height)
+      : width_(width),
+        height_(height),
+        window_(nullptr){}
 
-//end-off shift builtins
-BUILTIN(eoshift, "vvvi.", "t") // generic 
-BUILTIN(eoshifti, "iiii.", "n") // just for int
-BUILTIN(eoshiftf, "fffi.", "n") // just for float
-BUILTIN(eoshiftd, "dddi.", "n") // just for double
+    PlotWindow* getPlotWindow(){      
+      if(window_){
+        return static_cast<PlotWindow*>(window_);
+      }
 
-BUILTIN(plot, "vvv", "t") // generic 
-BUILTIN(saveMesh, "vvv", "t") // generic
-BUILTIN(swapFields, "vvv", "t") // generic
+      QtWindow::init();
+
+      PlotWindow* window = new PlotWindow(width_, height_);
+      window_ = window;
+      
+      return window;
+    }
+
+    QtWindow* getQtWindow(){
+      if(window_){
+        return static_cast<QtWindow*>(window_);
+      }
+      
+      QtWindow::init();
+
+      QtWindow* window = new QtWindow(width_, height_);
+      window->show();
+      window_ = window;
+      
+      return window;
+    }
+
+  private:
+    unsigned short width_;
+    unsigned short height_;
+    void* window_;
+  };
+
+} // end namespace scout
+
+#endif // __SC_SCOUT_WINDOW_H__

@@ -184,7 +184,6 @@ llvm::Function *CGScoutRuntime::CreateWindowFunction() {
   std::vector<llvm::Type*> Params;
   Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 16));
   Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 16));
-  Params.push_back(llvm::IntegerType::get(CGM.getModule().getContext(), 8));
   
   return ScoutRuntimeFunction(
       funcName, Params, 

@@ -131,6 +131,19 @@ bool Sema::CheckMeshParameterCall(unsigned BuiltinID, CallExpr *TheCall) {
   return true;
 }
 
+bool Sema::CheckMPositionCall(unsigned BuiltinID, CallExpr *TheCall) {
+
+  // Is this where I need to check we are in an ALE mesh forall?
+
+  // if we have an argument check it
+  if(TheCall->getNumArgs() == 1) {
+
+    // need to check the type of first arg
+
+  }
+  return true;
+}
+
 bool Sema::CheckPlotCall(unsigned BuiltinID, CallExpr *TheCall) {
 #ifndef SCOUT_ENABLE_PLOT
   Diag(TheCall->getExprLoc(), diag::err_plot_disabled);

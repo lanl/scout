@@ -198,6 +198,13 @@ namespace clang {
       varMap.insert({name, Var{varId, v}});
       varIdMap.insert({v, varId});
     }
+    
+    void resetVar(const std::string& name, VarDecl* v){
+      auto itr = varMap.find(name);
+      assert(itr != varMap.end());
+      itr->second.varDecl = v;
+      varIdMap.insert({v, itr->second.varId});
+    }
       
     bool hasVar(const VarDecl* v) const{
       return varIdMap.find(const_cast<VarDecl*>(v)) != varIdMap.end();
@@ -219,6 +226,10 @@ namespace clang {
     }
       
     const VarMap& getVarMap() const{
+      return varMap;
+    }
+      
+    VarMap& getVarMap(){
       return varMap;
     }
       

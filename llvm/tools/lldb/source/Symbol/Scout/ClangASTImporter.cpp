@@ -131,6 +131,17 @@ ClangASTImporter::CompleteFrameDecl (clang::FrameDecl *decl)
   if (minion_sp)
     minion_sp->ImportDefinitionTo(decl, decl_origin.decl);
   
+  for(auto itr = decl->decls_begin(), itrEnd = decl->decls_end();
+      itr != itrEnd; ++itr){
+    
+    VarDecl* vd = dyn_cast<VarDecl>(*itr);
+    if(!vd){
+      continue;
+    }
+  
+    decl->resetVar(vd->getName().str(), vd);
+  }
+  
   return true;
 }
 

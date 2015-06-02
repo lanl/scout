@@ -51,8 +51,8 @@
  */
 
 #include "scout/Runtime/GraphicsCInterface.h"
+#include "scout/Runtime/opengl/qt/ScoutWindow.h"
 #include "scout/Runtime/opengl/qt/QtWindow.h"
-#include "scout/Runtime/opengl/qt/PlotWindow.h"
 #include "scout/Runtime/opengl/glUniformRenderable.h"
 
 using namespace scout;
@@ -64,28 +64,17 @@ void __scrt_init_graphics() {
 
 extern "C"
 __scrt_target_t __scrt_create_window(unsigned short width,
-                                     unsigned short height,
-                                     uint8_t plot) {
+                                     unsigned short height) {
   assert(width != 0 && height != 0);
 
-  QtWindow::init();
-
-  if(plot){
-    PlotWindow* win = new PlotWindow(width, height);
-    return (__scrt_target_t)win;
-  }
-  else{
-    QtWindow* win = new QtWindow(width, height);
-    win->show();
-    return (__scrt_target_t)win;
-  }
+  return (__scrt_target_t)(new ScoutWindow(width, height));
 }
 
 static glUniformRenderable*
 get_renderable(unsigned int width,
                unsigned int height,
                void* renderTarget){
-  QtWindow* window = (QtWindow*)renderTarget;
+  QtWindow* window = ((ScoutWindow*)renderTarget)->getQtWindow();
   window->makeContextCurrent();
 
   // TODO:  Check if there is already a quad renderable associated with this window 
@@ -155,7 +144,7 @@ __scrt_window_quad_renderable_edge_colors(unsigned int width,
 
 extern "C"
 void __scrt_window_paint(void* renderTarget) {
-  QtWindow* window = (QtWindow*)renderTarget;
+  QtWindow* window = ((ScoutWindow*)renderTarget)->getQtWindow();
   // this is funky -- should be a separate function 
   // (__scrt_window_quad_renderable_unmap_colors)
   ((glUniformRenderable*)(window->getCurrentRenderable()))->unmap_colors();

@@ -467,7 +467,6 @@ public:
     clang::VarDecl*
     AddFieldToFrameType (const char *name,
                          const ClangASTType &field_type,
-                         lldb::AccessType access,
                          uint32_t varId);
     // +=======================================================
 

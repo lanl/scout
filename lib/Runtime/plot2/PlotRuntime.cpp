@@ -67,8 +67,7 @@
 
 #include <QtGui>
 
-#include "scout/Runtime/opengl/qt/QtWindow.h"
-#include "scout/Runtime/opengl/qt/PlotWindow.h"
+#include "scout/Runtime/opengl/qt/ScoutWindow.h"
 #include "scout/Runtime/opengl/qt/PlotWidget.h"
 #include "scout/Runtime/opengl/qt/PlotRenderer.h"
 
@@ -1302,9 +1301,9 @@ namespace{
       }
     }
 
-    void init(Frame* frame, PlotWindow* window){
+    void init(Frame* frame, ScoutWindow* scoutWindow){
       frame_ = frame;
-      window_ = window;
+      window_ = scoutWindow->getPlotWindow();
     }
 
     bool ready(){
@@ -2460,7 +2459,7 @@ extern "C"{
 
   void __scrt_plot_init(void* plot, void* frame, void* window){
     return static_cast<Plot*>(plot)->init(static_cast<Frame*>(frame),
-                                          static_cast<PlotWindow*>(window));
+                                          static_cast<ScoutWindow*>(window));
   }
 
   bool __scrt_plot_ready(void* plot){

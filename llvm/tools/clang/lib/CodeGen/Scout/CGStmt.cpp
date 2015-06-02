@@ -189,6 +189,48 @@ void CodeGenFunction::GetMeshBaseAddr(const Stmt &S, llvm::Value*& BaseAddr) {
   GetMeshBaseAddr(MeshVarDecl, BaseAddr);
 }
 
+void CodeGenFunction::GetFrameBaseAddr(const VarDecl *FrameVarDecl, llvm::Value*& BaseAddr) {
+  // is a global. SC_TODO why not MeshVarDecl->hasGlobalStorage()?
+  if ((FrameVarDecl->hasLinkage() || FrameVarDecl->isStaticDataMember())
+      && FrameVarDecl->getTLSKind() != VarDecl::TLS_Dynamic) {
+    
+    BaseAddr = CGM.GetAddrOfGlobalVar(FrameVarDecl);
+    
+    // If BaseAddr is an external global then it is assumed that we are within LLDB
+    // and we need to load the Frame base address because it is passed as a global
+    // reference.
+    if(inLLDB()){
+      llvm::Value* V = LocalDeclMap.lookup(FrameVarDecl);
+      if(V){
+        BaseAddr = V;
+        return;
+      }
+      
+      while(llvm::PointerType* PT =
+            dyn_cast<llvm::PointerType>(BaseAddr->getType())){
+        
+        if(!PT->getElementType()->isPointerTy()){
+          break;
+        }
+        
+        BaseAddr = Builder.CreateLoad(BaseAddr);
+      }
+      
+      LocalDeclMap[FrameVarDecl] = BaseAddr;
+      return;
+    }
+  } else {
+    BaseAddr = LocalDeclMap[FrameVarDecl];
+    BaseAddr = Builder.CreateLoad(BaseAddr);
+    
+    // If Frame ptr then load
+    const Type *T = FrameVarDecl->getType().getTypePtr();
+    if(T->isAnyPointerType() || T->isReferenceType()) {
+      BaseAddr = Builder.CreateLoad(BaseAddr);
+    }
+  }
+}
+
 // find number of fields
 unsigned int GetMeshNFields(const Stmt &S) {
   MeshDecl* MD;
@@ -2776,11 +2818,11 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   visitor.Visit(const_cast<SpecObjectExpr*>(S.getSpec()));
   
   if(frame){
-    const FrameType* ft = dyn_cast<FrameType>(frame->getType().getTypePtr());
+    const FrameType* ft =
+    dyn_cast<FrameType>(frame->getType().getNonReferenceType().getTypePtr());
+    
     if(ft){
-      framePtr = LocalDeclMap.lookup(frame);
-      assert(framePtr);
-      framePtr = Builder.CreateLoad(framePtr, "frame.ptr");
+      GetFrameBaseAddr(frame, framePtr);
     }
     else{
       const MeshType* mt = dyn_cast<MeshType>(frame->getType().getTypePtr());
@@ -2926,8 +2968,10 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   assert(targetPtr);
   
-  targetPtr = Builder.CreateBitCast(Builder.CreateLoad(targetPtr),
-                                    R.VoidPtrTy, "target.ptr");
+  llvm::Type* ptrType = R.PointerTy(VoidPtrTy);
+  targetPtr = Builder.CreateBitCast(targetPtr, ptrType);
+  
+  targetPtr = Builder.CreateLoad(targetPtr);
   
   args = {plotPtr, framePtr, targetPtr};
   Builder.CreateCall(R.PlotInitFunc(), args);
@@ -3179,7 +3223,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   for(auto& itr : em){
     const VarDecl* vd = itr.first;
     uint32_t vid = itr.second;
-
+    
     Value* vp = LocalDeclMap[vd];
     assert(vp);
     

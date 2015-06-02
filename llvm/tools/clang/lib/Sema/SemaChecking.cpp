@@ -268,9 +268,12 @@ Sema::CheckBuiltinFunctionCall(FunctionDecl *FDecl, unsigned BuiltinID,
   case Builtin::BIpositionx:
   case Builtin::BIpositiony:
   case Builtin::BIpositionz:
+    break;
+  case Builtin::BImposition:
   case Builtin::BImpositionx:
   case Builtin::BImpositiony:
   case Builtin::BImpositionz:
+    if (!CheckMPositionCall(BuiltinID, TheCall)) return ExprError();
     break;
   case Builtin::BIplot:
       if(!CheckPlotCall(BuiltinID, TheCall)){

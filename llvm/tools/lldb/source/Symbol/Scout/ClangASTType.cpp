@@ -164,7 +164,6 @@ ClangASTType::CompleteScoutDeclarationDefinition ()
           return true;
         }
         else if(FrameDecl *frame_decl = qual_type->getAsFrameDecl()){
-          llvm::errs() << "t9\n";
           frame_decl->completeDefinition();
           return true;
         }
@@ -257,7 +256,6 @@ ClangASTType::GetAsFrameDecl () const
 clang::VarDecl*
 ClangASTType::AddFieldToFrameType (const char *name,
                                    const ClangASTType &field_clang_type,
-                                   AccessType access,
                                    uint32_t varId)
 {
   if (!IsValid() || !field_clang_type.IsValid())
@@ -265,7 +263,7 @@ ClangASTType::AddFieldToFrameType (const char *name,
   
   FrameDecl *frame_decl = GetAsFrameDecl ();
   assert(frame_decl && "Expected a FrameDecl");
-
+  
   VarDecl* VD =
   VarDecl::Create(*m_ast, frame_decl, SourceLocation(), SourceLocation(),
                   &m_ast->Idents.get(name),
@@ -275,4 +273,6 @@ ClangASTType::AddFieldToFrameType (const char *name,
 
   frame_decl->addVar(name, VD, varId);
   frame_decl->addDecl(VD);
+  
+  return VD;
 }
