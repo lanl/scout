@@ -51,6 +51,8 @@ enum TokenType {
   TT_InlineASMBrace,
   TT_InlineASMColon,
   TT_JavaAnnotation,
+  TT_JsComputedPropertyName,
+  TT_JsFatArrow,
   TT_JsTypeColon,
   TT_JsTypeOptionalQuestion,
   TT_LambdaArrow,
