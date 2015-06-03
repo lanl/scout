@@ -3253,5 +3253,9 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   args = {plotPtr};
   Builder.CreateCall(R.PlotRenderFunc(), args);
   
+  if(inLLDB()){
+    Builder.CreateCall(R.PlotRefreshFunc(), args);
+  }
+  
   CurrentPlotStmt = nullptr;
 }

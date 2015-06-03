@@ -2736,6 +2736,13 @@ IRForTarget::runOnModule (Module &llvm_module)
                 return false;
             }
 
+          // ===== Scout ================================
+          // This part of the pass is currently causing problems
+          // with Scout generated code, e.g: plotting closures. It seems
+          // to be a minor optimization which doesn't affect the correctness
+          // of LLDB-generated code. Disabling for now, will try again
+          // after a later merge with LLVM mainline.
+          /*
             if (!ReplaceStaticLiterals(*bbi))
             {
                 if (log)
@@ -2743,6 +2750,8 @@ IRForTarget::runOnModule (Module &llvm_module)
 
                 return false;
             }
+           */
+          // ============================================
         }
     }
 
