@@ -6,6 +6,8 @@ from lldbtest import *
 class TestGdbRemoteRegisterState(gdbremote_testcase.GdbRemoteTestCaseBase):
     """Test QSaveRegisterState/QRestoreRegisterState support."""
 
+    mydir = TestBase.compute_mydir(__file__)
+
     def grp_register_save_restore_works(self, with_suffix):
         # Start up the process, use thread suffix, grab main thread id.
         inferior_args = ["message:main entered", "sleep:5"]
@@ -98,7 +100,6 @@ class TestGdbRemoteRegisterState(gdbremote_testcase.GdbRemoteTestCaseBase):
         self.set_inferior_startup_launch()
         self.grp_register_save_restore_works(USE_THREAD_SUFFIX)
 
-    @expectedFailureLinux("https://llvm.org/bugs/show_bug.cgi?id=23251") # failing intermittently on the linux build bot
     @llgs_test
     @dwarf_test
     def test_grp_register_save_restore_works_with_suffix_llgs_dwarf(self):

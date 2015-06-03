@@ -491,7 +491,8 @@ def parseOptionsAndInitTestdirs():
     platform_system = platform.system()
     platform_machine = platform.machine()
 
-    args = dotest_args.getArguments(sys.argv[1:])
+    parser = dotest_args.create_parser()
+    args = dotest_args.parse_args(parser, sys.argv[1:])
     
     if args.unset_env_varnames:
         for env_var in args.unset_env_varnames:
@@ -850,7 +851,7 @@ def getOutputPaths(lldbRootDirectory):
     result = []
 
     if sys.platform == 'darwin':
-        result.append(getXcodeOutputPaths(lldbRootDirectory))
+        result.extend(getXcodeOutputPaths(lldbRootDirectory))
 
     # cmake builds?  look for build or build/host folder next to llvm directory
     # lldb is located in llvm/tools/lldb so we need to go up three levels
@@ -951,7 +952,7 @@ def setupSysPath():
         lldbtest_config.lldbExec = which('lldb')
 
     if lldbtest_config.lldbExec and not is_exe(lldbtest_config.lldbExec):
-        print "'{}' is not a path to a valid executable"
+        print "'{}' is not a path to a valid executable".format(lldbtest_config.lldbExec)
         del lldbtest_config.lldbExec
 
     if not lldbtest_config.lldbExec:

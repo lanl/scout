@@ -426,6 +426,9 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::ConstantFP, MVT::f32, Custom);
   setOperationAction(ISD::ConstantFP, MVT::f64, Custom);
 
+  setOperationAction(ISD::READ_REGISTER, MVT::i64, Custom);
+  setOperationAction(ISD::WRITE_REGISTER, MVT::i64, Custom);
+
   if (Subtarget->hasNEON()) {
     addDRTypeForNEON(MVT::v2f32);
     addDRTypeForNEON(MVT::v8i8);
@@ -1122,6 +1125,7 @@ const char *ARMTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case ARMISD::VORRIMM:       return "ARMISD::VORRIMM";
   case ARMISD::VBICIMM:       return "ARMISD::VBICIMM";
   case ARMISD::VBSL:          return "ARMISD::VBSL";
+  case ARMISD::MCOPY:         return "ARMISD::MCOPY";
   case ARMISD::VLD2DUP:       return "ARMISD::VLD2DUP";
   case ARMISD::VLD3DUP:       return "ARMISD::VLD3DUP";
   case ARMISD::VLD4DUP:       return "ARMISD::VLD4DUP";
@@ -1930,7 +1934,6 @@ void ARMTargetLowering::HandleByVal(CCState *State, unsigned &Size,
   Size = std::max<int>(Size - Excess, 0);
 }
 
-
 /// MatchingStackOffset - Return true if the given stack call argument is
 /// already available in the same position (relatively) of the caller's
 /// incoming argument stack.
@@ -2377,6 +2380,24 @@ bool ARMTargetLowering::mayBeEmittedAsTailCall(CallInst *CI) const {
     return false;
 
   return !Subtarget->isThumb1Only();
+}
+
+// Trying to write a 64 bit value so need to split into two 32 bit values first,
+// and pass the lower and high parts through.
+static SDValue LowerWRITE_REGISTER(SDValue Op, SelectionDAG &DAG) {
+  SDLoc DL(Op);
+  SDValue WriteValue = Op->getOperand(2);
+
+  // This function is only supposed to be called for i64 type argument.
+  assert(WriteValue.getValueType() == MVT::i64
+          && "LowerWRITE_REGISTER called for non-i64 type argument.");
+
+  SDValue Lo = DAG.getNode(ISD::EXTRACT_ELEMENT, DL, MVT::i32, WriteValue,
+                           DAG.getConstant(0, DL, MVT::i32));
+  SDValue Hi = DAG.getNode(ISD::EXTRACT_ELEMENT, DL, MVT::i32, WriteValue,
+                           DAG.getConstant(1, DL, MVT::i32));
+  SDValue Ops[] = { Op->getOperand(0), Op->getOperand(1), Lo, Hi };
+  return DAG.getNode(ISD::WRITE_REGISTER, DL, MVT::Other, Ops);
 }
 
 // ConstantPool, JumpTable, GlobalAddress, and ExternalSymbol are lowered as
@@ -4086,7 +4107,28 @@ unsigned ARMTargetLowering::getRegisterByName(const char* RegName,
                        .Default(0);
   if (Reg)
     return Reg;
-  report_fatal_error("Invalid register name global variable");
+  report_fatal_error(Twine("Invalid register name \""
+                              + StringRef(RegName)  + "\"."));
+}
+
+// Result is 64 bit value so split into two 32 bit values and return as a
+// pair of values.
+static void ExpandREAD_REGISTER(SDNode *N, SmallVectorImpl<SDValue> &Results,
+                                SelectionDAG &DAG) {
+  SDLoc DL(N);
+
+  // This function is only supposed to be called for i64 type destination.
+  assert(N->getValueType(0) == MVT::i64
+          && "ExpandREAD_REGISTER called for non-i64 type result.");
+
+  SDValue Read = DAG.getNode(ISD::READ_REGISTER, DL,
+                             DAG.getVTList(MVT::i32, MVT::i32, MVT::Other),
+                             N->getOperand(0),
+                             N->getOperand(1));
+
+  Results.push_back(DAG.getNode(ISD::BUILD_PAIR, DL, MVT::i64, Read.getValue(0),
+                    Read.getValue(1)));
+  Results.push_back(Read.getOperand(0));
 }
 
 /// ExpandBITCAST - If the target supports VFP, this function is called to
@@ -6356,6 +6398,7 @@ static void ReplaceREADCYCLECOUNTER(SDNode *N,
 SDValue ARMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
   default: llvm_unreachable("Don't know how to custom lower this!");
+  case ISD::WRITE_REGISTER: return LowerWRITE_REGISTER(Op, DAG);
   case ISD::ConstantPool:  return LowerConstantPool(Op, DAG);
   case ISD::BlockAddress:  return LowerBlockAddress(Op, DAG);
   case ISD::GlobalAddress:
@@ -6440,6 +6483,9 @@ void ARMTargetLowering::ReplaceNodeResults(SDNode *N,
   switch (N->getOpcode()) {
   default:
     llvm_unreachable("Don't know how to custom expand this!");
+  case ISD::READ_REGISTER:
+    ExpandREAD_REGISTER(N, Results, DAG);
+    break;
   case ISD::BITCAST:
     Res = ExpandBITCAST(N, DAG);
     break;
@@ -7630,8 +7676,59 @@ ARMTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
   }
 }
 
+/// \brief Lowers MCOPY to either LDMIA/STMIA or LDMIA_UPD/STMID_UPD depending
+/// on whether the result is used. This is done as a post-isel lowering instead
+/// of as a custom inserter because we need the use list from the SDNode.
+static void LowerMCOPY(const ARMSubtarget *Subtarget, MachineInstr *MI,
+                       SDNode *Node) {
+  bool isThumb1 = Subtarget->isThumb1Only();
+  bool isThumb2 = Subtarget->isThumb2();
+  const ARMBaseInstrInfo *TII = Subtarget->getInstrInfo();
+
+  DebugLoc dl = MI->getDebugLoc();
+  MachineBasicBlock *BB = MI->getParent();
+  MachineFunction *MF = BB->getParent();
+  MachineRegisterInfo &MRI = MF->getRegInfo();
+
+  MachineInstrBuilder LD, ST;
+  if (isThumb1 || Node->hasAnyUseOfValue(1)) {
+    LD = BuildMI(*BB, MI, dl, TII->get(isThumb2 ? ARM::t2LDMIA_UPD
+                                                : isThumb1 ? ARM::tLDMIA_UPD
+                                                           : ARM::LDMIA_UPD))
+             .addOperand(MI->getOperand(1));
+  } else {
+    LD = BuildMI(*BB, MI, dl, TII->get(isThumb2 ? ARM::t2LDMIA : ARM::LDMIA));
+  }
+
+  if (isThumb1 || Node->hasAnyUseOfValue(0)) {
+    ST = BuildMI(*BB, MI, dl, TII->get(isThumb2 ? ARM::t2STMIA_UPD
+                                                : isThumb1 ? ARM::tSTMIA_UPD
+                                                           : ARM::STMIA_UPD))
+             .addOperand(MI->getOperand(0));
+  } else {
+    ST = BuildMI(*BB, MI, dl, TII->get(isThumb2 ? ARM::t2STMIA : ARM::STMIA));
+  }
+
+  LD.addOperand(MI->getOperand(3)).addImm(ARMCC::AL).addReg(0);
+  ST.addOperand(MI->getOperand(2)).addImm(ARMCC::AL).addReg(0);
+
+  for (unsigned I = 0; I != MI->getOperand(4).getImm(); ++I) {
+    unsigned TmpReg = MRI.createVirtualRegister(isThumb1 ? &ARM::tGPRRegClass
+                                                         : &ARM::GPRRegClass);
+    LD.addReg(TmpReg, RegState::Define);
+    ST.addReg(TmpReg, RegState::Kill);
+  }
+
+  MI->eraseFromParent();
+}
+
 void ARMTargetLowering::AdjustInstrPostInstrSelection(MachineInstr *MI,
                                                       SDNode *Node) const {
+  if (MI->getOpcode() == ARM::MCOPY) {
+    LowerMCOPY(Subtarget, MI, Node);
+    return;
+  }
+
   const MCInstrDesc *MCID = &MI->getDesc();
   // Adjust potentially 's' setting instructions after isel, i.e. ADC, SBC, RSB,
   // RSC. Coming out of isel, they have an implicit CPSR def, but the optional
@@ -10223,7 +10320,8 @@ bool ARMTargetLowering::isLegalT2ScaledAddressingMode(const AddrMode &AM,
 /// isLegalAddressingMode - Return true if the addressing mode represented
 /// by AM is legal for this target, for a load/store of the specified type.
 bool ARMTargetLowering::isLegalAddressingMode(const AddrMode &AM,
-                                              Type *Ty) const {
+                                              Type *Ty,
+                                              unsigned AS) const {
   EVT VT = getValueType(Ty, true);
   if (!isLegalAddressImmediate(AM.BaseOffs, VT, Subtarget))
     return false;

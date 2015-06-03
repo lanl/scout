@@ -385,6 +385,7 @@ void CGDebugInfo::CreateCompileUnit() {
       DebugKind <= CodeGenOptions::DebugLineTablesOnly
           ? llvm::DIBuilder::LineTablesOnly
           : llvm::DIBuilder::FullDebug,
+      0 /* DWOid */,
       DebugKind != CodeGenOptions::LocTrackingOnly);
 }
 
@@ -1883,11 +1884,13 @@ llvm::DIType *CGDebugInfo::CreateType(const RValueReferenceType *Ty,
 
 llvm::DIType *CGDebugInfo::CreateType(const MemberPointerType *Ty,
                                       llvm::DIFile *U) {
+  uint64_t Size = CGM.getCXXABI().isTypeInfoCalculable(QualType(Ty, 0))
+                      ? CGM.getContext().getTypeSize(Ty)
+                      : 0;
   llvm::DIType *ClassType = getOrCreateType(QualType(Ty->getClass(), 0), U);
   if (Ty->isMemberDataPointerType())
     return DBuilder.createMemberPointerType(
-      getOrCreateType(Ty->getPointeeType(), U), ClassType,
-      CGM.getContext().getTypeSize(Ty));
+        getOrCreateType(Ty->getPointeeType(), U), ClassType, Size);
 
   const FunctionProtoType *FPT =
       Ty->getPointeeType()->getAs<FunctionProtoType>();
@@ -1895,7 +1898,7 @@ llvm::DIType *CGDebugInfo::CreateType(const MemberPointerType *Ty,
       getOrCreateInstanceMethodType(CGM.getContext().getPointerType(QualType(
                                         Ty->getClass(), FPT->getTypeQuals())),
                                     FPT, U),
-      ClassType, CGM.getContext().getTypeSize(Ty));
+      ClassType, Size);
 }
 
 llvm::DIType *CGDebugInfo::CreateType(const AtomicType *Ty, llvm::DIFile *U) {

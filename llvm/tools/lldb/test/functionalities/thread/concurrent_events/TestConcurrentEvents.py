@@ -10,19 +10,13 @@ until exit or a crash takes place, and the number of events seen by LLDB is
 verified to match the expected number of events.
 """
 
-import os, signal, time
+import os, time
 import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
 
-# ==================================================
-# Dictionary of signal names
-# ==================================================
-signal_names = dict((getattr(signal, n), n) \
-        for n in dir(signal) if n.startswith('SIG') and '_' not in n )
-
-
+@skipIfWindows
 class ConcurrentEventsTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
@@ -366,7 +360,9 @@ class ConcurrentEventsTestCase(TestBase):
                 watch = self.inferior_target.FindWatchpointByID(watchid)
                 reason_str = "%s hit %d times" % (lldbutil.get_description(watch), watch.GetHitCount())
             elif reason == lldb.eStopReasonSignal:
-                reason_str = "signal %s" % (signal_names[x.GetStopReasonDataAtIndex(0)])
+                signals = self.inferior_process.GetUnixSignals()
+                signal_name = signals.GetSignalAsCString(x.GetStopReasonDataAtIndex(0))
+                reason_str = "signal %s" % signal_name
 
             location = "\t".join([lldbutil.get_description(x.GetFrameAtIndex(i)) for i in range(x.GetNumFrames())])
             ret.append("thread %d %s due to %s at\n\t%s" % (id, status, reason_str, location))
@@ -389,6 +385,13 @@ class ConcurrentEventsTestCase(TestBase):
         return self.finish_breakpoint.GetHitCount() > 0 or \
                 self.crash_count > 0 or \
                 self.inferior_process.GetState() == lldb.eStateExited
+
+    def count_signaled_threads(self):
+        count = 0
+        for thread in self.inferior_process:
+            if thread.GetStopReason() == lldb.eStopReasonSignal and thread.GetStopReasonDataAtIndex(0) == self.inferior_process.GetUnixSignals().GetSignalNumberFromName('SIGUSR1'):
+                count += 1
+        return count
 
     def do_thread_actions(self,
                           num_breakpoint_threads = 0,
@@ -425,7 +428,7 @@ class ConcurrentEventsTestCase(TestBase):
         self.expect("breakpoint list -f", "Breakpoint locations shown correctly", substrs = expected_bps)
 
         # Run the program.
-        self.runCmd("run", RUN_SUCCEEDED)
+        self.runCmd("run", RUN_FAILED)
 
         # Check we are at line self.setup_breakpoint
         self.expect("thread backtrace", STOPPED_DUE_TO_BREAKPOINT,
@@ -470,16 +473,16 @@ class ConcurrentEventsTestCase(TestBase):
                                                                          num_threads,
                                                                          "\n\t".join(self.describe_threads())))
 
-        self.signal_count = len(lldbutil.get_stopped_threads(self.inferior_process, lldb.eStopReasonSignal))
-        self.crash_count = len(lldbutil.get_stopped_threads(self.inferior_process, lldb.eStopReasonException))
+        self.signal_count = self.count_signaled_threads()
+        self.crash_count = len(lldbutil.get_crashed_threads(self, self.inferior_process))
 
         # Run to completion (or crash)
         while not self.inferior_done(): 
             if self.TraceOn():
                 self.runCmd("thread backtrace all")
             self.runCmd("continue")
-            self.signal_count += len(lldbutil.get_stopped_threads(self.inferior_process, lldb.eStopReasonSignal))
-            self.crash_count += len(lldbutil.get_stopped_threads(self.inferior_process, lldb.eStopReasonException))
+            self.signal_count += self.count_signaled_threads()
+            self.crash_count += len(lldbutil.get_crashed_threads(self, self.inferior_process))
 
         if num_crash_threads > 0 or num_delay_crash_threads > 0:
             # Expecting a crash

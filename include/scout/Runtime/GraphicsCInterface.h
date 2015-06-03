@@ -79,8 +79,7 @@ extern "C" {
   /// Create an on screen (window-based) rendering target of the given
   /// width and height in pixels.
   __scrt_target_t __scrt_create_window(unsigned short width,
-                                       unsigned short height,
-                                       uint8_t plot);
+                                       unsigned short height);
 
   float*
   __scrt_window_quad_renderable_colors(unsigned int width,

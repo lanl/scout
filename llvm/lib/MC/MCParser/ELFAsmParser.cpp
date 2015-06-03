@@ -16,7 +16,7 @@
 #include "llvm/MC/MCParser/MCAsmLexer.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCStreamer.h"
-#include "llvm/MC/MCSymbol.h"
+#include "llvm/MC/MCSymbolELF.h"
 #include "llvm/Support/ELF.h"
 using namespace llvm;
 
@@ -209,7 +209,7 @@ bool ELFAsmParser::ParseDirectiveSize(StringRef, SMLoc) {
   StringRef Name;
   if (getParser().parseIdentifier(Name))
     return TokError("expected identifier in directive");
-  MCSymbol *Sym = getContext().getOrCreateSymbol(Name);
+  MCSymbolELF *Sym = cast<MCSymbolELF>(getContext().getOrCreateSymbol(Name));
 
   if (getLexer().isNot(AsmToken::Comma))
     return TokError("unexpected token in directive");
@@ -222,7 +222,7 @@ bool ELFAsmParser::ParseDirectiveSize(StringRef, SMLoc) {
   if (getLexer().isNot(AsmToken::EndOfStatement))
     return TokError("unexpected token in directive");
 
-  getStreamer().EmitELFSize(Sym, Expr);
+  getStreamer().emitELFSize(Sym, Expr);
   return false;
 }
 
@@ -527,21 +527,21 @@ EndStmt:
       }
   }
 
-  const MCSection *ELFSection = getContext().getELFSection(
-      SectionName, Type, Flags, Size, GroupName, UniqueID);
+  MCSection *ELFSection = getContext().getELFSection(SectionName, Type, Flags,
+                                                     Size, GroupName, UniqueID);
   getStreamer().SwitchSection(ELFSection, Subsection);
 
   if (getContext().getGenDwarfForAssembly()) {
-    auto &Sections = getContext().getGenDwarfSectionSyms();
-    auto InsertResult = Sections.insert(
-        std::make_pair(ELFSection, std::make_pair(nullptr, nullptr)));
-    if (InsertResult.second) {
+    bool InsertResult = getContext().addGenDwarfSection(ELFSection);
+    if (InsertResult) {
       if (getContext().getDwarfVersion() <= 2)
         Warning(loc, "DWARF2 only supports one section per compilation unit");
 
-      MCSymbol *SectionStartSymbol = getContext().createTempSymbol();
-      getStreamer().EmitLabel(SectionStartSymbol);
-      InsertResult.first->second.first = SectionStartSymbol;
+      if (!ELFSection->getBeginSymbol()) {
+        MCSymbol *SectionStartSymbol = getContext().createTempSymbol();
+        getStreamer().EmitLabel(SectionStartSymbol);
+        ELFSection->setBeginSymbol(SectionStartSymbol);
+      }
     }
   }
 
@@ -663,7 +663,7 @@ bool ELFAsmParser::ParseDirectiveSymver(StringRef, SMLoc) {
 
   MCSymbol *Alias = getContext().getOrCreateSymbol(AliasName);
   MCSymbol *Sym = getContext().getOrCreateSymbol(Name);
-  const MCExpr *Value = MCSymbolRefExpr::Create(Sym, getContext());
+  const MCExpr *Value = MCSymbolRefExpr::create(Sym, getContext());
 
   getStreamer().EmitAssignment(Alias, Value);
   return false;
@@ -679,7 +679,7 @@ bool ELFAsmParser::ParseDirectiveVersion(StringRef, SMLoc) {
 
   Lex();
 
-  const MCSection *Note = getContext().getELFSection(".note", ELF::SHT_NOTE, 0);
+  MCSection *Note = getContext().getELFSection(".note", ELF::SHT_NOTE, 0);
 
   getStreamer().PushSection();
   getStreamer().SwitchSection(Note);

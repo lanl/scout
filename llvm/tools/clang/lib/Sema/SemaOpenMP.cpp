@@ -505,9 +505,6 @@ DSAStackTy::DSAVarData DSAStackTy::getTopDSA(VarDecl *D, bool FromParent) {
   }
 
   QualType Type = D->getType().getNonReferenceType().getCanonicalType();
-  if (auto *PVD = dyn_cast<ParmVarDecl>(D)) {
-    Type = PVD->getOriginalType().getNonReferenceType().getCanonicalType();
-  }
   bool IsConstant = Type.isConstant(SemaRef.getASTContext());
   Type = SemaRef.getASTContext().getBaseElementType(Type);
   // OpenMP [2.9.1.1, Data-sharing Attribute Rules for Variables Referenced
@@ -664,9 +661,6 @@ void Sema::EndOpenMPDSABlock(Stmt *CurDirective) {
           }
           auto *VD = cast<VarDecl>(cast<DeclRefExpr>(DE)->getDecl());
           QualType Type = VD->getType();
-          if (auto *PVD = dyn_cast<ParmVarDecl>(VD)) {
-            Type = PVD->getOriginalType();
-          }
           auto DVar = DSAStack->getTopDSA(VD, false);
           if (DVar.CKind == OMPC_lastprivate) {
             // Generate helper private variable and initialize it with the
@@ -1217,9 +1211,18 @@ void Sema::ActOnOpenMPRegionStart(OpenMPDirectiveKind DKind, Scope *CurScope) {
   }
   case OMPD_task: {
     QualType KmpInt32Ty = Context.getIntTypeForBitwidth(32, 1);
+    QualType Args[] = {Context.VoidPtrTy.withConst().withRestrict()};
+    FunctionProtoType::ExtProtoInfo EPI;
+    EPI.Variadic = true;
+    QualType CopyFnType = Context.getFunctionType(Context.VoidTy, Args, EPI);
     Sema::CapturedParamNameType Params[] = {
         std::make_pair(".global_tid.", KmpInt32Ty),
         std::make_pair(".part_id.", KmpInt32Ty),
+        std::make_pair(".privates.",
+                       Context.VoidPtrTy.withConst().withRestrict()),
+        std::make_pair(
+            ".copy_fn.",
+            Context.getPointerType(CopyFnType).withConst().withRestrict()),
         std::make_pair(StringRef(), QualType()) // __context with shared vars
     };
     ActOnCapturedRegionStart(DSAStack->getConstructLoc(), CurScope, CR_OpenMP,
@@ -4761,9 +4764,6 @@ OMPClause *Sema::ActOnOpenMPPrivateClause(ArrayRef<Expr *> VarList,
     VarDecl *VD = cast<VarDecl>(D);
 
     QualType Type = VD->getType();
-    if (auto *PVD = dyn_cast<ParmVarDecl>(VD)) {
-      Type = PVD->getOriginalType();
-    }
     if (Type->isDependentType() || Type->isInstantiationDependentType()) {
       // It will be analyzed later.
       Vars.push_back(DE);
@@ -4805,7 +4805,7 @@ OMPClause *Sema::ActOnOpenMPPrivateClause(ArrayRef<Expr *> VarList,
     }
 
     // Variably modified types are not supported for tasks.
-    if (Type->isVariablyModifiedType() &&
+    if (!Type->isAnyPointerType() && Type->isVariablyModifiedType() &&
         DSAStack->getCurrentDirective() == OMPD_task) {
       Diag(ELoc, diag::err_omp_variably_modified_type_not_supported)
           << getOpenMPClauseName(OMPC_private) << Type
@@ -4907,9 +4907,6 @@ OMPClause *Sema::ActOnOpenMPFirstprivateClause(ArrayRef<Expr *> VarList,
     VarDecl *VD = cast<VarDecl>(D);
 
     QualType Type = VD->getType();
-    if (auto *PVD = dyn_cast<ParmVarDecl>(VD)) {
-      Type = PVD->getOriginalType();
-    }
     if (Type->isDependentType() || Type->isInstantiationDependentType()) {
       // It will be analyzed later.
       Vars.push_back(DE);
@@ -5036,7 +5033,7 @@ OMPClause *Sema::ActOnOpenMPFirstprivateClause(ArrayRef<Expr *> VarList,
     }
 
     // Variably modified types are not supported for tasks.
-    if (Type->isVariablyModifiedType() &&
+    if (!Type->isAnyPointerType() && Type->isVariablyModifiedType() &&
         DSAStack->getCurrentDirective() == OMPD_task) {
       Diag(ELoc, diag::err_omp_variably_modified_type_not_supported)
           << getOpenMPClauseName(OMPC_firstprivate) << Type
@@ -5143,9 +5140,6 @@ OMPClause *Sema::ActOnOpenMPLastprivateClause(ArrayRef<Expr *> VarList,
     VarDecl *VD = cast<VarDecl>(D);
 
     QualType Type = VD->getType();
-    if (auto *PVD = dyn_cast<ParmVarDecl>(VD)) {
-      Type = PVD->getOriginalType();
-    }
     if (Type->isDependentType() || Type->isInstantiationDependentType()) {
       // It will be analyzed later.
       Vars.push_back(DE);
@@ -5280,9 +5274,6 @@ OMPClause *Sema::ActOnOpenMPSharedClause(ArrayRef<Expr *> VarList,
     VarDecl *VD = cast<VarDecl>(D);
 
     QualType Type = VD->getType();
-    if (auto *PVD = dyn_cast<ParmVarDecl>(VD)) {
-      Type = PVD->getOriginalType();
-    }
     if (Type->isDependentType() || Type->isInstantiationDependentType()) {
       // It will be analyzed later.
       Vars.push_back(DE);
@@ -5492,9 +5483,6 @@ OMPClause *Sema::ActOnOpenMPReductionClause(
     auto D = DE->getDecl();
     auto VD = cast<VarDecl>(D);
     auto Type = VD->getType();
-    if (auto *PVD = dyn_cast<ParmVarDecl>(VD)) {
-      Type = PVD->getOriginalType();
-    }
     // OpenMP [2.9.3.3, Restrictions, C/C++, p.3]
     //  A variable that appears in a private clause must not have an incomplete
     //  type or a reference type.
@@ -5825,9 +5813,6 @@ OMPClause *Sema::ActOnOpenMPLinearClause(ArrayRef<Expr *> VarList, Expr *Step,
     }
 
     QualType QType = VD->getType();
-    if (auto *PVD = dyn_cast<ParmVarDecl>(VD)) {
-      QType = PVD->getOriginalType();
-    }
     if (QType->isDependentType() || QType->isInstantiationDependentType()) {
       // It will be analyzed later.
       Vars.push_back(DE);
@@ -6008,9 +5993,6 @@ OMPClause *Sema::ActOnOpenMPAlignedClause(
     // The type of list items appearing in the aligned clause must be
     // array, pointer, reference to array, or reference to pointer.
     QualType QType = VD->getType();
-    if (auto *PVD = dyn_cast<ParmVarDecl>(VD)) {
-      QType = PVD->getOriginalType();
-    }
     QType = QType.getNonReferenceType().getUnqualifiedType().getCanonicalType();
     const Type *Ty = QType.getTypePtrOrNull();
     if (!Ty || (!Ty->isDependentType() && !Ty->isArrayType() &&
@@ -6090,9 +6072,6 @@ OMPClause *Sema::ActOnOpenMPCopyinClause(ArrayRef<Expr *> VarList,
     VarDecl *VD = cast<VarDecl>(D);
 
     QualType Type = VD->getType();
-    if (auto *PVD = dyn_cast<ParmVarDecl>(VD)) {
-      Type = PVD->getOriginalType();
-    }
     if (Type->isDependentType() || Type->isInstantiationDependentType()) {
       // It will be analyzed later.
       Vars.push_back(DE);
@@ -6183,9 +6162,6 @@ OMPClause *Sema::ActOnOpenMPCopyprivateClause(ArrayRef<Expr *> VarList,
     VarDecl *VD = cast<VarDecl>(D);
 
     QualType Type = VD->getType();
-    if (auto *PVD = dyn_cast<ParmVarDecl>(VD)) {
-      Type = PVD->getOriginalType();
-    }
     if (Type->isDependentType() || Type->isInstantiationDependentType()) {
       // It will be analyzed later.
       Vars.push_back(DE);
@@ -6225,7 +6201,7 @@ OMPClause *Sema::ActOnOpenMPCopyprivateClause(ArrayRef<Expr *> VarList,
     }
 
     // Variably modified types are not supported.
-    if (Type->isVariablyModifiedType()) {
+    if (!Type->isAnyPointerType() && Type->isVariablyModifiedType()) {
       Diag(ELoc, diag::err_omp_variably_modified_type_not_supported)
           << getOpenMPClauseName(OMPC_copyprivate) << Type
           << getOpenMPDirectiveName(DSAStack->getCurrentDirective());

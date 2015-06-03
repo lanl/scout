@@ -14,7 +14,7 @@
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "DwarfDebug.h"
 #include "DwarfException.h"
-#include "Win64Exception.h"
+#include "WinException.h"
 #include "WinCodeViewLineTables.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Statistic.h"
@@ -40,7 +40,7 @@
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCStreamer.h"
-#include "llvm/MC/MCSymbol.h"
+#include "llvm/MC/MCSymbolELF.h"
 #include "llvm/MC/MCValue.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
@@ -268,8 +268,9 @@ bool AsmPrinter::doInitialization(Module &M) {
     default: llvm_unreachable("unsupported unwinding information encoding");
     case WinEH::EncodingType::Invalid:
       break;
+    case WinEH::EncodingType::X86:
     case WinEH::EncodingType::Itanium:
-      ES = new Win64Exception(this);
+      ES = new WinException(this);
       break;
     }
     break;
@@ -405,8 +406,8 @@ void AsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
 
     // Handle local BSS symbols.
     if (MAI->hasMachoZeroFillDirective()) {
-      const MCSection *TheSection =
-        getObjFileLowering().SectionForGlobal(GV, GVKind, *Mang, TM);
+      MCSection *TheSection =
+          getObjFileLowering().SectionForGlobal(GV, GVKind, *Mang, TM);
       // .zerofill __DATA, __bss, _foo, 400, 5
       OutStreamer->EmitZerofill(TheSection, GVSym, Size, Align);
       return;
@@ -434,8 +435,8 @@ void AsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
     return;
   }
 
-  const MCSection *TheSection =
-    getObjFileLowering().SectionForGlobal(GV, GVKind, *Mang, TM);
+  MCSection *TheSection =
+      getObjFileLowering().SectionForGlobal(GV, GVKind, *Mang, TM);
 
   // Handle the zerofill directive on darwin, which is a special form of BSS
   // emission.
@@ -479,8 +480,7 @@ void AsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
     OutStreamer->AddBlankLine();
 
     // Emit the variable struct for the runtime.
-    const MCSection *TLVSect
-      = getObjFileLowering().getTLSExtraDataSection();
+    MCSection *TLVSect = getObjFileLowering().getTLSExtraDataSection();
 
     OutStreamer->SwitchSection(TLVSect);
     // Emit the linkage here.
@@ -512,7 +512,8 @@ void AsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
 
   if (MAI->hasDotTypeDotSizeDirective())
     // .size foo, 42
-    OutStreamer->EmitELFSize(GVSym, MCConstantExpr::Create(Size, OutContext));
+    OutStreamer->emitELFSize(cast<MCSymbolELF>(GVSym),
+                             MCConstantExpr::create(Size, OutContext));
 
   OutStreamer->AddBlankLine();
 }
@@ -566,7 +567,7 @@ void AsmPrinter::EmitFunctionHeader() {
       MCSymbol *CurPos = OutContext.createTempSymbol();
       OutStreamer->EmitLabel(CurPos);
       OutStreamer->EmitAssignment(CurrentFnBegin,
-                                 MCSymbolRefExpr::Create(CurPos, OutContext));
+                                 MCSymbolRefExpr::create(CurPos, OutContext));
     } else {
       OutStreamer->EmitLabel(CurrentFnBegin);
     }
@@ -776,7 +777,7 @@ void AsmPrinter::emitFrameAlloc(const MachineInstr &MI) {
 
   // Emit a symbol assignment.
   OutStreamer->EmitAssignment(FrameAllocSym,
-                             MCConstantExpr::Create(FrameOffset, OutContext));
+                             MCConstantExpr::create(FrameOffset, OutContext));
 }
 
 /// EmitFunctionBody - This method emits the body and trailer for a
@@ -900,11 +901,11 @@ void AsmPrinter::EmitFunctionBody() {
     // We can get the size as difference between the function label and the
     // temp label.
     const MCExpr *SizeExp =
-      MCBinaryExpr::CreateSub(MCSymbolRefExpr::Create(CurrentFnEnd, OutContext),
-                              MCSymbolRefExpr::Create(CurrentFnSymForSize,
+      MCBinaryExpr::createSub(MCSymbolRefExpr::create(CurrentFnEnd, OutContext),
+                              MCSymbolRefExpr::create(CurrentFnSymForSize,
                                                       OutContext),
                               OutContext);
-    OutStreamer->EmitELFSize(CurrentFnSym, SizeExp);
+    OutStreamer->emitELFSize(cast<MCSymbolELF>(CurrentFnSym), SizeExp);
   }
 
   for (const HandlerInfo &HI : Handlers) {
@@ -1122,7 +1123,7 @@ bool AsmPrinter::doFinalization(Module &M) {
 
   // Emit __morestack address if needed for indirect calls.
   if (MMI->usesMorestackAddr()) {
-    const MCSection *ReadOnlySection =
+    MCSection *ReadOnlySection =
         getObjFileLowering().getSectionForConstant(SectionKind::getReadOnly(),
                                                    /*C=*/nullptr);
     OutStreamer->SwitchSection(ReadOnlySection);
@@ -1140,7 +1141,7 @@ bool AsmPrinter::doFinalization(Module &M) {
   // to be executable. Some targets have a directive to declare this.
   Function *InitTrampolineIntrinsic = M.getFunction("llvm.init.trampoline");
   if (!InitTrampolineIntrinsic || InitTrampolineIntrinsic->use_empty())
-    if (const MCSection *S = MAI->getNonexecutableStackSection(OutContext))
+    if (MCSection *S = MAI->getNonexecutableStackSection(OutContext))
       OutStreamer->SwitchSection(S);
 
   // Allow the target to emit any magic that it wants at the end of the file,
@@ -1182,12 +1183,12 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
 }
 
 namespace {
-  // SectionCPs - Keep track the alignment, constpool entries per Section.
+// Keep track the alignment, constpool entries per Section.
   struct SectionCPs {
-    const MCSection *S;
+    MCSection *S;
     unsigned Alignment;
     SmallVector<unsigned, 4> CPEs;
-    SectionCPs(const MCSection *s, unsigned a) : S(s), Alignment(a) {}
+    SectionCPs(MCSection *s, unsigned a) : S(s), Alignment(a) {}
   };
 }
 
@@ -1215,7 +1216,7 @@ void AsmPrinter::EmitConstantPool() {
     if (!CPE.isMachineConstantPoolEntry())
       C = CPE.Val.ConstVal;
 
-    const MCSection *S = getObjFileLowering().getSectionForConstant(Kind, C);
+    MCSection *S = getObjFileLowering().getSectionForConstant(Kind, C);
 
     // The number of sections are small, just do a linear search from the
     // last section to the first.
@@ -1294,8 +1295,7 @@ void AsmPrinter::EmitJumpTableInfo() {
       *F);
   if (JTInDiffSection) {
     // Drop it in the readonly section.
-    const MCSection *ReadOnlySection =
-        TLOF.getSectionForJumpTable(*F, *Mang, TM);
+    MCSection *ReadOnlySection = TLOF.getSectionForJumpTable(*F, *Mang, TM);
     OutStreamer->SwitchSection(ReadOnlySection);
   }
 
@@ -1327,9 +1327,9 @@ void AsmPrinter::EmitJumpTableInfo() {
 
         // .set LJTSet, LBB32-base
         const MCExpr *LHS =
-          MCSymbolRefExpr::Create(MBB->getSymbol(), OutContext);
+          MCSymbolRefExpr::create(MBB->getSymbol(), OutContext);
         OutStreamer->EmitAssignment(GetJTSetSymbol(JTI, MBB->getNumber()),
-                                    MCBinaryExpr::CreateSub(LHS, Base,
+                                    MCBinaryExpr::createSub(LHS, Base,
                                                             OutContext));
       }
     }
@@ -1369,14 +1369,14 @@ void AsmPrinter::EmitJumpTableEntry(const MachineJumpTableInfo *MJTI,
   case MachineJumpTableInfo::EK_BlockAddress:
     // EK_BlockAddress - Each entry is a plain address of block, e.g.:
     //     .word LBB123
-    Value = MCSymbolRefExpr::Create(MBB->getSymbol(), OutContext);
+    Value = MCSymbolRefExpr::create(MBB->getSymbol(), OutContext);
     break;
   case MachineJumpTableInfo::EK_GPRel32BlockAddress: {
     // EK_GPRel32BlockAddress - Each entry is an address of block, encoded
     // with a relocation as gp-relative, e.g.:
     //     .gprel32 LBB123
     MCSymbol *MBBSym = MBB->getSymbol();
-    OutStreamer->EmitGPRel32Value(MCSymbolRefExpr::Create(MBBSym, OutContext));
+    OutStreamer->EmitGPRel32Value(MCSymbolRefExpr::create(MBBSym, OutContext));
     return;
   }
 
@@ -1385,7 +1385,7 @@ void AsmPrinter::EmitJumpTableEntry(const MachineJumpTableInfo *MJTI,
     // with a relocation as gp-relative, e.g.:
     //     .gpdword LBB123
     MCSymbol *MBBSym = MBB->getSymbol();
-    OutStreamer->EmitGPRel64Value(MCSymbolRefExpr::Create(MBBSym, OutContext));
+    OutStreamer->EmitGPRel64Value(MCSymbolRefExpr::create(MBBSym, OutContext));
     return;
   }
 
@@ -1398,14 +1398,14 @@ void AsmPrinter::EmitJumpTableEntry(const MachineJumpTableInfo *MJTI,
     //      .set L4_5_set_123, LBB123 - LJTI1_2
     //      .word L4_5_set_123
     if (MAI->doesSetDirectiveSuppressesReloc()) {
-      Value = MCSymbolRefExpr::Create(GetJTSetSymbol(UID, MBB->getNumber()),
+      Value = MCSymbolRefExpr::create(GetJTSetSymbol(UID, MBB->getNumber()),
                                       OutContext);
       break;
     }
-    Value = MCSymbolRefExpr::Create(MBB->getSymbol(), OutContext);
+    Value = MCSymbolRefExpr::create(MBB->getSymbol(), OutContext);
     const TargetLowering *TLI = MF->getSubtarget().getTargetLowering();
     const MCExpr *Base = TLI->getPICJumpTableRelocBaseExpr(MF, UID, OutContext);
-    Value = MCBinaryExpr::CreateSub(Value, Base, OutContext);
+    Value = MCBinaryExpr::createSub(Value, Base, OutContext);
     break;
   }
   }
@@ -1539,7 +1539,7 @@ void AsmPrinter::EmitXXStructorList(const Constant *List, bool isCtor) {
 
       KeySym = getSymbol(GV);
     }
-    const MCSection *OutputSection =
+    MCSection *OutputSection =
         (isCtor ? Obj.getStaticCtorSection(S.Priority, KeySym)
                 : Obj.getStaticDtorSection(S.Priority, KeySym));
     OutStreamer->SwitchSection(OutputSection);
@@ -1591,10 +1591,14 @@ void AsmPrinter::EmitInt32(int Value) const {
 /// .set if it avoids relocations.
 void AsmPrinter::EmitLabelDifference(const MCSymbol *Hi, const MCSymbol *Lo,
                                      unsigned Size) const {
+  if (!MAI->doesDwarfUseRelocationsAcrossSections())
+    if (OutStreamer->emitAbsoluteSymbolDiff(Hi, Lo, Size))
+      return;
+
   // Get the Hi-Lo expression.
   const MCExpr *Diff =
-    MCBinaryExpr::CreateSub(MCSymbolRefExpr::Create(Hi, OutContext),
-                            MCSymbolRefExpr::Create(Lo, OutContext),
+    MCBinaryExpr::createSub(MCSymbolRefExpr::create(Hi, OutContext),
+                            MCSymbolRefExpr::create(Lo, OutContext),
                             OutContext);
 
   if (!MAI->doesSetDirectiveSuppressesReloc()) {
@@ -1620,10 +1624,10 @@ void AsmPrinter::EmitLabelPlusOffset(const MCSymbol *Label, uint64_t Offset,
   }
 
   // Emit Label+Offset (or just Label if Offset is zero)
-  const MCExpr *Expr = MCSymbolRefExpr::Create(Label, OutContext);
+  const MCExpr *Expr = MCSymbolRefExpr::create(Label, OutContext);
   if (Offset)
-    Expr = MCBinaryExpr::CreateAdd(
-        Expr, MCConstantExpr::Create(Offset, OutContext), OutContext);
+    Expr = MCBinaryExpr::createAdd(
+        Expr, MCConstantExpr::create(Offset, OutContext), OutContext);
 
   OutStreamer->EmitValue(Expr, Size);
 }
@@ -1660,16 +1664,16 @@ const MCExpr *AsmPrinter::lowerConstant(const Constant *CV) {
   MCContext &Ctx = OutContext;
 
   if (CV->isNullValue() || isa<UndefValue>(CV))
-    return MCConstantExpr::Create(0, Ctx);
+    return MCConstantExpr::create(0, Ctx);
 
   if (const ConstantInt *CI = dyn_cast<ConstantInt>(CV))
-    return MCConstantExpr::Create(CI->getZExtValue(), Ctx);
+    return MCConstantExpr::create(CI->getZExtValue(), Ctx);
 
   if (const GlobalValue *GV = dyn_cast<GlobalValue>(CV))
-    return MCSymbolRefExpr::Create(getSymbol(GV), Ctx);
+    return MCSymbolRefExpr::create(getSymbol(GV), Ctx);
 
   if (const BlockAddress *BA = dyn_cast<BlockAddress>(CV))
-    return MCSymbolRefExpr::Create(GetBlockAddressSymbol(BA), Ctx);
+    return MCSymbolRefExpr::create(GetBlockAddressSymbol(BA), Ctx);
 
   const ConstantExpr *CE = dyn_cast<ConstantExpr>(CV);
   if (!CE) {
@@ -1710,7 +1714,7 @@ const MCExpr *AsmPrinter::lowerConstant(const Constant *CV) {
       return Base;
 
     int64_t Offset = OffsetAI.getSExtValue();
-    return MCBinaryExpr::CreateAdd(Base, MCConstantExpr::Create(Offset, Ctx),
+    return MCBinaryExpr::createAdd(Base, MCConstantExpr::create(Offset, Ctx),
                                    Ctx);
   }
 
@@ -1753,8 +1757,8 @@ const MCExpr *AsmPrinter::lowerConstant(const Constant *CV) {
     // the high bits so we are sure to get a proper truncation if the input is
     // a constant expr.
     unsigned InBits = DL.getTypeAllocSizeInBits(Op->getType());
-    const MCExpr *MaskExpr = MCConstantExpr::Create(~0ULL >> (64-InBits), Ctx);
-    return MCBinaryExpr::CreateAnd(OpExpr, MaskExpr, Ctx);
+    const MCExpr *MaskExpr = MCConstantExpr::create(~0ULL >> (64-InBits), Ctx);
+    return MCBinaryExpr::createAnd(OpExpr, MaskExpr, Ctx);
   }
 
   // The MC library also has a right-shift operator, but it isn't consistently
@@ -1772,15 +1776,15 @@ const MCExpr *AsmPrinter::lowerConstant(const Constant *CV) {
     const MCExpr *RHS = lowerConstant(CE->getOperand(1));
     switch (CE->getOpcode()) {
     default: llvm_unreachable("Unknown binary operator constant cast expr");
-    case Instruction::Add: return MCBinaryExpr::CreateAdd(LHS, RHS, Ctx);
-    case Instruction::Sub: return MCBinaryExpr::CreateSub(LHS, RHS, Ctx);
-    case Instruction::Mul: return MCBinaryExpr::CreateMul(LHS, RHS, Ctx);
-    case Instruction::SDiv: return MCBinaryExpr::CreateDiv(LHS, RHS, Ctx);
-    case Instruction::SRem: return MCBinaryExpr::CreateMod(LHS, RHS, Ctx);
-    case Instruction::Shl: return MCBinaryExpr::CreateShl(LHS, RHS, Ctx);
-    case Instruction::And: return MCBinaryExpr::CreateAnd(LHS, RHS, Ctx);
-    case Instruction::Or:  return MCBinaryExpr::CreateOr (LHS, RHS, Ctx);
-    case Instruction::Xor: return MCBinaryExpr::CreateXor(LHS, RHS, Ctx);
+    case Instruction::Add: return MCBinaryExpr::createAdd(LHS, RHS, Ctx);
+    case Instruction::Sub: return MCBinaryExpr::createSub(LHS, RHS, Ctx);
+    case Instruction::Mul: return MCBinaryExpr::createMul(LHS, RHS, Ctx);
+    case Instruction::SDiv: return MCBinaryExpr::createDiv(LHS, RHS, Ctx);
+    case Instruction::SRem: return MCBinaryExpr::createMod(LHS, RHS, Ctx);
+    case Instruction::Shl: return MCBinaryExpr::createShl(LHS, RHS, Ctx);
+    case Instruction::And: return MCBinaryExpr::createAnd(LHS, RHS, Ctx);
+    case Instruction::Or:  return MCBinaryExpr::createOr (LHS, RHS, Ctx);
+    case Instruction::Xor: return MCBinaryExpr::createXor(LHS, RHS, Ctx);
     }
   }
   }
@@ -2104,13 +2108,13 @@ static void handleIndirectSymViaGOTPCRel(AsmPrinter &AP, const MCExpr **ME,
   //    cstexpr := <gotequiv> - "." + <cst>
   //    cstexpr := <gotequiv> - (<foo> - <offset from @foo base>) + <cst>
   //
-  // After canonicalization by EvaluateAsRelocatable `ME` turns into:
+  // After canonicalization by evaluateAsRelocatable `ME` turns into:
   //
   //  cstexpr := <gotequiv> - <foo> + gotpcrelcst, where
   //    gotpcrelcst := <offset from @foo base> + <cst>
   //
   MCValue MV;
-  if (!(*ME)->EvaluateAsRelocatable(MV, nullptr, nullptr) || MV.isAbsolute())
+  if (!(*ME)->evaluateAsRelocatable(MV, nullptr, nullptr) || MV.isAbsolute())
     return;
 
   const MCSymbol *GOTEquivSym = &MV.getSymA()->getSymbol();

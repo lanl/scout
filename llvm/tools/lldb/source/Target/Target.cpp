@@ -7,8 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "lldb/lldb-python.h"
-
 #include "lldb/Target/Target.h"
 
 // C Includes
@@ -2384,9 +2382,8 @@ Target::Install (ProcessLaunchInfo *launch_info)
                                 if (is_main_executable) // TODO: add setting for always installing main executable???
                                 {
                                     // Always install the main executable
-                                    remote_file = FileSpec(module_sp->GetFileSpec().GetFilename().AsCString(),
-                                                           false, module_sp->GetArchitecture());
-                                    remote_file.GetDirectory() = platform_sp->GetWorkingDirectory();
+                                    remote_file = platform_sp->GetRemoteWorkingDirectory();
+                                    remote_file.AppendPathComponent(module_sp->GetFileSpec().GetFilename().GetCString());
                                 }
                             }
                             if (remote_file)
@@ -2397,7 +2394,7 @@ Target::Install (ProcessLaunchInfo *launch_info)
                                     module_sp->SetPlatformFileSpec(remote_file);
                                     if (is_main_executable)
                                     {
-                                        platform_sp->SetFilePermissions(remote_file.GetPath(false).c_str(), 0700);
+                                        platform_sp->SetFilePermissions(remote_file, 0700);
                                         if (launch_info)
                                             launch_info->SetExecutableFile(remote_file, false);
                                     }
@@ -2580,10 +2577,24 @@ Target::Launch (ProcessLaunchInfo &launch_info, Stream *stream)
         if (log)
             log->Printf ("Target::%s asking the platform to debug the process", __FUNCTION__);
 
+        // Get a weak pointer to the previous process if we have one
+        ProcessWP process_wp;
+        if (m_process_sp)
+            process_wp = m_process_sp;
         m_process_sp = GetPlatform()->DebugProcess (launch_info,
                                                     debugger,
                                                     this,
                                                     error);
+
+        // Cleanup the old process since someone might still have a strong
+        // reference to this process and we would like to allow it to cleanup
+        // as much as it can without the object being destroyed. We try to
+        // lock the shared pointer and if that works, then someone else still
+        // has a strong reference to the process.
+
+        ProcessSP old_process_sp(process_wp.lock());
+        if (old_process_sp)
+            old_process_sp->Finalize();
     }
     else
     {
@@ -3608,21 +3619,21 @@ void
 TargetProperties::InputPathValueChangedCallback(void *target_property_ptr, OptionValue *)
 {
     TargetProperties *this_ = reinterpret_cast<TargetProperties *>(target_property_ptr);
-    this_->m_launch_info.AppendOpenFileAction(STDIN_FILENO, this_->GetStandardInputPath().GetPath().c_str(), true, false);
+    this_->m_launch_info.AppendOpenFileAction(STDIN_FILENO, this_->GetStandardInputPath(), true, false);
 }
 
 void
 TargetProperties::OutputPathValueChangedCallback(void *target_property_ptr, OptionValue *)
 {
     TargetProperties *this_ = reinterpret_cast<TargetProperties *>(target_property_ptr);
-    this_->m_launch_info.AppendOpenFileAction(STDOUT_FILENO, this_->GetStandardOutputPath().GetPath().c_str(), false, true);
+    this_->m_launch_info.AppendOpenFileAction(STDOUT_FILENO, this_->GetStandardOutputPath(), false, true);
 }
 
 void
 TargetProperties::ErrorPathValueChangedCallback(void *target_property_ptr, OptionValue *)
 {
     TargetProperties *this_ = reinterpret_cast<TargetProperties *>(target_property_ptr);
-    this_->m_launch_info.AppendOpenFileAction(STDERR_FILENO, this_->GetStandardErrorPath().GetPath().c_str(), false, true);
+    this_->m_launch_info.AppendOpenFileAction(STDERR_FILENO, this_->GetStandardErrorPath(), false, true);
 }
 
 void

@@ -1810,6 +1810,13 @@ SDValue SelectionDAG::getMDNode(const MDNode *MD) {
   return SDValue(N, 0);
 }
 
+SDValue SelectionDAG::getBitcast(EVT VT, SDValue V) {
+  if (VT == V.getValueType())
+    return V;
+
+  return getNode(ISD::BITCAST, SDLoc(V), VT, V);
+}
+
 /// getAddrSpaceCast - Return an AddrSpaceCastSDNode.
 SDValue SelectionDAG::getAddrSpaceCast(SDLoc dl, EVT VT, SDValue Ptr,
                                        unsigned SrcAS, unsigned DestAS) {
@@ -3429,12 +3436,35 @@ SDValue SelectionDAG::getNode(unsigned Opcode, SDLoc DL, EVT VT, SDValue N1,
     assert(EVT.bitsLE(VT) && "Not extending!");
     if (EVT == VT) return N1;  // Not actually extending
 
+    auto SignExtendInReg = [&](APInt Val) {
+      unsigned FromBits = EVT.getScalarType().getSizeInBits();
+      Val <<= Val.getBitWidth() - FromBits;
+      Val = Val.ashr(Val.getBitWidth() - FromBits);
+      return getConstant(Val, DL, VT.getScalarType());
+    };
+
     if (N1C) {
       APInt Val = N1C->getAPIntValue();
-      unsigned FromBits = EVT.getScalarType().getSizeInBits();
-      Val <<= Val.getBitWidth()-FromBits;
-      Val = Val.ashr(Val.getBitWidth()-FromBits);
-      return getConstant(Val, DL, VT);
+      return SignExtendInReg(Val);
+    }
+    if (ISD::isBuildVectorOfConstantSDNodes(N1.getNode())) {
+      SmallVector<SDValue, 8> Ops;
+      for (int i = 0, e = VT.getVectorNumElements(); i != e; ++i) {
+        SDValue Op = N1.getOperand(i);
+        if (Op.getValueType() != VT.getScalarType()) break;
+        if (Op.getOpcode() == ISD::UNDEF) {
+          Ops.push_back(Op);
+          continue;
+        }
+        if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op.getNode())) {
+          APInt Val = C->getAPIntValue();
+          Ops.push_back(SignExtendInReg(Val));
+          continue;
+        }
+        break;
+      }
+      if (Ops.size() == VT.getVectorNumElements())
+        return getNode(ISD::BUILD_VECTOR, DL, VT, Ops);
     }
     break;
   }
@@ -6032,7 +6062,8 @@ SDDbgValue *SelectionDAG::getDbgValue(MDNode *Var, MDNode *Expr, SDNode *N,
                                       DebugLoc DL, unsigned O) {
   assert(cast<DILocalVariable>(Var)->isValidLocationForIntrinsic(DL) &&
          "Expected inlined-at fields to agree");
-  return new (Allocator) SDDbgValue(Var, Expr, N, R, IsIndirect, Off, DL, O);
+  return new (DbgInfo->getAlloc())
+      SDDbgValue(Var, Expr, N, R, IsIndirect, Off, DL, O);
 }
 
 /// Constant
@@ -6041,7 +6072,7 @@ SDDbgValue *SelectionDAG::getConstantDbgValue(MDNode *Var, MDNode *Expr,
                                               DebugLoc DL, unsigned O) {
   assert(cast<DILocalVariable>(Var)->isValidLocationForIntrinsic(DL) &&
          "Expected inlined-at fields to agree");
-  return new (Allocator) SDDbgValue(Var, Expr, C, Off, DL, O);
+  return new (DbgInfo->getAlloc()) SDDbgValue(Var, Expr, C, Off, DL, O);
 }
 
 /// FrameIndex
@@ -6050,7 +6081,7 @@ SDDbgValue *SelectionDAG::getFrameIndexDbgValue(MDNode *Var, MDNode *Expr,
                                                 DebugLoc DL, unsigned O) {
   assert(cast<DILocalVariable>(Var)->isValidLocationForIntrinsic(DL) &&
          "Expected inlined-at fields to agree");
-  return new (Allocator) SDDbgValue(Var, Expr, FI, Off, DL, O);
+  return new (DbgInfo->getAlloc()) SDDbgValue(Var, Expr, FI, Off, DL, O);
 }
 
 namespace {

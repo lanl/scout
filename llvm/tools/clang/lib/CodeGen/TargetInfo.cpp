@@ -108,6 +108,10 @@ bool ABIInfo::isHomogeneousAggregateSmallEnough(const Type *Base,
   return false;
 }
 
+bool ABIInfo::shouldSignExtUnsignedType(QualType Ty) const {
+  return false;
+}
+
 void ABIArgInfo::dump() const {
   raw_ostream &OS = llvm::errs();
   OS << "(ABIArgInfo Kind=";
@@ -822,7 +826,8 @@ ABIArgInfo X86_32ABIInfo::getIndirectReturnResult(CCState &State) const {
   return ABIArgInfo::getIndirect(/*Align=*/0, /*ByVal=*/false);
 }
 
-ABIArgInfo X86_32ABIInfo::classifyReturnType(QualType RetTy, CCState &State) const {
+ABIArgInfo X86_32ABIInfo::classifyReturnType(QualType RetTy,
+                                             CCState &State) const {
   if (RetTy->isVoidType())
     return ABIArgInfo::getIgnore();
 
@@ -1491,14 +1496,13 @@ class X86_64ABIInfo : public ABIInfo {
     return !getTarget().getTriple().isOSDarwin();
   }
 
-  bool HasAVX;
   // Some ABIs (e.g. X32 ABI and Native Client OS) use 32 bit pointers on
   // 64-bit hardware.
   bool Has64BitPointers;
 
 public:
-  X86_64ABIInfo(CodeGen::CodeGenTypes &CGT, bool hasavx) :
-      ABIInfo(CGT), HasAVX(hasavx),
+  X86_64ABIInfo(CodeGen::CodeGenTypes &CGT) :
+      ABIInfo(CGT),
       Has64BitPointers(CGT.getDataLayout().getPointerSize(0) == 8) {
   }
 
@@ -1522,6 +1526,10 @@ public:
 
   bool has64BitPointers() const {
     return Has64BitPointers;
+  }
+
+  bool hasAVX() const {
+    return getTarget().getABI() == "avx";
   }
 };
 
@@ -1552,10 +1560,9 @@ public:
 };
 
 class X86_64TargetCodeGenInfo : public TargetCodeGenInfo {
-  bool HasAVX;
 public:
-  X86_64TargetCodeGenInfo(CodeGen::CodeGenTypes &CGT, bool HasAVX)
-      : TargetCodeGenInfo(new X86_64ABIInfo(CGT, HasAVX)), HasAVX(HasAVX) {}
+  X86_64TargetCodeGenInfo(CodeGen::CodeGenTypes &CGT)
+      : TargetCodeGenInfo(new X86_64ABIInfo(CGT)) {}
 
   const X86_64ABIInfo &getABIInfo() const {
     return static_cast<const X86_64ABIInfo&>(TargetCodeGenInfo::getABIInfo());
@@ -1623,14 +1630,14 @@ public:
   }
 
   unsigned getOpenMPSimdDefaultAlignment(QualType) const override {
-    return HasAVX ? 32 : 16;
+    return getABIInfo().hasAVX() ? 32 : 16;
   }
 };
 
 class PS4TargetCodeGenInfo : public X86_64TargetCodeGenInfo {
 public:
-  PS4TargetCodeGenInfo(CodeGen::CodeGenTypes &CGT, bool HasAVX)
-    : X86_64TargetCodeGenInfo(CGT, HasAVX) {}
+  PS4TargetCodeGenInfo(CodeGen::CodeGenTypes &CGT)
+    : X86_64TargetCodeGenInfo(CGT) {}
 
   void getDependentLibraryOption(llvm::StringRef Lib,
                                  llvm::SmallString<24> &Opt) const override {
@@ -1681,7 +1688,8 @@ static void addStackProbeSizeTargetAttribute(const Decl *D,
     if (CGM.getCodeGenOpts().StackProbeSize != 4096) {
       llvm::Function *Fn = cast<llvm::Function>(GV);
 
-      Fn->addFnAttr("stack-probe-size", llvm::utostr(CGM.getCodeGenOpts().StackProbeSize));
+      Fn->addFnAttr("stack-probe-size",
+                    llvm::utostr(CGM.getCodeGenOpts().StackProbeSize));
     }
   }
 }
@@ -1695,10 +1703,11 @@ void WinX86_32TargetCodeGenInfo::SetTargetAttributes(const Decl *D,
 }
 
 class WinX86_64TargetCodeGenInfo : public TargetCodeGenInfo {
-  bool HasAVX;
+  bool hasAVX() const { return getABIInfo().getTarget().getABI() == "avx"; }
+
 public:
-  WinX86_64TargetCodeGenInfo(CodeGen::CodeGenTypes &CGT, bool HasAVX)
-    : TargetCodeGenInfo(new WinX86_64ABIInfo(CGT)), HasAVX(HasAVX) {}
+  WinX86_64TargetCodeGenInfo(CodeGen::CodeGenTypes &CGT)
+    : TargetCodeGenInfo(new WinX86_64ABIInfo(CGT)) {}
 
   void SetTargetAttributes(const Decl *D, llvm::GlobalValue *GV,
                            CodeGen::CodeGenModule &CGM) const override;
@@ -1730,7 +1739,7 @@ public:
   }
 
   unsigned getOpenMPSimdDefaultAlignment(QualType) const override {
-    return HasAVX ? 32 : 16;
+    return hasAVX() ? 32 : 16;
   }
 };
 
@@ -1919,7 +1928,7 @@ void X86_64ABIInfo::classify(QualType Ty, uint64_t OffsetBase,
       // split.
       if (OffsetBase && OffsetBase != 64)
         Hi = Lo;
-    } else if (Size == 128 || (HasAVX && isNamedArg && Size == 256)) {
+    } else if (Size == 128 || (hasAVX() && isNamedArg && Size == 256)) {
       // Arguments of 256-bits are split into four eightbyte chunks. The
       // least significant one belongs to class SSE and all the others to class
       // SSEUP. The original Lo and Hi design considers that types can't be
@@ -2141,7 +2150,7 @@ ABIArgInfo X86_64ABIInfo::getIndirectReturnResult(QualType Ty) const {
 bool X86_64ABIInfo::IsIllegalVectorType(QualType Ty) const {
   if (const VectorType *VecTy = Ty->getAs<VectorType>()) {
     uint64_t Size = getContext().getTypeSize(VecTy);
-    unsigned LargestVector = HasAVX ? 256 : 128;
+    unsigned LargestVector = hasAVX() ? 256 : 128;
     if (Size <= 64 || Size > LargestVector)
       return true;
   }
@@ -2218,9 +2227,16 @@ llvm::Type *X86_64ABIInfo::GetByteVectorType(QualType Ty) const {
     Ty = QualType(InnerTy, 0);
 
   llvm::Type *IRType = CGT.ConvertType(Ty);
-  assert(isa<llvm::VectorType>(IRType) &&
-         "Trying to return a non-vector type in a vector register!");
-  return IRType;
+  if(isa<llvm::VectorType>(IRType))
+    return IRType;
+
+  // We couldn't find the preferred IR vector type for 'Ty'.
+  uint64_t Size = getContext().getTypeSize(Ty);
+  assert((Size == 128 || Size == 256) && "Invalid type found!");
+
+  // Return a LLVM IR vector type based on the size of 'Ty'.
+  return llvm::VectorType::get(llvm::Type::getDoubleTy(getVMContext()),
+                               Size / 64);
 }
 
 /// BitsContainNoUserData - Return true if the specified [start,end) bit range
@@ -2840,7 +2856,7 @@ llvm::Value *X86_64ABIInfo::EmitVAArg(llvm::Value *VAListAddr, QualType Ty,
   unsigned neededInt, neededSSE;
 
   Ty = CGF.getContext().getCanonicalType(Ty);
-  ABIArgInfo AI = classifyArgumentType(Ty, 0, neededInt, neededSSE, 
+  ABIArgInfo AI = classifyArgumentType(Ty, 0, neededInt, neededSSE,
                                        /*isNamedArg*/false);
 
   // AMD64-ABI 3.5.7p5: Step 1. Determine whether type may be passed
@@ -3119,7 +3135,8 @@ public:
 
 class PPC32TargetCodeGenInfo : public TargetCodeGenInfo {
 public:
-  PPC32TargetCodeGenInfo(CodeGenTypes &CGT) : TargetCodeGenInfo(new PPC32_SVR4_ABIInfo(CGT)) {}
+  PPC32TargetCodeGenInfo(CodeGenTypes &CGT)
+      : TargetCodeGenInfo(new PPC32_SVR4_ABIInfo(CGT)) {}
 
   int getDwarfEHStackPointer(CodeGen::CodeGenModule &M) const override {
     // This is recovered from gcc output.
@@ -3146,19 +3163,25 @@ llvm::Value *PPC32_SVR4_ABIInfo::EmitVAArg(llvm::Value *VAListAddr,
   }
 
   bool isI64 = Ty->isIntegerType() && getContext().getTypeSize(Ty) == 64;
-  bool isInt = Ty->isIntegerType() || Ty->isPointerType() || Ty->isAggregateType();
+  bool isInt =
+      Ty->isIntegerType() || Ty->isPointerType() || Ty->isAggregateType();
   llvm::Type *CharPtr = CGF.Int8PtrTy;
   llvm::Type *CharPtrPtr = CGF.Int8PtrPtrTy;
 
   CGBuilderTy &Builder = CGF.Builder;
   llvm::Value *GPRPtr = Builder.CreateBitCast(VAListAddr, CharPtr, "gprptr");
   llvm::Value *GPRPtrAsInt = Builder.CreatePtrToInt(GPRPtr, CGF.Int32Ty);
-  llvm::Value *FPRPtrAsInt = Builder.CreateAdd(GPRPtrAsInt, Builder.getInt32(1));
+  llvm::Value *FPRPtrAsInt =
+      Builder.CreateAdd(GPRPtrAsInt, Builder.getInt32(1));
   llvm::Value *FPRPtr = Builder.CreateIntToPtr(FPRPtrAsInt, CharPtr);
-  llvm::Value *OverflowAreaPtrAsInt = Builder.CreateAdd(FPRPtrAsInt, Builder.getInt32(3));
-  llvm::Value *OverflowAreaPtr = Builder.CreateIntToPtr(OverflowAreaPtrAsInt, CharPtrPtr);
-  llvm::Value *RegsaveAreaPtrAsInt = Builder.CreateAdd(OverflowAreaPtrAsInt, Builder.getInt32(4));
-  llvm::Value *RegsaveAreaPtr = Builder.CreateIntToPtr(RegsaveAreaPtrAsInt, CharPtrPtr);
+  llvm::Value *OverflowAreaPtrAsInt =
+      Builder.CreateAdd(FPRPtrAsInt, Builder.getInt32(3));
+  llvm::Value *OverflowAreaPtr =
+      Builder.CreateIntToPtr(OverflowAreaPtrAsInt, CharPtrPtr);
+  llvm::Value *RegsaveAreaPtrAsInt =
+      Builder.CreateAdd(OverflowAreaPtrAsInt, Builder.getInt32(4));
+  llvm::Value *RegsaveAreaPtr =
+      Builder.CreateIntToPtr(RegsaveAreaPtrAsInt, CharPtrPtr);
   llvm::Value *GPR = Builder.CreateLoad(GPRPtr, false, "gpr");
   // Align GPR when TY is i64.
   if (isI64) {
@@ -3168,18 +3191,23 @@ llvm::Value *PPC32_SVR4_ABIInfo::EmitVAArg(llvm::Value *VAListAddr,
     GPR = Builder.CreateSelect(CC64, GPRPlusOne, GPR);
   }
   llvm::Value *FPR = Builder.CreateLoad(FPRPtr, false, "fpr");
-  llvm::Value *OverflowArea = Builder.CreateLoad(OverflowAreaPtr, false, "overflow_area");
-  llvm::Value *OverflowAreaAsInt = Builder.CreatePtrToInt(OverflowArea, CGF.Int32Ty);
-  llvm::Value *RegsaveArea = Builder.CreateLoad(RegsaveAreaPtr, false, "regsave_area");
-  llvm::Value *RegsaveAreaAsInt = Builder.CreatePtrToInt(RegsaveArea, CGF.Int32Ty);
+  llvm::Value *OverflowArea =
+      Builder.CreateLoad(OverflowAreaPtr, false, "overflow_area");
+  llvm::Value *OverflowAreaAsInt =
+      Builder.CreatePtrToInt(OverflowArea, CGF.Int32Ty);
+  llvm::Value *RegsaveArea =
+      Builder.CreateLoad(RegsaveAreaPtr, false, "regsave_area");
+  llvm::Value *RegsaveAreaAsInt =
+      Builder.CreatePtrToInt(RegsaveArea, CGF.Int32Ty);
 
-  llvm::Value *CC = Builder.CreateICmpULT(isInt ? GPR : FPR,
-                                          Builder.getInt8(8), "cond");
+  llvm::Value *CC =
+      Builder.CreateICmpULT(isInt ? GPR : FPR, Builder.getInt8(8), "cond");
 
-  llvm::Value *RegConstant = Builder.CreateMul(isInt ? GPR : FPR,
-                                               Builder.getInt8(isInt ? 4 : 8));
+  llvm::Value *RegConstant =
+      Builder.CreateMul(isInt ? GPR : FPR, Builder.getInt8(isInt ? 4 : 8));
 
-  llvm::Value *OurReg = Builder.CreateAdd(RegsaveAreaAsInt, Builder.CreateSExt(RegConstant, CGF.Int32Ty));
+  llvm::Value *OurReg = Builder.CreateAdd(
+      RegsaveAreaAsInt, Builder.CreateSExt(RegConstant, CGF.Int32Ty));
 
   if (Ty->isFloatingType())
     OurReg = Builder.CreateAdd(OurReg, Builder.getInt32(32));
@@ -3208,8 +3236,10 @@ llvm::Value *PPC32_SVR4_ABIInfo::EmitVAArg(llvm::Value *VAListAddr,
 
   // Increase the overflow area.
   llvm::Value *Result2 = Builder.CreateIntToPtr(OverflowAreaAsInt, PTy);
-  OverflowAreaAsInt = Builder.CreateAdd(OverflowAreaAsInt, Builder.getInt32(isInt ? 4 : 8));
-  Builder.CreateStore(Builder.CreateIntToPtr(OverflowAreaAsInt, CharPtr), OverflowAreaPtr);
+  OverflowAreaAsInt =
+      Builder.CreateAdd(OverflowAreaAsInt, Builder.getInt32(isInt ? 4 : 8));
+  Builder.CreateStore(Builder.CreateIntToPtr(OverflowAreaAsInt, CharPtr),
+                      OverflowAreaPtr);
   CGF.EmitBranch(Cont);
 
   CGF.EmitBlock(Cont);
@@ -3219,7 +3249,7 @@ llvm::Value *PPC32_SVR4_ABIInfo::EmitVAArg(llvm::Value *VAListAddr,
   Result->addIncoming(Result2, UsingOverflow);
 
   if (Ty->isAggregateType()) {
-    llvm::Value *AGGPtr = Builder.CreateBitCast(Result, CharPtrPtr, "aggrptr")  ;
+    llvm::Value *AGGPtr = Builder.CreateBitCast(Result, CharPtrPtr, "aggrptr");
     return Builder.CreateLoad(AGGPtr, false, "aggr");
   }
 
@@ -3788,8 +3818,10 @@ llvm::Value *PPC64_SVR4_ABIInfo::EmitVAArg(llvm::Value *VAListAddr,
     llvm::Value *RealAddr = Builder.CreatePtrToInt(Addr, CGF.Int64Ty);
     llvm::Value *ImagAddr = RealAddr;
     if (CGF.CGM.getDataLayout().isBigEndian()) {
-      RealAddr = Builder.CreateAdd(RealAddr, Builder.getInt64(8 - CplxBaseSize));
-      ImagAddr = Builder.CreateAdd(ImagAddr, Builder.getInt64(16 - CplxBaseSize));
+      RealAddr =
+          Builder.CreateAdd(RealAddr, Builder.getInt64(8 - CplxBaseSize));
+      ImagAddr =
+          Builder.CreateAdd(ImagAddr, Builder.getInt64(16 - CplxBaseSize));
     } else {
       ImagAddr = Builder.CreateAdd(ImagAddr, Builder.getInt64(8));
     }
@@ -4347,8 +4379,9 @@ llvm::Value *AArch64ABIInfo::EmitAAPCSVAArg(llvm::Value *VAListAddr,
   return ResAddr;
 }
 
-llvm::Value *AArch64ABIInfo::EmitDarwinVAArg(llvm::Value *VAListAddr, QualType Ty,
-                                           CodeGenFunction &CGF) const {
+llvm::Value *AArch64ABIInfo::EmitDarwinVAArg(llvm::Value *VAListAddr,
+                                             QualType Ty,
+                                             CodeGenFunction &CGF) const {
   // We do not support va_arg for aggregates or illegal vector types.
   // Lower VAArg here for these cases and use the LLVM va_arg instruction for
   // other cases.
@@ -4576,7 +4609,8 @@ void WindowsARMTargetCodeGenInfo::SetTargetAttributes(
 
 void ARMABIInfo::computeInfo(CGFunctionInfo &FI) const {
   if (!getCXXABI().classifyReturnType(FI))
-    FI.getReturnInfo() = classifyReturnType(FI.getReturnType(), FI.isVariadic());
+    FI.getReturnInfo() =
+        classifyReturnType(FI.getReturnType(), FI.isVariadic());
 
   for (auto &I : FI.arguments())
     I.info = classifyArgumentType(I.type, FI.isVariadic());
@@ -5544,6 +5578,7 @@ public:
   void computeInfo(CGFunctionInfo &FI) const override;
   llvm::Value *EmitVAArg(llvm::Value *VAListAddr, QualType Ty,
                          CodeGenFunction &CGF) const override;
+  bool shouldSignExtUnsignedType(QualType Ty) const override;
 };
 
 class MIPSTargetCodeGenInfo : public TargetCodeGenInfo {
@@ -5579,8 +5614,8 @@ public:
 };
 }
 
-void MipsABIInfo::CoerceToIntArgs(uint64_t TySize,
-                                  SmallVectorImpl<llvm::Type *> &ArgList) const {
+void MipsABIInfo::CoerceToIntArgs(
+    uint64_t TySize, SmallVectorImpl<llvm::Type *> &ArgList) const {
   llvm::IntegerType *IntTy =
     llvm::IntegerType::get(getVMContext(), MinABIStackAlignInBytes * 8);
 
@@ -5619,7 +5654,7 @@ llvm::Type* MipsABIInfo::HandleAggregates(QualType Ty, uint64_t TySize) const {
   const RecordDecl *RD = RT->getDecl();
   const ASTRecordLayout &Layout = getContext().getASTRecordLayout(RD);
   assert(!(TySize % 8) && "Size of structure must be multiple of 8.");
-  
+
   uint64_t LastOffset = 0;
   unsigned idx = 0;
   llvm::IntegerType *I64 = llvm::IntegerType::get(getVMContext(), 64);
@@ -5721,7 +5756,7 @@ MipsABIInfo::returnAggregateInRegs(QualType RetTy, uint64_t Size) const {
     // 1. The size of the struct/class is no larger than 128-bit.
     // 2. The struct/class has one or two fields all of which are floating
     //    point types.
-    // 3. The offset of the first field is zero (this follows what gcc does). 
+    // 3. The offset of the first field is zero (this follows what gcc does).
     //
     // Any other composite results are returned in integer registers.
     //
@@ -5791,7 +5826,7 @@ void MipsABIInfo::computeInfo(CGFunctionInfo &FI) const {
   if (!getCXXABI().classifyReturnType(FI))
     RetInfo = classifyReturnType(FI.getReturnType());
 
-  // Check if a pointer to an aggregate is passed as a hidden argument.  
+  // Check if a pointer to an aggregate is passed as a hidden argument.
   uint64_t Offset = RetInfo.isIndirect() ? MinABIStackAlignInBytes : 0;
 
   for (auto &I : FI.arguments())
@@ -5813,7 +5848,7 @@ llvm::Value* MipsABIInfo::EmitVAArg(llvm::Value *VAListAddr, QualType Ty,
     Ty = CGF.getContext().getIntTypeForBitwidth(SlotSizeInBits,
                                                 Ty->isSignedIntegerType());
   }
- 
+
   CGBuilderTy &Builder = CGF.Builder;
   llvm::Value *VAListAddrAsBPP = Builder.CreateBitCast(VAListAddr, BPP, "ap");
   llvm::Value *Addr = Builder.CreateLoad(VAListAddrAsBPP, "ap.cur");
@@ -5832,7 +5867,7 @@ llvm::Value* MipsABIInfo::EmitVAArg(llvm::Value *VAListAddr, QualType Ty,
     AddrTyped = CGF.Builder.CreateIntToPtr(And, PTy);
   }
   else
-    AddrTyped = Builder.CreateBitCast(Addr, PTy);  
+    AddrTyped = Builder.CreateBitCast(Addr, PTy);
 
   llvm::Value *AlignedAddr = Builder.CreateBitCast(AddrTyped, BP);
   TypeAlign = std::max((unsigned)TypeAlign, MinABIStackAlignInBytes);
@@ -5842,8 +5877,18 @@ llvm::Value* MipsABIInfo::EmitVAArg(llvm::Value *VAListAddr, QualType Ty,
     Builder.CreateGEP(AlignedAddr, llvm::ConstantInt::get(IntTy, Offset),
                       "ap.next");
   Builder.CreateStore(NextAddr, VAListAddrAsBPP);
-  
+
   return AddrTyped;
+}
+
+bool MipsABIInfo::shouldSignExtUnsignedType(QualType Ty) const {
+  int TySize = getContext().getTypeSize(Ty);
+
+  // MIPS64 ABI requires unsigned 32 bit integers to be sign extended.
+  if (Ty->isUnsignedIntegerOrEnumerationType() && TySize == 32)
+    return true;
+
+  return false;
 }
 
 bool
@@ -5876,7 +5921,7 @@ MIPSTargetCodeGenInfo::initDwarfEHRegSizeTable(CodeGen::CodeGenFunction &CGF,
 
 //===----------------------------------------------------------------------===//
 // TCE ABI Implementation (see http://tce.cs.tut.fi). Uses mostly the defaults.
-// Currently subclassed only to implement custom OpenCL C function attribute 
+// Currently subclassed only to implement custom OpenCL C function attribute
 // handling.
 //===----------------------------------------------------------------------===//
 
@@ -5891,14 +5936,13 @@ public:
                            CodeGen::CodeGenModule &M) const override;
 };
 
-void TCETargetCodeGenInfo::SetTargetAttributes(const Decl *D,
-                                               llvm::GlobalValue *GV,
-                                               CodeGen::CodeGenModule &M) const {
+void TCETargetCodeGenInfo::SetTargetAttributes(
+    const Decl *D, llvm::GlobalValue *GV, CodeGen::CodeGenModule &M) const {
   const FunctionDecl *FD = dyn_cast<FunctionDecl>(D);
   if (!FD) return;
 
   llvm::Function *F = cast<llvm::Function>(GV);
-  
+
   if (M.getLangOpts().OpenCL) {
     if (FD->hasAttr<OpenCLKernelAttr>()) {
       // OpenCL C Kernel functions are not subject to inlining
@@ -5907,8 +5951,9 @@ void TCETargetCodeGenInfo::SetTargetAttributes(const Decl *D,
       if (Attr) {
         // Convert the reqd_work_group_size() attributes to metadata.
         llvm::LLVMContext &Context = F->getContext();
-        llvm::NamedMDNode *OpenCLMetadata = 
-            M.getModule().getOrInsertNamedMetadata("opencl.kernel_wg_size_info");
+        llvm::NamedMDNode *OpenCLMetadata =
+            M.getModule().getOrInsertNamedMetadata(
+                "opencl.kernel_wg_size_info");
 
         SmallVector<llvm::Metadata *, 5> Operands;
         Operands.push_back(llvm::ConstantAsMetadata::get(F));
@@ -5923,9 +5968,9 @@ void TCETargetCodeGenInfo::SetTargetAttributes(const Decl *D,
             llvm::ConstantAsMetadata::get(llvm::Constant::getIntegerValue(
                 M.Int32Ty, llvm::APInt(32, Attr->getZDim()))));
 
-        // Add a boolean constant operand for "required" (true) or "hint" (false)
-        // for implementing the work_group_size_hint attr later. Currently 
-        // always true as the hint is not yet implemented.
+        // Add a boolean constant operand for "required" (true) or "hint"
+        // (false) for implementing the work_group_size_hint attr later.
+        // Currently always true as the hint is not yet implemented.
         Operands.push_back(
             llvm::ConstantAsMetadata::get(llvm::ConstantInt::getTrue(Context)));
         OpenCLMetadata->addOperand(llvm::MDNode::get(Context, Operands));
@@ -6401,7 +6446,7 @@ SparcV9TargetCodeGenInfo::initDwarfEHRegSizeTable(CodeGen::CodeGenFunction &CGF,
   //   FSR = 70
   //   CSR = 71
   AssignToArrayRange(Builder, Address, Eight8, 64, 71);
-   
+
   // 72-87: d0-15, the 8-byte floating-point registers
   AssignToArrayRange(Builder, Address, Eight8, 72, 87);
 
@@ -6674,7 +6719,7 @@ StringRef TypeStringCache::lookupStr(const IdentifierInfo *ID) {
 ///
 /// The TypeString carries type, qualifier, name, size & value details.
 /// Please see 'Tools Development Guide' section 2.16.2 for format details:
-/// <https://www.xmos.com/download/public/Tools-Development-Guide%28X9114A%29.pdf>
+/// https://www.xmos.com/download/public/Tools-Development-Guide%28X9114A%29.pdf
 /// The output is tested by test/CodeGen/xcore-stringtype.c.
 ///
 static bool getTypeString(SmallStringEnc &Enc, const Decl *D,
@@ -6700,7 +6745,8 @@ static bool appendType(SmallStringEnc &Enc, QualType QType,
                        TypeStringCache &TSC);
 
 /// Helper function for appendRecordType().
-/// Builds a SmallVector containing the encoded field types in declaration order.
+/// Builds a SmallVector containing the encoded field types in declaration
+/// order.
 static bool extractFieldType(SmallVectorImpl<FieldEncoding> &FE,
                              const RecordDecl *RD,
                              const CodeGen::CodeGenModule &CGM,
@@ -6723,7 +6769,7 @@ static bool extractFieldType(SmallVectorImpl<FieldEncoding> &FE,
     if (Field->isBitField())
       Enc += ')';
     Enc += '}';
-    FE.push_back(FieldEncoding(!Field->getName().empty(), Enc));
+    FE.emplace_back(!Field->getName().empty(), Enc);
   }
   return true;
 }
@@ -7137,32 +7183,24 @@ const TargetCodeGenInfo &CodeGenModule::getTargetCodeGenInfo() {
     bool IsWin32FloatStructABI = Triple.isOSWindows() && !Triple.isOSCygMing();
 
     if (Triple.getOS() == llvm::Triple::Win32) {
-      return *(TheTargetCodeGenInfo =
-               new WinX86_32TargetCodeGenInfo(Types,
-                                              IsDarwinVectorABI, IsSmallStructInRegABI,
-                                              IsWin32FloatStructABI,
-                                              CodeGenOpts.NumRegisterParameters));
+      return *(TheTargetCodeGenInfo = new WinX86_32TargetCodeGenInfo(
+                   Types, IsDarwinVectorABI, IsSmallStructInRegABI,
+                   IsWin32FloatStructABI, CodeGenOpts.NumRegisterParameters));
     } else {
-      return *(TheTargetCodeGenInfo =
-               new X86_32TargetCodeGenInfo(Types,
-                                           IsDarwinVectorABI, IsSmallStructInRegABI,
-                                           IsWin32FloatStructABI,
-                                           CodeGenOpts.NumRegisterParameters));
+      return *(TheTargetCodeGenInfo = new X86_32TargetCodeGenInfo(
+                   Types, IsDarwinVectorABI, IsSmallStructInRegABI,
+                   IsWin32FloatStructABI, CodeGenOpts.NumRegisterParameters));
     }
   }
 
   case llvm::Triple::x86_64: {
-    bool HasAVX = getTarget().getABI() == "avx";
-
     switch (Triple.getOS()) {
     case llvm::Triple::Win32:
-      return *(TheTargetCodeGenInfo =
-                   new WinX86_64TargetCodeGenInfo(Types, HasAVX));
+      return *(TheTargetCodeGenInfo = new WinX86_64TargetCodeGenInfo(Types));
     case llvm::Triple::PS4:
-      return *(TheTargetCodeGenInfo = new PS4TargetCodeGenInfo(Types, HasAVX));
+      return *(TheTargetCodeGenInfo = new PS4TargetCodeGenInfo(Types));
     default:
-      return *(TheTargetCodeGenInfo =
-                   new X86_64TargetCodeGenInfo(Types, HasAVX));
+      return *(TheTargetCodeGenInfo = new X86_64TargetCodeGenInfo(Types));
     }
   }
   case llvm::Triple::hexagon:

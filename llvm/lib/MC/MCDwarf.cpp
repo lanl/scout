@@ -64,7 +64,7 @@ static inline uint64_t ScaleAddrDelta(MCContext &Context, uint64_t AddrDelta) {
 // and if there is information from the last .loc directive that has yet to have
 // a line entry made for it is made.
 //
-void MCLineEntry::Make(MCObjectStreamer *MCOS, const MCSection *Section) {
+void MCLineEntry::Make(MCObjectStreamer *MCOS, MCSection *Section) {
   if (!MCOS->getContext().getDwarfLocSeen())
     return;
 
@@ -98,15 +98,15 @@ static inline const MCExpr *MakeStartMinusEndExpr(const MCStreamer &MCOS,
                                                   int IntVal) {
   MCSymbolRefExpr::VariantKind Variant = MCSymbolRefExpr::VK_None;
   const MCExpr *Res =
-    MCSymbolRefExpr::Create(&End, Variant, MCOS.getContext());
+    MCSymbolRefExpr::create(&End, Variant, MCOS.getContext());
   const MCExpr *RHS =
-    MCSymbolRefExpr::Create(&Start, Variant, MCOS.getContext());
+    MCSymbolRefExpr::create(&Start, Variant, MCOS.getContext());
   const MCExpr *Res1 =
-    MCBinaryExpr::Create(MCBinaryExpr::Sub, Res, RHS, MCOS.getContext());
+    MCBinaryExpr::create(MCBinaryExpr::Sub, Res, RHS, MCOS.getContext());
   const MCExpr *Res2 =
-    MCConstantExpr::Create(IntVal, MCOS.getContext());
+    MCConstantExpr::create(IntVal, MCOS.getContext());
   const MCExpr *Res3 =
-    MCBinaryExpr::Create(MCBinaryExpr::Sub, Res1, Res2, MCOS.getContext());
+    MCBinaryExpr::create(MCBinaryExpr::Sub, Res1, Res2, MCOS.getContext());
   return Res3;
 }
 
@@ -115,7 +115,7 @@ static inline const MCExpr *MakeStartMinusEndExpr(const MCStreamer &MCOS,
 // in the LineSection.
 //
 static inline void
-EmitDwarfLineTable(MCObjectStreamer *MCOS, const MCSection *Section,
+EmitDwarfLineTable(MCObjectStreamer *MCOS, MCSection *Section,
                    const MCLineSection::MCLineEntryCollection &LineEntries) {
   unsigned FileNum = 1;
   unsigned LastLine = 1;
@@ -247,7 +247,7 @@ static const MCExpr *forceExpAbs(MCStreamer &OS, const MCExpr* Expr) {
 
   MCSymbol *ABS = Context.createTempSymbol();
   OS.EmitAssignment(ABS, Expr);
-  return MCSymbolRefExpr::Create(ABS, Context);
+  return MCSymbolRefExpr::create(ABS, Context);
 }
 
 static void emitAbsValue(MCStreamer &OS, const MCExpr *Value, unsigned Size) {
@@ -610,13 +610,13 @@ static void EmitGenDwarfAranges(MCStreamer *MCOS,
 
   // Now emit the table of pairs of PointerSize'ed values for the section
   // addresses and sizes.
-  for (const auto &sec : Sections) {
-    MCSymbol *StartSymbol = sec.second.first;
-    MCSymbol *EndSymbol = sec.second.second;
+  for (MCSection *Sec : Sections) {
+    const MCSymbol *StartSymbol = Sec->getBeginSymbol();
+    MCSymbol *EndSymbol = Sec->getEndSymbol(context);
     assert(StartSymbol && "StartSymbol must not be NULL");
     assert(EndSymbol && "EndSymbol must not be NULL");
 
-    const MCExpr *Addr = MCSymbolRefExpr::Create(
+    const MCExpr *Addr = MCSymbolRefExpr::create(
       StartSymbol, MCSymbolRefExpr::VK_None, context);
     const MCExpr *Size = MakeStartMinusEndExpr(*MCOS,
       *StartSymbol, *EndSymbol, 0);
@@ -699,18 +699,18 @@ static void EmitGenDwarfInfo(MCStreamer *MCOS,
     const auto TextSection = Sections.begin();
     assert(TextSection != Sections.end() && "No text section found");
 
-    MCSymbol *StartSymbol = TextSection->second.first;
-    MCSymbol *EndSymbol = TextSection->second.second;
+    MCSymbol *StartSymbol = (*TextSection)->getBeginSymbol();
+    MCSymbol *EndSymbol = (*TextSection)->getEndSymbol(context);
     assert(StartSymbol && "StartSymbol must not be NULL");
     assert(EndSymbol && "EndSymbol must not be NULL");
 
     // AT_low_pc, the first address of the default .text section.
-    const MCExpr *Start = MCSymbolRefExpr::Create(
+    const MCExpr *Start = MCSymbolRefExpr::create(
         StartSymbol, MCSymbolRefExpr::VK_None, context);
     MCOS->EmitValue(Start, AddrSize);
 
     // AT_high_pc, the last address of the default .text section.
-    const MCExpr *End = MCSymbolRefExpr::Create(
+    const MCExpr *End = MCSymbolRefExpr::create(
       EndSymbol, MCSymbolRefExpr::VK_None, context);
     MCOS->EmitValue(End, AddrSize);
   }
@@ -772,7 +772,7 @@ static void EmitGenDwarfInfo(MCStreamer *MCOS,
     MCOS->EmitIntValue(Entry.getLineNumber(), 4);
 
     // AT_low_pc, start address of the label.
-    const MCExpr *AT_low_pc = MCSymbolRefExpr::Create(Entry.getLabel(),
+    const MCExpr *AT_low_pc = MCSymbolRefExpr::create(Entry.getLabel(),
                                              MCSymbolRefExpr::VK_None, context);
     MCOS->EmitValue(AT_low_pc, AddrSize);
 
@@ -805,15 +805,14 @@ static void EmitGenDwarfRanges(MCStreamer *MCOS) {
 
   MCOS->SwitchSection(context.getObjectFileInfo()->getDwarfRangesSection());
 
-  for (const auto &sec : Sections) {
-
-    MCSymbol *StartSymbol = sec.second.first;
-    MCSymbol *EndSymbol = sec.second.second;
+  for (MCSection *Sec : Sections) {
+    const MCSymbol *StartSymbol = Sec->getBeginSymbol();
+    MCSymbol *EndSymbol = Sec->getEndSymbol(context);
     assert(StartSymbol && "StartSymbol must not be NULL");
     assert(EndSymbol && "EndSymbol must not be NULL");
 
     // Emit a base address selection entry for the start of this section
-    const MCExpr *SectionStartAddr = MCSymbolRefExpr::Create(
+    const MCExpr *SectionStartAddr = MCSymbolRefExpr::create(
       StartSymbol, MCSymbolRefExpr::VK_None, context);
     MCOS->EmitFill(AddrSize, 0xFF);
     MCOS->EmitValue(SectionStartAddr, AddrSize);
@@ -1521,9 +1520,9 @@ void MCDwarfFrameEmitter::Emit(MCObjectStreamer &Streamer, MCAsmBackend *MAB,
 
   if (!NeedsEHFrameSection) return;
 
-  const MCSection &Section =
-    IsEH ? *const_cast<MCObjectFileInfo*>(MOFI)->getEHFrameSection() :
-           *MOFI->getDwarfFrameSection();
+  MCSection &Section =
+      IsEH ? *const_cast<MCObjectFileInfo *>(MOFI)->getEHFrameSection()
+           : *MOFI->getDwarfFrameSection();
 
   Streamer.SwitchSection(&Section);
   MCSymbol *SectionStart = Context.createTempSymbol();

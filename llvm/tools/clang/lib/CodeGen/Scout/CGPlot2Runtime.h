@@ -136,6 +136,7 @@ namespace CodeGen {
     llvm::Function* PlotProportionAddVarFunc();
     llvm::Function* PlotAddAxisFunc();
     llvm::Function* PlotRenderFunc();
+    llvm::Function* PlotRefreshFunc();
     llvm::Function* PlotAddVarI32Func();
     llvm::Function* PlotAddVarI64Func();
     llvm::Function* PlotAddVarFloatFunc();

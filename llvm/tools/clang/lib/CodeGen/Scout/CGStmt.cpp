@@ -173,6 +173,22 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& 
   }
 }
 
+//from Stmt get base addr of mesh
+void CodeGenFunction::GetMeshBaseAddr(const Stmt &S, llvm::Value*& BaseAddr) {
+
+  const VarDecl *MeshVarDecl;
+
+  if(const ForallMeshStmt *FA = dyn_cast<ForallMeshStmt>(&S)) {
+    MeshVarDecl = FA->getMeshVarDecl();
+  } else if (const RenderallMeshStmt *RA = dyn_cast<RenderallMeshStmt>(&S)) {
+    MeshVarDecl = RA->getMeshVarDecl();
+  } else {
+    assert(false && "expected ForallMeshStmt or RenderallMeshStmt");
+  }
+
+  GetMeshBaseAddr(MeshVarDecl, BaseAddr);
+}
+
 void CodeGenFunction::GetFrameBaseAddr(const VarDecl *FrameVarDecl, llvm::Value*& BaseAddr) {
   // is a global. SC_TODO why not MeshVarDecl->hasGlobalStorage()?
   if ((FrameVarDecl->hasLinkage() || FrameVarDecl->isStaticDataMember())
@@ -213,22 +229,6 @@ void CodeGenFunction::GetFrameBaseAddr(const VarDecl *FrameVarDecl, llvm::Value*
       BaseAddr = Builder.CreateLoad(BaseAddr);
     }
   }
-}
-
-//from Stmt get base addr of mesh
-void CodeGenFunction::GetMeshBaseAddr(const Stmt &S, llvm::Value*& BaseAddr) {
-
-  const VarDecl *MeshVarDecl;
-
-  if(const ForallMeshStmt *FA = dyn_cast<ForallMeshStmt>(&S)) {
-    MeshVarDecl = FA->getMeshVarDecl();
-  } else if (const RenderallMeshStmt *RA = dyn_cast<RenderallMeshStmt>(&S)) {
-    MeshVarDecl = RA->getMeshVarDecl();
-  } else {
-    assert(false && "expected ForallMeshStmt or RenderallMeshStmt");
-  }
-
-  GetMeshBaseAddr(MeshVarDecl, BaseAddr);
 }
 
 // find number of fields
@@ -2968,8 +2968,10 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   assert(targetPtr);
   
-  targetPtr = Builder.CreateBitCast(Builder.CreateLoad(targetPtr),
-                                    R.VoidPtrTy, "target.ptr");
+  llvm::Type* ptrType = R.PointerTy(VoidPtrTy);
+  targetPtr = Builder.CreateBitCast(targetPtr, ptrType);
+  
+  targetPtr = Builder.CreateLoad(targetPtr);
   
   args = {plotPtr, framePtr, targetPtr};
   Builder.CreateCall(R.PlotInitFunc(), args);
@@ -3221,7 +3223,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   for(auto& itr : em){
     const VarDecl* vd = itr.first;
     uint32_t vid = itr.second;
-
+    
     Value* vp = LocalDeclMap[vd];
     assert(vp);
     
@@ -3250,6 +3252,10 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   args = {plotPtr};
   Builder.CreateCall(R.PlotRenderFunc(), args);
+  
+  if(inLLDB()){
+    Builder.CreateCall(R.PlotRefreshFunc(), args);
+  }
   
   CurrentPlotStmt = nullptr;
 }

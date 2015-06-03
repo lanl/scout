@@ -1409,13 +1409,16 @@ void StmtPrinter::VisitParenListExpr(ParenListExpr* Node) {
 }
 
 void StmtPrinter::VisitDesignatedInitExpr(DesignatedInitExpr *Node) {
+  bool NeedsEquals = true;
   for (DesignatedInitExpr::designators_iterator D = Node->designators_begin(),
                       DEnd = Node->designators_end();
        D != DEnd; ++D) {
     if (D->isFieldDesignator()) {
       if (D->getDotLoc().isInvalid()) {
-        if (IdentifierInfo *II = D->getFieldName())
+        if (IdentifierInfo *II = D->getFieldName()) {
           OS << II->getName() << ":";
+          NeedsEquals = false;
+        }
       } else {
         OS << "." << D->getFieldName()->getName();
       }
@@ -1432,7 +1435,10 @@ void StmtPrinter::VisitDesignatedInitExpr(DesignatedInitExpr *Node) {
     }
   }
 
-  OS << " = ";
+  if (NeedsEquals)
+    OS << " = ";
+  else
+    OS << " ";
   PrintExpr(Node->getInit());
 }
 

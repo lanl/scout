@@ -66,10 +66,10 @@ public:
                         "mesh test",
                         "mesh test method",
                         "mesh test",
-                        eFlagRequiresProcess |
-                        eFlagTryTargetAPILock |
-                        eFlagProcessMustBeLaunched |
-                        eFlagProcessMustBePaused){
+                        eCommandRequiresProcess |
+                        eCommandTryTargetAPILock |
+                        eCommandProcessMustBeLaunched |
+                        eCommandProcessMustBePaused){
     
   }
 

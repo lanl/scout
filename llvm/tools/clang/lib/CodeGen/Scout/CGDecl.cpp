@@ -675,13 +675,6 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     ptr_call_params.push_back(intValue);
 
     // Should do a runtime check on the window parameters to make sure within range
-
-    if(windowTy->getUsage() == WindowType::Plot){
-      ptr_call_params.push_back(llvm::ConstantInt::get(Int8Ty, 1));
-    }
-    else{
-      ptr_call_params.push_back(llvm::ConstantInt::get(Int8Ty, 0));
-    }
     
     // call __scrt_create_window()
     llvm::CallInst* ptr_call = 

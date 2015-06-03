@@ -209,11 +209,9 @@ void AArch64MachObjectWriter::RecordRelocation(
     }
   } else if (Target.getSymB()) { // A - B + constant
     const MCSymbol *A = &Target.getSymA()->getSymbol();
-    const MCSymbolData &A_SD = Asm.getSymbolData(*A);
     const MCSymbol *A_Base = Asm.getAtom(*A);
 
     const MCSymbol *B = &Target.getSymB()->getSymbol();
-    const MCSymbolData &B_SD = Asm.getSymbolData(*B);
     const MCSymbol *B_Base = Asm.getAtom(*B);
 
     // Check for "_foo@got - .", which comes through here as:
@@ -264,14 +262,12 @@ void AArch64MachObjectWriter::RecordRelocation(
       Asm.getContext().reportFatalError(Fixup.getLoc(),
                                   "unsupported relocation with identical base");
 
-    Value += (!A_SD.getFragment() ? 0 : Writer->getSymbolAddress(*A, Layout)) -
-             (!A_Base || !A_Base->getData().getFragment()
-                  ? 0
-                  : Writer->getSymbolAddress(*A_Base, Layout));
-    Value -= (!B_SD.getFragment() ? 0 : Writer->getSymbolAddress(*B, Layout)) -
-             (!B_Base || !B_Base->getData().getFragment()
-                  ? 0
-                  : Writer->getSymbolAddress(*B_Base, Layout));
+    Value += (!A->getFragment() ? 0 : Writer->getSymbolAddress(*A, Layout)) -
+             (!A_Base || !A_Base->getFragment() ? 0 : Writer->getSymbolAddress(
+                                                          *A_Base, Layout));
+    Value -= (!B->getFragment() ? 0 : Writer->getSymbolAddress(*B, Layout)) -
+             (!B_Base || !B_Base->getFragment() ? 0 : Writer->getSymbolAddress(
+                                                          *B_Base, Layout));
 
     Type = MachO::ARM64_RELOC_UNSIGNED;
 
@@ -284,8 +280,8 @@ void AArch64MachObjectWriter::RecordRelocation(
     Type = MachO::ARM64_RELOC_SUBTRACTOR;
   } else { // A + constant
     const MCSymbol *Symbol = &Target.getSymA()->getSymbol();
-    const MCSectionMachO &Section = static_cast<const MCSectionMachO &>(
-        Fragment->getParent()->getSection());
+    const MCSectionMachO &Section =
+        static_cast<const MCSectionMachO &>(*Fragment->getParent());
 
     bool CanUseLocalRelocation =
         canUseLocalRelocation(Section, *Symbol, Log2Size);
@@ -295,7 +291,6 @@ void AArch64MachObjectWriter::RecordRelocation(
         Asm.addLocalUsedInReloc(*Symbol);
     }
 
-    const MCSymbolData &SD = Asm.getSymbolData(*Symbol);
     const MCSymbol *Base = Asm.getAtom(*Symbol);
 
     // If the symbol is a variable and we weren't able to get a Base for it
@@ -305,7 +300,7 @@ void AArch64MachObjectWriter::RecordRelocation(
       // If the evaluation is an absolute value, just use that directly
       // to keep things easy.
       int64_t Res;
-      if (SD.getSymbol().getVariableValue()->EvaluateAsAbsolute(
+      if (Symbol->getVariableValue()->evaluateAsAbsolute(
               Res, Layout, Writer->getSectionAddressMap())) {
         FixedValue = Res;
         return;
@@ -314,7 +309,7 @@ void AArch64MachObjectWriter::RecordRelocation(
       // FIXME: Will the Target we already have ever have any data in it
       // we need to preserve and merge with the new Target? How about
       // the FixedValue?
-      if (!Symbol->getVariableValue()->EvaluateAsRelocatable(Target, &Layout,
+      if (!Symbol->getVariableValue()->evaluateAsRelocatable(Target, &Layout,
                                                              &Fixup))
         Asm.getContext().reportFatalError(Fixup.getLoc(),
                                     "unable to resolve variable '" +
@@ -350,19 +345,18 @@ void AArch64MachObjectWriter::RecordRelocation(
                 "'. Must have non-local symbol earlier in section.");
       // Adjust the relocation to be section-relative.
       // The index is the section ordinal (1-based).
-      const MCSectionData &SymSD =
-          Asm.getSectionData(SD.getSymbol().getSection());
-      Index = SymSD.getOrdinal() + 1;
-      Value += Writer->getSymbolAddress(SD.getSymbol(), Layout);
+      const MCSection &Sec = Symbol->getSection();
+      Index = Sec.getOrdinal() + 1;
+      Value += Writer->getSymbolAddress(*Symbol, Layout);
 
       if (IsPCRel)
         Value -= Writer->getFragmentAddress(Fragment, Layout) +
                  Fixup.getOffset() + (1ULL << Log2Size);
     } else {
       // Resolve constant variables.
-      if (SD.getSymbol().isVariable()) {
+      if (Symbol->isVariable()) {
         int64_t Res;
-        if (SD.getSymbol().getVariableValue()->EvaluateAsAbsolute(
+        if (Symbol->getVariableValue()->evaluateAsAbsolute(
                 Res, Layout, Writer->getSectionAddressMap())) {
           FixedValue = Res;
           return;
