@@ -1850,26 +1850,31 @@ void MicrosoftCXXNameMangler::mangleType(const RecordType *T, Qualifiers,
 // ===== Scout ================================================================
 // SC_TODO - is this correct?
 void MicrosoftCXXNameMangler::mangleType(const UniformMeshType *T,
+                                         Qualifiers,
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
 void MicrosoftCXXNameMangler::mangleType(const ALEMeshType *T,
+                                         Qualifiers,
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
 void MicrosoftCXXNameMangler::mangleType(const StructuredMeshType *T,
+                                         Qualifiers,
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
 void MicrosoftCXXNameMangler::mangleType(const RectilinearMeshType *T,
+                                         Qualifiers,
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
 
 void MicrosoftCXXNameMangler::mangleType(const UnstructuredMeshType *T,
+                                         Qualifiers,
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
@@ -1897,26 +1902,31 @@ void MicrosoftCXXNameMangler::mangleType(const MeshType *T) {
 
 // These are totally made up and likely will break things... 
 void MicrosoftCXXNameMangler::mangleType(const WindowType *T,
+                                         Qualifiers,
                                          SourceRange) {
   Out << "_Rw"; 
 }
 
 void MicrosoftCXXNameMangler::mangleType(const ImageType *T,
+                                         Qualifiers,
                                          SourceRange) {
   Out << "_Ri"; 
 }
 
 void MicrosoftCXXNameMangler::mangleType(const QueryType *T,
+                                         Qualifiers,
                                          SourceRange) {
   Out << "_Rq";
 }
 
 void MicrosoftCXXNameMangler::mangleType(const FrameVarType *T,
+                                         Qualifiers,
                                          SourceRange) {
   Out << "_Rv";
 }
 
 void MicrosoftCXXNameMangler::mangleType(const FrameType *T,
+                                         Qualifiers,
                                          SourceRange) {
   mangleName(static_cast<const NamedDecl*>(T->getDecl()));
 }
