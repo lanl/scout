@@ -494,7 +494,7 @@ void Verifier::visitGlobalVariable(const GlobalVariable &GV) {
                        GV.getName() == "llvm.compiler.used")) {
     Assert(!GV.hasInitializer() || GV.hasAppendingLinkage(),
            "invalid linkage for intrinsic global variable", &GV);
-    Type *GVType = GV.getType()->getElementType();
+    Type *GVType = GV.getValueType();
     if (ArrayType *ATy = dyn_cast<ArrayType>(GVType)) {
       PointerType *PTy = dyn_cast<PointerType>(ATy->getElementType());
       Assert(PTy, "wrong type for intrinsic global variable", &GV);
@@ -1318,7 +1318,8 @@ void Verifier::VerifyAttributeTypes(AttributeSet Attrs, unsigned Idx,
         I->getKindAsEnum() == Attribute::NoBuiltin ||
         I->getKindAsEnum() == Attribute::Cold ||
         I->getKindAsEnum() == Attribute::OptimizeNone ||
-        I->getKindAsEnum() == Attribute::JumpTable) {
+        I->getKindAsEnum() == Attribute::JumpTable ||
+        I->getKindAsEnum() == Attribute::Convergent) {
       if (!isFunction) {
         CheckFailed("Attribute '" + I->getAsString() +
                     "' only applies to functions!", V);

@@ -3303,6 +3303,15 @@ TEST_F(FormatTest, FormatNestedBlocksInMacros) {
             format("#define   MACRO()   Debug(aaa,  /* force line break */ \\\n"
                    "          {  int   i;  int  j;   })",
                    getGoogleStyle()));
+
+  EXPECT_EQ("#define A                                       \\\n"
+            "  [] {                                          \\\n"
+            "    xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx(        \\\n"
+            "        xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx); \\\n"
+            "  }",
+            format("#define A [] { xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx( \\\n"
+                   "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx); }",
+                   getGoogleStyle()));
 }
 
 TEST_F(FormatTest, IndividualStatementsOfNestedBlocks) {
@@ -4055,6 +4064,8 @@ TEST_F(FormatTest, FunctionAnnotations) {
   // Not function annotations.
   verifyFormat("ASSERT(\"aaaaa\") << aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
                "                << bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+  verifyFormat("TEST_F(ThisIsATestFixtureeeeeeeeeeeee,\n"
+               "       ThisIsATestWithAReallyReallyReallyReallyLongName) {}");
 }
 
 TEST_F(FormatTest, BreaksDesireably) {
@@ -4954,6 +4965,9 @@ TEST_F(FormatTest, AlignsPipes) {
                "                    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,\n"
                "                    aaaaaaaaaaaaaaaaaaaaa)\n"
                "             << aaaaaaaaaaaaaaaaaaaaaaaaaa;");
+  verifyFormat("LOG_IF(aaa == //\n"
+               "       bbb)\n"
+               "    << a << b;");
 
   // Breaking before the first "<<" is generally not desirable.
   verifyFormat(
@@ -6210,9 +6224,9 @@ TEST_F(FormatTest, LayoutCxx11BraceInitializers) {
                "  };\n"
                "};");
 
-  // In combination with BinPackParameters = false.
+  // In combination with BinPackArguments = false.
   FormatStyle NoBinPacking = getLLVMStyle();
-  NoBinPacking.BinPackParameters = false;
+  NoBinPacking.BinPackArguments = false;
   verifyFormat("const Aaaaaa aaaaa = {aaaaa,\n"
                "                      bbbbb,\n"
                "                      ccccc,\n"
@@ -7574,9 +7588,9 @@ TEST_F(FormatTest, ObjCArrayLiterals) {
       "                                             index:(NSUInteger)index\n"
       "                                nonDigitAttributes:\n"
       "                                    (NSDictionary *)noDigitAttributes;");
-  verifyFormat(
-      "[someFunction someLooooooooooooongParameter:\n"
-      "                  @[ NSBundle.mainBundle.infoDictionary[@\"a\"] ]];");
+  verifyFormat("[someFunction someLooooooooooooongParameter:@[\n"
+               "  NSBundle.mainBundle.infoDictionary[@\"a\"]\n"
+               "]];");
 }
 
 TEST_F(FormatTest, ReformatRegionAdjustsIndent) {

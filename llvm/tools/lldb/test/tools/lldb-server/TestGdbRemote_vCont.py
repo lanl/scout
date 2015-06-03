@@ -5,6 +5,8 @@ from lldbtest import *
 
 class TestGdbRemote_vCont(gdbremote_testcase.GdbRemoteTestCaseBase):
 
+    mydir = TestBase.compute_mydir(__file__)
+
     def vCont_supports_mode(self, mode, inferior_args=None):
         # Setup the stub and set the gdb remote command stream.
         procs = self.prep_debug_monitor_and_inferior(inferior_args=inferior_args)
@@ -106,7 +108,6 @@ class TestGdbRemote_vCont(gdbremote_testcase.GdbRemoteTestCaseBase):
 
     @debugserver_test
     @dsym_test
-    @expectedFailureDarwin('http://llvm.org/pr23550') # failed 6/134 dosep runs
     def test_single_step_only_steps_one_instruction_with_vCont_s_thread_debugserver_dsym(self):
         self.init_debugserver_test()
         self.buildDsym()

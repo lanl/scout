@@ -78,15 +78,7 @@ public:
   // The full table can be found in MipsGenSubtargetInfo.inc (MipsFeatureKV[]).
   // The reason we need this mask is explained in the selectArch function.
   // FIXME: Ideally we would like TableGen to generate this information.
-  static const uint64_t AllArchRelatedMask =
-      Mips::FeatureMips1 | Mips::FeatureMips2 | Mips::FeatureMips3 |
-      Mips::FeatureMips3_32 | Mips::FeatureMips3_32r2 | Mips::FeatureMips4 |
-      Mips::FeatureMips4_32 | Mips::FeatureMips4_32r2 | Mips::FeatureMips5 |
-      Mips::FeatureMips5_32r2 | Mips::FeatureMips32 | Mips::FeatureMips32r2 |
-      Mips::FeatureMips32r3 | Mips::FeatureMips32r5 | Mips::FeatureMips32r6 |
-      Mips::FeatureMips64 | Mips::FeatureMips64r2 | Mips::FeatureMips64r3 |
-      Mips::FeatureMips64r5 | Mips::FeatureMips64r6 | Mips::FeatureCnMips |
-      Mips::FeatureFP64Bit | Mips::FeatureGP64Bit | Mips::FeatureNaN2008;
+  static const FeatureBitset AllArchRelatedMask;
 
 private:
   unsigned ATReg;
@@ -95,6 +87,17 @@ private:
   uint64_t Features;
 };
 }
+
+const FeatureBitset MipsAssemblerOptions::AllArchRelatedMask = {
+    Mips::FeatureMips1, Mips::FeatureMips2, Mips::FeatureMips3,
+    Mips::FeatureMips3_32, Mips::FeatureMips3_32r2, Mips::FeatureMips4,
+    Mips::FeatureMips4_32, Mips::FeatureMips4_32r2, Mips::FeatureMips5,
+    Mips::FeatureMips5_32r2, Mips::FeatureMips32, Mips::FeatureMips32r2,
+    Mips::FeatureMips32r3, Mips::FeatureMips32r5, Mips::FeatureMips32r6,
+    Mips::FeatureMips64, Mips::FeatureMips64r2, Mips::FeatureMips64r3,
+    Mips::FeatureMips64r5, Mips::FeatureMips64r6, Mips::FeatureCnMips,
+    Mips::FeatureFP64Bit, Mips::FeatureGP64Bit, Mips::FeatureNaN2008
+};
 
 namespace {
 class MipsAsmParser : public MCTargetAsmParser {
@@ -244,6 +247,8 @@ class MipsAsmParser : public MCTargetAsmParser {
   bool parseSetFpDirective();
   bool parseSetPopDirective();
   bool parseSetPushDirective();
+  bool parseSetSoftFloatDirective();
+  bool parseSetHardFloatDirective();
 
   bool parseSetAssignment();
 
@@ -317,7 +322,7 @@ class MipsAsmParser : public MCTargetAsmParser {
   // FeatureMipsGP64 | FeatureMips1)
   // Clearing Mips3 is equivalent to clear (FeatureMips3 | FeatureMips4).
   void selectArch(StringRef ArchFeature) {
-    uint64_t FeatureBits = STI.getFeatureBits();
+    FeatureBitset FeatureBits = STI.getFeatureBits();
     FeatureBits &= ~MipsAssemblerOptions::AllArchRelatedMask;
     STI.setFeatureBits(FeatureBits);
     setAvailableFeatures(
@@ -326,7 +331,7 @@ class MipsAsmParser : public MCTargetAsmParser {
   }
 
   void setFeatureBits(uint64_t Feature, StringRef FeatureString) {
-    if (!(STI.getFeatureBits() & Feature)) {
+    if (!(STI.getFeatureBits()[Feature])) {
       setAvailableFeatures(
           ComputeAvailableFeatures(STI.ToggleFeature(FeatureString)));
     }
@@ -334,7 +339,7 @@ class MipsAsmParser : public MCTargetAsmParser {
   }
 
   void clearFeatureBits(uint64_t Feature, StringRef FeatureString) {
-    if (STI.getFeatureBits() & Feature) {
+    if (STI.getFeatureBits()[Feature]) {
       setAvailableFeatures(
           ComputeAvailableFeatures(STI.ToggleFeature(FeatureString)));
     }
@@ -381,69 +386,70 @@ public:
   /// True if all of $fcc0 - $fcc7 exist for the current ISA.
   bool hasEightFccRegisters() const { return hasMips4() || hasMips32(); }
 
-  bool isGP64bit() const { return STI.getFeatureBits() & Mips::FeatureGP64Bit; }
-  bool isFP64bit() const { return STI.getFeatureBits() & Mips::FeatureFP64Bit; }
+  bool isGP64bit() const { return STI.getFeatureBits()[Mips::FeatureGP64Bit]; }
+  bool isFP64bit() const { return STI.getFeatureBits()[Mips::FeatureFP64Bit]; }
   const MipsABIInfo &getABI() const { return ABI; }
   bool isABI_N32() const { return ABI.IsN32(); }
   bool isABI_N64() const { return ABI.IsN64(); }
   bool isABI_O32() const { return ABI.IsO32(); }
-  bool isABI_FPXX() const { return STI.getFeatureBits() & Mips::FeatureFPXX; }
+  bool isABI_FPXX() const { return STI.getFeatureBits()[Mips::FeatureFPXX]; }
 
   bool useOddSPReg() const {
-    return !(STI.getFeatureBits() & Mips::FeatureNoOddSPReg);
+    return !(STI.getFeatureBits()[Mips::FeatureNoOddSPReg]);
   }
 
   bool inMicroMipsMode() const {
-    return STI.getFeatureBits() & Mips::FeatureMicroMips;
+    return STI.getFeatureBits()[Mips::FeatureMicroMips];
   }
-  bool hasMips1() const { return STI.getFeatureBits() & Mips::FeatureMips1; }
-  bool hasMips2() const { return STI.getFeatureBits() & Mips::FeatureMips2; }
-  bool hasMips3() const { return STI.getFeatureBits() & Mips::FeatureMips3; }
-  bool hasMips4() const { return STI.getFeatureBits() & Mips::FeatureMips4; }
-  bool hasMips5() const { return STI.getFeatureBits() & Mips::FeatureMips5; }
+  bool hasMips1() const { return STI.getFeatureBits()[Mips::FeatureMips1]; }
+  bool hasMips2() const { return STI.getFeatureBits()[Mips::FeatureMips2]; }
+  bool hasMips3() const { return STI.getFeatureBits()[Mips::FeatureMips3]; }
+  bool hasMips4() const { return STI.getFeatureBits()[Mips::FeatureMips4]; }
+  bool hasMips5() const { return STI.getFeatureBits()[Mips::FeatureMips5]; }
   bool hasMips32() const {
-    return (STI.getFeatureBits() & Mips::FeatureMips32);
+    return STI.getFeatureBits()[Mips::FeatureMips32];
   }
   bool hasMips64() const {
-    return (STI.getFeatureBits() & Mips::FeatureMips64);
+    return STI.getFeatureBits()[Mips::FeatureMips64];
   }
   bool hasMips32r2() const {
-    return (STI.getFeatureBits() & Mips::FeatureMips32r2);
+    return STI.getFeatureBits()[Mips::FeatureMips32r2];
   }
   bool hasMips64r2() const {
-    return (STI.getFeatureBits() & Mips::FeatureMips64r2);
+    return STI.getFeatureBits()[Mips::FeatureMips64r2];
   }
   bool hasMips32r3() const {
-    return (STI.getFeatureBits() & Mips::FeatureMips32r3);
+    return (STI.getFeatureBits()[Mips::FeatureMips32r3]);
   }
   bool hasMips64r3() const {
-    return (STI.getFeatureBits() & Mips::FeatureMips64r3);
+    return (STI.getFeatureBits()[Mips::FeatureMips64r3]);
   }
   bool hasMips32r5() const {
-    return (STI.getFeatureBits() & Mips::FeatureMips32r5);
+    return (STI.getFeatureBits()[Mips::FeatureMips32r5]);
   }
   bool hasMips64r5() const {
-    return (STI.getFeatureBits() & Mips::FeatureMips64r5);
+    return (STI.getFeatureBits()[Mips::FeatureMips64r5]);
   }
   bool hasMips32r6() const {
-    return (STI.getFeatureBits() & Mips::FeatureMips32r6);
+    return STI.getFeatureBits()[Mips::FeatureMips32r6];
   }
   bool hasMips64r6() const {
-    return (STI.getFeatureBits() & Mips::FeatureMips64r6);
+    return STI.getFeatureBits()[Mips::FeatureMips64r6];
   }
+
+  bool hasDSP() const { return STI.getFeatureBits()[Mips::FeatureDSP]; }
+  bool hasDSPR2() const { return STI.getFeatureBits()[Mips::FeatureDSPR2]; }
+  bool hasMSA() const { return STI.getFeatureBits()[Mips::FeatureMSA]; }
   bool hasCnMips() const {
-    return (STI.getFeatureBits() & Mips::FeatureCnMips);
+    return (STI.getFeatureBits()[Mips::FeatureCnMips]);
   }
-  bool hasDSP() const { return (STI.getFeatureBits() & Mips::FeatureDSP); }
-  bool hasDSPR2() const { return (STI.getFeatureBits() & Mips::FeatureDSPR2); }
-  bool hasMSA() const { return (STI.getFeatureBits() & Mips::FeatureMSA); }
 
   bool inMips16Mode() const {
-    return STI.getFeatureBits() & Mips::FeatureMips16;
+    return STI.getFeatureBits()[Mips::FeatureMips16];
   }
 
   bool useSoftFloat() const {
-    return (STI.getFeatureBits() & Mips::FeatureSoftFloat);
+    return STI.getFeatureBits()[Mips::FeatureSoftFloat];
   }
 
   /// Warn if RegIndex is the same as the current AT.
@@ -1192,14 +1198,14 @@ public:
     switch (Kind) {
     case k_Immediate:
       OS << "Imm<";
-      Imm.Val->print(OS);
+      OS << *Imm.Val;
       OS << ">";
       break;
     case k_Memory:
       OS << "Mem<";
       Mem.Base->print(OS);
       OS << ", ";
-      Mem.Off->print(OS);
+      OS << *Mem.Off;
       OS << ">";
       break;
     case k_PhysRegister:
@@ -1942,10 +1948,10 @@ void MipsAsmParser::expandLoadAddressSym(
   unsigned RegNo = DstRegOp.getReg();
   const MCSymbolRefExpr *Symbol = cast<MCSymbolRefExpr>(SymOp.getExpr());
   const MCSymbolRefExpr *HiExpr =
-      MCSymbolRefExpr::Create(Symbol->getSymbol().getName(),
+      MCSymbolRefExpr::create(Symbol->getSymbol().getName(),
                               MCSymbolRefExpr::VK_Mips_ABS_HI, getContext());
   const MCSymbolRefExpr *LoExpr =
-      MCSymbolRefExpr::Create(Symbol->getSymbol().getName(),
+      MCSymbolRefExpr::create(Symbol->getSymbol().getName(),
                               MCSymbolRefExpr::VK_Mips_ABS_LO, getContext());
   if (!Is32BitSym) {
     // If it's a 64-bit architecture, expand to:
@@ -1956,10 +1962,10 @@ void MipsAsmParser::expandLoadAddressSym(
     //             dsll d,d,16
     //             ori  d,d,lo16(sym)
     const MCSymbolRefExpr *HighestExpr =
-        MCSymbolRefExpr::Create(Symbol->getSymbol().getName(),
+        MCSymbolRefExpr::create(Symbol->getSymbol().getName(),
                                 MCSymbolRefExpr::VK_Mips_HIGHEST, getContext());
     const MCSymbolRefExpr *HigherExpr =
-        MCSymbolRefExpr::Create(Symbol->getSymbol().getName(),
+        MCSymbolRefExpr::create(Symbol->getSymbol().getName(),
                                 MCSymbolRefExpr::VK_Mips_HIGHER, getContext());
 
     tmpInst.setOpcode(Mips::LUi);
@@ -2098,7 +2104,7 @@ void MipsAsmParser::expandMemInst(MCInst &Inst, SMLoc IDLoc,
   else {
     if (ExprOffset->getKind() == MCExpr::SymbolRef) {
       SR = static_cast<const MCSymbolRefExpr *>(ExprOffset);
-      const MCSymbolRefExpr *HiExpr = MCSymbolRefExpr::Create(
+      const MCSymbolRefExpr *HiExpr = MCSymbolRefExpr::create(
           SR->getSymbol().getName(), MCSymbolRefExpr::VK_Mips_ABS_HI,
           getContext());
       TempInst.addOperand(MCOperand::createExpr(HiExpr));
@@ -2129,7 +2135,7 @@ void MipsAsmParser::expandMemInst(MCInst &Inst, SMLoc IDLoc,
     TempInst.addOperand(MCOperand::createImm(LoOffset));
   else {
     if (ExprOffset->getKind() == MCExpr::SymbolRef) {
-      const MCSymbolRefExpr *LoExpr = MCSymbolRefExpr::Create(
+      const MCSymbolRefExpr *LoExpr = MCSymbolRefExpr::create(
           SR->getSymbol().getName(), MCSymbolRefExpr::VK_Mips_ABS_LO,
           getContext());
       TempInst.addOperand(MCOperand::createExpr(LoExpr));
@@ -2501,7 +2507,7 @@ bool MipsAsmParser::parseOperand(OperandVector &Operands, StringRef Mnemonic) {
     MCSymbol *Sym = getContext().getOrCreateSymbol("$" + Identifier);
     // Otherwise create a symbol reference.
     const MCExpr *Res =
-        MCSymbolRefExpr::Create(Sym, MCSymbolRefExpr::VK_None, getContext());
+        MCSymbolRefExpr::create(Sym, MCSymbolRefExpr::VK_None, getContext());
 
     Operands.push_back(MipsOperand::CreateImm(Res, S, E, *this));
     return false;
@@ -2561,14 +2567,14 @@ const MCExpr *MipsAsmParser::evaluateRelocExpr(const MCExpr *Expr,
     default:
       report_fatal_error("unsupported reloc value");
     }
-    return MCConstantExpr::Create(Val, getContext());
+    return MCConstantExpr::create(Val, getContext());
   }
 
   if (const MCSymbolRefExpr *MSRE = dyn_cast<MCSymbolRefExpr>(Expr)) {
     // It's a symbol, create a symbolic expression from the symbol.
     StringRef Symbol = MSRE->getSymbol().getName();
     MCSymbolRefExpr::VariantKind VK = getVariantKind(RelocStr);
-    Res = MCSymbolRefExpr::Create(Symbol, VK, getContext());
+    Res = MCSymbolRefExpr::create(Symbol, VK, getContext());
     return Res;
   }
 
@@ -2577,17 +2583,17 @@ const MCExpr *MipsAsmParser::evaluateRelocExpr(const MCExpr *Expr,
 
     // Try to create target expression.
     if (MipsMCExpr::isSupportedBinaryExpr(VK, BE))
-      return MipsMCExpr::Create(VK, Expr, getContext());
+      return MipsMCExpr::create(VK, Expr, getContext());
 
     const MCExpr *LExp = evaluateRelocExpr(BE->getLHS(), RelocStr);
     const MCExpr *RExp = evaluateRelocExpr(BE->getRHS(), RelocStr);
-    Res = MCBinaryExpr::Create(BE->getOpcode(), LExp, RExp, getContext());
+    Res = MCBinaryExpr::create(BE->getOpcode(), LExp, RExp, getContext());
     return Res;
   }
 
   if (const MCUnaryExpr *UN = dyn_cast<MCUnaryExpr>(Expr)) {
     const MCExpr *UnExp = evaluateRelocExpr(UN->getSubExpr(), RelocStr);
-    Res = MCUnaryExpr::Create(UN->getOpcode(), UnExp, getContext());
+    Res = MCUnaryExpr::create(UN->getOpcode(), UnExp, getContext());
     return Res;
   }
   // Just return the original expression.
@@ -2775,7 +2781,7 @@ MipsAsmParser::parseMemOperand(OperandVector &Operands) {
   Parser.Lex(); // Eat the ')' token.
 
   if (!IdVal)
-    IdVal = MCConstantExpr::Create(0, getContext());
+    IdVal = MCConstantExpr::create(0, getContext());
 
   // Replace the register operand with the memory operand.
   std::unique_ptr<MipsOperand> op(
@@ -2786,10 +2792,10 @@ MipsAsmParser::parseMemOperand(OperandVector &Operands) {
   // Add the memory operand.
   if (const MCBinaryExpr *BE = dyn_cast<MCBinaryExpr>(IdVal)) {
     int64_t Imm;
-    if (IdVal->EvaluateAsAbsolute(Imm))
-      IdVal = MCConstantExpr::Create(Imm, getContext());
+    if (IdVal->evaluateAsAbsolute(Imm))
+      IdVal = MCConstantExpr::create(Imm, getContext());
     else if (BE->getLHS()->getKind() != MCExpr::SymbolRef)
-      IdVal = MCBinaryExpr::Create(BE->getOpcode(), BE->getRHS(), BE->getLHS(),
+      IdVal = MCBinaryExpr::create(BE->getOpcode(), BE->getRHS(), BE->getLHS(),
                                    getContext());
   }
 
@@ -3006,7 +3012,7 @@ MipsAsmParser::parseInvNum(OperandVector &Operands) {
   int64_t Val = MCE->getValue();
   SMLoc E = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer() - 1);
   Operands.push_back(MipsOperand::CreateImm(
-      MCConstantExpr::Create(0 - Val, getContext()), S, E, *this));
+      MCConstantExpr::create(0 - Val, getContext()), S, E, *this));
   return MatchOperand_Success;
 }
 
@@ -3030,7 +3036,7 @@ MipsAsmParser::parseLSAImm(OperandVector &Operands) {
     return MatchOperand_ParseFail;
 
   int64_t Val;
-  if (!Expr->EvaluateAsAbsolute(Val)) {
+  if (!Expr->evaluateAsAbsolute(Val)) {
     Error(S, "expected immediate value");
     return MatchOperand_ParseFail;
   }
@@ -3617,6 +3623,28 @@ bool MipsAsmParser::parseSetPushDirective() {
   return false;
 }
 
+bool MipsAsmParser::parseSetSoftFloatDirective() {
+  MCAsmParser &Parser = getParser();
+  Parser.Lex();
+  if (getLexer().isNot(AsmToken::EndOfStatement))
+    return reportParseError("unexpected token, expected end of statement");
+
+  setFeatureBits(Mips::FeatureSoftFloat, "soft-float");
+  getTargetStreamer().emitDirectiveSetSoftFloat();
+  return false;
+}
+
+bool MipsAsmParser::parseSetHardFloatDirective() {
+  MCAsmParser &Parser = getParser();
+  Parser.Lex();
+  if (getLexer().isNot(AsmToken::EndOfStatement))
+    return reportParseError("unexpected token, expected end of statement");
+
+  clearFeatureBits(Mips::FeatureSoftFloat, "soft-float");
+  getTargetStreamer().emitDirectiveSetHardFloat();
+  return false;
+}
+
 bool MipsAsmParser::parseSetAssignment() {
   StringRef Name;
   const MCExpr *Value;
@@ -3981,6 +4009,10 @@ bool MipsAsmParser::parseDirectiveSet() {
     return parseSetMsaDirective();
   } else if (Tok.getString() == "nomsa") {
     return parseSetNoMsaDirective();
+  } else if (Tok.getString() == "softfloat") {
+    return parseSetSoftFloatDirective();
+  } else if (Tok.getString() == "hardfloat") {
+    return parseSetHardFloatDirective();
   } else {
     // It is just an identifier, look for an assignment.
     parseSetAssignment();
@@ -4282,7 +4314,7 @@ bool MipsAsmParser::ParseDirective(AsmToken DirectiveID) {
         reportParseError("expected number after comma");
         return false;
       }
-      if (!DummyNumber->EvaluateAsAbsolute(DummyNumberVal)) {
+      if (!DummyNumber->evaluateAsAbsolute(DummyNumberVal)) {
         reportParseError("expected an absolute expression after comma");
         return false;
       }
@@ -4362,7 +4394,7 @@ bool MipsAsmParser::ParseDirective(AsmToken DirectiveID) {
       return false;
     }
 
-    if (!FrameSize->EvaluateAsAbsolute(FrameSizeVal)) {
+    if (!FrameSize->evaluateAsAbsolute(FrameSizeVal)) {
       reportParseError("frame size not an absolute expression");
       return false;
     }
@@ -4423,7 +4455,7 @@ bool MipsAsmParser::ParseDirective(AsmToken DirectiveID) {
       return false;
     }
 
-    if (!BitMask->EvaluateAsAbsolute(BitMaskVal)) {
+    if (!BitMask->evaluateAsAbsolute(BitMaskVal)) {
       reportParseError("bitmask not an absolute expression");
       return false;
     }
@@ -4444,7 +4476,7 @@ bool MipsAsmParser::ParseDirective(AsmToken DirectiveID) {
       return false;
     }
 
-    if (!FrameOffset->EvaluateAsAbsolute(FrameOffsetVal)) {
+    if (!FrameOffset->evaluateAsAbsolute(FrameOffsetVal)) {
       reportParseError("frame offset not an absolute expression");
       return false;
     }

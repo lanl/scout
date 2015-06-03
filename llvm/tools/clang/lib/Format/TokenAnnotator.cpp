@@ -260,6 +260,7 @@ private:
     Left->ParentBracket = Contexts.back().ContextKind;
     FormatToken *Parent = Left->getPreviousNonComment();
     bool StartsObjCMethodExpr =
+        Style.Language == FormatStyle::LK_Cpp &&
         Contexts.back().CanBeExpression && Left->isNot(TT_LambdaLSquare) &&
         CurrentToken->isNot(tok::l_brace) &&
         (!Parent ||
@@ -268,18 +269,30 @@ private:
          Parent->isUnaryOperator() ||
          Parent->isOneOf(TT_ObjCForIn, TT_CastRParen) ||
          getBinOpPrecedence(Parent->Tok.getKind(), true, true) > prec::Unknown);
-    ScopedContextCreator ContextCreator(*this, tok::l_square, 10);
-    Contexts.back().IsExpression = true;
     bool ColonFound = false;
 
-    if (StartsObjCMethodExpr) {
-      Contexts.back().ColonIsObjCMethodExpr = true;
-      Left->Type = TT_ObjCMethodExpr;
-    } else if (Parent && Parent->is(tok::at)) {
-      Left->Type = TT_ArrayInitializerLSquare;
-    } else if (Left->is(TT_Unknown)) {
-      Left->Type = TT_ArraySubscriptLSquare;
+    unsigned BindingIncrease = 1;
+    if (Left->is(TT_Unknown)) {
+      if (StartsObjCMethodExpr) {
+        Left->Type = TT_ObjCMethodExpr;
+      } else if (Style.Language == FormatStyle::LK_JavaScript && Parent &&
+                 Contexts.back().ContextKind == tok::l_brace &&
+                 Parent->isOneOf(tok::l_brace, tok::comma)) {
+        Left->Type = TT_JsComputedPropertyName;
+      } else if (Parent &&
+                 Parent->isOneOf(tok::at, tok::equal, tok::comma, tok::l_paren,
+                                 tok::l_square, tok::question, tok::colon,
+                                 tok::kw_return)) {
+        Left->Type = TT_ArrayInitializerLSquare;
+      } else {
+        BindingIncrease = 10;
+        Left->Type = TT_ArraySubscriptLSquare;
+      }
     }
+
+    ScopedContextCreator ContextCreator(*this, tok::l_square, BindingIncrease);
+    Contexts.back().IsExpression = true;
+    Contexts.back().ColonIsObjCMethodExpr = StartsObjCMethodExpr;
 
     while (CurrentToken) {
       if (CurrentToken->is(tok::r_square)) {
@@ -321,10 +334,8 @@ private:
         }
         ColonFound = true;
       }
-      if (CurrentToken->is(tok::comma) &&
-          Style.Language != FormatStyle::LK_Proto &&
-          (Left->is(TT_ArraySubscriptLSquare) ||
-           (Left->is(TT_ObjCMethodExpr) && !ColonFound)))
+      if (CurrentToken->is(tok::comma) && Left->is(TT_ObjCMethodExpr) &&
+          !ColonFound)
         Left->Type = TT_ArrayInitializerLSquare;
       FormatToken *Tok = CurrentToken;
       if (!consumeToken())
@@ -437,7 +448,8 @@ private:
              !Line.First->isOneOf(tok::kw_enum, tok::kw_case)) ||
             Contexts.back().ContextKind == tok::l_paren ||  // function params
             Contexts.back().ContextKind == tok::l_square || // array type
-            Line.MustBeDeclaration) { // method/property declaration
+            (Contexts.size() == 1 &&
+             Line.MustBeDeclaration)) { // method/property declaration
           Tok->Type = TT_JsTypeColon;
           break;
         }
@@ -742,8 +754,8 @@ private:
     // recovered from an error (e.g. failure to find the matching >).
     if (!CurrentToken->isOneOf(TT_LambdaLSquare, TT_ForEachMacro,
                                TT_FunctionLBrace, TT_ImplicitStringLiteral,
-                               TT_InlineASMBrace, TT_RegexLiteral,
-                               TT_TrailingReturnArrow))
+                               TT_InlineASMBrace, TT_JsFatArrow,
+                               TT_RegexLiteral, TT_TrailingReturnArrow))
       CurrentToken->Type = TT_Unknown;
     CurrentToken->Role.reset();
     CurrentToken->MatchingParen = nullptr;
@@ -925,7 +937,7 @@ private:
         Current.Type = TT_CastRParen;
       if (Current.MatchingParen && Current.Next &&
           !Current.Next->isBinaryOperator() &&
-          !Current.Next->isOneOf(tok::semi, tok::colon))
+          !Current.Next->isOneOf(tok::semi, tok::colon, tok::l_brace))
         if (FormatToken *BeforeParen = Current.MatchingParen->Previous)
           if (BeforeParen->is(tok::identifier) &&
               BeforeParen->TokenText == BeforeParen->TokenText.upper() &&
@@ -1314,7 +1326,7 @@ private:
       else if (Current->is(TT_LambdaArrow))
         return prec::Comma;
       else if (Current->isOneOf(tok::semi, TT_InlineASMColon,
-                                TT_SelectorName) ||
+                                TT_SelectorName, TT_JsComputedPropertyName) ||
                (Current->is(tok::comment) && NextNonComment &&
                 NextNonComment->is(TT_SelectorName)))
         return 0;
@@ -1615,7 +1627,8 @@ unsigned TokenAnnotator::splitPenalty(const AnnotatedLine &Line,
     // Slightly prefer formatting local lambda definitions like functions.
     if (Right.is(TT_LambdaLSquare) && Left.is(tok::equal))
       return 50;
-    if (!Right.isOneOf(TT_ObjCMethodExpr, TT_LambdaLSquare))
+    if (!Right.isOneOf(TT_ObjCMethodExpr, TT_LambdaLSquare,
+                       TT_ArrayInitializerLSquare))
       return 500;
   }
 
@@ -1867,12 +1880,14 @@ bool TokenAnnotator::spaceRequiredBefore(const AnnotatedLine &Line,
         Left.isOneOf(Keywords.kw_returns, Keywords.kw_option))
       return true;
   } else if (Style.Language == FormatStyle::LK_JavaScript) {
-    if (Left.is(Keywords.kw_var))
+    if (Left.isOneOf(Keywords.kw_var, TT_JsFatArrow))
       return true;
     if (Right.isOneOf(TT_JsTypeColon, TT_JsTypeOptionalQuestion))
       return false;
     if ((Left.is(tok::l_brace) || Right.is(tok::r_brace)) &&
         Line.First->isOneOf(Keywords.kw_import, tok::kw_export))
+      return false;
+    if (Left.is(tok::ellipsis))
       return false;
     if (Left.is(TT_TemplateCloser) &&
         !Right.isOneOf(tok::equal, tok::l_brace, tok::comma, tok::l_square,
@@ -1945,10 +1960,9 @@ bool TokenAnnotator::spaceRequiredBefore(const AnnotatedLine &Line,
     return Style.SpaceAfterCStyleCast ||
            Right.isOneOf(TT_BinaryOperator, TT_SelectorName);
 
-  if (Left.is(tok::greater) && Right.is(tok::greater)) {
+  if (Left.is(tok::greater) && Right.is(tok::greater))
     return Right.is(TT_TemplateCloser) && Left.is(TT_TemplateCloser) &&
            (Style.Standard != FormatStyle::LS_Cpp11 || Style.SpacesInAngles);
-  }
   if (Right.isOneOf(tok::arrow, tok::period, tok::arrowstar, tok::periodstar) ||
       Left.isOneOf(tok::arrow, tok::period, tok::arrowstar, tok::periodstar))
     return false;

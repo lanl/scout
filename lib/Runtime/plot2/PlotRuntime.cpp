@@ -1624,6 +1624,10 @@ namespace{
       QtWindow::pollEvents();
     }
 
+    void refresh(){
+      QtWindow::pollEvents();
+    }
+
     void prepare(QPainter& painter){
       width_ = painter.device()->width();
       height_ = painter.device()->height();
@@ -2652,6 +2656,10 @@ extern "C"{
 
   void __scrt_plot_render(void* plot){
     static_cast<Plot*>(plot)->finalize();
+  }
+
+  void __scrt_plot_refresh(void* plot){
+    static_cast<Plot*>(plot)->refresh();
   }
 
 } // end extern "C"

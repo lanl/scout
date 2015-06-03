@@ -705,26 +705,30 @@ void ELFDumper<ELFT>::printRelocation(const Elf_Shdr *Sec,
                                       typename ELFO::Elf_Rela Rel) {
   SmallString<32> RelocName;
   Obj->getRelocationTypeName(Rel.getType(Obj->isMips64EL()), RelocName);
-  StringRef SymbolName;
+  StringRef TargetName;
   std::pair<const Elf_Shdr *, const Elf_Sym *> Sym =
       Obj->getRelocationSymbol(Sec, &Rel);
-  if (Sym.first)
-    SymbolName = errorOrDefault(Obj->getSymbolName(Sym.first, Sym.second));
+  if (Sym.second && Sym.second->getType() == ELF::STT_SECTION) {
+    const Elf_Shdr *Sec = Obj->getSection(Sym.second);
+    ErrorOr<StringRef> SecName = Obj->getSectionName(Sec);
+    if (SecName)
+      TargetName = SecName.get();
+  } else if (Sym.first) {
+    TargetName = errorOrDefault(Obj->getSymbolName(Sym.first, Sym.second));
+  }
 
   if (opts::ExpandRelocs) {
     DictScope Group(W, "Relocation");
     W.printHex("Offset", Rel.r_offset);
     W.printNumber("Type", RelocName, (int)Rel.getType(Obj->isMips64EL()));
-    W.printNumber("Symbol", SymbolName.size() > 0 ? SymbolName : "-",
+    W.printNumber("Symbol", TargetName.size() > 0 ? TargetName : "-",
                   Rel.getSymbol(Obj->isMips64EL()));
     W.printHex("Addend", Rel.r_addend);
   } else {
     raw_ostream& OS = W.startLine();
-    OS << W.hex(Rel.r_offset)
-       << " " << RelocName
-       << " " << (SymbolName.size() > 0 ? SymbolName : "-")
-       << " " << W.hex(Rel.r_addend)
-       << "\n";
+    OS << W.hex(Rel.r_offset) << " " << RelocName << " "
+       << (TargetName.size() > 0 ? TargetName : "-") << " "
+       << W.hex(Rel.r_addend) << "\n";
   }
 }
 
@@ -778,6 +782,7 @@ static const char *getTypeString(uint64_t Type) {
   LLVM_READOBJ_TYPE_CASE(FINI_ARRAY);
   LLVM_READOBJ_TYPE_CASE(FINI_ARRAYSZ);
   LLVM_READOBJ_TYPE_CASE(FLAGS);
+  LLVM_READOBJ_TYPE_CASE(FLAGS_1);
   LLVM_READOBJ_TYPE_CASE(HASH);
   LLVM_READOBJ_TYPE_CASE(INIT);
   LLVM_READOBJ_TYPE_CASE(INIT_ARRAY);
@@ -835,6 +840,34 @@ static const EnumEntry<unsigned> ElfDynamicDTFlags[] = {
   LLVM_READOBJ_DT_FLAG_ENT(DF, TEXTREL),
   LLVM_READOBJ_DT_FLAG_ENT(DF, BIND_NOW),
   LLVM_READOBJ_DT_FLAG_ENT(DF, STATIC_TLS)
+};
+
+static const EnumEntry<unsigned> ElfDynamicDTFlags1[] = {
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, NOW),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, GLOBAL),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, GROUP),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, NODELETE),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, LOADFLTR),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, INITFIRST),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, NOOPEN),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, ORIGIN),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, DIRECT),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, TRANS),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, INTERPOSE),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, NODEFLIB),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, NODUMP),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, CONFALT),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, ENDFILTEE),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, DISPRELDNE),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, NODIRECT),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, IGNMULDEF),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, NOKSYMS),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, NOHDR),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, EDITED),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, NORELOC),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, SYMINTPOSE),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, GLOBAUDIT),
+  LLVM_READOBJ_DT_FLAG_ENT(DF_1, SINGLETON)
 };
 
 static const EnumEntry<unsigned> ElfDynamicDTMipsFlags[] = {
@@ -950,6 +983,9 @@ static void printValue(const ELFFile<ELFT> *O, uint64_t Type, uint64_t Value,
   case DT_FLAGS:
     printFlags(Value, makeArrayRef(ElfDynamicDTFlags), OS);
     break;
+  case DT_FLAGS_1:
+    printFlags(Value, makeArrayRef(ElfDynamicDTFlags1), OS);
+    break;
   }
 }
 
@@ -959,11 +995,10 @@ void ELFDumper<ELFT>::printUnwindInfo() {
 }
 
 namespace {
-template <>
-void ELFDumper<ELFType<support::little, 2, false> >::printUnwindInfo() {
+template <> void ELFDumper<ELFType<support::little, false>>::printUnwindInfo() {
   const unsigned Machine = Obj->getHeader()->e_machine;
   if (Machine == EM_ARM) {
-    ARM::EHABI::PrinterContext<ELFType<support::little, 2, false> > Ctx(W, Obj);
+    ARM::EHABI::PrinterContext<ELFType<support::little, false>> Ctx(W, Obj);
     return Ctx.PrintUnwindInformation();
   }
   W.startLine() << "UnwindInfo not implemented.\n";
@@ -1043,8 +1078,7 @@ void ELFDumper<ELFT>::printAttributes() {
 }
 
 namespace {
-template <>
-void ELFDumper<ELFType<support::little, 2, false> >::printAttributes() {
+template <> void ELFDumper<ELFType<support::little, false>>::printAttributes() {
   if (Obj->getHeader()->e_machine != EM_ARM) {
     W.startLine() << "Attributes not implemented.\n";
     return;

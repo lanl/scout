@@ -7,8 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "lldb/lldb-python.h"
-
 #include "CommandObjectRegister.h"
 
 // C Includes
@@ -48,10 +46,10 @@ public:
                              "register read",
                              "Dump the contents of one or more register values from the current frame.  If no register is specified, dumps them all.",
                              NULL,
-                             eFlagRequiresFrame         |
-                             eFlagRequiresRegContext    |
-                             eFlagProcessMustBeLaunched |
-                             eFlagProcessMustBePaused   ),
+                             eCommandRequiresFrame         |
+                             eCommandRequiresRegContext    |
+                             eCommandProcessMustBeLaunched |
+                             eCommandProcessMustBePaused   ),
         m_option_group (interpreter),
         m_format_options (eFormatDefault),
         m_command_options ()
@@ -377,10 +375,10 @@ public:
                              "register write",
                              "Modify a single register value.",
                              NULL,
-                             eFlagRequiresFrame         |
-                             eFlagRequiresRegContext    |
-                             eFlagProcessMustBeLaunched |
-                             eFlagProcessMustBePaused)
+                             eCommandRequiresFrame         |
+                             eCommandRequiresRegContext    |
+                             eCommandProcessMustBeLaunched |
+                             eCommandProcessMustBePaused)
     {
         CommandArgumentEntry arg1;
         CommandArgumentEntry arg2;

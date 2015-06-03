@@ -207,6 +207,39 @@ PlatformAndroid::ConnectRemote(Args& args)
     return error;
 }
 
+Error
+PlatformAndroid::GetFile (const FileSpec& source,
+                          const FileSpec& destination)
+{
+    if (IsHost() || !m_remote_platform_sp)
+        return PlatformLinux::GetFile(source, destination);
+
+    FileSpec source_spec (source.GetPath (false), false, FileSpec::ePathSyntaxPosix);
+    if (source_spec.IsRelativeToCurrentWorkingDirectory ())
+        source_spec = GetRemoteWorkingDirectory ().CopyByAppendingPathComponent (source_spec.GetCString (false));
+
+    AdbClient adb (m_device_id);
+    return adb.PullFile (source_spec, destination);
+}
+
+Error
+PlatformAndroid::PutFile (const FileSpec& source,
+                          const FileSpec& destination,
+                          uint32_t uid,
+                          uint32_t gid)
+{
+    if (IsHost() || !m_remote_platform_sp)
+        return PlatformLinux::PutFile (source, destination, uid, gid);
+
+    FileSpec destination_spec (destination.GetPath (false), false, FileSpec::ePathSyntaxPosix);
+    if (destination_spec.IsRelativeToCurrentWorkingDirectory ())
+        destination_spec = GetRemoteWorkingDirectory ().CopyByAppendingPathComponent (destination_spec.GetCString (false));
+
+    AdbClient adb (m_device_id);
+    // TODO: Set correct uid and gid on remote file.
+    return adb.PushFile(source, destination_spec);
+}
+
 const char *
 PlatformAndroid::GetCacheHostname ()
 {
@@ -222,6 +255,5 @@ PlatformAndroid::DownloadModuleSlice (const FileSpec &src_file_spec,
     if (src_offset != 0)
         return Error ("Invalid offset - %" PRIu64, src_offset);
 
-    AdbClient adb (m_device_id);
-    return adb.PullFile (src_file_spec.GetPath (false).c_str (), dst_file_spec.GetPath ().c_str ());
+    return GetFile (src_file_spec, dst_file_spec);
 }

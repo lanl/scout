@@ -257,6 +257,10 @@ llvm::Function* CGPlot2Runtime::PlotRenderFunc(){
   return GetFunc("__scrt_plot_render", {VoidPtrTy});
 }
 
+llvm::Function* CGPlot2Runtime::PlotRefreshFunc(){
+  return GetFunc("__scrt_plot_refresh", {VoidPtrTy});
+}
+
 llvm::Function* CGPlot2Runtime::PlotAddVarI32Func(){
   return GetFunc("__scrt_plot_add_var_i32",
   {VoidPtrTy, Int32Ty, VoidPtrTy, Int32Ty});

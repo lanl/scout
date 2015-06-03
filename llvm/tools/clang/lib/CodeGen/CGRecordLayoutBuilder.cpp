@@ -153,15 +153,10 @@ struct CGRecordLowering {
     return CharUnits::fromQuantity(DataLayout.getABITypeAlignment(Type));
   }
   bool isZeroInitializable(const FieldDecl *FD) {
-    const Type *Type = FD->getType()->getBaseElementTypeUnsafe();
-    if (const MemberPointerType *MPT = Type->getAs<MemberPointerType>())
-      return Types.getCXXABI().isZeroInitializable(MPT);
-    if (const RecordType *RT = Type->getAs<RecordType>())
-      return isZeroInitializable(RT->getDecl());
-    return true;
+    return Types.isZeroInitializable(FD->getType());
   }
   bool isZeroInitializable(const RecordDecl *RD) {
-    return Types.getCGRecordLayout(RD).isZeroInitializable();
+    return Types.isZeroInitializable(RD);
   }
   void appendPaddingBytes(CharUnits Size) {
     if (!Size.isZero())
@@ -319,9 +314,13 @@ void CGRecordLowering::lowerUnion() {
     // If this is the case, then we aught not to try and come up with a "better"
     // type, it might not be very easy to come up with a Constant which
     // correctly initializes it.
-    if (!SeenNamedMember && Field->getDeclName()) {
-      SeenNamedMember = true;
-      if (!isZeroInitializable(Field)) {
+    if (!SeenNamedMember) {
+      SeenNamedMember = Field->getIdentifier();
+      if (!SeenNamedMember)
+        if (const auto *FieldRD =
+                dyn_cast_or_null<RecordDecl>(Field->getType()->getAsTagDecl()))
+        SeenNamedMember = FieldRD->findFirstNamedDataMember();
+      if (SeenNamedMember && !isZeroInitializable(Field)) {
         IsZeroInitializable = IsZeroInitializableAsBase = false;
         StorageType = FieldType;
       }

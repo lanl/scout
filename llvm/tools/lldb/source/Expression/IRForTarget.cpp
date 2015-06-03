@@ -237,21 +237,24 @@ IRForTarget::GetFunctionAddress (llvm::Function *fun,
                 // For example, "std::basic_string<...>" has an alternate mangling scheme per
                 // the Itanium C++ ABI.
                 lldb::ProcessSP process_sp = m_data_allocator.GetTarget()->GetProcessSP();
-                lldb_private::CPPLanguageRuntime *cpp_runtime = process_sp->GetCPPLanguageRuntime();
-                if (cpp_runtime && cpp_runtime->GetAlternateManglings(name, alternates))
+                if (process_sp)
                 {
-                    for (size_t i = 0; i < alternates.size(); ++i)
+                    lldb_private::CPPLanguageRuntime *cpp_runtime = process_sp->GetCPPLanguageRuntime();
+                    if (cpp_runtime && cpp_runtime->GetAlternateManglings(name, alternates))
                     {
-                        const lldb_private::ConstString &alternate_name = alternates[i];
-                        if (log)
-                            log->Printf("Looking up address of function \"%s\" with alternate name \"%s\"",
-                                        name.GetCString(), alternate_name.GetCString());
-                        if ((found_it = m_decl_map->GetFunctionAddress (alternate_name, fun_addr)))
+                        for (size_t i = 0; i < alternates.size(); ++i)
                         {
+                            const lldb_private::ConstString &alternate_name = alternates[i];
                             if (log)
-                                log->Printf("Found address of function \"%s\" with alternate name \"%s\"",
+                                log->Printf("Looking up address of function \"%s\" with alternate name \"%s\"",
                                             name.GetCString(), alternate_name.GetCString());
-                            break;
+                            if ((found_it = m_decl_map->GetFunctionAddress (alternate_name, fun_addr)))
+                            {
+                                if (log)
+                                    log->Printf("Found address of function \"%s\" with alternate name \"%s\"",
+                                                name.GetCString(), alternate_name.GetCString());
+                                break;
+                            }
                         }
                     }
                 }
@@ -2733,6 +2736,13 @@ IRForTarget::runOnModule (Module &llvm_module)
                 return false;
             }
 
+          // ===== Scout ================================
+          // This part of the pass is currently causing problems
+          // with Scout generated code, e.g: plotting closures. It seems
+          // to be a minor optimization which doesn't affect the correctness
+          // of LLDB-generated code. Disabling for now, will try again
+          // after a later merge with LLVM mainline.
+          /*
             if (!ReplaceStaticLiterals(*bbi))
             {
                 if (log)
@@ -2740,6 +2750,8 @@ IRForTarget::runOnModule (Module &llvm_module)
 
                 return false;
             }
+           */
+          // ============================================
         }
     }
 

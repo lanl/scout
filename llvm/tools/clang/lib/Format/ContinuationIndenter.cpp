@@ -143,11 +143,10 @@ bool ContinuationIndenter::mustBreak(const LineState &State) {
   if (Previous.is(tok::semi) && State.LineContainsContinuedForLoopSection)
     return true;
   if ((startsNextParameter(Current, Style) || Previous.is(tok::semi) ||
-       (Style.BreakBeforeTernaryOperators &&
-        (Current.is(tok::question) ||
-         (Current.is(TT_ConditionalExpr) && Previous.isNot(tok::question)))) ||
+       (Style.BreakBeforeTernaryOperators && Current.is(TT_ConditionalExpr) &&
+        Previous.isNot(tok::question)) ||
        (!Style.BreakBeforeTernaryOperators &&
-        (Previous.is(tok::question) || Previous.is(TT_ConditionalExpr)))) &&
+        Previous.is(TT_ConditionalExpr))) &&
       State.Stack.back().BreakBeforeParameter && !Current.isTrailingComment() &&
       !Current.isOneOf(tok::r_paren, tok::r_brace))
     return true;
@@ -160,7 +159,8 @@ bool ContinuationIndenter::mustBreak(const LineState &State) {
   if (((Previous.is(TT_DictLiteral) && Previous.is(tok::l_brace)) ||
        Previous.is(TT_ArrayInitializerLSquare)) &&
       Style.ColumnLimit > 0 &&
-      getLengthToMatchingParen(Previous) + State.Column > getColumnLimit(State))
+      getLengthToMatchingParen(Previous) + State.Column - 1 >
+          getColumnLimit(State))
     return true;
   if (Current.is(TT_CtorInitializerColon) &&
       ((Style.AllowShortFunctionsOnASingleLine != FormatStyle::SFS_All) ||
@@ -463,6 +463,8 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
   if (NextNonComment->is(tok::question) ||
       (PreviousNonComment && PreviousNonComment->is(tok::question)))
     State.Stack.back().BreakBeforeParameter = true;
+  if (Current.is(TT_BinaryOperator) && Current.CanBreakBefore)
+    State.Stack.back().BreakBeforeParameter = false;
 
   if (!DryRun) {
     unsigned Newlines = std::max(
@@ -482,11 +484,9 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
   bool NestedBlockSpecialCase =
       Current.is(tok::r_brace) && State.Stack.size() > 1 &&
       State.Stack[State.Stack.size() - 2].NestedBlockInlined;
-  if (!NestedBlockSpecialCase) {
-    for (unsigned i = 0, e = State.Stack.size() - 1; i != e; ++i) {
+  if (!NestedBlockSpecialCase)
+    for (unsigned i = 0, e = State.Stack.size() - 1; i != e; ++i)
       State.Stack[i].BreakBeforeParameter = true;
-    }
-  }
 
   if (PreviousNonComment &&
       !PreviousNonComment->isOneOf(tok::comma, tok::semi) &&
@@ -690,11 +690,9 @@ unsigned ContinuationIndenter::moveStateToNextToken(LineState &State,
   //   }, a, b, c);
   if (Current.isNot(tok::comment) && Previous && Previous->is(tok::l_brace) &&
       State.Stack.size() > 1) {
-    if (State.Stack[State.Stack.size() - 2].NestedBlockInlined && Newline) {
-      for (unsigned i = 0, e = State.Stack.size() - 1; i != e; ++i) {
+    if (State.Stack[State.Stack.size() - 2].NestedBlockInlined && Newline)
+      for (unsigned i = 0, e = State.Stack.size() - 1; i != e; ++i)
         State.Stack[i].NoLineBreak = true;
-      }
-    }
     State.Stack[State.Stack.size() - 2].NestedBlockInlined = false;
   }
   if (Previous && (Previous->isOneOf(tok::l_paren, tok::comma, tok::colon) ||
@@ -856,7 +854,7 @@ void ContinuationIndenter::moveStatePastScopeOpener(LineState &State,
     const FormatToken *NextNoComment = Current.getNextNonComment();
     AvoidBinPacking =
         Current.isOneOf(TT_ArrayInitializerLSquare, TT_DictLiteral) ||
-        Style.Language == FormatStyle::LK_Proto || !Style.BinPackParameters ||
+        Style.Language == FormatStyle::LK_Proto || !Style.BinPackArguments ||
         (NextNoComment && NextNoComment->is(TT_DesignatedInitializerPeriod));
   } else {
     NewIndent = Style.ContinuationIndentWidth +

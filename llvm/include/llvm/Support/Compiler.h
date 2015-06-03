@@ -29,10 +29,6 @@
 # define __has_attribute(x) 0
 #endif
 
-#ifndef __has_cpp_attribute
-# define __has_cpp_attribute(x) 0
-#endif
-
 #ifndef __has_builtin
 # define __has_builtin(x) 0
 #endif
@@ -354,19 +350,6 @@
 # define LLVM_ADDRESS_SANITIZER_BUILD 0
 #endif
 
-/// \macro LLVM_IS_UNALIGNED_ACCESS_FAST
-/// \brief Is unaligned memory access fast on the host machine.
-///
-/// Don't specialize on alignment for platforms where unaligned memory accesses
-/// generates the same code as aligned memory accesses for common types.
-#if defined(_M_AMD64) || defined(_M_IX86) || defined(__amd64) || \
-    defined(__amd64__) || defined(__x86_64) || defined(__x86_64__) || \
-    defined(_X86_) || defined(__i386) || defined(__i386__)
-# define LLVM_IS_UNALIGNED_ACCESS_FAST 1
-#else
-# define LLVM_IS_UNALIGNED_ACCESS_FAST 0
-#endif
-
 /// \brief Mark debug helper function definitions like dump() that should not be
 /// stripped from debug builds.
 // FIXME: Move this to a private config.h as it's not usable in public headers.
@@ -403,14 +386,6 @@
 // If threading is disabled entirely, this compiles to nothing and you get
 // a normal global variable.
 #define LLVM_THREAD_LOCAL
-#endif
-
-/// \macro LLVM_FALLTHROUGH
-/// \brief Marks an empty statement preceding a deliberate switch fallthrough.
-#if __has_cpp_attribute(clang::fallthrough)
-#define LLVM_FALLTHROUGH [[clang::fallthrough]]
-#else
-#define LLVM_FALLTHROUGH
 #endif
 
 #endif
