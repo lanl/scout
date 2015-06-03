@@ -12,15 +12,14 @@
 #include "FuzzerInternal.h"
 #include <sanitizer/coverage_interface.h>
 #include <algorithm>
-#include <iostream>
 
 namespace fuzzer {
 
 // Only one Fuzzer per process.
 static Fuzzer *F;
 
-Fuzzer::Fuzzer(UserCallback Callback, FuzzingOptions Options)
-    : Callback(Callback), Options(Options) {
+Fuzzer::Fuzzer(UserSuppliedFuzzer &USF, FuzzingOptions Options)
+    : USF(USF), Options(Options) {
   SetDeathCallback();
   InitializeTraceState();
   assert(!F);
@@ -37,8 +36,7 @@ void Fuzzer::PrintUnitInASCIIOrTokens(const Unit &U, const char *PrintAfter) {
   } else {
     auto T = SubstituteTokens(U);
     T.push_back(0);
-    std::cerr << T.data();
-    std::cerr << PrintAfter;
+    Printf("%s%s", T.data(), PrintAfter);
   }
 }
 
@@ -48,7 +46,7 @@ void Fuzzer::StaticDeathCallback() {
 }
 
 void Fuzzer::DeathCallback() {
-  std::cerr << "DEATH: " <<  std::endl;
+  Printf("DEATH:\n");
   Print(CurrentUnit, "\n");
   PrintUnitInASCIIOrTokens(CurrentUnit, "\n");
   WriteToCrash(CurrentUnit, "crash-");
@@ -65,10 +63,11 @@ void Fuzzer::AlarmCallback() {
       duration_cast<seconds>(system_clock::now() - UnitStartTime).count();
   if (Seconds == 0) return;
   if (Options.Verbosity >= 2)
-    std::cerr << "AlarmCallback " << Seconds << "\n";
+    Printf("AlarmCallback %zd\n", Seconds);
   if (Seconds >= (size_t)Options.UnitTimeoutSec) {
-    std::cerr << "ALARM: working on the last Unit for " << Seconds << " seconds"
-              << std::endl;
+    Printf("ALARM: working on the last Unit for %zd seconds\n", Seconds);
+    Printf("       and the timeout value is %d (use -timeout=N to change)\n",
+           Options.UnitTimeoutSec);
     Print(CurrentUnit, "\n");
     PrintUnitInASCIIOrTokens(CurrentUnit, "\n");
     WriteToCrash(CurrentUnit, "timeout-");
@@ -80,14 +79,8 @@ void Fuzzer::PrintStats(const char *Where, size_t Cov, const char *End) {
   if (!Options.Verbosity) return;
   size_t Seconds = secondsSinceProcessStartUp();
   size_t ExecPerSec = (Seconds ? TotalNumberOfRuns / Seconds : 0);
-  std::cerr
-      << "#" << TotalNumberOfRuns
-      << "\t" << Where
-      << " cov " << Cov
-      << " bits " << TotalBits()
-      << " units " << Corpus.size()
-      << " exec/s " << ExecPerSec
-      << End;
+  Printf("#%zd\t%s cov %zd bits %zd units %zd exec/s %zd %s", TotalNumberOfRuns,
+         Where, Cov, TotalBits(), Corpus.size(), ExecPerSec, End);
 }
 
 void Fuzzer::RereadOutputCorpus() {
@@ -101,7 +94,7 @@ void Fuzzer::RereadOutputCorpus() {
   }
   if (!Options.Reload) return;
   if (Options.Verbosity >= 2)
-    std::cerr << "Reload: read " << AdditionalCorpus.size() << " new units.\n";
+    Printf("Reload: read %zd new units.\n",  AdditionalCorpus.size());
   for (auto &X : AdditionalCorpus) {
     if (X.size() > (size_t)Options.MaxLen)
       X.resize(Options.MaxLen);
@@ -124,7 +117,7 @@ void Fuzzer::ShuffleAndMinimize() {
       (Options.PreferSmallDuringInitialShuffle == 1 ||
        (Options.PreferSmallDuringInitialShuffle == -1 && rand() % 2));
   if (Options.Verbosity)
-    std::cerr << "PreferSmall: " << PreferSmall << "\n";
+    Printf("PreferSmall: %d\n", PreferSmall);
   PrintStats("READ  ", 0);
   std::vector<Unit> NewCorpus;
   std::random_shuffle(Corpus.begin(), Corpus.end());
@@ -143,9 +136,7 @@ void Fuzzer::ShuffleAndMinimize() {
         MaxCov = NewCoverage;
         NewCorpus.push_back(U);
         if (Options.Verbosity >= 2)
-          std::cerr << "NEW0: " << NewCoverage
-                    << " L " << U.size()
-                    << "\n";
+          Printf("NEW0: %zd L %zd\n", NewCoverage, U.size());
       }
     }
   }
@@ -161,8 +152,6 @@ size_t Fuzzer::RunOne(const Unit &U) {
   size_t Res = 0;
   if (Options.UseFullCoverageSet)
     Res = RunOneMaximizeFullCoverageSet(U);
-  else if (Options.UseCoveragePairs)
-    Res = RunOneMaximizeCoveragePairs(U);
   else
     Res = RunOneMaximizeTotalCoverage(U);
   auto UnitStopTime = system_clock::now();
@@ -170,8 +159,7 @@ size_t Fuzzer::RunOne(const Unit &U) {
       duration_cast<seconds>(UnitStopTime - UnitStartTime).count();
   if (TimeOfUnit > TimeOfLongestUnitInSeconds) {
     TimeOfLongestUnitInSeconds = TimeOfUnit;
-    std::cerr << "Longest unit: " << TimeOfLongestUnitInSeconds
-              << " s:\n";
+    Printf("Longest unit: %zd s:\n", TimeOfLongestUnitInSeconds);
     Print(U, "\n");
   }
   return Res;
@@ -207,33 +195,11 @@ Unit Fuzzer::SubstituteTokens(const Unit &U) const {
 
 void Fuzzer::ExecuteCallback(const Unit &U) {
   if (Options.Tokens.empty()) {
-    Callback(U.data(), U.size());
+    USF.TargetFunction(U.data(), U.size());
   } else {
     auto T = SubstituteTokens(U);
-    Callback(T.data(), T.size());
+    USF.TargetFunction(T.data(), T.size());
   }
-}
-
-// Experimental. Does not yet scale.
-// Fuly reset the current coverage state, run a single unit,
-// collect all coverage pairs and return non-zero if a new pair is observed.
-size_t Fuzzer::RunOneMaximizeCoveragePairs(const Unit &U) {
-  __sanitizer_reset_coverage();
-  ExecuteCallback(U);
-  uintptr_t *PCs;
-  uintptr_t NumPCs = __sanitizer_get_coverage_guards(&PCs);
-  bool HasNewPairs = false;
-  for (uintptr_t i = 0; i < NumPCs; i++) {
-    if (!PCs[i]) continue;
-    for (uintptr_t j = 0; j < NumPCs; j++) {
-      if (!PCs[j]) continue;
-      uint64_t Pair = (i << 32) | j;
-      HasNewPairs |= CoveragePairs.insert(Pair).second;
-    }
-  }
-  if (HasNewPairs)
-    return CoveragePairs.size();
-  return 0;
 }
 
 // Experimental.
@@ -279,14 +245,13 @@ void Fuzzer::WriteToOutputCorpus(const Unit &U) {
   std::string Path = DirPlusFile(Options.OutputCorpus, Hash(U));
   WriteToFile(U, Path);
   if (Options.Verbosity >= 2)
-    std::cerr << "Written to " << Path << std::endl;
+    Printf("Written to %s\n", Path.c_str());
 }
 
 void Fuzzer::WriteToCrash(const Unit &U, const char *Prefix) {
   std::string Path = Prefix + Hash(U);
   WriteToFile(U, Path);
-  std::cerr << "CRASHED; file written to " << Path << std::endl;
-  std::cerr << "Base64: ";
+  Printf("CRASHED; file written to %s\nBase64: ", Path.c_str());
   PrintFileAsBase64(Path);
 }
 
@@ -295,8 +260,8 @@ void Fuzzer::SaveCorpus() {
   for (const auto &U : Corpus)
     WriteToFile(U, DirPlusFile(Options.OutputCorpus, Hash(U)));
   if (Options.Verbosity)
-    std::cerr << "Written corpus of " << Corpus.size() << " files to "
-              << Options.OutputCorpus << "\n";
+    Printf("Written corpus of %zd files to %s\n", Corpus.size(),
+           Options.OutputCorpus.c_str());
 }
 
 void Fuzzer::ReportNewCoverage(size_t NewCoverage, const Unit &U) {
@@ -305,13 +270,13 @@ void Fuzzer::ReportNewCoverage(size_t NewCoverage, const Unit &U) {
   UnitHashesAddedToCorpus.insert(Hash(U));
   PrintStats("NEW   ", NewCoverage, "");
   if (Options.Verbosity) {
-    std::cerr << " L: " << U.size();
+    Printf(" L: %zd", U.size());
     if (U.size() < 30) {
-      std::cerr << " ";
+      Printf(" ");
       PrintUnitInASCIIOrTokens(U, "\t");
       Print(U);
     }
-    std::cerr << "\n";
+    Printf("\n");
   }
   WriteToOutputCorpus(U);
   if (Options.ExitOnFirst)
@@ -321,7 +286,13 @@ void Fuzzer::ReportNewCoverage(size_t NewCoverage, const Unit &U) {
 void Fuzzer::MutateAndTestOne(Unit *U) {
   for (int i = 0; i < Options.MutateDepth; i++) {
     StartTraceRecording();
-    Mutate(U, Options.MaxLen);
+    size_t Size = U->size();
+    U->resize(Options.MaxLen);
+    size_t NewSize = USF.Mutate(U->data(), Size, U->size());
+    assert(NewSize > 0 && "Mutator returned empty unit");
+    assert(NewSize <= (size_t)Options.MaxLen &&
+           "Mutator return overisized unit");
+    U->resize(NewSize);
     RunOneAndUpdateCorpus(*U);
     size_t NumTraceBasedMutations = StopTraceRecording();
     for (size_t j = 0; j < NumTraceBasedMutations; j++) {
@@ -342,10 +313,16 @@ void Fuzzer::Loop(size_t NumIterations) {
       CurrentUnit = Corpus[J1];
       MutateAndTestOne(&CurrentUnit);
       // Now, cross with others.
-      if (Options.DoCrossOver) {
+      if (Options.DoCrossOver && !Corpus[J1].empty()) {
         for (size_t J2 = 0; J2 < Corpus.size(); J2++) {
-          CurrentUnit.clear();
-          CrossOver(Corpus[J1], Corpus[J2], &CurrentUnit, Options.MaxLen);
+          CurrentUnit.resize(Options.MaxLen);
+          size_t NewSize = USF.CrossOver(
+              Corpus[J1].data(), Corpus[J1].size(), Corpus[J2].data(),
+              Corpus[J2].size(), CurrentUnit.data(), CurrentUnit.size());
+          assert(NewSize > 0 && "CrossOver returned empty unit");
+          assert(NewSize <= (size_t)Options.MaxLen &&
+                 "CrossOver return overisized unit");
+          CurrentUnit.resize(NewSize);
           MutateAndTestOne(&CurrentUnit);
         }
       }

@@ -236,60 +236,62 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     .Default(UnknownArch);
 }
 
-// FIXME: Use ARMTargetParser. This would require Triple::arm/thumb
-// to be recogniseable universally.
 static Triple::ArchType parseARMArch(StringRef ArchName) {
-  size_t offset = StringRef::npos;
+  unsigned ISA = ARMTargetParser::parseArchISA(ArchName);
+  unsigned ENDIAN = ARMTargetParser::parseArchEndian(ArchName);
+
   Triple::ArchType arch = Triple::UnknownArch;
-  bool isThumb = ArchName.startswith("thumb");
-
-  if (ArchName.equals("arm"))
-    return Triple::arm;
-  if (ArchName.equals("armeb"))
-    return Triple::armeb;
-  if (ArchName.equals("thumb"))
-    return Triple::thumb;
-  if (ArchName.equals("thumbeb"))
-    return Triple::thumbeb;
-  if (ArchName.equals("arm64") || ArchName.equals("aarch64"))
-    return Triple::aarch64;
-  if (ArchName.equals("aarch64_be"))
-    return Triple::aarch64_be;
-
-  if (ArchName.startswith("armv")) {
-    offset = 3;
-    if (ArchName.endswith("eb")) {
-      arch = Triple::armeb;
-      ArchName = ArchName.substr(0, ArchName.size() - 2);
-    } else
+  switch (ENDIAN) {
+  case ARM::EK_LITTLE: {
+    switch (ISA) {
+    case ARM::IK_ARM:
       arch = Triple::arm;
-  } else if (ArchName.startswith("armebv")) {
-    offset = 5;
-    arch = Triple::armeb;
-  } else if (ArchName.startswith("thumbv")) {
-    offset = 5;
-    if (ArchName.endswith("eb")) {
-      arch = Triple::thumbeb;
-      ArchName = ArchName.substr(0, ArchName.size() - 2);
-    } else
+      break;
+    case ARM::IK_THUMB:
       arch = Triple::thumb;
-  } else if (ArchName.startswith("thumbebv")) {
-    offset = 7;
-    arch = Triple::thumbeb;
+      break;
+    case ARM::IK_AARCH64:
+      arch = Triple::aarch64;
+      break;
+    }
+    break;
   }
-  return StringSwitch<Triple::ArchType>(ArchName.substr(offset))
-    .Cases("v2", "v2a", isThumb ? Triple::UnknownArch : arch)
-    .Cases("v3", "v3m", isThumb ? Triple::UnknownArch : arch)
-    .Cases("v4", "v4t", arch)
-    .Cases("v5", "v5e", "v5t", "v5te", "v5tej", arch)
-    .Cases("v6", "v6hl", "v6j", "v6k", arch)
-    .Cases("v6m", "v6sm", arch)
-    .Cases("v6t2", "v6z", "v6zk", arch)
-    .Cases("v7", "v7a", "v7em", "v7hl", "v7l", arch)
-    .Cases("v7m", "v7r", "v7s", arch)
-    .Cases("v8", "v8a", arch)
-    .Cases("v8.1", "v8.1a", arch)
-    .Default(Triple::UnknownArch);
+  case ARM::EK_BIG: {
+    switch (ISA) {
+    case ARM::IK_ARM:
+      arch = Triple::armeb;
+      break;
+    case ARM::IK_THUMB:
+      arch = Triple::thumbeb;
+      break;
+    case ARM::IK_AARCH64:
+      arch = Triple::aarch64_be;
+      break;
+    }
+    break;
+  }
+  }
+
+  ArchName = ARMTargetParser::getCanonicalArchName(ArchName);
+  if (ArchName.empty())
+    return Triple::UnknownArch;
+
+  // Thumb only exists in v4+
+  if (ISA == ARM::IK_THUMB &&
+      (ArchName.startswith("v2") || ArchName.startswith("v3")))
+    return Triple::UnknownArch;
+
+  // Thumb only for v6m
+  unsigned Profile = ARMTargetParser::parseArchProfile(ArchName);
+  unsigned Version = ARMTargetParser::parseArchVersion(ArchName);
+  if (Profile == ARM::PK_M && Version == 6) {
+    if (ENDIAN == ARM::EK_BIG)
+      return Triple::thumbeb;
+    else
+      return Triple::thumb;
+  }
+
+  return arch;
 }
 
 static Triple::ArchType parseArch(StringRef ArchName) {
@@ -407,37 +409,65 @@ static Triple::ObjectFormatType parseFormat(StringRef EnvironmentName) {
     .Default(Triple::UnknownObjectFormat);
 }
 
-// FIXME: Use ARMTargetParser. This would require using Triple::ARMSubArch*
-// in ARMBuildAttrs and in ARCHNames' DefaultArch fields.
 static Triple::SubArchType parseSubArch(StringRef SubArchName) {
-  if (SubArchName.endswith("eb"))
-    SubArchName = SubArchName.substr(0, SubArchName.size() - 2);
+  StringRef ARMSubArch = ARMTargetParser::getCanonicalArchName(SubArchName);
 
-  return StringSwitch<Triple::SubArchType>(SubArchName)
-    .EndsWith("v8.1a", Triple::ARMSubArch_v8_1a)
-    .EndsWith("v8", Triple::ARMSubArch_v8)
-    .EndsWith("v8a", Triple::ARMSubArch_v8)
-    .EndsWith("v7", Triple::ARMSubArch_v7)
-    .EndsWith("v7a", Triple::ARMSubArch_v7)
-    .EndsWith("v7em", Triple::ARMSubArch_v7em)
-    .EndsWith("v7l", Triple::ARMSubArch_v7)
-    .EndsWith("v7m", Triple::ARMSubArch_v7m)
-    .EndsWith("v7r", Triple::ARMSubArch_v7)
-    .EndsWith("v7s", Triple::ARMSubArch_v7s)
-    .EndsWith("v6", Triple::ARMSubArch_v6)
-    .EndsWith("v6m", Triple::ARMSubArch_v6m)
-    .EndsWith("v6sm", Triple::ARMSubArch_v6m)
-    .EndsWith("v6k", Triple::ARMSubArch_v6k)
-    .EndsWith("v6t2", Triple::ARMSubArch_v6t2)
-    .EndsWith("v5", Triple::ARMSubArch_v5)
-    .EndsWith("v5e", Triple::ARMSubArch_v5)
-    .EndsWith("v5t", Triple::ARMSubArch_v5)
-    .EndsWith("v5te", Triple::ARMSubArch_v5te)
-    .EndsWith("v4t", Triple::ARMSubArch_v4t)
-    .EndsWith("kalimba3", Triple::KalimbaSubArch_v3)
-    .EndsWith("kalimba4", Triple::KalimbaSubArch_v4)
-    .EndsWith("kalimba5", Triple::KalimbaSubArch_v5)
-    .Default(Triple::NoSubArch);
+  // For now, this is the small part. Early return.
+  if (ARMSubArch.empty())
+    return StringSwitch<Triple::SubArchType>(SubArchName)
+      .EndsWith("kalimba3", Triple::KalimbaSubArch_v3)
+      .EndsWith("kalimba4", Triple::KalimbaSubArch_v4)
+      .EndsWith("kalimba5", Triple::KalimbaSubArch_v5)
+      .Default(Triple::NoSubArch);
+
+  // ARM sub arch.
+  switch(ARMTargetParser::parseArch(ARMSubArch)) {
+  case ARM::AK_ARMV4:
+    return Triple::NoSubArch;
+  case ARM::AK_ARMV4T:
+    return Triple::ARMSubArch_v4t;
+  case ARM::AK_ARMV5:
+  case ARM::AK_ARMV5T:
+  case ARM::AK_ARMV5E:
+    return Triple::ARMSubArch_v5;
+  case ARM::AK_ARMV5TE:
+  case ARM::AK_IWMMXT:
+  case ARM::AK_IWMMXT2:
+  case ARM::AK_XSCALE:
+  case ARM::AK_ARMV5TEJ:
+    return Triple::ARMSubArch_v5te;
+  case ARM::AK_ARMV6:
+  case ARM::AK_ARMV6J:
+  case ARM::AK_ARMV6Z:
+    return Triple::ARMSubArch_v6;
+  case ARM::AK_ARMV6K:
+  case ARM::AK_ARMV6ZK:
+  case ARM::AK_ARMV6HL:
+    return Triple::ARMSubArch_v6k;
+  case ARM::AK_ARMV6T2:
+    return Triple::ARMSubArch_v6t2;
+  case ARM::AK_ARMV6M:
+  case ARM::AK_ARMV6SM:
+    return Triple::ARMSubArch_v6m;
+  case ARM::AK_ARMV7:
+  case ARM::AK_ARMV7A:
+  case ARM::AK_ARMV7R:
+  case ARM::AK_ARMV7L:
+  case ARM::AK_ARMV7HL:
+    return Triple::ARMSubArch_v7;
+  case ARM::AK_ARMV7M:
+    return Triple::ARMSubArch_v7m;
+  case ARM::AK_ARMV7S:
+    return Triple::ARMSubArch_v7s;
+  case ARM::AK_ARMV7EM:
+    return Triple::ARMSubArch_v7em;
+  case ARM::AK_ARMV8A:
+    return Triple::ARMSubArch_v8;
+  case ARM::AK_ARMV8_1A:
+    return Triple::ARMSubArch_v8_1a;
+  default:
+    return Triple::NoSubArch;
+  }
 }
 
 static const char *getObjectFormatTypeName(Triple::ObjectFormatType Kind) {
@@ -672,6 +702,16 @@ std::string Triple::normalize(StringRef Str) {
 
   // Special case logic goes here.  At this point Arch, Vendor and OS have the
   // correct values for the computed components.
+  std::string NormalizedEnvironment;
+  if (Environment == Triple::Android && Components[3].startswith("androideabi")) {
+    StringRef AndroidVersion = Components[3].drop_front(strlen("androideabi"));
+    if (AndroidVersion.empty()) {
+      Components[3] = "android";
+    } else {
+      NormalizedEnvironment = Twine("android", AndroidVersion).str();
+      Components[3] = NormalizedEnvironment;
+    }
+  }
 
   if (OS == Triple::Win32) {
     Components.resize(4);
@@ -749,39 +789,45 @@ static unsigned EatNumber(StringRef &Str) {
   return Result;
 }
 
+static void parseVersionFromName(StringRef Name, unsigned &Major,
+                                 unsigned &Minor, unsigned &Micro) {
+  // Any unset version defaults to 0.
+  Major = Minor = Micro = 0;
+
+  // Parse up to three components.
+  unsigned *Components[3] = {&Major, &Minor, &Micro};
+  for (unsigned i = 0; i != 3; ++i) {
+    if (Name.empty() || Name[0] < '0' || Name[0] > '9')
+      break;
+
+    // Consume the leading number.
+    *Components[i] = EatNumber(Name);
+
+    // Consume the separator, if present.
+    if (Name.startswith("."))
+      Name = Name.substr(1);
+  }
+}
+
+void Triple::getEnvironmentVersion(unsigned &Major, unsigned &Minor,
+                                   unsigned &Micro) const {
+  StringRef EnvironmentName = getEnvironmentName();
+  StringRef EnvironmentTypeName = getEnvironmentTypeName(getEnvironment());
+  if (EnvironmentName.startswith(EnvironmentTypeName))
+    EnvironmentName = EnvironmentName.substr(EnvironmentTypeName.size());
+
+  parseVersionFromName(EnvironmentName, Major, Minor, Micro);
+}
+
 void Triple::getOSVersion(unsigned &Major, unsigned &Minor,
                           unsigned &Micro) const {
   StringRef OSName = getOSName();
-
-  // For Android, we care about the Android version rather than the Linux
-  // version.
-  if (getEnvironment() == Android) {
-    OSName = getEnvironmentName().substr(strlen("android"));
-    if (OSName.startswith("eabi"))
-      OSName = OSName.substr(strlen("eabi"));
-  }
-
   // Assume that the OS portion of the triple starts with the canonical name.
   StringRef OSTypeName = getOSTypeName(getOS());
   if (OSName.startswith(OSTypeName))
     OSName = OSName.substr(OSTypeName.size());
 
-  // Any unset version defaults to 0.
-  Major = Minor = Micro = 0;
-
-  // Parse up to three components.
-  unsigned *Components[3] = { &Major, &Minor, &Micro };
-  for (unsigned i = 0; i != 3; ++i) {
-    if (OSName.empty() || OSName[0] < '0' || OSName[0] > '9')
-      break;
-
-    // Consume the leading number.
-    *Components[i] = EatNumber(OSName);
-
-    // Consume the separator, if present.
-    if (OSName.startswith("."))
-      OSName = OSName.substr(1);
-  }
+  parseVersionFromName(OSName, Major, Minor, Micro);
 }
 
 bool Triple::getMacOSXVersion(unsigned &Major, unsigned &Minor,
@@ -1075,8 +1121,6 @@ Triple Triple::get64BitArchVariant() const {
   return T;
 }
 
-// FIXME: Use ARMTargetParser. This would require ARCHNames to hold
-// specific CPU names, as well as default CPU arch.
 const char *Triple::getARMCPUForArch(StringRef MArch) const {
   if (MArch.empty())
     MArch = getArchName();
@@ -1085,8 +1129,8 @@ const char *Triple::getARMCPUForArch(StringRef MArch) const {
   switch (getOS()) {
   case llvm::Triple::FreeBSD:
   case llvm::Triple::NetBSD:
-    // FIXME: This doesn't work on BE/thumb variants.
-    if (MArch == "armv6")
+    MArch = ARMTargetParser::getCanonicalArchName(MArch);
+    if (!MArch.empty() && MArch == "v6")
       return "arm1176jzf-s";
     break;
   case llvm::Triple::Win32:

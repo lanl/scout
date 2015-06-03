@@ -22,7 +22,7 @@ add_llvm_library(LLVMAsmPrinter
   EHStreamer.cpp
   ErlangGCPrinter.cpp
   OcamlGCPrinter.cpp
-  Win64Exception.cpp
+  WinException.cpp
   WinCodeViewLineTables.cpp
 # +===== Scout =====================
   LINK_LIBS

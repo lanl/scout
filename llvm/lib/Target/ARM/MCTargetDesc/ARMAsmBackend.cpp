@@ -154,7 +154,7 @@ void ARMAsmBackend::handleAssemblerFlag(MCAssemblerFlag Flag) {
 } // end anonymous namespace
 
 unsigned ARMAsmBackend::getRelaxedOpcode(unsigned Op) const {
-  bool HasThumb2 = STI->getFeatureBits() & ARM::FeatureThumb2;
+  bool HasThumb2 = STI->getFeatureBits()[ARM::FeatureThumb2];
 
   switch (Op) {
   default:
@@ -601,8 +601,7 @@ void ARMAsmBackend::processFixupValue(const MCAssembler &Asm,
   // the offset when the destination has the same MCFragment.
   if (A && (unsigned)Fixup.getKind() == ARM::fixup_arm_thumb_bl) {
     const MCSymbol &Sym = A->getSymbol();
-    const MCSymbolData &SymData = Asm.getSymbolData(Sym);
-    IsResolved = (SymData.getFragment() == DF);
+    IsResolved = (Sym.getFragment() == DF);
   }
   // We must always generate a relocation for BL/BLX instructions if we have
   // a symbol to reference, as the linker relies on knowing the destination

@@ -53,32 +53,34 @@ namespace ARM {
     AK_ARMV3M,
     AK_ARMV4,
     AK_ARMV4T,
-    AK_ARMV5,
     AK_ARMV5T,
     AK_ARMV5TE,
+    AK_ARMV5TEJ,
     AK_ARMV6,
-    AK_ARMV6J,
     AK_ARMV6K,
     AK_ARMV6T2,
     AK_ARMV6Z,
     AK_ARMV6ZK,
     AK_ARMV6M,
-    AK_ARMV7,
+    AK_ARMV6SM,
     AK_ARMV7A,
     AK_ARMV7R,
     AK_ARMV7M,
+    AK_ARMV7EM,
     AK_ARMV8A,
     AK_ARMV8_1A,
     // Non-standard Arch names.
     AK_IWMMXT,
     AK_IWMMXT2,
     AK_XSCALE,
+    AK_ARMV5,
     AK_ARMV5E,
-    AK_ARMV5TEJ,
-    AK_ARMV6SM,
+    AK_ARMV6J,
+    AK_ARMV6HL,
+    AK_ARMV7,
     AK_ARMV7L,
+    AK_ARMV7HL,
     AK_ARMV7S,
-    AK_ARMV7EM,
     AK_LAST
   };
 
@@ -90,11 +92,41 @@ namespace ARM {
     AEK_FP,
     AEK_HWDIV,
     AEK_MP,
+    AEK_SIMD,
     AEK_SEC,
     AEK_VIRT,
+    // Unsupported extensions.
+    AEK_OS,
+    AEK_IWMMXT,
+    AEK_IWMMXT2,
+    AEK_MAVERICK,
+    AEK_XSCALE,
     AEK_LAST
   };
 
+  // ISA kinds.
+  enum ISAKind {
+    IK_INVALID = 0,
+    IK_ARM,
+    IK_THUMB,
+    IK_AARCH64
+  };
+
+  // Endianness
+  // FIXME: BE8 vs. BE32?
+  enum EndianKind {
+    EK_INVALID = 0,
+    EK_LITTLE,
+    EK_BIG
+  };
+
+  // v6/v7/v8 Profile
+  enum ProfileKind {
+    PK_INVALID = 0,
+    PK_A,
+    PK_R,
+    PK_M
+  };
 } // namespace ARM
 
 // Target Parsers, one per architecture.
@@ -108,8 +140,9 @@ public:
   // Information by ID
   static const char * getFPUName(unsigned FPUKind);
   static const char * getArchName(unsigned ArchKind);
-  static unsigned getArchDefaultCPUArch(unsigned ArchKind);
-  static const char * getArchDefaultCPUName(unsigned ArchKind);
+  static   unsigned   getArchAttr(unsigned ArchKind);
+  static const char * getCPUAttr(unsigned ArchKind);
+  static const char * getSubArch(unsigned ArchKind);
   static const char * getArchExtName(unsigned ArchExtKind);
   static const char * getDefaultCPU(StringRef Arch);
 
@@ -118,6 +151,11 @@ public:
   static unsigned parseArch(StringRef Arch);
   static unsigned parseArchExt(StringRef ArchExt);
   static unsigned parseCPUArch(StringRef CPU);
+  static unsigned parseArchISA(StringRef Arch);
+  static unsigned parseArchEndian(StringRef Arch);
+  static unsigned parseArchProfile(StringRef Arch);
+  static unsigned parseArchVersion(StringRef Arch);
+
 };
 
 } // namespace llvm

@@ -42,15 +42,15 @@ public:
   ~X86MCCodeEmitter() override {}
 
   bool is64BitMode(const MCSubtargetInfo &STI) const {
-    return (STI.getFeatureBits() & X86::Mode64Bit) != 0;
+    return STI.getFeatureBits()[X86::Mode64Bit];
   }
 
   bool is32BitMode(const MCSubtargetInfo &STI) const {
-    return (STI.getFeatureBits() & X86::Mode32Bit) != 0;
+    return STI.getFeatureBits()[X86::Mode32Bit];
   }
 
   bool is16BitMode(const MCSubtargetInfo &STI) const {
-    return (STI.getFeatureBits() & X86::Mode16Bit) != 0;
+    return STI.getFeatureBits()[X86::Mode16Bit];
   }
 
   /// Is16BitMemOperand - Return true if the specified instruction has
@@ -304,7 +304,7 @@ EmitImmediate(const MCOperand &DispOp, SMLoc Loc, unsigned Size,
       EmitConstant(DispOp.getImm()+ImmOffset, Size, CurByte, OS);
       return;
     }
-    Expr = MCConstantExpr::Create(DispOp.getImm(), Ctx);
+    Expr = MCConstantExpr::create(DispOp.getImm(), Ctx);
   } else {
     Expr = DispOp.getExpr();
   }
@@ -351,7 +351,7 @@ EmitImmediate(const MCOperand &DispOp, SMLoc Loc, unsigned Size,
     ImmOffset -= 1;
 
   if (ImmOffset)
-    Expr = MCBinaryExpr::CreateAdd(Expr, MCConstantExpr::Create(ImmOffset, Ctx),
+    Expr = MCBinaryExpr::createAdd(Expr, MCConstantExpr::create(ImmOffset, Ctx),
                                    Ctx);
 
   // Emit a symbolic constant as a fixup and 4 zeros.

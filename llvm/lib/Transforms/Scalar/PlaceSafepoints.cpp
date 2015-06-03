@@ -16,7 +16,7 @@
 // return PC of the call.  A runtime can determine where values listed in the
 // deopt arguments and (after RewriteStatepointsForGC) gc arguments are located
 // on the stack when the code is suspended inside such a call.  Every parse
-// point is represented by a call wrapped in an gc.statepoint intrinsic.  
+// point is represented by a call wrapped in an gc.statepoint intrinsic.
 // - A "poll" is an explicit check in the generated code to determine if the
 // runtime needs the generated code to cooperate by calling a helper routine
 // and thus suspending its execution at a known state. The call to the helper
@@ -127,7 +127,7 @@ struct PlaceBackedgeSafepointsImpl : public FunctionPass {
   ScalarEvolution *SE = nullptr;
   DominatorTree *DT = nullptr;
   LoopInfo *LI = nullptr;
-  
+
   PlaceBackedgeSafepointsImpl(bool CallSafepoints = false)
       : FunctionPass(ID), CallSafepointsEnabled(CallSafepoints) {
     initializePlaceBackedgeSafepointsImplPass(*PassRegistry::getPassRegistry());
@@ -150,7 +150,7 @@ struct PlaceBackedgeSafepointsImpl : public FunctionPass {
     }
     return false;
   }
-  
+
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addRequired<DominatorTreeWrapperPass>();
     AU.addRequired<ScalarEvolution>();
@@ -186,8 +186,8 @@ struct PlaceSafepoints : public FunctionPass {
 // Insert a safepoint poll immediately before the given instruction.  Does
 // not handle the parsability of state at the runtime call, that's the
 // callers job.
-static void 
-InsertSafepointPoll(Instruction *after,
+static void
+InsertSafepointPoll(Instruction *InsertBefore,
                     std::vector<CallSite> &ParsePointsNeeded /*rval*/);
 
 static bool isGCLeafFunction(const CallSite &CS);
@@ -329,7 +329,7 @@ static void scanInlinedCode(Instruction *start, Instruction *end,
 
 bool PlaceBackedgeSafepointsImpl::runOnLoop(Loop *L) {
   // Loop through all loop latches (branches controlling backedges).  We need
-  // to place a safepoint on every backedge (potentially). 
+  // to place a safepoint on every backedge (potentially).
   // Note: In common usage, there will be only one edge due to LoopSimplify
   // having run sometime earlier in the pipeline, but this code must be correct
   // w.r.t. loops with multiple backedges.
@@ -383,7 +383,7 @@ bool PlaceBackedgeSafepointsImpl::runOnLoop(Loop *L) {
 }
 
 /// Returns true if an entry safepoint is not required before this callsite in
-/// the caller function.  
+/// the caller function.
 static bool doesNotRequireEntrySafepointBefore(const CallSite &CS) {
   Instruction *Inst = CS.getInstruction();
   if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(Inst)) {
@@ -416,12 +416,6 @@ static Instruction *findLocationForEntrySafepoint(Function &F,
   // can place it as late as we want as long as it dominates all calls
   // that can grow the stack.  This, combined with backedge polls,
   // give us all the progress guarantees we need.
-
-  // Due to the way the frontend generates IR, we may have a couple of initial
-  // basic blocks before the first bytecode.  These will be single-entry
-  // single-exit blocks which conceptually are just part of the first 'real
-  // basic block'.  Since we don't have deopt state until the first bytecode,
-  // walk forward until we've found the first unconditional branch or merge.
 
   // hasNextInstruction and nextInstruction are used to iterate
   // through a "straight line" execution sequence.
@@ -465,17 +459,7 @@ static Instruction *findLocationForEntrySafepoint(Function &F,
   assert((hasNextInstruction(cursor) || cursor->isTerminator()) &&
          "either we stopped because of a call, or because of terminator");
 
-  if (cursor->isTerminator()) {
-    return cursor;
-  }
-
-  BasicBlock *BB = cursor->getParent();
-  SplitBlock(BB, cursor, &DT);
-
-  // SplitBlock updates the DT
-  DEBUG(DT.verifyDomTree());
-
-  return BB->getTerminator();
+  return cursor;
 }
 
 /// Identify the list of call sites which need to be have parseable state
@@ -520,7 +504,7 @@ static bool isGCSafepointPoll(Function &F) {
 
 /// Returns true if this function should be rewritten to include safepoint
 /// polls and parseable call sites.  The main point of this function is to be
-/// an extension point for custom logic. 
+/// an extension point for custom logic.
 static bool shouldRewriteFunction(Function &F) {
   // TODO: This should check the GCStrategy
   if (F.hasGC()) {
@@ -528,7 +512,7 @@ static bool shouldRewriteFunction(Function &F) {
     const StringRef StatepointExampleName("statepoint-example");
     const StringRef CoreCLRName("coreclr");
     return (StatepointExampleName == FunctionGCName) ||
-      (CoreCLRName == FunctionGCName);
+           (CoreCLRName == FunctionGCName);
   } else
     return false;
 }
@@ -567,7 +551,7 @@ bool PlaceSafepoints::runOnFunction(Function &F) {
   if (isGCSafepointPoll(F)) {
     // Given we're inlining this inside of safepoint poll insertion, this
     // doesn't make any sense.  Note that we do make any contained calls
-    // parseable after we inline a poll.  
+    // parseable after we inline a poll.
     return false;
   }
 
@@ -629,7 +613,7 @@ bool PlaceSafepoints::runOnFunction(Function &F) {
     for (TerminatorInst *Term : PollLocations) {
       // We are inserting a poll, the function is modified
       modified = true;
-      
+
       if (SplitBackedge) {
         // Split the backedge of the loop and insert the poll within that new
         // basic block.  This creates a loop with two latches per original
@@ -690,7 +674,7 @@ bool PlaceSafepoints::runOnFunction(Function &F) {
   // The dominator tree has been invalidated by the inlining performed in the
   // above loop.  TODO: Teach the inliner how to update the dom tree?
   DT.recalculate(F);
-  
+
   if (enableCallSafepoints(F)) {
     std::vector<CallSite> Calls;
     findCallSafepoints(F, Calls);
@@ -801,42 +785,39 @@ static bool isGCLeafFunction(const CallSite &CS) {
 }
 
 static void
-InsertSafepointPoll(Instruction *term,
+InsertSafepointPoll(Instruction *InsertBefore,
                     std::vector<CallSite> &ParsePointsNeeded /*rval*/) {
-  Module *M = term->getParent()->getParent()->getParent();
-  assert(M);
+  BasicBlock *OrigBB = InsertBefore->getParent();
+  Module *M = InsertBefore->getModule();
+  assert(M && "must be part of a module");
 
   // Inline the safepoint poll implementation - this will get all the branch,
   // control flow, etc..  Most importantly, it will introduce the actual slow
   // path call - where we need to insert a safepoint (parsepoint).
-  FunctionType *ftype =
-      FunctionType::get(Type::getVoidTy(M->getContext()), false);
-  assert(ftype && "null?");
-  // Note: This cast can fail if there's a function of the same name with a
-  // different type inserted previously
-  Function *F =
-      dyn_cast<Function>(M->getOrInsertFunction("gc.safepoint_poll", ftype));
-  assert(F && "void @gc.safepoint_poll() must be defined");
+
+  auto *F = M->getFunction(GCSafepointPollName);
+  assert(F->getType()->getElementType() ==
+         FunctionType::get(Type::getVoidTy(M->getContext()), false) &&
+         "gc.safepoint_poll declared with wrong type");
   assert(!F->empty() && "gc.safepoint_poll must be a non-empty function");
-  CallInst *poll = CallInst::Create(F, "", term);
+  CallInst *PollCall = CallInst::Create(F, "", InsertBefore);
 
   // Record some information about the call site we're replacing
-  BasicBlock *OrigBB = term->getParent();
-  BasicBlock::iterator before(poll), after(poll);
+  BasicBlock::iterator before(PollCall), after(PollCall);
   bool isBegin(false);
-  if (before == term->getParent()->begin()) {
+  if (before == OrigBB->begin()) {
     isBegin = true;
   } else {
     before--;
   }
   after++;
-  assert(after != poll->getParent()->end() && "must have successor");
+  assert(after != OrigBB->end() && "must have successor");
 
   // do the actual inlining
   InlineFunctionInfo IFI;
-  bool inlineStatus = InlineFunction(poll, IFI);
-  assert(inlineStatus && "inline must succeed");
-  (void)inlineStatus; // suppress warning in release-asserts
+  bool InlineStatus = InlineFunction(PollCall, IFI);
+  assert(InlineStatus && "inline must succeed");
+  (void)InlineStatus; // suppress warning in release-asserts
 
   // Check post conditions
   assert(IFI.StaticAllocas.empty() && "can't have allocs");

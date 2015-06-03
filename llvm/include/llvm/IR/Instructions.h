@@ -177,8 +177,12 @@ protected:
 public:
   LoadInst(Value *Ptr, const Twine &NameStr, Instruction *InsertBefore);
   LoadInst(Value *Ptr, const Twine &NameStr, BasicBlock *InsertAtEnd);
-  LoadInst(Value *Ptr, const Twine &NameStr, bool isVolatile = false,
+  LoadInst(Type *Ty, Value *Ptr, const Twine &NameStr, bool isVolatile = false,
            Instruction *InsertBefore = nullptr);
+  LoadInst(Value *Ptr, const Twine &NameStr, bool isVolatile = false,
+           Instruction *InsertBefore = nullptr)
+      : LoadInst(cast<PointerType>(Ptr->getType())->getElementType(), Ptr,
+                 NameStr, isVolatile, InsertBefore) {}
   LoadInst(Value *Ptr, const Twine &NameStr, bool isVolatile,
            BasicBlock *InsertAtEnd);
   LoadInst(Value *Ptr, const Twine &NameStr, bool isVolatile, unsigned Align,
@@ -205,9 +209,13 @@ public:
 
   LoadInst(Value *Ptr, const char *NameStr, Instruction *InsertBefore);
   LoadInst(Value *Ptr, const char *NameStr, BasicBlock *InsertAtEnd);
+  LoadInst(Type *Ty, Value *Ptr, const char *NameStr = nullptr,
+           bool isVolatile = false, Instruction *InsertBefore = nullptr);
   explicit LoadInst(Value *Ptr, const char *NameStr = nullptr,
                     bool isVolatile = false,
-                    Instruction *InsertBefore = nullptr);
+                    Instruction *InsertBefore = nullptr)
+      : LoadInst(cast<PointerType>(Ptr->getType())->getElementType(), Ptr,
+                 NameStr, isVolatile, InsertBefore) {}
   LoadInst(Value *Ptr, const char *NameStr, bool isVolatile,
            BasicBlock *InsertAtEnd);
 
@@ -802,6 +810,7 @@ inline Type *checkGEPType(Type *Ty) {
 ///
 class GetElementPtrInst : public Instruction {
   Type *SourceElementType;
+  Type *ResultElementType;
 
   GetElementPtrInst(const GetElementPtrInst &GEPI);
   void init(Value *Ptr, ArrayRef<Value *> IdxList, const Twine &NameStr);
@@ -895,9 +904,12 @@ public:
   Type *getSourceElementType() const { return SourceElementType; }
 
   void setSourceElementType(Type *Ty) { SourceElementType = Ty; }
+  void setResultElementType(Type *Ty) { ResultElementType = Ty; }
 
   Type *getResultElementType() const {
-    return cast<PointerType>(getType()->getScalarType())->getElementType();
+    assert(ResultElementType ==
+           cast<PointerType>(getType()->getScalarType())->getElementType());
+    return ResultElementType;
   }
 
   /// \brief Returns the address space of this instruction's pointer type.
@@ -1020,7 +1032,10 @@ GetElementPtrInst::GetElementPtrInst(Type *PointeeType, Value *Ptr,
     : Instruction(getGEPReturnType(PointeeType, Ptr, IdxList), GetElementPtr,
                   OperandTraits<GetElementPtrInst>::op_end(this) - Values,
                   Values, InsertBefore),
-      SourceElementType(PointeeType) {
+      SourceElementType(PointeeType),
+      ResultElementType(getIndexedType(PointeeType, IdxList)) {
+  assert(ResultElementType ==
+         cast<PointerType>(getType()->getScalarType())->getElementType());
   init(Ptr, IdxList, NameStr);
 }
 GetElementPtrInst::GetElementPtrInst(Type *PointeeType, Value *Ptr,
@@ -1030,7 +1045,10 @@ GetElementPtrInst::GetElementPtrInst(Type *PointeeType, Value *Ptr,
     : Instruction(getGEPReturnType(PointeeType, Ptr, IdxList), GetElementPtr,
                   OperandTraits<GetElementPtrInst>::op_end(this) - Values,
                   Values, InsertAtEnd),
-      SourceElementType(PointeeType) {
+      SourceElementType(PointeeType),
+      ResultElementType(getIndexedType(PointeeType, IdxList)) {
+  assert(ResultElementType ==
+         cast<PointerType>(getType()->getScalarType())->getElementType());
   init(Ptr, IdxList, NameStr);
 }
 
