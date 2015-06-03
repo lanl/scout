@@ -113,11 +113,11 @@ static void LowerDextDins(MCInst& InstIn) {
 }
 
 bool MipsMCCodeEmitter::isMicroMips(const MCSubtargetInfo &STI) const {
-  return STI.getFeatureBits() & Mips::FeatureMicroMips;
+  return STI.getFeatureBits()[Mips::FeatureMicroMips];
 }
 
 bool MipsMCCodeEmitter::isMips32r6(const MCSubtargetInfo &STI) const {
-  return STI.getFeatureBits() & Mips::FeatureMips32r6;
+  return STI.getFeatureBits()[Mips::FeatureMips32r6];
 }
 
 void MipsMCCodeEmitter::EmitByte(unsigned char C, raw_ostream &OS) const {
@@ -467,7 +467,7 @@ getExprOpValue(const MCExpr *Expr, SmallVectorImpl<MCFixup> &Fixups,
                const MCSubtargetInfo &STI) const {
   int64_t Res;
 
-  if (Expr->EvaluateAsAbsolute(Res))
+  if (Expr->evaluateAsAbsolute(Res))
     return Res;
 
   MCExpr::ExprKind Kind = Expr->getKind();

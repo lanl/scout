@@ -30,6 +30,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Statepoint.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
@@ -74,13 +75,27 @@ static cl::opt<bool, true> ClobberNonLiveOverride("rs4gc-clobber-non-live",
                                                   cl::Hidden);
 
 namespace {
-struct RewriteStatepointsForGC : public FunctionPass {
+struct RewriteStatepointsForGC : public ModulePass {
   static char ID; // Pass identification, replacement for typeid
 
-  RewriteStatepointsForGC() : FunctionPass(ID) {
+  RewriteStatepointsForGC() : ModulePass(ID) {
     initializeRewriteStatepointsForGCPass(*PassRegistry::getPassRegistry());
   }
-  bool runOnFunction(Function &F) override;
+  bool runOnFunction(Function &F);
+  bool runOnModule(Module &M) override {
+    bool Changed = false;
+    for (Function &F : M)
+      Changed |= runOnFunction(F);
+
+    if (Changed) {
+      // stripDereferenceabilityInfo asserts that shouldRewriteStatepointsIn
+      // returns true for at least one function in the module.  Since at least
+      // one function changed, we know that the precondition is satisfied.
+      stripDereferenceabilityInfo(M);
+    }
+
+    return Changed;
+  }
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     // We add and rewrite a bunch of instructions, but don't really do much
@@ -88,12 +103,26 @@ struct RewriteStatepointsForGC : public FunctionPass {
     AU.addRequired<DominatorTreeWrapperPass>();
     AU.addRequired<TargetTransformInfoWrapperPass>();
   }
+
+  /// The IR fed into RewriteStatepointsForGC may have had attributes implying
+  /// dereferenceability that are no longer valid/correct after
+  /// RewriteStatepointsForGC has run.  This is because semantically, after
+  /// RewriteStatepointsForGC runs, all calls to gc.statepoint "free" the entire
+  /// heap.  stripDereferenceabilityInfo (conservatively) restores correctness
+  /// by erasing all attributes in the module that externally imply
+  /// dereferenceability.
+  ///
+  void stripDereferenceabilityInfo(Module &M);
+
+  // Helpers for stripDereferenceabilityInfo
+  void stripDereferenceabilityInfoFromBody(Function &F);
+  void stripDereferenceabilityInfoFromPrototype(Function &F);
 };
 } // namespace
 
 char RewriteStatepointsForGC::ID = 0;
 
-FunctionPass *llvm::createRewriteStatepointsForGCPass() {
+ModulePass *llvm::createRewriteStatepointsForGCPass() {
   return new RewriteStatepointsForGC();
 }
 
@@ -307,18 +336,18 @@ static Value *findBaseOfVector(Value *I, Value *Index) {
 
   // For an insert element, we might be able to look through it if we know
   // something about the indexes, but if the indices are arbitrary values, we
-  // can't without much more extensive scalarization. 
+  // can't without much more extensive scalarization.
   if (InsertElementInst *IEI = dyn_cast<InsertElementInst>(I)) {
     Value *InsertIndex = IEI->getOperand(2);
     // This index is inserting the value, look for it's base
     if (InsertIndex == Index)
       return findBaseDefiningValue(IEI->getOperand(1));
     // Both constant, and can't be equal per above. This insert is definitely
-    // not relevant, look back at the rest of the vector and keep trying.  
+    // not relevant, look back at the rest of the vector and keep trying.
     if (isa<ConstantInt>(Index) && isa<ConstantInt>(InsertIndex))
       return findBaseOfVector(IEI->getOperand(0), Index);
   }
-  
+
   // Note: This code is currently rather incomplete.  We are essentially only
   // handling cases where the vector element is trivially a base pointer.  We
   // need to update the entire base pointer construction algorithm to know how
@@ -1031,14 +1060,11 @@ static void recomputeLiveInValues(
 // goes through the statepoint.  We might need to split an edge to make this
 // possible.
 static BasicBlock *
-normalizeForInvokeSafepoint(BasicBlock *BB, BasicBlock *InvokeParent, Pass *P) {
-  DominatorTree *DT = nullptr;
-  if (auto *DTP = P->getAnalysisIfAvailable<DominatorTreeWrapperPass>())
-    DT = &DTP->getDomTree();
-
+normalizeForInvokeSafepoint(BasicBlock *BB, BasicBlock *InvokeParent,
+                            DominatorTree &DT) {
   BasicBlock *Ret = BB;
   if (!BB->getUniquePredecessor()) {
-    Ret = SplitBlockPredecessors(BB, InvokeParent, "", nullptr, DT);
+    Ret = SplitBlockPredecessors(BB, InvokeParent, "", nullptr, &DT);
   }
 
   // Now that 'ret' has unique predecessor we can safely remove all phi nodes
@@ -1878,7 +1904,7 @@ static void rematerializeLiveValues(CallSite CS,
                                     PartiallyConstructedSafepointRecord &Info,
                                     TargetTransformInfo &TTI) {
   const unsigned int ChainLengthThreshold = 10;
-  
+
   // Record values we are going to delete from this statepoint live set.
   // We can not di this in following loop due to iterator invalidation.
   SmallVector<Value *, 32> LiveValuesToBeDeleted;
@@ -1944,12 +1970,12 @@ static void rematerializeLiveValues(CallSite CS,
           assert(LastValue);
           ClonedValue->replaceUsesOfWith(LastValue, LastClonedValue);
 #ifndef NDEBUG
-          // Assert that cloned instruction does not use any instructions
-          // other than LastClonedValue
-          for (auto OpValue: ClonedValue->operand_values()) {
-            if (isa<Instruction>(OpValue))
-              assert(OpValue == LastClonedValue &&
-                     "unexpected use found in rematerialized value");
+          // Assert that cloned instruction does not use any instructions from
+          // this chain other than LastClonedValue
+          for (auto OpValue : ClonedValue->operand_values()) {
+            assert(std::find(ChainToBase.begin(), ChainToBase.end(), OpValue) ==
+                       ChainToBase.end() &&
+                   "incorrect use in rematerialization chain");
           }
 #endif
         }
@@ -2016,9 +2042,9 @@ static bool insertParsePoints(Function &F, DominatorTree &DT, Pass *P,
       continue;
     InvokeInst *invoke = cast<InvokeInst>(CS.getInstruction());
     normalizeForInvokeSafepoint(invoke->getNormalDest(), invoke->getParent(),
-                                P);
+                                DT);
     normalizeForInvokeSafepoint(invoke->getUnwindDest(), invoke->getParent(),
-                                P);
+                                DT);
   }
 
   // A list of dummy calls added to the IR to keep various values obviously
@@ -2133,7 +2159,7 @@ static bool insertParsePoints(Function &F, DominatorTree &DT, Pass *P,
   TargetTransformInfo &TTI =
     P->getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
 
-  for (size_t i = 0; i < records.size(); i++) { 
+  for (size_t i = 0; i < records.size(); i++) {
     struct PartiallyConstructedSafepointRecord &info = records[i];
     CallSite &CS = toUpdate[i];
 
@@ -2197,6 +2223,72 @@ static bool insertParsePoints(Function &F, DominatorTree &DT, Pass *P,
   return !records.empty();
 }
 
+// Handles both return values and arguments for Functions and CallSites.
+template <typename AttrHolder>
+static void RemoveDerefAttrAtIndex(LLVMContext &Ctx, AttrHolder &AH,
+                                   unsigned Index) {
+  AttrBuilder R;
+  if (AH.getDereferenceableBytes(Index))
+    R.addAttribute(Attribute::get(Ctx, Attribute::Dereferenceable,
+                                  AH.getDereferenceableBytes(Index)));
+  if (AH.getDereferenceableOrNullBytes(Index))
+    R.addAttribute(Attribute::get(Ctx, Attribute::DereferenceableOrNull,
+                                  AH.getDereferenceableOrNullBytes(Index)));
+
+  if (!R.empty())
+    AH.setAttributes(AH.getAttributes().removeAttributes(
+        Ctx, Index, AttributeSet::get(Ctx, Index, R)));
+}
+
+void
+RewriteStatepointsForGC::stripDereferenceabilityInfoFromPrototype(Function &F) {
+  LLVMContext &Ctx = F.getContext();
+
+  for (Argument &A : F.args())
+    if (isa<PointerType>(A.getType()))
+      RemoveDerefAttrAtIndex(Ctx, F, A.getArgNo() + 1);
+
+  if (isa<PointerType>(F.getReturnType()))
+    RemoveDerefAttrAtIndex(Ctx, F, AttributeSet::ReturnIndex);
+}
+
+void RewriteStatepointsForGC::stripDereferenceabilityInfoFromBody(Function &F) {
+  if (F.empty())
+    return;
+
+  LLVMContext &Ctx = F.getContext();
+  MDBuilder Builder(Ctx);
+
+  for (Instruction &I : inst_range(F)) {
+    if (const MDNode *MD = I.getMetadata(LLVMContext::MD_tbaa)) {
+      assert(MD->getNumOperands() < 5 && "unrecognized metadata shape!");
+      bool IsImmutableTBAA =
+          MD->getNumOperands() == 4 &&
+          mdconst::extract<ConstantInt>(MD->getOperand(3))->getValue() == 1;
+
+      if (!IsImmutableTBAA)
+        continue; // no work to do, MD_tbaa is already marked mutable
+
+      MDNode *Base = cast<MDNode>(MD->getOperand(0));
+      MDNode *Access = cast<MDNode>(MD->getOperand(1));
+      uint64_t Offset =
+          mdconst::extract<ConstantInt>(MD->getOperand(2))->getZExtValue();
+
+      MDNode *MutableTBAA =
+          Builder.createTBAAStructTagNode(Base, Access, Offset);
+      I.setMetadata(LLVMContext::MD_tbaa, MutableTBAA);
+    }
+
+    if (CallSite CS = CallSite(&I)) {
+      for (int i = 0, e = CS.arg_size(); i != e; i++)
+        if (isa<PointerType>(CS.getArgument(i)->getType()))
+          RemoveDerefAttrAtIndex(Ctx, CS, i + 1);
+      if (isa<PointerType>(CS.getType()))
+        RemoveDerefAttrAtIndex(Ctx, CS, AttributeSet::ReturnIndex);
+    }
+  }
+}
+
 /// Returns true if this function should be rewritten by this pass.  The main
 /// point of this function is as an extension point for custom logic.
 static bool shouldRewriteStatepointsIn(Function &F) {
@@ -2206,10 +2298,22 @@ static bool shouldRewriteStatepointsIn(Function &F) {
     const StringRef StatepointExampleName("statepoint-example");
     const StringRef CoreCLRName("coreclr");
     return (StatepointExampleName == FunctionGCName) ||
-      (CoreCLRName == FunctionGCName);
-  }
-  else
+           (CoreCLRName == FunctionGCName);
+  } else
     return false;
+}
+
+void RewriteStatepointsForGC::stripDereferenceabilityInfo(Module &M) {
+#ifndef NDEBUG
+  assert(std::any_of(M.begin(), M.end(), shouldRewriteStatepointsIn) &&
+         "precondition!");
+#endif
+
+  for (Function &F : M)
+    stripDereferenceabilityInfoFromPrototype(F);
+
+  for (Function &F : M)
+    stripDereferenceabilityInfoFromBody(F);
 }
 
 bool RewriteStatepointsForGC::runOnFunction(Function &F) {
@@ -2222,7 +2326,7 @@ bool RewriteStatepointsForGC::runOnFunction(Function &F) {
   if (!shouldRewriteStatepointsIn(F))
     return false;
 
-  DominatorTree &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+  DominatorTree &DT = getAnalysis<DominatorTreeWrapperPass>(F).getDomTree();
 
   // Gather all the statepoints which need rewritten.  Be careful to only
   // consider those in reachable code since we need to ask dominance queries

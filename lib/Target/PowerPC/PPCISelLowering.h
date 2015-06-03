@@ -275,6 +275,16 @@ namespace llvm {
       /// operand identifies the operating system entry point.
       SC,
 
+      /// CHAIN = CLRBHRB CHAIN - Clear branch history rolling buffer.
+      CLRBHRB,
+
+      /// GPRC, CHAIN = MFBHRBE CHAIN, Entry, Dummy - Move from branch
+      /// history rolling buffer entry.
+      MFBHRBE,
+
+      /// CHAIN = RFEBB CHAIN, State - Return from event-based branch.
+      RFEBB,
+
       /// VSRC, CHAIN = XXSWAPD CHAIN, VSRC - Occurs only for little
       /// endian.  Maps to an xxswapd instruction that corrects an lxvd2x
       /// or stxvd2x instruction.  The chain is necessary because the
@@ -546,7 +556,8 @@ namespace llvm {
 
     /// isLegalAddressingMode - Return true if the addressing mode represented
     /// by AM is legal for this target, for a load/store of the specified type.
-    bool isLegalAddressingMode(const AddrMode &AM, Type *Ty) const override;
+    bool isLegalAddressingMode(const AddrMode &AM, Type *Ty,
+                               unsigned AS) const override;
 
     /// isLegalICmpImmediate - Return true if the specified immediate is legal
     /// icmp immediate, that is the target has icmp instructions which can

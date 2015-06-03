@@ -548,7 +548,8 @@ enum IIT_Info {
   IIT_HALF_VEC_ARG = 29,
   IIT_SAME_VEC_WIDTH_ARG = 30,
   IIT_PTR_TO_ARG = 31,
-  IIT_VEC_OF_PTRS_TO_ELT = 32
+  IIT_VEC_OF_PTRS_TO_ELT = 32,
+  IIT_I128 = 33
 };
 
 
@@ -594,6 +595,9 @@ static void DecodeIITType(unsigned &NextElt, ArrayRef<unsigned char> Infos,
     return;
   case IIT_I64:
     OutputTable.push_back(IITDescriptor::get(IITDescriptor::Integer, 64));
+    return;
+  case IIT_I128:
+    OutputTable.push_back(IITDescriptor::get(IITDescriptor::Integer, 128));
     return;
   case IIT_V1:
     OutputTable.push_back(IITDescriptor::get(IITDescriptor::Vector, 1));
@@ -957,19 +961,6 @@ void Function::setPrologueData(Constant *PrologueData) {
     PDData &= ~(1<<2);
   }
   setValueSubclassData(PDData);
-}
-
-void llvm::overrideFunctionAttribute(StringRef Kind, StringRef Value,
-                                     Function &F) {
-  auto &Ctx = F.getContext();
-  AttributeSet Attrs = F.getAttributes(), AttrsToRemove;
-
-  AttrsToRemove =
-      AttrsToRemove.addAttribute(Ctx, AttributeSet::FunctionIndex, Kind);
-  Attrs = Attrs.removeAttributes(Ctx, AttributeSet::FunctionIndex,
-                                 AttrsToRemove);
-  Attrs = Attrs.addAttribute(Ctx, AttributeSet::FunctionIndex, Kind, Value);
-  F.setAttributes(Attrs);
 }
 
 void Function::setEntryCount(uint64_t Count) {

@@ -30,12 +30,10 @@ bool MCObjectWriter::IsSymbolRefDifferenceFullyResolved(
   if (SA.isUndefined() || SB.isUndefined())
     return false;
 
-  const MCSymbolData &DataA = Asm.getSymbolData(SA);
-  const MCSymbolData &DataB = Asm.getSymbolData(SB);
-  if(!DataA.getFragment() || !DataB.getFragment())
+  if (!SA.getFragment() || !SB.getFragment())
     return false;
 
-  return IsSymbolRefDifferenceFullyResolvedImpl(Asm, SA, *DataB.getFragment(),
+  return IsSymbolRefDifferenceFullyResolvedImpl(Asm, SA, *SB.getFragment(),
                                                 InSet, false);
 }
 
@@ -43,7 +41,7 @@ bool MCObjectWriter::IsSymbolRefDifferenceFullyResolvedImpl(
     const MCAssembler &Asm, const MCSymbol &SymA, const MCFragment &FB,
     bool InSet, bool IsPCRel) const {
   const MCSection &SecA = SymA.getSection();
-  const MCSection &SecB = FB.getParent()->getSection();
+  const MCSection &SecB = *FB.getParent();
   // On ELF and COFF  A - B is absolute if A and B are in the same section.
   return &SecA == &SecB;
 }

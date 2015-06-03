@@ -313,8 +313,9 @@ namespace {
     bool optimizeThumb2Instructions();
     bool optimizeThumb2Branches();
     bool reorderThumb2JumpTables();
-    unsigned removeDeadDefinitions(MachineInstr *MI, unsigned BaseReg,
-                                   unsigned IdxReg);
+    bool preserveBaseRegister(MachineInstr *JumpMI, MachineInstr *LEAMI,
+                              unsigned &DeadSize, bool &CanDeleteLEA,
+                              bool &BaseRegKill);
     bool optimizeThumb2JumpTables();
     MachineBasicBlock *adjustJTTargetBlockForward(MachineBasicBlock *BB,
                                                   MachineBasicBlock *JTBB);
@@ -1951,77 +1952,107 @@ bool ARMConstantIslands::optimizeThumb2Branches() {
   return MadeChange;
 }
 
-/// If we've formed a TBB or TBH instruction, the base register is now
-/// redundant. In most cases, the instructions defining it will now be dead and
-/// can be tidied up. This function removes them if so, and returns the number
-/// of bytes saved.
-unsigned ARMConstantIslands::removeDeadDefinitions(MachineInstr *MI,
-                                                   unsigned BaseReg,
-                                                   unsigned IdxReg) {
-  unsigned BytesRemoved = 0;
-  MachineBasicBlock *MBB = MI->getParent();
+static bool isSimpleIndexCalc(MachineInstr &I, unsigned EntryReg,
+                              unsigned BaseReg) {
+  if (I.getOpcode() != ARM::t2ADDrs)
+    return false;
 
-  // Scan backwards to find the instruction that defines the base
-  // register. Due to post-RA scheduling, we can't count on it
-  // immediately preceding the branch instruction.
-  MachineBasicBlock::iterator PrevI = MI;
-  MachineBasicBlock::iterator B = MBB->begin();
-  while (PrevI != B && !PrevI->definesRegister(BaseReg))
-    --PrevI;
+  if (I.getOperand(0).getReg() != EntryReg)
+    return false;
 
-  // If for some reason we didn't find it, we can't do anything, so
-  // just skip this one.
-  if (!PrevI->definesRegister(BaseReg) || PrevI->hasUnmodeledSideEffects() ||
-      PrevI->mayStore())
-    return BytesRemoved;
+  if (I.getOperand(1).getReg() != BaseReg)
+    return false;
 
-  MachineInstr *AddrMI = PrevI;
-  unsigned NewBaseReg = BytesRemoved;
+  // FIXME: what about CC and IdxReg?
+  return true;
+}
 
-  // Examine the instruction that calculates the jumptable entry address.  Make
-  // sure it only defines the base register and kills any uses other than the
-  // index register. We also need precisely one use to trace backwards to
-  // (hopefully) the LEA.
-  for (unsigned k = 0, eee = AddrMI->getNumOperands(); k != eee; ++k) {
-    const MachineOperand &MO = AddrMI->getOperand(k);
-    if (!MO.isReg() || !MO.getReg())
-      continue;
-    if (MO.isDef() && MO.getReg() != BaseReg)
-      return BytesRemoved;
+/// \brief While trying to form a TBB/TBH instruction, we may (if the table
+/// doesn't immediately follow the BR_JT) need access to the start of the
+/// jump-table. We know one instruction that produces such a register; this
+/// function works out whether that definition can be preserved to the BR_JT,
+/// possibly by removing an intervening addition (which is usually needed to
+/// calculate the actual entry to jump to).
+bool ARMConstantIslands::preserveBaseRegister(MachineInstr *JumpMI,
+                                              MachineInstr *LEAMI,
+                                              unsigned &DeadSize,
+                                              bool &CanDeleteLEA,
+                                              bool &BaseRegKill) {
+  if (JumpMI->getParent() != LEAMI->getParent())
+    return false;
 
-    if (MO.isUse() && MO.getReg() != IdxReg) {
-      if (!MO.isKill() || (NewBaseReg != 0 && NewBaseReg != MO.getReg()))
-        return BytesRemoved;
-      NewBaseReg = MO.getReg();
+  // Now we hope that we have at least these instructions in the basic block:
+  //     BaseReg = t2LEA ...
+  //     [...]
+  //     EntryReg = t2ADDrs BaseReg, ...
+  //     [...]
+  //     t2BR_JT EntryReg
+  //
+  // We have to be very conservative about what we recognise here though. The
+  // main perturbing factors to watch out for are:
+  //    + Spills at any point in the chain: not direct problems but we would
+  //      expect a blocking Def of the spilled register so in practice what we
+  //      can do is limited.
+  //    + EntryReg == BaseReg: this is the one situation we should allow a Def
+  //      of BaseReg, but only if the t2ADDrs can be removed.
+  //    + Some instruction other than t2ADDrs computing the entry. Not seen in
+  //      the wild, but we should be careful.
+  unsigned EntryReg = JumpMI->getOperand(0).getReg();
+  unsigned BaseReg = LEAMI->getOperand(0).getReg();
+
+  CanDeleteLEA = true;
+  BaseRegKill = false;
+  MachineInstr *RemovableAdd = nullptr;
+  MachineBasicBlock::iterator I(LEAMI);
+  for (++I; &*I != JumpMI; ++I) {
+    if (isSimpleIndexCalc(*I, EntryReg, BaseReg)) {
+      RemovableAdd = &*I;
+      break;
+    }
+
+    for (unsigned K = 0, E = I->getNumOperands(); K != E; ++K) {
+      const MachineOperand &MO = I->getOperand(K);
+      if (!MO.isReg() || !MO.getReg())
+        continue;
+      if (MO.isDef() && MO.getReg() == BaseReg)
+        return false;
+      if (MO.isUse() && MO.getReg() == BaseReg) {
+        BaseRegKill = BaseRegKill || MO.isKill();
+        CanDeleteLEA = false;
+      }
     }
   }
 
-  // Want to continue searching for AddrMI, but there are 2 problems: AddrMI is
-  // going away soon, and even decrementing once may be invalid.
-  if (PrevI != B)
-    PrevI = std::prev(PrevI);
+  if (!RemovableAdd)
+    return true;
 
-  DEBUG(dbgs() << "remove addr: " << *AddrMI);
-  BytesRemoved += TII->GetInstSizeInBytes(AddrMI);
-  AddrMI->eraseFromParent();
+  // Check the add really is removable, and that nothing else in the block
+  // clobbers BaseReg.
+  for (++I; &*I != JumpMI; ++I) {
+    for (unsigned K = 0, E = I->getNumOperands(); K != E; ++K) {
+      const MachineOperand &MO = I->getOperand(K);
+      if (!MO.isReg() || !MO.getReg())
+        continue;
+      if (MO.isDef() && MO.getReg() == BaseReg)
+        return false;
+      if (MO.isUse() && MO.getReg() == EntryReg)
+        RemovableAdd = nullptr;
+    }
+  }
 
-  // Now scan back again to find the tLEApcrel or t2LEApcrelJT instruction
-  // that gave us the initial base register definition.
-  for (; PrevI != B && !PrevI->definesRegister(NewBaseReg); --PrevI)
-    ;
+  if (RemovableAdd) {
+    RemovableAdd->eraseFromParent();
+    DeadSize += 4;
+  } else if (BaseReg == EntryReg) {
+    // The add wasn't removable, but clobbered the base for the TBB. So we can't
+    // preserve it.
+    return false;
+  }
 
-  // The instruction should be a tLEApcrel or t2LEApcrelJT; we want
-  // to delete it as well.
-  MachineInstr *LeaMI = PrevI;
-  if ((LeaMI->getOpcode() != ARM::tLEApcrelJT &&
-       LeaMI->getOpcode() != ARM::t2LEApcrelJT) ||
-      LeaMI->getOperand(0).getReg() != NewBaseReg)
-    return BytesRemoved;
-
-  DEBUG(dbgs() << "remove lea: " << *LeaMI);
-  BytesRemoved += TII->GetInstSizeInBytes(LeaMI);
-  LeaMI->eraseFromParent();
-  return BytesRemoved;
+  // We reached the end of the block without seeing another definition of
+  // BaseReg (except, possibly the t2ADDrs, which was removed). BaseReg can be
+  // used in the TBB/TBH if necessary.
+  return true;
 }
 
 /// \brief Returns whether CPEMI is the first instruction in the block
@@ -2079,21 +2110,29 @@ bool ARMConstantIslands::optimizeThumb2JumpTables() {
       continue;
 
     MachineBasicBlock *MBB = MI->getParent();
-    unsigned BaseReg = MI->getOperand(0).getReg();
-    bool BaseRegKill = MI->getOperand(0).isKill();
-    if (!BaseRegKill)
+    if (!MI->getOperand(0).isKill()) // FIXME: needed now?
       continue;
     unsigned IdxReg = MI->getOperand(1).getReg();
     bool IdxRegKill = MI->getOperand(1).isKill();
 
-    DEBUG(dbgs() << "Shrink JT: " << *MI);
     CPUser &User = CPUsers[JumpTableUserIndices[JTI]];
+    unsigned DeadSize = 0;
+    bool CanDeleteLEA = false;
+    bool BaseRegKill = false;
+    bool PreservedBaseReg =
+        preserveBaseRegister(MI, User.MI, DeadSize, CanDeleteLEA, BaseRegKill);
+
+    if (!jumpTableFollowsTB(MI, User.CPEMI) && !PreservedBaseReg)
+      continue;
+
+    DEBUG(dbgs() << "Shrink JT: " << *MI);
     MachineInstr *CPEMI = User.CPEMI;
     unsigned Opc = ByteOk ? ARM::t2TBB_JT : ARM::t2TBH_JT;
     MachineBasicBlock::iterator MI_JT = MI;
     MachineInstr *NewJTMI =
         BuildMI(*MBB, MI_JT, MI->getDebugLoc(), TII->get(Opc))
-            .addReg(BaseReg, getKillRegState(BaseRegKill))
+            .addReg(User.MI->getOperand(0).getReg(),
+                    getKillRegState(BaseRegKill))
             .addReg(IdxReg, getKillRegState(IdxRegKill))
             .addJumpTableIndex(JTI, JTOP.getTargetFlags())
             .addImm(CPEMI->getOperand(0).getImm());
@@ -2102,16 +2141,14 @@ bool ARMConstantIslands::optimizeThumb2JumpTables() {
     unsigned JTOpc = ByteOk ? ARM::JUMPTABLE_TBB : ARM::JUMPTABLE_TBH;
     CPEMI->setDesc(TII->get(JTOpc));
 
-    // Now we need to determine whether the actual jump table has been moved
-    // from immediately after this instruction. If not, we can replace BaseReg
-    // with PC and probably eliminate the BaseReg calculations.
-    unsigned DeadSize = 0;
-    if (jumpTableFollowsTB(NewJTMI, User.CPEMI)) {
+    if (jumpTableFollowsTB(MI, User.CPEMI)) {
       NewJTMI->getOperand(0).setReg(ARM::PC);
       NewJTMI->getOperand(0).setIsKill(false);
 
-      DeadSize = removeDeadDefinitions(MI, BaseReg, IdxReg);
-      if (!User.MI->getParent()) {
+      if (CanDeleteLEA)  {
+        User.MI->eraseFromParent();
+        DeadSize += 4;
+
         // The LEA was eliminated, the TBB instruction becomes the only new user
         // of the jump table.
         User.MI = NewJTMI;

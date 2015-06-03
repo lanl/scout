@@ -403,15 +403,8 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
     // will selectively turn on ones that can be effectively codegen'd.
     for (MVT VT : MVT::vector_valuetypes()) {
       // add/sub are legal for all supported vector VT's.
-      // This check is temporary until support for quadword add/sub is added
-      if (VT.SimpleTy != MVT::v1i128) {
-        setOperationAction(ISD::ADD , VT, Legal);
-        setOperationAction(ISD::SUB , VT, Legal);
-      }
-      else {
-        setOperationAction(ISD::ADD , VT, Expand);
-        setOperationAction(ISD::SUB , VT, Expand);
-      }
+      setOperationAction(ISD::ADD , VT, Legal);
+      setOperationAction(ISD::SUB , VT, Legal);
       
       // Vector instructions introduced in P8
       if (Subtarget.hasP8Altivec() && (VT.SimpleTy != MVT::v1i128)) {
@@ -1048,6 +1041,9 @@ const char *PPCTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case PPCISD::ADDI_DTPREL_L:   return "PPCISD::ADDI_DTPREL_L";
   case PPCISD::VADD_SPLAT:      return "PPCISD::VADD_SPLAT";
   case PPCISD::SC:              return "PPCISD::SC";
+  case PPCISD::CLRBHRB:         return "PPCISD::CLRBHRB";
+  case PPCISD::MFBHRBE:         return "PPCISD::MFBHRBE";
+  case PPCISD::RFEBB:           return "PPCISD::RFEBB";
   case PPCISD::XXSWAPD:         return "PPCISD::XXSWAPD";
   case PPCISD::QVFPERM:         return "PPCISD::QVFPERM";
   case PPCISD::QVGPCI:          return "PPCISD::QVGPCI";
@@ -1164,13 +1160,20 @@ bool PPC::isVPKUWUMShuffleMask(ShuffleVectorSDNode *N, unsigned ShuffleKind,
 }
 
 /// isVPKUDUMShuffleMask - Return true if this is the shuffle mask for a
-/// VPKUDUM instruction.
+/// VPKUDUM instruction, AND the VPKUDUM instruction exists for the
+/// current subtarget.
+///
 /// The ShuffleKind distinguishes between big-endian operations with
 /// two different inputs (0), either-endian operations with two identical
 /// inputs (1), and little-endian operations with two different inputs (2).
 /// For the latter, the input operands are swapped (see PPCInstrAltivec.td).
 bool PPC::isVPKUDUMShuffleMask(ShuffleVectorSDNode *N, unsigned ShuffleKind,
                                SelectionDAG &DAG) {
+  const PPCSubtarget& Subtarget =
+    static_cast<const PPCSubtarget&>(DAG.getSubtarget());
+  if (!Subtarget.hasP8Vector())
+    return false;
+
   bool IsLE = DAG.getTarget().getDataLayout()->isLittleEndian();
   if (ShuffleKind == 0) {
     if (IsLE)
@@ -10822,7 +10825,8 @@ void PPCTargetLowering::LowerAsmOperandForConstraint(SDValue Op,
 // isLegalAddressingMode - Return true if the addressing mode represented
 // by AM is legal for this target, for a load/store of the specified type.
 bool PPCTargetLowering::isLegalAddressingMode(const AddrMode &AM,
-                                              Type *Ty) const {
+                                              Type *Ty,
+                                              unsigned AS) const {
   // PPC does not allow r+i addressing modes for vectors!
   if (Ty->isVectorTy() && AM.BaseOffs != 0)
     return false;

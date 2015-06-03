@@ -187,6 +187,7 @@ public:
   void addPreRegAlloc() override;
   void addPostRegAlloc() override;
   void addPreEmitPass() override;
+  void addPreSched2() override;
 };
 } // namespace
 
@@ -220,9 +221,9 @@ bool X86PassConfig::addILPOpts() {
 }
 
 bool X86PassConfig::addPreISel() {
-  // Only add this pass for 32-bit x86.
+  // Only add this pass for 32-bit x86 Windows.
   Triple TT(TM->getTargetTriple());
-  if (TT.getArch() == Triple::x86)
+  if (TT.isOSWindows() && TT.getArch() == Triple::x86)
     addPass(createX86WinEHStatePass());
   return true;
 }
@@ -234,6 +235,8 @@ void X86PassConfig::addPreRegAlloc() {
 void X86PassConfig::addPostRegAlloc() {
   addPass(createX86FloatingPointStackifierPass());
 }
+
+void X86PassConfig::addPreSched2() { addPass(createX86ExpandPseudoPass()); }
 
 void X86PassConfig::addPreEmitPass() {
   if (getOptLevel() != CodeGenOpt::None)

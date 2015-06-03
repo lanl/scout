@@ -800,6 +800,14 @@ TEST(TripleTest, getARMCPUForArch) {
     EXPECT_STREQ("arm1176jzf-s", Triple.getARMCPUForArch());
   }
   {
+    llvm::Triple Triple("thumbv6-unknown-freebsd");
+    EXPECT_STREQ("arm1176jzf-s", Triple.getARMCPUForArch());
+  }
+  {
+    llvm::Triple Triple("armebv6-unknown-freebsd");
+    EXPECT_STREQ("arm1176jzf-s", Triple.getARMCPUForArch());
+  }
+  {
     llvm::Triple Triple("arm--win32");
     EXPECT_STREQ("cortex-a9", Triple.getARMCPUForArch());
   }
@@ -878,4 +886,89 @@ TEST(TripleTest, NormalizeARM) {
   EXPECT_EQ(Triple::armeb, T.getArch());
 }
 
+TEST(TripleTest, ParseARMArch) {
+  // ARM
+  {
+    Triple T = Triple("arm");
+    EXPECT_EQ(Triple::arm, T.getArch());
+  }
+  {
+    Triple T = Triple("armv6t2");
+    EXPECT_EQ(Triple::arm, T.getArch());
+  }
+  {
+    Triple T = Triple("armv8");
+    EXPECT_EQ(Triple::arm, T.getArch());
+  }
+  {
+    Triple T = Triple("armeb");
+    EXPECT_EQ(Triple::armeb, T.getArch());
+  }
+  {
+    Triple T = Triple("armv5eb");
+    EXPECT_EQ(Triple::armeb, T.getArch());
+  }
+  {
+    Triple T = Triple("armebv7m");
+    EXPECT_EQ(Triple::armeb, T.getArch());
+  }
+  {
+    Triple T = Triple("armv7eb");
+    EXPECT_EQ(Triple::armeb, T.getArch());
+  }
+  // THUMB
+  {
+    Triple T = Triple("thumb");
+    EXPECT_EQ(Triple::thumb, T.getArch());
+  }
+  {
+    Triple T = Triple("thumbv7a");
+    EXPECT_EQ(Triple::thumb, T.getArch());
+  }
+  {
+    Triple T = Triple("thumbeb");
+    EXPECT_EQ(Triple::thumbeb, T.getArch());
+  }
+  {
+    Triple T = Triple("thumbv4teb");
+    EXPECT_EQ(Triple::thumbeb, T.getArch());
+  }
+  {
+    Triple T = Triple("thumbebv7");
+    EXPECT_EQ(Triple::thumbeb, T.getArch());
+  }
+  {
+    Triple T = Triple("armv6m");
+    EXPECT_EQ(Triple::thumb, T.getArch());
+  }
+  {
+    Triple T = Triple("thumbv2");
+    EXPECT_EQ(Triple::UnknownArch, T.getArch());
+  }
+  {
+    Triple T = Triple("thumbebv6eb");
+    EXPECT_EQ(Triple::UnknownArch, T.getArch());
+  }
+  // AARCH64
+  {
+    Triple T = Triple("arm64");
+    EXPECT_EQ(Triple::aarch64, T.getArch());
+  }
+  {
+    Triple T = Triple("aarch64");
+    EXPECT_EQ(Triple::aarch64, T.getArch());
+  }
+  {
+    Triple T = Triple("aarch64_be");
+    EXPECT_EQ(Triple::aarch64_be, T.getArch());
+  }
+  {
+    Triple T = Triple("aarch64be");
+    EXPECT_EQ(Triple::UnknownArch, T.getArch());
+  }
+  {
+    Triple T = Triple("arm64be");
+    EXPECT_EQ(Triple::UnknownArch, T.getArch());
+  }
+}
 } // end anonymous namespace
