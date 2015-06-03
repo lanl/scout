@@ -1110,10 +1110,15 @@ static QualType handleFloatConversion(Sema &S, ExprResult &LHS,
     return RHSType;
   }
 
-  if (LHSFloat)
+  if (LHSFloat) {
+    // Half FP has to be promoted to float unless it is natively supported
+    if (LHSType->isHalfType() && !S.getLangOpts().NativeHalfType)
+      LHSType = S.Context.FloatTy;
+
     return handleIntToFloatConversion(S, LHS, RHS, LHSType, RHSType,
                                       /*convertFloat=*/!IsCompAssign,
                                       /*convertInt=*/ true);
+  }
   assert(RHSFloat);
   return handleIntToFloatConversion(S, RHS, LHS, RHSType, LHSType,
                                     /*convertInt=*/ true,
@@ -6528,6 +6533,8 @@ ExprResult Sema::ActOnConditionalOp(SourceLocation QuestionLoc,
   DiagnoseConditionalPrecedence(*this, QuestionLoc, Cond.get(), LHS.get(),
                                 RHS.get());
 
+  CheckBoolLikeConversion(Cond.get(), QuestionLoc);
+
   if (!commonExpr)
     return new (Context)
         ConditionalOperator(Cond.get(), QuestionLoc, LHS.get(), ColonLoc,
@@ -9198,6 +9205,9 @@ static bool CheckForModifiableLvalue(Expr *E, SourceLocation Loc, Sema &S) {
     }
 
     break;
+  case Expr::MLV_ConstAddrSpace:
+    DiagnoseConstAssignment(S, E, Loc);
+    return true;
   case Expr::MLV_ArrayType:
   case Expr::MLV_ArrayTemporary:
     DiagID = diag::err_typecheck_array_not_modifiable_lvalue;

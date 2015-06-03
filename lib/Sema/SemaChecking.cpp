@@ -1604,6 +1604,10 @@ ExprResult Sema::SemaAtomicOpsOverloaded(ExprResult TheCallResult,
     return ExprError();
   }
 
+  // atomic_fetch_or takes a pointer to a volatile 'A'.  We shouldn't let the
+  // volatile-ness of the pointee-type inject itself into the result or the
+  // other operands.
+  ValType.removeLocalVolatile();
   QualType ResultType = ValType;
   if (Form == Copy || Form == GNUXchg || Form == Init)
     ResultType = Context.VoidTy;
@@ -6100,7 +6104,7 @@ static void DiagnoseOutOfRangeComparison(Sema &S, BinaryOperator *E,
   // TODO: Investigate using GetExprRange() to get tighter bounds
   // on the bit ranges.
   QualType OtherT = Other->getType();
-  if (const AtomicType *AT = dyn_cast<AtomicType>(OtherT))
+  if (const auto *AT = OtherT->getAs<AtomicType>())
     OtherT = AT->getValueType();
   IntRange OtherRange = IntRange::forValueOfType(S.Context, OtherT);
   unsigned OtherWidth = OtherRange.Width;
