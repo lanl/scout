@@ -7,8 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "lldb/lldb-python.h"
-
 #include "CommandObjectProcess.h"
 
 // C Includes
@@ -125,7 +123,7 @@ public:
                                             "process launch",
                                             "Launch the executable in the debugger.",
                                             NULL,
-                                            eFlagRequiresTarget,
+                                            eCommandRequiresTarget,
                                             "restart"),
         m_options (interpreter)
     {
@@ -270,7 +268,7 @@ protected:
                 // There is a race condition where this thread will return up the call stack to the main command
                 // handler and show an (lldb) prompt before HandlePrivateEvent (from PrivateStateThread) has
                 // a chance to call PushProcessIOHandler().
-                process_sp->SyncIOHandler(2000);
+                process_sp->SyncIOHandler (0, 2000);
 
                 const char *data = stream.GetData();
                 if (data && strlen(data) > 0)
@@ -639,10 +637,10 @@ public:
                              "process continue",
                              "Continue execution of all threads in the current process.",
                              "process continue",
-                             eFlagRequiresProcess       |
-                             eFlagTryTargetAPILock      |
-                             eFlagProcessMustBeLaunched |
-                             eFlagProcessMustBePaused   ),
+                             eCommandRequiresProcess       |
+                             eCommandTryTargetAPILock      |
+                             eCommandProcessMustBeLaunched |
+                             eCommandProcessMustBePaused   ),
         m_options(interpreter)
     {
     }
@@ -762,6 +760,8 @@ protected:
                 }
             }
 
+            const uint32_t iohandler_id = process->GetIOHandlerID();
+
             StreamString stream;
             Error error;
             if (synchronous_execution)
@@ -772,9 +772,9 @@ protected:
             if (error.Success())
             {
                 // There is a race condition where this thread will return up the call stack to the main command
-                // handler and show an (lldb) prompt before HandlePrivateEvent (from PrivateStateThread) has
-                // a chance to call PushProcessIOHandler().
-                process->SyncIOHandler(2000);
+                 // handler and show an (lldb) prompt before HandlePrivateEvent (from PrivateStateThread) has
+                 // a chance to call PushProcessIOHandler().
+                process->SyncIOHandler(iohandler_id, 2000);
 
                 result.AppendMessageWithFormat ("Process %" PRIu64 " resuming\n", process->GetID());
                 if (synchronous_execution)
@@ -900,9 +900,9 @@ public:
                              "process detach",
                              "Detach from the current process being debugged.",
                              "process detach",
-                             eFlagRequiresProcess      |
-                             eFlagTryTargetAPILock     |
-                             eFlagProcessMustBeLaunched),
+                             eCommandRequiresProcess      |
+                             eCommandTryTargetAPILock     |
+                             eCommandProcessMustBeLaunched),
         m_options(interpreter)
     {
     }
@@ -1181,10 +1181,10 @@ public:
                              "process load",
                              "Load a shared library into the current process.",
                              "process load <filename> [<filename> ...]",
-                             eFlagRequiresProcess       |
-                             eFlagTryTargetAPILock      |
-                             eFlagProcessMustBeLaunched |
-                             eFlagProcessMustBePaused   )
+                             eCommandRequiresProcess       |
+                             eCommandTryTargetAPILock      |
+                             eCommandProcessMustBeLaunched |
+                             eCommandProcessMustBePaused   )
     {
     }
 
@@ -1238,10 +1238,10 @@ public:
                              "process unload",
                              "Unload a shared library from the current process using the index returned by a previous call to \"process load\".",
                              "process unload <index>",
-                             eFlagRequiresProcess       |
-                             eFlagTryTargetAPILock      |
-                             eFlagProcessMustBeLaunched |
-                             eFlagProcessMustBePaused   )
+                             eCommandRequiresProcess       |
+                             eCommandTryTargetAPILock      |
+                             eCommandProcessMustBeLaunched |
+                             eCommandProcessMustBePaused   )
     {
     }
 
@@ -1302,7 +1302,7 @@ public:
                              "process signal",
                              "Send a UNIX signal to the current process being debugged.",
                              NULL,
-                             eFlagRequiresProcess | eFlagTryTargetAPILock)
+                             eCommandRequiresProcess | eCommandTryTargetAPILock)
     {
         CommandArgumentEntry arg;
         CommandArgumentData signal_arg;
@@ -1384,9 +1384,9 @@ public:
                              "process interrupt",
                              "Interrupt the current process being debugged.",
                              "process interrupt",
-                             eFlagRequiresProcess      |
-                             eFlagTryTargetAPILock     |
-                             eFlagProcessMustBeLaunched)
+                             eCommandRequiresProcess      |
+                             eCommandTryTargetAPILock     |
+                             eCommandProcessMustBeLaunched)
     {
     }
 
@@ -1446,9 +1446,9 @@ public:
                              "process kill",
                              "Terminate the current process being debugged.",
                              "process kill",
-                             eFlagRequiresProcess      |
-                             eFlagTryTargetAPILock     |
-                             eFlagProcessMustBeLaunched)
+                             eCommandRequiresProcess      |
+                             eCommandTryTargetAPILock     |
+                             eCommandProcessMustBeLaunched)
     {
     }
 
@@ -1507,9 +1507,9 @@ public:
                          "process save-core",
                          "Save the current process as a core file using an appropriate file type.",
                          "process save-core FILE",
-                         eFlagRequiresProcess      |
-                         eFlagTryTargetAPILock     |
-                         eFlagProcessMustBeLaunched)
+                         eCommandRequiresProcess      |
+                         eCommandTryTargetAPILock     |
+                         eCommandProcessMustBeLaunched)
     {
     }
     
@@ -1571,7 +1571,7 @@ public:
                              "process status",
                              "Show the current status and location of executing process.",
                              "process status",
-                             eFlagRequiresProcess | eFlagTryTargetAPILock)
+                             eCommandRequiresProcess | eCommandTryTargetAPILock)
     {
     }
 
@@ -1585,7 +1585,7 @@ public:
     {
         Stream &strm = result.GetOutputStream();
         result.SetStatus (eReturnStatusSuccessFinishNoResult);
-        // No need to check "process" for validity as eFlagRequiresProcess ensures it is valid        
+        // No need to check "process" for validity as eCommandRequiresProcess ensures it is valid        
         Process *process = m_exe_ctx.GetProcessPtr();
         const bool only_threads_with_stop_reason = true;
         const uint32_t start_frame = 0;
@@ -1729,8 +1729,8 @@ public:
     void
     PrintSignalHeader (Stream &str)
     {
-        str.Printf ("NAME        PASS   STOP   NOTIFY\n");
-        str.Printf ("==========  =====  =====  ======\n");
+        str.Printf ("NAME         PASS   STOP   NOTIFY\n");
+        str.Printf ("===========  =====  =====  ======\n");
     }  
 
     void
@@ -1740,7 +1740,7 @@ public:
         bool suppress;
         bool notify;
 
-        str.Printf ("%-10s  ", sig_name);
+        str.Printf ("%-11s  ", sig_name);
         if (signals.GetSignalInfo (signo, suppress, stop, notify))
         {
             bool pass = !suppress;

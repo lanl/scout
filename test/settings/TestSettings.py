@@ -227,7 +227,7 @@ class SettingsCommandTestCase(TestBase):
         self.addTearDownHook(
             lambda: self.runCmd("settings clear target.env-vars"))
 
-        self.runCmd("run", RUN_SUCCEEDED)
+        self.runCmd("run", RUN_FAILED)
 
         # Read the output file produced by running the program.
         if lldb.remote_platform:
@@ -263,7 +263,7 @@ class SettingsCommandTestCase(TestBase):
             os.environ.pop("MY_HOST_ENV_VAR2")
 
         self.addTearDownHook(unset_env_variables)
-        self.runCmd("run", RUN_SUCCEEDED)
+        self.runCmd("run", RUN_FAILED)
 
         # Read the output file produced by running the program.
         if lldb.remote_platform:
@@ -299,7 +299,7 @@ class SettingsCommandTestCase(TestBase):
                     SETTING_MSG("target.output-path"),
                     substrs = ['target.output-path (file) = "stdout.txt"'])
 
-        self.runCmd("run", RUN_SUCCEEDED)
+        self.runCmd("run", RUN_FAILED)
 
         if lldb.remote_platform:
             self.runCmd('platform get-file "stderr.txt" "stderr.txt"')
@@ -358,6 +358,14 @@ class SettingsCommandTestCase(TestBase):
         self.expect ("settings show target.env-vars",
                      substrs = [ 'MY_FILE=this is a file name with spaces.txt' ])
         self.runCmd ("settings clear target.env-vars")
+        # Test and make sure that setting "format-string" settings obeys quotes if they are provided
+        self.runCmd ("settings set thread-format    'abc def'   ")
+        self.expect ("settings show thread-format", 'thread-format (format-string) = "abc def"')
+        self.runCmd ('settings set thread-format    "abc def"   ')
+        self.expect ("settings show thread-format", 'thread-format (format-string) = "abc def"')
+        # Make sure when no quotes are provided that we maintain any trailing spaces
+        self.runCmd ('settings set thread-format abc def   ')
+        self.expect ("settings show thread-format", 'thread-format (format-string) = "abc def   "')
 
     def test_settings_with_trailing_whitespace (self):
         
