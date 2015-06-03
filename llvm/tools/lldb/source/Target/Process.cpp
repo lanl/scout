@@ -7,8 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "lldb/lldb-python.h"
-
 #include "lldb/Target/Process.h"
 #include "lldb/Breakpoint/StoppointCallbackContext.h"
 #include "lldb/Breakpoint/BreakpointLocation.h"
@@ -434,7 +432,7 @@ ProcessLaunchCommandOptions::SetOptionValue (uint32_t option_idx, const char *op
         case 'i':   // STDIN for read only
         {
             FileAction action;
-            if (action.Open (STDIN_FILENO, option_arg, true, false))
+            if (action.Open(STDIN_FILENO, FileSpec{option_arg, false}, true, false))
                 launch_info.AppendFileAction (action);
             break;
         }
@@ -442,7 +440,7 @@ ProcessLaunchCommandOptions::SetOptionValue (uint32_t option_idx, const char *op
         case 'o':   // Open STDOUT for write only
         {
             FileAction action;
-            if (action.Open (STDOUT_FILENO, option_arg, false, true))
+            if (action.Open(STDOUT_FILENO, FileSpec{option_arg, false}, false, true))
                 launch_info.AppendFileAction (action);
             break;
         }
@@ -450,7 +448,7 @@ ProcessLaunchCommandOptions::SetOptionValue (uint32_t option_idx, const char *op
         case 'e':   // STDERR for write only
         {
             FileAction action;
-            if (action.Open (STDERR_FILENO, option_arg, false, true))
+            if (action.Open(STDERR_FILENO, FileSpec{option_arg, false}, false, true))
                 launch_info.AppendFileAction (action);
             break;
         }
@@ -462,17 +460,18 @@ ProcessLaunchCommandOptions::SetOptionValue (uint32_t option_idx, const char *op
         case 'n':   // Disable STDIO
         {
             FileAction action;
-            if (action.Open (STDIN_FILENO, "/dev/null", true, false))
+            const FileSpec dev_null{"/dev/null", false};
+            if (action.Open(STDIN_FILENO, dev_null, true, false))
                 launch_info.AppendFileAction (action);
-            if (action.Open (STDOUT_FILENO, "/dev/null", false, true))
+            if (action.Open(STDOUT_FILENO, dev_null, false, true))
                 launch_info.AppendFileAction (action);
-            if (action.Open (STDERR_FILENO, "/dev/null", false, true))
+            if (action.Open(STDERR_FILENO, dev_null, false, true))
                 launch_info.AppendFileAction (action);
             break;
         }
             
         case 'w': 
-            launch_info.SetWorkingDirectory (option_arg);    
+            launch_info.SetWorkingDirectory(FileSpec{option_arg, false});
             break;
             
         case 't':   // Open process in new terminal window
@@ -740,7 +739,7 @@ Process::Process(Target &target, Listener &listener, const UnixSignalsSP &unix_s
     m_stderr_data (),
     m_profile_data_comm_mutex (Mutex::eMutexTypeRecursive),
     m_profile_data (),
-    m_iohandler_sync (false),
+    m_iohandler_sync (0),
     m_memory_cache (*this),
     m_allocated_memory_cache (*this),
     m_should_detach (false),
@@ -874,6 +873,9 @@ Process::Finalize()
     m_instrumentation_runtimes.clear();
     m_next_event_action_ap.reset();
     m_stop_info_override_callback = NULL;
+    // Clear the last natural stop ID since it has a strong
+    // reference to this process
+    m_mod_id.SetStopEventForLastNaturalStopID(EventSP());
 //#ifdef LLDB_CONFIGURATION_DEBUG
 //    StreamFile s(stdout, false);
 //    EventSP event_sp;
@@ -949,33 +951,21 @@ Process::GetNextEvent (EventSP &event_sp)
     return state;
 }
 
-bool
-Process::SyncIOHandler (uint64_t timeout_msec)
+void
+Process::SyncIOHandler (uint32_t iohandler_id, uint64_t timeout_msec)
 {
-    bool timed_out = false;
-
     // don't sync (potentially context switch) in case where there is no process IO
-    if (m_process_input_reader)
-    {
-        TimeValue timeout = TimeValue::Now();
-        timeout.OffsetWithMicroSeconds(timeout_msec*1000);
+    if (! m_process_input_reader)
+        return;
 
-        m_iohandler_sync.WaitForValueEqualTo(true, &timeout, &timed_out);
+    TimeValue timeout = TimeValue::Now();
+    timeout.OffsetWithMicroSeconds(timeout_msec*1000);
+    uint32_t new_iohandler_id = 0;
+    m_iohandler_sync.WaitForValueNotEqualTo(iohandler_id, new_iohandler_id, &timeout);
 
-        Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_PROCESS));
-        if(log)
-        {
-            if(timed_out)
-                log->Printf ("Process::%s pid %" PRIu64 " (timeout=%" PRIu64 "ms): FAIL", __FUNCTION__, GetID (), timeout_msec);
-            else
-                log->Printf ("Process::%s pid %" PRIu64 ": SUCCESS", __FUNCTION__, GetID ());
-        }
-
-        // reset sync one-shot so it will be ready for next launch
-        m_iohandler_sync.SetValue(false, eBroadcastNever);
-    }
-
-    return !timed_out;
+    Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_PROCESS));
+    if (log)
+        log->Printf("Process::%s waited for m_iohandler_sync to change from %u, new value is %u", __FUNCTION__, iohandler_id, new_iohandler_id);
 }
 
 StateType
@@ -1439,6 +1429,9 @@ Process::GetExitDescription ()
 bool
 Process::SetExitStatus (int status, const char *cstr)
 {
+    // Use a mutex to protect setting the exit status.
+    Mutex::Locker locker (m_exit_status_mutex);
+
     Log *log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_STATE | LIBLLDB_LOG_PROCESS));
     if (log)
         log->Printf("Process::SetExitStatus (status=%i (0x%8.8x), description=%s%s%s)", 
@@ -1454,21 +1447,35 @@ Process::SetExitStatus (int status, const char *cstr)
             log->Printf("Process::SetExitStatus () ignoring exit status because state was already set to eStateExited");
         return false;
     }
-    
-    // use a mutex to protect the status and string during updating
-    {
-        Mutex::Locker locker (m_exit_status_mutex);
 
-        m_exit_status = status;
-        if (cstr)
-            m_exit_string = cstr;
-        else
-            m_exit_string.clear();
+    m_exit_status = status;
+    if (cstr)
+        m_exit_string = cstr;
+    else
+        m_exit_string.clear();
+
+    // When we exit, we no longer need to the communication channel
+    m_stdio_communication.Disconnect();
+    m_stdio_communication.StopReadThread();
+    m_stdin_forward = false;
+
+    // And we don't need the input reader anymore as well
+    if (m_process_input_reader)
+    {
+        m_process_input_reader->SetIsDone(true);
+        m_process_input_reader->Cancel();
+        m_process_input_reader.reset();
     }
 
-    DidExit ();
+    // Clear the last natural stop ID since it has a strong
+    // reference to this process
+    m_mod_id.SetStopEventForLastNaturalStopID(EventSP());
 
     SetPrivateState (eStateExited);
+
+    // Allow subclasses to do some cleanup
+    DidExit ();
+
     return true;
 }
 
@@ -4029,8 +4036,8 @@ Process::Destroy (bool force_kill)
             DidDestroy();
             StopPrivateStateThread();
         }
-        m_stdio_communication.StopReadThread();
         m_stdio_communication.Disconnect();
+        m_stdio_communication.StopReadThread();
         m_stdin_forward = false;
 
         if (m_process_input_reader)
@@ -4462,12 +4469,15 @@ Process::HandlePrivateEvent (EventSP &event_sp)
             // Or don't push it if we are launching since it will come up stopped.
             if (!GetTarget().GetDebugger().IsForwardingEvents() && new_state != eStateLaunching &&
                 new_state != eStateAttaching)
+            {
                 PushProcessIOHandler ();
-            m_iohandler_sync.SetValue(true, eBroadcastAlways);
+                m_iohandler_sync.SetValue(m_iohandler_sync.GetValue()+1, eBroadcastAlways);
+                if (log)
+                    log->Printf("Process::%s updated m_iohandler_sync to %d", __FUNCTION__, m_iohandler_sync.GetValue());
+            }
         }
         else if (StateIsStoppedState(new_state, false))
         {
-            m_iohandler_sync.SetValue(false, eBroadcastNever);
             if (!Process::ProcessEventData::GetRestartedFromEvent(event_sp.get()))
             {
                 // If the lldb_private::Debugger is handling the events, we don't
@@ -4633,7 +4643,7 @@ Process::RunPrivateStateThread ()
 
 Process::ProcessEventData::ProcessEventData () :
     EventData (),
-    m_process_sp (),
+    m_process_wp (),
     m_state (eStateInvalid),
     m_restarted (false),
     m_update_state (0),
@@ -4643,12 +4653,14 @@ Process::ProcessEventData::ProcessEventData () :
 
 Process::ProcessEventData::ProcessEventData (const ProcessSP &process_sp, StateType state) :
     EventData (),
-    m_process_sp (process_sp),
+    m_process_wp (),
     m_state (state),
     m_restarted (false),
     m_update_state (0),
     m_interrupted (false)
 {
+    if (process_sp)
+        m_process_wp = process_sp;
 }
 
 Process::ProcessEventData::~ProcessEventData()
@@ -4671,6 +4683,11 @@ Process::ProcessEventData::GetFlavor () const
 void
 Process::ProcessEventData::DoOnRemoval (Event *event_ptr)
 {
+    ProcessSP process_sp(m_process_wp.lock());
+    
+    if (!process_sp)
+        return;
+    
     // This function gets called twice for each event, once when the event gets pulled 
     // off of the private process event queue, and then any number of times, first when it gets pulled off of
     // the public event queue, then other times when we're pretending that this is where we stopped at the
@@ -4680,7 +4697,7 @@ Process::ProcessEventData::DoOnRemoval (Event *event_ptr)
     if (m_update_state != 1)
         return;
     
-    m_process_sp->SetPublicState (m_state, Process::ProcessEventData::GetRestartedFromEvent(event_ptr));
+    process_sp->SetPublicState (m_state, Process::ProcessEventData::GetRestartedFromEvent(event_ptr));
     
     // If this is a halt event, even if the halt stopped with some reason other than a plain interrupt (e.g. we had
     // already stopped for a breakpoint when the halt request came through) don't do the StopInfo actions, as they may
@@ -4691,7 +4708,7 @@ Process::ProcessEventData::DoOnRemoval (Event *event_ptr)
     // If we're stopped and haven't restarted, then do the StopInfo actions here:
     if (m_state == eStateStopped && ! m_restarted)
     {        
-        ThreadList &curr_thread_list = m_process_sp->GetThreadList();
+        ThreadList &curr_thread_list = process_sp->GetThreadList();
         uint32_t num_threads = curr_thread_list.GetSize();
         uint32_t idx;
 
@@ -4721,7 +4738,7 @@ Process::ProcessEventData::DoOnRemoval (Event *event_ptr)
         
         for (idx = 0; idx < num_threads; ++idx)
         {
-            curr_thread_list = m_process_sp->GetThreadList();
+            curr_thread_list = process_sp->GetThreadList();
             if (curr_thread_list.GetSize() != num_threads)
             {
                 Log *log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_STEP | LIBLLDB_LOG_PROCESS));
@@ -4784,14 +4801,14 @@ Process::ProcessEventData::DoOnRemoval (Event *event_ptr)
                 SetRestarted(true);
                 // Use the public resume method here, since this is just
                 // extending a public resume.
-                m_process_sp->PrivateResume();
+                process_sp->PrivateResume();
             }
             else
             {
                 // If we didn't restart, run the Stop Hooks here:
                 // They might also restart the target, so watch for that.
-                m_process_sp->GetTarget().RunStopHooks();
-                if (m_process_sp->GetPrivateState() == eStateRunning)
+                process_sp->GetTarget().RunStopHooks();
+                if (process_sp->GetPrivateState() == eStateRunning)
                     SetRestarted(true);
             }
         }
@@ -4801,9 +4818,13 @@ Process::ProcessEventData::DoOnRemoval (Event *event_ptr)
 void
 Process::ProcessEventData::Dump (Stream *s) const
 {
-    if (m_process_sp)
+    ProcessSP process_sp(m_process_wp.lock());
+
+    if (process_sp)
         s->Printf(" process = %p (pid = %" PRIu64 "), ",
-                  static_cast<void*>(m_process_sp.get()), m_process_sp->GetID());
+                  static_cast<void*>(process_sp.get()), process_sp->GetID());
+    else
+        s->PutCString(" process = NULL, ");
 
     s->Printf("state = %s", StateAsCString(GetState()));
 }
@@ -5083,6 +5104,7 @@ public:
         m_write_file (write_fd, false),
         m_pipe ()
     {
+        m_pipe.CreateNew(false);
         m_read_file.SetDescriptor(GetInputFD(), false);
     }
 
@@ -5092,130 +5114,93 @@ public:
         
     }
     
-    bool
-    OpenPipes ()
-    {
-        if (m_pipe.CanRead() && m_pipe.CanWrite())
-            return true;
-        Error result = m_pipe.CreateNew(false);
-        return result.Success();
-    }
-
-    void
-    ClosePipes()
-    {
-        m_pipe.Close();
-    }
-    
     // Each IOHandler gets to run until it is done. It should read data
     // from the "in" and place output into "out" and "err and return
     // when done.
-    virtual void
-    Run ()
+    void
+    Run () override
     {
-        if (m_read_file.IsValid() && m_write_file.IsValid())
+        if (!m_read_file.IsValid() || !m_write_file.IsValid() || !m_pipe.CanRead() || !m_pipe.CanWrite())
         {
-            SetIsDone(false);
-            if (OpenPipes())
-            {
-                const int read_fd = m_read_file.GetDescriptor();
-                TerminalState terminal_state;
-                terminal_state.Save (read_fd, false);
-                Terminal terminal(read_fd);
-                terminal.SetCanonical(false);
-                terminal.SetEcho(false);
+            SetIsDone(true);
+            return;
+        }
+
+        SetIsDone(false);
+        const int read_fd = m_read_file.GetDescriptor();
+        TerminalState terminal_state;
+        terminal_state.Save (read_fd, false);
+        Terminal terminal(read_fd);
+        terminal.SetCanonical(false);
+        terminal.SetEcho(false);
 // FD_ZERO, FD_SET are not supported on windows
 #ifndef _WIN32
-                const int pipe_read_fd = m_pipe.GetReadFileDescriptor();
-                while (!GetIsDone())
+        const int pipe_read_fd = m_pipe.GetReadFileDescriptor();
+        while (!GetIsDone())
+        {
+            fd_set read_fdset;
+            FD_ZERO (&read_fdset);
+            FD_SET (read_fd, &read_fdset);
+            FD_SET (pipe_read_fd, &read_fdset);
+            const int nfds = std::max<int>(read_fd, pipe_read_fd) + 1;
+            int num_set_fds = select (nfds, &read_fdset, NULL, NULL, NULL);
+            if (num_set_fds < 0)
+            {
+                const int select_errno = errno;
+
+                if (select_errno != EINTR)
+                    SetIsDone(true);
+            }
+            else if (num_set_fds > 0)
+            {
+                char ch = 0;
+                size_t n;
+                if (FD_ISSET (read_fd, &read_fdset))
                 {
-                    fd_set read_fdset;
-                    FD_ZERO (&read_fdset);
-                    FD_SET (read_fd, &read_fdset);
-                    FD_SET (pipe_read_fd, &read_fdset);
-                    const int nfds = std::max<int>(read_fd, pipe_read_fd) + 1;
-                    int num_set_fds = select (nfds, &read_fdset, NULL, NULL, NULL);
-                    if (num_set_fds < 0)
+                    n = 1;
+                    if (m_read_file.Read(&ch, n).Success() && n == 1)
                     {
-                        const int select_errno = errno;
-                        
-                        if (select_errno != EINTR)
+                        if (m_write_file.Write(&ch, n).Fail() || n != 1)
                             SetIsDone(true);
                     }
-                    else if (num_set_fds > 0)
+                    else
+                        SetIsDone(true);
+                }
+                if (FD_ISSET (pipe_read_fd, &read_fdset))
+                {
+                    size_t bytes_read;
+                    // Consume the interrupt byte
+                    Error error = m_pipe.Read(&ch, 1, bytes_read);
+                    if (error.Success())
                     {
-                        char ch = 0;
-                        size_t n;
-                        if (FD_ISSET (read_fd, &read_fdset))
+                        switch (ch)
                         {
-                            n = 1;
-                            if (m_read_file.Read(&ch, n).Success() && n == 1)
-                            {
-                                if (m_write_file.Write(&ch, n).Fail() || n != 1)
-                                    SetIsDone(true);
-                            }
-                            else
+                            case 'q':
                                 SetIsDone(true);
-                        }
-                        if (FD_ISSET (pipe_read_fd, &read_fdset))
-                        {
-                            size_t bytes_read;
-                            // Consume the interrupt byte
-                            Error error = m_pipe.Read(&ch, 1, bytes_read);
-                            if (error.Success())
-                            {
-                                switch (ch)
-                                {
-                                    case 'q':
-                                        SetIsDone(true);
-                                        break;
-                                    case 'i':
-                                        if (StateIsRunningState(m_process->GetState()))
-                                            m_process->Halt();
-                                        break;
-                                }
-                            }
+                                break;
+                            case 'i':
+                                if (StateIsRunningState(m_process->GetState()))
+                                    m_process->Halt();
+                                break;
                         }
                     }
                 }
-#endif
-                terminal_state.Restore();
-
             }
-            else
-                SetIsDone(true);
         }
-        else
-            SetIsDone(true);
+#endif
+        terminal_state.Restore();
     }
     
-    // Hide any characters that have been displayed so far so async
-    // output can be displayed. Refresh() will be called after the
-    // output has been displayed.
-    virtual void
-    Hide ()
-    {
-        
-    }
-    // Called when the async output has been received in order to update
-    // the input reader (refresh the prompt and redisplay any current
-    // line(s) that are being edited
-    virtual void
-    Refresh ()
-    {
-        
-    }
-    
-    virtual void
-    Cancel ()
+    void
+    Cancel () override
     {
         char ch = 'q';  // Send 'q' for quit
         size_t bytes_written = 0;
         m_pipe.Write(&ch, 1, bytes_written);
     }
 
-    virtual bool
-    Interrupt ()
+    bool
+    Interrupt () override
     {
         // Do only things that are safe to do in an interrupt context (like in
         // a SIGINT handler), like write 1 byte to a file descriptor. This will
@@ -5248,8 +5233,8 @@ public:
         return false;
     }
     
-    virtual void
-    GotEOF()
+    void
+    GotEOF() override
     {
         
     }
@@ -5298,6 +5283,10 @@ Process::PushProcessIOHandler ()
     IOHandlerSP io_handler_sp (m_process_input_reader);
     if (io_handler_sp)
     {
+        Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_PROCESS));
+        if (log)
+            log->Printf("Process::%s pushing IO handler", __FUNCTION__);
+
         io_handler_sp->SetIsDone(false);
         m_target.GetDebugger().PushIOHandler (io_handler_sp);
         return true;

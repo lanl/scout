@@ -7,8 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "lldb/lldb-python.h"
-
 #include <string>
 #include <vector>
 #include <stdint.h>
@@ -458,9 +456,9 @@ public:
                          "dump",
                          "Dump information on Objective-C classes known to the current process.",
                          "language objc class-table dump",
-                         eFlagRequiresProcess       |
-                         eFlagProcessMustBeLaunched |
-                         eFlagProcessMustBePaused   )
+                         eCommandRequiresProcess       |
+                         eCommandProcessMustBeLaunched |
+                         eCommandProcessMustBePaused   )
     {
     }
     
@@ -518,9 +516,9 @@ public:
                          "info",
                          "Dump information on a tagged pointer.",
                          "language objc tagged-pointer info",
-                         eFlagRequiresProcess       |
-                         eFlagProcessMustBeLaunched |
-                         eFlagProcessMustBePaused   )
+                         eCommandRequiresProcess       |
+                         eCommandProcessMustBeLaunched |
+                         eCommandProcessMustBePaused   )
     {
         CommandArgumentEntry arg;
         CommandArgumentData index_arg;

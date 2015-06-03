@@ -64,7 +64,17 @@ namespace platform_android {
         Error
         ConnectRemote (Args& args) override;
 
-    protected:
+        Error
+        GetFile (const FileSpec& source,
+                 const FileSpec& destination) override;
+
+        Error
+        PutFile (const FileSpec& source,
+                 const FileSpec& destination,
+                 uint32_t uid = UINT32_MAX,
+                 uint32_t gid = UINT32_MAX) override;
+
+     protected:
         const char *
         GetCacheHostname () override;
 

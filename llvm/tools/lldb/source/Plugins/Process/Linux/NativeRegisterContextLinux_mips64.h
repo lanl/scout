@@ -7,72 +7,26 @@
 //
 //===----------------------------------------------------------------------===//
 
+#if defined (__mips__)
 
 #ifndef lldb_NativeRegisterContextLinux_mips64_h
 #define lldb_NativeRegisterContextLinux_mips64_h
 
-#include "lldb/Host/common/NativeRegisterContextRegisterInfo.h"
+#include "Plugins/Process/Linux/NativeRegisterContextLinux.h"
 #include "Plugins/Process/Utility/RegisterContext_mips64.h"
-#include "Plugins/Process/Utility/RegisterContextLinux_mips64.h"
-
+#include "Plugins/Process/Utility/lldb-mips64-register-enums.h"
 
 namespace lldb_private {
 namespace process_linux {
 
     class NativeProcessLinux;
 
-    // ---------------------------------------------------------------------------
-    // Internal codes for mips64 GP registers.
-    // ---------------------------------------------------------------------------
-    enum
-    {
-        k_first_gp_reg_mips64,
-        gp_reg_r0_mips64 = k_first_gp_reg_mips64,
-        gp_reg_r1_mips64,
-        gp_reg_r2_mips64,
-        gp_reg_r3_mips64,
-        gp_reg_r4_mips64,
-        gp_reg_r5_mips64,
-        gp_reg_r6_mips64,
-        gp_reg_r7_mips64,
-        gp_reg_r8_mips64,
-        gp_reg_r9_mips64,
-        gp_reg_r10_mips64,
-        gp_reg_r11_mips64,
-        gp_reg_r12_mips64,
-        gp_reg_r13_mips64,
-        gp_reg_r14_mips64,
-        gp_reg_r15_mips64,
-        gp_reg_r16_mips64,
-        gp_reg_r17_mips64,
-        gp_reg_r18_mips64,
-        gp_reg_r19_mips64,
-        gp_reg_r20_mips64,
-        gp_reg_r21_mips64,
-        gp_reg_r22_mips64,
-        gp_reg_r23_mips64,
-        gp_reg_r24_mips64,
-        gp_reg_r25_mips64,
-        gp_reg_r26_mips64,
-        gp_reg_r27_mips64,
-        gp_reg_r28_mips64,
-        gp_reg_r29_mips64,
-        gp_reg_r30_mips64,
-        gp_reg_r31_mips64,
-        gp_reg_mullo_mips64,
-        gp_reg_mulhi_mips64,
-        gp_reg_pc_mips64,
-        gp_reg_badvaddr_mips64,
-        gp_reg_sr_mips64,
-        gp_reg_cause_mips64,
-        k_num_gp_reg_mips64,
-    };
-
-    class NativeRegisterContextLinux_mips64 : public NativeRegisterContextRegisterInfo
+    class NativeRegisterContextLinux_mips64 : public NativeRegisterContextLinux
     {
     public:
-        NativeRegisterContextLinux_mips64 (NativeThreadProtocol &native_thread, 
-            uint32_t concrete_frame_idx, RegisterInfoInterface *reg_info_interface_p);
+        NativeRegisterContextLinux_mips64 (const ArchSpec& target_arch,
+                                           NativeThreadProtocol &native_thread, 
+                                           uint32_t concrete_frame_idx);
 
         uint32_t
         GetRegisterSetCount () const override;
@@ -118,13 +72,48 @@ namespace process_linux {
         uint32_t
         NumSupportedHardwareWatchpoints () override;
 
+    protected:
+        NativeProcessLinux::OperationUP
+        GetReadRegisterValueOperation(uint32_t offset,
+                                      const char* reg_name,
+                                      uint32_t size,
+                                      RegisterValue &value) override;
+
+        NativeProcessLinux::OperationUP
+        GetWriteRegisterValueOperation(uint32_t offset,
+                                       const char* reg_name,
+                                       const RegisterValue &value) override;
+
+        bool
+        IsFPR(uint32_t reg_index) const;
+
+        void*
+        GetGPRBuffer() override { return &m_gpr_mips64; }
+
+        void*
+        GetFPRBuffer() override { return &m_fpr; }
+
+        size_t
+        GetFPRSize() override { return sizeof(FPR_mips); }
+
     private:
+        // Info about register ranges.
+        struct RegInfo
+        {
+            uint32_t num_registers;
+            uint32_t num_gpr_registers;
+            uint32_t num_fpr_registers;
 
-        lldb_private::Error
-        WriteRegister(const uint32_t reg, const RegisterValue &value);
+            uint32_t last_gpr;
+            uint32_t first_fpr;
+            uint32_t last_fpr;
+        };
 
-        lldb_private::Error
-        ReadRegisterRaw (uint32_t reg_index, RegisterValue &reg_value);
+        RegInfo m_reg_info;
+
+        uint64_t m_gpr_mips64[k_num_gpr_registers_mips64];
+
+        FPR_mips m_fpr;
     };
 
 } // namespace process_linux
@@ -132,3 +121,4 @@ namespace process_linux {
 
 #endif // #ifndef lldb_NativeRegisterContextLinux_mips64_h
 
+#endif // defined (__mips__)

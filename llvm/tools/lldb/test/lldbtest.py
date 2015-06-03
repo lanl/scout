@@ -47,6 +47,14 @@ import lldbtest_config
 import lldbutil
 from _pyio import __metaclass__
 
+# dosep.py starts lots and lots of dotest instances
+# This option helps you find if two (or more) dotest instances are using the same
+# directory at the same time
+# Enable it to cause test failures and stderr messages if dotest instances try to run in
+# the same directory simultaneously
+# it is disabled by default because it litters the test directories with ".dirlock" files
+debug_confirm_directory_exclusivity = False
+
 # See also dotest.parseOptionsAndInitTestdirs(), where the environment variables
 # LLDB_COMMAND_TRACE and LLDB_DO_CLEANUP are set from '-t' and '-r dir' options.
 
@@ -79,7 +87,7 @@ PROCESS_EXITED = "Process exited successfully"
 
 PROCESS_STOPPED = "Process status should be stopped"
 
-RUN_SUCCEEDED = "Process is launched successfully"
+RUN_FAILED = "Process could not be launched successfully"
 
 RUN_COMPLETED = "Process exited successfully"
 
@@ -152,9 +160,18 @@ VARIABLES_DISPLAYED_CORRECTLY = "Variable(s) displayed correctly"
 
 WATCHPOINT_CREATED = "Watchpoint created successfully"
 
-def CMD_MSG(str):
-    '''A generic "Command '%s' returns successfully" message generator.'''
-    return "Command '%s' returns successfully" % str
+def cmd_failure_message(cmd, res, msg=None):
+    """ Return a command failure message.
+
+    Args:
+        cmd - The command which failed.
+        res - The command result of type SBCommandReturnObject.
+        msg - Additional failure message if any.
+    """
+    err_msg = res.GetError()
+    full_msg = (err_msg or "") + (msg or "")
+    full_msg = (">>> %s" % full_msg.replace("\n", "\n>>> ")) if full_msg else ""
+    return "Command '%s' failed.\n%s" % (cmd, full_msg)
 
 def COMPLETION_MSG(str_before, str_after):
     '''A generic message generator for the completion mechanism.'''
@@ -637,6 +654,12 @@ def expectedFailureLinux(bugnumber=None, compilers=None):
 def expectedFailureWindows(bugnumber=None, compilers=None):
     return expectedFailureOS(['windows'], bugnumber, compilers)
 
+def expectedFailureAndroid(bugnumber=None):
+    def fn(self):
+        triple = self.dbg.GetSelectedPlatform().GetTriple()
+        return re.match(".*-.*-.*-android", triple)
+    return expectedFailure(fn, bugnumber)
+
 def expectedFailureLLGS(bugnumber=None, compilers=None):
     def fn(self):
         # llgs local is only an option on Linux targets
@@ -936,7 +959,6 @@ class Base(unittest2.TestCase):
         Python unittest framework class setup fixture.
         Do current directory manipulation.
         """
-
         # Fail fast if 'mydir' attribute is not overridden.
         if not cls.mydir or len(cls.mydir) == 0:
             raise Exception("Subclasses must override the 'mydir' attribute.")
@@ -947,9 +969,26 @@ class Base(unittest2.TestCase):
         # Change current working directory if ${LLDB_TEST} is defined.
         # See also dotest.py which sets up ${LLDB_TEST}.
         if ("LLDB_TEST" in os.environ):
+            full_dir = os.path.join(os.environ["LLDB_TEST"], cls.mydir)
             if traceAlways:
-                print >> sys.stderr, "Change dir to:", os.path.join(os.environ["LLDB_TEST"], cls.mydir)
+                print >> sys.stderr, "Change dir to:", full_dir
             os.chdir(os.path.join(os.environ["LLDB_TEST"], cls.mydir))
+
+        if debug_confirm_directory_exclusivity:
+            import lock
+            cls.dir_lock = lock.Lock(os.path.join(full_dir, ".dirlock"))
+            try:
+                cls.dir_lock.try_acquire()
+                # write the class that owns the lock into the lock file
+                cls.dir_lock.handle.write(cls.__name__)
+            except IOError as ioerror:
+                # nothing else should have this directory lock
+                # wait here until we get a lock
+                cls.dir_lock.acquire()
+                # read the previous owner from the lock file
+                lock_id = cls.dir_lock.handle.read()
+                print >> sys.stderr, "LOCK ERROR: {} wants to lock '{}' but it is already locked by '{}'".format(cls.__name__, full_dir, lock_id)
+                raise ioerror
 
         # Set platform context.
         if platformIsDarwin():
@@ -981,6 +1020,10 @@ class Base(unittest2.TestCase):
                 except:
                     exc_type, exc_value, exc_tb = sys.exc_info()
                     traceback.print_exception(exc_type, exc_value, exc_tb)
+
+        if debug_confirm_directory_exclusivity:
+            cls.dir_lock.release()
+            del cls.dir_lock
 
         # Restore old working directory.
         if traceAlways:
@@ -1145,7 +1188,11 @@ class Base(unittest2.TestCase):
 
         # Create a string buffer to record the session info, to be dumped into a
         # test case specific file if test failure is encountered.
-        self.session = StringIO.StringIO()
+        self.log_basename = self.getLogBasenameForCurrentTest()
+
+        session_file = "{}.log".format(self.log_basename)
+        unbuffered = 0 # 0 is the constant for unbuffered
+        self.session = open(session_file, "w", unbuffered)
 
         # Optimistically set __errored__, __failed__, __expected__ to False
         # initially.  If the test errored/failed, the session info
@@ -1487,8 +1534,8 @@ class Base(unittest2.TestCase):
         # formatted tracebacks.
         #
         # See http://docs.python.org/library/unittest.html#unittest.TestResult.
-        src_log_basename = self.getLogBasenameForCurrentTest()
 
+        # output tracebacks into session
         pairs = []
         if self.__errored__:
             pairs = lldb.test_result.errors
@@ -1502,41 +1549,52 @@ class Base(unittest2.TestCase):
         elif self.__skipped__:
             prefix = 'SkippedTest'
         elif self.__unexpected__:
-            prefix = "UnexpectedSuccess"
+            prefix = 'UnexpectedSuccess'
         else:
-            prefix = "Success"
-            if not lldbtest_config.log_success:
-                # delete log files, return (don't output trace)
-                for i in glob.glob(src_log_basename + "*"):
-                    os.unlink(i)
-                return
-
-        # rename all log files - prepend with result
-        dst_log_basename = self.getLogBasenameForCurrentTest(prefix)
-        for src in glob.glob(self.getLogBasenameForCurrentTest() + "*"):
-            dst = src.replace(src_log_basename, dst_log_basename)
-            os.rename(src, dst)
+            prefix = 'Success'
 
         if not self.__unexpected__ and not self.__skipped__:
             for test, traceback in pairs:
                 if test is self:
                     print >> self.session, traceback
 
+        # put footer (timestamp/rerun instructions) into session
         testMethod = getattr(self, self._testMethodName)
         if getattr(testMethod, "__benchmarks_test__", False):
             benchmarks = True
         else:
             benchmarks = False
 
-        pname = "{}.log".format(dst_log_basename)
-        with open(pname, "w") as f:
-            import datetime
-            print >> f, "Session info generated @", datetime.datetime.now().ctime()
-            print >> f, self.session.getvalue()
-            print >> f, "To rerun this test, issue the following command from the 'test' directory:\n"
-            print >> f, "./dotest.py %s -v %s %s" % (self.getRunOptions(),
-                                                     ('+b' if benchmarks else '-t'),
-                                                     self.getRerunArgs())
+        import datetime
+        print >> self.session, "Session info generated @", datetime.datetime.now().ctime()
+        print >> self.session, "To rerun this test, issue the following command from the 'test' directory:\n"
+        print >> self.session, "./dotest.py %s -v %s %s" % (self.getRunOptions(),
+                                                 ('+b' if benchmarks else '-t'),
+                                                 self.getRerunArgs())
+        self.session.close()
+        del self.session
+
+        # process the log files
+        log_files_for_this_test = glob.glob(self.log_basename + "*")
+
+        if prefix != 'Success' or lldbtest_config.log_success:
+            # keep all log files, rename them to include prefix
+            dst_log_basename = self.getLogBasenameForCurrentTest(prefix)
+            for src in log_files_for_this_test:
+                if os.path.isfile(src):
+                    dst = src.replace(self.log_basename, dst_log_basename)
+                    if os.name == "nt" and os.path.isfile(dst):
+                        # On Windows, renaming a -> b will throw an exception if b exists.  On non-Windows platforms
+                        # it silently replaces the destination.  Ultimately this means that atomic renames are not
+                        # guaranteed to be possible on Windows, but we need this to work anyway, so just remove the
+                        # destination first if it already exists.
+                        os.remove(dst)
+
+                    os.rename(src, dst)
+        else:
+            # success!  (and we don't want log files) delete log files
+            for log_file in log_files_for_this_test:
+                os.unlink(log_file)
 
     # ====================================================
     # Config. methods supported through a plugin interface
@@ -2229,8 +2287,9 @@ class TestBase(Base):
                     print >> sbuf, "Command '" + cmd + "' failed!"
 
         if check:
-            self.assertTrue(self.res.Succeeded(),
-                            msg if msg else CMD_MSG(cmd))
+            self.assertTrue(
+                self.res.Succeeded(),
+                cmd_failure_message(cmd, self.res, msg))
 
     def match (self, str, patterns, msg=None, trace=False, error=False, matching=True, exe=True):
         """run command in str, and match the result against regexp in patterns returning the match object for the first matching pattern
