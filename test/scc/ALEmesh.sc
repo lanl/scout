@@ -65,41 +65,71 @@ int main(int argc, char *argv[])
 {
   AMeshType m1[1];
 
-  float val = 43;
-  float valarray[3] = {2, 3, 4};
-  float* valptr = &val;
-  float sumval = 0;
+  float sumvalx = 0;
+  float sumvaly = 0;
+  float sumvalz = 0;
 
   forall vertices v in m1{
-    //mpositionx('c');  //breaks
-    //mpositionx(valarray[0]);  // ok
-    //mpositionx(5); //breaks
-    //mpositionx(5.0); //ok
-    //mpositionx(*valptr); //ok
-    //mpositionx(val); //ok
-    //mpositionx(3.0);
-    //sumval += mpositionx();
-    //mpositiony(val+5); //ok
-    //sumval += mpositiony();
-    //mpositionz(val+7); //ok
-    //sumval += mpositionz();
-    mpositionx(2.0);
-    mpositiony(4.0);
-    mpositionz(6.0);
-    sumval += mpositionx();
-    sumval += mpositiony();
-    sumval += mpositionz();
-    //mpositionz(4.0);
-    //float4 mposVector;
-    //mposVector.x = mposition().x;
-    //mposVector.y = mposition().y;
-    //mposVector.z = mposition().z;
-    //sumval += mposVector.x; // not working
-    //sumval += mposVector.y; // not working
-    //sumval += mposVector.z; // not working
+    mpositionx(2.0); 
+    sumvalx += mpositionx();
+    mpositiony(3.0); 
+    sumvaly += mpositiony();
+    mpositionz(4.0);
+    sumvalz += mpositionz();
   }
 
-  printf("sumval: %f\n", sumval);
-  
+  assert(sumvalx == 4.0 && "bad mpositionx()");
+  assert(sumvaly == 6.0 && "bad mpositiony()");
+  assert(sumvalz == 8.0 && "bad mpositionz()");
+
+  // could also do a test for these:
+  //mpositionx('c');  //breaks, need to fix
+  //mpositionx(5); //breaks, need to fix
+  //mpositionx(positionx()); // breaks, can't do FP cast
+  //float val = 43;
+  //float valarray[3] = {2, 3, 4};
+  //float* valptr = &val;
+  //mpositionx(valarray[0]);  // ok
+  //mpositionx(*valptr); //ok
+  //mpositionx(val); //ok
+  //mpositiony(val+5); //ok
+
+  sumvalx = 0;
+  sumvaly = 0;
+  sumvalz = 0;
+
+  float3 mposVector = {3, 4, 5}; 
+
+  forall vertices v in m1{
+    mposition(mposVector); 
+    sumvalx += mpositionx();
+    sumvaly += mpositiony();
+    sumvalz += mpositionz();
+  }
+
+  assert(sumvalx == 6.0 && "bad mpositionx()");
+  assert(sumvaly == 8.0 && "bad mpositiony()");
+  assert(sumvalz == 10.0 && "bad mpositionz()");
+
+  sumvalx = 0;
+  sumvaly = 0;
+  sumvalz = 0;
+
+  mposVector.x = 4;
+  mposVector.y = 5;
+  mposVector.z = 6;
+
+  forall vertices v in m1{
+    mposition(mposVector); 
+    float4 mposVector2 = mposition();  
+    sumvalx += mposVector2.x;
+    sumvaly += mposVector2.y;
+    sumvalz += mposVector2.z;
+  }
+
+  assert(sumvalx == 8.0 && "bad mpositionx()");
+  assert(sumvaly == 10.0 && "bad mpositiony()");
+  assert(sumvalz == 12.0 && "bad mpositionz()");
+
   return 0;
 }
