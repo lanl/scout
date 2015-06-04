@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
 
   forall vertices v in m1{
     mposition(mposVector); 
-    float4 mposVector2 = mposition();  
+    float3 mposVector2 = mposition();  
     sumvalx += mposVector2.x;
     sumvaly += mposVector2.y;
     sumvalz += mposVector2.z;

@@ -69,8 +69,7 @@ bool isPosition(unsigned id) {
 
 bool isMPosition(unsigned id) {
   if (id == Builtin::BImposition || id == Builtin::BImpositionx
-      || id == Builtin::BImpositiony || id == Builtin::BImpositionz
-      || id == Builtin::BImpositionw) return true;
+      || id == Builtin::BImpositiony || id == Builtin::BImpositionz) return true;
   return false;
 }
 
