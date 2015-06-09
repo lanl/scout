@@ -1268,7 +1268,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
 
 RValue CodeGenFunction::EmitMPosition(const CallExpr *E , unsigned int index) {
 
-  static const char *IndexNames[] = { "x", "y", "z", "w"};
+  static const char *IndexNames[] = { "x", "y", "z"};
 
   // check if we are NOT in a forall or renderall
   if (!CurrentMeshVarDecl) {
@@ -1279,7 +1279,7 @@ RValue CodeGenFunction::EmitMPosition(const CallExpr *E , unsigned int index) {
   // check if this is an ALE mesh
   const ALEMeshType* aleMeshType = dyn_cast<ALEMeshType>(CurrentMeshVarDecl->getType().getTypePtr());
   if (!aleMeshType) {
-    CGM.getDiags().Report(E->getExprLoc(), diag::err_invalid_mposition_call); // "must operate on ALE mesh vertices"
+    CGM.getDiags().Report(E->getExprLoc(), diag::err_invalid_mposition_call) << "must operate on ALE mesh vertices";
     return RValue::get(llvm::ConstantFP::get(FloatTy, 0));
   }
 
@@ -1319,7 +1319,7 @@ RValue CodeGenFunction::EmitMPosition(const CallExpr *E , unsigned int index) {
     value = Builder.CreateLoad(valueptr, IRNameStr);
     return RValue::get(value);
 
-  } else { // otherwise, set the mpositionx to the argument
+  } else { // otherwise, set the mposition[x,y,z] to the argument
 
     RValue argval = EmitAnyExpr(E->getArg(0));
     llvm::Value* newvalue;
@@ -1340,23 +1340,53 @@ RValue CodeGenFunction::EmitMPosition(const CallExpr *E , unsigned int index) {
 }
 
 RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
-  static const char *IndexNames[] = { "x", "y", "z", "w"};
-  llvm::Value *Result =
-    llvm::UndefValue::get(llvm::VectorType::get(FloatTy, 4));
+  static const char *IndexNames[] = { "x", "y", "z"};
 
-  for (unsigned i = 0; i <= 3; ++i) {
+  SmallVector<uint32_t, 3 > Elts;
+  for (unsigned i = 0, e = 3; i != e; ++i) {
+    Elts.push_back(0);
+  }
+
+  // check if we are NOT in a forall or renderall
+  if (!CurrentMeshVarDecl) {
+    CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
+    return RValue::get(llvm::ConstantDataVector::getFP(getLLVMContext(), Elts));
+    //return RValue::get(llvm::ConstantFP::get(FloatTy, 0));
+  }
+
+  // check if this is an ALE mesh
+  const ALEMeshType* aleMeshType = dyn_cast<ALEMeshType>(CurrentMeshVarDecl->getType().getTypePtr());
+  if (!aleMeshType) {
+    CGM.getDiags().Report(E->getExprLoc(), diag::err_invalid_mposition_call) << "must operate on ALE mesh vertices";
+    return RValue::get(llvm::ConstantDataVector::getFP(getLLVMContext(), Elts));
+  }
+
+  llvm::Value *Result;
+  if (E->getNumArgs() == 0) { 
+    Result = llvm::UndefValue::get(llvm::VectorType::get(FloatTy, 3));
+  } else {
+    RValue argval = EmitAnyExpr(E->getArg(0));
+    llvm::Value* newvalue;
+    if (argval.isAggregate()) {
+      CGM.getDiags().Report(E->getExprLoc(), diag::err_invalid_mposition_call) << "arg must be a vector";
+      return RValue::get(llvm::ConstantDataVector::getFP(getLLVMContext(), Elts));
+    } else {
+      newvalue = argval.getScalarVal();
+      sprintf(IRNameStr, "newmpositionvec");
+      // the result of this operation is actually the vector argument
+      Result = Builder.CreateFPCast(newvalue, llvm::VectorType::get(FloatTy, 3), IRNameStr);
+    }
+  }
+
+
+  for (unsigned i = 0; i <= 2; ++i) {
     // otherwise, we compute the index of the mpositionx
     llvm::Value *indexVal;
-    if (i == 3) {
-      sprintf(IRNameStr, "mposition.linearindex.%s", IndexNames[i]);
-      indexVal = Builder.CreateLoad(LookupInductionVar(i),IRNameStr);
-    } else {
-      sprintf(IRNameStr, "mposition.index.%s", IndexNames[i]);
-      indexVal = Builder.CreateAdd(
-        Builder.CreateLoad(LookupInductionVar(i)),
-        Builder.CreateLoad(LookupMeshStart(i)),
-        IRNameStr);
-    }
+    sprintf(IRNameStr, "mposition.index.%s", IndexNames[i]);
+    indexVal = Builder.CreateAdd(
+      Builder.CreateLoad(LookupInductionVar(i)),
+      Builder.CreateLoad(LookupMeshStart(i)),
+      IRNameStr);
     llvm::Value *BaseAddr;
     GetMeshBaseAddr(CurrentMeshVarDecl, BaseAddr);
     llvm::StringRef MeshName = BaseAddr->getName();
@@ -1380,13 +1410,15 @@ RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
 
     // number of args is already known to be 0 or 1 as it was checked in sema
     // return the value of the mposition if it has no arguments
-    if(E->getNumArgs() == 0) { 
+    if(E->getNumArgs() == 0) {  // extract the vector values and return them
       sprintf(IRNameStr, "%s.%s.%s.element", MeshName.str().c_str(), "mposition", IndexNames[i]);
       value = Builder.CreateLoad(valueptr, IRNameStr);
       sprintf(IRNameStr, "%s.%s.%s.insertelement", MeshName.str().c_str(), "mposition", IndexNames[i]);
-      value = Builder.CreateInsertElement(Result, value, Builder.getInt32(i), IRNameStr);
-    } else { // otherwise, set the mposition to the argument
-
+      Result = Builder.CreateInsertElement(Result, value, Builder.getInt32(i), IRNameStr);
+    } else { // otherwise, set the mposition to the argument 
+      sprintf(IRNameStr, "%s.%s.%s.extractelement", MeshName.str().c_str(), "mposition", IndexNames[i]);
+      llvm::Value* newvalue = Builder.CreateExtractElement(Result, i, IRNameStr); 
+      Builder.CreateStore(newvalue, valueptr);
     }
   }
   return RValue::get(Result);

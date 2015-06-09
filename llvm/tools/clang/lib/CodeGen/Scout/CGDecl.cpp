@@ -604,46 +604,6 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     // The mesh really used by forall gets made later.
     EmitMeshParameters(Alloc, D);
 
-    // If ALE mesh, we need to allocate up to three dimensions for x, y and z coordinates
-#if 0
-    if (Ty.getTypeClass() == Type::ALEMesh) {
-      // TODO: make separate function for this called EmitMeshVertexPositions(Alloc, D);
-
-      unsigned int rank = Dimensions.size();
-
-      size_t start = nfields +  MeshParameterOffset::EndOffset;
-
-      uint64_t fieldTyBytes;
-
-      llvm::Type* floatTy = llvm::Type::getFloatTy(CGM.getModule().getContext());
-      fieldTyBytes = CGM.getDataLayout().getTypeAllocSize(floatTy);
-
-      llvm::Value *fieldTotalBytes = 0;
-      llvm::Value *fieldTyBytesValue = Builder.getInt64(fieldTyBytes);
-
-      llvm::Value* numElements = numVertices;
-      assert(numElements && "invalid numElements");
-
-      fieldTotalBytes = Builder.CreateNUWMul(numElements, fieldTyBytesValue);
-
-      if (!(CGM.getCodeGenOpts().ScoutLegionSupport)) {
-        for(size_t i = 0; i < rank; ++i) {
-          // Dynamically allocate memory.
-          llvm::SmallVector< llvm::Value *, 3 > Args;
-          Args.push_back(fieldTotalBytes);
-          llvm::Function *MallocFunc = CGM.getScoutRuntime().MemAllocFunction();
-          llvm::Value *val = Builder.CreateCall(MallocFunc, ArrayRef<llvm::Value *>(Args));
-          val = Builder.CreateBitCast(val, structTy->getContainedType(start+i));
-
-          sprintf(IRNameStr, "%s.ALEVertexPos.Dim%zu.ptr", MeshName.str().c_str(), i);
-          llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(0, Alloc, 0, start+i, IRNameStr);
-          Builder.CreateStore(val, field);
-        }
-      } else {
-        CGM.ErrorUnsupported(&D, "No Legion support for ALE mesh yet.");
-      }
-    }
-#endif
   } else if (Ty.getTypeClass() == Type::Window) {
     //llvm::Type *voidPtrTy = llvm::PointerType::get(llvm::Type::getVoidTy(CGM.getLLVMContext()),0);
     //llvm::Value *voidPtr  = Builder.CreateAlloca(voidPtrTy, 0, "void.ptr");
