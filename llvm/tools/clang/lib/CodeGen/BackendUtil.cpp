@@ -336,10 +336,10 @@ void EmitAssemblyHelper::CreatePasses() {
   PMBuilder.SLPVectorize = CodeGenOpts.VectorizeSLP;
   PMBuilder.LoopVectorize = CodeGenOpts.VectorizeLoop;
 
-  PMBuilder.DisableTailCalls = CodeGenOpts.DisableTailCalls;
   PMBuilder.DisableUnitAtATime = !CodeGenOpts.UnitAtATime;
   PMBuilder.DisableUnrollLoops = !CodeGenOpts.UnrollLoops;
   PMBuilder.MergeFunctions = CodeGenOpts.MergeFunctions;
+  PMBuilder.PrepareForLTO = CodeGenOpts.PrepareForLTO;
   PMBuilder.RerollLoops = CodeGenOpts.RerollLoops;
 
   PMBuilder.addExtension(PassManagerBuilder::EP_EarlyAsPossible,
@@ -506,10 +506,8 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   std::string FeaturesStr;
   if (!TargetOpts.Features.empty()) {
     SubtargetFeatures Features;
-    for (std::vector<std::string>::const_iterator
-           it = TargetOpts.Features.begin(),
-           ie = TargetOpts.Features.end(); it != ie; ++it)
-      Features.AddFeature(*it);
+    for (const std::string &Feature : TargetOpts.Features)
+      Features.AddFeature(Feature);
     FeaturesStr = Features.getString();
   }
 
@@ -532,6 +530,9 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   }
 
   llvm::TargetOptions Options;
+
+  if (!TargetOpts.Reciprocals.empty())
+    Options.Reciprocals = TargetRecip(TargetOpts.Reciprocals);
 
   Options.ThreadModel =
     llvm::StringSwitch<llvm::ThreadModel::Model>(CodeGenOpts.ThreadModel)
@@ -576,7 +577,6 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   Options.NoZerosInBSS = CodeGenOpts.NoZeroInitializedInBSS;
   Options.UnsafeFPMath = CodeGenOpts.UnsafeFPMath;
   Options.StackAlignmentOverride = CodeGenOpts.StackAlignment;
-  Options.DisableTailCalls = CodeGenOpts.DisableTailCalls;
   Options.TrapFuncName = CodeGenOpts.TrapFuncName;
   Options.PositionIndependentExecutable = LangOpts.PIELevel != 0;
   Options.FunctionSections = CodeGenOpts.FunctionSections;
@@ -677,10 +677,9 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
     PrettyStackTraceString CrashInfo("Per-function optimization");
 
     PerFunctionPasses->doInitialization();
-    for (Module::iterator I = TheModule->begin(),
-           E = TheModule->end(); I != E; ++I)
-      if (!I->isDeclaration())
-        PerFunctionPasses->run(*I);
+    for (Function &F : *TheModule)
+      if (!F.isDeclaration())
+        PerFunctionPasses->run(F);
     PerFunctionPasses->doFinalization();
   }
 

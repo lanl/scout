@@ -653,6 +653,8 @@ public:
 
 private:
   Module *getOwningModuleSlow() const;
+protected:
+  bool hasLocalOwningModuleStorage() const;
 
 public:
   /// \brief Get the imported owning module, if this decl is from an imported
@@ -672,7 +674,7 @@ public:
     return reinterpret_cast<Module *const *>(this)[-1];
   }
   void setLocalOwningModule(Module *M) {
-    assert(!isFromASTFile() && Hidden &&
+    assert(!isFromASTFile() && Hidden && hasLocalOwningModuleStorage() &&
            "should not have a cached owning module");
     reinterpret_cast<Module **>(this)[-1] = M;
   }
