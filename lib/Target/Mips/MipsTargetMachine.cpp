@@ -44,12 +44,11 @@ extern "C" void LLVMInitializeMipsTarget() {
   RegisterTargetMachine<MipselTargetMachine> B(TheMips64elTarget);
 }
 
-static std::string computeDataLayout(StringRef TT, StringRef CPU,
+static std::string computeDataLayout(const Triple &TT, StringRef CPU,
                                      const TargetOptions &Options,
                                      bool isLittle) {
   std::string Ret = "";
-  MipsABIInfo ABI =
-      MipsABIInfo::computeTargetABI(Triple(TT), CPU, Options.MCOptions);
+  MipsABIInfo ABI = MipsABIInfo::computeTargetABI(TT, CPU, Options.MCOptions);
 
   // There are both little and big endian mips.
   if (isLittle)
@@ -88,15 +87,19 @@ MipsTargetMachine::MipsTargetMachine(const Target &T, StringRef TT,
                                      const TargetOptions &Options,
                                      Reloc::Model RM, CodeModel::Model CM,
                                      CodeGenOpt::Level OL, bool isLittle)
-    : LLVMTargetMachine(T, computeDataLayout(TT, CPU, Options, isLittle), TT,
-                        CPU, FS, Options, RM, CM, OL),
+    : LLVMTargetMachine(T,
+                        computeDataLayout(Triple(TT), CPU, Options, isLittle),
+                        TT, CPU, FS, Options, RM, CM, OL),
       isLittle(isLittle), TLOF(make_unique<MipsTargetObjectFile>()),
       ABI(MipsABIInfo::computeTargetABI(Triple(TT), CPU, Options.MCOptions)),
-      Subtarget(nullptr), DefaultSubtarget(TT, CPU, FS, isLittle, *this),
-      NoMips16Subtarget(TT, CPU, FS.empty() ? "-mips16" : FS.str() + ",-mips16",
+      Subtarget(nullptr),
+      DefaultSubtarget(Triple(TT), CPU, FS, isLittle, *this),
+      NoMips16Subtarget(Triple(TT), CPU,
+                        FS.empty() ? "-mips16" : FS.str() + ",-mips16",
                         isLittle, *this),
-      Mips16Subtarget(TT, CPU, FS.empty() ? "+mips16" : FS.str() + ",+mips16",
-                      isLittle, *this) {
+      Mips16Subtarget(Triple(TT), CPU,
+                      FS.empty() ? "+mips16" : FS.str() + ",+mips16", isLittle,
+                      *this) {
   Subtarget = &DefaultSubtarget;
   initAsmInfo();
 }
@@ -157,7 +160,8 @@ MipsTargetMachine::getSubtargetImpl(const Function &F) const {
     // creation will depend on the TM and the code generation flags on the
     // function that reside in TargetOptions.
     resetTargetOptions(F);
-    I = llvm::make_unique<MipsSubtarget>(TargetTriple, CPU, FS, isLittle, *this);
+    I = llvm::make_unique<MipsSubtarget>(Triple(TargetTriple), CPU, FS,
+                                         isLittle, *this);
   }
   return I.get();
 }
