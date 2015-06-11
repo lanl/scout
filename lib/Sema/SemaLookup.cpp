@@ -1180,6 +1180,16 @@ Module *Sema::getOwningModule(Decl *Entity) {
   assert(!Entity->isFromASTFile() &&
          "hidden entity from AST file has no owning module");
 
+  if (!getLangOpts().ModulesLocalVisibility) {
+    // If we're not tracking visibility locally, the only way a declaration
+    // can be hidden and local is if it's hidden because it's parent is (for
+    // instance, maybe this is a lazily-declared special member of an imported
+    // class).
+    auto *Parent = cast<NamedDecl>(Entity->getDeclContext());
+    assert(Parent->isHidden() && "unexpectedly hidden decl");
+    return getOwningModule(Parent);
+  }
+
   // It's local and hidden; grab or compute its owning module.
   M = Entity->getLocalOwningModule();
   if (M)
@@ -1218,9 +1228,13 @@ Module *Sema::getOwningModule(Decl *Entity) {
 }
 
 void Sema::makeMergedDefinitionVisible(NamedDecl *ND, SourceLocation Loc) {
-  auto *M = PP.getModuleContainingLocation(Loc);
-  assert(M && "hidden definition not in any module");
-  Context.mergeDefinitionIntoModule(ND, M);
+  // FIXME: If ND is a template declaration, make the template parameters
+  // visible too. They're not (necessarily) within its DeclContext.
+  if (auto *M = PP.getModuleContainingLocation(Loc))
+    Context.mergeDefinitionIntoModule(ND, M);
+  else
+    // We're not building a module; just make the definition visible.
+    ND->setHidden(false);
 }
 
 /// \brief Find the module in which the given declaration was defined.
@@ -1268,6 +1282,30 @@ bool Sema::hasVisibleMergedDefinition(NamedDecl *Def) {
     if (isModuleVisible(Merged))
       return true;
   return false;
+}
+
+template<typename ParmDecl>
+static bool hasVisibleDefaultArgument(Sema &S, const ParmDecl *D) {
+  if (!D->hasDefaultArgument())
+    return false;
+
+  while (D) {
+    auto &DefaultArg = D->getDefaultArgStorage();
+    if (!DefaultArg.isInherited() && S.isVisible(D))
+      return true;
+
+    // If there was a previous default argument, maybe its parameter is visible.
+    D = DefaultArg.getInheritedFrom();
+  }
+  return false;
+}
+
+bool Sema::hasVisibleDefaultArgument(const NamedDecl *D) {
+  if (auto *P = dyn_cast<TemplateTypeParmDecl>(D))
+    return ::hasVisibleDefaultArgument(*this, P);
+  if (auto *P = dyn_cast<NonTypeTemplateParmDecl>(D))
+    return ::hasVisibleDefaultArgument(*this, P);
+  return ::hasVisibleDefaultArgument(*this, cast<TemplateTemplateParmDecl>(D));
 }
 
 /// \brief Determine whether a declaration is visible to name lookup.

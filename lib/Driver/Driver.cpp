@@ -140,10 +140,8 @@ InputArgList *Driver::ParseArgStrings(ArrayRef<const char *> ArgStrings) {
     }
   }
 
-  for (arg_iterator it = Args->filtered_begin(options::OPT_UNKNOWN),
-         ie = Args->filtered_end(); it != ie; ++it) {
-    Diags.Report(diag::err_drv_unknown_argument) << (*it) ->getAsString(*Args);
-  }
+  for (const Arg *A : Args->filtered(options::OPT_UNKNOWN))
+    Diags.Report(diag::err_drv_unknown_argument) << A->getAsString(*Args);
 
   return Args;
 }
@@ -347,9 +345,7 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
     DefaultTargetTriple = A->getValue();
   if (const Arg *A = Args->getLastArg(options::OPT_ccc_install_dir))
     Dir = InstalledDir = A->getValue();
-  for (arg_iterator it = Args->filtered_begin(options::OPT_B),
-         ie = Args->filtered_end(); it != ie; ++it) {
-    const Arg *A = *it;
+  for (const Arg *A : Args->filtered(options::OPT_B)) {
     A->claim();
     PrefixDirs.push_back(A->getValue(0));
   }
@@ -818,9 +814,12 @@ bool Driver::HandleImmediateArgs(const Compilation &C) {
   return true;
 }
 
+// Display an action graph human-readably.  Action A is the "sink" node
+// and latest-occuring action. Traversal is in pre-order, visiting the
+// inputs to each action before printing the action itself.
 static unsigned PrintActions1(const Compilation &C, Action *A,
                               std::map<Action*, unsigned> &Ids) {
-  if (Ids.count(A))
+  if (Ids.count(A)) // A was already visited.
     return Ids[A];
 
   std::string str;
@@ -851,6 +850,8 @@ static unsigned PrintActions1(const Compilation &C, Action *A,
   return Id;
 }
 
+// Print the action graphs in a compilation C.
+// For example "clang -c file1.c file2.c" is composed of two subgraphs.
 void Driver::PrintActions(const Compilation &C) const {
   std::map<Action*, unsigned> Ids;
   for (ActionList::const_iterator it = C.getActions().begin(),
@@ -1467,9 +1468,8 @@ void Driver::BuildJobs(Compilation &C) const {
       if (Opt.getKind() == Option::FlagClass) {
         bool DuplicateClaimed = false;
 
-        for (arg_iterator it = C.getArgs().filtered_begin(&Opt),
-               ie = C.getArgs().filtered_end(); it != ie; ++it) {
-          if ((*it)->isClaimed()) {
+        for (const Arg *AA : C.getArgs().filtered(&Opt)) {
+          if (AA->isClaimed()) {
             DuplicateClaimed = true;
             break;
           }
@@ -1697,8 +1697,7 @@ const char *Driver::GetNamedOutputPath(Compilation &C,
     assert(AtTopLevel && isa<PreprocessJobAction>(JA));
     StringRef BaseName = llvm::sys::path::filename(BaseInput);
     StringRef NameArg;
-    if (Arg *A = C.getArgs().getLastArg(options::OPT__SLASH_Fi,
-                                        options::OPT__SLASH_o))
+    if (Arg *A = C.getArgs().getLastArg(options::OPT__SLASH_Fi))
       NameArg = A->getValue();
     return C.addResultFile(MakeCLOutputFilename(C.getArgs(), NameArg, BaseName,
                                                 types::TY_PP_C), &JA);
@@ -1744,7 +1743,7 @@ const char *Driver::GetNamedOutputPath(Compilation &C,
   // Determine what the derived output name should be.
   const char *NamedOutput;
 
-  if (JA.getType() == types::TY_Object &&
+  if ((JA.getType() == types::TY_Object || JA.getType() == types::TY_LTO_BC) &&
       C.getArgs().hasArg(options::OPT__SLASH_Fo, options::OPT__SLASH_o)) {
     // The /Fo or /o flag decides the object filename.
     StringRef Val = C.getArgs().getLastArg(options::OPT__SLASH_Fo,
@@ -2185,6 +2184,6 @@ std::pair<unsigned, unsigned> Driver::getIncludeExcludeOptionFlagMasks() const {
   return std::make_pair(IncludedFlagsBitmask, ExcludedFlagsBitmask);
 }
 
-bool clang::driver::isOptimizationLevelFast(const llvm::opt::ArgList &Args) {
+bool clang::driver::isOptimizationLevelFast(const ArgList &Args) {
   return Args.hasFlag(options::OPT_Ofast, options::OPT_O_Group, false);
 }
