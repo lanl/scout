@@ -67,6 +67,11 @@ EnableAtomicTidy("aarch64-atomic-cfg-tidy", cl::Hidden,
                           " to make use of cmpxchg flow-based information"),
                  cl::init(true));
 
+static cl::opt<bool> AArch64InterleavedAccessOpt(
+    "aarch64-interleaved-access-opt",
+    cl::desc("Optimize interleaved memory accesses in the AArch64 backend"),
+    cl::init(false), cl::Hidden);
+
 static cl::opt<bool>
 EnableEarlyIfConversion("aarch64-enable-early-ifcvt", cl::Hidden,
                         cl::desc("Run early if-conversion"),
@@ -110,9 +115,8 @@ static std::unique_ptr<TargetLoweringObjectFile> createTLOF(const Triple &TT) {
 }
 
 // Helper function to build a DataLayout string
-static std::string computeDataLayout(StringRef TT, bool LittleEndian) {
-  Triple Triple(TT);
-  if (Triple.isOSBinFormatMachO())
+static std::string computeDataLayout(const Triple &TT, bool LittleEndian) {
+  if (TT.isOSBinFormatMachO())
     return "e-m:o-i64:64-i128:128-n32:64-S128";
   if (LittleEndian)
     return "e-m:e-i64:64-i128:128-n32:64-S128";
@@ -129,8 +133,8 @@ AArch64TargetMachine::AArch64TargetMachine(const Target &T, StringRef TT,
                                            bool LittleEndian)
     // This nested ternary is horrible, but DL needs to be properly
     // initialized before TLInfo is constructed.
-    : LLVMTargetMachine(T, computeDataLayout(TT, LittleEndian), TT, CPU, FS,
-                        Options, RM, CM, OL),
+    : LLVMTargetMachine(T, computeDataLayout(Triple(TT), LittleEndian), TT, CPU,
+                        FS, Options, RM, CM, OL),
       TLOF(createTLOF(Triple(getTargetTriple()))),
       isLittle(LittleEndian) {
   initAsmInfo();
@@ -156,7 +160,8 @@ AArch64TargetMachine::getSubtargetImpl(const Function &F) const {
     // creation will depend on the TM and the code generation flags on the
     // function that reside in TargetOptions.
     resetTargetOptions(F);
-    I = llvm::make_unique<AArch64Subtarget>(TargetTriple, CPU, FS, *this, isLittle);
+    I = llvm::make_unique<AArch64Subtarget>(Triple(TargetTriple), CPU, FS,
+                                            *this, isLittle);
   }
   return I.get();
 }
@@ -225,6 +230,9 @@ void AArch64PassConfig::addIRPasses() {
   if (TM->getOptLevel() != CodeGenOpt::None && EnableAtomicTidy)
     addPass(createCFGSimplificationPass());
 
+  if (TM->getOptLevel() != CodeGenOpt::None && AArch64InterleavedAccessOpt)
+    addPass(createAArch64InterleavedAccessPass());
+
   TargetPassConfig::addIRPasses();
 
   if (TM->getOptLevel() == CodeGenOpt::Aggressive && EnableGEPOpt) {
@@ -250,10 +258,14 @@ bool AArch64PassConfig::addPreISel() {
   // FIXME: On AArch64, this depends on the type.
   // Basically, the addressable offsets are up to 4095 * Ty.getSizeInBytes().
   // and the offset has to be a multiple of the related size in bytes.
-  if ((TM->getOptLevel() == CodeGenOpt::Aggressive &&
+  if ((TM->getOptLevel() != CodeGenOpt::None &&
        EnableGlobalMerge == cl::BOU_UNSET) ||
-      EnableGlobalMerge == cl::BOU_TRUE)
-    addPass(createGlobalMergePass(TM, 4095));
+      EnableGlobalMerge == cl::BOU_TRUE) {
+    bool OnlyOptimizeForSize = (TM->getOptLevel() < CodeGenOpt::Aggressive) &&
+                               (EnableGlobalMerge == cl::BOU_UNSET);
+    addPass(createGlobalMergePass(TM, 4095, OnlyOptimizeForSize));
+  }
+
   if (TM->getOptLevel() != CodeGenOpt::None)
     addPass(createAArch64AddressTypePromotionPass());
 

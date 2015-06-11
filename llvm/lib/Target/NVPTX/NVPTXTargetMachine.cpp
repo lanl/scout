@@ -53,7 +53,7 @@ void initializeGenericToNVVMPass(PassRegistry&);
 void initializeNVPTXAllocaHoistingPass(PassRegistry &);
 void initializeNVPTXAssignValidGlobalNamesPass(PassRegistry&);
 void initializeNVPTXFavorNonGenericAddrSpacesPass(PassRegistry &);
-void initializeNVPTXLowerStructArgsPass(PassRegistry &);
+void initializeNVPTXLowerKernelArgsPass(PassRegistry &);
 }
 
 extern "C" void LLVMInitializeNVPTXTarget() {
@@ -69,7 +69,7 @@ extern "C" void LLVMInitializeNVPTXTarget() {
   initializeNVPTXAssignValidGlobalNamesPass(*PassRegistry::getPassRegistry());
   initializeNVPTXFavorNonGenericAddrSpacesPass(
     *PassRegistry::getPassRegistry());
-  initializeNVPTXLowerStructArgsPass(*PassRegistry::getPassRegistry());
+  initializeNVPTXLowerKernelArgsPass(*PassRegistry::getPassRegistry());
 }
 
 static std::string computeDataLayout(bool is64Bit) {
@@ -91,7 +91,7 @@ NVPTXTargetMachine::NVPTXTargetMachine(const Target &T, StringRef TT,
     : LLVMTargetMachine(T, computeDataLayout(is64bit), TT, CPU, FS, Options, RM,
                         CM, OL),
       is64bit(is64bit), TLOF(make_unique<NVPTXTargetObjectFile>()),
-      Subtarget(TT, CPU, FS, *this) {
+      Subtarget(Triple(TT), CPU, FS, *this) {
   if (Triple(TT).getOS() == Triple::NVCL)
     drvInterface = NVPTX::NVCL;
   else
@@ -163,7 +163,13 @@ void NVPTXPassConfig::addIRPasses() {
   TargetPassConfig::addIRPasses();
   addPass(createNVPTXAssignValidGlobalNamesPass());
   addPass(createGenericToNVVMPass());
+  addPass(createNVPTXLowerKernelArgsPass(&getNVPTXTargetMachine()));
   addPass(createNVPTXFavorNonGenericAddrSpacesPass());
+  // NVPTXLowerKernelArgs emits alloca for byval parameters which can often
+  // be eliminated by SROA. We do not run SROA right after NVPTXLowerKernelArgs
+  // because we plan to merge NVPTXLowerKernelArgs and
+  // NVPTXFavorNonGenericAddrSpaces into one pass.
+  addPass(createSROAPass());
   // FavorNonGenericAddrSpaces shortcuts unnecessary addrspacecasts, and leave
   // them unused. We could remove dead code in an ad-hoc manner, but that
   // requires manual work and might be error-prone.
