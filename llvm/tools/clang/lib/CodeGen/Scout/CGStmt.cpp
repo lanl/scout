@@ -2161,7 +2161,12 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
 }
 
 void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
-
+  const MeshType* mt = S.getMeshType();
+  if(mt->dimensions().size() == 3){
+    EmitVolumeRenderallStmt(S);
+    return;
+  }
+  
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
   llvm::Value *MeshBaseAddr;
@@ -2278,6 +2283,49 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // so width/height etc can't be called after renderall
   ResetMeshBounds();
 
+}
+
+void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
+  using namespace llvm;
+  using namespace std;
+  
+  typedef vector<Value*> ValueVec;
+  
+  auto R = CGM.getScoutRuntime();
+  
+  Value* MeshBaseAddr;
+  GetMeshBaseAddr(S, MeshBaseAddr);
+  
+  const VarDecl* RTVD = S.getRenderTargetVarDecl();
+  
+  // Check if it's a window or image type
+  // cuz we don't handle images yet.
+  const Type &Ty =
+  *getContext().getCanonicalType(RTVD->getType()).getTypePtr();
+  
+  llvm::Value* RTAlloc;
+  
+  if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
+      && RTVD->getTLSKind() != VarDecl::TLS_Dynamic) {
+    RTAlloc = CGM.GetAddrOfGlobalVar(RTVD);
+  }
+  else{
+    RTAlloc = LocalDeclMap.lookup(RTVD);
+  }
+  
+  if(Ty.getTypeClass() != Type::Window){
+    RTAlloc = Builder.CreateLoad(RTAlloc);
+  }
+  
+  // cast scout.window_t** to void**
+  Value* int8PtrPtrRTAlloc = Builder.CreateBitCast(RTAlloc, Int8PtrPtrTy, "");
+  
+  // dereference the void**
+  Value* int8PtrRTAlloc = Builder.CreateLoad(int8PtrPtrRTAlloc, "derefwin");
+  
+  ValueVec args = {int8PtrRTAlloc};
+
+  Builder.CreateCall(R.VolumeRenderFunction(), args);
 }
 
 void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S){

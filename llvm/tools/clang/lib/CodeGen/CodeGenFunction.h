@@ -2209,6 +2209,8 @@ public:
 
   void EmitRenderallStmt(const RenderallMeshStmt &S);
 
+  void EmitVolumeRenderallStmt(const RenderallMeshStmt &S);
+  
   void EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S);
 
   void EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned r);
