@@ -2290,6 +2290,45 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   using namespace std;
   
   typedef vector<Value*> ValueVec;
+  typedef vector<llvm::Type*> TypeVec;
+  
+  RenderallVisitor visitor(&S);
+  visitor.VisitStmt(const_cast<Stmt*>(S.getBody()));
+  
+  auto& fs = visitor.getFieldSet();
+  
+  llvm::Type* rt = llvm::VectorType::get(FloatTy, 4);
+  
+  TypeVec params;
+  
+  for(MeshFieldDecl* fd : fs){
+    params.push_back(ConvertType(fd->getType()));
+  }
+  
+  params.push_back(Int32Ty);
+  params.push_back(Int32Ty);
+  params.push_back(Int32Ty);
+  
+  llvm::FunctionType* funcType = llvm::FunctionType::get(rt, params, false);
+  
+  llvm::Function* func =
+  llvm::Function::Create(funcType,
+                         llvm::Function::ExternalLinkage,
+                         "volren_transfer",
+                         &CGM.getModule());
+  
+  auto aitr = func->arg_begin();
+  for(MeshFieldDecl* fd : fs){
+    aitr->setName(fd->getName());
+    aitr++;
+  }
+  
+  aitr->setName("i");
+  aitr++;
+  aitr->setName("j");
+  aitr++;
+  aitr->setName("k");
+  aitr++;
   
   auto R = CGM.getScoutRuntime();
   
