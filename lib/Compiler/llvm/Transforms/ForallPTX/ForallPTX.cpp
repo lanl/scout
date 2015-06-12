@@ -220,7 +220,7 @@ public:
             size_t pos = fitr->second.first;
             uint8_t elementType = fitr->second.second;
             
-            createField(n, pos, elementType, PointerType::get(et, 1));
+            createField(n, pos, elementType, PointerType::get(et, 0));
           }
         }
       }
