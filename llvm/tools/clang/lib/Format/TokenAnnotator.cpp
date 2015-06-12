@@ -1081,7 +1081,7 @@ private:
     // there is also an identifier before the ().
     else if (LeftOfParens && Tok.Next &&
              (LeftOfParens->Tok.getIdentifierInfo() == nullptr ||
-              LeftOfParens->is(tok::kw_return)) &&
+              LeftOfParens->isOneOf(tok::kw_return, tok::kw_case)) &&
              !LeftOfParens->isOneOf(TT_OverloadedOperator, tok::at,
                                     TT_TemplateCloser)) {
       if (Tok.Next->isOneOf(tok::identifier, tok::numeric_constant)) {
@@ -1800,6 +1800,7 @@ bool TokenAnnotator::spaceRequiredBetween(const AnnotatedLine &Line,
     return true;
   if (Left.is(TT_PointerOrReference))
     return Right.Tok.isLiteral() || Right.is(TT_BlockComment) ||
+           (Right.is(tok::l_brace) && Right.BlockKind == BK_Block) ||
            (!Right.isOneOf(TT_PointerOrReference, TT_ArraySubscriptLSquare,
                            tok::l_paren) &&
             (Style.PointerAlignment != FormatStyle::PAS_Right &&
