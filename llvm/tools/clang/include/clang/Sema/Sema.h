@@ -1348,6 +1348,9 @@ public:
     return hasVisibleDefinition(const_cast<NamedDecl*>(D), &Hidden);
   }
 
+  /// Determine if the template parameter \p D has a visible default argument.
+  bool hasVisibleDefaultArgument(const NamedDecl *D);
+
   bool RequireCompleteType(SourceLocation Loc, QualType T,
                            TypeDiagnoser &Diagnoser);
   bool RequireCompleteType(SourceLocation Loc, QualType T,
@@ -5166,6 +5169,10 @@ public:
                             bool AnyErrors);
 
   void checkClassLevelDLLAttribute(CXXRecordDecl *Class);
+  void propagateDLLAttrToBaseClassTemplate(
+      CXXRecordDecl *Class, Attr *ClassAttr,
+      ClassTemplateSpecializationDecl *BaseTemplateSpec,
+      SourceLocation BaseLoc);
   void CheckCompletedCXXClass(CXXRecordDecl *Record);
   void ActOnFinishCXXMemberSpecification(Scope* S, SourceLocation RLoc,
                                          Decl *TagDecl,

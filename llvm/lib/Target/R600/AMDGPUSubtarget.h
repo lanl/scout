@@ -85,9 +85,10 @@ private:
   Triple TargetTriple;
 
 public:
-  AMDGPUSubtarget(StringRef TT, StringRef CPU, StringRef FS, TargetMachine &TM);
-  AMDGPUSubtarget &initializeSubtargetDependencies(StringRef TT, StringRef GPU,
-                                                   StringRef FS);
+  AMDGPUSubtarget(const Triple &TT, StringRef CPU, StringRef FS,
+                  TargetMachine &TM);
+  AMDGPUSubtarget &initializeSubtargetDependencies(const Triple &TT,
+                                                   StringRef GPU, StringRef FS);
 
   const AMDGPUFrameLowering *getFrameLowering() const override {
     return &FrameLowering;
@@ -272,7 +273,7 @@ public:
   }
 
   bool enableSubRegLiveness() const override {
-    return false;
+    return true;
   }
 };
 
