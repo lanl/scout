@@ -521,6 +521,18 @@ TEST_F(FormatTestJS, ReturnStatements) {
                "}");
 }
 
+TEST_F(FormatTestJS, AutomaticSemicolonInsertion) {
+  // The following statements must not wrap, as otherwise the program meaning
+  // would change due to automatic semicolon insertion.
+  // See http://www.ecma-international.org/ecma-262/5.1/#sec-7.9.1.
+  verifyFormat("return aaaaa;", getGoogleJSStyleWithColumns(10));
+  verifyFormat("continue aaaaa;", getGoogleJSStyleWithColumns(10));
+  verifyFormat("break aaaaa;", getGoogleJSStyleWithColumns(10));
+  verifyFormat("throw aaaaa;", getGoogleJSStyleWithColumns(10));
+  verifyFormat("aaaaaaaaa++;", getGoogleJSStyleWithColumns(10));
+  verifyFormat("aaaaaaaaa--;", getGoogleJSStyleWithColumns(10));
+}
+
 TEST_F(FormatTestJS, ClosureStyleCasts) {
   verifyFormat("var x = /** @type {foo} */ (bar);");
 }
@@ -665,7 +677,8 @@ TEST_F(FormatTestJS, ClassDeclarations) {
 TEST_F(FormatTestJS, InterfaceDeclarations) {
   verifyFormat("interface I {\n"
                "  x: string;\n"
-               "}");
+               "}\n"
+               "var y;");
 }
 
 TEST_F(FormatTestJS, MetadataAnnotations) {
@@ -726,11 +739,19 @@ TEST_F(FormatTestJS, Modules) {
   verifyFormat("export default class X { y: number }");
   verifyFormat("export default function() {\n  return 1;\n}");
   verifyFormat("export var x = 12;");
+  verifyFormat("class C {}\n"
+               "export function f() {}\n"
+               "var v;");
   verifyFormat("export var x: number = 12;");
   verifyFormat("export const y = {\n"
                "  a: 1,\n"
                "  b: 2\n"
                "};");
+  verifyFormat("export enum Foo {\n"
+               "  BAR,\n"
+               "  // adsdasd\n"
+               "  BAZ\n"
+               "}");
 }
 
 TEST_F(FormatTestJS, TemplateStrings) {
