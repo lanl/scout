@@ -2161,7 +2161,12 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
 }
 
 void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
-
+  const MeshType* mt = S.getMeshType();
+  if(mt->dimensions().size() == 3){
+    EmitVolumeRenderallStmt(S);
+    return;
+  }
+  
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
   llvm::Value *MeshBaseAddr;
@@ -2278,6 +2283,88 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // so width/height etc can't be called after renderall
   ResetMeshBounds();
 
+}
+
+void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
+  using namespace llvm;
+  using namespace std;
+  
+  typedef vector<Value*> ValueVec;
+  typedef vector<llvm::Type*> TypeVec;
+  
+  RenderallVisitor visitor(&S);
+  visitor.VisitStmt(const_cast<Stmt*>(S.getBody()));
+  
+  auto& fs = visitor.getFieldSet();
+  
+  llvm::Type* rt = llvm::VectorType::get(FloatTy, 4);
+  
+  TypeVec params;
+  
+  for(MeshFieldDecl* fd : fs){
+    params.push_back(ConvertType(fd->getType()));
+  }
+  
+  params.push_back(Int32Ty);
+  params.push_back(Int32Ty);
+  params.push_back(Int32Ty);
+  
+  llvm::FunctionType* funcType = llvm::FunctionType::get(rt, params, false);
+  
+  llvm::Function* func =
+  llvm::Function::Create(funcType,
+                         llvm::Function::ExternalLinkage,
+                         "volren_transfer",
+                         &CGM.getModule());
+  
+  auto aitr = func->arg_begin();
+  for(MeshFieldDecl* fd : fs){
+    aitr->setName(fd->getName());
+    aitr++;
+  }
+  
+  aitr->setName("i");
+  aitr++;
+  aitr->setName("j");
+  aitr++;
+  aitr->setName("k");
+  aitr++;
+  
+  auto R = CGM.getScoutRuntime();
+  
+  Value* MeshBaseAddr;
+  GetMeshBaseAddr(S, MeshBaseAddr);
+  
+  const VarDecl* RTVD = S.getRenderTargetVarDecl();
+  
+  // Check if it's a window or image type
+  // cuz we don't handle images yet.
+  const Type &Ty =
+  *getContext().getCanonicalType(RTVD->getType()).getTypePtr();
+  
+  llvm::Value* RTAlloc;
+  
+  if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
+      && RTVD->getTLSKind() != VarDecl::TLS_Dynamic) {
+    RTAlloc = CGM.GetAddrOfGlobalVar(RTVD);
+  }
+  else{
+    RTAlloc = LocalDeclMap.lookup(RTVD);
+  }
+  
+  if(Ty.getTypeClass() != Type::Window){
+    RTAlloc = Builder.CreateLoad(RTAlloc);
+  }
+  
+  // cast scout.window_t** to void**
+  Value* int8PtrPtrRTAlloc = Builder.CreateBitCast(RTAlloc, Int8PtrPtrTy, "");
+  
+  // dereference the void**
+  Value* int8PtrRTAlloc = Builder.CreateLoad(int8PtrPtrRTAlloc, "derefwin");
+  
+  ValueVec args = {int8PtrRTAlloc};
+
+  Builder.CreateCall(R.VolumeRenderFunction(), args);
 }
 
 void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S){

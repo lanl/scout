@@ -201,6 +201,12 @@ void ForallVisitor::VisitCallExpr(CallExpr* E) {
   VisitChildren(E);
 }
 
+void RenderallVisitor::VisitMemberExpr(MemberExpr* E){
+  if(MeshFieldDecl* fd = dyn_cast<MeshFieldDecl>(E->getMemberDecl())){
+    fieldSet_.insert(fd);
+  }
+}
+  
 void TaskDeclVisitor::VisitStmt(Stmt* S) {
   if(S) {
     TaskStmtVisitor v(S);

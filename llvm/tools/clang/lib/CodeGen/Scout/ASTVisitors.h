@@ -133,6 +133,40 @@ private:
   MeshShiftMap maxs_;
 };
 
+// find what mesh fields are used in a forall
+class RenderallVisitor : public StmtVisitor<RenderallVisitor> {
+public:
+  typedef std::set<MeshFieldDecl*> FieldSet;
+  
+  RenderallVisitor(const RenderallStmt* rs)
+  : rs_(rs){}
+  
+  void VisitChildren(Stmt* S) {
+    if(S){
+      for(Stmt::child_iterator I = S->child_begin(),
+          E = S->child_end(); I != E; ++I){
+        if(Stmt* child = *I){
+          Visit(child);
+        }
+      }
+    }
+  }
+  
+  void VisitStmt(Stmt* S) {
+    VisitChildren(S);
+  }
+  
+  void VisitMemberExpr(MemberExpr* E);
+  
+  const FieldSet& getFieldSet() const{
+    return fieldSet_;
+  }
+  
+private:
+  const RenderallStmt *rs_;
+  FieldSet fieldSet_;
+};
+  
 class TaskStmtVisitor : public StmtVisitor<TaskStmtVisitor> {
 public:
 

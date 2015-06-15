@@ -5818,6 +5818,7 @@ TEST_F(FormatTest, FormatsCasts) {
   verifyFormat("my_int a = (const my_int *)-1;");
   verifyFormat("my_int a = (my_int)(my_int)-1;");
   verifyFormat("my_int a = (ns::my_int)-2;");
+  verifyFormat("case (my_int)ONE:");
 
   // FIXME: single value wrapped with paren will be treated as cast.
   verifyFormat("void f(int i = (kValue)*kMask) {}");
@@ -10097,6 +10098,7 @@ TEST_F(FormatTest, FormatsLambdas) {
 
   // Lambdas with return types.
   verifyFormat("int c = []() -> int { return 2; }();\n");
+  verifyFormat("int c = []() -> int * { return 2; }();\n");
   verifyFormat("int c = []() -> vector<int> { return {2}; }();\n");
   verifyFormat("Foo([]() -> std::vector<int> { return {2}; }());");
   verifyGoogleFormat("auto a = [&b, c](D* d) -> D* {};");

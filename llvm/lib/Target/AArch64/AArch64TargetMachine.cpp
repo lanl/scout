@@ -67,11 +67,6 @@ EnableAtomicTidy("aarch64-atomic-cfg-tidy", cl::Hidden,
                           " to make use of cmpxchg flow-based information"),
                  cl::init(true));
 
-static cl::opt<bool> AArch64InterleavedAccessOpt(
-    "aarch64-interleaved-access-opt",
-    cl::desc("Optimize interleaved memory accesses in the AArch64 backend"),
-    cl::init(false), cl::Hidden);
-
 static cl::opt<bool>
 EnableEarlyIfConversion("aarch64-enable-early-ifcvt", cl::Hidden,
                         cl::desc("Run early if-conversion"),
@@ -125,7 +120,7 @@ static std::string computeDataLayout(const Triple &TT, bool LittleEndian) {
 
 /// TargetMachine ctor - Create an AArch64 architecture model.
 ///
-AArch64TargetMachine::AArch64TargetMachine(const Target &T, StringRef TT,
+AArch64TargetMachine::AArch64TargetMachine(const Target &T, const Triple &TT,
                                            StringRef CPU, StringRef FS,
                                            const TargetOptions &Options,
                                            Reloc::Model RM, CodeModel::Model CM,
@@ -168,21 +163,19 @@ AArch64TargetMachine::getSubtargetImpl(const Function &F) const {
 
 void AArch64leTargetMachine::anchor() { }
 
-AArch64leTargetMachine::
-AArch64leTargetMachine(const Target &T, StringRef TT,
-                       StringRef CPU, StringRef FS, const TargetOptions &Options,
-                       Reloc::Model RM, CodeModel::Model CM,
-                       CodeGenOpt::Level OL)
-  : AArch64TargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, true) {}
+AArch64leTargetMachine::AArch64leTargetMachine(
+    const Target &T, const Triple &TT, StringRef CPU, StringRef FS,
+    const TargetOptions &Options, Reloc::Model RM, CodeModel::Model CM,
+    CodeGenOpt::Level OL)
+    : AArch64TargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, true) {}
 
 void AArch64beTargetMachine::anchor() { }
 
-AArch64beTargetMachine::
-AArch64beTargetMachine(const Target &T, StringRef TT,
-                       StringRef CPU, StringRef FS, const TargetOptions &Options,
-                       Reloc::Model RM, CodeModel::Model CM,
-                       CodeGenOpt::Level OL)
-  : AArch64TargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, false) {}
+AArch64beTargetMachine::AArch64beTargetMachine(
+    const Target &T, const Triple &TT, StringRef CPU, StringRef FS,
+    const TargetOptions &Options, Reloc::Model RM, CodeModel::Model CM,
+    CodeGenOpt::Level OL)
+    : AArch64TargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, false) {}
 
 namespace {
 /// AArch64 Code Generator Pass Configuration Options.
@@ -229,9 +222,6 @@ void AArch64PassConfig::addIRPasses() {
   // ldrex/strex loops to simplify this, but it needs tidying up.
   if (TM->getOptLevel() != CodeGenOpt::None && EnableAtomicTidy)
     addPass(createCFGSimplificationPass());
-
-  if (TM->getOptLevel() != CodeGenOpt::None && AArch64InterleavedAccessOpt)
-    addPass(createAArch64InterleavedAccessPass());
 
   TargetPassConfig::addIRPasses();
 
