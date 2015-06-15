@@ -2292,24 +2292,33 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   typedef vector<Value*> ValueVec;
   typedef vector<llvm::Type*> TypeVec;
   
+  LLVMContext& C = getLLVMContext();
+  auto& B = Builder;
+  
   RenderallVisitor visitor(&S);
   visitor.VisitStmt(const_cast<Stmt*>(S.getBody()));
   
   auto& fs = visitor.getFieldSet();
   
-  llvm::Type* rt = llvm::VectorType::get(FloatTy, 4);
+  TypeVec fields;
   
-  TypeVec params;
-  
+  size_t index = 0;
   for(MeshFieldDecl* fd : fs){
-    params.push_back(ConvertType(fd->getType()));
+    fields.push_back(ConvertType(fd->getType()));
+    CurrentVolumeRenderallFieldMap.insert({fd, index++});
   }
   
-  params.push_back(Int32Ty);
-  params.push_back(Int32Ty);
-  params.push_back(Int32Ty);
+  StructType* meshType =
+  StructType::create(C, fields, "mesh.struct");
+  
+  llvm::Type* rt = llvm::VectorType::get(FloatTy, 4);
+  
+  TypeVec params = {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty};
   
   llvm::FunctionType* funcType = llvm::FunctionType::get(rt, params, false);
+  
+  BasicBlock* prevBlock = B.GetInsertBlock();
+  BasicBlock::iterator prevPoint = B.GetInsertPoint();
   
   llvm::Function* func =
   llvm::Function::Create(funcType,
@@ -2318,17 +2327,33 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
                          &CGM.getModule());
   
   auto aitr = func->arg_begin();
-  for(MeshFieldDecl* fd : fs){
-    aitr->setName(fd->getName());
-    aitr++;
-  }
   
-  aitr->setName("i");
+  Value* mp = aitr;
+  
+  aitr->setName("mesh.void.ptr");
   aitr++;
-  aitr->setName("j");
+
+  CurrentVolumeRenderallIndex = aitr;
+  aitr->setName("index");
   aitr++;
-  aitr->setName("k");
-  aitr++;
+
+  BasicBlock* entry = BasicBlock::Create(C, "entry", func);
+  
+  B.SetInsertPoint(entry);
+  
+  CurrentVolumeRenderallMeshPtr =
+  B.CreateBitCast(mp, llvm::PointerType::get(meshType, 0));
+  
+  EmitStmt(S.getBody());
+  
+  Builder.CreateRet(B.CreateLoad(CurrentVolumeRenderallColor));
+    
+  CurrentVolumeRenderallMeshPtr = nullptr;
+  CurrentVolumeRenderallIndex = nullptr;
+  CurrentVolumeRenderallColor = nullptr;
+  CurrentVolumeRenderallFieldMap.clear();
+  
+  B.SetInsertPoint(prevBlock, prevPoint);
   
   auto R = CGM.getScoutRuntime();
   

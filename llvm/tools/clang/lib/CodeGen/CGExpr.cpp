@@ -2667,6 +2667,11 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   // +===== Scout ============================================================+
   // check if we are dealing w/ a mesh
   if(const MeshFieldDecl* MFD = dyn_cast<MeshFieldDecl>(E->getMemberDecl())) {
+    
+    if(CurrentVolumeRenderallMeshPtr){
+      return EmitVolumeRenderMeshMemberExpr(E);
+    }
+    
     return EmitMeshMemberExpr(E, getMeshIndex(MFD));
   }
   // +========================================================================+

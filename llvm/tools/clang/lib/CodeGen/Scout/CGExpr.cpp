@@ -76,8 +76,16 @@ LValue EmitGlobalVarDeclLValue(CodeGenFunction &CGF,
 
 LValue
 CodeGenFunction::EmitColorDeclRefLValue(const NamedDecl *ND) {
-  const ValueDecl *VD = cast<ValueDecl>(ND);
   CharUnits Alignment = getContext().getDeclAlign(ND);
+  const ValueDecl *VD = cast<ValueDecl>(ND);
+  
+  if(CurrentVolumeRenderallMeshPtr){
+    CurrentVolumeRenderallColor =
+    Builder.CreateAlloca(llvm::VectorType::get(FloatTy, 4));
+    
+    return MakeAddrLValue(CurrentVolumeRenderallColor, VD->getType(), Alignment);
+  }
+  
   llvm::Value *idx = getLinearIdx();
   llvm::Value* ep = Builder.CreateInBoundsGEP(Color, idx);
   return MakeAddrLValue(ep, VD->getType(), Alignment);
@@ -144,7 +152,6 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
 
 LValue
 CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
-
   DeclRefExpr* Base;
   if(ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(E->getBase())) {
     Base = cast<DeclRefExpr>(CE->getSubExpr());
@@ -176,6 +183,28 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
   // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
   MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
   return EmitLValueForMeshField(BaseLV,  cast<MeshFieldDecl>(MFD), Index); //SC_TODO: why cast?
+}
+
+LValue
+CodeGenFunction::EmitVolumeRenderMeshMemberExpr(const MemberExpr *E) {
+  MeshFieldDecl* fd = dyn_cast<MeshFieldDecl>(E->getMemberDecl());
+  assert(fd);
+  
+  auto itr = CurrentVolumeRenderallFieldMap.find(fd);
+  assert(itr != CurrentVolumeRenderallFieldMap.end());
+  
+  std::string fieldName = fd->getName().str();
+  fieldName += ".ptr";
+  
+  llvm::Value* fieldPtr =
+  Builder.CreateStructGEP(nullptr, CurrentVolumeRenderallMeshPtr,
+                          itr->second, fieldName);
+  
+  llvm::Value* addr =
+  Builder.CreateGEP(nullptr, fieldPtr,
+                    CurrentVolumeRenderallIndex, fd->getName().str());
+  
+  return MakeAddrLValue(addr, E->getType());
 }
 
 LValue CodeGenFunction::EmitLValueForMeshField(LValue base,

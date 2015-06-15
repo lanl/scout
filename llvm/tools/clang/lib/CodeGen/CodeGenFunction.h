@@ -370,6 +370,11 @@ public:
   //renderall color buffer
   llvm::Value *Color;
 
+  llvm::Value* CurrentVolumeRenderallMeshPtr = nullptr;
+  std::map<MeshFieldDecl*, size_t> CurrentVolumeRenderallFieldMap;
+  llvm::Value* CurrentVolumeRenderallIndex = nullptr;
+  llvm::Value* CurrentVolumeRenderallColor = nullptr;
+  
   llvm::Value *LookupInductionVar(unsigned int index);
   llvm::Value *LookupMeshDim(unsigned int index);
   llvm::Value *LookupMeshStart(unsigned int index);
@@ -2223,6 +2228,7 @@ public:
   LValue EmitColorDeclRefLValue(const NamedDecl *ND);
   //LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
   LValue EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index);
+  LValue EmitVolumeRenderMeshMemberExpr(const MemberExpr *E);
   LValue EmitLValueForMeshField(LValue base, const MeshFieldDecl *field, llvm::Value *Index);
   llvm::Value *getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args);
   llvm::Value *getMeshIndex(const MeshFieldDecl* MFD);
