@@ -12,12 +12,12 @@
 # Is this all CUDA-dependent?
 add_subdirectory(Driver)
 
-#if(${SCOUT_ENABLE_CUDA})
+if(${SCOUT_ENABLE_CUDA})
    add_subdirectory(ForallPTX)
    add_subdirectory(RenderallPTX)
 #  add_subdirectory(CudaError)
 #  add_subdirectory(DoallToPTX)
-#endif()
+endif()
 
 if (${SC_ENABLE_OPENCL})
   add_subdirectory(DoallToAMDIL)
