@@ -2443,6 +2443,14 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   B.SetInsertPoint(prevBlock, prevPoint);
   
+  llvm::NamedMDNode* volrens =
+  CGM.getModule().getOrInsertNamedMetadata("scout.volren");
+  
+  llvm::SmallVector<llvm::Metadata*, 3> volrenData;
+  volrenData.push_back(llvm::ValueAsMetadata::get(wrapperFunc));
+  
+  volrens->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), volrenData));
+  
   Value* MeshBaseAddr;
   GetMeshBaseAddr(S, MeshBaseAddr);
   
