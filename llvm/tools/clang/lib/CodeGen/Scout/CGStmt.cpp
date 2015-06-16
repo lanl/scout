@@ -2292,8 +2292,9 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   typedef vector<Value*> ValueVec;
   typedef vector<llvm::Type*> TypeVec;
   
-  LLVMContext& C = getLLVMContext();
   auto& B = Builder;
+  LLVMContext& C = getLLVMContext();
+  auto R = CGM.getScoutRuntime();
   
   RenderallVisitor visitor(&S);
   visitor.VisitStmt(const_cast<Stmt*>(S.getBody()));
@@ -2311,22 +2312,21 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   StructType* meshType =
   StructType::create(C, fields, "mesh.struct");
   
-  llvm::Type* rt = llvm::VectorType::get(FloatTy, 4);
-  
-  TypeVec params = {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty};
-  
-  llvm::FunctionType* funcType = llvm::FunctionType::get(rt, params, false);
+  TypeVec params = {VoidPtrTy, Int32Ty};
   
   BasicBlock* prevBlock = B.GetInsertBlock();
   BasicBlock::iterator prevPoint = B.GetInsertPoint();
   
-  llvm::Function* func =
-  llvm::Function::Create(funcType,
+  llvm::FunctionType* transferFuncTy =
+  llvm::FunctionType::get(llvm::VectorType::get(FloatTy, 4), params, false);
+  
+  llvm::Function* transferFunc =
+  llvm::Function::Create(transferFuncTy,
                          llvm::Function::ExternalLinkage,
                          "volren_transfer",
                          &CGM.getModule());
   
-  auto aitr = func->arg_begin();
+  auto aitr = transferFunc->arg_begin();
   
   Value* mp = aitr;
   
@@ -2337,8 +2337,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr->setName("index");
   aitr++;
 
-  BasicBlock* entry = BasicBlock::Create(C, "entry", func);
-  
+  BasicBlock* entry = BasicBlock::Create(C, "entry", transferFunc);
   B.SetInsertPoint(entry);
   
   CurrentVolumeRenderallMeshPtr =
@@ -2347,15 +2346,102 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   EmitStmt(S.getBody());
   
   Builder.CreateRet(B.CreateLoad(CurrentVolumeRenderallColor));
-    
+  
   CurrentVolumeRenderallMeshPtr = nullptr;
   CurrentVolumeRenderallIndex = nullptr;
   CurrentVolumeRenderallColor = nullptr;
   CurrentVolumeRenderallFieldMap.clear();
   
-  B.SetInsertPoint(prevBlock, prevPoint);
+  llvm::VectorType* Int3Ty = llvm::VectorType::get(Int32Ty, 3);
   
-  auto R = CGM.getScoutRuntime();
+  params = {llvm::PointerType::get(Int32Ty, 0), Int32Ty, Int32Ty,
+    Int3Ty, Int3Ty, Int3Ty, Int3Ty, FloatTy, FloatTy,
+    FloatTy, FloatTy, VoidPtrTy};
+  
+  llvm::Function* wrapperFunc =
+  llvm::Function::Create(llvm::FunctionType::get(VoidTy, params, false),
+                         llvm::Function::ExternalLinkage,
+                         "volume_render_wrapper",
+                         &CGM.getModule());
+  
+  aitr = wrapperFunc->arg_begin();
+  aitr->setName("d_output");
+  aitr++;
+  aitr->setName("imageW");
+  aitr++;
+  aitr->setName("imageH");
+  aitr++;
+  aitr->setName("vSize");
+  aitr++;
+  aitr->setName("dataSize");
+  aitr++;
+  aitr->setName("partitionStart");
+  aitr++;
+  aitr->setName("partitionSize");
+  aitr++;
+  aitr->setName("density");
+  aitr++;
+  aitr->setName("brightness");
+  aitr++;
+  aitr->setName("transferOffset");
+  aitr++;
+  aitr->setName("transferScale");
+  aitr++;
+  aitr->setName("meshPtr");
+  aitr++;
+  
+  params.push_back(llvm::PointerType::get(transferFuncTy, 0));
+  
+  llvm::Function* renderFunc =
+  llvm::Function::Create(llvm::FunctionType::get(VoidTy, params, false),
+                         llvm::Function::ExternalLinkage,
+                         "volume_render",
+                         &CGM.getModule());
+  
+  aitr = renderFunc->arg_begin();
+  aitr->setName("d_output");
+  aitr++;
+  aitr->setName("imageW");
+  aitr++;
+  aitr->setName("imageH");
+  aitr++;
+  aitr->setName("vSize");
+  aitr++;
+  aitr->setName("dataSize");
+  aitr++;
+  aitr->setName("partitionStart");
+  aitr++;
+  aitr->setName("partitionSize");
+  aitr++;
+  aitr->setName("density");
+  aitr++;
+  aitr->setName("brightness");
+  aitr++;
+  aitr->setName("transferOffset");
+  aitr++;
+  aitr->setName("transferScale");
+  aitr++;
+  aitr->setName("meshPtr");
+  aitr++;
+  aitr->setName("transferFunc");
+  aitr++;
+  
+  entry = BasicBlock::Create(C, "entry", wrapperFunc);
+  B.SetInsertPoint(entry);
+  
+  ValueVec args;
+  
+  aitr = wrapperFunc->arg_begin();
+  while(aitr != wrapperFunc->arg_end()){
+    args.push_back(aitr++);
+  }
+  
+  args.push_back(transferFunc);
+  
+  B.CreateCall(renderFunc, args);
+  B.CreateRetVoid();
+  
+  B.SetInsertPoint(prevBlock, prevPoint);
   
   Value* MeshBaseAddr;
   GetMeshBaseAddr(S, MeshBaseAddr);
@@ -2387,7 +2473,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   // dereference the void**
   Value* int8PtrRTAlloc = Builder.CreateLoad(int8PtrPtrRTAlloc, "derefwin");
   
-  ValueVec args = {int8PtrRTAlloc};
+  args = {int8PtrRTAlloc};
 
   Builder.CreateCall(R.VolumeRenderFunction(), args);
 }
