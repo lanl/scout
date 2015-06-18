@@ -106,6 +106,13 @@ using TypeVec = vector<Type*>;
 using ValueVec = vector<Value*>;
 using StringVec = vector<string>;
 using FuncVec = vector<Function*>;
+
+enum class ElementKind{
+  Int32 = 0,
+  Int64,
+  Float,
+  Double
+};
   
 class CUDAModule{
 public:
@@ -254,25 +261,91 @@ public:
     }
 
     void finishRenderall(){
+      Module* module = m_.module();
+
+      IRBuilder<> B(context_);
+
+      BasicBlock* b = BasicBlock::Create(context_, "entry", renderallFunc_);
+      B.SetInsertPoint(b);
+
+      auto aitr = renderallFunc_->arg_begin();
+      Value* meshPtr = aitr++;
+      Value* windowPtr = aitr++;
+      Value* width = aitr++;
+      Value* height = aitr++;
+      Value* depth = aitr++;
+      
       string meshName = 
         cast<MDString>(volrenMD_->getOperand(3))->getString().str();
 
+      Value* ptx = B.CreateBitCast(m_.ptxGlobal(), m_.stringTy);
+
+      Value* kernelName = 
+        B.CreateGlobalStringPtr(renderallFunc_->getName());
+      kernelName = B.CreateBitCast(kernelName, m_.stringTy);
+
+      Function* f = module->getFunction("__scrt_volren_init_kernel");
+      
+      ValueVec args = 
+        {B.CreateBitCast(B.CreateGlobalStringPtr(meshName), m_.stringTy),
+         ptx, kernelName, width, height, depth};
+      
+      B.CreateCall(f, args);
+
+      f = module->getFunction("__scrt_volren_init_field");
+
       MDNode* fieldsNode = cast<MDNode>(volrenMD_->getOperand(4));
 
-      size_t pos = 0;
       size_t numFields = fieldsNode->getNumOperands();
+
       for(size_t i = 0; i < numFields; ++i){
         MDNode* fieldNode = cast<MDNode>(fieldsNode->getOperand(i));
 
-        string fieldName =
+        string fieldNameStr =
           cast<MDString>(fieldNode->getOperand(0))->getString().str();
-        
-        uint8_t elementType =
+
+        Value* fieldName = B.CreateGlobalStringPtr(fieldNameStr);
+        fieldName = B.CreateBitCast(fieldName, m_.stringTy);
+
+        uint32_t index =
           cast<ConstantInt>(cast<ValueAsMetadata>(
             fieldNode->getOperand(1))->getValue())->getZExtValue();
+
+        Value* hostPtr = B.CreateStructGEP(0, meshPtr, index);
+        hostPtr = B.CreateLoad(hostPtr);
+        hostPtr = B.CreateBitCast(hostPtr, m_.voidPtrTy);
         
-        ++pos;
+        uint8_t et =
+          cast<ConstantInt>(cast<ValueAsMetadata>(
+            fieldNode->getOperand(2))->getValue())->getZExtValue();
+
+        size_t scalarSize;
+
+        switch(ElementKind(et)){
+        case ElementKind::Int32:
+        case ElementKind::Float:
+          scalarSize = 4;
+          break;
+        case ElementKind::Int64:
+        case ElementKind::Double:
+          scalarSize = 8;
+          break;
+        default:
+          assert(false && "invalid element kind");
+        }
+
+        Value* elementSize = getInt32(scalarSize);
+        Value* elementType = getInt8(et);
+
+        args = {kernelName, fieldName, hostPtr, elementSize, elementType};
+        B.CreateCall(f, args);
       }
+
+      f = module->getFunction("__scrt_volren_run_kernel");
+      args = {kernelName};
+      B.CreateCall(f, args);
+
+      B.CreateRetVoid();
     }
 
   private:
@@ -294,6 +367,20 @@ public:
     voidTy = Type::getVoidTy(context_);
     stringTy = PointerType::get(int8Ty, 0);
     voidPtrTy = PointerType::get(int8Ty, 0);
+
+    TypeVec params;
+
+    params = {stringTy, stringTy, stringTy, int32Ty, int32Ty, int32Ty};
+    createFunction("__scrt_volren_init_kernel",
+                   voidTy, params);
+
+    params = {stringTy, stringTy, voidPtrTy, int32Ty, int8Ty};
+    createFunction("__scrt_volren_init_field",
+                   voidTy, params);
+
+    params = {stringTy};
+    createFunction("__scrt_volren_run_kernel",
+                   voidTy, params);
   }
 
   void init(){

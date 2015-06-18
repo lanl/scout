@@ -2296,6 +2296,8 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   LLVMContext& C = getLLVMContext();
   auto R = CGM.getScoutRuntime();
   
+  MeshDecl* MD = cast<MeshDecl>(S.getMeshType()->getDecl());
+  
   Value* MeshBaseAddr;
   GetMeshBaseAddr(S, MeshBaseAddr);
   
@@ -2355,6 +2357,18 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
                          "volume_renderall",
                          &CGM.getModule());
   
+  auto aitr = renderallFunc->arg_begin();
+  aitr->setName("mesh.ptr");
+  aitr++;
+  aitr->setName("window.ptr");
+  aitr++;
+  aitr->setName("width");
+  aitr++;
+  aitr->setName("height");
+  aitr++;
+  aitr->setName("depth");
+  aitr++;
+  
   ValueVec args = {MeshBaseAddr, int8PtrRTAlloc, width, height, depth};
   B.CreateCall(renderallFunc, args);
   
@@ -2385,7 +2399,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
                          "volren_transfer",
                          &CGM.getModule());
   
-  auto aitr = transferFunc->arg_begin();
+  aitr = transferFunc->arg_begin();
   
   Value* mp = aitr;
   
@@ -2517,8 +2531,23 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   for(MeshFieldDecl* fd : fs){
     llvm::SmallVector<llvm::Metadata*, 3> fieldData;
+    
     fieldData.push_back(llvm::MDString::get(CGM.getLLVMContext(),
                                             fd->getName()));
+    
+    bool found = false;
+    uint32_t index = 0;
+    for(auto fitr = MD->field_begin(), fitrEnd = MD->field_end();
+        fitr != fitrEnd; ++fitr){
+      if(*fitr == fd){
+        fieldData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int32Ty, index)));
+        found = true;
+        break;
+      }
+      ++index;
+    }
+    assert(found);
+    
     if(fd->isCellLocated()){
       fieldData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int8Ty, FIELD_CELL)));
     }
