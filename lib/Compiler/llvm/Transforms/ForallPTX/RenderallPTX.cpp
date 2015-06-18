@@ -110,6 +110,179 @@ using FuncVec = vector<Function*>;
 class CUDAModule{
 public:
 
+  class Kernel{
+  public:
+   
+    Kernel(CUDAModule& m, MDNode* volrenMD)
+      : m_(m),
+        kernelModule_(m.kernelModule()),
+        context_(m_.context()),
+        volrenMD_(volrenMD){}
+
+    ConstantInt* getInt32(int32_t v){
+      return ConstantInt::get(context_, APInt(32, v, true));
+    }
+    
+    ConstantInt* getInt8(int8_t v){
+      return ConstantInt::get(context_, APInt(8, v, true));
+    }
+
+    void getCalledFuncs(Function* f, FuncVec& funcs){
+      for(Function::iterator itr = f->begin(), itrEnd = f->end();
+          itr != itrEnd; ++itr){
+      
+        BasicBlock* b = itr;
+        for(BasicBlock::iterator bitr = b->begin(), bitrEnd = b->end();
+            bitr != bitrEnd; ++bitr){
+          Instruction* i = bitr;
+
+          if(CallInst* ci = dyn_cast<CallInst>(i)){
+            funcs.push_back(ci->getCalledFunction());
+          }
+        }
+      }
+    }
+
+    Function* addFunction(Module& module,
+                          ValueToValueMapTy& remap,
+                          Function* f){
+
+      FunctionType* ft = f->getFunctionType();
+
+      TypeVec params;
+
+      for(auto itr = ft->param_begin(), itrEnd = ft->param_end();
+          itr != itrEnd; ++itr){
+        params.push_back(*itr);
+      }
+
+      FunctionType* nft = 
+        FunctionType::get(ft->getReturnType(), params, false);
+
+    
+      Function* nf = 
+        Function::Create(nft, Function::ExternalLinkage,
+                         f->getName(), &kernelModule_);
+
+      Function::arg_iterator aitr = f->arg_begin();
+      Function::arg_iterator naitr = nf->arg_begin();
+
+      aitr = f->arg_begin();
+      while(aitr != f->arg_end()){
+        naitr->setName(aitr->getName());
+        remap[aitr] = naitr;
+        ++aitr;
+        ++naitr;
+      }
+
+      for(auto itr = f->begin(), itrEnd = f->end();
+          itr != itrEnd; ++itr){
+
+        BasicBlock* b = itr;
+        BasicBlock* nb = BasicBlock::Create(context_, b->getName(), nf);
+        remap[b] = nb;
+
+        for(auto bitr = b->begin(), bitrEnd = b->end();
+            bitr != bitrEnd; ++bitr){
+          Instruction* i = bitr;
+          Instruction* ni = i->clone();
+         
+          remap[i] = ni;
+         
+          ni->setName(i->getName());
+          BasicBlock::InstListType& il = nb->getInstList();
+          il.push_back(ni);
+        }
+      }
+
+      for(auto itr = nf->begin(), itrEnd = nf->end();
+          itr != itrEnd; ++itr){
+
+        BasicBlock* b = itr;
+        for(auto bitr = b->begin(), bitrEnd = b->end();
+            bitr != bitrEnd; ++bitr){
+          Instruction* i = bitr;
+          RemapInstruction(i, remap, RF_IgnoreMissingEntries, 0);
+        }
+      }
+
+      remap[f] = nf;
+
+      return nf;
+    }
+
+    void init(){
+      renderallFunc_ = cast<Function>(cast<ValueAsMetadata>(
+                        volrenMD_->getOperand(0))->getValue());
+
+      Function* wrapperFunc = cast<Function>(cast<ValueAsMetadata>(
+                                volrenMD_->getOperand(1))->getValue());
+
+      Function* transferFunc = cast<Function>(cast<ValueAsMetadata>(
+                                volrenMD_->getOperand(2))->getValue());
+      
+      FuncVec calledFuncs;
+      getCalledFuncs(transferFunc, calledFuncs);
+      getCalledFuncs(wrapperFunc, calledFuncs);
+      
+      ValueToValueMapTy remap;
+
+      for(Function* f : calledFuncs){
+        addFunction(kernelModule_, remap, f); 
+      }
+
+      addFunction(kernelModule_, remap, transferFunc);
+
+      Function* wf = addFunction(kernelModule_, remap, wrapperFunc);
+
+      wrapperFunc->eraseFromParent();
+      transferFunc->eraseFromParent();
+
+      for(Function* f : calledFuncs){
+        f->eraseFromParent();
+      }
+
+      NamedMDNode* annotations = 
+        kernelModule_.getOrInsertNamedMetadata("nvvm.annotations");
+
+      SmallVector<Metadata*, 3> av;
+      av.push_back(ValueAsMetadata::get(wf));
+      av.push_back(MDString::get(context_, "kernel"));
+      av.push_back(ValueAsMetadata::get(getInt32(1)));
+
+      annotations->addOperand(MDNode::get(context_, av));
+    }
+
+    void finishRenderall(){
+      string meshName = 
+        cast<MDString>(volrenMD_->getOperand(3))->getString().str();
+
+      MDNode* fieldsNode = cast<MDNode>(volrenMD_->getOperand(4));
+
+      size_t pos = 0;
+      size_t numFields = fieldsNode->getNumOperands();
+      for(size_t i = 0; i < numFields; ++i){
+        MDNode* fieldNode = cast<MDNode>(fieldsNode->getOperand(i));
+
+        string fieldName =
+          cast<MDString>(fieldNode->getOperand(0))->getString().str();
+        
+        uint8_t elementType =
+          cast<ConstantInt>(cast<ValueAsMetadata>(
+            fieldNode->getOperand(1))->getValue())->getZExtValue();
+        
+        ++pos;
+      }
+    }
+
+  private:
+    CUDAModule& m_;
+    Module& kernelModule_;
+    LLVMContext& context_;
+    MDNode* volrenMD_;
+    Function* renderallFunc_;
+  };
+  
   CUDAModule(Module* module)
   : module_(module),
     context_(module->getContext()),
@@ -131,44 +304,15 @@ public:
     NamedMDNode* volrensMD = module_->getNamedMetadata("scout.volren");
     assert(volrensMD);
 
-    NamedMDNode* annotations = 
-      kernelModule_.getOrInsertNamedMetadata("nvvm.annotations");
+    vector<Kernel*> kernels;
 
     for(size_t i = 0; i < volrensMD->getNumOperands(); ++i){
       MDNode* volrenMD = volrensMD->getOperand(i);
 
-      Function* wrapperFunc = cast<Function>(cast<ValueAsMetadata>(
-        volrenMD->getOperand(0))->getValue());
-
-      Function* transferFunc = cast<Function>(cast<ValueAsMetadata>(
-        volrenMD->getOperand(1))->getValue());
-
-      
-      FuncVec calledFuncs;
-      getCalledFuncs(transferFunc, calledFuncs);
-      getCalledFuncs(wrapperFunc, calledFuncs);
-      
-      ValueToValueMapTy remap;
-
-      for(Function* f : calledFuncs){
-        addFunction(kernelModule_, remap, f); 
-      }
-
-      addFunction(kernelModule_, remap, transferFunc);
-
-      Function* wf = addFunction(kernelModule_, remap, wrapperFunc);
-      
-      SmallVector<Metadata*, 3> av;
-      av.push_back(ValueAsMetadata::get(wf));
-      av.push_back(MDString::get(context_, "kernel"));
-      av.push_back(ValueAsMetadata::get(getInt32(1)));
-
-      annotations->addOperand(MDNode::get(context_, av));
+      Kernel* kernel = new Kernel(*this, volrenMD);
+      kernel->init();
+      kernels.push_back(kernel);
     }
-
-    //cerr << "--------- kernel module: " << endl;
-    //kernelModule_.dump();
-    //cerr << "=========================" << endl;
 
     string ptx = generatePTX();
 
@@ -184,93 +328,17 @@ public:
                          pc,
                          "ptx");
 
+    for(Kernel* kernel : kernels){
+      kernel->finishRenderall();
+    }
+
+    //cerr << "--------- kernel module: " << endl;
+    //kernelModule_.dump();
+    //cerr << "=========================" << endl;
+
     //cerr << "--- CPU module after: " << endl;
     //module_->dump();
     //cerr << "======================" << endl;
-  }
-
-  void getCalledFuncs(Function* f, FuncVec& funcs){
-    for(Function::iterator itr = f->begin(), itrEnd = f->end();
-        itr != itrEnd; ++itr){
-      
-      BasicBlock* b = itr;
-      for(BasicBlock::iterator bitr = b->begin(), bitrEnd = b->end();
-          bitr != bitrEnd; ++bitr){
-        Instruction* i = bitr;
-
-        if(CallInst* ci = dyn_cast<CallInst>(i)){
-          funcs.push_back(ci->getCalledFunction());
-        }
-      }
-    }
-  }
-
-  Function* addFunction(Module& module,
-                        ValueToValueMapTy& remap,
-                        Function* f){
-
-    FunctionType* ft = f->getFunctionType();
-
-    TypeVec params;
-
-    for(auto itr = ft->param_begin(), itrEnd = ft->param_end();
-        itr != itrEnd; ++itr){
-      params.push_back(*itr);
-    }
-
-    FunctionType* nft = 
-      FunctionType::get(ft->getReturnType(), params, false);
-
-    
-    Function* nf = 
-      Function::Create(nft, Function::ExternalLinkage,
-                       f->getName(), &kernelModule_);
-
-    Function::arg_iterator aitr = f->arg_begin();
-    Function::arg_iterator naitr = nf->arg_begin();
-
-    aitr = f->arg_begin();
-    while(aitr != f->arg_end()){
-      naitr->setName(aitr->getName());
-      remap[aitr] = naitr;
-      ++aitr;
-      ++naitr;
-    }
-
-    for(auto itr = f->begin(), itrEnd = f->end();
-        itr != itrEnd; ++itr){
-
-      BasicBlock* b = itr;
-      BasicBlock* nb = BasicBlock::Create(context_, b->getName(), nf);
-      remap[b] = nb;
-
-      for(auto bitr = b->begin(), bitrEnd = b->end();
-          bitr != bitrEnd; ++bitr){
-        Instruction* i = bitr;
-        Instruction* ni = i->clone();
-         
-        remap[i] = ni;
-         
-        ni->setName(i->getName());
-        BasicBlock::InstListType& il = nb->getInstList();
-        il.push_back(ni);
-      }
-    }
-
-    for(auto itr = nf->begin(), itrEnd = nf->end();
-        itr != itrEnd; ++itr){
-
-      BasicBlock* b = itr;
-      for(auto bitr = b->begin(), bitrEnd = b->end();
-          bitr != bitrEnd; ++bitr){
-        Instruction* i = bitr;
-        RemapInstruction(i, remap, RF_IgnoreMissingEntries, 0);
-      }
-    }
-
-    remap[f] = nf;
-
-    return nf;
   }
 
   Module* module(){
@@ -293,14 +361,6 @@ public:
     f = Function::Create(ft, Function::ExternalLinkage, name, &kernelModule_);
 
     return f;
-  }
-
-  ConstantInt* getInt32(int32_t v){
-    return ConstantInt::get(context_, APInt(32, v, true));
-  }
-
-  ConstantInt* getInt8(int8_t v){
-    return ConstantInt::get(context_, APInt(8, v, true));
   }
 
   LLVMContext& context(){
