@@ -37,21 +37,24 @@
 ** $QT_END_LICENSE$
 **
 ****************************************************************************/
-#include "VolumeRendererWindow.h"
-//#include "glwidget.h"
 
-#include <iostream>
+#ifndef VOLUME_RENDERER_WINDOW_H
+#define VOLUME_RENDERER_WINDOW_H
 
-using namespace std;
+#include <QWidget>
 
-VolumeRendererWindow::VolumeRendererWindow(size_t meshWidth,
-                                           size_t meshHeight,
-                                           size_t meshDepth,
-                                           float* fieldValues)
+class VolumeRendererWindow : public QWidget
 {
-    setWindowTitle(tr("Volume Renderer"));
-    //widget_ = new GLWidget(meshWidth, meshHeight, meshDepth, fieldValues);
-    QGridLayout *layout = new QGridLayout;
-    layout->addWidget(widget_, 0, 0);
-    setLayout(layout);
-}
+//    Q_OBJECT
+
+public:
+  VolumeRendererWindow(size_t meshWidth,
+                       size_t meshHeight,
+                       size_t meshDepth,
+                       float* fieldValues);
+
+private:
+  //class GLWidget* widget_;
+};
+
+#endif
