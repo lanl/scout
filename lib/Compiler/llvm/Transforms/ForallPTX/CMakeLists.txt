@@ -12,6 +12,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
 
 add_llvm_library(LLVMForallPTX
   ForallPTX.cpp
+  RenderallPTX.cpp
 )
 
 add_dependencies(LLVMForallPTX intrinsics_gen)
