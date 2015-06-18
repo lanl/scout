@@ -100,11 +100,11 @@ endif()
 if (SCOUT_ENABLE_CUDA)
   file(GLOB rt_srcs_gpu gpu/*.cpp)
 
-  cuda_include_directories(${SCOUT_INCLUDE_DIR}/scout/Runtime/volren)
-  set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
-  set(CMAKE_CXX_FLAGS -g)
-  cuda_compile(RENDERER_O volren/volumeRender_kernel.cu)
-  set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
+  #cuda_include_directories(${SCOUT_INCLUDE_DIR}/scout/Runtime/volren)
+  #set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+  #set(CMAKE_CXX_FLAGS -g)
+  #cuda_compile(RENDERER_O volren/volumeRender_kernel.cu)
+  #set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
   
   file(GLOB rt_srcs_volren volren/*.cpp)
 
