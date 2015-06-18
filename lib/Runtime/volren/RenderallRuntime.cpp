@@ -65,6 +65,12 @@
 
 #include <cuda.h>
 
+#define ndump(X) std::cout << __FILE__ << ":" << __LINE__ << ": " << \
+__PRETTY_FUNCTION__ << ": " << #X << " = " << X << std::endl
+
+#define nlog(X) std::cout << __FILE__ << ":" << __LINE__ << ": " << \
+__PRETTY_FUNCTION__ << ": " << X << std::endl
+
 using namespace std;
 using namespace scout;
 
@@ -261,8 +267,10 @@ public:
   class PTXModule{
   public:    
     PTXModule(const char* ptx){
+      nlog("t9");
       CUresult err = cuModuleLoadData(&module_, (void*)ptx);
       check(err);
+      nlog("t10");
     }
 
     Kernel* createKernel(Mesh* mesh, const char* kernelName);
@@ -503,6 +511,8 @@ public:
       mesh = new Mesh(width, height, depth);
       meshMap_[meshName] = mesh;
     }
+    
+    nlog("t1");
 
     PTXModule* module;
     auto mitr = moduleMap_.find(ptx);
@@ -510,9 +520,13 @@ public:
       module = mitr->second;
     }
     else{
+      nlog("t1a");
       module = new PTXModule(ptx);
+      nlog("t1b");
       moduleMap_[meshName] = module;
     }
+
+    nlog("t2");
 
     Kernel* kernel = module->createKernel(mesh, kernelName);
     kernel->setNumThreads(numThreads_);
@@ -615,6 +629,12 @@ void __scrt_volren_init_field(const char* kernelName,
                               void* hostPtr,
                               uint32_t elementSize,
                               uint8_t elementType){
+  ndump(kernelName);
+  ndump(fieldName);
+  ndump(hostPtr);
+  ndump(elementSize);
+  ndump(elementType);
+
   RenderallRuntime* runtime = _getRuntime();
   runtime->initField(kernelName, fieldName, hostPtr,
                      elementSize, elementType, FIELD_READ);

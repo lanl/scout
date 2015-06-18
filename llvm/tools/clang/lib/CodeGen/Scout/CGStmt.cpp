@@ -2463,7 +2463,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr->setName("meshPtr");
   aitr++;
   
-  params.push_back(llvm::PointerType::get(transferFuncTy, 0));
+  //params.push_back(llvm::PointerType::get(transferFuncTy, 0));
   
   llvm::Function* renderFunc =
   llvm::Function::Create(llvm::FunctionType::get(VoidTy, params, false),
@@ -2496,8 +2496,16 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr++;
   aitr->setName("meshPtr");
   aitr++;
-  aitr->setName("transferFunc");
-  aitr++;
+  //aitr->setName("transferFunc");
+  //aitr++;
+
+  params = {Int32Ty};
+  
+  llvm::Function* renderFooFunc =
+  llvm::Function::Create(llvm::FunctionType::get(VoidTy, params, false),
+                         llvm::Function::ExternalLinkage,
+                         "volume_render_foo",
+                         &CGM.getModule());
   
   entry = BasicBlock::Create(C, "entry", wrapperFunc);
   B.SetInsertPoint(entry);
@@ -2508,9 +2516,16 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
     args.push_back(aitr++);
   }
   
-  args.push_back(transferFunc);
+  llvm::errs() << "##########\n";
+  renderFunc->dump();
   
-  B.CreateCall(renderFunc, args);
+  //args.push_back(transferFunc);
+  
+  llvm::Value* testConst = llvm::ConstantInt::get(Int32Ty, 29);
+  args = {testConst};
+  B.CreateCall(renderFooFunc, args);
+  
+  //B.CreateCall(renderFunc, args);
   B.CreateRetVoid();
   
   B.SetInsertPoint(prevBlock, prevPoint);

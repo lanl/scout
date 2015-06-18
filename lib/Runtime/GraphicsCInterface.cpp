@@ -55,6 +55,8 @@
 #include "scout/Runtime/opengl/qt/QtWindow.h"
 #include "scout/Runtime/opengl/glUniformRenderable.h"
 
+#include <iostream>
+
 using namespace scout;
 
 extern "C"
@@ -158,5 +160,20 @@ void __scrt_window_paint(void* renderTarget) {
   window->paint();
   window->swapBuffers();
   
+  QtWindow::pollEvents();
+}
+
+extern "C"
+void __scrt_volume_render(void* renderTarget){
+  static float* fieldValues = nullptr;
+
+  if(!fieldValues){
+    size_t extent = 8 * 8 * 8;
+    fieldValues = (float*)malloc(sizeof(float) * extent);
+  }
+
+  VolumeRendererWindow* window = 
+    ((ScoutWindow*)renderTarget)->getVolumeRendererWindow(8, 8, 8, fieldValues);
+  window->update();
   QtWindow::pollEvents();
 }

@@ -341,7 +341,7 @@ public:
         B.CreateCall(f, args);
       }
 
-      f = module->getFunction("__scrt_volren_run_kernel");
+      f = module->getFunction("__scrt_volren_run");
       args = {kernelName};
       B.CreateCall(f, args);
 
@@ -371,16 +371,13 @@ public:
     TypeVec params;
 
     params = {stringTy, stringTy, stringTy, int32Ty, int32Ty, int32Ty};
-    createFunction("__scrt_volren_init_kernel",
-                   voidTy, params);
+    createFunction("__scrt_volren_init_kernel", voidTy, params);
 
     params = {stringTy, stringTy, voidPtrTy, int32Ty, int8Ty};
-    createFunction("__scrt_volren_init_field",
-                   voidTy, params);
+    createFunction("__scrt_volren_init_field", voidTy, params);
 
     params = {stringTy};
-    createFunction("__scrt_volren_run_kernel",
-                   voidTy, params);
+    createFunction("__scrt_volren_run", voidTy, params);
   }
 
   void init(){
@@ -419,9 +416,9 @@ public:
       kernel->finishRenderall();
     }
 
-    //cerr << "--------- kernel module: " << endl;
-    //kernelModule_.dump();
-    //cerr << "=========================" << endl;
+    cerr << "--------- kernel module: " << endl;
+    kernelModule_.dump();
+    cerr << "=========================" << endl;
 
     //cerr << "--- CPU module after: " << endl;
     //module_->dump();

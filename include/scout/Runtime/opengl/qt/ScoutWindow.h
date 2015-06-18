@@ -59,6 +59,7 @@
 
 #include "scout/Runtime/opengl/qt/QtWindow.h"
 #include "scout/Runtime/opengl/qt/PlotWindow.h"
+#include "scout/Runtime/volren/VolumeRendererWindow.h"
 
 namespace scout{
 
@@ -91,6 +92,28 @@ namespace scout{
       QtWindow::init();
 
       QtWindow* window = new QtWindow(width_, height_);
+      window->show();
+      window_ = window;
+      
+      return window;
+    }
+
+    VolumeRendererWindow*
+    getVolumeRendererWindow(size_t meshWidth,
+                            size_t meshHeight,
+                            size_t meshDepth,
+                            float* fieldValues){
+      if(window_){
+        return static_cast<VolumeRendererWindow*>(window_);
+      }
+      
+      QtWindow::init();
+
+      auto window = 
+        new VolumeRendererWindow(meshWidth, meshHeight,
+                                 meshDepth, fieldValues);
+
+      window->resize(width_, height_);
       window->show();
       window_ = window;
       
