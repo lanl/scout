@@ -14,7 +14,6 @@ add_subdirectory(Driver)
 
 if(${SCOUT_ENABLE_CUDA})
    add_subdirectory(ForallPTX)
-   add_subdirectory(RenderallPTX)
 #  add_subdirectory(CudaError)
 #  add_subdirectory(DoallToPTX)
 endif()

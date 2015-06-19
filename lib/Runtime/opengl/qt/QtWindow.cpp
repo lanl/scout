@@ -78,6 +78,21 @@ namespace{
       argc_ = 1;
       argv_[0] = strdup("scout");
       app_ = new QApplication(argc_, argv_);
+
+      QSurfaceFormat format;
+      format.setProfile(QSurfaceFormat::CompatibilityProfile);
+      format.setVersion(4, 1);
+      //format.setSamples(16);
+      //format.setDepthBufferSize(24);
+      //format.setStencilBufferSize(8);
+      //format.setAlphaBufferSize(8);
+      //format.setRedBufferSize(8);
+      //format.setGreenBufferSize(8);
+      //format.setBlueBufferSize(8);
+      //format.setDepthBufferSize(24);
+      //format.setSamples(4);
+
+      QSurfaceFormat::setDefaultFormat(format);
     }
 
     void pollEvents(){

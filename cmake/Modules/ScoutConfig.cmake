@@ -175,30 +175,28 @@ endif()
   # --- CUDA support.
   find_package(CUDA)
   if (CUDA_FOUND)
+    get_filename_component(_CUDA_LIBRARY_DIR ${CUDA_CUDA_LIBRARY} DIRECTORY)
+    set(CUDA_LIBRARY_DIR "${_CUDA_LIBRARY_DIR}" CACHE STRING "Cuda library dir")
+    get_filename_component(_CUDA_RTLIBRARY_DIR ${CUDA_CUDART_LIBRARY} DIRECTORY)
+    set(CUDA_RTLIBRARY_DIR "${_CUDA_RTLIBRARY_DIR}" CACHE STRING "Cuda rt library dir")
+    set(CUDA_LIBRARIES "-L${CUDA_LIBS_PATH} -L${CUDA_RTLIB_PATH} -lcudart -lcuda")
+
+    if (APPLE)
+      set(CUDA_LIBRARIES "${CUDA_LIBRARIES} -F/Library/Frameworks")
+    endif()
+
     if (CUDA_VERSION_MAJOR VERSION_GREATER 6 OR CUDA_VERSION_MAJOR VERSION_EQUAL 6)
-      if (CUDA_COMPUTE_CAPABILITY VERSION_GREATER 20 OR CUDA_COMPUTE_CAPABILITY VERSION_EQUAL 20)  
-        message(STATUS "scout: CUDA found, enabling PTX codegen support.")
-        message(STATUS "scout: CUDA include path: ${CUDA_INCLUDE_DIRS}")
-        set(SCOUT_ENABLE_CUDA ON CACHE BOOL
-          "Enable CUDA/PTX code generation and runtime support.")
+      message(STATUS "scout: CUDA found, enabling PTX codegen support.")
+      message(STATUS "scout: CUDA include path: ${CUDA_INCLUDE_DIRS}")
+      set(SCOUT_ENABLE_CUDA ON CACHE BOOL
+        "Enable CUDA/PTX code generation and runtime support.")
   
-        set(SCOUT_ENABLE_LIB_NVVM OFF CACHE BOOL
+      set(SCOUT_ENABLE_LIB_NVVM OFF CACHE BOOL
           "Enable NVIDIA's compiler SDK vs. LLVM's PTX backend.")
   
-        if (SCOUT_ENABLE_LIB_NVVM)
-         message(STATUS "scout: Enabling NVIDIA libnvvm support.")
-        endif()
-      else() # CUDA_COMPUTE_CAPABILITY
-        message(STATUS "scout: CUDA compute capability >=2.0 required, disabling support .")
-        message(STATUS "found CUDA compute capability ${CUDA_COMPUTE_CAPABILITY}")
-        set(SCOUT_ENABLE_CUDA OFF CACHE BOOL
-          "Enable CUDA/PTX code generation and runtime support.")
-        set(CUDA_VERSION_MAJOR 0)
-        set(CUDA_VERSION_MINOR 0)
-        set(CUDA_INCLUDE_DIRS "")
-        set(CUDA_LIBRARY_DIR "")
-        set(CUDA_LIBRARIES "")
-      endif() # CUDA_COMPUTE_CAPABILITY
+      if (SCOUT_ENABLE_LIB_NVVM)
+       message(STATUS "scout: Enabling NVIDIA libnvvm support.")
+      endif()
    else() #CUDA VERSION
      message(STATUS "scout: CUDA >=6.0 required, disabling support .")
      set(SCOUT_ENABLE_CUDA OFF CACHE BOOL
@@ -207,6 +205,7 @@ endif()
      set(CUDA_VERSION_MINOR 0)
      set(CUDA_INCLUDE_DIRS "")
      set(CUDA_LIBRARY_DIR "")
+     set(CUDA_RTLIBRARY_DIR "")
      set(CUDA_LIBRARIES "")
    endif() # CUDA_VERSION
   else() # CUDA_FOUND
@@ -217,6 +216,7 @@ endif()
     set(CUDA_VERSION_MINOR 0)
     set(CUDA_INCLUDE_DIRS "")
     set(CUDA_LIBRARY_DIR "")
+    set(CUDA_RTLIBRARY_DIR "")
     set(CUDA_LIBRARIES "")
   endif() #CUDA_FOUND
 

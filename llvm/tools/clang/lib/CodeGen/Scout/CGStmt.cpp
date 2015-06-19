@@ -2296,6 +2296,82 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   LLVMContext& C = getLLVMContext();
   auto R = CGM.getScoutRuntime();
   
+  MeshDecl* MD = cast<MeshDecl>(S.getMeshType()->getDecl());
+  
+  Value* MeshBaseAddr;
+  GetMeshBaseAddr(S, MeshBaseAddr);
+  
+  StructType* meshStruct =
+  dyn_cast<StructType>(MeshBaseAddr->getType()->getPointerElementType());
+  
+  Value* width =
+  B.CreateLoad(B.CreateStructGEP(nullptr, MeshBaseAddr,
+                                 meshStruct->getNumElements() - 1), "width");
+  
+  Value* height =
+  B.CreateLoad(B.CreateStructGEP(nullptr, MeshBaseAddr,
+                                 meshStruct->getNumElements() - 2), "height");
+  
+  Value* depth =
+  B.CreateLoad(B.CreateStructGEP(nullptr, MeshBaseAddr,
+                                 meshStruct->getNumElements() - 3), "depth");
+  
+  
+  const VarDecl* RTVD = S.getRenderTargetVarDecl();
+  
+  // Check if it's a window or image type
+  // cuz we don't handle images yet.
+  const Type &Ty =
+  *getContext().getCanonicalType(RTVD->getType()).getTypePtr();
+  
+  llvm::Value* RTAlloc;
+  
+  if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
+      && RTVD->getTLSKind() != VarDecl::TLS_Dynamic) {
+    RTAlloc = CGM.GetAddrOfGlobalVar(RTVD);
+  }
+  else{
+    RTAlloc = LocalDeclMap.lookup(RTVD);
+  }
+  
+  if(Ty.getTypeClass() != Type::Window){
+    RTAlloc = Builder.CreateLoad(RTAlloc);
+  }
+  
+  // cast scout.window_t** to void**
+  Value* int8PtrPtrRTAlloc = Builder.CreateBitCast(RTAlloc, Int8PtrPtrTy, "");
+  
+  // dereference the void**
+  Value* int8PtrRTAlloc = Builder.CreateLoad(int8PtrPtrRTAlloc, "derefwin");
+  
+  BasicBlock* prevBlock = B.GetInsertBlock();
+  BasicBlock::iterator prevPoint = B.GetInsertPoint();
+  
+  TypeVec params =
+  {MeshBaseAddr->getType(), int8PtrRTAlloc->getType(),
+    Int32Ty, Int32Ty, Int32Ty};
+  
+  llvm::Function* renderallFunc =
+  llvm::Function::Create(llvm::FunctionType::get(VoidTy, params, false),
+                         llvm::Function::ExternalLinkage,
+                         "volume_renderall",
+                         &CGM.getModule());
+  
+  auto aitr = renderallFunc->arg_begin();
+  aitr->setName("mesh.ptr");
+  aitr++;
+  aitr->setName("window.ptr");
+  aitr++;
+  aitr->setName("width");
+  aitr++;
+  aitr->setName("height");
+  aitr++;
+  aitr->setName("depth");
+  aitr++;
+  
+  ValueVec args = {MeshBaseAddr, int8PtrRTAlloc, width, height, depth};
+  B.CreateCall(renderallFunc, args);
+  
   RenderallVisitor visitor(&S);
   visitor.VisitStmt(const_cast<Stmt*>(S.getBody()));
   
@@ -2312,10 +2388,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   StructType* meshType =
   StructType::create(C, fields, "mesh.struct");
   
-  TypeVec params = {VoidPtrTy, Int32Ty};
-  
-  BasicBlock* prevBlock = B.GetInsertBlock();
-  BasicBlock::iterator prevPoint = B.GetInsertPoint();
+  params = {VoidPtrTy, Int32Ty};
   
   llvm::FunctionType* transferFuncTy =
   llvm::FunctionType::get(llvm::VectorType::get(FloatTy, 4), params, false);
@@ -2326,7 +2399,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
                          "volren_transfer",
                          &CGM.getModule());
   
-  auto aitr = transferFunc->arg_begin();
+  aitr = transferFunc->arg_begin();
   
   Value* mp = aitr;
   
@@ -2390,7 +2463,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr->setName("meshPtr");
   aitr++;
   
-  params.push_back(llvm::PointerType::get(transferFuncTy, 0));
+  //params.push_back(llvm::PointerType::get(transferFuncTy, 0));
   
   llvm::Function* renderFunc =
   llvm::Function::Create(llvm::FunctionType::get(VoidTy, params, false),
@@ -2423,22 +2496,36 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr++;
   aitr->setName("meshPtr");
   aitr++;
-  aitr->setName("transferFunc");
-  aitr++;
+  //aitr->setName("transferFunc");
+  //aitr++;
+
+  params = {Int32Ty};
+  
+  llvm::Function* renderFooFunc =
+  llvm::Function::Create(llvm::FunctionType::get(VoidTy, params, false),
+                         llvm::Function::ExternalLinkage,
+                         "volume_render_foo",
+                         &CGM.getModule());
   
   entry = BasicBlock::Create(C, "entry", wrapperFunc);
   B.SetInsertPoint(entry);
-  
-  ValueVec args;
-  
+
+  args.clear();
   aitr = wrapperFunc->arg_begin();
   while(aitr != wrapperFunc->arg_end()){
     args.push_back(aitr++);
   }
   
-  args.push_back(transferFunc);
+  llvm::errs() << "##########\n";
+  renderFunc->dump();
   
-  B.CreateCall(renderFunc, args);
+  //args.push_back(transferFunc);
+  
+  llvm::Value* testConst = llvm::ConstantInt::get(Int32Ty, 29);
+  args = {testConst};
+  B.CreateCall(renderFooFunc, args);
+  
+  //B.CreateCall(renderFunc, args);
   B.CreateRetVoid();
   
   B.SetInsertPoint(prevBlock, prevPoint);
@@ -2446,44 +2533,61 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   llvm::NamedMDNode* volrens =
   CGM.getModule().getOrInsertNamedMetadata("scout.volren");
   
-  llvm::SmallVector<llvm::Metadata*, 3> volrenData;
+  llvm::SmallVector<llvm::Metadata*, 5> volrenData;
+  volrenData.push_back(llvm::ValueAsMetadata::get(renderallFunc));
   volrenData.push_back(llvm::ValueAsMetadata::get(wrapperFunc));
+  volrenData.push_back(llvm::ValueAsMetadata::get(transferFunc));
+  
+  const MeshType* mt = S.getMeshType();
+  volrenData.push_back(llvm::MDString::get(CGM.getLLVMContext(),
+                                           mt->getName()));
+  
+  llvm::SmallVector<llvm::Metadata*, 16> meshFields;
+  
+  for(MeshFieldDecl* fd : fs){
+    llvm::SmallVector<llvm::Metadata*, 3> fieldData;
+    
+    fieldData.push_back(llvm::MDString::get(CGM.getLLVMContext(),
+                                            fd->getName()));
+    
+    bool found = false;
+    uint32_t index = 0;
+    for(auto fitr = MD->field_begin(), fitrEnd = MD->field_end();
+        fitr != fitrEnd; ++fitr){
+      if(*fitr == fd){
+        fieldData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int32Ty, index)));
+        found = true;
+        break;
+      }
+      ++index;
+    }
+    assert(found);
+    
+    if(fd->isCellLocated()){
+      fieldData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int8Ty, FIELD_CELL)));
+    }
+    else if(fd->isVertexLocated()){
+      fieldData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int8Ty, FIELD_VERTEX)));
+    }
+    else if(fd->isEdgeLocated()){
+      fieldData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int8Ty, FIELD_EDGE)));
+    }
+    else if(fd->isFaceLocated()){
+      fieldData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int8Ty, FIELD_FACE)));
+    }
+    
+    llvm::Metadata* fieldDataMD =
+    llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Metadata*>(fieldData));
+    
+    meshFields.push_back(fieldDataMD);
+  }
+  
+  llvm::Metadata* fieldsMD =
+  llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Metadata*>(meshFields));
+  
+  volrenData.push_back(fieldsMD);
   
   volrens->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), volrenData));
-  
-  Value* MeshBaseAddr;
-  GetMeshBaseAddr(S, MeshBaseAddr);
-  
-  const VarDecl* RTVD = S.getRenderTargetVarDecl();
-  
-  // Check if it's a window or image type
-  // cuz we don't handle images yet.
-  const Type &Ty =
-  *getContext().getCanonicalType(RTVD->getType()).getTypePtr();
-  
-  llvm::Value* RTAlloc;
-  
-  if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
-      && RTVD->getTLSKind() != VarDecl::TLS_Dynamic) {
-    RTAlloc = CGM.GetAddrOfGlobalVar(RTVD);
-  }
-  else{
-    RTAlloc = LocalDeclMap.lookup(RTVD);
-  }
-  
-  if(Ty.getTypeClass() != Type::Window){
-    RTAlloc = Builder.CreateLoad(RTAlloc);
-  }
-  
-  // cast scout.window_t** to void**
-  Value* int8PtrPtrRTAlloc = Builder.CreateBitCast(RTAlloc, Int8PtrPtrTy, "");
-  
-  // dereference the void**
-  Value* int8PtrRTAlloc = Builder.CreateLoad(int8PtrPtrRTAlloc, "derefwin");
-  
-  args = {int8PtrRTAlloc};
-
-  Builder.CreateCall(R.VolumeRenderFunction(), args);
 }
 
 void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S){

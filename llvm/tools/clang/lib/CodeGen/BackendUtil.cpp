@@ -45,6 +45,7 @@
 #include "scout/Config/defs.h"
 #ifdef SCOUT_ENABLE_CUDA
 #include "llvm/Transforms/Scout/ForallPTX/ForallPTX.h"
+#include "llvm/Transforms/Scout/RenderallPTX/RenderallPTX.h"
 #endif
 #ifdef SC_ENABLE_OPENCL
 #include "llvm/Transforms/Scout/DoallToAMDIL/DoallToAMDIL.h"
@@ -256,6 +257,12 @@ void EmitAssemblyHelper::CreateScoutPasses() {
   if(CodeGenOpts.ScoutNvidiaGPU){
     llvm::legacy::PassManager MPM;
     MPM.add(createForallPTXPass());
+    MPM.run(*TheModule);
+  }
+  
+  if(TheModule->getNamedMetadata("scout.volren")){
+    llvm::legacy::PassManager MPM;
+    MPM.add(createRenderallPTXPass());
     MPM.run(*TheModule);
   }
 #endif
