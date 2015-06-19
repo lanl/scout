@@ -177,6 +177,7 @@ endif()
   if (CUDA_FOUND)
     get_filename_component(CUDA_LIBS_PATH ${CUDA_CUDA_LIBRARY} DIRECTORY)
     set(CUDA_LIBRARIES "-L${CUDA_LIBS_PATH} -lcudart -lcuda")
+    set(CUDA_LIBRARY_DIR ${CUDA_LIBS_PATH})
 
     if (APPLE)
       set(CUDA_LIBRARIES "${CUDA_LIBRARIES} -F/Library/Frameworks")
