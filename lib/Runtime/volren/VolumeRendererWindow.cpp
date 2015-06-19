@@ -51,7 +51,7 @@ VolumeRendererWindow::VolumeRendererWindow(size_t meshWidth,
 {
     setWindowTitle(tr("Volume Renderer"));
     //widget_ = new GLWidget(meshWidth, meshHeight, meshDepth, fieldValues);
-    QGridLayout *layout = new QGridLayout;
-    layout->addWidget(widget_, 0, 0);
-    setLayout(layout);
+    //QGridLayout *layout = new QGridLayout;
+    //layout->addWidget(widget_, 0, 0);
+    //setLayout(layout);
 }

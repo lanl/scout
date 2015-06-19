@@ -108,7 +108,10 @@ if (SCOUT_ENABLE_CUDA)
   
   file(GLOB rt_srcs_volren volren/*.cpp)
 
-  qt5_wrap_cpp(moc_srcs_volren volren/glwidget.h ${SCOUT_INCLUDE_DIR}/scout/Runtime/volren/VolumeRendererWindow.h)
+  #qt5_wrap_cpp(moc_srcs_volren volren/glwidget.h
+  #${SCOUT_INCLUDE_DIR}/scout/Runtime/volren/VolumeRendererWindow.h)
+
+  qt5_wrap_cpp(moc_srcs_volren ${SCOUT_INCLUDE_DIR}/scout/Runtime/volren/VolumeRendererWindow.h)
 
   list(APPEND rt_srcs ${rt_srcs_gpu})
   list(APPEND rt_srcs ${rt_srcs_volren})
