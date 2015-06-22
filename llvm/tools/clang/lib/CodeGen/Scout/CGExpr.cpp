@@ -186,7 +186,7 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
 }
 
 LValue
-CodeGenFunction::EmitVolumeRenderMeshMemberExpr(const MemberExpr *E) {
+CodeGenFunction::EmitVolumeRenderMeshMemberExpr(const MemberExpr *E) {  
   MeshFieldDecl* fd = dyn_cast<MeshFieldDecl>(E->getMemberDecl());
   assert(fd);
   
@@ -199,6 +199,8 @@ CodeGenFunction::EmitVolumeRenderMeshMemberExpr(const MemberExpr *E) {
   llvm::Value* fieldPtr =
   Builder.CreateStructGEP(nullptr, CurrentVolumeRenderallMeshPtr,
                           itr->second, fieldName);
+  
+  fieldPtr = Builder.CreateLoad(fieldPtr);
   
   llvm::Value* addr =
   Builder.CreateGEP(nullptr, fieldPtr,
