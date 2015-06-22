@@ -175,9 +175,11 @@ endif()
   # --- CUDA support.
   find_package(CUDA)
   if (CUDA_FOUND)
-    get_filename_component(CUDA_LIBS_PATH ${CUDA_CUDA_LIBRARY} DIRECTORY)
-    set(CUDA_LIBRARIES "-L${CUDA_LIBS_PATH} -lcudart -lcuda")
-    set(CUDA_LIBRARY_DIR ${CUDA_LIBS_PATH})
+    get_filename_component(_CUDA_LIBRARY_DIR ${CUDA_CUDA_LIBRARY} DIRECTORY)
+    set(CUDA_LIBRARY_DIR "${_CUDA_LIBRARY_DIR}" CACHE STRING "Cuda library dir")
+    get_filename_component(_CUDA_RTLIBRARY_DIR ${CUDA_CUDART_LIBRARY} DIRECTORY)
+    set(CUDA_RTLIBRARY_DIR "${_CUDA_RTLIBRARY_DIR}" CACHE STRING "Cuda rt library dir")
+    set(CUDA_LIBRARIES "-L${CUDA_LIBS_PATH} -L${CUDA_RTLIB_PATH} -lcudart -lcuda")
 
     if (APPLE)
       set(CUDA_LIBRARIES "${CUDA_LIBRARIES} -F/Library/Frameworks")
@@ -203,6 +205,7 @@ endif()
      set(CUDA_VERSION_MINOR 0)
      set(CUDA_INCLUDE_DIRS "")
      set(CUDA_LIBRARY_DIR "")
+     set(CUDA_RTLIBRARY_DIR "")
      set(CUDA_LIBRARIES "")
    endif() # CUDA_VERSION
   else() # CUDA_FOUND
@@ -213,6 +216,7 @@ endif()
     set(CUDA_VERSION_MINOR 0)
     set(CUDA_INCLUDE_DIRS "")
     set(CUDA_LIBRARY_DIR "")
+    set(CUDA_RTLIBRARY_DIR "")
     set(CUDA_LIBRARIES "")
   endif() #CUDA_FOUND
 

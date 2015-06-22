@@ -122,6 +122,7 @@ namespace scout {
       "-Wl,-rpath,${SCOUT_BUILD_DIR}/lib/",
       #ifdef SCOUT_ENABLE_CUDA    
         "-Wl,-rpath,${CUDA_LIBRARY_DIR}",
+        "-Wl,-rpath,${CUDA_RTLIBRARY_DIR}",
       #endif
 
       #ifdef APPLE
@@ -150,6 +151,7 @@ namespace scout {
     
       #ifdef SCOUT_ENABLE_CUDA    
       "-L${CUDA_LIBRARY_DIR}", 
+      "-L${CUDA_RTLIBRARY_DIR}", 
       #endif
 
       #ifdef SCOUT_ENABLE_NUMA 

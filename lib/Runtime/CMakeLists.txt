@@ -271,7 +271,7 @@ endif()
 # are empty....  This is the best way (to date) that I've found
 # to deal with the cruft of handling multiple configurations of
 # the runtime...
-link_directories(${CUDA_LIBRARY_DIR})
+link_directories(${CUDA_LIBRARY_DIR} ${CUDA_RTLIBRARY_DIR})
 
 add_library(scRuntime SHARED ${rt_srcs} ${gl_srcs} ${qt_srcs} ${moc_srcs})
 
