@@ -61,6 +61,10 @@
 #include <vector>
 #include <cassert>
 #include <cmath>
+#include <cstring>
+
+#include "scout/Runtime/volren/VolumeRendererWindow.h"
+#include "scout/Runtime/opengl/qt/ScoutWindow.h"
 
 //#include <sys/time.h>
 
@@ -403,56 +407,70 @@ public:
       return (a % b != 0) ? (a / b + 1) : (a / b);
     }
 
-    void run(){
-      imageW_ = 512;
-      imageH_ = 512;
-
-      size_t blockX = 16;
-      size_t blockY = 16;
-      size_t blockZ = 1;
-
-      size_t gridX = iDivUp(imageW_, blockX);
-      size_t gridY = iDivUp(imageH_, blockZ);
-      size_t gridZ = 1;
-
-      CUresult err = cuMemAlloc(&output_, 4 * imageW_ * imageH_);
-      check(err);
-
-      startX_ = 0;
-      startY_ = 0;
-      startZ_ = 0;
+    void run(void* win){
+      auto scoutWindow = static_cast<ScoutWindow*>(win);
       
-      density_ = 0.05f;
-      brightness_ = 1.0f;
-      transferOffset_ = 0.0f;
-      transferScale_ = 1.0f;
+      VolumeRendererWindow* window = scoutWindow->getVolumeRendererWindow();
 
-      vector<CUdeviceptr> fields;
+      CUresult err;
+
+      if(!ready_){
+        imageW_ = window->width();
+        imageH_ = window->height();
+
+        blockX_ = 16;
+        blockY_ = 16;
+        blockZ_ = 1;
+
+        gridX_ = iDivUp(imageW_, blockX_);
+        gridY_ = iDivUp(imageH_, blockZ_);
+        gridZ_ = 1;
+
+        err = cuMemAlloc(&output_, 4 * imageW_ * imageH_);
+        check(err);
+
+        startX_ = 0;
+        startY_ = 0;
+        startZ_ = 0;
+      
+        density_ = 0.05f;
+        brightness_ = 1.0f;
+        transferOffset_ = 0.0f;
+        transferScale_ = 1.0f;
+
+        vector<CUdeviceptr> fields;
+        for(auto& itr : fieldMap_){
+          Field* field = itr.second;
+          MeshField* meshField = field->meshField;
+          fields.push_back(meshField->devPtr);
+        }
+
+        err = cuMemAlloc(&meshPtr_, 8*fields.size());
+        check(err);
+
+        err = cuMemcpyHtoD(meshPtr_, fields.data(), fields.size() * 8);
+        check(err);        
+
+        kernelParams_ = {&output_, &imageW_, &imageH_,
+                         &startX_, &startY_, &startZ_,
+                         &width_, &height_, &depth_,
+                         &density_, &brightness_, &transferOffset_,
+                         &transferScale_, &meshPtr_};
+        
+        ready_ = true;
+      }
+
       for(auto& itr : fieldMap_){
         Field* field = itr.second;
         MeshField* meshField = field->meshField;
         err = cuMemcpyHtoD(meshField->devPtr, meshField->hostPtr,
                            meshField->size);
         check(err);
-        fields.push_back(meshField->devPtr);
       }
 
-      CUdeviceptr meshPtr;
-      err = cuMemAlloc(&meshPtr, 8*fields.size());
-      check(err);
-
-      err = cuMemcpyHtoD(meshPtr, fields.data(), fields.size() * 8);
-      check(err);
-
-      kernelParams_ = {&output_, &imageW_, &imageH_,
-                       &startX_, &startY_, &startZ_,
-                       &width_, &height_, &depth_,
-                       &density_, &brightness_, &transferOffset_,
-                       &transferScale_, &meshPtr_};
-
-      err = cuLaunchKernel(function_, gridX, gridY, gridZ,
-                           blockX, blockY, blockZ, 
-                           0, NULL, kernelParams_.data(), NULL);
+      err = cuLaunchKernel(function_, gridX_, gridY_, gridZ_,
+                           blockX_, blockY_, blockZ_, 
+                           0, nullptr, kernelParams_.data(), nullptr);
       check(err);
 
       size_t outSize = 4 * imageW_ * imageH_;
@@ -486,6 +504,12 @@ public:
     FieldMap_ fieldMap_;
     KernelParams_ kernelParams_;
     size_t numThreads_;
+    size_t blockX_;
+    size_t blockY_;
+    size_t blockZ_;
+    size_t gridX_;
+    size_t gridY_;
+    size_t gridZ_;
     CUdeviceptr output_;
     uint32_t imageW_;
     uint32_t imageH_;
@@ -612,7 +636,7 @@ public:
     assert(kitr != kernelMap_.end() && "invalid kernel");
 
     Kernel* kernel = kitr->second;
-    kernel->run();
+    kernel->run(window_);
   }
 
   void setWindow(void* window){
