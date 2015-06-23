@@ -100,23 +100,25 @@ endif()
 if (SCOUT_ENABLE_CUDA)
   file(GLOB rt_srcs_gpu gpu/*.cpp)
 
-  #cuda_include_directories(${SCOUT_INCLUDE_DIR}/scout/Runtime/volren)
-  #set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
-  #set(CMAKE_CXX_FLAGS -g)
-  #cuda_compile(RENDERER_O volren/volumeRender_kernel.cu)
-  #set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
+  cuda_include_directories(${SCOUT_INCLUDE_DIR}/scout/Runtime/volren)
+  set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+  set(CMAKE_CXX_FLAGS -g)
+  cuda_compile_ptx(PTX_FILES volren/volumeRender_kernel.cu)
+  set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
   
   file(GLOB rt_srcs_volren volren/*.cpp)
 
-  #qt5_wrap_cpp(moc_srcs_volren volren/glwidget.h
-  #${SCOUT_INCLUDE_DIR}/scout/Runtime/volren/VolumeRendererWindow.h)
-
-  qt5_wrap_cpp(moc_srcs_volren ${SCOUT_INCLUDE_DIR}/scout/Runtime/volren/VolumeRendererWindow.h)
+  qt5_wrap_cpp(moc_srcs_volren volren/glwidget.h ${SCOUT_INCLUDE_DIR}/scout/Runtime/volren/VolumeRendererWindow.h)
 
   list(APPEND rt_srcs ${rt_srcs_gpu})
   list(APPEND rt_srcs ${rt_srcs_volren})
   list(APPEND rt_srcs ${moc_srcs_volren})
-  list(APPEND rt_srcs ${RENDERER_O})
+  #list(APPEND rt_srcs ${RENDERER_O})
+
+  add_custom_target(compile_PTX
+    ALL
+    DEPENDS ${PTX_FILES}
+  ) 
 
 endif()
 
@@ -280,9 +282,6 @@ set_target_properties(scRuntime
   POSITION_INDEPENDENT_CODE 1
   COMPILE_FLAGS "-fPIC"
   MACOSX_RPATH 1) 
-
-message(STATUS "this is it 1: ${CUDA_LIBRARIES}")
-message(STATUS "this is it 2: ${CUDA_TOOLKIT_ROOT_DIR}")
 
 #set(_link_libs ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${R_LI#BRARIES} Qt5::Widgets Qt5::Gui)
 
