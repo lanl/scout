@@ -48,13 +48,10 @@ class VolumeRendererWindow : public QWidget
 //    Q_OBJECT
 
 public:
-  VolumeRendererWindow(size_t meshWidth,
-                       size_t meshHeight,
-                       size_t meshDepth,
-                       float* fieldValues);
+  VolumeRendererWindow();
 
 private:
-  //class GLWidget* widget_;
+  class GLWidget* widget_;
 };
 
 #endif

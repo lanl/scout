@@ -296,18 +296,6 @@ llvm::Value *CGScoutRuntime::RenderallUniformColorsGlobal(CodeGenFunction &CGF) 
   return ColorPtr;
 }
 
-llvm::Function *CGScoutRuntime::VolumeRenderFunction() {
-  std::string funcName = "__scrt_volume_render";
-  
-  std::vector<llvm::Type*> Params;
-  
-  // param for pointer to window
-  Params.push_back(llvm::PointerType::get(llvm::IntegerType::get(CGM.getModule().getContext(), 8), 0));
-  
-  return ScoutRuntimeFunction(funcName, Params);
-}
-
-
 llvm::Type *CGScoutRuntime::convertScoutSpecificType(const Type *T) {
   llvm::LLVMContext& Ctx = CGM.getLLVMContext();
   if (T->isScoutWindowType()) {

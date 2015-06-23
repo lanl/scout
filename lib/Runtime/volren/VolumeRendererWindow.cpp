@@ -38,20 +38,17 @@
 **
 ****************************************************************************/
 #include "VolumeRendererWindow.h"
-//#include "glwidget.h"
+#include "glwidget.h"
 
 #include <iostream>
 
 using namespace std;
 
-VolumeRendererWindow::VolumeRendererWindow(size_t meshWidth,
-                                           size_t meshHeight,
-                                           size_t meshDepth,
-                                           float* fieldValues)
+VolumeRendererWindow::VolumeRendererWindow()
 {
     setWindowTitle(tr("Volume Renderer"));
-    //widget_ = new GLWidget(meshWidth, meshHeight, meshDepth, fieldValues);
-    //QGridLayout *layout = new QGridLayout;
-    //layout->addWidget(widget_, 0, 0);
-    //setLayout(layout);
+    widget_ = new GLWidget;
+    QGridLayout *layout = new QGridLayout;
+    layout->addWidget(widget_, 0, 0);
+    setLayout(layout);
 }

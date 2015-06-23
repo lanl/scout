@@ -342,7 +342,7 @@ public:
       }
 
       f = module->getFunction("__scrt_volren_run");
-      args = {kernelName};
+      args = {kernelName, windowPtr};
       B.CreateCall(f, args);
 
       B.CreateRetVoid();
@@ -376,7 +376,7 @@ public:
     params = {stringTy, stringTy, voidPtrTy, int32Ty, int8Ty};
     createFunction("__scrt_volren_init_field", voidTy, params);
 
-    params = {stringTy};
+    params = {stringTy, voidPtrTy};
     createFunction("__scrt_volren_run", voidTy, params);
   }
 
@@ -420,9 +420,9 @@ public:
     kernelModule_.dump();
     cerr << "=========================" << endl;
 
-    //cerr << "--- CPU module after: " << endl;
-    //module_->dump();
-    //cerr << "======================" << endl;
+    cerr << "--- CPU module after: " << endl;
+    module_->dump();
+    cerr << "======================" << endl;
   }
 
   Module* module(){

@@ -2317,38 +2317,30 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
                                  meshStruct->getNumElements() - 3), "depth");
   
   
-  const VarDecl* RTVD = S.getRenderTargetVarDecl();
+  const VarDecl* target = S.getRenderTargetVarDecl();
   
-  // Check if it's a window or image type
-  // cuz we don't handle images yet.
-  const Type &Ty =
-  *getContext().getCanonicalType(RTVD->getType()).getTypePtr();
+  Value* targetPtr;
   
-  llvm::Value* RTAlloc;
-  
-  if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
-      && RTVD->getTLSKind() != VarDecl::TLS_Dynamic) {
-    RTAlloc = CGM.GetAddrOfGlobalVar(RTVD);
+  if((target->hasLinkage() || target->isStaticDataMember())
+     && target->getTLSKind() != VarDecl::TLS_Dynamic){
+    targetPtr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(target));
   }
   else{
-    RTAlloc = LocalDeclMap.lookup(RTVD);
+    targetPtr = LocalDeclMap.lookup(target);
   }
   
-  if(Ty.getTypeClass() != Type::Window){
-    RTAlloc = Builder.CreateLoad(RTAlloc);
-  }
+  assert(targetPtr);
   
-  // cast scout.window_t** to void**
-  Value* int8PtrPtrRTAlloc = Builder.CreateBitCast(RTAlloc, Int8PtrPtrTy, "");
+  llvm::Type* ptrType = llvm::PointerType::get(VoidPtrTy, 0);
+  targetPtr = Builder.CreateBitCast(targetPtr, ptrType);
   
-  // dereference the void**
-  Value* int8PtrRTAlloc = Builder.CreateLoad(int8PtrPtrRTAlloc, "derefwin");
+  targetPtr = Builder.CreateLoad(targetPtr);
   
   BasicBlock* prevBlock = B.GetInsertBlock();
   BasicBlock::iterator prevPoint = B.GetInsertPoint();
   
   TypeVec params =
-  {MeshBaseAddr->getType(), int8PtrRTAlloc->getType(),
+  {MeshBaseAddr->getType(), targetPtr->getType(),
     Int32Ty, Int32Ty, Int32Ty};
   
   llvm::Function* renderallFunc =
@@ -2369,7 +2361,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr->setName("depth");
   aitr++;
   
-  ValueVec args = {MeshBaseAddr, int8PtrRTAlloc, width, height, depth};
+  ValueVec args = {MeshBaseAddr, targetPtr, width, height, depth};
   B.CreateCall(renderallFunc, args);
   
   RenderallVisitor visitor(&S);
