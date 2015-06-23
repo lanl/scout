@@ -56,3 +56,11 @@ VolumeRendererWindow::VolumeRendererWindow()
 void VolumeRendererWindow::setRenderable(void* r){
   widget_->SetRenderable(r);
 }
+
+size_t VolumeRendererWindow::widgetWidth(){
+  return widget_->getWidth();
+}
+
+size_t VolumeRendererWindow::widgetHeight(){
+  return widget_->getHeight();
+}

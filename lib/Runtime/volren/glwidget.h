@@ -29,6 +29,14 @@ public:
 
     void GetWindowSize(int &w, int &h) {w = width; h = height;}
 
+    size_t getWidth(){
+      return width;
+    }
+
+    size_t getHeight(){
+      return height;
+    }
+  
 protected:
     virtual void initializeGL() Q_DECL_OVERRIDE;
     virtual void paintGL() Q_DECL_OVERRIDE;

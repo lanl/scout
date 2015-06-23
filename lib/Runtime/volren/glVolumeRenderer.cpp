@@ -17,6 +17,8 @@
 #include <QImage>
 #include <QMatrix4x4>
 
+#include <iostream>
+
 //extern "C" uint* GetDeviceImage(int size);
 extern "C" void setTextureFilterMode(bool bLinearFilter);
 extern "C" void initCudaVolumeRendering(void *h_volume, int nx, int ny, int nz);
@@ -29,6 +31,7 @@ extern "C" void render_kernel(dim3 gridSize, dim3 blockSize, uint *d_output, uin
                    float density, float brightness, float transferOffset, float transferScale);
 extern "C" void copyInvPVMMatrix(float *c_invPVMMatrix, size_t sizeofMatrix);
 
+using namespace std;
 using namespace scout;
 
 int iDivUp(int a, int b)
@@ -206,6 +209,9 @@ void glVolumeRenderer::cuda_render()
 
     // clear image
     checkCudaErrors(cudaMemset(d_output, 0, winWidth*winHeight*4));
+
+    cout << "winWidth: " << winWidth << endl;
+    cout << "winHeight: " << winHeight << endl;
 
     /*
     size_t dataDim[3];

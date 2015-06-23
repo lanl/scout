@@ -65,6 +65,7 @@
 
 #include "scout/Runtime/volren/VolumeRendererWindow.h"
 #include "scout/Runtime/opengl/qt/ScoutWindow.h"
+#include "scout/Runtime/opengl/qt/QtWindow.h"
 
 #include "glVolumeRenderer.h"
 
@@ -115,7 +116,7 @@ double now(){
 } // end namespace
 */
 
-class RenderallRuntime : public GPURuntime{
+class RenderallRuntime{
 public:
   static void check(CUresult err){
     if(err != CUDA_SUCCESS){
@@ -345,6 +346,7 @@ public:
 
     Kernel* createKernel(Mesh* mesh,
                          const char* kernelName,
+                         void* window,
                          uint32_t width,
                          uint32_t height,
                          uint32_t depth);
@@ -371,6 +373,7 @@ public:
 
     Kernel(PTXModule* module,
            Mesh* mesh,
+           void* window,
            CUfunction function,
            uint32_t width,
            uint32_t height,
@@ -382,7 +385,14 @@ public:
         numThreads_(DEFAULT_THREADS),
         width_(width),
         height_(height),
-        depth_(depth){}
+        depth_(depth),
+        renderer_(nullptr){
+
+      auto scoutWindow = static_cast<ScoutWindow*>(window);
+      winWidth_ = scoutWindow->width();
+      winHeight_ = scoutWindow->height();
+      window_ = scoutWindow->getVolumeRendererWindow();
+    }
 
     ~Kernel(){
       for(auto& itr : fieldMap_){
@@ -391,10 +401,55 @@ public:
     }
 
     void render_kernel(void* output) override{
-      assert(ready_);
-
       CUresult err;
+
+      if(!ready_){
+        imageW_ = window_->widgetWidth();
+        imageH_ = window_->widgetHeight();
+
+        ndump(imageW_);
+
+        blockX_ = 16;
+        blockY_ = 16;
+        blockZ_ = 1;
+
+        gridX_ = iDivUp(imageW_, blockX_);
+        gridY_ = iDivUp(imageH_, blockZ_);
+        gridZ_ = 1;
+
+        startX_ = 0;
+        startY_ = 0;
+        startZ_ = 0;
       
+        density_ = 0.05f;
+        brightness_ = 1.0f;
+        transferOffset_ = 0.0f;
+        transferScale_ = 1.0f;
+
+        vector<CUdeviceptr> fields;
+        for(auto& itr : fieldMap_){
+          Field* field = itr.second;
+          MeshField* meshField = field->meshField;
+          fields.push_back(meshField->devPtr);
+        }
+
+        err = cuMemAlloc(&meshPtr_, 8 * fields.size());
+        check(err);
+
+        err = cuMemcpyHtoD(meshPtr_, fields.data(), fields.size() * 8);
+        check(err);        
+
+        kernelParams_ = {nullptr, &imageW_, &imageH_,
+                         &startX_, &startY_, &startZ_,
+                         &width_, &height_, &depth_,
+                         &density_, &brightness_, &transferOffset_,
+                         &transferScale_, &meshPtr_};
+        
+        ready_ = true;
+      }
+
+      kernelParams_[0] = &output;
+    
       for(auto& itr : fieldMap_){
         Field* field = itr.second;
         MeshField* meshField = field->meshField;
@@ -403,17 +458,25 @@ public:
         check(err);
       }
 
+      cout << "running..." << endl;
+
       err = cuLaunchKernel(function_, gridX_, gridY_, gridZ_,
                            blockX_, blockY_, blockZ_, 
                            0, nullptr, kernelParams_.data(), nullptr);
       check(err);
+      
+      size_t extent = imageW_ * imageH_;
 
-      size_t outSize = 4 * imageW_ * imageH_;
+      size_t outSize = 4 * extent;
 
       uint32_t* out = (uint32_t*)malloc(outSize);
 
-      err = cuMemcpyDtoH(out, output_, outSize);
+      err = cuMemcpyDtoH(out, (CUdeviceptr)output, outSize);
       check(err);
+
+      for(size_t i = 0; i < extent; ++i){
+        ndump(out[i]);
+      }
     }
 
     void setNumThreads(size_t numThreads){
@@ -435,69 +498,19 @@ public:
       return (a % b != 0) ? (a / b + 1) : (a / b);
     }
 
-    void run(void* win){
-      CUresult err;
-
-      auto scoutWindow = static_cast<ScoutWindow*>(win);
-      
-      VolumeRendererWindow* window = 
-        scoutWindow->getVolumeRendererWindow();
-
-      if(!ready_){
+    void run(){
+      if(!renderer_){
         renderer_ = new glVolumeRenderer(width_, height_, depth_);
         renderer_->setRenderCallback(this);
 
-        window->setRenderable(renderer_);
+        window_->setRenderable(renderer_);
 
-        window->resize(window->width(), window->height());
-        window->show();
-
-        imageW_ = window->width();
-        imageH_ = window->height();
-
-        blockX_ = 16;
-        blockY_ = 16;
-        blockZ_ = 1;
-
-        gridX_ = iDivUp(imageW_, blockX_);
-        gridY_ = iDivUp(imageH_, blockZ_);
-        gridZ_ = 1;
-
-        err = cuMemAlloc(&output_, 4 * imageW_ * imageH_);
-        check(err);
-
-        startX_ = 0;
-        startY_ = 0;
-        startZ_ = 0;
-      
-        density_ = 0.05f;
-        brightness_ = 1.0f;
-        transferOffset_ = 0.0f;
-        transferScale_ = 1.0f;
-
-        vector<CUdeviceptr> fields;
-        for(auto& itr : fieldMap_){
-          Field* field = itr.second;
-          MeshField* meshField = field->meshField;
-          fields.push_back(meshField->devPtr);
-        }
-
-        err = cuMemAlloc(&meshPtr_, 8*fields.size());
-        check(err);
-
-        err = cuMemcpyHtoD(meshPtr_, fields.data(), fields.size() * 8);
-        check(err);        
-
-        kernelParams_ = {&output_, &imageW_, &imageH_,
-                         &startX_, &startY_, &startZ_,
-                         &width_, &height_, &depth_,
-                         &density_, &brightness_, &transferOffset_,
-                         &transferScale_, &meshPtr_};
-        
-        ready_ = true;
+        window_->resize(winWidth_, winHeight_);
+        window_->show();
       }
 
-      window->update();
+      window_->update();
+      QtWindow::pollEvents();
     }
     
     PTXModule* module(){
@@ -519,6 +532,9 @@ public:
     CUfunction function_;
     PTXModule* module_;
     Mesh* mesh_;
+    VolumeRendererWindow* window_;
+    size_t winWidth_;
+    size_t winHeight_;
     bool ready_;
     FieldMap_ fieldMap_;
     KernelParams_ kernelParams_;
@@ -529,7 +545,6 @@ public:
     size_t gridX_;
     size_t gridY_;
     size_t gridZ_;
-    CUdeviceptr output_;
     uint32_t imageW_;
     uint32_t imageH_;
     uint32_t startX_;
@@ -588,6 +603,7 @@ public:
   void initKernel(const char* meshName,
                   const char* ptx,
                   const char* kernelName,
+                  void* window,
                   uint32_t width,
                   uint32_t height,
                   uint32_t depth){
@@ -620,7 +636,7 @@ public:
     }
 
     Kernel* kernel = 
-      module->createKernel(mesh, kernelName, width, height, depth);
+      module->createKernel(mesh, kernelName, window, width, height, depth);
 
     kernel->setNumThreads(numThreads_);
     kernelMap_.insert({kernelName, kernel});
@@ -656,11 +672,7 @@ public:
     assert(kitr != kernelMap_.end() && "invalid kernel");
 
     Kernel* kernel = kitr->second;
-    kernel->run(window_);
-  }
-
-  void setWindow(void* window){
-    window_ = window;
+    kernel->run();
   }
 
 private:
@@ -675,13 +687,13 @@ private:
   ModuleMap_ moduleMap_;
   MeshMap_ meshMap_;
   KernelMap_ kernelMap_;
-  void* window_;
   CUmodule kernelModule_;
 };
 
 RenderallRuntime::Kernel* 
 RenderallRuntime::PTXModule::createKernel(Mesh* mesh,
                                           const char* kernelName,
+                                          void* window,
                                           uint32_t width,
                                           uint32_t height,
                                           uint32_t depth){
@@ -692,7 +704,8 @@ RenderallRuntime::PTXModule::createKernel(Mesh* mesh,
     cuModuleGetFunction(&function, module_, "volume_render_wrapper");
   check(err);
   
-  Kernel* kernel = new Kernel(this, mesh, function, width, height, depth);
+  Kernel* kernel = 
+    new Kernel(this, mesh, window, function, width, height, depth);
   
   return kernel;
 }
@@ -717,11 +730,12 @@ extern "C"
 void __scrt_volren_init_kernel(const char* meshName,
                                const char* data,
                                const char* kernelName,
+                               void* window,
                                uint32_t width,
                                uint32_t height,
                                uint32_t depth){
   RenderallRuntime* runtime = _getRuntime();
-  runtime->initKernel(meshName, data, kernelName, width, height, depth);
+  runtime->initKernel(meshName, data, kernelName, window, width, height, depth);
 }
 
 extern "C"
@@ -736,8 +750,7 @@ void __scrt_volren_init_field(const char* kernelName,
 }
 
 extern "C"
-void __scrt_volren_run(const char* kernelName, void* window){
+void __scrt_volren_run(const char* kernelName){
   RenderallRuntime* runtime = _getRuntime();
-  runtime->setWindow(window);
   runtime->runKernel(kernelName);
 }

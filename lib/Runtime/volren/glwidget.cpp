@@ -137,7 +137,6 @@ void GLWidget::paintGL() {
     glGetFloatv(GL_PROJECTION_MATRIX, projection);
 
     renderer->draw(modelview, projection);
-    //cout << "draw!" << endl;
 }
 
 void Perspective(float fovyInDegrees, float aspectRatio,

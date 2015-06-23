@@ -288,7 +288,7 @@ public:
       
       ValueVec args = 
         {B.CreateBitCast(B.CreateGlobalStringPtr(meshName), m_.stringTy),
-         ptx, kernelName, width, height, depth};
+         ptx, kernelName, windowPtr, width, height, depth};
       
       B.CreateCall(f, args);
 
@@ -342,7 +342,7 @@ public:
       }
 
       f = module->getFunction("__scrt_volren_run");
-      args = {kernelName, windowPtr};
+      args = {kernelName};
       B.CreateCall(f, args);
 
       B.CreateRetVoid();
@@ -370,13 +370,14 @@ public:
 
     TypeVec params;
 
-    params = {stringTy, stringTy, stringTy, int32Ty, int32Ty, int32Ty};
+    params = 
+      {stringTy, stringTy, stringTy, voidPtrTy, int32Ty, int32Ty, int32Ty};
     createFunction("__scrt_volren_init_kernel", voidTy, params);
 
     params = {stringTy, stringTy, voidPtrTy, int32Ty, int8Ty};
     createFunction("__scrt_volren_init_field", voidTy, params);
 
-    params = {stringTy, voidPtrTy};
+    params = {stringTy};
     createFunction("__scrt_volren_run", voidTy, params);
   }
 

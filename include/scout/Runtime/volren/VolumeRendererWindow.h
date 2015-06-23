@@ -52,6 +52,10 @@ public:
 
   void setRenderable(void* r);
 
+  size_t widgetWidth();
+
+  size_t widgetHeight();
+
 private:
   class GLWidget* widget_;
 };
