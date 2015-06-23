@@ -353,7 +353,7 @@ public:
     CUmodule module_;
   };
 
-  class Kernel{
+  class Kernel : public RenderCallback{
   public:
     class Field{
     public:
@@ -389,7 +389,31 @@ public:
         delete itr.second;
       }
     }
-    
+
+    void render_kernel(void* output) override{
+      CUresult err;
+      
+      for(auto& itr : fieldMap_){
+        Field* field = itr.second;
+        MeshField* meshField = field->meshField;
+        err = cuMemcpyHtoD(meshField->devPtr, meshField->hostPtr,
+                           meshField->size);
+        check(err);
+      }
+
+      err = cuLaunchKernel(function_, gridX_, gridY_, gridZ_,
+                           blockX_, blockY_, blockZ_, 
+                           0, nullptr, kernelParams_.data(), nullptr);
+      check(err);
+
+      size_t outSize = 4 * imageW_ * imageH_;
+
+      uint32_t* out = (uint32_t*)malloc(outSize);
+
+      err = cuMemcpyDtoH(out, output_, outSize);
+      check(err);
+    }
+
     void setNumThreads(size_t numThreads){
       numThreads_ = numThreads;
     }
@@ -419,6 +443,8 @@ public:
 
       if(!ready_){
         renderer_ = new glVolumeRenderer(width_, height_, depth_);
+        renderer_->setRenderCallback(this);
+
         window->setRenderable(renderer_);
 
         window->resize(window->width(), window->height());
@@ -469,25 +495,7 @@ public:
         ready_ = true;
       }
 
-      for(auto& itr : fieldMap_){
-        Field* field = itr.second;
-        MeshField* meshField = field->meshField;
-        err = cuMemcpyHtoD(meshField->devPtr, meshField->hostPtr,
-                           meshField->size);
-        check(err);
-      }
-
-      err = cuLaunchKernel(function_, gridX_, gridY_, gridZ_,
-                           blockX_, blockY_, blockZ_, 
-                           0, nullptr, kernelParams_.data(), nullptr);
-      check(err);
-
-      size_t outSize = 4 * imageW_ * imageH_;
-
-      uint32_t* out = (uint32_t*)malloc(outSize);
-
-      err = cuMemcpyDtoH(out, output_, outSize);
-      check(err);
+      window->update();
     }
     
     PTXModule* module(){

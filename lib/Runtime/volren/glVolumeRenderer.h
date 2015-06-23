@@ -7,10 +7,19 @@
 
 class DataMgr;
 namespace scout{
+  class RenderCallback{
+  public:
+    virtual void render_kernel(void* output) = 0;
+  };
+
     class glVolumeRenderer: public glRenderer
     {
     public:
         glVolumeRenderer(size_t width, size_t height, size_t depth);
+
+      void setRenderCallback(RenderCallback* callback){
+        callback_ = callback;
+      }
 
     protected:
         void initializeGL() override;
@@ -28,6 +37,8 @@ namespace scout{
       void init_();
 
     private:
+      RenderCallback* callback_;
+
       size_t width_;
       size_t height_;
       size_t depth_;

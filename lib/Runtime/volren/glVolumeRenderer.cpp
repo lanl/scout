@@ -207,6 +207,7 @@ void glVolumeRenderer::cuda_render()
     // clear image
     checkCudaErrors(cudaMemset(d_output, 0, winWidth*winHeight*4));
 
+    /*
     size_t dataDim[3];
     int nx;
     int ny;
@@ -225,6 +226,9 @@ void glVolumeRenderer::cuda_render()
 
 
     getLastCudaError("kernel failed");
+    */
+
+    callback_->render_kernel(d_output);
 
     checkCudaErrors(cudaGraphicsUnmapResources(1, &cuda_pbo_resource, 0));
 }
