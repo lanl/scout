@@ -50,6 +50,8 @@ class VolumeRendererWindow : public QWidget
 public:
   VolumeRendererWindow();
 
+  void setRenderable(void* r);
+
 private:
   class GLWidget* widget_;
 };

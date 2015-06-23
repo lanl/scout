@@ -104,6 +104,7 @@ if (SCOUT_ENABLE_CUDA)
   set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
   set(CMAKE_CXX_FLAGS -g)
   cuda_compile_ptx(PTX_FILES volren/volumeRender_kernel.cu)
+  cuda_compile(RENDERER_O volren/volumeRender_kernel_all.cu)
   set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
   
   file(GLOB rt_srcs_volren volren/*.cpp)
@@ -113,7 +114,7 @@ if (SCOUT_ENABLE_CUDA)
   list(APPEND rt_srcs ${rt_srcs_gpu})
   list(APPEND rt_srcs ${rt_srcs_volren})
   list(APPEND rt_srcs ${moc_srcs_volren})
-  #list(APPEND rt_srcs ${RENDERER_O})
+  list(APPEND rt_srcs ${RENDERER_O})
 
   add_custom_target(compile_PTX
     ALL

@@ -107,9 +107,6 @@ namespace scout{
       QtWindow::init();
 
       auto window = new VolumeRendererWindow;
-
-      window->resize(width_, height_);
-      window->show();
       window_ = window;
       
       return window;
@@ -117,6 +114,10 @@ namespace scout{
 
     size_t width(){
       return width_;
+    }
+
+    size_t height(){
+      return height_;
     }
 
   private:

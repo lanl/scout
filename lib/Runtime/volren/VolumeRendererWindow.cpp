@@ -52,3 +52,7 @@ VolumeRendererWindow::VolumeRendererWindow()
     layout->addWidget(widget_, 0, 0);
     setLayout(layout);
 }
+
+void VolumeRendererWindow::setRenderable(void* r){
+  widget_->SetRenderable(r);
+}

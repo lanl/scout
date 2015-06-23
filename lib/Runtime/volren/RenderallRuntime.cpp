@@ -66,6 +66,8 @@
 #include "scout/Runtime/volren/VolumeRendererWindow.h"
 #include "scout/Runtime/opengl/qt/ScoutWindow.h"
 
+#include "glVolumeRenderer.h"
+
 //#include <sys/time.h>
 
 #include <cuda.h>
@@ -408,13 +410,20 @@ public:
     }
 
     void run(void* win){
-      auto scoutWindow = static_cast<ScoutWindow*>(win);
-      
-      VolumeRendererWindow* window = scoutWindow->getVolumeRendererWindow();
-
       CUresult err;
 
+      auto scoutWindow = static_cast<ScoutWindow*>(win);
+      
+      VolumeRendererWindow* window = 
+        scoutWindow->getVolumeRendererWindow();
+
       if(!ready_){
+        renderer_ = new glVolumeRenderer(width_, height_, depth_);
+        window->setRenderable(renderer_);
+
+        window->resize(window->width(), window->height());
+        window->show();
+
         imageW_ = window->width();
         imageH_ = window->height();
 
@@ -526,6 +535,7 @@ public:
     float transferOffset_;
     float transferScale_;
     CUdeviceptr meshPtr_;
+    glVolumeRenderer* renderer_;
   };
 
   RenderallRuntime(){}
