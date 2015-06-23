@@ -1,7 +1,7 @@
 #ifndef GL_RENDERER_H
 #define GL_RENDERER_H
 
-#include <vector>
+#include <cstdlib>
 
 //#include "scout/Runtime/opengl/opengl.h"
 

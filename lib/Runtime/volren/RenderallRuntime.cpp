@@ -391,6 +391,8 @@ public:
     }
 
     void render_kernel(void* output) override{
+      assert(ready_);
+
       CUresult err;
       
       for(auto& itr : fieldMap_){
