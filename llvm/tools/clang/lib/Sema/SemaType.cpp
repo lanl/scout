@@ -980,7 +980,14 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
       DeclaratorChunk &DeclType = declarator.getTypeObject(i);
       switch(DeclType.Kind) {
         case DeclaratorChunk::Window: {
-          llvm::SmallVector<Expr*,2> dims = DeclType.Win.Dims();          
+          llvm::SmallVector<Expr*,2> dims = DeclType.Win.Dims();
+          // Make sure dimension types are all integral types. 
+          for(int j = 0; j < 2; j++) {
+            if (!dims[j]->getType()->isIntegerType()) {
+              S.Diag(dims[j]->getLocStart(), diag::err_win_dim_non_int) <<
+                dims[j]->getType() << dims[j]->getSourceRange();
+            }
+          }
           Result = Context.getWindowType(dims);    
           break;
         }

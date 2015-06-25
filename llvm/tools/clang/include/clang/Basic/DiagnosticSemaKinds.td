@@ -7811,6 +7811,8 @@ def err_invalid_plot_spec : Error<
 def err_invalid_frame_capture : Error<
 "invalid frame variable capture: %0">;
 
+def err_win_dim_non_int : Error<"size of window dimension has non-integer type %0">;
+
 def warn_no_scstdlib : Warning<
     "scout standard library inclusion and rt code generation disabled">;
     
