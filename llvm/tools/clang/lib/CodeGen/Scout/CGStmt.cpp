@@ -2419,7 +2419,9 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   llvm::VectorType* Int3Ty = llvm::VectorType::get(Int32Ty, 3);
   
-  params = {llvm::PointerType::get(Int32Ty, 0), Int32Ty, Int32Ty,
+  params = {llvm::PointerType::get(Int32Ty, 0),
+    llvm::PointerType::get(FloatTy, 0), llvm::PointerType::get(FloatTy, 0),
+    Int32Ty, Int32Ty,
     Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int32Ty, FloatTy, FloatTy,
     FloatTy, FloatTy, VoidPtrTy};
   
@@ -2431,6 +2433,10 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
 
   aitr = wrapperFunc->arg_begin();
   aitr->setName("output");
+  aitr++;
+  aitr->setName("invMat");
+  aitr++;
+  aitr->setName("test");
   aitr++;
   aitr->setName("imageW");
   aitr++;
@@ -2469,6 +2475,10 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   aitr = renderFunc->arg_begin();
   aitr->setName("output");
+  aitr++;
+  aitr->setName("invMat");
+  aitr++;
+  aitr->setName("test");
   aitr++;
   aitr->setName("imageW");
   aitr++;

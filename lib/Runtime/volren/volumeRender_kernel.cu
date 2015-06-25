@@ -30,9 +30,8 @@ typedef float VolumeType;
 texture<VolumeType, 3, cudaReadModeElementType> tex;         // 3D texture
 texture<float4, 1, cudaReadModeElementType>         transferTex; // 1D transfer function texture
 
-typedef struct
-{
-    float4 m[4];
+typedef struct{
+  float4 m[4];
 } float4x4;
 
 typedef float4 (*transfer_fp)(void*, uint);
@@ -57,7 +56,7 @@ float4 divW(float4 v)
     return(make_float4(v.x * invW, v.y * invW, v.z * invW, 1.0f));
 }
 
-__constant__ float4x4 c_invPVMMatrix;  // inverse view matrix
+//__constant__ float4x4 c_invPVMMatrix;  // inverse view matrix
 
 struct Ray
 {
@@ -99,13 +98,17 @@ __device__ uint rgbaFloatToInt(float4 rgba)
 }
 
 extern "C" __device__ void
-volume_render(uint *d_output, uint imageW, uint imageH,
+volume_render(uint *d_output, float* invMatPtr,
+              float* test,
+              uint imageW, uint imageH,
               uint startX, uint startY, uint startZ,
               uint width, uint height, uint depth,
               float density, float brightness,
               float transferOffset, float transferScale,
               void* mesh, transfer_fp tfp)
 {
+  float4x4 invMat = *((float4x4*)invMatPtr);
+
     const int maxSteps = max(max(width, height), depth);
     const float tstep = 1.0f;
     const float opacityThreshold = 0.95f;
@@ -117,7 +120,10 @@ volume_render(uint *d_output, uint imageW, uint imageH,
 
     uint x = blockIdx.x*blockDim.x + threadIdx.x;
     uint y = blockIdx.y*blockDim.y + threadIdx.y;
+
     if ((x >= imageW) || (y >= imageH)) return;
+
+    test[y*imageW + x] = 99999.9;
 
     float u = (x / (float)imageW)*2.0f-1.0f;
     float v = (y / (float)imageH)*2.0f-1.0f;
@@ -125,14 +131,24 @@ volume_render(uint *d_output, uint imageW, uint imageH,
     //unproject eye ray from clip space to object space
     //unproject: http://gamedev.stackexchange.com/questions/8974/how-can-i-convert-a-mouse-click-to-a-ray
     Ray eyeRay;
-    eyeRay.o = make_float3(divW(mul(c_invPVMMatrix, make_float4(u, v, 2.0f, 1.0f))));
-    float3 eyeRay_t = make_float3(divW(mul(c_invPVMMatrix, make_float4(u, v, -1.0f, 1.0f))));
+    eyeRay.o = make_float3(divW(mul(invMat, make_float4(u, v, 2.0f, 1.0f))));
+    float3 eyeRay_t = make_float3(divW(mul(invMat, make_float4(u, v, -1.0f, 1.0f))));
     eyeRay.d = normalize(eyeRay_t - eyeRay.o);
 
     // find intersection with box
     float tnear, tfar;
     int hit = intersectBox(eyeRay, boxMin, boxMax, &tnear, &tfar);
     if (!hit) return;
+
+    /*
+    float4 testcolor;
+    testcolor.x = 0.5;
+    testcolor.y = 0.5;
+    testcolor.z = 0.5;
+    testcolor.w = 1.0;
+    d_output[y*imageW + x] = rgbaFloatToInt(testcolor);
+    return;
+    */
 
     if (tnear < 0.0f) tnear = 0.0f;     // clamp to near plane
 
@@ -144,17 +160,38 @@ volume_render(uint *d_output, uint imageW, uint imageH,
 
     for (int i=0; i<maxSteps; i++)
     {
+
         //float sample = tex3D(tex, pos.x, pos.y, pos.z);
         // lookup in transfer function texture
         //float4 col = 
         //tex1D(transferTex, (sample-transferOffset)*transferScale);
 
-        uint index = 
-          width * height * pos.z * depth + 
-          width * pos.y * height + 
-          pos.x * width;
+      //uint index = pos.x;
 
-        float4 col = tfp(mesh, index);
+      uint index = 
+        width * height * uint(pos.z) + 
+        width * uint(pos.y) + 
+        uint(pos.x);
+
+      //float extent = 16*16*16;
+
+      float4 col = tfp(mesh, index);
+
+      /*
+      if(col.x == 0.0f || col.w == 0.0f){
+        col = make_float4(1.0, 0.0f, 0.0f, 1.0f);
+      }
+      */
+
+      /*
+      float4 col;
+      col.x = index/extent;
+      col.y = 0;
+      col.z = 0;
+      col.w = 0.5f;
+      */
+
+        test[y*imageW + x] = col.x;
 
         col.w *= density;
 

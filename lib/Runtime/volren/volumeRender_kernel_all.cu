@@ -96,8 +96,6 @@ __device__ uint rgbaFloatToInt(float4 rgba)
     return (uint(rgba.w*255)<<24) | (uint(rgba.z*255)<<16) | (uint(rgba.y*255)<<8) | uint(rgba.x*255);
 }
 
-
-
 __global__ void
 d_render(uint *d_output, uint imageW, uint imageH,
          int3 partitionStart, int3 partitionSize,

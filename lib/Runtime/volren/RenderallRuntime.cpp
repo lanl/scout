@@ -400,14 +400,12 @@ public:
       }
     }
 
-    void render_kernel(void* output) override{
+    void render_kernel(void* output, float* invMat) override{
       CUresult err;
 
       if(!ready_){
         imageW_ = window_->widgetWidth();
         imageH_ = window_->widgetHeight();
-
-        ndump(imageW_);
 
         blockX_ = 16;
         blockY_ = 16;
@@ -420,26 +418,36 @@ public:
         startX_ = 0;
         startY_ = 0;
         startZ_ = 0;
-      
+        
         density_ = 0.05f;
         brightness_ = 1.0f;
         transferOffset_ = 0.0f;
         transferScale_ = 1.0f;
 
         vector<CUdeviceptr> fields;
-        for(auto& itr : fieldMap_){
-          Field* field = itr.second;
+        
+        for(Field* field : fieldVec_){
           MeshField* meshField = field->meshField;
           fields.push_back(meshField->devPtr);
         }
+
+        err = cuMemAlloc(&invMatPtr_, 16 * 4);
+        check(err);
+
+        err = cuMemcpyHtoD(invMatPtr_, invMat, 16 * 4);
+        check(err); 
+
+        err = cuMemAlloc(&testPtr_, 4 * imageW_ * imageH_);
+        check(err);
 
         err = cuMemAlloc(&meshPtr_, 8 * fields.size());
         check(err);
 
         err = cuMemcpyHtoD(meshPtr_, fields.data(), fields.size() * 8);
         check(err);        
-
-        kernelParams_ = {nullptr, &imageW_, &imageH_,
+        
+        kernelParams_ = {nullptr, &invMatPtr_, &testPtr_, 
+                         &imageW_, &imageH_,
                          &startX_, &startY_, &startZ_,
                          &width_, &height_, &depth_,
                          &density_, &brightness_, &transferOffset_,
@@ -465,18 +473,20 @@ public:
                            0, nullptr, kernelParams_.data(), nullptr);
       check(err);
       
+      /*
       size_t extent = imageW_ * imageH_;
 
-      size_t outSize = 4 * extent;
+      size_t testSize = 4 * extent;
 
-      uint32_t* out = (uint32_t*)malloc(outSize);
+      float* test = (float*)malloc(testSize);
 
-      err = cuMemcpyDtoH(out, (CUdeviceptr)output, outSize);
+      err = cuMemcpyDtoH(test, testPtr_, testSize);
       check(err);
 
       for(size_t i = 0; i < extent; ++i){
-        ndump(out[i]);
+        ndump(test[i]);
       }
+      */
     }
 
     void setNumThreads(size_t numThreads){
@@ -492,6 +502,7 @@ public:
       field->mode = mode;
 
       fieldMap_.insert({fieldName, field});
+      fieldVec_.push_back(field);
     }
 
     int iDivUp(int a, int b){
@@ -528,6 +539,7 @@ public:
   private:    
     typedef map<string, Field*> FieldMap_;
     typedef vector<void*> KernelParams_;
+    typedef vector<Field*> FieldVec_;
 
     CUfunction function_;
     PTXModule* module_;
@@ -537,6 +549,7 @@ public:
     size_t winHeight_;
     bool ready_;
     FieldMap_ fieldMap_;
+    FieldVec_ fieldVec_;
     KernelParams_ kernelParams_;
     size_t numThreads_;
     size_t blockX_;
@@ -545,6 +558,8 @@ public:
     size_t gridX_;
     size_t gridY_;
     size_t gridZ_;
+    CUdeviceptr invMatPtr_;
+    CUdeviceptr testPtr_;
     uint32_t imageW_;
     uint32_t imageH_;
     uint32_t startX_;

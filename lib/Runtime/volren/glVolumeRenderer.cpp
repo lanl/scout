@@ -196,6 +196,15 @@ void glVolumeRenderer::resizeGL(int width, int height)//WindowResize(int w, int 
 // render image using CUDA
 void glVolumeRenderer::cuda_render()
 {
+  cout << "PVM..." << endl;
+
+  for(size_t i = 0; i < 16; ++i){
+    if(i > 0){
+      cout << ",";
+    }
+    cout << invPVM[i] << endl;
+  }
+
     copyInvPVMMatrix(invPVM, sizeof(float4)*4);
 
     // map PBO to get CUDA device pointer
@@ -234,7 +243,7 @@ void glVolumeRenderer::cuda_render()
     getLastCudaError("kernel failed");
     */
 
-    callback_->render_kernel(d_output);
+    callback_->render_kernel(d_output, invPVM);
 
     checkCudaErrors(cudaGraphicsUnmapResources(1, &cuda_pbo_resource, 0));
 }
