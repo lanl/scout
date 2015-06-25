@@ -9,7 +9,7 @@ class DataMgr;
 namespace scout{
   class RenderCallback{
   public:
-    virtual void render_kernel(void* output) = 0;
+    virtual void render_kernel(void* output, float* invMat) = 0;
   };
 
     class glVolumeRenderer: public glRenderer
