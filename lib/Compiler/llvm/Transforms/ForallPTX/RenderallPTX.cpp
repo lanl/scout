@@ -401,8 +401,6 @@ public:
 
     string ptx = generatePTX();
 
-    //ndump(ptx);
-
     Constant* pc = ConstantDataArray::getString(context_, ptx);
     
     ptxGlobal_ = 
@@ -417,13 +415,13 @@ public:
       kernel->finishRenderall();
     }
 
-    cerr << "--------- kernel module: " << endl;
-    kernelModule_.dump();
-    cerr << "=========================" << endl;
+    //cerr << "--------- kernel module: " << endl;
+    //kernelModule_.dump();
+    //cerr << "=========================" << endl;
 
-    cerr << "--- CPU module after: " << endl;
-    module_->dump();
-    cerr << "======================" << endl;
+    //cerr << "--- CPU module after: " << endl;
+    //module_->dump();
+    //cerr << "======================" << endl;
   }
 
   Module* module(){

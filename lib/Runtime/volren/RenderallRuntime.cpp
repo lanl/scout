@@ -320,30 +320,6 @@ public:
       check(err);
     }
 
-    string fileToStr(const string& path){
-      FILE* file = fopen(path.c_str(), "rb");
-  
-      if(!file){
-        return "";
-      }
-  
-      fseek(file, 0, SEEK_END);
-      long size = ftell(file);
-      rewind(file);
-  
-      char* buf = (char*)malloc(sizeof(char)*size);
-      fread(buf, 1, size, file);
-  
-      fclose(file);
-  
-      string ret;
-      ret.append(buf, size);
-  
-      free(buf);
-  
-      return ret;
-    }
-
     Kernel* createKernel(Mesh* mesh,
                          const char* kernelName,
                          void* window,
@@ -382,7 +358,6 @@ public:
         mesh_(mesh),
         function_(function),
         ready_(false),
-        numThreads_(DEFAULT_THREADS),
         width_(width),
         height_(height),
         depth_(depth),
@@ -437,16 +412,13 @@ public:
         err = cuMemcpyHtoD(invMatPtr_, invMat, 16 * 4);
         check(err); 
 
-        err = cuMemAlloc(&testPtr_, 4 * imageW_ * imageH_);
-        check(err);
-
         err = cuMemAlloc(&meshPtr_, 8 * fields.size());
         check(err);
 
         err = cuMemcpyHtoD(meshPtr_, fields.data(), fields.size() * 8);
         check(err);        
         
-        kernelParams_ = {nullptr, &invMatPtr_, &testPtr_, 
+        kernelParams_ = {nullptr, &invMatPtr_, 
                          &imageW_, &imageH_,
                          &startX_, &startY_, &startZ_,
                          &width_, &height_, &depth_,
@@ -466,31 +438,10 @@ public:
         check(err);
       }
 
-      cout << "running..." << endl;
-
       err = cuLaunchKernel(function_, gridX_, gridY_, gridZ_,
                            blockX_, blockY_, blockZ_, 
                            0, nullptr, kernelParams_.data(), nullptr);
       check(err);
-      
-      /*
-      size_t extent = imageW_ * imageH_;
-
-      size_t testSize = 4 * extent;
-
-      float* test = (float*)malloc(testSize);
-
-      err = cuMemcpyDtoH(test, testPtr_, testSize);
-      check(err);
-
-      for(size_t i = 0; i < extent; ++i){
-        ndump(test[i]);
-      }
-      */
-    }
-
-    void setNumThreads(size_t numThreads){
-      numThreads_ = numThreads;
     }
 
     void addField(const char* fieldName,
@@ -551,7 +502,6 @@ public:
     FieldMap_ fieldMap_;
     FieldVec_ fieldVec_;
     KernelParams_ kernelParams_;
-    size_t numThreads_;
     size_t blockX_;
     size_t blockY_;
     size_t blockZ_;
@@ -559,7 +509,6 @@ public:
     size_t gridY_;
     size_t gridZ_;
     CUdeviceptr invMatPtr_;
-    CUdeviceptr testPtr_;
     uint32_t imageW_;
     uint32_t imageH_;
     uint32_t startX_;
@@ -568,8 +517,6 @@ public:
     uint32_t width_;
     uint32_t height_;
     uint32_t depth_;
-    int32_t partitionStart_[3];
-    int32_t partitionSize_[3];
     float density_;
     float brightness_;
     float transferOffset_;
@@ -612,7 +559,6 @@ public:
       cuDeviceGetAttribute(&threadsPerBlock,
                            CU_DEVICE_ATTRIBUTE_MAX_THREADS_PER_BLOCK, device_);
     check(err);
-    numThreads_ = threadsPerBlock;
   }
 
   void initKernel(const char* meshName,
@@ -653,7 +599,6 @@ public:
     Kernel* kernel = 
       module->createKernel(mesh, kernelName, window, width, height, depth);
 
-    kernel->setNumThreads(numThreads_);
     kernelMap_.insert({kernelName, kernel});
   }
 
@@ -697,7 +642,6 @@ private:
 
   CUdevice device_;
   CUcontext context_;
-  size_t numThreads_;
 
   ModuleMap_ moduleMap_;
   MeshMap_ meshMap_;
