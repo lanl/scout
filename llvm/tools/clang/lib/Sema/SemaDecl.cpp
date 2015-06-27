@@ -9625,6 +9625,11 @@ void Sema::ActOnUninitializedDecl(Decl *RealDecl,
       return;
     }
 
+    // SCOUT TESTING
+    if (Type->isScoutWindowType()) {
+
+    }
+
     // Provide a specific diagnostic for uninitialized variable
     // definitions with reference type.
     if (Type->isReferenceType()) {

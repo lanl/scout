@@ -263,3 +263,60 @@ add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
     "error: invalid mesh specifier")
 set_property(TEST ${tname} PROPERTY WILL_FAIL)
+  
+set(name mesh-no-dims)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: expected '\\['")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name mesh-no-dims2)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: expected expression")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name window-float-dims)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: size of window dimension has non-integer type")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name window-no-dims)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
+    "error: expected '\\['")  
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name window-no-dims2)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: expected expression")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name image-float-dims)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: size of image dimension has non-integer type")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name image-no-dims)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
+    "error: expected '\\['")  
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name image-no-dims2)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: expected expression")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
