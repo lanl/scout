@@ -368,12 +368,13 @@ public:
 
   llvm::Value *MeshRank = 0;
 
-  llvm::Value* InnerInductionVar;
+  llvm::SmallVector< llvm::Value *, 4 > InnerInductionVar;
   llvm::Value* InnerIndex;
   llvm::Value* VertexIndex;
   llvm::Value* CellIndex;
   llvm::Value* EdgeIndex;
   llvm::Value* FaceIndex;
+  bool InnerForallScope = false;
 
   llvm::Value* GPUThreadId;
   llvm::Value* GPUThreadInc;
