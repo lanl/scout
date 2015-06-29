@@ -419,7 +419,6 @@ void Parser::ParseMeshDeclaration(ParsingDeclSpec &DS,
 // Tail end of mesh variable declaration (the bracket and beyond)
 // for Uniform Mesh
 void Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
-
   // get type info of this object
   DeclSpec& DS = D.getMutableDeclSpec();
 
@@ -427,12 +426,10 @@ void Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
   if (Ty->isUniformMeshType() || Ty->isALEMeshType()) {
     BalancedDelimiterTracker T(*this, tok::l_square);
     T.consumeOpen();
-
+    
     // for uniform type it can be a comma-separated list of dimensions
     // parse mesh dimensions, e.g: [512,512]
-
     MeshType::MeshDimensions dims;
-
     ExprResult NumElements;
 
     for(;;) {
@@ -442,7 +439,10 @@ void Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
       if (NumElements.isInvalid()) {
         // If the expression was invalid, skip it.
         SkipUntil(tok::r_square);
+        D.setInvalidType(true);
+        SkipUntil(tok::r_square, StopAtSemi);
         StmtError();
+        return;
       }
       dims.push_back(NumElements.get());
       
@@ -466,7 +466,7 @@ void Parser::ParseMeshVarBracketDeclarator(Declarator &D) {
     }
 
     T.consumeClose();
-
+    
     // set dims on type
     ParsedAttributes attrs(AttrFactory);
 
@@ -530,23 +530,23 @@ void Parser::ParseMeshVarParenDeclarator(Declarator &D) {
 }
 
 void Parser::ParseWindowBracketDeclarator(Declarator &D) {
-  
   // We've already seen the opening square bracket prior to calling
   // this function.  Set up the balanced delimiter tracker to take
   // care of the closing bracket details for us...
   BalancedDelimiterTracker T(*this, tok::l_square);
   T.consumeOpen();
-
   ExprResult NumElements;  
   llvm::SmallVector<Expr*, 2> Dims;
   
   while(1) {
+    
     NumElements = ParseConstantExpression();
     if (NumElements.isInvalid()) {
       D.setInvalidType(true);
       SkipUntil(tok::r_square, StopAtSemi);
       return;
-    } 
+    }
+    
     Dims.push_back(NumElements.get());
 
     if (Dims.size() == 1) {

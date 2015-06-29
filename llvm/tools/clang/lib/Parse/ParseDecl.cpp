@@ -10,8 +10,7 @@
 //  This file implements the Declaration portions of the Parser interfaces.
 //
 //===----------------------------------------------------------------------===//
-#include <stdio.h>
-
+#include <iostream>
 #include "clang/Parse/Parser.h"
 #include "RAIIObjectsForParser.h"
 #include "clang/AST/ASTContext.h"
@@ -2925,7 +2924,7 @@ void Parser::ParseDeclarationSpecifiers(DeclSpec &DS,
       // declaration is parsed in ParseStatementOrDeclarationAfterAttributes()
       // it runs TryAnnotateName() which turns it from a identifier into an
       // annot_typename. Do the same here if we are a Mesh.
-      if(getLangOpts().ScoutC) {
+      if (getLangOpts().ScoutC) {
         LookupResult MeshLookup(Actions, Tok.getIdentifierInfo(),
             Tok.getLocation(), Sema::LookupMeshName);
         Actions.LookupName(MeshLookup, getCurScope());
@@ -5314,6 +5313,32 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
  PastIdentifier:
   assert(D.isPastIdentifier() &&
          "Haven't past the location of the identifier yet?");
+  // +===== Scout ==========================================================+
+  if (isScoutLang()) {
+    DeclSpec& DS = D.getMutableDeclSpec();
+    if (DS.getTypeSpecType() == DeclSpec::TST_window ||
+        DS.getTypeSpecType() == DeclSpec::TST_image) {
+      if (!Tok.is(tok::l_square)) {
+        Diag(Tok, diag::err_expected_lsquare);
+        D.setInvalidType(true);
+        return;
+      }
+    } else if (DS.getTypeSpecType() == DeclSpec::TST_typename) {
+      const Type *T = DS.getRepAsType().get().getCanonicalType().getTypePtr();
+
+      if ((T->isUniformMeshType() || T->isALEMeshType())) {
+        Scope *S = this->getCurScope();                  
+        if (!(S->getFlags() & Scope::FunctionDeclarationScope)) {          
+          if (!Tok.is(tok::l_square)) {
+            Diag(Tok, diag::err_expected_lsquare);
+            D.setInvalidType(true);
+            return;
+          }
+        }
+      }
+    }
+  }
+  // +======================================================================+
 
   // Don't parse attributes unless we have parsed an unparenthesized name.
   if (D.hasName() && !D.getNumTypeObjects())
@@ -5373,14 +5398,13 @@ void Parser::ParseDirectDeclarator(Declarator &D) {
 
           D.AddTypeInfo(DeclaratorChunk::getQuery(Tok.getLocation()),
               attrs, Tok.getLocation());
-        }
-        else if (DS.getTypeSpecType() == DeclSpec::TST_frame) {
+        } else if (DS.getTypeSpecType() == DeclSpec::TST_frame) {
           ParsedAttributes attrs(AttrFactory);
           MaybeParseCXX11Attributes(attrs);
           
           D.AddTypeInfo(DeclaratorChunk::getFrame(Tok.getLocation()),
                         attrs, Tok.getLocation());
-        }
+        } 
       }
       // +========================================================================+
       break;
@@ -6014,26 +6038,29 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
     DeclSpec::TST tst = DS.getTypeSpecType();
 
     switch(tst) {
-    case DeclSpec::TST_typename: {
-      const Type *T = DS.getRepAsType().get().getCanonicalType().getTypePtr();
-      if (T->isUniformMeshType() || T->isALEMeshType()) {
-        ParseMeshVarBracketDeclarator(D);
+      
+      case DeclSpec::TST_typename: {
+        const Type *T = DS.getRepAsType().get().getCanonicalType().getTypePtr();
+        if (T->isUniformMeshType() || T->isALEMeshType()) {
+          ParseMeshVarBracketDeclarator(D);
+          return;
+        }
+        break;
+      }
+        
+      case DeclSpec::TST_window: {
+        ParseWindowBracketDeclarator(D);
         return;
       }
-      break;
-    }
-    case DeclSpec::TST_window: {
-      ParseWindowBracketDeclarator(D);
-      return;
-    }
-    case DeclSpec::TST_image: {
-      ParseImageBracketDeclarator(D);
-      return;
-    }
-    default:
-      break;
+      case DeclSpec::TST_image: {
+        ParseImageBracketDeclarator(D);
+        return;
+      }
+      default:
+        break;
     }
   }
+  
   // +======================================================================+
 
   BalancedDelimiterTracker T(*this, tok::l_square);
@@ -6115,7 +6142,7 @@ void Parser::ParseBracketDeclarator(Declarator &D) {
       EnterExpressionEvaluationContext Unevaluated(Actions,
                                                    Sema::ConstantEvaluated);
       NumElements =
-          Actions.CorrectDelayedTyposInExpr(ParseAssignmentExpression());
+        Actions.CorrectDelayedTyposInExpr(ParseAssignmentExpression());
     }
   } else {
     if (StaticLoc.isValid()) {

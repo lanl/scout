@@ -2,28 +2,30 @@
 
 \chapter{Introduction}
 
-Scout is an experimental programming language that combines sequential and parallel
-general-purpose constructs with data analysis and visualization-centric features.  
-The language is an extension to the C programming language, but 
-it has also been influenced by many other languages and is fundamentally a higher-level 
-language than C.  In this manual we assume the reader is familiar with parallel 
-programming and the basics of C.  In this chapter we give a brief
-introduction to Scout's main features.
-The following chapters will provide more details about Scout's abstract 
-computational data structures and the parallel, data analysis, visualization and plotting 
-constructs.
+Scout is an experimental programming language that combines
+sequential, task- and data-parallel computing constructs along with a
+set of specialized constructs for the visualization and analysis of
+data. In addition, the language exposes a set of \emph{first-class}
+data types that represent a variety of computational meshes.  These
+features are provided via extensions to the C programming language.
+In this manual we assume the reader is familiar with some of the basic
+ideas behind parallel programming and fully familiar with the C
+language.  This chaper provides a high-level introduction to the
+compiler, data types, and language constructs -- more complete details
+of each of these topics is provided in the remaining chapters.
 
 \section{Scout and the C Programming Language}
 \label{ch1:scout-clang}
 
-Scout extends the C programming language to support a new set of abstractions and
-domain-specific constructs.  Some of the main domain-specific constructs in Scout are
-explicit mesh declarations, instantiations and parallel
-computation over the various components of the mesh (e.g. cells, vertices, edges) or
-over array elements.  Scout builds upon the fundamental types of C to include higher-level 
-abstractions -- such 
-as computational meshes and the associated fields stored on a mesh.  From this perspective, 
-Scout is a higher-level language than C.
+Scout extends the C programming language to support a new set of
+abstractions and domain-specific constructs.  Some of the main
+domain-specific constructs in Scout are explicit mesh declarations,
+instantiations and parallel computation over the various components of
+the mesh (e.g. cells, vertices, edges) or over array elements.  Scout
+builds upon the fundamental types of C to include higher-level
+abstractions -- such as computational meshes and the associated fields
+stored on a mesh.  From this perspective, Scout is a higher-level
+language than C.
 
 Since Scout is based on the open-source Clang and LLVM Compiler Infrastructure, all of 
 the C language features are available. 

@@ -158,6 +158,8 @@ public:
   /// \param MainAddr - The address of main (or some other function in the main
   /// executable), for finding the builtin compiler path.  
   static std::string GetScoutResourcesPath(const char *Argv0, void *MainAddr);
+
+  static std::string GetScoutPTXPath(const char *Argv0, void *MainAddr);
   // +========================================================================+
 
   /// \brief Set language defaults for the given input language and

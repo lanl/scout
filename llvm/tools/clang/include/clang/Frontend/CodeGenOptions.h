@@ -116,6 +116,12 @@ public:
   /// The string to embed in debug information as the current working directory.
   std::string DebugCompilationDir;
 
+  // ===== Scout ================================
+  // path to Scout PTX files needed by runtime
+  
+  std::string ScoutPTXDir;
+  // ============================================
+  
   /// The string to embed in the debug information for the compile unit, if
   /// non-empty.
   std::string DwarfDebugFlags;

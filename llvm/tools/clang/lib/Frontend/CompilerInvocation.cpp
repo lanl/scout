@@ -1097,6 +1097,18 @@ std::string CompilerInvocation::GetScoutResourcesPath(const char *Argv0,
   }
   return P.str();
 }
+
+std::string CompilerInvocation::GetScoutPTXPath(const char *Argv0,
+                                                void *MainAddr) {
+  SmallString<128> P(llvm::sys::fs::getMainExecutable(Argv0, MainAddr));
+  
+  if (!P.empty()) {
+    llvm::sys::path::remove_filename(P); // remove /scc (or /scxx) from path.
+    llvm::sys::path::remove_filename(P); // remove /bin from /path/bin
+    llvm::sys::path::append(P, "lib", "Runtime");
+  }
+  return P.str();
+}
 // +===========================================================================+
 
 static void ParseHeaderSearchArgs(HeaderSearchOptions &Opts, ArgList &Args) {

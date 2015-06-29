@@ -10,6 +10,7 @@
 //  This file implements type-related semantic analysis.
 //
 //===----------------------------------------------------------------------===//
+#include <iostream>
 
 #include "clang/Sema/SemaInternal.h"
 #include "TypeLocBuilder.h"
@@ -975,36 +976,65 @@ static QualType ConvertDeclSpecToType(TypeProcessingState &state) {
     S.Diag(DS.getTypeSpecTypeLoc(), diag::err_invalid_mesh_specifier);
     break;
 
-   case DeclSpec::TST_window: {
-    for(unsigned i = 0; i < declarator.getNumTypeObjects(); ++i) {
-      DeclaratorChunk &DeclType = declarator.getTypeObject(i);
-      switch(DeclType.Kind) {
-        case DeclaratorChunk::Window: {
-          llvm::SmallVector<Expr*,2> dims = DeclType.Win.Dims();          
-          Result = Context.getWindowType(dims);    
-          break;
+  case DeclSpec::TST_window: {
+    if (declarator.getNumTypeObjects() == 0) {
+      declarator.setInvalidType(true);                                  
+      Result = Context.VoidPtrTy;
+    } else {
+      for(unsigned i = 0; i < declarator.getNumTypeObjects(); ++i) {
+        DeclaratorChunk &DeclType = declarator.getTypeObject(i);
+        switch(DeclType.Kind) {
+          case DeclaratorChunk::Window: {
+            llvm::SmallVector<Expr*,2> dims = DeclType.Win.Dims();
+            // Make sure dimension types are all integral types.
+            for(int j = 0; j < 2; j++) {
+              if (!dims[j]->getType()->isIntegerType()) {
+                declarator.setInvalidType(true);                            
+                S.Diag(dims[j]->getLocStart(), diag::err_win_dim_non_int) <<
+                  dims[j]->getType() << dims[j]->getSourceRange();
+                break;
+              }
+            }
+            Result = Context.getWindowType(dims);    
+            break;
+          }
+          default:
+            break;
         }
-        default:
-          break;
       }
     }
     break;
   }
+    
   case DeclSpec::TST_image: {
-    for(unsigned i = 0; i < declarator.getNumTypeObjects(); ++i) {
-      DeclaratorChunk &DeclType = declarator.getTypeObject(i);
-      switch(DeclType.Kind) {
-        case DeclaratorChunk::Image: {
-          llvm::SmallVector<Expr*,2> dims = DeclType.Img.Dims();          
-          Result = Context.getImageType(dims);    
-          break;
+    if (declarator.getNumTypeObjects() == 0) {
+      declarator.setInvalidType(true);
+      Result = Context.VoidPtrTy;
+    } else {
+      for(unsigned i = 0; i < declarator.getNumTypeObjects(); ++i) {
+        DeclaratorChunk &DeclType = declarator.getTypeObject(i);
+        switch(DeclType.Kind) {
+          case DeclaratorChunk::Image: {
+            llvm::SmallVector<Expr*,2> dims = DeclType.Img.Dims();
+            for(int j = 0; j < 2; j++) {
+              if (!dims[j]->getType()->isIntegerType()) {
+                declarator.setInvalidType(true);
+                S.Diag(dims[j]->getLocStart(), diag::err_img_dim_non_int) <<
+                  dims[j]->getType() << dims[j]->getSourceRange();
+                break;
+              }
+            }
+            Result = Context.getImageType(dims);
+            break;
+          }
+          default:
+            break;
         }
-        default:
-          break;          
       }
     }
     break;
   }
+    
   case DeclSpec::TST_query: {
     for(unsigned i = 0; i < declarator.getNumTypeObjects(); ++i) {
       DeclaratorChunk &DeclType = declarator.getTypeObject(i);

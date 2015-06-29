@@ -1,8 +1,8 @@
 /*
  * ###########################################################################
- * Copyright (c) 2015, Los Alamos National Security, LLC.
+ * Copyright (c) 2010, Los Alamos National Security, LLC.
  * All rights reserved.
- *
+ * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
  *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
  *  Alamos National Laboratory (LANL), which is operated by Los Alamos
@@ -20,10 +20,10 @@
  *
  *    * Redistributions of source code must retain the above copyright
  *      notice, this list of conditions and the following disclaimer.
- *
+ * 
  *    * Redistributions in binary form must reproduce the above
  *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided
+ *      disclaimer in the documentation and/or other materials provided 
  *      with the distribution.
  *
  *    * Neither the name of Los Alamos National Security, LLC, Los
@@ -31,7 +31,7 @@
  *      names of its contributors may be used to endorse or promote
  *      products derived from this software without specific prior
  *      written permission.
- *
+ * 
  *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
  *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
  *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -45,87 +45,14 @@
  *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  *  SUCH DAMAGE.
- * ###########################################################################
- *
+ * ########################################################################### 
+ * 
  * Notes
  *
- * #####
+ * ##### 
  */
 
-#ifndef __SC_SCOUT_WINDOW_H__
-#define __SC_SCOUT_WINDOW_H__
-
-#include <iostream>
-
-#include "scout/Runtime/opengl/qt/QtWindow.h"
-#include "scout/Runtime/opengl/qt/PlotWindow.h"
-#include "scout/Runtime/volren/VolumeRendererWindow.h"
-
-namespace scout{
-
-  class ScoutWindow{
-  public:
-    ScoutWindow(unsigned short width,
-                unsigned short height)
-      : width_(width),
-        height_(height),
-        window_(nullptr){}
-
-    PlotWindow* getPlotWindow(){      
-      if(window_){
-        return static_cast<PlotWindow*>(window_);
-      }
-
-      QtWindow::init();
-
-      PlotWindow* window = new PlotWindow(width_, height_);
-      window_ = window;
-      
-      return window;
-    }
-
-    QtWindow* getQtWindow(){
-      if(window_){
-        return static_cast<QtWindow*>(window_);
-      }
-      
-      QtWindow::init();
-
-      QtWindow* window = new QtWindow(width_, height_);
-      window->show();
-      window_ = window;
-      
-      return window;
-    }
-
-    VolumeRendererWindow*
-    getVolumeRendererWindow(){
-      if(window_){
-        return static_cast<VolumeRendererWindow*>(window_);
-      }
-      
-      QtWindow::init();
-
-      auto window = new VolumeRendererWindow;
-      window_ = window;
-      
-      return window;
-    }
-
-    size_t width(){
-      return width_;
-    }
-
-    size_t height(){
-      return height_;
-    }
-
-  private:
-    unsigned short width_;
-    unsigned short height_;
-    void* window_;
-  };
-
-} // end namespace scout
-
-#endif // __SC_SCOUT_WINDOW_H__
+int main(int argc, char** argv) {
+  window w;
+  return 0;
+}

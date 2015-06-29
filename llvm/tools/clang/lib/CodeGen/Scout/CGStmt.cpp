@@ -2308,6 +2308,8 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   LLVMContext& C = getLLVMContext();
   auto R = CGM.getScoutRuntime();
   
+  B.CreateGlobalStringPtr(CGM.getCodeGenOpts().ScoutPTXDir, "scout.ptx.dir");
+  
   MeshDecl* MD = cast<MeshDecl>(S.getMeshType()->getDecl());
   
   Value* MeshBaseAddr;
@@ -2329,38 +2331,30 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
                                  meshStruct->getNumElements() - 3), "depth");
   
   
-  const VarDecl* RTVD = S.getRenderTargetVarDecl();
+  const VarDecl* target = S.getRenderTargetVarDecl();
   
-  // Check if it's a window or image type
-  // cuz we don't handle images yet.
-  const Type &Ty =
-  *getContext().getCanonicalType(RTVD->getType()).getTypePtr();
+  Value* targetPtr;
   
-  llvm::Value* RTAlloc;
-  
-  if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
-      && RTVD->getTLSKind() != VarDecl::TLS_Dynamic) {
-    RTAlloc = CGM.GetAddrOfGlobalVar(RTVD);
+  if((target->hasLinkage() || target->isStaticDataMember())
+     && target->getTLSKind() != VarDecl::TLS_Dynamic){
+    targetPtr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(target));
   }
   else{
-    RTAlloc = LocalDeclMap.lookup(RTVD);
+    targetPtr = LocalDeclMap.lookup(target);
   }
   
-  if(Ty.getTypeClass() != Type::Window){
-    RTAlloc = Builder.CreateLoad(RTAlloc);
-  }
+  assert(targetPtr);
   
-  // cast scout.window_t** to void**
-  Value* int8PtrPtrRTAlloc = Builder.CreateBitCast(RTAlloc, Int8PtrPtrTy, "");
+  llvm::Type* ptrType = llvm::PointerType::get(VoidPtrTy, 0);
+  targetPtr = Builder.CreateBitCast(targetPtr, ptrType);
   
-  // dereference the void**
-  Value* int8PtrRTAlloc = Builder.CreateLoad(int8PtrPtrRTAlloc, "derefwin");
+  targetPtr = Builder.CreateLoad(targetPtr);
   
   BasicBlock* prevBlock = B.GetInsertBlock();
   BasicBlock::iterator prevPoint = B.GetInsertPoint();
   
   TypeVec params =
-  {MeshBaseAddr->getType(), int8PtrRTAlloc->getType(),
+  {MeshBaseAddr->getType(), targetPtr->getType(),
     Int32Ty, Int32Ty, Int32Ty};
   
   llvm::Function* renderallFunc =
@@ -2381,7 +2375,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr->setName("depth");
   aitr++;
   
-  ValueVec args = {MeshBaseAddr, int8PtrRTAlloc, width, height, depth};
+  ValueVec args = {MeshBaseAddr, targetPtr, width, height, depth};
   B.CreateCall(renderallFunc, args);
   
   RenderallVisitor visitor(&S);
@@ -2393,7 +2387,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   size_t index = 0;
   for(MeshFieldDecl* fd : fs){
-    fields.push_back(ConvertType(fd->getType()));
+    fields.push_back(llvm::PointerType::get(ConvertType(fd->getType()), 0));
     CurrentVolumeRenderallFieldMap.insert({fd, index++});
   }
   
@@ -2439,8 +2433,10 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   llvm::VectorType* Int3Ty = llvm::VectorType::get(Int32Ty, 3);
   
-  params = {llvm::PointerType::get(Int32Ty, 0), Int32Ty, Int32Ty,
-    Int3Ty, Int3Ty, Int3Ty, Int3Ty, FloatTy, FloatTy,
+  params = {llvm::PointerType::get(Int32Ty, 0),
+    llvm::PointerType::get(FloatTy, 0),
+    Int32Ty, Int32Ty,
+    Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int32Ty, FloatTy, FloatTy,
     FloatTy, FloatTy, VoidPtrTy};
   
   llvm::Function* wrapperFunc =
@@ -2448,21 +2444,27 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
                          llvm::Function::ExternalLinkage,
                          "volume_render_wrapper",
                          &CGM.getModule());
-  
+
   aitr = wrapperFunc->arg_begin();
-  aitr->setName("d_output");
+  aitr->setName("output");
+  aitr++;
+  aitr->setName("invMat");
   aitr++;
   aitr->setName("imageW");
   aitr++;
   aitr->setName("imageH");
   aitr++;
-  aitr->setName("vSize");
+  aitr->setName("startX");
   aitr++;
-  aitr->setName("dataSize");
+  aitr->setName("startY");
   aitr++;
-  aitr->setName("partitionStart");
+  aitr->setName("startZ");
   aitr++;
-  aitr->setName("partitionSize");
+  aitr->setName("width");
+  aitr++;
+  aitr->setName("height");
+  aitr++;
+  aitr->setName("depth");
   aitr++;
   aitr->setName("density");
   aitr++;
@@ -2474,9 +2476,9 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr++;
   aitr->setName("meshPtr");
   aitr++;
-  
-  //params.push_back(llvm::PointerType::get(transferFuncTy, 0));
-  
+   
+  params.push_back(llvm::PointerType::get(transferFuncTy, 0));
+
   llvm::Function* renderFunc =
   llvm::Function::Create(llvm::FunctionType::get(VoidTy, params, false),
                          llvm::Function::ExternalLinkage,
@@ -2484,19 +2486,25 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
                          &CGM.getModule());
   
   aitr = renderFunc->arg_begin();
-  aitr->setName("d_output");
+  aitr->setName("output");
+  aitr++;
+  aitr->setName("invMat");
   aitr++;
   aitr->setName("imageW");
   aitr++;
   aitr->setName("imageH");
   aitr++;
-  aitr->setName("vSize");
+  aitr->setName("startX");
   aitr++;
-  aitr->setName("dataSize");
+  aitr->setName("startY");
   aitr++;
-  aitr->setName("partitionStart");
+  aitr->setName("startZ");
   aitr++;
-  aitr->setName("partitionSize");
+  aitr->setName("width");
+  aitr++;
+  aitr->setName("height");
+  aitr++;
+  aitr->setName("depth");
   aitr++;
   aitr->setName("density");
   aitr++;
@@ -2508,16 +2516,8 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr++;
   aitr->setName("meshPtr");
   aitr++;
-  //aitr->setName("transferFunc");
-  //aitr++;
-
-  params = {Int32Ty};
-  
-  llvm::Function* renderFooFunc =
-  llvm::Function::Create(llvm::FunctionType::get(VoidTy, params, false),
-                         llvm::Function::ExternalLinkage,
-                         "volume_render_foo",
-                         &CGM.getModule());
+  aitr->setName("transferFunc");
+  aitr++;
   
   entry = BasicBlock::Create(C, "entry", wrapperFunc);
   B.SetInsertPoint(entry);
@@ -2528,16 +2528,9 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
     args.push_back(aitr++);
   }
   
-  llvm::errs() << "##########\n";
-  renderFunc->dump();
+  args.push_back(transferFunc);
   
-  //args.push_back(transferFunc);
-  
-  llvm::Value* testConst = llvm::ConstantInt::get(Int32Ty, 29);
-  args = {testConst};
-  B.CreateCall(renderFooFunc, args);
-  
-  //B.CreateCall(renderFunc, args);
+  B.CreateCall(renderFunc, args);
   B.CreateRetVoid();
   
   B.SetInsertPoint(prevBlock, prevPoint);
