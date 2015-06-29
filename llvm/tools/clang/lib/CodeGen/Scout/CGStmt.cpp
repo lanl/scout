@@ -450,6 +450,7 @@ void CodeGenFunction::GetNumMeshItems(llvm::Value** numCells, llvm::Value** numV
 }
 
 void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
+  InnerForallScope = true;
   llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
   EmitMarkerBlock("forall.vertices.entry");
 
@@ -460,7 +461,7 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
   llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
 
-  llvm::Value* vertexPosPtr = InnerInductionVar;
+  llvm::Value* vertexPosPtr = InnerInductionVar[3];
   VertexIndex = InnerIndex;
 
   Builder.CreateStore(Zero, vertexPosPtr);
@@ -532,6 +533,7 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
 
   // rank !=2 (rank = 1)
   EmitBlock(Else2);
+  Builder.CreateStore(Builder.CreateLoad(InnerInductionVar[3], "inner.induct.x"), InnerInductionVar[0]);
   llvm::Value* newVertexIndex1 = Builder.CreateAdd(vertexPos, indVar, "vertex.index.new");
   Builder.CreateBr(Merge);
 
@@ -555,6 +557,7 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   llvm::BasicBlock *ExitBlock = createBasicBlock("forall.vertices.exit");
   Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
   EmitBlock(ExitBlock);
+  InnerForallScope = false;
 }
 
 //SC_TODO: Vertices has "regular" boundary while Cells is circular.
@@ -573,7 +576,7 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
   llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
 
-  llvm::Value* cellPosPtr = InnerInductionVar;
+  llvm::Value* cellPosPtr = InnerInductionVar[3];
   CellIndex = InnerIndex;
 
   Builder.CreateStore(Zero, cellPosPtr);
@@ -742,7 +745,7 @@ void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
   EmitBlock(Then3);
 
   EdgeIndex = InnerIndex;
-  edgePosPtr = InnerInductionVar;
+  edgePosPtr = InnerInductionVar[3];
   Builder.CreateStore(Zero, edgePosPtr);
 
   width = Builder.CreateLoad(MeshDims[0], "width");
@@ -844,7 +847,7 @@ void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
   EmitBlock(Then2);
 
   EdgeIndex = InnerIndex;
-  edgePosPtr = InnerInductionVar;
+  edgePosPtr = InnerInductionVar[3];
   Builder.CreateStore(Zero, edgePosPtr);
 
   width = Builder.CreateLoad(MeshDims[0], "width");
@@ -927,7 +930,7 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
   EmitBlock(Then3);
 
   FaceIndex = InnerIndex;
-  facePosPtr = InnerInductionVar;
+  facePosPtr = InnerInductionVar[3];
   Builder.CreateStore(Zero, facePosPtr);
 
   //SC_TODO: 3D case
@@ -944,7 +947,7 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
   EmitBlock(Then2);
 
   FaceIndex = InnerIndex;
-  facePosPtr = InnerInductionVar;
+  facePosPtr = InnerInductionVar[3];
   Builder.CreateStore(Zero, facePosPtr);
 
   llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
@@ -1735,8 +1738,14 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
   //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
-  InnerInductionVar =
-      CreateTempAlloca(Int32Ty, "forall.inneridx_ind.ptr");
+  // Create the induction variables for nested foralls eack rank.
+  for(unsigned int i = 0; i < 4; i++) {
+     sprintf(IRNameStr, "forall.inner.induct.%s.ptr", IndexNames[i]);
+     InnerInductionVar[i] = CreateTempAlloca(Int32Ty, IRNameStr);
+     //zero-initialize induction var
+     Builder.CreateStore(ConstantZero, InnerInductionVar[i]);
+
+   }
 
   InnerIndex = CreateTempAlloca(Int32Ty, "forall.inneridx.ptr");
 
@@ -1979,15 +1988,18 @@ void CodeGenFunction::ResetMeshBounds(void) {
     MeshSize.clear();
     LoopBounds.clear();
     InductionVar.clear();
+    InnerInductionVar.clear();
     for(unsigned int i = 0; i < 3; i++) {
        MeshDims.push_back(0);
        MeshStart.push_back(0);
        MeshSize.push_back(0);
        LoopBounds.push_back(0);
        InductionVar.push_back(0);
+       InnerInductionVar.push_back(0);
     }
     // create linear loop index as 4th element
     InductionVar.push_back(0);
+    InnerInductionVar.push_back(0);
     MeshRank = 0;
 }
 

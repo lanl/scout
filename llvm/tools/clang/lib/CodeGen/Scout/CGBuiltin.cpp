@@ -107,10 +107,16 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   }
 
   case Builtin::BIpositionx: {
-    llvm::Value *X = Builder.CreateAdd(
+    llvm::Value *X;
+    if (InnerForallScope) {
+      llvm::errs() << "Inner Scope\n";
+      X = Builder.CreateLoad(InnerInductionVar[0]);
+    } else {
+      X = Builder.CreateAdd(
         Builder.CreateLoad(LookupInductionVar(0)),
         Builder.CreateLoad(LookupMeshStart(0)),
         "position.x");
+    }
     *RV = RValue::get(X);
     return true;
   }
