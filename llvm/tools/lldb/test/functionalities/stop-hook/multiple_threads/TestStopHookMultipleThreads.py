@@ -21,7 +21,7 @@ class StopHookForMultipleThreadsTestCase(TestBase):
 
     @dwarf_test
     @expectedFailureFreeBSD("llvm.org/pr15037")
-    @expectedFailureLinux("llvm.org/pr15037") # stop hooks sometimes fail to fire on Linux
+    @expectedFlakeyLinux("llvm.org/pr15037") # stop hooks sometimes fail to fire on Linux
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @skipIfFreeBSD # llvm.org/pr22784
     def test_stop_hook_multiple_threads_with_dwarf(self):
@@ -62,7 +62,7 @@ class StopHookForMultipleThreadsTestCase(TestBase):
         child.sendline('breakpoint set -f main.cpp -l %d' % self.thread_function)
         child.expect_exact(prompt)
 
-        # Now run the program, expect to stop at the the first breakpoint which is within the stop-hook range.
+        # Now run the program, expect to stop at the first breakpoint which is within the stop-hook range.
         child.sendline('run')
         child.expect_exact("Process")   # 'Process 2415 launched', 'Process 2415 stopped'
         child.expect_exact(prompt)

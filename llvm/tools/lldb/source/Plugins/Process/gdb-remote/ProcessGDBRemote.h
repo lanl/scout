@@ -238,8 +238,14 @@ public:
                   const ArchSpec& arch,
                   ModuleSpec &module_spec) override;
 
-    virtual size_t
-    LoadModules () override;
+    size_t
+    LoadModules() override;
+
+    Error
+    GetFileLoadAddress(const FileSpec& file, bool& is_loaded, lldb::addr_t& load_addr) override;
+
+    void
+    ModulesDidLoad (ModuleList &module_list) override;
 
 protected:
     friend class ThreadGDBRemote;
@@ -320,6 +326,9 @@ protected:
     void
     GetMaxMemorySize();
 
+    bool
+    CalculateThreadStopInfo (ThreadGDBRemote *thread);
+
     //------------------------------------------------------------------
     /// Broadcaster event bits definitions.
     //------------------------------------------------------------------
@@ -342,7 +351,9 @@ protected:
     typedef std::vector<lldb::tid_t> tid_collection;
     typedef std::vector< std::pair<lldb::tid_t,int> > tid_sig_collection;
     typedef std::map<lldb::addr_t, lldb::addr_t> MMapMap;
+    typedef std::map<uint32_t, std::string> ExpeditedRegisterMap;
     tid_collection m_thread_ids; // Thread IDs for all threads. This list gets updated after stopping
+    StructuredData::ObjectSP m_threads_info_sp; // Stop info for all threads if "jThreadsInfo" packet is supported
     tid_collection m_continue_c_tids;                  // 'c' for continue
     tid_sig_collection m_continue_C_tids; // 'C' for continue with signal
     tid_collection m_continue_s_tids;                  // 's' for step
@@ -356,6 +367,9 @@ protected:
     lldb::CommandObjectSP m_command_sp;
     int64_t m_breakpoint_pc_offset;
     lldb::tid_t m_initial_tid; // The inital thread ID, given by stub on attach
+
+    bool
+    HandleNotifyPacket(StringExtractorGDBRemote &packet);
 
     bool
     StartAsyncThread ();
@@ -375,6 +389,20 @@ protected:
 
     lldb::StateType
     SetThreadStopInfo (StringExtractor& stop_packet);
+
+    lldb::StateType
+    SetThreadStopInfo (StructuredData::Dictionary *thread_dict);
+
+    lldb::ThreadSP
+    SetThreadStopInfo (lldb::tid_t tid,
+                       ExpeditedRegisterMap &expedited_register_map,
+                       uint8_t signo,
+                       const std::string &thread_name,
+                       const std::string &reason,
+                       const std::string &description,
+                       uint32_t exc_type,
+                       const std::vector<lldb::addr_t> &exc_data,
+                       lldb::addr_t thread_dispatch_qaddr);
 
     void
     HandleStopReplySequence ();

@@ -19,7 +19,7 @@ class StopHookMechanismTestCase(TestBase):
         self.stop_hook_firing()
 
     @skipIfFreeBSD # llvm.org/pr15037
-    @expectedFailureLinux('llvm.org/pr15037') # stop-hooks sometimes fail to fire on Linux
+    @expectedFlakeyLinux('llvm.org/pr15037') # stop-hooks sometimes fail to fire on Linux
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @dwarf_test
     def test_with_dwarf(self):
@@ -66,7 +66,7 @@ class StopHookMechanismTestCase(TestBase):
         child.expect_exact(prompt)
         child.sendline('target stop-hook list')
 
-        # Now run the program, expect to stop at the the first breakpoint which is within the stop-hook range.
+        # Now run the program, expect to stop at the first breakpoint which is within the stop-hook range.
         child.expect_exact(prompt)
         child.sendline('run')
         # Make sure we see the stop hook text from the stop of the process from the run hitting the first breakpoint
