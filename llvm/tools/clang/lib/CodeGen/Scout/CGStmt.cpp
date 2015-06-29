@@ -450,6 +450,7 @@ void CodeGenFunction::GetNumMeshItems(llvm::Value** numCells, llvm::Value** numV
 }
 
 void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
+  InnerForallScope = true;
   llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
   EmitMarkerBlock("forall.vertices.entry");
 
@@ -460,7 +461,7 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
   llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
 
-  llvm::Value* vertexPosPtr = InnerInductionVar;
+  llvm::Value* vertexPosPtr = InnerInductionVar[3];
   VertexIndex = InnerIndex;
 
   Builder.CreateStore(Zero, vertexPosPtr);
@@ -510,6 +511,12 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
 
   v3 = Builder.CreateMul(pd2, width1);
   v4 = Builder.CreateMul(pd4, wh1);
+
+  // update inner Induction vars used by position
+  Builder.CreateStore(pm2, InnerInductionVar[0]);
+  Builder.CreateStore(pd2, InnerInductionVar[1]);
+  Builder.CreateStore(pd4, InnerInductionVar[2]);
+
   llvm::Value* newVertexIndex3 =
       Builder.CreateAdd(Builder.CreateAdd(xyz, v3),
           Builder.CreateAdd(pm2, v4));
@@ -527,11 +534,20 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   v3 = Builder.CreateURem(vertexPos, Two);
   v4 = Builder.CreateAdd(v2, v3);
   v5 = Builder.CreateAdd(v4, indVar);
+
+  // update inner Induction vars used by position
+  Builder.CreateStore(v3, InnerInductionVar[0]);
+  Builder.CreateStore(v1, InnerInductionVar[1]);
+
   llvm::Value* newVertexIndex2 = Builder.CreateAdd(v5, idvw, "vertex.index.new");
   Builder.CreateBr(Merge);
 
   // rank !=2 (rank = 1)
   EmitBlock(Else2);
+
+  // update inner Induction var used by position
+  Builder.CreateStore(vertexPos, InnerInductionVar[0]);
+
   llvm::Value* newVertexIndex1 = Builder.CreateAdd(vertexPos, indVar, "vertex.index.new");
   Builder.CreateBr(Merge);
 
@@ -555,6 +571,7 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   llvm::BasicBlock *ExitBlock = createBasicBlock("forall.vertices.exit");
   Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
   EmitBlock(ExitBlock);
+  InnerForallScope = false;
 }
 
 //SC_TODO: Vertices has "regular" boundary while Cells is circular.
@@ -573,7 +590,7 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   llvm::Value* Four = llvm::ConstantInt::get(Int32Ty, 4);
   llvm::Value* Seven = llvm::ConstantInt::get(Int32Ty, 7);
 
-  llvm::Value* cellPosPtr = InnerInductionVar;
+  llvm::Value* cellPosPtr = InnerInductionVar[3];
   CellIndex = InnerIndex;
 
   Builder.CreateStore(Zero, cellPosPtr);
@@ -639,6 +656,11 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   llvm::Value* v1 = Builder.CreateMul(y, width);
   llvm::Value* v2 = Builder.CreateMul(z, Builder.CreateMul(width, height));
 
+  // update inner Induction vars used by position
+  Builder.CreateStore(pm2, InnerInductionVar[0]);
+  Builder.CreateStore(pd2, InnerInductionVar[1]);
+  Builder.CreateStore(pd4, InnerInductionVar[2]);
+
   llvm::Value* newCellIndex3 = Builder.CreateAdd(x, Builder.CreateAdd(v1, v2));
   Builder.CreateBr(Merge);
 
@@ -671,6 +693,10 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   vy3 = Builder.CreateURem(y, height);
   y = Builder.CreateSelect(cy1, vy2, Builder.CreateSelect(cy2, vy3, y));
 
+  // update inner Induction vars used by position
+  Builder.CreateStore(vx1, InnerInductionVar[0]);
+  Builder.CreateStore(vy1, InnerInductionVar[1]);
+
   llvm::Value* newCellIndex2 = Builder.CreateAdd(Builder.CreateMul(y, width), x);
   Builder.CreateBr(Merge);
 
@@ -685,6 +711,10 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   cx2 = Builder.CreateICmpSGE(x, width);
   vx2 = Builder.CreateAdd(x, width);
   vx3 = Builder.CreateURem(x, width);
+
+  // update inner Induction var used by position
+  Builder.CreateStore(cellPos, InnerInductionVar[0]);
+
   llvm::Value* newCellIndex1 = Builder.CreateSelect(cx1, vx2, Builder.CreateSelect(cx2, vx3, x));
   Builder.CreateBr(Merge);
   Else2 = Builder.GetInsertBlock();
@@ -742,7 +772,7 @@ void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
   EmitBlock(Then3);
 
   EdgeIndex = InnerIndex;
-  edgePosPtr = InnerInductionVar;
+  edgePosPtr = InnerInductionVar[3];
   Builder.CreateStore(Zero, edgePosPtr);
 
   width = Builder.CreateLoad(MeshDims[0], "width");
@@ -844,7 +874,7 @@ void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
   EmitBlock(Then2);
 
   EdgeIndex = InnerIndex;
-  edgePosPtr = InnerInductionVar;
+  edgePosPtr = InnerInductionVar[3];
   Builder.CreateStore(Zero, edgePosPtr);
 
   width = Builder.CreateLoad(MeshDims[0], "width");
@@ -927,7 +957,7 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
   EmitBlock(Then3);
 
   FaceIndex = InnerIndex;
-  facePosPtr = InnerInductionVar;
+  facePosPtr = InnerInductionVar[3];
   Builder.CreateStore(Zero, facePosPtr);
 
   //SC_TODO: 3D case
@@ -944,7 +974,7 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
   EmitBlock(Then2);
 
   FaceIndex = InnerIndex;
-  facePosPtr = InnerInductionVar;
+  facePosPtr = InnerInductionVar[3];
   Builder.CreateStore(Zero, facePosPtr);
 
   llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
@@ -1735,8 +1765,14 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
   //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
-  InnerInductionVar =
-      CreateTempAlloca(Int32Ty, "forall.inneridx_ind.ptr");
+  // Create the induction variables for nested foralls eack rank.
+  for(unsigned int i = 0; i < 4; i++) {
+     sprintf(IRNameStr, "forall.inner.induct.%s.ptr", IndexNames[i]);
+     InnerInductionVar[i] = CreateTempAlloca(Int32Ty, IRNameStr);
+     //zero-initialize induction var
+     Builder.CreateStore(ConstantZero, InnerInductionVar[i]);
+
+   }
 
   InnerIndex = CreateTempAlloca(Int32Ty, "forall.inneridx.ptr");
 
@@ -1979,15 +2015,18 @@ void CodeGenFunction::ResetMeshBounds(void) {
     MeshSize.clear();
     LoopBounds.clear();
     InductionVar.clear();
+    InnerInductionVar.clear();
     for(unsigned int i = 0; i < 3; i++) {
        MeshDims.push_back(0);
        MeshStart.push_back(0);
        MeshSize.push_back(0);
        LoopBounds.push_back(0);
        InductionVar.push_back(0);
+       InnerInductionVar.push_back(0);
     }
     // create linear loop index as 4th element
     InductionVar.push_back(0);
+    InnerInductionVar.push_back(0);
     MeshRank = 0;
 }
 
@@ -2296,6 +2335,8 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   LLVMContext& C = getLLVMContext();
   auto R = CGM.getScoutRuntime();
   
+  B.CreateGlobalStringPtr(CGM.getCodeGenOpts().ScoutPTXDir, "scout.ptx.dir");
+  
   MeshDecl* MD = cast<MeshDecl>(S.getMeshType()->getDecl());
   
   Value* MeshBaseAddr;
@@ -2317,38 +2358,30 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
                                  meshStruct->getNumElements() - 3), "depth");
   
   
-  const VarDecl* RTVD = S.getRenderTargetVarDecl();
+  const VarDecl* target = S.getRenderTargetVarDecl();
   
-  // Check if it's a window or image type
-  // cuz we don't handle images yet.
-  const Type &Ty =
-  *getContext().getCanonicalType(RTVD->getType()).getTypePtr();
+  Value* targetPtr;
   
-  llvm::Value* RTAlloc;
-  
-  if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
-      && RTVD->getTLSKind() != VarDecl::TLS_Dynamic) {
-    RTAlloc = CGM.GetAddrOfGlobalVar(RTVD);
+  if((target->hasLinkage() || target->isStaticDataMember())
+     && target->getTLSKind() != VarDecl::TLS_Dynamic){
+    targetPtr = Builder.CreateLoad(CGM.GetAddrOfGlobalVar(target));
   }
   else{
-    RTAlloc = LocalDeclMap.lookup(RTVD);
+    targetPtr = LocalDeclMap.lookup(target);
   }
   
-  if(Ty.getTypeClass() != Type::Window){
-    RTAlloc = Builder.CreateLoad(RTAlloc);
-  }
+  assert(targetPtr);
   
-  // cast scout.window_t** to void**
-  Value* int8PtrPtrRTAlloc = Builder.CreateBitCast(RTAlloc, Int8PtrPtrTy, "");
+  llvm::Type* ptrType = llvm::PointerType::get(VoidPtrTy, 0);
+  targetPtr = Builder.CreateBitCast(targetPtr, ptrType);
   
-  // dereference the void**
-  Value* int8PtrRTAlloc = Builder.CreateLoad(int8PtrPtrRTAlloc, "derefwin");
+  targetPtr = Builder.CreateLoad(targetPtr);
   
   BasicBlock* prevBlock = B.GetInsertBlock();
   BasicBlock::iterator prevPoint = B.GetInsertPoint();
   
   TypeVec params =
-  {MeshBaseAddr->getType(), int8PtrRTAlloc->getType(),
+  {MeshBaseAddr->getType(), targetPtr->getType(),
     Int32Ty, Int32Ty, Int32Ty};
   
   llvm::Function* renderallFunc =
@@ -2369,7 +2402,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr->setName("depth");
   aitr++;
   
-  ValueVec args = {MeshBaseAddr, int8PtrRTAlloc, width, height, depth};
+  ValueVec args = {MeshBaseAddr, targetPtr, width, height, depth};
   B.CreateCall(renderallFunc, args);
   
   RenderallVisitor visitor(&S);
@@ -2381,7 +2414,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   size_t index = 0;
   for(MeshFieldDecl* fd : fs){
-    fields.push_back(ConvertType(fd->getType()));
+    fields.push_back(llvm::PointerType::get(ConvertType(fd->getType()), 0));
     CurrentVolumeRenderallFieldMap.insert({fd, index++});
   }
   
@@ -2427,8 +2460,10 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   llvm::VectorType* Int3Ty = llvm::VectorType::get(Int32Ty, 3);
   
-  params = {llvm::PointerType::get(Int32Ty, 0), Int32Ty, Int32Ty,
-    Int3Ty, Int3Ty, Int3Ty, Int3Ty, FloatTy, FloatTy,
+  params = {llvm::PointerType::get(Int32Ty, 0),
+    llvm::PointerType::get(FloatTy, 0),
+    Int32Ty, Int32Ty,
+    Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int32Ty, FloatTy, FloatTy,
     FloatTy, FloatTy, VoidPtrTy};
   
   llvm::Function* wrapperFunc =
@@ -2436,21 +2471,27 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
                          llvm::Function::ExternalLinkage,
                          "volume_render_wrapper",
                          &CGM.getModule());
-  
+
   aitr = wrapperFunc->arg_begin();
-  aitr->setName("d_output");
+  aitr->setName("output");
+  aitr++;
+  aitr->setName("invMat");
   aitr++;
   aitr->setName("imageW");
   aitr++;
   aitr->setName("imageH");
   aitr++;
-  aitr->setName("vSize");
+  aitr->setName("startX");
   aitr++;
-  aitr->setName("dataSize");
+  aitr->setName("startY");
   aitr++;
-  aitr->setName("partitionStart");
+  aitr->setName("startZ");
   aitr++;
-  aitr->setName("partitionSize");
+  aitr->setName("width");
+  aitr++;
+  aitr->setName("height");
+  aitr++;
+  aitr->setName("depth");
   aitr++;
   aitr->setName("density");
   aitr++;
@@ -2462,9 +2503,9 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr++;
   aitr->setName("meshPtr");
   aitr++;
-  
-  //params.push_back(llvm::PointerType::get(transferFuncTy, 0));
-  
+   
+  params.push_back(llvm::PointerType::get(transferFuncTy, 0));
+
   llvm::Function* renderFunc =
   llvm::Function::Create(llvm::FunctionType::get(VoidTy, params, false),
                          llvm::Function::ExternalLinkage,
@@ -2472,19 +2513,25 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
                          &CGM.getModule());
   
   aitr = renderFunc->arg_begin();
-  aitr->setName("d_output");
+  aitr->setName("output");
+  aitr++;
+  aitr->setName("invMat");
   aitr++;
   aitr->setName("imageW");
   aitr++;
   aitr->setName("imageH");
   aitr++;
-  aitr->setName("vSize");
+  aitr->setName("startX");
   aitr++;
-  aitr->setName("dataSize");
+  aitr->setName("startY");
   aitr++;
-  aitr->setName("partitionStart");
+  aitr->setName("startZ");
   aitr++;
-  aitr->setName("partitionSize");
+  aitr->setName("width");
+  aitr++;
+  aitr->setName("height");
+  aitr++;
+  aitr->setName("depth");
   aitr++;
   aitr->setName("density");
   aitr++;
@@ -2496,16 +2543,8 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr++;
   aitr->setName("meshPtr");
   aitr++;
-  //aitr->setName("transferFunc");
-  //aitr++;
-
-  params = {Int32Ty};
-  
-  llvm::Function* renderFooFunc =
-  llvm::Function::Create(llvm::FunctionType::get(VoidTy, params, false),
-                         llvm::Function::ExternalLinkage,
-                         "volume_render_foo",
-                         &CGM.getModule());
+  aitr->setName("transferFunc");
+  aitr++;
   
   entry = BasicBlock::Create(C, "entry", wrapperFunc);
   B.SetInsertPoint(entry);
@@ -2516,16 +2555,9 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
     args.push_back(aitr++);
   }
   
-  llvm::errs() << "##########\n";
-  renderFunc->dump();
+  args.push_back(transferFunc);
   
-  //args.push_back(transferFunc);
-  
-  llvm::Value* testConst = llvm::ConstantInt::get(Int32Ty, 29);
-  args = {testConst};
-  B.CreateCall(renderFooFunc, args);
-  
-  //B.CreateCall(renderFunc, args);
+  B.CreateCall(renderFunc, args);
   B.CreateRetVoid();
   
   B.SetInsertPoint(prevBlock, prevPoint);
