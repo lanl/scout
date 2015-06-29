@@ -63,8 +63,8 @@ CompilerInstance::CompilerInstance(
     // communicate between the scout driver and FrontendAction.cpp when the
     // rewriter is being used.
     ScoutASTConsumer(0), ScoutRewriter(0) {
-    // +======================================================================+ 
-{}
+    // +======================================================================+
+}
 
 CompilerInstance::~CompilerInstance() {
   assert(OutputFiles.empty() && "Still output files in flight?");

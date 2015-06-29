@@ -374,7 +374,7 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
     ResourceDir = A->getValue();
 
   // +===== Scout ============================================================+
-  if (const Arg *A = Args->getLastArg(options::OPT_scout_resource_dir))
+  if (const Arg *A = Args.getLastArg(options::OPT_scout_resource_dir))
     ScoutResourceDir = A->getValue();
   // +========================================================================+  
   if (const Arg *A = Args.getLastArg(options::OPT_save_temps_EQ)) {

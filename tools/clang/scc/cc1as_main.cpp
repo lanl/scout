@@ -235,8 +235,8 @@ bool AssemblerInvocation::CreateFromArgs(AssemblerInvocation &Opts,
     } else
       Opts.OutputType = FileType(OutputType);
   }
-  Opts.ShowHelp = Args->hasArg(OPT_help);
-  Opts.ShowVersion = Args->hasArg(OPT_version);
+  Opts.ShowHelp = Args.hasArg(OPT_help);
+  Opts.ShowVersion = Args.hasArg(OPT_version);
 
   // Transliterate Options
   Opts.OutputAsmVariant =

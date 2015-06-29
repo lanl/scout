@@ -309,18 +309,6 @@ static void ParseProgName(SmallVectorImpl<const char *> &ArgVector,
   }
 }
 
-namespace {
-  class StringSetSaver : public llvm::cl::StringSaver {
-  public:
-    StringSetSaver(std::set<std::string> &Storage) : Storage(Storage) {}
-    const char *SaveString(const char *Str) override {
-      return GetStableCStr(Storage, Str);
-    }
-  private:
-    std::set<std::string> &Storage;
-  };
-}
-
 static void SetBackdoorDriverOutputsFromEnvVars(Driver &TheDriver) {
   // Handle CC_PRINT_OPTIONS and CC_PRINT_OPTIONS_FILE.
   TheDriver.CCPrintOptions = !!::getenv("CC_PRINT_OPTIONS");
@@ -351,16 +339,16 @@ static void FixupDiagPrefixExeName(TextDiagnosticPrinter *DiagClient,
 // This lets us create the DiagnosticsEngine with a properly-filled-out
 // DiagnosticOptions instance.
 static DiagnosticOptions *
-CreateAndPopulateDiagOpts(SmallVectorImpl<const char *> &argv) {
+CreateAndPopulateDiagOpts(ArrayRef<const char *> argv) {
   auto *DiagOpts = new DiagnosticOptions;
   std::unique_ptr<OptTable> Opts(createDriverOptTable());
   unsigned MissingArgIndex, MissingArgCount;
-  std::unique_ptr<InputArgList> Args(Opts->ParseArgs(
-      argv.begin() + 1, argv.end(), MissingArgIndex, MissingArgCount));
+  InputArgList Args =
+      Opts->ParseArgs(argv.slice(1), MissingArgIndex, MissingArgCount);
   // We ignore MissingArgCount and the return value of ParseDiagnosticArgs.
   // Any errors that would be diagnosed here will also be diagnosed later,
   // when the DiagnosticsEngine actually exists.
-  (void) ParseDiagnosticArgs(*DiagOpts, *Args);
+  (void)ParseDiagnosticArgs(*DiagOpts, Args);
   return DiagOpts;
 }
 
@@ -455,15 +443,17 @@ static void scAddFlagSet(std::string& args,
 // ----- scAddFlags
 //
 static void scAddFlags(Driver &driver,
-                       SmallVectorImpl<const char*> &argv,
+                       SmallVectorImpl<const char *> &argv,
                        std::set<std::string> &SavedStrings) {
+
+  ArrayRef<const char *> args = argv;
 
   // Check the command line arguments in a bit more detail before
   // we get to work...
   std::unique_ptr<OptTable> CC1Opts(createDriverOptTable());
   unsigned MissingArgIndex, MissingArgCount;
-  std::unique_ptr<InputArgList> Args(CC1Opts->ParseArgs(argv.begin()+1, argv.end(),
-                                                  MissingArgIndex, MissingArgCount));
+  InputArgList Args = CC1Opts->ParseArgs(args.slice(1),
+                                         MissingArgIndex, MissingArgCount);
 
   // Build up a string of edits to make to the command line options
   // and use the Arg override mechanism above to weasel scout-centric
@@ -484,9 +474,9 @@ static void scAddFlags(Driver &driver,
   // Check to see if we are linking -- avoid adding link flags if we
   // don't need them (otherwise, we get a lot of potentially confusing
   // warnings at the command line).
-  if (!(Args->hasArg(options::OPT_c) ||
-        Args->hasArg(options::OPT_S) ||
-        Args->hasArg(options::OPT_fsyntax_only))) {
+  if (!(Args.hasArg(options::OPT_c) ||
+        Args.hasArg(options::OPT_S) ||
+        Args.hasArg(options::OPT_fsyntax_only))) {
     scAddFlagSet(sc_args,
                  scout::config::Configuration::LinkOptions);
     scAddFlagSet(sc_args,
@@ -518,8 +508,8 @@ int main(int argc_, const char **argv_) {
     return 1;
   }
 
-  std::set<std::string> SavedStrings;
-  StringSetSaver Saver(SavedStrings);
+  llvm::BumpPtrAllocator A;
+  llvm::BumpPtrStringSaver Saver(A);
 
   // Determines whether we want nullptr markers in argv to indicate response
   // files end-of-lines. We only use this for the /LINK driver argument.
@@ -571,6 +561,7 @@ int main(int argc_, const char **argv_) {
     }
   }
 
+  std::set<std::string> SavedStrings;
   // Handle CCC_OVERRIDE_OPTIONS, used for editing a command line behind the
   // scenes.
   if (const char *OverrideStr = ::getenv("CCC_OVERRIDE_OPTIONS")) {
