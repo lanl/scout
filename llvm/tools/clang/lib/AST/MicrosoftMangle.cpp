@@ -115,6 +115,9 @@ public:
   void mangleCXXVBTable(const CXXRecordDecl *Derived,
                         ArrayRef<const CXXRecordDecl *> BasePath,
                         raw_ostream &Out) override;
+  void mangleCXXVirtualDisplacementMap(const CXXRecordDecl *SrcRD,
+                                       const CXXRecordDecl *DstRD,
+                                       raw_ostream &Out) override;
   void mangleCXXThrowInfo(QualType T, bool IsConst, bool IsVolatile,
                           uint32_t NumEntries, raw_ostream &Out) override;
   void mangleCXXCatchableTypeArray(QualType T, uint32_t NumEntries,
@@ -508,6 +511,9 @@ void MicrosoftCXXNameMangler::mangleMemberDataPointer(const CXXRecordDecl *RD,
     FieldOffset /= getASTContext().getCharWidth();
 
     VBTableOffset = 0;
+
+    if (IM == MSInheritanceAttr::Keyword_virtual_inheritance)
+      FieldOffset -= getASTContext().getOffsetOfBaseWithVBPtr(RD).getQuantity();
   } else {
     FieldOffset = RD->nullFieldOffsetIsZero() ? 0 : -1;
 
@@ -576,6 +582,10 @@ MicrosoftCXXNameMangler::mangleMemberFunctionPointer(const CXXRecordDecl *RD,
       mangleName(MD);
       mangleFunctionEncoding(MD, /*ShouldMangle=*/true);
     }
+
+    if (VBTableOffset == 0 &&
+        IM == MSInheritanceAttr::Keyword_virtual_inheritance)
+      NVOffset -= getASTContext().getOffsetOfBaseWithVBPtr(RD).getQuantity();
   } else {
     // Null single inheritance member functions are encoded as a simple nullptr.
     if (IM == MSInheritanceAttr::Keyword_single_inheritance) {
@@ -588,7 +598,7 @@ MicrosoftCXXNameMangler::mangleMemberFunctionPointer(const CXXRecordDecl *RD,
   }
 
   if (MSInheritanceAttr::hasNVOffsetField(/*IsMemberFunction=*/true, IM))
-    mangleNumber(NVOffset);
+    mangleNumber(static_cast<uint32_t>(NVOffset));
   if (MSInheritanceAttr::hasVBPtrOffsetField(IM))
     mangleNumber(VBPtrOffset);
   if (MSInheritanceAttr::hasVBTableOffsetField(IM))
@@ -2496,6 +2506,15 @@ void MicrosoftMangleContextImpl::mangleCXXCatchHandlerType(QualType T,
   Mangler.getStream() << '.' << Flags;
 }
 
+void MicrosoftMangleContextImpl::mangleCXXVirtualDisplacementMap(
+    const CXXRecordDecl *SrcRD, const CXXRecordDecl *DstRD, raw_ostream &Out) {
+  MicrosoftCXXNameMangler Mangler(*this, Out);
+  Mangler.getStream() << "\01??_K";
+  Mangler.mangleName(SrcRD);
+  Mangler.getStream() << "$C";
+  Mangler.mangleName(DstRD);
+}
+
 void MicrosoftMangleContextImpl::mangleCXXThrowInfo(QualType T,
                                                     bool IsConst,
                                                     bool IsVolatile,
@@ -2862,7 +2881,17 @@ void MicrosoftMangleContextImpl::mangleStringLiteral(const StringLiteral *SL,
 
 void MicrosoftMangleContextImpl::mangleCXXVTableBitSet(const CXXRecordDecl *RD,
                                                        raw_ostream &Out) {
-  llvm::report_fatal_error("Cannot mangle bitsets yet");
+  if (!RD->isExternallyVisible()) {
+    // This part of the identifier needs to be unique across all translation
+    // units in the linked program. The scheme fails if multiple translation
+    // units are compiled using the same relative source file path, or if
+    // multiple translation units are built from the same source file.
+    SourceManager &SM = getASTContext().getSourceManager();
+    Out << "[" << SM.getFileEntryForID(SM.getMainFileID())->getName() << "]";
+  }
+
+  MicrosoftCXXNameMangler mangler(*this, Out);
+  mangler.mangleName(RD);
 }
 
 MicrosoftMangleContext *

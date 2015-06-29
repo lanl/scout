@@ -256,9 +256,8 @@ TEST_F(FormatTestJS, FormatsFreestandingFunctions) {
 }
 
 TEST_F(FormatTestJS, ArrayLiterals) {
-  verifyFormat(
-      "var aaaaa: List<SomeThing> =\n"
-      "    [new SomeThingAAAAAAAAAAAA(), new SomeThingBBBBBBBBB()];");
+  verifyFormat("var aaaaa: List<SomeThing> =\n"
+               "    [new SomeThingAAAAAAAAAAAA(), new SomeThingBBBBBBBBB()];");
   verifyFormat("return [\n"
                "  aaaaaaaaaaaaaaaaaaaaaaaaaaa,\n"
                "  bbbbbbbbbbbbbbbbbbbbbbbbbbb,\n"
@@ -278,6 +277,13 @@ TEST_F(FormatTestJS, ArrayLiterals) {
                "  bbbbbbbbbbbbbbbbbbbbbbbbbbb,\n"
                "  ccccccccccccccccccccccccccc\n"
                "]);");
+  verifyFormat("var someVariable = SomeFuntion(aaaa,\n"
+               "                               [\n"
+               "                                 aaaaaaaaaaaaaaaaaaaaaaaaaaa,\n"
+               "                                 bbbbbbbbbbbbbbbbbbbbbbbbbbb,\n"
+               "                                 ccccccccccccccccccccccccccc\n"
+               "                               ],\n"
+               "                               aaaa);");
 
   verifyFormat("someFunction([], {a: a});");
 }
@@ -286,6 +292,10 @@ TEST_F(FormatTestJS, FunctionLiterals) {
   verifyFormat("doFoo(function() {});");
   verifyFormat("doFoo(function() { return 1; });");
   verifyFormat("var func = function() {\n"
+               "  return 1;\n"
+               "};");
+  verifyFormat("var func =  //\n"
+               "    function() {\n"
                "  return 1;\n"
                "};");
   verifyFormat("return {\n"
@@ -614,10 +624,16 @@ TEST_F(FormatTestJS, RegexLiteralSpecialCharacters) {
   verifyFormat("var regex = /\a\\//g;");
   verifyFormat("var regex = /a\\//;\n"
                "var x = 0;");
+  EXPECT_EQ("var regex = /'/g;", format("var regex = /'/g ;"));
+  EXPECT_EQ("var regex = /'/g;  //'", format("var regex = /'/g ; //'"));
   EXPECT_EQ("var regex = /\\/*/;\n"
             "var x = 0;",
             format("var regex = /\\/*/;\n"
                    "var x=0;"));
+  verifyFormat("var regex = /\"/;", getGoogleJSStyleWithColumns(16));
+  verifyFormat("var regex =\n"
+               "    /\"/;",
+               getGoogleJSStyleWithColumns(15));
 }
 
 TEST_F(FormatTestJS, RegexLiteralModifiers) {
@@ -679,6 +695,22 @@ TEST_F(FormatTestJS, InterfaceDeclarations) {
                "  x: string;\n"
                "}\n"
                "var y;");
+}
+
+TEST_F(FormatTestJS, EnumDeclarations) {
+  verifyFormat("enum Foo {\n"
+               "  A = 1,\n"
+               "  B\n"
+               "}");
+  verifyFormat("export /* somecomment*/ enum Foo {\n"
+               "  A = 1,\n"
+               "  B\n"
+               "}");
+  verifyFormat("enum Foo {\n"
+               "  A = 1,  // comment\n"
+               "  B\n"
+               "}\n"
+               "var x = 1;");
 }
 
 TEST_F(FormatTestJS, MetadataAnnotations) {
@@ -809,6 +841,11 @@ TEST_F(FormatTestJS, TemplateStrings) {
             "var y;",
             format("var x =\n `/*a`;\n"
                    "var y;"));
+  // Unterminated string literals in a template string.
+  verifyFormat("var x = `'`;  // comment with matching quote '\n"
+               "var y;");
+  verifyFormat("var x = `\"`;  // comment with matching quote \"\n"
+               "var y;");
   // Backticks in a comment - not a template string.
   EXPECT_EQ("var x = 1  // `/*a`;\n"
             "    ;",
@@ -828,9 +865,7 @@ TEST_F(FormatTestJS, TemplateStrings) {
                    "var y;"));
 }
 
-TEST_F(FormatTestJS, CastSyntax) {
-  verifyFormat("var x = <type>foo;");
-}
+TEST_F(FormatTestJS, CastSyntax) { verifyFormat("var x = <type>foo;"); }
 
 TEST_F(FormatTestJS, TypeArguments) {
   verifyFormat("class X<Y> {}");

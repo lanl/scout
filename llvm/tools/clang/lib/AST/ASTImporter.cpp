@@ -3979,8 +3979,8 @@ Decl *ASTNodeImporter::VisitObjCPropertyDecl(ObjCPropertyDecl *D) {
   }
 
   // Import the type.
-  TypeSourceInfo *T = Importer.Import(D->getTypeSourceInfo());
-  if (!T)
+  TypeSourceInfo *TSI = Importer.Import(D->getTypeSourceInfo());
+  if (!TSI)
     return nullptr;
 
   // Create the new property.
@@ -3989,7 +3989,8 @@ Decl *ASTNodeImporter::VisitObjCPropertyDecl(ObjCPropertyDecl *D) {
                                Name.getAsIdentifierInfo(), 
                                Importer.Import(D->getAtLoc()),
                                Importer.Import(D->getLParenLoc()),
-                               T,
+                               Importer.Import(D->getType()),
+                               TSI,
                                D->getPropertyImplementation());
   Importer.Imported(D, ToProperty);
   ToProperty->setLexicalDeclContext(LexicalDC);

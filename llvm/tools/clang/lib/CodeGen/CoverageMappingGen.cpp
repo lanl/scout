@@ -475,7 +475,8 @@ struct CounterCoverageMappingBuilder
   /// files, this adjusts our current region stack and creates the file regions
   /// for the exited file.
   void handleFileExit(SourceLocation NewLoc) {
-    if (SM.isWrittenInSameFile(MostRecentLocation, NewLoc))
+    if (NewLoc.isInvalid() ||
+        SM.isWrittenInSameFile(MostRecentLocation, NewLoc))
       return;
 
     // If NewLoc is not in a file that contains MostRecentLocation, walk up to
@@ -806,6 +807,9 @@ struct CounterCoverageMappingBuilder
 
   void VisitIfStmt(const IfStmt *S) {
     extendRegion(S);
+    // Extend into the condition before we propagate through it below - this is
+    // needed to handle macros that generate the "if" but not the condition.
+    extendRegion(S->getCond());
 
     Counter ParentCount = getRegion().getCounter();
     Counter ThenCount = getRegionCounter(S);
