@@ -429,7 +429,7 @@ void ARMAsmPrinter::emitInlineAsmEnd(const MCSubtargetInfo &StartInfo,
 }
 
 void ARMAsmPrinter::EmitStartOfAsmFile(Module &M) {
-  Triple TT(TM.getTargetTriple());
+  const Triple &TT = TM.getTargetTriple();
   // Use unified assembler syntax.
   OutStreamer->EmitAssemblerFlag(MCAF_SyntaxUnified);
 
@@ -473,7 +473,7 @@ emitNonLazySymbolPointer(MCStreamer &OutStreamer, MCSymbol *StubLabel,
 
 
 void ARMAsmPrinter::EmitEndOfAsmFile(Module &M) {
-  Triple TT(TM.getTargetTriple());
+  const Triple &TT = TM.getTargetTriple();
   if (TT.isOSBinFormatMachO()) {
     // All darwin targets use mach-o.
     const TargetLoweringObjectFileMachO &TLOFMacho =
@@ -564,7 +564,7 @@ void ARMAsmPrinter::emitAttributes() {
   // anyhow.
   // FIXME: For ifunc related functions we could iterate over and look
   // for a feature string that doesn't match the default one.
-  const Triple TT(TM.getTargetTriple());
+  const Triple &TT = TM.getTargetTriple();
   StringRef CPU = TM.getTargetCPU();
   StringRef FS = TM.getTargetFeatureString();
   std::string ArchFS = ARM_MC::ParseARMTriple(TT, CPU);
@@ -630,7 +630,7 @@ void ARMAsmPrinter::emitAttributes() {
     } else if (STI.hasVFP4())
       ATS.emitFPU(ARM::FK_NEON_VFPV4);
     else
-      ATS.emitFPU(ARM::FK_NEON);
+      ATS.emitFPU(STI.hasFP16() ? ARM::FK_NEON_FP16 : ARM::FK_NEON);
     // Emit Tag_Advanced_SIMD_arch for ARMv8 architecture
     if (STI.hasV8Ops())
       ATS.emitAttribute(ARMBuildAttrs::Advanced_SIMD_arch,
@@ -648,7 +648,13 @@ void ARMAsmPrinter::emitAttributes() {
                   ? (STI.isFPOnlySP() ? ARM::FK_FPV4_SP_D16 : ARM::FK_VFPV4_D16)
                   : ARM::FK_VFPV4);
     else if (STI.hasVFP3())
-      ATS.emitFPU(STI.hasD16() ? ARM::FK_VFPV3_D16 : ARM::FK_VFPV3);
+      ATS.emitFPU(STI.hasD16()
+                  // +d16
+                  ? (STI.isFPOnlySP()
+                     ? (STI.hasFP16() ? ARM::FK_VFPV3XD_FP16 : ARM::FK_VFPV3XD)
+                     : (STI.hasFP16() ? ARM::FK_VFPV3_D16_FP16 : ARM::FK_VFPV3_D16))
+                  // -d16
+                  : (STI.hasFP16() ? ARM::FK_VFPV3_FP16 : ARM::FK_VFPV3));
     else if (STI.hasVFP2())
       ATS.emitFPU(ARM::FK_VFPV2);
   }

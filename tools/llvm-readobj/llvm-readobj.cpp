@@ -40,7 +40,6 @@
 #include <string>
 #include <system_error>
 
-
 using namespace llvm;
 using namespace llvm::object;
 
@@ -90,6 +89,10 @@ namespace opts {
   cl::alias RelocationsShort("r",
     cl::desc("Alias for --relocations"),
     cl::aliasopt(Relocations));
+
+  // -dyn-relocations
+  cl::opt<bool> DynRelocs("dyn-relocations",
+    cl::desc("Display the dynamic relocation entries in the file"));
 
   // -symbols, -t
   cl::opt<bool> Symbols("symbols",
@@ -152,6 +155,10 @@ namespace opts {
   cl::opt<bool> MipsABIFlags("mips-abi-flags",
                              cl::desc("Display the MIPS.abiflags section"));
 
+  // -mips-reginfo
+  cl::opt<bool> MipsReginfo("mips-reginfo",
+                            cl::desc("Display the MIPS .reginfo section"));
+
   // -coff-imports
   cl::opt<bool>
   COFFImports("coff-imports", cl::desc("Display the PE/COFF import table"));
@@ -169,6 +176,12 @@ namespace opts {
   cl::opt<bool>
   COFFBaseRelocs("coff-basereloc",
                  cl::desc("Display the PE/COFF .reloc section"));
+
+  // -stackmap
+  cl::opt<bool>
+  PrintStackMap("stackmap",
+                cl::desc("Display contents of stackmap section"));
+
 } // namespace opts
 
 static int ReturnValue = EXIT_SUCCESS;
@@ -276,6 +289,8 @@ static void dumpObject(const ObjectFile *Obj) {
     Dumper->printSections();
   if (opts::Relocations)
     Dumper->printRelocations();
+  if (opts::DynRelocs)
+    Dumper->printDynamicRelocations();
   if (opts::Symbols)
     Dumper->printSymbols();
   if (opts::DynamicSymbols)
@@ -296,6 +311,8 @@ static void dumpObject(const ObjectFile *Obj) {
       Dumper->printMipsPLTGOT();
     if (opts::MipsABIFlags)
       Dumper->printMipsABIFlags();
+    if (opts::MipsReginfo)
+      Dumper->printMipsReginfo();
   }
   if (opts::COFFImports)
     Dumper->printCOFFImports();
@@ -305,8 +322,10 @@ static void dumpObject(const ObjectFile *Obj) {
     Dumper->printCOFFDirectives();
   if (opts::COFFBaseRelocs)
     Dumper->printCOFFBaseReloc();
-}
 
+  if (opts::PrintStackMap)
+    Dumper->printStackMap();
+}
 
 /// @brief Dumps each object file in \a Arc;
 static void dumpArchive(const Archive *Arc) {
@@ -368,14 +387,10 @@ static void dumpInput(StringRef File) {
     reportError(File, readobj_error::unrecognized_file_format);
 }
 
-
 int main(int argc, const char *argv[]) {
   sys::PrintStackTraceOnErrorSignal();
   PrettyStackTraceProgram X(argc, argv);
   llvm_shutdown_obj Y;
-
-  // Initialize targets.
-  llvm::InitializeAllTargetInfos();
 
   // Register the target printer for --version.
   cl::AddExtraVersionPrinter(TargetRegistry::printRegisteredTargetsForVersion);
