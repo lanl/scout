@@ -2296,6 +2296,8 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   LLVMContext& C = getLLVMContext();
   auto R = CGM.getScoutRuntime();
   
+  B.CreateGlobalStringPtr(CGM.getCodeGenOpts().ScoutPTXDir, "scout.ptx.dir");
+  
   MeshDecl* MD = cast<MeshDecl>(S.getMeshType()->getDecl());
   
   Value* MeshBaseAddr;

@@ -262,9 +262,12 @@ public:
 
     void finishRenderall(){
       Module* module = m_.module();
-
+      
       IRBuilder<> B(context_);
 
+      Value* ptxDir = module->getNamedGlobal("scout.ptx.dir");
+      assert(ptxDir);
+      
       BasicBlock* b = BasicBlock::Create(context_, "entry", renderallFunc_);
       B.SetInsertPoint(b);
 
@@ -287,8 +290,9 @@ public:
       Function* f = module->getFunction("__scrt_volren_init_kernel");
       
       ValueVec args = 
-        {B.CreateBitCast(B.CreateGlobalStringPtr(meshName), m_.stringTy),
-         ptx, kernelName, windowPtr, width, height, depth};
+        {B.CreateBitCast(ptxDir, m_.stringTy),
+          B.CreateBitCast(B.CreateGlobalStringPtr(meshName), m_.stringTy),
+          ptx, kernelName, windowPtr, width, height, depth};
       
       B.CreateCall(f, args);
 
@@ -371,7 +375,9 @@ public:
     TypeVec params;
 
     params = 
-      {stringTy, stringTy, stringTy, voidPtrTy, int32Ty, int32Ty, int32Ty};
+      {stringTy, stringTy, stringTy, stringTy,
+        voidPtrTy, int32Ty, int32Ty, int32Ty};
+    
     createFunction("__scrt_volren_init_kernel", voidTy, params);
 
     params = {stringTy, stringTy, voidPtrTy, int32Ty, int8Ty};

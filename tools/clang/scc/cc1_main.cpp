@@ -161,6 +161,9 @@ int cc1_main(ArrayRef<const char *> Argv,
       Clang->getHeaderSearchOpts().ScoutResourceDir.empty())
     Clang->getHeaderSearchOpts().ScoutResourceDir =
       CompilerInvocation::GetScoutResourcesPath(Argv0, MainAddr);
+
+  Clang->getCodeGenOpts().ScoutPTXDir =
+    CompilerInvocation::GetScoutPTXPath(Argv0, MainAddr);
   
   // Create the actual diagnostics engine.
   Clang->createDiagnostics();

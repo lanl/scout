@@ -274,7 +274,7 @@ public:
 
   class PTXModule{
   public:    
-    PTXModule(const char* ptx){
+    PTXModule(const char* scoutPtxDir, const char* ptx){
       CUlinkState linkState;
  
       CUjit_option options[6];
@@ -297,10 +297,12 @@ public:
       CUresult err = cuLinkCreate(6, options, values, &linkState);
       check(err);
 
+      string path = scoutPtxDir;
+      path += "/cuda_compile_ptx_generated_volumeRender_kernel.cu.ptx";
+
       err = 
         cuLinkAddFile(linkState, CU_JIT_INPUT_PTX,
-                      "/Users/nickm/scout/build/lib/Runtime/"
-                      "cuda_compile_ptx_generated_volumeRender_kernel.cu.ptx",
+                      path.c_str(),
                       0, 0, 0);
       check(err);
 
@@ -561,7 +563,8 @@ public:
     check(err);
   }
 
-  void initKernel(const char* meshName,
+  void initKernel(const char* scoutPtxDir,
+                  const char* meshName,
                   const char* ptx,
                   const char* kernelName,
                   void* window,
@@ -592,7 +595,7 @@ public:
     else{
       fstream fstr;
 
-      module = new PTXModule(ptx);
+      module = new PTXModule(scoutPtxDir, ptx);
       moduleMap_[meshName] = module;
     }
 
@@ -656,7 +659,6 @@ RenderallRuntime::PTXModule::createKernel(Mesh* mesh,
                                           uint32_t width,
                                           uint32_t height,
                                           uint32_t depth){
-
   CUfunction function;
   //CUresult err = cuModuleGetFunction(&function, module_, kernelName);
   CUresult err = 
@@ -686,7 +688,8 @@ namespace{
 } // namespace
 
 extern "C"
-void __scrt_volren_init_kernel(const char* meshName,
+void __scrt_volren_init_kernel(const char* scoutPtxDir,
+                               const char* meshName,
                                const char* data,
                                const char* kernelName,
                                void* window,
@@ -694,7 +697,8 @@ void __scrt_volren_init_kernel(const char* meshName,
                                uint32_t height,
                                uint32_t depth){
   RenderallRuntime* runtime = _getRuntime();
-  runtime->initKernel(meshName, data, kernelName, window, width, height, depth);
+  runtime->initKernel(scoutPtxDir, meshName, data, kernelName,
+                      window, width, height, depth);
 }
 
 extern "C"
