@@ -511,6 +511,11 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
 
   v3 = Builder.CreateMul(pd2, width1);
   v4 = Builder.CreateMul(pd4, wh1);
+
+  Builder.CreateStore(pm2, InnerInductionVar[0]);
+  Builder.CreateStore(pd2, InnerInductionVar[1]);
+  Builder.CreateStore(pd4, InnerInductionVar[2]);
+
   llvm::Value* newVertexIndex3 =
       Builder.CreateAdd(Builder.CreateAdd(xyz, v3),
           Builder.CreateAdd(pm2, v4));
@@ -528,12 +533,14 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   v3 = Builder.CreateURem(vertexPos, Two);
   v4 = Builder.CreateAdd(v2, v3);
   v5 = Builder.CreateAdd(v4, indVar);
+  Builder.CreateStore(v3, InnerInductionVar[0]);
+  Builder.CreateStore(v1, InnerInductionVar[1]);
   llvm::Value* newVertexIndex2 = Builder.CreateAdd(v5, idvw, "vertex.index.new");
   Builder.CreateBr(Merge);
 
   // rank !=2 (rank = 1)
   EmitBlock(Else2);
-  Builder.CreateStore(Builder.CreateLoad(InnerInductionVar[3], "inner.induct.x"), InnerInductionVar[0]);
+  Builder.CreateStore(vertexPos, InnerInductionVar[0]);
   llvm::Value* newVertexIndex1 = Builder.CreateAdd(vertexPos, indVar, "vertex.index.new");
   Builder.CreateBr(Merge);
 

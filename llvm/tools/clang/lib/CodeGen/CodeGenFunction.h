@@ -354,7 +354,6 @@ public:
 
   llvm::Value *MeshRank = 0;
 
-  //llvm::Value* InnerInductionVar;
   llvm::SmallVector< llvm::Value *, 4 > InnerInductionVar;
   llvm::Value* InnerIndex;
   llvm::Value* VertexIndex;

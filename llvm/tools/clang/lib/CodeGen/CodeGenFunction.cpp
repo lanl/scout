@@ -81,7 +81,6 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   Builder.SetFastMathFlags(FMF);
 
   // +===== Scout =========================================+
-  //InnerInductionVar = 0;
   InnerIndex = 0;
   VertexIndex = 0;
   CellIndex = 0;

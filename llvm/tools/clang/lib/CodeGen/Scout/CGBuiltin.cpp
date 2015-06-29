@@ -89,14 +89,19 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
        else sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
 
        llvm::Value *Val;
-       if (i == 3) {
-         Val = Builder.CreateLoad(LookupInductionVar(i),IRNameStr);
+       if (InnerForallScope) {
+         Val = Builder.CreateLoad(InnerInductionVar[i]);
        } else {
-         Val = Builder.CreateAdd(
-             Builder.CreateLoad(LookupInductionVar(i)),
-             Builder.CreateLoad(LookupMeshStart(i)),
-             IRNameStr);
-       }
+
+         if (i == 3) {
+           Val = Builder.CreateLoad(LookupInductionVar(i),IRNameStr);
+         } else {
+           Val = Builder.CreateAdd(
+               Builder.CreateLoad(LookupInductionVar(i)),
+               Builder.CreateLoad(LookupMeshStart(i)),
+               IRNameStr);
+         }
+      }
 
        sprintf(IRNameStr, "position.%s", IndexNames[i]);
        Result = Builder.CreateInsertElement(Result, Val,
@@ -109,7 +114,6 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   case Builtin::BIpositionx: {
     llvm::Value *X;
     if (InnerForallScope) {
-      llvm::errs() << "Inner Scope\n";
       X = Builder.CreateLoad(InnerInductionVar[0]);
     } else {
       X = Builder.CreateAdd(
@@ -122,19 +126,29 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   }
 
   case Builtin::BIpositiony: {
-    llvm::Value *Y = Builder.CreateAdd(
+    llvm::Value *Y;
+    if (InnerForallScope) {
+      Y = Builder.CreateLoad(InnerInductionVar[1]);
+    } else {
+      Y = Builder.CreateAdd(
            Builder.CreateLoad(LookupInductionVar(1)),
            Builder.CreateLoad(LookupMeshStart(1)),
            "position.y");
+    }
     *RV = RValue::get(Y);
     return true;
   }
 
   case Builtin::BIpositionz: {
-    llvm::Value *Z = Builder.CreateAdd(
+    llvm::Value *Z;
+    if (InnerForallScope) {
+      Z = Builder.CreateLoad(InnerInductionVar[2]);
+    } else {
+      Z = Builder.CreateAdd(
            Builder.CreateLoad(LookupInductionVar(2)),
            Builder.CreateLoad(LookupMeshStart(2)),
            "position.z");
+    }
     *RV = RValue::get(Z);
     return true;
   }
