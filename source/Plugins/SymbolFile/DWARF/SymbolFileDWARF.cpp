@@ -989,7 +989,7 @@ SymbolFileDWARF::ParseCompileUnit (DWARFCompileUnit* dwarf_cu, uint32_t cu_idx)
                             if (module_sp->RemapSourceFile(cu_file_spec.GetCString(), remapped_file))
                                 cu_file_spec.SetFile(remapped_file, false);
 
-                            LanguageType cu_language = (LanguageType)cu_die->GetAttributeValueAsUnsigned(this, dwarf_cu, DW_AT_language, 0);
+                            LanguageType cu_language = DWARFCompileUnit::LanguageTypeFromDWARF(cu_die->GetAttributeValueAsUnsigned(this, dwarf_cu, DW_AT_language, 0));
 
                             cu_sp.reset(new CompileUnit (module_sp,
                                                          dwarf_cu,
@@ -1192,11 +1192,7 @@ SymbolFileDWARF::ParseCompileUnitLanguage (const SymbolContext& sc)
     {
         const DWARFDebugInfoEntry *die = dwarf_cu->GetCompileUnitDIEOnly();
         if (die)
-        {
-            const uint32_t language = die->GetAttributeValueAsUnsigned(this, dwarf_cu, DW_AT_language, 0);
-            if (language)
-                return (lldb::LanguageType)language;
-        }
+            return DWARFCompileUnit::LanguageTypeFromDWARF(die->GetAttributeValueAsUnsigned(this, dwarf_cu, DW_AT_language, 0));
     }
     return eLanguageTypeUnknown;
 }
@@ -2321,7 +2317,7 @@ SymbolFileDWARF::ParseChildMembers
                     Type *base_class_type = ResolveTypeUID(encoding_uid);
                     if (base_class_type == NULL)
                     {
-                        GetObjectFile()->GetModule()->ReportError("0x%8.8x: DW_TAG_inheritance failed to resolve a the base class at 0x%8.8" PRIx64 " from enclosing type 0x%8.8x. \nPlease file a bug and attach the file at the start of this error message",
+                        GetObjectFile()->GetModule()->ReportError("0x%8.8x: DW_TAG_inheritance failed to resolve the base class at 0x%8.8" PRIx64 " from enclosing type 0x%8.8x. \nPlease file a bug and attach the file at the start of this error message",
                                                                   die->GetOffset(),
                                                                   encoding_uid,
                                                                   parent_die->GetOffset());
@@ -7624,7 +7620,7 @@ SymbolFileDWARF::ParseVariableDIE
                                     {
                                         if (exe_symbol->ValueIsAddress())
                                         {
-                                            const addr_t exe_file_addr = exe_symbol->GetAddress().GetFileAddress();
+                                            const addr_t exe_file_addr = exe_symbol->GetAddressRef().GetFileAddress();
                                             if (exe_file_addr != LLDB_INVALID_ADDRESS)
                                             {
                                                 if (location.Update_DW_OP_addr (exe_file_addr))

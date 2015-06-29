@@ -2246,11 +2246,12 @@ Process::CreateBreakpointSite (const BreakpointLocationSP &owner, bool use_hardw
         if (symbol && symbol->IsIndirect())
         {
             Error error;
-            load_addr = ResolveIndirectFunction (&symbol->GetAddress(), error);
+            Address symbol_address = symbol->GetAddress();
+            load_addr = ResolveIndirectFunction (&symbol_address, error);
             if (!error.Success() && show_error)
             {
                 m_target.GetDebugger().GetErrorFile()->Printf ("warning: failed to resolve indirect function at 0x%" PRIx64 " for breakpoint %i.%i: %s\n",
-                                                               symbol->GetAddress().GetLoadAddress(&m_target),
+                                                               symbol->GetLoadAddress(&m_target),
                                                                owner->GetBreakpoint().GetID(),
                                                                owner->GetID(),
                                                                error.AsCString() ? error.AsCString() : "unknown error");
@@ -2472,7 +2473,7 @@ Process::DisableSoftwareBreakpoint (BreakpointSite *bp_site)
             if (DoReadMemory (bp_addr, curr_break_op, break_op_size, error) == break_op_size)
             {
                 bool verify = false;
-                // Make sure we have the a breakpoint opcode exists at this address
+                // Make sure the breakpoint opcode exists at this address
                 if (::memcmp (curr_break_op, break_op, break_op_size) == 0)
                 {
                     break_op_found = true;
@@ -4271,7 +4272,7 @@ Process::ShouldBroadcastEvent (Event *event_ptr)
 
 
 bool
-Process::StartPrivateStateThread (bool force)
+Process::StartPrivateStateThread (bool is_secondary_thread)
 {
     Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EVENTS));
 
@@ -4279,7 +4280,7 @@ Process::StartPrivateStateThread (bool force)
     if (log)
         log->Printf ("Process::%s()%s ", __FUNCTION__, already_running ? " already running" : " starting private state thread");
 
-    if (!force && already_running)
+    if (!is_secondary_thread && already_running)
         return true;
 
     // Create a thread that watches our internal state and controls which
@@ -4303,7 +4304,8 @@ Process::StartPrivateStateThread (bool force)
     }
 
     // Create the private state thread, and start it running.
-    m_private_state_thread = ThreadLauncher::LaunchThread(thread_name, Process::PrivateStateThread, this, NULL);
+    PrivateStateThreadArgs args = {this, is_secondary_thread};
+    m_private_state_thread = ThreadLauncher::LaunchThread(thread_name, Process::PrivateStateThread, (void *) &args, NULL);
     if (m_private_state_thread.IsJoinable())
     {
         ResumePrivateStateThread();
@@ -4533,13 +4535,13 @@ Process::HandlePrivateEvent (EventSP &event_sp)
 thread_result_t
 Process::PrivateStateThread (void *arg)
 {
-    Process *proc = static_cast<Process*> (arg);
-    thread_result_t result = proc->RunPrivateStateThread();
+    PrivateStateThreadArgs *real_args = static_cast<PrivateStateThreadArgs *> (arg);
+    thread_result_t result = real_args->process->RunPrivateStateThread(real_args->is_secondary_thread);
     return result;
 }
 
 thread_result_t
-Process::RunPrivateStateThread ()
+Process::RunPrivateStateThread (bool is_secondary_thread)
 {
     bool control_only = true;
     m_private_state_control_wait.SetValue (false, eBroadcastNever);
@@ -4631,7 +4633,11 @@ Process::RunPrivateStateThread ()
         log->Printf ("Process::%s (arg = %p, pid = %" PRIu64 ") thread exiting...",
                      __FUNCTION__, static_cast<void*>(this), GetID());
 
-    m_public_run_lock.SetStopped();
+    // If we are a secondary thread, then the primary thread we are working for will have already
+    // acquired the public_run_lock, and isn't done with what it was doing yet, so don't
+    // try to change it on the way out.
+    if (!is_secondary_thread)
+        m_public_run_lock.SetStopped();
     m_private_state_control_wait.SetValue (true, eBroadcastAlways);
     m_private_state_thread.Reset();
     return NULL;

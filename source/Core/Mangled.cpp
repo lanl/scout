@@ -191,7 +191,7 @@ Mangled::Clear ()
 
 
 //----------------------------------------------------------------------
-// Compare the the string values.
+// Compare the string values.
 //----------------------------------------------------------------------
 int
 Mangled::Compare (const Mangled& a, const Mangled& b)
@@ -423,7 +423,7 @@ Mangled::MemorySize () const
 }
 
 lldb::LanguageType
-Mangled::GetLanguage ()
+Mangled::GuessLanguage () const
 {
     ConstString mangled = GetMangledName();
     if (mangled)

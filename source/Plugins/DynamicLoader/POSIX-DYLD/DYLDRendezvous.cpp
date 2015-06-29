@@ -316,6 +316,9 @@ DYLDRendezvous::TakeSnapshot(SOEntryList &entry_list)
     if (m_current.map_addr == 0)
         return false;
 
+    // Clear previous entries since we are about to obtain an up to date list.
+    entry_list.clear();
+
     for (addr_t cursor = m_current.map_addr; cursor != 0; cursor = entry.next)
     {
         if (!ReadSOEntryFromMemory(cursor, entry))
@@ -408,6 +411,18 @@ DYLDRendezvous::ReadSOEntryFromMemory(lldb::addr_t addr, SOEntry &entry)
         return false;
 
     entry.file_spec.SetFile(ReadStringFromMemory(entry.path_addr), false);
+
+    // The base_addr is not filled in for some case.
+    // Try to figure it out based on the load address of the object file.
+    // The issue observed for '/system/bin/linker' on Android L (5.0, 5.1)
+    if (entry.base_addr == 0)
+    {
+        lldb::addr_t load_addr = LLDB_INVALID_ADDRESS;
+        bool is_loaded = false;
+        Error error = m_process->GetFileLoadAddress(entry.file_spec, is_loaded, load_addr);
+        if (error.Success() && is_loaded)
+            entry.base_addr = load_addr;
+    }
 
     return true;
 }
