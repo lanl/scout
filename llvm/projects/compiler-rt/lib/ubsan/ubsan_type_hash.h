@@ -41,7 +41,10 @@ public:
 };
 
 /// \brief Get information about the dynamic type of an object.
-DynamicTypeInfo getDynamicTypeInfo(void *Object);
+DynamicTypeInfo getDynamicTypeInfoFromObject(void *Object);
+
+/// \brief Get information about the dynamic type of an object from its vtable.
+DynamicTypeInfo getDynamicTypeInfoFromVtable(void *Vtable);
 
 /// \brief Check whether the dynamic type of \p Object has a \p Type subobject
 /// at offset 0.
@@ -55,7 +58,8 @@ const unsigned VptrTypeCacheSize = 128;
 /// \code
 ///   __ubsan_vptr_type_cache[Hash % VptrTypeCacheSize] == Hash
 /// \endcode
-extern "C" HashValue __ubsan_vptr_type_cache[VptrTypeCacheSize];
+extern "C" SANITIZER_INTERFACE_ATTRIBUTE
+HashValue __ubsan_vptr_type_cache[VptrTypeCacheSize];
 
 } // namespace __ubsan
 

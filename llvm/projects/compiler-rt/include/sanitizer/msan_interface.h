@@ -16,106 +16,89 @@
 
 #include <sanitizer/common_interface_defs.h>
 
-using __sanitizer::uptr;
-using __sanitizer::sptr;
-using __sanitizer::u32;
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+  /* Set raw origin for the memory range. */
+  void __msan_set_origin(const volatile void *a, size_t size, uint32_t origin);
 
-// FIXME: document all interface functions.
+  /* Get raw origin for an address. */
+  uint32_t __msan_get_origin(const volatile void *a);
 
-SANITIZER_INTERFACE_ATTRIBUTE
-int __msan_get_track_origins();
+  /* Test that this_id is a descendant of prev_id (or they are simply equal).
+   * "descendant" here means they are part of the same chain, created with
+   * __msan_chain_origin. */
+  int __msan_origin_is_descendant_or_same(uint32_t this_id, uint32_t prev_id);
 
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_init();
+  /* Returns non-zero if tracking origins. */
+  int __msan_get_track_origins();
 
-// Print a warning and maybe return.
-// This function can die based on flags()->exit_code.
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_warning();
+  /* Returns the origin id of the latest UMR in the calling thread. */
+  uint32_t __msan_get_umr_origin();
 
-// Print a warning and die.
-// Intrumentation inserts calls to this function when building in "fast" mode
-// (i.e. -mllvm -msan-keep-going)
-SANITIZER_INTERFACE_ATTRIBUTE __attribute__((noreturn))
-void __msan_warning_noreturn();
+  /* Make memory region fully initialized (without changing its contents). */
+  void __msan_unpoison(const volatile void *a, size_t size);
 
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_unpoison(void *a, uptr size);
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_clear_and_unpoison(void *a, uptr size);
-SANITIZER_INTERFACE_ATTRIBUTE
-void* __msan_memcpy(void *dst, const void *src, uptr size);
-SANITIZER_INTERFACE_ATTRIBUTE
-void* __msan_memset(void *s, int c, uptr n);
-SANITIZER_INTERFACE_ATTRIBUTE
-void* __msan_memmove(void* dest, const void* src, uptr n);
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_copy_poison(void *dst, const void *src, uptr size);
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_copy_origin(void *dst, const void *src, uptr size);
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_move_poison(void *dst, const void *src, uptr size);
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_poison(void *a, uptr size);
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_poison_stack(void *a, uptr size);
+  /* Make a null-terminated string fully initialized (without changing its
+     contents). */
+  void __msan_unpoison_string(const volatile char *a);
 
-// Copy size bytes from src to dst and unpoison the result.
-// Useful to implement unsafe loads.
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_load_unpoisoned(void *src, uptr size, void *dst);
+  /* Make memory region fully uninitialized (without changing its contents).
+     This is a legacy interface that does not update origin information. Use
+     __msan_allocated_memory() instead. */
+  void __msan_poison(const volatile void *a, size_t size);
 
-// Returns the offset of the first (at least partially) poisoned byte,
-// or -1 if the whole range is good.
-SANITIZER_INTERFACE_ATTRIBUTE
-sptr __msan_test_shadow(const void *x, uptr size);
+  /* Make memory region partially uninitialized (without changing its contents).
+   */
+  void __msan_partial_poison(const volatile void *data, void *shadow,
+                             size_t size);
 
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_set_origin(void *a, uptr size, u32 origin);
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_set_alloca_origin(void *a, uptr size, const char *descr);
-SANITIZER_INTERFACE_ATTRIBUTE
-u32 __msan_get_origin(void *a);
+  /* Returns the offset of the first (at least partially) poisoned byte in the
+     memory range, or -1 if the whole range is good. */
+  intptr_t __msan_test_shadow(const volatile void *x, size_t size);
 
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_clear_on_return();
+  /* Checks that memory range is fully initialized, and reports an error if it
+   * is not. */
+  void __msan_check_mem_is_initialized(const volatile void *x, size_t size);
 
-// Default: -1 (don't exit on error).
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_set_exit_code(int exit_code);
+  /* Set exit code when error(s) were detected.
+     Value of 0 means don't change the program exit code. */
+  void __msan_set_exit_code(int exit_code);
 
-SANITIZER_INTERFACE_ATTRIBUTE
-int __msan_set_poison_in_malloc(int do_poison);
+  /* For testing:
+     __msan_set_expect_umr(1);
+     ... some buggy code ...
+     __msan_set_expect_umr(0);
+     The last line will verify that a UMR happened. */
+  void __msan_set_expect_umr(int expect_umr);
 
-// For testing.
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_set_expect_umr(int expect_umr);
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_break_optimization(void *x);
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_print_shadow(const void *x, uptr size);
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_print_param_shadow();
-SANITIZER_INTERFACE_ATTRIBUTE
-int  __msan_has_dynamic_component();
+  /* Change the value of keep_going flag. Non-zero value means don't terminate
+     program execution when an error is detected. This will not affect error in
+     modules that were compiled without the corresponding compiler flag. */
+  void __msan_set_keep_going(int keep_going);
 
-// Returns x such that %fs:x is the first byte of __msan_retval_tls.
-SANITIZER_INTERFACE_ATTRIBUTE
-int __msan_get_retval_tls_offset();
-SANITIZER_INTERFACE_ATTRIBUTE
-int __msan_get_param_tls_offset();
+  /* Print shadow and origin for the memory range to stderr in a human-readable
+     format. */
+  void __msan_print_shadow(const volatile void *x, size_t size);
 
-// For testing.
-SANITIZER_INTERFACE_ATTRIBUTE
-u32 __msan_get_origin_tls();
-SANITIZER_INTERFACE_ATTRIBUTE
-const char *__msan_get_origin_descr_if_stack(u32 id);
-SANITIZER_INTERFACE_ATTRIBUTE
-void __msan_partial_poison(void* data, void* shadow, uptr size);
+  /* Print shadow for the memory range to stderr in a minimalistic
+     human-readable format. */
+  void __msan_dump_shadow(const volatile void *x, size_t size);
+
+  /* Returns true if running under a dynamic tool (DynamoRio-based). */
+  int  __msan_has_dynamic_component();
+
+  /* Tell MSan about newly allocated memory (ex.: custom allocator).
+     Memory will be marked uninitialized, with origin at the call site. */
+  void __msan_allocated_memory(const volatile void* data, size_t size);
+
+  /* This function may be optionally provided by user and should return
+     a string containing Msan runtime options. See msan_flags.h for details. */
+  const char* __msan_default_options();
+
+  /* Sets the callback to be called right before death on error.
+     Passing 0 will unset the callback. */
+  void __msan_set_death_callback(void (*callback)(void));
 
 #ifdef __cplusplus
 }  // extern "C"

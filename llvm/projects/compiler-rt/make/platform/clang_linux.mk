@@ -8,14 +8,12 @@ Configs :=
 
 # We don't currently have any general purpose way to target architectures other
 # than the compiler defaults (because there is no generalized way to invoke
-# cross compilers). For now, we just find the target archicture of the compiler
-# and only define configurations we know that compiler can generate.
+# cross compilers). For now, we just find the target architecture of the
+# compiler and only define configurations we know that compiler can generate.
 CompilerTargetTriple := $(shell \
-	$(CC) -v 2>&1 | grep 'Target:' | cut -d' ' -f2)
-ifneq ($(DEBUGMAKE),)
+	LANG=C $(CC) -v 2>&1 | grep 'Target:' | cut -d' ' -f2)
 ifeq ($(CompilerTargetTriple),)
 $(error "unable to infer compiler target triple for $(CC)")
-endif
 endif
 
 # Only define configs if we detected a linux target.
@@ -51,75 +49,37 @@ endif
 
 # Build runtime libraries for i386.
 ifeq ($(call contains,$(SupportedArches),i386),true)
-Configs += full-i386 profile-i386 asan-i386 ubsan-i386
-Arch.full-i386 := i386
+Configs += builtins-i386 profile-i386
+Arch.builtins-i386 := i386
 Arch.profile-i386 := i386
-Arch.asan-i386 := i386
-Arch.ubsan-i386 := i386
 endif
 
 # Build runtime libraries for x86_64.
 ifeq ($(call contains,$(SupportedArches),x86_64),true)
-Configs += full-x86_64 profile-x86_64 asan-x86_64 tsan-x86_64 ubsan-x86_64
-Arch.full-x86_64 := x86_64
+Configs += builtins-x86_64 profile-x86_64
+Arch.builtins-x86_64 := x86_64
 Arch.profile-x86_64 := x86_64
-Arch.asan-x86_64 := x86_64
-Arch.tsan-x86_64 := x86_64
-Arch.ubsan-x86_64 := x86_64
-endif
-
-ifneq ($(LLVM_ANDROID_TOOLCHAIN_DIR),)
-Configs += asan-arm-android
-Arch.asan-arm-android := arm-android
 endif
 
 endif
+
 endif
 
 ###
 
 CFLAGS := -Wall -Werror -O3 -fomit-frame-pointer
 
-CFLAGS.full-i386 := $(CFLAGS) -m32
-CFLAGS.full-x86_64 := $(CFLAGS) -m64
+CFLAGS.builtins-i386 := $(CFLAGS) -m32
+CFLAGS.builtins-x86_64 := $(CFLAGS) -m64
 CFLAGS.profile-i386 := $(CFLAGS) -m32
 CFLAGS.profile-x86_64 := $(CFLAGS) -m64
-CFLAGS.asan-i386 := $(CFLAGS) -m32 -fPIE -fno-builtin
-CFLAGS.asan-x86_64 := $(CFLAGS) -m64 -fPIE -fno-builtin
-CFLAGS.tsan-x86_64 := $(CFLAGS) -m64 -fPIE -fno-builtin
-CFLAGS.ubsan-i386 := $(CFLAGS) -m32 -fPIE -fno-builtin
-CFLAGS.ubsan-x86_64 := $(CFLAGS) -m64 -fPIE -fno-builtin
 
-SHARED_LIBRARY.asan-arm-android := 1
-ANDROID_COMMON_FLAGS := -target arm-linux-androideabi \
-	--sysroot=$(LLVM_ANDROID_TOOLCHAIN_DIR)/sysroot \
-	-B$(LLVM_ANDROID_TOOLCHAIN_DIR)
-CFLAGS.asan-arm-android := $(CFLAGS) -fPIC -fno-builtin \
-	$(ANDROID_COMMON_FLAGS) -mllvm -arm-enable-ehabi
-LDFLAGS.asan-arm-android := $(LDFLAGS) $(ANDROID_COMMON_FLAGS) -ldl
-
-# Use our stub SDK as the sysroot to support more portable building. For now we
-# just do this for the non-ASAN modules, because the stub SDK doesn't have
-# enough support to build ASAN.
-CFLAGS.full-i386 += --sysroot=$(ProjSrcRoot)/SDKs/linux
-CFLAGS.full-x86_64 += --sysroot=$(ProjSrcRoot)/SDKs/linux
-CFLAGS.profile-i386 += --sysroot=$(ProjSrcRoot)/SDKs/linux
-CFLAGS.profile-x86_64 += --sysroot=$(ProjSrcRoot)/SDKs/linux
-
-FUNCTIONS.full-i386 := $(CommonFunctions) $(ArchFunctions.i386)
-FUNCTIONS.full-x86_64 := $(CommonFunctions) $(ArchFunctions.x86_64)
-FUNCTIONS.profile-i386 := GCDAProfiling
-FUNCTIONS.profile-x86_64 := GCDAProfiling
-FUNCTIONS.asan-i386 := $(AsanFunctions) $(InterceptionFunctions) \
-                                        $(SanitizerCommonFunctions)
-FUNCTIONS.asan-x86_64 := $(AsanFunctions) $(InterceptionFunctions) \
-                                          $(SanitizerCommonFunctions)
-FUNCTIONS.asan-arm-android := $(AsanFunctions) $(InterceptionFunctions) \
-                                          $(SanitizerCommonFunctions)
-FUNCTIONS.tsan-x86_64 := $(TsanFunctions) $(InterceptionFunctions) \
-                                          $(SanitizerCommonFunctions)
-FUNCTIONS.ubsan-i386 := $(UbsanFunctions) $(SanitizerCommonFunctions)
-FUNCTIONS.ubsan-x86_64 := $(UbsanFunctions) $(SanitizerCommonFunctions)
+FUNCTIONS.builtins-i386 := $(CommonFunctions) $(ArchFunctions.i386)
+FUNCTIONS.builtins-x86_64 := $(CommonFunctions) $(ArchFunctions.x86_64)
+FUNCTIONS.profile-i386 := GCDAProfiling InstrProfiling InstrProfilingBuffer \
+                          InstrProfilingFile InstrProfilingPlatformOther \
+                          InstrProfilingRuntime
+FUNCTIONS.profile-x86_64 := $(FUNCTIONS.profile-i386)
 
 # Always use optimized variants.
 OPTIMIZED := 1

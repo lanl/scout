@@ -11,33 +11,30 @@
 //
 // Code for ASan stack trace.
 //===----------------------------------------------------------------------===//
-#include "asan_flags.h"
+#include "asan_internal.h"
 #include "asan_stack.h"
-#include "sanitizer/asan_interface.h"
+#include "sanitizer_common/sanitizer_atomic.h"
 
 namespace __asan {
 
-static bool MaybeCallAsanSymbolize(const void *pc, char *out_buffer,
-                                   int out_size) {
-  return (&__asan_symbolize) ? __asan_symbolize(pc, out_buffer, out_size)
-                             : false;
+static atomic_uint32_t malloc_context_size;
+
+void SetMallocContextSize(u32 size) {
+  atomic_store(&malloc_context_size, size, memory_order_release);
 }
 
-void PrintStack(StackTrace *stack) {
-  stack->PrintStack(stack->trace, stack->size, flags()->symbolize,
-                    flags()->strip_path_prefix, MaybeCallAsanSymbolize);
+u32 GetMallocContextSize() {
+  return atomic_load(&malloc_context_size, memory_order_acquire);
 }
 
 }  // namespace __asan
 
 // ------------------ Interface -------------- {{{1
 
-// Provide default implementation of __asan_symbolize that does nothing
-// and may be overriden by user if he wants to use his own symbolization.
-// ASan on Windows has its own implementation of this.
-#if !defined(_WIN32) && !SANITIZER_SUPPORTS_WEAK_HOOKS
-SANITIZER_WEAK_ATTRIBUTE SANITIZER_INTERFACE_ATTRIBUTE NOINLINE
-bool __asan_symbolize(const void *pc, char *out_buffer, int out_size) {
-  return false;
+extern "C" {
+SANITIZER_INTERFACE_ATTRIBUTE
+void __sanitizer_print_stack_trace() {
+  using namespace __asan;
+  PRINT_CURRENT_STACK();
 }
-#endif
+}  // extern "C"

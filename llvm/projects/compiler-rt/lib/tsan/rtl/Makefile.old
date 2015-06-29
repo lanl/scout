@@ -1,27 +1,26 @@
-CXXFLAGS = -fPIE -g -Wall -Werror -fno-builtin -DTSAN_DEBUG=$(DEBUG)
+CXXFLAGS = -std=c++11 -fPIE -g -Wall -Werror -fno-builtin -msse3 -DSANITIZER_DEBUG=$(DEBUG) -DTSAN_CONTAINS_UBSAN=0
+CLANG=clang
 ifeq ($(DEBUG), 0)
   CXXFLAGS += -O3
-endif
-ifeq ($(CXX), clang++)
-  CXXFLAGS+= -Wgnu
 endif
 
 # For interception. FIXME: move interception one level higher.
 INTERCEPTION=../../interception
 COMMON=../../sanitizer_common
 INCLUDES= -I../.. -I../../../include
-EXTRA_CXXFLAGS=-fno-exceptions
+EXTRA_CXXFLAGS=-fno-exceptions -fno-rtti
 NO_SYSROOT=--sysroot=.
 CXXFLAGS+=$(EXTRA_CXXFLAGS)
 CXXFLAGS+=$(CFLAGS)
 ifeq ($(DEBUG), 0)
   CXXFLAGS+=-fomit-frame-pointer
 ifeq ($(CXX), g++)
+  CXXFLAGS+=-Wno-maybe-uninitialized
   CXXFLAGS+=-Wframe-larger-than=512
 endif  # CXX=g++
 endif  # DEBUG=0
 
-ifeq ($(CXX), clang++)
+ifeq ($(CXX), $(CLANG)++)
   # Global constructors are banned.
   CXXFLAGS+=-Wglobal-constructors
 endif
@@ -51,6 +50,8 @@ LIBTSAN_OBJ=$(patsubst %.cc,%.o,$(LIBTSAN_SRC)) \
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 %.o: $(COMMON)/%.cc Makefile.old $(LIBTSAN_HEADERS)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+%.o: %.S
+	$(CXX) $(INCLUDES) -o $@ -c $<
 
 libtsan.a: $(LIBTSAN_OBJ)
 	ar ru $@ $(LIBTSAN_OBJ)

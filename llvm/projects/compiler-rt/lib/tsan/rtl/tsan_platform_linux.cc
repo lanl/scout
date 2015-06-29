@@ -9,19 +9,23 @@
 //
 // This file is a part of ThreadSanitizer (TSan), a race detector.
 //
-// Linux-specific code.
+// Linux- and FreeBSD-specific code.
 //===----------------------------------------------------------------------===//
 
-#ifdef __linux__
+
+#include "sanitizer_common/sanitizer_platform.h"
+#if SANITIZER_LINUX || SANITIZER_FREEBSD
 
 #include "sanitizer_common/sanitizer_common.h"
 #include "sanitizer_common/sanitizer_libc.h"
+#include "sanitizer_common/sanitizer_posix.h"
 #include "sanitizer_common/sanitizer_procmaps.h"
+#include "sanitizer_common/sanitizer_stoptheworld.h"
+#include "sanitizer_common/sanitizer_stackdepot.h"
 #include "tsan_platform.h"
 #include "tsan_rtl.h"
 #include "tsan_flags.h"
 
-#include <asm/prctl.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
@@ -30,8 +34,8 @@
 #include <string.h>
 #include <stdarg.h>
 #include <sys/mman.h>
-#include <sys/prctl.h>
 #include <sys/syscall.h>
+#include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/resource.h>
@@ -40,111 +44,235 @@
 #include <errno.h>
 #include <sched.h>
 #include <dlfcn.h>
+#if SANITIZER_LINUX
+#define __need_res_state
+#include <resolv.h>
+#endif
 
-extern "C" int arch_prctl(int code, __sanitizer::uptr *addr);
+#ifdef sa_handler
+# undef sa_handler
+#endif
+
+#ifdef sa_sigaction
+# undef sa_sigaction
+#endif
+
+#if SANITIZER_FREEBSD
+extern "C" void *__libc_stack_end;
+void *__libc_stack_end = 0;
+#endif
 
 namespace __tsan {
 
-#ifndef TSAN_GO
-ScopedInRtl::ScopedInRtl()
-    : thr_(cur_thread()) {
-  in_rtl_ = thr_->in_rtl;
-  thr_->in_rtl++;
-  errno_ = errno;
-}
+static uptr g_data_start;
+static uptr g_data_end;
 
-ScopedInRtl::~ScopedInRtl() {
-  thr_->in_rtl--;
-  errno = errno_;
-  CHECK_EQ(in_rtl_, thr_->in_rtl);
-}
+enum {
+  MemTotal  = 0,
+  MemShadow = 1,
+  MemMeta   = 2,
+  MemFile   = 3,
+  MemMmap   = 4,
+  MemTrace  = 5,
+  MemHeap   = 6,
+  MemOther  = 7,
+  MemCount  = 8,
+};
+
+void FillProfileCallback(uptr p, uptr rss, bool file,
+                         uptr *mem, uptr stats_size) {
+  mem[MemTotal] += rss;
+  if (p >= kShadowBeg && p < kShadowEnd)
+    mem[MemShadow] += rss;
+  else if (p >= kMetaShadowBeg && p < kMetaShadowEnd)
+    mem[MemMeta] += rss;
+#ifndef SANITIZER_GO
+  else if (p >= kHeapMemBeg && p < kHeapMemEnd)
+    mem[MemHeap] += rss;
+  else if (p >= kLoAppMemBeg && p < kLoAppMemEnd)
+    mem[file ? MemFile : MemMmap] += rss;
+  else if (p >= kHiAppMemBeg && p < kHiAppMemEnd)
+    mem[file ? MemFile : MemMmap] += rss;
 #else
-ScopedInRtl::ScopedInRtl() {
+  else if (p >= kAppMemBeg && p < kAppMemEnd)
+    mem[file ? MemFile : MemMmap] += rss;
+#endif
+  else if (p >= kTraceMemBeg && p < kTraceMemEnd)
+    mem[MemTrace] += rss;
+  else
+    mem[MemOther] += rss;
 }
 
-ScopedInRtl::~ScopedInRtl() {
+void WriteMemoryProfile(char *buf, uptr buf_size, uptr nthread, uptr nlive) {
+  uptr mem[MemCount] = {};
+  __sanitizer::GetMemoryProfile(FillProfileCallback, mem, 7);
+  StackDepotStats *stacks = StackDepotGetStats();
+  internal_snprintf(buf, buf_size,
+      "RSS %zd MB: shadow:%zd meta:%zd file:%zd mmap:%zd"
+      " trace:%zd heap:%zd other:%zd stacks=%zd[%zd] nthr=%zd/%zd\n",
+      mem[MemTotal] >> 20, mem[MemShadow] >> 20, mem[MemMeta] >> 20,
+      mem[MemFile] >> 20, mem[MemMmap] >> 20, mem[MemTrace] >> 20,
+      mem[MemHeap] >> 20, mem[MemOther] >> 20,
+      stacks->allocated >> 20, stacks->n_uniq_ids,
+      nlive, nthread);
+}
+
+#if SANITIZER_LINUX
+void FlushShadowMemoryCallback(
+    const SuspendedThreadsList &suspended_threads_list,
+    void *argument) {
+  FlushUnneededShadowMemory(kShadowBeg, kShadowEnd - kShadowBeg);
 }
 #endif
 
-uptr GetShadowMemoryConsumption() {
-  return 0;
-}
-
 void FlushShadowMemory() {
-  FlushUnneededShadowMemory(kLinuxShadowBeg, kLinuxShadowEnd - kLinuxShadowBeg);
+#if SANITIZER_LINUX
+  StopTheWorld(FlushShadowMemoryCallback, 0);
+#endif
 }
 
-#ifndef TSAN_GO
+#ifndef SANITIZER_GO
 static void ProtectRange(uptr beg, uptr end) {
-  ScopedInRtl in_rtl;
   CHECK_LE(beg, end);
   if (beg == end)
     return;
-  if (beg != (uptr)Mprotect(beg, end - beg)) {
+  if (beg != (uptr)MmapNoAccess(beg, end - beg)) {
     Printf("FATAL: ThreadSanitizer can not protect [%zx,%zx]\n", beg, end);
     Printf("FATAL: Make sure you are not using unlimited stack\n");
     Die();
   }
 }
-#endif
 
-#ifndef TSAN_GO
-void InitializeShadowMemory() {
-  uptr shadow = (uptr)MmapFixedNoReserve(kLinuxShadowBeg,
-    kLinuxShadowEnd - kLinuxShadowBeg);
-  if (shadow != kLinuxShadowBeg) {
-    Printf("FATAL: ThreadSanitizer can not mmap the shadow memory\n");
-    Printf("FATAL: Make sure to compile with -fPIE and "
-               "to link with -pie (%p, %p).\n", shadow, kLinuxShadowBeg);
-    Die();
+// Mark shadow for .rodata sections with the special kShadowRodata marker.
+// Accesses to .rodata can't race, so this saves time, memory and trace space.
+static void MapRodata() {
+  // First create temp file.
+  const char *tmpdir = GetEnv("TMPDIR");
+  if (tmpdir == 0)
+    tmpdir = GetEnv("TEST_TMPDIR");
+#ifdef P_tmpdir
+  if (tmpdir == 0)
+    tmpdir = P_tmpdir;
+#endif
+  if (tmpdir == 0)
+    return;
+  char name[256];
+  internal_snprintf(name, sizeof(name), "%s/tsan.rodata.%d",
+                    tmpdir, (int)internal_getpid());
+  uptr openrv = internal_open(name, O_RDWR | O_CREAT | O_EXCL, 0600);
+  if (internal_iserror(openrv))
+    return;
+  internal_unlink(name);  // Unlink it now, so that we can reuse the buffer.
+  fd_t fd = openrv;
+  // Fill the file with kShadowRodata.
+  const uptr kMarkerSize = 512 * 1024 / sizeof(u64);
+  InternalScopedBuffer<u64> marker(kMarkerSize);
+  // volatile to prevent insertion of memset
+  for (volatile u64 *p = marker.data(); p < marker.data() + kMarkerSize; p++)
+    *p = kShadowRodata;
+  internal_write(fd, marker.data(), marker.size());
+  // Map the file into memory.
+  uptr page = internal_mmap(0, GetPageSizeCached(), PROT_READ | PROT_WRITE,
+                            MAP_PRIVATE | MAP_ANONYMOUS, fd, 0);
+  if (internal_iserror(page)) {
+    internal_close(fd);
+    return;
   }
-  const uptr kClosedLowBeg  = 0x200000;
-  const uptr kClosedLowEnd  = kLinuxShadowBeg - 1;
-  const uptr kClosedMidBeg = kLinuxShadowEnd + 1;
-  const uptr kClosedMidEnd = min(kLinuxAppMemBeg, kTraceMemBegin);
-  ProtectRange(kClosedLowBeg, kClosedLowEnd);
-  ProtectRange(kClosedMidBeg, kClosedMidEnd);
-  DPrintf("kClosedLow   %zx-%zx (%zuGB)\n",
-      kClosedLowBeg, kClosedLowEnd, (kClosedLowEnd - kClosedLowBeg) >> 30);
-  DPrintf("kLinuxShadow %zx-%zx (%zuGB)\n",
-      kLinuxShadowBeg, kLinuxShadowEnd,
-      (kLinuxShadowEnd - kLinuxShadowBeg) >> 30);
-  DPrintf("kClosedMid   %zx-%zx (%zuGB)\n",
-      kClosedMidBeg, kClosedMidEnd, (kClosedMidEnd - kClosedMidBeg) >> 30);
-  DPrintf("kLinuxAppMem %zx-%zx (%zuGB)\n",
-      kLinuxAppMemBeg, kLinuxAppMemEnd,
-      (kLinuxAppMemEnd - kLinuxAppMemBeg) >> 30);
-  DPrintf("stack        %zx\n", (uptr)&shadow);
-}
-#endif
-
-static uptr g_data_start;
-static uptr g_data_end;
-
-#ifndef TSAN_GO
-static void CheckPIE() {
-  // Ensure that the binary is indeed compiled with -pie.
-  MemoryMappingLayout proc_maps;
-  uptr start, end;
-  if (proc_maps.Next(&start, &end,
-                     /*offset*/0, /*filename*/0, /*filename_size*/0)) {
-    if ((u64)start < kLinuxAppMemBeg) {
-      Printf("FATAL: ThreadSanitizer can not mmap the shadow memory ("
-             "something is mapped at 0x%zx < 0x%zx)\n",
-             start, kLinuxAppMemBeg);
-      Printf("FATAL: Make sure to compile with -fPIE"
-             " and to link with -pie.\n");
-      Die();
+  // Map the file into shadow of .rodata sections.
+  MemoryMappingLayout proc_maps(/*cache_enabled*/true);
+  uptr start, end, offset, prot;
+  // Reusing the buffer 'name'.
+  while (proc_maps.Next(&start, &end, &offset, name, ARRAY_SIZE(name), &prot)) {
+    if (name[0] != 0 && name[0] != '['
+        && (prot & MemoryMappingLayout::kProtectionRead)
+        && (prot & MemoryMappingLayout::kProtectionExecute)
+        && !(prot & MemoryMappingLayout::kProtectionWrite)
+        && IsAppMem(start)) {
+      // Assume it's .rodata
+      char *shadow_start = (char*)MemToShadow(start);
+      char *shadow_end = (char*)MemToShadow(end);
+      for (char *p = shadow_start; p < shadow_end; p += marker.size()) {
+        internal_mmap(p, Min<uptr>(marker.size(), shadow_end - p),
+                      PROT_READ, MAP_PRIVATE | MAP_FIXED, fd, 0);
+      }
     }
   }
+  internal_close(fd);
+}
+
+void InitializeShadowMemory() {
+  // Map memory shadow.
+  uptr shadow =
+      (uptr)MmapFixedNoReserve(kShadowBeg, kShadowEnd - kShadowBeg, "shadow");
+  if (shadow != kShadowBeg) {
+    Printf("FATAL: ThreadSanitizer can not mmap the shadow memory\n");
+    Printf("FATAL: Make sure to compile with -fPIE and "
+               "to link with -pie (%p, %p).\n", shadow, kShadowBeg);
+    Die();
+  }
+  // This memory range is used for thread stacks and large user mmaps.
+  // Frequently a thread uses only a small part of stack and similarly
+  // a program uses a small part of large mmap. On some programs
+  // we see 20% memory usage reduction without huge pages for this range.
+  // FIXME: don't use constants here.
+#if defined(__x86_64__)
+  const uptr kMadviseRangeBeg  = 0x7f0000000000ull;
+  const uptr kMadviseRangeSize = 0x010000000000ull;
+#elif defined(__mips64)
+  const uptr kMadviseRangeBeg  = 0xff00000000ull;
+  const uptr kMadviseRangeSize = 0x0100000000ull;
+#endif
+  NoHugePagesInRegion(MemToShadow(kMadviseRangeBeg),
+                      kMadviseRangeSize * kShadowMultiplier);
+  // Meta shadow is compressing and we don't flush it,
+  // so it makes sense to mark it as NOHUGEPAGE to not over-allocate memory.
+  // On one program it reduces memory consumption from 5GB to 2.5GB.
+  NoHugePagesInRegion(kMetaShadowBeg, kMetaShadowEnd - kMetaShadowBeg);
+  if (common_flags()->use_madv_dontdump)
+    DontDumpShadowMemory(kShadowBeg, kShadowEnd - kShadowBeg);
+  DPrintf("memory shadow: %zx-%zx (%zuGB)\n",
+      kShadowBeg, kShadowEnd,
+      (kShadowEnd - kShadowBeg) >> 30);
+
+  // Map meta shadow.
+  uptr meta_size = kMetaShadowEnd - kMetaShadowBeg;
+  uptr meta =
+      (uptr)MmapFixedNoReserve(kMetaShadowBeg, meta_size, "meta shadow");
+  if (meta != kMetaShadowBeg) {
+    Printf("FATAL: ThreadSanitizer can not mmap the shadow memory\n");
+    Printf("FATAL: Make sure to compile with -fPIE and "
+               "to link with -pie (%p, %p).\n", meta, kMetaShadowBeg);
+    Die();
+  }
+  if (common_flags()->use_madv_dontdump)
+    DontDumpShadowMemory(meta, meta_size);
+  DPrintf("meta shadow: %zx-%zx (%zuGB)\n",
+      meta, meta + meta_size, meta_size >> 30);
+
+  MapRodata();
 }
 
 static void InitDataSeg() {
-  MemoryMappingLayout proc_maps;
+  MemoryMappingLayout proc_maps(true);
   uptr start, end, offset;
   char name[128];
+#if SANITIZER_FREEBSD
+  // On FreeBSD BSS is usually the last block allocated within the
+  // low range and heap is the last block allocated within the range
+  // 0x800000000-0x8ffffffff.
+  while (proc_maps.Next(&start, &end, &offset, name, ARRAY_SIZE(name),
+                        /*protection*/ 0)) {
+    DPrintf("%p-%p %p %s\n", start, end, offset, name);
+    if ((start & 0xffff00000000ULL) == 0 && (end & 0xffff00000000ULL) == 0 &&
+        name[0] == '\0') {
+      g_data_start = start;
+      g_data_end = end;
+    }
+  }
+#else
   bool prev_is_data = false;
-  while (proc_maps.Next(&start, &end, &offset, name, ARRAY_SIZE(name))) {
+  while (proc_maps.Next(&start, &end, &offset, name, ARRAY_SIZE(name),
+                        /*protection*/ 0)) {
     DPrintf("%p-%p %p %s\n", start, end, offset, name);
     bool is_data = offset != 0 && name[0] != 0;
     // BSS may get merged with [heap] in /proc/self/maps. This is not very
@@ -157,55 +285,42 @@ static void InitDataSeg() {
       g_data_end = end;
     prev_is_data = is_data;
   }
+#endif
   DPrintf("guessed data_start=%p data_end=%p\n",  g_data_start, g_data_end);
   CHECK_LT(g_data_start, g_data_end);
   CHECK_GE((uptr)&g_data_start, g_data_start);
   CHECK_LT((uptr)&g_data_start, g_data_end);
 }
 
-static uptr g_tls_size;
-
-#ifdef __i386__
-# define INTERNAL_FUNCTION __attribute__((regparm(3), stdcall))
-#else
-# define INTERNAL_FUNCTION
-#endif
-
-static int InitTlsSize() {
-  typedef void (*get_tls_func)(size_t*, size_t*) INTERNAL_FUNCTION;
-  get_tls_func get_tls;
-  void *get_tls_static_info_ptr = dlsym(RTLD_NEXT, "_dl_get_tls_static_info");
-  CHECK_EQ(sizeof(get_tls), sizeof(get_tls_static_info_ptr));
-  internal_memcpy(&get_tls, &get_tls_static_info_ptr,
-                  sizeof(get_tls_static_info_ptr));
-  CHECK_NE(get_tls, 0);
-  size_t tls_size = 0;
-  size_t tls_align = 0;
-  get_tls(&tls_size, &tls_align);
-  return tls_size;
-}
-#endif  // #ifndef TSAN_GO
-
-static rlim_t getlim(int res) {
-  rlimit rlim;
-  CHECK_EQ(0, getrlimit(res, &rlim));
-  return rlim.rlim_cur;
-}
-
-static void setlim(int res, rlim_t lim) {
-  // The following magic is to prevent clang from replacing it with memset.
-  volatile rlimit rlim;
-  rlim.rlim_cur = lim;
-  rlim.rlim_max = lim;
-  setrlimit(res, (rlimit*)&rlim);
-}
-
-const char *InitializePlatform() {
-  void *p = 0;
-  if (sizeof(p) == 8) {
-    // Disable core dumps, dumping of 16TB usually takes a bit long.
-    setlim(RLIMIT_CORE, 0);
+static void CheckAndProtect() {
+  // Ensure that the binary is indeed compiled with -pie.
+  MemoryMappingLayout proc_maps(true);
+  uptr p, end;
+  while (proc_maps.Next(&p, &end, 0, 0, 0, 0)) {
+    if (IsAppMem(p))
+      continue;
+    if (p >= kHeapMemEnd &&
+        p < HeapEnd())
+      continue;
+    if (p >= kVdsoBeg)  // vdso
+      break;
+    Printf("FATAL: ThreadSanitizer: unexpected memory mapping %p-%p\n", p, end);
+    Die();
   }
+
+  ProtectRange(kLoAppMemEnd, kShadowBeg);
+  ProtectRange(kShadowEnd, kMetaShadowBeg);
+  ProtectRange(kMetaShadowEnd, kTraceMemBeg);
+  // Memory for traces is mapped lazily in MapThreadTrace.
+  // Protect the whole range for now, so that user does not map something here.
+  ProtectRange(kTraceMemBeg, kTraceMemEnd);
+  ProtectRange(kTraceMemEnd, kHeapMemBeg);
+  ProtectRange(HeapEnd(), kHiAppMemBeg);
+}
+#endif  // #ifndef SANITIZER_GO
+
+void InitializePlatform() {
+  DisableCoreDumperIfNecessary();
 
   // Go maps shadow memory lazily and works fine with limited address space.
   // Unlimited stack is not a problem as well, because the executable
@@ -215,73 +330,31 @@ const char *InitializePlatform() {
     // TSan doesn't play well with unlimited stack size (as stack
     // overlaps with shadow memory). If we detect unlimited stack size,
     // we re-exec the program with limited stack size as a best effort.
-    if (getlim(RLIMIT_STACK) == (rlim_t)-1) {
+    if (StackSizeIsUnlimited()) {
       const uptr kMaxStackSize = 32 * 1024 * 1024;
-      Report("WARNING: Program is run with unlimited stack size, which "
-             "wouldn't work with ThreadSanitizer.\n");
-      Report("Re-execing with stack size limited to %zd bytes.\n",
-             kMaxStackSize);
+      VReport(1, "Program is run with unlimited stack size, which wouldn't "
+                 "work with ThreadSanitizer.\n"
+                 "Re-execing with stack size limited to %zd bytes.\n",
+              kMaxStackSize);
       SetStackSizeLimitInBytes(kMaxStackSize);
       reexec = true;
     }
 
-    if (getlim(RLIMIT_AS) != (rlim_t)-1) {
+    if (!AddressSpaceIsUnlimited()) {
       Report("WARNING: Program is run with limited virtual address space,"
              " which wouldn't work with ThreadSanitizer.\n");
       Report("Re-execing with unlimited virtual address space.\n");
-      setlim(RLIMIT_AS, -1);
+      SetAddressSpaceUnlimited();
       reexec = true;
     }
     if (reexec)
       ReExec();
   }
 
-#ifndef TSAN_GO
-  CheckPIE();
-  g_tls_size = (uptr)InitTlsSize();
+#ifndef SANITIZER_GO
+  CheckAndProtect();
+  InitTlsSize();
   InitDataSeg();
-#endif
-  return getenv(kTsanOptionsEnv);
-}
-
-void FinalizePlatform() {
-  fflush(0);
-}
-
-uptr GetTlsSize() {
-#ifndef TSAN_GO
-  return g_tls_size;
-#else
-  return 0;
-#endif
-}
-
-void GetThreadStackAndTls(bool main, uptr *stk_addr, uptr *stk_size,
-                          uptr *tls_addr, uptr *tls_size) {
-#ifndef TSAN_GO
-  arch_prctl(ARCH_GET_FS, tls_addr);
-  *tls_addr -= g_tls_size;
-  *tls_size = g_tls_size;
-
-  uptr stack_top, stack_bottom;
-  GetThreadStackTopAndBottom(main, &stack_top, &stack_bottom);
-  *stk_addr = stack_bottom;
-  *stk_size = stack_top - stack_bottom;
-
-  if (!main) {
-    // If stack and tls intersect, make them non-intersecting.
-    if (*tls_addr > *stk_addr && *tls_addr < *stk_addr + *stk_size) {
-      CHECK_GT(*tls_addr + *tls_size, *stk_addr);
-      CHECK_LE(*tls_addr + *tls_size, *stk_addr + *stk_size);
-      *stk_size -= *tls_size;
-      *tls_addr = *stk_addr + *stk_size;
-    }
-  }
-#else
-  *stk_addr = 0;
-  *stk_size = 0;
-  *tls_addr = 0;
-  *tls_size = 0;
 #endif
 }
 
@@ -289,6 +362,59 @@ bool IsGlobalVar(uptr addr) {
   return g_data_start && addr >= g_data_start && addr < g_data_end;
 }
 
+#ifndef SANITIZER_GO
+// Extract file descriptors passed to glibc internal __res_iclose function.
+// This is required to properly "close" the fds, because we do not see internal
+// closes within glibc. The code is a pure hack.
+int ExtractResolvFDs(void *state, int *fds, int nfd) {
+#if SANITIZER_LINUX
+  int cnt = 0;
+  __res_state *statp = (__res_state*)state;
+  for (int i = 0; i < MAXNS && cnt < nfd; i++) {
+    if (statp->_u._ext.nsaddrs[i] && statp->_u._ext.nssocks[i] != -1)
+      fds[cnt++] = statp->_u._ext.nssocks[i];
+  }
+  return cnt;
+#else
+  return 0;
+#endif
+}
+
+// Extract file descriptors passed via UNIX domain sockets.
+// This is requried to properly handle "open" of these fds.
+// see 'man recvmsg' and 'man 3 cmsg'.
+int ExtractRecvmsgFDs(void *msgp, int *fds, int nfd) {
+  int res = 0;
+  msghdr *msg = (msghdr*)msgp;
+  struct cmsghdr *cmsg = CMSG_FIRSTHDR(msg);
+  for (; cmsg; cmsg = CMSG_NXTHDR(msg, cmsg)) {
+    if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS)
+      continue;
+    int n = (cmsg->cmsg_len - CMSG_LEN(0)) / sizeof(fds[0]);
+    for (int i = 0; i < n; i++) {
+      fds[res++] = ((int*)CMSG_DATA(cmsg))[i];
+      if (res == nfd)
+        return res;
+    }
+  }
+  return res;
+}
+
+// Note: this function runs with async signals enabled,
+// so it must not touch any tsan state.
+int call_pthread_cancel_with_cleanup(int(*fn)(void *c, void *m,
+    void *abstime), void *c, void *m, void *abstime,
+    void(*cleanup)(void *arg), void *arg) {
+  // pthread_cleanup_push/pop are hardcore macros mess.
+  // We can't intercept nor call them w/o including pthread.h.
+  int res;
+  pthread_cleanup_push(cleanup, arg);
+  res = fn(c, m, abstime);
+  pthread_cleanup_pop(0);
+  return res;
+}
+#endif
+
 }  // namespace __tsan
 
-#endif  // #ifdef __linux__
+#endif  // SANITIZER_LINUX || SANITIZER_FREEBSD

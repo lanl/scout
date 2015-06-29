@@ -50,13 +50,17 @@ void __tsan_java_alloc(jptr ptr, jptr size) INTERFACE_ATTRIBUTE;
 void __tsan_java_free(jptr ptr, jptr size) INTERFACE_ATTRIBUTE;
 // Callback for memory move by GC.
 // Can be aggregated for several objects (preferably).
-// The ranges must not overlap.
+// The ranges can overlap.
 void __tsan_java_move(jptr src, jptr dst, jptr size) INTERFACE_ATTRIBUTE;
+// This function must be called on the finalizer thread
+// before executing a batch of finalizers.
+// It ensures necessary synchronization between
+// java object creation and finalization.
+void __tsan_java_finalize() INTERFACE_ATTRIBUTE;
 
 // Mutex lock.
 // Addr is any unique address associated with the mutex.
-// Must not be called on recursive reentry.
-// Object.wait() is handled as a pair of unlock/lock.
+// Can be called on recursive reentry.
 void __tsan_java_mutex_lock(jptr addr) INTERFACE_ATTRIBUTE;
 // Mutex unlock.
 void __tsan_java_mutex_unlock(jptr addr) INTERFACE_ATTRIBUTE;
@@ -64,6 +68,24 @@ void __tsan_java_mutex_unlock(jptr addr) INTERFACE_ATTRIBUTE;
 void __tsan_java_mutex_read_lock(jptr addr) INTERFACE_ATTRIBUTE;
 // Mutex read unlock.
 void __tsan_java_mutex_read_unlock(jptr addr) INTERFACE_ATTRIBUTE;
+// Recursive mutex lock, intended for handling of Object.wait().
+// The 'rec' value must be obtained from the previous
+// __tsan_java_mutex_unlock_rec().
+void __tsan_java_mutex_lock_rec(jptr addr, int rec) INTERFACE_ATTRIBUTE;
+// Recursive mutex unlock, intended for handling of Object.wait().
+// The return value says how many times this thread called lock()
+// w/o a pairing unlock() (i.e. how many recursive levels it unlocked).
+// It must be passed back to __tsan_java_mutex_lock_rec() to restore
+// the same recursion level.
+int __tsan_java_mutex_unlock_rec(jptr addr) INTERFACE_ATTRIBUTE;
+
+// Raw acquire/release primitives.
+// Can be used to establish happens-before edges on volatile/final fields,
+// in atomic operations, etc. release_store is the same as release, but it
+// breaks release sequence on addr (see C++ standard 1.10/7 for details).
+void __tsan_java_acquire(jptr addr) INTERFACE_ATTRIBUTE;
+void __tsan_java_release(jptr addr) INTERFACE_ATTRIBUTE;
+void __tsan_java_release_store(jptr addr) INTERFACE_ATTRIBUTE;
 
 #ifdef __cplusplus
 }  // extern "C"

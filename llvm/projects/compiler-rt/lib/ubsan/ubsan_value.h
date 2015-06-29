@@ -14,23 +14,17 @@
 #ifndef UBSAN_VALUE_H
 #define UBSAN_VALUE_H
 
-// For now, only support linux and darwin. Other platforms should be easy to
-// add, and probably work as-is.
-#if !defined(__linux__) && !defined(__APPLE__)
-#error "UBSan not supported for this platform!"
-#endif
-
+#include "sanitizer_common/sanitizer_atomic.h"
 #include "sanitizer_common/sanitizer_common.h"
 
 // FIXME: Move this out to a config header.
 #if __SIZEOF_INT128__
-typedef __int128 s128;
-typedef unsigned __int128 u128;
+__extension__ typedef __int128 s128;
+__extension__ typedef unsigned __int128 u128;
 #define HAVE_INT128_T 1
 #else
 #define HAVE_INT128_T 0
 #endif
-
 
 namespace __ubsan {
 
@@ -64,7 +58,9 @@ public:
   /// \brief Atomically acquire a copy, disabling original in-place.
   /// Exactly one call to acquire() returns a copy that isn't disabled.
   SourceLocation acquire() {
-    u32 OldColumn = __sync_lock_test_and_set(&Column, ~u32(0));
+    u32 OldColumn = __sanitizer::atomic_exchange(
+                        (__sanitizer::atomic_uint32_t *)&Column, ~u32(0),
+                        __sanitizer::memory_order_relaxed);
     return SourceLocation(Filename, Line, OldColumn);
   }
 
@@ -105,7 +101,8 @@ public:
     /// integer otherwise.
     TK_Integer = 0x0000,
     /// A floating-point type. Low 16 bits are bit width. The value
-    /// representation is a pointer to the floating-point value.
+    /// representation is that of bitcasting the floating-point value to an
+    /// integer type.
     TK_Float = 0x0001,
     /// Any other type. The value representation is unspecified.
     TK_Unknown = 0xffff
@@ -156,6 +153,14 @@ class Value {
     CHECK(getType().isIntegerTy());
     const unsigned InlineBits = sizeof(ValueHandle) * 8;
     const unsigned Bits = getType().getIntegerBitWidth();
+    return Bits <= InlineBits;
+  }
+
+  /// Is \c Val a (zero-extended) integer representation of a float?
+  bool isInlineFloat() const {
+    CHECK(getType().isFloatTy());
+    const unsigned InlineBits = sizeof(ValueHandle) * 8;
+    const unsigned Bits = getType().getFloatBitWidth();
     return Bits <= InlineBits;
   }
 
