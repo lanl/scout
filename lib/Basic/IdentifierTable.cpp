@@ -16,6 +16,7 @@
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/OperatorKinds.h"
+#include "clang/Basic/Specifiers.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/SmallString.h"
@@ -644,4 +645,19 @@ const char *clang::getOperatorSpelling(OverloadedOperatorKind Operator) {
   }
 
   llvm_unreachable("Invalid OverloadedOperatorKind!");
+}
+
+StringRef clang::getNullabilitySpelling(NullabilityKind kind,
+                                        bool isContextSensitive) {
+  switch (kind) {
+  case NullabilityKind::NonNull:
+    return isContextSensitive ? "nonnull" : "_Nonnull";
+
+  case NullabilityKind::Nullable:
+    return isContextSensitive ? "nullable" : "_Nullable";
+
+  case NullabilityKind::Unspecified:
+    return isContextSensitive ? "null_unspecified" : "_Null_unspecified";
+  }
+  llvm_unreachable("Unknown nullability kind.");
 }

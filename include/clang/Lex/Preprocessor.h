@@ -256,6 +256,10 @@ class Preprocessor : public RefCountedBase<Preprocessor> {
   /// \#pragma clang arc_cf_code_audited begin.
   SourceLocation PragmaARCCFCodeAuditedLoc;
 
+  /// \brief The source location of the currently-active
+  /// \#pragma clang assume_nonnull begin.
+  SourceLocation PragmaAssumeNonNullLoc;
+
   /// \brief True if we hit the code-completion point.
   bool CodeCompletionReached;
 
@@ -450,13 +454,16 @@ class Preprocessor : public RefCountedBase<Preprocessor> {
     MacroDirective::DefInfo findDirectiveAtLoc(SourceLocation Loc,
                                                SourceManager &SourceMgr) const {
       // FIXME: Incorporate module macros into the result of this.
-      return getLatest()->findDirectiveAtLoc(Loc, SourceMgr);
+      if (auto *Latest = getLatest())
+        return Latest->findDirectiveAtLoc(Loc, SourceMgr);
+      return MacroDirective::DefInfo();
     }
 
     void overrideActiveModuleMacros(Preprocessor &PP, IdentifierInfo *II) {
       if (auto *Info = getModuleInfo(PP, II)) {
-        for (auto *Active : Info->ActiveModuleMacros)
-          Info->OverriddenMacros.push_back(Active);
+        Info->OverriddenMacros.insert(Info->OverriddenMacros.end(),
+                                      Info->ActiveModuleMacros.begin(),
+                                      Info->ActiveModuleMacros.end());
         Info->ActiveModuleMacros.clear();
         Info->IsAmbiguous = false;
       }
@@ -1247,6 +1254,20 @@ public:
   /// arc_cf_code_audited begin.  An invalid location ends the pragma.
   void setPragmaARCCFCodeAuditedLoc(SourceLocation Loc) {
     PragmaARCCFCodeAuditedLoc = Loc;
+  }
+
+  /// \brief The location of the currently-active \#pragma clang
+  /// assume_nonnull begin.
+  ///
+  /// Returns an invalid location if there is no such pragma active.
+  SourceLocation getPragmaAssumeNonNullLoc() const {
+    return PragmaAssumeNonNullLoc;
+  }
+
+  /// \brief Set the location of the currently-active \#pragma clang
+  /// assume_nonnull begin.  An invalid location ends the pragma.
+  void setPragmaAssumeNonNullLoc(SourceLocation Loc) {
+    PragmaAssumeNonNullLoc = Loc;
   }
 
   /// \brief Set the directory in which the main file should be considered

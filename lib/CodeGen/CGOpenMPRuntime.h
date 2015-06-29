@@ -131,6 +131,21 @@ private:
     // Call to kmp_int32 __kmpc_omp_taskwait(ident_t *loc, kmp_int32
     // global_tid);
     OMPRTL__kmpc_omp_taskwait,
+    // Call to void __kmpc_taskgroup(ident_t *loc, kmp_int32 global_tid);
+    OMPRTL__kmpc_taskgroup,
+    // Call to void __kmpc_end_taskgroup(ident_t *loc, kmp_int32 global_tid);
+    OMPRTL__kmpc_end_taskgroup,
+    // Call to void __kmpc_push_proc_bind(ident_t *loc, kmp_int32 global_tid,
+    // int proc_bind);
+    OMPRTL__kmpc_push_proc_bind,
+    // Call to kmp_int32 __kmpc_omp_task_with_deps(ident_t *loc_ref, kmp_int32
+    // gtid, kmp_task_t * new_task, kmp_int32 ndeps, kmp_depend_info_t
+    // *dep_list, kmp_int32 ndeps_noalias, kmp_depend_info_t *noalias_dep_list);
+    OMPRTL__kmpc_omp_task_with_deps,
+    // Call to void __kmpc_omp_wait_deps(ident_t *loc_ref, kmp_int32
+    // gtid, kmp_int32 ndeps, kmp_depend_info_t *dep_list, kmp_int32
+    // ndeps_noalias, kmp_depend_info_t *noalias_dep_list);
+    OMPRTL__kmpc_omp_wait_deps,
   };
 
   /// \brief Values for bit flags used in the ident_t to describe the fields.
@@ -242,6 +257,16 @@ private:
   ///    deconstructors of firstprivate C++ objects */
   /// } kmp_task_t;
   QualType KmpTaskTQTy;
+  /// \brief Type typedef struct kmp_depend_info {
+  ///    kmp_intptr_t               base_addr;
+  ///    size_t                     len;
+  ///    struct {
+  ///             bool                   in:1;
+  ///             bool                   out:1;
+  ///    } flags;
+  /// } kmp_depend_info_t;
+  QualType KmpDependInfoTy;
+
 
   /// \brief Build type kmp_routine_entry_t (if not built yet).
   void emitKmpRoutineEntryT(QualType KmpInt32Ty);
@@ -388,6 +413,13 @@ public:
   /// \brief Emits code for a taskyield directive.
   virtual void emitTaskyieldCall(CodeGenFunction &CGF, SourceLocation Loc);
 
+  /// \brief Emit a taskgroup region.
+  /// \param TaskgroupOpGen Generator for the statement associated with the
+  /// given taskgroup region.
+  virtual void emitTaskgroupRegion(CodeGenFunction &CGF,
+                                   const RegionCodeGenTy &TaskgroupOpGen,
+                                   SourceLocation Loc);
+
   /// \brief Emits a single region.
   /// \param SingleOpGen Generator for the statement associated with the given
   /// single region.
@@ -401,7 +433,7 @@ public:
 
   /// \brief Emit an ordered region.
   /// \param OrderedOpGen Generator for the statement associated with the given
-  /// critical region.
+  /// ordered region.
   virtual void emitOrderedRegion(CodeGenFunction &CGF,
                                  const RegionCodeGenTy &OrderedOpGen,
                                  SourceLocation Loc);
@@ -504,6 +536,12 @@ public:
                                     llvm::Value *NumThreads,
                                     SourceLocation Loc);
 
+  /// \brief Emit call to void __kmpc_push_proc_bind(ident_t *loc, kmp_int32
+  /// global_tid, int proc_bind) to generate code for 'proc_bind' clause.
+  virtual void emitProcBindClause(CodeGenFunction &CGF,
+                                  OpenMPProcBindClauseKind ProcBind,
+                                  SourceLocation Loc);
+
   /// \brief Returns address of the threadprivate variable for the current
   /// thread.
   /// \param VD Threadprivate variable.
@@ -560,7 +598,7 @@ public:
   /// \param TaskFunction An LLVM function with type void (*)(i32 /*gtid*/, i32
   /// /*part_id*/, captured_struct */*__context*/);
   /// \param SharedsTy A type which contains references the shared variables.
-  /// \param Shareds Context with the list of shared variables from the \a
+  /// \param Shareds Context with the list of shared variables from the \p
   /// TaskFunction.
   /// \param IfCond Not a nullptr if 'if' clause was specified, nullptr
   /// otherwise.
@@ -575,16 +613,18 @@ public:
   /// \param FirstprivateInits List of references to auto generated variables
   /// used for initialization of a single array element. Used if firstprivate
   /// variable is of array type.
-  virtual void emitTaskCall(CodeGenFunction &CGF, SourceLocation Loc,
-                            const OMPExecutableDirective &D, bool Tied,
-                            llvm::PointerIntPair<llvm::Value *, 1, bool> Final,
-                            llvm::Value *TaskFunction, QualType SharedsTy,
-                            llvm::Value *Shareds, const Expr *IfCond,
-                            const ArrayRef<const Expr *> PrivateVars,
-                            const ArrayRef<const Expr *> PrivateCopies,
-                            const ArrayRef<const Expr *> FirstprivateVars,
-                            const ArrayRef<const Expr *> FirstprivateCopies,
-                            const ArrayRef<const Expr *> FirstprivateInits);
+  /// \param Dependences List of dependences for the 'task' construct, including
+  /// original expression and dependency type.
+  virtual void emitTaskCall(
+      CodeGenFunction &CGF, SourceLocation Loc, const OMPExecutableDirective &D,
+      bool Tied, llvm::PointerIntPair<llvm::Value *, 1, bool> Final,
+      llvm::Value *TaskFunction, QualType SharedsTy, llvm::Value *Shareds,
+      const Expr *IfCond, ArrayRef<const Expr *> PrivateVars,
+      ArrayRef<const Expr *> PrivateCopies,
+      ArrayRef<const Expr *> FirstprivateVars,
+      ArrayRef<const Expr *> FirstprivateCopies,
+      ArrayRef<const Expr *> FirstprivateInits,
+      ArrayRef<std::pair<OpenMPDependClauseKind, const Expr *>> Dependences);
 
   /// \brief Emit code for the directive that does not require outlining.
   ///
@@ -632,7 +672,7 @@ public:
                              ArrayRef<const Expr *> LHSExprs,
                              ArrayRef<const Expr *> RHSExprs,
                              ArrayRef<const Expr *> ReductionOps,
-                             bool WithNowait);
+                             bool WithNowait, bool SimpleReduction);
 
   /// \brief Emit code for 'taskwait' directive.
   virtual void emitTaskwaitCall(CodeGenFunction &CGF, SourceLocation Loc);

@@ -31,7 +31,7 @@ template<typename T> struct F {
 template<typename T> int F<T>::f() { return 0; }
 template<typename T> template<typename U> int F<T>::g() { return 0; }
 template<typename T> int F<T>::n = 0;
-template<> template<typename U> int F<char>::g() { return 0; }
+//template<> template<typename U> int F<char>::g() { return 0; } // FIXME: Re-enable this once we support merging member specializations.
 template<> struct F<void> { int h(); };
 inline int F<void>::h() { return 0; }
 template<typename T> struct F<T *> { int i(); };
@@ -60,4 +60,17 @@ namespace StaticInline {
   struct X {};
   static inline void f(X);
   static inline void g(X x) { f(x); }
+}
+
+namespace FriendDefArg {
+  template<typename = int> struct A;
+  template<int = 0> struct B;
+  template<template<typename> class = A> struct C;
+  template<typename = int, int = 0, template<typename> class = A> struct D {};
+  template<typename U> struct Y {
+    template<typename> friend struct A;
+    template<int> friend struct B;
+    template<template<typename> class> friend struct C;
+    template<typename, int, template<typename> class> friend struct D;
+  };
 }

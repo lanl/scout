@@ -20,6 +20,7 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/Mangle.h"
+#include "clang/AST/ASTMutationListener.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
@@ -3154,16 +3155,22 @@ static void handleModeAttr(Sema &S, Decl *D, const AttributeList &Attr) {
     return;
   }
 
-  if (!OldTy->getAs<BuiltinType>() && !OldTy->isComplexType())
+  // Base type can also be a vector type (see PR17453).
+  // Distinguish between base type and base element type.
+  QualType OldElemTy = OldTy;
+  if (const VectorType *VT = OldTy->getAs<VectorType>())
+    OldElemTy = VT->getElementType();
+
+  if (!OldElemTy->getAs<BuiltinType>() && !OldElemTy->isComplexType())
     S.Diag(Attr.getLoc(), diag::err_mode_not_primitive);
   else if (IntegerMode) {
-    if (!OldTy->isIntegralOrEnumerationType())
+    if (!OldElemTy->isIntegralOrEnumerationType())
       S.Diag(Attr.getLoc(), diag::err_mode_wrong_type);
   } else if (ComplexMode) {
-    if (!OldTy->isComplexType())
+    if (!OldElemTy->isComplexType())
       S.Diag(Attr.getLoc(), diag::err_mode_wrong_type);
   } else {
-    if (!OldTy->isFloatingType())
+    if (!OldElemTy->isFloatingType())
       S.Diag(Attr.getLoc(), diag::err_mode_wrong_type);
   }
 
@@ -3176,21 +3183,40 @@ static void handleModeAttr(Sema &S, Decl *D, const AttributeList &Attr) {
     return;
   }
 
-  QualType NewTy;
+  QualType NewElemTy;
 
   if (IntegerMode)
-    NewTy = S.Context.getIntTypeForBitwidth(DestWidth,
-                                            OldTy->isSignedIntegerType());
+    NewElemTy = S.Context.getIntTypeForBitwidth(
+        DestWidth, OldElemTy->isSignedIntegerType());
   else
-    NewTy = S.Context.getRealTypeForBitwidth(DestWidth);
+    NewElemTy = S.Context.getRealTypeForBitwidth(DestWidth);
 
-  if (NewTy.isNull()) {
+  if (NewElemTy.isNull()) {
     S.Diag(Attr.getLoc(), diag::err_machine_mode) << 1 /*Unsupported*/ << Name;
     return;
   }
 
   if (ComplexMode) {
-    NewTy = S.Context.getComplexType(NewTy);
+    NewElemTy = S.Context.getComplexType(NewElemTy);
+  }
+
+  QualType NewTy = NewElemTy;
+  if (const VectorType *OldVT = OldTy->getAs<VectorType>()) {
+    // Complex machine mode does not support base vector types.
+    if (ComplexMode) {
+      S.Diag(Attr.getLoc(), diag::err_complex_mode_vector_type);
+      return;
+    }
+    unsigned NumElements = S.Context.getTypeSize(OldElemTy) *
+                           OldVT->getNumElements() /
+                           S.Context.getTypeSize(NewElemTy);
+    NewTy =
+        S.Context.getVectorType(NewElemTy, NumElements, OldVT->getVectorKind());
+  }
+
+  if (NewTy.isNull()) {
+    S.Diag(Attr.getLoc(), diag::err_mode_wrong_type);
+    return;
   }
 
   // Install the new type.
@@ -3705,10 +3731,31 @@ static void handleNSReturnsRetainedAttr(Sema &S, Decl *D,
     returnType = PD->getType();
   else if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D))
     returnType = FD->getReturnType();
-  else {
+  else if (auto *Param = dyn_cast<ParmVarDecl>(D)) {
+    returnType = Param->getType()->getPointeeType();
+    if (returnType.isNull()) {
+      S.Diag(D->getLocStart(), diag::warn_ns_attribute_wrong_parameter_type)
+          << Attr.getName() << /*pointer-to-CF*/2
+          << Attr.getRange();
+      return;
+    }
+  } else {
+    AttributeDeclKind ExpectedDeclKind;
+    switch (Attr.getKind()) {
+    default: llvm_unreachable("invalid ownership attribute");
+    case AttributeList::AT_NSReturnsRetained:
+    case AttributeList::AT_NSReturnsAutoreleased:
+    case AttributeList::AT_NSReturnsNotRetained:
+      ExpectedDeclKind = ExpectedFunctionOrMethod;
+      break;
+
+    case AttributeList::AT_CFReturnsRetained:
+    case AttributeList::AT_CFReturnsNotRetained:
+      ExpectedDeclKind = ExpectedFunctionMethodOrParameter;
+      break;
+    }
     S.Diag(D->getLocStart(), diag::warn_attribute_wrong_decl_type)
-        << Attr.getRange() << Attr.getName()
-        << ExpectedFunctionOrMethod;
+        << Attr.getRange() << Attr.getName() << ExpectedDeclKind;
     return;
   }
 
@@ -3735,8 +3782,25 @@ static void handleNSReturnsRetainedAttr(Sema &S, Decl *D,
   }
 
   if (!typeOK) {
-    S.Diag(D->getLocStart(), diag::warn_ns_attribute_wrong_return_type)
-      << Attr.getRange() << Attr.getName() << isa<ObjCMethodDecl>(D) << cf;
+    if (isa<ParmVarDecl>(D)) {
+      S.Diag(D->getLocStart(), diag::warn_ns_attribute_wrong_parameter_type)
+          << Attr.getName() << /*pointer-to-CF*/2
+          << Attr.getRange();
+    } else {
+      // Needs to be kept in sync with warn_ns_attribute_wrong_return_type.
+      enum : unsigned {
+        Function,
+        Method,
+        Property
+      } SubjectKind = Function;
+      if (isa<ObjCMethodDecl>(D))
+        SubjectKind = Method;
+      else if (isa<ObjCPropertyDecl>(D))
+        SubjectKind = Property;
+      S.Diag(D->getLocStart(), diag::warn_ns_attribute_wrong_return_type)
+          << Attr.getName() << SubjectKind << cf
+          << Attr.getRange();
+    }
     return;
   }
 
@@ -3925,6 +3989,34 @@ static void handleObjCRuntimeName(Sema &S, Decl *D,
              ObjCRuntimeNameAttr(Attr.getRange(), S.Context,
                                  MetaDataName,
                                  Attr.getAttributeSpellingListIndex()));
+}
+
+// when a user wants to use objc_boxable with a union or struct
+// but she doesn't have access to the declaration (legacy/third-party code)
+// then she can 'enable' this feature via trick with a typedef
+// e.g.:
+// typedef struct __attribute((objc_boxable)) legacy_struct legacy_struct;
+static void handleObjCBoxable(Sema &S, Decl *D, const AttributeList &Attr) {
+  bool notify = false;
+
+  RecordDecl *RD = dyn_cast<RecordDecl>(D);
+  if (RD && RD->getDefinition()) {
+    RD = RD->getDefinition();
+    notify = true;
+  }
+
+  if (RD) {
+    ObjCBoxableAttr *BoxableAttr = ::new (S.Context)
+                          ObjCBoxableAttr(Attr.getRange(), S.Context,
+                                          Attr.getAttributeSpellingListIndex());
+    RD->addAttr(BoxableAttr);
+    if (notify) {
+      // we need to notify ASTReader/ASTWriter about
+      // modification of existing declaration
+      if (ASTMutationListener *L = S.getASTMutationListener())
+        L->AddedAttributeToRecord(BoxableAttr, RD);
+    }
+  }
 }
 
 static void handleObjCOwnershipAttr(Sema &S, Decl *D,
@@ -4694,6 +4786,10 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
 
   case AttributeList::AT_ObjCRuntimeName:
     handleObjCRuntimeName(S, D, Attr);
+    break;
+
+  case AttributeList::AT_ObjCBoxable:
+    handleObjCBoxable(S, D, Attr);
     break;
           
   case AttributeList::AT_CFAuditedTransfer:

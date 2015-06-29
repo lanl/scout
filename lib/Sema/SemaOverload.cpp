@@ -10750,7 +10750,8 @@ bool Sema::buildOverloadedCallSet(Scope *S, Expr *Fn,
   // functions, including those from argument-dependent lookup.
   AddOverloadedCallCandidates(ULE, Args, *CandidateSet);
 
-  if (getLangOpts().MSVCCompat && CurContext->isDependentContext() &&
+  if (getLangOpts().MSVCCompat &&
+      CurContext->isDependentContext() && !isSFINAEContext() &&
       (isa<FunctionDecl>(CurContext) || isa<CXXRecordDecl>(CurContext))) {
 
     OverloadCandidateSet::iterator Best;
@@ -11259,7 +11260,7 @@ Sema::CreateOverloadedBinOp(SourceLocation OpLoc,
         if (Op == OO_Equal)
           DiagnoseSelfMove(Args[0], Args[1], OpLoc);
 
-        checkCall(FnDecl, ArgsArray, 0, isa<CXXMethodDecl>(FnDecl), OpLoc,
+        checkCall(FnDecl, nullptr, ArgsArray, isa<CXXMethodDecl>(FnDecl), OpLoc, 
                   TheCall->getSourceRange(), VariadicDoesNotApply);
 
         return MaybeBindToTemporary(TheCall);

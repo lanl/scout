@@ -99,6 +99,27 @@ def err_enum_template : Error<"enumeration cannot be a template">;
 
 }
 
+let CategoryName = "Nullability Issue" in {
+
+def warn_nullability_duplicate : Warning<
+  "duplicate nullability specifier %0">,
+  InGroup<Nullability>;
+  
+def warn_conflicting_nullability_attr_overriding_ret_types : Warning<
+  "conflicting nullability specifier on return types, %0 "
+  "conflicts with existing specifier %1">,
+  InGroup<Nullability>;
+
+def warn_conflicting_nullability_attr_overriding_param_types : Warning<
+  "conflicting nullability specifier on parameter types, %0 "
+  "conflicts with existing specifier %1">,
+  InGroup<Nullability>;
+
+def err_nullability_conflicting : Error<
+  "nullability specifier %0 conflicts with existing specifier %1">;
+
+}
+
 // Sema && Lex
 def ext_c99_longlong : Extension<
   "'long long' is an extension when C99 mode is not enabled">,
