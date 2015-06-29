@@ -178,9 +178,8 @@ static const Target *GetTarget(const MachOObjectFile *MachOObj,
 
 struct SymbolSorter {
   bool operator()(const SymbolRef &A, const SymbolRef &B) {
-    SymbolRef::Type AType, BType;
-    A.getType(AType);
-    B.getType(BType);
+    SymbolRef::Type AType = A.getType();
+    SymbolRef::Type BType = B.getType();
 
     uint64_t AAddr, BAddr;
     if (AType != SymbolRef::ST_Function)
@@ -588,8 +587,7 @@ static void CreateSymbolAddressMap(MachOObjectFile *O,
                                    SymbolAddressMap *AddrMap) {
   // Create a map of symbol addresses to symbol names.
   for (const SymbolRef &Symbol : O->symbols()) {
-    SymbolRef::Type ST;
-    Symbol.getType(ST);
+    SymbolRef::Type ST = Symbol.getType();
     if (ST == SymbolRef::ST_Function || ST == SymbolRef::ST_Data ||
         ST == SymbolRef::ST_Other) {
       uint64_t Address;
@@ -788,7 +786,7 @@ static void DumpLiteralPointerSection(MachOObjectFile *O,
   // Set the size of the literal pointer.
   uint32_t lp_size = O->is64Bit() ? 8 : 4;
 
-  // Collect the external relocation symbols for the the literal pointers.
+  // Collect the external relocation symbols for the literal pointers.
   std::vector<std::pair<uint64_t, SymbolRef>> Relocs;
   for (const RelocationRef &Reloc : Section.relocations()) {
     DataRefImpl Rel;
@@ -2417,10 +2415,9 @@ static const char *get_pointer_32(uint32_t Address, uint32_t &offset,
 // for the specified section offset in the specified section reference.
 // If no relocation information is found and a non-zero ReferenceValue for the
 // symbol is passed, look up that address in the info's AddrMap.
-static const char *
-get_symbol_64(uint32_t sect_offset, SectionRef S, DisassembleInfo *info,
-              uint64_t &n_value,
-              uint64_t ReferenceValue = UnknownAddressOrSize) {
+static const char *get_symbol_64(uint32_t sect_offset, SectionRef S,
+                                 DisassembleInfo *info, uint64_t &n_value,
+                                 uint64_t ReferenceValue = UnknownAddress) {
   n_value = 0;
   if (!info->verbose)
     return nullptr;
@@ -2454,7 +2451,7 @@ get_symbol_64(uint32_t sect_offset, SectionRef S, DisassembleInfo *info,
   const char *SymbolName = nullptr;
   if (reloc_found && isExtern) {
     Symbol.getAddress(n_value);
-    if (n_value == UnknownAddressOrSize)
+    if (n_value == UnknownAddress)
       n_value = 0;
     StringRef name;
     Symbol.getName(name);
@@ -2475,7 +2472,7 @@ get_symbol_64(uint32_t sect_offset, SectionRef S, DisassembleInfo *info,
 
   // We did not find an external relocation entry so look up the ReferenceValue
   // as an address of a symbol and if found return that symbol's name.
-  if (ReferenceValue != UnknownAddressOrSize)
+  if (ReferenceValue != UnknownAddress)
     SymbolName = GuessSymbolName(ReferenceValue, info->AddrMap);
 
   return SymbolName;
@@ -6125,8 +6122,7 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
     SymbolAddressMap AddrMap;
     bool DisSymNameFound = false;
     for (const SymbolRef &Symbol : MachOOF->symbols()) {
-      SymbolRef::Type ST;
-      Symbol.getType(ST);
+      SymbolRef::Type ST = Symbol.getType();
       if (ST == SymbolRef::ST_Function || ST == SymbolRef::ST_Data ||
           ST == SymbolRef::ST_Other) {
         uint64_t Address;
@@ -6174,8 +6170,7 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
       StringRef SymName;
       Symbols[SymIdx].getName(SymName);
 
-      SymbolRef::Type ST;
-      Symbols[SymIdx].getType(ST);
+      SymbolRef::Type ST = Symbols[SymIdx].getType();
       if (ST != SymbolRef::ST_Function)
         continue;
 
@@ -6200,8 +6195,7 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
       uint64_t NextSym = 0;
       uint64_t NextSymIdx = SymIdx + 1;
       while (Symbols.size() > NextSymIdx) {
-        SymbolRef::Type NextSymType;
-        Symbols[NextSymIdx].getType(NextSymType);
+        SymbolRef::Type NextSymType = Symbols[NextSymIdx].getType();
         if (NextSymType == SymbolRef::ST_Function) {
           containsNextSym =
               Sections[SectIdx].containsSymbol(Symbols[NextSymIdx]);
@@ -6480,7 +6474,7 @@ static void printUnwindRelocDest(const MachOObjectFile *Obj,
   StringRef Name;
   uint64_t Addend;
 
-  if (!Reloc.getObjectFile())
+  if (!Reloc.getObject())
     return;
 
   findUnwindRelocNameAddend(Obj, Symbols, Reloc, Addr, Name, Addend);
@@ -6553,7 +6547,7 @@ printMachOCompactUnwindSection(const MachOObjectFile *Obj,
            << format("0x%08" PRIx32, Entry.CompactEncoding) << '\n';
 
     // 4. The personality function, if present.
-    if (Entry.PersonalityReloc.getObjectFile()) {
+    if (Entry.PersonalityReloc.getObject()) {
       outs() << "    personality function: "
              << format("0x%" PRIx64, Entry.PersonalityAddr) << ' ';
       printUnwindRelocDest(Obj, Symbols, Entry.PersonalityReloc,
@@ -6562,7 +6556,7 @@ printMachOCompactUnwindSection(const MachOObjectFile *Obj,
     }
 
     // 5. This entry's language-specific data area.
-    if (Entry.LSDAReloc.getObjectFile()) {
+    if (Entry.LSDAReloc.getObject()) {
       outs() << "    LSDA:                 " << format("0x%" PRIx64,
                                                        Entry.LSDAAddr) << ' ';
       printUnwindRelocDest(Obj, Symbols, Entry.LSDAReloc, Entry.LSDAAddr);

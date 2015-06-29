@@ -27,13 +27,21 @@ class StaticSpinMutex {
   }
 
   void Lock() {
-    if (atomic_exchange(&state_, 1, memory_order_acquire) == 0)
+    if (TryLock())
       return;
     LockSlow();
   }
 
+  bool TryLock() {
+    return atomic_exchange(&state_, 1, memory_order_acquire) == 0;
+  }
+
   void Unlock() {
     atomic_store(&state_, 0, memory_order_release);
+  }
+
+  void CheckLocked() {
+    CHECK_EQ(atomic_load(&state_, memory_order_relaxed), 1);
   }
 
  private:
@@ -61,6 +69,106 @@ class SpinMutex : public StaticSpinMutex {
  private:
   SpinMutex(const SpinMutex&);
   void operator=(const SpinMutex&);
+};
+
+class BlockingMutex {
+ public:
+#if SANITIZER_WINDOWS
+  // Windows does not currently support LinkerInitialized
+  explicit BlockingMutex(LinkerInitialized);
+#else
+  explicit constexpr BlockingMutex(LinkerInitialized)
+      : opaque_storage_ {0, }, owner_(0) {}
+#endif
+  BlockingMutex();
+  void Lock();
+  void Unlock();
+  void CheckLocked();
+ private:
+  uptr opaque_storage_[10];
+  uptr owner_;  // for debugging
+};
+
+// Reader-writer spin mutex.
+class RWMutex {
+ public:
+  RWMutex() {
+    atomic_store(&state_, kUnlocked, memory_order_relaxed);
+  }
+
+  ~RWMutex() {
+    CHECK_EQ(atomic_load(&state_, memory_order_relaxed), kUnlocked);
+  }
+
+  void Lock() {
+    u32 cmp = kUnlocked;
+    if (atomic_compare_exchange_strong(&state_, &cmp, kWriteLock,
+                                       memory_order_acquire))
+      return;
+    LockSlow();
+  }
+
+  void Unlock() {
+    u32 prev = atomic_fetch_sub(&state_, kWriteLock, memory_order_release);
+    DCHECK_NE(prev & kWriteLock, 0);
+    (void)prev;
+  }
+
+  void ReadLock() {
+    u32 prev = atomic_fetch_add(&state_, kReadLock, memory_order_acquire);
+    if ((prev & kWriteLock) == 0)
+      return;
+    ReadLockSlow();
+  }
+
+  void ReadUnlock() {
+    u32 prev = atomic_fetch_sub(&state_, kReadLock, memory_order_release);
+    DCHECK_EQ(prev & kWriteLock, 0);
+    DCHECK_GT(prev & ~kWriteLock, 0);
+    (void)prev;
+  }
+
+  void CheckLocked() {
+    CHECK_NE(atomic_load(&state_, memory_order_relaxed), kUnlocked);
+  }
+
+ private:
+  atomic_uint32_t state_;
+
+  enum {
+    kUnlocked = 0,
+    kWriteLock = 1,
+    kReadLock = 2
+  };
+
+  void NOINLINE LockSlow() {
+    for (int i = 0;; i++) {
+      if (i < 10)
+        proc_yield(10);
+      else
+        internal_sched_yield();
+      u32 cmp = atomic_load(&state_, memory_order_relaxed);
+      if (cmp == kUnlocked &&
+          atomic_compare_exchange_weak(&state_, &cmp, kWriteLock,
+                                       memory_order_acquire))
+          return;
+    }
+  }
+
+  void NOINLINE ReadLockSlow() {
+    for (int i = 0;; i++) {
+      if (i < 10)
+        proc_yield(10);
+      else
+        internal_sched_yield();
+      u32 prev = atomic_load(&state_, memory_order_acquire);
+      if ((prev & kWriteLock) == 0)
+        return;
+    }
+  }
+
+  RWMutex(const RWMutex&);
+  void operator = (const RWMutex&);
 };
 
 template<typename MutexType>
@@ -102,6 +210,9 @@ class GenericScopedReadLock {
 };
 
 typedef GenericScopedLock<StaticSpinMutex> SpinMutexLock;
+typedef GenericScopedLock<BlockingMutex> BlockingMutexLock;
+typedef GenericScopedLock<RWMutex> RWMutexLock;
+typedef GenericScopedReadLock<RWMutex> RWMutexReadLock;
 
 }  // namespace __sanitizer
 

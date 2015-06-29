@@ -16,8 +16,7 @@
 do {
   StatInc(thr, StatShadowProcessed);
   const unsigned kAccessSize = 1 << kAccessSizeLog;
-  unsigned off = cur.ComputeSearchOffset();
-  u64 *sp = &shadow_mem[(idx + off) % kShadowCnt];
+  u64 *sp = &shadow_mem[idx];
   old = LoadShadow(sp);
   if (old.IsZero()) {
     StatInc(thr, StatShadowZero);
@@ -33,30 +32,20 @@ do {
     // same thread?
     if (Shadow::TidsAreEqual(old, cur)) {
       StatInc(thr, StatShadowSameThread);
-      if (OldIsInSameSynchEpoch(old, thr)) {
-        if (OldIsRWNotWeaker(old, kAccessIsWrite)) {
-          // found a slot that holds effectively the same info
-          // (that is, same tid, same sync epoch and same size)
-          StatInc(thr, StatMopSame);
-          return;
-        }
-        StoreIfNotYetStored(sp, &store_word);
-        break;
-      }
-      if (OldIsRWWeakerOrEqual(old, kAccessIsWrite))
+      if (old.IsRWWeakerOrEqual(kAccessIsWrite, kIsAtomic))
         StoreIfNotYetStored(sp, &store_word);
       break;
     }
     StatInc(thr, StatShadowAnotherThread);
     if (HappensBefore(old, thr)) {
-      StoreIfNotYetStored(sp, &store_word);
+      if (old.IsRWWeakerOrEqual(kAccessIsWrite, kIsAtomic))
+        StoreIfNotYetStored(sp, &store_word);
       break;
     }
-    if (BothReads(old, kAccessIsWrite))
+    if (old.IsBothReadsOrAtomic(kAccessIsWrite, kIsAtomic))
       break;
     goto RACE;
   }
-
   // Do the memory access intersect?
   if (Shadow::TwoRangesIntersect(old, cur, kAccessSize)) {
     StatInc(thr, StatShadowIntersect);
@@ -65,12 +54,10 @@ do {
       break;
     }
     StatInc(thr, StatShadowAnotherThread);
+    if (old.IsBothReadsOrAtomic(kAccessIsWrite, kIsAtomic))
+      break;
     if (HappensBefore(old, thr))
       break;
-
-    if (BothReads(old, kAccessIsWrite))
-      break;
-
     goto RACE;
   }
   // The accesses do not intersect.

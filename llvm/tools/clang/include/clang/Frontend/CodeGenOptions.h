@@ -116,6 +116,12 @@ public:
   /// The string to embed in debug information as the current working directory.
   std::string DebugCompilationDir;
 
+  // ===== Scout ================================
+  // path to Scout PTX files needed by runtime
+  
+  std::string ScoutPTXDir;
+  // ============================================
+  
   /// The string to embed in the debug information for the compile unit, if
   /// non-empty.
   std::string DwarfDebugFlags;
@@ -196,6 +202,9 @@ public:
   /// Set of sanitizer checks that are non-fatal (i.e. execution should be
   /// continued when possible).
   SanitizerSet SanitizeRecover;
+
+  /// Set of sanitizer checks that trap rather than diagnose.
+  SanitizerSet SanitizeTrap;
 
 public:
   // Define accessors/mutators for code generation options of enumeration type.

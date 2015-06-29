@@ -7,27 +7,42 @@
 # License. See LICENSE.TXT for details.
 #
 #===------------------------------------------------------------------------===#
+import argparse
 import bisect
+import getopt
 import os
 import re
 import subprocess
 import sys
 
-llvm_symbolizer = None
 symbolizers = {}
-filetypes = {}
-vmaddrs = {}
 DEBUG = False
-
+demangle = False
+binutils_prefix = None
+sysroot_path = None
+binary_name_filter = None
+fix_filename_patterns = None
+logfile = sys.stdin
+allow_system_symbolizer = True
 
 # FIXME: merge the code that calls fix_filename().
 def fix_filename(file_name):
-  for path_to_cut in sys.argv[1:]:
-    file_name = re.sub('.*' + path_to_cut, '', file_name)
+  if fix_filename_patterns:
+    for path_to_cut in fix_filename_patterns:
+      file_name = re.sub('.*' + path_to_cut, '', file_name)
   file_name = re.sub('.*asan_[a-z_]*.cc:[0-9]*', '_asan_rtl_', file_name)
   file_name = re.sub('.*crtstuff.c:0', '???:0', file_name)
   return file_name
 
+def sysroot_path_filter(binary_name):
+  return sysroot_path + binary_name
+
+def guess_arch(addr):
+  # Guess which arch we're running. 10 = len('0x') + 8 hex digits.
+  if len(addr) > 10:
+    return 'x86_64'
+  else:
+    return 'i386'
 
 class Symbolizer(object):
   def __init__(self):
@@ -50,23 +65,32 @@ class Symbolizer(object):
 
 
 class LLVMSymbolizer(Symbolizer):
-  def __init__(self, symbolizer_path):
+  def __init__(self, symbolizer_path, default_arch, system, dsym_hints=[]):
     super(LLVMSymbolizer, self).__init__()
     self.symbolizer_path = symbolizer_path
+    self.default_arch = default_arch
+    self.system = system
+    self.dsym_hints = dsym_hints
     self.pipe = self.open_llvm_symbolizer()
 
   def open_llvm_symbolizer(self):
-    if not os.path.exists(self.symbolizer_path):
-      return None
     cmd = [self.symbolizer_path,
            '--use-symbol-table=true',
-           '--demangle=false',
-           '--functions=true',
-           '--inlining=true']
+           '--demangle=%s' % demangle,
+           '--functions=short',
+           '--inlining=true',
+           '--default-arch=%s' % self.default_arch]
+    if self.system == 'Darwin':
+      for hint in self.dsym_hints:
+        cmd.append('--dsym-hint=%s' % hint)
     if DEBUG:
       print ' '.join(cmd)
-    return subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE)
+    try:
+      result = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE)
+    except OSError:
+      result = None
+    return result
 
   def symbolize(self, addr, binary, offset):
     """Overrides Symbolizer.symbolize."""
@@ -74,7 +98,7 @@ class LLVMSymbolizer(Symbolizer):
       return None
     result = []
     try:
-      symbolizer_input = '%s %s' % (binary, offset)
+      symbolizer_input = '"%s" %s' % (binary, offset)
       if DEBUG:
         print symbolizer_input
       print >> self.pipe.stdin, symbolizer_input
@@ -84,9 +108,9 @@ class LLVMSymbolizer(Symbolizer):
           break
         file_name = self.pipe.stdout.readline().rstrip()
         file_name = fix_filename(file_name)
-        if (not function_name.startswith('??') and
+        if (not function_name.startswith('??') or
             not file_name.startswith('??')):
-          # Append only valid frames.
+          # Append only non-trivial frames.
           result.append('%s in %s %s' % (addr, function_name,
                                          file_name))
     except Exception:
@@ -96,12 +120,14 @@ class LLVMSymbolizer(Symbolizer):
     return result
 
 
-def LLVMSymbolizerFactory(system):
+def LLVMSymbolizerFactory(system, default_arch, dsym_hints=[]):
   symbolizer_path = os.getenv('LLVM_SYMBOLIZER_PATH')
   if not symbolizer_path:
-    # Assume llvm-symbolizer is in PATH.
-    symbolizer_path = 'llvm-symbolizer'
-  return LLVMSymbolizer(symbolizer_path)
+    symbolizer_path = os.getenv('ASAN_SYMBOLIZER_PATH')
+    if not symbolizer_path:
+      # Assume llvm-symbolizer is in PATH.
+      symbolizer_path = 'llvm-symbolizer'
+  return LLVMSymbolizer(symbolizer_path, default_arch, system, dsym_hints)
 
 
 class Addr2LineSymbolizer(Symbolizer):
@@ -111,7 +137,13 @@ class Addr2LineSymbolizer(Symbolizer):
     self.pipe = self.open_addr2line()
 
   def open_addr2line(self):
-    cmd = ['addr2line', '-f', '-e', self.binary]
+    addr2line_tool = 'addr2line'
+    if binutils_prefix:
+      addr2line_tool = binutils_prefix + addr2line_tool
+    cmd = [addr2line_tool, '-f']
+    if demangle:
+      cmd += ['--demangle']
+    cmd += ['-e', self.binary]
     if DEBUG:
       print ' '.join(cmd)
     return subprocess.Popen(cmd,
@@ -132,38 +164,59 @@ class Addr2LineSymbolizer(Symbolizer):
     return ['%s in %s %s' % (addr, function_name, file_name)]
 
 
+class UnbufferedLineConverter(object):
+  """
+  Wrap a child process that responds to each line of input with one line of
+  output.  Uses pty to trick the child into providing unbuffered output.
+  """
+  def __init__(self, args, close_stderr=False):
+    # Local imports so that the script can start on Windows.
+    import pty
+    import termios
+    pid, fd = pty.fork()
+    if pid == 0:
+      # We're the child. Transfer control to command.
+      if close_stderr:
+        dev_null = os.open('/dev/null', 0)
+        os.dup2(dev_null, 2)
+      os.execvp(args[0], args)
+    else:
+      # Disable echoing.
+      attr = termios.tcgetattr(fd)
+      attr[3] = attr[3] & ~termios.ECHO
+      termios.tcsetattr(fd, termios.TCSANOW, attr)
+      # Set up a file()-like interface to the child process
+      self.r = os.fdopen(fd, "r", 1)
+      self.w = os.fdopen(os.dup(fd), "w", 1)
+
+  def convert(self, line):
+    self.w.write(line + "\n")
+    return self.readline()
+
+  def readline(self):
+    return self.r.readline().rstrip()
+
+
 class DarwinSymbolizer(Symbolizer):
   def __init__(self, addr, binary):
     super(DarwinSymbolizer, self).__init__()
     self.binary = binary
-    # Guess which arch we're running. 10 = len('0x') + 8 hex digits.
-    if len(addr) > 10:
-      self.arch = 'x86_64'
-    else:
-      self.arch = 'i386'
-    self.vmaddr = None
-    self.pipe = None
-
-  def write_addr_to_pipe(self, offset):
-    print >> self.pipe.stdin, '0x%x' % int(offset, 16)
+    self.arch = guess_arch(addr)
+    self.open_atos()
 
   def open_atos(self):
     if DEBUG:
       print 'atos -o %s -arch %s' % (self.binary, self.arch)
     cmdline = ['atos', '-o', self.binary, '-arch', self.arch]
-    self.pipe = subprocess.Popen(cmdline,
-                                 stdin=subprocess.PIPE,
-                                 stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE)
+    self.atos = UnbufferedLineConverter(cmdline, close_stderr=True)
 
   def symbolize(self, addr, binary, offset):
     """Overrides Symbolizer.symbolize."""
     if self.binary != binary:
       return None
-    self.open_atos()
-    self.write_addr_to_pipe(offset)
-    self.pipe.stdin.close()
-    atos_line = self.pipe.stdout.readline().rstrip()
+    atos_line = self.atos.convert('0x%x' % int(offset, 16))
+    while "got symbolicator for" in atos_line:
+      atos_line = self.atos.readline()
     # A well-formed atos response looks like this:
     #   foo(type1, type2) (in object.name) (filename.cc:80)
     match = re.match('^(.*) \(in (.*)\) \((.*:\d*)\)$', atos_line)
@@ -289,25 +342,59 @@ class BreakpadSymbolizer(Symbolizer):
 
 
 class SymbolizationLoop(object):
-  def __init__(self, binary_name_filter=None):
-    # Used by clients who may want to supply a different binary name.
-    # E.g. in Chrome several binaries may share a single .dSYM.
-    self.binary_name_filter = binary_name_filter
-    self.system = os.uname()[0]
-    if self.system in ['Linux', 'Darwin']:
-      self.llvm_symbolizer = LLVMSymbolizerFactory(self.system)
+  def __init__(self, binary_name_filter=None, dsym_hint_producer=None):
+    if sys.platform == 'win32':
+      # ASan on Windows uses dbghelp.dll to symbolize in-process, which works
+      # even in sandboxed processes.  Nothing needs to be done here.
+      self.process_line = self.process_line_echo
     else:
-      raise Exception('Unknown system')
+      # Used by clients who may want to supply a different binary name.
+      # E.g. in Chrome several binaries may share a single .dSYM.
+      self.binary_name_filter = binary_name_filter
+      self.dsym_hint_producer = dsym_hint_producer
+      self.system = os.uname()[0]
+      if self.system not in ['Linux', 'Darwin', 'FreeBSD']:
+        raise Exception('Unknown system')
+      self.llvm_symbolizers = {}
+      self.last_llvm_symbolizer = None
+      self.dsym_hints = set([])
+      self.frame_no = 0
+      self.process_line = self.process_line_posix
 
   def symbolize_address(self, addr, binary, offset):
+    # On non-Darwin (i.e. on platforms without .dSYM debug info) always use
+    # a single symbolizer binary.
+    # On Darwin, if the dsym hint producer is present:
+    #  1. check whether we've seen this binary already; if so,
+    #     use |llvm_symbolizers[binary]|, which has already loaded the debug
+    #     info for this binary (might not be the case for
+    #     |last_llvm_symbolizer|);
+    #  2. otherwise check if we've seen all the hints for this binary already;
+    #     if so, reuse |last_llvm_symbolizer| which has the full set of hints;
+    #  3. otherwise create a new symbolizer and pass all currently known
+    #     .dSYM hints to it.
+    if not binary in self.llvm_symbolizers:
+      use_new_symbolizer = True
+      if self.system == 'Darwin' and self.dsym_hint_producer:
+        dsym_hints_for_binary = set(self.dsym_hint_producer(binary))
+        use_new_symbolizer = bool(dsym_hints_for_binary - self.dsym_hints)
+        self.dsym_hints |= dsym_hints_for_binary
+      if self.last_llvm_symbolizer and not use_new_symbolizer:
+          self.llvm_symbolizers[binary] = self.last_llvm_symbolizer
+      else:
+        self.last_llvm_symbolizer = LLVMSymbolizerFactory(
+            self.system, guess_arch(addr), self.dsym_hints)
+        self.llvm_symbolizers[binary] = self.last_llvm_symbolizer
     # Use the chain of symbolizers:
     # Breakpad symbolizer -> LLVM symbolizer -> addr2line/atos
     # (fall back to next symbolizer if the previous one fails).
     if not binary in symbolizers:
       symbolizers[binary] = ChainSymbolizer(
-          [BreakpadSymbolizerFactory(binary), self.llvm_symbolizer])
+          [BreakpadSymbolizerFactory(binary), self.llvm_symbolizers[binary]])
     result = symbolizers[binary].symbolize(addr, binary, offset)
     if result is None:
+      if not allow_system_symbolizer:
+        raise Exception('Failed to launch or use llvm-symbolizer.')
       # Initialize system symbolizer only if other symbolizers failed.
       symbolizers[binary].append_symbolizer(
           SystemSymbolizerFactory(self.system, addr, binary))
@@ -316,41 +403,80 @@ class SymbolizationLoop(object):
     assert result
     return result
 
-  def print_symbolized_lines(self, symbolized_lines):
+  def get_symbolized_lines(self, symbolized_lines):
     if not symbolized_lines:
-      print self.current_line
+      return [self.current_line]
     else:
+      result = []
       for symbolized_frame in symbolized_lines:
-        print '    #' + str(self.frame_no) + ' ' + symbolized_frame.rstrip()
+        result.append('    #%s %s' % (str(self.frame_no), symbolized_frame.rstrip()))
         self.frame_no += 1
+      return result
 
-  def process_stdin(self):
+  def process_logfile(self):
     self.frame_no = 0
-    for line in sys.stdin:
-      self.current_line = line.rstrip()
-      #0 0x7f6e35cf2e45  (/blah/foo.so+0x11fe45)
-      stack_trace_line_format = (
-          '^( *#([0-9]+) *)(0x[0-9a-f]+) *\((.*)\+(0x[0-9a-f]+)\)')
-      match = re.match(stack_trace_line_format, line)
-      if not match:
-        print self.current_line
-        continue
-      if DEBUG:
-        print line
-      _, frameno_str, addr, binary, offset = match.groups()
-      if frameno_str == '0':
-        # Assume that frame #0 is the first frame of new stack trace.
-        self.frame_no = 0
-      original_binary = binary
-      if self.binary_name_filter:
-        binary = self.binary_name_filter(binary)
-      symbolized_line = self.symbolize_address(addr, binary, offset)
-      if not symbolized_line:
-        if original_binary != binary:
-          symbolized_line = self.symbolize_address(addr, binary, offset)
-      self.print_symbolized_lines(symbolized_line)
+    for line in logfile:
+      processed = self.process_line(line)
+      print '\n'.join(processed)
+
+  def process_line_echo(self, line):
+    return [line.rstrip()]
+
+  def process_line_posix(self, line):
+    self.current_line = line.rstrip()
+    #0 0x7f6e35cf2e45  (/blah/foo.so+0x11fe45)
+    stack_trace_line_format = (
+        '^( *#([0-9]+) *)(0x[0-9a-f]+) *\((.*)\+(0x[0-9a-f]+)\)')
+    match = re.match(stack_trace_line_format, line)
+    if not match:
+      return [self.current_line]
+    if DEBUG:
+      print line
+    _, frameno_str, addr, binary, offset = match.groups()
+    if frameno_str == '0':
+      # Assume that frame #0 is the first frame of new stack trace.
+      self.frame_no = 0
+    original_binary = binary
+    if self.binary_name_filter:
+      binary = self.binary_name_filter(binary)
+    symbolized_line = self.symbolize_address(addr, binary, offset)
+    if not symbolized_line:
+      if original_binary != binary:
+        symbolized_line = self.symbolize_address(addr, binary, offset)
+    return self.get_symbolized_lines(symbolized_line)
 
 
 if __name__ == '__main__':
-  loop = SymbolizationLoop()
-  loop.process_stdin()
+  parser = argparse.ArgumentParser(
+      formatter_class=argparse.RawDescriptionHelpFormatter,
+      description='ASan symbolization script',
+      epilog='Example of use:\n'
+             'asan_symbolize.py -c "$HOME/opt/cross/bin/arm-linux-gnueabi-" '
+             '-s "$HOME/SymbolFiles" < asan.log')
+  parser.add_argument('path_to_cut', nargs='*',
+                      help='pattern to be cut from the result file path ')
+  parser.add_argument('-d','--demangle', action='store_true',
+                      help='demangle function names')
+  parser.add_argument('-s', metavar='SYSROOT',
+                      help='set path to sysroot for sanitized binaries')
+  parser.add_argument('-c', metavar='CROSS_COMPILE',
+                      help='set prefix for binutils')
+  parser.add_argument('-l','--logfile', default=sys.stdin,
+                      type=argparse.FileType('r'),
+                      help='set log file name to parse, default is stdin')
+  args = parser.parse_args()
+  if args.path_to_cut:
+    fix_filename_patterns = args.path_to_cut
+  if args.demangle:
+    demangle = True
+  if args.s:
+    binary_name_filter = sysroot_path_filter
+    sysroot_path = args.s
+  if args.c:
+    binutils_prefix = args.c
+  if args.logfile:
+    logfile = args.logfile
+  else:
+    logfile = sys.stdin
+  loop = SymbolizationLoop(binary_name_filter)
+  loop.process_logfile()

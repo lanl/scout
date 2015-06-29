@@ -15,83 +15,73 @@
 
 #include "sanitizer_common.h"
 #include "sanitizer_libc.h"
+#include "sanitizer_list.h"
+#include "sanitizer_flag_parser.h"
 
 namespace __sanitizer {
 
-static bool GetFlagValue(const char *env, const char *name,
-                         const char **value, int *value_length) {
-  if (env == 0)
-    return false;
-  const char *pos = internal_strstr(env, name);
-  const char *end;
-  if (pos == 0)
-    return false;
-  pos += internal_strlen(name);
-  if (pos[0] != '=') {
-    end = pos;
-  } else {
-    pos += 1;
-    if (pos[0] == '"') {
-      pos += 1;
-      end = internal_strchr(pos, '"');
-    } else if (pos[0] == '\'') {
-      pos += 1;
-      end = internal_strchr(pos, '\'');
-    } else {
-      end = internal_strchr(pos, ' ');
+CommonFlags common_flags_dont_use;
+
+struct FlagDescription {
+  const char *name;
+  const char *description;
+  FlagDescription *next;
+};
+
+IntrusiveList<FlagDescription> flag_descriptions;
+
+// If set, the tool will install its own SEGV signal handler by default.
+#ifndef SANITIZER_NEEDS_SEGV
+# define SANITIZER_NEEDS_SEGV 1
+#endif
+
+void CommonFlags::SetDefaults() {
+#define COMMON_FLAG(Type, Name, DefaultValue, Description) Name = DefaultValue;
+#include "sanitizer_flags.inc"
+#undef COMMON_FLAG
+}
+
+void CommonFlags::CopyFrom(const CommonFlags &other) {
+  internal_memcpy(this, &other, sizeof(*this));
+}
+
+class FlagHandlerInclude : public FlagHandlerBase {
+  static const uptr kMaxIncludeSize = 1 << 15;
+  FlagParser *parser_;
+
+ public:
+  explicit FlagHandlerInclude(FlagParser *parser) : parser_(parser) {}
+  bool Parse(const char *value) final {
+    char *data;
+    uptr data_mapped_size;
+    error_t err;
+    uptr len =
+      ReadFileToBuffer(value, &data, &data_mapped_size,
+                       Max(kMaxIncludeSize, GetPageSizeCached()), &err);
+    if (!len) {
+      Printf("Failed to read options from '%s': error %d\n", value, err);
+      return false;
     }
-    if (end == 0)
-      end = pos + internal_strlen(pos);
+    parser_->ParseString(data);
+    UnmapOrDie(data, data_mapped_size);
+    return true;
   }
-  *value = pos;
-  *value_length = end - pos;
-  return true;
+};
+
+void RegisterIncludeFlag(FlagParser *parser, CommonFlags *cf) {
+  FlagHandlerInclude *fh_include =
+      new (FlagParser::Alloc) FlagHandlerInclude(parser);  // NOLINT
+  parser->RegisterHandler("include", fh_include,
+                          "read more options from the given file");
 }
 
-static bool StartsWith(const char *flag, int flag_length, const char *value) {
-  if (!flag || !value)
-    return false;
-  int value_length = internal_strlen(value);
-  return (flag_length >= value_length) &&
-         (0 == internal_strncmp(flag, value, value_length));
-}
+void RegisterCommonFlags(FlagParser *parser, CommonFlags *cf) {
+#define COMMON_FLAG(Type, Name, DefaultValue, Description) \
+  RegisterFlag(parser, #Name, Description, &cf->Name);
+#include "sanitizer_flags.inc"
+#undef COMMON_FLAG
 
-void ParseFlag(const char *env, bool *flag, const char *name) {
-  const char *value;
-  int value_length;
-  if (!GetFlagValue(env, name, &value, &value_length))
-    return;
-  if (StartsWith(value, value_length, "0") ||
-      StartsWith(value, value_length, "no") ||
-      StartsWith(value, value_length, "false"))
-    *flag = false;
-  if (StartsWith(value, value_length, "1") ||
-      StartsWith(value, value_length, "yes") ||
-      StartsWith(value, value_length, "true"))
-    *flag = true;
-}
-
-void ParseFlag(const char *env, int *flag, const char *name) {
-  const char *value;
-  int value_length;
-  if (!GetFlagValue(env, name, &value, &value_length))
-    return;
-  *flag = internal_atoll(value);
-}
-
-static LowLevelAllocator allocator_for_flags;
-
-void ParseFlag(const char *env, const char **flag, const char *name) {
-  const char *value;
-  int value_length;
-  if (!GetFlagValue(env, name, &value, &value_length))
-    return;
-  // Copy the flag value. Don't use locks here, as flags are parsed at
-  // tool startup.
-  char *value_copy = (char*)(allocator_for_flags.Allocate(value_length + 1));
-  internal_memcpy(value_copy, value, value_length);
-  value_copy[value_length] = '\0';
-  *flag = value_copy;
+  RegisterIncludeFlag(parser, cf);
 }
 
 }  // namespace __sanitizer

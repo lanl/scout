@@ -99,25 +99,25 @@ namespace scout{
     }
 
     VolumeRendererWindow*
-    getVolumeRendererWindow(size_t meshWidth,
-                            size_t meshHeight,
-                            size_t meshDepth,
-                            float* fieldValues){
+    getVolumeRendererWindow(){
       if(window_){
         return static_cast<VolumeRendererWindow*>(window_);
       }
       
       QtWindow::init();
 
-      auto window = 
-        new VolumeRendererWindow(meshWidth, meshHeight,
-                                 meshDepth, fieldValues);
-
-      window->resize(width_, height_);
-      window->show();
+      auto window = new VolumeRendererWindow;
       window_ = window;
       
       return window;
+    }
+
+    size_t width(){
+      return width_;
+    }
+
+    size_t height(){
+      return height_;
     }
 
   private:

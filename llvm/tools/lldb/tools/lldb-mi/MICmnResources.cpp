@@ -63,6 +63,9 @@ const CMICmnResources::SRsrcTextData CMICmnResources::ms_pResourceId2TextData[] 
     {IDE_MI_APP_ARG_VERSION_LONG, "--versionLong\n\tPrints out MI Driver version information. Exit the MI Driver\n\timmediately."},
     {IDE_MI_APP_ARG_INTERPRETER, "--interpreter\n\t This option is kept for backward compatibility. This executable always run in MI mode"},
     {IDE_MI_APP_ARG_EXECUTEABLE, "--executable\n\tUse the MI Driver in MI mode for the debugging the specified executable." },
+    {IDE_MI_APP_ARG_SOURCE, "-s <filename>\n--source <filename>\n\t"
+                            "Tells the debugger to read in and execute the lldb commands in the\n\t"
+                            "given file, after any file provided on the command line has been\n\tloaded."},
     {IDE_MI_APP_ARG_APP_LOG, "--log\n\tUse this argument to tell the MI Driver to update it's log\n\tfile '%s'."},
     {IDE_MI_APP_ARG_APP_LOG_DIR, "--log-dir\n\tUse this argument to specify the directory the MI Driver\n\twill place the log file in, i.e --log-dir=/tmp." },
     {IDE_MI_APP_ARG_EXAMPLE, "Example MI command:\n\t3-info-gdb-mi-command gdb-set\n\t3^done,command={exists=\"true\"}"},
@@ -124,7 +127,7 @@ const CMICmnResources::SRsrcTextData CMICmnResources::ms_pResourceId2TextData[] 
     {IDS_LLDBDEBUGGER_ERR_THREAD_DELETE, "LLDB Debugger. Thread failed to delete '%s'"},
     {IDS_LLDBDEBUGGER_ERR_INVALIDBROADCASTER, "LLDB Debugger. Invalid SB broadcaster class name '%s' "},
     {IDS_LLDBDEBUGGER_ERR_INVALIDCLIENTNAME, "LLDB Debugger. Invalid client name '%s' "},
-    {IDS_LLDBDEBUGGER_ERR_CLIENTNOTREGISTERD, "LLDB Debugger. Client name '%s' not registered for listening events"},
+    {IDS_LLDBDEBUGGER_ERR_CLIENTNOTREGISTERED, "LLDB Debugger. Client name '%s' not registered for listening events"},
     {IDS_LLDBDEBUGGER_ERR_STOPLISTENER, "LLDB Debugger. Failure occurred stopping event for client '%s' SBBroadcaster '%s'"},
     {IDS_LLDBDEBUGGER_ERR_BROARDCASTER_NAME, "LLDB Debugger. Broardcaster's name '%s' is not valid"},
     {IDS_LLDBDEBUGGER_WRN_UNKNOWN_EVENT, "LLDB Debugger. Unhandled event '%s'"},
@@ -243,7 +246,7 @@ const CMICmnResources::SRsrcTextData CMICmnResources::ms_pResourceId2TextData[] 
     {IDS_CMD_ERR_LLDB_ERR_WRITE_MEM_BYTES, "Command '%s'. Unable to write memory block of %u bytes at address 0x%016" PRIx64 ": %s "},
     {IDS_CMD_ERR_LLDB_ERR_NOT_WRITE_WHOLEBLK, "Command '%s'. LLDB unable to write entire memory block of %u bytes at address 0x%016" PRIX64},
     {IDS_CMD_ERR_SET_NEW_DRIVER_STATE, "Command '%s'. Command tried to set new MI Driver running state and failed. %s"},
-    {IDS_CMD_ERR_INFO_PRINTFN_NOT_FOUND, "The request '%s' was not recogised, not implemented"},
+    {IDS_CMD_ERR_INFO_PRINTFN_NOT_FOUND, "The request '%s' was not recognised, not implemented"},
     {IDS_CMD_ERR_INFO_PRINTFN_FAILED, "The request '%s' failed."},
     {IDS_CMD_ERR_GDBSET_OPT_TARGETASYNC, "'target-async' expects \"on\" or \"off\""},
     {IDS_CMD_ERR_GDBSET_OPT_SOLIBSEARCHPATH, "'solib-search-path' requires at least one argument"},
@@ -382,7 +385,7 @@ CMICmnResources::HasString(const MIuint vResourceId) const
 }
 
 //++ ------------------------------------------------------------------------------------
-// Details: Retrieve the resource text data for the given resource ID. If a resourse ID
+// Details: Retrieve the resource text data for the given resource ID. If a resource ID
 //          cannot be found and error is given returning the ID of the resource that
 //          cannot be located.
 // Type:    Method.

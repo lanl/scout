@@ -1,4 +1,3 @@
-include(LLVMParseArguments)
 include(LLVMProcessSources)
 include(LLVM-Config)
 
@@ -84,8 +83,13 @@ function(add_llvm_symbol_exports target_name export_file)
       DEPENDS ${export_file}
       VERBATIM
       COMMENT "Creating export file for ${target_name}")
-    set_property(TARGET ${target_name} APPEND_STRING PROPERTY
-                 LINK_FLAGS "  -Wl,--version-script,${CMAKE_CURRENT_BINARY_DIR}/${native_export_file}")
+    if (${CMAKE_SYSTEM_NAME} MATCHES "SunOS")
+      set_property(TARGET ${target_name} APPEND_STRING PROPERTY
+                   LINK_FLAGS "  -Wl,-M,${CMAKE_CURRENT_BINARY_DIR}/${native_export_file}")
+    else()
+      set_property(TARGET ${target_name} APPEND_STRING PROPERTY
+                   LINK_FLAGS "  -Wl,--version-script,${CMAKE_CURRENT_BINARY_DIR}/${native_export_file}")
+    endif()
   else()
     set(native_export_file "${target_name}.def")
 
@@ -164,7 +168,7 @@ function(add_link_opts target_name)
 
     # Pass -O3 to the linker. This enabled different optimizations on different
     # linkers.
-    if(NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" OR WIN32))
+    if(NOT (${CMAKE_SYSTEM_NAME} MATCHES "Darwin|SunOS" OR WIN32))
       set_property(TARGET ${target_name} APPEND_STRING PROPERTY
                    LINK_FLAGS " -Wl,-O3")
     endif()
@@ -182,6 +186,9 @@ function(add_link_opts target_name)
         # ld64's implementation of -dead_strip breaks tools that use plugins.
         set_property(TARGET ${target_name} APPEND_STRING PROPERTY
                      LINK_FLAGS " -Wl,-dead_strip")
+      elseif(${CMAKE_SYSTEM_NAME} MATCHES "SunOS")
+        set_property(TARGET ${target_name} APPEND_STRING PROPERTY
+                     LINK_FLAGS " -Wl,-z -Wl,discard-unused=sections")
       elseif(NOT WIN32 AND NOT LLVM_LINKER_IS_GOLD)
         # Object files are compiled with -ffunction-data-sections.
         # Versions of bfd ld < 2.23.1 have a bug in --gc-sections that breaks
@@ -227,6 +234,78 @@ function(set_output_directory target bindir libdir)
     set_target_properties(${target} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${moddir})
   endif()
 endfunction()
+
+# If on Windows and building with MSVC, add the resource script containing the
+# VERSIONINFO data to the project.  This embeds version resource information
+# into the output .exe or .dll.
+# TODO: Enable for MinGW Windows builds too.
+#
+function(add_windows_version_resource_file OUT_VAR)
+  set(sources ${ARGN})
+  if (MSVC)
+    set(resource_file ${LLVM_SOURCE_DIR}/resources/windows_version_resource.rc)
+    if(EXISTS ${resource_file})
+      set(sources ${sources} ${resource_file})
+      source_group("Resource Files" ${resource_file})
+      set(windows_resource_file ${resource_file} PARENT_SCOPE)
+    endif()
+  endif(MSVC)
+
+  set(${OUT_VAR} ${sources} PARENT_SCOPE)
+endfunction(add_windows_version_resource_file)
+
+# set_windows_version_resource_properties(name resource_file...
+#   VERSION_MAJOR int
+#     Optional major version number (defaults to LLVM_VERSION_MAJOR)
+#   VERSION_MINOR int
+#     Optional minor version number (defaults to LLVM_VERSION_MINOR)
+#   VERSION_PATCHLEVEL int
+#     Optional patchlevel version number (defaults to LLVM_VERSION_PATCH)
+#   VERSION_STRING
+#     Optional version string (defaults to PACKAGE_VERSION)
+#   PRODUCT_NAME
+#     Optional product name string (defaults to "LLVM")
+#   )
+function(set_windows_version_resource_properties name resource_file)
+  cmake_parse_arguments(ARG
+    ""
+    "VERSION_MAJOR;VERSION_MINOR;VERSION_PATCHLEVEL;VERSION_STRING;PRODUCT_NAME"
+    ""
+    ${ARGN})
+
+  if (NOT DEFINED ARG_VERSION_MAJOR)
+    set(ARG_VERSION_MAJOR ${LLVM_VERSION_MAJOR})
+  endif()
+
+  if (NOT DEFINED ARG_VERSION_MINOR)
+    set(ARG_VERSION_MINOR ${LLVM_VERSION_MINOR})
+  endif()
+
+  if (NOT DEFINED ARG_VERSION_PATCHLEVEL)
+    set(ARG_VERSION_PATCHLEVEL ${LLVM_VERSION_PATCH})
+  endif()
+
+  if (NOT DEFINED ARG_VERSION_STRING)
+    set(ARG_VERSION_STRING ${PACKAGE_VERSION})
+  endif()
+
+  if (NOT DEFINED ARG_PRODUCT_NAME)
+    set(ARG_PRODUCT_NAME "LLVM")
+  endif()
+
+  set_property(SOURCE ${resource_file}
+               PROPERTY COMPILE_FLAGS /nologo)
+  set_property(SOURCE ${resource_file}
+               PROPERTY COMPILE_DEFINITIONS
+               "RC_VERSION_FIELD_1=${ARG_VERSION_MAJOR}"
+               "RC_VERSION_FIELD_2=${ARG_VERSION_MINOR}"
+               "RC_VERSION_FIELD_3=${ARG_VERSION_PATCHLEVEL}"
+               "RC_VERSION_FIELD_4=0"
+               "RC_FILE_VERSION=\"${ARG_VERSION_STRING}\""
+               "RC_INTERNAL_NAME=\"${name}\""
+               "RC_PRODUCT_NAME=\"${ARG_PRODUCT_NAME}\""
+               "RC_PRODUCT_VERSION=\"${ARG_VERSION_STRING}\"")
+endfunction(set_windows_version_resource_properties)
 
 # llvm_add_library(name sources...
 #   SHARED;STATIC
@@ -316,10 +395,17 @@ function(llvm_add_library name)
   if(ARG_MODULE)
     add_library(${name} MODULE ${ALL_FILES})
   elseif(ARG_SHARED)
+    add_windows_version_resource_file(ALL_FILES ${ALL_FILES})
     add_library(${name} SHARED ${ALL_FILES})
   else()
     add_library(${name} STATIC ${ALL_FILES})
   endif()
+
+  if(DEFINED windows_resource_file)
+    set_windows_version_resource_properties(${name} ${windows_resource_file})
+    set(windows_resource_file ${windows_resource_file} PARENT_SCOPE)
+  endif()
+
   set_output_directory(${name} ${LLVM_RUNTIME_OUTPUT_INTDIR} ${LLVM_LIBRARY_OUTPUT_INTDIR})
   llvm_update_compile_flags(${name})
   add_link_opts( ${name} )
@@ -417,11 +503,17 @@ macro(add_llvm_library name)
   else()
     llvm_add_library(${name} ${ARGN})
   endif()
-  set_property( GLOBAL APPEND PROPERTY LLVM_LIBS ${name} )
+  # The gtest libraries should not be installed or exported as a target
+  if ("${name}" STREQUAL gtest OR "${name}" STREQUAL gtest_main)
+    set(_is_gtest TRUE)
+  else()
+    set(_is_gtest FALSE)
+    set_property( GLOBAL APPEND PROPERTY LLVM_LIBS ${name} )
+  endif()
 
   if( EXCLUDE_FROM_ALL )
     set_target_properties( ${name} PROPERTIES EXCLUDE_FROM_ALL ON)
-  else()
+  elseif(NOT _is_gtest)
     if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY OR ${name} STREQUAL "LTO")
       if(ARG_SHARED OR BUILD_SHARED_LIBS)
         if(WIN32 OR CYGWIN)
@@ -482,11 +574,18 @@ endmacro(add_llvm_loadable_module name)
 
 macro(add_llvm_executable name)
   llvm_process_sources( ALL_FILES ${ARGN} )
+  add_windows_version_resource_file(ALL_FILES ${ALL_FILES})
+
   if( EXCLUDE_FROM_ALL )
     add_executable(${name} EXCLUDE_FROM_ALL ${ALL_FILES})
   else()
     add_executable(${name} ${ALL_FILES})
   endif()
+
+  if(DEFINED windows_resource_file)
+    set_windows_version_resource_properties(${name} ${windows_resource_file})
+  endif()
+
   llvm_update_compile_flags(${name})
   add_link_opts( ${name} )
 
@@ -761,7 +860,7 @@ endfunction()
 # A raw function to create a lit target. This is used to implement the testuite
 # management functions.
 function(add_lit_target target comment)
-  parse_arguments(ARG "PARAMS;DEPENDS;ARGS" "" ${ARGN})
+  cmake_parse_arguments(ARG "" "" "PARAMS;DEPENDS;ARGS" ${ARGN})
   set(LIT_ARGS "${ARG_ARGS} ${LLVM_LIT_ARGS}")
   separate_arguments(LIT_ARGS)
   if (NOT CMAKE_CFG_INTDIR STREQUAL ".")
@@ -776,9 +875,9 @@ function(add_lit_target target comment)
   foreach(param ${ARG_PARAMS})
     list(APPEND LIT_COMMAND --param ${param})
   endforeach()
-  if (ARG_DEFAULT_ARGS)
+  if (ARG_UNPARSED_ARGUMENTS)
     add_custom_target(${target}
-      COMMAND ${LIT_COMMAND} ${ARG_DEFAULT_ARGS}
+      COMMAND ${LIT_COMMAND} ${ARG_UNPARSED_ARGUMENTS}
       COMMENT "${comment}"
       ${cmake_3_2_USES_TERMINAL}
       )
@@ -797,12 +896,12 @@ endfunction()
 
 # A function to add a set of lit test suites to be driven through 'check-*' targets.
 function(add_lit_testsuite target comment)
-  parse_arguments(ARG "PARAMS;DEPENDS;ARGS" "" ${ARGN})
+  cmake_parse_arguments(ARG "" "" "PARAMS;DEPENDS;ARGS" ${ARGN})
 
   # EXCLUDE_FROM_ALL excludes the test ${target} out of check-all.
   if(NOT EXCLUDE_FROM_ALL)
     # Register the testsuites, params and depends for the global check rule.
-    set_property(GLOBAL APPEND PROPERTY LLVM_LIT_TESTSUITES ${ARG_DEFAULT_ARGS})
+    set_property(GLOBAL APPEND PROPERTY LLVM_LIT_TESTSUITES ${ARG_UNPARSED_ARGUMENTS})
     set_property(GLOBAL APPEND PROPERTY LLVM_LIT_PARAMS ${ARG_PARAMS})
     set_property(GLOBAL APPEND PROPERTY LLVM_LIT_DEPENDS ${ARG_DEPENDS})
     set_property(GLOBAL APPEND PROPERTY LLVM_LIT_EXTRA_ARGS ${ARG_ARGS})
@@ -810,7 +909,7 @@ function(add_lit_testsuite target comment)
 
   # Produce a specific suffixed check rule.
   add_lit_target(${target} ${comment}
-    ${ARG_DEFAULT_ARGS}
+    ${ARG_UNPARSED_ARGUMENTS}
     PARAMS ${ARG_PARAMS}
     DEPENDS ${ARG_DEPENDS}
     ARGS ${ARG_ARGS}
@@ -819,7 +918,7 @@ endfunction()
 
 function(add_lit_testsuites project directory)
   if (NOT CMAKE_CONFIGURATION_TYPES)
-    parse_arguments(ARG "PARAMS;DEPENDS;ARGS" "" ${ARGN})
+    cmake_parse_arguments(ARG "" "" "PARAMS;DEPENDS;ARGS" ${ARGN})
     file(GLOB_RECURSE litCfg ${directory}/lit*.cfg)
     set(lit_suites)
     foreach(f ${litCfg})

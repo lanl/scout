@@ -553,43 +553,41 @@ bool Sema::InitFrame(Scope* Scope, FrameDecl* F, Expr* SE){
     
     SpecExpr* t = vo->get("type");
 
-    if(t){
+    if (t) {
       DeclRefExpr* dr = dyn_cast_or_null<DeclRefExpr>(t->toExpr());
-      if(!dr){
+      if (!dr) {
         Diag(v->getLocStart(), diag::err_invalid_frame_spec) << "expeceted type specifier";
         valid = false;
-      }
-      else{
+      } else {
         vd = cast<VarDecl>(dr->getDecl());
         if(!F->hasVarType(vd)){
           Diag(v->getLocStart(), diag::err_invalid_frame_spec) << "invalid type";
           valid = false;
         }
       }
-    }
-    else{
+    } else {
       vd = F->getVarType(SpecExpr::toUpper(k));
-      if(!vd){
+      if (!vd) {
         Diag(v->getLocStart(), diag::err_invalid_frame_spec) << "no valid default type";
         valid = false;
       }
     }
     
-    if(vd){
+    if (vd) {
       //QualType vt = Context.getFrameVarType(vd->getType().getTypePtr());
       
       VarDecl* VD =
-      VarDecl::Create(Context, F, SourceLocation(), SourceLocation(),
-                      PP.getIdentifierInfo(k), vd->getType(),
-                      Context.getTrivialTypeSourceInfo(vd->getType()),
-                      SC_Static);
+        VarDecl::Create(Context, F, SourceLocation(), SourceLocation(),
+                        PP.getIdentifierInfo(k), vd->getType(),
+                        Context.getTrivialTypeSourceInfo(vd->getType()),
+                        SC_Static);
       
       PushOnScopeChains(VD, Scope, true);
       F->addVar(k, VD);
     }
   }
   
-  if(valid){
+  if (valid) {
     F->setSpec(Spec);
   }
   

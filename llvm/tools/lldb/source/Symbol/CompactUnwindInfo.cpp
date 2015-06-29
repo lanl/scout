@@ -525,7 +525,7 @@ CompactUnwindInfo::GetCompactUnwindInfoForFunction (Target &target, Address addr
     }
 
     auto next_it = it + 1;
-    if (next_it != m_indexes.begin())
+    if (next_it != m_indexes.end())
     {
         // initialize the function offset end range to be the start of the 
         // next index offset.  If we find an entry which is at the end of
@@ -775,7 +775,8 @@ CompactUnwindInfo::CreateUnwindPlan_x86_64 (Target &target, FunctionInfo &functi
         case UNWIND_X86_64_MODE_STACK_IND:
         {
             // The clang in Xcode 6 is emitting incorrect compact unwind encodings for this
-            // style of unwind.  It was fixed in llvm r217020.
+            // style of unwind.  It was fixed in llvm r217020.  
+            // The clang in Xcode 7 has this fixed.
             return false;
         }
         break;

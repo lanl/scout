@@ -96,7 +96,7 @@
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
-#include "llvm/Transforms/Utils/VectorUtils.h"
+#include "llvm/Analysis/VectorUtils.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
 #include <algorithm>
 #include <map>
@@ -850,6 +850,8 @@ public:
         return B.CreateAdd(StartValue, Index);
 
       case IK_PtrInduction:
+        assert(Index->getType() == StepValue->getType() &&
+               "Index type does not match StepValue type");
         if (StepValue->isMinusOne())
           Index = B.CreateNeg(Index);
         else if (!StepValue->isOne())
@@ -872,7 +874,7 @@ public:
 
   /// ReductionList contains the reduction descriptors for all
   /// of the reductions that were found in the loop.
-  typedef DenseMap<PHINode*, ReductionDescriptor> ReductionList;
+  typedef DenseMap<PHINode *, RecurrenceDescriptor> ReductionList;
 
   /// InductionList saves induction variables and maps them to the
   /// induction descriptor.
@@ -2798,7 +2800,10 @@ void InnerLoopVectorizer::createEmptyLoop() {
       break;
     }
     case LoopVectorizationLegality::IK_PtrInduction: {
-      EndValue = II.transform(BypassBuilder, CountRoundDown);
+      Value *CRD = BypassBuilder.CreateSExtOrTrunc(CountRoundDown,
+                                                   II.StepValue->getType(),
+                                                   "cast.crd");
+      EndValue = II.transform(BypassBuilder, CRD);
       EndValue->setName("ptr.ind.end");
       break;
     }
@@ -3093,13 +3098,13 @@ void InnerLoopVectorizer::vectorizeLoop() {
     // Find the reduction variable descriptor.
     assert(Legal->getReductionVars()->count(RdxPhi) &&
            "Unable to find the reduction variable");
-    ReductionDescriptor RdxDesc = (*Legal->getReductionVars())[RdxPhi];
+    RecurrenceDescriptor RdxDesc = (*Legal->getReductionVars())[RdxPhi];
 
-    ReductionDescriptor::ReductionKind RK = RdxDesc.getReductionKind();
-    TrackingVH<Value> ReductionStartValue = RdxDesc.getReductionStartValue();
+    RecurrenceDescriptor::RecurrenceKind RK = RdxDesc.getRecurrenceKind();
+    TrackingVH<Value> ReductionStartValue = RdxDesc.getRecurrenceStartValue();
     Instruction *LoopExitInst = RdxDesc.getLoopExitInstr();
-    ReductionInstDesc::MinMaxReductionKind MinMaxKind =
-        RdxDesc.getMinMaxReductionKind();
+    RecurrenceDescriptor::MinMaxRecurrenceKind MinMaxKind =
+        RdxDesc.getMinMaxRecurrenceKind();
     setDebugLocFromInst(Builder, ReductionStartValue);
 
     // We need to generate a reduction vector from the incoming scalar.
@@ -3116,8 +3121,8 @@ void InnerLoopVectorizer::vectorizeLoop() {
     // one for multiplication, -1 for And.
     Value *Identity;
     Value *VectorStart;
-    if (RK == ReductionDescriptor::RK_IntegerMinMax ||
-        RK == ReductionDescriptor::RK_FloatMinMax) {
+    if (RK == RecurrenceDescriptor::RK_IntegerMinMax ||
+        RK == RecurrenceDescriptor::RK_FloatMinMax) {
       // MinMax reduction have the start value as their identify.
       if (VF == 1) {
         VectorStart = Identity = ReductionStartValue;
@@ -3127,8 +3132,8 @@ void InnerLoopVectorizer::vectorizeLoop() {
       }
     } else {
       // Handle other reduction kinds:
-      Constant *Iden =
-          ReductionDescriptor::getReductionIdentity(RK, VecTy->getScalarType());
+      Constant *Iden = RecurrenceDescriptor::getRecurrenceIdentity(
+          RK, VecTy->getScalarType());
       if (VF == 1) {
         Identity = Iden;
         // This vector is the Identity vector where the first element is the
@@ -3185,7 +3190,7 @@ void InnerLoopVectorizer::vectorizeLoop() {
 
     // Reduce all of the unrolled parts into a single vector.
     Value *ReducedPartRdx = RdxParts[0];
-    unsigned Op = ReductionDescriptor::getReductionBinOp(RK);
+    unsigned Op = RecurrenceDescriptor::getRecurrenceBinOp(RK);
     setDebugLocFromInst(Builder, ReducedPartRdx);
     for (unsigned part = 1; part < UF; ++part) {
       if (Op != Instruction::ICmp && Op != Instruction::FCmp)
@@ -3194,7 +3199,7 @@ void InnerLoopVectorizer::vectorizeLoop() {
             Builder.CreateBinOp((Instruction::BinaryOps)Op, RdxParts[part],
                                 ReducedPartRdx, "bin.rdx"));
       else
-        ReducedPartRdx = ReductionDescriptor::createMinMaxOp(
+        ReducedPartRdx = RecurrenceDescriptor::createMinMaxOp(
             Builder, MinMaxKind, ReducedPartRdx, RdxParts[part]);
     }
 
@@ -3226,8 +3231,8 @@ void InnerLoopVectorizer::vectorizeLoop() {
           TmpVec = addFastMathFlag(Builder.CreateBinOp(
               (Instruction::BinaryOps)Op, TmpVec, Shuf, "bin.rdx"));
         else
-          TmpVec = ReductionDescriptor::createMinMaxOp(Builder, MinMaxKind,
-                                                       TmpVec, Shuf);
+          TmpVec = RecurrenceDescriptor::createMinMaxOp(Builder, MinMaxKind,
+                                                        TmpVec, Shuf);
       }
 
       // The result is in the first element of the vector.
@@ -3448,12 +3453,14 @@ void InnerLoopVectorizer::widenPHIInstruction(Instruction *PN,
       // This is the normalized GEP that starts counting at zero.
       Value *NormalizedIdx =
           Builder.CreateSub(Induction, ExtendedIdx, "normalized.idx");
+      NormalizedIdx =
+          Builder.CreateSExtOrTrunc(NormalizedIdx, II.StepValue->getType());
       // This is the vector of results. Notice that we don't generate
       // vector geps because scalar geps result in better code.
       for (unsigned part = 0; part < UF; ++part) {
         if (VF == 1) {
           int EltIndex = part;
-          Constant *Idx = ConstantInt::get(Induction->getType(), EltIndex);
+          Constant *Idx = ConstantInt::get(NormalizedIdx->getType(), EltIndex);
           Value *GlobalIdx = Builder.CreateAdd(NormalizedIdx, Idx);
           Value *SclrGep = II.transform(Builder, GlobalIdx);
           SclrGep->setName("next.gep");
@@ -3464,7 +3471,7 @@ void InnerLoopVectorizer::widenPHIInstruction(Instruction *PN,
         Value *VecVal = UndefValue::get(VectorType::get(P->getType(), VF));
         for (unsigned int i = 0; i < VF; ++i) {
           int EltIndex = i + part * VF;
-          Constant *Idx = ConstantInt::get(Induction->getType(), EltIndex);
+          Constant *Idx = ConstantInt::get(NormalizedIdx->getType(), EltIndex);
           Value *GlobalIdx = Builder.CreateAdd(NormalizedIdx, Idx);
           Value *SclrGep = II.transform(Builder, GlobalIdx);
           SclrGep->setName("next.gep");
@@ -4040,8 +4047,8 @@ bool LoopVectorizationLegality::canVectorizeInstrs() {
           continue;
         }
 
-        if (ReductionDescriptor::isReductionPHI(Phi, TheLoop,
-                                                Reductions[Phi])) {
+        if (RecurrenceDescriptor::isReductionPHI(Phi, TheLoop,
+                                                 Reductions[Phi])) {
           AllowedExit.insert(Reductions[Phi].getLoopExitInstr());
           continue;
         }
@@ -4642,10 +4649,9 @@ LoopVectorizationCostModel::selectVectorizationFactor(bool OptForSize) {
 
     if (VF == 0)
       VF = MaxVectorSize;
-
-    // If the trip count that we found modulo the vectorization factor is not
-    // zero then we require a tail.
-    if (VF < 2) {
+    else {
+      // If the trip count that we found modulo the vectorization factor is not
+      // zero then we require a tail.
       emitAnalysis(VectorizationReport() <<
                    "cannot optimize for size and vectorize at the "
                    "same time. Enable vectorization of this loop "

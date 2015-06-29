@@ -630,7 +630,7 @@ RuntimeDyldELF::evaluateMIPS64Relocation(const SectionEntry &Section,
   }
   case ELF::R_MIPS_PC16: {
     uint64_t FinalAddress = (Section.LoadAddress + Offset);
-    return ((Value + Addend - FinalAddress - 4) >> 2) & 0xffff;
+    return ((Value + Addend - FinalAddress) >> 2) & 0xffff;
   }
   case ELF::R_MIPS_PC32: {
     uint64_t FinalAddress = (Section.LoadAddress + Offset);
@@ -718,7 +718,7 @@ void RuntimeDyldELF::applyMIPS64Relocation(uint8_t *TargetPtr,
 }
 
 // Return the .TOC. section and offset.
-void RuntimeDyldELF::findPPC64TOCSection(const ObjectFile &Obj,
+void RuntimeDyldELF::findPPC64TOCSection(const ELFObjectFileBase &Obj,
                                          ObjSectionToIDMap &LocalSections,
                                          RelocationValueRef &Rel) {
   // Set a default SectionID in case we do not find a TOC section below.
@@ -751,7 +751,7 @@ void RuntimeDyldELF::findPPC64TOCSection(const ObjectFile &Obj,
 
 // Returns the sections and offset associated with the ODP entry referenced
 // by Symbol.
-void RuntimeDyldELF::findOPDEntrySection(const ObjectFile &Obj,
+void RuntimeDyldELF::findOPDEntrySection(const ELFObjectFileBase &Obj,
                                          ObjSectionToIDMap &LocalSections,
                                          RelocationValueRef &Rel) {
   // Get the ELF symbol value (st_value) to compare with Relocation offset in
@@ -782,8 +782,10 @@ void RuntimeDyldELF::findOPDEntrySection(const ObjectFile &Obj,
       uint64_t TargetSymbolOffset;
       symbol_iterator TargetSymbol = i->getSymbol();
       check(i->getOffset(TargetSymbolOffset));
-      int64_t Addend;
-      check(getELFRelocationAddend(*i, Addend));
+      ErrorOr<int64_t> AddendOrErr =
+          Obj.getRelocationAddend(i->getRawDataRefImpl());
+      Check(AddendOrErr.getError());
+      int64_t Addend = *AddendOrErr;
 
       ++i;
       if (i == e)
@@ -1056,15 +1058,15 @@ void RuntimeDyldELF::processSimpleRelocation(unsigned SectionID, uint64_t Offset
 }
 
 relocation_iterator RuntimeDyldELF::processRelocationRef(
-    unsigned SectionID, relocation_iterator RelI,
-    const ObjectFile &Obj,
-    ObjSectionToIDMap &ObjSectionToID,
-    StubMap &Stubs) {
+    unsigned SectionID, relocation_iterator RelI, const ObjectFile &O,
+    ObjSectionToIDMap &ObjSectionToID, StubMap &Stubs) {
+  const auto &Obj = cast<ELFObjectFileBase>(O);
   uint64_t RelType;
   Check(RelI->getType(RelType));
-  int64_t Addend;
-  Check(getELFRelocationAddend(*RelI, Addend));
-  symbol_iterator Symbol = RelI->getSymbol();
+  int64_t Addend = 0;
+  if (Obj.hasRelocationAddend(RelI->getRawDataRefImpl()))
+    Addend = *Obj.getRelocationAddend(RelI->getRawDataRefImpl());
+  elf_symbol_iterator Symbol = RelI->getSymbol();
 
   // Obtain the symbol name which is referenced in the relocation
   StringRef TargetName;
@@ -1080,7 +1082,7 @@ relocation_iterator RuntimeDyldELF::processRelocationRef(
   RTDyldSymbolTable::const_iterator gsi = GlobalSymbolTable.end();
   if (Symbol != Obj.symbol_end()) {
     gsi = GlobalSymbolTable.find(TargetName.data());
-    Symbol->getType(SymType);
+    SymType = Symbol->getType();
   }
   if (gsi != GlobalSymbolTable.end()) {
     const auto &SymInfo = gsi->second;
@@ -1310,8 +1312,7 @@ relocation_iterator RuntimeDyldELF::processRelocationRef(
         } else {
           // In the ELFv2 ABI, a function symbol may provide a local entry
           // point, which must be used for direct calls.
-          uint8_t SymOther;
-          Symbol->getOther(SymOther);
+          uint8_t SymOther = Symbol->getOther();
           Value.Addend += ELF::decodePPC64LocalEntryOffset(SymOther);
         }
         uint8_t *RelocTarget = Sections[Value.SectionID].Address + Value.Addend;

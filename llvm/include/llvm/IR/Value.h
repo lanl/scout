@@ -38,6 +38,7 @@ class InlineAsm;
 class Instruction;
 class LLVMContext;
 class Module;
+class ModuleSlotTracker;
 class StringRef;
 class Twine;
 class Type;
@@ -100,7 +101,11 @@ protected:
   /// This is stored here to save space in User on 64-bit hosts.  Since most
   /// instances of Value have operands, 32-bit hosts aren't significantly
   /// affected.
-  unsigned NumOperands : 29;
+  ///
+  /// Note, this should *NOT* be used directly by any class other than User.
+  /// User uses this value to find the Use list.
+  static const unsigned NumUserOperandsBits = 29;
+  unsigned NumUserOperands : 29;
 
   bool IsUsedByMD : 1;
   bool HasName : 1;
@@ -195,7 +200,10 @@ public:
   void dump() const;
 
   /// \brief Implement operator<< on Value.
+  /// @{
   void print(raw_ostream &O) const;
+  void print(raw_ostream &O, ModuleSlotTracker &MST) const;
+  /// @}
 
   /// \brief Print the name of this Value out to the specified raw_ostream.
   ///
@@ -203,8 +211,12 @@ public:
   /// instruction that generated it. If you specify a Module for context, then
   /// even constanst get pretty-printed; for example, the type of a null
   /// pointer is printed symbolically.
+  /// @{
   void printAsOperand(raw_ostream &O, bool PrintType = true,
                       const Module *M = nullptr) const;
+  void printAsOperand(raw_ostream &O, bool PrintType,
+                      ModuleSlotTracker &MST) const;
+  /// @}
 
   /// \brief All values are typed, get the type of this value.
   Type *getType() const { return VTy; }
@@ -329,32 +341,12 @@ public:
   /// Value classes SubclassID field. They are used for concrete type
   /// identification.
   enum ValueTy {
-    ArgumentVal,              // This is an instance of Argument
-    BasicBlockVal,            // This is an instance of BasicBlock
-    FunctionVal,              // This is an instance of Function
-    GlobalAliasVal,           // This is an instance of GlobalAlias
-    GlobalVariableVal,        // This is an instance of GlobalVariable
-    UndefValueVal,            // This is an instance of UndefValue
-    BlockAddressVal,          // This is an instance of BlockAddress
-    ConstantExprVal,          // This is an instance of ConstantExpr
-    ConstantAggregateZeroVal, // This is an instance of ConstantAggregateZero
-    ConstantDataArrayVal,     // This is an instance of ConstantDataArray
-    ConstantDataVectorVal,    // This is an instance of ConstantDataVector
-    ConstantIntVal,           // This is an instance of ConstantInt
-    ConstantFPVal,            // This is an instance of ConstantFP
-    ConstantArrayVal,         // This is an instance of ConstantArray
-    ConstantStructVal,        // This is an instance of ConstantStruct
-    ConstantVectorVal,        // This is an instance of ConstantVector
-    ConstantPointerNullVal,   // This is an instance of ConstantPointerNull
-    MetadataAsValueVal,       // This is an instance of MetadataAsValue
-    InlineAsmVal,             // This is an instance of InlineAsm
-    InstructionVal,           // This is an instance of Instruction
-    // Enum values starting at InstructionVal are used for Instructions;
-    // don't add new values here!
+#define HANDLE_VALUE(Name) Name##Val,
+#include "llvm/IR/Value.def"
 
     // Markers:
-    ConstantFirstVal = FunctionVal,
-    ConstantLastVal  = ConstantPointerNullVal
+#define HANDLE_CONSTANT_MARKER(Marker, Constant) Marker = Constant##Val,
+#include "llvm/IR/Value.def"
   };
 
   /// \brief Return an ID for the concrete type of this object.

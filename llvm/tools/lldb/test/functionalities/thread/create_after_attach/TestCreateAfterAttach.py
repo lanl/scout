@@ -22,8 +22,8 @@ class CreateAfterAttachTestCase(TestBase):
     @skipIfFreeBSD # Hangs.  May be the same as Linux issue llvm.org/pr16229 but
                    # not yet investigated.  Revisit once required functionality
                    # is implemented for FreeBSD.
-    @expectedFailureLinux("llvm.org/pr16229") # Occasionally hangs on the build bot
-    @skipIfLinux                              # Occasionally hangs on the build bot
+    @skipIfLinux # Occasionally hangs on the build bot, expectedFailureLinux
+
     @dwarf_test
     def test_create_after_attach_with_dwarf_and_popen(self):
         """Test thread creation after process attach."""
@@ -34,7 +34,7 @@ class CreateAfterAttachTestCase(TestBase):
                    # for FreeBSD.
     @dwarf_test
     @skipIfRemote
-    @expectedFailureLinux # this test fails 1/100 dosep runs
+    @expectedFlakeyLinux("llvm.org/pr16229") # 1/100 dosep, build 3546, clang-3.5 x84_64
     def test_create_after_attach_with_dwarf_and_fork(self):
         """Test thread creation after process attach."""
         self.buildDwarf(dictionary=self.getBuildFlags(use_cpp11=False))

@@ -81,7 +81,6 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   Builder.SetFastMathFlags(FMF);
 
   // +===== Scout =========================================+
-  InnerInductionVar = 0;
   InnerIndex = 0;
   VertexIndex = 0;
   CellIndex = 0;
@@ -666,12 +665,14 @@ void CodeGenFunction::StartFunction(GlobalDecl GD,
   }
 
   // Apply sanitizer attributes to the function.
-  if (SanOpts.has(SanitizerKind::Address))
+  if (SanOpts.hasOneOf(SanitizerKind::Address | SanitizerKind::KernelAddress))
     Fn->addFnAttr(llvm::Attribute::SanitizeAddress);
   if (SanOpts.has(SanitizerKind::Thread))
     Fn->addFnAttr(llvm::Attribute::SanitizeThread);
   if (SanOpts.has(SanitizerKind::Memory))
     Fn->addFnAttr(llvm::Attribute::SanitizeMemory);
+  if (SanOpts.has(SanitizerKind::SafeStack))
+    Fn->addFnAttr(llvm::Attribute::SafeStack);
 
   // Pass inline keyword to optimizer if it appears explicitly on any
   // declaration. Also, in the case of -fno-inline attach NoInline

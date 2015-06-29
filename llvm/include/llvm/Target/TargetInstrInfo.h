@@ -40,6 +40,7 @@ class TargetRegisterClass;
 class TargetRegisterInfo;
 class BranchProbability;
 class TargetSubtargetInfo;
+class TargetSchedModel;
 class DFAPacketizer;
 
 template<class T> class SmallVectorImpl;
@@ -386,6 +387,51 @@ public:
     return true;
   }
 
+  /// Represents a predicate at the MachineFunction level.  The control flow a
+  /// MachineBranchPredicate represents is:
+  ///
+  ///  Reg <def>= LHS `Predicate` RHS         == ConditionDef
+  ///  if Reg then goto TrueDest else goto FalseDest
+  ///
+  struct MachineBranchPredicate {
+    enum ComparePredicate {
+      PRED_EQ,     // True if two values are equal
+      PRED_NE,     // True if two values are not equal
+      PRED_INVALID // Sentinel value
+    };
+
+    ComparePredicate Predicate;
+    MachineOperand LHS;
+    MachineOperand RHS;
+    MachineBasicBlock *TrueDest;
+    MachineBasicBlock *FalseDest;
+    MachineInstr *ConditionDef;
+
+    /// SingleUseCondition is true if ConditionDef is dead except for the
+    /// branch(es) at the end of the basic block.
+    ///
+    bool SingleUseCondition;
+
+    explicit MachineBranchPredicate()
+        : Predicate(PRED_INVALID), LHS(MachineOperand::CreateImm(0)),
+          RHS(MachineOperand::CreateImm(0)), TrueDest(nullptr),
+          FalseDest(nullptr), ConditionDef(nullptr), SingleUseCondition(false) {
+    }
+  };
+
+  /// Analyze the branching code at the end of MBB and parse it into the
+  /// MachineBranchPredicate structure if possible.  Returns false on success
+  /// and true on failure.
+  ///
+  /// If AllowModify is true, then this routine is allowed to modify the basic
+  /// block (e.g. delete instructions after the unconditional branch).
+  ///
+  virtual bool AnalyzeBranchPredicate(MachineBasicBlock &MBB,
+                                      MachineBranchPredicate &MBP,
+                                      bool AllowModify = false) const {
+    return true;
+  }
+
   /// Remove the branching code at the end of the specific MBB.
   /// This is only invoked in cases where AnalyzeBranch returns success. It
   /// returns the number of instructions that were removed.
@@ -678,25 +724,25 @@ public:
   /// order since the pattern evaluator stops checking as soon as it finds a
   /// faster sequence.
   /// \param Root - Instruction that could be combined with one of its operands
-  /// \param Pattern - Vector of possible combination pattern
-  virtual bool hasPattern(
+  /// \param Pattern - Vector of possible combination patterns
+  virtual bool getMachineCombinerPatterns(
       MachineInstr &Root,
       SmallVectorImpl<MachineCombinerPattern::MC_PATTERN> &Pattern) const {
     return false;
   }
 
-  /// When hasPattern() finds a pattern this function generates the instructions
-  /// that could replace the original code sequence. The client has to decide
-  /// whether the actual replacement is beneficial or not.
+  /// When getMachineCombinerPatterns() finds patterns, this function generates
+  /// the instructions that could replace the original code sequence. The client
+  /// has to decide whether the actual replacement is beneficial or not.
   /// \param Root - Instruction that could be combined with one of its operands
-  /// \param P - Combination pattern for Root
+  /// \param Pattern - Combination pattern for Root
   /// \param InsInstrs - Vector of new instructions that implement P
   /// \param DelInstrs - Old instructions, including Root, that could be
   /// replaced by InsInstr
   /// \param InstrIdxForVirtReg - map of virtual register to instruction in
   /// InsInstr that defines it
   virtual void genAlternativeCodeSequence(
-      MachineInstr &Root, MachineCombinerPattern::MC_PATTERN P,
+      MachineInstr &Root, MachineCombinerPattern::MC_PATTERN Pattern,
       SmallVectorImpl<MachineInstr *> &InsInstrs,
       SmallVectorImpl<MachineInstr *> &DelInstrs,
       DenseMap<unsigned, unsigned> &InstrIdxForVirtReg) const {
@@ -826,10 +872,11 @@ public:
     return false;
   }
 
-  /// Get the base register and byte offset of a load/store instr.
-  virtual bool getLdStBaseRegImmOfs(MachineInstr *LdSt,
-                                    unsigned &BaseReg, unsigned &Offset,
-                                    const TargetRegisterInfo *TRI) const {
+  /// Get the base register and byte offset of an instruction that reads/writes
+  /// memory.
+  virtual bool getMemOpBaseRegImmOfs(MachineInstr *MemOp, unsigned &BaseReg,
+                                     unsigned &Offset,
+                                     const TargetRegisterInfo *TRI) const {
     return false;
   }
 
@@ -1054,7 +1101,7 @@ public:
   /// determine whether it makes sense to hoist an instruction out even in a
   /// high register pressure situation.
   virtual
-  bool hasHighOperandLatency(const InstrItineraryData *ItinData,
+  bool hasHighOperandLatency(const TargetSchedModel &SchedModel,
                              const MachineRegisterInfo *MRI,
                              const MachineInstr *DefMI, unsigned DefIdx,
                              const MachineInstr *UseMI, unsigned UseIdx) const {
@@ -1064,7 +1111,7 @@ public:
   /// Compute operand latency of a def of 'Reg'. Return true
   /// if the target considered it 'low'.
   virtual
-  bool hasLowDefLatency(const InstrItineraryData *ItinData,
+  bool hasLowDefLatency(const TargetSchedModel &SchedModel,
                         const MachineInstr *DefMI, unsigned DefIdx) const;
 
   /// Perform target-specific instruction verification.

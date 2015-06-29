@@ -11,6 +11,8 @@
 #define liblldb_FileSpec_h_
 #if defined(__cplusplus)
 
+#include <functional>
+
 #include "lldb/lldb-private.h"
 #include "lldb/Core/ConstString.h"
 #include "lldb/Core/STLUtils.h"
@@ -801,8 +803,7 @@ public:
 
     typedef EnumerateDirectoryResult (*EnumerateDirectoryCallbackType) (void *baton,
                                                                         FileType file_type,
-                                                                        const FileSpec &spec
-);
+                                                                        const FileSpec &spec);
 
     static EnumerateDirectoryResult
     EnumerateDirectory (const char *dir_path,
@@ -811,6 +812,11 @@ public:
                         bool find_other,
                         EnumerateDirectoryCallbackType callback,
                         void *callback_baton);
+
+    typedef std::function <EnumerateDirectoryResult(FileType file_type, const FileSpec &spec)> DirectoryCallback;
+
+    static EnumerateDirectoryResult
+    ForEachItemInDirectory (const char *dir_path, DirectoryCallback const &callback);
 
 protected:
     //------------------------------------------------------------------

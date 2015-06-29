@@ -3290,10 +3290,10 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
 
     // We may not have been able to figure out what this member pointer resolved
     // to up until this exact point.  Attempt to lock-in it's inheritance model.
-    QualType FromType = From->getType();
-    if (FromType->isMemberPointerType())
-      if (Context.getTargetInfo().getCXXABI().isMicrosoft())
-        RequireCompleteType(From->getExprLoc(), FromType, 0);
+    if (Context.getTargetInfo().getCXXABI().isMicrosoft()) {
+      RequireCompleteType(From->getExprLoc(), From->getType(), 0);
+      RequireCompleteType(From->getExprLoc(), ToType, 0);
+    }
 
     From = ImpCastExprToType(From, ToType, Kind, VK_RValue, &BasePath, CCK)
              .get();
@@ -6506,6 +6506,11 @@ public:
     // with the same edit length that pass all the checks and filters.
     // TODO: Properly handle various permutations of possible corrections when
     // there is more than one potentially ambiguous typo correction.
+    // Also, disable typo correction while attempting the transform when
+    // handling potentially ambiguous typo corrections as any new TypoExprs will
+    // have been introduced by the application of one of the correction
+    // candidates and add little to no value if corrected.
+    SemaRef.DisableTypoCorrection = true;
     while (!AmbiguousTypoExprs.empty()) {
       auto TE  = AmbiguousTypoExprs.back();
       auto Cached = TransformCache[TE];
@@ -6522,6 +6527,7 @@ public:
       State.Consumer->restoreSavedPosition();
       TransformCache[TE] = Cached;
     }
+    SemaRef.DisableTypoCorrection = false;
 
     // Ensure that all of the TypoExprs within the current Expr have been found.
     if (!Res.isUsable())

@@ -18,74 +18,65 @@
 #include "sanitizer_common/sanitizer_symbolizer.h"
 #include "tsan_flags.h"
 #include "tsan_report.h"
+#include "tsan_rtl.h"
 
 namespace __tsan {
 
-ReportStack *NewReportStackEntry(uptr addr) {
-  ReportStack *ent = (ReportStack*)internal_alloc(MBlockReportStack,
-                                                  sizeof(ReportStack));
-  internal_memset(ent, 0, sizeof(*ent));
-  ent->pc = addr;
-  return ent;
+void EnterSymbolizer() {
+  ThreadState *thr = cur_thread();
+  CHECK(!thr->in_symbolizer);
+  thr->in_symbolizer = true;
+  thr->ignore_interceptors++;
 }
 
-static ReportStack *NewReportStackEntry(const AddressInfo &info) {
-  ReportStack *ent = NewReportStackEntry(info.address);
-  if (info.module) {
-    // Strip module path to make output shorter.
-    const char *short_module_name = internal_strrchr(info.module, '/');
-    if (short_module_name)
-      short_module_name += 1;
-    else
-      short_module_name = info.module;
-    ent->module = internal_strdup(short_module_name);
-  }
-  ent->offset = info.module_offset;
-  if (info.function) {
-    ent->func = internal_strdup(info.function);
-  }
-  if (info.file)
-    ent->file = internal_strdup(info.file);
-  ent->line = info.line;
-  ent->col = info.column;
-  return ent;
+void ExitSymbolizer() {
+  ThreadState *thr = cur_thread();
+  CHECK(thr->in_symbolizer);
+  thr->in_symbolizer = false;
+  thr->ignore_interceptors--;
 }
 
-ReportStack *SymbolizeCode(uptr addr) {
-  if (flags()->external_symbolizer_path[0]) {
-    static const uptr kMaxAddrFrames = 16;
-    InternalScopedBuffer<AddressInfo> addr_frames(kMaxAddrFrames);
-    for (uptr i = 0; i < kMaxAddrFrames; i++)
-      new(&addr_frames[i]) AddressInfo();
-    uptr addr_frames_num = __sanitizer::SymbolizeCode(addr, addr_frames.data(),
-                                                      kMaxAddrFrames);
-    if (addr_frames_num == 0)
-      return NewReportStackEntry(addr);
-    ReportStack *top = 0;
-    ReportStack *bottom = 0;
-    for (uptr i = 0; i < addr_frames_num; i++) {
-      ReportStack *cur_entry = NewReportStackEntry(addr_frames[i]);
-      CHECK(cur_entry);
-      addr_frames[i].Clear();
-      if (i == 0)
-        top = cur_entry;
-      else
-        bottom->next = cur_entry;
-      bottom = cur_entry;
+// May be overriden by JIT/JAVA/etc,
+// whatever produces PCs marked with kExternalPCBit.
+extern "C" bool WEAK __tsan_symbolize_external(uptr pc,
+                                               char *func_buf, uptr func_siz,
+                                               char *file_buf, uptr file_siz,
+                                               int *line, int *col) {
+  return false;
+}
+
+SymbolizedStack *SymbolizeCode(uptr addr) {
+  // Check if PC comes from non-native land.
+  if (addr & kExternalPCBit) {
+    // Declare static to not consume too much stack space.
+    // We symbolize reports in a single thread, so this is fine.
+    static char func_buf[1024];
+    static char file_buf[1024];
+    int line, col;
+    SymbolizedStack *frame = SymbolizedStack::New(addr);
+    if (__tsan_symbolize_external(addr, func_buf, sizeof(func_buf), file_buf,
+                                  sizeof(file_buf), &line, &col)) {
+      frame->info.function = internal_strdup(func_buf);
+      frame->info.file = internal_strdup(file_buf);
+      frame->info.line = line;
+      frame->info.column = col;
     }
-    return top;
+    return frame;
   }
-  return SymbolizeCodeAddr2Line(addr);
+  return Symbolizer::GetOrInit()->SymbolizePC(addr);
 }
 
-ReportStack *SymbolizeData(uptr addr) {
-  if (flags()->external_symbolizer_path[0]) {
-    AddressInfo frame;
-    if (!__sanitizer::SymbolizeData(addr, &frame))
-      return 0;
-    return NewReportStackEntry(frame);
-  }
-  return SymbolizeDataAddr2Line(addr);
+ReportLocation *SymbolizeData(uptr addr) {
+  DataInfo info;
+  if (!Symbolizer::GetOrInit()->SymbolizeData(addr, &info))
+    return 0;
+  ReportLocation *ent = ReportLocation::New(ReportLocationGlobal);
+  ent->global = info;
+  return ent;
+}
+
+void SymbolizeFlush() {
+  Symbolizer::GetOrInit()->Flush();
 }
 
 }  // namespace __tsan

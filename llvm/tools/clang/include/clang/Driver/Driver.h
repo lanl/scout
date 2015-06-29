@@ -275,7 +275,7 @@ public:
 
   /// ParseArgStrings - Parse the given list of strings into an
   /// ArgList.
-  llvm::opt::InputArgList *ParseArgStrings(ArrayRef<const char *> Args);
+  llvm::opt::InputArgList ParseArgStrings(ArrayRef<const char *> Args);
 
   /// BuildInputs - Construct the list of inputs and their types from 
   /// the given arguments.
@@ -415,7 +415,7 @@ public:
   /// handle this action.
   bool ShouldUseClangCompiler(const JobAction &JA) const;
 
-  bool IsUsingLTO(const ToolChain &TC, const llvm::opt::ArgList &Args) const;
+  bool IsUsingLTO(const llvm::opt::ArgList &Args) const;
 
 private:
   /// \brief Retrieves a ToolChain for a particular target triple.

@@ -12,19 +12,23 @@
 //
 //===----------------------------------------------------------------------===//
 #include "sanitizer_common/sanitizer_allocator.h"
+#include "sanitizer_common/sanitizer_allocator_internal.h"
 #include "sanitizer_common/sanitizer_common.h"
+
+#include "sanitizer_test_utils.h"
+#include "sanitizer_pthread_wrappers.h"
 
 #include "gtest/gtest.h"
 
 #include <stdlib.h>
-#include <pthread.h>
 #include <algorithm>
 #include <vector>
+#include <set>
 
 // Too slow for debug build
-#if TSAN_DEBUG == 0
+#if !SANITIZER_DEBUG
 
-#if SANITIZER_WORDSIZE == 64
+#if SANITIZER_CAN_USE_ALLOCATOR64
 static const uptr kAllocatorSpace = 0x700000000000ULL;
 static const uptr kAllocatorSize  = 0x010000000000ULL;  // 1T.
 static const u64 kAddressSpaceSize = 1ULL << 47;
@@ -34,12 +38,22 @@ typedef SizeClassAllocator64<
 
 typedef SizeClassAllocator64<
   kAllocatorSpace, kAllocatorSize, 16, CompactSizeClassMap> Allocator64Compact;
+#elif defined(__mips64)
+static const u64 kAddressSpaceSize = 1ULL << 40;
 #else
 static const u64 kAddressSpaceSize = 1ULL << 32;
 #endif
 
+static const uptr kRegionSizeLog = FIRST_32_SECOND_64(20, 24);
+static const uptr kFlatByteMapSize = kAddressSpaceSize >> kRegionSizeLog;
+
 typedef SizeClassAllocator32<
-  0, kAddressSpaceSize, 16, CompactSizeClassMap> Allocator32Compact;
+  0, kAddressSpaceSize,
+  /*kMetadataSize*/16,
+  CompactSizeClassMap,
+  kRegionSizeLog,
+  FlatByteMap<kFlatByteMapSize> >
+  Allocator32Compact;
 
 template <class SizeClassMap>
 void TestSizeClassMap() {
@@ -56,10 +70,17 @@ TEST(SanitizerCommon, CompactSizeClassMap) {
   TestSizeClassMap<CompactSizeClassMap>();
 }
 
+TEST(SanitizerCommon, InternalSizeClassMap) {
+  TestSizeClassMap<InternalSizeClassMap>();
+}
+
 template <class Allocator>
 void TestSizeClassAllocator() {
   Allocator *a = new Allocator;
   a->Init();
+  SizeClassAllocatorLocalCache<Allocator> cache;
+  memset(&cache, 0, sizeof(cache));
+  cache.Init(0);
 
   static const uptr sizes[] = {1, 16, 30, 40, 100, 1000, 10000,
     50000, 60000, 100000, 120000, 300000, 500000, 1000000, 2000000};
@@ -73,10 +94,11 @@ void TestSizeClassAllocator() {
       uptr size = sizes[s];
       if (!a->CanAllocate(size, 1)) continue;
       // printf("s = %ld\n", size);
-      uptr n_iter = std::max((uptr)6, 10000000 / size);
+      uptr n_iter = std::max((uptr)6, 8000000 / size);
       // fprintf(stderr, "size: %ld iter: %ld\n", size, n_iter);
       for (uptr i = 0; i < n_iter; i++) {
-        char *x = (char*)a->Allocate(size, 1);
+        uptr class_id0 = Allocator::SizeClassMapT::ClassID(size);
+        char *x = (char*)cache.Allocate(a, class_id0);
         x[0] = 0;
         x[size - 1] = 0;
         x[size / 2] = 0;
@@ -100,7 +122,7 @@ void TestSizeClassAllocator() {
       uptr *metadata = reinterpret_cast<uptr*>(a->GetMetaData(x));
       CHECK_EQ(metadata[0], reinterpret_cast<uptr>(x) + 1);
       CHECK_EQ(metadata[1], 0xABCD);
-      a->Deallocate(x);
+      cache.Deallocate(a, a->GetSizeClass(x), x);
     }
     allocated.clear();
     uptr total_allocated = a->TotalMemoryUsed();
@@ -109,11 +131,17 @@ void TestSizeClassAllocator() {
     CHECK_EQ(last_total_allocated, total_allocated);
   }
 
+  // Check that GetBlockBegin never crashes.
+  for (uptr x = 0, step = kAddressSpaceSize / 100000;
+       x < kAddressSpaceSize - step; x += step)
+    if (a->PointerIsMine(reinterpret_cast<void *>(x)))
+      Ident(a->GetBlockBegin(reinterpret_cast<void *>(x)));
+
   a->TestOnlyUnmap();
   delete a;
 }
 
-#if SANITIZER_WORDSIZE == 64
+#if SANITIZER_CAN_USE_ALLOCATOR64
 TEST(SanitizerCommon, SizeClassAllocator64) {
   TestSizeClassAllocator<Allocator64>();
 }
@@ -131,29 +159,33 @@ template <class Allocator>
 void SizeClassAllocatorMetadataStress() {
   Allocator *a = new Allocator;
   a->Init();
-  static volatile void *sink;
+  SizeClassAllocatorLocalCache<Allocator> cache;
+  memset(&cache, 0, sizeof(cache));
+  cache.Init(0);
 
-  const uptr kNumAllocs = 10000;
+  const uptr kNumAllocs = 1 << 13;
   void *allocated[kNumAllocs];
+  void *meta[kNumAllocs];
   for (uptr i = 0; i < kNumAllocs; i++) {
-    uptr size = (i % 4096) + 1;
-    void *x = a->Allocate(size, 1);
+    void *x = cache.Allocate(a, 1 + i % 50);
     allocated[i] = x;
+    meta[i] = a->GetMetaData(x);
   }
   // Get Metadata kNumAllocs^2 times.
   for (uptr i = 0; i < kNumAllocs * kNumAllocs; i++) {
-    sink = a->GetMetaData(allocated[i % kNumAllocs]);
+    uptr idx = i % kNumAllocs;
+    void *m = a->GetMetaData(allocated[idx]);
+    EXPECT_EQ(m, meta[idx]);
   }
   for (uptr i = 0; i < kNumAllocs; i++) {
-    a->Deallocate(allocated[i]);
+    cache.Deallocate(a, 1 + i % 50, allocated[i]);
   }
 
   a->TestOnlyUnmap();
-  (void)sink;
   delete a;
 }
 
-#if SANITIZER_WORDSIZE == 64
+#if SANITIZER_CAN_USE_ALLOCATOR64
 TEST(SanitizerCommon, SizeClassAllocator64MetadataStress) {
   SizeClassAllocatorMetadataStress<Allocator64>();
 }
@@ -161,10 +193,46 @@ TEST(SanitizerCommon, SizeClassAllocator64MetadataStress) {
 TEST(SanitizerCommon, SizeClassAllocator64CompactMetadataStress) {
   SizeClassAllocatorMetadataStress<Allocator64Compact>();
 }
-#endif
+#endif  // SANITIZER_CAN_USE_ALLOCATOR64
 TEST(SanitizerCommon, SizeClassAllocator32CompactMetadataStress) {
   SizeClassAllocatorMetadataStress<Allocator32Compact>();
 }
+
+template <class Allocator>
+void SizeClassAllocatorGetBlockBeginStress() {
+  Allocator *a = new Allocator;
+  a->Init();
+  SizeClassAllocatorLocalCache<Allocator> cache;
+  memset(&cache, 0, sizeof(cache));
+  cache.Init(0);
+
+  uptr max_size_class = Allocator::kNumClasses - 1;
+  uptr size = Allocator::SizeClassMapT::Size(max_size_class);
+  u64 G8 = 1ULL << 33;
+  // Make sure we correctly compute GetBlockBegin() w/o overflow.
+  for (size_t i = 0; i <= G8 / size; i++) {
+    void *x = cache.Allocate(a, max_size_class);
+    void *beg = a->GetBlockBegin(x);
+    // if ((i & (i - 1)) == 0)
+    //   fprintf(stderr, "[%zd] %p %p\n", i, x, beg);
+    EXPECT_EQ(x, beg);
+  }
+
+  a->TestOnlyUnmap();
+  delete a;
+}
+
+#if SANITIZER_CAN_USE_ALLOCATOR64
+TEST(SanitizerCommon, SizeClassAllocator64GetBlockBegin) {
+  SizeClassAllocatorGetBlockBeginStress<Allocator64>();
+}
+TEST(SanitizerCommon, SizeClassAllocator64CompactGetBlockBegin) {
+  SizeClassAllocatorGetBlockBeginStress<Allocator64Compact>();
+}
+TEST(SanitizerCommon, SizeClassAllocator32CompactGetBlockBegin) {
+  SizeClassAllocatorGetBlockBeginStress<Allocator32Compact>();
+}
+#endif  // SANITIZER_CAN_USE_ALLOCATOR64
 
 struct TestMapUnmapCallback {
   static int map_count, unmap_count;
@@ -174,7 +242,7 @@ struct TestMapUnmapCallback {
 int TestMapUnmapCallback::map_count;
 int TestMapUnmapCallback::unmap_count;
 
-#if SANITIZER_WORDSIZE == 64
+#if SANITIZER_CAN_USE_ALLOCATOR64
 TEST(SanitizerCommon, SizeClassAllocator64MapUnmapCallback) {
   TestMapUnmapCallback::map_count = 0;
   TestMapUnmapCallback::unmap_count = 0;
@@ -184,7 +252,12 @@ TEST(SanitizerCommon, SizeClassAllocator64MapUnmapCallback) {
   Allocator64WithCallBack *a = new Allocator64WithCallBack;
   a->Init();
   EXPECT_EQ(TestMapUnmapCallback::map_count, 1);  // Allocator state.
-  a->Allocate(100, 1);
+  SizeClassAllocatorLocalCache<Allocator64WithCallBack> cache;
+  memset(&cache, 0, sizeof(cache));
+  cache.Init(0);
+  AllocatorStats stats;
+  stats.Init();
+  a->AllocateBatch(&stats, &cache, 32);
   EXPECT_EQ(TestMapUnmapCallback::map_count, 3);  // State + alloc + metadata.
   a->TestOnlyUnmap();
   EXPECT_EQ(TestMapUnmapCallback::unmap_count, 1);  // The whole thing.
@@ -196,15 +269,25 @@ TEST(SanitizerCommon, SizeClassAllocator32MapUnmapCallback) {
   TestMapUnmapCallback::map_count = 0;
   TestMapUnmapCallback::unmap_count = 0;
   typedef SizeClassAllocator32<
-      0, kAddressSpaceSize, 16, CompactSizeClassMap,
-      TestMapUnmapCallback> Allocator32WithCallBack;
+      0, kAddressSpaceSize,
+      /*kMetadataSize*/16,
+      CompactSizeClassMap,
+      kRegionSizeLog,
+      FlatByteMap<kFlatByteMapSize>,
+      TestMapUnmapCallback>
+    Allocator32WithCallBack;
   Allocator32WithCallBack *a = new Allocator32WithCallBack;
   a->Init();
-  EXPECT_EQ(TestMapUnmapCallback::map_count, 1);  // Allocator state.
-  a->Allocate(100, 1);
-  EXPECT_EQ(TestMapUnmapCallback::map_count, 2);  // alloc.
+  EXPECT_EQ(TestMapUnmapCallback::map_count, 0);
+  SizeClassAllocatorLocalCache<Allocator32WithCallBack>  cache;
+  memset(&cache, 0, sizeof(cache));
+  cache.Init(0);
+  AllocatorStats stats;
+  stats.Init();
+  a->AllocateBatch(&stats, &cache, 32);
+  EXPECT_EQ(TestMapUnmapCallback::map_count, 1);
   a->TestOnlyUnmap();
-  EXPECT_EQ(TestMapUnmapCallback::unmap_count, 2);  // The whole thing + alloc.
+  EXPECT_EQ(TestMapUnmapCallback::unmap_count, 1);
   delete a;
   // fprintf(stderr, "Map: %d Unmap: %d\n",
   //         TestMapUnmapCallback::map_count,
@@ -215,10 +298,12 @@ TEST(SanitizerCommon, LargeMmapAllocatorMapUnmapCallback) {
   TestMapUnmapCallback::map_count = 0;
   TestMapUnmapCallback::unmap_count = 0;
   LargeMmapAllocator<TestMapUnmapCallback> a;
-  a.Init();
-  void *x = a.Allocate(1 << 20, 1);
+  a.Init(/* may_return_null */ false);
+  AllocatorStats stats;
+  stats.Init();
+  void *x = a.Allocate(&stats, 1 << 20, 1);
   EXPECT_EQ(TestMapUnmapCallback::map_count, 1);
-  a.Deallocate(x);
+  a.Deallocate(&stats, x);
   EXPECT_EQ(TestMapUnmapCallback::unmap_count, 1);
 }
 
@@ -226,30 +311,37 @@ template<class Allocator>
 void FailInAssertionOnOOM() {
   Allocator a;
   a.Init();
-  const uptr size = 1 << 15;
+  SizeClassAllocatorLocalCache<Allocator> cache;
+  memset(&cache, 0, sizeof(cache));
+  cache.Init(0);
+  AllocatorStats stats;
+  stats.Init();
   for (int i = 0; i < 1000000; i++) {
-    a.Allocate(size, 1);
+    a.AllocateBatch(&stats, &cache, 52);
   }
 
   a.TestOnlyUnmap();
 }
 
-#if SANITIZER_WORDSIZE == 64
+#if SANITIZER_CAN_USE_ALLOCATOR64
 TEST(SanitizerCommon, SizeClassAllocator64Overflow) {
   EXPECT_DEATH(FailInAssertionOnOOM<Allocator64>(), "Out of memory");
 }
 #endif
 
+#if !defined(_WIN32)  // FIXME: This currently fails on Windows.
 TEST(SanitizerCommon, LargeMmapAllocator) {
   LargeMmapAllocator<> a;
-  a.Init();
+  a.Init(/* may_return_null */ false);
+  AllocatorStats stats;
+  stats.Init();
 
   static const int kNumAllocs = 1000;
   char *allocated[kNumAllocs];
   static const uptr size = 4000;
   // Allocate some.
   for (int i = 0; i < kNumAllocs; i++) {
-    allocated[i] = (char *)a.Allocate(size, 1);
+    allocated[i] = (char *)a.Allocate(&stats, size, 1);
     CHECK(a.PointerIsMine(allocated[i]));
   }
   // Deallocate all.
@@ -257,14 +349,14 @@ TEST(SanitizerCommon, LargeMmapAllocator) {
   for (int i = 0; i < kNumAllocs; i++) {
     char *p = allocated[i];
     CHECK(a.PointerIsMine(p));
-    a.Deallocate(p);
+    a.Deallocate(&stats, p);
   }
   // Check that non left.
   CHECK_EQ(a.TotalMemoryUsed(), 0);
 
   // Allocate some more, also add metadata.
   for (int i = 0; i < kNumAllocs; i++) {
-    char *x = (char *)a.Allocate(size, 1);
+    char *x = (char *)a.Allocate(&stats, size, 1);
     CHECK_GE(a.GetActuallyAllocatedSize(x), size);
     uptr *meta = reinterpret_cast<uptr*>(a.GetMetaData(x));
     *meta = i;
@@ -283,7 +375,7 @@ TEST(SanitizerCommon, LargeMmapAllocator) {
     uptr *meta = reinterpret_cast<uptr*>(a.GetMetaData(p));
     CHECK_EQ(*meta, idx);
     CHECK(a.PointerIsMine(p));
-    a.Deallocate(p);
+    a.Deallocate(&stats, p);
   }
   CHECK_EQ(a.TotalMemoryUsed(), 0);
 
@@ -293,7 +385,7 @@ TEST(SanitizerCommon, LargeMmapAllocator) {
     const uptr kNumAlignedAllocs = 100;
     for (uptr i = 0; i < kNumAlignedAllocs; i++) {
       uptr size = ((i % 10) + 1) * 4096;
-      char *p = allocated[i] = (char *)a.Allocate(size, alignment);
+      char *p = allocated[i] = (char *)a.Allocate(&stats, size, alignment);
       CHECK_EQ(p, a.GetBlockBegin(p));
       CHECK_EQ(p, a.GetBlockBegin(p + size - 1));
       CHECK_EQ(p, a.GetBlockBegin(p + size / 2));
@@ -301,10 +393,19 @@ TEST(SanitizerCommon, LargeMmapAllocator) {
       p[0] = p[size - 1] = 0;
     }
     for (uptr i = 0; i < kNumAlignedAllocs; i++) {
-      a.Deallocate(allocated[i]);
+      a.Deallocate(&stats, allocated[i]);
     }
   }
+
+  // Regression test for boundary condition in GetBlockBegin().
+  uptr page_size = GetPageSizeCached();
+  char *p = (char *)a.Allocate(&stats, page_size, 1);
+  CHECK_EQ(p, a.GetBlockBegin(p));
+  CHECK_EQ(p, (char *)a.GetBlockBegin(p + page_size - 1));
+  CHECK_NE(p, (char *)a.GetBlockBegin(p + page_size));
+  a.Deallocate(&stats, p);
 }
+#endif
 
 template
 <class PrimaryAllocator, class SecondaryAllocator, class AllocatorCache>
@@ -313,16 +414,22 @@ void TestCombinedAllocator() {
       CombinedAllocator<PrimaryAllocator, AllocatorCache, SecondaryAllocator>
       Allocator;
   Allocator *a = new Allocator;
-  a->Init();
+  a->Init(/* may_return_null */ true);
 
   AllocatorCache cache;
-  cache.Init();
+  memset(&cache, 0, sizeof(cache));
+  a->InitCache(&cache);
 
   EXPECT_EQ(a->Allocate(&cache, -1, 1), (void*)0);
   EXPECT_EQ(a->Allocate(&cache, -1, 1024), (void*)0);
   EXPECT_EQ(a->Allocate(&cache, (uptr)-1 - 1024, 1), (void*)0);
   EXPECT_EQ(a->Allocate(&cache, (uptr)-1 - 1024, 1024), (void*)0);
   EXPECT_EQ(a->Allocate(&cache, (uptr)-1 - 1023, 1024), (void*)0);
+
+  // Set to false
+  a->SetMayReturnNull(false);
+  EXPECT_DEATH(a->Allocate(&cache, -1, 1),
+               "allocator is terminating the process");
 
   const uptr kNumAllocs = 100000;
   const uptr kNumIter = 10;
@@ -352,10 +459,11 @@ void TestCombinedAllocator() {
     allocated.clear();
     a->SwallowCache(&cache);
   }
+  a->DestroyCache(&cache);
   a->TestOnlyUnmap();
 }
 
-#if SANITIZER_WORDSIZE == 64
+#if SANITIZER_CAN_USE_ALLOCATOR64
 TEST(SanitizerCommon, CombinedAllocator64) {
   TestCombinedAllocator<Allocator64,
       LargeMmapAllocator<>,
@@ -369,22 +477,23 @@ TEST(SanitizerCommon, CombinedAllocator64Compact) {
 }
 #endif
 
+#if !defined(_WIN32)  // FIXME: This currently fails on Windows.
 TEST(SanitizerCommon, CombinedAllocator32Compact) {
   TestCombinedAllocator<Allocator32Compact,
       LargeMmapAllocator<>,
       SizeClassAllocatorLocalCache<Allocator32Compact> > ();
 }
+#endif
 
 template <class AllocatorCache>
 void TestSizeClassAllocatorLocalCache() {
-  static THREADLOCAL AllocatorCache static_allocator_cache;
-  static_allocator_cache.Init();
   AllocatorCache cache;
   typedef typename AllocatorCache::Allocator Allocator;
   Allocator *a = new Allocator();
 
   a->Init();
-  cache.Init();
+  memset(&cache, 0, sizeof(cache));
+  cache.Init(0);
 
   const uptr kNumAllocs = 10000;
   const int kNumIter = 100;
@@ -410,7 +519,7 @@ void TestSizeClassAllocatorLocalCache() {
   delete a;
 }
 
-#if SANITIZER_WORDSIZE == 64
+#if SANITIZER_CAN_USE_ALLOCATOR64
 TEST(SanitizerCommon, SizeClassAllocator64LocalCache) {
   TestSizeClassAllocatorLocalCache<
       SizeClassAllocatorLocalCache<Allocator64> >();
@@ -427,9 +536,9 @@ TEST(SanitizerCommon, SizeClassAllocator32CompactLocalCache) {
       SizeClassAllocatorLocalCache<Allocator32Compact> >();
 }
 
-#if SANITIZER_WORDSIZE == 64
+#if SANITIZER_CAN_USE_ALLOCATOR64
 typedef SizeClassAllocatorLocalCache<Allocator64> AllocatorCache;
-static THREADLOCAL AllocatorCache static_allocator_cache;
+static AllocatorCache static_allocator_cache;
 
 void *AllocatorLeakTestWorker(void *arg) {
   typedef AllocatorCache::Allocator Allocator;
@@ -446,14 +555,50 @@ TEST(SanitizerCommon, AllocatorLeakTest) {
   uptr total_used_memory = 0;
   for (int i = 0; i < 100; i++) {
     pthread_t t;
-    EXPECT_EQ(0, pthread_create(&t, 0, AllocatorLeakTestWorker, &a));
-    EXPECT_EQ(0, pthread_join(t, 0));
+    PTHREAD_CREATE(&t, 0, AllocatorLeakTestWorker, &a);
+    PTHREAD_JOIN(t, 0);
     if (i == 0)
       total_used_memory = a.TotalMemoryUsed();
     EXPECT_EQ(a.TotalMemoryUsed(), total_used_memory);
   }
 
   a.TestOnlyUnmap();
+}
+
+// Struct which is allocated to pass info to new threads.  The new thread frees
+// it.
+struct NewThreadParams {
+  AllocatorCache *thread_cache;
+  AllocatorCache::Allocator *allocator;
+  uptr class_id;
+};
+
+// Called in a new thread.  Just frees its argument.
+static void *DeallocNewThreadWorker(void *arg) {
+  NewThreadParams *params = reinterpret_cast<NewThreadParams*>(arg);
+  params->thread_cache->Deallocate(params->allocator, params->class_id, params);
+  return NULL;
+}
+
+// The allocator cache is supposed to be POD and zero initialized.  We should be
+// able to call Deallocate on a zeroed cache, and it will self-initialize.
+TEST(Allocator, AllocatorCacheDeallocNewThread) {
+  AllocatorCache::Allocator allocator;
+  allocator.Init();
+  AllocatorCache main_cache;
+  AllocatorCache child_cache;
+  memset(&main_cache, 0, sizeof(main_cache));
+  memset(&child_cache, 0, sizeof(child_cache));
+
+  uptr class_id = DefaultSizeClassMap::ClassID(sizeof(NewThreadParams));
+  NewThreadParams *params = reinterpret_cast<NewThreadParams*>(
+      main_cache.Allocate(&allocator, class_id));
+  params->thread_cache = &child_cache;
+  params->allocator = &allocator;
+  params->class_id = class_id;
+  pthread_t t;
+  PTHREAD_CREATE(&t, 0, DeallocNewThreadWorker, params);
+  PTHREAD_JOIN(t, 0);
 }
 #endif
 
@@ -472,7 +617,7 @@ TEST(Allocator, Stress) {
   char *ptrs[kCount];
   unsigned rnd = 42;
   for (int i = 0; i < kCount; i++) {
-    uptr sz = rand_r(&rnd) % 1000;
+    uptr sz = my_rand_r(&rnd) % 1000;
     char *p = (char*)InternalAlloc(sz);
     EXPECT_NE(p, (char*)0);
     ptrs[i] = p;
@@ -480,6 +625,11 @@ TEST(Allocator, Stress) {
   for (int i = 0; i < kCount; i++) {
     InternalFree(ptrs[i]);
   }
+}
+
+TEST(Allocator, LargeAlloc) {
+  void *p = InternalAlloc(10 << 20);
+  InternalFree(p);
 }
 
 TEST(Allocator, ScopedBuffer) {
@@ -496,4 +646,215 @@ TEST(Allocator, ScopedBuffer) {
   }
 }
 
-#endif  // #if TSAN_DEBUG==0
+void IterationTestCallback(uptr chunk, void *arg) {
+  reinterpret_cast<std::set<uptr> *>(arg)->insert(chunk);
+}
+
+template <class Allocator>
+void TestSizeClassAllocatorIteration() {
+  Allocator *a = new Allocator;
+  a->Init();
+  SizeClassAllocatorLocalCache<Allocator> cache;
+  memset(&cache, 0, sizeof(cache));
+  cache.Init(0);
+
+  static const uptr sizes[] = {1, 16, 30, 40, 100, 1000, 10000,
+    50000, 60000, 100000, 120000, 300000, 500000, 1000000, 2000000};
+
+  std::vector<void *> allocated;
+
+  // Allocate a bunch of chunks.
+  for (uptr s = 0; s < ARRAY_SIZE(sizes); s++) {
+    uptr size = sizes[s];
+    if (!a->CanAllocate(size, 1)) continue;
+    // printf("s = %ld\n", size);
+    uptr n_iter = std::max((uptr)6, 80000 / size);
+    // fprintf(stderr, "size: %ld iter: %ld\n", size, n_iter);
+    for (uptr j = 0; j < n_iter; j++) {
+      uptr class_id0 = Allocator::SizeClassMapT::ClassID(size);
+      void *x = cache.Allocate(a, class_id0);
+      allocated.push_back(x);
+    }
+  }
+
+  std::set<uptr> reported_chunks;
+  a->ForceLock();
+  a->ForEachChunk(IterationTestCallback, &reported_chunks);
+  a->ForceUnlock();
+
+  for (uptr i = 0; i < allocated.size(); i++) {
+    // Don't use EXPECT_NE. Reporting the first mismatch is enough.
+    ASSERT_NE(reported_chunks.find(reinterpret_cast<uptr>(allocated[i])),
+              reported_chunks.end());
+  }
+
+  a->TestOnlyUnmap();
+  delete a;
+}
+
+#if SANITIZER_CAN_USE_ALLOCATOR64
+TEST(SanitizerCommon, SizeClassAllocator64Iteration) {
+  TestSizeClassAllocatorIteration<Allocator64>();
+}
+#endif
+
+TEST(SanitizerCommon, SizeClassAllocator32Iteration) {
+  TestSizeClassAllocatorIteration<Allocator32Compact>();
+}
+
+TEST(SanitizerCommon, LargeMmapAllocatorIteration) {
+  LargeMmapAllocator<> a;
+  a.Init(/* may_return_null */ false);
+  AllocatorStats stats;
+  stats.Init();
+
+  static const uptr kNumAllocs = 1000;
+  char *allocated[kNumAllocs];
+  static const uptr size = 40;
+  // Allocate some.
+  for (uptr i = 0; i < kNumAllocs; i++)
+    allocated[i] = (char *)a.Allocate(&stats, size, 1);
+
+  std::set<uptr> reported_chunks;
+  a.ForceLock();
+  a.ForEachChunk(IterationTestCallback, &reported_chunks);
+  a.ForceUnlock();
+
+  for (uptr i = 0; i < kNumAllocs; i++) {
+    // Don't use EXPECT_NE. Reporting the first mismatch is enough.
+    ASSERT_NE(reported_chunks.find(reinterpret_cast<uptr>(allocated[i])),
+              reported_chunks.end());
+  }
+  for (uptr i = 0; i < kNumAllocs; i++)
+    a.Deallocate(&stats, allocated[i]);
+}
+
+TEST(SanitizerCommon, LargeMmapAllocatorBlockBegin) {
+  LargeMmapAllocator<> a;
+  a.Init(/* may_return_null */ false);
+  AllocatorStats stats;
+  stats.Init();
+
+  static const uptr kNumAllocs = 1024;
+  static const uptr kNumExpectedFalseLookups = 10000000;
+  char *allocated[kNumAllocs];
+  static const uptr size = 4096;
+  // Allocate some.
+  for (uptr i = 0; i < kNumAllocs; i++) {
+    allocated[i] = (char *)a.Allocate(&stats, size, 1);
+  }
+
+  a.ForceLock();
+  for (uptr i = 0; i < kNumAllocs  * kNumAllocs; i++) {
+    // if ((i & (i - 1)) == 0) fprintf(stderr, "[%zd]\n", i);
+    char *p1 = allocated[i % kNumAllocs];
+    EXPECT_EQ(p1, a.GetBlockBeginFastLocked(p1));
+    EXPECT_EQ(p1, a.GetBlockBeginFastLocked(p1 + size / 2));
+    EXPECT_EQ(p1, a.GetBlockBeginFastLocked(p1 + size - 1));
+    EXPECT_EQ(p1, a.GetBlockBeginFastLocked(p1 - 100));
+  }
+
+  for (uptr i = 0; i < kNumExpectedFalseLookups; i++) {
+    void *p = reinterpret_cast<void *>(i % 1024);
+    EXPECT_EQ((void *)0, a.GetBlockBeginFastLocked(p));
+    p = reinterpret_cast<void *>(~0L - (i % 1024));
+    EXPECT_EQ((void *)0, a.GetBlockBeginFastLocked(p));
+  }
+  a.ForceUnlock();
+
+  for (uptr i = 0; i < kNumAllocs; i++)
+    a.Deallocate(&stats, allocated[i]);
+}
+
+
+#if SANITIZER_CAN_USE_ALLOCATOR64
+// Regression test for out-of-memory condition in PopulateFreeList().
+TEST(SanitizerCommon, SizeClassAllocator64PopulateFreeListOOM) {
+  // In a world where regions are small and chunks are huge...
+  typedef SizeClassMap<63, 128, 16> SpecialSizeClassMap;
+  typedef SizeClassAllocator64<kAllocatorSpace, kAllocatorSize, 0,
+                               SpecialSizeClassMap> SpecialAllocator64;
+  const uptr kRegionSize =
+      kAllocatorSize / SpecialSizeClassMap::kNumClassesRounded;
+  SpecialAllocator64 *a = new SpecialAllocator64;
+  a->Init();
+  SizeClassAllocatorLocalCache<SpecialAllocator64> cache;
+  memset(&cache, 0, sizeof(cache));
+  cache.Init(0);
+
+  // ...one man is on a mission to overflow a region with a series of
+  // successive allocations.
+  const uptr kClassID = 107;
+  const uptr kAllocationSize = DefaultSizeClassMap::Size(kClassID);
+  ASSERT_LT(2 * kAllocationSize, kRegionSize);
+  ASSERT_GT(3 * kAllocationSize, kRegionSize);
+  cache.Allocate(a, kClassID);
+  EXPECT_DEATH(cache.Allocate(a, kClassID) && cache.Allocate(a, kClassID),
+               "The process has exhausted");
+  a->TestOnlyUnmap();
+  delete a;
+}
+#endif
+
+TEST(SanitizerCommon, TwoLevelByteMap) {
+  const u64 kSize1 = 1 << 6, kSize2 = 1 << 12;
+  const u64 n = kSize1 * kSize2;
+  TwoLevelByteMap<kSize1, kSize2> m;
+  m.TestOnlyInit();
+  for (u64 i = 0; i < n; i += 7) {
+    m.set(i, (i % 100) + 1);
+  }
+  for (u64 j = 0; j < n; j++) {
+    if (j % 7)
+      EXPECT_EQ(m[j], 0);
+    else
+      EXPECT_EQ(m[j], (j % 100) + 1);
+  }
+
+  m.TestOnlyUnmap();
+}
+
+
+typedef TwoLevelByteMap<1 << 12, 1 << 13, TestMapUnmapCallback> TestByteMap;
+
+struct TestByteMapParam {
+  TestByteMap *m;
+  size_t shard;
+  size_t num_shards;
+};
+
+void *TwoLevelByteMapUserThread(void *param) {
+  TestByteMapParam *p = (TestByteMapParam*)param;
+  for (size_t i = p->shard; i < p->m->size(); i += p->num_shards) {
+    size_t val = (i % 100) + 1;
+    p->m->set(i, val);
+    EXPECT_EQ((*p->m)[i], val);
+  }
+  return 0;
+}
+
+TEST(SanitizerCommon, ThreadedTwoLevelByteMap) {
+  TestByteMap m;
+  m.TestOnlyInit();
+  TestMapUnmapCallback::map_count = 0;
+  TestMapUnmapCallback::unmap_count = 0;
+  static const int kNumThreads = 4;
+  pthread_t t[kNumThreads];
+  TestByteMapParam p[kNumThreads];
+  for (int i = 0; i < kNumThreads; i++) {
+    p[i].m = &m;
+    p[i].shard = i;
+    p[i].num_shards = kNumThreads;
+    PTHREAD_CREATE(&t[i], 0, TwoLevelByteMapUserThread, &p[i]);
+  }
+  for (int i = 0; i < kNumThreads; i++) {
+    PTHREAD_JOIN(t[i], 0);
+  }
+  EXPECT_EQ((uptr)TestMapUnmapCallback::map_count, m.size1());
+  EXPECT_EQ((uptr)TestMapUnmapCallback::unmap_count, 0UL);
+  m.TestOnlyUnmap();
+  EXPECT_EQ((uptr)TestMapUnmapCallback::map_count, m.size1());
+  EXPECT_EQ((uptr)TestMapUnmapCallback::unmap_count, m.size1());
+}
+
+#endif  // #if !SANITIZER_DEBUG

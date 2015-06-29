@@ -12,19 +12,14 @@
 // Windows-specific code.
 //===----------------------------------------------------------------------===//
 
-#ifdef _WIN32
+#include "sanitizer_common/sanitizer_platform.h"
+#if SANITIZER_WINDOWS
 
 #include "tsan_platform.h"
 
 #include <stdlib.h>
 
 namespace __tsan {
-
-ScopedInRtl::ScopedInRtl() {
-}
-
-ScopedInRtl::~ScopedInRtl() {
-}
 
 uptr GetShadowMemoryConsumption() {
   return 0;
@@ -33,26 +28,12 @@ uptr GetShadowMemoryConsumption() {
 void FlushShadowMemory() {
 }
 
-const char *InitializePlatform() {
-  return getenv(kTsanOptionsEnv);
+void WriteMemoryProfile(char *buf, uptr buf_size, uptr nthread, uptr nlive) {
 }
 
-void FinalizePlatform() {
-  fflush(0);
-}
-
-uptr GetTlsSize() {
-  return 0;
-}
-
-void GetThreadStackAndTls(bool main, uptr *stk_addr, uptr *stk_size,
-                          uptr *tls_addr, uptr *tls_size) {
-  *stk_addr = 0;
-  *stk_size = 0;
-  *tls_addr = 0;
-  *tls_size = 0;
+void InitializePlatform() {
 }
 
 }  // namespace __tsan
 
-#endif  // #ifdef _WIN32
+#endif  // SANITIZER_WINDOWS
