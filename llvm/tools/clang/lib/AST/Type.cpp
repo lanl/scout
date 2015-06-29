@@ -2609,6 +2609,18 @@ bool Type::canHaveNullability() const {
   case Type::ObjCObject:
   case Type::ObjCInterface:
   case Type::Atomic:
+// +==== Scout =============================================================+
+  case Type::UniformMesh:
+  case Type::ALEMesh:
+  case Type::RectilinearMesh:
+  case Type::StructuredMesh:
+  case Type::UnstructuredMesh:
+  case Type::Window:
+  case Type::Image:
+  case Type::Query:
+  case Type::Frame:
+  case Type::FrameVar:
+// +========================================================================+
     return false;
   }
   llvm_unreachable("bad type kind!");
