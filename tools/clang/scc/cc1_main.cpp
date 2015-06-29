@@ -71,6 +71,7 @@
 using namespace std;
 
 #include "llvm/Option/Arg.h"
+#include "clang/Frontend/PCHContainerOperations.h"
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/Options.h"
 #include "clang/Frontend/CompilerInstance.h"

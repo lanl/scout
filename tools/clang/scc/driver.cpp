@@ -47,6 +47,7 @@
 #include "llvm/Support/Program.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/Signals.h"
+#include "llvm/Support/StringSaver.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/Timer.h"

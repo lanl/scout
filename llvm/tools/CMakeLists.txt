@@ -78,10 +78,6 @@ add_llvm_external_project(llgo)
 add_llvm_external_project(lld)
 add_llvm_external_project(lldb)
 
-<<<<<<< HEAD
-if( NOT LLVM_INCLUDE_TOOLS STREQUAL "bootstrap-only" )
-  add_llvm_external_project(lld)
-
 # +===== Scout =========================================================+
 #  Temporarily disable building of LLDB as we are developing it.
   if((NOT APPLE) AND (DEFINED ENV{SC_BUILD_LLDB}))
@@ -89,14 +85,8 @@ if( NOT LLVM_INCLUDE_TOOLS STREQUAL "bootstrap-only" )
   endif()
 # +=====================================================================+
 
-  # Automatically add remaining sub-directories containing a 'CMakeLists.txt'
-  # file as external projects.
-  add_llvm_implicit_external_projects()
-endif()
-=======
-# Automatically add remaining sub-directories containing a 'CMakeLists.txt'
-# file as external projects.
-add_llvm_implicit_external_projects()
->>>>>>> ebfa936c10df87a724cb67b07f2906ba29549804
+ # Automatically add remaining sub-directories containing a 'CMakeLists.txt'
+ # file as external projects.
+ add_llvm_implicit_external_projects()
 
 set(LLVM_COMMON_DEPENDS ${LLVM_COMMON_DEPENDS} PARENT_SCOPE)
