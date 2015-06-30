@@ -101,3 +101,15 @@ add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
     "warning: I/O function called within task body")
 
+set(name non-mesh-var)
+set(tname scc_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: non-mesh variable 'myval' from outer scope on LHS of parallel construct")
+
+set(name non-mesh-array)
+set(tname scc_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: non-mesh variable 'myarray' from outer scope on LHS of parallel construct")
+

@@ -143,6 +143,8 @@ bool CheckShift(unsigned id, CallExpr *E, Sema &S) {
   return error;
 }
 
+
+
 void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
 
   switch(S->getOpcode()){
@@ -156,8 +158,18 @@ void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
   case BO_ShrAssign:
   case BO_AndAssign:
   case BO_XorAssign:
-  case BO_OrAssign:
-    if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(S->getLHS())){
+  case BO_OrAssign: {
+    Expr *E = S->getLHS();
+
+    // deal w/ array case
+    if(ArraySubscriptExpr *ASR = dyn_cast<ArraySubscriptExpr>(E)) {
+      E = ASR->getBase();
+      if(ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(E)) {
+         E = ICE->getSubExpr();
+      }
+    }
+
+    if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(E)){
       RefMap_::iterator itr = localMap_.find(DR->getDecl()->getName().str());
       if(itr == localMap_.end()){
 
@@ -168,6 +180,7 @@ void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
 
     nodeType_ = NodeLHS;
     break;
+  }
   default:
     break;
   }
@@ -334,8 +347,18 @@ void RenderallVisitor::VisitBinaryOperator(BinaryOperator* S) {
   case BO_ShrAssign:
   case BO_AndAssign:
   case BO_XorAssign:
-  case BO_OrAssign:
-    if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(S->getLHS())){
+  case BO_OrAssign: {
+    Expr *E = S->getLHS();
+
+    // deal w/ array case
+    if(ArraySubscriptExpr *ASR = dyn_cast<ArraySubscriptExpr>(E)) {
+      E = ASR->getBase();
+      if(ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(E)) {
+        E = ICE->getSubExpr();
+      }
+    }
+
+    if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(E)){
       RefMap_::iterator itr = localMap_.find(DR->getDecl()->getName().str());
       if(itr == localMap_.end()){
 
@@ -346,6 +369,7 @@ void RenderallVisitor::VisitBinaryOperator(BinaryOperator* S) {
 
     nodeType_ = NodeLHS;
     break;
+  }
   default:
     break;
   }
