@@ -122,9 +122,9 @@ namespace{
   const uint32_t FLAG_VAR_CONSTANT = 0x00000001; 
   const uint32_t FLAG_VAR_POSITION = 0x00000002; 
 
-  const uint64_t AGG_SUM = 6716694111845535935ULL;
-  const uint64_t AGG_MEAN = 8849440314945535285ULL;
-  const uint64_t AGG_VARIANCE = 14523147045845051570ULL;
+  const uint64_t AGG_SUM = 0;
+  const uint64_t AGG_MEAN = 1;
+  const uint64_t AGG_VARIANCE = 2;
 
   VarId nullVarId = numeric_limits<VarId>::max();
 
