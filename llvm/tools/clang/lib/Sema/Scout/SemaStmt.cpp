@@ -209,9 +209,12 @@ StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
   // check that LHS mesh field assignment
   // operators do not appear as subsequent RHS values, and
   // perform other semantic checks
-  ForallVisitor v(*this, FS);
+  ForallReductionVisitor rv;
+  rv.Visit(Body);
+    
+  ForallVisitor v(*this, FS, false, rv.isReduction());
   v.Visit(Body);
-
+  
   if (v.error()){
     return StmtError();
   }

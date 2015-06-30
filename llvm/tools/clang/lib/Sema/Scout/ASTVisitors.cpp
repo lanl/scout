@@ -161,7 +161,7 @@ void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
       RefMap_::iterator itr = localMap_.find(DR->getDecl()->getName().str());
       if(itr == localMap_.end()){
 
-        if (!isTask_) sema_.Diag(DR->getLocation(),
+        if (!isTask_ && !isReduction_) sema_.Diag(DR->getLocation(),
             diag::warn_lhs_outside_forall) << DR->getDecl()->getName();
       }
     }
@@ -288,7 +288,18 @@ void ForallVisitor::VisitMemberExpr(MemberExpr* E) {
   }
 }
 
-
+void ForallReductionVisitor::VisitBinaryOperator(BinaryOperator* S){
+  if(S->getOpcode() != BO_AddAssign){
+    return;
+  }
+  
+  if(!isa<DeclRefExpr>(S->getLHS())){
+    return;
+  }
+  
+  isReduction_ = true;
+}
+  
 void RenderallVisitor::VisitBinaryOperator(BinaryOperator* S) {
   switch(S->getOpcode()){
   case BO_Assign:

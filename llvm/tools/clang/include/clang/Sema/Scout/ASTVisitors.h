@@ -125,12 +125,16 @@ public:
     NodeRHS
   };
 
-  ForallVisitor(Sema& sema, ForallMeshStmt* fs, bool isTask = false)
+  ForallVisitor(Sema& sema,
+                ForallMeshStmt* fs,
+                bool isTask = false,
+                bool isReduction = false)
   : sema_(sema),
     fs_(fs),
     meshAccess_(false),
     error_(false),
     isTask_(isTask),
+    isReduction_(isReduction),
     nodeType_(NodeNone) {
     (void)fs_; //suppress warning
   }
@@ -172,9 +176,48 @@ private:
   bool meshAccess_;
   bool error_;
   bool isTask_;
+  bool isReduction_;
   NodeType nodeType_;
 };
 
+class ForallReductionVisitor : public StmtVisitor<ForallReductionVisitor> {
+public:
+  
+  ForallReductionVisitor()
+  : first_(true),
+  isReduction_(false){}
+  
+  void VisitBinaryOperator(BinaryOperator* S);
+  
+  void VisitChildren(Stmt* S) {
+    if(S){
+      for(Stmt::child_iterator I = S->child_begin(),
+          E = S->child_end(); I != E; ++I){
+        if(Stmt* child = *I){
+          if(first_){
+            first_ = false;
+            Visit(child);
+          }
+          else{
+            isReduction_ = false;
+          }
+        }
+      }
+    }
+  }
+  
+  void VisitStmt(Stmt* S) {
+    VisitChildren(S);
+  }
+  
+  bool isReduction(){
+    return isReduction_;
+  }
+  
+private:
+  bool first_;
+  bool isReduction_;
+};
 
 class RenderallVisitor : public StmtVisitor<RenderallVisitor> {
 public:
