@@ -3391,7 +3391,21 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     //llvm::errs() << "hash for '" << name << "' = " <<
     //hash<string>()(name) << "\n";
     
-    args = {plotPtr, ConstantInt::get(R.Int64Ty, hash<string>()(name))};
+    size_t aggId;
+    if(name == "sum"){
+      aggId = 0;
+    }
+    else if(name == "mean"){
+      aggId = 1;
+    }
+    else if(name == "variance"){
+      aggId = 2;
+    }
+    else{
+      assert(false && "invalid aggregate function");
+    }
+    
+    args = {plotPtr, ConstantInt::get(R.Int64Ty, aggId)};
     
     llvm::Type* rt = ConvertType(func->getReturnType());
     
