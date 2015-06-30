@@ -76,11 +76,10 @@ add_llvm_tool_subdirectory(gold)
 add_llvm_external_project(clang)
 add_llvm_external_project(llgo)
 add_llvm_external_project(lld)
-add_llvm_external_project(lldb)
 
 # +===== Scout =========================================================+
-#  Temporarily disable building of LLDB as we are developing it.
-  if((NOT APPLE) AND (DEFINED ENV{SC_BUILD_LLDB}))
+#  only build lldb if SC_BUILD_LLDB is set
+  if(DEFINED ENV{SC_BUILD_LLDB})
     add_llvm_external_project(lldb)
   endif()
 # +=====================================================================+
