@@ -657,9 +657,12 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   llvm::Value* v2 = Builder.CreateMul(z, Builder.CreateMul(width, height));
 
   // update inner Induction vars used by position
-  Builder.CreateStore(pm2, InnerInductionVar[0]);
-  Builder.CreateStore(pd2, InnerInductionVar[1]);
-  Builder.CreateStore(pd4, InnerInductionVar[2]);
+  Builder.CreateStore(Builder.CreateURem(Builder.CreateAdd(pd2, One), Two), 
+    InnerInductionVar[0]);
+  Builder.CreateStore(Builder.CreateURem(Builder.CreateAdd(pm2, One), Two), 
+    InnerInductionVar[1]);
+  Builder.CreateStore(Builder.CreateURem(Builder.CreateAdd(pd4, One), Two), 
+    InnerInductionVar[2]);
 
   llvm::Value* newCellIndex3 = Builder.CreateAdd(x, Builder.CreateAdd(v1, v2));
   Builder.CreateBr(Merge);
@@ -694,8 +697,10 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   y = Builder.CreateSelect(cy1, vy2, Builder.CreateSelect(cy2, vy3, y));
 
   // update inner Induction vars used by position
-  Builder.CreateStore(vx1, InnerInductionVar[0]);
-  Builder.CreateStore(vy1, InnerInductionVar[1]);
+  Builder.CreateStore(Builder.CreateURem(Builder.CreateAdd(vx1, One), Two),
+    InnerInductionVar[0]);
+  Builder.CreateStore(Builder.CreateURem(Builder.CreateAdd(vy1, One), Two), 
+    InnerInductionVar[1]);
 
   llvm::Value* newCellIndex2 = Builder.CreateAdd(Builder.CreateMul(y, width), x);
   Builder.CreateBr(Merge);
@@ -713,7 +718,8 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   vx3 = Builder.CreateURem(x, width);
 
   // update inner Induction var used by position
-  Builder.CreateStore(cellPos, InnerInductionVar[0]);
+  Builder.CreateStore(Builder.CreateURem(Builder.CreateAdd(cellPos, One), Two), 
+    InnerInductionVar[0]);
 
   llvm::Value* newCellIndex1 = Builder.CreateSelect(cx1, vx2, Builder.CreateSelect(cx2, vx3, x));
   Builder.CreateBr(Merge);
