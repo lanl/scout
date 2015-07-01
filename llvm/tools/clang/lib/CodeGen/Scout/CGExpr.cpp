@@ -458,18 +458,20 @@ CodeGenFunction::getVFieldLinearIdx(SmallVector<llvm::Value*, 3> args){
   }
   
   Value* y = B.CreateLoad(LookupInductionVar(1), "y");
+  Value* yc = B.CreateAdd(y, args[1], "yc");
   Value* width = B.CreateLoad(LookupMeshDim(0), "width");
   Value* width1 = B.CreateAdd(One, width, "width1");
-  Value* yv = B.CreateAdd(xv, B.CreateMul(width1, y), "yv");
+  Value* yv = B.CreateAdd(xv, B.CreateMul(width1, yc), "yv");
   
   if(args.size() == 2){
     return yv;
   }
 
   Value* z = B.CreateLoad(LookupInductionVar(2), "z");
+  Value* zc = B.CreateAdd(z, args[2], "zc");
   Value* height = B.CreateLoad(LookupMeshDim(1), "height");
   Value* height1 = B.CreateAdd(One, height, "height1");
-  Value* zv = B.CreateMul(B.CreateMul(width1, height1), z, "zv");
+  Value* zv = B.CreateMul(B.CreateMul(width1, height1), zc, "zv");
   
   return B.CreateAdd(yv, zv);
 }
