@@ -1,4 +1,4 @@
-# Copyright 2015 Stanford University
+# Copyright 2015 Stanford University, NVIDIA Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -100,7 +100,7 @@ ifneq (${MARCH},)
   CC_FLAGS += -march=${MARCH}
 endif
 
-INC_FLAGS	+= -I$(LG_RT_DIR)
+INC_FLAGS	+= -I$(LG_RT_DIR) -I$(LG_RT_DIR)/realm
 ifneq ($(shell uname -s),Darwin)
 LD_FLAGS	+= -lrt -lpthread
 else
@@ -205,6 +205,13 @@ ifeq ($(strip $(USE_GASNET)),1)
 
 endif
 
+# general low-level doesn't use HDF by default
+USE_HDF ?= 0
+ifeq ($(strip $(USE_HDF)), 1)
+  CC_FLAGS      += -DUSE_HDF
+  LD_FLAGS      += -lhdf5
+endif
+
 SKIP_MACHINES= titan% daint%
 #Extra options for MPI support in GASNet
 ifeq ($(strip $(USE_MPI)),1)
@@ -252,6 +259,9 @@ else
 CC_FLAGS	+= -DSHARED_LOWLEVEL
 LOW_RUNTIME_SRC	+= $(LG_RT_DIR)/shared_lowlevel.cc 
 endif
+LOW_RUNTIME_SRC += $(LG_RT_DIR)/realm/logging.cc \
+		   $(LG_RT_DIR)/realm/profiling.cc \
+		   $(LG_RT_DIR)/realm/operation.cc
 
 # If you want to go back to using the shared mapper, comment out the next line
 # and uncomment the one after that

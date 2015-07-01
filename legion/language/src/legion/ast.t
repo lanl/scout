@@ -1,4 +1,4 @@
--- Copyright 2015 Stanford University
+-- Copyright 2015 Stanford University, NVIDIA Corporation
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -65,6 +65,21 @@ end
 
 function ast_node:type()
   return self.node_type
+end
+
+ast_node.__call = function(node, fields_to_update)
+  local ctor = rawget(node, "node_type")
+  local values = {}
+  for _, f in ipairs(ctor.expected_fields) do
+    values[f] = node[f]
+  end
+  for f, v in pairs(fields_to_update) do
+    if values[f] == nil then
+      error(tostring(ctor) .. " does not require argument '" .. f .. "'", 2)
+    end
+    values[f] = v
+  end
+  return ctor(values)
 end
 
 -- Constructors
@@ -166,7 +181,7 @@ ast.unspecialized = AST_factory("unspecialized")
 
 ast.unspecialized("ExprID", {"name", "span"})
 ast.unspecialized("ExprEscape", {"expr", "span"})
-ast.unspecialized("ExprFieldAccess", {"value", "field_name", "span"})
+ast.unspecialized("ExprFieldAccess", {"value", "field_names", "span"})
 ast.unspecialized("ExprIndexAccess", {"value", "index", "span"})
 ast.unspecialized("ExprMethodCall", {"value", "method_name", "args", "span"})
 ast.unspecialized("ExprCall", {"fn", "args", "span"})
@@ -178,16 +193,18 @@ ast.unspecialized("ExprRawContext", {"span"})
 ast.unspecialized("ExprRawFields", {"region", "span"})
 ast.unspecialized("ExprRawPhysical", {"region", "span"})
 ast.unspecialized("ExprRawRuntime", {"span"})
+ast.unspecialized("ExprRawValue", {"value", "span"})
 ast.unspecialized("ExprIsnull", {"pointer", "span"})
 ast.unspecialized("ExprNew", {"pointer_type_expr", "span"})
 ast.unspecialized("ExprNull", {"pointer_type_expr", "span"})
 ast.unspecialized("ExprDynamicCast", {"type_expr", "value", "span"})
 ast.unspecialized("ExprStaticCast", {"type_expr", "value", "span"})
-ast.unspecialized("ExprRegion", {"element_type_expr", "size", "span"})
+ast.unspecialized("ExprIspace", {"index_type_expr", "extent",
+                                 "start", "span"})
+ast.unspecialized("ExprRegion", {"ispace", "fspace_type_expr", "span"})
 ast.unspecialized("ExprPartition", {"disjointness_expr", "region_type_expr",
                                     "coloring", "span"})
-ast.unspecialized("ExprCrossProduct", {"lhs_type_expr", "rhs_type_expr",
-                                       "span"})
+ast.unspecialized("ExprCrossProduct", {"arg_type_exprs", "span"})
 ast.unspecialized("ExprUnary", {"op", "rhs", "span"})
 ast.unspecialized("ExprBinary", {"op", "lhs", "rhs", "span"})
 ast.unspecialized("ExprDeref", {"value", "span"})
@@ -217,7 +234,8 @@ ast.unspecialized("Privilege", {"privilege", "op", "regions", "span"})
 ast.unspecialized("PrivilegeRegion", {"region_name", "fields", "span"})
 ast.unspecialized("PrivilegeRegionField", {"field_name", "fields", "span"})
 ast.unspecialized("StatTask", {"name", "params", "return_type_expr",
-                               "privileges", "constraints", "body", "span"})
+                               "privileges", "constraints", "body",
+                               "inline", "cuda", "span"})
 ast.unspecialized("StatTaskParam", {"param_name", "type_expr", "span"})
 ast.unspecialized("StatFspace", {"name", "params", "fields", "constraints",
                                  "span"})
@@ -242,15 +260,18 @@ ast.specialized("ExprRawContext", {"span"})
 ast.specialized("ExprRawFields", {"region", "span"})
 ast.specialized("ExprRawPhysical", {"region", "span"})
 ast.specialized("ExprRawRuntime", {"span"})
+ast.specialized("ExprRawValue", {"value", "span"})
 ast.specialized("ExprIsnull", {"pointer", "span"})
 ast.specialized("ExprNew", {"pointer_type", "region", "span"})
 ast.specialized("ExprNull", {"pointer_type", "span"})
 ast.specialized("ExprDynamicCast", {"value", "expr_type", "span"})
 ast.specialized("ExprStaticCast", {"value", "expr_type", "span"})
-ast.specialized("ExprRegion", {"element_type", "size", "expr_type", "span"})
+ast.specialized("ExprIspace", {"index_type", "extent", "start",
+                               "expr_type", "span"})
+ast.specialized("ExprRegion", {"ispace", "ispace_symbol", "fspace_type", "expr_type", "span"})
 ast.specialized("ExprPartition", {"disjointness", "region",
                                   "coloring", "expr_type", "span"})
-ast.specialized("ExprCrossProduct", {"lhs", "rhs", "expr_type", "span"})
+ast.specialized("ExprCrossProduct", {"args", "expr_type", "span"})
 ast.specialized("ExprFunction", {"value", "span"})
 ast.specialized("ExprUnary", {"op", "rhs", "span"})
 ast.specialized("ExprBinary", {"op", "lhs", "rhs", "span"})
@@ -278,7 +299,8 @@ ast.specialized("StatReduce", {"op", "lhs", "rhs", "span"})
 ast.specialized("StatExpr", {"expr", "span"})
 
 ast.specialized("StatTask", {"name", "params", "return_type", "privileges",
-                             "constraints", "body", "prototype", "span"})
+                             "constraints", "body", "prototype", "inline",
+                             "cuda", "span"})
 ast.specialized("StatTaskParam", {"symbol", "span"})
 ast.specialized("StatFspace", {"name", "fspace", "span"})
 
@@ -301,15 +323,18 @@ ast.typed("ExprRawContext", {"expr_type", "span"})
 ast.typed("ExprRawFields", {"region", "fields", "expr_type", "span"})
 ast.typed("ExprRawPhysical", {"region", "fields", "expr_type", "span"})
 ast.typed("ExprRawRuntime", {"expr_type", "span"})
+ast.typed("ExprRawValue", {"value", "expr_type", "span"})
 ast.typed("ExprIsnull", {"pointer", "expr_type", "span"})
 ast.typed("ExprNew", {"pointer_type", "region", "expr_type", "span"})
 ast.typed("ExprNull", {"pointer_type", "expr_type", "span"})
 ast.typed("ExprDynamicCast", {"value", "expr_type", "span"})
 ast.typed("ExprStaticCast", {"value", "parent_region_map", "expr_type", "span"})
-ast.typed("ExprRegion", {"element_type", "size", "expr_type", "span"})
+ast.typed("ExprIspace", {"index_type", "extent", "start",
+                         "expr_type", "span"})
+ast.typed("ExprRegion", {"ispace", "fspace_type", "expr_type", "span"})
 ast.typed("ExprPartition", {"disjointness", "region",
                             "coloring", "expr_type", "span"})
-ast.typed("ExprCrossProduct", {"lhs", "rhs", "expr_type", "span"})
+ast.typed("ExprCrossProduct", {"args", "expr_type", "span"})
 ast.typed("ExprConstant", {"value", "expr_type", "span"})
 ast.typed("ExprFunction", {"value", "expr_type", "span"})
 ast.typed("ExprUnary", {"op", "rhs", "expr_type", "span"})
@@ -344,7 +369,8 @@ ast.typed("StatUnmapRegions", {"region_types"})
 
 ast.typed("StatTask", {"name", "params", "return_type", "privileges",
                        "constraints", "body", "config_options",
-                       "region_divergence", "prototype", "span"})
+                       "region_divergence", "prototype", "inline", "cuda",
+                       "span"})
 ast.typed("StatTaskParam", {"symbol", "param_type", "span"})
 ast.typed("StatTaskConfigOptions", {"leaf", "inner", "idempotent"})
 ast.typed("StatFspace", {"name", "fspace", "span"})

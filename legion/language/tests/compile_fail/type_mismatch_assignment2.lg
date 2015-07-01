@@ -13,13 +13,15 @@
 -- limitations under the License.
 
 -- fails-with:
--- type mismatch in assignment: expected region(int32) but got region(int32)
+-- type_mismatch_assignment2.lg:26: type mismatch in assignment: expected region(int32) but got region(int32)
+--   s = t
+--   ^
 
 import "legion"
 
 task f()
-  var s = region(int, 5)
-  var t = region(int, 5)
+  var s = region(ispace(ptr, 5), int)
+  var t = region(ispace(ptr, 5), int)
 
   s = t
 end

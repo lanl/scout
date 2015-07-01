@@ -24,7 +24,9 @@ local default_options = {
   ["vectorize"] = true,
   ["aligned-instances"] = false,
   ["no-dynamic-branches"] = true,
+  ["no-dynamic-branches-assert"] = false,
   ["cached-iterators"] = false,
+  ["task-inlines"] = true,
 }
 
 local option = {

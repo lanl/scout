@@ -1,4 +1,4 @@
-/* Copyright 2015 Stanford University
+/* Copyright 2015 Stanford University, NVIDIA Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,6 +45,7 @@ typedef enum legion_lowlevel_processor_kind_t {
   TOC_PROC, // Throughput core
   LOC_PROC, // Latency core
   UTIL_PROC, // Utility core
+  IO_PROC, // I/O core
   PROC_GROUP, // Processor group
 } legion_lowlevel_processor_kind_t;
 

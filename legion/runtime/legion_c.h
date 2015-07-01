@@ -117,8 +117,17 @@ extern "C" {
    * @see LegionRuntime::HighLevel::IndexSpace
    */
   typedef struct legion_index_space_t {
-    legion_lowlevel_id_t id;
+    legion_index_space_id_t id;
+    legion_index_tree_id_t tid;
   } legion_index_space_t;
+
+  /**
+   * @see LegionRuntime::HighLevel::IndexPartition
+   */
+  typedef struct legion_index_partition_t {
+    legion_index_partition_id_t id;
+    legion_index_tree_id_t tid;
+  } legion_index_partition_t;
 
   /**
    * @see LegionRuntime::HighLevel::IndexAllocator
@@ -531,6 +540,22 @@ extern "C" {
   legion_index_space_destroy(legion_runtime_t runtime,
                              legion_context_t ctx,
                              legion_index_space_t handle);
+
+  /**
+   * @see LegionRuntime::HighLevel::HighLevelRuntime::attach_name()
+   */
+  void
+  legion_index_space_attach_name(legion_runtime_t runtime,
+                                 legion_index_space_t handle,
+                                 const char *name);
+
+  /**
+   * @see LegionRuntime::HighLevel::HighLevelRuntime::retrieve_name()
+   */
+  void
+  legion_index_space_retrieve_name(legion_runtime_t runtime,
+                                   legion_index_space_t handle,
+                                   const char **result);
 
   // -----------------------------------------------------------------------
   // Index Partition Operations
@@ -1316,6 +1341,17 @@ extern "C" {
                                  bool inst /* = true */);
 
   /**
+   * @see LegionRuntime::HighLevel::TaskLauncher::add_index_requirement()
+   */
+  unsigned
+  legion_task_launcher_add_index_requirement(
+    legion_task_launcher_t launcher,
+    legion_index_space_t handle,
+    legion_allocate_mode_t priv,
+    legion_index_space_t parent,
+    bool verified /* = false*/);
+
+  /**
    * @see LegionRuntime::HighLevel::TaskLauncher::add_future()
    */
   void
@@ -1431,6 +1467,17 @@ extern "C" {
                                  unsigned idx,
                                  legion_field_id_t fid,
                                  bool inst /* = true */);
+
+  /**
+   * @see LegionRuntime::HighLevel::IndexLauncher::add_index_requirement()
+   */
+  unsigned
+  legion_index_launcher_add_index_requirement(
+    legion_index_launcher_t launcher,
+    legion_index_space_t handle,
+    legion_allocate_mode_t priv,
+    legion_index_space_t parent,
+    bool verified /* = false*/);
 
   /**
    * @see LegionRuntime::HighLevel::IndexLauncher::add_future()
@@ -1835,7 +1882,9 @@ extern "C" {
    * @see LegionRuntime::HighLevel::IndexIterator::IndexIterator()
    */
   legion_index_iterator_t
-  legion_index_iterator_create(legion_index_space_t handle);
+  legion_index_iterator_create(legion_runtime_t runtime,
+                               legion_context_t context,
+                               legion_index_space_t handle);
 
   /**
    * @param handle Caller must have ownership of parameter `handle`.

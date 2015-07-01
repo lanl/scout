@@ -1,4 +1,4 @@
--- Copyright 2015 Stanford University
+-- Copyright 2015 Stanford University, NVIDIA Corporation
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -131,15 +131,24 @@ function parser.expr_primary(p)
 
   while true do
     if p:nextif(".") then
-      local field_name
+      local field_names = terralib.newlist()
       if p:nextif("partition") then
-        field_name = "partition"
+        field_names:insert("partition")
+      elseif p:nextif("product") then
+        field_names:insert("product")
+      elseif p:nextif("{") then
+        repeat
+          if p:matches("}") then break end
+          local field_name = p:next(p.name).value
+          field_names:insert(field_name)
+        until not p:sep()
+        p:expect("}")
       else
-        field_name = p:next(p.name).value
+        field_names:insert(p:next(p.name).value)
       end
       expr = ast.unspecialized.ExprFieldAccess {
         value = expr,
-        field_name = field_name,
+        field_names = field_names,
         span = ast.span(start, p),
       }
 
@@ -268,6 +277,15 @@ function parser.expr_simple(p)
       span = ast.span(start, p),
     }
 
+  elseif p:nextif("__raw") then
+    p:expect("(")
+    local value = p:expr()
+    p:expect(")")
+    return ast.unspecialized.ExprRawValue {
+      value = value,
+      span = ast.span(start, p),
+    }
+
   elseif p:nextif("isnull") then
     p:expect("(")
     local pointer = p:expr()
@@ -319,15 +337,33 @@ function parser.expr_simple(p)
       span = ast.span(start, p),
     }
 
+  elseif p:nextif("ispace") then
+    p:expect("(")
+    local index_type_expr = p:luaexpr()
+    p:expect(",")
+    local extent = p:expr()
+    local start_at = false
+    if not p:matches(")") then
+      p:expect(",")
+      start_at = p:expr()
+    end
+    p:expect(")")
+    return ast.unspecialized.ExprIspace {
+      index_type_expr = index_type_expr,
+      extent = extent,
+      start = start_at,
+      span = ast.span(start, p),
+    }
+
   elseif p:nextif("region") then
     p:expect("(")
-    local element_type_expr = p:luaexpr()
+    local ispace = p:expr()
     p:expect(",")
-    local size = p:expr()
+    local fspace_type_expr = p:luaexpr()
     p:expect(")")
     return ast.unspecialized.ExprRegion {
-      element_type_expr = element_type_expr,
-      size = size,
+      ispace = ispace,
+      fspace_type_expr = fspace_type_expr,
       span = ast.span(start, p),
     }
 
@@ -348,13 +384,13 @@ function parser.expr_simple(p)
 
   elseif p:nextif("cross_product") then
     p:expect("(")
-    local lhs_type_expr = p:luaexpr()
-    p:expect(",")
-    local rhs_type_expr = p:luaexpr()
+    local arg_type_exprs = terralib.newlist()
+    repeat
+      arg_type_exprs:insert(p:luaexpr())
+    until not p:nextif(",")
     p:expect(")")
     return ast.unspecialized.ExprCrossProduct {
-      lhs_type_expr = lhs_type_expr,
-      rhs_type_expr = rhs_type_expr,
+      arg_type_exprs = arg_type_exprs,
       span = ast.span(start, p),
     }
 
@@ -930,7 +966,7 @@ function parser.stat_task_privileges_and_constraints(p)
   return privileges, constraints
 end
 
-function parser.stat_task(p)
+function parser.stat_task(p, task_opts)
   local start = ast.save(p)
   p:expect("task")
   local name = p:expect(p.name).value
@@ -947,6 +983,8 @@ function parser.stat_task(p)
     privileges = privileges,
     constraints = constraints,
     body = body,
+    inline = task_opts.inline,
+    cuda = task_opts.cuda,
     span = ast.span(start, p),
   }
 end
@@ -1022,10 +1060,29 @@ end
 
 function parser.stat_top(p)
   if p:matches("task") then
-    return p:stat_task()
+    return p:stat_task { inline = false, cuda = false }
 
   elseif p:matches("fspace") then
     return p:stat_fspace()
+
+  elseif p:matches("__demand") then
+    local task_opts = { inline = false, cuda = false }
+    p:expect("__demand")
+    p:expect("(")
+    repeat
+      if p:matches("__inline") then
+        p:expect("__inline")
+        task_opts.inline = true
+      elseif p:matches("__cuda") then
+        p:expect("__cuda")
+        if not terralib.cudacompile then
+          p:error("CUDA tasks are demanded, but CUDA is not enabled")
+        end
+        task_opts.cuda = true
+      end
+    until not p:nextif(",")
+    p:expect(")")
+    return p:stat_task(task_opts)
 
   else
     p:error("unexpected token in top-level statement")

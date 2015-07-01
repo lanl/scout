@@ -1,4 +1,4 @@
--- Copyright 2015 Stanford University
+-- Copyright 2015 Stanford University, NVIDIA Corporation
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -82,6 +82,10 @@ function analyze_leaf.expr_raw_fields(cx, node)
   return analyze_leaf.expr(cx, node.region)
 end
 
+function analyze_leaf.expr_raw_value(cx, node)
+  return analyze_leaf.expr(cx, node.value)
+end
+
 function analyze_leaf.expr_isnull(cx, node)
   return analyze_leaf.expr(cx, node.pointer)
 end
@@ -156,6 +160,9 @@ function analyze_leaf.expr(cx, node)
   elseif node:is(ast.typed.ExprRawRuntime) then
     return true
 
+  elseif node:is(ast.typed.ExprRawValue) then
+    return analyze_leaf.expr_raw_value(cx, node)
+
   elseif node:is(ast.typed.ExprIsnull) then
     return analyze_leaf.expr_isnull(cx, node)
 
@@ -170,6 +177,12 @@ function analyze_leaf.expr(cx, node)
 
   elseif node:is(ast.typed.ExprStaticCast) then
     return analyze_leaf.expr_static_cast(cx, node)
+
+  elseif node:is(ast.typed.ExprIspace) then
+    return false
+
+  elseif node:is(ast.typed.ExprIspace) then
+    return false
 
   elseif node:is(ast.typed.ExprRegion) then
     return false
@@ -353,7 +366,7 @@ local analyze_inner = {}
 
 function analyze_inner.expr_field_access(cx, node)
   return
-    not std.is_ptr(std.as_read(node.value.expr_type)) and
+    not std.is_bounded_type(std.as_read(node.value.expr_type)) and
     analyze_inner.expr(cx, node.value)
 end
 
@@ -392,6 +405,10 @@ function analyze_inner.expr_raw_fields(cx, node)
   return analyze_inner.expr(cx, node.region)
 end
 
+function analyze_inner.expr_raw_value(cx, node)
+  return analyze_inner.expr(cx, node.value)
+end
+
 function analyze_inner.expr_isnull(cx, node)
   return analyze_inner.expr(cx, node.pointer)
 end
@@ -404,8 +421,13 @@ function analyze_inner.expr_static_cast(cx, node)
   return analyze_inner.expr(cx, node.value)
 end
 
+function analyze_inner.expr_ispace(cx, node)
+  return analyze_inner.expr(cx, node.extent) and
+    node.start and analyze_inner.expr(cx, node.start)
+end
+
 function analyze_inner.expr_region(cx, node)
-  return analyze_inner.expr(cx, node.size)
+  return analyze_inner.expr(cx, node.ispace)
 end
 
 function analyze_inner.expr_partition(cx, node)
@@ -413,9 +435,8 @@ function analyze_inner.expr_partition(cx, node)
 end
 
 function analyze_inner.expr_cross_product(cx, node)
-  return
-    analyze_inner.expr(cx, node.lhs) and
-    analyze_inner.expr(cx, node.rhs)
+  return std.all(
+    node.args:map(function(arg) return analyze_inner.expr(cx, arg) end))
 end
 
 function analyze_inner.expr_unary(cx, node)
@@ -430,7 +451,7 @@ end
 
 function analyze_inner.expr_deref(cx, node)
   return
-    not std.is_ptr(std.as_read(node.value.expr_type)) and
+    not std.is_bounded_type(std.as_read(node.value.expr_type)) and
     analyze_inner.expr(cx, node.value)
 end
 
@@ -482,6 +503,9 @@ function analyze_inner.expr(cx, node)
   elseif node:is(ast.typed.ExprRawRuntime) then
     return true
 
+  elseif node:is(ast.typed.ExprRawValue) then
+    return analyze_inner.expr_raw_value(cx, node)
+
   elseif node:is(ast.typed.ExprIsnull) then
     return analyze_inner.expr_isnull(cx, node)
 
@@ -496,6 +520,12 @@ function analyze_inner.expr(cx, node)
 
   elseif node:is(ast.typed.ExprStaticCast) then
     return analyze_inner.expr_static_cast(cx, node)
+
+  elseif node:is(ast.typed.ExprIspace) then
+    return analyze_inner.expr_ispace(cx, node)
+
+  elseif node:is(ast.typed.ExprIspace) then
+    return analyze_inner.expr_ispace(cx, node)
 
   elseif node:is(ast.typed.ExprRegion) then
     return analyze_inner.expr_region(cx, node)
@@ -684,21 +714,12 @@ function optimize_config_options.stat_task(cx, node)
   local leaf = analyze_leaf.block(cx, node.body)
   local inner = not leaf and analyze_inner.block(cx, node.body)
 
-  return ast.typed.StatTask {
-    name = node.name,
-    params = node.params,
-    return_type = node.return_type,
-    privileges = node.privileges,
-    constraints = node.constraints,
-    body = node.body,
+  return node {
     config_options = ast.typed.StatTaskConfigOptions {
       leaf = leaf,
       inner = inner,
       idempotent = false,
     },
-    region_divergence = node.region_divergence,
-    prototype = node.prototype,
-    span = node.span,
   }
 end
 
