@@ -1,4 +1,4 @@
-/* Copyright 2015 Stanford University
+/* Copyright 2015 Stanford University, NVIDIA Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,9 +29,18 @@
 #include "accessor.h"
 #include "arrays.h"
 
+#ifdef USE_HDF
+#include <hdf5.h>
+#endif
+
 #ifndef __GNUC__
 #include "atomics.h" // for __sync_fetch_and_add
 #endif
+
+// Forward declaration for profiling
+namespace Realm {
+  class ProfilingRequestSet;
+}
 
 namespace LegionRuntime {
   namespace LowLevel {
@@ -270,7 +279,7 @@ namespace LegionRuntime {
       bool has_triggered(void) const;
 
       // causes calling thread to block until event has occurred
-      void wait(bool block = false) const;
+      void wait(void) const;
 
       // used by non-legion threads to wait on an event - always blocking
       void external_wait(void) const;
@@ -280,7 +289,18 @@ namespace LegionRuntime {
       static Event merge_events(Event ev1, Event ev2,
 				Event ev3 = NO_EVENT, Event ev4 = NO_EVENT,
 				Event ev5 = NO_EVENT, Event ev6 = NO_EVENT);
+
+      // the following calls are used to give Realm bounds on when the UserEvent
+      //  will be triggered - in addition to being useful for diagnostic purposes
+      //  (e.g. detecting event cycles), having a "late bound" (i.e. an event that
+      //  is guaranteed to occur after the UserEvent is triggered) allows Realm to
+      //  judge that the UserEvent trigger is "in flight"
+      static void advise_event_ordering(Event happens_before, Event happens_after);
+      static void advise_event_ordering(const std::set<Event>& happens_before,
+					Event happens_after, bool all_must_trigger = true);
     };
+
+    inline std::ostream& operator<<(std::ostream& os, Event e) { return os << std::hex << e.id << std::dec << '/' << e.gen; }
 
     // A user level event has all the properties of event, except
     // it can be triggered by the user.  This prevents users from
@@ -347,6 +367,8 @@ namespace LegionRuntime {
       void *data_ptr(void) const;
     };
 
+    inline std::ostream& operator<<(std::ostream& os, Reservation r) { return os << std::hex << r.id << std::dec; }
+	
     class Processor {
     public:
       typedef IDType id_t;
@@ -372,6 +394,7 @@ namespace LegionRuntime {
         TOC_PROC = ::TOC_PROC, // Throughput core
         LOC_PROC = ::LOC_PROC, // Latency core
         UTIL_PROC = ::UTIL_PROC, // Utility core
+        IO_PROC = ::IO_PROC, // I/O core
         PROC_GROUP = ::PROC_GROUP, // Processor group
       };
 
@@ -397,9 +420,16 @@ namespace LegionRuntime {
       Event spawn(TaskFuncID func_id, const void *args, size_t arglen,
 		  Event wait_on = Event::NO_EVENT, int priority = 0) const;
 
+      // Same as the above but with requests for profiling
+      Event spawn(TaskFuncID func_id, const void *args, size_t arglen,
+                  const Realm::ProfilingRequestSet &requests,
+                  Event wait_on = Event::NO_EVENT, int priority = 0) const;
+
       static Processor get_executing_processor(void);
     };
 
+    inline std::ostream& operator<<(std::ostream& os, Processor p) { return os << std::hex << p.id << std::dec; }
+	
     class Memory {
     public:
       typedef IDType id_t;
@@ -429,6 +459,7 @@ namespace LegionRuntime {
         Z_COPY_MEM, // Zero-Copy memory visible to all CPUs within a node and one or more GPUs 
         GPU_FB_MEM,   // Framebuffer memory for one GPU and all its SMs
         DISK_MEM,   // Disk memory visible to all processors on a node
+        HDF_MEM,    // HDF memory visible to all processors on a node
         LEVEL3_CACHE, // CPU L3 Visible to all processors on the node, better performance to processors on same socket 
         LEVEL2_CACHE, // CPU L2 Visible to all processors on the node, better performance to one processor
         LEVEL1_CACHE, // CPU L1 Visible to all processors on the node, better performance to one processor
@@ -439,6 +470,8 @@ namespace LegionRuntime {
       // Return the maximum capacity of this memory
       size_t capacity(void) const;
     };
+
+    inline std::ostream& operator<<(std::ostream& os, Memory m) { return os << std::hex << m.id << std::dec; }
 
     class ElementMask {
     public:
@@ -559,6 +592,8 @@ namespace LegionRuntime {
 
       bool exists(void) const { return id != 0; }
 
+      Memory get_location(void) const;
+
       void destroy(Event wait_on = Event::NO_EVENT) const;
 
       AddressSpace address_space(void) const;
@@ -567,6 +602,8 @@ namespace LegionRuntime {
       LegionRuntime::Accessor::RegionAccessor<LegionRuntime::Accessor::AccessorType::Generic> get_accessor(void) const;
     };
 
+    inline std::ostream& operator<<(std::ostream& os, RegionInstance r) { return os << std::hex << r.id << std::dec; }
+	
     class IndexSpace {
     public:
       typedef IDType id_t;
@@ -585,19 +622,154 @@ namespace LegionRuntime {
       static IndexSpace create_index_space(size_t num_elmts);
       static IndexSpace create_index_space(const ElementMask &mask);
       static IndexSpace create_index_space(IndexSpace parent,
-					   const ElementMask &mask);
+					   const ElementMask &mask,
+                                           bool allocable = true);
 
       static IndexSpace expand_index_space(IndexSpace child,
 					   size_t num_elmts,
 					   off_t child_offset = 0);
 
-      void destroy(void) const;
+      void destroy(Event wait_on = Event::NO_EVENT) const;
 
       IndexSpaceAllocator create_allocator(void) const;
 
       const ElementMask &get_valid_mask(void) const;
+
+      // new interface for dependent indexspace computation
+
+      // There are three categories of operation:
+      //  1) Index-based partitions create subspaces based only on properties of the
+      //       index space itself.  Since we're working with unstructured index spaces here,
+      //       the only thing you can really do is chop it into N pieces - we support both
+      //       equal and weighted distributions.  A 'granularity' larger than 1 forces the
+      //       split points to that granularity, in an attempt to avoid ragged boundaries.
+      //
+      //  2) Logical operations on index spaces to compute other index spaces.  The supported
+      //       logical operations are UNION, INTERSECT, and SUBTRACT (no COMPLEMENT, as that
+      //       requires having some notion of what the universe is), and can be performed on
+      //       a bunch of pairs (as a convenience for the Legion runtime which might want to
+      //       perform a logical operation on two partitions) or as a reduction operation that
+      //       generates a single IndexSpace from many inputs.
+      //
+      //  3) Field-based partitions that use the contents of a field to perform a partitioning.
+      //       One version is a 'group by' on the values of the field, creating a sub-IndexSpace
+      //       for each value requested.  The other is to use the field as a 'foreign key' and
+      //       calculate sub-IndexSpaces by either mapping forward (an 'image') or backwards
+      //       (a 'preimage') a set of IndexSpaces through the field.
+      //
+      // All variations have a few things in common:
+      //  a) All return immediately, with 'names' of the new IndexSpaces filled in.  Result
+      //       values/fields/vectors need not be initialized before calling the method.  For the
+      //       data-dependent operations, the maps need to be populated, but the value of each
+      //       entry in the map is overwritten by the operation.
+      //  b) All return an Event, which says when the contents of the new IndexSpaces will
+      //       actually be valid.
+      //  c) All accept a 'wait_on' parameter to defer the operation.  The contents of input
+      //       IndexSpaces need not be valid until that time.
+      //  d) All accept a 'mutable_results' parameter that must be set to _true_ if you want
+      //       to be able to perform alloc/free's on the resulting IndexSpaces.  Setting this
+      //       to _false_ will likely result in the use of more efficient (in both time and
+      //       space) data structures to describe the IndexSpaces.
+
+      // first, operations that chop up an IndexSpace into N pieces, with no attention paid
+      //  to the the data
+      Event create_equal_subspaces(size_t count, size_t granularity,
+				   std::vector<IndexSpace>& subspaces,
+				   bool mutable_results,
+				   Event wait_on = Event::NO_EVENT) const;
+      Event create_weighted_subspaces(size_t count, size_t granularity,
+				      const std::vector<int>& weights,
+				      std::vector<IndexSpace>& subspaces,
+				      bool mutable_results,
+				      Event wait_on = Event::NO_EVENT) const;
+
+      // logical operations on IndexSpaces can be either maps (performing operations in 
+      //   parallel on many pairs of IndexSpaces) or reductions (many IndexSpaces -> one) 
+      enum IndexSpaceOperation {
+        ISO_UNION,
+        ISO_INTERSECT,
+        ISO_SUBTRACT,
+      };
+      struct BinaryOpDescriptor;
+      static Event compute_index_spaces(std::vector<BinaryOpDescriptor>& pairs,
+					bool mutable_results,
+					Event wait_on = Event::NO_EVENT);
+      static Event reduce_index_spaces(IndexSpaceOperation op,
+				       const std::vector<IndexSpace>& spaces,
+				       IndexSpace& result,
+				       bool mutable_results,
+                                       IndexSpace parent = IndexSpace::NO_SPACE,
+				       Event wait_on = Event::NO_EVENT);
+
+      // operations that use field data need to be able to describe where that data is
+      // there might be multiple instaces with data for different subsets of the index space,
+      //  and each might have a different layout
+      struct FieldDataDescriptor;
+      Event create_subspaces_by_field(const std::vector<FieldDataDescriptor>& field_data,
+				      std::map<DomainPoint, IndexSpace>& subspaces,
+				      bool mutable_results,
+				      Event wait_on = Event::NO_EVENT) const;
+      Event create_subspaces_by_image(const std::vector<FieldDataDescriptor>& field_data,
+				      std::map<IndexSpace, IndexSpace>& subspaces,
+				      bool mutable_results,
+				      Event wait_on = Event::NO_EVENT) const;
+      Event create_subspaces_by_preimage(const std::vector<FieldDataDescriptor>& field_data,
+					 std::map<IndexSpace, IndexSpace>& subspaces,
+					 bool mutable_results,
+					 Event wait_on = Event::NO_EVENT) const;
+      // Variants of the above but with profiling information
+      Event create_equal_subspaces(size_t count, size_t granularity,
+				   std::vector<IndexSpace>& subspaces,
+                                   const Realm::ProfilingRequestSet &reqs,
+				   bool mutable_results,
+				   Event wait_on = Event::NO_EVENT) const;
+      Event create_weighted_subspaces(size_t count, size_t granularity,
+				      const std::vector<int>& weights,
+				      std::vector<IndexSpace>& subspaces,
+                                      const Realm::ProfilingRequestSet &reqs,
+				      bool mutable_results,
+				      Event wait_on = Event::NO_EVENT) const;
+      static Event compute_index_spaces(std::vector<BinaryOpDescriptor>& pairs,
+                                        const Realm::ProfilingRequestSet &reqs,
+					bool mutable_results,
+					Event wait_on = Event::NO_EVENT);
+      static Event reduce_index_spaces(IndexSpaceOperation op,
+				       const std::vector<IndexSpace>& spaces,
+                                       const Realm::ProfilingRequestSet &reqs,
+				       IndexSpace& result,
+				       bool mutable_results,
+                                       IndexSpace parent = IndexSpace::NO_SPACE,
+				       Event wait_on = Event::NO_EVENT);
+      Event create_subspaces_by_field(const std::vector<FieldDataDescriptor>& field_data,
+				      std::map<DomainPoint, IndexSpace>& subspaces,
+                                      const Realm::ProfilingRequestSet &reqs,
+				      bool mutable_results,
+				      Event wait_on = Event::NO_EVENT) const;
+      Event create_subspaces_by_image(const std::vector<FieldDataDescriptor>& field_data,
+				      std::map<IndexSpace, IndexSpace>& subspaces,
+                                      const Realm::ProfilingRequestSet &reqs,
+				      bool mutable_results,
+				      Event wait_on = Event::NO_EVENT) const;
+      Event create_subspaces_by_preimage(const std::vector<FieldDataDescriptor>& field_data,
+					 std::map<IndexSpace, IndexSpace>& subspaces,
+                                         const Realm::ProfilingRequestSet &reqs,
+					 bool mutable_results,
+					 Event wait_on = Event::NO_EVENT) const;
+    };
+    struct IndexSpace::BinaryOpDescriptor {
+      IndexSpaceOperation op;
+      IndexSpace parent;                       // filled in by caller
+      IndexSpace left_operand, right_operand;  // filled in by caller
+      IndexSpace result;                       // filled in by operation
+    };
+    struct IndexSpace::FieldDataDescriptor {
+      IndexSpace index_space;
+      RegionInstance inst;
+      size_t field_offset, field_size;
     };
 
+    inline std::ostream& operator<<(std::ostream& os, IndexSpace i) { return os << std::hex << i.id << std::dec; }
+	
     class DomainPoint {
     public:
       enum { MAX_POINT_DIM = 3 };
@@ -634,6 +806,34 @@ namespace LegionRuntime {
 	for(int i = 0; (i == 0) || (i < dim); i++)
 	  if(point_data[i] != rhs.point_data[i]) return false;
 	return true;
+      }
+
+      bool operator!=(const DomainPoint &rhs) const
+      {
+        return !((*this) == rhs);
+      }
+
+      bool operator<(const DomainPoint &rhs) const
+      {
+        if (dim < rhs.dim) return true;
+        if (dim > rhs.dim) return false;
+        for (int i = 0; (i == 0) || (i < dim); i++) {
+          if (point_data[i] < rhs.point_data[i]) return true;
+          if (point_data[i] > rhs.point_data[i]) return false;
+        }
+        return false;
+      }
+
+      int& operator[](unsigned index)
+      {
+        assert(index < MAX_POINT_DIM);
+        return point_data[index];
+      }
+
+      const int& operator[](unsigned index) const
+      {
+        assert(index < MAX_POINT_DIM);
+        return point_data[index];
       }
 
       struct STLComparator {
@@ -914,6 +1114,16 @@ namespace LegionRuntime {
         return d;
       }
 
+      size_t compute_size(void) const
+      {
+        size_t result;
+        if (dim == 0)
+          result = (2 * sizeof(IDType));
+        else
+          result = ((1 + 2 * dim) * sizeof(IDType));
+        return result;
+      }
+
       IDType *serialize(IDType *data) const
       {
 	*data++ = dim;
@@ -947,19 +1157,6 @@ namespace LegionRuntime {
           return is;
         }
         return IndexSpace::NO_SPACE;
-      }
-
-      LegionRuntime::LowLevel::IndexSpace get_index_space(bool create_if_needed = false)
-      {
-	IndexSpace is;
-	if(!is_id) {
-          if (create_if_needed)
-            is_id = IndexSpace::create_index_space(1).id;
-          else
-            return IndexSpace::NO_SPACE;
-	}
-	is.id = is_id;
-	return is;
       }
 
       bool contains(DomainPoint point) const
@@ -1181,7 +1378,10 @@ namespace LegionRuntime {
 				     const std::vector<size_t> &field_sizes,
 				     size_t block_size,
 				     ReductionOpID redop_id = 0) const;
-
+      RegionInstance create_hdf5_instance(const char *file_name,
+                                          const std::vector<size_t> &field_sizes,
+                                          const std::vector<const char*> &field_files,
+                                          bool read_only) const;
       struct CopySrcDstField {
       public:
         CopySrcDstField(void) 
@@ -1192,6 +1392,10 @@ namespace LegionRuntime {
 	RegionInstance inst;
 	unsigned offset, size;
       };
+
+      Event fill(const std::vector<CopySrcDstField> &dsts,
+                 const void *fill_value, size_t fill_value_size,
+                 Event wait_on = Event::NO_EVENT) const;
 
       Event copy(RegionInstance src_inst, RegionInstance dst_inst,
 		 size_t elem_size, Event wait_on = Event::NO_EVENT,
@@ -1220,6 +1424,18 @@ namespace LegionRuntime {
 			  const ElementMask& mask,
 			  Event wait_on = Event::NO_EVENT,
 			  ReductionOpID redop_id = 0, bool red_fold = false) const;
+
+      // Variants of the above for profiling
+      Event fill(const std::vector<CopySrcDstField> &dsts,
+                 const Realm::ProfilingRequestSet &requests,
+                 const void *fill_value, size_t fill_value_size,
+                 Event wait_on = Event::NO_EVENT) const;
+      
+      Event copy(const std::vector<CopySrcDstField>& srcs,
+		 const std::vector<CopySrcDstField>& dsts,
+                 const Realm::ProfilingRequestSet &reqeusts,
+		 Event wait_on = Event::NO_EVENT,
+		 ReductionOpID redop_id = 0, bool red_fold = false) const;
     };
 
     class IndexSpaceAllocator {

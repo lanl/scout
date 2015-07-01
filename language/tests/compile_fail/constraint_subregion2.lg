@@ -13,7 +13,9 @@
 -- limitations under the License.
 
 -- fails-with:
--- invalid cast missing constraint $t0 <= $t1
+-- constraint_subregion2.lg:39: invalid cast missing constraint $t0 <= $t1
+--   assert_subregion { x = t0, y = t1 }
+--                  ^
 
 import 'legion'
 
@@ -25,7 +27,7 @@ fspace assert_subregion {
 } where x <= y end
 
 task main()
-  var t = region(int, 5)
+  var t = region(ispace(ptr, 5), int)
   var colors = c.legion_coloring_create()
   c.legion_coloring_ensure_color(colors, 0)
   c.legion_coloring_ensure_color(colors, 1)

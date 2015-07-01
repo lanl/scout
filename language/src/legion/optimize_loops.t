@@ -81,7 +81,7 @@ function analyze_noninterference_previous(cx, task, region_type,
       op = "*"
     }
 
-    if std.type_maybe_eq(region_type.element_type, other_region_type.element_type) and
+    if std.type_maybe_eq(region_type.fspace_type, other_region_type.fspace_type) and
       not std.check_constraint(cx, constraint) and
       not check_privilege_noninterference(cx, task, region_type, other_region_type, mapping)
     then
@@ -93,7 +93,7 @@ end
 
 function analyze_noninterference_self(cx, task, region_type,
                                       partition_type, mapping)
-  if partition_type and partition_type.disjoint then
+  if partition_type and partition_type:is_disjoint() then
     return true
   end
 
@@ -121,7 +121,7 @@ function analyze_is_side_effect_free.expr_field_access(cx, node)
   if not analyze_is_side_effect_free.expr(cx, node.value) then
     return false
   end
-  if std.is_ptr(std.as_read(node.value.expr_type)) or
+  if std.is_bounded_type(std.as_read(node.value.expr_type)) or
     std.is_ref(node.value.expr_type)
   then
     return false
@@ -444,12 +444,12 @@ function optimize_index_launch_loops.stat_for_num(cx, node)
     node.values[3]:is(ast.typed.ExprConstant) and
     node.values[3].value == 1)
   then
-    log_fail("loop optimization failed: stride not equal to 1")
+    log_fail(node.values[3], "loop optimization failed: stride not equal to 1")
     return node
   end
 
   if #node.block.stats ~= 1 then
-    log_fail("loop optimization failed: body has multiple statements")
+    log_fail(node, "loop optimization failed: body has multiple statements")
     return node
   end
 
@@ -469,24 +469,24 @@ function optimize_index_launch_loops.stat_for_num(cx, node)
     reduce_lhs = body.lhs[1]
     reduce_op = body.op
   else
-    log_fail("loop optimization failed: body is not a function call")
+    log_fail(body, "loop optimization failed: body is not a function call")
     return node
   end
 
   local task = call.fn.value
   if not std.is_task(task) then
-    log_fail("loop optimization failed: function is not a task")
+    log_fail(call, "loop optimization failed: function is not a task")
     return node
   end
 
   if reduce_lhs then
     local reduce_as_type = std.as_read(call.expr_type)
     if not std.reduction_op_ids[reduce_op][reduce_as_type] then
-      log_fail("loop optimization failed: reduction over " .. tostring(reduce_op) .. " " .. tostring(reduce_as_type) .. " not supported")
+      log_fail(body, "loop optimization failed: reduction over " .. tostring(reduce_op) .. " " .. tostring(reduce_as_type) .. " not supported")
     end
 
     if not analyze_is_side_effect_free.expr(cx, reduce_lhs) then
-      log_fail("loop optimization failed: reduction is not side-effect free")
+      log_fail(body, "loop optimization failed: reduction is not side-effect free")
     end
   end
 
@@ -504,8 +504,8 @@ function optimize_index_launch_loops.stat_for_num(cx, node)
   --  1. Determine whether the argument is provably loop-invariant or
   --     provably loop-variant (i.e., NOT loop-invariant). This is
   --     important because index space task launches are restricted in
-  --     the forms of region requirements they can accept. All regions
-  --     must be one of:
+  --     the forms of region (and index space) requirements they can
+  --     accept. All regions (and index spaces) must be one of:
   --
   --      a. Provably loop-invariant.
   --      b. Provably loop-variant, with indexing which can be
@@ -539,7 +539,7 @@ function optimize_index_launch_loops.stat_for_num(cx, node)
   local mapping = {}
   for i, arg in ipairs(args) do
     if not analyze_is_side_effect_free.expr(cx, arg) then
-      log_fail("loop optimization failed: argument " .. tostring(i) .. " is not side-effect free")
+      log_fail(call, "loop optimization failed: argument " .. tostring(i) .. " is not side-effect free")
       return node
     end
 
@@ -547,11 +547,12 @@ function optimize_index_launch_loops.stat_for_num(cx, node)
     local arg_variant = false
     local partition_type
 
-    local region_type = std.as_read(arg.expr_type)
-    mapping[region_type] = param_types[i]
-    if std.is_region(region_type) then
+    local arg_type = std.as_read(arg.expr_type)
+    mapping[arg_type] = param_types[i]
+    if std.is_ispace(arg_type) or std.is_region(arg_type) then
       if arg:is(ast.typed.ExprIndexAccess) and
-        std.is_partition(std.as_read(arg.value.expr_type)) and
+        (std.is_partition(std.as_read(arg.value.expr_type)) or
+           std.is_cross_product(std.as_read(arg.value.expr_type))) and
         arg.index:is(ast.typed.ExprID) and
         arg.index.value == node.symbol
       then
@@ -560,24 +561,26 @@ function optimize_index_launch_loops.stat_for_num(cx, node)
       end
 
       if not (arg_variant or arg_invariant) then
-        log_fail("loop optimization failed: argument " .. tostring(i) .. " is not provably variant or invariant")
+        log_fail(call, "loop optimization failed: argument " .. tostring(i) .. " is not provably variant or invariant")
         return node
       end
+    end
 
+    if std.is_region(arg_type) then
       do
         local passed, failure_i = analyze_noninterference_previous(
-          cx, task, region_type, regions_previously_used, mapping)
+          cx, task, arg_type, regions_previously_used, mapping)
         if not passed then
-          log_fail("loop optimization failed: argument " .. tostring(i) .. " interferes with argument " .. tostring(failure_i))
+          log_fail(call, "loop optimization failed: argument " .. tostring(i) .. " interferes with argument " .. tostring(failure_i))
           return node
         end
       end
 
       do
         local passed = analyze_noninterference_self(
-          cx, task, region_type, partition_type, mapping)
+          cx, task, arg_type, partition_type, mapping)
         if not passed then
-          log_fail("loop optimization failed: argument " .. tostring(i) .. " interferes with itself")
+          log_fail(call, "loop optimization failed: argument " .. tostring(i) .. " interferes with itself")
           return node
         end
       end
@@ -587,8 +590,8 @@ function optimize_index_launch_loops.stat_for_num(cx, node)
     args_provably.variant[i] = arg_variant
 
     regions_previously_used[i] = nil
-    if std.is_region(region_type) then
-      regions_previously_used[i] = region_type
+    if std.is_region(arg_type) then
+      regions_previously_used[i] = arg_type
     end
   end
 
@@ -607,85 +610,51 @@ end
 local optimize_loops = {}
 
 function optimize_loops.block(cx, node)
-  return ast.typed.Block {
+  return node {
     stats = node.stats:map(
-      function(stat) return optimize_loops.stat(cx, stat) end),
-    span = node.span,
+      function(stat) return optimize_loops.stat(cx, stat) end)
   }
 end
 
 function optimize_loops.stat_if(cx, node)
-  return ast.typed.StatIf {
-    cond = node.cond,
+  return node {
     then_block = optimize_loops.block(cx, node.then_block),
     elseif_blocks = node.elseif_blocks:map(
       function(block) return optimize_loops.stat_elseif(cx, block) end),
     else_block = optimize_loops.block(cx, node.else_block),
-    span = node.span,
   }
 end
 
 function optimize_loops.stat_elseif(cx, node)
-  return ast.typed.StatElseif {
-    cond = node.cond,
-    block = optimize_loops.block(cx, node.block),
-    span = node.span,
-  }
+  return node { block = optimize_loops.block(cx, node.block) }
 end
 
 function optimize_loops.stat_while(cx, node)
-  return ast.typed.StatWhile {
-    cond = node.cond,
-    block = optimize_loops.block(cx, node.block),
-    span = node.span,
-  }
+  return node { block = optimize_loops.block(cx, node.block) }
 end
 
 function optimize_loops.stat_for_num(cx, node)
-  local node = ast.typed.StatForNum {
-    symbol = node.symbol,
-    values = node.values,
-    block = optimize_loops.block(cx, node.block),
-    parallel = node.parallel,
-    span = node.span,
-  }
-  return optimize_index_launch_loops.stat_for_num(cx, node)
+  local node_ = node { block = optimize_loops.block(cx, node.block) }
+  return optimize_index_launch_loops.stat_for_num(cx, node_)
 end
 
 function optimize_loops.stat_for_list(cx, node)
-  return ast.typed.StatForList {
-    symbol = node.symbol,
-    value = node.value,
-    block = optimize_loops.block(cx, node.block),
-    vectorize = node.vectorize,
-    span = node.span,
-  }
+  return node { block = optimize_loops.block(cx, node.block) }
 end
 
 function optimize_loops.stat_for_list_vectorized(cx, node)
-  return ast.typed.StatForListVectorized {
-    symbol = node.symbol,
-    value = node.value,
+  return node {
     block = optimize_loops.block(cx, node.block),
     orig_block = optimize_loops.block(cx, node.orig_block),
-    decls = node.decls,
-    span = node.span,
   }
 end
 
 function optimize_loops.stat_repeat(cx, node)
-  return ast.typed.StatRepeat {
-    block = optimize_loops.block(cx, node.block),
-    until_cond = node.until_cond,
-    span = node.span,
-  }
+  return node { block = optimize_loops.block(cx, node.block) }
 end
 
 function optimize_loops.stat_block(cx, node)
-  return ast.typed.StatBlock {
-    block = optimize_loops.block(cx, node.block),
-    span = node.span,
-  }
+  return node { block = optimize_loops.block(cx, node.block) }
 end
 
 function optimize_loops.stat(cx, node)
@@ -740,18 +709,7 @@ function optimize_loops.stat_task(cx, node)
   local cx = cx:new_task_scope(node.prototype:get_constraints())
   local body = optimize_loops.block(cx, node.body)
 
-  return ast.typed.StatTask {
-    name = node.name,
-    params = node.params,
-    return_type = node.return_type,
-    privileges = node.privileges,
-    constraints = node.constraints,
-    body = body,
-    config_options = node.config_options,
-    region_divergence = node.region_divergence,
-    prototype = node.prototype,
-    span = node.span,
-  }
+  return node { body = body }
 end
 
 function optimize_loops.stat_top(cx, node)

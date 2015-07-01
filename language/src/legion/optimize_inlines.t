@@ -1,4 +1,4 @@
--- Copyright 2015 Stanford University
+-- Copyright 2015 Stanford University, NVIDIA Corporation
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ function uses(cx, region_type, polarity)
       rhs = other_region_type,
       op = "*"
     }
-    if std.type_maybe_eq(region_type.element_type, other_region_type.element_type) and
+    if std.type_maybe_eq(region_type.fspace_type, other_region_type.fspace_type) and
       not std.check_constraint(cx, constraint)
     then
       usage[other_region_type] = polarity
@@ -205,6 +205,10 @@ function analyze_usage.expr_raw_fields(cx, node)
   return analyze_usage.expr(cx, node.region)
 end
 
+function analyze_usage.expr_raw_value(cx, node)
+  return analyze_usage.expr(cx, node.value)
+end
+
 function analyze_usage.expr_isnull(cx, node)
   return analyze_usage.expr(cx, node.pointer)
 end
@@ -217,8 +221,14 @@ function analyze_usage.expr_static_cast(cx, node)
   return analyze_usage.expr(cx, node.value)
 end
 
+function analyze_usage.expr_ispace(cx, node)
+  return usage_meet(
+    analyze_usage.expr(cx, node.extent),
+    node.start and analyze_usage.expr(cx, node.start))
+end
+
 function analyze_usage.expr_region(cx, node)
-  return analyze_usage.expr(cx, node.size)
+  return analyze_usage.expr(cx, node.ispace)
 end
 
 function analyze_usage.expr_partition(cx, node)
@@ -226,8 +236,9 @@ function analyze_usage.expr_partition(cx, node)
 end
 
 function analyze_usage.expr_cross_product(cx, node)
-  return usage_meet(analyze_usage.expr(cx, node.lhs),
-                    analyze_usage.expr(cx, node.rhs))
+  return std.reduce(
+    usage_meet,
+    node.args:map(function(arg) return analyze_usage.expr(cx, arg) end))
 end
 
 function analyze_usage.expr_unary(cx, node)
@@ -243,7 +254,7 @@ function analyze_usage.expr_deref(cx, node)
   local ptr_type = std.as_read(node.value.expr_type)
   return std.reduce(
     usage_meet,
-    ptr_type:points_to_regions():map(
+    ptr_type:bounds():map(
       function(region) return uses(cx, region, inline) end),
     analyze_usage.expr(cx, node.value))
 end
@@ -296,6 +307,9 @@ function analyze_usage.expr(cx, node)
   elseif node:is(ast.typed.ExprRawRuntime) then
     return nil
 
+  elseif node:is(ast.typed.ExprRawValue) then
+    return analyze_usage.expr_raw_value(cx, node)
+
   elseif node:is(ast.typed.ExprIsnull) then
     return analyze_usage.expr_isnull(cx, node)
 
@@ -310,6 +324,9 @@ function analyze_usage.expr(cx, node)
 
   elseif node:is(ast.typed.ExprStaticCast) then
     return analyze_usage.expr_static_cast(cx, node)
+
+  elseif node:is(ast.typed.ExprIspace) then
+    return analyze_usage.expr_ispace(cx, node)
 
   elseif node:is(ast.typed.ExprRegion) then
     return analyze_usage.expr_region(cx, node)
@@ -390,21 +407,14 @@ function fixup_block(annotated_block, in_usage, out_usage)
   stats:insertall(map_regions(usage_diff(in_usage, node_in_usage)))
   stats:insertall(node.stats)
   stats:insertall(map_regions(usage_diff(node_out_usage, out_usage)))
-  return ast.typed.Block {
-    stats = stats,
-    span = node.span,
-  }
+  return node { stats = stats }
 end
 
 function fixup_elseif(annotated_node, in_usage, out_usage)
   local node, node_in_usage, node_out_usage = unpack(annotated_node)
   local annotated_block = annotate(node.block, node_in_usage, node_out_usage)
   local block = fixup_block(annotated_block, in_usage, out_usage)
-  return ast.typed.StatElseif {
-    cond = node.cond,
-    block = block,
-    span = node.span,
-  }
+  return node { block = block }
 end
 
 function optimize_inlines.block(cx, node)
@@ -429,10 +439,7 @@ function optimize_inlines.block(cx, node)
   end
 
   return annotate(
-    ast.typed.Block {
-      stats = result_stats,
-      span = node.span,
-    },
+    node { stats = result_stats },
     in_usage, out_usage)
 end
 
@@ -459,12 +466,10 @@ function optimize_inlines.stat_if(cx, node)
   local else_block = fixup_block(else_annotated, initial_usage, final_usage)
 
   return annotate(
-    ast.typed.StatIf {
-      cond = node.cond,
+    node {
       then_block = then_block,
       elseif_blocks = elseif_blocks,
       else_block = else_block,
-      span = node.span,
     },
     initial_usage, final_usage)
 end
@@ -472,11 +477,7 @@ end
 function optimize_inlines.stat_elseif(cx, node)
   local block, in_usage, out_usage = unpack(optimize_inlines.block(cx, node.block))
   return annotate(
-    ast.typed.StatElseif {
-      cond = node.cond,
-      block = block,
-      span = node.span,
-    },
+    node { block = block },
     in_usage, out_usage)
 end
 
@@ -486,11 +487,7 @@ function optimize_inlines.stat_while(cx, node)
   local loop_usage = usage_meet(cond_usage, annotated_in_usage(annotated_block))
   local block = fixup_block(annotated_block, loop_usage, loop_usage)
   return annotate(
-    ast.typed.StatWhile {
-      cond = node.cond,
-      block = block,
-      span = node.span,
-    },
+    node { block = block },
     loop_usage, loop_usage)
 end
 
@@ -502,13 +499,7 @@ function optimize_inlines.stat_for_num(cx, node)
   local loop_usage = usage_meet(values_usage, annotated_in_usage(annotated_block))
   local block = fixup_block(annotated_block, loop_usage, loop_usage)
   return annotate(
-    ast.typed.StatForNum {
-      symbol = node.symbol,
-      values = node.values,
-      block = block,
-      parallel = node.parallel,
-      span = node.span,
-    },
+    node { block = block },
     loop_usage, loop_usage)
 end
 
@@ -518,13 +509,7 @@ function optimize_inlines.stat_for_list(cx, node)
   local loop_usage = usage_meet(value_usage, annotated_in_usage(annotated_block))
   local block = fixup_block(annotated_block, loop_usage, loop_usage)
   return annotate(
-    ast.typed.StatForList {
-      symbol = node.symbol,
-      value = node.value,
-      block = block,
-      vectorize = node.vectorize,
-      span = node.span,
-    },
+    node { block = block },
     loop_usage, loop_usage)
 end
 
@@ -535,11 +520,7 @@ function optimize_inlines.stat_repeat(cx, node)
                                 annotated_in_usage(annotated_block))
   local block = fixup_block(annotated_block, loop_usage, loop_usage)
   return annotate(
-    ast.typed.StatRepeat {
-      block = block,
-      until_cond = node.until_cond,
-      span = node.span,
-    },
+    node { block = block },
     loop_usage, loop_usage)
 end
 
@@ -547,10 +528,7 @@ function optimize_inlines.stat_block(cx, node)
   local block, block_in_usage, block_out_usage = unpack(
     optimize_inlines.block(cx, node.block))
   return annotate(
-    ast.typed.StatBlock {
-      block = block,
-      span = node.span,
-    },
+    node { block = block },
     block_in_usage, block_out_usage)
 end
 
@@ -682,18 +660,7 @@ function optimize_inlines.stat_task(cx, node)
   local annotated_body = optimize_inlines.block(cx, node.body)
   local body = fixup_block(annotated_body, initial_usage, nil)
 
-  return ast.typed.StatTask {
-    name = node.name,
-    params = node.params,
-    return_type = node.return_type,
-    privileges = node.privileges,
-    constraints = node.constraints,
-    body = body,
-    config_options = node.config_options,
-    region_divergence = node.region_divergence,
-    prototype = node.prototype,
-    span = node.span,
-  }
+  return node { body = body }
 end
 
 function optimize_inlines.stat_top(cx, node)

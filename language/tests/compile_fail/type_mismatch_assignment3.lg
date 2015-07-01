@@ -13,13 +13,15 @@
 -- limitations under the License.
 
 -- fails-with:
--- type mismatch in assignment: expected ptr(int32, $s) but got ptr(int32, $t)
+-- type_mismatch_assignment3.lg:29: type mismatch in assignment: expected ptr(int32, $s) but got ptr(int32, $t)
+--   xs = xt
+--    ^
 
 import "legion"
 
 task f()
-  var s = region(int, 5)
-  var t = region(int, 5)
+  var s = region(ispace(ptr, 5), int)
+  var t = region(ispace(ptr, 5), int)
 
   var xs = new(ptr(int, s))
   var xt = new(ptr(int, t))

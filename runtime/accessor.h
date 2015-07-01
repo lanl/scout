@@ -1,4 +1,4 @@
-/* Copyright 2015 Stanford University
+/* Copyright 2015 Stanford University, NVIDIA Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -341,10 +341,7 @@ namespace LegionRuntime {
 	    //printf("in aos(%zd) converter\n", STRIDE);
 	    void *aos_base = 0;
 	    size_t aos_stride = STRIDE;
-#ifndef NDEBUG
-	    bool ok = 
-#endif
-              get_aos_parameters(aos_base, aos_stride);
+	    bool ok = get_aos_parameters(aos_base, aos_stride);
 	    return ok;
 	  }
 

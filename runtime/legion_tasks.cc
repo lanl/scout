@@ -1,4 +1,4 @@
-/* Copyright 2015 Stanford University
+/* Copyright 2015 Stanford University, NVIDIA Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,11 +25,11 @@
 // A little bit of a hack for now for profiling
 // GPU tasks, this will go away with the new 
 // profiling interface
-#if defined(LEGION_LOGGING) || defined(LEGION_PROF)
+//#if defined(LEGION_LOGGING) || defined(LEGION_PROF)
 #ifdef USE_CUDA
 #include "cuda_runtime.h"
 #endif
-#endif
+//#endif
 
 #define PRINT_REG(reg) (reg).index_space.id,(reg).field_space.id, (reg).tree_id
 
@@ -440,7 +440,7 @@ namespace LegionRuntime {
       {
         if (regions[idx].privilege_fields.empty())
         {
-          log_task(LEVEL_WARNING,"WARNING: REGION REQUIREMENT %d OF "
+          log_task.warning("WARNING: REGION REQUIREMENT %d OF "
                                  "TASK %s (ID %lld) HAS NO PRIVILEGE "
                                  "FIELDS! DID YOU FORGET THEM?!?",
                                  idx, variants->name, 
@@ -459,7 +459,7 @@ namespace LegionRuntime {
       const size_t result_size = impl->get_untyped_size();
       if (result_size != variants->return_size)
       {
-        log_run(LEVEL_ERROR,"Predicated task launch for task %s "
+        log_run.error("Predicated task launch for task %s "
                             "in parent task %s (UID %lld) has predicated "
                             "false future of size %ld bytes, but the "
                             "expected return size is %ld bytes.",
@@ -544,6 +544,56 @@ namespace LegionRuntime {
       assert(idx < parent_req_indexes.size());
 #endif
       return parent_req_indexes[idx];
+    }
+
+    //--------------------------------------------------------------------------
+    void TaskOp::pack_restrict_infos(Serializer &rez,
+                                     std::vector<RestrictInfo> &infos)
+    //--------------------------------------------------------------------------
+    {
+      RezCheck z(rez);
+      size_t count = 0;
+      for (unsigned idx = 0; idx < infos.size(); idx++)
+      {
+        if (infos[idx].has_restrictions())
+          count++;
+      }
+      rez.serialize(count);
+      if (count > 0)
+      {
+        rez.serialize(runtime->address_space);
+        for (unsigned idx = 0; idx < infos.size(); idx++)
+        {
+          if (infos[idx].has_restrictions())
+          {
+            rez.serialize(idx);
+            infos[idx].pack_info(rez);
+          }
+        }
+      }
+    }
+
+    //--------------------------------------------------------------------------
+    void TaskOp::unpack_restrict_infos(Deserializer &derez,
+                                       std::vector<RestrictInfo> &infos)
+    //--------------------------------------------------------------------------
+    {
+      DerezCheck z(derez);
+      // Always resize the restrictions
+      infos.resize(regions.size());
+      size_t num_restrictions;
+      derez.deserialize(num_restrictions);
+      if (num_restrictions > 0)
+      {
+        AddressSpaceID source;
+        derez.deserialize(source);
+        for (unsigned idx = 0; idx < num_restrictions; idx++)
+        {
+          unsigned index;
+          derez.deserialize(index);
+          infos[index].unpack_info(derez, source, runtime->forest);
+        }
+      }
     }
 
     //--------------------------------------------------------------------------
@@ -1057,10 +1107,10 @@ namespace LegionRuntime {
             break;
           case ERROR_BAD_PARENT_INDEX:
             {
-              log_index(LEVEL_ERROR,"Parent task %s (ID %lld) of task %s "
+              log_index.error("Parent task %s (ID %lld) of task %s "
                                     "(ID %lld) "
                                     "does not have an index requirement for "
-                                    "index space " IDFMT " as a parent of "
+                                    "index space %x as a parent of "
                                     "child task's index requirement index %d",
                                     parent_ctx->variants->name, 
                                     parent_ctx->get_unique_task_id(),
@@ -1073,8 +1123,8 @@ namespace LegionRuntime {
             }
           case ERROR_BAD_INDEX_PATH:
             {
-              log_index(LEVEL_ERROR,"Index space " IDFMT " is not a sub-space "
-                                    "of parent index space " IDFMT " for index "
+              log_index.error("Index space %x is not a sub-space "
+                                    "of parent index space %x for index "
                                     "requirement %d of task %s (ID %lld)",
                                     indexes[idx].handle.id, 
                                     indexes[idx].parent.id, idx,
@@ -1086,7 +1136,7 @@ namespace LegionRuntime {
             }
           case ERROR_BAD_INDEX_PRIVILEGES:
             {
-              log_index(LEVEL_ERROR,"Privileges %x for index space " IDFMT 
+              log_index.error("Privileges %x for index space %x "
                                     " are not a subset of privileges of parent "
                                     "task's privileges for index space "
                                     "requirement %d of task %s (ID %lld)",
@@ -1122,7 +1172,7 @@ namespace LegionRuntime {
             break;
           case ERROR_INVALID_REGION_HANDLE:
             {
-              log_region(LEVEL_ERROR, "Invalid region handle (" IDFMT ",%d,%d)"
+              log_region.error("Invalid region handle (%x,%d,%d)"
                                     " for region requirement %d of task %s "
                                     "(ID %lld)",
                                     regions[idx].region.index_space.id, 
@@ -1136,13 +1186,13 @@ namespace LegionRuntime {
             }
           case ERROR_INVALID_PARTITION_HANDLE:
             {
-              log_region(LEVEL_ERROR, "Invalid partition handle (%x,%d,%d) "
+              log_region.error("Invalid partition handle (%x,%d,%d) "
                             "for partition requirement %d of task %s "
                             "(ID %lld)",
-                                      regions[idx].partition.index_partition, 
-                                      regions[idx].partition.field_space.id, 
-                                      regions[idx].partition.tree_id, idx, 
-                                      variants->name, get_unique_task_id());
+                                    regions[idx].partition.index_partition.id, 
+                                    regions[idx].partition.field_space.id, 
+                                    regions[idx].partition.tree_id, idx, 
+                                    variants->name, get_unique_task_id());
 #ifdef DEBUG_HIGH_LEVEL
               assert(false);
 #endif
@@ -1150,7 +1200,7 @@ namespace LegionRuntime {
             }
           case ERROR_BAD_PROJECTION_USE:
             {
-              log_region(LEVEL_ERROR,"Projection region requirement %d used "
+              log_region.error("Projection region requirement %d used "
                                       "in non-index space task %s",
                                       idx, this->variants->name);
 #ifdef DEBUG_HIGH_LEVEL
@@ -1160,7 +1210,7 @@ namespace LegionRuntime {
             }
           case ERROR_NON_DISJOINT_PARTITION:
             {
-              log_region(LEVEL_ERROR,"Non disjoint partition selected for "
+              log_region.error("Non disjoint partition selected for "
                                       "writing region requirement %d of task "
                                       "%s.  All projection partitions "
                                       "which are not read-only and not reduce "
@@ -1177,7 +1227,7 @@ namespace LegionRuntime {
                 (regions[idx].handle_type == REG_PROJECTION) 
                   ? regions[idx].region.field_space : 
                     regions[idx].partition.field_space;
-              log_region(LEVEL_ERROR,"Field %d is not a valid field of field "
+              log_region.error("Field %d is not a valid field of field "
                                     "space %d for region %d of task %s "
                                     "(ID %lld)",
                                     bad_field, sp.id, idx, this->variants->name,
@@ -1189,7 +1239,7 @@ namespace LegionRuntime {
             }
           case ERROR_INVALID_INSTANCE_FIELD:
             {
-              log_region(LEVEL_ERROR,"Instance field %d is not one of the "
+              log_region.error("Instance field %d is not one of the "
                                       "privilege fields for region %d of "
                                       "task %s (ID %lld)",
                                       bad_field, idx, this->variants->name, 
@@ -1201,7 +1251,7 @@ namespace LegionRuntime {
             }
           case ERROR_DUPLICATE_INSTANCE_FIELD:
             {
-              log_region(LEVEL_ERROR, "Instance field %d is a duplicate for "
+              log_region.error("Instance field %d is a duplicate for "
                                       "region %d of task %s (ID %lld)",
                                       bad_field, idx, this->variants->name, 
                                       get_unique_task_id());
@@ -1212,10 +1262,10 @@ namespace LegionRuntime {
             }
           case ERROR_BAD_PARENT_REGION:
             {
-              log_region(LEVEL_ERROR,"Parent task %s (ID %lld) of task %s "
+              log_region.error("Parent task %s (ID %lld) of task %s "
                                       "(ID %lld) does not have a region "
-                                      "requirement for region (" IDFMT 
-                                      ",%x,%x) as a parent of child task's "
+                                      "requirement for region " 
+                                      "(%x,%x,%x) as a parent of child task's "
                                       "region requirement index %d",
                                       parent_ctx->variants->name, 
                                       parent_ctx->get_unique_task_id(),
@@ -1231,9 +1281,9 @@ namespace LegionRuntime {
             }
           case ERROR_BAD_REGION_PATH:
             {
-              log_region(LEVEL_ERROR,"Region (" IDFMT ",%x,%x) is not a "
-                                      "sub-region of parent region (" IDFMT 
-                                      ",%x,%x) for region requirement %d of "
+              log_region.error("Region (%x,%x,%x) is not a "
+                                      "sub-region of parent region "
+                                      "(%x,%x,%x) for region requirement %d of "
                                       "task %s (ID %lld)",
                                       regions[idx].region.index_space.id,
                                       regions[idx].region.field_space.id, 
@@ -1248,16 +1298,16 @@ namespace LegionRuntime {
             }
           case ERROR_BAD_PARTITION_PATH:
             {
-              log_region(LEVEL_ERROR,"Partition (%x,%x,%x) is not a "
+              log_region.error("Partition (%x,%x,%x) is not a "
                                      "sub-partition of parent region "
-                                     "(" IDFMT ",%x,%x) for region "
+                                     "(%x,%x,%x) for region "
                                      "requirement %d task %s (ID %lld)",
-                                      regions[idx].partition.index_partition, 
-                                      regions[idx].partition.field_space.id, 
-                                      regions[idx].partition.tree_id, 
-                                      PRINT_REG(regions[idx].parent), idx,
-                                      this->variants->name, 
-                                      get_unique_task_id());
+                                     regions[idx].partition.index_partition.id,
+                                     regions[idx].partition.field_space.id, 
+                                     regions[idx].partition.tree_id, 
+                                     PRINT_REG(regions[idx].parent), idx,
+                                     this->variants->name, 
+                                     get_unique_task_id());
 #ifdef DEBUG_HIGH_LEVEL
               assert(false);
 #endif
@@ -1265,7 +1315,7 @@ namespace LegionRuntime {
             }
           case ERROR_BAD_REGION_TYPE:
             {
-              log_region(LEVEL_ERROR,"Region requirement %d of task %s "
+              log_region.error("Region requirement %d of task %s "
                                      "(ID %lld) "
                                      "cannot find privileges for field %d in "
                                      "parent task",
@@ -1278,8 +1328,8 @@ namespace LegionRuntime {
             }
           case ERROR_BAD_REGION_PRIVILEGES:
             {
-              log_region(LEVEL_ERROR,"Privileges %x for region (" IDFMT 
-                                     ",%x,%x) are not a subset of privileges " 
+              log_region.error("Privileges %x for region " 
+                                     "(%x,%x,%x) are not a subset of privileges " 
                                      "of parent task's privileges for "
                                      "region requirement %d of task %s "
                                      "(ID %lld)",
@@ -1296,13 +1346,13 @@ namespace LegionRuntime {
             }
           case ERROR_BAD_PARTITION_PRIVILEGES:
             {
-              log_region(LEVEL_ERROR,"Privileges %x for partition (%x,%x,%x) "
+              log_region.error("Privileges %x for partition (%x,%x,%x) "
                                      "are not a subset of privileges of parent "
                                      "task's privileges for "
                                      "region requirement %d of task %s "
                                      "(ID %lld)",
                                      regions[idx].privilege, 
-                                     regions[idx].partition.index_partition, 
+                                     regions[idx].partition.index_partition.id,
                                      regions[idx].partition.field_space.id, 
                                      regions[idx].partition.tree_id, idx, 
                                      this->variants->name, 
@@ -1444,52 +1494,14 @@ namespace LegionRuntime {
       // Update the region requirements for this point
       for (unsigned idx = 0; idx < regions.size(); idx++)
       {
-        if (regions[idx].handle_type == SINGULAR)
-          continue;
-        else if (regions[idx].handle_type == PART_PROJECTION)
+        if (regions[idx].handle_type == PART_PROJECTION)
         {
           // Check to see if we're doing default projection
           if (regions[idx].projection == 0)
           {
-            Color subregion_color;
-            switch(index_point.get_dim()) {
-            case 0:
-              {
-                subregion_color = unsigned(index_point.get_index());
-                break;
-              }
-            case 1:
-              {
-                Arrays::Rect<1> color_space = 
-                  runtime->forest->get_index_partition_color_space(
-                  regions[idx].partition.get_index_partition()).get_rect<1>();
-                Arrays::CArrayLinearization<1> color_space_lin(color_space);
-                subregion_color = 
-                  (Color)(color_space_lin.image(index_point.get_point<1>()));
-                break;
-              }
-            case 2:
-              {
-                Arrays::Rect<2> color_space = 
-                  runtime->forest->get_index_partition_color_space(
-                  regions[idx].partition.get_index_partition()).get_rect<2>();
-                Arrays::CArrayLinearization<2> color_space_lin(color_space);
-                subregion_color = 
-                  (Color)(color_space_lin.image(index_point.get_point<2>()));
-                break;
-              }
-            case 3:
-              {
-                Arrays::Rect<3> color_space = 
-                  runtime->forest->get_index_partition_color_space(
-                  regions[idx].partition.get_index_partition()).get_rect<3>();
-                Arrays::CArrayLinearization<3> color_space_lin(color_space);
-                subregion_color = 
-                  (Color)(color_space_lin.image(index_point.get_point<3>()));
-                break;
-              }
-            default:
-              log_task(LEVEL_ERROR,"Projection ID 0 is invalid for tasks whose "
+            if (index_point.get_dim() > 3)
+            {
+              log_task.error("Projection ID 0 is invalid for tasks whose "
                                    "points are larger than three dimensional "
                                    "unsigned integers.  Points for task %s "
                                    "have elements of %d dimensions",
@@ -1501,7 +1513,7 @@ namespace LegionRuntime {
             }
             regions[idx].region = 
               runtime->forest->get_logical_subregion_by_color(
-                  regions[idx].partition, subregion_color);
+                  regions[idx].partition, ColorPoint(index_point));
           }
           else
           {
@@ -1527,12 +1539,8 @@ namespace LegionRuntime {
           regions[idx].max_blocking_factor = 
             runtime->forest->get_domain_volume(regions[idx].region);
         }
-        else
+        else if (regions[idx].handle_type == REG_PROJECTION)
         {
-          // This should be region projection
-#ifdef DEBUG_HIGH_LEVEL
-          assert(regions[idx].handle_type == REG_PROJECTION);
-#endif
           if (regions[idx].projection != 0)
           {
             ProjectionFunctor *functor = 
@@ -1558,6 +1566,8 @@ namespace LegionRuntime {
           regions[idx].max_blocking_factor = 
             runtime->forest->get_domain_volume(regions[idx].region);
         }
+        // Always check to see if there are any restrictions
+        regions[idx].restricted = has_restrictions(idx, regions[idx].region);
       }
     }
 
@@ -1573,25 +1583,7 @@ namespace LegionRuntime {
       for (unsigned idx = 0; idx < regions.size(); idx++)
       {
         RegionRequirement &req = regions[idx];
-        // If this is restricted we already know the answer
-        if (req.restricted)
-        {
-          has_early_maps = true;
-          InstanceRef target = 
-            parent_ctx->get_local_reference(parent_req_indexes[idx]);
-          mapping_refs[idx] = runtime->forest->map_restricted_region(
-                                        enclosing_physical_contexts[idx],
-                                                      req, idx, target
-#ifdef DEBUG_HIGH_LEVEL
-                                                      , get_logging_name()
-                                                      , unique_op_id
-#endif
-                                                      );
-#ifdef DEBUG_HIGH_LEVEL
-          assert(mapping_refs[idx].has_ref());
-#endif
-        }
-        else if (req.must_early_map || req.early_map)
+        if (req.must_early_map || req.early_map)
         {
           if (req.handle_type == SINGULAR)
           {
@@ -1618,7 +1610,7 @@ namespace LegionRuntime {
           }
           else
           {
-            log_task(LEVEL_WARNING,"Ignoring request to early map region %d "
+            log_task.warning("Ignoring request to early map region %d "
                                     "for task %s (ID %lld) which is a non-"
                                     "singular region requirement and therefore"
                                     "cannot be early mapped.",
@@ -1699,10 +1691,10 @@ namespace LegionRuntime {
           parent_ctx->find_parent_region_req(regions[idx]);
         if (parent_index < 0)
         {
-          log_region(LEVEL_ERROR,"Parent task %s (ID %lld) of task %s "
+          log_region.error("Parent task %s (ID %lld) of task %s "
                                  "(ID %lld) does not have a region "
-                                 "requirement for region (" IDFMT 
-                                 ",%x,%x) as a parent of child task's "
+                                 "requirement for region "
+                                 "(%x,%x,%x) as a parent of child task's "
                                  "region requirement index %d",
                                  parent_ctx->variants->name, 
                                  parent_ctx->get_unique_task_id(),
@@ -1719,19 +1711,6 @@ namespace LegionRuntime {
         parent_req_indexes[idx] = parent_index;
         enclosing_physical_contexts[idx] = 
           parent_ctx->find_enclosing_physical_context(parent_req_indexes[idx]);
-      }
-      if (parent_ctx->has_simultaneous_coherence())
-      {
-        for (unsigned idx = 0; idx < regions.size(); idx++)
-        {
-          regions[idx].restricted = 
-            parent_ctx->is_simultaneous_restricted(parent_req_indexes[idx]);
-        }
-      }
-      else
-      {
-        for (unsigned idx = 0; idx < regions.size(); idx++)
-          regions[idx].restricted = false;
       }
     }
 
@@ -1975,7 +1954,7 @@ namespace LegionRuntime {
       
       LegionSpy::log_logical_requirement(uid, idx, reg,
           reg ? req.region.index_space.id :
-                req.partition.index_partition,
+                req.partition.index_partition.id,
           reg ? req.region.field_space.id :
                 req.partition.field_space.id,
           reg ? req.region.tree_id : 
@@ -2012,8 +1991,6 @@ namespace LegionRuntime {
       profile_task = false;
       current_fence = NULL;
       fence_gen = 0;
-      simultaneous_checked = false;
-      has_simultaneous = false;
       context = RegionTreeContext();
       directory = NULL;
       executed = false;
@@ -2051,6 +2028,7 @@ namespace LegionRuntime {
       complete_children.clear();
       mapping_paths.clear();
       safe_cast_domains.clear();
+      restricted_trees.clear();
       premapping_events.clear();
       frame_events.clear();
       for (std::map<TraceID,LegionTrace*>::const_iterator it = traces.begin();
@@ -2346,7 +2324,7 @@ namespace LegionRuntime {
       // Since we shouldn't be holding any locks here, it should be safe
       // to wait withinout blocking the processor.
       if (wait_on.exists())
-        wait_on.wait(true/*block*/);
+        wait_on.wait();
       return result;
     }
 
@@ -2716,7 +2694,7 @@ namespace LegionRuntime {
       // by the one thread that is running the task.
       if (current_trace != NULL)
       {
-        log_task(LEVEL_ERROR,"Illegal nested trace with ID %d attempted in "
+        log_task.error("Illegal nested trace with ID %d attempted in "
                              "task %s (ID %lld)", tid, variants->name,
                              get_unique_task_id());
 #ifdef DEBUG_HIGH_LEVEL
@@ -2746,7 +2724,7 @@ namespace LegionRuntime {
     {
       if (current_trace == NULL)
       {
-        log_task(LEVEL_ERROR,"Unmatched end trace for ID %d in task %s "
+        log_task.error("Unmatched end trace for ID %d in task %s "
                              "(ID %lld)", tid, variants->name,
                              get_unique_task_id());
 #ifdef DEBUG_HIGH_LEVEL
@@ -3288,6 +3266,26 @@ namespace LegionRuntime {
                                             bool &inline_conflict)
     //--------------------------------------------------------------------------
     {
+      const RegionRequirement &req = op->get_requirement(); 
+      return has_conflicting_internal(req, parent_conflict, inline_conflict);
+    }
+
+    //--------------------------------------------------------------------------
+    int SingleTask::has_conflicting_regions(AttachOp *attach,
+                                            bool &parent_conflict,
+                                            bool &inline_conflict)
+    //--------------------------------------------------------------------------
+    {
+      const RegionRequirement &req = attach->get_requirement();
+      return has_conflicting_internal(req, parent_conflict, inline_conflict);
+    }
+
+    //--------------------------------------------------------------------------
+    int SingleTask::has_conflicting_internal(const RegionRequirement &req,
+                                             bool &parent_conflict,
+                                             bool &inline_conflict)
+    //--------------------------------------------------------------------------
+    {
       parent_conflict = false;
       inline_conflict = false;
       // Need to hold our local lock when reading regions
@@ -3308,7 +3306,6 @@ namespace LegionRuntime {
         RegionTreeID our_tid = our_req.region.get_tree_id();
         IndexSpace our_space = our_req.region.get_index_space();
         RegionUsage our_usage(our_req);
-        const RegionRequirement &req = op->requirement;
         if (check_region_dependence(our_tid,our_space,our_req,our_usage,req))
         {
           parent_conflict = true;
@@ -3328,7 +3325,6 @@ namespace LegionRuntime {
         RegionTreeID our_tid = our_req.region.get_tree_id();
         IndexSpace our_space = our_req.region.get_index_space();
         RegionUsage our_usage(our_req);
-        const RegionRequirement &req = op->requirement;
         if (check_region_dependence(our_tid,our_space,our_req,our_usage,req))
         {
           inline_conflict = true;
@@ -3484,49 +3480,30 @@ namespace LegionRuntime {
                                        std::vector<PhysicalRegion> &conflicting)
     //--------------------------------------------------------------------------
     {
-      // Need to hold our local lock when reading regions
-      AutoLock o_lock(op_lock,1,false/*exclusive*/);
-#ifdef DEBUG_HIGH_LEVEL
-      assert(regions.size() == physical_regions.size());
-#endif
-      for (unsigned our_idx = 0; our_idx < regions.size(); our_idx++)
-      {
-        // skip any regions which are not mapped
-        if (!physical_regions[our_idx].impl->is_mapped())
-          continue;
-        const RegionRequirement &our_req = regions[our_idx];
-#ifdef DEBUG_HIGH_LEVEL
-        // This better be true for a single task
-        assert(our_req.handle_type == SINGULAR);
-#endif
-        RegionTreeID our_tid = our_req.region.get_tree_id();
-        IndexSpace our_space = our_req.region.get_index_space();
-        RegionUsage our_usage(our_req);
-        const RegionRequirement &req = acquire->get_requirement();
-        if (check_region_dependence(our_tid,our_space,our_req,our_usage,req))
-          conflicting.push_back(physical_regions[our_idx]);
-      }
-      for (std::list<PhysicalRegion>::const_iterator it = 
-            inline_regions.begin(); it != inline_regions.end(); it++)
-      {
-        if (!it->impl->is_mapped())
-          continue;
-        const RegionRequirement &our_req = it->impl->get_requirement();
-#ifdef DEBUG_HIGH_LEVEL
-        // This better be true for a single task
-        assert(our_req.handle_type == SINGULAR);
-#endif
-        RegionTreeID our_tid = our_req.region.get_tree_id();
-        IndexSpace our_space = our_req.region.get_index_space();
-        RegionUsage our_usage(our_req);
-        const RegionRequirement &req = acquire->get_requirement();
-        if (check_region_dependence(our_tid,our_space,our_req,our_usage,req))
-          conflicting.push_back(*it);
-      }
+      const RegionRequirement &req = acquire->get_requirement();
+      find_conflicting_internal(req, conflicting); 
     }
 
     //--------------------------------------------------------------------------
     void SingleTask::find_conflicting_regions(ReleaseOp *release,
+                                       std::vector<PhysicalRegion> &conflicting)
+    //--------------------------------------------------------------------------
+    {
+      const RegionRequirement &req = release->get_requirement();
+      find_conflicting_internal(req, conflicting);      
+    }
+
+    //--------------------------------------------------------------------------
+    void SingleTask::find_conflicting_regions(DependentPartitionOp *partition,
+                                       std::vector<PhysicalRegion> &conflicting)
+    //--------------------------------------------------------------------------
+    {
+      const RegionRequirement &req = partition->get_requirement();
+      find_conflicting_internal(req, conflicting);
+    }
+
+    //--------------------------------------------------------------------------
+    void SingleTask::find_conflicting_internal(const RegionRequirement &req,
                                        std::vector<PhysicalRegion> &conflicting)
     //--------------------------------------------------------------------------
     {
@@ -3548,7 +3525,6 @@ namespace LegionRuntime {
         RegionTreeID our_tid = our_req.region.get_tree_id();
         IndexSpace our_space = our_req.region.get_index_space();
         RegionUsage our_usage(our_req);
-        const RegionRequirement &req = release->get_requirement();
         if (check_region_dependence(our_tid,our_space,our_req,our_usage,req))
           conflicting.push_back(physical_regions[our_idx]);
       }
@@ -3565,10 +3541,18 @@ namespace LegionRuntime {
         RegionTreeID our_tid = our_req.region.get_tree_id();
         IndexSpace our_space = our_req.region.get_index_space();
         RegionUsage our_usage(our_req);
-        const RegionRequirement &req = release->get_requirement();
         if (check_region_dependence(our_tid,our_space,our_req,our_usage,req))
           conflicting.push_back(*it);
       }
+    }
+
+    //--------------------------------------------------------------------------
+    void SingleTask::find_conflicting_regions(FillOp *fill,
+                                      std::vector<PhysicalRegion> &conflicting)
+    //--------------------------------------------------------------------------
+    {
+      const RegionRequirement &req = fill->get_requirement();
+      find_conflicting_internal(req, conflicting);
     }
 
     //--------------------------------------------------------------------------
@@ -3674,7 +3658,8 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    int SingleTask::find_parent_region_req(const RegionRequirement &req)
+    int SingleTask::find_parent_region_req(const RegionRequirement &req,
+                                           bool check_privilege /*= true*/)
     //--------------------------------------------------------------------------
     {
       AutoLock o_lock(op_lock,1,false/*exclusive*/);
@@ -3684,7 +3669,8 @@ namespace LegionRuntime {
         if ((regions[idx].region != req.parent) || region_deleted[idx])
           continue;
         // Next check the privileges
-        if ((req.privilege & regions[idx].privilege) != req.privilege)
+        if (check_privilege && 
+            ((req.privilege & regions[idx].privilege) != req.privilege))
           continue;
         // Finally check that all the fields are contained
         bool dominated = true;
@@ -3720,9 +3706,9 @@ namespace LegionRuntime {
             !region_deleted[idx])
           return idx;
       }
-      log_region(LEVEL_ERROR,"Parent task %s (ID %lld) of inline task %s "
+      log_region.error("Parent task %s (ID %lld) of inline task %s "
                               "(ID %lld) does not have a region "
-                              "requirement for region (" IDFMT ",%x,%x) "
+                              "requirement for region (%x,%x,%x) "
                               "as a parent of child task's region "
                               "requirement index %d",
                               variants->name, 
@@ -3753,9 +3739,9 @@ namespace LegionRuntime {
               !index_deleted[idx])
           return idx;
       }
-      log_index(LEVEL_ERROR,"Parent task %s (ID %lld) of inline task %s "
+      log_index.error("Parent task %s (ID %lld) of inline task %s "
                             "(ID %lld) does not have an index space "
-                            "requirement for index space " IDFMT " "
+                            "requirement for index space %x "
                             "as a parent of chlid task's index requirement "
                             "index %d",
                             variants->name,
@@ -3768,6 +3754,17 @@ namespace LegionRuntime {
 #endif
       exit(ERROR_BAD_PARENT_INDEX);
       return 0;
+    }
+
+    //--------------------------------------------------------------------------
+    PrivilegeMode SingleTask::find_parent_privilege_mode(unsigned idx)
+    //--------------------------------------------------------------------------
+    {
+      AutoLock o_lock(op_lock,1,false/*exclusive*/);
+#ifdef DEBUG_HIGH_LEVEL
+      assert(idx < regions.size());
+#endif
+      return regions[idx].privilege;
     }
 
     //--------------------------------------------------------------------------
@@ -3794,7 +3791,7 @@ namespace LegionRuntime {
         if (it->handle == req.parent)
         {
           // Check that there is a path between the parent and the child
-          std::vector<Color> path;
+          std::vector<ColorPoint> path;
           if (!runtime->forest->compute_index_path(req.parent, 
                                                    req.handle, path))
             return ERROR_BAD_INDEX_PATH;
@@ -3811,7 +3808,7 @@ namespace LegionRuntime {
       if (has_created_index_space(req.parent))
       {
         // Still need to check that there is a path between the two
-        std::vector<Color> path;
+        std::vector<ColorPoint> path;
         if (!runtime->forest->compute_index_path(req.parent, req.handle, path))
           return ERROR_BAD_INDEX_PATH;
         // No need to check privileges here since it is a created space
@@ -3850,14 +3847,14 @@ namespace LegionRuntime {
           if ((req.handle_type == SINGULAR) || 
               (req.handle_type == REG_PROJECTION))
           {
-            std::vector<Color> path;
+            std::vector<ColorPoint> path;
             if (!runtime->forest->compute_index_path(req.parent.index_space,
                                               req.region.index_space, path))
               return ERROR_BAD_REGION_PATH;
           }
           else
           {
-            std::vector<Color> path;
+            std::vector<ColorPoint> path;
             if (!runtime->forest->compute_partition_path(req.parent.index_space,
                                           req.partition.index_partition, path))
               return ERROR_BAD_PARTITION_PATH;
@@ -3916,14 +3913,14 @@ namespace LegionRuntime {
         if ((req.handle_type == SINGULAR) || 
             (req.handle_type == REG_PROJECTION))
         {
-          std::vector<Color> path;
+          std::vector<ColorPoint> path;
           if (!runtime->forest->compute_index_path(req.parent.index_space,
                                               req.region.index_space, path))
             return ERROR_BAD_REGION_PATH;
         }
         else
         {
-          std::vector<Color> path;
+          std::vector<ColorPoint> path;
           if (!runtime->forest->compute_partition_path(req.parent.index_space,
                                         req.partition.index_partition, path))
             return ERROR_BAD_PARTITION_PATH;
@@ -3942,45 +3939,6 @@ namespace LegionRuntime {
       return ERROR_BAD_PARENT_REGION;
     }
 
-    //--------------------------------------------------------------------------
-    bool SingleTask::has_simultaneous_coherence(void)
-    //--------------------------------------------------------------------------
-    {
-      // If we already did the check, then return the value
-      if (simultaneous_checked)
-        return has_simultaneous;
-      // Otherwise do the check and cache the value
-      // Need the lock when reading the regions
-      AutoLock o_lock(op_lock,1,false/*exclusive*/);
-      for (unsigned idx = 0; idx < regions.size(); idx++)
-      {
-        // If we have simultaneous coherence and there is an
-        // actual physical region then there is something
-        // that needs checking for child ops.
-        if ((regions[idx].prop == SIMULTANEOUS) &&
-            (physical_regions[idx].is_mapped()))
-        {
-          has_simultaneous = true;
-          break;
-        }
-      }
-      simultaneous_checked = true;
-      return has_simultaneous;
-    }
-
-    //--------------------------------------------------------------------------
-    bool SingleTask::is_simultaneous_restricted(unsigned index)
-    //--------------------------------------------------------------------------
-    {
-#ifdef DEBUG_HIGH_LEVEL
-      assert(index < regions.size());
-#endif
-      if ((regions[index].prop == SIMULTANEOUS) ||
-           regions[index].restricted)
-        return true;
-      return false;
-    }
-    
     //--------------------------------------------------------------------------
     bool SingleTask::has_created_region(LogicalRegion handle) const
     //--------------------------------------------------------------------------
@@ -4011,250 +3969,34 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    void SingleTask::check_index_subspace(IndexSpace handle, const char *caller)
+    bool SingleTask::has_tree_restriction(RegionTreeID tid, 
+                                          const FieldMask &mask)
     //--------------------------------------------------------------------------
     {
-      // This is always called inline so no need to take the lock
-      std::vector<Color> path;
-      for (unsigned idx = 0; idx < regions.size(); idx++)
-      {
-        path.clear();
-        if (runtime->forest->compute_index_path(
-              regions[idx].region.get_index_space(), handle, path))
-          return;
-      }
-      // Finally check the index space requirements
-      for (unsigned idx = 0; idx < indexes.size(); idx++)
-      {
-        path.clear();
-        if (runtime->forest->compute_index_path(indexes[idx].handle, 
-                                                handle, path))
-          return;
-      }
-      // Also check the created regions
-      for (std::set<LogicalRegion>::const_iterator it = 
-            created_regions.begin(); it != created_regions.end(); it++)
-      {
-        path.clear();
-        if (runtime->forest->compute_index_path(it->get_index_space(),
-                                                handle, path))
-          return;
-      }
-      // Finally check the created index spaces
-      for (std::set<IndexSpace>::const_iterator it = 
-            created_index_spaces.begin(); it != 
-            created_index_spaces.end(); it++)
-      {
-        path.clear();
-        if (runtime->forest->compute_index_path(*it, handle, path))
-          return;
-      }
-#if 0
-      log_task(LEVEL_ERROR,"Invalid call of %s with index space " IDFMT 
-                           "which is not a sub-space of any requested or "
-                           "created index spaces in task %s (ID %lld).",
-                           caller, handle.id, variants->name,
-                           get_unique_task_id());
-#ifdef DEBUG_HIGH_LEVEL
-      assert(false);
-#endif
-      exit(ERROR_INVALID_INDEX_SUBSPACE_REQUEST);
-#else
-      log_task(LEVEL_WARNING,"Invalid call of %s with index space " IDFMT 
-                           "which is not a sub-space of any requested or "
-                           "created index spaces in task %s (ID %lld). "
-                           "This must be fixed to guarantee correct "
-                           "execution in multi-node runs.",
-                           caller, handle.id, variants->name,
-                           get_unique_task_id());
-#endif
+      // No need for the lock because we know that this processo
+      // is serialized by the dependence analysis stage
+      LegionMap<RegionTreeID,FieldMask>::aligned::const_iterator finder = 
+        restricted_trees.find(tid);
+      if ((finder != restricted_trees.end()) &&
+          (!(finder->second * mask)))
+        return true;
+      return false;
     }
 
     //--------------------------------------------------------------------------
-    void SingleTask::check_index_subpartition(IndexPartition handle,
-                                              const char *caller)
+    void SingleTask::add_tree_restriction(RegionTreeID tid,
+                                          const FieldMask &mask)
     //--------------------------------------------------------------------------
     {
-      std::vector<Color> path;
-      for (unsigned idx = 0; idx < regions.size(); idx++)
-      {
-        path.clear();
-        if (runtime->forest->compute_partition_path(
-              regions[idx].region.get_index_space(), handle, path))
-          return;
-      }
-      // Finally check the index space requirements
-      for (unsigned idx = 0; idx < indexes.size(); idx++)
-      {
-        path.clear();
-        if (runtime->forest->compute_partition_path(
-              indexes[idx].handle, handle, path))
-          return;
-      }
-      // Also check the created regions
-      for (std::set<LogicalRegion>::const_iterator it = 
-            created_regions.begin(); it != created_regions.end(); it++)
-      {
-        path.clear();
-        if (runtime->forest->compute_partition_path(
-              it->get_index_space(), handle, path))
-          return;
-      }
-      // Finally check the created index spaces
-      for (std::set<IndexSpace>::const_iterator it = 
-            created_index_spaces.begin(); it != 
-            created_index_spaces.end(); it++)
-      {
-        path.clear();
-        if (runtime->forest->compute_partition_path(*it, handle, path))
-          return;
-      }
-#if 0
-      log_task(LEVEL_ERROR,"Invalid call of %s with index partition %d"
-                           "which is not a sub-partition of any requested "
-                           "or created index spaces in task %s (ID %lld).",
-                           caller, handle, variants->name,
-                           get_unique_task_id());
-#ifdef DEBUG_HIGH_LEVEL
-      assert(false);
-#endif
-      exit(ERROR_INVALID_INDEX_SUBPARTITION_REQUEST);
-#else
-      log_task(LEVEL_WARNING,"Invalid call of %s with index partition %d"
-                           "which is not a sub-partition of any requested "
-                           "or created index spaces in task %s (ID %lld). "
-                           "This must be fixed to guarantee correct "
-                           "execution in multi-node runs.",
-                           caller, handle, variants->name,
-                           get_unique_task_id());
-#endif
-    }
-
-    //--------------------------------------------------------------------------
-    void SingleTask::check_field_space(FieldSpace handle, const char *caller)
-    //--------------------------------------------------------------------------
-    {
-      for (unsigned idx = 0; idx < regions.size(); idx++)
-      {
-        if (regions[idx].region.get_field_space() == handle)
-          return;
-      }
-      for (std::set<FieldSpace>::const_iterator it = 
-            created_field_spaces.begin(); it != 
-            created_field_spaces.end(); it++)
-      {
-        if ((*it) == handle)
-          return;
-      }
-#if 0
-      log_task(LEVEL_ERROR,"Invalid call of %s with field space %d which is "
-                           "not a field space of any requested regions and "
-                           "was not created in the context of task %s "
-                           "(ID %lld).", caller, handle.id, variants->name,
-                           get_unique_task_id());
-#ifdef DEBUG_HIGH_LEVEL
-      assert(false);
-#endif
-      exit(ERROR_INVALID_FIELD_SPACE_REQUEST);
-#else
-      log_task(LEVEL_WARNING,"Invalid call of %s with field space %d which is "
-                           "not a field space of any requested regions and "
-                           "was not created in the context of task %s "
-                           "(ID %lld). This must be fixed to guarantee correct "
-                           "execution in multi-node runs", caller, handle.id, 
-                           variants->name, get_unique_task_id());
-#endif
-    }
-
-    //--------------------------------------------------------------------------
-    void SingleTask::check_logical_subregion(LogicalRegion handle, 
-                                             const char *caller)
-    //--------------------------------------------------------------------------
-    {
-      std::vector<Color> path;
-      for (unsigned idx = 0; idx < regions.size(); idx++)
-      {
-        if (regions[idx].region.get_tree_id() != handle.get_tree_id())
-          continue;
-        path.clear();
-        if (runtime->forest->compute_index_path(
-              regions[idx].region.get_index_space(),
-              handle.get_index_space(), path))
-          return;
-      }
-      for (std::set<LogicalRegion>::const_iterator it = 
-            created_regions.begin(); it != created_regions.end(); it++)
-      {
-        if (it->get_tree_id() == handle.get_tree_id())
-          return;
-      }
-#if 0
-      log_task(LEVEL_ERROR,"Invalid call of %s with logical region ("
-                            IDFMT ",%d,%d) which is not a sub-region of any "
-                            "requested or created regions in task %s "
-                            "(ID %lld).", caller, handle.get_index_space().id,
-                            handle.get_field_space().id, handle.get_tree_id(),
-                            variants->name, get_unique_task_id());
-#ifdef DEBUG_HIGH_LEVEL
-      assert(false);
-#endif
-      exit(ERROR_INVALID_LOGICAL_SUBREGION_REQUEST);
-#else
-      log_task(LEVEL_WARNING,"Invalid call of %s with logical region ("
-                            IDFMT ",%d,%d) which is not a sub-region of any "
-                            "requested or created regions in task %s "
-                            "(ID %lld). This must be fixed to guarantee "
-                            "correct execution in multi-node runs.", 
-                            caller, handle.get_index_space().id,
-                            handle.get_field_space().id, handle.get_tree_id(),
-                            variants->name, get_unique_task_id());
-#endif
-    }
-
-    //--------------------------------------------------------------------------
-    void SingleTask::check_logical_subpartition(LogicalPartition handle,
-                                                const char *caller)
-    //--------------------------------------------------------------------------
-    {
-      std::vector<Color> path;
-      for (unsigned idx = 0; idx < regions.size(); idx++)
-      {
-        if (regions[idx].region.get_tree_id() != handle.get_tree_id())
-          continue;
-        path.clear();
-        if (runtime->forest->compute_partition_path(
-              regions[idx].region.get_index_space(),
-              handle.get_index_partition(), path))
-          return;
-      }
-      for (std::set<LogicalRegion>::const_iterator it = 
-            created_regions.begin(); it != created_regions.end(); it++)
-      {
-        if (it->get_tree_id() == handle.get_tree_id())
-          return;
-      }
-#if 0
-      log_task(LEVEL_ERROR,"Invalid call of %s with logical partition "
-                           "(%d,%d,%d) which is not a sub-partition of any "
-                           "requested or created regions in task %s (ID %lld).",
-                           caller, handle.get_index_partition(),
-                           handle.get_field_space().id, handle.get_tree_id(),
-                           variants->name, get_unique_task_id());
-#ifdef DEBUG_HIGH_LEVEL
-      assert(false);
-#endif
-      exit(ERROR_INVALID_LOGICAL_SUBPARTITION_REQUEST);
-#else
-      log_task(LEVEL_WARNING,"Invalid call of %s with logical partition "
-                           "(%d,%d,%d) which is not a sub-partition of any "
-                           "requested or created regions in task %s (ID %lld). "
-                           "This must be fixed to guarantee correct execution "
-                           " in multi-node runs.",
-                           caller, handle.get_index_partition(),
-                           handle.get_field_space().id, handle.get_tree_id(),
-                           variants->name, get_unique_task_id());
-#endif
-    }
+      // No need to hold the lock because we know access to this data
+      // structure is serialized by the mapping process
+      LegionMap<RegionTreeID,FieldMask>::aligned::iterator finder = 
+        restricted_trees.find(tid);
+      if (finder == restricted_trees.end())
+        restricted_trees[tid] = mask;
+      else
+        finder->second |= mask;
+    } 
 
     //--------------------------------------------------------------------------
     RegionTreeContext SingleTask::find_enclosing_physical_context(unsigned idx)
@@ -4442,20 +4184,37 @@ namespace LegionRuntime {
             num_virtual_mappings++;
           continue;
         }
-        // Otherwise we're going to do an actual mapping
-        mapping_refs[idx] = runtime->forest->map_physical_region(
-                                    enclosing_physical_contexts[idx],
-                                                  mapping_paths[idx],
-                                                  regions[idx],
-                                                  idx,
-                                                  this,
-                                                  current_proc,
-                                                  target
+        // Check to see if we have to do a restricted mapping
+        if (has_restrictions(idx, regions[idx].region))
+        {
+          mapping_refs[idx] = runtime->forest->map_restricted_region(
+                                      enclosing_physical_contexts[idx],
+                                                    mapping_paths[idx],
+                                                    regions[idx],
+                                                    idx, target
 #ifdef DEBUG_HIGH_LEVEL
-                                                  , get_logging_name()
-                                                  , unique_op_id
+                                                    , get_logging_name()
+                                                    , unique_op_id
 #endif
-                                                  );
+                                                    );
+        }
+        else
+        {
+          // Otherwise we're going to do an actual mapping
+          mapping_refs[idx] = runtime->forest->map_physical_region(
+                                      enclosing_physical_contexts[idx],
+                                                    mapping_paths[idx],
+                                                    regions[idx],
+                                                    idx,
+                                                    this,
+                                                    current_proc,
+                                                    target
+#ifdef DEBUG_HIGH_LEVEL
+                                                    , get_logging_name()
+                                                    , unique_op_id
+#endif
+                                                    );
+        }
         if (mapping_refs[idx].has_ref() || IS_NO_ACCESS(regions[idx]))
         {
           virtual_mapped[idx] = false;
@@ -4505,8 +4264,8 @@ namespace LegionRuntime {
 	      Memory premap_memory = premapped.get_memory();
 	      if (visible_memories.find(premap_memory) == visible_memories.end())
               {
-		log_region(LEVEL_ERROR,"Illegal premapped region for logical "
-			               "region (" IDFMT ",%d,%d) index %d of "
+		log_region.error("Illegal premapped region for logical "
+			               "region (%x,%d,%d) index %d of "
 			               "task %s (UID %lld)!  Memory " IDFMT 
                                        " is not visible from processor " IDFMT 
                                        "!", 
@@ -4592,6 +4351,11 @@ namespace LegionRuntime {
 #endif
         runtime->forest->initialize_logical_context(context,
                                                     regions[idx].region); 
+        // If we need to add restricted coherence, do that now
+        if ((regions[idx].prop == SIMULTANEOUS) ||
+            has_restrictions(idx, regions[idx].region)) 
+          runtime->forest->restrict_user_coherence(this, regions[idx].region,
+                                                 regions[idx].privilege_fields);
         // Only need to initialize the context if this is
         // not a leaf and it wasn't virtual mapped
         if ((!virtual_mapped[idx]) && (regions[idx].privilege != NO_ACCESS))
@@ -4823,6 +4587,12 @@ namespace LegionRuntime {
 #ifdef DEBUG_HIGH_LEVEL
           assert(regions[idx].handle_type == SINGULAR);
 #endif
+          // Convert any WRITE_ONLY or WRITE_DISCARD privleges to READ_WRITE
+          // This is necessary for any sub-operations which may need to rely
+          // on our privileges for determining their own privileges such
+          // as inline mappings or acquire and release operations
+          if (regions[idx].privilege == WRITE_DISCARD)
+            regions[idx].privilege = READ_WRITE;
           // If it was virtual mapper so it doesn't matter anyway.
           if (virtual_mapped[idx])
           {
@@ -4898,7 +4668,7 @@ namespace LegionRuntime {
           // are counting by frames or by outstanding tasks.
           if ((min_tasks_to_schedule == 0) && (min_frames_to_schedule == 0))
           {
-            log_task(LEVEL_ERROR,"Illegal output from configure context call: "
+            log_task.error("Illegal output from configure context call: "
                      "one of 'min_tasks_to_schedule' and "
                      "'min_frames_to_schedule' must be non-zero for "
                      "task %s (ID %lld)", variants->name, get_unique_task_id());
@@ -5103,7 +4873,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #ifdef DEBUG_HIGH_LEVEL
-      log_task(LEVEL_DEBUG,"Task %s (ID %lld) starting on processor " IDFMT "",
+      log_task.debug("Task %s (ID %lld) starting on processor " IDFMT "",
                             this->variants->name, get_unique_task_id(), 
                             executing_processor.id);
       assert(regions.size() == physical_regions.size());
@@ -5165,6 +4935,10 @@ namespace LegionRuntime {
     {
       if (profile_task)
       {
+#ifdef USE_CUDA
+        if (executing_processor.kind() == Processor::TOC_PROC)
+          cudaStreamSynchronize(0);
+#endif
         this->stop_time = (TimeStamp::get_current_time_in_micros() -
                               Runtime::init_time);
         runtime->invoke_mapper_notify_profiling(executing_processor, this);
@@ -5401,6 +5175,7 @@ namespace LegionRuntime {
       // Remove our reference to any argument maps
       argument_map = ArgumentMap();
       slices.clear(); 
+      restrict_infos.clear();
     }
 
     //--------------------------------------------------------------------------
@@ -5428,7 +5203,7 @@ namespace LegionRuntime {
       runtime->invoke_mapper_slice_domain(current_proc, this, splits);
       if (splits.empty())
       {
-        log_run(LEVEL_ERROR,"Invalid mapper domain slice result for mapper %d "
+        log_run.error("Invalid mapper domain slice result for mapper %d "
                             "on processor " IDFMT " for task %s (ID %lld)",
                             map_id, current_proc.id, variants->name, 
                             get_unique_task_id());
@@ -5443,6 +5218,7 @@ namespace LegionRuntime {
         must_barrier = must_barrier.alter_arrival_count(slices.size()-1);
 
       std::set<Event> all_slices_mapped;
+      size_t total_volume = 0;
       for (unsigned idx = 0; idx < splits.size(); idx++)
       {
 #ifdef DEBUG_HIGH_LEVEL
@@ -5455,10 +5231,10 @@ namespace LegionRuntime {
               {
                 if (d.get_volume() <= 0)
                 {
-                  log_run(LEVEL_ERROR,
-                            "Invalid mapper domain slice result for mapper %d "
-                            "on processor " IDFMT " for task %s (ID %lld). "
-                            "Mapper returned an empty domain for split %d.",
+                  log_run.error("Invalid mapper domain slice result for "
+                            "mapper %d on processor " IDFMT " for task %s "
+                            "(ID %lld). Mapper returned an empty domain for "
+                            "split %d.",
                             map_id, current_proc.id, variants->name,
                             get_unique_task_id(), idx);
                   assert(false);
@@ -5471,7 +5247,7 @@ namespace LegionRuntime {
                 Rect<1> rec = d.get_rect<1>();
                 if (rec.volume() <= 0)
                 {
-                  log_run(LEVEL_ERROR,
+                  log_run.error(
                             "Invalid mapper domain slice result for mapper %d "
                             "on processor " IDFMT " for task %s (ID %lld).  "
                             "Mapper returned an empty domain for split %d.",
@@ -5487,7 +5263,7 @@ namespace LegionRuntime {
                 Rect<2> rec = d.get_rect<2>();
                 if (rec.volume() <= 0)
                 {
-                  log_run(LEVEL_ERROR,
+                  log_run.error(                            
                             "Invalid mapper domain slice result for mapper %d "
                             "on processor " IDFMT " for task %s (ID %lld).  "
                             "Mapper returned an empty domain for split %d.",
@@ -5503,7 +5279,7 @@ namespace LegionRuntime {
                 Rect<3> rec = d.get_rect<3>();
                 if (rec.volume() <= 0)
                 {
-                  log_run(LEVEL_ERROR,
+                  log_run.error(                            
                             "Invalid mapper domain slice result for mapper %d "
                             "on processor " IDFMT " for task %s (ID %lld).  "
                             "Mapper returned an empty domain for split %d.",
@@ -5526,7 +5302,59 @@ namespace LegionRuntime {
                                                      splits.size());
         all_slices_mapped.insert(slice->get_children_mapped());
         slices.push_back(slice);
+        total_volume += splits[idx].domain.get_volume();
       }
+      // If the volumes don't match, then something bad happend in the mapper
+      if (total_volume != index_domain.get_volume())
+      {
+        log_run.error("Invalid mapper domain slice result for mapper %d "
+                      "on processor " IDFMT " for task %s (ID %lld). "
+                      "Mapper returned slices with total volume %ld that "
+                      "does not match expected volume %ld.", map_id,
+                      current_proc.id, variants->name, 
+                      get_unique_task_id(), total_volume,
+                      index_domain.get_volume());
+#ifdef DEBUG_HIGH_LEVEL
+        assert(false);
+#endif
+        exit(ERROR_INVALID_MAPPER_DOMAIN_SLICE);
+      }
+#ifdef DEBUG_HIGH_LEVEL
+      // Do a check to make sure all the points in the original
+      // domain are included in exactly one slice
+      for (Domain::DomainPointIterator itr(index_domain); itr; itr++)
+      {
+        unsigned slice_count = 0;
+        for (std::vector<Mapper::DomainSplit>::const_iterator it = 
+              splits.begin(); it != splits.end(); it++)
+        {
+          if (it->domain.contains(itr.p))
+            slice_count++;
+        }
+        if (slice_count == 0)
+        {
+          log_run.error("Invalid mapper domain slice result for mapper %d "
+                        "on processor " IDFMT " for task %s (ID %lld). "
+                        "Mapper returned domain splits that failed to "
+                        "contain at least one point.", map_id, 
+                        current_proc.id, variants->name,
+                        get_unique_task_id());
+          assert(false);
+          exit(ERROR_INVALID_MAPPER_DOMAIN_SLICE);
+        }
+        if (slice_count > 1)
+        {
+          log_run.error("Invalid mapper domain slice result for mapper %d "
+                        "on processor " IDFMT " for task %s (ID %lld). "
+                        "Mapper returned domain splits that contained "
+                        "at least one point in multiple slices.", map_id, 
+                        current_proc.id, variants->name,
+                        get_unique_task_id());
+          assert(false);
+          exit(ERROR_INVALID_MAPPER_DOMAIN_SLICE);
+        }
+      }
+#endif
       // Trigger our all children mapped as being done when all
       // the slices have all their children mapped
       all_children_mapped.trigger(Event::merge_events(all_slices_mapped));
@@ -5795,7 +5623,7 @@ namespace LegionRuntime {
       // If we're the owner, then free the memory
       if (owner)
         free(const_cast<void*>(result));
-    }
+    } 
 
     /////////////////////////////////////////////////////////////
     // Individual Task 
@@ -5874,6 +5702,7 @@ namespace LegionRuntime {
       result = Future();
       predicate_false_future = Future();
       privilege_paths.clear();
+      restrict_infos.clear();
       // Read this before freeing the task
       // Should be safe, but we'll be careful
       bool is_top_level_task = top_level_task;
@@ -5930,7 +5759,7 @@ namespace LegionRuntime {
           {
             if (variants->return_size > 0)
             {
-              log_run(LEVEL_ERROR,"Predicated task launch for task %s "
+              log_run.error("Predicated task launch for task %s "
                                   "in parent task %s (UID %lld) has non-void "
                                   "return type but no default value for its "
                                   "future if the task predicate evaluates to "
@@ -5950,7 +5779,7 @@ namespace LegionRuntime {
           {
             if (predicate_false_size != variants->return_size)
             {
-              log_run(LEVEL_ERROR,"Predicated task launch for task %s "
+              log_run.error("Predicated task launch for task %s "
                                  "in parent task %s (UID %lld) has predicated "
                                  "false return type of size %ld bytes, but the "
                                  "expected return size is %ld bytes.",
@@ -6118,11 +5947,12 @@ namespace LegionRuntime {
       }
       // Also have to register any dependences on our predicate
       register_predicate_dependence();
-      RegionTreeContext ctx = parent_ctx->get_context();
+      restrict_infos.resize(regions.size());
       for (unsigned idx = 0; idx < regions.size(); idx++)
       {
-        runtime->forest->perform_dependence_analysis(ctx, this, idx, 
-                                    regions[idx], privilege_paths[idx]);
+        runtime->forest->perform_dependence_analysis(this, idx, regions[idx], 
+                                                     restrict_infos[idx],
+                                                     privilege_paths[idx]);
       }
       end_dependence_analysis();
 #ifdef LEGION_LOGGING
@@ -6141,7 +5971,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #if 0
-      log_run(LEVEL_ERROR,"Aliased region requirements for individual tasks "
+      log_run.error("Aliased region requirements for individual tasks "
                           "are not permitted. Region requirements %d and %d "
                           "of task %s (UID %lld) in parent task %s (UID %lld) "
                           "are aliased.", idx1, idx2, variants->name,
@@ -6152,7 +5982,7 @@ namespace LegionRuntime {
 #endif
       exit(ERROR_ALIASED_REGION_REQUIREMENTS);
 #else
-      log_run(LEVEL_WARNING,"Region requirements %d and %d of individual task "
+      log_run.warning("Region requirements %d and %d of individual task "
                             "%s (UID %lld) in parent task %s (UID %lld) are "
                             "aliased.  This behavior is currently undefined. "
                             "You better really know what you are doing.",
@@ -6319,25 +6149,18 @@ namespace LegionRuntime {
       }
       for (unsigned idx = 0; idx < regions.size(); idx++)
       {
-        if (early_mapped_regions.find(idx) != early_mapped_regions.end())
-        {
-          bool valid = runtime->forest->check_remote_shape(regions[idx]);
-          if (!valid)
-            region_shapes.push_back(idx);
-          continue;
-        }
-        // Skip any regions which were already mapped
-        if ((idx < physical_instances.size()) &&
-            (physical_instances[idx].has_ref()))
-        {
-          bool valid = runtime->forest->check_remote_shape(regions[idx]);
-          if (!valid)
-            region_shapes.push_back(idx);
-          continue;
-        }
-        bool valid = runtime->forest->check_remote_state(regions[idx],
-                                            enclosing_physical_contexts[idx]);
+        // Always check to see if the shape is valid
+        bool valid = runtime->forest->check_remote_shape(regions[idx]);
         if (!valid)
+          region_shapes.push_back(idx);
+        // If we early mapped, then we are done
+        if ((early_mapped_regions.find(idx) != early_mapped_regions.end()) ||
+            ((idx < physical_instances.size()) && physical_instances[idx].has_ref()))
+          continue;
+        // If we were either didn't have the shape or the state
+        // is not valid then we need to update it
+        if (!valid || runtime->forest->check_remote_state(regions[idx],
+                                              enclosing_physical_contexts[idx]))
           invalid.push_back(idx);
       }
       if (!index_shapes.empty() || !region_shapes.empty() || !invalid.empty())
@@ -6387,7 +6210,7 @@ namespace LegionRuntime {
 #ifdef DEBUG_HIGH_LEVEL
       if (!variants->has_variant(selected_variant))
       {
-        log_task(LEVEL_ERROR,"Invalid task variant %ld selected by mapper "
+        log_task.error("Invalid task variant %ld selected by mapper "
                              "for task %s (ID %lld)", selected_variant,
                              variants->name, get_unique_task_id());
         assert(false);
@@ -6432,6 +6255,17 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       return ((!map_locally) && spawn_task);
+    }
+
+    //--------------------------------------------------------------------------
+    bool IndividualTask::has_restrictions(unsigned idx, LogicalRegion handle)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(idx < restrict_infos.size());
+#endif
+      // We know that if there are any restrictions they directly apply
+      return restrict_infos[idx].has_restrictions();
     }
 
     //--------------------------------------------------------------------------
@@ -6629,6 +6463,7 @@ namespace LegionRuntime {
         rez.serialize(remote_contexts[idx]);
       rez.serialize(remote_owner_uid);
       parent_ctx->pack_parent_task(rez);
+      pack_restrict_infos(rez, restrict_infos);
       // Mark that we sent this task remotely
       sent_remotely = true;
       // If this task is remote, then deactivate it, otherwise
@@ -6655,6 +6490,7 @@ namespace LegionRuntime {
       RemoteTask *remote_ctx = 
         runtime->find_or_init_remote_context(remote_owner_uid);
       remote_ctx->unpack_parent_task(derez);
+      unpack_restrict_infos(derez, restrict_infos);
       // Add our enclosing parent regions to the list of 
       // top regions maintained by the remote context
       for (unsigned idx = 0; idx < regions.size(); idx++)
@@ -6955,8 +6791,8 @@ namespace LegionRuntime {
         // already issued those invalidations
         if (early_mapped_regions.find(idx) != early_mapped_regions.end())
           continue;
-        log_directory(LEVEL_INFO,"Issuing invalidations for region %d "
-                                "(" IDFMT ",%x,%d) of task %s",
+        log_directory.info("Issuing invalidations for region %d "
+                                "(%x,%x,%d) of task %s",
                                 idx, regions[idx].region.get_index_space().id,
                                 regions[idx].region.get_field_space().get_id(),
                                 regions[idx].region.get_tree_id(), 
@@ -7187,6 +7023,13 @@ namespace LegionRuntime {
       // should never be called
       assert(false);
       return false;
+    }
+
+    //--------------------------------------------------------------------------
+    bool PointTask::has_restrictions(unsigned idx, LogicalRegion handle)
+    //--------------------------------------------------------------------------
+    {
+      return slice_owner->has_restrictions(idx, handle);
     }
 
     //--------------------------------------------------------------------------
@@ -7504,6 +7347,15 @@ namespace LegionRuntime {
 
     //--------------------------------------------------------------------------
     bool WrapperTask::is_stealable(void) const
+    //--------------------------------------------------------------------------
+    {
+      // should never be called
+      assert(false);
+      return false;
+    }
+
+    //--------------------------------------------------------------------------
+    bool WrapperTask::has_restrictions(unsigned idx, LogicalRegion handle)
     //--------------------------------------------------------------------------
     {
       // should never be called
@@ -8099,7 +7951,7 @@ namespace LegionRuntime {
       reduction_op = Runtime::get_reduction_op(redop);
       if (!reduction_op->is_foldable)
       {
-        log_run(LEVEL_ERROR,"Reduction operation %d for index task launch %s "
+        log_run.error("Reduction operation %d for index task launch %s "
                             "(ID %lld) is not foldable.",
                             redop, variants->name, get_unique_task_id());
 #ifdef DEBUG_HIGH_LEVEL
@@ -8265,7 +8117,7 @@ namespace LegionRuntime {
       reduction_op = Runtime::get_reduction_op(redop);
       if (!reduction_op->is_foldable)
       {
-        log_run(LEVEL_ERROR,"Reduction operation %d for index task launch %s "
+        log_run.error("Reduction operation %d for index task launch %s "
                             "(ID %lld) is not foldable.",
                             redop, variants->name, get_unique_task_id());
 #ifdef DEBUG_HIGH_LEVEL
@@ -8320,7 +8172,7 @@ namespace LegionRuntime {
         {
           if (variants->return_size > 0)
           {
-            log_run(LEVEL_ERROR,"Predicated index task launch for task %s "
+            log_run.error("Predicated index task launch for task %s "
                                 "in parent task %s (UID %lld) has non-void "
                                 "return type but no default value for its "
                                 "future if the task predicate evaluates to "
@@ -8340,7 +8192,7 @@ namespace LegionRuntime {
         {
           if (predicate_false_size != variants->return_size)
           {
-            log_run(LEVEL_ERROR,"Predicated index task launch for task %s "
+            log_run.error("Predicated index task launch for task %s "
                                 "in parent task %s (UID %lld) has predicated "
                                 "false return type of size %ld bytes, but the "
                                 "expected return size is %ld bytes.",
@@ -8415,11 +8267,12 @@ namespace LegionRuntime {
       }
       // Also have to register any dependences on our predicate
       register_predicate_dependence();
-      RegionTreeContext ctx = parent_ctx->get_context();
+      restrict_infos.resize(regions.size());
       for (unsigned idx = 0; idx < regions.size(); idx++)
       {
-        runtime->forest->perform_dependence_analysis(ctx, this, idx, 
-                                    regions[idx], privilege_paths[idx]);
+        runtime->forest->perform_dependence_analysis(this, idx, regions[idx], 
+                                                     restrict_infos[idx],
+                                                     privilege_paths[idx]);
       }
       end_dependence_analysis();
 #ifdef LEGION_LOGGING
@@ -8437,7 +8290,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
 #if 0
-      log_run(LEVEL_ERROR,"Aliased region requirements for index tasks "
+      log_run.error("Aliased region requirements for index tasks "
                           "are not permitted. Region requirements %d and %d "
                           "of task %s (UID %lld) in parent task %s (UID %lld) "
                           "are aliased.", idx1, idx2, variants->name,
@@ -8448,7 +8301,7 @@ namespace LegionRuntime {
 #endif
       exit(ERROR_ALIASED_REGION_REQUIREMENTS);
 #else
-      log_run(LEVEL_WARNING,"Region requirements %d and %d of index task "
+      log_run.warning("Region requirements %d and %d of index task "
                             "%s (UID %lld) in parent task %s (UID %lld) are "
                             "aliased.  This behavior is currently undefined. "
                             "You better really know what you are doing.",
@@ -8725,6 +8578,19 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    bool IndexTask::has_restrictions(unsigned idx, LogicalRegion handle)
+    //--------------------------------------------------------------------------
+    {
+#ifdef DEBUG_HIGH_LEVEL
+      assert(idx < restrict_infos.size());
+#endif
+      if (restrict_infos[idx].has_restrictions())
+        return runtime->forest->has_restrictions(handle, restrict_infos[idx],
+                                                 regions[idx].privilege_fields);
+      return false;
+    }
+
+    //--------------------------------------------------------------------------
     bool IndexTask::map_and_launch(void)
     //--------------------------------------------------------------------------
     {
@@ -8819,7 +8685,7 @@ namespace LegionRuntime {
       // must parallelism not allowed to be inlined
       if (must_parallelism)
       {
-        log_task(LEVEL_ERROR,"Illegal attempt to inline must-parallelism "
+        log_task.error("Illegal attempt to inline must-parallelism "
                              "task %s (ID %lld)",
                              variants->name, get_unique_task_id());
 #ifdef DEBUG_HIGH_LEVEL
@@ -9313,8 +9179,7 @@ namespace LegionRuntime {
         (*it)->deactivate(); 
       }
       points.clear();
-      for (std::map<DomainPoint,std::pair<void*,size_t>,
-            DomainPoint::STLComparator>::const_iterator it = 
+      for (std::map<DomainPoint,std::pair<void*,size_t> >::const_iterator it = 
             temporary_futures.begin(); it != temporary_futures.end(); it++)
       {
         legion_free(FUTURE_RESULT_ALLOC, it->second.first, it->second.second);
@@ -9395,16 +9260,17 @@ namespace LegionRuntime {
       }
       for (unsigned idx = 0; idx < regions.size(); idx++)
       {
-        if (early_mapped_regions.find(idx) != early_mapped_regions.end())
-        {
-          bool valid = runtime->forest->check_remote_shape(regions[idx]);
-          if (!valid)
-            region_shapes.push_back(idx);
-          continue;
-        }
-        bool valid = runtime->forest->check_remote_state(regions[idx],
-                                            enclosing_physical_contexts[idx]);
+        // Always check to see if the shape is valid
+        bool valid = runtime->forest->check_remote_shape(regions[idx]);
         if (!valid)
+          region_shapes.push_back(idx);
+        // If we early mapped then we are done 
+        if (early_mapped_regions.find(idx) != early_mapped_regions.end())
+          continue;
+        // If we didn't have a valid shape or we don't have valid state
+        // then also mark that we need the state
+        if (!valid || runtime->forest->check_remote_state(regions[idx],
+                                              enclosing_physical_contexts[idx]))
           invalid.push_back(idx);
       }
       if (!index_shapes.empty() || !region_shapes.empty() || !invalid.empty())
@@ -9543,6 +9409,24 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    bool SliceTask::has_restrictions(unsigned idx, LogicalRegion handle)
+    //--------------------------------------------------------------------------
+    {
+      if (is_remote())
+      {
+#ifdef DEBUG_HIGH_LEVEL
+        assert(idx < restrict_infos.size());
+#endif
+        if (restrict_infos[idx].has_restrictions())
+          return runtime->forest->has_restrictions(handle, restrict_infos[idx],
+                                                 regions[idx].privilege_fields);
+        return false;
+      }
+      else
+        return index_owner->has_restrictions(idx, handle);
+    }
+
+    //--------------------------------------------------------------------------
     bool SliceTask::map_and_launch(void)
     //--------------------------------------------------------------------------
     {
@@ -9678,6 +9562,10 @@ namespace LegionRuntime {
       }
       rez.serialize(remote_owner_uid);
       parent_ctx->pack_parent_task(rez);
+      if (is_remote())
+        pack_restrict_infos(rez, restrict_infos);
+      else
+        index_owner->pack_restrict_infos(rez, index_owner->restrict_infos);
       for (unsigned idx = 0; idx < points.size(); idx++)
       {
         points[idx]->pack_task(rez, target);
@@ -9709,6 +9597,7 @@ namespace LegionRuntime {
       RemoteTask *remote_ctx = 
         runtime->find_or_init_remote_context(remote_owner_uid);
       remote_ctx->unpack_parent_task(derez);
+      unpack_restrict_infos(derez, restrict_infos);
       // Add our parent regions to the list of top regions
       for (unsigned idx = 0; idx < regions.size(); idx++)
         remote_ctx->add_top_region(regions[idx].parent);
@@ -9829,12 +9718,18 @@ namespace LegionRuntime {
           assert(temporary_futures.find(point) == temporary_futures.end());
 #endif
           if (owner)
+          {
+            // Hold the lock to protect the data structure
+            AutoLock o_lock(op_lock);
             temporary_futures[point] = 
               std::pair<void*,size_t>(const_cast<void*>(result),result_size);
+          }
           else
           {
             void *copy = legion_malloc(FUTURE_RESULT_ALLOC, result_size);
             memcpy(copy,result,result_size);
+            // Hold the lock to protect the data structure
+            AutoLock o_lock(op_lock);
             temporary_futures[point] = 
               std::pair<void*,size_t>(copy,result_size);
           }
@@ -9919,7 +9814,7 @@ namespace LegionRuntime {
 #ifdef DEBUG_HIGH_LEVEL
       if (!variants->has_variant(selected_variant))
       {
-        log_task(LEVEL_ERROR,"Invalid task variant %ld selected by mapper "
+        log_task.error("Invalid task variant %ld selected by mapper "
                              "for task %s (ID %lld)", selected_variant,
                              variants->name, get_unique_task_id());
         assert(false);
@@ -10225,7 +10120,7 @@ namespace LegionRuntime {
         runtime->forest->send_remote_references(needed_managers, target);
       rez.serialize(index_owner);
       RezCheck z(rez);
-      rez.serialize(points.size());
+      rez.serialize<size_t>(points.size());
       // Serialize the privilege state
       pack_privilege_state(rez, target); 
       // Now pack up the future results
@@ -10241,8 +10136,7 @@ namespace LegionRuntime {
 #ifdef DEBUG_HIGH_LEVEL
         assert(temporary_futures.size() == points.size());
 #endif
-        for (std::map<DomainPoint,std::pair<void*,size_t>,
-              DomainPoint::STLComparator>::const_iterator it =
+        for (std::map<DomainPoint,std::pair<void*,size_t> >::const_iterator it =
               temporary_futures.begin(); it != temporary_futures.end(); it++)
         {
           pack_point(rez, it->first);
@@ -10343,7 +10237,7 @@ namespace LegionRuntime {
       if (!wait_events.empty())
       {
         Event sliced_event = Event::merge_events(wait_events);
-        sliced_event.wait(false/*block*/);
+        sliced_event.wait();
       }
 
       bool success = failed_slices.empty();

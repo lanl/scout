@@ -1,4 +1,4 @@
-/* Copyright 2015 Stanford University
+/* Copyright 2015 Stanford University, NVIDIA Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +36,33 @@
 namespace LegionRuntime {
   namespace HighLevel {
 
+    using namespace MappingUtilities;
+
     Logger::Category log_mapper("default_mapper");
+
+    enum MapperMeesageType
+    {
+      INVALID_MESSAGE = 0,
+      PROFILING_SAMPLE = 1,
+    };
+
+    struct MapperMsgHdr
+    {
+      MapperMsgHdr(void) : magic(0xABCD), type(INVALID_MESSAGE) { }
+      bool is_valid_mapper_msg() const
+      {
+        return magic == 0xABCD && type != INVALID_MESSAGE;
+      }
+      uint32_t magic;
+      MapperMeesageType type;
+    };
+
+    struct ProfilingSampleMsg : public MapperMsgHdr
+    {
+      ProfilingSampleMsg(void) : MapperMsgHdr(), task_id(0) { }
+      Processor::TaskFuncID task_id;
+      MappingProfiler::Profile sample;
+    };
 
     //--------------------------------------------------------------------------
     DefaultMapper::DefaultMapper(Machine m, HighLevelRuntime *rt, 
@@ -54,7 +80,7 @@ namespace LegionRuntime {
         machine_interface(MappingUtilities::MachineQueryInterface(m))
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Initializing the default mapper for "
+      log_mapper.spew("Initializing the default mapper for "
                             "processor " IDFMT "",
                  local_proc.id);
       // Check to see if there any input arguments to parse
@@ -106,7 +132,7 @@ namespace LegionRuntime {
     DefaultMapper::~DefaultMapper(void)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Deleting default mapper for processor " IDFMT "",
+      log_mapper.spew("Deleting default mapper for processor " IDFMT "",
                   local_proc.id);
     }
 
@@ -123,7 +149,7 @@ namespace LegionRuntime {
     void DefaultMapper::select_task_options(Task *task)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Select task options in default mapper " 
+      log_mapper.spew("Select task options in default mapper " 
                             "for proecessor " IDFMT "", local_proc.id);
       task->inline_task = false;
       task->spawn_task = stealing_enabled;
@@ -168,7 +194,7 @@ namespace LegionRuntime {
                                             const std::list<Task*> &ready_tasks)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Select tasks to schedule in default mapper for "
+      log_mapper.spew("Select tasks to schedule in default mapper for "
                             "processor " IDFMT "", local_proc.id);
       if (breadth_first_traversal)
       {
@@ -210,7 +236,7 @@ namespace LegionRuntime {
                                           std::set<Processor> &targets)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Target task steal in default mapper for "
+      log_mapper.spew("Target task steal in default mapper for "
                             "processor " IDFMT "",local_proc.id);
       if (stealing_enabled)
       {
@@ -231,7 +257,7 @@ namespace LegionRuntime {
         {
           if (!index--)
           {
-            log_mapper(LEVEL_SPEW,"Attempting a steal from processor " IDFMT
+            log_mapper.spew("Attempting a steal from processor " IDFMT
                                   " on processor " IDFMT "",
                                   local_proc.id,it->id);
             targets.insert(*it);
@@ -247,7 +273,7 @@ namespace LegionRuntime {
                                           std::set<const Task*> &to_steal)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Permit task steal in default mapper for "
+      log_mapper.spew("Permit task steal in default mapper for "
                             "processor " IDFMT "",local_proc.id);
 
       if (stealing_enabled)
@@ -262,7 +288,7 @@ namespace LegionRuntime {
         {
           if ((*it)->steal_count < max_steal_count)
           {
-            log_mapper(LEVEL_DEBUG,"Task %s (ID %lld) stolen from "
+            log_mapper.debug("Task %s (ID %lld) stolen from "
                                    "processor " IDFMT " by processor " IDFMT "",
                                    (*it)->variants->name, 
                                    (*it)->get_unique_task_id(), 
@@ -320,7 +346,7 @@ namespace LegionRuntime {
                 }
                 if (shared)
                 {
-                  log_mapper(LEVEL_DEBUG,"Task %s (ID %lld) stolen from "
+                  log_mapper.debug("Task %s (ID %lld) stolen from "
                                          "processor " IDFMT " by processor " 
                                          IDFMT "",
                                          (*inner_it)->variants->name, 
@@ -346,7 +372,7 @@ namespace LegionRuntime {
                                      std::vector<DomainSplit> &slices)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Slice index space in default mapper for task %s "
+      log_mapper.spew("Slice index space in default mapper for task %s "
                             "(ID %lld) for processor " IDFMT "",
                             task->variants->name, 
                             task->get_unique_task_id(), local_proc.id);
@@ -369,7 +395,7 @@ namespace LegionRuntime {
     bool DefaultMapper::pre_map_task(Task *task)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Pre-map task in default mapper for task %s "
+      log_mapper.spew("Pre-map task in default mapper for task %s "
                             "(ID %lld) for processor " IDFMT "",
                             task->variants->name,
                             task->get_unique_task_id(), local_proc.id);
@@ -410,7 +436,7 @@ namespace LegionRuntime {
     void DefaultMapper::select_task_variant(Task *task)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Select task variant in default mapper for task %s "
+      log_mapper.spew("Select task variant in default mapper for task %s "
                             "(ID %lld) for processor " IDFMT "",
                             task->variants->name,
                             task->get_unique_task_id(), local_proc.id);
@@ -418,7 +444,7 @@ namespace LegionRuntime {
       if (!task->variants->has_variant(target_kind, 
             !(task->is_index_space), task->is_index_space))
       {
-        log_mapper(LEVEL_ERROR,"Mapper unable to find variant for "
+        log_mapper.error("Mapper unable to find variant for "
                                "task %s (ID %lld)",
                                task->variants->name, 
                                task->get_unique_task_id());
@@ -446,7 +472,7 @@ namespace LegionRuntime {
     bool DefaultMapper::map_task(Task *task)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Map task in default mapper for task %s "
+      log_mapper.spew("Map task in default mapper for task %s "
                             "(ID %lld) for processor " IDFMT "",
                             task->variants->name,
                             task->get_unique_task_id(), local_proc.id);
@@ -497,7 +523,7 @@ namespace LegionRuntime {
     bool DefaultMapper::map_copy(Copy *copy)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Map copy for copy ID %lld in default mapper "
+      log_mapper.spew("Map copy for copy ID %lld in default mapper "
                             "for processor " IDFMT "", 
                             copy->get_unique_copy_id(), local_proc.id);
       std::vector<Memory> local_stack; 
@@ -562,7 +588,7 @@ namespace LegionRuntime {
     bool DefaultMapper::map_inline(Inline *inline_op)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Map inline for operation ID %lld in default "
+      log_mapper.spew("Map inline for operation ID %lld in default "
                             "mapper for processor " IDFMT "",
                             inline_op->get_unique_inline_id(), local_proc.id);
       inline_op->requirement.virtual_map = false;
@@ -600,7 +626,7 @@ namespace LegionRuntime {
                              MappingTagID tag)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Map must epoch in default mapper for processor"
+      log_mapper.spew("Map must epoch in default mapper for processor"
                             " " IDFMT " ",
                             local_proc.id);
       // First fixup any target processors to ensure that they are all
@@ -647,7 +673,7 @@ namespace LegionRuntime {
       {
         const Task *task = mappable->as_mappable_task();
         assert(task != NULL);
-        log_mapper(LEVEL_SPEW,"Notify mapping for task %s (ID %lld) in "
+        log_mapper.spew("Notify mapping for task %s (ID %lld) in "
                               "default mapper for processor " IDFMT "",
                               task->variants->name, uid, local_proc.id);
         for (unsigned idx = 0; idx < task->regions.size(); idx++)
@@ -666,7 +692,7 @@ namespace LegionRuntime {
     //--------------------------------------------------------------------------
     {
       UniqueID uid = mappable->get_unique_mappable_id(); 
-      log_mapper(LEVEL_WARNING,"Notify failed mapping for operation ID %lld "
+      log_mapper.warning("Notify failed mapping for operation ID %lld "
                       "in default mapper for processor " IDFMT "! Retrying...",
                        uid, local_proc.id);
       std::map<UniqueID,unsigned>::iterator finder = failed_mappings.find(uid);
@@ -677,7 +703,7 @@ namespace LegionRuntime {
         finder->second++;
         if (finder->second == max_failed_mappings)
         {
-          log_mapper(LEVEL_ERROR,"Reached maximum number of failed mappings "
+          log_mapper.error("Reached maximum number of failed mappings "
                                  "for operation ID %lld in default mapper for "
                                  "processor " IDFMT "!  Try implementing a "
                                  "custom mapper or changing the size of the "
@@ -699,7 +725,7 @@ namespace LegionRuntime {
                                      bool &create_one, size_t &blocking_factor)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Rank copy targets for mappable (ID %lld) in "
+      log_mapper.spew("Rank copy targets for mappable (ID %lld) in "
                             "default mapper for processor " IDFMT "",
                             mappable->get_unique_mappable_id(), local_proc.id);
       if (current_instances.empty())
@@ -730,7 +756,7 @@ namespace LegionRuntime {
                                       std::vector<Memory> &chosen_order)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Select copy source in default mapper for "
+      log_mapper.spew("Select copy source in default mapper for "
                             "processor " IDFMT "", local_proc.id);
       // Handle the simple case of having the destination 
       // memory in the set of instances 
@@ -759,16 +785,26 @@ namespace LegionRuntime {
     void DefaultMapper::notify_profiling_info(const Task *task)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Notify profiling info for task %s (ID %lld) in "
+      log_mapper.spew("Notify profiling info for task %s (ID %lld) in "
                             "default mapper for processor " IDFMT "",
                             task->variants->name, 
                             task->get_unique_task_id(), task->target_proc.id);
       memoizer.commit_mapping(task->target_proc, task);
-      Mapper::ExecutionProfile profiling;
-      profiling.start_time = task->start_time;
-      profiling.stop_time = task->stop_time;
-      profiler.update_profiling_info(task, task->target_proc,
-				     task->target_proc.kind(), profiling);
+      MappingProfiler::Profile sample;
+      sample.execution_time = task->stop_time - task->start_time;
+      sample.target_processor = task->target_proc;
+      sample.index_point = task->index_point;
+
+      profiler.add_profiling_sample(task->task_id, sample);
+      if (profiler.get_profiling_option(task->task_id).gather_in_orig_proc &&
+          task->target_proc != task->orig_proc)
+      {
+        ProfilingSampleMsg msg;
+        msg.type = PROFILING_SAMPLE;
+        msg.task_id = task->task_id;
+        msg.sample = sample;
+        send_message(task->orig_proc, &msg, sizeof(msg));
+      }
     }
 
     //--------------------------------------------------------------------------
@@ -776,7 +812,7 @@ namespace LegionRuntime {
                                                bool &spec_value)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Speculate on predicate for mappable (ID %lld) in "
+      log_mapper.spew("Speculate on predicate for mappable (ID %lld) in "
                             "default mapper for processor " IDFMT "",
                             mappable->get_unique_mappable_id(),
                             local_proc.id);
@@ -790,7 +826,7 @@ namespace LegionRuntime {
     void DefaultMapper::configure_context(Task *task)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Configure context for task %s (ID %lld) in "
+      log_mapper.spew("Configure context for task %s (ID %lld) in "
                             "default mapper for processor " IDFMT "",
                             task->variants->name, 
                             task->get_unique_task_id(), task->target_proc.id);
@@ -802,7 +838,7 @@ namespace LegionRuntime {
                                          MappingTagID tag)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Get tunable value for task %s (ID %lld) in "
+      log_mapper.spew("Get tunable value for task %s (ID %lld) in "
                             "default mapper for processor " IDFMT "",
                             task->variants->name,
                             task->get_unique_task_id(), task->target_proc.id);
@@ -819,10 +855,28 @@ namespace LegionRuntime {
                                        const void *message, size_t length)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Handle message in default mapper for processor " 
+      log_mapper.spew("Handle message in default mapper for processor " 
                             IDFMT "", local_proc.id);
-      // We don't send any messages so we should never receive one
-      assert(false);
+      const MapperMsgHdr* header = reinterpret_cast<const MapperMsgHdr*>(message);
+      if (header->is_valid_mapper_msg())
+      {
+        switch (header->type)
+        {
+          case PROFILING_SAMPLE:
+            {
+              const ProfilingSampleMsg* msg =
+                reinterpret_cast<const ProfilingSampleMsg*>(message);
+              profiler.add_profiling_sample(msg->task_id, msg->sample);
+              break;
+            }
+          default:
+            {
+              // this should not happen
+              assert(false);
+              break;
+            }
+        }
+      }
     }
 
     //--------------------------------------------------------------------------
@@ -831,7 +885,7 @@ namespace LegionRuntime {
                                                   size_t result_size)
     //--------------------------------------------------------------------------
     {
-      log_mapper(LEVEL_SPEW,"Handle mapper task result in default mapper "
+      log_mapper.spew("Handle mapper task result in default mapper "
                             "for processor " IDFMT "", local_proc.id);
       // We don't launch any sub tasks so we should never receive a result
       assert(false);
@@ -904,6 +958,8 @@ namespace LegionRuntime {
       assert((domain.get_dim() == 0) || (domain.get_dim() == 1));
       if (domain.get_dim() == 0)
       {
+        assert(false);
+#if 0
         IndexSpace index_space = domain.get_index_space();
         // This assumes the IndexSpace is 1-dimensional and split it according 
         // to the splitting factor.
@@ -969,6 +1025,7 @@ namespace LegionRuntime {
             Domain(IndexSpace::create_index_space(index_space, chunks[chunk])),
                              targets[(chunk % targets.size())], false, false));
         }
+#endif
       }
       else
       {

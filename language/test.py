@@ -15,7 +15,7 @@
 # limitations under the License.
 #
 
-import argparse, json, multiprocessing, os, optparse, re, subprocess, sys, traceback
+import argparse, itertools, json, multiprocessing, os, optparse, re, subprocess, sys, traceback
 from collections import OrderedDict
 import legion
 
@@ -58,7 +58,13 @@ def test_compile_fail(filename, verbose, flags):
     try:
         run(filename, False, flags)
     except TestFailure as e:
-        failure = '\n'.join(line.strip() for line in e.output.strip().split('\n'))
+        failure = '\n'.join(
+            itertools.takewhile(
+                (lambda line: line != 'stack traceback:'),
+                itertools.dropwhile(
+                    (lambda line: 'Errors reported during' in line),
+                    (line.strip() for line in e.output.strip().split('\n')
+                     if len(line.strip()) > 0))))
         if failure != expected_failure:
             raise Exception('Expected failure:\n%s\n\nInstead got:\n%s' % (expected_failure, failure))
     else:
@@ -70,8 +76,11 @@ def test_run_pass(filename, verbose, flags):
     if runs_with_text is not None:
         runs_with = json.loads(runs_with_text)
 
-    for params in runs_with:
-        run(filename, verbose, flags + params)
+    try:
+        for params in runs_with:
+            run(filename, verbose, flags + params)
+    except TestFailure as e:
+        raise Exception('Command failed:\n%s\n\nOutput:\n%s' % (e.command, e.output))
 
 red = "\033[1;31m"
 green = "\033[1;32m"
@@ -95,7 +104,7 @@ def test_runner(test_name, test_closure, verbose, filename):
     except Exception as e:
         if verbose:
             return test_name, filename, [], FAIL, ''.join(traceback.format_exception_only(*sys.exc_info()[:2]))
-        return test_name, filename, [], FAIL, None
+        return test_name, filename, [], FAIL, ''.join(traceback.format_exception_only(*sys.exc_info()[:2]))
     else:
         return test_name, filename, [], PASS, None
 
@@ -136,6 +145,8 @@ def run_all_tests(thread_count, verbose):
         for test_path in test_paths:
             results.append(thread_pool.apply_async(test_runner, (test_name, test_fn, verbose, test_path)))
 
+    thread_pool.close()
+
     test_counters = OrderedDict()
     for test_name, test_fn, test_dirs in tests:
         test_counter = Counter()
@@ -159,6 +170,8 @@ def run_all_tests(thread_count, verbose):
                 raise Exception('Unexpected test outcome %s' % outcome)
     except KeyboardInterrupt:
         raise
+
+    thread_pool.join()
 
     global_counter = Counter()
     for test_counter in test_counters.itervalues():
