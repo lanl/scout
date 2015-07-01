@@ -105,7 +105,43 @@ BuildMeshFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
     const CXXScopeSpec &SS, MeshFieldDecl *Field,
     DeclAccessPair FoundDecl,
     const DeclarationNameInfo &MemberNameInfo) {
-
+  
+  if(DeclRefExpr* dr = dyn_cast<DeclRefExpr>(BaseExpr)){
+    if(ImplicitMeshParamDecl* ip =
+       dyn_cast<ImplicitMeshParamDecl>(dr->getDecl())){
+      switch(ip->getElementType()){
+        case ImplicitMeshParamDecl::Cells:
+          if(!Field->isCellLocated()){
+            S.Diag(BaseExpr->getExprLoc(),
+                   diag::err_invalid_mesh_member_element_type);
+            return ExprError();
+          }
+          break;
+        case ImplicitMeshParamDecl::Vertices:
+          if(!Field->isVertexLocated()){
+            S.Diag(BaseExpr->getExprLoc(),
+                   diag::err_invalid_mesh_member_element_type);
+            return ExprError();
+          }
+          break;
+        case ImplicitMeshParamDecl::Faces:
+          if(!Field->isFaceLocated()){
+            S.Diag(BaseExpr->getExprLoc(),
+                   diag::err_invalid_mesh_member_element_type);
+            return ExprError();
+          }
+          break;
+        case ImplicitMeshParamDecl::Edges:
+          if(!Field->isEdgeLocated()){
+            S.Diag(BaseExpr->getExprLoc(),
+                   diag::err_invalid_mesh_member_element_type);
+            return ExprError();
+          }
+          break;
+      }
+    }
+  }
+  
   // x.a is an l-value if 'a' has a reference type. Otherwise:
   // x.a is an l-value/x-value/pr-value if the base is (and note
   //   that *x is always an l-value), except that if the base isn't
@@ -156,7 +192,7 @@ BuildMeshFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
                                   FoundDecl, Field);
   if (Base.isInvalid())
     return ExprError();
-
+  
   return BuildMemberExpr(S, S.Context, Base.get(), IsArrow,
                          SourceLocation(), SS,
                          /*TemplateKWLoc=*/SourceLocation(),

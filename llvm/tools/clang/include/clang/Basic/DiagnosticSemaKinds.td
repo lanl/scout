@@ -7831,6 +7831,9 @@ def err_typecheck_incomplete_window_needs_dims : Error<
 def err_win_dim_non_int : Error<"size of window dimension has non-integer type %0">;
 def err_img_dim_non_int : Error<"size of image dimension has non-integer type %0">;
 
+def err_invalid_mesh_member_element_type :
+Error<"invalid mesh member reference: does not match current forall element specifier">;
+
 def warn_no_scstdlib : Warning<
     "scout standard library inclusion and rt code generation disabled">;
     
