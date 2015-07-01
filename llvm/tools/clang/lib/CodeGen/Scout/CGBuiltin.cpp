@@ -281,6 +281,11 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
       EmitSwapFieldsExpr(E->arg_begin(), E->arg_end());
       return true;
   }
+  case Builtin::BIvfield:
+  {
+    *RV = EmitVFieldExpr(E->arg_begin(), E->arg_end());
+    return true;
+  }
   default: return false;
   }
 }

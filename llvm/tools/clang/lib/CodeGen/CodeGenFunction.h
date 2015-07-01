@@ -2261,6 +2261,9 @@ public:
   RValue EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   RValue EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
 
+  RValue EmitVFieldExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
+  llvm::Value* getVFieldLinearIdx(SmallVector<llvm::Value*, 3> args);
+  
   RValue EmitTailExpr(void);
   RValue EmitHeadExpr(void);
   

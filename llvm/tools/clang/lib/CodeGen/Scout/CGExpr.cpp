@@ -441,7 +441,40 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
   return indices[0]; // suppress warning.
 }
 
-#if 0 
+// compute the linear index based on vfield parameters
+llvm::Value*
+CodeGenFunction::getVFieldLinearIdx(SmallVector<llvm::Value*, 3> args){
+  using namespace llvm;
+  
+  auto& B = Builder;
+  
+  Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+  
+  Value* x = B.CreateLoad(LookupInductionVar(0), "x");
+  Value* xv = B.CreateAdd(x, args[0], "xv");
+  
+  if(args.size() == 1){
+    return xv;
+  }
+  
+  Value* y = B.CreateLoad(LookupInductionVar(1), "y");
+  Value* width = B.CreateLoad(LookupMeshDim(0), "width");
+  Value* width1 = B.CreateAdd(One, width, "width1");
+  Value* yv = B.CreateAdd(xv, B.CreateMul(width1, y), "yv");
+  
+  if(args.size() == 2){
+    return yv;
+  }
+
+  Value* z = B.CreateLoad(LookupInductionVar(2), "z");
+  Value* height = B.CreateLoad(LookupMeshDim(1), "height");
+  Value* height1 = B.CreateAdd(One, height, "height1");
+  Value* zv = B.CreateMul(B.CreateMul(width1, height1), z, "zv");
+  
+  return B.CreateAdd(yv, zv);
+}
+
+#if 0
 //currently unused
 static llvm::Value *
 EmitBitCastOfLValueToProperType(CodeGenFunction &CGF,
@@ -490,7 +523,33 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
   assert(false && "Failed to translate Scout cshift expression to LLVM IR!");
 }
 
-
+RValue CodeGenFunction::EmitVFieldExpr(ArgIterator argsBegin,
+                                       ArgIterator argsEnd) {
+  const Expr* fieldExpr = *argsBegin;
+  
+  // extract the offset args
+  SmallVector< llvm::Value *, 3 > args;
+  while(++argsBegin != argsEnd) {
+    RValue RV = EmitAnyExpr(*(argsBegin));
+    if(RV.isAggregate()) {
+      args.push_back(RV.getAggregateAddr());
+    } else {
+      args.push_back(RV.getScalarVal());
+    }
+  }
+  
+  // get the member expr for first arg.
+  if(const MemberExpr *E = dyn_cast<MemberExpr>(fieldExpr)) {
+    // make sure this is a mesh
+    if(isa<MeshFieldDecl>(E->getMemberDecl())) {
+      // get the correct mesh member
+      LValue LV = EmitMeshMemberExpr(E, getVFieldLinearIdx(args));
+      
+      return RValue::get(Builder.CreateLoad(LV.getAddress(), "vfield.element"));
+    }
+  }
+  assert(false && "Failed to translate Scout vfield expression to LLVM IR!");
+}
 
 // end-off shift
 RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
