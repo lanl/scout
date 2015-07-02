@@ -446,6 +446,10 @@ public:
       check(err);
     }
 
+    void setVar(uint32_t pos, void* data, uint32_t size){
+
+    }
+
     void addField(const char* fieldName,
                   MeshField* meshField,
                   uint8_t mode){
@@ -630,6 +634,17 @@ public:
     kernel->addField(fieldName, meshField, mode);
   }
 
+  void setVar(const char* kernelName,
+              uint32_t pos,
+              void* data,
+              uint32_t size){
+    auto kitr = kernelMap_.find(kernelName);
+    assert(kitr != kernelMap_.end() && "invalid kernel");
+    Kernel* kernel = kitr->second;
+
+    kernel->setVar(pos, data, size);
+  }
+
   void runKernel(const char* kernelName){
     auto kitr = kernelMap_.find(kernelName);
     assert(kitr != kernelMap_.end() && "invalid kernel");
@@ -710,6 +725,15 @@ void __scrt_volren_init_field(const char* kernelName,
   RenderallRuntime* runtime = _getRuntime();
   runtime->initField(kernelName, fieldName, hostPtr,
                      elementSize, elementType, FIELD_READ);
+}
+
+extern "C"
+void __scrt_volren_set_var(const char* kernelName,
+                           uint32_t pos,
+                           void* data,
+                           uint32_t size){
+  RenderallRuntime* runtime = _getRuntime();
+  runtime->setVar(kernelName, pos, data, size);
 }
 
 extern "C"

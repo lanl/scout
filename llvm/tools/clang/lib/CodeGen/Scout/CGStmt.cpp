@@ -2415,6 +2415,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   visitor.VisitStmt(const_cast<Stmt*>(S.getBody()));
   
   auto& fs = visitor.getFieldSet();
+  auto& vs = visitor.getVarSet();
   
   TypeVec fields;
   
@@ -2422,6 +2423,23 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   for(MeshFieldDecl* fd : fs){
     fields.push_back(llvm::PointerType::get(ConvertType(fd->getType()), 0));
     CurrentVolumeRenderallFieldMap.insert({fd, index++});
+  }
+  
+  for(VarDecl* vd : vs){
+    llvm::Type* t = ConvertType(vd->getType());
+    
+    bool isScalar = false;
+    if(t->isIntegerTy(32) ||
+       t->isIntegerTy(64) ||
+       t->isFloatTy() ||
+       t->isDoubleTy()){
+      isScalar = true;
+    }
+    else{
+      assert(false && "invalid var in volume renderall body");
+    }
+    
+    fields.push_back(t);
   }
   
   StructType* meshType =
@@ -2455,7 +2473,26 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   CurrentVolumeRenderallMeshPtr =
   B.CreateBitCast(mp, llvm::PointerType::get(meshType, 0));
   
+  using RestoreMap = map<VarDecl*, Value*>;
+  RestoreMap rm;
+  
+  size_t varOffset = fs.size();
+  for(VarDecl* vd : vs){
+    Value* v =
+    B.CreateStructGEP(nullptr, CurrentVolumeRenderallMeshPtr,
+                      varOffset, vd->getName());
+    
+    rm[vd] = LocalDeclMap[vd];
+    LocalDeclMap[vd] = v;
+    
+    ++varOffset;
+  }
+  
   EmitStmt(S.getBody());
+  
+  for(auto& itr : rm){
+    LocalDeclMap[itr.first] = itr.second;
+  }
   
   Builder.CreateRet(B.CreateLoad(CurrentVolumeRenderallColor));
   
@@ -2624,6 +2661,34 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Metadata*>(meshFields));
   
   volrenData.push_back(fieldsMD);
+  
+  llvm::SmallVector<llvm::Metadata*, 16> vars;
+  for(VarDecl* vd : vs){
+    llvm::Type* t = ConvertType(vd->getType());
+    
+    size_t size;
+    if(t->isIntegerTy(32) ||
+       t->isFloatTy()){
+      size = 4;
+    }
+    else if(t->isIntegerTy(64) ||
+       t->isDoubleTy()){
+      size = 8;
+    }
+    
+    llvm::SmallVector<llvm::Metadata*, 1> varData;
+    varData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int32Ty, size)));
+    
+    llvm::Metadata* varDataMD =
+    llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Metadata*>(varData));
+    
+    vars.push_back(varDataMD);
+  }
+  
+  llvm::Metadata* varsMD =
+  llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Metadata*>(vars));
+  
+  volrenData.push_back(varsMD);
   
   volrens->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), volrenData));
 }

@@ -206,6 +206,14 @@ void RenderallVisitor::VisitMemberExpr(MemberExpr* E){
     fieldSet_.insert(fd);
   }
 }
+
+void RenderallVisitor::VisitDeclRefExpr(DeclRefExpr* E){
+  if(VarDecl* vd = dyn_cast<VarDecl>(E->getDecl())){
+    if(!isa<ImplicitColorParamDecl>(vd)){
+      varSet_.insert(vd);
+    }
+  }
+}
   
 void TaskDeclVisitor::VisitStmt(Stmt* S) {
   if(S) {
