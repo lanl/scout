@@ -2365,7 +2365,6 @@ public:
 protected:
   SourceLocation  ForallKWLoc, LParenLoc, RParenLoc;
 };
-
 // ----- ForallMeshStmt -- forall mesh statement
 //
 // forall <mesh-loc-kw> <ref-element> in <ref-mesh> {
@@ -2392,24 +2391,25 @@ protected:
 //     ...
 //   }
 //
+
+// Our mesh-based semantics operate over a specified set of locations
+// within the mesh.  These locations are provided in the form of a
+// keyword that IDs cells, vertices, edges, or faces of the mesh.  We
+// use the following enum value to track the mesh elements referenced
+// by many statements and language constructs.
+enum MeshElementType {
+  Undefined  =  0x0,
+    Cells    =  0x1,
+    Vertices =  0x2,
+    Edges    =  0x4,
+    Faces    =  0x8
+};
+  
 class ForallMeshStmt : public ForallStmt {
 
-public:
+ public:
 
-  // A mesh-based forall statement operates over a specified set of
-  // locations within the mesh.  These locations are provided in the
-  // form of a keyword that IDs cells, vertices, edges, or faces of
-  // the mesh.  We use the following enum value to track the mesh
-  // elements referenced by the forall statement.
-  enum MeshElementType {
-    Undefined    = -1,
-    Cells        =  1,
-    Vertices     =  2,
-    Edges        =  3,
-    Faces        =  4
-  };
-
-private:
+ private:
   // The loop's reference element variable is an implicitly declared
    // instance whose type matches that of the mesh location specified
    // by the forall loop construct (for example, the reference variable
@@ -2823,19 +2823,6 @@ protected:
 class RenderallMeshStmt : public RenderallStmt {
 
 public:
-
-  // A mesh-based renderall statement operates over a specified set of
-  // locations within the mesh.  These locations are provided in the
-  // form of a keyword that IDs cells, verticies, edges, or faces of
-  // the mesh.  We use the following enum value to track the mesh
-  // elements referenced by the renderall statement.
-  enum MeshElementType {
-    Undefined    = -1,
-    Cells        =  1,
-    Vertices     =  2,
-    Edges        =  3,
-    Faces        =  4
-  };
 
 private:
   // The mesh location/element we're looping over -- this provides us

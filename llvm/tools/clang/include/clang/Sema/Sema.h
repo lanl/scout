@@ -9031,7 +9031,7 @@ public:
   bool ActOnForallMeshRefVariable(Scope* S,
                                   IdentifierInfo* MeshVarInfo,
                                   SourceLocation  MeshVarLoc,
-                                  ForallMeshStmt::MeshElementType RefType,
+                                  MeshElementType RefType,
                                   IdentifierInfo* RefVarInfo,
                                   SourceLocation  RefVarLoc,
                                   const MeshType *MT,
@@ -9039,7 +9039,7 @@ public:
                                   DeclStmt **Init);
 
   bool ActOnRenderallMeshRefVariable(Scope *S,
-                                     RenderallMeshStmt::MeshElementType RefVarType,
+                                     MeshElementType RefVarType,
                                      IdentifierInfo* RefVarInfo,
                                      SourceLocation RefVarLoc,
                                      const MeshType *MT,
@@ -9076,7 +9076,7 @@ public:
   */
 
   StmtResult ActOnForallMeshStmt(SourceLocation ForAllLoc,
-                                 ForallMeshStmt::MeshElementType Type,
+                                 MeshElementType Type,
                                  const MeshType *MT,
                                  VarDecl* MVD,
                                  IdentifierInfo* LoopVariableII,
@@ -9103,7 +9103,7 @@ public:
             SourceLocation ForallLoc, DeclStmt *Init[], Stmt* Body);
 
   StmtResult ActOnRenderallMeshStmt(SourceLocation ForallLoc,
-                                    RenderallMeshStmt::MeshElementType ElementType,
+                                    MeshElementType ElementType,
                                     const MeshType *MT,
                                     VarDecl* MVD,    // mesh var decl
                                     VarDecl* RTVD,   // render target var decl 

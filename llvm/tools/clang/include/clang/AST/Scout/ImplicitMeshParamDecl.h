@@ -61,14 +61,7 @@
 namespace clang {
 
   class ImplicitMeshParamDecl : public ImplicitParamDecl {
-  public:
-    enum MeshElementType {
-      Undefined    = -1,
-      Cells        =  1,
-      Vertices     =  2,
-      Edges        =  3,
-      Faces        =  4
-    };
+   public:
 
     static ImplicitMeshParamDecl *Create(ASTContext &C, DeclContext *DC,
         MeshElementType ET, SourceLocation IdLoc, IdentifierInfo *Id,

@@ -110,28 +110,28 @@ BuildMeshFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
     if(ImplicitMeshParamDecl* ip =
        dyn_cast<ImplicitMeshParamDecl>(dr->getDecl())){
       switch(ip->getElementType()){
-        case ImplicitMeshParamDecl::Cells:
-          if(!Field->isCellLocated()){
+        case Cells:
+          if (!Field->isCellLocated()) {
             S.Diag(BaseExpr->getExprLoc(),
                    diag::err_invalid_mesh_member_element_type);
             return ExprError();
           }
           break;
-        case ImplicitMeshParamDecl::Vertices:
+        case Vertices:
           if(!Field->isVertexLocated()){
             S.Diag(BaseExpr->getExprLoc(),
                    diag::err_invalid_mesh_member_element_type);
             return ExprError();
           }
           break;
-        case ImplicitMeshParamDecl::Faces:
+        case Faces:
           if(!Field->isFaceLocated()){
             S.Diag(BaseExpr->getExprLoc(),
                    diag::err_invalid_mesh_member_element_type);
             return ExprError();
           }
           break;
-        case ImplicitMeshParamDecl::Edges:
+        case Edges:
           if(!Field->isEdgeLocated()){
             S.Diag(BaseExpr->getExprLoc(),
                    diag::err_invalid_mesh_member_element_type);

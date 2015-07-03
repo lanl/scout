@@ -255,20 +255,15 @@ void CodeGenFunction::SetMeshBounds(const Stmt &S) {
     SetMeshBounds(FAMS->getMeshElementRef(), MeshBaseAddr, mt);
   }  else if (const RenderallMeshStmt *RAMS = dyn_cast<RenderallMeshStmt>(&S)) {
     mt = RAMS->getMeshType();
-    SetMeshBounds(RAMS->getMeshElementRef(), MeshBaseAddr, mt);
+    SetMeshBounds(RAMS->getMeshElementRef(), MeshBaseAddr, mt, false);
   } else {
     assert(false && "non-mesh stmt in SetMeshBounds()");
   }
 }
 
 
-void CodeGenFunction::SetMeshBounds(ForallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr, const MeshType* mt) {
-  SetMeshBoundsImpl(true, type, MeshBaseAddr, mt);
-}
-
-
-void CodeGenFunction::SetMeshBounds(RenderallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr, const MeshType* mt) {
-  SetMeshBoundsImpl(false, type, MeshBaseAddr, mt);
+void CodeGenFunction::SetMeshBounds(MeshElementType type, llvm::Value* MeshBaseAddr, const MeshType* mt, bool isForAll) {
+  SetMeshBoundsImpl(isForAll, type, MeshBaseAddr, mt);
 }
 
 // deal w/ differences in Renderall/Forall cases
@@ -323,14 +318,14 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   for(unsigned int i = 0; i < 3; i++) {
 
      if(isForall == true) { // forall
-       if  (meshType == ForallMeshStmt::MeshElementType::Cells) {
+       if  (meshType == Cells) {
          // if LoopBound == 0 then set it to 1 (for cells)
          LoopBounds[i] = CreateTempAlloca(Int32Ty, "loopbound.ptr");
          llvm::Value *dim = Builder.CreateLoad(MeshSize[i]);
          llvm::Value *Check = Builder.CreateICmpEQ(dim, ConstantZero);
          llvm::Value *x = Builder.CreateSelect(Check, ConstantOne, dim);
          Builder.CreateStore(x, LoopBounds[i]);
-       } else if  (meshType == ForallMeshStmt::MeshElementType::Vertices) {
+       } else if  (meshType == Vertices) {
          LoopBounds[i] = CreateTempAlloca(Int32Ty, "loopbounds.ptr");
          llvm::Value *incr = Builder.CreateAdd(Builder.CreateLoad(MeshSize[i]), ConstantOne);
          Builder.CreateStore(incr, LoopBounds[i]);
@@ -1554,7 +1549,7 @@ void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
   SmallVector<llvm::Value*, 3> Dimensions;
   GetMeshDimensions(S.getMeshType(), Dimensions);
 
-  ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
+  MeshElementType FET = S.getMeshElementRef();
 
   Builder.CreateLoad(LoopBounds[0], "TheMesh.width");
   Builder.CreateLoad(LoopBounds[1], "TheMesh.height");
@@ -1562,17 +1557,17 @@ void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
 
   llvm::Value* numItems;
   
-  switch(FET){
-    case ForallMeshStmt::Cells:
+  switch (FET){
+    case Cells:
       GetNumMeshItems(Dimensions, &numItems, 0, 0, 0);
       break;
-    case ForallMeshStmt::Vertices:
+    case Vertices:
       GetNumMeshItems(Dimensions, 0, &numItems, 0, 0);
       break;
-    case ForallMeshStmt::Edges:
+    case Edges:
       GetNumMeshItems(Dimensions, 0, 0, &numItems, 0);
       break;
-    case ForallMeshStmt::Faces:
+    case Faces:
       GetNumMeshItems(Dimensions, 0, 0, 0, &numItems);
       break;
     default:
@@ -1612,71 +1607,78 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   const VarDecl* VD = S.getMeshVarDecl();
 
-  ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
+  MeshElementType FET = S.getMeshElementRef();
 
   // handle nested forall, e.g: forall vertices within a forall cells
   if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)){
     switch(IP->getElementType()){
-    case ImplicitMeshParamDecl::Cells:
-      switch(FET){
-      case ForallMeshStmt::Vertices:
-        EmitForallCellsVertices(S);
-        return;
-      case ForallMeshStmt::Edges:
-        EmitForallCellsEdges(S);
-        return;
-      case ForallMeshStmt::Faces:
-        EmitForallCellsFaces(S);
-        return;
-      default:
-        assert(false && "invalid forall case");
-        return;
-      }
-    case ImplicitMeshParamDecl::Vertices:
-      switch(FET){
-      case ForallMeshStmt::Cells:
-        EmitForallVerticesCells(S);
-        return;
-      case ForallMeshStmt::Edges:
-        assert(false && "unimplemented forall case");
-        return;
-      case ForallMeshStmt::Faces:
-        assert(false && "unimplemented forall case");
-        return;
-      default:
-        assert(false && "invalid forall case");
-        return;
-      }
-    case ImplicitMeshParamDecl::Edges:
-      switch(FET){
-      case ForallMeshStmt::Cells:
-        EmitForallEdgesCells(S);
-        return;
-      case ForallMeshStmt::Vertices:
-        EmitForallEdgesVertices(S);
-        return;
-      case ForallMeshStmt::Faces:
-        assert(false && "unimplemented forall case");
-        return;
-      default:
-        assert(false && "invalid forall case");
-        return;
-      }
-    case ImplicitMeshParamDecl::Faces:
-      switch(FET){
-      case ForallMeshStmt::Cells:
-        EmitForallFacesCells(S);
-        return;
-      case ForallMeshStmt::Vertices:
-        EmitForallFacesVertices(S);
-        return;
-      case ForallMeshStmt::Edges:
-        assert(false && "unimplemented forall case");
-        return;
-      default:
-        assert(false && "invalid forall case");
-        return;
-      }
+      case Cells:
+      
+        switch(FET) {
+          case Vertices:
+            EmitForallCellsVertices(S);
+            return;
+          case Edges:
+            EmitForallCellsEdges(S);
+            return;
+          case Faces:
+            EmitForallCellsFaces(S);
+            return;
+          default:
+            assert(false && "invalid forall case");
+            return;
+        }
+      
+      case Vertices:
+
+        switch(FET){
+          case Cells:
+            EmitForallVerticesCells(S);
+            return;
+          case Edges:
+            assert(false && "unimplemented forall case");
+            return;
+          case Faces:
+            assert(false && "unimplemented forall case");
+            return;
+          default:
+            assert(false && "invalid forall case");
+            return;
+        }
+        
+      case Edges:
+        
+        switch(FET){
+          case Cells:
+            EmitForallEdgesCells(S);
+            return;
+          case Vertices:
+            EmitForallEdgesVertices(S);
+            return;
+          case Faces:
+            assert(false && "unimplemented forall case");
+            return;
+          default:
+            assert(false && "invalid forall case");
+            return;
+        }
+        
+      case Faces:
+        switch(FET){
+          case Cells:
+            EmitForallFacesCells(S);
+            return;
+          case Vertices:
+            EmitForallFacesVertices(S);
+            return;
+          case Edges:
+            assert(false && "unimplemented forall case");
+            return;
+          default:
+            assert(false && "invalid forall case");
+            return;
+        }
+        
       default:
         assert(false && "invalid forall case");
     }
@@ -1686,19 +1688,19 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   SetMeshBounds(S);
 
   switch(FET) {
-   case ForallMeshStmt::Cells:
-   case ForallMeshStmt::Vertices:
+   case Cells:
+   case Vertices:
      EmitForallCellsOrVertices(S);
      return;
-   case ForallMeshStmt::Edges:
-     EmitForallEdges(S);
-     return;
-   case ForallMeshStmt::Faces:
-     EmitForallFaces(S);
-     return;
-   default:
-     assert(false && "invalid forall case");
-   }
+    case Edges:
+      EmitForallEdges(S);
+      return;
+    case Faces:
+      EmitForallFaces(S);
+      return;
+    default:
+      assert(false && "invalid forall case");
+  }
 }
 
 // ----- EmitforallCellsOrVertices
@@ -1742,17 +1744,17 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
   SmallVector<llvm::Value*, 3> Dimensions;
   GetMeshDimensions(S.getMeshType(), Dimensions);
 
-  ForallMeshStmt::MeshElementType FET = S.getMeshElementRef();
+  MeshElementType FET = S.getMeshElementRef();
   
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
   // Track down the mesh meta data. 
   EmitForallMeshMDBlock(S);
 
-  if(isGPU()) {
-    if(FET == ForallMeshStmt::Vertices) {
+  if (isGPU()) {
+    if (FET == Vertices) {
       EmitGPUForall(S, VertexIndex);
-    } else if (FET == ForallMeshStmt::Cells) {
+    } else if (FET == Cells) {
       EmitGPUForall(S, CellIndex);
     }
     return;
@@ -1777,21 +1779,24 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
      InnerInductionVar[i] = CreateTempAlloca(Int32Ty, IRNameStr);
      //zero-initialize induction var
      Builder.CreateStore(ConstantZero, InnerInductionVar[i]);
-
    }
 
   InnerIndex = CreateTempAlloca(Int32Ty, "forall.inneridx.ptr");
 
   llvm::Value* queryMask = 0;
   
-  if(S.getQueryVarDecl()){
-    switch(FET){
-      case ForallMeshStmt::Cells:
+  if (S.getQueryVarDecl()) {
+    
+    switch(FET) {
+      
+      case Cells:
         GetNumMeshItems(&numItems, 0, 0, 0);
         break;
-      case ForallMeshStmt::Vertices:
+        
+      case Vertices:
         GetNumMeshItems(0, &numItems, 0, 0);
         break;
+        
       default:
         assert(false && "invalid forall type");
     }
@@ -1837,7 +1842,7 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S,
 
   LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
 
-  if (S.getMeshElementRef() == ForallMeshStmt::Vertices) {
+  if (S.getMeshElementRef() == Vertices) {
     VertexIndex = InductionVar[3];
   }
 
@@ -2207,7 +2212,7 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
 
 void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   const MeshType* mt = S.getMeshType();
-  if(mt->dimensions().size() == 3){
+  if (mt->dimensions().size() == 3) {
     EmitVolumeRenderallStmt(S);
     return;
   }
@@ -2218,9 +2223,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   GetMeshBaseAddr(S, MeshBaseAddr);
   llvm::StringRef MeshName = MeshBaseAddr->getName();
 
-
   // Add render target argument
-  
   const VarDecl* RTVD = S.getRenderTargetVarDecl();
 
   llvm::Value* RTAlloc;
@@ -2228,13 +2231,12 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
       && RTVD->getTLSKind() != VarDecl::TLS_Dynamic) {
     RTAlloc = CGM.GetAddrOfGlobalVar(RTVD);
-  }
-  else{
+  } else {
     RTAlloc = LocalDeclMap.lookup(RTVD);
   }
 
-  // Check if it's a window or image type
-  // cuz we don't handle images yet.
+  // Check if it's a window or image type cuz we don't handle images
+  // yet.
   const clang::Type &Ty = *getContext().getCanonicalType(RTVD->getType()).getTypePtr();
   
   llvm::SmallVector< llvm::Value *, 4 > Args;
@@ -2259,8 +2261,8 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
      Args[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
   }
   
-  if(Ty.getTypeClass() != Type::Window){
-  	RTAlloc = Builder.CreateLoad(RTAlloc);
+  if (Ty.getTypeClass() != Type::Window) {
+    RTAlloc = Builder.CreateLoad(RTAlloc);
   }
 
   // cast scout.window_t** to void**
@@ -2277,7 +2279,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
-  RenderallMeshStmt::MeshElementType ET = S.getMeshElementRef();
+  MeshElementType ET = S.getMeshElementRef();
 
   // make quad renderable and add to the window and return color pointer
   // use same args as for RenderallUniformBeginFunction
@@ -2288,20 +2290,25 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   
   bool cellLoop = false;
   
-  switch(ET){
-    case ForallMeshStmt::Cells:
+  switch(ET) {
+    
+    case Cells:
       WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableColorsFunction();
       cellLoop = true;
       break;
-    case ForallMeshStmt::Vertices:
+      
+    case Vertices:
       WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableVertexColorsFunction();
       break;
-    case ForallMeshStmt::Edges:
+      
+    case Edges:
       WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableEdgeColorsFunction();
       break;
-    case ForallMeshStmt::Faces:
+      
+    case Faces:
       WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableEdgeColorsFunction();
       break;
+      
     default:
       assert(false && "unrecognized renderall type");
   }
@@ -2309,16 +2316,15 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // %1 = call <4 x float>* @__scrt_window_quad_renderable_colors(i32 %HeatMeshType.width.ptr14, i32 %HeatMeshType.height.ptr16, i32 %HeatMeshType.depth.ptr18, i8* %derefwin)
   Color = Builder.CreateCall(WinQuadRendFunc, ArrayRef<llvm::Value *>(Args), "localcolor.ptr");
 
-  if(cellLoop){
+  if (cellLoop) {
     // renderall loops + body
     EmitRenderallMeshLoop(S, 3);
-  }
-  else{
+  } else {
     EmitRenderallVerticesEdgesFaces(S);
   }
   
   // paint window (draws all renderables) (does clear beforehand, and swap buffers after)
-  if(S.isLast()){
+  if (S.isLast()) {
     Args.clear();
     Args.push_back(int8PtrRTAlloc);
     Builder.CreateCall(WinPaintFunc, ArrayRef<llvm::Value *>(Args));
@@ -2327,7 +2333,6 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // reset Loopbounds, Rank, induction var
   // so width/height etc can't be called after renderall
   ResetMeshBounds();
-
 }
 
 void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
@@ -2694,73 +2699,78 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
 }
 
 void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S){
-	llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
-	llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+  llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
+  llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
 
-	EmitMarkerBlock("renderall.entry");
+  EmitMarkerBlock("renderall.entry");
 
-	InductionVar[3] = CreateTempAlloca(Int32Ty, "renderall.idx.ptr");
-	//zero-initialize induction var
-	Builder.CreateStore(Zero, InductionVar[3]);
-	InnerIndex = CreateTempAlloca(Int32Ty, "renderall.inneridx.ptr");
+  InductionVar[3] = CreateTempAlloca(Int32Ty, "renderall.idx.ptr");
+  //zero-initialize induction var
+  Builder.CreateStore(Zero, InductionVar[3]);
+  InnerIndex = CreateTempAlloca(Int32Ty, "renderall.inneridx.ptr");
 
-	//SmallVector<llvm::Value*, 3> Dimensions;
-	//GetMeshDimensions(S.getMeshType(), Dimensions);
+  //SmallVector<llvm::Value*, 3> Dimensions;
+  //GetMeshDimensions(S.getMeshType(), Dimensions);
 
 
-	RenderallMeshStmt::MeshElementType ET = S.getMeshElementRef();
+  MeshElementType ET = S.getMeshElementRef();
 
-	//llvm::Function *WinQuadRendFunc;
-	//llvm::Function *WinPaintFunc;
+  //llvm::Function *WinQuadRendFunc;
+  //llvm::Function *WinPaintFunc;
 
-	llvm::BasicBlock *LoopBlock = createBasicBlock("renderall.loop");
-	Builder.CreateBr(LoopBlock);
+  llvm::BasicBlock *LoopBlock = createBasicBlock("renderall.loop");
+  Builder.CreateBr(LoopBlock);
 
-	EmitBlock(LoopBlock);
+  EmitBlock(LoopBlock);
 
   llvm::Value** IndexPtr;
 
   llvm::Value* numItems;
   
-  switch(ET){
-    case ForallMeshStmt::Vertices:
+  switch(ET) {
+    
+    case Vertices:
       IndexPtr = &VertexIndex;
       GetNumMeshItems(0, &numItems, 0, 0);
       break;
-    case ForallMeshStmt::Edges:
+      
+    case Edges:
       IndexPtr = &EdgeIndex;
       GetNumMeshItems(0, 0, &numItems, 0);
       break;
-    case ForallMeshStmt::Faces:
+      
+    case Faces:
       IndexPtr = &FaceIndex;
       GetNumMeshItems(0, 0, 0, &numItems);
       break;
-    case ForallMeshStmt::Cells:
+      
+    case Cells:
       IndexPtr = &CellIndex;
       GetNumMeshItems(&numItems, 0, 0, 0);
       assert(false && "not valid for cells");
       break;
-    case ForallMeshStmt::Undefined:
+      
+    case Undefined:
       assert(false && "Undefined MeshElementType");
       break;
   }
   
-	*IndexPtr = InductionVar[3];
-	EmitStmt(S.getBody());
-	*IndexPtr = 0;
+  *IndexPtr = InductionVar[3];
+  EmitStmt(S.getBody());
+  *IndexPtr = 0;
 
-	llvm::Value* k = Builder.CreateLoad(InductionVar[3], "renderall.idx");
-	k = Builder.CreateAdd(k, One);
-	Builder.CreateStore(k, InductionVar[3]);
-	k = Builder.CreateZExt(k, Int64Ty, "k");
+  llvm::Value* k = Builder.CreateLoad(InductionVar[3], "renderall.idx");
+  k = Builder.CreateAdd(k, One);
+  Builder.CreateStore(k, InductionVar[3]);
+  k = Builder.CreateZExt(k, Int64Ty, "k");
 
-	llvm::Value* Cond = Builder.CreateICmpSLT(k, numItems, "cond");
+  llvm::Value* Cond = Builder.CreateICmpSLT(k, numItems, "cond");
 
-	llvm::BasicBlock *ExitBlock = createBasicBlock("renderall.exit");
-	Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
-	EmitBlock(ExitBlock);
+  llvm::BasicBlock *ExitBlock = createBasicBlock("renderall.exit");
+  Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
+  EmitBlock(ExitBlock);
 
-	InnerIndex = 0;
+  InnerIndex = 0;
 }
 
 //generate one of the nested loops

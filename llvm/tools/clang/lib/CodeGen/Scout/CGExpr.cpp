@@ -1037,22 +1037,18 @@ RValue CodeGenFunction::EmitPlotExpr(ArgIterator argsBegin, ArgIterator argsEnd)
   llvm::Value* numItems;
   
   if(field->isCellLocated()){
-    SetMeshBounds(ForallMeshStmt::MeshElementType::Cells, meshAddr, mt);
+    SetMeshBounds(Cells, meshAddr, mt);
     GetNumMeshItems(&numItems, 0, 0, 0);
-  }
-  else if(field->isVertexLocated()){
-    SetMeshBounds(ForallMeshStmt::MeshElementType::Vertices, meshAddr, mt);
+  } else if (field->isVertexLocated()){
+    SetMeshBounds(Vertices, meshAddr, mt);
     GetNumMeshItems(0, &numItems, 0, 0);
-  }
-  else if(field->isEdgeLocated()){
-    SetMeshBounds(ForallMeshStmt::MeshElementType::Edges, meshAddr, mt);
+  } else if (field->isEdgeLocated()) {
+    SetMeshBounds(Edges, meshAddr, mt);
     GetNumMeshItems(0, 0, &numItems, 0);
-  }
-  else if(field->isFaceLocated()){
-    SetMeshBounds(ForallMeshStmt::MeshElementType::Faces, meshAddr, mt);
+  } else if(field->isFaceLocated()) {
+    SetMeshBounds(Faces, meshAddr, mt);
     GetNumMeshItems(0, 0, 0, &numItems);
-  }
-  else{
+  } else {
     assert(false && "invalid element type");
   }
   
@@ -1130,27 +1126,23 @@ CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
     llvm::Value* numItems;
     llvm::Value* elementKind;
     
-    if(field->isCellLocated()){
-      SetMeshBounds(ForallMeshStmt::MeshElementType::Cells, meshAddr, mt);
+    if (field->isCellLocated()) {
+      SetMeshBounds(Cells, meshAddr, mt);
       GetNumMeshItems(&numItems, 0, 0, 0);
       elementKind = r.CellVal;
-    }
-    else if(field->isVertexLocated()){
-      SetMeshBounds(ForallMeshStmt::MeshElementType::Vertices, meshAddr, mt);
+    } else if (field->isVertexLocated()) {
+      SetMeshBounds(Vertices, meshAddr, mt);
       GetNumMeshItems(0, &numItems, 0, 0);
       elementKind = r.VertexVal;
-    }
-    else if(field->isEdgeLocated()){
-      SetMeshBounds(ForallMeshStmt::MeshElementType::Edges, meshAddr, mt);
+    } else if(field->isEdgeLocated()) {
+      SetMeshBounds(Edges, meshAddr, mt);
       GetNumMeshItems(0, 0, &numItems, 0);
       elementKind = r.EdgeVal;
-    }
-    else if(field->isFaceLocated()){
-      SetMeshBounds(ForallMeshStmt::MeshElementType::Faces, meshAddr, mt);
+    } else if(field->isFaceLocated()) {
+      SetMeshBounds(Faces, meshAddr, mt);
       GetNumMeshItems(0, 0, 0, &numItems);
       elementKind = r.FaceVal;
-    }
-    else{
+    } else {
       assert(false && "invalid element kind");
     }
     
@@ -1230,7 +1222,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
   assert(base && "expected an ImplicitMeshParamDecl");
 
-  ImplicitMeshParamDecl::MeshElementType et = imp->getElementType();
+  MeshElementType et = imp->getElementType();
   
   const VarDecl* mvd = imp->getMeshVarDecl();
   
@@ -1275,17 +1267,17 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   B.CreateBr(loopBlock);
   B.SetInsertPoint(loopBlock);
 
-  switch(et){
-    case ImplicitMeshParamDecl::Cells:
+  switch(et) {
+    case Cells:
       CellIndex = inductPtr;
       break;
-    case ImplicitMeshParamDecl::Vertices:
+    case Vertices:
       VertexIndex = inductPtr;
       break;
-    case ImplicitMeshParamDecl::Edges:
+    case Edges:
       EdgeIndex = inductPtr;
       break;
-    case ImplicitMeshParamDecl::Faces:
+    case Faces:
       FaceIndex = inductPtr;
       break;
     default:
@@ -1304,16 +1296,16 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   }
   
   switch(et){
-    case ImplicitMeshParamDecl::Cells:
+    case Cells:
       CellIndex = 0;
       break;
-    case ImplicitMeshParamDecl::Vertices:
+    case Vertices:
       VertexIndex = 0;
       break;
-    case ImplicitMeshParamDecl::Edges:
+    case Edges:
       EdgeIndex = 0;
       break;
-    case ImplicitMeshParamDecl::Faces:
+    case Faces:
       FaceIndex = 0;
       break;
     default:

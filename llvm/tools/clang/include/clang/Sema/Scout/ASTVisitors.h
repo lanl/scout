@@ -68,293 +68,290 @@ using namespace clang;
 using namespace clang::sema;
 
 namespace clang {
-namespace sema {
+  namespace sema {
 
-enum ShiftKind {
-  CShift,
-  EOShift
-};
+    enum ShiftKind {
+      CShift,
+      EOShift
+    };
 
-bool isPosition(unsigned id);
+    extern bool isPosition(unsigned id);
+    extern bool isMPosition(unsigned id);
+    extern bool isCShift(unsigned id);
+    extern bool isEOShift(unsigned id);
+    extern bool CheckShift(unsigned id, CallExpr *E, Sema &S);
 
-bool isMPosition(unsigned id);
-
-bool isCShift(unsigned id);
-
-bool isEOShift(unsigned id);
-
-bool CheckShift(unsigned id, CallExpr *E, Sema &S);
-
-// look for foralls outside of tasks
-class NonTaskForallVisitor : public StmtVisitor<NonTaskForallVisitor> {
-public:
-  NonTaskForallVisitor(Sema& sema) :sema_(sema) {
-  }
-
-  void VisitStmt(Stmt* S) {
-     VisitChildren(S);
-   }
-
-  void VisitChildren(Stmt* S) {
-    for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-      if (Stmt* child = *I) {
-        Visit(child);
+    // Look for foralls outside of tasks
+    class NonTaskForallVisitor : public StmtVisitor<NonTaskForallVisitor> {
+     public:
+      NonTaskForallVisitor(Sema& sema) :sema_(sema) { }
+    
+      void VisitStmt(Stmt* S) {
+        VisitChildren(S);
       }
-    }
-  }
 
-  void VisitForallMeshStmt(ForallMeshStmt *S) {
-    sema_.Diag(S->getLocStart(), diag::err_forall_non_task);
-    VisitChildren(S);
-  }
-
-private:
-  Sema& sema_;
-};
-
-
-// ForAllVisitor class to check that LHS mesh field assignment
-// operators do not appear as subsequent RHS values, and various other
-// semantic checks
-class ForallVisitor : public StmtVisitor<ForallVisitor> {
-public:
-
-  enum NodeType{
-    NodeNone,
-    NodeLHS,
-    NodeRHS
-  };
-
-  ForallVisitor(Sema& sema,
-                ForallMeshStmt* fs,
-                bool isTask = false,
-                bool isReduction = false)
-  : sema_(sema),
-    fs_(fs),
-    meshAccess_(false),
-    error_(false),
-    isTask_(isTask),
-    isReduction_(isReduction),
-    nodeType_(NodeNone) {
-    (void)fs_; //suppress warning
-  }
-
-  void VisitBinaryOperator(BinaryOperator* S);
-
-  void VisitCallExpr(CallExpr* E);
-
-  void VisitDeclStmt(DeclStmt* S);
-
-  void VisitMemberExpr(MemberExpr* E);
-
-  void VisitStmt(Stmt* S) {
-    VisitChildren(S);
-  }
-
-  void VisitChildren(Stmt* S) {
-    for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-      if (Stmt* child = *I) {
-        Visit(child);
-      }
-    }
-  }
-
-  bool getMeshAccess() {
-    return meshAccess_;
-  }
-
-  bool error(){
-    return error_;
-  }
-
-private:
-  Sema& sema_;
-  ForallMeshStmt *fs_;
-  typedef std::map<std::string, bool> RefMap_;
-  RefMap_ refMap_;
-  RefMap_ localMap_;
-  bool meshAccess_;
-  bool error_;
-  bool isTask_;
-  bool isReduction_;
-  NodeType nodeType_;
-};
-
-class ForallReductionVisitor : public StmtVisitor<ForallReductionVisitor> {
-public:
-  
-  ForallReductionVisitor()
-  : first_(true),
-  isReduction_(false){}
-  
-  void VisitBinaryOperator(BinaryOperator* S);
-  
-  void VisitChildren(Stmt* S) {
-    if(S){
-      for(Stmt::child_iterator I = S->child_begin(),
-          E = S->child_end(); I != E; ++I){
-        if(Stmt* child = *I){
-          if(first_){
-            first_ = false;
+      void VisitChildren(Stmt* S) {
+        for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+          if (Stmt* child = *I) {
             Visit(child);
-          }
-          else{
-            isReduction_ = false;
           }
         }
       }
-    }
-  }
-  
-  void VisitStmt(Stmt* S) {
-    VisitChildren(S);
-  }
-  
-  bool isReduction(){
-    return isReduction_;
-  }
-  
-private:
-  bool first_;
-  bool isReduction_;
-};
 
-class RenderallVisitor : public StmtVisitor<RenderallVisitor> {
-public:
-
-  enum NodeType{
-    NodeNone,
-    NodeLHS,
-    NodeRHS
-  };
-
-  RenderallVisitor(Sema& sema, RenderallMeshStmt* fs)
-  : sema_(sema),
-    fs_(fs),
-    error_(false),
-    nodeType_(NodeNone),
-    foundColorAssign_(false) {
-    for(size_t i = 0; i < 4; ++i) {
-      foundComponentAssign_[i] = false;
-    }
-
-  }
-
-  void VisitBinaryOperator(BinaryOperator* S);
-
-  void VisitCallExpr(CallExpr* E);
-
-  void VisitDeclStmt(DeclStmt* S);
-
-  void VisitIfStmt(IfStmt* S);
-
-  void VisitMemberExpr(MemberExpr* E);
-
-  void VisitStmt(Stmt* S) {
-    VisitChildren(S);
-  }
-
-  void VisitChildren(Stmt* S) {
-    for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-      if (Stmt* child = *I) {
-        Visit(child);
+      void VisitForallMeshStmt(ForallMeshStmt *S) {
+        sema_.Diag(S->getLocStart(), diag::err_forall_non_task);
+        VisitChildren(S);
       }
-    }
-  }
 
-  bool isColorExpr(Expr *E) {
-    if (DeclRefExpr* DR = dyn_cast<DeclRefExpr>(E)) {
-      if(isa<ImplicitColorParamDecl>(DR->getDecl())) {
-        return true;
+     private:
+      Sema& sema_;
+    };
+
+    // ForAllVisitor class to check that LHS mesh field assignment
+    // operators do not appear as subsequent RHS values, and various other
+    // semantic checks
+    class ForallVisitor : public StmtVisitor<ForallVisitor> {
+     public:
+    
+      enum NodeType{
+        NodeNone,
+        NodeLHS,
+        NodeRHS
+      };
+    
+      ForallVisitor(Sema& sema, ForallMeshStmt* fs, bool isTask = false,
+                    bool isReduction = false)
+          : sema_(sema), fs_(fs), meshAccess_(false),
+            error_(false), isTask_(isTask), isReduction_(isReduction),
+            nodeType_(NodeNone) {
+
+        assert(fs != 0 && "constructing visitor with null statement");
+      
+        // Push the invoking forall statement onto the nesting stack.
+        forallStmts.push_back(fs_);
       }
-    }
-    return false;
-  }
 
-  bool foundColorAssign() {
-    if(foundColorAssign_) {
-      return true;
-    }
+      void VisitBinaryOperator(BinaryOperator* S);
 
-    for(size_t i = 0; i < 4; ++i) {
-      if(!foundComponentAssign_[i]) {
+      void VisitCallExpr(CallExpr* E);
+
+      void VisitDeclStmt(DeclStmt* S);
+    
+      void VisitMemberExpr(MemberExpr* E);
+
+      void VisitStmt(Stmt* S) {
+        if (S->getStmtClass() == Stmt::ForallMeshStmtClass) {
+          // We are visiting a nested forall within the scope of our
+          // originally invoked forall. Push this forall statement onto
+          // the stack so we can use it to evaluate the nesting details
+          // within the sema checks. 
+          forallStmts.push_back(cast<ForallMeshStmt>(S));
+        }
+      
+        VisitChildren(S);
+      }
+    
+      void VisitChildren(Stmt* S) {
+        for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+          if (Stmt* child = *I) {
+            Visit(child);
+          }
+        }
+      }
+
+      bool getMeshAccess() {
+        return meshAccess_;
+      }
+
+      bool error(){
+        return error_;
+      }
+
+     private:
+      Sema& sema_;
+      ForallMeshStmt *fs_;
+  
+      typedef std::map<std::string, bool> RefMap_;
+      RefMap_ refMap_;
+      RefMap_ localMap_;
+
+      // The following is used to track forall nesting while we are
+      // visiting a forall stmt.  We do this to validate the nesting
+      // as well as other sema/analysis details. 
+      typedef std::list<ForallMeshStmt*> ForallStmtStack;
+      ForallStmtStack forallStmts;
+    
+      bool meshAccess_;
+      bool error_;
+      bool isTask_;
+      bool isReduction_;
+      NodeType nodeType_;
+    };
+
+  
+    class ForallReductionVisitor : public StmtVisitor<ForallReductionVisitor> {
+    
+     public:
+  
+      ForallReductionVisitor()
+          : first_(true),
+            isReduction_(false){}
+    
+      void VisitBinaryOperator(BinaryOperator* S);
+    
+      void VisitChildren(Stmt* S) {
+        if (S) {
+          for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+            if (Stmt* child = *I) {
+              if (first_) {
+                first_ = false;
+                Visit(child);
+              } else {
+                isReduction_ = false;
+              }
+            }
+          }
+        }
+      }
+  
+      void VisitStmt(Stmt* S) {
+        VisitChildren(S);
+      }
+  
+      bool isReduction() { return isReduction_; }
+  
+     private:
+      bool first_;
+      bool isReduction_;
+    };
+
+    class RenderallVisitor : public StmtVisitor<RenderallVisitor> {
+    
+     public:
+
+      enum NodeType{
+        NodeNone,
+        NodeLHS,
+        NodeRHS
+      };
+
+      RenderallVisitor(Sema& sema, RenderallMeshStmt* fs)
+          : sema_(sema), fs_(fs), error_(false), nodeType_(NodeNone),
+            foundColorAssign_(false) {
+      
+        for(size_t i = 0; i < 4; ++i) {
+          foundComponentAssign_[i] = false;
+        }
+      }
+
+      void VisitBinaryOperator(BinaryOperator* S);
+      void VisitCallExpr(CallExpr* E);
+      void VisitDeclStmt(DeclStmt* S);
+      void VisitIfStmt(IfStmt* S);
+      void VisitMemberExpr(MemberExpr* E);
+
+      void VisitStmt(Stmt* S) {
+        VisitChildren(S);
+      }
+
+      void VisitChildren(Stmt* S) {
+        for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+          if (Stmt* child = *I) {
+            Visit(child);
+          }
+        }
+      }
+
+      bool isColorExpr(Expr *E) {
+        if (DeclRefExpr* DR = dyn_cast<DeclRefExpr>(E)) {
+          if (isa<ImplicitColorParamDecl>(DR->getDecl())) {
+            return true;
+          }
+        }
         return false;
       }
-    }
-    return true;
-  }
+
+      bool foundColorAssign() {
+        if(foundColorAssign_) {
+          return true;
+        }
+
+        for(size_t i = 0; i < 4; ++i) {
+          if(!foundComponentAssign_[i]) {
+            return false;
+          }
+        }
+        return true;
+      }
 
 
-  bool error(){
-    return error_;
-  }
+      bool error(){
+        return error_;
+      }
 
-private:
-  Sema& sema_;
-  RenderallMeshStmt *fs_;
-  typedef std::map<std::string, bool> RefMap_;
-  RefMap_ refMap_;
-  RefMap_ localMap_;
-  bool error_;
-  NodeType nodeType_;
-  bool foundColorAssign_;
-  bool foundComponentAssign_[4];
-};
-
-
-// make sure task functions are pure
-class TaskStmtVisitor : public StmtVisitor<TaskStmtVisitor> {
-public:
-
-  TaskStmtVisitor(Sema& sema, Stmt* S)
-: S_(S), sema_(sema), meshAccess_(false) {
-    (void)S_;
-  }
-
-  void VisitCallExpr(CallExpr* E);
-
-  void VisitChildren(Stmt* S);
-
-  void VisitDeclRefExpr(DeclRefExpr *E);
-
-  void VisitForallMeshStmt(ForallMeshStmt *S);
-
-  void VisitStmt(Stmt* S) {
-    VisitChildren(S);
-  }
-
-  void VisitDeclStmt(DeclStmt* S) {
-    VisitChildren(S);
-  }
-
-  bool getMeshAccess() {
-    return meshAccess_;
-  }
-
-private:
-  Stmt *S_;
-  Sema& sema_;
-  bool meshAccess_;
-};
+     private:
+      Sema& sema_;
+      RenderallMeshStmt *fs_;
+      typedef std::map<std::string, bool> RefMap_;
+      RefMap_ refMap_;
+      RefMap_ localMap_;
+      bool error_;
+      NodeType nodeType_;
+      bool foundColorAssign_;
+      bool foundComponentAssign_[4];
+    };
 
 
-class TaskDeclVisitor : public DeclVisitor<TaskDeclVisitor> {
-public:
+    // make sure task functions are pure
+    class TaskStmtVisitor : public StmtVisitor<TaskStmtVisitor> {
+    
+     public:
 
-  TaskDeclVisitor(Sema& sema, FunctionDecl *FD)
-: FD_(FD), sema_(sema), meshAccess_(false) {
-  }
+      TaskStmtVisitor(Sema& sema, Stmt* S)
+          : S_(S), sema_(sema), meshAccess_(false) {
+        (void)S_;
+      }
 
-  void VisitStmt(Stmt* S);
+      void VisitCallExpr(CallExpr* E);
+      void VisitChildren(Stmt* S);
+      void VisitDeclRefExpr(DeclRefExpr *E);
+      void VisitForallMeshStmt(ForallMeshStmt *S);
 
-private:
-  FunctionDecl *FD_;
-  Sema& sema_;
-  bool meshAccess_;
+      void VisitStmt(Stmt* S) {
+        VisitChildren(S);
+      }
 
-};
+      void VisitDeclStmt(DeclStmt* S) {
+        VisitChildren(S);
+      }
+
+      bool getMeshAccess() {
+        return meshAccess_;
+      }
+
+     private:
+      Stmt *S_;
+      Sema& sema_;
+      bool meshAccess_;
+    };
+
+
+    class TaskDeclVisitor : public DeclVisitor<TaskDeclVisitor> {
+    
+     public:
+      TaskDeclVisitor(Sema& sema, FunctionDecl *FD)
+          : FD_(FD), sema_(sema), meshAccess_(false) {
+      }
+    
+      void VisitStmt(Stmt* S);
+
+     private:
+      FunctionDecl *FD_;
+      Sema& sema_;
+      bool meshAccess_;
+    };
   
-} // end namespace sema
+  } // end namespace sema
 } // end namespace clang
 
 #endif

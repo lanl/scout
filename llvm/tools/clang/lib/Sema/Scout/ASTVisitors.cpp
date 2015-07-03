@@ -193,7 +193,7 @@ void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
 
 void ForallVisitor::VisitCallExpr(CallExpr* E) {
 
-  ForallMeshStmt::MeshElementType FET = fs_->getMeshElementRef();
+  MeshElementType FET = fs_->getMeshElementRef();
   FunctionDecl* fd = E->getDirectCallee();
 
   if (fd) {
@@ -210,15 +210,15 @@ void ForallVisitor::VisitCallExpr(CallExpr* E) {
     } else if (id == Builtin::BIhead || id == Builtin::BItail) {
       // check if we are in forall edges or faces
       switch(FET) {
-        case ForallMeshStmt::Cells:
-        case ForallMeshStmt::Vertices:
+        case Cells:
+        case Vertices:
           sema_.Diag(E->getExprLoc(), diag::err_forall_non_edges);
           break;
-        case ForallMeshStmt::Faces: // include this but warn as faces=edges in 2d
+        case Faces: // include this but warn as faces=edges in 2d
           //SC_TODO: need to set EdgeIndex in forall faces 2d
           sema_.Diag(E->getExprLoc(), diag::warn_forall_non_edges);
           break;
-        case ForallMeshStmt::Edges:
+        case Edges:
           break;
         default:
           assert(false && "invalid forall case");
@@ -226,11 +226,11 @@ void ForallVisitor::VisitCallExpr(CallExpr* E) {
     } else if (isPosition(id)) {
       //check if we are in forall cells/vertices
       switch(FET) {
-      case ForallMeshStmt::Cells:
-      case ForallMeshStmt::Vertices:
+      case Cells:
+      case Vertices:
         break;
-      case ForallMeshStmt::Faces:
-      case ForallMeshStmt::Edges:
+      case Faces:
+      case Edges:
         sema_.Diag(E->getExprLoc(), diag::err_forall_non_cells_vertices);
         break;
       default:
@@ -243,11 +243,11 @@ void ForallVisitor::VisitCallExpr(CallExpr* E) {
       
       // right now only allow this builtin on vertices
       switch(FET) {
-      case ForallMeshStmt::Vertices:
+      case Vertices:
         break;
-      case ForallMeshStmt::Faces:
-      case ForallMeshStmt::Cells:
-      case ForallMeshStmt::Edges:
+      case Faces:
+      case Cells:
+      case Edges:
         sema_.Diag(E->getExprLoc(), diag::err_forall_non_vertices);
         break;
       default:

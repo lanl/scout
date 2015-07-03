@@ -121,7 +121,7 @@ bool Sema::CheckForallMesh(Scope* S,
 bool Sema::ActOnForallMeshRefVariable(Scope* S,
                                   IdentifierInfo* MeshVarInfo,
                                   SourceLocation MeshVarLoc,
-                                  ForallMeshStmt::MeshElementType RefVarType,
+                                  MeshElementType RefVarType,
                                   IdentifierInfo* RefVarInfo,
                                   SourceLocation RefVarLoc,
                                   const MeshType *MT,
@@ -134,26 +134,24 @@ bool Sema::ActOnForallMeshRefVariable(Scope* S,
 
   ImplicitMeshParamDecl* D;
 
-  ImplicitMeshParamDecl::MeshElementType ET = (ImplicitMeshParamDecl::MeshElementType)RefVarType;
-
   if (MT->isUniform()) {
     D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
-                                      ET,
+                                      RefVarType,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<UniformMeshType>(MT),0), VD);
   } else if (MT->isALE()) {
     D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
-                                      ET,
+                                      RefVarType,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<ALEMeshType>(MT),0), VD);
   } else if (MT->isStructured()) {
     D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
-                                      ET,
+                                      RefVarType,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<StructuredMeshType>(MT),0), VD);
@@ -161,14 +159,14 @@ bool Sema::ActOnForallMeshRefVariable(Scope* S,
   } else if (MT->isRectilinear()) {
     D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
-                                      ET,
+                                      RefVarType,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<RectilinearMeshType>(MT),0), VD);
   } else if (MT->isUnstructured()) {
     D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
-                                      ET,
+                                      RefVarType,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<UnstructuredMeshType>(MT),0), VD);
@@ -188,7 +186,7 @@ bool Sema::ActOnForallMeshRefVariable(Scope* S,
 }
 
 StmtResult Sema::ActOnForallMeshStmt(SourceLocation ForallLoc,
-                                     ForallMeshStmt::MeshElementType ElementType,
+                                     MeshElementType ElementType,
                                      const MeshType *MT,
                                      VarDecl* MVD,
                                      IdentifierInfo* RefVarInfo,
@@ -402,7 +400,7 @@ StmtResult Sema::ActOnForallArrayStmt(IdentifierInfo* InductionVarInfo[],
 // the actual mesh type of the renderall (passed in as a base mesh type)
 // and creates the reference variable
 bool Sema::ActOnRenderallMeshRefVariable(Scope* S,
-                                         RenderallMeshStmt::MeshElementType RefVarType,
+                                         MeshElementType RefVarType,
                                          IdentifierInfo* RefVarInfo,
                                          SourceLocation RefVarLoc,
                                          const MeshType *MT,
@@ -410,26 +408,24 @@ bool Sema::ActOnRenderallMeshRefVariable(Scope* S,
 
   ImplicitMeshParamDecl* D;
 
-  ImplicitMeshParamDecl::MeshElementType ET = (ImplicitMeshParamDecl::MeshElementType)RefVarType;
-
   if (MT->isUniform()) {
     D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
-                                      ET,
+                                      RefVarType,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<UniformMeshType>(MT),0), VD);
   } else if (MT->isALE()) {
     D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
-                                      ET,
+                                      RefVarType,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<ALEMeshType>(MT),0), VD);
   } else if (MT->isStructured()) {
     D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
-                                      ET,
+                                      RefVarType,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<StructuredMeshType>(MT),0), VD);
@@ -437,14 +433,14 @@ bool Sema::ActOnRenderallMeshRefVariable(Scope* S,
   } else if (MT->isRectilinear()) {
     D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
-                                      ET,
+                                      RefVarType,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<RectilinearMeshType>(MT),0), VD);
   } else if (MT->isUnstructured()) {
     D = ImplicitMeshParamDecl::Create(Context,
                                       CurContext,
-                                      ET,
+                                      RefVarType,
                                       RefVarLoc,
                                       RefVarInfo,
                                       QualType(cast<UnstructuredMeshType>(MT),0), VD);
@@ -467,7 +463,7 @@ bool Sema::ActOnRenderallMeshRefVariable(Scope* S,
 
 
 StmtResult Sema::ActOnRenderallMeshStmt(SourceLocation RenderallLoc,
-                                        RenderallMeshStmt::MeshElementType ElementType,
+                                        MeshElementType ElementType,
                                         const MeshType *MT,
                                         VarDecl* MVD,    // Mesh var decl. 
                                         VarDecl* RTVD,   // Render target var decl. 

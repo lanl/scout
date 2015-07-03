@@ -2174,11 +2174,12 @@ public:
   void GetFrameBaseAddr(const VarDecl *FrameVarDecl, llvm::Value*& BaseAddr);
   
   void SetMeshBounds(const Stmt &S);
-  void SetMeshBounds(ForallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr, const MeshType* mt);
-  void SetMeshBounds(RenderallMeshStmt::MeshElementType type, llvm::Value* MeshBaseAddr, const MeshType* mt);
-private:
+  void SetMeshBounds(MeshElementType type, llvm::Value* MeshBaseAddr, const MeshType* mt, bool isForall = true);
+  
+ private:
   void SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value* MeshBaseAddr, const MeshType* mt);
-public:
+  
+ public:
 
   void ResetMeshBounds(void);
 

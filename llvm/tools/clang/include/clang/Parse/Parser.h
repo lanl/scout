@@ -2542,9 +2542,9 @@ private:
 
   StmtResult ParseForallArrayStatement(ParsedAttributes &Attr);
 
-  void MeshElementTypeDiag(int MeshElementType,
-      const MeshType *RefMeshType, SourceLocation MeshIdentLoc);
-
+  void MeshElementTypeDiag(MeshElementType MET, const MeshType *RefMeshType,
+                           SourceLocation MeshIdentLoc);
+  
   StmtResult ParseForallMeshStatement(ParsedAttributes &Attr);
 
   StmtResult ParseRenderallMeshStatement(ParsedAttributes &Attr);
