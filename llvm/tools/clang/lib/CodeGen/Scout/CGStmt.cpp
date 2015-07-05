@@ -2346,6 +2346,12 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   LLVMContext& C = getLLVMContext();
   auto R = CGM.getScoutRuntime();
   
+  RenderallVisitor visitor(&S);
+  visitor.VisitStmt(const_cast<Stmt*>(S.getBody()));
+  
+  auto& fs = visitor.getFieldSet();
+  auto& vs = visitor.getVarSet();
+  
   B.CreateGlobalStringPtr(CGM.getCodeGenOpts().ScoutPTXDir, "scout.ptx.dir");
   
   MeshDecl* MD = cast<MeshDecl>(S.getMeshType()->getDecl());
@@ -2367,7 +2373,6 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   Value* depth =
   B.CreateLoad(B.CreateStructGEP(nullptr, MeshBaseAddr,
                                  meshStruct->getNumElements() - 3), "depth");
-  
   
   const VarDecl* target = S.getRenderTargetVarDecl();
   
@@ -2395,6 +2400,12 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   {MeshBaseAddr->getType(), targetPtr->getType(),
     Int32Ty, Int32Ty, Int32Ty};
   
+  for(VarDecl* vd : vs){
+    Value* v = LocalDeclMap[vd];
+    assert(v);
+    params.push_back(v->getType());
+  }
+  
   llvm::Function* renderallFunc =
   llvm::Function::Create(llvm::FunctionType::get(VoidTy, params, false),
                          llvm::Function::ExternalLinkage,
@@ -2414,13 +2425,16 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr++;
   
   ValueVec args = {MeshBaseAddr, targetPtr, width, height, depth};
+  
+  auto vitr = vs.begin();
+  while(aitr != renderallFunc->arg_end()){
+    aitr->setName((*vitr)->getName());
+    Value* v = LocalDeclMap[*vitr];
+    args.push_back(v);
+    ++aitr;
+  }
+  
   B.CreateCall(renderallFunc, args);
-  
-  RenderallVisitor visitor(&S);
-  visitor.VisitStmt(const_cast<Stmt*>(S.getBody()));
-  
-  auto& fs = visitor.getFieldSet();
-  auto& vs = visitor.getVarSet();
   
   TypeVec fields;
   
@@ -2666,34 +2680,6 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Metadata*>(meshFields));
   
   volrenData.push_back(fieldsMD);
-  
-  llvm::SmallVector<llvm::Metadata*, 16> vars;
-  for(VarDecl* vd : vs){
-    llvm::Type* t = ConvertType(vd->getType());
-    
-    size_t size;
-    if(t->isIntegerTy(32) ||
-       t->isFloatTy()){
-      size = 4;
-    }
-    else if(t->isIntegerTy(64) ||
-       t->isDoubleTy()){
-      size = 8;
-    }
-    
-    llvm::SmallVector<llvm::Metadata*, 1> varData;
-    varData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int32Ty, size)));
-    
-    llvm::Metadata* varDataMD =
-    llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Metadata*>(varData));
-    
-    vars.push_back(varDataMD);
-  }
-  
-  llvm::Metadata* varsMD =
-  llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Metadata*>(vars));
-  
-  volrenData.push_back(varsMD);
   
   volrens->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), volrenData));
 }

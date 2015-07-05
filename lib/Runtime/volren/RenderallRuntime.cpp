@@ -363,6 +363,7 @@ public:
         width_(width),
         height_(height),
         depth_(depth),
+        varsSize_(0),
         renderer_(nullptr){
 
       auto scoutWindow = static_cast<ScoutWindow*>(window);
@@ -414,11 +415,11 @@ public:
         err = cuMemcpyHtoD(invMatPtr_, invMat, 16 * 4);
         check(err); 
 
-        err = cuMemAlloc(&meshPtr_, 8 * fields.size());
+        err = cuMemAlloc(&meshPtr_, 8 * fields.size() + varsSize_);
         check(err);
 
-        err = cuMemcpyHtoD(meshPtr_, fields.data(), fields.size() * 8);
-        check(err);        
+        err = cuMemcpyHtoD(meshPtr_, fields.data(), 8 * fields.size());
+        check(err);
         
         kernelParams_ = {nullptr, &invMatPtr_, 
                          &imageW_, &imageH_,
@@ -446,8 +447,14 @@ public:
       check(err);
     }
 
-    void setVar(uint32_t pos, void* data, uint32_t size){
+    void addVar(uint32_t size){
+      varsSize_ += size;
+    }
 
+    void setVar(uint32_t offset, void* data, uint32_t size){
+      CUresult err = 
+        cuMemcpyHtoD(meshPtr_ + fieldVec_.size() * 8 + offset, data, size);
+      check(err);
     }
 
     void addField(const char* fieldName,
@@ -508,6 +515,7 @@ public:
     FieldMap_ fieldMap_;
     FieldVec_ fieldVec_;
     KernelParams_ kernelParams_;
+    size_t varsSize_;
     size_t blockX_;
     size_t blockY_;
     size_t blockZ_;
@@ -635,14 +643,19 @@ public:
   }
 
   void setVar(const char* kernelName,
-              uint32_t pos,
+              uint32_t offset,
               void* data,
               uint32_t size){
     auto kitr = kernelMap_.find(kernelName);
     assert(kitr != kernelMap_.end() && "invalid kernel");
     Kernel* kernel = kitr->second;
 
-    kernel->setVar(pos, data, size);
+    if(kernel->ready()){
+      kernel->setVar(offset, data, size);
+      return;
+    }
+
+    kernel->addVar(size);
   }
 
   void runKernel(const char* kernelName){
@@ -729,11 +742,11 @@ void __scrt_volren_init_field(const char* kernelName,
 
 extern "C"
 void __scrt_volren_set_var(const char* kernelName,
-                           uint32_t pos,
+                           uint32_t offset,
                            void* data,
                            uint32_t size){
   RenderallRuntime* runtime = _getRuntime();
-  runtime->setVar(kernelName, pos, data, size);
+  runtime->setVar(kernelName, offset, data, size);
 }
 
 extern "C"
