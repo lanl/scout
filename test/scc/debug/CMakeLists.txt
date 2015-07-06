@@ -50,6 +50,8 @@
 #
 project(scout_test_scc_debug)
 
+set_source_files_properties(functionlocalmetadata.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
+
 # run tests w/ the -g option to scc 
 set(CMAKE_SCC_FLAGS "-g")
 

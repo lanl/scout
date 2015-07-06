@@ -250,6 +250,7 @@ CXCursor cxcursor::MakeCXCursor(const Stmt *S, const Decl *Parent,
   case Stmt::ForallArrayStmtClass:
   case Expr::QueryExprClass:
   case Expr::ScoutExprClass:
+  case Expr::ScoutStmtClass:
   case Expr::StencilShiftExprClass:
   // +========================================================================+
 

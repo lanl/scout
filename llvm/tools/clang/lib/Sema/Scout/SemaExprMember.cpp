@@ -110,6 +110,11 @@ BuildMeshFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
     if(ImplicitMeshParamDecl* ip =
        dyn_cast<ImplicitMeshParamDecl>(dr->getDecl())){
       switch(ip->getElementType()){
+        case Undefined:
+          S.Diag(BaseExpr->getExprLoc(),
+                            diag::err_invalid_mesh_member_element_type);
+          return ExprError();
+          break;
         case Cells:
           if (!Field->isCellLocated()) {
             S.Diag(BaseExpr->getExprLoc(),

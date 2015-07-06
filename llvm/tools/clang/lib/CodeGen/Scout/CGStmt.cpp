@@ -2447,12 +2447,12 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   for(VarDecl* vd : vs){
     llvm::Type* t = ConvertType(vd->getType());
     
-    bool isScalar = false;
+    //bool isScalar = false;
     if(t->isIntegerTy(32) ||
        t->isIntegerTy(64) ||
        t->isFloatTy() ||
        t->isDoubleTy()){
-      isScalar = true;
+      //isScalar = true;
     }
     else{
       assert(false && "invalid var in volume renderall body");
@@ -2520,7 +2520,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   CurrentVolumeRenderallColor = nullptr;
   CurrentVolumeRenderallFieldMap.clear();
   
-  llvm::VectorType* Int3Ty = llvm::VectorType::get(Int32Ty, 3);
+  //llvm::VectorType* Int3Ty = llvm::VectorType::get(Int32Ty, 3);
   
   params = {llvm::PointerType::get(Int32Ty, 0),
     llvm::PointerType::get(FloatTy, 0),
@@ -3197,7 +3197,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   using namespace llvm;
   
   typedef vector<Value*> ValueVec;
-  typedef vector<llvm::Type*> TypeVec;
+  //typedef vector<llvm::Type*> TypeVec;
   
   CurrentPlotStmt = &S;
   

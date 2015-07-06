@@ -668,7 +668,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
     return StmtError();
   }
 
-  const WindowType* wt = dyn_cast<WindowType>(RTVD->getType().getTypePtr());
+  //const WindowType* wt = dyn_cast<WindowType>(RTVD->getType().getTypePtr());
   
   // this does not work from within LLDB because normally the render target type is
   // window - but from within LLDB it is a: struct __scout_win_t *
@@ -943,6 +943,7 @@ StmtResult Parser::ParseFrameCaptureStatement(ParsedAttributes &Attr){
   assert(Tok.is(tok::kw_into) && "expected keyword into");
   
   SourceLocation IntoLoc = ConsumeToken();
+  (void)IntoLoc;
   
   if (Tok.isNot(tok::identifier)) {
     Diag(Tok, diag::err_expected_ident);
@@ -968,9 +969,10 @@ StmtResult Parser::ParseFrameCaptureStatement(ParsedAttributes &Attr){
     return StmtError();
   }
   
-  const FrameDecl* FD = FT->getDecl();
+  //const FrameDecl* FD = FT->getDecl();
   
   SourceLocation FrameLoc = ConsumeToken();
+  (void)FrameLoc;
   
   if (Tok.isNot(tok::identifier)) {
     Diag(Tok, diag::err_frame_expected_capture);
@@ -986,6 +988,7 @@ StmtResult Parser::ParseFrameCaptureStatement(ParsedAttributes &Attr){
   }
   
   SourceLocation CaptureLoc = ConsumeToken();
+  (void)CaptureLoc;
   
   if(Tok.isNot(tok::l_brace)){
     Diag(Tok.getLocation(), diag::err_frame_expected_specifier);
@@ -1073,6 +1076,7 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
     }
     
     SourceLocation InLoc = ConsumeToken();
+    (void)InLoc;
   }
   else{
     SourceLocation InLoc = ConsumeToken();
@@ -1112,10 +1116,11 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
     qt = qt->getPointeeType();
   }
   
-  const WindowType* wt =
-  dyn_cast<WindowType>(qt.getTypePtr());
+  //const WindowType* wt =
+  //dyn_cast<WindowType>(qt.getTypePtr());
   
   SourceLocation RTLoc = ConsumeToken();
+  (void)RTLoc;
   
   if (Tok.isNot(tok::identifier)) {
     Diag(Tok, diag::err_frame_expected_capture);
@@ -1131,6 +1136,7 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
   }
   
   SourceLocation PlotLoc = ConsumeToken();
+  (void)PlotLoc;
   
   if(Tok.isNot(tok::l_brace)){
     Diag(Tok.getLocation(), diag::err_plot_expected_specifier);

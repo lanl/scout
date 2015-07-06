@@ -2946,6 +2946,22 @@ static PointerDeclaratorKind classifyPointerDeclarator(Sema &S,
   for (unsigned i = 0, n = declarator.getNumTypeObjects(); i != n; ++i) {
     DeclaratorChunk &chunk = declarator.getTypeObject(i);
     switch (chunk.Kind) {
+
+    // +===== Scout ==============================================================+
+    case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::ALEMesh:
+    case DeclaratorChunk::RectilinearMesh:
+    case DeclaratorChunk::StructuredMesh:
+    case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
+    case DeclaratorChunk::Frame:
+    case DeclaratorChunk::FrameVar:
+      //SC_TODO: not sure if this is correct.
+      break;
+    // +==========================================================================+
+
     case DeclaratorChunk::Array:
     case DeclaratorChunk::Function:
       break;
@@ -3275,6 +3291,22 @@ static TypeSourceInfo *GetFullTypeForDeclarator(TypeProcessingState &state,
     for (unsigned i = 0, n = D.getNumTypeObjects(); i != n; ++i) {
       DeclaratorChunk &chunk = D.getTypeObject(i);
       switch (chunk.Kind) {
+
+      // +===== Scout ==============================================================+
+      case DeclaratorChunk::UniformMesh:
+      case DeclaratorChunk::ALEMesh:
+      case DeclaratorChunk::RectilinearMesh:
+      case DeclaratorChunk::StructuredMesh:
+      case DeclaratorChunk::UnstructuredMesh:
+      case DeclaratorChunk::Window:
+      case DeclaratorChunk::Image:
+      case DeclaratorChunk::Query:
+      case DeclaratorChunk::Frame:
+      case DeclaratorChunk::FrameVar:
+        //SC_TODO: not sure if this is correct.
+        break;
+      // +==========================================================================+
+
       case DeclaratorChunk::Array:
       case DeclaratorChunk::Function:
         break;
@@ -5726,6 +5758,22 @@ static bool distributeNullabilityTypeAttr(TypeProcessingState &state,
   for (unsigned i = state.getCurrentChunkIndex(); i != 0; --i) {
     DeclaratorChunk &chunk = declarator.getTypeObject(i-1);
     switch (chunk.Kind) {
+
+    // +===== Scout ==============================================================+
+    case DeclaratorChunk::UniformMesh:
+    case DeclaratorChunk::ALEMesh:
+    case DeclaratorChunk::RectilinearMesh:
+    case DeclaratorChunk::StructuredMesh:
+    case DeclaratorChunk::UnstructuredMesh:
+    case DeclaratorChunk::Window:
+    case DeclaratorChunk::Image:
+    case DeclaratorChunk::Query:
+    case DeclaratorChunk::Frame:
+    case DeclaratorChunk::FrameVar:
+      //SC_TODO: not sure if this is correct.
+      continue;
+    // +==========================================================================+
+
     case DeclaratorChunk::Pointer:
     case DeclaratorChunk::BlockPointer:
     case DeclaratorChunk::MemberPointer:

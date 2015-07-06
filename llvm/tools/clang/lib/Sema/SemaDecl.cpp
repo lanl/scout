@@ -559,10 +559,10 @@ DeclSpec::TST Sema::isMeshName(IdentifierInfo &II, Scope *S) {
 
 DeclSpec::TST Sema::isFrameName(IdentifierInfo &II, Scope *S) {
   LookupResult R(*this, &II, SourceLocation(), LookupFrameName);
-  bool result = LookupName(R, S, false);
+  //bool result = LookupName(R, S, false);
   R.suppressDiagnostics();
   if (R.getResultKind() == LookupResult::Found) {
-    if (const FrameDecl *FD = R.getAsSingle<FrameDecl>()) {
+    if (R.getAsSingle<FrameDecl>()) {
       return DeclSpec::TST_frame;
     }
   }

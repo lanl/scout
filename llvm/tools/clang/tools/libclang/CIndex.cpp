@@ -4309,6 +4309,8 @@ CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
     return cxstring::createRef("UnstructuredMeshDecl");
   case CXCursor_MeshFieldDecl:
     return cxstring::createRef("MeshFieldDecl");
+  case CXCursor_FrameDecl:
+      return cxstring::createRef("FrameDecl");
   // +========================================================================+
   
   case CXCursor_OMPParallelDirective:
@@ -5101,6 +5103,7 @@ CXCursor clang_getCursorDefinition(CXCursor C) {
   case Decl::RectilinearMesh:
   case Decl::StructuredMesh:
   case Decl::UnstructuredMesh:
+  case Decl::Frame:
   // +========================================================================+
   case Decl::Import:
   case Decl::OMPThreadPrivate:
