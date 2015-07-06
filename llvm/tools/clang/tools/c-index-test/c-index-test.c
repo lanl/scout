@@ -2755,6 +2755,7 @@ static const char *getEntityKindString(CXIdxEntityKind kind) {
   case CXIdxEntity_RectilinearMesh: return "rectilinear-mesh";
   case CXIdxEntity_StructuredMesh:  return "structured-mesh";
   case CXIdxEntity_UnstructuredMesh:  return "unstructured-mesh";
+  case CXIdxEntity_Frame: return "frame";
   /* +=====================================================================+ */
   }
   assert(0 && "Garbage entity kind");

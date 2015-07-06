@@ -2346,6 +2346,12 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   LLVMContext& C = getLLVMContext();
   auto R = CGM.getScoutRuntime();
   
+  RenderallVisitor visitor(&S);
+  visitor.VisitStmt(const_cast<Stmt*>(S.getBody()));
+  
+  auto& fs = visitor.getFieldSet();
+  auto& vs = visitor.getVarSet();
+  
   B.CreateGlobalStringPtr(CGM.getCodeGenOpts().ScoutPTXDir, "scout.ptx.dir");
   
   MeshDecl* MD = cast<MeshDecl>(S.getMeshType()->getDecl());
@@ -2367,7 +2373,6 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   Value* depth =
   B.CreateLoad(B.CreateStructGEP(nullptr, MeshBaseAddr,
                                  meshStruct->getNumElements() - 3), "depth");
-  
   
   const VarDecl* target = S.getRenderTargetVarDecl();
   
@@ -2395,6 +2400,12 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   {MeshBaseAddr->getType(), targetPtr->getType(),
     Int32Ty, Int32Ty, Int32Ty};
   
+  for(VarDecl* vd : vs){
+    Value* v = LocalDeclMap[vd];
+    assert(v);
+    params.push_back(v->getType());
+  }
+  
   llvm::Function* renderallFunc =
   llvm::Function::Create(llvm::FunctionType::get(VoidTy, params, false),
                          llvm::Function::ExternalLinkage,
@@ -2414,13 +2425,16 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr++;
   
   ValueVec args = {MeshBaseAddr, targetPtr, width, height, depth};
+  
+  auto vitr = vs.begin();
+  while(aitr != renderallFunc->arg_end()){
+    aitr->setName((*vitr)->getName());
+    Value* v = LocalDeclMap[*vitr];
+    args.push_back(v);
+    ++aitr;
+  }
+  
   B.CreateCall(renderallFunc, args);
-  
-  RenderallVisitor visitor(&S);
-  visitor.VisitStmt(const_cast<Stmt*>(S.getBody()));
-  
-  auto& fs = visitor.getFieldSet();
-  auto& vs = visitor.getVarSet();
   
   TypeVec fields;
   
@@ -2433,12 +2447,12 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   for(VarDecl* vd : vs){
     llvm::Type* t = ConvertType(vd->getType());
     
-    bool isScalar = false;
+    //bool isScalar = false;
     if(t->isIntegerTy(32) ||
        t->isIntegerTy(64) ||
        t->isFloatTy() ||
        t->isDoubleTy()){
-      isScalar = true;
+      //isScalar = true;
     }
     else{
       assert(false && "invalid var in volume renderall body");
@@ -2506,7 +2520,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   CurrentVolumeRenderallColor = nullptr;
   CurrentVolumeRenderallFieldMap.clear();
   
-  llvm::VectorType* Int3Ty = llvm::VectorType::get(Int32Ty, 3);
+  //llvm::VectorType* Int3Ty = llvm::VectorType::get(Int32Ty, 3);
   
   params = {llvm::PointerType::get(Int32Ty, 0),
             llvm::PointerType::get(FloatTy, 0),
@@ -2696,7 +2710,6 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   llvm::MDNode::get(CGM.getLLVMContext(), ArrayRef<llvm::Metadata*>(vars));
   
   volrenData.push_back(varsMD);
-  
   volrens->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), volrenData));
 }
 
@@ -2887,6 +2900,8 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
   EmitBlock(LoopExit.getBlock(), true);
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wcovered-switch-default"
 void CodeGenFunction::EmitScoutStmt(const ScoutStmt &S) {
   switch(S.kind()){
     case ScoutStmt::FrameCapture:
@@ -2899,6 +2914,7 @@ void CodeGenFunction::EmitScoutStmt(const ScoutStmt &S) {
       assert(false && "unhandled ScoutStmt");
   }
 }
+#pragma clang diagnostic pop
 
 void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
   using namespace std;
@@ -3213,7 +3229,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   using namespace llvm;
   
   typedef vector<Value*> ValueVec;
-  typedef vector<llvm::Type*> TypeVec;
+  //typedef vector<llvm::Type*> TypeVec;
   
   CurrentPlotStmt = &S;
   

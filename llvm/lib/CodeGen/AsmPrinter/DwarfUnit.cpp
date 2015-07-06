@@ -1045,7 +1045,7 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, const DIScoutCompositeType *CTy) {
   // Add name if not anonymous or intermediate type.
   StringRef Name = CTy->getName();
   
-  uint64_t Size = CTy->getSizeInBits() >> 3;
+  //uint64_t Size = CTy->getSizeInBits() >> 3;
   uint16_t Tag = Buffer.getTag();
   
   switch (Tag) {

@@ -431,15 +431,16 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
     DefUnit, Line, 0, Size, Align, FullName);
   
   MeshType::MeshDimensions dims = Ty->dimensions();
-  unsigned dimX = 0;
-  unsigned dimY = 0;
-  unsigned dimZ = 0;
+  //unsigned dimX = 0;
+  //unsigned dimY = 0;
+  //unsigned dimZ = 0;
 
   for(size_t i = 0; i < dims.size(); ++i){
     llvm::APSInt d;
     bool success = dims[i]->EvaluateAsInt(d, CGM.getContext());
     assert(success && "Failed to evaluate mesh dimension");
 
+#if 0
     switch(i){
     case 0:
       dimX = d.getLimitedValue();
@@ -451,6 +452,7 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
       dimZ = d.getLimitedValue();
       break;
     }
+#endif
   }
 
   RegionMap[Ty->getDecl()].reset(RealDecl);

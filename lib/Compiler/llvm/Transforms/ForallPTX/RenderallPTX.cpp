@@ -325,6 +325,9 @@ public:
 
         size_t scalarSize;
 
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wcovered-switch-default"
         switch(ElementKind(et)){
         case ElementKind::Int32:
         case ElementKind::Float:
@@ -337,12 +340,29 @@ public:
         default:
           assert(false && "invalid element kind");
         }
+#pragma clang diagnostic pop
+
 
         Value* elementSize = getInt32(scalarSize);
         Value* elementType = getInt8(et);
 
         args = {kernelName, fieldName, hostPtr, elementSize, elementType};
         B.CreateCall(f, args);
+      }
+      
+      f = module->getFunction("__scrt_volren_set_var");
+
+      size_t offset = 0;
+      while(aitr != renderallFunc_->arg_end()){
+        Value* data = B.CreateBitCast(aitr, m_.voidPtrTy, "var.ptr");
+        
+        Type* elementType = aitr->getType()->getPointerElementType();
+        size_t size = elementType->getPrimitiveSizeInBits()*8;
+
+        args = {kernelName, getInt32(offset), data, getInt32(size)};
+        B.CreateCall(f, args);
+        offset += size;
+        ++aitr;
       }
 
       f = module->getFunction("__scrt_volren_run");
@@ -382,6 +402,9 @@ public:
 
     params = {stringTy, stringTy, voidPtrTy, int32Ty, int8Ty};
     createFunction("__scrt_volren_init_field", voidTy, params);
+
+    params = {stringTy, int32Ty, voidPtrTy, int32Ty};
+    createFunction("__scrt_volren_set_var", voidTy, params);
 
     params = {stringTy};
     createFunction("__scrt_volren_run", voidTy, params);

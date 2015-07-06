@@ -480,6 +480,11 @@ static unsigned long long getContextsForContextKind(
       contexts = CXCompletionContext_Scout;
       break;
     }
+
+    case CodeCompletionContext::CCC_Frame: {
+      contexts = CXCompletionContext_Scout;
+      break;
+    }
     // +======================================================================+
 
     case CodeCompletionContext::CCC_ObjCProtocolName: {

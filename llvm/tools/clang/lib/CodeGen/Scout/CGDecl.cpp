@@ -681,7 +681,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       Builder.CreateCall(CGM.getScoutRuntime().CreateWindowFunction(), ptr_call_params, "");
 
     // make type for ptr to scout.window_t
-    llvm::StructType *StructTy_scout_window_t = CGM.getModule().getTypeByName("scout.window_t");
+    //llvm::StructType *StructTy_scout_window_t = CGM.getModule().getTypeByName("scout.window_t");
     
     llvm::PointerType* pt = dyn_cast<llvm::PointerType>(Alloc->getType());
     

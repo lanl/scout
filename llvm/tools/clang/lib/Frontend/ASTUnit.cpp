@@ -2174,6 +2174,8 @@ static void CalculateHiddenNames(const CodeCompletionContext &Context,
   case CodeCompletionContext::CCC_UnstructuredMesh:
     OnlyMeshNames = true;
     return;
+  case CodeCompletionContext::CCC_Frame:
+    return;
   // +========================================================================+
 
   case CodeCompletionContext::CCC_ObjCProtocolName:
