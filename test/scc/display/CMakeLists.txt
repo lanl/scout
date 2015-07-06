@@ -52,6 +52,8 @@ project(scout_test_scc_display)
 
 # only run these tests if the $DISPLAY variable is set
 
+set_source_files_properties(plot-mesh.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
+
 # Note: By default we pull in all the .sc source files in this
 # directory for inclusion into the regression checks. 
 file(GLOB SC_SRCS *.sc) 
