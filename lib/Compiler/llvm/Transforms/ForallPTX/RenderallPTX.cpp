@@ -325,6 +325,9 @@ public:
 
         size_t scalarSize;
 
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wcovered-switch-default"
         switch(ElementKind(et)){
         case ElementKind::Int32:
         case ElementKind::Float:
@@ -337,6 +340,8 @@ public:
         default:
           assert(false && "invalid element kind");
         }
+#pragma clang diagnostic pop
+
 
         Value* elementSize = getInt32(scalarSize);
         Value* elementType = getInt8(et);

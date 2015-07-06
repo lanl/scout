@@ -2871,6 +2871,8 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
   EmitBlock(LoopExit.getBlock(), true);
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wcovered-switch-default"
 void CodeGenFunction::EmitScoutStmt(const ScoutStmt &S) {
   switch(S.kind()){
     case ScoutStmt::FrameCapture:
@@ -2883,6 +2885,7 @@ void CodeGenFunction::EmitScoutStmt(const ScoutStmt &S) {
       assert(false && "unhandled ScoutStmt");
   }
 }
+#pragma clang diagnostic pop
 
 void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
   using namespace std;
