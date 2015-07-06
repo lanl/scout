@@ -111,6 +111,8 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::StructuredMesh:
   case Decl::RectilinearMesh:
   case Decl::UnstructuredMesh:
+
+  case Decl::Frame:
     // None of these decls require codegen support.
     // SC_TODO : Is this really true in the big picture of DSL debugging?
     return;

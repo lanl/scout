@@ -7804,6 +7804,10 @@ def err_forall_non_vertices : Error<
      "calling mposition outside of forall vertices">; 
 def err_invalid_mesh_specifier : Error<
      "invalid mesh specifier">;
+     
+def err_forall_mesh_repeated_nesting : Error<
+    "repated mesh element found in nested forall construct">;
+
 def err_invalid_mposition_call : Error<
 "invalid mposition call: %0">;
 def err_invalid_plot_call : Error<

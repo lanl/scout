@@ -2509,10 +2509,10 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   llvm::VectorType* Int3Ty = llvm::VectorType::get(Int32Ty, 3);
   
   params = {llvm::PointerType::get(Int32Ty, 0),
-    llvm::PointerType::get(FloatTy, 0),
-    Int32Ty, Int32Ty,
-    Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int32Ty, FloatTy, FloatTy,
-    FloatTy, FloatTy, VoidPtrTy};
+            llvm::PointerType::get(FloatTy, 0),
+            Int32Ty, Int32Ty,
+            Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int32Ty, Int32Ty, FloatTy, FloatTy,
+            FloatTy, FloatTy, VoidPtrTy};
   
   llvm::Function* wrapperFunc =
   llvm::Function::Create(llvm::FunctionType::get(VoidTy, params, false),
@@ -2668,19 +2668,21 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   volrenData.push_back(fieldsMD);
   
   llvm::SmallVector<llvm::Metadata*, 16> vars;
-  for(VarDecl* vd : vs){
+  for(VarDecl* vd : vs) {
     llvm::Type* t = ConvertType(vd->getType());
     
-    size_t size;
-    if(t->isIntegerTy(32) ||
-       t->isFloatTy()){
-      size = 4;
-    }
-    else if(t->isIntegerTy(64) ||
-       t->isDoubleTy()){
-      size = 8;
-    }
+    size_t size = t->getPrimitiveSizeInBits() / 8;
+    assert(size != 0 && "size of non-primitive type requested -- fix this to be flexible!");
     
+    /*
+    if (t->isIntegerTy(32) || t->isFloatTy()) {
+      size = 4;
+    } else if(t->isIntegerTy(64) || t->isDoubleTy()) {
+      size = 8;
+    } else {
+
+    }
+    */
     llvm::SmallVector<llvm::Metadata*, 1> varData;
     varData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int32Ty, size)));
     

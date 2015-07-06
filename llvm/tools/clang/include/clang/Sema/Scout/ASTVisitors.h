@@ -129,6 +129,7 @@ namespace clang {
       
         // Push the invoking forall statement onto the nesting stack.
         forallStmts.push_back(fs_);
+        forallStmtMask = fs_->getMeshElementRef();
       }
 
       void VisitBinaryOperator(BinaryOperator* S);
@@ -144,8 +145,25 @@ namespace clang {
           // We are visiting a nested forall within the scope of our
           // originally invoked forall. Push this forall statement onto
           // the stack so we can use it to evaluate the nesting details
-          // within the sema checks. 
-          forallStmts.push_back(cast<ForallMeshStmt>(S));
+          // within the sema checks.
+          ForallMeshStmt *FMS = cast<ForallMeshStmt>(S);
+          forallStmts.push_back(FMS);
+          if ((forallStmtMask & FMS->getMeshElementRef()) != 0) {
+            // potential repeated mesh element in nested forall construct.
+            ForallStmtStack::iterator it = forallStmts.begin();
+            while(it != forallStmts.end()) {
+              // If the forall refers to the same mesh instance we'll flag it as an error.
+              if (FMS != (*it)) { // ensure we're not just talking to ourself  ;-) 
+                if ((*it)->getMeshInfo() == FMS->getMeshInfo()) {
+                  // same mesh info/instance over the same elements.
+                  sema_.Diag(FMS->getForAllLoc(), diag::err_forall_mesh_repeated_nesting);
+                }
+              }
+              ++it;
+            }
+          } else {
+            forallStmtMask |= FMS->getMeshElementRef();
+          }
         }
       
         VisitChildren(S);
@@ -180,7 +198,8 @@ namespace clang {
       // as well as other sema/analysis details. 
       typedef std::list<ForallMeshStmt*> ForallStmtStack;
       ForallStmtStack forallStmts;
-    
+      unsigned int forallStmtMask;  // Bitmask of forall element nested coverage.
+      
       bool meshAccess_;
       bool error_;
       bool isTask_;

@@ -2411,22 +2411,22 @@ class ForallMeshStmt : public ForallStmt {
 
  private:
   // The loop's reference element variable is an implicitly declared
-   // instance whose type matches that of the mesh location specified
-   // by the forall loop construct (for example, the reference variable
-   // is a cell in the case of a 'forall cells in mesh' statement).
-   // The  reference element is only accessible within the body of the
-   // 'forall' -- its value may not be changed within the loop.
-   IdentifierInfo* LoopRefVarInfo;
+  // instance whose type matches that of the mesh location specified
+  // by the forall loop construct (for example, the reference variable
+  // is a cell in the case of a 'forall cells in mesh' statement).
+  // The  reference element is only accessible within the body of the
+  // 'forall' -- its value may not be changed within the loop.
+  IdentifierInfo* LoopRefVarInfo;
 
-   // The loop's reference mesh variable is the mes that
-   // has been specified within the forall statement. We keep track
-   // of not only the mesh's identifier info but also the var decl.
-   // This is primarily the data gathered at parsing and during semantic
-   // checks -- it is useful to keep around for both analysis, optimization
-   // and codegen passes...
-   IdentifierInfo  *MeshRefVarInfo;
-   VarDecl         *MeshVarDecl;
-   VarDecl         *MeshQueryVarDecl;
+  // The loop's reference mesh variable is the mesh that
+  // has been specified within the forall statement. We keep track
+  // of not only the mesh's identifier info but also the var decl.
+  // This is primarily the data gathered at parsing and during semantic
+  // checks -- it is useful to keep around for both analysis, optimization
+  // and codegen passes...
+  IdentifierInfo  *MeshRefVarInfo;
+  VarDecl         *MeshVarDecl;
+  VarDecl         *MeshQueryVarDecl;
   
 
   // The mesh location/element we're looping over -- this provides us
