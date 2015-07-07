@@ -64,7 +64,7 @@ CMICmnLLDBDebuggerHandleEvents::~CMICmnLLDBDebuggerHandleEvents(void)
 }
 
 //++ ------------------------------------------------------------------------------------
-// Details: Initialize resources for *this broardcaster object.
+// Details: Initialize resources for *this broadcaster object.
 // Type:    Method.
 // Args:    None.
 // Return:  MIstatus::success - Functionality succeeded.
@@ -90,7 +90,7 @@ CMICmnLLDBDebuggerHandleEvents::Initialize(void)
 }
 
 //++ ------------------------------------------------------------------------------------
-// Details: Release resources for *this broardcaster object.
+// Details: Release resources for *this broadcaster object.
 // Type:    Method.
 // Args:    None.
 // Return:  MIstatus::success - Functionality succeeded.
@@ -112,7 +112,7 @@ CMICmnLLDBDebuggerHandleEvents::Shutdown(void)
 }
 
 //++ ------------------------------------------------------------------------------------
-// Details: Interpret the event object to asscertain the action to take or information to
+// Details: Interpret the event object to ascertain the action to take or information to
 //          to form and put in a MI Out-of-band record object which is given to stdout.
 // Type:    Method.
 // Args:    vEvent          - (R) An LLDB broadcast event.
@@ -169,7 +169,7 @@ CMICmnLLDBDebuggerHandleEvents::HandleEventSBProcess(const lldb::SBEvent &vEvent
 {
     bool bOk = MIstatus::success;
 
-    const MIchar *pEventType = "";
+    const char *pEventType = "";
     const MIuint nEventType = vEvent.GetType();
     switch (nEventType)
     {
@@ -216,7 +216,7 @@ CMICmnLLDBDebuggerHandleEvents::HandleEventSBBreakPoint(const lldb::SBEvent &vEv
 {
     bool bOk = MIstatus::success;
 
-    const MIchar *pEventType = "";
+    const char *pEventType = "";
     const lldb::BreakpointEventType eEvent = lldb::SBBreakpoint::GetBreakpointEventTypeFromEvent(vEvent);
     switch (eEvent)
     {
@@ -418,7 +418,7 @@ CMICmnLLDBDebuggerHandleEvents::HandleEventSBBreakpointAdded(const lldb::SBEvent
         sBrkPtInfo.m_strOrigLoc = CMIUtilString::Format("%s:%d", sBrkPtInfo.m_fileName.c_str(), sBrkPtInfo.m_nLine);
         sBrkPtInfo.m_nIgnore = brkPt.GetIgnoreCount();
         sBrkPtInfo.m_bPending = false;
-        const MIchar *pStrCondition = brkPt.GetCondition();
+        const char *pStrCondition = brkPt.GetCondition();
         sBrkPtInfo.m_bCondition = (pStrCondition != nullptr) ? true : false;
         sBrkPtInfo.m_strCondition = (pStrCondition != nullptr) ? pStrCondition : "??";
         sBrkPtInfo.m_bBrkPtThreadId = (brkPt.GetThreadID() != 0) ? true : false;
@@ -482,7 +482,7 @@ CMICmnLLDBDebuggerHandleEvents::HandleEventSBThread(const lldb::SBEvent &vEvent)
         return MIstatus::failure;
 
     bool bOk = MIstatus::success;
-    const MIchar *pEventType = "";
+    const char *pEventType = "";
     const MIuint nEventType = vEvent.GetType();
     switch (nEventType)
     {
@@ -584,7 +584,7 @@ CMICmnLLDBDebuggerHandleEvents::HandleEventSBTarget(const lldb::SBEvent &vEvent)
         return MIstatus::failure;
 
     bool bOk = MIstatus::success;
-    const MIchar *pEventType = "";
+    const char *pEventType = "";
     const MIuint nEventType = vEvent.GetType();
     switch (nEventType)
     {
@@ -749,7 +749,7 @@ CMICmnLLDBDebuggerHandleEvents::HandleEventSBCommandInterpreter(const lldb::SBEv
     // This function is not used
     // *** This function is under development
 
-    const MIchar *pEventType = "";
+    const char *pEventType = "";
     const MIuint nEventType = vEvent.GetType();
     switch (nEventType)
     {
@@ -829,7 +829,7 @@ CMICmnLLDBDebuggerHandleEvents::HandleProcessEventBroadcastBitStateChanged(const
     }
 
     bool bShouldBrk = true;
-    const MIchar *pEventType = "";
+    const char *pEventType = "";
     switch (eEventState)
     {
         case lldb::eStateUnloaded:
@@ -940,7 +940,7 @@ CMICmnLLDBDebuggerHandleEvents::HandleProcessEventStateStopped(const lldb::SBEve
     if (!UpdateSelectedThread())
         return MIstatus::failure;
 
-    const MIchar *pEventType = "";
+    const char *pEventType = "";
     bool bOk = MIstatus::success;
     lldb::SBProcess sbProcess = CMICmnLLDBDebugSessionInfo::Instance().GetProcess();
     const lldb::StopReason eStoppedReason = sbProcess.GetSelectedThread().GetStopReason();
@@ -1114,7 +1114,7 @@ CMICmnLLDBDebuggerHandleEvents::HandleProcessEventStopSignal(const lldb::SBEvent
         const CMICmnMIValueResult miValueResult("reason", miValueConst);
         CMICmnMIOutOfBandRecord miOutOfBandRecord(CMICmnMIOutOfBandRecord::eOutOfBand_Stopped, miValueResult);
         lldb::SBUnixSignals sbUnixSignals = sbProcess.GetUnixSignals();
-        const MIchar *pSignal = sbUnixSignals.GetSignalAsCString(nStopReason);
+        const char *pSignal = sbUnixSignals.GetSignalAsCString(nStopReason);
         if (pSignal)
         {
             const CMICmnMIValueConst miValueConst2(pSignal);

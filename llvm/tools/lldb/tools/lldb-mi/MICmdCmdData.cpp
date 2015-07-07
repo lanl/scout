@@ -265,7 +265,7 @@ CMICmdCmdDataEvaluateExpression::CreateSelf(void)
 // Throws:  None.
 //--
 bool
-CMICmdCmdDataEvaluateExpression::HaveInvalidCharacterInExpression(const CMIUtilString &vrExpr, MIchar &vrwInvalidChar)
+CMICmdCmdDataEvaluateExpression::HaveInvalidCharacterInExpression(const CMIUtilString &vrExpr, char &vrwInvalidChar)
 {
     static const std::string strInvalidCharacters(";#\\");
     const size_t nInvalidCharacterOffset = vrExpr.find_first_of(strInvalidCharacters);
@@ -403,20 +403,20 @@ CMICmdCmdDataDisassemble::Execute(void)
 
     for (size_t i = 0; i < nInstructions; i++)
     {
-        const MIchar *pUnknown = "??";
+        const char *pUnknown = "??";
         lldb::SBInstruction instrt = instructions.GetInstructionAtIndex(i);
-        const MIchar *pStrMnemonic = instrt.GetMnemonic(sbTarget);
+        const char *pStrMnemonic = instrt.GetMnemonic(sbTarget);
         pStrMnemonic = (pStrMnemonic != nullptr) ? pStrMnemonic : pUnknown;
-        const MIchar *pStrComment = instrt.GetComment(sbTarget);
+        const char *pStrComment = instrt.GetComment(sbTarget);
         CMIUtilString strComment;
         if (pStrComment != nullptr && *pStrComment != '\0')
             strComment = CMIUtilString::Format("; %s", pStrComment);
         lldb::SBAddress address = instrt.GetAddress();
         lldb::addr_t addr = address.GetLoadAddress(sbTarget);
-        const MIchar *pFnName = address.GetFunction().GetName();
+        const char *pFnName = address.GetFunction().GetName();
         pFnName = (pFnName != nullptr) ? pFnName : pUnknown;
         lldb::addr_t addrOffSet = address.GetOffset() - start_offset;
-        const MIchar *pStrOperands = instrt.GetOperands(sbTarget);
+        const char *pStrOperands = instrt.GetOperands(sbTarget);
         pStrOperands = (pStrOperands != nullptr) ? pStrOperands : pUnknown;
         const size_t instrtSize = instrt.GetByteSize();
 
@@ -441,7 +441,7 @@ CMICmdCmdDataDisassemble::Execute(void)
         {
             lldb::SBLineEntry lineEntry = address.GetLineEntry();
             const MIuint nLine = lineEntry.GetLine();
-            const MIchar *pFileName = lineEntry.GetFileSpec().GetFilename();
+            const char *pFileName = lineEntry.GetFileSpec().GetFilename();
             pFileName = (pFileName != nullptr) ? pFileName : pUnknown;
 
             // MI "src_and_asm_line={line=\"%u\",file=\"%s\",line_asm_insn=[ ]}"
@@ -660,7 +660,7 @@ CMICmdCmdDataReadMemoryBytes::Execute(void)
     nAddrStart += nAddrOffset;
     const MIuint64 nAddrNumBytes = pArgNumBytes->GetValue();
 
-    m_pBufferMemory = new MIuchar[nAddrNumBytes];
+    m_pBufferMemory = new unsigned char[nAddrNumBytes];
     if (m_pBufferMemory == nullptr)
     {
         SetError(CMIUtilString::Format(MIRSRC(IDS_CMD_ERR_MEMORY_ALLOC_FAILURE), m_cmdData.strMiCmd.c_str(), nAddrNumBytes));
@@ -1544,13 +1544,13 @@ CMICmdCmdDataWriteMemory::Execute(void)
     m_nCount = pArgNumber->GetValue();
     const MIuint64 nValue = pArgContents->GetValue();
 
-    m_pBufferMemory = new MIuchar[m_nCount];
+    m_pBufferMemory = new unsigned char[m_nCount];
     if (m_pBufferMemory == nullptr)
     {
         SetError(CMIUtilString::Format(MIRSRC(IDS_CMD_ERR_MEMORY_ALLOC_FAILURE), m_cmdData.strMiCmd.c_str(), m_nCount));
         return MIstatus::failure;
     }
-    *m_pBufferMemory = static_cast<MIchar>(nValue);
+    *m_pBufferMemory = static_cast<char>(nValue);
 
     CMICmnLLDBDebugSessionInfo &rSessionInfo(CMICmnLLDBDebugSessionInfo::Instance());
     lldb::SBProcess sbProcess = rSessionInfo.GetProcess();
@@ -1681,8 +1681,8 @@ CMICmdCmdDataInfoLine::Execute(void)
     }
     else
     {
-        const MIuint nLineStartPos = strLocation.rfind(':');
-        if ((nLineStartPos == (MIuint)std::string::npos) || (nLineStartPos == 0) || (nLineStartPos == strLocation.length() - 1))
+        const size_t nLineStartPos = strLocation.rfind(':');
+        if ((nLineStartPos == std::string::npos) || (nLineStartPos == 0) || (nLineStartPos == strLocation.length() - 1))
         {
             SetError(CMIUtilString::Format(MIRSRC(IDS_CMD_ERR_INVALID_LOCATION_FORMAT), m_cmdData.strMiCmd.c_str(), strLocation.c_str())
                          .c_str());
@@ -1739,9 +1739,9 @@ CMICmdCmdDataInfoLine::Acknowledge(void)
 
             // LineEntry: \[0x0000000100000f37-0x0000000100000f45\): /path/to/file:3[:1]
             // ^^^^^^^^^ -- property
-            const MIuint nPropertyStartPos = rLine.find_first_not_of(' ');
-            const MIuint nPropertyEndPos = rLine.find(':');
-            const MIuint nPropertyLen = nPropertyEndPos - nPropertyStartPos;
+            const size_t nPropertyStartPos = rLine.find_first_not_of(' ');
+            const size_t nPropertyEndPos = rLine.find(':');
+            const size_t nPropertyLen = nPropertyEndPos - nPropertyStartPos;
             const CMIUtilString strProperty(rLine.substr(nPropertyStartPos, nPropertyLen).c_str());
 
             // Skip all except LineEntry
@@ -1750,9 +1750,9 @@ CMICmdCmdDataInfoLine::Acknowledge(void)
 
             // LineEntry: \[0x0000000100000f37-0x0000000100000f45\): /path/to/file:3[:1]
             //              ^^^^^^^^^^^^^^^^^^ -- start address
-            const MIuint nStartAddressStartPos = rLine.find("[");
-            const MIuint nStartAddressEndPos = rLine.find("-");
-            const MIuint nStartAddressLen = nStartAddressEndPos - nStartAddressStartPos - 1;
+            const size_t nStartAddressStartPos = rLine.find('[');
+            const size_t nStartAddressEndPos = rLine.find('-');
+            const size_t nStartAddressLen = nStartAddressEndPos - nStartAddressStartPos - 1;
             const CMIUtilString strStartAddress(rLine.substr(nStartAddressStartPos + 1, nStartAddressLen).c_str());
             const CMICmnMIValueConst miValueConst(strStartAddress);
             const CMICmnMIValueResult miValueResult("start", miValueConst);
@@ -1760,8 +1760,8 @@ CMICmdCmdDataInfoLine::Acknowledge(void)
 
             // LineEntry: \[0x0000000100000f37-0x0000000100000f45\): /path/to/file:3[:1]
             //                                 ^^^^^^^^^^^^^^^^^^ -- end address
-            const MIuint nEndAddressEndPos = rLine.find(")");
-            const MIuint nEndAddressLen = nEndAddressEndPos - nStartAddressEndPos - 1;
+            const size_t nEndAddressEndPos = rLine.find(')');
+            const size_t nEndAddressLen = nEndAddressEndPos - nStartAddressEndPos - 1;
             const CMIUtilString strEndAddress(rLine.substr(nStartAddressEndPos + 1, nEndAddressLen).c_str());
             const CMICmnMIValueConst miValueConst2(strEndAddress);
             const CMICmnMIValueResult miValueResult2("end", miValueConst2);
@@ -1773,11 +1773,11 @@ CMICmdCmdDataInfoLine::Acknowledge(void)
             //                                                       ^^^^^^^^^^^^^ -- file
             //                                                                     ^ -- line
             //                                                                        ^ -- column (optional)
-            const MIuint nFileStartPos = rLine.find_first_not_of(' ', nEndAddressEndPos + 2);
-            const MIuint nFileOrLineEndPos = rLine.rfind(':');
-            const MIuint nFileOrLineStartPos = rLine.rfind(':', nFileOrLineEndPos - 1);
-            const MIuint nFileEndPos = nFileStartPos < nFileOrLineStartPos ? nFileOrLineStartPos : nFileOrLineEndPos;
-            const MIuint nFileLen = nFileEndPos - nFileStartPos;
+            const size_t nFileStartPos = rLine.find_first_not_of(' ', nEndAddressEndPos + 2);
+            const size_t nFileOrLineEndPos = rLine.rfind(':');
+            const size_t nFileOrLineStartPos = rLine.rfind(':', nFileOrLineEndPos - 1);
+            const size_t nFileEndPos = nFileStartPos < nFileOrLineStartPos ? nFileOrLineStartPos : nFileOrLineEndPos;
+            const size_t nFileLen = nFileEndPos - nFileStartPos;
             const CMIUtilString strFile(rLine.substr(nFileStartPos, nFileLen).c_str());
             const CMICmnMIValueConst miValueConst3(strFile);
             const CMICmnMIValueResult miValueResult3("file", miValueConst3);
@@ -1787,10 +1787,10 @@ CMICmdCmdDataInfoLine::Acknowledge(void)
 
             // LineEntry: \[0x0000000100000f37-0x0000000100000f45\): /path/to/file:3[:1]
             //                                                                     ^ -- line
-            const MIuint nLineStartPos = nFileEndPos + 1;
-            const MIuint nLineEndPos = rLine.find(':', nLineStartPos);
-            const MIuint nLineLen = nLineEndPos != (MIuint)std::string::npos ? nLineEndPos - nLineStartPos - 1
-                                                                             : (MIuint)std::string::npos;
+            const size_t nLineStartPos = nFileEndPos + 1;
+            const size_t nLineEndPos = rLine.find(':', nLineStartPos);
+            const size_t nLineLen = nLineEndPos != std::string::npos ? nLineEndPos - nLineStartPos - 1
+                                                                     : std::string::npos;
             const CMIUtilString strLine(rLine.substr(nLineStartPos, nLineLen).c_str());
             const CMICmnMIValueConst miValueConst4(strLine);
             const CMICmnMIValueResult miValueResult4("line", miValueConst4);

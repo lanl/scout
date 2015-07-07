@@ -27,11 +27,11 @@
 #include "lldb/Core/ThreadSafeValue.h"
 #include "lldb/Host/HostThread.h"
 #include "lldb/lldb-private-forward.h"
+#include "lldb/Utility/StringExtractor.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Thread.h"
 
 #include "GDBRemoteCommunicationClient.h"
-#include "Utility/StringExtractor.h"
 #include "GDBRemoteRegisterContext.h"
 
 namespace lldb_private {
@@ -329,6 +329,9 @@ protected:
     bool
     CalculateThreadStopInfo (ThreadGDBRemote *thread);
 
+    size_t
+    UpdateThreadIDsFromStopReplyThreadsValue (std::string &value);
+
     //------------------------------------------------------------------
     /// Broadcaster event bits definitions.
     //------------------------------------------------------------------
@@ -402,7 +405,11 @@ protected:
                        const std::string &description,
                        uint32_t exc_type,
                        const std::vector<lldb::addr_t> &exc_data,
-                       lldb::addr_t thread_dispatch_qaddr);
+                       lldb::addr_t thread_dispatch_qaddr,
+                       bool queue_vars_valid,
+                       std::string &queue_name,
+                       lldb::QueueKind queue_kind,
+                       uint64_t queue_serial);
 
     void
     HandleStopReplySequence ();

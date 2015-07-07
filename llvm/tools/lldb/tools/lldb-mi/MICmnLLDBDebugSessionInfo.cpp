@@ -231,7 +231,7 @@ CMICmnLLDBDebugSessionInfo::GetThreadFrames(const SMICmdData &vCmdData, const MI
     // MI print
     // "frame={level=\"%d\",addr=\"0x%016" PRIx64 "\",func=\"%s\",args=[%s],file=\"%s\",fullname=\"%s\",line=\"%d\"},frame={level=\"%d\",addr=\"0x%016" PRIx64 "\",func=\"%s\",args=[%s],file=\"%s\",fullname=\"%s\",line=\"%d\"},
     // ..."
-    CMIUtilString strListCommaSeperated;
+    CMIUtilString strListCommaSeparated;
     for (MIuint nLevel = 0; nLevel < nFrames; nLevel++)
     {
         CMICmnMIValueTuple miValueTuple;
@@ -240,11 +240,11 @@ CMICmnLLDBDebugSessionInfo::GetThreadFrames(const SMICmdData &vCmdData, const MI
 
         const CMICmnMIValueResult miValueResult2("frame", miValueTuple);
         if (nLevel != 0)
-            strListCommaSeperated += ",";
-        strListCommaSeperated += miValueResult2.GetString();
+            strListCommaSeparated += ",";
+        strListCommaSeparated += miValueResult2.GetString();
     }
 
-    vwrThreadFrames = strListCommaSeperated;
+    vwrThreadFrames = strListCommaSeparated;
 
     return MIstatus::success;
 }
@@ -380,11 +380,11 @@ CMICmnLLDBDebugSessionInfo::MIResponseFormThreadInfo(const SMICmdData &vCmdData,
         return MIstatus::failure;
 
     // Add "target-id"
-    const MIchar *pThreadName = rThread.GetName();
+    const char *pThreadName = rThread.GetName();
     const MIuint len = (pThreadName != nullptr) ? CMIUtilString(pThreadName).length() : 0;
     const bool bHaveName = ((pThreadName != nullptr) && (len > 0) && (len < 32) &&
-                            CMIUtilString::IsAllValidAlphaAndNumeric(*pThreadName)); // 32 is arbitary number
-    const MIchar *pThrdFmt = bHaveName ? "%s" : "Thread %d";
+                            CMIUtilString::IsAllValidAlphaAndNumeric(pThreadName)); // 32 is arbitrary number
+    const char *pThrdFmt = bHaveName ? "%s" : "Thread %d";
     CMIUtilString strThread;
     if (bHaveName)
         strThread = CMIUtilString::Format(pThrdFmt, pThreadName);
@@ -523,7 +523,7 @@ CMICmnLLDBDebugSessionInfo::MIResponseForVariableInfoInternal(const VariableInfo
 // Args:    vrValue         - (R)  LLDB value object.
 //          vbInSimpleForm  - (R)  True = Get variable info in simple form (i.e. don't expand aggregates).
 //                          -      False = Get variable info (and expand aggregates if any).
-//          vwrStrValue  t  - (W)  The string representatin of this value.
+//          vwrStrValue  t  - (W)  The string representation of this value.
 // Return:  MIstatus::success - Functional succeeded.
 //          MIstatus::failure - Functional failed.
 // Throws:  None.
@@ -635,17 +635,17 @@ CMICmnLLDBDebugSessionInfo::GetFrameInfo(const lldb::SBFrame &vrFrame, lldb::add
     const MIuint nBytes = rFrame.GetLineEntry().GetFileSpec().GetPath(&pBuffer[0], sizeof(pBuffer));
     MIunused(nBytes);
     CMIUtilString strResolvedPath(&pBuffer[0]);
-    const MIchar *pUnkwn = "??";
+    const char *pUnkwn = "??";
     if (!ResolvePath(pUnkwn, strResolvedPath))
         return MIstatus::failure;
     vwPath = strResolvedPath;
 
     vwPc = rFrame.GetPC();
 
-    const MIchar *pFnName = rFrame.GetFunctionName();
+    const char *pFnName = rFrame.GetFunctionName();
     vwFnName = (pFnName != nullptr) ? pFnName : pUnkwn;
 
-    const MIchar *pFileName = rFrame.GetLineEntry().GetFileSpec().GetFilename();
+    const char *pFileName = rFrame.GetLineEntry().GetFileSpec().GetFilename();
     vwFileName = (pFileName != nullptr) ? pFileName : pUnkwn;
 
     vwnLine = rFrame.GetLineEntry().GetLine();
@@ -801,13 +801,13 @@ CMICmnLLDBDebugSessionInfo::GetBrkPtInfo(const lldb::SBBreakpoint &vBrkPt, SBrkP
     lldb::SBBreakpointLocation brkPtLoc = rBrkPt.GetLocationAtIndex(0);
     lldb::SBAddress brkPtAddr = brkPtLoc.GetAddress();
     lldb::SBSymbolContext symbolCntxt = brkPtAddr.GetSymbolContext(lldb::eSymbolContextEverything);
-    const MIchar *pUnkwn = "??";
+    const char *pUnkwn = "??";
     lldb::SBModule rModule = symbolCntxt.GetModule();
-    const MIchar *pModule = rModule.IsValid() ? rModule.GetFileSpec().GetFilename() : pUnkwn;
+    const char *pModule = rModule.IsValid() ? rModule.GetFileSpec().GetFilename() : pUnkwn;
     MIunused(pModule);
-    const MIchar *pFile = pUnkwn;
-    const MIchar *pFn = pUnkwn;
-    const MIchar *pFilePath = pUnkwn;
+    const char *pFile = pUnkwn;
+    const char *pFn = pUnkwn;
+    const char *pFilePath = pUnkwn;
     size_t nLine = 0;
     lldb::addr_t nAddr = brkPtAddr.GetLoadAddress(GetTarget());
     if (nAddr == LLDB_INVALID_ADDRESS)

@@ -153,8 +153,8 @@ bool
 CMICmdInterpreter::MiHasCmdTokenEndingHyphen(const CMIUtilString &vTextLine)
 {
     // The hyphen is mandatory
-    const MIint nPos = vTextLine.find("-", 0);
-    if ((nPos == (MIint)std::string::npos))
+    const size_t nPos = vTextLine.find('-', 0);
+    if ((nPos == std::string::npos))
         return false;
 
     if (MiHasCmdTokenPresent(vTextLine))
@@ -186,7 +186,7 @@ CMICmdInterpreter::MiHasCmdTokenEndingHyphen(const CMIUtilString &vTextLine)
 bool
 CMICmdInterpreter::MiHasCmdTokenEndingAlpha(const CMIUtilString &vTextLine)
 {
-    MIchar cChar = vTextLine[0];
+    char cChar = vTextLine[0];
     MIuint i = 0;
     while (::isdigit(cChar) != 0)
     {
@@ -215,7 +215,7 @@ CMICmdInterpreter::MiHasCmdTokenEndingAlpha(const CMIUtilString &vTextLine)
 bool
 CMICmdInterpreter::MiHasCmdTokenPresent(const CMIUtilString &vTextLine)
 {
-    const MIint nPos = vTextLine.find("-", 0);
+    const size_t nPos = vTextLine.find('-', 0);
     return (nPos > 0);
 }
 
@@ -233,11 +233,11 @@ CMICmdInterpreter::MiHasCmdTokenPresent(const CMIUtilString &vTextLine)
 bool
 CMICmdInterpreter::MiHasCmd(const CMIUtilString &vTextLine)
 {
-    MIint nPos = 0;
+    size_t nPos = 0;
     if (m_miCmdData.bMIOldStyle)
     {
         char cChar = vTextLine[0];
-        MIuint i = 0;
+        size_t i = 0;
         while (::isdigit(cChar) != 0)
         {
             cChar = vTextLine[++i];
@@ -246,13 +246,13 @@ CMICmdInterpreter::MiHasCmd(const CMIUtilString &vTextLine)
     }
     else
     {
-        nPos = vTextLine.find("-", 0);
+        nPos = vTextLine.find('-', 0);
     }
 
     bool bFoundCmd = false;
-    const MIint nLen = vTextLine.length();
-    const MIint nPos2 = vTextLine.find(" ", nPos);
-    if (nPos2 != (MIint)std::string::npos)
+    const size_t nLen = vTextLine.length();
+    const size_t nPos2 = vTextLine.find(' ', nPos);
+    if (nPos2 != std::string::npos)
     {
         if (nPos2 == nLen)
             return false;
