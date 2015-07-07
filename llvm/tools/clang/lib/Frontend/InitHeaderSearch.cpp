@@ -205,8 +205,9 @@ void InitHeaderSearch::AddMinGWCPlusPlusIncludePaths(StringRef Base,
           CXXSystem, false);
 }
 
-void InitHeaderSearch::AddDefaultCIncludePaths(const llvm::Triple &triple,
-                                            const HeaderSearchOptions &HSOpts) {
+void InitHeaderSearch::AddDefaultCIncludePaths(const LangOptions &Lang,
+                                               const llvm::Triple &triple,
+                                               const HeaderSearchOptions &HSOpts) {
   llvm::Triple::OSType os = triple.getOS();
 
   if (HSOpts.UseStandardSystemIncludes) {
