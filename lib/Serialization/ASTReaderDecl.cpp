@@ -350,8 +350,11 @@ namespace clang {
                               RedeclarableTemplateDecl *Existing,
                               DeclID DsID);
 
+    ObjCTypeParamList *ReadObjCTypeParamList();
+
     // FIXME: Reorder according to DeclNodes.td?
     void VisitObjCMethodDecl(ObjCMethodDecl *D);
+    void VisitObjCTypeParamDecl(ObjCTypeParamDecl *D);
     void VisitObjCContainerDecl(ObjCContainerDecl *D);
     void VisitObjCInterfaceDecl(ObjCInterfaceDecl *D);
     void VisitObjCIvarDecl(ObjCIvarDecl *D);
@@ -810,14 +813,14 @@ void ASTDeclReader::VisitFunctionDecl(FunctionDecl *FD) {
       FunctionTemplateSpecializationInfo::Profile(ID, TemplArgs, C);
       void *InsertPos = nullptr;
       FunctionTemplateDecl::Common *CommonPtr = CanonTemplate->getCommonPtr();
-      CommonPtr->Specializations.FindNodeOrInsertPos(ID, InsertPos);
+      FunctionTemplateSpecializationInfo *ExistingInfo =
+          CommonPtr->Specializations.FindNodeOrInsertPos(ID, InsertPos);
       if (InsertPos)
         CommonPtr->Specializations.InsertNode(FTInfo, InsertPos);
       else {
         assert(Reader.getContext().getLangOpts().Modules &&
                "already deserialized this template specialization");
-        // FIXME: This specialization is a redeclaration of one from another
-        // module. Merge it.
+        mergeRedeclarable(FD, ExistingInfo->Function, Redecl);
       }
     }
     break;
@@ -839,8 +842,8 @@ void ASTDeclReader::VisitFunctionDecl(FunctionDecl *FD) {
     
     FD->setDependentTemplateSpecialization(Reader.getContext(),
                                            TemplDecls, TemplArgs);
-
-    // FIXME: Merging.
+    // These are not merged; we don't need to merge redeclarations of dependent
+    // template friends.
     break;
   }
   }
@@ -899,10 +902,40 @@ void ASTDeclReader::VisitObjCMethodDecl(ObjCMethodDecl *MD) {
   MD->setParamsAndSelLocs(Reader.getContext(), Params, SelLocs);
 }
 
+void ASTDeclReader::VisitObjCTypeParamDecl(ObjCTypeParamDecl *D) {
+  VisitTypedefNameDecl(D);
+  D->Variance = Record[Idx++];
+  D->Index = Record[Idx++];
+  D->VarianceLoc = ReadSourceLocation(Record, Idx);
+  D->ColonLoc = ReadSourceLocation(Record, Idx);
+}
+
 void ASTDeclReader::VisitObjCContainerDecl(ObjCContainerDecl *CD) {
   VisitNamedDecl(CD);
   CD->setAtStartLoc(ReadSourceLocation(Record, Idx));
   CD->setAtEndRange(ReadSourceRange(Record, Idx));
+}
+
+ObjCTypeParamList *ASTDeclReader::ReadObjCTypeParamList() {
+  unsigned numParams = Record[Idx++];
+  if (numParams == 0)
+    return nullptr;
+
+  SmallVector<ObjCTypeParamDecl *, 4> typeParams;
+  typeParams.reserve(numParams);
+  for (unsigned i = 0; i != numParams; ++i) {
+    auto typeParam = ReadDeclAs<ObjCTypeParamDecl>(Record, Idx);
+    if (!typeParam)
+      return nullptr;
+
+    typeParams.push_back(typeParam);
+  }
+
+  SourceLocation lAngleLoc = ReadSourceLocation(Record, Idx);
+  SourceLocation rAngleLoc = ReadSourceLocation(Record, Idx);
+
+  return ObjCTypeParamList::create(Reader.getContext(), lAngleLoc,
+                                   typeParams, rAngleLoc);
 }
 
 void ASTDeclReader::VisitObjCInterfaceDecl(ObjCInterfaceDecl *ID) {
@@ -910,7 +943,8 @@ void ASTDeclReader::VisitObjCInterfaceDecl(ObjCInterfaceDecl *ID) {
   VisitObjCContainerDecl(ID);
   TypeIDForTypeDecl = Reader.getGlobalTypeID(F, Record[Idx++]);
   mergeRedeclarable(ID, Redecl);
-  
+
+  ID->TypeParamList = ReadObjCTypeParamList();
   if (Record[Idx++]) {
     // Read the definition.
     ID->allocateDefinitionData();
@@ -922,8 +956,7 @@ void ASTDeclReader::VisitObjCInterfaceDecl(ObjCInterfaceDecl *ID) {
     ObjCInterfaceDecl::DefinitionData &Data = ID->data();
     
     // Read the superclass.
-    Data.SuperClass = ReadDeclAs<ObjCInterfaceDecl>(Record, Idx);
-    Data.SuperClassLoc = ReadSourceLocation(Record, Idx);
+    Data.SuperClassTInfo = GetTypeSourceInfo(Record, Idx);
 
     Data.EndLoc = ReadSourceLocation(Record, Idx);
     Data.HasDesignatedInitializers = Record[Idx++];
@@ -1020,6 +1053,7 @@ void ASTDeclReader::VisitObjCCategoryDecl(ObjCCategoryDecl *CD) {
   Reader.CategoriesDeserialized.insert(CD);
 
   CD->ClassInterface = ReadDeclAs<ObjCInterfaceDecl>(Record, Idx);
+  CD->TypeParamList = ReadObjCTypeParamList();
   unsigned NumProtoRefs = Record[Idx++];
   SmallVector<ObjCProtocolDecl *, 16> ProtoRefs;
   ProtoRefs.reserve(NumProtoRefs);
@@ -1045,12 +1079,10 @@ void ASTDeclReader::VisitObjCPropertyDecl(ObjCPropertyDecl *D) {
   QualType T = Reader.readType(F, Record, Idx);
   TypeSourceInfo *TSI = GetTypeSourceInfo(Record, Idx);
   D->setType(T, TSI);
-  // FIXME: stable encoding
   D->setPropertyAttributes(
                       (ObjCPropertyDecl::PropertyAttributeKind)Record[Idx++]);
   D->setPropertyAttributesAsWritten(
                       (ObjCPropertyDecl::PropertyAttributeKind)Record[Idx++]);
-  // FIXME: stable encoding
   D->setPropertyImplementation(
                             (ObjCPropertyDecl::PropertyControl)Record[Idx++]);
   D->setGetterName(Reader.ReadDeclarationName(F,Record, Idx).getObjCSelector());
@@ -1767,9 +1799,6 @@ DeclID ASTDeclReader::VisitTemplateDecl(TemplateDecl *D) {
   TemplateParameterList* TemplateParams
       = Reader.ReadTemplateParameterList(F, Record, Idx); 
   D->init(TemplatedDecl, TemplateParams);
-
-  // FIXME: If this is a redeclaration of a template from another module, handle
-  // inheritance of default template arguments.
 
   return PatternID;
 }
@@ -2622,7 +2651,6 @@ static bool isSameEntity(NamedDecl *X, NamedDecl *Y) {
     return NAX->getNamespace()->Equals(NAY->getNamespace());
   }
 
-  // FIXME: Many other cases to implement.
   return false;
 }
 
@@ -2771,9 +2799,6 @@ ASTDeclReader::FindExistingResult ASTDeclReader::findExisting(NamedDecl *D) {
     Result.suppress();
     return Result;
   }
-
-  // FIXME: Bail out for non-canonical declarations. We will have performed any
-  // necessary merging already.
 
   DeclContext *DC = D->getDeclContext()->getRedeclContext();
   if (TypedefNameForLinkage) {
@@ -3267,6 +3292,9 @@ Decl *ASTReader::ReadDeclRecord(DeclID ID) {
     break;
   case DECL_EMPTY:
     D = EmptyDecl::CreateDeserialized(Context, ID);
+    break;
+  case DECL_OBJC_TYPE_PARAM:
+    D = ObjCTypeParamDecl::CreateDeserialized(Context, ID);
     break;
   }
 

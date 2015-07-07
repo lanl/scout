@@ -3154,10 +3154,10 @@ bool Expr::HasSideEffects(const ASTContext &Ctx,
   }
 
   // Recurse to children.
-  for (const_child_range SubStmts = children(); SubStmts; ++SubStmts)
-    if (const Stmt *S = *SubStmts)
-      if (cast<Expr>(S)->HasSideEffects(Ctx, IncludePossibleEffects))
-        return true;
+  for (const Stmt *SubStmt : children())
+    if (SubStmt &&
+        cast<Expr>(SubStmt)->HasSideEffects(Ctx, IncludePossibleEffects))
+      return true;
 
   return false;
 }
@@ -3746,6 +3746,16 @@ ObjCInterfaceDecl *ObjCMessageExpr::getReceiverInterface() const {
     return Ty->getInterface();
 
   return nullptr;
+}
+
+QualType ObjCPropertyRefExpr::getReceiverType(const ASTContext &ctx) const {
+  if (isClassReceiver())
+    return ctx.getObjCInterfaceType(getClassReceiver());
+
+  if (isSuperReceiver())
+    return getSuperReceiverType();
+
+  return getBase()->getType();
 }
 
 StringRef ObjCBridgedCastExpr::getBridgeKindName() const {

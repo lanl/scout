@@ -503,6 +503,9 @@ ALIAS("read_write", __read_write    , KEYOPENCL)
 KEYWORD(__builtin_astype            , KEYOPENCL)
 KEYWORD(vec_step                    , KEYOPENCL|KEYALTIVEC)
 
+// OpenMP Type Traits
+KEYWORD(__builtin_omp_required_simd_align, KEYALL)
+
 // Borland Extensions.
 KEYWORD(__pascal                    , KEYALL)
 
@@ -522,6 +525,11 @@ KEYWORD(__bridge                     , KEYARC)
 KEYWORD(__bridge_transfer            , KEYARC)
 KEYWORD(__bridge_retained            , KEYARC)
 KEYWORD(__bridge_retain              , KEYARC)
+
+// Objective-C keywords.
+KEYWORD(__covariant                  , KEYOBJC2)
+KEYWORD(__contravariant              , KEYOBJC2)
+KEYWORD(__kindof                     , KEYOBJC2)
 
 // Alternate spelling for various tokens.  There are GCC extensions in all
 // languages, but should not be disabled in strict conformance mode.

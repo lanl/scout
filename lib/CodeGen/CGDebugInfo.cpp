@@ -27,6 +27,8 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/Version.h"
 #include "clang/Frontend/CodeGenOptions.h"
+#include "clang/Lex/HeaderSearchOptions.h"
+#include "clang/Lex/PreprocessorOptions.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Constants.h"
@@ -703,9 +705,6 @@ llvm::DIType *CGDebugInfo::getOrCreateStructPtrType(StringRef Name,
 
 llvm::DIType *CGDebugInfo::CreateType(const BlockPointerType *Ty,
                                       llvm::DIFile *Unit) {
-  if (BlockLiteralGeneric)
-    return BlockLiteralGeneric;
-
   SmallVector<llvm::Metadata *, 8> EltTys;
   QualType FType;
   uint64_t FieldSize, FieldOffset;
@@ -721,10 +720,10 @@ llvm::DIType *CGDebugInfo::CreateType(const BlockPointerType *Ty,
   EltTys.clear();
 
   unsigned Flags = llvm::DINode::FlagAppleBlock;
-  unsigned LineNo = getLineNumber(CurLoc);
+  unsigned LineNo = 0;
 
   auto *EltTy =
-      DBuilder.createStructType(Unit, "__block_descriptor", Unit, LineNo,
+      DBuilder.createStructType(Unit, "__block_descriptor", nullptr, LineNo,
                                 FieldOffset, 0, Flags, nullptr, Elements);
 
   // Bit size, align and offset of the type.
@@ -744,19 +743,22 @@ llvm::DIType *CGDebugInfo::CreateType(const BlockPointerType *Ty,
   FType = CGM.getContext().getPointerType(CGM.getContext().VoidTy);
   FieldSize = CGM.getContext().getTypeSize(Ty);
   FieldAlign = CGM.getContext().getTypeAlign(Ty);
-  EltTys.push_back(DBuilder.createMemberType(Unit, "__descriptor", Unit, LineNo,
+  EltTys.push_back(DBuilder.createMemberType(Unit, "__descriptor", nullptr, LineNo,
                                              FieldSize, FieldAlign, FieldOffset,
                                              0, DescTy));
 
   FieldOffset += FieldSize;
   Elements = DBuilder.getOrCreateArray(EltTys);
 
+  // The __block_literal_generic structs are marked with a special
+  // DW_AT_APPLE_BLOCK attribute and are an implementation detail only
+  // the debugger needs to know about. To allow type uniquing, emit
+  // them without a name or a location.
   EltTy =
-      DBuilder.createStructType(Unit, "__block_literal_generic", Unit, LineNo,
+      DBuilder.createStructType(Unit, "", nullptr, LineNo,
                                 FieldOffset, 0, Flags, nullptr, Elements);
 
-  BlockLiteralGeneric = DBuilder.createPointerType(EltTy, Size);
-  return BlockLiteralGeneric;
+  return DBuilder.createPointerType(EltTy, Size);
 }
 
 llvm::DIType *CGDebugInfo::CreateType(const TemplateSpecializationType *Ty,
@@ -1659,6 +1661,47 @@ llvm::DIType *CGDebugInfo::CreateType(const ObjCInterfaceType *Ty,
   }
 
   return CreateTypeDefinition(Ty, Unit);
+}
+
+llvm::DIModule *
+CGDebugInfo::getOrCreateModuleRef(ExternalASTSource::ASTSourceDescriptor Mod) {
+  auto it = ModuleRefCache.find(Mod.Signature);
+  if (it != ModuleRefCache.end())
+    return it->second;
+
+  // Macro definitions that were defined with "-D" on the command line.
+  SmallString<128> ConfigMacros;
+  {
+    llvm::raw_svector_ostream OS(ConfigMacros);
+    const auto &PPOpts = CGM.getPreprocessorOpts();
+    unsigned I = 0;
+    // Translate the macro definitions back into a commmand line.
+    for (auto &M : PPOpts.Macros) {
+      if (++I > 1)
+        OS << " ";
+      const std::string &Macro = M.first;
+      bool Undef = M.second;
+      OS << "\"-" << (Undef ? 'U' : 'D');
+      for (char c : Macro)
+        switch (c) {
+        case '\\' : OS << "\\\\"; break;
+        case '"'  : OS << "\\\""; break;
+        default: OS << c;
+        }
+      OS << '\"';
+    }
+  }
+  llvm::DIBuilder DIB(CGM.getModule());
+  auto *CU = DIB.createCompileUnit(
+      TheCU->getSourceLanguage(), internString(Mod.ModuleName),
+      internString(Mod.Path), TheCU->getProducer(), true, StringRef(), 0,
+      internString(Mod.ASTFile), llvm::DIBuilder::FullDebug, Mod.Signature);
+  llvm::DIModule *ModuleRef =
+      DIB.createModule(CU, Mod.ModuleName, ConfigMacros, internString(Mod.Path),
+                       internString(CGM.getHeaderSearchOpts().Sysroot));
+  DIB.finalize();
+  ModuleRefCache.insert(std::make_pair(Mod.Signature, ModuleRef));
+  return ModuleRef;
 }
 
 llvm::DIType *CGDebugInfo::CreateTypeDefinition(const ObjCInterfaceType *Ty,
@@ -3302,6 +3345,15 @@ void CGDebugInfo::EmitUsingDecl(const UsingDecl &UD) {
     DBuilder.createImportedDeclaration(
         getCurrentContextDescriptor(cast<Decl>(USD.getDeclContext())), Target,
         getLineNumber(USD.getLocation()));
+}
+
+void CGDebugInfo::EmitImportDecl(const ImportDecl &ID) {
+  auto *Reader = CGM.getContext().getExternalSource();
+  auto Info = Reader->getSourceDescriptor(*ID.getImportedModule());
+  DBuilder.createImportedDeclaration(
+    getCurrentContextDescriptor(cast<Decl>(ID.getDeclContext())),
+                                getOrCreateModuleRef(Info),
+                                getLineNumber(ID.getLocation()));
 }
 
 llvm::DIImportedEntity *

@@ -112,7 +112,7 @@ private:
 ///
 /// FIXME: Do we want to support this now that we have bind()?
 template <typename T>
-internal::Matcher<T> id(const std::string &ID,
+internal::Matcher<T> id(StringRef ID,
                         const internal::BindableMatcher<T> &InnerMatcher) {
   return InnerMatcher.bind(ID);
 }
@@ -2526,6 +2526,23 @@ AST_MATCHER_P2(DeclStmt, containsDeclaration, unsigned, N,
   DeclStmt::const_decl_iterator Iterator = Node.decl_begin();
   std::advance(Iterator, N);
   return InnerMatcher.matches(**Iterator, Finder, Builder);
+}
+
+/// \brief Matches a C++ catch statement that has a catch-all handler.
+///
+/// Given
+/// \code
+///   try {
+///     // ...
+///   } catch (int) {
+///     // ...
+///   } catch (...) {
+///     // ...
+///   }
+/// /endcode
+/// catchStmt(isCatchAll()) matches catch(...) but not catch(int).
+AST_MATCHER(CXXCatchStmt, isCatchAll) {
+  return Node.getExceptionDecl() == nullptr;
 }
 
 /// \brief Matches a constructor initializer.
