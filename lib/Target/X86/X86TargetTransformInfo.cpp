@@ -117,6 +117,8 @@ unsigned X86TTIImpl::getArithmeticInstrCost(
 
   static const CostTblEntry<MVT::SimpleValueType>
   AVX2UniformConstCostTable[] = {
+    { ISD::SRA,  MVT::v4i64,   4 }, // 2 x psrad + shuffle.
+
     { ISD::SDIV, MVT::v16i16,  6 }, // vpmulhw sequence
     { ISD::UDIV, MVT::v16i16,  6 }, // vpmulhuw sequence
     { ISD::SDIV, MVT::v8i32,  15 }, // vpmuldq sequence
@@ -211,6 +213,7 @@ unsigned X86TTIImpl::getArithmeticInstrCost(
     { ISD::SRA,  MVT::v16i8,  4 }, // psrlw, pand, pxor, psubb.
     { ISD::SRA,  MVT::v8i16,  1 }, // psraw.
     { ISD::SRA,  MVT::v4i32,  1 }, // psrad.
+    { ISD::SRA,  MVT::v2i64,  4 }, // 2 x psrad + shuffle.
 
     { ISD::SDIV, MVT::v8i16,  6 }, // pmulhw sequence
     { ISD::UDIV, MVT::v8i16,  6 }, // pmulhuw sequence
@@ -1130,3 +1133,18 @@ bool X86TTIImpl::isLegalMaskedStore(Type *DataType, int Consecutive) {
   return isLegalMaskedLoad(DataType, Consecutive);
 }
 
+bool X86TTIImpl::hasCompatibleFunctionAttributes(const Function *Caller,
+                                                 const Function *Callee) const {
+  const TargetMachine &TM = getTLI()->getTargetMachine();
+
+  // Work this as a subsetting of subtarget features.
+  const FeatureBitset &CallerBits =
+      TM.getSubtargetImpl(*Caller)->getFeatureBits();
+  const FeatureBitset &CalleeBits =
+      TM.getSubtargetImpl(*Callee)->getFeatureBits();
+
+  // FIXME: This is likely too limiting as it will include subtarget features
+  // that we might not care about for inlining, but it is conservatively
+  // correct.
+  return (CallerBits & CalleeBits) == CalleeBits;
+}

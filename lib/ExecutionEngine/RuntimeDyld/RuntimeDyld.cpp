@@ -113,28 +113,12 @@ void RuntimeDyldImpl::mapSectionAddress(const void *LocalAddress,
   llvm_unreachable("Attempting to remap address of unknown section!");
 }
 
-static std::error_code getOffset(const SymbolRef &Sym, uint64_t &Result) {
-  uint64_t Address;
-  if (std::error_code EC = Sym.getAddress(Address))
+static std::error_code getOffset(const SymbolRef &Sym, SectionRef Sec,
+                                 uint64_t &Result) {
+  ErrorOr<uint64_t> AddressOrErr = Sym.getAddress();
+  if (std::error_code EC = AddressOrErr.getError())
     return EC;
-
-  if (Address == UnknownAddress) {
-    Result = UnknownAddress;
-    return std::error_code();
-  }
-
-  const ObjectFile *Obj = Sym.getObject();
-  section_iterator SecI(Obj->section_begin());
-  if (std::error_code EC = Sym.getSection(SecI))
-    return EC;
-
-  if (SecI == Obj->section_end()) {
-    Result = UnknownAddress;
-    return std::error_code();
-  }
-
-  uint64_t SectionAddress = SecI->getAddress();
-  Result = Address - SectionAddress;
+  Result = *AddressOrErr - Sec.getAddress();
   return std::error_code();
 }
 
@@ -181,14 +165,15 @@ RuntimeDyldImpl::loadObjectImpl(const object::ObjectFile &Obj) {
           SymType == object::SymbolRef::ST_Data ||
           SymType == object::SymbolRef::ST_Unknown) {
 
-        StringRef Name;
-        uint64_t SectOffset;
-        Check(I->getName(Name));
-        Check(getOffset(*I, SectOffset));
+        ErrorOr<StringRef> NameOrErr = I->getName();
+        Check(NameOrErr.getError());
+        StringRef Name = *NameOrErr;
         section_iterator SI = Obj.section_end();
         Check(I->getSection(SI));
         if (SI == Obj.section_end())
           continue;
+        uint64_t SectOffset;
+        Check(getOffset(*I, *SI, SectOffset));
         StringRef SectionData;
         Check(SI->getContents(SectionData));
         bool IsCode = SI->isText();
@@ -481,8 +466,9 @@ void RuntimeDyldImpl::emitCommonSymbols(const ObjectFile &Obj,
   DEBUG(dbgs() << "Processing common symbols...\n");
 
   for (const auto &Sym : CommonSymbols) {
-    StringRef Name;
-    Check(Sym.getName(Name));
+    ErrorOr<StringRef> NameOrErr = Sym.getName();
+    Check(NameOrErr.getError());
+    StringRef Name = *NameOrErr;
 
     // Skip common symbols already elsewhere.
     if (GlobalSymbolTable.count(Name) ||
@@ -515,9 +501,10 @@ void RuntimeDyldImpl::emitCommonSymbols(const ObjectFile &Obj,
   // Assign the address of each symbol
   for (auto &Sym : SymbolsToAllocate) {
     uint32_t Align = Sym.getAlignment();
-    StringRef Name;
     uint64_t Size = Sym.getCommonSize();
-    Check(Sym.getName(Name));
+    ErrorOr<StringRef> NameOrErr = Sym.getName();
+    Check(NameOrErr.getError());
+    StringRef Name = *NameOrErr;
     if (Align) {
       // This symbol has an alignment requirement.
       uint64_t AlignOffset = OffsetToAlignment((uint64_t)Addr, Align);
@@ -811,12 +798,16 @@ void RuntimeDyldImpl::resolveExternalSymbols() {
         report_fatal_error("Program used external function '" + Name +
                            "' which could not be resolved!");
 
-      DEBUG(dbgs() << "Resolving relocations Name: " << Name << "\t"
-                   << format("0x%lx", Addr) << "\n");
-      // This list may have been updated when we called getSymbolAddress, so
-      // don't change this code to get the list earlier.
-      RelocationList &Relocs = i->second;
-      resolveRelocationList(Relocs, Addr);
+      // If Resolver returned UINT64_MAX, the client wants to handle this symbol
+      // manually and we shouldn't resolve its relocations.
+      if (Addr != UINT64_MAX) {
+        DEBUG(dbgs() << "Resolving relocations Name: " << Name << "\t"
+                     << format("0x%lx", Addr) << "\n");
+        // This list may have been updated when we called getSymbolAddress, so
+        // don't change this code to get the list earlier.
+        RelocationList &Relocs = i->second;
+        resolveRelocationList(Relocs, Addr);
+      }
     }
 
     ExternalSymbolRelocations.erase(i);

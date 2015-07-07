@@ -461,12 +461,9 @@ void MachODumper::printRelocation(const RelocationRef &Reloc) {
 
 void MachODumper::printRelocation(const MachOObjectFile *Obj,
                                   const RelocationRef &Reloc) {
-  uint64_t Offset;
+  uint64_t Offset = Reloc.getOffset();
   SmallString<32> RelocName;
-  if (error(Reloc.getOffset(Offset)))
-    return;
-  if (error(Reloc.getTypeName(RelocName)))
-    return;
+  Reloc.getTypeName(RelocName);
 
   DataRefImpl DR = Reloc.getRawDataRefImpl();
   MachO::any_relocation_info RE = Obj->getRelocation(DR);
@@ -477,8 +474,10 @@ void MachODumper::printRelocation(const MachOObjectFile *Obj,
   if (IsExtern) {
     symbol_iterator Symbol = Reloc.getSymbol();
     if (Symbol != Obj->symbol_end()) {
-      if (error(Symbol->getName(TargetName)))
+      ErrorOr<StringRef> TargetNameOrErr = Symbol->getName();
+      if (error(TargetNameOrErr.getError()))
         return;
+      TargetName = *TargetNameOrErr;
     }
   } else if (!IsScattered) {
     section_iterator SecI = Obj->getRelocationSection(DR);
@@ -541,8 +540,8 @@ void MachODumper::printDynamicSymbols() {
 
 void MachODumper::printSymbol(const SymbolRef &Symbol) {
   StringRef SymbolName;
-  if (Symbol.getName(SymbolName))
-    SymbolName = "";
+  if (ErrorOr<StringRef> SymbolNameOrErr = Symbol.getName())
+    SymbolName = *SymbolNameOrErr;
 
   MachOSymbol MOSymbol;
   getSymbol(Obj, Symbol.getRawDataRefImpl(), MOSymbol);

@@ -61,6 +61,7 @@ public:
       : M(M), OS(OS), RegisterMaskIds(RegisterMaskIds) {}
 
   void print(const MachineInstr &MI);
+  void printMBBReference(const MachineBasicBlock &MBB);
   void print(const MachineOperand &Op, const TargetRegisterInfo *TRI);
 };
 
@@ -130,6 +131,12 @@ void MIRPrinter::convert(const Module &M, yaml::MachineBasicBlock &YamlMBB,
   YamlMBB.Alignment = MBB.getAlignment();
   YamlMBB.AddressTaken = MBB.hasAddressTaken();
   YamlMBB.IsLandingPad = MBB.isLandingPad();
+  for (const auto *SuccMBB : MBB.successors()) {
+    std::string Str;
+    raw_string_ostream StrOS(Str);
+    MIPrinter(M, StrOS, RegisterMaskIds).printMBBReference(*SuccMBB);
+    YamlMBB.Successors.push_back(StrOS.str());
+  }
 
   // Print the machine instructions.
   YamlMBB.Instructions.reserve(MBB.size());
@@ -193,10 +200,20 @@ static void printReg(unsigned Reg, raw_ostream &OS,
     llvm_unreachable("Can't print this kind of register yet");
 }
 
+void MIPrinter::printMBBReference(const MachineBasicBlock &MBB) {
+  OS << "%bb." << MBB.getNumber();
+  if (const auto *BB = MBB.getBasicBlock()) {
+    if (BB->hasName())
+      OS << '.' << BB->getName();
+  }
+}
+
 void MIPrinter::print(const MachineOperand &Op, const TargetRegisterInfo *TRI) {
   switch (Op.getType()) {
   case MachineOperand::MO_Register:
-    // TODO: Print register flags.
+    // TODO: Print the other register flags.
+    if (Op.isImplicit())
+      OS << (Op.isDef() ? "implicit-def " : "implicit ");
     printReg(Op.getReg(), OS, TRI);
     // TODO: Print sub register.
     break;
@@ -204,11 +221,7 @@ void MIPrinter::print(const MachineOperand &Op, const TargetRegisterInfo *TRI) {
     OS << Op.getImm();
     break;
   case MachineOperand::MO_MachineBasicBlock:
-    OS << "%bb." << Op.getMBB()->getNumber();
-    if (const auto *BB = Op.getMBB()->getBasicBlock()) {
-      if (BB->hasName())
-        OS << '.' << BB->getName();
-    }
+    printMBBReference(*Op.getMBB());
     break;
   case MachineOperand::MO_GlobalAddress:
     // FIXME: Make this faster - print as operand will create a slot tracker to

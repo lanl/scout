@@ -72,8 +72,7 @@ protected:
 
     bool IsPCRel = Obj.getAnyRelocationPCRel(RelInfo);
     unsigned Size = Obj.getAnyRelocationLength(RelInfo);
-    uint64_t Offset;
-    RI->getOffset(Offset);
+    uint64_t Offset = RI->getOffset();
     MachO::RelocationInfoType RelType =
       static_cast<MachO::RelocationInfoType>(Obj.getAnyRelocationType(RelInfo));
 
@@ -96,7 +95,6 @@ protected:
 
   /// Make the RelocationValueRef addend PC-relative.
   void makeValueAddendPCRel(RelocationValueRef &Value,
-                            const ObjectFile &BaseTObj,
                             const relocation_iterator &RI,
                             unsigned OffsetToNextPC);
 

@@ -265,9 +265,7 @@ TargetLowering::isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const {
 
   // In dynamic-no-pic mode, assume that known defined values are safe.
   if (getTargetMachine().getRelocationModel() == Reloc::DynamicNoPIC &&
-      GA &&
-      !GA->getGlobal()->isDeclaration() &&
-      !GA->getGlobal()->isWeakForLinker())
+      GA && GA->getGlobal()->isStrongDefinitionForLinker())
     return true;
 
   // Otherwise assume nothing is safe.
@@ -1400,7 +1398,7 @@ TargetLowering::SimplifySetCC(EVT VT, SDValue N0, SDValue N1,
           APInt newMask = APInt::getLowBitsSet(maskWidth, width);
           for (unsigned offset=0; offset<origWidth/width; offset++) {
             if ((newMask & Mask) == Mask) {
-              if (!getDataLayout()->isLittleEndian())
+              if (!DAG.getDataLayout().isLittleEndian())
                 bestOffset = (origWidth/width - offset - 1) * (width/8);
               else
                 bestOffset = (uint64_t)offset * (width/8);
@@ -2105,9 +2103,8 @@ PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const {
 //  Inline Assembler Implementation Methods
 //===----------------------------------------------------------------------===//
 
-
 TargetLowering::ConstraintType
-TargetLowering::getConstraintType(const std::string &Constraint) const {
+TargetLowering::getConstraintType(StringRef Constraint) const {
   unsigned S = Constraint.size();
 
   if (S == 1) {
@@ -2140,7 +2137,7 @@ TargetLowering::getConstraintType(const std::string &Constraint) const {
   }
 
   if (S > 1 && Constraint[0] == '{' && Constraint[S-1] == '}') {
-    if (S == 8 && !Constraint.compare(1, 6, "memory", 6))  // "{memory}"
+    if (S == 8 && Constraint.substr(1, 6) == "memory") // "{memory}"
       return C_Memory;
     return C_Register;
   }
@@ -2227,7 +2224,7 @@ void TargetLowering::LowerAsmOperandForConstraint(SDValue Op,
 
 std::pair<unsigned, const TargetRegisterClass *>
 TargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *RI,
-                                             const std::string &Constraint,
+                                             StringRef Constraint,
                                              MVT VT) const {
   if (Constraint.empty() || Constraint[0] != '{')
     return std::make_pair(0u, static_cast<TargetRegisterClass*>(nullptr));
@@ -2293,7 +2290,8 @@ unsigned TargetLowering::AsmOperandInfo::getMatchedOperand() const {
 /// If this returns an empty vector, and if the constraint string itself
 /// isn't empty, there was an error parsing.
 TargetLowering::AsmOperandInfoVector
-TargetLowering::ParseConstraints(const TargetRegisterInfo *TRI,
+TargetLowering::ParseConstraints(const DataLayout &DL,
+                                 const TargetRegisterInfo *TRI,
                                  ImmutableCallSite CS) const {
   /// ConstraintOperands - Information about all of the constraints.
   AsmOperandInfoVector ConstraintOperands;
@@ -2361,7 +2359,7 @@ TargetLowering::ParseConstraints(const TargetRegisterInfo *TRI,
       // If OpTy is not a single value, it may be a struct/union that we
       // can tile with integers.
       if (!OpTy->isSingleValueType() && OpTy->isSized()) {
-        unsigned BitSize = getDataLayout()->getTypeSizeInBits(OpTy);
+        unsigned BitSize = DL.getTypeSizeInBits(OpTy);
         switch (BitSize) {
         default: break;
         case 1:
@@ -2375,8 +2373,7 @@ TargetLowering::ParseConstraints(const TargetRegisterInfo *TRI,
           break;
         }
       } else if (PointerType *PT = dyn_cast<PointerType>(OpTy)) {
-        unsigned PtrSize
-          = getDataLayout()->getPointerSizeInBits(PT->getAddressSpace());
+        unsigned PtrSize = DL.getPointerSizeInBits(PT->getAddressSpace());
         OpInfo.ConstraintVT = MVT::getIntegerVT(PtrSize);
       } else {
         OpInfo.ConstraintVT = MVT::getVT(OpTy, true);

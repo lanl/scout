@@ -1235,11 +1235,10 @@ protected:
     HasExtractBitsInsn = hasExtractInsn;
   }
 
-  /// Tells the code generator not to expand sequence of operations into a
-  /// separate sequences that increases the amount of flow control.
-  void setJumpIsExpensive(bool isExpensive = true) {
-    JumpIsExpensive = isExpensive;
-  }
+  /// Tells the code generator not to expand logic operations on comparison
+  /// predicates into separate sequences that increase the amount of flow
+  /// control.
+  void setJumpIsExpensive(bool isExpensive = true);
 
   /// Tells the code generator that integer divide is expensive, and if
   /// possible, should be replaced by an alternate sequence of instructions not
@@ -2415,6 +2414,7 @@ public:
     ArgListTy &getArgs() {
       return Args;
     }
+
   };
 
   /// This function lowers an abstract call to a function into an actual call.
@@ -2658,7 +2658,8 @@ public:
   /// specific constraints and their prefixes, and also tie in the associated
   /// operand values.  If this returns an empty vector, and if the constraint
   /// string itself isn't empty, there was an error parsing.
-  virtual AsmOperandInfoVector ParseConstraints(const TargetRegisterInfo *TRI,
+  virtual AsmOperandInfoVector ParseConstraints(const DataLayout &DL,
+                                                const TargetRegisterInfo *TRI,
                                                 ImmutableCallSite CS) const;
 
   /// Examine constraint type and operand type and determine a weight value.
@@ -2680,7 +2681,7 @@ public:
                                       SelectionDAG *DAG = nullptr) const;
 
   /// Given a constraint, return the type of constraint it is for this target.
-  virtual ConstraintType getConstraintType(const std::string &Constraint) const;
+  virtual ConstraintType getConstraintType(StringRef Constraint) const;
 
   /// Given a physical register constraint (e.g.  {edx}), return the register
   /// number and the register class for the register.
@@ -2693,10 +2694,9 @@ public:
   /// returns a register number of 0 and a null register class pointer.
   virtual std::pair<unsigned, const TargetRegisterClass *>
   getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
-                               const std::string &Constraint, MVT VT) const;
+                               StringRef Constraint, MVT VT) const;
 
-  virtual unsigned
-  getInlineAsmMemConstraint(const std::string &ConstraintCode) const {
+  virtual unsigned getInlineAsmMemConstraint(StringRef ConstraintCode) const {
     if (ConstraintCode == "i")
       return InlineAsm::Constraint_i;
     else if (ConstraintCode == "m")

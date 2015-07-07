@@ -438,6 +438,9 @@ void Verifier::visitGlobalValue(const GlobalValue &GV) {
     Assert(GVar && GVar->getValueType()->isArrayTy(),
            "Only global arrays can have appending linkage!", GVar);
   }
+
+  if (GV.isDeclarationForLinker())
+    Assert(!GV.hasComdat(), "Declaration may not be in a Comdat!", &GV);
 }
 
 void Verifier::visitGlobalVariable(const GlobalVariable &GV) {
@@ -1015,6 +1018,11 @@ void Verifier::visitDINamespace(const DINamespace &N) {
   Assert(N.getTag() == dwarf::DW_TAG_namespace, "invalid tag", &N);
   if (auto *S = N.getRawScope())
     Assert(isa<DIScope>(S), "invalid scope ref", &N, S);
+}
+
+void Verifier::visitDIModule(const DIModule &N) {
+  Assert(N.getTag() == dwarf::DW_TAG_module, "invalid tag", &N);
+  Assert(!N.getName().empty(), "anonymous module", &N);
 }
 
 void Verifier::visitDITemplateParameter(const DITemplateParameter &N) {
