@@ -48,7 +48,7 @@ CMICmnMIValueResult::CMICmnMIValueResult(const CMIUtilString &vrVariable, const 
 // Type:    Method.
 // Args:    vrVariable      - (R) MI value's name.
 //          vrValue         - (R) The MI value.
-//          vbUseSpacing    - (R) True = put space seperators into the string, false = no spaces used.
+//          vbUseSpacing    - (R) True = put space separators into the string, false = no spaces used.
 // Return:  None.
 // Throws:  None.
 //--
@@ -83,7 +83,7 @@ CMICmnMIValueResult::~CMICmnMIValueResult(void)
 bool
 CMICmnMIValueResult::BuildResult(void)
 {
-    const MIchar *pFormat = m_bUseSpacing ? "%s %s %s" : "%s%s%s";
+    const char *pFormat = m_bUseSpacing ? "%s %s %s" : "%s%s%s";
     m_strValue = CMIUtilString::Format(pFormat, m_strPartVariable.c_str(), ms_constStrEqual.c_str(), m_partMIValue.GetString().c_str());
 
     return MIstatus::success;
@@ -101,7 +101,7 @@ CMICmnMIValueResult::BuildResult(void)
 bool
 CMICmnMIValueResult::BuildResult(const CMIUtilString &vVariable, const CMICmnMIValue &vValue)
 {
-    const MIchar *pFormat = m_bUseSpacing ? "%s, %s %s %s" : "%s,%s%s%s";
+    const char *pFormat = m_bUseSpacing ? "%s, %s %s %s" : "%s,%s%s%s";
     m_strValue =
         CMIUtilString::Format(pFormat, m_strValue.c_str(), vVariable.c_str(), ms_constStrEqual.c_str(), vValue.GetString().c_str());
 

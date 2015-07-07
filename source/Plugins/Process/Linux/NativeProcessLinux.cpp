@@ -40,10 +40,10 @@
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/LLDBAssert.h"
 #include "lldb/Utility/PseudoTerminal.h"
+#include "lldb/Utility/StringExtractor.h"
 
 #include "Plugins/Process/POSIX/ProcessPOSIXLog.h"
 #include "Plugins/Process/Utility/LinuxSignals.h"
-#include "Utility/StringExtractor.h"
 #include "NativeThreadLinux.h"
 #include "ProcFileReader.h"
 #include "Procfs.h"
@@ -250,8 +250,7 @@ namespace
         assert(sizeof(data) >= word_size);
         for (bytes_read = 0; bytes_read < size; bytes_read += remainder)
         {
-            Error error;
-            data = NativeProcessLinux::PtraceWrapper(PTRACE_PEEKDATA, pid, (void*)vm_addr, nullptr, 0, error);
+            Error error = NativeProcessLinux::PtraceWrapper(PTRACE_PEEKDATA, pid, (void*)vm_addr, nullptr, 0, &data);
             if (error.Fail())
             {
                 if (log)
@@ -327,7 +326,8 @@ namespace
                     log->Printf ("NativeProcessLinux::%s() [%p]:0x%lx (0x%lx)", __FUNCTION__,
                             (void*)vm_addr, *(const unsigned long*)src, data);
 
-                if (NativeProcessLinux::PtraceWrapper(PTRACE_POKEDATA, pid, (void*)vm_addr, (void*)data, 0, error))
+                error = NativeProcessLinux::PtraceWrapper(PTRACE_POKEDATA, pid, (void*)vm_addr, (void*)data);
+                if (error.Fail())
                 {
                     if (log)
                         ProcessPOSIXLog::DecNestLevel();
@@ -1115,7 +1115,7 @@ NativeProcessLinux::Launch(LaunchArgs *args, Error &error)
         // send log info to parent re: launch status, in place of the log lines removed here.
 
         // Start tracing this child that is about to exec.
-        NativeProcessLinux::PtraceWrapper(PTRACE_TRACEME, 0, nullptr, nullptr, 0, error);
+        error = PtraceWrapper(PTRACE_TRACEME, 0);
         if (error.Fail())
             exit(ePtraceFailed);
 
@@ -1351,7 +1351,7 @@ NativeProcessLinux::Attach(lldb::pid_t pid, Error &error)
 
                 // Attach to the requested process.
                 // An attach will cause the thread to stop with a SIGSTOP.
-                NativeProcessLinux::PtraceWrapper(PTRACE_ATTACH, tid, nullptr, nullptr, 0, error);
+                error = PtraceWrapper(PTRACE_ATTACH, tid);
                 if (error.Fail())
                 {
                     // No such thread. The thread may have exited.
@@ -1442,9 +1442,7 @@ NativeProcessLinux::SetDefaultPtraceOpts(lldb::pid_t pid)
     // (needed to disable legacy SIGTRAP generation)
     ptrace_opts |= PTRACE_O_TRACEEXEC;
 
-    Error error;
-    NativeProcessLinux::PtraceWrapper(PTRACE_SETOPTIONS, pid, nullptr, (void*)ptrace_opts, 0, error);
-    return error;
+    return PtraceWrapper(PTRACE_SETOPTIONS, pid, nullptr, (void*)ptrace_opts);
 }
 
 static ExitType convert_pid_status_to_exit_type (int status)
@@ -2704,12 +2702,25 @@ NativeProcessLinux::GetMemoryRegionInfo (lldb::addr_t load_addr, MemoryRegionInf
         // The target memory address comes somewhere after the region we just parsed.
     }
 
-    // If we made it here, we didn't find an entry that contained the given address.
-    error.SetErrorString ("address comes after final region");
-
-    if (log)
-        log->Printf ("NativeProcessLinux::%s failed to find map entry for address 0x%" PRIx64 ": %s", __FUNCTION__, load_addr, error.AsCString ());
-
+    // If we made it here, we didn't find an entry that contained the given address. Return the
+    // load_addr as start and the amount of bytes betwwen load address and the end of the memory as
+    // size.
+    range_info.GetRange ().SetRangeBase (load_addr);
+    switch (m_arch.GetAddressByteSize())
+    {
+        case 4:
+            range_info.GetRange ().SetByteSize (0x100000000ull - load_addr);
+            break;
+        case 8:
+            range_info.GetRange ().SetByteSize (0ull - load_addr);
+            break;
+        default:
+            assert(false && "Unrecognized data byte size");
+            break;
+    }
+    range_info.SetReadable (MemoryRegionInfo::OptionalBool::eNo);
+    range_info.SetWritable (MemoryRegionInfo::OptionalBool::eNo);
+    range_info.SetExecutable (MemoryRegionInfo::OptionalBool::eNo);
     return error;
 }
 
@@ -2840,28 +2851,22 @@ NativeProcessLinux::GetSoftwareBreakpointPCOffset (NativeRegisterContextSP conte
 {
     // FIXME put this behind a breakpoint protocol class that can be
     // set per architecture.  Need ARM, MIPS support here.
-    static const uint8_t g_aarch64_opcode[] = { 0x00, 0x00, 0x20, 0xd4 };
     static const uint8_t g_i386_opcode [] = { 0xCC };
 
     switch (m_arch.GetMachine ())
     {
-        case llvm::Triple::aarch64:
-            actual_opcode_size = static_cast<uint32_t> (sizeof(g_aarch64_opcode));
-            return Error ();
-
-        case llvm::Triple::arm:
-            actual_opcode_size = 0; // On arm the PC don't get updated for breakpoint hits
-            return Error ();
-
         case llvm::Triple::x86:
         case llvm::Triple::x86_64:
             actual_opcode_size = static_cast<uint32_t> (sizeof(g_i386_opcode));
             return Error ();
 
+        case llvm::Triple::arm:
+        case llvm::Triple::aarch64:
         case llvm::Triple::mips64:
         case llvm::Triple::mips64el:
         case llvm::Triple::mips:
         case llvm::Triple::mipsel:
+            // On these architectures the PC don't get updated for breakpoint hits
             actual_opcode_size = 0;
             return Error ();
         
@@ -3173,11 +3178,7 @@ NativeProcessLinux::Resume (lldb::tid_t tid, uint32_t signo)
     if (signo != LLDB_INVALID_SIGNAL_NUMBER)
         data = signo;
 
-    Error error = DoOperation([&] {
-        Error error;
-        NativeProcessLinux::PtraceWrapper(PTRACE_CONT, tid, nullptr, (void*)data, 0, error);
-        return error;
-    });
+    Error error = DoOperation([&] { return PtraceWrapper(PTRACE_CONT, tid, nullptr, (void*)data); });
 
     if (log)
         log->Printf ("NativeProcessLinux::%s() resuming thread = %"  PRIu64 " result = %s", __FUNCTION__, tid, error.Success() ? "true" : "false");
@@ -3192,31 +3193,19 @@ NativeProcessLinux::SingleStep(lldb::tid_t tid, uint32_t signo)
     if (signo != LLDB_INVALID_SIGNAL_NUMBER)
         data = signo;
 
-    return DoOperation([&] {
-        Error error;
-        NativeProcessLinux::PtraceWrapper(PTRACE_SINGLESTEP, tid, nullptr, (void*)data, 0, error);
-        return error;
-    });
+    return DoOperation([&] { return PtraceWrapper(PTRACE_SINGLESTEP, tid, nullptr, (void*)data); });
 }
 
 Error
 NativeProcessLinux::GetSignalInfo(lldb::tid_t tid, void *siginfo)
 {
-    return DoOperation([&] {
-        Error error;
-        NativeProcessLinux::PtraceWrapper(PTRACE_GETSIGINFO, tid, nullptr, siginfo, 0, error);
-        return error;
-    });
+    return DoOperation([&] { return PtraceWrapper(PTRACE_GETSIGINFO, tid, nullptr, siginfo); });
 }
 
 Error
 NativeProcessLinux::GetEventMessage(lldb::tid_t tid, unsigned long *message)
 {
-    return DoOperation([&] {
-        Error error;
-        NativeProcessLinux::PtraceWrapper(PTRACE_GETEVENTMSG, tid, nullptr, message, 0, error);
-        return error;
-    });
+    return DoOperation([&] { return PtraceWrapper(PTRACE_GETEVENTMSG, tid, nullptr, message); });
 }
 
 Error
@@ -3225,11 +3214,7 @@ NativeProcessLinux::Detach(lldb::tid_t tid)
     if (tid == LLDB_INVALID_THREAD_ID)
         return Error();
 
-    return DoOperation([&] {
-        Error error;
-        NativeProcessLinux::PtraceWrapper(PTRACE_DETACH, tid, nullptr, 0, 0, error);
-        return error;
-    });
+    return DoOperation([&] { return PtraceWrapper(PTRACE_DETACH, tid); });
 }
 
 bool
@@ -3732,27 +3717,30 @@ NativeProcessLinux::DoOperation(const Operation &op)
 
 // Wrapper for ptrace to catch errors and log calls.
 // Note that ptrace sets errno on error because -1 can be a valid result (i.e. for PTRACE_PEEK*)
-long
-NativeProcessLinux::PtraceWrapper(int req, lldb::pid_t pid, void *addr, void *data, size_t data_size, Error& error)
+Error
+NativeProcessLinux::PtraceWrapper(int req, lldb::pid_t pid, void *addr, void *data, size_t data_size, long *result)
 {
-    long int result;
+    Error error;
+    long int ret;
 
     Log *log (ProcessPOSIXLog::GetLogIfAllCategoriesSet (POSIX_LOG_PTRACE));
 
     PtraceDisplayBytes(req, data, data_size);
 
-    error.Clear();
     errno = 0;
     if (req == PTRACE_GETREGSET || req == PTRACE_SETREGSET)
-        result = ptrace(static_cast<__ptrace_request>(req), static_cast< ::pid_t>(pid), *(unsigned int *)addr, data);
+        ret = ptrace(static_cast<__ptrace_request>(req), static_cast< ::pid_t>(pid), *(unsigned int *)addr, data);
     else
-        result = ptrace(static_cast<__ptrace_request>(req), static_cast< ::pid_t>(pid), addr, data);
+        ret = ptrace(static_cast<__ptrace_request>(req), static_cast< ::pid_t>(pid), addr, data);
 
-    if (result == -1)
+    if (ret == -1)
         error.SetErrorToErrno();
 
+    if (result)
+        *result = ret;
+
     if (log)
-        log->Printf("ptrace(%d, %" PRIu64 ", %p, %p, %zu)=%lX", req, pid, addr, data, data_size, result);
+        log->Printf("ptrace(%d, %" PRIu64 ", %p, %p, %zu)=%lX", req, pid, addr, data, data_size, ret);
 
     PtraceDisplayBytes(req, data, data_size);
 
@@ -3770,5 +3758,5 @@ NativeProcessLinux::PtraceWrapper(int req, lldb::pid_t pid, void *addr, void *da
         log->Printf("ptrace() failed; errno=%d (%s)", error.GetError(), str);
     }
 
-    return result;
+    return error;
 }

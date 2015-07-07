@@ -184,7 +184,7 @@ CMICmdCmdListThreadGroups::ParseArgs(void)
 //++ ------------------------------------------------------------------------------------
 // Details: The invoker requires this function. The command does work in this function.
 //          The command is likely to communicate with the LLDB SBDebugger in here.
-//          Synopis: -list-thread-groups [ --available ] [ --recurse 1 ] [ group ... ]
+//          Synopsis: -list-thread-groups [ --available ] [ --recurse 1 ] [ group ... ]
 //          This command does not follow the MI documentation exactly. Has an extra
 //          argument "i1" to handle.
 //          Ref:
@@ -330,8 +330,8 @@ CMICmdCmdListThreadGroups::Acknowledge(void)
         if (rSessionInfo.GetTarget().IsValid())
         {
             lldb::SBTarget sbTrgt = rSessionInfo.GetTarget();
-            const MIchar *pDir = sbTrgt.GetExecutable().GetDirectory();
-            const MIchar *pFileName = sbTrgt.GetExecutable().GetFilename();
+            const char *pDir = sbTrgt.GetExecutable().GetDirectory();
+            const char *pFileName = sbTrgt.GetExecutable().GetFilename();
             const CMIUtilString strFile(CMIUtilString::Format("%s/%s", pDir, pFileName));
             const CMICmnMIValueConst miValueConst4(strFile);
             const CMICmnMIValueResult miValueResult4("executable", miValueConst4);

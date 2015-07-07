@@ -1,6 +1,8 @@
 #include <stdio.h>
-#include <unistd.h>
-#include <pthread.h>
+#include <chrono>
+#include <thread>
+
+using std::chrono::microseconds;
 
 #if defined(__linux__)
 #include <sys/prctl.h>
@@ -12,9 +14,9 @@ void *
 thread_1_func (void *input)
 {
     // Waiting to be released by the debugger.
-    while (!g_thread_2_continuing) // The debugger will change this value
+    while (!g_thread_2_continuing) // Another thread will change this value
     {
-        usleep(1);
+        std::this_thread::sleep_for(microseconds(1));
     }
 
     // Return
@@ -28,7 +30,7 @@ thread_2_func (void *input)
     int child_thread_continue = 0;
     while (!child_thread_continue) // The debugger will change this value
     {
-        usleep(1);  // Set second breakpoint here
+        std::this_thread::sleep_for(microseconds(1));  // Set second breakpoint here
     }
 
     // Release thread 1
@@ -40,9 +42,6 @@ thread_2_func (void *input)
 
 int main(int argc, char const *argv[])
 {
-    pthread_t thread_1;
-    pthread_t thread_2;
-
 #if defined(__linux__)
     // Immediately enable any ptracer so that we can allow the stub attach
     // operation to succeed.  Some Linux kernels are locked down so that
@@ -59,21 +58,21 @@ int main(int argc, char const *argv[])
 #endif
 
     // Create a new thread
-    pthread_create (&thread_1, NULL, thread_1_func, NULL);
+    std::thread thread_1(thread_1_func, nullptr);
 
     // Waiting to be attached by the debugger.
     int main_thread_continue = 0;
     while (!main_thread_continue) // The debugger will change this value
     {
-        usleep(1);  // Set first breakpoint here
+        std::this_thread::sleep_for(microseconds(1));  // Set first breakpoint here
     }
 
     // Create another new thread
-    pthread_create (&thread_2, NULL, thread_2_func, NULL);
+    std::thread thread_2(thread_2_func, nullptr);
 
     // Wait for the threads to finish.
-    pthread_join(thread_1, NULL);
-    pthread_join(thread_2, NULL);
+    thread_1.join();
+    thread_2.join();
 
     printf("Exiting now\n");
 }

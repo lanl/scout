@@ -343,7 +343,7 @@ CMIDriver::SetDriverToFallThruTo(const CMIDriverBase &vrOtherDriver)
 //++ ------------------------------------------------------------------------------------
 // Details: Proxy function CMIDriverMgr IDriver interface implementation. *this driver's
 //          implementation called from here to match the existing function name of the
-//          original LLDb driver class (the extra indirection is not necessarily required).
+//          original LLDB driver class (the extra indirection is not necessarily required).
 //          Check the arguments that were passed to this program to make sure they are
 //          valid and to get their argument values (if any).
 // Type:    Overridden.
@@ -559,7 +559,7 @@ CMIDriver::DoMainLoop(void)
     while (bOk && !m_bExitApp)
     {
         CMIUtilString errorText;
-        const MIchar *pCmd = m_rStdin.ReadLine (errorText);
+        const char *pCmd = m_rStdin.ReadLine (errorText);
         if (pCmd != nullptr)
         {
             CMIUtilString lineText(pCmd);
@@ -649,8 +649,8 @@ CMIDriver::InterpretCommandFallThruDriver(const CMIUtilString &vTextLine, bool &
     //      errMsg = errMsg.StripCREndOfLine();
     //      errMsg = errMsg.StripCRAll();
     //      const CMIDriverBase * pOtherDriver = GetDriverToFallThruTo();
-    //      const MIchar * pName = pOtherDriver->GetDriverName().c_str();
-    //      const MIchar * pId = pOtherDriver->GetDriverId().c_str();
+    //      const char * pName = pOtherDriver->GetDriverName().c_str();
+    //      const char * pId = pOtherDriver->GetDriverId().c_str();
     //      const CMIUtilString msg( CMIUtilString::Format( MIRSRC( IDS_DRIVER_ERR_FALLTHRU_DRIVER_ERR ), pName, pId, errMsg.c_str() )
     //);
     //      m_pLog->WriteMsg( msg );
@@ -862,7 +862,7 @@ CMIDriver::WrapCLICommandIntoMICommand(const CMIUtilString &vTextLine) const
     // Also possible case when command not found:
     // 001
     //    ^ -- i.e. only tokens are present (or empty string at all)
-    const MIuint nCommandOffset = vTextLine.find_first_not_of(digits);
+    const size_t nCommandOffset = vTextLine.find_first_not_of(digits);
 
     // 2. Check if command is empty
     // For example:
@@ -872,7 +872,7 @@ CMIDriver::WrapCLICommandIntoMICommand(const CMIUtilString &vTextLine) const
     // or:
     // 001
     //    ^ -- command wasn't found
-    const bool bIsEmptyCommand = (nCommandOffset == (MIuint)CMIUtilString::npos);
+    const bool bIsEmptyCommand = (nCommandOffset == CMIUtilString::npos);
 
     // 3. Check and exit if it isn't a CLI command
     // For example:

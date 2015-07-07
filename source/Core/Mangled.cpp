@@ -13,6 +13,7 @@
 #if defined(_MSC_VER)
 #include "lldb/Host/windows/windows.h"
 #include <Dbghelp.h>
+#pragma comment(lib, "dbghelp.lib")
 #define LLDB_USE_BUILTIN_DEMANGLER
 #elif defined (__FreeBSD__)
 #define LLDB_USE_BUILTIN_DEMANGLER
@@ -337,6 +338,12 @@ Mangled::GetDemangledName () const
     return m_demangled;
 }
 
+
+ConstString
+Mangled::GetDisplayDemangledName () const
+{
+    return GetDemangledName();
+}
 
 bool
 Mangled::NameMatches (const RegularExpression& regex) const

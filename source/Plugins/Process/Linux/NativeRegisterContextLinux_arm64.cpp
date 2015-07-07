@@ -193,6 +193,15 @@ NativeRegisterContextLinux_arm64::GetRegisterSet (uint32_t set_index) const
     return nullptr;
 }
 
+uint32_t
+NativeRegisterContextLinux_arm64::GetUserRegisterCount() const
+{
+    uint32_t count = 0;
+    for (uint32_t set_index = 0; set_index < k_num_register_sets; ++set_index)
+        count += g_reg_sets_arm64[set_index].num_registers;
+    return count;
+}
+
 Error
 NativeRegisterContextLinux_arm64::ReadRegister (const RegisterInfo *reg_info, RegisterValue &reg_value)
 {
@@ -242,22 +251,7 @@ NativeRegisterContextLinux_arm64::ReadRegister (const RegisterInfo *reg_info, Re
     // Get pointer to m_fpr variable and set the data from it.
     assert (reg_info->byte_offset < sizeof m_fpr);
     uint8_t *src = (uint8_t *)&m_fpr + reg_info->byte_offset;
-    switch (reg_info->byte_size)
-    {
-        case 2:
-            reg_value.SetUInt16(*(uint16_t *)src);
-            break;
-        case 4:
-            reg_value.SetUInt32(*(uint32_t *)src);
-            break;
-        case 8:
-            reg_value.SetUInt64(*(uint64_t *)src);
-            break;
-        default:
-            assert(false && "Unhandled data size.");
-            error.SetErrorStringWithFormat ("unhandled byte size: %" PRIu32, reg_info->byte_size);
-            break;
-    }
+    reg_value.SetFromMemoryData(reg_info, src, reg_info->byte_size, eByteOrderLittle, error);
 
     return error;
 }
@@ -735,11 +729,11 @@ NativeRegisterContextLinux_arm64::ReadHardwareDebugInfo(unsigned int &watch_coun
 
         ioVec.iov_base = &dreg_state;
         ioVec.iov_len = sizeof (dreg_state);
-        NativeProcessLinux::PtraceWrapper(PTRACE_GETREGSET, tid, &regset, &ioVec, ioVec.iov_len, error);
+        error = NativeProcessLinux::PtraceWrapper(PTRACE_GETREGSET, tid, &regset, &ioVec, ioVec.iov_len);
         watch_count = dreg_state.dbg_info & 0xff;
 
         regset = NT_ARM_HW_BREAK;
-        NativeProcessLinux::PtraceWrapper(PTRACE_GETREGSET, tid, &regset, &ioVec, ioVec.iov_len, error);
+        error = NativeProcessLinux::PtraceWrapper(PTRACE_GETREGSET, tid, &regset, &ioVec, ioVec.iov_len);
         break_count = dreg_state.dbg_info & 0xff;
 
         return error;
@@ -777,8 +771,7 @@ NativeRegisterContextLinux_arm64::WriteHardwareDebugRegs(lldb::addr_t *addr_buf,
             dreg_state.dbg_regs[i].ctrl = cntrl_buf[i];
         }
 
-        NativeProcessLinux::PtraceWrapper(PTRACE_SETREGSET, m_thread.GetID(), &type, &ioVec, ioVec.iov_len, error);
-        return error;
+        return NativeProcessLinux::PtraceWrapper(PTRACE_SETREGSET, m_thread.GetID(), &type, &ioVec, ioVec.iov_len);
     });
 }
 
@@ -803,8 +796,8 @@ NativeRegisterContextLinux_arm64::DoReadRegisterValue(uint32_t offset,
 
         ioVec.iov_base = &regs;
         ioVec.iov_len = sizeof regs;
-        NativeProcessLinux::PtraceWrapper(
-                PTRACE_GETREGSET, m_thread.GetID(), &regset, &ioVec, sizeof regs, error);
+        error = NativeProcessLinux::PtraceWrapper(
+                PTRACE_GETREGSET, m_thread.GetID(), &regset, &ioVec, sizeof regs);
         if (error.Success())
         {
             ArchSpec arch;
@@ -822,8 +815,8 @@ NativeRegisterContextLinux_arm64::DoReadRegisterValue(uint32_t offset,
 
         ioVec.iov_base = &regs;
         ioVec.iov_len = sizeof regs;
-        NativeProcessLinux::PtraceWrapper(
-                PTRACE_GETREGSET, m_thread.GetID(), &regset, &ioVec, sizeof regs, error);
+        error = NativeProcessLinux::PtraceWrapper(
+                PTRACE_GETREGSET, m_thread.GetID(), &regset, &ioVec, sizeof regs);
         if (error.Success())
         {
             ArchSpec arch;
@@ -857,12 +850,12 @@ NativeRegisterContextLinux_arm64::DoWriteRegisterValue(uint32_t offset,
 
         ioVec.iov_base = &regs;
         ioVec.iov_len = sizeof regs;
-        NativeProcessLinux::PtraceWrapper( PTRACE_GETREGSET, tid, &regset, &ioVec, sizeof regs, error);
+        error = NativeProcessLinux::PtraceWrapper( PTRACE_GETREGSET, tid, &regset, &ioVec, sizeof regs);
 
         if (error.Success())
         {
             ::memcpy((void *)(((unsigned char *)(&regs)) + offset), value.GetBytes(), 16);
-            NativeProcessLinux::PtraceWrapper(PTRACE_SETREGSET, tid, &regset, &ioVec, sizeof regs, error);
+            error = NativeProcessLinux::PtraceWrapper(PTRACE_SETREGSET, tid, &regset, &ioVec, sizeof regs);
         }
     }
     else
@@ -873,11 +866,11 @@ NativeRegisterContextLinux_arm64::DoWriteRegisterValue(uint32_t offset,
 
         ioVec.iov_base = &regs;
         ioVec.iov_len = sizeof regs;
-        NativeProcessLinux::PtraceWrapper(PTRACE_GETREGSET, tid, &regset, &ioVec, sizeof regs, error);
+        error = NativeProcessLinux::PtraceWrapper(PTRACE_GETREGSET, tid, &regset, &ioVec, sizeof regs);
         if (error.Success())
         {
             ::memcpy((void *)(((unsigned char *)(&regs)) + offset), value.GetBytes(), 8);
-            NativeProcessLinux::PtraceWrapper(PTRACE_SETREGSET, tid, &regset, &ioVec, sizeof regs, error);
+            error = NativeProcessLinux::PtraceWrapper(PTRACE_SETREGSET, tid, &regset, &ioVec, sizeof regs);
         }
     }
     return error;
@@ -892,8 +885,7 @@ NativeRegisterContextLinux_arm64::DoReadGPR(void *buf, size_t buf_size)
 
     ioVec.iov_base = buf;
     ioVec.iov_len = buf_size;
-    NativeProcessLinux::PtraceWrapper(PTRACE_GETREGSET, m_thread.GetID(), &regset, &ioVec, buf_size, error);
-    return error;
+    return NativeProcessLinux::PtraceWrapper(PTRACE_GETREGSET, m_thread.GetID(), &regset, &ioVec, buf_size);
 }
 
 Error
@@ -905,8 +897,7 @@ NativeRegisterContextLinux_arm64::DoWriteGPR(void *buf, size_t buf_size)
 
     ioVec.iov_base = buf;
     ioVec.iov_len = buf_size;
-    NativeProcessLinux::PtraceWrapper(PTRACE_SETREGSET, m_thread.GetID(), &regset, &ioVec, buf_size, error);
-    return error;
+    return NativeProcessLinux::PtraceWrapper(PTRACE_SETREGSET, m_thread.GetID(), &regset, &ioVec, buf_size);
 }
 
 Error
@@ -918,8 +909,7 @@ NativeRegisterContextLinux_arm64::DoReadFPR(void *buf, size_t buf_size)
 
     ioVec.iov_base = buf;
     ioVec.iov_len = buf_size;
-    NativeProcessLinux::PtraceWrapper(PTRACE_GETREGSET, m_thread.GetID(), &regset, &ioVec, buf_size, error);
-    return error;
+    return NativeProcessLinux::PtraceWrapper(PTRACE_GETREGSET, m_thread.GetID(), &regset, &ioVec, buf_size);
 }
 
 Error
@@ -931,8 +921,7 @@ NativeRegisterContextLinux_arm64::DoWriteFPR(void *buf, size_t buf_size)
 
     ioVec.iov_base = buf;
     ioVec.iov_len = buf_size;
-    NativeProcessLinux::PtraceWrapper(PTRACE_SETREGSET, m_thread.GetID(), &regset, &ioVec, buf_size, error);
-    return error;
+    return NativeProcessLinux::PtraceWrapper(PTRACE_SETREGSET, m_thread.GetID(), &regset, &ioVec, buf_size);
 }
 
 #endif // defined (__arm64__) || defined (__aarch64__)

@@ -50,7 +50,7 @@ class CMICmnMIValueTuple : public CMICmnMIValue
     // Overridden:
   public:
     // From CMICmnBase
-    /* dtor */ virtual ~CMICmnMIValueTuple(void);
+    /* dtor */ ~CMICmnMIValueTuple(void) override;
 
     // Methods:
   private:
@@ -60,5 +60,5 @@ class CMICmnMIValueTuple : public CMICmnMIValue
 
     // Attributes:
   private:
-    bool m_bSpaceAfterComma; // True = put space seperators into the string, false = no spaces used
+    bool m_bSpaceAfterComma; // True = put space separators into the string, false = no spaces used
 };
