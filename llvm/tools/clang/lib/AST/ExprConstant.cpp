@@ -7257,6 +7257,13 @@ bool IntExprEvaluator::VisitUnaryExprOrTypeTraitExpr(
       return false;
     return Success(Sizeof, E);
   }
+  case UETT_OpenMPRequiredSimdAlign:
+    assert(E->isArgumentType());
+    return Success(
+        Info.Ctx.toCharUnitsFromBits(
+                    Info.Ctx.getOpenMPDefaultSimdAlign(E->getArgumentType()))
+            .getQuantity(),
+        E);
   }
 
   llvm_unreachable("unknown expr/type trait");

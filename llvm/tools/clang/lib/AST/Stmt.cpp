@@ -2086,6 +2086,46 @@ OMPTaskgroupDirective *OMPTaskgroupDirective::CreateEmpty(const ASTContext &C,
   return new (Mem) OMPTaskgroupDirective();
 }
 
+OMPCancellationPointDirective *OMPCancellationPointDirective::Create(
+    const ASTContext &C, SourceLocation StartLoc, SourceLocation EndLoc,
+    OpenMPDirectiveKind CancelRegion) {
+  unsigned Size = llvm::RoundUpToAlignment(
+      sizeof(OMPCancellationPointDirective), llvm::alignOf<Stmt *>());
+  void *Mem = C.Allocate(Size);
+  OMPCancellationPointDirective *Dir =
+      new (Mem) OMPCancellationPointDirective(StartLoc, EndLoc);
+  Dir->setCancelRegion(CancelRegion);
+  return Dir;
+}
+
+OMPCancellationPointDirective *
+OMPCancellationPointDirective::CreateEmpty(const ASTContext &C, EmptyShell) {
+  unsigned Size = llvm::RoundUpToAlignment(
+      sizeof(OMPCancellationPointDirective), llvm::alignOf<Stmt *>());
+  void *Mem = C.Allocate(Size);
+  return new (Mem) OMPCancellationPointDirective();
+}
+
+OMPCancelDirective *
+OMPCancelDirective::Create(const ASTContext &C, SourceLocation StartLoc,
+                           SourceLocation EndLoc,
+                           OpenMPDirectiveKind CancelRegion) {
+  unsigned Size = llvm::RoundUpToAlignment(sizeof(OMPCancelDirective),
+                                           llvm::alignOf<Stmt *>());
+  void *Mem = C.Allocate(Size);
+  OMPCancelDirective *Dir = new (Mem) OMPCancelDirective(StartLoc, EndLoc);
+  Dir->setCancelRegion(CancelRegion);
+  return Dir;
+}
+
+OMPCancelDirective *OMPCancelDirective::CreateEmpty(const ASTContext &C,
+                                                    EmptyShell) {
+  unsigned Size = llvm::RoundUpToAlignment(sizeof(OMPCancelDirective),
+                                           llvm::alignOf<Stmt *>());
+  void *Mem = C.Allocate(Size);
+  return new (Mem) OMPCancelDirective();
+}
+
 OMPFlushDirective *OMPFlushDirective::Create(const ASTContext &C,
                                              SourceLocation StartLoc,
                                              SourceLocation EndLoc,

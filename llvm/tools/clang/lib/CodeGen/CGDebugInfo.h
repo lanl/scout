@@ -65,7 +65,6 @@ class CGDebugInfo {
   llvm::DIType *OCLImage2dArrayDITy = nullptr;
   llvm::DIType *OCLImage3dDITy = nullptr;
   llvm::DIType *OCLEventDITy = nullptr;
-  llvm::DIType *BlockLiteralGeneric = nullptr;
 
   // +==== Scout =============================================================+
   llvm::DIType *WindowDITy;
@@ -90,6 +89,9 @@ class CGDebugInfo {
   /// \brief Cache of previously constructed interfaces
   /// which may change.
   llvm::SmallVector<ObjCInterfaceCacheEntry, 32> ObjCInterfaceCache;
+
+  /// \brief Cache of references to AST files such as PCHs or modules.
+  llvm::DenseMap<uint64_t, llvm::DIModule *> ModuleRefCache;
 
   /// \brief list of interfaces we want to keep even if orphaned.
   std::vector<void *> RetainedTypes;
@@ -366,6 +368,9 @@ public:
   /// \brief Emit C++ using declaration.
   void EmitUsingDecl(const UsingDecl &UD);
 
+  /// \brief Emit an @import declaration.
+  void EmitImportDecl(const ImportDecl &ID);
+
   /// \brief Emit C++ namespace alias.
   llvm::DIImportedEntity *EmitNamespaceAlias(const NamespaceAliasDecl &NA);
 
@@ -477,6 +482,10 @@ private:
   /// \brief Get the type from the cache or create a new type if
   /// necessary.
   llvm::DIType *getOrCreateType(QualType Ty, llvm::DIFile *Fg);
+
+  /// \brief Get a reference to a clang module.
+  llvm::DIModule *
+  getOrCreateModuleRef(ExternalASTSource::ASTSourceDescriptor Mod);
 
   /// \brief Get the type from the cache or create a new
   /// partial type if necessary.

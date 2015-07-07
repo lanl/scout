@@ -85,22 +85,24 @@ static CGCXXABI *createCXXABI(CodeGenModule &CGM) {
   llvm_unreachable("invalid C++ ABI kind");
 }
 
-CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
-                             llvm::Module &M, const llvm::DataLayout &TD,
+CodeGenModule::CodeGenModule(ASTContext &C, const HeaderSearchOptions &HSO,
+                             const PreprocessorOptions &PPO,
+                             const CodeGenOptions &CGO, llvm::Module &M,
+                             const llvm::DataLayout &TD,
                              DiagnosticsEngine &diags,
                              CoverageSourceInfo *CoverageInfo)
-    : Context(C), LangOpts(C.getLangOpts()), CodeGenOpts(CGO), TheModule(M),
-      Diags(diags), TheDataLayout(TD), Target(C.getTargetInfo()),
-      ABI(createCXXABI(*this)), VMContext(M.getContext()), TBAA(nullptr),
-      TheTargetCodeGenInfo(nullptr), Types(*this), VTables(*this),
-      ObjCRuntime(nullptr), 
+    : Context(C), LangOpts(C.getLangOpts()), HeaderSearchOpts(HSO),
+      PreprocessorOpts(PPO), CodeGenOpts(CGO), TheModule(M), Diags(diags),
+      TheDataLayout(TD), Target(C.getTargetInfo()), ABI(createCXXABI(*this)),
+      VMContext(M.getContext()), TBAA(nullptr), TheTargetCodeGenInfo(nullptr),
+      Types(*this), VTables(*this), ObjCRuntime(nullptr),
       // ===== Scout =========================================
       ScoutABI(createScoutABI(*this)),
       ScoutRuntime(nullptr),
       LegionCRuntime(nullptr),
       // =====================================================
-      OpenCLRuntime(nullptr), OpenMPRuntime(nullptr),
-      CUDARuntime(nullptr), DebugInfo(nullptr), ARCData(nullptr),
+      OpenCLRuntime(nullptr), OpenMPRuntime(nullptr), CUDARuntime(nullptr),
+      DebugInfo(nullptr), ARCData(nullptr),
       NoObjCARCExceptionsMetadata(nullptr), RRData(nullptr), PGOReader(nullptr),
       CFConstantStringClassRef(nullptr), ConstantStringClassRef(nullptr),
       NSConstantStringType(nullptr), NSConcreteGlobalBlock(nullptr),
@@ -1526,12 +1528,7 @@ CodeGenModule::isTriviallyRecursive(const FunctionDecl *FD) {
     Name = FD->getName();
   }
 
-  auto &BI = Context.BuiltinInfo;
-  unsigned BuiltinID = Context.Idents.get(Name).getBuiltinID();
-  if (!BuiltinID || !BI.isPredefinedLibFunction(BuiltinID))
-    return false;
-
-  FunctionIsDirectlyRecursive Walker(Name, BI);
+  FunctionIsDirectlyRecursive Walker(Name, Context.BuiltinInfo);
   Walker.TraverseFunctionDecl(const_cast<FunctionDecl*>(FD));
   return Walker.Result;
 }
@@ -3470,6 +3467,8 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
           Owner->getTopLevelModule()->Name == getLangOpts().CurrentModule)
         break;
     }
+    if (CGDebugInfo *DI = getModuleDebugInfo())
+      DI->EmitImportDecl(*Import);
 
     ImportedModules.insert(Import->getImportedModule());
     break;

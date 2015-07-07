@@ -72,8 +72,6 @@ IdentifierIterator *IdentifierInfoLookup::getIdentifiers() {
   return new EmptyLookupIterator();
 }
 
-ExternalIdentifierLookup::~ExternalIdentifierLookup() {}
-
 IdentifierTable::IdentifierTable(const LangOptions &LangOpts,
                                  IdentifierInfoLookup* externalLookup)
   : HashTable(8192), // Start with space for 8K identifiers.
@@ -112,9 +110,10 @@ namespace {
     WCHARSUPPORT = 0x04000,
     HALFSUPPORT = 0x08000,
     KEYCONCEPTS = 0x10000,
+    KEYOBJC2    = 0x20000,
 // +===== Scout ==========================================================+
-    KEYSCOUT   = 0x20000,
-    KEYALL = (0x2ffff & ~KEYNOMS18 &
+    KEYSCOUT   = 0x40000,
+    KEYALL = (0x4ffff & ~KEYNOMS18 &
               ~KEYNOOPENCL) // KEYNOMS18 and KEYNOOPENCL are used to exclude.
 // +======================================================================+
   };
@@ -150,6 +149,7 @@ static KeywordStatus getKeywordStatus(const LangOptions &LangOpts,
   // in non-arc mode.
   if (LangOpts.ObjC2 && (Flags & KEYARC)) return KS_Enabled;
   if (LangOpts.ConceptsTS && (Flags & KEYCONCEPTS)) return KS_Enabled;
+  if (LangOpts.ObjC2 && (Flags & KEYOBJC2)) return KS_Enabled;
   if (LangOpts.CPlusPlus && (Flags & KEYCXX11)) return KS_Future;
 
   // +==== Scout - keywords ==================================================+

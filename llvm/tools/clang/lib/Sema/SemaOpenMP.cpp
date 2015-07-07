@@ -95,19 +95,20 @@ private:
     Scope *CurScope;
     SourceLocation ConstructLoc;
     bool OrderedRegion;
+    bool NowaitRegion;
     unsigned CollapseNumber;
     SourceLocation InnerTeamsRegionLoc;
     SharingMapTy(OpenMPDirectiveKind DKind, DeclarationNameInfo Name,
                  Scope *CurScope, SourceLocation Loc)
         : SharingMap(), AlignedMap(), LCVSet(), DefaultAttr(DSA_unspecified),
           Directive(DKind), DirectiveName(std::move(Name)), CurScope(CurScope),
-          ConstructLoc(Loc), OrderedRegion(false), CollapseNumber(1),
-          InnerTeamsRegionLoc() {}
+          ConstructLoc(Loc), OrderedRegion(false), NowaitRegion(false),
+          CollapseNumber(1), InnerTeamsRegionLoc() {}
     SharingMapTy()
         : SharingMap(), AlignedMap(), LCVSet(), DefaultAttr(DSA_unspecified),
           Directive(OMPD_unknown), DirectiveName(), CurScope(nullptr),
-          ConstructLoc(), OrderedRegion(false), CollapseNumber(1),
-          InnerTeamsRegionLoc() {}
+          ConstructLoc(), OrderedRegion(false), NowaitRegion(false),
+          CollapseNumber(1), InnerTeamsRegionLoc() {}
   };
 
   typedef SmallVector<SharingMapTy, 64> StackTy;
@@ -230,6 +231,17 @@ public:
   bool isParentOrderedRegion() const {
     if (Stack.size() > 2)
       return Stack[Stack.size() - 2].OrderedRegion;
+    return false;
+  }
+  /// \brief Marks current region as nowait (it has a 'nowait' clause).
+  void setNowaitRegion(bool IsNowait = true) {
+    Stack.back().NowaitRegion = IsNowait;
+  }
+  /// \brief Returns true, if parent region is nowait (has associated
+  /// 'nowait' clause), false - otherwise.
+  bool isParentNowaitRegion() const {
+    if (Stack.size() > 2)
+      return Stack[Stack.size() - 2].NowaitRegion;
     return false;
   }
 
@@ -1312,6 +1324,8 @@ void Sema::ActOnOpenMPRegionStart(OpenMPDirectiveKind DKind, Scope *CurScope) {
   case OMPD_taskyield:
   case OMPD_barrier:
   case OMPD_taskwait:
+  case OMPD_cancellation_point:
+  case OMPD_cancel:
   case OMPD_flush:
     llvm_unreachable("OpenMP Directive is not allowed");
   case OMPD_unknown:
@@ -1352,6 +1366,7 @@ StmtResult Sema::ActOnOpenMPRegionEnd(StmtResult S,
 static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
                                   OpenMPDirectiveKind CurrentRegion,
                                   const DeclarationNameInfo &CurrentName,
+                                  OpenMPDirectiveKind CancelRegion,
                                   SourceLocation StartLoc) {
   // Allowed nesting of constructs
   // +------------------+-----------------+------------------------------------+
@@ -1379,6 +1394,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | parallel         | atomic          | *                                  |
   // | parallel         | target          | *                                  |
   // | parallel         | teams           | +                                  |
+  // | parallel         | cancellation    |                                    |
+  // |                  | point           | !                                  |
+  // | parallel         | cancel          | !                                  |
   // +------------------+-----------------+------------------------------------+
   // | for              | parallel        | *                                  |
   // | for              | for             | +                                  |
@@ -1402,6 +1420,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | for              | atomic          | *                                  |
   // | for              | target          | *                                  |
   // | for              | teams           | +                                  |
+  // | for              | cancellation    |                                    |
+  // |                  | point           | !                                  |
+  // | for              | cancel          | !                                  |
   // +------------------+-----------------+------------------------------------+
   // | master           | parallel        | *                                  |
   // | master           | for             | +                                  |
@@ -1425,6 +1446,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | master           | atomic          | *                                  |
   // | master           | target          | *                                  |
   // | master           | teams           | +                                  |
+  // | master           | cancellation    |                                    |
+  // |                  | point           |                                    |
+  // | master           | cancel          |                                    |
   // +------------------+-----------------+------------------------------------+
   // | critical         | parallel        | *                                  |
   // | critical         | for             | +                                  |
@@ -1447,6 +1471,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | critical         | atomic          | *                                  |
   // | critical         | target          | *                                  |
   // | critical         | teams           | +                                  |
+  // | critical         | cancellation    |                                    |
+  // |                  | point           |                                    |
+  // | critical         | cancel          |                                    |
   // +------------------+-----------------+------------------------------------+
   // | simd             | parallel        |                                    |
   // | simd             | for             |                                    |
@@ -1470,6 +1497,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | simd             | atomic          |                                    |
   // | simd             | target          |                                    |
   // | simd             | teams           |                                    |
+  // | simd             | cancellation    |                                    |
+  // |                  | point           |                                    |
+  // | simd             | cancel          |                                    |
   // +------------------+-----------------+------------------------------------+
   // | for simd         | parallel        |                                    |
   // | for simd         | for             |                                    |
@@ -1493,6 +1523,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | for simd         | atomic          |                                    |
   // | for simd         | target          |                                    |
   // | for simd         | teams           |                                    |
+  // | for simd         | cancellation    |                                    |
+  // |                  | point           |                                    |
+  // | for simd         | cancel          |                                    |
   // +------------------+-----------------+------------------------------------+
   // | parallel for simd| parallel        |                                    |
   // | parallel for simd| for             |                                    |
@@ -1516,6 +1549,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | parallel for simd| atomic          |                                    |
   // | parallel for simd| target          |                                    |
   // | parallel for simd| teams           |                                    |
+  // | parallel for simd| cancellation    |                                    |
+  // |                  | point           |                                    |
+  // | parallel for simd| cancel          |                                    |
   // +------------------+-----------------+------------------------------------+
   // | sections         | parallel        | *                                  |
   // | sections         | for             | +                                  |
@@ -1539,6 +1575,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | sections         | atomic          | *                                  |
   // | sections         | target          | *                                  |
   // | sections         | teams           | +                                  |
+  // | sections         | cancellation    |                                    |
+  // |                  | point           | !                                  |
+  // | sections         | cancel          | !                                  |
   // +------------------+-----------------+------------------------------------+
   // | section          | parallel        | *                                  |
   // | section          | for             | +                                  |
@@ -1562,6 +1601,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | section          | atomic          | *                                  |
   // | section          | target          | *                                  |
   // | section          | teams           | +                                  |
+  // | section          | cancellation    |                                    |
+  // |                  | point           | !                                  |
+  // | section          | cancel          | !                                  |
   // +------------------+-----------------+------------------------------------+
   // | single           | parallel        | *                                  |
   // | single           | for             | +                                  |
@@ -1585,6 +1627,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | single           | atomic          | *                                  |
   // | single           | target          | *                                  |
   // | single           | teams           | +                                  |
+  // | single           | cancellation    |                                    |
+  // |                  | point           |                                    |
+  // | single           | cancel          |                                    |
   // +------------------+-----------------+------------------------------------+
   // | parallel for     | parallel        | *                                  |
   // | parallel for     | for             | +                                  |
@@ -1608,6 +1653,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | parallel for     | atomic          | *                                  |
   // | parallel for     | target          | *                                  |
   // | parallel for     | teams           | +                                  |
+  // | parallel for     | cancellation    |                                    |
+  // |                  | point           | !                                  |
+  // | parallel for     | cancel          | !                                  |
   // +------------------+-----------------+------------------------------------+
   // | parallel sections| parallel        | *                                  |
   // | parallel sections| for             | +                                  |
@@ -1631,6 +1679,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | parallel sections| atomic          | *                                  |
   // | parallel sections| target          | *                                  |
   // | parallel sections| teams           | +                                  |
+  // | parallel sections| cancellation    |                                    |
+  // |                  | point           | !                                  |
+  // | parallel sections| cancel          | !                                  |
   // +------------------+-----------------+------------------------------------+
   // | task             | parallel        | *                                  |
   // | task             | for             | +                                  |
@@ -1654,6 +1705,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | task             | atomic          | *                                  |
   // | task             | target          | *                                  |
   // | task             | teams           | +                                  |
+  // | task             | cancellation    |                                    |
+  // |                  | point           | !                                  |
+  // | task             | cancel          | !                                  |
   // +------------------+-----------------+------------------------------------+
   // | ordered          | parallel        | *                                  |
   // | ordered          | for             | +                                  |
@@ -1677,6 +1731,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | ordered          | atomic          | *                                  |
   // | ordered          | target          | *                                  |
   // | ordered          | teams           | +                                  |
+  // | ordered          | cancellation    |                                    |
+  // |                  | point           |                                    |
+  // | ordered          | cancel          |                                    |
   // +------------------+-----------------+------------------------------------+
   // | atomic           | parallel        |                                    |
   // | atomic           | for             |                                    |
@@ -1700,6 +1757,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | atomic           | atomic          |                                    |
   // | atomic           | target          |                                    |
   // | atomic           | teams           |                                    |
+  // | atomic           | cancellation    |                                    |
+  // |                  | point           |                                    |
+  // | atomic           | cancel          |                                    |
   // +------------------+-----------------+------------------------------------+
   // | target           | parallel        | *                                  |
   // | target           | for             | *                                  |
@@ -1723,6 +1783,9 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | target           | atomic          | *                                  |
   // | target           | target          | *                                  |
   // | target           | teams           | *                                  |
+  // | target           | cancellation    |                                    |
+  // |                  | point           |                                    |
+  // | target           | cancel          |                                    |
   // +------------------+-----------------+------------------------------------+
   // | teams            | parallel        | *                                  |
   // | teams            | for             | +                                  |
@@ -1740,12 +1803,15 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   // | teams            | taskyield       | +                                  |
   // | teams            | barrier         | +                                  |
   // | teams            | taskwait        | +                                  |
-  // | teams            | taskgroup        | +                                  |
+  // | teams            | taskgroup       | +                                  |
   // | teams            | flush           | +                                  |
   // | teams            | ordered         | +                                  |
   // | teams            | atomic          | +                                  |
   // | teams            | target          | +                                  |
   // | teams            | teams           | +                                  |
+  // | teams            | cancellation    |                                    |
+  // |                  | point           |                                    |
+  // | teams            | cancel          |                                    |
   // +------------------+-----------------+------------------------------------+
   if (Stack->getCurScope()) {
     auto ParentRegion = Stack->getParentDirective();
@@ -1787,7 +1853,26 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
     // called from OpenMP regions with the required preconditions).
     if (ParentRegion == OMPD_unknown)
       return false;
-    if (CurrentRegion == OMPD_master) {
+    if (CurrentRegion == OMPD_cancellation_point ||
+        CurrentRegion == OMPD_cancel) {
+      // OpenMP [2.16, Nesting of Regions]
+      // A cancellation point construct for which construct-type-clause is
+      // taskgroup must be nested inside a task construct. A cancellation
+      // point construct for which construct-type-clause is not taskgroup must
+      // be closely nested inside an OpenMP construct that matches the type
+      // specified in construct-type-clause.
+      // A cancel construct for which construct-type-clause is taskgroup must be
+      // nested inside a task construct. A cancel construct for which
+      // construct-type-clause is not taskgroup must be closely nested inside an
+      // OpenMP construct that matches the type specified in
+      // construct-type-clause.
+      NestingProhibited =
+          !((CancelRegion == OMPD_parallel && ParentRegion == OMPD_parallel) ||
+            (CancelRegion == OMPD_for && ParentRegion == OMPD_for) ||
+            (CancelRegion == OMPD_taskgroup && ParentRegion == OMPD_task) ||
+            (CancelRegion == OMPD_sections &&
+             (ParentRegion == OMPD_section || ParentRegion == OMPD_sections)));
+    } else if (CurrentRegion == OMPD_master) {
       // OpenMP [2.16, Nesting of Regions]
       // A master region may not be closely nested inside a worksharing,
       // atomic, or explicit task region.
@@ -1877,14 +1962,13 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
   return false;
 }
 
-StmtResult Sema::ActOnOpenMPExecutableDirective(OpenMPDirectiveKind Kind,
-                                                const DeclarationNameInfo &DirName,
-                                                ArrayRef<OMPClause *> Clauses,
-                                                Stmt *AStmt,
-                                                SourceLocation StartLoc,
-                                                SourceLocation EndLoc) {
+StmtResult Sema::ActOnOpenMPExecutableDirective(
+    OpenMPDirectiveKind Kind, const DeclarationNameInfo &DirName,
+    OpenMPDirectiveKind CancelRegion, ArrayRef<OMPClause *> Clauses,
+    Stmt *AStmt, SourceLocation StartLoc, SourceLocation EndLoc) {
   StmtResult Res = StmtError();
-  if (CheckNestingOfRegions(*this, DSAStack, Kind, DirName, StartLoc))
+  if (CheckNestingOfRegions(*this, DSAStack, Kind, DirName, CancelRegion,
+                            StartLoc))
     return StmtError();
 
   llvm::SmallVector<OMPClause *, 8> ClausesWithImplicit;
@@ -2017,6 +2101,20 @@ StmtResult Sema::ActOnOpenMPExecutableDirective(OpenMPDirectiveKind Kind,
   case OMPD_target:
     Res = ActOnOpenMPTargetDirective(ClausesWithImplicit, AStmt, StartLoc,
                                      EndLoc);
+    break;
+  case OMPD_cancellation_point:
+    assert(ClausesWithImplicit.empty() &&
+           "No clauses are allowed for 'omp cancellation point' directive");
+    assert(AStmt == nullptr && "No associated statement allowed for 'omp "
+                               "cancellation point' directive");
+    Res = ActOnOpenMPCancellationPointDirective(StartLoc, EndLoc, CancelRegion);
+    break;
+  case OMPD_cancel:
+    assert(ClausesWithImplicit.empty() &&
+           "No clauses are allowed for 'omp cancel' directive");
+    assert(AStmt == nullptr &&
+           "No associated statement allowed for 'omp cancel' directive");
+    Res = ActOnOpenMPCancelDirective(StartLoc, EndLoc, CancelRegion);
     break;
   case OMPD_threadprivate:
     llvm_unreachable("OpenMP Directive is not allowed");
@@ -3246,8 +3344,7 @@ StmtResult Sema::ActOnOpenMPSectionsDirective(ArrayRef<OMPClause *> Clauses,
       return StmtError();
     // All associated statements must be '#pragma omp section' except for
     // the first one.
-    for (++S; S; ++S) {
-      auto SectionStmt = *S;
+    for (Stmt *SectionStmt : ++S) {
       if (!SectionStmt || !isa<OMPSectionDirective>(SectionStmt)) {
         if (SectionStmt)
           Diag(SectionStmt->getLocStart(),
@@ -3405,8 +3502,7 @@ Sema::ActOnOpenMPParallelSectionsDirective(ArrayRef<OMPClause *> Clauses,
       return StmtError();
     // All associated statements must be '#pragma omp section' except for
     // the first one.
-    for (++S; S; ++S) {
-      auto SectionStmt = *S;
+    for (Stmt *SectionStmt : ++S) {
       if (!SectionStmt || !isa<OMPSectionDirective>(SectionStmt)) {
         if (SectionStmt)
           Diag(SectionStmt->getLocStart(),
@@ -4204,6 +4300,48 @@ StmtResult Sema::ActOnOpenMPTeamsDirective(ArrayRef<OMPClause *> Clauses,
   return OMPTeamsDirective::Create(Context, StartLoc, EndLoc, Clauses, AStmt);
 }
 
+StmtResult
+Sema::ActOnOpenMPCancellationPointDirective(SourceLocation StartLoc,
+                                            SourceLocation EndLoc,
+                                            OpenMPDirectiveKind CancelRegion) {
+  if (CancelRegion != OMPD_parallel && CancelRegion != OMPD_for &&
+      CancelRegion != OMPD_sections && CancelRegion != OMPD_taskgroup) {
+    Diag(StartLoc, diag::err_omp_wrong_cancel_region)
+        << getOpenMPDirectiveName(CancelRegion);
+    return StmtError();
+  }
+  if (DSAStack->isParentNowaitRegion()) {
+    Diag(StartLoc, diag::err_omp_parent_cancel_region_nowait) << 0;
+    return StmtError();
+  }
+  if (DSAStack->isParentOrderedRegion()) {
+    Diag(StartLoc, diag::err_omp_parent_cancel_region_ordered) << 0;
+    return StmtError();
+  }
+  return OMPCancellationPointDirective::Create(Context, StartLoc, EndLoc,
+                                               CancelRegion);
+}
+
+StmtResult Sema::ActOnOpenMPCancelDirective(SourceLocation StartLoc,
+                                            SourceLocation EndLoc,
+                                            OpenMPDirectiveKind CancelRegion) {
+  if (CancelRegion != OMPD_parallel && CancelRegion != OMPD_for &&
+      CancelRegion != OMPD_sections && CancelRegion != OMPD_taskgroup) {
+    Diag(StartLoc, diag::err_omp_wrong_cancel_region)
+        << getOpenMPDirectiveName(CancelRegion);
+    return StmtError();
+  }
+  if (DSAStack->isParentNowaitRegion()) {
+    Diag(StartLoc, diag::err_omp_parent_cancel_region_nowait) << 1;
+    return StmtError();
+  }
+  if (DSAStack->isParentOrderedRegion()) {
+    Diag(StartLoc, diag::err_omp_parent_cancel_region_ordered) << 1;
+    return StmtError();
+  }
+  return OMPCancelDirective::Create(Context, StartLoc, EndLoc, CancelRegion);
+}
+
 OMPClause *Sema::ActOnOpenMPSingleExprClause(OpenMPClauseKind Kind, Expr *Expr,
                                              SourceLocation StartLoc,
                                              SourceLocation LParenLoc,
@@ -4722,6 +4860,7 @@ OMPClause *Sema::ActOnOpenMPOrderedClause(SourceLocation StartLoc,
 
 OMPClause *Sema::ActOnOpenMPNowaitClause(SourceLocation StartLoc,
                                          SourceLocation EndLoc) {
+  DSAStack->setNowaitRegion();
   return new (Context) OMPNowaitClause(StartLoc, EndLoc);
 }
 

@@ -426,6 +426,7 @@ def warn_redecl_library_builtin : Warning<
   InGroup<DiagGroup<"incompatible-library-redeclaration">>;
 def err_builtin_definition : Error<"definition of builtin function %0">;
 def err_arm_invalid_specialreg : Error<"invalid special register for builtin">;
+def err_invalid_cpu_supports : Error<"invalid cpu feature string for builtin">;
 def warn_builtin_unknown : Warning<"use of unknown builtin %0">,
   InGroup<ImplicitFunctionDeclare>, DefaultError;
 def warn_dyn_class_memaccess : Warning<
@@ -977,6 +978,12 @@ def warning_multiple_selectors: Warning<
   "several methods with selector %0 of mismatched types are found "
   "for the @selector expression">,
   InGroup<SelectorTypeMismatch>, DefaultIgnore;
+
+def err_objc_kindof_nonobject : Error<
+  "'__kindof' specifier cannot be applied to non-object type %0">;
+def err_objc_kindof_wrong_position : Error<
+  "'__kindof' type specifier must precede the declarator">;
+
 // C++ declarations
 def err_static_assert_expression_is_not_constant : Error<
   "static_assert expression is not an integral constant expression">;
@@ -1050,6 +1057,7 @@ def ext_friend_tag_redecl_outside_namespace : ExtWarn<
   "unqualified friend declaration referring to type outside of the nearest "
   "enclosing namespace is a Microsoft extension; add a nested name specifier">,
   InGroup<Microsoft>;
+def err_pure_friend : Error<"friend declaration cannot have a pure-specifier">;
 
 def err_invalid_member_in_interface : Error<
   "%select{data member |non-public member function |static member function |"
@@ -2129,6 +2137,11 @@ def warn_concatenated_nsarray_literal : Warning<
   InGroup<ObjCStringConcatenation>;
 def note_objc_literal_comparison_isequal : Note<
   "use 'isEqual:' instead">;
+def warn_objc_collection_literal_element : Warning<
+  "object of type %0 is not compatible with "
+  "%select{array element type|dictionary key type|dictionary value type}1 %2">,
+  InGroup<ObjCLiteralConversion>;
+
 def err_attribute_argument_is_zero : Error<
   "%0 attribute must be greater than 0">;
 def warn_attribute_argument_n_negative : Warning<
@@ -4696,13 +4709,15 @@ def ext_sizeof_alignof_void_type : Extension<
   "invalid application of '%select{sizeof|alignof|vec_step}0' to a void "
   "type">, InGroup<PointerArith>;
 def err_opencl_sizeof_alignof_type : Error<
-  "invalid application of '%select{sizeof|alignof|vec_step}0' to a void type">;
+  "invalid application of '%select{sizeof|alignof|vec_step|__builtin_omp_required_simd_align}0' to a void type">;
 def err_sizeof_alignof_incomplete_type : Error<
-  "invalid application of '%select{sizeof|alignof|vec_step}0' to an "
+  "invalid application of '%select{sizeof|alignof|vec_step|__builtin_omp_required_simd_align}0' to an "
   "incomplete type %1">;
 def err_sizeof_alignof_function_type : Error<
-  "invalid application of '%select{sizeof|alignof|vec_step}0' to a "
+  "invalid application of '%select{sizeof|alignof|vec_step|__builtin_omp_required_simd_align}0' to a "
   "function type">;
+def err_openmp_default_simd_align_expr : Error<
+  "invalid application of '__builtin_omp_required_simd_align' to an expression, only type is allowed">;
 def err_sizeof_alignof_bitfield : Error<
   "invalid application of '%select{sizeof|alignof}0' to bit-field">;
 def err_alignof_member_of_incomplete_type : Error<
@@ -4736,6 +4751,8 @@ def warn_division_by_zero : Warning<"division by zero is undefined">,
   InGroup<DivZero>;
 def warn_remainder_by_zero : Warning<"remainder by zero is undefined">,
   InGroup<DivZero>;
+def warn_shift_lhs_negative : Warning<"shifting a negative signed value is undefined">,
+  InGroup<DiagGroup<"shift-negative-value">>;
 def warn_shift_negative : Warning<"shift count is negative">,
   InGroup<DiagGroup<"shift-count-negative">>;
 def warn_shift_gt_typewidth : Warning<"shift count >= width of type">,
@@ -5572,6 +5589,8 @@ def err_seh_try_outside_functions : Error<
   "cannot use SEH '__try' in blocks, captured regions, or Obj-C method decls">;
 def err_mixing_cxx_try_seh_try : Error<
   "cannot use C++ 'try' in the same function as SEH '__try'">;
+def err_seh_try_unsupported : Error<
+  "SEH '__try' is not supported on this target">;
 def note_conflicting_try_here : Note<
   "conflicting %0 here">;
 def warn_jump_out_of_seh_finally : Warning<
@@ -6797,6 +6816,15 @@ def warn_format_non_standard_conversion_spec: Warning<
 def warn_printf_ignored_flag: Warning<
   "flag '%0' is ignored when flag '%1' is present">,
   InGroup<Format>;
+def warn_printf_empty_objc_flag: Warning<
+  "missing object format flag">,
+  InGroup<Format>;
+def warn_printf_ObjCflags_without_ObjCConversion: Warning<
+  "object format flags cannot be used with '%0' conversion specifier">,
+  InGroup<Format>;
+def warn_printf_invalid_objc_flag: Warning<
+    "'%0' is not a valid object format flag">,
+    InGroup<Format>;
 def warn_scanf_scanlist_incomplete : Warning<
   "no closing ']' for '%%[' in scanf format string">,
   InGroup<Format>;
@@ -7609,6 +7637,12 @@ def err_omp_single_copyprivate_with_nowait : Error<
   "the 'copyprivate' clause must not be used with the 'nowait' clause">;
 def note_omp_nowait_clause_here : Note<
   "'nowait' clause is here">;
+def err_omp_wrong_cancel_region : Error<
+  "one of 'for', 'parallel', 'sections' or 'taskgroup' is expected">;
+def err_omp_parent_cancel_region_nowait : Error<
+  "parent region for 'omp %select{cancellation point/cancel}0' construct cannot be nowait">;
+def err_omp_parent_cancel_region_ordered : Error<
+  "parent region for 'omp %select{cancellation point/cancel}0' construct cannot be ordered">;
 } // end of OpenMP category
 
 let CategoryName = "Related Result Type Issue" in {
@@ -7884,6 +7918,87 @@ def warn_nullability_missing : Warning<
   "type specifier (_Nonnull, _Nullable, or _Null_unspecified)">,
   InGroup<NullabilityCompleteness>;
 
+def err_type_arg_explicit_nullability : Error<
+  "type argument %0 cannot explicitly specify nullability">;
+
+def err_type_param_bound_explicit_nullability : Error<
+  "type parameter %0 bound %1 cannot explicitly specify nullability">;
+
 }
+
+let CategoryName = "Generics Issue" in {
+
+def err_objc_type_param_bound_nonobject : Error<
+  "type bound %0 for type parameter %1 is not an Objective-C pointer type">;
+
+def err_objc_type_param_bound_missing_pointer : Error<
+  "missing '*' in type bound %0 for type parameter %1">;
+
+def err_objc_type_param_redecl : Error<
+  "redeclaration of type parameter %0">;
+
+def err_objc_type_param_arity_mismatch : Error<
+  "%select{forward class declaration|class definition|category|extension}0 has "
+  "too %select{few|many}1 type parameters (expected %2, have %3)">;
+
+def err_objc_type_param_bound_conflict : Error<
+  "type bound %0 for type parameter %1 conflicts with "
+  "%select{implicit|previous}2 bound %3%select{for type parameter %5|}4">;
+
+def err_objc_type_param_variance_conflict : Error<
+  "%select{in|co|contra}0variant type parameter %1 conflicts with previous "
+  "%select{in|co|contra}2variant type parameter %3">;
+
+def note_objc_type_param_here : Note<"type parameter %0 declared here">;
+
+def err_objc_type_param_bound_missing : Error<
+  "missing type bound %0 for type parameter %1 in %select{@interface|@class}2">;
+
+def err_objc_parameterized_category_nonclass : Error<
+  "%select{extension|category}0 of non-parameterized class %1 cannot have type "
+  "parameters">;
+
+def err_objc_parameterized_forward_class : Error<
+  "forward declaration of non-parameterized class %0 cannot have type "
+  "parameters">;
+
+def err_objc_parameterized_forward_class_first : Error<
+  "class %0 previously declared with type parameters">;
+
+def err_objc_type_arg_missing_star : Error<
+  "type argument %0 must be a pointer (requires a '*')">;
+
+def err_objc_type_arg_missing : Error<
+  "no type or protocol named %0">;
+
+def err_objc_protocol_suggest : Error<
+  "no protocol named %0: did you mean %1?">;
+
+def err_objc_type_args_and_protocols : Error<
+  "angle brackets contain both a %select{type|protocol}0 (%1) and a "
+  "%select{protocol|type}0 (%2)">;
+
+def err_objc_type_args_non_class : Error<
+  "type arguments cannot be applied to non-class type %0">;
+
+def err_objc_type_args_non_parameterized_class : Error<
+  "type arguments cannot be applied to non-parameterized class %0">;
+
+def err_objc_type_args_specialized_class : Error<
+  "type arguments cannot be applied to already-specialized class type %0">;
+
+def err_objc_type_args_wrong_arity : Error<
+  "too %select{many|few}0 type arguments for class %1 (have %2, expected %3)">;
+}
+
+def err_objc_type_arg_not_id_compatible : Error<
+  "type argument %0 is neither an Objective-C object nor a block type">;
+
+def err_objc_type_arg_does_not_match_bound : Error<
+  "type argument %0 does not satisfy the bound (%1) of type parameter %2">;
+
+def warn_objc_redundant_qualified_class_type : Warning<
+  "parameterized class %0 already conforms to the protocols listed; did you "
+  "forget a '*'?">, InGroup<ObjCProtocolQualifiers>;
 
 } // end of sema component.

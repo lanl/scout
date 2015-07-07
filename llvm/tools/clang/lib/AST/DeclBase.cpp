@@ -243,6 +243,7 @@ void Decl::setLexicalDeclContext(DeclContext *DC) {
   } else {
     getMultipleDC()->LexicalDC = DC;
   }
+  Hidden = cast<Decl>(DC)->Hidden;
 }
 
 void Decl::setDeclContextsImpl(DeclContext *SemaDC, DeclContext *LexicalDC,
@@ -571,6 +572,7 @@ unsigned Decl::getIdentifierNamespaceForKind(Kind DeclKind) {
     case TypeAliasTemplate:
     case UnresolvedUsingTypename:
     case TemplateTypeParm:
+    case ObjCTypeParam:
       return IDNS_Ordinary | IDNS_Type;
 
     case UsingShadow:

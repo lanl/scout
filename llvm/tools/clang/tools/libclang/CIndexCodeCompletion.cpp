@@ -584,8 +584,8 @@ namespace {
                                     unsigned NumResults) override {
       StoredResults.reserve(StoredResults.size() + NumResults);
       for (unsigned I = 0; I != NumResults; ++I) {
-        CodeCompletionString *StoredCompletion
-          = Results[I].CreateCodeCompletionString(S, getAllocator(),
+        CodeCompletionString *StoredCompletion        
+          = Results[I].CreateCodeCompletionString(S, Context, getAllocator(),
                                                   getCodeCompletionTUInfo(),
                                                   includeBriefComments());
 

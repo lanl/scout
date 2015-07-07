@@ -516,6 +516,10 @@ TEST_F(FormatTest, FormatsForLoop) {
                "         aaaaaaaaaa);\n"
                "     iter; ++iter) {\n"
                "}");
+  verifyFormat("for (auto aaaaaaaaaaaaaaaaaaaaaaaaaaa(\n"
+               "         aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa);\n"
+               "     aaaaaaaaaaaaaaaaaaaaaaaaaaa != bbbbbbbbbbbbbbbbbbbbbbb;\n"
+               "     ++aaaaaaaaaaaaaaaaaaaaaaaaaaa) {");
 
   FormatStyle NoBinPacking = getLLVMStyle();
   NoBinPacking.BinPackParameters = false;
@@ -3184,6 +3188,8 @@ TEST_F(FormatTest, LayoutNestedBlocks) {
                "}, a);",
                Style);
 
+  verifyFormat("SomeFunction({MACRO({ return output; }), b});");
+
   verifyNoCrash("^{v^{a}}");
 }
 
@@ -3212,6 +3218,24 @@ TEST_F(FormatTest, PutEmptyBlocksIntoOneLine) {
   EXPECT_EQ("{}", format("{}"));
   verifyFormat("enum E {};");
   verifyFormat("enum E {}");
+}
+
+TEST_F(FormatTest, FormatBeginBlockEndMacros) {
+  FormatStyle Style = getLLVMStyle();
+  Style.MacroBlockBegin = "^[A-Z_]+_BEGIN$";
+  Style.MacroBlockEnd = "^[A-Z_]+_END$";
+  verifyFormat("FOO_BEGIN\n"
+               "  FOO_ENTRY\n"
+               "FOO_END", Style);
+  verifyFormat("FOO_BEGIN\n"
+               "  NESTED_FOO_BEGIN\n"
+               "    NESTED_FOO_ENTRY\n"
+               "  NESTED_FOO_END\n"
+               "FOO_END", Style);
+  verifyFormat("FOO_BEGIN(Foo, Bar)\n"
+               "  int x;\n"
+               "  x = 1;\n"
+               "FOO_END(Baz)", Style);
 }
 
 //===----------------------------------------------------------------------===//
@@ -5256,11 +5280,6 @@ TEST_F(FormatTest, UnderstandsOverloadedOperators) {
   verifyGoogleFormat("operator ::A();");
 
   verifyFormat("using A::operator+;");
-
-  verifyFormat("string // break\n"
-               "operator()() & {}");
-  verifyFormat("string // break\n"
-               "operator()() && {}");
 }
 
 TEST_F(FormatTest, UnderstandsFunctionRefQualification) {
@@ -5524,12 +5543,25 @@ TEST_F(FormatTest, UnderstandsUsesOfStarAndAmp) {
   verifyFormat("A = new SomeType *[Length]();", PointerMiddle);
   verifyFormat("A = new SomeType *[Length];", PointerMiddle);
   verifyFormat("T ** t = new T *;", PointerMiddle);
+
+  // Member function reference qualifiers aren't binary operators.
+  verifyFormat("string // break\n"
+               "operator()() & {}");
+  verifyFormat("string // break\n"
+               "operator()() && {}");
+  verifyGoogleFormat("template <typename T>\n"
+                     "auto x() & -> int {}");
 }
 
 TEST_F(FormatTest, UnderstandsAttributes) {
   verifyFormat("SomeType s __attribute__((unused)) (InitValue);");
   verifyFormat("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa __attribute__((unused))\n"
                "aaaaaaaaaaaaaaaaaaaaaaa(int i);");
+  FormatStyle AfterType = getLLVMStyle();
+  AfterType.AlwaysBreakAfterDefinitionReturnType = FormatStyle::DRTBS_All;
+  verifyFormat("__attribute__((nodebug)) void\n"
+               "foo() {}\n",
+               AfterType);
 }
 
 TEST_F(FormatTest, UnderstandsEllipsis) {
@@ -9783,6 +9815,11 @@ TEST_F(FormatTest, FormatsLambdas) {
                "             << std::count_if(v.begin(), v.end(), [](int x) {\n"
                "                  return x == 2; // force break\n"
                "                });");
+  verifyFormat("return aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa([=](\n"
+               "    int iiiiiiiiiiii) {\n"
+               "  return aaaaaaaaaaaaaaaaaaaaaaa != aaaaaaaaaaaaaaaaaaaaaaa;\n"
+               "});",
+               getLLVMStyleWithColumns(60));
 
   // Lambdas with return types.
   verifyFormat("int c = []() -> int { return 2; }();\n");

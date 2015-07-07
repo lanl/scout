@@ -1137,7 +1137,9 @@ namespace clang {
       /// \brief An OMPThreadPrivateDecl record.
       DECL_OMP_THREADPRIVATE,
       /// \brief An EmptyDecl record.
-      DECL_EMPTY
+      DECL_EMPTY,
+      /// \brief An ObjCTypeParamDecl record.
+      DECL_OBJC_TYPE_PARAM,
     };
 
     /// \brief Record codes for each kind of statement or expression.
@@ -1435,6 +1437,8 @@ namespace clang {
       STMT_OMP_TARGET_DIRECTIVE,
       STMT_OMP_TEAMS_DIRECTIVE,
       STMT_OMP_TASKGROUP_DIRECTIVE,
+      STMT_OMP_CANCELLATION_POINT_DIRECTIVE,
+      STMT_OMP_CANCEL_DIRECTIVE,
 
       // ARC
       EXPR_OBJC_BRIDGED_CAST,     // ObjCBridgedCastExpr
