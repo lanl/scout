@@ -1350,7 +1350,7 @@ bool FastISel::selectInstruction(const Instruction *I) {
 
     // Don't handle Intrinsic::trap if a trap funciton is specified.
     if (F && F->getIntrinsicID() == Intrinsic::trap &&
-        !TM.Options.getTrapFunctionName().empty())
+        Call->hasFnAttr("trap-func-name"))
       return false;
   }
 
@@ -1612,7 +1612,7 @@ FastISel::FastISel(FunctionLoweringInfo &FuncInfo,
                    bool SkipTargetIndependentISel)
     : FuncInfo(FuncInfo), MF(FuncInfo.MF), MRI(FuncInfo.MF->getRegInfo()),
       MFI(*FuncInfo.MF->getFrameInfo()), MCP(*FuncInfo.MF->getConstantPool()),
-      TM(FuncInfo.MF->getTarget()), DL(*TM.getDataLayout()),
+      TM(FuncInfo.MF->getTarget()), DL(MF->getDataLayout()),
       TII(*MF->getSubtarget().getInstrInfo()),
       TLI(*MF->getSubtarget().getTargetLowering()),
       TRI(*MF->getSubtarget().getRegisterInfo()), LibInfo(LibInfo),

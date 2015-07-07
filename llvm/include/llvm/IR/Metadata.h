@@ -80,6 +80,7 @@ public:
     DILexicalBlockKind,
     DILexicalBlockFileKind,
     DINamespaceKind,
+    DIModuleKind,
     DITemplateTypeParameterKind,
     DITemplateValueParameterKind,
     DIGlobalVariableKind,

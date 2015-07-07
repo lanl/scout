@@ -33,6 +33,7 @@
 #if defined(_MSC_VER)
 #include <Windows.h>
 #include <DbgHelp.h>
+#pragma comment(lib, "dbghelp.lib")
 #endif
 
 namespace llvm {
@@ -83,10 +84,10 @@ void ModuleInfo::addSymbol(const SymbolRef &Symbol, uint64_t SymbolSize,
   SymbolRef::Type SymbolType = Symbol.getType();
   if (SymbolType != SymbolRef::ST_Function && SymbolType != SymbolRef::ST_Data)
     return;
-  uint64_t SymbolAddress;
-  if (error(Symbol.getAddress(SymbolAddress)) ||
-      SymbolAddress == UnknownAddress)
+  ErrorOr<uint64_t> SymbolAddressOrErr = Symbol.getAddress();
+  if (error(SymbolAddressOrErr.getError()))
     return;
+  uint64_t SymbolAddress = *SymbolAddressOrErr;
   if (OpdExtractor) {
     // For big-endian PowerPC64 ELF, symbols in the .opd section refer to
     // function descriptors. The first word of the descriptor is a pointer to
@@ -99,9 +100,10 @@ void ModuleInfo::addSymbol(const SymbolRef &Symbol, uint64_t SymbolSize,
         OpdExtractor->isValidOffsetForAddress(OpdOffset32))
       SymbolAddress = OpdExtractor->getAddress(&OpdOffset32);
   }
-  StringRef SymbolName;
-  if (error(Symbol.getName(SymbolName)))
+  ErrorOr<StringRef> SymbolNameOrErr = Symbol.getName();
+  if (error(SymbolNameOrErr.getError()))
     return;
+  StringRef SymbolName = *SymbolNameOrErr;
   // Mach-O symbol table names have leading underscore, skip it.
   if (Module->isMachO() && SymbolName.size() > 0 && SymbolName[0] == '_')
     SymbolName = SymbolName.drop_front();

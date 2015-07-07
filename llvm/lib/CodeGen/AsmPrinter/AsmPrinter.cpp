@@ -19,7 +19,6 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/ConstantFolding.h"
-#include "llvm/Analysis/JumpInstrTableInfo.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/GCMetadataPrinter.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
@@ -2390,8 +2389,7 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) const {
     if (isVerbose())
       OutStreamer->AddComment("Block address taken");
 
-    std::vector<MCSymbol*> Symbols = MMI->getAddrLabelSymbolToEmit(BB);
-    for (auto *Sym : Symbols)
+    for (MCSymbol *Sym : MMI->getAddrLabelSymbolToEmit(BB))
       OutStreamer->EmitLabel(Sym);
   }
 

@@ -48,7 +48,6 @@ public:
   COFFDumper(const llvm::object::COFFObjectFile *Obj, StreamWriter& Writer)
     : ObjDumper(Writer)
     , Obj(Obj) {
-    cacheRelocations();
   }
 
   void printFileHeaders() override;
@@ -92,6 +91,7 @@ private:
   typedef DenseMap<const coff_section*, std::vector<RelocationRef> > RelocMapTy;
 
   const llvm::object::COFFObjectFile *Obj;
+  bool RelocCached = false;
   RelocMapTy RelocMap;
   StringRef CVFileIndexToStringOffsetTable;
   StringRef CVStringTable;
@@ -119,11 +119,10 @@ std::error_code createCOFFDumper(const object::ObjectFile *Obj,
 // symbol used for the relocation at the offset.
 std::error_code COFFDumper::resolveSymbol(const coff_section *Section,
                                           uint64_t Offset, SymbolRef &Sym) {
+  cacheRelocations();
   const auto &Relocations = RelocMap[Section];
   for (const auto &Relocation : Relocations) {
-    uint64_t RelocationOffset;
-    if (std::error_code EC = Relocation.getOffset(RelocationOffset))
-      return EC;
+    uint64_t RelocationOffset = Relocation.getOffset();
 
     if (RelocationOffset == Offset) {
       Sym = *Relocation.getSymbol();
@@ -141,8 +140,10 @@ std::error_code COFFDumper::resolveSymbolName(const coff_section *Section,
   SymbolRef Symbol;
   if (std::error_code EC = resolveSymbol(Section, Offset, Symbol))
     return EC;
-  if (std::error_code EC = Symbol.getName(Name))
+  ErrorOr<StringRef> NameOrErr = Symbol.getName();
+  if (std::error_code EC = NameOrErr.getError())
     return EC;
+  Name = *NameOrErr;
   return std::error_code();
 }
 
@@ -339,6 +340,10 @@ static std::error_code getSymbolAuxData(const COFFObjectFile *Obj,
 }
 
 void COFFDumper::cacheRelocations() {
+  if (RelocCached)
+    return;
+  RelocCached = true;
+
   for (const SectionRef &S : Obj->sections()) {
     const coff_section *Section = Obj->getCOFFSection(S);
 
@@ -805,19 +810,18 @@ void COFFDumper::printRelocations() {
 
 void COFFDumper::printRelocation(const SectionRef &Section,
                                  const RelocationRef &Reloc) {
-  uint64_t Offset;
-  uint64_t RelocType;
+  uint64_t Offset = Reloc.getOffset();
+  uint64_t RelocType = Reloc.getType();
   SmallString<32> RelocName;
   StringRef SymbolName;
-  if (error(Reloc.getOffset(Offset)))
-    return;
-  if (error(Reloc.getType(RelocType)))
-    return;
-  if (error(Reloc.getTypeName(RelocName)))
-    return;
+  Reloc.getTypeName(RelocName);
   symbol_iterator Symbol = Reloc.getSymbol();
-  if (Symbol != Obj->symbol_end() && error(Symbol->getName(SymbolName)))
-    return;
+  if (Symbol != Obj->symbol_end()) {
+    ErrorOr<StringRef> SymbolNameOrErr = Symbol->getName();
+    if (error(SymbolNameOrErr.getError()))
+      return;
+    SymbolName = *SymbolNameOrErr;
+  }
 
   if (opts::ExpandRelocs) {
     DictScope Group(W, "Relocation");

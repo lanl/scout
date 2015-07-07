@@ -233,12 +233,6 @@ namespace llvm {
       /// Floating point horizontal sub.
       FHSUB,
 
-      /// Unsigned integer max and min.
-      UMAX, UMIN,
-
-      /// Signed integer max and min.
-      SMAX, SMIN,
-
       // Integer absolute value
       ABS,
 
@@ -400,10 +394,15 @@ namespace llvm {
       VINSERT,
       VEXTRACT,
 
+      /// SSE4A Extraction and Insertion.
+      EXTRQI, INSERTQI,
+
       // Vector multiply packed unsigned doubleword integers
       PMULUDQ,
       // Vector multiply packed signed doubleword integers
       PMULDQ,
+      // Vector Multiply Packed UnsignedIntegers with Round and Scale
+      MULHRS,
 
       // FMA nodes
       FMADD,
@@ -642,9 +641,8 @@ namespace llvm {
     /// legal as the hook is used before type legalization.
     bool isSafeMemOpType(MVT VT) const override;
 
-    /// Returns true if the target allows
-    /// unaligned memory accesses. of the specified type. Returns whether it
-    /// is "fast" by reference in the second argument.
+    /// Returns true if the target allows unaligned memory accesses of the
+    /// specified type. Returns whether it is "fast" in the last argument.
     bool allowsMisalignedMemoryAccesses(EVT VT, unsigned AS, unsigned Align,
                                        bool *Fast) const override;
 
@@ -708,8 +706,7 @@ namespace llvm {
 
     bool ExpandInlineAsm(CallInst *CI) const override;
 
-    ConstraintType
-      getConstraintType(const std::string &Constraint) const override;
+    ConstraintType getConstraintType(StringRef Constraint) const override;
 
     /// Examine constraint string and operand type and determine a weight value.
     /// The operand object must already have been set up with the operand type.
@@ -727,8 +724,8 @@ namespace llvm {
                                       std::vector<SDValue> &Ops,
                                       SelectionDAG &DAG) const override;
 
-    unsigned getInlineAsmMemConstraint(
-        const std::string &ConstraintCode) const override {
+    unsigned
+    getInlineAsmMemConstraint(StringRef ConstraintCode) const override {
       if (ConstraintCode == "i")
         return InlineAsm::Constraint_i;
       else if (ConstraintCode == "o")
@@ -746,8 +743,7 @@ namespace llvm {
     /// error, this returns a register number of 0.
     std::pair<unsigned, const TargetRegisterClass *>
     getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
-                                 const std::string &Constraint,
-                                 MVT VT) const override;
+                                 StringRef Constraint, MVT VT) const override;
 
     /// Return true if the addressing mode represented
     /// by AM is legal for this target, for a load/store of the specified type.
