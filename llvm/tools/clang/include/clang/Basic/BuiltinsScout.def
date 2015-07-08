@@ -90,6 +90,5 @@ BUILTIN(eoshiftd, "dddi.", "n") // just for double
 // get vertex field builtins
 BUILTIN(vfield, "vvv", "t") // generic
 
-BUILTIN(plot, "vvv", "t") // generic 
 BUILTIN(saveMesh, "vvv", "t") // generic
 BUILTIN(swapFields, "vvv", "t") // generic
