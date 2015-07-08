@@ -382,6 +382,17 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
       QualType qt = VD->getType();
       RefMeshType = dyn_cast<MeshType>(qt.getTypePtr());
       assert(RefMeshType && "expected a mesh type");
+      
+      bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
+                                                        IdentInfo, IdentLoc,
+                                                        MET,
+                                                        ElementIdentInfo,
+                                                        ElementIdentLoc,
+                                                        RefMeshType,
+                                                        VD, &Init);
+      if (! success)
+        return StmtError();
+      
     } else {
       Diag(IdentLoc, diag::err_expected_a_mesh_or_query_type);
       SkipUntil(tok::semi);
