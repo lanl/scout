@@ -106,6 +106,12 @@ ExprResult Parser::ParseScoutQueryExpression(){
     return ExprError();
   }
   
+  unsigned ScopeFlags =
+  Scope::DeclScope     |
+  Scope::ControlScope;
+  
+  ParseScope QueryScope(this, ScopeFlags);
+  
   // We consumed the element token above and should now be
   // at the element identifier portion of the query; make
   // sure we have a valid identifier and bail if not...
