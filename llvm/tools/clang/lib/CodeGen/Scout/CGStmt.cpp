@@ -78,10 +78,10 @@
 #include "CGBlocks.h"
 
 #include "Scout/CGScoutRuntime.h"
-#include "Scout/CGPlot2Runtime.h"
 #include "Scout/ASTVisitors.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include "Scout/CGLegionTask.h"
+#include "Scout/CGPlotRuntime.h"
 
 using namespace clang;
 using namespace CodeGen;
@@ -2926,7 +2926,7 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
   
   typedef vector<Value*> ValueVec;
   
-  auto R = CGM.getPlot2Runtime();
+  auto R = CGM.getPlotRuntime();
   
   const VarDecl* vd = S.getFrameVar();
   const FrameType* ft = dyn_cast<FrameType>(vd->getType().getTypePtr());
@@ -2994,7 +2994,7 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
   typedef vector<Value*> ValueVec;
   typedef vector<llvm::Type*> TypeVec;
   
-  auto R = CGM.getPlot2Runtime();
+  auto R = CGM.getPlotRuntime();
   
   const FrameDecl* FD = S.getFrameDecl();
   
@@ -3194,7 +3194,7 @@ RValue CodeGenFunction::EmitPlotCall(const CallExpr* C){
   
   typedef vector<Value*> ValueVec;
   
-  auto R = CGM.getPlot2Runtime();
+  auto R = CGM.getPlotRuntime();
   
   assert(CurrentPlotStmt);
   
@@ -3237,7 +3237,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   CurrentPlotStmt = &S;
   
-  auto R = CGM.getPlot2Runtime();
+  auto R = CGM.getPlotRuntime();
 
   ValueVec args = {ConstantInt::get(R.Int64Ty, uint64_t(&S))};
   

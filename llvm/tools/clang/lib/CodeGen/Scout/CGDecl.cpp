@@ -69,7 +69,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Module.h"
 #include "clang/AST/Type.h"
-#include "Scout/CGPlot2Runtime.h"
+#include "Scout/CGPlotRuntime.h"
 #include "Scout/CGScoutRuntime.h"
 #include "Scout/CGLegionCRuntime.h"
 #include <stdio.h>
@@ -697,7 +697,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     using namespace std;
     using namespace llvm;
     
-    auto R = CGM.getPlot2Runtime();
+    auto R = CGM.getPlotRuntime();
     
     typedef vector<Value*> ValueVec;
     

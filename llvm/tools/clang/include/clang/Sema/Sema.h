@@ -8850,7 +8850,6 @@ private:
   // +===== Scout ==========================================================+
   bool CheckMeshParameterCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckMPositionCall(unsigned BuiltinID, CallExpr *TheCall);
-  bool CheckPlotCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckSaveMeshCall(unsigned BuiltinID, CallExpr *TheCall);
   bool CheckSwapFieldsCall(unsigned BuiltinID, CallExpr *TheCall);
   // +======================================================================+

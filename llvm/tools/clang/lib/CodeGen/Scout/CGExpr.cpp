@@ -22,7 +22,6 @@
 #include "Scout/CGMeshLayout.h"
 #include "Scout/CGScoutRuntime.h"
 #include "Scout/CGPlotRuntime.h"
-#include "Scout/CGPlot2Runtime.h"
 #include "clang/AST/Scout/ImplicitMeshParamDecl.h"
 #include <stdio.h>
 
@@ -104,7 +103,7 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
   
   typedef vector<Value*> ValueVec;
   
-  auto R = CGM.getPlot2Runtime();
+  auto R = CGM.getPlotRuntime();
   
   assert(CurrentPlotStmt);
   
@@ -978,85 +977,6 @@ RValue CodeGenFunction::EmitHeadExpr(void) {
   PN->addIncoming(Result1, Else2);
 
   return RValue::get(PN);
-}
-
-RValue CodeGenFunction::EmitPlotExpr(ArgIterator argsBegin, ArgIterator argsEnd){
-  // proper checking is already done in Sema::CheckPlotCall()
-  
-  const MemberExpr* memberExpr = cast<MemberExpr>(*argsBegin);
-  const DeclRefExpr* base = cast<DeclRefExpr>(memberExpr->getBase());
-  const VarDecl* vd = cast<VarDecl>(base->getDecl());
-  const MeshType* mt = cast<MeshType>(vd->getType().getTypePtr());
-  
-  ++argsBegin;
-  
-  const StringLiteral* plotTypeLiteral = dyn_cast<StringLiteral>(*argsBegin);
-  std::string plotType = plotTypeLiteral->getString();
-
-  llvm::Value* meshAddr;
-  GetMeshBaseAddr(vd, meshAddr);
-  
-  llvm::StructType *structTy =
-  cast<llvm::StructType>(meshAddr->getType()->getContainedType(0));
-  
-  MeshFieldDecl* field = cast<MeshFieldDecl>(memberExpr->getMemberDecl());
-
-  const MeshDecl* mesh = field->getParent();
-  
-  unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
-  
-  llvm::Value* fieldAddr = Builder.CreateStructGEP(0, meshAddr, idx);
-  fieldAddr = Builder.CreateLoad(fieldAddr, "mesh.field");
-  
-  llvm::Type* fieldTy = structTy->getContainedType(idx);
-  llvm::PointerType* ptrTy = dyn_cast<llvm::PointerType>(fieldTy);
-  assert(ptrTy && "expected a pointer");
-
-  fieldTy = ptrTy->getElementType();
-  
-  CGPlotRuntime& r = CGM.getPlotRuntime();
-  
-  llvm::Value* elementKind;
-  
-  if(fieldTy->isIntegerTy(32)){
-    elementKind = r.ElementInt32Val;
-  }
-  else if(fieldTy->isIntegerTy(64)){
-    elementKind = r.ElementInt64Val;
-  }
-  else if(fieldTy->isFloatTy()){
-    elementKind = r.ElementFloatVal;
-  }
-  else if(fieldTy->isDoubleTy()){
-    elementKind = r.ElementDoubleVal;
-  }
-  else{
-    assert(false && "invalid element kind");
-  }
-  
-  llvm::Value* numItems;
-  
-  if(field->isCellLocated()){
-    SetMeshBounds(Cells, meshAddr, mt);
-    GetNumMeshItems(&numItems, 0, 0, 0);
-  } else if (field->isVertexLocated()){
-    SetMeshBounds(Vertices, meshAddr, mt);
-    GetNumMeshItems(0, &numItems, 0, 0);
-  } else if (field->isEdgeLocated()) {
-    SetMeshBounds(Edges, meshAddr, mt);
-    GetNumMeshItems(0, 0, &numItems, 0);
-  } else if(field->isFaceLocated()) {
-    SetMeshBounds(Faces, meshAddr, mt);
-    GetNumMeshItems(0, 0, 0, &numItems);
-  } else {
-    assert(false && "invalid element type");
-  }
-  
-  fieldAddr = Builder.CreateBitCast(fieldAddr, r.VoidPtrTy);
-  
-  std::vector<llvm::Value*> args = {fieldAddr, numItems, elementKind};
-  
-  return RValue::get(Builder.CreateCall(r.PlotFunc(), args));
 }
 
 RValue

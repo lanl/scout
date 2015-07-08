@@ -89,7 +89,6 @@ class CGScoutABI;
 class CGScoutRuntime;
 class CGLegionCRuntime;
 class CGPlotRuntime;
-class CGPlot2Runtime;
 // ========================
 class CGObjCRuntime;
 class CGOpenCLRuntime;
@@ -314,7 +313,6 @@ private:
   std::unique_ptr<CGScoutABI> ScoutABI;
   CGScoutRuntime* ScoutRuntime;
   CGPlotRuntime* PlotRuntime;
-  CGPlot2Runtime* Plot2Runtime;
   CGLegionCRuntime* LegionCRuntime;
   // ==================================
   CGOpenCLRuntime* OpenCLRuntime;
@@ -469,7 +467,6 @@ private:
   // ===== Scout ==========================
   void createScoutRuntime();
   void createPlotRuntime();
-  void createPlot2Runtime();
   void createLegionCRuntime();
   // ======================================
   void createOpenCLRuntime();
@@ -564,12 +561,6 @@ public:
   CGPlotRuntime &getPlotRuntime() {
     assert(PlotRuntime != 0);
     return *PlotRuntime;
-  }
-  
-  /// getPlot2Runtime() - Return a reference to the configured plot runtime.
-  CGPlot2Runtime &getPlot2Runtime() {
-    assert(Plot2Runtime != 0);
-    return *Plot2Runtime;
   }
   
   /// getLegionRuntime() - Return a reference to the configured legion runtime.

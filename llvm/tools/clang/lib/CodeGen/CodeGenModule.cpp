@@ -61,7 +61,6 @@
 #include "Scout/CGScoutRuntime.h"
 #include "Scout/CGLegionCRuntime.h"
 #include "Scout/CGPlotRuntime.h"
-#include "Scout/CGPlot2Runtime.h"
 // ======================================
 
 using namespace clang;
@@ -143,7 +142,6 @@ CodeGenModule::CodeGenModule(ASTContext &C, const HeaderSearchOptions &HSO,
   if(isScoutLang(LangOpts)) {
     createScoutRuntime();
     createPlotRuntime();
-    createPlot2Runtime();
     
     if (CodeGenOpts.ScoutLegionSupport) {
       createLegionCRuntime();
@@ -216,10 +214,6 @@ void CodeGenModule::createScoutRuntime() {
 
 void CodeGenModule::createPlotRuntime() {
   PlotRuntime = new CGPlotRuntime(*this);
-}
-
-void CodeGenModule::createPlot2Runtime() {
-  Plot2Runtime = new CGPlot2Runtime(*this);
 }
 
 void CodeGenModule::createLegionCRuntime() {

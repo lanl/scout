@@ -2273,8 +2273,6 @@ public:
   RValue EmitTailExpr(void);
   RValue EmitHeadExpr(void);
   
-  RValue EmitPlotExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
-
   RValue EmitSaveMeshExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
   
   RValue EmitSwapFieldsExpr(ArgIterator ArgBeg, ArgIterator ArgEnd);
