@@ -122,7 +122,7 @@ SymbolFileDWARF::ParseMeshChildMembers
   size_t count = 0;
   const DWARFDebugInfoEntry *die;
   const uint8_t *fixed_form_sizes = DWARFFormValue::GetFixedFormSizesForAddressSize (dwarf_cu->GetAddressByteSize(), dwarf_cu->IsDWARF64());
-  uint32_t member_idx = 0;
+  //uint32_t member_idx = 0;
   BitfieldInfo last_field_info;
   ModuleSP module = GetObjectFile()->GetModule();
 
@@ -144,10 +144,10 @@ SymbolFileDWARF::ParseMeshChildMembers
             Declaration decl;
             //DWARFExpression location;
             const char *name = NULL;
-            const char *prop_name = NULL;
-            const char *prop_getter_name = NULL;
-            const char *prop_setter_name = NULL;
-            uint32_t prop_attributes = 0;
+            //const char *prop_name = NULL;
+            //const char *prop_getter_name = NULL;
+            //const char *prop_setter_name = NULL;
+            //uint32_t prop_attributes = 0;
 
 
             lldb::user_id_t encoding_uid = LLDB_INVALID_UID;
@@ -254,7 +254,7 @@ SymbolFileDWARF::ParseFrameChildMembers
   size_t count = 0;
   const DWARFDebugInfoEntry *die;
   const uint8_t *fixed_form_sizes = DWARFFormValue::GetFixedFormSizesForAddressSize (dwarf_cu->GetAddressByteSize(), dwarf_cu->IsDWARF64());
-  uint32_t member_idx = 0;
+  //uint32_t member_idx = 0;
   BitfieldInfo last_field_info;
   ModuleSP module = GetObjectFile()->GetModule();
   
@@ -276,14 +276,14 @@ SymbolFileDWARF::ParseFrameChildMembers
           Declaration decl;
           //DWARFExpression location;
           const char *name = NULL;
-          const char *prop_name = NULL;
-          const char *prop_getter_name = NULL;
-          const char *prop_setter_name = NULL;
-          uint32_t prop_attributes = 0;
+          //const char *prop_name = NULL;
+          //const char *prop_getter_name = NULL;
+          //const char *prop_setter_name = NULL;
+          //uint32_t prop_attributes = 0;
           
           
           lldb::user_id_t encoding_uid = LLDB_INVALID_UID;
-          AccessType accessibility = eAccessNone;
+          //AccessType accessibility = eAccessNone;
           uint32_t member_byte_offset = UINT32_MAX;
           uint32_t i;
           uint32_t varId;
@@ -344,7 +344,7 @@ SymbolFileDWARF::ParseFrameChildMembers
           {
             if (member_type)
             {
-              uint64_t field_bit_offset = (member_byte_offset == UINT32_MAX ? 0 : (member_byte_offset * 8));
+              //uint64_t field_bit_offset = (member_byte_offset == UINT32_MAX ? 0 : (member_byte_offset * 8));
               
               last_field_info.Clear();
               

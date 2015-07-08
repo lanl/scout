@@ -1731,7 +1731,9 @@ ClangASTType::GetTypeClass () const
         case clang::Type::StructuredMesh:           break;
         case clang::Type::RectilinearMesh:          break;
         case clang::Type::UnstructuredMesh:         break;
+        case clang::Type::ALEMesh:                  break;
         case clang::Type::Frame:                    break;
+        case clang::Type::FrameVar:                 break;
         case clang::Type::Image:                    break;
         case clang::Type::Window:                   break;
         case clang::Type::Query:                    break;
@@ -2439,7 +2441,9 @@ ClangASTType::GetEncoding (uint64_t &count) const
         case clang::Type::StructuredMesh:           break;
         case clang::Type::RectilinearMesh:          break;
         case clang::Type::UnstructuredMesh:         break;
+        case clang::Type::ALEMesh:                  break;
         case clang::Type::Frame:                    break;
+        case clang::Type::FrameVar:                 break;
         case clang::Type::Image:                    break;
         case clang::Type::Window:                   break;
         case clang::Type::Query:                    break;
@@ -2573,6 +2577,19 @@ ClangASTType::GetFormat () const
         case clang::Type::Atomic:
         case clang::Type::Adjusted:
             break;
+
+        // ===== Scout ===================================
+        case clang::Type::UniformMesh:              break;
+        case clang::Type::StructuredMesh:           break;
+        case clang::Type::RectilinearMesh:          break;
+        case clang::Type::UnstructuredMesh:         break;
+        case clang::Type::ALEMesh:                  break;
+        case clang::Type::Frame:                    break;
+        case clang::Type::FrameVar:                 break;
+        case clang::Type::Image:                    break;
+        case clang::Type::Window:                   break;
+        case clang::Type::Query:                    break;
+        // ===============================================
 
         // pointer type decayed from an array or function type.
         case clang::Type::Decayed:
@@ -5879,9 +5896,12 @@ ClangASTType::GetDeclContextForType () const
         case clang::Type::StructuredMesh:           break;
         case clang::Type::RectilinearMesh:          break;
         case clang::Type::UnstructuredMesh:         break;
+        case clang::Type::ALEMesh:                  break;
         case clang::Type::Image:                    break;
         case clang::Type::Window:                   break;
         case clang::Type::Query:                    break;
+        case clang::Type::Frame:                    break;
+        case clang::Type::FrameVar:                 break;
         // ===============================================
     }
     // No DeclContext in this type...
