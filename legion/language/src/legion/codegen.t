@@ -743,6 +743,7 @@ function ref:read(cx, expr_type)
             (expr_type:isvector() or
              std.is_vptr(expr_type) or
              std.is_sov(expr_type)) then
+           if field_type:isvector() then field_type = field_type.type end
            local align = sizeof(field_type)
            if aligned_instances then
              align = sizeof(vector(field_type, expr_type.N))
@@ -778,6 +779,7 @@ function ref:write(cx, value, expr_type)
             (expr_type:isvector() or
              std.is_vptr(expr_type) or
              std.is_sov(expr_type)) then
+           if field_type:isvector() then field_type = field_type.type end
            local align = sizeof(field_type)
            if aligned_instances then
              align = sizeof(vector(field_type, expr_type.N))
@@ -824,6 +826,7 @@ function ref:reduce(cx, value, op, expr_type)
             (expr_type:isvector() or
              std.is_vptr(expr_type) or
              std.is_sov(expr_type)) then
+           if field_type:isvector() then field_type = field_type.type end
            local align = sizeof(field_type)
            if aligned_instances then
              align = sizeof(vector(field_type, expr_type.N))
@@ -2301,7 +2304,7 @@ function codegen.expr_ispace(cx, node)
       actions = quote
         [actions]
         var [it] = c.legion_terra_cached_index_iterator_create(
-          [cx.runtime], [cx.context], [lr].index_space)
+          [cx.runtime], [cx.context], [is])
       end
     end
   else
@@ -3964,11 +3967,13 @@ function codegen.stat_task(cx, node)
       var [args]
       if c.legion_task_get_is_index_space(c_task) then
         var arglen = c.legion_task_get_local_arglen(c_task)
-        if arglen ~= terralib.sizeof(params_struct_type) then c.abort() end
+        std.assert(arglen == terralib.sizeof(params_struct_type),
+                   ["arglen mismatch in " .. tostring(task.name) .. " (index task)"])
         args = [&params_struct_type](c.legion_task_get_local_args(c_task))
       else
         var arglen = c.legion_task_get_arglen(c_task)
-        if arglen ~= terralib.sizeof(params_struct_type) then c.abort() end
+        std.assert(arglen == terralib.sizeof(params_struct_type),
+                   ["arglen mismatch " .. tostring(task.name) .. " (single task)"])
         args = [&params_struct_type](c.legion_task_get_args(c_task))
       end
     end)
