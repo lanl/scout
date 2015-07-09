@@ -412,9 +412,6 @@ public:
         err = cuMemAlloc(&invMatPtr_, 16 * 4);
         check(err);
 
-        err = cuMemcpyHtoD(invMatPtr_, invMat, 16 * 4);
-        check(err); 
-
         err = cuMemAlloc(&meshPtr_, 8 * fields.size() + varsSize_);
         check(err);
 
@@ -430,6 +427,9 @@ public:
         
         ready_ = true;
       }
+
+      err = cuMemcpyHtoD(invMatPtr_, invMat, 16 * 4);
+      check(err); 
 
       kernelParams_[0] = &output;
     
