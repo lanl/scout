@@ -78,6 +78,7 @@ set_source_files_properties(query-edges.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-v
 set_source_files_properties(query-faces.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 set_source_files_properties(query-vertices.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 set_source_files_properties(query1.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
+set_source_files_properties(query-mesh-params.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 set_source_files_properties(varmesh.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 set_source_files_properties(varmesh2.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 set_source_files_properties(varmesh3.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
