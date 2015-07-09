@@ -81,8 +81,8 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
     {
         log->Printf("    CompleteMeshDecl[%u] on (ASTContext*)%p Completing (MeshDecl*)%p named %s",
                     current_id,
-                    m_ast_context,
-                    mesh_decl,
+                    (void *)m_ast_context,
+                    (void *)mesh_decl,
                     mesh_decl->getName().str().c_str());
 
         log->Printf("      CTD[%u] Before:", current_id);
@@ -109,7 +109,7 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
             if (log && log->GetVerbose())
                 log->Printf("      CTD[%u] Inspecting namespace map %p (%d entries)",
                             current_id,
-                            namespace_map.get(),
+                            (void *)namespace_map.get(),
                             (int)namespace_map->size());
 
             if (!namespace_map)
@@ -218,8 +218,8 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
   {
     log->Printf("    CompleteFrameDecl[%u] on (ASTContext*)%p Completing (MeshDecl*)%p named %s",
                 current_id,
-                m_ast_context,
-                frame_decl,
+                (void *)m_ast_context,
+                (void *)frame_decl,
                 frame_decl->getName().str().c_str());
     
     log->Printf("      CTD[%u] Before:", current_id);
@@ -246,7 +246,7 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
       if (log && log->GetVerbose())
         log->Printf("      CTD[%u] Inspecting namespace map %p (%d entries)",
                     current_id,
-                    namespace_map.get(),
+                    (void *)namespace_map.get(),
                     (int)namespace_map->size());
       
       if (!namespace_map)

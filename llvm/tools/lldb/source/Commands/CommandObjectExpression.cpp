@@ -312,7 +312,7 @@ CommandObjectExpression::EvaluateExpression
             options.SetTimeoutUsec(0);
         
         // +===== Scout ==========================================
-        CompileUnit *comp_unit = NULL;
+        //CompileUnit *comp_unit = NULL;
         StackFrame *frame = exe_ctx.GetFramePtr();
         if (frame)
         {
