@@ -35,6 +35,7 @@ namespace LegionRuntime {
     Logger::Category log_variant("variants");
     Logger::Category log_allocation("allocation");
     Logger::Category log_directory("directory");
+    Logger::Category log_prof("legion_prof");
 #ifdef LEGION_SPY
     namespace LegionSpy {
       Logger::Category log_spy("legion_spy");
@@ -59,7 +60,7 @@ namespace LegionRuntime {
     };
 #endif
 
-#ifdef LEGION_PROF
+#ifdef OLD_LEGION_PROF
     namespace LegionProf {
       Logger::Category log_prof("legion_prof");
       unsigned long long legion_prof_init_time;
@@ -2634,11 +2635,27 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
+    DomainPoint HighLevelRuntime::get_index_space_color_point(Context ctx,
+                                                              IndexSpace handle)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->get_index_space_color_point(ctx, handle);
+    }
+
+    //--------------------------------------------------------------------------
     Color HighLevelRuntime::get_index_partition_color(Context ctx,
                                                       IndexPartition handle)
     //--------------------------------------------------------------------------
     {
       return runtime->get_index_partition_color(ctx, handle);
+    }
+
+    //--------------------------------------------------------------------------
+    DomainPoint HighLevelRuntime::get_index_partition_color_point(Context ctx,
+                                                          IndexPartition handle)
+    //--------------------------------------------------------------------------
+    {
+      return runtime->get_index_partition_color_point(ctx, handle);
     }
 
     //--------------------------------------------------------------------------
@@ -3791,7 +3808,7 @@ namespace LegionRuntime {
     /*static*/ void HighLevelRuntime::enable_profiling(void)
     //--------------------------------------------------------------------------
     {
-#ifdef LEGION_PROF
+#ifdef OLD_LEGION_PROF
       LegionProf::enable_profiling();
 #endif
     }
@@ -3800,7 +3817,7 @@ namespace LegionRuntime {
     /*static*/ void HighLevelRuntime::disable_profiling(void)
     //--------------------------------------------------------------------------
     {
-#ifdef LEGION_PROF
+#ifdef OLD_LEGION_PROF
       LegionProf::disable_profiling();
 #endif
     }
@@ -3809,7 +3826,7 @@ namespace LegionRuntime {
     /*static*/ void HighLevelRuntime::dump_profiling(void)
     //--------------------------------------------------------------------------
     {
-#ifdef LEGION_PROF
+#ifdef OLD_LEGION_PROF
       LegionProf::dump_profiling();
 #endif
     }

@@ -37,7 +37,7 @@ using namespace LegionRuntime::Accessor;
 
 using namespace LegionRuntime::HighLevel::LegionLogging;
 #endif
-#ifdef LEGION_PROF
+#ifdef OLD_LEGION_PROF
 #include "legion_profiling.h"
 using namespace LegionRuntime::HighLevel;
 using namespace LegionRuntime::HighLevel::LegionProf;
@@ -324,7 +324,9 @@ namespace LegionRuntime {
       int priority = 0;
 #endif
 
-      while(((idata - ((const IDType *)data))*sizeof(IDType)) < datalen) {
+      size_t num_pairs = *idata++;
+
+      for (unsigned idx = 0; idx < num_pairs; idx++) {
 	RegionInstance src_inst = ID((IDType)*idata++).convert<RegionInstance>();
 	RegionInstance dst_inst = ID((IDType)*idata++).convert<RegionInstance>();
 	InstPair ip(src_inst, dst_inst);
@@ -403,12 +405,22 @@ namespace LegionRuntime {
  
     CopyRequest::~CopyRequest(void)
     {
+      if (measurements.wants_measurement<
+          Realm::ProfilingMeasurements::OperationMemoryUsage>()) {
+        assert(!oas_by_inst->empty());
+        const InstPair &pair = oas_by_inst->begin()->first; 
+        Realm::ProfilingMeasurements::OperationMemoryUsage usage;
+        usage.source = pair.first.get_location();
+        usage.target = pair.second.get_location();
+        measurements.add_measurement(usage);
+      }
       delete oas_by_inst;
     }
 
     size_t CopyRequest::compute_size(void) const
     {
       size_t result = domain.compute_size();
+      result += sizeof(IDType); // number of requests;
       for(OASByInst::iterator it2 = oas_by_inst->begin(); it2 != oas_by_inst->end(); it2++) {
         OASVec& oasvec = it2->second;
         result += (3 + oasvec.size() * 3) * sizeof(IDType);
@@ -421,6 +433,8 @@ namespace LegionRuntime {
     {
       // domain info goes first
       IDType *msgptr = domain.serialize((IDType *)buffer);
+
+      *msgptr++ = oas_by_inst->size();
 
       // now OAS vectors
       for(OASByInst::iterator it2 = oas_by_inst->begin(); it2 != oas_by_inst->end(); it2++) {
@@ -2725,7 +2739,7 @@ namespace LegionRuntime {
 
 		//for(OASVec::iterator it2 = oasvec.begin(); it2 != oasvec.end(); it2++)
 		for (unsigned idx = 0; idx < oasvec.size(); idx++)
-		  ipc->copy_field(irect.lo, orect.lo, irect.hi - irect.lo + 1, idx);
+		  ipc->copy_field(irect.lo, orect.lo, irect.hi[0] - irect.lo[0] + 1, idx);
 		//it2->src_offset, it2->dst_offset, it2->size);
 	      }
 	    }
@@ -2760,7 +2774,7 @@ namespace LegionRuntime {
     };
 #endif
 
-#ifdef LEGION_PROF
+#ifdef OLD_LEGION_PROF
     class CopyCompletionProfiler : public EventWaiter {
       public:
         CopyCompletionProfiler(Event _event) : event(_event) {}
@@ -2795,7 +2809,7 @@ namespace LegionRuntime {
       after_copy.impl()->add_waiter(after_copy.gen,
           new CopyCompletionLogger(after_copy));
 #endif
-#ifdef LEGION_PROF
+#ifdef OLD_LEGION_PROF
       register_copy_event(after_copy.id, PROF_BEGIN_COPY);
       after_copy.impl()->add_waiter(after_copy.gen,
           new CopyCompletionProfiler(after_copy));
@@ -3214,12 +3228,22 @@ namespace LegionRuntime {
 
     ReduceRequest::~ReduceRequest(void)
     {
+      if (measurements.wants_measurement<
+          Realm::ProfilingMeasurements::OperationMemoryUsage>()) {
+        Realm::ProfilingMeasurements::OperationMemoryUsage usage;  
+        // Not precise, but close enough for now
+        assert(!srcs.empty());
+        usage.source = srcs[0].inst.get_location();
+        usage.target = dst.inst.get_location();
+        measurements.add_measurement(usage);
+      }
     }
 
     size_t ReduceRequest::compute_size(void)
     {
       size_t result = domain.compute_size();
       result += (4 + 3 * srcs.size()) * sizeof(IDType);
+      result += sizeof(IDType); // for inst_lock_needed
       result += requests.compute_size();
       return result;
     }
@@ -3478,7 +3502,7 @@ namespace LegionRuntime {
 	      
 	      //for(OASVec::iterator it2 = oasvec.begin(); it2 != oasvec.end(); it2++)
 	      for (unsigned idx = 0; idx < oasvec.size(); idx++)
-		ipc->copy_field(irect.lo, orect.lo, irect.hi - irect.lo + 1, idx);
+		ipc->copy_field(irect.lo, orect.lo, irect.hi[0] - irect.lo[0] + 1, idx);
 	      //it2->src_offset, it2->dst_offset, it2->size);
 	    }
 	  }
@@ -3500,7 +3524,7 @@ namespace LegionRuntime {
       after_copy.impl()->add_waiter(after_copy.gen,
           new CopyCompletionLogger(after_copy));
 #endif
-#ifdef LEGION_PROF
+#ifdef OLD_LEGION_PROF
       register_copy_event(after_copy.id, PROF_BEGIN_COPY);
       after_copy.impl()->add_waiter(after_copy.gen,
           new CopyCompletionProfiler(after_copy));
@@ -3788,7 +3812,7 @@ namespace LegionRuntime {
     
     void start_dma_worker_threads(int count)
     {
-#ifdef LEGION_PROF
+#ifdef OLD_LEGION_PROF
       CHECK_PTHREAD( pthread_key_create(&copy_profiler_key, 0) );
 #endif
       dma_queue = new DmaRequestQueue;
