@@ -437,10 +437,10 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
 
   for(size_t i = 0; i < dims.size(); ++i){
     llvm::APSInt d;
+#if 0
     bool success = dims[i]->EvaluateAsInt(d, CGM.getContext());
     assert(success && "Failed to evaluate mesh dimension");
 
-#if 0
     switch(i){
     case 0:
       dimX = d.getLimitedValue();
