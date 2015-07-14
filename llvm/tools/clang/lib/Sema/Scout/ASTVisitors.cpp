@@ -146,7 +146,7 @@ bool CheckShift(unsigned id, CallExpr *E, Sema &S) {
 
 
 void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
-  nodeType_ = NodeNone;
+  nodeType_ = NodeRHS;
 
   switch(S->getOpcode()){
   case BO_Assign:
@@ -160,7 +160,7 @@ void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
   case BO_AndAssign:
   case BO_XorAssign:
   case BO_OrAssign: {
-   
+     
     Expr *E = S->getLHS();
 
     // deal w/ array case
@@ -289,9 +289,11 @@ void ForallVisitor::VisitMemberExpr(MemberExpr* E) {
       std::string ref = bd->getName().str() + "." + md->getName().str();
 
       if (nodeType_ == NodeLHS) {
+        //llvm::errs() << "LHS " << ref << "\n";
         refMap_.insert(make_pair(ref, true));
         meshAccess_ = true;
       } else if (nodeType_ == NodeRHS) {
+        //llvm::errs() << "RHS " << ref << "\n";
         RefMap_::iterator itr = refMap_.find(ref);
         meshAccess_ = true;
         if (itr != refMap_.end()) {
