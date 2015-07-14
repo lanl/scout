@@ -146,6 +146,7 @@ bool CheckShift(unsigned id, CallExpr *E, Sema &S) {
 
 
 void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
+  nodeType_ = NodeNone;
 
   switch(S->getOpcode()){
   case BO_Assign:
@@ -159,6 +160,7 @@ void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
   case BO_AndAssign:
   case BO_XorAssign:
   case BO_OrAssign: {
+   
     Expr *E = S->getLHS();
 
     // deal w/ array case
