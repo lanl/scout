@@ -177,8 +177,8 @@ ClangASTType::AddFieldToMeshType (const char *name,
                                   AccessType access,
                                   uint32_t bitfield_bit_size,
                                   uint32_t field_flags)
-{
-    if (!IsValid() || !field_clang_type.IsValid())
+{  
+  if (!IsValid() || !field_clang_type.IsValid())
         return NULL;
 
     MeshFieldDecl *field = NULL;

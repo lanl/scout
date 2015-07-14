@@ -200,7 +200,7 @@ Decl *ASTNodeImporter::VisitUniformMeshDecl(UniformMeshDecl *D) {
   if (Definition && Definition != D) {
     Decl *ImportedDef = Importer.Import(Definition);
     if (!ImportedDef)
-      return 0;
+      return nullptr;
 
     return Importer.Imported(D, ImportedDef);
   }
@@ -211,8 +211,10 @@ Decl *ASTNodeImporter::VisitUniformMeshDecl(UniformMeshDecl *D) {
   SourceLocation Loc;
   NamedDecl *ToD;
   if (ImportDeclParts(D, DC, LexicalDC, Name, ToD, Loc))
-    return 0;
-
+    return nullptr;
+  if (ToD)
+    return ToD;
+  
   SourceLocation StartLoc = Importer.Import(D->getLocStart());
   UniformMeshDecl *D2 =
       UniformMeshDecl::Create(Importer.getToContext(),
@@ -233,7 +235,7 @@ Decl *ASTNodeImporter::VisitUniformMeshDecl(UniformMeshDecl *D) {
 
   if (D->isCompleteDefinition() && ImportDefinition(D, D2, IDK_Default))
     return 0;
-
+  
   return D2;
 }
 

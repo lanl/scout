@@ -5957,7 +5957,21 @@ ClangASTType::SetHasExternalStorage (bool has_extern)
             }
         }
             break;
-            
+
+      // +====== Scout ============================================
+      case clang::Type::UniformMesh:
+      {
+        clang::UniformMeshDecl *mesh_decl = qual_type->getAsUniformMeshDecl();
+        if (mesh_decl)
+        {
+          mesh_decl->setHasExternalLexicalStorage (has_extern);
+          mesh_decl->setHasExternalVisibleStorage (has_extern);
+          return true;
+        }
+      }
+        break;
+      // +=========================================================
+        
         case clang::Type::Enum:
         {
             clang::EnumDecl *enum_decl = llvm::cast<clang::EnumType>(qual_type)->getDecl();
