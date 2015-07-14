@@ -498,6 +498,16 @@ ClangASTSource::FindExternalLexicalDecls (const DeclContext *decl_context,
             external_source->CompleteType (original_tag_decl);
     }
 
+    // +====== Scout ==================================================
+    if (MeshDecl *original_mesh_decl = dyn_cast<MeshDecl>(original_decl))
+    {
+      ExternalASTSource *external_source = original_ctx->getExternalSource();
+    
+      if (external_source)
+        external_source->CompleteType (original_mesh_decl);
+    }
+    // +===============================================================
+  
     const DeclContext *original_decl_context = dyn_cast<DeclContext>(original_decl);
 
     if (!original_decl_context)
@@ -531,6 +541,15 @@ ClangASTSource::FindExternalLexicalDecls (const DeclContext *decl_context,
 
                 m_ast_importer->RequireCompleteType(copied_field_type);
             }
+          
+            // +====== Scout ==================================================
+            if (MeshFieldDecl *copied_field = dyn_cast<MeshFieldDecl>(copied_decl))
+            {
+              QualType copied_field_type = copied_field->getType();
+              
+              m_ast_importer->RequireCompleteType(copied_field_type);
+            }
+            // +===============================================================
 
             decls.push_back(copied_decl);
 
