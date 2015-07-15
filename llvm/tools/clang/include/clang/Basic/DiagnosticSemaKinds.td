@@ -7840,7 +7840,9 @@ def err_invalid_mesh_specifier : Error<
      "invalid mesh specifier">;
      
 def err_forall_mesh_repeated_nesting : Error<
-    "repeated mesh element found in nested forall construct">;
+    "illegal mesh element kind (%0), repeated in nested forall, enclosing outter forall at: %1">;
+def err_nested_meshes_unsupported: Error<
+    "nested/different meshes currently unsupported">;
 
 def err_invalid_mposition_call : Error<
 "invalid mposition call: %0">;

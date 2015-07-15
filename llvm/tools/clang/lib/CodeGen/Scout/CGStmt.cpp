@@ -2764,9 +2764,10 @@ void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S
       GetNumMeshItems(&numItems, 0, 0, 0);
       assert(false && "not valid for cells");
       break;
-      
+
+    case AllElements:
     case Undefined:
-      assert(false && "Undefined MeshElementType");
+      assert(false && "Undefined or incorrect MeshElementType value");
       break;
   }
   

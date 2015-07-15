@@ -324,6 +324,34 @@ set(name forall-nested-element1)
 set(tname scc_error_${name})
 add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
-    "error: repeated mesh element found in nested forall construct")
+    "error: illegal mesh element kind \\(cells\\)")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name forall-nested-element2)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
+    "error: nested/different meshes currently unsupported")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name forall-nested-element3)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
+    "error: illegal mesh element kind \\(vertices\\)")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name forall-nested-element4)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
+    "error: illegal mesh element kind \\(vertices\\)")
+set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name forall-nested-element5)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: illegal mesh element kind \\(vertices\\)")
 set_property(TEST ${tname} PROPERTY WILL_FAIL)
 

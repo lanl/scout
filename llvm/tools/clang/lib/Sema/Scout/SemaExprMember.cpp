@@ -115,6 +115,7 @@ BuildMeshFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
                             diag::err_invalid_mesh_member_element_type);
           return ExprError();
           break;
+          
         case Cells:
           if (!Field->isCellLocated()) {
             S.Diag(BaseExpr->getExprLoc(),
@@ -122,6 +123,7 @@ BuildMeshFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
             return ExprError();
           }
           break;
+          
         case Vertices:
           if(!Field->isVertexLocated()){
             S.Diag(BaseExpr->getExprLoc(),
@@ -129,6 +131,7 @@ BuildMeshFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
             return ExprError();
           }
           break;
+          
         case Faces:
           if(!Field->isFaceLocated()){
             S.Diag(BaseExpr->getExprLoc(),
@@ -136,12 +139,17 @@ BuildMeshFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
             return ExprError();
           }
           break;
+          
         case Edges:
           if(!Field->isEdgeLocated()){
             S.Diag(BaseExpr->getExprLoc(),
                    diag::err_invalid_mesh_member_element_type);
             return ExprError();
           }
+          break;
+
+        case AllElements:
+          assert(false && "Invalid mesh element value encountered!");
           break;
       }
     }

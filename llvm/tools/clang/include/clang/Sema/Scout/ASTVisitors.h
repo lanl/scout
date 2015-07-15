@@ -126,9 +126,7 @@ namespace clang {
             nodeType_(NodeNone) {
 
         assert(fs != 0 && "constructing visitor with null statement");
-      
-        // Push the invoking forall statement onto the nesting stack.
-        forallStmts.push_back(fs_);
+        forallStmts.push_back(fs_);      
         forallStmtMask = fs_->getMeshElementRef();
       }
 
@@ -140,34 +138,8 @@ namespace clang {
     
       void VisitMemberExpr(MemberExpr* E);
 
-      void VisitStmt(Stmt* S) {
-        if (S->getStmtClass() == Stmt::ForallMeshStmtClass) {
-          // We are visiting a nested forall within the scope of our
-          // originally invoked forall. Push this forall statement onto
-          // the stack so we can use it to evaluate the nesting details
-          // within the sema checks.
-          ForallMeshStmt *FMS = cast<ForallMeshStmt>(S);
-          forallStmts.push_back(FMS);
-          if ((forallStmtMask & FMS->getMeshElementRef()) != 0) {
-            // potential repeated mesh element in nested forall construct.
-            ForallStmtStack::iterator it = forallStmts.begin();
-            while(it != forallStmts.end()) {
-              // If the forall refers to the same mesh instance we'll flag it as an error.
-              if (FMS != (*it)) { // ensure we're not just talking to ourself  ;-) 
-                if ((*it)->getMeshInfo() == FMS->getMeshInfo()) {
-                  // same mesh info/instance over the same elements.
-                  sema_.Diag(FMS->getForAllLoc(), diag::err_forall_mesh_repeated_nesting);
-                }
-              }
-              ++it;
-            }
-          } else {
-            forallStmtMask |= FMS->getMeshElementRef();
-          }
-        }
-      
-        VisitChildren(S);
-      }
+      void VisitStmt(Stmt* S);
+
     
       void VisitChildren(Stmt* S) {
         for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {

@@ -2398,11 +2398,12 @@ protected:
 // use the following enum value to track the mesh elements referenced
 // by many statements and language constructs.
 enum MeshElementType {
-  Undefined  =  0x0,
-    Cells    =  0x1,
-    Vertices =  0x2,
-    Edges    =  0x4,
-    Faces    =  0x8
+  Undefined    = 0x0,
+  Cells        = 0x1,
+  Vertices     = 0x2,
+  Edges        = 0x4,
+  Faces        = 0x8,
+  AllElements  = Cells | Vertices | Edges | Faces
 };
   
 class ForallMeshStmt : public ForallStmt {
