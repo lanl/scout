@@ -1774,12 +1774,17 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
   // Create the induction variables for nested foralls eack rank.
-  for(unsigned int i = 0; i < 4; i++) {
+  for(unsigned int i = 0; i < 3; i++) {
      sprintf(IRNameStr, "forall.inner.induct.%s.ptr", IndexNames[i]);
      InnerInductionVar[i] = CreateTempAlloca(Int32Ty, IRNameStr);
      //zero-initialize induction var
      Builder.CreateStore(ConstantZero, InnerInductionVar[i]);
    }
+   sprintf(IRNameStr, "forall.inner.linearidx.ptr");
+   InnerInductionVar[3] = CreateTempAlloca(Int32Ty, IRNameStr);
+   //zero-initialize induction var
+   Builder.CreateStore(ConstantZero, InnerInductionVar[3]);
+
 
   InnerIndex = CreateTempAlloca(Int32Ty, "forall.inneridx.ptr");
 
