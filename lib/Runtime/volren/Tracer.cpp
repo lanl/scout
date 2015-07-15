@@ -23,4 +23,7 @@ void Tracer::resize(int width, int height) {
 
 void Tracer::GetDataDim(int &nx, int &ny, int &nz) {
  //   dataMgr->GetDataDim(nx, ny, nz);
+    nx = width_;
+    ny = height_;
+    nz = depth_;
 }
