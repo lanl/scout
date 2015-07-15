@@ -278,6 +278,12 @@ public:
         {
             return m_original.CompleteType(Tag);
         }
+      
+        void
+        CompleteType(clang::MeshDecl *Mesh) override
+        {
+          return m_original.CompleteType(Mesh);
+        }
 
         void
         CompleteType(clang::ObjCInterfaceDecl *Class) override
