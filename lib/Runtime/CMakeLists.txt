@@ -283,9 +283,6 @@ set(_link_libs ${OPENGL_LIBRARIES} ${CUDA_LIBRARIES} ${R_LIBRARIES} Qt5::Widgets
 if (APPLE) 
   set(_link_libs ${_link_libs} "-framework Cocoa -framework Foundation -framework IOKit -framework CoreVideo")
 endif()
-
-qt5_use_modules(scRuntime Widgets Gui)
-
 target_link_libraries(scRuntime ${_link_libs})
 
 add_dependencies(scRuntime
