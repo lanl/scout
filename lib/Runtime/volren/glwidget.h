@@ -4,13 +4,15 @@
 #include <QtWidgets>
 #include <QVector3D>
 #include <QMatrix4x4>
+#include <QOpenGLWidget>
+
 
 class Trackball;
 class Rotation;
 class StopWatchInterface;
 
 namespace scout{
-    class glRenderer;
+    class Tracer;
 }
 
 using namespace scout;
@@ -19,7 +21,7 @@ class GLWidget : public QOpenGLWidget, public QOpenGLFunctions
 {
     Q_OBJECT
 public:
-  explicit GLWidget(QWidget *parent = 0);
+    explicit GLWidget(QWidget *parent = 0);
     ~GLWidget();
 
     QSize minimumSizeHint() const Q_DECL_OVERRIDE;
@@ -36,7 +38,8 @@ public:
     size_t getHeight(){
       return height;
     }
-  
+
+
 protected:
     virtual void initializeGL() Q_DECL_OVERRIDE;
     virtual void paintGL() Q_DECL_OVERRIDE;
@@ -48,6 +51,8 @@ protected:
     virtual void keyPressEvent(QKeyEvent * event) Q_DECL_OVERRIDE;
 
     uint width = 512, height = 512;
+
+    uint *d_output = NULL;
 
 private:
     void computeFPS();
@@ -81,7 +86,15 @@ private:
     int g_Index = 0;
     unsigned int frameCount = 0;
 
-    glRenderer* renderer;
+    Tracer* renderer;
+
+    //pbo
+    GLuint pbo = 0;     // OpenGL pixel buffer object
+    GLuint tex = 0;     // OpenGL texture object
+    struct cudaGraphicsResource *cuda_pbo_resource; // CUDA Graphics Resource (to transfer PBO)
+
+    bool initialized = false;
+
 };
 
 #endif //GL_WIDGET_H
