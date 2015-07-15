@@ -67,7 +67,7 @@
 #include "scout/Runtime/opengl/qt/ScoutWindow.h"
 #include "scout/Runtime/opengl/qt/QtWindow.h"
 
-#include "glVolumeRenderer.h"
+#include "CudaVolumeTracer.h"
 
 //#include <sys/time.h>
 
@@ -475,7 +475,7 @@ public:
 
     void run(){
       if(!renderer_){
-        renderer_ = new glVolumeRenderer(width_, height_, depth_);
+        renderer_ = new CudaVolumeTracer(width_, height_, depth_);
         renderer_->setRenderCallback(this);
 
         window_->setRenderable(renderer_);
@@ -536,7 +536,7 @@ public:
     float transferOffset_;
     float transferScale_;
     CUdeviceptr meshPtr_;
-    glVolumeRenderer* renderer_;
+    CudaVolumeTracer* renderer_;
   };
 
   RenderallRuntime(){}
