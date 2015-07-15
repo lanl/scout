@@ -1982,6 +1982,18 @@ void ASTNodeImporter::ImportDefinitionIfNeeded(Decl *FromD, Decl *ToD) {
     }
     return;
   }
+  
+  // +===== Scout =============================================
+  if (MeshDecl *FromMesh = dyn_cast<MeshDecl>(FromD)) {
+    if (MeshDecl *ToMesh = cast_or_null<MeshDecl>(ToD)) {
+      if (FromMesh->getDefinition() && FromMesh->isCompleteDefinition() &&
+          !ToMesh->getDefinition()) {
+        ImportDefinition(FromMesh, ToMesh);
+      }
+    }
+    return;
+  }
+  // +=========================================================
 
   if (EnumDecl *FromEnum = dyn_cast<EnumDecl>(FromD)) {
     if (EnumDecl *ToEnum = cast_or_null<EnumDecl>(ToD)) {
@@ -2728,7 +2740,7 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
 
   if (D->isCompleteDefinition() && ImportDefinition(D, D2, IDK_Default))
     return nullptr;
-
+  
   return D2;
 }
 
@@ -5420,6 +5432,7 @@ QualType ASTImporter::Import(QualType FromT) {
   // Import the type
   ASTNodeImporter Importer(*this);
   QualType ToT = Importer.Visit(fromTy);
+  
   if (ToT.isNull())
     return ToT;
   
@@ -5472,7 +5485,7 @@ Decl *ASTImporter::Import(Decl *FromD) {
   Decl *ToD = Importer.Visit(FromD);
   if (!ToD)
     return nullptr;
-
+  
   // Record the imported declaration.
   ImportedDecls[FromD] = ToD;
   
@@ -5552,6 +5565,19 @@ DeclContext *ASTImporter::ImportContext(DeclContext *FromDC) {
       CompleteDecl(ToProto);
     }    
   }
+  // ====== Scout ======================================
+  else if (MeshDecl *ToMesh = dyn_cast<MeshDecl>(ToDC)) {
+    MeshDecl *FromMesh = cast<MeshDecl>(FromDC);
+    if (ToMesh->isCompleteDefinition()) {
+      // Do nothing.
+    } else if (FromMesh->isCompleteDefinition()) {
+      ASTNodeImporter(*this).ImportDefinition(FromMesh, ToMesh,
+                                              ASTNodeImporter::IDK_Basic);
+    } else {
+      CompleteDecl(ToMesh);
+    }
+  }
+  // ===================================================
   
   return ToDC;
 }

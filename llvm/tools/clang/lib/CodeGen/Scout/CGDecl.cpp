@@ -225,20 +225,19 @@ void CodeGenFunction::GetMeshDimensions(const MeshType* MT,
     llvm::Value* intValue;
     Expr* E = dims[i];
 
-    if (E->isGLValue()) {
+    if (E->isConstantInitializer(getContext(), false)) {
+      llvm::APSInt dimAPValue;
+      bool success = E->EvaluateAsInt(dimAPValue, getContext());
+      assert(success && "Failed to evaluate mesh dimension");
+
+      intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
+    } else if (E->isGLValue()) {
       // Emit the expression as an lvalue.
       LValue LV = EmitLValue(E);
 
       // We have to load the lvalue.
       RValue RV = EmitLoadOfLValue(LV, E->getExprLoc() );
       intValue  = RV.getScalarVal();
-
-    } else if (E->isConstantInitializer(getContext(), false)) {
-      llvm::APSInt dimAPValue;
-      bool success = E->EvaluateAsInt(dimAPValue, getContext());
-      assert(success && "Failed to evaluate mesh dimension");
-
-      intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
     } else {
       // it is an Rvalue
       RValue RV = EmitAnyExpr(E);

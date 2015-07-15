@@ -24,7 +24,7 @@
 using namespace clang;
 
 static bool isFieldOrIndirectField(Decl::Kind K) {
-  return FieldDecl::classofKind(K) || IndirectFieldDecl::classofKind(K);
+  return MeshFieldDecl::classofKind(K);
 }
 
 //===----------------------------------------------------------------------===//
@@ -111,7 +111,7 @@ void MeshDecl::LoadFieldsFromExternalStorage() const {
   ExternalASTSource *Source = getASTContext().getExternalSource();
   assert(hasExternalLexicalStorage() && Source && "No external storage?");
 
-  // Notify that we have a RecordDecl doing some initialization.
+  // Notify that we have a MeshDecl doing some initialization.
   ExternalASTSource::Deserializing TheFields(Source);
 
   SmallVector<Decl*, 64> Decls;

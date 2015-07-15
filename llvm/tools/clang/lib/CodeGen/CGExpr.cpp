@@ -2013,11 +2013,10 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     // for stencil
     if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)) {
       V = LocalDeclMap.lookup(IP->getMeshVarDecl());
-    }
-
-    if(!V) {
-      llvm::errs() << "lookup fail for " << VD->getName() << "\n";
-      VD->dump();
+      if(!V) {
+        llvm::errs() << "lookup fail for " << VD->getName() << "\n";
+        VD->dump();
+      }
     }
     // +====================================================================+
 
@@ -2031,6 +2030,7 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
           *this, VD, T, V, getTypes().ConvertTypeForMem(VD->getType()),
           Alignment, E->getExprLoc());
 
+    
     assert(V && "DeclRefExpr not entered in LocalDeclMap?");
 
     if (isBlockVariable)

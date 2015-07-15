@@ -143,8 +143,6 @@ namespace clang {
       return error;
     }
 
-
-
     void ForallVisitor::VisitBinaryOperator(BinaryOperator* S) {
       nodeType_ = NodeNone;
 
@@ -299,387 +297,386 @@ namespace clang {
               error_ = true;
             }
           }
+
         }
-      }
-    }
 
-    void ForallVisitor::VisitStmt(Stmt* S) {
+        void ForallVisitor::VisitStmt(Stmt* S) {
 
-      // Upon construction of the visitor we have already visited the
-      // invoking 'forall'.  In order to analyze the nesting of forall
-      // statements we have to first see if the next statement we are
-      // visiting is another forall (per a child relationship with the
-      // statements in the body of the 'invoking' forall visitor).
+          // Upon construction of the visitor we have already visited the
+          // invoking 'forall'.  In order to analyze the nesting of forall
+          // statements we have to first see if the next statement we are
+          // visiting is another forall (per a child relationship with the
+          // statements in the body of the 'invoking' forall visitor).
         
-      if (S->getStmtClass() == Stmt::ForallMeshStmtClass) {
-        // We are visiting a nested forall within the scope of our
-        // originally invoked forall.
-        ForallMeshStmt *FMS = cast<ForallMeshStmt>(S);
+          if (S->getStmtClass() == Stmt::ForallMeshStmtClass) {
+            // We are visiting a nested forall within the scope of our
+            // originally invoked forall.
+            ForallMeshStmt *FMS = cast<ForallMeshStmt>(S);
 
-        // Next, save the statement on our stack of visited foralls so
-        // we can include them in our checking...  Note the constructor
-        // pushes the 'invoking' forall onto the stack...
-        forallStmts.push_back(FMS);
+            // Next, save the statement on our stack of visited foralls so
+            // we can include them in our checking...  Note the constructor
+            // pushes the 'invoking' forall onto the stack...
+            forallStmts.push_back(FMS);
 
-        // To avoid walking the stack to determine if there is an
-        // overlapping/repeating mesh element kind in a nested forall
-        // construct we use a bitmask to help us catch these cases...
-        if ((forallStmtMask & FMS->getMeshElementRef()) != 0) {
-          // We have a forall construct that repeats the mesh element
-          // type (cell, vertices, etc.).  Next we need to determine
-          // if the mesh instance is idential (to identify potentially
-          // correct nested mesh constructs like AMR).  
-          ForallStmtStack::iterator it = forallStmts.begin();
-          while(it != forallStmts.end() && (*it) != FMS) {
-            // We have to handle to different potential constructs
-            // here.  The first is an explicit mesh -- in which case
-            // we will have identical mesh info details. If we don't
-            // have the same mesh info it is still possible we're
-            // referring to the same mesh via an implicit mesh
-            // parameter; in this case we have to see if our mesh var
-            // decl is actually an implicit mesh param... 
-            bool same_mesh = (*it)->getMeshInfo() == FMS->getMeshInfo();
-            if (! same_mesh) {
-              const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(FMS->getMeshVarDecl());
-              same_mesh = IP != 0;
-            }
-                
-            if (same_mesh) {
-              // Based on the element that is repeated in the loop
-              // construct we build a string to help us provide a
-              // detailed error message...
-              std::string nested_elem_kind;
-              switch(FMS->getMeshElementRef()) {
-                    
-                case Cells:
-                  nested_elem_kind = "cells";
-                  break;
-
-                case Vertices:
-                  nested_elem_kind = "vertices";
-                  break;
-
-                case Faces:
-                  nested_elem_kind = "faces";
-                  break;
-
-                case Edges:
-                  nested_elem_kind = "edges";
-                  break;
-
-                case AllElements:
-                default:
-                  assert(false && "unexpected mesh element kind/type");
-                  break;
-              }
-                      
-              sema_.Diag(FMS->getForAllLoc(), diag::err_forall_mesh_repeated_nesting)
-                << nested_elem_kind
-                << (*it)->getForAllLoc().printToString(sema_.getSourceManager());
-              error_ = true;
-              break;
-            } else {
-              // SC_TODO: Although at the design level it is perfectly
-              // reasonable to envision nested mesh constructs, we
-              // currently don't have the codegen support to handle
-              // such constructs cleanly...  For now we'll generate a
-              // unsupported construct error...
-              sema_.Diag(FMS->getForAllLoc(), diag::err_nested_meshes_unsupported);
-              error_ = true;
-              break;
-            }
-            ++it;
-          }
-        }
-
-        // Update our forall element info mask and then process all
-        // the children of the forall statement (the body of the
-        // forall).  Note that this path actually leads to a recursive
-        // execution as VisitChildren() will in turn call back into
-        // this member function to visit each child statement...
-        // 
-        // SC_TODO: We currently don't support analysis across
-        // function invocations within forall loops (e.g. a call to a
-        // function within a forall body that itself has an internal
-        // forall that leads to an incorrect/unsupported nesting.
-        forallStmtMask = forallStmtMask | FMS->getMeshElementRef();
-        VisitChildren(S);
-        // After visiting the body of the forall we need to reset
-        // our mask and remove the forall from the stack...
-        forallStmtMask &= ~FMS->getMeshElementRef();
-        (void)forallStmts.pop_back();
-      } else {
-        VisitChildren(S);
-      }
-    }
-
-    void ForallReductionVisitor::VisitBinaryOperator(BinaryOperator* S){
-      if(S->getOpcode() != BO_AddAssign){
-        return;
-      }
-  
-      if(!isa<DeclRefExpr>(S->getLHS())){
-        return;
-      }
-  
-      isReduction_ = true;
-    }
-  
-    void RenderallVisitor::VisitBinaryOperator(BinaryOperator* S) {
-      switch(S->getOpcode()){
-        case BO_Assign:
-          if(S->getOpcode() == BO_Assign){
-
-            // "color = " case
-            if(isColorExpr(S->getLHS())) {
-              foundColorAssign_ = true;
-              // "color.{rgba} = " case
-            } else if(ExtVectorElementExpr* VE = dyn_cast<ExtVectorElementExpr>(S->getLHS())) {
-              if(isColorExpr(VE->getBase())) { // make sure Base is a color expr
-
-                //only allow .r .g .b .a not combos like .rg
-                if (VE->getNumElements() == 1) {
-                  const char *namestart = VE->getAccessor().getNameStart();
-                  // find the index for this accesssor name {r,g,b,a} -> {0,1,2,3}
-                  int idx = ExtVectorType::getAccessorIdx(*namestart);
-                  foundComponentAssign_[idx] = true;
+            // To avoid walking the stack to determine if there is an
+            // overlapping/repeating mesh element kind in a nested forall
+            // construct we use a bitmask to help us catch these cases...
+            if ((forallStmtMask & FMS->getMeshElementRef()) != 0) {
+              // We have a forall construct that repeats the mesh element
+              // type (cell, vertices, etc.).  Next we need to determine
+              // if the mesh instance is idential (to identify potentially
+              // correct nested mesh constructs like AMR).  
+              ForallStmtStack::iterator it = forallStmts.begin();
+              while(it != forallStmts.end() && (*it) != FMS) {
+                // We have to handle to different potential constructs
+                // here.  The first is an explicit mesh -- in which case
+                // we will have identical mesh info details. If we don't
+                // have the same mesh info it is still possible we're
+                // referring to the same mesh via an implicit mesh
+                // parameter; in this case we have to see if our mesh var
+                // decl is actually an implicit mesh param... 
+                bool same_mesh = (*it)->getMeshInfo() == FMS->getMeshInfo();
+                if (! same_mesh) {
+                  const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(FMS->getMeshVarDecl());
+                  same_mesh = IP != 0;
                 }
+                
+                if (same_mesh) {
+                  // Based on the element that is repeated in the loop
+                  // construct we build a string to help us provide a
+                  // detailed error message...
+                  std::string nested_elem_kind;
+                  switch(FMS->getMeshElementRef()) {
+                    
+                    case Cells:
+                      nested_elem_kind = "cells";
+                      break;
+
+                    case Vertices:
+                      nested_elem_kind = "vertices";
+                      break;
+
+                    case Faces:
+                      nested_elem_kind = "faces";
+                      break;
+
+                    case Edges:
+                      nested_elem_kind = "edges";
+                      break;
+
+                    case AllElements:
+                    default:
+                      assert(false && "unexpected mesh element kind/type");
+                      break;
+                  }
+                      
+                  sema_.Diag(FMS->getForAllLoc(), diag::err_forall_mesh_repeated_nesting)
+                    << nested_elem_kind
+                    << (*it)->getForAllLoc().printToString(sema_.getSourceManager());
+                  error_ = true;
+                  break;
+                } else {
+                  // SC_TODO: Although at the design level it is perfectly
+                  // reasonable to envision nested mesh constructs, we
+                  // currently don't have the codegen support to handle
+                  // such constructs cleanly...  For now we'll generate a
+                  // unsupported construct error...
+                  sema_.Diag(FMS->getForAllLoc(), diag::err_nested_meshes_unsupported);
+                  error_ = true;
+                  break;
+                }
+                ++it;
               }
             }
+
+            // Update our forall element info mask and then process all
+            // the children of the forall statement (the body of the
+            // forall).  Note that this path actually leads to a recursive
+            // execution as VisitChildren() will in turn call back into
+            // this member function to visit each child statement...
+            // 
+            // SC_TODO: We currently don't support analysis across
+            // function invocations within forall loops (e.g. a call to a
+            // function within a forall body that itself has an internal
+            // forall that leads to an incorrect/unsupported nesting.
+            forallStmtMask = forallStmtMask | FMS->getMeshElementRef();
+            VisitChildren(S);
+            // After visiting the body of the forall we need to reset
+            // our mask and remove the forall from the stack...
+            forallStmtMask &= ~FMS->getMeshElementRef();
+            (void)forallStmts.pop_back();
           } else {
             VisitChildren(S);
           }
-          break;
-        case BO_MulAssign:
-        case BO_DivAssign:
-        case BO_RemAssign:
-        case BO_AddAssign:
-        case BO_SubAssign:
-        case BO_ShlAssign:
-        case BO_ShrAssign:
-        case BO_AndAssign:
-        case BO_XorAssign:
-        case BO_OrAssign: {
-          Expr *E = S->getLHS();
+        }
 
-          // deal w/ array case
-          if(ArraySubscriptExpr *ASR = dyn_cast<ArraySubscriptExpr>(E)) {
-            E = ASR->getBase();
-            if(ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(E)) {
-              E = ICE->getSubExpr();
-            }
+        void ForallReductionVisitor::VisitBinaryOperator(BinaryOperator* S){
+          if(S->getOpcode() != BO_AddAssign){
+            return;
           }
-
-          if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(E)){
-            RefMap_::iterator itr = localMap_.find(DR->getDecl()->getName().str());
-            if(itr == localMap_.end()){
-
-              sema_.Diag(DR->getLocation(),
-                         diag::warn_lhs_outside_forall) << DR->getDecl()->getName();
-            }
+  
+          if(!isa<DeclRefExpr>(S->getLHS())){
+            return;
           }
-
-          nodeType_ = NodeLHS;
-          break;
+  
+          isReduction_ = true;
         }
-        default:
-          break;
-      }
+  
+        void RenderallVisitor::VisitBinaryOperator(BinaryOperator* S) {
+          switch(S->getOpcode()){
+            case BO_Assign:
+              if(S->getOpcode() == BO_Assign){
 
-      Visit(S->getLHS());
-      nodeType_ = NodeRHS;
-      Visit(S->getRHS());
-      nodeType_ = NodeNone;
-    }
+                // "color = " case
+                if(isColorExpr(S->getLHS())) {
+                  foundColorAssign_ = true;
+                  // "color.{rgba} = " case
+                } else if(ExtVectorElementExpr* VE = dyn_cast<ExtVectorElementExpr>(S->getLHS())) {
+                  if(isColorExpr(VE->getBase())) { // make sure Base is a color expr
 
-    void RenderallVisitor::VisitCallExpr(CallExpr* E) {
+                    //only allow .r .g .b .a not combos like .rg
+                    if (VE->getNumElements() == 1) {
+                      const char *namestart = VE->getAccessor().getNameStart();
+                      // find the index for this accesssor name {r,g,b,a} -> {0,1,2,3}
+                      int idx = ExtVectorType::getAccessorIdx(*namestart);
+                      foundComponentAssign_[idx] = true;
+                    }
+                  }
+                }
+              } else {
+                VisitChildren(S);
+              }
+              break;
+            case BO_MulAssign:
+            case BO_DivAssign:
+            case BO_RemAssign:
+            case BO_AddAssign:
+            case BO_SubAssign:
+            case BO_ShlAssign:
+            case BO_ShrAssign:
+            case BO_AndAssign:
+            case BO_XorAssign:
+            case BO_OrAssign: {
+              Expr *E = S->getLHS();
 
-      FunctionDecl* fd = E->getDirectCallee();
+              // deal w/ array case
+              if(ArraySubscriptExpr *ASR = dyn_cast<ArraySubscriptExpr>(E)) {
+                E = ASR->getBase();
+                if(ImplicitCastExpr *ICE = dyn_cast<ImplicitCastExpr>(E)) {
+                  E = ICE->getSubExpr();
+                }
+              }
 
-      if (fd) {
-        std::string name = fd->getName();
-        unsigned id = fd->getBuiltinID();
-        if (name == "printf" || name == "fprintf") {
-          // SC_TODO -- for now we'll warn that you're calling a print
-          // function inside a parallel construct -- in the long run
-          // we can either (1) force the loop to run sequentially or
-          // (2) replace print function with a "special" version...
-          sema_.Diag(E->getExprLoc(), diag::warn_renderall_calling_io_func);
-        } else if (isCShift(id) || isEOShift(id)) {
-          error_ = CheckShift(id, E, sema_);
-        }
-      }
+              if(DeclRefExpr* DR = dyn_cast<DeclRefExpr>(E)){
+                RefMap_::iterator itr = localMap_.find(DR->getDecl()->getName().str());
+                if(itr == localMap_.end()){
 
-      VisitChildren(E);
-    }
+                  sema_.Diag(DR->getLocation(),
+                             diag::warn_lhs_outside_forall) << DR->getDecl()->getName();
+                }
+              }
 
-    void RenderallVisitor::VisitDeclStmt(DeclStmt* S) {
-
-      DeclGroupRef declGroup = S->getDeclGroup();
-
-      for(DeclGroupRef::iterator itr = declGroup.begin(),
-            itrEnd = declGroup.end(); itr != itrEnd; ++itr){
-        Decl* decl = *itr;
-
-        if (NamedDecl* nd = dyn_cast<NamedDecl>(decl)) {
-          localMap_.insert(make_pair(nd->getName().str(), true));
-        }
-      }
-
-      VisitChildren(S);
-    }
-
-
-    void RenderallVisitor::VisitIfStmt(IfStmt* S) {
-      size_t ic = 0;
-      for(Stmt::child_iterator I = S->child_begin(),
-            E = S->child_end(); I != E; ++I){
-
-        if(Stmt* child = *I) {
-          if(isa<CompoundStmt>(child) || isa<IfStmt>(child)) {
-            RenderallVisitor v(sema_,fs_);
-            v.Visit(child);
-            if(v.foundColorAssign()) {
-              foundColorAssign_ = true;
-            } else {
-              foundColorAssign_ = false;
+              nodeType_ = NodeLHS;
               break;
             }
-          } else {
-            Visit(child);
+            default:
+              break;
           }
-          ++ic;
+
+          Visit(S->getLHS());
+          nodeType_ = NodeRHS;
+          Visit(S->getRHS());
+          nodeType_ = NodeNone;
         }
-      }
-      if(ic == 2) {
-        foundColorAssign_ = false;
-      }
-    }
 
-    void RenderallVisitor::VisitMemberExpr(MemberExpr* E) {
+        void RenderallVisitor::VisitCallExpr(CallExpr* E) {
 
-      if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())) {
-        ValueDecl* bd = dr->getDecl();
+          FunctionDecl* fd = E->getDirectCallee();
 
-        if (isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
-
-          ValueDecl* md = E->getMemberDecl();
-
-          std::string ref = bd->getName().str() + "." + md->getName().str();
-
-          if (nodeType_ == NodeLHS) {
-            refMap_.insert(make_pair(ref, true));
-          } else if (nodeType_ == NodeRHS) {
-            RefMap_::iterator itr = refMap_.find(ref);
-            if (itr != refMap_.end()) {
-              sema_.Diag(E->getMemberLoc(), diag::err_rhs_after_lhs_forall);
-              error_ = true;
+          if (fd) {
+            std::string name = fd->getName();
+            unsigned id = fd->getBuiltinID();
+            if (name == "printf" || name == "fprintf") {
+              // SC_TODO -- for now we'll warn that you're calling a print
+              // function inside a parallel construct -- in the long run
+              // we can either (1) force the loop to run sequentially or
+              // (2) replace print function with a "special" version...
+              sema_.Diag(E->getExprLoc(), diag::warn_renderall_calling_io_func);
+            } else if (isCShift(id) || isEOShift(id)) {
+              error_ = CheckShift(id, E, sema_);
             }
           }
+
+          VisitChildren(E);
         }
-      }
-    }
 
+        void RenderallVisitor::VisitDeclStmt(DeclStmt* S) {
 
-    void TaskStmtVisitor::VisitCallExpr(CallExpr* E) {
+          DeclGroupRef declGroup = S->getDeclGroup();
 
-      FunctionDecl* fd = E->getDirectCallee();
+          for(DeclGroupRef::iterator itr = declGroup.begin(),
+                itrEnd = declGroup.end(); itr != itrEnd; ++itr){
+            Decl* decl = *itr;
 
-      if (fd) {
-        std::string name = fd->getName();
-        if (name == "printf" || name == "fprintf") {
-
-          if(sema_.getLangOpts().ScoutLegionSupport) {
-            // in legion mode printf in task is error
-            //sema_.Diag(E->getExprLoc(), diag::err_task_calling_io_func);
-            // leave as a warning for now...
-            sema_.Diag(E->getExprLoc(), diag::warn_task_calling_io_func);
-          } else {
-            //  warn that you're calling a print function inside a task
-            sema_.Diag(E->getExprLoc(), diag::warn_task_calling_io_func);
-          }
-        }
-        TaskDeclVisitor v(sema_, fd);
-        if(fd->getBody()) {
-          v.VisitStmt(fd->getBody());
-        } else {
-          // can't find body assume function accesses mesh
-          meshAccess_ = true;
-        }
-        VisitChildren(fd->getBody());
-      }
-
-      VisitChildren(E);
-    }
-
-    void TaskStmtVisitor::VisitChildren(Stmt* S) {
-      if(S) {
-        for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-          if (Stmt* child = *I) {
-            Visit(child);
-          }
-        }
-      }
-    }
-
-    void TaskStmtVisitor::VisitDeclRefExpr(DeclRefExpr *E) {
-      if(VarDecl *VD = dyn_cast<VarDecl>(E->getDecl())) {
-        if(VD->hasGlobalStorage() && !VD->getType().isConstQualified()) {
-          sema_.Diag(E->getLocStart(), diag::err_nonpure_task_fuction);
-        }
-        if(VD->isStaticDataMember()) {
-          sema_.Diag(E->getLocStart(), diag::err_nonpure_task_fuction);
-        }
-      }
-      VisitChildren(E);
-    }
-
-
-    void TaskStmtVisitor::VisitForallMeshStmt(ForallMeshStmt *S) {
-      ForallVisitor v(sema_, S, true);
-      v.Visit(S);
-      if(v.getMeshAccess()) meshAccess_ = true;
-
-      VisitChildren(S);
-    }
-
-
-    void TaskDeclVisitor::VisitStmt(Stmt* S) {
-      if(FD_->isTaskSpecified()) {
-        if(S) {
-          for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
-            if (Stmt* child = *I) {
-              TaskStmtVisitor v(sema_, child);
-              v.Visit(child);
-              if (v.getMeshAccess()) meshAccess_ = true;
+            if (NamedDecl* nd = dyn_cast<NamedDecl>(decl)) {
+              localMap_.insert(make_pair(nd->getName().str(), true));
             }
           }
-          // don't allow tasks w/ no mesh access in legion mode
-          if(sema_.getLangOpts().ScoutLegionSupport && !meshAccess_) {
-            sema_.Diag(S->getLocStart(), diag::err_nomesh_task_fuction);
+
+          VisitChildren(S);
+        }
+
+
+        void RenderallVisitor::VisitIfStmt(IfStmt* S) {
+          size_t ic = 0;
+          for(Stmt::child_iterator I = S->child_begin(),
+                E = S->child_end(); I != E; ++I){
+
+            if(Stmt* child = *I) {
+              if(isa<CompoundStmt>(child) || isa<IfStmt>(child)) {
+                RenderallVisitor v(sema_,fs_);
+                v.Visit(child);
+                if(v.foundColorAssign()) {
+                  foundColorAssign_ = true;
+                } else {
+                  foundColorAssign_ = false;
+                  break;
+                }
+              } else {
+                Visit(child);
+              }
+              ++ic;
+            }
+          }
+          if(ic == 2) {
+            foundColorAssign_ = false;
           }
         }
-        // make sure there is only one mesh parameter if we are in legion mode
-        if(sema_.getLangOpts().ScoutLegionSupport) {
-          int meshcount = 0;
-          for(unsigned i = 0; i < FD_->getNumParams(); i++) {
-            ParmVarDecl *PVD = FD_->getParamDecl(i);
-            const Type *T = PVD->getType().getCanonicalType().getTypePtr();
-            if(T->isPointerType() || T->isReferenceType()) {
-              if(isa<UniformMeshType>(T->getPointeeType())) {
-                meshcount++;
+
+        void RenderallVisitor::VisitMemberExpr(MemberExpr* E) {
+
+          if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(E->getBase())) {
+            ValueDecl* bd = dr->getDecl();
+
+            if (isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
+
+              ValueDecl* md = E->getMemberDecl();
+
+              std::string ref = bd->getName().str() + "." + md->getName().str();
+
+              if (nodeType_ == NodeLHS) {
+                refMap_.insert(make_pair(ref, true));
+              } else if (nodeType_ == NodeRHS) {
+                RefMap_::iterator itr = refMap_.find(ref);
+                if (itr != refMap_.end()) {
+                  sema_.Diag(E->getMemberLoc(), diag::err_rhs_after_lhs_forall);
+                  error_ = true;
+                }
               }
             }
           }
-          if(meshcount > 1) {
-            sema_.Diag(S->getLocStart(), diag::err_more_than_one_mesh_task_fuction);
+        }
+
+
+        void TaskStmtVisitor::VisitCallExpr(CallExpr* E) {
+
+          FunctionDecl* fd = E->getDirectCallee();
+
+          if (fd) {
+            std::string name = fd->getName();
+            if (name == "printf" || name == "fprintf") {
+
+              if(sema_.getLangOpts().ScoutLegionSupport) {
+                // in legion mode printf in task is error
+                //sema_.Diag(E->getExprLoc(), diag::err_task_calling_io_func);
+                // leave as a warning for now...
+                sema_.Diag(E->getExprLoc(), diag::warn_task_calling_io_func);
+              } else {
+                //  warn that you're calling a print function inside a task
+                sema_.Diag(E->getExprLoc(), diag::warn_task_calling_io_func);
+              }
+            }
+            TaskDeclVisitor v(sema_, fd);
+            if(fd->getBody()) {
+              v.VisitStmt(fd->getBody());
+            } else {
+              // can't find body assume function accesses mesh
+              meshAccess_ = true;
+            }
+            VisitChildren(fd->getBody());
+          }
+
+          VisitChildren(E);
+        }
+
+        void TaskStmtVisitor::VisitChildren(Stmt* S) {
+          if(S) {
+            for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+              if (Stmt* child = *I) {
+                Visit(child);
+              }
+            }
           }
         }
-      }
-    }
+
+        void TaskStmtVisitor::VisitDeclRefExpr(DeclRefExpr *E) {
+          if(VarDecl *VD = dyn_cast<VarDecl>(E->getDecl())) {
+            if(VD->hasGlobalStorage() && !VD->getType().isConstQualified()) {
+              sema_.Diag(E->getLocStart(), diag::err_nonpure_task_fuction);
+            }
+            if(VD->isStaticDataMember()) {
+              sema_.Diag(E->getLocStart(), diag::err_nonpure_task_fuction);
+            }
+          }
+          VisitChildren(E);
+        }
+
+
+        void TaskStmtVisitor::VisitForallMeshStmt(ForallMeshStmt *S) {
+          ForallVisitor v(sema_, S, true);
+          v.Visit(S);
+          if(v.getMeshAccess()) meshAccess_ = true;
+
+          VisitChildren(S);
+        }
+
+
+        void TaskDeclVisitor::VisitStmt(Stmt* S) {
+          if(FD_->isTaskSpecified()) {
+            if(S) {
+              for(Stmt::child_iterator I = S->child_begin(), E = S->child_end(); I != E; ++I) {
+                if (Stmt* child = *I) {
+                  TaskStmtVisitor v(sema_, child);
+                  v.Visit(child);
+                  if (v.getMeshAccess()) meshAccess_ = true;
+                }
+              }
+              // don't allow tasks w/ no mesh access in legion mode
+              if(sema_.getLangOpts().ScoutLegionSupport && !meshAccess_) {
+                sema_.Diag(S->getLocStart(), diag::err_nomesh_task_fuction);
+              }
+            }
+            // make sure there is only one mesh parameter if we are in legion mode
+            if(sema_.getLangOpts().ScoutLegionSupport) {
+              int meshcount = 0;
+              for(unsigned i = 0; i < FD_->getNumParams(); i++) {
+                ParmVarDecl *PVD = FD_->getParamDecl(i);
+                const Type *T = PVD->getType().getCanonicalType().getTypePtr();
+                if(T->isPointerType() || T->isReferenceType()) {
+                  if(isa<UniformMeshType>(T->getPointeeType())) {
+                    meshcount++;
+                  }
+                }
+              }
+              if(meshcount > 1) {
+                sema_.Diag(S->getLocStart(), diag::err_more_than_one_mesh_task_fuction);
+              }
+            }
+          }
+        }
 
     
 
-  } // end namespace sema
-} // end namespace clang
+      } // end namespace sema
+    } // end namespace clang
 

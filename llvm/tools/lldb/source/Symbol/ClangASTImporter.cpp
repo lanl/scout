@@ -52,10 +52,10 @@ ClangASTImporter::CopyType (clang::ASTContext *dst_ast,
                             clang::QualType type)
 {
     MinionSP minion_sp (GetMinion(dst_ast, src_ast));
-    
+  
     if (minion_sp)
         return minion_sp->Import(type);
-    
+
     return QualType();
 }
 
@@ -500,6 +500,17 @@ ClangASTImporter::Minion::ExecuteDeportWorkQueues ()
             tag_decl->setHasExternalLexicalStorage(false);
             tag_decl->setHasExternalVisibleStorage(false);
         }
+        // +===== Scout ====================================
+        if (MeshDecl *mesh_decl = dyn_cast<MeshDecl>(decl))
+        {
+          if (MeshDecl *original_mesh_decl = dyn_cast<MeshDecl>(original_decl))
+            if (original_mesh_decl->isCompleteDefinition())
+              ImportDefinitionTo(mesh_decl, original_mesh_decl);
+          
+          mesh_decl->setHasExternalLexicalStorage(false);
+          mesh_decl->setHasExternalVisibleStorage(false);
+        }
+        // +================================================
         else if (ObjCInterfaceDecl *interface_decl = dyn_cast<ObjCInterfaceDecl>(decl))
         {
             interface_decl->setHasExternalLexicalStorage(false);
@@ -699,7 +710,24 @@ ClangASTImporter::Minion::Imported (clang::Decl *from, clang::Decl *to)
                         (from_tag_decl->isCompleteDefinition() ? "complete" : "incomplete"),
                         (to_tag_decl->isCompleteDefinition() ? "complete" : "incomplete"));
     }
-
+  
+    // +===== Scout ================================================
+    if (MeshDecl *from_mesh_decl = dyn_cast<MeshDecl>(from))
+    {
+      MeshDecl *to_mesh_decl = dyn_cast<MeshDecl>(to);
+      
+      to_mesh_decl->setHasExternalLexicalStorage();
+      to_mesh_decl->setMustBuildLookupTable();
+      
+      if (log)
+        log->Printf("    [ClangASTImporter] To is a MeshDecl - attributes %s%s [%s->%s]",
+                    (to_mesh_decl->hasExternalLexicalStorage() ? " Lexical" : ""),
+                    (to_mesh_decl->hasExternalVisibleStorage() ? " Visible" : ""),
+                    (from_mesh_decl->isCompleteDefinition() ? "complete" : "incomplete"),
+                    (to_mesh_decl->isCompleteDefinition() ? "complete" : "incomplete"));
+    }
+    // +===========================================================
+  
     if (isa<NamespaceDecl>(from))
     {
         NamespaceDecl *to_namespace_decl = dyn_cast<NamespaceDecl>(to);
