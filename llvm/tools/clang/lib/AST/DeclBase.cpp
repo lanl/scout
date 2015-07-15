@@ -1070,7 +1070,10 @@ DeclContext::BuildDeclChain(ArrayRef<Decl*> Decls,
   Decl *FirstNewDecl = nullptr;
   Decl *PrevDecl = nullptr;
   for (unsigned I = 0, N = Decls.size(); I != N; ++I) {
-    if (FieldsAlreadyLoaded && isa<FieldDecl>(Decls[I]))
+    if (FieldsAlreadyLoaded &&
+        // +===== Scout ============================================
+        (isa<FieldDecl>(Decls[I]) || isa<MeshFieldDecl>(Decls[I])))
+        // +========================================================
       continue;
 
     Decl *D = Decls[I];
