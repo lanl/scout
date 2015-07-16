@@ -109,7 +109,7 @@ struct CGBitFieldInfo {
                                  const MeshFieldDecl *FD,
                                  uint64_t Offset, uint64_t Size,
                                  uint64_t StorageSize,
-                                 uint64_t StorageAlignment);
+                                 CharUnits StorageOffset);
   // +========================================================================+
 };
 
