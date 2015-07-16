@@ -2815,16 +2815,10 @@ void Parser::ParseCXXMemberSpecification(SourceLocation RecordLoc,
         break;
       }
 
-      if ((S->getFlags() & Scope::FnScope)) {
-        // If we're in a function or function template declared in the
-        // body of a class, then this is a local class rather than a
-        // nested class.
-        const Scope *Parent = S->getParent();
-        if (Parent->isTemplateParamScope())
-          Parent = Parent->getParent();
-        if (Parent->isClassScope())
-          break;
-      }
+      if ((S->getFlags() & Scope::FnScope))
+        // If we're in a function or function template then this is a local
+        // class rather than a nested class.
+        break;
     }
   }
 
@@ -3814,7 +3808,7 @@ SourceLocation Parser::SkipCXX11Attributes() {
   return EndLoc;
 }
 
-/// Parse one or more Microsoft-style attributes [Attr]
+/// ParseMicrosoftAttributes - Parse Microsoft attributes [Attr]
 ///
 /// [MS] ms-attribute:
 ///             '[' token-seq ']'
@@ -3830,8 +3824,6 @@ void Parser::ParseMicrosoftAttributes(ParsedAttributes &attrs,
     // FIXME: If this is actually a C++11 attribute, parse it as one.
     BalancedDelimiterTracker T(*this, tok::l_square);
     T.consumeOpen();
-    if (Tok.is(tok::r_square))
-      Diag(T.getOpenLocation(), diag::err_empty_attribute_block);
     SkipUntil(tok::r_square, StopAtSemi | StopBeforeMatch);
     T.consumeClose();
     if (endLoc)

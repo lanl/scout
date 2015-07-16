@@ -21,6 +21,7 @@
 #include "clang/AST/StmtOpenMP.h"
 #include "clang/AST/StmtVisitor.h"
 #include "clang/Basic/OpenMPKinds.h"
+#include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/Preprocessor.h"
 #include "clang/Sema/Initialization.h"
 #include "clang/Sema/Lookup.h"
@@ -472,7 +473,10 @@ DSAStackTy::DSAVarData DSAStackTy::getTopDSA(VarDecl *D, bool FromParent) {
   // OpenMP [2.9.1.1, Data-sharing Attribute Rules for Variables Referenced
   // in a Construct, C/C++, predetermined, p.1]
   //  Variables appearing in threadprivate directives are threadprivate.
-  if (D->getTLSKind() != VarDecl::TLS_None ||
+  if ((D->getTLSKind() != VarDecl::TLS_None &&
+       !(D->hasAttr<OMPThreadPrivateDeclAttr>() &&
+         SemaRef.getLangOpts().OpenMPUseTLS &&
+         SemaRef.getASTContext().getTargetInfo().isTLSSupported())) ||
       (D->getStorageClass() == SC_Register && D->hasAttr<AsmLabelAttr>() &&
        !D->isLocalVarDecl())) {
     addDSA(D, buildDeclRefExpr(SemaRef, D, D->getType().getNonReferenceType(),
@@ -959,8 +963,12 @@ Sema::CheckOMPThreadPrivateDecl(SourceLocation Loc, ArrayRef<Expr *> VarList) {
       continue;
     }
 
-    // Check if this is a TLS variable.
-    if (VD->getTLSKind() != VarDecl::TLS_None ||
+    // Check if this is a TLS variable. If TLS is not being supported, produce
+    // the corresponding diagnostic.
+    if ((VD->getTLSKind() != VarDecl::TLS_None &&
+         !(VD->hasAttr<OMPThreadPrivateDeclAttr>() &&
+           getLangOpts().OpenMPUseTLS &&
+           getASTContext().getTargetInfo().isTLSSupported())) ||
         (VD->getStorageClass() == SC_Register && VD->hasAttr<AsmLabelAttr>() &&
          !VD->isLocalVarDecl())) {
       Diag(ILoc, diag::err_omp_var_thread_local)
@@ -2254,6 +2262,22 @@ bool OpenMPIterationSpaceChecker::Dependent() const {
          (UB && UB->isValueDependent()) || (Step && Step->isValueDependent());
 }
 
+template <typename T>
+static T *getExprAsWritten(T *E) {
+  if (auto *ExprTemp = dyn_cast<ExprWithCleanups>(E))
+    E = ExprTemp->getSubExpr();
+
+  if (auto *MTE = dyn_cast<MaterializeTemporaryExpr>(E))
+    E = MTE->GetTemporaryExpr();
+
+  while (auto *Binder = dyn_cast<CXXBindTemporaryExpr>(E))
+    E = Binder->getSubExpr();
+
+  if (auto *ICE = dyn_cast<ImplicitCastExpr>(E))
+    E = ICE->getSubExprAsWritten();
+  return E->IgnoreParens();
+}
+
 bool OpenMPIterationSpaceChecker::SetVarAndLB(VarDecl *NewVar,
                                               DeclRefExpr *NewVarRefExpr,
                                               Expr *NewLB) {
@@ -2264,6 +2288,12 @@ bool OpenMPIterationSpaceChecker::SetVarAndLB(VarDecl *NewVar,
     return true;
   Var = NewVar;
   VarRef = NewVarRefExpr;
+  if (auto *CE = dyn_cast_or_null<CXXConstructExpr>(NewLB))
+    if (const CXXConstructorDecl *Ctor = CE->getConstructor())
+      if ((Ctor->isCopyOrMoveConstructor() ||
+           Ctor->isConvertingConstructor(/*AllowExplicit=*/false)) &&
+          CE->getNumArgs() > 0 && CE->getArg(0) != nullptr)
+        NewLB = CE->getArg(0)->IgnoreParenImpCasts();
   LB = NewLB;
   return false;
 }
@@ -2394,11 +2424,12 @@ bool OpenMPIterationSpaceChecker::CheckInit(Stmt *S, bool EmitDiags) {
 static const VarDecl *GetInitVarDecl(const Expr *E) {
   if (!E)
     return nullptr;
-  E = E->IgnoreParenImpCasts();
+  E = getExprAsWritten(E);
   if (auto *CE = dyn_cast_or_null<CXXConstructExpr>(E))
     if (const CXXConstructorDecl *Ctor = CE->getConstructor())
-      if (Ctor->isCopyConstructor() && CE->getNumArgs() == 1 &&
-          CE->getArg(0) != nullptr)
+      if ((Ctor->isCopyOrMoveConstructor() ||
+           Ctor->isConvertingConstructor(/*AllowExplicit=*/false)) &&
+          CE->getNumArgs() > 0 && CE->getArg(0) != nullptr)
         E = CE->getArg(0)->IgnoreParenImpCasts();
   auto DRE = dyn_cast_or_null<DeclRefExpr>(E);
   if (!DRE)
@@ -2417,7 +2448,7 @@ bool OpenMPIterationSpaceChecker::CheckCond(Expr *S) {
     SemaRef.Diag(DefaultLoc, diag::err_omp_loop_not_canonical_cond) << Var;
     return true;
   }
-  S = S->IgnoreParenImpCasts();
+  S = getExprAsWritten(S);
   SourceLocation CondLoc = S->getLocStart();
   if (auto BO = dyn_cast<BinaryOperator>(S)) {
     if (BO->isRelationalOp()) {
@@ -2638,6 +2669,11 @@ Expr *OpenMPIterationSpaceChecker::BuildPreCond(Scope *S, Expr *Cond) const {
       S, DefaultLoc, TestIsLessOp ? (TestIsStrictOp ? BO_LT : BO_LE)
                                   : (TestIsStrictOp ? BO_GT : BO_GE),
       LB, UB);
+  if (CondExpr.isUsable()) {
+    CondExpr = SemaRef.PerformImplicitConversion(
+        CondExpr.get(), SemaRef.Context.BoolTy, /*Action=*/Sema::AA_Casting,
+        /*AllowExplicit=*/true);
+  }
   SemaRef.getDiagnostics().setSuppressAllDiagnostics(Suppress);
   // Otherwise use original loop conditon and evaluate it in runtime.
   return CondExpr.isUsable() ? CondExpr.get() : Cond;
@@ -3223,7 +3259,8 @@ CheckOpenMPLoop(OpenMPDirectiveKind DKind, Expr *NestedLoopCountExpr,
   Built.IterationVarRef = IV.get();
   Built.LastIteration = LastIteration.get();
   Built.NumIterations = NumIterations.get();
-  Built.CalcLastIteration = CalcLastIteration.get();
+  Built.CalcLastIteration =
+      SemaRef.ActOnFinishFullExpr(CalcLastIteration.get()).get();
   Built.PreCond = PreCond.get();
   Built.Cond = Cond.get();
   Built.Init = Init.get();

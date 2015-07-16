@@ -1178,6 +1178,10 @@ public:
   /// \param D Threadprivate declaration.
   void EmitOMPThreadPrivateDecl(const OMPThreadPrivateDecl *D);
 
+  /// Returns whether the given record is blacklisted from control flow
+  /// integrity checks.
+  bool IsCFIBlacklistedRecord(const CXXRecordDecl *RD);
+
   /// Emit bit set entries for the given vtable using the given layout if
   /// vptr CFI is enabled.
   void EmitVTableBitSetEntries(llvm::GlobalVariable *VTable,

@@ -71,7 +71,7 @@ static int skipArgs(const char *Flag, bool HaveCrashVFS) {
   return 0;
 }
 
-static void PrintArg(raw_ostream &OS, const char *Arg, bool Quote) {
+void Command::printArg(raw_ostream &OS, const char *Arg, bool Quote) {
   const bool Escape = std::strpbrk(Arg, "\"\\$");
 
   if (!Quote && !Escape) {
@@ -98,7 +98,9 @@ void Command::writeResponseFile(raw_ostream &OS) const {
     return;
   }
 
-  // In regular response files, we send all arguments to the response file
+  // In regular response files, we send all arguments to the response file.
+  // Wrapping all arguments in double quotes ensures that both Unix tools and
+  // Windows tools understand the response file.
   for (const char *Arg : Arguments) {
     OS << '"';
 
@@ -146,7 +148,7 @@ void Command::Print(raw_ostream &OS, const char *Terminator, bool Quote,
                     CrashReportInfo *CrashInfo) const {
   // Always quote the exe.
   OS << ' ';
-  PrintArg(OS, Executable, /*Quote=*/true);
+  printArg(OS, Executable, /*Quote=*/true);
 
   llvm::ArrayRef<const char *> Args = Arguments;
   llvm::SmallVector<const char *, 128> ArgsRespFile;
@@ -175,20 +177,20 @@ void Command::Print(raw_ostream &OS, const char *Terminator, bool Quote,
         // Replace the input file name with the crashinfo's file name.
         OS << ' ';
         StringRef ShortName = llvm::sys::path::filename(CrashInfo->Filename);
-        PrintArg(OS, ShortName.str().c_str(), Quote);
+        printArg(OS, ShortName.str().c_str(), Quote);
         continue;
       }
     }
 
     OS << ' ';
-    PrintArg(OS, Arg, Quote);
+    printArg(OS, Arg, Quote);
   }
 
   if (CrashInfo && HaveCrashVFS) {
     OS << ' ';
-    PrintArg(OS, "-ivfsoverlay", Quote);
+    printArg(OS, "-ivfsoverlay", Quote);
     OS << ' ';
-    PrintArg(OS, CrashInfo->VFSPath.str().c_str(), Quote);
+    printArg(OS, CrashInfo->VFSPath.str().c_str(), Quote);
   }
 
   if (ResponseFile != nullptr) {
