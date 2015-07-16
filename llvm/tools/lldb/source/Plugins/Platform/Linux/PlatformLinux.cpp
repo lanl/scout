@@ -36,10 +36,6 @@
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Process.h"
 
-#if defined(__linux__)
-#include "../../Process/Linux/NativeProcessLinux.h"
-#endif
-
 // Define these constants from Linux mman.h for use when targeting
 // remote linux systems even when host has different values.
 #define MAP_PRIVATE 2
@@ -280,7 +276,7 @@ PlatformLinux::ResolveExecutable (const ModuleSpec &ms,
     {
         if (m_remote_platform_sp)
         {
-            error = GetCachedExecutable (resolved_module_spec, exe_module_sp, nullptr, *m_remote_platform_sp);
+            error = GetCachedExecutable (resolved_module_spec, exe_module_sp, module_search_paths_ptr, *m_remote_platform_sp);
         }
         else
         {
@@ -758,9 +754,6 @@ PlatformLinux::DebugProcess (ProcessLaunchInfo &launch_info,
             log->Printf ("PlatformLinux::%s successfully created process", __FUNCTION__);
     }
 
-    // Set the unix signals properly.
-    process_sp->SetUnixSignals (Host::GetUnixSignals ());
-
     // Adjust launch for a hijacker.
     ListenerSP listener_sp;
     if (!launch_info.GetHijackListener ())
@@ -840,59 +833,6 @@ void
 PlatformLinux::CalculateTrapHandlerSymbolNames ()
 {
     m_trap_handlers.push_back (ConstString ("_sigtramp"));
-}
-
-Error
-PlatformLinux::LaunchNativeProcess (ProcessLaunchInfo &launch_info,
-                                    NativeProcessProtocol::NativeDelegate &native_delegate,
-                                    NativeProcessProtocolSP &process_sp)
-{
-#if !defined(__linux__)
-    return Error("Only implemented on Linux hosts");
-#else
-    if (!IsHost ())
-        return Error("PlatformLinux::%s (): cannot launch a debug process when not the host", __FUNCTION__);
-
-    // Retrieve the exe module.
-    lldb::ModuleSP exe_module_sp;
-    ModuleSpec exe_module_spec(launch_info.GetExecutableFile(), launch_info.GetArchitecture());
-
-    Error error = ResolveExecutable (
-        exe_module_spec,
-        exe_module_sp,
-        NULL);
-
-    if (!error.Success ())
-        return error;
-
-    if (!exe_module_sp)
-        return Error("exe_module_sp could not be resolved for %s", launch_info.GetExecutableFile ().GetPath ().c_str ());
-
-    // Launch it for debugging
-    error = process_linux::NativeProcessLinux::LaunchProcess (
-        exe_module_sp.get (),
-        launch_info,
-        native_delegate,
-        process_sp);
-
-    return error;
-#endif
-}
-
-Error
-PlatformLinux::AttachNativeProcess (lldb::pid_t pid,
-                                    NativeProcessProtocol::NativeDelegate &native_delegate,
-                                    NativeProcessProtocolSP &process_sp)
-{
-#if !defined(__linux__)
-    return Error("Only implemented on Linux hosts");
-#else
-    if (!IsHost ())
-        return Error("PlatformLinux::%s (): cannot attach to a debug process when not the host", __FUNCTION__);
-
-    // Launch it for debugging
-    return process_linux::NativeProcessLinux::AttachToProcess (pid, native_delegate, process_sp);
-#endif
 }
 
 uint64_t

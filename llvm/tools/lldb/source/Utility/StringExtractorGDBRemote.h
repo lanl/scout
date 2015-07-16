@@ -97,6 +97,7 @@ public:
         eServerPacketType_QSyncThreadState,
         eServerPacketType_QThreadSuffixSupported,
 
+        eServerPacketType_jThreadsInfo,
         eServerPacketType_qsThreadInfo,
         eServerPacketType_qfThreadInfo,
         eServerPacketType_qGetPid,
@@ -117,6 +118,8 @@ public:
         eServerPacketType_qWatchpointSupportInfo,
         eServerPacketType_qWatchpointSupportInfoSupported,
         eServerPacketType_qXfer_auxv_read,
+
+        eServerPacketType_jSignalsInfo,
 
         eServerPacketType_vAttach,
         eServerPacketType_vAttachWait,

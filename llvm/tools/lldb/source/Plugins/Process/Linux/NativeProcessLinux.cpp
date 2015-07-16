@@ -43,7 +43,6 @@
 #include "lldb/Utility/StringExtractor.h"
 
 #include "Plugins/Process/POSIX/ProcessPOSIXLog.h"
-#include "Plugins/Process/Utility/LinuxSignals.h"
 #include "NativeThreadLinux.h"
 #include "ProcFileReader.h"
 #include "Procfs.h"
@@ -113,13 +112,6 @@ static bool ProcessVmReadvSupported()
 
 namespace
 {
-    const UnixSignals&
-    GetUnixSignals ()
-    {
-        static process_linux::LinuxSignals signals;
-        return signals;
-    }
-
     Error
     ResolveProcessArchitecture (lldb::pid_t pid, Platform &platform, ArchSpec &arch)
     {
@@ -824,15 +816,22 @@ NativeProcessLinux::LaunchArgs::~LaunchArgs()
 // -----------------------------------------------------------------------------
 
 Error
-NativeProcessLinux::LaunchProcess (
-    Module *exe_module,
+NativeProcessProtocol::Launch (
     ProcessLaunchInfo &launch_info,
     NativeProcessProtocol::NativeDelegate &native_delegate,
     NativeProcessProtocolSP &native_process_sp)
 {
     Log *log (GetLogIfAllCategoriesSet (LIBLLDB_LOG_PROCESS));
 
-    Error error;
+    lldb::ModuleSP exe_module_sp;
+    PlatformSP platform_sp (Platform::GetHostPlatform ());
+    Error error = platform_sp->ResolveExecutable(
+            ModuleSpec(launch_info.GetExecutableFile(), launch_info.GetArchitecture()),
+            exe_module_sp,
+            nullptr);
+
+    if (! error.Success())
+        return error;
 
     // Verify the working directory is valid if one was specified.
     FileSpec working_dir{launch_info.GetWorkingDirectory()};
@@ -906,7 +905,7 @@ NativeProcessLinux::LaunchProcess (
     }
 
     std::static_pointer_cast<NativeProcessLinux> (native_process_sp)->LaunchInferior (
-            exe_module,
+            exe_module_sp.get(),
             launch_info.GetArguments ().GetConstArgumentVector (),
             launch_info.GetEnvironmentEntries ().GetConstArgumentVector (),
             stdin_file_spec,
@@ -930,7 +929,7 @@ NativeProcessLinux::LaunchProcess (
 }
 
 Error
-NativeProcessLinux::AttachToProcess (
+NativeProcessProtocol::Attach (
     lldb::pid_t pid,
     NativeProcessProtocol::NativeDelegate &native_delegate,
     NativeProcessProtocolSP &native_process_sp)
@@ -1980,7 +1979,7 @@ NativeProcessLinux::MonitorSignal(const siginfo_t *info, lldb::pid_t pid, bool e
         if (log)
             log->Printf ("NativeProcessLinux::%s() received signal %s (%d) with code %s, (siginfo pid = %d (%s), waitpid pid = %" PRIu64 ")",
                             __FUNCTION__,
-                            GetUnixSignals ().GetSignalAsCString (signo),
+                            Host::GetSignalAsCString(signo),
                             signo,
                             (info->si_code == SI_TKILL ? "SI_TKILL" : "SI_USER"),
                             info->si_pid,
@@ -2055,7 +2054,7 @@ NativeProcessLinux::MonitorSignal(const siginfo_t *info, lldb::pid_t pid, bool e
                     // Retrieve the signal name if the thread was stopped by a signal.
                     int stop_signo = 0;
                     const bool stopped_by_signal = linux_thread_sp->IsStopped (&stop_signo);
-                    const char *signal_name = stopped_by_signal ? GetUnixSignals ().GetSignalAsCString (stop_signo) : "<not stopped by signal>";
+                    const char *signal_name = stopped_by_signal ? Host::GetSignalAsCString(stop_signo) : "<not stopped by signal>";
                     if (!signal_name)
                         signal_name = "<no-signal-name>";
 
@@ -2076,7 +2075,7 @@ NativeProcessLinux::MonitorSignal(const siginfo_t *info, lldb::pid_t pid, bool e
     }
 
     if (log)
-        log->Printf ("NativeProcessLinux::%s() received signal %s", __FUNCTION__, GetUnixSignals ().GetSignalAsCString (signo));
+        log->Printf ("NativeProcessLinux::%s() received signal %s", __FUNCTION__, Host::GetSignalAsCString(signo));
 
     // This thread is stopped.
     ThreadDidStop (pid, false);
@@ -2421,8 +2420,8 @@ NativeProcessLinux::Signal (int signo)
 
     Log *log (GetLogIfAllCategoriesSet (LIBLLDB_LOG_PROCESS));
     if (log)
-        log->Printf ("NativeProcessLinux::%s: sending signal %d (%s) to pid %" PRIu64, 
-                __FUNCTION__, signo,  GetUnixSignals ().GetSignalAsCString (signo), GetID ());
+        log->Printf ("NativeProcessLinux::%s: sending signal %d (%s) to pid %" PRIu64,
+                __FUNCTION__, signo, Host::GetSignalAsCString(signo), GetID());
 
     if (kill(GetID(), signo))
         error.SetErrorToErrno();
@@ -3169,7 +3168,7 @@ NativeProcessLinux::Resume (lldb::tid_t tid, uint32_t signo)
 
     if (log)
         log->Printf ("NativeProcessLinux::%s() resuming thread = %"  PRIu64 " with signal %s", __FUNCTION__, tid,
-                                 GetUnixSignals().GetSignalAsCString (signo));
+                                 Host::GetSignalAsCString(signo));
 
 
 
