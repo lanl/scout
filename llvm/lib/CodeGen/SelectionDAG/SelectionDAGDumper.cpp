@@ -95,7 +95,7 @@ std::string SDNode::getOperationName(const SelectionDAG *G) const {
   case ISD::GLOBAL_OFFSET_TABLE:        return "GLOBAL_OFFSET_TABLE";
   case ISD::RETURNADDR:                 return "RETURNADDR";
   case ISD::FRAMEADDR:                  return "FRAMEADDR";
-  case ISD::FRAME_ALLOC_RECOVER:        return "FRAME_ALLOC_RECOVER";
+  case ISD::LOCAL_RECOVER:        return "LOCAL_RECOVER";
   case ISD::READ_REGISTER:              return "READ_REGISTER";
   case ISD::WRITE_REGISTER:             return "WRITE_REGISTER";
   case ISD::FRAME_TO_ARGS_OFFSET:       return "FRAME_TO_ARGS_OFFSET";
@@ -225,6 +225,8 @@ std::string SDNode::getOperationName(const SelectionDAG *G) const {
   case ISD::SHL_PARTS:                  return "shl_parts";
   case ISD::SRA_PARTS:                  return "sra_parts";
   case ISD::SRL_PARTS:                  return "srl_parts";
+  case ISD::UABSDIFF:                   return "uabsdiff";
+  case ISD::SABSDIFF:                   return "sabsdiff";
 
   // Conversion operators.
   case ISD::SIGN_EXTEND:                return "sign_extend";
