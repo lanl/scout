@@ -580,6 +580,8 @@ public:
   PS4OSTargetInfo(const llvm::Triple &Triple) : OSTargetInfo<Target>(Triple) {
     this->WCharType = this->UnsignedShort;
 
+    // On PS4, TLS variable cannot be aligned to more than 32 bytes (256 bits).
+    this->MaxTLSAlign = 256;
     this->UserLabelPrefix = "";
 
     switch (Triple.getArch()) {
@@ -641,6 +643,8 @@ protected:
 
       if (Opts.CXXExceptions)
         Builder.defineMacro("_CPPUNWIND");
+
+      Builder.defineMacro("__BOOL_DEFINED");
     }
 
     if (!Opts.CharIsSigned)
@@ -863,6 +867,8 @@ public:
   bool handleTargetFeatures(std::vector<std::string> &Features,
                             DiagnosticsEngine &Diags) override;
   bool hasFeature(StringRef Feature) const override;
+  void setFeatureEnabled(llvm::StringMap<bool> &Features, StringRef Name,
+                         bool Enabled) const override;
 
   void getGCCRegNames(const char * const *&Names,
                       unsigned &NumNames) const override;
@@ -1036,7 +1042,6 @@ bool PPCTargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
 
     if (Feature == "power8-vector") {
       HasP8Vector = true;
-      HasVSX = true;
       continue;
     }
 
@@ -1047,7 +1052,6 @@ bool PPCTargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
 
     if (Feature == "direct-move") {
       HasDirectMove = true;
-      HasVSX = true;
       continue;
     }
 
@@ -1063,6 +1067,15 @@ bool PPCTargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
 
     // TODO: Finish this list and add an assert that we've handled them
     // all.
+  }
+  if (!HasVSX && (HasP8Vector || HasDirectMove)) {
+    if (HasP8Vector)
+      Diags.Report(diag::err_opt_not_valid_with_opt) << "-mpower8-vector" <<
+                                                        "-mno-vsx";
+    else if (HasDirectMove)
+      Diags.Report(diag::err_opt_not_valid_with_opt) << "-mdirect-move" <<
+                                                        "-mno-vsx";
+    return false;
   }
 
   return true;
@@ -1285,6 +1298,11 @@ void PPCTargetInfo::getDefaultFeatures(llvm::StringMap<bool> &Features) const {
     .Case("ppc64le", true)
     .Case("pwr8", true)
     .Default(false);
+  Features["vsx"] = llvm::StringSwitch<bool>(CPU)
+    .Case("ppc64le", true)
+    .Case("pwr8", true)
+    .Case("pwr7", true)
+    .Default(false);
 }
 
 bool PPCTargetInfo::hasFeature(StringRef Feature) const {
@@ -1299,6 +1317,39 @@ bool PPCTargetInfo::hasFeature(StringRef Feature) const {
     .Case("bpermd", HasBPERMD)
     .Case("extdiv", HasExtDiv)
     .Default(false);
+}
+
+/*  There is no clear way for the target to know which of the features in the
+    final feature vector came from defaults and which are actually specified by
+    the user. To that end, we use the fact that this function is not called on
+    default features - only user specified ones. By the first time this
+    function is called, the default features are populated.
+    We then keep track of the features that the user specified so that we
+    can ensure we do not override a user's request (only defaults).
+    For example:
+    -mcpu=pwr8 -mno-vsx (should disable vsx and everything that depends on it)
+    -mcpu=pwr8 -mdirect-move -mno-vsx (should actually be diagnosed)
+
+NOTE: Do not call this from PPCTargetInfo::getDefaultFeatures
+*/
+void PPCTargetInfo::setFeatureEnabled(llvm::StringMap<bool> &Features,
+                                      StringRef Name, bool Enabled) const {
+  static llvm::StringMap<bool> ExplicitFeatures;
+  ExplicitFeatures[Name] = Enabled;
+
+  // At this point, -mno-vsx turns off the dependent features but we respect
+  // the user's requests.
+  if (!Enabled && Name == "vsx") {
+    Features["direct-move"] = ExplicitFeatures["direct-move"];
+    Features["power8-vector"] = ExplicitFeatures["power8-vector"];
+  }
+  if ((Enabled && Name == "power8-vector") ||
+      (Enabled && Name == "direct-move")) {
+    if (ExplicitFeatures.find("vsx") == ExplicitFeatures.end()) {
+      Features["vsx"] = true;
+    }
+  }
+  Features[Name] = Enabled;
 }
 
 const char * const PPCTargetInfo::GCCRegNames[] = {
@@ -1472,7 +1523,7 @@ public:
   BuiltinVaListKind getBuiltinVaListKind() const override {
     return TargetInfo::CharPtrBuiltinVaList;
   }
-  // PPC64 Linux-specifc ABI options.
+  // PPC64 Linux-specific ABI options.
   bool setABI(const std::string &Name) override {
     if (Name == "elfv1" || Name == "elfv1-qpx" || Name == "elfv2") {
       ABI = Name;
@@ -4870,6 +4921,45 @@ public:
   }
 };
 
+// ARM MinGW target
+class MinGWARMTargetInfo : public WindowsARMTargetInfo {
+public:
+  MinGWARMTargetInfo(const llvm::Triple &Triple)
+      : WindowsARMTargetInfo(Triple) {
+    TheCXXABI.set(TargetCXXABI::GenericARM);
+  }
+
+  void getTargetDefines(const LangOptions &Opts,
+                        MacroBuilder &Builder) const override {
+    WindowsARMTargetInfo::getTargetDefines(Opts, Builder);
+    DefineStd(Builder, "WIN32", Opts);
+    DefineStd(Builder, "WINNT", Opts);
+    Builder.defineMacro("_ARM_");
+    addMinGWDefines(Opts, Builder);
+  }
+};
+
+// ARM Cygwin target
+class CygwinARMTargetInfo : public ARMleTargetInfo {
+public:
+  CygwinARMTargetInfo(const llvm::Triple &Triple) : ARMleTargetInfo(Triple) {
+    TLSSupported = false;
+    WCharType = UnsignedShort;
+    DoubleAlign = LongLongAlign = 64;
+    DescriptionString = "e-m:e-p:32:32-i64:64-v128:64:128-a:0:32-n32-S64";
+  }
+  void getTargetDefines(const LangOptions &Opts,
+                        MacroBuilder &Builder) const override {
+    ARMleTargetInfo::getTargetDefines(Opts, Builder);
+    Builder.defineMacro("_ARM_");
+    Builder.defineMacro("__CYGWIN__");
+    Builder.defineMacro("__CYGWIN32__");
+    DefineStd(Builder, "unix", Opts);
+    if (Opts.CPlusPlus)
+      Builder.defineMacro("_GNU_SOURCE");
+  }
+};
+
 class DarwinARMTargetInfo :
   public DarwinTargetInfo<ARMleTargetInfo> {
 protected:
@@ -6672,6 +6762,19 @@ void PNaClTargetInfo::getGCCRegAliases(const GCCRegAlias *&Aliases,
   NumAliases = 0;
 }
 
+// We attempt to use PNaCl (le32) frontend and Mips32EL backend.
+class NaClMips32ELTargetInfo : public Mips32ELTargetInfo {
+public:
+  NaClMips32ELTargetInfo(const llvm::Triple &Triple) :
+    Mips32ELTargetInfo(Triple)  {
+      MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 0;
+  }
+
+  BuiltinVaListKind getBuiltinVaListKind() const override {
+    return TargetInfo::PNaClABIBuiltinVaList;
+  }
+};
+
 class Le64TargetInfo : public TargetInfo {
   static const Builtin::Info BuiltinInfo[];
 
@@ -6977,6 +7080,10 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple) {
       switch (Triple.getEnvironment()) {
       default:
         return new ARMleTargetInfo(Triple);
+      case llvm::Triple::Cygnus:
+        return new CygwinARMTargetInfo(Triple);
+      case llvm::Triple::GNU:
+        return new MinGWARMTargetInfo(Triple);
       case llvm::Triple::Itanium:
         return new ItaniumWindowsARMleTargetInfo(Triple);
       case llvm::Triple::MSVC:
@@ -7042,7 +7149,7 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple) {
     case llvm::Triple::NetBSD:
       return new NetBSDTargetInfo<Mips32ELTargetInfo>(Triple);
     case llvm::Triple::NaCl:
-      return new NaClTargetInfo<Mips32ELTargetInfo>(Triple);
+      return new NaClTargetInfo<NaClMips32ELTargetInfo>(Triple);
     default:
       return new Mips32ELTargetInfo(Triple);
     }

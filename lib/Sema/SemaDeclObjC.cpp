@@ -725,8 +725,8 @@ namespace {
 }
 
 /// Check consistency between two Objective-C type parameter lists, e.g.,
-/// between a category/extension and an @interface or between an @class and an
-/// @interface.
+/// between a category/extension and an \@interface or between an \@class and an
+/// \@interface.
 static bool checkTypeParamListConsistency(Sema &S,
                                           ObjCTypeParamList *prevTypeParams,
                                           ObjCTypeParamList *newTypeParams,
@@ -1232,6 +1232,7 @@ Sema::FindProtocolDeclaration(bool WarnOnDeclarations, bool ForObjCContainer,
   }
 }
 
+namespace {
 // Callback to only accept typo corrections that are either
 // Objective-C protocols or valid Objective-C type arguments.
 class ObjCTypeArgOrProtocolValidatorCCC : public CorrectionCandidateCallback {
@@ -1282,6 +1283,7 @@ class ObjCTypeArgOrProtocolValidatorCCC : public CorrectionCandidateCallback {
     return false;
   }
 };
+} // end anonymous namespace
 
 void Sema::actOnObjCTypeArgsOrProtocolQualifiers(
        Scope *S,

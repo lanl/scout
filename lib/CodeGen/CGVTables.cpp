@@ -56,6 +56,21 @@ static void setThunkVisibility(CodeGenModule &CGM, const CXXMethodDecl *MD,
   CGM.setGlobalVisibility(Fn, MD);
 }
 
+static void setThunkProperties(CodeGenModule &CGM, const ThunkInfo &Thunk,
+                               llvm::Function *ThunkFn, bool ForVTable,
+                               GlobalDecl GD) {
+  CGM.setFunctionLinkage(GD, ThunkFn);
+  CGM.getCXXABI().setThunkLinkage(ThunkFn, ForVTable, GD,
+                                  !Thunk.Return.isEmpty());
+
+  // Set the right visibility.
+  const CXXMethodDecl *MD = cast<CXXMethodDecl>(GD.getDecl());
+  setThunkVisibility(CGM, MD, Thunk, ThunkFn);
+
+  if (CGM.supportsCOMDAT() && ThunkFn->isWeakForLinker())
+    ThunkFn->setComdat(CGM.getModule().getOrInsertComdat(ThunkFn->getName()));
+}
+
 #ifndef NDEBUG
 static bool similar(const ABIArgInfo &infoL, CanQualType typeL,
                     const ABIArgInfo &infoR, CanQualType typeR) {
@@ -364,7 +379,7 @@ void CodeGenFunction::EmitMustTailThunk(const CXXMethodDecl *MD,
   FinishFunction();
 }
 
-void CodeGenFunction::GenerateThunk(llvm::Function *Fn,
+void CodeGenFunction::generateThunk(llvm::Function *Fn,
                                     const CGFunctionInfo &FnInfo,
                                     GlobalDecl GD, const ThunkInfo &Thunk) {
   StartThunk(Fn, GD, FnInfo);
@@ -376,13 +391,6 @@ void CodeGenFunction::GenerateThunk(llvm::Function *Fn,
 
   // Make the call and return the result.
   EmitCallAndReturnForThunk(Callee, &Thunk);
-
-  // Set the right linkage.
-  CGM.setFunctionLinkage(GD, Fn);
-
-  // Set the right visibility.
-  const CXXMethodDecl *MD = cast<CXXMethodDecl>(GD.getDecl());
-  setThunkVisibility(CGM, MD, Thunk, Fn);
 }
 
 void CodeGenVTables::emitThunk(GlobalDecl GD, const ThunkInfo &Thunk,
@@ -436,8 +444,7 @@ void CodeGenVTables::emitThunk(GlobalDecl GD, const ThunkInfo &Thunk,
       return;
     }
 
-    // Change the linkage.
-    CGM.setFunctionLinkage(GD, ThunkFn);
+    setThunkProperties(CGM, Thunk, ThunkFn, ForVTable, GD);
     return;
   }
 
@@ -455,13 +462,10 @@ void CodeGenVTables::emitThunk(GlobalDecl GD, const ThunkInfo &Thunk,
         CodeGenFunction(CGM).GenerateVarArgsThunk(ThunkFn, FnInfo, GD, Thunk);
   } else {
     // Normal thunk body generation.
-    CodeGenFunction(CGM).GenerateThunk(ThunkFn, FnInfo, GD, Thunk);
+    CodeGenFunction(CGM).generateThunk(ThunkFn, FnInfo, GD, Thunk);
   }
 
-  CGM.getCXXABI().setThunkLinkage(ThunkFn, ForVTable, GD,
-                                  !Thunk.Return.isEmpty());
-  if (CGM.supportsCOMDAT() && ThunkFn->isWeakForLinker())
-    ThunkFn->setComdat(CGM.getModule().getOrInsertComdat(ThunkFn->getName()));
+  setThunkProperties(CGM, Thunk, ThunkFn, ForVTable, GD);
 }
 
 void CodeGenVTables::maybeEmitThunkForVTable(GlobalDecl GD,
@@ -841,6 +845,15 @@ void CodeGenModule::EmitDeferredVTables() {
   DeferredVTables.clear();
 }
 
+bool CodeGenModule::IsCFIBlacklistedRecord(const CXXRecordDecl *RD) {
+  if (RD->hasAttr<UuidAttr>() &&
+      getContext().getSanitizerBlacklist().isBlacklistedType("attr:uuid"))
+    return true;
+
+  return getContext().getSanitizerBlacklist().isBlacklistedType(
+      RD->getQualifiedNameAsString());
+}
+
 void CodeGenModule::EmitVTableBitSetEntries(llvm::GlobalVariable *VTable,
                                             const VTableLayout &VTLayout) {
   if (!LangOpts.Sanitize.has(SanitizerKind::CFIVCall) &&
@@ -855,8 +868,7 @@ void CodeGenModule::EmitVTableBitSetEntries(llvm::GlobalVariable *VTable,
   std::vector<llvm::MDTuple *> BitsetEntries;
   // Create a bit set entry for each address point.
   for (auto &&AP : VTLayout.getAddressPoints()) {
-    // FIXME: Add blacklisting scheme.
-    if (AP.first.getBase()->isInStdNamespace())
+    if (IsCFIBlacklistedRecord(AP.first.getBase()))
       continue;
 
     BitsetEntries.push_back(CreateVTableBitSetEntry(
