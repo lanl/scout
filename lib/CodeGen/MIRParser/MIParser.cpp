@@ -56,6 +56,8 @@ class MIParser {
   StringMap<unsigned> Names2Regs;
   /// Maps from register mask names to register masks.
   StringMap<const uint32_t *> Names2RegMasks;
+  /// Maps from subregister names to subregister indices.
+  StringMap<unsigned> Names2SubRegIndices;
 
 public:
   MIParser(SourceMgr &SM, MachineFunction &MF, SMDiagnostic &Error,
@@ -76,14 +78,17 @@ public:
 
   bool parse(MachineInstr *&MI);
   bool parseMBB(MachineBasicBlock *&MBB);
+  bool parseNamedRegister(unsigned &Reg);
 
   bool parseRegister(unsigned &Reg);
   bool parseRegisterFlag(unsigned &Flags);
+  bool parseSubRegisterIndex(unsigned &SubReg);
   bool parseRegisterOperand(MachineOperand &Dest, bool IsDef = false);
   bool parseImmediateOperand(MachineOperand &Dest);
   bool parseMBBReference(MachineBasicBlock *&MBB);
   bool parseMBBOperand(MachineOperand &Dest);
   bool parseGlobalAddressOperand(MachineOperand &Dest);
+  bool parseJumpTableIndexOperand(MachineOperand &Dest);
   bool parseMachineOperand(MachineOperand &Dest);
 
 private:
@@ -115,6 +120,13 @@ private:
   ///
   /// Return null if the identifier isn't a register mask.
   const uint32_t *getRegMask(StringRef Identifier);
+
+  void initNames2SubRegIndices();
+
+  /// Check if the given identifier is a name of a subregister index.
+  ///
+  /// Return 0 if the name isn't a subregister index class.
+  unsigned getSubRegIndex(StringRef Name);
 };
 
 } // end anonymous namespace
@@ -134,8 +146,6 @@ void MIParser::lex() {
 bool MIParser::error(const Twine &Msg) { return error(Token.location(), Msg); }
 
 bool MIParser::error(StringRef::iterator Loc, const Twine &Msg) {
-  // TODO: Get the proper location in the MIR file, not just a location inside
-  // the string.
   assert(Loc >= Source.data() && Loc <= (Source.data() + Source.size()));
   Error = SMDiagnostic(
       SM, SMLoc(),
@@ -204,6 +214,18 @@ bool MIParser::parseMBB(MachineBasicBlock *&MBB) {
   if (Token.isNot(MIToken::Eof))
     return error(
         "expected end of string after the machine basic block reference");
+  return false;
+}
+
+bool MIParser::parseNamedRegister(unsigned &Reg) {
+  lex();
+  if (Token.isNot(MIToken::NamedRegister))
+    return error("expected a named register");
+  if (parseRegister(Reg))
+    return 0;
+  lex();
+  if (Token.isNot(MIToken::Eof))
+    return error("expected end of string after the register reference");
   return false;
 }
 
@@ -290,6 +312,17 @@ bool MIParser::parseRegister(unsigned &Reg) {
       return error(Twine("unknown register name '") + Name + "'");
     break;
   }
+  case MIToken::VirtualRegister: {
+    unsigned ID;
+    if (getUnsigned(ID))
+      return true;
+    const auto RegInfo = PFS.VirtualRegisterSlots.find(ID);
+    if (RegInfo == PFS.VirtualRegisterSlots.end())
+      return error(Twine("use of undefined virtual register '%") + Twine(ID) +
+                   "'");
+    Reg = RegInfo->second;
+    break;
+  }
   // TODO: Parse other register kinds.
   default:
     llvm_unreachable("The current token should be a register");
@@ -305,11 +338,33 @@ bool MIParser::parseRegisterFlag(unsigned &Flags) {
   case MIToken::kw_implicit_define:
     Flags |= RegState::ImplicitDefine;
     break;
+  case MIToken::kw_dead:
+    Flags |= RegState::Dead;
+    break;
+  case MIToken::kw_killed:
+    Flags |= RegState::Kill;
+    break;
+  case MIToken::kw_undef:
+    Flags |= RegState::Undef;
+    break;
   // TODO: report an error when we specify the same flag more than once.
   // TODO: parse the other register flags.
   default:
     llvm_unreachable("The current token should be a register flag");
   }
+  lex();
+  return false;
+}
+
+bool MIParser::parseSubRegisterIndex(unsigned &SubReg) {
+  assert(Token.is(MIToken::colon));
+  lex();
+  if (Token.isNot(MIToken::Identifier))
+    return error("expected a subregister index after ':'");
+  auto Name = Token.stringValue();
+  SubReg = getSubRegIndex(Name);
+  if (!SubReg)
+    return error(Twine("use of unknown subregister index '") + Name + "'");
   lex();
   return false;
 }
@@ -326,9 +381,15 @@ bool MIParser::parseRegisterOperand(MachineOperand &Dest, bool IsDef) {
   if (parseRegister(Reg))
     return true;
   lex();
-  // TODO: Parse subregister.
-  Dest = MachineOperand::CreateReg(Reg, Flags & RegState::Define,
-                                   Flags & RegState::Implicit);
+  unsigned SubReg = 0;
+  if (Token.is(MIToken::colon)) {
+    if (parseSubRegisterIndex(SubReg))
+      return true;
+  }
+  Dest = MachineOperand::CreateReg(
+      Reg, Flags & RegState::Define, Flags & RegState::Implicit,
+      Flags & RegState::Kill, Flags & RegState::Dead, Flags & RegState::Undef,
+      /*isEarlyClobber=*/false, SubReg);
   return false;
 }
 
@@ -408,12 +469,30 @@ bool MIParser::parseGlobalAddressOperand(MachineOperand &Dest) {
   return false;
 }
 
+bool MIParser::parseJumpTableIndexOperand(MachineOperand &Dest) {
+  assert(Token.is(MIToken::JumpTableIndex));
+  unsigned ID;
+  if (getUnsigned(ID))
+    return true;
+  auto JumpTableEntryInfo = PFS.JumpTableSlots.find(ID);
+  if (JumpTableEntryInfo == PFS.JumpTableSlots.end())
+    return error("use of undefined jump table '%jump-table." + Twine(ID) + "'");
+  lex();
+  // TODO: Parse target flags.
+  Dest = MachineOperand::CreateJTI(JumpTableEntryInfo->second);
+  return false;
+}
+
 bool MIParser::parseMachineOperand(MachineOperand &Dest) {
   switch (Token.kind()) {
   case MIToken::kw_implicit:
   case MIToken::kw_implicit_define:
+  case MIToken::kw_dead:
+  case MIToken::kw_killed:
+  case MIToken::kw_undef:
   case MIToken::underscore:
   case MIToken::NamedRegister:
+  case MIToken::VirtualRegister:
     return parseRegisterOperand(Dest);
   case MIToken::IntegerLiteral:
     return parseImmediateOperand(Dest);
@@ -422,6 +501,8 @@ bool MIParser::parseMachineOperand(MachineOperand &Dest) {
   case MIToken::GlobalValue:
   case MIToken::NamedGlobalValue:
     return parseGlobalAddressOperand(Dest);
+  case MIToken::JumpTableIndex:
+    return parseJumpTableIndexOperand(Dest);
   case MIToken::Error:
     return true;
   case MIToken::Identifier:
@@ -502,6 +583,23 @@ const uint32_t *MIParser::getRegMask(StringRef Identifier) {
   return RegMaskInfo->getValue();
 }
 
+void MIParser::initNames2SubRegIndices() {
+  if (!Names2SubRegIndices.empty())
+    return;
+  const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
+  for (unsigned I = 1, E = TRI->getNumSubRegIndices(); I < E; ++I)
+    Names2SubRegIndices.insert(
+        std::make_pair(StringRef(TRI->getSubRegIndexName(I)).lower(), I));
+}
+
+unsigned MIParser::getSubRegIndex(StringRef Name) {
+  initNames2SubRegIndices();
+  auto SubRegInfo = Names2SubRegIndices.find(Name);
+  if (SubRegInfo == Names2SubRegIndices.end())
+    return 0;
+  return SubRegInfo->getValue();
+}
+
 bool llvm::parseMachineInstr(MachineInstr *&MI, SourceMgr &SM,
                              MachineFunction &MF, StringRef Src,
                              const PerFunctionMIParsingState &PFS,
@@ -514,4 +612,12 @@ bool llvm::parseMBBReference(MachineBasicBlock *&MBB, SourceMgr &SM,
                              const PerFunctionMIParsingState &PFS,
                              const SlotMapping &IRSlots, SMDiagnostic &Error) {
   return MIParser(SM, MF, Error, Src, PFS, IRSlots).parseMBB(MBB);
+}
+
+bool llvm::parseNamedRegisterReference(unsigned &Reg, SourceMgr &SM,
+                                       MachineFunction &MF, StringRef Src,
+                                       const PerFunctionMIParsingState &PFS,
+                                       const SlotMapping &IRSlots,
+                                       SMDiagnostic &Error) {
+  return MIParser(SM, MF, Error, Src, PFS, IRSlots).parseNamedRegister(Reg);
 }

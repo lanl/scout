@@ -347,9 +347,7 @@ raw_ostream& operator<<(raw_ostream &OS, const LoopBase<BlockT, LoopT> &Loop) {
 }
 
 // Implementation in LoopInfoImpl.h
-#ifdef __GNUC__
-__extension__ extern template class LoopBase<BasicBlock, Loop>;
-#endif
+extern template class LoopBase<BasicBlock, Loop>;
 
 class Loop : public LoopBase<BasicBlock, Loop> {
 public:
@@ -624,7 +622,7 @@ public:
   }
 
   /// Create the loop forest using a stable algorithm.
-  void Analyze(DominatorTreeBase<BlockT> &DomTree);
+  void analyze(const DominatorTreeBase<BlockT> &DomTree);
 
   // Debugging
   void print(raw_ostream &OS) const;
@@ -633,9 +631,7 @@ public:
 };
 
 // Implementation in LoopInfoImpl.h
-#ifdef __GNUC__
-__extension__ extern template class LoopInfoBase<BasicBlock, Loop>;
-#endif
+extern template class LoopInfoBase<BasicBlock, Loop>;
 
 class LoopInfo : public LoopInfoBase<BasicBlock, Loop> {
   typedef LoopInfoBase<BasicBlock, Loop> BaseT;
