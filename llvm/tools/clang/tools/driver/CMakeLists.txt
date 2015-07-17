@@ -37,6 +37,7 @@ add_clang_executable(clang
 
 target_link_libraries(clang
   clangBasic
+  clangCodeGen
   clangDriver
   clangFrontend
   # +===== Scout============================================================+

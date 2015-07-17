@@ -16,7 +16,6 @@ class CModulesTestCase(TestBase):
 
     @skipUnlessDarwin
     @dsym_test
-    @expectedFailureDarwin # use of undeclared identifier 'MIN'
     def test_expr_with_dsym(self):
         self.buildDsym()
         self.expr()
@@ -24,7 +23,6 @@ class CModulesTestCase(TestBase):
     @dwarf_test
     @skipIfFreeBSD
     @expectedFailureLinux('http://llvm.org/pr23456') # 'fopen' has unknown return type
-    @expectedFailureDarwin # use of undeclared identifier 'MIN'
     def test_expr_with_dwarf(self):
         self.buildDwarf()
         self.expr()
@@ -76,6 +74,9 @@ class CModulesTestCase(TestBase):
 
         self.expect("expr MIN((uint64_t)2, (uint64_t)3)", VARIABLES_DISPLAYED_CORRECTLY,
             substrs = ["uint64_t", "2"])
+
+        self.expect("expr stdin", VARIABLES_DISPLAYED_CORRECTLY,
+            substrs = ["(FILE *)", "0x"])
             
 if __name__ == '__main__':
     import atexit

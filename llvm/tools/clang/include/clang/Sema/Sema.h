@@ -1410,7 +1410,8 @@ public:
 
   /// Determine if \p D has a visible definition. If not, suggest a declaration
   /// that should be made visible to expose the definition.
-  bool hasVisibleDefinition(NamedDecl *D, NamedDecl **Suggested);
+  bool hasVisibleDefinition(NamedDecl *D, NamedDecl **Suggested,
+                            bool OnlyNeedComplete = false);
   bool hasVisibleDefinition(const NamedDecl *D) {
     NamedDecl *Hidden;
     return hasVisibleDefinition(const_cast<NamedDecl*>(D), &Hidden);
@@ -1876,7 +1877,7 @@ public:
   bool isAcceptableTagRedeclaration(const TagDecl *Previous,
                                     TagTypeKind NewTag, bool isDefinition,
                                     SourceLocation NewTagLoc,
-                                    const IdentifierInfo &Name);
+                                    const IdentifierInfo *Name);
 
   enum TagUseKind {
     TUK_Reference,   // Reference to a tag:  'struct foo *X;'
@@ -7752,13 +7753,13 @@ private:
   void DestroyDataSharingAttributesStack();
   ExprResult VerifyPositiveIntegerConstantInClause(Expr *Op,
                                                    OpenMPClauseKind CKind);
-  /// \brief Checks if the specified variable is used in one of the private
-  /// clauses in OpenMP constructs.
-  bool IsOpenMPCapturedVar(VarDecl *VD);
-
 public:
   /// \brief Check if the specified variable is used in one of the private
-  /// clauses in OpenMP constructs.
+  /// clauses (private, firstprivate, lastprivate, reduction etc.) in OpenMP
+  /// constructs.
+  bool IsOpenMPCapturedVar(VarDecl *VD);
+
+  /// \brief Check if the specified variable is used in 'private' clause.
   /// \param Level Relative level of nested OpenMP construct for that the check
   /// is performed.
   bool isOpenMPPrivateVar(VarDecl *VD, unsigned Level);
