@@ -7852,6 +7852,8 @@ def err_forall_non_vertices : Error<
      "calling mposition outside of forall vertices">; 
 def err_invalid_mesh_specifier : Error<
      "invalid mesh specifier">;
+def err_invalid_mesh_member_access : Error<
+     "member access on mesh rather than implicit mesh">;     
      
 def err_forall_mesh_repeated_nesting : Error<
     "illegal mesh element kind (%0), repeated in nested forall, enclosing outter forall at: %1">;
