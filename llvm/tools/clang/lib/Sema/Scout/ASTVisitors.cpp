@@ -282,6 +282,11 @@ namespace clang {
 
         if (isa<MeshType>(bd->getType().getCanonicalType().getTypePtr())){
 
+          // check we are using implicit mesh not mesh
+          if (! isa<ImplicitMeshParamDecl>(bd)) {
+            sema_.Diag(E->getMemberLoc(), diag::err_invalid_mesh_member_access);
+          }
+
           ValueDecl* md = E->getMemberDecl();
 
           std::string ref = bd->getName().str() + "." + md->getName().str();
