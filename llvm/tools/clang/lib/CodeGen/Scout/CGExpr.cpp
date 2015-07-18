@@ -345,17 +345,16 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
 llvm::Value *CodeGenFunction::getMeshIndex(const MeshFieldDecl* MFD) {
   llvm::Value* Index;
 
-  if(MFD->isVertexLocated()) {
-    assert(VertexIndex && "null VertexIndex while referencing vertex field");
-    // use the vertex index if we are within a forall vertices
+  if(MFD->isVertexLocated() && VertexIndex) {
+    // use the vertex index if we are within a nested forall vertices
     Index = Builder.CreateLoad(VertexIndex);
   } else if(MFD->isEdgeLocated()) {
     assert(EdgeIndex && "null EdgeIndex while referencing edge field");
-    // use the vertex index if we are within a forall vertices
+    // use the edge index if we are within a nested edges 
     Index = Builder.CreateLoad(EdgeIndex);
   } else if(MFD->isFaceLocated()) {
     assert(FaceIndex && "null FaceIndex while referencing face field");
-    // use the vertex index if we are within a forall vertices
+    // use the face index if we are within a forall faces
     Index = Builder.CreateLoad(FaceIndex);
   } else if(MFD->isCellLocated() && CellIndex) {
     Index = Builder.CreateLoad(CellIndex);
