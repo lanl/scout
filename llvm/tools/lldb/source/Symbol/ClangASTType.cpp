@@ -3718,6 +3718,7 @@ ClangASTType::GetChildClangTypeAtIndex (ExecutionContext *exe_ctx,
                 }
             }
             break;
+        // +===== Scout ==================================
         case clang::Type::UniformMesh:
         if (idx_is_valid && GetCompleteType())
         {
@@ -3761,6 +3762,7 @@ ClangASTType::GetChildClangTypeAtIndex (ExecutionContext *exe_ctx,
           assert(false && "unimplemented mesh case");
           break;
         }
+        // +=============================================
         case clang::Type::ObjCObject:
         case clang::Type::ObjCInterface:
             if (idx_is_valid && GetCompleteType())
