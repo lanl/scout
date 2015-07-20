@@ -2423,7 +2423,7 @@ namespace LegionRuntime {
 #endif
             exit(ERROR_INVALID_COPY_FIELDS_SIZE);
           }
-          if (!IS_WRITE(dst_requirements[idx]))
+          if (!HAS_WRITE(dst_requirements[idx]))
           {
             log_run.error("Copy destination requirement %d for copy "
                                 "operation (ID %lld) in parent task %s "
@@ -2930,7 +2930,16 @@ namespace LegionRuntime {
           {
             // In this case, there is no source instance so we need
             // to issue copies from the valid set
-            copy_complete_events.insert(runtime->forest->copy_across(this, 
+            if (!IS_REDUCE(dst_requirements[idx]))
+              copy_complete_events.insert(runtime->forest->copy_across(this, 
+                                          parent_ctx->get_executing_processor(),
+                                                   src_contexts[idx],
+                                                   dst_contexts[idx],
+                                                   src_requirements[idx],
+                                                   dst_requirements[idx],
+                                                   dst_ref, sync_precondition));
+            else
+              copy_complete_events.insert(runtime->forest->reduce_across(this,
                                           parent_ctx->get_executing_processor(),
                                                    src_contexts[idx],
                                                    dst_contexts[idx],
@@ -2964,8 +2973,16 @@ namespace LegionRuntime {
               src_requirements[idx].selected_memory = src_ref.get_memory();
             }
             // Now issue the copies from source to destination
-            copy_complete_events.insert(
-             runtime->forest->copy_across(this, src_contexts[idx],
+            if (!IS_REDUCE(dst_requirements[idx]))
+              copy_complete_events.insert(
+                  runtime->forest->copy_across(this, src_contexts[idx],
+                                          dst_contexts[idx],
+                                          src_requirements[idx],
+                                          dst_requirements[idx],
+                                          src_ref, dst_ref, sync_precondition));
+            else
+              copy_complete_events.insert(
+                  runtime->forest->reduce_across(this, dst_contexts[idx],
                                           dst_contexts[idx],
                                           src_requirements[idx],
                                           dst_requirements[idx],
@@ -6665,8 +6682,10 @@ namespace LegionRuntime {
         // If we have a trace, set it for this operation as well
         if (trace != NULL)
           indiv_tasks[idx]->set_trace(trace);
+        indiv_tasks[idx]->must_parallelism = true;
       }
       indiv_triggered.resize(indiv_tasks.size(), false);
+      index_tasks.resize(launcher.index_tasks.size());
       for (unsigned idx = 0; idx < launcher.index_tasks.size(); idx++)
       {
         index_tasks[idx] = runtime->get_available_index_task();
@@ -6675,6 +6694,7 @@ namespace LegionRuntime {
         index_tasks[idx]->set_must_epoch(this, indiv_tasks.size()+idx);
         if (trace != NULL)
           index_tasks[idx]->set_trace(trace);
+        index_tasks[idx]->must_parallelism = true;
       }
       index_triggered.resize(index_tasks.size(), false);
       mapper_id = launcher.map_id;
@@ -7626,6 +7646,9 @@ namespace LegionRuntime {
       assert(thunk == NULL);
 #endif
       thunk = new EqualPartitionThunk(pid, granularity);
+#ifdef LEGION_SPY
+      perform_logging();
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -7640,6 +7663,9 @@ namespace LegionRuntime {
       assert(thunk == NULL);
 #endif
       thunk = new WeightedPartitionThunk(pid, granularity, weights);
+#ifdef LEGION_SPY
+      perform_logging();
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -7654,6 +7680,9 @@ namespace LegionRuntime {
       assert(thunk == NULL);
 #endif
       thunk = new UnionPartitionThunk(pid, h1, h2);
+#ifdef LEGION_SPY
+      perform_logging();
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -7668,6 +7697,9 @@ namespace LegionRuntime {
       assert(thunk == NULL);
 #endif
       thunk = new IntersectionPartitionThunk(pid, h1, h2);
+#ifdef LEGION_SPY
+      perform_logging();
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -7682,6 +7714,9 @@ namespace LegionRuntime {
       assert(thunk == NULL);
 #endif
       thunk = new DifferencePartitionThunk(pid, h1, h2);
+#ifdef LEGION_SPY
+      perform_logging();
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -7696,6 +7731,9 @@ namespace LegionRuntime {
       assert(thunk == NULL);
 #endif
       thunk = new CrossProductThunk(base, source, handles);
+#ifdef LEGION_SPY
+      perform_logging();
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -7709,6 +7747,9 @@ namespace LegionRuntime {
       assert(thunk == NULL);
 #endif
       thunk = new ComputePendingSpace(target, true/*union*/, handles);
+#ifdef LEGION_SPY
+      perform_logging();
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -7722,6 +7763,9 @@ namespace LegionRuntime {
       assert(thunk == NULL);
 #endif
       thunk = new ComputePendingSpace(target, true/*union*/, handle);
+#ifdef LEGION_SPY
+      perform_logging();
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -7734,6 +7778,9 @@ namespace LegionRuntime {
       assert(thunk == NULL);
 #endif
       thunk = new ComputePendingSpace(target, false/*union*/, handles);
+#ifdef LEGION_SPY
+      perform_logging();
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -7746,6 +7793,9 @@ namespace LegionRuntime {
       assert(thunk == NULL);
 #endif
       thunk = new ComputePendingSpace(target, false/*union*/, handle);
+#ifdef LEGION_SPY
+      perform_logging();
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -7759,6 +7809,21 @@ namespace LegionRuntime {
       assert(thunk == NULL);
 #endif
       thunk = new ComputePendingDifference(target, initial, handles);
+#ifdef LEGION_SPY
+      perform_logging();
+#endif
+    }
+
+    //--------------------------------------------------------------------------
+    void PendingPartitionOp::perform_logging()
+    //--------------------------------------------------------------------------
+    {
+#ifdef LEGION_SPY
+      LegionSpy::log_pending_partition_operation(
+          parent_ctx->get_unique_task_id(),
+          unique_op_id);
+      thunk->perform_logging(this);
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -7769,6 +7834,20 @@ namespace LegionRuntime {
       Event ready_event = thunk->perform(runtime->forest);
       // We can trigger the handle ready event now
       handle_ready.trigger();
+#ifdef LEGION_SPY
+      LegionSpy::log_implicit_dependence(parent_ctx->get_start_event(),
+          ready_event);
+      LegionSpy::log_op_events(unique_op_id, ready_event,
+          completion_event);
+      LegionSpy::log_implicit_dependence(completion_event,
+          parent_ctx->get_task_completion());
+      LegionSpy::log_event_dependence(handle_ready, ready_event);
+      LegionSpy::log_event_dependence(ready_event, completion_event);
+      {
+        Processor local_proc = Processor::get_executing_processor();
+        LegionSpy::log_op_proc_user(unique_op_id, local_proc.id);
+      }
+#endif
       complete_mapping();
       // Now see if we need to defer our completion
       if (!ready_event.has_triggered())
@@ -7880,6 +7959,9 @@ namespace LegionRuntime {
       requirement.add_field(fid);
       partition_handle = pid;
       color_space = space;
+#ifdef LEGION_SPY
+      perform_logging();
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -7897,6 +7979,9 @@ namespace LegionRuntime {
       requirement.add_field(fid);
       partition_handle = pid;
       color_space = space;
+#ifdef LEGION_SPY
+      perform_logging();
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -7913,6 +7998,42 @@ namespace LegionRuntime {
       partition_handle = pid;
       color_space = space;
       projection = proj;
+#ifdef LEGION_SPY
+      perform_logging();
+#endif
+    }
+
+    //--------------------------------------------------------------------------
+    void DependentPartitionOp::perform_logging()
+    //--------------------------------------------------------------------------
+    {
+#ifdef LEGION_SPY
+      LegionSpy::log_dependent_partition_operation(
+          parent_ctx->get_unique_task_id(),
+          unique_op_id,
+          partition_handle.id,
+          partition_kind);
+      if (requirement.handle_type == PART_PROJECTION)
+        LegionSpy::log_logical_requirement(unique_op_id, 0/*idx*/,
+                                  false/*region*/,
+                                  requirement.partition.index_partition.id,
+                                  requirement.partition.field_space.id,
+                                  requirement.partition.tree_id,
+                                  requirement.privilege,
+                                  requirement.prop,
+                                  requirement.redop);
+      else
+        LegionSpy::log_logical_requirement(unique_op_id, 0/*idx*/,
+                                  true/*region*/,
+                                  requirement.region.index_space.id,
+                                  requirement.region.field_space.id,
+                                  requirement.region.tree_id,
+                                  requirement.privilege,
+                                  requirement.prop,
+                                  requirement.redop);
+      LegionSpy::log_requirement_fields(unique_op_id, 0/*index*/,
+                                        requirement.privilege_fields);
+#endif
     }
 
     //--------------------------------------------------------------------------
@@ -8004,6 +8125,17 @@ namespace LegionRuntime {
       assert(handle_ready.exists() && !handle_ready.has_triggered());
 #endif
       handle_ready.trigger();
+#ifdef LEGION_SPY
+      LegionSpy::log_implicit_dependence(parent_ctx->get_start_event(),
+          ready_event);
+      LegionSpy::log_op_events(unique_op_id, ready_event,
+          completion_event);
+      LegionSpy::log_implicit_dependence(completion_event,
+          parent_ctx->get_task_completion());
+      LegionSpy::log_op_proc_user(unique_op_id, local_proc.id);
+      LegionSpy::log_event_dependence(handle_ready, ready_event);
+      LegionSpy::log_event_dependence(ready_event, completion_event);
+#endif
       complete_mapping();
 
       if (!ready_event.has_triggered())
@@ -8104,6 +8236,83 @@ namespace LegionRuntime {
         parent_req_index = unsigned(parent_index);
     }
 
+
+#ifdef LEGION_SPY
+    enum PendingPartitionKind
+    {
+      EQUAL_PARTITION = 0,
+      WEIGHTED_PARTITION,
+      UNION_PARTITION,
+      INTERSECTION_PARTITION,
+      DIFFERENCE_PARTITION,
+    };
+    //--------------------------------------------------------------------------
+    void PendingPartitionOp::EqualPartitionThunk::perform_logging(
+                                                         PendingPartitionOp* op)
+    //--------------------------------------------------------------------------
+    {
+      LegionSpy::log_target_pending_partition(op->unique_op_id, pid.id,
+          EQUAL_PARTITION);
+    }
+
+    //--------------------------------------------------------------------------
+    void PendingPartitionOp::WeightedPartitionThunk::perform_logging(
+                                                         PendingPartitionOp* op)
+    //--------------------------------------------------------------------------
+    {
+      LegionSpy::log_target_pending_partition(op->unique_op_id, pid.id,
+          WEIGHTED_PARTITION);
+    }
+
+    //--------------------------------------------------------------------------
+    void PendingPartitionOp::UnionPartitionThunk::perform_logging(
+                                                         PendingPartitionOp* op)
+    //--------------------------------------------------------------------------
+    {
+      LegionSpy::log_target_pending_partition(op->unique_op_id, pid.id,
+          UNION_PARTITION);
+    }
+
+    //--------------------------------------------------------------------------
+    void PendingPartitionOp::IntersectionPartitionThunk::perform_logging(
+                                                         PendingPartitionOp* op)
+    //--------------------------------------------------------------------------
+    {
+      LegionSpy::log_target_pending_partition(op->unique_op_id, pid.id,
+          INTERSECTION_PARTITION);
+    }
+
+    //--------------------------------------------------------------------------
+    void PendingPartitionOp::DifferencePartitionThunk::perform_logging(
+                                                         PendingPartitionOp* op)
+    //--------------------------------------------------------------------------
+    {
+      LegionSpy::log_target_pending_partition(op->unique_op_id, pid.id,
+          DIFFERENCE_PARTITION);
+    }
+
+    //--------------------------------------------------------------------------
+    void PendingPartitionOp::CrossProductThunk::perform_logging(
+                                                         PendingPartitionOp* op)
+    //--------------------------------------------------------------------------
+    {
+    }
+
+    //--------------------------------------------------------------------------
+    void PendingPartitionOp::ComputePendingSpace::perform_logging(
+                                                         PendingPartitionOp* op)
+    //--------------------------------------------------------------------------
+    {
+    }
+
+    //--------------------------------------------------------------------------
+    void PendingPartitionOp::ComputePendingDifference::perform_logging(
+                                                         PendingPartitionOp* op)
+    //--------------------------------------------------------------------------
+    {
+    }
+
+#endif
     ///////////////////////////////////////////////////////////// 
     // Fill Op 
     /////////////////////////////////////////////////////////////
