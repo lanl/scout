@@ -60,7 +60,12 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSHARED_LOWLEVEL -Wno-delete-non-virtua
 
 set(LG_RT_DIR ${SCOUT_SRC_DIR}/legion/runtime)
 
-list(APPEND low_level_src ${LG_RT_DIR}/shared_lowlevel.cc)
+list(APPEND low_level_src 
+  ${LG_RT_DIR}/shared_lowlevel.cc
+  ${LG_RT_DIR}/realm/logging.cc 
+  ${LG_RT_DIR}/realm/profiling.cc 
+  ${LG_RT_DIR}/realm/operation.cc
+)
 
 list(APPEND mapper_src 
   ${LG_RT_DIR}/default_mapper.cc 
@@ -75,6 +80,7 @@ list(APPEND high_level_src
   ${LG_RT_DIR}/legion_tasks.cc 
   ${LG_RT_DIR}/legion_trace.cc 
   ${LG_RT_DIR}/legion_spy.cc 
+  ${LG_RT_DIR}/legion_profiling.cc 
   ${LG_RT_DIR}/region_tree.cc 
   ${LG_RT_DIR}/runtime.cc
   ${LG_RT_DIR}/garbage_collection.cc
