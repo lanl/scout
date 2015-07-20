@@ -267,6 +267,10 @@ namespace LegionRuntime {
         HLRTaskID hlr_id;
         SingleTask *proxy_this;
       };
+      struct DecrementArgs {
+        HLRTaskID hlr_id;
+        SingleTask *parent_ctx;
+      };
     public:
       SingleTask(Runtime *rt);
       virtual ~SingleTask(void);
@@ -625,7 +629,6 @@ namespace LegionRuntime {
                                  bool owner, bool exclusive); 
     protected:
       bool sliced;
-      Barrier must_barrier; // for must parallelism
       ArgumentMap argument_map;
       std::list<SliceTask*> slices;
       std::vector<RestrictInfo> restrict_infos;
