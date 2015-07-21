@@ -119,6 +119,9 @@ namespace scout {
     const char* Configuration::LinkOptions[] = {
       
       // add rpaths
+      #ifdef GCC_INSTALL_PREFIX
+      "-Wl,-rpath,${GCC_INSTALL_PREFIX}/lib64",
+      #endif
       "-Wl,-rpath,${SCOUT_BUILD_DIR}/lib/",
       #ifdef SCOUT_ENABLE_CUDA    
         "-Wl,-rpath,${CUDA_LIBRARY_DIR}",

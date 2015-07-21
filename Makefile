@@ -122,6 +122,13 @@ docs_build_dir := docs/_build
 #
 #####
 
+##### gcc in module
+ifdef SC_GCC_INSTALL_PREFIX
+  extra_cmake_flags := -DGCC_INSTALL_PREFIX="$(SC_GCC_INSTALL_PREFIX)" \
+                       -DCMAKE_CXX_LINK_FLAGS="-L$(SC_GCC_INSTALL_PREFIX)/lib64 -Wl,-rpath,$(SC_GCC_INSTALL_PREFIX)/lib64" 
+endif
+
+
 cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) \
                -DCMAKE_INSTALL_PREFIX=$(build_dir) \
                -DCMAKE_SOURCE_DIR=$(src_dir) \
@@ -140,6 +147,8 @@ else
 # These flags must be enabled in order to build LLDB.
   cmake_flags += -DLLVM_ENABLE_CXX11=ON -DLLVM_REQUIRES_RTTI=1 -DCMAKE_CXX_FLAGS="-std=c++11"
 endif
+
+cmake_flags += $(extra_cmake_flags)
 
 all: $(build_dir)/Makefile toolchain stdlib
 .PHONY: all 
