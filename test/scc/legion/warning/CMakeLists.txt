@@ -1,9 +1,9 @@
 #
 ###########################################################################
-# Copyright (c) 2010, Los Alamos National Security, LLC.
+# Copyright (c) 2015, Los Alamos National Security, LLC.
 # All rights reserved.
 # 
-#  Copyright 2010. Los Alamos National Security, LLC. This software was
+#  Copyright 2015. Los Alamos National Security, LLC. This software was
 #  produced under U.S. Government contract DE-AC52-06NA25396 for Los
 #  Alamos National Laboratory (LANL), which is operated by Los Alamos
 #  National Security, LLC for the U.S. Department of Energy. The
@@ -48,29 +48,14 @@
 #
 ###########################################################################
 #
-project(scout_test_scc_legion)
 
-# Note: By default we pull in all the .sc source files in this
-# directory for inclusion into the regression checks. 
-file(GLOB SC_SRCS *.sc) 
+project(scout_test_scc_legion_warning)
 
-#ignore warnings about i/o in forall
-set(CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS} -Wno-calling-io-function")
+set(SRC_PATH ${CMAKE_SOURCE_DIR}/scc/legion/warning)
 
-set(CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS} -sclegion")
-
-# Add an executable and test entry for each source file...
-foreach (test ${SC_SRCS})
-  get_filename_component(tname ${test} NAME_WE) 
-  if (NOT tname) 
-    message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
-  else (NOT tname)
-     set(fname "scc_legion_${tname}")
-    add_executable(${fname} ${test})
-    add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
-    message(" + added runtime regression test entry: ${fname}")
-  endif(NOT tname)
-endforeach(test)
-
-add_subdirectory(warning) 
+set(name cshift-expr)
+set(tname scc_legion_warning_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} -sclegion ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "warning: Non integer shift in")
 
