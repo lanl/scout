@@ -141,7 +141,7 @@ cmake_flags := -DCMAKE_BUILD_TYPE=$(build_type) \
 uname := $(shell uname)
 
 ifeq ($(uname), Darwin)
-  cmake_flags += -DCMAKE_CXX_FLAGS="-stdlib=libc++ -std=c++11" -DCMAKE_SHARED_LINKER_FLAGS="-stdlib=libc++"
+  cmake_flags += -DCMAKE_CXX_FLAGS="-gsplit-dwarf -stdlib=libc++ -std=c++11" -DCMAKE_SHARED_LINKER_FLAGS="-stdlib=libc++"
   cmake_flags += -DLLVM_ENABLE_LIBCXX=ON 
 else
 # These flags must be enabled in order to build LLDB.
