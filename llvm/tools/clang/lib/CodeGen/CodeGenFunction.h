@@ -2299,6 +2299,8 @@ public:
   RValue EmitMPosition(const CallExpr *E , unsigned int index);
   RValue EmitMPositionVector(const CallExpr *E);
   
+  llvm::Value* EmitGIndex(unsigned int index);
+
   llvm::Function* CreatePlotFunction(Expr* E);
   
   llvm::Value* EmitPlotExpr(const PlotStmt &S,

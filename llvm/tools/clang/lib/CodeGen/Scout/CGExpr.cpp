@@ -1427,3 +1427,31 @@ RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
   return RValue::get(Result);
 }
 
+llvm::Value *CodeGenFunction::EmitGIndex(unsigned int dim) {
+   static const char *IndexNames[] = { "x", "y", "z", "w"};
+   llvm::Value *X, *Y, *MeshDim;
+   if (InnerForallScope) {
+     sprintf(IRNameStr, "gindex.%s", IndexNames[dim]);
+     Y = Builder.CreateAdd(
+       Builder.CreateLoad(LookupInductionVar(dim)),
+       Builder.CreateLoad(InnerInductionVar[dim]),
+       IRNameStr);
+     sprintf(IRNameStr, "meshdim.%s", IndexNames[dim]);
+     MeshDim =  Builder.CreateLoad(MeshDims[dim], IRNameStr);
+     if (VertexIndex) { // cells/vertices
+       llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+       X = Builder.CreateURem(Y, Builder.CreateAdd(MeshDim, One)); 
+     } else if (CellIndex) { //vertices/cells
+       X = Builder.CreateURem(Y, MeshDim); 
+     } else {
+       assert(false && "unsupported call to gindex");
+     }
+   } else {
+     sprintf(IRNameStr, "gindex.%s", IndexNames[dim]);
+     X = Builder.CreateAdd(
+       Builder.CreateLoad(LookupInductionVar(dim)),
+       Builder.CreateLoad(LookupMeshStart(dim)),
+       IRNameStr);
+   }
+  return X;
+}
