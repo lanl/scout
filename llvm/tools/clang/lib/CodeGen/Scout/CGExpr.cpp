@@ -367,7 +367,7 @@ llvm::Value *CodeGenFunction::getMeshIndex(const MeshFieldDecl* MFD) {
 // compute the linear index based on cshift parameters
 // with circular boundary conditions
 llvm::Value *
-CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
+CodeGenFunction::getCShiftLinearIdx(MeshFieldDecl *MFD, SmallVector< llvm::Value *, 3 > args) {
 
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
 
@@ -375,7 +375,15 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
   SmallVector< llvm::Value *, 3 > dims;
   for(unsigned i = 0; i < args.size(); ++i) {
     sprintf(IRNameStr, "%s", DimNames[i]);
-    dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
+    if (MFD->isCellLocated()) {
+      dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
+    } else if (MFD->isVertexLocated()) {
+      llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+      dims.push_back(Builder.CreateAdd(
+        Builder.CreateLoad(LookupMeshDim(i), IRNameStr), One));
+    } else {
+      assert(false && "Non Cell/Vertex in CShift");
+    }
   }
 
   SmallVector< llvm::Value *, 3 > start;
@@ -513,9 +521,9 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
   // get the member expr for first arg.
   if(const MemberExpr *E = dyn_cast<MemberExpr>(A1E)) {
     // make sure this is a mesh
-    if(isa<MeshFieldDecl>(E->getMemberDecl())) {
+    if(MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(E->getMemberDecl())) {
       // get the correct mesh member
-      LValue LV = EmitMeshMemberExpr(E, getCShiftLinearIdx(args));
+      LValue LV = EmitMeshMemberExpr(E, getCShiftLinearIdx(MFD,args));
 
       return RValue::get(Builder.CreateLoad(LV.getAddress(), "cshift.element"));
     }
@@ -1427,3 +1435,31 @@ RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
   return RValue::get(Result);
 }
 
+llvm::Value *CodeGenFunction::EmitGIndex(unsigned int dim) {
+   static const char *IndexNames[] = { "x", "y", "z", "w"};
+   llvm::Value *X, *Y, *MeshDim;
+   if (InnerForallScope) {
+     sprintf(IRNameStr, "gindex.%s", IndexNames[dim]);
+     Y = Builder.CreateAdd(
+       Builder.CreateLoad(LookupInductionVar(dim)),
+       Builder.CreateLoad(InnerInductionVar[dim]),
+       IRNameStr);
+     sprintf(IRNameStr, "meshdim.%s", IndexNames[dim]);
+     MeshDim =  Builder.CreateLoad(MeshDims[dim], IRNameStr);
+     if (VertexIndex) { // cells/vertices
+       llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+       X = Builder.CreateURem(Y, Builder.CreateAdd(MeshDim, One)); 
+     } else if (CellIndex) { //vertices/cells
+       X = Builder.CreateURem(Y, MeshDim); 
+     } else {
+       assert(false && "unsupported call to gindex");
+     }
+   } else {
+     sprintf(IRNameStr, "gindex.%s", IndexNames[dim]);
+     X = Builder.CreateAdd(
+       Builder.CreateLoad(LookupInductionVar(dim)),
+       Builder.CreateLoad(LookupMeshStart(dim)),
+       IRNameStr);
+   }
+  return X;
+}

@@ -64,6 +64,7 @@ set_source_files_properties(cshift2.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-varia
 set_source_files_properties(cshift2d.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 set_source_files_properties(cshift3d.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 set_source_files_properties(cshiftm.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
+set_source_files_properties(cshift-vert.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 set_source_files_properties(eoshift.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 set_source_files_properties(eoshift2.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 set_source_files_properties(eoshiftm.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")

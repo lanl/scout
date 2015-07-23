@@ -78,7 +78,63 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
 
   switch (BuiltinID) {
 
+    //vector 
+    case Builtin::BIgindex: {
+      static const char *IndexNames[] = { "x", "y", "z", "w"};
+      Value *Result =
+         llvm::UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
+
+       for (unsigned i = 0; i <= 3; ++i) {
+         if (i == 3) sprintf(IRNameStr, "forall.linearidx");
+         else sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
+
+         llvm::Value *Val;
+         if (InnerForallScope) {
+           assert(false && "wip");
+         } else {
+
+           if (i == 3) {
+             Val = Builder.CreateLoad(LookupInductionVar(i),IRNameStr);
+           } else {
+             Val = Builder.CreateAdd(
+                 Builder.CreateLoad(LookupInductionVar(i)),
+                 Builder.CreateLoad(LookupMeshStart(i)),
+                 IRNameStr);
+           }
+        }
+
+         sprintf(IRNameStr, "gindex.%s", IndexNames[i]);
+         Result = Builder.CreateInsertElement(Result, Val,
+              Builder.getInt32(i), IRNameStr);
+       }
+       *RV = RValue::get(Result);
+       return true;
+    }
+
+    case Builtin::BIgindexx: {
+      *RV = RValue::get(EmitGIndex(0));
+      return true;
+    }
+
+    case Builtin::BIgindexy: {
+      *RV = RValue::get(EmitGIndex(1));
+      return true;
+    }
+
+    case Builtin::BIgindexz: {
+      *RV = RValue::get(EmitGIndex(2));
+      return true;
+    }
+
+    case Builtin::BIgindexw: {
+      *RV = RValue::get(Builder.CreateLoad(LookupInductionVar(3), "forall.linearidx"));
+      return true;
+    }
+
+
+
   //vector position
+  case Builtin::BIlindex:
   case Builtin::BIposition: {
     static const char *IndexNames[] = { "x", "y", "z", "w"};
     Value *Result =
@@ -111,6 +167,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
      return true;
   }
 
+  case Builtin::BIlindexx:
   case Builtin::BIpositionx: {
     llvm::Value *X;
     if (InnerForallScope) {
@@ -125,6 +182,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     return true;
   }
 
+  case Builtin::BIlindexy:
   case Builtin::BIpositiony: {
     llvm::Value *Y;
     if (InnerForallScope) {
@@ -139,6 +197,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     return true;
   }
 
+  case Builtin::BIlindexz:
   case Builtin::BIpositionz: {
     llvm::Value *Z;
     if (InnerForallScope) {
@@ -152,7 +211,8 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     *RV = RValue::get(Z);
     return true;
   }
-
+  
+  case Builtin::BIlindexw:
   case Builtin::BIpositionw: {
     *RV = RValue::get(Builder.CreateLoad(LookupInductionVar(3), "forall.linearidx"));
     return true;
