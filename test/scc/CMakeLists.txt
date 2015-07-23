@@ -73,6 +73,7 @@ set_source_files_properties(forall-cond.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-v
 set_source_files_properties(forall-cond2.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 set_source_files_properties(mesh-param-cshift.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 set_source_files_properties(nested-position.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
+set_source_files_properties(nested-index.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 set_source_files_properties(nested-position2.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
 set_source_files_properties(intrinsics-scope.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-builtin-scope")
 set_source_files_properties(meshscope.sc PROPERTIES COMPILE_FLAGS "-Wno-mesh-variable-scope")
