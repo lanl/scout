@@ -145,7 +145,7 @@ ifeq ($(uname), Darwin)
   cmake_flags += -DLLVM_ENABLE_LIBCXX=ON 
 else
 # These flags must be enabled in order to build LLDB.
-  cmake_flags += -DLLVM_ENABLE_CXX11=ON -DLLVM_REQUIRES_RTTI=1 -DCMAKE_CXX_FLAGS="-std=c++11"
+  cmake_flags += -DLLVM_ENABLE_CXX11=ON -DLLVM_REQUIRES_RTTI=1 -DCMAKE_CXX_FLAGS="-gsplit-dwarf -std=c++11"
 endif
 
 cmake_flags += $(extra_cmake_flags)
