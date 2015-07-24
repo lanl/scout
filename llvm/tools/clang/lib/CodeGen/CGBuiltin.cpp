@@ -6250,6 +6250,7 @@ Value *CodeGenFunction::EmitX86BuiltinExpr(unsigned BuiltinID,
     // but less than two lanes, convert to shifting in zeroes.
     if (ShiftVal > NumLaneElts) {
       ShiftVal -= NumLaneElts;
+      Ops[1] = Ops[0];
       Ops[0] = llvm::Constant::getNullValue(Ops[0]->getType());
     }
 

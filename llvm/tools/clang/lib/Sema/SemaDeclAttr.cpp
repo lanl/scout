@@ -4583,7 +4583,7 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
   // which do not apply to the current target architecture are treated as
   // though they were unknown attributes.
   if (Attr.getKind() == AttributeList::UnknownAttribute ||
-      !Attr.existsInTarget(S.Context.getTargetInfo().getTriple())) {
+      !Attr.existsInTarget(S.Context.getTargetInfo())) {
     S.Diag(Attr.getLoc(), Attr.isDeclspecAttribute()
                               ? diag::warn_unhandled_ms_attribute_ignored
                               : diag::warn_unknown_attribute_ignored)
@@ -4722,6 +4722,9 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
     break;
   case AttributeList::AT_Mode:
     handleModeAttr(S, D, Attr);
+    break;
+  case AttributeList::AT_NoAlias:
+    handleSimpleAttribute<NoAliasAttr>(S, D, Attr);
     break;
   case AttributeList::AT_NoCommon:
     handleSimpleAttribute<NoCommonAttr>(S, D, Attr);
