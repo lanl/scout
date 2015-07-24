@@ -18,8 +18,6 @@ else
     MAKE=make
 fi
 
-projects="llvm cfe compiler-rt libcxx libcxxabi test-suite clang-tools-extra"
-
 # Base SVN URL for the sources.
 Base_url="http://llvm.org/svn/llvm-project"
 
@@ -32,9 +30,13 @@ do_checkout="yes"
 do_debug="no"
 do_asserts="no"
 do_compare="yes"
+do_rt="yes"
+do_libs="yes"
+do_test_suite="yes"
 BuildDir="`pwd`"
 use_autoconf="no"
 ExtraConfigureFlags=""
+ExportBranch=""
 
 function usage() {
     echo "usage: `basename $0` -release X.Y.Z -rc NUM [OPTIONS]"
@@ -52,6 +54,11 @@ function usage() {
     echo " -use-gzip            Use gzip instead of xz."
     echo " -configure-flags FLAGS  Extra flags to pass to the configure step."
     echo " -use-autoconf        Use autoconf instead of cmake"
+    echo " -svn-path DIR        Use the specified DIR instead of a release."
+    echo "                      For example -svn-path trunk or -svn-path branches/release_37"
+    echo " -no-rt               Disable check-out & build Compiler-RT"
+    echo " -no-libs             Disable check-out & build libcxx/libcxxabi/libunwind"
+    echo " -no-test-suite       Disable check-out & build test-suite"
 }
 
 if [ `uname -s` = "Darwin" ]; then
@@ -72,6 +79,16 @@ while [ $# -gt 0 ]; do
             ;;
         -final | --final )
             RC=final
+            ;;
+        -svn-path | --svn-path )
+            shift
+            Release="test"
+            Release_no_dot="test"
+            ExportBranch="$1"
+            RC="`echo $ExportBranch | sed -e 's,/,_,g'`"
+            echo "WARNING: Using the branch $ExportBranch instead of a release tag"
+            echo "         This is intended to aid new packagers in trialing "
+            echo "         builds without requiring a tag to be created first"
             ;;
         -triple | --triple )
             shift
@@ -110,6 +127,15 @@ while [ $# -gt 0 ]; do
         -use-autoconf | --use-autoconf )
             use_autoconf="yes"
             ;;
+        -no-rt )
+            do_rt="no"
+            ;;
+        -no-libs )
+            do_libs="no"
+            ;;
+        -no-test-suite )
+            do_test_suite="no"
+            ;;
         -help | --help | -h | --h | -\? )
             usage
             exit 0
@@ -132,6 +158,9 @@ if [ -z "$RC" ]; then
     echo "error: no release candidate number specified"
     exit 1
 fi
+if [ -z "$ExportBranch" ]; then
+    ExportBranch="tags/RELEASE_$Release_no_dot/$RC"
+fi
 if [ -z "$Triple" ]; then
     echo "error: no target triple specified"
     exit 1
@@ -151,6 +180,18 @@ if [ -z "$NumJobs" ]; then
     NumJobs=3
 fi
 
+# Projects list
+projects="llvm cfe clang-tools-extra"
+if [ $do_rt = "yes" ]; then
+  projects="$projects compiler-rt"
+fi
+if [ $do_libs = "yes" ]; then
+  projects="$projects libcxx libcxxabi libunwind"
+fi
+if [ $do_test_suite = "yes" ]; then
+  projects="$projects test-suite"
+fi
+
 # Go to the build directory (may be different from CWD)
 BuildDir=$BuildDir/$RC
 mkdir -p $BuildDir
@@ -166,6 +207,16 @@ if [ $RC != "final" ]; then
   Package=$Package-$RC
 fi
 Package=$Package-$Triple
+
+# Errors to be highlighted at the end are written to this file.
+echo -n > $LogDir/deferred_errors.log
+
+function deferred_error() {
+  Phase="$1"
+  Flavor="$2"
+  Msg="$3"
+  echo "[${Flavor} Phase${Phase}] ${Msg}" | tee -a $LogDir/deferred_errors.log
+}
 
 # Make sure that a required program is available
 function check_program_exists() {
@@ -187,8 +238,8 @@ function check_valid_urls() {
     for proj in $projects ; do
         echo "# Validating $proj SVN URL"
 
-        if ! svn ls $Base_url/$proj/tags/RELEASE_$Release_no_dot/$RC > /dev/null 2>&1 ; then
-            echo "$proj $Release release candidate $RC doesn't exist!"
+        if ! svn ls $Base_url/$proj/$ExportBranch > /dev/null 2>&1 ; then
+            echo "$proj does not have a $ExportBranch branch/tag!"
             exit 1
         fi
     done
@@ -199,8 +250,12 @@ function export_sources() {
     check_valid_urls
 
     for proj in $projects ; do
+        if [ -d $proj.src ]; then
+          echo "# Reusing $proj $Release-$RC sources"
+          continue
+        fi
         echo "# Exporting $proj $Release-$RC sources"
-        if ! svn export -q $Base_url/$proj/tags/RELEASE_$Release_no_dot/$RC $proj.src ; then
+        if ! svn export -q $Base_url/$proj/$ExportBranch $proj.src ; then
             echo "error: failed to export $proj project"
             exit 1
         fi
@@ -216,18 +271,22 @@ function export_sources() {
         ln -s ../../../../clang-tools-extra.src extra
     fi
     cd $BuildDir/llvm.src/projects
-    if [ ! -h test-suite ]; then
+    if [ -d $BuildDir/test-suite.src ] && [ ! -h test-suite ]; then
         ln -s ../../test-suite.src test-suite
     fi
-    if [ ! -h compiler-rt ]; then
+    if [ -d $BuildDir/compiler-rt.src ] && [ ! -h compiler-rt ]; then
         ln -s ../../compiler-rt.src compiler-rt
     fi
-    if [ ! -h libcxx ]; then
+    if [ -d $BuildDir/libcxx.src ] && [ ! -h libcxx ]; then
         ln -s ../../libcxx.src libcxx
     fi
-    if [ ! -h libcxxabi ]; then
+    if [ -d $BuildDir/libcxxabi.src ] && [ ! -h libcxxabi ]; then
         ln -s ../../libcxxabi.src libcxxabi
     fi
+    if [ -d $BuildDir/libunwind.src ] && [ ! -h libunwind ]; then
+        ln -s ../../libunwind.src libunwind
+    fi
+
     cd $BuildDir
 }
 
@@ -318,13 +377,17 @@ function test_llvmCore() {
     ObjDir="$3"
 
     cd $ObjDir
-    ${MAKE} -j $NumJobs -k check-all \
-        2>&1 | tee $LogDir/llvm.check-Phase$Phase-$Flavor.log
+    if ! ( ${MAKE} -j $NumJobs -k check-all \
+        2>&1 | tee $LogDir/llvm.check-Phase$Phase-$Flavor.log ) ; then
+      deferred_error $Phase $Flavor "check-all failed"
+    fi
 
     if [ "$use_autoconf" = "yes" ]; then
         # In the cmake build, unit tests are run as part of check-all.
-        ${MAKE} -k unittests \
-            2>&1 | tee $LogDir/llvm.unittests-Phase$Phase-$Flavor.log
+        if ! ( ${MAKE} -k unittests 2>&1 | \
+            tee $LogDir/llvm.unittests-Phase$Phase-$Flavor.log ) ; then
+          deferred_error $Phase $Flavor "unittests failed"
+        fi
     fi
 
     cd $BuildDir
@@ -339,10 +402,12 @@ function clean_RPATH() {
   local InstallPath="$1"
   for Candidate in `find $InstallPath/{bin,lib} -type f`; do
     if file $Candidate | grep ELF | egrep 'executable|shared object' > /dev/null 2>&1 ; then
-      rpath=`objdump -x $Candidate | grep 'RPATH' | sed -e's/^ *RPATH *//'`
-      if [ -n "$rpath" ]; then
-        newrpath=`echo $rpath | sed -e's/.*\(\$ORIGIN[^:]*\).*/\1/'`
-        chrpath -r $newrpath $Candidate 2>&1 > /dev/null 2>&1
+      if rpath=`objdump -x $Candidate | grep 'RPATH'` ; then
+        rpath=`echo $rpath | sed -e's/^ *RPATH *//'`
+        if [ -n "$rpath" ]; then
+          newrpath=`echo $rpath | sed -e's/.*\(\$ORIGIN[^:]*\).*/\1/'`
+          chrpath -r $newrpath $Candidate 2>&1 > /dev/null 2>&1
+        fi
       fi
     fi
   done
@@ -352,13 +417,13 @@ function clean_RPATH() {
 function package_release() {
     cwd=`pwd`
     cd $BuildDir/Phase3/Release
-    mv llvmCore-$Release-$RC.install $Package
+    mv llvmCore-$Release-$RC.install/usr/local $Package
     if [ "$use_gzip" = "yes" ]; then
       tar cfz $BuildDir/$Package.tar.gz $Package
     else
       tar cfJ $BuildDir/$Package.tar.xz $Package
     fi
-    mv $Package llvmCore-$Release-$RC.install
+    mv $Package llvmCore-$Release-$RC.install/usr/local
     cd $cwd
 }
 
@@ -466,8 +531,8 @@ for Flavor in $Flavors ; do
             # Substitute 'Phase2' for 'Phase3' in the Phase 2 object file in
             # case there are build paths in the debug info. On some systems,
             # sed adds a newline to the output, so pass $p3 through sed too.
-            if ! cmp --ignore-initial=16 <(sed -e 's,Phase2,Phase3,g' $p2) \
-                    <(sed -e '' $p3) > /dev/null 2>&1 ; then
+            if ! cmp -s <(sed -e 's,Phase2,Phase3,g' $p2) <(sed -e '' $p3) \
+                    16 16 ; then
                 echo "file `basename $p2` differs between phase 2 and phase 3"
             fi
         done
@@ -487,4 +552,13 @@ else
   echo "### Package: $Package.tar.xz"
 fi
 echo "### Logs: $LogDir"
+
+echo "### Errors:"
+if [ -s "$LogDir/deferred_errors.log" ]; then
+  cat "$LogDir/deferred_errors.log"
+  exit 1
+else
+  echo "None."
+fi
+
 exit 0

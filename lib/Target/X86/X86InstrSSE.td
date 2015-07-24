@@ -2073,14 +2073,16 @@ def CVTTPS2DQrm : S2SI<0x5B, MRMSrcMem, (outs VR128:$dst), (ins f128mem:$src),
                        IIC_SSE_CVT_PS_RM>, Sched<[WriteCvtF2ILd]>;
 
 let Predicates = [HasAVX] in {
-  def : Pat<(v4f32 (sint_to_fp (v4i32 VR128:$src))),
-            (VCVTDQ2PSrr VR128:$src)>;
-  def : Pat<(v4f32 (sint_to_fp (bc_v4i32 (loadv2i64 addr:$src)))),
-            (VCVTDQ2PSrm addr:$src)>;
-
   def : Pat<(int_x86_sse2_cvtdq2ps VR128:$src),
             (VCVTDQ2PSrr VR128:$src)>;
   def : Pat<(int_x86_sse2_cvtdq2ps (bc_v4i32 (loadv2i64 addr:$src))),
+            (VCVTDQ2PSrm addr:$src)>;
+}
+
+let Predicates = [HasAVX, NoVLX] in {
+  def : Pat<(v4f32 (sint_to_fp (v4i32 VR128:$src))),
+            (VCVTDQ2PSrr VR128:$src)>;
+  def : Pat<(v4f32 (sint_to_fp (bc_v4i32 (loadv2i64 addr:$src)))),
             (VCVTDQ2PSrm addr:$src)>;
 
   def : Pat<(v4i32 (fp_to_sint (v4f32 VR128:$src))),
@@ -2149,7 +2151,7 @@ def VCVTTPD2DQYrm : VPDI<0xE6, MRMSrcMem, (outs VR128:$dst), (ins f256mem:$src),
 def : InstAlias<"vcvttpd2dq\t{$src, $dst|$dst, $src}",
                 (VCVTTPD2DQYrr VR128:$dst, VR256:$src), 0>;
 
-let Predicates = [HasAVX] in {
+let Predicates = [HasAVX, NoVLX] in {
   def : Pat<(v4i32 (fp_to_sint (v4f64 VR256:$src))),
             (VCVTTPD2DQYrr VR256:$src)>;
   def : Pat<(v4i32 (fp_to_sint (loadv4f64 addr:$src))),
@@ -2306,7 +2308,9 @@ let Predicates = [HasAVX] in {
             (VCVTDQ2PSYrr VR256:$src)>;
   def : Pat<(int_x86_avx_cvtdq2_ps_256 (bitconvert (loadv4i64 addr:$src))),
             (VCVTDQ2PSYrm addr:$src)>;
+}
 
+let Predicates = [HasAVX, NoVLX] in {
   // Match fround and fextend for 128/256-bit conversions
   def : Pat<(v4f32 (X86vfpround (v2f64 VR128:$src))),
             (VCVTPD2PSrr VR128:$src)>;
@@ -4010,39 +4014,39 @@ multiclass PDI_binop_rm2<bits<8> opc, string OpcodeStr, SDNode OpNode,
 } // ExeDomain = SSEPackedInt
 
 defm PADDB   : PDI_binop_all<0xFC, "paddb", add, v16i8, v32i8,
-                             SSE_INTALU_ITINS_P, 1, NoBWI>;
+                             SSE_INTALU_ITINS_P, 1, NoVLX_Or_NoBWI>;
 defm PADDW   : PDI_binop_all<0xFD, "paddw", add, v8i16, v16i16,
-                             SSE_INTALU_ITINS_P, 1, NoBWI>;
+                             SSE_INTALU_ITINS_P, 1, NoVLX_Or_NoBWI>;
 defm PADDD   : PDI_binop_all<0xFE, "paddd", add, v4i32, v8i32,
                              SSE_INTALU_ITINS_P, 1, NoVLX>;
 defm PADDQ   : PDI_binop_all<0xD4, "paddq", add, v2i64, v4i64,
                              SSE_INTALUQ_ITINS_P, 1, NoVLX>;
 defm PMULLW  : PDI_binop_all<0xD5, "pmullw", mul, v8i16, v16i16,
-                             SSE_INTMUL_ITINS_P, 1, NoBWI>;
+                             SSE_INTMUL_ITINS_P, 1, NoVLX_Or_NoBWI>;
 defm PMULHUW : PDI_binop_all<0xE4, "pmulhuw", mulhu, v8i16, v16i16,
-                             SSE_INTMUL_ITINS_P, 1, NoBWI>;
+                             SSE_INTMUL_ITINS_P, 1, NoVLX_Or_NoBWI>;
 defm PMULHW  : PDI_binop_all<0xE5, "pmulhw", mulhs, v8i16, v16i16,
-                             SSE_INTMUL_ITINS_P, 1, NoBWI>;
+                             SSE_INTMUL_ITINS_P, 1, NoVLX_Or_NoBWI>;
 defm PSUBB   : PDI_binop_all<0xF8, "psubb", sub, v16i8, v32i8,
-                             SSE_INTALU_ITINS_P, 0, NoBWI>;
+                             SSE_INTALU_ITINS_P, 0, NoVLX_Or_NoBWI>;
 defm PSUBW   : PDI_binop_all<0xF9, "psubw", sub, v8i16, v16i16,
-                             SSE_INTALU_ITINS_P, 0, NoBWI>;
+                             SSE_INTALU_ITINS_P, 0, NoVLX_Or_NoBWI>;
 defm PSUBD   : PDI_binop_all<0xFA, "psubd", sub, v4i32, v8i32,
                              SSE_INTALU_ITINS_P, 0, NoVLX>;
 defm PSUBQ   : PDI_binop_all<0xFB, "psubq", sub, v2i64, v4i64,
                              SSE_INTALUQ_ITINS_P, 0, NoVLX>;
 defm PSUBUSB : PDI_binop_all<0xD8, "psubusb", X86subus, v16i8, v32i8,
-                             SSE_INTALU_ITINS_P, 0, NoBWI>;
+                             SSE_INTALU_ITINS_P, 0, NoVLX_Or_NoBWI>;
 defm PSUBUSW : PDI_binop_all<0xD9, "psubusw", X86subus, v8i16, v16i16,
-                             SSE_INTALU_ITINS_P, 0, NoBWI>;
+                             SSE_INTALU_ITINS_P, 0, NoVLX_Or_NoBWI>;
 defm PMINUB  : PDI_binop_all<0xDA, "pminub", umin, v16i8, v32i8,
-                             SSE_INTALU_ITINS_P, 1, NoBWI>;
+                             SSE_INTALU_ITINS_P, 1, NoVLX_Or_NoBWI>;
 defm PMINSW  : PDI_binop_all<0xEA, "pminsw", smin, v8i16, v16i16,
-                             SSE_INTALU_ITINS_P, 1, NoBWI>;
+                             SSE_INTALU_ITINS_P, 1, NoVLX_Or_NoBWI>;
 defm PMAXUB  : PDI_binop_all<0xDE, "pmaxub", umax, v16i8, v32i8,
-                             SSE_INTALU_ITINS_P, 1, NoBWI>;
+                             SSE_INTALU_ITINS_P, 1, NoVLX_Or_NoBWI>;
 defm PMAXSW  : PDI_binop_all<0xEE, "pmaxsw", smax, v8i16, v16i16,
-                             SSE_INTALU_ITINS_P, 1, NoBWI>;
+                             SSE_INTALU_ITINS_P, 1, NoVLX_Or_NoBWI>;
 
 // Intrinsic forms
 defm PSUBSB  : PDI_binop_all_int<0xE8, "psubsb", int_x86_sse2_psubs_b,
@@ -4239,15 +4243,15 @@ let ExeDomain = SSEPackedInt, SchedRW = [WriteVecShift], hasSideEffects = 0 in {
 //===---------------------------------------------------------------------===//
 
 defm PCMPEQB : PDI_binop_all<0x74, "pcmpeqb", X86pcmpeq, v16i8, v32i8,
-                             SSE_INTALU_ITINS_P, 1, NoBWI>;
+                             SSE_INTALU_ITINS_P, 1, NoVLX_Or_NoBWI>;
 defm PCMPEQW : PDI_binop_all<0x75, "pcmpeqw", X86pcmpeq, v8i16, v16i16,
-                             SSE_INTALU_ITINS_P, 1, NoBWI>;
+                             SSE_INTALU_ITINS_P, 1, NoVLX_Or_NoBWI>;
 defm PCMPEQD : PDI_binop_all<0x76, "pcmpeqd", X86pcmpeq, v4i32, v8i32,
                              SSE_INTALU_ITINS_P, 1, NoVLX>;
 defm PCMPGTB : PDI_binop_all<0x64, "pcmpgtb", X86pcmpgt, v16i8, v32i8,
-                             SSE_INTALU_ITINS_P, 0, NoBWI>;
+                             SSE_INTALU_ITINS_P, 0, NoVLX_Or_NoBWI>;
 defm PCMPGTW : PDI_binop_all<0x65, "pcmpgtw", X86pcmpgt, v8i16, v16i16,
-                             SSE_INTALU_ITINS_P, 0, NoBWI>;
+                             SSE_INTALU_ITINS_P, 0, NoVLX_Or_NoBWI>;
 defm PCMPGTD : PDI_binop_all<0x66, "pcmpgtd", X86pcmpgt, v4i32, v8i32,
                              SSE_INTALU_ITINS_P, 0, NoVLX>;
 
@@ -8714,16 +8718,16 @@ defm VPMASKMOVQ : avx2_pmovmask<"vpmaskmovq",
                                 int_x86_avx2_maskstore_q,
                                 int_x86_avx2_maskstore_q_256>, VEX_W;
 
-def: Pat<(masked_store addr:$ptr, (v8i32 VR256:$mask), (v8f32 VR256:$src)),
+def: Pat<(X86mstore addr:$ptr, (v8i32 VR256:$mask), (v8f32 VR256:$src)),
          (VMASKMOVPSYmr addr:$ptr, VR256:$mask, VR256:$src)>;
 
-def: Pat<(masked_store addr:$ptr, (v8i32 VR256:$mask), (v8i32 VR256:$src)),
+def: Pat<(X86mstore addr:$ptr, (v8i32 VR256:$mask), (v8i32 VR256:$src)),
          (VPMASKMOVDYmr addr:$ptr, VR256:$mask, VR256:$src)>;
 
-def: Pat<(masked_store addr:$ptr, (v4i32 VR128:$mask), (v4f32 VR128:$src)),
+def: Pat<(X86mstore addr:$ptr, (v4i32 VR128:$mask), (v4f32 VR128:$src)),
          (VMASKMOVPSmr addr:$ptr, VR128:$mask, VR128:$src)>;
 
-def: Pat<(masked_store addr:$ptr, (v4i32 VR128:$mask), (v4i32 VR128:$src)),
+def: Pat<(X86mstore addr:$ptr, (v4i32 VR128:$mask), (v4i32 VR128:$src)),
          (VPMASKMOVDmr addr:$ptr, VR128:$mask, VR128:$src)>;
 
 def: Pat<(v8f32 (masked_load addr:$ptr, (v8i32 VR256:$mask), undef)),
@@ -8768,10 +8772,10 @@ def: Pat<(v4i32 (masked_load addr:$ptr, (v4i32 VR128:$mask), (v4i32 VR128:$src0)
          (VBLENDVPSrr VR128:$src0, (VPMASKMOVDrm VR128:$mask, addr:$ptr),
                        VR128:$mask)>;
 
-def: Pat<(masked_store addr:$ptr, (v4i64 VR256:$mask), (v4f64 VR256:$src)),
+def: Pat<(X86mstore addr:$ptr, (v4i64 VR256:$mask), (v4f64 VR256:$src)),
          (VMASKMOVPDYmr addr:$ptr, VR256:$mask, VR256:$src)>;
 
-def: Pat<(masked_store addr:$ptr, (v4i64 VR256:$mask), (v4i64 VR256:$src)),
+def: Pat<(X86mstore addr:$ptr, (v4i64 VR256:$mask), (v4i64 VR256:$src)),
          (VPMASKMOVQYmr addr:$ptr, VR256:$mask, VR256:$src)>;
 
 def: Pat<(v4f64 (masked_load addr:$ptr, (v4i64 VR256:$mask), undef)),
@@ -8796,10 +8800,10 @@ def: Pat<(v4i64 (masked_load addr:$ptr, (v4i64 VR256:$mask), (v4i64 VR256:$src0)
          (VBLENDVPDYrr VR256:$src0, (VPMASKMOVQYrm VR256:$mask, addr:$ptr),
                        VR256:$mask)>;
 
-def: Pat<(masked_store addr:$ptr, (v2i64 VR128:$mask), (v2f64 VR128:$src)),
+def: Pat<(X86mstore addr:$ptr, (v2i64 VR128:$mask), (v2f64 VR128:$src)),
          (VMASKMOVPDmr addr:$ptr, VR128:$mask, VR128:$src)>;
 
-def: Pat<(masked_store addr:$ptr, (v2i64 VR128:$mask), (v2i64 VR128:$src)),
+def: Pat<(X86mstore addr:$ptr, (v2i64 VR128:$mask), (v2i64 VR128:$src)),
          (VPMASKMOVQmr addr:$ptr, VR128:$mask, VR128:$src)>;
 
 def: Pat<(v2f64 (masked_load addr:$ptr, (v2i64 VR128:$mask), undef)),

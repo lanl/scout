@@ -36,6 +36,7 @@ struct MIToken {
     equal,
     underscore,
     colon,
+    exclaim,
 
     // Keywords
     kw_implicit,
@@ -43,17 +44,27 @@ struct MIToken {
     kw_dead,
     kw_killed,
     kw_undef,
+    kw_frame_setup,
+    kw_debug_location,
+    kw_cfi_offset,
+    kw_cfi_def_cfa_offset,
 
     // Identifier tokens
     Identifier,
     NamedRegister,
     MachineBasicBlock,
+    StackObject,
+    FixedStackObject,
     NamedGlobalValue,
+    QuotedNamedGlobalValue,
     GlobalValue,
+    ExternalSymbol,
+    QuotedExternalSymbol,
 
     // Other tokens
     IntegerLiteral,
     VirtualRegister,
+    ConstantPoolItem,
     JumpTableIndex
   };
 
@@ -91,14 +102,36 @@ public:
 
   StringRef::iterator location() const { return Range.begin(); }
 
-  StringRef stringValue() const { return Range.drop_front(StringOffset); }
+  bool isStringValueQuoted() const {
+    return Kind == QuotedNamedGlobalValue || Kind == QuotedExternalSymbol;
+  }
+
+  /// Return the token's raw string value.
+  ///
+  /// If the string value is quoted, this method returns that quoted string as
+  /// it is, without unescaping the string value.
+  StringRef rawStringValue() const { return Range.drop_front(StringOffset); }
+
+  /// Return token's string value.
+  ///
+  /// Expects the string value to be unquoted.
+  StringRef stringValue() const {
+    assert(!isStringValueQuoted() && "String value is quoted");
+    return Range.drop_front(StringOffset);
+  }
+
+  /// Unescapes the token's string value.
+  ///
+  /// Expects the string value to be quoted.
+  void unescapeQuotedStringValue(std::string &Str) const;
 
   const APSInt &integerValue() const { return IntVal; }
 
   bool hasIntegerValue() const {
     return Kind == IntegerLiteral || Kind == MachineBasicBlock ||
+           Kind == StackObject || Kind == FixedStackObject ||
            Kind == GlobalValue || Kind == VirtualRegister ||
-           Kind == JumpTableIndex;
+           Kind == ConstantPoolItem || Kind == JumpTableIndex;
   }
 };
 

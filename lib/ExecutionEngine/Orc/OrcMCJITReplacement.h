@@ -140,7 +140,7 @@ public:
       std::shared_ptr<MCJITMemoryManager> MemMgr,
       std::shared_ptr<RuntimeDyld::SymbolResolver> ClientResolver,
       std::unique_ptr<TargetMachine> TM)
-      : ExecutionEngine(*TM->getDataLayout()), TM(std::move(TM)),
+      : ExecutionEngine(TM->createDataLayout()), TM(std::move(TM)),
         MemMgr(*this, std::move(MemMgr)), Resolver(*this),
         ClientResolver(std::move(ClientResolver)), NotifyObjectLoaded(*this),
         NotifyFinalized(*this),
@@ -290,7 +290,7 @@ private:
              "Incorrect number of Infos for Objects.");
       for (unsigned I = 0; I < Objects.size(); ++I)
         M.MemMgr.notifyObjectLoaded(&M, *Objects[I]);
-    };
+    }
 
   private:
     OrcMCJITReplacement &M;
