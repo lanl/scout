@@ -3027,7 +3027,7 @@ public:
   static bool classof(const ScoutStmt *){ return true; }
   
   virtual child_range children(){
-    return child_range();
+    return child_range(child_iterator(), child_iterator());
   }
   
 private:

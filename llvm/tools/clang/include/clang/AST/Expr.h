@@ -5005,7 +5005,7 @@ public:
   }
   
   child_range children(){
-    return child_range();
+    return child_range(child_iterator(), child_iterator());
   }
   
   SourceLocation getLocStart() const LLVM_READONLY { return StartLoc; }
