@@ -397,7 +397,12 @@ CodeGenFunction::getCShiftLinearIdx(MeshFieldDecl *MFD, SmallVector< llvm::Value
   SmallVector< llvm::Value *, 3 > indices;
   for(unsigned i = 0; i < args.size(); ++i) {
     sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
-    llvm::Value *iv   = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
+    llvm::Value *iv;
+    if (InnerForallScope) {
+      iv = EmitGIndex(i);
+    } else {
+      iv   = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
+    }
 
     // take index and add offset from cshift
     sprintf(IRNameStr, "cshift.rawindex.%s", IndexNames[i]);
@@ -596,28 +601,41 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
   // get the member expr for first arg.
   if(const MemberExpr *E = dyn_cast<MemberExpr>(A1E)) {
     // make sure this is a mesh
-    if(isa<MeshFieldDecl>(E->getMemberDecl())) {
+    if(MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(E->getMemberDecl())) {
 
       //get the dimensions (Width, Height, Depth)
-       SmallVector< llvm::Value *, 3 > dims;
-       for(unsigned i = 0; i < args.size(); ++i) {
-         sprintf(IRNameStr, "%s", DimNames[i]);
-         dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
-       }
+      SmallVector< llvm::Value *, 3 > dims;
+      for(unsigned i = 0; i < args.size(); ++i) {
+        sprintf(IRNameStr, "%s", DimNames[i]);
+        if (MFD->isCellLocated()) {
+          dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
+        } else if (MFD->isVertexLocated()) {
+          llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+          dims.push_back(Builder.CreateAdd(
+            Builder.CreateLoad(LookupMeshDim(i), IRNameStr), One));
+        } else {
+          assert(false && "Non Cell/Vertex in EOShift");
+        }
+      }
 
        //get the eoshift indices
        SmallVector< llvm::Value *, 3 > rawindices, indices;
        for(unsigned i = 0; i < args.size(); ++i) {
-				 sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
-				 llvm::Value *iv  = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
+	 sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
+	 llvm::Value *iv;
+         if (InnerForallScope) {
+           iv = EmitGIndex(i);
+         } else {  
+           iv = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
+         }
 
-				 // take index and add offset from eoshift
-				 sprintf(IRNameStr, "eoshift.rawindex.%s", IndexNames[i]);
-				 rawindices.push_back(Builder.CreateAdd(iv, args[i], IRNameStr));
+         // take index and add offset from eoshift
+	 sprintf(IRNameStr, "eoshift.rawindex.%s", IndexNames[i]);
+	 rawindices.push_back(Builder.CreateAdd(iv, args[i], IRNameStr));
 
-				 // find if index will wrap
-				 sprintf(IRNameStr, "eoshift.index.%s", IndexNames[i]);
-				 indices.push_back(Builder.CreateURem(rawindices[i], dims[i], IRNameStr));
+	 // find if index will wrap
+	 sprintf(IRNameStr, "eoshift.index.%s", IndexNames[i]);
+	 indices.push_back(Builder.CreateURem(rawindices[i], dims[i], IRNameStr));
        }
 
        // setup flag
