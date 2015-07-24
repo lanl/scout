@@ -543,7 +543,10 @@ namespace clang {
       /// macro definition.
       MACRO_OFFSET = 47,
 
-      // ID 48 used to be a table of macros.
+      /// \brief A list of "interesting" identifiers. Only used in C++ (where we
+      /// don't normally do lookups into the serialized identifier table). These
+      /// are eagerly deserialized.
+      INTERESTING_IDENTIFIERS = 48,
 
       /// \brief Record code for undefined but used functions and variables that
       /// need a definition in this TU.
@@ -1397,6 +1400,7 @@ namespace clang {
       STMT_OMP_ORDERED_DIRECTIVE,
       STMT_OMP_ATOMIC_DIRECTIVE,
       STMT_OMP_TARGET_DIRECTIVE,
+      STMT_OMP_TARGET_DATA_DIRECTIVE,
       STMT_OMP_TEAMS_DIRECTIVE,
       STMT_OMP_TASKGROUP_DIRECTIVE,
       STMT_OMP_CANCELLATION_POINT_DIRECTIVE,

@@ -1057,6 +1057,7 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
       .Case("attribute_availability", true)
       .Case("attribute_availability_with_message", true)
       .Case("attribute_availability_app_extension", true)
+      .Case("attribute_availability_with_version_underscores", true)
       .Case("attribute_cf_returns_not_retained", true)
       .Case("attribute_cf_returns_retained", true)
       .Case("attribute_cf_returns_on_parameters", true)
@@ -1632,13 +1633,13 @@ void Preprocessor::ExpandBuiltinMacro(Token &Tok) {
       Value = FeatureII->getBuiltinID() != 0;
     } else if (II == Ident__has_attribute)
       Value = hasAttribute(AttrSyntax::GNU, nullptr, FeatureII,
-                           getTargetInfo().getTriple(), getLangOpts());
+                           getTargetInfo(), getLangOpts());
     else if (II == Ident__has_cpp_attribute)
       Value = hasAttribute(AttrSyntax::CXX, ScopeII, FeatureII,
-                           getTargetInfo().getTriple(), getLangOpts());
+                           getTargetInfo(), getLangOpts());
     else if (II == Ident__has_declspec)
       Value = hasAttribute(AttrSyntax::Declspec, nullptr, FeatureII,
-                           getTargetInfo().getTriple(), getLangOpts());
+                           getTargetInfo(), getLangOpts());
     else if (II == Ident__has_extension)
       Value = HasExtension(*this, FeatureII);
     else {
