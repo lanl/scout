@@ -1263,6 +1263,26 @@ public:
     UnloadImage (uint32_t image_token);
 
     //------------------------------------------------------------------
+    /// Called when the process is about to broadcast a public stop.
+    ///
+    /// There are public and private stops. Private stops are when the
+    /// process is doing things like stepping and the client doesn't
+    /// need to know about starts and stop that implement a thread plan.
+    /// Single stepping over a source line in code might end up being
+    /// implemented by one or more process starts and stops. Public stops
+    /// are when clients will be notified that the process is stopped.
+    /// These events typically trigger UI updates (thread stack frames to
+    /// be displayed, variables to be displayed, and more). This function
+    /// can be overriden and allows process subclasses to do something
+    /// before the eBroadcastBitStateChanged event is sent to public
+    /// clients.
+    //------------------------------------------------------------------
+    virtual void
+    WillPublicStop ()
+    {
+    }
+
+    //------------------------------------------------------------------
     /// Register for process and thread notifications.
     ///
     /// Clients can register notification callbacks by filling out a
@@ -2369,7 +2389,7 @@ public:
     ///     that a block that isn't set writable can still be written on from lldb,
     ///     just not by the process itself.
     ///
-    /// @param[in/out] error
+    /// @param[in,out] error
     ///     An error object to fill in if things go wrong.
     /// @return
     ///     The address of the allocated buffer in the process, or
@@ -2851,7 +2871,7 @@ public:
     /// @param[in] stream
     ///     The output stream to get the state change description
     ///
-    /// @param[inout] pop_process_io_handler
+    /// @param[in,out] pop_process_io_handler
     ///     If this value comes in set to \b true, then pop the Process IOHandler if needed.
     ///     Else this variable will be set to \b true or \b false to indicate if the process
     ///     needs to have its process IOHandler popped.

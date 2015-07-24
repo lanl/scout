@@ -28,9 +28,6 @@
 //          list ==>  "[]" | "[" value ( "," value )* "]" | "[" result ( "," result )* "]"
 //          More information see:
 //          http://ftp.gnu.org/old-gnu/Manuals/gdb-5.1.1/html_chapter/gdb_22.html
-// Gotchas: None.
-// Authors: Illya Rudkin 24/02/2014.
-// Changes: None.
 //--
 class CMICmnMIValueResult : public CMICmnMIValue
 {
@@ -40,7 +37,7 @@ class CMICmnMIValueResult : public CMICmnMIValue
     /* ctor */ CMICmnMIValueResult(const CMIUtilString &vVariable, const CMICmnMIValue &vValue);
     /* ctor */ CMICmnMIValueResult(const CMIUtilString &vVariable, const CMICmnMIValue &vValue, const bool vbUseSpacing);
     //
-    bool Add(const CMIUtilString &vVariable, const CMICmnMIValue &vValue);
+    void Add(const CMIUtilString &vVariable, const CMICmnMIValue &vValue);
 
     // Overridden:
   public:
@@ -49,8 +46,8 @@ class CMICmnMIValueResult : public CMICmnMIValue
 
     // Methods:
   private:
-    bool BuildResult(void);
-    bool BuildResult(const CMIUtilString &vVariable, const CMICmnMIValue &vValue);
+    void BuildResult(void);
+    void BuildResult(const CMIUtilString &vVariable, const CMICmnMIValue &vValue);
 
     // Attributes:
   private:

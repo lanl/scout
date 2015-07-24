@@ -90,17 +90,14 @@ CMICmdArgSet::IsArgsPresentButNotHandledByCmd(void) const
 // Details: Add the list of command's arguments to parse and validate another one.
 // Type:    Method.
 // Args:    vArg    - (R) A command argument object.
-// Return:  MIstatus::success - Functional succeeded.
-//          MIstatus::failure - Functional failed.
+// Return:  None.
 // Throws:  None.
 //--
-bool
+void
 CMICmdArgSet::Add(const CMICmdArgValBase &vArg)
 {
     CMICmdArgValBase *pArg = const_cast<CMICmdArgValBase *>(&vArg);
     m_setCmdArgs.push_back(pArg);
-
-    return MIstatus::success;
 }
 
 //++ ------------------------------------------------------------------------------------
@@ -335,10 +332,10 @@ CMICmdArgSet::IsArgContextEmpty(void) const
 // Details: Retrieve the number of arguments that are being used for the command.
 // Type:    Method.
 // Args:    None.
-// Return:  MIuint - Argument count.
+// Return:  size_t - Argument count.
 // Throws:  None.
 //--
-MIuint
+size_t
 CMICmdArgSet::GetCount(void) const
 {
     return m_setCmdArgs.size();

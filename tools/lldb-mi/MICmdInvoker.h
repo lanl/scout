@@ -36,9 +36,6 @@ class CMICmnStreamStdout;
 //          The Invoker takes ownership of any commands created which means it
 //          is the only object to delete them when a command is finished working.
 //          A singleton class.
-// Gotchas: None.
-// Authors: Illya Rudkin 19/02/2014.
-// Changes: None.
 //--
 class CMICmdInvoker : public CMICmnBase, public CMICmdMgrSetCmdDeleteCallback::ICallback, public MI::ISingleton<CMICmdInvoker>
 {
@@ -55,7 +52,7 @@ class CMICmdInvoker : public CMICmnBase, public CMICmdMgrSetCmdDeleteCallback::I
         virtual bool Acknowledge(void) = 0;
         virtual bool Execute(void) = 0;
         virtual bool ParseArgs(void) = 0;
-        virtual bool SetCmdData(const SMICmdData &vCmdData) = 0;
+        virtual void SetCmdData(const SMICmdData &vCmdData) = 0;
         virtual const SMICmdData &GetCmdData(void) const = 0;
         virtual const CMIUtilString &GetErrorDescription(void) const = 0;
         virtual void CmdFinishedTellInvoker(void) const = 0;
@@ -63,7 +60,7 @@ class CMICmdInvoker : public CMICmnBase, public CMICmdMgrSetCmdDeleteCallback::I
         virtual const CMIUtilString &GetMIResultRecordExtra(void) const = 0;
         virtual bool HasMIResultRecordExtra(void) const = 0;
 
-        /* dtor */ virtual ~ICmd(void){};
+        /* dtor */ virtual ~ICmd(void){}
     };
 
     // Methods:

@@ -623,6 +623,7 @@ ClangASTImporter::Minion::ExecuteDeportWorkQueues ()
         m_decls_to_deport->erase(decl);
         
         DeclOrigin &origin = to_context_md->m_origins[decl];
+        UNUSED_IF_ASSERT_DISABLED(origin);
         
         assert (origin.ctx == m_source_ctx);    // otherwise we should never have added this
                                                 // because it doesn't need to be deported
@@ -763,7 +764,8 @@ ClangASTImporter::Minion::Imported (clang::Decl *from, clang::Decl *to)
             if (to_context_md->m_origins.find(to) == to_context_md->m_origins.end() ||
                 user_id != LLDB_INVALID_UID)
             {
-                to_context_md->m_origins[to] = origin_iter->second;
+                if (origin_iter->second.ctx != &to->getASTContext())
+                    to_context_md->m_origins[to] = origin_iter->second;
             }
                 
             MinionSP direct_completer = m_master.GetMinion(&to->getASTContext(), origin_iter->second.ctx);
