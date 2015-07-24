@@ -84,29 +84,14 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
       Value *Result =
          llvm::UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
 
-       for (unsigned i = 0; i <= 3; ++i) {
-         if (i == 3) sprintf(IRNameStr, "forall.linearidx");
-         else sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
-
-         llvm::Value *Val;
-         if (InnerForallScope) {
-           assert(false && "wip");
-         } else {
-
-           if (i == 3) {
-             Val = Builder.CreateLoad(LookupInductionVar(i),IRNameStr);
-           } else {
-             Val = Builder.CreateAdd(
-                 Builder.CreateLoad(LookupInductionVar(i)),
-                 Builder.CreateLoad(LookupMeshStart(i)),
-                 IRNameStr);
-           }
-        }
-
+       for (unsigned i = 0; i < 3; ++i) {
          sprintf(IRNameStr, "gindex.%s", IndexNames[i]);
-         Result = Builder.CreateInsertElement(Result, Val,
+         Result = Builder.CreateInsertElement(Result, EmitGIndex(i),
               Builder.getInt32(i), IRNameStr);
        }
+       Result = Builder.CreateInsertElement(Result, 
+            Builder.CreateLoad(LookupInductionVar(3), "forall.linearidx"),
+            Builder.getInt32(3), "gindex.w");
        *RV = RValue::get(Result);
        return true;
     }
