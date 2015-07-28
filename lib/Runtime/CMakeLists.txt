@@ -90,6 +90,10 @@ endif()
 file(GLOB rt_srcs_cpu cpu/*.cpp)
 list(APPEND rt_srcs ${rt_srcs_cpu})
 
+#mesh
+file(GLOB rt_srcs_mesh mesh/*.cpp)
+list(APPEND rt_srcs ${rt_srcs_mesh})
+
 find_package(QT5 REQUIRED)
 if (QT5_FOUND)
   find_package(Qt5Widgets)
