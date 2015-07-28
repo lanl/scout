@@ -52,7 +52,7 @@
  * #####
  */
 
-#include "Mesh.h"
+#include "MeshTopology.h"
 
 namespace{
 
@@ -118,7 +118,21 @@ namespace{
   
   };
 
+  template<class MT>
+  class Mesh{
+  public:
+
+    MeshTopology<MT>& topology(){
+      return t_;
+    }
+
+  private:
+    MeshTopology<MT> t_;
+  };
+
 } // namespace
+
+
 
 using UniformMesh = Mesh<UniformMeshType>;
 
@@ -126,24 +140,25 @@ extern "C"{
 
   void* __scrt_create_mesh2d(uint32_t width, uint32_t height){
     auto mesh = new UniformMesh;
+    auto& topology = mesh->topology();
 
     size_t id = 0;
     for(size_t j = 0; j < height + 1; ++j){
       for(size_t i = 0; i < width + 1; ++i){
-        mesh->addVertex(id++, {UniformMesh::Float(i),
-                               UniformMesh::Float(j)}); 
+        topology.addVertex(id++, {UniformMeshType::Float(i),
+                                  UniformMeshType::Float(j)}); 
       }
     }
 
     id = 0;
     for(size_t j = 0; j < height; ++j){
       for(size_t i = 0; i < width; ++i){
-        mesh->addCell(id++,
-                      {i + j*(width + 1),
-                       i + (j + 1)*(width + 1),
-                       i + 1 + j*(width + 1),
-                       i + 1 + (j + 1)*(width + 1)}
-                     );
+        topology.addCell(id++,
+                         {i + j*(width + 1),
+                          i + (j + 1)*(width + 1),
+                          i + 1 + j*(width + 1),
+                          i + 1 + (j + 1)*(width + 1)}
+                         );
       }
     }
 

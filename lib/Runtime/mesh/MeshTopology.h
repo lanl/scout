@@ -1,5 +1,5 @@
-#ifndef __MESH_H__
-#define __MESH_H__
+#ifndef __MESH_TOPOLOGY_H__
+#define __MESH_TOPOLOGY_H__
 
 #include <iostream>
 #include <array>
@@ -8,7 +8,7 @@
 #include <unordered_map>
 
 template<class MT>
-class Mesh{
+class MeshTopology{
 public:
   using Id = typename MT::Id;
   using Float = typename MT::Float;
@@ -228,7 +228,7 @@ public:
   
   class Entity{
   public:
-    Entity(Mesh& mesh, size_t dim, size_t index=0)
+    Entity(MeshTopology& mesh, size_t dim, size_t index=0)
     : mesh_(mesh),
     dim_(dim),
     index_(index),
@@ -260,12 +260,12 @@ public:
       return index_ >= endIndex_;
     }
     
-    Mesh& mesh(){
+    MeshTopology& mesh(){
       return mesh_;
     }
     
   private:
-    Mesh& mesh_;
+    MeshTopology& mesh_;
     size_t dim_;
     size_t index_;
     size_t endIndex_;
@@ -324,7 +324,7 @@ public:
     }
     
   private:
-    Mesh& mesh_;
+    MeshTopology& mesh_;
     size_t dim_;
     size_t index_;
     size_t endIndex_;
@@ -333,7 +333,7 @@ public:
   
   class Cell : public Entity{
   public:
-    Cell(Mesh& mesh, size_t index=0)
+    Cell(MeshTopology& mesh, size_t index=0)
     : Entity(mesh, MT::topologicalDimension(), index){}
   };
   
@@ -345,7 +345,7 @@ public:
   
   class Vertex : public Entity{
   public:
-    Vertex(Mesh& mesh, size_t index=0)
+    Vertex(MeshTopology& mesh, size_t index=0)
     : Entity(mesh, 0, index){}
   };
   
@@ -357,7 +357,7 @@ public:
   
   class Edge : public Entity{
   public:
-    Edge(Mesh& mesh, size_t index=0)
+    Edge(MeshTopology& mesh, size_t index=0)
     : Entity(mesh, 1, index){}
   };
   
@@ -369,7 +369,7 @@ public:
   
   class Face : public Entity{
   public:
-    Face(Mesh& mesh, size_t index=0)
+    Face(MeshTopology& mesh, size_t index=0)
     : Entity(mesh, MT::topologicalDimension() - 1, index){}
   };
   
@@ -379,7 +379,7 @@ public:
     : EntityIterator(entity, MT::topologicalDimension() - 1, index){}
   };
   
-  Mesh(){
+  MeshTopology(){
     topology_.getConnectivity(MT::topologicalDimension(), 0).init();
     for(size_t i = 0; i <= MT::topologicalDimension(); ++i){
       size_[i] = 0;
@@ -626,4 +626,4 @@ private:
   Geometry geometry_;
 };
 
-#endif // __MESH_H__
+#endif // __MESH_TOPOLOGY_H__
