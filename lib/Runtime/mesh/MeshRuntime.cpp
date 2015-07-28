@@ -128,20 +128,21 @@ extern "C"{
     auto mesh = new UniformMesh;
 
     size_t id = 0;
-    for(size_t j = 0; j < HEIGHT + 1; ++j){
-      for(size_t i = 0; i < WIDTH + 1; ++i){
-        mesh.addVertex(id++, {UniformMesh::Float(i), UniformMesh::Float(j)}); 
+    for(size_t j = 0; j < height + 1; ++j){
+      for(size_t i = 0; i < width + 1; ++i){
+        mesh->addVertex(id++, {UniformMesh::Float(i),
+                               UniformMesh::Float(j)}); 
       }
     }
 
     id = 0;
-    for(size_t j = 0; j < HEIGHT; ++j){
-      for(size_t i = 0; i < WIDTH; ++i){
-        mesh.addCell(id++,
-                     {i + j*(WIDTH + 1),
-                         i + (j + 1)*(WIDTH + 1),
-                         i + 1 + j*(WIDTH + 1),
-                         i + 1 + (j + 1)*(WIDTH + 1)}
+    for(size_t j = 0; j < height; ++j){
+      for(size_t i = 0; i < width; ++i){
+        mesh->addCell(id++,
+                      {i + j*(width + 1),
+                       i + (j + 1)*(width + 1),
+                       i + 1 + j*(width + 1),
+                       i + 1 + (j + 1)*(width + 1)}
                      );
       }
     }
