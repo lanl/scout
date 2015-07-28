@@ -417,3 +417,10 @@ llvm::Function* CGScoutRuntime::SaveMeshEndFunc(){
                                 llvm::PointerType::get(CGM.Int8Ty, 0)}
                               );
 }
+
+llvm::Function* CGScoutRuntime::CreateUniformMesh2dFunc(){
+  return ScoutRuntimeFunction("__scrt_create_uniform_mesh2d",
+                              {CGM.Int32Ty, CGM.Int32Ty},
+                              CGM.VoidPtrTy
+                              );
+}

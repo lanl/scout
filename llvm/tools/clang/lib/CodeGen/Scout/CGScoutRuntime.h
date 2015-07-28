@@ -107,6 +107,8 @@ namespace clang {
       llvm::Function *SaveMeshAddFieldFunc();
       llvm::Function *SaveMeshEndFunc();
       
+      llvm::Function *CreateUniformMesh2dFunc();
+      
       void DumpValue(CodeGenFunction& CGF, const char* label,
                      llvm::Value* value);
     };

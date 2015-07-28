@@ -54,6 +54,9 @@
 
 #include "MeshTopology.h"
 
+using namespace std;
+using namespace scout;
+
 namespace{
 
   class UniformMeshType{
@@ -118,51 +121,51 @@ namespace{
   
   };
 
-  template<class MT>
-  class Mesh{
-  public:
-
-    MeshTopology<MT>& topology(){
-      return t_;
-    }
-
-  private:
-    MeshTopology<MT> t_;
-  };
-
 } // namespace
 
-
-
-using UniformMesh = Mesh<UniformMeshType>;
+using UniformMesh = MeshTopology<UniformMeshType>;
 
 extern "C"{
 
-  void* __scrt_create_mesh2d(uint32_t width, uint32_t height){
+  void* __scrt_create_uniform_mesh2d(uint32_t width, uint32_t height){
     auto mesh = new UniformMesh;
-    auto& topology = mesh->topology();
 
     size_t id = 0;
     for(size_t j = 0; j < height + 1; ++j){
       for(size_t i = 0; i < width + 1; ++i){
-        topology.addVertex(id++, {UniformMeshType::Float(i),
-                                  UniformMeshType::Float(j)}); 
+        mesh->addVertex(id++, {UniformMeshType::Float(i),
+                               UniformMeshType::Float(j)}); 
       }
     }
 
     id = 0;
     for(size_t j = 0; j < height; ++j){
       for(size_t i = 0; i < width; ++i){
-        topology.addCell(id++,
-                         {i + j*(width + 1),
-                          i + (j + 1)*(width + 1),
-                          i + 1 + j*(width + 1),
-                          i + 1 + (j + 1)*(width + 1)}
-                         );
+        mesh->addCell(id++,
+                      {i + j*(width + 1),
+                       i + (j + 1)*(width + 1),
+                       i + 1 + j*(width + 1),
+                       i + 1 + (j + 1)*(width + 1)}
+                      );
       }
     }
 
     return mesh;
+  }
+
+  uint64_t __scrt_mesh_num_entities(void* mesh, uint32_t dim){
+    return static_cast<MeshTopologyBase*>(mesh)->numEntities(dim);
+  }
+
+  struct EntityIterator_{
+    
+  };
+
+  uint64_t __scrt_get_entity_iterator(void* mesh,
+                                      uint32_t fromDim,
+                                      uint32_t toDim,
+                                      EntityIterator_* itr){
+    
   }
 
 } // extern "C"
