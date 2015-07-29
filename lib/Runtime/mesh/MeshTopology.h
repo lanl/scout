@@ -11,12 +11,7 @@ namespace scout{
 
   class MeshTopologyBase{
   public:
-    size_t numEntities(size_t dim){
-      return size_[dim];
-    }
-
-  protected:
-    using Id = size_t;
+    using Id = uint64_t;
 
     using IdVec = std::vector<Id>;
   
@@ -149,6 +144,38 @@ namespace scout{
       IdVec groupVec_;
     };
 
+    size_t numEntities(size_t dim){
+      size_t size = size_[dim];
+      if(size == 0){
+        build(dim);
+        return size_[dim];
+      }
+
+      return size;
+    }
+
+    size_t getEntities(uint32_t fromDim,
+                       uint32_t toDim,
+                       uint64_t index,
+                       uint64_t** entities){
+      Connectivity& c = getConnectivity(fromDim, toDim);
+      if(c.empty()){
+        compute(fromDim, toDim);
+      }
+
+      size_t endIndex_;
+      *entities = c.getEntities(index, endIndex_);
+      return endIndex_;
+    }
+
+    virtual void build(size_t dim) = 0;
+    
+    virtual void compute(size_t fromDim, size_t toDim) = 0;  
+  
+    virtual Connectivity&
+    getConnectivity(size_t fromDim, size_t toDim) = 0;
+
+  protected:  
     std::vector<size_t> size_;  
   };
 
@@ -230,7 +257,7 @@ namespace scout{
       }
     
       Id* getEntities(size_t dim){
-        Connectivity& c = mesh_.getConnectivity(dim_, dim);
+        Connectivity& c = mesh_.getConnectivity_(dim_, dim);
         assert(!c.empty());
         return c.getEntities(index_);
       }
@@ -262,7 +289,7 @@ namespace scout{
         : mesh_(entity.mesh()),
           dim_(dim),
           index_(index){
-        Connectivity& c = mesh_.getConnectivity(entity.dim(), dim_);
+        Connectivity& c = mesh_.getConnectivity_(entity.dim(), dim_);
         if(c.empty()){
           mesh_.compute(entity.dim(), dim_);
         }
@@ -275,7 +302,7 @@ namespace scout{
         : mesh_(itr.mesh_),
           dim_(dim),
           index_(index){
-        Connectivity& c = mesh_.getConnectivity(itr.dim_, dim_);
+        Connectivity& c = mesh_.getConnectivity_(itr.dim_, dim_);
         if(c.empty()){
           mesh_.compute(itr.dim_, dim_);
         }
@@ -293,7 +320,7 @@ namespace scout{
       }
     
       Id* getEntities(size_t dim){
-        Connectivity& c = mesh_.getConnectivity(dim_, dim);
+        Connectivity& c = mesh_.getConnectivity_(dim_, dim);
         assert(!c.empty());
         return c.getEntities(index_);
       }
@@ -365,7 +392,7 @@ namespace scout{
     };
   
     MeshTopology(){
-      getConnectivity(MT::topologicalDimension(), 0).init();
+      getConnectivity_(MT::topologicalDimension(), 0).init();
       for(size_t i = 0; i <= MT::topologicalDimension(); ++i){
         size_.push_back(0);
       }
@@ -380,7 +407,7 @@ namespace scout{
       assert(il.size() == MT::numVertices(MT::topologicalDimension()) &&
              "invalid number of vertices per cell");
     
-      auto& c = getConnectivity(MT::topologicalDimension(), 0);
+      auto& c = getConnectivity_(MT::topologicalDimension(), 0);
       for(Id id : il){
         c.push(id);
       }
@@ -388,13 +415,13 @@ namespace scout{
       ++size_[MT::topologicalDimension()];
     }
   
-    void build(size_t dim){
+    void build(size_t dim) override{
       assert(dim <= MT::topologicalDimension());
     
-      Connectivity& entityToVertex = getConnectivity(dim, 0);
+      Connectivity& entityToVertex = getConnectivity_(dim, 0);
 
       Connectivity& cellToEntity =
-        getConnectivity(MT::topologicalDimension(), dim);
+        getConnectivity_(MT::topologicalDimension(), dim);
     
       size_t numCellVertices = MT::numVertices(MT::topologicalDimension());
       size_t numEntityVertices = MT::numVertices(dim);
@@ -412,7 +439,7 @@ namespace scout{
       size_t n = numCells();
     
       Connectivity& cn =
-        getConnectivity(MT::topologicalDimension(), 0);
+        getConnectivity_(MT::topologicalDimension(), 0);
       assert(!cn.empty());
     
       for(size_t c = 0; c < n; ++c){
@@ -447,9 +474,9 @@ namespace scout{
     }
   
     void transpose(size_t fromDim, size_t toDim){
-      Connectivity& conn = getConnectivity(fromDim, toDim);
+      Connectivity& conn = getConnectivity_(fromDim, toDim);
     
-      Connectivity& fromConn = getConnectivity(toDim, fromDim);
+      Connectivity& fromConn = getConnectivity_(toDim, fromDim);
       assert(!fromConn.empty());
     
       IdVec pos(numEntities(fromDim), 0);
@@ -472,7 +499,7 @@ namespace scout{
     }
   
     void intersect(size_t fromDim, size_t toDim, size_t dim){
-      Connectivity& conn = getConnectivity(fromDim, toDim);
+      Connectivity& conn = getConnectivity_(fromDim, toDim);
       if(!conn.empty()){
         return;
       }
@@ -537,8 +564,8 @@ namespace scout{
       conn.init(conns);
     }
   
-    void compute(size_t fromDim, size_t toDim){
-      Connectivity& conn = getConnectivity(fromDim, toDim);
+    void compute(size_t fromDim, size_t toDim) override{
+      Connectivity& conn = getConnectivity_(fromDim, toDim);
     
       if(!conn.empty()){
         return;
@@ -563,7 +590,7 @@ namespace scout{
           c[e.index()][0] = e.index();
         }
       
-        getConnectivity(fromDim, toDim).set(c);
+        getConnectivity_(fromDim, toDim).set(c);
       }
       else if(fromDim < toDim){
         compute(toDim, fromDim);
@@ -592,8 +619,12 @@ namespace scout{
     size_t numFaces(){
       return size_[MT::topologicalDimension() - 1];
     }
-    
-    Connectivity& getConnectivity(size_t fromDim, size_t toDim){
+
+    Connectivity& getConnectivity(size_t fromDim, size_t toDim) override{
+      return getConnectivity_(fromDim, toDim);
+    }
+
+    Connectivity& getConnectivity_(size_t fromDim, size_t toDim){
       assert(fromDim < topology_.size() && "invalid fromDim");
       auto& t = topology_[fromDim];
       assert(toDim < t.size() && "invalid toDim");
@@ -612,10 +643,10 @@ namespace scout{
     }
   
   private:
-      using Topology_ =
-        std::array<std::array<Connectivity, 
-           MT::topologicalDimension() + 1>,
-           MT::topologicalDimension() + 1>;
+    using Topology_ =
+                                                          std::array<std::array<Connectivity, 
+                                                                                MT::topologicalDimension() + 1>,
+                                                                     MT::topologicalDimension() + 1>;
     
     Topology_ topology_;
     Geometry geometry_;

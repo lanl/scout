@@ -61,7 +61,7 @@ namespace{
 
   class UniformMeshType{
   public:
-    using Id = size_t;
+    using Id = uint64_t;
     using Float = double;
 
     static constexpr size_t topologicalDimension(){
@@ -153,19 +153,21 @@ extern "C"{
     return mesh;
   }
 
+  // return end index
   uint64_t __scrt_mesh_num_entities(void* mesh, uint32_t dim){
     return static_cast<MeshTopologyBase*>(mesh)->numEntities(dim);
   }
 
-  struct EntityIterator_{
-    
-  };
-
-  uint64_t __scrt_get_entity_iterator(void* mesh,
-                                      uint32_t fromDim,
-                                      uint32_t toDim,
-                                      EntityIterator_* itr){
-    
+  // return end index
+  uint64_t __scrt_get_entities(void* mesh,
+                               uint32_t fromDim,
+                               uint32_t toDim,
+                               uint64_t index,
+                               uint64_t** entities){
+    return static_cast<MeshTopologyBase*>(mesh)->getEntities(fromDim,
+                                                             toDim,
+                                                             index,
+                                                             entities);
   }
-
+  
 } // extern "C"
