@@ -398,15 +398,18 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     switch(Dimensions.size()){
       case 1:
         args = {Dimensions[0]};
-        meshTopology = Builder.CreateCall(R.CreateUniformMesh1dFunc(), args);
+        meshTopology =
+        Builder.CreateCall(R.CreateUniformMesh1dFunc(), args, "topology");
         break;
       case 2:
         args = {Dimensions[0], Dimensions[1]};
-        meshTopology = Builder.CreateCall(R.CreateUniformMesh2dFunc(), args);
+        meshTopology =
+        Builder.CreateCall(R.CreateUniformMesh2dFunc(), args, "topology");
         break;
       case 3:
         args = {Dimensions[0], Dimensions[1], Dimensions[2]};
-        meshTopology = Builder.CreateCall(R.CreateUniformMesh3dFunc(), args);
+        meshTopology =
+        Builder.CreateCall(R.CreateUniformMesh3dFunc(), args, "topology");
         break;
       default:
         assert(false && "invalid mesh dimensions");
@@ -606,7 +609,9 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     }
 
     // store ptr to mesh topology
-    llvm::Value* mtField = Builder.CreateConstInBoundsGEP2_32(0, Alloc, 0, nfields, IRNameStr);
+    llvm::Value* mtField =
+    Builder.CreateConstInBoundsGEP2_32(0, Alloc, 0, nfields);
+    
     Builder.CreateStore(meshTopology, mtField);
     
     if(CGM.getCodeGenOpts().ScoutLegionSupport) {
