@@ -644,9 +644,8 @@ namespace scout{
   
   private:
     using Topology_ =
-                                                          std::array<std::array<Connectivity, 
-                                                                                MT::topologicalDimension() + 1>,
-                                                                     MT::topologicalDimension() + 1>;
+      std::array<std::array<Connectivity, MT::topologicalDimension() + 1>,
+      MT::topologicalDimension() + 1>;
     
     Topology_ topology_;
     Geometry geometry_;

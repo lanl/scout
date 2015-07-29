@@ -424,3 +424,22 @@ llvm::Function* CGScoutRuntime::CreateUniformMesh2dFunc(){
                               CGM.VoidPtrTy
                               );
 }
+
+llvm::Function* CGScoutRuntime::MeshNumEntitiesFunc(){
+  return ScoutRuntimeFunction("__scrt_mesh_num_entities",
+                              {CGM.VoidPtrTy, CGM.Int32Ty},
+                              CGM.Int64Ty
+                              );
+}
+
+llvm::Function* CGScoutRuntime::MeshGetEntitiesFunc(){
+  llvm::Type* I64PtrTy = llvm::PointerType::get(CGM.Int64Ty, 0);
+  llvm::Type* I64Ptr2Ty = llvm::PointerType::get(I64PtrTy, 0);
+  
+  return
+  ScoutRuntimeFunction("__scrt_mesh_get_entities",
+                       {CGM.VoidPtrTy, CGM.Int32Ty, CGM.Int32Ty,
+                         CGM.Int64Ty, I64Ptr2Ty},
+                       CGM.Int64Ty
+                       );
+}

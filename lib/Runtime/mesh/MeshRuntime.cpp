@@ -159,11 +159,11 @@ extern "C"{
   }
 
   // return end index
-  uint64_t __scrt_get_entities(void* mesh,
-                               uint32_t fromDim,
-                               uint32_t toDim,
-                               uint64_t index,
-                               uint64_t** entities){
+  uint64_t __scrt_mesh_get_entities(void* mesh,
+                                    uint32_t fromDim,
+                                    uint32_t toDim,
+                                    uint64_t index,
+                                    uint64_t** entities){
     return static_cast<MeshTopologyBase*>(mesh)->getEntities(fromDim,
                                                              toDim,
                                                              index,

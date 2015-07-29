@@ -108,6 +108,8 @@ namespace clang {
       llvm::Function *SaveMeshEndFunc();
       
       llvm::Function *CreateUniformMesh2dFunc();
+      llvm::Function *MeshNumEntitiesFunc();
+      llvm::Function *MeshGetEntitiesFunc();
       
       void DumpValue(CodeGenFunction& CGF, const char* label,
                      llvm::Value* value);
