@@ -106,8 +106,10 @@ namespace clang {
       llvm::Function *SaveMeshStartFunc();
       llvm::Function *SaveMeshAddFieldFunc();
       llvm::Function *SaveMeshEndFunc();
-      
+
+      llvm::Function *CreateUniformMesh1dFunc();
       llvm::Function *CreateUniformMesh2dFunc();
+      llvm::Function *CreateUniformMesh3dFunc();
       llvm::Function *MeshNumEntitiesFunc();
       llvm::Function *MeshGetEntitiesFunc();
       

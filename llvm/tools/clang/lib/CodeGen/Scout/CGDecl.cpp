@@ -145,8 +145,8 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
   unsigned int rank = dims.size();
 
   unsigned int nfields = MD->fields();
-  size_t start = nfields +  MeshParameterOffset::WidthOffset;
-  size_t sizestart = nfields +  MeshParameterOffset::XSizeOffset;
+  size_t start = nfields +  MeshParameterOffset::WidthOffset + 1;
+  size_t sizestart = nfields +  MeshParameterOffset::XSizeOffset + 1;
 
   for(size_t i = 0; i < rank; ++i) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
@@ -368,6 +368,10 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
   QualType T = D.getType();
   const clang::Type &Ty = *getContext().getCanonicalType(T).getTypePtr();
 
+  using ValueVec = vector<llvm::Value*>;
+  
+  auto R = CGM.getScoutRuntime();
+  
   // SC_TODO - we need to handle the other mesh types here...
   //
   if ((Ty.getTypeClass() == Type::UniformMesh) || (Ty.getTypeClass() == Type::ALEMesh)) {
@@ -387,6 +391,27 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     SmallVector<llvm::Value*, 3> Dimensions;
     GetMeshDimensions(MT, Dimensions);
 
+    ValueVec args;
+    
+    llvm::Value* meshTopology;
+    
+    switch(Dimensions.size()){
+      case 1:
+        args = {Dimensions[0]};
+        meshTopology = Builder.CreateCall(R.CreateUniformMesh1dFunc(), args);
+        break;
+      case 2:
+        args = {Dimensions[0], Dimensions[1]};
+        meshTopology = Builder.CreateCall(R.CreateUniformMesh2dFunc(), args);
+        break;
+      case 3:
+        args = {Dimensions[0], Dimensions[1], Dimensions[2]};
+        meshTopology = Builder.CreateCall(R.CreateUniformMesh3dFunc(), args);
+        break;
+      default:
+        assert(false && "invalid mesh dimensions");
+    }
+    
     llvm::Value* Unimesh = 0;
 
     if(CGM.getCodeGenOpts().ScoutLegionSupport) {
@@ -431,42 +456,34 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       MeshMD->addOperand(llvm::MDNode::get(getLLVMContext(), ArrayRef<llvm::Metadata*>(MeshInfoMD)));
     }
 
-    bool hasCells = false;
-    bool hasVertices = false;
-    bool hasEdges = false;
-    bool hasFaces = false;
-
+    llvm::Value* numCells = nullptr;
+    llvm::Value* numVertices = nullptr;
+    llvm::Value* numEdges = nullptr;
+    llvm::Value* numFaces = nullptr;
+    
     for(MeshDecl::field_iterator itr = MD->field_begin(),
         itr_end = MD->field_end(); itr != itr_end; ++itr){
-      if(itr->isCellLocated()){
-        hasCells = true;
+      if(!numCells && itr->isCellLocated()){
+        args =
+        {meshTopology, llvm::ConstantInt::get(Int32Ty, Dimensions.size())};
+        numCells = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
       }
-      else if(itr->isVertexLocated()) {
-        hasVertices = true;
+      else if(!numVertices && itr->isVertexLocated()) {
+        args =
+        {meshTopology, llvm::ConstantInt::get(Int32Ty, 0)};
+        numVertices = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
       }
-      else if(itr->isEdgeLocated()){
-        hasEdges = true;
+      else if(!numEdges && itr->isEdgeLocated()){
+        args =
+        {meshTopology, llvm::ConstantInt::get(Int32Ty, 1)};
+        numEdges = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
       }
-      else if(itr->isFaceLocated()){
-        hasFaces = true;
+      else if(!numFaces && itr->isFaceLocated()){
+        args =
+        {meshTopology, llvm::ConstantInt::get(Int32Ty, Dimensions.size() - 1)};
+        numFaces = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
       }
     }
-
-    // Get number vertices for ALE mesh 
-    if (Ty.getTypeClass() == Type::ALEMesh) {
-      hasVertices = true;
-    }
-
-    llvm::Value* numCells = 0;
-    llvm::Value* numVertices = 0;
-    llvm::Value* numEdges = 0;
-    llvm::Value* numFaces = 0;
-
-    GetNumMeshItems(Dimensions,
-                    hasCells ? &numCells : 0,
-                    hasVertices ? &numVertices : 0,
-                    hasEdges ? &numEdges : 0,
-                    hasFaces ? &numFaces : 0);
 
     // need access to these field decls so we
     // can determine if we will dynamically allocate
@@ -478,7 +495,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     unsigned int nfields = MD->fields();
 
     llvm::StructType *structTy = cast<llvm::StructType>(Alloc->getType()->getContainedType(0));
-
+    
     for(unsigned i = 0; i < nfields; ++i) {
 
       // Compute size of needed field memory in bytes
@@ -587,7 +604,11 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
         Builder.CreateCall(F, ArrayRef<llvm::Value *>(Args));
       }
     }
-   
+
+    // store ptr to mesh topology
+    llvm::Value* mtField = Builder.CreateConstInBoundsGEP2_32(0, Alloc, 0, nfields, IRNameStr);
+    Builder.CreateStore(meshTopology, mtField);
+    
     if(CGM.getCodeGenOpts().ScoutLegionSupport) {
       llvm::Function *F = CGM.getLegionCRuntime().ScUniformMeshInitFunc();
     

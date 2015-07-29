@@ -163,6 +163,7 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   MeshDecl::field_iterator it_end = mesh->field_end();
 
   std::vector<llvm::Type*> eltTys;
+  
   FieldDeclVector CellFields; 
   FieldDeclVector VertexFields;
   FieldDeclVector EdgeFields;
@@ -193,6 +194,9 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
     }
   }
 
+  // mesh topology pointer
+  eltTys.push_back(CGM.VoidPtrTy);
+  
   AddMeshFieldMetadata("cells",    CellFields,   MeshInfoMD);
   AddMeshFieldMetadata("vertices", VertexFields, MeshInfoMD);
   AddMeshFieldMetadata("edges",    EdgeFields,   MeshInfoMD);

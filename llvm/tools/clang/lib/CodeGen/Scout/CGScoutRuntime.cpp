@@ -418,9 +418,23 @@ llvm::Function* CGScoutRuntime::SaveMeshEndFunc(){
                               );
 }
 
+llvm::Function* CGScoutRuntime::CreateUniformMesh1dFunc(){
+  return ScoutRuntimeFunction("__scrt_create_uniform_mesh1d",
+                              {CGM.Int64Ty},
+                              CGM.VoidPtrTy
+                              );
+}
+
 llvm::Function* CGScoutRuntime::CreateUniformMesh2dFunc(){
   return ScoutRuntimeFunction("__scrt_create_uniform_mesh2d",
-                              {CGM.Int32Ty, CGM.Int32Ty},
+                              {CGM.Int64Ty, CGM.Int64Ty},
+                              CGM.VoidPtrTy
+                              );
+}
+
+llvm::Function* CGScoutRuntime::CreateUniformMesh3dFunc(){
+  return ScoutRuntimeFunction("__scrt_create_uniform_mesh3d",
+                              {CGM.Int64Ty, CGM.Int64Ty, CGM.Int64Ty},
                               CGM.VoidPtrTy
                               );
 }

@@ -127,7 +127,11 @@ using UniformMesh = MeshTopology<UniformMeshType>;
 
 extern "C"{
 
-  void* __scrt_create_uniform_mesh2d(uint32_t width, uint32_t height){
+  void* __scrt_create_uniform_mesh1d(uint64_t width){
+    assert(false && "unimplemented");
+  }
+
+  void* __scrt_create_uniform_mesh2d(uint64_t width, uint64_t height){
     auto mesh = new UniformMesh;
 
     size_t id = 0;
@@ -151,6 +155,12 @@ extern "C"{
     }
 
     return mesh;
+  }
+
+  void* __scrt_create_uniform_mesh3d(uint64_t width,
+                                     uint64_t height,
+                                     uint64_t depth){
+    assert(false && "unimplemented");
   }
 
   // return end index
