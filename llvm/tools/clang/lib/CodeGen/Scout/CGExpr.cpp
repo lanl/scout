@@ -151,8 +151,6 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
 
 LValue
 CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E) {
-  E->dump();
-  
   DeclRefExpr* Base;
   if(ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(E->getBase())) {
     Base = cast<DeclRefExpr>(CE->getSubExpr());

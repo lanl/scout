@@ -1728,13 +1728,22 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
     for(const ForallMeshStmt* s : fs){
       ForallData data;
       
-      data.meshVarDecl = s->getMeshVarDecl();
+      const VarDecl* mvd;
+      if(const ImplicitMeshParamDecl* ip =
+         dyn_cast<ImplicitMeshParamDecl>(s->getMeshVarDecl())){
+        mvd = ip->getBaseVarDecl();
+      }
+      else{
+        mvd = s->getMeshVarDecl();
+      }
+      
+      data.meshVarDecl = mvd;
       const MeshType* mt = dyn_cast<MeshType>(data.meshVarDecl->getType());
       const MeshDecl* md = mt->getDecl();
       
       auto& dims = mt->dimensions();
       
-      switch(S.getMeshElementRef()){
+      switch(s->getMeshElementRef()){
         case Vertices:
           data.topologyDim = 0;
           break;
@@ -1751,13 +1760,12 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
           assert(false && "invalid element type");
       }
       
-      llvm::Type* indexPtrType = llvm::PointerType::get(Int64Ty, 0);
-      llvm::Type* indexPtr2Type = llvm::PointerType::get(indexPtrType, 0);
-      
       data.indexPtr = B.CreateAlloca(Int64Ty, nullptr, "index.ptr");
       
       if(i > 0){
-        data.entitiesPtr2 = B.CreateAlloca(indexPtr2Type, nullptr, "entities.ptr");
+        data.entitiesPtr2 =
+        B.CreateAlloca(llvm::PointerType::get(Int64Ty, 0),
+                       nullptr, "entities.ptr");
       }
       else{
         data.entitiesPtr2 = nullptr;
@@ -1769,7 +1777,15 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
     }
   }
   
-  const VarDecl* mvd = S.getMeshVarDecl();
+  const VarDecl* mvd;
+  if(const ImplicitMeshParamDecl* ip =
+     dyn_cast<ImplicitMeshParamDecl>(S.getMeshVarDecl())){
+    mvd = ip->getBaseVarDecl();
+  }
+  else{
+    mvd = S.getMeshVarDecl();
+  }
+  
   const MeshType* mt = dyn_cast<MeshType>(mvd->getType());
   const MeshDecl* md = mt->getDecl();
   
@@ -1795,7 +1811,7 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
     default:
       assert(false && "invalid element type");
   }
-
+  
   int i = FindForallData(mvd, topologyDim);
   assert(i >= 0 && "error finding forall data");
   
@@ -1826,7 +1842,8 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
     ForallData& aboveData = ForallStack[i - 1];
     
     ValueVec args =
-    {ConstantInt::get(Int32Ty, aboveData.topologyDim),
+    {topology,
+      ConstantInt::get(Int32Ty, aboveData.topologyDim),
       ConstantInt::get(Int32Ty, currentData.topologyDim),
       B.CreateLoad(currentData.indexPtr),
       currentData.entitiesPtr2};
