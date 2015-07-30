@@ -1845,7 +1845,7 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
     {topology,
       ConstantInt::get(Int32Ty, aboveData.topologyDim),
       ConstantInt::get(Int32Ty, currentData.topologyDim),
-      B.CreateLoad(currentData.indexPtr),
+      B.CreateLoad(aboveData.indexPtr),
       currentData.entitiesPtr2};
     
     endIndex = B.CreateCall(R.MeshGetEntitiesFunc(), args, "end.index");
