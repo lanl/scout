@@ -150,7 +150,69 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
 }
 
 LValue
-CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
+CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E) {
+  E->dump();
+  
+  DeclRefExpr* Base;
+  if(ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(E->getBase())) {
+    Base = cast<DeclRefExpr>(CE->getSubExpr());
+  } else {
+    Base = cast<DeclRefExpr>(E->getBase());
+  }
+  
+  llvm::Value *Addr;
+  
+  if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(Base->getDecl())) {
+    const VarDecl* mvd = IMPD->getMeshVarDecl();
+    const MeshType* mt = dyn_cast<MeshType>(mvd->getType());
+    
+    auto& dims = mt->dimensions();
+    
+    uint32_t topologyDim;
+    switch(IMPD->getElementType()){
+      case Vertices:
+        topologyDim = 0;
+        break;
+      case Edges:
+        topologyDim = 1;
+        break;
+      case Faces:
+        topologyDim = dims.size() - 1;
+        break;
+      case Cells:
+        topologyDim = dims.size();
+        break;
+      default:
+        assert(false && "invalid element type");
+    }
+    
+    int i = FindForallData(mvd, topologyDim);
+    assert(i >= 0 && "error finding forall data");
+    
+    ForallData& data = ForallStack[i];
+    llvm::Value* Index;
+    if(data.entitiesPtr){
+      Index = Builder.CreateLoad(data.indexPtr);
+      Builder.CreateGEP(data.entitiesPtr, Index, "entity");
+    }
+    else{
+      Index = data.indexPtr;
+    }
+    
+    // lookup underlying mesh instead of implicit mesh
+    GetMeshBaseAddr(mvd, Addr);
+   
+    LValue BaseLV  = MakeAddrLValue(Addr, E->getType());
+    // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
+    MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
+    return EmitLValueForMeshField(BaseLV,  cast<MeshFieldDecl>(MFD), Index); //SC_TODO: why cast?
+    
+    IMPD->dump();
+  }
+  
+  assert(false && "unhandled case");
+  
+  /*
   DeclRefExpr* Base;
   if(ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(E->getBase())) {
     Base = cast<DeclRefExpr>(CE->getSubExpr());
@@ -182,6 +244,7 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index) {
   // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
   MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
   return EmitLValueForMeshField(BaseLV,  cast<MeshFieldDecl>(MFD), Index); //SC_TODO: why cast?
+   */
 }
 
 LValue
@@ -317,8 +380,11 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
 
   // work around bug in llvm, this is similar to what a for loop appears to do
   // see EmitArraySubscriptExpr()
-  llvm::Value *Idx = Builder.CreateSExt(Index, IntPtrTy, "Xall.linearidx"); //forall or renderall
-
+  //llvm::Value *Idx = Builder.CreateSExt(Index, IntPtrTy, "Xall.linearidx"); //forall or renderall
+  //llvm::Value* Idx = Index;
+  
+  llvm::Value* Idx = Builder.CreateLoad(Index);
+  
   // get the correct element of the field depending on the index
   sprintf(IRNameStr, "%s.%s.element.ptr", MeshName.str().c_str(),FieldName.str().c_str());
   addr = Builder.CreateInBoundsGEP(addr, Idx, IRNameStr);
@@ -516,9 +582,10 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
     // make sure this is a mesh
     if(isa<MeshFieldDecl>(E->getMemberDecl())) {
       // get the correct mesh member
-      LValue LV = EmitMeshMemberExpr(E, getCShiftLinearIdx(args));
-
-      return RValue::get(Builder.CreateLoad(LV.getAddress(), "cshift.element"));
+      //LValue LV = EmitMeshMemberExpr(E, getCShiftLinearIdx(args));
+      assert(false && "cshift unimplemented");
+      
+      //return RValue::get(Builder.CreateLoad(LV.getAddress(), "cshift.element"));
     }
   }
   assert(false && "Failed to translate Scout cshift expression to LLVM IR!");
@@ -544,9 +611,12 @@ RValue CodeGenFunction::EmitVFieldExpr(ArgIterator argsBegin,
     // make sure this is a mesh
     if(isa<MeshFieldDecl>(E->getMemberDecl())) {
       // get the correct mesh member
-      LValue LV = EmitMeshMemberExpr(E, getVFieldLinearIdx(args));
       
-      return RValue::get(Builder.CreateLoad(LV.getAddress(), "vfield.element"));
+      assert(false && "vfield unimplemented");
+      
+      //LValue LV = EmitMeshMemberExpr(E, getVFieldLinearIdx(args));
+      
+      //return RValue::get(Builder.CreateLoad(LV.getAddress(), "vfield.element"));
     }
   }
   assert(false && "Failed to translate Scout vfield expression to LLVM IR!");
@@ -703,8 +773,9 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 					 break;
 				 }
        }
-       LValue LV = EmitMeshMemberExpr(E, idx);
-       llvm::Value *V2 = Builder.CreateLoad(LV.getAddress(), "eoshift.element");
+       assert(false && "eoshift unimplemented");
+       //LValue LV = EmitMeshMemberExpr(E, idx);
+       //llvm::Value *V2 = Builder.CreateLoad(LV.getAddress(), "eoshift.element");
        Builder.CreateBr(Merge);
 
 
@@ -712,7 +783,7 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        EmitBlock(Merge);
        llvm::PHINode *PN = Builder.CreatePHI(Boundary.getScalarVal()->getType(), 2, "iftmp");
        PN->addIncoming(V1, FlagThen);
-       PN->addIncoming(V2, FlagElse);
+       //PN->addIncoming(V2, FlagElse);
        return RValue::get(PN);
 
     }

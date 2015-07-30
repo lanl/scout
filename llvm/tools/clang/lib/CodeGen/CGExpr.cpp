@@ -2683,7 +2683,7 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
       return EmitVolumeRenderMeshMemberExpr(E);
     }
     
-    return EmitMeshMemberExpr(E, getMeshIndex(MFD));
+    return EmitMeshMemberExpr(E);
   }
   // +========================================================================+
 

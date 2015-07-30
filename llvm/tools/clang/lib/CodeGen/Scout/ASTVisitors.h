@@ -132,6 +132,39 @@ private:
   MeshShiftMap mins_;
   MeshShiftMap maxs_;
 };
+
+class NestedForallVisitor : public StmtVisitor<ForallVisitor> {
+public:
+  using ForallStmtVec = std::vector<ForallMeshStmt*>;
+  
+  NestedForallVisitor(){}
+  
+  void VisitChildren(Stmt* S){
+    if(S){
+      for(Stmt::child_iterator I = S->child_begin(),
+          E = S->child_end(); I != E; ++I){
+        if(Stmt* child = *I){
+          Visit(child);
+        }
+      }
+    }
+  }
+  
+  void VisitStmt(Stmt* S) {
+    if(ForallMeshStmt* FS = dyn_cast<ForallMeshStmt>(S)){
+      forallStmts_.push_back(FS);
+    }
+    
+    VisitChildren(S);
+  }
+  
+  const ForallStmtVec& forallStmts() const{
+    return forallStmts_;
+  }
+  
+private:
+  ForallStmtVec forallStmts_;
+};
   
 // find what mesh fields are used in a forall
 class RenderallVisitor : public StmtVisitor<RenderallVisitor> {

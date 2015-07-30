@@ -1605,8 +1605,13 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
 }
 
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
+  // ndm - test
+  EmitForallMeshStmt2(S);
+  return;
+  
   const VarDecl* VD = S.getMeshVarDecl();
-
+  VD->dump();
+  
   MeshElementType FET = S.getMeshElementRef();
 
   // handle nested forall, e.g: forall vertices within a forall cells
@@ -1700,6 +1705,152 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
       return;
     default:
       assert(false && "invalid forall case");
+  }
+}
+
+void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
+  using namespace std;
+  using namespace llvm;
+  
+  typedef vector<Value*> ValueVec;
+  
+  auto& B = Builder;
+  auto R = CGM.getScoutRuntime();
+  
+  bool top = ForallStack.empty();
+  
+  if(top){
+    NestedForallVisitor visitor;
+    visitor.VisitStmt(const_cast<ForallMeshStmt*>(&S));
+    auto fs = visitor.forallStmts();
+    
+    size_t i = 0;
+    for(const ForallMeshStmt* s : fs){
+      ForallData data;
+      
+      data.meshVarDecl = s->getMeshVarDecl();
+      const MeshType* mt = dyn_cast<MeshType>(data.meshVarDecl->getType());
+      const MeshDecl* md = mt->getDecl();
+      
+      auto& dims = mt->dimensions();
+      
+      switch(S.getMeshElementRef()){
+        case Vertices:
+          data.topologyDim = 0;
+          break;
+        case Edges:
+          data.topologyDim = 1;
+          break;
+        case Faces:
+          data.topologyDim = dims.size() - 1;
+          break;
+        case Cells:
+          data.topologyDim = dims.size();
+          break;
+        default:
+          assert(false && "invalid element type");
+      }
+      
+      llvm::Type* indexPtrType = llvm::PointerType::get(Int64Ty, 0);
+      llvm::Type* indexPtr2Type = llvm::PointerType::get(indexPtrType, 0);
+      
+      data.indexPtr = B.CreateAlloca(Int64Ty, nullptr, "index.ptr");
+      
+      if(i > 0){
+        data.entitiesPtr2 = B.CreateAlloca(indexPtr2Type, nullptr, "entities.ptr");
+      }
+      else{
+        data.entitiesPtr2 = nullptr;
+      }
+      
+      ForallStack.emplace_back(move(data));
+      
+      ++i;
+    }
+  }
+  
+  const VarDecl* mvd = S.getMeshVarDecl();
+  const MeshType* mt = dyn_cast<MeshType>(mvd->getType());
+  const MeshDecl* md = mt->getDecl();
+  
+  auto& dims = mt->dimensions();
+  
+  Value* meshPtr;
+  GetMeshBaseAddr(mvd, meshPtr);
+  
+  uint32_t topologyDim;
+  switch(S.getMeshElementRef()){
+    case Vertices:
+      topologyDim = 0;
+      break;
+    case Edges:
+      topologyDim = 1;
+      break;
+    case Faces:
+      topologyDim = dims.size() - 1;
+      break;
+    case Cells:
+      topologyDim = dims.size();
+      break;
+    default:
+      assert(false && "invalid element type");
+  }
+
+  int i = FindForallData(mvd, topologyDim);
+  assert(i >= 0 && "error finding forall data");
+  
+  ForallData& topData = ForallStack[0];
+  
+  Value* topology;
+  
+  if(top){
+    topology = B.CreateStructGEP(nullptr, meshPtr, md->fields());
+    topology = B.CreateLoad(topology, "topology.ptr");
+    topData.topology = topology;
+  }
+  else{
+    topology = topData.topology;
+  }
+  
+  ForallData& currentData = ForallStack[i];
+  
+  Value* endIndex;
+  
+  if(top){
+    ValueVec args = {topology, ConstantInt::get(Int32Ty, topologyDim)};
+    endIndex = B.CreateCall(R.MeshNumEntitiesFunc(), args, "end.index");
+  }
+  else{
+    assert(i >= 1);
+    
+    ForallData& aboveData = ForallStack[i - 1];
+    
+    ValueVec args =
+    {ConstantInt::get(Int32Ty, aboveData.topologyDim),
+      ConstantInt::get(Int32Ty, currentData.topologyDim),
+      B.CreateLoad(currentData.indexPtr),
+      currentData.entitiesPtr2};
+    
+    endIndex = B.CreateCall(R.MeshGetEntitiesFunc(), args, "end.index");
+    currentData.entitiesPtr = B.CreateLoad(currentData.entitiesPtr2);
+  }
+  
+  BasicBlock* loopBlock = createBasicBlock("forall.loop");
+  B.CreateBr(loopBlock);
+  EmitBlock(loopBlock);
+  EmitStmt(S.getBody());
+  
+  Value* index = B.CreateLoad(currentData.indexPtr);
+  Value* incIndex = B.CreateAdd(index, ConstantInt::get(Int64Ty, 1));
+  B.CreateStore(incIndex, currentData.indexPtr);
+  
+  Value* cond = B.CreateICmpSLT(incIndex, endIndex, "cond");
+  BasicBlock* exitBlock = createBasicBlock("forall.exit");
+  B.CreateCondBr(cond, loopBlock, exitBlock);
+  EmitBlock(exitBlock);
+  
+  if(top){
+    ForallStack.clear();
   }
 }
 

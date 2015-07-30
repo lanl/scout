@@ -2191,7 +2191,8 @@ public:
   void EmitLegionTask(const FunctionDecl* FD, llvm::Function* taskFunc);
 
   void EmitForallMeshStmt(const ForallMeshStmt &S);
-
+  void EmitForallMeshStmt2(const ForallMeshStmt &S);
+  
   void EmitForallEdges(const ForallMeshStmt &S);
   void EmitForallFaces(const ForallMeshStmt &S);
 
@@ -2258,7 +2259,7 @@ public:
 
   LValue EmitColorDeclRefLValue(const NamedDecl *ND);
   //LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
-  LValue EmitMeshMemberExpr(const MemberExpr *E, llvm::Value *Index);
+  LValue EmitMeshMemberExpr(const MemberExpr *E);
   LValue EmitVolumeRenderMeshMemberExpr(const MemberExpr *E);
   LValue EmitLValueForMeshField(LValue base, const MeshFieldDecl *field, llvm::Value *Index);
   llvm::Value *getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args);
@@ -2310,6 +2311,35 @@ public:
   RValue EmitPlotCall(const CallExpr* C);
   
   LValue EmitFrameVarDeclRefLValue(const VarDecl* ND);
+  
+  int FindForallData(const VarDecl* meshVarDecl, uint32_t topologyDim){
+    int n = ForallStack.size();
+    
+    if(n == 0){
+      return -1;
+    }
+    
+    for(int i = n - 1; i >= 0; --i){
+      ForallData& d = ForallStack[i];
+      if(d.meshVarDecl == meshVarDecl && d.topologyDim == topologyDim){
+        return i;
+      }
+    }
+    
+    return -1;
+  }
+  
+  struct ForallData{
+    const VarDecl* meshVarDecl;
+    uint32_t topologyDim;
+    llvm::Value* topology;
+    llvm::Value* indexPtr;
+    llvm::Value* entitiesPtr2;
+    llvm::Value* entitiesPtr;
+  };
+  
+  std::vector<ForallData> ForallStack;
+  
   // +========================================================================+
 
   void EmitCondBrHints(llvm::LLVMContext &Context, llvm::BranchInst *CondBr,
