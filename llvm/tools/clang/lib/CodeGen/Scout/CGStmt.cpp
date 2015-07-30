@@ -1835,8 +1835,15 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
     currentData.entitiesPtr = B.CreateLoad(currentData.entitiesPtr2);
   }
   
+  BasicBlock* entryBlock = createBasicBlock("forall.entry");
+  B.CreateBr(entryBlock);
+  EmitBlock(entryBlock);
+  
+  B.CreateStore(ConstantInt::get(Int64Ty, 0), currentData.indexPtr);
+  
   BasicBlock* loopBlock = createBasicBlock("forall.loop");
   B.CreateBr(loopBlock);
+  
   EmitBlock(loopBlock);
   EmitStmt(S.getBody());
   

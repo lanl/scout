@@ -133,7 +133,7 @@ private:
   MeshShiftMap maxs_;
 };
 
-class NestedForallVisitor : public StmtVisitor<ForallVisitor> {
+class NestedForallVisitor : public StmtVisitor<NestedForallVisitor> {
 public:
   using ForallStmtVec = std::vector<ForallMeshStmt*>;
   
