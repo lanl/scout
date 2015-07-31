@@ -1834,10 +1834,7 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   assert(i >= 0 && "error finding forall data");
   
   ForallData& topData = ForallStack[0];
-    
-  if(!top){
-    topology = topData.topology;
-  }
+  topology = topData.topology;
   
   ForallData& currentData = ForallStack[i];
   
