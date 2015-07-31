@@ -446,14 +446,18 @@ llvm::Function* CGScoutRuntime::MeshNumEntitiesFunc(){
                               );
 }
 
-llvm::Function* CGScoutRuntime::MeshGetEntitiesFunc(){
-  llvm::Type* I64PtrTy = llvm::PointerType::get(CGM.Int64Ty, 0);
-  llvm::Type* I64Ptr2Ty = llvm::PointerType::get(I64PtrTy, 0);
-  
+llvm::Function* CGScoutRuntime::MeshGetToIndicesFunc(){
   return
-  ScoutRuntimeFunction("__scrt_mesh_get_entities",
-                       {CGM.VoidPtrTy, CGM.Int32Ty, CGM.Int32Ty,
-                         CGM.Int64Ty, I64Ptr2Ty},
-                       CGM.Int64Ty
+  ScoutRuntimeFunction("__scrt_mesh_get_to_indices",
+                       {CGM.VoidPtrTy, CGM.Int32Ty, CGM.Int32Ty},
+                       llvm::PointerType::get(CGM.Int64Ty, 0)
+                       );
+}
+
+llvm::Function* CGScoutRuntime::MeshGetFromIndicesFunc(){
+  return
+  ScoutRuntimeFunction("__scrt_mesh_get_from_indices",
+                       {CGM.VoidPtrTy, CGM.Int32Ty, CGM.Int32Ty},
+                       llvm::PointerType::get(CGM.Int64Ty, 0)
                        );
 }

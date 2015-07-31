@@ -168,16 +168,18 @@ extern "C"{
     return static_cast<MeshTopologyBase*>(topology)->numEntities(dim);
   }
 
-  // return end index
-  uint64_t __scrt_mesh_get_entities(void* topology,
-                                    uint32_t fromDim,
-                                    uint32_t toDim,
-                                    uint64_t index,
-                                    uint64_t** entities){
-    return static_cast<MeshTopologyBase*>(topology)->getEntities(fromDim,
-                                                                 toDim,
-                                                                 index,
-                                                                 entities);
+  uint64_t* __scrt_mesh_get_to_indices(void* topology,
+                                       uint32_t fromDim,
+                                       uint32_t toDim){
+    return static_cast<MeshTopologyBase*>(topology)->getToIndices(
+      fromDim, toDim);
+  }
+
+  uint64_t* __scrt_mesh_get_from_indices(void* topology,
+                                         uint32_t fromDim,
+                                         uint32_t toDim){
+    return static_cast<MeshTopologyBase*>(topology)->getFromIndices(
+      fromDim, toDim);
   }
   
 } // extern "C"

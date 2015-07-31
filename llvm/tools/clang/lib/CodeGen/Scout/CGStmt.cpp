@@ -1719,12 +1719,17 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   
   bool top = ForallStack.empty();
   
+  Value* topology;
+  Value* meshPtr;
+  
   if(top){
     NestedForallVisitor visitor;
     visitor.VisitStmt(const_cast<ForallMeshStmt*>(&S));
     auto fs = visitor.forallStmts();
     
     size_t i = 0;
+    uint32_t aboveTopologyDim;
+    
     for(const ForallMeshStmt* s : fs){
       ForallData data;
       
@@ -1740,6 +1745,13 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
       data.meshVarDecl = mvd;
       const MeshType* mt = dyn_cast<MeshType>(data.meshVarDecl->getType());
       const MeshDecl* md = mt->getDecl();
+  
+      if(i == 0){
+        GetMeshBaseAddr(mvd, meshPtr);
+        topology = B.CreateStructGEP(nullptr, meshPtr, md->fields());
+        topology = B.CreateLoad(topology, "topology.ptr");
+        data.topology = topology;
+      }
       
       auto& dims = mt->dimensions();
       
@@ -1763,15 +1775,24 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
       data.indexPtr = B.CreateAlloca(Int64Ty, nullptr, "index.ptr");
       
       if(i > 0){
-        data.entitiesPtr2 =
-        B.CreateAlloca(llvm::PointerType::get(Int64Ty, 0),
-                       nullptr, "entities.ptr");
+        ValueVec args =
+        {topology, ConstantInt::get(Int32Ty, aboveTopologyDim),
+          ConstantInt::get(Int32Ty, data.topologyDim)};
+        
+        data.fromIndicesPtr =
+        B.CreateCall(R.MeshGetFromIndicesFunc(), args, "from.indices.ptr");
+
+        data.toIndicesPtr =
+        B.CreateCall(R.MeshGetToIndicesFunc(), args, "to.indices.ptr");
       }
       else{
-        data.entitiesPtr2 = nullptr;
+        data.fromIndicesPtr = nullptr;
+        data.toIndicesPtr = nullptr;
       }
       
       ForallStack.emplace_back(move(data));
+    
+      aboveTopologyDim = data.topologyDim;
       
       ++i;
     }
@@ -1790,9 +1811,6 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   const MeshDecl* md = mt->getDecl();
   
   auto& dims = mt->dimensions();
-  
-  Value* meshPtr;
-  GetMeshBaseAddr(mvd, meshPtr);
   
   uint32_t topologyDim;
   switch(S.getMeshElementRef()){
@@ -1816,15 +1834,8 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   assert(i >= 0 && "error finding forall data");
   
   ForallData& topData = ForallStack[0];
-  
-  Value* topology;
-  
-  if(top){
-    topology = B.CreateStructGEP(nullptr, meshPtr, md->fields());
-    topology = B.CreateLoad(topology, "topology.ptr");
-    topData.topology = topology;
-  }
-  else{
+    
+  if(!top){
     topology = topData.topology;
   }
   
@@ -1837,19 +1848,15 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
     endIndex = B.CreateCall(R.MeshNumEntitiesFunc(), args, "end.index");
   }
   else{
-    assert(i >= 1);
-    
     ForallData& aboveData = ForallStack[i - 1];
     
-    ValueVec args =
-    {topology,
-      ConstantInt::get(Int32Ty, aboveData.topologyDim),
-      ConstantInt::get(Int32Ty, currentData.topologyDim),
-      B.CreateLoad(aboveData.indexPtr),
-      currentData.entitiesPtr2};
-    
-    endIndex = B.CreateCall(R.MeshGetEntitiesFunc(), args, "end.index");
-    currentData.entitiesPtr = B.CreateLoad(currentData.entitiesPtr2);
+    Value* fromIndex = B.CreateLoad(aboveData.indexPtr, "from.index");
+    Value* fromIndex1 = B.CreateAdd(fromIndex, ConstantInt::get(Int64Ty, 1), "from.index1");
+    Value* fromId = B.CreateGEP(currentData.fromIndicesPtr, fromIndex);
+    fromId = B.CreateLoad(fromId, "from.id");
+    Value* fromId1 = B.CreateGEP(currentData.fromIndicesPtr, fromIndex1);
+    fromId1 = B.CreateLoad(fromId1, "from.id1");
+    endIndex = B.CreateSub(fromId1, fromId, "end.index");
   }
   
   BasicBlock* entryBlock = createBasicBlock("forall.entry");
@@ -1864,8 +1871,8 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   EmitBlock(loopBlock);
   EmitStmt(S.getBody());
   
-  Value* index = B.CreateLoad(currentData.indexPtr);
-  Value* incIndex = B.CreateAdd(index, ConstantInt::get(Int64Ty, 1));
+  Value* index = B.CreateLoad(currentData.indexPtr, "index1");
+  Value* incIndex = B.CreateAdd(index, ConstantInt::get(Int64Ty, 1), "index.inc");
   B.CreateStore(incIndex, currentData.indexPtr);
   
   Value* cond = B.CreateICmpSLT(incIndex, endIndex, "cond");

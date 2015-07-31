@@ -101,13 +101,13 @@ namespace scout{
         assert(index < groupVec_.size() - 1);
         return idVec_.data() + groupVec_[index];
       }
-    
+
       Id* getEntities(size_t index, size_t& endIndex){
         assert(index < groupVec_.size() - 1);
         endIndex = groupVec_[index + 1] - groupVec_[index];
         return idVec_.data() + groupVec_[index];
       }
-    
+        
       bool empty(){
         return idVec_.empty();
       }
@@ -118,6 +118,14 @@ namespace scout{
     
       size_t fromSize() const{
         return groupVec_.size() - 1;
+      }
+
+      Id* rawIdVec(){
+        return idVec_.data();
+      }
+
+      Id* rawGroupVec(){
+        return groupVec_.data();
       }
     
       void set(ConnVec& conns){
@@ -154,18 +162,27 @@ namespace scout{
       return size;
     }
 
-    size_t getEntities(uint32_t fromDim,
-                       uint32_t toDim,
-                       uint64_t index,
-                       uint64_t** entities){
+    Id* getToIndices(uint32_t fromDim,
+                     uint32_t toDim){
+
       Connectivity& c = getConnectivity(fromDim, toDim);
+
       if(c.empty()){
         compute(fromDim, toDim);
       }
 
-      size_t endIndex_;
-      *entities = c.getEntities(index, endIndex_);
-      return endIndex_;
+      return c.rawIdVec();
+    }
+
+    Id* getFromIndices(uint32_t fromDim,
+                       uint32_t toDim){
+      Connectivity& c = getConnectivity(fromDim, toDim);
+
+      if(c.empty()){
+        compute(fromDim, toDim);
+      }
+
+      return c.rawGroupVec();
     }
 
     virtual void build(size_t dim) = 0;

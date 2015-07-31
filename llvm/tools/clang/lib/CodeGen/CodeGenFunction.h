@@ -2332,10 +2332,11 @@ public:
   struct ForallData{
     const VarDecl* meshVarDecl;
     uint32_t topologyDim;
+    
     llvm::Value* topology;
     llvm::Value* indexPtr;
-    llvm::Value* entitiesPtr2;
-    llvm::Value* entitiesPtr;
+    llvm::Value* fromIndicesPtr;
+    llvm::Value* toIndicesPtr;
   };
   
   std::vector<ForallData> ForallStack;
