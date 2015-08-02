@@ -2337,7 +2337,7 @@ public:
     llvm::Value* indexPtr;
     llvm::Value* fromIndicesPtr;
     llvm::Value* toIndicesPtr;
-    llvm::Value* toPos;
+    llvm::Value* entitiesPtr;
   };
   
   std::vector<ForallData> ForallStack;

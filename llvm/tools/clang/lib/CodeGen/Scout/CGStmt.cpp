@@ -1838,6 +1838,10 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   
   ForallData& data = ForallStack[i];
   
+  BasicBlock* entryBlock = createBasicBlock("forall.entry");
+  B.CreateBr(entryBlock);
+  EmitBlock(entryBlock);
+  
   Value* endIndex;
   
   if(top){
@@ -1852,15 +1856,11 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
     fromId = B.CreateLoad(fromId, "from.id");
     endIndex = B.CreateLShr(fromId, 56, "end.index");
     
-    llvm::Value* FromIndex = Builder.CreateLoad(aboveData.indexPtr, "from.index");
-    data.toPos = Builder.CreateGEP(data.fromIndicesPtr, FromIndex);
-    data.toPos = Builder.CreateLoad(data.toPos);
-    data.toPos = Builder.CreateAnd(data.toPos, 0x00ffffffffffffff, "to.pos");
+    Value* toPos = Builder.CreateGEP(data.fromIndicesPtr, fromIndex);
+    toPos = Builder.CreateLoad(toPos);
+    toPos = Builder.CreateAnd(toPos, 0x00ffffffffffffff, "to.pos");
+    data.entitiesPtr = Builder.CreateGEP(data.toIndicesPtr, toPos, "to.indices");
   }
-  
-  BasicBlock* entryBlock = createBasicBlock("forall.entry");
-  B.CreateBr(entryBlock);
-  EmitBlock(entryBlock);
   
   B.CreateStore(ConstantInt::get(Int64Ty, 0), data.indexPtr);
   

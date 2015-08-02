@@ -191,10 +191,7 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E) {
     llvm::Value* Index;
     
     if(i > 0){
-      ForallData& aboveData = ForallStack[i - 1];
-      llvm::Value* ToIndices = Builder.CreateGEP(data.toIndicesPtr, data.toPos, "to.indices");
-      llvm::Value* ToIndex = Builder.CreateLoad(data.indexPtr, "to.index");
-      Index = Builder.CreateGEP(ToIndices, ToIndex, "index");
+      Index = Builder.CreateGEP(data.entitiesPtr, Builder.CreateLoad(data.indexPtr), "index");
     }
     else{
       Index = data.indexPtr;
