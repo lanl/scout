@@ -1848,12 +1848,9 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
     ForallData& aboveData = ForallStack[i - 1];
     
     Value* fromIndex = B.CreateLoad(aboveData.indexPtr, "from.index");
-    Value* fromIndex1 = B.CreateAdd(fromIndex, ConstantInt::get(Int64Ty, 1), "from.index1");
     Value* fromId = B.CreateGEP(currentData.fromIndicesPtr, fromIndex);
     fromId = B.CreateLoad(fromId, "from.id");
-    Value* fromId1 = B.CreateGEP(currentData.fromIndicesPtr, fromIndex1);
-    fromId1 = B.CreateLoad(fromId1, "from.id1");
-    endIndex = B.CreateSub(fromId1, fromId, "end.index");
+    endIndex = B.CreateLShr(fromId, 56, "end.index");
   }
   
   BasicBlock* entryBlock = createBasicBlock("forall.entry");

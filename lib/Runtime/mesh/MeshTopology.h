@@ -33,6 +33,8 @@ namespace scout{
 
     class Connectivity{
     public:
+      static const uint64_t INDEX_MASK = 0x00ffffffffffffff;
+
       Connectivity(){}
     
       void clear(){
@@ -49,27 +51,36 @@ namespace scout{
       
         groupVec_.push_back(0);
       
-        size_t n = cv.size();
+        size_t m = cv.size();
       
-        for(size_t i = 0; i < n; ++i){
+        for(size_t i = 0; i < m; ++i){
           const IdVec& iv = cv[i];
+          
+          uint64_t n = idVec_.size();
+          
           for(Id id : iv){
             idVec_.push_back(id);
           }
-          groupVec_.push_back(idVec_.size());
+          
+          uint64_t n2 = idVec_.size(); 
+          groupVec_.back() |= (n2 - n) << 56;
+          groupVec_.push_back(n2);
         }
       }
     
-      void resize(IdVec& v){
+      void resize(IndexVec& numConns){
         clear();
       
-        size_t n = v.size();
+        size_t n = numConns.size();
         groupVec_.resize(n + 1);
-        size_t size = 0;
-      
-        for(size_t i = 0; i < n; ++i){
+
+        uint64_t size = 0;
+        groupVec_[0] = size;
+
+        for(size_t i = 1; i < n; ++i){
+          groupVec_[i - 1] |= (size - groupVec_[i - 1]) << 56;
           groupVec_[i] = size;
-          size += v[i];
+          size += numConns[i];
         }
       
         groupVec_[n] = size;
@@ -78,7 +89,10 @@ namespace scout{
       }
     
       void endGroup(){
-        groupVec_.push_back(idVec_.size());
+        uint64_t n = groupVec_.back();
+        uint64_t n2 = idVec_.size();
+        groupVec_.back() |= (n2 - n) << 56;
+        groupVec_.push_back(n2);
       }
     
       void push(Id id){
@@ -99,13 +113,13 @@ namespace scout{
     
       Id* getEntities(size_t index){
         assert(index < groupVec_.size() - 1);
-        return idVec_.data() + groupVec_[index];
+        return idVec_.data() + (groupVec_[index] & INDEX_MASK);
       }
 
       Id* getEntities(size_t index, size_t& endIndex){
         assert(index < groupVec_.size() - 1);
         endIndex = groupVec_[index + 1] - groupVec_[index];
-        return idVec_.data() + groupVec_[index];
+        return idVec_.data() + (groupVec_[index] & INDEX_MASK);
       }
         
       bool empty(){
@@ -113,7 +127,7 @@ namespace scout{
       }
     
       void set(size_t fromId, size_t toId, size_t pos){
-        idVec_[groupVec_[fromId] + pos] = toId;
+        idVec_[(groupVec_[fromId] & INDEX_MASK) + pos] = toId;
       }
     
       size_t fromSize() const{
@@ -135,7 +149,10 @@ namespace scout{
       
         size_t size = 0;
         size_t n = conns.size();
-        for(size_t i = 0; i < n; i++){
+        groupVec_[0] = 0;
+
+        for(size_t i = 1; i < n; i++){
+          groupVec_[i - 1] |= (size - groupVec_[0]) << 56;
           groupVec_[i] = size;
           size += conns[i].size();
         }
@@ -496,7 +513,7 @@ namespace scout{
       Connectivity& fromConn = getConnectivity_(toDim, fromDim);
       assert(!fromConn.empty());
     
-      IdVec pos(numEntities(fromDim), 0);
+      IndexVec pos(numEntities(fromDim), 0);
     
       for(Entity e1(*this, toDim); !e1.end(); ++e1){
         for(EntityIterator e0(e1, fromDim); !e0.end(); ++e0){
