@@ -1836,7 +1836,7 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   ForallData& topData = ForallStack[0];
   topology = topData.topology;
   
-  ForallData& currentData = ForallStack[i];
+  ForallData& data = ForallStack[i];
   
   Value* endIndex;
   
@@ -1848,16 +1848,21 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
     ForallData& aboveData = ForallStack[i - 1];
     
     Value* fromIndex = B.CreateLoad(aboveData.indexPtr, "from.index");
-    Value* fromId = B.CreateGEP(currentData.fromIndicesPtr, fromIndex);
+    Value* fromId = B.CreateGEP(data.fromIndicesPtr, fromIndex);
     fromId = B.CreateLoad(fromId, "from.id");
     endIndex = B.CreateLShr(fromId, 56, "end.index");
+    
+    llvm::Value* FromIndex = Builder.CreateLoad(aboveData.indexPtr, "from.index");
+    data.toPos = Builder.CreateGEP(data.fromIndicesPtr, FromIndex);
+    data.toPos = Builder.CreateLoad(data.toPos);
+    data.toPos = Builder.CreateAnd(data.toPos, 0x00ffffffffffffff, "to.pos");
   }
   
   BasicBlock* entryBlock = createBasicBlock("forall.entry");
   B.CreateBr(entryBlock);
   EmitBlock(entryBlock);
   
-  B.CreateStore(ConstantInt::get(Int64Ty, 0), currentData.indexPtr);
+  B.CreateStore(ConstantInt::get(Int64Ty, 0), data.indexPtr);
   
   BasicBlock* loopBlock = createBasicBlock("forall.loop");
   B.CreateBr(loopBlock);
@@ -1865,9 +1870,9 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   EmitBlock(loopBlock);
   EmitStmt(S.getBody());
   
-  Value* index = B.CreateLoad(currentData.indexPtr, "index1");
+  Value* index = B.CreateLoad(data.indexPtr, "index1");
   Value* incIndex = B.CreateAdd(index, ConstantInt::get(Int64Ty, 1), "index.inc");
-  B.CreateStore(incIndex, currentData.indexPtr);
+  B.CreateStore(incIndex, data.indexPtr);
   
   Value* cond = B.CreateICmpSLT(incIndex, endIndex, "cond");
   BasicBlock* exitBlock = createBasicBlock("forall.exit");

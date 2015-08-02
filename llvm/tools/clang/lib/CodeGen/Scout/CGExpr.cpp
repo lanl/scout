@@ -192,12 +192,7 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E) {
     
     if(i > 0){
       ForallData& aboveData = ForallStack[i - 1];
-      
-      llvm::Value* FromIndex = Builder.CreateLoad(aboveData.indexPtr, "from.index");
-      llvm::Value* ToPos = Builder.CreateGEP(data.fromIndicesPtr, FromIndex);
-      ToPos = Builder.CreateLoad(ToPos);
-      ToPos = Builder.CreateAnd(ToPos, 0x00ffffffffffffff, "to.pos");
-      llvm::Value* ToIndices = Builder.CreateGEP(data.toIndicesPtr, ToPos, "to.indices");
+      llvm::Value* ToIndices = Builder.CreateGEP(data.toIndicesPtr, data.toPos, "to.indices");
       llvm::Value* ToIndex = Builder.CreateLoad(data.indexPtr, "to.index");
       Index = Builder.CreateGEP(ToIndices, ToIndex, "index");
     }
