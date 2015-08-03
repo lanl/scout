@@ -7,6 +7,8 @@ set(CMAKE_CXX_FLAGS_RELEASE "${LIBFUZZER_FLAGS_BASE} -O0 -fsanitize-coverage=edg
 set(DFSanTests
   MemcmpTest
   SimpleCmpTest
+  StrncmpTest
+  SwitchTest
   )
 
 set(Tests
@@ -15,9 +17,12 @@ set(Tests
   FourIndependentBranchesTest
   FullCoverageSetTest
   InfiniteTest
+  MemcmpTest
   NullDerefTest
   SimpleCmpTest
   SimpleTest
+  StrncmpTest
+  SwitchTest
   TimeoutTest
   )
 

@@ -1530,6 +1530,29 @@ unsigned TargetLoweringBase::getByValTypeAlignment(Type *Ty,
   return DL.getABITypeAlignment(Ty);
 }
 
+bool TargetLoweringBase::allowsMemoryAccess(LLVMContext &Context,
+                                            const DataLayout &DL, EVT VT,
+                                            unsigned AddrSpace,
+                                            unsigned Alignment,
+                                            bool *Fast) const {
+  // Check if the specified alignment is sufficient based on the data layout.
+  // TODO: While using the data layout works in practice, a better solution
+  // would be to implement this check directly (make this a virtual function).
+  // For example, the ABI alignment may change based on software platform while
+  // this function should only be affected by hardware implementation.
+  Type *Ty = VT.getTypeForEVT(Context);
+  if (Alignment >= DL.getABITypeAlignment(Ty)) {
+    // Assume that an access that meets the ABI-specified alignment is fast.
+    if (Fast != nullptr)
+      *Fast = true;
+    return true;
+  }
+  
+  // This is a misaligned access.
+  return allowsMisalignedMemoryAccesses(VT, AddrSpace, Alignment, Fast);
+}
+
+
 //===----------------------------------------------------------------------===//
 //  TargetTransformInfo Helpers
 //===----------------------------------------------------------------------===//
@@ -1548,6 +1571,12 @@ int TargetLoweringBase::InstructionOpcodeToISD(unsigned Opcode) const {
   case Invoke:         return 0;
   case Resume:         return 0;
   case Unreachable:    return 0;
+  case CleanupRet:     return 0;
+  case CatchEndPad:  return 0;
+  case CatchRet:       return 0;
+  case CatchPad:     return 0;
+  case TerminatePad: return 0;
+  case CleanupPad:   return 0;
   case Add:            return ISD::ADD;
   case FAdd:           return ISD::FADD;
   case Sub:            return ISD::SUB;
