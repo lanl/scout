@@ -2115,7 +2115,6 @@ multiclass SMRD_Pattern_vi <SMRD Instr_IMM, SMRD Instr_SGPR, ValueType vt> {
 }
 
 let Predicates = [isSICI] in {
-defm : SMRD_Pattern <S_LOAD_DWORD_IMM, S_LOAD_DWORD_SGPR, f32>;
 defm : SMRD_Pattern <S_LOAD_DWORD_IMM, S_LOAD_DWORD_SGPR, i32>;
 defm : SMRD_Pattern <S_LOAD_DWORDX2_IMM, S_LOAD_DWORDX2_SGPR, v2i32>;
 defm : SMRD_Pattern <S_LOAD_DWORDX4_IMM, S_LOAD_DWORDX4_SGPR, v4i32>;
@@ -2910,9 +2909,6 @@ defm : MUBUFLoad_Pattern <BUFFER_LOAD_SBYTE_ADDR64, i32, sextloadi8_constant>;
 defm : MUBUFLoad_Pattern <BUFFER_LOAD_UBYTE_ADDR64, i32, az_extloadi8_constant>;
 defm : MUBUFLoad_Pattern <BUFFER_LOAD_SSHORT_ADDR64, i32, sextloadi16_constant>;
 defm : MUBUFLoad_Pattern <BUFFER_LOAD_USHORT_ADDR64, i32, az_extloadi16_constant>;
-defm : MUBUFLoad_Pattern <BUFFER_LOAD_DWORD_ADDR64, i32, constant_load>;
-defm : MUBUFLoad_Pattern <BUFFER_LOAD_DWORDX2_ADDR64, v2i32, constant_load>;
-defm : MUBUFLoad_Pattern <BUFFER_LOAD_DWORDX4_ADDR64, v4i32, constant_load>;
 } // End Predicates = [isSICI]
 
 class MUBUFScratchLoadPat <MUBUF Instr, ValueType vt, PatFrag ld> : Pat <
@@ -3273,13 +3269,13 @@ def : Pat <
   (f64 (fadd (f64 (VOP3Mods f64:$x, i32:$mods)),
              (f64 (fneg (f64 (ffloor (f64 (VOP3Mods f64:$x, i32:$mods)))))))),
   (V_CNDMASK_B64_PSEUDO
-      $x,
       (V_MIN_F64
           SRCMODS.NONE,
           (V_FRACT_F64_e64 $mods, $x, DSTCLAMP.NONE, DSTOMOD.NONE),
           SRCMODS.NONE,
           (V_MOV_B64_PSEUDO 0x3fefffffffffffff),
           DSTCLAMP.NONE, DSTOMOD.NONE),
+      $x,
       (V_CMP_CLASS_F64_e64 SRCMODS.NONE, $x, 3/*NaN*/))
 >;
 
@@ -3291,13 +3287,13 @@ def : Pat <
       $x,
       SRCMODS.NEG,
       (V_CNDMASK_B64_PSEUDO
-         $x,
          (V_MIN_F64
              SRCMODS.NONE,
              (V_FRACT_F64_e64 $mods, $x, DSTCLAMP.NONE, DSTOMOD.NONE),
              SRCMODS.NONE,
              (V_MOV_B64_PSEUDO 0x3fefffffffffffff),
              DSTCLAMP.NONE, DSTOMOD.NONE),
+         $x,
          (V_CMP_CLASS_F64_e64 SRCMODS.NONE, $x, 3/*NaN*/)),
       DSTCLAMP.NONE, DSTOMOD.NONE)
 >;

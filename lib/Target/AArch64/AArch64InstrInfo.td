@@ -613,10 +613,12 @@ def : Pat<(sub GPR32:$Rn, arith_shifted_reg32:$Rm),
           (SUBSWrs GPR32:$Rn, arith_shifted_reg32:$Rm)>;
 def : Pat<(sub GPR64:$Rn, arith_shifted_reg64:$Rm),
           (SUBSXrs GPR64:$Rn, arith_shifted_reg64:$Rm)>;
+let AddedComplexity = 1 in {
 def : Pat<(sub GPR32sp:$R2, arith_extended_reg32<i32>:$R3),
           (SUBSWrx GPR32sp:$R2, arith_extended_reg32<i32>:$R3)>;
 def : Pat<(sub GPR64sp:$R2, arith_extended_reg32to64<i64>:$R3),
           (SUBSXrx GPR64sp:$R2, arith_extended_reg32to64<i64>:$R3)>;
+}
 
 // Because of the immediate format for add/sub-imm instructions, the
 // expression (add x, -1) must be transformed to (SUB{W,X}ri x, 1).
@@ -5148,10 +5150,10 @@ def : Pat<(i64 (zext def32:$src)), (SUBREG_TO_REG (i64 0), GPR32:$src, sub_32)>;
 def : Pat<(i64 (anyext GPR32:$src)),
           (INSERT_SUBREG (i64 (IMPLICIT_DEF)), GPR32:$src, sub_32)>;
 
-// When we need to explicitly zero-extend, we use an unsigned bitfield move
-// instruction (UBFM) on the enclosing super-reg.
+// When we need to explicitly zero-extend, we use a 32-bit MOV instruction and
+// then assert the extension has happened.
 def : Pat<(i64 (zext GPR32:$src)),
- (UBFMXri (INSERT_SUBREG (i64 (IMPLICIT_DEF)), GPR32:$src, sub_32), 0, 31)>;
+          (SUBREG_TO_REG (i32 0), (ORRWrs WZR, GPR32:$src, 0), sub_32)>;
 
 // To sign extend, we use a signed bitfield move instruction (SBFM) on the
 // containing super-reg.
