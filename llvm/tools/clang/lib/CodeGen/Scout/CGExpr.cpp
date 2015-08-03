@@ -149,64 +149,83 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
   return MakeAddrLValue(addr, VD->getType(), Alignment);
 }
 
+llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
+  DeclRefExpr* base;
+  if(ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(E->getBase())){
+    base = cast<DeclRefExpr>(ce->getSubExpr());
+  }
+  else{
+    base = cast<DeclRefExpr>(E->getBase());
+  }
+  
+  ImplicitMeshParamDecl* mp =
+  dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
+  
+  assert(mp && "expected a implicit mesh param");
+  
+  const VarDecl* mvd = mp->getMeshVarDecl();
+  const MeshType* mt = dyn_cast<MeshType>(mvd->getType());
+  
+  auto& dims = mt->dimensions();
+  
+  uint32_t topologyDim;
+  switch(mp->getElementType()){
+    case Vertices:
+      topologyDim = 0;
+      break;
+    case Edges:
+      topologyDim = 1;
+      break;
+    case Faces:
+      topologyDim = dims.size() - 1;
+      break;
+    case Cells:
+      topologyDim = dims.size();
+      break;
+    default:
+      assert(false && "invalid element type");
+  }
+  
+  int i = FindForallData(mvd, topologyDim);
+  assert(i >= 0 && "error finding forall data");
+  
+  ForallData& data = ForallStack[i];
+  llvm::Value* Index;
+  
+  if(i > 0){
+    return Builder.CreateGEP(data.entitiesPtr, Builder.CreateLoad(data.indexPtr), "index");
+  }
+
+  return data.indexPtr;
+}
+
 LValue
-CodeGenFunction::EmitMeshMemberExpr(const MemberExpr *E) {
-  DeclRefExpr* Base;
-  if(ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(E->getBase())) {
-    Base = cast<DeclRefExpr>(CE->getSubExpr());
-  } else {
-    Base = cast<DeclRefExpr>(E->getBase());
+CodeGenFunction::EmitMeshMemberExpr(const MemberExpr* E,
+                                    llvm::Value* IndexPtr){
+  DeclRefExpr* base;
+  if(ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(E->getBase())){
+    base = cast<DeclRefExpr>(ce->getSubExpr());
+  }
+  else{
+    base = cast<DeclRefExpr>(E->getBase());
   }
   
-  llvm::Value *Addr;
+  ImplicitMeshParamDecl* mp =
+  dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
   
-  if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(Base->getDecl())) {
-    const VarDecl* mvd = IMPD->getMeshVarDecl();
-    const MeshType* mt = dyn_cast<MeshType>(mvd->getType());
-    
-    auto& dims = mt->dimensions();
-    
-    uint32_t topologyDim;
-    switch(IMPD->getElementType()){
-      case Vertices:
-        topologyDim = 0;
-        break;
-      case Edges:
-        topologyDim = 1;
-        break;
-      case Faces:
-        topologyDim = dims.size() - 1;
-        break;
-      case Cells:
-        topologyDim = dims.size();
-        break;
-      default:
-        assert(false && "invalid element type");
-    }
-    
-    int i = FindForallData(mvd, topologyDim);
-    assert(i >= 0 && "error finding forall data");
-    
-    ForallData& data = ForallStack[i];
-    llvm::Value* Index;
-    
-    if(i > 0){
-      Index = Builder.CreateGEP(data.entitiesPtr, Builder.CreateLoad(data.indexPtr), "index");
-    }
-    else{
-      Index = data.indexPtr;
-    }
-    
-    // lookup underlying mesh instead of implicit mesh
-    GetMeshBaseAddr(mvd, Addr);
-   
-    LValue BaseLV  = MakeAddrLValue(Addr, E->getType());
-    // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
-    MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
-    return EmitLValueForMeshField(BaseLV,  cast<MeshFieldDecl>(MFD), Index); //SC_TODO: why cast?
-    
-    IMPD->dump();
-  }
+  assert(mp && "expected a implicit mesh param");
+  
+  const VarDecl* mvd = mp->getMeshVarDecl();
+
+  llvm::Value* Addr;
+  
+  // lookup underlying mesh instead of implicit mesh
+  GetMeshBaseAddr(mvd, Addr);
+  
+  LValue BaseLV  = MakeAddrLValue(Addr, E->getType());
+  // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
+  MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
+  return EmitLValueForMeshField(BaseLV,  cast<MeshFieldDecl>(MFD), IndexPtr); //SC_TODO: why cast?
   
   assert(false && "unhandled case");
   

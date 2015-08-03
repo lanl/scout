@@ -2683,7 +2683,9 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
       return EmitVolumeRenderMeshMemberExpr(E);
     }
     
-    return EmitMeshMemberExpr(E);
+    llvm::Value* IndexPtr = GetForallIndex(E);
+    
+    return EmitMeshMemberExpr(E, IndexPtr);
   }
   // +========================================================================+
 
