@@ -272,7 +272,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   MeshTy = mt;
 
   // find number of mesh fields (struct fields - the fixed ones like width/height/depth)
-  unsigned int nfields = mt->getDecl()->fields();
+  unsigned int nfields = mt->getDecl()->fields() + 1;
 
   llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
@@ -1723,6 +1723,8 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   Value* meshPtr;
   
   if(top){
+    SetMeshBounds(S);
+    
     NestedForallVisitor visitor;
     visitor.VisitStmt(const_cast<ForallMeshStmt*>(&S));
     auto fs = visitor.forallStmts();

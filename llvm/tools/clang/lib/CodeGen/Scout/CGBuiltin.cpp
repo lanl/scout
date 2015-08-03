@@ -80,37 +80,40 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
 
   //vector position
   case Builtin::BIposition: {
-    static const char *IndexNames[] = { "x", "y", "z", "w"};
-    Value *Result =
-       llvm::UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
+    assert(!ForallStack.empty());
+    ForallData& data = ForallStack.back();
 
-     for (unsigned i = 0; i <= 3; ++i) {
-       if (i == 3) sprintf(IRNameStr, "forall.linearidx");
-       else sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
+    Value* index = Builder.CreateLoad(data.indexPtr);
+    llvm::Type* indexType = index->getType();
 
-       llvm::Value *Val;
-       if (InnerForallScope) {
-         Val = Builder.CreateLoad(InnerInductionVar[i]);
-       } else {
-
-         if (i == 3) {
-           Val = Builder.CreateLoad(LookupInductionVar(i),IRNameStr);
-         } else {
-           Val = Builder.CreateAdd(
-               Builder.CreateLoad(LookupInductionVar(i)),
-               Builder.CreateLoad(LookupMeshStart(i)),
-               IRNameStr);
-         }
-      }
-
-       sprintf(IRNameStr, "position.%s", IndexNames[i]);
-       Result = Builder.CreateInsertElement(Result, Val,
-            Builder.getInt32(i), IRNameStr);
-     }
-     *RV = RValue::get(Result);
-     return true;
+    Value* width = Builder.CreateLoad(LookupMeshDim(0));
+    width = Builder.CreateZExt(width, indexType, "width");
+    
+    Value* height = Builder.CreateLoad(LookupMeshDim(1));
+    height = Builder.CreateZExt(height, indexType, "height");
+    
+    Value* pos[3];
+    
+    pos[0] = Builder.CreateURem(index, width, "x");
+    pos[1] = Builder.CreateUDiv(index, width, "y");
+    pos[2] = Builder.CreateUDiv(index, Builder.CreateMul(width, height), "z");
+    
+    Value* result =
+    UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
+    
+    for(size_t i = 0; i < 3; ++i){
+      result =
+      Builder.CreateInsertElement(result, Builder.CreateTrunc(pos[i], Int32Ty), i);
+    }
+    
+    result =
+    Builder.CreateInsertElement(result, Builder.CreateTrunc(index, Int32Ty), 3);
+    
+    *RV = RValue::get(result);
+    
+    return true;
   }
-
+ 
   case Builtin::BIpositionx: {
     llvm::Value *X;
     if (InnerForallScope) {
