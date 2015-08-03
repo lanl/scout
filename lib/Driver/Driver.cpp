@@ -174,10 +174,8 @@ phases::ID Driver::getFinalPhase(const DerivedArgList &DAL,
   } else if ((PhaseArg = DAL.getLastArg(options::OPT_S))) {
     FinalPhase = phases::Backend;
 
-    // -c and partial CUDA compilations only run up to the assembler.
-  } else if ((PhaseArg = DAL.getLastArg(options::OPT_c)) ||
-             (PhaseArg = DAL.getLastArg(options::OPT_cuda_device_only)) ||
-             (PhaseArg = DAL.getLastArg(options::OPT_cuda_host_only))) {
+    // -c compilation only runs up to the assembler.
+  } else if ((PhaseArg = DAL.getLastArg(options::OPT_c))) {
     FinalPhase = phases::Assemble;
 
     // Otherwise do everything.
@@ -1492,6 +1490,10 @@ void Driver::BuildActions(const ToolChain &TC, DerivedArgList &Args,
 
   // Claim ignored clang-cl options.
   Args.ClaimAllArgs(options::OPT_cl_ignored_Group);
+
+  // Claim --cuda-host-only arg which may be passed to non-CUDA
+  // compilations and should not trigger warnings there.
+  Args.ClaimAllArgs(options::OPT_cuda_host_only);
 }
 
 std::unique_ptr<Action>
@@ -2186,12 +2188,12 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
       break;
     case llvm::Triple::Linux:
       if (Target.getArch() == llvm::Triple::hexagon)
-        TC = new toolchains::Hexagon_TC(*this, Target, Args);
+        TC = new toolchains::HexagonToolChain(*this, Target, Args);
       else
         TC = new toolchains::Linux(*this, Target, Args);
       break;
     case llvm::Triple::NaCl:
-      TC = new toolchains::NaCl_TC(*this, Target, Args);
+      TC = new toolchains::NaClToolChain(*this, Target, Args);
       break;
     case llvm::Triple::Solaris:
       TC = new toolchains::Solaris(*this, Target, Args);
@@ -2230,9 +2232,9 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
       if (Target.getArchName() == "tce")
         TC = new toolchains::TCEToolChain(*this, Target, Args);
       else if (Target.getArch() == llvm::Triple::hexagon)
-        TC = new toolchains::Hexagon_TC(*this, Target, Args);
+        TC = new toolchains::HexagonToolChain(*this, Target, Args);
       else if (Target.getArch() == llvm::Triple::xcore)
-        TC = new toolchains::XCore(*this, Target, Args);
+        TC = new toolchains::XCoreToolChain(*this, Target, Args);
       else if (Target.getArch() == llvm::Triple::shave)
         TC = new toolchains::SHAVEToolChain(*this, Target, Args);
       else if (Target.isOSBinFormatELF())
