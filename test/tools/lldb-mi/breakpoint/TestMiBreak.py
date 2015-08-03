@@ -13,6 +13,7 @@ class MiBreakTestCase(lldbmi_testcase.MiTestCaseBase):
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
+    @expectedFlakeyLinux
     def test_lldbmi_break_insert_function_pending(self):
         """Test that 'lldb-mi --interpreter' works for pending function breakpoints."""
 
@@ -73,7 +74,28 @@ class MiBreakTestCase(lldbmi_testcase.MiTestCaseBase):
         # Test that non-pending BP was set correctly
         self.runCmd("-exec-continue")
         self.expect("\^running")
-        self.expect("\*stopped,reason=\"breakpoint-hit\"")
+        self.expect("\*stopped,reason=\"breakpoint-hit\".*bkptno=\"2\"")
+
+        # Test that we can set a BP using the file:func syntax
+        self.runCmd("-break-insert main.cpp:main")
+        self.expect("\^done,bkpt={number=\"4\"")
+        self.runCmd("-break-insert main.cpp:ns::foo1")
+        self.expect("\^done,bkpt={number=\"5\"")
+        #FIXME: quotes on filenames aren't handled correctly in lldb-mi.
+        #self.runCmd("-break-insert \"main.cpp\":main")
+        #self.expect("\^done,bkpt={number=\"6\"")
+
+        # We should hit BP #5 on 'main.cpp:ns::foo1'
+        self.runCmd("-exec-continue")
+        self.expect("\^running")
+        self.expect("\*stopped,reason=\"breakpoint-hit\".*bkptno=\"5\"")
+
+        #FIXME: this test is disabled due to lldb bug llvm.org/pr24271.
+        # Test that we can set a BP using the global namespace token
+        #self.runCmd("-break-insert ::main")
+        #self.expect("\^done,bkpt={number=\"7\"")
+        #self.runCmd("-break-insert main.cpp:::main")
+        #self.expect("\^done,bkpt={number=\"8\"")
 
     @lldbmi_test
     @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
@@ -206,21 +228,20 @@ class MiBreakTestCase(lldbmi_testcase.MiTestCaseBase):
         self.expect("\^running")
         self.expect("\*stopped,reason=\"breakpoint-hit\",disp=\"del\",bkptno=\"3\"")
 
-        # Test that the target.language=pascal setting works and that BP #5 is not set
+        # Test that the target.language=pascal setting works and that BP #5 is NOT set
         self.runCmd("-interpreter-exec console \"settings set target.language c\"")
         self.expect("\^done")
         self.runCmd("-break-insert ns.foo1")
         self.expect("\^error")
 
         # Test that the target.language=c++ setting works and that BP #6 is hit
-        # FIXME: lldb-mi interprets 'ns::func' as file:func where file='ns:'.
-        #self.runCmd("-interpreter-exec console \"settings set target.language c++\"")
-        #self.expect("\^done")
-        #self.runCmd("-break-insert ns::foo1")
-        #self.expect("\^done,bkpt={number=\"6\"")
-        #self.runCmd("-exec-run")
-        #self.expect("\^running")
-        #self.expect("\*stopped,reason=\"breakpoint-hit\",disp=\"del\",bkptno=\"6\"")
+        self.runCmd("-interpreter-exec console \"settings set target.language c++\"")
+        self.expect("\^done")
+        self.runCmd("-break-insert ns::foo1")
+        self.expect("\^done,bkpt={number=\"6\"")
+        self.runCmd("-exec-continue")
+        self.expect("\^running")
+        self.expect("\*stopped,reason=\"breakpoint-hit\",disp=\"del\",bkptno=\"6\"")
 
         # Test that BP #1 and #2 weren't set by running to program exit
         self.runCmd("-exec-continue")

@@ -255,7 +255,7 @@ CMICmdCmdVarCreate::Acknowledge(void)
     CMIUtilString strErrMsg(m_strValue);
     if (m_strValue.empty())
         strErrMsg = CMIUtilString::Format(MIRSRC(IDS_CMD_ERR_VARIABLE_CREATION_FAILED), m_strExpression.c_str());
-    const CMICmnMIValueConst miValueConst(strErrMsg);
+    const CMICmnMIValueConst miValueConst(strErrMsg.Escape(true /* vbEscapeQuotes */));
     CMICmnMIValueResult miValueResult("msg", miValueConst);
     const CMICmnMIResultRecord miRecordResult(m_cmdData.strMiCmdToken, CMICmnMIResultRecord::eResultClass_Error, miValueResult);
     m_miResultRecord = miRecordResult;
@@ -1019,6 +1019,9 @@ CMICmdCmdVarListChildren::Execute(void)
         const MIuint nChildren = member.GetNumChildren();
         const CMIUtilString strThreadId(CMIUtilString::Format("%u", member.GetThread().GetIndexID()));
 
+        // Varobj gets added to CMICmnLLDBDebugSessionInfoVarObj static container of varObjs
+        CMICmnLLDBDebugSessionInfoVarObj var(strExp, name, member, rVarObjName);
+
         // MI print "child={name=\"%s\",exp=\"%s\",numchild=\"%d\",value=\"%s\",type=\"%s\",thread-id=\"%u\",has_more=\"%u\"}"
         const CMICmnMIValueConst miValueConst(name);
         const CMICmnMIValueResult miValueResult("name", miValueConst);
@@ -1040,8 +1043,6 @@ CMICmdCmdVarListChildren::Execute(void)
         if (eVarInfoFormat == CMICmnLLDBDebugSessionInfo::eVariableInfoFormat_AllValues ||
             (eVarInfoFormat == CMICmnLLDBDebugSessionInfo::eVariableInfoFormat_SimpleValues && nChildren == 0))
         {
-            // Varobj gets added to CMICmnLLDBDebugSessionInfoVarObj static container of varObjs
-            CMICmnLLDBDebugSessionInfoVarObj var(strExp, name, member, rVarObjName);
             const CMIUtilString strValue(
             CMICmnLLDBDebugSessionInfoVarObj::GetValueStringFormatted(member, CMICmnLLDBDebugSessionInfoVarObj::eVarFormat_Natural));
             const CMICmnMIValueConst miValueConst7(strValue);
