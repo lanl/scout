@@ -115,6 +115,7 @@ SymbolFileSymtab::CalculateAbilities ()
             if (symtab->AppendSymbolIndexesWithType(eSymbolTypeCode, Symtab::eDebugNo, Symtab::eVisibilityAny, m_code_indexes))
             {
                 symtab->SortSymbolIndexesByValue(m_code_indexes, true);
+                abilities |= Functions;
             }
 
             if (symtab->AppendSymbolIndexesWithType(eSymbolTypeData, m_data_indexes))
@@ -161,7 +162,7 @@ SymbolFileSymtab::ParseCompileUnitAtIndex(uint32_t idx)
     {
         const Symbol *cu_symbol = m_obj_file->GetSymtab()->SymbolAtIndex(m_source_indexes[idx]);
         if (cu_symbol)
-            cu_sp.reset(new CompileUnit (m_obj_file->GetModule(), NULL, cu_symbol->GetName().AsCString(), 0, eLanguageTypeUnknown));
+            cu_sp.reset(new CompileUnit (m_obj_file->GetModule(), NULL, cu_symbol->GetName().AsCString(), 0, eLanguageTypeUnknown, false));
     }
     return cu_sp;
 }

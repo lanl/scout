@@ -664,6 +664,11 @@ def expectedFailureArch(arch, bugnumber=None):
         return arch in self.getArchitecture()
     return expectedFailure(fn, bugnumber)
 
+def skipUnlessArch(arch):
+    def fn(self):
+        return not self.getArchitecture() in arch 
+    return expectedFailure(fn, None)
+
 def expectedFailurei386(bugnumber=None):
     return expectedFailureArch('i386', bugnumber)
 
@@ -868,6 +873,10 @@ def skipIfDarwin(func):
 def skipIfLinux(func):
     """Decorate the item to skip tests that should be skipped on Linux."""
     return skipIfPlatform(["linux"])(func)
+
+def skipUnlessHostLinux(func):
+    """Decorate the item to skip tests that should be skipped on any non Linux host."""
+    return skipUnlessHostPlatform(["linux"])(func)
 
 def skipIfWindows(func):
     """Decorate the item to skip tests that should be skipped on Windows."""

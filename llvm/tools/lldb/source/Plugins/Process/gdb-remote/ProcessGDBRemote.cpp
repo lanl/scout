@@ -823,7 +823,13 @@ ProcessGDBRemote::DoConnectRemote (Stream *strm, const char *remote_url)
         log->Printf ("ProcessGDBRemote::%s pid %" PRIu64 ": normalized target architecture triple: %s", __FUNCTION__, GetID (), GetTarget ().GetArchitecture ().GetTriple ().getTriple ().c_str ());
 
     if (error.Success())
-        SetUnixSignals(std::make_shared<GDBRemoteSignals>(GetTarget().GetPlatform()->GetUnixSignals()));
+    {
+        PlatformSP platform_sp = GetTarget().GetPlatform();
+        if (platform_sp && platform_sp->IsConnected())
+            SetUnixSignals(platform_sp->GetUnixSignals());
+        else
+            SetUnixSignals(UnixSignals::Create(GetTarget().GetArchitecture()));
+    }
 
     return error;
 }
@@ -2184,7 +2190,7 @@ ProcessGDBRemote::SetThreadStopInfo (StructuredData::Dictionary *thread_dict)
         }
         else if (key == g_key_name)
         {
-            thread_name = std::move(object->GetStringValue());
+            thread_name = object->GetStringValue();
         }
         else if (key == g_key_qaddr)
         {
@@ -2193,7 +2199,7 @@ ProcessGDBRemote::SetThreadStopInfo (StructuredData::Dictionary *thread_dict)
         else if (key == g_key_queue_name)
         {
             queue_vars_valid = true;
-            queue_name = std::move(object->GetStringValue());
+            queue_name = object->GetStringValue();
         }
         else if (key == g_key_queue_kind)
         {
@@ -2217,11 +2223,11 @@ ProcessGDBRemote::SetThreadStopInfo (StructuredData::Dictionary *thread_dict)
         }
         else if (key == g_key_reason)
         {
-            reason = std::move(object->GetStringValue());
+            reason = object->GetStringValue();
         }
         else if (key == g_key_description)
         {
-            description = std::move(object->GetStringValue());
+            description = object->GetStringValue();
         }
         else if (key == g_key_registers)
         {
@@ -2232,7 +2238,7 @@ ProcessGDBRemote::SetThreadStopInfo (StructuredData::Dictionary *thread_dict)
                 registers_dict->ForEach([&expedited_register_map](ConstString key, StructuredData::Object* object) -> bool {
                     const uint32_t reg = StringConvert::ToUInt32 (key.GetCString(), UINT32_MAX, 10);
                     if (reg != UINT32_MAX)
-                        expedited_register_map[reg] = std::move(object->GetStringValue());
+                        expedited_register_map[reg] = object->GetStringValue();
                     return true; // Keep iterating through all array items
                 });
             }
@@ -2468,7 +2474,7 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                         if (mem_cache_addr != LLDB_INVALID_ADDRESS)
                         {
                             StringExtractor bytes;
-                            bytes.GetStringRef() = std::move(pair.second.str());
+                            bytes.GetStringRef() = pair.second.str();
                             const size_t byte_size = bytes.GetStringRef().size()/2;
                             DataBufferSP data_buffer_sp(new DataBufferHeap(byte_size, 0));
                             const size_t bytes_copied = bytes.GetHexBytes (data_buffer_sp->GetBytes(), byte_size, 0);
@@ -3804,8 +3810,28 @@ ProcessGDBRemote::AsyncThread (void *arg)
                                             break;
                                         }
                                         case eStateInvalid:
-                                            process->SetExitStatus(-1, "lost connection");
-                                            break;
+                                        {
+                                            // Check to see if we were trying to attach and if we got back
+                                            // the "E87" error code from debugserver -- this indicates that
+                                            // the process is not debuggable.  Return a slightly more helpful
+                                            // error message about why the attach failed.
+                                            if (::strstr (continue_cstr, "vAttach") != NULL
+                                                && response.GetError() == 0x87)
+                                            {
+                                                process->SetExitStatus(-1, "cannot attach to process due to System Integrity Protection");
+                                            }
+                                            // E01 code from vAttach means that the attach failed
+                                            if (::strstr (continue_cstr, "vAttach") != NULL
+                                                && response.GetError() == 0x1)
+                                            {
+                                                process->SetExitStatus(-1, "unable to attach");
+                                            }
+                                            else
+                                            {
+                                                process->SetExitStatus(-1, "lost connection");
+                                            }
+                                                break;
+                                        }
 
                                         default:
                                             process->SetPrivateState (stop_state);

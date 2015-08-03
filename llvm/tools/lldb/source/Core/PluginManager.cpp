@@ -1764,6 +1764,110 @@ PluginManager::GetProcessCreateCallbackForPluginName (const ConstString &name)
     return NULL;
 }
 
+#pragma mark ScriptInterpreter
+
+struct ScriptInterpreterInstance
+{
+    ScriptInterpreterInstance()
+        : name()
+        , language(lldb::eScriptLanguageNone)
+        , description()
+        , create_callback(NULL)
+    {
+    }
+
+    ConstString name;
+    lldb::ScriptLanguage language;
+    std::string description;
+    ScriptInterpreterCreateInstance create_callback;
+};
+
+typedef std::vector<ScriptInterpreterInstance> ScriptInterpreterInstances;
+
+static Mutex &
+GetScriptInterpreterMutex()
+{
+    static Mutex g_instances_mutex(Mutex::eMutexTypeRecursive);
+    return g_instances_mutex;
+}
+
+static ScriptInterpreterInstances &
+GetScriptInterpreterInstances()
+{
+    static ScriptInterpreterInstances g_instances;
+    return g_instances;
+}
+
+bool
+PluginManager::RegisterPlugin(const ConstString &name, const char *description, lldb::ScriptLanguage script_language,
+                              ScriptInterpreterCreateInstance create_callback)
+{
+    if (!create_callback)
+        return false;
+    ScriptInterpreterInstance instance;
+    assert((bool)name);
+    instance.name = name;
+    if (description && description[0])
+        instance.description = description;
+    instance.create_callback = create_callback;
+    instance.language = script_language;
+    Mutex::Locker locker(GetScriptInterpreterMutex());
+    GetScriptInterpreterInstances().push_back(instance);
+    return false;
+}
+
+bool
+PluginManager::UnregisterPlugin(ScriptInterpreterCreateInstance create_callback)
+{
+    if (!create_callback)
+        return false;
+    Mutex::Locker locker(GetScriptInterpreterMutex());
+    ScriptInterpreterInstances &instances = GetScriptInterpreterInstances();
+
+    ScriptInterpreterInstances::iterator pos, end = instances.end();
+    for (pos = instances.begin(); pos != end; ++pos)
+    {
+        if (pos->create_callback != create_callback)
+            continue;
+
+        instances.erase(pos);
+        return true;
+    }
+    return false;
+}
+
+ScriptInterpreterCreateInstance
+PluginManager::GetScriptInterpreterCreateCallbackAtIndex(uint32_t idx)
+{
+    Mutex::Locker locker(GetScriptInterpreterMutex());
+    ScriptInterpreterInstances &instances = GetScriptInterpreterInstances();
+    if (idx < instances.size())
+        return instances[idx].create_callback;
+    return nullptr;
+}
+
+lldb::ScriptInterpreterSP
+PluginManager::GetScriptInterpreterForLanguage(lldb::ScriptLanguage script_lang, CommandInterpreter &interpreter)
+{
+    Mutex::Locker locker(GetScriptInterpreterMutex());
+    ScriptInterpreterInstances &instances = GetScriptInterpreterInstances();
+
+    ScriptInterpreterInstances::iterator pos, end = instances.end();
+    ScriptInterpreterCreateInstance none_instance = nullptr;
+    for (pos = instances.begin(); pos != end; ++pos)
+    {
+        if (pos->language == lldb::eScriptLanguageNone)
+            none_instance = pos->create_callback;
+
+        if (script_lang == pos->language)
+            return pos->create_callback(interpreter);
+    }
+
+    // If we didn't find one, return the ScriptInterpreter for the null language.
+    assert(none_instance != nullptr);
+    return none_instance(interpreter);
+}
+
 #pragma mark SymbolFile
 
 struct SymbolFileInstance
@@ -1771,13 +1875,15 @@ struct SymbolFileInstance
     SymbolFileInstance() :
         name(),
         description(),
-        create_callback(NULL)
+        create_callback(nullptr),
+        debugger_init_callback(nullptr)
     {
     }
 
     ConstString name;
     std::string description;
     SymbolFileCreateInstance create_callback;
+    DebuggerInitializeCallback debugger_init_callback;
 };
 
 typedef std::vector<SymbolFileInstance> SymbolFileInstances;
@@ -1802,7 +1908,8 @@ PluginManager::RegisterPlugin
 (
     const ConstString &name,
     const char *description,
-    SymbolFileCreateInstance create_callback
+    SymbolFileCreateInstance create_callback,
+    DebuggerInitializeCallback debugger_init_callback
 )
 {
     if (create_callback)
@@ -1813,6 +1920,7 @@ PluginManager::RegisterPlugin
         if (description && description[0])
             instance.description = description;
         instance.create_callback = create_callback;
+        instance.debugger_init_callback = debugger_init_callback;
         Mutex::Locker locker (GetSymbolFileMutex ());
         GetSymbolFileInstances ().push_back (instance);
     }
@@ -2343,7 +2451,7 @@ PluginManager::DebuggerInitialize (Debugger &debugger)
                 pos->debugger_init_callback (debugger);
         }
     }
-    
+
     // Initialize the Process plugins
     {
         Mutex::Locker locker (GetProcessMutex());
@@ -2357,6 +2465,15 @@ PluginManager::DebuggerInitialize (Debugger &debugger)
         }
     }
 
+    // Initialize the SymbolFile plugins
+    {
+        Mutex::Locker locker (GetSymbolFileMutex());
+        for (auto& sym_file: GetSymbolFileInstances())
+        {
+            if (sym_file.debugger_init_callback)
+                sym_file.debugger_init_callback (debugger);
+        }
+    }
 }
 
 // This is the preferred new way to register plugin specific settings.  e.g.
@@ -2553,3 +2670,43 @@ PluginManager::CreateSettingForProcessPlugin (Debugger &debugger,
     return false;
 }
 
+
+static const char* kSymbolFilePluginName("symbol-file");
+
+lldb::OptionValuePropertiesSP
+PluginManager::GetSettingForSymbolFilePlugin (Debugger &debugger,
+                                              const ConstString &setting_name)
+{
+    lldb::OptionValuePropertiesSP properties_sp;
+    lldb::OptionValuePropertiesSP plugin_type_properties_sp (GetDebuggerPropertyForPlugins (debugger,
+                                                                                            ConstString(kSymbolFilePluginName),
+                                                                                            ConstString(), // not creating to so we don't need the description
+                                                                                            false));
+    if (plugin_type_properties_sp)
+        properties_sp = plugin_type_properties_sp->GetSubProperty (nullptr, setting_name);
+    return properties_sp;
+}
+
+bool
+PluginManager::CreateSettingForSymbolFilePlugin (Debugger &debugger,
+                                                 const lldb::OptionValuePropertiesSP &properties_sp,
+                                                 const ConstString &description,
+                                                 bool is_global_property)
+{
+    if (properties_sp)
+    {
+        lldb::OptionValuePropertiesSP plugin_type_properties_sp (GetDebuggerPropertyForPlugins (debugger,
+                                                                                                ConstString(kSymbolFilePluginName),
+                                                                                                ConstString("Settings for symbol file plug-ins"),
+                                                                                                true));
+        if (plugin_type_properties_sp)
+        {
+            plugin_type_properties_sp->AppendProperty (properties_sp->GetName(),
+                                                       description,
+                                                       is_global_property,
+                                                       properties_sp);
+            return true;
+        }
+    }
+    return false;
+}
