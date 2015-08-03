@@ -20,6 +20,7 @@
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Frontend/CodeGenOptions.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/ValueHandle.h"
@@ -450,10 +451,8 @@ public:
 
 private:
   /// Emit call to llvm.dbg.declare for a variable declaration.
-  /// Tag accepts custom types DW_TAG_arg_variable and DW_TAG_auto_variable,
-  /// otherwise would be of type llvm::dwarf::Tag.
-  void EmitDeclare(const VarDecl *decl, llvm::dwarf::Tag Tag, llvm::Value *AI,
-                   unsigned ArgNo, CGBuilderTy &Builder);
+  void EmitDeclare(const VarDecl *decl, llvm::Value *AI,
+                   llvm::Optional<unsigned> ArgNo, CGBuilderTy &Builder);
 
   /// Build up structure info for the byref.  See \a BuildByRefType.
   llvm::DIType *EmitTypeForVarWithBlocksAttr(const VarDecl *VD,
@@ -520,7 +519,8 @@ private:
 
   /// Get the type from the cache or create a new partial type if
   /// necessary.
-  llvm::DIType *getOrCreateLimitedType(const RecordType *Ty, llvm::DIFile *F);
+  llvm::DICompositeType *getOrCreateLimitedType(const RecordType *Ty,
+                                                llvm::DIFile *F);
 
   // +===== Scout ============================================================+
   /// getOrCreateLimitedType - Get the type from the cache or create a new
