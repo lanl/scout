@@ -873,8 +873,8 @@ void Verifier::visitDICompositeType(const DICompositeType &N) {
 // +===== Scout =================================================
 
 void Verifier::visitDIScoutDerivedType(const DIScoutDerivedType &N) {
-  // Common derived type checks.
-  visitDIDerivedTypeBase(N);
+  // Common scope checks.
+  visitDIScope(N);
 
   Assert(N.getTag() == dwarf::DW_TAG_typedef ||
              N.getTag() == dwarf::DW_TAG_pointer_type ||
@@ -895,8 +895,8 @@ void Verifier::visitDIScoutDerivedType(const DIScoutDerivedType &N) {
 }
 
 void Verifier::visitDIScoutCompositeType(const DIScoutCompositeType &N) {
-  // Common derived type checks.
-  visitDIDerivedTypeBase(N);
+  // Common scope checks.
+  visitDIScope(N);
 
   Assert(N.getTag() == dwarf::DW_TAG_SCOUT_uniform_mesh_type ||
          N.getTag() == dwarf::DW_TAG_SCOUT_ALE_mesh_type ||

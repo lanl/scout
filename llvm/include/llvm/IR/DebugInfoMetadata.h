@@ -763,7 +763,7 @@ public:
 };
 
 // +===== Scout ==============================================
-class DIScoutDerivedType : public DIDerivedTypeBase {
+class DIScoutDerivedType : public DIType {
   friend class LLVMContextImpl;
   friend class MDNode;
   
@@ -773,8 +773,8 @@ class DIScoutDerivedType : public DIDerivedTypeBase {
                 unsigned Line, uint64_t SizeInBits, uint64_t AlignInBits,
                 uint64_t OffsetInBits, unsigned Flags, unsigned ScoutFlags,
                      ArrayRef<Metadata *> Ops)
-  : DIDerivedTypeBase(C, DIScoutDerivedTypeKind, Storage, Tag, Line, SizeInBits,
-                      AlignInBits, OffsetInBits, Flags, Ops),
+  : DIType(C, DIScoutDerivedTypeKind, Storage, Tag, Line, SizeInBits,
+           AlignInBits, OffsetInBits, Flags, Ops),
   ScoutFlags(ScoutFlags){}
   
   ~DIScoutDerivedType() {}
@@ -829,6 +829,10 @@ public:
                      AlignInBits, OffsetInBits, Flags, ScoutFlags, ExtraData))
   
   TempDIScoutDerivedType clone() const { return cloneImpl(); }
+  
+  //// Get the base type this is derived from.
+  DITypeRef getBaseType() const { return DITypeRef(getRawBaseType()); }
+  Metadata *getRawBaseType() const { return getOperand(3); }
   
   /// \brief Get extra data associated with this derived type.
   ///
@@ -1012,9 +1016,11 @@ public:
 };
 
 // +===== Scout ===========================================
-class DIScoutCompositeType : public DICompositeTypeBase {
+class DIScoutCompositeType : public DIType {
   friend class LLVMContextImpl;
   friend class MDNode;
+  
+  unsigned RuntimeLang;
   
   unsigned DimX;
   unsigned DimY;
@@ -1025,9 +1031,10 @@ class DIScoutCompositeType : public DICompositeTypeBase {
                   uint64_t AlignInBits, uint64_t OffsetInBits, unsigned Flags,
                   unsigned DimX, unsigned DimY, unsigned DimZ,
                   ArrayRef<Metadata *> Ops)
-  : DICompositeTypeBase(C, DIScoutCompositeTypeKind, Storage, Tag, Line,
-                        RuntimeLang, SizeInBits, AlignInBits, OffsetInBits,
-                        Flags, Ops),
+  : DIType(C, DIScoutCompositeTypeKind, Storage, Tag, Line,
+           SizeInBits, AlignInBits, OffsetInBits,
+           Flags, Ops),
+  RuntimeLang(RuntimeLang),
   DimX(DimX),
   DimY(DimY),
   DimZ(DimZ){}
@@ -1100,6 +1107,45 @@ public:
                      DimX, DimY, DimZ))
   
   TempDIScoutCompositeType clone() const { return cloneImpl(); }
+  
+  DITypeRef getBaseType() const { return DITypeRef(getRawBaseType()); }
+  DINodeArray getElements() const {
+    return cast_or_null<MDTuple>(getRawElements());
+  }
+  DITypeRef getVTableHolder() const { return DITypeRef(getRawVTableHolder()); }
+  DITemplateParameterArray getTemplateParams() const {
+    return cast_or_null<MDTuple>(getRawTemplateParams());
+  }
+  StringRef getIdentifier() const { return getStringOperand(7); }
+  unsigned getRuntimeLang() const { return RuntimeLang; }
+  
+  Metadata *getRawBaseType() const { return getOperand(3); }
+  Metadata *getRawElements() const { return getOperand(4); }
+  Metadata *getRawVTableHolder() const { return getOperand(5); }
+  Metadata *getRawTemplateParams() const { return getOperand(6); }
+  MDString *getRawIdentifier() const { return getOperandAs<MDString>(7); }
+  
+  /// \brief Replace operands.
+  ///
+  /// If this \a isUniqued() and not \a isResolved(), on a uniquing collision
+  /// this will be RAUW'ed and deleted.  Use a \a TrackingMDRef to keep track
+  /// of its movement if necessary.
+  /// @{
+  void replaceElements(DINodeArray Elements) {
+#ifndef NDEBUG
+    for (DINode *Op : getElements())
+      assert(std::find(Elements->op_begin(), Elements->op_end(), Op) &&
+             "Lost a member during member list replacement");
+#endif
+    replaceOperandWith(4, Elements.get());
+  }
+  void replaceVTableHolder(DITypeRef VTableHolder) {
+    replaceOperandWith(5, VTableHolder);
+  }
+  void replaceTemplateParams(DITemplateParameterArray TemplateParams) {
+    replaceOperandWith(6, TemplateParams.get());
+  }
+  /// @}
   
   unsigned getDimX() const{
     return DimX;
