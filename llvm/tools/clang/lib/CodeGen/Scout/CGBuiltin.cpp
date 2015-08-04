@@ -84,26 +84,17 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     ForallData& data = ForallStack.back();
 
     Value* index = Builder.CreateLoad(data.indexPtr);
-    llvm::Type* indexType = index->getType();
-
-    Value* width = Builder.CreateLoad(LookupMeshDim(0));
-    width = Builder.CreateZExt(width, indexType, "width");
-    
-    Value* height = Builder.CreateLoad(LookupMeshDim(1));
-    height = Builder.CreateZExt(height, indexType, "height");
-    
-    Value* pos[3];
-    
-    pos[0] = Builder.CreateURem(index, width, "x");
-    pos[1] = Builder.CreateUDiv(index, width, "y");
-    pos[2] = Builder.CreateUDiv(index, Builder.CreateMul(width, height), "z");
     
     Value* result =
     UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
     
     for(size_t i = 0; i < 3; ++i){
+      llvm::Value* pi = LookupInductionVar(i);
+      pi = Builder.CreateLoad(pi);
+      pi = Builder.CreateTrunc(pi, Int32Ty);
+      
       result =
-      Builder.CreateInsertElement(result, Builder.CreateTrunc(pos[i], Int32Ty), i);
+      Builder.CreateInsertElement(result, pi, i);
     }
     
     result =

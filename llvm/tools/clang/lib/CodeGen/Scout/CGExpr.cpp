@@ -608,7 +608,6 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
     if(isa<MeshFieldDecl>(E->getMemberDecl())) {
       // get the correct mesh member
       llvm::Value* mi = getCShiftLinearIdx(args);
-      dumpValue("mi", mi);
       LValue LV = EmitMeshMemberExpr(E, mi);
       
       return RValue::get(Builder.CreateLoad(LV.getAddress(), "cshift.element"));
