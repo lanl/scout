@@ -109,36 +109,39 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     return Builder.CreateLoad(data.indexPtr, "index");
   }
   
-  if(data.inductionVar[index]){
+  if(!data.inductionVar[index]){
+    sprintf(IRNameStr, "induct.%s.ptr", IndexNames[index]);
+    llvm::Value* inductPtr = Builder.CreateAlloca(Int32Ty, nullptr, IRNameStr);
+    
     llvm::BasicBlock* prevBlock = Builder.GetInsertBlock();
     llvm::BasicBlock::iterator prevPoint = Builder.GetInsertPoint();
     
     Builder.SetInsertPoint(data.entryBlock, data.entryBlock->begin());
     
     llvm::Value* idx = Builder.CreateLoad(data.indexPtr, "index");
-    llvm::Value* iv;
+    idx = Builder.CreateTrunc(idx, Int32Ty);
+    llvm::Value* induct;
+    
+    llvm::Value* width = Builder.CreateLoad(MeshDims[0]);
+
+    sprintf(IRNameStr, "induct.%s", IndexNames[index]);
     
     switch(index){
       case 0:
-        sprintf(IRNameStr, "induct.%s", IndexNames[index]);
-        iv = Builder.CreateURem(idx, Builder.CreateLoad(MeshDims[index]), IRNameStr);
+        induct = Builder.CreateURem(idx, width, IRNameStr);
         break;
       case 1:
-        sprintf(IRNameStr, "induct.%s", IndexNames[index]);
-        iv = Builder.CreateUDiv(idx, Builder.CreateLoad(MeshDims[index]), IRNameStr);
+        induct = Builder.CreateUDiv(idx, width, IRNameStr);
         break;
       case 3:{
-        llvm::Value* wh =
-        Builder.CreateMul(Builder.CreateLoad(MeshDims[0]), Builder.CreateLoad(MeshDims[1]));
-        
-        sprintf(IRNameStr, "induct.%s", IndexNames[index]);
-        
-        iv = Builder.CreateUDiv(idx, wh, IRNameStr);
+        llvm::Value* height = Builder.CreateLoad(MeshDims[1]);
+        induct = Builder.CreateUDiv(idx, Builder.CreateMul(width, height), IRNameStr);
         break;
       }
     }
     
-    data.inductionVar[index] = iv;
+    Builder.CreateStore(induct, inductPtr);
+    data.inductionVar[index] = inductPtr;
     
     Builder.SetInsertPoint(prevBlock, prevPoint);
   }
