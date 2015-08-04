@@ -110,10 +110,10 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   }
   
   if(!data.inductionVar[index]){
-    llvm::BasicBlock* prevBlock = Builder.GetInsertBlock();
-    llvm::BasicBlock::iterator prevPoint = Builder.GetInsertPoint();
+    //llvm::BasicBlock* prevBlock = Builder.GetInsertBlock();
+    //llvm::BasicBlock::iterator prevPoint = Builder.GetInsertPoint();
     
-    Builder.SetInsertPoint(data.entryBlock, data.entryBlock->begin());
+    //Builder.SetInsertPoint(data.entryBlock, data.entryBlock->begin());
     
     sprintf(IRNameStr, "induct.%s.ptr", IndexNames[index]);
     llvm::Value* inductPtr = Builder.CreateAlloca(Int64Ty, nullptr, IRNameStr);
@@ -142,7 +142,7 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     Builder.CreateStore(induct, inductPtr);
     data.inductionVar[index] = inductPtr;
     
-    Builder.SetInsertPoint(prevBlock, prevPoint);
+    //Builder.SetInsertPoint(prevBlock, prevPoint);
   }
   
   return data.inductionVar[index];

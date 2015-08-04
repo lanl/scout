@@ -201,7 +201,7 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
 
 LValue
 CodeGenFunction::EmitMeshMemberExpr(const MemberExpr* E,
-                                    llvm::Value* IndexPtr){  
+                                    llvm::Value* IndexPtr){
   DeclRefExpr* base;
   if(ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(E->getBase())){
     base = cast<DeclRefExpr>(ce->getSubExpr());
@@ -607,7 +607,9 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
     // make sure this is a mesh
     if(isa<MeshFieldDecl>(E->getMemberDecl())) {
       // get the correct mesh member
-      LValue LV = EmitMeshMemberExpr(E, getCShiftLinearIdx(args));
+      llvm::Value* mi = getCShiftLinearIdx(args);
+      dumpValue("mi", mi);
+      LValue LV = EmitMeshMemberExpr(E, mi);
       
       return RValue::get(Builder.CreateLoad(LV.getAddress(), "cshift.element"));
     }
