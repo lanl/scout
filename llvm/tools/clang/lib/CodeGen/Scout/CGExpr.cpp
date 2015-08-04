@@ -598,11 +598,12 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
   if(const MemberExpr *E = dyn_cast<MemberExpr>(A1E)) {
     // make sure this is a mesh
     if(isa<MeshFieldDecl>(E->getMemberDecl())) {
-      // get the correct mesh member
-      //LValue LV = EmitMeshMemberExpr(E, getCShiftLinearIdx(args));
-      assert(false && "cshift unimplemented");
+      llvm::Value* IndexPtr = GetForallIndex(E);
       
-      //return RValue::get(Builder.CreateLoad(LV.getAddress(), "cshift.element"));
+      // get the correct mesh member
+      LValue LV = EmitMeshMemberExpr(E, getCShiftLinearIdx(args));
+      
+      return RValue::get(Builder.CreateLoad(LV.getAddress(), "cshift.element"));
     }
   }
   assert(false && "Failed to translate Scout cshift expression to LLVM IR!");

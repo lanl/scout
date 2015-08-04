@@ -101,7 +101,49 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     else sprintf(IRNameStr, "stencil.induct.%s.ptr", IndexNames[index]);
     return Builder.CreateLoad(V, IRNameStr);
   }
-  return InductionVar[index];
+  
+  assert(!ForallStack.empty());
+  ForallData& data = ForallStack[0];
+  
+  if(index == 4){
+    return Builder.CreateLoad(data.indexPtr, "index");
+  }
+  
+  if(data.inductionVar[index]){
+    llvm::BasicBlock* prevBlock = Builder.GetInsertBlock();
+    llvm::BasicBlock::iterator prevPoint = Builder.GetInsertPoint();
+    
+    Builder.SetInsertPoint(data.entryBlock, data.entryBlock->begin());
+    
+    llvm::Value* idx = Builder.CreateLoad(data.indexPtr, "index");
+    llvm::Value* iv;
+    
+    switch(index){
+      case 0:
+        sprintf(IRNameStr, "induct.%s", IndexNames[index]);
+        iv = Builder.CreateURem(idx, Builder.CreateLoad(MeshDims[index]), IRNameStr);
+        break;
+      case 1:
+        sprintf(IRNameStr, "induct.%s", IndexNames[index]);
+        iv = Builder.CreateUDiv(idx, Builder.CreateLoad(MeshDims[index]), IRNameStr);
+        break;
+      case 3:{
+        llvm::Value* wh =
+        Builder.CreateMul(Builder.CreateLoad(MeshDims[0]), Builder.CreateLoad(MeshDims[1]));
+        
+        sprintf(IRNameStr, "induct.%s", IndexNames[index]);
+        
+        iv = Builder.CreateUDiv(idx, wh, IRNameStr);
+        break;
+      }
+    }
+    
+    data.inductionVar[index] = iv;
+    
+    Builder.SetInsertPoint(prevBlock, prevPoint);
+  }
+  
+  return data.inductionVar[index];
 }
 
 llvm::Value *CodeGenFunction::LookupMeshStart(unsigned int index) {

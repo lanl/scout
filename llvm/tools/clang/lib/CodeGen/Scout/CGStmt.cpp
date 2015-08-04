@@ -445,6 +445,8 @@ void CodeGenFunction::GetNumMeshItems(llvm::Value** numCells, llvm::Value** numV
 }
 
 void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
+  assert(false && "refactoring");
+  /*
   InnerForallScope = true;
   llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
   EmitMarkerBlock("forall.vertices.entry");
@@ -462,7 +464,7 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   Builder.CreateStore(Zero, vertexPosPtr);
 
   llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
-  llvm::Value* indVar =  Builder.CreateLoad(InductionVar[3], "indVar");
+  llvm::Value* indVar =  Builder.CreateLoad(LookupInductionVar(3), "indVar");
 
   llvm::Value* width1 = Builder.CreateAdd(width, ConstantOne, "width1");
   llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
@@ -492,9 +494,9 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
 
   // rank = 3
   EmitBlock(Then3);
-  llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
-  llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
-  llvm::Value* k = Builder.CreateLoad(InductionVar[2], "k");
+  llvm::Value* i = Builder.CreateLoad(LookupInductionVar(0), "i");
+  llvm::Value* j = Builder.CreateLoad(LookupInductionVar(1), "j");
+  llvm::Value* k = Builder.CreateLoad(LookupInductionVar(2), "k");
   v1 = Builder.CreateMul(j, width1);
   v2 = Builder.CreateMul(k, wh1);
   llvm::Value* xyz = Builder.CreateAdd(i, Builder.CreateAdd(v1, v2));
@@ -567,10 +569,13 @@ void CodeGenFunction::EmitForallCellsVertices(const ForallMeshStmt &S){
   Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
   EmitBlock(ExitBlock);
   InnerForallScope = false;
+   */
 }
 
 //SC_TODO: Vertices has "regular" boundary while Cells is circular.
 void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
+  assert(false && "refactoring");
+  /*
   InnerForallScope = true;
   llvm::Value *cx1, *cx2, *vx2, *vx3, *cy1, *cy2, *vy2, *vy3;
   llvm::Value *vx1, *vy1;
@@ -621,7 +626,7 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   llvm::Value* pd2 = Builder.CreateUDiv(pm4, Two);
   llvm::Value* pm2 = Builder.CreateURem(pm4, Two);
 
-  i = Builder.CreateLoad(InductionVar[0], "i");
+  i = Builder.CreateLoad(LookupInductionVar(0), "i");
   x = Builder.CreateSub(i, pd2, "x");
 
   cx1 = Builder.CreateICmpSLT(x, Zero);
@@ -630,7 +635,7 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   vx3 = Builder.CreateURem(x, width);
   x = Builder.CreateSelect(cx1, vx2, Builder.CreateSelect(cx2, vx3, x));
 
-  j = Builder.CreateLoad(InductionVar[1], "j");
+  j = Builder.CreateLoad(LookupInductionVar(1), "j");
   y = Builder.CreateSub(j, pm2, "y");
 
   cy1 = Builder.CreateICmpSLT(y, Zero);
@@ -639,7 +644,7 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   vy3 = Builder.CreateURem(y, height);
   y = Builder.CreateSelect(cy1, vy2, Builder.CreateSelect(cy2, vy3, y));
 
-  k = Builder.CreateLoad(InductionVar[2], "k");
+  k = Builder.CreateLoad(LookupInductionVar(2), "k");
   z = Builder.CreateSub(k, pd4, "z");
 
   llvm::Value* cz1 = Builder.CreateICmpSLT(z, Zero);
@@ -670,7 +675,7 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   Builder.CreateCondBr(Check2, Then2, Else2);
   EmitBlock(Then2);
 
-  i = Builder.CreateLoad(InductionVar[0], "i");
+  i = Builder.CreateLoad(LookupInductionVar(0), "i");
 
   vx1 = Builder.CreateUDiv(cellPos, Two);
   x = Builder.CreateSub(i, vx1, "x");
@@ -681,7 +686,7 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   vx3 = Builder.CreateURem(x, width);
   x = Builder.CreateSelect(cx1, vx2, Builder.CreateSelect(cx2, vx3, x));
 
-  j = Builder.CreateLoad(InductionVar[1], "j");
+  j = Builder.CreateLoad(LookupInductionVar(1), "j");
   vy1 = Builder.CreateURem(cellPos, Two);
   y = Builder.CreateSub(j, vy1, "y");
 
@@ -703,7 +708,7 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   // rank !=2 (rank = 1)
   EmitBlock(Else2);
 
-  i = Builder.CreateLoad(InductionVar[0], "i");
+  i = Builder.CreateLoad(LookupInductionVar(0), "i");
   vx1 = Builder.CreateURem(cellPos, Two);
   x = Builder.CreateSub(i, vx1, "x");
 
@@ -741,10 +746,13 @@ void CodeGenFunction::EmitForallVerticesCells(const ForallMeshStmt &S){
   Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
   EmitBlock(ExitBlock);
   InnerForallScope = false;
+   */
 }
 
 void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
-
+  assert(false && "refactoring");
+/*
+  
   llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
   EmitMarkerBlock("forall.edges.entry");
 
@@ -790,9 +798,9 @@ void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
   a = Builder.CreateMul(depth1, c);
   b = Builder.CreateMul(width1, height1);
 
-  i = Builder.CreateLoad(InductionVar[0]);
-  j = Builder.CreateLoad(InductionVar[1]);
-  k = Builder.CreateLoad(InductionVar[2]);
+  i = Builder.CreateLoad(LookupInductionVar(0));
+  j = Builder.CreateLoad(LookupInductionVar(1));
+  k = Builder.CreateLoad(LookupInductionVar(2));
 
   llvm::BasicBlock *LoopBlock = createBasicBlock("forall.edges.loop");
   Builder.CreateBr(LoopBlock);
@@ -882,8 +890,8 @@ void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
   height = Builder.CreateLoad(MeshDims[1], "height");
   width1 =  Builder.CreateAdd(width, ConstantOne,"width1");
   w1h = Builder.CreateMul(width1, height, "w1h");
-  i = Builder.CreateLoad(InductionVar[0], "i");
-  j = Builder.CreateLoad(InductionVar[1], "j");
+  i = Builder.CreateLoad(LookupInductionVar(0), "i");
+  j = Builder.CreateLoad(LookupInductionVar(1), "j");
 
   llvm::BasicBlock *LoopBlock3 = createBasicBlock("forall.edges.loop");
   Builder.CreateBr(LoopBlock3);
@@ -925,15 +933,18 @@ void CodeGenFunction::EmitForallCellsEdges(const ForallMeshStmt &S){
   // rank !=2 (rank = 1)
   EmitBlock(Else2);
   EdgeIndex = InnerIndex;
-  Builder.CreateStore(Builder.CreateLoad(InductionVar[0]), EdgeIndex);
+  Builder.CreateStore(Builder.CreateLoad(LookupInductionVar(0)), EdgeIndex);
   EmitStmt(S.getBody());
   EdgeIndex = 0;
   Builder.CreateBr(Done);
 
   EmitBlock(Done);
+ */
 }
 
 void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
+  assert(false && "refactoring");
+  /*
   llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
 
   EmitMarkerBlock("forall.faces.entry");
@@ -982,8 +993,8 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
   llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
   llvm::Value* width1 =  Builder.CreateAdd(width, ConstantOne, "width1");
   llvm::Value* w1h = Builder.CreateMul(width1, height, "w1h");
-  llvm::Value* i = Builder.CreateLoad(InductionVar[0], "i");
-  llvm::Value* j = Builder.CreateLoad(InductionVar[1], "j");
+  llvm::Value* i = Builder.CreateLoad(LookupInductionVar(0), "i");
+  llvm::Value* j = Builder.CreateLoad(LookupInductionVar(1), "j");
 
   llvm::BasicBlock *LoopBlock = createBasicBlock("forall.faces.loop");
   Builder.CreateBr(LoopBlock);
@@ -1025,15 +1036,18 @@ void CodeGenFunction::EmitForallCellsFaces(const ForallMeshStmt &S){
   // rank !=2 (rank = 1)
   EmitBlock(Else2);
   FaceIndex = InnerIndex;
-  Builder.CreateStore(Builder.CreateLoad(InductionVar[0]), FaceIndex);
+  Builder.CreateStore(Builder.CreateLoad(LookupInductionVar(0)), FaceIndex);
   EmitStmt(S.getBody());
   FaceIndex = 0;
   Builder.CreateBr(Done);
 
   EmitBlock(Done);
+   */
 }
 
 void CodeGenFunction::EmitForallEdgesCells(const ForallMeshStmt &S){
+  assert(false && "refactoring");
+  /*
   llvm::Value *Rank = Builder.CreateLoad(MeshRank);
   llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
   llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
@@ -1050,11 +1064,14 @@ void CodeGenFunction::EmitForallEdgesCells(const ForallMeshStmt &S){
   Builder.CreateBr(Done3);
 
   EmitBlock(Done3);
+   */
 }
 
 void
 CodeGenFunction::EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
                                                  llvm::Value* OuterIndex){
+  assert(false && "refactoring");
+  /*
 
   llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
@@ -1145,10 +1162,13 @@ CodeGenFunction::EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
   CellIndex = 0;
 
   EmitBlock(Done2);
+   */
 
 }
 
 void CodeGenFunction::EmitForallFacesCells(const ForallMeshStmt &S){
+  assert(false && "refactoring");
+  /*
   llvm::Value *Rank = Builder.CreateLoad(MeshRank);
    llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
    llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
@@ -1165,12 +1185,15 @@ void CodeGenFunction::EmitForallFacesCells(const ForallMeshStmt &S){
    Builder.CreateBr(Done3);
 
    EmitBlock(Done3);
+   */
 }
 
 void
 CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
                                                     llvm::Value* OuterIndex){
-
+  assert(false && "refactoring");
+/*
+  
   llvm::Value *k, *vertexIndex;
   llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
   llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
@@ -1256,6 +1279,7 @@ CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
   VertexIndex = 0;
 
   EmitBlock(Done2);
+ */
 }
 
 void CodeGenFunction::EmitForallEdgesVertices(const ForallMeshStmt &S){
@@ -1278,6 +1302,8 @@ void CodeGenFunction::EmitForallEdgesVertices(const ForallMeshStmt &S){
 }
 
 void CodeGenFunction::EmitForallFacesVertices(const ForallMeshStmt &S){
+  assert(false && "refactoring");
+  /*
   llvm::Value *Rank = Builder.CreateLoad(MeshRank);
   llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
   llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
@@ -1294,9 +1320,12 @@ void CodeGenFunction::EmitForallFacesVertices(const ForallMeshStmt &S){
   Builder.CreateBr(Done3);
 
   EmitBlock(Done3);
+   */
 }
 
 void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
+  assert(false && "refactoring");
+  /*
   using namespace std;
   using namespace llvm;
   
@@ -1317,7 +1346,7 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
 
   InductionVar[3] = CreateTempAlloca(Int32Ty, "forall.edges_idx.ptr");
   //zero-initialize induction var
-  B.CreateStore(Zero, InductionVar[3]);
+  B.CreateStore(Zero, LookupInductionVar(3));
   InnerIndex = CreateTempAlloca(Int32Ty, "forall.inneridx.ptr");
 
   // find number of edges
@@ -1331,7 +1360,7 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
 
   EmitBlock(LoopBlock);
   
-  EdgeIndex = InductionVar[3];
+  EdgeIndex = LookupInductionVar(3);
   
   if(queryMask){
     Value* nextEdgeIndex = Builder.CreateLoad(EdgeIndex);
@@ -1362,9 +1391,9 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
   EmitStmt(S.getBody());
   EdgeIndex = 0;
 
-  Value* k = B.CreateLoad(InductionVar[3], "forall.edges_idx");
+  Value* k = B.CreateLoad(LookupInductionVar(3), "forall.edges_idx");
   k = B.CreateAdd(k, One);
-  B.CreateStore(k, InductionVar[3]);
+  B.CreateStore(k, LookupInductionVar(3));
   k = B.CreateZExt(k, Int64Ty, "k");
 
   Value* Cond = B.CreateICmpSLT(k, numEdges, "cond");
@@ -1374,9 +1403,12 @@ void CodeGenFunction::EmitForallEdges(const ForallMeshStmt &S){
   EmitBlock(ExitBlock);
 
   InnerIndex = 0;
+   */
 }
 
 void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
+  assert(false && "refactoring");
+  /*
   using namespace std;
   using namespace llvm;
   
@@ -1395,7 +1427,8 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
 
   EmitMarkerBlock("forall.faces.entry");
 
-  InductionVar[3] = CreateTempAlloca(Int32Ty, "forall.faces_idx.ptr");
+  assert(false && "disabled");
+  //InductionVar[3] = CreateTempAlloca(Int32Ty, "forall.faces_idx.ptr");
   //zero-initialize induction var
   B.CreateStore(Zero, InductionVar[3]);
 
@@ -1451,6 +1484,7 @@ void CodeGenFunction::EmitForallFaces(const ForallMeshStmt &S){
   llvm::BasicBlock *ExitBlock = createBasicBlock("forall.faces.exit");
   B.CreateCondBr(Cond, LoopBlock, ExitBlock);
   EmitBlock(ExitBlock);
+   */
 }
 
 void CodeGenFunction::AddScoutKernel(llvm::Function* f,
@@ -1608,6 +1642,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
   // ndm - test
   EmitForallMeshStmt2(S);
   return;
+  /*
   
   const VarDecl* VD = S.getMeshVarDecl();
   VD->dump();
@@ -1706,6 +1741,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S) {
     default:
       assert(false && "invalid forall case");
   }
+   */
 }
 
 void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
@@ -1840,9 +1876,9 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   
   ForallData& data = ForallStack[i];
   
-  BasicBlock* entryBlock = createBasicBlock("forall.entry");
-  B.CreateBr(entryBlock);
-  EmitBlock(entryBlock);
+  data.entryBlock = createBasicBlock("forall.entry");
+  B.CreateBr(data.entryBlock);
+  EmitBlock(data.entryBlock);
   
   Value* endIndex;
   
@@ -1922,6 +1958,8 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
 //
 
 void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
+  assert(false && "refactoring");
+  /*
   llvm::Value* numItems;
   
   SmallVector<llvm::Value*, 3> Dimensions;
@@ -1997,6 +2035,7 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
   // reset MeshDims, Rank and induction var
   // so width/height etc can't be called after forall
   ResetMeshBounds();
+   */
 }
 
 
@@ -2004,6 +2043,8 @@ void CodeGenFunction::EmitForallCellsOrVertices(const ForallMeshStmt &S) {
 void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S,
                                          unsigned r,
                                          llvm::Value* queryMask) {
+  assert(false && "refactoring");
+  /*
  
   llvm::StringRef MeshName = S.getMeshVarDecl()->getName();
 
@@ -2149,10 +2190,12 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S,
 
   VertexIndex = 0;
   CellIndex = 0;
+   */
 }
 
 llvm::Value* CodeGenFunction::EmitForallQueryCall(const ForallMeshStmt& S,
                                                   llvm::Value* numItems){
+  /*
   using namespace std;
   using namespace llvm;
   
@@ -2203,6 +2246,7 @@ llvm::Value* CodeGenFunction::EmitForallQueryCall(const ForallMeshStmt& S,
   B.CreateCall(funcPtr, queryArgs);
   
   return queryMask;
+   */
 }
 
 // reset Loopbounds, mesh dimensions, rank and induction var
@@ -2213,18 +2257,15 @@ void CodeGenFunction::ResetMeshBounds(void) {
     MeshStart.clear();
     MeshSize.clear();
     LoopBounds.clear();
-    InductionVar.clear();
     InnerInductionVar.clear();
     for(unsigned int i = 0; i < 3; i++) {
        MeshDims.push_back(0);
        MeshStart.push_back(0);
        MeshSize.push_back(0);
        LoopBounds.push_back(0);
-       InductionVar.push_back(0);
        InnerInductionVar.push_back(0);
     }
     // create linear loop index as 4th element
-    InductionVar.push_back(0);
     InnerInductionVar.push_back(0);
     MeshRank = 0;
 }
@@ -2399,6 +2440,8 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
 }
 
 void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
+  assert(false && "refactoring");
+  /*
   const MeshType* mt = S.getMeshType();
   if (mt->dimensions().size() == 3) {
     EmitVolumeRenderallStmt(S);
@@ -2521,9 +2564,12 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // reset Loopbounds, Rank, induction var
   // so width/height etc can't be called after renderall
   ResetMeshBounds();
+   */
 }
 
 void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
+  assert(false && "refactoring");
+  /*
   using namespace llvm;
   using namespace std;
   
@@ -2876,15 +2922,14 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
     size_t size = t->getPrimitiveSizeInBits() / 8;
     assert(size != 0 && "size of non-primitive type requested -- fix this to be flexible!");
     
-    /*
-    if (t->isIntegerTy(32) || t->isFloatTy()) {
-      size = 4;
-    } else if(t->isIntegerTy(64) || t->isDoubleTy()) {
-      size = 8;
-    } else {
+    //
+    //if (t->isIntegerTy(32) || t->isFloatTy()) {
+    //  size = 4;
+    //} else if(t->isIntegerTy(64) || t->isDoubleTy()) {
+   //   size = 8;
+   // } else {
 
-    }
-    */
+   // }
     llvm::SmallVector<llvm::Metadata*, 1> varData;
     varData.push_back(llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int32Ty, size)));
     
@@ -2899,9 +2944,12 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   volrenData.push_back(varsMD);
   volrens->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), volrenData));
+*/
 }
 
 void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S){
+  assert(false && "refactoring");
+  /*
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
 
@@ -2975,10 +3023,13 @@ void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S
   EmitBlock(ExitBlock);
 
   InnerIndex = 0;
+   */
 }
 
 //generate one of the nested loops
 void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned r) {
+  assert(false && "refactoring");
+  /*
 
   llvm::StringRef MeshName = S.getMeshVarDecl()->getName();
 
@@ -3087,6 +3138,7 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
     DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
 
   EmitBlock(LoopExit.getBlock(), true);
+   */
 }
 
 #ifdef __clang__

@@ -354,10 +354,6 @@ public:
   // used by EmitCShiftExpr
   typedef CallExpr::const_arg_iterator ArgIterator;
 
-  // Variables used in Builtins
-  // forall mesh induction variables
-  // overall induction variable is stored as 4th element
-  llvm::SmallVector< llvm::Value *, 4 > InductionVar;
   // mesh dimension sizes
   llvm::SmallVector< llvm::Value *, 3 > MeshDims;
   // for threaded case
@@ -2333,6 +2329,12 @@ public:
   }
   
   struct ForallData{
+    ForallData(){
+      inductionVar[0] = nullptr;
+      inductionVar[1] = nullptr;
+      inductionVar[2] = nullptr;
+    }
+    
     const VarDecl* meshVarDecl;
     uint32_t topologyDim;
     
@@ -2341,6 +2343,8 @@ public:
     llvm::Value* fromIndicesPtr;
     llvm::Value* toIndicesPtr;
     llvm::Value* entitiesPtr;
+    llvm::BasicBlock* entryBlock;
+    llvm::Value* inductionVar[3];
   };
   
   std::vector<ForallData> ForallStack;
