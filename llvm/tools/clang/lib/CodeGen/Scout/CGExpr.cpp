@@ -201,7 +201,7 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
 
 LValue
 CodeGenFunction::EmitMeshMemberExpr(const MemberExpr* E,
-                                    llvm::Value* IndexPtr){
+                                    llvm::Value* IndexPtr){  
   DeclRefExpr* base;
   if(ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(E->getBase())){
     base = cast<DeclRefExpr>(ce->getSubExpr());
@@ -400,7 +400,13 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
   //llvm::Value *Idx = Builder.CreateSExt(Index, IntPtrTy, "Xall.linearidx"); //forall or renderall
   //llvm::Value* Idx = Index;
   
-  llvm::Value* Idx = Builder.CreateLoad(Index);
+  llvm::Value* Idx;
+  if(Index->getType()->isPointerTy()){
+    Idx = Builder.CreateLoad(Index);
+  }
+  else{
+    Idx = Index;
+  }
   
   // get the correct element of the field depending on the index
   sprintf(IRNameStr, "%s.%s.element.ptr", MeshName.str().c_str(),FieldName.str().c_str());
@@ -453,7 +459,7 @@ llvm::Value *CodeGenFunction::getMeshIndex(const MeshFieldDecl* MFD) {
 llvm::Value *
 CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
 
-  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int64Ty, 0);
 
   //get the dimensions (Width, Height, Depth)
   SmallVector< llvm::Value *, 3 > dims;
@@ -472,6 +478,8 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
 
   SmallVector< llvm::Value *, 3 > indices;
   for(unsigned i = 0; i < args.size(); ++i) {
+    llvm::Value* ai = Builder.CreateZExt(args[i], Int64Ty);
+    
     sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
     llvm::Value *iv   = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
 
@@ -481,9 +489,9 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
     llvm::Value *Index;
     if(CGM.getCodeGenOpts().ScoutLegionSupport) {
       // add starting offset (for legion mode)
-      Index = Builder.CreateAdd(Builder.CreateAdd(iv, args[i]), start[i], IRNameStr);
+      Index = Builder.CreateAdd(Builder.CreateAdd(iv, ai), start[i], IRNameStr);
     } else {
-      Index = Builder.CreateAdd(iv, args[i], IRNameStr);
+      Index = Builder.CreateAdd(iv, ai, IRNameStr);
     }
 
     // make sure it is in range or wrap
@@ -598,8 +606,6 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
   if(const MemberExpr *E = dyn_cast<MemberExpr>(A1E)) {
     // make sure this is a mesh
     if(isa<MeshFieldDecl>(E->getMemberDecl())) {
-      llvm::Value* IndexPtr = GetForallIndex(E);
-      
       // get the correct mesh member
       LValue LV = EmitMeshMemberExpr(E, getCShiftLinearIdx(args));
       

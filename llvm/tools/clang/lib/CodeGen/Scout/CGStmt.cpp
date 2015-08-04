@@ -274,8 +274,8 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   // find number of mesh fields (struct fields - the fixed ones like width/height/depth)
   unsigned int nfields = mt->getDecl()->fields() + 1;
 
-  llvm::Value *ConstantOne = llvm::ConstantInt::get(Int32Ty, 1);
-  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+  llvm::Value *ConstantOne = llvm::ConstantInt::get(Int64Ty, 1);
+  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int64Ty, 0);
   
   llvm::StringRef MeshName = MeshBaseAddr->getName();
   
@@ -320,19 +320,19 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
      if(isForall == true) { // forall
        if  (meshType == Cells) {
          // if LoopBound == 0 then set it to 1 (for cells)
-         LoopBounds[i] = CreateTempAlloca(Int32Ty, "loopbound.ptr");
+         LoopBounds[i] = CreateTempAlloca(Int64Ty, "loopbound.ptr");
          llvm::Value *dim = Builder.CreateLoad(MeshSize[i]);
          llvm::Value *Check = Builder.CreateICmpEQ(dim, ConstantZero);
          llvm::Value *x = Builder.CreateSelect(Check, ConstantOne, dim);
          Builder.CreateStore(x, LoopBounds[i]);
        } else if  (meshType == Vertices) {
-         LoopBounds[i] = CreateTempAlloca(Int32Ty, "loopbounds.ptr");
+         LoopBounds[i] = CreateTempAlloca(Int64Ty, "loopbounds.ptr");
          llvm::Value *incr = Builder.CreateAdd(Builder.CreateLoad(MeshSize[i]), ConstantOne);
          Builder.CreateStore(incr, LoopBounds[i]);
        }
      } else { //renderall
        // for renderall want full mesh w/ cell based bounds
-       LoopBounds[i] = CreateTempAlloca(Int32Ty, "loopbound.ptr");
+       LoopBounds[i] = CreateTempAlloca(Int64Ty, "loopbound.ptr");
        llvm::Value *dim = Builder.CreateLoad(MeshDims[i]);
        llvm::Value *Check = Builder.CreateICmpEQ(dim, ConstantZero);
        llvm::Value *x = Builder.CreateSelect(Check, ConstantOne, dim);

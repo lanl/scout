@@ -110,16 +110,15 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   }
   
   if(!data.inductionVar[index]){
-    sprintf(IRNameStr, "induct.%s.ptr", IndexNames[index]);
-    llvm::Value* inductPtr = Builder.CreateAlloca(Int32Ty, nullptr, IRNameStr);
-    
     llvm::BasicBlock* prevBlock = Builder.GetInsertBlock();
     llvm::BasicBlock::iterator prevPoint = Builder.GetInsertPoint();
     
     Builder.SetInsertPoint(data.entryBlock, data.entryBlock->begin());
     
+    sprintf(IRNameStr, "induct.%s.ptr", IndexNames[index]);
+    llvm::Value* inductPtr = Builder.CreateAlloca(Int64Ty, nullptr, IRNameStr);
+    
     llvm::Value* idx = Builder.CreateLoad(data.indexPtr, "index");
-    idx = Builder.CreateTrunc(idx, Int32Ty);
     llvm::Value* induct;
     
     llvm::Value* width = Builder.CreateLoad(MeshDims[0]);

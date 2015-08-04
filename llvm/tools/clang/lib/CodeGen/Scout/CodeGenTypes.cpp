@@ -153,9 +153,9 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   MeshInfoMD.push_back(MDKind);
   
   // Metadata - mesh dims.   
-  llvm::IntegerType *Int32Ty = llvm::Type::getInt32Ty(getLLVMContext());
+  llvm::IntegerType *Int64Ty = llvm::Type::getInt64Ty(getLLVMContext());
   llvm::Metadata *MDRank =
-  llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int32Ty, rank));
+  llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(Int64Ty, rank));
   MeshInfoMD.push_back(MDRank);
   
   //typedef llvm::ArrayType ArrayTy;
@@ -207,7 +207,7 @@ llvm::Type *CodeGenTypes::ConvertScoutMeshType(QualType T) {
   if (isa<UniformMeshType>(meshType) || isa<ALEMeshType>(meshType) || isa<RectilinearMeshType>(meshType)) {
     // put width/height/depth/rank after fields
     for(size_t i = 0; i <  MeshParameterOffset::EndOffset; ++i) {
-      eltTys.push_back(llvm::IntegerType::get(getLLVMContext(), 32));
+      eltTys.push_back(llvm::IntegerType::get(getLLVMContext(), 64));
     }
   }
 
