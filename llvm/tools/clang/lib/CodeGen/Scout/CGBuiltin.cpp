@@ -88,7 +88,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     Value* result =
     UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
     
-    for(size_t i = 0; i < 3; ++i){
+    for(size_t i = 0; i <= 3; ++i){
       llvm::Value* pi = LookupInductionVar(i);
       pi = Builder.CreateLoad(pi);
       pi = Builder.CreateTrunc(pi, Int32Ty);
@@ -96,9 +96,6 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
       result =
       Builder.CreateInsertElement(result, pi, i);
     }
-    
-    result =
-    Builder.CreateInsertElement(result, Builder.CreateTrunc(index, Int32Ty), 3);
     
     *RV = RValue::get(result);
     

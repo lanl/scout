@@ -105,30 +105,46 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   assert(!ForallStack.empty());
   ForallData& data = ForallStack[0];
   
-  if(index == 4){
-    return Builder.CreateLoad(data.indexPtr, "index");
+  if(index == 3){
+    return data.indexPtr;
   }
   
   if(!data.inductionVar[index]){
+    const MeshType* mt = dyn_cast<MeshType>(data.meshVarDecl->getType());
+    
+    auto& dims = mt->dimensions();
+    
     sprintf(IRNameStr, "induct.%s.ptr", IndexNames[index]);
     llvm::Value* inductPtr = Builder.CreateAlloca(Int64Ty, nullptr, IRNameStr);
     
     llvm::Value* idx = Builder.CreateLoad(data.indexPtr, "index");
     llvm::Value* induct;
     
-    llvm::Value* width = Builder.CreateLoad(MeshDims[0]);
-
+    llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
+    
     sprintf(IRNameStr, "induct.%s", IndexNames[index]);
+    
+    size_t d = dims.size();
     
     switch(index){
       case 0:
         induct = Builder.CreateURem(idx, width, IRNameStr);
         break;
       case 1:
+        assert((d == 2 || d == 3) && "expected a 2d or 3d mesh");
+        
+        if(d == 3){
+          llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
+          idx = Builder.CreateURem(idx, Builder.CreateMul(width, height));
+        }
+        
         induct = Builder.CreateUDiv(idx, width, IRNameStr);
+        
         break;
-      case 3:{
-        llvm::Value* height = Builder.CreateLoad(MeshDims[1]);
+      case 2:{
+        assert(dims.size() == 3 && "expected a 3d mesh");
+        
+        llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
         induct = Builder.CreateUDiv(idx, Builder.CreateMul(width, height), IRNameStr);
         break;
       }
