@@ -103,24 +103,41 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   }
   
   assert(!ForallStack.empty());
-  ForallData& data = ForallStack[0];
   
-  if(index == 3){
-    return data.indexPtr;
+  ForallData* data = nullptr;
+  for(int i = ForallStack.size() - 1; i >= 0; --i){
+    ForallData& d = ForallStack[i];
+    
+    const MeshType* mt = dyn_cast<MeshType>(d.meshVarDecl->getType());
+    auto& dims = mt->dimensions();
+    
+    if(d.topologyDim == 0 || d.topologyDim == dims.size()){
+      data = &d;
+      break;
+    }
   }
   
-  if(!data.inductionVar[index]){
-    const MeshType* mt = dyn_cast<MeshType>(data.meshVarDecl->getType());
+  assert(data && "unable to find cells or vertices forall data");
+
+  if(index == 3){
+    return data->indexPtr;
+  }
+  
+  if(!data->inductionVar[index]){
+    const MeshType* mt = dyn_cast<MeshType>(data->meshVarDecl->getType());
     
     auto& dims = mt->dimensions();
     
     sprintf(IRNameStr, "induct.%s.ptr", IndexNames[index]);
     llvm::Value* inductPtr = Builder.CreateAlloca(Int64Ty, nullptr, IRNameStr);
     
-    llvm::Value* idx = Builder.CreateLoad(data.indexPtr, "index");
+    llvm::Value* idx = Builder.CreateLoad(data->indexPtr, "index");
     llvm::Value* induct;
     
     llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
+    if(data->topologyDim == 0){
+      width = Builder.CreateAdd(width, llvm::ConstantInt::get(Int64Ty, 1));
+    }
     
     sprintf(IRNameStr, "induct.%s", IndexNames[index]);
     
@@ -138,6 +155,10 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
         
         if(d == 3){
           llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
+          if(data->topologyDim == 0){
+            height = Builder.CreateAdd(width, llvm::ConstantInt::get(Int64Ty, 1));
+          }
+          
           idx = Builder.CreateURem(idx, Builder.CreateMul(width, height));
         }
         
@@ -151,16 +172,20 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
         }
         
         llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
+        if(data->topologyDim == 0){
+          height = Builder.CreateAdd(width, llvm::ConstantInt::get(Int64Ty, 1));
+        }
+        
         induct = Builder.CreateUDiv(idx, Builder.CreateMul(width, height), IRNameStr);
         break;
       }
     }
     
     Builder.CreateStore(induct, inductPtr);
-    data.inductionVar[index] = inductPtr;
+    data->inductionVar[index] = inductPtr;
   }
   
-  return data.inductionVar[index];
+  return data->inductionVar[index];
 }
 
 llvm::Value *CodeGenFunction::LookupMeshStart(unsigned int index) {
