@@ -1,0 +1,16 @@
+*.o
+*.ptx
+composite
+lib*
+qrc*
+moc*
+core.*
+.cproject
+.project
+org.*.prefs
+.settings
+*.dat
+QtViewer/Makefile
+CompositeViewer/output.png
+viewer
+*.raw
