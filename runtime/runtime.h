@@ -2163,7 +2163,7 @@ namespace LegionRuntime {
       static void set_registration_callback(RegistrationCallbackFnptr callback);
       static InputArgs& get_input_args(void);
       static Runtime* get_runtime(Processor p);
-      static LowLevel::ReductionOpTable& get_reduction_table(void);
+      static ReductionOpTable& get_reduction_table(void);
       static ProjectionID register_region_projection_function(
                                     ProjectionID handle, void *func_ptr);
       static ProjectionID register_partition_projection_function(
@@ -2263,9 +2263,6 @@ namespace LegionRuntime {
 #endif
     public:
       static unsigned num_profiling_nodes;
-    public:
-      // The baseline time for profiling
-      static const long long init_time;
     };
 
   }; // namespace HighLevel

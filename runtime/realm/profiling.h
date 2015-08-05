@@ -18,19 +18,17 @@
 #ifndef REALM_PROFILING_H
 #define REALM_PROFILING_H
 
+#include <climits>
 #include <vector>
 #include <set>
 #include <map>
 
-#include "lowlevel.h"
 #include "bytearray.h"
+#include "processor.h"
+#include "memory.h"
+#include "instance.h"
 
 namespace Realm {
-  // hacking in references to old namespace for now
-  typedef LegionRuntime::LowLevel::Processor Processor;
-  typedef LegionRuntime::LowLevel::Memory Memory;
-  typedef LegionRuntime::LowLevel::Processor::TaskFuncID TaskFuncID;
-  typedef LegionRuntime::LowLevel::RegionInstance RegionInstance;
 
   // through the wonders of templates, users should never need to work with 
   //  these IDs directly
@@ -69,8 +67,8 @@ namespace Realm {
       // on some node. This is necessary because clients can't know where the
       // measurement times were recorded and therefore have no reference. There
       // may be skews between the start times of different nodes.
-      typedef unsigned long long timestamp_t;
-      static const timestamp_t INVALID_TIMESTAMP = 0;
+      typedef long long timestamp_t;
+      static const timestamp_t INVALID_TIMESTAMP = LLONG_MIN;
 
       OperationTimeline() :
         create_time(INVALID_TIMESTAMP),
@@ -132,15 +130,9 @@ namespace Realm {
     };
   };
 
-  // A helper class for the runtime to use in creating an initial time on a node
-  class InitialTime {
-  public:
-    static inline unsigned long long get_initial_time(void);
-  };
-
   class ProfilingRequest {
   public:
-    ProfilingRequest(Processor _response_proc, TaskFuncID _response_task_id);
+    ProfilingRequest(Processor _response_proc, Processor::TaskFuncID _response_task_id);
     ProfilingRequest(const ProfilingRequest& to_copy);
 
     ~ProfilingRequest(void);
@@ -152,17 +144,16 @@ namespace Realm {
     template <typename T>
     ProfilingRequest &add_measurement(void);
 
-    size_t compute_size(void) const;
-    void* serialize(void *target) const;
-    const void* deserialize(const void *source);
+    template <typename S> static ProfilingRequest *deserialize_new(S &s);
 
   protected:
     friend class ProfilingMeasurementCollection;
 
+    template <typename S> friend bool operator<<(S &s, const ProfilingRequest &pr);
+
     Processor response_proc;
-    TaskFuncID response_task_id;
-    void *user_data;
-    size_t user_data_size;
+    Processor::TaskFuncID response_task_id;
+    ByteArray user_data;
     std::set<ProfilingMeasurementID> requested_measurements;
   };
 
@@ -176,7 +167,8 @@ namespace Realm {
 
     ProfilingRequestSet& operator=(const ProfilingRequestSet &rhs);
 
-    ProfilingRequest& add_request(Processor response_proc, TaskFuncID response_task_id,
+    ProfilingRequest& add_request(Processor response_proc, 
+				  Processor::TaskFuncID response_task_id,
 				  const void *payload = 0, size_t payload_size = 0);
 
     size_t request_count(void) const;
@@ -184,12 +176,11 @@ namespace Realm {
 
     void clear(void);
 
-    size_t compute_size(void) const;
-    void* serialize(void *target) const;
-    const void* deserialize(const void *source);
-
   protected:
     friend class ProfilingMeasurementCollection;
+
+    template <typename S> friend bool operator<<(S &s, const ProfilingRequestSet &prs);
+    template <typename S> friend bool operator>>(S &s, ProfilingRequestSet &prs);
 
     std::vector<ProfilingRequest *> requests;
   };
@@ -212,12 +203,7 @@ namespace Realm {
   protected:
     std::set<ProfilingMeasurementID> requested_measurements;
 
-    struct MeasurementData {
-      void* base;
-      size_t size;
-    };
-
-    std::map<ProfilingMeasurementID, MeasurementData> measurements;
+    std::map<ProfilingMeasurementID, ByteArray> measurements;
   };
 
   class ProfilingResponse {
