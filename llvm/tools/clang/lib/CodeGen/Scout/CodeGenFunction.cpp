@@ -131,7 +131,10 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
         induct = Builder.CreateURem(idx, width, IRNameStr);
         break;
       case 1:
-        assert((d == 2 || d == 3) && "expected a 2d or 3d mesh");
+        if(d == 1){
+          induct = llvm::ConstantInt::get(Int64Ty, 0);
+          break;
+        }
         
         if(d == 3){
           llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
@@ -142,7 +145,10 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
         
         break;
       case 2:{
-        assert(dims.size() == 3 && "expected a 3d mesh");
+        if(d < 3){
+          induct = llvm::ConstantInt::get(Int64Ty, 0);
+          break;
+        }
         
         llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
         induct = Builder.CreateUDiv(idx, Builder.CreateMul(width, height), IRNameStr);
