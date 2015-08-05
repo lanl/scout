@@ -481,7 +481,7 @@ namespace scout{
       
         Id* vertices = cn.getEntities(c);
       
-        MT::create(entityVertices, dim, vertices);
+        MT::createEdges(entityVertices, vertices);
       
         for(size_t i = 0; i < numCellVertices; ++i){
           Id* a = &entityVertices[i * numEntityVertices];
