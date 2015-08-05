@@ -33,7 +33,7 @@ class MiVarTestCase(lldbmi_testcase.MiTestCaseBase):
 
         # Print non-existant variable
         self.runCmd("-var-create var1 * undef")
-        self.expect("\^error,msg=\"error: error: use of undeclared identifier \'undef\'\s+error: 1 errors parsing expression\"")
+        self.expect("\^error,msg=\"error: error: use of undeclared identifier \'undef\'\\\\nerror: 1 errors parsing expression\\\\n\"")
         self.runCmd("-data-evaluate-expression undef")
         self.expect("\^error,msg=\"Could not evaluate expression\"")
 
@@ -255,6 +255,17 @@ class MiVarTestCase(lldbmi_testcase.MiTestCaseBase):
         self.expect("\^done,name=\"var_complx_array\",numchild=\"2\",value=\"\[2\]\",type=\"complex_type \[2\]\",thread-id=\"1\",has_more=\"0\"")
         self.runCmd("-var-create var_pcomplx * pcomplx")
         self.expect("\^done,name=\"var_pcomplx\",numchild=\"2\",value=\"\{\.\.\.\}\",type=\"pcomplex_type\",thread-id=\"1\",has_more=\"0\"")
+
+        # Test that -var-evaluate-expression can evaluate the children of created varobj
+        self.runCmd("-var-list-children var_complx")
+        self.runCmd("-var-evaluate-expression var_complx.i")
+        self.expect("\^done,value=\"3\"")
+        self.runCmd("-var-list-children var_complx_array")
+        self.runCmd("-var-evaluate-expression var_complx_array.[0]")
+        self.expect("\^done,value=\"\{...\}\"")
+        self.runCmd("-var-list-children var_pcomplx")
+        self.runCmd("-var-evaluate-expression var_pcomplx.complex_type")
+        self.expect("\^done,value=\"\{...\}\"")
 
         # Test that -var-list-children lists empty children if range is empty
         # (and that print-values is optional)

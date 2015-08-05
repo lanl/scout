@@ -2195,7 +2195,7 @@ ClangASTType::RemoveFastQualifiers () const
     if (m_type)
     {
         clang::QualType qual_type(GetQualType());
-        qual_type.getQualifiers().removeFastQualifiers();
+        qual_type.removeLocalFastQualifiers();
         return ClangASTType (m_ast, qual_type);
     }
     return ClangASTType();
@@ -4283,8 +4283,9 @@ ClangASTType::GetIndexOfChildMemberWithName (const char *name,
                         clang::DeclarationName decl_name(&ident_ref);
                         
                         clang::CXXBasePaths paths;
-                        if (cxx_record_decl->lookupInBases(clang::CXXRecordDecl::FindOrdinaryMember,
-                                                           decl_name.getAsOpaquePtr(),
+                        if (cxx_record_decl->lookupInBases([decl_name](const clang::CXXBaseSpecifier *specifier, clang::CXXBasePath &path) {
+                                                               return clang::CXXRecordDecl::FindOrdinaryMember(specifier, path, decl_name);
+                                                           },
                                                            paths))
                         {
                             clang::CXXBasePaths::const_paths_iterator path, path_end = paths.end();

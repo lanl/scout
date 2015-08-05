@@ -435,8 +435,8 @@ CodeGenFunction::getCShiftLinearIdx(MeshFieldDecl *MFD, SmallVector< llvm::Value
     case 1:
       return indices[0];
     case 2: {
-      // linearIdx = x + Height * y;
-      llvm::Value *Hy    = Builder.CreateMul(dims[1], indices[1], "HeightxY");
+      // linearIdx = x + Width * y;
+      llvm::Value *Hy    = Builder.CreateMul(dims[0], indices[1], "WidthxY");
       return Builder.CreateAdd(indices[0], Hy, "cshift.linearidx");
     }
     case 3: {
@@ -714,8 +714,8 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 					 idx = indices[0];
 					 break;
 				 case 2: {
-					 // linearIdx = x + Height * y;
-					 llvm::Value *Hy = Builder.CreateMul(dims[1], indices[1], "HeightxY");
+					 // linearIdx = x + Width * y;
+					 llvm::Value *Hy = Builder.CreateMul(dims[0], indices[1], "WidthxY");
 					 idx = Builder.CreateAdd(indices[0], Hy, "eoshift.linearidx");
 					 break;
 				 }

@@ -111,9 +111,10 @@ namespace {
     HALFSUPPORT = 0x08000,
     KEYCONCEPTS = 0x10000,
     KEYOBJC2    = 0x20000,
+    KEYZVECTOR  = 0x40000,
 // +===== Scout ==========================================================+
-    KEYSCOUT   = 0x40000,
-    KEYALL = (0x4ffff & ~KEYNOMS18 &
+    KEYSCOUT   = 0x80000,
+    KEYALL = (0xfffff & ~KEYNOMS18 &
               ~KEYNOOPENCL) // KEYNOMS18 and KEYNOOPENCL are used to exclude.
 // +======================================================================+
   };

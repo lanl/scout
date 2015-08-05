@@ -800,7 +800,7 @@ private:
 public:
   X86AsmParser(MCSubtargetInfo &sti, MCAsmParser &Parser,
                const MCInstrInfo &mii, const MCTargetOptions &Options)
-      : MCTargetAsmParser(), STI(sti), MII(mii), InstInfo(nullptr) {
+      : MCTargetAsmParser(Options), STI(sti), MII(mii), InstInfo(nullptr) {
 
     // Initialize the set of available features.
     setAvailableFeatures(ComputeAvailableFeatures(STI.getFeatureBits()));
@@ -911,6 +911,11 @@ bool X86AsmParser::ParseRegister(unsigned &RegNo,
   // If the match failed, try the register name as lowercase.
   if (RegNo == 0)
     RegNo = MatchRegisterName(Tok.getString().lower());
+
+  // The "flags" register cannot be referenced directly.
+  // Treat it as an identifier instead.
+  if (isParsingInlineAsm() && isParsingIntelSyntax() && RegNo == X86::EFLAGS)
+    RegNo = 0;
 
   if (!is64BitMode()) {
     // FIXME: This should be done using Requires<Not64BitMode> and
