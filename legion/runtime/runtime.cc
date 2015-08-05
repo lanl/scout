@@ -15443,8 +15443,6 @@ namespace LegionRuntime {
     /*static*/ volatile RegistrationCallbackFnptr Runtime::
                                               registration_callback = NULL;
     /*static*/ Processor::TaskFuncID Runtime::legion_main_id = 0;
-    /*static*/ const long long Runtime::init_time = 
-                                      TimeStamp::get_current_time_in_micros();
     /*static*/ int Runtime::initial_task_window_size = 
                                       DEFAULT_MAX_TASK_WINDOW;
     /*static*/ unsigned Runtime::initial_task_window_hysteresis =
@@ -15547,8 +15545,8 @@ namespace LegionRuntime {
 	    it++)
 	  ll.register_task(it->first, it->second);
       
-	const LowLevel::ReductionOpTable& red_table = get_reduction_table();
-	for(LowLevel::ReductionOpTable::const_iterator it = red_table.begin();
+	const ReductionOpTable& red_table = get_reduction_table();
+	for(ReductionOpTable::const_iterator it = red_table.begin();
 	    it != red_table.end();
 	    it++)
 	  ll.register_reduction(it->first, it->second);
@@ -15731,8 +15729,7 @@ namespace LegionRuntime {
 #endif
         exit(ERROR_RESERVED_REDOP_ID);
       }
-      LowLevel::ReductionOpTable &red_table = 
-                                    Runtime::get_reduction_table();
+      ReductionOpTable &red_table = Runtime::get_reduction_table();
 #ifdef DEBUG_HIGH_LEVEL
       if (red_table.find(redop_id) == red_table.end())
       {
@@ -15771,11 +15768,10 @@ namespace LegionRuntime {
     }
 
     //--------------------------------------------------------------------------
-    /*static*/ LowLevel::ReductionOpTable& Runtime::
-                                                      get_reduction_table(void)
+    /*static*/ ReductionOpTable& Runtime::get_reduction_table(void)
     //--------------------------------------------------------------------------
     {
-      static LowLevel::ReductionOpTable table;
+      static ReductionOpTable table;
       return table;
     }
 
