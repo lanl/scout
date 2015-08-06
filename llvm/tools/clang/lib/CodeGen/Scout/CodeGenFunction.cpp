@@ -124,7 +124,14 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   }
   
   if(!data->inductionVar[index]){
-    const MeshType* mt = dyn_cast<MeshType>(data->meshVarDecl->getType());
+    const MeshType* mt;
+    if(const PointerType* pt =
+       dyn_cast<PointerType>(data->meshVarDecl->getType())){
+      mt = dyn_cast<MeshType>(pt->getPointeeType());
+    }
+    else{
+      mt = dyn_cast<MeshType>(data->meshVarDecl->getType());
+    }
     
     auto& dims = mt->dimensions();
     
