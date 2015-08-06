@@ -282,8 +282,8 @@ void composite_task(const Task *task,
 		Rect<1> inputRect = inputDomain.get_rect<1>();
 		RegionAccessor<AccessorType::Generic,float> inputAccessor = regions[i].get_field_accessor(FID_VAL).typeify<float>();
 		RegionAccessor<AccessorType::Generic,float> imgAccessor = regions[1].get_field_accessor(FID_VAL).typeify<float>();
-//		RegionAccessor<AccessorType::Generic,Image> metadataAccessor = regions[0].get_field_accessor(FID_META).typeify<Image>();
-//		cout << "Compositing: " << metadataAccessor.read(DomainPoint::from_point<1>(totalRect.lo.x[0])).order << endl;
+		RegionAccessor<AccessorType::Generic,Image> metadataAccessor = regions[0].get_field_accessor(FID_META).typeify<Image>();
+		cout << "Compositing: " << metadataAccessor.read(DomainPoint::from_point<1>(totalRect.lo.x[0])).order << endl;
 		for(GenericPointInRectIterator<1>pir(inputRect); pir; pir++){
 			imgAccessor.write(DomainPoint::from_point<1>(pir.p),inputAccessor.read(DomainPoint::from_point<1>(pir.p)));
 		}
@@ -522,8 +522,8 @@ void display_task(const Task *task,
 	IndexSpace imgIndexSpace = imgLogicalRegion.get_index_space();
 	Domain imgDomain = runtime->get_index_space_domain(ctx,imgIndexSpace);
 	Rect<1> imgBound = imgDomain.get_rect<1>();					// Get the size of the pixel data
-#ifdef QT
 	RegionAccessor<AccessorType::Generic,float> accessImg = imgPhysicalRegion.get_field_accessor(FID_VAL).typeify<float>();
+#ifdef QT
 	int *vals = new int[imgBound.hi.x[0]];						// Define an array for passing data
 	int i = 0;
 	for(GenericPointInRectIterator<1> pir(imgBound); pir; pir++){
@@ -575,7 +575,7 @@ void coherence_simulation_task(const Task*task,
 	relLauncher.add_arrival_barrier(co.barrier);
 	runtime->issue_release(ctx,relLauncher);
 
-	runtime->advance_phase_barrier(ctx,co.barrier);
+	co.barrier = runtime->advance_phase_barrier(ctx,co.barrier);
 
 }
 
@@ -585,7 +585,8 @@ void coherence_composite_task(const Task*task,
 	compositeArguments co = *((compositeArguments*)task->args);
 	int inputRegionCount = regions.size() - 2;
 
-	runtime->advance_phase_barrier(ctx,co.barrier);
+
+	co.barrier = runtime->advance_phase_barrier(ctx,co.barrier);
 
 	TaskLauncher loadLauncher(COMPOSITE_TASK_ID, TaskArgument(&co,sizeof(co)));	// Spawn the renderer task
 	loadLauncher.add_region_requirement(RegionRequirement(regions[0].get_logical_region(),READ_ONLY,EXCLUSIVE,regions[0].get_logical_region()));
@@ -611,6 +612,8 @@ void coherence_composite_task(const Task*task,
 	}
 
 	runtime->execute_task(ctx,loadLauncher);
+
+
 }
 
 
@@ -679,10 +682,15 @@ void top_level_task(const Task *task,
 		else{							// Do render a new (or first) image
 			first = false;
 			if(mov==blankmov){			// In the case that Qt failed to start in time use an arbitrarily chosen default
-				mov = {{-6.38241, 17.6822, -3048.59, 2946.61, -2.39135, 42.4653, 391.329, -347.545, -45.7328, -4.6882, -505.424, 517.369, 9.43732e-09, 5.39067e-09, -4.99999, 5},0.0};
+				mov = {{-6.38241, 17.6822, -3048.59, 2946.61, -2.39135, 42.4653, 391.329, -347.545, -45.7328, -4.6882, -505.424, 517.369, 9.43732e-09, 5.39067e-09, -4.99999, 5},1.0};
 			}
 		}
 		lastmov = mov; // Update the state
+		cout << "Creating Image with xdat: " << mov.xdat << endl;	// All print statements need to be removed eventually
+		for(int i = 0; i < 16; ++i){
+			cout << mov.invPVM[i] << ", ";
+		}
+		cout << endl;
 #else
 	{ 			// Main Loop
 
@@ -699,7 +707,7 @@ void top_level_task(const Task *task,
 
 
 
-		int numFiles = 31;							// Choose to create two partitions of the data
+		int numFiles = 4;							// Choose to create two partitions of the data
 		vector<Image> images;						// Array to hold the metadata values in
 		int zindex = 0;								// Keep track of the partition number
 		vector<LogicalRegion> imgLogicalRegions;
@@ -762,10 +770,10 @@ void top_level_task(const Task *task,
 		co.miny = 0;				// Image possible extent (in Y-Dimension)
 		co.maxy = height-1;			// For first level, must be entire image
 
-//		PhaseBarrier doneBarrier = runtime->create_phase_barrier(ctx,numFiles);
-//		co.barrier = doneBarrier;
-//
-//		MustEpochLauncher epochLauncher;
+		PhaseBarrier doneBarrier = runtime->create_phase_barrier(ctx,numFiles);
+		co.barrier = doneBarrier;
+
+		MustEpochLauncher epochLauncher;
 		for(unsigned int i = 0; i < images.size(); ++i){
 			Point<1> p(i);
 			Rect<1> metadataSubBound(p,p);
@@ -782,35 +790,35 @@ void top_level_task(const Task *task,
 				runtime->unmap_region(ctx,metadataPhysicalRegion);
 			}
 
-//			TaskLauncher loadLauncher(COHERENCE_SIMULATION_TASK_ID, TaskArgument(&co,sizeof(co)));	// Spawn the renderer task
-			TaskLauncher loadLauncher(CREATE_INTERFACE_TASK_ID, TaskArgument(&co,sizeof(co)));
+			TaskLauncher loadLauncher(COHERENCE_SIMULATION_TASK_ID, TaskArgument(&co,sizeof(co)));	// Spawn the renderer task
+//			TaskLauncher loadLauncher(CREATE_INTERFACE_TASK_ID, TaskArgument(&co,sizeof(co)));
 			loadLauncher.add_region_requirement(RegionRequirement(metadataSubLogicalRegion,READ_ONLY,EXCLUSIVE,metadataSubLogicalRegion));
 			loadLauncher.add_field(0,FID_META);		// Metadata as first region
-//			loadLauncher.add_region_requirement(RegionRequirement(imgLogicalRegions[i],WRITE_DISCARD,SIMULTANEOUS,imgLogicalRegions[i]));
-			loadLauncher.add_region_requirement(RegionRequirement(imgLogicalRegions[i],WRITE_DISCARD,EXCLUSIVE,imgLogicalRegions[i]));
+			loadLauncher.add_region_requirement(RegionRequirement(imgLogicalRegions[i],WRITE_DISCARD,SIMULTANEOUS,imgLogicalRegions[i]));
+//			loadLauncher.add_region_requirement(RegionRequirement(imgLogicalRegions[i],WRITE_DISCARD,EXCLUSIVE,imgLogicalRegions[i]));
 			loadLauncher.add_field(1,FID_VAL);		// Output Image as second region
 			loadLauncher.add_region_requirement(RegionRequirement(dataLogicalRegion,READ_ONLY,EXCLUSIVE,dataLogicalRegion));
 			loadLauncher.add_field(2,FID_VAL);		// Input Data as third region
-			runtime->execute_task(ctx,loadLauncher);
-//			epochLauncher.add_single_task(DomainPoint(i),loadLauncher);
+//			runtime->execute_task(ctx,loadLauncher);
+			epochLauncher.add_single_task(DomainPoint(i),loadLauncher);
 
 		}
 
 
-//		TaskLauncher compositeLauncher(COHERENCE_COMPOSITE_TASK_ID, TaskArgument(&co,sizeof(co))); // Only one task, so use TaskLauncher
-		TaskLauncher compositeLauncher(COMPOSITE_TASK_ID, TaskArgument(&co,sizeof(co)));
+		TaskLauncher compositeLauncher(COHERENCE_COMPOSITE_TASK_ID, TaskArgument(&co,sizeof(co))); // Only one task, so use TaskLauncher
+//		TaskLauncher compositeLauncher(COMPOSITE_TASK_ID, TaskArgument(&co,sizeof(co)));
 		compositeLauncher.add_region_requirement(RegionRequirement(metadataLogicalRegion,READ_ONLY,EXCLUSIVE,metadataLogicalRegion));
 		compositeLauncher.add_field(0,FID_META); 	// Metadata as first region
 		compositeLauncher.add_region_requirement(RegionRequirement(imgLogicalRegion,WRITE_DISCARD,EXCLUSIVE,imgLogicalRegion));
 		compositeLauncher.add_field(1,FID_VAL);		// Output Image as second region
 		for(unsigned int i = 0; i < images.size(); ++i){
-//			compositeLauncher.add_region_requirement(RegionRequirement(imgLogicalRegions[i],READ_ONLY,SIMULTANEOUS,imgLogicalRegions[i]));
-			compositeLauncher.add_region_requirement(RegionRequirement(imgLogicalRegions[i],READ_ONLY,EXCLUSIVE,imgLogicalRegions[i]));
+			compositeLauncher.add_region_requirement(RegionRequirement(imgLogicalRegions[i],READ_ONLY,SIMULTANEOUS,imgLogicalRegions[i]));
+//			compositeLauncher.add_region_requirement(RegionRequirement(imgLogicalRegions[i],READ_ONLY,EXCLUSIVE,imgLogicalRegions[i]));
 			compositeLauncher.add_field(2+i,FID_VAL);
 		}
-		runtime->execute_task(ctx,compositeLauncher);
-//		epochLauncher.add_single_task(DomainPoint(1),compositeLauncher);
-//		runtime->execute_must_epoch(ctx,epochLauncher);
+//		runtime->execute_task(ctx,compositeLauncher);
+		epochLauncher.add_single_task(DomainPoint(1),compositeLauncher);
+		runtime->execute_must_epoch(ctx,epochLauncher).wait_all_results();
 
 
 
