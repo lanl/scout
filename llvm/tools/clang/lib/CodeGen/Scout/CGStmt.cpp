@@ -272,7 +272,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   MeshTy = mt;
 
   // find number of mesh fields (struct fields - the fixed ones like width/height/depth)
-  unsigned int nfields = mt->getDecl()->fields() + 1;
+  unsigned int nfields = mt->getDecl()->fields();
 
   llvm::Value *ConstantOne = llvm::ConstantInt::get(Int64Ty, 1);
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int64Ty, 0);
@@ -284,10 +284,10 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   MeshRank =
   Builder.CreateConstInBoundsGEP2_32(0,
                                      MeshBaseAddr, 0,
-                                     nfields + MeshParameterOffset::RankOffset,
+                                     nfields + 1 + MeshParameterOffset::RankOffset,
                                      IRNameStr);
   
-  unsigned start = nfields + MeshParameterOffset::WidthOffset;
+  unsigned start = nfields + 1 + MeshParameterOffset::WidthOffset;
   
   // Extract width/height/depth from the mesh
   // note: width/height depth are stored after mesh fields
@@ -299,7 +299,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
 
   }
 
-  start =  nfields + MeshParameterOffset::XStartOffset;
+  start =  nfields + 1 + MeshParameterOffset::XStartOffset;
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), StartNames[i]);
     MeshStart[i] =
@@ -307,7 +307,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
                                            MeshBaseAddr, 0, start + i, IRNameStr);
   }
 
-  start =  nfields + MeshParameterOffset::XSizeOffset;
+  start =  nfields + 1 + MeshParameterOffset::XSizeOffset;
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), SizeNames[i]);
     MeshSize[i] =

@@ -218,7 +218,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     // number of args is already known to be 0 or 1 as it was checked in sema
     if(E->getNumArgs() == 0) { //inside forall/renderall
       if (MeshRank)
-        *RV = RValue::get(Builder.CreateLoad(MeshRank, "rank"));
+        *RV = RValue::get(Builder.CreateTrunc(Builder.CreateLoad(MeshRank), Int32Ty, "rank"));
       else {
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
         *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));

@@ -202,7 +202,7 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
   Builder.CreateStore(llvm::ConstantInt::get(Int64Ty, rank), Rank);
 
   // set xstart/ystart/zstart to 0
-  size_t xstart = nfields +  MeshParameterOffset::XStartOffset;
+  size_t xstart = nfields +  1 + MeshParameterOffset::XStartOffset;
   for(size_t i = 0; i< 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), StartNames[i]);
     llvm::Value *x = Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0, xstart+i, IRNameStr);
