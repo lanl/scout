@@ -149,7 +149,7 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
   return MakeAddrLValue(addr, VD->getType(), Alignment);
 }
 
-llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
+llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){  
   DeclRefExpr* base;
   if(ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(E->getBase())){
     base = cast<DeclRefExpr>(ce->getSubExpr());
@@ -158,12 +158,17 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
     base = cast<DeclRefExpr>(E->getBase());
   }
   
+  const ValueDecl* mvd;
+  
   ImplicitMeshParamDecl* mp =
   dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
   
-  assert(mp && "expected a implicit mesh param");
-  
-  const VarDecl* mvd = mp->getMeshVarDecl();
+  if(mp){
+    mvd = mp->getMeshVarDecl();
+  }
+  else{
+    mvd = base->getDecl();
+  }
   
   const MeshType* mt;
   if(const PointerType* pt =

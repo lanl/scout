@@ -2456,8 +2456,6 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
 }
 
 void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
-  assert(false && "refactoring");
-  /*
   const MeshType* mt = S.getMeshType();
   if (mt->dimensions().size() == 3) {
     EmitVolumeRenderallStmt(S);
@@ -2503,9 +2501,10 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 
   //build argument list for renderall setup runtime function
   for(unsigned int i = 0; i < 3; i++) {
-     Args.push_back(0);
-     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-     Args[i] = Builder.CreateLoad(LoopBounds[i], IRNameStr);
+    Args.push_back(0);
+    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
+    Args[i] =
+    Builder.CreateTrunc(Builder.CreateLoad(LoopBounds[i], IRNameStr), Int32Ty);
   }
   
   if (Ty.getTypeClass() != Type::Window) {
@@ -2580,7 +2579,6 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // reset Loopbounds, Rank, induction var
   // so width/height etc can't be called after renderall
   ResetMeshBounds();
-   */
 }
 
 void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
@@ -3044,9 +3042,6 @@ void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S
 
 //generate one of the nested loops
 void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned r) {
-  assert(false && "refactoring");
-  /*
-
   llvm::StringRef MeshName = S.getMeshVarDecl()->getName();
 
   CGDebugInfo *DI = getDebugInfo();
@@ -3071,8 +3066,8 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
   // note: width/height depth are stored after mesh fields
   // GEP is done in EmitRenderallStmt so just load here.
   sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
-  llvm::LoadInst *LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
-
+  llvm::Value *LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
+  LoopBound = Builder.CreateTrunc(LoopBound, Int32Ty);
 
   // Next we create a block that tests the induction variables value to
   // the rank's dimension.
@@ -3154,7 +3149,6 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
     DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
 
   EmitBlock(LoopExit.getBlock(), true);
-   */
 }
 
 #ifdef __clang__

@@ -364,6 +364,8 @@ public:
   const MeshType* MeshTy;
   const VarDecl* CurrentMeshVarDecl;
 
+  llvm::Value* InductionVar[4];
+  
   llvm::Value *MeshRank = 0;
 
   llvm::Value* GPUThreadId;
