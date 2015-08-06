@@ -871,7 +871,7 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
 
       sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), names[offset]);
       value = Builder.CreateLoad(value, IRNameStr);
-      return RValue::get(value);
+      return RValue::get(Builder.CreateTrunc(value, Int32Ty));
     }
   }
   //sema should make sure we don't get here.
