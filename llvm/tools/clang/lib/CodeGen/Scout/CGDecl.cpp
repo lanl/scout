@@ -114,11 +114,11 @@ void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const
   llvm::BasicBlock *Then = createBasicBlock("global.alloc");
   llvm::BasicBlock *Done = createBasicBlock("global.done");
 
-  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int64Ty, 0);
 
   // test if rank is not set.
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
-  llvm::Value *Rank = Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0, nfields+3, IRNameStr);
+  llvm::Value *Rank = Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0, nfields+4, IRNameStr);
   sprintf(IRNameStr, "%s.rank", MeshName.str().c_str());
   llvm::Value *Check = Builder.CreateICmpEQ(Builder.CreateLoad(Rank, IRNameStr), ConstantZero);
   Builder.CreateCondBr(Check, Then, Done);
