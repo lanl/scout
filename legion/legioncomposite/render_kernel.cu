@@ -499,6 +499,6 @@ void create_task(const Task *task,
 	//cudaFree(d_cuArr);
 
 	cudaDeviceSynchronize();
-	printf("CUDA: %d",(int)tmpimg.order);
+//	printf("CUDA: %d",(int)tmpimg.order);
 }
 #endif

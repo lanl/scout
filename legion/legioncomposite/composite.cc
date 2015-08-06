@@ -282,8 +282,8 @@ void composite_task(const Task *task,
 		Rect<1> inputRect = inputDomain.get_rect<1>();
 		RegionAccessor<AccessorType::Generic,float> inputAccessor = regions[i].get_field_accessor(FID_VAL).typeify<float>();
 		RegionAccessor<AccessorType::Generic,float> imgAccessor = regions[1].get_field_accessor(FID_VAL).typeify<float>();
-		RegionAccessor<AccessorType::Generic,Image> metadataAccessor = regions[0].get_field_accessor(FID_META).typeify<Image>();
-		cout << "Compositing: " << metadataAccessor.read(DomainPoint::from_point<1>(totalRect.lo.x[0])).order << endl;
+//		RegionAccessor<AccessorType::Generic,Image> metadataAccessor = regions[0].get_field_accessor(FID_META).typeify<Image>();
+//		cout << "Compositing: " << metadataAccessor.read(DomainPoint::from_point<1>(totalRect.lo.x[0])).order << endl;
 		for(GenericPointInRectIterator<1>pir(inputRect); pir; pir++){
 			imgAccessor.write(DomainPoint::from_point<1>(pir.p),inputAccessor.read(DomainPoint::from_point<1>(pir.p)));
 		}
@@ -686,11 +686,11 @@ void top_level_task(const Task *task,
 			}
 		}
 		lastmov = mov; // Update the state
-		cout << "Creating Image with xdat: " << mov.xdat << endl;	// All print statements need to be removed eventually
-		for(int i = 0; i < 16; ++i){
-			cout << mov.invPVM[i] << ", ";
-		}
-		cout << endl;
+		cout << "Creating Image" << endl;	// All print statements need to be removed eventually
+//		for(int i = 0; i < 16; ++i){
+//			cout << mov.invPVM[i] << ", ";
+//		}
+//		cout << endl;
 #else
 	{ 			// Main Loop
 
@@ -709,10 +709,10 @@ void top_level_task(const Task *task,
 
 		int numFiles = 4;							// Choose to create two partitions of the data
 		vector<Image> images;						// Array to hold the metadata values in
-		int zindex = 0;								// Keep track of the partition number
+		int xindex = 0;								// Keep track of the partition number
 		vector<LogicalRegion> imgLogicalRegions;
 		for(int i = 0; i < numFiles; ++i){
-			int zspan = (int)(datz/numFiles);		// Split the data long the X-dimension
+			int xspan = (int)(datz/numFiles);		// Split the data long the X-dimension
 			Image newimg;							// Create a metadata object to hold values
 			newimg.width = width;					// This data gets sent to the renderer (necessary)
 			newimg.height = height;					// 		This is total image Width and Height
@@ -722,12 +722,12 @@ void top_level_task(const Task *task,
 			newimg.xmax = width-1;					// 		Set to be the entire size for now
 			newimg.ymin = 0;						//		Need to feed partition bounds into the modelview to get these
 			newimg.ymax = height-1;
-			newimg.partition = (DataPartition){0,(int)datx,0,(int)daty, zindex,i==numFiles-1 ? (int)datz : zindex+zspan+10}; // Define the data partitioning
+			newimg.partition = (DataPartition){xindex,i==numFiles-1 ? (int)datx : xindex+xspan+10,0,(int)daty, 0,(int)datz}; // Define the data partitioning
 			// newimg.partition = (DataPartition){0,(int)datx,0,(int)daty, (int)datz / 2, (int)datz};// zindex,i==numFiles-1 ? (int)datz : zindex+zspan+10}; 
 //			newimg.partition = (DataPartition){0, (int)datx, 0,(int)daty,0,(int)datz}; //
-			newimg.order = mov.xdat * (float)zindex;// Feed the partition value into the modelview to get the compositing order
+			newimg.order = mov.xdat * (float)xindex;// Feed the partition value into the modelview to get the compositing order
 			images.push_back(newimg);				// Add the metadata to the array
-			zindex += zspan;						// Iterate index values
+			xindex += xspan;						// Iterate index values
 			imgLogicalRegions.push_back(runtime->create_logical_region(ctx,imgIndex,imgField));
 		}
 		sort(images.rbegin(),images.rend());		// Sort the metadata in reverse value of order
