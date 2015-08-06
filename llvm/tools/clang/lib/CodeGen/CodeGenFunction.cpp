@@ -81,11 +81,6 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   Builder.SetFastMathFlags(FMF);
 
   // +===== Scout =========================================+
-  InnerIndex = 0;
-  VertexIndex = 0;
-  CellIndex = 0;
-  EdgeIndex = 0;
-  FaceIndex = 0;
   MeshTy = NULL;
   for(unsigned i = 0; i < 3; ++i) {
     // We use MeshDims[0] == 0 as a test for being in a
@@ -93,17 +88,17 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
     // to call -- may not be a rock solid plan but working
     // for now...
 
-    MeshDims.push_back(0);
-    MeshStart.push_back(0);
-    MeshSize.push_back(0);
-    LoopBounds.push_back(0);
+    MeshDims.push_back(nullptr);
+    MeshStart.push_back(nullptr);
+    MeshSize.push_back(nullptr);
+    LoopBounds.push_back(nullptr);
   }
   for(unsigned i = 0; i <= 3; ++i) {
-    ScoutABIInductionVarDecl.push_back(0);
+    ScoutABIInductionVarDecl.push_back(nullptr);
   }
   for(unsigned i = 0; i < 3; ++i) {
-    ScoutABIMeshDimDecl.push_back(0);
-    ScoutABIMeshStartDecl.push_back(0);
+    ScoutABIMeshDimDecl.push_back(nullptr);
+    ScoutABIMeshStartDecl.push_back(nullptr);
   }
 
   // +=====================================================+ 

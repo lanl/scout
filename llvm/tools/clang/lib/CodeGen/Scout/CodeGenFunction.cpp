@@ -108,7 +108,7 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   for(int i = ForallStack.size() - 1; i >= 0; --i){
     ForallData& d = ForallStack[i];
     
-    const MeshType* mt = dyn_cast<MeshType>(d.meshVarDecl->getType());
+    const MeshType* mt = d.getMeshType();
     auto& dims = mt->dimensions();
     
     if(d.topologyDim == 0 || d.topologyDim == dims.size()){

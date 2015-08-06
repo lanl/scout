@@ -366,14 +366,6 @@ public:
 
   llvm::Value *MeshRank = 0;
 
-  llvm::SmallVector< llvm::Value *, 4 > InnerInductionVar;
-  llvm::Value* InnerIndex;
-  llvm::Value* VertexIndex;
-  llvm::Value* CellIndex;
-  llvm::Value* EdgeIndex;
-  llvm::Value* FaceIndex;
-  bool InnerForallScope = false;
-
   llvm::Value* GPUThreadId;
   llvm::Value* GPUThreadInc;
   llvm::Value* GPUNumThreads;
@@ -2311,7 +2303,7 @@ public:
   
   LValue EmitFrameVarDeclRefLValue(const VarDecl* ND);
   
-  int FindForallData(const VarDecl* meshVarDecl, uint32_t topologyDim){
+  int FindForallData(uint32_t topologyDim){
     int n = ForallStack.size();
     
     if(n == 0){
@@ -2320,7 +2312,7 @@ public:
     
     for(int i = n - 1; i >= 0; --i){
       ForallData& d = ForallStack[i];
-      if(d.meshVarDecl == meshVarDecl && d.topologyDim == topologyDim){
+      if(d.topologyDim == topologyDim){
         return i;
       }
     }
@@ -2335,6 +2327,16 @@ public:
       inductionVar[2] = nullptr;
     }
     
+    const MeshType* getMeshType() const{
+      if(const PointerType* pt =
+         dyn_cast<PointerType>(meshVarDecl->getType())){
+        return dyn_cast<MeshType>(pt->getPointeeType());
+      }
+      else{
+        return dyn_cast<MeshType>(meshVarDecl->getType());
+      }
+    }
+ 
     const VarDecl* meshVarDecl;
     uint32_t topologyDim;
     

@@ -194,7 +194,7 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
       assert(false && "invalid element type");
   }
   
-  int i = FindForallData(mvd, topologyDim);
+  int i = FindForallData(topologyDim);
   assert(i >= 0 && "error finding forall data");
   
   ForallData& data = ForallStack[i];
@@ -440,22 +440,32 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
 }
 
 llvm::Value *CodeGenFunction::getMeshIndex(const MeshFieldDecl* MFD) {
+  assert(!ForallStack.empty() && "empty forall stack");
+
+  const MeshType* MT = ForallStack[0].getMeshType();
+  auto& dims = MT->dimensions();
+  
   llvm::Value* Index;
 
   if(MFD->isVertexLocated()) {
-    assert(VertexIndex && "null VertexIndex while referencing vertex field");
+    int i = FindForallData(0);
+    assert(i >= 0 && "null vertex index while referencing vertex field");
     // use the vertex index if we are within a forall vertices
-    Index = Builder.CreateLoad(VertexIndex);
+    Index = Builder.CreateLoad(ForallStack[i].indexPtr);
   } else if(MFD->isEdgeLocated()) {
-    assert(EdgeIndex && "null EdgeIndex while referencing edge field");
+    int i = FindForallData(1);
+    assert(i >= 0 && "null edge index while referencing edge field");
     // use the vertex index if we are within a forall vertices
-    Index = Builder.CreateLoad(EdgeIndex);
+    Index = Builder.CreateLoad(ForallStack[i].indexPtr);
   } else if(MFD->isFaceLocated()) {
-    assert(FaceIndex && "null FaceIndex while referencing face field");
+    int i = FindForallData(dims.size() - 1);
+    assert(i >= 0 && "null face index while referencing face field");
     // use the vertex index if we are within a forall vertices
-    Index = Builder.CreateLoad(FaceIndex);
-  } else if(MFD->isCellLocated() && CellIndex) {
-    Index = Builder.CreateLoad(CellIndex);
+    Index = Builder.CreateLoad(ForallStack[i].indexPtr);
+  } else if(MFD->isCellLocated()) {
+    int i = FindForallData(dims.size());
+    assert(i >= 0 && "null cell index while referencing vertex field");
+    Index = Builder.CreateLoad(ForallStack[i].indexPtr);
   } else {
     Index = getLinearIdx();
   }
@@ -879,19 +889,25 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
 }
 
 RValue CodeGenFunction::EmitTailExpr(void) {
-
-  assert(EdgeIndex && "no edges in call to tail");
-
+  int i = FindForallData(1);
+  assert(i >= 0 && "failed to find edge index");
+  
+  llvm::Value* EdgeIndex = ForallStack[i].indexPtr;
+  
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
   llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
   llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
 
   llvm::Value *Rank = Builder.CreateLoad(MeshRank);
+  Rank = Builder.CreateTrunc(Rank, Int32Ty);
   llvm::Value *Index = Builder.CreateLoad(EdgeIndex, "forall.edgeIndex");
+  Index = Builder.CreateTrunc(Index, Int32Ty);
   llvm::Value *Dx = Builder.CreateLoad(MeshDims[0]);
+  Dx = Builder.CreateTrunc(Dx, Int32Ty);
   llvm::Value *Dx1 = Builder.CreateAdd(Dx,One);
   llvm::Value *Dy = Builder.CreateLoad(MeshDims[1]);
+  Dy = Builder.CreateTrunc(Dy, Int32Ty);
   llvm::Value *Dy1 = Builder.CreateAdd(Dy,One);
 
   llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
@@ -982,8 +998,10 @@ RValue CodeGenFunction::EmitTailExpr(void) {
 }
 
 RValue CodeGenFunction::EmitHeadExpr(void) {
-
-  assert(EdgeIndex && "no edges in call to head");
+  int i = FindForallData(1);
+  assert(i >= 0 && "failed to find edge index");
+  
+  llvm::Value* EdgeIndex = ForallStack[i].indexPtr;
 
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
@@ -991,10 +1009,14 @@ RValue CodeGenFunction::EmitHeadExpr(void) {
   llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
 
   llvm::Value *Rank = Builder.CreateLoad(MeshRank);
+  Rank = Builder.CreateTrunc(Rank, Int32Ty);
   llvm::Value *Index = Builder.CreateLoad(EdgeIndex, "forall.edgeIndex");
+  Index = Builder.CreateTrunc(Index, Int32Ty);
   llvm::Value *Dx = Builder.CreateLoad(MeshDims[0]);
+  Dx = Builder.CreateTrunc(Dx, Int32Ty);
   llvm::Value *Dx1 = Builder.CreateAdd(Dx,One);
   llvm::Value *Dy = Builder.CreateLoad(MeshDims[1]);
+  Dy = Builder.CreateTrunc(Dy, Int32Ty);
   llvm::Value *Dy1 = Builder.CreateAdd(Dy,One);
 
   llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
@@ -1250,7 +1272,17 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
 
   MeshElementType et = imp->getElementType();
   
-  const VarDecl* mvd = imp->getMeshVarDecl();
+  const VarDecl* mvd = imp->getBaseVarDecl();
+  const MeshType* mt;
+  
+  if(const PointerType* pt = dyn_cast<PointerType>(mvd->getType())){
+    mt = dyn_cast<MeshType>(pt->getPointeeType());
+  }
+  else{
+    mt = dyn_cast<MeshType>(mvd->getType());
+  }
+  
+  auto& dims = mt->dimensions();
   
   TypeVec params =
   {llvm::PointerType::get(ConvertType(mvd->getType()), 0),
@@ -1293,23 +1325,31 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   B.CreateBr(loopBlock);
   B.SetInsertPoint(loopBlock);
 
+  assert(ForallStack.empty());
+  
+  ForallData data;
+  data.meshVarDecl = mvd;
+  data.indexPtr = inductPtr;
+  
   switch(et) {
-    case Cells:
-      CellIndex = inductPtr;
-      break;
     case Vertices:
-      VertexIndex = inductPtr;
+      data.topologyDim = 0;
       break;
     case Edges:
-      EdgeIndex = inductPtr;
+      data.topologyDim = 1;
       break;
     case Faces:
-      FaceIndex = inductPtr;
+      data.topologyDim = dims.size() - 1;
+      break;
+    case Cells:
+      data.topologyDim = dims.size();
       break;
     default:
       assert(false && "invalid mesh element type");
   }
 
+  ForallStack.emplace_back(move(data));
+  
   Value* result = EmitAnyExprToTemp(pred).getScalarVal();
 
   size_t bits = result->getType()->getPrimitiveSizeInBits();
@@ -1321,22 +1361,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
     result = B.CreateTrunc(result, Int8Ty, "result");
   }
   
-  switch(et){
-    case Cells:
-      CellIndex = 0;
-      break;
-    case Vertices:
-      VertexIndex = 0;
-      break;
-    case Edges:
-      EdgeIndex = 0;
-      break;
-    case Faces:
-      FaceIndex = 0;
-      break;
-    default:
-      break;
-  }
+  ForallStack.pop_back();
   
   Value* induct = B.CreateLoad(inductPtr, "induct");
 

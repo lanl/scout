@@ -1283,6 +1283,8 @@ CodeGenFunction::EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
 }
 
 void CodeGenFunction::EmitForallEdgesVertices(const ForallMeshStmt &S){
+  assert(false && "refactoring");
+  /*
   llvm::Value *Rank = Builder.CreateLoad(MeshRank);
   llvm::BasicBlock *Then3 = createBasicBlock("rank3.then");
   llvm::BasicBlock *Else3 = createBasicBlock("rank3.else");
@@ -1299,6 +1301,7 @@ void CodeGenFunction::EmitForallEdgesVertices(const ForallMeshStmt &S){
   Builder.CreateBr(Done3);
 
   EmitBlock(Done3);
+   */
 }
 
 void CodeGenFunction::EmitForallFacesVertices(const ForallMeshStmt &S){
@@ -1884,7 +1887,7 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
       assert(false && "invalid element type");
   }
   
-  int i = FindForallData(mvd, topologyDim);
+  int i = FindForallData(topologyDim);
   assert(i >= 0 && "error finding forall data");
   
   ForallData& topData = ForallStack[0];
@@ -2273,17 +2276,14 @@ void CodeGenFunction::ResetMeshBounds(void) {
     MeshStart.clear();
     MeshSize.clear();
     LoopBounds.clear();
-    InnerInductionVar.clear();
     for(unsigned int i = 0; i < 3; i++) {
-       MeshDims.push_back(0);
-       MeshStart.push_back(0);
-       MeshSize.push_back(0);
-       LoopBounds.push_back(0);
-       InnerInductionVar.push_back(0);
+       MeshDims.push_back(nullptr);
+       MeshStart.push_back(nullptr);
+       MeshSize.push_back(nullptr);
+       LoopBounds.push_back(nullptr);
     }
     // create linear loop index as 4th element
-    InnerInductionVar.push_back(0);
-    MeshRank = 0;
+    MeshRank = nullptr;
 }
 
 
