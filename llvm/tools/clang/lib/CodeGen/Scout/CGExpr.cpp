@@ -1111,10 +1111,16 @@ RValue
 CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
   // proper checking is already done in Sema::CheckSaveMeshCall()
   
+  auto R = CGM.getScoutRuntime();
+  
+  using ValueVec = std::vector<llvm::Value*>;
+  
   const DeclRefExpr* base = cast<DeclRefExpr>(*argsBegin);
   const VarDecl* vd = cast<VarDecl>(base->getDecl());
   const MeshType* mt = cast<MeshType>(vd->getType().getTypePtr());
 
+  auto& dims = mt->dimensions();
+  
   MeshDecl* md = mt->getDecl();
   
   ++argsBegin;
@@ -1124,6 +1130,9 @@ CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
   
   llvm::Value* meshAddr;
   GetMeshBaseAddr(vd, meshAddr);
+  llvm::Value* topology = Builder.CreateStructGEP(nullptr, meshAddr, md->fields());
+  topology = Builder.CreateLoad(topology, "topology.ptr");
+  
   llvm::Value* meshPtr = Builder.CreateBitCast(meshAddr, VoidPtrTy);
   
   llvm::StructType* structTy =
@@ -1175,20 +1184,20 @@ CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
     llvm::Value* elementKind;
     
     if (field->isCellLocated()) {
-      SetMeshBounds(Cells, meshAddr, mt);
-      GetNumMeshItems(&numItems, 0, 0, 0);
+      ValueVec args = {topology, llvm::ConstantInt::get(Int32Ty, dims.size())};
+      numItems = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
       elementKind = r.CellVal;
     } else if (field->isVertexLocated()) {
-      SetMeshBounds(Vertices, meshAddr, mt);
-      GetNumMeshItems(0, &numItems, 0, 0);
+      ValueVec args = {topology, llvm::ConstantInt::get(Int32Ty, 0)};
+      numItems = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
       elementKind = r.VertexVal;
     } else if(field->isEdgeLocated()) {
-      SetMeshBounds(Edges, meshAddr, mt);
-      GetNumMeshItems(0, 0, &numItems, 0);
+      ValueVec args = {topology, llvm::ConstantInt::get(Int32Ty, 1)};
+      numItems = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
       elementKind = r.EdgeVal;
     } else if(field->isFaceLocated()) {
-      SetMeshBounds(Faces, meshAddr, mt);
-      GetNumMeshItems(0, 0, 0, &numItems);
+      ValueVec args = {topology, llvm::ConstantInt::get(Int32Ty, dims.size() - 1)};
+      numItems = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
       elementKind = r.FaceVal;
     } else {
       assert(false && "invalid element kind");
