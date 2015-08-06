@@ -1781,7 +1781,16 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
       }
       
       data.meshVarDecl = mvd;
-      const MeshType* mt = dyn_cast<MeshType>(data.meshVarDecl->getType());
+      const MeshType* mt;
+      
+      if(const PointerType* pt =
+         dyn_cast<PointerType>(data.meshVarDecl->getType())){
+        mt = dyn_cast<MeshType>(pt->getPointeeType());
+      }
+      else{
+        mt = dyn_cast<MeshType>(data.meshVarDecl->getType());
+      }
+      
       const MeshDecl* md = mt->getDecl();
   
       if(i == 0){
@@ -1844,10 +1853,17 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   else{
     mvd = S.getMeshVarDecl();
   }
+
+  const MeshType* mt;
   
-  const MeshType* mt = dyn_cast<MeshType>(mvd->getType());
-  const MeshDecl* md = mt->getDecl();
-  
+  if(const PointerType* pt =
+     dyn_cast<PointerType>(mvd->getType())){
+    mt = dyn_cast<MeshType>(pt->getPointeeType());
+  }
+  else{
+    mt = dyn_cast<MeshType>(mvd->getType());
+  }
+    
   auto& dims = mt->dimensions();
   
   uint32_t topologyDim;

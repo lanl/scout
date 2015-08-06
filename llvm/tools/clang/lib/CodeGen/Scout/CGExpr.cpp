@@ -164,7 +164,15 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
   assert(mp && "expected a implicit mesh param");
   
   const VarDecl* mvd = mp->getMeshVarDecl();
-  const MeshType* mt = dyn_cast<MeshType>(mvd->getType());
+  
+  const MeshType* mt;
+  if(const PointerType* pt =
+     dyn_cast<PointerType>(mvd->getType())){
+    mt = dyn_cast<MeshType>(pt->getPointeeType());
+  }
+  else{
+    mt = dyn_cast<MeshType>(mvd->getType());
+  }
   
   auto& dims = mt->dimensions();
   
