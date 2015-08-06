@@ -699,9 +699,11 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 				 sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
 				 llvm::Value *iv  = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
 
+         llvm::Value* ai = Builder.CreateZExt(args[i], Int64Ty);
+         
 				 // take index and add offset from eoshift
 				 sprintf(IRNameStr, "eoshift.rawindex.%s", IndexNames[i]);
-				 rawindices.push_back(Builder.CreateAdd(iv, args[i], IRNameStr));
+				 rawindices.push_back(Builder.CreateAdd(iv, ai, IRNameStr));
 
 				 // find if index will wrap
 				 sprintf(IRNameStr, "eoshift.index.%s", IndexNames[i]);
@@ -798,9 +800,8 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 					 break;
 				 }
        }
-       assert(false && "eoshift unimplemented");
-       //LValue LV = EmitMeshMemberExpr(E, idx);
-       //llvm::Value *V2 = Builder.CreateLoad(LV.getAddress(), "eoshift.element");
+       LValue LV = EmitMeshMemberExpr(E, idx);
+       llvm::Value *V2 = Builder.CreateLoad(LV.getAddress(), "eoshift.element");
        Builder.CreateBr(Merge);
 
 
@@ -808,7 +809,8 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        EmitBlock(Merge);
        llvm::PHINode *PN = Builder.CreatePHI(Boundary.getScalarVal()->getType(), 2, "iftmp");
        PN->addIncoming(V1, FlagThen);
-       //PN->addIncoming(V2, FlagElse);
+       PN->addIncoming(V2, FlagElse);
+      
        return RValue::get(PN);
 
     }
