@@ -116,6 +116,9 @@ namespace clang {
       
       void DumpValue(CodeGenFunction& CGF, const char* label,
                      llvm::Value* value);
+      
+      void DumpUnsignedValue(CodeGenFunction& CGF, const char* label,
+                             llvm::Value* value);
     };
   }
 }

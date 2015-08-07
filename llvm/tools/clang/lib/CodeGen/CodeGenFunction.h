@@ -448,6 +448,8 @@ public:
 
   void dumpValue(const char* label, llvm::Value* value);
 
+  void dumpUnsignedValue(const char* label, llvm::Value* value);
+  
   // +========================================================================+
 
 

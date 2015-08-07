@@ -256,3 +256,7 @@ bool CodeGenFunction::CheckMeshPtrTypes(QualType &ArgType, QualType &ActualArgTy
 void CodeGenFunction::dumpValue(const char* label, llvm::Value* value){
 	CGM.getScoutRuntime().DumpValue(*this, label, value);
 }
+
+void CodeGenFunction::dumpUnsignedValue(const char* label, llvm::Value* value){
+  CGM.getScoutRuntime().DumpUnsignedValue(*this, label, value);
+}

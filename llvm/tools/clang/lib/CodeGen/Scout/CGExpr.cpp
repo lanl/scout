@@ -494,7 +494,7 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
     sprintf(IRNameStr, "%s", DimNames[i]);
     dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
   }
-
+  
   SmallVector< llvm::Value *, 3 > start;
   if(CGM.getCodeGenOpts().ScoutLegionSupport) {
     for(unsigned i = 0; i < args.size(); ++i) {
@@ -502,14 +502,14 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
       start.push_back(Builder.CreateLoad(LookupMeshStart(i), IRNameStr));
     }
   }
-
+  
   SmallVector< llvm::Value *, 3 > indices;
   for(unsigned i = 0; i < args.size(); ++i) {
-    llvm::Value* ai = Builder.CreateZExt(args[i], Int64Ty);
+    llvm::Value* ai = Builder.CreateSExt(args[i], Int64Ty);
     
     sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
     llvm::Value *iv   = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
-
+    
     // take index and add offset from cshift
     sprintf(IRNameStr, "cshift.rawindex.%s", IndexNames[i]);
 
@@ -520,7 +520,7 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
     } else {
       Index = Builder.CreateAdd(iv, ai, IRNameStr);
     }
-
+    
     // make sure it is in range or wrap
     sprintf(IRNameStr, "cshift.index.%s", IndexNames[i]);
     llvm::Value *y = Builder.CreateSRem(Index, dims[i], IRNameStr);

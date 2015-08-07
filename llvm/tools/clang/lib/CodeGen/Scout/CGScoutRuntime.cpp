@@ -396,6 +396,48 @@ void CGScoutRuntime::DumpValue(CodeGenFunction& CGF, const char* label,
   CGF.Builder.CreateCall(f, args);
 }
 
+void CGScoutRuntime::DumpUnsignedValue(CodeGenFunction& CGF, const char* label,
+                                       llvm::Value* value) {
+  llvm::Type* type = value->getType();
+  
+  std::string name;
+  
+  if(type->isIntegerTy(8)){
+    name = "__scrt_dump_unsigned_i8";
+  }
+  else if(type->isIntegerTy(16)){
+    name = "__scrt_dump_unsigned_i16";
+  }
+  else if(type->isIntegerTy(32)){
+    name = "__scrt_dump_unsigned_i32";
+  }
+  else if(type->isIntegerTy(64)){
+    name = "__scrt_dump_unsigned_i64";
+  }
+  else{
+    assert(false && "unrecognized value");
+  }
+  
+  llvm::Function* f = CGM.getModule().getFunction(name);
+  
+  if(!f){
+    std::vector<llvm::Type*> params = {CGF.VoidPtrTy, type};
+    
+    llvm::FunctionType* ft = llvm::FunctionType::get(CGM.VoidTy, params,
+                                                     false);
+    
+    f = llvm::Function::Create(ft, llvm::Function::ExternalLinkage, name,
+                               &CGM.getModule());
+  }
+  
+  llvm::Value* sp = CGF.Builder.CreateGlobalStringPtr(label);
+  llvm::Value* s = CGF.Builder.CreateBitCast(sp, CGF.VoidPtrTy);
+  
+  std::vector<llvm::Value*> args = {s, value};
+  
+  CGF.Builder.CreateCall(f, args);
+}
+
 llvm::Function* CGScoutRuntime::SaveMeshStartFunc(){
   return ScoutRuntimeFunction("__scrt_save_mesh_start", {CGM.VoidPtrTy});
 }
