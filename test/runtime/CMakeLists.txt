@@ -78,5 +78,5 @@ endif()
 # endif()
 
 if (SCOUT_ENABLE_LEGION)
-  add_subdirectory(sclegion)
+#  add_subdirectory(sclegion)
 endif()  
