@@ -316,8 +316,6 @@ public:
     void createFunction(){
       Module& kernelModule = m_.kernelModule();
       
-      //f_->dump();
-
       TypeVec tv;
       for(auto& itr : fieldMap_){
         Field* field = itr.second;
@@ -555,7 +553,8 @@ public:
     //cerr << "======================" << endl;
     
     NamedMDNode* kernelsMD = module_->getNamedMetadata("scout.kernels");
-
+    assert(kernelsMD);
+    
     vector<Kernel*> kernels;
 
     for(size_t i = 0; i < kernelsMD->getNumOperands(); ++i){

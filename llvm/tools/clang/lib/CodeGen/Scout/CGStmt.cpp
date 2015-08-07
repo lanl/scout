@@ -1751,6 +1751,13 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   using namespace std;
   using namespace llvm;
   
+  if(isGPU()){
+    SetMeshBounds(S);
+    InductionVar[3] = Builder.CreateAlloca(Int64Ty);
+    EmitGPUForall(S, InductionVar[3]);
+    return;
+  }
+  
   typedef vector<Value*> ValueVec;
   
   auto& B = Builder;
@@ -2962,68 +2969,68 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
 }
 
 void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S){
-  assert(false && "refactoring");
-  /*
-  llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
-  llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+  auto R = CGM.getScoutRuntime();
+  
+  llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
+  llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
 
-  EmitMarkerBlock("renderall.entry");
-
-  InductionVar[3] = CreateTempAlloca(Int32Ty, "renderall.idx.ptr");
-  //zero-initialize induction var
-  Builder.CreateStore(Zero, InductionVar[3]);
-  InnerIndex = CreateTempAlloca(Int32Ty, "renderall.inneridx.ptr");
-
-  //SmallVector<llvm::Value*, 3> Dimensions;
-  //GetMeshDimensions(S.getMeshType(), Dimensions);
-
+  const MeshType* mt = S.getMeshType();
+  
+  const MeshDecl* md = mt->getDecl();
+  
+  auto& dims = mt->dimensions();
+  
+  uint32_t topologyDim;
 
   MeshElementType ET = S.getMeshElementRef();
-
-  //llvm::Function *WinQuadRendFunc;
-  //llvm::Function *WinPaintFunc;
-
-  llvm::BasicBlock *LoopBlock = createBasicBlock("renderall.loop");
-  Builder.CreateBr(LoopBlock);
-
-  EmitBlock(LoopBlock);
-
-  llvm::Value** IndexPtr;
-
-  llvm::Value* numItems;
   
   switch(ET) {
-    
+      
     case Vertices:
-      IndexPtr = &VertexIndex;
-      GetNumMeshItems(0, &numItems, 0, 0);
+      topologyDim = 0;
       break;
       
     case Edges:
-      IndexPtr = &EdgeIndex;
-      GetNumMeshItems(0, 0, &numItems, 0);
+      topologyDim = 1;
       break;
       
     case Faces:
-      IndexPtr = &FaceIndex;
-      GetNumMeshItems(0, 0, 0, &numItems);
+      topologyDim = dims.size() - 1;
       break;
       
     case Cells:
-      IndexPtr = &CellIndex;
-      GetNumMeshItems(&numItems, 0, 0, 0);
       assert(false && "not valid for cells");
       break;
-
+      
     case AllElements:
     case Undefined:
       assert(false && "Undefined or incorrect MeshElementType value");
       break;
   }
   
-  *IndexPtr = InductionVar[3];
+  llvm::Value *MeshBaseAddr;
+  GetMeshBaseAddr(S, MeshBaseAddr);
+  
+  llvm::Value* topology = Builder.CreateStructGEP(nullptr, MeshBaseAddr, md->fields());
+  topology = Builder.CreateLoad(topology, "topology.ptr");
+  
+  std::vector<llvm::Value*> args =
+  {topology, llvm::ConstantInt::get(Int32Ty, topologyDim)};
+  llvm::Value* numItems = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
+  
+  EmitMarkerBlock("renderall.entry");
+
+  InductionVar[3] = CreateTempAlloca(Int64Ty, "renderall.idx.ptr");
+  //zero-initialize induction var
+  Builder.CreateStore(Zero, InductionVar[3]);
+  //InnerIndex = CreateTempAlloca(Int64Ty, "renderall.inneridx.ptr");
+
+  llvm::BasicBlock *LoopBlock = createBasicBlock("renderall.loop");
+  Builder.CreateBr(LoopBlock);
+
+  EmitBlock(LoopBlock);
+  
   EmitStmt(S.getBody());
-  *IndexPtr = 0;
 
   llvm::Value* k = Builder.CreateLoad(InductionVar[3], "renderall.idx");
   k = Builder.CreateAdd(k, One);
@@ -3036,8 +3043,7 @@ void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S
   Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
   EmitBlock(ExitBlock);
 
-  InnerIndex = 0;
-   */
+  //InnerIndex = 0;
 }
 
 //generate one of the nested loops
