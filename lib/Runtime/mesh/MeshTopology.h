@@ -1,6 +1,7 @@
 #ifndef __MESH_TOPOLOGY_H__
 #define __MESH_TOPOLOGY_H__
 
+#include <algorithm>
 #include <iostream>
 #include <array>
 #include <vector>
