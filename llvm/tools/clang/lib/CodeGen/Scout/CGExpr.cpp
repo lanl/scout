@@ -170,40 +170,11 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
     mvd = base->getDecl();
   }
   
-  const MeshType* mt;
-  if(const PointerType* pt =
-     dyn_cast<PointerType>(mvd->getType())){
-    mt = dyn_cast<MeshType>(pt->getPointeeType());
-  }
-  else{
-    mt = dyn_cast<MeshType>(mvd->getType());
-  }
-  
-  auto& dims = mt->dimensions();
-  
-  uint32_t topologyDim;
-  switch(mp->getElementType()){
-    case Vertices:
-      topologyDim = 0;
-      break;
-    case Edges:
-      topologyDim = 1;
-      break;
-    case Faces:
-      topologyDim = dims.size() - 1;
-      break;
-    case Cells:
-      topologyDim = dims.size();
-      break;
-    default:
-      assert(false && "invalid element type");
-  }
-  
   if(ForallStack.empty()){
     return InductionVar[3];
   }
   
-  int i = FindForallData(topologyDim);
+  int i = FindForallData(mp->getElementType());
   assert(i >= 0 && "error finding forall data");
   
   ForallData& data = ForallStack[i];
@@ -457,22 +428,22 @@ llvm::Value *CodeGenFunction::getMeshIndex(const MeshFieldDecl* MFD) {
   llvm::Value* Index;
 
   if(MFD->isVertexLocated()) {
-    int i = FindForallData(0);
+    int i = FindForallData(Vertices);
     assert(i >= 0 && "null vertex index while referencing vertex field");
     // use the vertex index if we are within a forall vertices
     Index = Builder.CreateLoad(ForallStack[i].indexPtr);
   } else if(MFD->isEdgeLocated()) {
-    int i = FindForallData(1);
+    int i = FindForallData(Edges);
     assert(i >= 0 && "null edge index while referencing edge field");
     // use the vertex index if we are within a forall vertices
     Index = Builder.CreateLoad(ForallStack[i].indexPtr);
   } else if(MFD->isFaceLocated()) {
-    int i = FindForallData(dims.size() - 1);
+    int i = FindForallData(Faces);
     assert(i >= 0 && "null face index while referencing face field");
     // use the vertex index if we are within a forall vertices
     Index = Builder.CreateLoad(ForallStack[i].indexPtr);
   } else if(MFD->isCellLocated()) {
-    int i = FindForallData(dims.size());
+    int i = FindForallData(Cells);
     assert(i >= 0 && "null cell index while referencing vertex field");
     Index = Builder.CreateLoad(ForallStack[i].indexPtr);
   } else {
@@ -898,7 +869,7 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
 }
 
 RValue CodeGenFunction::EmitTailExpr(void) {
-  int i = FindForallData(1);
+  int i = FindForallData(Edges);
   assert(i >= 0 && "failed to find edge index");
   
   llvm::Value* EdgeIndex = ForallStack[i].indexPtr;
@@ -1007,7 +978,7 @@ RValue CodeGenFunction::EmitTailExpr(void) {
 }
 
 RValue CodeGenFunction::EmitHeadExpr(void) {
-  int i = FindForallData(1);
+  int i = FindForallData(Edges);
   assert(i >= 0 && "failed to find edge index");
   
   llvm::Value* EdgeIndex = ForallStack[i].indexPtr;
@@ -1348,24 +1319,8 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   ForallData data;
   data.meshVarDecl = mvd;
   data.indexPtr = inductPtr;
+  data.elementType = et;
   
-  switch(et) {
-    case Vertices:
-      data.topologyDim = 0;
-      break;
-    case Edges:
-      data.topologyDim = 1;
-      break;
-    case Faces:
-      data.topologyDim = dims.size() - 1;
-      break;
-    case Cells:
-      data.topologyDim = dims.size();
-      break;
-    default:
-      assert(false && "invalid mesh element type");
-  }
-
   ForallStack.emplace_back(move(data));
   
   Value* result = EmitAnyExprToTemp(pred).getScalarVal();

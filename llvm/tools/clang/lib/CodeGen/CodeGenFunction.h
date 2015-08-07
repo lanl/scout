@@ -2307,7 +2307,7 @@ public:
   
   LValue EmitFrameVarDeclRefLValue(const VarDecl* ND);
   
-  int FindForallData(uint32_t topologyDim){
+  int FindForallData(MeshElementType elementType){
     int n = ForallStack.size();
     
     if(n == 0){
@@ -2316,12 +2316,27 @@ public:
     
     for(int i = n - 1; i >= 0; --i){
       ForallData& d = ForallStack[i];
-      if(d.topologyDim == topologyDim){
+      if(d.elementType == elementType){
         return i;
       }
     }
     
     return -1;
+  }
+  
+  llvm::Value* GetMeshTopologyDim(llvm::Value* rank, MeshElementType elementType){
+    switch(elementType){
+      case Vertices:
+        return llvm::ConstantInt::get(Int32Ty, 0);
+      case Edges:
+        return llvm::ConstantInt::get(Int32Ty, 1);
+      case Faces:
+        return Builder.CreateSub(Builder.CreateTrunc(rank, Int32Ty), llvm::ConstantInt::get(Int32Ty, 1));
+      case Cells:
+        return Builder.CreateTrunc(rank, Int32Ty);
+      default:
+        assert(false && "invalid element type");
+    }
   }
   
   struct ForallData{
@@ -2342,7 +2357,7 @@ public:
     }
  
     const VarDecl* meshVarDecl;
-    uint32_t topologyDim;
+    MeshElementType elementType;
     
     llvm::Value* topology;
     llvm::Value* indexPtr;

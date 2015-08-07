@@ -113,7 +113,7 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     const MeshType* mt = d.getMeshType();
     auto& dims = mt->dimensions();
     
-    if(d.topologyDim == 0 || d.topologyDim == dims.size()){
+    if(d.elementType == Vertices || d.elementType == Cells){
       data = &d;
       break;
     }
@@ -144,7 +144,7 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     llvm::Value* induct;
     
     llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
-    if(data->topologyDim == 0){
+    if(data->elementType == Vertices){
       width = Builder.CreateAdd(width, llvm::ConstantInt::get(Int64Ty, 1));
     }
     
@@ -164,7 +164,7 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
         
         if(d == 3){
           llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
-          if(data->topologyDim == 0){
+          if(data->elementType == Vertices){
             height = Builder.CreateAdd(width, llvm::ConstantInt::get(Int64Ty, 1));
           }
           
@@ -181,7 +181,7 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
         }
         
         llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
-        if(data->topologyDim == 0){
+        if(data->elementType == Vertices){
           height = Builder.CreateAdd(width, llvm::ConstantInt::get(Int64Ty, 1));
         }
         

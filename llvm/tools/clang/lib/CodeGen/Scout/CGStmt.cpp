@@ -1767,6 +1767,7 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   
   Value* topology;
   Value* meshPtr;
+  Value* rank;
   
   if(top){
     SetMeshBounds(S);
@@ -1776,7 +1777,8 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
     auto fs = visitor.forallStmts();
     
     size_t i = 0;
-    uint32_t aboveTopologyDim;
+    MeshElementType aboveElementType;
+    Value* aboveRank;
     
     for(const ForallMeshStmt* s : fs){
       ForallData data;
@@ -1802,39 +1804,30 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
       }
       
       const MeshDecl* md = mt->getDecl();
-  
+
+      GetMeshBaseAddr(mvd, meshPtr);
+      
       if(i == 0){
-        GetMeshBaseAddr(mvd, meshPtr);
         topology = B.CreateStructGEP(nullptr, meshPtr, md->fields());
         topology = B.CreateLoad(topology, "topology.ptr");
         data.topology = topology;
       }
       
-      auto& dims = mt->dimensions();
+      rank =
+      B.CreateStructGEP(nullptr, meshPtr,
+                        md->fields() + 1 + MeshParameterOffset::RankOffset);
+      rank = B.CreateLoad(rank);
       
-      switch(s->getMeshElementRef()){
-        case Vertices:
-          data.topologyDim = 0;
-          break;
-        case Edges:
-          data.topologyDim = 1;
-          break;
-        case Faces:
-          data.topologyDim = dims.size() - 1;
-          break;
-        case Cells:
-          data.topologyDim = dims.size();
-          break;
-        default:
-          assert(false && "invalid element type");
-      }
-      
+      data.elementType = s->getMeshElementRef();
       data.indexPtr = B.CreateAlloca(Int64Ty, nullptr, "index.ptr");
+   
+      Value* topologyDim = GetMeshTopologyDim(rank, data.elementType);
       
       if(i > 0){
+        Value* aboveTopologyDim = GetMeshTopologyDim(aboveRank, aboveElementType);
+        
         ValueVec args =
-        {topology, ConstantInt::get(Int32Ty, aboveTopologyDim),
-          ConstantInt::get(Int32Ty, data.topologyDim)};
+        {topology, aboveTopologyDim, topologyDim};
         
         data.fromIndicesPtr =
         B.CreateCall(R.MeshGetFromIndicesFunc(), args, "from.indices.ptr");
@@ -1849,7 +1842,8 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
       
       ForallStack.emplace_back(move(data));
     
-      aboveTopologyDim = data.topologyDim;
+      aboveElementType = data.elementType;
+      aboveRank = rank;
       
       ++i;
     }
@@ -1873,28 +1867,8 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   else{
     mt = dyn_cast<MeshType>(mvd->getType());
   }
-    
-  auto& dims = mt->dimensions();
   
-  uint32_t topologyDim;
-  switch(S.getMeshElementRef()){
-    case Vertices:
-      topologyDim = 0;
-      break;
-    case Edges:
-      topologyDim = 1;
-      break;
-    case Faces:
-      topologyDim = dims.size() - 1;
-      break;
-    case Cells:
-      topologyDim = dims.size();
-      break;
-    default:
-      assert(false && "invalid element type");
-  }
-  
-  int i = FindForallData(topologyDim);
+  int i = FindForallData(S.getMeshElementRef());
   assert(i >= 0 && "error finding forall data");
   
   ForallData& topData = ForallStack[0];
@@ -1909,7 +1883,8 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   Value* endIndex;
   
   if(top){
-    ValueVec args = {topology, ConstantInt::get(Int32Ty, topologyDim)};
+    Value* topologyDim = GetMeshTopologyDim(rank, data.elementType);
+    ValueVec args = {topology, topologyDim};
     endIndex = B.CreateCall(R.MeshNumEntitiesFunc(), args, "end.index");
   }
   else{
@@ -2978,44 +2953,20 @@ void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S
   
   const MeshDecl* md = mt->getDecl();
   
-  auto& dims = mt->dimensions();
-  
-  uint32_t topologyDim;
-
-  MeshElementType ET = S.getMeshElementRef();
-  
-  switch(ET) {
-      
-    case Vertices:
-      topologyDim = 0;
-      break;
-      
-    case Edges:
-      topologyDim = 1;
-      break;
-      
-    case Faces:
-      topologyDim = dims.size() - 1;
-      break;
-      
-    case Cells:
-      assert(false && "not valid for cells");
-      break;
-      
-    case AllElements:
-    case Undefined:
-      assert(false && "Undefined or incorrect MeshElementType value");
-      break;
-  }
-  
   llvm::Value *MeshBaseAddr;
   GetMeshBaseAddr(S, MeshBaseAddr);
   
   llvm::Value* topology = Builder.CreateStructGEP(nullptr, MeshBaseAddr, md->fields());
   topology = Builder.CreateLoad(topology, "topology.ptr");
   
-  std::vector<llvm::Value*> args =
-  {topology, llvm::ConstantInt::get(Int32Ty, topologyDim)};
+  llvm::Value* rank =
+  Builder.CreateStructGEP(nullptr, MeshBaseAddr,
+                          md->fields() + 1 + MeshParameterOffset::RankOffset);
+  
+
+  llvm::Value* topologyDim = GetMeshTopologyDim(rank, S.getMeshElementRef());
+  
+  std::vector<llvm::Value*> args = {topology, topologyDim};
   llvm::Value* numItems = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
   
   EmitMarkerBlock("renderall.entry");
