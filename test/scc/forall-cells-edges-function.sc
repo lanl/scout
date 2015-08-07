@@ -79,7 +79,7 @@ void MyFunc(MyMesh *m) {
     }
   }
 
-  int expected[] = {15, 19, 25, 29}; 
+  int expected[] = {6, 18, 25, 35}; 
   
   i = 0;
   forall cells c in *m {

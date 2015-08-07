@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
     }
   }
 
-  int expected[] = {0, 1, 2, 3, 4}; 
+  int expected[] = {0, 0, 3, 9, 3}; 
   
   i = 0;
   forall cells c in m {

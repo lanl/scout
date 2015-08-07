@@ -461,7 +461,7 @@ namespace scout{
       size_t numCellVertices = MT::numVertices(MT::topologicalDimension());
       size_t numEntityVertices = MT::numVertices(dim);
     
-      IdVec entityVertices(numCellVertices * numEntityVertices);
+      IdVec entityVertices(MT::numEntities(dim) * 2);
     
       ConnVec entityVertexConn;
       ConnVec cellEntityConn(numCells());
