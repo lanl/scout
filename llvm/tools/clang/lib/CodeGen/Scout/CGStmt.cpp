@@ -2462,7 +2462,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
     return;
   }
   
-  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
+  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int64Ty, 0);
 
   llvm::Value *MeshBaseAddr;
   GetMeshBaseAddr(S, MeshBaseAddr);
@@ -2494,7 +2494,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   // Create the induction variables for eack rank.
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "renderall.induct.%s.ptr", IndexNames[i]);
-    InductionVar[i] = CreateTempAlloca(Int32Ty, IRNameStr);
+    InductionVar[i] = CreateTempAlloca(Int64Ty, IRNameStr);
     //zero-initialize induction var
     Builder.CreateStore(ConstantZero, InductionVar[i]);
   }
@@ -2521,7 +2521,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   Args.push_back(int8PtrRTAlloc);
 
   // create linear loop index as 4th element and zero-initialize
-  InductionVar[3] = CreateTempAlloca(Int32Ty, "renderall.linearidx.ptr");
+  InductionVar[3] = CreateTempAlloca(Int64Ty, "renderall.linearidx.ptr");
   //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[3]);
 
@@ -3048,8 +3048,8 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
 
   llvm::Value *ConstantZero  = 0;
   llvm::Value *ConstantOne   = 0;
-  ConstantZero = llvm::ConstantInt::get(Int32Ty, 0);
-  ConstantOne  = llvm::ConstantInt::get(Int32Ty, 1);
+  ConstantZero = llvm::ConstantInt::get(Int64Ty, 0);
+  ConstantOne  = llvm::ConstantInt::get(Int64Ty, 1);
 
   //zero-initialize induction var
   Builder.CreateStore(ConstantZero, InductionVar[r-1]);
@@ -3067,7 +3067,6 @@ void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned
   // GEP is done in EmitRenderallStmt so just load here.
   sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
   llvm::Value *LoopBound  = Builder.CreateLoad(LoopBounds[r-1], IRNameStr);
-  LoopBound = Builder.CreateTrunc(LoopBound, Int32Ty);
 
   // Next we create a block that tests the induction variables value to
   // the rank's dimension.

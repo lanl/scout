@@ -80,11 +80,6 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
 
   //vector position
   case Builtin::BIposition: {
-    assert(!ForallStack.empty());
-    ForallData& data = ForallStack.back();
-
-    Value* index = Builder.CreateLoad(data.indexPtr);
-    
     Value* result =
     UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
     
@@ -99,7 +94,6 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     }
     
     *RV = RValue::get(result);
-    
     return true;
   }
  

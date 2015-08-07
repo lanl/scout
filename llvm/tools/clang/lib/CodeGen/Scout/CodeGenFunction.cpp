@@ -102,7 +102,9 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     return Builder.CreateLoad(V, IRNameStr);
   }
   
-  assert(!ForallStack.empty());
+  if(ForallStack.empty()){
+    return InductionVar[index];
+  }
   
   ForallData* data = nullptr;
   for(int i = ForallStack.size() - 1; i >= 0; --i){

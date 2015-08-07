@@ -199,6 +199,10 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
       assert(false && "invalid element type");
   }
   
+  if(ForallStack.empty()){
+    return InductionVar[3];
+  }
+  
   int i = FindForallData(topologyDim);
   assert(i >= 0 && "error finding forall data");
   
