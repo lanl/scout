@@ -726,7 +726,7 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 				 sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
 				 llvm::Value *iv  = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
 
-         llvm::Value* ai = Builder.CreateZExt(args[i], Int64Ty);
+         llvm::Value* ai = Builder.CreateSExt(args[i], Int64Ty);
          
 				 // take index and add offset from eoshift
 				 sprintf(IRNameStr, "eoshift.rawindex.%s", IndexNames[i]);
