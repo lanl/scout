@@ -72,7 +72,7 @@ namespace{
       return 1;
     }
 
-    static size_t numEntities(size_t dim){
+    static size_t numEntitiesPerCell(size_t dim){
       switch(dim){
       case 0:
         return 2;
@@ -87,7 +87,7 @@ namespace{
       return 2;
     }
   
-    static size_t numVertices(size_t dim){
+    static size_t numVerticesPerEntity(size_t dim){
       switch(dim){
       case 0:
         return 1;
@@ -120,7 +120,7 @@ namespace{
       return 2;
     }
 
-    static size_t numEntities(size_t dim){
+    static size_t numEntitiesPerCell(size_t dim){
       switch(dim){
       case 0:
         return 4;
@@ -137,7 +137,7 @@ namespace{
       return 4;
     }
   
-    static size_t numVertices(size_t dim){
+    static size_t numVerticesPerEntity(size_t dim){
       switch(dim){
       case 0:
         return 1;
@@ -181,7 +181,7 @@ namespace{
       return 3;
     }
 
-    static size_t numEntities(size_t dim){
+    static size_t numEntitiesPerCell(size_t dim){
       switch(dim){
       case 0:
         return 8;
@@ -198,7 +198,7 @@ namespace{
       return 4;
     }
   
-    static size_t numVertices(size_t dim){
+    static size_t numVerticesPerEntity(size_t dim){
       switch(dim){
       case 0:
         return 1;

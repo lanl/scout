@@ -440,7 +440,7 @@ namespace scout{
     }
   
     void addCell(Id id, std::initializer_list<Id> il){
-      assert(il.size() == MT::numVertices(MT::topologicalDimension()) &&
+      assert(il.size() == MT::numVerticesPerEntity(MT::topologicalDimension()) &&
              "invalid number of vertices per cell");
     
       auto& c = getConnectivity_(MT::topologicalDimension(), 0);
@@ -459,10 +459,10 @@ namespace scout{
       Connectivity& cellToEntity =
         getConnectivity_(MT::topologicalDimension(), dim);
     
-      size_t entitiesPerCell =  MT::numEntities(dim);
-      size_t verticesPerEntity = MT::numVertices(dim);
+      size_t entitiesPerCell =  MT::numEntitiesPerCell(dim);
+      size_t verticesPerEntity = MT::numVerticesPerEntity(dim);
     
-      IdVec entityVertices(MT::numEntities(dim) * 2);
+      IdVec entityVertices(MT::numEntitiesPerCell(dim) * 2);
     
       ConnVec entityVertexConn;
       ConnVec cellEntityConn(numCells());
@@ -470,7 +470,7 @@ namespace scout{
       size_t maxCellEntityConns = 1;
       size_t entityId = 0;
     
-      IdVecMap entityVerticesMap(numCells() * MT::numEntities(dim)/2);
+      IdVecMap entityVerticesMap(numCells() * MT::numEntitiesPerCell(dim)/2);
     
       size_t n = numCells();
     
@@ -547,15 +547,15 @@ namespace scout{
       VisitedVec visited(numEntities(fromDim));
     
       size_t maxSize = 1;
-      IdVec fromVerts(MT::numVertices(fromDim));
-      IdVec toVerts(MT::numVertices(toDim));
+      IdVec fromVerts(MT::numVerticesPerEntity(fromDim));
+      IdVec toVerts(MT::numVerticesPerEntity(toDim));
     
       for(Entity e0(*this, fromDim); !e0.end(); ++e0){
         IdVec& entities = conns[e0.index()];
         entities.reserve(maxSize);
       
         std::copy(e0.getEntities(0), e0.getEntities(0) + 
-                  MT::numVertices(fromDim),
+                  MT::numVerticesPerEntity(fromDim),
                   fromVerts.begin());
       
         std::sort(fromVerts.begin(), fromVerts.end());
@@ -581,7 +581,7 @@ namespace scout{
             }
             else{
               copy(e2.getEntities(0),
-                   e2.getEntities(0) + MT::numVertices(toDim),
+                   e2.getEntities(0) + MT::numVerticesPerEntity(toDim),
                    toVerts.begin());
             
               std::sort(toVerts.begin(), toVerts.end());
