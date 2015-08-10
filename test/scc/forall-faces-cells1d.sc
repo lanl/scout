@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
     }
   }
 
-  int expected[] = {0, 1, 2, 3, 4};
+  int expected[] = {0, 1, 3, 5, 7, 4};
 
   int i = 0;
   forall faces f in m {

@@ -98,11 +98,8 @@ namespace{
       }
     }
   
-    static void createEdges(std::vector<Id>& e, Id* v){
-      assert(e.size() == 2);
-    
-      e[0] = v[0];
-      e[1] = v[1];
+    static void createEntities(size_t dim, std::vector<Id>& e, Id* v){
+      assert(false && "nothing to build");
     }
   
   };
@@ -150,7 +147,8 @@ namespace{
       }
     }
   
-    static void createEdges(std::vector<Id>& e, Id* v){
+    static void createEntities(size_t dim, std::vector<Id>& e, Id* v){
+      assert(dim = 1);
       assert(e.size() == 8);
     
       e[0] = v[0];
@@ -213,44 +211,82 @@ namespace{
       }
     }
   
-    static void createEdges(std::vector<Id>& e, Id* v){
-      assert(e.size() == 24);
+    static void createEntities(size_t dim, std::vector<Id>& e, Id* v){
+      if(dim == 1){
+        assert(e.size() == 24);
     
-      e[0] = v[0];
-      e[1] = v[2];
+        e[0] = v[0];
+        e[1] = v[2];
 
-      e[2] = v[1];
-      e[3] = v[3];
+        e[2] = v[1];
+        e[3] = v[3];
     
-      e[4] = v[0];
-      e[5] = v[1];
+        e[4] = v[0];
+        e[5] = v[1];
     
-      e[6] = v[2];
-      e[7] = v[3];
+        e[6] = v[2];
+        e[7] = v[3];
 
-      e[8] = v[4];
-      e[9] = v[6];
+        e[8] = v[4];
+        e[9] = v[6];
 
-      e[10] = v[5];
-      e[11] = v[7];
+        e[10] = v[5];
+        e[11] = v[7];
 
-      e[12] = v[4];
-      e[13] = v[5];
+        e[12] = v[4];
+        e[13] = v[5];
     
-      e[14] = v[6];
-      e[15] = v[7];
+        e[14] = v[6];
+        e[15] = v[7];
 
-      e[16] = v[1];
-      e[17] = v[5];
+        e[16] = v[1];
+        e[17] = v[5];
 
-      e[18] = v[3];
-      e[19] = v[7];
+        e[18] = v[3];
+        e[19] = v[7];
 
-      e[20] = v[0];
-      e[21] = v[4];
+        e[20] = v[0];
+        e[21] = v[4];
 
-      e[22] = v[2];
-      e[23] = v[6];
+        e[22] = v[2];
+        e[23] = v[6];
+      }
+      else if(dim == 2){
+        assert(e.size() == 24);
+
+        e[0] = v[0];
+        e[1] = v[1];
+        e[2] = v[3];
+        e[3] = v[2];
+
+        e[4] = v[4];
+        e[5] = v[5];
+        e[6] = v[7];
+        e[7] = v[6];
+
+        e[8] = v[1];
+        e[9] = v[5];
+        e[10] = v[7];
+        e[11] = v[3];
+
+        e[12] = v[0];
+        e[13] = v[4];
+        e[14] = v[6];
+        e[15] = v[2];
+
+        e[16] = v[0];
+        e[17] = v[1];
+        e[18] = v[5];
+        e[19] = v[4];
+
+        e[20] = v[2];
+        e[21] = v[3];
+        e[22] = v[7];
+        e[23] = v[6];
+      }
+      else{
+        assert(false && "invalid dim");
+      }
     }
   
   };
@@ -344,6 +380,9 @@ extern "C"{
         }
       }
     }
+
+    //mesh->build(2);
+    //mesh->dump();
 
     return mesh;
   }

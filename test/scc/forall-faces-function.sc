@@ -68,7 +68,7 @@ void MyFunc(AMeshType *m1, AMeshType *m2, AMeshType *m3)
     val++;
     field = val;
   }
-  assert(val==2 && "bad number of faces r=1"); 
+  assert(val==3 && "bad number of faces r=1"); 
 
   val = 0;
   forall faces f in *m2 {

@@ -8,6 +8,12 @@
 #include <cassert>
 #include <unordered_map>
 
+#define ndump(X) std::cout << __FILE__ << ":" << __LINE__ << ": " << \
+__PRETTY_FUNCTION__ << ": " << #X << " = " << X << std::endl
+
+#define nlog(X) std::cout << __FILE__ << ":" << __LINE__ << ": " << \
+__PRETTY_FUNCTION__ << ": " << X << std::endl
+
 namespace scout{
 
   class MeshTopologyBase{
@@ -58,12 +64,12 @@ namespace scout{
           const IdVec& iv = cv[i];
           
           uint64_t n = idVec_.size();
-          
+
           for(Id id : iv){
             idVec_.push_back(id);
           }
           
-          uint64_t n2 = idVec_.size(); 
+          uint64_t n2 = idVec_.size();
           groupVec_.back() |= (n2 - n) << 56;
           groupVec_.push_back(n2);
         }
@@ -462,19 +468,19 @@ namespace scout{
     
       size_t entitiesPerCell =  MT::numEntitiesPerCell(dim);
       size_t verticesPerEntity = MT::numVerticesPerEntity(dim);
-    
-      IdVec entityVertices(MT::numEntitiesPerCell(dim) * 2);
+
+      size_t n = numCells();
+  
+      IdVec entityVertices(entitiesPerCell * verticesPerEntity);
     
       ConnVec entityVertexConn;
-      ConnVec cellEntityConn(numCells());
+      ConnVec cellEntityConn(n);
     
       size_t maxCellEntityConns = 1;
       size_t entityId = 0;
     
-      IdVecMap entityVerticesMap(numCells() * MT::numEntitiesPerCell(dim)/2);
-    
-      size_t n = numCells();
-    
+      IdVecMap entityVerticesMap(n * MT::numEntitiesPerCell(dim)/2);
+
       Connectivity& cn =
         getConnectivity_(MT::topologicalDimension(), 0);
       assert(!cn.empty());
@@ -484,8 +490,12 @@ namespace scout{
       
         Id* vertices = cn.getEntities(c);
       
-        MT::createEdges(entityVertices, vertices);
-      
+        MT::createEntities(dim, entityVertices, vertices);
+
+        for(size_t k = 0; k < entityVertices.size(); ++k){
+
+        }
+
         for(size_t i = 0; i < entitiesPerCell; ++i){
           Id* a = &entityVertices[i * verticesPerEntity];
           IdVec ev(a, a + verticesPerEntity);
