@@ -108,7 +108,8 @@ namespace scout{
       
         std::cout << "=== groupVec" << std::endl;
         for(Id id : groupVec_){
-          std::cout << id << std::endl;
+          std::cout << (INDEX_MASK & id) << "(" << 
+            (id >> 56) << ")" << std::endl;
         }
       }
     
@@ -458,8 +459,8 @@ namespace scout{
       Connectivity& cellToEntity =
         getConnectivity_(MT::topologicalDimension(), dim);
     
-      size_t numCellVertices = MT::numVertices(MT::topologicalDimension());
-      size_t numEntityVertices = MT::numVertices(dim);
+      size_t entitiesPerCell =  MT::numEntities(dim);
+      size_t verticesPerEntity = MT::numVertices(dim);
     
       IdVec entityVertices(MT::numEntities(dim) * 2);
     
@@ -484,16 +485,17 @@ namespace scout{
       
         MT::createEdges(entityVertices, vertices);
       
-        for(size_t i = 0; i < numCellVertices; ++i){
-          Id* a = &entityVertices[i * numEntityVertices];
-          IdVec ev(a, a + numEntityVertices);
+        for(size_t i = 0; i < entitiesPerCell; ++i){
+          Id* a = &entityVertices[i * verticesPerEntity];
+          IdVec ev(a, a + verticesPerEntity);
           sort(ev.begin(), ev.end());
         
           auto itr = entityVerticesMap.emplace(std::move(ev), entityId);
           cellEntityConn[c].push_back(itr.first->second);
         
           if(itr.second){
-            entityVertexConn.emplace_back(IdVec(a, a + numEntityVertices));
+            entityVertexConn.emplace_back(IdVec(a,
+                                                a + verticesPerEntity));
           
             maxCellEntityConns =
               std::max(maxCellEntityConns, cellEntityConn[c].size());
