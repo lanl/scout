@@ -77,7 +77,7 @@ void MyFunc(MyMesh *m) {
     }
   }
 
-  int expected[] = {1, 1, 1, 21, 21, 21, 10, 12, 10, 12, 10, 12};
+  int expected[] = {0, 10, 0, 1, 1, 12, 1, 10, 10, 21, 11, 11};
 
   int i = 0;
   forall edges e in *m {

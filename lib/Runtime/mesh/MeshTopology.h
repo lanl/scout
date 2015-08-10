@@ -120,8 +120,9 @@ namespace scout{
 
       Id* getEntities(size_t index, size_t& endIndex){
         assert(index < groupVec_.size() - 1);
-        endIndex = groupVec_[index + 1] - groupVec_[index];
-        return idVec_.data() + (groupVec_[index] & INDEX_MASK);
+        uint64_t start = groupVec_[index] & INDEX_MASK;
+        endIndex = (groupVec_[index + 1] & INDEX_MASK) - start;
+        return idVec_.data() + start;
       }
         
       bool empty(){
@@ -515,7 +516,7 @@ namespace scout{
     
       Connectivity& fromConn = getConnectivity_(toDim, fromDim);
       assert(!fromConn.empty());
-    
+
       IndexVec pos(numEntities(fromDim), 0);
     
       for(Entity e1(*this, toDim); !e1.end(); ++e1){
