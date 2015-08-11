@@ -127,7 +127,9 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     for(size_t i = 0; i <= 3; ++i){
       llvm::Value* pi = LookupInductionVar(i);
       pi = Builder.CreateLoad(pi);
-      pi = Builder.CreateAdd(Builder.CreateLoad(LookupMeshStart(0)), pi);
+      if(i != 3){
+        pi = Builder.CreateAdd(Builder.CreateLoad(LookupMeshStart(i)), pi);
+      }
       pi = Builder.CreateTrunc(pi, Int32Ty);
       
       result =
