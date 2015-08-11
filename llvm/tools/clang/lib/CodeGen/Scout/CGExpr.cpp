@@ -1271,6 +1271,8 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
     mt = dyn_cast<MeshType>(mvd->getType());
   }
   
+  const MeshDecl* md = mt->getDecl();
+  
   auto& dims = mt->dimensions();
   
   TypeVec params =
@@ -1320,6 +1322,10 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   data.meshVarDecl = mvd;
   data.indexPtr = inductPtr;
   data.elementType = et;
+  
+  Value* topology = B.CreateStructGEP(nullptr, meshPtr, md->fields());
+  topology = B.CreateLoad(topology, "topology.ptr");
+  data.topology = topology;
   
   ForallStack.emplace_back(move(data));
   
