@@ -257,6 +257,7 @@ namespace scout{
 
     Id* getFromIndices(uint32_t fromDim,
                        uint32_t toDim){
+
       Connectivity& c = getConnectivity(fromDim, toDim);
 
       if(c.empty()){
@@ -516,35 +517,36 @@ namespace scout{
   
     void build(size_t dim) override{
       assert(dim <= MT::topologicalDimension());
+
+      size_t verticesPerEntity = MT::numVerticesPerEntity(dim);
+      size_t entitiesPerCell =  MT::numEntitiesPerCell(dim);
     
       Connectivity& entityToVertex = getConnectivity_(dim, 0);
+    
+      IdVec entityVertices(entitiesPerCell * verticesPerEntity);
 
       Connectivity& cellToEntity =
         getConnectivity_(MT::topologicalDimension(), dim);
     
-      size_t entitiesPerCell =  MT::numEntitiesPerCell(dim);
-      size_t verticesPerEntity = MT::numVerticesPerEntity(dim);
+      ConnVec entityVertexConn;
+
+      size_t entityId = 0;
+      size_t maxCellEntityConns = 1;
+
+      Connectivity& cellToVertex =
+        getConnectivity_(MT::topologicalDimension(), 0);
+      assert(!cellToVertex.empty());
 
       size_t n = numCells();
-  
-      IdVec entityVertices(entitiesPerCell * verticesPerEntity);
-    
-      ConnVec entityVertexConn;
-      ConnVec cellEntityConn(n);
-    
-      size_t maxCellEntityConns = 1;
-      size_t entityId = 0;
-    
-      IdVecMap entityVerticesMap(n * MT::numEntitiesPerCell(dim)/2);
 
-      Connectivity& cn =
-        getConnectivity_(MT::topologicalDimension(), 0);
-      assert(!cn.empty());
+      ConnVec cellEntityConn(n);
+
+      IdVecMap entityVerticesMap(n * MT::numEntitiesPerCell(dim)/2);
     
       for(size_t c = 0; c < n; ++c){
         cellEntityConn[c].reserve(maxCellEntityConns);
       
-        Id* vertices = cn.getEntities(c);
+        Id* vertices = cellToVertex.getEntities(c);
       
         MT::createEntities(dim, entityVertices, vertices);
 
@@ -567,40 +569,40 @@ namespace scout{
           }
         }
       }
-    
-      entityToVertex.init(entityVertexConn);
+
       cellToEntity.init(cellEntityConn);
+      entityToVertex.init(entityVertexConn);
+
       size_[dim] = entityToVertex.fromSize();
     }
   
-    void transpose(size_t fromDim, size_t toDim){
-      Connectivity& conn = getConnectivity_(fromDim, toDim);
-    
-      Connectivity& fromConn = getConnectivity_(toDim, fromDim);
-      assert(!fromConn.empty());
-
+    void transpose(size_t fromDim, size_t toDim){    
       IndexVec pos(numEntities(fromDim), 0);
     
-      for(Entity e1(*this, toDim); !e1.end(); ++e1){
-        for(EntityIterator e0(e1, fromDim); !e0.end(); ++e0){
-          pos[e0.index()]++;
+      for(Entity toEntity(*this, toDim); !toEntity.end(); ++toEntity){
+        for(EntityIterator fromItr(toEntity, fromDim); 
+            !fromItr.end(); ++fromItr){
+          pos[fromItr.index()]++;
         }
       }
     
-      conn.resize(pos);
+      Connectivity& outConn = getConnectivity_(fromDim, toDim);
+      outConn.resize(pos);
     
       std::fill(pos.begin(), pos.end(), 0);
     
-      for(Entity e1(*this, toDim); !e1.end(); ++e1){
-        for(EntityIterator e0(e1, fromDim); !e0.end(); ++e0){
-          conn.set(e0.index(), e1.index(), pos[e0.index()]++);
+      for(Entity toEntity(*this, toDim); !toEntity.end(); ++toEntity){
+        for(EntityIterator fromItr(toEntity, fromDim); 
+            !fromItr.end(); ++fromItr){
+          outConn.set(fromItr.index(), toEntity.index(), 
+                      pos[fromItr.index()]++);
         }
       }
     }
   
     void intersect(size_t fromDim, size_t toDim, size_t dim){
-      Connectivity& conn = getConnectivity_(fromDim, toDim);
-      if(!conn.empty()){
+      Connectivity& outConn = getConnectivity_(fromDim, toDim);
+      if(!outConn.empty()){
         return;
       }
     
@@ -609,50 +611,56 @@ namespace scout{
       using VisitedVec = std::vector<bool>;
       VisitedVec visited(numEntities(fromDim));
     
-      size_t maxSize = 1;
       IdVec fromVerts(MT::numVerticesPerEntity(fromDim));
       IdVec toVerts(MT::numVerticesPerEntity(toDim));
-    
-      for(Entity e0(*this, fromDim); !e0.end(); ++e0){
-        IdVec& entities = conns[e0.index()];
+
+      size_t maxSize = 1;    
+
+      for(Entity fromEntity(*this, fromDim); !fromEntity.end(); ++fromEntity){
+        IdVec& entities = conns[fromEntity.index()];
         entities.reserve(maxSize);
-      
-        std::copy(e0.getEntities(0), e0.getEntities(0) + 
-                  MT::numVerticesPerEntity(fromDim),
+
+        Id* ep = fromEntity.getEntities(0);
+
+        std::copy(ep, ep + MT::numVerticesPerEntity(fromDim),
                   fromVerts.begin());
       
         std::sort(fromVerts.begin(), fromVerts.end());
       
-        for(EntityIterator e1(e0, dim); !e1.end(); ++e1){
-          for(EntityIterator e2(e1, toDim); !e2.end(); ++e2){
-            visited[e2.index()] = false;
+        for(EntityIterator fromItr(fromEntity, dim);
+            !fromItr.end(); ++fromItr){
+          for(EntityIterator toItr(fromItr, toDim);
+              !toItr.end(); ++toItr){
+            visited[toItr.index()] = false;
           }
         }
       
-        for(EntityIterator e1(e0, dim); !e1.end(); ++e1){
-          for(EntityIterator e2(e1, toDim); !e2.end(); ++e2){
-            if(visited[e2.index()]){
+        for(EntityIterator fromItr(fromEntity, dim);
+            !fromItr.end(); ++fromItr){
+          for(EntityIterator toItr(fromItr, toDim);
+              !toItr.end(); ++toItr){
+            if(visited[toItr.index()]){
               continue;
             }
           
-            visited[e2.index()] = true;
+            visited[toItr.index()] = true;
           
-            if (fromDim == toDim){
-              if (e0.index() != e2.index()){
-                entities.push_back(e2.index());
+            if(fromDim == toDim){
+              if(fromEntity.index() != toItr.index()){
+                entities.push_back(toItr.index());
               }
             }
             else{
-              copy(e2.getEntities(0),
-                   e2.getEntities(0) + MT::numVerticesPerEntity(toDim),
-                   toVerts.begin());
+              Id* ep = toItr.getEntities(0);
+
+              copy(ep, ep + MT::numVerticesPerEntity(toDim), toVerts.begin());
             
               std::sort(toVerts.begin(), toVerts.end());
             
               if(std::includes(fromVerts.begin(), fromVerts.end(),
                                toVerts.begin(), toVerts.end())){
               
-                entities.push_back(e2.index());
+                entities.emplace_back(toItr.index());
               }
             }
           }
@@ -661,13 +669,13 @@ namespace scout{
         maxSize = std::max(entities.size(), maxSize);
       }
     
-      conn.init(conns);
+      outConn.init(conns);
     }
   
     void compute(size_t fromDim, size_t toDim) override{
-      Connectivity& conn = getConnectivity_(fromDim, toDim);
+      Connectivity& outConn = getConnectivity_(fromDim, toDim);
     
-      if(!conn.empty()){
+      if(!outConn.empty()){
         return;
       }
     
@@ -684,23 +692,22 @@ namespace scout{
       }
     
       if(fromDim == toDim){
-        ConnVec c(numEntities(fromDim), IdVec(1));
+        ConnVec connVec(numEntities(fromDim), IdVec(1));
       
-        for(Entity e(*this, fromDim); !e.end(); ++e){
-          c[e.index()][0] = e.index();
+        for(Entity entity(*this, fromDim); !entity.end(); ++entity){
+          connVec[entity.index()][0] = entity.index();
         }
       
-        getConnectivity_(fromDim, toDim).set(c);
+        outConn.set(connVec);
       }
       else if(fromDim < toDim){
         compute(toDim, fromDim);
         transpose(fromDim, toDim);
       }
       else{
-        size_t d = 0;
-        compute(fromDim, d);
-        compute(d, toDim);
-        intersect(fromDim, toDim, d);
+        compute(fromDim, 0);
+        compute(0, toDim);
+        intersect(fromDim, toDim, 0);
       }
     }
   

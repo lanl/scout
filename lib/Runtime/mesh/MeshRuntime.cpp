@@ -381,9 +381,6 @@ extern "C"{
       }
     }
 
-    //mesh->build(2);
-    //mesh->dump();
-
     return mesh;
   }
 
