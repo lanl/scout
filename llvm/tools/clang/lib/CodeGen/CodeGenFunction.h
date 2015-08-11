@@ -2344,6 +2344,10 @@ public:
       inductionVar[0] = nullptr;
       inductionVar[1] = nullptr;
       inductionVar[2] = nullptr;
+      
+      hasInductionVar[0] = false;
+      hasInductionVar[1] = false;
+      hasInductionVar[2] = false;
     }
     
     const MeshType* getMeshType() const{
@@ -2366,6 +2370,7 @@ public:
     llvm::Value* entitiesPtr;
     llvm::BasicBlock* entryBlock;
     llvm::Value* inductionVar[3];
+    bool hasInductionVar[3];
   };
   
   std::vector<ForallData> ForallStack;

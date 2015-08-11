@@ -125,7 +125,7 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     return data->indexPtr;
   }
   
-  if(!data->inductionVar[index]){
+  if(!data->hasInductionVar[index]){
     const MeshType* mt;
     if(const PointerType* pt =
        dyn_cast<PointerType>(data->meshVarDecl->getType())){
@@ -138,7 +138,6 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     auto& dims = mt->dimensions();
     
     sprintf(IRNameStr, "induct.%s.ptr", IndexNames[index]);
-    llvm::Value* inductPtr = Builder.CreateAlloca(Int64Ty, nullptr, IRNameStr);
     
     llvm::Value* idx = Builder.CreateLoad(data->indexPtr, "index");
     llvm::Value* induct;
@@ -190,8 +189,8 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
       }
     }
     
-    Builder.CreateStore(induct, inductPtr);
-    data->inductionVar[index] = inductPtr;
+    Builder.CreateStore(induct, data->inductionVar[index]);
+    data->hasInductionVar[index] = true;
   }
   
   return data->inductionVar[index];

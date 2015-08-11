@@ -93,7 +93,7 @@ int main(int argc, char *argv[]) {
       h = MAX_TEMP;
       h_next = MAX_TEMP;
       mask = 0.0;
-    } 
+    }
 
     for (int i = 0; i < N_BODIES; i++) {
       float r2 = (position().x - c_x[i]) * (position().x - c_x[i])
@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
       }
     }
   }
-
+  
   const float dx = 10.0f / width(heat_mesh);
   const float dy = 10.0f / height(heat_mesh);
   const float alpha = 0.00001f;

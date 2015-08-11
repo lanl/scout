@@ -1821,6 +1821,10 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
       data.elementType = s->getMeshElementRef();
       data.indexPtr = B.CreateAlloca(Int64Ty, nullptr, "index.ptr");
    
+      for(size_t j = 0; j < 3; ++j){
+        data.inductionVar[j] = Builder.CreateAlloca(Int64Ty, nullptr, IRNameStr);
+      }
+      
       Value* topologyDim = GetMeshTopologyDim(rank, data.elementType);
       
       if(i > 0){
