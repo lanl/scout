@@ -1886,10 +1886,16 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   
   Value* endIndex;
   
+  Value* queryMask = nullptr;
+  
   if(top){
     Value* topologyDim = GetMeshTopologyDim(rank, data.elementType);
     ValueVec args = {topology, topologyDim};
     endIndex = B.CreateCall(R.MeshNumEntitiesFunc(), args, "end.index");
+    
+    if(S.getQueryVarDecl()){
+      queryMask = EmitForallQueryCall(S, endIndex);
+    }
   }
   else{
     ForallData& aboveData = ForallStack[i - 1];
@@ -1908,18 +1914,46 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
   B.CreateStore(ConstantInt::get(Int64Ty, 0), data.indexPtr);
   
   BasicBlock* loopBlock = createBasicBlock("forall.loop");
-  B.CreateBr(loopBlock);
   
+  BasicBlock* condBlock = nullptr;
+  
+  if(queryMask){
+    condBlock = createBasicBlock("query.cond");
+    EmitBlock(condBlock);
+    
+    Value* index = B.CreateLoad(data.indexPtr, "index");
+    
+    Value* mask = B.CreateGEP(queryMask, index);
+    mask = Builder.CreateLoad(mask);
+    Value* cond = B.CreateICmpNE(mask, llvm::ConstantInt::get(Int8Ty, 0));
+    BasicBlock* skipBlock = createBasicBlock("query.skip");
+    B.CreateCondBr(cond, loopBlock, skipBlock);
+    EmitBlock(skipBlock);
+    index = B.CreateAdd(index, llvm::ConstantInt::get(Int64Ty, 1));
+    B.CreateStore(index, data.indexPtr);
+    B.CreateBr(condBlock);
+  }
+  else{
+    B.CreateBr(loopBlock);
+  }
+
   EmitBlock(loopBlock);
-  EmitStmt(S.getBody());
   
-  Value* index = B.CreateLoad(data.indexPtr, "index1");
+  EmitStmt(S.getBody());
+  Value* index = B.CreateLoad(data.indexPtr, "index");
   Value* incIndex = B.CreateAdd(index, ConstantInt::get(Int64Ty, 1), "index.inc");
   B.CreateStore(incIndex, data.indexPtr);
   
   Value* cond = B.CreateICmpSLT(incIndex, endIndex, "cond");
   BasicBlock* exitBlock = createBasicBlock("forall.exit");
-  B.CreateCondBr(cond, loopBlock, exitBlock);
+
+  if(condBlock){
+    B.CreateCondBr(cond, condBlock, exitBlock);
+  }
+  else{
+    B.CreateCondBr(cond, loopBlock, exitBlock);
+  }
+
   EmitBlock(exitBlock);
   
   if(top){
@@ -2200,7 +2234,6 @@ void CodeGenFunction::EmitForallMeshLoop(const ForallMeshStmt &S,
 
 llvm::Value* CodeGenFunction::EmitForallQueryCall(const ForallMeshStmt& S,
                                                   llvm::Value* numItems){
-  /*
   using namespace std;
   using namespace llvm;
   
@@ -2251,7 +2284,6 @@ llvm::Value* CodeGenFunction::EmitForallQueryCall(const ForallMeshStmt& S,
   B.CreateCall(funcPtr, queryArgs);
   
   return queryMask;
-   */
 }
 
 // reset Loopbounds, mesh dimensions, rank and induction var
