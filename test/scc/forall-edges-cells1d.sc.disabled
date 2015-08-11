@@ -1,6 +1,6 @@
 /*
  * ###########################################################################
- * Copyright (c) 2010, Los Alamos National Security, LLC.
+ * Copyright (c) 2014, Los Alamos National Security, LLC.
  * All rights reserved.
  * 
  *  Copyright 2010. Los Alamos National Security, LLC. This software was
@@ -56,36 +56,37 @@
 #include <assert.h>
 
 uniform mesh MyMesh {
- faces:
-  float b;
+ cells:
+  int a;
+ edges:
+  int b;
 };
 
 int main(int argc, char** argv) {
-  MyMesh m[8];
+  MyMesh m[5];
 
-  float inc = 0.0;
-  forall faces f in m{
-    f.b = inc;
-    inc += 1.0;
-  } 
-
-  query q = 
-    from faces f in m 
-    select f.b where 
-    f.b > 5.0;
-  
-  forall faces f in q{
-    f.b += 100;
+  forall cells c in m {
+    a = position().x;
+  }
+ 
+  forall edges e in m {
+    b = 0;
   }
 
-  float expected[] = 
-    {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0, 106.0f, 107.0f, 108.0f};
+  forall edges e in m {
+    forall cells c in e {
+      b += a;
+    }
+  }
+
+  int expected[] = {0, 1, 2, 3, 4};
 
   int i = 0;
-  forall faces f in m{
-    assert(b == expected[i] && "unexpected value");
+  forall edges e in m {
+    printf("%d\n", b);
+    //assert(b == expected[i] && "unexpected value");
     ++i;
-  }  
+  }
 
   return 0;
 }

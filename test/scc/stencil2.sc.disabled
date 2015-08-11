@@ -48,44 +48,44 @@
  * ########################################################################### 
  * 
  * Notes
+ *  simple stencil function
  *
  * ##### 
  */
-
-#include <stdio.h>
 #include <assert.h>
+#include <stdio.h> 
 
-uniform mesh MyMesh {
- faces:
-  float b;
+uniform mesh AMeshType{
+cells:
+  int a;
+  int b;
 };
 
-int main(int argc, char** argv) {
-  MyMesh m[8];
+stencil int sten(AMeshType *c) {
+   return cshift(c->a,-1) - 2*c->a + cshift(c->a,1);
+}
 
-  float inc = 0.0;
-  forall faces f in m{
-    f.b = inc;
-    inc += 1.0;
-  } 
 
-  query q = 
-    from faces f in m 
-    select f.b where 
-    f.b > 5.0;
-  
-  forall faces f in q{
-    f.b += 100;
+int main(int argc, char *argv[])
+{
+
+  AMeshType m[10];
+
+  forall cells c in m {
+    c.a = position().x;
   }
 
-  float expected[] = 
-    {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0, 106.0f, 107.0f, 108.0f};
+  forall cells c in m {
+    c.b = sten(&c);
+    printf("%d %d\n", c.a, c.b);
+  }
 
+  int expected[] = {10, 0, 0, 0, 0, 0, 0, 0, 0, -10};
   int i = 0;
-  forall faces f in m{
+  forall cells c in m {
     assert(b == expected[i] && "unexpected value");
     ++i;
-  }  
+  }
 
   return 0;
 }
