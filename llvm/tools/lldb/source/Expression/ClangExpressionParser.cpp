@@ -211,9 +211,9 @@ ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
     {
     // +===== Scout ============================
     case lldb::eLanguageTypeScoutC:
-        m_compiler->getLangOpts().ScoutC = true;
         m_compiler->getLangOpts().CPlusPlus = true;
         break;
+    // +========================================
     case lldb::eLanguageTypeC:
         break;
     case lldb::eLanguageTypeObjC:
@@ -235,6 +235,10 @@ ClangExpressionParser::ClangExpressionParser (ExecutionContextScope *exe_scope,
         break;
     }
 
+  // +===== Scout ============================
+    m_compiler->getLangOpts().ScoutC = true;
+  // +========================================
+  
     m_compiler->getLangOpts().Bool = true;
     m_compiler->getLangOpts().WChar = true;
     m_compiler->getLangOpts().Blocks = true;

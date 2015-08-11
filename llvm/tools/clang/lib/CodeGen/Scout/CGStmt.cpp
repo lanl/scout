@@ -1799,6 +1799,10 @@ void CodeGenFunction::EmitForallMeshStmt2(const ForallMeshStmt &S) {
          dyn_cast<PointerType>(data.meshVarDecl->getType())){
         mt = dyn_cast<MeshType>(pt->getPointeeType());
       }
+      else if(const ReferenceType* rt =
+         dyn_cast<ReferenceType>(data.meshVarDecl->getType())){
+        mt = dyn_cast<MeshType>(rt->getPointeeType());
+      }
       else{
         mt = dyn_cast<MeshType>(data.meshVarDecl->getType());
       }

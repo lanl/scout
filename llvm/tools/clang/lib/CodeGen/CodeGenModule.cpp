@@ -137,6 +137,7 @@ CodeGenModule::CodeGenModule(ASTContext &C, const HeaderSearchOptions &HSO,
     createOpenMPRuntime();
   if (LangOpts.CUDA)
     createCUDARuntime();
+        
   // +===== Scout ============================================================+
   if(isScoutLang(LangOpts)) {
     createScoutRuntime();
