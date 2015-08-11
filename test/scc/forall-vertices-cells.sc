@@ -80,8 +80,7 @@ int main(int argc, char** argv) {
     }
   }
 
-  int expected[] = {44, 42, 46, 44, 24, 22, 26, 24, 64, 62, 66, 
-    64, 44, 42, 46, 44};
+  int expected[] = {0, 1, 3, 2, 10, 22, 26, 14, 30, 62, 66, 34, 20, 41, 43, 22};
 
   int i = 0;
   forall vertices v in m {

@@ -1,3 +1,57 @@
+/*
+ * ###########################################################################
+ * Copyright (c) 2015, Los Alamos National Security, LLC.
+ * All rights reserved.
+ *
+ *  Copyright 2015. Los Alamos National Security, LLC. This software was
+ *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
+ *  Alamos National Laboratory (LANL), which is operated by Los Alamos
+ *  National Security, LLC for the U.S. Department of Energy. The
+ *  U.S. Government has rights to use, reproduce, and distribute this
+ *  software.  NEITHER THE GOVERNMENT NOR LOS ALAMOS NATIONAL SECURITY,
+ *  LLC MAKES ANY WARRANTY, EXPRESS OR IMPLIED, OR ASSUMES ANY LIABILITY
+ *  FOR THE USE OF THIS SOFTWARE.  If software is modified to produce
+ *  derivative works, such modified software should be clearly marked,
+ *  so as not to confuse it with the version available from LANL.
+ *
+ *  Additionally, redistribution and use in source and binary forms,
+ *  with or without modification, are permitted provided that the
+ *  following conditions are met:
+ *
+ *    * Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *
+ *    * Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ *    * Neither the name of Los Alamos National Security, LLC, Los
+ *      Alamos National Laboratory, LANL, the U.S. Government, nor the
+ *      names of its contributors may be used to endorse or promote
+ *      products derived from this software without specific prior
+ *      written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
+ *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ *  DISCLAIMED. IN NO EVENT SHALL LOS ALAMOS NATIONAL SECURITY, LLC OR
+ *  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ *  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ *  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ *  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ *  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ *  SUCH DAMAGE.
+ * ###########################################################################
+ *
+ * Notes
+ *
+ * #####
+ */
+
 #ifndef __MESH_TOPOLOGY_H__
 #define __MESH_TOPOLOGY_H__
 
@@ -41,6 +95,7 @@ namespace scout{
     class Connectivity{
     public:
       static const uint64_t INDEX_MASK = 0x00ffffffffffffff;
+      static constexpr int INDEX_BITS = 56;
 
       Connectivity(){}
     
@@ -70,7 +125,7 @@ namespace scout{
           }
           
           uint64_t n2 = idVec_.size();
-          groupVec_.back() |= (n2 - n) << 56;
+          groupVec_.back() |= (n2 - n) << INDEX_BITS;
           groupVec_.push_back(n2);
         }
       }
@@ -85,7 +140,7 @@ namespace scout{
         groupVec_[0] = size;
 
         for(size_t i = 1; i < n; ++i){
-          groupVec_[i - 1] |= (size - groupVec_[i - 1]) << 56;
+          groupVec_[i - 1] |= (size - groupVec_[i - 1]) << INDEX_BITS;
           groupVec_[i] = size;
           size += numConns[i];
         }
@@ -98,7 +153,7 @@ namespace scout{
       void endGroup(){
         uint64_t n = groupVec_.back();
         uint64_t n2 = idVec_.size();
-        groupVec_.back() |= (n2 - n) << 56;
+        groupVec_.back() |= (n2 - n) << INDEX_BITS;
         groupVec_.push_back(n2);
       }
     
@@ -115,7 +170,7 @@ namespace scout{
         std::cout << "=== groupVec" << std::endl;
         for(Id id : groupVec_){
           std::cout << (INDEX_MASK & id) << "(" << 
-            (id >> 56) << ")" << std::endl;
+            (id >> INDEX_BITS) << ")" << std::endl;
         }
       }
     
@@ -161,7 +216,7 @@ namespace scout{
         groupVec_[0] = 0;
 
         for(size_t i = 1; i < n; i++){
-          groupVec_[i - 1] |= (size - groupVec_[0]) << 56;
+          groupVec_[i - 1] |= (size - groupVec_[0]) << INDEX_BITS;
           groupVec_[i] = size;
           size += conns[i].size();
         }
@@ -447,7 +502,8 @@ namespace scout{
     }
   
     void addCell(Id id, std::initializer_list<Id> il){
-      assert(il.size() == MT::numVerticesPerEntity(MT::topologicalDimension()) &&
+      assert(il.size() == 
+             MT::numVerticesPerEntity(MT::topologicalDimension()) &&
              "invalid number of vertices per cell");
     
       auto& c = getConnectivity_(MT::topologicalDimension(), 0);
@@ -491,10 +547,6 @@ namespace scout{
         Id* vertices = cn.getEntities(c);
       
         MT::createEntities(dim, entityVertices, vertices);
-
-        for(size_t k = 0; k < entityVertices.size(); ++k){
-
-        }
 
         for(size_t i = 0; i < entitiesPerCell; ++i){
           Id* a = &entityVertices[i * verticesPerEntity];
