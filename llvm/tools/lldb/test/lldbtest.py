@@ -431,21 +431,38 @@ def run_adb_command(cmd, device_id):
     stdout, stderr = p.communicate()
     return p.returncode, stdout, stderr
 
+def append_android_envs(dictionary):
+    if dictionary is None:
+        dictionary = {}
+    dictionary["OS"] = "Android"
+    if android_device_api() >= 16:
+        dictionary["PIE"] = 1
+    return dictionary
+
+def target_is_android():
+    if not hasattr(target_is_android, 'result'):
+        triple = lldb.DBG.GetSelectedPlatform().GetTriple()
+        match = re.match(".*-.*-.*-android", triple)
+        target_is_android.result = match is not None
+    return target_is_android.result
+
 def android_device_api():
-    assert lldb.platform_url is not None
-    device_id = None
-    parsed_url = urlparse.urlparse(lldb.platform_url)
-    if parsed_url.scheme == "adb":
-        device_id = parsed_url.netloc.split(":")[0]
-    retcode, stdout, stderr = run_adb_command(
-        ["shell", "getprop", "ro.build.version.sdk"], device_id)
-    if retcode == 0:
-        return int(stdout)
-    else:
-        raise LookupError(
-            ">>> Unable to determine the API level of the Android device.\n"
-            ">>> stdout:\n%s\n"
-            ">>> stderr:\n%s\n" % (stdout, stderr))
+    if not hasattr(android_device_api, 'result'):
+        assert lldb.platform_url is not None
+        device_id = None
+        parsed_url = urlparse.urlparse(lldb.platform_url)
+        if parsed_url.scheme == "adb":
+            device_id = parsed_url.netloc.split(":")[0]
+        retcode, stdout, stderr = run_adb_command(
+            ["shell", "getprop", "ro.build.version.sdk"], device_id)
+        if retcode == 0:
+            android_device_api.result = int(stdout)
+        else:
+            raise LookupError(
+                ">>> Unable to determine the API level of the Android device.\n"
+                ">>> stdout:\n%s\n"
+                ">>> stderr:\n%s\n" % (stdout, stderr))
+    return android_device_api.result
 
 #
 # Decorators for categorizing test cases.
@@ -681,22 +698,23 @@ def expectedFailureWindows(bugnumber=None, compilers=None):
 def expectedFailureHostWindows(bugnumber=None, compilers=None):
     return expectedFailureHostOS(['windows'], bugnumber, compilers)
 
-def expectedFailureAndroid(bugnumber=None, api_levels=None):
+def expectedFailureAndroid(bugnumber=None, api_levels=None, archs=None):
     """ Mark a test as xfail for Android.
 
     Arguments:
         bugnumber - The LLVM pr associated with the problem.
         api_levels - A sequence of numbers specifying the Android API levels
-            for which a test is expected to fail.
+            for which a test is expected to fail. None means all API level.
+        arch - A sequence of architecture names specifying the architectures
+            for which a test is expected to fail. None means all architectures.
     """
     def fn(self):
-        triple = self.dbg.GetSelectedPlatform().GetTriple()
-        match = re.match(".*-.*-.*-android", triple)
-        if match:
-            if not api_levels:
-                return True
-            device_api = android_device_api()
-            return device_api and (device_api in api_levels)
+        if target_is_android():
+            if archs is not None and self.getArchitecture() not in archs:
+                return False
+            if api_levels is not None and android_device_api() not in api_levels:
+                return False
+            return True
 
     return expectedFailure(fn, bugnumber)
 
@@ -1036,8 +1054,7 @@ def skipIfTargetAndroid(api_levels=None):
         def wrapper(*args, **kwargs):
             from unittest2 import case
             self = args[0]
-            triple = self.dbg.GetSelectedPlatform().GetTriple()
-            if re.match(".*-.*-.*-android", triple):
+            if target_is_android():
                 if api_levels:
                     device_api = android_device_api()
                     if device_api and (device_api in api_levels):
@@ -1651,6 +1668,8 @@ class Base(unittest2.TestCase):
 
         if compiler[1] == ':':
             compiler = compiler[2:]
+        if os.path.altsep is not None:
+            compiler = compiler.replace(os.path.altsep, os.path.sep)
 
         fname = "{}-{}-{}".format(self.id(), self.getArchitecture(), "_".join(compiler.split(os.path.sep)))
         if len(fname) > 200:
@@ -1966,6 +1985,8 @@ class Base(unittest2.TestCase):
         if lldb.skip_build_and_cleanup:
             return
         module = builder_module()
+        if target_is_android():
+            dictionary = append_android_envs(dictionary)
         if not module.buildDefault(self, architecture, compiler, dictionary, clean):
             raise Exception("Don't know how to build default binary")
 
@@ -1982,6 +2003,8 @@ class Base(unittest2.TestCase):
         if lldb.skip_build_and_cleanup:
             return
         module = builder_module()
+        if target_is_android():
+            dictionary = append_android_envs(dictionary)
         if not module.buildDwarf(self, architecture, compiler, dictionary, clean):
             raise Exception("Don't know how to build binary with dwarf")
 

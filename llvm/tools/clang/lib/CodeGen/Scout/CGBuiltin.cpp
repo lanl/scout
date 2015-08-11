@@ -78,7 +78,48 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
 
   switch (BuiltinID) {
 
+    //vector 
+    case Builtin::BIgindex: {
+      static const char *IndexNames[] = { "x", "y", "z", "w"};
+      Value *Result =
+         llvm::UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
+
+       for (unsigned i = 0; i < 3; ++i) {
+         sprintf(IRNameStr, "gindex.%s", IndexNames[i]);
+         Result = Builder.CreateInsertElement(Result, EmitGIndex(i),
+              Builder.getInt32(i), IRNameStr);
+       }
+       Result = Builder.CreateInsertElement(Result, 
+            Builder.CreateLoad(LookupInductionVar(3), "forall.linearidx"),
+            Builder.getInt32(3), "gindex.w");
+       *RV = RValue::get(Result);
+       return true;
+    }
+
+    case Builtin::BIgindexx: {
+      *RV = RValue::get(EmitGIndex(0));
+      return true;
+    }
+
+    case Builtin::BIgindexy: {
+      *RV = RValue::get(EmitGIndex(1));
+      return true;
+    }
+
+    case Builtin::BIgindexz: {
+      *RV = RValue::get(EmitGIndex(2));
+      return true;
+    }
+
+    case Builtin::BIgindexw: {
+      *RV = RValue::get(Builder.CreateLoad(LookupInductionVar(3), "forall.linearidx"));
+      return true;
+    }
+
+
+
   //vector position
+  case Builtin::BIlindex:
   case Builtin::BIposition: {
     Value* result =
     UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
@@ -96,7 +137,8 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     *RV = RValue::get(result);
     return true;
   }
- 
+
+  case Builtin::BIlindexx:
   case Builtin::BIpositionx: {
     llvm::Value* pi = LookupInductionVar(0);
     pi = Builder.CreateLoad(pi);
@@ -106,6 +148,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     return true;
   }
 
+  case Builtin::BIlindexy:
   case Builtin::BIpositiony: {
     llvm::Value* pi = LookupInductionVar(1);
     pi = Builder.CreateLoad(pi);
@@ -115,6 +158,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     return true;
   }
 
+  case Builtin::BIlindexz:
   case Builtin::BIpositionz: {
     llvm::Value* pi = LookupInductionVar(2);
     pi = Builder.CreateLoad(pi);
@@ -123,7 +167,8 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     *RV = RValue::get(pi);
     return true;
   }
-
+  
+  case Builtin::BIlindexw:
   case Builtin::BIpositionw: {
     llvm::Value* pi = LookupInductionVar(3);
     pi = Builder.CreateLoad(pi);

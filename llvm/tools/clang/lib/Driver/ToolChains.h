@@ -556,6 +556,7 @@ private:
   std::string Arch;
   mutable std::unique_ptr<tools::gcc::Preprocessor> Preprocessor;
   mutable std::unique_ptr<tools::gcc::Compiler> Compiler;
+  void findGccLibDir();
 };
 
 class LLVM_LIBRARY_VISIBILITY OpenBSD : public Generic_ELF {
@@ -740,6 +741,16 @@ public:
   static const char *GetSmallDataThreshold(const llvm::opt::ArgList &Args);
 
   static bool UsesG0(const char *smallDataThreshold);
+};
+
+class LLVM_LIBRARY_VISIBILITY AMDGPUToolChain : public Generic_ELF {
+protected:
+  Tool *buildLinker() const override;
+
+public:
+  AMDGPUToolChain(const Driver &D, const llvm::Triple &Triple,
+            const llvm::opt::ArgList &Args);
+  bool IsIntegratedAssemblerDefault() const override { return true; }
 };
 
 class LLVM_LIBRARY_VISIBILITY NaCl_TC : public Generic_ELF {

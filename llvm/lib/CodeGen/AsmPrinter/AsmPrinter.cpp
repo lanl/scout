@@ -139,9 +139,9 @@ const DataLayout &AsmPrinter::getDataLayout() const {
   return MMI->getModule()->getDataLayout();
 }
 
-unsigned AsmPrinter::getPointerSize() const {
-  return TM.getDataLayout()->getPointerSize();
-}
+// Do not use the cached DataLayout because some client use it without a Module
+// (llmv-dsymutil, llvm-dwarfdump).
+unsigned AsmPrinter::getPointerSize() const { return TM.getPointerSize(); }
 
 const MCSubtargetInfo &AsmPrinter::getSubtargetInfo() const {
   assert(MF && "getSubtargetInfo requires a valid MachineFunction!");
@@ -1111,6 +1111,16 @@ bool AsmPrinter::doFinalization(Module &M) {
 
     // Emit the directives as assignments aka .set:
     OutStreamer->EmitAssignment(Name, lowerConstant(Alias.getAliasee()));
+
+    // Set the size of the alias symbol if we can, as otherwise the alias gets
+    // the size of the aliasee which may not be correct e.g. if the alias is of
+    // a member of a struct.
+    if (MAI->hasDotTypeDotSizeDirective() && Alias.getValueType()->isSized()) {
+      const DataLayout &DL = M.getDataLayout();
+      uint64_t Size = DL.getTypeAllocSize(Alias.getValueType());
+      OutStreamer->emitELFSize(cast<MCSymbolELF>(Name),
+                               MCConstantExpr::create(Size, OutContext));
+    }
   }
 
   GCModuleInfo *MI = getAnalysisIfAvailable<GCModuleInfo>();
@@ -2091,7 +2101,7 @@ static void handleIndirectSymViaGOTPCRel(AsmPrinter &AP, const MCExpr **ME,
   if (!AP.GlobalGOTEquivs.count(GOTEquivSym))
     return;
 
-  const GlobalValue *BaseGV = dyn_cast<GlobalValue>(BaseCst);
+  const GlobalValue *BaseGV = dyn_cast_or_null<GlobalValue>(BaseCst);
   if (!BaseGV)
     return;
 

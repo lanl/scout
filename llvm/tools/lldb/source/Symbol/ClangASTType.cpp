@@ -52,6 +52,10 @@
 #include <iterator>
 #include <mutex>
 
+// +===== Scout ==================================
+#include "clang/AST/Scout/MeshLayout.h"
+// +==============================================
+
 using namespace lldb;
 using namespace lldb_private;
 
@@ -3714,7 +3718,51 @@ ClangASTType::GetChildClangTypeAtIndex (ExecutionContext *exe_ctx,
                 }
             }
             break;
-            
+        // +===== Scout ==================================
+        case clang::Type::UniformMesh:
+        if (idx_is_valid && GetCompleteType())
+        {
+          const clang::UniformMeshType *mesh_type =
+          llvm::cast<clang::UniformMeshType>(parent_qual_type.getTypePtr());
+          const clang::UniformMeshDecl *mesh_decl = mesh_type->getDecl();
+          assert(mesh_decl);
+          const clang::ASTMeshLayout &mesh_layout = m_ast->getASTMeshLayout(mesh_decl);
+          uint32_t child_idx = 0;
+          
+          // Make sure index is in range...
+          uint32_t field_idx = 0;
+          clang::MeshDecl::field_iterator field, field_end;
+          for (field = mesh_decl->field_begin(), field_end = mesh_decl->field_end();
+               field != field_end; ++field, ++field_idx, ++child_idx)
+          {
+            if (idx == child_idx)
+            {
+              // Print the member type if requested
+              // Print the member name and equal sign
+              child_name.assign(field->getNameAsString().c_str());
+              
+              // Figure out the type byte size (field_type_info.first) and
+              // alignment (field_type_info.second) from the AST context.
+              ClangASTType field_clang_type (m_ast, field->getType());
+              assert(field_idx < mesh_layout.getFieldCount());
+              child_byte_size = field_clang_type.GetByteSize(exe_ctx ? exe_ctx->GetBestExecutionContextScope() : NULL);
+              
+              // Figure out the field offset within the current struct/union/class type
+              bit_offset = mesh_layout.getFieldOffset (field_idx);
+              child_byte_offset = bit_offset / 8;
+              return field_clang_type;
+            }
+          }
+        }
+        break;
+        
+        case clang::Type::RectilinearMesh:
+        case clang::Type::StructuredMesh:
+        case clang::Type::UnstructuredMesh:{
+          assert(false && "unimplemented mesh case");
+          break;
+        }
+        // +=============================================
         case clang::Type::ObjCObject:
         case clang::Type::ObjCInterface:
             if (idx_is_valid && GetCompleteType())
@@ -3725,10 +3773,10 @@ ClangASTType::GetChildClangTypeAtIndex (ExecutionContext *exe_ctx,
                 {
                     uint32_t child_idx = 0;
                     clang::ObjCInterfaceDecl *class_interface_decl = objc_class_type->getInterface();
-                    
+                  
                     if (class_interface_decl)
                     {
-                        
+                      
                         const clang::ASTRecordLayout &interface_layout = m_ast->getASTObjCInterfaceLayout(class_interface_decl);
                         clang::ObjCInterfaceDecl *superclass_interface_decl = class_interface_decl->getSuperClass();
                         if (superclass_interface_decl)
@@ -3741,12 +3789,12 @@ ClangASTType::GetChildClangTypeAtIndex (ExecutionContext *exe_ctx,
                                     if (idx == 0)
                                     {
                                         clang::QualType ivar_qual_type(m_ast->getObjCInterfaceType(superclass_interface_decl));
-                                        
-                                        
+                                      
+                                      
                                         child_name.assign(superclass_interface_decl->getNameAsString().c_str());
-                                        
+                                      
                                         clang::TypeInfo ivar_type_info = m_ast->getTypeInfo(ivar_qual_type.getTypePtr());
-                                        
+                                      
                                         child_byte_size = ivar_type_info.Width / 8;
                                         child_byte_offset = 0;
                                         child_is_base_class = true;
@@ -6102,7 +6150,7 @@ ClangASTType::CompleteTagDeclarationDefinition ()
         {
             clang::EnumDecl *enum_decl = enum_type->getDecl();
             
-            if (enum_decl)
+            if (enum_decl && !enum_decl->isCompleteDefinition())
             {
                 /// TODO This really needs to be fixed.
                 
