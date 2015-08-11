@@ -2183,32 +2183,12 @@ public:
   void EmitLegionTask(const FunctionDecl* FD, llvm::Function* taskFunc);
 
   void EmitForallMeshStmt(const ForallMeshStmt &S);
-  void EmitForallMeshStmt2(const ForallMeshStmt &S);
   
   void EmitForallEdges(const ForallMeshStmt &S);
   void EmitForallFaces(const ForallMeshStmt &S);
 
   llvm::Value *GetNumLocalMeshItems(llvm::Value *d1, llvm::Value *d2, llvm::Value *d3);
-  void EmitForallCellsVertices(const ForallMeshStmt &S);
-  void EmitForallCellsEdges(const ForallMeshStmt &S);
-  void EmitForallCellsFaces(const ForallMeshStmt &S);
 
-  void EmitForallVerticesCells(const ForallMeshStmt &S);
-
-  void EmitForallEdgesCells(const ForallMeshStmt &S);
-  void EmitForallFacesCells(const ForallMeshStmt &S);
-  void EmitForallEdgesOrFacesCellsLowD(const ForallMeshStmt &S,
-                                       llvm::Value* OuterIndex);
-
-  void EmitForallEdgesVertices(const ForallMeshStmt &S);
-  void EmitForallFacesVertices(const ForallMeshStmt &S);
-  void EmitForallEdgesOrFacesVerticesLowD(const ForallMeshStmt &S,
-                                          llvm::Value* OuterIndex);
-
-  void EmitForallCellsOrVertices(const ForallMeshStmt &S);
-  void EmitForallMeshLoop(const ForallMeshStmt &S,
-                          unsigned r,
-                          llvm::Value* queryMask);
   
   llvm::Value* EmitForallQueryCall(const ForallMeshStmt& S,
                                    llvm::Value* numItems);
