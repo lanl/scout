@@ -75,9 +75,8 @@ public:
     VMContext.reset(new llvm::LLVMContext());
     M.reset(new llvm::Module(MainFileName, *VMContext));
     M->setDataLayout(Ctx->getTargetInfo().getTargetDescription());
-    Builder.reset(new CodeGen::CodeGenModule(*Ctx, HeaderSearchOpts,
-                                             PreprocessorOpts, CodeGenOpts, *M,
-                                             M->getDataLayout(), Diags));
+    Builder.reset(new CodeGen::CodeGenModule(
+        *Ctx, HeaderSearchOpts, PreprocessorOpts, CodeGenOpts, *M, Diags));
   }
 
   /// Emit a container holding the serialized AST.
@@ -156,7 +155,7 @@ public:
 } // namespace
 
 std::unique_ptr<ASTConsumer>
-ObjectFilePCHContainerOperations::CreatePCHContainerGenerator(
+ObjectFilePCHContainerWriter::CreatePCHContainerGenerator(
     DiagnosticsEngine &Diags, const HeaderSearchOptions &HSO,
     const PreprocessorOptions &PPO, const TargetOptions &TO,
     const LangOptions &LO, const std::string &MainFileName,
@@ -166,7 +165,7 @@ ObjectFilePCHContainerOperations::CreatePCHContainerGenerator(
       Diags, HSO, PPO, TO, LO, MainFileName, OutputFileName, OS, Buffer);
 }
 
-void ObjectFilePCHContainerOperations::ExtractPCH(
+void ObjectFilePCHContainerReader::ExtractPCH(
     llvm::MemoryBufferRef Buffer, llvm::BitstreamReader &StreamFile) const {
   if (auto OF = llvm::object::ObjectFile::createObjectFile(Buffer)) {
     auto *Obj = OF.get().get();

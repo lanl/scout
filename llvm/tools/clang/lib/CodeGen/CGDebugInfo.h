@@ -125,7 +125,8 @@ class CGDebugInfo {
   llvm::DenseMap<const NamespaceDecl *, llvm::TrackingMDRef> NameSpaceCache;
   llvm::DenseMap<const NamespaceAliasDecl *, llvm::TrackingMDRef>
       NamespaceAliasCache;
-  llvm::DenseMap<const Decl *, llvm::TrackingMDRef> StaticDataMemberCache;
+  llvm::DenseMap<const Decl *, llvm::TypedTrackingMDRef<llvm::DIDerivedType>>
+      StaticDataMemberCache;
 
   /// Helper functions for getOrCreateType.
   /// @{
@@ -230,9 +231,6 @@ class CGDebugInfo {
                          SmallVectorImpl<llvm::Metadata *> &E,
                          llvm::DIScoutCompositeType *MeshTy);
   
-  void CollectMeshStaticField(const VarDecl *Var,
-                              SmallVectorImpl<llvm::Metadata *> &E,
-                              llvm::DIScoutCompositeType *MeshTy);
   void CollectMeshNormalField(const MeshFieldDecl *Field,
                               uint64_t OffsetInBits,
                               llvm::DIFile* F,

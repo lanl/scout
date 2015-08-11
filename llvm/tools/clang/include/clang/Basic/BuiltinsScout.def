@@ -58,6 +58,18 @@ BUILTIN(positiony, "i", "n")
 BUILTIN(positionz, "i", "n")
 BUILTIN(positionw, "i", "n")
 
+BUILTIN(lindex, "E4i", "n")
+BUILTIN(lindexx, "i", "n")
+BUILTIN(lindexy, "i", "n")
+BUILTIN(lindexz, "i", "n")
+BUILTIN(lindexw, "i", "n")
+
+BUILTIN(gindex, "E4i", "n")
+BUILTIN(gindexx, "i", "n")
+BUILTIN(gindexy, "i", "n")
+BUILTIN(gindexz, "i", "n")
+BUILTIN(gindexw, "i", "n")
+
 //0 or 1 args
 BUILTIN(mposition, "E3f.", "n")
 BUILTIN(mpositionx, "f.", "n")

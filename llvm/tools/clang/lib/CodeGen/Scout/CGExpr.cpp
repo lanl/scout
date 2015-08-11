@@ -178,7 +178,7 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
   assert(i >= 0 && "error finding forall data");
   
   ForallData& data = ForallStack[i];
-  llvm::Value* Index;
+  //llvm::Value* Index;
   
   if(i > 0){
     return Builder.CreateGEP(data.entitiesPtr, Builder.CreateLoad(data.indexPtr), "index");
@@ -422,10 +422,11 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
 llvm::Value *CodeGenFunction::getMeshIndex(const MeshFieldDecl* MFD) {
   assert(!ForallStack.empty() && "empty forall stack");
 
-  const MeshType* MT = ForallStack[0].getMeshType();
-  auto& dims = MT->dimensions();
+  //const MeshType* MT = ForallStack[0].getMeshType();
+  //auto& dims = MT->dimensions();
   
   llvm::Value* Index;
+
 
   if(MFD->isVertexLocated()) {
     int i = FindForallData(Vertices);
@@ -479,6 +480,7 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
     llvm::Value* ai = Builder.CreateSExt(args[i], Int64Ty);
     
     sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
+
     llvm::Value *iv   = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
     
     // take index and add offset from cshift
@@ -512,8 +514,8 @@ CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
     case 1:
       return indices[0];
     case 2: {
-      // linearIdx = x + Height * y;
-      llvm::Value *Hy    = Builder.CreateMul(dims[1], indices[1], "HeightxY");
+      // linearIdx = x + Width * y;
+      llvm::Value *Hy    = Builder.CreateMul(dims[0], indices[1], "WidthxY");
       return Builder.CreateAdd(indices[0], Hy, "cshift.linearidx");
     }
     case 3: {
@@ -682,20 +684,28 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
   // get the member expr for first arg.
   if(const MemberExpr *E = dyn_cast<MemberExpr>(A1E)) {
     // make sure this is a mesh
-    if(isa<MeshFieldDecl>(E->getMemberDecl())) {
+    if(MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(E->getMemberDecl())) {
 
       //get the dimensions (Width, Height, Depth)
-       SmallVector< llvm::Value *, 3 > dims;
-       for(unsigned i = 0; i < args.size(); ++i) {
-         sprintf(IRNameStr, "%s", DimNames[i]);
-         dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
-       }
+      SmallVector< llvm::Value *, 3 > dims;
+      for(unsigned i = 0; i < args.size(); ++i) {
+        sprintf(IRNameStr, "%s", DimNames[i]);
+        if (MFD->isCellLocated()) {
+          dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
+        } else if (MFD->isVertexLocated()) {
+          llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+          dims.push_back(Builder.CreateAdd(
+            Builder.CreateLoad(LookupMeshDim(i), IRNameStr), One));
+        } else {
+          assert(false && "Non Cell/Vertex in EOShift");
+        }
+      }
 
        //get the eoshift indices
        SmallVector< llvm::Value *, 3 > rawindices, indices;
        for(unsigned i = 0; i < args.size(); ++i) {
-				 sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
-				 llvm::Value *iv  = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
+	       sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
+	       llvm::Value *iv = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
 
          llvm::Value* ai = Builder.CreateSExt(args[i], Int64Ty);
          
@@ -703,9 +713,9 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 				 sprintf(IRNameStr, "eoshift.rawindex.%s", IndexNames[i]);
 				 rawindices.push_back(Builder.CreateAdd(iv, ai, IRNameStr));
 
-				 // find if index will wrap
-				 sprintf(IRNameStr, "eoshift.index.%s", IndexNames[i]);
-				 indices.push_back(Builder.CreateURem(rawindices[i], dims[i], IRNameStr));
+	 // find if index will wrap
+	 sprintf(IRNameStr, "eoshift.index.%s", IndexNames[i]);
+	 indices.push_back(Builder.CreateURem(rawindices[i], dims[i], IRNameStr));
        }
 
        // setup flag
@@ -784,8 +794,8 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 					 idx = indices[0];
 					 break;
 				 case 2: {
-					 // linearIdx = x + Height * y;
-					 llvm::Value *Hy = Builder.CreateMul(dims[1], indices[1], "HeightxY");
+					 // linearIdx = x + Width * y;
+					 llvm::Value *Hy = Builder.CreateMul(dims[0], indices[1], "WidthxY");
 					 idx = Builder.CreateAdd(indices[0], Hy, "eoshift.linearidx");
 					 break;
 				 }
@@ -1271,7 +1281,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
     mt = dyn_cast<MeshType>(mvd->getType());
   }
   
-  auto& dims = mt->dimensions();
+  //auto& dims = mt->dimensions();
   
   TypeVec params =
   {llvm::PointerType::get(ConvertType(mvd->getType()), 0),
@@ -1532,3 +1542,33 @@ RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
   return RValue::get(Result);
 }
 
+llvm::Value *CodeGenFunction::EmitGIndex(unsigned int dim) {
+   static const char *IndexNames[] = { "x", "y", "z", "w"};
+   llvm::Value *X; // *Y, *MeshDim;
+#if 0
+   if (InnerForallScope) {
+     sprintf(IRNameStr, "gindex.%s", IndexNames[dim]);
+     Y = Builder.CreateAdd(
+       Builder.CreateLoad(LookupInductionVar(dim)),
+       Builder.CreateLoad(InnerInductionVar[dim]),
+       IRNameStr);
+     sprintf(IRNameStr, "meshdim.%s", IndexNames[dim]);
+     MeshDim =  Builder.CreateLoad(MeshDims[dim], IRNameStr);
+     if (VertexIndex) { // cells/vertices
+       llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+       X = Builder.CreateURem(Y, Builder.CreateAdd(MeshDim, One)); 
+     } else if (CellIndex) { //vertices/cells
+       X = Builder.CreateURem(Y, MeshDim); 
+     } else {
+       assert(false && "unsupported call to gindex");
+     }
+   } else {
+#endif
+     sprintf(IRNameStr, "gindex.%s", IndexNames[dim]);
+     X = Builder.CreateAdd(
+       Builder.CreateLoad(LookupInductionVar(dim)),
+       Builder.CreateLoad(LookupMeshStart(dim)),
+       IRNameStr);
+//   }
+  return X;
+}

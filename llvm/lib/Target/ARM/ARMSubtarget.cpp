@@ -40,10 +40,6 @@ using namespace llvm;
 #include "ARMGenSubtargetInfo.inc"
 
 static cl::opt<bool>
-ReserveR9("arm-reserve-r9", cl::Hidden,
-          cl::desc("Reserve R9, making it unavailable as GPR"));
-
-static cl::opt<bool>
 UseFusedMulOps("arm-use-mulops",
                cl::init(true), cl::Hidden);
 
@@ -144,7 +140,7 @@ void ARMSubtarget::initializeEnvironment() {
   UseSoftFloat = false;
   HasThumb2 = false;
   NoARM = false;
-  IsR9Reserved = ReserveR9;
+  ReserveR9 = false;
   NoMovt = false;
   SupportsTailCall = false;
   HasFP16 = false;
@@ -212,13 +208,10 @@ void ARMSubtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
   if (isTargetNaCl())
     stackAlignment = 16;
 
-  if (isTargetMachO()) {
-    IsR9Reserved = ReserveR9 || !HasV6Ops;
+  if (isTargetMachO())
     SupportsTailCall = !isTargetIOS() || !getTargetTriple().isOSVersionLT(5, 0);
-  } else {
-    IsR9Reserved = ReserveR9;
+  else
     SupportsTailCall = !isThumb1Only();
-  }
 
   if (Align == DefaultAlign) {
     // Assume pre-ARMv6 doesn't support unaligned accesses.
@@ -319,8 +312,19 @@ bool ARMSubtarget::hasSinCos() const {
   return getTargetTriple().isiOS() && !getTargetTriple().isOSVersionLT(7, 0);
 }
 
+bool ARMSubtarget::enableMachineScheduler() const {
+  // Enable the MachineScheduler before register allocation for out-of-order
+  // architectures where we do not use the PostRA scheduler anymore (for now
+  // restricted to swift).
+  return getSchedModel().isOutOfOrder() && isSwift();
+}
+
 // This overrides the PostRAScheduler bit in the SchedModel for any CPU.
 bool ARMSubtarget::enablePostRAScheduler() const {
+  // No need for PostRA scheduling on out of order CPUs (for now restricted to
+  // swift).
+  if (getSchedModel().isOutOfOrder() && isSwift())
+    return false;
   return (!isThumb() || hasThumb2());
 }
 

@@ -76,7 +76,7 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     : TargetLowering(TM), Subtarget(&STI) {
   X86ScalarSSEf64 = Subtarget->hasSSE2();
   X86ScalarSSEf32 = Subtarget->hasSSE1();
-  TD = TM.getDataLayout();
+  MVT PtrVT = MVT::getIntegerVT(8 * TM.getPointerSize());
 
   // Set up the TargetLowering object.
   static const MVT IntVTs[] = { MVT::i8, MVT::i16, MVT::i32, MVT::i64 };
@@ -505,7 +505,7 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
   setOperationAction(ISD::STACKSAVE,          MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE,       MVT::Other, Expand);
 
-  setOperationAction(ISD::DYNAMIC_STACKALLOC, getPointerTy(*TD), Custom);
+  setOperationAction(ISD::DYNAMIC_STACKALLOC, PtrVT, Custom);
 
   // GC_TRANSITION_START and GC_TRANSITION_END need custom lowering.
   setOperationAction(ISD::GC_TRANSITION_START, MVT::Other, Custom);
@@ -1348,12 +1348,55 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     setOperationAction(ISD::FP_ROUND,           MVT::v8f32, Legal);
     setOperationAction(ISD::FP_EXTEND,          MVT::v8f32, Legal);
 
+    setTruncStoreAction(MVT::v8i64,   MVT::v8i8,   Legal);
+    setTruncStoreAction(MVT::v8i64,   MVT::v8i16,  Legal);
+    setTruncStoreAction(MVT::v8i64,   MVT::v8i32,  Legal);
+    setTruncStoreAction(MVT::v16i32,  MVT::v16i8,  Legal);
+    setTruncStoreAction(MVT::v16i32,  MVT::v16i16, Legal);
+    if (Subtarget->hasVLX()){
+      setTruncStoreAction(MVT::v4i64, MVT::v4i8,  Legal);
+      setTruncStoreAction(MVT::v4i64, MVT::v4i16, Legal);
+      setTruncStoreAction(MVT::v4i64, MVT::v4i32, Legal);
+      setTruncStoreAction(MVT::v8i32, MVT::v8i8,  Legal);
+      setTruncStoreAction(MVT::v8i32, MVT::v8i16, Legal);
+
+      setTruncStoreAction(MVT::v2i64, MVT::v2i8,  Legal);
+      setTruncStoreAction(MVT::v2i64, MVT::v2i16, Legal);
+      setTruncStoreAction(MVT::v2i64, MVT::v2i32, Legal);
+      setTruncStoreAction(MVT::v4i32, MVT::v4i8,  Legal);
+      setTruncStoreAction(MVT::v4i32, MVT::v4i16, Legal);
+    }
     setOperationAction(ISD::TRUNCATE,           MVT::i1, Custom);
     setOperationAction(ISD::TRUNCATE,           MVT::v16i8, Custom);
     setOperationAction(ISD::TRUNCATE,           MVT::v8i32, Custom);
     if (Subtarget->hasDQI()) {
-      setOperationAction(ISD::TRUNCATE,           MVT::v2i1, Custom);
-      setOperationAction(ISD::TRUNCATE,           MVT::v4i1, Custom);
+      setOperationAction(ISD::TRUNCATE,         MVT::v2i1, Custom);
+      setOperationAction(ISD::TRUNCATE,         MVT::v4i1, Custom);
+
+      setOperationAction(ISD::SINT_TO_FP,       MVT::v8i64, Legal);
+      setOperationAction(ISD::UINT_TO_FP,       MVT::v8i64, Legal);
+      setOperationAction(ISD::FP_TO_SINT,       MVT::v8i64, Legal);
+      setOperationAction(ISD::FP_TO_UINT,       MVT::v8i64, Legal);
+      if (Subtarget->hasVLX()) {
+        setOperationAction(ISD::SINT_TO_FP,    MVT::v4i64, Legal);
+        setOperationAction(ISD::SINT_TO_FP,    MVT::v2i64, Legal);
+        setOperationAction(ISD::UINT_TO_FP,    MVT::v4i64, Legal);
+        setOperationAction(ISD::UINT_TO_FP,    MVT::v2i64, Legal);
+        setOperationAction(ISD::FP_TO_SINT,    MVT::v4i64, Legal);
+        setOperationAction(ISD::FP_TO_SINT,    MVT::v2i64, Legal);
+        setOperationAction(ISD::FP_TO_UINT,    MVT::v4i64, Legal);
+        setOperationAction(ISD::FP_TO_UINT,    MVT::v2i64, Legal);
+      }
+    }
+    if (Subtarget->hasVLX()) {
+      setOperationAction(ISD::SINT_TO_FP,       MVT::v8i32, Legal);
+      setOperationAction(ISD::UINT_TO_FP,       MVT::v8i32, Legal);
+      setOperationAction(ISD::FP_TO_SINT,       MVT::v8i32, Legal);
+      setOperationAction(ISD::FP_TO_UINT,       MVT::v8i32, Legal);
+      setOperationAction(ISD::SINT_TO_FP,       MVT::v4i32, Legal);
+      setOperationAction(ISD::UINT_TO_FP,       MVT::v4i32, Legal);
+      setOperationAction(ISD::FP_TO_SINT,       MVT::v4i32, Legal);
+      setOperationAction(ISD::FP_TO_UINT,       MVT::v4i32, Legal);
     }
     setOperationAction(ISD::TRUNCATE,           MVT::v8i1, Custom);
     setOperationAction(ISD::TRUNCATE,           MVT::v16i1, Custom);
@@ -1531,6 +1574,7 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     setOperationAction(ISD::VSELECT,            MVT::v64i8, Legal);
     setOperationAction(ISD::TRUNCATE,           MVT::v32i1, Custom);
     setOperationAction(ISD::TRUNCATE,           MVT::v64i1, Custom);
+    setOperationAction(ISD::TRUNCATE,           MVT::v32i8, Custom);
 
     setOperationAction(ISD::SMAX,               MVT::v64i8, Legal);
     setOperationAction(ISD::SMAX,               MVT::v32i16, Legal);
@@ -1540,6 +1584,11 @@ X86TargetLowering::X86TargetLowering(const X86TargetMachine &TM,
     setOperationAction(ISD::SMIN,               MVT::v32i16, Legal);
     setOperationAction(ISD::UMIN,               MVT::v64i8, Legal);
     setOperationAction(ISD::UMIN,               MVT::v32i16, Legal);
+
+    setTruncStoreAction(MVT::v32i16,  MVT::v32i8, Legal);
+    setTruncStoreAction(MVT::v16i16,  MVT::v16i8, Legal);
+    if (Subtarget->hasVLX())
+      setTruncStoreAction(MVT::v8i16,   MVT::v8i8,  Legal);
 
     for (int i = MVT::v32i8; i != MVT::v8i64; ++i) {
       const MVT VT = (MVT::SimpleValueType)i;
@@ -1757,21 +1806,21 @@ EVT X86TargetLowering::getSetCCResultType(const DataLayout &DL, LLVMContext &,
 
 /// Helper for getByValTypeAlignment to determine
 /// the desired ByVal argument alignment.
-static void getMaxByValAlign(Type *Ty, unsigned &MaxAlign) {
+static void getMaxByValAlign(const Type *Ty, unsigned &MaxAlign) {
   if (MaxAlign == 16)
     return;
-  if (VectorType *VTy = dyn_cast<VectorType>(Ty)) {
+  if (const VectorType *VTy = dyn_cast<VectorType>(Ty)) {
     if (VTy->getBitWidth() == 128)
       MaxAlign = 16;
-  } else if (ArrayType *ATy = dyn_cast<ArrayType>(Ty)) {
+  } else if (const ArrayType *ATy = dyn_cast<ArrayType>(Ty)) {
     unsigned EltAlign = 0;
     getMaxByValAlign(ATy->getElementType(), EltAlign);
     if (EltAlign > MaxAlign)
       MaxAlign = EltAlign;
-  } else if (StructType *STy = dyn_cast<StructType>(Ty)) {
-    for (unsigned i = 0, e = STy->getNumElements(); i != e; ++i) {
+  } else if (const StructType *STy = dyn_cast<StructType>(Ty)) {
+    for (const auto *EltTy : STy->elements()) {
       unsigned EltAlign = 0;
-      getMaxByValAlign(STy->getElementType(i), EltAlign);
+      getMaxByValAlign(EltTy, EltAlign);
       if (EltAlign > MaxAlign)
         MaxAlign = EltAlign;
       if (MaxAlign == 16)
@@ -5329,7 +5378,7 @@ static SDValue buildFromShuffleMostly(SDValue Op, SelectionDAG &DAG) {
   return NV;
 }
 
-static SDValue ConvertI1VectorToInterger(SDValue Op, SelectionDAG &DAG) {
+static SDValue ConvertI1VectorToInteger(SDValue Op, SelectionDAG &DAG) {
   assert(ISD::isBuildVectorOfConstantSDNodes(Op.getNode()) &&
          Op.getScalarValueSizeInBits() == 1 &&
          "Can not convert non-constant vector");
@@ -5366,7 +5415,7 @@ X86TargetLowering::LowerBUILD_VECTORvXi1(SDValue Op, SelectionDAG &DAG) const {
   }
 
   if (ISD::isBuildVectorOfConstantSDNodes(Op.getNode())) {
-    SDValue Imm = ConvertI1VectorToInterger(Op, DAG);
+    SDValue Imm = ConvertI1VectorToInteger(Op, DAG);
     if (Imm.getValueSizeInBits() == VT.getSizeInBits())
       return DAG.getBitcast(VT, Imm);
     SDValue ExtVec = DAG.getBitcast(MVT::v8i1, Imm);
@@ -7355,8 +7404,9 @@ static SDValue lowerVectorShuffleAsElementInsertion(
   // all the smarts here sunk into that routine. However, the current
   // lowering of BUILD_VECTOR makes that nearly impossible until the old
   // vector shuffle lowering is dead.
-  if (SDValue V2S = getScalarValueForVectorElement(
-          V2, Mask[V2Index] - Mask.size(), DAG)) {
+  SDValue V2S = getScalarValueForVectorElement(V2, Mask[V2Index] - Mask.size(),
+                                               DAG);
+  if (V2S && DAG.getTargetLoweringInfo().isTypeLegal(V2S.getValueType())) {
     // We need to zext the scalar if it is smaller than an i32.
     V2S = DAG.getBitcast(EltVT, V2S);
     if (EltVT == MVT::i8 || EltVT == MVT::i16) {
@@ -12460,10 +12510,8 @@ SDValue X86TargetLowering::LowerTRUNCATE(SDValue Op, SelectionDAG &DAG) const {
         Subtarget->hasDQI() && Subtarget->hasVLX())
       return Op; // legal, will go to VPMOVB2M, VPMOVQ2M
   }
-  if (InVT.is512BitVector() || VT.getVectorElementType() == MVT::i1) {
-    if (VT.getVectorElementType().getSizeInBits() >=8)
-      return DAG.getNode(X86ISD::VTRUNC, DL, VT, In);
 
+  if (VT.getVectorElementType() == MVT::i1) {
     assert(VT.getVectorElementType() == MVT::i1 && "Unexpected vector type");
     unsigned NumElts = InVT.getVectorNumElements();
     assert ((NumElts == 8 || NumElts == 16) && "Unexpected vector type");
@@ -12478,6 +12526,11 @@ SDValue X86TargetLowering::LowerTRUNCATE(SDValue Op, SelectionDAG &DAG) const {
     SDValue And = DAG.getNode(ISD::AND, DL, InVT, OneV, In);
     return DAG.getNode(X86ISD::TESTM, DL, VT, And, And);
   }
+
+  // vpmovqb/w/d, vpmovdb/w, vpmovwb
+  if (((!InVT.is512BitVector() && Subtarget->hasVLX()) || InVT.is512BitVector()) &&
+      (InVT.getVectorElementType() != MVT::i16 || Subtarget->hasBWI()))
+    return DAG.getNode(X86ISD::VTRUNC, DL, VT, In);
 
   if ((VT == MVT::v4i32) && (InVT == MVT::v4i64)) {
     // On AVX2, v4i64 -> v4i32 becomes VPERMD.
@@ -13937,26 +13990,26 @@ SDValue X86TargetLowering::LowerSELECT(SDValue Op, SelectionDAG &DAG) const {
     }
   }
 
-    if (VT.isVector() && VT.getScalarType() == MVT::i1) {
-      SDValue Op1Scalar;
-      if (ISD::isBuildVectorOfConstantSDNodes(Op1.getNode()))
-        Op1Scalar = ConvertI1VectorToInterger(Op1, DAG);
-      else if (Op1.getOpcode() == ISD::BITCAST && Op1.getOperand(0))
-        Op1Scalar = Op1.getOperand(0);
-      SDValue Op2Scalar;
-      if (ISD::isBuildVectorOfConstantSDNodes(Op2.getNode()))
-        Op2Scalar = ConvertI1VectorToInterger(Op2, DAG);
-      else if (Op2.getOpcode() == ISD::BITCAST && Op2.getOperand(0))
-        Op2Scalar = Op2.getOperand(0);
-      if (Op1Scalar.getNode() && Op2Scalar.getNode()) {
-        SDValue newSelect = DAG.getNode(ISD::SELECT, DL,
-                                        Op1Scalar.getValueType(),
-                                        Cond, Op1Scalar, Op2Scalar);
-        if (newSelect.getValueSizeInBits() == VT.getSizeInBits())
-          return DAG.getBitcast(VT, newSelect);
-        SDValue ExtVec = DAG.getBitcast(MVT::v8i1, newSelect);
-        return DAG.getNode(ISD::EXTRACT_SUBVECTOR, DL, VT, ExtVec,
-                           DAG.getIntPtrConstant(0, DL));
+  if (VT.isVector() && VT.getScalarType() == MVT::i1) {
+    SDValue Op1Scalar;
+    if (ISD::isBuildVectorOfConstantSDNodes(Op1.getNode()))
+      Op1Scalar = ConvertI1VectorToInteger(Op1, DAG);
+    else if (Op1.getOpcode() == ISD::BITCAST && Op1.getOperand(0))
+      Op1Scalar = Op1.getOperand(0);
+    SDValue Op2Scalar;
+    if (ISD::isBuildVectorOfConstantSDNodes(Op2.getNode()))
+      Op2Scalar = ConvertI1VectorToInteger(Op2, DAG);
+    else if (Op2.getOpcode() == ISD::BITCAST && Op2.getOperand(0))
+      Op2Scalar = Op2.getOperand(0);
+    if (Op1Scalar.getNode() && Op2Scalar.getNode()) {
+      SDValue newSelect = DAG.getNode(ISD::SELECT, DL,
+                                      Op1Scalar.getValueType(),
+                                      Cond, Op1Scalar, Op2Scalar);
+      if (newSelect.getValueSizeInBits() == VT.getSizeInBits())
+        return DAG.getBitcast(VT, newSelect);
+      SDValue ExtVec = DAG.getBitcast(MVT::v8i1, newSelect);
+      return DAG.getNode(ISD::EXTRACT_SUBVECTOR, DL, VT, ExtVec,
+                         DAG.getIntPtrConstant(0, DL));
     }
   }
 
@@ -15195,7 +15248,7 @@ static SDValue getTargetVShiftNode(unsigned Opc, SDLoc dl, MVT VT,
 
 /// \brief Return (and \p Op, \p Mask) for compare instructions or
 /// (vselect \p Mask, \p Op, \p PreservedSrc) for others along with the
-/// necessary casting for \p Mask when lowering masking intrinsics.
+/// necessary casting or extending for \p Mask when lowering masking intrinsics
 static SDValue getVectorMaskingNode(SDValue Op, SDValue Mask,
                                     SDValue PreservedSrc,
                                     const X86Subtarget *Subtarget,
@@ -15203,8 +15256,8 @@ static SDValue getVectorMaskingNode(SDValue Op, SDValue Mask,
     EVT VT = Op.getValueType();
     EVT MaskVT = EVT::getVectorVT(*DAG.getContext(),
                                   MVT::i1, VT.getVectorNumElements());
-    EVT BitcastVT = EVT::getVectorVT(*DAG.getContext(), MVT::i1,
-                                     Mask.getValueType().getSizeInBits());
+    SDValue VMask = SDValue();
+    unsigned OpcodeSelect = ISD::VSELECT;
     SDLoc dl(Op);
 
     assert(MaskVT.isSimple() && "invalid mask type");
@@ -15212,11 +15265,20 @@ static SDValue getVectorMaskingNode(SDValue Op, SDValue Mask,
     if (isAllOnes(Mask))
       return Op;
 
-    // In case when MaskVT equals v2i1 or v4i1, low 2 or 4 elements
-    // are extracted by EXTRACT_SUBVECTOR.
-    SDValue VMask = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, MaskVT,
-                                DAG.getBitcast(BitcastVT, Mask),
-                                DAG.getIntPtrConstant(0, dl));
+    if (MaskVT.bitsGT(Mask.getValueType())) {
+      EVT newMaskVT =  EVT::getIntegerVT(*DAG.getContext(),
+                                         MaskVT.getSizeInBits());
+      VMask = DAG.getBitcast(MaskVT,
+                             DAG.getNode(ISD::ANY_EXTEND, dl, newMaskVT, Mask));
+    } else {
+      EVT BitcastVT = EVT::getVectorVT(*DAG.getContext(), MVT::i1,
+                                       Mask.getValueType().getSizeInBits());
+      // In case when MaskVT equals v2i1 or v4i1, low 2 or 4 elements
+      // are extracted by EXTRACT_SUBVECTOR.
+      VMask = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, MaskVT,
+                          DAG.getBitcast(BitcastVT, Mask),
+                          DAG.getIntPtrConstant(0, dl));
+    }
 
     switch (Op.getOpcode()) {
       default: break;
@@ -15225,10 +15287,18 @@ static SDValue getVectorMaskingNode(SDValue Op, SDValue Mask,
       case X86ISD::CMPM:
       case X86ISD::CMPMU:
         return DAG.getNode(ISD::AND, dl, VT, Op, VMask);
+      case X86ISD::VTRUNC:
+      case X86ISD::VTRUNCS:
+      case X86ISD::VTRUNCUS:
+        // We can't use ISD::VSELECT here because it is not always "Legal"
+        // for the destination type. For example vpmovqb require only AVX512
+        // and vselect that can operate on byte element type require BWI
+        OpcodeSelect = X86ISD::SELECT;
+        break;
     }
     if (PreservedSrc.getOpcode() == ISD::UNDEF)
       PreservedSrc = getZeroVector(VT, Subtarget, DAG, dl);
-    return DAG.getNode(ISD::VSELECT, dl, VT, VMask, Op, PreservedSrc);
+    return DAG.getNode(OpcodeSelect, dl, VT, VMask, Op, PreservedSrc);
 }
 
 /// \brief Creates an SDNode for a predicated scalar operation.
@@ -15333,28 +15403,45 @@ static SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, const X86Subtarget *Subtarget
       SDValue PassThru = Op.getOperand(2);
       SDValue Mask = Op.getOperand(3);
       SDValue RoundingMode;
+      // We allways add rounding mode to the Node.
+      // If the rounding mode is not specified, we add the 
+      // "current direction" mode.
       if (Op.getNumOperands() == 4)
-        RoundingMode = DAG.getConstant(X86::STATIC_ROUNDING::CUR_DIRECTION, dl, MVT::i32);
+        RoundingMode =
+          DAG.getConstant(X86::STATIC_ROUNDING::CUR_DIRECTION, dl, MVT::i32);
       else
         RoundingMode = Op.getOperand(4);
       unsigned IntrWithRoundingModeOpcode = IntrData->Opc1;
-      if (IntrWithRoundingModeOpcode != 0) {
-        unsigned Round = cast<ConstantSDNode>(RoundingMode)->getZExtValue();
-        if (Round != X86::STATIC_ROUNDING::CUR_DIRECTION)
+      if (IntrWithRoundingModeOpcode != 0)
+        if (cast<ConstantSDNode>(RoundingMode)->getZExtValue() !=
+            X86::STATIC_ROUNDING::CUR_DIRECTION)
           return getVectorMaskingNode(DAG.getNode(IntrWithRoundingModeOpcode,
                                       dl, Op.getValueType(), Src, RoundingMode),
                                       Mask, PassThru, Subtarget, DAG);
-      }
       return getVectorMaskingNode(DAG.getNode(IntrData->Opc0, dl, VT, Src,
                                               RoundingMode),
                                   Mask, PassThru, Subtarget, DAG);
     }
     case INTR_TYPE_1OP_MASK: {
       SDValue Src = Op.getOperand(1);
-      SDValue Passthru = Op.getOperand(2);
+      SDValue PassThru = Op.getOperand(2);
       SDValue Mask = Op.getOperand(3);
+      // We add rounding mode to the Node when
+      //   - RM Opcode is specified and
+      //   - RM is not "current direction".
+      unsigned IntrWithRoundingModeOpcode = IntrData->Opc1;
+      if (IntrWithRoundingModeOpcode != 0) {
+        SDValue Rnd = Op.getOperand(4);
+        unsigned Round = cast<ConstantSDNode>(Rnd)->getZExtValue();
+        if (Round != X86::STATIC_ROUNDING::CUR_DIRECTION) {
+          return getVectorMaskingNode(DAG.getNode(IntrWithRoundingModeOpcode,
+                                      dl, Op.getValueType(),
+                                      Src, Rnd),
+                                      Mask, PassThru, Subtarget, DAG);
+        }
+      }
       return getVectorMaskingNode(DAG.getNode(IntrData->Opc0, dl, VT, Src),
-                                  Mask, Passthru, Subtarget, DAG);
+                                  Mask, PassThru, Subtarget, DAG);
     }
     case INTR_TYPE_SCALAR_MASK_RM: {
       SDValue Src1 = Op.getOperand(1);
@@ -15417,6 +15504,24 @@ static SDValue LowerINTRINSIC_WO_CHAIN(SDValue Op, const X86Subtarget *Subtarget
       return getVectorMaskingNode(DAG.getNode(IntrData->Opc0, dl, VT,
                                               Src1, Src2, Rnd),
                                   Mask, PassThru, Subtarget, DAG);
+    }
+    case INTR_TYPE_3OP_MASK_RM: {
+      SDValue Src1 = Op.getOperand(1);
+      SDValue Src2 = Op.getOperand(2);
+      SDValue Imm = Op.getOperand(3);
+      SDValue PassThru = Op.getOperand(4);
+      SDValue Mask = Op.getOperand(5);
+      // We specify 2 possible modes for intrinsics, with/without rounding modes.
+      // First, we check if the intrinsic have rounding mode (7 operands),
+      // if not, we set rounding mode to "current".
+      SDValue Rnd;
+      if (Op.getNumOperands() == 7)
+        Rnd = Op.getOperand(6);
+      else
+        Rnd = DAG.getConstant(X86::STATIC_ROUNDING::CUR_DIRECTION, dl, MVT::i32);
+      return getVectorMaskingNode(DAG.getNode(IntrData->Opc0, dl, VT,
+        Src1, Src2, Imm, Rnd),
+        Mask, PassThru, Subtarget, DAG);
     }
     case INTR_TYPE_3OP_MASK: {
       SDValue Src1 = Op.getOperand(1);
@@ -16051,6 +16156,45 @@ static SDValue LowerSEHRESTOREFRAME(SDValue Op, const X86Subtarget *Subtarget,
   return Chain;
 }
 
+/// \brief Lower intrinsics for TRUNCATE_TO_MEM case
+/// return truncate Store/MaskedStore Node
+static SDValue LowerINTRINSIC_TRUNCATE_TO_MEM(const SDValue & Op,
+                                               SelectionDAG &DAG,
+                                               MVT ElementType) {
+  SDLoc dl(Op);
+  SDValue Mask = Op.getOperand(4);
+  SDValue DataToTruncate = Op.getOperand(3);
+  SDValue Addr = Op.getOperand(2);
+  SDValue Chain = Op.getOperand(0);
+
+  EVT VT  = DataToTruncate.getValueType();
+  EVT SVT = EVT::getVectorVT(*DAG.getContext(),
+                             ElementType, VT.getVectorNumElements());
+
+  if (isAllOnes(Mask)) // return just a truncate store
+    return DAG.getTruncStore(Chain, dl, DataToTruncate, Addr,
+                             MachinePointerInfo(), SVT, false, false,
+                             SVT.getScalarSizeInBits()/8);
+
+  EVT MaskVT = EVT::getVectorVT(*DAG.getContext(),
+                                MVT::i1, VT.getVectorNumElements());
+  EVT BitcastVT = EVT::getVectorVT(*DAG.getContext(), MVT::i1,
+                                   Mask.getValueType().getSizeInBits());
+  // In case when MaskVT equals v2i1 or v4i1, low 2 or 4 elements
+  // are extracted by EXTRACT_SUBVECTOR.
+  SDValue VMask = DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, MaskVT,
+                              DAG.getBitcast(BitcastVT, Mask),
+                              DAG.getIntPtrConstant(0, dl));
+
+  MachineMemOperand *MMO = DAG.getMachineFunction().
+    getMachineMemOperand(MachinePointerInfo(),
+                         MachineMemOperand::MOStore, SVT.getStoreSize(),
+                         SVT.getScalarSizeInBits()/8);
+
+  return DAG.getMaskedStore(Chain, dl, DataToTruncate, Addr,
+                            VMask, SVT, MMO, true);
+}
+
 static SDValue LowerINTRINSIC_W_CHAIN(SDValue Op, const X86Subtarget *Subtarget,
                                       SelectionDAG &DAG) {
   unsigned IntNo = cast<ConstantSDNode>(Op.getOperand(1))->getZExtValue();
@@ -16184,6 +16328,12 @@ static SDValue LowerINTRINSIC_W_CHAIN(SDValue Op, const X86Subtarget *Subtarget,
                         MachinePointerInfo(), false, false,
                         VT.getScalarSizeInBits()/8);
   }
+  case TRUNCATE_TO_MEM_VI8:
+    return LowerINTRINSIC_TRUNCATE_TO_MEM(Op, DAG, MVT::i8);
+  case TRUNCATE_TO_MEM_VI16:
+    return LowerINTRINSIC_TRUNCATE_TO_MEM(Op, DAG, MVT::i16);
+  case TRUNCATE_TO_MEM_VI32:
+    return LowerINTRINSIC_TRUNCATE_TO_MEM(Op, DAG, MVT::i32);
   case EXPAND_FROM_MEM: {
     SDLoc dl(Op);
     SDValue Mask = Op.getOperand(4);
@@ -16454,9 +16604,11 @@ SDValue X86TargetLowering::LowerINIT_TRAMPOLINE(SDValue Op,
 
         for (FunctionType::param_iterator I = FTy->param_begin(),
              E = FTy->param_end(); I != E; ++I, ++Idx)
-          if (Attrs.hasAttribute(Idx, Attribute::InReg))
+          if (Attrs.hasAttribute(Idx, Attribute::InReg)) {
+            auto &DL = DAG.getDataLayout();
             // FIXME: should only count parameters that are lowered to integers.
-            InRegCount += (TD->getTypeSizeInBits(*I) + 31) / 32;
+            InRegCount += (DL.getTypeSizeInBits(*I) + 31) / 32;
+          }
 
         if (InRegCount > 2) {
           report_fatal_error("Nest register in use - reduce number of inreg"
@@ -16991,7 +17143,7 @@ static SDValue LowerMUL_LOHI(SDValue Op, const X86Subtarget *Subtarget,
   return DAG.getMergeValues(Ops, dl);
 }
 
-// Return true if the requred (according to Opcode) shift-imm form is natively
+// Return true if the required (according to Opcode) shift-imm form is natively
 // supported by the Subtarget
 static bool SupportedVectorShiftWithImm(MVT VT, const X86Subtarget *Subtarget,
                                         unsigned Opcode) {
@@ -17011,14 +17163,14 @@ static bool SupportedVectorShiftWithImm(MVT VT, const X86Subtarget *Subtarget,
 }
 
 // The shift amount is a variable, but it is the same for all vector lanes.
-// These instrcutions are defined together with shift-immediate.
+// These instructions are defined together with shift-immediate.
 static
 bool SupportedVectorShiftWithBaseAmnt(MVT VT, const X86Subtarget *Subtarget,
                                       unsigned Opcode) {
   return SupportedVectorShiftWithImm(VT, Subtarget, Opcode);
 }
 
-// Return true if the requred (according to Opcode) variable-shift form is
+// Return true if the required (according to Opcode) variable-shift form is
 // natively supported by the Subtarget
 static bool SupportedVectorVarShift(MVT VT, const X86Subtarget *Subtarget,
                                     unsigned Opcode) {
@@ -18894,7 +19046,8 @@ const char *X86TargetLowering::getTargetNodeName(unsigned Opcode) const {
   case X86ISD::VZEXT:              return "X86ISD::VZEXT";
   case X86ISD::VSEXT:              return "X86ISD::VSEXT";
   case X86ISD::VTRUNC:             return "X86ISD::VTRUNC";
-  case X86ISD::VTRUNCM:            return "X86ISD::VTRUNCM";
+  case X86ISD::VTRUNCS:            return "X86ISD::VTRUNCS";
+  case X86ISD::VTRUNCUS:           return "X86ISD::VTRUNCUS";
   case X86ISD::VINSERT:            return "X86ISD::VINSERT";
   case X86ISD::VFPEXT:             return "X86ISD::VFPEXT";
   case X86ISD::VFPROUND:           return "X86ISD::VFPROUND";
@@ -18983,6 +19136,8 @@ const char *X86TargetLowering::getTargetNodeName(unsigned Opcode) const {
   case X86ISD::SAHF:               return "X86ISD::SAHF";
   case X86ISD::RDRAND:             return "X86ISD::RDRAND";
   case X86ISD::RDSEED:             return "X86ISD::RDSEED";
+  case X86ISD::VPMADDUBSW:         return "X86ISD::VPMADDUBSW";
+  case X86ISD::VPMADDWD:           return "X86ISD::VPMADDWD";
   case X86ISD::FMADD:              return "X86ISD::FMADD";
   case X86ISD::FMSUB:              return "X86ISD::FMSUB";
   case X86ISD::FNMADD:             return "X86ISD::FNMADD";
@@ -18995,7 +19150,8 @@ const char *X86TargetLowering::getTargetNodeName(unsigned Opcode) const {
   case X86ISD::FNMSUB_RND:         return "X86ISD::FNMSUB_RND";
   case X86ISD::FMADDSUB_RND:       return "X86ISD::FMADDSUB_RND";
   case X86ISD::FMSUBADD_RND:       return "X86ISD::FMSUBADD_RND";
-  case X86ISD::RNDSCALE:           return "X86ISD::RNDSCALE";
+  case X86ISD::VRNDSCALE:          return "X86ISD::VRNDSCALE";
+  case X86ISD::VREDUCE:            return "X86ISD::VREDUCE";
   case X86ISD::PCMPESTRI:          return "X86ISD::PCMPESTRI";
   case X86ISD::PCMPISTRI:          return "X86ISD::PCMPISTRI";
   case X86ISD::XTEST:              return "X86ISD::XTEST";
@@ -24030,6 +24186,15 @@ static SDValue PerformMSTORECombine(SDNode *N, SelectionDAG &DAG,
   unsigned FromSz = VT.getVectorElementType().getSizeInBits();
   unsigned ToSz = StVT.getVectorElementType().getSizeInBits();
 
+  const TargetLowering &TLI = DAG.getTargetLoweringInfo();
+
+  // The truncating store is legal in some cases. For example
+  // vpmovqb, vpmovqw, vpmovqd, vpmovdb, vpmovdw
+  // are designated for truncate store.
+  // In this case we don't need any further transformations.
+  if (TLI.isTruncStoreLegal(VT, StVT))
+    return SDValue();
+
   // From, To sizes and ElemCount must be pow of two
   assert (isPowerOf2_32(NumElems * FromSz * ToSz) &&
     "Unexpected size for truncating masked store");
@@ -24140,6 +24305,13 @@ static SDValue PerformSTORECombine(SDNode *N, SelectionDAG &DAG,
     assert(StVT != VT && "Cannot truncate to the same type");
     unsigned FromSz = VT.getVectorElementType().getSizeInBits();
     unsigned ToSz = StVT.getVectorElementType().getSizeInBits();
+
+    // The truncating store is legal in some cases. For example
+    // vpmovqb, vpmovqw, vpmovqd, vpmovdb, vpmovdw
+    // are designated for truncate store.
+    // In this case we don't need any further transformations.
+    if (TLI.isTruncStoreLegal(VT, StVT))
+      return SDValue();
 
     // From, To sizes and ElemCount must be pow of two
     if (!isPowerOf2_32(NumElems * FromSz * ToSz)) return SDValue();

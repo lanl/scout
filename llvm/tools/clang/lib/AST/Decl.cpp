@@ -3120,8 +3120,8 @@ FunctionDecl::setDependentTemplateSpecialization(ASTContext &Context,
                              const TemplateArgumentListInfo &TemplateArgs) {
   assert(TemplateOrSpecialization.isNull());
   size_t Size = sizeof(DependentFunctionTemplateSpecializationInfo);
-  Size += Templates.size() * sizeof(FunctionTemplateDecl*);
   Size += TemplateArgs.size() * sizeof(TemplateArgumentLoc);
+  Size += Templates.size() * sizeof(FunctionTemplateDecl *);
   void *Buffer = Context.Allocate(Size);
   DependentFunctionTemplateSpecializationInfo *Info =
     new (Buffer) DependentFunctionTemplateSpecializationInfo(Templates,
@@ -3136,8 +3136,8 @@ DependentFunctionTemplateSpecializationInfo(const UnresolvedSetImpl &Ts,
   static_assert(sizeof(*this) % llvm::AlignOf<void *>::Alignment == 0,
                 "Trailing data is unaligned!");
 
-  d.NumTemplates = Ts.size();
-  d.NumArgs = TArgs.size();
+  NumTemplates = Ts.size();
+  NumArgs = TArgs.size();
 
   FunctionTemplateDecl **TsArray =
     const_cast<FunctionTemplateDecl**>(getTemplates());

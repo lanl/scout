@@ -53,6 +53,7 @@
 
 #cmakedefine APPLE
 #cmakedefine UNIX
+#cmakedefine GCC_INSTALL_PREFIX 
 
 #cmakedefine SCOUT_ENABLE_OPENGL     // Provide OpenGL support.
 #cmakedefine SCOUT_ENABLE_CUDA       // Provide CUDA support. 
@@ -66,6 +67,7 @@
 #cmakedefine SCOUT_ENABLE_GLFW       // Provide GLFW support.
 #cmakedefine SCOUT_ENABLE_PNG        // Provide PNG image support.
 #cmakedefine SCOUT_ENABLE_LEGION     // Provide Legion support.
+
 
 #ifdef SCOUT_ENABLE_CUDA
 #define CUDA_MAJOR_VERSION   ${CUDA_VERSION_MAJOR} // Major version number for CUDA.

@@ -744,13 +744,11 @@ CollectMeshFields(const MeshDecl *mesh, llvm::DIFile *tunit,
   // the corresponding declarations in the source program.
   for (MeshDecl::decl_iterator I = mesh->decls_begin(),
        E = mesh->decls_end(); I != E; ++I) {
-    if (const VarDecl *V = dyn_cast<VarDecl>(*I))
-      CollectMeshStaticField(V, elements, MeshTy);
-    else if (MeshFieldDecl *field = dyn_cast<MeshFieldDecl>(*I)) {
+    if (MeshFieldDecl *field = dyn_cast<MeshFieldDecl>(*I)) {
       CollectMeshNormalField(field, layout.getFieldOffset(fieldNo),
-                               tunit, elements, MeshTy);
-        // Bump field number for next field.
-        ++fieldNo;
+                             tunit, elements, MeshTy);
+      // Bump field number for next field.
+      ++fieldNo;
     }
   }
 }
@@ -776,40 +774,6 @@ CollectMeshNormalField(const MeshFieldDecl *field, uint64_t OffsetInBits,
                                   OffsetInBits, tunit, MeshTy);
 
   elements.push_back(fieldType);
-}
-
-/// CollectMeshStaticField - Helper for CollectMeshFields.
-void CGDebugInfo::
-CollectMeshStaticField(const VarDecl *Var,
-                       SmallVectorImpl<llvm::Metadata *> &elements,
-                       llvm::DIScoutCompositeType *MeshTy) {
-  // Create the descriptor for the static variable, with or without
-  // constant initializers.
-  llvm::DIFile *VUnit = getOrCreateFile(Var->getLocation());
-  llvm::DIType *VTy = getOrCreateType(Var->getType(), VUnit);
-
-  // Do not describe enums as static members.
-  if (VTy->getTag() == llvm::dwarf::DW_TAG_enumeration_type)
-    return;
-
-  unsigned LineNumber = getLineNumber(Var->getLocation());
-  StringRef VName = Var->getName();
-  llvm::Constant *C = nullptr;
-  if (Var->getInit()) {
-    const APValue *Value = Var->evaluateValue();
-    if (Value) {
-      if (Value->isInt())
-        C = llvm::ConstantInt::get(CGM.getLLVMContext(), Value->getInt());
-      if (Value->isFloat())
-        C = llvm::ConstantFP::get(CGM.getLLVMContext(), Value->getFloat());
-    }
-  }
-
-  unsigned Flags = 0;
-  llvm::DIType *GV = DBuilder.createStaticMemberType(MeshTy, VName, VUnit,
-                                                    LineNumber, VTy, Flags, C);
-  elements.push_back(GV);
-  StaticDataMemberCache[Var->getCanonicalDecl()].reset(GV);
 }
 
 llvm::DIType

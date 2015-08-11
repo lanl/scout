@@ -690,6 +690,12 @@ CodeGenVTables::GenerateConstructionVTable(const CXXRecordDecl *RD,
   return VTable;
 }
 
+static bool shouldEmitAvailableExternallyVTable(const CodeGenModule &CGM,
+                                                const CXXRecordDecl *RD) {
+  return CGM.getCodeGenOpts().OptimizationLevel > 0 &&
+            CGM.getCXXABI().canEmitAvailableExternallyVTable(RD);
+}
+
 /// Compute the required linkage of the v-table for the given class.
 ///
 /// Note that we only call this at the end of the translation unit.
@@ -711,7 +717,12 @@ CodeGenModule::getVTableLinkage(const CXXRecordDecl *RD) {
     switch (keyFunction->getTemplateSpecializationKind()) {
       case TSK_Undeclared:
       case TSK_ExplicitSpecialization:
-        assert(def && "Should not have been asked to emit this");
+        assert((def || CodeGenOpts.OptimizationLevel > 0) &&
+               "Shouldn't query vtable linkage without key function or "
+               "optimizations");
+        if (!def && CodeGenOpts.OptimizationLevel > 0)
+          return llvm::GlobalVariable::AvailableExternallyLinkage;
+
         if (keyFunction->isInlined())
           return !Context.getLangOpts().AppleKext ?
                    llvm::GlobalVariable::LinkOnceODRLinkage :
@@ -753,16 +764,18 @@ CodeGenModule::getVTableLinkage(const CXXRecordDecl *RD) {
   }
 
   switch (RD->getTemplateSpecializationKind()) {
-  case TSK_Undeclared:
-  case TSK_ExplicitSpecialization:
-  case TSK_ImplicitInstantiation:
-    return DiscardableODRLinkage;
+    case TSK_Undeclared:
+    case TSK_ExplicitSpecialization:
+    case TSK_ImplicitInstantiation:
+      return DiscardableODRLinkage;
 
-  case TSK_ExplicitInstantiationDeclaration:
-    return llvm::GlobalVariable::ExternalLinkage;
+    case TSK_ExplicitInstantiationDeclaration:
+      return shouldEmitAvailableExternallyVTable(*this, RD)
+                 ? llvm::GlobalVariable::AvailableExternallyLinkage
+                 : llvm::GlobalVariable::ExternalLinkage;
 
-  case TSK_ExplicitInstantiationDefinition:
-    return NonDiscardableODRLinkage;
+    case TSK_ExplicitInstantiationDefinition:
+      return NonDiscardableODRLinkage;
   }
 
   llvm_unreachable("Invalid TemplateSpecializationKind!");
@@ -830,7 +843,12 @@ bool CodeGenVTables::isVTableExternal(const CXXRecordDecl *RD) {
 /// we define that v-table?
 static bool shouldEmitVTableAtEndOfTranslationUnit(CodeGenModule &CGM,
                                                    const CXXRecordDecl *RD) {
-  return !CGM.getVTables().isVTableExternal(RD);
+  // If vtable is internal then it has to be done
+  if (!CGM.getVTables().isVTableExternal(RD))
+    return true;
+
+  // If it's external then maybe we will need it as available_externally
+  return shouldEmitAvailableExternallyVTable(CGM, RD);
 }
 
 /// Given that at some point we emitted a reference to one or more
