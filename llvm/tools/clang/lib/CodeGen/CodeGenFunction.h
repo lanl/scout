@@ -2356,6 +2356,7 @@ public:
   };
   
   std::vector<ForallData> ForallStack;
+  int ForallStackIndex = 0;
   
   // +========================================================================+
 

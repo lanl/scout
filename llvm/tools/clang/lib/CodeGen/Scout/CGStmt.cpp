@@ -718,7 +718,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     mvd = S.getMeshVarDecl();
   }
 
-  const MeshType* mt;
+  const MeshType* mt = nullptr;
   
   if(const PointerType* pt =
      dyn_cast<PointerType>(mvd->getType())){
@@ -727,8 +727,11 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   else{
     mt = dyn_cast<MeshType>(mvd->getType());
   }
+  (void)mt; //suppress warning
   
   int i = FindForallData(S.getMeshElementRef());
+
+  ForallStackIndex = i; // stash current state
   assert(i >= 0 && "error finding forall data");
   
   ForallData& topData = ForallStack[0];
@@ -811,9 +814,11 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   }
 
   EmitBlock(exitBlock);
+  ForallStackIndex--; // update state.
   
   if(top){
     ForallStack.clear();
+    ForallStackIndex = 0;
   }
 }
 

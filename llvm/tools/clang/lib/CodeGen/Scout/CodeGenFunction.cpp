@@ -107,6 +107,8 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   }
   
   ForallData* data = nullptr;
+
+#if 0
   for(int i = ForallStack.size() - 1; i >= 0; --i){
     ForallData& d = ForallStack[i];
     
@@ -118,6 +120,12 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
       break;
     }
   }
+#else
+  ForallData& d = ForallStack[ForallStackIndex];
+  if(d.elementType == Vertices || d.elementType == Cells) {
+       data = &d;
+  }
+#endif
   
   assert(data && "unable to find cells or vertices forall data");
 
