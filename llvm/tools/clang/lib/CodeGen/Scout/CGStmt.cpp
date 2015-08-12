@@ -719,17 +719,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   else{
     mvd = S.getMeshVarDecl();
   }
-
-  const MeshType* mt = nullptr;
-  
-  if(const PointerType* pt =
-     dyn_cast<PointerType>(mvd->getType())){
-    mt = dyn_cast<MeshType>(pt->getPointeeType());
-  }
-  else{
-    mt = dyn_cast<MeshType>(mvd->getType());
-  }
-  (void)mt; //suppress warning
   
   int i = FindForallData(S.getMeshElementRef());
 
