@@ -284,10 +284,10 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   MeshRank =
   Builder.CreateConstInBoundsGEP2_32(0,
                                      MeshBaseAddr, 0,
-                                     nfields + 1 + MeshParameterOffset::RankOffset,
+                                     nfields + MeshParameterOffset::RankOffset,
                                      IRNameStr);
   
-  unsigned start = nfields + 1 + MeshParameterOffset::WidthOffset;
+  unsigned start = nfields + MeshParameterOffset::WidthOffset;
   
   // Extract width/height/depth from the mesh
   // note: width/height depth are stored after mesh fields
@@ -299,7 +299,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
 
   }
 
-  start =  nfields + 1 + MeshParameterOffset::XStartOffset;
+  start =  nfields + MeshParameterOffset::XStartOffset;
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), StartNames[i]);
     MeshStart[i] =
@@ -307,7 +307,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
                                            MeshBaseAddr, 0, start + i, IRNameStr);
   }
 
-  start =  nfields + 1 + MeshParameterOffset::XSizeOffset;
+  start =  nfields + MeshParameterOffset::XSizeOffset;
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), SizeNames[i]);
     MeshSize[i] =
@@ -664,16 +664,18 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
       GetMeshBaseAddr(mvd, meshPtr);
       
       if(i == 0){
-        topology = B.CreateStructGEP(nullptr, meshPtr, md->fields());
+        topology =
+        B.CreateStructGEP(nullptr, meshPtr,
+                          md->fields() + MeshParameterOffset::TopologyOffset);
         topology = B.CreateLoad(topology, "topology.ptr");
         data.topology = topology;
       }
       
       rank =
       B.CreateStructGEP(nullptr, meshPtr,
-                        md->fields() + 1 + MeshParameterOffset::RankOffset);
+                        md->fields() + MeshParameterOffset::RankOffset);
       rank = B.CreateLoad(rank);
-      
+            
       data.elementType = s->getMeshElementRef();
       data.indexPtr = B.CreateAlloca(Int64Ty, nullptr, "index.ptr");
    
@@ -717,17 +719,6 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   else{
     mvd = S.getMeshVarDecl();
   }
-
-  const MeshType* mt = nullptr;
-  
-  if(const PointerType* pt =
-     dyn_cast<PointerType>(mvd->getType())){
-    mt = dyn_cast<MeshType>(pt->getPointeeType());
-  }
-  else{
-    mt = dyn_cast<MeshType>(mvd->getType());
-  }
-  (void)mt; //suppress warning
   
   int i = FindForallData(S.getMeshElementRef());
 
@@ -1622,7 +1613,7 @@ void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S
   
   llvm::Value* rank =
   Builder.CreateStructGEP(nullptr, MeshBaseAddr,
-                          md->fields() + 1 + MeshParameterOffset::RankOffset);
+                          md->fields() + MeshParameterOffset::RankOffset);
   
 
   llvm::Value* topologyDim = GetMeshTopologyDim(rank, S.getMeshElementRef());

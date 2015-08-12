@@ -867,7 +867,7 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
 
 
       sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), names[offset]);
-      value = Builder.CreateConstInBoundsGEP2_32(0, BaseAddr, 0, nfields+1+offset, IRNameStr);
+      value = Builder.CreateConstInBoundsGEP2_32(0, BaseAddr, 0, nfields+offset, IRNameStr);
 
       sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), names[offset]);
       value = Builder.CreateLoad(value, IRNameStr);

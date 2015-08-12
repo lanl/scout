@@ -57,7 +57,8 @@
 
 //layout of mesh Parameters
   enum MeshParameterOffset {
-    WidthOffset = 0,
+    TopologyOffset = 0,
+    WidthOffset,
     HeightOffset,
     DepthOffset,
     RankOffset,

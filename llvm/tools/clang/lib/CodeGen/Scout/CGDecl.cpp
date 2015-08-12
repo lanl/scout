@@ -118,7 +118,9 @@ void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const
 
   // test if rank is not set.
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
-  llvm::Value *Rank = Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0, nfields+4, IRNameStr);
+  llvm::Value *Rank =
+  Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0,
+                                     nfields + MeshParameterOffset::RankOffset, IRNameStr);
   sprintf(IRNameStr, "%s.rank", MeshName.str().c_str());
   llvm::Value *Check = Builder.CreateICmpEQ(Builder.CreateLoad(Rank, IRNameStr), ConstantZero);
   Builder.CreateCondBr(Check, Then, Done);
@@ -145,8 +147,8 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
   unsigned int rank = dims.size();
 
   unsigned int nfields = MD->fields();
-  size_t start = nfields +  MeshParameterOffset::WidthOffset + 1;
-  size_t sizestart = nfields +  MeshParameterOffset::XSizeOffset + 1;
+  size_t start = nfields +  MeshParameterOffset::WidthOffset;
+  size_t sizestart = nfields + MeshParameterOffset::XSizeOffset;
 
   for(size_t i = 0; i < rank; ++i) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
@@ -198,11 +200,11 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
 
   //set rank this makes Codegen easier for rank() builtin
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
-  llvm::Value *Rank = Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0, start+MeshParameterOffset::RankOffset, IRNameStr);
+  llvm::Value *Rank = Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0, nfields +MeshParameterOffset::RankOffset, IRNameStr);
   Builder.CreateStore(llvm::ConstantInt::get(Int64Ty, rank), Rank);
 
   // set xstart/ystart/zstart to 0
-  size_t xstart = nfields +  1 + MeshParameterOffset::XStartOffset;
+  size_t xstart = nfields + MeshParameterOffset::XStartOffset;
   for(size_t i = 0; i< 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), StartNames[i]);
     llvm::Value *x = Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0, xstart+i, IRNameStr);

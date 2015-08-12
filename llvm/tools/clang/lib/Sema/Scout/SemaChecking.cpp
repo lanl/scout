@@ -65,21 +65,21 @@ bool Sema::CheckMeshParameterCall(unsigned BuiltinID, CallExpr *TheCall) {
   int diagarg = 0;
   switch (BuiltinID) {
   case Builtin::BIwidth:
-    diagarg = MeshParameterOffset::WidthOffset;
+    diagarg = MeshParameterOffset::WidthOffset - 1;
     break;
   case Builtin::BIheight:
-    diagarg = MeshParameterOffset::HeightOffset;
+    diagarg = MeshParameterOffset::HeightOffset - 1;
     break;
   case Builtin::BIdepth:
-    diagarg = MeshParameterOffset::DepthOffset;
+    diagarg = MeshParameterOffset::DepthOffset - 1;
     break;
   case Builtin::BIrank:
-    diagarg = MeshParameterOffset::RankOffset;
+    diagarg = MeshParameterOffset::RankOffset - 1;
     break;
   default:
     break;
   }
-
+  
   // check number of args
   if(TheCall->getNumArgs() > 1) {
     Diag(TheCall->getExprLoc(), diag::err_mesh_builtin_nargs) << diagarg;
