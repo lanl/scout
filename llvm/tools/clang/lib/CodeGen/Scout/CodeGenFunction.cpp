@@ -95,6 +95,9 @@ void CodeGenFunction::EmitTaskMDBlock(const FunctionDecl *FD) {
 
 // If in Stencil then lookup and load InductionVar, otherwise return it directly
 llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
+
+  llvm::Value* two = llvm::ConstantInt::get(Int64Ty, 2);
+
   llvm::Value *V = LocalDeclMap.lookup(ScoutABIInductionVarDecl[index]);
   if(V) {
     if (index == 3) sprintf(IRNameStr, "stencil.linearidx.ptr");
@@ -107,16 +110,10 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   }
   
   ForallData* data = nullptr;
-  for(int i = ForallStack.size() - 1; i >= 0; --i){
-    ForallData& d = ForallStack[i];
-    
-    const MeshType* mt = d.getMeshType();
-    auto& dims = mt->dimensions();
-    
-    if(d.elementType == Vertices || d.elementType == Cells){
-      data = &d;
-      break;
-    }
+
+  ForallData& d = ForallStack[ForallStackIndex];
+  if(d.elementType == Vertices || d.elementType == Cells) {
+       data = &d;
   }
   
   assert(data && "unable to find cells or vertices forall data");
@@ -146,6 +143,9 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     if(data->elementType == Vertices){
       width = Builder.CreateAdd(width, llvm::ConstantInt::get(Int64Ty, 1));
     }
+    // deal w/ nested case. assumes uniform mesh
+
+    if (ForallStackIndex) width = two;
     
     sprintf(IRNameStr, "induct.%s", IndexNames[index]);
     
@@ -153,7 +153,7 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     
     switch(index){
       case 0:
-        induct = Builder.CreateURem(idx, width, IRNameStr);
+          induct = Builder.CreateURem(idx, width, IRNameStr);
         break;
       case 1:
         if(d == 1){
@@ -164,14 +164,15 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
         if(d == 3){
           llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
           if(data->elementType == Vertices){
-            height = Builder.CreateAdd(width, llvm::ConstantInt::get(Int64Ty, 1));
+            height = Builder.CreateAdd(height, llvm::ConstantInt::get(Int64Ty, 1));
           }
+          if (ForallStackIndex) height = two;
           
           idx = Builder.CreateURem(idx, Builder.CreateMul(width, height));
         }
         
         induct = Builder.CreateUDiv(idx, width, IRNameStr);
-        
+
         break;
       case 2:{
         if(d < 3){
@@ -181,8 +182,10 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
         
         llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
         if(data->elementType == Vertices){
-          height = Builder.CreateAdd(width, llvm::ConstantInt::get(Int64Ty, 1));
+          height = Builder.CreateAdd(height, llvm::ConstantInt::get(Int64Ty, 1));
         }
+
+        if (ForallStackIndex) height = two;
         
         induct = Builder.CreateUDiv(idx, Builder.CreateMul(width, height), IRNameStr);
         break;

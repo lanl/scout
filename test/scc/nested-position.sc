@@ -79,11 +79,10 @@ int main(int argc, char** argv) {
       printf("out %d\n",positionx());  
     forall vertices v in c {
       printf("in %d\n",positionx());
-      out1[i] = position().x;  
+      out1[i] = positionx();  
       i++;
     }
   }
-
   for(int j = 0; j < 2*m1size; j++) {
     assert(out1[j] == exp1[j%2] && "bad value in rank=1");
   }
@@ -99,7 +98,7 @@ int main(int argc, char** argv) {
 
   i = 0;
   forall cells c in m2 {
-    printf("out %d\n",positionx());
+    printf("out %d %d\n",positionx(),positiony());
     forall vertices v in c {
       printf("in %d %d v %d\n",positionx(),positiony(),v.b);
       out2x[i] = position().x;  
@@ -125,7 +124,7 @@ int main(int argc, char** argv) {
 
   i = 0;
   forall cells c in m3 {
-      printf("out %d\n",positionx());  
+      printf("out %d %d %d\n",positionx(),positiony(),positionz());  
     forall vertices v in c {
       printf("in %d %d %d %d v %d\n",positionx(),positiony(),positionz(),position().w,v.b);  
       out3x[i] = position().x;  
@@ -140,6 +139,7 @@ int main(int argc, char** argv) {
     assert(out3y[j] == exp3y[j%8] && "bad y value in rank=3");
     assert(out3z[j] == exp3z[j%8] && "bad z value in rank=3");
   }
+  return 0;
 }
 
 
