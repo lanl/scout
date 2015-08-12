@@ -516,6 +516,8 @@ namespace scout{
     }
   
     void build(size_t dim) override{
+      //std::cerr << "build: " << dim << std::endl;
+
       assert(dim <= MT::topologicalDimension());
 
       size_t verticesPerEntity = MT::numVerticesPerEntity(dim);
@@ -544,7 +546,9 @@ namespace scout{
       IdVecMap entityVerticesMap(n * MT::numEntitiesPerCell(dim)/2);
     
       for(size_t c = 0; c < n; ++c){
-        cellEntityConn[c].reserve(maxCellEntityConns);
+        IdVec& conns = cellEntityConn[c]; 
+        
+        conns.reserve(maxCellEntityConns);
       
         Id* vertices = cellToVertex.getEntities(c);
       
@@ -553,10 +557,10 @@ namespace scout{
         for(size_t i = 0; i < entitiesPerCell; ++i){
           Id* a = &entityVertices[i * verticesPerEntity];
           IdVec ev(a, a + verticesPerEntity);
-          sort(ev.begin(), ev.end());
+          std::sort(ev.begin(), ev.end());
         
           auto itr = entityVerticesMap.emplace(std::move(ev), entityId);
-          cellEntityConn[c].push_back(itr.first->second);
+          conns.emplace_back(itr.first->second);
         
           if(itr.second){
             entityVertexConn.emplace_back(IdVec(a,
@@ -576,7 +580,10 @@ namespace scout{
       size_[dim] = entityToVertex.fromSize();
     }
   
-    void transpose(size_t fromDim, size_t toDim){    
+    void transpose(size_t fromDim, size_t toDim){
+      //std::cerr << "transpose: " << fromDim << " -> " << 
+      //  toDim << std::endl;
+    
       IndexVec pos(numEntities(fromDim), 0);
     
       for(Entity toEntity(*this, toDim); !toEntity.end(); ++toEntity){
@@ -601,6 +608,9 @@ namespace scout{
     }
   
     void intersect(size_t fromDim, size_t toDim, size_t dim){
+      // std::cerr << "intersect: " << fromDim << " -> " << 
+      //  toDim << std::endl;
+
       Connectivity& outConn = getConnectivity_(fromDim, toDim);
       if(!outConn.empty()){
         return;
@@ -616,7 +626,8 @@ namespace scout{
 
       size_t maxSize = 1;    
 
-      for(Entity fromEntity(*this, fromDim); !fromEntity.end(); ++fromEntity){
+      for(Entity fromEntity(*this, fromDim); 
+          !fromEntity.end(); ++fromEntity){
         IdVec& entities = conns[fromEntity.index()];
         entities.reserve(maxSize);
 
@@ -653,7 +664,8 @@ namespace scout{
             else{
               Id* ep = toItr.getEntities(0);
 
-              copy(ep, ep + MT::numVerticesPerEntity(toDim), toVerts.begin());
+              std::copy(ep, ep + MT::numVerticesPerEntity(toDim),
+                        toVerts.begin());
             
               std::sort(toVerts.begin(), toVerts.end());
             
@@ -673,6 +685,8 @@ namespace scout{
     }
   
     void compute(size_t fromDim, size_t toDim) override{
+      //std::cerr << "compute: " << fromDim << " -> " << toDim << std::endl;
+
       Connectivity& outConn = getConnectivity_(fromDim, toDim);
     
       if(!outConn.empty()){
