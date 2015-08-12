@@ -1548,6 +1548,73 @@ RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
   return RValue::get(Result);
 }
 
+llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
+   static const char *IndexNames[] = { "x", "y", "z", "w"};
+   llvm::Value* iv = LookupInductionVar(dim);
+   iv = Builder.CreateLoad(iv);
+
+   ForallData* data = nullptr;
+
+   ForallData& d = ForallStack[ForallStackIndex];
+   if(d.elementType == Vertices || d.elementType == Cells) {
+     data = &d;
+   }
+   assert(data && "unable to find cells or vertices forall data");
+
+   // for partitioned legion case need to add start to induction var
+   if (ForallStackIndex == 0 && dim < 3) {
+      iv = Builder.CreateAdd(Builder.CreateLoad(LookupMeshStart(dim)), iv);
+   }
+
+   if(dim == 3) {
+     return Builder.CreateTrunc(iv, Int32Ty, "lindex.w");
+   }
+
+
+   // deal w/ "regular" boundary (vertices/cells case)
+   if (ForallStackIndex == 1 && d.elementType == Cells) {
+     llvm:: Value *topidx = ForallStack[0].indexPtr;
+     topidx = Builder.CreateLoad(topidx);
+
+     //SC_TODO:  make member function
+     const MeshType* mt;
+     if(const PointerType* pt =
+         dyn_cast<PointerType>(data->meshVarDecl->getType())){
+       mt = dyn_cast<MeshType>(pt->getPointeeType());
+     }
+     else{
+       mt = dyn_cast<MeshType>(data->meshVarDecl->getType());
+     }
+
+     auto& dims = mt->dimensions();
+     size_t d = dims.size();
+
+     llvm::Value* zero = llvm::ConstantInt::get(Int64Ty, 0);
+     llvm::Value* one = llvm::ConstantInt::get(Int64Ty, 1);
+     if (d == 1) {
+       if (dim == 0) {
+         llvm::Value *Check = Builder.CreateICmpEQ(topidx, zero);
+         iv = Builder.CreateSelect(Check, one, iv);
+       } else {
+         iv = zero;
+       }
+     } else {
+       if (dim < d) {
+         llvm::Value* w = Builder.CreateAdd(Builder.CreateLoad(MeshDims[dim]),one);
+         llvm::Value *x = Builder.CreateURem(topidx, w);
+         llvm::Value *Check = Builder.CreateICmpEQ(x, zero);
+         iv = Builder.CreateSelect(Check, one, iv);
+       } else {
+         iv = zero;
+       }
+     }
+   }
+
+   sprintf(IRNameStr, "lindex.%s", IndexNames[dim]);
+   return Builder.CreateTrunc(iv, Int32Ty, IRNameStr);
+}
+
+
 llvm::Value *CodeGenFunction::EmitGIndex(unsigned int dim) {
    static const char *IndexNames[] = { "x", "y", "z", "w"};
    llvm::Value *X; // *Y, *MeshDim;

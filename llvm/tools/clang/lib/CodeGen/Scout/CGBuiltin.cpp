@@ -121,61 +121,41 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   //vector position
   case Builtin::BIlindex:
   case Builtin::BIposition: {
-    Value* result =
-    UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
-    
-    for(size_t i = 0; i <= 3; ++i){
-      llvm::Value* pi = LookupInductionVar(i);
-      pi = Builder.CreateLoad(pi);
-      if(i != 3){
-        pi = Builder.CreateAdd(Builder.CreateLoad(LookupMeshStart(i)), pi);
-      }
-      pi = Builder.CreateTrunc(pi, Int32Ty);
-      
-      result =
-      Builder.CreateInsertElement(result, pi, i);
+    static const char *IndexNames[] = { "x", "y", "z", "w"};
+    Value *Result =
+        llvm::UndefValue::get(llvm::VectorType::get(Int32Ty, 4));
+
+    for (unsigned i = 0; i < 4; ++i) {
+      sprintf(IRNameStr, "lindex.%s", IndexNames[i]);
+      Result = Builder.CreateInsertElement(Result, EmitLIndex(i),
+          Builder.getInt32(i), IRNameStr);
     }
-    
-    *RV = RValue::get(result);
+
+    *RV = RValue::get(Result);
     return true;
   }
 
   case Builtin::BIlindexx:
   case Builtin::BIpositionx: {
-    llvm::Value* pi = LookupInductionVar(0);
-    pi = Builder.CreateLoad(pi);
-    pi = Builder.CreateAdd(Builder.CreateLoad(LookupMeshStart(0)), pi);
-    pi = Builder.CreateTrunc(pi, Int32Ty, "position.x");
-    *RV = RValue::get(pi);
+    *RV = RValue::get(EmitLIndex(0));
     return true;
   }
 
   case Builtin::BIlindexy:
   case Builtin::BIpositiony: {
-    llvm::Value* pi = LookupInductionVar(1);
-    pi = Builder.CreateLoad(pi);
-    pi = Builder.CreateAdd(Builder.CreateLoad(LookupMeshStart(1)), pi);
-    pi = Builder.CreateTrunc(pi, Int32Ty, "position.y");
-    *RV = RValue::get(pi);
+    *RV = RValue::get(EmitLIndex(1));
     return true;
   }
 
   case Builtin::BIlindexz:
   case Builtin::BIpositionz: {
-    llvm::Value* pi = LookupInductionVar(2);
-    pi = Builder.CreateLoad(pi);
-    pi = Builder.CreateAdd(Builder.CreateLoad(LookupMeshStart(2)), pi);
-    pi = Builder.CreateTrunc(pi, Int32Ty, "position.z");
-    *RV = RValue::get(pi);
+    *RV = RValue::get(EmitLIndex(2));
     return true;
   }
   
   case Builtin::BIlindexw:
   case Builtin::BIpositionw: {
-    llvm::Value* pi = LookupInductionVar(3);
-    pi = Builder.CreateLoad(pi);
-    pi = Builder.CreateTrunc(pi, Int32Ty, "forall.linearidx");
-    *RV = RValue::get(pi);
+    *RV = RValue::get(EmitLIndex(3));
     return true;
   }
 
