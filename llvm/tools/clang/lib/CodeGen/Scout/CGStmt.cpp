@@ -691,14 +691,14 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
         ValueVec args =
         {topology, aboveTopologyDim, topologyDim};
         
-        data.fromIndicesPtr =
-        B.CreateCall(R.MeshGetFromIndicesFunc(), args, "from.indices.ptr");
-
+        Value* ptr = B.CreateCall(R.MeshGetToIndicesFunc(), args, "to.indices.ptr");
+        
         data.toIndicesPtr =
-        B.CreateCall(R.MeshGetToIndicesFunc(), args, "to.indices.ptr");
+        B.CreateAlloca(ptr->getType(), nullptr, "to.indices.ptr.ptr");
+        
+        B.CreateStore(ptr, data.toIndicesPtr);
       }
       else{
-        data.fromIndicesPtr = nullptr;
         data.toIndicesPtr = nullptr;
       }
       
@@ -746,22 +746,9 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     if(S.getQueryVarDecl()){
       queryMask = EmitForallQueryCall(S, endIndex);
     }
-  }
-  else{
-    ForallData& aboveData = ForallStack[i - 1];
     
-    Value* fromIndex = B.CreateLoad(aboveData.indexPtr, "from.index");
-    Value* fromId = B.CreateGEP(data.fromIndicesPtr, fromIndex);
-    fromId = B.CreateLoad(fromId, "from.id");
-    endIndex = B.CreateLShr(fromId, 56, "end.index");
-    
-    Value* toPos = Builder.CreateGEP(data.fromIndicesPtr, fromIndex);
-    toPos = Builder.CreateLoad(toPos);
-    toPos = Builder.CreateAnd(toPos, 0x00ffffffffffffff, "to.pos");
-    data.entitiesPtr = Builder.CreateGEP(data.toIndicesPtr, toPos, "to.indices");
+    B.CreateStore(ConstantInt::get(Int64Ty, 0), data.indexPtr);
   }
-  
-  B.CreateStore(ConstantInt::get(Int64Ty, 0), data.indexPtr);
   
   BasicBlock* loopBlock = createBasicBlock("forall.loop");
   
@@ -789,13 +776,35 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
 
   EmitBlock(loopBlock);
   
-  EmitStmt(S.getBody());
-  Value* index = B.CreateLoad(data.indexPtr, "index");
-  Value* incIndex = B.CreateAdd(index, ConstantInt::get(Int64Ty, 1), "index.inc");
-  B.CreateStore(incIndex, data.indexPtr);
+  if(top){
+    EmitStmt(S.getBody());
+  }
   
-  Value* cond = B.CreateICmpSLT(incIndex, endIndex, "cond");
   BasicBlock* exitBlock = createBasicBlock("forall.exit");
+  
+  Value* cond;
+  
+  if(top){
+    Value* index = B.CreateLoad(data.indexPtr, "index");
+    Value* incIndex = B.CreateAdd(index, ConstantInt::get(Int64Ty, 1), "index.inc");
+    B.CreateStore(incIndex, data.indexPtr);
+    cond = B.CreateICmpSLT(incIndex, endIndex, "cond");
+  }
+  else{
+    Value* toIndicesPtr = B.CreateLoad(data.toIndicesPtr, "to.indices.ptr");
+    
+    Value* rawIndex = B.CreateLoad(toIndicesPtr, "raw.index");
+    Value* index = Builder.CreateAnd(rawIndex, ~(1UL << 63), "index");
+    
+    B.CreateStore(index, data.indexPtr);
+
+    EmitStmt(S.getBody());
+    
+    toIndicesPtr = B.CreateConstGEP1_64(toIndicesPtr, 1, "next.to.indices.ptr");
+    B.CreateStore(toIndicesPtr, data.toIndicesPtr);
+    Value* done = B.CreateAnd(rawIndex, 1UL << 63, "done");
+    cond = B.CreateICmpEQ(done, ConstantInt::get(Int64Ty, 0), "cond");
+  }
 
   if(condBlock){
     B.CreateCondBr(cond, condBlock, exitBlock);

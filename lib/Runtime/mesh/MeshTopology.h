@@ -68,6 +68,13 @@ __PRETTY_FUNCTION__ << ": " << #X << " = " << X << std::endl
 #define nlog(X) std::cout << __FILE__ << ":" << __LINE__ << ": " << \
 __PRETTY_FUNCTION__ << ": " << X << std::endl
 
+namespace{
+
+  static const uint64_t LAST_FLAG = 1UL << 63;
+  static const uint64_t INDEX_MASK = ~LAST_FLAG;
+
+} // namespace
+
 namespace scout{
 
   class MeshTopologyBase{
@@ -94,8 +101,6 @@ namespace scout{
 
     class Connectivity{
     public:
-      static const uint64_t INDEX_MASK = 0x00ffffffffffffff;
-      static constexpr int INDEX_BITS = 56;
 
       Connectivity(){}
     
@@ -113,20 +118,17 @@ namespace scout{
       
         groupVec_.push_back(0);
       
-        size_t m = cv.size();
+        size_t n = cv.size();
       
-        for(size_t i = 0; i < m; ++i){
+        for(size_t i = 0; i < n; ++i){
           const IdVec& iv = cv[i];
           
-          uint64_t n = idVec_.size();
-
           for(Id id : iv){
             idVec_.push_back(id);
           }
           
-          uint64_t n2 = idVec_.size();
-          groupVec_.back() |= (n2 - n) << INDEX_BITS;
-          groupVec_.push_back(n2);
+          idVec_.back() |= LAST_FLAG;
+          groupVec_.push_back(idVec_.size());
         }
       }
     
@@ -137,24 +139,21 @@ namespace scout{
         groupVec_.resize(n + 1);
 
         uint64_t size = 0;
-        groupVec_[0] = size;
 
-        for(size_t i = 1; i < n; ++i){
-          groupVec_[i - 1] |= (size - groupVec_[i - 1]) << INDEX_BITS;
+        for(size_t i = 0; i < n; ++i){
           groupVec_[i] = size;
           size += numConns[i];
         }
-      
+
         groupVec_[n] = size;
+      
         idVec_.resize(size);
         std::fill(idVec_.begin(), idVec_.end(), 0);
       }
     
       void endGroup(){
-        uint64_t n = groupVec_.back();
-        uint64_t n2 = idVec_.size();
-        groupVec_.back() |= (n2 - n) << INDEX_BITS;
-        groupVec_.push_back(n2);
+        idVec_.back() |= LAST_FLAG;
+        groupVec_.push_back(idVec_.size());
       }
     
       void push(Id id){
@@ -164,25 +163,25 @@ namespace scout{
       void dump(){
         std::cout << "=== idVec" << std::endl;
         for(Id id : idVec_){
-          std::cout << id << std::endl;
+          std::cout << (INDEX_MASK & id) << "(" << 
+            (bool(id & LAST_FLAG)) << ")" << std::endl;
         }
       
         std::cout << "=== groupVec" << std::endl;
         for(Id id : groupVec_){
-          std::cout << (INDEX_MASK & id) << "(" << 
-            (id >> INDEX_BITS) << ")" << std::endl;
+          std::cout << id << std::endl;
         }
       }
     
       Id* getEntities(size_t index){
         assert(index < groupVec_.size() - 1);
-        return idVec_.data() + (groupVec_[index] & INDEX_MASK);
+        return idVec_.data() + groupVec_[index];
       }
 
       Id* getEntities(size_t index, size_t& endIndex){
         assert(index < groupVec_.size() - 1);
-        uint64_t start = groupVec_[index] & INDEX_MASK;
-        endIndex = (groupVec_[index + 1] & INDEX_MASK) - start;
+        uint64_t start = groupVec_[index];
+        endIndex = groupVec_[index + 1] - start;
         return idVec_.data() + start;
       }
         
@@ -191,7 +190,14 @@ namespace scout{
       }
     
       void set(size_t fromId, size_t toId, size_t pos){
-        idVec_[(groupVec_[fromId] & INDEX_MASK) + pos] = toId;
+        idVec_[groupVec_[fromId] + pos] = toId;
+      }
+
+      void finishSet(){
+        size_t n = groupVec_.size();
+        for(size_t i = 1; i < n; ++i){
+          idVec_[groupVec_[i] - 1] |= LAST_FLAG;
+        }
       }
     
       size_t fromSize() const{
@@ -208,24 +214,28 @@ namespace scout{
     
       void set(ConnVec& conns){
         clear();
-      
-        groupVec_.resize(conns.size() + 1);
+        
+        size_t n = conns.size();      
+        groupVec_.resize(n + 1);
       
         size_t size = 0;
-        size_t n = conns.size();
-        groupVec_[0] = 0;
 
-        for(size_t i = 1; i < n; i++){
-          groupVec_[i - 1] |= (size - groupVec_[0]) << INDEX_BITS;
+        for(size_t i = 0; i <= n; i++){
           groupVec_[i] = size;
           size += conns[i].size();
         }
-      
-        groupVec_[conns.size()] = size;
-      
+            
         idVec_.reserve(size);
-        for(auto itr = conns.begin(); itr != conns.end(); ++itr){
-          idVec_.insert(idVec_.end(), itr->begin(), itr->end());
+
+        for(size_t i = 0; i < n; ++i){
+          const IdVec& conn = conns[i];
+          uint64_t m = conn.size();
+          
+          for(size_t j = 0; j < m; ++j){
+            idVec_.push_back(conn[j]);
+          }
+
+          idVec_.back() |= LAST_FLAG;
         }
       }
     
@@ -415,7 +425,7 @@ namespace scout{
       }
     
       size_t index(){
-        return entities_[index_];
+        return entities_[index_] & INDEX_MASK;
       }
     
       Id* getEntities(size_t dim){
@@ -558,13 +568,16 @@ namespace scout{
           Id* a = &entityVertices[i * verticesPerEntity];
           IdVec ev(a, a + verticesPerEntity);
           std::sort(ev.begin(), ev.end());
-        
+          ev.back() |= LAST_FLAG;
+
           auto itr = entityVerticesMap.emplace(std::move(ev), entityId);
           conns.emplace_back(itr.first->second);
         
           if(itr.second){
-            entityVertexConn.emplace_back(IdVec(a,
-                                                a + verticesPerEntity));
+            IdVec ev2 = IdVec(a, a + verticesPerEntity);
+            ev2.back() |= LAST_FLAG;
+
+            entityVertexConn.emplace_back(std::move(ev2));
           
             maxCellEntityConns =
               std::max(maxCellEntityConns, cellEntityConn[c].size());
@@ -581,7 +594,7 @@ namespace scout{
     }
   
     void transpose(size_t fromDim, size_t toDim){
-      //std::cerr << "transpose: " << fromDim << " -> " << 
+      // std::cerr << "transpose: " << fromDim << " -> " << 
       //  toDim << std::endl;
     
       IndexVec pos(numEntities(fromDim), 0);
@@ -595,7 +608,7 @@ namespace scout{
     
       Connectivity& outConn = getConnectivity_(fromDim, toDim);
       outConn.resize(pos);
-    
+
       std::fill(pos.begin(), pos.end(), 0);
     
       for(Entity toEntity(*this, toDim); !toEntity.end(); ++toEntity){
@@ -605,6 +618,8 @@ namespace scout{
                       pos[fromItr.index()]++);
         }
       }
+      
+      outConn.finishSet();
     }
   
     void intersect(size_t fromDim, size_t toDim, size_t dim){

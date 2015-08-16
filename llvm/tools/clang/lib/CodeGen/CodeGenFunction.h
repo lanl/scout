@@ -2349,6 +2349,7 @@ public:
     
     llvm::Value* topology;
     llvm::Value* indexPtr;
+    llvm::Value* innerIndexPtr;
     llvm::Value* fromIndicesPtr;
     llvm::Value* toIndicesPtr;
     llvm::Value* entitiesPtr;

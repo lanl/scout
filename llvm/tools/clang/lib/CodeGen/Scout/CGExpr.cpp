@@ -178,12 +178,6 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
   assert(i >= 0 && "error finding forall data");
   
   ForallData& data = ForallStack[i];
-  //llvm::Value* Index;
-  
-  if(i > 0){
-    return Builder.CreateGEP(data.entitiesPtr, Builder.CreateLoad(data.indexPtr), "index");
-  }
-
   return data.indexPtr;
 }
 
