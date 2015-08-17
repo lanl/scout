@@ -383,14 +383,12 @@ extern "C"{
     }
 
     for(size_t i = 0; i < cellId; ++i){
-      auto p = m.equal_range(i);
-      for(auto itr = p.first, itrEnd = p.second; itr != itrEnd; ++itr){
-        mesh->addCellEdges(i,
-                           {(itr++)->second,
-                            (itr++)->second,
-                            (itr++)->second,
-                            (itr++)->second});
-      }
+      auto itr = m.equal_range(i).first;
+      mesh->addCellEdges(i,
+                         {(itr++)->second,
+                          (itr++)->second,
+                          (itr++)->second,
+                          (itr++)->second});
     }
 
     /*
