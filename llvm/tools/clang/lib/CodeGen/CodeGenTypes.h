@@ -187,12 +187,10 @@ class CodeGenTypes {
   llvm::SmallPtrSet<const Type*, 4> MeshesBeingLaidOut;
 
   SmallVector<const MeshDecl *, 8> DeferredMeshes;
-public:
+
   // has the global mesh been initialized
   llvm::DenseMap<const Type *, bool> GlobalMeshInit;
   // +========================================================================+
-
-private:
   /// This map keeps cache of llvm::Types and maps clang::Type to
   /// corresponding llvm::Type.
   llvm::DenseMap<const Type *, llvm::Type *> TypeCache;

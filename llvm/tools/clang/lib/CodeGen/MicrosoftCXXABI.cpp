@@ -257,7 +257,6 @@ public:
     SmallString<256> OutName;
     llvm::raw_svector_ostream Out(OutName);
     getMangleContext().mangleCXXVirtualDisplacementMap(SrcRD, DstRD, Out);
-    Out.flush();
     StringRef MangledName = OutName.str();
 
     if (auto *VDispMap = CGM.getModule().getNamedGlobal(MangledName))
@@ -853,11 +852,14 @@ void MicrosoftCXXABI::emitRethrow(CodeGenFunction &CGF, bool isNoReturn) {
 
 namespace {
 struct CallEndCatchMSVC : EHScopeStack::Cleanup {
-  CallEndCatchMSVC() {}
+  llvm::CatchPadInst *CPI;
+
+  CallEndCatchMSVC(llvm::CatchPadInst *CPI) : CPI(CPI) {}
+
   void Emit(CodeGenFunction &CGF, Flags flags) override {
     if (CGF.CGM.getCodeGenOpts().NewMSEH) {
       llvm::BasicBlock *BB = CGF.createBasicBlock("catchret.dest");
-      CGF.Builder.CreateCatchRet(BB);
+      CGF.Builder.CreateCatchRet(BB, CPI);
       CGF.EmitBlock(BB);
     } else {
       CGF.EmitNounwindRuntimeCall(
@@ -874,10 +876,15 @@ void MicrosoftCXXABI::emitBeginCatch(CodeGenFunction &CGF,
   VarDecl *CatchParam = S->getExceptionDecl();
   llvm::Value *Exn = nullptr;
   llvm::Function *BeginCatch = nullptr;
+  llvm::CatchPadInst *CPI = nullptr;
   bool NewEH = CGF.CGM.getCodeGenOpts().NewMSEH;
   if (!NewEH) {
     Exn = CGF.getExceptionFromSlot();
     BeginCatch = CGF.CGM.getIntrinsic(llvm::Intrinsic::eh_begincatch);
+  } else {
+    llvm::BasicBlock *CatchPadBB =
+        CGF.Builder.GetInsertBlock()->getSinglePredecessor();
+    CPI = cast<llvm::CatchPadInst>(CatchPadBB->getFirstNonPHI());
   }
   // If this is a catch-all or the catch parameter is unnamed, we don't need to
   // emit an alloca to the object.
@@ -886,7 +893,7 @@ void MicrosoftCXXABI::emitBeginCatch(CodeGenFunction &CGF,
       llvm::Value *Args[2] = {Exn, llvm::Constant::getNullValue(CGF.Int8PtrTy)};
       CGF.EmitNounwindRuntimeCall(BeginCatch, Args);
     }
-    CGF.EHStack.pushCleanup<CallEndCatchMSVC>(NormalCleanup);
+    CGF.EHStack.pushCleanup<CallEndCatchMSVC>(NormalCleanup, CPI);
     return;
   }
 
@@ -897,12 +904,9 @@ void MicrosoftCXXABI::emitBeginCatch(CodeGenFunction &CGF,
     llvm::Value *Args[2] = {Exn, ParamAddr};
     CGF.EmitNounwindRuntimeCall(BeginCatch, Args);
   } else {
-    llvm::BasicBlock *CatchPadBB =
-        CGF.Builder.GetInsertBlock()->getSinglePredecessor();
-    auto *CPI = cast<llvm::CatchPadInst>(CatchPadBB->getFirstNonPHI());
     CPI->setArgOperand(1, var.getObjectAddress(CGF));
   }
-  CGF.EHStack.pushCleanup<CallEndCatchMSVC>(NormalCleanup);
+  CGF.EHStack.pushCleanup<CallEndCatchMSVC>(NormalCleanup, CPI);
   CGF.EmitAutoVarCleanups(var);
 }
 
@@ -1854,7 +1858,6 @@ llvm::Function *MicrosoftCXXABI::EmitVirtualMemPtrThunk(
   SmallString<256> ThunkName;
   llvm::raw_svector_ostream Out(ThunkName);
   getMangleContext().mangleVirtualMemPtrThunk(MD, Out);
-  Out.flush();
 
   // If the thunk has been generated previously, just return it.
   if (llvm::GlobalValue *GV = CGM.getModule().getNamedValue(ThunkName))
@@ -1930,7 +1933,6 @@ MicrosoftCXXABI::getAddrOfVBTable(const VPtrInfo &VBT, const CXXRecordDecl *RD,
   SmallString<256> OutName;
   llvm::raw_svector_ostream Out(OutName);
   getMangleContext().mangleCXXVBTable(RD, VBT.MangledPath, Out);
-  Out.flush();
   StringRef Name = OutName.str();
 
   llvm::ArrayType *VBTableType =
@@ -2342,7 +2344,6 @@ void MicrosoftCXXABI::EmitGuardedInit(CodeGenFunction &CGF, const VarDecl &D,
                                                                Out);
       else
         getMangleContext().mangleStaticGuardVariable(&D, Out);
-      Out.flush();
     }
 
     // Create the guard variable with a zero-initializer. Just absorb linkage,
@@ -3747,7 +3748,6 @@ MicrosoftCXXABI::getAddrOfCXXCtorClosure(const CXXConstructorDecl *CD,
   SmallString<256> ThunkName;
   llvm::raw_svector_ostream Out(ThunkName);
   getMangleContext().mangleCXXCtor(CD, CT, Out);
-  Out.flush();
 
   // If the thunk has been generated previously, just return it.
   if (llvm::GlobalValue *GV = CGM.getModule().getNamedValue(ThunkName))
