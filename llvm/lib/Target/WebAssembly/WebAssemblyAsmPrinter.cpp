@@ -74,6 +74,17 @@ private:
 
 //===----------------------------------------------------------------------===//
 
+// Untyped, lower-case version of the opcode's name matching the names
+// WebAssembly opcodes are expected to have. The tablegen names are uppercase
+// and suffixed with their type (after an underscore).
+static SmallString<32> Name(const WebAssemblyInstrInfo *TII,
+                            const MachineInstr *MI) {
+  std::string N(StringRef(TII->getName(MI->getOpcode())).lower());
+  std::string::size_type End = N.find('_');
+  End = std::string::npos == End ? N.length() : End;
+  return SmallString<32>(&N[0], &N[End]);
+}
+
 void WebAssemblyAsmPrinter::EmitInstruction(const MachineInstr *MI) {
   SmallString<128> Str;
   raw_svector_ostream OS(Str);
@@ -88,38 +99,38 @@ void WebAssemblyAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     OS << "(setlocal @" << TargetRegisterInfo::virtReg2Index(Reg) << ' ';
   }
 
-  OS << '(';
-
-  bool PrintOperands = true;
-  switch (MI->getOpcode()) {
-  case WebAssembly::ARGUMENT_Int32:
-  case WebAssembly::ARGUMENT_Int64:
-  case WebAssembly::ARGUMENT_Float32:
-  case WebAssembly::ARGUMENT_Float64:
-    OS << "argument " << MI->getOperand(1).getImm();
-    PrintOperands = false;
-    break;
-  case WebAssembly::RETURN_Int32:
-  case WebAssembly::RETURN_Int64:
-  case WebAssembly::RETURN_Float32:
-  case WebAssembly::RETURN_Float64:
-  case WebAssembly::RETURN_VOID:
-    // FIXME This is here only so "return" prints nicely, instead of printing
-    //       the isel name. Other operations have the same problem, fix this in
-    //       a generic way instead.
-    OS << "return";
-    break;
-  default:
-    OS << TII->getName(MI->getOpcode());
-    break;
-  }
-
-  if (PrintOperands)
-    for (const MachineOperand &MO : MI->uses()) {
-      if (MO.isReg() && MO.isImplicit())
+  OS << '(' << Name(TII, MI);
+  for (const MachineOperand &MO : MI->uses())
+    switch (MO.getType()) {
+    default:
+      llvm_unreachable("unexpected machine operand type");
+    case MachineOperand::MO_Register: {
+      if (MO.isImplicit())
         continue;
       unsigned Reg = MO.getReg();
       OS << " @" << TargetRegisterInfo::virtReg2Index(Reg);
+    } break;
+    case MachineOperand::MO_Immediate: {
+      OS << ' ' << MO.getImm();
+    } break;
+    case MachineOperand::MO_FPImmediate: {
+      static const size_t BufBytes = 128;
+      char buf[BufBytes];
+      APFloat FP = MO.getFPImm()->getValueAPF();
+      if (FP.isNaN())
+        assert((FP.bitwiseIsEqual(APFloat::getQNaN(FP.getSemantics())) ||
+                FP.bitwiseIsEqual(
+                    APFloat::getQNaN(FP.getSemantics(), /*Negative=*/true))) &&
+               "convertToHexString handles neither SNaN nor NaN payloads");
+      // Use C99's hexadecimal floating-point representation.
+      auto Written =
+          FP.convertToHexString(buf, /*hexDigits=*/0, /*upperCase=*/false,
+                                APFloat::rmNearestTiesToEven);
+      (void)Written;
+      assert(Written != 0);
+      assert(Written < BufBytes);
+      OS << ' ' << buf;
+    } break;
     }
   OS << ')';
 

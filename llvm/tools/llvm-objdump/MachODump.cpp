@@ -5867,7 +5867,6 @@ static void emitComments(raw_svector_ostream &CommentStream,
                          formatted_raw_ostream &FormattedOS,
                          const MCAsmInfo &MAI) {
   // Flush the stream before taking its content.
-  CommentStream.flush();
   StringRef Comments = CommentsToEmit.str();
   // Get the default information for printing a comment.
   const char *CommentBegin = MAI.getCommentString();
@@ -5888,7 +5887,6 @@ static void emitComments(raw_svector_ostream &CommentStream,
 
   // Tell the comment stream that the vector changed underneath it.
   CommentsToEmit.clear();
-  CommentStream.resync();
 }
 
 static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
@@ -6249,7 +6247,6 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
             dumpBytes(ArrayRef<uint8_t>(Bytes.data() + Index, Size), outs());
           }
           formatted_raw_ostream FormattedOS(outs());
-          Annotations.flush();
           StringRef AnnotationsStr = Annotations.str();
           if (isThumb)
             ThumbIP->printInst(&Inst, FormattedOS, AnnotationsStr, *ThumbSTI);
@@ -6436,8 +6433,7 @@ static void findUnwindRelocNameAddend(const MachOObjectFile *Obj,
   // Go back one so that SymbolAddress <= Addr.
   --Sym;
 
-  section_iterator SymSection = Obj->section_end();
-  Sym->second.getSection(SymSection);
+  section_iterator SymSection = *Sym->second.getSection();
   if (RelocSection == *SymSection) {
     // There's a valid symbol in the same section before this reference.
     ErrorOr<StringRef> NameOrErr = Sym->second.getName();
@@ -6780,8 +6776,7 @@ void llvm::printMachOUnwindInfo(const MachOObjectFile *Obj) {
   for (const SymbolRef &SymRef : Obj->symbols()) {
     // Discard any undefined or absolute symbols. They're not going to take part
     // in the convenience lookup for unwind info and just take up resources.
-    section_iterator Section = Obj->section_end();
-    SymRef.getSection(Section);
+    section_iterator Section = *SymRef.getSection();
     if (Section == Obj->section_end())
       continue;
 
@@ -8554,8 +8549,7 @@ SegInfo::SegInfo(const object::MachOObjectFile *Obj) {
   uint64_t CurSegAddress;
   for (const SectionRef &Section : Obj->sections()) {
     SectionInfo Info;
-    if (error(Section.getName(Info.SectionName)))
-      return;
+    error(Section.getName(Info.SectionName));
     Info.Address = Section.getAddress();
     Info.Size = Section.getSize();
     Info.SegmentName =

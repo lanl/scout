@@ -969,7 +969,7 @@ bool AArch64FastISel::simplifyAddress(Address &Addr, MVT VT) {
 
   // Cannot encode an offset register and an immediate offset in the same
   // instruction. Fold the immediate offset into the load/store instruction and
-  // emit an additonal add to take care of the offset register.
+  // emit an additional add to take care of the offset register.
   if (!ImmediateOffsetNeedsLowering && Addr.getOffset() && Addr.getOffsetReg())
     RegisterOffsetNeedsLowering = true;
 
@@ -1058,8 +1058,8 @@ void AArch64FastISel::addLoadStoreOperands(Address &Addr,
     // FIXME: We shouldn't be using getObjectSize/getObjectAlignment.  The size
     // and alignment should be based on the VT.
     MMO = FuncInfo.MF->getMachineMemOperand(
-      MachinePointerInfo::getFixedStack(FI, Offset), Flags,
-      MFI.getObjectSize(FI), MFI.getObjectAlignment(FI));
+        MachinePointerInfo::getFixedStack(*FuncInfo.MF, FI, Offset), Flags,
+        MFI.getObjectSize(FI), MFI.getObjectAlignment(FI));
     // Now add the rest of the operands.
     MIB.addFrameIndex(FI).addImm(Offset);
   } else {
@@ -2413,7 +2413,11 @@ bool AArch64FastISel::selectBranch(const Instruction *I) {
   // Regardless, the compare has been done in the predecessor block,
   // and it left a value for us in a virtual register.  Ergo, we test
   // the one-bit value left in the virtual register.
-  emitICmp_ri(MVT::i32, CondReg, CondRegIsKill, 0);
+  //
+  // FIXME: Optimize this with TBZW/TBZNW.
+  unsigned ANDReg = emitAnd_ri(MVT::i32, CondReg, CondRegIsKill, 1);
+  assert(ANDReg && "Unexpected AND instruction emission failure.");
+  emitICmp_ri(MVT::i32, ANDReg, /*IsKill=*/true, 0);
 
   if (FuncInfo.MBB->isLayoutSuccessor(TBB)) {
     std::swap(TBB, FBB);
@@ -2447,8 +2451,8 @@ bool AArch64FastISel::selectIndirectBr(const Instruction *I) {
   BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, II).addReg(AddrReg);
 
   // Make sure the CFG is up-to-date.
-  for (unsigned i = 0, e = BI->getNumSuccessors(); i != e; ++i)
-    FuncInfo.MBB->addSuccessor(FuncInfo.MBBMap[BI->getSuccessor(i)]);
+  for (auto *Succ : BI->successors())
+    FuncInfo.MBB->addSuccessor(FuncInfo.MBBMap[Succ]);
 
   return true;
 }
@@ -2954,8 +2958,7 @@ bool AArch64FastISel::processCallArgs(CallLoweringInfo &CLI,
     .addImm(NumBytes);
 
   // Process the args.
-  for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
-    CCValAssign &VA = ArgLocs[i];
+  for (CCValAssign &VA : ArgLocs) {
     const Value *ArgVal = CLI.OutVals[VA.getValNo()];
     MVT ArgVT = OutVTs[VA.getValNo()];
 
@@ -3018,8 +3021,8 @@ bool AArch64FastISel::processCallArgs(CallLoweringInfo &CLI,
 
       unsigned Alignment = DL.getABITypeAlignment(ArgVal->getType());
       MachineMemOperand *MMO = FuncInfo.MF->getMachineMemOperand(
-        MachinePointerInfo::getStack(Addr.getOffset()),
-        MachineMemOperand::MOStore, ArgVT.getStoreSize(), Alignment);
+          MachinePointerInfo::getStack(*FuncInfo.MF, Addr.getOffset()),
+          MachineMemOperand::MOStore, ArgVT.getStoreSize(), Alignment);
 
       if (!emitStore(ArgVT, ArgReg, Addr, MMO))
         return false;
@@ -3763,8 +3766,8 @@ bool AArch64FastISel::selectRet(const Instruction *I) {
 
   MachineInstrBuilder MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
                                     TII.get(AArch64::RET_ReallyLR));
-  for (unsigned i = 0, e = RetRegs.size(); i != e; ++i)
-    MIB.addReg(RetRegs[i], RegState::Implicit);
+  for (unsigned RetReg : RetRegs)
+    MIB.addReg(RetReg, RegState::Implicit);
   return true;
 }
 
@@ -3795,33 +3798,40 @@ bool AArch64FastISel::selectTrunc(const Instruction *I) {
     return false;
   bool SrcIsKill = hasTrivialKill(Op);
 
-  // If we're truncating from i64/i32 to a smaller non-legal type then generate
-  // an AND.
-  uint64_t Mask = 0;
-  switch (DestVT.SimpleTy) {
-  default:
-    // Trunc i64 to i32 is handled by the target-independent fast-isel.
-    return false;
-  case MVT::i1:
-    Mask = 0x1;
-    break;
-  case MVT::i8:
-    Mask = 0xff;
-    break;
-  case MVT::i16:
-    Mask = 0xffff;
-    break;
-  }
+  // If we're truncating from i64 to a smaller non-legal type then generate an
+  // AND. Otherwise, we know the high bits are undefined and a truncate only
+  // generate a COPY. We cannot mark the source register also as result
+  // register, because this can incorrectly transfer the kill flag onto the
+  // source register.
+  unsigned ResultReg;
   if (SrcVT == MVT::i64) {
+    uint64_t Mask = 0;
+    switch (DestVT.SimpleTy) {
+    default:
+      // Trunc i64 to i32 is handled by the target-independent fast-isel.
+      return false;
+    case MVT::i1:
+      Mask = 0x1;
+      break;
+    case MVT::i8:
+      Mask = 0xff;
+      break;
+    case MVT::i16:
+      Mask = 0xffff;
+      break;
+    }
     // Issue an extract_subreg to get the lower 32-bits.
-    SrcReg = fastEmitInst_extractsubreg(MVT::i32, SrcReg, SrcIsKill,
-                                        AArch64::sub_32);
-    SrcIsKill = true;
+    unsigned Reg32 = fastEmitInst_extractsubreg(MVT::i32, SrcReg, SrcIsKill,
+                                                AArch64::sub_32);
+    // Create the AND instruction which performs the actual truncation.
+    ResultReg = emitAnd_ri(MVT::i32, Reg32, /*IsKill=*/true, Mask);
+    assert(ResultReg && "Unexpected AND instruction emission failure.");
+  } else {
+    ResultReg = createResultReg(&AArch64::GPR32RegClass);
+    BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
+            TII.get(TargetOpcode::COPY), ResultReg)
+        .addReg(SrcReg, getKillRegState(SrcIsKill));
   }
-
-  // Create the AND instruction which performs the actual truncation.
-  unsigned ResultReg = emitAnd_ri(MVT::i32, SrcReg, SrcIsKill, Mask);
-  assert(ResultReg && "Unexpected AND instruction emission failure.");
 
   updateValueMap(I, ResultReg);
   return true;

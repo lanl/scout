@@ -814,6 +814,8 @@ void TargetLoweringBase::initActions() {
     setOperationAction(ISD::CONCAT_VECTORS, VT, Expand);
     setOperationAction(ISD::FMINNUM, VT, Expand);
     setOperationAction(ISD::FMAXNUM, VT, Expand);
+    setOperationAction(ISD::FMINNAN, VT, Expand);
+    setOperationAction(ISD::FMAXNAN, VT, Expand);
     setOperationAction(ISD::FMAD, VT, Expand);
     setOperationAction(ISD::SMIN, VT, Expand);
     setOperationAction(ISD::SMAX, VT, Expand);
@@ -1150,7 +1152,7 @@ TargetLoweringBase::emitPatchPoint(MachineInstr *MI,
       Flags |= MachineMemOperand::MOVolatile;
     }
     MachineMemOperand *MMO = MF.getMachineMemOperand(
-        MachinePointerInfo::getFixedStack(FI), Flags,
+        MachinePointerInfo::getFixedStack(MF, FI), Flags,
         MF.getDataLayout().getPointerSize(), MFI.getObjectAlignment(FI));
     MIB->addMemOperand(MF, MMO);
 
@@ -1634,13 +1636,13 @@ int TargetLoweringBase::InstructionOpcodeToISD(unsigned Opcode) const {
   llvm_unreachable("Unknown instruction type encountered!");
 }
 
-std::pair<unsigned, MVT>
+std::pair<int, MVT>
 TargetLoweringBase::getTypeLegalizationCost(const DataLayout &DL,
                                             Type *Ty) const {
   LLVMContext &C = Ty->getContext();
   EVT MTy = getValueType(DL, Ty);
 
-  unsigned Cost = 1;
+  int Cost = 1;
   // We keep legalizing the type until we find a legal kind. We assume that
   // the only operation that costs anything is the split. After splitting
   // we need to handle two types.
