@@ -797,15 +797,11 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
 
   EmitBlock(loopBlock);
   
-  if(top){
-    EmitStmt(S.getBody());
-  }
-  
-  BasicBlock* exitBlock = createBasicBlock("forall.exit");
-  
   Value* cond;
   
   if(top){
+    EmitStmt(S.getBody());
+    
     Value* index = B.CreateLoad(data.indexPtr, "index");
     Value* incIndex = B.CreateAdd(index, ConstantInt::get(Int64Ty, 1), "index.inc");
     B.CreateStore(incIndex, data.indexPtr);
@@ -827,6 +823,8 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     cond = B.CreateICmpEQ(done, ConstantInt::get(Int64Ty, 0), "cond");
   }
 
+  BasicBlock* exitBlock = createBasicBlock("forall.exit");
+  
   if(condBlock){
     B.CreateCondBr(cond, condBlock, exitBlock);
   }
