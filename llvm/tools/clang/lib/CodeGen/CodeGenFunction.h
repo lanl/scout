@@ -2353,7 +2353,6 @@ public:
     llvm::Value* fromIndicesPtr;
     llvm::Value* startToIndicesPtr;
     llvm::Value* toIndicesPtr;
-    llvm::Value* entitiesPtr;
     llvm::BasicBlock* entryBlock;
     llvm::Value* inductionVar[3];
     bool hasInductionVar[3];

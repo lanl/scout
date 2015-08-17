@@ -105,18 +105,18 @@ namespace scout{
       Connectivity(){}
     
       void clear(){
-        idVec_.clear();
-        groupVec_.clear();
+        toIdVec_.clear();
+        fromIndexVec_.clear();
       }
     
       void init(){
-        groupVec_.push_back(0);
+        fromIndexVec_.push_back(0);
       }
     
       void init(const ConnVec& cv){
-        assert(idVec_.empty() && groupVec_.empty());
+        assert(toIdVec_.empty() && fromIndexVec_.empty());
       
-        groupVec_.push_back(0);
+        fromIndexVec_.push_back(0);
       
         size_t n = cv.size();
       
@@ -124,11 +124,11 @@ namespace scout{
           const IdVec& iv = cv[i];
           
           for(Id id : iv){
-            idVec_.push_back(id);
+            toIdVec_.push_back(id);
           }
           
-          idVec_.back() |= LAST_FLAG;
-          groupVec_.push_back(idVec_.size());
+          toIdVec_.back() |= LAST_FLAG;
+          fromIndexVec_.push_back(toIdVec_.size());
         }
       }
     
@@ -136,111 +136,111 @@ namespace scout{
         clear();
       
         size_t n = numConns.size();
-        groupVec_.resize(n + 1);
+        fromIndexVec_.resize(n + 1);
 
         uint64_t size = 0;
 
         for(size_t i = 0; i < n; ++i){
-          groupVec_[i] = size;
+          fromIndexVec_[i] = size;
           size += numConns[i];
         }
 
-        groupVec_[n] = size;
+        fromIndexVec_[n] = size;
       
-        idVec_.resize(size);
-        std::fill(idVec_.begin(), idVec_.end(), 0);
+        toIdVec_.resize(size);
+        std::fill(toIdVec_.begin(), toIdVec_.end(), 0);
       }
     
       void endGroup(){
-        idVec_.back() |= LAST_FLAG;
-        groupVec_.push_back(idVec_.size());
+        toIdVec_.back() |= LAST_FLAG;
+        fromIndexVec_.push_back(toIdVec_.size());
       }
     
       void push(Id id){
-        idVec_.push_back(id);
+        toIdVec_.push_back(id);
       }
     
       void dump(){
         std::cout << "=== idVec" << std::endl;
-        for(Id id : idVec_){
+        for(Id id : toIdVec_){
           std::cout << (INDEX_MASK & id) << "(" << 
             (bool(id & LAST_FLAG)) << ")" << std::endl;
         }
       
         std::cout << "=== groupVec" << std::endl;
-        for(Id id : groupVec_){
+        for(Id id : fromIndexVec_){
           std::cout << id << std::endl;
         }
       }
     
       Id* getEntities(size_t index){
-        assert(index < groupVec_.size() - 1);
-        return idVec_.data() + groupVec_[index];
+        assert(index < fromIndexVec_.size() - 1);
+        return toIdVec_.data() + fromIndexVec_[index];
       }
 
       Id* getEntities(size_t index, size_t& endIndex){
-        assert(index < groupVec_.size() - 1);
-        uint64_t start = groupVec_[index];
-        endIndex = groupVec_[index + 1] - start;
-        return idVec_.data() + start;
+        assert(index < fromIndexVec_.size() - 1);
+        uint64_t start = fromIndexVec_[index];
+        endIndex = fromIndexVec_[index + 1] - start;
+        return toIdVec_.data() + start;
       }
         
       bool empty(){
-        return idVec_.empty();
+        return toIdVec_.empty();
       }
     
       void set(size_t fromId, size_t toId, size_t pos){
-        idVec_[groupVec_[fromId] + pos] = toId;
+        toIdVec_[fromIndexVec_[fromId] + pos] = toId;
       }
 
       void finishSet(){
-        size_t n = groupVec_.size();
+        size_t n = fromIndexVec_.size();
         for(size_t i = 1; i < n; ++i){
-          idVec_[groupVec_[i] - 1] |= LAST_FLAG;
+          toIdVec_[fromIndexVec_[i] - 1] |= LAST_FLAG;
         }
       }
     
       size_t fromSize() const{
-        return groupVec_.size() - 1;
+        return fromIndexVec_.size() - 1;
       }
 
       Id* rawIdVec(){
-        return idVec_.data();
+        return toIdVec_.data();
       }
 
       Id* rawGroupVec(){
-        return groupVec_.data();
+        return fromIndexVec_.data();
       }
     
       void set(ConnVec& conns){
         clear();
         
         size_t n = conns.size();      
-        groupVec_.resize(n + 1);
+        fromIndexVec_.resize(n + 1);
       
         size_t size = 0;
 
         for(size_t i = 0; i <= n; i++){
-          groupVec_[i] = size;
+          fromIndexVec_[i] = size;
           size += conns[i].size();
         }
             
-        idVec_.reserve(size);
+        toIdVec_.reserve(size);
 
         for(size_t i = 0; i < n; ++i){
           const IdVec& conn = conns[i];
           uint64_t m = conn.size();
           
           for(size_t j = 0; j < m; ++j){
-            idVec_.push_back(conn[j]);
+            toIdVec_.push_back(conn[j]);
           }
 
-          idVec_.back() |= LAST_FLAG;
+          toIdVec_.back() |= LAST_FLAG;
         }
       }
     
-      IdVec idVec_;
-      IdVec groupVec_;
+      IdVec toIdVec_;
+      IdVec fromIndexVec_;
     };
 
     size_t numEntities(size_t dim){
