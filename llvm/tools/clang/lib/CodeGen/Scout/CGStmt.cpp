@@ -691,14 +691,25 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
         ValueVec args =
         {topology, aboveTopologyDim, topologyDim};
         
-        Value* ptr = B.CreateCall(R.MeshGetToIndicesFunc(), args, "to.indices.ptr");
+        if(i > 1){
+          data.fromIndicesPtr =
+          B.CreateCall(R.MeshGetFromIndicesFunc(), args, "from.indices.ptr");
+        }
+        else{
+          data.fromIndicesPtr = nullptr;
+        }
+        
+        data.startToIndicesPtr =
+        B.CreateCall(R.MeshGetToIndicesFunc(), args, "to.indices.ptr");
         
         data.toIndicesPtr =
-        B.CreateAlloca(ptr->getType(), nullptr, "to.indices.ptr.ptr");
+        B.CreateAlloca(data.startToIndicesPtr->getType(),
+                       nullptr, "to.indices.ptr.ptr");
         
-        B.CreateStore(ptr, data.toIndicesPtr);
+        B.CreateStore(data.startToIndicesPtr, data.toIndicesPtr);
       }
       else{
+        data.fromIndicesPtr = nullptr;
         data.toIndicesPtr = nullptr;
       }
       
@@ -733,6 +744,16 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   data.entryBlock = createBasicBlock("forall.entry");
   B.CreateBr(data.entryBlock);
   EmitBlock(data.entryBlock);
+  
+  if(data.fromIndicesPtr){
+    ForallData& aboveData = ForallStack[i - 1];
+    
+    Value* fromIndex = B.CreateLoad(aboveData.indexPtr, "from.index");
+    Value* toPos = B.CreateGEP(data.fromIndicesPtr, fromIndex);
+    toPos = B.CreateLoad(toPos, "to.pos");
+    Value* ptr = B.CreateGEP(data.startToIndicesPtr, toPos, "to.indices");
+    B.CreateStore(ptr, data.toIndicesPtr);
+  }
   
   Value* endIndex;
   
@@ -797,7 +818,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     Value* index = Builder.CreateAnd(rawIndex, ~(1UL << 63), "index");
     
     B.CreateStore(index, data.indexPtr);
-
+    
     EmitStmt(S.getBody());
     
     toIndicesPtr = B.CreateConstGEP1_64(toIndicesPtr, 1, "next.to.indices.ptr");

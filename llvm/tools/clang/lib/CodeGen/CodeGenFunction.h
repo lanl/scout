@@ -2351,6 +2351,7 @@ public:
     llvm::Value* indexPtr;
     llvm::Value* innerIndexPtr;
     llvm::Value* fromIndicesPtr;
+    llvm::Value* startToIndicesPtr;
     llvm::Value* toIndicesPtr;
     llvm::Value* entitiesPtr;
     llvm::BasicBlock* entryBlock;
