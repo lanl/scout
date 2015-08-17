@@ -636,9 +636,9 @@ ProcessGDBRemote::BuildDynamicRegisterInfo (bool force)
                     {
                         set_name.SetCString(value.c_str());
                     }
-                    else if (name.compare("gcc") == 0)
+                    else if (name.compare("gcc") == 0 || name.compare("ehframe") == 0)
                     {
-                        reg_info.kinds[eRegisterKindGCC] = StringConvert::ToUInt32(value.c_str(), LLDB_INVALID_REGNUM, 0);
+                        reg_info.kinds[eRegisterKindEHFrame] = StringConvert::ToUInt32(value.c_str(), LLDB_INVALID_REGNUM, 0);
                     }
                     else if (name.compare("dwarf") == 0)
                     {
@@ -2020,6 +2020,7 @@ ProcessGDBRemote::SetThreadStopInfo (lldb::tid_t tid,
                             StringExtractor desc_extractor(description.c_str());
                             addr_t wp_addr = desc_extractor.GetU64(LLDB_INVALID_ADDRESS);
                             uint32_t wp_index = desc_extractor.GetU32(LLDB_INVALID_INDEX32);
+                            addr_t wp_hit_addr = desc_extractor.GetU64(LLDB_INVALID_ADDRESS);
                             watch_id_t watch_id = LLDB_INVALID_WATCH_ID;
                             if (wp_addr != LLDB_INVALID_ADDRESS)
                             {
@@ -2035,7 +2036,7 @@ ProcessGDBRemote::SetThreadStopInfo (lldb::tid_t tid,
                                 Log *log (ProcessGDBRemoteLog::GetLogIfAllCategoriesSet (GDBR_LOG_WATCHPOINTS));
                                 if (log) log->Printf ("failed to find watchpoint");
                             }
-                            thread_sp->SetStopInfo (StopInfo::CreateStopReasonWithWatchpointID (*thread_sp, watch_id));
+                            thread_sp->SetStopInfo (StopInfo::CreateStopReasonWithWatchpointID (*thread_sp, watch_id, wp_hit_addr));
                             handled = true;
                         }
                         else if (reason.compare("exception") == 0)
@@ -2482,6 +2483,21 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                                 m_memory_cache.AddL1CacheData(mem_cache_addr, data_buffer_sp);
                         }
                     }
+                }
+                else if (key.compare("watch") == 0 || key.compare("rwatch") == 0 || key.compare("awatch") == 0)
+                {
+                    // Support standard GDB remote stop reply packet 'TAAwatch:addr'
+                    lldb::addr_t wp_addr = StringConvert::ToUInt64 (value.c_str(), LLDB_INVALID_ADDRESS, 16);
+                    WatchpointSP wp_sp = GetTarget().GetWatchpointList().FindByAddress(wp_addr);
+                    uint32_t wp_index = LLDB_INVALID_INDEX32;
+
+                    if (wp_sp)
+                        wp_index = wp_sp->GetHardwareIndex();
+
+                    reason = "watchpoint";
+                    StreamString ostr;
+                    ostr.Printf("%" PRIu64 " %" PRIu32, wp_addr, wp_index);
+                    description = ostr.GetString().c_str();
                 }
                 else if (key.size() == 2 && ::isxdigit(key[0]) && ::isxdigit(key[1]))
                 {
@@ -3084,7 +3100,7 @@ ProcessGDBRemote::GetWatchpointSupportInfo (uint32_t &num)
 Error
 ProcessGDBRemote::GetWatchpointSupportInfo (uint32_t &num, bool& after)
 {
-    Error error (m_gdb_comm.GetWatchpointSupportInfo (num, after));
+    Error error (m_gdb_comm.GetWatchpointSupportInfo (num, after, GetTarget().GetArchitecture()));
     return error;
 }
 
@@ -4269,7 +4285,7 @@ ParseRegisters (XMLNode feature_node, GdbServerTargetInfo &target_info, GDBRemot
                 const uint32_t regnum = StringConvert::ToUInt32(value.data(), LLDB_INVALID_REGNUM, 0);
                 if (regnum != LLDB_INVALID_REGNUM)
                 {
-                    reg_info.kinds[eRegisterKindGDB] = regnum;
+                    reg_info.kinds[eRegisterKindStabs] = regnum;
                     reg_info.kinds[eRegisterKindLLDB] = regnum;
                     prev_reg_num = regnum;
                 }
@@ -4317,9 +4333,9 @@ ParseRegisters (XMLNode feature_node, GdbServerTargetInfo &target_info, GDBRemot
                 if (pos != target_info.reg_set_map.end())
                     set_name = pos->second.name;
             }
-            else if (name == "gcc_regnum")
+            else if (name == "gcc_regnum" || name == "ehframe_regnum")
             {
-                reg_info.kinds[eRegisterKindGCC] = StringConvert::ToUInt32(value.data(), LLDB_INVALID_REGNUM, 0);
+                reg_info.kinds[eRegisterKindEHFrame] = StringConvert::ToUInt32(value.data(), LLDB_INVALID_REGNUM, 0);
             }
             else if (name == "dwarf_regnum")
             {

@@ -28,7 +28,7 @@
 #include "llvm/ADT/Triple.h"
 
 #include "Utility/ARM_DWARF_Registers.h"
-#include "Utility/ARM_GCC_Registers.h"
+#include "Utility/ARM_Stabs_Registers.h"
 #include "Plugins/Process/Utility/ARMDefines.h"
 
 #include <vector>
@@ -38,7 +38,7 @@ using namespace lldb_private;
 
 static RegisterInfo g_register_infos[] =
 {
-    //  NAME       ALT       SZ OFF ENCODING         FORMAT          COMPILER                DWARF               GENERIC                     GDB                     LLDB NATIVE            VALUE REGS    INVALIDATE REGS
+    //  NAME       ALT       SZ OFF ENCODING         FORMAT          EH_FRAME                DWARF               GENERIC                     STABS                   LLDB NATIVE            VALUE REGS    INVALIDATE REGS
     //  ========== =======   == === =============    ============    ======================= =================== =========================== ======================= ====================== ==========    ===============
     {   "r0",      "arg1",    4, 0, eEncodingUint    , eFormatHex,   { gcc_r0,               dwarf_r0,           LLDB_REGNUM_GENERIC_ARG1,   gdb_arm_r0,             LLDB_INVALID_REGNUM },      NULL,              NULL},
     {   "r1",      "arg2",    4, 0, eEncodingUint    , eFormatHex,   { gcc_r1,               dwarf_r1,           LLDB_REGNUM_GENERIC_ARG2,   gdb_arm_r1,             LLDB_INVALID_REGNUM },      NULL,              NULL},
@@ -333,7 +333,7 @@ ABISysV_arm::GetArgumentValues (Thread &thread,
         if (!value)
             return false;
         
-        ClangASTType clang_type = value->GetClangType();
+        CompilerType clang_type = value->GetClangType();
         if (clang_type)
         {
             bool is_signed = false;
@@ -417,7 +417,7 @@ GetReturnValuePassedInMemory(Thread &thread, RegisterContext* reg_ctx, size_t by
 
 ValueObjectSP
 ABISysV_arm::GetReturnValueObjectImpl (Thread &thread,
-                                       lldb_private::ClangASTType &clang_type) const
+                                       lldb_private::CompilerType &clang_type) const
 {
     Value value;
     ValueObjectSP return_valobj_sp;
@@ -425,10 +425,6 @@ ABISysV_arm::GetReturnValueObjectImpl (Thread &thread,
     if (!clang_type)
         return return_valobj_sp;
     
-    clang::ASTContext *ast_context = clang_type.GetASTContext();
-    if (!ast_context)
-        return return_valobj_sp;
-
     //value.SetContext (Value::eContextTypeClangType, clang_type.GetOpaqueQualType());
     value.SetClangType (clang_type);
             
@@ -583,7 +579,7 @@ ABISysV_arm::SetReturnValueObject(lldb::StackFrameSP &frame_sp, lldb::ValueObjec
         return error;
     }
     
-    ClangASTType clang_type = new_value_sp->GetClangType();
+    CompilerType clang_type = new_value_sp->GetClangType();
     if (!clang_type)
     {
         error.SetErrorString ("Null clang type for return value.");

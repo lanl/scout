@@ -33,6 +33,7 @@
 #include "lldb/Interpreter/OptionGroupOutputFile.h"
 #include "lldb/Interpreter/OptionGroupValueObjectDisplay.h"
 #include "lldb/Interpreter/OptionValueString.h"
+#include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/TypeList.h"
 #include "lldb/Target/MemoryHistory.h"
 #include "lldb/Target/Process.h"
@@ -399,7 +400,7 @@ protected:
             return false;
         }
 
-        ClangASTType clang_ast_type;        
+        CompilerType clang_ast_type;        
         Error error;
 
         const char *view_as_type_cstr = m_memory_options.m_view_as_type.GetCurrentValue();
@@ -532,7 +533,7 @@ protected:
                 clang::TypeDecl *tdecl = target->GetPersistentVariables().GetPersistentType(ConstString(lookup_type_name));
                 if (tdecl)
                 {
-                    clang_ast_type.SetClangType(&tdecl->getASTContext(),(const lldb::clang_type_t)tdecl->getTypeForDecl());
+                    clang_ast_type.SetClangType(ClangASTContext::GetASTContext(&tdecl->getASTContext()),(const lldb::clang_type_t)tdecl->getTypeForDecl());
                 }
             }
             
@@ -555,7 +556,7 @@ protected:
             
             while (pointer_count > 0)
             {
-                ClangASTType pointer_type = clang_ast_type.GetPointerType();
+                CompilerType pointer_type = clang_ast_type.GetPointerType();
                 if (pointer_type.IsValid())
                     clang_ast_type = pointer_type;
                 else
@@ -932,7 +933,7 @@ protected:
     OptionGroupReadMemory m_prev_memory_options;
     OptionGroupOutputFile m_prev_outfile_options;
     OptionGroupValueObjectDisplay m_prev_varobj_options;
-    ClangASTType m_prev_clang_ast_type;
+    CompilerType m_prev_clang_ast_type;
 };
 
 OptionDefinition
@@ -1042,15 +1043,15 @@ public:
     CommandArgumentData value_arg;
     
     // Define the first (and only) variant of this arg.
-    addr_arg.arg_type = eArgTypeAddress;
+    addr_arg.arg_type = eArgTypeAddressOrExpression;
     addr_arg.arg_repetition = eArgRepeatPlain;
     
     // There is only one variant this argument could be; put it into the argument entry.
     arg1.push_back (addr_arg);
     
     // Define the first (and only) variant of this arg.
-    value_arg.arg_type = eArgTypeValue;
-    value_arg.arg_repetition = eArgRepeatPlus;
+    value_arg.arg_type = eArgTypeAddressOrExpression;
+    value_arg.arg_repetition = eArgRepeatPlain;
     
     // There is only one variant this argument could be; put it into the argument entry.
     arg2.push_back (value_arg);
