@@ -1544,8 +1544,7 @@ RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
 
 llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
    static const char *IndexNames[] = { "x", "y", "z", "w"};
-   llvm::Value* iv = LookupInductionVar(dim);
-   iv = Builder.CreateLoad(iv);
+
 
    ForallData* data = nullptr;
 
@@ -1555,16 +1554,43 @@ llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
    }
    assert(data && "unable to find cells or vertices forall data");
 
+
+   llvm::Value* idx = Builder.CreateLoad(data->indexPtr);
+
+
+   //SC_TODO:  make member function
+   const MeshType* mt;
+   if(const PointerType* pt =
+       dyn_cast<PointerType>(data->meshVarDecl->getType())){
+     mt = dyn_cast<MeshType>(pt->getPointeeType());
+   }
+   else{
+     mt = dyn_cast<MeshType>(data->meshVarDecl->getType());
+   }
+
+   auto& dims = mt->dimensions();
+
    // for partitioned legion case need to add start to induction var
    if (ForallStackIndex == 0 && dim < 3) {
-      iv = Builder.CreateAdd(Builder.CreateLoad(LookupMeshStart(dim)), iv);
+      idx = Builder.CreateAdd(Builder.CreateLoad(LookupMeshStart(dim)), idx);
    }
+
+   // get current iv
+   idx = LinearIdx2InductionVar(idx, data->elementType, dim, dims.size());
+
+   if (ForallStackIndex == 1 ) {
+     // get top iv
+     llvm:: Value *topiv = LinearIdx2InductionVar(Builder.CreateLoad(ForallStack[0].indexPtr),
+         ForallStack[0].elementType, dim, dims.size());
+     idx = Builder.CreateSub(idx, topiv);
+   }
+
 
    if(dim == 3) {
-     return Builder.CreateTrunc(iv, Int32Ty, "lindex.w");
+     return Builder.CreateTrunc(idx, Int32Ty, "lindex.w");
    }
 
-
+#if 0
    // deal w/ "regular" boundary (vertices/cells case)
    if (ForallStackIndex == 1 && d.elementType == Cells) {
      llvm:: Value *topidx = ForallStack[0].indexPtr;
@@ -1588,24 +1614,25 @@ llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
      if (d == 1) {
        if (dim == 0) {
          llvm::Value *Check = Builder.CreateICmpEQ(topidx, zero);
-         iv = Builder.CreateSelect(Check, one, iv);
+         idx = Builder.CreateSelect(Check, one, idx);
        } else {
-         iv = zero;
+         idx = zero;
        }
      } else {
        if (dim < d) {
          llvm::Value* w = Builder.CreateAdd(Builder.CreateLoad(MeshDims[dim]),one);
          llvm::Value *x = Builder.CreateURem(topidx, w);
          llvm::Value *Check = Builder.CreateICmpEQ(x, zero);
-         iv = Builder.CreateSelect(Check, one, iv);
+         idx = Builder.CreateSelect(Check, one, idx);
        } else {
-         iv = zero;
+         idx = zero;
        }
      }
    }
+#endif
 
    sprintf(IRNameStr, "lindex.%s", IndexNames[dim]);
-   return Builder.CreateTrunc(iv, Int32Ty, IRNameStr);
+   return Builder.CreateTrunc(idx, Int32Ty, IRNameStr);
 }
 
 

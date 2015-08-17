@@ -93,10 +93,65 @@ void CodeGenFunction::EmitTaskMDBlock(const FunctionDecl *FD) {
 
 }
 
+
+llvm::Value *CodeGenFunction::LinearIdx2InductionVar(llvm::Value *linearidx,
+    MeshElementType elementType, unsigned int dindex, unsigned int ndims) {
+
+  llvm::Value* induct;
+
+  llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
+  if(elementType == Vertices) {
+    width = Builder.CreateAdd(width, llvm::ConstantInt::get(Int64Ty, 1));
+  }
+
+  sprintf(IRNameStr, "induct.%s", IndexNames[dindex]);
+
+  switch (dindex) {
+    case 0:
+      induct = Builder.CreateURem(linearidx, width, IRNameStr);
+      break;
+    case 1:
+      if (ndims == 1) {
+        induct = llvm::ConstantInt::get(Int64Ty, 0);
+        break;
+      }
+
+      if(ndims == 3) {
+        llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
+        if (elementType == Vertices) {
+          height = Builder.CreateAdd(height, llvm::ConstantInt::get(Int64Ty, 1));
+        }
+
+        linearidx = Builder.CreateURem(linearidx, Builder.CreateMul(width, height));
+      }
+
+      induct = Builder.CreateUDiv(linearidx, width, IRNameStr);
+
+      break;
+    case 2: {
+      if (ndims < 3) {
+        induct = llvm::ConstantInt::get(Int64Ty, 0);
+        break;
+      }
+
+      llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
+      if (elementType == Vertices) {
+        height = Builder.CreateAdd(height, llvm::ConstantInt::get(Int64Ty, 1));
+      }
+
+      induct = Builder.CreateUDiv(linearidx, Builder.CreateMul(width, height), IRNameStr);
+      break;
+    }
+    case 3:
+      induct = linearidx;
+  }
+  return induct;
+
+}
+
+
 // If in Stencil then lookup and load InductionVar, otherwise return it directly
 llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
-
-  llvm::Value* two = llvm::ConstantInt::get(Int64Ty, 2);
 
   llvm::Value *V = LocalDeclMap.lookup(ScoutABIInductionVarDecl[index]);
   if(V) {
@@ -137,61 +192,8 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     sprintf(IRNameStr, "induct.%s.ptr", IndexNames[index]);
     
     llvm::Value* idx = Builder.CreateLoad(data->indexPtr, "index");
-    llvm::Value* induct;
-    
-    llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
-    if(data->elementType == Vertices){
-      width = Builder.CreateAdd(width, llvm::ConstantInt::get(Int64Ty, 1));
-    }
-    // deal w/ nested case. assumes uniform mesh
+    llvm::Value* induct = LinearIdx2InductionVar(idx, data->elementType, index, dims.size());
 
-    if (ForallStackIndex) width = two;
-    
-    sprintf(IRNameStr, "induct.%s", IndexNames[index]);
-    
-    size_t d = dims.size();
-    
-    switch(index){
-      case 0:
-          induct = Builder.CreateURem(idx, width, IRNameStr);
-        break;
-      case 1:
-        if(d == 1){
-          induct = llvm::ConstantInt::get(Int64Ty, 0);
-          break;
-        }
-        
-        if(d == 3){
-          llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
-          if(data->elementType == Vertices){
-            height = Builder.CreateAdd(height, llvm::ConstantInt::get(Int64Ty, 1));
-          }
-          if (ForallStackIndex) height = two;
-          
-          idx = Builder.CreateURem(idx, Builder.CreateMul(width, height));
-        }
-        
-        induct = Builder.CreateUDiv(idx, width, IRNameStr);
-
-        break;
-      case 2:{
-        if(d < 3){
-          induct = llvm::ConstantInt::get(Int64Ty, 0);
-          break;
-        }
-        
-        llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
-        if(data->elementType == Vertices){
-          height = Builder.CreateAdd(height, llvm::ConstantInt::get(Int64Ty, 1));
-        }
-
-        if (ForallStackIndex) height = two;
-        
-        induct = Builder.CreateUDiv(idx, Builder.CreateMul(width, height), IRNameStr);
-        break;
-      }
-    }
-    
     Builder.CreateStore(induct, data->inductionVar[index]);
     data->hasInductionVar[index] = true;
   }

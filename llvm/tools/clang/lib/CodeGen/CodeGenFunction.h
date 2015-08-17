@@ -383,6 +383,8 @@ public:
   llvm::Value* CurrentVolumeRenderallColor = nullptr;
   
   llvm::Value *LookupInductionVar(unsigned int index);
+  llvm::Value *LinearIdx2InductionVar(llvm::Value *linearidx,
+      MeshElementType elementType, unsigned int dindex, unsigned int ndims);
   llvm::Value *LookupMeshDim(unsigned int index);
   llvm::Value *LookupMeshStart(unsigned int index);
 
