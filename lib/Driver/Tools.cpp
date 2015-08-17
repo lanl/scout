@@ -2848,42 +2848,53 @@ static void addPGOAndCoverageFlags(Compilation &C, const Driver &D,
   auto *ProfileGenerateArg = Args.getLastArg(
       options::OPT_fprofile_instr_generate,
       options::OPT_fprofile_instr_generate_EQ, options::OPT_fprofile_generate,
-      options::OPT_fprofile_generate_EQ);
+      options::OPT_fprofile_generate_EQ,
+      options::OPT_fno_profile_instr_generate);
+  if (ProfileGenerateArg &&
+      ProfileGenerateArg->getOption().matches(
+          options::OPT_fno_profile_instr_generate))
+    ProfileGenerateArg = nullptr;
 
   auto *ProfileUseArg = Args.getLastArg(
       options::OPT_fprofile_instr_use, options::OPT_fprofile_instr_use_EQ,
-      options::OPT_fprofile_use, options::OPT_fprofile_use_EQ);
+      options::OPT_fprofile_use, options::OPT_fprofile_use_EQ,
+      options::OPT_fno_profile_instr_use);
+  if (ProfileUseArg &&
+      ProfileUseArg->getOption().matches(options::OPT_fno_profile_instr_use))
+    ProfileUseArg = nullptr;
 
   if (ProfileGenerateArg && ProfileUseArg)
     D.Diag(diag::err_drv_argument_not_allowed_with)
         << ProfileGenerateArg->getSpelling() << ProfileUseArg->getSpelling();
 
-  if (ProfileGenerateArg &&
-      ProfileGenerateArg->getOption().matches(
-          options::OPT_fprofile_instr_generate_EQ))
-    ProfileGenerateArg->render(Args, CmdArgs);
-  else if (ProfileGenerateArg &&
-           ProfileGenerateArg->getOption().matches(
-               options::OPT_fprofile_generate_EQ)) {
-    SmallString<128> Path(ProfileGenerateArg->getValue());
-    llvm::sys::path::append(Path, "default.profraw");
-    CmdArgs.push_back(
-        Args.MakeArgString(Twine("-fprofile-instr-generate=") + Path));
-  } else
-    Args.AddAllArgs(CmdArgs, options::OPT_fprofile_instr_generate);
+  if (ProfileGenerateArg) {
+    if (ProfileGenerateArg->getOption().matches(
+            options::OPT_fprofile_instr_generate_EQ))
+      ProfileGenerateArg->render(Args, CmdArgs);
+    else if (ProfileGenerateArg->getOption().matches(
+                 options::OPT_fprofile_generate_EQ)) {
+      SmallString<128> Path(ProfileGenerateArg->getValue());
+      llvm::sys::path::append(Path, "default.profraw");
+      CmdArgs.push_back(
+          Args.MakeArgString(Twine("-fprofile-instr-generate=") + Path));
+    } else
+      Args.AddAllArgs(CmdArgs, options::OPT_fprofile_instr_generate);
+  }
 
-  if (ProfileUseArg &&
-      ProfileUseArg->getOption().matches(options::OPT_fprofile_instr_use_EQ))
-    ProfileUseArg->render(Args, CmdArgs);
-  else if (ProfileUseArg &&
-           (ProfileUseArg->getOption().matches(options::OPT_fprofile_use_EQ) ||
-            ProfileUseArg->getOption().matches(
-                options::OPT_fprofile_instr_use))) {
-    SmallString<128> Path(
-        ProfileUseArg->getNumValues() == 0 ? "" : ProfileUseArg->getValue());
-    if (Path.empty() || llvm::sys::fs::is_directory(Path))
-      llvm::sys::path::append(Path, "default.profdata");
-    CmdArgs.push_back(Args.MakeArgString(Twine("-fprofile-instr-use=") + Path));
+  if (ProfileUseArg) {
+    if (ProfileUseArg->getOption().matches(options::OPT_fprofile_instr_use_EQ))
+      ProfileUseArg->render(Args, CmdArgs);
+    else if ((ProfileUseArg->getOption().matches(
+                  options::OPT_fprofile_use_EQ) ||
+              ProfileUseArg->getOption().matches(
+                  options::OPT_fprofile_instr_use))) {
+      SmallString<128> Path(
+          ProfileUseArg->getNumValues() == 0 ? "" : ProfileUseArg->getValue());
+      if (Path.empty() || llvm::sys::fs::is_directory(Path))
+        llvm::sys::path::append(Path, "default.profdata");
+      CmdArgs.push_back(
+          Args.MakeArgString(Twine("-fprofile-instr-use=") + Path));
+    }
   }
 
   if (Args.hasArg(options::OPT_ftest_coverage) ||
@@ -2894,12 +2905,15 @@ static void addPGOAndCoverageFlags(Compilation &C, const Driver &D,
       Args.hasArg(options::OPT_coverage))
     CmdArgs.push_back("-femit-coverage-data");
 
-  if (Args.hasArg(options::OPT_fcoverage_mapping) && !ProfileGenerateArg)
+  if (Args.hasFlag(options::OPT_fcoverage_mapping,
+                   options::OPT_fno_coverage_mapping, false) &&
+      !ProfileGenerateArg)
     D.Diag(diag::err_drv_argument_only_allowed_with)
         << "-fcoverage-mapping"
         << "-fprofile-instr-generate";
 
-  if (Args.hasArg(options::OPT_fcoverage_mapping))
+  if (Args.hasFlag(options::OPT_fcoverage_mapping,
+                   options::OPT_fno_coverage_mapping, false))
     CmdArgs.push_back("-fcoverage-mapping");
 
   if (C.getArgs().hasArg(options::OPT_c) ||
@@ -2927,6 +2941,9 @@ static void addPGOAndCoverageFlags(Compilation &C, const Driver &D,
 void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                          const InputInfo &Output, const InputInfoList &Inputs,
                          const ArgList &Args, const char *LinkingOutput) const {
+  std::string TripleStr = getToolChain().ComputeEffectiveClangTriple(Args);
+  const llvm::Triple Triple(TripleStr);
+
   bool KernelOrKext =
       Args.hasArg(options::OPT_mkernel, options::OPT_fapple_kext);
   const Driver &D = getToolChain().getDriver();
@@ -2953,17 +2970,15 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   // Add the "effective" target triple.
   CmdArgs.push_back("-triple");
-  std::string TripleStr = getToolChain().ComputeEffectiveClangTriple(Args);
   CmdArgs.push_back(Args.MakeArgString(TripleStr));
 
-  const llvm::Triple TT(TripleStr);
-  if (TT.isOSWindows() && (TT.getArch() == llvm::Triple::arm ||
-                           TT.getArch() == llvm::Triple::thumb)) {
-    unsigned Offset = TT.getArch() == llvm::Triple::arm ? 4 : 6;
+  if (Triple.isOSWindows() && (Triple.getArch() == llvm::Triple::arm ||
+                               Triple.getArch() == llvm::Triple::thumb)) {
+    unsigned Offset = Triple.getArch() == llvm::Triple::arm ? 4 : 6;
     unsigned Version;
-    TT.getArchName().substr(Offset).getAsInteger(10, Version);
+    Triple.getArchName().substr(Offset).getAsInteger(10, Version);
     if (Version < 7)
-      D.Diag(diag::err_target_unsupported_arch) << TT.getArchName()
+      D.Diag(diag::err_target_unsupported_arch) << Triple.getArchName()
                                                 << TripleStr;
   }
 
@@ -3212,7 +3227,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
 
   // Note that these flags are trump-cards. Regardless of the order w.r.t. the
   // PIC or PIE options above, if these show up, PIC is disabled.
-  llvm::Triple Triple(TripleStr);
   if (KernelOrKext && (!Triple.isiOS() || Triple.isOSVersionLT(6)))
     PIC = PIE = false;
   if (Args.hasArg(options::OPT_static))
@@ -3678,6 +3692,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     }
   }
 
+  // Forward -gcodeview.
+  Args.AddLastArg(CmdArgs, options::OPT_gcodeview);
+
   // We ignore flags -gstrict-dwarf and -grecord-gcc-switches for now.
   Args.ClaimAllArgs(options::OPT_g_flags_Group);
   if (Args.hasFlag(options::OPT_gcolumn_info, options::OPT_gno_column_info,
@@ -3848,6 +3865,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   for (const Arg *A :
        Args.filtered(options::OPT_clang_ignored_gcc_optimization_f_Group)) {
     D.Diag(diag::warn_ignored_gcc_optimization) << A->getAsString(Args);
+    A->claim();
   }
 
   claimNoWarnArgs(Args);
@@ -4127,7 +4145,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                     options::OPT_fno_lax_vector_conversions))
     CmdArgs.push_back("-fno-lax-vector-conversions");
 
-  if (Args.getLastArg(options::OPT_fapple_kext))
+  if (Args.getLastArg(options::OPT_fapple_kext) ||
+      (Args.hasArg(options::OPT_mkernel) && types::isCXX(InputType)))
     CmdArgs.push_back("-fapple-kext");
 
   Args.AddLastArg(CmdArgs, options::OPT_fobjc_sender_dependent_dispatch);
@@ -4244,8 +4263,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("-backend-option");
       CmdArgs.push_back("-arm-no-restrict-it");
     }
-  } else if (TT.isOSWindows() && (TT.getArch() == llvm::Triple::arm ||
-                                  TT.getArch() == llvm::Triple::thumb)) {
+  } else if (Triple.isOSWindows() &&
+             (Triple.getArch() == llvm::Triple::arm ||
+              Triple.getArch() == llvm::Triple::thumb)) {
     // Windows on ARM expects restricted IT blocks
     CmdArgs.push_back("-backend-option");
     CmdArgs.push_back("-arm-restrict-it");
@@ -4261,15 +4281,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       A->render(Args, CmdArgs);
   }
 
-  if (Args.hasArg(options::OPT_mkernel)) {
-    if (!Args.hasArg(options::OPT_fapple_kext) && types::isCXX(InputType))
-      CmdArgs.push_back("-fapple-kext");
-    if (!Args.hasArg(options::OPT_fbuiltin))
-      CmdArgs.push_back("-fno-builtin");
-    Args.ClaimAllArgs(options::OPT_fno_builtin);
-  }
-  // -fbuiltin is default.
-  else if (!Args.hasFlag(options::OPT_fbuiltin, options::OPT_fno_builtin))
+  // -fbuiltin is default unless -mkernel is used
+  if (!Args.hasFlag(options::OPT_fbuiltin, options::OPT_fno_builtin,
+                    !Args.hasArg(options::OPT_mkernel)))
     CmdArgs.push_back("-fno-builtin");
 
   if (!Args.hasFlag(options::OPT_fassume_sane_operator_new,
@@ -4669,14 +4683,11 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     }
   }
 
-  if (KernelOrKext || isNoCommonDefault(getToolChain().getTriple())) {
-    if (!Args.hasArg(options::OPT_fcommon))
-      CmdArgs.push_back("-fno-common");
-    Args.ClaimAllArgs(options::OPT_fno_common);
-  }
-
-  // -fcommon is default, only pass non-default.
-  else if (!Args.hasFlag(options::OPT_fcommon, options::OPT_fno_common))
+  // -fcommon is the default unless compiling kernel code or the target says so
+  bool NoCommonDefault =
+      KernelOrKext || isNoCommonDefault(getToolChain().getTriple());
+  if (!Args.hasFlag(options::OPT_fcommon, options::OPT_fno_common,
+                    !NoCommonDefault))
     CmdArgs.push_back("-fno-common");
 
   // -fsigned-bitfields is default, and clang doesn't yet support
@@ -5269,6 +5280,16 @@ void Clang::AddClangCLArgs(const ArgList &Args, ArgStringList &CmdArgs) const {
                    /*default=*/false))
     CmdArgs.push_back("-fno-rtti-data");
 
+  // Emit CodeView if -Z7 is present.
+  bool EmitCodeView = Args.hasArg(options::OPT__SLASH_Z7);
+  bool EmitDwarf = Args.hasArg(options::OPT_gdwarf);
+  // If we are emitting CV but not DWARF, don't build information that LLVM
+  // can't yet process.
+  if (EmitCodeView && !EmitDwarf)
+    CmdArgs.push_back("-gline-tables-only");
+  if (EmitCodeView)
+    CmdArgs.push_back("-gcodeview");
+
   const Driver &D = getToolChain().getDriver();
   EHFlags EH = parseClangCLEHFlags(D, Args);
   // FIXME: Do something with NoExceptC.
@@ -5360,6 +5381,10 @@ void ClangAs::ConstructJob(Compilation &C, const JobAction &JA,
   assert(Inputs.size() == 1 && "Unexpected number of inputs.");
   const InputInfo &Input = Inputs[0];
 
+  std::string TripleStr =
+      getToolChain().ComputeEffectiveClangTriple(Args, Input.getType());
+  const llvm::Triple Triple(TripleStr);
+
   // Don't warn about "clang -w -c foo.s"
   Args.ClaimAllArgs(options::OPT_w);
   // and "clang -emit-llvm -c foo.s"
@@ -5374,8 +5399,6 @@ void ClangAs::ConstructJob(Compilation &C, const JobAction &JA,
 
   // Add the "effective" target triple.
   CmdArgs.push_back("-triple");
-  std::string TripleStr =
-      getToolChain().ComputeEffectiveClangTriple(Args, Input.getType());
   CmdArgs.push_back(Args.MakeArgString(TripleStr));
 
   // Set the output mode, we currently only expect to be used as a real
@@ -5389,7 +5412,6 @@ void ClangAs::ConstructJob(Compilation &C, const JobAction &JA,
   CmdArgs.push_back(Clang::getBaseInputName(Args, Input));
 
   // Add the target cpu
-  const llvm::Triple Triple(TripleStr);
   std::string CPU = getCPUName(Args, Triple, /*FromAs*/ true);
   if (!CPU.empty()) {
     CmdArgs.push_back("-target-cpu");
@@ -7736,6 +7758,9 @@ void gnutools::Assembler::ConstructJob(Compilation &C, const JobAction &JA,
                                        const char *LinkingOutput) const {
   claimNoWarnArgs(Args);
 
+  std::string TripleStr = getToolChain().ComputeEffectiveClangTriple(Args);
+  llvm::Triple Triple = llvm::Triple(TripleStr);
+
   ArgStringList CmdArgs;
   bool NeedsKPIC = false;
 
@@ -7784,8 +7809,8 @@ void gnutools::Assembler::ConstructJob(Compilation &C, const JobAction &JA,
   case llvm::Triple::armeb:
   case llvm::Triple::thumb:
   case llvm::Triple::thumbeb: {
-    const llvm::Triple &Triple = getToolChain().getTriple();
-    switch (Triple.getSubArch()) {
+    const llvm::Triple &Triple2 = getToolChain().getTriple();
+    switch (Triple2.getSubArch()) {
     case llvm::Triple::ARMSubArch_v7:
       CmdArgs.push_back("-mfpu=neon");
       break;
@@ -7796,9 +7821,8 @@ void gnutools::Assembler::ConstructJob(Compilation &C, const JobAction &JA,
       break;
     }
 
-    StringRef ARMFloatABI = tools::arm::getARMFloatABI(
-        getToolChain().getDriver(), Args,
-        llvm::Triple(getToolChain().ComputeEffectiveClangTriple(Args)));
+    StringRef ARMFloatABI =
+        tools::arm::getARMFloatABI(getToolChain().getDriver(), Args, Triple);
     CmdArgs.push_back(Args.MakeArgString("-mfloat-abi=" + ARMFloatABI));
 
     Args.AddLastArg(CmdArgs, options::OPT_march_EQ);
@@ -8122,6 +8146,10 @@ void gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
   const toolchains::Linux &ToolChain =
       static_cast<const toolchains::Linux &>(getToolChain());
   const Driver &D = ToolChain.getDriver();
+
+  std::string TripleStr = getToolChain().ComputeEffectiveClangTriple(Args);
+  llvm::Triple Triple = llvm::Triple(TripleStr);
+
   const llvm::Triple::ArchType Arch = ToolChain.getArch();
   const bool isAndroid =
       ToolChain.getTriple().getEnvironment() == llvm::Triple::Android;
@@ -8152,9 +8180,7 @@ void gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-s");
 
   if (Arch == llvm::Triple::armeb || Arch == llvm::Triple::thumbeb)
-    arm::appendEBLinkFlags(
-        Args, CmdArgs,
-        llvm::Triple(getToolChain().ComputeEffectiveClangTriple(Args)));
+    arm::appendEBLinkFlags(Args, CmdArgs, Triple);
 
   for (const auto &Opt : ToolChain.ExtraOpts)
     CmdArgs.push_back(Opt.c_str());
@@ -8819,7 +8845,7 @@ void visualstudio::Linker::ConstructJob(Compilation &C, const JobAction &JA,
 
   CmdArgs.push_back("-nologo");
 
-  if (Args.hasArg(options::OPT_g_Group))
+  if (Args.hasArg(options::OPT_g_Group, options::OPT__SLASH_Z7))
     CmdArgs.push_back("-debug");
 
   bool DLL = Args.hasArg(options::OPT__SLASH_LD, options::OPT__SLASH_LDd,
@@ -8975,7 +9001,8 @@ std::unique_ptr<Command> visualstudio::Compiler::GetCommand(
         A->getOption().getID() == options::OPT_fdata_sections ? "/Gw" : "/Gw-");
   if (Args.hasArg(options::OPT_fsyntax_only))
     CmdArgs.push_back("/Zs");
-  if (Args.hasArg(options::OPT_g_Flag, options::OPT_gline_tables_only))
+  if (Args.hasArg(options::OPT_g_Flag, options::OPT_gline_tables_only,
+                  options::OPT__SLASH_Z7))
     CmdArgs.push_back("/Z7");
 
   std::vector<std::string> Includes =
@@ -9054,8 +9081,24 @@ void MinGW::Linker::AddLibGCC(const ArgList &Args,
     CmdArgs.push_back("-lmingwthrd");
   CmdArgs.push_back("-lmingw32");
 
-  // Add libgcc or compiler-rt.
-  AddRunTimeLibs(getToolChain(), getToolChain().getDriver(), CmdArgs, Args);
+  // Make use of compiler-rt if --rtlib option is used
+  ToolChain::RuntimeLibType RLT = getToolChain().GetRuntimeLibType(Args);
+  if (RLT == ToolChain::RLT_Libgcc) {
+    bool Static = Args.hasArg(options::OPT_static_libgcc) ||
+                  Args.hasArg(options::OPT_static);
+    bool Shared = Args.hasArg(options::OPT_shared);
+    bool CXX = getToolChain().getDriver().CCCIsCXX();
+
+    if (Static || (!CXX && !Shared)) {
+      CmdArgs.push_back("-lgcc");
+      CmdArgs.push_back("-lgcc_eh");
+    } else {
+      CmdArgs.push_back("-lgcc_s");
+      CmdArgs.push_back("-lgcc");
+    }
+  } else {
+    AddRunTimeLibs(getToolChain(), getToolChain().getDriver(), CmdArgs, Args);
+  }
 
   CmdArgs.push_back("-lmoldname");
   CmdArgs.push_back("-lmingwex");

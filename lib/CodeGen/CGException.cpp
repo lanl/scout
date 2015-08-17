@@ -887,11 +887,11 @@ static llvm::BasicBlock *emitMSVCCatchDispatchBlock(CodeGenFunction &CGF,
 
     if (EHPersonality::get(CGF).isMSVCXXPersonality()) {
       CGF.Builder.CreateCatchPad(
-          CGF.VoidTy, Handler.Block, NextBlock,
-          {TypeValue, llvm::Constant::getNullValue(CGF.VoidPtrTy)});
+          llvm::Type::getTokenTy(CGF.getLLVMContext()), Handler.Block,
+          NextBlock, {TypeValue, llvm::Constant::getNullValue(CGF.VoidPtrTy)});
     } else {
-      CGF.Builder.CreateCatchPad(CGF.VoidTy, Handler.Block, NextBlock,
-                                 {TypeValue});
+      CGF.Builder.CreateCatchPad(llvm::Type::getTokenTy(CGF.getLLVMContext()),
+                                 Handler.Block, NextBlock, {TypeValue});
     }
 
     // Otherwise we need to emit and continue at that block.
@@ -1008,9 +1008,8 @@ void CodeGenFunction::ExitCXXTryStmt(const CXXTryStmt &S, bool IsFnTryBlock) {
 
   // Copy the handler blocks off before we pop the EH stack.  Emitting
   // the handlers might scribble on this memory.
-  SmallVector<EHCatchScope::Handler, 8> Handlers(NumHandlers);
-  memcpy(Handlers.data(), CatchScope.begin(),
-         NumHandlers * sizeof(EHCatchScope::Handler));
+  SmallVector<EHCatchScope::Handler, 8> Handlers(
+      CatchScope.begin(), CatchScope.begin() + NumHandlers);
 
   EHStack.popCatch();
 

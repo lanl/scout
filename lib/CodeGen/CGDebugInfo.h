@@ -485,8 +485,10 @@ private:
   /// are concatenated.
   StringRef internString(StringRef A, StringRef B = StringRef()) {
     char *Data = DebugInfoNames.Allocate<char>(A.size() + B.size());
-    std::memcpy(Data, A.data(), A.size());
-    std::memcpy(Data + A.size(), B.data(), B.size());
+    if (!A.empty())
+      std::memcpy(Data, A.data(), A.size());
+    if (!B.empty())
+      std::memcpy(Data + A.size(), B.data(), B.size());
     return StringRef(Data, A.size() + B.size());
   }
 };
@@ -500,13 +502,16 @@ private:
                      SourceLocation TemporaryLocation);
 
   llvm::DebugLoc OriginalLocation;
-  CodeGenFunction &CGF;
+  CodeGenFunction *CGF;
 
 public:
   /// Set the location to the (valid) TemporaryLocation.
   ApplyDebugLocation(CodeGenFunction &CGF, SourceLocation TemporaryLocation);
   ApplyDebugLocation(CodeGenFunction &CGF, const Expr *E);
   ApplyDebugLocation(CodeGenFunction &CGF, llvm::DebugLoc Loc);
+  ApplyDebugLocation(ApplyDebugLocation &&Other) : CGF(Other.CGF) {
+    Other.CGF = nullptr;
+  }
 
   ~ApplyDebugLocation();
 

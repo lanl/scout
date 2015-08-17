@@ -103,3 +103,24 @@ namespace RedeclDifferentDeclKind {
   typedef X X;
   using RedeclDifferentDeclKind::X;
 }
+
+namespace Anon {
+  struct X {
+    union {
+      int n;
+    };
+  };
+}
+
+namespace ClassTemplatePartialSpec {
+  template<typename T> struct F;
+  template<template<int> class A, int B> struct F<A<B>> {
+    template<typename C> F();
+  };
+  template<template<int> class A, int B> template<typename C> F<A<B>>::F() {}
+
+  template<typename A, int B> struct F<A[B]> {
+    template<typename C> F();
+  };
+  template<typename A, int B> template<typename C> F<A[B]>::F() {}
+}
