@@ -4,10 +4,10 @@ add_lldb_library(lldbSymbol
   Block.cpp
   ClangASTContext.cpp
   ClangASTImporter.cpp
-  ClangASTType.cpp
   ClangExternalASTSourceCallbacks.cpp
   ClangExternalASTSourceCommon.cpp
   ClangNamespaceDecl.cpp
+  CompilerType.cpp
   CompileUnit.cpp
   CompactUnwindInfo.cpp
   Declaration.cpp
@@ -24,6 +24,7 @@ add_lldb_library(lldbSymbol
   Symtab.cpp
   Type.cpp
   TypeList.cpp
+  TypeSystem.cpp
   UnwindPlan.cpp
   UnwindTable.cpp
   Variable.cpp

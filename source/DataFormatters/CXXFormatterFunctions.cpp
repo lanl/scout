@@ -312,12 +312,13 @@ lldb_private::formatters::WCharStringSummaryProvider (ValueObject& valobj, Strea
     if (data_addr == 0 || data_addr == LLDB_INVALID_ADDRESS)
         return false;
 
-    clang::ASTContext* ast = valobj.GetClangType().GetASTContext();
+    ClangASTContext* lldb_ast = valobj.GetClangType().GetTypeSystem()->AsClangASTContext();
+    clang::ASTContext* ast = lldb_ast ? lldb_ast->getASTContext() : nullptr;
     
     if (!ast)
         return false;
 
-    ClangASTType wchar_clang_type = ClangASTContext::GetBasicType(ast, lldb::eBasicTypeWChar);
+    CompilerType wchar_clang_type = ClangASTContext::GetBasicType(ast, lldb::eBasicTypeWChar);
     const uint32_t wchar_size = wchar_clang_type.GetBitSize(nullptr); // Safe to pass NULL for exe_scope here
 
     ReadStringAndDumpToStreamOptions options(valobj);
@@ -771,7 +772,7 @@ lldb_private::formatters::NSTaggedString_SummaryProvider (ObjCLanguageRuntime::C
     return true;
 }
 
-static ClangASTType
+static CompilerType
 GetNSPathStore2Type (Target &target)
 {
     static ConstString g_type_name("__lldb_autogen_nspathstore2");
@@ -779,10 +780,10 @@ GetNSPathStore2Type (Target &target)
     ClangASTContext *ast_ctx = target.GetScratchClangASTContext();
     
     if (!ast_ctx)
-        return ClangASTType();
+        return CompilerType();
     
-    ClangASTType voidstar = ast_ctx->GetBasicType(lldb::eBasicTypeVoid).GetPointerType();
-    ClangASTType uint32 = ast_ctx->GetIntTypeFromBitSize(32, false);
+    CompilerType voidstar = ast_ctx->GetBasicType(lldb::eBasicTypeVoid).GetPointerType();
+    CompilerType uint32 = ast_ctx->GetIntTypeFromBitSize(32, false);
     
     return ast_ctx->GetOrCreateStructForIdentifier(g_type_name, {
         {"isa",voidstar},
@@ -1033,7 +1034,7 @@ lldb_private::formatters::NSAttributedStringSummaryProvider (ValueObject& valobj
     if (!pointer_value)
         return false;
     pointer_value += addr_size;
-    ClangASTType type(valobj.GetClangType());
+    CompilerType type(valobj.GetClangType());
     ExecutionContext exe_ctx(target_sp,false);
     ValueObjectSP child_ptr_sp(valobj.CreateValueObjectFromAddress("string_ptr", pointer_value, exe_ctx, type));
     if (!child_ptr_sp)
@@ -1099,7 +1100,7 @@ lldb_private::formatters::ObjCSELSummaryProvider (ValueObject& valobj, Stream& s
 {
     lldb::ValueObjectSP valobj_sp;
 
-    ClangASTType charstar (valobj.GetClangType().GetBasicTypeFromAST(eBasicTypeChar).GetPointerType());
+    CompilerType charstar (valobj.GetClangType().GetBasicTypeFromAST(eBasicTypeChar).GetPointerType());
     
     if (!charstar)
         return false;

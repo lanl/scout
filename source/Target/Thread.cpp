@@ -11,6 +11,7 @@
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Log.h"
 #include "lldb/Core/FormatEntity.h"
+#include "lldb/Core/Module.h"
 #include "lldb/Core/State.h"
 #include "lldb/Core/Stream.h"
 #include "lldb/Core/StreamString.h"
@@ -360,12 +361,22 @@ Thread::BroadcastSelectedFrameChange(StackID &new_frame_id)
         BroadcastEvent(eBroadcastBitSelectedFrameChanged, new ThreadEventData (this->shared_from_this(), new_frame_id));
 }
 
+lldb::StackFrameSP
+Thread::GetSelectedFrame()
+{
+    StackFrameListSP stack_frame_list_sp(GetStackFrameList());
+    StackFrameSP frame_sp = stack_frame_list_sp->GetFrameAtIndex (stack_frame_list_sp->GetSelectedFrameIndex());
+    FunctionOptimizationWarning (frame_sp.get());
+    return frame_sp;
+}
+
 uint32_t
 Thread::SetSelectedFrame (lldb_private::StackFrame *frame, bool broadcast)
 {
     uint32_t ret_value = GetStackFrameList()->SetSelectedFrame(frame);
     if (broadcast)
         BroadcastSelectedFrameChange(frame->GetStackID());
+    FunctionOptimizationWarning (frame);
     return ret_value;
 }
 
@@ -378,6 +389,7 @@ Thread::SetSelectedFrameByIndex (uint32_t frame_idx, bool broadcast)
         GetStackFrameList()->SetSelectedFrame(frame_sp.get());
         if (broadcast)
             BroadcastSelectedFrameChange(frame_sp->GetStackID());
+        FunctionOptimizationWarning (frame_sp.get());
         return true;
     }
     else
@@ -403,12 +415,23 @@ Thread::SetSelectedFrameByIndexNoisily (uint32_t frame_idx, Stream &output_strea
 
             bool show_frame_info = true;
             bool show_source = !already_shown;
+            FunctionOptimizationWarning (frame_sp.get());
             return frame_sp->GetStatus (output_stream, show_frame_info, show_source);
         }
         return false;
     }
     else
         return false;
+}
+
+void
+Thread::FunctionOptimizationWarning (StackFrame *frame)
+{
+    if (frame && frame->HasDebugInformation() && GetProcess()->GetWarningsOptimization() == true)
+    {
+        SymbolContext sc = frame->GetSymbolContext (eSymbolContextFunction | eSymbolContextModule);
+        GetProcess()->PrintWarningOptimization (sc);
+    }
 }
 
 
@@ -1900,7 +1923,7 @@ Thread::ReturnFromFrame (lldb::StackFrameSP frame_sp, lldb::ValueObjectSP return
             Type *function_type = sc.function->GetType();
             if (function_type)
             {
-                ClangASTType return_type = sc.function->GetClangType().GetFunctionReturnType();
+                CompilerType return_type = sc.function->GetClangType().GetFunctionReturnType();
                 if (return_type)
                 {
                     StreamString s;

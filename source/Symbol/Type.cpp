@@ -15,7 +15,7 @@
 #include "lldb/Core/Scalar.h"
 #include "lldb/Core/StreamString.h"
 
-#include "lldb/Symbol/ClangASTType.h"
+#include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/SymbolContextScope.h"
@@ -86,7 +86,7 @@ Type::Type
     user_id_t encoding_uid,
     EncodingDataType encoding_uid_type,
     const Declaration& decl,
-    const ClangASTType &clang_type,
+    const CompilerType &clang_type,
     ResolveState clang_type_resolve_state
 ) :
     std::enable_shared_from_this<Type> (),
@@ -491,6 +491,7 @@ Type::GetDeclaration () const
 bool
 Type::ResolveClangType (ResolveState clang_type_resolve_state)
 {
+    // TODO: This needs to consider the correct type system to use.
     Type *encoding_type = nullptr;
     if (!m_clang_type.IsValid())
     {
@@ -501,7 +502,7 @@ Type::ResolveClangType (ResolveState clang_type_resolve_state)
             {
             case eEncodingIsUID:
                 {
-                    ClangASTType encoding_clang_type = encoding_type->GetClangForwardType();
+                    CompilerType encoding_clang_type = encoding_type->GetClangForwardType();
                     if (encoding_clang_type.IsValid())
                     {
                         m_clang_type = encoding_clang_type;
@@ -511,20 +512,21 @@ Type::ResolveClangType (ResolveState clang_type_resolve_state)
                 break;
 
             case eEncodingIsConstUID:
-                m_clang_type = encoding_type->GetClangForwardType().AddConstModifier();
+                m_clang_type = ClangASTContext::AddConstModifier(encoding_type->GetClangForwardType());
                 break;
 
             case eEncodingIsRestrictUID:
-                m_clang_type = encoding_type->GetClangForwardType().AddRestrictModifier();
+                m_clang_type = ClangASTContext::AddRestrictModifier(encoding_type->GetClangForwardType());
                 break;
 
             case eEncodingIsVolatileUID:
-                m_clang_type = encoding_type->GetClangForwardType().AddVolatileModifier();
+                m_clang_type = ClangASTContext::AddVolatileModifier(encoding_type->GetClangForwardType());
                 break;
 
             case eEncodingIsTypedefUID:
-                m_clang_type = encoding_type->GetClangForwardType().CreateTypedefType (GetName().AsCString(),
-                                                                                       GetSymbolFile()->GetClangDeclContextContainingTypeUID(GetID()));
+                m_clang_type = ClangASTContext::CreateTypedefType (encoding_type->GetClangForwardType(),
+                                                                   GetName().AsCString(),
+                                                                   GetSymbolFile()->GetClangDeclContextContainingTypeUID(GetID()));
                 m_name.Clear();
                 break;
 
@@ -533,11 +535,11 @@ Type::ResolveClangType (ResolveState clang_type_resolve_state)
                 break;
 
             case eEncodingIsLValueReferenceUID:
-                m_clang_type = encoding_type->GetClangForwardType().GetLValueReferenceType();
+                m_clang_type = ClangASTContext::GetLValueReferenceType(encoding_type->GetClangForwardType());
                 break;
 
             case eEncodingIsRValueReferenceUID:
-                m_clang_type = encoding_type->GetClangForwardType().GetRValueReferenceType();
+                m_clang_type = ClangASTContext::GetRValueReferenceType(encoding_type->GetClangForwardType());
                 break;
 
             default:
@@ -548,7 +550,7 @@ Type::ResolveClangType (ResolveState clang_type_resolve_state)
         else
         {
             // We have no encoding type, return void?
-            ClangASTType void_clang_type (ClangASTContext::GetBasicType(GetClangASTContext().getASTContext(), eBasicTypeVoid));
+            CompilerType void_clang_type (ClangASTContext::GetBasicType(GetClangASTContext().getASTContext(), eBasicTypeVoid));
             switch (m_encoding_uid_type)
             {
             case eEncodingIsUID:
@@ -556,20 +558,21 @@ Type::ResolveClangType (ResolveState clang_type_resolve_state)
                 break;
 
             case eEncodingIsConstUID:
-                m_clang_type = void_clang_type.AddConstModifier ();
+                m_clang_type = ClangASTContext::AddConstModifier (void_clang_type);
                 break;
 
             case eEncodingIsRestrictUID:
-                m_clang_type = void_clang_type.AddRestrictModifier ();
+                m_clang_type = ClangASTContext::AddRestrictModifier (void_clang_type);
                 break;
 
             case eEncodingIsVolatileUID:
-                m_clang_type = void_clang_type.AddVolatileModifier ();
+                m_clang_type = ClangASTContext::AddVolatileModifier (void_clang_type);
                 break;
 
             case eEncodingIsTypedefUID:
-                m_clang_type = void_clang_type.CreateTypedefType (GetName().AsCString(),
-                                                                  GetSymbolFile()->GetClangDeclContextContainingTypeUID(GetID()));
+                m_clang_type = ClangASTContext::CreateTypedefType (void_clang_type,
+                                                                   GetName().AsCString(),
+                                                                   GetSymbolFile()->GetClangDeclContextContainingTypeUID(GetID()));
                 break;
 
             case eEncodingIsPointerUID:
@@ -577,11 +580,11 @@ Type::ResolveClangType (ResolveState clang_type_resolve_state)
                 break;
 
             case eEncodingIsLValueReferenceUID:
-                m_clang_type = void_clang_type.GetLValueReferenceType ();
+                m_clang_type = ClangASTContext::GetLValueReferenceType(void_clang_type);
                 break;
 
             case eEncodingIsRValueReferenceUID:
-                m_clang_type = void_clang_type.GetRValueReferenceType ();
+                m_clang_type = ClangASTContext::GetRValueReferenceType(void_clang_type);
                 break;
 
             default:
@@ -652,21 +655,21 @@ Type::GetEncodingMask ()
     return encoding_mask;
 }
 
-ClangASTType
+CompilerType
 Type::GetClangFullType ()
 {
     ResolveClangType(eResolveStateFull);
     return m_clang_type;
 }
 
-ClangASTType
+CompilerType
 Type::GetClangLayoutType ()
 {
     ResolveClangType(eResolveStateLayout);
     return m_clang_type;
 }
 
-ClangASTType 
+CompilerType 
 Type::GetClangForwardType ()
 {
     ResolveClangType (eResolveStateForward);
@@ -696,7 +699,7 @@ Type::Compare(const Type &a, const Type &b)
 
 
 #if 0  // START REMOVE
-// Move this into ClangASTType
+// Move this into CompilerType
 void *
 Type::CreateClangPointerType (Type *type)
 {
@@ -735,7 +738,7 @@ Type::IsRealObjCClass()
     // those don't have any information.  We could extend this to only return true for "full 
     // definitions" if we can figure that out.
     
-    if (m_clang_type.IsObjCObjectOrInterfaceType() && GetByteSize() != 0)
+    if (ClangASTContext::IsObjCObjectOrInterfaceType(m_clang_type) && GetByteSize() != 0)
         return true;
     else
         return false;
@@ -905,7 +908,7 @@ TypeAndOrName::SetTypeSP (lldb::TypeSP type_sp)
 }
 
 void
-TypeAndOrName::SetClangASTType (ClangASTType clang_type)
+TypeAndOrName::SetCompilerType (CompilerType clang_type)
 {
     m_type_pair.SetType(clang_type);
     if (m_type_pair)
@@ -941,9 +944,9 @@ TypeAndOrName::HasTypeSP () const
 }
 
 bool
-TypeAndOrName::HasClangASTType () const
+TypeAndOrName::HasCompilerType () const
 {
-    return m_type_pair.GetClangASTType().IsValid();
+    return m_type_pair.GetCompilerType().IsValid();
 }
 
 
@@ -969,7 +972,7 @@ TypeImpl::TypeImpl (const lldb::TypeSP &type_sp) :
     SetType (type_sp);
 }
 
-TypeImpl::TypeImpl (const ClangASTType &clang_type) :
+TypeImpl::TypeImpl (const CompilerType &clang_type) :
     m_module_wp (),
     m_static_type(),
     m_dynamic_type()
@@ -977,7 +980,7 @@ TypeImpl::TypeImpl (const ClangASTType &clang_type) :
     SetType (clang_type);
 }
 
-TypeImpl::TypeImpl (const lldb::TypeSP &type_sp, const ClangASTType &dynamic) :
+TypeImpl::TypeImpl (const lldb::TypeSP &type_sp, const CompilerType &dynamic) :
     m_module_wp (),
     m_static_type (type_sp),
     m_dynamic_type(dynamic)
@@ -985,7 +988,7 @@ TypeImpl::TypeImpl (const lldb::TypeSP &type_sp, const ClangASTType &dynamic) :
     SetType (type_sp, dynamic);
 }
 
-TypeImpl::TypeImpl (const ClangASTType &static_type, const ClangASTType &dynamic_type) :
+TypeImpl::TypeImpl (const CompilerType &static_type, const CompilerType &dynamic_type) :
     m_module_wp (),
     m_static_type (),
     m_dynamic_type()
@@ -993,7 +996,7 @@ TypeImpl::TypeImpl (const ClangASTType &static_type, const ClangASTType &dynamic
     SetType (static_type, dynamic_type);
 }
 
-TypeImpl::TypeImpl (const TypePair &pair, const ClangASTType &dynamic) :
+TypeImpl::TypeImpl (const TypePair &pair, const CompilerType &dynamic) :
     m_module_wp (),
     m_static_type (),
     m_dynamic_type()
@@ -1012,21 +1015,21 @@ TypeImpl::SetType (const lldb::TypeSP &type_sp)
 }
 
 void
-TypeImpl::SetType (const ClangASTType &clang_type)
+TypeImpl::SetType (const CompilerType &clang_type)
 {
     m_module_wp = lldb::ModuleWP();
     m_static_type.SetType (clang_type);
 }
 
 void
-TypeImpl::SetType (const lldb::TypeSP &type_sp, const ClangASTType &dynamic)
+TypeImpl::SetType (const lldb::TypeSP &type_sp, const CompilerType &dynamic)
 {
     SetType (type_sp);
     m_dynamic_type = dynamic;
 }
 
 void
-TypeImpl::SetType (const ClangASTType &clang_type, const ClangASTType &dynamic)
+TypeImpl::SetType (const CompilerType &clang_type, const CompilerType &dynamic)
 {
     m_module_wp = lldb::ModuleWP();
     m_static_type.SetType (clang_type);
@@ -1034,7 +1037,7 @@ TypeImpl::SetType (const ClangASTType &clang_type, const ClangASTType &dynamic)
 }
 
 void
-TypeImpl::SetType (const TypePair &pair, const ClangASTType &dynamic)
+TypeImpl::SetType (const TypePair &pair, const CompilerType &dynamic)
 {
     m_module_wp = pair.GetModule();
     m_static_type = pair;
@@ -1182,7 +1185,7 @@ TypeImpl::GetReferenceType () const
     {
         if (m_dynamic_type.IsValid())
         {
-            return TypeImpl(m_static_type.GetReferenceType(), m_dynamic_type.GetLValueReferenceType());
+            return TypeImpl(m_static_type.GetReferenceType(), ClangASTContext::GetLValueReferenceType(m_dynamic_type));
         }
         return TypeImpl(m_static_type.GetReferenceType());
     }
@@ -1249,8 +1252,8 @@ TypeImpl::GetCanonicalType() const
     return TypeImpl();
 }
 
-ClangASTType
-TypeImpl::GetClangASTType (bool prefer_dynamic)
+CompilerType
+TypeImpl::GetCompilerType (bool prefer_dynamic)
 {
     ModuleSP module_sp;
     if (CheckModule (module_sp))
@@ -1260,13 +1263,13 @@ TypeImpl::GetClangASTType (bool prefer_dynamic)
             if (m_dynamic_type.IsValid())
                 return m_dynamic_type;
         }
-        return m_static_type.GetClangASTType();
+        return m_static_type.GetCompilerType();
     }
-    return ClangASTType();
+    return CompilerType();
 }
 
-clang::ASTContext *
-TypeImpl::GetClangASTContext (bool prefer_dynamic)
+TypeSystem *
+TypeImpl::GetTypeSystem (bool prefer_dynamic)
 {
     ModuleSP module_sp;
     if (CheckModule (module_sp))
@@ -1274,9 +1277,9 @@ TypeImpl::GetClangASTContext (bool prefer_dynamic)
         if (prefer_dynamic)
         {
             if (m_dynamic_type.IsValid())
-                return m_dynamic_type.GetASTContext();
+                return m_dynamic_type.GetTypeSystem();
         }
-        return m_static_type.GetClangASTContext();
+        return m_static_type.GetCompilerType().GetTypeSystem();
     }
     return NULL;
 }
@@ -1294,7 +1297,7 @@ TypeImpl::GetDescription (lldb_private::Stream &strm,
             m_dynamic_type.DumpTypeDescription(&strm);
             strm.Printf("\nStatic:\n");
         }
-        m_static_type.GetClangASTType().DumpTypeDescription(&strm);
+        m_static_type.GetCompilerType().DumpTypeDescription(&strm);
     }
     else
     {
@@ -1328,7 +1331,7 @@ TypeMemberFunctionImpl::GetName () const
     return m_name;
 }
 
-ClangASTType
+CompilerType
 TypeMemberFunctionImpl::GetType () const
 {
     return m_type;
@@ -1381,14 +1384,14 @@ TypeMemberFunctionImpl::GetDescription (Stream& stream)
     return true;
 }
 
-ClangASTType
+CompilerType
 TypeMemberFunctionImpl::GetReturnType () const
 {
     if (m_type)
         return m_type.GetFunctionReturnType();
     if (m_objc_method_decl)
-        return ClangASTType(&m_objc_method_decl->getASTContext(),m_objc_method_decl->getReturnType().getAsOpaquePtr());
-    return ClangASTType();
+        return CompilerType(&m_objc_method_decl->getASTContext(), m_objc_method_decl->getReturnType());
+    return CompilerType();
 }
 
 size_t
@@ -1401,7 +1404,7 @@ TypeMemberFunctionImpl::GetNumArguments () const
     return 0;
 }
 
-ClangASTType
+CompilerType
 TypeMemberFunctionImpl::GetArgumentAtIndex (size_t idx) const
 {
     if (m_type)
@@ -1409,13 +1412,13 @@ TypeMemberFunctionImpl::GetArgumentAtIndex (size_t idx) const
     if (m_objc_method_decl)
     {
         if (idx < m_objc_method_decl->param_size())
-            return ClangASTType(&m_objc_method_decl->getASTContext(), m_objc_method_decl->parameters()[idx]->getOriginalType().getAsOpaquePtr());
+            return CompilerType(&m_objc_method_decl->getASTContext(), m_objc_method_decl->parameters()[idx]->getOriginalType());
     }
-    return ClangASTType();
+    return CompilerType();
 }
 
 TypeEnumMemberImpl::TypeEnumMemberImpl (const clang::EnumConstantDecl* enum_member_decl,
-                                        const lldb_private::ClangASTType& integer_type) :
+                                        const lldb_private::CompilerType& integer_type) :
     m_integer_type_sp(),
     m_name(),
     m_value(),

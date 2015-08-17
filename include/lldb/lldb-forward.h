@@ -48,7 +48,6 @@ class   ClangASTContext;
 class   ClangASTImporter;
 class   ClangASTMetadata;
 class   ClangASTSource;
-class   ClangASTType;
 class   ClangNamespaceDecl;
 class   ClangExpression;
 class   ClangExpressionDeclMap;
@@ -68,6 +67,7 @@ class   CommandObject;
 class   CommandReturnObject;
 class   Communication;
 class   CompactUnwindInfo;
+class   CompilerType;
 class   CompileUnit;
 class   Condition;
 class   Connection;
@@ -221,6 +221,7 @@ class   Symtab;
 class   SyntheticChildren;
 class   SyntheticChildrenFrontEnd;
 class   TypeFilterImpl;
+class   TypeSystem;
 #ifndef LLDB_DISABLE_PYTHON
 class   ScriptedSyntheticChildren;
 #endif

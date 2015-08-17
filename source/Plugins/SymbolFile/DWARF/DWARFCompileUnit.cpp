@@ -467,7 +467,6 @@ DWARFCompileUnit::BuildAddressRangeTable (SymbolFileDWARF* dwarf2Data,
                 {
                     const LineTable::FileAddressRanges::Entry &range = file_ranges.GetEntryRef(idx);
                     debug_aranges->AppendRange(GetOffset(), range.GetRangeBase(), range.GetRangeEnd());
-                    printf ("0x%8.8x: [0x%16.16" PRIx64 " - 0x%16.16" PRIx64 ")\n", GetOffset(), range.GetRangeBase(), range.GetRangeEnd());
                 }
             }
         }
@@ -1099,8 +1098,7 @@ DWARFCompileUnit::GetLanguageType()
 
     const DWARFDebugInfoEntry *die = GetCompileUnitDIEOnly();
     if (die)
-        m_language_type = LanguageTypeFromDWARF(
-            die->GetAttributeValueAsUnsigned(m_dwarf2Data, this, DW_AT_language, 0));
+        m_language_type = LanguageTypeFromDWARF(die->GetAttributeValueAsUnsigned(m_dwarf2Data, this, DW_AT_language, 0));
     return m_language_type;
 }
 

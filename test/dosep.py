@@ -20,7 +20,8 @@ Set to "0" to run without time limit.
 E.g., export LLDB_TEST_TIMEOUT=0
 or    export LLDB_TESTCONCURRENTEVENTS_TIMEOUT=0
 
-To collect core files for timed out tests, do the following before running dosep.py
+To collect core files for timed out tests,
+do the following before running dosep.py
 
 OSX
 ulimit -c unlimited
@@ -42,6 +43,7 @@ import subprocess
 import sys
 
 from optparse import OptionParser
+
 
 def get_timeout_command():
     """Search for a suitable timeout command."""
@@ -66,45 +68,82 @@ eTimedOut, ePassed, eFailed = 124, 0, 1
 output_lock = None
 test_counter = None
 total_tests = None
+test_name_len = None
 dotest_options = None
+output_on_success = False
 
-def setup_global_variables(lock, counter, total, options):
-    global output_lock, test_counter, total_tests, dotest_options
+
+def setup_global_variables(lock, counter, total, name_len, options):
+    global output_lock, test_counter, total_tests, test_name_len
+    global dotest_options
     output_lock = lock
     test_counter = counter
     total_tests = total
+    test_name_len = name_len
     dotest_options = options
 
-def update_status(name = None, command = None, output = None):
-    global output_lock, test_counter, total_tests
+
+def report_test_failure(name, command, output):
+    global output_lock
     with output_lock:
-        if output is not None:
+        print >> sys.stderr
+        print >> sys.stderr, output
+        print >> sys.stderr, "[%s FAILED]" % name
+        print >> sys.stderr, "Command invoked: %s" % ' '.join(command)
+        update_progress(name)
+
+
+def report_test_pass(name, output):
+    global output_lock, output_on_success
+    with output_lock:
+        if output_on_success:
             print >> sys.stderr
-            print >> sys.stderr, "Failed test suite: %s" % name
-            print >> sys.stderr, "Command invoked: %s" % ' '.join(command)
-            print >> sys.stderr, "stdout:\n%s" % output[0]
-            print >> sys.stderr, "stderr:\n%s" % output[1]
-        sys.stderr.write("\r%*d out of %d test suites processed" %
-            (len(str(total_tests)), test_counter.value, total_tests))
+            print >> sys.stderr, output
+            print >> sys.stderr, "[%s PASSED]" % name
+        update_progress(name)
+
+
+def update_progress(test_name=""):
+    global output_lock, test_counter, total_tests, test_name_len
+    with output_lock:
+        counter_len = len(str(total_tests))
+        sys.stderr.write(
+            "\r%*d out of %d test suites processed - %-*s" %
+            (counter_len, test_counter.value, total_tests,
+             test_name_len.value, test_name))
+        if len(test_name) > test_name_len.value:
+            test_name_len.value = len(test_name)
         test_counter.value += 1
+        sys.stdout.flush()
+        sys.stderr.flush()
+
 
 def parse_test_results(output):
     passes = 0
     failures = 0
+    unexpected_successes = 0
     for result in output:
-        pass_count = re.search("^RESULT:.*([0-9]+) passes", result, re.MULTILINE)
-        fail_count = re.search("^RESULT:.*([0-9]+) failures", result, re.MULTILINE)
-        error_count = re.search("^RESULT:.*([0-9]+) errors", result, re.MULTILINE)
+        pass_count = re.search("^RESULT:.*([0-9]+) passes",
+                               result, re.MULTILINE)
+        fail_count = re.search("^RESULT:.*([0-9]+) failures",
+                               result, re.MULTILINE)
+        error_count = re.search("^RESULT:.*([0-9]+) errors",
+                                result, re.MULTILINE)
+        unexpected_success_count = re.search("^RESULT:.*([0-9]+) unexpected successes",
+                                             result, re.MULTILINE)
         this_fail_count = 0
         this_error_count = 0
-        if pass_count != None:
+        if pass_count is not None:
             passes = passes + int(pass_count.group(1))
-        if fail_count != None:
+        if fail_count is not None:
             failures = failures + int(fail_count.group(1))
-        if error_count != None:
+        if unexpected_success_count is not None:
+            unexpected_successes = unexpected_successes + int(unexpected_success_count.group(1))
+        if error_count is not None:
             failures = failures + int(error_count.group(1))
         pass
-    return passes, failures
+    return passes, failures, unexpected_successes
+
 
 def call_with_timeout(command, timeout, name):
     """Run command with a timeout if possible."""
@@ -112,40 +151,35 @@ def call_with_timeout(command, timeout, name):
     process = None
     if timeout_command and timeout != "0":
         command = [timeout_command, '-s', 'QUIT', timeout] + command
-    # Specifying a value for close_fds is unsupported on Windows when using subprocess.PIPE
+    # Specifying a value for close_fds is unsupported on Windows when using
+    # subprocess.PIPE
     if os.name != "nt":
-        process = subprocess.Popen(command, stdin=subprocess.PIPE,
-                                            stdout=subprocess.PIPE,
-                                            stderr=subprocess.PIPE,
-                                            close_fds=True)
+        process = subprocess.Popen(command,
+                                   stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE,
+                                   close_fds=True)
     else:
-        process = subprocess.Popen(command, stdin=subprocess.PIPE,
-                                            stdout=subprocess.PIPE,
-                                            stderr=subprocess.PIPE)
+        process = subprocess.Popen(command,
+                                   stdin=subprocess.PIPE,
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE)
     output = process.communicate()
     exit_status = process.returncode
-    passes, failures = parse_test_results(output)
-    update_status(name, command, output if exit_status != 0 else None)
-    return exit_status, passes, failures
+    passes, failures, unexpected_successes = parse_test_results(output)
+    if exit_status == 0:
+        # stdout does not have any useful information from 'dotest.py',
+        # only stderr does.
+        report_test_pass(name, output[1])
+    else:
+        report_test_failure(name, command, output[1])
+    return name, exit_status, passes, failures, unexpected_successes
+
 
 def process_dir(root, files, test_root, dotest_argv):
     """Examine a directory for tests, and invoke any found within it."""
-    timed_out = []
-    failed = []
-    passed = []
-    pass_sub_count = 0
-    fail_sub_count = 0
+    results = []
     for name in files:
-        path = os.path.join(root, name)
-
-        # We're only interested in the test file with the "Test*.py" naming pattern.
-        if not name.startswith("Test") or not name.endswith(".py"):
-            continue
-
-        # Neither a symbolically linked file.
-        if os.path.islink(path):
-            continue
-
         script_file = os.path.join(test_root, "dotest.py")
         command = ([sys.executable, script_file] +
                    dotest_argv +
@@ -153,29 +187,35 @@ def process_dir(root, files, test_root, dotest_argv):
 
         timeout_name = os.path.basename(os.path.splitext(name)[0]).upper()
 
-        timeout = os.getenv("LLDB_%s_TIMEOUT" % timeout_name) or getDefaultTimeout(dotest_options.lldb_platform_name)
+        timeout = (os.getenv("LLDB_%s_TIMEOUT" % timeout_name) or
+                   getDefaultTimeout(dotest_options.lldb_platform_name))
 
-        exit_status, pass_count, fail_count = call_with_timeout(command, timeout, name)
+        results.append(call_with_timeout(command, timeout, name))
 
-        pass_sub_count = pass_sub_count + pass_count
-        fail_sub_count = fail_sub_count + fail_count
+    # result = (name, status, passes, failures, unexpected_successes)
+    timed_out = [name for name, status, _, _, _ in results
+                 if status == eTimedOut]
+    passed = [name for name, status, _, _, _ in results
+              if status == ePassed]
+    failed = [name for name, status, _, _, _ in results
+              if status != ePassed]
+    unexpected_passes = [name for name, _, _, _, unexpected_successes in results
+                         if unexpected_successes > 0]
+    
+    pass_count = sum([result[2] for result in results])
+    fail_count = sum([result[3] for result in results])
 
-        if exit_status == ePassed:
-            passed.append(name)
-        else:
-            if eTimedOut == exit_status:
-                timed_out.append(name)
-            failed.append(name)
-    return (timed_out, failed, passed, fail_sub_count, pass_sub_count)
+    return (timed_out, passed, failed, unexpected_passes, pass_count, fail_count)
 
 in_q = None
 out_q = None
 
+
 def process_dir_worker(arg_tuple):
     """Worker thread main loop when in multithreaded mode.
     Takes one directory specification at a time and works on it."""
-    (root, files, test_root, dotest_argv) = arg_tuple
-    return process_dir(root, files, test_root, dotest_argv)
+    return process_dir(*arg_tuple)
+
 
 def walk_and_invoke(test_directory, test_subdir, dotest_argv, num_threads):
     """Look for matched files and invoke test driver on each one.
@@ -184,48 +224,55 @@ def walk_and_invoke(test_directory, test_subdir, dotest_argv, num_threads):
     queue, and then wait for all to complete.
 
     test_directory - lldb/test/ directory
-    test_subdir - lldb/test/ or a subfolder with the tests we're interested in running
+    test_subdir - lldb/test/ or a subfolder with the tests we're interested in
+                  running
     """
 
     # Collect the test files that we'll run.
     test_work_items = []
     for root, dirs, files in os.walk(test_subdir, topdown=False):
-        test_work_items.append((root, files, test_directory, dotest_argv))
+        def is_test(name):
+            # Not interested in symbolically linked files.
+            if os.path.islink(os.path.join(root, name)):
+                return False
+            # Only interested in test files with the "Test*.py" naming pattern.
+            return name.startswith("Test") and name.endswith(".py")
 
-    global output_lock, test_counter, total_tests
-    output_lock = multiprocessing.Lock()
-    total_tests = len(test_work_items)
+        tests = filter(is_test, files)
+        test_work_items.append((root, tests, test_directory, dotest_argv))
+
+    global output_lock, test_counter, total_tests, test_name_len
+    output_lock = multiprocessing.RLock()
+    # item = (root, tests, test_directory, dotest_argv)
+    total_tests = sum([len(item[1]) for item in test_work_items])
     test_counter = multiprocessing.Value('i', 0)
-    print >> sys.stderr, "Testing: %d tests, %d threads" % (total_tests, num_threads)
-    update_status()
+    test_name_len = multiprocessing.Value('i', 0)
+    print >> sys.stderr, "Testing: %d test suites, %d thread%s" % (
+        total_tests, num_threads, (num_threads > 1) * "s")
+    update_progress()
 
     # Run the items, either in a pool (for multicore speedup) or
     # calling each individually.
     if num_threads > 1:
-        pool = multiprocessing.Pool(num_threads,
-            initializer = setup_global_variables,
-            initargs = (output_lock, test_counter, total_tests, dotest_options))
+        pool = multiprocessing.Pool(
+            num_threads,
+            initializer=setup_global_variables,
+            initargs=(output_lock, test_counter, total_tests, test_name_len,
+                      dotest_options))
         test_results = pool.map(process_dir_worker, test_work_items)
     else:
-        test_results = []
-        for work_item in test_work_items:
-            test_results.append(process_dir_worker(work_item))
+        test_results = map(process_dir_worker, test_work_items)
 
-    timed_out = []
-    failed = []
-    passed = []
-    fail_sub_count = 0
-    pass_sub_count = 0
+    # result = (timed_out, failed, passed, unexpected_successes, fail_count, pass_count)
+    timed_out = sum([result[0] for result in test_results], [])
+    passed = sum([result[1] for result in test_results], [])
+    failed = sum([result[2] for result in test_results], [])
+    unexpected_successes = sum([result[3] for result in test_results], [])
+    pass_count = sum([result[4] for result in test_results])
+    fail_count = sum([result[5] for result in test_results])
 
-    for test_result in test_results:
-        (dir_timed_out, dir_failed, dir_passed, dir_fail_sub_count, dir_pass_sub_count) = test_result
-        timed_out += dir_timed_out
-        failed += dir_failed
-        passed += dir_passed
-        fail_sub_count = fail_sub_count + dir_fail_sub_count
-        pass_sub_count = pass_sub_count + dir_pass_sub_count
+    return (timed_out, passed, failed, unexpected_successes, pass_count, fail_count)
 
-    return (timed_out, failed, passed, fail_sub_count, pass_sub_count)
 
 def getExpectedTimeouts(platform_name):
     # returns a set of test filenames that might timeout
@@ -249,9 +296,11 @@ def getExpectedTimeouts(platform_name):
             "TestCreateAfterAttach.py",
             "TestEvents.py",
             "TestExitDuringStep.py",
-            "TestHelloWorld.py", # Times out in ~10% of the times on the build bot
+
+            # Times out in ~10% of the times on the build bot
+            "TestHelloWorld.py",
             "TestMultithreaded.py",
-            "TestRegisters.py", # ~12/600 dosep runs (build 3120-3122)
+            "TestRegisters.py",  # ~12/600 dosep runs (build 3120-3122)
             "TestThreadStepOut.py",
         }
     elif target.startswith("android"):
@@ -268,9 +317,11 @@ def getExpectedTimeouts(platform_name):
         }
     elif target.startswith("darwin"):
         expected_timeout |= {
-            "TestThreadSpecificBreakpoint.py", # times out on MBP Retina, Mid 2012
+            # times out on MBP Retina, Mid 2012
+            "TestThreadSpecificBreakpoint.py",
         }
     return expected_timeout
+
 
 def getDefaultTimeout(platform_name):
     if os.getenv("LLDB_TEST_TIMEOUT"):
@@ -286,8 +337,9 @@ def getDefaultTimeout(platform_name):
 
 
 def touch(fname, times=None):
-    with open(fname, 'a'):
+    if os.path.exists(fname):
         os.utime(fname, times)
+
 
 def find(pattern, path):
     result = []
@@ -296,6 +348,7 @@ def find(pattern, path):
             if fnmatch.fnmatch(name, pattern):
                 result.append(os.path.join(root, name))
     return result
+
 
 def main():
     # We can't use sys.path[0] to determine the script directory
@@ -321,24 +374,37 @@ Run lldb test suite using a separate process for each test file.
        E.g., export LLDB_TEST_TIMEOUT=0
        or    export LLDB_TESTCONCURRENTEVENTS_TIMEOUT=0
 """)
-    parser.add_option('-o', '--options',
-                      type='string', action='store',
-                      dest='dotest_options',
-                      help="""The options passed to 'dotest.py' if specified.""")
+    parser.add_option(
+        '-o', '--options',
+        type='string', action='store',
+        dest='dotest_options',
+        help="""The options passed to 'dotest.py' if specified.""")
 
-    parser.add_option('-t', '--threads',
-                      type='int',
-                      dest='num_threads',
-                      help="""The number of threads to use when running tests separately.""")
+    parser.add_option(
+        '-s', '--output-on-success',
+        action='store_true',
+        dest='output_on_success',
+        default=False,
+        help="""Print full output of 'dotest.py' even when it succeeds.""")
+
+    parser.add_option(
+        '-t', '--threads',
+        type='int',
+        dest='num_threads',
+        help="""The number of threads to use when running tests separately.""")
 
     opts, args = parser.parse_args()
     dotest_option_string = opts.dotest_options
 
     is_posix = (os.name == "posix")
-    dotest_argv = shlex.split(dotest_option_string, posix=is_posix) if dotest_option_string else []
+    dotest_argv = (shlex.split(dotest_option_string, posix=is_posix)
+                   if dotest_option_string
+                   else [])
 
     parser = dotest_args.create_parser()
     global dotest_options
+    global output_on_success
+    output_on_success = opts.output_on_success
     dotest_options = dotest_args.parse_args(parser, dotest_argv)
 
     if not dotest_options.s:
@@ -346,7 +412,7 @@ Run lldb test suite using a separate process for each test file.
         # every dotest invocation from creating its own directory
         import datetime
         # The windows platforms don't like ':' in the pathname.
-        timestamp_started = datetime.datetime.now().strftime("%Y-%m-%d-%H_%M_%S")
+        timestamp_started = datetime.datetime.now().strftime("%F-%H_%M_%S")
         dotest_argv.append('-s')
         dotest_argv.append(timestamp_started)
         dotest_options.s = timestamp_started
@@ -376,11 +442,12 @@ Run lldb test suite using a separate process for each test file.
         num_threads = 1
 
     system_info = " ".join(platform.uname())
-    (timed_out, failed, passed, all_fails, all_passes) = walk_and_invoke(test_directory, test_subdir, dotest_argv, num_threads)
+    (timed_out, passed, failed, unexpected_successes, pass_count, fail_count) = walk_and_invoke(
+        test_directory, test_subdir, dotest_argv, num_threads)
 
     timed_out = set(timed_out)
-    num_test_files = len(failed) + len(passed)
-    num_tests = all_fails + all_passes
+    num_test_files = len(passed) + len(failed)
+    num_test_cases = pass_count + fail_count
 
     # move core files into session dir
     cores = find('core.*', test_subdir)
@@ -406,10 +473,18 @@ Run lldb test suite using a separate process for each test file.
             touch(os.path.join(session_dir, "{}-{}".format(result, test_name)))
 
     print
-    print "Ran %d test suites (%d failed) (%f%%)" % (num_test_files, len(failed),
-            (100.0 * len(failed) / num_test_files) if num_test_files > 0 else float('NaN'))
-    print "Ran %d test cases (%d failed) (%f%%)" % (num_tests, all_fails,
-            (100.0 * all_fails / num_tests) if num_tests > 0 else float('NaN'))
+    sys.stdout.write("Ran %d test suites" % num_test_files)
+    if num_test_files > 0:
+        sys.stdout.write(" (%d failed) (%f%%)" % (
+            len(failed), 100.0 * len(failed) / num_test_files))
+    print
+    sys.stdout.write("Ran %d test cases" % num_test_cases)
+    if num_test_cases > 0:
+        sys.stdout.write(" (%d failed) (%f%%)" % (
+            fail_count, 100.0 * fail_count / num_test_cases))
+    print
+    exit_code = 0
+
     if len(failed) > 0:
         failed.sort()
         print "Failing Tests (%d)" % len(failed)
@@ -417,8 +492,15 @@ Run lldb test suite using a separate process for each test file.
             print "%s: LLDB (suite) :: %s (%s)" % (
                 "TIMEOUT" if f in timed_out else "FAIL", f, system_info
             )
-        sys.exit(1)
-    sys.exit(0)
+        exit_code = 1
+
+    if len(unexpected_successes) > 0:
+        unexpected_successes.sort()
+        print "\nUnexpected Successes (%d)" % len(unexpected_successes)
+        for u in unexpected_successes:
+            print "UNEXPECTED SUCCESS: LLDB (suite) :: %s (%s)" % (u, system_info)
+
+    sys.exit(exit_code)
 
 if __name__ == '__main__':
     main()

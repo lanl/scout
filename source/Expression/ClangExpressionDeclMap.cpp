@@ -201,10 +201,10 @@ ClangExpressionDeclMap::AddPersistentVariable
         if (target == NULL)
             return false;
 
-        ASTContext *context(target->GetScratchClangASTContext()->getASTContext());
+        ClangASTContext *context(target->GetScratchClangASTContext());
 
-        TypeFromUser user_type(m_ast_importer->DeportType(context,
-                                                          parser_type.GetASTContext(),
+        TypeFromUser user_type(m_ast_importer->DeportType(context->getASTContext(),
+                                                          parser_type.GetTypeSystem()->AsClangASTContext()->getASTContext(),
                                                           parser_type.GetOpaqueQualType()),
                                context);
 
@@ -241,10 +241,10 @@ ClangExpressionDeclMap::AddPersistentVariable
     if (target == NULL)
         return false;
 
-    ASTContext *context(target->GetScratchClangASTContext()->getASTContext());
+    ClangASTContext *context(target->GetScratchClangASTContext());
 
-    TypeFromUser user_type(m_ast_importer->DeportType(context,
-                                                      parser_type.GetASTContext(),
+    TypeFromUser user_type(m_ast_importer->DeportType(context->getASTContext(),
+                                                      parser_type.GetTypeSystem()->AsClangASTContext()->getASTContext(),
                                                       parser_type.GetOpaqueQualType()),
                            context);
 
@@ -1038,7 +1038,7 @@ ClangExpressionDeclMap::FindExternalVisibleDecls (NameSearchContext &context,
                 QualType class_qual_type(class_decl->getTypeForDecl(), 0);
 
                 TypeFromUser class_user_type (class_qual_type.getAsOpaquePtr(),
-                                              &class_decl->getASTContext());
+                                              ClangASTContext::GetASTContext(&class_decl->getASTContext()));
 
                 if (log)
                 {
@@ -1076,7 +1076,7 @@ ClangExpressionDeclMap::FindExternalVisibleDecls (NameSearchContext &context,
                     QualType class_pointer_type = method_decl->getASTContext().getPointerType(class_qual_type);
 
                     TypeFromUser self_user_type(class_pointer_type.getAsOpaquePtr(),
-                                                &method_decl->getASTContext());
+                                                ClangASTContext::GetASTContext(&method_decl->getASTContext()));
 
                     m_struct_vars->m_object_pointer_type = self_user_type;
                 }
@@ -1103,7 +1103,7 @@ ClangExpressionDeclMap::FindExternalVisibleDecls (NameSearchContext &context,
                     if (!this_type)
                         return;
 
-                    ClangASTType pointee_type = this_type->GetClangForwardType().GetPointeeType();
+                    CompilerType pointee_type = this_type->GetClangForwardType().GetPointeeType();
 
                     if (pointee_type.IsValid())
                     {
@@ -1166,7 +1166,7 @@ ClangExpressionDeclMap::FindExternalVisibleDecls (NameSearchContext &context,
                     return; // This is unlikely, but we have seen crashes where this occurred
 
                 TypeFromUser class_user_type(QualType(interface_type, 0).getAsOpaquePtr(),
-                                             &method_decl->getASTContext());
+                                             ClangASTContext::GetASTContext(&method_decl->getASTContext()));
 
                 if (log)
                 {
@@ -1183,7 +1183,7 @@ ClangExpressionDeclMap::FindExternalVisibleDecls (NameSearchContext &context,
                     QualType class_pointer_type = method_decl->getASTContext().getObjCObjectPointerType(QualType(interface_type, 0));
 
                     TypeFromUser self_user_type(class_pointer_type.getAsOpaquePtr(),
-                                                &method_decl->getASTContext());
+                                                ClangASTContext::GetASTContext(&method_decl->getASTContext()));
 
                     m_struct_vars->m_object_pointer_type = self_user_type;
                 }
@@ -1193,7 +1193,7 @@ ClangExpressionDeclMap::FindExternalVisibleDecls (NameSearchContext &context,
                     QualType class_type = method_decl->getASTContext().getObjCClassType();
 
                     TypeFromUser self_user_type(class_type.getAsOpaquePtr(),
-                                                &method_decl->getASTContext());
+                                                ClangASTContext::GetASTContext(&method_decl->getASTContext()));
 
                     m_struct_vars->m_object_pointer_type = self_user_type;
                 }
@@ -1220,13 +1220,13 @@ ClangExpressionDeclMap::FindExternalVisibleDecls (NameSearchContext &context,
                     if (!self_type)
                         return;
 
-                    ClangASTType self_clang_type = self_type->GetClangFullType();
+                    CompilerType self_clang_type = self_type->GetClangFullType();
 
-                    if (self_clang_type.IsObjCClassType())
+                    if (ClangASTContext::IsObjCClassType(self_clang_type))
                     {
                         return;
                     }
-                    else if (self_clang_type.IsObjCObjectPointerType())
+                    else if (ClangASTContext::IsObjCObjectPointerType(self_clang_type))
                     {
                         self_clang_type = self_clang_type.GetPointeeType();
 
@@ -1632,7 +1632,7 @@ ClangExpressionDeclMap::GetVariableValue (VariableSP &var,
         return false;
     }
 
-    ClangASTType var_clang_type = var_type->GetClangFullType();
+    CompilerType var_clang_type = var_type->GetClangFullType();
 
     if (!var_clang_type)
     {
@@ -1673,7 +1673,7 @@ ClangExpressionDeclMap::GetVariableValue (VariableSP &var,
         }
     }
 
-    ClangASTType type_to_use = GuardedCopyType(var_clang_type);
+    CompilerType type_to_use = GuardedCopyType(var_clang_type);
 
     if (!type_to_use)
     {
@@ -1748,7 +1748,7 @@ ClangExpressionDeclMap::AddOneVariable (NameSearchContext &context, VariableSP v
     if (is_reference)
         var_decl = context.AddVarDecl(pt);
     else
-        var_decl = context.AddVarDecl(pt.GetLValueReferenceType());
+        var_decl = context.AddVarDecl(ClangASTContext::GetLValueReferenceType(pt));
 
     std::string decl_name(context.m_decl_name.getAsString());
     ConstString entity_name(decl_name.c_str());
@@ -1792,7 +1792,7 @@ ClangExpressionDeclMap::AddOneVariable(NameSearchContext &context,
         return;
     }
 
-    NamedDecl *var_decl = context.AddVarDecl(parser_type.GetLValueReferenceType());
+    NamedDecl *var_decl = context.AddVarDecl(ClangASTContext::GetLValueReferenceType(parser_type));
 
     pvar_sp->EnableParserVars(GetParserID());
     ClangExpressionVariable::ParserVars *parser_vars = pvar_sp->GetParserVars(GetParserID());
@@ -1824,8 +1824,8 @@ ClangExpressionDeclMap::AddOneGenericVariable(NameSearchContext &context,
 
     ASTContext *scratch_ast_context = target->GetScratchClangASTContext()->getASTContext();
 
-    TypeFromUser user_type (ClangASTContext::GetBasicType(scratch_ast_context, eBasicTypeVoid).GetPointerType().GetLValueReferenceType());
-    TypeFromParser parser_type (ClangASTContext::GetBasicType(m_ast_context, eBasicTypeVoid).GetPointerType().GetLValueReferenceType());
+    TypeFromUser user_type (ClangASTContext::GetLValueReferenceType(ClangASTContext::GetBasicType(scratch_ast_context, eBasicTypeVoid).GetPointerType()));
+    TypeFromParser parser_type (ClangASTContext::GetLValueReferenceType(ClangASTContext::GetBasicType(m_ast_context, eBasicTypeVoid).GetPointerType()));
     NamedDecl *var_decl = context.AddVarDecl(parser_type);
 
     std::string decl_name(context.m_decl_name.getAsString());
@@ -1867,7 +1867,7 @@ ClangExpressionDeclMap::ResolveUnknownTypes()
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
     Target *target = m_parser_vars->m_exe_ctx.GetTargetPtr();
 
-    ASTContext *scratch_ast_context = target->GetScratchClangASTContext()->getASTContext();
+    ClangASTContext *scratch_ast_context = target->GetScratchClangASTContext();
 
     for (size_t index = 0, num_entities = m_found_entities.GetSize();
          index < num_entities;
@@ -1896,9 +1896,9 @@ ClangExpressionDeclMap::ResolveUnknownTypes()
             }
 
             QualType var_type = var_decl->getType();
-            TypeFromParser parser_type(var_type.getAsOpaquePtr(), &var_decl->getASTContext());
+            TypeFromParser parser_type(var_type.getAsOpaquePtr(), ClangASTContext::GetASTContext(&var_decl->getASTContext()));
 
-            lldb::clang_type_t copied_type = m_ast_importer->CopyType(scratch_ast_context, &var_decl->getASTContext(), var_type.getAsOpaquePtr());
+            lldb::clang_type_t copied_type = m_ast_importer->CopyType(scratch_ast_context->getASTContext(), &var_decl->getASTContext(), var_type.getAsOpaquePtr());
 
             if (!copied_type)
             {
@@ -1930,7 +1930,7 @@ ClangExpressionDeclMap::AddOneRegister (NameSearchContext &context,
 {
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
 
-    ClangASTType clang_type = ClangASTContext::GetBuiltinTypeForEncodingAndBitSize (m_ast_context,
+    CompilerType clang_type = ClangASTContext::GetBuiltinTypeForEncodingAndBitSize (m_ast_context,
                                                                                     reg_info->encoding,
                                                                                     reg_info->byte_size * 8);
 
@@ -1980,7 +1980,7 @@ ClangExpressionDeclMap::AddOneFunction (NameSearchContext &context,
 
     NamedDecl *function_decl = NULL;
     Address fun_address;
-    ClangASTType function_clang_type;
+    CompilerType function_clang_type;
 
     bool is_indirect_function = false;
 
@@ -2006,7 +2006,7 @@ ClangExpressionDeclMap::AddOneFunction (NameSearchContext &context,
 
         fun_address = function->GetAddressRange().GetBaseAddress();
 
-        ClangASTType copied_function_type = GuardedCopyType(function_clang_type);
+        CompilerType copied_function_type = GuardedCopyType(function_clang_type);
         if (copied_function_type)
         {
             function_decl = context.AddFunDecl(copied_function_type);
@@ -2105,7 +2105,7 @@ TypeFromParser
 ClangExpressionDeclMap::CopyClassType(TypeFromUser &ut,
                                       unsigned int current_id)
 {
-    ClangASTType copied_clang_type = GuardedCopyType(ut);
+    CompilerType copied_clang_type = GuardedCopyType(ut);
 
     if (!copied_clang_type)
     {
@@ -2119,10 +2119,10 @@ ClangExpressionDeclMap::CopyClassType(TypeFromUser &ut,
 
     if (copied_clang_type.IsAggregateType() && copied_clang_type.GetCompleteType ())
     {
-        ClangASTType void_clang_type = ClangASTContext::GetBasicType(m_ast_context, eBasicTypeVoid);
-        ClangASTType void_ptr_clang_type = void_clang_type.GetPointerType();
+        CompilerType void_clang_type = ClangASTContext::GetBasicType(m_ast_context, eBasicTypeVoid);
+        CompilerType void_ptr_clang_type = void_clang_type.GetPointerType();
 
-        ClangASTType method_type = ClangASTContext::CreateFunctionType (m_ast_context,
+        CompilerType method_type = ClangASTContext::CreateFunctionType (m_ast_context,
                                                                         void_clang_type,
                                                                         &void_ptr_clang_type,
                                                                         1,
@@ -2136,15 +2136,17 @@ ClangExpressionDeclMap::CopyClassType(TypeFromUser &ut,
         const bool is_attr_used = true;
         const bool is_artificial = false;
 
-        copied_clang_type.AddMethodToCXXRecordType ("$__lldb_expr",
-                                                    method_type,
-                                                    lldb::eAccessPublic,
-                                                    is_virtual,
-                                                    is_static,
-                                                    is_inline,
-                                                    is_explicit,
-                                                    is_attr_used,
-                                                    is_artificial);
+        ClangASTContext::GetASTContext(m_ast_context)->
+            AddMethodToCXXRecordType (copied_clang_type.GetOpaqueQualType(),
+                                      "$__lldb_expr",
+                                      method_type,
+                                      lldb::eAccessPublic,
+                                      is_virtual,
+                                      is_static,
+                                      is_inline,
+                                      is_explicit,
+                                      is_attr_used,
+                                      is_artificial);
     }
 
     return TypeFromParser(copied_clang_type);
@@ -2155,7 +2157,7 @@ ClangExpressionDeclMap::AddOneType(NameSearchContext &context,
                                    TypeFromUser &ut,
                                    unsigned int current_id)
 {
-    ClangASTType copied_clang_type = GuardedCopyType(ut);
+    CompilerType copied_clang_type = GuardedCopyType(ut);
 
     if (!copied_clang_type)
     {

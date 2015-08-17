@@ -272,12 +272,12 @@ ClangASTSource::CompleteType (TagDecl *tag_decl)
                     if (!type)
                         continue;
 
-                    ClangASTType clang_type (type->GetClangFullType());
+                    CompilerType clang_type (type->GetClangFullType());
 
                     if (!clang_type)
                         continue;
 
-                    const TagType *tag_type = clang_type.GetQualType()->getAs<TagType>();
+                    const TagType *tag_type = ClangASTContext::GetQualType(clang_type)->getAs<TagType>();
 
                     if (!tag_type)
                         continue;
@@ -311,12 +311,12 @@ ClangASTSource::CompleteType (TagDecl *tag_decl)
                 if (!type)
                     continue;
 
-                ClangASTType clang_type (type->GetClangFullType());
+                CompilerType clang_type (type->GetClangFullType());
 
                 if (!clang_type)
                     continue;
 
-                const TagType *tag_type = clang_type.GetQualType()->getAs<TagType>();
+                const TagType *tag_type = ClangASTContext::GetQualType(clang_type)->getAs<TagType>();
 
                 if (!tag_type)
                     continue;
@@ -419,9 +419,9 @@ ClangASTSource::GetCompleteObjCInterface (clang::ObjCInterfaceDecl *interface_de
     return complete_iface_decl;
 }
 
-clang::ExternalLoadResult
+void
 ClangASTSource::FindExternalLexicalDecls (const DeclContext *decl_context,
-                                          bool (*predicate)(Decl::Kind),
+                                          llvm::function_ref<bool(Decl::Kind)> predicate,
                                           llvm::SmallVectorImpl<Decl*> &decls)
 {
     ClangASTMetrics::RegisterLexicalQuery();
@@ -431,11 +431,11 @@ ClangASTSource::FindExternalLexicalDecls (const DeclContext *decl_context,
     const Decl *context_decl = dyn_cast<Decl>(decl_context);
 
     if (!context_decl)
-        return ELR_Failure;
+        return;
 
     auto iter = m_active_lexical_decls.find(context_decl);
     if (iter != m_active_lexical_decls.end())
-        return ELR_Failure;
+        return;
     m_active_lexical_decls.insert(context_decl);
     ScopedLexicalDeclEraser eraser(m_active_lexical_decls, context_decl);
 
@@ -445,29 +445,26 @@ ClangASTSource::FindExternalLexicalDecls (const DeclContext *decl_context,
     if (log)
     {
         if (const NamedDecl *context_named_decl = dyn_cast<NamedDecl>(context_decl))
-            log->Printf("FindExternalLexicalDecls[%u] on (ASTContext*)%p in '%s' (%sDecl*)%p with %s predicate",
+            log->Printf("FindExternalLexicalDecls[%u] on (ASTContext*)%p in '%s' (%sDecl*)%p",
                         current_id, static_cast<void*>(m_ast_context),
                         context_named_decl->getNameAsString().c_str(),
                         context_decl->getDeclKindName(),
-                        static_cast<const void*>(context_decl),
-                        (predicate ? "non-null" : "null"));
+                        static_cast<const void*>(context_decl));
         else if(context_decl)
-            log->Printf("FindExternalLexicalDecls[%u] on (ASTContext*)%p in (%sDecl*)%p with %s predicate",
+            log->Printf("FindExternalLexicalDecls[%u] on (ASTContext*)%p in (%sDecl*)%p",
                         current_id, static_cast<void*>(m_ast_context),
                         context_decl->getDeclKindName(),
-                        static_cast<const void*>(context_decl),
-                        (predicate ? "non-null" : "null"));
+                        static_cast<const void*>(context_decl));
         else
-            log->Printf("FindExternalLexicalDecls[%u] on (ASTContext*)%p in a NULL context with %s predicate",
-                        current_id, static_cast<const void*>(m_ast_context),
-                        (predicate ? "non-null" : "null"));
+            log->Printf("FindExternalLexicalDecls[%u] on (ASTContext*)%p in a NULL context",
+                        current_id, static_cast<const void*>(m_ast_context));
     }
 
     Decl *original_decl = NULL;
     ASTContext *original_ctx = NULL;
 
     if (!m_ast_importer->ResolveDeclOrigin(context_decl, &original_decl, &original_ctx))
-        return ELR_Failure;
+        return;
 
     if (log)
     {
@@ -501,7 +498,7 @@ ClangASTSource::FindExternalLexicalDecls (const DeclContext *decl_context,
     const DeclContext *original_decl_context = dyn_cast<DeclContext>(original_decl);
 
     if (!original_decl_context)
-        return ELR_Failure;
+        return;
 
     for (TagDecl::decl_iterator iter = original_decl_context->decls_begin();
          iter != original_decl_context->decls_end();
@@ -509,7 +506,7 @@ ClangASTSource::FindExternalLexicalDecls (const DeclContext *decl_context,
     {
         Decl *decl = *iter;
 
-        if (!predicate || predicate(decl->getKind()))
+        if (predicate(decl->getKind()))
         {
             if (log)
             {
@@ -532,8 +529,6 @@ ClangASTSource::FindExternalLexicalDecls (const DeclContext *decl_context,
                 m_ast_importer->RequireCompleteType(copied_field_type);
             }
 
-            decls.push_back(copied_decl);
-
             DeclContext *decl_context_non_const = const_cast<DeclContext *>(decl_context);
 
             if (copied_decl->getDeclContext() != decl_context)
@@ -548,7 +543,7 @@ ClangASTSource::FindExternalLexicalDecls (const DeclContext *decl_context,
         }
     }
 
-    return ELR_AlreadyLoaded;
+    return;
 }
 
 void
@@ -766,9 +761,9 @@ ClangASTSource::FindExternalVisibleDecls (NameSearchContext &context,
                             (name_string ? name_string : "<anonymous>"));
             }
 
-            ClangASTType full_type = type_sp->GetClangFullType();
+            CompilerType full_type = type_sp->GetClangFullType();
 
-            ClangASTType copied_clang_type (GuardedCopyType(full_type));
+            CompilerType copied_clang_type (GuardedCopyType(full_type));
 
             if (!copied_clang_type)
             {
@@ -1881,43 +1876,51 @@ ClangASTSource::AddNamespace (NameSearchContext &context, ClangASTImporter::Name
     return dyn_cast<NamespaceDecl>(copied_decl);
 }
 
-ClangASTType
-ClangASTSource::GuardedCopyType (const ClangASTType &src_type)
+CompilerType
+ClangASTSource::GuardedCopyType (const CompilerType &src_type)
 {
     ClangASTMetrics::RegisterLLDBImport();
 
+    ClangASTContext* src_ast = src_type.GetTypeSystem()->AsClangASTContext();
+    if (!src_ast)
+        return CompilerType();
+    
     SetImportInProgress(true);
 
-    QualType copied_qual_type = m_ast_importer->CopyType (m_ast_context, src_type.GetASTContext(), src_type.GetQualType());
+    QualType copied_qual_type = m_ast_importer->CopyType (m_ast_context, src_ast->getASTContext(), ClangASTContext::GetQualType(src_type));
 
     SetImportInProgress(false);
 
     if (copied_qual_type.getAsOpaquePtr() && copied_qual_type->getCanonicalTypeInternal().isNull())
         // this shouldn't happen, but we're hardening because the AST importer seems to be generating bad types
         // on occasion.
-        return ClangASTType();
+        return CompilerType();
 
-    return ClangASTType(m_ast_context, copied_qual_type);
+    return CompilerType(m_ast_context, copied_qual_type);
 }
 
 clang::NamedDecl *
-NameSearchContext::AddVarDecl(const ClangASTType &type)
+NameSearchContext::AddVarDecl(const CompilerType &type)
 {
     assert (type && "Type for variable must be valid!");
 
     if (!type.IsValid())
         return NULL;
 
+    ClangASTContext* lldb_ast = type.GetTypeSystem()->AsClangASTContext();
+    if (!lldb_ast)
+        return NULL;
+    
     IdentifierInfo *ii = m_decl_name.getAsIdentifierInfo();
 
-    clang::ASTContext *ast = type.GetASTContext();
+    clang::ASTContext *ast = lldb_ast->getASTContext();
 
     clang::NamedDecl *Decl = VarDecl::Create(*ast,
                                              const_cast<DeclContext*>(m_decl_context),
                                              SourceLocation(),
                                              SourceLocation(),
                                              ii,
-                                             type.GetQualType(),
+                                             ClangASTContext::GetQualType(type),
                                              0,
                                              SC_Static);
     m_decls.push_back(Decl);
@@ -1926,7 +1929,7 @@ NameSearchContext::AddVarDecl(const ClangASTType &type)
 }
 
 clang::NamedDecl *
-NameSearchContext::AddFunDecl (const ClangASTType &type, bool extern_c)
+NameSearchContext::AddFunDecl (const CompilerType &type, bool extern_c)
 {
     assert (type && "Type for variable must be valid!");
 
@@ -1935,12 +1938,16 @@ NameSearchContext::AddFunDecl (const ClangASTType &type, bool extern_c)
 
     if (m_function_types.count(type))
         return NULL;
+    
+    ClangASTContext* lldb_ast = type.GetTypeSystem()->AsClangASTContext();
+    if (!lldb_ast)
+        return NULL;
 
     m_function_types.insert(type);
 
-    QualType qual_type (type.GetQualType());
+    QualType qual_type (ClangASTContext::GetQualType(type));
 
-    clang::ASTContext *ast = type.GetASTContext();
+    clang::ASTContext *ast = lldb_ast->getASTContext();
 
     const bool isInlineSpecified = false;
     const bool hasWrittenPrototype = true;
@@ -2023,15 +2030,15 @@ NameSearchContext::AddGenericFunDecl()
                                                                                 ArrayRef<QualType>(),                                        // argument types
                                                                                 proto_info));
 
-    return AddFunDecl(ClangASTType (m_ast_source.m_ast_context, generic_function_type), true);
+    return AddFunDecl(CompilerType (m_ast_source.m_ast_context, generic_function_type), true);
 }
 
 clang::NamedDecl *
-NameSearchContext::AddTypeDecl(const ClangASTType &clang_type)
+NameSearchContext::AddTypeDecl(const CompilerType &clang_type)
 {
     if (clang_type)
     {
-        QualType qual_type = clang_type.GetQualType();
+        QualType qual_type = ClangASTContext::GetQualType(clang_type);
 
         if (const TypedefType *typedef_type = llvm::dyn_cast<TypedefType>(qual_type))
         {
