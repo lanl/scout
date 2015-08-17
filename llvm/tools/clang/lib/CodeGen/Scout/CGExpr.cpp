@@ -1583,6 +1583,10 @@ llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
      llvm:: Value *topiv = LinearIdx2InductionVar(Builder.CreateLoad(ForallStack[0].indexPtr),
          ForallStack[0].elementType, dim, dims.size());
      idx = Builder.CreateSub(idx, topiv);
+     if (ForallStack[0].elementType == Vertices) {
+       llvm::Value* one = llvm::ConstantInt::get(Int64Ty, 1);
+       idx = Builder.CreateAdd(idx, one);
+     }
    }
 
 
@@ -1590,46 +1594,6 @@ llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
      return Builder.CreateTrunc(idx, Int32Ty, "lindex.w");
    }
 
-#if 0
-   // deal w/ "regular" boundary (vertices/cells case)
-   if (ForallStackIndex == 1 && d.elementType == Cells) {
-     llvm:: Value *topidx = ForallStack[0].indexPtr;
-     topidx = Builder.CreateLoad(topidx);
-
-     //SC_TODO:  make member function
-     const MeshType* mt;
-     if(const PointerType* pt =
-         dyn_cast<PointerType>(data->meshVarDecl->getType())){
-       mt = dyn_cast<MeshType>(pt->getPointeeType());
-     }
-     else{
-       mt = dyn_cast<MeshType>(data->meshVarDecl->getType());
-     }
-
-     auto& dims = mt->dimensions();
-     size_t d = dims.size();
-
-     llvm::Value* zero = llvm::ConstantInt::get(Int64Ty, 0);
-     llvm::Value* one = llvm::ConstantInt::get(Int64Ty, 1);
-     if (d == 1) {
-       if (dim == 0) {
-         llvm::Value *Check = Builder.CreateICmpEQ(topidx, zero);
-         idx = Builder.CreateSelect(Check, one, idx);
-       } else {
-         idx = zero;
-       }
-     } else {
-       if (dim < d) {
-         llvm::Value* w = Builder.CreateAdd(Builder.CreateLoad(MeshDims[dim]),one);
-         llvm::Value *x = Builder.CreateURem(topidx, w);
-         llvm::Value *Check = Builder.CreateICmpEQ(x, zero);
-         idx = Builder.CreateSelect(Check, one, idx);
-       } else {
-         idx = zero;
-       }
-     }
-   }
-#endif
 
    sprintf(IRNameStr, "lindex.%s", IndexNames[dim]);
    return Builder.CreateTrunc(idx, Int32Ty, IRNameStr);
@@ -1637,32 +1601,40 @@ llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
 
 
 llvm::Value *CodeGenFunction::EmitGIndex(unsigned int dim) {
-   static const char *IndexNames[] = { "x", "y", "z", "w"};
-   llvm::Value *X; // *Y, *MeshDim;
-#if 0
-   if (InnerForallScope) {
-     sprintf(IRNameStr, "gindex.%s", IndexNames[dim]);
-     Y = Builder.CreateAdd(
-       Builder.CreateLoad(LookupInductionVar(dim)),
-       Builder.CreateLoad(InnerInductionVar[dim]),
-       IRNameStr);
-     sprintf(IRNameStr, "meshdim.%s", IndexNames[dim]);
-     MeshDim =  Builder.CreateLoad(MeshDims[dim], IRNameStr);
-     if (VertexIndex) { // cells/vertices
-       llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
-       X = Builder.CreateURem(Y, Builder.CreateAdd(MeshDim, One)); 
-     } else if (CellIndex) { //vertices/cells
-       X = Builder.CreateURem(Y, MeshDim); 
-     } else {
-       assert(false && "unsupported call to gindex");
-     }
-   } else {
-#endif
-     sprintf(IRNameStr, "gindex.%s", IndexNames[dim]);
-     X = Builder.CreateAdd(
-       Builder.CreateLoad(LookupInductionVar(dim)),
-       Builder.CreateLoad(LookupMeshStart(dim)),
-       IRNameStr);
-//   }
-  return X;
+  static const char *IndexNames[] = { "x", "y", "z", "w"};
+
+
+   ForallData* data = nullptr;
+
+   ForallData& d = ForallStack[ForallStackIndex];
+   if(d.elementType == Vertices || d.elementType == Cells) {
+     data = &d;
+   }
+   assert(data && "unable to find cells or vertices forall data");
+
+
+   llvm::Value* idx = Builder.CreateLoad(data->indexPtr);
+
+
+   //SC_TODO:  make member function
+   const MeshType* mt;
+   if(const PointerType* pt =
+       dyn_cast<PointerType>(data->meshVarDecl->getType())){
+     mt = dyn_cast<MeshType>(pt->getPointeeType());
+   }
+   else{
+     mt = dyn_cast<MeshType>(data->meshVarDecl->getType());
+   }
+
+   auto& dims = mt->dimensions();
+
+   // for partitioned legion case need to add start to induction var
+   if (ForallStackIndex == 0 && dim < 3) {
+      idx = Builder.CreateAdd(Builder.CreateLoad(LookupMeshStart(dim)), idx);
+   }
+
+   // get current iv
+   return LinearIdx2InductionVar(idx, data->elementType, dim, dims.size());
+
 }
+
