@@ -57,6 +57,8 @@
 using namespace std;
 using namespace scout;
 
+#include <unordered_map>
+
 namespace{
 
   class UniformMesh1dType{
@@ -338,6 +340,68 @@ extern "C"{
                       );
       }
     }
+    
+    // although these can be computed in MeshTopology, for uniform
+    // mesh, it is straight-forward, so we compute here for better
+    // performance
+    using CellToEdgesMap = unordered_multimap<size_t, size_t>;
+    CellToEdgesMap m;
+
+    size_t edgeId = 0;
+    size_t cellId = 0;
+    for(size_t j = 0; j < height; ++j){
+      for(size_t i = 0; i < width; ++i){
+        size_t v0 = i + j * width1;
+        size_t v1 = i + 1 + j * width1;
+        size_t v2 = i + (j + 1) * width1;
+        size_t v3 = i + 1 + (j + 1) * width1;
+
+        if(j == 0){
+          m.insert({cellId, edgeId});
+          mesh->addEdge(edgeId++, v0, v1);
+        }
+  
+        if(j < height - 1){
+          m.insert({cellId + width, edgeId});
+        }
+        m.insert({cellId, edgeId});
+        mesh->addEdge(edgeId++, v2, v3); 
+
+        if(i == 0){
+          m.insert({cellId, edgeId});
+          mesh->addEdge(edgeId++, v0, v2);
+        }
+ 
+        if(i < width - 1){
+          m.insert({cellId + 1, edgeId});
+        }
+        m.insert({cellId, edgeId});
+        mesh->addEdge(edgeId++, v1, v3);
+
+        ++cellId;
+      }
+    }
+
+    for(size_t i = 0; i < cellId; ++i){
+      auto p = m.equal_range(i);
+      for(auto itr = p.first, itrEnd = p.second; itr != itrEnd; ++itr){
+        mesh->addCellEdges(i,
+                           {(itr++)->second,
+                            (itr++)->second,
+                            (itr++)->second,
+                            (itr++)->second});
+      }
+    }
+
+    /*
+    mesh->compute(2, 1);
+    mesh->compute(2, 0);
+    mesh->compute(1, 0);
+    mesh->compute(1, 2);
+    mesh->compute(0, 1);
+    mesh->compute(0, 2);
+    mesh->dump();
+    */
 
     return mesh;
   }

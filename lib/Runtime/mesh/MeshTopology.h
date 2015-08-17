@@ -151,7 +151,7 @@ namespace scout{
         std::fill(toIdVec_.begin(), toIdVec_.end(), 0);
       }
     
-      void endGroup(){
+      void endFrom(){
         toIdVec_.back() |= LAST_FLAG;
         fromIndexVec_.push_back(toIdVec_.size());
       }
@@ -208,7 +208,7 @@ namespace scout{
         return toIdVec_.data();
       }
 
-      Id* rawGroupVec(){
+      Id* rawFromIndexVec(){
         return fromIndexVec_.data();
       }
     
@@ -274,7 +274,7 @@ namespace scout{
         compute(fromDim, toDim);
       }
 
-      return c.rawGroupVec();
+      return c.rawFromIndexVec();
     }
 
     virtual void build(size_t dim) = 0;
@@ -507,26 +507,99 @@ namespace scout{
       }
     }
   
-    void addVertex(Id id, std::initializer_list<Float> il){
-      geometry_.addVertex(id, il);
+    void addVertex(Id id, std::initializer_list<Float> coord){
+      geometry_.addVertex(id, coord);
       ++size_[0];
     }
   
-    void addCell(Id id, std::initializer_list<Id> il){
-      assert(il.size() == 
+    void addCell(Id cellId, std::initializer_list<Id> verts){
+      assert(verts.size() == 
              MT::numVerticesPerEntity(MT::topologicalDimension()) &&
              "invalid number of vertices per cell");
     
       auto& c = getConnectivity_(MT::topologicalDimension(), 0);
-      for(Id id : il){
+
+      assert(cellId == c.fromSize() && "id mismatch"); 
+
+      for(Id id : verts){
         c.push(id);
       }
-      c.endGroup();
+      c.endFrom();
       ++size_[MT::topologicalDimension()];
     }
-  
+
+    void addEdge(Id edgeId, Id vertex1, Id vertex2){
+      auto& c = getConnectivity_(1, 0);
+      if(c.empty()){
+        c.init();
+      }
+
+      assert(edgeId == c.fromSize() && "id mismatch"); 
+
+      c.push(vertex1);
+      c.push(vertex2);
+      c.endFrom();
+      ++size_[1];
+    }
+
+    void addFace(Id faceId, std::initializer_list<Id> verts){
+      assert(verts.size() == 
+             MT::numVerticesPerEntity(2) &&
+             "invalid number vertices per face");
+
+      auto& c = getConnectivity_(MT::topologicalDimension() - 1, 0);
+      if(c.empty()){
+        c.init();
+      }
+
+      assert(faceId == c.fromSize() && "id mismatch"); 
+
+      for(Id id : verts){
+        c.push(id);
+      }
+      c.endFrom();
+      ++size_[MT::topologicalDimension() - 1];
+    }
+    
+    void addCellEdges(Id cellId, std::initializer_list<Id> edges){
+      assert(edges.size() == 
+             MT::numEntitiesPerCell(1) &&
+             "invalid number of edges per cell");
+
+      auto& c = getConnectivity_(MT::topologicalDimension(), 1);
+      if(c.empty()){
+        c.init();
+      }
+
+      assert(cellId == c.fromSize() && "id mismatch"); 
+      
+      for(Id id : edges){
+        c.push(id);
+      }
+      c.endFrom();
+    }
+
+    void addCellFaces(Id cellId, std::initializer_list<Id> faces){
+      assert(faces.size() == 
+             MT::numEntitiesPerCell(MT::topologicalDimension() - 1) &&
+             "invalid number of face per cell");
+
+      auto& c = getConnectivity_(MT::topologicalDimension(),
+                                 MT::topologicalDimension() - 1);
+      if(c.empty()){
+        c.init();
+      }
+
+      assert(cellId == c.fromSize() && "id mismatch"); 
+      
+      for(Id id : faces){
+        c.push(id);
+      }
+      c.endFrom();
+    }
+
     void build(size_t dim) override{
-      //std::cerr << "build: " << dim << std::endl;
+      std::cerr << "build: " << dim << std::endl;
 
       assert(dim <= MT::topologicalDimension());
 
@@ -594,8 +667,8 @@ namespace scout{
     }
   
     void transpose(size_t fromDim, size_t toDim){
-      // std::cerr << "transpose: " << fromDim << " -> " << 
-      //  toDim << std::endl;
+       std::cerr << "transpose: " << fromDim << " -> " << 
+         toDim << std::endl;
     
       IndexVec pos(numEntities(fromDim), 0);
     
@@ -623,8 +696,8 @@ namespace scout{
     }
   
     void intersect(size_t fromDim, size_t toDim, size_t dim){
-      // std::cerr << "intersect: " << fromDim << " -> " << 
-      //  toDim << std::endl;
+      std::cerr << "intersect: " << fromDim << " -> " << 
+        toDim << std::endl;
 
       Connectivity& outConn = getConnectivity_(fromDim, toDim);
       if(!outConn.empty()){
@@ -700,7 +773,7 @@ namespace scout{
     }
   
     void compute(size_t fromDim, size_t toDim) override{
-      //std::cerr << "compute: " << fromDim << " -> " << toDim << std::endl;
+      std::cerr << "compute: " << fromDim << " -> " << toDim << std::endl;
 
       Connectivity& outConn = getConnectivity_(fromDim, toDim);
     
