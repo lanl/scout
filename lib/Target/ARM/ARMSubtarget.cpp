@@ -167,7 +167,6 @@ void ARMSubtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
       ArchFS = FS;
   }
   ParseSubtargetFeatures(CPUString, ArchFS);
-  printf("A-class: %d\n", static_cast<bool>(getFeatureBits()[ARM::ProcSwift]));
 
   // FIXME: This used enable V6T2 support implicitly for Thumb2 mode.
   // Assert this for now to make the change obvious.
@@ -295,8 +294,7 @@ bool ARMSubtarget::useMovt(const MachineFunction &MF) const {
   // immediates as it is inherently position independent, and may be out of
   // range otherwise.
   return !NoMovt && hasV6T2Ops() &&
-         (isTargetWindows() ||
-          !MF.getFunction()->hasFnAttribute(Attribute::MinSize));
+         (isTargetWindows() || !MF.getFunction()->optForMinSize());
 }
 
 bool ARMSubtarget::useFastISel() const {

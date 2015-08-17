@@ -1,4 +1,4 @@
-; REQUIRES: object-emission
+; REQUIRES: object-emission, native
 ;
 ; RUN: llvm-link %s %p/type-unique-type-array-b.ll -S -o - | %llc_dwarf -filetype=obj -O0 | llvm-dwarfdump -debug-dump=info - | FileCheck %s
 ;
@@ -23,7 +23,7 @@
 ; CHECK: DW_TAG_class_type
 ; CHECK-NEXT:   DW_AT_name {{.*}} "A"
 ; CHECK: DW_TAG_subprogram
-; CHECK: DW_AT_MIPS_linkage_name {{.*}} "_ZN1A5testAE2SA"
+; CHECK: DW_AT_name {{.*}} "testA"
 ; CHECK: DW_TAG_formal_parameter
 ; CHECK: DW_TAG_formal_parameter
 ; CHECK-NEXT: DW_AT_type [DW_FORM_ref4] (cu + 0x{{.*}} => {0x[[STRUCT:.*]]})
@@ -34,7 +34,7 @@
 ; CHECK: DW_TAG_class_type
 ; CHECK-NEXT:   DW_AT_name {{.*}} "B"
 ; CHECK: DW_TAG_subprogram
-; CHECK:   DW_AT_MIPS_linkage_name {{.*}} "_ZN1B5testBE2SA"
+; CHECK:   DW_AT_name {{.*}} "testB"
 ; CHECK: DW_TAG_formal_parameter
 ; CHECK: DW_TAG_formal_parameter
 ; CHECK-NEXT: DW_AT_type [DW_FORM_ref_addr] {{.*}}[[STRUCT]]

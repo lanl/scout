@@ -1,4 +1,4 @@
-; REQUIRES: object-emission
+; REQUIRES: object-emission, native
 ;
 ; RUN: llvm-link %s %p/type-unique-simple2-b.ll -S -o - | %llc_dwarf -filetype=obj -O0 | llvm-dwarfdump -debug-dump=info - | FileCheck %s
 ;
@@ -18,7 +18,8 @@
 ;     return A().getFoo();
 ; }
 ;
-; CHECK: _ZN1A6setFooEv
+; CHECK: DW_AT_name {{.*}} "setFoo"
+; CHECK-NOT: DW_TAG
 ; CHECK: DW_AT_accessibility [DW_FORM_data1]   (DW_ACCESS_public)
 ; CHECK-NOT: DW_AT_accessibility
 ; CHECK: DW_TAG
