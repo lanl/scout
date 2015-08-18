@@ -2277,8 +2277,10 @@ public:
   RValue EmitMPosition(const CallExpr *E , unsigned int index);
   RValue EmitMPositionVector(const CallExpr *E);
   
+
   llvm::Value* EmitLIndex(unsigned int index);
   llvm::Value* EmitGIndex(unsigned int index);
+  llvm::Value* FindGIndex(unsigned int index);
 
 
   llvm::Function* CreatePlotFunction(Expr* E);
@@ -2309,7 +2311,7 @@ public:
     
     return -1;
   }
-  
+
   llvm::Value* GetMeshTopologyDim(llvm::Value* rank, MeshElementType elementType){
     switch(elementType){
       case Vertices:
@@ -2360,6 +2362,8 @@ public:
     bool hasInductionVar[3];
   };
   
+  ForallData *GetForallData(unsigned int index);
+
   std::vector<ForallData> ForallStack;
   int ForallStackIndex = 0;
   

@@ -164,29 +164,14 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     return InductionVar[index];
   }
   
-  ForallData* data = nullptr;
+  ForallData* data = GetForallData(ForallStackIndex);
 
-  ForallData& d = ForallStack[ForallStackIndex];
-  if(d.elementType == Vertices || d.elementType == Cells) {
-       data = &d;
-  }
-  
-  assert(data && "unable to find cells or vertices forall data");
-
-  if(index == 3){
+  if(index == 3) {
     return data->indexPtr;
   }
   
   if(!data->hasInductionVar[index]){
-    const MeshType* mt;
-    if(const PointerType* pt =
-       dyn_cast<PointerType>(data->meshVarDecl->getType())){
-      mt = dyn_cast<MeshType>(pt->getPointeeType());
-    }
-    else{
-      mt = dyn_cast<MeshType>(data->meshVarDecl->getType());
-    }
-    
+    const MeshType* mt = data->getMeshType();
     auto& dims = mt->dimensions();
     
     sprintf(IRNameStr, "induct.%s.ptr", IndexNames[index]);

@@ -1542,91 +1542,24 @@ RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
   return RValue::get(Result);
 }
 
-llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
-   static const char *IndexNames[] = { "x", "y", "z", "w"};
+CodeGenFunction::ForallData *CodeGenFunction::GetForallData(unsigned int index) {
+  ForallData *data = nullptr;
 
-
-   ForallData* data = nullptr;
-
-   ForallData& d = ForallStack[ForallStackIndex];
-   if(d.elementType == Vertices || d.elementType == Cells) {
-     data = &d;
-   }
-   assert(data && "unable to find cells or vertices forall data");
-
-
-   llvm::Value* idx = Builder.CreateLoad(data->indexPtr);
-
-
-   //SC_TODO:  make member function
-   const MeshType* mt;
-   if(const PointerType* pt =
-       dyn_cast<PointerType>(data->meshVarDecl->getType())){
-     mt = dyn_cast<MeshType>(pt->getPointeeType());
-   }
-   else{
-     mt = dyn_cast<MeshType>(data->meshVarDecl->getType());
-   }
-
-   auto& dims = mt->dimensions();
-
-   // for partitioned legion case need to add start to induction var
-   if (ForallStackIndex == 0 && dim < 3) {
-      idx = Builder.CreateAdd(Builder.CreateLoad(LookupMeshStart(dim)), idx);
-   }
-
-   // get current iv
-   idx = LinearIdx2InductionVar(idx, data->elementType, dim, dims.size());
-
-   if (ForallStackIndex == 1 ) {
-     // get top iv
-     llvm:: Value *topiv = LinearIdx2InductionVar(Builder.CreateLoad(ForallStack[0].indexPtr),
-         ForallStack[0].elementType, dim, dims.size());
-     idx = Builder.CreateSub(idx, topiv);
-     if (ForallStack[0].elementType == Vertices) {
-       llvm::Value* one = llvm::ConstantInt::get(Int64Ty, 1);
-       idx = Builder.CreateAdd(idx, one);
-     }
-   }
-
-
-   if(dim == 3) {
-     return Builder.CreateTrunc(idx, Int32Ty, "lindex.w");
-   }
-
-
-   sprintf(IRNameStr, "lindex.%s", IndexNames[dim]);
-   return Builder.CreateTrunc(idx, Int32Ty, IRNameStr);
+  ForallData& d = ForallStack[index];
+  if (d.elementType == Vertices || d.elementType == Cells) {
+    data = &d;
+  }
+  assert(data && "unable to find cells or vertices forall data");
+  return data;
 }
 
+llvm::Value *CodeGenFunction::FindGIndex(unsigned int dim) {
 
-llvm::Value *CodeGenFunction::EmitGIndex(unsigned int dim) {
-  static const char *IndexNames[] = { "x", "y", "z", "w"};
-
-
-   ForallData* data = nullptr;
-
-   ForallData& d = ForallStack[ForallStackIndex];
-   if(d.elementType == Vertices || d.elementType == Cells) {
-     data = &d;
-   }
-   assert(data && "unable to find cells or vertices forall data");
-
+   ForallData* data = GetForallData(ForallStackIndex);
+   const MeshType* mt = data->getMeshType();
+   auto& dims = mt->dimensions();
 
    llvm::Value* idx = Builder.CreateLoad(data->indexPtr);
-
-
-   //SC_TODO:  make member function
-   const MeshType* mt;
-   if(const PointerType* pt =
-       dyn_cast<PointerType>(data->meshVarDecl->getType())){
-     mt = dyn_cast<MeshType>(pt->getPointeeType());
-   }
-   else{
-     mt = dyn_cast<MeshType>(data->meshVarDecl->getType());
-   }
-
-   auto& dims = mt->dimensions();
 
    // for partitioned legion case need to add start to induction var
    if (ForallStackIndex == 0 && dim < 3) {
@@ -1635,6 +1568,45 @@ llvm::Value *CodeGenFunction::EmitGIndex(unsigned int dim) {
 
    // get current iv
    return LinearIdx2InductionVar(idx, data->elementType, dim, dims.size());
-
 }
+
+
+llvm::Value *CodeGenFunction::EmitGIndex(unsigned int dim) {
+  static const char *IndexNames[] = { "x", "y", "z", "w"};
+  sprintf(IRNameStr, "gindex.%s", IndexNames[dim]);
+  return Builder.CreateTrunc(FindGIndex(dim), Int32Ty, IRNameStr);
+}
+
+llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
+
+  llvm::Value* idx;
+
+  if (dim == 3) {
+    idx = Builder.CreateLoad(ForallStack[ForallStackIndex].indexPtr);
+    return Builder.CreateTrunc(idx, Int32Ty, "lindex.w");
+  }
+
+  // get current iv
+  idx = FindGIndex(dim);
+
+  if (ForallStackIndex > 0) {
+    ForallData* data = GetForallData(ForallStackIndex);
+    const MeshType* mt = data->getMeshType();
+    auto& dims = mt->dimensions();
+    // get top iv
+    llvm::Value *topiv = LinearIdx2InductionVar(
+        Builder.CreateLoad(ForallStack[0].indexPtr), ForallStack[0].elementType,
+        dim, dims.size());
+    idx = Builder.CreateSub(idx, topiv);
+    if (ForallStack[0].elementType == Vertices) {
+      llvm::Value* one = llvm::ConstantInt::get(Int64Ty, 1);
+      idx = Builder.CreateAdd(idx, one);
+    }
+  }
+
+  sprintf(IRNameStr, "lindex.%s", IndexNames[dim]);
+  return Builder.CreateTrunc(idx, Int32Ty, IRNameStr);
+}
+
+
 
