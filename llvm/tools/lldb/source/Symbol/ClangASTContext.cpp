@@ -3125,6 +3125,16 @@ ClangASTContext::IsDefined(void* type)
             return tag_decl->isCompleteDefinition();
         return false;
     }
+    // +===== Scout =====================================
+    const clang::MeshType *mesh_type = llvm::dyn_cast<clang::MeshType>(qual_type.getTypePtr());
+    if (mesh_type)
+    {
+      clang::MeshDecl *mesh_decl = mesh_type->getDecl();
+      if (mesh_decl)
+        return mesh_decl->isCompleteDefinition();
+      return false;
+    }
+    // =================================================
     else
     {
         const clang::ObjCObjectType *objc_class_type = llvm::dyn_cast<clang::ObjCObjectType>(qual_type);
@@ -9129,7 +9139,7 @@ ClangASTContext::ResolveClangOpaqueTypeDefinition (SymbolFileDWARF *dwarf,
                                                                          type->GetName().AsCString());
     assert (clang_type);
     DWARFDebugInfoEntry::Attributes attributes;
-
+  
     switch (tag)
     {
       // +===== Scout =======================
@@ -11510,7 +11520,6 @@ ClangASTContext::ParseTypeFromDWARF (const SymbolContext& sc,
                         {
                           // +===== Scout =================
                           if(isScoutType){
-                            
                             const uint32_t dimX =
                             die->GetAttributeValueAsUnsigned(dwarf, dwarf_cu, DW_AT_SCOUT_mesh_dim_x, 0);
                             
