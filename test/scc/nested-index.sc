@@ -32,11 +32,12 @@ int main(int argc, char** argv) {
     assert(out1[j] == exp1[j] && "bad value in rank=1");
   }
 
+
   int out2x[4*m2size*m2size], out2y[4*m2size*m2size];
-  int exp2x[] = {0,1,0,1,1,2,1,2,2,3,2,3};
-  int exp2y[] = {0,0,1,1,0,0,1,1,0,0,1,1,
-                 1,1,2,2,1,1,2,2,1,1,2,2,
-                 2,2,3,3,2,2,3,3,2,2,3,3};
+  int exp2x[] = {0,0,1,1,1,1,2,2,2,2,3,3};
+  int exp2y[] = {0,1,0,1,0,1,0,1,0,1,0,1,
+                 1,2,1,2,1,2,1,2,1,2,1,2,
+                 2,3,2,3,2,3,2,3,2,3,2,3};
 
 
   forall vertices v in m2 {
@@ -53,6 +54,7 @@ int main(int argc, char** argv) {
       i++;
     }
   }
+
 
  for(int j = 0; j < 4*m2size*m2size; j++) {
     assert(out2x[j] == exp2x[j%12] && "bad x value in rank=2");

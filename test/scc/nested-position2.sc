@@ -72,74 +72,85 @@ int main(int argc, char** argv) {
   MyMesh m3[m3size, m3size, m3size];
 
   int out1[2*m1size];
-  int exp1[] = {0,1};
+  int exp1[] = {1,0,1,0,1,0,1,0};
+
+  forall cells c in m1 {
+    a = position().x;
+  }
 
   int i = 0;
-  forall cells c in m1 {
+  forall vertices v in m1 {
       printf("out %d\n",positionx());  
-    forall vertices v in c {
-      printf("in %d\n",positionx());
-      out1[i] = positionx();  
+    forall cells c in v {
+      printf("in %d v %d\n",positionx(),a);  
+      out1[i] = position().x;  
       i++;
     }
   }
+
   for(int j = 0; j < 2*m1size; j++) {
-    assert(out1[j] == exp1[j%2] && "bad value in rank=1");
+    assert(out1[j] == exp1[j] && "bad value in rank=1");
   }
 
 
-  int out2x[4*m2size*m2size], out2y[4*m2size*m2size];
-  int exp2y[] = {0,1,0,1};
-  int exp2x[] = {0,0,1,1};
+  int const s2 = 4*m2size*m2size;
+  int out2x[s2], out2y[s2];
+  int exp2x[] = {1,0,1,0,1,0,
+                 1,1,0,1,0,1,0,1,0,1,0,0,
+                 1,1,0,1,0,1,0,1,0,1,0,0,
+                 1,0,1,0,1,0};
+  int exp2y[] = {1,1,1,1,1,1,
+                 0,1,0,0,1,1,0,0,1,1,0,1,
+                 0,1,0,0,1,1,0,0,1,1,0,1,
+                 0,0,0,0,0,0};
 
-  forall vertices v in m2 {
-    b = position().x + 10*position().y;
+  forall cells c in m2 {
+    a = position().x + 10*position().y;
   }
 
   i = 0;
-  forall cells c in m2 {
+  forall vertices v in m2 {
     printf("out %d %d\n",positionx(),positiony());
-    forall vertices v in c {
-      printf("in %d %d v %d\n",positionx(),positiony(),v.b);
+    forall cells c in v{
+      printf("in %d %d v %d\n",positionx(),positiony(),c.a);
       out2x[i] = position().x;  
       out2y[i] = position().y;  
       i++;
     }
   }
 
-  for(int j = 0; j < 4*m2size*m2size; j++) {
-    assert(out2x[j] == exp2x[j%4] && "bad x value in rank=2");
-    assert(out2y[j] == exp2y[j%4] && "bad y value in rank=2");
+  for(int j = 0; j < s2; j++) {
+    assert(out2x[j] == exp2x[j] && "bad x value in rank=2");
+    assert(out2y[j] == exp2y[j] && "bad y value in rank=2");
   }
 
+  int const s3 = 8*m3size*m3size*m3size;
+  int out3x[s3], out3y[s3],out3z[s3];
 
-  int out3x[8*m3size*m3size*m3size], out3y[8*m3size*m3size*m3size], out3z[8*m3size*m3size*m3size];
-  int exp3y[] = {0,1,0,1,0,1,0,1};
-  int exp3x[] = {0,0,1,1,0,0,1,1};
-  int exp3z[] = {0,0,0,0,1,1,1,1};
-
-  forall vertices v in m3 {
-    b = position().x + 10*position().y + 100*position().z;
+  forall cells c in m3 {
+    a = position().x + 10*position().y + 100*position().z;
   }
 
   i = 0;
-  forall cells c in m3 {
+  forall vertices v in m3 {
       printf("out %d %d %d\n",positionx(),positiony(),positionz());  
-    forall vertices v in c {
-      printf("in %d %d %d %d v %d\n",positionx(),positiony(),positionz(),position().w,v.b);  
+    forall cells c in v {
+      printf("in %d %d %d %d v %d\n",positionx(),positiony(),positionz(),position().w,c.a); 
       out3x[i] = position().x;  
       out3y[i] = position().y;  
       out3z[i] = position().z;  
-      i++;
+      i++; 
     }
   }
 
-  for(int j = 0; j < 8*m3size*m3size*m3size; j++) {
-    assert(out3x[j] == exp3x[j%8] && "bad x value in rank=3");
-    assert(out3y[j] == exp3y[j%8] && "bad y value in rank=3");
-    assert(out3z[j] == exp3z[j%8] && "bad z value in rank=3");
+#if 0
+  for(int j = 0; j < s3; j++) {
+    assert(out3x[j] == exp3x[j] && "bad x value in rank=3");
+    assert(out3y[j] == exp3y[j] && "bad y value in rank=3");
+    assert(out3z[j] == exp3z[j] && "bad z value in rank=3");
   }
-  return 0;
+#endif
+ return 0;
 }
 
 
