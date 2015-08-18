@@ -371,7 +371,7 @@ CreateAndPopulateDiagOpts(ArrayRef<const char *> argv) {
 }
 
 static void SetInstallDir(SmallVectorImpl<const char *> &argv,
-                          Driver &TheDriver) {
+                          Driver &TheDriver, bool CanonicalPrefixes) {
   // Attempt to find the original path used to invoke the driver, to determine
   // the installed path. We do this manually, because we want to support that
   // path being a symlink.

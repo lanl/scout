@@ -26,7 +26,4 @@ add_lldb_library(lldbPluginSymbolFileDWARF
   SymbolFileDWARF.cpp
   SymbolFileDWARFDebugMap.cpp
   UniqueDWARFASTType.cpp
-# +===== Scout =====================
-  Scout/SymbolFileDWARF.cpp
-# +=================================
   )

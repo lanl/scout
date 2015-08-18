@@ -188,6 +188,8 @@ class CodeGenTypes {
 
   SmallVector<const MeshDecl *, 8> DeferredMeshes;
 
+  public:
+  
   // has the global mesh been initialized
   llvm::DenseMap<const Type *, bool> GlobalMeshInit;
   // +========================================================================+
@@ -195,7 +197,6 @@ class CodeGenTypes {
   /// corresponding llvm::Type.
   llvm::DenseMap<const Type *, llvm::Type *> TypeCache;
 
-public:
   CodeGenTypes(CodeGenModule &cgm);
   ~CodeGenTypes();
 

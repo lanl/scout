@@ -298,7 +298,7 @@ public:
                       ClangASTMetadata *metadata = NULL);
 
     // +===== Scout ======================================
-    ClangASTType
+    CompilerType
     CreateUniformMeshType (clang::DeclContext *decl_ctx,
                            lldb::AccessType access_type,
                            const char *name,
@@ -308,7 +308,7 @@ public:
                            lldb::LanguageType language,
                            ClangASTMetadata *metadata = NULL);
   
-    ClangASTType
+    CompilerType
     CreateALEMeshType (clang::DeclContext *decl_ctx,
                            lldb::AccessType access_type,
                            const char *name,
@@ -319,7 +319,7 @@ public:
                            ClangASTMetadata *metadata = NULL);
 
 
-    ClangASTType
+    CompilerType
     CreateStructuredMeshType (clang::DeclContext *decl_ctx,
                               lldb::AccessType access_type,
                               const char *name,
@@ -329,7 +329,7 @@ public:
                               lldb::LanguageType language,
                               ClangASTMetadata *metadata = NULL);
 
-    ClangASTType
+    CompilerType
     CreateRectilinearMeshType (clang::DeclContext *decl_ctx,
                                lldb::AccessType access_type,
                                const char *name,
@@ -339,7 +339,7 @@ public:
                                lldb::LanguageType language,
                                ClangASTMetadata *metadata = NULL);
 
-    ClangASTType
+    CompilerType
     CreateUnstructuredMeshType (clang::DeclContext *decl_ctx,
                                 lldb::AccessType access_type,
                                 const char *name,
@@ -349,7 +349,7 @@ public:
                                 lldb::LanguageType language,
                                 ClangASTMetadata *metadata = NULL);
   
-  ClangASTType
+  CompilerType
   CreateFrameType (clang::DeclContext *decl_ctx,
                    lldb::AccessType access_type,
                    const char *name,
@@ -944,7 +944,23 @@ public:
                           const CompilerType &field_type,
                           lldb::AccessType access,
                           uint32_t bitfield_bit_size);
-    
+  
+  // +===== Scout ==========================================
+  clang::MeshFieldDecl *
+  AddFieldToMeshType (const CompilerType& type,
+                      const char *name,
+                      const CompilerType &field_type,
+                      lldb::AccessType access,
+                      uint32_t bitfield_bit_size,
+                      uint32_t field_flags);
+  
+  clang::VarDecl*
+  AddFieldToFrameType (const CompilerType& type,
+                       const char *name,
+                       const CompilerType &field_type,
+                       uint32_t varId);
+  // +=======================================================
+  
     static void
     BuildIndirectFields (const CompilerType& type);
     
@@ -1019,7 +1035,15 @@ public:
     
     static bool
     CompleteTagDeclarationDefinition (const CompilerType &type);
-    
+  
+    // +===== Scout ===========================
+    bool
+    StartScoutDeclarationDefinition (const CompilerType &type);
+  
+    bool
+    CompleteScoutDeclarationDefinition (const CompilerType &type);
+    // +========================================
+  
     //----------------------------------------------------------------------
     // Modifying Enumeration types
     //----------------------------------------------------------------------
@@ -1109,7 +1133,15 @@ public:
     
     static clang::ObjCInterfaceDecl *
     GetAsObjCInterfaceDecl (const CompilerType& type);
-    
+  
+    // +===== Scout =====================
+    clang::MeshDecl *
+    GetAsMeshDecl (const CompilerType& type) const;
+  
+    clang::FrameDecl *
+    GetAsFrameDecl (const CompilerType& type) const;
+    // +=================================
+  
     static clang::QualType
     GetQualType (const CompilerType& type)
     {
@@ -1158,10 +1190,32 @@ protected:
         llvm::DenseMap<const clang::CXXRecordDecl *, clang::CharUnits> base_offsets;
         llvm::DenseMap<const clang::CXXRecordDecl *, clang::CharUnits> vbase_offsets;
     };
-
+  
     typedef llvm::DenseMap<const clang::RecordDecl *, LayoutInfo> RecordDeclToLayoutMap;
 
+    // +===== Scout ==========================================
+  
+    struct MeshLayoutInfo
+    {
+      MeshLayoutInfo () :
+      bit_size(0),
+      alignment(0),
+      field_offsets(),
+      base_offsets(),
+      vbase_offsets()
+      {
+      }
+      uint64_t bit_size;
+      uint64_t alignment;
+      llvm::DenseMap<const clang::MeshFieldDecl *, uint64_t> field_offsets;
+      llvm::DenseMap<const clang::MeshDecl *, clang::CharUnits> base_offsets;
+      llvm::DenseMap<const clang::MeshDecl *, clang::CharUnits> vbase_offsets;
+    };
 
+    typedef llvm::DenseMap<const clang::MeshDecl *, MeshLayoutInfo> MeshDeclToLayoutMap;
+
+    // =======================================================
+  
     // DWARF parsing functions
     bool
     ParseTemplateDIE (SymbolFileDWARF *dwarf,
@@ -1199,6 +1253,24 @@ protected:
                        lldb::AccessType &default_accessibility,
                        bool &is_a_class,
                        LayoutInfo &layout_info);
+  
+  // +===== Scout =========================================================
+  size_t
+  ParseMeshChildMembers(const lldb_private::SymbolContext& sc,
+                        SymbolFileDWARF *dwarf,
+                        DWARFCompileUnit* dwarf_cu,
+                        const DWARFDebugInfoEntry *die,
+                        lldb_private::CompilerType &class_clang_type,
+                        lldb::AccessType &default_accessibility,
+                        MeshLayoutInfo &layout_info);
+  
+  size_t
+  ParseFrameChildMembers(const lldb_private::SymbolContext& sc,
+                         SymbolFileDWARF *dwarf,
+                         DWARFCompileUnit* dwarf_cu,
+                         const DWARFDebugInfoEntry *die,
+                         lldb_private::CompilerType &class_clang_type);
+  // +=====================================================================
 
     size_t
     ParseChildParameters (const lldb_private::SymbolContext& sc,
@@ -1286,6 +1358,10 @@ protected:
     uint32_t                                        m_pointer_byte_size;
     bool                                            m_ast_owned;
     RecordDeclToLayoutMap                           m_record_decl_to_layout_map;
+  
+    // +===== Scout ==========================================
+    MeshDeclToLayoutMap m_mesh_decl_to_layout_map;
+    // +======================================================
 
 private:
     //------------------------------------------------------------------

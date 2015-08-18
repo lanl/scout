@@ -135,7 +135,6 @@ getUniqueMeshTypeName(const MeshType *Ty, CodeGenModule &CGM,
   // a unique string for a type?
   llvm::raw_svector_ostream Out(FullName);
   CGM.getCXXABI().getMangleContext().mangleCXXRTTIName(QualType(Ty, 0), Out);
-  Out.flush();
   return FullName;
 }
 
@@ -157,7 +156,6 @@ getUniqueFrameTypeName(const FrameType *Ty, CodeGenModule &CGM,
   // a unique string for a type?
   llvm::raw_svector_ostream Out(FullName);
   CGM.getCXXABI().getMangleContext().mangleCXXRTTIName(QualType(Ty, 0), Out);
-  Out.flush();
   return FullName;
 }
 
