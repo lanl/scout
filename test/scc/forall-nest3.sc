@@ -69,15 +69,22 @@ int main(int argc, char** argv) {
   MyMesh m[2, 2];
 
   forall cells c in m {
+    int px = position().x;
+    int py = position().y;
     forall edges e in c {
       forall vertices v in e{
-        cv = 99.0f;
+        cv = px + py*10;
       }
     }
   }
+
+  float expected[] = 
+    {0.0f, 1.0f, 1.0f, 10.0f, 11.0f, 11.0f, 10.0f, 11.0f, 11.0f};
   
+  int i = 0;
   forall vertices v in m{
-    printf("%f\n", cv);
+    assert(cv == expected[i] && "unexpected value");
+    ++i;
   }
 
   return 0;
