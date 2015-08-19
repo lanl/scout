@@ -321,7 +321,8 @@ namespace clang {
         // We are visiting a nested forall within the scope of our
         // originally invoked forall.
         ForallMeshStmt *FMS = cast<ForallMeshStmt>(S);
-
+        fs_ = FMS;
+        
         // Next, save the statement on our stack of visited foralls so
         // we can include them in our checking...  Note the constructor
         // pushes the 'invoking' forall onto the stack...
