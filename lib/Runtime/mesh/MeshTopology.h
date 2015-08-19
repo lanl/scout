@@ -599,7 +599,7 @@ namespace scout{
     }
 
     void build(size_t dim) override{
-      std::cerr << "build: " << dim << std::endl;
+      //std::cerr << "build: " << dim << std::endl;
 
       assert(dim <= MT::topologicalDimension());
 
@@ -667,8 +667,8 @@ namespace scout{
     }
   
     void transpose(size_t fromDim, size_t toDim){
-       std::cerr << "transpose: " << fromDim << " -> " << 
-         toDim << std::endl;
+      //std::cerr << "transpose: " << fromDim << " -> " << 
+      //   toDim << std::endl;
     
       IndexVec pos(numEntities(fromDim), 0);
     
@@ -696,8 +696,8 @@ namespace scout{
     }
   
     void intersect(size_t fromDim, size_t toDim, size_t dim){
-      std::cerr << "intersect: " << fromDim << " -> " << 
-        toDim << std::endl;
+      //std::cerr << "intersect: " << fromDim << " -> " << 
+      //  toDim << std::endl;
 
       Connectivity& outConn = getConnectivity_(fromDim, toDim);
       if(!outConn.empty()){
@@ -773,7 +773,7 @@ namespace scout{
     }
   
     void compute(size_t fromDim, size_t toDim) override{
-      std::cerr << "compute: " << fromDim << " -> " << toDim << std::endl;
+      //std::cerr << "compute: " << fromDim << " -> " << toDim << std::endl;
 
       Connectivity& outConn = getConnectivity_(fromDim, toDim);
     
