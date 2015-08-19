@@ -814,6 +814,8 @@ void TargetLoweringBase::initActions() {
     setOperationAction(ISD::CONCAT_VECTORS, VT, Expand);
     setOperationAction(ISD::FMINNUM, VT, Expand);
     setOperationAction(ISD::FMAXNUM, VT, Expand);
+    setOperationAction(ISD::FMINNAN, VT, Expand);
+    setOperationAction(ISD::FMAXNAN, VT, Expand);
     setOperationAction(ISD::FMAD, VT, Expand);
     setOperationAction(ISD::SMIN, VT, Expand);
     setOperationAction(ISD::SMAX, VT, Expand);
@@ -1150,7 +1152,7 @@ TargetLoweringBase::emitPatchPoint(MachineInstr *MI,
       Flags |= MachineMemOperand::MOVolatile;
     }
     MachineMemOperand *MMO = MF.getMachineMemOperand(
-        MachinePointerInfo::getFixedStack(FI), Flags,
+        MachinePointerInfo::getFixedStack(MF, FI), Flags,
         MF.getDataLayout().getPointerSize(), MFI.getObjectAlignment(FI));
     MIB->addMemOperand(MF, MMO);
 
@@ -1530,6 +1532,29 @@ unsigned TargetLoweringBase::getByValTypeAlignment(Type *Ty,
   return DL.getABITypeAlignment(Ty);
 }
 
+bool TargetLoweringBase::allowsMemoryAccess(LLVMContext &Context,
+                                            const DataLayout &DL, EVT VT,
+                                            unsigned AddrSpace,
+                                            unsigned Alignment,
+                                            bool *Fast) const {
+  // Check if the specified alignment is sufficient based on the data layout.
+  // TODO: While using the data layout works in practice, a better solution
+  // would be to implement this check directly (make this a virtual function).
+  // For example, the ABI alignment may change based on software platform while
+  // this function should only be affected by hardware implementation.
+  Type *Ty = VT.getTypeForEVT(Context);
+  if (Alignment >= DL.getABITypeAlignment(Ty)) {
+    // Assume that an access that meets the ABI-specified alignment is fast.
+    if (Fast != nullptr)
+      *Fast = true;
+    return true;
+  }
+  
+  // This is a misaligned access.
+  return allowsMisalignedMemoryAccesses(VT, AddrSpace, Alignment, Fast);
+}
+
+
 //===----------------------------------------------------------------------===//
 //  TargetTransformInfo Helpers
 //===----------------------------------------------------------------------===//
@@ -1548,6 +1573,12 @@ int TargetLoweringBase::InstructionOpcodeToISD(unsigned Opcode) const {
   case Invoke:         return 0;
   case Resume:         return 0;
   case Unreachable:    return 0;
+  case CleanupRet:     return 0;
+  case CatchEndPad:  return 0;
+  case CatchRet:       return 0;
+  case CatchPad:     return 0;
+  case TerminatePad: return 0;
+  case CleanupPad:   return 0;
   case Add:            return ISD::ADD;
   case FAdd:           return ISD::FADD;
   case Sub:            return ISD::SUB;
@@ -1605,13 +1636,13 @@ int TargetLoweringBase::InstructionOpcodeToISD(unsigned Opcode) const {
   llvm_unreachable("Unknown instruction type encountered!");
 }
 
-std::pair<unsigned, MVT>
+std::pair<int, MVT>
 TargetLoweringBase::getTypeLegalizationCost(const DataLayout &DL,
                                             Type *Ty) const {
   LLVMContext &C = Ty->getContext();
   EVT MTy = getValueType(DL, Ty);
 
-  unsigned Cost = 1;
+  int Cost = 1;
   // We keep legalizing the type until we find a legal kind. We assume that
   // the only operation that costs anything is the split. After splitting
   // we need to handle two types.

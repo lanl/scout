@@ -161,7 +161,13 @@ Sema::ResolveExceptionSpec(SourceLocation Loc, const FunctionProtoType *FPT) {
   else
     InstantiateExceptionSpec(Loc, SourceDecl);
 
-  return SourceDecl->getType()->castAs<FunctionProtoType>();
+  const FunctionProtoType *Proto =
+    SourceDecl->getType()->castAs<FunctionProtoType>();
+  if (Proto->getExceptionSpecType() == clang::EST_Unparsed) {
+    Diag(Loc, diag::err_exception_spec_not_parsed);
+    Proto = nullptr;
+  }
+  return Proto;
 }
 
 void
@@ -312,7 +318,6 @@ bool Sema::CheckEquivalentExceptionSpec(FunctionDecl *Old, FunctionDecl *New) {
   default:
     llvm_unreachable("This spec type is compatible with none.");
   }
-  OS.flush();
 
   SourceLocation FixItLoc;
   if (TypeSourceInfo *TSInfo = New->getTypeSourceInfo()) {

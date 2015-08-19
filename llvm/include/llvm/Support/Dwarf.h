@@ -617,7 +617,7 @@ unsigned getAttributeEncoding(StringRef EncodingString);
 const char *AttributeValueString(uint16_t Attr, unsigned Val);
 
 /// \brief Decsribes an entry of the various gnu_pub* debug sections.
-/// 
+///
 /// The gnu_pub* kind looks like:
 ///
 /// 0-3  reserved
@@ -648,7 +648,6 @@ private:
     LINKAGE_MASK = 1 << LINKAGE_OFFSET
   };
 };
-
 
 } // End of namespace dwarf
 

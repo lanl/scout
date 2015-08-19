@@ -173,7 +173,7 @@ enum gdb_regnums
 
 static RegisterInfo g_register_infos[] =
 {
-  //  NAME      ALT         SZ OFF ENCODING         FORMAT                  COMPILER                 DWARF                      GENERIC                  GDB                   LLDB NATIVE            VALUE REGS    INVALIDATE REGS
+  //  NAME      ALT         SZ OFF ENCODING         FORMAT                  EH_FRAME                 DWARF                      GENERIC                  STABS                 LLDB NATIVE            VALUE REGS    INVALIDATE REGS
   //  ======    =======     == === =============    ============          ===================== =====================    ============================ ====================  ======================    ==========    ===============
     { "eax",    nullptr,    4,  0, eEncodingUint  , eFormatHex          , { gcc_dwarf_eax       , gcc_dwarf_eax           , LLDB_INVALID_REGNUM       , gdb_eax            , LLDB_INVALID_REGNUM },      nullptr,        nullptr},
     { "ebx"   , nullptr,    4,  0, eEncodingUint  , eFormatHex          , { gcc_dwarf_ebx       , gcc_dwarf_ebx           , LLDB_INVALID_REGNUM       , gdb_ebx            , LLDB_INVALID_REGNUM },      nullptr,        nullptr},
@@ -387,7 +387,7 @@ ABISysV_i386::GetArgumentValues (Thread &thread,
             return false;
 
         // Currently: Support for extracting values with Clang QualTypes only.
-        ClangASTType clang_type (value->GetClangType());
+        CompilerType clang_type (value->GetClangType());
         if (clang_type)
         {
             bool is_signed;
@@ -426,7 +426,7 @@ ABISysV_i386::SetReturnValueObject(lldb::StackFrameSP &frame_sp, lldb::ValueObje
 
 ValueObjectSP
 ABISysV_i386::GetReturnValueObjectSimple (Thread &thread,
-                                          ClangASTType &return_clang_type) const
+                                          CompilerType &return_clang_type) const
 {
     ValueObjectSP return_valobj_sp;
     Value value;
@@ -686,7 +686,7 @@ ABISysV_i386::GetReturnValueObjectSimple (Thread &thread,
 
 
 ValueObjectSP
-ABISysV_i386::GetReturnValueObjectImpl (Thread &thread, ClangASTType &return_clang_type) const
+ABISysV_i386::GetReturnValueObjectImpl (Thread &thread, CompilerType &return_clang_type) const
 {
     ValueObjectSP return_valobj_sp;
 

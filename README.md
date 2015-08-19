@@ -15,12 +15,12 @@ The Scout toolchain is still very much a *work-in-progress* and the documentatio
 both under active development.  We use 64-bit Mac OS X 10.9.X and Linux systems (primarily the LTS 
 releases of Ubuntu / Linux Mint) as our primary development platforms.   
 
-Scout is open-source software (released under LA-CC-13-015).  Los Alamos National Security, LLC (LANS) 
+Scout is open-source software (released under LA-CC-15-063).  Los Alamos National Security, LLC (LANS) 
 owns the copyright to Scout. The license is BSD-like with a "modifications must be indicated" clause. 
 See the [LICENSE](http://github.com/losalamos/scout/blob/master/License.md) file for the full details.
 
 **NOTE**: Scout is still very much a *work-in-progress* and the documentation and source are both 
-under active development.  We use Linux-based systems and Mac OS X 10.8.X as our primary software 
+under active development.  We use Linux-based systems and Mac OS X 10.9.X as our primary software 
 development platforms with a range of supported GPU architectures.  For CPU architectures we 
 primarily support x86 systems but have recently added support for ARM-based platforms. More details 
 on specific hardware support is included below. 

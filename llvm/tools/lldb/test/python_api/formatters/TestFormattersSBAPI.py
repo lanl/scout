@@ -19,6 +19,7 @@ class SBFormattersAPITestCase(TestBase):
         self.setTearDownCleanup()
         self.formatters()
 
+    @expectedFailureFreeBSD("llvm.org/pr24282 Empty2 fails")
     @python_api_test
     @dwarf_test
     def test_with_dwarf_formatters_api(self):
@@ -301,6 +302,10 @@ class SBFormattersAPITestCase(TestBase):
 
         self.assertTrue(summary.IsValid(), "no summary found for foo* when one was in place")
         self.assertTrue(summary.GetData() == "hello static world", "wrong summary found for foo*")
+
+        self.expect("frame variable e1", substrs=["I am an empty Empty1 {}"])
+        self.expect("frame variable e2", substrs=["I am an empty Empty2"])
+        self.expect("frame variable e2", substrs=["I am an empty Empty2 {}"], matching=False)
 
     def force_synth_off(self):
         """Test that one can have the public API return non-synthetic SBValues if desired"""

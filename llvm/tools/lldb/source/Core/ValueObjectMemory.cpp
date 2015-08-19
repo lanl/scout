@@ -46,7 +46,7 @@ ValueObjectSP
 ValueObjectMemory::Create (ExecutionContextScope *exe_scope, 
                            const char *name,
                            const Address &address, 
-                           const ClangASTType &ast_type)
+                           const CompilerType &ast_type)
 {
     return (new ValueObjectMemory (exe_scope, name, address, ast_type))->GetSP();
 }
@@ -90,14 +90,14 @@ ValueObjectMemory::ValueObjectMemory (ExecutionContextScope *exe_scope,
 ValueObjectMemory::ValueObjectMemory (ExecutionContextScope *exe_scope,
                                       const char *name, 
                                       const Address &address,
-                                      const ClangASTType &ast_type) :
+                                      const CompilerType &ast_type) :
     ValueObject(exe_scope),
     m_address (address),
     m_type_sp(),
     m_clang_type(ast_type)
 {
     // Do not attempt to construct one of these objects with no variable!
-    assert (m_clang_type.GetASTContext());
+    assert (m_clang_type.GetTypeSystem());
     assert (m_clang_type.GetOpaqueQualType());
     
     TargetSP target_sp (GetTargetSP());
@@ -131,7 +131,7 @@ ValueObjectMemory::~ValueObjectMemory()
 {
 }
 
-ClangASTType
+CompilerType
 ValueObjectMemory::GetClangTypeImpl ()
 {
     if (m_type_sp)

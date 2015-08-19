@@ -343,30 +343,6 @@ MachineInstrBuilder X86FrameLowering::BuildStackAdjustment(
   return MI;
 }
 
-/// mergeSPUpdatesUp - Merge two stack-manipulating instructions upper iterator.
-static
-void mergeSPUpdatesUp(MachineBasicBlock &MBB, MachineBasicBlock::iterator &MBBI,
-                      unsigned StackPtr, uint64_t *NumBytes = nullptr) {
-  if (MBBI == MBB.begin()) return;
-
-  MachineBasicBlock::iterator PI = std::prev(MBBI);
-  unsigned Opc = PI->getOpcode();
-  if ((Opc == X86::ADD64ri32 || Opc == X86::ADD64ri8 ||
-       Opc == X86::ADD32ri || Opc == X86::ADD32ri8 ||
-       Opc == X86::LEA32r || Opc == X86::LEA64_32r) &&
-      PI->getOperand(0).getReg() == StackPtr) {
-    if (NumBytes)
-      *NumBytes += PI->getOperand(2).getImm();
-    MBB.erase(PI);
-  } else if ((Opc == X86::SUB64ri32 || Opc == X86::SUB64ri8 ||
-              Opc == X86::SUB32ri || Opc == X86::SUB32ri8) &&
-             PI->getOperand(0).getReg() == StackPtr) {
-    if (NumBytes)
-      *NumBytes -= PI->getOperand(2).getImm();
-    MBB.erase(PI);
-  }
-}
-
 int X86FrameLowering::mergeSPUpdates(MachineBasicBlock &MBB,
                                      MachineBasicBlock::iterator &MBBI,
                                      bool doMergeWithPrevious) const {
@@ -929,7 +905,8 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
       int FI;
       if (unsigned Reg = TII.isStoreToStackSlot(FrameInstr, FI)) {
         if (X86::FR64RegClass.contains(Reg)) {
-          int Offset = getFrameIndexOffset(MF, FI);
+          unsigned IgnoredFrameReg;
+          int Offset = getFrameIndexReference(MF, FI, IgnoredFrameReg);
           Offset += SEHFrameOffset;
 
           BuildMI(MBB, MBBI, DL, TII.get(X86::SEH_SaveXMM))
@@ -979,8 +956,10 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
       // it recovers the frame pointer from the base pointer rather than the
       // other way around.
       unsigned Opm = Uses64BitFramePtr ? X86::MOV64mr : X86::MOV32mr;
+      unsigned IgnoredFrameReg;
       addRegOffset(BuildMI(MBB, MBBI, DL, TII.get(Opm)), BasePtr, true,
-                   getFrameIndexOffset(MF, X86FI->getSEHFramePtrSaveIndex()))
+                   getFrameIndexReference(MF, X86FI->getSEHFramePtrSaveIndex(),
+                                          IgnoredFrameReg))
           .addReg(FramePtr)
           .setMIFlag(MachineInstr::FrameSetup);
     }
@@ -1074,7 +1053,7 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
   // If there is an ADD32ri or SUB32ri of ESP immediately before this
   // instruction, merge the two instructions.
   if (NumBytes || MFI->hasVarSizedObjects())
-    mergeSPUpdatesUp(MBB, MBBI, StackPtr, &NumBytes);
+    NumBytes += mergeSPUpdates(MBB, MBBI, true);
 
   // If dynamic alloca is used, then reset esp to point to the last callee-saved
   // slot before popping them off! Same applies for the case, when stack was
@@ -1131,9 +1110,24 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
   }
 }
 
-int X86FrameLowering::getFrameIndexOffset(const MachineFunction &MF,
-                                          int FI) const {
+// NOTE: this only has a subset of the full frame index logic. In
+// particular, the FI < 0 and AfterFPPop logic is handled in
+// X86RegisterInfo::eliminateFrameIndex, but not here. Possibly
+// (probably?) it should be moved into here.
+int X86FrameLowering::getFrameIndexReference(const MachineFunction &MF, int FI,
+                                             unsigned &FrameReg) const {
   const MachineFrameInfo *MFI = MF.getFrameInfo();
+
+  // We can't calculate offset from frame pointer if the stack is realigned,
+  // so enforce usage of stack/base pointer.  The base pointer is used when we
+  // have dynamic allocas in addition to dynamic realignment.
+  if (TRI->hasBasePointer(MF))
+    FrameReg = TRI->getBaseRegister();
+  else if (TRI->needsStackRealignment(MF))
+    FrameReg = TRI->getStackRegister();
+  else
+    FrameReg = TRI->getFrameRegister(MF);
+
   // Offset will hold the offset from the stack pointer at function entry to the
   // object.
   // We need to factor in additional offsets applied during the prologue to the
@@ -1204,22 +1198,10 @@ int X86FrameLowering::getFrameIndexOffset(const MachineFunction &MF,
   return Offset + FPDelta;
 }
 
-int X86FrameLowering::getFrameIndexReference(const MachineFunction &MF, int FI,
-                                             unsigned &FrameReg) const {
-  // We can't calculate offset from frame pointer if the stack is realigned,
-  // so enforce usage of stack/base pointer.  The base pointer is used when we
-  // have dynamic allocas in addition to dynamic realignment.
-  if (TRI->hasBasePointer(MF))
-    FrameReg = TRI->getBaseRegister();
-  else if (TRI->needsStackRealignment(MF))
-    FrameReg = TRI->getStackRegister();
-  else
-    FrameReg = TRI->getFrameRegister(MF);
-  return getFrameIndexOffset(MF, FI);
-}
-
-// Simplified from getFrameIndexOffset keeping only StackPointer cases
-int X86FrameLowering::getFrameIndexOffsetFromSP(const MachineFunction &MF, int FI) const {
+// Simplified from getFrameIndexReference keeping only StackPointer cases
+int X86FrameLowering::getFrameIndexReferenceFromSP(const MachineFunction &MF,
+                                                   int FI,
+                                                   unsigned &FrameReg) const {
   const MachineFrameInfo *MFI = MF.getFrameInfo();
   // Does not include any dynamic realign.
   const uint64_t StackSize = MFI->getStackSize();
@@ -1245,6 +1227,9 @@ int X86FrameLowering::getFrameIndexOffsetFromSP(const MachineFunction &MF, int F
     assert(!(TailCallReturnAddrDelta < 0) && "we don't handle this case!");
 #endif
   }
+
+  // Fill in FrameReg output argument.
+  FrameReg = TRI->getStackRegister();
 
   // This is how the math works out:
   //
@@ -1276,15 +1261,6 @@ int X86FrameLowering::getFrameIndexOffsetFromSP(const MachineFunction &MF, int F
   int Offset = MFI->getObjectOffset(FI) - getOffsetOfLocalArea();
 
   return Offset + StackSize;
-}
-// Simplified from getFrameIndexReference keeping only StackPointer cases
-int X86FrameLowering::getFrameIndexReferenceFromSP(const MachineFunction &MF,
-                                                   int FI,
-                                                   unsigned &FrameReg) const {
-  assert(!TRI->hasBasePointer(MF) && "we don't handle this case");
-
-  FrameReg = TRI->getStackRegister();
-  return getFrameIndexOffsetFromSP(MF, FI);
 }
 
 bool X86FrameLowering::assignCalleeSavedSpillSlots(
@@ -1875,6 +1851,69 @@ void X86FrameLowering::adjustForHiPEPrologue(
 #endif
 }
 
+bool X86FrameLowering::adjustStackWithPops(MachineBasicBlock &MBB,
+    MachineBasicBlock::iterator MBBI, DebugLoc DL, int Offset) const {
+
+  if (Offset % SlotSize)
+    return false;
+
+  int NumPops = Offset / SlotSize;
+  // This is only worth it if we have at most 2 pops.
+  if (NumPops != 1 && NumPops != 2)
+    return false;
+
+  // Handle only the trivial case where the adjustment directly follows
+  // a call. This is the most common one, anyway.
+  if (MBBI == MBB.begin())
+    return false;
+  MachineBasicBlock::iterator Prev = std::prev(MBBI);
+  if (!Prev->isCall() || !Prev->getOperand(1).isRegMask())
+    return false;
+
+  unsigned Regs[2];
+  unsigned FoundRegs = 0;
+
+  auto RegMask = Prev->getOperand(1);
+  
+  // Try to find up to NumPops free registers. 
+  for (auto Candidate : X86::GR32_NOREX_NOSPRegClass) {
+
+    // Poor man's liveness:
+    // Since we're immediately after a call, any register that is clobbered
+    // by the call and not defined by it can be considered dead.
+    if (!RegMask.clobbersPhysReg(Candidate))
+      continue;
+
+    bool IsDef = false;
+    for (const MachineOperand &MO : Prev->implicit_operands()) {
+      if (MO.isReg() && MO.isDef() && MO.getReg() == Candidate) {
+        IsDef = true;
+        break;
+      }
+    }
+
+    if (IsDef)
+      continue;
+
+    Regs[FoundRegs++] = Candidate;
+    if (FoundRegs == (unsigned)NumPops)
+      break;
+  }
+
+  if (FoundRegs == 0)
+    return false;
+
+  // If we found only one free register, but need two, reuse the same one twice.
+  while (FoundRegs < (unsigned)NumPops)
+    Regs[FoundRegs++] = Regs[0];
+
+  for (int i = 0; i < NumPops; ++i)
+    BuildMI(MBB, MBBI, DL, 
+            TII.get(STI.is64Bit() ? X86::POP64r : X86::POP32r), Regs[i]);
+
+  return true;
+}
+
 void X86FrameLowering::
 eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
                               MachineBasicBlock::iterator I) const {
@@ -1906,8 +1945,12 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
     if (Amount) {
       // Add Amount to SP to destroy a frame, and subtract to setup.
       int Offset = isDestroy ? Amount : -Amount;
-      BuildStackAdjustment(MBB, I, DL, Offset, /*InEpilogue=*/false);
+
+      if (!(MF.getFunction()->optForMinSize() && 
+            adjustStackWithPops(MBB, I, DL, Offset)))
+        BuildStackAdjustment(MBB, I, DL, Offset, /*InEpilogue=*/false);
     }
+
     return;
   }
 

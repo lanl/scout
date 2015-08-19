@@ -651,8 +651,13 @@ void OMPClausePrinter::VisitOMPScheduleClause(OMPScheduleClause *Node) {
   OS << ")";
 }
 
-void OMPClausePrinter::VisitOMPOrderedClause(OMPOrderedClause *) {
+void OMPClausePrinter::VisitOMPOrderedClause(OMPOrderedClause *Node) {
   OS << "ordered";
+  if (auto *Num = Node->getNumForLoops()) {
+    OS << "(";
+    Num->printPretty(OS, nullptr, Policy, 0);
+    OS << ")";
+  }
 }
 
 void OMPClausePrinter::VisitOMPNowaitClause(OMPNowaitClause *) {
@@ -681,6 +686,12 @@ void OMPClausePrinter::VisitOMPCaptureClause(OMPCaptureClause *) {
 
 void OMPClausePrinter::VisitOMPSeqCstClause(OMPSeqCstClause *) {
   OS << "seq_cst";
+}
+
+void OMPClausePrinter::VisitOMPDeviceClause(OMPDeviceClause *Node) {
+  OS << "device(";
+  Node->getDevice()->printPretty(OS, nullptr, Policy, 0);
+  OS << ")";
 }
 
 template<typename T>
@@ -1115,8 +1126,6 @@ void StmtPrinter::VisitIntegerLiteral(IntegerLiteral *Node) {
   case BuiltinType::ULong:     OS << "UL"; break;
   case BuiltinType::LongLong:  OS << "LL"; break;
   case BuiltinType::ULongLong: OS << "ULL"; break;
-  case BuiltinType::Int128:    OS << "i128"; break;
-  case BuiltinType::UInt128:   OS << "Ui128"; break;
   }
 }
 

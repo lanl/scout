@@ -165,14 +165,6 @@ public:
                                SDValue False,
                                SDValue CC,
                                DAGCombinerInfo &DCI) const;
-  SDValue CombineIMinMax(SDLoc DL,
-                         EVT VT,
-                         SDValue LHS,
-                         SDValue RHS,
-                         SDValue True,
-                         SDValue False,
-                         SDValue CC,
-                         SelectionDAG &DAG) const;
 
   const char* getTargetNodeName(unsigned Opcode) const override;
 
@@ -216,7 +208,7 @@ public:
 
   /// \brief Helper function that returns the byte offset of the given
   /// type of implicit parameter.
-  unsigned getImplicitParameterOffset(const AMDGPUMachineFunction *MFI,
+  uint32_t getImplicitParameterOffset(const AMDGPUMachineFunction *MFI,
                                       const ImplicitParameter Param) const;
 };
 

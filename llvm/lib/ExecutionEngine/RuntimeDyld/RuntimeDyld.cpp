@@ -122,13 +122,9 @@ static std::error_code getOffset(const SymbolRef &Sym, SectionRef Sec,
   return std::error_code();
 }
 
-std::pair<unsigned, unsigned>
+RuntimeDyldImpl::ObjSectionToIDMap
 RuntimeDyldImpl::loadObjectImpl(const object::ObjectFile &Obj) {
   MutexGuard locked(lock);
-
-  // Grab the first Section ID. We'll use this later to construct the underlying
-  // range for the returned LoadedObjectInfo.
-  unsigned SectionsAddedBeginIdx = Sections.size();
 
   // Save information about our target
   Arch = (Triple::ArchType)Obj.getArch();
@@ -168,8 +164,9 @@ RuntimeDyldImpl::loadObjectImpl(const object::ObjectFile &Obj) {
         ErrorOr<StringRef> NameOrErr = I->getName();
         Check(NameOrErr.getError());
         StringRef Name = *NameOrErr;
-        section_iterator SI = Obj.section_end();
-        Check(I->getSection(SI));
+        ErrorOr<section_iterator> SIOrErr = I->getSection();
+        Check(SIOrErr.getError());
+        section_iterator SI = *SIOrErr;
         if (SI == Obj.section_end())
           continue;
         uint64_t SectOffset;
@@ -231,9 +228,10 @@ RuntimeDyldImpl::loadObjectImpl(const object::ObjectFile &Obj) {
   // Give the subclasses a chance to tie-up any loose ends.
   finalizeLoad(Obj, LocalSections);
 
-  unsigned SectionsAddedEndIdx = Sections.size();
+//   for (auto E : LocalSections)
+//     llvm::dbgs() << "Added: " << E.first.getRawDataRefImpl() << " -> " << E.second << "\n";
 
-  return std::make_pair(SectionsAddedBeginIdx, SectionsAddedEndIdx);
+  return LocalSections;
 }
 
 // A helper method for computeTotalAllocSize.
@@ -524,6 +522,9 @@ void RuntimeDyldImpl::emitCommonSymbols(const ObjectFile &Obj,
     Offset += Size;
     Addr += Size;
   }
+
+  if (Checker)
+    Checker->registerSection(Obj.getFileName(), SectionID);
 }
 
 unsigned RuntimeDyldImpl::emitSection(const ObjectFile &Obj,
@@ -562,6 +563,12 @@ unsigned RuntimeDyldImpl::emitSection(const ObjectFile &Obj,
   // Virtual sections have no data in the object image, so leave pData = 0
   if (!IsVirtual)
     pData = data.data();
+
+  // Code section alignment needs to be at least as high as stub alignment or
+  // padding calculations may by incorrect when the section is remapped to a
+  // higher alignment.
+  if (IsCode)
+    Alignment = std::max(Alignment, getStubAlignment());
 
   // Some sections, such as debug info, don't need to be loaded for execution.
   // Leave those where they are.
@@ -818,10 +825,19 @@ void RuntimeDyldImpl::resolveExternalSymbols() {
 // RuntimeDyld class implementation
 
 uint64_t RuntimeDyld::LoadedObjectInfo::getSectionLoadAddress(
-                                                  StringRef SectionName) const {
-  for (unsigned I = BeginIdx; I != EndIdx; ++I)
-    if (RTDyld.Sections[I].Name == SectionName)
-      return RTDyld.Sections[I].LoadAddress;
+                                          const object::SectionRef &Sec) const {
+
+//   llvm::dbgs() << "Searching for " << Sec.getRawDataRefImpl() << " in:\n";
+//   for (auto E : ObjSecToIDMap)
+//     llvm::dbgs() << "Added: " << E.first.getRawDataRefImpl() << " -> " << E.second << "\n";
+
+  auto I = ObjSecToIDMap.find(Sec);
+  if (I != ObjSecToIDMap.end()) {
+//    llvm::dbgs() << "Found ID " << I->second << " for Sec: " << Sec.getRawDataRefImpl() << ", LoadAddress = " << RTDyld.Sections[I->second].LoadAddress << "\n";
+    return RTDyld.Sections[I->second].LoadAddress;
+  } else {
+//    llvm::dbgs() << "Not found.\n";
+  }
 
   return 0;
 }

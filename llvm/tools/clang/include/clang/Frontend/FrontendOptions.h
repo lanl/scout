@@ -150,6 +150,8 @@ public:
                                            ///< dumps in AST dumps.
   unsigned ASTDumpLookups : 1;             ///< Whether we include lookup table
                                            ///< dumps in AST dumps.
+  unsigned BuildingImplicitModule : 1;     ///< Whether we are performing an
+                                           ///< implicit module build.
 
   CodeCompleteOptions CodeCompleteOpts;
 
@@ -244,6 +246,9 @@ public:
   /// processing the input.
   std::vector<std::string> ModuleFiles;
 
+  /// \brief The list of files to embed into the compiled module file.
+  std::vector<std::string> ModulesEmbedFiles;
+
   /// \brief The list of AST files to merge.
   std::vector<std::string> ASTMergeFiles;
 
@@ -263,6 +268,7 @@ public:
     FixToTemporaries(false), ARCMTMigrateEmitARCErrors(false),
     SkipFunctionBodies(false), UseGlobalModuleIndex(true),
     GenerateGlobalModuleIndex(true), ASTDumpDecls(false), ASTDumpLookups(false),
+    BuildingImplicitModule(false),
     ARCMTAction(ARCMT_None), ObjCMTAction(ObjCMT_None),
     ProgramAction(frontend::ParseSyntaxOnly)
   {}

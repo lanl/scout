@@ -47,7 +47,6 @@ llvm::Constant *CodeGenModule::GetAddrOfThunk(GlobalDecl GD,
                                                       Thunk.This, Out);
   else
     getCXXABI().getMangleContext().mangleThunk(MD, Thunk, Out);
-  Out.flush();
 
   llvm::Type *Ty = getTypes().GetFunctionTypeForVTable(GD);
   return GetOrCreateLLVMFunction(Name, Ty, GD, /*ForVTable=*/true,
@@ -190,12 +189,12 @@ CodeGenFunction::GenerateVarArgsThunk(llvm::Function *Fn,
 
   if (!Thunk.Return.isEmpty()) {
     // Fix up the returned value, if necessary.
-    for (llvm::Function::iterator I = Fn->begin(), E = Fn->end(); I != E; I++) {
-      llvm::Instruction *T = I->getTerminator();
+    for (llvm::BasicBlock &BB : *Fn) {
+      llvm::Instruction *T = BB.getTerminator();
       if (isa<llvm::ReturnInst>(T)) {
         RValue RV = RValue::get(T->getOperand(0));
         T->eraseFromParent();
-        Builder.SetInsertPoint(&*I);
+        Builder.SetInsertPoint(&BB);
         RV = PerformReturnAdjustment(*this, ResultType, RV, Thunk);
         Builder.CreateRet(RV.getScalarVal());
         break;
@@ -323,6 +322,8 @@ void CodeGenFunction::EmitCallAndReturnForThunk(llvm::Value *Callee,
   // Consider return adjustment if we have ThunkInfo.
   if (Thunk && !Thunk->Return.isEmpty())
     RV = PerformReturnAdjustment(*this, ResultType, RV, *Thunk);
+  else if (llvm::CallInst* Call = dyn_cast<llvm::CallInst>(CallOrInvoke))
+    Call->setTailCallKind(llvm::CallInst::TCK_Tail);
 
   // Emit return.
   if (!ResultType->isVoidType() && Slot.isNull())
@@ -513,8 +514,8 @@ void CodeGenVTables::EmitThunks(GlobalDecl GD)
   if (!ThunkInfoVector)
     return;
 
-  for (unsigned I = 0, E = ThunkInfoVector->size(); I != E; ++I)
-    emitThunk(GD, (*ThunkInfoVector)[I], /*ForVTable=*/false);
+  for (const ThunkInfo& Thunk : *ThunkInfoVector)
+    emitThunk(GD, Thunk, /*ForVTable=*/false);
 }
 
 llvm::Constant *CodeGenVTables::CreateVTableInitializer(
@@ -653,7 +654,6 @@ CodeGenVTables::GenerateConstructionVTable(const CXXRecordDecl *RD,
   cast<ItaniumMangleContext>(CGM.getCXXABI().getMangleContext())
       .mangleCXXCtorVTable(RD, Base.getBaseOffset().getQuantity(),
                            Base.getBase(), Out);
-  Out.flush();
   StringRef Name = OutName.str();
 
   llvm::ArrayType *ArrayType = 
@@ -861,13 +861,9 @@ void CodeGenModule::EmitDeferredVTables() {
   size_t savedSize = DeferredVTables.size();
 #endif
 
-  typedef std::vector<const CXXRecordDecl *>::const_iterator const_iterator;
-  for (const_iterator i = DeferredVTables.begin(),
-                      e = DeferredVTables.end(); i != e; ++i) {
-    const CXXRecordDecl *RD = *i;
+  for (const CXXRecordDecl *RD : DeferredVTables)
     if (shouldEmitVTableAtEndOfTranslationUnit(*this, RD))
       VTables.GenerateClassData(RD);
-  }
 
   assert(savedSize == DeferredVTables.size() &&
          "deferred extra v-tables during v-table emission?");

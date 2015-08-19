@@ -108,10 +108,9 @@ EnableGlobalMergeOnConst("global-merge-on-const", cl::Hidden,
 
 // FIXME: this could be a transitional option, and we probably need to remove
 // it if only we are sure this optimization could always benefit all targets.
-static cl::opt<bool>
+static cl::opt<cl::boolOrDefault>
 EnableGlobalMergeOnExternal("global-merge-on-external", cl::Hidden,
-     cl::desc("Enable global merge pass on external linkage"),
-     cl::init(false));
+     cl::desc("Enable global merge pass on external linkage"));
 
 STATISTIC(NumMerged, "Number of globals merged");
 namespace {
@@ -128,6 +127,9 @@ namespace {
     /// used in minsize functions for merging.
     /// FIXME: This could learn about optsize, and be used in the cost model.
     bool OnlyOptimizeForSize;
+
+    /// Whether we should merge global variables that have external linkage.
+    bool MergeExternalGlobals;
 
     bool doMerge(SmallVectorImpl<GlobalVariable*> &Globals,
                  Module &M, bool isConst, unsigned AddrSpace) const;
@@ -158,9 +160,11 @@ namespace {
     static char ID;             // Pass identification, replacement for typeid.
     explicit GlobalMerge(const TargetMachine *TM = nullptr,
                          unsigned MaximalOffset = 0,
-                         bool OnlyOptimizeForSize = false)
+                         bool OnlyOptimizeForSize = false,
+                         bool MergeExternalGlobals = false)
         : FunctionPass(ID), TM(TM), MaxOffset(MaximalOffset),
-          OnlyOptimizeForSize(OnlyOptimizeForSize) {
+          OnlyOptimizeForSize(OnlyOptimizeForSize),
+          MergeExternalGlobals(MergeExternalGlobals) {
       initializeGlobalMergePass(*PassRegistry::getPassRegistry());
     }
 
@@ -207,7 +211,7 @@ bool GlobalMerge::doMerge(SmallVectorImpl<GlobalVariable*> &Globals,
 
   // If we want to be smarter, look at all uses of each global, to try to
   // discover all sets of globals used together, and how many times each of
-  // these sets occured.
+  // these sets occurred.
   //
   // Keep this reasonably efficient, by having an append-only list of all sets
   // discovered so far (UsedGlobalSet), and mapping each "together-ness" unit of
@@ -425,8 +429,6 @@ bool GlobalMerge::doMerge(SmallVectorImpl<GlobalVariable *> &Globals,
     std::vector<Type*> Tys;
     std::vector<Constant*> Inits;
 
-    bool HasExternal = false;
-    GlobalVariable *TheFirstExternal = 0;
     for (j = i; j != -1; j = GlobalSet.find_next(j)) {
       Type *Ty = Globals[j]->getType()->getElementType();
       MergedSize += DL.getTypeAllocSize(Ty);
@@ -435,30 +437,14 @@ bool GlobalMerge::doMerge(SmallVectorImpl<GlobalVariable *> &Globals,
       }
       Tys.push_back(Ty);
       Inits.push_back(Globals[j]->getInitializer());
-
-      if (Globals[j]->hasExternalLinkage() && !HasExternal) {
-        HasExternal = true;
-        TheFirstExternal = Globals[j];
-      }
     }
-
-    // If merged variables doesn't have external linkage, we needn't to expose
-    // the symbol after merging.
-    GlobalValue::LinkageTypes Linkage = HasExternal
-                                            ? GlobalValue::ExternalLinkage
-                                            : GlobalValue::InternalLinkage;
 
     StructType *MergedTy = StructType::get(M.getContext(), Tys);
     Constant *MergedInit = ConstantStruct::get(MergedTy, Inits);
 
-    // If merged variables have external linkage, we use symbol name of the
-    // first variable merged as the suffix of global symbol name. This would
-    // be able to avoid the link-time naming conflict for globalm symbols.
     GlobalVariable *MergedGV = new GlobalVariable(
-        M, MergedTy, isConst, Linkage, MergedInit,
-        HasExternal ? "_MergedGlobals_" + TheFirstExternal->getName()
-                    : "_MergedGlobals",
-        nullptr, GlobalVariable::NotThreadLocal, AddrSpace);
+        M, MergedTy, isConst, GlobalValue::PrivateLinkage, MergedInit,
+        "_MergedGlobals", nullptr, GlobalVariable::NotThreadLocal, AddrSpace);
 
     for (ssize_t k = i, idx = 0; k != j; k = GlobalSet.find_next(k)) {
       GlobalValue::LinkageTypes Linkage = Globals[k]->getLinkage();
@@ -473,8 +459,13 @@ bool GlobalMerge::doMerge(SmallVectorImpl<GlobalVariable *> &Globals,
       Globals[k]->replaceAllUsesWith(GEP);
       Globals[k]->eraseFromParent();
 
-      if (Linkage != GlobalValue::InternalLinkage) {
-        // Generate a new alias...
+      // When the linkage is not internal we must emit an alias for the original
+      // variable name as it may be accessed from another object. On non-Mach-O
+      // we can also emit an alias for internal linkage as it's safe to do so.
+      // It's not safe on Mach-O as the alias (and thus the portion of the
+      // MergedGlobals variable) may be dead stripped at link time.
+      if (Linkage != GlobalValue::InternalLinkage ||
+          !TM->getTargetTriple().isOSBinFormatMachO()) {
         auto *PTy = cast<PointerType>(GEP->getType());
         GlobalAlias::create(PTy, Linkage, Name, GEP, &M);
       }
@@ -541,7 +532,7 @@ bool GlobalMerge::doInitialization(Module &M) {
     if (I->isDeclaration() || I->isThreadLocal() || I->hasSection())
       continue;
 
-    if (!(EnableGlobalMergeOnExternal && I->hasExternalLinkage()) &&
+    if (!(MergeExternalGlobals && I->hasExternalLinkage()) &&
         !I->hasInternalLinkage())
       continue;
 
@@ -604,6 +595,9 @@ bool GlobalMerge::doFinalization(Module &M) {
 }
 
 Pass *llvm::createGlobalMergePass(const TargetMachine *TM, unsigned Offset,
-                                  bool OnlyOptimizeForSize) {
-  return new GlobalMerge(TM, Offset, OnlyOptimizeForSize);
+                                  bool OnlyOptimizeForSize,
+                                  bool MergeExternalByDefault) {
+  bool MergeExternal = (EnableGlobalMergeOnExternal == cl::BOU_UNSET) ?
+    MergeExternalByDefault : (EnableGlobalMergeOnExternal == cl::BOU_TRUE);
+  return new GlobalMerge(TM, Offset, OnlyOptimizeForSize, MergeExternal);
 }

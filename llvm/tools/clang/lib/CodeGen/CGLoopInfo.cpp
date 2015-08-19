@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "CGLoopInfo.h"
+#include "clang/AST/ASTContext.h"
 #include "clang/AST/Attr.h"
 #include "clang/Sema/LoopHint.h"
 #include "llvm/IR/BasicBlock.h"
@@ -21,8 +22,9 @@ using namespace llvm;
 static MDNode *createMetadata(LLVMContext &Ctx, const LoopAttributes &Attrs) {
 
   if (!Attrs.IsParallel && Attrs.VectorizeWidth == 0 &&
-      Attrs.InterleaveCount == 0 &&
-      Attrs.VectorizeEnable == LoopAttributes::Unspecified)
+      Attrs.InterleaveCount == 0 && Attrs.UnrollCount == 0 &&
+      Attrs.VectorizeEnable == LoopAttributes::Unspecified &&
+      Attrs.UnrollEnable == LoopAttributes::Unspecified)
     return nullptr;
 
   SmallVector<Metadata *, 4> Args;
@@ -46,12 +48,33 @@ static MDNode *createMetadata(LLVMContext &Ctx, const LoopAttributes &Attrs) {
     Args.push_back(MDNode::get(Ctx, Vals));
   }
 
+  // Setting interleave.count
+  if (Attrs.UnrollCount > 0) {
+    Metadata *Vals[] = {MDString::get(Ctx, "llvm.loop.unroll.count"),
+                        ConstantAsMetadata::get(ConstantInt::get(
+                            Type::getInt32Ty(Ctx), Attrs.UnrollCount))};
+    Args.push_back(MDNode::get(Ctx, Vals));
+  }
+
   // Setting vectorize.enable
   if (Attrs.VectorizeEnable != LoopAttributes::Unspecified) {
     Metadata *Vals[] = {MDString::get(Ctx, "llvm.loop.vectorize.enable"),
                         ConstantAsMetadata::get(ConstantInt::get(
                             Type::getInt1Ty(Ctx), (Attrs.VectorizeEnable ==
                                                    LoopAttributes::Enable)))};
+    Args.push_back(MDNode::get(Ctx, Vals));
+  }
+
+  // Setting unroll.full or unroll.disable
+  if (Attrs.UnrollEnable != LoopAttributes::Unspecified) {
+    std::string Name;
+    if (Attrs.UnrollEnable == LoopAttributes::Enable)
+      Name = "llvm.loop.unroll.enable";
+    else if (Attrs.UnrollEnable == LoopAttributes::Full)
+      Name = "llvm.loop.unroll.full";
+    else
+      Name = "llvm.loop.unroll.disable";
+    Metadata *Vals[] = {MDString::get(Ctx, Name)};
     Args.push_back(MDNode::get(Ctx, Vals));
   }
 
@@ -63,13 +86,16 @@ static MDNode *createMetadata(LLVMContext &Ctx, const LoopAttributes &Attrs) {
 
 LoopAttributes::LoopAttributes(bool IsParallel)
     : IsParallel(IsParallel), VectorizeEnable(LoopAttributes::Unspecified),
-      VectorizeWidth(0), InterleaveCount(0) {}
+      UnrollEnable(LoopAttributes::Unspecified), VectorizeWidth(0),
+      InterleaveCount(0), UnrollCount(0) {}
 
 void LoopAttributes::clear() {
   IsParallel = false;
   VectorizeWidth = 0;
   InterleaveCount = 0;
+  UnrollCount = 0;
   VectorizeEnable = LoopAttributes::Unspecified;
+  UnrollEnable = LoopAttributes::Unspecified;
 }
 
 LoopInfo::LoopInfo(BasicBlock *Header, const LoopAttributes &Attrs)
@@ -77,8 +103,16 @@ LoopInfo::LoopInfo(BasicBlock *Header, const LoopAttributes &Attrs)
   LoopID = createMetadata(Header->getContext(), Attrs);
 }
 
-void LoopInfoStack::push(BasicBlock *Header,
+void LoopInfoStack::push(BasicBlock *Header) {
+  Active.push_back(LoopInfo(Header, StagedAttrs));
+  // Clear the attributes so nested loops do not inherit them.
+  StagedAttrs.clear();
+}
+
+void LoopInfoStack::push(BasicBlock *Header, clang::ASTContext &Ctx,
                          ArrayRef<const clang::Attr *> Attrs) {
+
+  // Identify loop hint attributes from Attrs.
   for (const auto *Attr : Attrs) {
     const LoopHintAttr *LH = dyn_cast<LoopHintAttr>(Attr);
 
@@ -86,28 +120,105 @@ void LoopInfoStack::push(BasicBlock *Header,
     if (!LH)
       continue;
 
+    auto *ValueExpr = LH->getValue();
+    unsigned ValueInt = 1;
+    if (ValueExpr) {
+      llvm::APSInt ValueAPS = ValueExpr->EvaluateKnownConstInt(Ctx);
+      ValueInt = ValueAPS.getSExtValue();
+    }
+
     LoopHintAttr::OptionType Option = LH->getOption();
     LoopHintAttr::LoopHintState State = LH->getState();
-    switch (Option) {
-    case LoopHintAttr::Vectorize:
-    case LoopHintAttr::Interleave:
-      if (State == LoopHintAttr::AssumeSafety) {
-        // Apply "llvm.mem.parallel_loop_access" metadata to load/stores.
-        setParallel(true);
+    switch (State) {
+    case LoopHintAttr::Disable:
+      switch (Option) {
+      case LoopHintAttr::Vectorize:
+        // Disable vectorization by specifying a width of 1.
+        setVectorizeWidth(1);
+        break;
+      case LoopHintAttr::Interleave:
+        // Disable interleaving by speciyfing a count of 1.
+        setInterleaveCount(1);
+        break;
+      case LoopHintAttr::Unroll:
+        setUnrollState(LoopAttributes::Disable);
+        break;
+      case LoopHintAttr::UnrollCount:
+      case LoopHintAttr::VectorizeWidth:
+      case LoopHintAttr::InterleaveCount:
+        llvm_unreachable("Options cannot be disabled.");
+        break;
       }
       break;
-    case LoopHintAttr::VectorizeWidth:
-    case LoopHintAttr::InterleaveCount:
-    case LoopHintAttr::Unroll:
-    case LoopHintAttr::UnrollCount:
-      // Nothing to do here for these loop hints.
+    case LoopHintAttr::Enable:
+      switch (Option) {
+      case LoopHintAttr::Vectorize:
+      case LoopHintAttr::Interleave:
+        setVectorizeEnable(true);
+        break;
+      case LoopHintAttr::Unroll:
+        setUnrollState(LoopAttributes::Enable);
+        break;
+      case LoopHintAttr::UnrollCount:
+      case LoopHintAttr::VectorizeWidth:
+      case LoopHintAttr::InterleaveCount:
+        llvm_unreachable("Options cannot enabled.");
+        break;
+      }
+      break;
+    case LoopHintAttr::AssumeSafety:
+      switch (Option) {
+      case LoopHintAttr::Vectorize:
+      case LoopHintAttr::Interleave:
+        // Apply "llvm.mem.parallel_loop_access" metadata to load/stores.
+        setParallel(true);
+        setVectorizeEnable(true);
+        break;
+      case LoopHintAttr::Unroll:
+      case LoopHintAttr::UnrollCount:
+      case LoopHintAttr::VectorizeWidth:
+      case LoopHintAttr::InterleaveCount:
+        llvm_unreachable("Options cannot be used to assume mem safety.");
+        break;
+      }
+      break;
+    case LoopHintAttr::Full:
+      switch (Option) {
+      case LoopHintAttr::Unroll:
+        setUnrollState(LoopAttributes::Full);
+        break;
+      case LoopHintAttr::Vectorize:
+      case LoopHintAttr::Interleave:
+      case LoopHintAttr::UnrollCount:
+      case LoopHintAttr::VectorizeWidth:
+      case LoopHintAttr::InterleaveCount:
+        llvm_unreachable("Options cannot be used with 'full' hint.");
+        break;
+      }
+      break;
+    case LoopHintAttr::Numeric:
+      switch (Option) {
+      case LoopHintAttr::VectorizeWidth:
+        setVectorizeWidth(ValueInt);
+        break;
+      case LoopHintAttr::InterleaveCount:
+        setInterleaveCount(ValueInt);
+        break;
+      case LoopHintAttr::UnrollCount:
+        setUnrollCount(ValueInt);
+        break;
+      case LoopHintAttr::Unroll:
+      case LoopHintAttr::Vectorize:
+      case LoopHintAttr::Interleave:
+        llvm_unreachable("Options cannot be assigned a value.");
+        break;
+      }
       break;
     }
   }
 
-  Active.push_back(LoopInfo(Header, StagedAttrs));
-  // Clear the attributes so nested loops do not inherit them.
-  StagedAttrs.clear();
+  /// Stage the attributes.
+  push(Header);
 }
 
 void LoopInfoStack::pop() {

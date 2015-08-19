@@ -10,6 +10,7 @@
 #ifndef liblldb_Module_h_
 #define liblldb_Module_h_
 
+#include <atomic>
 #include "lldb/lldb-forward.h"
 #include "lldb/Core/ArchSpec.h"
 #include "lldb/Core/UUID.h"
@@ -946,6 +947,9 @@ public:
     ClangASTContext &
     GetClangASTContext ();
 
+    TypeSystem *
+    GetTypeSystemForLanguage (lldb::LanguageType language);
+
     // Special error functions that can do printf style formatting that will prepend the message with
     // something appropriate for this module (like the architecture, path and object name (if any)). 
     // This centralizes code so that everyone doesn't need to format their error and log messages on
@@ -1119,13 +1123,13 @@ protected:
     PathMappingList             m_source_mappings; ///< Module specific source remappings for when you have debug info for a module that doesn't match where the sources currently are
     lldb::SectionListUP         m_sections_ap; ///< Unified section list for module that is used by the ObjectFile and and ObjectFile instances for the debug info
 
-    bool                        m_did_load_objfile:1,
-                                m_did_load_symbol_vendor:1,
-                                m_did_parse_uuid:1,
-                                m_did_init_ast:1;
+    std::atomic<bool>           m_did_load_objfile;
+    std::atomic<bool>           m_did_load_symbol_vendor;
+    std::atomic<bool>           m_did_parse_uuid;
+    std::atomic<bool>           m_did_init_ast;
     mutable bool                m_file_has_changed:1,
                                 m_first_file_changed_log:1;   /// See if the module was modified after it was initially opened.
-    
+
     //------------------------------------------------------------------
     /// Resolve a file or load virtual address.
     ///

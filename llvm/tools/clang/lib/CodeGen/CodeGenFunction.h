@@ -783,6 +783,7 @@ public:
 
   llvm::BasicBlock *getEHResumeBlock(bool isCleanup);
   llvm::BasicBlock *getEHDispatchBlock(EHScopeStack::stable_iterator scope);
+  llvm::BasicBlock *getMSVCDispatchBlock(EHScopeStack::stable_iterator scope);
 
   /// An object to manage conditionally-evaluated expressions.
   class ConditionalEvaluation {
@@ -2369,8 +2370,6 @@ public:
   
   // +========================================================================+
 
-  void EmitCondBrHints(llvm::LLVMContext &Context, llvm::BranchInst *CondBr,
-                       ArrayRef<const Attr *> Attrs);
   void EmitWhileStmt(const WhileStmt &S,
                      ArrayRef<const Attr *> Attrs = None);
   void EmitDoStmt(const DoStmt &S, ArrayRef<const Attr *> Attrs = None);
@@ -3059,17 +3058,16 @@ public:
   /// scalar type, returning the result.
   llvm::Value *EmitScalarExpr(const Expr *E , bool IgnoreResultAssign = false);
 
-  /// EmitScalarConversion - Emit a conversion from the specified type to the
-  /// specified destination type, both of which are LLVM scalar types.
+  /// Emit a conversion from the specified type to the specified destination
+  /// type, both of which are LLVM scalar types.
   llvm::Value *EmitScalarConversion(llvm::Value *Src, QualType SrcTy,
-                                    QualType DstTy);
+                                    QualType DstTy, SourceLocation Loc);
 
-  /// EmitComplexToScalarConversion - Emit a conversion from the specified
-  /// complex type to the specified destination type, where the destination type
-  /// is an LLVM scalar type.
+  /// Emit a conversion from the specified complex type to the specified
+  /// destination type, where the destination type is an LLVM scalar type.
   llvm::Value *EmitComplexToScalarConversion(ComplexPairTy Src, QualType SrcTy,
-                                             QualType DstTy);
-
+                                             QualType DstTy,
+                                             SourceLocation Loc);
 
   /// EmitAggExpr - Emit the computation of the specified expression
   /// of aggregate type.  The result is computed into the given slot,

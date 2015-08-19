@@ -184,6 +184,15 @@ class Verifier : public InstVisitor<Verifier>, VerifierSupport {
   /// \brief Track unresolved string-based type references.
   SmallDenseMap<const MDString *, const MDNode *, 32> UnresolvedTypeRefs;
 
+  /// \brief The result type for a catchpad.
+  Type *CatchPadResultTy;
+
+  /// \brief The result type for a cleanuppad.
+  Type *CleanupPadResultTy;
+
+  /// \brief The result type for a landingpad.
+  Type *LandingPadResultTy;
+
   /// \brief Whether we've seen a call to @llvm.localescape in this function
   /// already.
   bool SawFrameEscape;
@@ -194,7 +203,9 @@ class Verifier : public InstVisitor<Verifier>, VerifierSupport {
 
 public:
   explicit Verifier(raw_ostream &OS)
-      : VerifierSupport(OS), Context(nullptr), SawFrameEscape(false) {}
+      : VerifierSupport(OS), Context(nullptr), CatchPadResultTy(nullptr),
+        CleanupPadResultTy(nullptr), LandingPadResultTy(nullptr),
+        SawFrameEscape(false) {}
 
   bool verify(const Function &F) {
     M = F.getParent();
@@ -228,6 +239,9 @@ public:
     // FIXME: We strip const here because the inst visitor strips const.
     visit(const_cast<Function &>(F));
     InstsInThisBlock.clear();
+    CatchPadResultTy = nullptr;
+    CleanupPadResultTy = nullptr;
+    LandingPadResultTy = nullptr;
     SawFrameEscape = false;
 
     return !Broken;
@@ -302,7 +316,6 @@ private:
 #define HANDLE_SPECIALIZED_MDNODE_LEAF(CLASS) void visit##CLASS(const CLASS &N);
 #include "llvm/IR/Metadata.def"
   void visitDIScope(const DIScope &N);
-  void visitDIDerivedTypeBase(const DIDerivedTypeBase &N);
   void visitDIVariable(const DIVariable &N);
   void visitDILexicalBlockBase(const DILexicalBlockBase &N);
   void visitDITemplateParameter(const DITemplateParameter &N);
@@ -379,7 +392,13 @@ private:
   void visitAllocaInst(AllocaInst &AI);
   void visitExtractValueInst(ExtractValueInst &EVI);
   void visitInsertValueInst(InsertValueInst &IVI);
+  void visitEHPadPredecessors(Instruction &I);
   void visitLandingPadInst(LandingPadInst &LPI);
+  void visitCatchPadInst(CatchPadInst &CPI);
+  void visitCatchEndPadInst(CatchEndPadInst &CEPI);
+  void visitCleanupPadInst(CleanupPadInst &CPI);
+  void visitCleanupReturnInst(CleanupReturnInst &CRI);
+  void visitTerminatePadInst(TerminatePadInst &TPI);
 
   void VerifyCallSite(CallSite CS);
   void verifyMustTailCall(CallInst &CI);
@@ -779,37 +798,9 @@ void Verifier::visitDIBasicType(const DIBasicType &N) {
          "invalid tag", &N);
 }
 
-void Verifier::visitDIDerivedTypeBase(const DIDerivedTypeBase &N) {
+void Verifier::visitDIDerivedType(const DIDerivedType &N) {
   // Common scope checks.
   visitDIScope(N);
-
-  Assert(isScopeRef(N, N.getScope()), "invalid scope", &N, N.getScope());
-  Assert(isTypeRef(N, N.getBaseType()), "invalid base type", &N,
-         N.getBaseType());
-
-  // FIXME: Sink this into the subclass verifies.
-  if (!N.getFile() || N.getFile()->getFilename().empty()) {
-    // Check whether the filename is allowed to be empty.
-    uint16_t Tag = N.getTag();
-    Assert(
-        Tag == dwarf::DW_TAG_const_type || Tag == dwarf::DW_TAG_volatile_type ||
-            Tag == dwarf::DW_TAG_pointer_type ||
-            Tag == dwarf::DW_TAG_ptr_to_member_type ||
-            Tag == dwarf::DW_TAG_reference_type ||
-            Tag == dwarf::DW_TAG_rvalue_reference_type ||
-            Tag == dwarf::DW_TAG_restrict_type ||
-            Tag == dwarf::DW_TAG_array_type ||
-            Tag == dwarf::DW_TAG_enumeration_type ||
-            Tag == dwarf::DW_TAG_inheritance || Tag == dwarf::DW_TAG_friend ||
-            Tag == dwarf::DW_TAG_structure_type ||
-            Tag == dwarf::DW_TAG_member || Tag == dwarf::DW_TAG_typedef,
-        "derived/composite type requires a filename", &N, N.getFile());
-  }
-}
-
-void Verifier::visitDIDerivedType(const DIDerivedType &N) {
-  // Common derived type checks.
-  visitDIDerivedTypeBase(N);
 
   Assert(N.getTag() == dwarf::DW_TAG_typedef ||
              N.getTag() == dwarf::DW_TAG_pointer_type ||
@@ -827,6 +818,10 @@ void Verifier::visitDIDerivedType(const DIDerivedType &N) {
     Assert(isTypeRef(N, N.getExtraData()), "invalid pointer to member type", &N,
            N.getExtraData());
   }
+
+  Assert(isScopeRef(N, N.getScope()), "invalid scope", &N, N.getScope());
+  Assert(isTypeRef(N, N.getBaseType()), "invalid base type", &N,
+         N.getBaseType());
 }
 
 static bool hasConflictingReferenceFlags(unsigned Flags) {
@@ -844,8 +839,8 @@ void Verifier::visitTemplateParams(const MDNode &N, const Metadata &RawParams) {
 }
 
 void Verifier::visitDICompositeType(const DICompositeType &N) {
-  // Common derived type checks.
-  visitDIDerivedTypeBase(N);
+  // Common scope checks.
+  visitDIScope(N);
 
   Assert(N.getTag() == dwarf::DW_TAG_array_type ||
              N.getTag() == dwarf::DW_TAG_structure_type ||
@@ -853,6 +848,10 @@ void Verifier::visitDICompositeType(const DICompositeType &N) {
              N.getTag() == dwarf::DW_TAG_enumeration_type ||
              N.getTag() == dwarf::DW_TAG_class_type,
          "invalid tag", &N);
+
+  Assert(isScopeRef(N, N.getScope()), "invalid scope", &N, N.getScope());
+  Assert(isTypeRef(N, N.getBaseType()), "invalid base type", &N,
+         N.getBaseType());
 
   Assert(!N.getRawElements() || isa<MDTuple>(N.getRawElements()),
          "invalid composite elements", &N, N.getRawElements());
@@ -864,13 +863,19 @@ void Verifier::visitDICompositeType(const DICompositeType &N) {
          &N);
   if (auto *Params = N.getRawTemplateParams())
     visitTemplateParams(N, *Params);
+
+  if (N.getTag() == dwarf::DW_TAG_class_type ||
+      N.getTag() == dwarf::DW_TAG_union_type) {
+    Assert(N.getFile() && !N.getFile()->getFilename().empty(),
+           "class/union requires a filename", &N, N.getFile());
+  }
 }
 
 // +===== Scout =================================================
 
 void Verifier::visitDIScoutDerivedType(const DIScoutDerivedType &N) {
-  // Common derived type checks.
-  visitDIDerivedTypeBase(N);
+  // Common scope checks.
+  visitDIScope(N);
 
   Assert(N.getTag() == dwarf::DW_TAG_typedef ||
              N.getTag() == dwarf::DW_TAG_pointer_type ||
@@ -891,8 +896,8 @@ void Verifier::visitDIScoutDerivedType(const DIScoutDerivedType &N) {
 }
 
 void Verifier::visitDIScoutCompositeType(const DIScoutCompositeType &N) {
-  // Common derived type checks.
-  visitDIDerivedTypeBase(N);
+  // Common scope checks.
+  visitDIScope(N);
 
   Assert(N.getTag() == dwarf::DW_TAG_SCOUT_uniform_mesh_type ||
          N.getTag() == dwarf::DW_TAG_SCOUT_ALE_mesh_type ||
@@ -933,6 +938,7 @@ void Verifier::visitDIFile(const DIFile &N) {
 }
 
 void Verifier::visitDICompileUnit(const DICompileUnit &N) {
+  Assert(N.isDistinct(), "compile units must be distinct", &N);
   Assert(N.getTag() == dwarf::DW_TAG_compile_unit, "invalid tag", &N);
 
   // Don't bother verifying the compilation directory or producer string
@@ -1123,9 +1129,7 @@ void Verifier::visitDILocalVariable(const DILocalVariable &N) {
   // Checks common to all variables.
   visitDIVariable(N);
 
-  Assert(N.getTag() == dwarf::DW_TAG_auto_variable ||
-             N.getTag() == dwarf::DW_TAG_arg_variable,
-         "invalid tag", &N);
+  Assert(N.getTag() == dwarf::DW_TAG_variable, "invalid tag", &N);
   Assert(N.getRawScope() && isa<DILocalScope>(N.getRawScope()),
          "local variable requires a valid scope", &N, N.getRawScope());
 }
@@ -1413,7 +1417,7 @@ void Verifier::VerifyParameterAttrs(AttributeSet Attrs, unsigned Idx, Type *Ty,
          V);
 
   if (PointerType *PTy = dyn_cast<PointerType>(Ty)) {
-    SmallPtrSet<const Type*, 4> Visited;
+    SmallPtrSet<Type*, 4> Visited;
     if (!PTy->getElementType()->isSized(&Visited)) {
       Assert(!Attrs.hasAttribute(Idx, Attribute::ByVal) &&
                  !Attrs.hasAttribute(Idx, Attribute::InAlloca),
@@ -1602,16 +1606,10 @@ void Verifier::VerifyStatepoint(ImmutableCallSite CS) {
          &CI);
 
   const Value *Target = CS.getArgument(2);
-  const PointerType *PT = dyn_cast<PointerType>(Target->getType());
+  auto *PT = dyn_cast<PointerType>(Target->getType());
   Assert(PT && PT->getElementType()->isFunctionTy(),
          "gc.statepoint callee must be of function pointer type", &CI, Target);
   FunctionType *TargetFuncType = cast<FunctionType>(PT->getElementType());
-
-  if (NumPatchBytes)
-    Assert(isa<ConstantPointerNull>(Target->stripPointerCasts()),
-           "gc.statepoint must have null as call target if number of patchable "
-           "bytes is non zero",
-           &CI);
 
   const Value *NumCallArgsV = CS.getArgument(3);
   Assert(isa<ConstantInt>(NumCallArgsV),
@@ -1791,10 +1789,17 @@ void Verifier::visitFunction(const Function &F) {
            FT->getParamType(i));
     Assert(I->getType()->isFirstClassType(),
            "Function arguments must have first-class types!", I);
-    if (!isLLVMdotName)
+    if (!isLLVMdotName) {
       Assert(!I->getType()->isMetadataTy(),
              "Function takes metadata but isn't an intrinsic", I, &F);
+      Assert(!I->getType()->isTokenTy(),
+             "Function takes token but isn't an intrinsic", I, &F);
+    }
   }
+
+  if (!isLLVMdotName)
+    Assert(!F.getReturnType()->isTokenTy(),
+           "Functions returns a token but isn't an intrinsic", &F);
 
   // Get the function metadata attachments.
   SmallVector<std::pair<unsigned, MDNode *>, 4> MDs;
@@ -2242,6 +2247,9 @@ void Verifier::visitPHINode(PHINode &PN) {
              isa<PHINode>(--BasicBlock::iterator(&PN)),
          "PHI nodes not grouped at top of basic block!", &PN, PN.getParent());
 
+  // Check that a PHI doesn't yield a Token.
+  Assert(!PN.getType()->isTokenTy(), "PHI nodes cannot have token type!");
+
   // Check that all of the values of the PHI node have the same type as the
   // result, and that the incoming blocks are really basic blocks.
   for (Value *IncValue : PN.incoming_values()) {
@@ -2344,11 +2352,18 @@ void Verifier::VerifyCallSite(CallSite CS) {
   // Verify that there's no metadata unless it's a direct call to an intrinsic.
   if (CS.getCalledFunction() == nullptr ||
       !CS.getCalledFunction()->getName().startswith("llvm.")) {
-    for (FunctionType::param_iterator PI = FTy->param_begin(),
-           PE = FTy->param_end(); PI != PE; ++PI)
-      Assert(!(*PI)->isMetadataTy(),
+    for (Type *ParamTy : FTy->params()) {
+      Assert(!ParamTy->isMetadataTy(),
              "Function has metadata parameter but isn't an intrinsic", I);
+      Assert(!ParamTy->isTokenTy(),
+             "Function has token parameter but isn't an intrinsic", I);
+    }
   }
+
+  // Verify that indirect calls don't return tokens.
+  if (CS.getCalledFunction() == nullptr)
+    Assert(!FTy->getReturnType()->isTokenTy(),
+           "Return type cannot be token for indirect call!");
 
   if (Function *F = CS.getCalledFunction())
     if (Intrinsic::ID ID = (Intrinsic::ID)F->getIntrinsicID())
@@ -2454,10 +2469,12 @@ void Verifier::visitCallInst(CallInst &CI) {
 void Verifier::visitInvokeInst(InvokeInst &II) {
   VerifyCallSite(&II);
 
-  // Verify that there is a landingpad instruction as the first non-PHI
-  // instruction of the 'unwind' destination.
-  Assert(II.getUnwindDest()->isLandingPad(),
-         "The unwind destination does not have a landingpad instruction!", &II);
+  // Verify that the first non-PHI instruction of the unwind destination is an
+  // exception handling instruction.
+  Assert(
+      II.getUnwindDest()->isEHPad(),
+      "The unwind destination does not have an exception handling instruction!",
+      &II);
 
   visitTerminatorInst(II);
 }
@@ -2726,7 +2743,7 @@ void Verifier::visitStoreInst(StoreInst &SI) {
 }
 
 void Verifier::visitAllocaInst(AllocaInst &AI) {
-  SmallPtrSet<const Type*, 4> Visited;
+  SmallPtrSet<Type*, 4> Visited;
   PointerType *PTy = AI.getType();
   Assert(PTy->getAddressSpace() == 0,
          "Allocation instruction pointer not in the generic address space!",
@@ -2825,23 +2842,62 @@ void Verifier::visitInsertValueInst(InsertValueInst &IVI) {
   visitInstruction(IVI);
 }
 
-void Verifier::visitLandingPadInst(LandingPadInst &LPI) {
-  BasicBlock *BB = LPI.getParent();
+void Verifier::visitEHPadPredecessors(Instruction &I) {
+  assert(I.isEHPad());
 
+  BasicBlock *BB = I.getParent();
+  Function *F = BB->getParent();
+
+  Assert(BB != &F->getEntryBlock(), "EH pad cannot be in entry block.", &I);
+
+  if (auto *LPI = dyn_cast<LandingPadInst>(&I)) {
+    // The landingpad instruction defines its parent as a landing pad block. The
+    // landing pad block may be branched to only by the unwind edge of an
+    // invoke.
+    for (BasicBlock *PredBB : predecessors(BB)) {
+      const auto *II = dyn_cast<InvokeInst>(PredBB->getTerminator());
+      Assert(II && II->getUnwindDest() == BB && II->getNormalDest() != BB,
+             "Block containing LandingPadInst must be jumped to "
+             "only by the unwind edge of an invoke.",
+             LPI);
+    }
+    return;
+  }
+
+  for (BasicBlock *PredBB : predecessors(BB)) {
+    TerminatorInst *TI = PredBB->getTerminator();
+    if (auto *II = dyn_cast<InvokeInst>(TI))
+      Assert(II->getUnwindDest() == BB && II->getNormalDest() != BB,
+             "EH pad must be jumped to via an unwind edge", &I, II);
+    else if (auto *CPI = dyn_cast<CatchPadInst>(TI))
+      Assert(CPI->getUnwindDest() == BB && CPI->getNormalDest() != BB,
+             "EH pad must be jumped to via an unwind edge", &I, CPI);
+    else if (isa<CatchEndPadInst>(TI))
+      ;
+    else if (isa<CleanupReturnInst>(TI))
+      ;
+    else if (isa<TerminatePadInst>(TI))
+      ;
+    else
+      Assert(false, "EH pad must be jumped to via an unwind edge", &I, TI);
+  }
+}
+
+void Verifier::visitLandingPadInst(LandingPadInst &LPI) {
   // The landingpad instruction is ill-formed if it doesn't have any clauses and
   // isn't a cleanup.
   Assert(LPI.getNumClauses() > 0 || LPI.isCleanup(),
          "LandingPadInst needs at least one clause or to be a cleanup.", &LPI);
 
-  // The landingpad instruction defines its parent as a landing pad block. The
-  // landing pad block may be branched to only by the unwind edge of an invoke.
-  for (pred_iterator I = pred_begin(BB), E = pred_end(BB); I != E; ++I) {
-    const InvokeInst *II = dyn_cast<InvokeInst>((*I)->getTerminator());
-    Assert(II && II->getUnwindDest() == BB && II->getNormalDest() != BB,
-           "Block containing LandingPadInst must be jumped to "
-           "only by the unwind edge of an invoke.",
+  visitEHPadPredecessors(LPI);
+
+  if (!LandingPadResultTy)
+    LandingPadResultTy = LPI.getType();
+  else
+    Assert(LandingPadResultTy == LPI.getType(),
+           "The landingpad instruction should have a consistent result type "
+           "inside a function.",
            &LPI);
-  }
 
   Function *F = LPI.getParent()->getParent();
   Assert(F->hasPersonalityFn(),
@@ -2866,6 +2922,137 @@ void Verifier::visitLandingPadInst(LandingPadInst &LPI) {
   }
 
   visitInstruction(LPI);
+}
+
+void Verifier::visitCatchPadInst(CatchPadInst &CPI) {
+  visitEHPadPredecessors(CPI);
+
+  if (!CatchPadResultTy)
+    CatchPadResultTy = CPI.getType();
+  else
+    Assert(CatchPadResultTy == CPI.getType(),
+           "The catchpad instruction should have a consistent result type "
+           "inside a function.",
+           &CPI);
+
+  BasicBlock *BB = CPI.getParent();
+  Function *F = BB->getParent();
+  Assert(F->hasPersonalityFn(),
+         "CatchPadInst needs to be in a function with a personality.", &CPI);
+
+  // The catchpad instruction must be the first non-PHI instruction in the
+  // block.
+  Assert(BB->getFirstNonPHI() == &CPI,
+         "CatchPadInst not the first non-PHI instruction in the block.",
+         &CPI);
+
+  BasicBlock *UnwindDest = CPI.getUnwindDest();
+  Instruction *I = UnwindDest->getFirstNonPHI();
+  Assert(
+      isa<CatchPadInst>(I) || isa<CatchEndPadInst>(I),
+      "CatchPadInst must unwind to a CatchPadInst or a CatchEndPadInst.",
+      &CPI);
+
+  visitTerminatorInst(CPI);
+}
+
+void Verifier::visitCatchEndPadInst(CatchEndPadInst &CEPI) {
+  visitEHPadPredecessors(CEPI);
+
+  BasicBlock *BB = CEPI.getParent();
+  Function *F = BB->getParent();
+  Assert(F->hasPersonalityFn(),
+         "CatchEndPadInst needs to be in a function with a personality.",
+         &CEPI);
+
+  // The catchendpad instruction must be the first non-PHI instruction in the
+  // block.
+  Assert(BB->getFirstNonPHI() == &CEPI,
+         "CatchEndPadInst not the first non-PHI instruction in the block.",
+         &CEPI);
+
+  unsigned CatchPadsSeen = 0;
+  for (BasicBlock *PredBB : predecessors(BB))
+    if (isa<CatchPadInst>(PredBB->getTerminator()))
+      ++CatchPadsSeen;
+
+  Assert(CatchPadsSeen <= 1, "CatchEndPadInst must have no more than one "
+                               "CatchPadInst predecessor.",
+         &CEPI);
+
+  if (BasicBlock *UnwindDest = CEPI.getUnwindDest()) {
+    Instruction *I = UnwindDest->getFirstNonPHI();
+    Assert(
+        I->isEHPad() && !isa<LandingPadInst>(I),
+        "CatchEndPad must unwind to an EH block which is not a landingpad.",
+        &CEPI);
+  }
+
+  visitTerminatorInst(CEPI);
+}
+
+void Verifier::visitCleanupPadInst(CleanupPadInst &CPI) {
+  visitEHPadPredecessors(CPI);
+
+  BasicBlock *BB = CPI.getParent();
+
+  if (!CleanupPadResultTy)
+    CleanupPadResultTy = CPI.getType();
+  else
+    Assert(CleanupPadResultTy == CPI.getType(),
+           "The cleanuppad instruction should have a consistent result type "
+           "inside a function.",
+           &CPI);
+
+  Function *F = BB->getParent();
+  Assert(F->hasPersonalityFn(),
+         "CleanupPadInst needs to be in a function with a personality.", &CPI);
+
+  // The cleanuppad instruction must be the first non-PHI instruction in the
+  // block.
+  Assert(BB->getFirstNonPHI() == &CPI,
+         "CleanupPadInst not the first non-PHI instruction in the block.",
+         &CPI);
+
+  visitInstruction(CPI);
+}
+
+void Verifier::visitCleanupReturnInst(CleanupReturnInst &CRI) {
+  if (BasicBlock *UnwindDest = CRI.getUnwindDest()) {
+    Instruction *I = UnwindDest->getFirstNonPHI();
+    Assert(I->isEHPad() && !isa<LandingPadInst>(I),
+           "CleanupReturnInst must unwind to an EH block which is not a "
+           "landingpad.",
+           &CRI);
+  }
+
+  visitTerminatorInst(CRI);
+}
+
+void Verifier::visitTerminatePadInst(TerminatePadInst &TPI) {
+  visitEHPadPredecessors(TPI);
+
+  BasicBlock *BB = TPI.getParent();
+  Function *F = BB->getParent();
+  Assert(F->hasPersonalityFn(),
+         "TerminatePadInst needs to be in a function with a personality.",
+         &TPI);
+
+  // The terminatepad instruction must be the first non-PHI instruction in the
+  // block.
+  Assert(BB->getFirstNonPHI() == &TPI,
+         "TerminatePadInst not the first non-PHI instruction in the block.",
+         &TPI);
+
+  if (BasicBlock *UnwindDest = TPI.getUnwindDest()) {
+    Instruction *I = UnwindDest->getFirstNonPHI();
+    Assert(I->isEHPad() && !isa<LandingPadInst>(I),
+           "TerminatePadInst must unwind to an EH block which is not a "
+           "landingpad.",
+           &TPI);
+  }
+
+  visitTerminatorInst(TPI);
 }
 
 void Verifier::verifyDominatesUse(Instruction &I, unsigned i) {
@@ -3387,9 +3574,8 @@ void Verifier::visitIntrinsicCallSite(Intrinsic::ID ID, CallSite CS) {
 
     // Assert that result type matches wrapped callee.
     const Value *Target = StatepointCS.getArgument(2);
-    const PointerType *PT = cast<PointerType>(Target->getType());
-    const FunctionType *TargetFuncType =
-      cast<FunctionType>(PT->getElementType());
+    auto *PT = cast<PointerType>(Target->getType());
+    auto *TargetFuncType = cast<FunctionType>(PT->getElementType());
     Assert(CS.getType() == TargetFuncType->getReturnType(),
            "gc.result result type does not match wrapped callee", CS);
     break;

@@ -69,13 +69,6 @@ public:
         return false;
     }
 
-    clang::ExternalLoadResult
-    FindExternalLexicalDecls(const clang::DeclContext *DC, bool (*isKindWeWant)(clang::Decl::Kind),
-                             llvm::SmallVectorImpl<clang::Decl *> &Decls) override
-    {
-        return clang::ELR_Success;
-    }
-
     void
     CompleteType(clang::TagDecl *tag_decl) override
     {
@@ -364,7 +357,7 @@ public:
         
         clang::Selector sel = ast_ctx.Selectors.getSelector(is_zero_argument ? 0 : selector_components.size(), selector_components.data());
         
-        clang::QualType ret_type = type_realizer_sp->RealizeType(interface_decl->getASTContext(), m_type_vector[0].c_str(), for_expression).GetQualType();
+        clang::QualType ret_type = ClangASTContext::GetQualType(type_realizer_sp->RealizeType(interface_decl->getASTContext(), m_type_vector[0].c_str(), for_expression));
         
         if (ret_type.isNull())
             return NULL;
@@ -391,7 +384,7 @@ public:
              ++ai)
         {
             const bool for_expression = true;
-            clang::QualType arg_type = type_realizer_sp->RealizeType(ast_ctx, m_type_vector[ai].c_str(), for_expression).GetQualType();
+            clang::QualType arg_type = ClangASTContext::GetQualType(type_realizer_sp->RealizeType(ast_ctx, m_type_vector[ai].c_str(), for_expression));
             
             if (arg_type.isNull())
                 return NULL; // well, we just wasted a bunch of time.  Wish we could delete the stuff we'd just made!
@@ -503,7 +496,7 @@ AppleObjCDeclVendor::FinishDecl(clang::ObjCInterfaceDecl *interface_decl)
         if (log)
             log->Printf("[  AOTV::FD] Instance variable [%s] [%s], offset at %" PRIx64, name, type, offset_ptr);
         
-        ClangASTType ivar_type = m_runtime.GetEncodingToType()->RealizeType(m_ast_ctx, type, for_expression);
+        CompilerType ivar_type = m_runtime.GetEncodingToType()->RealizeType(m_ast_ctx, type, for_expression);
         
         if (ivar_type.IsValid())
         {
@@ -514,7 +507,7 @@ AppleObjCDeclVendor::FinishDecl(clang::ObjCInterfaceDecl *interface_decl)
                                                                           clang::SourceLocation(),
                                                                           clang::SourceLocation(),
                                                                           &m_ast_ctx.getASTContext()->Idents.get(name),
-                                                                          ivar_type.GetQualType(),
+                                                                          ClangASTContext::GetQualType(ivar_type),
                                                                           type_source_info,                      // TypeSourceInfo *
                                                                           clang::ObjCIvarDecl::Public,
                                                                           0,

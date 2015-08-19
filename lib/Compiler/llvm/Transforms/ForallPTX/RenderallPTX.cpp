@@ -531,7 +531,7 @@ public:
     
     passManager->run(kernelModule_);
     
-    ostr.flush();
+    //ostr.flush();
     
     delete passManager;
         

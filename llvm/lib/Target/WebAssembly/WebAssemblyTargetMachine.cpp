@@ -77,7 +77,7 @@ WebAssemblyTargetMachine::getSubtargetImpl(const Function &F) const {
     // creation will depend on the TM and the code generation flags on the
     // function that reside in TargetOptions.
     resetTargetOptions(F);
-    I = make_unique<WebAssemblySubtarget>(TargetTriple, CPU, FS, *this);
+    I = llvm::make_unique<WebAssemblySubtarget>(TargetTriple, CPU, FS, *this);
   }
   return I.get();
 }
@@ -166,7 +166,15 @@ void WebAssemblyPassConfig::addPreRegAlloc() {}
 
 void WebAssemblyPassConfig::addRegAllocPasses(bool Optimized) {}
 
-void WebAssemblyPassConfig::addPostRegAlloc() {}
+void WebAssemblyPassConfig::addPostRegAlloc() {
+  // FIXME: the following passes dislike virtual registers. Disable them for now
+  //        so that basic tests can pass. Future patches will remedy this.
+  //
+  // Fails with: Regalloc must assign all vregs.
+  disablePass(&PrologEpilogCodeInserterID);
+  // Fails with: should be run after register allocation.
+  disablePass(&MachineCopyPropagationID);
+}
 
 void WebAssemblyPassConfig::addPreSched2() {}
 

@@ -196,8 +196,9 @@ class ASTContext : public RefCountedBase<ASTContext> {
     ClassScopeSpecializationPattern;
 
   /// \brief Mapping from materialized temporaries with static storage duration
-  /// that appear in constant initializers to their evaluated values.
-  llvm::DenseMap<const MaterializeTemporaryExpr*, APValue>
+  /// that appear in constant initializers to their evaluated values.  These are
+  /// allocated in a std::map because their address must be stable.
+  llvm::DenseMap<const MaterializeTemporaryExpr *, APValue *>
     MaterializedTemporaryValues;
 
   /// \brief Representation of a "canonical" template template parameter that
@@ -525,6 +526,9 @@ public:
 
   void *Allocate(size_t Size, unsigned Align = 8) const {
     return BumpAlloc.Allocate(Size, Align);
+  }
+  template <typename T> T *Allocate(size_t Num = 1) const {
+    return static_cast<T *>(Allocate(Num * sizeof(T), llvm::alignOf<T>()));
   }
   void Deallocate(void *Ptr) const { }
   
@@ -878,9 +882,9 @@ public:
   mutable QualType AutoDeductTy;     // Deduction against 'auto'.
   mutable QualType AutoRRefDeductTy; // Deduction against 'auto &&'.
 
-  // Type used to help define __builtin_va_list for some targets.
-  // The type is built when constructing 'BuiltinVaListDecl'.
-  mutable QualType VaListTagTy;
+  // Decl used to help define __builtin_va_list for some targets.
+  // The decl is built when constructing 'BuiltinVaListDecl'.
+  mutable Decl *VaListTagDecl;
 
   ASTContext(LangOptions &LOpts, SourceManager &SM, IdentifierTable &idents,
              SelectorTable &sels, Builtin::Context &builtins);
@@ -1640,7 +1644,7 @@ public:
   /// \brief Retrieve the C type declaration corresponding to the predefined
   /// \c __va_list_tag type used to help define the \c __builtin_va_list type
   /// for some targets.
-  QualType getVaListTagType() const;
+  Decl *getVaListTagDecl() const;
 
   /// \brief Return a type with additional \c const, \c volatile, or
   /// \c restrict qualifiers.
@@ -1851,8 +1855,6 @@ public:
   /// mesh, which indicates its size and field position information.
   const ASTMeshLayout &getASTMeshLayout(const MeshDecl *D) const;
   // +========================================================================+
-
-  const ASTRecordLayout *BuildMicrosoftASTRecordLayout(const RecordDecl *D) const;
 
   /// \brief Get or compute information about the layout of the specified
   /// Objective-C interface.

@@ -227,10 +227,22 @@ bool CodeGenFunction::EmitOMPCopyinClause(const OMPExecutableDirective &D) {
       auto *VD = cast<VarDecl>(cast<DeclRefExpr>(*IRef)->getDecl());
       QualType Type = VD->getType();
       if (CopiedVars.insert(VD->getCanonicalDecl()).second) {
-        // Get the address of the master variable.
-        auto *MasterAddr = VD->isStaticLocal()
-                               ? CGM.getStaticLocalDeclAddress(VD)
-                               : CGM.GetAddrOfGlobal(VD);
+
+        // Get the address of the master variable. If we are emitting code with
+        // TLS support, the address is passed from the master as field in the
+        // captured declaration.
+        llvm::Value *MasterAddr;
+        if (getLangOpts().OpenMPUseTLS &&
+            getContext().getTargetInfo().isTLSSupported()) {
+          assert(CapturedStmtInfo->lookup(VD) &&
+                 "Copyin threadprivates should have been captured!");
+          DeclRefExpr DRE(const_cast<VarDecl *>(VD), true, (*IRef)->getType(),
+                          VK_LValue, (*IRef)->getExprLoc());
+          MasterAddr = EmitLValue(&DRE).getAddress();
+        } else {
+          MasterAddr = VD->isStaticLocal() ? CGM.getStaticLocalDeclAddress(VD)
+                                           : CGM.GetAddrOfGlobal(VD);
+        }
         // Get the address of the threadprivate variable.
         auto *PrivateAddr = EmitLValue(*IRef).getAddress();
         if (CopiedVars.size() == 1) {
@@ -668,15 +680,22 @@ static void emitAlignedClause(CodeGenFunction &CGF,
 
 static void emitPrivateLoopCounters(CodeGenFunction &CGF,
                                     CodeGenFunction::OMPPrivateScope &LoopScope,
-                                    ArrayRef<Expr *> Counters) {
+                                    ArrayRef<Expr *> Counters,
+                                    ArrayRef<Expr *> PrivateCounters) {
+  auto I = PrivateCounters.begin();
   for (auto *E : Counters) {
-    auto VD = cast<VarDecl>(cast<DeclRefExpr>(E)->getDecl());
-    (void)LoopScope.addPrivate(VD, [&]() -> llvm::Value *{
+    auto *VD = cast<VarDecl>(cast<DeclRefExpr>(E)->getDecl());
+    auto *PrivateVD = cast<VarDecl>(cast<DeclRefExpr>(*I)->getDecl());
+    llvm::Value *Addr;
+    (void)LoopScope.addPrivate(PrivateVD, [&]() -> llvm::Value * {
       // Emit var without initialization.
-      auto VarEmission = CGF.EmitAutoVarAlloca(*VD);
+      auto VarEmission = CGF.EmitAutoVarAlloca(*PrivateVD);
       CGF.EmitAutoVarCleanups(VarEmission);
-      return VarEmission.getAllocatedAddress();
+      Addr = VarEmission.getAllocatedAddress();
+      return Addr;
     });
+    (void)LoopScope.addPrivate(VD, [&]() -> llvm::Value * { return Addr; });
+    ++I;
   }
 }
 
@@ -685,28 +704,11 @@ static void emitPreCond(CodeGenFunction &CGF, const OMPLoopDirective &S,
                         llvm::BasicBlock *FalseBlock, uint64_t TrueCount) {
   {
     CodeGenFunction::OMPPrivateScope PreCondScope(CGF);
-    emitPrivateLoopCounters(CGF, PreCondScope, S.counters());
-    const VarDecl *IVDecl =
-        cast<VarDecl>(cast<DeclRefExpr>(S.getIterationVariable())->getDecl());
-    bool IsRegistered = PreCondScope.addPrivate(IVDecl, [&]() -> llvm::Value *{
-      // Emit var without initialization.
-      auto VarEmission = CGF.EmitAutoVarAlloca(*IVDecl);
-      CGF.EmitAutoVarCleanups(VarEmission);
-      return VarEmission.getAllocatedAddress();
-    });
-    assert(IsRegistered && "counter already registered as private");
-    // Silence the warning about unused variable.
-    (void)IsRegistered;
+    emitPrivateLoopCounters(CGF, PreCondScope, S.counters(),
+                            S.private_counters());
     (void)PreCondScope.Privatize();
-    // Initialize internal counter to 0 to calculate initial values of real
-    // counters.
-    LValue IV = CGF.EmitLValue(S.getIterationVariable());
-    CGF.EmitStoreOfScalar(
-        llvm::ConstantInt::getNullValue(
-            IV.getAddress()->getType()->getPointerElementType()),
-        CGF.EmitLValue(S.getIterationVariable()), /*isInit=*/true);
     // Get initial values of real counters.
-    for (auto I : S.updates()) {
+    for (auto I : S.inits()) {
       CGF.EmitIgnoredExpr(I);
     }
   }
@@ -823,7 +825,8 @@ void CodeGenFunction::EmitOMPSimdDirective(const OMPSimdDirective &S) {
     bool HasLastprivateClause;
     {
       OMPPrivateScope LoopScope(CGF);
-      emitPrivateLoopCounters(CGF, LoopScope, S.counters());
+      emitPrivateLoopCounters(CGF, LoopScope, S.counters(),
+                              S.private_counters());
       emitPrivateLinearVars(CGF, S, LoopScope);
       CGF.EmitOMPPrivateClause(S, LoopScope);
       CGF.EmitOMPReductionClauseInit(S, LoopScope);
@@ -1044,7 +1047,8 @@ emitScheduleClause(CodeGenFunction &CGF, const OMPLoopDirective &S,
       if (!C->getHelperChunkSize() || !OuterRegion) {
         Chunk = CGF.EmitScalarExpr(Ch);
         Chunk = CGF.EmitScalarConversion(Chunk, Ch->getType(),
-                                         S.getIterationVariable()->getType());
+                                         S.getIterationVariable()->getType(),
+                                         S.getLocStart());
       }
     }
   }
@@ -1112,7 +1116,8 @@ bool CodeGenFunction::EmitOMPWorksharingLoop(const OMPLoopDirective &S) {
       EmitOMPPrivateClause(S, LoopScope);
       HasLastprivateClause = EmitOMPLastprivateClauseInit(S, LoopScope);
       EmitOMPReductionClauseInit(S, LoopScope);
-      emitPrivateLoopCounters(*this, LoopScope, S.counters());
+      emitPrivateLoopCounters(*this, LoopScope, S.counters(),
+                              S.private_counters());
       emitPrivateLinearVars(*this, S, LoopScope);
       (void)LoopScope.Privatize();
 
@@ -1661,27 +1666,29 @@ void CodeGenFunction::EmitOMPOrderedDirective(const OMPOrderedDirective &S) {
 }
 
 static llvm::Value *convertToScalarValue(CodeGenFunction &CGF, RValue Val,
-                                         QualType SrcType, QualType DestType) {
+                                         QualType SrcType, QualType DestType,
+                                         SourceLocation Loc) {
   assert(CGF.hasScalarEvaluationKind(DestType) &&
          "DestType must have scalar evaluation kind.");
   assert(!Val.isAggregate() && "Must be a scalar or complex.");
   return Val.isScalar()
-             ? CGF.EmitScalarConversion(Val.getScalarVal(), SrcType, DestType)
+             ? CGF.EmitScalarConversion(Val.getScalarVal(), SrcType, DestType,
+                                        Loc)
              : CGF.EmitComplexToScalarConversion(Val.getComplexVal(), SrcType,
-                                                 DestType);
+                                                 DestType, Loc);
 }
 
 static CodeGenFunction::ComplexPairTy
 convertToComplexValue(CodeGenFunction &CGF, RValue Val, QualType SrcType,
-                      QualType DestType) {
+                      QualType DestType, SourceLocation Loc) {
   assert(CGF.getEvaluationKind(DestType) == TEK_Complex &&
          "DestType must have complex evaluation kind.");
   CodeGenFunction::ComplexPairTy ComplexVal;
   if (Val.isScalar()) {
     // Convert the input element to the element type of the complex.
     auto DestElementType = DestType->castAs<ComplexType>()->getElementType();
-    auto ScalarVal =
-        CGF.EmitScalarConversion(Val.getScalarVal(), SrcType, DestElementType);
+    auto ScalarVal = CGF.EmitScalarConversion(Val.getScalarVal(), SrcType,
+                                              DestElementType, Loc);
     ComplexVal = CodeGenFunction::ComplexPairTy(
         ScalarVal, llvm::Constant::getNullValue(ScalarVal->getType()));
   } else {
@@ -1689,9 +1696,9 @@ convertToComplexValue(CodeGenFunction &CGF, RValue Val, QualType SrcType,
     auto SrcElementType = SrcType->castAs<ComplexType>()->getElementType();
     auto DestElementType = DestType->castAs<ComplexType>()->getElementType();
     ComplexVal.first = CGF.EmitScalarConversion(
-        Val.getComplexVal().first, SrcElementType, DestElementType);
+        Val.getComplexVal().first, SrcElementType, DestElementType, Loc);
     ComplexVal.second = CGF.EmitScalarConversion(
-        Val.getComplexVal().second, SrcElementType, DestElementType);
+        Val.getComplexVal().second, SrcElementType, DestElementType, Loc);
   }
   return ComplexVal;
 }
@@ -1708,16 +1715,16 @@ static void emitSimpleAtomicStore(CodeGenFunction &CGF, bool IsSeqCst,
 }
 
 static void emitSimpleStore(CodeGenFunction &CGF, LValue LVal, RValue RVal,
-                            QualType RValTy) {
+                            QualType RValTy, SourceLocation Loc) {
   switch (CGF.getEvaluationKind(LVal.getType())) {
   case TEK_Scalar:
-    CGF.EmitStoreThroughLValue(
-        RValue::get(convertToScalarValue(CGF, RVal, RValTy, LVal.getType())),
-        LVal);
+    CGF.EmitStoreThroughLValue(RValue::get(convertToScalarValue(
+                                   CGF, RVal, RValTy, LVal.getType(), Loc)),
+                               LVal);
     break;
   case TEK_Complex:
     CGF.EmitStoreOfComplex(
-        convertToComplexValue(CGF, RVal, RValTy, LVal.getType()), LVal,
+        convertToComplexValue(CGF, RVal, RValTy, LVal.getType(), Loc), LVal,
         /*isInit=*/false);
     break;
   case TEK_Aggregate:
@@ -1745,7 +1752,7 @@ static void EmitOMPAtomicReadExpr(CodeGenFunction &CGF, bool IsSeqCst,
   // list.
   if (IsSeqCst)
     CGF.CGM.getOpenMPRuntime().emitFlush(CGF, llvm::None, Loc);
-  emitSimpleStore(CGF,VLValue, Res, X->getType().getNonReferenceType());
+  emitSimpleStore(CGF, VLValue, Res, X->getType().getNonReferenceType(), Loc);
 }
 
 static void EmitOMPAtomicWriteExpr(CodeGenFunction &CGF, bool IsSeqCst,
@@ -1916,12 +1923,14 @@ static void EmitOMPAtomicUpdateExpr(CodeGenFunction &CGF, bool IsSeqCst,
 }
 
 static RValue convertToType(CodeGenFunction &CGF, RValue Value,
-                            QualType SourceType, QualType ResType) {
+                            QualType SourceType, QualType ResType,
+                            SourceLocation Loc) {
   switch (CGF.getEvaluationKind(ResType)) {
   case TEK_Scalar:
-    return RValue::get(convertToScalarValue(CGF, Value, SourceType, ResType));
+    return RValue::get(
+        convertToScalarValue(CGF, Value, SourceType, ResType, Loc));
   case TEK_Complex: {
-    auto Res = convertToComplexValue(CGF, Value, SourceType, ResType);
+    auto Res = convertToComplexValue(CGF, Value, SourceType, ResType, Loc);
     return RValue::getComplex(Res.first, Res.second);
   }
   case TEK_Aggregate:
@@ -1986,7 +1995,7 @@ static void EmitOMPAtomicCaptureExpr(CodeGenFunction &CGF, bool IsSeqCst,
     // 'x' is simply rewritten with some 'expr'.
     NewVValType = X->getType().getNonReferenceType();
     ExprRValue = convertToType(CGF, ExprRValue, E->getType(),
-                               X->getType().getNonReferenceType());
+                               X->getType().getNonReferenceType(), Loc);
     auto &&Gen = [&CGF, &NewVVal, ExprRValue](RValue XRValue) -> RValue {
       NewVVal = XRValue;
       return ExprRValue;
@@ -2001,7 +2010,7 @@ static void EmitOMPAtomicCaptureExpr(CodeGenFunction &CGF, bool IsSeqCst,
     }
   }
   // Emit post-update store to 'v' of old/new 'x' value.
-  emitSimpleStore(CGF, VLValue, NewVVal, NewVValType);
+  emitSimpleStore(CGF, VLValue, NewVVal, NewVValType, Loc);
   // OpenMP, 2.12.6, atomic Construct
   // Any atomic construct with a seq_cst clause forces the atomically
   // performed operation to include an implicit flush operation without a
@@ -2055,6 +2064,7 @@ static void EmitOMPAtomicExpr(CodeGenFunction &CGF, OpenMPClauseKind Kind,
   case OMPC_threadprivate:
   case OMPC_depend:
   case OMPC_mergeable:
+  case OMPC_device:
     llvm_unreachable("Clause is not allowed in 'omp atomic'.");
   }
 }
@@ -2128,5 +2138,7 @@ void CodeGenFunction::EmitOMPTargetDataDirective(
 
   // emit the code inside the construct for now
   auto CS = cast<CapturedStmt>(S.getAssociatedStmt());
-  EmitStmt(CS->getCapturedStmt());
+  CGM.getOpenMPRuntime().emitInlinedDirective(
+      *this, OMPD_target_data,
+      [&CS](CodeGenFunction &CGF) { CGF.EmitStmt(CS->getCapturedStmt()); });
 }

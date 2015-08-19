@@ -29,6 +29,7 @@ class MDNode;
 
 namespace clang {
 class Attr;
+class ASTContext;
 namespace CodeGen {
 
 /// \brief Attributes that may be specified on loops.
@@ -40,16 +41,22 @@ struct LoopAttributes {
   bool IsParallel;
 
   /// \brief State of loop vectorization or unrolling.
-  enum LVEnableState { Unspecified, Enable, Disable };
+  enum LVEnableState { Unspecified, Enable, Disable, Full };
 
   /// \brief Value for llvm.loop.vectorize.enable metadata.
   LVEnableState VectorizeEnable;
+
+  /// \brief Value for llvm.loop.unroll.* metadata (enable, disable, or full).
+  LVEnableState UnrollEnable;
 
   /// \brief Value for llvm.loop.vectorize.width metadata.
   unsigned VectorizeWidth;
 
   /// \brief Value for llvm.loop.interleave.count metadata.
   unsigned InterleaveCount;
+
+  /// \brief llvm.unroll.
+  unsigned UnrollCount;
 };
 
 /// \brief Information used when generating a structured loop.
@@ -88,8 +95,12 @@ public:
 
   /// \brief Begin a new structured loop. The set of staged attributes will be
   /// applied to the loop and then cleared.
-  void push(llvm::BasicBlock *Header,
-            llvm::ArrayRef<const Attr *> Attrs = llvm::None);
+  void push(llvm::BasicBlock *Header);
+
+  /// \brief Begin a new structured loop. Stage attributes from the Attrs list.
+  /// The staged attributes are applied to the loop and then cleared.
+  void push(llvm::BasicBlock *Header, clang::ASTContext &Ctx,
+            llvm::ArrayRef<const Attr *> Attrs);
 
   /// \brief End the current loop.
   void pop();
@@ -115,11 +126,19 @@ public:
         Enable ? LoopAttributes::Enable : LoopAttributes::Disable;
   }
 
+  /// \brief Set the next pushed loop unroll state.
+  void setUnrollState(const LoopAttributes::LVEnableState &State) {
+    StagedAttrs.UnrollEnable = State;
+  }
+
   /// \brief Set the vectorize width for the next loop pushed.
   void setVectorizeWidth(unsigned W) { StagedAttrs.VectorizeWidth = W; }
 
   /// \brief Set the interleave count for the next loop pushed.
   void setInterleaveCount(unsigned C) { StagedAttrs.InterleaveCount = C; }
+
+  /// \brief Set the unroll count for the next loop pushed.
+  void setUnrollCount(unsigned C) { StagedAttrs.UnrollCount = C; }
 
 private:
   /// \brief Returns true if there is LoopInfo on the stack.

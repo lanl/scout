@@ -192,18 +192,19 @@ void DwarfUnit::addFlag(DIE &Die, dwarf::Attribute Attribute) {
                  DIEInteger(1));
 }
 
-void DwarfUnit::addUInt(DIE &Die, dwarf::Attribute Attribute,
+void DwarfUnit::addUInt(DIEValueList &Die, dwarf::Attribute Attribute,
                         Optional<dwarf::Form> Form, uint64_t Integer) {
   if (!Form)
     Form = DIEInteger::BestForm(false, Integer);
   Die.addValue(DIEValueAllocator, Attribute, *Form, DIEInteger(Integer));
 }
 
-void DwarfUnit::addUInt(DIE &Block, dwarf::Form Form, uint64_t Integer) {
+void DwarfUnit::addUInt(DIEValueList &Block, dwarf::Form Form,
+                        uint64_t Integer) {
   addUInt(Block, (dwarf::Attribute)0, Form, Integer);
 }
 
-void DwarfUnit::addSInt(DIE &Die, dwarf::Attribute Attribute,
+void DwarfUnit::addSInt(DIEValueList &Die, dwarf::Attribute Attribute,
                         Optional<dwarf::Form> Form, int64_t Integer) {
   if (!Form)
     Form = DIEInteger::BestForm(true, Integer);
@@ -222,9 +223,10 @@ void DwarfUnit::addString(DIE &Die, dwarf::Attribute Attribute,
                DIEString(DU->getStringPool().getEntry(*Asm, String)));
 }
 
-DIE::value_iterator DwarfUnit::addLabel(DIE &Die, dwarf::Attribute Attribute,
-                                        dwarf::Form Form,
-                                        const MCSymbol *Label) {
+DIEValueList::value_iterator DwarfUnit::addLabel(DIEValueList &Die,
+                                                 dwarf::Attribute Attribute,
+                                                 dwarf::Form Form,
+                                                 const MCSymbol *Label) {
   return Die.addValue(DIEValueAllocator, Attribute, Form, DIELabel(Label));
 }
 
@@ -299,8 +301,6 @@ void DwarfUnit::addDIEEntry(DIE &Die, dwarf::Attribute Attribute,
 }
 
 DIE &DwarfUnit::createAndAddDIE(unsigned Tag, DIE &Parent, const DINode *N) {
-  assert(Tag != dwarf::DW_TAG_auto_variable &&
-         Tag != dwarf::DW_TAG_arg_variable);
   DIE &Die = Parent.addChild(DIE::get(DIEValueAllocator, (dwarf::Tag)Tag));
   if (N)
     insertDIE(N, &Die);
@@ -667,7 +667,7 @@ void DwarfUnit::addConstantValue(DIE &Die, const APInt &Val, bool Unsigned) {
 }
 
 void DwarfUnit::addLinkageName(DIE &Die, StringRef LinkageName) {
-  if (!LinkageName.empty())
+  if (!LinkageName.empty() && DD->useLinkageNames())
     addString(Die,
               DD->getDwarfVersion() >= 4 ? dwarf::DW_AT_linkage_name
                                          : dwarf::DW_AT_MIPS_linkage_name,
@@ -794,7 +794,7 @@ void DwarfUnit::updateAcceleratorTables(const DIScope *Context,
                                         const DIType *Ty, const DIE &TyDIE) {
   if (!Ty->getName().empty() && !Ty->isForwardDecl()) {
     bool IsImplementation = 0;
-    if (auto *CT = dyn_cast<DICompositeTypeBase>(Ty)) {
+    if (auto *CT = dyn_cast<DICompositeType>(Ty)) {
       // A runtime language of 0 actually means C/C++ and that any
       // non-negative value is some version of Objective-C/C++.
       IsImplementation = CT->getRuntimeLang() == 0 || CT->isObjcClassComplete();
@@ -836,8 +836,7 @@ std::string DwarfUnit::getParentContextString(const DIScope *Context) const {
 
   // Reverse iterate over our list to go from the outermost construct to the
   // innermost.
-  for (auto I = Parents.rbegin(), E = Parents.rend(); I != E; ++I) {
-    const DIScope *Ctx = *I;
+  for (const DIScope *Ctx : make_range(Parents.rbegin(), Parents.rend())) {
     StringRef Name = Ctx->getName();
     if (Name.empty() && isa<DINamespace>(Ctx))
       Name = "(anonymous namespace)";

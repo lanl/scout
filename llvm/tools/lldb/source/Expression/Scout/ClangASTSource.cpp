@@ -141,12 +141,13 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
                     if (!type)
                         continue;
 
-                    ClangASTType clang_type (type->GetClangFullType());
+                    CompilerType clang_type (type->GetClangFullType());
 
                     if (!clang_type)
                         continue;
 
-                    const MeshType *mesh_type = clang_type.GetQualType()->getAs<MeshType>();
+                    const MeshType *mesh_type =
+                      ClangASTContext::GetQualType(clang_type)->getAs<MeshType>();
 
                     if (!mesh_type)
                         continue;
@@ -180,12 +181,13 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
                 if (!type)
                     continue;
 
-                ClangASTType clang_type (type->GetClangFullType());
+                CompilerType clang_type (type->GetClangFullType());
 
                 if (!clang_type)
                     continue;
 
-                const MeshType *mesh_type = clang_type.GetQualType()->getAs<MeshType>();
+                const MeshType *mesh_type =
+                  ClangASTContext::GetQualType(clang_type)->getAs<MeshType>();
 
                 if (!mesh_type)
                     continue;
@@ -278,12 +280,13 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
           if (!type)
             continue;
           
-          ClangASTType clang_type (type->GetClangFullType());
+          CompilerType clang_type (type->GetClangFullType());
           
           if (!clang_type)
             continue;
           
-          const FrameType *frame_type = clang_type.GetQualType()->getAs<FrameType>();
+          const FrameType *frame_type =
+          ClangASTContext::GetQualType(clang_type)->getAs<FrameType>();
           
           if (!frame_type)
             continue;
@@ -317,12 +320,13 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
         if (!type)
           continue;
         
-        ClangASTType clang_type (type->GetClangFullType());
+        CompilerType clang_type (type->GetClangFullType());
         
         if (!clang_type)
           continue;
         
-        const FrameType *frame_type = clang_type.GetQualType()->getAs<FrameType>();
+        const FrameType *frame_type =
+        ClangASTContext::GetQualType(clang_type)->getAs<FrameType>();
         
         if (!frame_type)
           continue;

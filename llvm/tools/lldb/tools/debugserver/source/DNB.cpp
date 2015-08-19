@@ -455,6 +455,19 @@ DNBProcessLaunch (const char *path,
     return INVALID_NUB_PROCESS;
 }
 
+// If there is one process with a given name, return the pid for that process.
+nub_process_t
+DNBProcessGetPIDByName (const char *name)
+{
+    std::vector<struct kinfo_proc> matching_proc_infos;
+    size_t num_matching_proc_infos = GetAllInfosMatchingName(name, matching_proc_infos);
+    if (num_matching_proc_infos == 1)
+    {
+        return matching_proc_infos[0].kp_proc.p_pid;
+    }
+    return INVALID_NUB_PROCESS;
+}
+
 nub_process_t
 DNBProcessAttachByName (const char *name, struct timespec *timeout, char *err_str, size_t err_len)
 {
@@ -1921,6 +1934,12 @@ DNBResolveExecutablePath (const char *path, char *resolved_path, size_t resolved
         }
     }
     return false;
+}
+
+bool
+DNBGetOSVersionNumbers (uint64_t *major, uint64_t *minor, uint64_t *patch)
+{
+    return MachProcess::GetOSVersionNumbers (major, minor, patch);
 }
 
 

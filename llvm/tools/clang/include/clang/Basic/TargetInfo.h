@@ -74,7 +74,7 @@ protected:
   unsigned short MaxVectorAlign;
   unsigned short MaxTLSAlign;
   unsigned short SimdDefaultAlign;
-  const char *DescriptionString;
+  const char *DataLayoutString;
   const char *UserLabelPrefix;
   const char *MCountName;
   const llvm::fltSemantics *HalfFormat, *FloatFormat, *DoubleFormat,
@@ -636,9 +636,6 @@ public:
     }
   };
 
-  // Validate the contents of the __builtin_cpu_supports(const char*) argument.
-  virtual bool validateCpuSupports(StringRef Name) const { return false; }
-
   // validateOutputConstraint, validateInputConstraint - Checks that
   // a constraint is valid and provides information about it.
   // FIXME: These should return a real error instead of just true/false.
@@ -692,9 +689,9 @@ public:
     return Triple;
   }
 
-  const char *getTargetDescription() const {
-    assert(DescriptionString);
-    return DescriptionString;
+  const char *getDataLayoutString() const {
+    assert(DataLayoutString && "Uninitialized DataLayoutString!");
+    return DataLayoutString;
   }
 
   struct GCCRegAlias {
@@ -817,6 +814,10 @@ public:
   virtual bool hasFeature(StringRef Feature) const {
     return false;
   }
+
+  // \brief Validate the contents of the __builtin_cpu_supports(const char*)
+  // argument.
+  virtual bool validateCpuSupports(StringRef Name) const { return false; }
   
   // \brief Returns maximal number of args passed in registers.
   unsigned getRegParmMax() const {

@@ -12,7 +12,7 @@
 #include "lldb/Core/Module.h"
 #include "lldb/Core/Section.h"
 #include "lldb/Host/Host.h"
-#include "lldb/Symbol/ClangASTType.h"
+#include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/LineTable.h"
 #include "lldb/Symbol/SymbolFile.h"
@@ -466,6 +466,21 @@ Function::MemorySize () const
     return mem_size;
 }
 
+bool
+Function::GetIsOptimized ()
+{
+    bool result = false;
+
+    // Currently optimization is only indicted by the
+    // vendor extension DW_AT_APPLE_optimized which
+    // is set on a compile unit level.
+    if (m_comp_unit)
+    {
+        result = m_comp_unit->GetIsOptimized();
+    }
+    return result;
+}
+
 ConstString
 Function::GetDisplayName () const
 {
@@ -530,13 +545,13 @@ Function::GetType() const
     return m_type;
 }
 
-ClangASTType
+CompilerType
 Function::GetClangType()
 {
     Type *function_type = GetType();
     if (function_type)
         return function_type->GetClangFullType();
-    return ClangASTType();
+    return CompilerType();
 }
 
 uint32_t

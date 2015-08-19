@@ -159,7 +159,6 @@ std::unique_ptr<MemoryBuffer> MCJIT::emitObject(Module *M) {
   // Initialize passes.
   PM.run(*M);
   // Flush the output buffer to get the generated code into memory
-  ObjStream.flush();
 
   std::unique_ptr<MemoryBuffer> CompiledObjBuffer(
                                 new ObjectMemoryBuffer(std::move(ObjBufferSV)));
@@ -270,6 +269,12 @@ void MCJIT::finalizeModule(Module *M) {
 RuntimeDyld::SymbolInfo MCJIT::findExistingSymbol(const std::string &Name) {
   SmallString<128> FullName;
   Mangler::getNameWithPrefix(FullName, Name, getDataLayout());
+
+  if (void *Addr = getPointerToGlobalIfAvailable(FullName))
+    return RuntimeDyld::SymbolInfo(static_cast<uint64_t>(
+                                     reinterpret_cast<uintptr_t>(Addr)),
+                                   JITSymbolFlags::Exported);
+
   return Dyld.getSymbol(FullName);
 }
 

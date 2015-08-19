@@ -694,32 +694,53 @@ public:
 /// \brief This represents 'ordered' clause in the '#pragma omp ...' directive.
 ///
 /// \code
-/// #pragma omp for ordered
+/// #pragma omp for ordered (2)
 /// \endcode
-/// In this example directive '#pragma omp for' has 'ordered' clause.
+/// In this example directive '#pragma omp for' has 'ordered' clause with
+/// parameter 2.
 ///
 class OMPOrderedClause : public OMPClause {
+  friend class OMPClauseReader;
+  /// \brief Location of '('.
+  SourceLocation LParenLoc;
+  /// \brief Number of for-loops.
+  Stmt *NumForLoops;
+
+  /// \brief Set the number of associated for-loops.
+  void setNumForLoops(Expr *Num) { NumForLoops = Num; }
+
 public:
   /// \brief Build 'ordered' clause.
   ///
+  /// \param Num Expression, possibly associated with this clause.
   /// \param StartLoc Starting location of the clause.
+  /// \param LParenLoc Location of '('.
   /// \param EndLoc Ending location of the clause.
   ///
-  OMPOrderedClause(SourceLocation StartLoc, SourceLocation EndLoc)
-      : OMPClause(OMPC_ordered, StartLoc, EndLoc) {}
+  OMPOrderedClause(Expr *Num, SourceLocation StartLoc,
+                    SourceLocation LParenLoc, SourceLocation EndLoc)
+      : OMPClause(OMPC_ordered, StartLoc, EndLoc), LParenLoc(LParenLoc),
+        NumForLoops(Num) {}
 
   /// \brief Build an empty clause.
   ///
-  OMPOrderedClause()
-      : OMPClause(OMPC_ordered, SourceLocation(), SourceLocation()) {}
+  explicit OMPOrderedClause()
+      : OMPClause(OMPC_ordered, SourceLocation(), SourceLocation()),
+        LParenLoc(SourceLocation()), NumForLoops(nullptr) {}
+
+  /// \brief Sets the location of '('.
+  void setLParenLoc(SourceLocation Loc) { LParenLoc = Loc; }
+  /// \brief Returns the location of '('.
+  SourceLocation getLParenLoc() const { return LParenLoc; }
+
+  /// \brief Return the number of associated for-loops.
+  Expr *getNumForLoops() const { return cast_or_null<Expr>(NumForLoops); }
 
   static bool classof(const OMPClause *T) {
     return T->getClauseKind() == OMPC_ordered;
   }
 
-  child_range children() {
-    return child_range(child_iterator(), child_iterator());
-  }
+  child_range children() { return child_range(&NumForLoops, &NumForLoops + 1); }
 };
 
 /// \brief This represents 'nowait' clause in the '#pragma omp ...' directive.
@@ -2326,6 +2347,61 @@ public:
   static bool classof(const OMPClause *T) {
     return T->getClauseKind() == OMPC_depend;
   }
+};
+
+/// \brief This represents 'device' clause in the '#pragma omp ...'
+/// directive.
+///
+/// \code
+/// #pragma omp target device(a)
+/// \endcode
+/// In this example directive '#pragma omp target' has clause 'device'
+/// with single expression 'a'.
+///
+class OMPDeviceClause : public OMPClause {
+  friend class OMPClauseReader;
+  /// \brief Location of '('.
+  SourceLocation LParenLoc;
+  /// \brief Device number.
+  Stmt *Device;
+  /// \brief Set the device number.
+  ///
+  /// \param E Device number.
+  ///
+  void setDevice(Expr *E) { Device = E; }
+
+public:
+  /// \brief Build 'device' clause.
+  ///
+  /// \param E Expression associated with this clause.
+  /// \param StartLoc Starting location of the clause.
+  /// \param LParenLoc Location of '('.
+  /// \param EndLoc Ending location of the clause.
+  ///
+  OMPDeviceClause(Expr *E, SourceLocation StartLoc, SourceLocation LParenLoc, 
+                  SourceLocation EndLoc)
+      : OMPClause(OMPC_device, StartLoc, EndLoc), LParenLoc(LParenLoc), 
+        Device(E) {}
+
+  /// \brief Build an empty clause.
+  ///
+  OMPDeviceClause()
+      : OMPClause(OMPC_device, SourceLocation(), SourceLocation()), 
+        LParenLoc(SourceLocation()), Device(0) {}
+  /// \brief Sets the location of '('.
+  void setLParenLoc(SourceLocation Loc) { LParenLoc = Loc; }
+  /// \brief Returns the location of '('.
+  SourceLocation getLParenLoc() const { return LParenLoc; }
+  /// \brief Return device number.
+  Expr *getDevice() { return cast<Expr>(Device); }
+  /// \brief Return device number.
+  Expr *getDevice() const { return cast<Expr>(Device); }
+
+  static bool classof(const OMPClause *T) {
+    return T->getClauseKind() == OMPC_device;
+  }
+
+  child_range children() { return child_range(&Device, &Device + 1); }
 };
 
 } // end namespace clang

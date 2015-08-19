@@ -156,13 +156,13 @@ protected:
     virtual bool
     UpdateValue ();
     
-    virtual bool
+    virtual LazyBool
     CanUpdateWithInvalidExecutionContext ()
     {
-        return true;
+        return eLazyBoolYes;
     }
     
-    virtual ClangASTType
+    virtual CompilerType
     GetClangTypeImpl ();
     
     virtual void

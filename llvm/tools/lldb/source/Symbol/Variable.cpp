@@ -558,7 +558,7 @@ static void
 PrivateAutoComplete (StackFrame *frame,
                      const std::string &partial_path,
                      const std::string &prefix_path, // Anything that has been resolved already will be in here
-                     const ClangASTType& clang_type,
+                     const CompilerType& clang_type,
                      StringList &matches,
                      bool &word_complete);
 
@@ -567,7 +567,7 @@ PrivateAutoCompleteMembers (StackFrame *frame,
                             const std::string &partial_member_name,
                             const std::string &partial_path,
                             const std::string &prefix_path, // Anything that has been resolved already will be in here
-                            const ClangASTType& clang_type,
+                            const CompilerType& clang_type,
                             StringList &matches,
                             bool &word_complete);
 
@@ -576,19 +576,19 @@ PrivateAutoCompleteMembers (StackFrame *frame,
                             const std::string &partial_member_name,
                             const std::string &partial_path,
                             const std::string &prefix_path, // Anything that has been resolved already will be in here
-                            const ClangASTType& clang_type,
+                            const CompilerType& clang_type,
                             StringList &matches,
                             bool &word_complete)
 {
 
     // We are in a type parsing child members
-    const uint32_t num_bases = clang_type.GetNumDirectBaseClasses();
+    const uint32_t num_bases = ClangASTContext::GetNumDirectBaseClasses(clang_type);
     
     if (num_bases > 0)
     {
         for (uint32_t i = 0; i < num_bases; ++i)
         {
-            ClangASTType base_class_type (clang_type.GetDirectBaseClassAtIndex (i, nullptr));
+            CompilerType base_class_type (ClangASTContext::GetDirectBaseClassAtIndex(clang_type, i, nullptr));
             
             PrivateAutoCompleteMembers (frame,
                                         partial_member_name,
@@ -600,13 +600,13 @@ PrivateAutoCompleteMembers (StackFrame *frame,
         }
     }
 
-    const uint32_t num_vbases = clang_type.GetNumVirtualBaseClasses();
+    const uint32_t num_vbases = ClangASTContext::GetNumVirtualBaseClasses(clang_type);
     
     if (num_vbases > 0)
     {
         for (uint32_t i = 0; i < num_vbases; ++i)
         {
-            ClangASTType vbase_class_type (clang_type.GetVirtualBaseClassAtIndex(i,nullptr));
+            CompilerType vbase_class_type (ClangASTContext::GetVirtualBaseClassAtIndex(clang_type, i,nullptr));
             
             PrivateAutoCompleteMembers (frame,
                                         partial_member_name,
@@ -627,7 +627,7 @@ PrivateAutoCompleteMembers (StackFrame *frame,
         {
             std::string member_name;
             
-            ClangASTType member_clang_type = clang_type.GetFieldAtIndex (i, member_name, nullptr, nullptr, nullptr);
+            CompilerType member_clang_type = clang_type.GetFieldAtIndex (i, member_name, nullptr, nullptr, nullptr);
             
             if (partial_member_name.empty() ||
                 member_name.find(partial_member_name) == 0)
@@ -654,7 +654,7 @@ static void
 PrivateAutoComplete (StackFrame *frame,
                      const std::string &partial_path,
                      const std::string &prefix_path, // Anything that has been resolved already will be in here
-                     const ClangASTType& clang_type,
+                     const CompilerType& clang_type,
                      StringList &matches,
                      bool &word_complete)
 {
@@ -767,7 +767,7 @@ PrivateAutoComplete (StackFrame *frame,
                 {
                     case lldb::eTypeClassPointer:
                         {
-                            ClangASTType pointee_type(clang_type.GetPointeeType());
+                            CompilerType pointee_type(clang_type.GetPointeeType());
                             if (partial_path[2])
                             {
                                 // If there is more after the "->", then search deeper
@@ -886,7 +886,7 @@ PrivateAutoComplete (StackFrame *frame,
                                 Type *variable_type = variable->GetType();
                                 if (variable_type)
                                 {
-                                    ClangASTType variable_clang_type (variable_type->GetClangForwardType());
+                                    CompilerType variable_clang_type (variable_type->GetClangForwardType());
                                     PrivateAutoComplete (frame,
                                                          remaining_partial_path,
                                                          prefix_path + token, // Anything that has been resolved already will be in here
@@ -923,7 +923,7 @@ Variable::AutoComplete (const ExecutionContext &exe_ctx,
     word_complete = false;
     std::string partial_path;
     std::string prefix_path;
-    ClangASTType clang_type;
+    CompilerType clang_type;
     if (partial_path_cstr && partial_path_cstr[0])
         partial_path = partial_path_cstr;
 

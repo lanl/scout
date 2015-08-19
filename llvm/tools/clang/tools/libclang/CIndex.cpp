@@ -29,7 +29,6 @@
 #include "clang/Basic/DiagnosticIDs.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/Version.h"
-#include "clang/CodeGen/ObjectFilePCHContainerOperations.h"
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
@@ -2090,7 +2089,9 @@ void OMPClauseEnqueue::VisitOMPScheduleClause(const OMPScheduleClause *C) {
   Visitor->AddStmt(C->getHelperChunkSize());
 }
 
-void OMPClauseEnqueue::VisitOMPOrderedClause(const OMPOrderedClause *) {}
+void OMPClauseEnqueue::VisitOMPOrderedClause(const OMPOrderedClause *C) {
+  Visitor->AddStmt(C->getNumForLoops());
+}
 
 void OMPClauseEnqueue::VisitOMPNowaitClause(const OMPNowaitClause *) {}
 
@@ -2107,6 +2108,10 @@ void OMPClauseEnqueue::VisitOMPUpdateClause(const OMPUpdateClause *) {}
 void OMPClauseEnqueue::VisitOMPCaptureClause(const OMPCaptureClause *) {}
 
 void OMPClauseEnqueue::VisitOMPSeqCstClause(const OMPSeqCstClause *) {}
+
+void OMPClauseEnqueue::VisitOMPDeviceClause(const OMPDeviceClause *C) {
+  Visitor->AddStmt(C->getDevice());
+}
 
 template<typename T>
 void OMPClauseEnqueue::VisitOMPClauseList(T *Node) {
@@ -2229,10 +2234,8 @@ void EnqueueVisitor::VisitCompoundLiteralExpr(const CompoundLiteralExpr *E) {
   AddTypeLoc(E->getTypeSourceInfo());
 }
 void EnqueueVisitor::VisitCompoundStmt(const CompoundStmt *S) {
-  for (CompoundStmt::const_reverse_body_iterator I = S->body_rbegin(),
-        E = S->body_rend(); I != E; ++I) {
-    AddStmt(*I);
-  }
+  for (auto &I : llvm::reverse(S->body()))
+    AddStmt(I);
 }
 void EnqueueVisitor::
 VisitMSDependentExistsStmt(const MSDependentExistsStmt *S) {
@@ -3045,35 +3048,19 @@ clang_createTranslationUnitFromSourceFile(CXIndex CIdx,
                                     Options);
 }
 
-struct ParseTranslationUnitInfo {
-  CXIndex CIdx;
-  const char *source_filename;
-  const char *const *command_line_args;
-  int num_command_line_args;
-  ArrayRef<CXUnsavedFile> unsaved_files;
-  unsigned options;
-  CXTranslationUnit *out_TU;
-  CXErrorCode &result;
-};
-static void clang_parseTranslationUnit_Impl(void *UserData) {
-  const ParseTranslationUnitInfo *PTUI =
-      static_cast<ParseTranslationUnitInfo *>(UserData);
-  CXIndex CIdx = PTUI->CIdx;
-  const char *source_filename = PTUI->source_filename;
-  const char * const *command_line_args = PTUI->command_line_args;
-  int num_command_line_args = PTUI->num_command_line_args;
-  unsigned options = PTUI->options;
-  CXTranslationUnit *out_TU = PTUI->out_TU;
-
+static CXErrorCode
+clang_parseTranslationUnit_Impl(CXIndex CIdx, const char *source_filename,
+                                const char *const *command_line_args,
+                                int num_command_line_args,
+                                ArrayRef<CXUnsavedFile> unsaved_files,
+                                unsigned options, CXTranslationUnit *out_TU) {
   // Set up the initial return values.
   if (out_TU)
     *out_TU = nullptr;
 
   // Check arguments.
-  if (!CIdx || !out_TU) {
-    PTUI->result = CXError_InvalidArguments;
-    return;
-  }
+  if (!CIdx || !out_TU)
+    return CXError_InvalidArguments;
 
   CIndexer *CXXIdx = static_cast<CIndexer *>(CIdx);
 
@@ -3107,7 +3094,7 @@ static void clang_parseTranslationUnit_Impl(void *UserData) {
   llvm::CrashRecoveryContextCleanupRegistrar<
     std::vector<ASTUnit::RemappedFile> > RemappedCleanup(RemappedFiles.get());
 
-  for (auto &UF : PTUI->unsaved_files) {
+  for (auto &UF : unsaved_files) {
     std::unique_ptr<llvm::MemoryBuffer> MB =
         llvm::MemoryBuffer::getMemBufferCopy(getContents(UF), UF.Filename);
     RemappedFiles->push_back(std::make_pair(UF.Filename, MB.release()));
@@ -3166,10 +3153,8 @@ static void clang_parseTranslationUnit_Impl(void *UserData) {
       /*UserFilesAreVolatile=*/true, ForSerialization, &ErrUnit));
 
   // Early failures in LoadFromCommandLine may return with ErrUnit unset.
-  if (!Unit && !ErrUnit) {
-    PTUI->result = CXError_ASTReadError;
-    return;
-  }
+  if (!Unit && !ErrUnit)
+    return CXError_ASTReadError;
 
   if (NumErrors != Diags->getClient()->getNumErrors()) {
     // Make sure to check that 'Unit' is non-NULL.
@@ -3177,12 +3162,11 @@ static void clang_parseTranslationUnit_Impl(void *UserData) {
       printDiagsToStderr(Unit ? Unit.get() : ErrUnit.get());
   }
 
-  if (isASTReadError(Unit ? Unit.get() : ErrUnit.get())) {
-    PTUI->result = CXError_ASTReadError;
-  } else {
-    *PTUI->out_TU = MakeCXTranslationUnit(CXXIdx, Unit.release());
-    PTUI->result = *PTUI->out_TU ? CXError_Success : CXError_Failure;
-  }
+  if (isASTReadError(Unit ? Unit.get() : ErrUnit.get()))
+    return CXError_ASTReadError;
+
+  *out_TU = MakeCXTranslationUnit(CXXIdx, Unit.release());
+  return *out_TU ? CXError_Success : CXError_Failure;
 }
 
 CXTranslationUnit
@@ -3222,18 +3206,14 @@ enum CXErrorCode clang_parseTranslationUnit2(
     return CXError_InvalidArguments;
 
   CXErrorCode result = CXError_Failure;
-  ParseTranslationUnitInfo PTUI = {
-      CIdx,
-      source_filename,
-      command_line_args,
-      num_command_line_args,
-      llvm::makeArrayRef(unsaved_files, num_unsaved_files),
-      options,
-      out_TU,
-      result};
+  auto ParseTranslationUnitImpl = [=, &result] {
+    result = clang_parseTranslationUnit_Impl(
+        CIdx, source_filename, command_line_args, num_command_line_args,
+        llvm::makeArrayRef(unsaved_files, num_unsaved_files), options, out_TU);
+  };
   llvm::CrashRecoveryContext CRC;
 
-  if (!RunSafely(CRC, clang_parseTranslationUnit_Impl, &PTUI)) {
+  if (!RunSafely(CRC, ParseTranslationUnitImpl)) {
     fprintf(stderr, "libclang: crash detected during parsing: {\n");
     fprintf(stderr, "  'source_filename' : '%s'\n", source_filename);
     fprintf(stderr, "  'command_line_args' : [");
@@ -3256,7 +3236,7 @@ enum CXErrorCode clang_parseTranslationUnit2(
 
     return CXError_Crashed;
   } else if (getenv("LIBCLANG_RESOURCE_USAGE")) {
-    if (CXTranslationUnit *TU = PTUI.out_TU)
+    if (CXTranslationUnit *TU = out_TU)
       PrintLibclangResourceUsage(*TU);
   }
 
@@ -3267,27 +3247,15 @@ unsigned clang_defaultSaveOptions(CXTranslationUnit TU) {
   return CXSaveTranslationUnit_None;
 }  
 
-namespace {
-
-struct SaveTranslationUnitInfo {
-  CXTranslationUnit TU;
-  const char *FileName;
-  unsigned options;
-  CXSaveError result;
-};
-
-}
-
-static void clang_saveTranslationUnit_Impl(void *UserData) {
-  SaveTranslationUnitInfo *STUI =
-    static_cast<SaveTranslationUnitInfo*>(UserData);
-
-  CIndexer *CXXIdx = STUI->TU->CIdx;
+static CXSaveError clang_saveTranslationUnit_Impl(CXTranslationUnit TU,
+                                                  const char *FileName,
+                                                  unsigned options) {
+  CIndexer *CXXIdx = TU->CIdx;
   if (CXXIdx->isOptEnabled(CXGlobalOpt_ThreadBackgroundPriorityForIndexing))
     setThreadBackgroundPriority();
 
-  bool hadError = cxtu::getASTUnit(STUI->TU)->Save(STUI->FileName);
-  STUI->result = hadError ? CXSaveError_Unknown : CXSaveError_None;
+  bool hadError = cxtu::getASTUnit(TU)->Save(FileName);
+  return hadError ? CXSaveError_Unknown : CXSaveError_None;
 }
 
 int clang_saveTranslationUnit(CXTranslationUnit TU, const char *FileName,
@@ -3306,16 +3274,19 @@ int clang_saveTranslationUnit(CXTranslationUnit TU, const char *FileName,
   if (!CXXUnit->hasSema())
     return CXSaveError_InvalidTU;
 
-  SaveTranslationUnitInfo STUI = { TU, FileName, options, CXSaveError_None };
+  CXSaveError result;
+  auto SaveTranslationUnitImpl = [=, &result]() {
+    result = clang_saveTranslationUnit_Impl(TU, FileName, options);
+  };
 
   if (!CXXUnit->getDiagnostics().hasUnrecoverableErrorOccurred() ||
       getenv("LIBCLANG_NOTHREADS")) {
-    clang_saveTranslationUnit_Impl(&STUI);
+    SaveTranslationUnitImpl();
 
     if (getenv("LIBCLANG_RESOURCE_USAGE"))
       PrintLibclangResourceUsage(TU);
 
-    return STUI.result;
+    return result;
   }
 
   // We have an AST that has invalid nodes due to compiler errors.
@@ -3323,7 +3294,7 @@ int clang_saveTranslationUnit(CXTranslationUnit TU, const char *FileName,
 
   llvm::CrashRecoveryContext CRC;
 
-  if (!RunSafely(CRC, clang_saveTranslationUnit_Impl, &STUI)) {
+  if (!RunSafely(CRC, SaveTranslationUnitImpl)) {
     fprintf(stderr, "libclang: crash detected during AST saving: {\n");
     fprintf(stderr, "  'filename' : '%s'\n", FileName);
     fprintf(stderr, "  'options' : %d,\n", options);
@@ -3335,7 +3306,7 @@ int clang_saveTranslationUnit(CXTranslationUnit TU, const char *FileName,
     PrintLibclangResourceUsage(TU);
   }
 
-  return STUI.result;
+  return result;
 }
 
 void clang_disposeTranslationUnit(CXTranslationUnit CTUnit) {
@@ -3359,25 +3330,14 @@ unsigned clang_defaultReparseOptions(CXTranslationUnit TU) {
   return CXReparse_None;
 }
 
-struct ReparseTranslationUnitInfo {
-  CXTranslationUnit TU;
-  ArrayRef<CXUnsavedFile> unsaved_files;
-  unsigned options;
-  CXErrorCode &result;
-};
-
-static void clang_reparseTranslationUnit_Impl(void *UserData) {
-  const ReparseTranslationUnitInfo *RTUI =
-      static_cast<ReparseTranslationUnitInfo *>(UserData);
-  CXTranslationUnit TU = RTUI->TU;
-  unsigned options = RTUI->options;
-  (void) options;
-
+static CXErrorCode
+clang_reparseTranslationUnit_Impl(CXTranslationUnit TU,
+                                  ArrayRef<CXUnsavedFile> unsaved_files,
+                                  unsigned options) {
   // Check arguments.
   if (isNotUsableTU(TU)) {
     LOG_BAD_TU(TU);
-    RTUI->result = CXError_InvalidArguments;
-    return;
+    return CXError_InvalidArguments;
   }
 
   // Reset the associated diagnostics.
@@ -3398,7 +3358,7 @@ static void clang_reparseTranslationUnit_Impl(void *UserData) {
   llvm::CrashRecoveryContextCleanupRegistrar<
     std::vector<ASTUnit::RemappedFile> > RemappedCleanup(RemappedFiles.get());
 
-  for (auto &UF : RTUI->unsaved_files) {
+  for (auto &UF : unsaved_files) {
     std::unique_ptr<llvm::MemoryBuffer> MB =
         llvm::MemoryBuffer::getMemBufferCopy(getContents(UF), UF.Filename);
     RemappedFiles->push_back(std::make_pair(UF.Filename, MB.release()));
@@ -3406,9 +3366,10 @@ static void clang_reparseTranslationUnit_Impl(void *UserData) {
 
   if (!CXXUnit->Reparse(CXXIdx->getPCHContainerOperations(),
                         *RemappedFiles.get()))
-    RTUI->result = CXError_Success;
-  else if (isASTReadError(CXXUnit))
-    RTUI->result = CXError_ASTReadError;
+    return CXError_Success;
+  if (isASTReadError(CXXUnit))
+    return CXError_ASTReadError;
+  return CXError_Failure;
 }
 
 int clang_reparseTranslationUnit(CXTranslationUnit TU,
@@ -3422,19 +3383,20 @@ int clang_reparseTranslationUnit(CXTranslationUnit TU,
   if (num_unsaved_files && !unsaved_files)
     return CXError_InvalidArguments;
 
-  CXErrorCode result = CXError_Failure;
-  ReparseTranslationUnitInfo RTUI = {
-      TU, llvm::makeArrayRef(unsaved_files, num_unsaved_files), options,
-      result};
+  CXErrorCode result;
+  auto ReparseTranslationUnitImpl = [=, &result]() {
+    result = clang_reparseTranslationUnit_Impl(
+        TU, llvm::makeArrayRef(unsaved_files, num_unsaved_files), options);
+  };
 
   if (getenv("LIBCLANG_NOTHREADS")) {
-    clang_reparseTranslationUnit_Impl(&RTUI);
+    ReparseTranslationUnitImpl();
     return result;
   }
 
   llvm::CrashRecoveryContext CRC;
 
-  if (!RunSafely(CRC, clang_reparseTranslationUnit_Impl, &RTUI)) {
+  if (!RunSafely(CRC, ReparseTranslationUnitImpl)) {
     fprintf(stderr, "libclang: crash detected during reparsing\n");
     cxtu::getASTUnit(TU)->setUnsafeToFree(true);
     return CXError_Crashed;
@@ -3960,7 +3922,7 @@ CXString clang_Cursor_getMangling(CXCursor C) {
 
   // Now apply backend mangling.
   std::unique_ptr<llvm::DataLayout> DL(
-      new llvm::DataLayout(Ctx.getTargetInfo().getTargetDescription()));
+      new llvm::DataLayout(Ctx.getTargetInfo().getDataLayoutString()));
 
   std::string FinalBuf;
   llvm::raw_string_ostream FinalBufOS(FinalBuf);
@@ -6148,16 +6110,6 @@ MarkMacroArgTokensVisitorDelegate(CXCursor cursor, CXCursor parent,
                                                                      parent);
 }
 
-namespace {
-  struct clang_annotateTokens_Data {
-    CXTranslationUnit TU;
-    ASTUnit *CXXUnit;
-    CXToken *Tokens;
-    unsigned NumTokens;
-    CXCursor *Cursors;
-  };
-}
-
 /// \brief Used by \c annotatePreprocessorTokens.
 /// \returns true if lexing was finished, false otherwise.
 static bool lexNext(Lexer &Lex, Token &Tok,
@@ -6277,13 +6229,9 @@ static void annotatePreprocessorTokens(CXTranslationUnit TU,
 }
 
 // This gets run a separate thread to avoid stack blowout.
-static void clang_annotateTokensImpl(void *UserData) {
-  CXTranslationUnit TU = ((clang_annotateTokens_Data*)UserData)->TU;
-  ASTUnit *CXXUnit = ((clang_annotateTokens_Data*)UserData)->CXXUnit;
-  CXToken *Tokens = ((clang_annotateTokens_Data*)UserData)->Tokens;
-  const unsigned NumTokens = ((clang_annotateTokens_Data*)UserData)->NumTokens;
-  CXCursor *Cursors = ((clang_annotateTokens_Data*)UserData)->Cursors;
-
+static void clang_annotateTokensImpl(CXTranslationUnit TU, ASTUnit *CXXUnit,
+                                     CXToken *Tokens, unsigned NumTokens,
+                                     CXCursor *Cursors) {
   CIndexer *CXXIdx = TU->CIdx;
   if (CXXIdx->isOptEnabled(CXGlobalOpt_ThreadBackgroundPriorityForEditing))
     setThreadBackgroundPriority();
@@ -6419,11 +6367,12 @@ void clang_annotateTokens(CXTranslationUnit TU,
     return;
 
   ASTUnit::ConcurrencyCheck Check(*CXXUnit);
-  
-  clang_annotateTokens_Data data = { TU, CXXUnit, Tokens, NumTokens, Cursors };
+
+  auto AnnotateTokensImpl = [=]() {
+    clang_annotateTokensImpl(TU, CXXUnit, Tokens, NumTokens, Cursors);
+  };
   llvm::CrashRecoveryContext CRC;
-  if (!RunSafely(CRC, clang_annotateTokensImpl, &data,
-                 GetSafetyThreadStackSize() * 2)) {
+  if (!RunSafely(CRC, AnnotateTokensImpl, GetSafetyThreadStackSize() * 2)) {
     fprintf(stderr, "libclang: crash detected while annotating tokens\n");
   }
 }
@@ -7278,14 +7227,13 @@ static unsigned SafetyStackThreadSize = 8 << 20;
 
 namespace clang {
 
-bool RunSafely(llvm::CrashRecoveryContext &CRC,
-               void (*Fn)(void*), void *UserData,
+bool RunSafely(llvm::CrashRecoveryContext &CRC, llvm::function_ref<void()> Fn,
                unsigned Size) {
   if (!Size)
     Size = GetSafetyThreadStackSize();
   if (Size)
-    return CRC.RunSafelyOnThread(Fn, UserData, Size);
-  return CRC.RunSafely(Fn, UserData);
+    return CRC.RunSafelyOnThread(Fn, Size);
+  return CRC.RunSafely(Fn);
 }
 
 unsigned GetSafetyThreadStackSize() {
@@ -7507,8 +7455,6 @@ Logger &cxindex::Logger::operator<<(const llvm::format_object_base &Fmt) {
 static llvm::ManagedStatic<llvm::sys::Mutex> LoggingMutex;
 
 cxindex::Logger::~Logger() {
-  LogOS.flush();
-
   llvm::sys::ScopedLock L(*LoggingMutex);
 
   static llvm::TimeRecord sBeginTR = llvm::TimeRecord::getCurrentTime();

@@ -1194,6 +1194,7 @@ Decl *TemplateDeclInstantiator::VisitVarTemplateDecl(VarTemplateDecl *D) {
   VarDecl *VarInst =
       cast_or_null<VarDecl>(VisitVarDecl(Pattern,
                                          /*InstantiatingVarTemplate=*/true));
+  if (!VarInst) return nullptr;
 
   DeclContext *DC = Owner;
 
@@ -1745,7 +1746,7 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
   SmallVector<TemplateParameterList *, 4> TempParamLists;
   unsigned NumTempParamLists = 0;
   if (isFriend && (NumTempParamLists = D->getNumTemplateParameterLists())) {
-    TempParamLists.set_size(NumTempParamLists);
+    TempParamLists.resize(NumTempParamLists);
     for (unsigned I = 0; I != NumTempParamLists; ++I) {
       TemplateParameterList *TempParams = D->getTemplateParameterList(I);
       TemplateParameterList *InstParams = SubstTemplateParams(TempParams);
@@ -1897,9 +1898,9 @@ TemplateDeclInstantiator::VisitCXXMethodDecl(CXXMethodDecl *D,
   // context (which will be a namespace scope) as the template.
   if (isFriend) {
     if (NumTempParamLists)
-      Method->setTemplateParameterListsInfo(SemaRef.Context,
-                                            NumTempParamLists,
-                                            TempParamLists.data());
+      Method->setTemplateParameterListsInfo(
+          SemaRef.Context,
+          llvm::makeArrayRef(TempParamLists.data(), NumTempParamLists));
 
     Method->setLexicalDeclContext(Owner);
     Method->setObjectOfFriendDecl();

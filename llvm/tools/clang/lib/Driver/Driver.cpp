@@ -193,10 +193,8 @@ phases::ID Driver::getFinalPhase(const DerivedArgList &DAL,
   } else if ((PhaseArg = DAL.getLastArg(options::OPT_S))) {
     FinalPhase = phases::Backend;
 
-    // -c and partial CUDA compilations only run up to the assembler.
-  } else if ((PhaseArg = DAL.getLastArg(options::OPT_c)) ||
-             (PhaseArg = DAL.getLastArg(options::OPT_cuda_device_only)) ||
-             (PhaseArg = DAL.getLastArg(options::OPT_cuda_host_only))) {
+    // -c compilation only runs up to the assembler.
+  } else if ((PhaseArg = DAL.getLastArg(options::OPT_c))) {
     FinalPhase = phases::Assemble;
 
     // Otherwise do everything.
@@ -346,7 +344,8 @@ static llvm::Triple computeTargetTriple(StringRef DefaultTargetTriple,
   }
 
   // Skip further flag support on OSes which don't support '-m32' or '-m64'.
-  if (Target.getArchName() == "tce" || Target.getOS() == llvm::Triple::Minix)
+  if (Target.getArch() == llvm::Triple::tce ||
+      Target.getOS() == llvm::Triple::Minix)
     return Target;
 
   // Handle pseudo-target flags '-m64', '-mx32', '-m32' and '-m16'.
@@ -793,6 +792,9 @@ void Driver::PrintVersion(const Compilation &C, raw_ostream &OS) const {
   } else
     OS << "Thread model: " << TC.getThreadModel();
   OS << '\n';
+
+  // Print out the install directory.
+  OS << "InstalledDir: " << InstalledDir << '\n';
 }
 
 /// PrintDiagnosticCategories - Implement the --print-diagnostic-categories
@@ -1524,6 +1526,10 @@ void Driver::BuildActions(const ToolChain &TC, DerivedArgList &Args,
 
   // Claim ignored clang-cl options.
   Args.ClaimAllArgs(options::OPT_cl_ignored_Group);
+
+  // Claim --cuda-host-only arg which may be passed to non-CUDA
+  // compilations and should not trigger warnings there.
+  Args.ClaimAllArgs(options::OPT_cuda_host_only);
 }
 
 std::unique_ptr<Action>
@@ -2218,12 +2224,12 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
       break;
     case llvm::Triple::Linux:
       if (Target.getArch() == llvm::Triple::hexagon)
-        TC = new toolchains::Hexagon_TC(*this, Target, Args);
+        TC = new toolchains::HexagonToolChain(*this, Target, Args);
       else
         TC = new toolchains::Linux(*this, Target, Args);
       break;
     case llvm::Triple::NaCl:
-      TC = new toolchains::NaCl_TC(*this, Target, Args);
+      TC = new toolchains::NaClToolChain(*this, Target, Args);
       break;
     case llvm::Triple::Solaris:
       TC = new toolchains::Solaris(*this, Target, Args);
@@ -2259,21 +2265,27 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
     default:
       // Of these targets, Hexagon is the only one that might have
       // an OS of Linux, in which case it got handled above already.
-      if (Target.getArchName() == "tce")
+      switch (Target.getArch()) {
+      case llvm::Triple::tce:
         TC = new toolchains::TCEToolChain(*this, Target, Args);
-      else if (Target.getArch() == llvm::Triple::hexagon)
-        TC = new toolchains::Hexagon_TC(*this, Target, Args);
-      else if (Target.getArch() == llvm::Triple::xcore)
-        TC = new toolchains::XCore(*this, Target, Args);
-      else if (Target.getArch() == llvm::Triple::shave)
+        break;
+      case llvm::Triple::hexagon:
+        TC = new toolchains::HexagonToolChain(*this, Target, Args);
+        break;
+      case llvm::Triple::xcore:
+        TC = new toolchains::XCoreToolChain(*this, Target, Args);
+        break;
+      case llvm::Triple::shave:
         TC = new toolchains::SHAVEToolChain(*this, Target, Args);
-      else if (Target.isOSBinFormatELF())
-        TC = new toolchains::Generic_ELF(*this, Target, Args);
-      else if (Target.isOSBinFormatMachO())
-        TC = new toolchains::MachO(*this, Target, Args);
-      else
-        TC = new toolchains::Generic_GCC(*this, Target, Args);
-      break;
+        break;
+      default:
+        if (Target.isOSBinFormatELF())
+          TC = new toolchains::Generic_ELF(*this, Target, Args);
+        else if (Target.isOSBinFormatMachO())
+          TC = new toolchains::MachO(*this, Target, Args);
+        else
+          TC = new toolchains::Generic_GCC(*this, Target, Args);
+      }
     }
   }
   return *TC;

@@ -97,11 +97,6 @@ cl::opt<bool>
                        cl::desc("Print the linker optimization hints for "
                                 "Mach-O objects (requires -macho)"));
 
-cl::list<std::string>
-    llvm::DumpSections("section",
-                       cl::desc("Prints the specified segment,section for "
-                                "Mach-O objects (requires -macho)"));
-
 cl::opt<bool>
     llvm::InfoPlist("info-plist",
                     cl::desc("Print the info plist section as strings for "
@@ -1006,8 +1001,8 @@ static void DumpSectionContents(StringRef Filename, MachOObjectFile *O,
   if (verbose)
     CreateSymbolAddressMap(O, &AddrMap);
 
-  for (unsigned i = 0; i < DumpSections.size(); ++i) {
-    StringRef DumpSection = DumpSections[i];
+  for (unsigned i = 0; i < FilterSections.size(); ++i) {
+    StringRef DumpSection = FilterSections[i];
     std::pair<StringRef, StringRef> DumpSegSectName;
     DumpSegSectName = DumpSection.split(',');
     StringRef DumpSegName, DumpSectName;
@@ -1171,7 +1166,7 @@ static void ProcessMachO(StringRef Filename, MachOObjectFile *MachOOF,
   // UniversalHeaders or ArchiveHeaders.
   if (Disassemble || PrivateHeaders || ExportsTrie || Rebase || Bind ||
       LazyBind || WeakBind || IndirectSymbols || DataInCode || LinkOptHints ||
-      DylibsUsed || DylibId || ObjcMetaData || (DumpSections.size() != 0)) {
+      DylibsUsed || DylibId || ObjcMetaData || (FilterSections.size() != 0)) {
     outs() << Filename;
     if (!ArchiveMemberName.empty())
       outs() << '(' << ArchiveMemberName << ')';
@@ -1194,7 +1189,7 @@ static void ProcessMachO(StringRef Filename, MachOObjectFile *MachOOF,
     PrintSectionHeaders(MachOOF);
   if (SectionContents)
     PrintSectionContents(MachOOF);
-  if (DumpSections.size() != 0)
+  if (FilterSections.size() != 0)
     DumpSectionContents(Filename, MachOOF, !NonVerbose);
   if (InfoPlist)
     DumpInfoPlistSectionContents(Filename, MachOOF);
@@ -5872,7 +5867,6 @@ static void emitComments(raw_svector_ostream &CommentStream,
                          formatted_raw_ostream &FormattedOS,
                          const MCAsmInfo &MAI) {
   // Flush the stream before taking its content.
-  CommentStream.flush();
   StringRef Comments = CommentsToEmit.str();
   // Get the default information for printing a comment.
   const char *CommentBegin = MAI.getCommentString();
@@ -5893,7 +5887,6 @@ static void emitComments(raw_svector_ostream &CommentStream,
 
   // Tell the comment stream that the vector changed underneath it.
   CommentsToEmit.clear();
-  CommentStream.resync();
 }
 
 static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
@@ -6065,7 +6058,7 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
     diContext.reset(new DWARFContextInMemory(*DbgObj));
   }
 
-  if (DumpSections.size() == 0)
+  if (FilterSections.size() == 0)
     outs() << "(" << DisSegName << "," << DisSectName << ") section\n";
 
   for (unsigned SectIdx = 0; SectIdx != Sections.size(); SectIdx++) {
@@ -6254,7 +6247,6 @@ static void DisassembleMachO(StringRef Filename, MachOObjectFile *MachOOF,
             dumpBytes(ArrayRef<uint8_t>(Bytes.data() + Index, Size), outs());
           }
           formatted_raw_ostream FormattedOS(outs());
-          Annotations.flush();
           StringRef AnnotationsStr = Annotations.str();
           if (isThumb)
             ThumbIP->printInst(&Inst, FormattedOS, AnnotationsStr, *ThumbSTI);
@@ -6441,8 +6433,7 @@ static void findUnwindRelocNameAddend(const MachOObjectFile *Obj,
   // Go back one so that SymbolAddress <= Addr.
   --Sym;
 
-  section_iterator SymSection = Obj->section_end();
-  Sym->second.getSection(SymSection);
+  section_iterator SymSection = *Sym->second.getSection();
   if (RelocSection == *SymSection) {
     // There's a valid symbol in the same section before this reference.
     ErrorOr<StringRef> NameOrErr = Sym->second.getName();
@@ -6785,8 +6776,7 @@ void llvm::printMachOUnwindInfo(const MachOObjectFile *Obj) {
   for (const SymbolRef &SymRef : Obj->symbols()) {
     // Discard any undefined or absolute symbols. They're not going to take part
     // in the convenience lookup for unwind info and just take up resources.
-    section_iterator Section = Obj->section_end();
-    SymRef.getSection(Section);
+    section_iterator Section = *SymRef.getSection();
     if (Section == Obj->section_end())
       continue;
 
@@ -8559,8 +8549,7 @@ SegInfo::SegInfo(const object::MachOObjectFile *Obj) {
   uint64_t CurSegAddress;
   for (const SectionRef &Section : Obj->sections()) {
     SectionInfo Info;
-    if (error(Section.getName(Info.SectionName)))
-      return;
+    error(Section.getName(Info.SectionName));
     Info.Address = Section.getAddress();
     Info.Size = Section.getSize();
     Info.SegmentName =

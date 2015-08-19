@@ -1473,6 +1473,16 @@ public:
         Kind, ChunkSize, StartLoc, LParenLoc, KindLoc, CommaLoc, EndLoc);
   }
 
+  /// \brief Build a new OpenMP 'ordered' clause.
+  ///
+  /// By default, performs semantic analysis to build the new OpenMP clause.
+  /// Subclasses may override this routine to provide different behavior.
+  OMPClause *RebuildOMPOrderedClause(SourceLocation StartLoc,
+                                     SourceLocation EndLoc,
+                                     SourceLocation LParenLoc, Expr *Num) {
+    return getSema().ActOnOpenMPOrderedClause(StartLoc, EndLoc, LParenLoc, Num);
+  }
+
   /// \brief Build a new OpenMP 'private' clause.
   ///
   /// By default, performs semantic analysis to build the new OpenMP clause.
@@ -1610,6 +1620,17 @@ public:
                          SourceLocation EndLoc) {
     return getSema().ActOnOpenMPDependClause(DepKind, DepLoc, ColonLoc, VarList,
                                              StartLoc, LParenLoc, EndLoc);
+  }
+
+  /// \brief Build a new OpenMP 'device' clause.
+  ///
+  /// By default, performs semantic analysis to build the new statement.
+  /// Subclasses may override this routine to provide different behavior.
+  OMPClause *RebuildOMPDeviceClause(Expr *Device, SourceLocation StartLoc,
+                                    SourceLocation LParenLoc,
+                                    SourceLocation EndLoc) {
+    return getSema().ActOnOpenMPDeviceClause(Device, StartLoc, LParenLoc, 
+                                             EndLoc);
   }
 
   /// \brief Rebuild the operand to an Objective-C \@synchronized statement.
@@ -2683,20 +2704,18 @@ public:
   ExprResult RebuildObjCMessageExpr(SourceLocation SuperLoc,
                                     Selector Sel,
                                     ArrayRef<SourceLocation> SelectorLocs,
+                                    QualType SuperType,
                                     ObjCMethodDecl *Method,
                                     SourceLocation LBracLoc,
                                     MultiExprArg Args,
                                     SourceLocation RBracLoc) {
-    ObjCInterfaceDecl *Class = Method->getClassInterface();
-    QualType ReceiverTy = SemaRef.Context.getObjCInterfaceType(Class);
-    
     return Method->isInstanceMethod() ? SemaRef.BuildInstanceMessage(nullptr,
-                                          ReceiverTy,
+                                          SuperType,
                                           SuperLoc,
                                           Sel, Method, LBracLoc, SelectorLocs,
                                           RBracLoc, Args)
                                       : SemaRef.BuildClassMessage(nullptr,
-                                          ReceiverTy,
+                                          SuperType,
                                           SuperLoc,
                                           Sel, Method, LBracLoc, SelectorLocs,
                                           RBracLoc, Args);
@@ -7498,8 +7517,14 @@ TreeTransform<Derived>::TransformOMPScheduleClause(OMPScheduleClause *C) {
 template <typename Derived>
 OMPClause *
 TreeTransform<Derived>::TransformOMPOrderedClause(OMPOrderedClause *C) {
-  // No need to rebuild this clause, no template-dependent parameters.
-  return C;
+  ExprResult E;
+  if (auto *Num = C->getNumForLoops()) {
+    E = getDerived().TransformExpr(Num);
+    if (E.isInvalid())
+      return nullptr;
+  }
+  return getDerived().RebuildOMPOrderedClause(C->getLocStart(), C->getLocEnd(),
+                                              C->getLParenLoc(), E.get());
 }
 
 template <typename Derived>
@@ -7737,6 +7762,16 @@ TreeTransform<Derived>::TransformOMPDependClause(OMPDependClause *C) {
   return getDerived().RebuildOMPDependClause(
       C->getDependencyKind(), C->getDependencyLoc(), C->getColonLoc(), Vars,
       C->getLocStart(), C->getLParenLoc(), C->getLocEnd());
+}
+
+template <typename Derived>
+OMPClause *
+TreeTransform<Derived>::TransformOMPDeviceClause(OMPDeviceClause *C) {
+  ExprResult E = getDerived().TransformExpr(C->getDevice());
+  if (E.isInvalid())
+    return nullptr;
+  return getDerived().RebuildOMPDeviceClause(
+      E.get(), C->getLocStart(), C->getLParenLoc(), C->getLocEnd());
 }
 
 //===----------------------------------------------------------------------===//
@@ -10607,6 +10642,7 @@ TreeTransform<Derived>::TransformObjCMessageExpr(ObjCMessageExpr *E) {
     return getDerived().RebuildObjCMessageExpr(E->getSuperLoc(),
                                                E->getSelector(),
                                                SelLocs,
+                                               E->getReceiverType(),
                                                E->getMethodDecl(),
                                                E->getLeftLoc(),
                                                Args,

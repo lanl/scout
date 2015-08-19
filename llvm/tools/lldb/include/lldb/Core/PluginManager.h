@@ -296,12 +296,30 @@ public:
     GetProcessPluginDescriptionAtIndex (uint32_t idx);
 
     //------------------------------------------------------------------
+    // ScriptInterpreter
+    //------------------------------------------------------------------
+    static bool
+    RegisterPlugin(const ConstString &name, const char *description, lldb::ScriptLanguage script_lang,
+                               ScriptInterpreterCreateInstance create_callback);
+
+    static bool
+    UnregisterPlugin(ScriptInterpreterCreateInstance create_callback);
+
+    static ScriptInterpreterCreateInstance
+    GetScriptInterpreterCreateCallbackAtIndex(uint32_t idx);
+
+    static lldb::ScriptInterpreterSP
+    GetScriptInterpreterForLanguage(lldb::ScriptLanguage script_lang,
+                                    CommandInterpreter &interpreter);
+
+    //------------------------------------------------------------------
     // SymbolFile
     //------------------------------------------------------------------
     static bool
     RegisterPlugin (const ConstString &name,
                     const char *description,
-                    SymbolFileCreateInstance create_callback);
+                    SymbolFileCreateInstance create_callback,
+                    DebuggerInitializeCallback debugger_init_callback = nullptr);
 
     static bool
     UnregisterPlugin (SymbolFileCreateInstance create_callback);
@@ -419,13 +437,22 @@ public:
     static lldb::OptionValuePropertiesSP
     GetSettingForProcessPlugin (Debugger &debugger,
                                 const ConstString &setting_name);
-    
+
     static bool
     CreateSettingForProcessPlugin (Debugger &debugger,
                                    const lldb::OptionValuePropertiesSP &properties_sp,
                                    const ConstString &description,
                                    bool is_global_property);
 
+    static lldb::OptionValuePropertiesSP
+    GetSettingForSymbolFilePlugin (Debugger &debugger,
+                                   const ConstString &setting_name);
+
+    static bool
+    CreateSettingForSymbolFilePlugin (Debugger &debugger,
+                                      const lldb::OptionValuePropertiesSP &properties_sp,
+                                      const ConstString &description,
+                                      bool is_global_property);
 };
 
 

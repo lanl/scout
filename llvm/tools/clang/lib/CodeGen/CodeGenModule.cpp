@@ -433,11 +433,16 @@ void CodeGenModule::Release() {
       (Context.getLangOpts().Modules || !LinkerOptionsMetadata.empty())) {
     EmitModuleLinkOptions();
   }
-  if (CodeGenOpts.DwarfVersion)
+  if (CodeGenOpts.DwarfVersion) {
     // We actually want the latest version when there are conflicts.
     // We can change from Warning to Latest if such mode is supported.
     getModule().addModuleFlag(llvm::Module::Warning, "Dwarf Version",
                               CodeGenOpts.DwarfVersion);
+  }
+  if (CodeGenOpts.EmitCodeView) {
+    // Indicate that we want CodeView in the metadata.
+    getModule().addModuleFlag(llvm::Module::Warning, "CodeView", 1);
+  }
   if (DebugInfo)
     // We support a single version in the linked module. The LLVM
     // parser will drop debug info with a different version number
@@ -1500,7 +1505,7 @@ namespace {
       unsigned BuiltinID = FD->getBuiltinID();
       if (!BuiltinID || !BI.isLibFunction(BuiltinID))
         return true;
-      StringRef BuiltinName = BI.GetName(BuiltinID);
+      StringRef BuiltinName = BI.getName(BuiltinID);
       if (BuiltinName.startswith("__builtin_") &&
           Name == BuiltinName.slice(strlen("__builtin_"), StringRef::npos)) {
         Result = true;
@@ -3048,7 +3053,6 @@ CodeGenModule::GetAddrOfConstantStringFromLiteral(const StringLiteral *S,
       getCXXABI().getMangleContext().shouldMangleStringLiteral(S)) {
     llvm::raw_svector_ostream Out(MangledNameBuffer);
     getCXXABI().getMangleContext().mangleStringLiteral(S, Out);
-    Out.flush();
 
     LT = llvm::GlobalValue::LinkOnceODRLinkage;
     GlobalVariableName = MangledNameBuffer;
@@ -3125,8 +3129,7 @@ llvm::Constant *CodeGenModule::GetAddrOfGlobalTemporary(
   if (Init == E->GetTemporaryExpr())
     MaterializedType = E->getType();
 
-  llvm::Constant *&Slot = MaterializedGlobalTemporaryMap[E];
-  if (Slot)
+  if (llvm::Constant *Slot = MaterializedGlobalTemporaryMap[E])
     return Slot;
 
   // FIXME: If an externally-visible declaration extends multiple temporaries,
@@ -3136,7 +3139,6 @@ llvm::Constant *CodeGenModule::GetAddrOfGlobalTemporary(
   llvm::raw_svector_ostream Out(Name);
   getCXXABI().getMangleContext().mangleReferenceTemporary(
       VD, E->getManglingNumber(), Out);
-  Out.flush();
 
   APValue *Value = nullptr;
   if (E->getStorageDuration() == SD_Static) {
@@ -3198,7 +3200,7 @@ llvm::Constant *CodeGenModule::GetAddrOfGlobalTemporary(
     GV->setComdat(TheModule.getOrInsertComdat(GV->getName()));
   if (VD->getTLSKind())
     setTLSMode(GV, *VD);
-  Slot = GV;
+  MaterializedGlobalTemporaryMap[E] = GV;
   return GV;
 }
 
@@ -3529,7 +3531,7 @@ void CodeGenModule::AddDeferredUnusedCoverageMapping(Decl *D) {
   case Decl::ObjCMethod:
   case Decl::CXXConstructor:
   case Decl::CXXDestructor: {
-    if (!cast<FunctionDecl>(D)->hasBody())
+    if (!cast<FunctionDecl>(D)->doesThisDeclarationHaveABody())
       return;
     auto I = DeferredEmptyCoverageMappingDecls.find(D);
     if (I == DeferredEmptyCoverageMappingDecls.end())

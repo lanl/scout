@@ -958,7 +958,6 @@ void ASTWriter::WriteBlockInfoBlock() {
   RECORD(MODULE_NAME);
   RECORD(MODULE_MAP_FILE);
   RECORD(IMPORTS);
-  RECORD(KNOWN_MODULE_FILES);
   RECORD(LANGUAGE_OPTIONS);
   RECORD(TARGET_OPTIONS);
   RECORD(ORIGINAL_FILE);
@@ -1158,13 +1157,7 @@ void ASTWriter::WriteBlockInfoBlock() {
 /// \return \c true if the path was changed.
 static bool cleanPathForOutput(FileManager &FileMgr,
                                SmallVectorImpl<char> &Path) {
-  bool Changed = false;
-
-  if (!llvm::sys::path::is_absolute(StringRef(Path.data(), Path.size()))) {
-    llvm::sys::fs::make_absolute(Path);
-    Changed = true;
-  }
-
+  bool Changed = FileMgr.makeAbsolutePath(Path);
   return Changed | FileMgr.removeDotPaths(Path);
 }
 
@@ -1239,6 +1232,7 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
   MetadataAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // Clang maj.
   MetadataAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 16)); // Clang min.
   MetadataAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // Relocatable
+  MetadataAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // Timestamps
   MetadataAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // Errors
   MetadataAbbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob)); // SVN branch/tag
   unsigned MetadataAbbrevCode = Stream.EmitAbbrev(MetadataAbbrev);
@@ -1250,6 +1244,7 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
   assert((!WritingModule || isysroot.empty()) &&
          "writing module as a relocatable PCH?");
   Record.push_back(!isysroot.empty());
+  Record.push_back(IncludeTimestamps);
   Record.push_back(ASTHasCompilerErrors);
   Stream.EmitRecordWithBlob(MetadataAbbrevCode, Record,
                             getClangFullRepositoryVersion());
@@ -1276,17 +1271,26 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
   }
 
   if (WritingModule && WritingModule->Directory) {
-    // Module directory.
-    BitCodeAbbrev *Abbrev = new BitCodeAbbrev();
-    Abbrev->Add(BitCodeAbbrevOp(MODULE_DIRECTORY));
-    Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob)); // Directory
-    unsigned AbbrevCode = Stream.EmitAbbrev(Abbrev);
-    RecordData Record;
-    Record.push_back(MODULE_DIRECTORY);
-
     SmallString<128> BaseDir(WritingModule->Directory->getName());
     cleanPathForOutput(Context.getSourceManager().getFileManager(), BaseDir);
-    Stream.EmitRecordWithBlob(AbbrevCode, Record, BaseDir);
+
+    // If the home of the module is the current working directory, then we
+    // want to pick up the cwd of the build process loading the module, not
+    // our cwd, when we load this module.
+    if (!PP.getHeaderSearchInfo()
+             .getHeaderSearchOpts()
+             .ModuleMapFileHomeIsCwd ||
+        WritingModule->Directory->getName() != StringRef(".")) {
+      // Module directory.
+      BitCodeAbbrev *Abbrev = new BitCodeAbbrev();
+      Abbrev->Add(BitCodeAbbrevOp(MODULE_DIRECTORY));
+      Abbrev->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Blob)); // Directory
+      unsigned AbbrevCode = Stream.EmitAbbrev(Abbrev);
+
+      RecordData Record;
+      Record.push_back(MODULE_DIRECTORY);
+      Stream.EmitRecordWithBlob(AbbrevCode, Record, BaseDir);
+    }
 
     // Write out all other paths relative to the base directory if possible.
     BaseDirectory.assign(BaseDir.begin(), BaseDir.end());
@@ -1330,20 +1334,11 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
       Record.push_back((unsigned)M->Kind); // FIXME: Stable encoding
       AddSourceLocation(M->ImportLoc, Record);
       Record.push_back(M->File->getSize());
-      Record.push_back(M->File->getModificationTime());
+      Record.push_back(getTimestampForOutput(M->File));
       Record.push_back(M->Signature);
       AddPath(M->FileName, Record);
     }
     Stream.EmitRecord(IMPORTS, Record);
-
-    // Also emit a list of known module files that were not imported,
-    // but are made available by this module.
-    // FIXME: Should we also include a signature here?
-    Record.clear();
-    for (auto *E : Mgr.getAdditionalKnownModuleFiles())
-      AddPath(E->getName(), Record);
-    if (!Record.empty())
-      Stream.EmitRecord(KNOWN_MODULE_FILES, Record);
   }
 
   // Language options.
@@ -1513,7 +1508,7 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
 
     SmallString<128> OutputPath(OutputFile);
 
-    llvm::sys::fs::make_absolute(OutputPath);
+    SM.getFileManager().makeAbsolutePath(OutputPath);
     StringRef origDir = llvm::sys::path::parent_path(OutputPath);
 
     RecordData Record;
@@ -1603,7 +1598,7 @@ void ASTWriter::WriteInputFiles(SourceManager &SourceMgr,
 
     // Emit size/modification time for this file.
     Record.push_back(Entry.File->getSize());
-    Record.push_back(Entry.File->getModificationTime());
+    Record.push_back(getTimestampForOutput(Entry.File));
 
     // Whether this file was overridden.
     Record.push_back(Entry.BufferOverridden);
@@ -1715,15 +1710,12 @@ namespace {
     typedef unsigned hash_value_type;
     typedef unsigned offset_type;
     
-    static hash_value_type ComputeHash(key_type_ref key) {
+    hash_value_type ComputeHash(key_type_ref key) {
       // The hash is based only on size/time of the file, so that the reader can
       // match even when symlinking or excess path elements ("foo/../", "../")
       // change the form of the name. However, complete path is still the key.
-      //
-      // FIXME: Using the mtime here will cause problems for explicit module
-      // imports.
       return llvm::hash_combine(key.FE->getSize(),
-                                key.FE->getModificationTime());
+                                Writer.getTimestampForOutput(key.FE));
     }
     
     std::pair<unsigned,unsigned>
@@ -1744,7 +1736,7 @@ namespace {
       endian::Writer<little> LE(Out);
       LE.write<uint64_t>(key.FE->getSize());
       KeyLen -= 8;
-      LE.write<uint64_t>(key.FE->getModificationTime());
+      LE.write<uint64_t>(Writer.getTimestampForOutput(key.FE));
       KeyLen -= 8;
       Out.write(key.Filename, KeyLen);
     }
@@ -2828,12 +2820,15 @@ uint64_t ASTWriter::WriteDeclContextLexicalBlock(ASTContext &Context,
   uint64_t Offset = Stream.GetCurrentBitNo();
   RecordData Record;
   Record.push_back(DECL_CONTEXT_LEXICAL);
-  SmallVector<KindDeclIDPair, 64> Decls;
-  for (const auto *D : DC->decls())
-    Decls.push_back(std::make_pair(D->getKind(), GetDeclRef(D)));
+  SmallVector<uint32_t, 128> KindDeclPairs;
+  for (const auto *D : DC->decls()) {
+    KindDeclPairs.push_back(D->getKind());
+    KindDeclPairs.push_back(GetDeclRef(D));
+  }
 
   ++NumLexicalDeclContexts;
-  Stream.EmitRecordWithBlob(DeclContextLexicalAbbrev, Record, bytes(Decls));
+  Stream.EmitRecordWithBlob(DeclContextLexicalAbbrev, Record,
+                            bytes(KindDeclPairs));
   return Offset;
 }
 
@@ -3499,8 +3494,8 @@ public:
     }
     LE.write<uint16_t>(KeyLen);
 
-    // 2 bytes for num of decls and 4 for each DeclID.
-    unsigned DataLen = 2 + 4 * Lookup.size();
+    // 4 bytes for each DeclID.
+    unsigned DataLen = 4 * Lookup.size();
     LE.write<uint16_t>(DataLen);
 
     return std::make_pair(KeyLen, DataLen);
@@ -3542,7 +3537,6 @@ public:
     using namespace llvm::support;
     endian::Writer<little> LE(Out);
     uint64_t Start = Out.tell(); (void)Start;
-    LE.write<uint16_t>(Lookup.size());
     for (DeclContext::lookup_iterator I = Lookup.begin(), E = Lookup.end();
          I != E; ++I)
       LE.write<uint32_t>(
@@ -3845,6 +3839,9 @@ uint64_t ASTWriter::WriteDeclContextVisibleBlock(ASTContext &Context,
 /// (in C++), for namespaces, and for classes with forward-declared unscoped
 /// enumeration members (in C++11).
 void ASTWriter::WriteDeclContextVisibleUpdate(const DeclContext *DC) {
+  if (isRewritten(cast<Decl>(DC)))
+    return;
+
   StoredDeclsMap *Map = DC->getLookupPtr();
   if (!Map || Map->empty())
     return;
@@ -4144,22 +4141,21 @@ void ASTWriter::SetSelectorOffset(Selector Sel, uint32_t Offset) {
   SelectorOffsets[ID - FirstSelectorID] = Offset;
 }
 
-ASTWriter::ASTWriter(llvm::BitstreamWriter &Stream)
+ASTWriter::ASTWriter(llvm::BitstreamWriter &Stream, bool IncludeTimestamps)
     : Stream(Stream), Context(nullptr), PP(nullptr), Chain(nullptr),
-      WritingModule(nullptr), WritingAST(false),
-      DoneWritingDeclsAndTypes(false), ASTHasCompilerErrors(false),
-      FirstDeclID(NUM_PREDEF_DECL_IDS), NextDeclID(FirstDeclID),
-      FirstTypeID(NUM_PREDEF_TYPE_IDS), NextTypeID(FirstTypeID),
-      FirstIdentID(NUM_PREDEF_IDENT_IDS), NextIdentID(FirstIdentID),
-      FirstMacroID(NUM_PREDEF_MACRO_IDS), NextMacroID(FirstMacroID),
-      FirstSubmoduleID(NUM_PREDEF_SUBMODULE_IDS),
+      WritingModule(nullptr), IncludeTimestamps(IncludeTimestamps),
+      WritingAST(false), DoneWritingDeclsAndTypes(false),
+      ASTHasCompilerErrors(false), FirstDeclID(NUM_PREDEF_DECL_IDS),
+      NextDeclID(FirstDeclID), FirstTypeID(NUM_PREDEF_TYPE_IDS),
+      NextTypeID(FirstTypeID), FirstIdentID(NUM_PREDEF_IDENT_IDS),
+      NextIdentID(FirstIdentID), FirstMacroID(NUM_PREDEF_MACRO_IDS),
+      NextMacroID(FirstMacroID), FirstSubmoduleID(NUM_PREDEF_SUBMODULE_IDS),
       NextSubmoduleID(FirstSubmoduleID),
       FirstSelectorID(NUM_PREDEF_SELECTOR_IDS), NextSelectorID(FirstSelectorID),
       CollectedStmts(&StmtsToEmit), NumStatements(0), NumMacros(0),
       NumLexicalDeclContexts(0), NumVisibleDeclContexts(0),
       NextCXXBaseSpecifiersID(1), NextCXXCtorInitializersID(1),
-      TypeExtQualAbbrev(0),
-      TypeFunctionProtoAbbrev(0), DeclParmVarAbbrev(0),
+      TypeExtQualAbbrev(0), TypeFunctionProtoAbbrev(0), DeclParmVarAbbrev(0),
       DeclContextLexicalAbbrev(0), DeclContextVisibleLookupAbbrev(0),
       UpdateVisibleAbbrev(0), DeclRecordAbbrev(0), DeclTypedefAbbrev(0),
       DeclVarAbbrev(0), DeclFieldAbbrev(0), DeclEnumAbbrev(0),
@@ -4174,6 +4170,10 @@ ASTWriter::~ASTWriter() {
 const LangOptions &ASTWriter::getLangOpts() const {
   assert(WritingAST && "can't determine lang opts when not writing AST");
   return Context->getLangOpts();
+}
+
+time_t ASTWriter::getTimestampForOutput(const FileEntry *E) const {
+  return IncludeTimestamps ? E->getModificationTime() : 0;
 }
 
 void ASTWriter::WriteAST(Sema &SemaRef,
@@ -4249,6 +4249,7 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
   RegisterPredefDecl(Context.ObjCInstanceTypeDecl,
                      PREDEF_DECL_OBJC_INSTANCETYPE_ID);
   RegisterPredefDecl(Context.BuiltinVaListDecl, PREDEF_DECL_BUILTIN_VA_LIST_ID);
+  RegisterPredefDecl(Context.VaListTagDecl, PREDEF_DECL_VA_LIST_TAG);
   RegisterPredefDecl(Context.ExternCContext, PREDEF_DECL_EXTERN_C_CONTEXT_ID);
 
   // Build a record containing all of the tentative definitions in this file, in
@@ -4375,10 +4376,12 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
   // Create a lexical update block containing all of the declarations in the
   // translation unit that do not come from other AST files.
   const TranslationUnitDecl *TU = Context.getTranslationUnitDecl();
-  SmallVector<KindDeclIDPair, 64> NewGlobalDecls;
-  for (const auto *I : TU->noload_decls()) {
-    if (!I->isFromASTFile())
-      NewGlobalDecls.push_back(std::make_pair(I->getKind(), GetDeclRef(I)));
+  SmallVector<uint32_t, 128> NewGlobalKindDeclPairs;
+  for (const auto *D : TU->noload_decls()) {
+    if (!D->isFromASTFile()) {
+      NewGlobalKindDeclPairs.push_back(D->getKind());
+      NewGlobalKindDeclPairs.push_back(GetDeclRef(D));
+    }
   }
   
   llvm::BitCodeAbbrev *Abv = new llvm::BitCodeAbbrev();
@@ -4388,7 +4391,7 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
   Record.clear();
   Record.push_back(TU_UPDATE_LEXICAL);
   Stream.EmitRecordWithBlob(TuUpdateLexicalAbbrev, Record,
-                            bytes(NewGlobalDecls));
+                            bytes(NewGlobalKindDeclPairs));
   
   // And a visible updates block for the translation unit.
   Abv = new llvm::BitCodeAbbrev();
@@ -5795,6 +5798,7 @@ void ASTWriter::AddedVisibleDecl(const DeclContext *DC, const Decl *D) {
   if (!(!D->isFromASTFile() && cast<Decl>(DC)->isFromASTFile()))
     return; // Not a source decl added to a DeclContext from PCH.
 
+  assert(DC == DC->getPrimaryContext() && "added to non-primary context");
   assert(!getDefinitiveDeclContext(DC) && "DeclContext not definitive!");
   assert(!WritingAST && "Already writing the AST!");
   UpdatedDeclContexts.insert(DC);
