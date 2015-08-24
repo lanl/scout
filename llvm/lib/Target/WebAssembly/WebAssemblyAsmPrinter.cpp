@@ -58,8 +58,7 @@ private:
   }
 
   bool runOnMachineFunction(MachineFunction &MF) override {
-    TII = static_cast<const WebAssemblyInstrInfo *>(
-        MF.getSubtarget().getInstrInfo());
+    TII = MF.getSubtarget<WebAssemblySubtarget>().getInstrInfo();
     return AsmPrinter::runOnMachineFunction(MF);
   }
 
@@ -80,7 +79,7 @@ private:
 static SmallString<32> Name(const WebAssemblyInstrInfo *TII,
                             const MachineInstr *MI) {
   std::string N(StringRef(TII->getName(MI->getOpcode())).lower());
-  std::string::size_type End = N.find('_');
+  std::string::size_type End = N.rfind('_');
   End = std::string::npos == End ? N.length() : End;
   return SmallString<32>(&N[0], &N[End]);
 }
@@ -92,6 +91,8 @@ void WebAssemblyAsmPrinter::EmitInstruction(const MachineInstr *MI) {
   unsigned NumDefs = MI->getDesc().getNumDefs();
   assert(NumDefs <= 1 &&
          "Instructions with multiple result values not implemented");
+
+  OS << '\t';
 
   if (NumDefs != 0) {
     const MachineOperand &MO = MI->getOperand(0);
