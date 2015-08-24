@@ -2253,7 +2253,7 @@ void CodeGenFunction::BuildBlockRelease(llvm::Value *V, BlockFieldFlags flags) {
 }
 
 namespace {
-  struct CallBlockRelease : EHScopeStack::Cleanup {
+  struct CallBlockRelease final : EHScopeStack::Cleanup {
     llvm::Value *Addr;
     CallBlockRelease(llvm::Value *Addr) : Addr(Addr) {}
 

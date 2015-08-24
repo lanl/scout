@@ -7,7 +7,6 @@ set( LLVM_LINK_COMPONENTS
   Analysis
   CodeGen
   Core
-  IPA
   IPO
   InstCombine
   Instrumentation
