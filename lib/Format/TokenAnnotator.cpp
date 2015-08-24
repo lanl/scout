@@ -1139,9 +1139,11 @@ private:
       return TT_UnaryOperator;
 
     const FormatToken *NextToken = Tok.getNextNonComment();
-    if (!NextToken || NextToken->is(tok::arrow) ||
+    if (!NextToken ||
+        NextToken->isOneOf(tok::arrow, Keywords.kw_final,
+                           Keywords.kw_override) ||
         (NextToken->is(tok::l_brace) && !NextToken->getNextNonComment()))
-      return TT_Unknown;
+      return TT_PointerOrReference;
 
     if (PrevToken->is(tok::coloncolon))
       return TT_PointerOrReference;
@@ -1855,7 +1857,9 @@ bool TokenAnnotator::spaceRequiredBetween(const AnnotatedLine &Line,
         !Line.IsMultiVariableDeclStmt)))
     return true;
   if (Left.is(TT_PointerOrReference))
-    return Right.Tok.isLiteral() || Right.is(TT_BlockComment) ||
+    return Right.Tok.isLiteral() ||
+           Right.isOneOf(TT_BlockComment, Keywords.kw_final,
+                         Keywords.kw_override) ||
            (Right.is(tok::l_brace) && Right.BlockKind == BK_Block) ||
            (!Right.isOneOf(TT_PointerOrReference, TT_ArraySubscriptLSquare,
                            tok::l_paren) &&
@@ -2232,7 +2236,7 @@ bool TokenAnnotator::canBreakBefore(const AnnotatedLine &Line,
     return Left.isNot(tok::period); // FIXME: Properly parse ObjC calls.
   if (Left.is(tok::r_paren) && Line.Type == LT_ObjCProperty)
     return true;
-  if (Left.ClosesTemplateDeclaration)
+  if (Left.ClosesTemplateDeclaration || Left.is(TT_FunctionAnnotationRParen))
     return true;
   if (Right.isOneOf(TT_RangeBasedForLoopColon, TT_OverloadedOperatorLParen,
                     TT_OverloadedOperator))
@@ -2245,7 +2249,7 @@ bool TokenAnnotator::canBreakBefore(const AnnotatedLine &Line,
       Left.is(tok::kw_operator))
     return false;
   if (Left.is(tok::equal) && !Right.isOneOf(tok::kw_default, tok::kw_delete) &&
-      Line.Type == LT_VirtualFunctionDecl)
+      Line.Type == LT_VirtualFunctionDecl && Left.NestingLevel == 0)
     return false;
   if (Left.is(tok::l_paren) && Left.is(TT_AttributeParen))
     return false;

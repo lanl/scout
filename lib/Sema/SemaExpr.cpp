@@ -4937,6 +4937,7 @@ Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
     if (!Result.isUsable()) return ExprError();
     TheCall = dyn_cast<CallExpr>(Result.get());
     if (!TheCall) return Result;
+    Args = ArrayRef<Expr *>(TheCall->getArgs(), TheCall->getNumArgs());
   }
 
   // Bail out early if calling a builtin with custom typechecking.
@@ -5085,8 +5086,7 @@ ExprResult
 Sema::ActOnCompoundLiteral(SourceLocation LParenLoc, ParsedType Ty,
                            SourceLocation RParenLoc, Expr *InitExpr) {
   assert(Ty && "ActOnCompoundLiteral(): missing type");
-  // FIXME: put back this assert when initializers are worked out.
-  //assert((InitExpr != 0) && "ActOnCompoundLiteral(): missing expression");
+  assert(InitExpr && "ActOnCompoundLiteral(): missing expression");
 
   TypeSourceInfo *TInfo;
   QualType literalType = GetTypeFromParser(Ty, &TInfo);
@@ -8375,19 +8375,16 @@ static void diagnoseLogicalNotOnLHSofComparison(Sema &S, ExprResult &LHS,
                                                 ExprResult &RHS,
                                                 SourceLocation Loc,
                                                 unsigned OpaqueOpc) {
-  // This checking requires bools.
-  if (!S.getLangOpts().Bool) return;
-
   // Check that left hand side is !something.
   UnaryOperator *UO = dyn_cast<UnaryOperator>(LHS.get()->IgnoreImpCasts());
   if (!UO || UO->getOpcode() != UO_LNot) return;
 
   // Only check if the right hand side is non-bool arithmetic type.
-  if (RHS.get()->getType()->isBooleanType()) return;
+  if (RHS.get()->isKnownToHaveBooleanValue()) return;
 
   // Make sure that the something in !something is not bool.
   Expr *SubExpr = UO->getSubExpr()->IgnoreImpCasts();
-  if (SubExpr->getType()->isBooleanType()) return;
+  if (SubExpr->isKnownToHaveBooleanValue()) return;
 
   // Emit warning.
   S.Diag(UO->getOperatorLoc(), diag::warn_logical_not_on_lhs_of_comparison)

@@ -1663,20 +1663,35 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
         Attrs.addAttribute(llvm::Attribute::InReg);
       break;
 
-    case ABIArgInfo::Indirect:
+    case ABIArgInfo::Indirect: {
       if (AI.getInReg())
         Attrs.addAttribute(llvm::Attribute::InReg);
 
       if (AI.getIndirectByVal())
         Attrs.addAttribute(llvm::Attribute::ByVal);
 
-      Attrs.addAlignmentAttr(AI.getIndirectAlign());
+      unsigned Align = AI.getIndirectAlign();
+
+      // In a byval argument, it is important that the required
+      // alignment of the type is honored, as LLVM might be creating a
+      // *new* stack object, and needs to know what alignment to give
+      // it. (Sometimes it can deduce a sensible alignment on its own,
+      // but not if clang decides it must emit a packed struct, or the
+      // user specifies increased alignment requirements.)
+      //
+      // This is different from indirect *not* byval, where the object
+      // exists already, and the align attribute is purely
+      // informative.
+      if (Align == 0 && AI.getIndirectByVal())
+        Align = getContext().getTypeAlignInChars(ParamType).getQuantity();
+
+      Attrs.addAlignmentAttr(Align);
 
       // byval disables readnone and readonly.
       FuncAttrs.removeAttribute(llvm::Attribute::ReadOnly)
         .removeAttribute(llvm::Attribute::ReadNone);
       break;
-
+    }
     case ABIArgInfo::Ignore:
     case ABIArgInfo::Expand:
       continue;
@@ -2767,19 +2782,9 @@ void CallArgList::allocateArgumentMemory(CodeGenFunction &CGF) {
   // alloca and store lazily on the first cleanup emission.
   StackBaseMem = CGF.CreateTempAlloca(CGF.Int8PtrTy, "inalloca.spmem");
   CGF.Builder.CreateStore(StackBase, StackBaseMem);
-  CGF.pushStackRestore(EHCleanup, StackBaseMem);
+  CGF.pushStackRestore(NormalCleanup, StackBaseMem);
   StackCleanup = CGF.EHStack.getInnermostEHScope();
   assert(StackCleanup.isValid());
-}
-
-void CallArgList::freeArgumentMemory(CodeGenFunction &CGF) const {
-  if (StackBase) {
-    CGF.DeactivateCleanupBlock(StackCleanup, StackBase);
-    llvm::Value *F = CGF.CGM.getIntrinsic(llvm::Intrinsic::stackrestore);
-    // We could load StackBase from StackBaseMem, but in the non-exceptional
-    // case we can skip it.
-    CGF.Builder.CreateCall(F, StackBase);
-  }
 }
 
 void CodeGenFunction::EmitNonNullArgCheck(RValue RV, QualType ArgType,
@@ -2851,7 +2856,7 @@ void CodeGenFunction::EmitCallArgs(
 
 namespace {
 
-struct DestroyUnpassedArg : EHScopeStack::Cleanup {
+struct DestroyUnpassedArg final : EHScopeStack::Cleanup {
   DestroyUnpassedArg(llvm::Value *Addr, QualType Ty)
       : Addr(Addr), Ty(Ty) {}
 
@@ -3517,10 +3522,6 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   // after any return-value munging.
   if (CallArgs.hasWritebacks())
     emitWritebacks(*this, CallArgs);
-
-  // The stack cleanup for inalloca arguments has to run out of the normal
-  // lexical order, so deactivate it and run it manually here.
-  CallArgs.freeArgumentMemory(*this);
 
   RValue Ret = [&] {
     switch (RetAI.getKind()) {

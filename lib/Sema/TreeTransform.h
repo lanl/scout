@@ -1395,6 +1395,16 @@ public:
     return getSema().ActOnOpenMPSafelenClause(Len, StartLoc, LParenLoc, EndLoc);
   }
 
+  /// \brief Build a new OpenMP 'simdlen' clause.
+  ///
+  /// By default, performs semantic analysis to build the new OpenMP clause.
+  /// Subclasses may override this routine to provide different behavior.
+  OMPClause *RebuildOMPSimdlenClause(Expr *Len, SourceLocation StartLoc,
+                                     SourceLocation LParenLoc,
+                                     SourceLocation EndLoc) {
+    return getSema().ActOnOpenMPSimdlenClause(Len, StartLoc, LParenLoc, EndLoc);
+  }
+
   /// \brief Build a new OpenMP 'collapse' clause.
   ///
   /// By default, performs semantic analysis to build the new OpenMP clause.
@@ -1528,10 +1538,13 @@ public:
   OMPClause *RebuildOMPLinearClause(ArrayRef<Expr *> VarList, Expr *Step,
                                     SourceLocation StartLoc,
                                     SourceLocation LParenLoc,
+                                    OpenMPLinearClauseKind Modifier,
+                                    SourceLocation ModifierLoc,
                                     SourceLocation ColonLoc,
                                     SourceLocation EndLoc) {
     return getSema().ActOnOpenMPLinearClause(VarList, Step, StartLoc, LParenLoc,
-                                             ColonLoc, EndLoc);
+                                             Modifier, ModifierLoc, ColonLoc,
+                                             EndLoc);
   }
 
   /// \brief Build a new OpenMP 'aligned' clause.
@@ -4719,9 +4732,7 @@ QualType TreeTransform<Derived>::TransformFunctionProtoType(
 
   QualType Result = TL.getType();
   if (getDerived().AlwaysRebuild() || ResultType != T->getReturnType() ||
-      T->getNumParams() != ParamTypes.size() ||
-      !std::equal(T->param_type_begin(), T->param_type_end(),
-                  ParamTypes.begin()) || EPIChanged) {
+      T->getParamTypes() != llvm::makeArrayRef(ParamTypes) || EPIChanged) {
     Result = getDerived().RebuildFunctionProtoType(ResultType, ParamTypes, EPI);
     if (Result.isNull())
       return QualType();
@@ -7220,6 +7231,16 @@ TreeTransform<Derived>::TransformOMPSafelenClause(OMPSafelenClause *C) {
 
 template <typename Derived>
 OMPClause *
+TreeTransform<Derived>::TransformOMPSimdlenClause(OMPSimdlenClause *C) {
+  ExprResult E = getDerived().TransformExpr(C->getSimdlen());
+  if (E.isInvalid())
+    return nullptr;
+  return getDerived().RebuildOMPSimdlenClause(
+      E.get(), C->getLocStart(), C->getLParenLoc(), C->getLocEnd());
+}
+
+template <typename Derived>
+OMPClause *
 TreeTransform<Derived>::TransformOMPCollapseClause(OMPCollapseClause *C) {
   ExprResult E = getDerived().TransformExpr(C->getNumForLoops());
   if (E.isInvalid())
@@ -7421,9 +7442,9 @@ TreeTransform<Derived>::TransformOMPLinearClause(OMPLinearClause *C) {
   ExprResult Step = getDerived().TransformExpr(C->getStep());
   if (Step.isInvalid())
     return nullptr;
-  return getDerived().RebuildOMPLinearClause(Vars, Step.get(), C->getLocStart(),
-                                             C->getLParenLoc(),
-                                             C->getColonLoc(), C->getLocEnd());
+  return getDerived().RebuildOMPLinearClause(
+      Vars, Step.get(), C->getLocStart(), C->getLParenLoc(), C->getModifier(),
+      C->getModifierLoc(), C->getColonLoc(), C->getLocEnd());
 }
 
 template <typename Derived>

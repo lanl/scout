@@ -365,6 +365,61 @@ public:
   child_range children() { return child_range(&Safelen, &Safelen + 1); }
 };
 
+/// \brief This represents 'simdlen' clause in the '#pragma omp ...'
+/// directive.
+///
+/// \code
+/// #pragma omp simd simdlen(4)
+/// \endcode
+/// In this example directive '#pragma omp simd' has clause 'simdlen'
+/// with single expression '4'.
+/// If the 'simdlen' clause is used then it specifies the preferred number of
+/// iterations to be executed concurrently. The parameter of the 'simdlen'
+/// clause must be a constant positive integer expression.
+///
+class OMPSimdlenClause : public OMPClause {
+  friend class OMPClauseReader;
+  /// \brief Location of '('.
+  SourceLocation LParenLoc;
+  /// \brief Safe iteration space distance.
+  Stmt *Simdlen;
+
+  /// \brief Set simdlen.
+  void setSimdlen(Expr *Len) { Simdlen = Len; }
+
+public:
+  /// \brief Build 'simdlen' clause.
+  ///
+  /// \param Len Expression associated with this clause.
+  /// \param StartLoc Starting location of the clause.
+  /// \param EndLoc Ending location of the clause.
+  ///
+  OMPSimdlenClause(Expr *Len, SourceLocation StartLoc, SourceLocation LParenLoc,
+                   SourceLocation EndLoc)
+      : OMPClause(OMPC_simdlen, StartLoc, EndLoc), LParenLoc(LParenLoc),
+        Simdlen(Len) {}
+
+  /// \brief Build an empty clause.
+  ///
+  explicit OMPSimdlenClause()
+      : OMPClause(OMPC_simdlen, SourceLocation(), SourceLocation()),
+        LParenLoc(SourceLocation()), Simdlen(nullptr) {}
+
+  /// \brief Sets the location of '('.
+  void setLParenLoc(SourceLocation Loc) { LParenLoc = Loc; }
+  /// \brief Returns the location of '('.
+  SourceLocation getLParenLoc() const { return LParenLoc; }
+
+  /// \brief Return safe iteration space distance.
+  Expr *getSimdlen() const { return cast_or_null<Expr>(Simdlen); }
+
+  static bool classof(const OMPClause *T) {
+    return T->getClauseKind() == OMPC_simdlen;
+  }
+
+  child_range children() { return child_range(&Simdlen, &Simdlen + 1); }
+};
+
 /// \brief This represents 'collapse' clause in the '#pragma omp ...'
 /// directive.
 ///
@@ -1641,6 +1696,10 @@ public:
 ///
 class OMPLinearClause : public OMPVarListClause<OMPLinearClause> {
   friend class OMPClauseReader;
+  /// \brief Modifier of 'linear' clause.
+  OpenMPLinearClauseKind Modifier;
+  /// \brief Location of linear modifier if any.
+  SourceLocation ModifierLoc;
   /// \brief Location of ':'.
   SourceLocation ColonLoc;
 
@@ -1659,11 +1718,12 @@ class OMPLinearClause : public OMPVarListClause<OMPLinearClause> {
   /// \param NumVars Number of variables.
   ///
   OMPLinearClause(SourceLocation StartLoc, SourceLocation LParenLoc,
+                  OpenMPLinearClauseKind Modifier, SourceLocation ModifierLoc,
                   SourceLocation ColonLoc, SourceLocation EndLoc,
                   unsigned NumVars)
       : OMPVarListClause<OMPLinearClause>(OMPC_linear, StartLoc, LParenLoc,
                                           EndLoc, NumVars),
-        ColonLoc(ColonLoc) {}
+        Modifier(Modifier), ModifierLoc(ModifierLoc), ColonLoc(ColonLoc) {}
 
   /// \brief Build an empty clause.
   ///
@@ -1673,7 +1733,7 @@ class OMPLinearClause : public OMPVarListClause<OMPLinearClause> {
       : OMPVarListClause<OMPLinearClause>(OMPC_linear, SourceLocation(),
                                           SourceLocation(), SourceLocation(),
                                           NumVars),
-        ColonLoc(SourceLocation()) {}
+        Modifier(OMPC_LINEAR_val), ModifierLoc(), ColonLoc() {}
 
   /// \brief Gets the list of initial values for linear variables.
   ///
@@ -1685,14 +1745,21 @@ class OMPLinearClause : public OMPVarListClause<OMPLinearClause> {
   /// expressions - linear step and a helper to calculate it before the
   /// loop body (used when the linear step is not constant):
   ///
-  /// { Vars[] /* in OMPVarListClause */; Inits[]; Updates[]; Finals[];
-  ///   Step; CalcStep; }
+  /// { Vars[] /* in OMPVarListClause */; Privates[]; Inits[]; Updates[];
+  /// Finals[]; Step; CalcStep; }
   ///
-  MutableArrayRef<Expr *> getInits() {
+  MutableArrayRef<Expr *> getPrivates() {
     return MutableArrayRef<Expr *>(varlist_end(), varlist_size());
   }
-  ArrayRef<const Expr *> getInits() const {
+  ArrayRef<const Expr *> getPrivates() const {
     return llvm::makeArrayRef(varlist_end(), varlist_size());
+  }
+
+  MutableArrayRef<Expr *> getInits() {
+    return MutableArrayRef<Expr *>(getPrivates().end(), varlist_size());
+  }
+  ArrayRef<const Expr *> getInits() const {
+    return llvm::makeArrayRef(getPrivates().end(), varlist_size());
   }
 
   /// \brief Sets the list of update expressions for linear variables.
@@ -1711,6 +1778,10 @@ class OMPLinearClause : public OMPVarListClause<OMPLinearClause> {
     return llvm::makeArrayRef(getUpdates().end(), varlist_size());
   }
 
+  /// \brief Sets the list of the copies of original linear variables.
+  /// \param PL List of expressions.
+  void setPrivates(ArrayRef<Expr *> PL);
+
   /// \brief Sets the list of the initial values for linear variables.
   /// \param IL List of expressions.
   void setInits(ArrayRef<Expr *> IL);
@@ -1722,17 +1793,20 @@ public:
   /// \param C AST Context.
   /// \param StartLoc Starting location of the clause.
   /// \param LParenLoc Location of '('.
+  /// \param Modifier Modifier of 'linear' clause.
+  /// \param ModifierLoc Modifier location.
   /// \param ColonLoc Location of ':'.
   /// \param EndLoc Ending location of the clause.
   /// \param VL List of references to the variables.
+  /// \param PL List of private copies of original variables.
   /// \param IL List of initial values for the variables.
   /// \param Step Linear step.
   /// \param CalcStep Calculation of the linear step.
-  static OMPLinearClause *Create(const ASTContext &C, SourceLocation StartLoc,
-                                 SourceLocation LParenLoc,
-                                 SourceLocation ColonLoc, SourceLocation EndLoc,
-                                 ArrayRef<Expr *> VL, ArrayRef<Expr *> IL,
-                                 Expr *Step, Expr *CalcStep);
+  static OMPLinearClause *
+  Create(const ASTContext &C, SourceLocation StartLoc, SourceLocation LParenLoc,
+         OpenMPLinearClauseKind Modifier, SourceLocation ModifierLoc,
+         SourceLocation ColonLoc, SourceLocation EndLoc, ArrayRef<Expr *> VL,
+         ArrayRef<Expr *> PL, ArrayRef<Expr *> IL, Expr *Step, Expr *CalcStep);
 
   /// \brief Creates an empty clause with the place for \a NumVars variables.
   ///
@@ -1741,9 +1815,19 @@ public:
   ///
   static OMPLinearClause *CreateEmpty(const ASTContext &C, unsigned NumVars);
 
+  /// \brief Set modifier.
+  void setModifier(OpenMPLinearClauseKind Kind) { Modifier = Kind; }
+  /// \brief Return modifier.
+  OpenMPLinearClauseKind getModifier() const { return Modifier; }
+
+  /// \brief Set modifier location.
+  void setModifierLoc(SourceLocation Loc) { ModifierLoc = Loc; }
+  /// \brief Return modifier location.
+  SourceLocation getModifierLoc() const { return ModifierLoc; }
+
   /// \brief Sets the location of ':'.
   void setColonLoc(SourceLocation Loc) { ColonLoc = Loc; }
-  /// \brief Returns the location of '('.
+  /// \brief Returns the location of ':'.
   SourceLocation getColonLoc() const { return ColonLoc; }
 
   /// \brief Returns linear step.
@@ -1762,6 +1846,18 @@ public:
   /// \brief Sets the list of final update expressions for linear variables.
   /// \param FL List of expressions.
   void setFinals(ArrayRef<Expr *> FL);
+
+  typedef MutableArrayRef<Expr *>::iterator privates_iterator;
+  typedef ArrayRef<const Expr *>::iterator privates_const_iterator;
+  typedef llvm::iterator_range<privates_iterator> privates_range;
+  typedef llvm::iterator_range<privates_const_iterator> privates_const_range;
+
+  privates_range privates() {
+    return privates_range(getPrivates().begin(), getPrivates().end());
+  }
+  privates_const_range privates() const {
+    return privates_const_range(getPrivates().begin(), getPrivates().end());
+  }
 
   typedef MutableArrayRef<Expr *>::iterator inits_iterator;
   typedef ArrayRef<const Expr *>::iterator inits_const_iterator;

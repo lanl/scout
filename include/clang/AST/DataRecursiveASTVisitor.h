@@ -2455,6 +2455,12 @@ bool RecursiveASTVisitor<Derived>::VisitOMPSafelenClause(OMPSafelenClause *C) {
 }
 
 template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPSimdlenClause(OMPSimdlenClause *C) {
+  TRY_TO(TraverseStmt(C->getSimdlen()));
+  return true;
+}
+
+template <typename Derived>
 bool
 RecursiveASTVisitor<Derived>::VisitOMPCollapseClause(OMPCollapseClause *C) {
   TRY_TO(TraverseStmt(C->getNumForLoops()));
@@ -2587,6 +2593,9 @@ bool RecursiveASTVisitor<Derived>::VisitOMPLinearClause(OMPLinearClause *C) {
   TRY_TO(TraverseStmt(C->getStep()));
   TRY_TO(TraverseStmt(C->getCalcStep()));
   TRY_TO(VisitOMPClauseList(C));
+  for (auto *E : C->privates()) {
+    TRY_TO(TraverseStmt(E));
+  }
   for (auto *E : C->inits()) {
     TRY_TO(TraverseStmt(E));
   }

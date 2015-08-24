@@ -623,6 +623,12 @@ void OMPClausePrinter::VisitOMPSafelenClause(OMPSafelenClause *Node) {
   OS << ")";
 }
 
+void OMPClausePrinter::VisitOMPSimdlenClause(OMPSimdlenClause *Node) {
+  OS << "simdlen(";
+  Node->getSimdlen()->printPretty(OS, nullptr, Policy, 0);
+  OS << ")";
+}
+
 void OMPClausePrinter::VisitOMPCollapseClause(OMPCollapseClause *Node) {
   OS << "collapse(";
   Node->getNumForLoops()->printPretty(OS, nullptr, Policy, 0);
@@ -767,7 +773,13 @@ void OMPClausePrinter::VisitOMPReductionClause(OMPReductionClause *Node) {
 void OMPClausePrinter::VisitOMPLinearClause(OMPLinearClause *Node) {
   if (!Node->varlist_empty()) {
     OS << "linear";
+    if (Node->getModifierLoc().isValid()) {
+      OS << '('
+         << getOpenMPSimpleClauseTypeName(OMPC_linear, Node->getModifier());
+    }
     VisitOMPClauseList(Node, '(');
+    if (Node->getModifierLoc().isValid())
+      OS << ')';
     if (Node->getStep() != nullptr) {
       OS << ": ";
       Node->getStep()->printPretty(OS, nullptr, Policy, 0);

@@ -1054,6 +1054,14 @@ public:
     SemaDiagnosticBuilder(DiagnosticBuilder &DB, Sema &SemaRef, unsigned DiagID)
       : DiagnosticBuilder(DB), SemaRef(SemaRef), DiagID(DiagID) { }
 
+    // This is a cunning lie. DiagnosticBuilder actually performs move
+    // construction in its copy constructor (but due to varied uses, it's not
+    // possible to conveniently express this as actual move construction). So
+    // the default copy ctor here is fine, because the base class disables the
+    // source anyway, so the user-defined ~SemaDiagnosticBuilder is a safe no-op
+    // in that case anwyay.
+    SemaDiagnosticBuilder(const SemaDiagnosticBuilder&) = default;
+
     ~SemaDiagnosticBuilder() {
       // If we aren't active, there is nothing to do.
       if (!isActive()) return;
@@ -1432,6 +1440,12 @@ public:
   // Symbol table / Decl tracking callbacks: SemaDecl.cpp.
   //
 
+  struct SkipBodyInfo {
+    SkipBodyInfo() : ShouldSkip(false), Previous(nullptr) {}
+    bool ShouldSkip;
+    NamedDecl *Previous;
+  };
+
   /// List of decls defined in a function prototype. This contains EnumConstants
   /// that incorrectly end up in translation unit scope because there is no
   /// function to pin them on. ActOnFunctionDeclarator reads this list and patches
@@ -1697,11 +1711,14 @@ public:
 
   void ActOnFinishKNRParamDeclarations(Scope *S, Declarator &D,
                                        SourceLocation LocAfterDecls);
-  void CheckForFunctionRedefinition(FunctionDecl *FD,
-                                    const FunctionDecl *EffectiveDefinition =
-                                        nullptr);
-  Decl *ActOnStartOfFunctionDef(Scope *S, Declarator &D);
-  Decl *ActOnStartOfFunctionDef(Scope *S, Decl *D);
+  void CheckForFunctionRedefinition(
+      FunctionDecl *FD, const FunctionDecl *EffectiveDefinition = nullptr,
+      SkipBodyInfo *SkipBody = nullptr);
+  Decl *ActOnStartOfFunctionDef(Scope *S, Declarator &D,
+                                MultiTemplateParamsArg TemplateParamLists,
+                                SkipBodyInfo *SkipBody = nullptr);
+  Decl *ActOnStartOfFunctionDef(Scope *S, Decl *D,
+                                SkipBodyInfo *SkipBody = nullptr);
   void ActOnStartOfObjCMethodDef(Scope *S, Decl *D);
   bool isObjCMethodDecl(Decl *D) {
     return D && isa<ObjCMethodDecl>(D);
@@ -1841,12 +1858,6 @@ public:
     TUK_Declaration, // Fwd decl of a tag:   'struct foo;'
     TUK_Definition,  // Definition of a tag: 'struct foo { int X; } Y;'
     TUK_Friend       // Friend declaration:  'friend struct foo;'
-  };
-
-  struct SkipBodyInfo {
-    SkipBodyInfo() : ShouldSkip(false), Previous(nullptr) {}
-    bool ShouldSkip;
-    NamedDecl *Previous;
   };
 
   Decl *ActOnTag(Scope *S, unsigned TagSpec, TagUseKind TUK,
@@ -5622,10 +5633,6 @@ public:
                                 MultiTemplateParamsArg TemplateParameterLists,
                                 Declarator &D);
 
-  Decl *ActOnStartOfFunctionTemplateDef(Scope *FnBodyScope,
-                                  MultiTemplateParamsArg TemplateParameterLists,
-                                        Declarator &D);
-
   bool
   CheckSpecializationInstantiationRedecl(SourceLocation NewLoc,
                                          TemplateSpecializationKind NewTSK,
@@ -6609,7 +6616,8 @@ public:
   /// the stack.
   struct InstantiatingTemplate {
     /// \brief Note that we are instantiating a class template,
-    /// function template, or a member thereof.
+    /// function template, variable template, alias template,
+    /// or a member thereof.
     InstantiatingTemplate(Sema &SemaRef, SourceLocation PointOfInstantiation,
                           Decl *Entity,
                           SourceRange InstantiationRange = SourceRange());
@@ -6655,6 +6663,8 @@ public:
                           sema::TemplateDeductionInfo &DeductionInfo,
                           SourceRange InstantiationRange = SourceRange());
 
+    /// \brief Note that we are instantiating a default argument for a function
+    /// parameter.
     InstantiatingTemplate(Sema &SemaRef, SourceLocation PointOfInstantiation,
                           ParmVarDecl *Param,
                           ArrayRef<TemplateArgument> TemplateArgs,
@@ -7883,6 +7893,10 @@ public:
                                       SourceLocation StartLoc,
                                       SourceLocation LParenLoc,
                                       SourceLocation EndLoc);
+  /// \brief Called on well-formed 'simdlen' clause.
+  OMPClause *ActOnOpenMPSimdlenClause(Expr *Length, SourceLocation StartLoc,
+                                      SourceLocation LParenLoc,
+                                      SourceLocation EndLoc);
   /// \brief Called on well-formed 'collapse' clause.
   OMPClause *ActOnOpenMPCollapseClause(Expr *NumForLoops,
                                        SourceLocation StartLoc,
@@ -7961,7 +7975,7 @@ public:
       SourceLocation ColonLoc, SourceLocation EndLoc,
       CXXScopeSpec &ReductionIdScopeSpec,
       const DeclarationNameInfo &ReductionId, OpenMPDependClauseKind DepKind,
-      SourceLocation DepLoc);
+      OpenMPLinearClauseKind LinKind, SourceLocation DepLinLoc);
   /// \brief Called on well-formed 'private' clause.
   OMPClause *ActOnOpenMPPrivateClause(ArrayRef<Expr *> VarList,
                                       SourceLocation StartLoc,
@@ -7990,12 +8004,11 @@ public:
                              CXXScopeSpec &ReductionIdScopeSpec,
                              const DeclarationNameInfo &ReductionId);
   /// \brief Called on well-formed 'linear' clause.
-  OMPClause *ActOnOpenMPLinearClause(ArrayRef<Expr *> VarList,
-                                     Expr *Step,
-                                     SourceLocation StartLoc,
-                                     SourceLocation LParenLoc,
-                                     SourceLocation ColonLoc,
-                                     SourceLocation EndLoc);
+  OMPClause *
+  ActOnOpenMPLinearClause(ArrayRef<Expr *> VarList, Expr *Step,
+                          SourceLocation StartLoc, SourceLocation LParenLoc,
+                          OpenMPLinearClauseKind LinKind, SourceLocation LinLoc,
+                          SourceLocation ColonLoc, SourceLocation EndLoc);
   /// \brief Called on well-formed 'aligned' clause.
   OMPClause *ActOnOpenMPAlignedClause(ArrayRef<Expr *> VarList,
                                       Expr *Alignment,
