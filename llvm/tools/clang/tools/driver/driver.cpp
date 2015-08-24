@@ -435,6 +435,18 @@ int main(int argc_, const char **argv_) {
     MarkEOLs = false;
   llvm::cl::ExpandResponseFiles(Saver, Tokenizer, argv, MarkEOLs);
 
+  //-debug flag
+  for (int i = 2, size = argv.size(); i < size; ++i) {
+    if (StringRef(argv[i]) == "-debug") {
+      size_t pid = getpid();
+      
+      std::cerr << "PID: " << pid << std::endl;
+      std::cerr << "<press any key after attaching debugger, then 'continue' in debugger>" << std::endl;
+      std::string str;
+      std::getline(std::cin, str);
+    }
+  }
+
   // Handle -cc1 integrated tools, even if -cc1 was expanded from a response
   // file.
   auto FirstArg = std::find_if(argv.begin() + 1, argv.end(),
