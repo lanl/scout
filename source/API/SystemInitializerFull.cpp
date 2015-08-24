@@ -70,8 +70,8 @@
 
 #if defined(_MSC_VER)
 #include "lldb/Host/windows/windows.h"
-#include "Plugins/Process/Windows/ProcessWindows.h"
-#include "Plugins/Process/win-minidump/ProcessWinMiniDump.h"
+#include "Plugins/Process/Windows/Live/ProcessWindows.h"
+#include "Plugins/Process/Windows/MiniDump/ProcessWinMiniDump.h"
 #endif
 
 #include "llvm/Support/TargetSelect.h"
@@ -231,6 +231,7 @@ void
 SystemInitializerFull::Initialize()
 {
     SystemInitializerCommon::Initialize();
+    ScriptInterpreterNone::Initialize();
 
 #if !defined(LLDB_DISABLE_PYTHON)
     InitializeSWIG();
@@ -238,7 +239,6 @@ SystemInitializerFull::Initialize()
     // ScriptInterpreterPython::Initialize() depends on things like HostInfo being initialized
     // so it can compute the python directory etc, so we need to do this after
     // SystemInitializerCommon::Initialize().
-    ScriptInterpreterNone::Initialize();
     ScriptInterpreterPython::Initialize();
 #endif
 

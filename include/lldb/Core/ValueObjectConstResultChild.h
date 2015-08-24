@@ -37,13 +37,13 @@ public:
                                  bool is_deref_of_parent,
                                  lldb::addr_t live_address = LLDB_INVALID_ADDRESS);
     
-    virtual ~ValueObjectConstResultChild();
+    ~ValueObjectConstResultChild() override;
     
-    virtual lldb::ValueObjectSP
-    Dereference (Error &error);
+    lldb::ValueObjectSP
+    Dereference(Error &error) override;
     
-    virtual ValueObject *
-    CreateChildAtIndex (size_t idx, bool synthetic_array_member, int32_t synthetic_index);
+    ValueObject *
+    CreateChildAtIndex(size_t idx, bool synthetic_array_member, int32_t synthetic_index) override;
 
     virtual CompilerType
     GetClangType ()
@@ -51,19 +51,19 @@ public:
         return ValueObjectChild::GetClangType();
     }
     
-    virtual lldb::ValueObjectSP
-    GetSyntheticChildAtOffset(uint32_t offset, const CompilerType& type, bool can_create);
+    lldb::ValueObjectSP
+    GetSyntheticChildAtOffset(uint32_t offset, const CompilerType& type, bool can_create) override;
     
-    virtual lldb::ValueObjectSP
-    AddressOf (Error &error);
+    lldb::ValueObjectSP
+    AddressOf (Error &error) override;
     
-    virtual size_t
+    size_t
     GetPointeeData (DataExtractor& data,
                     uint32_t item_idx = 0,
-					uint32_t item_count = 1);
+					uint32_t item_count = 1) override;
 
-    virtual lldb::ValueObjectSP
-    Cast (const CompilerType &clang_ast_type);
+    lldb::ValueObjectSP
+    Cast (const CompilerType &clang_ast_type) override;
     
 protected:
     ValueObjectConstResultImpl m_impl;
@@ -78,4 +78,4 @@ private:
 
 } // namespace lldb_private
 
-#endif  // liblldb_ValueObjectConstResultChild_h_
+#endif // liblldb_ValueObjectConstResultChild_h_
