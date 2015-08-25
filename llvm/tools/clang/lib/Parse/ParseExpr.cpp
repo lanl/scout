@@ -1401,10 +1401,24 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
       BalancedDelimiterTracker T(*this, tok::l_square);
       T.consumeOpen();
       Loc = T.getOpenLocation();
-      ExprResult Idx;
+      ExprResult Idx, Length;
+      SourceLocation ColonLoc;
       if (getLangOpts().CPlusPlus11 && Tok.is(tok::l_brace)) {
         Diag(Tok, diag::warn_cxx98_compat_generalized_initializer_lists);
         Idx = ParseBraceInitializer();
+      } else if (getLangOpts().OpenMP) {
+        ColonProtectionRAIIObject RAII(*this);
+        // Parse [: or [ expr or [ expr :
+        if (!Tok.is(tok::colon)) {
+          // [ expr
+          Idx = ParseExpression();
+        }
+        if (Tok.is(tok::colon)) {
+          // Consume ':'
+          ColonLoc = ConsumeToken();
+          if (Tok.isNot(tok::r_square))
+            Length = ParseExpression();
+        }
       } else
         Idx = ParseExpression();
 
@@ -1429,15 +1443,20 @@ Parser::ParsePostfixExpressionSuffix(ExprResult LHS) {
 
         } else {
         // +==========================================================================+
-          LHS = Actions.ActOnArraySubscriptExpr(getCurScope(), LHS.get(), Loc,
-                                              Idx.get(), RLoc);
+          if (ColonLoc.isValid()) {
+            LHS = Actions.ActOnOMPArraySectionExpr(LHS.get(), Loc, Idx.get(),
+                                                   ColonLoc, Length.get(), RLoc);
+          } else {
+            LHS = Actions.ActOnArraySubscriptExpr(getCurScope(), LHS.get(), Loc,
+                                                  Idx.get(), RLoc);
+          }
         // +===== Scout ==============================================================+
         }
         // +==========================================================================+
-
       } else {
         (void)Actions.CorrectDelayedTyposInExpr(LHS);
         (void)Actions.CorrectDelayedTyposInExpr(Idx);
+        (void)Actions.CorrectDelayedTyposInExpr(Length);
         LHS = ExprError();
         Idx = ExprError();
       }

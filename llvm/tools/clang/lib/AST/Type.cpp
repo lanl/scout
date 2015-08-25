@@ -2601,6 +2601,7 @@ StringRef BuiltinType::getName(const PrintingPolicy &Policy) const {
   case OCLImage3d:        return "image3d_t";
   case OCLSampler:        return "sampler_t";
   case OCLEvent:          return "event_t";
+  case OMPArraySection:   return "<OpenMP array section type>";
   }
   
   llvm_unreachable("Invalid builtin type.");
@@ -3555,6 +3556,7 @@ bool Type::canHaveNullability() const {
     case BuiltinType::OCLEvent:
     case BuiltinType::BuiltinFn:
     case BuiltinType::NullPtr:
+    case BuiltinType::OMPArraySection:
       return false;
     }
 

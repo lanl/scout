@@ -3817,6 +3817,9 @@ public:
                                      Expr *Idx, SourceLocation RLoc);
   ExprResult CreateBuiltinArraySubscriptExpr(Expr *Base, SourceLocation LLoc,
                                              Expr *Idx, SourceLocation RLoc);
+  ExprResult ActOnOMPArraySectionExpr(Expr *Base, SourceLocation LBLoc,
+                                      Expr *LowerBound, SourceLocation ColonLoc,
+                                      Expr *Length, SourceLocation RBLoc);
 
   // +===== Scout ============================================================+
   ExprResult BuildMeshMemberReferenceExpr(Expr *Base, QualType BaseType,
