@@ -18,7 +18,7 @@
 #include "lldb/Expression/ClangExpression.h"
 #include "lldb/Expression/ClangModulesDeclVendor.h"
 #include "lldb/Symbol/ClangASTContext.h"
-#include "lldb/Symbol/ClangNamespaceDecl.h"
+#include "lldb/Symbol/CompilerDeclContext.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Symbol/TaggedASTType.h"
@@ -252,7 +252,7 @@ ClangASTSource::CompleteType (TagDecl *tag_decl)
                 if (log)
                     log->Printf("      CTD[%u] Searching namespace %s in module %s",
                                 current_id,
-                                i->second.GetNamespaceDecl()->getNameAsString().c_str(),
+                                i->second.GetName().AsCString(),
                                 i->first->GetFileSpec().GetFilename().GetCString());
 
                 TypeList types;
@@ -271,7 +271,7 @@ ClangASTSource::CompleteType (TagDecl *tag_decl)
                     if (!type)
                         continue;
 
-                    CompilerType clang_type (type->GetClangFullType());
+                    CompilerType clang_type (type->GetFullCompilerType ());
 
                     if (!clang_type)
                         continue;
@@ -294,7 +294,7 @@ ClangASTSource::CompleteType (TagDecl *tag_decl)
 
             SymbolContext null_sc;
             ConstString name(tag_decl->getName().str().c_str());
-            ClangNamespaceDecl namespace_decl;
+            CompilerDeclContext namespace_decl;
 
             const ModuleList &module_list = m_target->GetImages();
 
@@ -310,7 +310,7 @@ ClangASTSource::CompleteType (TagDecl *tag_decl)
                 if (!type)
                     continue;
 
-                CompilerType clang_type (type->GetClangFullType());
+                CompilerType clang_type (type->GetFullCompilerType ());
 
                 if (!clang_type)
                     continue;
@@ -401,7 +401,7 @@ ClangASTSource::GetCompleteObjCInterface (clang::ObjCInterfaceDecl *interface_de
     if (!complete_type_sp)
         return NULL;
 
-    TypeFromUser complete_type = TypeFromUser(complete_type_sp->GetClangFullType());
+    TypeFromUser complete_type = TypeFromUser(complete_type_sp->GetFullCompilerType ());
     lldb::clang_type_t complete_opaque_type = complete_type.GetOpaqueQualType();
 
     if (!complete_opaque_type)
@@ -617,7 +617,7 @@ ClangASTSource::FindExternalVisibleDecls (NameSearchContext &context)
             if (log)
                 log->Printf("  CAS::FEVD[%u] Searching namespace %s in module %s",
                             current_id,
-                            i->second.GetNamespaceDecl()->getNameAsString().c_str(),
+                            i->second.GetName().AsCString(),
                             i->first->GetFileSpec().GetFilename().GetCString());
 
             FindExternalVisibleDecls(context,
@@ -637,7 +637,7 @@ ClangASTSource::FindExternalVisibleDecls (NameSearchContext &context)
     }
     else
     {
-        ClangNamespaceDecl namespace_decl;
+        CompilerDeclContext namespace_decl;
 
         if (log)
             log->Printf("  CAS::FEVD[%u] Searching the root namespace", current_id);
@@ -666,7 +666,7 @@ ClangASTSource::FindExternalVisibleDecls (NameSearchContext &context)
 void
 ClangASTSource::FindExternalVisibleDecls (NameSearchContext &context,
                                           lldb::ModuleSP module_sp,
-                                          ClangNamespaceDecl &namespace_decl,
+                                          CompilerDeclContext &namespace_decl,
                                           unsigned int current_id)
 {
     assert (m_ast_context);
@@ -694,7 +694,7 @@ ClangASTSource::FindExternalVisibleDecls (NameSearchContext &context,
 
     if (module_sp && namespace_decl)
     {
-        ClangNamespaceDecl found_namespace_decl;
+        CompilerDeclContext found_namespace_decl;
 
         SymbolVendor *symbol_vendor = module_sp->GetSymbolVendor();
 
@@ -706,7 +706,7 @@ ClangASTSource::FindExternalVisibleDecls (NameSearchContext &context,
 
             if (found_namespace_decl)
             {
-                context.m_namespace_map->push_back(std::pair<lldb::ModuleSP, ClangNamespaceDecl>(module_sp, found_namespace_decl));
+                context.m_namespace_map->push_back(std::pair<lldb::ModuleSP, CompilerDeclContext>(module_sp, found_namespace_decl));
 
                 if (log)
                     log->Printf("  CAS::FEVD[%u] Found namespace %s in module %s",
@@ -728,7 +728,7 @@ ClangASTSource::FindExternalVisibleDecls (NameSearchContext &context,
             if (!image)
                 continue;
 
-            ClangNamespaceDecl found_namespace_decl;
+            CompilerDeclContext found_namespace_decl;
 
             SymbolVendor *symbol_vendor = image->GetSymbolVendor();
 
@@ -741,7 +741,7 @@ ClangASTSource::FindExternalVisibleDecls (NameSearchContext &context,
 
             if (found_namespace_decl)
             {
-                context.m_namespace_map->push_back(std::pair<lldb::ModuleSP, ClangNamespaceDecl>(image, found_namespace_decl));
+                context.m_namespace_map->push_back(std::pair<lldb::ModuleSP, CompilerDeclContext>(image, found_namespace_decl));
 
                 if (log)
                     log->Printf("  CAS::FEVD[%u] Found namespace %s in module %s",
@@ -779,7 +779,7 @@ ClangASTSource::FindExternalVisibleDecls (NameSearchContext &context,
                             (name_string ? name_string : "<anonymous>"));
             }
 
-            CompilerType full_type = type_sp->GetClangFullType();
+            CompilerType full_type = type_sp->GetFullCompilerType ();
 
             CompilerType copied_clang_type (GuardedCopyType(full_type));
 
@@ -1223,12 +1223,11 @@ ClangASTSource::FindObjCMethodDecls (NameSearchContext &context)
             if (!sc.function)
                 continue;
 
-            DeclContext *function_ctx = sc.function->GetClangDeclContext();
-
-            if (!function_ctx)
+            CompilerDeclContext function_decl_ctx = sc.function->GetDeclContext();
+            if (!function_decl_ctx)
                 continue;
 
-            ObjCMethodDecl *method_decl = dyn_cast<ObjCMethodDecl>(function_ctx);
+            ObjCMethodDecl *method_decl = ClangASTContext::DeclContextGetAsObjCMethodDecl(function_decl_ctx);
 
             if (!method_decl)
                 continue;
@@ -1791,7 +1790,7 @@ ClangASTSource::CompleteNamespaceMap (ClangASTImporter::NamespaceMapSP &namespac
             log->Printf("CompleteNamespaceMap[%u] on (ASTContext*)%p Searching for namespace %s in namespace %s",
                         current_id, static_cast<void*>(m_ast_context),
                         name.GetCString(),
-                        parent_map->begin()->second.GetNamespaceDecl()->getDeclName().getAsString().c_str());
+                        parent_map->begin()->second.GetName().AsCString());
         else
             log->Printf("CompleteNamespaceMap[%u] on (ASTContext*)%p Searching for namespace %s",
                         current_id, static_cast<void*>(m_ast_context),
@@ -1804,10 +1803,10 @@ ClangASTSource::CompleteNamespaceMap (ClangASTImporter::NamespaceMapSP &namespac
              i != e;
              ++i)
         {
-            ClangNamespaceDecl found_namespace_decl;
+            CompilerDeclContext found_namespace_decl;
 
             lldb::ModuleSP module_sp = i->first;
-            ClangNamespaceDecl module_parent_namespace_decl = i->second;
+            CompilerDeclContext module_parent_namespace_decl = i->second;
 
             SymbolVendor *symbol_vendor = module_sp->GetSymbolVendor();
 
@@ -1821,7 +1820,7 @@ ClangASTSource::CompleteNamespaceMap (ClangASTImporter::NamespaceMapSP &namespac
             if (!found_namespace_decl)
                 continue;
 
-            namespace_map->push_back(std::pair<lldb::ModuleSP, ClangNamespaceDecl>(module_sp, found_namespace_decl));
+            namespace_map->push_back(std::pair<lldb::ModuleSP, CompilerDeclContext>(module_sp, found_namespace_decl));
 
             if (log)
                 log->Printf("  CMN[%u] Found namespace %s in module %s",
@@ -1835,7 +1834,7 @@ ClangASTSource::CompleteNamespaceMap (ClangASTImporter::NamespaceMapSP &namespac
         const ModuleList &target_images = m_target->GetImages();
         Mutex::Locker modules_locker(target_images.GetMutex());
 
-        ClangNamespaceDecl null_namespace_decl;
+        CompilerDeclContext null_namespace_decl;
 
         for (size_t i = 0, e = target_images.GetSize(); i < e; ++i)
         {
@@ -1844,7 +1843,7 @@ ClangASTSource::CompleteNamespaceMap (ClangASTImporter::NamespaceMapSP &namespac
             if (!image)
                 continue;
 
-            ClangNamespaceDecl found_namespace_decl;
+            CompilerDeclContext found_namespace_decl;
 
             SymbolVendor *symbol_vendor = image->GetSymbolVendor();
 
@@ -1858,7 +1857,7 @@ ClangASTSource::CompleteNamespaceMap (ClangASTImporter::NamespaceMapSP &namespac
             if (!found_namespace_decl)
                 continue;
 
-            namespace_map->push_back(std::pair<lldb::ModuleSP, ClangNamespaceDecl>(image, found_namespace_decl));
+            namespace_map->push_back(std::pair<lldb::ModuleSP, CompilerDeclContext>(image, found_namespace_decl));
 
             if (log)
                 log->Printf("  CMN[%u] Found namespace %s in module %s",
@@ -1873,19 +1872,27 @@ NamespaceDecl *
 ClangASTSource::AddNamespace (NameSearchContext &context, ClangASTImporter::NamespaceMapSP &namespace_decls)
 {
     if (!namespace_decls)
-        return NULL;
+        return nullptr;
 
-    const ClangNamespaceDecl &namespace_decl = namespace_decls->begin()->second;
+    const CompilerDeclContext &namespace_decl = namespace_decls->begin()->second;
 
-    Decl *copied_decl = m_ast_importer->CopyDecl(m_ast_context, namespace_decl.GetASTContext(), namespace_decl.GetNamespaceDecl());
+    clang::ASTContext *src_ast = ClangASTContext::DeclContextGetClangASTContext(namespace_decl);
+    if (!src_ast)
+        return nullptr;
+    clang::NamespaceDecl *src_namespace_decl = ClangASTContext::DeclContextGetAsNamespaceDecl(namespace_decl);
+
+    if (!src_namespace_decl)
+        return nullptr;
+
+    Decl *copied_decl = m_ast_importer->CopyDecl(m_ast_context, src_ast, src_namespace_decl);
 
     if (!copied_decl)
-        return NULL;
+        return nullptr;
 
     NamespaceDecl *copied_namespace_decl = dyn_cast<NamespaceDecl>(copied_decl);
 
     if (!copied_namespace_decl)
-        return NULL;
+        return nullptr;
 
     context.m_decls.push_back(copied_namespace_decl);
 
