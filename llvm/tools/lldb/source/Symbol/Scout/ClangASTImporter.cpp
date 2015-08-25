@@ -61,7 +61,6 @@
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/ClangASTImporter.h"
 #include "lldb/Symbol/ClangExternalASTSourceCommon.h"
-#include "lldb/Symbol/ClangNamespaceDecl.h"
 
 #include "clang/AST/Scout/MeshDecl.h"
 

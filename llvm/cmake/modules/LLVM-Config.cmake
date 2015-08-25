@@ -118,6 +118,12 @@ function(llvm_map_components_to_libnames out_libs)
       endif()
     elseif( c STREQUAL "native" )
       # already processed
+    # ===== Scout ======================
+    # without this CMake was triggering an error - seems we caught the
+    # merge at a bad time?
+    elseif( c STREQUAL "IPA" )
+      # already processed
+   # ================================
     elseif( c STREQUAL "nativecodegen" )
       list(APPEND expanded_components "LLVM${LLVM_NATIVE_ARCH}CodeGen")
       if( TARGET LLVM${LLVM_NATIVE_ARCH}Desc )

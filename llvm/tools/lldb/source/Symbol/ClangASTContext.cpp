@@ -12920,7 +12920,9 @@ ClangASTContext::ParseMeshChildMembers
   
   size_t count = 0;
   const DWARFDebugInfoEntry *die;
-  const uint8_t *fixed_form_sizes = DWARFFormValue::GetFixedFormSizesForAddressSize (dwarf_cu->GetAddressByteSize(), dwarf_cu->IsDWARF64());
+  DWARFFormValue::FixedFormSizes fixed_form_sizes =
+  DWARFFormValue::GetFixedFormSizesForAddressSize (dwarf_cu->GetAddressByteSize(),
+                                                   dwarf_cu->IsDWARF64());
   //uint32_t member_idx = 0;
   BitfieldInfo last_field_info;
   ModuleSP module_sp = dwarf->GetObjectFile()->GetModule();
@@ -12968,7 +12970,7 @@ ClangASTContext::ParseMeshChildMembers
                 case DW_AT_decl_file:   decl.SetFile(sc.comp_unit->GetSupportFiles().GetFileSpecAtIndex(form_value.Unsigned())); break;
                 case DW_AT_decl_line:   decl.SetLine(form_value.Unsigned()); break;
                 case DW_AT_decl_column: decl.SetColumn(form_value.Unsigned()); break;
-                case DW_AT_name:        name = form_value.AsCString(&dwarf->get_debug_str_data()); break;
+                case DW_AT_name:        name = form_value.AsCString(dwarf); break;
                 case DW_AT_type:        encoding_uid = form_value.Reference(); break;
                 case DW_AT_data_member_location:
                   if (form_value.BlockData())
@@ -12984,6 +12986,7 @@ ClangASTContext::ParseMeshChildMembers
                                                   NULL, // RegisterContext *
                                                   module_sp,
                                                   debug_info_data,
+                                                  dwarf_cu,
                                                   block_offset,
                                                   block_length,
                                                   eRegisterKindDWARF,
@@ -13022,7 +13025,7 @@ ClangASTContext::ParseMeshChildMembers
               
               last_field_info.Clear();
               
-              CompilerType member_clang_type = member_type->GetClangLayoutType();
+              CompilerType member_clang_type = member_type->GetLayoutCompilerType ();
               
               field_decl = AddFieldToMeshType (class_clang_type,
                                                name,
@@ -13057,7 +13060,9 @@ ClangASTContext::ParseFrameChildMembers
   
   size_t count = 0;
   const DWARFDebugInfoEntry *die;
-  const uint8_t *fixed_form_sizes = DWARFFormValue::GetFixedFormSizesForAddressSize (dwarf_cu->GetAddressByteSize(), dwarf_cu->IsDWARF64());
+  DWARFFormValue::FixedFormSizes fixed_form_sizes =
+  DWARFFormValue::GetFixedFormSizesForAddressSize (dwarf_cu->GetAddressByteSize(),
+                                                   dwarf_cu->IsDWARF64());
   //uint32_t member_idx = 0;
   BitfieldInfo last_field_info;
   ModuleSP module_sp = dwarf->GetObjectFile()->GetModule();
@@ -13105,7 +13110,7 @@ ClangASTContext::ParseFrameChildMembers
                 case DW_AT_decl_file:   decl.SetFile(sc.comp_unit->GetSupportFiles().GetFileSpecAtIndex(form_value.Unsigned())); break;
                 case DW_AT_decl_line:   decl.SetLine(form_value.Unsigned()); break;
                 case DW_AT_decl_column: decl.SetColumn(form_value.Unsigned()); break;
-                case DW_AT_name:        name = form_value.AsCString(&dwarf->get_debug_str_data()); break;
+                case DW_AT_name:        name = form_value.AsCString(dwarf); break;
                 case DW_AT_type:        encoding_uid = form_value.Reference(); break;
                 case DW_AT_data_member_location:
                   if (form_value.BlockData())
@@ -13121,6 +13126,7 @@ ClangASTContext::ParseFrameChildMembers
                                                   NULL, // RegisterContext *
                                                   module_sp,
                                                   debug_info_data,
+                                                  dwarf_cu,
                                                   block_offset,
                                                   block_length,
                                                   eRegisterKindDWARF,
@@ -13155,7 +13161,7 @@ ClangASTContext::ParseFrameChildMembers
               
               last_field_info.Clear();
               
-              CompilerType member_clang_type = member_type->GetClangLayoutType();
+              CompilerType member_clang_type = member_type->GetLayoutCompilerType ();
               
               AddFieldToFrameType (class_clang_type,
                                    name,
