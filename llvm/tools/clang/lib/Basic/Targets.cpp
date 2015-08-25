@@ -863,10 +863,13 @@ public:
   void getTargetDefines(const LangOptions &Opts,
                         MacroBuilder &Builder) const override;
 
-  void getDefaultFeatures(llvm::StringMap<bool> &Features) const override;
+  void initDefaultFeatures(llvm::StringMap<bool> &Features) const override;
 
   bool handleTargetFeatures(std::vector<std::string> &Features,
                             DiagnosticsEngine &Diags) override;
+  bool handleUserFeatures(llvm::StringMap<bool> &Features,
+                          std::vector<std::string> &UserFeatures,
+                          DiagnosticsEngine &Diags) override;
   bool hasFeature(StringRef Feature) const override;
   void setFeatureEnabled(llvm::StringMap<bool> &Features, StringRef Name,
                          bool Enabled) const override;
@@ -1070,14 +1073,40 @@ bool PPCTargetInfo::handleTargetFeatures(std::vector<std::string> &Features,
     // TODO: Finish this list and add an assert that we've handled them
     // all.
   }
-  if (!HasVSX && (HasP8Vector || HasDirectMove)) {
-    if (HasP8Vector)
-      Diags.Report(diag::err_opt_not_valid_with_opt) << "-mpower8-vector" <<
-                                                        "-mno-vsx";
-    else if (HasDirectMove)
-      Diags.Report(diag::err_opt_not_valid_with_opt) << "-mdirect-move" <<
-                                                        "-mno-vsx";
-    return false;
+
+  return true;
+}
+
+bool PPCTargetInfo::handleUserFeatures(llvm::StringMap<bool> &Features,
+                                       std::vector<std::string> &UserFeatures,
+                                       DiagnosticsEngine &Diags) {
+
+  // Handle explicit options being passed to the compiler here: if we've
+  // explicitly turned off vsx and turned on power8-vector or direct-move then
+  // go ahead and error since the customer has expressed a somewhat incompatible
+  // set of options.
+  if (std::find(UserFeatures.begin(), UserFeatures.end(), "-vsx") !=
+      UserFeatures.end()) {
+    if (std::find(UserFeatures.begin(), UserFeatures.end(), "+power8-vector") !=
+        UserFeatures.end()) {
+      Diags.Report(diag::err_opt_not_valid_with_opt) << "-mpower8-vector"
+                                                     << "-mno-vsx";
+      return false;
+    }
+
+    if (std::find(UserFeatures.begin(), UserFeatures.end(), "+direct-move") !=
+        UserFeatures.end()) {
+      Diags.Report(diag::err_opt_not_valid_with_opt) << "-mdirect-move"
+                                                     << "-mno-vsx";
+      return false;
+    }
+  }
+
+  for (const auto &F : UserFeatures) {
+    const char *Name = F.c_str();
+    // Apply the feature via the target.
+    bool Enabled = Name[0] == '+';
+    setFeatureEnabled(Features, Name + 1, Enabled);
   }
 
   return true;
@@ -1262,7 +1291,7 @@ void PPCTargetInfo::getTargetDefines(const LangOptions &Opts,
   //   __NO_FPRS__
 }
 
-void PPCTargetInfo::getDefaultFeatures(llvm::StringMap<bool> &Features) const {
+void PPCTargetInfo::initDefaultFeatures(llvm::StringMap<bool> &Features) const {
   Features["altivec"] = llvm::StringSwitch<bool>(CPU)
     .Case("7400", true)
     .Case("g4", true)
@@ -1321,37 +1350,29 @@ bool PPCTargetInfo::hasFeature(StringRef Feature) const {
     .Default(false);
 }
 
-/*  There is no clear way for the target to know which of the features in the
-    final feature vector came from defaults and which are actually specified by
-    the user. To that end, we use the fact that this function is not called on
-    default features - only user specified ones. By the first time this
-    function is called, the default features are populated.
-    We then keep track of the features that the user specified so that we
-    can ensure we do not override a user's request (only defaults).
-    For example:
-    -mcpu=pwr8 -mno-vsx (should disable vsx and everything that depends on it)
-    -mcpu=pwr8 -mdirect-move -mno-vsx (should actually be diagnosed)
-
-NOTE: Do not call this from PPCTargetInfo::getDefaultFeatures
-*/
 void PPCTargetInfo::setFeatureEnabled(llvm::StringMap<bool> &Features,
                                       StringRef Name, bool Enabled) const {
-  static llvm::StringMap<bool> ExplicitFeatures;
-  ExplicitFeatures[Name] = Enabled;
-
-  // At this point, -mno-vsx turns off the dependent features but we respect
-  // the user's requests.
-  if (!Enabled && Name == "vsx") {
-    Features["direct-move"] = ExplicitFeatures["direct-move"];
-    Features["power8-vector"] = ExplicitFeatures["power8-vector"];
-  }
-  if ((Enabled && Name == "power8-vector") ||
-      (Enabled && Name == "direct-move")) {
-    if (ExplicitFeatures.find("vsx") == ExplicitFeatures.end()) {
-      Features["vsx"] = true;
+  // If we're enabling direct-move or power8-vector go ahead and enable vsx
+  // as well. Do the inverse if we're disabling vsx. We'll diagnose any user
+  // incompatible options.
+  if (Enabled) {
+    if (Name == "vsx") {
+     Features[Name] = true;
+    } else if (Name == "direct-move") {
+      Features[Name] = Features["vsx"] = true;
+    } else if (Name == "power8-vector") {
+      Features[Name] = Features["vsx"] = true;
+    } else {
+      Features[Name] = true;
+    }
+  } else {
+    if (Name == "vsx") {
+      Features[Name] = Features["direct-move"] = Features["power8-vector"] =
+          false;
+    } else {
+      Features[Name] = false;
     }
   }
-  Features[Name] = Enabled;
 }
 
 const char * const PPCTargetInfo::GCCRegNames[] = {
@@ -2335,10 +2356,10 @@ public:
     setFeatureEnabledImpl(Features, Name, Enabled);
   }
   // This exists purely to cut down on the number of virtual calls in
-  // getDefaultFeatures which calls this repeatedly.
+  // initDefaultFeatures which calls this repeatedly.
   static void setFeatureEnabledImpl(llvm::StringMap<bool> &Features,
                                     StringRef Name, bool Enabled);
-  void getDefaultFeatures(llvm::StringMap<bool> &Features) const override;
+  void initDefaultFeatures(llvm::StringMap<bool> &Features) const override;
   bool hasFeature(StringRef Feature) const override;
   bool handleTargetFeatures(std::vector<std::string> &Features,
                             DiagnosticsEngine &Diags) override;
@@ -2529,7 +2550,7 @@ bool X86TargetInfo::setFPMath(StringRef Name) {
   return false;
 }
 
-void X86TargetInfo::getDefaultFeatures(llvm::StringMap<bool> &Features) const {
+void X86TargetInfo::initDefaultFeatures(llvm::StringMap<bool> &Features) const {
   // FIXME: This *really* should not be here.
 
   // X86_64 always has SSE2.
@@ -3811,10 +3832,7 @@ namespace {
 class MinGWX86_32TargetInfo : public WindowsX86_32TargetInfo {
 public:
   MinGWX86_32TargetInfo(const llvm::Triple &Triple)
-      : WindowsX86_32TargetInfo(Triple) {
-    LongDoubleWidth = LongDoubleAlign = 128;
-    LongDoubleFormat = &llvm::APFloat::x87DoubleExtended;
-  }
+      : WindowsX86_32TargetInfo(Triple) {}
   void getTargetDefines(const LangOptions &Opts,
                         MacroBuilder &Builder) const override {
     WindowsX86_32TargetInfo::getTargetDefines(Opts, Builder);
@@ -4044,10 +4062,7 @@ public:
 class MinGWX86_64TargetInfo : public WindowsX86_64TargetInfo {
 public:
   MinGWX86_64TargetInfo(const llvm::Triple &Triple)
-      : WindowsX86_64TargetInfo(Triple) {
-    LongDoubleWidth = LongDoubleAlign = 128;
-    LongDoubleFormat = &llvm::APFloat::x87DoubleExtended;
-  }
+      : WindowsX86_64TargetInfo(Triple) {}
   void getTargetDefines(const LangOptions &Opts,
                         MacroBuilder &Builder) const override {
     WindowsX86_64TargetInfo::getTargetDefines(Opts, Builder);
@@ -4284,21 +4299,18 @@ class ARMTargetInfo : public TargetInfo {
     ArchISA    = llvm::ARMTargetParser::parseArchISA(ArchName);
     DefaultCPU = getDefaultCPU(ArchName);
 
-    // SubArch is specified by the target triple
-    if (!DefaultCPU.empty()) 
-      setArchInfo(DefaultCPU);
-    else 
-      // FIXME ArchInfo should be based on ArchName from triple, not on 
-      // a hard-coded CPU name. Doing so currently causes regressions:
-      // test/Preprocessor/init.c: __ARM_ARCH_6J__ not defined
-      setArchInfo(CPU);
+    unsigned ArchKind = llvm::ARMTargetParser::parseArch(ArchName);
+    if (ArchKind == llvm::ARM::AK_INVALID)
+      // set arch of the CPU, either provided explicitly or hardcoded default
+      ArchKind = llvm::ARMTargetParser::parseCPUArch(CPU);
+    setArchInfo(ArchKind);
   }
 
-  void setArchInfo(StringRef CPU) {
+  void setArchInfo(unsigned Kind) {
     StringRef SubArch;
 
     // cache TargetParser info
-    ArchKind    = llvm::ARMTargetParser::parseCPUArch(CPU);
+    ArchKind    = Kind;
     SubArch     = llvm::ARMTargetParser::getSubArch(ArchKind);
     ArchProfile = llvm::ARMTargetParser::parseArchProfile(SubArch);
     ArchVersion = llvm::ARMTargetParser::parseArchVersion(SubArch);
@@ -4486,7 +4498,7 @@ public:
   }
 
   // FIXME: This should be based on Arch attributes, not CPU names.
-  void getDefaultFeatures(llvm::StringMap<bool> &Features) const override {
+  void initDefaultFeatures(llvm::StringMap<bool> &Features) const override {
     if (CPU == "arm1136jf-s" || CPU == "arm1176jzf-s" || CPU == "mpcore")
       Features["vfp2"] = true;
     else if (CPU == "cortex-a8" || CPU == "cortex-a9") {
@@ -4597,10 +4609,11 @@ public:
   }
 
   bool setCPU(const std::string &Name) override {
-    unsigned ArchKind = llvm::ARMTargetParser::parseCPUArch(Name);
+    if (Name != "generic")
+      setArchInfo(llvm::ARMTargetParser::parseCPUArch(Name));
+
     if (ArchKind == llvm::ARM::AK_INVALID)
       return false;
-    setArchInfo(Name);
     setAtomic();
     CPU = Name;
     return true;
@@ -5211,6 +5224,7 @@ public:
     // PCS specifies this for SysV variants, which is all we support. Other ABIs
     // may choose __ARM_FP16_FORMAT_ALTERNATIVE.
     Builder.defineMacro("__ARM_FP16_FORMAT_IEEE");
+    Builder.defineMacro("__ARM_FP16_ARGS");
 
     if (Opts.FastMath || Opts.FiniteMathOnly)
       Builder.defineMacro("__ARM_FP_FAST");
@@ -5927,7 +5941,7 @@ public:
 
     return CPUKnown;
   }
-  void getDefaultFeatures(llvm::StringMap<bool> &Features) const override {
+  void initDefaultFeatures(llvm::StringMap<bool> &Features) const override {
     if (CPU == "zEC12")
       Features["transactional-execution"] = true;
     if (CPU == "z13") {
@@ -6298,7 +6312,7 @@ public:
         .Default(false);
   }
   const std::string& getCPU() const { return CPU; }
-  void getDefaultFeatures(llvm::StringMap<bool> &Features) const override {
+  void initDefaultFeatures(llvm::StringMap<bool> &Features) const override {
     if (CPU == "octeon")
       Features["mips64r2"] = Features["cnmips"] = true;
     else
@@ -6847,8 +6861,6 @@ public:
     this->RegParmMax = 0; // Disallow regparm
   }
 
-  void getDefaultFeatures(llvm::StringMap<bool> &Features) const override {
-  }
   void getArchDefines(const LangOptions &Opts, MacroBuilder &Builder) const {
     Builder.defineMacro("__le32__");
     Builder.defineMacro("__pnacl__");
@@ -7595,15 +7607,11 @@ TargetInfo::CreateTargetInfo(DiagnosticsEngine &Diags,
   // Compute the default target features, we need the target to handle this
   // because features may have dependencies on one another.
   llvm::StringMap<bool> Features;
-  Target->getDefaultFeatures(Features);
+  Target->initDefaultFeatures(Features);
 
   // Apply the user specified deltas.
-  for (const auto &F : Opts->FeaturesAsWritten) {
-    const char *Name = F.c_str();
-    // Apply the feature via the target.
-    bool Enabled = Name[0] == '+';
-    Target->setFeatureEnabled(Features, Name + 1, Enabled);
-  }
+  if (!Target->handleUserFeatures(Features, Opts->FeaturesAsWritten, Diags))
+      return nullptr;
 
   // Add the features to the compile options.
   //

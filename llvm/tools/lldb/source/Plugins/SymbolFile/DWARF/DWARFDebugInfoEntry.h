@@ -85,7 +85,6 @@ public:
             dw_attr_t attr;
             dw_form_t form;
         };
-
         typedef llvm::SmallVector<Info, 8> collection;
         collection m_infos;
     };
@@ -144,7 +143,7 @@ public:
     bool        FastExtract(
                     const lldb_private::DWARFDataExtractor& debug_info_data,
                     const DWARFCompileUnit* cu,
-                    const uint8_t *fixed_form_sizes,
+                    const DWARFFormValue::FixedFormSizes& fixed_form_sizes,
                     lldb::offset_t* offset_ptr);
 
     bool        Extract(
@@ -162,7 +161,7 @@ public:
     size_t      GetAttributes(
                     SymbolFileDWARF* dwarf2Data,
                     const DWARFCompileUnit* cu,
-                    const uint8_t *fixed_form_sizes,
+                    DWARFFormValue::FixedFormSizes fixed_form_sizes,
                     DWARFDebugInfoEntry::Attributes& attrs,
                     uint32_t curr_depth = 0) const; // "curr_depth" for internal use only, don't set this yourself!!!
 

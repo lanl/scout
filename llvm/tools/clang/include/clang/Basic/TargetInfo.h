@@ -737,10 +737,11 @@ public:
   /// language options which change the target configuration.
   virtual void adjust(const LangOptions &Opts);
 
-  /// \brief Get the default set of target features for the CPU;
-  /// this should include all legal feature strings on the target.
-  virtual void getDefaultFeatures(llvm::StringMap<bool> &Features) const {
-  }
+  /// \brief Initialize the map with the default set of target features for the
+  /// CPU, ABI, and FPMath options - these should have already been set prior
+  /// to calling this function; this should include all legal feature strings on
+  /// the target.
+  virtual void initDefaultFeatures(llvm::StringMap<bool> &Features) const {}
 
   /// \brief Get the ABI currently in use.
   virtual StringRef getABI() const { return StringRef(); }
@@ -794,6 +795,22 @@ public:
                                  StringRef Name,
                                  bool Enabled) const {
     Features[Name] = Enabled;
+  }
+
+  /// \brief Add user defined features to the feature set while
+  /// possibly diagnosing incompatibilities.
+  ///
+  /// \return False on error.
+  virtual bool handleUserFeatures(llvm::StringMap<bool> &Features,
+				  std::vector<std::string> &UserFeatures,
+				  DiagnosticsEngine &Diags) {
+    for (const auto &F : UserFeatures) {
+      const char *Name = F.c_str();
+      // Apply the feature via the target.
+      bool Enabled = Name[0] == '+';
+      setFeatureEnabled(Features, Name + 1, Enabled);
+    }
+    return true;
   }
 
   /// \brief Perform initialization based on the user configured

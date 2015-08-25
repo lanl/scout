@@ -90,7 +90,7 @@ protected:
     CanUpdateWithInvalidExecutionContext ();
 
     virtual CompilerType
-    GetClangTypeImpl ()
+    GetCompilerTypeImpl ()
     {
         return m_clang_type;
     }
@@ -129,4 +129,4 @@ protected:
 
 } // namespace lldb_private
 
-#endif  // liblldb_ValueObjectChild_h_
+#endif // liblldb_ValueObjectChild_h_

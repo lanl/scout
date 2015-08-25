@@ -19,7 +19,6 @@
 
 // Other libraries and framework includes
 // Project includes
-#include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "clang/AST/Decl.h"
 #include "lldb/lldb-public.h"
@@ -80,7 +79,7 @@ public:
     //------------------------------------------------------------------
     /// Destructor
     //------------------------------------------------------------------
-    ~ClangExpressionDeclMap ();
+    ~ClangExpressionDeclMap() override;
     
     //------------------------------------------------------------------
     /// Enable the state needed for parsing and IR transformation.
@@ -354,7 +353,7 @@ public:
     ///     True on success; false otherwise.
     //------------------------------------------------------------------
     void 
-    FindExternalVisibleDecls (NameSearchContext &context);
+    FindExternalVisibleDecls(NameSearchContext &context) override;
     
     //------------------------------------------------------------------
     /// Find all entities matching a given name in a given module/namespace,
@@ -385,7 +384,7 @@ public:
     void 
     FindExternalVisibleDecls (NameSearchContext &context, 
                               lldb::ModuleSP module,
-                              ClangNamespaceDecl &namespace_decl,
+                              CompilerDeclContext &namespace_decl,
                               unsigned int current_id);
 private:
     ClangExpressionVariableList    m_found_entities;           ///< All entities that were looked up for the parser.
@@ -546,7 +545,7 @@ private:
     FindGlobalVariable (Target &target,
                         lldb::ModuleSP &module,
                         const ConstString &name,
-                        ClangNamespaceDecl *namespace_decl,
+                        CompilerDeclContext *namespace_decl,
                         TypeFromUser *type = NULL);
     
     //------------------------------------------------------------------
@@ -702,4 +701,4 @@ private:
     
 } // namespace lldb_private
 
-#endif  // liblldb_ClangExpressionDeclMap_h_
+#endif // liblldb_ClangExpressionDeclMap_h_

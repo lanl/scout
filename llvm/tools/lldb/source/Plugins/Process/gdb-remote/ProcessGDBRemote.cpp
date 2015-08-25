@@ -216,6 +216,16 @@ public:
             return m_has[e_has_base];
         }
 
+        void set_base_is_offset (bool is_offset)
+        {
+            m_base_is_offset = is_offset;
+        }
+        bool get_base_is_offset(bool & out) const
+        {
+            out = m_base_is_offset;
+            return m_has[e_has_base];
+        }
+
         void set_link_map (const lldb::addr_t addr)
         {
             m_link_map = addr;
@@ -250,6 +260,7 @@ public:
         std::string m_name;
         lldb::addr_t m_link_map;
         lldb::addr_t m_base;
+        bool m_base_is_offset;
         lldb::addr_t m_dynamic;
     };
 
@@ -525,11 +536,23 @@ ProcessGDBRemote::BuildDynamicRegisterInfo (bool force)
     //     3 - Fall back on the qRegisterInfo packets.
 
     FileSpec target_definition_fspec = GetGlobalPluginProperties()->GetTargetDefinitionFile ();
+    if (!target_definition_fspec.Exists())
+    {
+        // If the filename doesn't exist, it may be a ~ not having been expanded - try to resolve it.
+        target_definition_fspec.ResolvePath();
+    }
     if (target_definition_fspec)
     {
         // See if we can get register definitions from a python file
         if (ParsePythonTargetDefinition (target_definition_fspec))
+        {
             return;
+        }
+        else
+        {
+            StreamSP stream_sp = GetTarget().GetDebugger().GetAsyncOutputStream();
+            stream_sp->Printf ("ERROR: target description file %s failed to parse.\n", target_definition_fspec.GetPath().c_str());
+        }
     }
 
     if (GetGDBServerRegisterInfo ())
@@ -712,11 +735,12 @@ ProcessGDBRemote::BuildDynamicRegisterInfo (bool force)
     if (!target_arch.IsValid())
     {
         if (remote_arch.IsValid()
-              && remote_arch.GetMachine() == llvm::Triple::arm
+              && (remote_arch.GetMachine() == llvm::Triple::arm || remote_arch.GetMachine() == llvm::Triple::thumb)
               && remote_arch.GetTriple().getVendor() == llvm::Triple::Apple)
             m_register_info.HardcodeARMRegisters(from_scratch);
     }
-    else if (target_arch.GetMachine() == llvm::Triple::arm)
+    else if (target_arch.GetMachine() == llvm::Triple::arm
+            || target_arch.GetMachine() == llvm::Triple::thumb)
     {
         m_register_info.HardcodeARMRegisters(from_scratch);
     }
@@ -1227,8 +1251,8 @@ ProcessGDBRemote::DidLaunchOrAttach (ArchSpec& process_arch)
                 // it has, so we really need to take the remote host architecture as our
                 // defacto architecture in this case.
 
-                if (process_arch.GetMachine() == llvm::Triple::arm &&
-                    process_arch.GetTriple().getVendor() == llvm::Triple::Apple)
+                if ((process_arch.GetMachine() == llvm::Triple::arm || process_arch.GetMachine() == llvm::Triple::thumb)
+                    && process_arch.GetTriple().getVendor() == llvm::Triple::Apple)
                 {
                     GetTarget().SetArchitecture (process_arch);
                     if (log)
@@ -2498,6 +2522,10 @@ ProcessGDBRemote::SetThreadStopInfo (StringExtractor& stop_packet)
                     StreamString ostr;
                     ostr.Printf("%" PRIu64 " %" PRIu32, wp_addr, wp_index);
                     description = ostr.GetString().c_str();
+                }
+                else if (key.compare("library") == 0)
+                {
+                    LoadModules();
                 }
                 else if (key.size() == 2 && ::isxdigit(key[0]) && ::isxdigit(key[1]))
                 {
@@ -4582,7 +4610,8 @@ ProcessGDBRemote::GetLoadedModuleList (GDBLoadedModuleInfoList & list)
                 {
                     // the displacement as read from the field 'l_addr' of the link_map struct.
                     module.set_base(StringConvert::ToUInt64(value.data(), LLDB_INVALID_ADDRESS, 0));
-                    
+                    // base address is always a displacement, not an absolute value.
+                    module.set_base_is_offset(true);
                 }
                 else if (name == "l_ld")
                 {
@@ -4597,13 +4626,15 @@ ProcessGDBRemote::GetLoadedModuleList (GDBLoadedModuleInfoList & list)
             {
                 std::string name;
                 lldb::addr_t lm=0, base=0, ld=0;
+                bool base_is_offset;
 
                 module.get_name (name);
                 module.get_link_map (lm);
                 module.get_base (base);
+                module.get_base_is_offset (base_is_offset);
                 module.get_dynamic (ld);
 
-                log->Printf ("found (link_map:0x08%" PRIx64 ", base:0x08%" PRIx64 ", ld:0x08%" PRIx64 ", name:'%s')", lm, base, ld, name.c_str());
+                log->Printf ("found (link_map:0x%08" PRIx64 ", base:0x%08" PRIx64 "[%s], ld:0x%08" PRIx64 ", name:'%s')", lm, base, (base_is_offset ? "offset" : "absolute"), ld, name.c_str());
             }
 
             list.add (module);
@@ -4645,15 +4676,19 @@ ProcessGDBRemote::GetLoadedModuleList (GDBLoadedModuleInfoList & list)
             const XMLNode &section = library.FindFirstChildElementWithName("section");
             llvm::StringRef address = section.GetAttributeValue("address");
             module.set_base(StringConvert::ToUInt64(address.data(), LLDB_INVALID_ADDRESS, 0));
+            // These addresses are absolute values.
+            module.set_base_is_offset(false);
 
             if (log)
             {
                 std::string name;
                 lldb::addr_t base = 0;
+                bool base_is_offset;
                 module.get_name (name);
                 module.get_base (base);
+                module.get_base_is_offset (base_is_offset);
 
-                log->Printf ("found (base:0x%" PRIx64 ", name:'%s')", base, name.c_str());
+                log->Printf ("found (base:0x%08" PRIx64 "[%s], name:'%s')", base, (base_is_offset ? "offset" : "absolute"), name.c_str());
             }
 
             list.add (module);
@@ -4670,7 +4705,7 @@ ProcessGDBRemote::GetLoadedModuleList (GDBLoadedModuleInfoList & list)
 }
 
 lldb::ModuleSP
-ProcessGDBRemote::LoadModuleAtAddress (const FileSpec &file, lldb::addr_t base_addr)
+ProcessGDBRemote::LoadModuleAtAddress (const FileSpec &file, lldb::addr_t base_addr, bool value_is_offset)
 {
     Target &target = m_process->GetTarget();
     ModuleList &modules = target.GetImages();
@@ -4681,11 +4716,11 @@ ProcessGDBRemote::LoadModuleAtAddress (const FileSpec &file, lldb::addr_t base_a
     ModuleSpec module_spec (file, target.GetArchitecture());
     if ((module_sp = modules.FindFirstModule (module_spec)))
     {
-        module_sp->SetLoadAddress (target, base_addr, true, changed);
+        module_sp->SetLoadAddress (target, base_addr, value_is_offset, changed);
     }
     else if ((module_sp = target.GetSharedModule (module_spec)))
     {
-        module_sp->SetLoadAddress (target, base_addr, true, changed);
+        module_sp->SetLoadAddress (target, base_addr, value_is_offset, changed);
     }
 
     return module_sp;
@@ -4708,10 +4743,12 @@ ProcessGDBRemote::LoadModules ()
     {
         std::string  mod_name;
         lldb::addr_t mod_base;
+        bool         mod_base_is_offset;
 
         bool valid = true;
         valid &= modInfo.get_name (mod_name);
         valid &= modInfo.get_base (mod_base);
+        valid &= modInfo.get_base_is_offset (mod_base_is_offset);
         if (!valid)
             continue;
 
@@ -4723,7 +4760,7 @@ ProcessGDBRemote::LoadModules ()
             marker += 1;
 
         FileSpec file (mod_name.c_str()+marker, true);
-        lldb::ModuleSP module_sp = LoadModuleAtAddress (file, mod_base);
+        lldb::ModuleSP module_sp = LoadModuleAtAddress (file, mod_base, mod_base_is_offset);
 
         if (module_sp.get())
             new_modules.Append (module_sp);

@@ -873,6 +873,7 @@ public:
   CanQualType OCLImage2dTy, OCLImage2dArrayTy;
   CanQualType OCLImage3dTy;
   CanQualType OCLSamplerTy, OCLEventTy;
+  CanQualType OMPArraySectionTy;
 
   // +===== Scout ==========================================================+
   CanQualType SCWindowTy, SCImageTy, SCFrameTy;

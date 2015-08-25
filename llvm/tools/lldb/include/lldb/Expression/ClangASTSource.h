@@ -60,7 +60,7 @@ public:
     //------------------------------------------------------------------
     /// Destructor
     //------------------------------------------------------------------
-    ~ClangASTSource();
+    ~ClangASTSource() override;
     
     //------------------------------------------------------------------
     /// Interface stubs.
@@ -376,7 +376,7 @@ protected:
     void 
     FindExternalVisibleDecls (NameSearchContext &context, 
                               lldb::ModuleSP module,
-                              ClangNamespaceDecl &namespace_decl,
+                              CompilerDeclContext &namespace_decl,
                               unsigned int current_id);
     
     //------------------------------------------------------------------
@@ -544,6 +544,6 @@ struct NameSearchContext {
     void AddNamedDecl (clang::NamedDecl *decl);
 };
 
-}
+} // namespace lldb_private
 
-#endif
+#endif // liblldb_ClangASTSource_h_

@@ -13,10 +13,7 @@
 #include <sstream>
 
 #include "NativeProcessLinux.h"
-#include "NativeRegisterContextLinux_arm.h"
-#include "NativeRegisterContextLinux_arm64.h"
-#include "NativeRegisterContextLinux_x86_64.h"
-#include "NativeRegisterContextLinux_mips64.h"
+#include "NativeRegisterContextLinux.h"
 
 #include "lldb/Core/Log.h"
 #include "lldb/Core/State.h"
@@ -418,8 +415,6 @@ NativeThreadLinux::RequestStop ()
         if (log)
             log->Printf ("NativeThreadLinux::%s tgkill(%" PRIu64 ", %" PRIu64 ", SIGSTOP) failed: %s", __FUNCTION__, pid, tid, err.AsCString ());
     }
-    else
-        m_thread_context.stop_requested = true;
 
     return err;
 }

@@ -139,7 +139,7 @@ protected:
     UpdateValue ();
     
     virtual CompilerType
-    GetClangTypeImpl ();
+    GetCompilerTypeImpl ();
 
     ConstString m_type_name;
     uint64_t m_byte_size;
@@ -187,4 +187,4 @@ private:
 
 } // namespace lldb_private
 
-#endif  // liblldb_ValueObjectConstResult_h_
+#endif // liblldb_ValueObjectConstResult_h_

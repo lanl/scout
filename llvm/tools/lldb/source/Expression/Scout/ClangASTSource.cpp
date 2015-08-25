@@ -60,7 +60,6 @@
 #include "lldb/Expression/ASTDumper.h"
 #include "lldb/Expression/ClangASTSource.h"
 #include "lldb/Expression/ClangExpression.h"
-#include "lldb/Symbol/ClangNamespaceDecl.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Target/ObjCLanguageRuntime.h"
@@ -122,7 +121,7 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
                 if (log)
                     log->Printf("      CTD[%u] Searching namespace %s in module %s",
                                 current_id,
-                                i->second.GetNamespaceDecl()->getNameAsString().c_str(),
+                                i->second.GetName().AsCString(),
                                 i->first->GetFileSpec().GetFilename().GetCString());
 
                 TypeList types;
@@ -141,7 +140,7 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
                     if (!type)
                         continue;
 
-                    CompilerType clang_type (type->GetClangFullType());
+                    CompilerType clang_type (type->GetFullCompilerType ());
 
                     if (!clang_type)
                         continue;
@@ -165,7 +164,7 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
 
             SymbolContext null_sc;
             ConstString name(mesh_decl->getName().str().c_str());
-            ClangNamespaceDecl namespace_decl;
+            CompilerDeclContext namespace_decl;
 
             const ModuleList &module_list = m_target->GetImages();
 
@@ -181,7 +180,7 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
                 if (!type)
                     continue;
 
-                CompilerType clang_type (type->GetClangFullType());
+                CompilerType clang_type (type->GetFullCompilerType ());
 
                 if (!clang_type)
                     continue;
@@ -261,7 +260,7 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
         if (log)
           log->Printf("      CTD[%u] Searching namespace %s in module %s",
                       current_id,
-                      i->second.GetNamespaceDecl()->getNameAsString().c_str(),
+                      i->second.GetName().AsCString(),
                       i->first->GetFileSpec().GetFilename().GetCString());
         
         TypeList types;
@@ -280,7 +279,7 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
           if (!type)
             continue;
           
-          CompilerType clang_type (type->GetClangFullType());
+          CompilerType clang_type (type->GetFullCompilerType ());
           
           if (!clang_type)
             continue;
@@ -304,7 +303,7 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
       
       SymbolContext null_sc;
       ConstString name(frame_decl->getName().str().c_str());
-      ClangNamespaceDecl namespace_decl;
+      CompilerDeclContext namespace_decl;
       
       const ModuleList &module_list = m_target->GetImages();
       
@@ -320,7 +319,7 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
         if (!type)
           continue;
         
-        CompilerType clang_type (type->GetClangFullType());
+        CompilerType clang_type (type->GetFullCompilerType ());
         
         if (!clang_type)
           continue;

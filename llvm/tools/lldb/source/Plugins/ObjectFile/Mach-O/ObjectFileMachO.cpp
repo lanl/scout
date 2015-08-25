@@ -26,7 +26,6 @@
 #include "lldb/Core/UUID.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Host/FileSpec.h"
-#include "lldb/Symbol/ClangNamespaceDecl.h"
 #include "lldb/Symbol/DWARFCallFrameInfo.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Target/MemoryRegionInfo.h"
@@ -1323,6 +1322,7 @@ ObjectFileMachO::GetAddressClass (lldb::addr_t file_addr)
 
                     case eSectionTypeDebug:
                     case eSectionTypeDWARFDebugAbbrev:
+                    case eSectionTypeDWARFDebugAddr:
                     case eSectionTypeDWARFDebugAranges:
                     case eSectionTypeDWARFDebugFrame:
                     case eSectionTypeDWARFDebugInfo:
@@ -1333,6 +1333,7 @@ ObjectFileMachO::GetAddressClass (lldb::addr_t file_addr)
                     case eSectionTypeDWARFDebugPubTypes:
                     case eSectionTypeDWARFDebugRanges:
                     case eSectionTypeDWARFDebugStr:
+                    case eSectionTypeDWARFDebugStrOffsets:
                     case eSectionTypeDWARFAppleNames:
                     case eSectionTypeDWARFAppleTypes:
                     case eSectionTypeDWARFAppleNamespaces:
@@ -5721,6 +5722,7 @@ ObjectFileMachO::SaveCore (const lldb::ProcessSP &process_sp,
             {
                 case llvm::Triple::aarch64:
                 case llvm::Triple::arm:
+                case llvm::Triple::thumb:
                 case llvm::Triple::x86:
                 case llvm::Triple::x86_64:
                     make_core = true;
