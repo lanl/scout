@@ -1,4 +1,4 @@
-"""
+﻿"""
 Test watchpoint modify command to set condition on a watchpoint.
 """
 
@@ -34,6 +34,8 @@ class WatchpointConditionCmdTestCase(TestBase):
         self.watchpoint_condition()
 
     @dwarf_test
+    @expectedFailureAndroid(archs=['arm', 'aarch64']) # Watchpoints not supported
+    @expectedFailureWindows("llvm.org/pr24446") # WINDOWS XFAIL TRIAGE - Watchpoints not supported on Windows
     def test_watchpoint_cond_with_dwarf(self):
         """Test watchpoint condition."""
         self.buildDwarf(dictionary=self.d)
@@ -49,7 +51,7 @@ class WatchpointConditionCmdTestCase(TestBase):
         lldbutil.run_break_set_by_file_and_line (self, None, self.line, num_expected_locations=1)
 
         # Run the program.
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         # We should be stopped again due to the breakpoint.
         # The stop reason of the thread should be breakpoint.

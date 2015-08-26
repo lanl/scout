@@ -86,15 +86,78 @@ namespace CodeGen {
     llvm::IntegerType* Int8Ty;
     llvm::IntegerType* Int32Ty;
     llvm::IntegerType* Int64Ty;
+    llvm::Type* FloatTy;
+    llvm::Type* DoubleTy;
     llvm::Type* VoidTy;
     llvm::Type* StringTy;
+    llvm::FunctionType* PlotFuncI32Ty;
+    llvm::FunctionType* PlotFuncI64Ty;
+    llvm::FunctionType* PlotFuncFloatTy;
+    llvm::FunctionType* PlotFuncDoubleTy;
+
+    llvm::FunctionType* PlotFuncI32VecTy;
+    llvm::FunctionType* PlotFuncI64VecTy;
+    llvm::FunctionType* PlotFuncFloatVecTy;
+    llvm::FunctionType* PlotFuncDoubleVecTy;
     
     llvm::Value* ElementInt32Val;
     llvm::Value* ElementInt64Val;
     llvm::Value* ElementFloatVal;
     llvm::Value* ElementDoubleVal;
-
-    llvm::Function* PlotFunc();
+    llvm::Value* ElementStringVal;
+    
+    llvm::Function* CreateFrameFunc();
+    llvm::Function* CreateMeshFrameFunc();
+    
+    llvm::Function* FrameAddVarFunc();
+    llvm::Function* FrameAddArrayVarFunc();
+    
+    llvm::Function* FrameCaptureI32Func();
+    llvm::Function* FrameCaptureI64Func();
+    llvm::Function* FrameCaptureFloatFunc();
+    llvm::Function* FrameCaptureDoubleFunc();
+    llvm::Function* FrameCaptureStringFunc();
+    
+    llvm::Function* PlotGetFunc();
+    llvm::Function* PlotInitFunc();
+    llvm::Function* PlotReadyFunc();
+    llvm::Function* PlotGetI32Func();
+    llvm::Function* PlotGetI64Func();
+    llvm::Function* PlotGetFloatFunc();
+    llvm::Function* PlotGetDoubleFunc();
+    llvm::Function* PlotAddLinesFunc();
+    llvm::Function* PlotAddLineFunc();
+    llvm::Function* PlotAddPointsFunc();
+    llvm::Function* PlotAddAreaFunc();
+    llvm::Function* PlotAddIntervalFunc();
+    llvm::Function* PlotAddPieFunc();
+    llvm::Function* PlotAddBinsFunc();
+    llvm::Function* PlotAddProportionFunc();
+    llvm::Function* PlotProportionAddVarFunc();
+    llvm::Function* PlotAddAxisFunc();
+    llvm::Function* PlotRenderFunc();
+    llvm::Function* PlotRefreshFunc();
+    llvm::Function* PlotAddVarI32Func();
+    llvm::Function* PlotAddVarI64Func();
+    llvm::Function* PlotAddVarFloatFunc();
+    llvm::Function* PlotAddVarDoubleFunc();
+    llvm::Function* PlotAddAggregateFunc();
+    llvm::Function* AggregateAddVarFunc();
+    
+    llvm::Function* PlotAddVarI32VecFunc();
+    llvm::Function* PlotAddVarI64VecFunc();
+    llvm::Function* PlotAddVarFloatVecFunc();
+    llvm::Function* PlotAddVarDoubleVecFunc();
+    
+    llvm::Function* PlotAddVarFunc();
+    llvm::Function* PlotCaptureI32Func();
+    llvm::Function* PlotCaptureI64Func();
+    llvm::Function* PlotCaptureFloatFunc();
+    llvm::Function* PlotCaptureDoubleFunc();
+    
+    llvm::Function* PlotSetAntialiasedFunc();
+    llvm::Function* PlotSetOutputFunc();
+    llvm::Function* PlotSetRangeFunc();
     
   private:
     CodeGen::CodeGenModule& CGM;

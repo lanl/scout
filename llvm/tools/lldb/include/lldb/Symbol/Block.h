@@ -17,7 +17,7 @@
 #include "lldb/Core/UserID.h"
 #include "lldb/Symbol/LineEntry.h"
 #include "lldb/Symbol/SymbolContext.h"
-#include "lldb/Symbol/ClangASTType.h"
+#include "lldb/Symbol/CompilerType.h"
 
 namespace lldb_private {
 
@@ -330,7 +330,7 @@ public:
     ///     added to the variable list until there are no parent blocks
     ///     or the parent block has inlined function info.
     ///
-    /// @param[in/out] variable_list
+    /// @param[in,out] variable_list
     ///     All variables in this block, and optionally all parent
     ///     blocks will be added to this list.
     ///
@@ -357,8 +357,8 @@ public:
         return m_inlineInfoSP.get();
     }
     
-    clang::DeclContext *
-    GetClangDeclContext();
+    CompilerDeclContext
+    GetDeclContext();
 
     //------------------------------------------------------------------
     /// Get the memory cost of this object.

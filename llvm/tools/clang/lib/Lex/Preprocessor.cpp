@@ -179,7 +179,7 @@ void Preprocessor::Initialize(const TargetInfo &Target) {
   this->Target = &Target;
   
   // Initialize information about built-ins.
-  BuiltinInfo.InitializeTarget(Target);
+  BuiltinInfo.initializeTarget(Target);
   HeaderInfo.setTarget(Target);
 }
 

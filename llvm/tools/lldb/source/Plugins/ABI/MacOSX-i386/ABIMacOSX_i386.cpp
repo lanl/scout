@@ -146,7 +146,7 @@ enum
 
 static RegisterInfo g_register_infos[] = 
 {
-  //  NAME      ALT      SZ OFF ENCODING         FORMAT                COMPILER              DWARF                 GENERIC                      GDB                   LLDB NATIVE            VALUE REGS    INVALIDATE REGS
+  //  NAME      ALT      SZ OFF ENCODING         FORMAT                EH_FRAME              DWARF                 GENERIC                      STABS                 LLDB NATIVE            VALUE REGS    INVALIDATE REGS
   //  ======    =======  == === =============    ============          ===================== ===================== ============================ ====================  ====================== ==========    ===============
     { "eax",    NULL,    4,  0, eEncodingUint  , eFormatHex          , { gcc_eax             , dwarf_eax           , LLDB_INVALID_REGNUM       , gdb_eax            , LLDB_INVALID_REGNUM },      NULL,              NULL},
     { "ebx"   , NULL,    4,  0, eEncodingUint  , eFormatHex          , { gcc_ebx             , dwarf_ebx           , LLDB_INVALID_REGNUM       , gdb_ebx            , LLDB_INVALID_REGNUM },      NULL,              NULL},
@@ -236,7 +236,8 @@ ABISP
 ABIMacOSX_i386::CreateInstance (const ArchSpec &arch)
 {
     static ABISP g_abi_sp;
-     if (arch.GetTriple().getArch() == llvm::Triple::x86)
+     if ((arch.GetTriple().getArch() == llvm::Triple::x86) &&
+          (arch.GetTriple().isMacOSX() || arch.GetTriple().isiOS()))
      {
         if (!g_abi_sp)
             g_abi_sp.reset (new ABIMacOSX_i386);
@@ -417,7 +418,7 @@ ABIMacOSX_i386::PrepareNormalCall (Thread &thread,
             break;
         case Value::eValueTypeHostAddress:
             {
-                ClangASTType clang_type (val->GetClangType());
+                CompilerType clang_type (val->GetCompilerType());
                 if (clang_type)
                 {
                     uint32_t cstr_length = 0;
@@ -544,7 +545,7 @@ ABIMacOSX_i386::GetArgumentValues (Thread &thread,
         
         // We currently only support extracting values with Clang QualTypes.
         // Do we care about others?
-        ClangASTType clang_type (value->GetClangType());
+        CompilerType clang_type (value->GetCompilerType());
         if (clang_type)
         {
             bool is_signed;
@@ -581,7 +582,7 @@ ABIMacOSX_i386::SetReturnValueObject(lldb::StackFrameSP &frame_sp, lldb::ValueOb
         return error;
     }
     
-    ClangASTType clang_type = new_value_sp->GetClangType();
+    CompilerType clang_type = new_value_sp->GetCompilerType();
     if (!clang_type)
     {
         error.SetErrorString ("Null clang type for return value.");
@@ -653,7 +654,7 @@ ABIMacOSX_i386::SetReturnValueObject(lldb::StackFrameSP &frame_sp, lldb::ValueOb
 
 ValueObjectSP
 ABIMacOSX_i386::GetReturnValueObjectImpl (Thread &thread,
-                                          ClangASTType &clang_type) const
+                                          CompilerType &clang_type) const
 {
     Value value;
     ValueObjectSP return_valobj_sp;
@@ -662,7 +663,7 @@ ABIMacOSX_i386::GetReturnValueObjectImpl (Thread &thread,
         return return_valobj_sp;
     
     //value.SetContext (Value::eContextTypeClangType, clang_type.GetOpaqueQualType());
-    value.SetClangType (clang_type);
+    value.SetCompilerType (clang_type);
     
     RegisterContext *reg_ctx = thread.GetRegisterContext().get();
         if (!reg_ctx)

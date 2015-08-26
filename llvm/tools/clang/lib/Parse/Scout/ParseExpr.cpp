@@ -66,19 +66,19 @@
 
 using namespace clang;
 
-static ForallMeshStmt::MeshElementType setMeshElementType(tok::TokenKind kind){
+static MeshElementType setMeshElementType(tok::TokenKind kind){
    switch(kind){
      case tok::kw_cells:
-      return ForallMeshStmt::Cells;
+      return Cells;
     case tok::kw_vertices:
-      return ForallMeshStmt::Vertices;
+      return Vertices;
     case tok::kw_edges:
-      return ForallMeshStmt::Edges;
+      return Edges;
     case tok::kw_faces:
-      return ForallMeshStmt::Faces;
-      break;
+      return Faces;
     default:
-      return ForallMeshStmt::Undefined;
+      assert(false && "unrecognized token kind for mesh element type");
+      return Undefined;
   }
 }
 
@@ -99,12 +99,18 @@ ExprResult Parser::ParseScoutQueryExpression(){
   tok::TokenKind ElementToken = Tok.getKind();
   ConsumeToken();
   
-  ForallMeshStmt::MeshElementType MeshElementType = setMeshElementType(ElementToken);
-  if (MeshElementType == ForallMeshStmt::Undefined){
+  MeshElementType MET = setMeshElementType(ElementToken);
+  if (MET == Undefined){
     Diag(Tok, diag::err_query_expected_mesh_element_kw);
     SkipUntil(tok::semi);
     return ExprError();
   }
+  
+  unsigned ScopeFlags =
+  Scope::DeclScope     |
+  Scope::ControlScope;
+  
+  ParseScope QueryScope(this, ScopeFlags);
   
   // We consumed the element token above and should now be
   // at the element identifier portion of the query; make
@@ -130,8 +136,8 @@ ExprResult Parser::ParseScoutQueryExpression(){
   //if we are in scc-mode and in a function where the mesh was
   // passed as a parameter we will have a star here.
   bool meshptr = false;
-  if(getLangOpts().ScoutC){
-    if(Tok.is(tok::star)){
+  if (getLangOpts().ScoutC) {
+    if (Tok.is(tok::star)) {
       ConsumeToken();
       meshptr = true;
     }
@@ -139,7 +145,7 @@ ExprResult Parser::ParseScoutQueryExpression(){
   
   // Finally, we are at the identifier that specifies the mesh
   // that we are querying over.
-  if (Tok.isNot(tok::identifier)){
+  if (Tok.isNot(tok::identifier)) {
     Diag(Tok, diag::err_expected_ident);
     SkipUntil(tok::semi);
     return ExprError();
@@ -150,13 +156,13 @@ ExprResult Parser::ParseScoutQueryExpression(){
   
   VarDecl* VD = LookupScoutVarDecl(MeshIdentInfo, MeshIdentLoc);
   
-  if(VD == 0){
+  if (VD == 0) {
     return ExprError();
   }
   
   // If we are in scc-mode and inside a function then make sure
   // we have a *
-  if(getLangOpts().ScoutC && isa<ParmVarDecl>(VD) && meshptr == false){
+  if (getLangOpts().ScoutC && isa<ParmVarDecl>(VD) && meshptr == false) {
     Diag(Tok,diag::err_expected_star_mesh);
     SkipUntil(tok::semi);
     return ExprError();
@@ -164,7 +170,7 @@ ExprResult Parser::ParseScoutQueryExpression(){
   
   const MeshType* RefMeshType = LookupMeshType(VD, MeshIdentInfo);
   
-  if(RefMeshType == 0){
+  if (RefMeshType == 0) {
     Diag(MeshIdentLoc, diag::err_expected_a_mesh_type);
     SkipUntil(tok::semi);
     return ExprError();
@@ -173,7 +179,7 @@ ExprResult Parser::ParseScoutQueryExpression(){
   DeclStmt* Init; //declstmt for forall implicit variable
   bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
                                                     MeshIdentInfo, MeshIdentLoc,
-                                                    MeshElementType,
+                                                    MET,
                                                     ElementIdentInfo,
                                                     ElementIdentLoc,
                                                     RefMeshType,
@@ -184,25 +190,26 @@ ExprResult Parser::ParseScoutQueryExpression(){
   
   ConsumeToken();
   
-  MeshElementTypeDiag(MeshElementType, RefMeshType, MeshIdentLoc);
+  MeshElementTypeDiag(MET, RefMeshType, MeshIdentLoc);
   
-  if (Tok.isNot(tok::kw_select)){
+  if (Tok.isNot(tok::kw_select)) {
     Diag(Tok, diag::err_query_expected_kw_select);
     SkipUntil(tok::semi);
     return ExprError();
   }
+  
   SourceLocation SelectLoc = ConsumeToken();
   (void)SelectLoc; // suppress warning 
  
   ExprResult FieldResult = ParseExpression();
   
-  if(FieldResult.isInvalid() || !isa<MemberExpr>(FieldResult.get())){
+  if (FieldResult.isInvalid() || !isa<MemberExpr>(FieldResult.get())) {
     Diag(Tok, diag::err_invalid_query_field);
     SkipUntil(tok::semi);
     return ExprError();
   }
   
-  if (Tok.isNot(tok::kw_where)){
+  if (Tok.isNot(tok::kw_where)) {
     Diag(Tok, diag::err_query_expected_kw_where);
     SkipUntil(tok::semi);
     return ExprError();
@@ -212,30 +219,29 @@ ExprResult Parser::ParseScoutQueryExpression(){
 
   ExprResult PredicateResult = ParseExpression();
   
-  if(PredicateResult.isInvalid()){
+  if (PredicateResult.isInvalid()) {
     Diag(Tok, diag::err_invalid_query_predicate);
     SkipUntil(tok::semi);
     return ExprError();
   }
   
-  return Actions.ActOnQueryExpr(FromLoc,
-                                VD,
+  return Actions.ActOnQueryExpr(FromLoc, VD,
                                 FieldResult.get(),
                                 PredicateResult.get());
 }
 
-ExprResult Parser::ParseSpecExpression(){
-  if(Tok.is(tok::l_brace)){
+ExprResult Parser::ParseSpecExpression() {
+  
+  if (Tok.is(tok::l_brace)) {
     return ParseSpecObjectExpression();
-  }
-  else if(Tok.is(tok::l_square)){
+  } else if(Tok.is(tok::l_square)) {
     return ParseSpecArrayExpression();
   }
   
   return ParseSpecValueExpression();
 }
 
-ExprResult Parser::ParseSpecObjectExpression(){
+ExprResult Parser::ParseSpecObjectExpression() {
   assert(Tok.is(tok::l_brace) && "expected '{'");
 
   BalancedDelimiterTracker T(*this, tok::l_brace);
@@ -246,17 +252,16 @@ ExprResult Parser::ParseSpecObjectExpression(){
   
   bool first = true;
   
-  for(;;){
-    if(Tok.is(tok::r_brace)){
+  for(;;) {
+    if (Tok.is(tok::r_brace)) {
       T.consumeClose();
       break;
     }
     
-    if(first){
+    if (first) {
       first = false;
-    }
-    else{
-      if(Tok.isNot(tok::comma)){
+    } else {
+      if(Tok.isNot(tok::comma)) {
         T.skipToEnd();
         Diag(Tok, diag::err_spec_invalid_expected) << ",";
         return ExprError();
@@ -268,24 +273,22 @@ ExprResult Parser::ParseSpecObjectExpression(){
     
     SourceLocation keyLoc = Tok.getLocation();
     
-    if(Tok.is(tok::identifier)){
+    if (Tok.is(tok::identifier)) {
       IdentifierInfo* IdentInfo = Tok.getIdentifierInfo();
       key = IdentInfo->getName().str();
       ConsumeToken();
-    }
-    else if(Tok.is(tok::string_literal)){
+    } else if(Tok.is(tok::string_literal)) {
       ExprResult StringResult = ParseStringLiteralExpression();
       StringLiteral* literal = cast<StringLiteral>(StringResult.get());
       key = literal->getString().str();
       ConsumeToken();
-    }
-    else{
+    } else {
       Diag(Tok, diag::err_spec_invalid_object_key);
       T.skipToEnd();
       return ExprError();
     }
     
-    if(Tok.isNot(tok::colon)){
+    if (Tok.isNot(tok::colon)) {
       Diag(Tok, diag::err_spec_invalid_expected) << ":";
       T.skipToEnd();
       return ExprError();
@@ -295,7 +298,7 @@ ExprResult Parser::ParseSpecObjectExpression(){
     
     ExprResult valueResult = ParseSpecExpression();
     
-    if(valueResult.isInvalid()){
+    if (valueResult.isInvalid()) {
       T.skipToEnd();
       return ExprError();
     }
@@ -303,7 +306,7 @@ ExprResult Parser::ParseSpecObjectExpression(){
     SpecExpr* value = cast<SpecExpr>(valueResult.get());
     obj->insert(key, keyLoc, value);
     
-    if(key == "var"){
+    if (key == "var") {
       if(SpecObjectExpr* o = value->toObject()){
         auto m = o->memberMap();
         

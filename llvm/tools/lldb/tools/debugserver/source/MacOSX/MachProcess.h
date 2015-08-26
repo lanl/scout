@@ -27,6 +27,7 @@
 #include "PThreadMutex.h"
 #include "Genealogy.h"
 #include "ThreadInfo.h"
+#include "JSONGenerator.h"
 
 #include <mach/mach.h>
 #include <sys/signal.h>
@@ -79,6 +80,7 @@ public:
     static const void *     PrepareForAttach (const char *path, nub_launch_flavor_t launch_flavor, bool waitfor, DNBError &err_str);
     static void             CleanupAfterAttach (const void *attach_token, bool success, DNBError &err_str);
     static nub_process_t    CheckForProcess (const void *attach_token);
+    static bool             GetOSVersionNumbers (uint64_t *major, uint64_t *minor, uint64_t *patch);
 #ifdef WITH_BKS
     pid_t                   BKSLaunchForDebug (const char *app_bundle_path, char const *argv[], char const *envp[], bool no_stdio, bool disable_aslr, const char *event_data, DNBError &launch_err);
     pid_t                   BKSForkChildForPTraceDebugging (const char *path, char const *argv[], char const *envp[], bool no_stdio, bool disable_aslr, const char *event_data, DNBError &launch_err);
@@ -185,6 +187,7 @@ public:
     nub_addr_t              GetPThreadT (nub_thread_t tid);
     nub_addr_t              GetDispatchQueueT (nub_thread_t tid);
     nub_addr_t              GetTSDAddressForThread (nub_thread_t tid, uint64_t plo_pthread_tsd_base_address_offset, uint64_t plo_pthread_tsd_base_offset, uint64_t plo_pthread_tsd_entry_size);
+    JSONGenerator::ObjectSP GetLoadedDynamicLibrariesInfos (nub_process_t pid, nub_addr_t image_list_address, nub_addr_t image_count);
 
     nub_size_t              GetNumThreads () const;
     nub_thread_t            GetThreadAtIndex (nub_size_t thread_idx) const;

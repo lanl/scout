@@ -223,20 +223,8 @@ lto_symbol_attributes lto_module_get_symbol_attribute(lto_module_t mod,
   return unwrap(mod)->getSymbolAttributes(index);
 }
 
-unsigned int lto_module_get_num_deplibs(lto_module_t mod) {
-  return unwrap(mod)->getDependentLibraryCount();
-}
-
-const char* lto_module_get_deplib(lto_module_t mod, unsigned int index) {
-  return unwrap(mod)->getDependentLibrary(index);
-}
-
-unsigned int lto_module_get_num_linkeropts(lto_module_t mod) {
-  return unwrap(mod)->getLinkerOptCount();
-}
-
-const char* lto_module_get_linkeropt(lto_module_t mod, unsigned int index) {
-  return unwrap(mod)->getLinkerOpt(index);
+const char* lto_module_get_linkeropts(lto_module_t mod) {
+  return unwrap(mod)->getLinkerOpts();
 }
 
 void lto_codegen_set_diagnostic_handler(lto_code_gen_t cg,
@@ -272,7 +260,7 @@ bool lto_codegen_add_module(lto_code_gen_t cg, lto_module_t mod) {
 }
 
 void lto_codegen_set_module(lto_code_gen_t cg, lto_module_t mod) {
-  unwrap(cg)->setModule(unwrap(mod));
+  unwrap(cg)->setModule(std::unique_ptr<LTOModule>(unwrap(mod)));
 }
 
 bool lto_codegen_set_debug_model(lto_code_gen_t cg, lto_debug_model debug) {
@@ -281,8 +269,22 @@ bool lto_codegen_set_debug_model(lto_code_gen_t cg, lto_debug_model debug) {
 }
 
 bool lto_codegen_set_pic_model(lto_code_gen_t cg, lto_codegen_model model) {
-  unwrap(cg)->setCodePICModel(model);
-  return false;
+  switch (model) {
+  case LTO_CODEGEN_PIC_MODEL_STATIC:
+    unwrap(cg)->setCodePICModel(Reloc::Static);
+    return false;
+  case LTO_CODEGEN_PIC_MODEL_DYNAMIC:
+    unwrap(cg)->setCodePICModel(Reloc::PIC_);
+    return false;
+  case LTO_CODEGEN_PIC_MODEL_DYNAMIC_NO_PIC:
+    unwrap(cg)->setCodePICModel(Reloc::DynamicNoPIC);
+    return false;
+  case LTO_CODEGEN_PIC_MODEL_DEFAULT:
+    unwrap(cg)->setCodePICModel(Reloc::Default);
+    return false;
+  }
+  sLastErrorString = "Unknown PIC model";
+  return true;
 }
 
 void lto_codegen_set_cpu(lto_code_gen_t cg, const char *cpu) {

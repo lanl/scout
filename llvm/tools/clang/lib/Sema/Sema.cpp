@@ -40,7 +40,6 @@
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallSet.h"
-#include "llvm/Support/CrashRecoveryContext.h"
 using namespace clang;
 using namespace sema;
 
@@ -139,10 +138,6 @@ void Sema::addImplicitTypedef(StringRef Name, QualType T) {
 }
 
 void Sema::Initialize() {
-  // Tell the AST consumer about this Sema object.
-  Consumer.Initialize(Context);
-
-  // FIXME: Isn't this redundant with the initialization above?
   if (SemaConsumer *SC = dyn_cast<SemaConsumer>(&Consumer))
     SC->InitializeSema(*this);
 
@@ -154,6 +149,9 @@ void Sema::Initialize() {
   // This needs to happen after ExternalSemaSource::InitializeSema(this) or we
   // will not be able to merge any duplicate __va_list_tag decls correctly.
   VAListTagName = PP.getIdentifierInfo("__va_list_tag");
+
+  if (!TUScope)
+    return;
 
   // Initialize predefined 128-bit integer types, if needed.
   if (Context.getTargetInfo().hasInt128Type()) {
@@ -688,6 +686,9 @@ void Sema::ActOnEndOfTranslationUnit() {
   // write out the lists to the AST file (if any).
   assert(DelayedDefaultedMemberExceptionSpecs.empty());
   assert(DelayedExceptionSpecChecks.empty());
+
+  // All dllexport classes should have been processed already.
+  assert(DelayedDllExportClasses.empty());
 
   // Remove file scoped decls that turned out to be used.
   UnusedFileScopedDecls.erase(

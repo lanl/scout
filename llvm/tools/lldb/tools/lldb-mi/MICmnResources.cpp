@@ -129,7 +129,7 @@ const CMICmnResources::SRsrcTextData CMICmnResources::ms_pResourceId2TextData[] 
     {IDS_LLDBDEBUGGER_ERR_INVALIDCLIENTNAME, "LLDB Debugger. Invalid client name '%s' "},
     {IDS_LLDBDEBUGGER_ERR_CLIENTNOTREGISTERED, "LLDB Debugger. Client name '%s' not registered for listening events"},
     {IDS_LLDBDEBUGGER_ERR_STOPLISTENER, "LLDB Debugger. Failure occurred stopping event for client '%s' SBBroadcaster '%s'"},
-    {IDS_LLDBDEBUGGER_ERR_BROARDCASTER_NAME, "LLDB Debugger. Broardcaster's name '%s' is not valid"},
+    {IDS_LLDBDEBUGGER_ERR_BROADCASTER_NAME, "LLDB Debugger. Broadcaster's name '%s' is not valid"},
     {IDS_LLDBDEBUGGER_WRN_UNKNOWN_EVENT, "LLDB Debugger. Unhandled event '%s'"},
     {IDS_LLDBOUTOFBAND_ERR_UNKNOWN_EVENT, "LLDB Out-of-band. Handling event for '%s', an event enumeration '%d' not recognised"},
     {IDS_LLDBOUTOFBAND_ERR_PROCESS_INVALID, "LLDB Out-of-band. Invalid '%s' in '%s'"},
@@ -265,7 +265,7 @@ const CMICmnResources::SRsrcTextData CMICmnResources::ms_pResourceId2TextData[] 
 // Return:  None.
 // Throws:  None.
 //--
-CMICmnResources::CMICmnResources(void)
+CMICmnResources::CMICmnResources()
     : m_nResourceId2TextDataSize(0)
 {
     // Do not use this constructor, use Initialize()
@@ -278,7 +278,7 @@ CMICmnResources::CMICmnResources(void)
 // Return:  None.
 // Throws:  None.
 //--
-CMICmnResources::~CMICmnResources(void)
+CMICmnResources::~CMICmnResources()
 {
     // Do not use this destructor, use Shutdown()
 }
@@ -292,7 +292,7 @@ CMICmnResources::~CMICmnResources(void)
 // Throws:  None.
 //--
 bool
-CMICmnResources::Initialize(void)
+CMICmnResources::Initialize()
 {
     m_clientUsageRefCnt++;
 
@@ -313,7 +313,7 @@ CMICmnResources::Initialize(void)
 // Throws:  None.
 //--
 bool
-CMICmnResources::Shutdown(void)
+CMICmnResources::Shutdown()
 {
     if (--m_clientUsageRefCnt > 0)
         return MIstatus::success;
@@ -338,7 +338,7 @@ CMICmnResources::Shutdown(void)
 // Throws:  None.
 //--
 bool
-CMICmnResources::ReadResourceStringData(void)
+CMICmnResources::ReadResourceStringData()
 {
     m_nResourceId2TextDataSize = sizeof ms_pResourceId2TextData / sizeof ms_pResourceId2TextData[0];
     for (MIuint i = 0; i < m_nResourceId2TextDataSize; i++)
@@ -422,7 +422,7 @@ CMICmnResources::GetStringFromResource(const MIuint vResourceId, CMIUtilString &
 
     const MIuint nRsrcId((*it).first);
     MIunused(nRsrcId);
-    const MIchar *pRsrcData((*it).second);
+    const char *pRsrcData((*it).second);
 
     // Return result
     vrwResourceString = pRsrcData;

@@ -226,19 +226,19 @@ public:
     ShouldPrintAsOneLiner (ValueObject& valobj);
     
     void
-    Changed ()
+    Changed () override
     {
         ++m_last_revision;
         m_format_cache.Clear ();
     }
     
     uint32_t
-    GetCurrentRevision ()
+    GetCurrentRevision () override
     {
         return m_last_revision;
     }
     
-    ~FormatManager ()
+    ~FormatManager () override
     {
     }
     
@@ -248,7 +248,7 @@ public:
     {
         FormattersMatchVector matches;
         GetPossibleMatches (valobj,
-                            valobj.GetClangType(),
+                            valobj.GetCompilerType(),
                             lldb_private::eFormatterChoiceCriterionDirectChoice,
                             use_dynamic,
                             matches,
@@ -263,7 +263,7 @@ private:
     
     static void
     GetPossibleMatches (ValueObject& valobj,
-                        ClangASTType clang_type,
+                        CompilerType clang_type,
                         uint32_t reason,
                         lldb::DynamicValueType use_dynamic,
                         FormattersMatchVector& entries,
@@ -337,4 +337,4 @@ private:
     
 } // namespace lldb_private
     
-#endif	// lldb_FormatManager_h_
+#endif // lldb_FormatManager_h_

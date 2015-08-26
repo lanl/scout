@@ -23,7 +23,7 @@
 #include "lldb/DataFormatters/FormatManager.h"
 #include "lldb/DataFormatters/TypeFormat.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
-#include "lldb/Symbol/ClangASTType.h"
+#include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeList.h"
 #include "lldb/Target/StackFrame.h"
 #include "lldb/Target/Target.h"
@@ -91,7 +91,7 @@ TypeFormatImpl_Format::FormatObject (ValueObject *valobj,
         }
         else
         {
-            ClangASTType clang_type = value.GetClangType ();
+            CompilerType clang_type = value.GetCompilerType ();
             if (clang_type)
             {
                 // put custom bytes to display in the DataExtractor to override the default value logic
@@ -134,7 +134,7 @@ TypeFormatImpl_Format::FormatObject (ValueObject *valobj,
                 // for a formatting error (or else we wouldn't be able to reformat
                 // until a next update), an empty string is treated as a "false"
                 // return from here, but that's about as severe as we get
-                // ClangASTType::DumpTypeValue() should always return
+                // CompilerType::DumpTypeValue() should always return
                 // something, even if that something is an error message
                 if (sstr.GetString().empty())
                     dest.clear();
@@ -192,7 +192,7 @@ TypeFormatImpl_EnumType::FormatObject (ValueObject *valobj,
         return false;
     auto iter = m_types.find(valobj_key),
     end = m_types.end();
-    ClangASTType valobj_enum_type;
+    CompilerType valobj_enum_type;
     if (iter == end)
     {
         // probably a redundant check
@@ -208,9 +208,9 @@ TypeFormatImpl_EnumType::FormatObject (ValueObject *valobj,
         {
             if (!type_sp)
                 continue;
-            if ( (type_sp->GetClangForwardType().GetTypeInfo() & eTypeIsEnumeration) == eTypeIsEnumeration)
+            if ( (type_sp->GetForwardCompilerType().GetTypeInfo() & eTypeIsEnumeration) == eTypeIsEnumeration)
             {
-                valobj_enum_type = type_sp->GetClangFullType();
+                valobj_enum_type = type_sp->GetFullCompilerType ();
                 m_types.emplace(valobj_key,valobj_enum_type);
                 break;
             }

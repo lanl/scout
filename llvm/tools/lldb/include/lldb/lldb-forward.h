@@ -48,8 +48,6 @@ class   ClangASTContext;
 class   ClangASTImporter;
 class   ClangASTMetadata;
 class   ClangASTSource;
-class   ClangASTType;
-class   ClangNamespaceDecl;
 class   ClangExpression;
 class   ClangExpressionDeclMap;
 class   ClangExpressionParser;
@@ -68,6 +66,8 @@ class   CommandObject;
 class   CommandReturnObject;
 class   Communication;
 class   CompactUnwindInfo;
+class   CompilerDeclContext;
+class   CompilerType;
 class   CompileUnit;
 class   Condition;
 class   Connection;
@@ -221,6 +221,7 @@ class   Symtab;
 class   SyntheticChildren;
 class   SyntheticChildrenFrontEnd;
 class   TypeFilterImpl;
+class   TypeSystem;
 #ifndef LLDB_DISABLE_PYTHON
 class   ScriptedSyntheticChildren;
 #endif
@@ -376,6 +377,8 @@ namespace lldb {
 #ifndef LLDB_DISABLE_PYTHON
     typedef std::shared_ptr<lldb_private::ScriptSummaryFormat> ScriptSummaryFormatSP;
 #endif // #ifndef LLDB_DISABLE_PYTHON
+    typedef std::shared_ptr<lldb_private::ScriptInterpreter> ScriptInterpreterSP;
+    typedef std::unique_ptr<lldb_private::ScriptInterpreter> ScriptInterpreterUP;
     typedef std::shared_ptr<lldb_private::Section> SectionSP;
     typedef std::unique_ptr<lldb_private::SectionList> SectionListUP;
     typedef std::weak_ptr<lldb_private::Section> SectionWP;
@@ -423,6 +426,8 @@ namespace lldb {
 #ifndef LLDB_DISABLE_PYTHON
     typedef std::shared_ptr<lldb_private::ScriptedSyntheticChildren> ScriptedSyntheticChildrenSP;
 #endif
+    typedef std::shared_ptr<lldb_private::UnixSignals> UnixSignalsSP;
+    typedef std::weak_ptr<lldb_private::UnixSignals> UnixSignalsWP;
     typedef std::shared_ptr<lldb_private::UnwindAssembly> UnwindAssemblySP;
     typedef std::shared_ptr<lldb_private::UnwindPlan> UnwindPlanSP;
     typedef lldb_private::SharingPtr<lldb_private::ValueObject> ValueObjectSP;

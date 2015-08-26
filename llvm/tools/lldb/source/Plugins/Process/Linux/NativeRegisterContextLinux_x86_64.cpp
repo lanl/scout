@@ -706,6 +706,20 @@ NativeRegisterContextLinux_x86_64::ReadAllRegisterValues (lldb::DataBufferSP &da
         assert (false && "how do we save the floating point registers?");
         error.SetErrorString ("unsure how to save the floating point registers");
     }
+    /** The following code is specific to Linux x86 based architectures,
+     *  where the register orig_eax (32 bit)/orig_rax (64 bit) is set to
+     *  -1 to solve the bug 23659, such a setting prevents the automatic
+     *  decrement of the instruction pointer which was causing the SIGILL
+     *  exception.
+     * **/
+
+    RegisterValue value((uint64_t) -1);
+    const RegisterInfo *reg_info = GetRegisterInfoInterface().GetDynamicRegisterInfo("orig_eax");
+    if (reg_info == nullptr)
+        reg_info = GetRegisterInfoInterface().GetDynamicRegisterInfo("orig_rax");
+
+    if (reg_info != nullptr)
+        return DoWriteRegisterValue(reg_info->byte_offset,reg_info->name,value);
 
     return error;
 }
@@ -1017,6 +1031,11 @@ NativeRegisterContextLinux_x86_64::SetHardwareWatchpointWithIndex(
 
     if (wp_index >= NumSupportedHardwareWatchpoints())
         return Error ("Watchpoint index out of range");
+
+    // Read only watchpoints aren't supported on x86_64. Fall back to read/write waitchpoints instead.
+    // TODO: Add logic to detect when a write happens and ignore that watchpoint hit.
+    if (watch_flags == 0x2)
+        watch_flags = 0x3;
 
     if (watch_flags != 0x1 && watch_flags != 0x3)
         return Error ("Invalid read/write bits for watchpoint");

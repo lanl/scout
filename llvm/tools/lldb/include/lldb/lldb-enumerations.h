@@ -188,11 +188,11 @@ namespace lldb {
     //----------------------------------------------------------------------
     enum RegisterKind
     {
-        eRegisterKindGCC = 0,    // the register numbers seen in eh_frame
-        eRegisterKindDWARF,      // the register numbers seen DWARF
-        eRegisterKindGeneric,    // insn ptr reg, stack ptr reg, etc not specific to any particular target
-        eRegisterKindGDB,        // the register numbers gdb uses (matches stabs numbers)
-        eRegisterKindLLDB,       // lldb's internal register numbers
+        eRegisterKindEHFrame = 0, // the register numbers seen in eh_frame
+        eRegisterKindDWARF,       // the register numbers seen DWARF
+        eRegisterKindGeneric,     // insn ptr reg, stack ptr reg, etc not specific to any particular target
+        eRegisterKindStabs,       // the register numbers used in stabs debug format (referred to as "gcc" or "gdb" numbering)
+        eRegisterKindLLDB,        // lldb's internal register numbers
         kNumRegisterKinds
     };
 
@@ -603,6 +603,7 @@ namespace lldb {
         eSectionTypeDataObjCMessageRefs,    // Pointer to function pointer + selector
         eSectionTypeDataObjCCFStrings,      // Objective C const CFString/NSString objects
         eSectionTypeDWARFDebugAbbrev,
+        eSectionTypeDWARFDebugAddr,
         eSectionTypeDWARFDebugAranges,
         eSectionTypeDWARFDebugFrame,
         eSectionTypeDWARFDebugInfo,
@@ -613,6 +614,7 @@ namespace lldb {
         eSectionTypeDWARFDebugPubTypes,
         eSectionTypeDWARFDebugRanges,
         eSectionTypeDWARFDebugStr,
+        eSectionTypeDWARFDebugStrOffsets,
         eSectionTypeDWARFAppleNames,
         eSectionTypeDWARFAppleTypes,
         eSectionTypeDWARFAppleNamespaces,
@@ -737,14 +739,16 @@ namespace lldb {
     //----------------------------------------------------------------------
     FLAGS_ENUM(TypeOptions)
     {
-        eTypeOptionNone            = (0u),
-        eTypeOptionCascade         = (1u << 0),
-        eTypeOptionSkipPointers    = (1u << 1),
-        eTypeOptionSkipReferences  = (1u << 2),
-        eTypeOptionHideChildren    = (1u << 3),
-        eTypeOptionHideValue       = (1u << 4),
-        eTypeOptionShowOneLiner    = (1u << 5),
-        eTypeOptionHideNames       = (1u << 6)
+        eTypeOptionNone                = (0u),
+        eTypeOptionCascade             = (1u << 0),
+        eTypeOptionSkipPointers        = (1u << 1),
+        eTypeOptionSkipReferences      = (1u << 2),
+        eTypeOptionHideChildren        = (1u << 3),
+        eTypeOptionHideValue           = (1u << 4),
+        eTypeOptionShowOneLiner        = (1u << 5),
+        eTypeOptionHideNames           = (1u << 6),
+        eTypeOptionNonCacheable        = (1u << 7),
+        eTypeOptionHideEmptyAggregates = (1u << 8)
     };
 
    //----------------------------------------------------------------------

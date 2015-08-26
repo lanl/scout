@@ -18,7 +18,7 @@
 // Return:  None.
 // Throws:  None.
 //--
-CMICmdArgValOptionShort::CMICmdArgValOptionShort(void)
+CMICmdArgValOptionShort::CMICmdArgValOptionShort()
 {
 }
 
@@ -60,7 +60,7 @@ CMICmdArgValOptionShort::CMICmdArgValOptionShort(const CMIUtilString &vrArgName,
 // Return:  None.
 // Throws:  None.
 //--
-CMICmdArgValOptionShort::~CMICmdArgValOptionShort(void)
+CMICmdArgValOptionShort::~CMICmdArgValOptionShort()
 {
 }
 
@@ -80,7 +80,7 @@ CMICmdArgValOptionShort::IsArgShortOption(const CMIUtilString &vrTxt) const
         return false;
 
     // Look for -f short option
-    nPos = vrTxt.find("-");
+    nPos = vrTxt.find('-');
     if (nPos != 0)
         return false;
 

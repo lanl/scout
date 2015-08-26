@@ -42,7 +42,7 @@ namespace lldb_private {
             ~LibcxxInitializerListSyntheticFrontEnd ();
         private:
             ValueObject* m_start;
-            ClangASTType m_element_type;
+            CompilerType m_element_type;
             uint32_t m_element_size;
             size_t m_num_elements;
             std::map<size_t,lldb::ValueObjectSP> m_children;
@@ -101,7 +101,7 @@ lldb_private::formatters::LibcxxInitializerListSyntheticFrontEnd::Update()
     m_num_elements = 0;
     m_children.clear();
     lldb::TemplateArgumentKind kind;
-    m_element_type = m_backend.GetClangType().GetTemplateArgument(0, kind);
+    m_element_type = m_backend.GetCompilerType().GetTemplateArgument(0, kind);
     if (kind != lldb::eTemplateArgumentKindType || false == m_element_type.IsValid())
         return false;
     

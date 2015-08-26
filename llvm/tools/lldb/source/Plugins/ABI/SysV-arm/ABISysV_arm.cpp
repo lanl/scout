@@ -28,7 +28,7 @@
 #include "llvm/ADT/Triple.h"
 
 #include "Utility/ARM_DWARF_Registers.h"
-#include "Utility/ARM_GCC_Registers.h"
+#include "Utility/ARM_Stabs_Registers.h"
 #include "Plugins/Process/Utility/ARMDefines.h"
 
 #include <vector>
@@ -38,7 +38,7 @@ using namespace lldb_private;
 
 static RegisterInfo g_register_infos[] =
 {
-    //  NAME       ALT       SZ OFF ENCODING         FORMAT          COMPILER                DWARF               GENERIC                     GDB                     LLDB NATIVE            VALUE REGS    INVALIDATE REGS
+    //  NAME       ALT       SZ OFF ENCODING         FORMAT          EH_FRAME                DWARF               GENERIC                     STABS                   LLDB NATIVE            VALUE REGS    INVALIDATE REGS
     //  ========== =======   == === =============    ============    ======================= =================== =========================== ======================= ====================== ==========    ===============
     {   "r0",      "arg1",    4, 0, eEncodingUint    , eFormatHex,   { gcc_r0,               dwarf_r0,           LLDB_REGNUM_GENERIC_ARG1,   gdb_arm_r0,             LLDB_INVALID_REGNUM },      NULL,              NULL},
     {   "r1",      "arg2",    4, 0, eEncodingUint    , eFormatHex,   { gcc_r1,               dwarf_r1,           LLDB_REGNUM_GENERIC_ARG2,   gdb_arm_r1,             LLDB_INVALID_REGNUM },      NULL,              NULL},
@@ -333,7 +333,7 @@ ABISysV_arm::GetArgumentValues (Thread &thread,
         if (!value)
             return false;
         
-        ClangASTType clang_type = value->GetClangType();
+        CompilerType clang_type = value->GetCompilerType();
         if (clang_type)
         {
             bool is_signed = false;
@@ -398,9 +398,26 @@ ABISysV_arm::GetArgumentValues (Thread &thread,
     return true;
 }
 
+static bool
+GetReturnValuePassedInMemory(Thread &thread, RegisterContext* reg_ctx, size_t byte_size, Value& value)
+{
+    Error error;
+    DataBufferHeap buffer(byte_size, 0);
+
+    const RegisterInfo *r0_reg_info = reg_ctx->GetRegisterInfo(eRegisterKindGeneric, LLDB_REGNUM_GENERIC_ARG1);
+    uint32_t address = reg_ctx->ReadRegisterAsUnsigned(r0_reg_info, 0) & UINT32_MAX;
+    thread.GetProcess()->ReadMemory(address, buffer.GetBytes(), buffer.GetByteSize(), error);
+
+    if (error.Fail())
+        return false;
+
+    value.SetBytes(buffer.GetBytes(), buffer.GetByteSize());
+    return true;
+}
+
 ValueObjectSP
 ABISysV_arm::GetReturnValueObjectImpl (Thread &thread,
-                                       lldb_private::ClangASTType &clang_type) const
+                                       lldb_private::CompilerType &clang_type) const
 {
     Value value;
     ValueObjectSP return_valobj_sp;
@@ -408,12 +425,8 @@ ABISysV_arm::GetReturnValueObjectImpl (Thread &thread,
     if (!clang_type)
         return return_valobj_sp;
     
-    clang::ASTContext *ast_context = clang_type.GetASTContext();
-    if (!ast_context)
-        return return_valobj_sp;
-
     //value.SetContext (Value::eContextTypeClangType, clang_type.GetOpaqueQualType());
-    value.SetClangType (clang_type);
+    value.SetCompilerType (clang_type);
             
     RegisterContext *reg_ctx = thread.GetRegisterContext().get();
     if (!reg_ctx)
@@ -472,6 +485,27 @@ ABISysV_arm::GetReturnValueObjectImpl (Thread &thread,
         uint32_t ptr = thread.GetRegisterContext()->ReadRegisterAsUnsigned(r0_reg_info, 0) & UINT32_MAX;
         value.GetScalar() = ptr;
     }
+    else if (clang_type.IsVectorType(nullptr, nullptr))
+    {
+        size_t byte_size = clang_type.GetByteSize(&thread);
+        if (byte_size <= 16)
+        {
+            DataBufferHeap buffer(16, 0);
+            uint32_t* buffer_ptr = (uint32_t*)buffer.GetBytes();
+            
+            for (uint32_t i = 0; 4*i < byte_size; ++i)
+            {
+                const RegisterInfo *reg_info = reg_ctx->GetRegisterInfo(eRegisterKindGeneric, LLDB_REGNUM_GENERIC_ARG1 + i);
+                buffer_ptr[i] = reg_ctx->ReadRegisterAsUnsigned(reg_info, 0) & UINT32_MAX;
+            }
+            value.SetBytes(buffer.GetBytes(), byte_size);
+        }
+        else
+        {
+            if (!GetReturnValuePassedInMemory(thread, reg_ctx, byte_size, value))
+                return return_valobj_sp;
+        }
+    }
     else if (clang_type.IsFloatingPointType(float_count, is_complex))
     {
         if (float_count == 1 && !is_complex)
@@ -517,16 +551,7 @@ ABISysV_arm::GetReturnValueObjectImpl (Thread &thread,
         }
         else
         {
-            RegisterValue r0_reg_value;
-            uint32_t address = reg_ctx->ReadRegisterAsUnsigned(r0_reg_info, 0) & UINT32_MAX;
-
-            Error error;
-            DataBufferHeap buffer(byte_size, 0);
-            thread.GetProcess()->ReadMemory(address, buffer.GetBytes(), buffer.GetByteSize(), error);
-
-            if (error.Success())
-                value.SetBytes(buffer.GetBytes(), buffer.GetByteSize());
-            else
+            if (!GetReturnValuePassedInMemory(thread, reg_ctx, byte_size, value))
                 return return_valobj_sp;
         }
     }
@@ -554,7 +579,7 @@ ABISysV_arm::SetReturnValueObject(lldb::StackFrameSP &frame_sp, lldb::ValueObjec
         return error;
     }
     
-    ClangASTType clang_type = new_value_sp->GetClangType();
+    CompilerType clang_type = new_value_sp->GetCompilerType();
     if (!clang_type)
     {
         error.SetErrorString ("Null clang type for return value.");

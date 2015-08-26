@@ -1265,7 +1265,7 @@ static bool SinkThenElseCodeToEnd(BranchInst *BI1) {
     // Cannot move control-flow-involving, volatile loads, vaarg, etc.
     if (isa<PHINode>(I1) || isa<PHINode>(I2) ||
         isa<TerminatorInst>(I1) || isa<TerminatorInst>(I2) ||
-        isa<LandingPadInst>(I1) || isa<LandingPadInst>(I2) ||
+        I1->isEHPad() || I2->isEHPad() ||
         isa<AllocaInst>(I1) || isa<AllocaInst>(I2) ||
         I1->mayHaveSideEffects() || I2->mayHaveSideEffects() ||
         I1->mayReadOrWriteMemory() || I2->mayReadOrWriteMemory() ||
@@ -2199,7 +2199,7 @@ bool llvm::FoldBranchToCommonDest(BranchInst *BI, unsigned BonusInstThreshold) {
       // only given the branch precondition.
       // For an analogous reason, we must also drop all the metadata whose
       // semantics we don't understand.
-      NewBonusInst->dropUnknownMetadata(LLVMContext::MD_dbg);
+      NewBonusInst->dropUnknownNonDebugMetadata();
 
       PredBlock->getInstList().insert(PBI, NewBonusInst);
       NewBonusInst->takeName(BonusInst);
@@ -2565,8 +2565,7 @@ static bool SimplifyTerminatorOnSelect(TerminatorInst *OldTerm, Value *Cond,
   BasicBlock *KeepEdge2 = TrueBB != FalseBB ? FalseBB : nullptr;
 
   // Then remove the rest.
-  for (unsigned I = 0, E = OldTerm->getNumSuccessors(); I != E; ++I) {
-    BasicBlock *Succ = OldTerm->getSuccessor(I);
+  for (BasicBlock *Succ : OldTerm->successors()) {
     // Make sure only to keep exactly one copy of each edge.
     if (Succ == KeepEdge1)
       KeepEdge1 = nullptr;
@@ -3664,7 +3663,7 @@ namespace {
     /// Return true if a table with TableSize elements of
     /// type ElementType would fit in a target-legal register.
     static bool WouldFitInRegister(const DataLayout &DL, uint64_t TableSize,
-                                   const Type *ElementType);
+                                   Type *ElementType);
 
   private:
     // Depending on the contents of the table, it can be represented in
@@ -3880,8 +3879,8 @@ Value *SwitchLookupTable::BuildLookup(Value *Index, IRBuilder<> &Builder) {
 
 bool SwitchLookupTable::WouldFitInRegister(const DataLayout &DL,
                                            uint64_t TableSize,
-                                           const Type *ElementType) {
-  const IntegerType *IT = dyn_cast<IntegerType>(ElementType);
+                                           Type *ElementType) {
+  auto *IT = dyn_cast<IntegerType>(ElementType);
   if (!IT)
     return false;
   // FIXME: If the type is wider than it needs to be, e.g. i8 but all values

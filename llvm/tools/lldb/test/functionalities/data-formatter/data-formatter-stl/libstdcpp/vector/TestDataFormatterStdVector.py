@@ -22,6 +22,7 @@ class StdVectorDataFormatterTestCase(TestBase):
     @dwarf_test
     @skipIfFreeBSD
     @expectedFailureIcc # llvm.org/pr15301 LLDB prints incorrect sizes of STL containers
+    @skipIfWindows # libstdcpp not ported to Windows
     def test_with_dwarf_and_run_command(self):
         """Test data formatter commands."""
         self.buildDwarf()
@@ -39,7 +40,7 @@ class StdVectorDataFormatterTestCase(TestBase):
 
         lldbutil.run_break_set_by_source_regexp (self, "Set break point at this line.")
 
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         # The stop reason of the thread should be breakpoint.
         self.expect("thread list", STOPPED_DUE_TO_BREAKPOINT,

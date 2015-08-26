@@ -28,6 +28,7 @@
 #include "lldb/Host/ThreadLauncher.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/OptionValueProperties.h"
+#include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Target/ABI.h"
 #include "lldb/Target/DynamicLoader.h"
@@ -115,6 +116,7 @@ g_properties[] =
     { "stop-on-sharedlibrary-events" , OptionValue::eTypeBoolean, true, false, NULL, NULL, "If true, stop when a shared library is loaded or unloaded." },
     { "detach-keeps-stopped" , OptionValue::eTypeBoolean, true, false, NULL, NULL, "If true, detach will attempt to keep the process stopped." },
     { "memory-cache-line-size" , OptionValue::eTypeUInt64, false, 512, NULL, NULL, "The memory cache line size" },
+    { "optimization-warnings" , OptionValue::eTypeBoolean, false, true, NULL, NULL, "If true, warn when stopped in code that is optimized where stepping and variable availability may not behave as expected." },
     {  NULL                  , OptionValue::eTypeInvalid, false, 0, NULL, NULL, NULL  }
 };
 
@@ -126,7 +128,8 @@ enum {
     ePropertyPythonOSPluginPath,
     ePropertyStopOnSharedLibraryEvents,
     ePropertyDetachKeepsStopped,
-    ePropertyMemCacheLineSize
+    ePropertyMemCacheLineSize,
+    ePropertyWarningOptimization
 };
 
 ProcessProperties::ProcessProperties (lldb_private::Process *process) :
@@ -261,6 +264,13 @@ ProcessProperties::SetDetachKeepsStopped (bool stop)
 {
     const uint32_t idx = ePropertyDetachKeepsStopped;
     m_collection_sp->SetPropertyAtIndexAsBoolean(NULL, idx, stop);
+}
+
+bool
+ProcessProperties::GetWarningsOptimization () const
+{
+    const uint32_t idx = ePropertyWarningOptimization;
+    return m_collection_sp->GetPropertyAtIndexAsBoolean (NULL, idx, g_properties[idx].default_uint_value != 0);
 }
 
 void
@@ -693,7 +703,7 @@ Process::GetStaticBroadcasterClass ()
 // Process constructor
 //----------------------------------------------------------------------
 Process::Process(Target &target, Listener &listener) :
-    Process(target, listener, Host::GetUnixSignals ())
+    Process(target, listener, UnixSignals::Create(HostInfo::GetArchitecture()))
 {
     // This constructor just delegates to the full Process constructor,
     // defaulting to using the Host's UnixSignals.
@@ -754,6 +764,8 @@ Process::Process(Target &target, Listener &listener, const UnixSignalsSP &unix_s
     m_force_next_event_delivery (false),
     m_last_broadcast_state (eStateInvalid),
     m_destroy_in_process (false),
+    m_can_interpret_function_calls(false),
+    m_warnings_issued (),
     m_can_jit(eCanJITDontKnow)
 {
     CheckInWithManager ();
@@ -763,14 +775,14 @@ Process::Process(Target &target, Listener &listener, const UnixSignalsSP &unix_s
         log->Printf ("%p Process::Process()", static_cast<void*>(this));
 
     if (!m_unix_signals_sp)
-        m_unix_signals_sp.reset (new UnixSignals ());
+        m_unix_signals_sp = std::make_shared<UnixSignals>();
 
     SetEventName (eBroadcastBitStateChanged, "state-changed");
     SetEventName (eBroadcastBitInterrupt, "interrupt");
     SetEventName (eBroadcastBitSTDOUT, "stdout-available");
     SetEventName (eBroadcastBitSTDERR, "stderr-available");
     SetEventName (eBroadcastBitProfileData, "profile-data-available");
-    
+
     m_private_state_control_broadcaster.SetEventName (eBroadcastInternalStateControlStop  , "control-stop"  );
     m_private_state_control_broadcaster.SetEventName (eBroadcastInternalStateControlPause , "control-pause" );
     m_private_state_control_broadcaster.SetEventName (eBroadcastInternalStateControlResume, "control-resume");
@@ -1145,6 +1157,7 @@ Process::HandleProcessStateChangedEvent (const EventSP &event_sp,
                         // Prefer a thread that has just completed its plan over another thread as current thread.
                         ThreadSP plan_thread;
                         ThreadSP other_thread;
+                        
                         const size_t num_threads = thread_list.GetSize();
                         size_t i;
                         for (i = 0; i < num_threads; ++i)
@@ -1157,10 +1170,22 @@ Process::HandleProcessStateChangedEvent (const EventSP &event_sp,
                                 case eStopReasonNone:
                                     break;
 
+                                 case eStopReasonSignal:
+                                {
+                                    // Don't select a signal thread if we weren't going to stop at that
+                                    // signal.  We have to have had another reason for stopping here, and
+                                    // the user doesn't want to see this thread.
+                                    uint64_t signo = thread->GetStopInfo()->GetValue();
+                                    if (process_sp->GetUnixSignals()->GetShouldStop(signo))
+                                    {
+                                        if (!other_thread)
+                                            other_thread = thread;
+                                    }
+                                    break;
+                                }
                                 case eStopReasonTrace:
                                 case eStopReasonBreakpoint:
                                 case eStopReasonWatchpoint:
-                                case eStopReasonSignal:
                                 case eStopReasonException:
                                 case eStopReasonExec:
                                 case eStopReasonThreadExiting:
@@ -1510,7 +1535,7 @@ Process::SetProcessExitStatus (void *callback_baton,
             {
                 const char *signal_cstr = NULL;
                 if (signo)
-                    signal_cstr = process_sp->GetUnixSignals().GetSignalAsCString (signo);
+                    signal_cstr = process_sp->GetUnixSignals()->GetSignalAsCString(signo);
 
                 process_sp->SetExitStatus (exit_status, signal_cstr);
             }
@@ -2829,6 +2854,7 @@ Process::WriteMemory (addr_t addr, const void *buf, size_t size, Error &error)
                     size_t intersect_size;
                     size_t opcode_offset;
                     const bool intersects = bp->IntersectsRange(addr, size, &intersect_addr, &intersect_size, &opcode_offset);
+                    UNUSED_IF_ASSERT_DISABLED(intersects);
                     assert(intersects);
                     assert(addr <= intersect_addr && intersect_addr < addr + size);
                     assert(addr < intersect_addr + intersect_size && intersect_addr + intersect_size <= addr + size);
@@ -2998,6 +3024,13 @@ Process::SetCanJIT (bool can_jit)
     m_can_jit = (can_jit ? eCanJITYes : eCanJITNo);
 }
 
+void
+Process::SetCanRunCode (bool can_run_code)
+{
+    SetCanJIT(can_run_code);
+    m_can_interpret_function_calls = can_run_code;
+}
+
 Error
 Process::DeallocateMemory (addr_t ptr)
 {
@@ -3027,6 +3060,11 @@ Process::ReadModuleFromMemory (const FileSpec& file_spec,
                                lldb::addr_t header_addr,
                                size_t size_to_read)
 {
+    Log *log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_HOST);
+    if (log)
+    {
+        log->Printf ("Process::ReadModuleFromMemory reading %s binary from memory", file_spec.GetPath().c_str());
+    }
     ModuleSP module_sp (new Module (file_spec, ArchSpec()));
     if (module_sp)
     {
@@ -4088,11 +4126,11 @@ Process::SetUnixSignals (const UnixSignalsSP &signals_sp)
     m_unix_signals_sp = signals_sp;
 }
 
-UnixSignals &
+const lldb::UnixSignalsSP &
 Process::GetUnixSignals ()
 {
     assert (m_unix_signals_sp && "null m_unix_signals_sp");
-    return *m_unix_signals_sp;
+    return m_unix_signals_sp;
 }
 
 lldb::ByteOrder
@@ -4713,7 +4751,12 @@ Process::ProcessEventData::DoOnRemoval (Event *event_ptr)
     
     // If we're stopped and haven't restarted, then do the StopInfo actions here:
     if (m_state == eStateStopped && ! m_restarted)
-    {        
+    {
+        // Let process subclasses know we are about to do a public stop and
+        // do anything they might need to in order to speed up register and
+        // memory accesses.
+        process_sp->WillPublicStop();
+
         ThreadList &curr_thread_list = process_sp->GetThreadList();
         uint32_t num_threads = curr_thread_list.GetSize();
         uint32_t idx;
@@ -6507,6 +6550,63 @@ Process::ModulesDidLoad (ModuleList &module_list)
         LanguageRuntimeSP language_runtime_sp = pair.second;
         if (language_runtime_sp)
             language_runtime_sp->ModulesDidLoad(module_list);
+    }
+}
+
+void
+Process::PrintWarning (uint64_t warning_type, void *repeat_key, const char *fmt, ...)
+{
+    bool print_warning = true;
+
+    StreamSP stream_sp = GetTarget().GetDebugger().GetAsyncOutputStream();
+    if (stream_sp.get() == nullptr)
+        return;
+    if (warning_type == eWarningsOptimization
+        && GetWarningsOptimization() == false)
+    {
+        return;
+    }
+
+    if (repeat_key != nullptr)
+    {
+        WarningsCollection::iterator it = m_warnings_issued.find (warning_type);
+        if (it == m_warnings_issued.end())
+        {
+            m_warnings_issued[warning_type] = WarningsPointerSet();
+            m_warnings_issued[warning_type].insert (repeat_key);
+        }
+        else
+        {
+            if (it->second.find (repeat_key) != it->second.end())
+            {
+                print_warning = false;
+            }
+            else
+            {
+                it->second.insert (repeat_key);
+            }
+        }
+    }
+
+    if (print_warning)
+    {
+        va_list args;
+        va_start (args, fmt);
+        stream_sp->PrintfVarArg (fmt, args);
+        va_end (args);
+    }
+}
+
+void
+Process::PrintWarningOptimization (const SymbolContext &sc)
+{
+    if (GetWarningsOptimization() == true
+        && sc.module_sp.get() 
+        && sc.module_sp->GetFileSpec().GetFilename().IsEmpty() == false
+        && sc.function
+        && sc.function->GetIsOptimized() == true)
+    {
+        PrintWarning (Process::Warnings::eWarningsOptimization, sc.module_sp.get(), "%s was compiled with optimization - stepping may behave oddly; variables may not be available.\n", sc.module_sp->GetFileSpec().GetFilename().GetCString());
     }
 }
 

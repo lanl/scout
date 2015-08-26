@@ -14,6 +14,7 @@
 // C++ Includes
 // Other libraries and framework includes
 // Project includes
+#include "lldb/lldb-forward.h"
 #include "lldb/lldb-private.h"
 #include "lldb/Core/Broadcaster.h"
 #include "lldb/Core/Debugger.h"
@@ -337,7 +338,7 @@ public:
     ///
     /// @param[in] commands
     ///    The list of commands to execute.
-    /// @param[in/out] context 
+    /// @param[in,out] context
     ///    The execution context in which to run the commands.  Can be NULL in which case the default
     ///    context will be used.
     /// @param[in] options
@@ -358,7 +359,7 @@ public:
     ///
     /// @param[in] file
     ///    The file from which to read in commands.
-    /// @param[in/out] context 
+    /// @param[in,out] context
     ///    The execution context in which to run the commands.  Can be NULL in which case the default
     ///    context will be used.
     /// @param[in] options
@@ -520,7 +521,10 @@ public:
     GetOptionArgumentPosition (const char *in_string);
 
     ScriptInterpreter *
-    GetScriptInterpreter (bool can_create = true);
+    GetScriptInterpreter(bool can_create = true);
+
+    void
+    SetScriptInterpreter();
 
     void
     SkipLLDBInitFiles (bool skip_lldbinit_files)
@@ -709,7 +713,7 @@ private:
     OptionArgMap m_alias_options;               // Stores any options (with or without arguments) that go with any alias.
     CommandHistory m_command_history;
     std::string m_repeat_command;               // Stores the command that will be executed for an empty command string.
-    std::unique_ptr<ScriptInterpreter> m_script_interpreter_ap;
+    lldb::ScriptInterpreterSP m_script_interpreter_sp;
     lldb::IOHandlerSP m_command_io_handler_sp;
     char m_comment_char;
     bool m_batch_command_mode;

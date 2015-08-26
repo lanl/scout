@@ -144,69 +144,6 @@ bool Sema::CheckMPositionCall(unsigned BuiltinID, CallExpr *TheCall) {
   return true;
 }
 
-bool Sema::CheckPlotCall(unsigned BuiltinID, CallExpr *TheCall) {
-#ifndef SCOUT_ENABLE_PLOT
-  Diag(TheCall->getExprLoc(), diag::err_plot_disabled);
-  return false;
-#endif
-  
-  if(TheCall->getNumArgs() != 2) {
-    Diag(TheCall->getExprLoc(), diag::err_invalid_plot_call) <<
-    "expected 2 args";
-    return false;
-  }
-  
-  auto argsBegin = TheCall->arg_begin();
-  
-  const MemberExpr* memberExpr = dyn_cast<MemberExpr>(*argsBegin);
-
-  if(!memberExpr){
-    Diag((*argsBegin)->getExprLoc(), diag::err_invalid_plot_call) <<
-    "expected a member expression";
-    return false;
-  }
-  
-  const DeclRefExpr* base = dyn_cast<DeclRefExpr>(memberExpr->getBase());
-  if(!base){
-    Diag(memberExpr->getExprLoc(), diag::err_invalid_plot_call) <<
-    "expected a mesh in member expression";
-    return false;
-  }
-  
-  const ValueDecl* vd = dyn_cast<ValueDecl>(base->getDecl());
-  if(!vd){
-    Diag(memberExpr->getExprLoc(), diag::err_invalid_plot_call) <<
-    "expected a uniform mesh";
-    return false;
-  }
-  
-  const UniformMeshType* mt = dyn_cast<UniformMeshType>(vd->getType().getTypePtr());
-  if(!mt){
-    Diag(memberExpr->getExprLoc(), diag::err_invalid_plot_call) <<
-    "expected a uniform mesh";
-    return false;
-  }
-  
-  ++argsBegin;
-  
-  const StringLiteral* plotTypeLiteral = dyn_cast<StringLiteral>(*argsBegin);
-  if(!plotTypeLiteral){
-    Diag((*argsBegin)->getExprLoc(), diag::err_invalid_plot_call) <<
-    "expected a string plot type specifier, one of: 'bars'";
-    return false;
-  }
-  
-  std::string plotType = plotTypeLiteral->getString();
-  
-  if(plotType != "bars"){
-    Diag(plotTypeLiteral->getExprLoc(), diag::err_invalid_plot_call) <<
-    "expected a string plot type specifier, one of: 'bars'";
-    return false;
-  }
-  
-  return true;
-}
-
 bool Sema::CheckSaveMeshCall(unsigned BuiltinID, CallExpr *TheCall) {
   if(TheCall->getNumArgs() != 2) {
     Diag(TheCall->getExprLoc(), diag::err_invalid_save_mesh_call) <<

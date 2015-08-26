@@ -19,6 +19,7 @@ class ExprCommands2TestCase(TestBase):
         self.line = line_number('main.cpp',
                                 '// Please test many expressions while stopped at this line:')
 
+    @expectedFailureWindows("llvm.org/pr24489: Name lookup not working correctly on Windows")
     def test_more_expr_commands(self):
         """Test some more expression commands."""
         self.buildDefault()
@@ -27,7 +28,7 @@ class ExprCommands2TestCase(TestBase):
 
         lldbutil.run_break_set_by_file_and_line(self, "main.cpp", self.line, num_expected_locations=1,loc_exact=False)
 
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         # Does static casting work?
         self.expect("expression (int*)argv",

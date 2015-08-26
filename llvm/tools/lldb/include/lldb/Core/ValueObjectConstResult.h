@@ -34,14 +34,14 @@ public:
 
     static lldb::ValueObjectSP
     Create (ExecutionContextScope *exe_scope,
-            const ClangASTType &clang_type,
+            const CompilerType &clang_type,
             const ConstString &name,
             const DataExtractor &data,
             lldb::addr_t address = LLDB_INVALID_ADDRESS);
 
     static lldb::ValueObjectSP
     Create (ExecutionContextScope *exe_scope,
-            const ClangASTType &clang_type,
+            const CompilerType &clang_type,
             const ConstString &name,
             const lldb::DataBufferSP &result_data_sp,
             lldb::ByteOrder byte_order, 
@@ -50,7 +50,7 @@ public:
 
     static lldb::ValueObjectSP
     Create (ExecutionContextScope *exe_scope,
-            const ClangASTType &clang_type,
+            const CompilerType &clang_type,
             const ConstString &name,
             lldb::addr_t address,
             AddressType address_type,
@@ -97,7 +97,7 @@ public:
     CreateChildAtIndex (size_t idx, bool synthetic_array_member, int32_t synthetic_index);
     
     virtual lldb::ValueObjectSP
-    GetSyntheticChildAtOffset(uint32_t offset, const ClangASTType& type, bool can_create);
+    GetSyntheticChildAtOffset(uint32_t offset, const CompilerType& type, bool can_create);
     
     virtual lldb::ValueObjectSP
     AddressOf (Error &error);
@@ -131,12 +131,15 @@ public:
     virtual lldb::LanguageType
     GetPreferredDisplayLanguage ();
 
+    virtual lldb::ValueObjectSP
+    Cast (const CompilerType &clang_ast_type);
+
 protected:
     virtual bool
     UpdateValue ();
     
-    virtual ClangASTType
-    GetClangTypeImpl ();
+    virtual CompilerType
+    GetCompilerTypeImpl ();
 
     ConstString m_type_name;
     uint64_t m_byte_size;
@@ -151,13 +154,13 @@ private:
                             lldb::addr_t address);
 
     ValueObjectConstResult (ExecutionContextScope *exe_scope,
-                            const ClangASTType &clang_type,
+                            const CompilerType &clang_type,
                             const ConstString &name,
                             const DataExtractor &data,
                             lldb::addr_t address);
 
     ValueObjectConstResult (ExecutionContextScope *exe_scope,
-                            const ClangASTType &clang_type,
+                            const CompilerType &clang_type,
                             const ConstString &name,
                             const lldb::DataBufferSP &result_data_sp,
                             lldb::ByteOrder byte_order, 
@@ -165,7 +168,7 @@ private:
                             lldb::addr_t address);
 
     ValueObjectConstResult (ExecutionContextScope *exe_scope,
-                            const ClangASTType &clang_type,
+                            const CompilerType &clang_type,
                             const ConstString &name,
                             lldb::addr_t address,
                             AddressType address_type,
@@ -184,4 +187,4 @@ private:
 
 } // namespace lldb_private
 
-#endif  // liblldb_ValueObjectConstResult_h_
+#endif // liblldb_ValueObjectConstResult_h_

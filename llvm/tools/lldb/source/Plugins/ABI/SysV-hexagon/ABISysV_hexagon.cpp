@@ -257,7 +257,7 @@ ABISysV_hexagon::PrepareTrivialCall ( Thread &thread,
         sp -= argSize;
 
         // write this argument onto the stack of the host process
-        proc.get( )->WriteMemory( sp, arg.data, arg.size, error );
+        proc.get( )->WriteMemory( sp, arg.data_ap.get(), arg.size, error );
         if ( error.Fail( ) )
             return false;
 
@@ -359,14 +359,14 @@ ABISysV_hexagon::SetReturnValueObject ( lldb::StackFrameSP &frame_sp, lldb::Valu
 }
 
 ValueObjectSP
-ABISysV_hexagon::GetReturnValueObjectSimple ( Thread &thread, ClangASTType &return_clang_type ) const
+ABISysV_hexagon::GetReturnValueObjectSimple ( Thread &thread, CompilerType &return_clang_type ) const
 {
     ValueObjectSP return_valobj_sp;
     return return_valobj_sp;
 }
 
 ValueObjectSP
-ABISysV_hexagon::GetReturnValueObjectImpl ( Thread &thread, ClangASTType &return_clang_type ) const
+ABISysV_hexagon::GetReturnValueObjectImpl ( Thread &thread, CompilerType &return_clang_type ) const
 {
     ValueObjectSP return_valobj_sp;
     return return_valobj_sp;

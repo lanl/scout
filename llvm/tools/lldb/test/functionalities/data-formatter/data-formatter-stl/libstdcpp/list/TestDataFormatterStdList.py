@@ -20,6 +20,7 @@ class StdListDataFormatterTestCase(TestBase):
         self.data_formatter_commands()
 
     @dwarf_test
+    @skipIfWindows # libstdcpp not ported to Windows
     @expectedFailureFreeBSD("llvm.org/pr20548") # fails to build on lab.llvm.org buildbot
     def test_with_dwarf_and_run_command(self):
         """Test data formatter commands."""
@@ -40,7 +41,7 @@ class StdListDataFormatterTestCase(TestBase):
 
         lldbutil.run_break_set_by_file_and_line (self, "main.cpp", self.line, num_expected_locations=-1)
 
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         # The stop reason of the thread should be breakpoint.
         self.expect("thread list", STOPPED_DUE_TO_BREAKPOINT,
@@ -162,7 +163,7 @@ class StdListDataFormatterTestCase(TestBase):
         
         lldbutil.run_break_set_by_file_and_line (self, "main.cpp", self.final_line, num_expected_locations=-1)
 
-        self.runCmd("c", RUN_FAILED)
+        self.runCmd("c", RUN_SUCCEEDED)
 
         # The stop reason of the thread should be breakpoint.
         self.expect("thread list", STOPPED_DUE_TO_BREAKPOINT,

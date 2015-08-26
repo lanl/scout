@@ -21,6 +21,7 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
+#include "clang/AST/ExprOpenMP.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/StmtObjC.h"
@@ -685,6 +686,27 @@ public:
   QualType RebuildMemberPointerType(QualType PointeeType, QualType ClassType,
                                     SourceLocation Sigil);
 
+  /// \brief Build an Objective-C object type.
+  ///
+  /// By default, performs semantic analysis when building the object type.
+  /// Subclasses may override this routine to provide different behavior.
+  QualType RebuildObjCObjectType(QualType BaseType,
+                                 SourceLocation Loc,
+                                 SourceLocation TypeArgsLAngleLoc,
+                                 ArrayRef<TypeSourceInfo *> TypeArgs,
+                                 SourceLocation TypeArgsRAngleLoc,
+                                 SourceLocation ProtocolLAngleLoc,
+                                 ArrayRef<ObjCProtocolDecl *> Protocols,
+                                 ArrayRef<SourceLocation> ProtocolLocs,
+                                 SourceLocation ProtocolRAngleLoc);
+
+  /// \brief Build a new Objective-C object pointer type given the pointee type.
+  ///
+  /// By default, directly builds the pointer type, with no additional semantic
+  /// analysis.
+  QualType RebuildObjCObjectPointerType(QualType PointeeType,
+                                        SourceLocation Star);
+
   /// \brief Build a new array type given the element type, size
   /// modifier, size of the array (if known), size expression, and index type
   /// qualifiers.
@@ -1015,7 +1037,7 @@ public:
     }
 
     if (!SemaRef.isAcceptableTagRedeclaration(Tag, Kind, /*isDefinition*/false,
-                                              IdLoc, *Id)) {
+                                              IdLoc, Id)) {
       SemaRef.Diag(KeywordLoc, diag::err_use_with_wrong_tag) << Id;
       SemaRef.Diag(Tag->getLocation(), diag::note_previous_use);
       return QualType();
@@ -1347,11 +1369,12 @@ public:
   /// Subclasses may override this routine to provide different behavior.
   StmtResult RebuildOMPExecutableDirective(OpenMPDirectiveKind Kind,
                                            DeclarationNameInfo DirName,
+                                           OpenMPDirectiveKind CancelRegion,
                                            ArrayRef<OMPClause *> Clauses,
                                            Stmt *AStmt, SourceLocation StartLoc,
                                            SourceLocation EndLoc) {
-    return getSema().ActOnOpenMPExecutableDirective(Kind, DirName, Clauses,
-                                                    AStmt, StartLoc, EndLoc);
+    return getSema().ActOnOpenMPExecutableDirective(
+        Kind, DirName, CancelRegion, Clauses, AStmt, StartLoc, EndLoc);
   }
 
   /// \brief Build a new OpenMP 'if' clause.
@@ -1397,6 +1420,16 @@ public:
                                      SourceLocation LParenLoc,
                                      SourceLocation EndLoc) {
     return getSema().ActOnOpenMPSafelenClause(Len, StartLoc, LParenLoc, EndLoc);
+  }
+
+  /// \brief Build a new OpenMP 'simdlen' clause.
+  ///
+  /// By default, performs semantic analysis to build the new OpenMP clause.
+  /// Subclasses may override this routine to provide different behavior.
+  OMPClause *RebuildOMPSimdlenClause(Expr *Len, SourceLocation StartLoc,
+                                     SourceLocation LParenLoc,
+                                     SourceLocation EndLoc) {
+    return getSema().ActOnOpenMPSimdlenClause(Len, StartLoc, LParenLoc, EndLoc);
   }
 
   /// \brief Build a new OpenMP 'collapse' clause.
@@ -1449,6 +1482,16 @@ public:
                                       SourceLocation EndLoc) {
     return getSema().ActOnOpenMPScheduleClause(
         Kind, ChunkSize, StartLoc, LParenLoc, KindLoc, CommaLoc, EndLoc);
+  }
+
+  /// \brief Build a new OpenMP 'ordered' clause.
+  ///
+  /// By default, performs semantic analysis to build the new OpenMP clause.
+  /// Subclasses may override this routine to provide different behavior.
+  OMPClause *RebuildOMPOrderedClause(SourceLocation StartLoc,
+                                     SourceLocation EndLoc,
+                                     SourceLocation LParenLoc, Expr *Num) {
+    return getSema().ActOnOpenMPOrderedClause(StartLoc, EndLoc, LParenLoc, Num);
   }
 
   /// \brief Build a new OpenMP 'private' clause.
@@ -1522,10 +1565,13 @@ public:
   OMPClause *RebuildOMPLinearClause(ArrayRef<Expr *> VarList, Expr *Step,
                                     SourceLocation StartLoc,
                                     SourceLocation LParenLoc,
+                                    OpenMPLinearClauseKind Modifier,
+                                    SourceLocation ModifierLoc,
                                     SourceLocation ColonLoc,
                                     SourceLocation EndLoc) {
     return getSema().ActOnOpenMPLinearClause(VarList, Step, StartLoc, LParenLoc,
-                                             ColonLoc, EndLoc);
+                                             Modifier, ModifierLoc, ColonLoc,
+                                             EndLoc);
   }
 
   /// \brief Build a new OpenMP 'aligned' clause.
@@ -1588,6 +1634,17 @@ public:
                          SourceLocation EndLoc) {
     return getSema().ActOnOpenMPDependClause(DepKind, DepLoc, ColonLoc, VarList,
                                              StartLoc, LParenLoc, EndLoc);
+  }
+
+  /// \brief Build a new OpenMP 'device' clause.
+  ///
+  /// By default, performs semantic analysis to build the new statement.
+  /// Subclasses may override this routine to provide different behavior.
+  OMPClause *RebuildOMPDeviceClause(Expr *Device, SourceLocation StartLoc,
+                                    SourceLocation LParenLoc,
+                                    SourceLocation EndLoc) {
+    return getSema().ActOnOpenMPDeviceClause(Device, StartLoc, LParenLoc, 
+                                             EndLoc);
   }
 
   /// \brief Rebuild the operand to an Objective-C \@synchronized statement.
@@ -1859,6 +1916,18 @@ public:
     return getSema().ActOnArraySubscriptExpr(/*Scope=*/nullptr, LHS,
                                              LBracketLoc, RHS,
                                              RBracketLoc);
+  }
+
+  /// \brief Build a new array section expression.
+  ///
+  /// By default, performs semantic analysis to build the new expression.
+  /// Subclasses may override this routine to provide different behavior.
+  ExprResult RebuildOMPArraySectionExpr(Expr *Base, SourceLocation LBracketLoc,
+                                        Expr *LowerBound,
+                                        SourceLocation ColonLoc, Expr *Length,
+                                        SourceLocation RBracketLoc) {
+    return getSema().ActOnOMPArraySectionExpr(Base, LBracketLoc, LowerBound,
+                                              ColonLoc, Length, RBracketLoc);
   }
 
   /// \brief Build a new call expression.
@@ -2661,20 +2730,18 @@ public:
   ExprResult RebuildObjCMessageExpr(SourceLocation SuperLoc,
                                     Selector Sel,
                                     ArrayRef<SourceLocation> SelectorLocs,
+                                    QualType SuperType,
                                     ObjCMethodDecl *Method,
                                     SourceLocation LBracLoc,
                                     MultiExprArg Args,
                                     SourceLocation RBracLoc) {
-    ObjCInterfaceDecl *Class = Method->getClassInterface();
-    QualType ReceiverTy = SemaRef.Context.getObjCInterfaceType(Class);
-    
     return Method->isInstanceMethod() ? SemaRef.BuildInstanceMessage(nullptr,
-                                          ReceiverTy,
+                                          SuperType,
                                           SuperLoc,
                                           Sel, Method, LBracLoc, SelectorLocs,
                                           RBracLoc, Args)
                                       : SemaRef.BuildClassMessage(nullptr,
-                                          ReceiverTy,
+                                          SuperType,
                                           SuperLoc,
                                           Sel, Method, LBracLoc, SelectorLocs,
                                           RBracLoc, Args);
@@ -4704,9 +4771,7 @@ QualType TreeTransform<Derived>::TransformFunctionProtoType(
 
   QualType Result = TL.getType();
   if (getDerived().AlwaysRebuild() || ResultType != T->getReturnType() ||
-      T->getNumParams() != ParamTypes.size() ||
-      !std::equal(T->param_type_begin(), T->param_type_end(),
-                  ParamTypes.begin()) || EPIChanged) {
+      T->getParamTypes() != llvm::makeArrayRef(ParamTypes) || EPIChanged) {
     Result = getDerived().RebuildFunctionProtoType(ResultType, ParamTypes, EPI);
     if (Result.isNull())
       return QualType();
@@ -5819,18 +5884,153 @@ template<typename Derived>
 QualType
 TreeTransform<Derived>::TransformObjCObjectType(TypeLocBuilder &TLB,
                                                 ObjCObjectTypeLoc TL) {
-  // ObjCObjectType is never dependent.
-  TLB.pushFullCopy(TL);
-  return TL.getType();
+  // Transform base type.
+  QualType BaseType = getDerived().TransformType(TLB, TL.getBaseLoc());
+  if (BaseType.isNull())
+    return QualType();
+
+  bool AnyChanged = BaseType != TL.getBaseLoc().getType();
+
+  // Transform type arguments.
+  SmallVector<TypeSourceInfo *, 4> NewTypeArgInfos;
+  for (unsigned i = 0, n = TL.getNumTypeArgs(); i != n; ++i) {
+    TypeSourceInfo *TypeArgInfo = TL.getTypeArgTInfo(i);
+    TypeLoc TypeArgLoc = TypeArgInfo->getTypeLoc();
+    QualType TypeArg = TypeArgInfo->getType();
+    if (auto PackExpansionLoc = TypeArgLoc.getAs<PackExpansionTypeLoc>()) {
+      AnyChanged = true;
+
+      // We have a pack expansion. Instantiate it.
+      const auto *PackExpansion = PackExpansionLoc.getType()
+                                    ->castAs<PackExpansionType>();
+      SmallVector<UnexpandedParameterPack, 2> Unexpanded;
+      SemaRef.collectUnexpandedParameterPacks(PackExpansion->getPattern(),
+                                              Unexpanded);
+      assert(!Unexpanded.empty() && "Pack expansion without parameter packs?");
+
+      // Determine whether the set of unexpanded parameter packs can
+      // and should be expanded.
+      TypeLoc PatternLoc = PackExpansionLoc.getPatternLoc();
+      bool Expand = false;
+      bool RetainExpansion = false;
+      Optional<unsigned> NumExpansions = PackExpansion->getNumExpansions();
+      if (getDerived().TryExpandParameterPacks(
+            PackExpansionLoc.getEllipsisLoc(), PatternLoc.getSourceRange(),
+            Unexpanded, Expand, RetainExpansion, NumExpansions))
+        return QualType();
+
+      if (!Expand) {
+        // We can't expand this pack expansion into separate arguments yet;
+        // just substitute into the pattern and create a new pack expansion
+        // type.
+        Sema::ArgumentPackSubstitutionIndexRAII SubstIndex(getSema(), -1);
+
+        TypeLocBuilder TypeArgBuilder;
+        TypeArgBuilder.reserve(PatternLoc.getFullDataSize());
+        QualType NewPatternType = getDerived().TransformType(TypeArgBuilder, 
+                                                             PatternLoc);
+        if (NewPatternType.isNull())
+          return QualType();
+
+        QualType NewExpansionType = SemaRef.Context.getPackExpansionType(
+                                      NewPatternType, NumExpansions);
+        auto NewExpansionLoc = TLB.push<PackExpansionTypeLoc>(NewExpansionType);
+        NewExpansionLoc.setEllipsisLoc(PackExpansionLoc.getEllipsisLoc());
+        NewTypeArgInfos.push_back(
+          TypeArgBuilder.getTypeSourceInfo(SemaRef.Context, NewExpansionType));
+        continue;
+      }
+
+      // Substitute into the pack expansion pattern for each slice of the
+      // pack.
+      for (unsigned ArgIdx = 0; ArgIdx != *NumExpansions; ++ArgIdx) {
+        Sema::ArgumentPackSubstitutionIndexRAII SubstIndex(getSema(), ArgIdx);
+
+        TypeLocBuilder TypeArgBuilder;
+        TypeArgBuilder.reserve(PatternLoc.getFullDataSize());
+
+        QualType NewTypeArg = getDerived().TransformType(TypeArgBuilder,
+                                                         PatternLoc);
+        if (NewTypeArg.isNull())
+          return QualType();
+
+        NewTypeArgInfos.push_back(
+          TypeArgBuilder.getTypeSourceInfo(SemaRef.Context, NewTypeArg));
+      }
+
+      continue;
+    }
+
+    TypeLocBuilder TypeArgBuilder;
+    TypeArgBuilder.reserve(TypeArgLoc.getFullDataSize());
+    QualType NewTypeArg = getDerived().TransformType(TypeArgBuilder, TypeArgLoc);
+    if (NewTypeArg.isNull())
+      return QualType();
+
+    // If nothing changed, just keep the old TypeSourceInfo.
+    if (NewTypeArg == TypeArg) {
+      NewTypeArgInfos.push_back(TypeArgInfo);
+      continue;
+    }
+
+    NewTypeArgInfos.push_back(
+      TypeArgBuilder.getTypeSourceInfo(SemaRef.Context, NewTypeArg));
+    AnyChanged = true;
+  }
+
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() || AnyChanged) {
+    // Rebuild the type.
+    Result = getDerived().RebuildObjCObjectType(
+               BaseType,
+               TL.getLocStart(),
+               TL.getTypeArgsLAngleLoc(),
+               NewTypeArgInfos,
+               TL.getTypeArgsRAngleLoc(),
+               TL.getProtocolLAngleLoc(),
+               llvm::makeArrayRef(TL.getTypePtr()->qual_begin(),
+                                  TL.getNumProtocols()),
+               TL.getProtocolLocs(),
+               TL.getProtocolRAngleLoc());
+
+    if (Result.isNull())
+      return QualType();
+  }
+
+  ObjCObjectTypeLoc NewT = TLB.push<ObjCObjectTypeLoc>(Result);
+  assert(TL.hasBaseTypeAsWritten() && "Can't be dependent");
+  NewT.setHasBaseTypeAsWritten(true);
+  NewT.setTypeArgsLAngleLoc(TL.getTypeArgsLAngleLoc());
+  for (unsigned i = 0, n = TL.getNumTypeArgs(); i != n; ++i)
+    NewT.setTypeArgTInfo(i, NewTypeArgInfos[i]);
+  NewT.setTypeArgsRAngleLoc(TL.getTypeArgsRAngleLoc());
+  NewT.setProtocolLAngleLoc(TL.getProtocolLAngleLoc());
+  for (unsigned i = 0, n = TL.getNumProtocols(); i != n; ++i)
+    NewT.setProtocolLoc(i, TL.getProtocolLoc(i));
+  NewT.setProtocolRAngleLoc(TL.getProtocolRAngleLoc());
+  return Result;
 }
 
 template<typename Derived>
 QualType
 TreeTransform<Derived>::TransformObjCObjectPointerType(TypeLocBuilder &TLB,
                                                ObjCObjectPointerTypeLoc TL) {
-  // ObjCObjectPointerType is never dependent.
-  TLB.pushFullCopy(TL);
-  return TL.getType();
+  QualType PointeeType = getDerived().TransformType(TLB, TL.getPointeeLoc());
+  if (PointeeType.isNull())
+    return QualType();
+
+  QualType Result = TL.getType();
+  if (getDerived().AlwaysRebuild() ||
+      PointeeType != TL.getPointeeLoc().getType()) {
+    Result = getDerived().RebuildObjCObjectPointerType(PointeeType,
+                                                       TL.getStarLoc());
+    if (Result.isNull())
+      return QualType();
+  }
+
+  ObjCObjectPointerTypeLoc NewT = TLB.push<ObjCObjectPointerTypeLoc>(Result);
+  NewT.setStarLoc(TL.getStarLoc());
+  return Result;
 }
 
 //===----------------------------------------------------------------------===//
@@ -6974,10 +7174,16 @@ StmtResult TreeTransform<Derived>::TransformOMPExecutableDirective(
     DirName = cast<OMPCriticalDirective>(D)->getDirectiveName();
     DirName = getDerived().TransformDeclarationNameInfo(DirName);
   }
+  OpenMPDirectiveKind CancelRegion = OMPD_unknown;
+  if (D->getDirectiveKind() == OMPD_cancellation_point) {
+    CancelRegion = cast<OMPCancellationPointDirective>(D)->getCancelRegion();
+  } else if (D->getDirectiveKind() == OMPD_cancel) {
+    CancelRegion = cast<OMPCancelDirective>(D)->getCancelRegion();
+  }
 
   return getDerived().RebuildOMPExecutableDirective(
-      D->getDirectiveKind(), DirName, TClauses, AssociatedStmt.get(),
-      D->getLocStart(), D->getLocEnd());
+      D->getDirectiveKind(), DirName, CancelRegion, TClauses,
+      AssociatedStmt.get(), D->getLocStart(), D->getLocEnd());
 }
 
 template <typename Derived>
@@ -7211,10 +7417,43 @@ TreeTransform<Derived>::TransformOMPTargetDirective(OMPTargetDirective *D) {
 }
 
 template <typename Derived>
+StmtResult TreeTransform<Derived>::TransformOMPTargetDataDirective(
+    OMPTargetDataDirective *D) {
+  DeclarationNameInfo DirName;
+  getDerived().getSema().StartOpenMPDSABlock(OMPD_target_data, DirName, nullptr,
+                                             D->getLocStart());
+  StmtResult Res = getDerived().TransformOMPExecutableDirective(D);
+  getDerived().getSema().EndOpenMPDSABlock(Res.get());
+  return Res;
+}
+
+template <typename Derived>
 StmtResult
 TreeTransform<Derived>::TransformOMPTeamsDirective(OMPTeamsDirective *D) {
   DeclarationNameInfo DirName;
   getDerived().getSema().StartOpenMPDSABlock(OMPD_teams, DirName, nullptr,
+                                             D->getLocStart());
+  StmtResult Res = getDerived().TransformOMPExecutableDirective(D);
+  getDerived().getSema().EndOpenMPDSABlock(Res.get());
+  return Res;
+}
+
+template <typename Derived>
+StmtResult TreeTransform<Derived>::TransformOMPCancellationPointDirective(
+    OMPCancellationPointDirective *D) {
+  DeclarationNameInfo DirName;
+  getDerived().getSema().StartOpenMPDSABlock(OMPD_cancellation_point, DirName,
+                                             nullptr, D->getLocStart());
+  StmtResult Res = getDerived().TransformOMPExecutableDirective(D);
+  getDerived().getSema().EndOpenMPDSABlock(Res.get());
+  return Res;
+}
+
+template <typename Derived>
+StmtResult
+TreeTransform<Derived>::TransformOMPCancelDirective(OMPCancelDirective *D) {
+  DeclarationNameInfo DirName;
+  getDerived().getSema().StartOpenMPDSABlock(OMPD_cancel, DirName, nullptr,
                                              D->getLocStart());
   StmtResult Res = getDerived().TransformOMPExecutableDirective(D);
   getDerived().getSema().EndOpenMPDSABlock(Res.get());
@@ -7264,6 +7503,16 @@ TreeTransform<Derived>::TransformOMPSafelenClause(OMPSafelenClause *C) {
 
 template <typename Derived>
 OMPClause *
+TreeTransform<Derived>::TransformOMPSimdlenClause(OMPSimdlenClause *C) {
+  ExprResult E = getDerived().TransformExpr(C->getSimdlen());
+  if (E.isInvalid())
+    return nullptr;
+  return getDerived().RebuildOMPSimdlenClause(
+      E.get(), C->getLocStart(), C->getLParenLoc(), C->getLocEnd());
+}
+
+template <typename Derived>
+OMPClause *
 TreeTransform<Derived>::TransformOMPCollapseClause(OMPCollapseClause *C) {
   ExprResult E = getDerived().TransformExpr(C->getNumForLoops());
   if (E.isInvalid())
@@ -7302,8 +7551,14 @@ TreeTransform<Derived>::TransformOMPScheduleClause(OMPScheduleClause *C) {
 template <typename Derived>
 OMPClause *
 TreeTransform<Derived>::TransformOMPOrderedClause(OMPOrderedClause *C) {
-  // No need to rebuild this clause, no template-dependent parameters.
-  return C;
+  ExprResult E;
+  if (auto *Num = C->getNumForLoops()) {
+    E = getDerived().TransformExpr(Num);
+    if (E.isInvalid())
+      return nullptr;
+  }
+  return getDerived().RebuildOMPOrderedClause(C->getLocStart(), C->getLocEnd(),
+                                              C->getLParenLoc(), E.get());
 }
 
 template <typename Derived>
@@ -7459,9 +7714,9 @@ TreeTransform<Derived>::TransformOMPLinearClause(OMPLinearClause *C) {
   ExprResult Step = getDerived().TransformExpr(C->getStep());
   if (Step.isInvalid())
     return nullptr;
-  return getDerived().RebuildOMPLinearClause(Vars, Step.get(), C->getLocStart(),
-                                             C->getLParenLoc(),
-                                             C->getColonLoc(), C->getLocEnd());
+  return getDerived().RebuildOMPLinearClause(
+      Vars, Step.get(), C->getLocStart(), C->getLParenLoc(), C->getModifier(),
+      C->getModifierLoc(), C->getColonLoc(), C->getLocEnd());
 }
 
 template <typename Derived>
@@ -7541,6 +7796,16 @@ TreeTransform<Derived>::TransformOMPDependClause(OMPDependClause *C) {
   return getDerived().RebuildOMPDependClause(
       C->getDependencyKind(), C->getDependencyLoc(), C->getColonLoc(), Vars,
       C->getLocStart(), C->getLParenLoc(), C->getLocEnd());
+}
+
+template <typename Derived>
+OMPClause *
+TreeTransform<Derived>::TransformOMPDeviceClause(OMPDeviceClause *C) {
+  ExprResult E = getDerived().TransformExpr(C->getDevice());
+  if (E.isInvalid())
+    return nullptr;
+  return getDerived().RebuildOMPDeviceClause(
+      E.get(), C->getLocStart(), C->getLParenLoc(), C->getLocEnd());
 }
 
 //===----------------------------------------------------------------------===//
@@ -7901,6 +8166,36 @@ TreeTransform<Derived>::TransformArraySubscriptExpr(ArraySubscriptExpr *E) {
                                            /*FIXME:*/E->getLHS()->getLocStart(),
                                                 RHS.get(),
                                                 E->getRBracketLoc());
+}
+
+template <typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformOMPArraySectionExpr(OMPArraySectionExpr *E) {
+  ExprResult Base = getDerived().TransformExpr(E->getBase());
+  if (Base.isInvalid())
+    return ExprError();
+
+  ExprResult LowerBound;
+  if (E->getLowerBound()) {
+    LowerBound = getDerived().TransformExpr(E->getLowerBound());
+    if (LowerBound.isInvalid())
+      return ExprError();
+  }
+
+  ExprResult Length;
+  if (E->getLength()) {
+    Length = getDerived().TransformExpr(E->getLength());
+    if (Length.isInvalid())
+      return ExprError();
+  }
+
+  if (!getDerived().AlwaysRebuild() && Base.get() == E->getBase() &&
+      LowerBound.get() == E->getLowerBound() && Length.get() == E->getLength())
+    return E;
+
+  return getDerived().RebuildOMPArraySectionExpr(
+      Base.get(), E->getBase()->getLocEnd(), LowerBound.get(), E->getColonLoc(),
+      Length.get(), E->getRBracketLoc());
 }
 
 template<typename Derived>
@@ -10411,6 +10706,7 @@ TreeTransform<Derived>::TransformObjCMessageExpr(ObjCMessageExpr *E) {
     return getDerived().RebuildObjCMessageExpr(E->getSuperLoc(),
                                                E->getSelector(),
                                                SelLocs,
+                                               E->getReceiverType(),
                                                E->getMethodDecl(),
                                                E->getLeftLoc(),
                                                Args,
@@ -10742,6 +11038,31 @@ TreeTransform<Derived>::RebuildMemberPointerType(QualType PointeeType,
                                                  SourceLocation Sigil) {
   return SemaRef.BuildMemberPointerType(PointeeType, ClassType, Sigil,
                                         getDerived().getBaseEntity());
+}
+
+template<typename Derived>
+QualType TreeTransform<Derived>::RebuildObjCObjectType(
+           QualType BaseType,
+           SourceLocation Loc,
+           SourceLocation TypeArgsLAngleLoc,
+           ArrayRef<TypeSourceInfo *> TypeArgs,
+           SourceLocation TypeArgsRAngleLoc,
+           SourceLocation ProtocolLAngleLoc,
+           ArrayRef<ObjCProtocolDecl *> Protocols,
+           ArrayRef<SourceLocation> ProtocolLocs,
+           SourceLocation ProtocolRAngleLoc) {
+  return SemaRef.BuildObjCObjectType(BaseType, Loc, TypeArgsLAngleLoc,
+                                     TypeArgs, TypeArgsRAngleLoc,
+                                     ProtocolLAngleLoc, Protocols, ProtocolLocs,
+                                     ProtocolRAngleLoc,
+                                     /*FailOnError=*/true);
+}
+
+template<typename Derived>
+QualType TreeTransform<Derived>::RebuildObjCObjectPointerType(
+           QualType PointeeType,
+           SourceLocation Star) {
+  return SemaRef.Context.getObjCObjectPointerType(PointeeType);
 }
 
 template<typename Derived>

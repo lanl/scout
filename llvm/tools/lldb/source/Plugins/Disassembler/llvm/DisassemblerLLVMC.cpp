@@ -415,7 +415,7 @@ protected:
 
 
 
-DisassemblerLLVMC::LLVMCDisassembler::LLVMCDisassembler (const char *triple, const char *cpu, unsigned flavor, DisassemblerLLVMC &owner):
+DisassemblerLLVMC::LLVMCDisassembler::LLVMCDisassembler (const char *triple, const char *cpu, const char *features_str, unsigned flavor, DisassemblerLLVMC &owner):
     m_is_valid(true)
 {
     std::string Error;
@@ -428,8 +428,6 @@ DisassemblerLLVMC::LLVMCDisassembler::LLVMCDisassembler (const char *triple, con
 
     m_instr_info_ap.reset(curr_target->createMCInstrInfo());
     m_reg_info_ap.reset (curr_target->createMCRegInfo(triple));
-
-    std::string features_str;
 
     m_subtarget_info_ap.reset(curr_target->createMCSubtargetInfo(triple, cpu,
                                                                 features_str));
@@ -520,7 +518,6 @@ DisassemblerLLVMC::LLVMCDisassembler::PrintMCInst (llvm::MCInst &mc_inst,
     llvm::raw_svector_ostream inst_stream(inst_string);
     m_instr_printer_ap->printInst (&mc_inst, inst_stream, unused_annotations,
                                    *m_subtarget_info_ap);
-    inst_stream.flush();
     const size_t output_size = std::min(dst_len - 1, inst_string.size());
     std::memcpy(dst, inst_string.data(), output_size);
     dst[output_size] = '\0';
@@ -607,7 +604,7 @@ DisassemblerLLVMC::DisassemblerLLVMC (const ArchSpec &arch, const char *flavor_s
     }
 
     ArchSpec thumb_arch(arch);
-    if (arch.GetTriple().getArch() == llvm::Triple::arm)
+    if (arch.GetTriple().getArch() == llvm::Triple::arm || arch.GetTriple().getArch() == llvm::Triple::thumb)
     {
         std::string thumb_arch_name (thumb_arch.GetTriple().getArchName().str());
         // Replace "arm" with "thumb" so we get all thumb variants correct
@@ -629,7 +626,7 @@ DisassemblerLLVMC::DisassemblerLLVMC (const ArchSpec &arch, const char *flavor_s
     // Handle the Cortex-M0 (armv6m) the same; the ISA is a subset of the T and T32
     // instructions defined in ARMv7-A.
 
-    if (arch.GetTriple().getArch() == llvm::Triple::arm
+    if ((arch.GetTriple().getArch() == llvm::Triple::arm || arch.GetTriple().getArch() == llvm::Triple::thumb)
         && (arch.GetCore() == ArchSpec::Core::eCore_arm_armv7m
             || arch.GetCore() == ArchSpec::Core::eCore_arm_armv7em
             || arch.GetCore() == ArchSpec::Core::eCore_arm_armv6m))
@@ -674,8 +671,25 @@ DisassemblerLLVMC::DisassemblerLLVMC (const ArchSpec &arch, const char *flavor_s
         default:
             cpu = ""; break;
     }
+
+    std::string features_str = "";
+    if (arch.GetTriple().getArch() == llvm::Triple::mips || arch.GetTriple().getArch() == llvm::Triple::mipsel
+        || arch.GetTriple().getArch() == llvm::Triple::mips64 || arch.GetTriple().getArch() == llvm::Triple::mips64el)
+    {
+        uint32_t arch_flags = arch.GetFlags ();
+        if (arch_flags & ArchSpec::eMIPSAse_msa)
+            features_str += "+msa,";
+        if (arch_flags & ArchSpec::eMIPSAse_dsp)
+            features_str += "+dsp,";
+        if (arch_flags & ArchSpec::eMIPSAse_dspr2)
+            features_str += "+dspr2,";
+        if (arch_flags & ArchSpec::eMIPSAse_mips16)
+            features_str += "+mips16,";
+        if (arch_flags & ArchSpec::eMIPSAse_micromips)
+            features_str += "+micromips,";
+    }
     
-    m_disasm_ap.reset (new LLVMCDisassembler(triple, cpu, flavor, *this));
+    m_disasm_ap.reset (new LLVMCDisassembler(triple, cpu, features_str.c_str(), flavor, *this));
     if (!m_disasm_ap->IsValid())
     {
         // We use m_disasm_ap.get() to tell whether we are valid or not, so if this isn't good for some reason,
@@ -684,10 +698,10 @@ DisassemblerLLVMC::DisassemblerLLVMC (const ArchSpec &arch, const char *flavor_s
     }
 
     // For arm CPUs that can execute arm or thumb instructions, also create a thumb instruction disassembler.
-    if (arch.GetTriple().getArch() == llvm::Triple::arm)
+    if (arch.GetTriple().getArch() == llvm::Triple::arm || arch.GetTriple().getArch() == llvm::Triple::thumb)
     {
         std::string thumb_triple(thumb_arch.GetTriple().getTriple());
-        m_alternate_disasm_ap.reset(new LLVMCDisassembler(thumb_triple.c_str(), "", flavor, *this));
+        m_alternate_disasm_ap.reset(new LLVMCDisassembler(thumb_triple.c_str(), "", "", flavor, *this));
         if (!m_alternate_disasm_ap->IsValid())
         {
             m_disasm_ap.reset();

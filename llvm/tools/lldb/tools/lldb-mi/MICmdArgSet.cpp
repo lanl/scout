@@ -20,7 +20,7 @@
 // Return:  None.
 // Throws:  None.
 //--
-CMICmdArgSet::CMICmdArgSet(void)
+CMICmdArgSet::CMICmdArgSet()
     : m_bIsArgsPresentButNotHandledByCmd(false)
     , m_constStrCommaSpc(", ")
 {
@@ -33,7 +33,7 @@ CMICmdArgSet::CMICmdArgSet(void)
 // Return:  None.
 // Throws:  None.
 //--
-CMICmdArgSet::~CMICmdArgSet(void)
+CMICmdArgSet::~CMICmdArgSet()
 {
     // Tidy up
     Destroy();
@@ -47,7 +47,7 @@ CMICmdArgSet::~CMICmdArgSet(void)
 // Throws:  None.
 //--
 void
-CMICmdArgSet::Destroy(void)
+CMICmdArgSet::Destroy()
 {
     // Delete command argument objects
     if (!m_setCmdArgs.empty())
@@ -81,7 +81,7 @@ CMICmdArgSet::Destroy(void)
 // Throws:  None.
 //--
 bool
-CMICmdArgSet::IsArgsPresentButNotHandledByCmd(void) const
+CMICmdArgSet::IsArgsPresentButNotHandledByCmd() const
 {
     return m_bIsArgsPresentButNotHandledByCmd;
 }
@@ -90,17 +90,14 @@ CMICmdArgSet::IsArgsPresentButNotHandledByCmd(void) const
 // Details: Add the list of command's arguments to parse and validate another one.
 // Type:    Method.
 // Args:    vArg    - (R) A command argument object.
-// Return:  MIstatus::success - Functional succeeded.
-//          MIstatus::failure - Functional failed.
+// Return:  None.
 // Throws:  None.
 //--
-bool
+void
 CMICmdArgSet::Add(const CMICmdArgValBase &vArg)
 {
     CMICmdArgValBase *pArg = const_cast<CMICmdArgValBase *>(&vArg);
     m_setCmdArgs.push_back(pArg);
-
-    return MIstatus::success;
 }
 
 //++ ------------------------------------------------------------------------------------
@@ -113,7 +110,7 @@ CMICmdArgSet::Add(const CMICmdArgValBase &vArg)
 // Throws:  None.
 //--
 const CMICmdArgSet::SetCmdArgs_t &
-CMICmdArgSet::GetArgsThatAreMissing(void) const
+CMICmdArgSet::GetArgsThatAreMissing() const
 {
     return m_setCmdArgsThatAreMissing;
 }
@@ -128,7 +125,7 @@ CMICmdArgSet::GetArgsThatAreMissing(void) const
 // Throws:  None.
 //--
 const CMICmdArgSet::SetCmdArgs_t &
-CMICmdArgSet::GetArgsThatInvalid(void) const
+CMICmdArgSet::GetArgsThatInvalid() const
 {
     return m_setCmdArgsThatNotValid;
 }
@@ -146,7 +143,7 @@ CMICmdArgSet::GetArgsThatInvalid(void) const
 // Throws:  None.
 //--
 const CMICmdArgSet::SetCmdArgs_t &
-CMICmdArgSet::GetArgsNotHandledByCmd(void) const
+CMICmdArgSet::GetArgsNotHandledByCmd() const
 {
     return m_setCmdArgsNotHandledByCmd;
 }
@@ -326,7 +323,7 @@ CMICmdArgSet::ValidationFormErrorMessages(const CMICmdArgContext &vwCmdArgsText)
 // Throws:  None.
 //--
 bool
-CMICmdArgSet::IsArgContextEmpty(void) const
+CMICmdArgSet::IsArgContextEmpty() const
 {
     return m_cmdArgContext.IsEmpty();
 }
@@ -335,11 +332,11 @@ CMICmdArgSet::IsArgContextEmpty(void) const
 // Details: Retrieve the number of arguments that are being used for the command.
 // Type:    Method.
 // Args:    None.
-// Return:  MIuint - Argument count.
+// Return:  size_t - Argument count.
 // Throws:  None.
 //--
-MIuint
-CMICmdArgSet::GetCount(void) const
+size_t
+CMICmdArgSet::GetCount() const
 {
     return m_setCmdArgs.size();
 }

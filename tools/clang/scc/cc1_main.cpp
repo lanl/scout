@@ -71,7 +71,7 @@
 using namespace std;
 
 #include "llvm/Option/Arg.h"
-#include "clang/Frontend/PCHContainerOperations.h"
+#include "clang/CodeGen/ObjectFilePCHContainerOperations.h"
 #include "clang/Driver/DriverDiagnostic.h"
 #include "clang/Driver/Options.h"
 #include "clang/Frontend/CompilerInstance.h"
@@ -132,6 +132,11 @@ int cc1_main(ArrayRef<const char *> Argv,
 
   std::unique_ptr<CompilerInstance> Clang(new CompilerInstance());
   IntrusiveRefCntPtr<DiagnosticIDs> DiagID(new DiagnosticIDs());
+
+  // Register the support for object-file-wrapped Clang modules.
+  auto PCHOps = Clang->getPCHContainerOperations();
+  PCHOps->registerWriter(llvm::make_unique<ObjectFilePCHContainerWriter>());
+  PCHOps->registerReader(llvm::make_unique<ObjectFilePCHContainerReader>());
 
   // Initialize targets first, so that --version shows registered targets.
   llvm::InitializeAllTargets();

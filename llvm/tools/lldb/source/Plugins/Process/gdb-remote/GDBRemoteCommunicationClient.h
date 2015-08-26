@@ -287,10 +287,10 @@ public:
     GetWatchpointSupportInfo (uint32_t &num); 
 
     Error
-    GetWatchpointSupportInfo (uint32_t &num, bool& after);
+    GetWatchpointSupportInfo (uint32_t &num, bool& after, const ArchSpec &arch);
     
     Error
-    GetWatchpointsTriggerAfterInstruction (bool &after);
+    GetWatchpointsTriggerAfterInstruction (bool &after, const ArchSpec &arch);
 
     const ArchSpec &
     GetHostArchitecture ();
@@ -320,7 +320,7 @@ public:
     GetSyncThreadStateSupported();
     
     void
-    ResetDiscoverableSettings();
+    ResetDiscoverableSettings (bool did_exec);
 
     bool
     GetHostInfo (bool force = false);
@@ -550,6 +550,9 @@ public:
     GetThreadExtendedInfoSupported();
 
     bool
+    GetLoadedDynamicLibrariesInfosSupported();
+
+    bool
     GetModuleInfo (const FileSpec& module_file_spec,
                    const ArchSpec& arch_spec,
                    ModuleSpec &module_spec);
@@ -614,6 +617,7 @@ protected:
     LazyBool m_supports_qXfer_features_read;
     LazyBool m_supports_augmented_libraries_svr4_read;
     LazyBool m_supports_jThreadExtendedInfo;
+    LazyBool m_supports_jLoadedDynamicLibrariesInfos;
 
     bool
         m_supports_qProcessInfoPID:1,

@@ -15,6 +15,7 @@
 #include "lldb/Core/ValueObject.h"
 #include "lldb/Core/ValueObjectVariable.h"
 #include "lldb/Symbol/Block.h"
+#include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Symbol/Type.h"
@@ -43,7 +44,8 @@ Variable::Variable
     Declaration* decl_ptr,
     const DWARFExpression& location,
     bool external,
-    bool artificial
+    bool artificial,
+    bool static_member
 ) :
     UserID(uid),
     m_name(name),
@@ -54,7 +56,8 @@ Variable::Variable
     m_declaration(decl_ptr),
     m_location(location),
     m_external(external),
-    m_artificial(artificial)
+    m_artificial(artificial),
+    m_static_member(static_member)
 {
 }
 
@@ -65,22 +68,48 @@ Variable::~Variable()
 {
 }
 
+lldb::LanguageType
+Variable::GetLanguage () const
+{
+    SymbolContext variable_sc;
+    m_owner_scope->CalculateSymbolContext(&variable_sc);
+    if (variable_sc.comp_unit)
+        return variable_sc.comp_unit->GetLanguage();
+    return lldb::eLanguageTypeUnknown;
+}
 
-const ConstString&
+
+
+ConstString
 Variable::GetName() const
 {
-    const ConstString &name = m_mangled.GetName();
+    ConstString name = m_mangled.GetName(GetLanguage());
     if (name)
         return name;
     return m_name;
 }
 
 bool
+Variable::NameMatches (const ConstString &name) const
+{
+    if (m_name == name)
+        return true;
+    SymbolContext variable_sc;
+    m_owner_scope->CalculateSymbolContext(&variable_sc);
+
+    LanguageType language = eLanguageTypeUnknown;
+    if (variable_sc.comp_unit)
+        language = variable_sc.comp_unit->GetLanguage();
+    return m_mangled.NameMatches (name, language);
+}
+bool
 Variable::NameMatches (const RegularExpression& regex) const
 {
     if (regex.Execute (m_name.AsCString()))
         return true;
-    return m_mangled.NameMatches (regex);
+    if (m_mangled)
+        return m_mangled.NameMatches (regex, GetLanguage());
+    return false;
 }
 
 Type *
@@ -531,7 +560,7 @@ static void
 PrivateAutoComplete (StackFrame *frame,
                      const std::string &partial_path,
                      const std::string &prefix_path, // Anything that has been resolved already will be in here
-                     const ClangASTType& clang_type,
+                     const CompilerType& clang_type,
                      StringList &matches,
                      bool &word_complete);
 
@@ -540,7 +569,7 @@ PrivateAutoCompleteMembers (StackFrame *frame,
                             const std::string &partial_member_name,
                             const std::string &partial_path,
                             const std::string &prefix_path, // Anything that has been resolved already will be in here
-                            const ClangASTType& clang_type,
+                            const CompilerType& clang_type,
                             StringList &matches,
                             bool &word_complete);
 
@@ -549,7 +578,7 @@ PrivateAutoCompleteMembers (StackFrame *frame,
                             const std::string &partial_member_name,
                             const std::string &partial_path,
                             const std::string &prefix_path, // Anything that has been resolved already will be in here
-                            const ClangASTType& clang_type,
+                            const CompilerType& clang_type,
                             StringList &matches,
                             bool &word_complete)
 {
@@ -561,7 +590,7 @@ PrivateAutoCompleteMembers (StackFrame *frame,
     {
         for (uint32_t i = 0; i < num_bases; ++i)
         {
-            ClangASTType base_class_type (clang_type.GetDirectBaseClassAtIndex (i, nullptr));
+            CompilerType base_class_type = clang_type.GetDirectBaseClassAtIndex(i, nullptr);
             
             PrivateAutoCompleteMembers (frame,
                                         partial_member_name,
@@ -579,7 +608,7 @@ PrivateAutoCompleteMembers (StackFrame *frame,
     {
         for (uint32_t i = 0; i < num_vbases; ++i)
         {
-            ClangASTType vbase_class_type (clang_type.GetVirtualBaseClassAtIndex(i,nullptr));
+            CompilerType vbase_class_type = clang_type.GetVirtualBaseClassAtIndex(i,nullptr);
             
             PrivateAutoCompleteMembers (frame,
                                         partial_member_name,
@@ -600,7 +629,7 @@ PrivateAutoCompleteMembers (StackFrame *frame,
         {
             std::string member_name;
             
-            ClangASTType member_clang_type = clang_type.GetFieldAtIndex (i, member_name, nullptr, nullptr, nullptr);
+            CompilerType member_clang_type = clang_type.GetFieldAtIndex (i, member_name, nullptr, nullptr, nullptr);
             
             if (partial_member_name.empty() ||
                 member_name.find(partial_member_name) == 0)
@@ -627,7 +656,7 @@ static void
 PrivateAutoComplete (StackFrame *frame,
                      const std::string &partial_path,
                      const std::string &prefix_path, // Anything that has been resolved already will be in here
-                     const ClangASTType& clang_type,
+                     const CompilerType& clang_type,
                      StringList &matches,
                      bool &word_complete)
 {
@@ -740,7 +769,7 @@ PrivateAutoComplete (StackFrame *frame,
                 {
                     case lldb::eTypeClassPointer:
                         {
-                            ClangASTType pointee_type(clang_type.GetPointeeType());
+                            CompilerType pointee_type(clang_type.GetPointeeType());
                             if (partial_path[2])
                             {
                                 // If there is more after the "->", then search deeper
@@ -859,7 +888,7 @@ PrivateAutoComplete (StackFrame *frame,
                                 Type *variable_type = variable->GetType();
                                 if (variable_type)
                                 {
-                                    ClangASTType variable_clang_type (variable_type->GetClangForwardType());
+                                    CompilerType variable_clang_type (variable_type->GetForwardCompilerType ());
                                     PrivateAutoComplete (frame,
                                                          remaining_partial_path,
                                                          prefix_path + token, // Anything that has been resolved already will be in here
@@ -896,7 +925,7 @@ Variable::AutoComplete (const ExecutionContext &exe_ctx,
     word_complete = false;
     std::string partial_path;
     std::string prefix_path;
-    ClangASTType clang_type;
+    CompilerType clang_type;
     if (partial_path_cstr && partial_path_cstr[0])
         partial_path = partial_path_cstr;
 

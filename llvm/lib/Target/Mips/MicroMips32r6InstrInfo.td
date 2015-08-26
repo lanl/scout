@@ -63,8 +63,11 @@ class SEB_MMR6_ENC : SIGN_EXTEND_FM_MMR6<"seb", 0b0010101100>;
 class SEH_MMR6_ENC : SIGN_EXTEND_FM_MMR6<"seh", 0b0011101100>;
 class SELEQZ_MMR6_ENC : POOL32A_FM_MMR6<0b0101000000>;
 class SELNEZ_MMR6_ENC : POOL32A_FM_MMR6<0b0110000000>;
+class SLL_MMR6_ENC : SHIFT_MMR6_ENC<"sll", 0x00, 0b0>;
 class SUB_MMR6_ENC : ARITH_FM_MMR6<"sub", 0x190>;
 class SUBU_MMR6_ENC : ARITH_FM_MMR6<"subu", 0x1d0>;
+class SW_MMR6_ENC : SW32_FM_MMR6<"sw", 0x3e>;
+class SWE_MMR6_ENC : POOL32C_SWE_FM_MMR6<"swe", 0x18, 0xa, 0x7>;
 class XOR_MMR6_ENC : ARITH_FM_MMR6<"xor", 0x310>;
 class XORI_MMR6_ENC : ADDI_FM_MMR6<"xori", 0x1c>;
 
@@ -105,6 +108,26 @@ class BLTZALC_MMR6_DESC : CMP_CBR_RT_Z_MMR6_DESC_BASE<"bltzalc", brtarget_mm,
 class BNEZALC_MMR6_DESC : CMP_CBR_RT_Z_MMR6_DESC_BASE<"bnezalc", brtarget_mm,
                                                       GPR32Opnd> {
   list<Register> Defs = [RA];
+}
+
+//===----------------------------------------------------------------------===//
+//
+// Operand Definitions
+//
+//===----------------------------------------------------------------------===//
+
+def MipsMemSimm9GPRAsmOperand : AsmOperandClass {
+  let Name = "MemOffsetSimm9GPR";
+  let SuperClasses = [MipsMemAsmOperand];
+  let RenderMethod = "addMemOperands";
+  let ParserMethod = "parseMemOperand";
+  let PredicateMethod = "isMemWithSimmOffsetGPR<9>";
+}
+
+def mem_simm9gpr : mem_generic {
+  let MIOperandInfo = (ops ptr_rc, simm9);
+  let EncoderMethod = "getMemEncoding";
+  let ParserMatchClass = MipsMemSimm9GPRAsmOperand;
 }
 
 //===----------------------------------------------------------------------===//
@@ -263,6 +286,7 @@ class SELEQNE_Z_MMR6_DESC_BASE<string instr_asm, RegisterOperand GPROpnd>
 
 class SELEQZ_MMR6_DESC : SELEQNE_Z_MMR6_DESC_BASE<"seleqz", GPR32Opnd>;
 class SELNEZ_MMR6_DESC : SELEQNE_Z_MMR6_DESC_BASE<"selnez", GPR32Opnd>;
+class SLL_MMR6_DESC : shift_rotate_imm<"sll", uimm5, GPR32Opnd, II_SLL>;
 class DIV_MMR6_DESC : ArithLogicR<"div", GPR32Opnd>;
 class DIVU_MMR6_DESC : ArithLogicR<"divu", GPR32Opnd>;
 class MOD_MMR6_DESC : ArithLogicR<"mod", GPR32Opnd>;
@@ -275,13 +299,25 @@ class ORI_MMR6_DESC : ArithLogicI<"ori", simm16, GPR32Opnd>;
 class XOR_MMR6_DESC : ArithLogicR<"xor", GPR32Opnd>;
 class XORI_MMR6_DESC : ArithLogicI<"xori", simm16, GPR32Opnd>;
 
+class SWE_MMR6_DESC_BASE<string opstr, DAGOperand RO, DAGOperand MO,
+                  SDPatternOperator OpNode = null_frag,
+                  InstrItinClass Itin = NoItinerary,
+                  ComplexPattern Addr = addr> :
+  InstSE<(outs), (ins RO:$rt, MO:$addr), !strconcat(opstr, "\t$rt, $addr"),
+         [(OpNode RO:$rt, Addr:$addr)], Itin, FrmI, opstr> {
+  let DecoderMethod = "DecodeMem";
+  let mayStore = 1;
+}
+class SW_MMR6_DESC : Store<"sw", GPR32Opnd>;
+class SWE_MMR6_DESC : SWE_MMR6_DESC_BASE<"swe", GPR32Opnd, mem_simm9gpr>;
+
 //===----------------------------------------------------------------------===//
 //
 // Instruction Definitions
 //
 //===----------------------------------------------------------------------===//
 
-let DecoderNamespace = "MicroMips32r6" in {
+let DecoderNamespace = "MicroMipsR6" in {
 def ADD_MMR6 : StdMMR6Rel, ADD_MMR6_DESC, ADD_MMR6_ENC, ISA_MICROMIPS32R6;
 def ADDIU_MMR6 : StdMMR6Rel, ADDIU_MMR6_DESC, ADDIU_MMR6_ENC, ISA_MICROMIPS32R6;
 def ADDU_MMR6 : StdMMR6Rel, ADDU_MMR6_DESC, ADDU_MMR6_ENC, ISA_MICROMIPS32R6;
@@ -341,10 +377,17 @@ def SELEQZ_MMR6 : R6MMR6Rel, SELEQZ_MMR6_ENC, SELEQZ_MMR6_DESC,
                   ISA_MICROMIPS32R6;
 def SELNEZ_MMR6 : R6MMR6Rel, SELNEZ_MMR6_ENC, SELNEZ_MMR6_DESC,
                   ISA_MICROMIPS32R6;
+def SLL_MMR6 : StdMMR6Rel, SLL_MMR6_DESC, SLL_MMR6_ENC, ISA_MICROMIPS32R6;
 def SUB_MMR6 : StdMMR6Rel, SUB_MMR6_DESC, SUB_MMR6_ENC, ISA_MICROMIPS32R6;
 def SUBU_MMR6 : StdMMR6Rel, SUBU_MMR6_DESC, SUBU_MMR6_ENC, ISA_MICROMIPS32R6;
 def XOR_MMR6 : StdMMR6Rel, XOR_MMR6_DESC, XOR_MMR6_ENC, ISA_MICROMIPS32R6;
 def XORI_MMR6 : StdMMR6Rel, XORI_MMR6_DESC, XORI_MMR6_ENC, ISA_MICROMIPS32R6;
+let DecoderMethod = "DecodeMemMMImm16" in {
+  def SW_MMR6 : StdMMR6Rel, SW_MMR6_DESC, SW_MMR6_ENC, ISA_MICROMIPS32R6;
+}
+let DecoderMethod = "DecodeMemMMImm9" in {
+  def SWE_MMR6 : StdMMR6Rel, SWE_MMR6_DESC, SWE_MMR6_ENC, ISA_MICROMIPS32R6;
+}
 }
 
 //===----------------------------------------------------------------------===//
@@ -354,3 +397,4 @@ def XORI_MMR6 : StdMMR6Rel, XORI_MMR6_DESC, XORI_MMR6_ENC, ISA_MICROMIPS32R6;
 //===----------------------------------------------------------------------===//
 
 def : MipsInstAlias<"ei", (EI_MMR6 ZERO), 1>, ISA_MICROMIPS32R6;
+def : MipsInstAlias<"nop", (SLL_MMR6 ZERO, ZERO, 0), 1>, ISA_MICROMIPS32R6;

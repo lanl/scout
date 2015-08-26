@@ -68,8 +68,8 @@ public:
     return a.Kind == b.Kind && a.Data == b.Data;
   }
 
-  hash_value_type ComputeHash(const DeclNameKey &Key) const;
-  internal_key_type GetInternalKey(const external_key_type& Name) const;
+  static hash_value_type ComputeHash(const DeclNameKey &Key);
+  static internal_key_type GetInternalKey(const external_key_type& Name);
 
   static std::pair<unsigned, unsigned>
   ReadKeyDataLength(const unsigned char*& d);
@@ -137,6 +137,8 @@ public:
                      const unsigned char* d,
                      unsigned DataLen);
   
+  IdentID ReadIdentifierID(const unsigned char *d);
+
   ASTReader &getReader() const { return Reader; }
 };
   
@@ -226,7 +228,7 @@ public:
   : Reader(Reader), M(M), HS(HS), FrameworkStrings(FrameworkStrings) { }
   
   static hash_value_type ComputeHash(internal_key_ref ikey);
-  static internal_key_type GetInternalKey(const FileEntry *FE);
+  internal_key_type GetInternalKey(const FileEntry *FE);
   bool EqualKey(internal_key_ref a, internal_key_ref b);
   
   static std::pair<unsigned, unsigned>

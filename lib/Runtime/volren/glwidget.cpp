@@ -1,3 +1,58 @@
+/*
+ * ###########################################################################
+ * Copyright (c) 2015, Los Alamos National Security, LLC.
+ * All rights reserved.
+ *
+ *  Copyright 2015. Los Alamos National Security, LLC. This software was
+ *  produced under U.S. Government contract DE-AC52-06NA25396 for Los
+ *  Alamos National Laboratory (LANL), which is operated by Los Alamos
+ *  National Security, LLC for the U.S. Department of Energy. The
+ *  U.S. Government has rights to use, reproduce, and distribute this
+ *  software.  NEITHER THE GOVERNMENT NOR LOS ALAMOS NATIONAL SECURITY,
+ *  LLC MAKES ANY WARRANTY, EXPRESS OR IMPLIED, OR ASSUMES ANY LIABILITY
+ *  FOR THE USE OF THIS SOFTWARE.  If software is modified to produce
+ *  derivative works, such modified software should be clearly marked,
+ *  so as not to confuse it with the version available from LANL.
+ *
+ *  Additionally, redistribution and use in source and binary forms,
+ *  with or without modification, are permitted provided that the
+ *  following conditions are met:
+ *
+ *    * Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *
+ *    * Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ *    * Neither the name of Los Alamos National Security, LLC, Los
+ *      Alamos National Laboratory, LANL, the U.S. Government, nor the
+ *      names of its contributors may be used to endorse or promote
+ *      products derived from this software without specific prior
+ *      written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY LOS ALAMOS NATIONAL SECURITY, LLC AND
+ *  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+ *  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ *  DISCLAIMED. IN NO EVENT SHALL LOS ALAMOS NATIONAL SECURITY, LLC OR
+ *  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ *  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ *  LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+ *  USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ *  ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+ *  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
+ *  OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ *  SUCH DAMAGE.
+ * ###########################################################################
+ *
+ * Notes
+ *
+ * #####
+ */
+
+
 #include "glwidget.h"
 
 #include <vector_types.h>
@@ -6,7 +61,8 @@
 #include <iostream>
 #include <fstream>
 #include <helper_timer.h>
-#include "glRenderer.h"
+#include "Tracer.h"
+
 
 #ifdef __APPLE__
 #include <OpenGL/glu.h>
@@ -17,7 +73,10 @@
 #include <Trackball.h>
 #include <Rotation.h>
 
-using namespace std;
+#if USE_PBO
+#include "cuda_helper.h"
+#include <cuda_gl_interop.h>
+#endif
 
 void GLWidget::printModelView()
 {
@@ -56,7 +115,7 @@ GLWidget::GLWidget(QWidget *parent)
 
 void GLWidget::SetRenderable(void* r)
 {
-    renderer = (glRenderer*)r;
+    renderer = (Tracer*)r;
 }
 
 GLWidget::~GLWidget()
@@ -79,13 +138,22 @@ void GLWidget::initializeGL()
     initializeOpenGLFunctions();
 
     sdkCreateTimer(&timer);
-    renderer->initializeGL();
+
 }
 
 void GLWidget::cleanup()
 {
     sdkDeleteTimer(&timer);
     renderer->cleanup();
+#if USE_PBO
+    if (pbo) {
+        glDeleteBuffers(1, &pbo);
+        glDeleteTextures(1, &tex);
+    }
+
+    if(cuda_pbo_resource)
+        cudaGraphicsUnregisterResource(cuda_pbo_resource);
+#endif
 }
 
 void GLWidget::computeFPS()
@@ -116,6 +184,7 @@ void GLWidget::TimerEnd()
 
 void GLWidget::paintGL() {
     /****transform the view direction*****/
+    TimerStart();
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
@@ -124,7 +193,7 @@ void GLWidget::paintGL() {
     glScalef(transScale, transScale, transScale);
 
     int dataDim[3];
-    renderer->GetDataDim(dataDim[0], dataDim[1], dataDim[2]); 
+    renderer->GetDataDim(dataDim[0], dataDim[1], dataDim[2]);
     int maxDim = std::max(std::max(dataDim[0], dataDim[1]), dataDim[2]);
     float scale = 2.0f / maxDim;
     glScalef(scale, scale, scale);
@@ -136,7 +205,72 @@ void GLWidget::paintGL() {
     glGetFloatv(GL_MODELVIEW_MATRIX, modelview);
     glGetFloatv(GL_PROJECTION_MATRIX, projection);
 
+#if USE_PBO
+    checkCudaErrors(cudaGraphicsMapResources(1, &cuda_pbo_resource, 0));
+    size_t num_bytes;
+    checkCudaErrors(cudaGraphicsResourceGetMappedPointer((void **)&d_output, &num_bytes,
+                                                         cuda_pbo_resource));
+    checkCudaErrors(cudaMemset(d_output, 0, width*height*4));
+    renderer->SetDeviceImage(d_output);
+
+#endif
+
     renderer->draw(modelview, projection);
+
+#if USE_PBO
+    getLastCudaError("kernel failed");
+
+    checkCudaErrors(cudaGraphicsUnmapResources(1, &cuda_pbo_resource, 0));
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    glOrtho(0.0, 1.0, 0.0, 1.0, 0.0, 1.0);
+
+
+    // display results
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // draw image from PBO
+    glDisable(GL_DEPTH_TEST);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    // copy from pbo to texture
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, pbo);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
+
+    // draw textured quad
+    glEnable(GL_TEXTURE_2D);
+    glBegin(GL_QUADS);
+    glTexCoord2f(0, 0);
+    glVertex2f(0, 0);
+    glTexCoord2f(1, 0);
+    glVertex2f(1, 0);
+    glTexCoord2f(1, 1);
+    glVertex2f(1, 1);
+    glTexCoord2f(0, 1);
+    glVertex2f(0, 1);
+    glEnd();
+
+    glDisable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
+#else
+    uint* img = renderer->GetHostImage();
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDrawPixels(width, height, GL_RGBA, GL_UNSIGNED_BYTE, img);
+#endif
+    TimerEnd();
 }
 
 void Perspective(float fovyInDegrees, float aspectRatio,
@@ -152,7 +286,58 @@ void GLWidget::resizeGL(int w, int h)
 {
     width = w;
     height = h;
-    renderer->resizeGL(w, h);
+    renderer->resize(w, h);
+
+
+
+    if(!initialized) {
+#if USE_PBO
+
+
+        if (pbo)
+        {
+            // delete old buffer
+            glDeleteBuffers(1, &pbo);
+            glDeleteTextures(1, &tex);
+        }
+
+
+        // create pixel buffer object for display
+        glGenBuffers(1, &pbo);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, pbo);
+        glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, width*height*sizeof(GLubyte)*4, 0, GL_DYNAMIC_DRAW_ARB);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
+
+        renderer->SetPBO(pbo);
+
+
+        // create texture for display
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        // register this buffer object with CUDA
+        checkCudaErrors(cudaGraphicsGLRegisterBuffer(&cuda_pbo_resource, pbo, cudaGraphicsMapFlagsWriteDiscard));
+#endif
+        //make init here because the window size is not updated in InitiateGL()
+        renderer->init();
+        initialized = true;
+    } else {
+#if USE_PBO
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, pbo);
+        glBufferData(GL_PIXEL_UNPACK_BUFFER_ARB, width * height*sizeof(GLubyte)*4, 0, GL_DYNAMIC_DRAW_ARB);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER_ARB, 0);
+
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glBindTexture(GL_TEXTURE_2D, 0);
+#endif
+    }
 
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();

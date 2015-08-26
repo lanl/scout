@@ -43,7 +43,7 @@ namespace lldb_private {
         private:
             ValueObject* m_start;
             ValueObject* m_finish;
-            ClangASTType m_element_type;
+            CompilerType m_element_type;
             uint32_t m_element_size;
             std::map<size_t,lldb::ValueObjectSP> m_children;
         };
@@ -112,7 +112,7 @@ lldb_private::formatters::LibcxxStdVectorSyntheticFrontEnd::Update()
     data_type_finder_sp = data_type_finder_sp->GetChildMemberWithName(ConstString("__first_"),true);
     if (!data_type_finder_sp)
         return false;
-    m_element_type = data_type_finder_sp->GetClangType().GetPointeeType();
+    m_element_type = data_type_finder_sp->GetCompilerType().GetPointeeType();
     m_element_size = m_element_type.GetByteSize(nullptr);
     
     if (m_element_size > 0)

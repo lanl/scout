@@ -181,50 +181,53 @@ const FrameType* Parser::LookupFrameType(VarDecl *VD,
   return 0;
 }
 
-static ForallMeshStmt::MeshElementType setMeshElementType(tok::TokenKind tkind) {
+static MeshElementType setMeshElementType(tok::TokenKind tkind) {
 
   switch (tkind) {
 
     case tok::kw_cells:
-      return ForallMeshStmt::Cells;
+      return Cells;
 
     case tok::kw_vertices:
-      return ForallMeshStmt::Vertices;
+      return Vertices;
 
     case tok::kw_edges:
-      return ForallMeshStmt::Edges;
+      return Edges;
 
     case tok::kw_faces:
-      return ForallMeshStmt::Faces;
+      return Faces;
       break;
 
     default:
-      return ForallMeshStmt::Undefined;
+      assert(false && "unrecognized token kind for mesh element type");      
+      return Undefined;
   }
 }
 
+
 // SC_TODO: Probably want to rename warning values
 // e.g. 'diag::warn_mesh_has_no_cell_fields'.s..
-void Parser::MeshElementTypeDiag(int MeshElementType,
-    const MeshType *RefMeshType, SourceLocation MeshIdentLoc) {
-  switch(MeshElementType) {
+void Parser::MeshElementTypeDiag(MeshElementType MET,
+                                 const MeshType *RefMeshType,
+                                 SourceLocation MeshIdentLoc) {
+  switch(MET) {
 
-  case ForallMeshStmt::Cells:
+  case Cells:
     if (! RefMeshType->hasCellData())
       Diag(MeshIdentLoc, diag::warn_mesh_has_no_cell_fields);
     break;
 
-  case ForallMeshStmt::Vertices:
+  case Vertices:
     if (! RefMeshType->hasVertexData())
       Diag(MeshIdentLoc, diag::warn_mesh_has_no_vertex_fields);
     break;
 
-  case ForallMeshStmt::Edges:
+  case Edges:
     if (! RefMeshType->hasEdgeData())
       Diag(MeshIdentLoc, diag::warn_mesh_has_no_edge_fields);
     break;
 
-  case ForallMeshStmt::Faces:
+  case Faces:
     if (! RefMeshType->hasFaceData())
       Diag(MeshIdentLoc, diag::warn_mesh_has_no_face_fields);
     break;
@@ -271,17 +274,17 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   tok::TokenKind ElementToken = Tok.getKind();
   ConsumeToken();
 
-  ForallMeshStmt::MeshElementType MeshElementType = setMeshElementType(ElementToken);
-  if (MeshElementType == ForallMeshStmt::Undefined) {
+  MeshElementType MET = setMeshElementType(ElementToken);
+  if (MET == Undefined) {
     Diag(Tok, diag::err_forall_expected_mesh_element_kw);
     SkipUntil(tok::semi);
     return StmtError();
   }
 
   unsigned ScopeFlags = Scope::BreakScope    |
-                        Scope::ContinueScope |
-                        Scope::DeclScope     |
-                        Scope::ControlScope;
+    Scope::ContinueScope |
+    Scope::DeclScope     |
+    Scope::ControlScope;
 
   ParseScope ForallScope(this, ScopeFlags);
 
@@ -309,8 +312,8 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   //if we are in scc-mode and in a function where the mesh was
   // passed as a parameter we will have a star here.
   bool meshptr = false;
-  if(getLangOpts().ScoutC) {
-    if(Tok.is(tok::star)) {
+  if (getLangOpts().ScoutC) {
+    if (Tok.is(tok::star)) {
       ConsumeToken();
       meshptr = true;
     }
@@ -337,10 +340,10 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   VarDecl* QD = 0;
   
   const MeshType *RefMeshType = LookupMeshType(VD, IdentInfo);
-  if(RefMeshType){
+  if (RefMeshType) {
     // If we are in scc-mode and inside a function then make sure
     // we have a *
-    if(getLangOpts().ScoutC && isa<ParmVarDecl>(VD) && meshptr == false) {
+    if (getLangOpts().ScoutC && isa<ParmVarDecl>(VD) && meshptr == false) {
       Diag(Tok,diag::err_expected_star_mesh);
       SkipUntil(tok::semi);
       return StmtError();
@@ -348,7 +351,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
     
     bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
                                                       IdentInfo, IdentLoc,
-                                                      MeshElementType,
+                                                      MET,
                                                       ElementIdentInfo,
                                                       ElementIdentLoc,
                                                       RefMeshType,
@@ -356,11 +359,10 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
     if (! success)
       return StmtError();
     
-    MeshElementTypeDiag(MeshElementType, RefMeshType, IdentLoc);
-  }
-  else{
+    MeshElementTypeDiag(MET, RefMeshType, IdentLoc);
+  } else {
     const QueryType *RefQueryType = LookupQueryType(VD, IdentInfo);
-    if(RefQueryType){
+    if (RefQueryType) {
       QD = VD;
       
       const QueryExpr* QE = dyn_cast<QueryExpr>(QD->getInit());
@@ -371,7 +373,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
       assert(base && "expected a DeclRefExpr");
       
       const ImplicitMeshParamDecl* imp =
-      dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
+        dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
       
       assert(base && "expected an ImplicitMeshParamDecl");
       
@@ -380,8 +382,18 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
       QualType qt = VD->getType();
       RefMeshType = dyn_cast<MeshType>(qt.getTypePtr());
       assert(RefMeshType && "expected a mesh type");
-    }
-    else{
+      
+      bool success = Actions.ActOnForallMeshRefVariable(getCurScope(),
+                                                        IdentInfo, IdentLoc,
+                                                        MET,
+                                                        ElementIdentInfo,
+                                                        ElementIdentLoc,
+                                                        RefMeshType,
+                                                        VD, &Init);
+      if (! success)
+        return StmtError();
+      
+    } else {
       Diag(IdentLoc, diag::err_expected_a_mesh_or_query_type);
       SkipUntil(tok::semi);
       return StmtError();
@@ -438,7 +450,7 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
 
   Stmt* Body = BodyResult.get();
   StmtResult ForallResult = Actions.ActOnForallMeshStmt(ForallKWLoc,
-                                                        MeshElementType,
+                                                        MET,
                                                         RefMeshType, VD,
                                                         ElementIdentInfo,
                                                         IdentInfo,
@@ -452,26 +464,26 @@ StmtResult Parser::ParseForallMeshStatement(ParsedAttributes &attrs) {
   return ForallResult;
 }
 
-static RenderallMeshStmt::MeshElementType
-setRenderallMeshElementType(tok::TokenKind tkind) {
+static MeshElementType setRenderallMeshElementType(tok::TokenKind tkind) {
 
   switch (tkind) {
 
     case tok::kw_cells:
-      return RenderallMeshStmt::Cells;
+      return Cells;
 
     case tok::kw_vertices:
-      return RenderallMeshStmt::Vertices;
+      return Vertices;
 
     case tok::kw_edges:
-      return RenderallMeshStmt::Edges;
+      return Edges;
 
     case tok::kw_faces:
-      return RenderallMeshStmt::Faces;
+      return Faces;
       break;
 
     default:
-      return RenderallMeshStmt::Undefined;
+      assert(false && "unrecognized token kind for mesh element type");
+      return Undefined;
   }
 }
 
@@ -555,9 +567,8 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   tok::TokenKind ElementToken = Tok.getKind();
   ConsumeToken();
 
-  RenderallMeshStmt::MeshElementType MeshElementType;
-  MeshElementType = setRenderallMeshElementType(ElementToken);
-  if (MeshElementType == RenderallMeshStmt::Undefined) {
+  MeshElementType MET = setRenderallMeshElementType(ElementToken);
+  if (MET == Undefined) {
     Diag(Tok, diag::err_renderall_expected_mesh_element_kw);
     SkipUntil(tok::semi);
     return StmtError();
@@ -632,7 +643,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   }
 
   bool success = Actions.ActOnRenderallMeshRefVariable(getCurScope(),
-                                                       MeshElementType,
+                                                       MET,
                                                        MeshIdentInfo,
                                                        MeshIdentLoc,
                                                        RefMeshType,
@@ -642,7 +653,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
 
   ConsumeToken();
 
-  MeshElementTypeDiag(MeshElementType, RefMeshType, MeshIdentLoc);
+  MeshElementTypeDiag(MET, RefMeshType, MeshIdentLoc);
 
   // Next we should find the 'to' keyword that is then followed by the 
   // the identifier for a render target. 
@@ -668,7 +679,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
     return StmtError();
   }
 
-  const WindowType* wt = dyn_cast<WindowType>(RTVD->getType().getTypePtr());
+  //const WindowType* wt = dyn_cast<WindowType>(RTVD->getType().getTypePtr());
   
   // this does not work from within LLDB because normally the render target type is
   // window - but from within LLDB it is a: struct __scout_win_t *
@@ -732,7 +743,7 @@ StmtResult Parser::ParseRenderallMeshStatement(ParsedAttributes &attrs) {
   Stmt* Body = BodyResult.get();
 
   StmtResult RenderallResult = Actions.ActOnRenderallMeshStmt(RenderallKWLoc,
-                                                              MeshElementType,
+                                                              MET,
                                                               RefMeshType, VD,
                                                               RTVD, ElementIdentInfo,
                                                               MeshIdentInfo,
@@ -943,6 +954,7 @@ StmtResult Parser::ParseFrameCaptureStatement(ParsedAttributes &Attr){
   assert(Tok.is(tok::kw_into) && "expected keyword into");
   
   SourceLocation IntoLoc = ConsumeToken();
+  (void)IntoLoc;
   
   if (Tok.isNot(tok::identifier)) {
     Diag(Tok, diag::err_expected_ident);
@@ -968,9 +980,10 @@ StmtResult Parser::ParseFrameCaptureStatement(ParsedAttributes &Attr){
     return StmtError();
   }
   
-  const FrameDecl* FD = FT->getDecl();
+  //const FrameDecl* FD = FT->getDecl();
   
   SourceLocation FrameLoc = ConsumeToken();
+  (void)FrameLoc;
   
   if (Tok.isNot(tok::identifier)) {
     Diag(Tok, diag::err_frame_expected_capture);
@@ -986,6 +999,7 @@ StmtResult Parser::ParseFrameCaptureStatement(ParsedAttributes &Attr){
   }
   
   SourceLocation CaptureLoc = ConsumeToken();
+  (void)CaptureLoc;
   
   if(Tok.isNot(tok::l_brace)){
     Diag(Tok.getLocation(), diag::err_frame_expected_specifier);
@@ -1073,6 +1087,7 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
     }
     
     SourceLocation InLoc = ConsumeToken();
+    (void)InLoc;
   }
   else{
     SourceLocation InLoc = ConsumeToken();
@@ -1112,10 +1127,11 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
     qt = qt->getPointeeType();
   }
   
-  const WindowType* wt =
-  dyn_cast<WindowType>(qt.getTypePtr());
+  //const WindowType* wt =
+  //dyn_cast<WindowType>(qt.getTypePtr());
   
   SourceLocation RTLoc = ConsumeToken();
+  (void)RTLoc;
   
   if (Tok.isNot(tok::identifier)) {
     Diag(Tok, diag::err_frame_expected_capture);
@@ -1131,6 +1147,7 @@ StmtResult Parser::ParsePlotStatement(ParsedAttributes &Attr){
   }
   
   SourceLocation PlotLoc = ConsumeToken();
+  (void)PlotLoc;
   
   if(Tok.isNot(tok::l_brace)){
     Diag(Tok.getLocation(), diag::err_plot_expected_specifier);

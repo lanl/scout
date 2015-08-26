@@ -216,7 +216,7 @@ TypeList::RemoveMismatchedTypes (const std::string &type_scope,
 
         if (type_class != eTypeClassAny)
         {
-            match_type_class = the_type->GetClangForwardType().GetTypeClass ();
+            match_type_class = the_type->GetForwardCompilerType ().GetTypeClass ();
             if ((match_type_class & type_class) == 0)
                 continue;
         }
@@ -249,9 +249,9 @@ TypeList::RemoveMismatchedTypes (const std::string &type_scope,
                             {
                                 if (type_scope_pos >= 2)
                                 {
-                                    // Our match scope ends with the type scope we were lookikng for,
+                                    // Our match scope ends with the type scope we were looking for,
                                     // but we need to make sure what comes before the matching
-                                    // type scope is a namepace boundary in case we are trying to match:
+                                    // type scope is a namespace boundary in case we are trying to match:
                                     // type_basename = "d"
                                     // type_scope = "b::c::"
                                     // We want to match:
@@ -305,7 +305,7 @@ TypeList::RemoveMismatchedTypes (TypeClass type_class)
     for (pos = m_types.begin(); pos != end; ++pos)
     {
         Type* the_type = pos->second.get();
-        TypeClass match_type_class = the_type->GetClangForwardType().GetTypeClass ();
+        TypeClass match_type_class = the_type->GetForwardCompilerType ().GetTypeClass ();
         if (match_type_class & type_class)
             matching_types.insert (*pos);
     }

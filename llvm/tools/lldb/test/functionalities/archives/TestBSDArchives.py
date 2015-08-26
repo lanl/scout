@@ -10,6 +10,7 @@ class BSDArchivesTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
+    @expectedFailureWindows("llvm.org/pr24527") # Makefile.rules doesn't know how to build static libs on Windows.
     def test_with_dwarf(self):
         """Break inside a() and b() defined within libfoo.a."""
         self.buildDwarf()
@@ -29,7 +30,7 @@ class BSDArchivesTestCase(TestBase):
         # Break inside a() by file and line first.
         lldbutil.run_break_set_by_file_and_line (self, "a.c", self.line, num_expected_locations=1, loc_exact=True)
 
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         # The stop reason of the thread should be breakpoint.
         self.expect("thread list", STOPPED_DUE_TO_BREAKPOINT,

@@ -14,9 +14,16 @@ set(generated_mach_interfaces
   ${CMAKE_CURRENT_BINARY_DIR}/mach_excUser.c
   )
 add_custom_command(OUTPUT ${generated_mach_interfaces}
-  COMMAND mig -I${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/dbgnub-mig.defs
-  DEPENDS ${dnbconfig_header}
+  COMMAND mig ${CMAKE_CURRENT_SOURCE_DIR}/dbgnub-mig.defs
   )
+
+set(DEBUGSERVER_VERS_GENERATED_FILE ${CMAKE_CURRENT_BINARY_DIR}/debugserver_vers.c)
+set_source_files_properties(${DEBUGSERVER_VERS_GENERATED_FILE} PROPERTIES GENERATED 1)
+
+add_custom_command(OUTPUT ${DEBUGSERVER_VERS_GENERATED_FILE}
+  COMMAND ${LLDB_SOURCE_DIR}/scripts/generate-vers.pl
+          ${LLDB_SOURCE_DIR}/lldb.xcodeproj/project.pbxproj debugserver
+          > ${DEBUGSERVER_VERS_GENERATED_FILE})
 
 set(DEBUGSERVER_USED_LIBS
   lldbDebugserverCommon
@@ -26,7 +33,6 @@ set(DEBUGSERVER_USED_LIBS
   )
 
 add_lldb_executable(debugserver
-  ${dnbconfig_header}
   HasAVX.s
   CFBundle.cpp
   CFData.cpp
@@ -40,6 +46,7 @@ add_lldb_executable(debugserver
   MachVMMemory.cpp
   MachVMRegion.cpp
   ${generated_mach_interfaces}
+  ${DEBUGSERVER_VERS_GENERATED_FILE}
   )
 
 set_source_files_properties(
@@ -48,7 +55,6 @@ set_source_files_properties(
   PROPERTIES LANGUAGE C COMPILE_FLAGS "-x assembler-with-cpp"
   )
 
-add_dependencies(debugserver generate_dnbconfig)
 target_link_libraries(debugserver ${DEBUGSERVER_USED_LIBS})
 
 # Sign the debugserver binary

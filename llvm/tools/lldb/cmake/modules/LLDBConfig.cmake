@@ -2,6 +2,12 @@ set(LLDB_PROJECT_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(LLDB_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/source")
 set(LLDB_INCLUDE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
+set(LLDB_LINKER_SUPPORTS_GROUPS OFF)
+if (LLVM_COMPILER_IS_GCC_COMPATIBLE AND NOT "${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
+  # The Darwin linker doesn't understand --start-group/--end-group.
+  set(LLDB_LINKER_SUPPORTS_GROUPS ON)
+endif()
+
 if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
   set(LLDB_DEFAULT_DISABLE_PYTHON 0)
   set(LLDB_DEFAULT_DISABLE_CURSES 1)
@@ -21,7 +27,7 @@ set(LLDB_DISABLE_CURSES ${LLDB_DEFAULT_DISABLE_CURSES} CACHE BOOL
   "Disables the Curses integration.")
 
 set(LLDB_ENABLE_PYTHON_SCRIPTS_SWIG_API_GENERATION 1 CACHE BOOL
-  "Enables using new Python scripts for SWIG API generation .")  
+  "Enables using new Python scripts for SWIG API generation .")
 set(LLDB_RELOCATABLE_PYTHON 0 CACHE BOOL
   "Causes LLDB to use the PYTHONHOME environment variable to locate Python.")
 
@@ -40,7 +46,7 @@ if (NOT LLDB_DISABLE_PYTHON)
       set(CMAKE_LIBRARY_ARCHITECTURE "x86_64-linux-gnu")
     endif()
   endif()
-  
+
   if ("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
     if (NOT "${PYTHON_HOME}" STREQUAL "")
       file(TO_CMAKE_PATH "${PYTHON_HOME}" PYTHON_HOME)
@@ -53,26 +59,26 @@ if (NOT LLDB_DISABLE_PYTHON)
         file(TO_CMAKE_PATH "${PYTHON_HOME}/libs/python27.lib" PYTHON_LIBRARY)
         file(TO_CMAKE_PATH "${PYTHON_HOME}/python27.dll" PYTHON_DLL)
       endif()
-      
+
       file(TO_CMAKE_PATH "${PYTHON_HOME}/Include" PYTHON_INCLUDE_DIR)
       if (NOT LLDB_RELOCATABLE_PYTHON)
         add_definitions( -DLLDB_PYTHON_HOME="${PYTHON_HOME}" )
       endif()
     else()
       message("Embedding Python on Windows without specifying a value for PYTHON_HOME is deprecated.  Support for this will be dropped soon.")
-        
+
       if ("${PYTHON_INCLUDE_DIR}" STREQUAL "" OR "${PYTHON_LIBRARY}" STREQUAL "")
         message("-- LLDB Embedded python disabled.  Embedding python on Windows requires "
                 "manually specifying PYTHON_INCLUDE_DIR *and* PYTHON_LIBRARY")
         set(LLDB_DISABLE_PYTHON 1)
       endif()
     endif()
-    
+
     if (PYTHON_LIBRARY)
       message("-- Found PythonLibs: ${PYTHON_LIBRARY}")
       include_directories(${PYTHON_INCLUDE_DIR})
     endif()
-    
+
   else()
     find_package(PythonLibs REQUIRED)
     include_directories(${PYTHON_INCLUDE_DIRS})
@@ -87,32 +93,6 @@ endif()
 
 include_directories(../clang/include)
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/../clang/include")
-
-# lldb requires c++11 to build. Make sure that we have a compiler and standard
-# library combination that can do that.
-if (NOT MSVC)
-  # gcc and clang require the -std=c++0x or -std=c++11 flag.
-  if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU" OR
-      "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
-    if (NOT ("${CMAKE_CXX_FLAGS}" MATCHES "-std=c\\+\\+0x" OR
-             "${CMAKE_CXX_FLAGS}" MATCHES "-std=gnu\\+\\+0x" OR
-             "${CMAKE_CXX_FLAGS}" MATCHES "-std=c\\+\\+11" OR
-             "${CMAKE_CXX_FLAGS}" MATCHES "-std=gnu\\+\\+11"))
-      if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS "4.7")
-          set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++0x")
-        else()
-          set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-        endif()
-      else()
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-      endif()
-    endif()
-  endif()
-elseif (MSVC_VERSION LESS 1700)
-  message(FATAL_ERROR "The selected compiler does not support c++11 which is "
-          "required to build lldb.")
-endif()
 
 # Disable GCC warnings
 check_cxx_compiler_flag("-Wno-deprecated-declarations"
@@ -144,7 +124,7 @@ if( MSVC )
     -wd4521 # Suppress 'warning C4521: 'type' : multiple copy constructors specified'
     -wd4530 # Suppress 'warning C4530: C++ exception handler used, but unwind semantics are not enabled.'
   )
-endif() 
+endif()
 
 set(LLDB_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(LLDB_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})

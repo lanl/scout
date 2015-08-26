@@ -931,10 +931,14 @@ public:
         m_option_watchpoint ()
     {
         SetHelpLong(
-    "Examples: \n\
-    \n\
-        watchpoint set variable -w read_write my_global_var \n\
-        # Watch my_global_var for read/write access, with the region to watch corresponding to the byte size of the data type.\n");
+R"(
+Examples:
+
+(lldb) watchpoint set variable -w read_write my_global_var
+
+)" "    Watches my_global_var for read/write access, with the region to watch \
+corresponding to the byte size of the data type."
+        );
 
         CommandArgumentEntry arg;
         CommandArgumentData var_name_arg;
@@ -1044,7 +1048,7 @@ protected:
                 valobj_sp = valobj_list.GetValueObjectAtIndex(0);
         }
         
-        ClangASTType clang_type;
+        CompilerType clang_type;
         
         if (valobj_sp)
         {
@@ -1057,7 +1061,7 @@ protected:
                 size = m_option_watchpoint.watch_size == 0 ? valobj_sp->GetByteSize()
                                                            : m_option_watchpoint.watch_size;
             }
-            clang_type = valobj_sp->GetClangType();
+            clang_type = valobj_sp->GetCompilerType();
         }
         else
         {
@@ -1138,10 +1142,13 @@ public:
         m_option_watchpoint ()
     {
         SetHelpLong(
-    "Examples: \n\
-    \n\
-        watchpoint set expression -w write -x 1 -- foo + 32\n\
-        # Watch write access for the 1-byte region pointed to by the address 'foo + 32'.\n");
+R"(
+Examples:
+
+(lldb) watchpoint set expression -w write -x 1 -- foo + 32
+
+    Watches write access for the 1-byte region pointed to by the address 'foo + 32')"
+        );
 
         CommandArgumentEntry arg;
         CommandArgumentData expression_arg;
@@ -1288,7 +1295,7 @@ protected:
         
         // Fetch the type from the value object, the type of the watched object is the pointee type
         /// of the expression, so convert to that if we  found a valid type.
-        ClangASTType clang_type(valobj_sp->GetClangType());
+        CompilerType clang_type(valobj_sp->GetCompilerType());
         
         Error error;
         Watchpoint *wp = target->CreateWatchpoint(addr, size, &clang_type, watch_type, error).get();

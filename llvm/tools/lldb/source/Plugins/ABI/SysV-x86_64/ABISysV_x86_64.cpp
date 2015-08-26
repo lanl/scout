@@ -175,7 +175,7 @@ enum gdb_regnums
 
 static RegisterInfo g_register_infos[] = 
 {
-  //  NAME      ALT      SZ OFF ENCODING         FORMAT              COMPILER                DWARF                 GENERIC                     GDB                   LLDB NATIVE            VALUE REGS    INVALIDATE REGS
+  //  NAME      ALT      SZ OFF ENCODING         FORMAT              EH_FRAME                DWARF                 GENERIC                     STABS                 LLDB NATIVE            VALUE REGS    INVALIDATE REGS
   //  ========  =======  == === =============    =================== ======================= ===================== =========================== ===================== ====================== ==========    ===============
     { "rax"   , NULL,    8,  0, eEncodingUint  , eFormatHex          , { gcc_dwarf_rax       , gcc_dwarf_rax       , LLDB_INVALID_REGNUM       , gdb_rax            , LLDB_INVALID_REGNUM },      NULL,              NULL},
     { "rbx"   , NULL,    8,  0, eEncodingUint  , eFormatHex          , { gcc_dwarf_rbx       , gcc_dwarf_rbx       , LLDB_INVALID_REGNUM       , gdb_rbx            , LLDB_INVALID_REGNUM },      NULL,              NULL},
@@ -502,7 +502,7 @@ ABISysV_x86_64::GetArgumentValues (Thread &thread,
         
         // We currently only support extracting values with Clang QualTypes.
         // Do we care about others?
-        ClangASTType clang_type = value->GetClangType();
+        CompilerType clang_type = value->GetCompilerType();
         if (!clang_type)
             return false;
         bool is_signed;
@@ -542,7 +542,7 @@ ABISysV_x86_64::SetReturnValueObject(lldb::StackFrameSP &frame_sp, lldb::ValueOb
         return error;
     }
     
-    ClangASTType clang_type = new_value_sp->GetClangType();
+    CompilerType clang_type = new_value_sp->GetCompilerType();
     if (!clang_type)
     {
         error.SetErrorString ("Null clang type for return value.");
@@ -633,7 +633,7 @@ ABISysV_x86_64::SetReturnValueObject(lldb::StackFrameSP &frame_sp, lldb::ValueOb
 
 ValueObjectSP
 ABISysV_x86_64::GetReturnValueObjectSimple (Thread &thread,
-                                            ClangASTType &return_clang_type) const
+                                            CompilerType &return_clang_type) const
 {
     ValueObjectSP return_valobj_sp;
     Value value;
@@ -642,7 +642,7 @@ ABISysV_x86_64::GetReturnValueObjectSimple (Thread &thread,
         return return_valobj_sp;
 
     //value.SetContext (Value::eContextTypeClangType, return_value_type);
-    value.SetClangType (return_clang_type);
+    value.SetCompilerType (return_clang_type);
     
     RegisterContext *reg_ctx = thread.GetRegisterContext().get();
     if (!reg_ctx)
@@ -758,15 +758,10 @@ ABISysV_x86_64::GetReturnValueObjectSimple (Thread &thread,
         const size_t byte_size = return_clang_type.GetByteSize(nullptr);
         if (byte_size > 0)
         {
+            const RegisterInfo *altivec_reg = reg_ctx->GetRegisterInfoByName("xmm0", 0);
+            if (altivec_reg == nullptr)
+                altivec_reg = reg_ctx->GetRegisterInfoByName("mm0", 0);
 
-            const RegisterInfo *altivec_reg = reg_ctx->GetRegisterInfoByName("ymm0", 0);
-            if (altivec_reg == NULL)
-            {
-                altivec_reg = reg_ctx->GetRegisterInfoByName("xmm0", 0);
-                if (altivec_reg == NULL)
-                    altivec_reg = reg_ctx->GetRegisterInfoByName("mm0", 0);
-            }
-            
             if (altivec_reg)
             {
                 if (byte_size <= altivec_reg->byte_size)
@@ -797,6 +792,45 @@ ABISysV_x86_64::GetReturnValueObjectSimple (Thread &thread,
                         }
                     }
                 }
+                else if (byte_size <= altivec_reg->byte_size*2)
+                {
+                    const RegisterInfo *altivec_reg2 = reg_ctx->GetRegisterInfoByName("xmm1", 0);
+                    if (altivec_reg2)
+                    {
+                        ProcessSP process_sp (thread.GetProcess());
+                        if (process_sp)
+                        {
+                            std::unique_ptr<DataBufferHeap> heap_data_ap (new DataBufferHeap(byte_size, 0));
+                            const ByteOrder byte_order = process_sp->GetByteOrder();
+                            RegisterValue reg_value;
+                            RegisterValue reg_value2;
+                            if (reg_ctx->ReadRegister(altivec_reg, reg_value) && reg_ctx->ReadRegister(altivec_reg2, reg_value2))
+                            {
+
+                                Error error;
+                                if (reg_value.GetAsMemoryData (altivec_reg,
+                                                               heap_data_ap->GetBytes(),
+                                                               altivec_reg->byte_size,
+                                                               byte_order,
+                                                               error) &&
+                                    reg_value2.GetAsMemoryData (altivec_reg2,
+                                                               heap_data_ap->GetBytes() + altivec_reg->byte_size,
+                                                               heap_data_ap->GetByteSize() - altivec_reg->byte_size,
+                                                               byte_order,
+                                                               error))
+                                {
+                                    DataExtractor data (DataBufferSP (heap_data_ap.release()),
+                                                        byte_order,
+                                                        process_sp->GetTarget().GetArchitecture().GetAddressByteSize());
+                                    return_valobj_sp = ValueObjectConstResult::Create (&thread,
+                                                                                       return_clang_type,
+                                                                                       ConstString(""),
+                                                                                       data);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -805,7 +839,7 @@ ABISysV_x86_64::GetReturnValueObjectSimple (Thread &thread,
 }
 
 ValueObjectSP
-ABISysV_x86_64::GetReturnValueObjectImpl (Thread &thread, ClangASTType &return_clang_type) const
+ABISysV_x86_64::GetReturnValueObjectImpl (Thread &thread, CompilerType &return_clang_type) const
 {
     ValueObjectSP return_valobj_sp;
 
@@ -868,7 +902,7 @@ ABISysV_x86_64::GetReturnValueObjectImpl (Thread &thread, ClangASTType &return_c
                 bool is_complex;
                 uint32_t count;
                 
-                ClangASTType field_clang_type = return_clang_type.GetFieldAtIndex (idx, name, &field_bit_offset, NULL, NULL);
+                CompilerType field_clang_type = return_clang_type.GetFieldAtIndex (idx, name, &field_bit_offset, NULL, NULL);
                 const size_t field_bit_width = field_clang_type.GetBitSize(&thread);
 
                 // if we don't know the size of the field (e.g. invalid type), just bail out
@@ -955,7 +989,7 @@ ABISysV_x86_64::GetReturnValueObjectImpl (Thread &thread, ClangASTType &return_c
                             else
                             {
                                 uint64_t next_field_bit_offset = 0;
-                                ClangASTType next_field_clang_type = return_clang_type.GetFieldAtIndex (idx + 1,
+                                CompilerType next_field_clang_type = return_clang_type.GetFieldAtIndex (idx + 1,
                                                                                                         name,
                                                                                                         &next_field_bit_offset,
                                                                                                         NULL,
@@ -979,7 +1013,7 @@ ABISysV_x86_64::GetReturnValueObjectImpl (Thread &thread, ClangASTType &return_c
                             else
                             {
                                 uint64_t prev_field_bit_offset = 0;
-                                ClangASTType prev_field_clang_type = return_clang_type.GetFieldAtIndex (idx - 1,
+                                CompilerType prev_field_clang_type = return_clang_type.GetFieldAtIndex (idx - 1,
                                                                                                         name,
                                                                                                         &prev_field_bit_offset,
                                                                                                         NULL,

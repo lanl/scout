@@ -31,6 +31,7 @@ class FunctionTypesTestCase(TestBase):
         self.function_pointers()
 
     @dwarf_test
+    @expectedFailureWindows("llvm.org/pr21765")
     def test_pointers_with_dwarf(self):
         """Test that a function pointer to 'printf' works and can be called."""
         self.buildDwarf()
@@ -49,7 +50,7 @@ class FunctionTypesTestCase(TestBase):
         # Break inside the main.
         lldbutil.run_break_set_by_file_and_line (self, "main.c", self.line, num_expected_locations=1, loc_exact=True)
         
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
         
         # The stop reason of the thread should be breakpoint.
         self.expect("thread list", STOPPED_DUE_TO_BREAKPOINT,

@@ -350,7 +350,10 @@ protected:
 
             if (bp_site_sp)
             {
-                size_t num_owners = bp_site_sp->GetNumberOfOwners();
+                // Let's copy the owners list out of the site and store them in a local list.  That way if
+                // one of the breakpoint actions changes the site, then we won't be operating on a bad list.
+                BreakpointLocationCollection site_locations;
+                size_t num_owners = bp_site_sp->CopyOwnersList(site_locations);
 
                 if (num_owners == 0)
                 {
@@ -416,20 +419,16 @@ protected:
 
                     StoppointCallbackContext context (event_ptr, exe_ctx, false);
 
-                    // Let's copy the breakpoint locations out of the site and store them in a local list.  That way if
-                    // one of the breakpoint actions changes the site, then we won't be operating on a bad list.
                     // For safety's sake let's also grab an extra reference to the breakpoint owners of the locations we're
                     // going to examine, since the locations are going to have to get back to their breakpoints, and the
                     // locations don't keep their owners alive.  I'm just sticking the BreakpointSP's in a vector since
-                    // I'm only really using it to locally increment their retain counts.
+                    // I'm only using it to locally increment their retain counts.
 
-                    BreakpointLocationCollection site_locations;
                     std::vector<lldb::BreakpointSP> location_owners;
 
                     for (size_t j = 0; j < num_owners; j++)
                     {
-                        BreakpointLocationSP loc(bp_site_sp->GetOwnerAtIndex(j));
-                        site_locations.Add(loc);
+                        BreakpointLocationSP loc(site_locations.GetByIndex(j));
                         location_owners.push_back(loc->GetBreakpoint().shared_from_this());
 
                     }
@@ -615,10 +614,11 @@ public:
         Watchpoint *watchpoint;
     };
 
-    StopInfoWatchpoint (Thread &thread, break_id_t watch_id) :
+    StopInfoWatchpoint (Thread &thread, break_id_t watch_id, lldb::addr_t watch_hit_addr) :
         StopInfo(thread, watch_id),
         m_should_stop(false),
-        m_should_stop_is_valid(false)
+        m_should_stop_is_valid(false),
+        m_watch_hit_addr(watch_hit_addr)
     {
     }
     
@@ -745,6 +745,21 @@ protected:
                     }
                 }
 
+                /*
+                 * MIPS: Last 3bits of the watchpoint address are masked by the kernel. For example:
+                 * 'n' is at 0x120010d00 and 'm' is 0x120010d04. When a watchpoint is set at 'm', then
+                 * watch exception is generated even when 'n' is read/written. To handle this case,
+                 * server emulates the instruction at PC and finds the base address of the load/store
+                 * instruction and appends it in the description of the stop-info packet. If watchpoint
+                 * is not set on this address by user then this do not stop.
+                */
+                if (m_watch_hit_addr != LLDB_INVALID_ADDRESS)
+                {
+                    WatchpointSP wp_hit_sp = thread_sp->CalculateTarget()->GetWatchpointList().FindByAddress(m_watch_hit_addr);
+                    if (!wp_hit_sp)
+                        m_should_stop = false;
+                }
+                
                 if (m_should_stop && wp_sp->GetConditionText() != NULL)
                 {
                     // We need to make sure the user sees any parse errors in their condition, so we'll hook the
@@ -857,6 +872,7 @@ protected:
 private:
     bool m_should_stop;
     bool m_should_stop_is_valid;
+    lldb::addr_t m_watch_hit_addr;
 };
 
 
@@ -891,7 +907,7 @@ public:
     {
         ThreadSP thread_sp (m_thread_wp.lock());
         if (thread_sp)
-            return thread_sp->GetProcess()->GetUnixSignals().GetShouldStop (m_value);
+            return thread_sp->GetProcess()->GetUnixSignals()->GetShouldStop(m_value);
         return false;
     }
 
@@ -900,7 +916,7 @@ public:
     {
         ThreadSP thread_sp (m_thread_wp.lock());
         if (thread_sp)
-            return thread_sp->GetProcess()->GetUnixSignals().GetShouldStop (m_value);
+            return thread_sp->GetProcess()->GetUnixSignals()->GetShouldStop(m_value);
         return false;
     }
     
@@ -912,13 +928,13 @@ public:
         ThreadSP thread_sp (m_thread_wp.lock());
         if (thread_sp)
         {
-            bool should_notify = thread_sp->GetProcess()->GetUnixSignals().GetShouldNotify (m_value);
+            bool should_notify = thread_sp->GetProcess()->GetUnixSignals()->GetShouldNotify(m_value);
             if (should_notify)
             {
                 StreamString strm;
                 strm.Printf ("thread %d received signal: %s",
                              thread_sp->GetIndexID(),
-                             thread_sp->GetProcess()->GetUnixSignals().GetSignalAsCString (m_value));
+                             thread_sp->GetProcess()->GetUnixSignals()->GetSignalAsCString(m_value));
                 Process::ProcessEventData::AddRestartedReason(event_ptr, strm.GetData());
             }
             return should_notify;
@@ -933,7 +949,7 @@ public:
         ThreadSP thread_sp (m_thread_wp.lock());
         if (thread_sp)
         {
-            if (thread_sp->GetProcess()->GetUnixSignals().GetShouldSuppress(m_value) == false)
+            if (thread_sp->GetProcess()->GetUnixSignals()->GetShouldSuppress(m_value) == false)
                 thread_sp->SetResumeSignal(m_value);
         }
     }
@@ -947,7 +963,7 @@ public:
             if (thread_sp)
             {
                 StreamString strm;
-                const char *signal_name = thread_sp->GetProcess()->GetUnixSignals().GetSignalAsCString (m_value);
+                const char *signal_name = thread_sp->GetProcess()->GetUnixSignals()->GetSignalAsCString(m_value);
                 if (signal_name)
                     strm.Printf("signal %s", signal_name);
                 else
@@ -1154,9 +1170,9 @@ StopInfo::CreateStopReasonWithBreakpointSiteID (Thread &thread, break_id_t break
 }
 
 StopInfoSP
-StopInfo::CreateStopReasonWithWatchpointID (Thread &thread, break_id_t watch_id)
+StopInfo::CreateStopReasonWithWatchpointID (Thread &thread, break_id_t watch_id, lldb::addr_t watch_hit_addr)
 {
-    return StopInfoSP (new StopInfoWatchpoint (thread, watch_id));
+    return StopInfoSP (new StopInfoWatchpoint (thread, watch_id, watch_hit_addr));
 }
 
 StopInfoSP

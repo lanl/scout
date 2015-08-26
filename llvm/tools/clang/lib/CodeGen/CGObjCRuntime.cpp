@@ -134,7 +134,7 @@ LValue CGObjCRuntime::EmitValueForIvarAtOffset(CodeGen::CodeGenFunction &CGF,
   CGBitFieldInfo *Info = new (CGF.CGM.getContext()) CGBitFieldInfo(
     CGBitFieldInfo::MakeInfo(CGF.CGM.getTypes(), Ivar, BitOffset, BitFieldSize,
                              CGF.CGM.getContext().toBits(StorageSize),
-                             Alignment.getQuantity()));
+                             CharUnits::fromQuantity(0)));
 
   V = CGF.Builder.CreateBitCast(V,
                                 llvm::Type::getIntNPtrTy(CGF.getLLVMContext(),
@@ -152,7 +152,7 @@ namespace {
     llvm::Constant *TypeInfo;
   };
 
-  struct CallObjCEndCatch : EHScopeStack::Cleanup {
+  struct CallObjCEndCatch final : EHScopeStack::Cleanup {
     CallObjCEndCatch(bool MightThrow, llvm::Value *Fn) :
       MightThrow(MightThrow), Fn(Fn) {}
     bool MightThrow;
@@ -160,7 +160,7 @@ namespace {
 
     void Emit(CodeGenFunction &CGF, Flags flags) override {
       if (!MightThrow) {
-        CGF.Builder.CreateCall(Fn, {})->setDoesNotThrow();
+        CGF.Builder.CreateCall(Fn)->setDoesNotThrow();
         return;
       }
 
@@ -297,7 +297,7 @@ void CGObjCRuntime::EmitTryCatchStmt(CodeGenFunction &CGF,
 }
 
 namespace {
-  struct CallSyncExit : EHScopeStack::Cleanup {
+  struct CallSyncExit final : EHScopeStack::Cleanup {
     llvm::Value *SyncExitFn;
     llvm::Value *SyncArg;
     CallSyncExit(llvm::Value *SyncExitFn, llvm::Value *SyncArg)

@@ -40,7 +40,7 @@ class ConnectionFileDescriptor : public Connection
 
     ConnectionFileDescriptor(Socket* socket);
 
-    virtual ~ConnectionFileDescriptor();
+    ~ConnectionFileDescriptor() override;
 
     bool IsConnected() const override;
 
@@ -59,12 +59,7 @@ class ConnectionFileDescriptor : public Connection
     bool InterruptRead() override;
 
     lldb::IOObjectSP
-    GetReadObject()
-    {
-        return m_read_sp;
-    }
-    const lldb::IOObjectSP
-    GetReadObject() const
+    GetReadObject() override
     {
         return m_read_sp;
     }

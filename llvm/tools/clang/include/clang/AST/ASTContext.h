@@ -196,8 +196,9 @@ class ASTContext : public RefCountedBase<ASTContext> {
     ClassScopeSpecializationPattern;
 
   /// \brief Mapping from materialized temporaries with static storage duration
-  /// that appear in constant initializers to their evaluated values.
-  llvm::DenseMap<const MaterializeTemporaryExpr*, APValue>
+  /// that appear in constant initializers to their evaluated values.  These are
+  /// allocated in a std::map because their address must be stable.
+  llvm::DenseMap<const MaterializeTemporaryExpr *, APValue *>
     MaterializedTemporaryValues;
 
   /// \brief Representation of a "canonical" template template parameter that
@@ -255,6 +256,12 @@ class ASTContext : public RefCountedBase<ASTContext> {
   QualType ObjCIdRedefinitionType;
   QualType ObjCClassRedefinitionType;
   QualType ObjCSelRedefinitionType;
+
+  /// The identifier 'NSObject'.
+  IdentifierInfo *NSObjectName = nullptr;
+
+  /// The identifier 'NSCopying'.
+  IdentifierInfo *NSCopyingName = nullptr;
 
   QualType ObjCConstantStringType;
   mutable RecordDecl *CFConstantStringTypeDecl;
@@ -519,6 +526,9 @@ public:
 
   void *Allocate(size_t Size, unsigned Align = 8) const {
     return BumpAlloc.Allocate(Size, Align);
+  }
+  template <typename T> T *Allocate(size_t Num = 1) const {
+    return static_cast<T *>(Allocate(Num * sizeof(T), llvm::alignOf<T>()));
   }
   void Deallocate(void *Ptr) const { }
   
@@ -863,6 +873,7 @@ public:
   CanQualType OCLImage2dTy, OCLImage2dArrayTy;
   CanQualType OCLImage3dTy;
   CanQualType OCLSamplerTy, OCLEventTy;
+  CanQualType OMPArraySectionTy;
 
   // +===== Scout ==========================================================+
   CanQualType SCWindowTy, SCImageTy, SCFrameTy;
@@ -872,9 +883,9 @@ public:
   mutable QualType AutoDeductTy;     // Deduction against 'auto'.
   mutable QualType AutoRRefDeductTy; // Deduction against 'auto &&'.
 
-  // Type used to help define __builtin_va_list for some targets.
-  // The type is built when constructing 'BuiltinVaListDecl'.
-  mutable QualType VaListTagTy;
+  // Decl used to help define __builtin_va_list for some targets.
+  // The decl is built when constructing 'BuiltinVaListDecl'.
+  mutable Decl *VaListTagDecl;
 
   ASTContext(LangOptions &LOpts, SourceManager &SM, IdentifierTable &idents,
              SelectorTable &sels, Builtin::Context &builtins);
@@ -1247,9 +1258,15 @@ public:
   QualType getObjCInterfaceType(const ObjCInterfaceDecl *Decl,
                                 ObjCInterfaceDecl *PrevDecl = nullptr) const;
 
+  /// Legacy interface: cannot provide type arguments or __kindof.
   QualType getObjCObjectType(QualType Base,
                              ObjCProtocolDecl * const *Protocols,
                              unsigned NumProtocols) const;
+
+  QualType getObjCObjectType(QualType Base,
+                             ArrayRef<QualType> typeArgs,
+                             ArrayRef<ObjCProtocolDecl *> protocols,
+                             bool isKindOf) const;
   
   bool ObjCObjectAdoptsQTypeProtocols(QualType QT, ObjCInterfaceDecl *Decl);
   /// QIdProtocolsAdoptObjCObjectProtocols - Checks that protocols in
@@ -1420,6 +1437,24 @@ public:
   /// \brief Set the user-written type that redefines 'SEL'.
   void setObjCSelRedefinitionType(QualType RedefType) {
     ObjCSelRedefinitionType = RedefType;
+  }
+
+  /// Retrieve the identifier 'NSObject'.
+  IdentifierInfo *getNSObjectName() {
+    if (!NSObjectName) {
+      NSObjectName = &Idents.get("NSObject");
+    }
+
+    return NSObjectName;
+  }
+
+  /// Retrieve the identifier 'NSCopying'.
+  IdentifierInfo *getNSCopyingName() {
+    if (!NSCopyingName) {
+      NSCopyingName = &Idents.get("NSCopying");
+    }
+
+    return NSCopyingName;
   }
 
   /// \brief Retrieve the Objective-C "instancetype" type, if already known;
@@ -1610,7 +1645,7 @@ public:
   /// \brief Retrieve the C type declaration corresponding to the predefined
   /// \c __va_list_tag type used to help define the \c __builtin_va_list type
   /// for some targets.
-  QualType getVaListTagType() const;
+  Decl *getVaListTagDecl() const;
 
   /// \brief Return a type with additional \c const, \c volatile, or
   /// \c restrict qualifiers.
@@ -1735,6 +1770,9 @@ public:
   TypeInfo getTypeInfo(const Type *T) const;
   TypeInfo getTypeInfo(QualType T) const { return getTypeInfo(T.getTypePtr()); }
 
+  /// \brief Get default simd alignment of the specified complete type in bits.
+  unsigned getOpenMPDefaultSimdAlign(QualType T) const;
+
   /// \brief Return the size of the specified (complete) type \p T, in bits.
   uint64_t getTypeSize(QualType T) const { return getTypeInfo(T).Width; }
   uint64_t getTypeSize(const Type *T) const { return getTypeInfo(T).Width; }
@@ -1818,8 +1856,6 @@ public:
   /// mesh, which indicates its size and field position information.
   const ASTMeshLayout &getASTMeshLayout(const MeshDecl *D) const;
   // +========================================================================+
-
-  const ASTRecordLayout *BuildMicrosoftASTRecordLayout(const RecordDecl *D) const;
 
   /// \brief Get or compute information about the layout of the specified
   /// Objective-C interface.

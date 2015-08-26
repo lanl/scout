@@ -36,6 +36,7 @@
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
+#include "lldb/Target/UnixSignals.h"
 #include "lldb/Utility/Utils.h"
 #include "llvm/Support/FileSystem.h"
 
@@ -1500,7 +1501,7 @@ Platform::Unlink(const FileSpec &path)
 }
 
 uint64_t
-Platform::ConvertMmapFlagsToPlatform(unsigned flags)
+Platform::ConvertMmapFlagsToPlatform(const ArchSpec &arch, unsigned flags)
 {
     uint64_t flags_platform = 0;
     if (flags & eMmapFlagsPrivate)
@@ -1534,27 +1535,6 @@ Platform::CalculateMD5 (const FileSpec& file_spec,
         return FileSystem::CalculateMD5(file_spec, low, high);
     else
         return false;
-}
-
-Error
-Platform::LaunchNativeProcess (
-    ProcessLaunchInfo &launch_info,
-    lldb_private::NativeProcessProtocol::NativeDelegate &native_delegate,
-    NativeProcessProtocolSP &process_sp)
-{
-    // Platforms should override this implementation if they want to
-    // support lldb-gdbserver.
-    return Error("unimplemented");
-}
-
-Error
-Platform::AttachNativeProcess (lldb::pid_t pid,
-                               lldb_private::NativeProcessProtocol::NativeDelegate &native_delegate,
-                               NativeProcessProtocolSP &process_sp)
-{
-    // Platforms should override this implementation if they want to
-    // support lldb-gdbserver.
-    return Error("unimplemented");
 }
 
 void
@@ -1831,7 +1811,7 @@ Platform::GetRemoteSharedModule (const ModuleSpec &module_spec,
     {
         // Try to get module information from the process
         if (process->GetModuleSpec (module_spec.GetFileSpec (), module_spec.GetArchitecture (), resolved_module_spec))
-          got_module_spec = true;
+            got_module_spec = true;
     }
 
     if (!got_module_spec)
@@ -1868,13 +1848,17 @@ Platform::GetCachedSharedModule (const ModuleSpec &module_spec,
         GetModuleCacheRoot (),
         GetCacheHostname (),
         module_spec,
-        [=](const ModuleSpec &module_spec, const FileSpec &tmp_download_file_spec)
+        [this](const ModuleSpec &module_spec, const FileSpec &tmp_download_file_spec)
         {
             return DownloadModuleSlice (module_spec.GetFileSpec (),
                                         module_spec.GetObjectOffset (),
                                         module_spec.GetObjectSize (),
                                         tmp_download_file_spec);
 
+        },
+        [this](const ModuleSP& module_sp, const FileSpec& tmp_download_file_spec)
+        {
+            return DownloadSymbolFile (module_sp, tmp_download_file_spec);
         },
         module_sp,
         did_create_ptr);
@@ -1938,6 +1922,12 @@ Platform::DownloadModuleSlice (const FileSpec& src_file_spec,
     return error;
 }
 
+Error
+Platform::DownloadSymbolFile (const lldb::ModuleSP& module_sp, const FileSpec& dst_file_spec)
+{
+    return Error ("Symbol file downloading not supported by the default platform.");
+}
+
 FileSpec
 Platform::GetModuleCacheRoot ()
 {
@@ -1950,4 +1940,19 @@ const char *
 Platform::GetCacheHostname ()
 {
     return GetHostname ();
+}
+
+const UnixSignalsSP &
+Platform::GetRemoteUnixSignals()
+{
+    static const auto s_default_unix_signals_sp = std::make_shared<UnixSignals>();
+    return s_default_unix_signals_sp;
+}
+
+const UnixSignalsSP &
+Platform::GetUnixSignals()
+{
+    if (IsHost())
+        return Host::GetUnixSignals();
+    return GetRemoteUnixSignals();
 }

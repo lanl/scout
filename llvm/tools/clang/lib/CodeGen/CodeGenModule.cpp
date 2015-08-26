@@ -61,7 +61,6 @@
 #include "Scout/CGScoutRuntime.h"
 #include "Scout/CGLegionCRuntime.h"
 #include "Scout/CGPlotRuntime.h"
-#include "Scout/CGPlot2Runtime.h"
 // ======================================
 
 using namespace clang;
@@ -85,22 +84,23 @@ static CGCXXABI *createCXXABI(CodeGenModule &CGM) {
   llvm_unreachable("invalid C++ ABI kind");
 }
 
-CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
-                             llvm::Module &M, const llvm::DataLayout &TD,
+CodeGenModule::CodeGenModule(ASTContext &C, const HeaderSearchOptions &HSO,
+                             const PreprocessorOptions &PPO,
+                             const CodeGenOptions &CGO, llvm::Module &M,
                              DiagnosticsEngine &diags,
                              CoverageSourceInfo *CoverageInfo)
-    : Context(C), LangOpts(C.getLangOpts()), CodeGenOpts(CGO), TheModule(M),
-      Diags(diags), TheDataLayout(TD), Target(C.getTargetInfo()),
-      ABI(createCXXABI(*this)), VMContext(M.getContext()), TBAA(nullptr),
-      TheTargetCodeGenInfo(nullptr), Types(*this), VTables(*this),
-      ObjCRuntime(nullptr), 
+    : Context(C), LangOpts(C.getLangOpts()), HeaderSearchOpts(HSO),
+      PreprocessorOpts(PPO), CodeGenOpts(CGO), TheModule(M), Diags(diags),
+      Target(C.getTargetInfo()), ABI(createCXXABI(*this)),
+      VMContext(M.getContext()), TBAA(nullptr), TheTargetCodeGenInfo(nullptr),
+      Types(*this), VTables(*this), ObjCRuntime(nullptr),
       // ===== Scout =========================================
       ScoutABI(createScoutABI(*this)),
       ScoutRuntime(nullptr),
       LegionCRuntime(nullptr),
       // =====================================================
-      OpenCLRuntime(nullptr), OpenMPRuntime(nullptr),
-      CUDARuntime(nullptr), DebugInfo(nullptr), ARCData(nullptr),
+      OpenCLRuntime(nullptr), OpenMPRuntime(nullptr), CUDARuntime(nullptr),
+      DebugInfo(nullptr), ARCData(nullptr),
       NoObjCARCExceptionsMetadata(nullptr), RRData(nullptr), PGOReader(nullptr),
       CFConstantStringClassRef(nullptr), ConstantStringClassRef(nullptr),
       NSConstantStringType(nullptr), NSConcreteGlobalBlock(nullptr),
@@ -141,7 +141,6 @@ CodeGenModule::CodeGenModule(ASTContext &C, const CodeGenOptions &CGO,
   if(isScoutLang(LangOpts)) {
     createScoutRuntime();
     createPlotRuntime();
-    createPlot2Runtime();
     
     if (CodeGenOpts.ScoutLegionSupport) {
       createLegionCRuntime();
@@ -214,10 +213,6 @@ void CodeGenModule::createScoutRuntime() {
 
 void CodeGenModule::createPlotRuntime() {
   PlotRuntime = new CGPlotRuntime(*this);
-}
-
-void CodeGenModule::createPlot2Runtime() {
-  Plot2Runtime = new CGPlot2Runtime(*this);
 }
 
 void CodeGenModule::createLegionCRuntime() {
@@ -437,11 +432,16 @@ void CodeGenModule::Release() {
       (Context.getLangOpts().Modules || !LinkerOptionsMetadata.empty())) {
     EmitModuleLinkOptions();
   }
-  if (CodeGenOpts.DwarfVersion)
+  if (CodeGenOpts.DwarfVersion) {
     // We actually want the latest version when there are conflicts.
     // We can change from Warning to Latest if such mode is supported.
     getModule().addModuleFlag(llvm::Module::Warning, "Dwarf Version",
                               CodeGenOpts.DwarfVersion);
+  }
+  if (CodeGenOpts.EmitCodeView) {
+    // Indicate that we want CodeView in the metadata.
+    getModule().addModuleFlag(llvm::Module::Warning, "CodeView", 1);
+  }
   if (DebugInfo)
     // We support a single version in the linked module. The LLVM
     // parser will drop debug info with a different version number
@@ -1331,6 +1331,11 @@ bool CodeGenModule::MayBeEmittedEagerly(const ValueDecl *Global) {
       // Implicit template instantiations may change linkage if they are later
       // explicitly instantiated, so they should not be emitted eagerly.
       return false;
+  // If OpenMP is enabled and threadprivates must be generated like TLS, delay
+  // codegen for global variables, because they may be marked as threadprivate.
+  if (LangOpts.OpenMP && LangOpts.OpenMPUseTLS &&
+      getContext().getTargetInfo().isTLSSupported() && isa<VarDecl>(Global))
+    return false;
 
   return true;
 }
@@ -1499,7 +1504,7 @@ namespace {
       unsigned BuiltinID = FD->getBuiltinID();
       if (!BuiltinID || !BI.isLibFunction(BuiltinID))
         return true;
-      StringRef BuiltinName = BI.GetName(BuiltinID);
+      StringRef BuiltinName = BI.getName(BuiltinID);
       if (BuiltinName.startswith("__builtin_") &&
           Name == BuiltinName.slice(strlen("__builtin_"), StringRef::npos)) {
         Result = true;
@@ -1526,12 +1531,7 @@ CodeGenModule::isTriviallyRecursive(const FunctionDecl *FD) {
     Name = FD->getName();
   }
 
-  auto &BI = Context.BuiltinInfo;
-  unsigned BuiltinID = Context.Idents.get(Name).getBuiltinID();
-  if (!BuiltinID || !BI.isPredefinedLibFunction(BuiltinID))
-    return false;
-
-  FunctionIsDirectlyRecursive Walker(Name, BI);
+  FunctionIsDirectlyRecursive Walker(Name, Context.BuiltinInfo);
   Walker.TraverseFunctionDecl(const_cast<FunctionDecl*>(FD));
   return Walker.Result;
 }
@@ -1974,8 +1974,8 @@ void CodeGenModule::EmitTentativeDefinition(const VarDecl *D) {
 }
 
 CharUnits CodeGenModule::GetTargetTypeStoreSize(llvm::Type *Ty) const {
-    return Context.toCharUnitsFromBits(
-      TheDataLayout.getTypeStoreSizeInBits(Ty));
+  return Context.toCharUnitsFromBits(
+      getDataLayout().getTypeStoreSizeInBits(Ty));
 }
 
 unsigned CodeGenModule::GetGlobalVarAddressSpace(const VarDecl *D,
@@ -2086,7 +2086,16 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D) {
   const VarDecl *InitDecl;
   const Expr *InitExpr = D->getAnyInitializer(InitDecl);
 
-  if (!InitExpr) {
+  // CUDA E.2.4.1 "__shared__ variables cannot have an initialization as part
+  // of their declaration."
+  if (getLangOpts().CPlusPlus && getLangOpts().CUDAIsDevice
+      && D->hasAttr<CUDASharedAttr>()) {
+    if (InitExpr) {
+      Error(D->getLocation(),
+            "__shared__ variable cannot have an initialization.");
+    }
+    Init = llvm::UndefValue::get(getTypes().ConvertType(ASTTy));
+  } else if (!InitExpr) {
     // This is a tentative definition; tentative definitions are
     // implicitly initialized with { 0 }.
     //
@@ -2174,6 +2183,17 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D) {
   if (D->hasAttr<AnnotateAttr>())
     AddGlobalAnnotations(D, GV);
 
+  // CUDA B.2.1 "The __device__ qualifier declares a variable that resides on
+  // the device. [...]"
+  // CUDA B.2.2 "The __constant__ qualifier, optionally used together with
+  // __device__, declares a variable that: [...]
+  // Is accessible from all the threads within the grid and from the host
+  // through the runtime library (cudaGetSymbolAddress() / cudaGetSymbolSize()
+  // / cudaMemcpyToSymbol() / cudaMemcpyFromSymbol())."
+  if (GV && LangOpts.CUDA && LangOpts.CUDAIsDevice &&
+      (D->hasAttr<CUDAConstantAttr>() || D->hasAttr<CUDADeviceAttr>())) {
+    GV->setExternallyInitialized(true);
+  }
   GV->setInitializer(Init);
 
   // If it is safe to mark the global 'constant', do so now.
@@ -3052,7 +3072,6 @@ CodeGenModule::GetAddrOfConstantStringFromLiteral(const StringLiteral *S,
       getCXXABI().getMangleContext().shouldMangleStringLiteral(S)) {
     llvm::raw_svector_ostream Out(MangledNameBuffer);
     getCXXABI().getMangleContext().mangleStringLiteral(S, Out);
-    Out.flush();
 
     LT = llvm::GlobalValue::LinkOnceODRLinkage;
     GlobalVariableName = MangledNameBuffer;
@@ -3129,8 +3148,7 @@ llvm::Constant *CodeGenModule::GetAddrOfGlobalTemporary(
   if (Init == E->GetTemporaryExpr())
     MaterializedType = E->getType();
 
-  llvm::Constant *&Slot = MaterializedGlobalTemporaryMap[E];
-  if (Slot)
+  if (llvm::Constant *Slot = MaterializedGlobalTemporaryMap[E])
     return Slot;
 
   // FIXME: If an externally-visible declaration extends multiple temporaries,
@@ -3140,7 +3158,6 @@ llvm::Constant *CodeGenModule::GetAddrOfGlobalTemporary(
   llvm::raw_svector_ostream Out(Name);
   getCXXABI().getMangleContext().mangleReferenceTemporary(
       VD, E->getManglingNumber(), Out);
-  Out.flush();
 
   APValue *Value = nullptr;
   if (E->getStorageDuration() == SD_Static) {
@@ -3202,7 +3219,7 @@ llvm::Constant *CodeGenModule::GetAddrOfGlobalTemporary(
     GV->setComdat(TheModule.getOrInsertComdat(GV->getName()));
   if (VD->getTLSKind())
     setTLSMode(GV, *VD);
-  Slot = GV;
+  MaterializedGlobalTemporaryMap[E] = GV;
   return GV;
 }
 
@@ -3465,11 +3482,10 @@ void CodeGenModule::EmitTopLevelDecl(Decl *D) {
     auto *Import = cast<ImportDecl>(D);
 
     // Ignore import declarations that come from imported modules.
-    if (clang::Module *Owner = Import->getImportedOwningModule()) {
-      if (getLangOpts().CurrentModule.empty() ||
-          Owner->getTopLevelModule()->Name == getLangOpts().CurrentModule)
-        break;
-    }
+    if (Import->getImportedOwningModule())
+      break;
+    if (CGDebugInfo *DI = getModuleDebugInfo())
+      DI->EmitImportDecl(*Import);
 
     ImportedModules.insert(Import->getImportedModule());
     break;
@@ -3531,7 +3547,7 @@ void CodeGenModule::AddDeferredUnusedCoverageMapping(Decl *D) {
   case Decl::ObjCMethod:
   case Decl::CXXConstructor:
   case Decl::CXXDestructor: {
-    if (!cast<FunctionDecl>(D)->hasBody())
+    if (!cast<FunctionDecl>(D)->doesThisDeclarationHaveABody())
       return;
     auto I = DeferredEmptyCoverageMappingDecls.find(D);
     if (I == DeferredEmptyCoverageMappingDecls.end())

@@ -122,17 +122,11 @@ if (SCOUT_ENABLE_CUDA)
 endif()
 
 #plot
-if (SCOUT_ENABLE_PLOT)
-  file(GLOB rt_srcs_plot plot/*.cpp)
-  list(APPEND rt_srcs ${rt_srcs_plot})
-endif()
-
-#plot2
 if (QT5_FOUND)  
   file(GLOB qt_hdrs
    ${SCOUT_INCLUDE_DIR}/scout/Runtime/opengl/qt/*.h)
-  file(GLOB rt_srcs_plot2 plot2/*.cpp)
-  list(APPEND rt_srcs ${rt_srcs_plot2})
+  file(GLOB rt_srcs_plot plot/*.cpp)
+  list(APPEND rt_srcs ${rt_srcs_plot})
 
   file(GLOB qt_srcs opengl/qt/*.cpp)
 

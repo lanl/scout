@@ -67,7 +67,7 @@
 #include "scout/Runtime/opengl/qt/ScoutWindow.h"
 #include "scout/Runtime/opengl/qt/QtWindow.h"
 
-#include "glVolumeRenderer.h"
+#include "CudaVolumeTracer.h"
 
 //#include <sys/time.h>
 
@@ -363,6 +363,7 @@ public:
         width_(width),
         height_(height),
         depth_(depth),
+        varsSize_(0),
         renderer_(nullptr){
 
       auto scoutWindow = static_cast<ScoutWindow*>(window);
@@ -411,14 +412,11 @@ public:
         err = cuMemAlloc(&invMatPtr_, 16 * 4);
         check(err);
 
-        err = cuMemcpyHtoD(invMatPtr_, invMat, 16 * 4);
-        check(err); 
-
-        err = cuMemAlloc(&meshPtr_, 8 * fields.size());
+        err = cuMemAlloc(&meshPtr_, 8 * fields.size() + varsSize_);
         check(err);
 
-        err = cuMemcpyHtoD(meshPtr_, fields.data(), fields.size() * 8);
-        check(err);        
+        err = cuMemcpyHtoD(meshPtr_, fields.data(), 8 * fields.size());
+        check(err);
         
         kernelParams_ = {nullptr, &invMatPtr_, 
                          &imageW_, &imageH_,
@@ -429,6 +427,9 @@ public:
         
         ready_ = true;
       }
+
+      err = cuMemcpyHtoD(invMatPtr_, invMat, 16 * 4);
+      check(err); 
 
       kernelParams_[0] = &output;
     
@@ -443,6 +444,16 @@ public:
       err = cuLaunchKernel(function_, gridX_, gridY_, gridZ_,
                            blockX_, blockY_, blockZ_, 
                            0, nullptr, kernelParams_.data(), nullptr);
+      check(err);
+    }
+
+    void addVar(uint32_t size){
+      varsSize_ += size;
+    }
+
+    void setVar(uint32_t offset, void* data, uint32_t size){
+      CUresult err = 
+        cuMemcpyHtoD(meshPtr_ + fieldVec_.size() * 8 + offset, data, size);
       check(err);
     }
 
@@ -464,7 +475,7 @@ public:
 
     void run(){
       if(!renderer_){
-        renderer_ = new glVolumeRenderer(width_, height_, depth_);
+        renderer_ = new CudaVolumeTracer(width_, height_, depth_);
         renderer_->setRenderCallback(this);
 
         window_->setRenderable(renderer_);
@@ -504,6 +515,7 @@ public:
     FieldMap_ fieldMap_;
     FieldVec_ fieldVec_;
     KernelParams_ kernelParams_;
+    size_t varsSize_;
     size_t blockX_;
     size_t blockY_;
     size_t blockZ_;
@@ -524,7 +536,7 @@ public:
     float transferOffset_;
     float transferScale_;
     CUdeviceptr meshPtr_;
-    glVolumeRenderer* renderer_;
+    CudaVolumeTracer* renderer_;
   };
 
   RenderallRuntime(){}
@@ -630,6 +642,22 @@ public:
     kernel->addField(fieldName, meshField, mode);
   }
 
+  void setVar(const char* kernelName,
+              uint32_t offset,
+              void* data,
+              uint32_t size){
+    auto kitr = kernelMap_.find(kernelName);
+    assert(kitr != kernelMap_.end() && "invalid kernel");
+    Kernel* kernel = kitr->second;
+
+    if(kernel->ready()){
+      kernel->setVar(offset, data, size);
+      return;
+    }
+
+    kernel->addVar(size);
+  }
+
   void runKernel(const char* kernelName){
     auto kitr = kernelMap_.find(kernelName);
     assert(kitr != kernelMap_.end() && "invalid kernel");
@@ -710,6 +738,15 @@ void __scrt_volren_init_field(const char* kernelName,
   RenderallRuntime* runtime = _getRuntime();
   runtime->initField(kernelName, fieldName, hostPtr,
                      elementSize, elementType, FIELD_READ);
+}
+
+extern "C"
+void __scrt_volren_set_var(const char* kernelName,
+                           uint32_t offset,
+                           void* data,
+                           uint32_t size){
+  RenderallRuntime* runtime = _getRuntime();
+  runtime->setVar(kernelName, offset, data, size);
 }
 
 extern "C"

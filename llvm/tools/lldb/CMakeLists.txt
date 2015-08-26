@@ -2,9 +2,11 @@
   if(SCOUT_ENABLE_LLDB)
      message("scout: building LLDB")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fpermissive")
-# +=====================================================================+
-include(cmake/modules/LLDBConfig.cmake)
+# +=============================================================
+cmake_minimum_required(VERSION 2.8)
+
 include(cmake/modules/LLDBStandalone.cmake)
+include(cmake/modules/LLDBConfig.cmake)
 include(cmake/modules/AddLLDB.cmake)
 
 #add_subdirectory(include)

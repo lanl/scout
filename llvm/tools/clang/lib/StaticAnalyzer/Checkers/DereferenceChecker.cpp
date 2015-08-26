@@ -14,6 +14,7 @@
 
 #include "ClangSACheckers.h"
 #include "clang/AST/ExprObjC.h"
+#include "clang/AST/ExprOpenMP.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
 #include "clang/StaticAnalyzer/Core/CheckerManager.h"
@@ -130,6 +131,14 @@ void DereferenceChecker::reportBug(ProgramStateRef State, const Stmt *S,
     os << " results in a null pointer dereference";
     break;
   }
+  case Stmt::OMPArraySectionExprClass: {
+    os << "Array access";
+    const OMPArraySectionExpr *AE = cast<OMPArraySectionExpr>(S);
+    AddDerefSource(os, Ranges, AE->getBase()->IgnoreParenCasts(),
+                   State.get(), N->getLocationContext());
+    os << " results in a null pointer dereference";
+    break;
+  }
   case Stmt::UnaryOperatorClass: {
     os << "Dereference of null pointer";
     const UnaryOperator *U = cast<UnaryOperator>(S);
@@ -159,7 +168,6 @@ void DereferenceChecker::reportBug(ProgramStateRef State, const Stmt *S,
     break;
   }
 
-  os.flush();
   auto report = llvm::make_unique<BugReport>(
       *BT_null, buf.empty() ? BT_null->getDescription() : StringRef(buf), N);
 

@@ -165,8 +165,7 @@ class SettingsCommandTestCase(TestBase):
         self.expect("settings show auto-confirm", SETTING_MSG("auto-confirm"),
             startstr = "auto-confirm (boolean) = false")
 
-    @expectedFailureArch("arm")
-    @expectedFailureArch("aarch64")
+    @skipUnlessArch(['x86-64', 'i386', 'i686'])
     def test_disassembler_settings(self):
         """Test that user options for the disassembler take effect."""
         self.buildDefault()
@@ -227,7 +226,7 @@ class SettingsCommandTestCase(TestBase):
         self.addTearDownHook(
             lambda: self.runCmd("settings clear target.env-vars"))
 
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         # Read the output file produced by running the program.
         if lldb.remote_platform:
@@ -263,7 +262,7 @@ class SettingsCommandTestCase(TestBase):
             os.environ.pop("MY_HOST_ENV_VAR2")
 
         self.addTearDownHook(unset_env_variables)
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         # Read the output file produced by running the program.
         if lldb.remote_platform:
@@ -299,7 +298,7 @@ class SettingsCommandTestCase(TestBase):
                     SETTING_MSG("target.output-path"),
                     substrs = ['target.output-path (file) = "stdout.txt"'])
 
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         if lldb.remote_platform:
             self.runCmd('platform get-file "stderr.txt" "stderr.txt"')
@@ -405,6 +404,12 @@ class SettingsCommandTestCase(TestBase):
         self.expect ("settings show stop-disassembly-display", SETTING_MSG("stop-disassembly-display"),
             startstr = 'stop-disassembly-display (enum) = always')
         self.runCmd("settings clear stop-disassembly-display", check=False)        
+        # language
+        self.runCmd ("settings set target.language c89")      # Set to known value
+        self.runCmd ("settings set target.language pascal ")    # Set to new value with trailing whitespace
+        self.expect ("settings show target.language", SETTING_MSG("target.language"),
+            startstr = "target.language (language) = pascal")
+        self.runCmd("settings clear target.language", check=False)
         # arguments
         self.runCmd ("settings set target.run-args 1 2 3")  # Set to known value
         self.runCmd ("settings set target.run-args 3 4 5 ") # Set to new value with trailing whitespaces
@@ -461,6 +466,7 @@ class SettingsCommandTestCase(TestBase):
                                  "target.default-arch",
                                  "target.move-to-nearest-code",
                                  "target.expr-prefix",
+                                 "target.language",
                                  "target.prefer-dynamic-value",
                                  "target.enable-synthetic-value",
                                  "target.skip-prologue",

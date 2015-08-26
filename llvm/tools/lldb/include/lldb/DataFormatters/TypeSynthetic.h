@@ -98,13 +98,13 @@ namespace lldb_private {
         CreateValueObjectFromAddress (const char* name,
                                       uint64_t address,
                                       const ExecutionContext& exe_ctx,
-                                      ClangASTType type);
+                                      CompilerType type);
         
         lldb::ValueObjectSP
         CreateValueObjectFromData (const char* name,
                                    const DataExtractor& data,
                                    const ExecutionContext& exe_ctx,
-                                   ClangASTType type);
+                                   CompilerType type);
         
     private:
         bool m_valid;
@@ -118,28 +118,27 @@ namespace lldb_private {
         SyntheticChildrenFrontEnd(backend)
         {}
         
-        virtual
-        ~SyntheticValueProviderFrontEnd ()
+        ~SyntheticValueProviderFrontEnd() override
         {
         }
         
-        virtual size_t
-        CalculateNumChildren () { return 0; }
+        size_t
+        CalculateNumChildren() override { return 0; }
         
-        virtual lldb::ValueObjectSP
-        GetChildAtIndex (size_t idx) { return nullptr; }
+        lldb::ValueObjectSP
+        GetChildAtIndex(size_t idx) override { return nullptr; }
         
-        virtual size_t
-        GetIndexOfChildWithName (const ConstString &name) { return UINT32_MAX; }
+        size_t
+        GetIndexOfChildWithName(const ConstString &name) override { return UINT32_MAX; }
         
-        virtual bool
-        Update () { return false; }
+        bool
+        Update() override { return false; }
         
-        virtual bool
-        MightHaveChildren () { return false; }
+        bool
+        MightHaveChildren () override { return false; }
         
-        virtual lldb::ValueObjectSP
-        GetSyntheticValue () = 0;
+        lldb::ValueObjectSP
+        GetSyntheticValue() override = 0;
         
     private:
         DISALLOW_COPY_AND_ASSIGN(SyntheticValueProviderFrontEnd);
@@ -236,6 +235,22 @@ namespace lldb_private {
                 return *this;
             }
             
+            bool
+            GetNonCacheable () const
+            {
+                return (m_flags & lldb::eTypeOptionNonCacheable) == lldb::eTypeOptionNonCacheable;
+            }
+            
+            Flags&
+            SetNonCacheable (bool value = true)
+            {
+                if (value)
+                    m_flags |= lldb::eTypeOptionNonCacheable;
+                else
+                    m_flags &= ~lldb::eTypeOptionNonCacheable;
+                return *this;
+            }
+            
             uint32_t
             GetValue ()
             {
@@ -277,6 +292,11 @@ namespace lldb_private {
         {
             return m_flags.GetSkipReferences();
         }
+        bool
+        NonCacheable () const
+        {
+            return m_flags.GetNonCacheable();
+        }
         
         void
         SetCascades (bool value)
@@ -294,6 +314,12 @@ namespace lldb_private {
         SetSkipsReferences (bool value)
         {
             m_flags.SetSkipReferences(value);
+        }
+        
+        void
+        SetNonCacheable (bool value)
+        {
+            m_flags.SetNonCacheable(value);
         }
         
         uint32_t
@@ -390,13 +416,13 @@ namespace lldb_private {
         SetExpressionPathAtIndex (size_t i, const std::string& path);
         
         bool
-        IsScripted ()
+        IsScripted() override
         {
             return false;
         }
         
         std::string
-        GetDescription ();
+        GetDescription() override;
         
         class FrontEnd : public SyntheticChildrenFrontEnd
         {
@@ -410,36 +436,35 @@ namespace lldb_private {
             filter(flt)
             {}
             
-            virtual
-            ~FrontEnd ()
+            ~FrontEnd() override
             {
             }
             
-            virtual size_t
-            CalculateNumChildren ()
+            size_t
+            CalculateNumChildren() override
             {
                 return filter->GetCount();
             }
             
-            virtual lldb::ValueObjectSP
-            GetChildAtIndex (size_t idx)
+            lldb::ValueObjectSP
+            GetChildAtIndex(size_t idx) override
             {
                 if (idx >= filter->GetCount())
                     return lldb::ValueObjectSP();
                 return m_backend.GetSyntheticExpressionPathChild(filter->GetExpressionPathAtIndex(idx), true);
             }
             
-            virtual bool
-            Update() { return false; }
+            bool
+            Update() override { return false; }
             
-            virtual bool
-            MightHaveChildren ()
+            bool
+            MightHaveChildren() override
             {
                 return filter->GetCount() > 0;
             }
             
-            virtual size_t
-            GetIndexOfChildWithName (const ConstString &name);
+            size_t
+            GetIndexOfChildWithName(const ConstString &name) override;
             
             typedef std::shared_ptr<SyntheticChildrenFrontEnd> SharedPointer;
             
@@ -447,8 +472,8 @@ namespace lldb_private {
             DISALLOW_COPY_AND_ASSIGN(FrontEnd);
         };
         
-        virtual SyntheticChildrenFrontEnd::AutoPointer
-        GetFrontEnd(ValueObject &backend)
+        SyntheticChildrenFrontEnd::AutoPointer
+        GetFrontEnd(ValueObject &backend) override
         {
             return SyntheticChildrenFrontEnd::AutoPointer(new FrontEnd(this, backend));
         }
@@ -475,16 +500,16 @@ namespace lldb_private {
         }
         
         bool
-        IsScripted ()
+        IsScripted() override
         {
             return false;
         }
         
         std::string
-        GetDescription ();
+        GetDescription() override;
         
-        virtual SyntheticChildrenFrontEnd::AutoPointer
-        GetFrontEnd (ValueObject &backend)
+        SyntheticChildrenFrontEnd::AutoPointer
+        GetFrontEnd(ValueObject &backend) override
         {
             return SyntheticChildrenFrontEnd::AutoPointer(m_create_callback(this, backend.GetSP()));
         }
@@ -540,10 +565,10 @@ namespace lldb_private {
         }
         
         std::string
-        GetDescription ();
+        GetDescription() override;
         
         bool
-        IsScripted ()
+        IsScripted() override
         {
             return true;
         }
@@ -562,26 +587,25 @@ namespace lldb_private {
             bool
             IsValid ();
             
-            virtual
-            ~FrontEnd ();
+            ~FrontEnd() override;
             
-            virtual size_t
-            CalculateNumChildren ();
+            size_t
+            CalculateNumChildren() override;
             
-            virtual lldb::ValueObjectSP
-            GetChildAtIndex (size_t idx);
+            lldb::ValueObjectSP
+            GetChildAtIndex(size_t idx) override;
             
-            virtual bool
-            Update ();
+            bool
+            Update() override;
             
-            virtual bool
-            MightHaveChildren ();
+            bool
+            MightHaveChildren() override;
             
-            virtual size_t
-            GetIndexOfChildWithName (const ConstString &name);
+            size_t
+            GetIndexOfChildWithName(const ConstString &name) override;
             
-            virtual lldb::ValueObjectSP
-            GetSyntheticValue ();
+            lldb::ValueObjectSP
+            GetSyntheticValue() override;
             
             typedef std::shared_ptr<SyntheticChildrenFrontEnd> SharedPointer;
             
@@ -589,8 +613,8 @@ namespace lldb_private {
             DISALLOW_COPY_AND_ASSIGN(FrontEnd);
         };
         
-        virtual SyntheticChildrenFrontEnd::AutoPointer
-        GetFrontEnd(ValueObject &backend)
+        SyntheticChildrenFrontEnd::AutoPointer
+        GetFrontEnd(ValueObject &backend) override
         {
             auto synth_ptr = SyntheticChildrenFrontEnd::AutoPointer(new FrontEnd(m_python_class, backend));
             if (synth_ptr && ((FrontEnd*)synth_ptr.get())->IsValid())
@@ -604,4 +628,4 @@ namespace lldb_private {
 #endif
 } // namespace lldb_private
 
-#endif	// lldb_TypeSynthetic_h_
+#endif // lldb_TypeSynthetic_h_

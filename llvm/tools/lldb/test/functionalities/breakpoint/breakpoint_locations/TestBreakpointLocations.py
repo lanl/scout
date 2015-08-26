@@ -20,6 +20,7 @@ class BreakpointLocationsTestCase(TestBase):
         self.breakpoint_locations_test()
 
     @dwarf_test
+    @expectedFailureWindows("llvm.org/pr24528")
     def test_with_dwarf(self):
         """Test breakpoint enable/disable for a breakpoint ID with multiple locations."""
         self.buildDwarf()
@@ -56,7 +57,7 @@ class BreakpointLocationsTestCase(TestBase):
             startstr = "3 breakpoints disabled.")
 
         # Run the program.
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         # We should not stopped on any breakpoint at all.
         self.expect("process status", "No stopping on any disabled breakpoint",
@@ -71,7 +72,7 @@ class BreakpointLocationsTestCase(TestBase):
             startstr = "1 breakpoints disabled.")
 
         # Run the program againt.  We should stop on the two breakpoint locations.
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         # Stopped once.
         self.expect("thread backtrace", STOPPED_DUE_TO_BREAKPOINT,

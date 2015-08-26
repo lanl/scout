@@ -77,7 +77,7 @@ bool Sema::ScoutMemberReferenceExpr(DeclarationName &Name,
     VarDecl* vd = *sitr;
     ImplicitMeshParamDecl* ip = dyn_cast<ImplicitMeshParamDecl>(vd);
     assert(ip && "Expected an implicit mesh param decl");
-    ImplicitMeshParamDecl::MeshElementType et = ip->getElementType();
+    MeshElementType et = ip->getElementType();
 
     const MeshType* mt = dyn_cast<MeshType>(vd->getType().getCanonicalType());
     MeshDecl* md = mt->getDecl();
@@ -88,23 +88,20 @@ bool Sema::ScoutMemberReferenceExpr(DeclarationName &Name,
 
       MeshFieldDecl* fd = *fitr;
 
-      if(fd->isCellLocated()){
-        if(et != ImplicitMeshParamDecl::Cells){
+      if (fd->isCellLocated()) {
+        if (et != Cells) {
           continue;
         }
-      }
-      else if(fd->isVertexLocated()){
-        if(et != ImplicitMeshParamDecl::Vertices){
+      } else if (fd->isVertexLocated()) {
+        if(et != Vertices) {
           continue;
         }
-      }
-      else if(fd->isEdgeLocated()){
-        if(et != ImplicitMeshParamDecl::Edges){
+      } else if(fd->isEdgeLocated()) {
+        if(et != Edges){
           continue;
         }
-      }
-      else if(fd->isFaceLocated()){
-        if(et != ImplicitMeshParamDecl::Faces){
+      } else if(fd->isFaceLocated()) {
+        if(et != Faces){
           continue;
         }
       }

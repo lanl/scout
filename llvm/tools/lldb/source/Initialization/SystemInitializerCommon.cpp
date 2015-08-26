@@ -13,10 +13,10 @@
 #include "lldb/Host/HostInfo.h"
 #include "lldb/Core/Log.h"
 #include "lldb/Core/Timer.h"
-#include "lldb/Interpreter/ScriptInterpreterPython.h"
 
 #include "Plugins/DynamicLoader/MacOSX-DYLD/DynamicLoaderMacOSXDYLD.h"
 #include "Plugins/DynamicLoader/POSIX-DYLD/DynamicLoaderPOSIXDYLD.h"
+#include "Plugins/DynamicLoader/Windows-DYLD/DynamicLoaderWindowsDYLD.h"
 #include "Plugins/Instruction/ARM/EmulateInstructionARM.h"
 #include "Plugins/Instruction/MIPS/EmulateInstructionMIPS.h"
 #include "Plugins/Instruction/MIPS64/EmulateInstructionMIPS64.h"
@@ -47,7 +47,7 @@
 
 #if defined(_MSC_VER)
 #include "lldb/Host/windows/windows.h"
-#include "Plugins/Process/Windows/ProcessWindowsLog.h"
+#include "Plugins/Process/Windows/Live/ProcessWindowsLog.h"
 #endif
 
 #include "llvm/Support/TargetSelect.h"
@@ -106,7 +106,8 @@ SystemInitializerCommon::Initialize()
     ObjectFileELF::Initialize();
     ObjectFilePECOFF::Initialize();
     DynamicLoaderPOSIXDYLD::Initialize();
-    PlatformFreeBSD::Initialize();
+    DynamicLoaderWindowsDYLD::Initialize();
+    platform_freebsd::PlatformFreeBSD::Initialize();
     platform_linux::PlatformLinux::Initialize();
     PlatformWindows::Initialize();
     PlatformKalimba::Initialize();
@@ -139,7 +140,6 @@ SystemInitializerCommon::Initialize()
     ProcessWindowsLog::Initialize();
 #endif
 #ifndef LLDB_DISABLE_PYTHON
-    ScriptInterpreterPython::InitializePrivate();
     OperatingSystemPython::Initialize();
 #endif
 }
@@ -152,7 +152,8 @@ SystemInitializerCommon::Terminate()
     ObjectFileELF::Terminate();
     ObjectFilePECOFF::Terminate();
     DynamicLoaderPOSIXDYLD::Terminate();
-    PlatformFreeBSD::Terminate();
+    DynamicLoaderWindowsDYLD::Terminate();
+    platform_freebsd::PlatformFreeBSD::Terminate();
     platform_linux::PlatformLinux::Terminate();
     PlatformWindows::Terminate();
     PlatformKalimba::Terminate();

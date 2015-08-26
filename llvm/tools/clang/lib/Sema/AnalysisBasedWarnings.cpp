@@ -130,11 +130,10 @@ public:
       return true;
 
     // Recurse to children.
-    for (ConstStmtRange SubStmts = E->children(); SubStmts; ++SubStmts)
-      if (*SubStmts)
-        if (const Expr *SubExpr = dyn_cast<Expr>(*SubStmts))
-          if (HasMacroID(SubExpr))
-            return true;
+    for (const Stmt *SubStmt : E->children())
+      if (const Expr *SubExpr = dyn_cast_or_null<Expr>(SubStmt))
+        if (HasMacroID(SubExpr))
+          return true;
 
     return false;
   }
@@ -164,6 +163,39 @@ public:
 // Check for infinite self-recursion in functions
 //===----------------------------------------------------------------------===//
 
+// Returns true if the function is called anywhere within the CFGBlock.
+// For member functions, the additional condition of being call from the
+// this pointer is required.
+static bool hasRecursiveCallInPath(const FunctionDecl *FD, CFGBlock &Block) {
+  // Process all the Stmt's in this block to find any calls to FD.
+  for (const auto &B : Block) {
+    if (B.getKind() != CFGElement::Statement)
+      continue;
+
+    const CallExpr *CE = dyn_cast<CallExpr>(B.getAs<CFGStmt>()->getStmt());
+    if (!CE || !CE->getCalleeDecl() ||
+        CE->getCalleeDecl()->getCanonicalDecl() != FD)
+      continue;
+
+    // Skip function calls which are qualified with a templated class.
+    if (const DeclRefExpr *DRE =
+            dyn_cast<DeclRefExpr>(CE->getCallee()->IgnoreParenImpCasts())) {
+      if (NestedNameSpecifier *NNS = DRE->getQualifier()) {
+        if (NNS->getKind() == NestedNameSpecifier::TypeSpec &&
+            isa<TemplateSpecializationType>(NNS->getAsType())) {
+          continue;
+        }
+      }
+    }
+
+    const CXXMemberCallExpr *MCE = dyn_cast<CXXMemberCallExpr>(CE);
+    if (!MCE || isa<CXXThisExpr>(MCE->getImplicitObjectArgument()) ||
+        !MCE->getMethodDecl()->isVirtual())
+      return true;
+  }
+  return false;
+}
+
 // All blocks are in one of three states.  States are ordered so that blocks
 // can only move to higher states.
 enum RecursiveState {
@@ -172,68 +204,56 @@ enum RecursiveState {
   FoundPathWithNoRecursiveCall
 };
 
-static void checkForFunctionCall(Sema &S, const FunctionDecl *FD,
-                                 CFGBlock &Block, unsigned ExitID,
-                                 llvm::SmallVectorImpl<RecursiveState> &States,
-                                 RecursiveState State) {
-  unsigned ID = Block.getBlockID();
+// Returns true if there exists a path to the exit block and every path
+// to the exit block passes through a call to FD.
+static bool checkForRecursiveFunctionCall(const FunctionDecl *FD, CFG *cfg) {
 
-  // A block's state can only move to a higher state.
-  if (States[ID] >= State)
-    return;
+  const unsigned ExitID = cfg->getExit().getBlockID();
 
-  States[ID] = State;
+  // Mark all nodes as FoundNoPath, then set the status of the entry block.
+  SmallVector<RecursiveState, 16> States(cfg->getNumBlockIDs(), FoundNoPath);
+  States[cfg->getEntry().getBlockID()] = FoundPathWithNoRecursiveCall;
 
-  // Found a path to the exit node without a recursive call.
-  if (ID == ExitID && State == FoundPathWithNoRecursiveCall)
-    return;
+  // Make the processing stack and seed it with the entry block.
+  SmallVector<CFGBlock *, 16> Stack;
+  Stack.push_back(&cfg->getEntry());
 
-  if (State == FoundPathWithNoRecursiveCall) {
-    // If the current state is FoundPathWithNoRecursiveCall, the successors
-    // will be either FoundPathWithNoRecursiveCall or FoundPath.  To determine
-    // which, process all the Stmt's in this block to find any recursive calls.
-    for (const auto &B : Block) {
-      if (B.getKind() != CFGElement::Statement)
-        continue;
+  while (!Stack.empty()) {
+    CFGBlock *CurBlock = Stack.back();
+    Stack.pop_back();
 
-      const CallExpr *CE = dyn_cast<CallExpr>(B.getAs<CFGStmt>()->getStmt());
-      if (CE && CE->getCalleeDecl() &&
-          CE->getCalleeDecl()->getCanonicalDecl() == FD) {
+    unsigned ID = CurBlock->getBlockID();
+    RecursiveState CurState = States[ID];
 
-        // Skip function calls which are qualified with a templated class.
-        if (const DeclRefExpr *DRE = dyn_cast<DeclRefExpr>(
-                CE->getCallee()->IgnoreParenImpCasts())) {
-          if (NestedNameSpecifier *NNS = DRE->getQualifier()) {
-            if (NNS->getKind() == NestedNameSpecifier::TypeSpec &&
-                isa<TemplateSpecializationType>(NNS->getAsType())) {
-               continue;
-            }
-          }
-        }
+    if (CurState == FoundPathWithNoRecursiveCall) {
+      // Found a path to the exit node without a recursive call.
+      if (ExitID == ID)
+        return false;
 
-        if (const CXXMemberCallExpr *MCE = dyn_cast<CXXMemberCallExpr>(CE)) {
-          if (isa<CXXThisExpr>(MCE->getImplicitObjectArgument()) ||
-              !MCE->getMethodDecl()->isVirtual()) {
-            State = FoundPath;
-            break;
-          }
-        } else {
-          State = FoundPath;
-          break;
+      // Only change state if the block has a recursive call.
+      if (hasRecursiveCallInPath(FD, *CurBlock))
+        CurState = FoundPath;
+    }
+
+    // Loop over successor blocks and add them to the Stack if their state
+    // changes.
+    for (auto I = CurBlock->succ_begin(), E = CurBlock->succ_end(); I != E; ++I)
+      if (*I) {
+        unsigned next_ID = (*I)->getBlockID();
+        if (States[next_ID] < CurState) {
+          States[next_ID] = CurState;
+          Stack.push_back(*I);
         }
       }
-    }
   }
 
-  for (CFGBlock::succ_iterator I = Block.succ_begin(), E = Block.succ_end();
-       I != E; ++I)
-    if (*I)
-      checkForFunctionCall(S, FD, **I, ExitID, States, State);
+  // Return true if the exit node is reachable, and only reachable through
+  // a recursive call.
+  return States[ExitID] == FoundPath;
 }
 
 static void checkRecursiveFunction(Sema &S, const FunctionDecl *FD,
-                                   const Stmt *Body,
-                                   AnalysisDeclContext &AC) {
+                                   const Stmt *Body, AnalysisDeclContext &AC) {
   FD = FD->getCanonicalDecl();
 
   // Only run on non-templated functions and non-templated members of
@@ -249,15 +269,8 @@ static void checkRecursiveFunction(Sema &S, const FunctionDecl *FD,
   if (cfg->getExit().pred_empty())
     return;
 
-  // Mark all nodes as FoundNoPath, then begin processing the entry block.
-  llvm::SmallVector<RecursiveState, 16> states(cfg->getNumBlockIDs(),
-                                               FoundNoPath);
-  checkForFunctionCall(S, FD, cfg->getEntry(), cfg->getExit().getBlockID(),
-                       states, FoundPathWithNoRecursiveCall);
-
-  // Check that the exit block is reachable.  This prevents triggering the
-  // warning on functions that do not terminate.
-  if (states[cfg->getExit().getBlockID()] == FoundPath)
+  // Emit diagnostic if a recursive function call is detected for all paths.
+  if (checkForRecursiveFunctionCall(FD, cfg))
     S.Diag(Body->getLocStart(), diag::warn_infinite_recursive_function);
 }
 
@@ -1091,8 +1104,7 @@ static void DiagnoseSwitchLabelsFallthrough(Sema &S, AnalysisDeclContext &AC,
 
   FM.fillReachableBlocks(Cfg);
 
-  for (CFG::reverse_iterator I = Cfg->rbegin(), E = Cfg->rend(); I != E; ++I) {
-    const CFGBlock *B = *I;
+  for (const CFGBlock *B : llvm::reverse(*Cfg)) {
     const Stmt *Label = B->getLabel();
 
     if (!Label || !isa<SwitchCase>(Label))

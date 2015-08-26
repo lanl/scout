@@ -152,18 +152,21 @@ public:
     virtual void
     SetFormat (lldb::Format format);
     
+    virtual bool
+    GetDeclaration (Declaration &decl);
+
 protected:
     virtual bool
     UpdateValue ();
     
-    virtual bool
+    virtual LazyBool
     CanUpdateWithInvalidExecutionContext ()
     {
-        return true;
+        return eLazyBoolYes;
     }
     
-    virtual ClangASTType
-    GetClangTypeImpl ();
+    virtual CompilerType
+    GetCompilerTypeImpl ();
     
     virtual void
     CreateSynthFilter ();

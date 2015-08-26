@@ -84,6 +84,7 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::Captured:
   case Decl::ClassScopeFunctionSpecialization:
   case Decl::UsingShadow:
+  case Decl::ObjCTypeParam:
     llvm_unreachable("Declaration should not be in declstmts!");
 
   // +===== Scout ============================================================+
@@ -111,6 +112,8 @@ void CodeGenFunction::EmitDecl(const Decl &D) {
   case Decl::StructuredMesh:
   case Decl::RectilinearMesh:
   case Decl::UnstructuredMesh:
+
+  case Decl::Frame:
     // None of these decls require codegen support.
     // SC_TODO : Is this really true in the big picture of DSL debugging?
     return;
@@ -356,6 +359,7 @@ CodeGenFunction::AddInitializerToStaticVarDecl(const VarDecl &D,
                                   OldGV->getThreadLocalMode(),
                            CGM.getContext().getTargetAddressSpace(D.getType()));
     GV->setVisibility(OldGV->getVisibility());
+    GV->setComdat(OldGV->getComdat());
 
     // Steal the name of the old global
     GV->takeName(OldGV);
@@ -444,7 +448,7 @@ void CodeGenFunction::EmitStaticVarDecl(const VarDecl &D,
 }
 
 namespace {
-  struct DestroyObject : EHScopeStack::Cleanup {
+  struct DestroyObject final : EHScopeStack::Cleanup {
     DestroyObject(llvm::Value *addr, QualType type,
                   CodeGenFunction::Destroyer *destroyer,
                   bool useEHCleanupForArray)
@@ -465,7 +469,7 @@ namespace {
     }
   };
 
-  struct DestroyNRVOVariable : EHScopeStack::Cleanup {
+  struct DestroyNRVOVariable final : EHScopeStack::Cleanup {
     DestroyNRVOVariable(llvm::Value *addr,
                         const CXXDestructorDecl *Dtor,
                         llvm::Value *NRVOFlag)
@@ -498,7 +502,7 @@ namespace {
     }
   };
 
-  struct CallStackRestore : EHScopeStack::Cleanup {
+  struct CallStackRestore final : EHScopeStack::Cleanup {
     llvm::Value *Stack;
     CallStackRestore(llvm::Value *Stack) : Stack(Stack) {}
     void Emit(CodeGenFunction &CGF, Flags flags) override {
@@ -508,7 +512,7 @@ namespace {
     }
   };
 
-  struct ExtendGCLifetime : EHScopeStack::Cleanup {
+  struct ExtendGCLifetime final : EHScopeStack::Cleanup {
     const VarDecl &Var;
     ExtendGCLifetime(const VarDecl *var) : Var(*var) {}
 
@@ -523,7 +527,7 @@ namespace {
     }
   };
 
-  struct CallCleanupFunction : EHScopeStack::Cleanup {
+  struct CallCleanupFunction final : EHScopeStack::Cleanup {
     llvm::Constant *CleanupFn;
     const CGFunctionInfo &FnInfo;
     const VarDecl &Var;
@@ -557,7 +561,7 @@ namespace {
   };
 
   /// A cleanup to call @llvm.lifetime.end.
-  class CallLifetimeEnd : public EHScopeStack::Cleanup {
+  class CallLifetimeEnd final : public EHScopeStack::Cleanup {
     llvm::Value *Addr;
     llvm::Value *Size;
   public:
@@ -625,9 +629,9 @@ static bool isAccessedBy(const VarDecl &var, const Stmt *s) {
     }
   }
 
-  for (Stmt::const_child_range children = s->children(); children; ++children)
-    // children might be null; as in missing decl or conditional of an if-stmt.
-    if ((*children) && isAccessedBy(var, *children))
+  for (const Stmt *SubStmt : s->children())
+    // SubStmt might be null; as in missing decl or conditional of an if-stmt.
+    if (SubStmt && isAccessedBy(var, SubStmt))
       return true;
 
   return false;
@@ -1038,7 +1042,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
       llvm::Value *Stack = CreateTempAlloca(Int8PtrTy, "saved_stack");
 
       llvm::Value *F = CGM.getIntrinsic(llvm::Intrinsic::stacksave);
-      llvm::Value *V = Builder.CreateCall(F, {});
+      llvm::Value *V = Builder.CreateCall(F);
 
       Builder.CreateStore(V, Stack);
 
@@ -1125,8 +1129,8 @@ static bool isCapturedBy(const VarDecl &var, const Expr *e) {
     return false;
   }
 
-  for (Stmt::const_child_range children = e->children(); children; ++children)
-    if (isCapturedBy(var, cast<Expr>(*children)))
+  for (const Stmt *SubStmt : e->children())
+    if (isCapturedBy(var, cast<Expr>(SubStmt)))
       return true;
 
   return false;
@@ -1604,7 +1608,7 @@ namespace {
   /// RegularPartialArrayDestroy - a cleanup which performs a partial
   /// array destroy where the end pointer is regularly determined and
   /// does not need to be loaded from a local.
-  class RegularPartialArrayDestroy : public EHScopeStack::Cleanup {
+  class RegularPartialArrayDestroy final : public EHScopeStack::Cleanup {
     llvm::Value *ArrayBegin;
     llvm::Value *ArrayEnd;
     QualType ElementType;
@@ -1625,7 +1629,7 @@ namespace {
   /// IrregularPartialArrayDestroy - a cleanup which performs a
   /// partial array destroy where the end pointer is irregularly
   /// determined and must be loaded from a local.
-  class IrregularPartialArrayDestroy : public EHScopeStack::Cleanup {
+  class IrregularPartialArrayDestroy final : public EHScopeStack::Cleanup {
     llvm::Value *ArrayBegin;
     llvm::Value *ArrayEndPointer;
     QualType ElementType;
@@ -1697,7 +1701,7 @@ namespace {
   /// function.  This is used to balance out the incoming +1 of a
   /// ns_consumed argument when we can't reasonably do that just by
   /// not doing the initial retain for a __block argument.
-  struct ConsumeARCParameter : EHScopeStack::Cleanup {
+  struct ConsumeARCParameter final : EHScopeStack::Cleanup {
     ConsumeARCParameter(llvm::Value *param,
                         ARCPreciseLifetime_t precise)
       : Param(param), Precise(precise) {}

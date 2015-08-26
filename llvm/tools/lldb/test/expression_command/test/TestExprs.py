@@ -41,7 +41,7 @@ class BasicExprCommandsTestCase(TestBase):
 
         lldbutil.run_break_set_by_file_and_line (self, "main.cpp", self.line, num_expected_locations=1, loc_exact=False)
 
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
     @unittest2.expectedFailure("llvm.org/pr17135 <rdar://problem/14874559> APFloat::toString does not identify the correct (i.e. least) precision.")
     def test_floating_point_expr_commands(self):
@@ -52,6 +52,7 @@ class BasicExprCommandsTestCase(TestBase):
         # (float) $2 = 2.234
 
     @expectedFailureAll("llvm.org/pr23139", oslist=["linux"], compiler="gcc", compiler_version=[">=","4.9"], archs=["i386"])
+    @expectedFailureWindows("llvm.org/pr21765")
     def test_many_expr_commands(self):
         self.build_and_run()
 
@@ -193,6 +194,7 @@ class BasicExprCommandsTestCase(TestBase):
 
     # rdar://problem/8686536
     # CommandInterpreter::HandleCommand is stripping \'s from input for WantsRawCommand commands
+    @expectedFailureWindows("llvm.org/pr21765")
     def test_expr_commands_can_handle_quotes(self):
         """Throw some expression commands with quotes at lldb."""
         self.buildDefault()
@@ -201,7 +203,7 @@ class BasicExprCommandsTestCase(TestBase):
 
         lldbutil.run_break_set_by_file_and_line(self, "main.cpp", self.line, num_expected_locations=1,loc_exact=False)
 
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         # runCmd: expression 'a'
         # output: (char) $0 = 'a'

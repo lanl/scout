@@ -54,7 +54,7 @@ class BitfieldsTestCase(TestBase):
         # Break inside the main.
         lldbutil.run_break_set_by_file_and_line (self, "main.c", self.line, num_expected_locations=1, loc_exact=True)
 
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         # The stop reason of the thread should be breakpoint.
         self.expect("thread list", STOPPED_DUE_TO_BREAKPOINT,
@@ -119,10 +119,6 @@ class BitfieldsTestCase(TestBase):
             substrs = ['uint8_t', '\\x01'])
         self.expect("expr (more_bits.d)", VARIABLES_DISPLAYED_CORRECTLY,
             substrs = ['uint8_t', '\\0'])
-
-        self.expect("target modules dump symfile a.out", VARIABLES_DISPLAYED_CORRECTLY,
-            substrs = ['Bits', 'uint32_t b3 : 3',
-                       'MoreBits', 'uint32_t a : 3'])
 
     def bitfields_variable_python(self):
         """Use Python APIs to inspect a bitfields variable."""

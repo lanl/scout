@@ -20,6 +20,7 @@ class LibcxxUnorderedDataFormatterTestCase(TestBase):
         self.data_formatter_commands()
 
     @dwarf_test
+    @skipIfWindows # libc++ not ported to Windows yet
     @skipIfGcc
     def test_with_dwarf_and_run_command(self):
         """Test data formatter commands."""
@@ -40,7 +41,7 @@ class LibcxxUnorderedDataFormatterTestCase(TestBase):
 
         lldbutil.run_break_set_by_source_regexp (self, "Set break point at this line.")
 
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         # The stop reason of the thread should be breakpoint.
         self.expect("thread list", STOPPED_DUE_TO_BREAKPOINT,

@@ -36,7 +36,8 @@ public:
               Declaration* decl,
               const DWARFExpression& location,
               bool external,
-              bool artificial);
+              bool artificial,
+              bool static_member = false);
 
     virtual
     ~Variable();
@@ -55,7 +56,7 @@ public:
         return m_declaration;
     }
 
-    const ConstString&
+    ConstString
     GetName() const;
 
     SymbolContextScope *
@@ -70,18 +71,16 @@ public:
     // function that can be called by commands and expression parsers to make
     // sure we match anything we come across.
     bool
-    NameMatches (const ConstString &name) const
-    {
-        if (m_name == name)
-            return true;
-        return m_mangled.NameMatches (name);
-    }
+    NameMatches (const ConstString &name) const;
 
     bool
     NameMatches (const RegularExpression& regex) const;
 
     Type *
     GetType();
+
+    lldb::LanguageType
+    GetLanguage () const;
 
     lldb::ValueType
     GetScope() const
@@ -99,6 +98,11 @@ public:
     IsArtificial() const
     {
         return m_artificial;
+    }
+
+    bool IsStaticMember() const
+    {
+        return m_static_member;
     }
 
     DWARFExpression &
@@ -173,7 +177,8 @@ protected:
     DWARFExpression m_location;         // The location of this variable that can be fed to DWARFExpression::Evaluate()
     uint8_t m_external:1,               // Visible outside the containing compile unit?
             m_artificial:1,             // Non-zero if the variable is not explicitly declared in source
-            m_loc_is_const_data:1;      // The m_location expression contains the constant variable value data, not a DWARF location
+            m_loc_is_const_data:1,      // The m_location expression contains the constant variable value data, not a DWARF location
+            m_static_member:1;          // Non-zero if variable is static member of a class or struct.
 private:
     Variable(const Variable& rhs);
     Variable& operator=(const Variable& rhs);

@@ -989,7 +989,7 @@ TemplateInstantiator::RebuildElaboratedType(SourceLocation KeywordLoc,
     if (Id && Keyword != ETK_None && Keyword != ETK_Typename) {
       TagTypeKind Kind = TypeWithKeyword::getTagTypeKindForKeyword(Keyword);
       if (!SemaRef.isAcceptableTagRedeclaration(TD, Kind, /*isDefinition*/false,
-                                                TagLocation, *Id)) {
+                                                TagLocation, Id)) {
         SemaRef.Diag(TagLocation, diag::err_use_with_wrong_tag)
           << Id
           << FixItHint::CreateReplacement(SourceRange(TagLocation),
@@ -1682,11 +1682,10 @@ ParmVarDecl *Sema::SubstParmVarDecl(ParmVarDecl *OldParm,
     UnparsedDefaultArgInstantiations[OldParm].push_back(NewParm);
   } else if (Expr *Arg = OldParm->getDefaultArg()) {
     FunctionDecl *OwningFunc = cast<FunctionDecl>(OldParm->getDeclContext());
-    CXXRecordDecl *ClassD = dyn_cast<CXXRecordDecl>(OwningFunc->getDeclContext());
-    if (ClassD && ClassD->isLocalClass() && !ClassD->isLambda()) {
-      // If this is a method of a local class, as per DR1484 its default
-      // arguments must be instantiated.
-      Sema::ContextRAII SavedContext(*this, ClassD);
+    if (OwningFunc->isLexicallyWithinFunctionOrMethod()) {
+      // Instantiate default arguments for methods of local classes (DR1484)
+      // and non-defining declarations.
+      Sema::ContextRAII SavedContext(*this, OwningFunc);
       LocalInstantiationScope Local(*this);
       ExprResult NewArg = SubstExpr(Arg, TemplateArgs);
       if (NewArg.isUsable())
@@ -2050,7 +2049,7 @@ Sema::InstantiateClass(SourceLocation PointOfInstantiation,
 
   // Default arguments are parsed, if not instantiated. We can go instantiate
   // default arg exprs for default constructors if necessary now.
-  ActOnFinishCXXMemberDefaultArgs(Instantiation);
+  ActOnFinishCXXNonNestedClass(Instantiation);
 
   // Instantiate late parsed attributes, and attach them to their decls.
   // See Sema::InstantiateAttrs

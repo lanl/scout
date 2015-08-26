@@ -162,7 +162,7 @@ FormatManager::GetFormatAsCString (Format format)
 
 void
 FormatManager::GetPossibleMatches (ValueObject& valobj,
-                                   ClangASTType clang_type,
+                                   CompilerType clang_type,
                                    uint32_t reason,
                                    lldb::DynamicValueType use_dynamic,
                                    FormattersMatchVector& entries,
@@ -171,7 +171,7 @@ FormatManager::GetPossibleMatches (ValueObject& valobj,
                                    bool did_strip_typedef,
                                    bool root_level)
 {
-    clang_type = clang_type.RemoveFastQualifiers();
+    clang_type = ClangASTContext::RemoveFastQualifiers(clang_type);
     ConstString type_name(clang_type.GetConstTypeName());
     if (valobj.GetBitfieldBitSize() > 0)
     {
@@ -189,7 +189,7 @@ FormatManager::GetPossibleMatches (ValueObject& valobj,
 
     for (bool is_rvalue_ref = true, j = true; j && clang_type.IsReferenceType(nullptr, &is_rvalue_ref); j = false)
     {
-        ClangASTType non_ref_type = clang_type.GetNonReferenceType();
+        CompilerType non_ref_type = clang_type.GetNonReferenceType();
         GetPossibleMatches(valobj,
                            non_ref_type,
                            reason | lldb_private::eFormatterChoiceCriterionStrippedPointerReference,
@@ -200,8 +200,8 @@ FormatManager::GetPossibleMatches (ValueObject& valobj,
                            did_strip_typedef);
         if (non_ref_type.IsTypedefType())
         {
-            ClangASTType deffed_referenced_type = non_ref_type.GetTypedefedType();
-            deffed_referenced_type = is_rvalue_ref ? deffed_referenced_type.GetRValueReferenceType() : deffed_referenced_type.GetLValueReferenceType();
+            CompilerType deffed_referenced_type = non_ref_type.GetTypedefedType();
+            deffed_referenced_type = is_rvalue_ref ? ClangASTContext::GetRValueReferenceType(deffed_referenced_type) : ClangASTContext::GetLValueReferenceType(deffed_referenced_type);
             GetPossibleMatches(valobj,
                                deffed_referenced_type,
                                reason | lldb_private::eFormatterChoiceCriterionNavigatedTypedefs,
@@ -215,7 +215,7 @@ FormatManager::GetPossibleMatches (ValueObject& valobj,
     
     if (clang_type.IsPointerType())
     {
-        ClangASTType non_ptr_type = clang_type.GetPointeeType();
+        CompilerType non_ptr_type = clang_type.GetPointeeType();
         GetPossibleMatches(valobj,
                            non_ptr_type,
                            reason | lldb_private::eFormatterChoiceCriterionStrippedPointerReference,
@@ -226,7 +226,7 @@ FormatManager::GetPossibleMatches (ValueObject& valobj,
                            did_strip_typedef);
         if (non_ptr_type.IsTypedefType())
         {
-            ClangASTType deffed_pointed_type = non_ptr_type.GetTypedefedType().GetPointerType();
+            CompilerType deffed_pointed_type = non_ptr_type.GetTypedefedType().GetPointerType();
             GetPossibleMatches(valobj,
                                deffed_pointed_type,
                                reason | lldb_private::eFormatterChoiceCriterionNavigatedTypedefs,
@@ -261,7 +261,7 @@ FormatManager::GetPossibleMatches (ValueObject& valobj,
             } while (false);
         }
         
-        ClangASTType non_ptr_type = clang_type.GetPointeeType();
+        CompilerType non_ptr_type = clang_type.GetPointeeType();
         GetPossibleMatches(valobj,
                            non_ptr_type,
                            reason | lldb_private::eFormatterChoiceCriterionStrippedPointerReference,
@@ -275,7 +275,7 @@ FormatManager::GetPossibleMatches (ValueObject& valobj,
     // try to strip typedef chains
     if (clang_type.IsTypedefType())
     {
-        ClangASTType deffed_type = clang_type.GetTypedefedType();
+        CompilerType deffed_type = clang_type.GetTypedefedType();
         GetPossibleMatches(valobj,
                            deffed_type,
                            reason | lldb_private::eFormatterChoiceCriterionNavigatedTypedefs,
@@ -292,7 +292,7 @@ FormatManager::GetPossibleMatches (ValueObject& valobj,
             if (!clang_type.IsValid())
                 break;
             
-            ClangASTType unqual_clang_ast_type = clang_type.GetFullyUnqualifiedType();
+            CompilerType unqual_clang_ast_type = clang_type.GetFullyUnqualifiedType();
             if (!unqual_clang_ast_type.IsValid())
                 break;
             if (unqual_clang_ast_type.GetOpaqueQualType() != clang_type.GetOpaqueQualType())
@@ -313,7 +313,7 @@ FormatManager::GetPossibleMatches (ValueObject& valobj,
             lldb::ValueObjectSP static_value_sp(valobj.GetStaticValue());
             if (static_value_sp)
                 GetPossibleMatches(*static_value_sp.get(),
-                                   static_value_sp->GetClangType(),
+                                   static_value_sp->GetCompilerType(),
                                    reason | lldb_private::eFormatterChoiceCriterionWentToStaticValue,
                                    use_dynamic,
                                    entries,
@@ -662,7 +662,8 @@ FormatManager::GetFormat (ValueObject& valobj,
             log->Printf("[FormatManager::GetFormat] Search failed. Giving hardcoded a chance.");
         retval = GetHardcodedFormat(valobj, use_dynamic);
     }
-    else if (valobj_type)
+    
+    if (valobj_type && (!retval || !retval->NonCacheable()))
     {
         if (log)
             log->Printf("[FormatManager::GetFormat] Caching %p for type %s",
@@ -719,7 +720,8 @@ FormatManager::GetSummaryFormat (ValueObject& valobj,
             log->Printf("[FormatManager::GetSummaryFormat] Search failed. Giving hardcoded a chance.");
         retval = GetHardcodedSummaryFormat(valobj, use_dynamic);
     }
-    else if (valobj_type)
+    
+    if (valobj_type && (!retval || !retval->NonCacheable()))
     {
         if (log)
             log->Printf("[FormatManager::GetSummaryFormat] Caching %p for type %s",
@@ -777,7 +779,8 @@ FormatManager::GetSyntheticChildren (ValueObject& valobj,
             log->Printf("[FormatManager::GetSyntheticChildren] Search failed. Giving hardcoded a chance.");
         retval = GetHardcodedSyntheticChildren(valobj, use_dynamic);
     }
-    else if (valobj_type)
+    
+    if (valobj_type && (!retval || !retval->NonCacheable()))
     {
         if (log)
             log->Printf("[FormatManager::GetSyntheticChildren] Caching %p for type %s",
@@ -822,7 +825,8 @@ FormatManager::GetValidator (ValueObject& valobj,
             log->Printf("[FormatManager::GetValidator] Search failed. Giving hardcoded a chance.");
         retval = GetHardcodedValidator(valobj, use_dynamic);
     }
-    else if (valobj_type)
+    
+    if (valobj_type && (!retval || !retval->NonCacheable()))
     {
         if (log)
             log->Printf("[FormatManager::GetValidator] Caching %p for type %s",
@@ -1153,7 +1157,7 @@ FormatManager::LoadSystemFormatters()
     .SetHideItemNames(false);
     
     TypeSummaryImpl::Flags string_array_flags;
-    string_array_flags.SetCascades(false)
+    string_array_flags.SetCascades(true)
     .SetSkipPointers(true)
     .SetSkipReferences(false)
     .SetDontShowChildren(true)
@@ -1598,12 +1602,32 @@ FormatManager::LoadHardcodedFormatters()
                                             lldb::DynamicValueType,
                                             FormatManager&) -> TypeSummaryImpl::SharedPointer {
                                             static CXXFunctionSummaryFormat::SharedPointer formatter_sp(new CXXFunctionSummaryFormat(TypeSummaryImpl::Flags(), lldb_private::formatters::FunctionPointerSummaryProvider, "Function pointer summary provider"));
-                                            if (valobj.GetClangType().IsFunctionPointerType())
+                                            if (valobj.GetCompilerType().IsFunctionPointerType())
                                             {
                                                 return formatter_sp;
                                             }
                                             return nullptr;
                                         });
+        m_hardcoded_summaries.push_back(
+                                         [](lldb_private::ValueObject& valobj,
+                                            lldb::DynamicValueType,
+                                            FormatManager& fmt_mgr) -> TypeSummaryImpl::SharedPointer {
+                                             static CXXFunctionSummaryFormat::SharedPointer formatter_sp(new CXXFunctionSummaryFormat(TypeSummaryImpl::Flags()
+                                                                                                                                      .SetCascades(true)
+                                                                                                                                      .SetDontShowChildren(true)
+                                                                                                                                      .SetHideItemNames(true)
+                                                                                                                                      .SetShowMembersOneLiner(true)
+                                                                                                                                      .SetSkipPointers(true)
+                                                                                                                                      .SetSkipReferences(false),
+                                                                                                                                      lldb_private::formatters::VectorTypeSummaryProvider,
+                                                                                                                                      "vector_type pointer summary provider"));
+                                             if (valobj.GetCompilerType().IsVectorType(nullptr, nullptr))
+                                             {
+                                                 if (fmt_mgr.GetCategory(fmt_mgr.m_vectortypes_category_name)->IsEnabled())
+                                                     return formatter_sp;
+                                             }
+                                             return nullptr;
+                                         });
     }
     {
         // insert code to load synthetics here
@@ -1611,10 +1635,10 @@ FormatManager::LoadHardcodedFormatters()
                                          [](lldb_private::ValueObject& valobj,
                                             lldb::DynamicValueType,
                                             FormatManager& fmt_mgr) -> SyntheticChildren::SharedPointer {
-                                             static CXXSyntheticChildren::SharedPointer formatter_sp(new CXXSyntheticChildren(SyntheticChildren::Flags().SetCascades(true).SetSkipPointers(true).SetSkipReferences(true),
+                                             static CXXSyntheticChildren::SharedPointer formatter_sp(new CXXSyntheticChildren(SyntheticChildren::Flags().SetCascades(true).SetSkipPointers(true).SetSkipReferences(true).SetNonCacheable(true),
                                                                                                                               "vector_type synthetic children",
                                                                                                                               lldb_private::formatters::VectorTypeSyntheticFrontEndCreator));
-                                             if (valobj.GetClangType().IsVectorType(nullptr, nullptr))
+                                             if (valobj.GetCompilerType().IsVectorType(nullptr, nullptr))
                                              {
                                                  if (fmt_mgr.GetCategory(fmt_mgr.m_vectortypes_category_name)->IsEnabled())
                                                      return formatter_sp;

@@ -51,7 +51,7 @@ class ArrayTypesTestCase(TestBase):
 
         lldbutil.run_break_set_by_file_and_line (self, "main.c", self.line, num_expected_locations=1, loc_exact=False)
 
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         # The test suite sometimes shows that the process has exited without stopping.
         #
@@ -130,10 +130,14 @@ class ArrayTypesTestCase(TestBase):
 
         # Sanity check the print representation of thread.
         thr = str(thread)
-        if self.platformIsDarwin():
-            tidstr = "tid = 0x%4.4x" % thread.GetThreadID()
-        else:
+        # TODO(zturner): Whether the TID is printed in hex or decimal should be controlled by a setting,
+        # and this test should read the value of the setting.  This check is currently hardcoded to
+        # match the check in Core/FormatEntity.cpp in the function FormatEntity::Format() for
+        # the Entry::Type::ThreadID case of the switch statement.
+        if self.getPlatform() == "linux" or self.getPlatform() == "freebsd":
             tidstr = "tid = %u" % thread.GetThreadID()
+        else:
+            tidstr = "tid = 0x%4.4x" % thread.GetThreadID()
         self.expect(thr, "Thread looks good with stop reason = breakpoint", exe=False,
             substrs = [tidstr])
 

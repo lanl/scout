@@ -72,9 +72,9 @@ ClangUserExpression::ClangUserExpression (const char *expr,
     m_result_synthesizer(),
     m_jit_module_wp(),
     m_enforce_valid_object (true),
-    m_cplusplus (false),
-    m_objectivec (false),
-    m_static_method(false),
+    m_in_cplusplus_method (false),
+    m_in_objectivec_method (false),
+    m_in_static_method(false),
     m_needs_object_ptr (false),
     m_const_object (false),
     m_target (NULL),
@@ -160,7 +160,7 @@ ClangUserExpression::ScanContext(ExecutionContext &exe_ctx, Error &err)
         return;
     }
 
-    clang::DeclContext *decl_context = function_block->GetClangDeclContext();
+    CompilerDeclContext decl_context = function_block->GetDeclContext();
 
     if (!decl_context)
     {
@@ -169,7 +169,7 @@ ClangUserExpression::ScanContext(ExecutionContext &exe_ctx, Error &err)
         return;
     }
 
-    if (clang::CXXMethodDecl *method_decl = llvm::dyn_cast<clang::CXXMethodDecl>(decl_context))
+    if (clang::CXXMethodDecl *method_decl = ClangASTContext::DeclContextGetAsCXXMethodDecl(decl_context))
     {
         if (m_allow_cxx && method_decl->isInstance())
         {
@@ -196,11 +196,11 @@ ClangUserExpression::ScanContext(ExecutionContext &exe_ctx, Error &err)
                 }
             }
 
-            m_cplusplus = true;
+            m_in_cplusplus_method = true;
             m_needs_object_ptr = true;
         }
     }
-    else if (clang::ObjCMethodDecl *method_decl = llvm::dyn_cast<clang::ObjCMethodDecl>(decl_context))
+    else if (clang::ObjCMethodDecl *method_decl = ClangASTContext::DeclContextGetAsObjCMethodDecl(decl_context))
     {
         if (m_allow_objc)
         {
@@ -227,21 +227,21 @@ ClangUserExpression::ScanContext(ExecutionContext &exe_ctx, Error &err)
                 }
             }
 
-            m_objectivec = true;
+            m_in_objectivec_method = true;
             m_needs_object_ptr = true;
 
             if (!method_decl->isInstanceMethod())
-                m_static_method = true;
+                m_in_static_method = true;
         }
     }
-    else if (clang::FunctionDecl *function_decl = llvm::dyn_cast<clang::FunctionDecl>(decl_context))
+    else if (clang::FunctionDecl *function_decl = ClangASTContext::DeclContextGetAsFunctionDecl(decl_context))
     {
         // We might also have a function that said in the debug information that it captured an
-        // object pointer.  The best way to deal with getting to the ivars at present it by pretending
+        // object pointer.  The best way to deal with getting to the ivars at present is by pretending
         // that this is a method of a class in whatever runtime the debug info says the object pointer
         // belongs to.  Do that here.
 
-        ClangASTMetadata *metadata = ClangASTContext::GetMetadata (&decl_context->getParentASTContext(), function_decl);
+        ClangASTMetadata *metadata = ClangASTContext::DeclContextGetMetaData (decl_context, function_decl);
         if (metadata && metadata->HasObjectPtr())
         {
             lldb::LanguageType language = metadata->GetObjectPtrLanguage();
@@ -270,7 +270,7 @@ ClangUserExpression::ScanContext(ExecutionContext &exe_ctx, Error &err)
                     }
                 }
 
-                m_cplusplus = true;
+                m_in_cplusplus_method = true;
                 m_needs_object_ptr = true;
             }
             else if (language == lldb::eLanguageTypeObjC)
@@ -305,7 +305,7 @@ ClangUserExpression::ScanContext(ExecutionContext &exe_ctx, Error &err)
                         return;
                     }
 
-                    ClangASTType self_clang_type = self_type->GetClangForwardType();
+                    CompilerType self_clang_type = self_type->GetForwardCompilerType ();
 
                     if (!self_clang_type)
                     {
@@ -313,13 +313,13 @@ ClangUserExpression::ScanContext(ExecutionContext &exe_ctx, Error &err)
                         return;
                     }
 
-                    if (self_clang_type.IsObjCClassType())
+                    if (ClangASTContext::IsObjCClassType(self_clang_type))
                     {
                         return;
                     }
-                    else if (self_clang_type.IsObjCObjectPointerType())
+                    else if (ClangASTContext::IsObjCObjectPointerType(self_clang_type))
                     {
-                        m_objectivec = true;
+                        m_in_objectivec_method = true;
                         m_needs_object_ptr = true;
                     }
                     else
@@ -330,7 +330,7 @@ ClangUserExpression::ScanContext(ExecutionContext &exe_ctx, Error &err)
                 }
                 else
                 {
-                    m_objectivec = true;
+                    m_in_objectivec_method = true;
                     m_needs_object_ptr = true;
                 }
             }
@@ -491,14 +491,14 @@ ClangUserExpression::Parse (Stream &error_stream,
     
     lldb::LanguageType lang_type;
 
-    if (m_cplusplus)
+    if (m_in_cplusplus_method)
         lang_type = lldb::eLanguageTypeC_plus_plus;
-    else if(m_objectivec)
+    else if (m_in_objectivec_method)
         lang_type = lldb::eLanguageTypeObjC;
     else
         lang_type = lldb::eLanguageTypeC;
 
-    if (!source_code->GetText(m_transformed_text, lang_type, m_const_object, m_static_method, exe_ctx))
+    if (!source_code->GetText(m_transformed_text, lang_type, m_const_object, m_in_static_method, exe_ctx))
     {
         error_stream.PutCString ("error: couldn't construct expression body");
         return false;
@@ -701,11 +701,11 @@ ClangUserExpression::PrepareToExecuteJITExpression (Stream &error_stream,
         {
             ConstString object_name;
 
-            if (m_cplusplus)
+            if (m_in_cplusplus_method)
             {
                 object_name.SetCString("this");
             }
-            else if (m_objectivec)
+            else if (m_in_objectivec_method)
             {
                 object_name.SetCString("self");
             }
@@ -725,7 +725,7 @@ ClangUserExpression::PrepareToExecuteJITExpression (Stream &error_stream,
                 object_ptr = 0;
             }
 
-            if (m_objectivec)
+            if (m_in_objectivec_method)
             {
                 ConstString cmd_name("_cmd");
 
@@ -876,7 +876,7 @@ ClangUserExpression::Execute (Stream &error_stream,
             {
                 args.push_back(object_ptr);
 
-                if (m_objectivec)
+                if (m_in_objectivec_method)
                     args.push_back(cmd_ptr);
             }
 
@@ -891,7 +891,8 @@ ClangUserExpression::Execute (Stream &error_stream,
                                       *m_execution_unit_sp.get(),
                                       interpreter_error,
                                       function_stack_bottom,
-                                      function_stack_top);
+                                      function_stack_top,
+                                      exe_ctx);
 
             if (!interpreter_error.Success())
             {
@@ -913,7 +914,7 @@ ClangUserExpression::Execute (Stream &error_stream,
 
             if (m_needs_object_ptr) {
                 args.push_back(object_ptr);
-                if (m_objectivec)
+                if (m_in_objectivec_method)
                     args.push_back(cmd_ptr);
             }
 

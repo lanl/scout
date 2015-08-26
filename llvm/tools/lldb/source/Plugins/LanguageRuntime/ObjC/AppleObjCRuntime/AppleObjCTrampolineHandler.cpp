@@ -522,11 +522,11 @@ AppleObjCTrampolineHandler::AppleObjCVTables::RefreshTrampolines (void *baton,
         ClangASTContext *clang_ast_context = process->GetTarget().GetScratchClangASTContext();
         ValueList argument_values;
         Value input_value;
-        ClangASTType clang_void_ptr_type = clang_ast_context->GetBasicType(eBasicTypeVoid).GetPointerType();
+        CompilerType clang_void_ptr_type = clang_ast_context->GetBasicType(eBasicTypeVoid).GetPointerType();
 
         input_value.SetValueType (Value::eValueTypeScalar);
         //input_value.SetContext (Value::eContextTypeClangType, clang_void_ptr_type);
-        input_value.SetClangType (clang_void_ptr_type);
+        input_value.SetCompilerType (clang_void_ptr_type);
         argument_values.PushValue(input_value);
         
         bool success = abi->GetArgumentValues (exe_ctx.GetThreadRef(), argument_values);
@@ -795,7 +795,7 @@ AppleObjCTrampolineHandler::SetupDispatchFunction (Thread &thread, ValueList &di
         if (!m_impl_function.get())
         {
             ClangASTContext *clang_ast_context = thread.GetProcess()->GetTarget().GetScratchClangASTContext();
-            ClangASTType clang_void_ptr_type = clang_ast_context->GetBasicType(eBasicTypeVoid).GetPointerType();
+            CompilerType clang_void_ptr_type = clang_ast_context->GetBasicType(eBasicTypeVoid).GetPointerType();
             m_impl_function.reset(new ClangFunction (thread,
                                                      clang_void_ptr_type,
                                                      impl_code_address,
@@ -898,10 +898,10 @@ AppleObjCTrampolineHandler::GetStepThroughDispatchPlan (Thread &thread, bool sto
         ClangASTContext *clang_ast_context = target_sp->GetScratchClangASTContext();
         ValueList argument_values;
         Value void_ptr_value;
-        ClangASTType clang_void_ptr_type = clang_ast_context->GetBasicType(eBasicTypeVoid).GetPointerType();
+        CompilerType clang_void_ptr_type = clang_ast_context->GetBasicType(eBasicTypeVoid).GetPointerType();
         void_ptr_value.SetValueType (Value::eValueTypeScalar);
         //void_ptr_value.SetContext (Value::eContextTypeClangType, clang_void_ptr_type);
-        void_ptr_value.SetClangType (clang_void_ptr_type);
+        void_ptr_value.SetCompilerType (clang_void_ptr_type);
         
         int obj_index;
         int sel_index;
@@ -1080,10 +1080,10 @@ AppleObjCTrampolineHandler::GetStepThroughDispatchPlan (Thread &thread, bool sto
             dispatch_values.PushValue (*(argument_values.GetValueAtIndex(sel_index)));
             
             Value flag_value;
-            ClangASTType clang_int_type = clang_ast_context->GetBuiltinTypeForEncodingAndBitSize(lldb::eEncodingSint, 32);
+            CompilerType clang_int_type = clang_ast_context->GetBuiltinTypeForEncodingAndBitSize(lldb::eEncodingSint, 32);
             flag_value.SetValueType (Value::eValueTypeScalar);
             //flag_value.SetContext (Value::eContextTypeClangType, clang_int_type);
-            flag_value.SetClangType (clang_int_type);
+            flag_value.SetCompilerType (clang_int_type);
             
             if (this_dispatch.stret_return)
                 flag_value.GetScalar() = 1;

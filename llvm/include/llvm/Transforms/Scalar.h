@@ -161,7 +161,8 @@ Pass *createLoopStrengthReducePass();
 // It can also be configured to focus on size optimizations only.
 //
 Pass *createGlobalMergePass(const TargetMachine *TM, unsigned MaximalOffset,
-                            bool OnlyOptimizeForSize = false);
+                            bool OnlyOptimizeForSize = false,
+                            bool MergeExternalByDefault = false);
 
 //===----------------------------------------------------------------------===//
 //
@@ -404,13 +405,6 @@ FunctionPass *createLowerExpectIntrinsicPass();
 // calls such as sqrt.
 //
 FunctionPass *createPartiallyInlineLibCallsPass();
-
-//===----------------------------------------------------------------------===//
-//
-// SampleProfilePass - Loads sample profile data from disk and generates
-// IR metadata to reflect the profile.
-FunctionPass *createSampleProfileLoaderPass();
-FunctionPass *createSampleProfileLoaderPass(StringRef Name);
 
 //===----------------------------------------------------------------------===//
 //

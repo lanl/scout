@@ -443,8 +443,11 @@ ExprResult InitListChecker::PerformEmptyInit(Sema &SemaRef,
         if (!VerifyOnly) {
           SemaRef.Diag(CtorDecl->getLocation(),
                        diag::warn_invalid_initializer_from_system_header);
-          SemaRef.Diag(Entity.getDecl()->getLocation(),
-                       diag::note_used_in_initialization_here);
+          if (Entity.getKind() == InitializedEntity::EK_Member)
+            SemaRef.Diag(Entity.getDecl()->getLocation(),
+                         diag::note_used_in_initialization_here);
+          else if (Entity.getKind() == InitializedEntity::EK_ArrayElement)
+            SemaRef.Diag(Loc, diag::note_used_in_initialization_here);
         }
       }
     }
@@ -2372,14 +2375,12 @@ InitListChecker::CheckDesignatedInitializer(const InitializedEntity &Entity,
       return true;
     }
   } else {
-    // Make sure the bit-widths and signedness match.
-    if (DesignatedStartIndex.getBitWidth() > DesignatedEndIndex.getBitWidth())
-      DesignatedEndIndex
-        = DesignatedEndIndex.extend(DesignatedStartIndex.getBitWidth());
-    else if (DesignatedStartIndex.getBitWidth() <
-             DesignatedEndIndex.getBitWidth())
-      DesignatedStartIndex
-        = DesignatedStartIndex.extend(DesignatedEndIndex.getBitWidth());
+    unsigned DesignatedIndexBitWidth =
+      ConstantArrayType::getMaxSizeBits(SemaRef.Context);
+    DesignatedStartIndex =
+      DesignatedStartIndex.extOrTrunc(DesignatedIndexBitWidth);
+    DesignatedEndIndex =
+      DesignatedEndIndex.extOrTrunc(DesignatedIndexBitWidth);
     DesignatedStartIndex.setIsUnsigned(true);
     DesignatedEndIndex.setIsUnsigned(true);
   }
@@ -5088,10 +5089,8 @@ void InitializationSequence::InitializeFrom(Sema &S,
 }
 
 InitializationSequence::~InitializationSequence() {
-  for (SmallVectorImpl<Step>::iterator Step = Steps.begin(),
-                                          StepEnd = Steps.end();
-       Step != StepEnd; ++Step)
-    Step->Destroy();
+  for (auto &S : Steps)
+    S.Destroy();
 }
 
 //===----------------------------------------------------------------------===//
@@ -5930,6 +5929,9 @@ static void CheckMoveOnConstruction(Sema &S, const Expr *InitExpr,
   if (!InitExpr)
     return;
 
+  if (!S.ActiveTemplateInstantiations.empty())
+    return;
+
   QualType DestType = InitExpr->getType();
   if (!DestType->isRecordType())
     return;
@@ -5945,24 +5947,6 @@ static void CheckMoveOnConstruction(Sema &S, const Expr *InitExpr,
       return;
 
     InitExpr = CCE->getArg(0)->IgnoreImpCasts();
-
-    // Remove implicit temporary and constructor nodes.
-    if (const MaterializeTemporaryExpr *MTE =
-            dyn_cast<MaterializeTemporaryExpr>(InitExpr)) {
-      InitExpr = MTE->GetTemporaryExpr()->IgnoreImpCasts();
-      while (const CXXConstructExpr *CCE =
-                 dyn_cast<CXXConstructExpr>(InitExpr)) {
-        if (isa<CXXTemporaryObjectExpr>(CCE))
-          return;
-        if (CCE->getNumArgs() == 0)
-          return;
-        if (CCE->getNumArgs() > 1 && !isa<CXXDefaultArgExpr>(CCE->getArg(1)))
-          return;
-        InitExpr = CCE->getArg(0);
-      }
-      InitExpr = InitExpr->IgnoreImpCasts();
-      DiagID = diag::warn_redundant_move_on_return;
-    }
   }
 
   // Find the std::move call and get the argument.
@@ -5987,14 +5971,20 @@ static void CheckMoveOnConstruction(Sema &S, const Expr *InitExpr,
     if (!VD || !VD->hasLocalStorage())
       return;
 
-    if (!VD->getType()->isRecordType())
+    QualType SourceType = VD->getType();
+    if (!SourceType->isRecordType())
       return;
 
-    if (DiagID == 0) {
-      DiagID = S.Context.hasSameUnqualifiedType(DestType, VD->getType())
-                   ? diag::warn_pessimizing_move_on_return
-                   : diag::warn_redundant_move_on_return;
+    if (!S.Context.hasSameUnqualifiedType(DestType, SourceType)) {
+      return;
     }
+
+    // If we're returning a function parameter, copy elision
+    // is not possible.
+    if (isa<ParmVarDecl>(VD))
+      DiagID = diag::warn_redundant_move_on_return;
+    else
+      DiagID = diag::warn_pessimizing_move_on_return;
   } else {
     DiagID = diag::warn_pessimizing_move_on_initialization;
     const Expr *ArgStripped = Arg->IgnoreImplicit()->IgnoreParens();

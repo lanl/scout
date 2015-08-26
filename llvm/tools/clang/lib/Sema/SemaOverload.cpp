@@ -2152,23 +2152,7 @@ bool Sema::isObjCPointerConversion(QualType FromType, QualType ToType,
                                        FromObjCPtr->getPointeeType()))
       return false;
 
-    // Check for compatible
-    // Objective C++: We're able to convert between "id" or "Class" and a
-    // pointer to any interface (in both directions).
-    if (ToObjCPtr->isObjCBuiltinType() && FromObjCPtr->isObjCBuiltinType()) {
-      ConvertedType = AdoptQualifiers(Context, ToType, FromQualifiers);
-      return true;
-    }
-    // Conversions with Objective-C's id<...>.
-    if ((FromObjCPtr->isObjCQualifiedIdType() ||
-         ToObjCPtr->isObjCQualifiedIdType()) &&
-        Context.ObjCQualifiedIdTypesAreCompatible(ToType, FromType,
-                                                  /*compare=*/false)) {
-      ConvertedType = AdoptQualifiers(Context, ToType, FromQualifiers);
-      return true;
-    }
-    // Objective C++: We're able to convert from a pointer to an
-    // interface to a pointer to a different interface.
+    // Conversion between Objective-C pointers.
     if (Context.canAssignObjCInterfaces(ToObjCPtr, FromObjCPtr)) {
       const ObjCInterfaceType* LHS = ToObjCPtr->getInterfaceType();
       const ObjCInterfaceType* RHS = FromObjCPtr->getInterfaceType();
@@ -7551,7 +7535,7 @@ public:
     llvm::SmallPtrSet<QualType, 8> AddedTypes;
 
     for (int Arg = 0; Arg < 2; ++Arg) {
-      QualType AsymetricParamTypes[2] = {
+      QualType AsymmetricParamTypes[2] = {
         S.Context.getPointerDiffType(),
         S.Context.getPointerDiffType(),
       };
@@ -7563,11 +7547,11 @@ public:
         if (!PointeeTy->isObjectType())
           continue;
 
-        AsymetricParamTypes[Arg] = *Ptr;
+        AsymmetricParamTypes[Arg] = *Ptr;
         if (Arg == 0 || Op == OO_Plus) {
           // operator+(T*, ptrdiff_t) or operator-(T*, ptrdiff_t)
           // T* operator+(ptrdiff_t, T*);
-          S.AddBuiltinCandidate(*Ptr, AsymetricParamTypes, Args, CandidateSet);
+          S.AddBuiltinCandidate(*Ptr, AsymmetricParamTypes, Args, CandidateSet);
         }
         if (Op == OO_Minus) {
           // ptrdiff_t operator-(T, T);
@@ -11796,13 +11780,19 @@ Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
       TheCall->getMethodDecl()->isPure()) {
     const CXXMethodDecl *MD = TheCall->getMethodDecl();
 
-    if (isa<CXXThisExpr>(MemExpr->getBase()->IgnoreParenCasts())) {
+    if (isa<CXXThisExpr>(MemExpr->getBase()->IgnoreParenCasts()) &&
+        MemExpr->performsVirtualDispatch(getLangOpts())) {
       Diag(MemExpr->getLocStart(),
            diag::warn_call_to_pure_virtual_member_function_from_ctor_dtor)
         << MD->getDeclName() << isa<CXXDestructorDecl>(CurContext)
         << MD->getParent()->getDeclName();
 
       Diag(MD->getLocStart(), diag::note_previous_decl) << MD->getDeclName();
+      if (getLangOpts().AppleKext)
+        Diag(MemExpr->getLocStart(),
+             diag::note_pure_qualified_call_kext)
+             << MD->getParent()->getDeclName()
+             << MD->getDeclName();
     }
   }
   return MaybeBindToTemporary(TheCall);

@@ -7,11 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "lldb/DataFormatters/CXXFormatterFunctions.h"
+#include "lldb/DataFormatters/VectorType.h"
 
 #include "lldb/Core/ValueObject.h"
+#include "lldb/DataFormatters/CXXFormatterFunctions.h"
 #include "lldb/Symbol/ClangASTContext.h"
-#include "lldb/Symbol/ClangASTType.h"
+#include "lldb/Symbol/CompilerType.h"
 
 #include "lldb/Utility/LLDBAssert.h"
 
@@ -19,9 +20,9 @@ using namespace lldb;
 using namespace lldb_private;
 using namespace lldb_private::formatters;
 
-static ClangASTType
-GetClangTypeForFormat (lldb::Format format,
-                       ClangASTType element_type,
+static CompilerType
+GetCompilerTypeForFormat (lldb::Format format,
+                       CompilerType element_type,
                        ClangASTContext *ast_ctx)
 {
     lldbassert(ast_ctx && "ast_ctx needs to be not NULL");
@@ -118,7 +119,7 @@ GetClangTypeForFormat (lldb::Format format,
 
 static lldb::Format
 GetItemFormatForFormat (lldb::Format format,
-                        ClangASTType element_type)
+                        CompilerType element_type)
 {
     switch (format)
     {
@@ -168,8 +169,8 @@ GetItemFormatForFormat (lldb::Format format,
 }
 
 static size_t
-CalculateNumChildren (ClangASTType container_type,
-                      ClangASTType element_type,
+CalculateNumChildren (CompilerType container_type,
+                      CompilerType element_type,
                       lldb_private::ExecutionContextScope *exe_scope = nullptr // does not matter here because all we trade in are basic types
                       )
 {
@@ -228,10 +229,10 @@ namespace lldb_private {
             Update()
             {
                 m_parent_format = m_backend.GetFormat();
-                ClangASTType parent_type(m_backend.GetClangType());
-                ClangASTType element_type;
+                CompilerType parent_type(m_backend.GetCompilerType());
+                CompilerType element_type;
                 parent_type.IsVectorType(&element_type, nullptr);
-                m_child_type = ::GetClangTypeForFormat(m_parent_format, element_type, ClangASTContext::GetASTContext(parent_type.GetASTContext()));
+                m_child_type = ::GetCompilerTypeForFormat(m_parent_format, element_type, parent_type.GetTypeSystem()->AsClangASTContext());
                 m_num_children = ::CalculateNumChildren(parent_type,
                                                         m_child_type);
                 m_item_format = GetItemFormatForFormat(m_parent_format,
@@ -261,10 +262,55 @@ namespace lldb_private {
         private:
             lldb::Format m_parent_format;
             lldb::Format m_item_format;
-            ClangASTType m_child_type;
+            CompilerType m_child_type;
             size_t m_num_children;
         };
     }
+}
+
+bool
+lldb_private::formatters::VectorTypeSummaryProvider (ValueObject& valobj,
+                                                     Stream& s,
+                                                     const TypeSummaryOptions&)
+{
+    auto synthetic_children = VectorTypeSyntheticFrontEndCreator(nullptr, valobj.GetSP());
+    if (!synthetic_children)
+        return false;
+    
+    synthetic_children->Update();
+    
+    s.PutChar('(');
+    bool first = true;
+    
+    size_t idx = 0, len = synthetic_children->CalculateNumChildren();
+    
+    for (;
+         idx < len;
+         idx++)
+    {
+        auto child_sp = synthetic_children->GetChildAtIndex(idx);
+        if (!child_sp)
+            continue;
+        child_sp = child_sp->GetQualifiedRepresentationIfAvailable(lldb::eDynamicDontRunTarget, true);
+        
+        const char* child_value = child_sp->GetValueAsCString();
+        if (child_value && *child_value)
+        {
+            if (first)
+            {
+                s.Printf("%s", child_value);
+                first = false;
+            }
+            else
+            {
+                s.Printf(", %s", child_value);
+            }
+        }
+    }
+    
+    s.PutChar(')');
+    
+    return true;
 }
 
 lldb_private::SyntheticChildrenFrontEnd*

@@ -20,6 +20,7 @@ class Radar9673644TestCase(TestBase):
         self.line = line_number(self.main_source, '// Set breakpoint here.')
 
     @expectedFailureDarwin(15641319)
+    @expectedFailureWindows("llvm.org/pr21765")
     def test_expr_commands(self):
         """The following expression commands should just work."""
         self.buildDefault()
@@ -28,7 +29,7 @@ class Radar9673644TestCase(TestBase):
 
         lldbutil.run_break_set_by_file_and_line (self, self.main_source, self.line, num_expected_locations=1, loc_exact=True)
 
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         # rdar://problem/9673664 lldb expression evaluation problem
 

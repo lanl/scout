@@ -140,7 +140,7 @@ enum
     IDS_LLDBDEBUGGER_ERR_INVALIDCLIENTNAME,
     IDS_LLDBDEBUGGER_ERR_CLIENTNOTREGISTERED,
     IDS_LLDBDEBUGGER_ERR_STOPLISTENER,
-    IDS_LLDBDEBUGGER_ERR_BROARDCASTER_NAME,
+    IDS_LLDBDEBUGGER_ERR_BROADCASTER_NAME,
     IDS_LLDBDEBUGGER_WRN_UNKNOWN_EVENT,
 
     IDS_LLDBOUTOFBAND_ERR_UNKNOWN_EVENT,
@@ -279,9 +279,6 @@ enum
 // Details: MI common code implementation class. Handle application resources
 //          and locality.
 //          Singleton class.
-// Gotchas: None.
-// Authors: Illya Rudkin 29/01/2014.
-// Changes: None.
 //--
 class CMICmnResources : public CMICmnBase, public MI::ISingleton<CMICmnResources>
 {
@@ -289,16 +286,16 @@ class CMICmnResources : public CMICmnBase, public MI::ISingleton<CMICmnResources
 
     // Methods:
   public:
-    bool Initialize(void);
-    bool Shutdown(void);
+    bool Initialize() override;
+    bool Shutdown() override;
 
     CMIUtilString GetString(const MIuint vResourceId) const;
     bool HasString(const MIuint vResourceId) const;
 
     // Typedef:
   private:
-    typedef std::map<MIuint, const MIchar *> MapRscrIdToTextData_t;
-    typedef std::pair<MIuint, const MIchar *> MapPairRscrIdToTextData_t;
+    typedef std::map<MIuint, const char *> MapRscrIdToTextData_t;
+    typedef std::pair<MIuint, const char *> MapPairRscrIdToTextData_t;
 
     // Enumerations:
   private:
@@ -312,22 +309,22 @@ class CMICmnResources : public CMICmnBase, public MI::ISingleton<CMICmnResources
     struct SRsrcTextData
     {
         MIuint id;
-        const MIchar *pTextData;
+        const char *pTextData;
     };
 
     // Methods:
   private:
-    /* ctor */ CMICmnResources(void);
+    /* ctor */ CMICmnResources();
     /* ctor */ CMICmnResources(const CMICmnResources &);
     void operator=(const CMICmnResources &);
 
     bool GetStringFromResource(const MIuint vResourceId, CMIUtilString &vrwResourceString) const;
-    bool ReadResourceStringData(void);
+    bool ReadResourceStringData();
 
     // Overridden:
   private:
     // From CMICmnBase
-    /* dtor */ virtual ~CMICmnResources(void);
+    /* dtor */ ~CMICmnResources() override;
 
     // Attributes:
   private:

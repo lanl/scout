@@ -13,6 +13,7 @@ class Radar9531204TestCase(TestBase):
     mydir = TestBase.compute_mydir(__file__)
 
     # rdar://problem/9531204
+    @expectedFailureWindows("llvm.org/pr21765")
     def test_expr_commands(self):
         """The evaluating printf(...) after break stop and then up a stack frame."""
         self.buildDefault()
@@ -21,7 +22,7 @@ class Radar9531204TestCase(TestBase):
 
         lldbutil.run_break_set_by_symbol (self, 'foo', sym_exact=True, num_expected_locations=1)
 
-        self.runCmd("run", RUN_FAILED)
+        self.runCmd("run", RUN_SUCCEEDED)
 
         self.runCmd("frame variable")
 

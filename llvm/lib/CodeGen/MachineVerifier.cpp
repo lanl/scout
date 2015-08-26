@@ -507,11 +507,8 @@ MachineVerifier::visitMachineBasicBlockBefore(const MachineBasicBlock *MBB) {
   if (MRI->isSSA()) {
     // If this block has allocatable physical registers live-in, check that
     // it is an entry block or landing pad.
-    for (MachineBasicBlock::livein_iterator LI = MBB->livein_begin(),
-           LE = MBB->livein_end();
-         LI != LE; ++LI) {
-      unsigned reg = *LI;
-      if (isAllocatable(reg) && !MBB->isLandingPad() &&
+    for (unsigned LI : MBB->liveins()) {
+      if (isAllocatable(LI) && !MBB->isLandingPad() &&
           MBB != MBB->getParent()->begin()) {
         report("MBB has allocable live-in, but isn't entry or landing-pad.", MBB);
       }
@@ -680,13 +677,12 @@ MachineVerifier::visitMachineBasicBlockBefore(const MachineBasicBlock *MBB) {
   }
 
   regsLive.clear();
-  for (MachineBasicBlock::livein_iterator I = MBB->livein_begin(),
-         E = MBB->livein_end(); I != E; ++I) {
-    if (!TargetRegisterInfo::isPhysicalRegister(*I)) {
+  for (unsigned LI : MBB->liveins()) {
+    if (!TargetRegisterInfo::isPhysicalRegister(LI)) {
       report("MBB live-in list contains non-physical register", MBB);
       continue;
     }
-    for (MCSubRegIterator SubRegs(*I, TRI, /*IncludeSelf=*/true);
+    for (MCSubRegIterator SubRegs(LI, TRI, /*IncludeSelf=*/true);
          SubRegs.isValid(); ++SubRegs)
       regsLive.insert(*SubRegs);
   }
@@ -822,9 +818,12 @@ void
 MachineVerifier::visitMachineOperand(const MachineOperand *MO, unsigned MONum) {
   const MachineInstr *MI = MO->getParent();
   const MCInstrDesc &MCID = MI->getDesc();
+  unsigned NumDefs = MCID.getNumDefs();
+  if (MCID.getOpcode() == TargetOpcode::PATCHPOINT)
+    NumDefs = (MONum == 0 && MO->isReg()) ? NumDefs : 0;
 
   // The first MCID.NumDefs operands must be explicit register defines
-  if (MONum < MCID.getNumDefs()) {
+  if (MONum < NumDefs) {
     const MCOperandInfo &MCOI = MCID.OpInfo[MONum];
     if (!MO->isReg())
       report("Explicit definition must be a register", MO, MONum);
@@ -1671,6 +1670,8 @@ void MachineVerifier::verifyLiveInterval(const LiveInterval &LI) {
       report("Lane masks of sub ranges overlap in live interval", MF, LI);
     if ((SR.LaneMask & ~MaxMask) != 0)
       report("Subrange lanemask is invalid", MF, LI);
+    if (SR.empty())
+      report("Subrange must not be empty", MF, SR, LI.reg, SR.LaneMask);
     Mask |= SR.LaneMask;
     verifyLiveRange(SR, LI.reg, SR.LaneMask);
     if (!LI.covers(SR))

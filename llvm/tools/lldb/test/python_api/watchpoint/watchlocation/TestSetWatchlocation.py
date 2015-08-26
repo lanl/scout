@@ -32,6 +32,8 @@ class SetWatchlocationAPITestCase(TestBase):
 
     @python_api_test
     @dwarf_test
+    @expectedFailureAndroid(archs=['arm', 'aarch64']) # Watchpoints not supported
+    @expectedFailureWindows("llvm.org/pr24446") # WINDOWS XFAIL TRIAGE - Watchpoints not supported on Windows
     def test_watch_location_with_dwarf(self):
         """Exercise SBValue.WatchPointee() API to set a watchpoint."""
         self.buildDwarf()

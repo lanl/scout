@@ -69,7 +69,7 @@
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Module.h"
 #include "clang/AST/Type.h"
-#include "Scout/CGPlot2Runtime.h"
+#include "Scout/CGPlotRuntime.h"
 #include "Scout/CGScoutRuntime.h"
 #include "Scout/CGLegionCRuntime.h"
 #include <stdio.h>
@@ -225,20 +225,19 @@ void CodeGenFunction::GetMeshDimensions(const MeshType* MT,
     llvm::Value* intValue;
     Expr* E = dims[i];
 
-    if (E->isGLValue()) {
+    if (E->isConstantInitializer(getContext(), false)) {
+      llvm::APSInt dimAPValue;
+      bool success = E->EvaluateAsInt(dimAPValue, getContext());
+      assert(success && "Failed to evaluate mesh dimension");
+
+      intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
+    } else if (E->isGLValue()) {
       // Emit the expression as an lvalue.
       LValue LV = EmitLValue(E);
 
       // We have to load the lvalue.
       RValue RV = EmitLoadOfLValue(LV, E->getExprLoc() );
       intValue  = RV.getScalarVal();
-
-    } else if (E->isConstantInitializer(getContext(), false)) {
-      llvm::APSInt dimAPValue;
-      bool success = E->EvaluateAsInt(dimAPValue, getContext());
-      assert(success && "Failed to evaluate mesh dimension");
-
-      intValue = llvm::ConstantInt::get(getLLVMContext(), dimAPValue);
     } else {
       // it is an Rvalue
       RValue RV = EmitAnyExpr(E);
@@ -681,7 +680,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       Builder.CreateCall(CGM.getScoutRuntime().CreateWindowFunction(), ptr_call_params, "");
 
     // make type for ptr to scout.window_t
-    llvm::StructType *StructTy_scout_window_t = CGM.getModule().getTypeByName("scout.window_t");
+    //llvm::StructType *StructTy_scout_window_t = CGM.getModule().getTypeByName("scout.window_t");
     
     llvm::PointerType* pt = dyn_cast<llvm::PointerType>(Alloc->getType());
     
@@ -697,7 +696,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     using namespace std;
     using namespace llvm;
     
-    auto R = CGM.getPlot2Runtime();
+    auto R = CGM.getPlotRuntime();
     
     typedef vector<Value*> ValueVec;
     

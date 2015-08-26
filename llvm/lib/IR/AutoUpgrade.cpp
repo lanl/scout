@@ -129,6 +129,8 @@ static bool UpgradeIntrinsicFunction1(Function *F, Function *&NewFn) {
         Name.startswith("x86.sse2.pcmpgt.") ||
         Name.startswith("x86.avx2.pcmpeq.") ||
         Name.startswith("x86.avx2.pcmpgt.") ||
+        Name.startswith("x86.avx2.vbroadcast") ||
+        Name.startswith("x86.avx2.pbroadcast") ||
         Name.startswith("x86.avx.vpermil.") ||
         Name == "x86.avx.vinsertf128.pd.256" ||
         Name == "x86.avx.vinsertf128.ps.256" ||
@@ -229,6 +231,7 @@ static bool UpgradeIntrinsicFunction1(Function *F, Function *&NewFn) {
 bool llvm::UpgradeIntrinsicFunction(Function *F, Function *&NewFn) {
   NewFn = nullptr;
   bool Upgraded = UpgradeIntrinsicFunction1(F, NewFn);
+  assert(F != NewFn && "Intrinsic function upgraded to the same function");
 
   // Upgrade intrinsic attributes.  This does not change the function.
   if (NewFn)
@@ -446,6 +449,14 @@ void llvm::UpgradeIntrinsicCall(CallInst *CI, Function *NewFn) {
       const int Idxs[4] = { 0, 1, 0, 1 };
       Rep = Builder.CreateShuffleVector(Load, UndefValue::get(Load->getType()),
                                         Idxs);
+    } else if (Name.startswith("llvm.x86.avx2.pbroadcast") ||
+               Name.startswith("llvm.x86.avx2.vbroadcast")) {
+      // Replace vp?broadcasts with a vector shuffle.
+      Value *Op = CI->getArgOperand(0);
+      unsigned NumElts = CI->getType()->getVectorNumElements();
+      Type *MaskTy = VectorType::get(Type::getInt32Ty(C), NumElts);
+      Rep = Builder.CreateShuffleVector(Op, UndefValue::get(Op->getType()),
+                                        Constant::getNullValue(MaskTy));
     } else if (Name == "llvm.x86.sse2.psll.dq") {
       // 128-bit shift left specified in bits.
       unsigned Shift = cast<ConstantInt>(CI->getArgOperand(1))->getZExtValue();
@@ -710,16 +721,14 @@ void llvm::UpgradeCallsToIntrinsic(Function* F) {
   // Upgrade the function and check if it is a totaly new function.
   Function *NewFn;
   if (UpgradeIntrinsicFunction(F, NewFn)) {
-    if (NewFn != F) {
-      // Replace all uses to the old function with the new one if necessary.
-      for (Value::user_iterator UI = F->user_begin(), UE = F->user_end();
-           UI != UE; ) {
-        if (CallInst *CI = dyn_cast<CallInst>(*UI++))
-          UpgradeIntrinsicCall(CI, NewFn);
-      }
-      // Remove old function, no longer used, from the module.
-      F->eraseFromParent();
+    // Replace all uses to the old function with the new one if necessary.
+    for (Value::user_iterator UI = F->user_begin(), UE = F->user_end();
+         UI != UE;) {
+      if (CallInst *CI = dyn_cast<CallInst>(*UI++))
+        UpgradeIntrinsicCall(CI, NewFn);
     }
+    // Remove old function, no longer used, from the module.
+    F->eraseFromParent();
   }
 }
 

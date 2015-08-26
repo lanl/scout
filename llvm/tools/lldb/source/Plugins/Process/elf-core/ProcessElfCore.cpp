@@ -29,8 +29,6 @@
 
 #include "Plugins/ObjectFile/ELF/ObjectFileELF.h"
 #include "Plugins/DynamicLoader/POSIX-DYLD/DynamicLoaderPOSIXDYLD.h"
-#include "Plugins/Process/Utility/FreeBSDSignals.h"
-#include "Plugins/Process/Utility/LinuxSignals.h"
 
 // Project includes
 #include "ProcessElfCore.h"
@@ -237,23 +235,7 @@ ProcessElfCore::DoLoadCore ()
     if (arch.IsValid())
         m_target.SetArchitecture(arch);
 
-    switch (m_os)
-    {
-        case llvm::Triple::FreeBSD:
-        {
-            static UnixSignalsSP s_freebsd_signals_sp(new FreeBSDSignals ());
-            SetUnixSignals(s_freebsd_signals_sp);
-            break;
-        }
-        case llvm::Triple::Linux:
-        {
-            static UnixSignalsSP s_linux_signals_sp(new process_linux::LinuxSignals ());
-            SetUnixSignals(s_linux_signals_sp);
-            break;
-        }
-        default:
-            break;
-    }
+    SetUnixSignals(UnixSignals::Create(GetArchitecture()));
 
     return error;
 }
@@ -276,7 +258,7 @@ ProcessElfCore::UpdateThreadList (ThreadList &old_thread_list, ThreadList &new_t
     for (lldb::tid_t tid = 0; tid < num_threads; ++tid)
     {
         const ThreadData &td = m_thread_data[tid];
-        lldb::ThreadSP thread_sp(new ThreadElfCore (*this, tid, td));
+        lldb::ThreadSP thread_sp(new ThreadElfCore (*this, td));
         new_thread_list.AddThread (thread_sp);
     }
     return new_thread_list.GetSize(false) > 0;
@@ -370,7 +352,7 @@ ProcessElfCore::Clear()
     m_thread_list.Clear();
     m_os = llvm::Triple::UnknownOS;
 
-    static UnixSignalsSP s_default_unix_signals_sp(new UnixSignals());
+    static const auto s_default_unix_signals_sp = std::make_shared<UnixSignals>();
     SetUnixSignals(s_default_unix_signals_sp);
 }
 
@@ -447,7 +429,7 @@ ParseFreeBSDPrStatus(ThreadData &thread_data, DataExtractor &data,
         offset += 16;
 
     thread_data.signo = data.GetU32(&offset); // pr_cursig
-    offset += 4;        // pr_pid
+    thread_data.tid = data.GetU32(&offset); // pr_pid
     if (lp64)
         offset += 4;
 
@@ -561,6 +543,8 @@ ProcessElfCore::ParseThreadContextsFromNoteSegment(const elf::ELFProgramHeader *
                     header_size = ELFLinuxPrStatus::GetSize(arch);
                     len = note_data.GetByteSize() - header_size;
                     thread_data->gpregset = DataExtractor(note_data, header_size, len);
+                    // FIXME: Obtain actual tid on Linux
+                    thread_data->tid = m_thread_data.size();
                     break;
                 case NT_FPREGSET:
                     thread_data->fpregset = note_data;

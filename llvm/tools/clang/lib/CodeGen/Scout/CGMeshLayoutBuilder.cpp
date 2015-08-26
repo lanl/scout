@@ -69,12 +69,6 @@ namespace {
     /// NextFieldOffset - Holds the next field offset.
     CharUnits NextFieldOffset;
 
-    /// Lay out a sequence of contiguous bitfields.
-    bool LayoutBitfields(const ASTMeshLayout &Layout,
-                         unsigned &FirstFieldNo,
-                         MeshDecl::field_iterator &FI,
-                         MeshDecl::field_iterator FE);
-
     /// LayoutField - try to layout all fields in the record decl.
     /// Returns false if the operation failed because the struct is not packed.
     bool LayoutFields(const MeshDecl *D);
@@ -141,117 +135,6 @@ void CGMeshLayoutBuilder::Layout(const MeshDecl *D) {
   LayoutFields(D);
 }
 
-/// \brief Layout the range of bitfields from BFI to BFE as contiguous storage.
-bool CGMeshLayoutBuilder::LayoutBitfields(const ASTMeshLayout &Layout,
-                                            unsigned &FirstFieldNo,
-                                            MeshDecl::field_iterator &FI,
-                                            MeshDecl::field_iterator FE) {
-  assert(FI != FE);
-  uint64_t FirstFieldOffset = Layout.getFieldOffset(FirstFieldNo);
-  uint64_t NextFieldOffsetInBits = Types.getContext().toBits(NextFieldOffset);
-
-  unsigned CharAlign = Types.getTarget().getCharAlign();
-  assert(FirstFieldOffset % CharAlign == 0 &&
-         "First field offset is misaligned");
-  CharUnits FirstFieldOffsetInBytes
-    = Types.getContext().toCharUnitsFromBits(FirstFieldOffset);
-
-  unsigned StorageAlignment
-    = llvm::MinAlign(Alignment.getQuantity(),
-                     FirstFieldOffsetInBytes.getQuantity());
-
-  if (FirstFieldOffset < NextFieldOffsetInBits) {
-    CharUnits FieldOffsetInCharUnits =
-      Types.getContext().toCharUnitsFromBits(FirstFieldOffset);
-
-    if (!ResizeLastBaseFieldIfNecessary(FieldOffsetInCharUnits))
-      llvm_unreachable("We must be able to resize the last base if we need to "
-                       "pack bits into it.");
-    NextFieldOffsetInBits = Types.getContext().toBits(NextFieldOffset);
-    assert(FirstFieldOffset >= NextFieldOffsetInBits);
-  }
-
-  // Append padding if necessary.
-  AppendPadding(Types.getContext().toCharUnitsFromBits(FirstFieldOffset),
-                CharUnits::One());
-
-  // Find the last bitfield in a contiguous run of bitfields.
-  MeshDecl::field_iterator BFI = FI;
-  unsigned LastFieldNo = FirstFieldNo;
-  uint64_t NextContiguousFieldOffset = FirstFieldOffset;
-  for (MeshDecl::field_iterator FJ = FI;
-       (FJ != FE && (*FJ)->isBitField() &&
-        NextContiguousFieldOffset == Layout.getFieldOffset(LastFieldNo) &&
-        (*FJ)->getBitWidthValue(Types.getContext()) != 0); FI = FJ++) {
-    NextContiguousFieldOffset += (*FJ)->getBitWidthValue(Types.getContext());
-    ++LastFieldNo;
-
-    // We must use packed structs for packed fields, and also unnamed bit
-    // fields since they don't affect the struct alignment.
-    if (!Packed && ((*FJ)->hasAttr<PackedAttr>() || !(*FJ)->getDeclName()))
-      return false;
-  }
-  MeshDecl::field_iterator BFE = std::next(FI);
-  --LastFieldNo;
-  assert(LastFieldNo >= FirstFieldNo && "Empty run of contiguous bitfields");
-  MeshFieldDecl *LastFD = *FI;
-
-  // Find the last bitfield's offset, add its size, and round it up to the
-  // character alignment to compute the storage required.
-  uint64_t LastFieldOffset = Layout.getFieldOffset(LastFieldNo);
-  uint64_t LastFieldSize = LastFD->getBitWidthValue(Types.getContext());
-  uint64_t TotalBits = (LastFieldOffset + LastFieldSize) - FirstFieldOffset;
-  CharUnits StorageBytes = Types.getContext().toCharUnitsFromBits(
-    llvm::RoundUpToAlignment(TotalBits, CharAlign));
-  uint64_t StorageBits = Types.getContext().toBits(StorageBytes);
-
-  // Grow the storage to encompass any known padding in the layout when doing
-  // so will make the storage a power-of-two. There are two cases when we can
-  // do this. The first is when we have a subsequent field and can widen up to
-  // its offset. The second is when the data size of the AST record layout is
-  // past the end of the current storage. The latter is true when there is tail
-  // padding on a struct and no members of a super class can be packed into it.
-  //
-  // Note that we widen the storage as much as possible here to express the
-  // maximum latitude the language provides, and rely on the backend to lower
-  // these in conjunction with shifts and masks to narrower operations where
-  // beneficial.
-  uint64_t EndOffset = Types.getContext().toBits(Layout.getDataSize());
-  if (BFE != FE)
-    // If there are more fields to be laid out, the offset at the end of the
-    // bitfield is the offset of the next field in the record.
-    EndOffset = Layout.getFieldOffset(LastFieldNo + 1);
-  assert(EndOffset >= (FirstFieldOffset + TotalBits) &&
-         "End offset is not past the end of the known storage bits.");
-  uint64_t SpaceBits = EndOffset - FirstFieldOffset;
-  uint64_t LongBits = Types.getTarget().getLongWidth();
-  uint64_t WidenedBits = (StorageBits / LongBits) * LongBits +
-                         llvm::NextPowerOf2(StorageBits % LongBits - 1);
-  assert(WidenedBits >= StorageBits && "Widening shrunk the bits!");
-  if (WidenedBits <= SpaceBits) {
-    StorageBits = WidenedBits;
-    StorageBytes = Types.getContext().toCharUnitsFromBits(StorageBits);
-    assert(StorageBits == (uint64_t)Types.getContext().toBits(StorageBytes));
-  }
-
-  unsigned FieldIndex = MeshFieldTypes.size();
-  AppendBytes(StorageBytes);
-
-  // Now walk the bitfields associating them with this field of storage and
-  // building up the bitfield specific info.
-  unsigned FieldNo = FirstFieldNo;
-  for (; BFI != BFE; ++BFI, ++FieldNo) {
-    MeshFieldDecl *FD = *BFI;
-    uint64_t FieldOffset = Layout.getFieldOffset(FieldNo) - FirstFieldOffset;
-    uint64_t FieldSize = FD->getBitWidthValue(Types.getContext());
-    Fields[FD] = FieldIndex;
-    BitFields[FD] = CGBitFieldInfo::MakeInfo(Types, FD, FieldOffset, FieldSize,
-                                             StorageBits, StorageAlignment);
-  }
-  FirstFieldNo = LastFieldNo;
-  return true;
-}
-
 bool CGMeshLayoutBuilder::LayoutField(const MeshFieldDecl *D,
                                         uint64_t fieldOffset) {
   // If the field is packed, then we need a packed struct.
@@ -315,24 +198,6 @@ bool CGMeshLayoutBuilder::LayoutFields(const MeshDecl *D) {
   for (MeshDecl::field_iterator FI = D->field_begin(), FE = D->field_end();
        FI != FE; ++FI, ++FieldNo) {
     MeshFieldDecl *FD = *FI;
-
-    // If this field is a bitfield, layout all of the consecutive
-    // non-zero-length bitfields and the last zero-length bitfield; these will
-    // all share storage.
-    if (FD->isBitField()) {
-      // If all we have is a zero-width bitfield, skip it.
-      if (FD->getBitWidthValue(Types.getContext()) == 0)
-        continue;
-
-      // Layout this range of bitfields.
-      if (!LayoutBitfields(Layout, FieldNo, FI, FE)) {
-        assert(!Packed &&
-               "Could not layout bitfields even with a packed LLVM struct!");
-        return false;
-      }
-      assert(FI != FE && "Advanced past the last bitfield");
-      continue;
-    }
 
     if (!LayoutField(FD, Layout.getFieldOffset(FieldNo))) {
       assert(!Packed &&
@@ -563,7 +428,7 @@ CGBitFieldInfo CGBitFieldInfo::MakeInfo(CodeGenTypes &Types,
                                         const MeshFieldDecl *MFD,
                                         uint64_t Offset, uint64_t Size,
                                         uint64_t StorageSize,
-                                        uint64_t StorageAlignment) {
+                                        CharUnits StorageOffset) {
   llvm::Type *Ty = Types.ConvertTypeForMem(MFD->getType());
   CharUnits TypeSizeInBytes =
     CharUnits::fromQuantity(Types.getDataLayout().getTypeAllocSize(Ty));
@@ -592,5 +457,5 @@ CGBitFieldInfo CGBitFieldInfo::MakeInfo(CodeGenTypes &Types,
     Offset = StorageSize - (Offset + Size);
   }
 
-  return CGBitFieldInfo(Offset, Size, IsSigned, StorageSize, StorageAlignment);
+  return CGBitFieldInfo(Offset, Size, IsSigned, StorageSize, StorageOffset);
 }

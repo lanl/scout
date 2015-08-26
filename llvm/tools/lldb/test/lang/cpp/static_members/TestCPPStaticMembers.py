@@ -18,6 +18,7 @@ class CPPStaticMembersTestCase(TestBase):
         self.static_member_commands()
 
     @unittest2.expectedFailure # llvm.org/pr15401
+    @expectedFailureWindows("llvm.org/pr21765")
     @dwarf_test
     def test_with_dwarf_and_run_command(self):
         """Test that member variables have the correct layout, scope and qualifiers when stopped inside and outside C++ methods"""
@@ -37,7 +38,7 @@ class CPPStaticMembersTestCase(TestBase):
         self.set_breakpoint(line_number('main.cpp', '// breakpoint 1'))
         self.set_breakpoint(line_number('main.cpp', '// breakpoint 2'))
 
-        self.runCmd("process launch", RUN_FAILED)
+        self.runCmd("process launch", RUN_SUCCEEDED)
         self.expect("expression my_a.access()",
                     startstr = "(long) $0 = 10")
         

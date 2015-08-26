@@ -511,6 +511,16 @@ void ASTStmtWriter::VisitArraySubscriptExpr(ArraySubscriptExpr *E) {
   Code = serialization::EXPR_ARRAY_SUBSCRIPT;
 }
 
+void ASTStmtWriter::VisitOMPArraySectionExpr(OMPArraySectionExpr *E) {
+  VisitExpr(E);
+  Writer.AddStmt(E->getBase());
+  Writer.AddStmt(E->getLowerBound());
+  Writer.AddStmt(E->getLength());
+  Writer.AddSourceLocation(E->getColonLoc(), Record);
+  Writer.AddSourceLocation(E->getRBracketLoc(), Record);
+  Code = serialization::EXPR_OMP_ARRAY_SECTION;
+}
+
 void ASTStmtWriter::VisitCallExpr(CallExpr *E) {
   VisitExpr(E);
   Record.push_back(E->getNumArgs());
@@ -1752,6 +1762,11 @@ void OMPClauseWriter::VisitOMPSafelenClause(OMPSafelenClause *C) {
   Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
 }
 
+void OMPClauseWriter::VisitOMPSimdlenClause(OMPSimdlenClause *C) {
+  Writer->Writer.AddStmt(C->getSimdlen());
+  Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
+}
+
 void OMPClauseWriter::VisitOMPCollapseClause(OMPCollapseClause *C) {
   Writer->Writer.AddStmt(C->getNumForLoops());
   Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
@@ -1778,7 +1793,10 @@ void OMPClauseWriter::VisitOMPScheduleClause(OMPScheduleClause *C) {
   Writer->Writer.AddSourceLocation(C->getCommaLoc(), Record);
 }
 
-void OMPClauseWriter::VisitOMPOrderedClause(OMPOrderedClause *) {}
+void OMPClauseWriter::VisitOMPOrderedClause(OMPOrderedClause *C) {
+  Writer->Writer.AddStmt(C->getNumForLoops());
+  Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
+}
 
 void OMPClauseWriter::VisitOMPNowaitClause(OMPNowaitClause *) {}
 
@@ -1863,7 +1881,12 @@ void OMPClauseWriter::VisitOMPLinearClause(OMPLinearClause *C) {
   Record.push_back(C->varlist_size());
   Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
   Writer->Writer.AddSourceLocation(C->getColonLoc(), Record);
+  Record.push_back(C->getModifier());
+  Writer->Writer.AddSourceLocation(C->getModifierLoc(), Record);
   for (auto *VE : C->varlists()) {
+    Writer->Writer.AddStmt(VE);
+  }
+  for (auto *VE : C->privates()) {
     Writer->Writer.AddStmt(VE);
   }
   for (auto *VE : C->inits()) {
@@ -1931,6 +1954,11 @@ void OMPClauseWriter::VisitOMPDependClause(OMPDependClause *C) {
     Writer->Writer.AddStmt(VE);
 }
 
+void OMPClauseWriter::VisitOMPDeviceClause(OMPDeviceClause *C) {
+  Writer->Writer.AddStmt(C->getDevice());
+  Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
+}
+
 //===----------------------------------------------------------------------===//
 // OpenMP Directives.
 //===----------------------------------------------------------------------===//
@@ -1967,6 +1995,12 @@ void ASTStmtWriter::VisitOMPLoopDirective(OMPLoopDirective *D) {
     Writer.AddStmt(D->getNextUpperBound());
   }
   for (auto I : D->counters()) {
+    Writer.AddStmt(I);
+  }
+  for (auto I : D->private_counters()) {
+    Writer.AddStmt(I);
+  }
+  for (auto I : D->inits()) {
     Writer.AddStmt(I);
   }
   for (auto I : D->updates()) {
@@ -2078,6 +2112,13 @@ void ASTStmtWriter::VisitOMPTargetDirective(OMPTargetDirective *D) {
   Code = serialization::STMT_OMP_TARGET_DIRECTIVE;
 }
 
+void ASTStmtWriter::VisitOMPTargetDataDirective(OMPTargetDataDirective *D) {
+  VisitStmt(D);
+  Record.push_back(D->getNumClauses());
+  VisitOMPExecutableDirective(D);
+  Code = serialization::STMT_OMP_TARGET_DATA_DIRECTIVE;
+}
+
 void ASTStmtWriter::VisitOMPTaskyieldDirective(OMPTaskyieldDirective *D) {
   VisitStmt(D);
   VisitOMPExecutableDirective(D);
@@ -2120,6 +2161,21 @@ void ASTStmtWriter::VisitOMPTeamsDirective(OMPTeamsDirective *D) {
   Record.push_back(D->getNumClauses());
   VisitOMPExecutableDirective(D);
   Code = serialization::STMT_OMP_TEAMS_DIRECTIVE;
+}
+
+void ASTStmtWriter::VisitOMPCancellationPointDirective(
+    OMPCancellationPointDirective *D) {
+  VisitStmt(D);
+  VisitOMPExecutableDirective(D);
+  Record.push_back(D->getCancelRegion());
+  Code = serialization::STMT_OMP_CANCELLATION_POINT_DIRECTIVE;
+}
+
+void ASTStmtWriter::VisitOMPCancelDirective(OMPCancelDirective *D) {
+  VisitStmt(D);
+  VisitOMPExecutableDirective(D);
+  Record.push_back(D->getCancelRegion());
+  Code = serialization::STMT_OMP_CANCEL_DIRECTIVE;
 }
 
 //===----------------------------------------------------------------------===//

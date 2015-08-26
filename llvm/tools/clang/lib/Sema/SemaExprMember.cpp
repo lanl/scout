@@ -36,18 +36,15 @@ BuildMeshFieldReferenceExpr(Sema &S, Expr *BaseExpr, bool IsArrow,
 // +==========================================================================+
 
 typedef llvm::SmallPtrSet<const CXXRecordDecl*, 4> BaseSet;
-static bool BaseIsNotInSet(const CXXRecordDecl *Base, void *BasesPtr) {
-  const BaseSet &Bases = *reinterpret_cast<const BaseSet*>(BasesPtr);
-  return !Bases.count(Base->getCanonicalDecl());
-}
 
 /// Determines if the given class is provably not derived from all of
 /// the prospective base classes.
 static bool isProvablyNotDerivedFrom(Sema &SemaRef, CXXRecordDecl *Record,
                                      const BaseSet &Bases) {
-  void *BasesPtr = const_cast<void*>(reinterpret_cast<const void*>(&Bases));
-  return BaseIsNotInSet(Record, BasesPtr) &&
-         Record->forallBases(BaseIsNotInSet, BasesPtr);
+  auto BaseIsNotInSet = [&Bases](const CXXRecordDecl *Base) {
+    return !Bases.count(Base->getCanonicalDecl());
+  };
+  return BaseIsNotInSet(Record) && Record->forallBases(BaseIsNotInSet);
 }
 
 enum IMAKind {
@@ -1060,16 +1057,8 @@ Sema::BuildMemberReferenceExpr(Expr *BaseExpr, QualType BaseExprType,
     BaseExpr = new (Context) CXXThisExpr(Loc, BaseExprType,/*isImplicit=*/true);
   }
 
-  bool ShouldCheckUse = true;
-  if (CXXMethodDecl *MD = dyn_cast<CXXMethodDecl>(MemberDecl)) {
-    // Don't diagnose the use of a virtual member function unless it's
-    // explicitly qualified.
-    if (MD->isVirtual() && !SS.isSet())
-      ShouldCheckUse = false;
-  }
-
   // Check the use of this member.
-  if (ShouldCheckUse && DiagnoseUseOfDecl(MemberDecl, MemberLoc))
+  if (DiagnoseUseOfDecl(MemberDecl, MemberLoc))
     return ExprError();
 
   // +===== Scout ============================================================+
@@ -1415,7 +1404,8 @@ ExprResult LookupMemberExpr(Sema &S, LookupResult &R,
     }
 
     ObjCIvarRefExpr *Result = new (S.Context) ObjCIvarRefExpr(
-        IV, IV->getType(), MemberLoc, OpLoc, BaseExpr.get(), IsArrow);
+        IV, IV->getUsageType(BaseType), MemberLoc, OpLoc, BaseExpr.get(),
+        IsArrow);
 
     if (S.getLangOpts().ObjCAutoRefCount) {
       if (IV->getType().getObjCLifetime() == Qualifiers::OCL_Weak) {

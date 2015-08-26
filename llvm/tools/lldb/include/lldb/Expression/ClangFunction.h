@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef lldb_ClangFunction_h_
-#define lldb_ClangFunction_h_
+#ifndef liblldb_ClangFunction_h_
+#define liblldb_ClangFunction_h_
 
 // C Includes
 // C++ Includes
@@ -22,7 +22,7 @@
 #include "lldb/Core/Value.h"
 #include "lldb/Core/ValueObjectList.h"
 #include "lldb/Expression/ClangExpression.h"
-#include "lldb/Symbol/ClangASTType.h"
+#include "lldb/Symbol/CompilerType.h"
 #include "lldb/Target/Process.h"
 
 namespace lldb_private
@@ -114,7 +114,7 @@ public:
     ///     be overridden using WriteFunctionArguments().
     //------------------------------------------------------------------
     ClangFunction (ExecutionContextScope &exe_scope,
-                   const ClangASTType &return_type,
+                   const CompilerType &return_type,
                    const Address& function_address, 
                    const ValueList &arg_value_list,
                    const char *name);
@@ -122,8 +122,7 @@ public:
     //------------------------------------------------------------------
     /// Destructor
     //------------------------------------------------------------------
-    virtual 
-    ~ClangFunction();
+    ~ClangFunction() override;
 
     //------------------------------------------------------------------
     /// Compile the wrapper function
@@ -335,7 +334,7 @@ public:
     /// translation unit.
     //------------------------------------------------------------------
     const char *
-    Text ()
+    Text() override
     {
         return m_wrapper_function_text.c_str();
     }
@@ -346,7 +345,7 @@ public:
     /// function.
     //------------------------------------------------------------------
     const char *
-    FunctionName ()
+    FunctionName() override
     {
         return m_wrapper_function_name.c_str();
     }
@@ -356,7 +355,7 @@ public:
     /// values.  May be NULL if everything should be self-contained.
     //------------------------------------------------------------------
     ClangExpressionDeclMap *
-    DeclMap ()
+    DeclMap() override
     {
         return NULL;
     }
@@ -380,14 +379,14 @@ public:
     ///     the ASTs to after transformation.
     //------------------------------------------------------------------
     clang::ASTConsumer *
-    ASTTransformer (clang::ASTConsumer *passthrough);
+    ASTTransformer(clang::ASTConsumer *passthrough) override;
     
     //------------------------------------------------------------------
     /// Return true if validation code should be inserted into the
     /// expression.
     //------------------------------------------------------------------
     bool
-    NeedsValidation ()
+    NeedsValidation() override
     {
         return false;
     }
@@ -397,7 +396,7 @@ public:
     /// resolved.
     //------------------------------------------------------------------
     bool
-    NeedsVariableResolution ()
+    NeedsVariableResolution() override
     {
         return false;
     }
@@ -421,7 +420,7 @@ private:
     
     Function                       *m_function_ptr;                 ///< The function we're going to call.  May be NULL if we don't have debug info for the function.
     Address                         m_function_addr;                ///< If we don't have the FunctionSP, we at least need the address & return type.
-    ClangASTType                    m_function_return_type;         ///< The opaque clang qual type for the function return type.
+    CompilerType                    m_function_return_type;         ///< The opaque clang qual type for the function return type.
 
     std::string                     m_wrapper_function_name;        ///< The name of the wrapper function.
     std::string                     m_wrapper_function_text;        ///< The contents of the wrapper function.
@@ -448,4 +447,4 @@ private:
 
 } // Namespace lldb_private
 
-#endif  // lldb_ClangFunction_h_
+#endif // liblldb_ClangFunction_h_

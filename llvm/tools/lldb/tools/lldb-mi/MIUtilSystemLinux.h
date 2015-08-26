@@ -19,25 +19,22 @@
 //          about the current system or user.
 //          *** If you change, remove or add functionality it must be replicated
 //          *** for the all platforms supported; Windows, OSX, LINUX
-// Gotchas: None.
-// Authors: Illya Rudkin 29/01/2014.
-// Changes: None.
 //--
 class CMIUtilSystemLinux
 {
     // Methods:
   public:
-    /* ctor */ CMIUtilSystemLinux(void);
+    /* ctor */ CMIUtilSystemLinux();
 
     bool GetOSErrorMsg(const MIint vError, CMIUtilString &vrwErrorMsg) const;
-    CMIUtilString GetOSLastError(void) const;
+    CMIUtilString GetOSLastError() const;
     bool GetExecutablesPath(CMIUtilString &vrwFileNamePath) const;
     bool GetLogFilesPath(CMIUtilString &vrwFileNamePath) const;
 
     // Overrideable:
   public:
     // From CMICmnBase
-    /* dtor */ virtual ~CMIUtilSystemLinux(void);
+    /* dtor */ virtual ~CMIUtilSystemLinux();
 };
 
 typedef CMIUtilSystemLinux CMIUtilSystem;

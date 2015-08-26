@@ -11,7 +11,7 @@ class MiGdbSetShowTestCase(lldbmi_testcase.MiTestCaseBase):
     mydir = TestBase.compute_mydir(__file__)
 
     @lldbmi_test
-    @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
+    @skipIfWindows #llvm.org/pr24452: Get lldb-mi working on Windows
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
     @skipIfLinux # llvm.org/pr22841: lldb-mi tests fail on all Linux buildbots
     def test_lldbmi_gdb_set_show_print_char_array_as_string(self):
@@ -37,27 +37,27 @@ class MiGdbSetShowTestCase(lldbmi_testcase.MiTestCaseBase):
 
         # Test that an char* is expanded to string when print char-array-as-string is "off"
         self.runCmd("-var-create - * cp")
-        self.expect("\^done,name=\"var\d+\",numchild=\"1\",value=\"0x[0-9a-f]+ \\\\\\\"hello\\\\\\\"\",type=\"const char \*\",thread-id=\"1\",has_more=\"0\"")
+        self.expect("\^done,name=\"var\d+\",numchild=\"1\",value=\"0x[0-9a-f]+ \\\\\\\"\\\\\\\\t\\\\\\\\\\\\\"hello\\\\\\\\\\\\\"\\\\\\\\n\\\\\\\"\",type=\"const char \*\",thread-id=\"1\",has_more=\"0\"")
 
         # Test that an char[] isn't expanded to string when print char-array-as-string is "off"
         self.runCmd("-var-create - * ca")
-        self.expect("\^done,name=\"var\d+\",numchild=\"6\",value=\"\[6\]\",type=\"const char \[6\]\",thread-id=\"1\",has_more=\"0\"")
+        self.expect("\^done,name=\"var\d+\",numchild=\"10\",value=\"\[10\]\",type=\"const char \[10\]\",thread-id=\"1\",has_more=\"0\"")
 
         # Test that an char16_t* is expanded to string when print char-array-as-string is "off"
         self.runCmd("-var-create - * u16p")
-        self.expect("\^done,name=\"var\d+\",numchild=\"1\",value=\"0x[0-9a-f]+ u\\\\\\\"hello\\\\\\\"\",type=\"const char16_t \*\",thread-id=\"1\",has_more=\"0\"")
+        self.expect("\^done,name=\"var\d+\",numchild=\"1\",value=\"0x[0-9a-f]+ u\\\\\\\"\\\\\\\\t\\\\\\\\\\\\\"hello\\\\\\\\\\\\\"\\\\\\\\n\\\\\\\"\",type=\"const char16_t \*\",thread-id=\"1\",has_more=\"0\"")
 
         # Test that an char16_t[] isn't expanded to string when print char-array-as-string is "off"
         self.runCmd("-var-create - * u16a")
-        self.expect("\^done,name=\"var\d+\",numchild=\"6\",value=\"\[6\]\",type=\"const char16_t \[6\]\",thread-id=\"1\",has_more=\"0\"")
+        self.expect("\^done,name=\"var\d+\",numchild=\"10\",value=\"\[10\]\",type=\"const char16_t \[10\]\",thread-id=\"1\",has_more=\"0\"")
 
         # Test that an char32_t* is expanded to string when print char-array-as-string is "off"
         self.runCmd("-var-create - * u32p")
-        self.expect("\^done,name=\"var\d+\",numchild=\"1\",value=\"0x[0-9a-f]+ U\\\\\\\"hello\\\\\\\"\",type=\"const char32_t \*\",thread-id=\"1\",has_more=\"0\"")
+        self.expect("\^done,name=\"var\d+\",numchild=\"1\",value=\"0x[0-9a-f]+ U\\\\\\\"\\\\\\\\t\\\\\\\\\\\\\"hello\\\\\\\\\\\\\"\\\\\\\\n\\\\\\\"\",type=\"const char32_t \*\",thread-id=\"1\",has_more=\"0\"")
 
         # Test that an char32_t[] isn't expanded to string when print char-array-as-string is "off"
         self.runCmd("-var-create - * u32a")
-        self.expect("\^done,name=\"var\d+\",numchild=\"6\",value=\"\[6\]\",type=\"const char32_t \[6\]\",thread-id=\"1\",has_more=\"0\"")
+        self.expect("\^done,name=\"var\d+\",numchild=\"10\",value=\"\[10\]\",type=\"const char32_t \[10\]\",thread-id=\"1\",has_more=\"0\"")
 
         # Test that -gdb-set can set print char-array-as-string flag
         self.runCmd("-gdb-set print char-array-as-string on")
@@ -67,29 +67,29 @@ class MiGdbSetShowTestCase(lldbmi_testcase.MiTestCaseBase):
         self.runCmd("-gdb-show print char-array-as-string")
         self.expect("\^done,value=\"on\"")
 
-        # Test that an char* is expanded to string when print char-array-as-string is "on"
+        # Test that an char* with escape chars is expanded to string when print char-array-as-string is "on"
         self.runCmd("-var-create - * cp")
-        self.expect("\^done,name=\"var\d+\",numchild=\"1\",value=\"0x[0-9a-f]+ \\\\\\\"hello\\\\\\\"\",type=\"const char \*\",thread-id=\"1\",has_more=\"0\"")
-
-        # Test that an char[] isn't expanded to string when print char-array-as-string is "on"
+        self.expect("\^done,name=\"var\d+\",numchild=\"1\",value=\"0x[0-9a-f]+ \\\\\\\"\\\\\\\\t\\\\\\\\\\\\\"hello\\\\\\\\\\\\\"\\\\\\\\n\\\\\\\"\",type=\"const char \*\",thread-id=\"1\",has_more=\"0\"")
+        
+        # Test that an char[] with escape chars is expanded to string when print char-array-as-string is "on"
         self.runCmd("-var-create - * ca")
-        self.expect("\^done,name=\"var\d+\",numchild=\"6\",value=\"\\\\\\\"hello\\\\\\\"\",type=\"const char \[6\]\",thread-id=\"1\",has_more=\"0\"")
-
-        # Test that an char16_t* is expanded to string when print char-array-as-string is "on"
+        self.expect("\^done,name=\"var\d+\",numchild=\"10\",value=\"\\\\\\\"\\\\\\\\t\\\\\\\\\\\\\"hello\\\\\\\\\\\\\"\\\\\\\\n\\\\\\\"\",type=\"const char \[10\]\",thread-id=\"1\",has_more=\"0\"")
+        
+        # Test that an char16_t* with esc1ape chars is expanded to string when print char-array-as-string is "on"
         self.runCmd("-var-create - * u16p")
-        self.expect("\^done,name=\"var\d+\",numchild=\"1\",value=\"0x[0-9a-f]+ u\\\\\\\"hello\\\\\\\"\",type=\"const char16_t \*\",thread-id=\"1\",has_more=\"0\"")
-
-        # Test that an char16_t[] isn't expanded to string when print char-array-as-string is "on"
+        self.expect("\^done,name=\"var\d+\",numchild=\"1\",value=\"0x[0-9a-f]+ u\\\\\\\"\\\\\\\\t\\\\\\\\\\\\\"hello\\\\\\\\\\\\\"\\\\\\\\n\\\\\\\"\",type=\"const char16_t \*\",thread-id=\"1\",has_more=\"0\"")
+        
+        # Test that an char16_t[] with escape chars is expanded to string when print char-array-as-string is "on"
         self.runCmd("-var-create - * u16a")
-        self.expect("\^done,name=\"var\d+\",numchild=\"6\",value=\"u\\\\\\\"hello\\\\\\\"\",type=\"const char16_t \[6\]\",thread-id=\"1\",has_more=\"0\"")
-
-        # Test that an char32_t* is expanded to string when print char-array-as-string is "on"
+        self.expect("\^done,name=\"var\d+\",numchild=\"10\",value=\"u\\\\\\\"\\\\\\\\t\\\\\\\\\\\\\"hello\\\\\\\\\\\\\"\\\\\\\\n\\\\\\\"\",type=\"const char16_t \[10\]\",thread-id=\"1\",has_more=\"0\"")
+        
+        # Test that an char32_t* with escape chars is expanded to string when print char-array-as-string is "on"
         self.runCmd("-var-create - * u32p")
-        self.expect("\^done,name=\"var\d+\",numchild=\"1\",value=\"0x[0-9a-f]+ U\\\\\\\"hello\\\\\\\"\",type=\"const char32_t \*\",thread-id=\"1\",has_more=\"0\"")
-
-        # Test that an char32_t[] isn't expanded to string when print char-array-as-string is "on"
+        self.expect("\^done,name=\"var\d+\",numchild=\"1\",value=\"0x[0-9a-f]+ U\\\\\\\"\\\\\\\\t\\\\\\\\\\\\\"hello\\\\\\\\\\\\\"\\\\\\\\n\\\\\\\"\",type=\"const char32_t \*\",thread-id=\"1\",has_more=\"0\"")
+        
+        # Test that an char32_t[] with escape chars is expanded to string when print char-array-as-string is "on"
         self.runCmd("-var-create - * u32a")
-        self.expect("\^done,name=\"var\d+\",numchild=\"6\",value=\"U\\\\\\\"hello\\\\\\\"\",type=\"const char32_t \[6\]\",thread-id=\"1\",has_more=\"0\"")
+        self.expect("\^done,name=\"var\d+\",numchild=\"10\",value=\"U\\\\\\\"\\\\\\\\t\\\\\\\\\\\\\"hello\\\\\\\\\\\\\"\\\\\\\\n\\\\\\\"\",type=\"const char32_t \[10\]\",thread-id=\"1\",has_more=\"0\"")
 
         # Test that -gdb-set print char-array-as-string fails if "on"/"off" isn't specified
         self.runCmd("-gdb-set print char-array-as-string")
@@ -100,7 +100,7 @@ class MiGdbSetShowTestCase(lldbmi_testcase.MiTestCaseBase):
         self.expect("\^error,msg=\"The request ''print' expects option-name and \"on\" or \"off\"' failed.\"")
 
     @lldbmi_test
-    @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
+    @skipIfWindows #llvm.org/pr24452: Get lldb-mi working on Windows
     @expectedFailureGcc("https://llvm.org/bugs/show_bug.cgi?id=23357")
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
     def test_lldbmi_gdb_set_show_print_expand_aggregates(self):
@@ -132,6 +132,10 @@ class MiGdbSetShowTestCase(lldbmi_testcase.MiTestCaseBase):
         self.runCmd("-var-create var2 * complx_array")
         self.expect("\^done,name=\"var2\",numchild=\"2\",value=\"\[2\]\",type=\"complex_type \[2\]\",thread-id=\"1\",has_more=\"0\"")
 
+        # Test that a struct with a char first element is not formatted as a string
+        self.runCmd("-var-create - * &nstr")
+        self.expect("\^done,name=\"var\d+\",numchild=\"2\",value=\"0x[0-9a-f]+\",type=\"not_str \*\",thread-id=\"1\",has_more=\"0\"")
+
         # Test that -gdb-set can set print expand-aggregates flag
         self.runCmd("-gdb-set print expand-aggregates on")
         self.expect("\^done")
@@ -157,7 +161,7 @@ class MiGdbSetShowTestCase(lldbmi_testcase.MiTestCaseBase):
         self.expect("\^error,msg=\"The request ''print' expects option-name and \"on\" or \"off\"' failed.\"")
 
     @lldbmi_test
-    @expectedFailureWindows("llvm.org/pr22274: need a pexpect replacement for windows")
+    @skipIfWindows #llvm.org/pr24452: Get lldb-mi working on Windows
     @expectedFailureGcc("https://llvm.org/bugs/show_bug.cgi?id=23357")
     @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
     def test_lldbmi_gdb_set_show_print_aggregate_field_names(self):

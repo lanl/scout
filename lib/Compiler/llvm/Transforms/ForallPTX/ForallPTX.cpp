@@ -656,11 +656,8 @@ public:
     assert(target && "failed to find NVPTX target");
 
     TargetMachine* targetMachine = createTargetMachine(target);
-    const DataLayout* dataLayout = targetMachine->getDataLayout();
 
-    assert(dataLayout && "failed to get data layout");
-
-    kernelModule_.setDataLayout(*dataLayout);
+    kernelModule_.setDataLayout(targetMachine->createDataLayout());
 
     legacy::PassManager* passManager = new legacy::PassManager;
 
@@ -679,7 +676,7 @@ public:
     
     passManager->run(kernelModule_);
     
-    ostr.flush();
+    //ostr.flush();
     
     delete passManager;
         

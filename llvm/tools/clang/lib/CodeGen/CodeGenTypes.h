@@ -132,7 +132,6 @@ class CodeGenTypes {
   // Some of this stuff should probably be left on the CGM.
   ASTContext &Context;
   llvm::Module &TheModule;
-  const llvm::DataLayout &TheDataLayout;
   const TargetInfo &Target;
   CGCXXABI &TheCXXABI;
 
@@ -188,21 +187,22 @@ class CodeGenTypes {
   llvm::SmallPtrSet<const Type*, 4> MeshesBeingLaidOut;
 
   SmallVector<const MeshDecl *, 8> DeferredMeshes;
-public:
+
+  public:
+  
   // has the global mesh been initialized
   llvm::DenseMap<const Type *, bool> GlobalMeshInit;
   // +========================================================================+
-
-private:
   /// This map keeps cache of llvm::Types and maps clang::Type to
   /// corresponding llvm::Type.
   llvm::DenseMap<const Type *, llvm::Type *> TypeCache;
 
-public:
   CodeGenTypes(CodeGenModule &cgm);
   ~CodeGenTypes();
 
-  const llvm::DataLayout &getDataLayout() const { return TheDataLayout; }
+  const llvm::DataLayout &getDataLayout() const {
+    return TheModule.getDataLayout();
+  }
   ASTContext &getContext() const { return Context; }
   const ABIInfo &getABIInfo() const { return TheABIInfo; }
   const TargetInfo &getTarget() const { return Target; }

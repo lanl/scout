@@ -319,22 +319,6 @@ endif()
     set(SCOUT_ENABLE_PNG OFF CACHE BOOL "Enable PNG support in scout's runtime libraries.")
   endif()
 
-# --- R support.
-  find_package(R)
-  if (R_FOUND)
-    find_library(R_INSIDE RInside PATHS ${R_HOME}/library/RInside/lib)
-    if (R_INSIDE)
-      message(STATUS "scout: Found R and supporting libs -- enabling support.")
-      set(SCOUT_ENABLE_PLOT ON CACHE BOOL "Enable plot support in scout's runtime libraries.")
-      set(R_LIBRARIES -L${R_HOME}/lib -L${R_HOME}/library/RInside/lib -lR -lRInside)
-      set(R_INCLUDE_DIRS ${R_HOME}/include ${R_HOME}/library/Rcpp/include ${R_HOME}/library/RInside/include)
-    else()
-      set(SCOUT_ENABLE_PLOT OFF CACHE BOOL "Enable plot support in scout's runtime libraries.")
-    endif()
-  else()
-    set(SCOUT_ENABLE_PLOT OFF CACHE BOOL "Enable plot support in scout's runtime libraries.")
-  endif()
-
 # --- THRUST support.
   #find_package(THRUST)
 
@@ -400,7 +384,7 @@ endif()
   #setup RPATH
   set(CMAKE_SKIP_BUILD_RPATH FALSE)
   set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
-  set(CMAKE_INSTALL_RPATH ${SCOUT_BUILD_DIR}/lib ${CUDA_LIBRARY_DIR})
+  set(CMAKE_INSTALL_RPATH ${GCC_INSTALL_PREFIX}/lib64 ${SCOUT_BUILD_DIR}/lib ${CUDA_LIBRARY_DIR})
 
 
 #

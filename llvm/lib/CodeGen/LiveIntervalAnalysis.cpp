@@ -305,9 +305,8 @@ void LiveIntervals::computeLiveInRegUnits() {
     // Create phi-defs at Begin for all live-in registers.
     SlotIndex Begin = Indexes->getMBBStartIdx(MBB);
     DEBUG(dbgs() << Begin << "\tBB#" << MBB->getNumber());
-    for (MachineBasicBlock::livein_iterator LII = MBB->livein_begin(),
-         LIE = MBB->livein_end(); LII != LIE; ++LII) {
-      for (MCRegUnitIterator Units(*LII, TRI); Units.isValid(); ++Units) {
+    for (unsigned LI : MBB->liveins()) {
+      for (MCRegUnitIterator Units(LI, TRI); Units.isValid(); ++Units) {
         unsigned Unit = *Units;
         LiveRange *LR = RegUnitRanges[Unit];
         if (!LR) {
@@ -396,9 +395,6 @@ static void extendSegmentsToUses(LiveRange &LR, const SlotIndexes &Indexes,
   }
 }
 
-/// shrinkToUses - After removing some uses of a register, shrink its live
-/// range to just the remaining uses. This method does not compute reaching
-/// defs for new uses, and it doesn't remove dead defs.
 bool LiveIntervals::shrinkToUses(LiveInterval *li,
                                  SmallVectorImpl<MachineInstr*> *dead) {
   DEBUG(dbgs() << "Shrink: " << *li << '\n');
@@ -406,9 +402,14 @@ bool LiveIntervals::shrinkToUses(LiveInterval *li,
          && "Can only shrink virtual registers");
 
   // Shrink subregister live ranges.
+  bool NeedsCleanup = false;
   for (LiveInterval::SubRange &S : li->subranges()) {
     shrinkToUses(S, li->reg);
+    if (S.empty())
+      NeedsCleanup = true;
   }
+  if (NeedsCleanup)
+    li->removeEmptySubRanges();
 
   // Find all the values used, including PHI kills.
   ShrinkToUsesWorkList WorkList;

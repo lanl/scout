@@ -15,7 +15,7 @@
 // Other libraries and framework includes
 // Project includes
 #include "lldb/Core/Module.h"
-#include "lldb/Symbol/ClangASTType.h"
+#include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/TypeList.h"
 #include "lldb/Target/ExecutionContext.h"
@@ -42,10 +42,10 @@ ValueObjectRegisterContext::~ValueObjectRegisterContext()
 {
 }
 
-ClangASTType
-ValueObjectRegisterContext::GetClangTypeImpl ()
+CompilerType
+ValueObjectRegisterContext::GetCompilerTypeImpl ()
 {
-    return ClangASTType();
+    return CompilerType();
 }
 
 ConstString
@@ -144,10 +144,10 @@ ValueObjectRegisterSet::~ValueObjectRegisterSet()
 {
 }
 
-ClangASTType
-ValueObjectRegisterSet::GetClangTypeImpl ()
+CompilerType
+ValueObjectRegisterSet::GetCompilerTypeImpl ()
 {
-    return ClangASTType();
+    return CompilerType();
 }
 
 ConstString
@@ -307,8 +307,8 @@ ValueObjectRegister::~ValueObjectRegister()
 {
 }
 
-ClangASTType
-ValueObjectRegister::GetClangTypeImpl ()
+CompilerType
+ValueObjectRegister::GetCompilerTypeImpl ()
 {
     if (!m_clang_type.IsValid())
     {
@@ -331,14 +331,14 @@ ConstString
 ValueObjectRegister::GetTypeName()
 {
     if (m_type_name.IsEmpty())
-        m_type_name = GetClangType().GetConstTypeName ();
+        m_type_name = GetCompilerType().GetConstTypeName ();
     return m_type_name;
 }
 
 size_t
 ValueObjectRegister::CalculateNumChildren()
 {
-    return GetClangType().GetNumChildren(true);
+    return GetCompilerType().GetNumChildren(true);
 }
 
 uint64_t

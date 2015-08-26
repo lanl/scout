@@ -15,7 +15,7 @@
 #include "clang/Basic/IdentifierTable.h"
 #include "lldb/Symbol/ClangExternalASTSourceCommon.h"
 #include "lldb/Symbol/ClangASTImporter.h"
-#include "lldb/Symbol/ClangASTType.h"
+#include "lldb/Symbol/CompilerType.h"
 #include "lldb/Target/Target.h"
 
 #include "llvm/ADT/SmallSet.h"
@@ -60,7 +60,7 @@ public:
     //------------------------------------------------------------------
     /// Destructor
     //------------------------------------------------------------------
-    ~ClangASTSource();
+    ~ClangASTSource() override;
     
     //------------------------------------------------------------------
     /// Interface stubs.
@@ -111,15 +111,15 @@ public:
     ///     The DeclContext being searched.
     ///
     /// @param[in] isKindWeWant
-    ///     If non-NULL, a callback function that returns true given the
+    ///     A callback function that returns true given the
     ///     DeclKinds of desired Decls, and false otherwise.
     ///
     /// @param[in] Decls
     ///     A vector that is filled in with matching Decls.
     //------------------------------------------------------------------
-    clang::ExternalLoadResult FindExternalLexicalDecls(const clang::DeclContext *DC,
-                                                       bool (*isKindWeWant)(clang::Decl::Kind),
-                                                       llvm::SmallVectorImpl<clang::Decl *> &Decls) override;
+    void FindExternalLexicalDecls(
+        const clang::DeclContext *DC, llvm::function_ref<bool(clang::Decl::Kind)> IsKindWeWant,
+        llvm::SmallVectorImpl<clang::Decl *> &Decls) override;
 
     //------------------------------------------------------------------
     /// Specify the layout of the contents of a RecordDecl.
@@ -266,17 +266,24 @@ public:
             return m_original.FindExternalVisibleDeclsByName(DC, Name);
         }
 
-        clang::ExternalLoadResult
-        FindExternalLexicalDecls(const clang::DeclContext *DC, bool (*isKindWeWant)(clang::Decl::Kind),
+        void
+        FindExternalLexicalDecls(const clang::DeclContext *DC,
+                                 llvm::function_ref<bool(clang::Decl::Kind)> IsKindWeWant,
                                  llvm::SmallVectorImpl<clang::Decl *> &Decls) override
         {
-            return m_original.FindExternalLexicalDecls(DC, isKindWeWant, Decls);
+            return m_original.FindExternalLexicalDecls(DC, IsKindWeWant, Decls);
         }
 
         void
         CompleteType(clang::TagDecl *Tag) override
         {
             return m_original.CompleteType(Tag);
+        }
+      
+        void
+        CompleteType(clang::MeshDecl *Mesh) override
+        {
+          return m_original.CompleteType(Mesh);
         }
 
         void
@@ -369,7 +376,7 @@ protected:
     void 
     FindExternalVisibleDecls (NameSearchContext &context, 
                               lldb::ModuleSP module,
-                              ClangNamespaceDecl &namespace_decl,
+                              CompilerDeclContext &namespace_decl,
                               unsigned int current_id);
     
     //------------------------------------------------------------------
@@ -411,8 +418,8 @@ protected:
     /// @return
     ///     The imported type.
     //------------------------------------------------------------------
-    ClangASTType
-    GuardedCopyType (const ClangASTType &src_type);
+    CompilerType
+    GuardedCopyType (const CompilerType &src_type);
     
     friend struct NameSearchContext;
     
@@ -440,7 +447,7 @@ struct NameSearchContext {
     ClangASTImporter::NamespaceMapSP m_namespace_map;           ///< The mapping of all namespaces found for this request back to their modules
     const clang::DeclarationName &m_decl_name;                  ///< The name being looked for
     const clang::DeclContext *m_decl_context;                   ///< The DeclContext to put declarations into
-    llvm::SmallSet <ClangASTType, 5> m_function_types;    ///< All the types of functions that have been reported, so we don't report conflicts
+    llvm::SmallSet <CompilerType, 5> m_function_types;    ///< All the types of functions that have been reported, so we don't report conflicts
     
     struct {
         bool variable                   : 1;
@@ -485,7 +492,7 @@ struct NameSearchContext {
     /// @param[in] type
     ///     The opaque QualType for the VarDecl being registered.
     //------------------------------------------------------------------
-    clang::NamedDecl *AddVarDecl(const ClangASTType &type);
+    clang::NamedDecl *AddVarDecl(const CompilerType &type);
     
     //------------------------------------------------------------------
     /// Create a FunDecl with the name being searched for and the provided
@@ -497,7 +504,7 @@ struct NameSearchContext {
     /// @param[in] extern_c
     ///     If true, build an extern "C" linkage specification for this.
     //------------------------------------------------------------------
-    clang::NamedDecl *AddFunDecl(const ClangASTType &type,
+    clang::NamedDecl *AddFunDecl(const CompilerType &type,
                                  bool extern_c = false);
     
     //------------------------------------------------------------------
@@ -514,7 +521,7 @@ struct NameSearchContext {
     /// @param[in] type
     ///     The opaque QualType for the TypeDecl being registered.
     //------------------------------------------------------------------
-    clang::NamedDecl *AddTypeDecl(const ClangASTType &clang_type);
+    clang::NamedDecl *AddTypeDecl(const CompilerType &clang_type);
     
     
     //------------------------------------------------------------------
@@ -537,6 +544,6 @@ struct NameSearchContext {
     void AddNamedDecl (clang::NamedDecl *decl);
 };
 
-}
+} // namespace lldb_private
 
-#endif
+#endif // liblldb_ClangASTSource_h_

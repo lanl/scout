@@ -183,9 +183,12 @@ namespace clang {
     Decl *VisitImplicitParamDecl(ImplicitParamDecl *D);
     Decl *VisitParmVarDecl(ParmVarDecl *D);
     Decl *VisitObjCMethodDecl(ObjCMethodDecl *D);
+    Decl *VisitObjCTypeParamDecl(ObjCTypeParamDecl *D);
     Decl *VisitObjCCategoryDecl(ObjCCategoryDecl *D);
     Decl *VisitObjCProtocolDecl(ObjCProtocolDecl *D);
     Decl *VisitLinkageSpecDecl(LinkageSpecDecl *D);
+
+    ObjCTypeParamList *ImportObjCTypeParamList(ObjCTypeParamList *list);
     Decl *VisitObjCInterfaceDecl(ObjCInterfaceDecl *D);
     Decl *VisitObjCCategoryImplDecl(ObjCCategoryImplDecl *D);
     Decl *VisitObjCImplementationDecl(ObjCImplementationDecl *D);
@@ -1898,6 +1901,15 @@ QualType ASTNodeImporter::VisitObjCObjectType(const ObjCObjectType *T) {
   if (ToBaseType.isNull())
     return QualType();
 
+  SmallVector<QualType, 4> TypeArgs;
+  for (auto TypeArg : T->getTypeArgsAsWritten()) {
+    QualType ImportedTypeArg = Importer.Import(TypeArg);
+    if (ImportedTypeArg.isNull())
+      return QualType();
+
+    TypeArgs.push_back(ImportedTypeArg);
+  }
+
   SmallVector<ObjCProtocolDecl *, 4> Protocols;
   for (auto *P : T->quals()) {
     ObjCProtocolDecl *Protocol
@@ -1907,9 +1919,9 @@ QualType ASTNodeImporter::VisitObjCObjectType(const ObjCObjectType *T) {
     Protocols.push_back(Protocol);
   }
 
-  return Importer.getToContext().getObjCObjectType(ToBaseType,
-                                                   Protocols.data(),
-                                                   Protocols.size());
+  return Importer.getToContext().getObjCObjectType(ToBaseType, TypeArgs,
+                                                   Protocols,
+                                                   T->isKindOfTypeAsWritten());
 }
 
 QualType
@@ -1970,6 +1982,18 @@ void ASTNodeImporter::ImportDefinitionIfNeeded(Decl *FromD, Decl *ToD) {
     }
     return;
   }
+  
+  // +===== Scout =============================================
+  if (MeshDecl *FromMesh = dyn_cast<MeshDecl>(FromD)) {
+    if (MeshDecl *ToMesh = cast_or_null<MeshDecl>(ToD)) {
+      if (FromMesh->getDefinition() && FromMesh->isCompleteDefinition() &&
+          !ToMesh->getDefinition()) {
+        ImportDefinition(FromMesh, ToMesh);
+      }
+    }
+    return;
+  }
+  // +=========================================================
 
   if (EnumDecl *FromEnum = dyn_cast<EnumDecl>(FromD)) {
     if (EnumDecl *ToEnum = cast_or_null<EnumDecl>(ToD)) {
@@ -2255,11 +2279,9 @@ ASTNodeImporter::ImportTemplateArgument(const TemplateArgument &From) {
     ToPack.reserve(From.pack_size());
     if (ImportTemplateArguments(From.pack_begin(), From.pack_size(), ToPack))
       return TemplateArgument();
-    
-    TemplateArgument *ToArgs 
-      = new (Importer.getToContext()) TemplateArgument[ToPack.size()];
-    std::copy(ToPack.begin(), ToPack.end(), ToArgs);
-    return TemplateArgument(ToArgs, ToPack.size());
+
+    return TemplateArgument(
+        llvm::makeArrayRef(ToPack).copy(Importer.getToContext()));
   }
   }
   
@@ -2716,7 +2738,7 @@ Decl *ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
 
   if (D->isCompleteDefinition() && ImportDefinition(D, D2, IDK_Default))
     return nullptr;
-
+  
   return D2;
 }
 
@@ -3480,6 +3502,35 @@ Decl *ASTNodeImporter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
   return ToMethod;
 }
 
+Decl *ASTNodeImporter::VisitObjCTypeParamDecl(ObjCTypeParamDecl *D) {
+  // Import the major distinguishing characteristics of a category.
+  DeclContext *DC, *LexicalDC;
+  DeclarationName Name;
+  SourceLocation Loc;
+  NamedDecl *ToD;
+  if (ImportDeclParts(D, DC, LexicalDC, Name, ToD, Loc))
+    return nullptr;
+  if (ToD)
+    return ToD;
+
+  TypeSourceInfo *BoundInfo = Importer.Import(D->getTypeSourceInfo());
+  if (!BoundInfo)
+    return nullptr;
+
+  ObjCTypeParamDecl *Result = ObjCTypeParamDecl::Create(
+                                Importer.getToContext(), DC,
+                                D->getVariance(),
+                                Importer.Import(D->getVarianceLoc()),
+                                D->getIndex(),
+                                Importer.Import(D->getLocation()),
+                                Name.getAsIdentifierInfo(),
+                                Importer.Import(D->getColonLoc()),
+                                BoundInfo);
+  Importer.Imported(D, Result);
+  Result->setLexicalDeclContext(LexicalDC);
+  return Result;
+}
+
 Decl *ASTNodeImporter::VisitObjCCategoryDecl(ObjCCategoryDecl *D) {
   // Import the major distinguishing characteristics of a category.
   DeclContext *DC, *LexicalDC;
@@ -3507,11 +3558,16 @@ Decl *ASTNodeImporter::VisitObjCCategoryDecl(ObjCCategoryDecl *D) {
                                        Importer.Import(D->getCategoryNameLoc()), 
                                           Name.getAsIdentifierInfo(),
                                           ToInterface,
+                                          /*TypeParamList=*/nullptr,
                                        Importer.Import(D->getIvarLBraceLoc()),
                                        Importer.Import(D->getIvarRBraceLoc()));
     ToCategory->setLexicalDeclContext(LexicalDC);
     LexicalDC->addDeclInternal(ToCategory);
     Importer.Imported(D, ToCategory);
+    // Import the type parameter list after calling Imported, to avoid
+    // loops when bringing in their DeclContext.
+    ToCategory->setTypeParamList(ImportObjCTypeParamList(
+                                   D->getTypeParamList()));
     
     // Import protocols
     SmallVector<ObjCProtocolDecl *, 4> Protocols;
@@ -3720,13 +3776,11 @@ bool ASTNodeImporter::ImportDefinition(ObjCInterfaceDecl *From,
   
   // If this class has a superclass, import it.
   if (From->getSuperClass()) {
-    ObjCInterfaceDecl *Super = cast_or_null<ObjCInterfaceDecl>(
-                                 Importer.Import(From->getSuperClass()));
-    if (!Super)
+    TypeSourceInfo *SuperTInfo = Importer.Import(From->getSuperClassTInfo());
+    if (!SuperTInfo)
       return true;
-    
-    To->setSuperClass(Super);
-    To->setSuperClassLoc(Importer.Import(From->getSuperClassLoc()));
+
+    To->setSuperClass(SuperTInfo);
   }
   
   // Import protocols
@@ -3773,6 +3827,27 @@ bool ASTNodeImporter::ImportDefinition(ObjCInterfaceDecl *From,
   return false;
 }
 
+ObjCTypeParamList *
+ASTNodeImporter::ImportObjCTypeParamList(ObjCTypeParamList *list) {
+  if (!list)
+    return nullptr;
+
+  SmallVector<ObjCTypeParamDecl *, 4> toTypeParams;
+  for (auto fromTypeParam : *list) {
+    auto toTypeParam = cast_or_null<ObjCTypeParamDecl>(
+                         Importer.Import(fromTypeParam));
+    if (!toTypeParam)
+      return nullptr;
+
+    toTypeParams.push_back(toTypeParam);
+  }
+
+  return ObjCTypeParamList::create(Importer.getToContext(),
+                                   Importer.Import(list->getLAngleLoc()),
+                                   toTypeParams,
+                                   Importer.Import(list->getRAngleLoc()));
+}
+
 Decl *ASTNodeImporter::VisitObjCInterfaceDecl(ObjCInterfaceDecl *D) {
   // If this class has a definition in the translation unit we're coming from,
   // but this particular declaration is not that definition, import the
@@ -3813,13 +3888,18 @@ Decl *ASTNodeImporter::VisitObjCInterfaceDecl(ObjCInterfaceDecl *D) {
   if (!ToIface) {
     ToIface = ObjCInterfaceDecl::Create(Importer.getToContext(), DC,
                                         Importer.Import(D->getAtStartLoc()),
-                                        Name.getAsIdentifierInfo(), 
+                                        Name.getAsIdentifierInfo(),
+                                        /*TypeParamList=*/nullptr,
                                         /*PrevDecl=*/nullptr, Loc,
                                         D->isImplicitInterfaceDecl());
     ToIface->setLexicalDeclContext(LexicalDC);
     LexicalDC->addDeclInternal(ToIface);
   }
   Importer.Imported(D, ToIface);
+  // Import the type parameter list after calling Imported, to avoid
+  // loops when bringing in their DeclContext.
+  ToIface->setTypeParamList(ImportObjCTypeParamList(
+                              D->getTypeParamListAsWritten()));
   
   if (D->isThisDeclarationADefinition() && ImportDefinition(D, ToIface))
     return nullptr;
@@ -5350,6 +5430,7 @@ QualType ASTImporter::Import(QualType FromT) {
   // Import the type
   ASTNodeImporter Importer(*this);
   QualType ToT = Importer.Visit(fromTy);
+  
   if (ToT.isNull())
     return ToT;
   
@@ -5370,7 +5451,7 @@ TypeSourceInfo *ASTImporter::Import(TypeSourceInfo *FromTSI) {
     return nullptr;
 
   return ToContext.getTrivialTypeSourceInfo(T, 
-                        FromTSI->getTypeLoc().getLocStart());
+           Import(FromTSI->getTypeLoc().getLocStart()));
 }
 
 Decl *ASTImporter::GetAlreadyImportedOrNull(Decl *FromD) {
@@ -5402,7 +5483,7 @@ Decl *ASTImporter::Import(Decl *FromD) {
   Decl *ToD = Importer.Visit(FromD);
   if (!ToD)
     return nullptr;
-
+  
   // Record the imported declaration.
   ImportedDecls[FromD] = ToD;
   
@@ -5482,6 +5563,19 @@ DeclContext *ASTImporter::ImportContext(DeclContext *FromDC) {
       CompleteDecl(ToProto);
     }    
   }
+  // ====== Scout ======================================
+  else if (MeshDecl *ToMesh = dyn_cast<MeshDecl>(ToDC)) {
+    MeshDecl *FromMesh = cast<MeshDecl>(FromDC);
+    if (ToMesh->isCompleteDefinition()) {
+      // Do nothing.
+    } else if (FromMesh->isCompleteDefinition()) {
+      ASTNodeImporter(*this).ImportDefinition(FromMesh, ToMesh,
+                                              ASTNodeImporter::IDK_Basic);
+    } else {
+      CompleteDecl(ToMesh);
+    }
+  }
+  // ===================================================
   
   return ToDC;
 }

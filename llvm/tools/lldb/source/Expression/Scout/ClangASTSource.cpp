@@ -60,7 +60,6 @@
 #include "lldb/Expression/ASTDumper.h"
 #include "lldb/Expression/ClangASTSource.h"
 #include "lldb/Expression/ClangExpression.h"
-#include "lldb/Symbol/ClangNamespaceDecl.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Target/ObjCLanguageRuntime.h"
@@ -81,8 +80,8 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
     {
         log->Printf("    CompleteMeshDecl[%u] on (ASTContext*)%p Completing (MeshDecl*)%p named %s",
                     current_id,
-                    m_ast_context,
-                    mesh_decl,
+                    (void *)m_ast_context,
+                    (void *)mesh_decl,
                     mesh_decl->getName().str().c_str());
 
         log->Printf("      CTD[%u] Before:", current_id);
@@ -109,7 +108,7 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
             if (log && log->GetVerbose())
                 log->Printf("      CTD[%u] Inspecting namespace map %p (%d entries)",
                             current_id,
-                            namespace_map.get(),
+                            (void *)namespace_map.get(),
                             (int)namespace_map->size());
 
             if (!namespace_map)
@@ -122,7 +121,7 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
                 if (log)
                     log->Printf("      CTD[%u] Searching namespace %s in module %s",
                                 current_id,
-                                i->second.GetNamespaceDecl()->getNameAsString().c_str(),
+                                i->second.GetName().AsCString(),
                                 i->first->GetFileSpec().GetFilename().GetCString());
 
                 TypeList types;
@@ -141,12 +140,13 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
                     if (!type)
                         continue;
 
-                    ClangASTType clang_type (type->GetClangFullType());
+                    CompilerType clang_type (type->GetFullCompilerType ());
 
                     if (!clang_type)
                         continue;
 
-                    const MeshType *mesh_type = clang_type.GetQualType()->getAs<MeshType>();
+                    const MeshType *mesh_type =
+                      ClangASTContext::GetQualType(clang_type)->getAs<MeshType>();
 
                     if (!mesh_type)
                         continue;
@@ -164,7 +164,7 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
 
             SymbolContext null_sc;
             ConstString name(mesh_decl->getName().str().c_str());
-            ClangNamespaceDecl namespace_decl;
+            CompilerDeclContext namespace_decl;
 
             const ModuleList &module_list = m_target->GetImages();
 
@@ -180,12 +180,13 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
                 if (!type)
                     continue;
 
-                ClangASTType clang_type (type->GetClangFullType());
+                CompilerType clang_type (type->GetFullCompilerType ());
 
                 if (!clang_type)
                     continue;
 
-                const MeshType *mesh_type = clang_type.GetQualType()->getAs<MeshType>();
+                const MeshType *mesh_type =
+                  ClangASTContext::GetQualType(clang_type)->getAs<MeshType>();
 
                 if (!mesh_type)
                     continue;
@@ -218,8 +219,8 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
   {
     log->Printf("    CompleteFrameDecl[%u] on (ASTContext*)%p Completing (MeshDecl*)%p named %s",
                 current_id,
-                m_ast_context,
-                frame_decl,
+                (void *)m_ast_context,
+                (void *)frame_decl,
                 frame_decl->getName().str().c_str());
     
     log->Printf("      CTD[%u] Before:", current_id);
@@ -246,7 +247,7 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
       if (log && log->GetVerbose())
         log->Printf("      CTD[%u] Inspecting namespace map %p (%d entries)",
                     current_id,
-                    namespace_map.get(),
+                    (void *)namespace_map.get(),
                     (int)namespace_map->size());
       
       if (!namespace_map)
@@ -259,7 +260,7 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
         if (log)
           log->Printf("      CTD[%u] Searching namespace %s in module %s",
                       current_id,
-                      i->second.GetNamespaceDecl()->getNameAsString().c_str(),
+                      i->second.GetName().AsCString(),
                       i->first->GetFileSpec().GetFilename().GetCString());
         
         TypeList types;
@@ -278,12 +279,13 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
           if (!type)
             continue;
           
-          ClangASTType clang_type (type->GetClangFullType());
+          CompilerType clang_type (type->GetFullCompilerType ());
           
           if (!clang_type)
             continue;
           
-          const FrameType *frame_type = clang_type.GetQualType()->getAs<FrameType>();
+          const FrameType *frame_type =
+          ClangASTContext::GetQualType(clang_type)->getAs<FrameType>();
           
           if (!frame_type)
             continue;
@@ -301,7 +303,7 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
       
       SymbolContext null_sc;
       ConstString name(frame_decl->getName().str().c_str());
-      ClangNamespaceDecl namespace_decl;
+      CompilerDeclContext namespace_decl;
       
       const ModuleList &module_list = m_target->GetImages();
       
@@ -317,12 +319,13 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
         if (!type)
           continue;
         
-        ClangASTType clang_type (type->GetClangFullType());
+        CompilerType clang_type (type->GetFullCompilerType ());
         
         if (!clang_type)
           continue;
         
-        const FrameType *frame_type = clang_type.GetQualType()->getAs<FrameType>();
+        const FrameType *frame_type =
+        ClangASTContext::GetQualType(clang_type)->getAs<FrameType>();
         
         if (!frame_type)
           continue;

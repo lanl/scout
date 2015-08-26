@@ -158,7 +158,7 @@ CommandObjectArgs::DoExecute (Args& args, CommandReturnObject &result)
         const char *arg_type_cstr = args.GetArgumentAtIndex(arg_index);
         Value value;
         value.SetValueType(Value::eValueTypeScalar);
-        ClangASTType clang_type;
+        CompilerType clang_type;
         
         char *int_pos;
         if ((int_pos = strstr (const_cast<char*>(arg_type_cstr), "int")))
@@ -234,7 +234,7 @@ CommandObjectArgs::DoExecute (Args& args, CommandReturnObject &result)
             return false;
         }
                      
-        value.SetClangType (clang_type);
+        value.SetCompilerType (clang_type);
         value_list.PushValue(value);
     }
     

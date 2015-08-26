@@ -137,6 +137,7 @@ private:
 class RenderallVisitor : public StmtVisitor<RenderallVisitor> {
 public:
   typedef std::set<MeshFieldDecl*> FieldSet;
+  typedef std::set<VarDecl*> VarSet;
   
   RenderallVisitor(const RenderallStmt* rs)
   : rs_(rs){
@@ -164,9 +165,16 @@ public:
     return fieldSet_;
   }
   
+  const VarSet& getVarSet() const{
+    return varSet_;
+  }
+  
+  void VisitDeclRefExpr(DeclRefExpr* E);
+  
 private:
   const RenderallStmt *rs_;
   FieldSet fieldSet_;
+  VarSet varSet_;
 };
   
 class TaskStmtVisitor : public StmtVisitor<TaskStmtVisitor> {

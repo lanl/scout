@@ -25,7 +25,7 @@
 // Return:  None.
 // Throws:  None.
 //--
-CMICmnLogMediumFile::CMICmnLogMediumFile(void)
+CMICmnLogMediumFile::CMICmnLogMediumFile()
     : m_constThisMediumName(MIRSRC(IDS_MEDIUMFILE_NAME))
     , m_constMediumFileNameFormat("lldb-mi-%s.log")
     , m_strMediumFileName(MIRSRC(IDS_MEDIUMFILE_ERR_INVALID_PATH))
@@ -44,7 +44,7 @@ CMICmnLogMediumFile::CMICmnLogMediumFile(void)
 // Return:  None.
 // Throws:  None.
 //--
-CMICmnLogMediumFile::~CMICmnLogMediumFile(void)
+CMICmnLogMediumFile::~CMICmnLogMediumFile()
 {
 }
 
@@ -56,7 +56,7 @@ CMICmnLogMediumFile::~CMICmnLogMediumFile(void)
 // Throws:  None.
 //--
 CMICmnLogMediumFile &
-CMICmnLogMediumFile::Instance(void)
+CMICmnLogMediumFile::Instance()
 {
     static CMICmnLogMediumFile instance;
 
@@ -72,7 +72,7 @@ CMICmnLogMediumFile::Instance(void)
 // Throws:  None.
 //--
 bool
-CMICmnLogMediumFile::Initialize(void)
+CMICmnLogMediumFile::Initialize()
 {
     m_bInitialized = CMIUtilSystem().GetLogFilesPath(m_strMediumFileDirectory);
     m_bInitialized &= FileFormFileNamePath();
@@ -88,7 +88,7 @@ CMICmnLogMediumFile::Initialize(void)
 // Throws:  None.
 //--
 bool
-CMICmnLogMediumFile::Shutdown(void)
+CMICmnLogMediumFile::Shutdown()
 {
     if (m_bInitialized)
     {
@@ -106,7 +106,7 @@ CMICmnLogMediumFile::Shutdown(void)
 // Throws:  None.
 //--
 const CMIUtilString &
-CMICmnLogMediumFile::GetName(void) const
+CMICmnLogMediumFile::GetName() const
 {
     return m_constThisMediumName;
 }
@@ -155,7 +155,7 @@ CMICmnLogMediumFile::Write(const CMIUtilString &vData, const CMICmnLog::ELogVerb
 // Throws:  None.
 //--
 const CMIUtilString &
-CMICmnLogMediumFile::GetError(void) const
+CMICmnLogMediumFile::GetError() const
 {
     return m_strMILastErrorDescription;
 }
@@ -183,7 +183,7 @@ CMICmnLogMediumFile::SetVerbosity(const MIuint veType)
 // Throws:  None.
 //--
 MIuint
-CMICmnLogMediumFile::GetVerbosity(void) const
+CMICmnLogMediumFile::GetVerbosity() const
 {
     return m_eVerbosityType;
 }
@@ -210,7 +210,7 @@ CMICmnLogMediumFile::FileWriteEnglish(const CMIUtilString &vData)
 // Throws:  None.
 //--
 bool
-CMICmnLogMediumFile::FileFormFileNamePath(void)
+CMICmnLogMediumFile::FileFormFileNamePath()
 {
     ClrErrorDescription();
 
@@ -243,7 +243,7 @@ CMICmnLogMediumFile::FileFormFileNamePath(void)
 // Throws:  None.
 //--
 const CMIUtilString &
-CMICmnLogMediumFile::GetFileNamePath(void) const
+CMICmnLogMediumFile::GetFileNamePath() const
 {
     return m_fileNamePath;
 }
@@ -256,7 +256,7 @@ CMICmnLogMediumFile::GetFileNamePath(void) const
 // Throws:  None.
 //--
 const CMIUtilString &
-CMICmnLogMediumFile::GetFileName(void) const
+CMICmnLogMediumFile::GetFileName() const
 {
     return m_strMediumFileName;
 }
@@ -276,15 +276,15 @@ CMICmnLogMediumFile::MassagedData(const CMIUtilString &vData, const CMICmnLog::E
 {
     const CMIUtilString strCr("\n");
     CMIUtilString data;
-    const MIchar verbosityCode(ConvertLogVerbosityTypeToId(veType));
+    const char verbosityCode(ConvertLogVerbosityTypeToId(veType));
     const CMIUtilString dt(CMIUtilString::Format("%s %s", m_strDate.c_str(), m_dateTime.GetTime().c_str()));
 
     data = CMIUtilString::Format("%c,%s,%s", verbosityCode, dt.c_str(), vData.c_str());
     data = ConvertCr(data);
 
     // Look for EOL...
-    const MIint pos = vData.rfind(strCr);
-    if (pos == (MIint)vData.size())
+    const size_t pos = vData.rfind(strCr);
+    if (pos == vData.size())
         return data;
 
     // ... did not have an EOL so add one
@@ -300,10 +300,10 @@ CMICmnLogMediumFile::MassagedData(const CMIUtilString &vData, const CMICmnLog::E
 // Return:  wchar_t - A letter.
 // Throws:  None.
 //--
-MIchar
+char
 CMICmnLogMediumFile::ConvertLogVerbosityTypeToId(const CMICmnLog::ELogVerbosity veType) const
 {
-    MIchar c = 0;
+    char c = 0;
     if (veType != 0)
     {
         MIuint cnt = 0;
@@ -332,7 +332,7 @@ CMICmnLogMediumFile::ConvertLogVerbosityTypeToId(const CMICmnLog::ELogVerbosity 
 // Throws:  None.
 //--
 bool
-CMICmnLogMediumFile::IsOk(void) const
+CMICmnLogMediumFile::IsOk() const
 {
     return m_file.IsOk();
 }
@@ -346,7 +346,7 @@ CMICmnLogMediumFile::IsOk(void) const
 // Throws:  None.
 //--
 bool
-CMICmnLogMediumFile::IsFileExist(void) const
+CMICmnLogMediumFile::IsFileExist() const
 {
     return m_file.IsFileExist(GetFileNamePath());
 }
@@ -360,7 +360,7 @@ CMICmnLogMediumFile::IsFileExist(void) const
 // Throws:  None.
 //--
 bool
-CMICmnLogMediumFile::FileWriteHeader(void)
+CMICmnLogMediumFile::FileWriteHeader()
 {
     return FileWriteEnglish(ConvertCr(m_fileHeaderTxt));
 }
@@ -382,11 +382,11 @@ CMICmnLogMediumFile::ConvertCr(const CMIUtilString &vData) const
     if (strCr == rCrCmpat)
         return vData;
 
-    const MIuint nSizeCmpat(rCrCmpat.size());
-    const MIuint nSize(strCr.size());
+    const size_t nSizeCmpat(rCrCmpat.size());
+    const size_t nSize(strCr.size());
     CMIUtilString strConv(vData);
-    MIint pos = strConv.find(strCr);
-    while (pos != (MIint)CMIUtilString::npos)
+    size_t pos = strConv.find(strCr);
+    while (pos != CMIUtilString::npos)
     {
         strConv.replace(pos, nSize, rCrCmpat);
         pos = strConv.find(strCr, pos + nSizeCmpat);
@@ -396,7 +396,7 @@ CMICmnLogMediumFile::ConvertCr(const CMIUtilString &vData) const
 }
 
 //++ ------------------------------------------------------------------------------------
-// Details: Set the header text that is written to the logger file at the begining.
+// Details: Set the header text that is written to the logger file at the beginning.
 // Type:    Method.
 // Args:    vText   - (R) Text.
 // Return:  MIstatus::success - Functional succeeded.
@@ -419,13 +419,13 @@ CMICmnLogMediumFile::SetHeaderTxt(const CMIUtilString &vText)
 // Throws:  None.
 //--
 const CMIUtilString &
-CMICmnLogMediumFile::GetLineReturn(void) const
+CMICmnLogMediumFile::GetLineReturn() const
 {
     return m_file.GetLineReturn();
 }
 
 //++ ------------------------------------------------------------------------------------
-// Details: Set the diretory to place the log file.
+// Details: Set the directory to place the log file.
 // Type:    Method.
 // Args:    vPath   - (R) Path to log.
 // Return:  MIstatus::success - Functional succeeded.

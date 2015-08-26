@@ -20,7 +20,7 @@
 // Return:  None.
 // Throws:  None.
 //--
-CMIUtilSystemLinux::CMIUtilSystemLinux(void)
+CMIUtilSystemLinux::CMIUtilSystemLinux()
 {
 }
 
@@ -31,7 +31,7 @@ CMIUtilSystemLinux::CMIUtilSystemLinux(void)
 // Return:  None.
 // Throws:  None.
 //--
-CMIUtilSystemLinux::~CMIUtilSystemLinux(void)
+CMIUtilSystemLinux::~CMIUtilSystemLinux()
 {
 }
 
@@ -65,7 +65,7 @@ CMIUtilSystemLinux::GetOSErrorMsg(const MIint vError, CMIUtilString &vrwErrorMsg
 // Throws:  None.
 //--
 CMIUtilString
-CMIUtilSystemLinux::GetOSLastError(void) const
+CMIUtilSystemLinux::GetOSLastError() const
 {
     CMIUtilString errorMsg("Error fn not implemented ");
 
@@ -78,7 +78,7 @@ CMIUtilSystemLinux::GetOSLastError(void) const
 // Details: Retrieves the fully qualified path for the this application. If the function
 //          fails the string is filled with the error message.
 // Type:    Method.
-// Args:    vrwFileNamePath - (W) The excutable's name and path or last error description.
+// Args:    vrwFileNamePath - (W) The executable's name and path or last error description.
 // Return:  MIstatus::success - Functional succeeded.
 //          MIstatus::failure - Functional failed.
 // Throws:  None.
