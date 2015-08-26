@@ -1,4 +1,4 @@
-/* Copyright 2015 Stanford University
+/* Copyright 2015 Stanford University, NVIDIA Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,7 +28,16 @@
 #include "atomics.h" // for __sync_fetch_and_add
 #endif
 
+// for fprintf
+#include <stdio.h>
+
 using namespace LegionRuntime::Arrays;
+
+namespace Realm {
+  class DomainPoint;
+  class Domain;
+}
+
 
 namespace LegionRuntime {
 #ifdef PRIVILEGE_CHECKS
@@ -40,11 +49,6 @@ namespace LegionRuntime {
     ACCESSOR_ALL    = 0x00000007,
   };
 #endif
-  namespace LowLevel {
-    class DomainPoint;
-    class Domain;
-  }
-
   namespace Accessor {
 
     class ByteOffset {
@@ -179,7 +183,7 @@ namespace LegionRuntime {
 #ifdef BOUNDS_CHECKS 
       // TODO: Make these functions work for GPUs
       void check_bounds(void *region, ptr_t ptr);
-      void check_bounds(void *region, const LowLevel::DomainPoint &dp);
+      void check_bounds(void *region, const Realm::DomainPoint &dp);
 #endif
 
       struct Generic {
@@ -204,8 +208,8 @@ namespace LegionRuntime {
 	  void read_untyped(ptr_t ptr, void *dst, size_t bytes, off_t offset = 0) const;
 	  void write_untyped(ptr_t ptr, const void *src, size_t bytes, off_t offset = 0) const;
 
-	  void read_untyped(const LowLevel::DomainPoint& dp, void *dst, size_t bytes, off_t offset = 0) const;
-	  void write_untyped(const LowLevel::DomainPoint& dp, const void *src, size_t bytes, off_t offset = 0) const;
+	  void read_untyped(const Realm::DomainPoint& dp, void *dst, size_t bytes, off_t offset = 0) const;
+	  void write_untyped(const Realm::DomainPoint& dp, const void *src, size_t bytes, off_t offset = 0) const;
 
 	  RegionAccessor<Generic, void, void> get_untyped_field_accessor(off_t _field_offset, size_t _field_size)
 	  {
@@ -341,10 +345,7 @@ namespace LegionRuntime {
 	    //printf("in aos(%zd) converter\n", STRIDE);
 	    void *aos_base = 0;
 	    size_t aos_stride = STRIDE;
-#ifndef NDEBUG
-	    bool ok = 
-#endif
-              get_aos_parameters(aos_base, aos_stride);
+	    bool ok = get_aos_parameters(aos_base, aos_stride);
 	    return ok;
 	  }
 
@@ -524,8 +525,8 @@ namespace LegionRuntime {
 #endif
 	    return(base + (ptr.value * Stride<STRIDE>::value));
 	  }
-	  //char *elem_ptr(const LowLevel::DomainPoint& dp) const;
-	  //char *elem_ptr_linear(const LowLevel::Domain& d, LowLevel::Domain& subrect, ByteOffset *offsets);
+	  //char *elem_ptr(const Realm::DomainPoint& dp) const;
+	  //char *elem_ptr_linear(const Realm::Domain& d, Realm::Domain& subrect, ByteOffset *offsets);
 
 	  char *base;
 #if defined(PRIVILEGE_CHECKS) || defined(BOUNDS_CHECKS)
@@ -615,8 +616,8 @@ namespace LegionRuntime {
 	    REDOP::template apply<false>(*(T *)Untyped::elem_ptr(ptr), newval);
 	  }
 
-	  //T *elem_ptr(const LowLevel::DomainPoint& dp) const { return (T*)(Untyped::elem_ptr(dp)); }
-	  //T *elem_ptr_linear(const LowLevel::Domain& d, LowLevel::Domain& subrect, ByteOffset *offsets)
+	  //T *elem_ptr(const Realm::DomainPoint& dp) const { return (T*)(Untyped::elem_ptr(dp)); }
+	  //T *elem_ptr_linear(const Realm::Domain& d, Realm::Domain& subrect, ByteOffset *offsets)
 	  //{ return (T*)(Untyped::elem_ptr_linear(d, subrect, offsets)); }
 	};
       };

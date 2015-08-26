@@ -13,12 +13,14 @@
 -- limitations under the License.
 
 -- fails-with:
--- type mismatch in argument 1: expected disjoint or aliased but got int32
+-- type_mismatch_partition3.lg:25: type mismatch in argument 1: expected disjoint or aliased but got int32
+--   var p = partition(int, r, c)
+--                   ^
 
 import "legion"
 
 task f() : int
-  var r = region(int, 5)
+  var r = region(ispace(ptr, 5), int)
   var c : legionlib.c.legion_coloring_t
   var p = partition(int, r, c)
 end

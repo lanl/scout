@@ -51,6 +51,8 @@ COPY_OP = 5
 FENCE_OP = 6
 ACQUIRE_OP = 7
 RELEASE_OP = 8
+DEPENDENT_PARTITION_OP = 9
+PENDING_PARTITION_OP = 10
 
 # Instance Kinds
 TASK_INST = 0
@@ -59,6 +61,8 @@ CLOSE_INST = 2
 COPY_INST = 3
 ACQUIRE_INST = 4
 RELEASE_INST = 5
+DEPENDENT_PARTITION_INST = 6
+PENDING_PARTITION_INST = 7
 
 
 # Some helper methods
@@ -211,14 +215,14 @@ class Memory(object):
 
 
 class IndexSpaceNode(object):
-    def __init__(self, state, uid, color, parent):
+    def __init__(self, state, uid, point, parent):
         self.state = state
         self.uid = uid
         self.parent = parent
         self.instances = dict()
         self.children = dict()
         if parent <> None:
-            parent.add_child(color, self)
+            parent.add_child(point, self)
             self.depth = parent.depth + 1
             # Also check to see if the parent has any instances for which
             # we need to instantiate this tree
@@ -237,9 +241,9 @@ class IndexSpaceNode(object):
             child.instantiate(region_node, field_node, tid)
         return region_node
 
-    def add_child(self, color, child):
-        assert color not in self.children
-        self.children[color] = child 
+    def add_child(self, point, child):
+        assert point not in self.children
+        self.children[point] = child 
 
     def get_instance(self, tid):
         assert tid in self.instances
@@ -247,6 +251,12 @@ class IndexSpaceNode(object):
 
     def is_region(self):
         return True
+
+    def get_name(self):
+        if self.name <> None:
+            return self.name
+        else:
+            return "index space " + hex(self.uid)
 
     def set_name(self, name):
         self.name = name
@@ -282,7 +292,7 @@ class IndexSpaceNode(object):
             child.print_graph(printer)
 
 class IndexPartNode(object):
-    def __init__(self, state, uid, disjoint, color, parent):
+    def __init__(self, state, uid, disjoint, point, parent):
         self.state = state
         self.uid = uid
         self.disjoint = disjoint
@@ -290,7 +300,7 @@ class IndexPartNode(object):
         self.instances = dict()
         self.children = dict()
         assert parent <> None
-        parent.add_child(color, self)
+        parent.add_child(point, self)
         self.depth = parent.depth + 1
         # Also need to instaitate any instances from the parent
         for tid,pinst in parent.instances.iteritems():
@@ -306,12 +316,18 @@ class IndexPartNode(object):
             child.instantiate(part_node, field_node, tid)
         return part_node
 
-    def add_child(self, color, child):
-        assert color not in self.children
-        self.children[color] = child
+    def add_child(self, point, child):
+        assert point not in self.children
+        self.children[point] = child
 
     def is_region(self):
         return False
+
+    def get_name(self):
+        if self.name <> None:
+            return self.name
+        else:
+            return "index partition " + hex(self.uid)
 
     def set_name(self, name):
         self.name = name
@@ -357,6 +373,12 @@ class FieldSpaceNode(object):
 
     def set_field_name(self, fid, name):
         self.field_names[fid] = name
+
+    def get_field_name(self, fid):
+        if fid in self.field_names:
+            return self.field_names[fid]
+        else:
+            return None
 
     def print_graph(self, printer):
         if self.name != None:
@@ -574,7 +596,10 @@ class SingleTask(object):
         self.generation = 0
 
     def get_name(self):
-        return self.name
+        if self.name <> None:
+            return self.name+" "+str(self.uid)
+        else:
+            return "task "+str(self.uid)
 
     def get_op_kind(self):
         return SINGLE_OP
@@ -678,18 +703,33 @@ class SingleTask(object):
     def physical_unmark(self):
         self.physical_marked = False
 
+    def print_dataflow(self, path, simplify):
+        return 0
+
+    def print_logical_node(self, printer):
+        # This better be an individual task
+        assert self.enclosing is None
+        self.print_base_node(printer, True)
+
     def print_physical_node(self, printer):
+        self.print_base_node(printer, False)
+
+    def print_base_node(self, printer, logical):
         inst_string = ''
         if self.state.verbose:
-            for idx,inst in self.instances.iteritems():
-                assert idx in self.reqs
-                req = self.reqs[idx]
-                if req.region_node.name != None:
-                    to_add = req.region_node.name+' '
-                else:
-                    to_add = ''
-                to_add = to_add+'Inst\ '+hex(inst.iid)+'\ '+req.dot_requirement()
-                inst_string = inst_string+'\\n'+to_add
+            if logical:
+                for idx,req, in self.reqs.iteritems():
+                    inst_string = inst_string+'\\n'+req.dot_requirement()
+            else:
+                for idx,inst in self.instances.iteritems():
+                    assert idx in self.reqs
+                    req = self.reqs[idx]
+                    if req.region_node.name != None:
+                        to_add = req.region_node.name+' '
+                    else:
+                        to_add = ''
+                    to_add = to_add+'Inst\ '+hex(inst.iid)+'\ '+req.dot_requirement()
+                    inst_string = inst_string+'\\n'+to_add
         if self.enclosing <> None:
             # Index Space Point
             index_string = '\\nPoint\ '+self.point.to_string()
@@ -854,6 +894,22 @@ class SingleTask(object):
             if is_mapping_dependence(dtype):
                 self.ctx.add_adep(other_op, self, other_req.index, req.index, dtype)
 
+    def print_dataflow(self, path, simplify_graphs):
+        if len(self.ops) < 2:
+            return 0
+        filename = 'dataflow_'+self.name+'_'+str(self.uid)
+        printer = GraphPrinter(path,filename)
+        # First emit the nodes
+        for op in self.ops:
+            op.print_logical_node(printer) 
+        # Now emit the edges
+        previous_pairs = set()
+        for dep in self.mdeps:
+            dep.print_dataflow_edge(printer, previous_pairs)
+        printer.print_pdf_after_close(simplify_graphs)
+        # We printed our datflow graph
+        return 1
+
     def check_data_flow(self):
         print "Performing data flow check for task "+self.name+" (UID "+str(self.uid)+")"
         for dep in self.mdeps:
@@ -869,6 +925,14 @@ class SingleTask(object):
                         # Check to see if they are still aliased
                         req1 = inst1.get_requirement(dep.idx1)
                         req2 = inst2.get_requirement(dep.idx2)
+                        def is_empty_inter_close_op(op):
+                            return isinstance(op, Close) and \
+                                    op.is_inter_close_op and \
+                                    op.get_instance(0) == None
+                        if is_empty_inter_close_op(inst1) or \
+                                is_empty_inter_close_op(inst2):
+                            # this is an InterCloseOp that uses no physical instance
+                            continue
                         # If the second requirement is a reduction, there is no need to
                         # have a dataflow dependence since we can make a separate 
                         # reduction instance
@@ -933,16 +997,20 @@ class SingleTask(object):
                                 src_fields = node.get_src_fields()
                                 dst_fields = node.get_dst_fields()
 
-                                if ((last_inst == dst_inst) and
-                                    (last_field in dst_fields)):
-                                    traverser.found = traverser.found or \
-                                            (node == traverser.target)
-                                    if not traverser.found:
-                                        idx = dst_fields.index(last_field)
-                                        traverser.field_stack.append(src_fields[idx])
-                                        traverser.instance_stack.append(src_inst)
+                                if last_inst <> dst_inst:
+                                    return False
+                                traverser.found = node == traverser.target
+                                if traverser.found:
+                                    return False
+                                if not last_field in dst_fields:
+                                    traverser.field_stack.append(last_field)
+                                    traverser.instance_stack.append(dst_inst)
                                     return not traverser.found
-                                return False
+                                else:
+                                    idx = dst_fields.index(last_field)
+                                    traverser.field_stack.append(src_fields[idx])
+                                    traverser.instance_stack.append(src_inst)
+                                    return not traverser.found
                             def traverse_acquire(node, traverser):
                                 if record_visit(node, traverser):
                                     return False
@@ -993,9 +1061,6 @@ class SingleTask(object):
                                 traverser.visited = dict()
                                 # TODO: support virtual mappings
                                 dst_inst = inst2.get_instance(dep.idx2)
-                                if dst_inst == None and isinstance(inst2, Close):
-                                    # this is an InterCloseOp
-                                    continue
                                 dst_field = f
                                 # a hack for copy operations
                                 if (isinstance(inst2, CopyOp) or \
@@ -1038,6 +1103,7 @@ class IndexTask(object):
         self.logical_marked = False
         self.reqs = dict()
         self.op_instances = set()
+        self.node_name = 'task_node_'+str(self.uid)
 
     def get_name(self):
         return self.name
@@ -1097,6 +1163,19 @@ class IndexTask(object):
 
     def unmark_logical(self):
         self.logical_marked = False
+
+    def print_logical_node(self, printer):
+        inst_string = ''
+        if self.state.verbose:
+            for idx,req in self.reqs.iteritems():
+                inst_string = inst_string+'\\n'+req.dot_requirement() 
+        printer.println(self.node_name+' [style=filled,label="'+\
+                str(self.name)+'\\nUnique\ ID\ '+str(self.uid)+inst_string+\
+                '",fillcolor=mediumslateblue,fontsize=14,fontcolor=black,'+\
+                'shape=record,penwidth=2];')
+
+    def print_dataflow(self, path, simplify):
+        return 0
 
     def compute_dependence_diff(self, verbose):
         # No need to do anything
@@ -1214,12 +1293,32 @@ class Mapping(object):
     def physical_unmark(self):
         self.physical_marked = False
 
+    def print_logical_node(self, printer):
+        self.print_base_node(printer, True)
+
+    def print_dataflow(self, path, simplify):
+        return 0
+
     def print_physical_node(self, printer):
+        self.print_base_node(printer, False)
+
+    def print_base_node(self, printer, logical):
+        ranges = list_to_ranges(self.requirement.fields)
+        field_string = ','.join([r for r in ranges])
         inst_string = ''
         if self.state.verbose:
-            inst_string = '\\nInst\ '+hex(self.instance.iid)+'\ '+self.requirement.dot_requirement()
+            if (logical):
+                inst_string = '\\n'+requirement.dot_requirement()
+            else:
+                inst_string = '\\nInst\ '+hex(self.instance.iid)+'\ '+\
+                    self.requirement.dot_requirement()
         printer.println(self.node_name+' [style=filled,label="'+\
-            'Mapping\ '+str(self.uid)+'\ in\ '+self.ctx.name+inst_string+'",'+\
+            'Mapping\ '+str(self.uid)+'\ in\ '+self.ctx.name+'\\nField: \{'+\
+            field_string+'\}\\nReq: '+\
+            self.requirement.to_summary_string()+\
+            ('' if self.requirement.region_node.name == None
+                else '\\n('+self.requirement.region_node.name+')')+\
+            inst_string+'",'+\
             'fillcolor=mediumseagreen,fontsize=14,fontcolor=black,'+\
             'shape=record,penwidth=2];')
 
@@ -1266,6 +1365,7 @@ class Deletion(object):
         self.logical_outgoing = set()
         self.logical_marked = False
         self.op_instances = set()
+        self.node_name = 'deletion_node_'+str(self.uid)
 
     def get_name(self):
         return "Deletion "+str(self.uid)
@@ -1295,6 +1395,15 @@ class Deletion(object):
 
     def unmark_logical(self):
         self.logical_marked = False
+
+    def print_logical_node(self, printer):
+        printer.println(self.node_name+' [style=filled,label="'+\
+                'Deletion\\nUnique\ ID\ '+str(self.uid)+\
+                '",fillcolor=dodgerblue3,fontsize=14,fontcolor=black,'+\
+                'shape=record,penwidth=2];')
+
+    def print_dataflow(self, path, simplify):
+        return 0
 
     def compute_dependence_diff(self, verbose):
         # No need to do anything
@@ -1436,12 +1545,21 @@ class CopyOp(object):
     def physical_unmark(self):
         self.physical_marked = False
 
+    def print_logical_node(self, printer):
+        self.print_base_node(printer, True)
+
+    def print_dataflow(self, path, simplify):
+        return 0
+
     def print_physical_node(self, printer):
+        self.print_base_node(printer, False)
+
+    def print_base_node(self, printer, logical):
         label = 'Copy Across '+str(self.uid)+'\\n '+\
-                'Inst:\ '+hex(self.instances[0].iid)+'@'+\
+                ('' if logical else 'Inst:\ '+hex(self.instances[0].iid)+'@'+\
                 hex(self.instances[0].memory.uid)+'\ '+\
                 '\ \=\=\>\ '+hex(self.instances[1].iid)+'@'+\
-                hex(self.instances[1].memory.uid)+'\\n'+\
+                hex(self.instances[1].memory.uid)+'\\n')+\
                 'Field: \{'+self.reqs[0].to_field_mask_string()+'\}\ '+\
                 '\ \=\=\>\ \{'+self.reqs[1].to_field_mask_string()+'\}\\n'+\
                 'Src Req:\ '+self.reqs[0].to_summary_string()+\
@@ -1587,10 +1705,19 @@ class AcquireOp(object):
         # do nothing for the moment
         pass
 
+    def print_logical_node(self, printer):
+        self.print_base_node(printer, True)
+
+    def print_dataflow(self, path, simplify):
+        return 0
+
     def print_physical_node(self, printer):
+        self.print_base_node(printer, False)
+
+    def print_base_node(self, printer, logical):
         printer.println(self.node_name+\
                 ' [style=filled,label="Acquire '+str(self.uid)+'\\n '+\
-                'Inst: '+hex(self.instances[0].iid)+'\\n '+\
+                ('' if logical else 'Inst: '+hex(self.instances[0].iid)+'\\n ')+\
                 'Fields: '+self.reqs[0].to_field_mask_string()+'\\n '+\
                 self.reqs[0].to_summary_string()+\
                 ('' if self.reqs[0].region_node.name == None
@@ -1721,15 +1848,354 @@ class ReleaseOp(object):
         # do nothing for the moment
         pass
 
+    def print_logical_node(self, printer):
+        self.print_base_node(printer, True)
+
+    def print_dataflow(self, printer, simplify):
+        return 0
+
     def print_physical_node(self, printer):
+        self.print_base_node(printer, False)
+
+    def print_base_node(self, printer, logical):
         printer.println(self.node_name+\
                 ' [style=filled,label="Release '+str(self.uid)+'\\n '+\
-                'Inst: '+hex(self.instances[0].iid)+'\\n '+\
+                ('' if logical else 'Inst: '+hex(self.instances[0].iid)+'\\n ')+\
                 'Fields: '+self.reqs[0].to_field_mask_string()+'\\n '+\
                 self.reqs[0].to_summary_string()+\
                 ('' if self.reqs[0].region_node.name == None
                         else '\\n('+self.reqs[0].region_node.name+')')+\
                 '",fillcolor=darksalmon,fontsize=14,fontcolor=black,'+\
+                'shape=record,penwidth=2];')
+
+    def print_event_dependences(self, printer):
+        self.start_event.print_prev_event_dependences(printer, self.node_name)
+        pass
+
+    def print_prev_event_dependences(self, printer, later_name):
+        if later_name not in self.prev_event_deps:
+            printer.println(self.node_name+' -> '+later_name+
+                ' [style=solid,color=black,penwidth=2];')
+            self.prev_event_deps.add(later_name)
+        self.start_event.print_prev_event_dependences(printer, later_name)
+
+class DependentPartitionOp(object):
+    def __init__(self, state, uid, ctx, part, kind):
+        assert ctx is not None
+        self.state = state
+        self.uid = uid
+        self.ctx = ctx
+        self.partition_kind = kind
+        self.index_partition_node = part
+        self.reqs = dict()
+        self.logical_incoming = set()
+        self.logical_outgoing = set()
+        self.logical_marked = False
+        self.op_instances = set()
+        self.op_instances.add(self)
+        self.instances = dict()
+        self.generation = 0
+        self.start_event = None
+        self.term_event = None
+        self.physical_marked = False
+        self.node_name = 'dep_partition_node_'+str(self.uid)
+        self.prev_event_deps = set()
+
+    def get_name(self):
+        return "Dependent Partition "+str(self.uid)
+
+    def get_op_kind(self):
+        return DEPENDENT_PARTITION_OP
+
+    def get_inst_kind(self):
+        return DEPENDENT_PARTITION_INST
+
+    def add_requirement(self, idx, req):
+        assert idx not in self.reqs
+        self.reqs[idx] = req
+
+    def get_requirement(self, idx):
+        assert idx in self.reqs
+        return self.reqs[idx]
+
+    def add_req_field(self, idx, fid):
+        if not idx in self.reqs:
+            return False
+        self.reqs[idx].add_field(fid)
+        return True
+
+    def add_logical_incoming(self, op):
+        assert op <> self
+        self.logical_incoming.add(op)
+
+    def add_logical_outgoing(self, op):
+        assert op <> self
+        self.logical_outgoing.add(op)
+
+    def has_logical_path(self, target):
+        if target == self:
+            return True
+        if self.logical_marked:
+            return False
+        # Otherwise check all the outgoing edges
+        for op in self.logical_outgoing:
+            if op.has_logical_path(target):
+                return True
+        self.logical_marked = True
+        return False
+
+    def unmark_logical(self):
+        self.logical_marked = False
+
+    def add_events(self, start, term):
+        assert self.start_event == None
+        assert self.term_event == None
+        self.start_event = start
+        self.term_event = term
+
+    def event_graph_traverse(self, traverser):
+        pass
+        #traverser.visit_partition_op(self)
+
+    def add_instance(self, idx, inst):
+        assert idx not in self.instances
+        self.instances[idx] = inst
+
+    def get_instance(self, idx):
+        assert idx in self.instances
+        return self.instances[idx]
+
+    def physical_traverse(self, component):
+        if self.physical_marked:
+            return
+        self.physical_marked = True
+        component.add_partition_op(self)
+        self.start_event.physical_traverse(component)
+        self.term_event.physical_traverse(component)
+
+    def physical_unmark(self):
+        self.physical_marked = False
+
+    def find_dependences(self, op):
+        for idx,req in self.reqs.iteritems():
+            op.find_individual_dependences(self, req)
+
+    def find_individual_dependences(self, other_op, other_req):
+        for idx,req in self.reqs.iteritems():
+            dtype = self.state.compute_dependence(other_req, req)
+            if is_mapping_dependence(dtype):
+                self.ctx.add_adep(other_op, self, other_req.index, req.index, dtype)
+
+    def compute_dependence_diff(self, verbose):
+        # do nothing for the moment
+        pass
+
+    def check_data_flow(self):
+        # do nothing for the moment
+        pass
+
+    def print_logical_node(self, printer):
+        self.print_base_node(printer)
+
+    def print_dataflow(self, path, simplify):
+        return 0
+
+    def print_physical_node(self, printer):
+        self.print_base_node(printer)
+
+    def print_base_node(self, printer):
+        field_names = []
+        fspace = self.state.field_space_nodes[self.reqs[0].fspace]
+        for f in self.reqs[0].fields:
+            field_name = fspace.get_field_name(f)
+            if field_name == None:
+                field_name = str(f)
+            field_names.append(field_name)
+
+        if self.partition_kind == 0:
+            subtitle = 'By Field ' + ','.join(field_names)
+        elif self.partition_kind == 1:
+            subtitle = 'By Image of Field ' + ','.join(field_names)
+        elif self.partition_kind == 2:
+            subtitle = 'By Pre-Image of Field ' + ','.join(field_names)
+        else:
+            assert(false)
+
+        src = self.index_partition_node.parent.get_name()
+        dst = self.index_partition_node.get_name()
+
+        printer.println(self.node_name+\
+                ' [style=filled,label="Dependent Partition '+str(self.uid)+'\\nReq:'+\
+                self.reqs[0].to_summary_string()+'\\n'+\
+                ('' if self.reqs[0].region_node.name == None
+                    else '('+self.reqs[0].region_node.name+')\\n')+\
+                subtitle+'\\n'+src+' \=\=\> '+dst+\
+                '",fillcolor=steelblue,fontsize=14,fontcolor=black,'+\
+                'shape=record,penwidth=2];')
+
+    def print_event_dependences(self, printer):
+        self.start_event.print_prev_event_dependences(printer, self.node_name)
+        pass
+
+    def print_prev_event_dependences(self, printer, later_name):
+        if later_name not in self.prev_event_deps:
+            printer.println(self.node_name+' -> '+later_name+
+                ' [style=solid,color=black,penwidth=2];')
+            self.prev_event_deps.add(later_name)
+        self.start_event.print_prev_event_dependences(printer, later_name)
+
+class PendingPartitionOp(object):
+    def __init__(self, state, uid, ctx):
+        assert ctx is not None
+        self.state = state
+        self.uid = uid
+        self.ctx = ctx
+        self.reqs = dict()
+        self.logical_incoming = set()
+        self.logical_outgoing = set()
+        self.logical_marked = False
+        self.op_instances = set()
+        self.op_instances.add(self)
+        self.instances = dict()
+        self.generation = 0
+        self.start_event = None
+        self.term_event = None
+        self.physical_marked = False
+        self.node_name = 'pending_partition_node_'+str(self.uid)
+        self.prev_event_deps = set()
+        self.index_partition_node = None
+        self.kind = None
+
+    def set_index_partition_node(self, part):
+        self.index_partition_node = part
+
+    def set_pending_partition_kind(self, kind):
+        self.kind = kind
+
+    def get_name(self):
+        return "Pending Partition "+str(self.uid)
+
+    def get_op_kind(self):
+        return PENDING_PARTITION_OP
+
+    def get_inst_kind(self):
+        return PENDING_PARTITION_INST
+
+    def add_requirement(self, idx, req):
+        assert idx not in self.reqs
+        self.reqs[idx] = req
+
+    def get_requirement(self, idx):
+        assert idx in self.reqs
+        return self.reqs[idx]
+
+    def add_req_field(self, idx, fid):
+        if not idx in self.reqs:
+            return False
+        self.reqs[idx].add_field(fid)
+        return True
+
+    def add_logical_incoming(self, op):
+        assert op <> self
+        self.logical_incoming.add(op)
+
+    def add_logical_outgoing(self, op):
+        assert op <> self
+        self.logical_outgoing.add(op)
+
+    def has_logical_path(self, target):
+        if target == self:
+            return True
+        if self.logical_marked:
+            return False
+        # Otherwise check all the outgoing edges
+        for op in self.logical_outgoing:
+            if op.has_logical_path(target):
+                return True
+        self.logical_marked = True
+        return False
+
+    def unmark_logical(self):
+        self.logical_marked = False
+
+    def add_events(self, start, term):
+        assert self.start_event == None
+        assert self.term_event == None
+        self.start_event = start
+        self.term_event = term
+
+    def event_graph_traverse(self, traverser):
+        pass
+        #traverser.visit_partition_op(self)
+
+    def add_instance(self, idx, inst):
+        assert idx not in self.instances
+        self.instances[idx] = inst
+
+    def get_instance(self, idx):
+        assert idx in self.instances
+        return self.instances[idx]
+
+    def physical_traverse(self, component):
+        if self.physical_marked:
+            return
+        self.physical_marked = True
+        component.add_partition_op(self)
+        self.start_event.physical_traverse(component)
+        self.term_event.physical_traverse(component)
+
+    def physical_unmark(self):
+        self.physical_marked = False
+
+    def find_dependences(self, op):
+        for idx,req in self.reqs.iteritems():
+            op.find_individual_dependences(self, req)
+
+    def find_individual_dependences(self, other_op, other_req):
+        for idx,req in self.reqs.iteritems():
+            dtype = self.state.compute_dependence(other_req, req)
+            if is_mapping_dependence(dtype):
+                self.ctx.add_adep(other_op, self, other_req.index, req.index, dtype)
+
+    def compute_dependence_diff(self, verbose):
+        # do nothing for the moment
+        pass
+
+    def check_data_flow(self):
+        # do nothing for the moment
+        pass
+
+    def print_logical_node(self, printer):
+        self.print_base_node(printer)
+
+    def print_dataflow(self, path, simplify):
+        return 0
+
+    def print_physical_node(self, printer):
+        self.print_base_node(printer)
+
+    def print_base_node(self, printer):
+        kind_str = None
+        if self.kind == 0:
+            kind_str = "Equal Partition"
+        elif self.kind == 1:
+            kind_str = "Weighted Partition"
+        elif self.kind == 2:
+            kind_str = "Union Partition"
+        elif self.kind == 3:
+            kind_str = "Intersection Partition"
+        elif self.kind == 4:
+            kind_str = "Difference Partition"
+
+        if self.index_partition_node <> None:
+            dst = self.index_partition_node.get_name()
+        else:
+            dst = ""
+
+        printer.println(self.node_name+\
+                ' [style=filled,label="Pending Partition '+str(self.uid)+\
+                ("" if kind_str == None else "\\nType: " + kind_str + "\\n")+\
+                dst+'",fillcolor=honeydew,fontsize=14,fontcolor=black,'+\
                 'shape=record,penwidth=2];')
 
     def print_event_dependences(self, printer):
@@ -1812,24 +2278,39 @@ class Close(object):
     def unmark_logical(self):
         self.logical_marked = False
 
+    def print_logical_node(self, printer):
+        self.print_base_node(printer)
+
+    def print_dataflow(self, path, simplify):
+        return 0
+
     def print_physical_node(self, printer):
+        if self.state.verbose:
+            self.print_base_node(printer)
+
+    def print_base_node(self, printer):
         color = 'orangered'
         if self.is_inter_close_op:
             color = 'red'
+        req_string = ''
+        if self.state.verbose:
+            req_string = '\\n'+self.requirement.dot_requirement() 
         printer.println(self.node_name+' [style=filled,label="'+\
-            'Close\ '+str(self.uid)+'\ in\ '+self.ctx.name+'",'+\
+            'Close\ '+str(self.uid)+'\ in\ '+self.ctx.name+req_string+'",'+\
             'fillcolor='+color+',fontsize=14,fontcolor=black,'+\
             'shape=record,penwidth=2];')
 
     def print_event_dependences(self, printer):
-        self.start_event.print_prev_event_dependences(printer, self.node_name)
+        if self.state.verbose:
+            self.start_event.print_prev_event_dependences(printer, self.node_name)
 
     def print_prev_event_dependences(self, printer, later_name):
-        if later_name not in self.prev_event_deps:
-            printer.println(self.node_name+' -> '+later_name+
-                ' [style=solid,color=black,penwidth=2];')
-            self.prev_event_deps.add(later_name)
-        self.start_event.print_prev_event_dependences(printer, later_name)
+        if self.state.verbose:
+            if later_name not in self.prev_event_deps:
+                printer.println(self.node_name+' -> '+later_name+
+                    ' [style=solid,color=black,penwidth=2];')
+                self.prev_event_deps.add(later_name)
+            self.start_event.print_prev_event_dependences(printer, later_name)
 
     def add_events(self, start, term):
         assert self.start_event == None
@@ -1951,6 +2432,9 @@ class Copy(object):
         self.prev_event_deps = set()
         self.generation = 0
 
+    def get_name(self):
+        return "Copy "+str(self.uid)
+
     def get_ctx(self):
         return None
 
@@ -2039,6 +2523,7 @@ class PhysicalInstance(object):
         self.node_name = "physical_inst_"+str(iid)+"_"+str(ver)
         self.igraph_outgoing_deps = set()
         self.igraph_incoming_deps = set()
+        self.fields = list()
 
     def add_op_user(self, op, idx):
         req = op.get_requirement(idx)
@@ -2052,11 +2537,15 @@ class PhysicalInstance(object):
             self.op_users[field][op].append(req)
         return True
 
+    def add_field(self, fid):
+        self.fields.append(fid)
+
     def print_igraph_node(self, printer):
         if self.region.name <> None:
             label = self.region.name+'\\n'+hex(self.iid)+'@'+hex(self.memory.uid)
         else:
             label = hex(self.iid)+'@'+hex(self.memory.uid)
+        label = label+'\\nfields: '+','.join(r for r in list_to_ranges(self.fields))
         printer.println(self.node_name+' [style=filled,label="'+label+\
                 '",fillcolor=dodgerblue4,fontsize=12,fontcolor=white,'+\
                 'shape=oval,penwidth=0,margin=0];')
@@ -2087,6 +2576,7 @@ class ReductionInstance(object):
         self.node_name = "reduction_inst_"+str(iid)+"_"+str(ver)
         self.igraph_outgoing_deps = set()
         self.igraph_incoming_deps = set()
+        self.fields = list()
 
     def add_op_user(self, op, idx):
         req = op.get_requirement(idx)
@@ -2100,11 +2590,15 @@ class ReductionInstance(object):
             self.op_users[field][op].append(req)
         return True
 
+    def add_field(self, fid):
+        self.fields.append(fid)
+
     def print_igraph_node(self, printer):
         if self.region.name <> None:
             label = self.region.name+'\\n'+hex(self.iid)+'@'+hex(self.memory.uid)
         else:
             label = hex(self.iid)+'@'+hex(self.memory.uid)
+        label = label+'\\nfields: '+','.join(r for r in list_to_ranges(self.fields))
         printer.println(self.node_name+' [style=filled,label="'+label+\
                 '",fillcolor=deeppink3,fontsize=10,fontcolor=white,'+\
                 'shape=oval,penwidth=0,margin=0];')
@@ -2132,6 +2626,9 @@ class EventHandle(object):
     def __eq__(self, other):
         return (self.uid,self.gen) == (other.uid,other.gen)
 
+    def __repr__(self):
+        return "ev(" + hex(self.uid) + "," + str(self.gen) + ")"
+
     def exists(self):
         return (self.uid <> 0)
 
@@ -2148,13 +2645,16 @@ class PhaseBarrier(object):
     def __eq__(self, other):
         return (self.uid,self.gen) == (other.uid,other.gen)
 
+    def __repr__(self):
+        return "pb(" + hex(self.uid) + "," + str(self.gen) + ")"
+
     def exists(self):
         return (self.uid <> 0)
 
     def print_physical_node(self, printer):
         printer.println(self.node_name+\
                 ' [style=filled,label="PB '+hex(self.uid)+'\\n '+\
-                str(self.gen)+\
+                str(self.gen)+"->"+str(self.gen+1)+\
                 '",fillcolor=deeppink3,fontsize=12,fontcolor=white,'+\
                 'shape=circle,penwidth=0,margin=0];')
 
@@ -2325,6 +2825,12 @@ class MappingDependence(object):
     def __eq__(self,other):
         return (self.ctx == other.ctx) and (self.op1 is other.op1) and (self.op2 is other.op2) and (self.idx1 == other.idx1) and (self.idx2 == other.idx2) and (self.dtype == other.dtype)
 
+    def print_dataflow_edge(self, printer, previous_pairs):
+        pair = (self.op1,self.op2)
+        if pair not in previous_pairs:
+            printer.println(self.op1.node_name+' -> '+self.op2.node_name+
+                            ' [style=solid,color=black,penwidth=2];')
+            previous_pairs.add(pair)
 
 class Event(object):
     def __init__(self, state, handle):
@@ -2336,6 +2842,10 @@ class Event(object):
         self.implicit_outgoing = set()
         self.physical_marked = False
         self.generation = 0
+        self.prev_event_deps = set()
+
+    def get_name(self):
+        return repr(self.handle)
 
     def add_physical_incoming(self, event):
         assert self <> event
@@ -2357,6 +2867,11 @@ class Event(object):
         if self.physical_marked or not self.handle.exists():
             return
         self.physical_marked = True
+        if self.is_phase_barrier() and \
+                len(self.physical_outgoing) == 0 and \
+                len(self.physical_incoming) == 1 and \
+                list(self.physical_incoming)[0].is_phase_barrier():
+            return
         component.add_event(self)
         if self.is_phase_barrier():
             component.add_phase_barrier(self.handle)
@@ -2377,14 +2892,15 @@ class Event(object):
                 n.print_prev_event_dependences(printer, self.handle.node_name)
 
     def print_prev_event_dependences(self, printer, name):
-        if self.is_phase_barrier():
-            self.handle.print_prev_event_dependences(printer, name)
-            for n in self.physical_incoming:
-                n.print_prev_event_dependences(printer, self.handle.node_name)
-        else:
-            for n in self.physical_incoming:
-                n.print_prev_event_dependences(printer, name)
-
+        if name not in self.prev_event_deps:
+            #self.prev_event_deps.add(name)
+            if self.is_phase_barrier():
+                self.handle.print_prev_event_dependences(printer, name)
+                for n in self.physical_incoming:
+                    n.print_prev_event_dependences(printer, self.handle.node_name)
+            else:
+                for n in self.physical_incoming:
+                    n.print_prev_event_dependences(printer, name)
     def print_prev_filtered_dependences(self, printer, name, printed_nodes):
         for n in self.physical_incoming:
             n.print_prev_filtered_dependences(printer, name, printed_nodes)
@@ -2422,6 +2938,8 @@ class Point(object):
             first = False
         return result
 
+    def __hash__(self):
+        return hash(self.to_simple_string())
 
 class EventGraphTraverser(object):
     def __init__(self, forwards, implicit, use_gen, generation, 
@@ -2525,9 +3043,11 @@ class EventGraphTraverser(object):
         if not do_next:
             return
         if self.forwards:
-            node.term_event.event_graph_traverse(self)
+            if node.term_event <> None:
+                node.term_event.event_graph_traverse(self)
         else:
-            node.start_event.event_graph_traverse(self)
+            if node.start_event <> None:
+                node.start_event.event_graph_traverse(self)
         if self.post_close_fn <> None:
             self.post_close_fn(node, self)
 
@@ -2596,6 +3116,7 @@ class ConnectedComponent(object):
         self.copies = dict()
         self.acquires = dict()
         self.releases = dict()
+        self.partition_ops = dict()
         self.phase_barriers = set()
         self.processors = state.processors
         self.utilities = state.utilities
@@ -2640,13 +3161,19 @@ class ConnectedComponent(object):
         if release.ctx != None:
             self.parent_tasks[release.uid] = release.ctx
 
+    def add_partition_op(self, partition_op):
+        assert partition_op not in self.partition_ops
+        self.partition_ops[partition_op.uid] = partition_op
+        if partition_op.ctx != None:
+            self.parent_tasks[partition_op.uid] = partition_op.ctx
+
     def add_phase_barrier(self, phase_barrier):
         assert phase_barrier not in self.phase_barriers
         self.phase_barriers.add(phase_barrier)
 
     def num_ops(self):
         return len(self.tasks)+len(self.maps)+len(self.closes)+len(self.copies)+\
-                len(self.acquires)+len(self.releases)
+                len(self.acquires)+len(self.releases)+len(self.partition_ops)
 
     def empty(self):
         total = self.num_ops()
@@ -2667,6 +3194,8 @@ class ConnectedComponent(object):
             a.physical_unmark()
         for r in self.releases.itervalues():
             r.physical_unmark()
+        for p in self.partition_ops.itervalues():
+            p.physical_unmark()
 
     def generate_graph(self, idx, path, simplify):
         name = 'event_graph_'+str(idx)
@@ -2684,6 +3213,8 @@ class ConnectedComponent(object):
             a.print_physical_node(printer)
         for r in self.releases.itervalues():
             r.print_physical_node(printer)
+        for p in self.partition_ops.itervalues():
+            p.print_physical_node(printer)
         for p in self.phase_barriers:
             p.print_physical_node(printer)
         # Now print the dependences
@@ -2699,6 +3230,8 @@ class ConnectedComponent(object):
             a.print_event_dependences(printer)
         for r in self.releases.itervalues():
             r.print_event_dependences(printer)
+        for p in self.partition_ops.itervalues():
+            p.print_event_dependences(printer)
         for e in self.events:
             e.print_event_dependences(printer)
         # Print links to contexts when it's in verbose mode
@@ -2714,6 +3247,8 @@ class ConnectedComponent(object):
                     op = self.acquires[uid]
                 elif uid in self.releases:
                     op = self.releases[uid]
+                elif uid in self.partition_ops:
+                    op = self.partition_ops[uid]
                 else:
                     continue
                 printer.println(ctx.node_name+' -> '+op.node_name+\
@@ -2721,17 +3256,7 @@ class ConnectedComponent(object):
                 if ctx.uid not in self.tasks:
                     ctx.print_physical_node(printer)
 
-        dot_file = printer.close()
-        pdf_file = name+'.pdf'
-        try:
-            if simplify:
-                command = ['tred ' + dot_file + ' | dot -Tpdf -o '+pdf_file]
-            else:
-                command = ['dot -Tpdf -o '+pdf_file+' '+dot_file]
-            subprocess.check_call(command,shell=True)
-        except:
-            print "WARNING: DOT failure, image for event graph "+str(idx)+" not generated"
-            subprocess.call(['rm -f core '+pdf_file],shell=True)
+        printer.print_pdf_after_close(simplify)
 
     def collect_physical_instances(self):
         def collect(op):
@@ -2776,7 +3301,7 @@ class ConnectedComponent(object):
         for c in self.copies.itervalues():
             c.print_igraph_edges(printer)
 
-        printer.print_pdf_after_close()
+        printer.print_pdf_after_close(True)
 
 class GraphPrinter(object):
     def __init__(self,path,name,dir='LR'):
@@ -2801,13 +3326,17 @@ class GraphPrinter(object):
         self.out.close()
         return self.filename
 
-    def print_pdf_after_close(self):
+    def print_pdf_after_close(self, simplify):
         dot_file = self.close()
         pdf_file = self.name+".pdf"
         try:
-            command = ['dot -Tpdf -o'+pdf_file+' '+dot_file]
+            if simplify:
+                command = ['tred ' + dot_file + ' | dot -Tpdf -o '+pdf_file]
+            else:
+                command = ['dot -Tpdf -o'+pdf_file+' '+dot_file]
             subprocess.check_call(command,shell=True)
         except:
+            print "WARNING: DOT failure, image for graph "+str(self.name)+" not generated"
             subprocess.call(['rm -f core '+pdf_file],shell=True)
 
     def up(self):
@@ -2908,11 +3437,17 @@ class State(object):
         self.index_space_nodes[uid].set_name(name)
         return True
 
-    def add_index_partition(self, pid, uid, disjoint, color):
+    def add_index_partition(self, pid, uid, disjoint, dim, v1, v2, v3):
         assert uid not in self.index_part_nodes
         if pid not in self.index_space_nodes:
             return False
-        self.index_part_nodes[uid] = IndexPartNode(self, uid, disjoint, color, 
+        point = Point(0, dim)
+        point.add_value(v1)
+        if dim > 1:
+            point.add_value(v2)
+            if dim > 2:
+                point.add_value(v3)
+        self.index_part_nodes[uid] = IndexPartNode(self, uid, disjoint, point,
                                                     self.index_space_nodes[pid])
         return True
 
@@ -2921,11 +3456,17 @@ class State(object):
         self.index_part_nodes[uid].set_name(name)
         return True
 
-    def add_index_subspace(self, pid, uid, color):
+    def add_index_subspace(self, pid, uid, dim, v1, v2, v3):
         assert uid not in self.index_space_nodes
         if pid not in self.index_part_nodes:
             return False
-        self.index_space_nodes[uid] = IndexSpaceNode(self, uid, color, 
+        point = Point(0, dim)
+        point.add_value(v1)
+        if dim > 1:
+            point.add_value(v2)
+            if dim > 2:
+                point.add_value(v3)
+        self.index_space_nodes[uid] = IndexSpaceNode(self, uid, point,
                                               self.index_part_nodes[pid])
         return True
 
@@ -3063,6 +3604,34 @@ class State(object):
         self.ops[ctx].add_operation(self.ops[uid])
         return True
 
+    def add_dependent_partition_op(self, ctx, uid, pid, kind):
+        assert uid not in self.ops
+        if ctx not in self.ops:
+            return False
+        if pid not in self.index_part_nodes:
+            return False
+        self.ops[uid] = DependentPartitionOp(self, uid, self.ops[ctx],
+                                             self.index_part_nodes[pid], kind)
+        self.ops[ctx].add_operation(self.ops[uid])
+        return True
+
+    def add_pending_partition_op(self, ctx, uid):
+        assert uid not in self.ops
+        if ctx not in self.ops:
+            return False
+        self.ops[uid] = PendingPartitionOp(self, uid, self.ops[ctx])
+        self.ops[ctx].add_operation(self.ops[uid])
+        return True
+
+    def set_pending_partition_target(self, uid, pid, kind):
+        if uid not in self.ops:
+            return False
+        if pid not in self.index_part_nodes:
+            return False
+        self.ops[uid].set_index_partition_node(self.index_part_nodes[pid])
+        self.ops[uid].set_pending_partition_kind(kind)
+        return True
+
     def add_index_slice(self, index_id, slice_id):
         if index_id not in self.ops:
             return False
@@ -3168,14 +3737,19 @@ class State(object):
     def add_copy_events(self, srcman, dstman, index, field, tree,
                         startid, startgen, termid, termgen, redop):
         if srcman not in self.instances:
+            print "srcman " + str(srcman) + " is missing"
             return False
         if dstman not in self.instances:
+            print "dstman " + str(dstman) + " is missing"
             return False
         if index not in self.index_space_nodes:
+            print "index " + str(index) + " is missing"
             return False
         if field not in self.field_space_nodes:
+            print "field " + str(field) + " is missing"
             return False
         if tree not in self.region_trees:
+            print "tree " + str(tree) + " is missing"
             return False
         e1 = self.get_event_from_id(startid,startgen)
         e2 = self.get_event_from_id(termid,termgen)
@@ -3234,6 +3808,12 @@ class State(object):
             self.instances[iid].append(inst)
         else:
             self.instances[iid] = [inst]
+        return True
+
+    def add_instance_field(self, iid, fid):
+        if not iid in self.instances:
+            return False
+        self.instances[iid][-1].add_field(fid)
         return True
 
     def add_op_user(self, uid, idx, iid):
@@ -3406,6 +3986,12 @@ class State(object):
                                                     print "      Second Requirement:"
                                                     req2.print_requirement()
 
+    def print_dataflow_graphs(self, path, simplify_graphs):
+        total_dataflow_graphs = 0
+        for uid,op in self.ops.iteritems():
+            total_dataflow_graphs += op.print_dataflow(path,simplify_graphs) 
+        print "Found "+str(total_dataflow_graphs)+" dataflow graphs"
+
     def print_pictures(self, path, simplify_graphs):
         components = list()
         for h,e in self.events.iteritems():
@@ -3440,16 +4026,55 @@ class State(object):
             if isinstance(index_space_node, IndexSpaceNode) and \
                     index_space_node.parent == None:
                         index_space_node.print_graph(index_space_printer)
-        index_space_printer.print_pdf_after_close()
+        index_space_printer.print_pdf_after_close(simplify_graphs)
 
         field_space_printer = GraphPrinter(path, "field_space_graph")
         for field_space_node in self.field_space_nodes.itervalues():
             field_space_node.print_graph(field_space_printer)
-        field_space_printer.print_pdf_after_close()
+        field_space_printer.print_pdf_after_close(simplify_graphs)
 
         region_graph_printer = GraphPrinter(path, "region_graph")
         for region_node in self.region_trees.itervalues():
             if simplify_graphs:
                 region_node.mark_named_children()
             region_node.print_graph(region_graph_printer, simplify_graphs)
-        region_graph_printer.print_pdf_after_close()
+        region_graph_printer.print_pdf_after_close(simplify_graphs)
+
+    def dump_event_paths(self):
+        for uid1,op1 in self.ops.iteritems():
+            for uid2,op2 in self.ops.iteritems():
+                if op1 <> op2 and not (isinstance(op1, IndexTask) or isinstance(op2, IndexTask)) and\
+                        not (isinstance(op1, Deletion) or isinstance(op2, Deletion)):
+                    def traverse_event(node, traverser):
+                        if node in traverser.visited:
+                            return False
+                        else:
+                            traverser.path.append(node)
+                            return True
+                    def traverse_op(node, traverser):
+                        traverser.path.append(node)
+                        if traverser.target == node:
+                            traverser.paths.append(traverser.path)
+                            traverser.path = list(traverser.path)
+                            return False
+                        else:
+                            return True
+                    def post_traverse(node, traverser):
+                        if not (node in traverser.visited):
+                            traverser.visited.add(node)
+                            traverser.path.pop()
+                    traverser = EventGraphTraverser(True, False, True,
+                            self.get_next_traverser_gen(), traverse_event,
+                            traverse_op, traverse_op, traverse_op, traverse_op,
+                            traverse_op, traverse_op, post_traverse, post_traverse,
+                            post_traverse, post_traverse, post_traverse, post_traverse,
+                            post_traverse)
+                    traverser.target = op2
+                    traverser.path = list()
+                    traverser.paths = list()
+                    traverser.visited = set()
+                    op1.event_graph_traverse(traverser)
+                    if len(traverser.paths) > 0:
+                        print("##### paths between "+op1.get_name()+" and "+op2.get_name()+" #####")
+                        for p in traverser.paths:
+                            print('    ' + ' -> '.join([op.get_name() for op in p]))

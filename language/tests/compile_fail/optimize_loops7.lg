@@ -13,7 +13,9 @@
 -- limitations under the License.
 
 -- fails-with:
--- loop optimization failed: argument 1 interferes with itself
+-- optimize_loops7.lg:71: loop optimization failed: argument 1 interferes with itself
+--       g(p_disjoint[(j + 1) % n])
+--       ^
 
 import "legion"
 
@@ -48,7 +50,7 @@ end
 
 task main()
   var n = 5
-  var r = region(int, n)
+  var r = region(ispace(ptr, n), int)
   var rc = c.legion_coloring_create()
   for i = 0, n do
     c.legion_coloring_ensure_color(rc, i)

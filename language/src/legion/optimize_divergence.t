@@ -52,8 +52,8 @@ local analyze_region_divergence = {}
 
 function analyze_region_divergence.expr_field_access(cx, node)
   local value_type = std.as_read(node.value.expr_type)
-  if std.is_ptr(value_type) and #value_type:points_to_regions() > 1 then
-    cx:mark_region_divergence(unpack(value_type:points_to_regions()))
+  if std.is_bounded_type(value_type) and #value_type:bounds() > 1 then
+    cx:mark_region_divergence(unpack(value_type:bounds()))
   end
   analyze_region_divergence.expr(cx, node.value)
 end
@@ -90,6 +90,10 @@ function analyze_region_divergence.expr_raw_fields(cx, node)
   analyze_region_divergence.expr(cx, node.region)
 end
 
+function analyze_region_divergence.expr_raw_value(cx, node)
+  analyze_region_divergence.expr(cx, node.value)
+end
+
 function analyze_region_divergence.expr_isnull(cx, node)
   analyze_region_divergence.expr(cx, node.pointer)
 end
@@ -113,8 +117,8 @@ end
 
 function analyze_region_divergence.expr_deref(cx, node)
   local value_type = std.as_read(node.value.expr_type)
-  if std.is_ptr(value_type) and #value_type:points_to_regions() > 1 then
-    cx:mark_region_divergence(unpack(value_type:points_to_regions()))
+  if std.is_bounded_type(value_type) and #value_type:bounds() > 1 then
+    cx:mark_region_divergence(unpack(value_type:bounds()))
   end
   analyze_region_divergence.expr(cx, node.value)
 end
@@ -167,6 +171,9 @@ function analyze_region_divergence.expr(cx, node)
   elseif node:is(ast.typed.ExprRawRuntime) then
     return
 
+  elseif node:is(ast.typed.ExprRawValue) then
+    return analyze_region_divergence.expr_raw_value(cx, node)
+
   elseif node:is(ast.typed.ExprIsnull) then
     return analyze_region_divergence.expr_isnull(cx, node)
 
@@ -181,6 +188,9 @@ function analyze_region_divergence.expr(cx, node)
 
   elseif node:is(ast.typed.ExprStaticCast) then
     return analyze_region_divergence.expr_static_cast(cx, node)
+
+  elseif node:is(ast.typed.ExprIspace) then
+    return
 
   elseif node:is(ast.typed.ExprRegion) then
     return
@@ -361,18 +371,7 @@ function optimize_divergence.stat_task(cx, node)
   analyze_region_divergence.block(cx, node.body)
   local divergence = invert_forest(cx.region_div)
 
-  return ast.typed.StatTask {
-    name = node.name,
-    params = node.params,
-    return_type = node.return_type,
-    privileges = node.privileges,
-    constraints = node.constraints,
-    body = node.body,
-    config_options = node.config_options,
-    region_divergence = divergence,
-    prototype = node.prototype,
-    span = node.span,
-  }
+  return node { region_divergence = divergence }
 end
 
 function optimize_divergence.stat_top(cx, node)

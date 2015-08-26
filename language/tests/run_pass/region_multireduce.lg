@@ -45,7 +45,6 @@ where reads(r1), writes(r1) do
     h2b(p1_disjoint[i])
   end
 
-  __demand(__parallel)
   for i = 0, n do
     h2(p1_disjoint[i])
   end
@@ -54,7 +53,7 @@ with_partitions:printpretty()
 
 task main()
   var n = 1
-  var r = region(int, n)
+  var r = region(ispace(ptr, n), int)
   var rc = c.legion_coloring_create()
   for i = 0, n do
     c.legion_coloring_ensure_color(rc, i)
