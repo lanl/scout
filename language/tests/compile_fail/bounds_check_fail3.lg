@@ -12,33 +12,16 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
+-- fails-with:
+-- assertion failed: array access to int32[5] is out-of-bounds
+
 import "legion"
 
-task f(s : region(int), y : ptr(int, s)) : int
-where reads(s) do
-  return @y
-end
-
-task h(s : region(int), y : ptr(int, s)) : int
-where reads(s), writes(s) do
-  @y += 100
-  return @y
-end
-
-task g() : int
-  var r = region(ispace(ptr, 5), int)
-  var x = new(ptr(int, r))
-  @x = 5
-  f(r, x)
-  h(r, x)
-  f(r, x)
-  for i = 0, 5 do
-    h(r, x)
-  end
-  return f(r, x)
-end
+-- This tests the compiler bounds checks for Terra arrays.
 
 task main()
-  legionlib.assert(g() == 605, "test failed")
+  var r = region(ispace(ptr, 3), int[5])
+  var x = new(ptr(int[5], r))
+  (@x)[5] = 5
 end
 legionlib.start(main)

@@ -12,33 +12,24 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
+-- fails-with:
+-- assertion failed: pointer ptr(int32, $r) is out-of-bounds
+
 import "legion"
 
-task f(s : region(int), y : ptr(int, s)) : int
-where reads(s) do
-  return @y
-end
+-- This tests the compiler bounds checks for regions.
 
-task h(s : region(int), y : ptr(int, s)) : int
-where reads(s), writes(s) do
-  @y += 100
-  return @y
-end
+local c = legionlib.c
 
-task g() : int
-  var r = region(ispace(ptr, 5), int)
-  var x = new(ptr(int, r))
-  @x = 5
-  f(r, x)
-  h(r, x)
-  f(r, x)
-  for i = 0, 5 do
-    h(r, x)
+local function raw_to_ptr(t)
+  return terra(x : int)
+    return t { __ptr = c.legion_ptr_t { value = x } }
   end
-  return f(r, x)
 end
 
 task main()
-  legionlib.assert(g() == 605, "test failed")
+  var r = region(ispace(ptr, 5), int)
+  var x = [raw_to_ptr(ptr(int, r))](0)
+  @x = 5
 end
 legionlib.start(main)

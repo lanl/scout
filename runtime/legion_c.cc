@@ -436,6 +436,28 @@ legion_index_partition_create_domain_coloring(
   return CObjectWrapper::wrap(ip);
 }
 
+legion_index_partition_t
+legion_index_partition_create_by_field(legion_runtime_t runtime_,
+                                       legion_context_t ctx_,
+                                       legion_logical_region_t handle_,
+                                       legion_logical_region_t parent_,
+                                       legion_field_id_t fid,
+                                       legion_domain_t color_space_,
+                                       int color /* = AUTO_GENERATE_ID */,
+                                       bool allocable /* = false */)
+{
+  HighLevelRuntime *runtime = CObjectWrapper::unwrap(runtime_);
+  Context ctx = CObjectWrapper::unwrap(ctx_);
+  LogicalRegion handle = CObjectWrapper::unwrap(handle_);
+  LogicalRegion parent = CObjectWrapper::unwrap(parent_);
+  Domain color_space = CObjectWrapper::unwrap(color_space_);
+
+  IndexPartition ip =
+    runtime->create_partition_by_field(ctx, handle, parent, fid, color_space,
+                                       color, allocable);
+  return CObjectWrapper::wrap(ip);
+}
+
 legion_index_space_t
 legion_index_partition_get_index_subspace(legion_runtime_t runtime_,
                                           legion_context_t ctx_,
@@ -2437,6 +2459,70 @@ legion_runtime_register_task_uint64(
   return HighLevelRuntime::register_legion_task<
     uint64_t, legion_task_pointer_uint64_t, task_wrapper_uint64>(
     id, proc_kind, single, index, task_pointer, vid, options, task_name);
+}
+
+class FunctorWrapper : public ProjectionFunctor {
+public:
+  FunctorWrapper(HighLevelRuntime *rt,
+                 legion_projection_functor_logical_region_t region_fn,
+                 legion_projection_functor_logical_partition_t partition_fn)
+    : ProjectionFunctor(rt)
+    , region_functor(region_fn)
+    , partition_functor(partition_fn)
+  {
+  }
+
+  LogicalRegion project(Context ctx, Task *task,
+                        unsigned index,
+                        LogicalRegion upper_bound,
+                        const DomainPoint &point)
+  {
+    legion_runtime_t runtime_ = CObjectWrapper::wrap(runtime);
+    legion_context_t ctx_ = CObjectWrapper::wrap(ctx);
+    legion_task_t task_ = CObjectWrapper::wrap(task);
+    legion_logical_region_t upper_bound_ = CObjectWrapper::wrap(upper_bound);
+    legion_domain_point_t point_ = CObjectWrapper::wrap(point);
+
+    assert(region_functor);
+    legion_logical_region_t result =
+      region_functor(runtime_, ctx_, task_, index, upper_bound_, point_);
+    return CObjectWrapper::unwrap(result);
+  }
+
+  LogicalRegion project(Context ctx, Task *task,
+                        unsigned index,
+                        LogicalPartition upper_bound,
+                        const DomainPoint &point)
+  {
+    legion_runtime_t runtime_ = CObjectWrapper::wrap(runtime);
+    legion_context_t ctx_ = CObjectWrapper::wrap(ctx);
+    legion_task_t task_ = CObjectWrapper::wrap(task);
+    legion_logical_partition_t upper_bound_ = CObjectWrapper::wrap(upper_bound);
+    legion_domain_point_t point_ = CObjectWrapper::wrap(point);
+
+    assert(partition_functor);
+    legion_logical_region_t result =
+      partition_functor(runtime_, ctx_, task_, index, upper_bound_, point_);
+    return CObjectWrapper::unwrap(result);
+  }
+
+private:
+  legion_projection_functor_logical_region_t region_functor;
+  legion_projection_functor_logical_partition_t partition_functor;
+};
+
+void
+legion_runtime_register_projection_functor(
+  legion_runtime_t runtime_,
+  legion_projection_id_t id,
+  legion_projection_functor_logical_region_t region_functor,
+  legion_projection_functor_logical_partition_t partition_functor)
+{
+  HighLevelRuntime *runtime = CObjectWrapper::unwrap(runtime_);
+
+  FunctorWrapper *functor =
+    new FunctorWrapper(runtime, region_functor, partition_functor);
+  runtime->register_projection_functor(id, functor);
 }
 
 // -----------------------------------------------------------------------
