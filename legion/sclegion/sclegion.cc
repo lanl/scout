@@ -138,14 +138,14 @@ public:
 
     size_t count;
     LogicalRegion logicalRegion;
-    LogicalPartition disjointLogicalPartition, ghostLogicalPartition;
-    IndexPartition disjointIndexPartition, ghostIndexPartition;
+    LogicalPartition logicalPartition;
+    IndexPartition indexPartition;
     FieldSpace fieldSpace;
     Domain domain;
     IndexSpace indexSpace;
     FieldAllocator fieldAllocator;
     Domain colorDomain;
-    DomainColoring disjointColoring, ghostColoring;
+    DomainColoring coloring;
   };
 
   Mesh(HighLevelRuntime* runtime, Context context, size_t rank, size_t width,
@@ -181,36 +181,6 @@ public:
     }
   }
 
-  size_t getNumSubregions() {
-    size_t numSubregions = 1;
-    char *p;
-    p = getenv("SC_NTHREADS");
-    if (p != NULL) {
-      numSubregions = atoi(p);
-    }
-    switch(rank_) {
-    case 1:
-      if (numSubregions > width_) {
-        numSubregions = width_;
-      }
-      break;
-    case 2:
-      if (numSubregions > height_) {
-        numSubregions = height_;
-      }
-      break;
-    case 3:
-      if (numSubregions > depth_) {
-        numSubregions = depth_;
-      }
-      break;
-    default:
-      assert(false && "bad rank");
-    }
-    printf("Number of Subregions = %d\n",numSubregions);
-    return numSubregions;
-  }
-
   void init() {
     for (size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i) {
       Element& element = elements_[i];
@@ -244,10 +214,7 @@ public:
       element.logicalRegion = runtime_->create_logical_region(context_,
           element.indexSpace, element.fieldSpace);
 
-      size_t numSubregions = getNumSubregions();
-
-      element.colorDomain = Domain::from_rect<1>(
-          Rect<1>(Point<1>(0), Point<1>(numSubregions - 1)));
+      size_t numSubregions = 1;
 
       MeshHeader header;
       header.width = width_;
@@ -259,37 +226,17 @@ public:
       element.colorDomain = Domain::from_rect<1>(
           Rect<1>(Point<1>(0), Point<1>(numSubregions - 1)));
 
-      size_t index = 0;
-
-      for (size_t color = 0; color < numSubregions; color++) {
-
-        printf("color %zu\n", color);
-
-        element.ghostColoring[color] = Domain::from_rect<1>(
+      element.coloring[0] = Domain::from_rect<1>(
             Rect<1>(Point<1>(0),
             Point<1>(element.count-1)));
 
-        size_t endindex = getEndOffset(&header, color);
-
-        printf("dr %zu %zu %zu\n", color, index, endindex - 1);
-        Rect<1> subrect(Point<1>(index), Point<1>(endindex - 1));
-        element.disjointColoring[color] = Domain::from_rect<1>(subrect);
-        index = endindex;
-      } // end for color
-
-      element.ghostIndexPartition = runtime_->create_index_partition(
+      element.indexPartition = runtime_->create_index_partition(
           context_, element.indexSpace, element.colorDomain,
-          element.ghostColoring, true);
+          element.coloring, true);
 
-      element.ghostLogicalPartition = runtime_->get_logical_partition(
-          context_, element.logicalRegion, element.ghostIndexPartition);
+      element.logicalPartition = runtime_->get_logical_partition(
+          context_, element.logicalRegion, element.indexPartition);
 
-      element.disjointIndexPartition = runtime_->create_index_partition(
-               context_, element.indexSpace, element.colorDomain,
-               element.disjointColoring, true);
-
-       element.disjointLogicalPartition = runtime_->get_logical_partition(
-               context_, element.logicalRegion, element.disjointIndexPartition);
     }
   }
 
@@ -503,6 +450,34 @@ public:
     }
 
 
+    char* addFieldInfo(char* args, size_t region, size_t count){
+        for(auto f : fields_){
+          MeshFieldInfo* info = (MeshFieldInfo*)args;
+          info->region = region;
+          info->fieldKind = f.fieldKind;
+
+          if(fieldSet_.find(f.fieldName) != fieldSet_.end()){
+            info->count = count;
+          }
+          else{
+            info->count = 0;
+          }
+
+          info->fieldId = f.fieldId;
+          args += sizeof(MeshFieldInfo);
+        }
+
+        return args;
+      }
+
+
+    void addFieldsToIndexLauncher(IndexLauncher& launcher,
+                                    unsigned region) const {
+      for(auto& f : fields_){
+        launcher.region_requirements[region].add_field(f.fieldId);
+      }
+    }
+
     void addFieldsToIndexLauncher(IndexLauncher& launcher,
         unsigned region, legion_privilege_mode_t mode) const {
       for (int i = 0; i < fields_.size(); i++) {
@@ -530,25 +505,15 @@ public:
     for (size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i) {
       FieldVec fields;
       mesh->getFields(sclegion_element_kind_t(i), fields);
-      regions_[2*i].setFields(fields);
-      regions_[2*i+1].setFields(fields);
+      regions_[i].setFields(fields);
       numFields_ += fields.size();
     }
   }
 
-  // Launcher addField
-  void addField(const string& fieldName, legion_privilege_mode_t mode) {
-    const Field& field = mesh_->getField(fieldName);
-    if (mode == READ_ONLY) {
-      printf("launcher ro addField %s %d region %d\n",fieldName.c_str(), mode, 2*field.elementKind);
-      regions_[2*field.elementKind].addField(field, mode);
-    } else if (mode == WRITE_ONLY || mode == READ_WRITE) {
-      printf("launcher rw addField %s %d region %d\n",fieldName.c_str(), mode, 2*field.elementKind+1);
-      regions_[2*field.elementKind+1].addField(field, READ_WRITE);
-    } else {
-      assert (false && "bad mode");
+  void addField(const string& fieldName, legion_privilege_mode_t mode){
+      const Field& field = mesh_->getField(fieldName);
+      regions_[field.elementKind].addField(field, mode);
     }
-  }
 
   void execute(legion_context_t ctx, legion_runtime_t rt) {
     printf("execute\n");
@@ -564,50 +529,16 @@ public:
     header->numFields = numFields_;
     args += sizeof(MeshHeader);
 
-    size_t numSubregions = mesh_->getNumSubregions();
-    header->numColors = numSubregions;
+     for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
+        Mesh::Element& element = 
+          mesh_->getElement(sclegion_element_kind_t(i));
 
-    size_t fields_used = 0;
+        args = regions_[i].addFieldInfo(args, i, element.count);
 
-    for (size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i) {
-      sclegion_element_kind_t elemKind = sclegion_element_kind_t(i);
-      Mesh::Element& element = mesh_->getElement(elemKind);
-
-      if (element.count == 0) {
-        continue;
-      }
-
-      for (auto fi = 0; fi < numFields_; fi++) {
-        MeshFieldInfo* info = (MeshFieldInfo*) args;
-
-        bool isro  = regions_[2*i].isFieldUsed(fi);
-        bool isrw  = regions_[2*i+1].isFieldUsed(fi);
-
-        if (isro) info->region = 2*i;
-        else if (isrw) info->region = 2*i+1;
-        else info->region = -1;
-
-        info->fieldKind = regions_[2*i].getFieldKind(fi);
-
-        if (isro || isrw) {
-          info->count = element.count;
-          fields_used++;
-        } else {
-          info->count = 0;
+        if(element.count == 0){
+          continue;
         }
-
-        info->fieldId = fi;
-
-        printf("addFieldInfo r=%zu fk=%d c=%zu id=%zu fi=%zu i=%zu\n",
-                    info->region, info->fieldKind,
-                    info->count, info->fieldId,fi,i);
-
-       args += sizeof(MeshFieldInfo);
-
-      }
     }
-
-    assert (fields_used != 0 && "no fields used in forall!");
 
     ArgumentMap argMap;
 
@@ -618,35 +549,30 @@ public:
 
     for (size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i) {
 
-      const Region& roregion = regions_[2*i];
-      const Region& rwregion = regions_[2*i+1];
+      const Region& region = regions_[i];
 
-      if (roregion.legionMode() == NO_ACCESS &&
-          rwregion.legionMode() == NO_ACCESS) {
+      if (region.legionMode() == NO_ACCESS ) {
         continue;
       }
-
-      printf("region i %zu romode %d rwmode %d\n",i, roregion.legionMode(),
-          rwregion.legionMode());
 
       const Mesh::Element& element = mesh_->getElement(
           sclegion_element_kind_t(i));
 
-      // read only fields
       launcher.add_region_requirement(
-          RegionRequirement(element.ghostLogicalPartition,
+          RegionRequirement(element.logicalPartition,
               0/*projection ID*/,
-              READ_ONLY, EXCLUSIVE, element.logicalRegion));
-      printf("ro add %lu\n",2*i);
-      roregion.addFieldsToIndexLauncher(launcher, 2*i, READ_ONLY);
+              region.legionMode(), EXCLUSIVE, element.logicalRegion));
+    
+    }
 
-      // read write or write only fields
-      launcher.add_region_requirement(
-          RegionRequirement(element.disjointLogicalPartition,
-              0/*projection ID*/,
-              READ_WRITE, EXCLUSIVE, element.logicalRegion));
-      printf("rw add %lu\n",2*i+1);
-      rwregion.addFieldsToIndexLauncher(launcher, 2*i+1, READ_WRITE);
+    for (size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i) {
+      const Region& region = regions_[i];
+
+      if(region.legionMode() == NO_ACCESS){
+        continue;
+      }
+
+      region.addFieldsToIndexLauncher(launcher, i);
 
     }
 
@@ -656,7 +582,7 @@ public:
 private:
   Mesh* mesh_;
   legion_task_id_t taskId_;
-  Region regions_[2*SCLEGION_ELEMENT_MAX];
+  Region regions_[SCLEGION_ELEMENT_MAX];
   size_t numFields_;
 };
 
@@ -713,147 +639,6 @@ void sclegion_uniform_mesh_init(sclegion_uniform_mesh_t mesh) {
   static_cast<Mesh*>(mesh.impl)->init();
 }
 
-//SC_TODO: partition is only working for 1-D cell mesh right now.
-size_t getStart(MeshHeader *header, size_t dim, size_t color) {
-  size_t start = 0;
-  size_t c, lowerBound, upperBound, numberSmall, numElmts;
-
-  size_t numSubregions = header->numColors;
-
-  switch(header->rank) {
-  case 1:
-    if (dim == 0) {
-      lowerBound = header->width / numSubregions;
-      upperBound = lowerBound + 1;
-      numberSmall = numSubregions - (header->width % numSubregions);
-      for (c = 0; c < color; c++) {
-        numElmts = c < numberSmall ? lowerBound : upperBound;
-        start += numElmts;
-      }
-    } else {
-      start = 0;
-    }
-    break;
-  case 2:
-    if (dim == 1) {
-      lowerBound = header->height / numSubregions;
-      upperBound = lowerBound + 1;
-      numberSmall = numSubregions - (header->height % numSubregions);
-      for (c = 0; c < color; c++) {
-        numElmts = c < numberSmall ? lowerBound : upperBound;
-        start += numElmts;
-      }
-    } else {
-      start = 0;
-    }
-    break;
-  case 3:
-    if (dim == 2) {
-      lowerBound = header->depth / numSubregions;
-      upperBound = lowerBound + 1;
-      numberSmall = numSubregions - (header->depth % numSubregions);
-      for (c = 0; c < color; c++) {
-        numElmts = c < numberSmall ? lowerBound : upperBound;
-        start += numElmts;
-      }
-    } else {
-      start = 0;
-    }
-    break;
-  default:
-      assert(false && "bad rank");
-  }
-  //printf("START %u\n",start);
-  return start;
-}
-
-size_t getStartOffset(MeshHeader *header, size_t color) {
-  size_t offset = 0;
-  switch (header->rank) {
-  case 1:
-    offset = getStart(header, 0, color);
-    break;
-  case 2:
-    offset = header->width * getStart(header, 1, color);
-    break;
-  case 3:
-    offset =  header->width * header->height * getStart(header, 2, color);
-    break;
-  default:
-    assert(false && "bad rank");
-  }
-  //printf("START OFF %u\n",offset);
-  return offset;
-}
-
-size_t getEnd(MeshHeader *header, size_t dim, size_t color) {
-  if (color == header->numColors - 1) {
-    switch(dim+1) {
-    case 1:
-      return header->width;
-    case 2:
-      return header->height;
-    case 3:
-      return header->depth;
-    default:
-      assert(false && "bad rank");
-    }
-  }
-
-  switch (header->rank) {
-  case 1:
-    return getStart(header, dim, color + 1);
-  case 2:
-    switch(dim+1) {
-    case 1:
-      return header->width;
-    case 2:
-      return getStart(header, 1, color + 1);
-    case 3:
-      return 0;
-    default:
-       assert(false && "bad rank");
-    }
-  case 3:
-    switch(dim+1) {
-    case 1:
-      return header->width;
-    case 2:
-      return header->height;
-    case 3:
-      return getStart(header, 2, color + 1);
-    default:
-       assert(false && "bad rank");
-    }
-  default:
-    assert(false && "bad rank");
-  }
-}
-
-size_t getEndOffset(MeshHeader *header, size_t color) {
-  size_t offset = 0;
-  switch (header->rank) {
-  case 1:
-    offset = getEnd(header, 0, color);
-    break;
-  case 2:
-    offset = header->width * getEnd(header, 1, color);
-    break;
-  case 3:
-    offset = header->width * header->height * getEnd(header, 2, color);
-    break;
-  default:
-    assert(false && "bad rank");
-  }
-  //printf("END OFF %u\n",offset);
-  return offset;
-}
-
-size_t getSize(MeshHeader *header, size_t dim, size_t color) {
-  return getEnd(header, dim, color)
-      - getStart(header, dim, color);
-}
-
 void*
 sclegion_uniform_mesh_reconstruct(const legion_task_t task,
     const legion_physical_region_t* region, unsigned numRegions,
@@ -862,7 +647,6 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   HighLevelRuntime* hr = static_cast<HighLevelRuntime*>(runtime.impl);
   Context hc = static_cast<Context>(context.impl);
   Task* ht = static_cast<Task*>(task.impl);
-  const int color = ht->index_point.point_data[0];
 
   char* args = (char*) legion_task_get_args(task);
   MeshHeader* header = (MeshHeader*) args;
@@ -876,14 +660,13 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   MeshFieldInfo* fi;
   size_t numFields = header->numFields;
 
-  size_t offset = getStartOffset(header, color);
-
   for (size_t i = 0; i < numFields; ++i) {
     fi = (MeshFieldInfo*) args;
 
     if (fi->count == 0) {
       *meshPtr = 0;
     } else {
+      printf("region %d\n",fi->region); 
       PhysicalRegion* hp = static_cast<PhysicalRegion*>(region[fi->region].impl);
 
       IndexSpace is = ht->regions[fi->region].region.get_index_space();
@@ -898,28 +681,24 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
           RegionAccessor<AccessorType::Generic, int32_t> fm;
           fm = hp->get_field_accessor(fi->fieldId).typeify<int32_t>();
           *meshPtr = fm.raw_rect_ptr<1>(r, sr, bo);
-          if (fi->region%2 == 0) *meshPtr = (char *)(*meshPtr) + offset*sizeof(int32_t);
           break;
         }
         case SCLEGION_INT64: {
           RegionAccessor<AccessorType::Generic, int64_t> fm;
           fm = hp->get_field_accessor(fi->fieldId).typeify<int64_t>();
           *meshPtr = fm.raw_rect_ptr<1>(r, sr, bo);
-          if (fi->region%2 == 0) *meshPtr = (char *)(*meshPtr) + offset*sizeof(int64_t);
           break;
         }
         case SCLEGION_FLOAT: {
           RegionAccessor<AccessorType::Generic, float> fm;
           fm = hp->get_field_accessor(fi->fieldId).typeify<float>();
           *meshPtr = fm.raw_rect_ptr<1>(r, sr, bo);
-          if (fi->region%2 == 0) *meshPtr = (char *)(*meshPtr) + offset*sizeof(float);
           break;
         }
         case SCLEGION_DOUBLE: {
           RegionAccessor<AccessorType::Generic, double> fm;
           fm = hp->get_field_accessor(fi->fieldId).typeify<double>();
           *meshPtr = fm.raw_rect_ptr<1>(r, sr, bo);
-          if (fi->region%2 == 0) *meshPtr = (char *)(*meshPtr) + offset*sizeof(double);
           break;
         }
         default:
@@ -945,28 +724,22 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   *meshTailPtr = header->rank;
   ++meshTailPtr;
 
-  *meshTailPtr = getStart(header, 0, color);
-  //printf("xstart %u\n",*meshTailPtr);
+  *meshTailPtr = 0;
   ++meshTailPtr;
 
-  *meshTailPtr = getStart(header, 1, color);
-  //printf("ystart %u\n",*meshTailPtr);
+  *meshTailPtr = 0;
   ++meshTailPtr;
 
-  *meshTailPtr = getStart(header, 2, color);
-  //printf("zstart %u\n",*meshTailPtr);
+  *meshTailPtr = 0;
   ++meshTailPtr;
 
-  *meshTailPtr = getSize(header, 0,  color);
-  //printf("xsize %u\n",*meshTailPtr);
+  *meshTailPtr = header->width;
   ++meshTailPtr;
 
-  *meshTailPtr = getSize(header, 1,  color);
-  //printf("ysize %u\n",*meshTailPtr);
+  *meshTailPtr = header->height;
   ++meshTailPtr;
 
-  *meshTailPtr = getSize(header, 2,  color);
-  //printf("zsize %u\n",*meshTailPtr);
+  *meshTailPtr = header->depth;
   ++meshTailPtr;
 
   return ret;
