@@ -1,4 +1,4 @@
-/* Copyright 2015 Stanford University
+/* Copyright 2015 Stanford University, NVIDIA Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -81,6 +81,8 @@ namespace LegionRuntime {
       virtual void activate(void) = 0;
       virtual void deactivate(void) = 0;
       virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
+      virtual Mappable* get_mappable(void);
     public:
       virtual void trigger_dependence_analysis(void) = 0;
       virtual void trigger_complete(void);
@@ -96,6 +98,7 @@ namespace LegionRuntime {
       virtual bool perform_mapping(bool mapper_invoked = false) = 0;
       virtual void launch_task(void) = 0;
       virtual bool is_stealable(void) const = 0;
+      virtual bool has_restrictions(unsigned idx, LogicalRegion handle) = 0;
     public:
       virtual Event defer_mapping(void) = 0;
       virtual void check_state(UserEvent ready_event) = 0;
@@ -107,6 +110,11 @@ namespace LegionRuntime {
       virtual bool pack_task(Serializer &rez, Processor target) = 0;
       virtual bool unpack_task(Deserializer &derez, Processor current) = 0;
       virtual void perform_inlining(SingleTask *ctx, InlineFnptr fn) = 0;
+    protected:
+      void pack_restrict_infos(Serializer &rez, 
+                               std::vector<RestrictInfo> &infos);
+      void unpack_restrict_infos(Deserializer &derez,
+                                 std::vector<RestrictInfo> &infos);
     public:
       // Tell the parent context that this task is in a ready queue
       void activate_outstanding_task(void);
@@ -259,6 +267,10 @@ namespace LegionRuntime {
         HLRTaskID hlr_id;
         SingleTask *proxy_this;
       };
+      struct DecrementArgs {
+        HLRTaskID hlr_id;
+        SingleTask *parent_ctx;
+      };
     public:
       SingleTask(Runtime *rt);
       virtual ~SingleTask(void);
@@ -353,6 +365,11 @@ namespace LegionRuntime {
     public:
       int has_conflicting_regions(MapOp *map, bool &parent_conflict,
                                   bool &inline_conflict);
+      int has_conflicting_regions(AttachOp *attach, bool &parent_conflict,
+                                  bool &inline_conflict);
+      int has_conflicting_internal(const RegionRequirement &req, 
+                                   bool &parent_conflict,
+                                   bool &inline_conflict);
       void find_conflicting_regions(TaskOp *task,
                                     std::vector<PhysicalRegion> &conflicting);
       void find_conflicting_regions(CopyOp *copy,
@@ -360,6 +377,12 @@ namespace LegionRuntime {
       void find_conflicting_regions(AcquireOp *acquire,
                                     std::vector<PhysicalRegion> &conflicting);
       void find_conflicting_regions(ReleaseOp *release,
+                                    std::vector<PhysicalRegion> &conflicting);
+      void find_conflicting_regions(DependentPartitionOp *partition,
+                                    std::vector<PhysicalRegion> &conflicting);
+      void find_conflicting_internal(const RegionRequirement &req,
+                                     std::vector<PhysicalRegion> &conflicting);
+      void find_conflicting_regions(FillOp *fill,
                                     std::vector<PhysicalRegion> &conflicting);
       bool check_region_dependence(RegionTreeID tid, IndexSpace space,
                                   const RegionRequirement &our_req,
@@ -369,24 +392,20 @@ namespace LegionRuntime {
       void unregister_inline_mapped_region(PhysicalRegion &region);
     public:
       bool is_region_mapped(unsigned idx);
-      int find_parent_region_req(const RegionRequirement &req);
+      int find_parent_region_req(const RegionRequirement &req, 
+                                 bool check_privilege = true);
       unsigned find_parent_region(unsigned idx, TaskOp *task);
       unsigned find_parent_index_region(unsigned idx, TaskOp *task);
+      PrivilegeMode find_parent_privilege_mode(unsigned idx);
       LegionErrorType check_privilege(const IndexSpaceRequirement &req) const;
       LegionErrorType check_privilege(const RegionRequirement &req, 
                                       FieldID &bad_field, 
                                       bool skip_privileges = false) const; 
-      bool has_simultaneous_coherence(void);
-      bool is_simultaneous_restricted(unsigned index);
       bool has_created_region(LogicalRegion handle) const;
       bool has_created_field(FieldSpace handle, FieldID fid) const;
     public:
-      void check_index_subspace(IndexSpace handle, const char *caller);
-      void check_index_subpartition(IndexPartition handle, const char *caller);
-      void check_field_space(FieldSpace handle, const char *caller);
-      void check_logical_subregion(LogicalRegion handle, const char *caller);
-      void check_logical_subpartition(LogicalPartition handle,
-                                      const char *caller);
+      bool has_tree_restriction(RegionTreeID tid, const FieldMask &mask);
+      void add_tree_restriction(RegionTreeID tid, const FieldMask &mask);
     public:
       void unmap_all_regions(void);
       void clear_physical_instances(void);
@@ -430,6 +449,7 @@ namespace LegionRuntime {
       virtual bool distribute_task(void) = 0;
       virtual bool perform_mapping(bool mapper_invoked = false) = 0;
       virtual bool is_stealable(void) const = 0;
+      virtual bool has_restrictions(unsigned idx, LogicalRegion handle) = 0;
       virtual bool can_early_complete(UserEvent &chain_event) = 0;
     public:
       virtual Event defer_mapping(void) = 0;
@@ -512,9 +532,6 @@ namespace LegionRuntime {
       FenceOp *current_fence;
       GenerationID fence_gen;
     protected:
-      // For handling simultaneous coherence cases
-      bool simultaneous_checked, has_simultaneous;
-    protected:
       // Resources that can build up over a task's lifetime
       LegionDeque<Reservation,TASK_RESERVATION_ALLOC>::tracked context_locks;
       LegionDeque<Barrier,TASK_BARRIER_ALLOC>::tracked context_barriers;
@@ -523,6 +540,9 @@ namespace LegionRuntime {
     protected:
       // Some help for performing fast safe casts
       std::map<IndexSpace,Domain> safe_cast_domains;
+    protected:
+      // Information for tracking restrictions
+      LegionMap<RegionTreeID,FieldMask>::aligned restricted_trees;
     protected:
       // Support for serializing premapping operations.  Note
       // we make it possible for operations accessing different
@@ -568,6 +588,7 @@ namespace LegionRuntime {
       virtual bool perform_mapping(bool mapper_invoked = false) = 0;
       virtual void launch_task(void) = 0;
       virtual bool is_stealable(void) const = 0;
+      virtual bool has_restrictions(unsigned idx, LogicalRegion handle) = 0;
       virtual bool map_and_launch(void) = 0;
     public:
       virtual Event defer_mapping(void) = 0;
@@ -605,12 +626,12 @@ namespace LegionRuntime {
     public:
       void initialize_reduction_state(void);
       void fold_reduction_future(const void *result, size_t result_size,
-                                 bool owner, bool exclusive);
+                                 bool owner, bool exclusive); 
     protected:
       bool sliced;
-      Barrier must_barrier; // for must parallelism
       ArgumentMap argument_map;
       std::list<SliceTask*> slices;
+      std::vector<RestrictInfo> restrict_infos;
     protected:
       ReductionOpID redop;
       const ReductionOp *reduction_op;
@@ -660,6 +681,7 @@ namespace LegionRuntime {
       virtual bool distribute_task(void);
       virtual bool perform_mapping(bool mapper_invoked = false);
       virtual bool is_stealable(void) const;
+      virtual bool has_restrictions(unsigned idx, LogicalRegion handle);
       virtual bool can_early_complete(UserEvent &chain_event);
     public:
       virtual Event defer_mapping(void);
@@ -707,6 +729,7 @@ namespace LegionRuntime {
       Future result; 
       std::set<Operation*> child_operations;
       std::vector<RegionTreePath> privilege_paths;
+      std::vector<RestrictInfo>   restrict_infos;
     protected:
       // Information for remotely executing task
       IndividualTask *orig_task; // Not a valid pointer when remote
@@ -754,6 +777,7 @@ namespace LegionRuntime {
       virtual bool distribute_task(void);
       virtual bool perform_mapping(bool mapper_invoked = false);
       virtual bool is_stealable(void) const;
+      virtual bool has_restrictions(unsigned idx, LogicalRegion handle);
       virtual bool can_early_complete(UserEvent &chain_event);
     public:
       virtual Event defer_mapping(void);
@@ -815,6 +839,7 @@ namespace LegionRuntime {
       virtual bool distribute_task(void);
       virtual bool perform_mapping(bool mapper_invoked = false);
       virtual bool is_stealable(void) const;
+      virtual bool has_restrictions(unsigned idx, LogicalRegion handle);
       virtual bool can_early_complete(UserEvent &chain_event);
       virtual RemoteTask* find_outermost_physical_context(void) = 0;
     public:
@@ -998,6 +1023,7 @@ namespace LegionRuntime {
       virtual bool perform_mapping(bool mapper_invoked = false);
       virtual void launch_task(void);
       virtual bool is_stealable(void) const;
+      virtual bool has_restrictions(unsigned idx, LogicalRegion handle);
       virtual bool map_and_launch(void);
     public:
       virtual Event defer_mapping(void);
@@ -1091,6 +1117,7 @@ namespace LegionRuntime {
       virtual bool perform_mapping(bool mapper_invoke = false);
       virtual void launch_task(void);
       virtual bool is_stealable(void) const;
+      virtual bool has_restrictions(unsigned idx, LogicalRegion handle);
       virtual bool map_and_launch(void);
     public:
       virtual Event defer_mapping(void);
@@ -1151,8 +1178,7 @@ namespace LegionRuntime {
       UniqueID remote_owner_uid;
     protected:
       // Temporary storage for future results
-      std::map<DomainPoint,std::pair<void*,size_t>,
-                DomainPoint::STLComparator> temporary_futures;
+      std::map<DomainPoint,std::pair<void*,size_t> > temporary_futures;
     };
 
     /**

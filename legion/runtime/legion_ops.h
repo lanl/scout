@@ -1,4 +1,4 @@
-/* Copyright 2015 Stanford University
+/* Copyright 2015 Stanford University, NVIDIA Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,13 +19,14 @@
 
 #include "legion.h"
 #include "region_tree.h"
+#include "legion_utilities.h"
 #include "legion_allocation.h"
 
 namespace LegionRuntime {
   namespace HighLevel {
 
     // Special typedef for predicates
-    typedef Predicate::Impl PredicateOp;
+    typedef Predicate::Impl PredicateOp; 
 
     /**
      * \class Operation
@@ -34,6 +35,59 @@ namespace LegionRuntime {
      * program.
      */
     class Operation {
+    public:
+      enum OpKind {
+        MAP_OP_KIND,
+        COPY_OP_KIND,
+        FENCE_OP_KIND,
+        FRAME_OP_KIND,
+        DELETION_OP_KIND,
+        INTER_CLOSE_OP_KIND,
+        POST_CLOSE_OP_KIND,
+        ACQUIRE_OP_KIND,
+        RELEASE_OP_KIND,
+        DYNAMIC_COLLECTIVE_OP_KIND,
+        FUTURE_PRED_OP_KIND,
+        NOT_PRED_OP_KIND,
+        AND_PRED_OP_KIND,
+        OR_PRED_OP_KIND,
+        MUST_EPOCH_OP_KIND,
+        PENDING_PARTITION_OP_KIND,
+        DEPENDENT_PARTITION_OP_KIND,
+        FILL_OP_KIND,
+        ATTACH_OP_KIND,
+        DETACH_OP_KIND,
+        TRACE_CAPTURE_OP_KIND,
+        TRACE_COMPLETE_OP_KIND,
+        TASK_OP_KIND,
+        LAST_OP_KIND,
+      };
+      static const char *const op_names[LAST_OP_KIND];
+#define OPERATION_NAMES {           \
+        "Mapping",                  \
+        "Copy",                     \
+        "Fence",                    \
+        "Frame",                    \
+        "Deletion",                 \
+        "Inter Close",              \
+        "Post Close",               \
+        "Acquire",                  \
+        "Release",                  \
+        "Dynamic Collective",       \
+        "Future Predicate",         \
+        "Not Predicate",            \
+        "And Predicate",            \
+        "Or Predicate",             \
+        "Must Epoch",               \
+        "Pending Partition",        \
+        "Dependent Partition",      \
+        "Fill",                     \
+        "Attach",                   \
+        "Detach",                   \
+        "Trace Capture",            \
+        "Trace Complete",           \
+        "Task",                     \
+      }
     public:
       struct DeferredMappingArgs {
       public:
@@ -54,6 +108,8 @@ namespace LegionRuntime {
       virtual void activate(void) = 0;
       virtual void deactivate(void) = 0; 
       virtual const char* get_logging_name(void) = 0;
+      virtual OpKind get_operation_kind(void) = 0;
+      virtual Mappable* get_mappable(void);
     protected:
       // Base call
       void activate_operation(void);
@@ -137,6 +193,8 @@ namespace LegionRuntime {
       // This is a special helper method for tracing which
       // needs to know explicitly about close operations
       virtual bool is_close_op(void) const { return false; }
+      // Determine if this operation is a partition operation
+      virtual bool is_partition_op(void) const { return false; }
     public:
       // The following are sets of calls that we can use to 
       // indicate mapping, execution, resolution, completion, and commit
@@ -441,10 +499,14 @@ namespace LegionRuntime {
                                 MapperID id, MappingTagID tag,
                                 bool check_privileges);
       void initialize(SingleTask *ctx, const PhysicalRegion &region);
+      inline const RegionRequirement& get_requirement(void) const
+        { return requirement; }
     public:
       virtual void activate(void);
       virtual void deactivate(void);
       virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
+      virtual Mappable* get_mappable(void);
     public:
       virtual void trigger_dependence_analysis(void);
       virtual bool trigger_execution(void);
@@ -468,6 +530,7 @@ namespace LegionRuntime {
       RegionTreePath privilege_path;
       RegionTreePath mapping_path;
       unsigned parent_req_index;
+      RestrictInfo restrict_info;
     };
 
     /**
@@ -494,6 +557,8 @@ namespace LegionRuntime {
       virtual void activate(void);
       virtual void deactivate(void);
       virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
+      virtual Mappable* get_mappable(void);
     public:
       virtual void trigger_dependence_analysis(void);
       virtual bool trigger_execution(void);
@@ -522,6 +587,8 @@ namespace LegionRuntime {
       std::vector<RegionTreePath> dst_mapping_paths;
       std::vector<unsigned>       src_parent_indexes;
       std::vector<unsigned>       dst_parent_indexes;
+      std::vector<RestrictInfo>   src_restrictions;
+      std::vector<RestrictInfo>   dst_restrictions;
     };
 
     /**
@@ -555,6 +622,7 @@ namespace LegionRuntime {
       virtual void activate(void);
       virtual void deactivate(void);
       virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
     public:
       virtual void trigger_dependence_analysis(void);
       virtual bool trigger_execution(void);
@@ -586,6 +654,7 @@ namespace LegionRuntime {
       virtual void activate(void);
       virtual void deactivate(void);
       virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
     public:
       virtual bool trigger_execution(void);
       virtual void deferred_complete(void);
@@ -635,6 +704,7 @@ namespace LegionRuntime {
       virtual void activate(void);
       virtual void deactivate(void);
       virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
     public:
       virtual void trigger_dependence_analysis(void);
       virtual void trigger_commit(void);
@@ -677,12 +747,14 @@ namespace LegionRuntime {
       virtual void activate(void) = 0;
       virtual void deactivate(void) = 0;
       virtual const char* get_logging_name(void) = 0;
+      virtual OpKind get_operation_kind(void) = 0;
       virtual bool is_close_op(void) const { return true; }
     public:
       virtual void deferred_complete(void);
     protected:
       RegionRequirement requirement;
       RegionTreePath privilege_path;
+      RestrictInfo restrict_info;
     };
 
     /**
@@ -700,13 +772,14 @@ namespace LegionRuntime {
       InterCloseOp& operator=(const InterCloseOp &rhs);
     public:
       void initialize(SingleTask *ctx, const RegionRequirement &req,
-                      const std::set<Color> &targets, 
-                      bool leave_open, int next_child, LegionTrace *trace,
-                      int close_idx, const FieldMask &close_mask,
-                      Operation *create_op);
+                      const std::set<ColorPoint> &targets, 
+                      bool leave_open, const ColorPoint &next_child, 
+                      LegionTrace *trace, int close_idx, 
+                      const RestrictInfo &restrict_info,
+                      const FieldMask &close_mask, Operation *create_op);
     public:
       const RegionRequirement& get_region_requirement(void) const;
-      const std::set<Color>& get_target_children(void) const;
+      const std::set<ColorPoint>& get_target_children(void) const;
     public:
       void record_trace_dependence(Operation *target, GenerationID target_gen,
                                    int target_idx, int source_idx, 
@@ -716,12 +789,13 @@ namespace LegionRuntime {
       virtual void activate(void);
       virtual void deactivate(void);
       virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
     public:
       virtual bool trigger_execution(void);
     protected:
-      std::set<Color> target_children;
+      std::set<ColorPoint> target_children;
       bool leave_open;
-      int next_child;
+      ColorPoint next_child;
       unsigned parent_req_index;
     protected:
       // These things are really only needed for tracing
@@ -757,6 +831,7 @@ namespace LegionRuntime {
       virtual void activate(void);
       virtual void deactivate(void);
       virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
     public:
       virtual void trigger_dependence_analysis(void);
       virtual bool trigger_execution(void);
@@ -787,6 +862,8 @@ namespace LegionRuntime {
       virtual void activate(void);
       virtual void deactivate(void);
       virtual const char* get_logging_name(void); 
+      virtual OpKind get_operation_kind(void);
+      virtual Mappable* get_mappable(void);
     public:
       virtual void trigger_dependence_analysis(void);
       virtual bool trigger_execution(void);
@@ -810,6 +887,7 @@ namespace LegionRuntime {
     protected:
       RegionRequirement requirement;
       RegionTreePath    privilege_path;
+      RestrictInfo      restrict_info;
       unsigned          parent_req_index;
 #ifdef DEBUG_HIGH_LEVEL
       RegionTreePath    mapping_path;
@@ -838,6 +916,8 @@ namespace LegionRuntime {
       virtual void activate(void);
       virtual void deactivate(void);
       virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
+      virtual Mappable* get_mappable(void);
     public:
       virtual void trigger_dependence_analysis(void);
       virtual bool trigger_execution(void);
@@ -861,6 +941,7 @@ namespace LegionRuntime {
     protected:
       RegionRequirement requirement;
       RegionTreePath    privilege_path;
+      RestrictInfo      restrict_info;
       unsigned parent_req_index;
 #ifdef DEBUG_HIGH_LEVEL
       RegionTreePath    mapping_path;
@@ -889,6 +970,7 @@ namespace LegionRuntime {
       virtual void activate(void);
       virtual void deactivate(void);
       virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
     public:
       virtual bool trigger_execution(void);
       virtual void deferred_complete(void);
@@ -923,6 +1005,7 @@ namespace LegionRuntime {
       virtual void activate(void);
       virtual void deactivate(void);
       const char* get_logging_name(void);
+      OpKind get_operation_kind(void);
     public:
       virtual void trigger_dependence_analysis(void);
       virtual void trigger_mapping(void);
@@ -949,6 +1032,7 @@ namespace LegionRuntime {
       virtual void activate(void);
       virtual void deactivate(void);
       virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
     public:
       virtual void trigger_dependence_analysis(void);
       virtual void trigger_mapping(void);
@@ -977,6 +1061,7 @@ namespace LegionRuntime {
       virtual void activate(void);
       virtual void deactivate(void);
       virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
     public:
       virtual void trigger_dependence_analysis(void);
       virtual void trigger_mapping(void);
@@ -1011,6 +1096,7 @@ namespace LegionRuntime {
       virtual void activate(void);
       virtual void deactivate(void);
       virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
     public:
       virtual void trigger_dependence_analysis(void);
       virtual void trigger_mapping(void);
@@ -1069,6 +1155,7 @@ namespace LegionRuntime {
       virtual void activate(void);
       virtual void deactivate(void);
       virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
     public:
       virtual void trigger_dependence_analysis(void);
       virtual bool trigger_execution(void);
@@ -1222,6 +1309,428 @@ namespace LegionRuntime {
       static void handle_launch_task(const void *args);
     private:
       MustEpochOp *const owner;
+    };
+
+    /**
+     * \class PendingPartitionOp
+     * Pending partition operations are ones that must be deferred
+     * in order to move the overhead of computing them off the 
+     * application cores. In many cases deferring them is also
+     * necessary to avoid possible application deadlock with
+     * other pending partitions.
+     */
+    class PendingPartitionOp : public Operation {
+    public:
+      static const AllocationType alloc_type = PENDING_PARTITION_OP_ALLOC;
+    protected:
+      // Track pending partition operations as thunks
+      class PendingPartitionThunk {
+      public:
+        virtual ~PendingPartitionThunk(void) { }
+      public:
+        virtual Event perform(RegionTreeForest *forest) = 0;
+#ifdef LEGION_SPY
+        virtual void perform_logging(PendingPartitionOp* op) = 0;
+#endif
+      };
+      class EqualPartitionThunk : public PendingPartitionThunk {
+      public:
+        EqualPartitionThunk(IndexPartition id, size_t g)
+          : pid(id), granularity(g) { }
+        virtual ~EqualPartitionThunk(void) { }
+      public:
+        virtual Event perform(RegionTreeForest *forest)
+        { return forest->create_equal_partition(pid, granularity); }
+#ifdef LEGION_SPY
+        virtual void perform_logging(PendingPartitionOp* op);
+#endif
+      protected:
+        IndexPartition pid;
+        size_t granularity;
+      };
+      class WeightedPartitionThunk : public PendingPartitionThunk {
+      public:
+        WeightedPartitionThunk(IndexPartition id, size_t g, 
+                               const std::map<DomainPoint,int> &w)
+          : pid(id), weights(w), granularity(g) { }
+        virtual ~WeightedPartitionThunk(void) { }
+      public:
+        virtual Event perform(RegionTreeForest *forest)
+        { return forest->create_weighted_partition(pid, granularity, weights); }
+#ifdef LEGION_SPY
+        virtual void perform_logging(PendingPartitionOp* op);
+#endif
+      protected:
+        IndexPartition pid;
+        std::map<DomainPoint,int> weights;
+        size_t granularity;
+      };
+      class UnionPartitionThunk : public PendingPartitionThunk {
+      public:
+        UnionPartitionThunk(IndexPartition id, 
+                            IndexPartition h1, IndexPartition h2)
+          : pid(id), handle1(h1), handle2(h2) { }
+        virtual ~UnionPartitionThunk(void) { }
+      public:
+        virtual Event perform(RegionTreeForest *forest)
+        { return forest->create_partition_by_union(pid, handle1, handle2); }
+#ifdef LEGION_SPY
+        virtual void perform_logging(PendingPartitionOp* op);
+#endif
+      protected:
+        IndexPartition pid;
+        IndexPartition handle1;
+        IndexPartition handle2;
+      };
+      class IntersectionPartitionThunk : public PendingPartitionThunk {
+      public:
+        IntersectionPartitionThunk(IndexPartition id, 
+                            IndexPartition h1, IndexPartition h2)
+          : pid(id), handle1(h1), handle2(h2) { }
+        virtual ~IntersectionPartitionThunk(void) { }
+      public:
+        virtual Event perform(RegionTreeForest *forest)
+        { return forest->create_partition_by_intersection(pid, handle1, 
+                                                          handle2); }
+#ifdef LEGION_SPY
+        virtual void perform_logging(PendingPartitionOp* op);
+#endif
+      protected:
+        IndexPartition pid;
+        IndexPartition handle1;
+        IndexPartition handle2;
+      };
+      class DifferencePartitionThunk : public PendingPartitionThunk {
+      public:
+        DifferencePartitionThunk(IndexPartition id, 
+                            IndexPartition h1, IndexPartition h2)
+          : pid(id), handle1(h1), handle2(h2) { }
+        virtual ~DifferencePartitionThunk(void) { }
+      public:
+        virtual Event perform(RegionTreeForest *forest)
+        { return forest->create_partition_by_difference(pid, handle1, 
+                                                        handle2); }
+#ifdef LEGION_SPY
+        virtual void perform_logging(PendingPartitionOp* op);
+#endif
+      protected:
+        IndexPartition pid;
+        IndexPartition handle1;
+        IndexPartition handle2;
+      };
+      class CrossProductThunk : public PendingPartitionThunk {
+      public:
+        CrossProductThunk(IndexPartition b, IndexPartition s,
+                          std::map<DomainPoint,IndexPartition> &h)
+          : base(b), source(s), handles(h) { }
+        virtual ~CrossProductThunk(void) { }
+      public:
+        virtual Event perform(RegionTreeForest *forest)
+        { return forest->create_cross_product_partitions(base, source, 
+                                                         handles); }
+#ifdef LEGION_SPY
+        virtual void perform_logging(PendingPartitionOp* op);
+#endif
+      protected:
+        IndexPartition base;
+        IndexPartition source;
+        std::map<DomainPoint,IndexPartition> handles;
+      };
+      class ComputePendingSpace : public PendingPartitionThunk {
+      public:
+        ComputePendingSpace(IndexSpace t, bool is,
+                            const std::vector<IndexSpace> &h)
+          : is_union(is), is_partition(false), target(t), handles(h) { }
+        ComputePendingSpace(IndexSpace t, bool is, IndexPartition h)
+          : is_union(is), is_partition(true), target(t), handle(h) { }
+        virtual ~ComputePendingSpace(void) { }
+      public:
+        virtual Event perform(RegionTreeForest *forest)
+        { if (is_partition)
+            return forest->compute_pending_space(target, handle, is_union);
+          else
+            return forest->compute_pending_space(target, handles, is_union); }
+#ifdef LEGION_SPY
+        virtual void perform_logging(PendingPartitionOp* op);
+#endif
+      protected:
+        bool is_union, is_partition;
+        IndexSpace target;
+        IndexPartition handle;
+        std::vector<IndexSpace> handles;
+      };
+      class ComputePendingDifference : public PendingPartitionThunk {
+      public:
+        ComputePendingDifference(IndexSpace t, IndexSpace i,
+                                 const std::vector<IndexSpace> &h)
+          : target(t), initial(i), handles(h) { }
+        virtual ~ComputePendingDifference(void) { }
+      public:
+        virtual Event perform(RegionTreeForest *forest)
+        { return forest->compute_pending_space(target, initial, handles); }
+#ifdef LEGION_SPY
+        virtual void perform_logging(PendingPartitionOp* op);
+#endif
+      protected:
+        IndexSpace target, initial;
+        std::vector<IndexSpace> handles;
+      };
+    public:
+      PendingPartitionOp(Runtime *rt);
+      PendingPartitionOp(const PendingPartitionOp &rhs);
+      virtual ~PendingPartitionOp(void);
+    public:
+      PendingPartitionOp& operator=(const PendingPartitionOp &rhs);
+    public:
+      void initialize_equal_partition(SingleTask *ctx,
+                                      IndexPartition pid, size_t granularity);
+      void initialize_weighted_partition(SingleTask *ctx,
+                                         IndexPartition pid, size_t granularity,
+                                      const std::map<DomainPoint,int> &weights);
+      void initialize_union_partition(SingleTask *ctx,
+                                      IndexPartition pid, 
+                                      IndexPartition handle1,
+                                      IndexPartition handle2);
+      void initialize_intersection_partition(SingleTask *ctx,
+                                             IndexPartition pid, 
+                                             IndexPartition handle1,
+                                             IndexPartition handle2);
+      void initialize_difference_partition(SingleTask *ctx,
+                                           IndexPartition pid, 
+                                           IndexPartition handle1,
+                                           IndexPartition handle2);
+      void initialize_cross_product(SingleTask *ctx,
+                                    IndexPartition base, IndexPartition source,
+                                std::map<DomainPoint,IndexPartition> &handles);
+      void initialize_index_space_union(SingleTask *ctx, IndexSpace target, 
+                                        const std::vector<IndexSpace> &handles);
+      void initialize_index_space_union(SingleTask *ctx, IndexSpace target, 
+                                        IndexPartition handle);
+      void initialize_index_space_intersection(SingleTask *ctx, 
+                                               IndexSpace target,
+                                        const std::vector<IndexSpace> &handles);
+      void initialize_index_space_intersection(SingleTask *ctx,
+                                              IndexSpace target,
+                                              IndexPartition handle);
+      void initialize_index_space_difference(SingleTask *ctx, 
+                                             IndexSpace target, 
+                                             IndexSpace initial,
+                                        const std::vector<IndexSpace> &handles);
+      void perform_logging();
+      inline Event get_handle_ready(void) const { return handle_ready; }
+    public:
+      virtual bool trigger_execution(void);
+      virtual void deferred_complete(void);
+      virtual bool is_partition_op(void) const { return true; } 
+    public:
+      virtual void activate(void);
+      virtual void deactivate(void);
+      virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
+    protected:
+      UserEvent handle_ready;
+      PendingPartitionThunk *thunk;
+    };
+
+    /**
+     * \class DependentPartitionOp
+     * An operation for creating different kinds of partitions
+     * which are dependent on mapping a region in order to compute
+     * the resulting partition.
+     */
+    class DependentPartitionOp : public Operation {
+    public:
+      static const AllocationType alloc_type = DEPENDENT_PARTITION_OP_ALLOC;
+    public:
+      enum PartOpKind {
+        BY_FIELD,
+        BY_IMAGE,
+        BY_PREIMAGE,
+      };
+    public:
+      DependentPartitionOp(Runtime *rt);
+      DependentPartitionOp(const DependentPartitionOp &rhs);
+      virtual ~DependentPartitionOp(void);
+    public:
+      DependentPartitionOp& operator=(const DependentPartitionOp &rhs);
+    public:
+      void initialize_by_field(SingleTask *ctx, IndexPartition pid,
+                               LogicalRegion handle, LogicalRegion parent,
+                               const Domain &color_space, FieldID fid); 
+      void initialize_by_image(SingleTask *ctx, IndexPartition pid,
+                               LogicalPartition projection,
+                               LogicalRegion parent, FieldID fid,
+                               const Domain &color_space);
+      void initialize_by_preimage(SingleTask *ctx, IndexPartition pid,
+                               IndexPartition projection, LogicalRegion handle,
+                               LogicalRegion parent, FieldID fid,
+                               const Domain &color_space);
+      void perform_logging();
+      const RegionRequirement& get_requirement(void) const;
+      inline Event get_handle_ready(void) const { return handle_ready; }
+    public:
+      virtual void trigger_dependence_analysis(void);
+      virtual bool trigger_execution(void);
+      virtual void deferred_complete(void);
+      virtual unsigned find_parent_index(unsigned idx);
+      virtual bool is_partition_op(void) const { return true; }
+    public:
+      virtual void activate(void);
+      virtual void deactivate(void);
+      virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
+    protected:
+      void compute_parent_index(void);
+    protected:
+      UserEvent handle_ready;
+      PartOpKind partition_kind;
+      RegionRequirement requirement;
+      RestrictInfo restrict_info;
+      IndexPartition partition_handle;
+      Domain color_space;
+      IndexPartition projection; /* for pre-image only*/
+      RegionTreePath privilege_path;
+      unsigned parent_req_index;
+    };
+
+    /**
+     * \class FillOp
+     * Fill operations are used to initialize a field to a
+     * specific value for a particular logical region.
+     */
+    class FillOp : public SpeculativeOp {
+    public:
+      static const AllocationType alloc_type = FILL_OP_ALLOC;
+    public:
+      FillOp(Runtime *rt);
+      FillOp(const FillOp &rhs);
+      virtual ~FillOp(void);
+    public:
+      FillOp& operator=(const FillOp &rhs);
+    public:
+      void initialize(SingleTask *ctx, LogicalRegion handle,
+                      LogicalRegion parent, FieldID fid,
+                      const void *ptr, size_t size,
+                      const Predicate &pred, bool check_privileges);
+      void initialize(SingleTask *ctx, LogicalRegion handle,
+                      LogicalRegion parent, FieldID fid, const Future &f,
+                      const Predicate &pred, bool check_privileges);
+      void initialize(SingleTask *ctx, LogicalRegion handle,
+                      LogicalRegion parent, 
+                      const std::set<FieldID> &fields,
+                      const void *ptr, size_t size,
+                      const Predicate &pred, bool check_privileges);
+      void initialize(SingleTask *ctx, LogicalRegion handle,
+                      LogicalRegion parent, 
+                      const std::set<FieldID> &fields, const Future &f,
+                      const Predicate &pred, bool check_privileges);
+      inline const RegionRequirement& get_requirement(void) const 
+        { return requirement; }
+    public:
+      virtual void activate(void);
+      virtual void deactivate(void);
+      virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
+    public:
+      virtual void trigger_dependence_analysis(void);
+      virtual bool trigger_execution(void);
+      virtual void deferred_complete(void);
+      virtual void resolve_true(void);
+      virtual void resolve_false(void);
+      virtual bool speculate(bool &value);
+      virtual unsigned find_parent_index(unsigned idx);
+    public:
+      void check_fill_privilege(void);
+      void compute_parent_index(void);
+    protected:
+      RegionRequirement requirement;
+      RegionTreePath privilege_path;
+      RegionTreePath mapping_path;
+      RestrictInfo restrict_info;
+      unsigned parent_req_index;
+      void *value;
+      size_t value_size;
+      Future future;
+    };
+
+    /**
+     * \class AttachOp
+     * Operation for attaching a file to a physical instance
+     */
+    class AttachOp : public Operation {
+    public:
+      static const AllocationType alloc_type = ATTACH_OP_ALLOC;
+    public:
+      AttachOp(Runtime *rt);
+      AttachOp(const AttachOp &rhs);
+      virtual ~AttachOp(void);
+    public:
+      AttachOp& operator=(const AttachOp &rhs);
+    public:
+      PhysicalRegion initialize_hdf5(SingleTask *ctx, const char *file_name,
+                                 LogicalRegion handle, LogicalRegion parent,
+                                 const std::map<FieldID,const char*> &field_map,
+                                 LegionFileMode mode, bool check_privileges);
+      inline const RegionRequirement& get_requirement(void) const 
+        { return requirement; }
+    public:
+      virtual void activate(void);
+      virtual void deactivate(void);
+      virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
+    public:
+      virtual void trigger_dependence_analysis(void);
+      virtual bool trigger_execution(void);
+      virtual unsigned find_parent_index(unsigned idx);
+    public:
+      PhysicalInstance create_instance(const Domain &dom, 
+                                       const std::vector<size_t> &field_sizes);
+    protected:
+      void check_privilege(void);
+      void compute_parent_index(void);
+    public:
+      RegionRequirement requirement;
+      RegionTreePath privilege_path;
+      RestrictInfo restrict_info;
+      const char *file_name;
+      std::map<FieldID,const char*> field_map;
+      LegionFileMode file_mode;
+      PhysicalRegion region;
+      unsigned parent_req_index;
+    };
+
+    /**
+     * \class Detach Op
+     * Operation for detaching a file from a physical instance
+     */
+    class DetachOp : public Operation {
+    public:
+      static const AllocationType alloc_type = DETACH_OP_ALLOC;
+    public:
+      DetachOp(Runtime *rt);
+      DetachOp(const DetachOp &rhs);
+      virtual ~DetachOp(void);
+    public:
+      DetachOp& operator=(const DetachOp &rhs);
+    public:
+      void initialize_detach(SingleTask *ctx, PhysicalRegion region);
+    public:
+      virtual void activate(void);
+      virtual void deactivate(void);
+      virtual const char* get_logging_name(void);
+      virtual OpKind get_operation_kind(void);
+    public:
+      virtual void trigger_dependence_analysis(void);
+      virtual bool trigger_execution(void);
+      virtual unsigned find_parent_index(unsigned idx);
+    protected:
+      void compute_parent_index(void);
+    public:
+      InstanceRef reference;
+      RegionRequirement requirement;
+      RegionTreePath privilege_path;
+      RestrictInfo restrict_info;
+      unsigned parent_req_index;
     };
 
   }; //namespace HighLevel

@@ -98,6 +98,7 @@ legion_domain_get_rect_3d(legion_domain_t d_)
   return CObjectWrapper::wrap(d.get_rect<3>());
 }
 
+#if 0
 size_t
 legion_domain_get_volume(legion_domain_t d_)
 {
@@ -113,6 +114,7 @@ legion_domain_from_index_space(legion_index_space_t is_)
 
   return CObjectWrapper::wrap(Domain(is));
 }
+#endif
 
 // -----------------------------------------------------------------------
 // Domain Point Operations
@@ -313,6 +315,28 @@ legion_index_space_get_domain(legion_runtime_t runtime_,
   return CObjectWrapper::wrap(runtime->get_index_space_domain(ctx, handle));
 }
 
+void
+legion_index_space_attach_name(legion_runtime_t runtime_,
+                               legion_index_space_t handle_,
+                               const char *name)
+{
+  HighLevelRuntime *runtime = CObjectWrapper::unwrap(runtime_);
+  IndexSpace handle = CObjectWrapper::unwrap(handle_);
+
+  runtime->attach_name(handle, name);
+}
+
+void
+legion_index_space_retrieve_name(legion_runtime_t runtime_,
+                                 legion_index_space_t handle_,
+                                 const char **result)
+{
+  HighLevelRuntime *runtime = CObjectWrapper::unwrap(runtime_);
+  IndexSpace handle = CObjectWrapper::unwrap(handle_);
+
+  runtime->retrieve_name(handle, *result);
+}
+
 //------------------------------------------------------------------------
 // Index Partition Operations
 //------------------------------------------------------------------------
@@ -333,7 +357,7 @@ legion_index_partition_create_coloring(legion_runtime_t runtime_,
   IndexPartition ip =
     runtime->create_index_partition(ctx, parent, *coloring, disjoint,
                                     part_color);
-  return ip;
+  return CObjectWrapper::wrap(ip);
 }
 
 legion_index_partition_t
@@ -351,7 +375,7 @@ legion_index_partition_create_blockify_1d(legion_runtime_t runtime_,
   IndexPartition ip =
     runtime->create_index_partition(ctx, parent, blockify, part_color);
 
-  return ip;
+  return CObjectWrapper::wrap(ip);
 }
 
 legion_index_partition_t
@@ -369,7 +393,7 @@ legion_index_partition_create_blockify_2d(legion_runtime_t runtime_,
   IndexPartition ip =
     runtime->create_index_partition(ctx, parent, blockify, part_color);
 
-  return ip;
+  return CObjectWrapper::wrap(ip);
 }
 
 legion_index_partition_t
@@ -387,7 +411,7 @@ legion_index_partition_create_blockify_3d(legion_runtime_t runtime_,
   IndexPartition ip =
     runtime->create_index_partition(ctx, parent, blockify, part_color);
 
-  return ip;
+  return CObjectWrapper::wrap(ip);
 }
 
 legion_index_partition_t
@@ -409,17 +433,40 @@ legion_index_partition_create_domain_coloring(
   IndexPartition ip =
     runtime->create_index_partition(ctx, parent, color_space, *coloring,
                                     disjoint, part_color);
-  return ip;
+  return CObjectWrapper::wrap(ip);
+}
+
+legion_index_partition_t
+legion_index_partition_create_by_field(legion_runtime_t runtime_,
+                                       legion_context_t ctx_,
+                                       legion_logical_region_t handle_,
+                                       legion_logical_region_t parent_,
+                                       legion_field_id_t fid,
+                                       legion_domain_t color_space_,
+                                       int color /* = AUTO_GENERATE_ID */,
+                                       bool allocable /* = false */)
+{
+  HighLevelRuntime *runtime = CObjectWrapper::unwrap(runtime_);
+  Context ctx = CObjectWrapper::unwrap(ctx_);
+  LogicalRegion handle = CObjectWrapper::unwrap(handle_);
+  LogicalRegion parent = CObjectWrapper::unwrap(parent_);
+  Domain color_space = CObjectWrapper::unwrap(color_space_);
+
+  IndexPartition ip =
+    runtime->create_partition_by_field(ctx, handle, parent, fid, color_space,
+                                       color, allocable);
+  return CObjectWrapper::wrap(ip);
 }
 
 legion_index_space_t
 legion_index_partition_get_index_subspace(legion_runtime_t runtime_,
                                           legion_context_t ctx_,
-                                          legion_index_partition_t handle,
+                                          legion_index_partition_t handle_,
                                           legion_color_t color)
 {
   HighLevelRuntime *runtime = CObjectWrapper::unwrap(runtime_);
   Context ctx = CObjectWrapper::unwrap(ctx_);
+  IndexPartition handle = CObjectWrapper::unwrap(handle_);
 
   IndexSpace is = runtime->get_index_subspace(ctx, handle, color);
 
@@ -429,10 +476,11 @@ legion_index_partition_get_index_subspace(legion_runtime_t runtime_,
 void
 legion_index_partition_destroy(legion_runtime_t runtime_,
                                legion_context_t ctx_,
-                               legion_index_partition_t handle)
+                               legion_index_partition_t handle_)
 {
   HighLevelRuntime *runtime = CObjectWrapper::unwrap(runtime_);
   Context ctx = CObjectWrapper::unwrap(ctx_);
+  IndexPartition handle = CObjectWrapper::unwrap(handle_);
 
   runtime->destroy_index_partition(ctx, handle);
 }
@@ -525,11 +573,12 @@ legion_logical_partition_t
 legion_logical_partition_create(legion_runtime_t runtime_,
                                 legion_context_t ctx_,
                                 legion_logical_region_t parent_,
-                                legion_index_partition_t handle)
+                                legion_index_partition_t handle_)
 {
   HighLevelRuntime *runtime = CObjectWrapper::unwrap(runtime_);
   Context ctx = CObjectWrapper::unwrap(ctx_);
   LogicalRegion parent = CObjectWrapper::unwrap(parent_);
+  IndexPartition handle = CObjectWrapper::unwrap(handle_);
 
   LogicalPartition r = runtime->get_logical_partition(ctx, parent, handle);
   return CObjectWrapper::wrap(r);
@@ -538,13 +587,14 @@ legion_logical_partition_create(legion_runtime_t runtime_,
 legion_logical_partition_t
 legion_logical_partition_create_by_tree(legion_runtime_t runtime_,
                                         legion_context_t ctx_,
-                                        legion_index_partition_t handle,
+                                        legion_index_partition_t handle_,
                                         legion_field_space_t fspace_,
                                         legion_region_tree_id_t tid)
 {
   HighLevelRuntime *runtime = CObjectWrapper::unwrap(runtime_);
   Context ctx = CObjectWrapper::unwrap(ctx_);
   FieldSpace fspace = CObjectWrapper::unwrap(fspace_);
+  IndexPartition handle = CObjectWrapper::unwrap(handle_);
 
   LogicalPartition r =
     runtime->get_logical_partition_by_tree(ctx, handle, fspace, tid);
@@ -1260,6 +1310,24 @@ legion_task_launcher_add_field(legion_task_launcher_t launcher_,
   launcher->add_field(idx, fid, inst);
 }
 
+unsigned
+legion_task_launcher_add_index_requirement(
+  legion_task_launcher_t launcher_,
+  legion_index_space_t handle_,
+  legion_allocate_mode_t priv,
+  legion_index_space_t parent_,
+  bool verified /* = false*/)
+{
+  TaskLauncher *launcher = CObjectWrapper::unwrap(launcher_);
+  IndexSpace handle = CObjectWrapper::unwrap(handle_);
+  IndexSpace parent = CObjectWrapper::unwrap(parent_);
+
+  unsigned idx = launcher->index_requirements.size();
+  launcher->add_index_requirement(
+    IndexSpaceRequirement(handle, priv, parent, verified));
+  return idx;
+}
+
 void
 legion_task_launcher_add_future(legion_task_launcher_t launcher_,
                                 legion_future_t future_)
@@ -1419,6 +1487,24 @@ legion_index_launcher_add_field(legion_index_launcher_t launcher_,
   IndexLauncher *launcher = CObjectWrapper::unwrap(launcher_);
 
   launcher->add_field(idx, fid, inst);
+}
+
+unsigned
+legion_index_launcher_add_index_requirement(
+  legion_index_launcher_t launcher_,
+  legion_index_space_t handle_,
+  legion_allocate_mode_t priv,
+  legion_index_space_t parent_,
+  bool verified /* = false*/)
+{
+  IndexLauncher *launcher = CObjectWrapper::unwrap(launcher_);
+  IndexSpace handle = CObjectWrapper::unwrap(handle_);
+  IndexSpace parent = CObjectWrapper::unwrap(parent_);
+
+  unsigned idx = launcher->index_requirements.size();
+  launcher->add_index_requirement(
+    IndexSpaceRequirement(handle, priv, parent, verified));
+  return idx;
 }
 
 void
@@ -1961,11 +2047,15 @@ legion_accessor_array_ref(legion_accessor_array_t handle_,
 }
 
 legion_index_iterator_t
-legion_index_iterator_create(legion_index_space_t handle_)
+legion_index_iterator_create(legion_runtime_t runtime_,
+                             legion_context_t ctx_,
+                             legion_index_space_t handle_)
 {
+  HighLevelRuntime *runtime = CObjectWrapper::unwrap(runtime_);
+  Context ctx = CObjectWrapper::unwrap(ctx_);
   IndexSpace handle = CObjectWrapper::unwrap(handle_);
 
-  IndexIterator *iterator = new IndexIterator(handle);
+  IndexIterator *iterator = new IndexIterator(runtime, ctx, handle);
   return CObjectWrapper::wrap(iterator);
 }
 
@@ -2371,6 +2461,70 @@ legion_runtime_register_task_uint64(
     id, proc_kind, single, index, task_pointer, vid, options, task_name);
 }
 
+class FunctorWrapper : public ProjectionFunctor {
+public:
+  FunctorWrapper(HighLevelRuntime *rt,
+                 legion_projection_functor_logical_region_t region_fn,
+                 legion_projection_functor_logical_partition_t partition_fn)
+    : ProjectionFunctor(rt)
+    , region_functor(region_fn)
+    , partition_functor(partition_fn)
+  {
+  }
+
+  LogicalRegion project(Context ctx, Task *task,
+                        unsigned index,
+                        LogicalRegion upper_bound,
+                        const DomainPoint &point)
+  {
+    legion_runtime_t runtime_ = CObjectWrapper::wrap(runtime);
+    legion_context_t ctx_ = CObjectWrapper::wrap(ctx);
+    legion_task_t task_ = CObjectWrapper::wrap(task);
+    legion_logical_region_t upper_bound_ = CObjectWrapper::wrap(upper_bound);
+    legion_domain_point_t point_ = CObjectWrapper::wrap(point);
+
+    assert(region_functor);
+    legion_logical_region_t result =
+      region_functor(runtime_, ctx_, task_, index, upper_bound_, point_);
+    return CObjectWrapper::unwrap(result);
+  }
+
+  LogicalRegion project(Context ctx, Task *task,
+                        unsigned index,
+                        LogicalPartition upper_bound,
+                        const DomainPoint &point)
+  {
+    legion_runtime_t runtime_ = CObjectWrapper::wrap(runtime);
+    legion_context_t ctx_ = CObjectWrapper::wrap(ctx);
+    legion_task_t task_ = CObjectWrapper::wrap(task);
+    legion_logical_partition_t upper_bound_ = CObjectWrapper::wrap(upper_bound);
+    legion_domain_point_t point_ = CObjectWrapper::wrap(point);
+
+    assert(partition_functor);
+    legion_logical_region_t result =
+      partition_functor(runtime_, ctx_, task_, index, upper_bound_, point_);
+    return CObjectWrapper::unwrap(result);
+  }
+
+private:
+  legion_projection_functor_logical_region_t region_functor;
+  legion_projection_functor_logical_partition_t partition_functor;
+};
+
+void
+legion_runtime_register_projection_functor(
+  legion_runtime_t runtime_,
+  legion_projection_id_t id,
+  legion_projection_functor_logical_region_t region_functor,
+  legion_projection_functor_logical_partition_t partition_functor)
+{
+  HighLevelRuntime *runtime = CObjectWrapper::unwrap(runtime_);
+
+  FunctorWrapper *functor =
+    new FunctorWrapper(runtime, region_functor, partition_functor);
+  runtime->register_projection_functor(id, functor);
+}
+
 // -----------------------------------------------------------------------
 // Timing Operations
 // -----------------------------------------------------------------------
@@ -2378,7 +2532,7 @@ legion_runtime_register_task_uint64(
 unsigned long long
 legion_get_current_time_in_micros(void)
 {
-  return TimeStamp::get_current_time_in_micros();
+  return Realm::Clock::current_time_in_microseconds();
 }
 
 // -----------------------------------------------------------------------

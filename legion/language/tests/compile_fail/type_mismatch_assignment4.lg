@@ -13,15 +13,17 @@
 -- limitations under the License.
 
 -- fails-with:
--- type mismatch in assignment: expected k($s) but got k($t)
+-- type_mismatch_assignment4.lg:31: type mismatch in assignment: expected k($s) but got k($t)
+--   ks = kt
+--    ^
 
 import "legion"
 
 fspace k(a : region(int)) {}
 
 task f()
-  var s = region(int, 5)
-  var t = region(int, 5)
+  var s = region(ispace(ptr, 5), int)
+  var t = region(ispace(ptr, 5), int)
 
   var ks = [k(s)]{}
   var kt = [k(t)]{}

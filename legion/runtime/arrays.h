@@ -1,4 +1,4 @@
-/* Copyright 2015 Stanford University
+/* Copyright 2015 Stanford University, NVIDIA Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 #ifndef _ARRAYS_H
 #define _ARRAYS_H
 
+#include <string.h>
 #include <vector>
 #include <map>
 
@@ -31,10 +32,6 @@ static inline int imin(int a, int b) { return (a < b) ? a : b; }
 static inline int imax(int a, int b) { return (a > b) ? a : b; }
 
 namespace LegionRuntime {
-  namespace LowLevel {
-    class IndexSpace;
-  };
-
   namespace Arrays {
     template <unsigned DIM>
     class Point {
@@ -100,7 +97,7 @@ namespace LegionRuntime {
       {
         Point<DIM> res;
         for(unsigned i = 0; i < DIM; i++)
-  	res.x[i] = x[i] + other.x[i];
+          res.x[i] = x[i] + other.x[i];
 	return res;
       }
   
@@ -191,6 +188,27 @@ namespace LegionRuntime {
   
       int operator[](unsigned idx) const { return x[0]; }
       operator int(void) const { return x[0]; }
+      
+      bool operator==(const Point<DIM> &other) const
+      {
+        for(unsigned i = 0; i < DIM; i++) 
+	  if(x[i] != other.x[i]) return false; 
+	return true;
+      }
+
+      bool operator!=(const Point<DIM> &other) const
+      {
+        for(unsigned i = 0; i < DIM; i++) 
+	  if(x[i] != other.x[i]) return true; 
+	return false;
+      }
+
+      bool operator<=(const Point<DIM> &other) const
+      {
+        for(unsigned i = 0; i < DIM; i++) 
+	  if(x[i] > other.x[i]) return false; 
+	return true;
+      }
   
       static Point<DIM> ZEROES(void)
       {
@@ -234,7 +252,39 @@ namespace LegionRuntime {
 	return v;
       }
 
-      Point<DIM> operator+(const Point<DIM> other) const { return sum(*this, other); }
+      Point<DIM> operator+(const Point<DIM> other) const
+      {
+        Point<DIM> res;
+        for(unsigned i = 0; i < DIM; i++)
+          res.x[i] = x[i] + other.x[i];
+	return res;
+      }
+
+      Point<DIM> operator-(const Point<DIM> other) const
+      {
+        Point<DIM> res;
+        for(unsigned i = 0; i < DIM; i++)
+	  res.x[i] = x[i] - other.x[i];
+	return res;
+      }
+  
+      // element-wise multiplication and division
+      Point<DIM> operator*(const Point<DIM> other) const
+      {
+        Point<DIM> res;
+        for(unsigned i = 0; i < DIM; i++)
+	  res.x[i] = x[i] * other.x[i];
+	return res;
+      }
+  
+      Point<DIM> operator/(const Point<DIM> other) const
+      {
+        Point<DIM> res;
+        for(unsigned i = 0; i < DIM; i++)
+	  res.x[i] = x[i] / other.x[i];
+	return res;
+      }
+
       int dot(const Point<DIM> other) const { return dot(*this, other); }
   
     public:
@@ -544,7 +594,13 @@ namespace LegionRuntime {
       }
 
       operator bool(void) const { return any_left; }
-      GenericPointInRectIterator& operator++(int /*i am postfix*/) { step(); return *this; }
+      GenericPointInRectIterator& operator++(/*i am prefix*/) { step(); return *this; }
+      GenericPointInRectIterator operator++(int /*i am postfix*/)
+      { 
+	GenericPointInRectIterator<DIM> orig = *this; 
+	step();
+	return orig;
+      }
     };
   
     template <typename T>
@@ -731,7 +787,7 @@ namespace LegionRuntime {
         for(int i = 0; i < IDIM; i++) {
   	prod *= 1 + (r.hi[i] - r.lo[i]);
         }
-        return (convex.hi - convex.lo + 1) == prod;
+        return (convex.hi[0] - convex.lo[0] + 1) == prod;
       }
 
       Rect<ODIM> image_dense_subrect(const Rect<IDIM> r, Rect<IDIM>& subrect) const

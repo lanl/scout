@@ -13,7 +13,9 @@
 -- limitations under the License.
 
 -- fails-with:
--- type mismatch in argument 2: expected partition(disjoint, $r) but got partition(aliased, $r)
+-- type_mismatch_call_partition1.lg:31: type mismatch in argument 2: expected partition(disjoint, $r) but got partition(aliased, $r)
+--   f(r, p)
+--   ^
 
 import "legion"
 
@@ -22,7 +24,7 @@ local c = legionlib.c
 task f(x : region(int), p : partition(disjoint, x)) end
 
 task g()
-  var r = region(int, 5)
+  var r = region(ispace(ptr, 5), int)
   var rc = c.legion_coloring_create()
   var p = partition(aliased, r, rc)
   c.legion_coloring_destroy(rc)
