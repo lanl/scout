@@ -65,6 +65,7 @@ list(APPEND low_level_src
   ${LG_RT_DIR}/realm/logging.cc 
   ${LG_RT_DIR}/realm/profiling.cc 
   ${LG_RT_DIR}/realm/operation.cc
+  ${LG_RT_DIR}/realm/timers.cc
 )
 
 list(APPEND mapper_src 
