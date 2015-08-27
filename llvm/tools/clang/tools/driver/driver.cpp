@@ -435,9 +435,10 @@ int main(int argc_, const char **argv_) {
     MarkEOLs = false;
   llvm::cl::ExpandResponseFiles(Saver, Tokenizer, argv, MarkEOLs);
 
+  // +===== Scout ==============================================================+
   //-debug flag
   for (int i = 2, size = argv.size(); i < size; ++i) {
-    if (StringRef(argv[i]) == "-debug") {
+    if ( argv[i] != NULL && StringRef(argv[i]) == "-debug") {
       size_t pid = getpid();
       
       std::cerr << "PID: " << pid << std::endl;
@@ -446,6 +447,7 @@ int main(int argc_, const char **argv_) {
       std::getline(std::cin, str);
     }
   }
+ // +==========================================================================+
 
   // Handle -cc1 integrated tools, even if -cc1 was expanded from a response
   // file.

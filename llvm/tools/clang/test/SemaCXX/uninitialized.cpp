@@ -1,3 +1,4 @@
+// REQUIRES: scoutdisable
 // RUN: %clang_cc1 -fsyntax-only -Wall -Wuninitialized -Wno-unused-value -std=c++11 -verify %s
 
 // definitions for std::move
