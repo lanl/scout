@@ -1,4 +1,4 @@
-/* Copyright 2015 Stanford University
+/* Copyright 2015 Stanford University, NVIDIA Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,11 @@
 #include "lowlevel.h"
 #include "accessor.h"
 #include "legion_logging.h"
-#ifdef LEGION_PROF
+#ifdef OLD_LEGION_PROF
 #include "legion_utilities.h"
 #endif
+#include "realm/profiling.h"
+#include "realm/timers.h"
 
 #ifndef __GNUC__
 #include "atomics.h" // for __sync_fetch_and_add
@@ -45,6 +47,7 @@ using namespace LegionRuntime::Accessor;
 #include <unistd.h>
 #ifdef LEGION_BACKTRACE
 #include <execinfo.h>
+#include <cxxabi.h>
 #endif
 
 #define BASE_EVENTS	  1024	
@@ -118,16 +121,14 @@ pthread_mutex_t debug_mutex;
 // Instead of using __thread, we'll try and make this
 // code more portable by using pthread thread local storage
 //__thread unsigned local_proc_id;
-pthread_key_t local_proc_key;
-static void thread_proc_free(void *arg)
-{
-  assert(arg != NULL);
-  free(arg);
-}
+pthread_key_t local_thread_key;
 
 namespace LegionRuntime {
   namespace LowLevel {
 
+    // bring Realm's DetailedTimer into this namespace
+    typedef Realm::DetailedTimer DetailedTimer;
+    
 // MAC OSX doesn't support pthread barrier type
 #ifdef __MACH__
     typedef UtilityBarrier pthread_barrier_t;
@@ -137,12 +138,17 @@ namespace LegionRuntime {
     class EventImpl;
     class ReservationImpl;
     class MemoryImpl;
+    class RegionInstanceImpl;
+    class IndexSpaceImpl;
+    class IndexSpaceAllocatorImpl;
     class ProcessorImpl;
     class ProcessorGroup;
     class DMAQueue;
     class CopyOperation;
 
-    class Machine::Impl {
+    class RuntimeImpl;
+
+    class MachineImpl {
     public:
       void get_all_memories(std::set<Memory>& mset) const;
       void get_all_processors(std::set<Processor>& pset) const;
@@ -165,46 +171,49 @@ namespace LegionRuntime {
 			       Memory restrict_mem2 /*= Memory::NO_MEMORY*/) const;
       
     protected:
-      friend class Runtime::Impl;
+      friend class RuntimeImpl;
       std::vector<Machine::ProcessorMemoryAffinity> proc_mem_affinities;
       std::vector<Machine::MemoryMemoryAffinity> mem_mem_affinities;
     };
 
-    class Runtime::Impl {
+    class RuntimeImpl {
     public:
-      Impl(Machine::Impl *m);
+      RuntimeImpl(MachineImpl *m);
     public:
 
       bool init(int *argc, char ***argv);
 
-      void run(Processor::TaskFuncID task_id = 0, RunStyle style = ONE_TASK_ONLY,
+      void run(Processor::TaskFuncID task_id = 0, 
+	       Runtime::RunStyle style = Runtime::ONE_TASK_ONLY,
 	       const void *args = 0, size_t arglen = 0, bool background = false);
 
       void shutdown(void);
       void wait_for_shutdown(void);
 
-      static Runtime::Impl* get_runtime(void) { return runtime; } 
+      static RuntimeImpl* get_runtime(void) { return runtime; } 
       static DMAQueue *get_dma_queue(void) { return dma_queue; }
 
       EventImpl*           get_event_impl(Event e);
       ReservationImpl*     get_reservation_impl(Reservation r);
       MemoryImpl*          get_memory_impl(Memory m);
       ProcessorImpl*       get_processor_impl(Processor p);
-      IndexSpace::Impl*  get_metadata_impl(IndexSpace is);
-      RegionInstance::Impl*  get_instance_impl(RegionInstance i);
+      IndexSpaceImpl*  get_metadata_impl(IndexSpace is);
+      RegionInstanceImpl*  get_instance_impl(RegionInstance i);
 
       EventImpl*           get_free_event(void);
       ReservationImpl*     get_free_reservation(size_t data_size = 0);
-      IndexSpace::Impl*  get_free_metadata(size_t num_elmts);
-      IndexSpace::Impl*  get_free_metadata(const ElementMask &mask);
-      IndexSpace::Impl*  get_free_metadata(IndexSpace::Impl *par, const ElementMask &mask);
-      RegionInstance::Impl*  get_free_instance(IndexSpace is, Memory m, 
+      IndexSpaceImpl*  get_free_metadata(size_t num_elmts);
+      IndexSpaceImpl*  get_free_metadata(const ElementMask &mask);
+      IndexSpaceImpl*  get_free_metadata(IndexSpaceImpl *par);
+      IndexSpaceImpl*  get_free_metadata(IndexSpaceImpl *par, const ElementMask &mask);
+      RegionInstanceImpl*  get_free_instance(Memory m, 
                                                size_t num_elmts, size_t alloc_size, 
 					       const std::vector<size_t>& field_sizes,
 					       size_t elmt_size, size_t block_size,
 					       const DomainLinearization& linearization,
 					       char *ptr, const ReductionOpUntyped *redop,
-					       RegionInstance::Impl *parent);
+					       RegionInstanceImpl *parent,
+                                               const Realm::ProfilingRequestSet &reqs);
       ProcessorGroup *get_free_proc_group(const std::vector<Processor>& members);
 
       const ReductionOpUntyped* get_reduction_op(ReductionOpID redop);
@@ -212,19 +221,19 @@ namespace LegionRuntime {
       // Return events that are free
       void free_event(EventImpl *event);
       void free_reservation(ReservationImpl *reservation);
-      void free_metadata(IndexSpace::Impl *impl);
-      void free_instance(RegionInstance::Impl *impl);
+      void free_metadata(IndexSpaceImpl *impl);
+      void free_instance(RegionInstanceImpl *impl);
     public:
       // A nice helper method for debugging events
       void print_event_waiters(void);
     protected:
-      static Runtime::Impl *runtime;
+      static RuntimeImpl *runtime;
       static DMAQueue *dma_queue;
     protected:
-      friend class Machine;
-      friend class Runtime;
+      friend class Realm::Machine;
+      friend class Realm::Runtime;
       Processor::TaskIDTable task_table;
-      ReductionOpTable redop_table;
+      std::map<ReductionOpID, const ReductionOpUntyped *> redop_table;
       std::set<Processor> procs;
       std::vector<EventImpl*> events;
       std::deque<EventImpl*> free_events; 
@@ -233,11 +242,11 @@ namespace LegionRuntime {
       std::vector<MemoryImpl*> memories;
       std::vector<ProcessorImpl*> processors;
       std::vector<ProcessorGroup*> proc_groups;
-      std::vector<IndexSpace::Impl*> metadatas;
-      std::deque<IndexSpace::Impl*> free_metas;
-      std::vector<RegionInstance::Impl*> instances;
-      std::deque<RegionInstance::Impl*> free_instances;
-      Machine::Impl *machine;
+      std::vector<IndexSpaceImpl*> metadatas;
+      std::deque<IndexSpaceImpl*> free_metas;
+      std::vector<RegionInstanceImpl*> instances;
+      std::deque<RegionInstanceImpl*> free_instances;
+      MachineImpl *machine;
       pthread_t *background_pthread;
       pthread_rwlock_t event_lock;
       pthread_mutex_t  free_event_lock;
@@ -253,8 +262,74 @@ namespace LegionRuntime {
     };
 
     /* static */
-    Runtime::Impl *Runtime::Impl::runtime = NULL;
-    DMAQueue *Runtime::Impl::dma_queue = NULL;
+    RuntimeImpl *RuntimeImpl::runtime = NULL;
+    DMAQueue *RuntimeImpl::dma_queue = NULL;
+
+    class EventWaiter {
+    public:
+      virtual ~EventWaiter(void) { }
+      virtual bool event_triggered(void) = 0;
+      virtual void print_info(FILE *f) = 0;
+    };
+
+    class ExternalWaiter : public EventWaiter {
+    public:
+      ExternalWaiter(void)
+        : ready(false)
+      {
+        PTHREAD_SAFE_CALL(pthread_mutex_init(&mutex, NULL));
+        PTHREAD_SAFE_CALL(pthread_cond_init(&cond, NULL));
+      }
+      virtual ~ExternalWaiter(void)
+      {
+        PTHREAD_SAFE_CALL(pthread_mutex_destroy(&mutex));
+        PTHREAD_SAFE_CALL(pthread_cond_destroy(&cond));
+      }
+    public:
+      virtual bool event_triggered(void)
+      {
+        PTHREAD_SAFE_CALL(pthread_mutex_lock(&mutex));
+        ready = true;
+        PTHREAD_SAFE_CALL(pthread_cond_signal(&cond));
+        PTHREAD_SAFE_CALL(pthread_mutex_unlock(&mutex));
+        // Don't delete us, we're on the stack
+        return false;
+      }
+      virtual void print_info(FILE *f) 
+      {
+        fprintf(f,"External waiter");
+      }
+    public:
+      void wait(void)
+      {
+        PTHREAD_SAFE_CALL(pthread_mutex_lock(&mutex));
+        if (!ready) {
+          PTHREAD_SAFE_CALL(pthread_cond_wait(&cond, &mutex));
+        }
+        PTHREAD_SAFE_CALL(pthread_mutex_unlock(&mutex));
+      }
+    protected:
+      pthread_mutex_t mutex;
+      pthread_cond_t cond;
+      bool ready;
+    };
+
+    class DMAOperation : public EventWaiter {
+    public:
+      DMAOperation(void) : capture_timeline(false), capture_usage(false) { }
+      DMAOperation(const Realm::ProfilingRequestSet &reqs);
+      virtual ~DMAOperation(void);
+      virtual bool event_triggered(void);
+      virtual void print_info(FILE *f) = 0;
+      virtual void perform(void) = 0;
+    public:
+      Realm::ProfilingRequestSet requests;
+      Realm::ProfilingMeasurementCollection measurements;
+      Realm::ProfilingMeasurements::OperationTimeline timeline;
+      Realm::ProfilingMeasurements::OperationMemoryUsage usage;
+      bool capture_timeline;
+      bool capture_usage;
+    };
 
     class DMAQueue {
     public:
@@ -263,7 +338,7 @@ namespace LegionRuntime {
       void start(void);
       void shutdown(void);
       void run_dma_loop(void);
-      void enqueue_dma(CopyOperation *copy);
+      void enqueue_dma(DMAOperation *op);
     public:
       static void* start_dma_thread(void *args);
     public:
@@ -273,7 +348,7 @@ namespace LegionRuntime {
       pthread_mutex_t dma_lock;
       pthread_cond_t dma_cond;
       std::vector<pthread_t> dma_threads;
-      std::deque<CopyOperation*> ready_copies;
+      std::deque<DMAOperation*> ready_ops;
     };
     
     struct TimerStackEntry {
@@ -287,8 +362,8 @@ namespace LegionRuntime {
     public:
       PerThreadTimerData(void)
       {
-        unsigned *local_proc_id = (unsigned*)pthread_getspecific(local_proc_key);
-        thread = *local_proc_id; 
+        //unsigned *local_proc_id = (unsigned*)pthread_getspecific(local_proc_key);
+        //thread = *local_proc_id; 
         mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
         PTHREAD_SAFE_CALL(pthread_mutex_init(mutex,NULL));
       }
@@ -298,173 +373,128 @@ namespace LegionRuntime {
         free(mutex);
       }
 
-      unsigned thread;
+      //unsigned thread;
       std::list<TimerStackEntry> timer_stack;
       std::map<int, double> timer_accum;
       pthread_mutex_t *mutex;
     };
 
-    pthread_mutex_t global_timer_mutex = PTHREAD_MUTEX_INITIALIZER;
-    std::vector<PerThreadTimerData*> timer_data;
-    //__thread PerThreadTimerData *thread_timer_data;
-    pthread_key_t thread_timer_key;
-    static void thread_timer_free(void *arg)
+    static size_t find_field(const std::vector<size_t>& field_sizes,
+			     size_t offset, size_t size,
+			     size_t& field_start, size_t& field_size, size_t& within_field)
     {
-      assert(arg != NULL);
-      PerThreadTimerData *ptr = (PerThreadTimerData*)arg;
-      delete ptr;
-    }
-
-#ifdef DETAILED_TIMING
-    /*static*/ void DetailedTimer::clear_timers(bool all_nodes /*=true*/)
-    {
-      PTHREAD_SAFE_CALL(pthread_mutex_lock(&global_timer_mutex));
-      for (std::vector<PerThreadTimerData*>::iterator it = timer_data.begin();
-            it != timer_data.end(); it++)
-      {
-        // Take each thread's data lock as well
-        PTHREAD_SAFE_CALL(pthread_mutex_lock(((*it)->mutex)));
-        (*it)->timer_accum.clear();
-        PTHREAD_SAFE_CALL(pthread_mutex_unlock(((*it)->mutex)));
+      size_t start = 0;
+      for(std::vector<size_t>::const_iterator it = field_sizes.begin();
+	  it != field_sizes.end(); 
+	  it++) {
+	if(offset < *it) {
+	  // we're in this field
+	  field_start = start;
+	  field_size = *it;
+	  within_field = offset;
+	  // if size is nonzero, make sure it fits in the field
+	  if(size && ((offset + size) <= *it)) {
+	    return size;
+	  } else {
+	    return (*it - offset);
+	  }
+	} else {
+	  // try the next field
+	  start += *it;
+	  offset -= *it;
+	}
       }
-      PTHREAD_SAFE_CALL(pthread_mutex_unlock(&global_timer_mutex));
+      // fall through means there is no field
+      return 0;
     }
-
-    /*static*/ void DetailedTimer::push_timer(int timer_kind)
-    {
-      PerThreadTimerData *thread_timer_data = 
-        (PerThreadTimerData*) pthread_getspecific(thread_timer_key);
-      if (!thread_timer_data)
-      {
-        PTHREAD_SAFE_CALL(pthread_mutex_lock(&global_timer_mutex));
-        thread_timer_data = new PerThreadTimerData();
-        PTHREAD_SAFE_CALL(pthread_setspecific(thread_timer_key,thread_timer_data));
-        timer_data.push_back(thread_timer_data);
-        PTHREAD_SAFE_CALL(pthread_mutex_unlock(&global_timer_mutex));
-      }
-
-      // no lock required here - only our thread touches the stack
-      TimerStackEntry entry;
-      entry.timer_kind = timer_kind;
-      struct timespec ts;
-      clock_gettime(CLOCK_MONOTONIC, &ts);
-      entry.start_time = (1.0 * ts.tv_sec + 1e-9 * ts.tv_nsec);
-      entry.accum_child_time = 0;
-      thread_timer_data->timer_stack.push_back(entry);
-    }
-
-    /*static*/ void DetailedTimer::pop_timer(void)
-    {
-      PerThreadTimerData *thread_timer_data =
-        (PerThreadTimerData*) pthread_getspecific(thread_timer_key);
-      if (!thread_timer_data)
-      {
-        printf("Got pop without initialized thread data !?\n");
-        exit(1);
-      }
-
-      // no conflicts on stack
-      TimerStackEntry old_top = thread_timer_data->timer_stack.back();
-      thread_timer_data->timer_stack.pop_back();
-
-      struct timespec ts;
-      clock_gettime(CLOCK_MONOTONIC, &ts);
-      double elapsed = (1.0 * ts.tv_sec + 1e-9 * ts.tv_nsec) - old_top.start_time;
-
-      // all the elapsed time is added to the new top as child time
-      if (!thread_timer_data->timer_stack.empty())
-        thread_timer_data->timer_stack.back().accum_child_time += elapsed;
-
-      // only the elapsed time minus our own child time goes into the timer accumulator
-      elapsed -= old_top.accum_child_time;
-
-      // We do need a lock to touch the accumulator
-      if (old_top.timer_kind > 0)
-      {
-        PTHREAD_SAFE_CALL(pthread_mutex_lock(thread_timer_data->mutex));
-        
-        std::map<int,double>::iterator it = thread_timer_data->timer_accum.find(old_top.timer_kind);
-        if (it != thread_timer_data->timer_accum.end())
-          it->second += elapsed;
-        else
-          thread_timer_data->timer_accum.insert(std::make_pair(old_top.timer_kind,elapsed));
-
-        PTHREAD_SAFE_CALL(pthread_mutex_unlock(thread_timer_data->mutex));
-      }
-    }
-
-    /*static*/ void DetailedTimer::roll_up_timers(std::map<int,double> &timers, bool local_only)
-    {
-      PTHREAD_SAFE_CALL(pthread_mutex_lock(&global_timer_mutex));
-
-      for (std::vector<PerThreadTimerData*>::iterator it = timer_data.begin();
-            it != timer_data.end(); it++)
-      {
-        // Take the local lock for each thread's data too
-        PTHREAD_SAFE_CALL(pthread_mutex_lock(((*it)->mutex)));
-
-        for (std::map<int,double>::iterator it2 = (*it)->timer_accum.begin();
-              it2 != (*it)->timer_accum.end(); it2++)
-        {
-          std::map<int,double>::iterator it3 = timers.find(it2->first);
-          if (it3 != timers.end())
-            it3->second += it2->second;
-          else
-            timers.insert(*it2);
-        }
-
-        PTHREAD_SAFE_CALL(pthread_mutex_unlock(((*it)->mutex)));
-      }
-
-      PTHREAD_SAFE_CALL(pthread_mutex_unlock(&global_timer_mutex));
-    }
-
-    /*static*/ void DetailedTimer::report_timers(bool local_only /* = false*/)
-    {
-      std::map<int, double> timers;
-
-      roll_up_timers(timers, local_only);
-
-      printf("DETAILED_TIMING_SUMMARY:\n");
-      for (std::map<int,double>::iterator it = timers.begin();
-            it != timers.end(); it++)
-      {
-        printf("%12s - %7.3f s\n", stringify(it->first), it->second);
-      }
-      printf("END OF DETAILED TIMING SUMMARY\n");
-    }
-#endif
-    
-    
-
-    // Any object which can be triggered should be able to triggered
-    // This will include Events and Reservations 
-    class Triggerable {
-    public:
-        typedef unsigned TriggerHandle;
-	virtual bool trigger(unsigned count = 1, TriggerHandle = 0) = 0;
-	// make the warnings go away
-	virtual ~Triggerable() { }
-    };
 
     ////////////////////////////////////////////////////////
     // Event Impl (up here since we need it in Processor Impl) 
     ////////////////////////////////////////////////////////
 
-    class EventImpl : public Triggerable {
+    class EventImpl {
     public:
 	typedef unsigned EventIndex;
 	typedef unsigned EventGeneration;
     public:
-        struct TriggerableInfo {
+        class WaiterInfo {
         public:
-            TriggerableInfo(Triggerable *t, TriggerHandle h,
-                            EventGeneration n)
-              : target(t), handle(h), needed(n) { }
+          WaiterInfo(void)
+            : waiter(NULL), gen_needed(0) { }
+          WaiterInfo(EventWaiter *w, EventGeneration g)
+            : waiter(w), gen_needed(g) { }
         public:
-            Triggerable *target;
-            TriggerHandle handle;
-            EventGeneration needed;
+          EventWaiter *waiter;
+          EventGeneration gen_needed;
+        };
+    public:
+        class DeferredTrigger : public EventWaiter {
+        public:
+          DeferredTrigger(EventImpl *t, unsigned c = 1)
+            : target(t), count(c) { }
+          virtual ~DeferredTrigger(void) { }
+        public:
+          virtual bool event_triggered(void) {
+            target->trigger(count);
+            return true;
+          }
+          virtual void print_info(FILE *f) {
+            Event e = target->get_event();
+            fprintf(f,"deferred trigger: after=" IDFMT "/%d\n",
+                    e.id, e.gen+1);
+          }
+        protected:
+          EventImpl *target;
+          unsigned count;
+        };
+        class EventMerger : public EventWaiter {
+        public:
+          EventMerger(EventImpl *t, unsigned p, unsigned c = 1)
+            : target(t), pending(p+1), count(c) { }
+          virtual ~EventMerger(void) { }
+        public:
+          virtual bool event_triggered(void) {
+            unsigned remaining = __sync_sub_and_fetch(&pending,1);
+            bool last = (remaining == 0);
+            if (last)
+              target->trigger(count);
+            return last;
+          }
+          virtual void print_info(FILE *f) {
+            Event e = target->get_event();
+            fprintf(f,"event merger: after=" IDFMT "/%d\n",
+                    e.id, e.gen+1);
+          }
+          void register_waiter(EventImpl *source, Event wait_for) {
+            source->add_waiter(wait_for.gen, this);
+          }
+          bool arm(void) {
+            return event_triggered();
+          }
+        protected:
+          EventImpl *target;
+          unsigned pending;
+          unsigned count;
+        };
+        class DeferredArrival : public EventWaiter {
+        public:
+          DeferredArrival(EventImpl *t, unsigned c, EventGeneration g)
+            : target(t), count(c), apply_gen(g) { }
+          virtual ~DeferredArrival(void) { }
+        public:
+          virtual bool event_triggered(void) {
+            target->perform_arrival(count, Event::NO_EVENT, apply_gen);
+            return true;
+          }
+          virtual void print_info(FILE *f) {
+            Event e = target->get_event();
+            fprintf(f,"deferred arrival of %d for gen %d: after=" IDFMT "/%d\n",
+                    count, apply_gen, e.id, e.gen+1);
+          }
+        protected:
+          EventImpl *target;
+          unsigned count;
+          EventGeneration apply_gen;
         };
     public:
 	EventImpl(EventIndex idx, bool activate=false) 
@@ -511,17 +541,17 @@ namespace LegionRuntime {
 	// test whether an event has triggered without waiting
 	bool has_triggered(EventGeneration needed_gen);
 	// block until event has triggered
-	void wait(EventGeneration needed_gen, bool block);
+	void wait(EventGeneration needed_gen);
         // defer triggering of an event on another event
         void defer_trigger(Event wait_for);
 	// create an event that won't trigger until all input events have
 	Event merge_events(const std::map<EventImpl*,Event> &wait_for);
 	// Trigger the event
-	bool trigger(unsigned count = 1, TriggerHandle handle = 0);
+	void trigger(unsigned count = 1);
 	// Check to see if the event is active, if not activate it (return true), otherwise false
 	bool activate(void);	
 	// Register a dependent event, return true if event had not been triggered and was registered
-	bool register_dependent(Triggerable *target, EventGeneration needed_gen, TriggerHandle handle = 0);
+        void add_waiter(EventGeneration needed_gen, EventWaiter *waiter);
 	// Return an event for this EventImplementation
 	Event get_event();
         // Return a user event for this EventImplementation
@@ -535,6 +565,8 @@ namespace LegionRuntime {
                              EventGeneration apply_gen);
         bool get_result(Event::gen_t needed_gen, void *value, size_t value_size);
         void apply_reduction(Event::gen_t apply_gen, const void *reduce_value, size_t reduce_value_size);
+
+        void add_happens_before_set(Event::gen_t gen, const std::set<Event>& happens_before, bool all_must_trigger);
     public:
         // A debug helper method
         void print_waiters(void);
@@ -551,7 +583,7 @@ namespace LegionRuntime {
 	Event current; 
 	pthread_mutex_t *mutex;
 	pthread_cond_t *wait_cond;
-        std::list<TriggerableInfo> triggerables;
+        std::list<WaiterInfo> waiters;
         const ReductionOpUntyped *redop;
         void *initial_value;
         std::map<Event::gen_t, void *> final_values;
@@ -569,94 +601,76 @@ namespace LegionRuntime {
         // for use with barriers
         std::map<EventGeneration,int/*alterations*/> pending_alterations;
         std::map<EventGeneration,std::deque<PendingArrival> > pending_arrivals;
+
+        // happens before advice from app
+        struct HappensBeforePair {
+	  std::set<Event> events;
+	  bool all_must_trigger;
+	};
+        std::map<EventGeneration,std::deque<HappensBeforePair> > happens_before_sets;
     }; 
 
     ////////////////////////////////////////////////////////
     // Processor Impl (up here since we need it in Event) 
     ////////////////////////////////////////////////////////
 
-    class ProcessorImpl : public Triggerable {
+    class ProcessorImpl {
     public:
         // For creation of normal processors when there is no utility processors
         ProcessorImpl(pthread_barrier_t *init, const Processor::TaskIDTable &table, 
-                      Processor p, size_t stacksize, bool return_finish = false) 
+                      Processor p, size_t stacksize, Processor::Kind kind) 
           : init_bar(init), task_table(table), proc(p), 
-            proc_kind(Processor::LOC_PROC), utility_proc(this),
-            is_utility_proc(true), return_on_finish(return_finish), remaining_stops(0),
-            scheduler_invoked(false), util_shutdown(true)
+            proc_kind(kind), utility_proc(this),
+            shutdown(false), shutdown_trigger(false), 
+            stack_size(stacksize), running_thread(NULL)
         {
           utility.id = p.id; // we are our own utility processor
-          initialize_state(stacksize);
-          // Add ourselves as the processor that we're managing 
-          util_users.insert(p);
+          initialize_state();
         }
         // For the creation of normal processors when there are utility processors
         ProcessorImpl(pthread_barrier_t *init, const Processor::TaskIDTable &table,
-                      Processor p, size_t stacksize, ProcessorImpl *util, bool return_finish = false)
+                      Processor p, size_t stacksize, ProcessorImpl *util)
           : init_bar(init), task_table(table), proc(p), 
             utility(util->get_utility_processor()), 
-            proc_kind(Processor::LOC_PROC), utility_proc(util), 
-            is_utility_proc(false), return_on_finish(return_finish), remaining_stops(0),
-            scheduler_invoked(false), util_shutdown(false)
+            proc_kind(Processor::LOC_PROC), utility_proc(util),
+            shutdown(false), shutdown_trigger(false), 
+            stack_size(stacksize), running_thread(NULL)
         {
-          initialize_state(stacksize);
-        }
-        // For the creation of explicit utility processors
-        ProcessorImpl(pthread_barrier_t *init, const Processor::TaskIDTable &table,
-                      Processor p, size_t stacksize, unsigned num_owners, bool return_finish = false)
-          : init_bar(init), task_table(table), proc(p), 
-            proc_kind(Processor::UTIL_PROC), utility_proc(this),
-            is_utility_proc(true), return_on_finish(return_finish), remaining_stops(num_owners),
-            scheduler_invoked(false), util_shutdown(true)
-        {
-          utility.id = p.id;
-          initialize_state(stacksize);
+          initialize_state();
         }
         virtual ~ProcessorImpl(void)
         {
-                PTHREAD_SAFE_CALL(pthread_mutex_destroy(mutex));
-                PTHREAD_SAFE_CALL(pthread_cond_destroy(wait_cond));
-                PTHREAD_SAFE_CALL(pthread_attr_destroy(&attr));
-                free(mutex);
-                free(wait_cond);
+          PTHREAD_SAFE_CALL(pthread_mutex_destroy(mutex));
+          PTHREAD_SAFE_CALL(pthread_cond_destroy(wait_cond));
+          free(mutex);
+          free(wait_cond);
         }
     protected:
-        void initialize_state(size_t stacksize);
+        void initialize_state(void);
     public:
         // Operations for utility processors
         Processor get_utility_processor(void) const;
         Processor get_id(void) const { return proc; }
         Processor::Kind get_proc_kind(void) const { return proc_kind; }
-        void release_user(void);
-        void utility_finish(void);
-        const std::set<Processor>& get_utility_users(void) const;
-        void add_utility_user(Processor p, ProcessorImpl *impl);
     public:
         void add_to_group(ProcessorGroup *grp) { groups.push_back(grp); }
         virtual void get_group_members(std::vector<Processor>& members);
     public:
         virtual Event spawn(Processor::TaskFuncID func_id, const void * args,
                             size_t arglen, Event wait_on, int priority);
-        void run(void);
-	bool trigger(unsigned count = 1, TriggerHandle handle = 0);
-	static void* start(void *proc);
-	void preempt(EventImpl *event, EventImpl::EventGeneration needed);
-    public:
-        void increment_utility(void);
-        void decrement_utility(void);
-    protected:
-	bool execute_task(bool permit_shutdown);
-        bool perform_scheduling(bool need_lock);
+        virtual Event spawn(Processor::TaskFuncID func_id, const void * args,
+                            size_t arglen, const Realm::ProfilingRequestSet &requests,
+                            Event wait_on, int priority);
     protected:
 	class TaskDesc {
         public:
           TaskDesc(Processor::TaskFuncID id, const void *_args, size_t _arglen,
-                   Event _wait, EventImpl *_complete, int _priority,
+                   EventImpl *_complete, int _priority,
                    int _start_arrivals, int _finish_arrivals, int _expected)
-            : func_id(id), args(0), arglen(_arglen), wait(_wait),
+            : func_id(id), args(0), arglen(_arglen),
               complete(_complete), priority(_priority), 
               start_arrivals(_start_arrivals), finish_arrivals(_finish_arrivals),
-              expected(_expected)
+              expected(_expected), capture_timeline(false), capture_usage(false)
           {
             if (arglen > 0)
             {
@@ -664,27 +678,134 @@ namespace LegionRuntime {
               memcpy(args, _args, arglen);
             }
           }
+          TaskDesc(Processor::TaskFuncID id, const void *_args, size_t _arglen,
+                   EventImpl *_complete, int _priority,
+                   int _start_arrivals, int _finish_arrivals, int _expected,
+                   const Realm::ProfilingRequestSet &reqs)
+            : func_id(id), args(0), arglen(_arglen),
+              complete(_complete), priority(_priority), 
+              start_arrivals(_start_arrivals), finish_arrivals(_finish_arrivals),
+              expected(_expected), requests(reqs)
+          {
+            if (arglen > 0)
+            {
+              args = malloc(arglen);
+              memcpy(args, _args, arglen);
+            }
+            measurements.import_requests(requests);
+            capture_timeline = measurements.wants_measurement<
+                                Realm::ProfilingMeasurements::OperationTimeline>(); 
+            capture_usage = measurements.wants_measurement<
+                                Realm::ProfilingMeasurements::OperationProcessorUsage>();
+            if (capture_timeline)
+              timeline.record_create_time();
+          }
           ~TaskDesc(void)
           {
+            if (requests.request_count() > 0) {
+              if (capture_timeline)
+                measurements.add_measurement(timeline);
+              if (capture_usage)
+                measurements.add_measurement(usage);
+              measurements.send_responses(requests);
+            }
             if (args)
               free(args);
           }
 	public:
-		Processor::TaskFuncID func_id;
-		void * args;
-		size_t arglen;
-		Event wait;
-		EventImpl *complete;
-                int priority;
-                // Used for shared tasks assigned to processor groups
-                int start_arrivals;
-                int finish_arrivals;
-                int expected;
+          Processor::TaskFuncID func_id;
+          void * args;
+          size_t arglen;
+          EventImpl *complete;
+          int priority;
+          // Used for shared tasks assigned to processor groups
+          int start_arrivals;
+          int finish_arrivals;
+          int expected;
+          Realm::ProfilingRequestSet requests;
+          Realm::ProfilingMeasurementCollection measurements;
+          Realm::ProfilingMeasurements::OperationTimeline timeline;
+          Realm::ProfilingMeasurements::OperationProcessorUsage usage;
+          bool capture_timeline;
+          bool capture_usage;
 	};
+        class DeferredTask : public EventWaiter {
+        public:
+          DeferredTask(ProcessorImpl *t, TaskDesc *d)
+            : target(t), task(d) { }
+          virtual ~DeferredTask(void) { }
+        public:
+          virtual bool event_triggered(void) {
+            target->enqueue_task(task, Event::NO_EVENT);
+            return true;
+          }
+          virtual void print_info(FILE *f) {
+            Event e = task->complete->get_event();
+            fprintf(f,"deferred task: after=" IDFMT "/%d\n",
+                    e.id, e.gen+1);
+          }
+        protected:
+          ProcessorImpl *target;
+          TaskDesc *task;
+        };
+      public:
+        class ProcessorThread : public EventWaiter {
+        public:
+          enum ThreadState {
+            RUNNING_STATE,
+            PAUSED_STATE,
+            RESUMABLE_STATE,
+            SLEEPING_STATE, // about to sleep
+            SLEEP_STATE,
+          };
+        public:
+          ProcessorThread(ProcessorImpl *impl, size_t stack_size);
+          ~ProcessorThread(void);
+        public:
+          void do_initialize(void) { initialize = true; }
+          void do_finalize(void) { finalize = true; }
+        public:
+          static void* entry(void *arg);
+          void run(void);
+          void awake(void);
+          void sleep(void);
+          void prepare_to_sleep(void);
+          void preempt(EventImpl *event, EventImpl::EventGeneration needed); 
+          void resume(void);
+          void shutdown(void);
+          void start(void);
+          inline Processor get_processor(void) const { return proc->get_id(); } 
+        public:
+          virtual bool event_triggered(void);
+          virtual void print_info(FILE *f) {
+            fprintf(f, "Paused thread %lx\n", (unsigned long)thread);
+          }
+        public:
+          ProcessorImpl *const proc;
+        protected:
+          pthread_t thread;
+          pthread_attr_t attr;
+          ThreadState state;
+          pthread_mutex_t *thread_mutex;
+          pthread_cond_t *thread_cond;
+          bool initialize;
+          bool finalize;
+        };
     public:
-        void enqueue_task(TaskDesc *task);
+        void start_processor(void);
+        void shutdown_processor(void);
+        void initialize_processor(void);
+        void finalize_processor(void);
+        void process_kill(void);
+        bool is_idle(void);
+        void pause_thread(ProcessorThread *thread);
+        void resume_thread(ProcessorThread *thread);
+    public:
+        void enqueue_task(TaskDesc *task, Event wait_on);
     protected:
         void add_to_ready_queue(TaskDesc *desc);
+	bool execute_task(ProcessorThread *thread);
+        void run_task(TaskDesc *task);
     public:
         pthread_attr_t attr; // For setting pthread parameters when starting the thread
     protected:
@@ -695,20 +816,17 @@ namespace LegionRuntime {
         Processor::Kind proc_kind;
         ProcessorImpl *utility_proc;
 	std::list<TaskDesc*> ready_queue;
-	std::list<TaskDesc*> waiting_queue;
 	pthread_mutex_t *mutex;
 	pthread_cond_t *wait_cond;
 	// Used for detecting the shutdown condition
-	bool shutdown;
-	EventImpl *shutdown_trigger;
-        const bool is_utility_proc;
-        const bool return_on_finish;
-        unsigned remaining_stops; // for utility processor knowing when to stop
-        bool scheduler_invoked;   // for traking if we've invoked the scheduler
-        bool util_shutdown;       // for knowing when our utility processor is done
-        std::set<Processor> util_users;// Users of the utility processor to know when it's safe to finish
-        std::vector<ProcessorImpl*> constituents; // User impls of the utility processor
+	bool shutdown, shutdown_trigger;
+        const size_t stack_size;
         std::vector<ProcessorGroup *> groups;  // groups this proc is a member of
+    protected:
+        ProcessorThread               *running_thread;
+        std::set<ProcessorThread*>    paused_threads;
+        std::deque<ProcessorThread*>  resumable_threads;
+        std::vector<ProcessorThread*> available_threads;
     };
 
     class ProcessorGroup : public ProcessorImpl {
@@ -716,9 +834,9 @@ namespace LegionRuntime {
       static const Processor::id_t FIRST_PROC_GROUP_ID = 1000;
 
       ProcessorGroup(Processor p) 
-	: ProcessorImpl(0 /*init*/, Processor::TaskIDTable(), p, 0 /*stacksize*/), next_target(0)
+	: ProcessorImpl(0 /*init*/, Processor::TaskIDTable(), p, 0 /*stacksize*/, 
+                        Processor::PROC_GROUP), next_target(0)
       {
-	proc_kind = Processor::PROC_GROUP;
       }
 
       void add_member(ProcessorImpl *new_member) {
@@ -730,16 +848,26 @@ namespace LegionRuntime {
 
       virtual Event spawn(Processor::TaskFuncID func_id, const void * args,
 			  size_t arglen, Event wait_on, int priority);
-
+      virtual Event spawn(Processor::TaskFuncID func_id, const void * args,
+                            size_t arglen, const Realm::ProfilingRequestSet &requests,
+                            Event wait_on, int priority);
     protected:
       std::vector<ProcessorImpl *> members;
       size_t next_target;
     };
 
+  };
+};
+
+namespace Realm {
+
+  using namespace LegionRuntime;
+  using namespace LegionRuntime::LowLevel;
+
     ////////////////////////////////////////////////////////
     // Events 
     ////////////////////////////////////////////////////////
-
+ 
     /* static */ const Event Event::NO_EVENT = { 0, 0 };
     // Take this you POS c++ type system
     /* static */ const UserEvent UserEvent::NO_USER_EVENT = 
@@ -749,23 +877,26 @@ namespace LegionRuntime {
     {
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
 	if (!id) return true;
-	EventImpl *e = Runtime::Impl::get_runtime()->get_event_impl(*this);
+	EventImpl *e = RuntimeImpl::get_runtime()->get_event_impl(*this);
 	return e->has_triggered(gen);
     }
 
-    void Event::wait(bool block) const
+    void Event::wait(void) const
     {
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL); 
 	if (!id) return;
-	EventImpl *e = Runtime::Impl::get_runtime()->get_event_impl(*this);
-	e->wait(gen,block);
+	EventImpl *e = RuntimeImpl::get_runtime()->get_event_impl(*this);
+	e->wait(gen);
     }
 
     // used by non-legion threads to wait on an event - always blocking
     void Event::external_wait(void) const
     {
-      // shared lowlevel does pthreads for everybody
-      wait(true);
+      if (!id) return;
+      EventImpl *e = RuntimeImpl::get_runtime()->get_event_impl(*this);
+      ExternalWaiter waiter;
+      e->add_waiter(gen, &waiter);
+      waiter.wait();
     }
 
     Event Event::merge_events(Event ev1, Event ev2, Event ev3,
@@ -831,7 +962,7 @@ namespace LegionRuntime {
           return Event::NO_EVENT;
         }
         // Get a new event
-	EventImpl *e = Runtime::Impl::get_runtime()->get_free_event();
+	EventImpl *e = RuntimeImpl::get_runtime()->get_free_event();
         // Get the implementations for all the wait_for events
         // Do this to avoid calling get_event_impl while holding the event lock
         std::map<EventImpl*,Event> wait_for_impl;
@@ -841,12 +972,120 @@ namespace LegionRuntime {
           assert(wait_for_impl.size() < wait_for.size());
           if (!(*it).exists())
             continue;
-          EventImpl *src_impl = Runtime::Impl::get_runtime()->get_event_impl(*it);
+          EventImpl *src_impl = RuntimeImpl::get_runtime()->get_event_impl(*it);
           std::pair<EventImpl*,Event> made_pair(src_impl,*it);
           wait_for_impl.insert(std::pair<EventImpl*,Event>(src_impl,*it));
         }
 	return e->merge_events(wait_for_impl);
     }
+
+    /*static*/ void Event::advise_event_ordering(Event happens_before,
+						 Event happens_after)
+    {
+      std::set<Event> s;
+      s.insert(happens_before);
+      EventImpl *e = RuntimeImpl::get_runtime()->get_event_impl(happens_after);
+      e->add_happens_before_set(happens_after.gen, s, true);
+    }
+
+    /*static*/ void Event::advise_event_ordering(const std::set<Event>& happens_before,
+						 Event happens_after,
+						 bool all_must_trigger /*= true*/)
+    {
+      EventImpl *e = RuntimeImpl::get_runtime()->get_event_impl(happens_after);
+      e->add_happens_before_set(happens_after.gen, happens_before, all_must_trigger);
+    }
+
+    ////////////////////////////////////////////////////////
+    // User Events (just use base event impl) 
+    ////////////////////////////////////////////////////////
+
+    UserEvent UserEvent::create_user_event(void)
+    {
+      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
+      EventImpl *impl = RuntimeImpl::get_runtime()->get_free_event();
+      return impl->get_user_event();
+    }
+
+    void UserEvent::trigger(Event wait_on /*= NO_EVENT*/) const
+    {
+      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
+      if (!id) return;
+      EventImpl *impl = RuntimeImpl::get_runtime()->get_event_impl(*this);
+      if (wait_on.exists())
+        impl->defer_trigger(wait_on);
+      else
+        impl->trigger();
+    }
+
+    ////////////////////////////////////////////////////////
+    // Barrier Events (have to use same base impl)
+    ////////////////////////////////////////////////////////
+    
+    Barrier Barrier::create_barrier(unsigned expected_arrivals, ReductionOpID redop_id /*= 0*/,
+				    const void *initial_value /*= 0*/, size_t initial_value_size /*= 0*/)
+    {
+      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
+      EventImpl *impl = RuntimeImpl::get_runtime()->get_free_event();
+      Barrier b = impl->get_barrier(expected_arrivals, redop_id, initial_value, initial_value_size);
+      //log_barrier.info("barrier " IDFMT ".%d - create %d", b.id, b.gen, expected_arrivals);
+      
+      return b;
+    }
+
+    void Barrier::destroy_barrier(void)
+    {
+      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
+      EventImpl *impl = RuntimeImpl::get_runtime()->get_event_impl(*this);
+      RuntimeImpl::get_runtime()->free_event(impl);
+    }
+
+    Barrier Barrier::advance_barrier(void) const
+    {
+      Barrier next(*this);
+      next.gen++;
+      return next;
+    }
+
+    Barrier Barrier::alter_arrival_count(int delta) const
+    {
+      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
+      if (!id) return *this;
+      EventImpl *impl = RuntimeImpl::get_runtime()->get_event_impl(*this);
+      impl->alter_arrival_count(delta, gen);
+      return *this;
+    }
+
+    Barrier Barrier::get_previous_phase(void) const
+    {
+      Barrier result = *this;
+      result.gen--;
+      return result;
+    }
+
+    bool Barrier::get_result(void *value, size_t value_size) const
+    {
+      EventImpl *impl = RuntimeImpl::get_runtime()->get_event_impl(*this);
+      return impl->get_result(gen, value, value_size);
+    }
+
+    void Barrier::arrive(unsigned count /*=1*/, Event wait_on /*= Event::NO_EVENT*/,
+			 const void *reduce_value /*= 0*/, size_t reduce_value_size /*= 0*/) const
+    {
+      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
+      if (!id) return;
+
+      EventImpl *impl = RuntimeImpl::get_runtime()->get_event_impl(*this);
+      // Do this before the arrival to avoid a race
+      if(reduce_value_size > 0)
+	impl->apply_reduction(gen, reduce_value, reduce_value_size);
+      impl->perform_arrival(count, wait_on, gen);
+    }
+
+};
+
+namespace LegionRuntime {
+  namespace LowLevel {
 
     bool EventImpl::has_triggered(EventGeneration needed_gen)
     {
@@ -857,195 +1096,164 @@ namespace LegionRuntime {
 	return result;
     }
 
-    void EventImpl::wait(EventGeneration needed_gen, bool block)
+    void EventImpl::wait(EventGeneration needed_gen)
     {
-        if (block)
-        {
-            // First check to see if the event has triggered
-            PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));	
-            // Wait until the generation indicates that the event has occurred
-            while (needed_gen > generation) 
-            {
-                    DetailedTimer::ScopedPush sp(TIME_NONE);
-                    PTHREAD_SAFE_CALL(pthread_cond_wait(wait_cond,mutex));
-            }
-            PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-        }
-        else
-        {
-            // Try preempting the process
-            unsigned *local_proc_id = (unsigned*)pthread_getspecific(local_proc_key);
-            Processor local;
-            local.id = *local_proc_id;
-            ProcessorImpl *impl = Runtime::Impl::get_runtime()->get_processor_impl(local);
-            // This call will only return once the event has triggered
-            impl->preempt(this,needed_gen);
-        }
+      ProcessorImpl::ProcessorThread *thread = 
+        (ProcessorImpl::ProcessorThread*)pthread_getspecific(local_thread_key);
+      thread->preempt(this, needed_gen);
     }
 
     void EventImpl::defer_trigger(Event wait_for)
     {
-        EventImpl *src_impl = Runtime::Impl::get_runtime()->get_event_impl(wait_for);
-        bool trigger_now = true;
-        PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-        // Trigger the event now unless we can register a dependence
-        if ((src_impl != this) && 
-            src_impl->register_dependent(this, wait_for.gen))
-          trigger_now = false;
-        PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-        if (trigger_now)
-          trigger();
+      DeferredTrigger *thunk = new DeferredTrigger(this);
+      EventImpl *src_impl = RuntimeImpl::get_runtime()->get_event_impl(wait_for);
+      src_impl->add_waiter(wait_for.gen, thunk);
     }
 
     Event EventImpl::merge_events(const std::map<EventImpl*,Event> &wait_for)
     {
-	// We need the lock here so that events we've already registered
-	// can't trigger this event before sources is set
-	PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-#ifdef DEBUG_PRINT
-	//DPRINT2("Mering events into event %u generation %u\n",index,generation);
-#endif
-	sources = 0;
-	for (std::map<EventImpl*,Event>::const_iterator it = wait_for.begin();
-		it != wait_for.end(); it++)
-	{
-		EventImpl *src_impl = (it->first);
-		// Handle the special case where this event is an older generation
-		// of the same event implementation.  In this case we know it
-		// already triggered.
-		if (src_impl == this)
-			continue;
-		if (src_impl->register_dependent(this,(it->second).gen))
-			sources++;
-	}
-	Event ret;
-        // Handle the case where there are no events, or all the waiting events
-        // have already triggered
-        if (sources > 0)
-        {
-          ret = current;
-        }
-        else
-        {
-#ifdef DEBUG_LOW_LEVEL
-          assert(in_use); // event should be in use
-          assert(triggerables.size() == 0); // there should be no triggerables
-#endif
-          in_use = false;
-          // return no event since all the preceding events have already triggered
-          ret = Event::NO_EVENT;
-        }
-	PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-        // If ret does not exist, put this back on the list of free events
-        if (!ret.exists())
-          Runtime::Impl::get_runtime()->free_event(this);
-	return ret;
+      Event ret = current;
+      EventMerger *merger = new EventMerger(this, wait_for.size());
+      for (std::map<EventImpl*,Event>::const_iterator it = 
+            wait_for.begin(); it != wait_for.end(); it++)
+      {
+        merger->register_waiter(it->first, it->second);
+      }
+      bool nuke = merger->arm();
+      if (nuke)
+        delete merger;
+      return ret;
     } 
 
-    bool EventImpl::trigger(unsigned count, TriggerHandle handle)
+    void EventImpl::trigger(unsigned count)
     {
-	// Update the generation
-	PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
+      // Update the generation
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
 #ifdef DEBUG_LOW_LEVEL
-        assert(in_use);
-	assert(sources >= count);
+      assert(in_use);
+      assert(sources >= count);
 #endif
-	sources -= count;
-        bool finished = false;
-        // These is only used by barriers that have pending operations
-        bool trigger_again = false;
-        std::deque<PendingArrival> pending_copy;
-	if (sources == 0)
-	{
+      sources -= count;
+      bool finished = false;
+      // These is only used by barriers that have pending operations
+      bool trigger_again = false;
+      std::deque<PendingArrival> pending_copy;
+      if (sources == 0)
+      {
 #ifdef DEBUG_PRINT
-		//DPRINT2("Event %u triggered for generation %u\n",index,generation);
+        //DPRINT2("Event %u triggered for generation %u\n",index,generation);
 #endif
-		// Increment the generation so that nobody can register a triggerable
-		// with this event, but keep event in_use so no one can use the event
-		generation++;
+        // Increment the generation so that nobody can register a triggerable
+        // with this event, but keep event in_use so no one can use the event
+        generation++;
 #ifdef DEBUG_LOW_LEVEL
-		assert(generation == current.gen);
+        assert(generation == current.gen);
 #endif
-                // Get the set of people to trigger
-                std::vector<TriggerableInfo> to_trigger;
-                for (std::list<TriggerableInfo>::iterator it = triggerables.begin();
-                      it != triggerables.end(); /*nothing*/)
-                {
-                  if (it->needed == generation)
-                  {
-                    to_trigger.push_back(*it);
-                    it = triggerables.erase(it);
-                  }
-                  else
-                    it++;
-                }
-                finished = (generation == free_generation);
-                if (finished)
-                {
-                  in_use = false;
-                  assert(triggerables.empty());
-                }
+        // Get the set of people to trigger
+        std::vector<EventWaiter*> to_trigger;
+        for (std::list<WaiterInfo>::iterator it = waiters.begin();
+              it != waiters.end(); /*nothing*/)
+        {
+          if (it->gen_needed == generation)
+          {
+            to_trigger.push_back(it->waiter);
+            it = waiters.erase(it);
+          }
+          else
+            it++;
+        }
+        // double check that happens_before_sets were correct
+        {
+          std::map<EventGeneration,std::deque<HappensBeforePair> >::iterator
+            finder = happens_before_sets.find(generation);
+          if (finder != happens_before_sets.end()) {
+            for(std::deque<HappensBeforePair>::iterator it = finder->second.begin();
+                it != finder->second.end();
+                it++) {
+              // count how many of the events in this set have triggered
+              bool any_triggered = false;
+              for(std::set<Event>::iterator it2 = it->events.begin();
+                  it2 != it->events.end();
+                  it2++) {
+                if (it2->has_triggered())
+                  any_triggered = true;
                 else
-                {
-                  // Otherwise we are a barrier so update the state
-                  sources = arrivals;
-                  current.gen++;
-                  // Also check to see if we have any pending operations 
-                  {
-                    std::map<EventGeneration,int>::iterator finder = 
-                      pending_alterations.find(current.gen);
-                    if (finder != pending_alterations.end()) {
-                      sources += finder->second;
-                      if (sources == 0)
-                        trigger_again = true;
-                      pending_alterations.erase(finder);
-                    }
+                  if (it->all_must_trigger) {
+                    assert(false);  // debugger trap for now
                   }
-                  // Also see if we have any pending arrivals
-                  {
-                    std::map<EventGeneration,std::deque<PendingArrival> >::iterator
-                      finder = pending_arrivals.find(current.gen);
-                    if (finder != pending_arrivals.end()) {
-                      pending_copy = finder->second;
-                      pending_arrivals.erase(finder);
-                    }
-                  }
-                }
-                // Wake up any waiters
-		PTHREAD_SAFE_CALL(pthread_cond_broadcast(wait_cond));
-		// Can't be holding the lock when triggering other triggerables
-		PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-		// Trigger any dependent events for this generation
-                for (std::vector<TriggerableInfo>::const_iterator it = 
-                      to_trigger.begin(); it != to_trigger.end(); it++)
-                {
-                  bool nuke = it->target->trigger(1, it->handle);
-                  if (nuke)
-                    delete it->target;
-                }
+              }
+              if (!any_triggered) {
+                assert(false);  // debugger trap for now
+              }
+            }
+            happens_before_sets.erase(finder);
+          }
+        }
+        finished = (generation == free_generation);
+        if (finished)
+        {
+          in_use = false;
+          assert(waiters.empty());
         }
         else
         {
-          // Not done so release the lock
-          PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));	
-        }
-        // tell the runtime that we're free
-        if (finished)
-          Runtime::Impl::get_runtime()->free_event(this);
-        // Do some extra work for barriers
-        if (!pending_copy.empty()) {
-          for (std::deque<PendingArrival>::const_iterator it = 
-                pending_copy.begin(); it != pending_copy.end(); it++)
+          // Otherwise we are a barrier so update the state
+          sources = arrivals;
+          current.gen++;
+          // Also check to see if we have any pending operations 
           {
-            // Not the most efficient way of doing this but it works
-            for (int idx = 0; idx < it->count; idx++)
-              defer_trigger(it->wait_on);
+            std::map<EventGeneration,int>::iterator finder = 
+              pending_alterations.find(current.gen);
+            if (finder != pending_alterations.end()) {
+              sources += finder->second;
+              if (sources == 0)
+                trigger_again = true;
+              pending_alterations.erase(finder);
+            }
+          }
+          // Also see if we have any pending arrivals
+          {
+            std::map<EventGeneration,std::deque<PendingArrival> >::iterator
+              finder = pending_arrivals.find(current.gen);
+            if (finder != pending_arrivals.end()) {
+              pending_copy = finder->second;
+              pending_arrivals.erase(finder);
+            }
           }
         }
-        if (trigger_again)
-          trigger(0);
-        // Don't delete
-        return false;
+        // Wake up any waiters
+        PTHREAD_SAFE_CALL(pthread_cond_broadcast(wait_cond));
+        // Can't be holding the lock when triggering other triggerables
+        PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+        // Trigger any dependent events for this generation
+        for (std::vector<EventWaiter*>::const_iterator it = 
+              to_trigger.begin(); it != to_trigger.end(); it++)
+        {
+          bool nuke = (*it)->event_triggered();
+          if (nuke)
+            delete (*it);
+        }
+      }
+      else
+      {
+        // Not done so release the lock
+        PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));	
+      }
+      // tell the runtime that we're free
+      if (finished)
+        RuntimeImpl::get_runtime()->free_event(this);
+      // Do some extra work for barriers
+      if (!pending_copy.empty()) {
+        for (std::deque<PendingArrival>::const_iterator it = 
+              pending_copy.begin(); it != pending_copy.end(); it++)
+        {
+          // Not the most efficient way of doing this but it works
+          for (int idx = 0; idx < it->count; idx++)
+            defer_trigger(it->wait_on);
+        }
+      }
+      if (trigger_again)
+        trigger(0);
     }
 
     bool EventImpl::activate(void)
@@ -1071,19 +1279,20 @@ namespace LegionRuntime {
 	return result;
     }
 
-    bool EventImpl::register_dependent(Triggerable *target, EventGeneration gen, TriggerHandle handle)
+    void EventImpl::add_waiter(Event::gen_t gen_needed, EventWaiter *waiter)
     {
-	bool result = false;
-	PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-	// Make sure they're asking for the right generation, otherwise it's already triggered
-	if (gen > generation)
-	{
-		result = true;
-		// Enqueue it
-                triggerables.push_back(TriggerableInfo(target, handle, gen));
-	}
-	PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));	
-	return result;
+      bool trigger_now = false;
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
+      if (gen_needed > generation)
+        waiters.push_back(WaiterInfo(waiter, gen_needed));
+      else
+        trigger_now = true;
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+      if (trigger_now) {
+        bool nuke = waiter->event_triggered();
+        if (nuke)
+          delete waiter;
+      }
     }
 
     Event EventImpl::get_event() 
@@ -1129,7 +1338,7 @@ namespace LegionRuntime {
       free_generation = (unsigned)-1;
 
       if(_redop_id) {
-	redop = Runtime::Impl::get_runtime()->get_reduction_op(_redop_id);
+	redop = RuntimeImpl::get_runtime()->get_reduction_op(_redop_id);
 	assert(redop->sizeof_lhs == _initial_value_size);
 	initial_value = malloc(_initial_value_size);
 	memcpy(initial_value, _initial_value, _initial_value_size);
@@ -1177,40 +1386,27 @@ namespace LegionRuntime {
 #ifdef DEBUG_LOW_LEVEL
       assert(in_use);
 #endif
-      EventImpl *src_impl;
-      if (wait_on.exists())
-        src_impl = Runtime::Impl::get_runtime()->get_event_impl(wait_on);
+      if (wait_on.exists()) {
+        EventImpl *src_impl = RuntimeImpl::get_runtime()->get_event_impl(wait_on);
+        DeferredArrival *waiter = new DeferredArrival(this, count, apply_gen);
+        src_impl->add_waiter(wait_on.gen, waiter);
+        return;
+      }
       bool trigger_now = true;
       PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
       // Check to see if we are on the right generation
       if (apply_gen > (generation+1)) {
         trigger_now = false;
-        if (wait_on.exists()) {
-          // If we do have a wait on event, then put it
-          // on the list of pending arrivals for future generations
-          pending_arrivals[apply_gen].push_back(PendingArrival(count, wait_on));
-        } else {
-          // If there is no wait on, then we can just update
-          // the pending alteration count
-          std::map<EventGeneration,int>::iterator finder = 
-            pending_alterations.find(apply_gen);
-          if (finder != pending_alterations.end())
-            finder->second -= count;
-          else
-            pending_alterations[apply_gen] = -count;
-        }
-      } else {
-        // This is the right generation, so see what we need to do
-        // Trigger the event now unless we can register a dependence
-        if (wait_on.exists()) {
-          // Probably not the most efficient way to do this
-          for (int idx = 0; idx < count; idx++) {
-            if ((src_impl != this) && 
-                src_impl->register_dependent(this, wait_on.gen))
-              trigger_now = false;
-          }
-        }
-      }
+        // If there is no wait on, then we can just update
+        // the pending alteration count
+        std::map<EventGeneration,int>::iterator finder = 
+          pending_alterations.find(apply_gen);
+        if (finder != pending_alterations.end())
+          finder->second -= count;
+        else
+          pending_alterations[apply_gen] = -count;
+      } 
+      // This is the right generation, so see we can trigger the count 
       PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
       if (trigger_now)
         trigger(count);
@@ -1253,119 +1449,82 @@ namespace LegionRuntime {
       PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
     }
 
+    void EventImpl::add_happens_before_set(Event::gen_t gen, 
+					   const std::set<Event>& happens_before,
+					   bool all_must_trigger)
+    {
+      // hold lock to access happens_before_sets
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
+      happens_before_sets[gen].push_back(HappensBeforePair());
+      HappensBeforePair &p = happens_before_sets[gen].back();
+      p.events.insert(happens_before.begin(), happens_before.end());
+      p.all_must_trigger = all_must_trigger;
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+    }
+
     void EventImpl::print_waiters(void)
     {
       // No need to hold the lock because this method
       // will only ever be called from a debugger
-      if (in_use && !triggerables.empty())
+      if (in_use && !waiters.empty())
       {
         fprintf(stdout,"Event %d, Generation %d has %ld waiters\n",
-            index, generation, triggerables.size());
-        for (unsigned idx = 0; idx < triggerables.size(); idx++)
-        for (std::list<TriggerableInfo>::const_iterator it = triggerables.begin();
-              it != triggerables.end(); it++)
+            index, generation, waiters.size());
+        for (std::list<WaiterInfo>::const_iterator it = waiters.begin();
+              it != waiters.end(); it++)
         {
-          fprintf(stdout,"  Waiter: %p\n", it->target);
+          fprintf(stdout,"  gen=%d Waiter %p:", it->gen_needed, it->waiter);
+          it->waiter->print_info(stdout);
+          fprintf(stdout,"\n");
         }
         fflush(stdout);
       }
     }
 
     ////////////////////////////////////////////////////////
-    // User Events (just use base event impl) 
-    ////////////////////////////////////////////////////////
-
-    UserEvent UserEvent::create_user_event(void)
-    {
-      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      EventImpl *impl = Runtime::Impl::get_runtime()->get_free_event();
-      return impl->get_user_event();
-    }
-
-    void UserEvent::trigger(Event wait_on /*= NO_EVENT*/) const
-    {
-      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      if (!id) return;
-      EventImpl *impl = Runtime::Impl::get_runtime()->get_event_impl(*this);
-      if (wait_on.exists())
-        impl->defer_trigger(wait_on);
-      else
-        impl->trigger();
-    }
-
-    ////////////////////////////////////////////////////////
-    // Barrier Events (have to use same base impl)
-    ////////////////////////////////////////////////////////
-    
-    Barrier Barrier::create_barrier(unsigned expected_arrivals, ReductionOpID redop_id /*= 0*/,
-				    const void *initial_value /*= 0*/, size_t initial_value_size /*= 0*/)
-    {
-      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      EventImpl *impl = Runtime::Impl::get_runtime()->get_free_event();
-      Barrier b = impl->get_barrier(expected_arrivals, redop_id, initial_value, initial_value_size);
-      //log_barrier.info("barrier " IDFMT ".%d - create %d", b.id, b.gen, expected_arrivals);
-      
-      return b;
-    }
-
-    void Barrier::destroy_barrier(void)
-    {
-      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      EventImpl *impl = Runtime::Impl::get_runtime()->get_event_impl(*this);
-      Runtime::Impl::get_runtime()->free_event(impl);
-    }
-
-    Barrier Barrier::advance_barrier(void) const
-    {
-      Barrier next(*this);
-      next.gen++;
-      return next;
-    }
-
-    Barrier Barrier::alter_arrival_count(int delta) const
-    {
-      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      if (!id) return *this;
-      EventImpl *impl = Runtime::Impl::get_runtime()->get_event_impl(*this);
-      impl->alter_arrival_count(delta, gen);
-      return *this;
-    }
-
-    Barrier Barrier::get_previous_phase(void) const
-    {
-      Barrier result = *this;
-      result.gen--;
-      return result;
-    }
-
-    bool Barrier::get_result(void *value, size_t value_size) const
-    {
-      EventImpl *impl = Runtime::Impl::get_runtime()->get_event_impl(*this);
-      return impl->get_result(gen, value, value_size);
-    }
-
-    void Barrier::arrive(unsigned count /*=1*/, Event wait_on /*= Event::NO_EVENT*/,
-			 const void *reduce_value /*= 0*/, size_t reduce_value_size /*= 0*/) const
-    {
-      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      if (!id) return;
-
-      EventImpl *impl = Runtime::Impl::get_runtime()->get_event_impl(*this);
-      // Do this before the arrival to avoid a race
-      if(reduce_value_size > 0)
-	impl->apply_reduction(gen, reduce_value, reduce_value_size);
-      impl->perform_arrival(count, wait_on, gen);
-    }
-
-    ////////////////////////////////////////////////////////
     // Reservation 
     ////////////////////////////////////////////////////////
 
-    /*static*/ const Reservation Reservation::NO_RESERVATION = { 0 };
-
     Logger::Category log_reservation("reservation");
 
-    class ReservationImpl : public Triggerable {
+    class ReservationImpl {
+    public:
+      class DeferredAcquire : public EventWaiter {
+      public:
+        DeferredAcquire(ReservationImpl *t, unsigned m, bool e, Event a)
+          : target(t), mode(m), exclusive(e), acquire(a) { }
+        virtual ~DeferredAcquire(void) { }
+      public:
+        virtual bool event_triggered(void) {
+          target->acquire(mode, exclusive, Event::NO_EVENT, acquire);
+          return true;
+        }
+        virtual void print_info(FILE *f) {
+          fprintf(f,"deferred acquire: after=" IDFMT "/%d\n",
+                  acquire.id, acquire.gen);
+        }
+      protected:
+        ReservationImpl *target;
+        unsigned mode;
+        bool exclusive;
+        Event acquire;
+      };
+      class DeferredRelease : public EventWaiter {
+      public:
+        DeferredRelease(ReservationImpl *t)
+          : target(t) { }
+        virtual ~DeferredRelease(void) { }
+      public:
+        virtual bool event_triggered(void) {
+          target->release(Event::NO_EVENT);
+          return true;
+        }
+        virtual void print_info(FILE *f) {
+          fprintf(f,"deferred release");
+        }
+      protected:
+        ReservationImpl *target;
+      };
     public:
 	ReservationImpl(int idx, bool activate = false, size_t dsize = 0) : index(idx) {
 		active = activate;
@@ -1373,7 +1532,6 @@ namespace LegionRuntime {
 		mode = 0;
 		holders = 0;
 		waiters = false;
-                next_handle = 1;
                 mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
 		PTHREAD_SAFE_CALL(pthread_mutex_init(mutex,NULL));
                 if (activate)
@@ -1416,9 +1574,9 @@ namespace LegionRuntime {
                 }
         }
 
-	Event acquire(unsigned mode, bool exclusive, Event wait_on);
+	Event acquire(unsigned mode, bool exclusive, 
+                      Event wait_on, Event post = Event::NO_EVENT);
 	void release(Event wait_on);
-	bool trigger(unsigned count = 1, TriggerHandle handle = 0);
 
 	bool activate(size_t data_size);
 	void deactivate(void);
@@ -1426,17 +1584,15 @@ namespace LegionRuntime {
         size_t get_data_size(void) const;
         void* get_data_ptr(void) const;
     private:
-	Event register_request(unsigned m, bool exc, TriggerHandle handle = 0);
+	Event register_request(unsigned m, bool exc, Event post);
 	void perform_release(std::set<EventImpl*> &to_trigger);
     private:
 	class ReservationRecord {
 	public:
-		unsigned mode;
-		bool exclusive;
-		Event event;
-		bool handled;
-                bool ready; // If this reservation waits on a event, see if it's ready
-                TriggerHandle id; // If it's not ready this is the trigger handle
+          unsigned mode;
+          bool exclusive;
+          Event event;
+          bool handled;
 	};
     private:
 	const int index;
@@ -1446,338 +1602,239 @@ namespace LegionRuntime {
 	bool waiters;
 	unsigned mode;
 	unsigned holders;
-        TriggerHandle next_handle; // all numbers >0 are reservation requests, 0 is release trigger handle
 	std::list<ReservationRecord> requests;
 	pthread_mutex_t *mutex;
         void *data;
         size_t data_size;
     };
 
+  };
+};
+
+namespace Realm {
+
+  using namespace LegionRuntime;
+  using namespace LegionRuntime::LowLevel;
+
+    /*static*/ const Reservation Reservation::NO_RESERVATION = { 0 };
+
     Event Reservation::acquire(unsigned mode, bool exclusive, Event wait_on) const
     {
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-	ReservationImpl *l = Runtime::Impl::get_runtime()->get_reservation_impl(*this);
+	ReservationImpl *l = RuntimeImpl::get_runtime()->get_reservation_impl(*this);
 	return l->acquire(mode,exclusive, wait_on);
     }
 
     void Reservation::release(Event wait_on) const
     {
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-	ReservationImpl *l = Runtime::Impl::get_runtime()->get_reservation_impl(*this);
+	ReservationImpl *l = RuntimeImpl::get_runtime()->get_reservation_impl(*this);
 	l->release(wait_on);
     }
 
     Reservation Reservation::create_reservation(size_t data_size)
     {
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-	return Runtime::Impl::get_runtime()->get_free_reservation(data_size)->get_reservation();
+	return RuntimeImpl::get_runtime()->get_free_reservation(data_size)->get_reservation();
     }
 
     void Reservation::destroy_reservation(void)
     {
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-	ReservationImpl *l = Runtime::Impl::get_runtime()->get_reservation_impl(*this);
+	ReservationImpl *l = RuntimeImpl::get_runtime()->get_reservation_impl(*this);
 	l->deactivate();
     }
 
     size_t Reservation::data_size(void) const
     {
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-        ReservationImpl *l = Runtime::Impl::get_runtime()->get_reservation_impl(*this);
+        ReservationImpl *l = RuntimeImpl::get_runtime()->get_reservation_impl(*this);
         return l->get_data_size();
     }
 
     void* Reservation::data_ptr(void) const
     {
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-        ReservationImpl *l = Runtime::Impl::get_runtime()->get_reservation_impl(*this);
+        ReservationImpl *l = RuntimeImpl::get_runtime()->get_reservation_impl(*this);
         return l->get_data_ptr();
     }
 
-    Event ReservationImpl::acquire(unsigned m, bool exc, Event wait_on)
+};
+
+namespace LegionRuntime {
+  namespace LowLevel {
+
+    Event ReservationImpl::acquire(unsigned m, bool exc, Event wait_on, Event post)
     {
-	Event result = Event::NO_EVENT;
-	PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-        log_reservation(LEVEL_DEBUG,"reservation request: reservation=%x mode=%d "
-                                    "excl=%d event=" IDFMT "/%d count=%d",
-                 index, m, exc, wait_on.id, wait_on.gen, holders); 
-        // check to see if we have to wait on event first
-        bool must_wait = false;
-        if (wait_on.exists())
+      if (wait_on.exists()) {
+        EventImpl *e = RuntimeImpl::get_runtime()->get_free_event();
+        Event result = e->get_event();
+        DeferredAcquire *waiter = new DeferredAcquire(this, m, exc, result);
+        EventImpl *source = RuntimeImpl::get_runtime()->get_event_impl(wait_on);
+        source->add_waiter(wait_on.gen, waiter);
+        return result;
+      }
+      Event result = Event::NO_EVENT;
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
+      log_reservation.debug("reservation request: reservation=%x mode=%d "
+                                  "excl=%d event=" IDFMT "/%d count=%d",
+               index, m, exc, wait_on.id, wait_on.gen, holders); 
+      // check to see if we have to wait on event first
+      bool trigger_post = false; 
+      if (taken)
+      {
+        // If either is exclusive we have to register the request
+        if (exclusive || exc)
         {
-          // Try registering the reservation
-          EventImpl *impl = Runtime::Impl::get_runtime()->get_event_impl(wait_on);
-          if (impl->register_dependent(this, wait_on.gen, next_handle))
-          {
-            // Successfully registered with the event, register the request as asleep
-            must_wait = true;
-          }
+          result = register_request(m,exc,post);
         }
-        if (must_wait)
+        else
         {
-          result = register_request(m, exc, next_handle);
-          // Increment the next handle since we used it
-          next_handle++;
-        }
-        else // Didn't have to wait for anything do the normal thing
-        {
-          if (taken)
+          if ((mode == m) && !waiters)
           {
-                  // If either is exclusive we have to register the request
-                  if (exclusive || exc)
-                  {
-                          result = register_request(m,exc);
-                  }
-                  else
-                  {
-                          if ((mode == m) && !waiters)
-                          {
-                                  // Not exclusive and modes are equal
-                                  // and there are no waiters
-                                  // Can still acquire the reservation 
-                                  holders++;
-                          }
-                          else
-                          {
-                                  result = register_request(m,exc);	
-                          }
-                  }
+            // Not exclusive and modes are equal
+            // and there are no waiters
+            // Can still acquire the reservation 
+            holders++;
+            trigger_post = true;
           }
           else
           {
-                  // Nobody has the reservation, grab it
-                  taken = true;
-                  exclusive = exc;
-                  mode = m;
-                  holders = 1;
-#ifdef DEBUG_PRINT
-                  DPRINT3("Granting reservation %d in mode %d with exclusive %d\n",index,mode,exclusive);
-#endif
+            result = register_request(m,exc,post);	
           }
         }
-	PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-	return result;
+      }
+      else
+      {
+        // Nobody has the reservation, grab it
+        taken = true;
+        trigger_post = true;
+        exclusive = exc;
+        mode = m;
+        holders = 1;
+#ifdef DEBUG_PRINT
+        DPRINT3("Granting reservation %d in mode %d with exclusive %d\n",index,mode,exclusive);
+#endif
+      }
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+      if (trigger_post && post.exists()) {
+        EventImpl *post_impl = RuntimeImpl::get_runtime()->get_event_impl(post); 
+        post_impl->trigger();
+      }
+      return result;
     }
 
     // Always called while holding the mutex 
-    Event ReservationImpl::register_request(unsigned m, bool exc, TriggerHandle handle)
+    Event ReservationImpl::register_request(unsigned m, bool exc, Event post)
     {
-	EventImpl *e = Runtime::Impl::get_runtime()->get_free_event();
-	ReservationRecord req;
-	req.mode = m;
-	req.exclusive = exc;
-	req.event = e->get_event();
-	req.handled = false;
-        req.id = handle;
-        // If handle is 0 then the request is already awake, otherwise wait for the trigger to occur
-        req.ready = (handle == 0);
-	// Add this to the list of requests
-	requests.push_back(req);
+      ReservationRecord req;
+      req.mode = m;
+      req.exclusive = exc;
+      if (!post.exists()) {
+        // If we didn't have one yet, then make a post event
+        EventImpl *e = RuntimeImpl::get_runtime()->get_free_event();
+        req.event = e->get_event();
+      } else {
+        req.event = post;
+      }
+      req.handled = false;
+      // Add this to the list of requests
+      requests.push_back(req);
 
-	// Finally set waiters to true if it's already true
-	// or there are now threads waiting
-	waiters = waiters || req.ready;
-	
-	return req.event;
+      // Finally set waiters to true if it's already true
+      // or there are now threads waiting
+      waiters = true;
+      
+      return req.event;
     }
 
     void ReservationImpl::release(Event wait_on)
     {
-	PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-        log_reservation(LEVEL_DEBUG,"release request: reservation=%x mode=%d excl=%d event=" IDFMT "/%d count=%d",
-                 index, mode, exclusive, wait_on.id, wait_on.gen, holders);
-        std::set<EventImpl*> to_trigger;
-	if (wait_on.exists())
-	{
-		// Register this reservation to be released when the even triggers	
-		EventImpl *e = Runtime::Impl::get_runtime()->get_event_impl(wait_on);
-                // Use default handle 0 to indicate release event
-		if (!(e->register_dependent(this,wait_on.gen)))
-		{
-			// The event didn't register which means it already triggered
-			// so go ahead and perform the release operation
-			perform_release(to_trigger);
-		}	
-	}
-	else
-	{
-		// No need to wait to perform the release 
-		perform_release(to_trigger);		
-	}
-	PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-        // Don't perform any triggers while holding the reservation's mutex 
-        for (std::set<EventImpl*>::const_iterator it = to_trigger.begin();
-              it != to_trigger.end(); it++)
-        {
-          bool nuke = (*it)->trigger();
-          if (nuke)
-            delete (*it);
-        }
+      if (wait_on.exists()) {
+        DeferredRelease *waiter = new DeferredRelease(this);
+        EventImpl *source = RuntimeImpl::get_runtime()->get_event_impl(wait_on);
+        source->add_waiter(wait_on.gen, waiter);
+        return;
+      }
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
+      log_reservation.debug("release request: reservation=%x mode=%d excl=%d event=" IDFMT "/%d count=%d",
+               index, mode, exclusive, wait_on.id, wait_on.gen, holders);
+      std::set<EventImpl*> to_trigger;
+      perform_release(to_trigger);
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+      // Don't perform any triggers while holding the reservation's mutex 
+      for (std::set<EventImpl*>::const_iterator it = to_trigger.begin();
+            it != to_trigger.end(); it++)
+      {
+        (*it)->trigger();
+      }
     }
-
-    bool ReservationImpl::trigger(unsigned count, TriggerHandle handle)
-    {
-        std::set<EventImpl*> to_trigger;
-	PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-        // If the trigger handle is 0 then release the reservation, 
-        // otherwise find the reservation request to wake up
-        if (handle == 0)
-        {
-          perform_release(to_trigger);
-        }
-        else
-        {
-#ifdef DEBUG_LOW_LEVEL
-          bool found = false;
-#endif
-          // Go through the list and mark the matching request as being ready
-          for (std::list<ReservationRecord>::iterator it = requests.begin();
-                it != requests.end(); it++)
-          {
-            if (it->id == handle)
-            {
-#ifdef DEBUG_LOW_LEVEL
-              found = true;
-              assert(!it->ready);
-#endif
-              it->ready = true;
-              // Try acquiring this reservation just in case it is available,
-              // otherwise we can just leave this request on the queue
-              if (taken)
-              {
-                if (!exclusive && !it->exclusive && (mode == it->mode) && !waiters)
-                {
-                  holders++;
-                  // Trigger the event saying we have the reservation 
-                  to_trigger.insert(Runtime::Impl::get_runtime()->get_event_impl(it->event));
-                  // Remove the request
-                  requests.erase(it);
-                }
-                else
-                {
-                  // There are now definitely waiters
-                  waiters = true;
-                }
-              }
-              else // Nobody else has it, grab it!
-              {
-                taken = true;
-                exclusive = it->exclusive;
-                mode = it->mode; 
-                holders = 1;
-                // Trigger the event saying we have the reservation 
-                to_trigger.insert(Runtime::Impl::get_runtime()->get_event_impl(it->event));
-                // Remove this request
-                requests.erase(it);
-#ifdef DEBUG_PRINT
-                  DPRINT3("Granting reservation %d in mode %d with exclusive %d\n",index,mode,exclusive);
-#endif
-              }
-              break;
-            }
-          }
-#ifdef DEBUG_LOW_LEVEL
-          assert(found);
-#endif
-        }
-	PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-        // Don't perform any triggers while holding the reservation's mutex 
-        for (std::set<EventImpl*>::const_iterator it = to_trigger.begin();
-              it != to_trigger.end(); it++)
-        {
-          bool nuke = (*it)->trigger();
-          if (nuke)
-            delete (*it);
-        }
-        return false;
-    }
-
+    
     // Always called while holding the reservations's mutex
     void ReservationImpl::perform_release(std::set<EventImpl*> &to_trigger)
     {
-	holders--;	
-	// If the holders are zero, get the next request out of the queue and trigger it
-	if (holders==0)
-	{
+      holders--;	
+      // If the holders are zero, get the next request out of the queue and trigger it
+      if (holders==0)
+      {
 #ifdef DEBUG_PRINT
-		DPRINT1("Releasing reservation %d\n",index);
+        DPRINT1("Releasing reservation %d\n",index);
 #endif
-		// Check to see if there are any waiters
-		if (requests.empty())
-		{
-			waiters= false;
-			taken = false;
-			return;
-		}
-                // Clean out all the handled requests
-                {
-                  std::list<ReservationRecord>::iterator it = requests.begin();
-                  while (it != requests.end())
-                  {
-                    if (it->handled)
-                      it = requests.erase(it);
-                    else
-                      it++;
-                  }
-                }
-		ReservationRecord req;
-                bool found = false;
-                for (std::list<ReservationRecord>::iterator it = requests.begin();
-                      it != requests.end(); it++)
-                {
-                  if (it->ready)
-                  {
-                    req = *it;
-                    it->handled = true;
-                    found = true;
-                    break;
-                  }
-                }
-                // Check to see if we found a new candidate
-                if (!found)
-		{
-			waiters = false;
-			taken = false;
-			return;
-		}
-		// Set the mode and exclusivity
-		exclusive = req.exclusive;
-		mode = req.mode;
-		holders = 1;
+        // Clean out all the handled requests
+        {
+          std::list<ReservationRecord>::iterator it = requests.begin();
+          while (it != requests.end())
+          {
+            if (it->handled)
+              it = requests.erase(it);
+            else
+              it++;
+          }
+        }
+        // Check to see if there are any waiters
+        if (requests.empty())
+        {
+          waiters= false;
+          taken = false;
+          return;
+        }
+        ReservationRecord req = requests.front();
+        requests.pop_front();
+        // Set the mode and exclusivity
+        exclusive = req.exclusive;
+        mode = req.mode;
+        holders = 1;
 #ifdef DEBUG_PRINT
-		DPRINT3("Issuing reservation %d in mode %d with exclusivity %d\n",index,mode,exclusive);
+        DPRINT3("Issuing reservation %d in mode %d with exclusivity %d\n",index,mode,exclusive);
 #endif
-		// Trigger the event
-                to_trigger.insert(Runtime::Impl::get_runtime()->get_event_impl(req.event));
-		// If this isn't an exclusive mode, see if there are any other
-		// requests with the same mode that aren't exclusive that we can handle
-		if (!exclusive)
-		{
-			waiters = false;
-			for (std::list<ReservationRecord>::iterator it = requests.begin();
-				it != requests.end(); it++)
-			{
-                          if (it->ready)
-                          {
-				if ((it->mode == mode) && (!it->exclusive) && (!it->handled))
-				{
-					it->handled = true;
-                                        to_trigger.insert(Runtime::Impl::get_runtime()->get_event_impl(it->event));
-					holders++;
-				}
-				else
-				{
-					// There is at least one thread still waiting
-					waiters = true;
-				}
-                          }
-			}	
-		}
-		else
-		{
-			waiters = (requests.size()>0);
-		}
-	}
+        // Trigger the event
+        to_trigger.insert(RuntimeImpl::get_runtime()->get_event_impl(req.event));
+        // If this isn't an exclusive mode, see if there are any other
+        // requests with the same mode that aren't exclusive that we can handle
+        if (!exclusive)
+        {
+          waiters = false;
+          for (std::list<ReservationRecord>::iterator it = requests.begin();
+                  it != requests.end(); it++)
+          {
+            if ((it->mode == mode) && (!it->exclusive) && (!it->handled))
+            {
+              it->handled = true;
+              to_trigger.insert(RuntimeImpl::get_runtime()->get_event_impl(it->event));
+              holders++;
+            }
+            else
+            {
+              // There is at least one thread still waiting
+              waiters = true;
+            }
+          }	
+        }
+        else
+        {
+          waiters = (requests.size()>0);
+        }
+      }
     }
 
     bool ReservationImpl::activate(size_t dsize)
@@ -1821,7 +1878,7 @@ namespace LegionRuntime {
             data_size = 0;
         }
 	PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-        Runtime::Impl::get_runtime()->free_reservation(this);
+        RuntimeImpl::get_runtime()->free_reservation(this);
     }
 
     Reservation ReservationImpl::get_reservation(void) const
@@ -1844,6 +1901,14 @@ namespace LegionRuntime {
         return data;
     }
 
+  };
+};
+
+namespace Realm {
+
+  using namespace LegionRuntime;
+  using namespace LegionRuntime::LowLevel;
+
     ////////////////////////////////////////////////////////
     // Processor 
     ////////////////////////////////////////////////////////
@@ -1854,23 +1919,30 @@ namespace LegionRuntime {
     
     /*static*/ Processor Processor::get_executing_processor(void)
     {
-      unsigned *local_proc_id = (unsigned*)pthread_getspecific(local_proc_key);
-      Processor local;
-      local.id = *local_proc_id;
-      return local;
+      ProcessorImpl::ProcessorThread *thread = 
+        (ProcessorImpl::ProcessorThread*)pthread_getspecific(local_thread_key);
+      return thread->get_processor();
     }
 
     Processor::Kind Processor::kind(void) const
     {
-      return Runtime::Impl::get_runtime()->get_processor_impl(*this)->get_proc_kind();
+      return RuntimeImpl::get_runtime()->get_processor_impl(*this)->get_proc_kind();
     }
     
     Event Processor::spawn(Processor::TaskFuncID func_id, const void * args,
                             size_t arglen, Event wait_on, int priority) const
     {
-        DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-	ProcessorImpl *p = Runtime::Impl::get_runtime()->get_processor_impl(*this);
-	return p->spawn(func_id, args, arglen, wait_on, priority);
+      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
+      ProcessorImpl *p = RuntimeImpl::get_runtime()->get_processor_impl(*this);
+      return p->spawn(func_id, args, arglen, wait_on, priority);
+    }
+
+    Event Processor::spawn(TaskFuncID func_id, const void *args, size_t arglen,
+                           const Realm::ProfilingRequestSet &requests,
+                           Event wait_on, int priority) const
+    {
+      ProcessorImpl *p = RuntimeImpl::get_runtime()->get_processor_impl(*this);
+      return p->spawn(func_id, args, arglen, requests, wait_on, priority);
     }
 
     AddressSpace Processor::address_space(void) const
@@ -1885,27 +1957,25 @@ namespace LegionRuntime {
 
     /*static*/ Processor Processor::create_group(const std::vector<Processor>& members)
     {
-      return Runtime::Impl::get_runtime()->get_free_proc_group(members)->get_id();
+      return RuntimeImpl::get_runtime()->get_free_proc_group(members)->get_id();
     }
 
     void Processor::get_group_members(std::vector<Processor>& members)
     {
-      Runtime::Impl::get_runtime()->get_processor_impl(*this)->get_group_members(members);
+      RuntimeImpl::get_runtime()->get_processor_impl(*this)->get_group_members(members);
     }
 
-    void ProcessorImpl::initialize_state(size_t stacksize)
-    {
-        // stack size is 0 if we don't need a thread at all
-        if(stacksize == 0) return;
+};
 
+namespace LegionRuntime {
+  namespace LowLevel {
+
+    void ProcessorImpl::initialize_state(void)
+    {
         mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
         wait_cond = (pthread_cond_t*)malloc(sizeof(pthread_cond_t));
         PTHREAD_SAFE_CALL(pthread_mutex_init(mutex,NULL));
         PTHREAD_SAFE_CALL(pthread_cond_init(wait_cond,NULL));
-        PTHREAD_SAFE_CALL(pthread_attr_init(&attr));
-        PTHREAD_SAFE_CALL(pthread_attr_setstacksize(&attr,stacksize));
-        shutdown = false;
-        shutdown_trigger = NULL;
     }
 
     void ProcessorImpl::get_group_members(std::vector<Processor>& members)
@@ -1917,60 +1987,50 @@ namespace LegionRuntime {
     Event ProcessorImpl::spawn(Processor::TaskFuncID func_id, const void * args,
 				size_t arglen, Event wait_on, int priority)
     {
-	TaskDesc *task = new TaskDesc(func_id, args, arglen, wait_on,
-                                      Runtime::Impl::get_runtime()->get_free_event(),
-                                      priority, 0, 0, 1);
-	Event result = task->complete->get_event();
+      TaskDesc *task = new TaskDesc(func_id, args, arglen,
+                                    RuntimeImpl::get_runtime()->get_free_event(),
+                                    priority, 0, 0, 1);
+      Event result = task->complete->get_event();
 
-        enqueue_task(task);	
-	return result;
+      enqueue_task(task, wait_on);	
+      return result;
     }
 
-    void ProcessorImpl::enqueue_task(TaskDesc *task)
+    Event ProcessorImpl::spawn(Processor::TaskFuncID func_id, const void * args,
+			       size_t arglen, const Realm::ProfilingRequestSet &reqs,
+                               Event wait_on, int priority)
     {
-        PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-	if (task->wait.exists())
-	{
-		// Try registering this processor with the event
-		EventImpl *wait_impl = Runtime::Impl::get_runtime()->get_event_impl(task->wait);
-		if (!wait_impl->register_dependent(this, task->wait.gen, task->wait.id))
-		{
-#ifdef DEBUG_PRINT
-			DPRINT2("Registering task %d on processor %d ready queue\n",func_id,proc.id);
-#endif
-			// Failed to register which means it is ready to execute
-                        add_to_ready_queue(task);
-			// If it wasn't registered, then the event triggered
-			// Notify the processor thread in case it is waiting
-			PTHREAD_SAFE_CALL(pthread_cond_signal(wait_cond));
-		}	
-		else
-		{
-#ifdef DEBUG_PRINT
-			DPRINT2("Registering task %d on processor %d waiting queue\n",func_id,proc.id);
-#endif
-			// Successfully registered, put the task on the waiting queue
-			waiting_queue.push_back(task);
-		}
-	}
-	else
-	{
-#ifdef DEBUG_PRINT
-		DPRINT2("Putting task %d on processor %d ready queue\n",func_id,proc.id);
-#endif
-		// Put it on the ready queue
-                add_to_ready_queue(task);
-		// Signal the thread there is a task to run in case it is waiting
-		PTHREAD_SAFE_CALL(pthread_cond_signal(wait_cond));
-	}
-	PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+      TaskDesc *task = new TaskDesc(func_id, args, arglen,
+                                    RuntimeImpl::get_runtime()->get_free_event(),
+                                    priority, 0, 0, 1, reqs);
+      Event result = task->complete->get_event();
+
+      enqueue_task(task, wait_on);	
+      return result;
+    }
+
+    void ProcessorImpl::enqueue_task(TaskDesc *task, Event wait_on)
+    {
+      if (wait_on.exists()) {
+        EventImpl *wait_impl = RuntimeImpl::get_runtime()->get_event_impl(wait_on);
+        DeferredTask *waiter = new DeferredTask(this, task);
+        wait_impl->add_waiter(wait_on.gen, waiter);
+        return;
+      }
+      // Put it on the ready queue
+      add_to_ready_queue(task);
     }
 
     void ProcessorImpl::add_to_ready_queue(TaskDesc *task)
     {
-      // Better already hold the lock when calling this method
+      if (task->capture_timeline)
+        task->timeline.record_ready_time();
+      ProcessorThread *to_wake = NULL;
+      ProcessorThread *to_start = NULL;
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
       // Common case
-      if (ready_queue.empty() || (ready_queue.back()->priority >= task->priority))
+      if (ready_queue.empty() || 
+          (ready_queue.back()->priority >= task->priority))
         ready_queue.push_back(task);
       else
       {
@@ -1989,341 +2049,409 @@ namespace LegionRuntime {
         if (!inserted)
           ready_queue.push_back(task);
       }
+      // Figure out if we need to wake someone up
+      if (running_thread == NULL) {
+        if (!available_threads.empty()) {
+          to_wake = available_threads.back();
+          available_threads.pop_back();
+          running_thread = to_wake;
+        } else {
+          to_start = new ProcessorThread(this, stack_size);
+          running_thread = to_start;
+        }
+      }
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+      if (to_wake)
+        to_wake->awake();
+      if (to_start)
+        to_start->start();
     }
 
     Processor ProcessorImpl::get_utility_processor(void) const
     {
-        return utility;
+      return utility;
     }
 
-    void ProcessorImpl::release_user()
+    bool ProcessorImpl::execute_task(ProcessorThread *thread)
     {
       PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-#ifdef DEBUG_LOW_LEVEL
-      assert(remaining_stops > 0);
-#endif
-      remaining_stops--;
-      // If we've had all our users released, we can shutdown
-      if (remaining_stops == 0)
+      // Sanity check, we should be the running thread if we are in here
+      assert(thread == running_thread);
+      // First check to see if there are any resumable threads
+      // If there are then we will switch onto those
+      if (!resumable_threads.empty())
       {
-        shutdown = true;
+        // Move this thread on to the available threads and wake
+        // up one of the resumable threads
+        thread->prepare_to_sleep();
+        available_threads.push_back(thread);
+        // Pull the first thread off the resumable threads
+        ProcessorThread *to_resume = resumable_threads.front();
+        resumable_threads.pop_front();
+        // Make this the running thread
+        running_thread = to_resume;
+        // Release the lock
+        PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+        // Wake up the resumable thread
+        to_resume->resume();
+        // Put ourselves to sleep
+        thread->sleep();
       }
-      // Signal in case the utility processor is waiting on work
-      PTHREAD_SAFE_CALL(pthread_cond_signal(wait_cond));
-      PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-    }
-
-    void ProcessorImpl::utility_finish(void)
-    {
-      PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-#ifdef DEBUG_LOW_LEVEL
-      assert(!is_utility_proc);
-      assert(!util_shutdown);
-#endif
-      // Set util shutdown to true
-      util_shutdown = true;
-      // send a signal in case the processor was waiting
-      PTHREAD_SAFE_CALL(pthread_cond_signal(wait_cond));
-      PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-    }
-
-    const std::set<Processor>& ProcessorImpl::get_utility_users(void) const
-    {
-      if (is_utility_proc)
-        return util_users;
+      else if (ready_queue.empty())
+      {
+        // If there are no tasks to run, then we should go to sleep
+        thread->prepare_to_sleep();
+        available_threads.push_back(thread);
+        running_thread = NULL;
+        PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+        thread->sleep();
+      }
       else
-        return utility_proc->get_utility_users();
+      {
+        // Pull a task off the queue and execute it
+        TaskDesc *task = ready_queue.front();
+        ready_queue.pop_front();
+        PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+        run_task(task);
+      }
+      // This value is monotonic so once it becomes true, then we should exit
+      return shutdown;
     }
 
-    void ProcessorImpl::add_utility_user(Processor p, ProcessorImpl *impl)
+    void ProcessorImpl::run_task(TaskDesc *task)
     {
-      util_users.insert(p);
-      constituents.push_back(impl);
-    }
-
-    void ProcessorImpl::increment_utility(void)
-    {
-      // do we need this any more?
-    }
-
-    void ProcessorImpl::decrement_utility(void)
-    {
-      // do we need this any more?
-    }
-
-    void ProcessorImpl::run(void)
-    {
-        //fprintf(stdout,"This is processor %d\n",proc.id);
-        //fflush(stdout);
-        // Check to see if there is an initialization task
-        Processor::TaskIDTable::const_iterator it = 
-	  task_table.find(Processor::TASK_ID_PROCESSOR_INIT);
-        if (it != task_table.end())
-        {	  
+      int start_count = __sync_fetch_and_add(&(task->start_arrivals),1);
+      if (start_count == 0)
+      {
+        if (task->func_id != 0)
+        {
+          Processor::TaskIDTable::const_iterator it = 
+                              task_table.find(task->func_id);
+#ifdef DEBUG_LOW_LEVEL
+          assert(it != task_table.end());
+#endif
           Processor::TaskFuncPtr func = it->second;
-          func(NULL, 0, proc);
+          if (task->capture_timeline)
+            task->timeline.record_start_time();
+          if (task->capture_usage)
+            task->usage.proc = proc;
+          func(task->args, task->arglen, proc);
+          if (task->capture_timeline)
+            task->timeline.record_end_time();
+        } else {
+          process_kill();
         }
-        // Wait for all the processors to be ready to go
+        // Trigger the event indicating that the task has been run
+        task->complete->trigger();
+      }
+      int expected_finish = task->expected;
+      int finish_count = __sync_add_and_fetch(&(task->finish_arrivals),1);
+      if (finish_count == expected_finish)
+        delete task;
+    }
+
+    void ProcessorImpl::start_processor(void)
+    {
+      // Make a new thread and tell it to run the start-up routine
+      assert(running_thread == NULL);
+      running_thread = new ProcessorThread(this, stack_size);
+      running_thread->do_initialize();
+      running_thread->start();
+    }
+
+    void ProcessorImpl::shutdown_processor(void)
+    {
+      // First check to make sure that we received the kill
+      // pill. If we didn't then wait for it. This is how
+      // we distinguish deadlock from just normal termination
+      // from all the processors being idle 
+      std::vector<ProcessorThread*> to_shutdown;
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
+      if (!shutdown_trigger)
+        PTHREAD_SAFE_CALL(pthread_cond_wait(wait_cond, mutex));
+      assert(shutdown_trigger);
+      shutdown = true;
+      to_shutdown = available_threads;
+      if (running_thread != NULL)
+        to_shutdown.push_back(running_thread);
+      assert(resumable_threads.empty());
+      assert(paused_threads.empty());
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+      //printf("Processor " IDFMT " needed %ld threads\n", 
+      //        proc.id, to_shutdown.size());
+      // We can now read this outside the lock since we know
+      // that the threads are all asleep and are all about to exit
+      assert(!to_shutdown.empty());
+      for (unsigned idx = 0; idx < to_shutdown.size(); idx++)
+      {
+        if (idx == 0)
+          to_shutdown[idx]->do_finalize();
+        to_shutdown[idx]->shutdown();
+        delete to_shutdown[idx];
+      }
+    }
+
+    void ProcessorImpl::initialize_processor(void)
+    {
+      //fprintf(stdout,"This is processor %d\n",proc.id);
+      //fflush(stdout);
+      // Check to see if there is an initialization task
+      Processor::TaskIDTable::const_iterator it = 
+        task_table.find(Processor::TASK_ID_PROCESSOR_INIT);
+      if (it != task_table.end())
+      {	  
+        Processor::TaskFuncPtr func = it->second;
+        func(NULL, 0, proc);
+      }
+      // Wait for all the processors to be ready to go
 #ifndef __MACH__
-        int bar_result = pthread_barrier_wait(init_bar);
-        if (bar_result == PTHREAD_BARRIER_SERIAL_THREAD)
-        {
-          // Free the barrier
-          PTHREAD_SAFE_CALL(pthread_barrier_destroy(init_bar));
-          free(init_bar);
-        }
+      int bar_result = pthread_barrier_wait(init_bar);
+      if (bar_result == PTHREAD_BARRIER_SERIAL_THREAD)
+      {
+        // Free the barrier
+        PTHREAD_SAFE_CALL(pthread_barrier_destroy(init_bar));
+        free(init_bar);
+      }
 #if DEBUG_LOW_LEVEL
-        else
-        {
-          PTHREAD_SAFE_CALL(bar_result);
-        }
+      else
+      {
+        PTHREAD_SAFE_CALL(bar_result);
+      }
 #endif
 #else // MAC OSX case
-        bool delete_barrier = init_bar->arrive();
-        if (delete_barrier)
-          delete init_bar;
+      bool delete_barrier = init_bar->arrive();
+      if (delete_barrier)
+        delete init_bar;
 #endif
-        init_bar = NULL;
-        //fprintf(stdout,"Processor %d is starting\n",proc.id);
-        //fflush(stdout);
-	// Processors run forever and permit shutdowns
-	while (true)
-	{
-		// Make sure we're holding the lock
-		PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-		// This task will perform the unlock
-		bool quit = execute_task(true);
-		if(quit) break;
-	}
+      init_bar = NULL;
     }
 
-    void ProcessorImpl::preempt(EventImpl *event, EventImpl::EventGeneration needed)
+    void ProcessorImpl::finalize_processor(void)
     {
-	// Try registering this processor with the event in case it goes to sleep
-	PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-	if (!(event->register_dependent(this, needed)))
-	{
-		// The even triggered, release the lock and return
-		PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-		return;
-	}
-        // have to hold the lock here when testing this
-        // so we don't accidentally miss a wake-up when
-        // going to sleep.
-	while (!(event->has_triggered(needed)))
-	{
-                // Don't permit shutdowns since there is still a task waiting
-		execute_task(false);
-                // Relock the task for our next attempt
-		PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-	}
-        PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+      // Check to see if there is a shutdown method
+      Processor::TaskIDTable::const_iterator it = 
+        task_table.find(Processor::TASK_ID_PROCESSOR_SHUTDOWN);
+      if (it != task_table.end())
+      {	  
+        Processor::TaskFuncPtr func = it->second;
+        func(NULL, 0, proc);
+      }
+    }
+    
+    void ProcessorImpl::process_kill(void)
+    {
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
+      shutdown_trigger = true;
+      PTHREAD_SAFE_CALL(pthread_cond_signal(wait_cond));
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
     }
 
-    bool ProcessorImpl::perform_scheduling(bool need_lock)
+    bool ProcessorImpl::is_idle(void)
     {
-      // the scheduler wasn't invoked so we still hold the lock
+      // This processor is idle if all its threads are idle
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
+      bool result = (running_thread == NULL) && resumable_threads.empty()
+                      && paused_threads.empty();
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+      return result;
+    }
+
+    void ProcessorImpl::pause_thread(ProcessorThread *thread)
+    {
+      ProcessorThread *to_wake = NULL;
+      ProcessorThread *to_start = NULL;
+      ProcessorThread *to_resume = NULL;
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
+      assert(running_thread == thread);
+      // Put this on the list of paused threads
+      paused_threads.insert(thread);
+      // Now see if we have other work to do
+      if (!resumable_threads.empty()) {
+        to_resume = resumable_threads.front();
+        resumable_threads.pop_front();
+        running_thread = to_resume;
+      } else if (!ready_queue.empty()) {
+        // Note we might need to make a new thread here
+        if (!available_threads.empty()) {
+          to_wake = available_threads.back();
+          available_threads.pop_back();
+          running_thread = to_wake;
+        } else {
+          // Make a new thread to run
+          to_start = new ProcessorThread(this, stack_size);
+          running_thread = to_start;
+        }
+      } else {
+        // Nothing else to do, so mark that no one is running
+        running_thread = NULL;
+      }
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+      // Wake up any threads while not holding the lock
+      if (to_wake)
+        to_wake->awake();
+      if (to_start)
+        to_start->start();
+      if (to_resume)
+        to_resume->resume();
+    }
+
+    void ProcessorImpl::resume_thread(ProcessorThread *thread)
+    {
+      bool resume_now = false; 
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
+      std::set<ProcessorThread*>::iterator finder = 
+        paused_threads.find(thread);
+      assert(finder != paused_threads.end());
+      paused_threads.erase(finder);
+      if (running_thread == NULL) {
+        // No one else is running now, so resume the thread
+        running_thread = thread;
+        resume_now = true;
+      } else {
+        // Easy case, just add it to the list of resumable threads
+        resumable_threads.push_back(thread);
+      }
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+      if (resume_now)
+        thread->resume();
+    }
+
+    ProcessorImpl::ProcessorThread::ProcessorThread(ProcessorImpl *p,
+                                                    size_t stack_size)
+      : proc(p), state(RUNNING_STATE), 
+        initialize(false), finalize(false)
+    {
+      thread_mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
+      thread_cond = (pthread_cond_t*)malloc(sizeof(pthread_cond_t));
+      PTHREAD_SAFE_CALL(pthread_mutex_init(thread_mutex,NULL));
+      PTHREAD_SAFE_CALL(pthread_cond_init(thread_cond,NULL));
+      PTHREAD_SAFE_CALL(pthread_attr_init(&attr));
+      PTHREAD_SAFE_CALL(pthread_attr_setstacksize(&attr, stack_size));
+    }
+
+    ProcessorImpl::ProcessorThread::~ProcessorThread(void)
+    {
+      free(thread_mutex);
+      free(thread_cond);
+    }
+
+    /*static*/ void* ProcessorImpl::ProcessorThread::entry(void *arg)
+    {
+      ProcessorThread *thread = (ProcessorThread*)arg; 
+      PTHREAD_SAFE_CALL(pthread_setspecific(local_thread_key, thread));
+      // Also set the value of thread timer key
+      PTHREAD_SAFE_CALL( pthread_setspecific(thread_timer_key, NULL) );
+      thread->run();
+      return NULL;
+    }
+
+    void ProcessorImpl::ProcessorThread::run(void)
+    {
+      if (initialize)
+        proc->initialize_processor();
+      while (true)
+      {
+        assert(state == RUNNING_STATE);
+        bool quit = proc->execute_task(this);
+        if (quit) break;
+      }
+      if (finalize)
+        proc->finalize_processor();
+    }
+
+    void ProcessorImpl::ProcessorThread::awake(void)
+    {
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(thread_mutex));
+      assert((state == SLEEPING_STATE) || (state == SLEEP_STATE));
+      // Only need to signal if the thread is actually asleep
+      if (state == SLEEP_STATE)
+        PTHREAD_SAFE_CALL(pthread_cond_signal(thread_cond));
+      state = RUNNING_STATE;
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(thread_mutex));
+    }
+
+    void ProcessorImpl::ProcessorThread::sleep(void)
+    {
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(thread_mutex));
+      assert((state == SLEEPING_STATE) || (state == RUNNING_STATE));
+      // If we haven't been told to stay awake, then go to sleep
+      if (state == SLEEPING_STATE) {
+        state = SLEEP_STATE;
+        PTHREAD_SAFE_CALL(pthread_cond_wait(thread_cond, thread_mutex));
+      }
+      assert(state == RUNNING_STATE);
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(thread_mutex));
+    }
+
+    void ProcessorImpl::ProcessorThread::prepare_to_sleep(void)
+    {
+      // Don't need the lock since we are running
+      assert(state == RUNNING_STATE);
+      state = SLEEPING_STATE;
+    }
+
+    void ProcessorImpl::ProcessorThread::preempt(EventImpl *event,
+                                                 EventImpl::EventGeneration needed)
+    {
+      // First set our state to paused 
+      assert(state == RUNNING_STATE);
+      // Mark that this thread is paused
+      state = PAUSED_STATE;
+      // Then tell the processor to pause the thread
+      proc->pause_thread(this);
+      // Now register ourselves with the event
+      event->add_waiter(needed, this);
+      // Take our lock and see if we are still in the paused state
+      // It's possible we've already been woken up so check before
+      // going to sleep
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(thread_mutex));
+      // If we are in the paused state or the resumable state
+      // then we actually do need to go to sleep so we can be woken
+      // up by the processor later
+      if ((state == PAUSED_STATE) || (state == RESUMABLE_STATE))
+      {
+        PTHREAD_SAFE_CALL(pthread_cond_wait(thread_cond, thread_mutex));
+      }
+      assert(state == RUNNING_STATE);
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(thread_mutex));
+    }
+
+    bool ProcessorImpl::ProcessorThread::event_triggered(void)
+    {
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(thread_mutex));
+      assert(state == PAUSED_STATE);
+      state = RESUMABLE_STATE;
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(thread_mutex));
+      // Now tell the processor that this thread is resumable
+      proc->resume_thread(this);
       return false;
     }
 
-    // Must always be holding the lock when calling this task
-    // This task will always unlock it
-    // returns true if the shutdown task was executed
-    bool ProcessorImpl::execute_task(bool permit_shutdown)
+    void ProcessorImpl::ProcessorThread::resume(void)
     {
-        // Look through the waiting queue, to see if any tasks
-        // have been woken up	
-        	
-        // If we don't have any work to do, check to see
-        // if we can run the idle task.  Also if we're the utility
-        // processor, and we don't have anything to do then try
-        // running the idle task for each of our constituents.
-        if (ready_queue.empty() && perform_scheduling(false/*need lock*/))
-        {
-          // If we return true then we've release the lock so we
-          // have to go back around the loop when we're done
-          // Now we need to return since we no longer hold the lock
-          return false;
-        }
-        else if (is_utility_proc && !shutdown && ready_queue.empty())
-        {
-	  PTHREAD_SAFE_CALL(pthread_cond_wait(wait_cond,mutex));
-
-          PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-          // Note we don't need the lock to read these
-          // since they don't change after the constructor is called
-          for (std::vector<ProcessorImpl*>::const_iterator it = constituents.begin();
-                it != constituents.end(); it++)
-          {
-            // We should never be in our own list of constituents
-#ifdef DEBUG_LOW_LEVEL
-            assert((*it) != this);
-#endif
-            (*it)->perform_scheduling(true/*need lock*/);
-          }
-          // Return since we no longer hold the lock
-          return false;
-        }
-	if (ready_queue.empty())
-	{	
-		if (shutdown && permit_shutdown && waiting_queue.empty())
-		{
-                        // Check to see if we have to wait for our utility processor to finish
-                        if (!util_shutdown)
-                        {
-                          DetailedTimer::ScopedPush sp(TIME_NONE);
-                          // Wait for our utility processor to indicate that its done
-                          PTHREAD_SAFE_CALL(pthread_cond_wait(wait_cond,mutex));
-                        }
-                        // unlock the lock, just in case someone else decides they want to tell us something
-                        // to do even though we've already exited
-                        PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-                        // Check to see if there is a shutdown method
-			Processor::TaskIDTable::const_iterator it = 
-			  task_table.find(Processor::TASK_ID_PROCESSOR_SHUTDOWN);
-			if (it != task_table.end())
-			{	  
-			  Processor::TaskFuncPtr func = it->second;
-                          func(NULL, 0, proc);
-                        }
-                        // If we don't have any utility users or we are our own
-                        // utility processor, then we are done
-                        if (util_users.empty() || 
-                            ((util_users.size() == 1) && (util_users.find(proc) != util_users.end())))
-                        {
-                          shutdown_trigger->trigger();
-                        }
-                        else
-                        {
-                          PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-                          while (remaining_stops > 0)
-                            PTHREAD_SAFE_CALL(pthread_cond_wait(wait_cond,mutex));
-                          PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-                          // Send shutdown messages to all our users that aren't us
-                          for (std::set<Processor>::const_iterator it = util_users.begin();
-                                it != util_users.end(); it++)
-                          {
-                            // Skip ourselves
-                            if ((*it) == proc)
-                              continue;
-                            ProcessorImpl *orig = Runtime::Impl::get_runtime()->get_processor_impl(*it);
-                            orig->utility_finish();
-                          }
-                        }
-			return true; // caller may have other stuff to clean up
-                        //pthread_exit(NULL);	
-		}
-		
-		// Wait until someone tells us there is work to do unless we've been told to shutdown
-                if (!shutdown)
-                {
-                  DetailedTimer::ScopedPush sp(TIME_NONE);
-                  PTHREAD_SAFE_CALL(pthread_cond_wait(wait_cond,mutex));
-                }
-		PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-	}
-        else if (scheduler_invoked)
-        {
-                // Don't allow other tasks to be run while running the idle task
-                PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-                return false;
-        }
-	else
-	{
-		// Pop a task off the queue and run it
-		TaskDesc *task = ready_queue.front();
-		ready_queue.pop_front();
-		PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));	
-                // See if we need to run it or if has already been done
-                int start_count = __sync_fetch_and_add(&(task->start_arrivals),1);
-                // If we are the first one to do arrival at this task do it
-                if (start_count == 0)
-                {
-                  // Check for the shutdown function
-                  if (task->func_id == 0)
-                  {
-                          shutdown = true;
-                          shutdown_trigger = task->complete;
-                          // Check to see if we have a utility processor, if so mark that we're done
-                          // and then set the flag to indicate when the utility processor has drained
-                          // its tasks
-                          if (!is_utility_proc && (utility_proc != this))
-                          {
-                            util_shutdown = false;
-                            // Tell our utility processor to tell us when it's done
-                            utility_proc->release_user();
-                          }
-                          else
-                          {
-                            // We didn't have a utility processor to shutdown
-                            util_shutdown = true;
-                          }
-                  }
-                  else
-                  {
-			  Processor::TaskIDTable::const_iterator it = 
-			    task_table.find(task->func_id);
-#ifdef DEBUG_LOW_LEVEL
-                          assert(it != task_table.end());
-#endif
-                          Processor::TaskFuncPtr func = it->second;
-                          func(task->args, task->arglen, proc);
-                          // Trigger the event indicating that the task has been run
-                          task->complete->trigger();
-                  }
-                }
-                // Now see if we need to delete it
-                int expected_finish = task->expected;
-                int finish_count = __sync_add_and_fetch(&(task->finish_arrivals),1);
-                if (finish_count == expected_finish)
-                    delete task;
-	}
-	return false;
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(thread_mutex));
+      assert(state == RESUMABLE_STATE);
+      state = RUNNING_STATE;
+      PTHREAD_SAFE_CALL(pthread_cond_signal(thread_cond));
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(thread_mutex));
     }
 
-    bool ProcessorImpl::trigger(unsigned count, TriggerHandle handle)
+    void ProcessorImpl::ProcessorThread::shutdown(void)
     {
-	// We're not sure which task is ready, but at least one of them is
-	// so wake up the processor thread if it is waiting
-	PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-        // The trigger handle is the ID of the event we were
-        // waiting on.  Move any tasks in the waiting queue
-        // waiting on that event over to the ready queue
-        // and then wake up the processor.
-        for (std::list<TaskDesc*>::iterator it = waiting_queue.begin();
-              it != waiting_queue.end(); /*nothing*/)
-        {
-          if (((*it)->wait.id == handle) && (*it)->wait.has_triggered())
-          {
-            ready_queue.push_back(*it);
-            it = waiting_queue.erase(it);
-          }	
-          else
-            it++;
-        }
-	PTHREAD_SAFE_CALL(pthread_cond_signal(wait_cond));
-	PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-        return false;
+      // Wake up the thread
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(thread_mutex));
+      state = RUNNING_STATE;
+      PTHREAD_SAFE_CALL(pthread_cond_signal(thread_cond));
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(thread_mutex));
+      // Now wait to join with the thread
+      void *result;
+      PTHREAD_SAFE_CALL(pthread_join(thread, &result));
     }
 
-    // The static method used to start the processor running
-    void* ProcessorImpl::start(void *p)
+    void ProcessorImpl::ProcessorThread::start(void)
     {
-	ProcessorImpl *proc = (ProcessorImpl*)p;
-	// Set the thread local variable processor id
-	//local_proc_id = proc->proc.id;
-        {
-          unsigned *thread_id = (unsigned*)malloc(sizeof(unsigned));
-          *thread_id = proc->proc.id;
-          PTHREAD_SAFE_CALL( pthread_setspecific(local_proc_key, thread_id) );
-        }
-        // Also set the value of thread timer key
-        PTHREAD_SAFE_CALL( pthread_setspecific(thread_timer_key, NULL) );
-	// Will never return from this call
-	proc->run();
-        if (!proc->return_on_finish)
-          pthread_exit(NULL);	
-        return NULL;
+      PTHREAD_SAFE_CALL(pthread_create(&thread, &attr,
+                          ProcessorImpl::ProcessorThread::entry, (void*)this));
     }
 
     void ProcessorGroup::get_group_members(std::vector<Processor>& members)
@@ -2338,15 +2466,33 @@ namespace LegionRuntime {
 				size_t arglen, Event wait_on, int priority)
     {
       // Create a new task description and enqueue it for all the members
-      TaskDesc *task = new TaskDesc(func_id, args, arglen, wait_on,
-                                    Runtime::Impl::get_runtime()->get_free_event(),
+      TaskDesc *task = new TaskDesc(func_id, args, arglen,
+                                    RuntimeImpl::get_runtime()->get_free_event(),
                                     priority, 0, 0, members.size());
       Event result = task->complete->get_event();
 
       for (std::vector<ProcessorImpl*>::const_iterator it = members.begin();
             it != members.end(); it++)
       {
-        (*it)->enqueue_task(task);
+        (*it)->enqueue_task(task, wait_on);
+      }
+      return result;
+    }
+
+    Event ProcessorGroup::spawn(Processor::TaskFuncID func_id, const void * args,
+				size_t arglen, const Realm::ProfilingRequestSet &reqs,
+                                Event wait_on, int priority)
+    {
+      // Create a new task description and enqueue it for all the members
+      TaskDesc *task = new TaskDesc(func_id, args, arglen,
+                                    RuntimeImpl::get_runtime()->get_free_event(),
+                                    priority, 0, 0, members.size(), reqs);
+      Event result = task->complete->get_event();
+
+      for (std::vector<ProcessorImpl*>::const_iterator it = members.begin();
+            it != members.end(); it++)
+      {
+        (*it)->enqueue_task(task, wait_on);
       }
       return result;
     }
@@ -2355,8 +2501,6 @@ namespace LegionRuntime {
     // Memory 
     ////////////////////////////////////////////////////////
     
-    const Memory Memory::NO_MEMORY = { 0 };
-
     class MemoryImpl {
     public:
 	MemoryImpl(size_t max, Memory::Kind k) 
@@ -2382,6 +2526,41 @@ namespace LegionRuntime {
 	pthread_mutex_t *mutex;
         const Memory::Kind kind;
     };
+
+  };
+};
+
+namespace Realm {
+
+  using namespace LegionRuntime;
+  using namespace LegionRuntime::LowLevel;
+
+    const Memory Memory::NO_MEMORY = { 0 };
+
+    Memory::Kind Memory::kind(void) const
+    {
+      return RuntimeImpl::get_runtime()->get_memory_impl(*this)->get_kind();
+    }
+
+    size_t Memory::capacity(void) const
+    {
+      return RuntimeImpl::get_runtime()->get_memory_impl(*this)->total_space();
+    }
+
+    AddressSpace Memory::address_space(void) const
+    {
+      return 0;
+    }
+
+    IDType Memory::local_id(void) const
+    {
+      return id;
+    }
+
+};
+
+namespace LegionRuntime {
+  namespace LowLevel {
 
     size_t MemoryImpl::remaining_bytes(void) 
     {
@@ -2428,26 +2607,6 @@ namespace LegionRuntime {
       return kind;
     }
 
-    Memory::Kind Memory::kind(void) const
-    {
-      return Runtime::Impl::get_runtime()->get_memory_impl(*this)->get_kind();
-    }
-
-    size_t Memory::capacity(void) const
-    {
-      return Runtime::Impl::get_runtime()->get_memory_impl(*this)->total_space();
-    }
-
-    AddressSpace Memory::address_space(void) const
-    {
-      return 0;
-    }
-
-    IDType Memory::local_id(void) const
-    {
-      return id;
-    }
-
     ////////////////////////////////////////////////////////
     // Element Masks
     ////////////////////////////////////////////////////////
@@ -2464,6 +2623,11 @@ namespace LegionRuntime {
       }
 	
     };
+
+  };
+};
+
+namespace Realm {
 
     ElementMask::ElementMask(void)
       : first_element(-1), num_elements(-1), memory(Memory::NO_MEMORY), offset(-1),
@@ -2888,36 +3052,59 @@ namespace LegionRuntime {
       }
     }
 
+};
+
+namespace LegionRuntime {
+  namespace LowLevel {
+
     ////////////////////////////////////////////////////////
     // CopyOperation (Declaration Only) 
     ////////////////////////////////////////////////////////
 
-    class CopyOperation : public Triggerable {
+    class CopyOperation : public DMAOperation {
     public:
       CopyOperation(const std::vector<Domain::CopySrcDstField>& _srcs,
                     const std::vector<Domain::CopySrcDstField>& _dsts,
                     const Domain _domain,
                     ReductionOpID _redop_id, bool _red_fold,
                     EventImpl *_done_event)
-        : srcs(_srcs), dsts(_dsts), 
-          domain(_domain),
+        : DMAOperation(), srcs(_srcs), dsts(_dsts), domain(_domain),
           redop_id(_redop_id), red_fold(_red_fold),
-          done_event(_done_event) 
+          done_event(_done_event)
       {
         PTHREAD_SAFE_CALL(pthread_mutex_init(&mutex,NULL));    
         // If we don't have a done event, make one
         if (!done_event)
-          done_event = Runtime::Impl::get_runtime()->get_free_event();
+          done_event = RuntimeImpl::get_runtime()->get_free_event();
       }
 
-      ~CopyOperation(void)
+      CopyOperation(const std::vector<Domain::CopySrcDstField>& _srcs,
+                    const std::vector<Domain::CopySrcDstField>& _dsts,
+                    const Realm::ProfilingRequestSet &reqs,
+                    const Domain _domain, ReductionOpID _redop_id, bool _red_fold,
+                    EventImpl *_done_event)
+        : DMAOperation(reqs), srcs(_srcs), dsts(_dsts), domain(_domain),
+          redop_id(_redop_id), red_fold(_red_fold),
+          done_event(_done_event)
+      {
+        PTHREAD_SAFE_CALL(pthread_mutex_init(&mutex,NULL));    
+        // If we don't have a done event, make one
+        if (!done_event)
+          done_event = RuntimeImpl::get_runtime()->get_free_event();
+      }
+
+      virtual ~CopyOperation(void)
       {
         PTHREAD_SAFE_CALL(pthread_mutex_destroy(&mutex));
       }
 
-      void perform_copy_operation(void);
+      virtual void perform(void);
 
-      virtual bool trigger(unsigned count = 1, TriggerHandle handle = 0);
+      virtual void print_info(FILE *f) {
+        Event e = done_event->get_event();
+        fprintf(f,"deferred copy: after=" IDFMT "/%d\n",
+                    e.id, e.gen+1);
+      }
 
       Event register_copy(Event wait_on);
 
@@ -2928,16 +3115,210 @@ namespace LegionRuntime {
       ReductionOpID redop_id;
       bool red_fold;
       EventImpl *done_event;
-      pthread_mutex_t mutex;
+      pthread_mutex_t mutex; 
+    };
+
+    class FillOperation : public DMAOperation {
+    public:
+      FillOperation(const std::vector<Domain::CopySrcDstField> &_dsts,
+                    const void *value, size_t size, 
+                    const Domain &dom, EventImpl *_done_event)
+        : dsts(_dsts), fill_value_size(size), domain(dom), done_event(_done_event)
+      {
+        fill_value = malloc(fill_value_size);
+        memcpy(fill_value, value, fill_value_size);
+      }
+      FillOperation(const std::vector<Domain::CopySrcDstField> &_dsts,
+                    const Realm::ProfilingRequestSet &reqs,
+                    const void *value, size_t size, 
+                    const Domain &dom, EventImpl *_done_event)
+        : DMAOperation(reqs), dsts(_dsts), fill_value_size(size), 
+          domain(dom), done_event(_done_event)
+      {
+        fill_value = malloc(fill_value_size);
+        memcpy(fill_value, value, fill_value_size);
+      }
+      virtual ~FillOperation(void)
+      {
+        free(fill_value);
+      }
+
+      virtual void perform(void);
+
+      virtual void print_info(FILE *f) {
+        Event e = done_event->get_event();
+        fprintf(f,"deferred fill: after=" IDFMT "/%d\n",
+                e.id, e.gen+1);
+      }
+    protected:
+      std::vector<Domain::CopySrcDstField> dsts;
+      void *fill_value;
+      size_t fill_value_size;
+      Domain domain;
+      EventImpl *done_event;
+    };
+
+    class ComputeIndexSpaces : public DMAOperation {
+    public:
+      ComputeIndexSpaces(const std::vector<IndexSpace::BinaryOpDescriptor> &p,
+                         EventImpl *d)
+        : pairs(p), done_event(d) { }
+      ComputeIndexSpaces(const std::vector<IndexSpace::BinaryOpDescriptor> &p,
+                         const Realm::ProfilingRequestSet &reqs,
+                         EventImpl *d)
+        : DMAOperation(reqs), pairs(p), done_event(d) { }
+      virtual ~ComputeIndexSpaces(void) { }
+    public:
+      virtual void perform(void);  
+      virtual void print_info(FILE *f);
+    protected:
+      std::vector<IndexSpace::BinaryOpDescriptor> pairs;
+      EventImpl *done_event;
+    };
+
+    class ReduceIndexSpaces : public DMAOperation {
+    public:
+      ReduceIndexSpaces(IndexSpace::IndexSpaceOperation o,
+                        const std::vector<IndexSpace> &s,
+                        IndexSpaceImpl *r,
+                        EventImpl *d)
+        : op(o), spaces(s), result(r), done_event(d) { }
+      ReduceIndexSpaces(IndexSpace::IndexSpaceOperation o,
+                        const std::vector<IndexSpace> &s,
+                        const Realm::ProfilingRequestSet &reqs,
+                        IndexSpaceImpl *r,
+                        EventImpl *d)
+        : DMAOperation(reqs), op(o), spaces(s), result(r), done_event(d) { }
+      virtual ~ReduceIndexSpaces(void) { }
+    public:
+      virtual void perform(void);
+      virtual void print_info(FILE *f);
+    protected:
+      IndexSpace::IndexSpaceOperation op;
+      std::vector<IndexSpace> spaces;
+      IndexSpaceImpl *result;
+      EventImpl *done_event;
+    };
+
+    class DeferredEqualSpaces : public DMAOperation {
+    public:
+      DeferredEqualSpaces(const std::vector<IndexSpaceImpl*> &subs,
+                          IndexSpaceImpl *t, size_t g, EventImpl *d)
+        : target(t), subspaces(subs), granularity(g), done_event(d) { }
+      DeferredEqualSpaces(const std::vector<IndexSpaceImpl*> &subs,
+                          const Realm::ProfilingRequestSet &reqs,
+                          IndexSpaceImpl *t, size_t g, EventImpl *d)
+        : DMAOperation(reqs), target(t), subspaces(subs), granularity(g), done_event(d) { }
+      virtual ~DeferredEqualSpaces(void) { }
+    public:
+      virtual void perform(void);
+      virtual void print_info(FILE *f);
+    protected:
+      IndexSpaceImpl *target;
+      std::vector<IndexSpaceImpl*> subspaces;
+      size_t granularity;
+      EventImpl *done_event;
+    };
+
+    class DeferredWeightedSpaces : public DMAOperation {
+    public:
+      DeferredWeightedSpaces(const std::vector<IndexSpaceImpl*> &subs,
+                             IndexSpaceImpl *t, size_t g, EventImpl *d,
+                             const std::vector<int> &w)
+        : target(t), subspaces(subs), granularity(g), done_event(d), weights(w) { }
+      DeferredWeightedSpaces(const std::vector<IndexSpaceImpl*> &subs,
+                             const Realm::ProfilingRequestSet &reqs,
+                             IndexSpaceImpl *t, size_t g, EventImpl *d,
+                             const std::vector<int> &w)
+        : DMAOperation(reqs), target(t), subspaces(subs), granularity(g), 
+          done_event(d), weights(w) { }
+      virtual ~DeferredWeightedSpaces(void) { }
+    public:
+      virtual void perform(void);
+      virtual void print_info(FILE *f);
+    protected:
+      IndexSpaceImpl *target;
+      std::vector<IndexSpaceImpl*> subspaces;
+      size_t granularity;
+      EventImpl *done_event;
+      std::vector<int> weights;
+    };
+
+    class DeferredFieldSpaces : public DMAOperation {
+    public:
+      DeferredFieldSpaces(const std::vector<IndexSpace::FieldDataDescriptor> &f,
+                          const std::map<DomainPoint,IndexSpace> &s,
+                          EventImpl *d, IndexSpaceImpl *t)
+        : target(t), field_data(f), subspaces(s), done_event(d) { }
+      DeferredFieldSpaces(const std::vector<IndexSpace::FieldDataDescriptor> &f,
+                          const std::map<DomainPoint,IndexSpace> &s,
+                          const Realm::ProfilingRequestSet &reqs,
+                          EventImpl *d, IndexSpaceImpl *t)
+        : DMAOperation(reqs), target(t), field_data(f), subspaces(s), done_event(d) { }
+      virtual ~DeferredFieldSpaces(void) { }
+    public:
+      virtual void perform(void);
+      virtual void print_info(FILE *f);
+    protected:
+      IndexSpaceImpl *target;
+      std::vector<IndexSpace::FieldDataDescriptor> field_data;
+      std::map<DomainPoint,IndexSpace> subspaces;
+      EventImpl *done_event;
+    };
+
+    class DeferredImageSpaces : public DMAOperation {
+    public:
+      DeferredImageSpaces(const std::vector<IndexSpace::FieldDataDescriptor> &f,
+                          const std::map<IndexSpace,IndexSpace> &s,
+                          EventImpl *d, IndexSpaceImpl *t)
+        : target(t), field_data(f), subspaces(s), done_event(d) { }
+      DeferredImageSpaces(const std::vector<IndexSpace::FieldDataDescriptor> &f,
+                          const std::map<IndexSpace,IndexSpace> &s,
+                          const Realm::ProfilingRequestSet &reqs,
+                          EventImpl *d, IndexSpaceImpl *t)
+        : DMAOperation(reqs), target(t), field_data(f), subspaces(s), done_event(d) { }
+      virtual ~DeferredImageSpaces(void) { }
+    public:
+      virtual void perform(void);
+      virtual void print_info(FILE *f);
+    protected:
+      IndexSpaceImpl *target;
+      std::vector<IndexSpace::FieldDataDescriptor> field_data;
+      std::map<IndexSpace,IndexSpace> subspaces;
+      EventImpl *done_event;
+    };
+
+    class DeferredPreimageSpaces : public DMAOperation {
+    public:
+      DeferredPreimageSpaces(const std::vector<IndexSpace::FieldDataDescriptor> &f,
+                             const std::map<IndexSpace,IndexSpace> &s,
+                             EventImpl *d, IndexSpaceImpl *t)
+        : target(t), field_data(f), subspaces(s), done_event(d) { }
+      DeferredPreimageSpaces(const std::vector<IndexSpace::FieldDataDescriptor> &f,
+                             const std::map<IndexSpace,IndexSpace> &s,
+                             const Realm::ProfilingRequestSet &reqs,
+                             EventImpl *d, IndexSpaceImpl *t)
+        : DMAOperation(reqs), target(t), field_data(f), subspaces(s), done_event(d) { }
+      virtual ~DeferredPreimageSpaces(void) { }
+    public:
+      virtual void perform(void);
+      virtual void print_info(FILE *f);
+    protected:
+      IndexSpaceImpl *target;
+      std::vector<IndexSpace::FieldDataDescriptor> field_data;
+      std::map<IndexSpace,IndexSpace> subspaces;
+      EventImpl *done_event;
     };
 
     ////////////////////////////////////////////////////////
-    // IndexSpace::Impl (Declaration Only) 
+    // IndexSpaceImpl (Declaration Only) 
     ////////////////////////////////////////////////////////
 
-    class IndexSpace::Impl {
+    class IndexSpaceImpl {
     public:
-	Impl(int idx, size_t num, bool activate = false) {
+      
+    public:
+	IndexSpaceImpl(int idx, size_t num, bool activate = false) {
                 mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
 		PTHREAD_SAFE_CALL(pthread_mutex_init(mutex,NULL));
 		active = activate;
@@ -2945,13 +3326,13 @@ namespace LegionRuntime {
 		if (activate)
 		{
 			num_elmts = num;
-			reservation = Runtime::Impl::get_runtime()->get_free_reservation();
+			reservation = RuntimeImpl::get_runtime()->get_free_reservation();
                         mask = ElementMask(num_elmts);
                         parent = NULL;
 		}
 	}
 
-        Impl(int idx, IndexSpace::Impl *par, const ElementMask &m, bool activate = false) {
+        IndexSpaceImpl(int idx, IndexSpaceImpl *par, const ElementMask &m, bool activate = false) {
                 mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
                 PTHREAD_SAFE_CALL(pthread_mutex_init(mutex,NULL));
 		active = activate;
@@ -2960,13 +3341,13 @@ namespace LegionRuntime {
 		{
 			num_elmts = m.get_num_elmts();
 	                // Since we have a parent, use the parent's master allocator	
-			reservation = Runtime::Impl::get_runtime()->get_free_reservation();
+			reservation = RuntimeImpl::get_runtime()->get_free_reservation();
                         mask = m;
                         parent = par;
 		}
         }
 
-        ~Impl(void)
+        ~IndexSpaceImpl(void)
         {
                 PTHREAD_SAFE_CALL(pthread_mutex_destroy(mutex));
                 free(mutex);
@@ -2974,26 +3355,51 @@ namespace LegionRuntime {
     public:
 	bool activate(size_t num_elmts);
         bool activate(const ElementMask &m);
-        bool activate(IndexSpace::Impl *par, const ElementMask &m);
+        bool activate(IndexSpaceImpl *par);
+        bool activate(IndexSpaceImpl *par, const ElementMask &m);
 	void deactivate(void);	
 	IndexSpace get_metadata(void);
 
-        IndexSpaceAllocator create_allocator(void);
+        IndexSpaceAllocatorImpl *create_allocator(void);
 
-        RegionInstance create_instance(Memory m, 
+        static RegionInstance create_instance(Memory m, 
 				       const std::vector<size_t>& field_sizes,
 				       size_t block_size, 
 				       const DomainLinearization& dl,
 				       size_t num_elements,
+                                       const Realm::ProfilingRequestSet &reqs,
 				       ReductionOpID redopid = 0);
 
 	void destroy_instance(RegionInstance i);
 
 	Reservation get_reservation(void);
 
-        const ElementMask& get_element_mask(void);
+        ElementMask& get_element_mask(void);
+        const ElementMask& get_element_mask(void) const;
 
         size_t get_num_elmts(void) const { return num_elmts; }
+
+        void create_equal_subspaces(const std::vector<IndexSpaceImpl*> &subspaces,
+                                    size_t granularity);
+        void create_weighted_subspaces(const std::vector<IndexSpaceImpl*> &subspaces,
+                                    size_t granularity,
+                                    std::vector<int> &weights);
+
+        void create_subspaces_by_field(const std::vector<IndexSpace::FieldDataDescriptor> &field_data,
+                                       const std::map<DomainPoint,IndexSpace> &subspaces);
+        void create_subspaces_by_image(const std::vector<IndexSpace::FieldDataDescriptor> &field_data,
+                                       const std::map<IndexSpace,IndexSpace> &subspaces);
+        void create_subspaces_by_preimage(const std::vector<IndexSpace::FieldDataDescriptor> &field_data,
+                                          const std::map<IndexSpace,IndexSpace> &subspaces);
+
+        static Event fill(const std::vector<Domain::CopySrcDstField> &dsts,
+                          const void *fill_value, size_t fill_value_size,
+                          Event wait_on, const Domain &domain);
+
+        static Event fill(const std::vector<Domain::CopySrcDstField> &dsts,
+                          const Realm::ProfilingRequestSet &reqs,
+                          const void *fill_value, size_t fill_value_size,
+                          Event wait_on, const Domain &domain);
 
         static Event copy(RegionInstance src_inst, RegionInstance dst_inst,
 		   size_t elem_size, const Domain domain, Event wait_on = Event::NO_EVENT,
@@ -3004,24 +3410,24 @@ namespace LegionRuntime {
 		   const Domain domain,
 		   Event wait_on,
 		   ReductionOpID redop_id = 0, bool red_fold = false);
-
-        
-
+        static Event copy(const std::vector<Domain::CopySrcDstField>& srcs,
+		   const std::vector<Domain::CopySrcDstField>& dsts,
+                   const Realm::ProfilingRequestSet &requests,
+		   const Domain domain, Event wait_on,
+		   ReductionOpID redop_id = 0, bool red_fold = false);
     public:
         // Traverse up the tree to the parent region that owns the master allocator
         // Peform the operation and then update the element mask on the way back down
         unsigned allocate_space(unsigned count);
         void     free_space(unsigned ptr, unsigned count);
     private:
-	//std::set<RegionAllocatorUntyped> allocators;
-	std::set<RegionInstance> instances;
 	ReservationImpl *reservation;
 	pthread_mutex_t *mutex;
 	bool active;
 	int index;
 	size_t num_elmts;
         ElementMask mask;
-        IndexSpace::Impl *parent;
+        IndexSpaceImpl *parent;
     };
 
     
@@ -3029,16 +3435,16 @@ namespace LegionRuntime {
     // Region Allocator 
     ////////////////////////////////////////////////////////
 
-    class IndexSpaceAllocator::Impl {
+    class IndexSpaceAllocatorImpl {
     public:
-      Impl(IndexSpace is)
-        : is_impl(Runtime::Impl::get_runtime()->get_metadata_impl(is))
+      IndexSpaceAllocatorImpl(IndexSpace is)
+        : is_impl(RuntimeImpl::get_runtime()->get_metadata_impl(is))
       {
 	mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
 	PTHREAD_SAFE_CALL(pthread_mutex_init(mutex,NULL));
       }
       
-      ~Impl(void)
+      ~IndexSpaceAllocatorImpl(void)
       {
 	PTHREAD_SAFE_CALL(pthread_mutex_destroy(mutex));
 	::free(mutex);
@@ -3047,44 +3453,54 @@ namespace LegionRuntime {
     public:
       unsigned alloc_elmt(size_t num_elmts = 1);
       void free_elmt(unsigned ptr, unsigned count);
-      bool activate(IndexSpace::Impl *owner);
+      bool activate(IndexSpaceImpl *owner);
       void deactivate();
       //IndexSpaceAllocator get_allocator(void) const;
 
     private:
-      IndexSpace::Impl *is_impl;
+      IndexSpaceImpl *is_impl;
       pthread_mutex_t *mutex;
     }; 
+
+  };
+};
+
+namespace Realm {
 
     unsigned IndexSpaceAllocator::alloc(unsigned count /*= 1*/) const
     {
       DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      return impl->alloc_elmt(count);
+      return ((IndexSpaceAllocatorImpl *)impl)->alloc_elmt(count);
     }
 
     void IndexSpaceAllocator::free(unsigned ptr, unsigned count /*= 1 */) const
     {
       DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      impl->free_elmt(ptr, count);
+      ((IndexSpaceAllocatorImpl *)impl)->free_elmt(ptr, count);
     }
 
     void IndexSpaceAllocator::destroy(void)
     {
       if (impl != NULL)
       {
-        delete impl;
+        delete ((IndexSpaceAllocatorImpl *)impl);
         // Avoid double frees
         impl = NULL;
       }
     }
 
-    unsigned IndexSpaceAllocator::Impl::alloc_elmt(size_t num_elmts)
+};
+
+namespace LegionRuntime {
+  namespace LowLevel {
+
+    unsigned IndexSpaceAllocatorImpl::alloc_elmt(size_t num_elmts)
     {
       // No need to hold the lock since we're just reading
       return is_impl->allocate_space(num_elmts);
     }
 
-    void IndexSpaceAllocator::Impl::free_elmt(unsigned ptr, unsigned count)
+    void IndexSpaceAllocatorImpl::free_elmt(unsigned ptr, unsigned count)
     {
       // No need to hold the lock since we're just reading
       is_impl->free_space(ptr,count);
@@ -3094,37 +3510,36 @@ namespace LegionRuntime {
     // Region Instance 
     ////////////////////////////////////////////////////////
 
-    class RegionInstance::Impl : public Triggerable { 
+    class RegionInstanceImpl { 
     public:
-        Impl(int idx, IndexSpace r, Memory m, size_t num, size_t alloc, 
+        RegionInstanceImpl(int idx, Memory m, size_t num, size_t alloc, 
 	     const std::vector<size_t>& _field_sizes,
 	     size_t elem_size, size_t _block_size,
 	     const DomainLinearization& _dl,
 	     bool activate = false, char *base = NULL, const ReductionOpUntyped *op = NULL,
-	     RegionInstance::Impl *parent = NULL)
+	     RegionInstanceImpl *parent = NULL)
 	  : elmt_size(elem_size), num_elmts(num), allocation_size(alloc), 
             field_sizes(_field_sizes), block_size(_block_size), linearization(_dl),
 	    reduction((op!=NULL)), list((parent!=NULL)), redop(op), 
-            parent_impl(parent), cur_entry(0), index(idx), next_handle(1)
+            parent_impl(parent), cur_entry(0), index(idx)
 	{
                 mutex = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
 		PTHREAD_SAFE_CALL(pthread_mutex_init(mutex,NULL));
 		active = activate;
 		if (active)
 		{
-		        region = r;
 			memory = m;
 			// Use the memory to allocate the space, fail if there is none
-			//MemoryImpl *mem = Runtime::Impl::get_runtime()->get_memory_impl(m);
+			//MemoryImpl *mem = RuntimeImpl::get_runtime()->get_memory_impl(m);
 			base_ptr = base; //(char*)mem->allocate_space(num_elmts*elem_size);	
 #ifdef DEBUG_LOW_LEVEL
 			assert(base_ptr != NULL);
 #endif
-			reservation = Runtime::Impl::get_runtime()->get_free_reservation();
+			reservation = RuntimeImpl::get_runtime()->get_free_reservation();
 		}
 	}
 
-        ~Impl(void)
+        ~RegionInstanceImpl(void)
         {
                 PTHREAD_SAFE_CALL(pthread_mutex_destroy(mutex));
                 free(mutex);
@@ -3132,20 +3547,17 @@ namespace LegionRuntime {
     public:
 	const void* read(unsigned ptr);
 	void write(unsigned ptr, const void* newval);	
-        bool activate(IndexSpace r, Memory m, size_t num_elmts, size_t alloc,
+        bool activate(Memory m, size_t num_elmts, size_t alloc,
 		      const std::vector<size_t>& _field_sizes, size_t elem_size, size_t _block_size,
 		      const DomainLinearization& _dl,
-                      char *base, const ReductionOpUntyped *op, RegionInstance::Impl *parent);
+                      char *base, const ReductionOpUntyped *op, RegionInstanceImpl *parent,
+                      const Realm::ProfilingRequestSet &reqs);
 	void deactivate(void);
-	Event copy_to(RegionInstance target, Event wait_on);
-        Event copy_to(RegionInstance target, const ElementMask &mask, Event wait_on);
-        Event copy_to(RegionInstance target, IndexSpace src_region, Event wait_on);
 	RegionInstance get_instance(void) const;
-	bool trigger(unsigned count, TriggerHandle handle);
         Reservation get_reservation(void);
-        void perform_copy_operation(RegionInstance::Impl *target, const ElementMask &src_mask, const ElementMask &dst_mask);
-        void apply_list(RegionInstance::Impl *target);
-        void append_list(RegionInstance::Impl *target);
+        void perform_copy_operation(RegionInstanceImpl *target, const ElementMask &src_mask, const ElementMask &dst_mask);
+        void apply_list(RegionInstanceImpl *target);
+        void append_list(RegionInstanceImpl *target);
         void verify_access(unsigned ptr);
         bool is_reduction(void) const { return reduction; }
         bool is_list_reduction(void) const { return list; }
@@ -3157,21 +3569,10 @@ namespace LegionRuntime {
         size_t get_block_size(void) const { return block_size; }
         size_t* get_cur_entry(void) { return &cur_entry; }
         const DomainLinearization& get_linearization(void) const { return linearization; }
+        void fill_field(unsigned offset, unsigned size, const void *fill_value,
+                        size_t fill_value_size, const Domain &domain);
+        inline Memory get_location(void) const { return memory; }
     private:
-        class CopyOperation2 {
-        public:
-          RegionInstance::Impl *target;
-          EventImpl *complete;
-          TriggerHandle id;
-          const ElementMask &src_mask;
-          const ElementMask &dst_mask;
-        public:
-          CopyOperation2(RegionInstance::Impl *t, EventImpl *c, TriggerHandle i, 
-                        const ElementMask &s, const ElementMask &d)
-            : target(t), complete(c), id(i), src_mask(s), dst_mask(d) { }
-        };
-    private:
-        IndexSpace region;
 	char *base_ptr;	
 	size_t elmt_size;
 	size_t num_elmts;
@@ -3184,22 +3585,45 @@ namespace LegionRuntime {
         bool reduction; // reduction fold
         bool list; // reduction list
         const ReductionOpUntyped *redop; // for all reductions
-        RegionInstance::Impl *parent_impl; // for lists
+        RegionInstanceImpl *parent_impl; // for lists
         size_t cur_entry; // for lists
 	bool active;
 	const int index;
 	// Fields for the copy operation
 	ReservationImpl *reservation;
-        TriggerHandle next_handle;
-        std::list<CopyOperation2> pending_copies;
+        Realm::ProfilingRequestSet requests;
+        Realm::ProfilingMeasurementCollection measurements;
+        Realm::ProfilingMeasurements::InstanceTimeline timeline;
+        bool capture_timeline;
     };
+
+    class DeferredInstDestroy : public EventWaiter {
+    public:
+      DeferredInstDestroy(RegionInstanceImpl *i) : impl(i) { }
+      virtual ~DeferredInstDestroy(void) { }
+    public:
+      virtual bool event_triggered(void) {
+        impl->deactivate();
+        return true;
+      }
+      virtual void print_info(FILE *f) {
+        fprintf(f,"deferred instance destroy");
+      }
+    private:
+      RegionInstanceImpl *impl;
+    };
+
+  };
+};
+
+namespace Realm {
 
     /*static*/ const RegionInstance RegionInstance::NO_INST = { 0 };
 
     RegionAccessor<AccessorType::Generic> RegionInstance::get_accessor(void) const
     {
       DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      RegionInstance::Impl *impl = Runtime::Impl::get_runtime()->get_instance_impl(*this);
+      RegionInstanceImpl *impl = RuntimeImpl::get_runtime()->get_instance_impl(*this);
       return RegionAccessor<AccessorType::Generic>(AccessorType::Generic::Untyped(impl));
     }
 
@@ -3213,73 +3637,72 @@ namespace LegionRuntime {
       return id;
     }
 
-    class DeferredInstDestroy : public Triggerable {
-    public:
-      DeferredInstDestroy(RegionInstance::Impl *i) : impl(i) { }
-    public:
-      virtual bool trigger(unsigned count = 1, TriggerHandle = 0)
-      {
-        impl->deactivate();
-        return true;
-      }
-    private:
-      RegionInstance::Impl *impl;
-    };
+    Memory RegionInstance::get_location(void) const
+    {
+      RegionInstanceImpl *impl = RuntimeImpl::get_runtime()->get_instance_impl(*this);
+      return impl->get_location();
+    }
 
     void RegionInstance::destroy(Event wait_on /*= Event::NO_EVENT*/) const
     {
       DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      RegionInstance::Impl *impl = Runtime::Impl::get_runtime()->get_instance_impl(*this);
+      RegionInstanceImpl *impl = RuntimeImpl::get_runtime()->get_instance_impl(*this);
       if (!wait_on.has_triggered())
       {
-        EventImpl *wait_impl = Runtime::Impl::get_runtime()->get_event_impl(wait_on);
+        EventImpl *wait_impl = RuntimeImpl::get_runtime()->get_event_impl(wait_on);
         DeferredInstDestroy *waiter = new DeferredInstDestroy(impl);
-        if (wait_impl->register_dependent(waiter, wait_on.gen))
-          return;
-        delete waiter;
+        wait_impl->add_waiter(wait_on.gen, waiter);
+        return;
       }
       impl->deactivate();
     }
+
+};
+
+namespace LegionRuntime {
+  namespace LowLevel {
 
 #ifdef OLD_INTFC
     Event RegionInstance::copy_to_untyped(RegionInstance target, Event wait_on) const
     {
       DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      return Runtime::Impl::get_runtime()->get_instance_impl(*this)->copy_to(target,wait_on);
+      return RuntimeImpl::get_runtime()->get_instance_impl(*this)->copy_to(target,wait_on);
     }
 
     Event RegionInstance::copy_to_untyped(RegionInstance target, const ElementMask &mask,
                                                 Event wait_on) const
     {
       DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      return Runtime::Impl::get_runtime()->get_instance_impl(*this)->copy_to(target,mask,wait_on);
+      return RuntimeImpl::get_runtime()->get_instance_impl(*this)->copy_to(target,mask,wait_on);
     }
 
     Event RegionInstance::copy_to_untyped(RegionInstance target, IndexSpace region,
                                                  Event wait_on) const
     {
       DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      return Runtime::Impl::get_runtime()->get_instance_impl(*this)->copy_to(target,region,wait_on);
+      return RuntimeImpl::get_runtime()->get_instance_impl(*this)->copy_to(target,region,wait_on);
     }
 #endif
 
-    const void* RegionInstance::Impl::read(unsigned ptr)
+    const void* RegionInstanceImpl::read(unsigned ptr)
     {
       // 'ptr' has already been multiplied by elmt_size
       return ((void*)(base_ptr + ptr));
     }
 
-    void RegionInstance::Impl::write(unsigned ptr, const void* newval)
+    void RegionInstanceImpl::write(unsigned ptr, const void* newval)
     {
       // 'ptr' has already been multiplied by elmt_size
       memcpy((base_ptr + ptr),newval,elmt_size);
     }
 
-    bool RegionInstance::Impl::activate(IndexSpace r, Memory m, size_t num, size_t alloc, 
+    bool RegionInstanceImpl::activate(Memory m, size_t num, size_t alloc, 
 					const std::vector<size_t>& _field_sizes,
 					size_t elem_size, size_t _block_size,
 					const DomainLinearization& _dl,
-					char *base, const ReductionOpUntyped *op, RegionInstance::Impl *parent)
+					char *base, const ReductionOpUntyped *op, 
+                                        RegionInstanceImpl *parent,
+                                        const Realm::ProfilingRequestSet &reqs)
     {
 	bool result = false;
         PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
@@ -3287,7 +3710,6 @@ namespace LegionRuntime {
 	{
 		active = true;
 		result = true;
-		region = r;
 		memory = m;
 		num_elmts = num;
                 allocation_size = alloc;
@@ -3295,7 +3717,7 @@ namespace LegionRuntime {
 		elmt_size = elem_size;
 		block_size = _block_size;
 		linearization = _dl;
-		//MemoryImpl *mem = Runtime::Impl::get_runtime()->get_memory_impl(m);
+		//MemoryImpl *mem = RuntimeImpl::get_runtime()->get_memory_impl(m);
 		base_ptr = base; //(char*)mem->allocate_space(num_elmts*elmt_size);
                 redop = op;
                 reduction = (redop != NULL);
@@ -3305,17 +3727,46 @@ namespace LegionRuntime {
 #ifdef DEBUG_LOW_LEVEL
 		assert(base_ptr != NULL);
 #endif
-		reservation = Runtime::Impl::get_runtime()->get_free_reservation();
+		reservation = RuntimeImpl::get_runtime()->get_free_reservation();
+                if (!reqs.empty()) {
+                    requests = reqs;
+                    measurements.import_requests(requests);
+                    if (measurements.wants_measurement<
+                                      Realm::ProfilingMeasurements::InstanceTimeline>()) {
+                      capture_timeline = true;
+                      timeline.instance.id = index;
+                      timeline.record_create_time();
+                    } else {
+                      capture_timeline = false;
+                    }
+                    if (measurements.wants_measurement<
+                                      Realm::ProfilingMeasurements::InstanceMemoryUsage>()) {
+                      Realm::ProfilingMeasurements::InstanceMemoryUsage usage;
+                      usage.instance.id = index;
+                      usage.memory = memory;
+                      usage.bytes = allocation_size;
+                      measurements.add_measurement(usage);
+                    }
+                } else {
+                  capture_timeline = false;
+                }
 	}
 	PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
 	return result;
     }
 
-    void RegionInstance::Impl::deactivate(void)
+    void RegionInstanceImpl::deactivate(void)
     {
+        if (!requests.empty()) {
+          if (capture_timeline) {
+            timeline.record_delete_time();
+            measurements.add_measurement(timeline);
+          }
+          measurements.send_responses(requests);
+        }
 	PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
 	active = false;
-	MemoryImpl *mem = Runtime::Impl::get_runtime()->get_memory_impl(memory);
+	MemoryImpl *mem = RuntimeImpl::get_runtime()->get_memory_impl(memory);
 	mem->free_space(base_ptr,allocation_size);
         allocation_size = 0;
 	num_elmts = 0;
@@ -3329,90 +3780,13 @@ namespace LegionRuntime {
         list = false;
 	reservation->deactivate();
 	reservation = NULL;
+        requests.clear();
+        measurements.clear();
 	PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-        Runtime::Impl::get_runtime()->free_instance(this);
+        RuntimeImpl::get_runtime()->free_instance(this);
     }
 
     Logger::Category log_copy("copy");
-
-    Event RegionInstance::Impl::copy_to(RegionInstance target, Event wait_on)
-    {
-      return copy_to(target,region,wait_on);
-    }
-
-    Event RegionInstance::Impl::copy_to(RegionInstance target, IndexSpace src_region, Event wait_on)
-    {
-      const ElementMask &mask = src_region.get_valid_mask();
-      return copy_to(target,mask,wait_on);
-    }
-
-    Event RegionInstance::Impl::copy_to(RegionInstance target, const ElementMask &mask, Event wait_on)
-    {
-	RegionInstance::Impl *target_impl = Runtime::Impl::get_runtime()->get_instance_impl(target);
-        const ElementMask &target_mask = target_impl->region.get_valid_mask();
-	//log_copy(LEVEL_INFO, "copy %x/%p/%x -> %x/%p/%x", index, this, region.id, target.id, target_impl, target_impl->region.id);
-#ifdef DEBUG_LOW_LEVEL
-	assert(target_impl->num_elmts == num_elmts);
-	assert(target_impl->elmt_size == elmt_size);
-#endif
-	// Check to see if the event exists
-	if (wait_on.exists())
-	{
-		// Try registering this as a triggerable with the event	
-		EventImpl *event_impl = Runtime::Impl::get_runtime()->get_event_impl(wait_on);
-		PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-		if (event_impl->register_dependent(this,wait_on.gen,next_handle))
-		{
-                        CopyOperation2 op(target_impl,Runtime::Impl::get_runtime()->get_free_event(),
-                                          next_handle,mask,target_mask);
-                        // Put it in the list of copy operations
-                        pending_copies.push_back(op);
-                        next_handle++;
-			PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-			return op.complete->get_event();
-		}
-		else
-		{
-			PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-                        // Nothing to wait for
-                        // Fall through and perform the copy
-		}
-	}
-        perform_copy_operation(target_impl,mask,target_mask);
-        return Event::NO_EVENT;
-    }
-
-    bool RegionInstance::Impl::trigger(unsigned count, TriggerHandle handle)
-    {
-	PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-        // Find the copy operation in the set
-#ifdef DEBUG_LOW_LEVEL
-        bool found = false;
-#endif
-        EventImpl *complete = NULL; 
-        for (std::list<CopyOperation2>::iterator it = pending_copies.begin();
-              it != pending_copies.end(); it++)
-        {
-          if (it->id == handle)
-          {
-#ifdef DEBUG_LOW_LEVEL
-            found = true;
-#endif
-            perform_copy_operation(it->target,it->src_mask,it->dst_mask);
-            complete = it->complete;
-            // Remove it from the list
-            pending_copies.erase(it);
-            break;
-          }
-        }
-#ifdef DEBUG_LOW_LEVEL
-        assert(found);
-#endif
-	PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-        // Trigger the event saying we're done while not holding the lock!
-        complete->trigger();
-        return false;
-    }
 
     namespace RangeExecutors {
       class Memcpy {
@@ -3481,7 +3855,7 @@ namespace LegionRuntime {
       };
     }; // Namespace RangeExecutors
 
-    void RegionInstance::Impl::perform_copy_operation(RegionInstance::Impl *target, const ElementMask &src_mask, const ElementMask &dst_mask)
+    void RegionInstanceImpl::perform_copy_operation(RegionInstanceImpl *target, const ElementMask &src_mask, const ElementMask &dst_mask)
     {
         DetailedTimer::ScopedPush sp(TIME_COPY); 
         const void *src_ptr = base_ptr;
@@ -3575,7 +3949,7 @@ namespace LegionRuntime {
         }
     }
 
-    void RegionInstance::Impl::apply_list(RegionInstance::Impl *target)
+    void RegionInstanceImpl::apply_list(RegionInstanceImpl *target)
     {
 #ifdef DEBUG_LOW_LEVEL
         assert(this->list);
@@ -3595,7 +3969,7 @@ namespace LegionRuntime {
         }
     }
 
-    void RegionInstance::Impl::append_list(RegionInstance::Impl *target)
+    void RegionInstanceImpl::append_list(RegionInstanceImpl *target)
     {
 #ifdef DEBUG_LOW_LEVEL
         assert(this->list);
@@ -3605,29 +3979,31 @@ namespace LegionRuntime {
         assert(false);
     }
 
-    RegionInstance RegionInstance::Impl::get_instance(void) const
+    RegionInstance RegionInstanceImpl::get_instance(void) const
     {
 	RegionInstance inst;
 	inst.id = index;
 	return inst;
     }
 
-    Reservation RegionInstance::Impl::get_reservation(void)
+    Reservation RegionInstanceImpl::get_reservation(void)
     {
 	return reservation->get_reservation();
     }
 
-    void RegionInstance::Impl::verify_access(unsigned ptr)
+    void RegionInstanceImpl::verify_access(unsigned ptr)
     {
+#if 0
       const ElementMask &mask = region.get_valid_mask();
       if (!mask.is_set(ptr))
       {
         fprintf(stderr,"ERROR: Accessing invalid pointer %d in logical region %d\n",ptr,index);
 	assert(0);
       }
+#endif
     }
 
-    void* RegionInstance::Impl::get_address(int index, size_t field_start, size_t field_size,
+    void* RegionInstanceImpl::get_address(int index, size_t field_start, size_t field_size,
 					    size_t within_field)
     {
       if(block_size == 1) {
@@ -3645,6 +4021,46 @@ namespace LegionRuntime {
       }
     }
 
+    void RegionInstanceImpl::fill_field(unsigned fill_offset, unsigned fill_size, 
+                                          const void *fill_value, size_t fill_value_size,
+                                          const Domain &domain)
+    {
+      assert(fill_size == fill_value_size);
+      size_t field_start = 0, field_size = 0, within_field = 0;
+      size_t bytes = find_field(get_field_sizes(), fill_offset, fill_size,
+                                field_start, field_size, within_field);
+      assert(bytes == fill_size);
+      if (domain.get_dim() == 0) {
+        if (linearization.get_dim() == 1) {
+          Arrays::Mapping<1, 1> *dst_linearization = 
+            linearization.get_mapping<1>();
+          for (Domain::DomainPointIterator itr(domain); itr; itr++)
+          {
+            int index = dst_linearization->image(itr.p.get_index());
+            void *raw_addr = get_address(index, field_start,
+                                         field_size, within_field);
+            memcpy(raw_addr, fill_value, fill_value_size);
+          }
+        } else {
+          for (Domain::DomainPointIterator itr(domain); itr; itr++)
+          {
+            int index = itr.p.get_index();
+            void *raw_addr = get_address(index, field_start,
+                                         field_size, within_field);
+            memcpy(raw_addr, fill_value, fill_value_size);
+          }
+        }
+      } else {
+        for (Domain::DomainPointIterator itr(domain); itr; itr++)
+        {
+          int index = linearization.get_image(itr.p);
+          void *raw_addr = get_address(index, field_start,
+                                       field_size, within_field);
+          memcpy(raw_addr, fill_value, fill_value_size);
+        }
+      }
+    }
+
 #if 0
     RegionAccessor<AccessorGeneric> RegionAccessor<AccessorGeneric>::get_field_accessor(off_t offset, size_t size) const
     {
@@ -3659,7 +4075,7 @@ namespace LegionRuntime {
     template<>
     bool RegionAccessor<AccessorGeneric>::can_convert<AccessorArray>(void) const
     { 
-      RegionInstance::Impl *impl = (RegionInstance::Impl*)internal_data;
+      RegionInstanceImpl *impl = (RegionInstanceImpl*)internal_data;
       if (impl->is_reduction())
       {
         return false;
@@ -3673,7 +4089,7 @@ namespace LegionRuntime {
     template<>
     bool RegionAccessor<AccessorGeneric>::can_convert<AccessorArrayReductionFold>(void) const
     {
-      RegionInstance::Impl *impl = (RegionInstance::Impl*)internal_data;
+      RegionInstanceImpl *impl = (RegionInstanceImpl*)internal_data;
       if (impl->is_reduction() && !impl->is_list_reduction())
       {
         return true;
@@ -3687,7 +4103,7 @@ namespace LegionRuntime {
     template<>
     bool RegionAccessor<AccessorGeneric>::can_convert<AccessorReductionList>(void) const
     {
-      RegionInstance::Impl *impl = (RegionInstance::Impl*)internal_data;
+      RegionInstanceImpl *impl = (RegionInstanceImpl*)internal_data;
       if (impl->is_reduction() && impl->is_list_reduction())
       {
         return true;
@@ -3712,7 +4128,7 @@ namespace LegionRuntime {
 
     bool RegionAccessor<AccessorGeneric>::is_reduction_only(void) const
     {
-      RegionInstance::Impl *impl = (RegionInstance::Impl*)internal_data;
+      RegionInstanceImpl *impl = (RegionInstanceImpl*)internal_data;
       return impl->is_reduction();
     }
 
@@ -3727,7 +4143,7 @@ namespace LegionRuntime {
 #ifdef DEBUG_LOW_LEVEL
       assert(!this->is_reduction_only());
 #endif
-      RegionInstance::Impl *impl = (RegionInstance::Impl*)internal_data;
+      RegionInstanceImpl *impl = (RegionInstanceImpl*)internal_data;
       RegionAccessor<AccessorArray> ret(impl->get_base_ptr()); 
 #ifdef POINTER_CHECKS
       ret.impl_ptr = impl;
@@ -3738,7 +4154,7 @@ namespace LegionRuntime {
     template<>
     RegionAccessor<AccessorArrayReductionFold> RegionAccessor<AccessorGeneric>::convert<AccessorArrayReductionFold>(void) const
     {
-      RegionInstance::Impl *impl = (RegionInstance::Impl*)internal_data;
+      RegionInstanceImpl *impl = (RegionInstanceImpl*)internal_data;
 #ifdef DEBUG_LOW_LEVEL
       assert(impl->is_reduction() && !impl->is_list_reduction());
 #endif
@@ -3748,7 +4164,7 @@ namespace LegionRuntime {
     template<>
     RegionAccessor<AccessorReductionList> RegionAccessor<AccessorGeneric>::convert<AccessorReductionList>(void) const
     {
-      RegionInstance::Impl *impl = (RegionInstance::Impl*)internal_data; 
+      RegionInstanceImpl *impl = (RegionInstanceImpl*)internal_data; 
 #ifdef DEBUG_LOW_LEVEL
       assert(impl->is_reduction() && impl->is_list_reduction());
 #endif
@@ -3775,7 +4191,7 @@ namespace LegionRuntime {
     {
       internal_data = _internal_data;
 
-      RegionInstance::Impl *impl = (RegionInstance::Impl*)internal_data;
+      RegionInstanceImpl *impl = (RegionInstanceImpl*)internal_data;
       cur_size = impl->get_cur_entry(); 
       max_size = _num_entries;
       entry_list = impl->get_base_ptr();
@@ -3795,17 +4211,24 @@ namespace LegionRuntime {
 #ifdef POINTER_CHECKS
     void RegionAccessor<AccessorGeneric>::verify_access(unsigned ptr) const
     {
-        ((RegionInstance::Impl*)internal_data)->verify_access(ptr);
+        ((RegionInstanceImpl*)internal_data)->verify_access(ptr);
     }
 
 #if 0
     void RegionAccessor<AccessorArray>::verify_access(unsigned ptr) const
     {
-        ((RegionInstance::Impl*)impl_ptr)->verify_access(ptr);
+        ((RegionInstanceImpl*)impl_ptr)->verify_access(ptr);
     }
 #endif
 #endif
 #endif
+
+    Logger::Category log_region("region");
+
+  };
+};
+
+namespace Realm {
 
     ////////////////////////////////////////////////////////
     // IndexSpace 
@@ -3814,15 +4237,13 @@ namespace LegionRuntime {
     /*static*/ const IndexSpace IndexSpace::NO_SPACE = { 0 };
     /*static*/ const Domain Domain::NO_DOMAIN = Domain();
 
-    // Lifting Declaration of IndexSpace::Impl above allocator so we can call it in allocator
+    // Lifting Declaration of IndexSpaceImpl above allocator so we can call it in allocator
     
-    Logger::Category log_region("region");
-
     IndexSpace IndexSpace::create_index_space(size_t num_elmts)
     {
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-	IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_free_metadata(num_elmts);	
-	//log_region(LEVEL_INFO, "index space created: id=%x num=%zd",
+	IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_free_metadata(num_elmts);	
+	//log_region.info("index space created: id=%x num=%zd",
         //		   r->get_metadata().id, num_elmts);
 	return r->get_metadata();
     }
@@ -3830,25 +4251,394 @@ namespace LegionRuntime {
     IndexSpace IndexSpace::create_index_space(const ElementMask &mask)
     {
       DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_free_metadata(mask);
+      IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_free_metadata(mask);
       return r->get_metadata();
     }
 
-    IndexSpace IndexSpace::create_index_space(IndexSpace parent, const ElementMask &mask)
+    IndexSpace IndexSpace::create_index_space(IndexSpace parent, 
+                                              const ElementMask &mask,
+                                              bool allocable /*= true*/)
     {
       DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      IndexSpace::Impl *par = Runtime::Impl::get_runtime()->get_metadata_impl(parent);
-      IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_free_metadata(par, mask);
-      //log_region(LEVEL_INFO, "index space created: id=%x parent=%x",
+      IndexSpaceImpl *par = RuntimeImpl::get_runtime()->get_metadata_impl(parent);
+      IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_free_metadata(par, mask);
+      //log_region.info("index space created: id=%x parent=%x",
       //		 r->get_metadata().id, parent.id);
       return r->get_metadata();
+    }
+
+    Event IndexSpace::create_equal_subspaces(size_t count, size_t granularity,
+                                             std::vector<IndexSpace>& subspaces,
+                                             bool mutable_results, Event wait_on) const
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      EventImpl *done_impl = rt->get_free_event();
+      Event result = done_impl->get_event();
+      IndexSpaceImpl *impl = rt->get_metadata_impl(*this);
+      // Make each of the resulting subspaces
+      subspaces.resize(count);
+      std::vector<IndexSpaceImpl*> subspace_impls(count);
+      for (unsigned idx = 0; idx < count; idx++) {
+        subspace_impls[idx] = rt->get_free_metadata(impl);
+        subspaces[idx] = subspace_impls[idx]->get_metadata();
+      }
+      DeferredEqualSpaces *op = new DeferredEqualSpaces(subspace_impls, impl,
+                                                        granularity, done_impl);
+      if (wait_on.exists()) {
+        EventImpl *source = rt->get_event_impl(wait_on);
+        source->add_waiter(wait_on.gen, op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(op);
+      }
+      return result;
+    }
+
+    Event IndexSpace::create_equal_subspaces(size_t count, size_t granularity,
+                                             std::vector<IndexSpace>& subspaces,
+                                             const Realm::ProfilingRequestSet &reqs,
+                                             bool mutable_results, Event wait_on) const
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      EventImpl *done_impl = rt->get_free_event();
+      Event result = done_impl->get_event();
+      IndexSpaceImpl *impl = rt->get_metadata_impl(*this);
+      // Make each of the resulting subspaces
+      subspaces.resize(count);
+      std::vector<IndexSpaceImpl*> subspace_impls(count);
+      for (unsigned idx = 0; idx < count; idx++) {
+        subspace_impls[idx] = rt->get_free_metadata(impl);
+        subspaces[idx] = subspace_impls[idx]->get_metadata();
+      }
+      DeferredEqualSpaces *op = new DeferredEqualSpaces(subspace_impls, reqs, impl,
+                                                        granularity, done_impl);
+      if (wait_on.exists()) {
+        EventImpl *source = rt->get_event_impl(wait_on);
+        source->add_waiter(wait_on.gen, op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(op);
+      }
+      return result;
+    }
+
+    Event IndexSpace::create_weighted_subspaces(size_t count, size_t granularity,
+                                                const std::vector<int> &weights,
+                                                std::vector<IndexSpace> &subspaces,
+                                                bool mutable_results, Event wait_on) const
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      EventImpl *done_impl = rt->get_free_event();
+      Event result = done_impl->get_event();
+      IndexSpaceImpl *impl = rt->get_metadata_impl(*this);
+      // Make each of the resulting subspaces
+      subspaces.resize(count);
+      std::vector<IndexSpaceImpl*> subspace_impls(count);
+      for (unsigned idx = 0; idx < count; idx++) {
+        subspace_impls[idx] = rt->get_free_metadata(impl);
+        subspaces[idx] = subspace_impls[idx]->get_metadata();
+      }
+      DeferredWeightedSpaces *op = new DeferredWeightedSpaces(subspace_impls, impl,
+                                                  granularity, done_impl, weights);
+      if (wait_on.exists()) {
+        EventImpl *source = rt->get_event_impl(wait_on);
+        source->add_waiter(wait_on.gen, op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(op);
+      }
+      return result;
+    }
+
+    Event IndexSpace::create_weighted_subspaces(size_t count, size_t granularity,
+                                                const std::vector<int> &weights,
+                                                std::vector<IndexSpace> &subspaces,
+                                                const Realm::ProfilingRequestSet &reqs,
+                                                bool mutable_results, Event wait_on) const
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      EventImpl *done_impl = rt->get_free_event();
+      Event result = done_impl->get_event();
+      IndexSpaceImpl *impl = rt->get_metadata_impl(*this);
+      // Make each of the resulting subspaces
+      subspaces.resize(count);
+      std::vector<IndexSpaceImpl*> subspace_impls(count);
+      for (unsigned idx = 0; idx < count; idx++) {
+        subspace_impls[idx] = rt->get_free_metadata(impl);
+        subspaces[idx] = subspace_impls[idx]->get_metadata();
+      }
+      DeferredWeightedSpaces *op = new DeferredWeightedSpaces(subspace_impls, reqs, impl,
+                                                  granularity, done_impl, weights);
+      if (wait_on.exists()) {
+        EventImpl *source = rt->get_event_impl(wait_on);
+        source->add_waiter(wait_on.gen, op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(op);
+      }
+      return result;
+    }
+
+    Event IndexSpace::create_subspaces_by_field(
+                                        const std::vector<FieldDataDescriptor> &field_data,
+                                        std::map<DomainPoint, IndexSpace> &subspaces,
+                                        bool mutable_results, Event wait_on) const
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      EventImpl *done_impl = rt->get_free_event();
+      Event result = done_impl->get_event();
+      IndexSpaceImpl *impl = rt->get_metadata_impl(*this);
+      // Fill in the subspaces
+      for (std::map<DomainPoint,IndexSpace>::iterator it = subspaces.begin();
+            it != subspaces.end(); it++)
+      {
+        IndexSpaceImpl *child = rt->get_free_metadata(impl);
+        it->second = child->get_metadata();
+      }
+      DeferredFieldSpaces *op = new DeferredFieldSpaces(field_data, subspaces,
+                                                        done_impl, impl);
+      if (wait_on.exists()) {
+        EventImpl *source = rt->get_event_impl(wait_on);
+        source->add_waiter(wait_on.gen, op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(op);
+      }
+      return result;
+    }
+
+    Event IndexSpace::create_subspaces_by_field(
+                                        const std::vector<FieldDataDescriptor> &field_data,
+                                        std::map<DomainPoint, IndexSpace> &subspaces,
+                                        const Realm::ProfilingRequestSet &reqs,
+                                        bool mutable_results, Event wait_on) const
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      EventImpl *done_impl = rt->get_free_event();
+      Event result = done_impl->get_event();
+      IndexSpaceImpl *impl = rt->get_metadata_impl(*this);
+      // Fill in the subspaces
+      for (std::map<DomainPoint,IndexSpace>::iterator it = subspaces.begin();
+            it != subspaces.end(); it++)
+      {
+        IndexSpaceImpl *child = rt->get_free_metadata(impl);
+        it->second = child->get_metadata();
+      }
+      DeferredFieldSpaces *op = new DeferredFieldSpaces(field_data, subspaces, reqs,
+                                                        done_impl, impl);
+      if (wait_on.exists()) {
+        EventImpl *source = rt->get_event_impl(wait_on);
+        source->add_waiter(wait_on.gen, op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(op);
+      }
+      return result;
+    }
+
+    Event IndexSpace::create_subspaces_by_image(
+                                        const std::vector<FieldDataDescriptor> &field_data,
+                                        std::map<IndexSpace, IndexSpace> &subspaces,
+                                        bool mutable_results, Event wait_on) const
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      EventImpl *done_impl = rt->get_free_event();
+      Event result = done_impl->get_event();
+      IndexSpaceImpl *impl = rt->get_metadata_impl(*this);
+      // Fill in the subspaces
+      for (std::map<IndexSpace,IndexSpace>::iterator it = subspaces.begin();
+            it != subspaces.end(); it++)
+      {
+        IndexSpaceImpl *child = rt->get_free_metadata(impl);
+        it->second = child->get_metadata();
+      }
+      DeferredImageSpaces *op = new DeferredImageSpaces(field_data, subspaces,
+                                                        done_impl, impl);
+      if (wait_on.exists()) {
+        EventImpl *source = rt->get_event_impl(wait_on);
+        source->add_waiter(wait_on.gen, op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(op);
+      }
+      return result;
+    }
+
+    Event IndexSpace::create_subspaces_by_image(
+                                        const std::vector<FieldDataDescriptor> &field_data,
+                                        std::map<IndexSpace, IndexSpace> &subspaces,
+                                        const Realm::ProfilingRequestSet &reqs,
+                                        bool mutable_results, Event wait_on) const
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      EventImpl *done_impl = rt->get_free_event();
+      Event result = done_impl->get_event();
+      IndexSpaceImpl *impl = rt->get_metadata_impl(*this);
+      // Fill in the subspaces
+      for (std::map<IndexSpace,IndexSpace>::iterator it = subspaces.begin();
+            it != subspaces.end(); it++)
+      {
+        IndexSpaceImpl *child = rt->get_free_metadata(impl);
+        it->second = child->get_metadata();
+      }
+      DeferredImageSpaces *op = new DeferredImageSpaces(field_data, subspaces, reqs,
+                                                        done_impl, impl);
+      if (wait_on.exists()) {
+        EventImpl *source = rt->get_event_impl(wait_on);
+        source->add_waiter(wait_on.gen, op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(op);
+      }
+      return result;
+    }
+
+    Event IndexSpace::create_subspaces_by_preimage(
+                                        const std::vector<FieldDataDescriptor> &field_data,
+                                        std::map<IndexSpace, IndexSpace> &subspaces,
+                                        bool mutable_results, Event wait_on) const
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      EventImpl *done_impl = rt->get_free_event();
+      Event result = done_impl->get_event();
+      IndexSpaceImpl *impl = rt->get_metadata_impl(*this);
+      // Fill in the subspaces
+      for (std::map<IndexSpace,IndexSpace>::iterator it = subspaces.begin();
+            it != subspaces.end(); it++)
+      {
+        IndexSpaceImpl *child = rt->get_free_metadata(impl);
+        it->second = child->get_metadata();
+      }
+      DeferredPreimageSpaces *op = new DeferredPreimageSpaces(field_data, subspaces,
+                                                              done_impl, impl);
+      if (wait_on.exists()) {
+        EventImpl *source = rt->get_event_impl(wait_on);
+        source->add_waiter(wait_on.gen, op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(op);
+      }
+      return result;
+    }
+
+    Event IndexSpace::create_subspaces_by_preimage(
+                                        const std::vector<FieldDataDescriptor> &field_data,
+                                        std::map<IndexSpace, IndexSpace> &subspaces,
+                                        const Realm::ProfilingRequestSet &reqs,
+                                        bool mutable_results, Event wait_on) const
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      EventImpl *done_impl = rt->get_free_event();
+      Event result = done_impl->get_event();
+      IndexSpaceImpl *impl = rt->get_metadata_impl(*this);
+      // Fill in the subspaces
+      for (std::map<IndexSpace,IndexSpace>::iterator it = subspaces.begin();
+            it != subspaces.end(); it++)
+      {
+        IndexSpaceImpl *child = rt->get_free_metadata(impl);
+        it->second = child->get_metadata();
+      }
+      DeferredPreimageSpaces *op = new DeferredPreimageSpaces(field_data, subspaces, reqs,
+                                                              done_impl, impl);
+      if (wait_on.exists()) {
+        EventImpl *source = rt->get_event_impl(wait_on);
+        source->add_waiter(wait_on.gen, op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(op);
+      }
+      return result;
+    }
+
+    /*static*/ Event IndexSpace::compute_index_spaces(
+                                          std::vector<BinaryOpDescriptor> &pairs,
+                                          bool mutable_results, Event wait_on)
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      // Fill in the index space output
+      for (unsigned idx = 0; idx < pairs.size(); idx++) {
+        IndexSpaceImpl *parent = rt->get_metadata_impl(pairs[idx].parent);
+        IndexSpaceImpl *result = rt->get_free_metadata(parent);
+        pairs[idx].result = result->get_metadata();
+      }
+      // Construct an operation to compute the result
+      EventImpl *done_event = rt->get_free_event();
+      Event result = done_event->get_event();
+      ComputeIndexSpaces *op = new ComputeIndexSpaces(pairs, done_event);
+      if (wait_on.exists()) {
+        EventImpl *event_impl = rt->get_event_impl(wait_on);
+        event_impl->add_waiter(wait_on.gen, op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(op);
+      }
+      return result;
+    }
+
+    /*static*/ Event IndexSpace::compute_index_spaces(
+                                          std::vector<BinaryOpDescriptor> &pairs,
+                                          const Realm::ProfilingRequestSet &reqs,
+                                          bool mutable_results, Event wait_on)
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      // Fill in the index space output
+      for (unsigned idx = 0; idx < pairs.size(); idx++) {
+        IndexSpaceImpl *parent = rt->get_metadata_impl(pairs[idx].parent);
+        IndexSpaceImpl *result = rt->get_free_metadata(parent);
+        pairs[idx].result = result->get_metadata();
+      }
+      // Construct an operation to compute the result
+      EventImpl *done_event = rt->get_free_event();
+      Event result = done_event->get_event();
+      ComputeIndexSpaces *op = new ComputeIndexSpaces(pairs, reqs, done_event);
+      if (wait_on.exists()) {
+        EventImpl *event_impl = rt->get_event_impl(wait_on);
+        event_impl->add_waiter(wait_on.gen, op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(op);
+      }
+      return result;
+    }
+
+    /*static*/ Event IndexSpace::reduce_index_spaces(IndexSpaceOperation op,
+                                      const std::vector<IndexSpace> &spaces,
+                                      IndexSpace &result, bool mutable_results,
+                                      IndexSpace parent, Event wait_on)
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      IndexSpaceImpl *parent_impl = rt->get_metadata_impl(parent);
+      IndexSpaceImpl *result_impl = rt->get_free_metadata(parent_impl);
+      result = result_impl->get_metadata();
+      EventImpl *done_event = rt->get_free_event();
+      Event ready = done_event->get_event();
+      ReduceIndexSpaces *reduce_op = 
+        new ReduceIndexSpaces(op, spaces, result_impl, done_event);
+      if (wait_on.exists()) {
+        EventImpl *event_impl = rt->get_event_impl(wait_on);
+        event_impl->add_waiter(wait_on.gen, reduce_op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(reduce_op);
+      }
+      return ready;
+    }
+
+    /*static*/ Event IndexSpace::reduce_index_spaces(IndexSpaceOperation op,
+                                      const std::vector<IndexSpace> &spaces,
+                                      const Realm::ProfilingRequestSet &reqs,
+                                      IndexSpace &result, bool mutable_results,
+                                      IndexSpace parent, Event wait_on)
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      IndexSpaceImpl *parent_impl = rt->get_metadata_impl(parent);
+      IndexSpaceImpl *result_impl = rt->get_free_metadata(parent_impl);
+      result = result_impl->get_metadata();
+      EventImpl *done_event = rt->get_free_event();
+      Event ready = done_event->get_event();
+      ReduceIndexSpaces *reduce_op = 
+        new ReduceIndexSpaces(op, spaces, reqs, result_impl, done_event);
+      if (wait_on.exists()) {
+        EventImpl *event_impl = rt->get_event_impl(wait_on);
+        event_impl->add_waiter(wait_on.gen, reduce_op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(reduce_op);
+      }
+      return ready;
     }
 
     IndexSpaceAllocator IndexSpace::create_allocator(void) const
     {
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-	IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(*this);
-	return r->create_allocator();
+	IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_metadata_impl(*this);
+	return IndexSpaceAllocator(r->create_allocator());
     }
 
     RegionInstance Domain::create_instance(Memory m, size_t elmt_size,
@@ -3861,9 +4651,30 @@ namespace LegionRuntime {
       return create_instance(m, field_sizes, 1, redop_id);
     }
 
+    RegionInstance Domain::create_instance(Memory m, size_t elmt_size,
+                                           const Realm::ProfilingRequestSet &reqs,
+					   ReductionOpID redop_id) const
+    {
+      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
+      std::vector<size_t> field_sizes(1);
+      field_sizes[0] = elmt_size;
+      // for an instance with a single field, block size should be a don't care
+      return create_instance(m, field_sizes, 1, reqs, redop_id);
+    }
+
     RegionInstance Domain::create_instance(Memory memory,
 					   const std::vector<size_t> &field_sizes,
 					   size_t block_size,
+					   ReductionOpID redop_id) const
+    {
+      Realm::ProfilingRequestSet requests;
+      return create_instance(memory, field_sizes, block_size, requests, redop_id);
+    }
+
+    RegionInstance Domain::create_instance(Memory memory,
+					   const std::vector<size_t> &field_sizes,
+					   size_t block_size,
+                                           const Realm::ProfilingRequestSet &reqs,
 					   ReductionOpID redop_id) const
     {
         if (!memory.exists())
@@ -3903,10 +4714,10 @@ namespace LegionRuntime {
 
 	  default: assert(0);
 	  }
-	  IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(get_index_space());
-	  return r->create_instance(memory, field_sizes, block_size, dl, int(inst_extent.hi) + 1, redop_id);
+	  return IndexSpaceImpl::create_instance(memory, field_sizes, block_size, dl, 
+                                                   int(inst_extent.hi) + 1, reqs, redop_id);
 	} else {
-	  IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(get_index_space());
+	  IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_metadata_impl(get_index_space());
 
 	  DomainLinearization dl;
 	  size_t count = r->get_num_elmts();
@@ -3928,17 +4739,26 @@ namespace LegionRuntime {
 	    }
 	  }
 #endif
-	  return r->create_instance(memory, field_sizes, block_size, 
-				    dl, count,
-				    redop_id);
+	  return IndexSpaceImpl::create_instance(memory, field_sizes, block_size, 
+				                   dl, count, reqs, redop_id);
 	}
+    }
+
+    RegionInstance Domain::create_hdf5_instance(const char *file_name,
+                                                const std::vector<size_t> &field_sizes,
+                                                const std::vector<const char*> &field_files,
+                                                bool ready_only) const
+    {
+      // TODO: Implement this
+      assert(false);
+      return RegionInstance::NO_INST;
     }
 
 #if 0
     RegionInstance IndexSpace::create_instance(Memory m, ReductionOpID redop) const
     {
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-        IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(*this);
+        IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_metadata_impl(*this);
         return r->create_instance(m, redop);
     }
 
@@ -3946,15 +4766,17 @@ namespace LegionRuntime {
                                                   off_t list_size, RegionInstance parent_inst) const
     {
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-        IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(*this);
+        IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_metadata_impl(*this);
         return r->create_instance(m, redop, list_size, parent_inst);
     }
 #endif
 
-    void IndexSpace::destroy(void) const
+    void IndexSpace::destroy(Event wait_on) const
     {
+        // TODO: figure out how to wait
+        assert(false);
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-	IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(*this);
+	IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_metadata_impl(*this);
         r->deactivate();
     }
 
@@ -3962,14 +4784,14 @@ namespace LegionRuntime {
     void IndexSpace::destroy_allocator(IndexSpaceAllocator a) const
     {
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-	IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(*this);
+	IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_metadata_impl(*this);
 	r->destroy_allocator(a);
     }
 
     void IndexSpace::destroy_instance(RegionInstance i) const
     {
         DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-	IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(*this);
+	IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_metadata_impl(*this);
 	r->destroy_instance(i);
     }
 #endif
@@ -3977,8 +4799,17 @@ namespace LegionRuntime {
     const ElementMask &IndexSpace::get_valid_mask(void) const
     {
       DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(*this);
+      IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_metadata_impl(*this);
       return r->get_element_mask();
+    }
+
+    Event Domain::fill(const std::vector<CopySrcDstField> &dsts,
+                       const void *fill_value, size_t fill_value_size,
+                       Event wait_on /*= Event::NO_EVENT*/) const
+    {
+      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
+      return IndexSpaceImpl::fill(dsts, fill_value, fill_value_size,
+                                    wait_on, *this);
     }
 
     Event Domain::copy(RegionInstance src_inst, RegionInstance dst_inst, size_t elem_size,
@@ -3986,9 +4817,9 @@ namespace LegionRuntime {
 		       ReductionOpID redop_id /*= 0*/, bool red_fold /*= false*/) const
     {
       DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      //IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(get_index_space());
+      //IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_metadata_impl(get_index_space());
       //return r->copy(src_inst, dst_inst, elem_size, *this, wait_on, redop_id, red_fold);
-      return IndexSpace::Impl::copy(src_inst, dst_inst, elem_size, *this,
+      return IndexSpaceImpl::copy(src_inst, dst_inst, elem_size, *this,
                                     wait_on, redop_id, red_fold);
     }
 
@@ -3998,9 +4829,9 @@ namespace LegionRuntime {
 		       ReductionOpID redop_id /*= 0*/, bool red_fold /*= false*/) const
     {
       DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      //IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(get_index_space());
+      //IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_metadata_impl(get_index_space());
       //return r->copy(srcs, dsts, *this, wait_on, redop_id, red_fold);
-      return IndexSpace::Impl::copy(srcs, dsts, *this, wait_on, redop_id, red_fold);
+      return IndexSpaceImpl::copy(srcs, dsts, *this, wait_on, redop_id, red_fold);
     }
 
     Event Domain::copy(const std::vector<CopySrcDstField>& srcs,
@@ -4009,10 +4840,10 @@ namespace LegionRuntime {
 		       ReductionOpID redop_id /*= 0*/, bool red_fold /*= false*/) const
     {
       DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
-      //IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(get_index_space());
+      //IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_metadata_impl(get_index_space());
       assert(0);
       //return r->copy(srcs, dsts, *this, wait_on, redop_id, red_fold);
-      return IndexSpace::Impl::copy(srcs, dsts, *this, wait_on, redop_id, red_fold);
+      return IndexSpaceImpl::copy(srcs, dsts, *this, wait_on, redop_id, red_fold);
     }
 
     Event Domain::copy_indirect(const CopySrcDstField &idx,
@@ -4038,7 +4869,31 @@ namespace LegionRuntime {
       return Event::NO_EVENT;
     }
 
-    bool IndexSpace::Impl::activate(size_t num)
+    Event Domain::fill(const std::vector<CopySrcDstField> &dsts,
+                       const Realm::ProfilingRequestSet &reqs,
+                       const void *fill_value, size_t fill_value_size,
+                       Event wait_on /*= Event::NO_EVENT*/) const
+    {
+      DetailedTimer::ScopedPush sp(TIME_LOW_LEVEL);
+      return IndexSpaceImpl::fill(dsts, reqs, fill_value, fill_value_size,
+                                    wait_on, *this);
+    }
+
+    Event Domain::copy(const std::vector<CopySrcDstField>& srcs,
+                       const std::vector<CopySrcDstField>& dsts,
+                       const Realm::ProfilingRequestSet &requests,
+                       Event wait_on, ReductionOpID redop_id, bool red_fold) const
+    {
+      return IndexSpaceImpl::copy(srcs, dsts, requests, *this,
+                                    wait_on, redop_id, red_fold);
+    }
+
+};
+
+namespace LegionRuntime {
+  namespace LowLevel {
+
+    bool IndexSpaceImpl::activate(size_t num)
     {
 	bool result = false;
         PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
@@ -4047,7 +4902,7 @@ namespace LegionRuntime {
 		active = true;
 		result = true;
 		num_elmts = num;
-		reservation = Runtime::Impl::get_runtime()->get_free_reservation();
+		reservation = RuntimeImpl::get_runtime()->get_free_reservation();
                 mask = ElementMask(num_elmts);
                 parent = NULL;
 	}
@@ -4055,7 +4910,7 @@ namespace LegionRuntime {
 	return result;
     }
 
-    bool IndexSpace::Impl::activate(const ElementMask &m)
+    bool IndexSpaceImpl::activate(const ElementMask &m)
     {
       bool result = false;
       PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
@@ -4064,7 +4919,7 @@ namespace LegionRuntime {
         active = true;
         result = true;
         num_elmts = m.get_num_elmts();
-        reservation = Runtime::Impl::get_runtime()->get_free_reservation();
+        reservation = RuntimeImpl::get_runtime()->get_free_reservation();
         mask = m;
         parent = NULL;
       }
@@ -4072,7 +4927,24 @@ namespace LegionRuntime {
       return result;
     }
 
-    bool IndexSpace::Impl::activate(IndexSpace::Impl *par, const ElementMask &m)
+    bool IndexSpaceImpl::activate(IndexSpaceImpl *par)
+    {
+      bool result = false;
+      PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
+      if (!active)
+      {
+        active = true;
+        result = true;
+        parent = par;
+        num_elmts = parent->get_element_mask().get_num_elmts();
+        reservation = RuntimeImpl::get_runtime()->get_free_reservation();
+        mask = ElementMask(num_elmts);
+      }
+      PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
+      return result;
+    }
+
+    bool IndexSpaceImpl::activate(IndexSpaceImpl *par, const ElementMask &m)
     {
       bool result = false;
       PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
@@ -4081,7 +4953,7 @@ namespace LegionRuntime {
         active = true;
         result = true;
         num_elmts = m.get_num_elmts();
-        reservation = Runtime::Impl::get_runtime()->get_free_reservation();
+        reservation = RuntimeImpl::get_runtime()->get_free_reservation();
         mask = m;
         parent = par;
       }
@@ -4089,28 +4961,18 @@ namespace LegionRuntime {
       return result;
     }
 
-    void IndexSpace::Impl::deactivate(void)
+    void IndexSpaceImpl::deactivate(void)
     {
 	PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
 	active = false;
 	num_elmts = 0;
-        // Mike: The High Level Runtime is responsible for deleting instances!
-#if 0
-	for (std::set<RegionInstance>::iterator it = instances.begin();
-		it != instances.end(); it++)
-	{
-		RegionInstance::Impl *instance = Runtime::Impl::get_runtime()->get_instance_impl(*it);
-		instance->deactivate();
-	}	
-#endif
-	instances.clear();
 	reservation->deactivate();
 	reservation = NULL;
 	PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
-        Runtime::Impl::get_runtime()->free_metadata(this);
+        RuntimeImpl::get_runtime()->free_metadata(this);
     }
 
-    unsigned IndexSpace::Impl::allocate_space(unsigned count)
+    unsigned IndexSpaceImpl::allocate_space(unsigned count)
     {
         int result = 0;
         PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
@@ -4141,7 +5003,7 @@ namespace LegionRuntime {
         return unsigned(result);
     }
 
-    void IndexSpace::Impl::free_space(unsigned ptr, unsigned count)
+    void IndexSpaceImpl::free_space(unsigned ptr, unsigned count)
     {
         PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
 #ifdef DEBUG_LOW_LEVEL
@@ -4164,14 +5026,14 @@ namespace LegionRuntime {
         PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
     }
 
-    IndexSpace IndexSpace::Impl::get_metadata(void)
+    IndexSpace IndexSpaceImpl::get_metadata(void)
     {
 	IndexSpace meta;
 	meta.id = index;
 	return meta;
     }
 
-    const ElementMask& IndexSpace::Impl::get_element_mask(void)
+    ElementMask& IndexSpaceImpl::get_element_mask(void)
     {
 #ifdef DEBUG_LOW_LEVEL
       assert(active);
@@ -4179,17 +5041,373 @@ namespace LegionRuntime {
       return mask;
     }
 
-    IndexSpaceAllocator IndexSpace::Impl::create_allocator(void)
+    const ElementMask& IndexSpaceImpl::get_element_mask(void) const
     {
-      IndexSpaceAllocator::Impl *alloc_impl = new IndexSpaceAllocator::Impl(get_metadata());
-      return IndexSpaceAllocator(alloc_impl);
+#ifdef DEBUG_LOW_LEVEL
+      assert(active);
+#endif
+      return mask;
     }
 
-    RegionInstance IndexSpace::Impl::create_instance(Memory m,
+    void IndexSpaceImpl::create_equal_subspaces(
+              const std::vector<IndexSpaceImpl*> &subspaces, size_t granularity)
+    {
+      // First count how many elements we have in our mask
+      size_t elem_count = mask.pop_count();
+      // Compute how many elements need to go in each sub-space
+      // Round up to full elements
+      size_t subspace_count = (elem_count + subspaces.size() - 1) / subspaces.size();
+      // Clamp to granularity if necessary
+      if (subspace_count < granularity)
+        subspace_count = granularity;
+      // Iterate over the enabled elements and assign them 
+      int current = 0;
+      for (std::vector<IndexSpaceImpl*>::const_iterator it = subspaces.begin();
+            it != subspaces.end(); it++)
+      {
+        bool done_early = false;
+        ElementMask &child_mask = (*it)->get_element_mask();
+        for (unsigned idx = 0; idx < subspace_count; idx++)
+        {
+          int next = mask.find_enabled(1, current); 
+          if (next != -1) {
+            child_mask.enable(next);
+            // Start the search for the next element one past our current place
+            current = next + 1;
+          } else {
+            // Couldn't find anymore elements so we are done
+            done_early = true;
+            break;
+          }
+        }
+        // If we are out of elements then we are done
+        if (done_early)
+          break;
+      }
+    }
+
+    void IndexSpaceImpl::create_weighted_subspaces(
+              const std::vector<IndexSpaceImpl*> &subspaces, size_t granularity,
+              std::vector<int> &weights)
+    {
+      assert(weights.size() == subspaces.size());
+      // Count the sum of all the weights
+      int total_weight = 0;
+      for (std::vector<int>::const_iterator it = weights.begin();
+            it != weights.end(); it++)
+        total_weight += *it;
+      if (total_weight == 0) {
+        // If total granularity is zero fall back to equal partition
+        create_equal_subspaces(subspaces, granularity);
+        return;
+      }
+      // Count how many elements we have in our mask
+      size_t elem_count = mask.pop_count();
+#if 0
+      if ((elem_count <= size_t(total_weight)) && (granularity > 0)) {
+        // More weight than elements, if granularity is greater than zero
+        // then scale any non-zero weights so they will at least get the
+        // minimum number of elements ensured by granularity
+        size_t weight_per_element = (total_weight + elem_count - 1) / elem_count;
+        size_t minimum_weight = granularity * weight_per_element;
+        for (std::vector<int>::iterator it = weights.begin(); 
+              it != weights.end(); it++)
+        {
+          if (size_t(*it) < minimum_weight) {
+            total_weight += (minimum_weight - (*it));
+            (*it) = minimum_weight;
+          }
+        }
+      }
+#endif
+      int current = 0;
+      unsigned weight_idx = 0;
+      float float_count = elem_count; // convert to floating point
+      float float_total_inv = 1.f / total_weight;
+      // Keep track of the accumulated rounding error, and once
+      // it gets to be larger than 1.0 add an element to the next value
+      float accumulated_error = 0.f;
+      for (std::vector<IndexSpaceImpl*>::const_iterator it = subspaces.begin();
+            it != subspaces.end(); it++, weight_idx++)
+      {
+        // Skip any entries with zero weight
+        if (weights[weight_idx] == 0)
+          continue;
+        float local_elems = float_count * float(weights[weight_idx]) * float_total_inv;
+        // Convert back to an integer by rounding
+        float rounded = (local_elems + 0.5);
+        size_t subspace_count = rounded; // truncate back to integer
+        // See the error that we got
+        accumulated_error += (local_elems - float(subspace_count));
+        // If we have accumulated too much round-off error, add an extra element
+        if (accumulated_error >= 1.f) {
+          subspace_count++;
+          accumulated_error -= 1.f;
+        }
+        // If we are on the last iteration and we have round-off error
+        // then increment our count by one
+        if ((weight_idx == (subspaces.size()-1)) && (accumulated_error > 0.f)) {
+          subspace_count++;
+        }
+        // If we are less than the minimum granularity, increase that now
+        if (subspace_count < granularity)
+          subspace_count = granularity;
+        bool done_early = false;
+        ElementMask &child_mask = (*it)->get_element_mask();
+        for (unsigned idx = 0; idx < subspace_count; idx++)
+        {
+          int next = mask.find_enabled(1, current);
+          if (next != -1) {
+            child_mask.enable(next);
+            // Start the search for the next element one past our current place
+            current = next + 1;
+          } else {
+            // Couldn't find any more elements so we are done
+            done_early = true;
+            break;
+          }
+        }
+        if (done_early)
+          break;
+      }
+    }
+
+    void IndexSpaceImpl::create_subspaces_by_field(
+			    const std::vector<IndexSpace::FieldDataDescriptor> &field_data,
+                            const std::map<DomainPoint,IndexSpace> &subspaces)
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      // First convert all the index spaces to impls 
+      std::map<DomainPoint,ElementMask*> element_masks;
+      int dim = -1;
+      for (std::map<DomainPoint,IndexSpace>::const_iterator it = 
+            subspaces.begin(); it != subspaces.end(); it++)
+      {
+        // Make sure all the dimensions are the same
+        if (dim == -1)
+          dim = it->first.get_dim();
+        else
+          assert(dim == it->first.get_dim());
+        IndexSpaceImpl *impl = rt->get_metadata_impl(it->second);
+        element_masks[it->first] = &(impl->get_element_mask());
+      }
+      // Now iterate over all the field data and assign the points
+      for (std::vector<IndexSpace::FieldDataDescriptor>::const_iterator it = field_data.begin();
+            it != field_data.end(); it++)
+      {
+        // Make sure that the dim aligns with the field size
+        assert((((dim == 0) ? 1 : dim) * sizeof(int)) == it->field_size);
+        RegionInstanceImpl *inst = rt->get_instance_impl(it->inst);
+        // Find the field data for this field
+        size_t field_start = 0, field_size = 0, within_field = 0;
+        size_t bytes = find_field(inst->get_field_sizes(), it->field_offset,
+                                  it->field_size, field_start, field_size, within_field);
+        // Should have at least enough bytes to read
+        assert(bytes >= it->field_size);
+        // Now iterate over all the points in the element space 
+        IndexSpaceImpl *source = rt->get_metadata_impl(it->index_space);
+        ElementMask::Enumerator enumerator(source->get_element_mask(), 0, 1/*enabled*/);
+        switch (dim)
+        {
+          case 0:
+            {
+              int pos, len;
+              while (enumerator.get_next(pos,len)) {
+                for (int i = 0; i < len; i++) {
+                  void *raw_addr = 
+                    inst->get_address(pos+i, field_start, field_size, within_field);
+                  // Interpret this as color
+                  DomainPoint dp(*((int*)raw_addr));
+                  std::map<DomainPoint,ElementMask*>::const_iterator finder = 
+                    element_masks.find(dp);
+                  assert(finder != element_masks.end());
+                  finder->second->enable(pos+i);
+                }
+              }
+              break;
+            }
+          case 1:
+            {
+              int pos, len;
+              while (enumerator.get_next(pos,len)) {
+                for (int i = 0; i < len; i++) {
+                  void *raw_addr = 
+                    inst->get_address(pos+i, field_start, field_size, within_field);
+                  // Interpret this as a 1-D point
+                  DomainPoint dp = 
+                    DomainPoint::from_point<1>(Arrays::Point<1>((int*)raw_addr));
+                  std::map<DomainPoint,ElementMask*>::const_iterator finder = 
+                    element_masks.find(dp);
+                  assert(finder != element_masks.end());
+                  finder->second->enable(pos+i);
+                }
+              }
+              break;
+            }
+          case 2:
+            {
+              int pos, len;
+              while (enumerator.get_next(pos,len)) {
+                for (int i = 0; i < len; i++) {
+                  void *raw_addr = 
+                    inst->get_address(pos+i, field_start, field_size, within_field);
+                  // Interpret this as a 2-D point
+                  DomainPoint dp = 
+                    DomainPoint::from_point<2>(Arrays::Point<2>((int*)raw_addr));
+                  std::map<DomainPoint,ElementMask*>::const_iterator finder = 
+                    element_masks.find(dp);
+                  assert(finder != element_masks.end());
+                  finder->second->enable(pos+i);
+                }
+              }
+              break;
+            }
+          case 3:
+            {
+              int pos, len;
+              while (enumerator.get_next(pos,len)) {
+                for (int i = 0; i < len; i++) {
+                  void *raw_addr = 
+                    inst->get_address(pos+i, field_start, field_size, within_field);
+                  // Interpret this as a 3-D point
+                  DomainPoint dp = 
+                    DomainPoint::from_point<3>(Arrays::Point<3>((int*)raw_addr));
+                  std::map<DomainPoint,ElementMask*>::const_iterator finder = 
+                    element_masks.find(dp);
+                  assert(finder != element_masks.end());
+                  finder->second->enable(pos+i);
+                }
+              }
+              break;
+            }
+          default:
+            assert(false); // should never get here
+        }
+      }
+    }
+
+    void IndexSpaceImpl::create_subspaces_by_image(
+                            const std::vector<IndexSpace::FieldDataDescriptor> &field_data,
+                            const std::map<IndexSpace,IndexSpace> &subspaces)
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      // First convert all the index spaces to element masks
+      std::map<const ElementMask*,ElementMask*> element_masks;
+      for (std::map<IndexSpace,IndexSpace>::const_iterator it = subspaces.begin();
+            it != subspaces.end(); it++)
+      {
+        IndexSpaceImpl *key = rt->get_metadata_impl(it->first);
+        IndexSpaceImpl *value = rt->get_metadata_impl(it->second);
+        const ElementMask *key_mask = &(key->get_element_mask());
+        ElementMask *value_mask = &(value->get_element_mask());
+        element_masks[key_mask] = value_mask;
+      }
+      // Iterate over the field data
+      for (std::vector<IndexSpace::FieldDataDescriptor>::const_iterator it = field_data.begin();
+            it != field_data.end(); it++)
+      {
+        // Make sure that the dim aligns with the field size
+        assert(sizeof(ptr_t) == it->field_size);
+        RegionInstanceImpl *inst = rt->get_instance_impl(it->inst);
+        // Find the field data for this field
+        size_t field_start = 0, field_size = 0, within_field = 0;
+        size_t bytes = find_field(inst->get_field_sizes(), it->field_offset,
+                                  it->field_size, field_start, field_size, within_field);
+        // Should have at least enough bytes to read
+        assert(bytes >= it->field_size);
+        IndexSpaceImpl *source = rt->get_metadata_impl(it->index_space);
+        const ElementMask &source_mask = source->get_element_mask();
+        // Iterate over all the index spaces and find intersections
+        for (std::map<const ElementMask*,ElementMask*>::const_iterator mask_it =
+              element_masks.begin(); mask_it != element_masks.end(); mask_it++)
+        {
+          ElementMask overlap = source_mask & *(mask_it->first);
+          // If there is no overlap, keep going
+          if (!overlap)
+            continue;
+          // Otherwise do the projection
+          ElementMask::Enumerator enumerator(overlap, 0, 1/*enabled*/);  
+          int pos, len;
+          while (enumerator.get_next(pos,len)) {   
+            for (int i = 0; i < len; i++) {
+              void *raw_addr = 
+                    inst->get_address(pos+i, field_start, field_size, within_field);
+              int ptr = *((int*)raw_addr);
+              // Check to make sure that the pointer is in our set
+              // If it's not then we ignore it
+              if (mask.is_set(ptr))
+                mask_it->second->enable(ptr);
+            }
+          }
+        }
+      }
+    }
+
+    void IndexSpaceImpl::create_subspaces_by_preimage(
+                            const std::vector<IndexSpace::FieldDataDescriptor> &field_data,
+                            const std::map<IndexSpace,IndexSpace> &subspaces)
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      // First convert all the index spaces to element masks
+      std::map<const ElementMask*,ElementMask*> element_masks;
+      for (std::map<IndexSpace,IndexSpace>::const_iterator it = subspaces.begin();
+            it != subspaces.end(); it++)
+      {
+        IndexSpaceImpl *key = rt->get_metadata_impl(it->first);
+        IndexSpaceImpl *value = rt->get_metadata_impl(it->second);
+        const ElementMask *key_mask = &(key->get_element_mask());
+        ElementMask *value_mask = &(value->get_element_mask());
+        element_masks[key_mask] = value_mask;
+      }
+      // Iterate over the field data
+      for (std::vector<IndexSpace::FieldDataDescriptor>::const_iterator it = field_data.begin();
+            it != field_data.end(); it++)
+      {
+        // Make sure that the dim aligns with the field size
+        assert(sizeof(ptr_t) == it->field_size);
+        RegionInstanceImpl *inst = rt->get_instance_impl(it->inst);
+        // Find the field data for this field
+        size_t field_start = 0, field_size = 0, within_field = 0;
+        size_t bytes = find_field(inst->get_field_sizes(), it->field_offset,
+                                  it->field_size, field_start, field_size, within_field);
+        // Should have at least enough bytes to read
+        assert(bytes >= it->field_size);
+        IndexSpaceImpl *source = rt->get_metadata_impl(it->index_space);
+        ElementMask::Enumerator enumerator(source->get_element_mask(), 0, 1/*enabled*/);
+        // Iterate over all the points
+        int pos, len;
+        while (enumerator.get_next(pos,len)) {   
+          for (int i = 0; i < len; i++) {
+            void *raw_addr = 
+                  inst->get_address(pos+i, field_start, field_size, within_field);
+            int ptr = *((int*)raw_addr);
+            // Check to 
+            // Now for the expensive part, figure out which subspaces
+            // this pointer is a part of and set the corresponding
+            // points in the right element masks
+            for (std::map<const ElementMask*,ElementMask*>::const_iterator mask_it = 
+                  element_masks.begin(); mask_it != element_masks.end(); mask_it++)
+            {
+              if (mask_it->first->is_set(ptr))
+                mask_it->second->enable(pos+i);
+            }
+          }
+        }
+      }
+    }
+
+    IndexSpaceAllocatorImpl *IndexSpaceImpl::create_allocator(void)
+    {
+      IndexSpaceAllocatorImpl *alloc_impl = new IndexSpaceAllocatorImpl(get_metadata());
+      return alloc_impl;
+    }
+
+    /*static*/ RegionInstance IndexSpaceImpl::create_instance(Memory m,
 						     const std::vector<size_t>& field_sizes,
 						     size_t block_size, 
 						     const DomainLinearization& dl,
 						     size_t num_elements,
+                                                     const Realm::ProfilingRequestSet &reqs,
 						     ReductionOpID redop_id /*=0*/)
     {
         if (!m.exists())
@@ -4198,7 +5416,7 @@ namespace LegionRuntime {
         }
         // First try to create the location in the memory, if there is no space
         // don't bother trying to make the data
-        MemoryImpl *mem = Runtime::Impl::get_runtime()->get_memory_impl(m);
+        MemoryImpl *mem = RuntimeImpl::get_runtime()->get_memory_impl(m);
 
 	size_t elmt_size = 0;
 	for(std::vector<size_t>::const_iterator it = field_sizes.begin();
@@ -4222,16 +5440,11 @@ namespace LegionRuntime {
 	// if a redop was provided, fill the new memory with the op's identity
 	const ReductionOpUntyped *redop = 0;
 	if(redop_id) {
-	  redop = Runtime::Impl::get_runtime()->get_reduction_op(redop_id);
-	  assert(redop->has_identity);
-	  assert(elmt_size == redop->sizeof_rhs);
-	  redop->init(ptr, rounded_num_elmts);
+	  redop = RuntimeImpl::get_runtime()->get_reduction_op(redop_id);
+          // We no longer do reduction initialization in the low-level runtime
 	}
 
-	PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-	IndexSpace r;
-        r.id = static_cast<id_t>(index);
-	RegionInstance::Impl* impl = Runtime::Impl::get_runtime()->get_free_instance(r, m,
+	RegionInstanceImpl* impl = RuntimeImpl::get_runtime()->get_free_instance(m,
 									       num_elements, 
 									       rounded_num_elmts*elmt_size,
 									       field_sizes,
@@ -4239,94 +5452,55 @@ namespace LegionRuntime {
 									       block_size, dl,
 									       ptr, 
 									       redop,
-									       NULL/*parent instance*/);
+                                                                     NULL/*parent instance*/,
+                                                                               reqs);
 	RegionInstance inst = impl->get_instance();
-	instances.insert(inst);
-	PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
 	return inst;
     }
 
 #if 0
-    RegionInstance IndexSpace::Impl::create_instance(Memory m, ReductionOpID redopid, off_t list_size,
+    RegionInstance IndexSpaceImpl::create_instance(Memory m, ReductionOpID redopid, off_t list_size,
                                                               RegionInstance parent_inst) 
     {
         if (!m.exists())
         {
             return RegionInstance::NO_INST; 
         }
-        MemoryImpl *mem = Runtime::Impl::get_runtime()->get_memory_impl(m);
+        MemoryImpl *mem = RuntimeImpl::get_runtime()->get_memory_impl(m);
  // There must be a reduction operation for a list instance
 #ifdef DEBUG_LOW_LEVEL
         assert(redopid > 0);
 #endif
-        const ReductionOpUntyped *op = Runtime::Impl::get_runtime()->get_reduction_op(redopid); 
+        const ReductionOpUntyped *op = RuntimeImpl::get_runtime()->get_reduction_op(redopid); 
         char *ptr = (char*)mem->allocate_space(list_size * (op->sizeof_rhs + sizeof(utptr_t)));
         if (ptr == NULL)
         {
             return RegionInstance::NO_INST;
         }
         // Set everything up
-        RegionInstance::Impl *parent_impl = Runtime::Impl::get_runtime()->get_instance_impl(parent_inst);
+        RegionInstanceImpl *parent_impl = RuntimeImpl::get_runtime()->get_instance_impl(parent_inst);
 #ifdef DEBUG_LOW_LEVEL
         assert(parent_impl != NULL);
 #endif
         PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
         IndexSpace r = { index };
-        RegionInstance::Impl *impl = Runtime::Impl::get_runtime()->get_free_instance(r,m,list_size,op->sizeof_rhs, ptr, op, parent_impl);
+        RegionInstanceImpl *impl = RuntimeImpl::get_runtime()->get_free_instance(r,m,list_size,op->sizeof_rhs, ptr, op, parent_impl);
         RegionInstance inst = impl->get_instance();
-        instances.insert(inst);
         PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
         return inst;
     }
 #endif
 
-    void IndexSpace::Impl::destroy_instance(RegionInstance inst)
+    void IndexSpaceImpl::destroy_instance(RegionInstance inst)
     {
-	PTHREAD_SAFE_CALL(pthread_mutex_lock(mutex));
-	std::set<RegionInstance>::iterator it = instances.find(inst);
-#ifdef DEBUG_LOW_LEVEL
-	assert(it != instances.end());
-#endif	
-	instances.erase(it);
-	RegionInstance::Impl *impl = Runtime::Impl::get_runtime()->get_instance_impl(inst);
+	RegionInstanceImpl *impl = RuntimeImpl::get_runtime()->get_instance_impl(inst);
 	impl->deactivate();
-	PTHREAD_SAFE_CALL(pthread_mutex_unlock(mutex));
     }
 
-    Reservation IndexSpace::Impl::get_reservation(void)
+    Reservation IndexSpaceImpl::get_reservation(void)
     {
 	return reservation->get_reservation();
-    }
-
-    static size_t find_field(const std::vector<size_t>& field_sizes,
-			     size_t offset, size_t size,
-			     size_t& field_start, size_t& field_size, size_t& within_field)
-    {
-      size_t start = 0;
-      for(std::vector<size_t>::const_iterator it = field_sizes.begin();
-	  it != field_sizes.end(); 
-	  it++) {
-	if(offset < *it) {
-	  // we're in this field
-	  field_start = start;
-	  field_size = *it;
-	  within_field = offset;
-	  // if size is nonzero, make sure it fits in the field
-	  if(size && ((offset + size) <= *it)) {
-	    return size;
-	  } else {
-	    return (*it - offset);
-	  }
-	} else {
-	  // try the next field
-	  start += *it;
-	  offset -= *it;
-	}
-      }
-      // fall through means there is no field
-      return 0;
-    }
-	  
+    }	  
       
     namespace RangeExecutors {
       class GatherScatter {
@@ -4354,7 +5528,7 @@ namespace LegionRuntime {
 	    // gather data from source
 	    int write_offset = 0;
 	    for(std::vector<Domain::CopySrcDstField>::const_iterator i = srcs.begin(); i != srcs.end(); i++) {
-	      RegionInstance::Impl *inst = Runtime::Impl::get_runtime()->get_instance_impl(i->inst);
+	      RegionInstanceImpl *inst = RuntimeImpl::get_runtime()->get_instance_impl(i->inst);
 	      size_t offset = i->offset;
 	      size_t size = i->size;
 	      while(size > 0) {
@@ -4381,7 +5555,7 @@ namespace LegionRuntime {
 	    // now scatter to destination
 	    int read_offset = 0;
 	    for(std::vector<Domain::CopySrcDstField>::const_iterator i = dsts.begin(); i != dsts.end(); i++) {
-	      RegionInstance::Impl *inst = Runtime::Impl::get_runtime()->get_instance_impl(i->inst);
+	      RegionInstanceImpl *inst = RuntimeImpl::get_runtime()->get_instance_impl(i->inst);
 	      size_t offset = i->offset;
 	      size_t size = i->size;
 	      while(size > 0) {
@@ -4415,7 +5589,7 @@ namespace LegionRuntime {
 	    // gather data from source
 	    int write_offset = 0;
 	    for(std::vector<Domain::CopySrcDstField>::const_iterator i = srcs.begin(); i != srcs.end(); i++) {
-	      RegionInstance::Impl *inst = Runtime::Impl::get_runtime()->get_instance_impl(i->inst);
+	      RegionInstanceImpl *inst = RuntimeImpl::get_runtime()->get_instance_impl(i->inst);
 	      size_t offset = i->offset;
 	      size_t size = i->size;
 	      while(size > 0) {
@@ -4440,7 +5614,7 @@ namespace LegionRuntime {
 	    // now scatter to destination
 	    int read_offset = 0;
 	    for(std::vector<Domain::CopySrcDstField>::const_iterator i = dsts.begin(); i != dsts.end(); i++) {
-	      RegionInstance::Impl *inst = Runtime::Impl::get_runtime()->get_instance_impl(i->inst);
+	      RegionInstanceImpl *inst = RuntimeImpl::get_runtime()->get_instance_impl(i->inst);
 	      size_t offset = i->offset;
 	      size_t size = i->size;
 	      while(size > 0) {
@@ -4485,8 +5659,8 @@ namespace LegionRuntime {
       public:
         void do_span(int start, int count)
         {
-          RegionInstance::Impl *src_inst = Runtime::Impl::get_runtime()->get_instance_impl(srcs[0].inst);
-          RegionInstance::Impl *dst_inst = Runtime::Impl::get_runtime()->get_instance_impl(dsts[0].inst);
+          RegionInstanceImpl *src_inst = RuntimeImpl::get_runtime()->get_instance_impl(srcs[0].inst);
+          RegionInstanceImpl *dst_inst = RuntimeImpl::get_runtime()->get_instance_impl(dsts[0].inst);
           // This should be from one reduction fold instance to another
           for (int index = start; index < (start+count); index++)
 	  {
@@ -4504,8 +5678,8 @@ namespace LegionRuntime {
         }
         void do_domain(const Domain domain)
         {
-          RegionInstance::Impl *src_inst = Runtime::Impl::get_runtime()->get_instance_impl(srcs[0].inst);
-          RegionInstance::Impl *dst_inst = Runtime::Impl::get_runtime()->get_instance_impl(dsts[0].inst);
+          RegionInstanceImpl *src_inst = RuntimeImpl::get_runtime()->get_instance_impl(srcs[0].inst);
+          RegionInstanceImpl *dst_inst = RuntimeImpl::get_runtime()->get_instance_impl(dsts[0].inst);
           for(Domain::DomainPointIterator dpi(domain); dpi; dpi++) {
 	    DomainPoint dp = dpi.p;
             void *src_ptr = src_inst->get_address(src_inst->get_linearization().get_image(dp), 0, redop->sizeof_rhs, 0);
@@ -4533,8 +5707,8 @@ namespace LegionRuntime {
       public:
         void do_span(int start, int count)
         {
-          RegionInstance::Impl *src_inst = Runtime::Impl::get_runtime()->get_instance_impl(srcs[0].inst);
-          RegionInstance::Impl *dst_inst = Runtime::Impl::get_runtime()->get_instance_impl(dsts[0].inst);
+          RegionInstanceImpl *src_inst = RuntimeImpl::get_runtime()->get_instance_impl(srcs[0].inst);
+          RegionInstanceImpl *dst_inst = RuntimeImpl::get_runtime()->get_instance_impl(dsts[0].inst);
           size_t offset = dsts[0].offset;
           size_t size = dsts[0].size;
           size_t field_start = 0, field_size = 0, within_field = 0;
@@ -4559,8 +5733,8 @@ namespace LegionRuntime {
         }
         void do_domain(const Domain domain)
         {
-          RegionInstance::Impl *src_inst = Runtime::Impl::get_runtime()->get_instance_impl(srcs[0].inst);
-          RegionInstance::Impl *dst_inst = Runtime::Impl::get_runtime()->get_instance_impl(dsts[0].inst);
+          RegionInstanceImpl *src_inst = RuntimeImpl::get_runtime()->get_instance_impl(srcs[0].inst);
+          RegionInstanceImpl *dst_inst = RuntimeImpl::get_runtime()->get_instance_impl(dsts[0].inst);
           size_t offset = dsts[0].offset;
           size_t size = dsts[0].size;
           size_t field_start = 0, field_size = 0, within_field = 0;
@@ -4585,15 +5759,33 @@ namespace LegionRuntime {
       };
     };
 
-    bool CopyOperation::trigger(unsigned count, TriggerHandle handle)
+    DMAOperation::DMAOperation(const Realm::ProfilingRequestSet &reqs)
+      : requests(reqs)
     {
-#ifdef LEGION_LOGGING
-      LegionRuntime::HighLevel::LegionLogging::log_timing_event(
-                                    Processor::get_executing_processor(),
-                                    done_event->get_event(), COPY_READY);
-#endif
-      // Register this with the DMAQueue
-      Runtime::Impl::get_dma_queue()->enqueue_dma(this);
+      measurements.import_requests(requests);
+      capture_timeline = measurements.wants_measurement<
+                          Realm::ProfilingMeasurements::OperationTimeline>(); 
+      capture_usage = measurements.wants_measurement<
+                          Realm::ProfilingMeasurements::OperationMemoryUsage>();
+      if (capture_timeline)
+        timeline.record_create_time();
+    }
+
+    DMAOperation::~DMAOperation(void)
+    {
+      if (requests.request_count() > 0) {
+        if (capture_timeline)
+          measurements.add_measurement(timeline);
+        if (capture_usage)
+          measurements.add_measurement(usage);
+        measurements.send_responses(requests);
+      }
+    }
+
+    bool DMAOperation::event_triggered(void)
+    {
+      RuntimeImpl::get_dma_queue()->enqueue_dma(this);
+      // Don't delete yet, we still have to do the operation
       return false;
     }
 
@@ -4605,23 +5797,16 @@ namespace LegionRuntime {
                                     done_event->get_event(), COPY_INIT);
 #endif
       Event result = done_event->get_event();
-      bool enqueue = true;
-      if (wait_on.exists())
-      {
-        EventImpl *event_impl = Runtime::Impl::get_runtime()->get_event_impl(wait_on);
-        // Need to hold the mutex here in case we have to set the done_event
-        // to make sure it gets set before trigger is called
-        PTHREAD_SAFE_CALL(pthread_mutex_lock(&mutex));
-        if (event_impl->register_dependent(this, wait_on.gen, 0)) 
-          enqueue = false;
-        PTHREAD_SAFE_CALL(pthread_mutex_unlock(&mutex));
+      if (wait_on.exists()) {
+        EventImpl *event_impl = RuntimeImpl::get_runtime()->get_event_impl(wait_on);
+        event_impl->add_waiter(wait_on.gen, this);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(this);
       }
-      if (enqueue)
-        Runtime::Impl::get_dma_queue()->enqueue_dma(this);
       return result;
     }
 
-    void CopyOperation::perform_copy_operation(void)
+    void CopyOperation::perform(void)
     {
       DetailedTimer::ScopedPush sp(TIME_COPY); 
 #ifdef LEGION_LOGGING
@@ -4629,10 +5814,15 @@ namespace LegionRuntime {
                                     Processor::NO_PROC,
                                     done_event->get_event(), COPY_BEGIN);
 #endif
-#ifdef LEGION_PROF
-      LegionRuntime::HighLevel::LegionProf::register_copy_event(
-            LegionRuntime::HighLevel::PROF_BEGIN_COPY);
+#ifdef OLD_LEGION_PROF
+      HighLevel::LegionProf::register_copy_event(
+            done_event->get_event().id, LegionRuntime::HighLevel::PROF_BEGIN_COPY);
 #endif
+      // A little bit of a hack for the shared lowlevel profiling
+      if (capture_usage && !srcs.empty() && !dsts.empty()) {
+        usage.source = srcs[0].inst.get_location();
+        usage.target = dsts[0].inst.get_location();
+      }
 
       if (redop_id == 0)
       {
@@ -4640,7 +5830,7 @@ namespace LegionRuntime {
 
         if(domain.get_dim() == 0) {
           // This is an index space copy
-          IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(domain.get_index_space());
+          IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_metadata_impl(domain.get_index_space());
           const ElementMask& mask = r->get_element_mask();
           ElementMask::forall_ranges(rexec, mask, mask);
         } else {
@@ -4650,13 +5840,13 @@ namespace LegionRuntime {
       else // This is a reduction operation
       {
         // Get the reduction operation that we are doing
-        const ReductionOpUntyped *redop = Runtime::Impl::get_runtime()->get_reduction_op(redop_id);
+        const ReductionOpUntyped *redop = RuntimeImpl::get_runtime()->get_reduction_op(redop_id);
         // See if we're doing a fold or not 
         if (red_fold)
         {
           RangeExecutors::ReductionFold rexec(srcs,dsts,redop);
           if (domain.get_dim() == 0) {
-            IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(domain.get_index_space());
+            IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_metadata_impl(domain.get_index_space());
             const ElementMask& mask = r->get_element_mask();
             ElementMask::forall_ranges(rexec, mask, mask);
           } else {
@@ -4667,7 +5857,7 @@ namespace LegionRuntime {
         {
           RangeExecutors::ReductionApply rexec(srcs,dsts,redop);
           if (domain.get_dim() == 0) {
-            IndexSpace::Impl *r = Runtime::Impl::get_runtime()->get_metadata_impl(domain.get_index_space());
+            IndexSpaceImpl *r = RuntimeImpl::get_runtime()->get_metadata_impl(domain.get_index_space());
             const ElementMask& mask = r->get_element_mask();
             ElementMask::forall_ranges(rexec, mask, mask);
           } else {
@@ -4680,16 +5870,232 @@ namespace LegionRuntime {
                                       Processor::NO_PROC,
                                       done_event->get_event(), COPY_END);
 #endif
-#ifdef LEGION_PROF
-      LegionRuntime::HighLevel::LegionProf::register_copy_event(
-            LegionRuntime::HighLevel::PROF_END_COPY);
+#ifdef OLD_LEGION_PROF
+      HighLevel::LegionProf::register_copy_event(
+            done_event->get_event().id, LegionRuntime::HighLevel::PROF_END_COPY);
 #endif
       // Trigger the event indicating that we are done
       done_event->trigger();
     }
 
+    void FillOperation::perform(void)
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      for (std::vector<Domain::CopySrcDstField>::const_iterator it = 
+            dsts.begin(); it != dsts.end(); it++)
+      {
+        RegionInstanceImpl *impl = rt->get_instance_impl(it->inst); 
+        impl->fill_field(it->offset, it->size, fill_value,
+                         fill_value_size, domain);
+      }
+      done_event->trigger();
+    }
+
+    void ComputeIndexSpaces::perform(void)
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      for (std::vector<IndexSpace::BinaryOpDescriptor>::const_iterator it = 
+            pairs.begin(); it != pairs.end(); it++)
+      {
+        IndexSpaceImpl *target = rt->get_metadata_impl(it->result);
+        IndexSpaceImpl *left = rt->get_metadata_impl(it->left_operand);
+        IndexSpaceImpl *right = rt->get_metadata_impl(it->right_operand);
+        ElementMask &target_mask = target->get_element_mask();
+        const ElementMask &left_mask = left->get_element_mask();
+        const ElementMask &right_mask = right->get_element_mask();
+        switch (it->op)
+        {
+          case IndexSpace::ISO_UNION:
+            {
+              target_mask = left_mask | right_mask;
+              break;
+            }
+          case IndexSpace::ISO_INTERSECT:
+            {
+              target_mask = left_mask & right_mask;
+              break;
+            }
+          case IndexSpace::ISO_SUBTRACT:
+            {
+              target_mask = left_mask - right_mask;
+              break;
+            }
+          default:
+            assert(false); // should never get here
+        }
+      }
+      done_event->trigger();
+    }
+
+    void ComputeIndexSpaces::print_info(FILE *f)
+    {
+      Event e = done_event->get_event();
+      fprintf(f,"deferred compute index spaces: after=" IDFMT "/%d\n",
+              e.id, e.gen+1);
+    }
+
+    void ReduceIndexSpaces::perform(void)
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      ElementMask &target = result->get_element_mask();
+      switch (op)
+      {
+        case IndexSpace::ISO_UNION:
+          {
+            for (std::vector<IndexSpace>::const_iterator it = 
+                  spaces.begin(); it != spaces.end(); it++)
+            {
+              IndexSpaceImpl *space = rt->get_metadata_impl(*it);
+              const ElementMask &mask = space->get_element_mask();
+              target |= mask;
+            }
+            break;
+          }
+        case IndexSpace::ISO_INTERSECT:
+          {
+            assert(!spaces.empty());
+            IndexSpaceImpl *space = rt->get_metadata_impl(spaces[0]);
+            target = space->get_element_mask();
+            for (unsigned idx = 1; idx < spaces.size(); idx++)
+            {
+              space = rt->get_metadata_impl(spaces[idx]);
+              const ElementMask &mask = space->get_element_mask();
+              target &= mask;
+            }
+            break;
+          }
+        case IndexSpace::ISO_SUBTRACT:
+          {
+            assert(!spaces.empty());
+            IndexSpaceImpl *space = rt->get_metadata_impl(spaces[0]);
+            target = space->get_element_mask();
+            for (unsigned idx = 1; idx < spaces.size(); idx++)
+            {
+              space = rt->get_metadata_impl(spaces[idx]);
+              const ElementMask &mask = space->get_element_mask();
+              target -= mask;
+            }
+            break;
+          }
+        default:
+          assert(false); // should never get here
+      }
+      done_event->trigger();
+    }
+
+    void ReduceIndexSpaces::print_info(FILE *f)
+    {
+      Event e = done_event->get_event();
+      fprintf(f,"deferred reduce index spaces: after=" IDFMT "/%d\n",
+              e.id, e.gen+1);
+    }
+
+    void DeferredEqualSpaces::perform(void)
+    {
+      target->create_equal_subspaces(subspaces, granularity);
+      done_event->trigger();
+    }
+
+    void DeferredEqualSpaces::print_info(FILE *f)
+    {
+      Event e = done_event->get_event();
+      fprintf(f,"deferred create equal subspaces: after=" IDFMT "/%d\n",
+              e.id, e.gen+1);
+    }
+
+    void DeferredWeightedSpaces::perform(void)
+    {
+      target->create_weighted_subspaces(subspaces, granularity, weights);
+      done_event->trigger();
+    }
+
+    void DeferredWeightedSpaces::print_info(FILE *f)
+    {
+      Event e = done_event->get_event();
+      fprintf(f,"deferred create weighted subspaces: after=" IDFMT "/%d\n",
+              e.id, e.gen+1);
+    }
+
+    void DeferredFieldSpaces::perform(void)
+    {
+      target->create_subspaces_by_field(field_data, subspaces);
+      done_event->trigger();
+    }
+
+    void DeferredFieldSpaces::print_info(FILE *f)
+    {
+      Event e = done_event->get_event();
+      fprintf(f,"deferred create subspaces by field: after=" IDFMT "/%d\n",
+              e.id, e.gen+1);
+    }
+
+    void DeferredImageSpaces::perform(void)
+    {
+      target->create_subspaces_by_image(field_data, subspaces);
+      done_event->trigger();
+    }
+
+    void DeferredImageSpaces::print_info(FILE *f)
+    {
+      Event e = done_event->get_event();
+      fprintf(f,"deferred create subspaces by image: after=" IDFMT "/%d\n",
+              e.id, e.gen+1);
+    }
+
+    void DeferredPreimageSpaces::perform(void)
+    {
+      target->create_subspaces_by_preimage(field_data, subspaces);
+      done_event->trigger();
+    }
+
+    void DeferredPreimageSpaces::print_info(FILE *f)
+    {
+      Event e = done_event->get_event();
+      fprintf(f,"deferred create subspaces by preimage: after=" IDFMT "/%d\n",
+              e.id, e.gen+1);
+    }
+
     /*static*/
-    Event IndexSpace::Impl::copy(RegionInstance src_inst, RegionInstance dst_inst, size_t elem_size,
+    Event IndexSpaceImpl::fill(const std::vector<Domain::CopySrcDstField> &dsts,
+                                 const void *fill_value, size_t fill_value_size,
+                                 Event wait_on, const Domain &domain)
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      EventImpl *done_event = rt->get_free_event();
+      Event result = done_event->get_event();
+      FillOperation *op = new FillOperation(dsts, fill_value, fill_value_size,
+                                            domain, done_event);
+      if (wait_on.exists()) {
+        EventImpl *event_impl = rt->get_event_impl(wait_on);
+        event_impl->add_waiter(wait_on.gen, op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(op);
+      }
+      return result;
+    }
+
+    /*static*/
+    Event IndexSpaceImpl::fill(const std::vector<Domain::CopySrcDstField> &dsts,
+                                 const Realm::ProfilingRequestSet &requests,
+                                 const void *fill_value, size_t fill_value_size,
+                                 Event wait_on, const Domain &domain)
+    {
+      RuntimeImpl *rt = RuntimeImpl::get_runtime();
+      EventImpl *done_event = rt->get_free_event();
+      Event result = done_event->get_event();
+      FillOperation *op = new FillOperation(dsts, requests, fill_value, 
+                                            fill_value_size, domain, done_event);
+      if (wait_on.exists()) {
+        EventImpl *event_impl = rt->get_event_impl(wait_on);
+        event_impl->add_waiter(wait_on.gen, op);
+      } else {
+        RuntimeImpl::get_dma_queue()->enqueue_dma(op);
+      }
+      return result;
+    }
+
+    /*static*/
+    Event IndexSpaceImpl::copy(RegionInstance src_inst, RegionInstance dst_inst, size_t elem_size,
 				 const Domain domain, Event wait_on /*= Event::NO_EVENT*/,
 				 ReductionOpID redop_id /*= 0*/, bool red_fold /*= false*/)
     {
@@ -4702,14 +6108,14 @@ namespace LegionRuntime {
     }
     
     /*static*/
-    Event IndexSpace::Impl::copy(const std::vector<Domain::CopySrcDstField>& srcs,
+    Event IndexSpaceImpl::copy(const std::vector<Domain::CopySrcDstField>& srcs,
 				 const std::vector<Domain::CopySrcDstField>& dsts,
 				 Domain domain, Event wait_on,
 				 ReductionOpID redop_id /*= 0*/, bool red_fold /*= false*/)
     {
       EventImpl *done_event = NULL;
 #ifdef LEGION_LOGGING
-      done_event = Runtime::Impl::get_runtime()->get_free_event(); 
+      done_event = RuntimeImpl::get_runtime()->get_free_event(); 
       LegionRuntime::HighLevel::LegionLogging::log_timing_event(
                                       Processor::get_executing_processor(),
                                       done_event->get_event(), COPY_INIT);
@@ -4717,6 +6123,26 @@ namespace LegionRuntime {
       CopyOperation *co = new CopyOperation(srcs, dsts, 
 					    domain, //get_element_mask(), get_element_mask(),
 					    redop_id, red_fold,
+					    done_event);
+      return co->register_copy(wait_on);
+    }
+
+    /*static*/
+    Event IndexSpaceImpl::copy(const std::vector<Domain::CopySrcDstField>& srcs,
+                                 const std::vector<Domain::CopySrcDstField>& dsts,
+                                 const Realm::ProfilingRequestSet &requests,
+                                 const Domain domain, Event wait_on,
+                                 ReductionOpID redop_id, bool red_fold)
+    {
+      EventImpl *done_event = NULL;
+#ifdef LEGION_LOGGING
+      done_event = RuntimeImpl::get_runtime()->get_free_event(); 
+      LegionRuntime::HighLevel::LegionLogging::log_timing_event(
+                                      Processor::get_executing_processor(),
+                                      done_event->get_event(), COPY_INIT);
+#endif
+      CopyOperation *co = new CopyOperation(srcs, dsts, requests, 
+					    domain, redop_id, red_fold,
 					    done_event);
       return co->register_copy(wait_on);
     }
@@ -4735,6 +6161,9 @@ namespace LegionRuntime {
 
     void DMAQueue::start(void)
     {
+#ifdef OLD_LEGION_PROF
+      pthread_key_create(&HighLevel::LegionProf::copy_profiler_key, 0);
+#endif
       pthread_attr_t attr;
       PTHREAD_SAFE_CALL(pthread_attr_init(&attr));
       for (unsigned idx = 0; idx < num_dma_threads; idx++)
@@ -4763,19 +6192,19 @@ namespace LegionRuntime {
     {
       while (true)
       {
-        CopyOperation *copy = NULL;
+        DMAOperation *op = NULL;
         PTHREAD_SAFE_CALL(pthread_mutex_lock(&dma_lock));
-        if (ready_copies.empty() && !dma_shutdown)
+        if (ready_ops.empty() && !dma_shutdown)
         {
           // Go to sleep
           PTHREAD_SAFE_CALL(pthread_cond_wait(&dma_cond, &dma_lock));
         }
         // When we wake up see if there is anything
         // to do or see if we are done
-        if (!ready_copies.empty())
+        if (!ready_ops.empty())
         {
-          copy = ready_copies.front();
-          ready_copies.pop_front();
+          op = ready_ops.front();
+          ready_ops.pop_front();
         }
         else if (dma_shutdown)
         {
@@ -4786,28 +6215,38 @@ namespace LegionRuntime {
         // Release our lock
         PTHREAD_SAFE_CALL(pthread_mutex_unlock(&dma_lock));
         // If we have a copy perform it and then delete it
-        if (copy != NULL)
+        if (op != NULL)
         {
-          copy->perform_copy_operation();
-          delete copy;
+          if (op->capture_timeline)
+            op->timeline.record_start_time();
+          op->perform();
+          if (op->capture_timeline)
+            op->timeline.record_end_time();
+          delete op;
         }
       }
     }
 
-    void DMAQueue::enqueue_dma(CopyOperation *copy)
+    void DMAQueue::enqueue_dma(DMAOperation *op)
     {
+      if (op->capture_timeline)
+        op->timeline.record_ready_time();
       if (num_dma_threads > 0)
       {
         PTHREAD_SAFE_CALL(pthread_mutex_lock(&dma_lock));
-        ready_copies.push_back(copy);
+        ready_ops.push_back(op);
         PTHREAD_SAFE_CALL(pthread_cond_signal(&dma_cond));
         PTHREAD_SAFE_CALL(pthread_mutex_unlock(&dma_lock));
       }
       else
       {
         // If we don't have any dma threads, just do the copy now
-        copy->perform_copy_operation();
-        delete copy;
+        if (op->capture_timeline)
+          op->timeline.record_start_time();
+        op->perform();
+        if (op->capture_timeline)
+          op->timeline.record_end_time();
+        delete op;
       }
     }
 
@@ -4827,16 +6266,59 @@ namespace LegionRuntime {
       void *bt[256];
       int bt_size = backtrace(bt, 256);
       char **bt_syms = backtrace_symbols(bt, bt_size);
-      size_t buffer_size = 1;
-      for (int i = 0; i < bt_size; i++)
-        buffer_size += (strlen(bt_syms[i]) + 1);
+      size_t buffer_size = 2048; // default buffer size
       char *buffer = (char*)malloc(buffer_size);
-      int offset = 0;
-      for (int i = 0; i < bt_size; i++)
-        offset += sprintf(buffer+offset,"%s\n",bt_syms[i]);
+      size_t offset = 0;
+      size_t funcnamesize = 256;
+      char *funcname = (char*)malloc(funcnamesize);
+      for (int i = 0; i < bt_size; i++) {
+        // Modified from https://panthema.net/2008/0901-stacktrace-demangled/ under WTFPL 2.0
+        char *begin_name = 0, *begin_offset = 0, *end_offset = 0;
+        // find parentheses and +address offset surrounding the mangled name:
+        // ./module(function+0x15c) [0x8048a6d]
+        for (char *p = bt_syms[i]; *p; ++p) {
+          if (*p == '(')
+            begin_name = p;
+          else if (*p == '+')
+            begin_offset = p;
+          else if (*p == ')' && begin_offset) {
+            end_offset = p;
+            break;
+          }
+        }
+        // If offset is within half of the buffer size, double the buffer
+        if (offset >= (buffer_size / 2)) {
+          buffer_size *= 2;
+          buffer = (char*)realloc(buffer, buffer_size);
+        }
+        if (begin_name && begin_offset && end_offset &&
+            (begin_name < begin_offset)) {
+          *begin_name++ = '\0';
+          *begin_offset++ = '\0';
+          *end_offset = '\0';
+          // mangled name is now in [begin_name, begin_offset) and caller
+          // offset in [begin_offset, end_offset). now apply __cxa_demangle():
+          int status;
+          char* demangled_name = abi::__cxa_demangle(begin_name, funcname, &funcnamesize, &status);
+          if (status == 0) {
+            funcname = demangled_name; // use possibly realloc()-ed string
+            offset += snprintf(buffer+offset,buffer_size-offset,
+                               "  %s : %s+%s\n", bt_syms[i], funcname, begin_offset);
+          } else {
+            // demangling failed. Output function name as a C function with no arguments.
+            offset += snprintf(buffer+offset,buffer_size-offset,
+                               "  %s : %s()+%s\n", bt_syms[i], begin_name, begin_offset);
+          }
+        } else {
+          // Who knows just print the whole line
+          offset += snprintf(buffer+offset,buffer_size-offset,
+                             "%s\n",bt_syms[i]);
+        }
+      }
       fprintf(stderr,"BACKTRACE\n----------\n%s\n----------\n", buffer);
       fflush(stderr);
       free(buffer);
+      free(funcname);
     }
 #endif
 
@@ -4858,7 +6340,7 @@ namespace LegionRuntime {
     ////////////////////////////////////////////////////////
 
     struct MachineRunArgs {
-      Runtime::Impl *r;
+      RuntimeImpl *r;
       Processor::TaskFuncID task_id;
       Runtime::RunStyle style;
       const void *args;
@@ -4876,6 +6358,14 @@ namespace LegionRuntime {
 
     Logger::Category log_machine("machine");
 
+  };
+};
+
+namespace Realm {
+
+  using namespace LegionRuntime;
+  using namespace LegionRuntime::LowLevel;
+
     size_t Machine::get_address_space_count(void) const
     {
         return 1;
@@ -4883,52 +6373,57 @@ namespace LegionRuntime {
 
     /*static*/ Machine Machine::get_machine(void)
     {
-      return Machine(Runtime::Impl::get_runtime()->machine);
+      return Machine(RuntimeImpl::get_runtime()->machine);
     }
 
     void Machine::get_all_memories(std::set<Memory>& mset) const
     {
-      return impl->get_all_memories(mset);
+      return ((MachineImpl *)impl)->get_all_memories(mset);
     }
     
     void Machine::get_all_processors(std::set<Processor>& pset) const
     {
-      return impl->get_all_processors(pset);
+      return ((MachineImpl *)impl)->get_all_processors(pset);
     }
 
     // Return the set of memories visible from a processor
     void Machine::get_visible_memories(Processor p, std::set<Memory>& mset) const
     {
-      return impl->get_visible_memories(p, mset);
+      return ((MachineImpl *)impl)->get_visible_memories(p, mset);
     }
 
     // Return the set of memories visible from a memory
     void Machine::get_visible_memories(Memory m, std::set<Memory>& mset) const
     {
-      return impl->get_visible_memories(m, mset);
+      return ((MachineImpl *)impl)->get_visible_memories(m, mset);
     }
 
     // Return the set of processors which can all see a given memory
     void Machine::get_shared_processors(Memory m, std::set<Processor>& pset) const
     {
-      return impl->get_shared_processors(m, pset);
+      return ((MachineImpl *)impl)->get_shared_processors(m, pset);
     }
 
     int Machine::get_proc_mem_affinity(std::vector<Machine::ProcessorMemoryAffinity>& result,
 				       Processor restrict_proc /*= Processor::NO_PROC*/,
 				       Memory restrict_memory /*= Memory::NO_MEMORY*/) const
     {
-      return impl->get_proc_mem_affinity(result, restrict_proc, restrict_memory);
+      return ((MachineImpl *)impl)->get_proc_mem_affinity(result, restrict_proc, restrict_memory);
     }
 
     int Machine::get_mem_mem_affinity(std::vector<Machine::MemoryMemoryAffinity>& result,
 				      Memory restrict_mem1 /*= Memory::NO_MEMORY*/,
 				      Memory restrict_mem2 /*= Memory::NO_MEMORY*/) const
     {
-      return impl->get_mem_mem_affinity(result, restrict_mem1, restrict_mem2);
+      return ((MachineImpl *)impl)->get_mem_mem_affinity(result, restrict_mem1, restrict_mem2);
     }
 
-    void Machine::Impl::get_all_memories(std::set<Memory>& mset) const
+};
+
+namespace LegionRuntime {
+  namespace LowLevel {
+
+    void MachineImpl::get_all_memories(std::set<Memory>& mset) const
     {
       for(std::vector<Machine::ProcessorMemoryAffinity>::const_iterator it = proc_mem_affinities.begin();
 	  it != proc_mem_affinities.end();
@@ -4937,7 +6432,7 @@ namespace LegionRuntime {
       }
     }
 
-    void Machine::Impl::get_all_processors(std::set<Processor>& pset) const
+    void MachineImpl::get_all_processors(std::set<Processor>& pset) const
     {
       for(std::vector<Machine::ProcessorMemoryAffinity>::const_iterator it = proc_mem_affinities.begin();
 	  it != proc_mem_affinities.end();
@@ -4947,7 +6442,7 @@ namespace LegionRuntime {
     }
 
     // Return the set of memories visible from a processor
-    void Machine::Impl::get_visible_memories(Processor p, std::set<Memory>& mset) const
+    void MachineImpl::get_visible_memories(Processor p, std::set<Memory>& mset) const
     {
       for(std::vector<Machine::ProcessorMemoryAffinity>::const_iterator it = proc_mem_affinities.begin();
 	  it != proc_mem_affinities.end();
@@ -4958,7 +6453,7 @@ namespace LegionRuntime {
     }
 
     // Return the set of memories visible from a memory
-    void Machine::Impl::get_visible_memories(Memory m, std::set<Memory>& mset) const
+    void MachineImpl::get_visible_memories(Memory m, std::set<Memory>& mset) const
     {
       for(std::vector<Machine::MemoryMemoryAffinity>::const_iterator it = mem_mem_affinities.begin();
 	  it != mem_mem_affinities.end();
@@ -4972,7 +6467,7 @@ namespace LegionRuntime {
     }
 
     // Return the set of processors which can all see a given memory
-    void Machine::Impl::get_shared_processors(Memory m, std::set<Processor>& pset) const
+    void MachineImpl::get_shared_processors(Memory m, std::set<Processor>& pset) const
     {
       for(std::vector<Machine::ProcessorMemoryAffinity>::const_iterator it = proc_mem_affinities.begin();
 	  it != proc_mem_affinities.end();
@@ -4982,7 +6477,7 @@ namespace LegionRuntime {
       }
     }
 
-    int Machine::Impl::get_proc_mem_affinity(std::vector<Machine::ProcessorMemoryAffinity>& result,
+    int MachineImpl::get_proc_mem_affinity(std::vector<Machine::ProcessorMemoryAffinity>& result,
 					     Processor restrict_proc /*= Processor::NO_PROC*/,
 					     Memory restrict_memory /*= Memory::NO_MEMORY*/) const
     {
@@ -5000,14 +6495,14 @@ namespace LegionRuntime {
       return count;
     }
 
-    int Machine::Impl::get_mem_mem_affinity(std::vector<Machine::MemoryMemoryAffinity>& result,
+    int MachineImpl::get_mem_mem_affinity(std::vector<Machine::MemoryMemoryAffinity>& result,
 					    Memory restrict_mem1 /*= Memory::NO_MEMORY*/,
 					    Memory restrict_mem2 /*= Memory::NO_MEMORY*/) const
     {
       // Handle the case for same memories
       if (restrict_mem1.exists() && (restrict_mem1 == restrict_mem2))
       {
-        MemoryMemoryAffinity affinity;
+	Machine::MemoryMemoryAffinity affinity;
         affinity.m1 = restrict_mem1;
         affinity.m2 = restrict_mem1;
         affinity.bandwidth = 100;
@@ -5032,6 +6527,14 @@ namespace LegionRuntime {
       return count;
     }
 
+  };
+};
+
+namespace Realm {
+
+  using namespace LegionRuntime;
+  using namespace LegionRuntime::LowLevel;
+
     ////////////////////////////////////////////////////////
     // Runtime 
     ////////////////////////////////////////////////////////
@@ -5045,20 +6548,20 @@ namespace LegionRuntime {
     /*static*/ Runtime Runtime::get_runtime(void)
     {
       Runtime r;
-      r.impl = Runtime::Impl::get_runtime();
+      r.impl = RuntimeImpl::get_runtime();
       return r;
     }
 
     bool Runtime::init(int *argc, char ***argv)
     {
-      if(Runtime::Impl::get_runtime() != 0) {
+      if(RuntimeImpl::get_runtime() != 0) {
 	fprintf(stderr, "ERROR: cannot initialize more than one runtime at a time!\n");
 	return false;
       }
 
-      Machine::Impl *m = new Machine::Impl;
-      impl = new Runtime::Impl(m);
-      return impl->init(argc, argv);
+      MachineImpl *m = new MachineImpl;
+      impl = new RuntimeImpl(m);
+      return ((RuntimeImpl *)impl)->init(argc, argv);
     }
     
     bool Runtime::register_task(Processor::TaskFuncID taskid, Processor::TaskFuncPtr taskptr)
@@ -5072,10 +6575,10 @@ namespace LegionRuntime {
 	exit(1);
       }
 
-      if(impl->task_table.count(taskid) > 0)
+      if(((RuntimeImpl *)impl)->task_table.count(taskid) > 0)
 	return false;
 
-      impl->task_table[taskid] = taskptr;
+      ((RuntimeImpl *)impl)->task_table[taskid] = taskptr;
       return true;
     }
 
@@ -5083,14 +6586,45 @@ namespace LegionRuntime {
     {
       assert(impl != 0);
 
-      if(impl->redop_table.count(redop_id) > 0)
+      if(((RuntimeImpl *)impl)->redop_table.count(redop_id) > 0)
 	return false;
 
-      impl->redop_table[redop_id] = redop;
+      ((RuntimeImpl *)impl)->redop_table[redop_id] = redop;
       return true;
     }
 
-    Runtime::Impl::Impl(Machine::Impl *m)
+    void Runtime::run(Processor::TaskFuncID task_id /*= 0*/,
+	              RunStyle style /*= ONE_TASK_ONLY*/,
+   	              const void *args /*= 0*/, size_t arglen /*= 0*/,
+		      bool background /*= false*/)
+    {
+      assert(impl != 0);
+      ((RuntimeImpl *)impl)->run(task_id, style, args, arglen, background);
+    }
+
+    void Runtime::shutdown(void)
+    {
+      assert(impl != 0);
+      ((RuntimeImpl *)impl)->shutdown();
+    }
+
+    void Runtime::wait_for_shutdown(void)
+    {
+      assert(impl != 0);
+      ((RuntimeImpl *)impl)->wait_for_shutdown();
+
+      // delete the impl once it's shut down
+      RuntimeImpl::runtime = 0;
+      delete ((RuntimeImpl *)impl);
+      impl = 0;
+    }
+
+};
+
+namespace LegionRuntime {
+  namespace LowLevel {
+
+    RuntimeImpl::RuntimeImpl(MachineImpl *m)
       : machine(m), background_pthread(0)
     {
 	for (unsigned i=0; i<BASE_EVENTS; i++)
@@ -5110,7 +6644,7 @@ namespace LegionRuntime {
 
 	for (unsigned i=0; i<BASE_METAS; i++)
 	{
-		metadatas.push_back(new IndexSpace::Impl(i,0,0));
+		metadatas.push_back(new IndexSpaceImpl(i,0,0));
                 if (i != 0)
                   free_metas.push_back(metadatas.back());
 	}
@@ -5119,8 +6653,7 @@ namespace LegionRuntime {
 	{
 		Memory m;
 		m.id = 0;
-		instances.push_back(new RegionInstance::Impl(i,
-							     IndexSpace::NO_SPACE,
+		instances.push_back(new RegionInstanceImpl(i,
 							     m,
 							     0,
                                                              0,
@@ -5145,8 +6678,11 @@ namespace LegionRuntime {
         PTHREAD_SAFE_CALL(pthread_mutex_init(&free_inst_lock,NULL));
     }
 
-    bool Runtime::Impl::init(int *argc, char ***argv)
+    bool RuntimeImpl::init(int *argc, char ***argv)
     {
+        // make all timestamps use relative time from now
+        Realm::Clock::set_zero_time();
+
         unsigned num_cpus = NUM_PROCS;
         unsigned num_utility_cpus = NUM_UTIL_PROCS;
         unsigned num_dma_threads = NUM_DMA_THREADS;
@@ -5158,8 +6694,8 @@ namespace LegionRuntime {
 	PTHREAD_SAFE_CALL(pthread_mutex_init(&debug_mutex,NULL));
 #endif
         // Create the pthread keys for thread local data
-        PTHREAD_SAFE_CALL( pthread_key_create(&local_proc_key, thread_proc_free) );
-        PTHREAD_SAFE_CALL( pthread_key_create(&thread_timer_key, thread_timer_free) );
+        PTHREAD_SAFE_CALL( pthread_key_create(&local_thread_key, NULL) );
+        DetailedTimer::init_timers();
 
         for (int i=1; i < *argc; i++)
         {
@@ -5181,7 +6717,9 @@ namespace LegionRuntime {
 
         if (num_utility_cpus > num_cpus)
         {
-            fprintf(stderr,"The number of processor groups (%d) cannot be greater than the number of cpus (%d)\n",num_utility_cpus,num_cpus);
+            fprintf(stderr,"The number of processor groups (%d) cannot be "
+                    "greater than the number of cpus (%d)\n",
+                    num_utility_cpus,num_cpus);
             fflush(stderr);
             exit(1);
         }
@@ -5191,16 +6729,19 @@ namespace LegionRuntime {
         dma_queue = new DMAQueue(num_dma_threads);
 
         // Initialize the logger
-        Logger::init(*argc, (const char**)*argv);
+	Realm::Logger::configure_from_cmdline(*argc, (const char**)*argv);
 	
         // Fill in the tables
         // find in proc 0 with NULL
         processors.push_back(NULL);
 #ifndef __MACH__
-        pthread_barrier_t *init_barrier = (pthread_barrier_t*)malloc(sizeof(pthread_barrier_t));
-        PTHREAD_SAFE_CALL(pthread_barrier_init(init_barrier,NULL,(num_cpus+num_utility_cpus)));
+        pthread_barrier_t *init_barrier = 
+          (pthread_barrier_t*)malloc(sizeof(pthread_barrier_t));
+        PTHREAD_SAFE_CALL(pthread_barrier_init(init_barrier,NULL,
+                                    (num_cpus+num_utility_cpus)));
 #else
-        pthread_barrier_t *init_barrier = new pthread_barrier_t(num_cpus+num_utility_cpus);
+        pthread_barrier_t *init_barrier = 
+          new pthread_barrier_t(num_cpus+num_utility_cpus);
 #endif
         if (num_utility_cpus > 0)
         {
@@ -5213,9 +6754,8 @@ namespace LegionRuntime {
             Processor p;
             p.id = num_cpus+idx+1;
             procs.insert(p);
-            // Figure out how many users this guy will have
-            unsigned num_users = (num_cpus/num_utility_cpus) + (idx < (num_cpus%num_utility_cpus) ? 1 : 0);
-            temp_utils[idx] = new ProcessorImpl(init_barrier, task_table, p, cpu_stack_size, num_users);
+            temp_utils[idx] = new ProcessorImpl(init_barrier, task_table, 
+                                p, cpu_stack_size, Processor::UTIL_PROC);
           }
           // Now we can make the processors themselves
           for (unsigned idx = 0; idx < num_cpus; idx++)
@@ -5232,9 +6772,9 @@ namespace LegionRuntime {
 #ifdef DEBUG_LOW_LEVEL
             assert(utility_idx < num_utility_cpus);
 #endif
-            ProcessorImpl *impl = new ProcessorImpl(init_barrier, task_table, p, cpu_stack_size, temp_utils[utility_idx], (idx==0));
+            ProcessorImpl *impl = new ProcessorImpl(init_barrier, task_table, p, 
+                                        cpu_stack_size, temp_utils[utility_idx]);
             // Add this processor as utility user
-            temp_utils[utility_idx]->add_utility_user(p, impl);
             processors.push_back(impl);
           }
           // Finally we can add the utility processors to the set of processors
@@ -5251,50 +6791,12 @@ namespace LegionRuntime {
             Processor p;
             p.id = idx + 1;
             procs.insert(p);
-            ProcessorImpl *impl = new ProcessorImpl(init_barrier, task_table, p, cpu_stack_size, (idx == 0));
+            ProcessorImpl *impl = new ProcessorImpl(init_barrier, task_table, p, 
+                                            cpu_stack_size, Processor::LOC_PROC);
             processors.push_back(impl);
           }
         }
 	
-#if 0
-	for (unsigned id=1; id<=num_cpus; id++)
-	{
-		Processor p;
-		p.id = id;
-		procs.insert(p);
-                // Compute its utility processor (if any)
-		ProcessorImpl *impl;
-                if (num_utility_cpus > 0)
-                {
-                  unsigned util = id % num_utility_cpus;
-                  Processor utility;
-                  utility.id = num_cpus + 1 + util;
-                  //fprintf(stdout,"Processor %d has utility processor %d\n",id,utility.id);
-                  //fflush(stdout);
-                  impl = new ProcessorImpl(init_barrier,task_table, p, utility, cpu_stack_size);
-                  utility_users[util]++;
-                }
-                else
-                {
-                  impl = new ProcessorImpl(init_barrier,task_table, p, cpu_stack_size);
-                }
-		processors.push_back(impl);
-	}	
-        // Also create the utility processors
-        for (unsigned id=1; id<=num_utility_cpus; id++)
-        {
-                Processor p;
-                p.id = num_cpus + id;
-#ifdef DEBUG_LOW_LEVEL
-                assert(utility_users[id-1] > 0);
-#endif
-                //fprintf(stdout,"Utility processor %d has %d users\n",p.id,utility_users[id-1]);
-                //fflush(stdout);
-                // This processor is a utility processor so it is be default its own utility
-                ProcessorImpl *impl = new ProcessorImpl(init_barrier,task_table, p, cpu_stack_size, true/*utility*/, utility_users[id-1]);
-                processors.push_back(impl);
-        }
-#endif
         if (cpu_mem_size_in_mb > 0)
 	{
                 // Make the first memory null
@@ -5325,27 +6827,12 @@ namespace LegionRuntime {
                   memories.push_back(impl);
           }
         }
-#if 0
-	// All memories are visible from each processor
-	for (unsigned id=1; id<=num_cpus; id++)
-	{
-		Processor p;
-		p.id = id;
-		visible_memories_from_procs.insert(std::pair<Processor,std::set<Memory> >(p,memories));
-	}	
-	// All memories are visible from all memories, all processors are visible from all memories
-	for (unsigned id=1; id<=(num_cpus+1); id++)
-	{
-		Memory m;
-		m.id = id;
-		visible_memories_from_memory.insert(std::pair<Memory,std::set<Memory> >(m,memories));
-		machine->visible_procs_from_memory.insert(std::pair<Memory,std::set<Processor> >(m,procs));
-	}
-#endif
+
         // Now set up the affinities for each of the different processors and memories
         for (std::set<Processor>::iterator it = procs.begin(); it != procs.end(); it++)
         {
           // Give all processors 32 GB/s to the global memory
+          if (cpu_mem_size_in_mb > 0)
           {
 	    Machine::ProcessorMemoryAffinity global_affin;
             global_affin.p = *it;
@@ -5355,54 +6842,63 @@ namespace LegionRuntime {
             machine->proc_mem_affinities.push_back(global_affin);
           }
           // Give the processor good affinity to its L1, but not to other L1
-          for (unsigned id = 2; id <= (num_cpus+1); id++)
+          if (cpu_l1_size_in_kb > 0)
           {
-            if (id == (it->id+1))
+            for (unsigned id = 2; id <= (num_cpus+1); id++)
             {
-              // Our L1, high bandwidth with low latency
-              Machine::ProcessorMemoryAffinity local_affin;
-              local_affin.p = *it;
-              local_affin.m.id = id;
-              local_affin.bandwidth = 100;
-              local_affin.latency = 1; /* small latency */
-              machine->proc_mem_affinities.push_back(local_affin);
-            }
-            else
-            {
-              // Other L1, low bandwidth with long latency
-              Machine::ProcessorMemoryAffinity other_affin;
-              other_affin.p = *it;
-              other_affin.m.id = id;
-              other_affin.bandwidth = 10;
-              other_affin.latency = 100; /* high latency */
-              machine->proc_mem_affinities.push_back(other_affin);
+              if (id == (it->id+1))
+              {
+                // Our L1, high bandwidth with low latency
+                Machine::ProcessorMemoryAffinity local_affin;
+                local_affin.p = *it;
+                local_affin.m.id = id;
+                local_affin.bandwidth = 100;
+                local_affin.latency = 1; /* small latency */
+                machine->proc_mem_affinities.push_back(local_affin);
+              }
+              else
+              {
+                // Other L1, low bandwidth with long latency
+                Machine::ProcessorMemoryAffinity other_affin;
+                other_affin.p = *it;
+                other_affin.m.id = id;
+                other_affin.bandwidth = 10;
+                other_affin.latency = 100; /* high latency */
+                machine->proc_mem_affinities.push_back(other_affin);
+              }
             }
           }
         }
         // Set up the affinities between the different memories
         {
           // Global to all others
-          for (unsigned id = 2; id <= (num_cpus+1); id++)
+          if ((cpu_mem_size_in_mb > 0) && (cpu_l1_size_in_kb > 0))
           {
-            Machine::MemoryMemoryAffinity global_affin;
-            global_affin.m1.id = 1;
-            global_affin.m2.id = id;
-            global_affin.bandwidth = 32;
-            global_affin.latency = 50;
-            machine->mem_mem_affinities.push_back(global_affin);
+            for (unsigned id = 2; id <= (num_cpus+1); id++)
+            {
+              Machine::MemoryMemoryAffinity global_affin;
+              global_affin.m1.id = 1;
+              global_affin.m2.id = id;
+              global_affin.bandwidth = 32;
+              global_affin.latency = 50;
+              machine->mem_mem_affinities.push_back(global_affin);
+            }
           }
 
           // From any one to any other one
-          for (unsigned id = 2; id <= (num_cpus+1); id++)
+          if (cpu_l1_size_in_kb > 0)
           {
-            for (unsigned other=id+1; other <= (num_cpus+1); other++)
+            for (unsigned id = 2; id <= (num_cpus+1); id++)
             {
-              Machine::MemoryMemoryAffinity pair_affin;
-              pair_affin.m1.id = id;
-              pair_affin.m2.id = other;
-              pair_affin.bandwidth = 10;
-              pair_affin.latency = 100;
-              machine->mem_mem_affinities.push_back(pair_affin);
+              for (unsigned other=id+1; other <= (num_cpus+1); other++)
+              {
+                Machine::MemoryMemoryAffinity pair_affin;
+                pair_affin.m1.id = id;
+                pair_affin.m2.id = other;
+                pair_affin.bandwidth = 10;
+                pair_affin.latency = 100;
+                machine->mem_mem_affinities.push_back(pair_affin);
+              }
             }
           }
         }
@@ -5412,12 +6908,6 @@ namespace LegionRuntime {
         assert(processors.size() == (num_cpus+num_utility_cpus+1));
 #endif
 		
-	// Finally do the initialization for thread 0
-        unsigned *local_proc_id = (unsigned*)malloc(sizeof(unsigned));
-	*local_proc_id = 1;
-        PTHREAD_SAFE_CALL( pthread_setspecific(local_proc_key, local_proc_id) );
-        PTHREAD_SAFE_CALL( pthread_setspecific(thread_timer_key, NULL) );
-
 #ifdef LEGION_BACKTRACE
         signal(SIGSEGV, legion_backtrace);
         signal(SIGTERM, legion_backtrace);
@@ -5436,19 +6926,10 @@ namespace LegionRuntime {
 	return true; // successful initialization
     }
 
-    void Runtime::run(Processor::TaskFuncID task_id /*= 0*/,
-	              RunStyle style /*= ONE_TASK_ONLY*/,
-   	              const void *args /*= 0*/, size_t arglen /*= 0*/,
-		      bool background /*= false*/)
-    {
-      assert(impl != 0);
-      impl->run(task_id, style, args, arglen, background);
-    }
-
-    void Runtime::Impl::run(Processor::TaskFuncID task_id /*= 0*/,
-			    RunStyle style /*= ONE_TASK_ONLY*/,
-			    const void *args /*= 0*/, size_t arglen /*= 0*/,
-			    bool background /*= false*/)
+    void RuntimeImpl::run(Processor::TaskFuncID task_id /*= 0*/,
+			  Runtime::RunStyle style /*= ONE_TASK_ONLY*/,
+			  const void *args /*= 0*/, size_t arglen /*= 0*/,
+			  bool background /*= false*/)
     { 
 
       if(background) {
@@ -5464,65 +6945,49 @@ namespace LegionRuntime {
 	pthread_t *threadp = (pthread_t*)malloc(sizeof(pthread_t));
 	pthread_attr_t attr;
 	PTHREAD_SAFE_CALL( pthread_attr_init(&attr) );
-	PTHREAD_SAFE_CALL( pthread_create(threadp, &attr, &background_run_thread, (void *)margs) );
+	PTHREAD_SAFE_CALL( pthread_create(threadp, &attr, 
+                            &background_run_thread, (void *)margs) );
 	PTHREAD_SAFE_CALL( pthread_attr_destroy(&attr) );
         // Save this pointer in the background thread
         background_pthread = threadp;
 	return;
       }
 
+      // Start the threads for each of the processors (including the utility processors)
+      for (unsigned id=1; id < processors.size(); id++)
+        processors[id]->start_processor();
+      dma_queue->start();
+
       if(task_id != 0) { // no need to check ONE_TASK_ONLY here, since 1 node
 	for(int id = 1; id <= NUM_PROCS; id++) {
 	  Processor p;
           p.id = static_cast<id_t>(id);
 	  p.spawn(task_id,args,arglen);
-	  if(style != ONE_TASK_PER_PROC) break;
+	  if(style != Runtime::ONE_TASK_PER_PROC) break;
 	}
       }
-      // Start the threads for each of the processors (including the utility processors)
-      std::vector<pthread_t> other_threads(processors.size());
-      for (unsigned id=2; id<processors.size(); id++)
+      
+      // Poll the processors to see if they are done
+      while (true)
       {
-              ProcessorImpl *impl = processors[id];
-              PTHREAD_SAFE_CALL(pthread_create(&(other_threads[id]), &(impl->attr), ProcessorImpl::start, (void*)impl));
+        size_t idle_processors = 1; // 0 proc is always done
+        for (unsigned id=1; id < processors.size(); id++)
+          if (processors[id]->is_idle())
+            idle_processors++;
+        if (idle_processors == processors.size())
+          break;
+        // Otherwise sleep for a whole second
+        sleep(1);
       }
-      dma_queue->start();
-
-      // Now run the scheduler
-      ProcessorImpl *impl = processors[1];
-      ProcessorImpl::start((void*)impl);
-      // When we return join on all the other threads and then exit
-      for (unsigned id=2; id<other_threads.size(); id++)
-      {
-          void *result;
-          PTHREAD_SAFE_CALL(pthread_join(other_threads[id],&result));
-      }
+      for (unsigned id=1; id < processors.size(); id++)
+        processors[id]->shutdown_processor();
       dma_queue->shutdown();
-#ifdef ORDERED_LOGGING 
-      Logger::finalize();
-#endif
+
       // Once we're done with this, then we can exit with a successful error code
       exit(0);
     }
 
-    void Runtime::shutdown(void)
-    {
-      assert(impl != 0);
-      impl->shutdown();
-    }
-
-    void Runtime::wait_for_shutdown(void)
-    {
-      assert(impl != 0);
-      impl->wait_for_shutdown();
-
-      // delete the impl once it's shut down
-      Runtime::Impl::runtime = 0;
-      delete impl;
-      impl = 0;
-    }
-
-    void Runtime::Impl::shutdown(void)
+    void RuntimeImpl::shutdown(void)
     {
       for (std::set<Processor>::const_iterator it = procs.begin();
 	   it != procs.end(); it++)
@@ -5530,11 +6995,9 @@ namespace LegionRuntime {
 	// Kill pill
 	it->spawn(0, NULL, 0);
       }
-      // dma thread is shut down automatically after all processor threads are done
-      //Runtime::dma_queue->shutdown();
     }
 
-    void Runtime::Impl::wait_for_shutdown(void)
+    void RuntimeImpl::wait_for_shutdown(void)
     {
       if (background_pthread != NULL)
       {
@@ -5547,7 +7010,7 @@ namespace LegionRuntime {
       }
     }
 
-    EventImpl* Runtime::Impl::get_event_impl(Event e)
+    EventImpl* RuntimeImpl::get_event_impl(Event e)
     {
         EventImpl::EventIndex i = e.id;
         PTHREAD_SAFE_CALL(pthread_rwlock_rdlock(&event_lock));
@@ -5560,7 +7023,7 @@ namespace LegionRuntime {
 	return result;
     }
 
-    void Runtime::Impl::free_event(EventImpl *e)
+    void RuntimeImpl::free_event(EventImpl *e)
     {
       // Put this event back on the list of free events
       PTHREAD_SAFE_CALL(pthread_mutex_lock(&free_event_lock));
@@ -5568,7 +7031,7 @@ namespace LegionRuntime {
       PTHREAD_SAFE_CALL(pthread_mutex_unlock(&free_event_lock));
     }
 
-    void Runtime::Impl::print_event_waiters(void)
+    void RuntimeImpl::print_event_waiters(void)
     {
       // No need to hold the lock here since we'll only
       // ever call this method from the debugger
@@ -5578,7 +7041,7 @@ namespace LegionRuntime {
       }
     }
 
-    ReservationImpl* Runtime::Impl::get_reservation_impl(Reservation r)
+    ReservationImpl* RuntimeImpl::get_reservation_impl(Reservation r)
     {
         PTHREAD_SAFE_CALL(pthread_rwlock_rdlock(&reservation_lock));
 #ifdef DEBUG_LOW_LEVEL
@@ -5590,14 +7053,14 @@ namespace LegionRuntime {
 	return result;
     }
 
-    void Runtime::Impl::free_reservation(ReservationImpl *r)
+    void RuntimeImpl::free_reservation(ReservationImpl *r)
     {
       PTHREAD_SAFE_CALL(pthread_mutex_lock(&free_reservation_lock));
       free_reservations.push_back(r);
       PTHREAD_SAFE_CALL(pthread_mutex_unlock(&free_reservation_lock));
     }
 
-    MemoryImpl* Runtime::Impl::get_memory_impl(Memory m)
+    MemoryImpl* RuntimeImpl::get_memory_impl(Memory m)
     {
 	if (m.id < memories.size())
 		return memories[m.id];
@@ -5608,7 +7071,7 @@ namespace LegionRuntime {
         }
     }
 
-    ProcessorImpl* Runtime::Impl::get_processor_impl(Processor p)
+    ProcessorImpl* RuntimeImpl::get_processor_impl(Processor p)
     {
       if(p.id >= ProcessorGroup::FIRST_PROC_GROUP_ID) {
 	IDType id = p.id - ProcessorGroup::FIRST_PROC_GROUP_ID;
@@ -5628,45 +7091,45 @@ namespace LegionRuntime {
 	return processors[p.id];
     }
 
-    IndexSpace::Impl* Runtime::Impl::get_metadata_impl(IndexSpace m)
+    IndexSpaceImpl* RuntimeImpl::get_metadata_impl(IndexSpace m)
     {
         PTHREAD_SAFE_CALL(pthread_rwlock_rdlock(&metadata_lock));
 #ifdef DEBUG_LOW_LEVEL
 	assert(m.id != 0);
 	assert(m.id < metadatas.size());
 #endif
-        IndexSpace::Impl *result = metadatas[m.id];
+        IndexSpaceImpl *result = metadatas[m.id];
         PTHREAD_SAFE_CALL(pthread_rwlock_unlock(&metadata_lock));
 	return result;
     }
 
-    void Runtime::Impl::free_metadata(IndexSpace::Impl *impl)
+    void RuntimeImpl::free_metadata(IndexSpaceImpl *impl)
     {
         PTHREAD_SAFE_CALL(pthread_mutex_lock(&free_metas_lock));
         free_metas.push_back(impl);
         PTHREAD_SAFE_CALL(pthread_mutex_unlock(&free_metas_lock));
     }
 
-    RegionInstance::Impl* Runtime::Impl::get_instance_impl(RegionInstance i)
+    RegionInstanceImpl* RuntimeImpl::get_instance_impl(RegionInstance i)
     {
         PTHREAD_SAFE_CALL(pthread_rwlock_rdlock(&instance_lock));
 #ifdef DEBUG_LOW_LEVEL
 	assert(i.id != 0);
 	assert(i.id < instances.size());
 #endif
-        RegionInstance::Impl *result = instances[i.id];
+        RegionInstanceImpl *result = instances[i.id];
         PTHREAD_SAFE_CALL(pthread_rwlock_unlock(&instance_lock));
 	return result;
     }
 
-    void Runtime::Impl::free_instance(RegionInstance::Impl *impl)
+    void RuntimeImpl::free_instance(RegionInstanceImpl *impl)
     {
         PTHREAD_SAFE_CALL(pthread_mutex_lock(&free_inst_lock));
         free_instances.push_back(impl);
         PTHREAD_SAFE_CALL(pthread_mutex_unlock(&free_inst_lock));
     }
 
-    EventImpl* Runtime::Impl::get_free_event()
+    EventImpl* RuntimeImpl::get_free_event()
     {
         PTHREAD_SAFE_CALL(pthread_mutex_lock(&free_event_lock));
         if (!free_events.empty())
@@ -5704,7 +7167,7 @@ namespace LegionRuntime {
         return result;
     }
 
-    ReservationImpl* Runtime::Impl::get_free_reservation(size_t data_size/*= 0*/)
+    ReservationImpl* RuntimeImpl::get_free_reservation(size_t data_size/*= 0*/)
     {
         PTHREAD_SAFE_CALL(pthread_mutex_lock(&free_reservation_lock));
         if (!free_reservations.empty())
@@ -5736,7 +7199,7 @@ namespace LegionRuntime {
 	return result;
     }
 
-    ProcessorGroup *Runtime::Impl::get_free_proc_group(const std::vector<Processor>& members)
+    ProcessorGroup *RuntimeImpl::get_free_proc_group(const std::vector<Processor>& members)
     {
       // this adds to the list of proc groups, so take the write lock
       PTHREAD_SAFE_CALL(pthread_rwlock_wrlock(&proc_group_lock));
@@ -5756,12 +7219,12 @@ namespace LegionRuntime {
       return grp;
     }
 
-    IndexSpace::Impl* Runtime::Impl::get_free_metadata(size_t num_elmts)
+    IndexSpaceImpl* RuntimeImpl::get_free_metadata(size_t num_elmts)
     {
         PTHREAD_SAFE_CALL(pthread_mutex_lock(&free_metas_lock));
         if (!free_metas.empty())
         {
-          IndexSpace::Impl *result = free_metas.front();
+          IndexSpaceImpl *result = free_metas.front();
           free_metas.pop_front();
           PTHREAD_SAFE_CALL(pthread_mutex_unlock(&free_metas_lock));
           bool activated = result->activate(num_elmts);
@@ -5775,12 +7238,12 @@ namespace LegionRuntime {
 	// Otherwise there are no free metadata so make a new one
 	PTHREAD_SAFE_CALL(pthread_rwlock_wrlock(&metadata_lock));
 	unsigned int index = metadatas.size();
-	metadatas.push_back(new IndexSpace::Impl(index,num_elmts,true));
-	IndexSpace::Impl *result = metadatas[index];
+	metadatas.push_back(new IndexSpaceImpl(index,num_elmts,true));
+	IndexSpaceImpl *result = metadatas[index];
         // Create a whole bunch of other metas too while we're here
         for (unsigned idx=1; idx < BASE_METAS; idx++)
         {
-          metadatas.push_back(new IndexSpace::Impl(index+idx,0,false));
+          metadatas.push_back(new IndexSpaceImpl(index+idx,0,false));
           free_metas.push_back(metadatas.back());
         }
 	PTHREAD_SAFE_CALL(pthread_rwlock_unlock(&metadata_lock));
@@ -5788,12 +7251,12 @@ namespace LegionRuntime {
 	return result;
     }
 
-    IndexSpace::Impl* Runtime::Impl::get_free_metadata(const ElementMask &mask)
+    IndexSpaceImpl* RuntimeImpl::get_free_metadata(const ElementMask &mask)
     {
         PTHREAD_SAFE_CALL(pthread_mutex_lock(&free_metas_lock));
         if (!free_metas.empty())
         {
-          IndexSpace::Impl *result = free_metas.front();
+          IndexSpaceImpl *result = free_metas.front();
           free_metas.pop_front();
           PTHREAD_SAFE_CALL(pthread_mutex_unlock(&free_metas_lock));
           bool activated = result->activate(mask);
@@ -5807,12 +7270,12 @@ namespace LegionRuntime {
         // Otherwise there are no free metadata so make a new one
 	PTHREAD_SAFE_CALL(pthread_rwlock_wrlock(&metadata_lock));
 	unsigned int index = metadatas.size();
-	metadatas.push_back(new IndexSpace::Impl(index,0,false));
-	IndexSpace::Impl *result = metadatas[index];
+	metadatas.push_back(new IndexSpaceImpl(index,0,false));
+	IndexSpaceImpl *result = metadatas[index];
         // Create a whole bunch of other metas too while we're here
         for (unsigned idx=1; idx < BASE_METAS; idx++)
         {
-          metadatas.push_back(new IndexSpace::Impl(index+idx,0,false));
+          metadatas.push_back(new IndexSpaceImpl(index+idx,0,false));
           free_metas.push_back(metadatas.back());
         }
 	PTHREAD_SAFE_CALL(pthread_rwlock_unlock(&metadata_lock));
@@ -5821,12 +7284,45 @@ namespace LegionRuntime {
 	return result;
     }
 
-    IndexSpace::Impl* Runtime::Impl::get_free_metadata(IndexSpace::Impl *parent, const ElementMask &mask)
+    IndexSpaceImpl* RuntimeImpl::get_free_metadata(IndexSpaceImpl *parent)
     {
         PTHREAD_SAFE_CALL(pthread_mutex_lock(&free_metas_lock));
         if (!free_metas.empty())
         {
-          IndexSpace::Impl *result = free_metas.front();
+          IndexSpaceImpl *result = free_metas.front();
+          free_metas.pop_front();
+          PTHREAD_SAFE_CALL(pthread_mutex_unlock(&free_metas_lock));
+          bool activated = result->activate(parent);
+#ifdef DEBUG_LOW_LEVEL
+          assert(activated);
+#else
+	  (void)activated; // eliminate compiler warning
+#endif
+          return result;
+        }
+	// Otherwise there are no free metadata so make a new one
+	PTHREAD_SAFE_CALL(pthread_rwlock_wrlock(&metadata_lock));
+	unsigned int index = metadatas.size();
+	metadatas.push_back(new IndexSpaceImpl(index,0,false));
+	IndexSpaceImpl *result = metadatas[index];
+        result->activate(parent);
+        // Create a whole bunch of other metas too while we're here
+        for (unsigned idx=1; idx < BASE_METAS; idx++)
+        {
+          metadatas.push_back(new IndexSpaceImpl(index+idx,0,false));
+          free_metas.push_back(metadatas.back());
+        }
+	PTHREAD_SAFE_CALL(pthread_rwlock_unlock(&metadata_lock));
+        PTHREAD_SAFE_CALL(pthread_mutex_unlock(&free_metas_lock));
+	return result;
+    }
+
+    IndexSpaceImpl* RuntimeImpl::get_free_metadata(IndexSpaceImpl *parent, const ElementMask &mask)
+    {
+        PTHREAD_SAFE_CALL(pthread_mutex_lock(&free_metas_lock));
+        if (!free_metas.empty())
+        {
+          IndexSpaceImpl *result = free_metas.front();
           free_metas.pop_front();
           PTHREAD_SAFE_CALL(pthread_mutex_unlock(&free_metas_lock));
           bool activated = result->activate(parent,mask);
@@ -5840,12 +7336,12 @@ namespace LegionRuntime {
 	// Otherwise there are no free metadata so make a new one
 	PTHREAD_SAFE_CALL(pthread_rwlock_wrlock(&metadata_lock));
 	unsigned int index = metadatas.size();
-	metadatas.push_back(new IndexSpace::Impl(index,parent,mask,true));
-	IndexSpace::Impl *result = metadatas[index];
+	metadatas.push_back(new IndexSpaceImpl(index,parent,mask,true));
+	IndexSpaceImpl *result = metadatas[index];
         // Create a whole bunch of other metas too while we're here
         for (unsigned idx=1; idx < BASE_METAS; idx++)
         {
-          metadatas.push_back(new IndexSpace::Impl(index+idx,0,false));
+          metadatas.push_back(new IndexSpaceImpl(index+idx,0,false));
           free_metas.push_back(metadatas.back());
         }
 	PTHREAD_SAFE_CALL(pthread_rwlock_unlock(&metadata_lock));
@@ -5854,23 +7350,24 @@ namespace LegionRuntime {
     }
 
 
-    RegionInstance::Impl* Runtime::Impl::get_free_instance(IndexSpace r, Memory m, 
+    RegionInstanceImpl* RuntimeImpl::get_free_instance(Memory m, 
                                                      size_t num_elmts, size_t alloc_size,
 						     const std::vector<size_t>& field_sizes,
 						     size_t elmt_size, size_t block_size,
 						     const DomainLinearization& linearization,
 						     char *ptr, const ReductionOpUntyped *redop,
-						     RegionInstance::Impl *parent)
+						     RegionInstanceImpl *parent,
+                                                     const Realm::ProfilingRequestSet &reqs)
     {
         PTHREAD_SAFE_CALL(pthread_mutex_lock(&free_inst_lock));
         if (!free_instances.empty())
         {
-          RegionInstance::Impl *result = free_instances.front();
+          RegionInstanceImpl *result = free_instances.front();
           free_instances.pop_front();
           PTHREAD_SAFE_CALL(pthread_mutex_unlock(&free_inst_lock));
-          bool activated = result->activate(r, m, num_elmts, alloc_size, 
+          bool activated = result->activate(m, num_elmts, alloc_size, 
                                             field_sizes, elmt_size, block_size, 
-                                            linearization, ptr, redop, parent);
+                                            linearization, ptr, redop, parent, reqs);
 #ifdef DEBUG_LOW_LEVEL
           assert(activated);
 #else
@@ -5881,16 +7378,15 @@ namespace LegionRuntime {
 	// Nothing free so make a new one
 	PTHREAD_SAFE_CALL(pthread_rwlock_wrlock(&instance_lock));
 	unsigned int index = instances.size();
-	instances.push_back(new RegionInstance::Impl(index, r, m, num_elmts, alloc_size,
+	instances.push_back(new RegionInstanceImpl(index, m, num_elmts, alloc_size,
                                                      field_sizes,
 						     elmt_size, block_size, linearization,
 						     true, ptr, redop, parent));
-	RegionInstance::Impl *result = instances[index];
+	RegionInstanceImpl *result = instances[index];
         // Create a whole bunch of other instances while we're here
         for (unsigned idx=1; idx < BASE_INSTANCES; idx++)
         {
-          instances.push_back(new RegionInstance::Impl(index+idx,
-						       IndexSpace::NO_SPACE,
+          instances.push_back(new RegionInstanceImpl(index+idx,
 						       m,
 						       0,
                                                        0,
@@ -5906,7 +7402,7 @@ namespace LegionRuntime {
 	return result;
     }
 
-    const ReductionOpUntyped* Runtime::Impl::get_reduction_op(ReductionOpID redop)
+    const ReductionOpUntyped* RuntimeImpl::get_reduction_op(ReductionOpID redop)
     {
 #ifdef DEBUG_LOW_LEVEL
       assert(redop_table.find(redop) != redop_table.end());
@@ -5916,69 +7412,6 @@ namespace LegionRuntime {
 
   };
 
-#ifdef ORDERED_LOGGING 
-  /*static*/ void Logger::finalize(void)
-  {
-    // Flush the buffer
-    assert(write(get_log_file(), get_logging_buffer(), *get_logging_location()) >= 0);
-    // Close the file
-    close(get_log_file());
-    // Free the memory
-    free(get_logging_buffer());
-  }
-#endif
-
-  // Machine specific implementation of logvprintf
-  /*static*/ void Logger::logvprintf(LogLevel level, int category, const char *fmt, va_list args)
-  {
-    char buffer[400];
-    unsigned *local_proc_id = (unsigned*)pthread_getspecific(local_proc_key);
-    sprintf(buffer, "[%d - %lx] {%s}{%s}: ",
-            0, /*pthread_self()*/long(*local_proc_id), Logger::stringify(level), Logger::get_categories_by_id()[category].c_str());
-    int len = strlen(buffer);
-    vsnprintf(buffer+len, 399-len, fmt, args);
-    strcat(buffer, "\n");
-#ifdef ORDERED_LOGGING 
-    // Update the length to reflect the newline character
-    len = strlen(buffer);
-    long long loc = __sync_fetch_and_add(get_logging_location(),len);
-    // Check to see if we can actually fit
-    // If we can't keep looping until we're allowed to write
-    int possible_end = (loc <= logging_buffer_size) ? int(loc) : -1;
-    // There is an implicit assumption in this loop that the spinning
-    // threads can't count to 2^64 before the buffer is written out
-    // to the file.  Pretty sure this is a safe assumption...
-    while ((loc+len) >= logging_buffer_size)
-    {
-      // Wait until all the writers have finished
-      if (possible_end == *((volatile int*)get_written_location()))
-      {
-        // We're the first ones to update and not fit, so do
-        // the write back of the buffer, and then mark that it
-        // is ready to use
-        assert(write(get_log_file(), get_logging_buffer(), possible_end) >= 0);
-        // Reset the end written location first
-        *((volatile int*)get_written_location()) = 0;
-        // Then use compare and swap to reset the logging location
-        *((volatile long long*)get_logging_location()) = 0;
-      }
-      // Now get a new location and see if it works
-      long long new_loc = __sync_fetch_and_add(get_logging_location(),len);
-      // If new_loc is less than the old_loc need to reset the possible end
-      // since the buffer was reset
-      if (new_loc < loc)
-        possible_end = (loc <= logging_buffer_size) ? int(loc) : -1;
-      loc = new_loc;
-    }
-    // Once we're here, we can just do our write into the buffer and then
-    // mark that we did our write
-    memcpy(get_logging_buffer()+loc,buffer,len);
-    __sync_fetch_and_add(get_written_location(),len);
-#else
-    fflush(stdout);
-    fputs(buffer, stderr);
-#endif
-  }
 };
 
 namespace LegionRuntime {
@@ -5993,11 +7426,11 @@ namespace LegionRuntime {
 #ifdef BOUNDS_CHECKS
       check_bounds(region, ptr);
 #endif
-      RegionInstance::Impl *impl = (RegionInstance::Impl *) internal;
+      RegionInstanceImpl *impl = (RegionInstanceImpl *) internal;
       int index = ((impl->get_linearization().get_dim() == 1) ?
 		     (int)(impl->get_linearization().get_mapping<1>()->image(ptr.value)) :
 		     ptr.value);
-      size_t field_start, field_size, within_field;
+      size_t field_start = 0, field_size = 0, within_field = 0;
 #ifndef NDEBUG
       size_t bytes2 = 
 #endif
@@ -6016,9 +7449,9 @@ namespace LegionRuntime {
 #ifdef BOUNDS_CHECKS
       check_bounds(region, dp);
 #endif
-      RegionInstance::Impl *impl = (RegionInstance::Impl *) internal;
+      RegionInstanceImpl *impl = (RegionInstanceImpl *) internal;
       int index = impl->get_linearization().get_image(dp);
-      size_t field_start, field_size, within_field;
+      size_t field_start = 0, field_size = 0, within_field = 0;
 #ifndef NDEBUG
       size_t bytes2 = 
 #endif
@@ -6037,11 +7470,11 @@ namespace LegionRuntime {
 #ifdef BOUNDS_CHECKS
       check_bounds(region, ptr);
 #endif
-      RegionInstance::Impl *impl = (RegionInstance::Impl *) internal;
+      RegionInstanceImpl *impl = (RegionInstanceImpl *) internal;
       int index = ((impl->get_linearization().get_dim() == 1) ?
 		     (int)(impl->get_linearization().get_mapping<1>()->image(ptr.value)) :
 		     ptr.value);
-      size_t field_start, field_size, within_field;
+      size_t field_start = 0, field_size = 0, within_field = 0;
 #ifndef NDEBUG
       size_t bytes2 = 
 #endif
@@ -6060,9 +7493,9 @@ namespace LegionRuntime {
 #ifdef BOUNDS_CHECKS
       check_bounds(region, dp);
 #endif
-      RegionInstance::Impl *impl = (RegionInstance::Impl *) internal;
+      RegionInstanceImpl *impl = (RegionInstanceImpl *) internal;
       int index = impl->get_linearization().get_image(dp);
-      size_t field_start, field_size, within_field;
+      size_t field_start = 0, field_size = 0, within_field = 0;
 #ifndef NDEBUG
       size_t bytes2 = 
 #endif
@@ -6078,11 +7511,11 @@ namespace LegionRuntime {
 #ifdef BOUNDS_CHECKS
       check_bounds(region, ptr);
 #endif
-      RegionInstance::Impl *impl = (RegionInstance::Impl *) internal;
+      RegionInstanceImpl *impl = (RegionInstanceImpl *) internal;
       int index = ((impl->get_linearization().get_dim() == 1) ?
 		     (int)(impl->get_linearization().get_mapping<1>()->image(ptr.value)) :
 		     ptr.value);
-      size_t field_start, field_size, within_field;
+      size_t field_start = 0, field_size = 0, within_field = 0;
 #ifndef NDEBUG
       size_t bytes = 
 #endif
@@ -6105,12 +7538,12 @@ namespace LegionRuntime {
     template <int DIM>
     void *AccessorType::Generic::Untyped::raw_rect_ptr(const Rect<DIM>& r, Rect<DIM>& subrect, ByteOffset *offsets)
     {
-      RegionInstance::Impl *impl = (RegionInstance::Impl *) internal;
+      RegionInstanceImpl *impl = (RegionInstanceImpl *) internal;
       Arrays::Mapping<DIM, 1> *mapping = impl->get_linearization().get_mapping<DIM>();
       Point<1> strides[DIM];
       int index = mapping->image_linear_subrect(r, subrect, strides);
       // TODO: trim subrect in HybridSOA case
-      size_t field_start, field_size, within_field;
+      size_t field_start = 0, field_size = 0, within_field = 0;
 #ifndef NDEBUG
       size_t bytes2 = 
 #endif
@@ -6119,7 +7552,7 @@ namespace LegionRuntime {
       assert(bytes2 == 1);
       char *dst = (char *)(impl->get_address(index, field_start, field_size, within_field));
       for(int i = 0; i < DIM; i++)
-	offsets[i].offset = (strides[i] * 
+	offsets[i].offset = (strides[i][0] * 
 			     ((impl->get_block_size() > 1) ? field_size : impl->get_elmt_size()));
       return dst;
     }
@@ -6132,7 +7565,7 @@ namespace LegionRuntime {
 
     bool AccessorType::Generic::Untyped::get_aos_parameters(void *& base, size_t& stride) const
     {
-      RegionInstance::Impl *impl = (RegionInstance::Impl *) internal;
+      RegionInstanceImpl *impl = (RegionInstanceImpl *) internal;
 
       if (impl->get_block_size() != 1) return false;
       if(base != 0) return false;
@@ -6149,7 +7582,7 @@ namespace LegionRuntime {
 
     bool AccessorType::Generic::Untyped::get_soa_parameters(void *& base, size_t& stride) const
     {
-      RegionInstance::Impl *impl = (RegionInstance::Impl *) internal;
+      RegionInstanceImpl *impl = (RegionInstanceImpl *) internal;
 
       int inst_first_elmt = 0;
       const DomainLinearization& dl = impl->get_linearization();
@@ -6217,7 +7650,7 @@ namespace LegionRuntime {
 
     bool AccessorType::Generic::Untyped::get_redfold_parameters(void *& base) const
     {
-      RegionInstance::Impl *impl = (RegionInstance::Impl *) internal;
+      RegionInstanceImpl *impl = (RegionInstanceImpl *) internal;
 
       // make sure this is a reduction fold instance
       if(!impl->is_reduction() || impl->is_list_reduction()) return false;

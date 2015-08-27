@@ -1,4 +1,4 @@
--- Copyright 2015 Stanford University
+-- Copyright 2015 Stanford University, NVIDIA Corporation
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -94,12 +94,203 @@ function convert_lua_value(cx, node, value)
       span = node.span,
     }
   else
-    log.error("unable to specialize value of type " .. tostring(type(value)))
+    log.error(node, "unable to specialize value of type " .. tostring(type(value)))
+  end
+end
+
+-- for the moment, multi-field accesses should be used only in
+-- unary and binary expressions
+
+local function join_num_accessed_fields(a, b)
+  if a == 1 then
+    return b
+  elseif b == 1 then
+    return a
+  elseif a ~= b then
+    return false
+  else
+    return a
+  end
+end
+
+local function get_num_accessed_fields(node)
+  if type(node) == "function" then return 1 end
+
+  if node:is(ast.unspecialized.ExprID) then
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprEscape) then
+    if get_num_accessed_fields(node.expr) > 1 then return false
+    else return 1 end
+
+  elseif node:is(ast.unspecialized.ExprConstant) then
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprFieldAccess) then
+    return get_num_accessed_fields(node.value) * #node.field_names
+
+  elseif node:is(ast.unspecialized.ExprIndexAccess) then
+    if get_num_accessed_fields(node.value) > 1 then return false end
+    if get_num_accessed_fields(node.index) > 1 then return false end
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprMethodCall) then
+    if get_num_accessed_fields(node.value) > 1 then return false end
+    for _, arg in pairs(node.args) do
+      if get_num_accessed_fields(arg) > 1 then return false end
+    end
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprCall) then
+    if get_num_accessed_fields(node.fn) > 1 then return false end
+    for _, arg in pairs(node.args) do
+      if get_num_accessed_fields(arg) > 1 then return false end
+    end
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprCtor) then
+    node.fields:map(function(field)
+      if field:is(ast.unspecialized.ExprCtorListField) then
+        if get_num_accessed_fields(field.value) > 1 then return false end
+      elseif field:is(ast.unspecialized.ExprCtorListField) then
+        if get_num_accessed_fields(field.num_expr) > 1 then return false end
+        if get_num_accessed_fields(field.value) > 1 then return false end
+      end
+    end)
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprRawContext) then
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprRawFields) then
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprRawPhysical) then
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprRawRuntime) then
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprRawValue) then
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprIsnull) then
+    if get_num_accessed_fields(node.pointer) > 1 then return false end
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprNew) then
+    if get_num_accessed_fields(node.pointer_type_expr) > 1 then return false end
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprNull) then
+    if get_num_accessed_fields(node.pointer_type_expr) > 1 then return false end
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprDynamicCast) then
+    if get_num_accessed_fields(node.type_expr) > 1 then return false end
+    if get_num_accessed_fields(node.value) > 1 then return false end
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprStaticCast) then
+    if get_num_accessed_fields(node.type_expr) > 1 then return false end
+    if get_num_accessed_fields(node.value) > 1 then return false end
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprIspace) then
+    if get_num_accessed_fields(node.fspace_type_expr) > 1 then return false end
+    if get_num_accessed_fields(node.size) > 1 then return false end
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprRegion) then
+    if get_num_accessed_fields(node.fspace_type_expr) > 1 then return false end
+    if get_num_accessed_fields(node.size) > 1 then return false end
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprPartition) then
+    if get_num_accessed_fields(node.disjointness_expr) > 1 then return false end
+    if get_num_accessed_fields(node.region_type_expr) > 1 then return false end
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprCrossProduct) then
+    return 1
+
+  elseif node:is(ast.unspecialized.ExprUnary) then
+    return get_num_accessed_fields(node.rhs)
+
+  elseif node:is(ast.unspecialized.ExprBinary) then
+    return join_num_accessed_fields(get_num_accessed_fields(node.lhs),
+                                    get_num_accessed_fields(node.rhs))
+
+  elseif node:is(ast.unspecialized.ExprDeref) then
+    if get_num_accessed_fields(node.value) > 1 then return false end
+    return 1
+
+  else
+    assert(false, "unreachable")
+  end
+end
+
+local function get_nth_field_access(node, idx)
+  if node:is(ast.unspecialized.ExprFieldAccess) then
+    local num_accessed_fields_value = get_num_accessed_fields(node.value)
+    local num_accessed_fields = #node.field_names
+
+    local idx1 = math.floor((idx - 1) / num_accessed_fields) + 1
+    local idx2 = (idx - 1) % num_accessed_fields + 1
+
+    local field_names = terralib.newlist()
+    field_names:insert(node.field_names[idx2])
+    return node {
+      value = get_nth_field_access(node.value, idx1),
+      field_names = field_names,
+    }
+
+  elseif node:is(ast.unspecialized.ExprUnary) then
+    return node { rhs = get_nth_field_access(node.rhs, idx) }
+
+  elseif node:is(ast.unspecialized.ExprBinary) then
+    return node {
+      lhs = get_nth_field_access(node.lhs, idx),
+      rhs = get_nth_field_access(node.rhs, idx),
+    }
+
+  else
+    return node
+  end
+end
+
+local function has_all_valid_field_accesses(node)
+  if node:is(ast.unspecialized.StatAssignment) or
+     node:is(ast.unspecialized.StatReduce) then
+
+    local valid = true
+    std.zip(node.lhs, node.rhs):map(function(pair)
+      if valid then
+        local lh, rh = unpack(pair)
+        local num_accessed_fields_lh = get_num_accessed_fields(lh)
+        local num_accessed_fields_rh = get_num_accessed_fields(rh)
+        local num_accessed_fields =
+          join_num_accessed_fields(num_accessed_fields_lh,
+                                   num_accessed_fields_rh)
+        if num_accessed_fields == false then
+          valid = false
+        -- special case when there is only one assignee for multiple
+        -- values on the RHS
+        elseif num_accessed_fields_lh == 1 and
+               num_accessed_fields_rh > 1 then
+          valid = false
+        end
+      end
+    end)
+
+    return valid
+  else
+    assert(false, "unreachable")
   end
 end
 
 function specialize.expr_id(cx, node)
-  local value = cx.env:lookup(node.name)
+  local value = cx.env:lookup(node, node.name)
   return convert_lua_value(cx, node, value)
 end
 
@@ -116,14 +307,18 @@ function specialize.expr_constant(cx, node)
   }
 end
 
+-- assumes multi-field accesses have already been flattened by the caller
 function specialize.expr_field_access(cx, node)
+  if #node.field_names ~= 1 then
+    log.error(node, "illegal use of multi-field access")
+  end
   local value = specialize.expr(cx, node.value)
   if value:is(ast.specialized.ExprLuaTable) then
-    return convert_lua_value(cx, node, value.value[node.field_name])
+    return convert_lua_value(cx, node, value.value[node.field_names[1]])
   else
     return ast.specialized.ExprFieldAccess {
       value = value,
-      field_name = node.field_name,
+      field_name = node.field_names[1],
       span = node.span,
     }
   end
@@ -258,6 +453,13 @@ function specialize.expr_raw_runtime(cx, node)
   }
 end
 
+function specialize.expr_raw_value(cx, node)
+  return ast.specialized.ExprRawValue {
+    value = specialize.expr(cx, node.value),
+    span = node.span,
+  }
+end
+
 function specialize.expr_isnull(cx, node)
   local pointer = specialize.expr(cx, node.pointer)
   return ast.specialized.ExprIsnull {
@@ -268,13 +470,15 @@ end
 
 function specialize.expr_new(cx, node)
   local pointer_type = node.pointer_type_expr(cx.env:env())
-  assert(std.is_ptr(pointer_type))
-  local regions = pointer_type.points_to_region_symbols
-  if #regions ~= 1 then
-   log.error("new requires pointer type with exactly one region, got " .. tostring(pointer_type))
+  if not std.is_bounded_type(pointer_type) then
+    log.error(node, "new requires bounded type, got " .. tostring(pointer_type))
+  end
+  local bounds = pointer_type.bounds_symbols
+  if #bounds ~= 1 then
+    log.error(node, "new requires bounded type with exactly one region, got " .. tostring(pointer_type))
   end
   local region = ast.specialized.ExprID {
-    value = regions[1],
+    value = bounds[1],
     span = node.span,
   }
   return ast.specialized.ExprNew {
@@ -312,12 +516,36 @@ function specialize.expr_static_cast(cx, node)
   }
 end
 
+function specialize.expr_ispace(cx, node)
+  local index_type = node.index_type_expr(cx.env:env())
+  if not std.is_index_type(index_type) then
+    log.error(node, "type mismatch in argument 1: expected an index type but got " .. tostring(index_type))
+  end
+
+  local expr_type = std.ispace(index_type)
+  return ast.specialized.ExprIspace {
+    index_type = index_type,
+    extent = specialize.expr(cx, node.extent),
+    start = node.start and specialize.expr(cx, node.start),
+    expr_type = expr_type,
+    span = node.span,
+  }
+end
+
 function specialize.expr_region(cx, node)
-  local element_type = node.element_type_expr(cx.env:env())
-  local expr_type = std.region(element_type)
+  local ispace = specialize.expr(cx, node.ispace)
+  local ispace_symbol
+  if ispace:is(ast.specialized.ExprID) then
+    ispace_symbol = ispace.value
+  else
+    ispace_symbol = terralib.newsymbol()
+  end
+  local fspace_type = node.fspace_type_expr(cx.env:env())
+  local expr_type = std.region(ispace_symbol, fspace_type)
   return ast.specialized.ExprRegion {
-    element_type = element_type,
-    size = specialize.expr(cx, node.size),
+    ispace = ispace,
+    ispace_symbol = ispace_symbol,
+    fspace_type = fspace_type,
     expr_type = expr_type,
     span = node.span,
   }
@@ -329,7 +557,7 @@ function specialize.expr_partition(cx, node)
   -- Hack: Need to do this type checking early because otherwise we
   -- can't construct a type here.
   if disjointness ~= std.disjoint and disjointness ~= std.aliased then
-    log.error("type mismatch in argument 1: expected disjoint or aliased but got " ..
+    log.error(node, "type mismatch in argument 1: expected disjoint or aliased but got " ..
                 tostring(disjointness))
   end
   local expr_type = std.partition(disjointness, region_type)
@@ -347,20 +575,24 @@ function specialize.expr_partition(cx, node)
 end
 
 function specialize.expr_cross_product(cx, node)
-  local lhs_type = node.lhs_type_expr(cx.env:env())
-  local rhs_type = node.rhs_type_expr(cx.env:env())
-  local expr_type = std.cross_product(lhs_type, rhs_type)
-  local lhs = ast.specialized.ExprID {
-    value = expr_type.lhs_partition_symbol,
-    span = node.span,
-  }
-  local rhs = ast.specialized.ExprID {
-    value = expr_type.rhs_partition_symbol,
-    span = node.span,
-  }
+  local arg_types = node.arg_type_exprs:map(
+    function(arg_type_expr) return arg_type_expr(cx.env:env()) end)
+  -- Hack: Need to do this type checking early because otherwise we
+  -- can't construct a type here.
+  if #arg_types < 2 then
+    log.error(node, "cross product expected at least 2 arguments, got " ..
+                tostring(#arg_types))
+  end
+  local expr_type = std.cross_product(unpack(arg_types))
+  local args = expr_type.partition_symbols:map(
+    function(partition)
+      return ast.specialized.ExprID {
+        value = partition,
+        span = node.span,
+      }
+  end)
   return ast.specialized.ExprCrossProduct {
-    lhs = lhs,
-    rhs = rhs,
+    args = args,
     expr_type = expr_type,
     span = node.span,
   }
@@ -427,6 +659,9 @@ function specialize.expr(cx, node)
   elseif node:is(ast.unspecialized.ExprRawRuntime) then
     return specialize.expr_raw_runtime(cx, node)
 
+  elseif node:is(ast.unspecialized.ExprRawValue) then
+    return specialize.expr_raw_value(cx, node)
+
   elseif node:is(ast.unspecialized.ExprIsnull) then
     return specialize.expr_isnull(cx, node)
 
@@ -441,6 +676,9 @@ function specialize.expr(cx, node)
 
   elseif node:is(ast.unspecialized.ExprStaticCast) then
     return specialize.expr_static_cast(cx, node)
+
+  elseif node:is(ast.unspecialized.ExprIspace) then
+    return specialize.expr_ispace(cx, node)
 
   elseif node:is(ast.unspecialized.ExprRegion) then
     return specialize.expr_region(cx, node)
@@ -512,7 +750,7 @@ function specialize.stat_for_num(cx, node)
   local cx = cx:new_local_scope()
   local var_type = node.type_expr(cx.env:env())
   local symbol = terralib.newsymbol(var_type, node.name)
-  cx.env:insert(node.name, symbol)
+  cx.env:insert(node, node.name, symbol)
 
   -- Enter scope for body.
   local cx = cx:new_local_scope()
@@ -537,7 +775,7 @@ function specialize.stat_for_list(cx, node)
     var_type = node.type_expr(cx.env:env())
   end
   local symbol = terralib.newsymbol(var_type, node.name)
-  cx.env:insert(node.name, symbol)
+  cx.env:insert(node, node.name, symbol)
 
   -- Enter scope for body.
   local cx = cx:new_local_scope()
@@ -576,7 +814,7 @@ function specialize.stat_var(cx, node)
   for i, var_name in ipairs(node.var_names) do
     if node.values[i] and node.values[i]:is(ast.unspecialized.ExprRegion) then
       local symbol = terralib.newsymbol(var_name)
-      cx.env:insert(var_name, symbol)
+      cx.env:insert(node, var_name, symbol)
       symbols[i] = symbol
     end
   end
@@ -593,7 +831,7 @@ function specialize.stat_var(cx, node)
     local symbol = symbols[i]
     if not symbol then
       symbol = terralib.newsymbol(var_type, var_name)
-      cx.env:insert(var_name, symbol)
+      cx.env:insert(node, var_name, symbol)
       symbols[i] = symbol
     end
   end
@@ -609,7 +847,7 @@ function specialize.stat_var_unpack(cx, node)
   local symbols = terralib.newlist()
   for _, var_name in ipairs(node.var_names) do
     local symbol = terralib.newsymbol(var_name)
-    cx.env:insert(var_name, symbol)
+    cx.env:insert(node, var_name, symbol)
     symbols:insert(symbol)
   end
 
@@ -636,25 +874,41 @@ function specialize.stat_break(cx, node)
   }
 end
 
-function specialize.stat_assignment(cx, node)
-  return ast.specialized.StatAssignment {
-    lhs = node.lhs:map(
-      function(value) return specialize.expr(cx, value) end),
-    rhs = node.rhs:map(
-      function(value) return specialize.expr(cx, value) end),
-    span = node.span,
-  }
-end
+function specialize.stat_assignment_or_stat_reduce(cx, node)
+  if not has_all_valid_field_accesses(node) then
+    log.error(node, "invalid use of multi-field access")
+  end
 
-function specialize.stat_reduce(cx, node)
-  return ast.specialized.StatReduce {
-    op = node.op,
-    lhs = node.lhs:map(
-      function(value) return specialize.expr(cx, value) end),
-    rhs = node.rhs:map(
-      function(value) return specialize.expr(cx, value) end),
-    span = node.span,
-  }
+  local flattened_lhs = terralib.newlist()
+  local flattened_rhs = terralib.newlist()
+
+  std.zip(node.lhs, node.rhs):map(function(pair)
+    local lh, rh = unpack(pair)
+    local num_accessed_fields =
+      join_num_accessed_fields(get_num_accessed_fields(lh),
+                               get_num_accessed_fields(rh))
+    assert(num_accessed_fields ~= false, "unreachable")
+    for idx = 1, num_accessed_fields do
+      flattened_lhs:insert(specialize.expr(cx, get_nth_field_access(lh, idx)))
+      flattened_rhs:insert(specialize.expr(cx, get_nth_field_access(rh, idx)))
+    end
+  end)
+
+  if node:is(ast.unspecialized.StatAssignment) then
+    return ast.specialized.StatAssignment {
+      lhs = flattened_lhs,
+      rhs = flattened_rhs,
+      span = node.span,
+    }
+
+  else -- if node:is(ast.unspecialized.StatReduce)
+    return ast.specialized.StatReduce {
+      lhs = flattened_lhs,
+      rhs = flattened_rhs,
+      op = node.op,
+      span = node.span,
+    }
+  end
 end
 
 function specialize.stat_expr(cx, node)
@@ -696,10 +950,10 @@ function specialize.stat(cx, node)
     return specialize.stat_break(cx, node)
 
   elseif node:is(ast.unspecialized.StatAssignment) then
-    return specialize.stat_assignment(cx, node)
+    return specialize.stat_assignment_or_stat_reduce(cx, node)
 
   elseif node:is(ast.unspecialized.StatReduce) then
-    return specialize.stat_reduce(cx, node)
+    return specialize.stat_assignment_or_stat_reduce(cx, node)
 
   elseif node:is(ast.unspecialized.StatExpr) then
     return specialize.stat_expr(cx, node)
@@ -730,7 +984,7 @@ function specialize.privilege_region_fields(cx, node)
 end
 
 function specialize.privilege_region(cx, node)
-  local region = cx.env:lookup(node.region_name)
+  local region = cx.env:lookup(node, node.region_name)
   local fields = specialize.privilege_region_fields(cx, node.fields)
 
   return {
@@ -757,8 +1011,8 @@ function specialize.privilege(cx, node)
 end
 
 function specialize.constraint(cx, node)
-  local lhs = cx.env:lookup(node.lhs)
-  local rhs = cx.env:lookup(node.rhs)
+  local lhs = cx.env:lookup(node, node.lhs)
+  local rhs = cx.env:lookup(node, node.rhs)
 
   return std.constraint(lhs, rhs, node.op)
 end
@@ -768,7 +1022,7 @@ function specialize.stat_task_param(cx, node)
   -- the region so introduce the symbol before type checking to allow
   -- for this recursion.
   local symbol = terralib.newsymbol(node.param_name)
-  cx.env:insert(node.param_name, symbol)
+  cx.env:insert(node, node.param_name, symbol)
   local param_type = node.type_expr(cx.env:env())
   symbol.type = param_type
 
@@ -781,7 +1035,8 @@ end
 function specialize.stat_task(cx, node)
   local cx = cx:new_local_scope()
   local proto = std.newtask(node.name)
-  cx.env:insert(node.name, proto)
+  proto:setinline(node.inline)
+  cx.env:insert(node, node.name, proto)
   cx = cx:new_local_scope()
 
   local params = node.params:map(
@@ -801,6 +1056,8 @@ function specialize.stat_task(cx, node)
     constraints = constraints,
     body = body,
     prototype = proto,
+    inline = node.inline,
+    cuda = node.cuda,
     span = node.span,
   }
 end
@@ -808,7 +1065,7 @@ end
 function specialize.stat_fspace_param(cx, node)
   -- Insert symbol into environment first to allow circular types.
   local symbol = terralib.newsymbol(node.param_name)
-  cx.env:insert(node.param_name, symbol)
+  cx.env:insert(node, node.param_name, symbol)
 
   local param_type = node.type_expr(cx.env:env())
   symbol.type = param_type
@@ -819,7 +1076,7 @@ end
 function specialize.stat_fspace_field(cx, node)
   -- Insert symbol into environment first to allow circular types.
   local symbol = terralib.newsymbol(node.field_name)
-  cx.env:insert(node.field_name, symbol)
+  cx.env:insert(node, node.field_name, symbol)
 
   local field_type = node.type_expr(cx.env:env())
   symbol.type = field_type
@@ -832,8 +1089,8 @@ end
 
 function specialize.stat_fspace(cx, node)
   local cx = cx:new_local_scope()
-  local fs = std.newfspace(node.name, #node.params > 0)
-  cx.env:insert(node.name, fs)
+  local fs = std.newfspace(node, node.name, #node.params > 0)
+  cx.env:insert(node, node.name, fs)
 
   fs.params = node.params:map(
       function(param) return specialize.stat_fspace_param(cx, param) end)

@@ -13,7 +13,10 @@
 -- limitations under the License.
 
 -- fails-with:
--- invalid cast missing constraint $t * $t
+-- constraint_disjointness0.lg:32: invalid cast missing constraint $t * $t
+--   assert_disjoint { x = t, y = t }
+--                 ^
+
 
 import 'legion'
 
@@ -25,7 +28,7 @@ fspace assert_disjoint {
 } where x * y end
 
 task main()
-  var t = region(int, 5)
+  var t = region(ispace(ptr, 5), int)
   assert_disjoint { x = t, y = t }
 end
 legionlib.start(main)

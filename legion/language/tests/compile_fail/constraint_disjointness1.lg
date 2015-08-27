@@ -13,7 +13,9 @@
 -- limitations under the License.
 
 -- fails-with:
--- invalid cast missing constraint $t * $t0
+-- constraint_disjointness1.lg:39: invalid cast missing constraint $t * $t0
+--   assert_disjoint { x = t, y = t0 }
+--                 ^
 
 import 'legion'
 
@@ -25,7 +27,7 @@ fspace assert_disjoint {
 } where x * y end
 
 task main()
-  var t = region(int, 5)
+  var t = region(ispace(ptr, 5), int)
   var colors = c.legion_coloring_create()
   c.legion_coloring_ensure_color(colors, 0)
   c.legion_coloring_ensure_color(colors, 1)

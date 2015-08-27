@@ -1,4 +1,4 @@
-/* Copyright 2015 Stanford University
+/* Copyright 2015 Stanford University, NVIDIA Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,6 +61,7 @@ namespace LegionRuntime {
       MATERIALIZED_VIEW_ALLOC,
       REDUCTION_VIEW_ALLOC,
       COMPOSITE_VIEW_ALLOC,
+      FILL_VIEW_ALLOC,
       INDIVIDUAL_TASK_ALLOC,
       POINT_TASK_ALLOC,
       INDEX_TASK_ALLOC,
@@ -83,6 +84,11 @@ namespace LegionRuntime {
       TRACE_CAPTURE_OP_ALLOC,
       TRACE_COMPLETE_OP_ALLOC,
       MUST_EPOCH_OP_ALLOC,
+      PENDING_PARTITION_OP_ALLOC,
+      DEPENDENT_PARTITION_OP_ALLOC,
+      FILL_OP_ALLOC,
+      ATTACH_OP_ALLOC,
+      DETACH_OP_ALLOC,
       MESSAGE_BUFFER_ALLOC,
       EXECUTING_CHILD_ALLOC,
       EXECUTED_CHILD_ALLOC,
@@ -157,7 +163,9 @@ namespace LegionRuntime {
 #endif
       // memalign is faster than posix_memalign so use it if we have it
 #ifdef __MACH__
+#ifndef NDEBUG
         int error = 
+#endif
           posix_memalign(&result, ALIGNMENT, alloc_size);
         assert(error == 0);
 #else
@@ -530,12 +538,13 @@ namespace LegionRuntime {
 #endif
     };
 
-    template<typename T, AllocationType A = LAST_ALLOC>
+    template<typename T, AllocationType A = LAST_ALLOC,
+             typename COMPARATOR = std::less<T> >
     struct LegionSet {
-      typedef std::set<T, std::less<T>, 
+      typedef std::set<T, COMPARATOR, 
                        LegionAllocator<T, A, false/*aligned*/> > tracked;
-      typedef std::set<T, std::less<T>, AlignedAllocator<T> > aligned;
-      typedef std::set<T, std::less<T>,
+      typedef std::set<T, COMPARATOR, AlignedAllocator<T> > aligned;
+      typedef std::set<T, COMPARATOR, 
                        LegionAllocator<T, A, true/*aligned*/> > track_aligned;
     };
 
@@ -563,13 +572,14 @@ namespace LegionRuntime {
                          LegionAllocator<T, A, true/*aligned*/> > track_aligned;
     };
 
-    template<typename T1, typename T2, AllocationType A = LAST_ALLOC>
+    template<typename T1, typename T2, 
+             AllocationType A = LAST_ALLOC, typename COMPARATOR = std::less<T1> >
     struct LegionMap {
-      typedef std::map<T1, T2, std::less<T1>,
+      typedef std::map<T1, T2, COMPARATOR,
         LegionAllocator<std::pair<const T1, T2>, A, false/*aligned*/> > tracked;
-      typedef std::map<T1, T2, std::less<T1>,
+      typedef std::map<T1, T2, COMPARATOR,
                            AlignedAllocator<std::pair<const T1, T2> > > aligned;
-      typedef std::map<T1, T2, std::less<T1>, LegionAllocator<
+      typedef std::map<T1, T2, COMPARATOR, LegionAllocator<
                    std::pair<const T1, T2>, A, true/*aligned*/> > track_aligned;
     };
   };

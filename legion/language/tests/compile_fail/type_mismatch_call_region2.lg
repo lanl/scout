@@ -13,15 +13,17 @@
 -- limitations under the License.
 
 -- fails-with:
--- type mismatch in argument 3: expected ptr(int32, $s) but got ptr(int32, $r)
+-- type_mismatch_call_region2.lg:28: type mismatch in argument 3: expected ptr(int32, $s) but got ptr(int32, $r)
+--   f(r, s, t)
+--   ^
 
 import "legion"
 
 task f(x : region(int), y : region(int), z : ptr(int, y)) end
 
 task g()
-  var r = region(int, 5)
-  var s = region(int, 5)
+  var r = region(ispace(ptr, 5), int)
+  var s = region(ispace(ptr, 5), int)
   var t = new(ptr(int, r))
   f(r, s, t)
 end

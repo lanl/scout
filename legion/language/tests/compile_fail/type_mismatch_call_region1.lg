@@ -13,16 +13,17 @@
 -- limitations under the License.
 
 -- fails-with:
--- type mismatch in argument 1: expected region(double) but got region(int32)
+-- type_mismatch_call_region1.lg:27: type mismatch in argument 1: expected region(double) but got region(int32)
+--   f(r, s)
+--   ^
 
 import "legion"
 
 task f(x : region(double), y : region(int)) end
 
 task g()
-  var r = region(int, 5)
-  var s = region(double, 5)
+  var r = region(ispace(ptr, 5), int)
+  var s = region(ispace(ptr, 5), double)
   f(r, s)
 end
-
-g()
+legionlib.start(g)

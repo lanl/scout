@@ -297,7 +297,7 @@ bool LzGpuMapper::map_inline(Inline *inline_operation)
 
   log_mapper.debug(
     "inline mapping region (%d,%d,%d) target ranking front %d (size %lu)",
-    req.region.get_index_space().id,
+    req.region.get_index_space().get_id(),
     req.region.get_field_space().get_id(),
     req.region.get_tree_id(),
     req.target_ranking[0].id,
@@ -327,7 +327,7 @@ void LzGpuMapper::notify_mapping_failed(const Mappable *mappable)
       log_mapper.warning(
         "mapping %s on inline region (%d,%d,%d) memory %d",
         (req.mapping_failed ? "failed" : "succeeded"),
-        region.get_index_space().id,
+        region.get_index_space().get_id(),
         region.get_field_space().get_id(),
         region.get_tree_id(),
         req.selected_memory.id);
@@ -374,7 +374,7 @@ Color LzGpuMapper::get_task_color_by_region(Task *task, const RegionRequirement 
   return 0;
 }
 
-void create_mappers(
+static void create_mappers(
   Machine machine,
   HighLevelRuntime *runtime,
   const std::set<Processor> &local_procs
