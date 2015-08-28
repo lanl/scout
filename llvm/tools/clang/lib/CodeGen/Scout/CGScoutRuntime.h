@@ -113,6 +113,7 @@ namespace clang {
       llvm::Function *MeshNumEntitiesFunc();
       llvm::Function *MeshGetToIndicesFunc();
       llvm::Function *MeshGetFromIndicesFunc();
+      llvm::Function *MeshTopologyComputeAllFunc();
       
       void DumpValue(CodeGenFunction& CGF, const char* label,
                      llvm::Value* value);

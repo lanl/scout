@@ -131,6 +131,20 @@ namespace scout{
           fromIndexVec_.push_back(toIdVec_.size());
         }
       }
+
+      void init(Id* fromIndices,
+                size_t fromCount,
+                Id* toIndices,
+                size_t toCount){
+        toIdVec_.clear();
+        fromIndexVec_.clear();
+
+        std::copy(fromIndices, fromIndices + fromCount,
+                  fromIndexVec_.begin());
+
+        std::copy(toIndices, toIndices + toCount,
+                  toIdVec_.begin());
+      }
     
       void resize(IndexVec& numConns){
         clear();
@@ -211,6 +225,16 @@ namespace scout{
       Id* rawFromIndexVec(){
         return fromIndexVec_.data();
       }
+
+      Id* rawIdVec(size_t& size){
+        size = toIdVec_.size();
+        return toIdVec_.data();
+      }
+
+      Id* rawFromIndexVec(size_t& size){
+        size = fromIndexVec_.size();
+        return fromIndexVec_.data();
+      }
     
       void set(ConnVec& conns){
         clear();
@@ -280,6 +304,24 @@ namespace scout{
     virtual void build(size_t dim) = 0;
     
     virtual void compute(size_t fromDim, size_t toDim) = 0;  
+
+    virtual void computeAll() = 0;
+
+    virtual void setConnectivityRaw(size_t fromDim,
+                                    size_t toDim,
+                                    Id* fromIndices,
+                                    size_t fromCount,
+                                    Id* toIds,
+                                    size_t toCount) = 0;
+
+    virtual void getConnectivityRaw(size_t fromDim,
+                                    size_t toDim,
+                                    Id*& fromIndices,
+                                    size_t& fromCount,
+                                    Id*& toIds,
+                                    size_t& toCount) = 0;
+
+    virtual size_t topologicalDimension() = 0;
   
     virtual Connectivity&
     getConnectivity(size_t fromDim, size_t toDim) = 0;
@@ -812,7 +854,18 @@ namespace scout{
         intersect(fromDim, toDim, 0);
       }
     }
-  
+    
+    void computeAll() override{
+      int d = MT::topologicalDimension();
+      for(int i = d; i >= 0; --i){
+        for(int j = 0; j <= d; ++j){
+          if(i != j){
+            compute(i, j);
+          }
+        }
+      }
+    }
+
     size_t numCells(){
       return size_[MT::topologicalDimension()];
     }
@@ -839,7 +892,51 @@ namespace scout{
       assert(toDim < t.size() && "invalid toDim");
       return t[toDim];
     }
-  
+
+    void setConnectivityRaw_(size_t fromDim,
+                             size_t toDim,
+                             Id* fromIndices,
+                             size_t fromCount,
+                             Id* toIds,
+                             size_t toCount){
+      Connectivity& c = getConnectivity_(fromDim, toDim);
+      c.init(fromIndices, fromCount, toIds, toCount);
+    }
+
+    void setConnectivityRaw(size_t fromDim,
+                            size_t toDim,
+                            Id* fromIndices,
+                            size_t fromCount,
+                            Id* toIds,
+                            size_t toCount) override{
+      setConnectivityRaw_(fromDim, toDim, fromIndices, fromCount, toIds, toCount);
+    }
+
+    void getConnectivityRaw(size_t fromDim,
+                            size_t toDim,
+                            Id*& fromIndices,
+                            size_t& fromCount,
+                            Id*& toIds,
+                            size_t& toCount) override{
+      getConnectivityRaw_(fromDim, toDim, fromIndices,
+                          fromCount, toIds, toCount);
+    }
+
+    void getConnectivityRaw_(size_t fromDim,
+                             size_t toDim,
+                             Id*& fromIndices,
+                             size_t& fromCount,
+                             Id*& toIds,
+                             size_t& toCount){
+      Connectivity& c = getConnectivity_(fromDim, toDim);
+      fromIndices = c.rawFromIndexVec(fromCount);
+      toIds = c.rawIdVec(toCount);
+    }
+
+    size_t topologicalDimension() override{
+      return MT::topologicalDimension();
+    }  
+
     void dump(){
       for(size_t i = 0; i < topology_.size(); ++i){
         auto& ci = topology_[i];
@@ -858,6 +955,238 @@ namespace scout{
     
     Topology_ topology_;
     Geometry geometry_;
+  };
+
+  class UniformMesh1dType{
+  public:
+    using Id = uint64_t;
+    using Float = double;
+
+    static constexpr size_t topologicalDimension(){
+      return 1;
+    }
+
+    static constexpr size_t geometricDimension(){
+      return 1;
+    }
+
+    static size_t numEntitiesPerCell(size_t dim){
+      switch(dim){
+      case 0:
+        return 2;
+      case 1:
+        return 1;
+      default:
+        assert(false && "invalid dimension");
+      }
+    }
+
+    static constexpr size_t verticesPerCell(){
+      return 2;
+    }
+  
+    static size_t numVerticesPerEntity(size_t dim){
+      switch(dim){
+      case 0:
+        return 1;
+      case 1:
+        return 2;
+      default:
+        assert(false && "invalid dimension");
+      }
+    }
+  
+    static void createEntities(size_t dim, std::vector<Id>& e, Id* v){
+      assert(false && "nothing to build");
+    }
+  
+  };
+
+  class UniformMesh2dType{
+  public:
+    using Id = uint64_t;
+    using Float = double;
+
+    static constexpr size_t topologicalDimension(){
+      return 2;
+    }
+
+    static constexpr size_t geometricDimension(){
+      return 2;
+    }
+
+    static size_t numEntitiesPerCell(size_t dim){
+      switch(dim){
+      case 0:
+        return 4;
+      case 1:
+        return 4;
+      case 2:
+        return 1;
+      default:
+        assert(false && "invalid dimension");
+      }
+    }
+
+    static constexpr size_t verticesPerCell(){
+      return 4;
+    }
+  
+    static size_t numVerticesPerEntity(size_t dim){
+      switch(dim){
+      case 0:
+        return 1;
+      case 1:
+        return 2;
+      case 2:
+        return 4;
+      default:
+        assert(false && "invalid dimension");
+      }
+    }
+  
+    static void createEntities(size_t dim, std::vector<Id>& e, Id* v){
+      assert(dim = 1);
+      assert(e.size() == 8);
+    
+      e[0] = v[0];
+      e[1] = v[2];
+
+      e[2] = v[1];
+      e[3] = v[3];
+    
+      e[4] = v[0];
+      e[5] = v[1];
+    
+      e[6] = v[2];
+      e[7] = v[3];
+    }
+  
+  };
+
+  class UniformMesh3dType{
+  public:
+    using Id = uint64_t;
+    using Float = double;
+
+    static constexpr size_t topologicalDimension(){
+      return 3;
+    }
+
+    static constexpr size_t geometricDimension(){
+      return 3;
+    }
+
+    static size_t numEntitiesPerCell(size_t dim){
+      switch(dim){
+      case 0:
+        return 8;
+      case 1:
+        return 12;
+      case 2:
+        return 6;
+      default:
+        assert(false && "invalid dimension");
+      }
+    }
+
+    static constexpr size_t verticesPerCell(){
+      return 4;
+    }
+  
+    static size_t numVerticesPerEntity(size_t dim){
+      switch(dim){
+      case 0:
+        return 1;
+      case 1:
+        return 2;
+      case 2:
+        return 4;
+      case 3:
+        return 8;
+      default:
+        assert(false && "invalid dimension");
+      }
+    }
+  
+    static void createEntities(size_t dim, std::vector<Id>& e, Id* v){
+      if(dim == 1){
+        assert(e.size() == 24);
+    
+        e[0] = v[0];
+        e[1] = v[2];
+
+        e[2] = v[1];
+        e[3] = v[3];
+    
+        e[4] = v[0];
+        e[5] = v[1];
+    
+        e[6] = v[2];
+        e[7] = v[3];
+
+        e[8] = v[4];
+        e[9] = v[6];
+
+        e[10] = v[5];
+        e[11] = v[7];
+
+        e[12] = v[4];
+        e[13] = v[5];
+    
+        e[14] = v[6];
+        e[15] = v[7];
+
+        e[16] = v[1];
+        e[17] = v[5];
+
+        e[18] = v[3];
+        e[19] = v[7];
+
+        e[20] = v[0];
+        e[21] = v[4];
+
+        e[22] = v[2];
+        e[23] = v[6];
+      }
+      else if(dim == 2){
+        assert(e.size() == 24);
+
+        e[0] = v[0];
+        e[1] = v[1];
+        e[2] = v[3];
+        e[3] = v[2];
+
+        e[4] = v[4];
+        e[5] = v[5];
+        e[6] = v[7];
+        e[7] = v[6];
+
+        e[8] = v[1];
+        e[9] = v[5];
+        e[10] = v[7];
+        e[11] = v[3];
+
+        e[12] = v[0];
+        e[13] = v[4];
+        e[14] = v[6];
+        e[15] = v[2];
+
+        e[16] = v[0];
+        e[17] = v[1];
+        e[18] = v[5];
+        e[19] = v[4];
+
+        e[20] = v[2];
+        e[21] = v[3];
+        e[22] = v[7];
+        e[23] = v[6];
+      }
+      else{
+        assert(false && "invalid dim");
+      }
+    }
+  
   };
 
 } // scout

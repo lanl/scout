@@ -421,6 +421,11 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     llvm::Value* Unimesh = 0;
 
     if(CGM.getCodeGenOpts().ScoutLegionSupport) {
+      /*
+      args = {meshTopology};
+      Builder.CreateCall(R.MeshTopologyComputeAllFunc(), args);
+      */
+       
       llvm::SmallVector< llvm::Value *, 6 > Args;
 
       llvm::Value* runtime =
@@ -443,6 +448,8 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       for(unsigned int i = Dimensions.size(); i < 3; i++) {
         Args.push_back(Builder.getInt64(0));
       }
+      
+      Args.push_back(meshTopology);
 
       llvm::Function *F = CGM.getLegionCRuntime().ScUniformMeshCreateFunc();
 

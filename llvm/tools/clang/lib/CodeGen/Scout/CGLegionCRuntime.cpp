@@ -985,7 +985,8 @@ llvm::Function* CGLegionCRuntime::ScRegisterTaskFunc(){
 
 llvm::Function* CGLegionCRuntime::ScUniformMeshCreateFunc(){
   return GetFunc("sclegion_uniform_mesh_create",
-                 {RuntimeTy, ContextTy, Int64Ty, Int64Ty, Int64Ty, Int64Ty},
+                 {RuntimeTy, ContextTy, Int64Ty,
+                  Int64Ty, Int64Ty, Int64Ty, VoidPtrTy},
                  ScUniformMeshTy);
 }
 

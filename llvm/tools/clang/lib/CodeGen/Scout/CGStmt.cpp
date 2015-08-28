@@ -696,7 +696,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
           B.CreateCall(R.MeshGetFromIndicesFunc(), args, "from.indices.ptr");
         }
         else{
-          data.fromIndicesPtr = nullptr;
+           data.fromIndicesPtr = nullptr;
         }
         
         data.startToIndicesPtr =

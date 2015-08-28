@@ -60,6 +60,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSHARED_LOWLEVEL -Wno-delete-non-virtua
 
 set(LG_RT_DIR ${SCOUT_SRC_DIR}/legion/runtime)
 
+include_directories(${SCOUT_SRC_DIR}/lib/Runtime/mesh)
+
 list(APPEND low_level_src 
   ${LG_RT_DIR}/shared_lowlevel.cc
   ${LG_RT_DIR}/realm/logging.cc 

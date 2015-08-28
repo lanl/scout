@@ -503,3 +503,11 @@ llvm::Function* CGScoutRuntime::MeshGetFromIndicesFunc(){
                        llvm::PointerType::get(CGM.Int64Ty, 0)
                        );
 }
+
+llvm::Function *CGScoutRuntime::MeshTopologyComputeAllFunc(){
+  return
+  ScoutRuntimeFunction("__scrt_mesh_topology_compute_all",
+                       {CGM.VoidPtrTy},
+                       llvm::PointerType::get(CGM.Int64Ty, 0)
+                       );
+}
