@@ -643,8 +643,6 @@ namespace{
         }
       }
 
-      printf("execute\n");
-
       HighLevelRuntime* runtime = static_cast<HighLevelRuntime*>(rt.impl);
       Context context = static_cast<Context>(ctx.impl);
 
@@ -873,6 +871,8 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   case 3:
     topology = new UniformMesh3d;
     break;
+  default:
+    assert(false && "invalid rank");
   }
 
   ArrayHeader* ah;
@@ -912,7 +912,11 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
     args += sizeof(ArrayHeader);
   }
 
-  uint32_t* meshTailPtr = (uint32_t*) meshPtr;
+  *((MeshTopologyBase**)meshPtr) = topology;
+
+  meshPtr++;
+
+  uint64_t* meshTailPtr = (uint64_t*) meshPtr;
 
   *meshTailPtr = header->width;
   ++meshTailPtr;
