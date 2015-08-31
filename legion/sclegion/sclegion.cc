@@ -526,7 +526,7 @@ namespace{
       void addField(const Field& field, legion_privilege_mode_t mode) {
         fieldSet_.insert(field.fieldName);
 
-        printf("region add Field %d %d\n", field.fieldId, mode);
+        //printf("region add Field %d %d\n", field.fieldId, mode);
         fields_[field.fieldId].mode = mode;
 
         switch (mode) {
@@ -606,8 +606,10 @@ namespace{
                                     legion_privilege_mode_t mode) const {
         for (int i = 0; i < fields_.size(); i++) {
           if (fields_[i].mode == mode) {
+            /*
             printf("addFieldsToIndexLauncher %d %d region %u\n",
                    mode, fields_[i].fieldId,region);
+            */
             launcher.region_requirements[region].add_field(fields_[i].fieldId);
           }
         }
@@ -866,7 +868,7 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   args += sizeof(MeshHeader);
 
   size_t size = 
-    sizeof(void*) * (header->numFields + 1) + 10 * sizeof(uint32_t);
+    sizeof(void*) * (header->numFields + 1) + 10 * sizeof(uint64_t);
   void** meshPtr = (void**) malloc(size);
 
   void* ret = meshPtr;
@@ -881,7 +883,7 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
     if (fi->count == 0) {
       *meshPtr = 0;
     } else {
-      printf("region %d\n",fi->region); 
+      //printf("region %d\n",fi->region); 
       PhysicalRegion* hp = 
         static_cast<PhysicalRegion*>(region[fi->region].impl);
 
@@ -1035,7 +1037,7 @@ sclegion_uniform_mesh_launcher_add_field(
   sclegion_uniform_mesh_launcher_t launcher,
   const char* field_name,
   legion_privilege_mode_t mode) {
-  printf("uniform_mesh_launcher_add_field %s %d\n",field_name, mode);
+  //printf("uniform_mesh_launcher_add_field %s %d\n",field_name, mode);
   static_cast<Launcher*>(launcher.impl)->addField(field_name, mode);
 }
 
