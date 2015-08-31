@@ -102,7 +102,8 @@ extern "C"{
                                size_t rank,
                                size_t width,
                                size_t height,
-                               size_t depth);
+                               size_t depth,
+                               void* topology);
 
   void
   sclegion_uniform_mesh_add_field(sclegion_uniform_mesh_t mesh,

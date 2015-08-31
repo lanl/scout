@@ -66,10 +66,10 @@
 #include "MeshTopology.h"
 
 #define ndump(X) std::cout << __FILE__ << ":" << __LINE__ << ": " <<    \
-                   __PRETTY_FUNCTION__ << ": " << #X << " = " << X << std::endl
+        __PRETTY_FUNCTION__ << ": " << #X << " = " << X << std::endl
 
 #define nlog(X) std::cout << __FILE__ << ":" << __LINE__ << ": " <<     \
-                  __PRETTY_FUNCTION__ << ": " << X << std::endl
+        __PRETTY_FUNCTION__ << ": " << X << std::endl
 
 using namespace scout;
 
@@ -235,8 +235,9 @@ namespace{
 
         element.fieldSpace = runtime_->create_field_space(context_);
 
-        element.fieldAllocator = runtime_->create_field_allocator(context_,
-                                                                  element.fieldSpace);
+        element.fieldAllocator = 
+          runtime_->create_field_allocator(context_,
+                                           element.fieldSpace);
 
         for (auto& itr : fieldMap_) {
           Field& field = itr.second;
@@ -247,7 +248,8 @@ namespace{
 
         element.logicalRegion = 
           runtime_->create_logical_region(context_,
-                                          element.indexSpace, element.fieldSpace);
+                                          element.indexSpace,
+                                          element.fieldSpace);
 
         size_t numSubregions = 1;
 
@@ -258,17 +260,23 @@ namespace{
         header.rank = rank_;
         header.numColors = numSubregions;
 
-        element.colorDomain = Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(numSubregions - 1)));
+        element.colorDomain = 
+          Domain::from_rect<1>(Rect<1>(Point<1>(0),
+                                       Point<1>(numSubregions - 1)));
 
-        element.coloring[0] = Domain::from_rect<1>(Rect<1>(Point<1>(0),
-                                                           Point<1>(element.count-1)));
+        element.coloring[0] = 
+          Domain::from_rect<1>(Rect<1>(Point<1>(0),
+                                       Point<1>(element.count-1)));
 
         element.indexPartition = 
-          runtime_->create_index_partition(context_, element.indexSpace, element.colorDomain,
+          runtime_->create_index_partition(context_, element.indexSpace,
+                                           element.colorDomain,
                                            element.coloring, true);
 
         element.logicalPartition = 
-          runtime_->get_logical_partition(context_, element.logicalRegion, element.indexPartition);
+          runtime_->get_logical_partition(context_,
+                                          element.logicalRegion,
+                                          element.indexPartition);
 
       }
     }
@@ -296,16 +304,21 @@ namespace{
         
       size_t numSubregions = 1;
 
-      array.colorDomain = Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(numSubregions - 1)));
+      array.colorDomain = 
+        Domain::from_rect<1>(Rect<1>(Point<1>(0),
+                                     Point<1>(numSubregions - 1)));
 
-      array.coloring[0] = Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(array.size - 1)));
+      array.coloring[0] = 
+        Domain::from_rect<1>(Rect<1>(Point<1>(0), Point<1>(array.size - 1)));
 
       array.indexPartition = 
-        runtime_->create_index_partition(context_, array.indexSpace, array.colorDomain,
+        runtime_->create_index_partition(context_, array.indexSpace,
+                                         array.colorDomain,
                                          array.coloring, true);
         
       array.logicalPartition = 
-        runtime_->get_logical_partition(context_, array.logicalRegion, array.indexPartition);
+        runtime_->get_logical_partition(context_, array.logicalRegion,
+                                        array.indexPartition);
     }
 
     size_t numItems(sclegion_element_kind_t elementKind) {
@@ -416,7 +429,8 @@ namespace{
       case 3: {
         size_t w1 = width_ + 1;
         size_t h1 = height_ + 1;
-        return (w1 * height_ + h1 * width_) * (depth_ + 1) + w1 * h1 * depth_;
+        return (w1 * height_ + h1 * width_) * 
+          (depth_ + 1) + w1 * h1 * depth_;
       }
       default:
         assert(false && "invalid rank");
@@ -552,7 +566,8 @@ namespace{
       }
 
       void addFieldsToIndexLauncher(IndexLauncher& launcher,
-                                    unsigned region, legion_privilege_mode_t mode) const {
+                                    unsigned region,
+                                    legion_privilege_mode_t mode) const {
         for (int i = 0; i < fields_.size(); i++) {
           if (fields_[i].mode == mode) {
             printf("addFieldsToIndexLauncher %d %d region %u\n",
@@ -619,7 +634,9 @@ namespace{
           Id* toIndices;
           size_t toSize;
 
-          topology->getConnectivityRaw(i, j, fromIndices, fromSize, toIndices, toSize);
+          topology->getConnectivityRaw(i, j,
+                                       fromIndices, fromSize,
+                                       toIndices, toSize);
 
           if(fromSize == 0){
             continue;
@@ -687,10 +704,11 @@ namespace{
 
         const Mesh::Element& element = mesh_->getElement(sclegion_element_kind_t(i));
 
-        launcher.add_region_requirement(RegionRequirement(element.logicalPartition,
-                                                          0/*projection ID*/,
-                                                          region.legionMode(),
-                                                          EXCLUSIVE, element.logicalRegion));
+        launcher.add_region_requirement(RegionRequirement(
+          element.logicalPartition,
+          0/*projection ID*/,
+          region.legionMode(),
+          EXCLUSIVE, element.logicalRegion));
              
       }
 
@@ -727,6 +745,8 @@ namespace{
 
 } // namespace
 
+extern "C"{
+
 void sclegion_init(const char* main_task_name,
                    legion_task_pointer_void_t main_task_pointer) {
 
@@ -738,7 +758,8 @@ void sclegion_init(const char* main_task_name,
   options.idempotent = false;
 
   legion_runtime_register_task_void(0, LOC_PROC, true, true, VARIANT_ID,
-                                    options, main_task_name, main_task_pointer);
+                                    options, main_task_name,
+                                    main_task_pointer);
 }
 
 int sclegion_start(int argc, char** argv) {
@@ -778,7 +799,8 @@ sclegion_uniform_mesh_create(legion_runtime_t rt,
 }
 
 void sclegion_uniform_mesh_add_field(sclegion_uniform_mesh_t mesh,
-                                     const char* field_name, sclegion_element_kind_t element_kind,
+                                     const char* field_name,
+                                     sclegion_element_kind_t element_kind,
                                      sclegion_field_kind_t field_kind) {
   static_cast<Mesh*>(mesh.impl)->addField(field_name, element_kind, field_kind);
 }
@@ -789,8 +811,10 @@ void sclegion_uniform_mesh_init(sclegion_uniform_mesh_t mesh) {
 
 void*
 sclegion_uniform_mesh_reconstruct(const legion_task_t task,
-                                  const legion_physical_region_t* region, unsigned numRegions,
-                                  legion_context_t context, legion_runtime_t runtime) {
+                                  const legion_physical_region_t* region,
+                                  unsigned numRegions,
+                                  legion_context_t context,
+                                  legion_runtime_t runtime) {
 
   HighLevelRuntime* hr = static_cast<HighLevelRuntime*>(runtime.impl);
   Context hc = static_cast<Context>(context.impl);
@@ -816,7 +840,8 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
       *meshPtr = 0;
     } else {
       printf("region %d\n",fi->region); 
-      PhysicalRegion* hp = static_cast<PhysicalRegion*>(region[fi->region].impl);
+      PhysicalRegion* hp = 
+        static_cast<PhysicalRegion*>(region[fi->region].impl);
 
       IndexSpace is = ht->regions[fi->region].region.get_index_space();
       Domain d = hr->get_index_space_domain(hc, is);
@@ -885,7 +910,8 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
     for(size_t j = 0; j < 2; ++j){
       size_t regionIndex = SCLEGION_ELEMENT_MAX + i/2 + j;
 
-      PhysicalRegion* hp = static_cast<PhysicalRegion*>(region[regionIndex].impl);
+      PhysicalRegion* hp = 
+        static_cast<PhysicalRegion*>(region[regionIndex].impl);
                           
       IndexSpace is = ht->regions[regionIndex].region.get_index_space();
       Domain d = hr->get_index_space_domain(hc, is);
@@ -951,20 +977,27 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   return ret;
 }
 
-sclegion_uniform_mesh_launcher_t sclegion_uniform_mesh_create_launcher(sclegion_uniform_mesh_t mesh,
-                                                                       legion_task_id_t task_id) {
+sclegion_uniform_mesh_launcher_t
+sclegion_uniform_mesh_create_launcher(sclegion_uniform_mesh_t mesh,
+                                      legion_task_id_t task_id) {
   return {new Launcher(static_cast<Mesh*>(mesh.impl), task_id)};
 }
 
-void sclegion_uniform_mesh_launcher_add_field(sclegion_uniform_mesh_launcher_t launcher,
-                                              const char* field_name,
-                                              legion_privilege_mode_t mode) {
+void 
+sclegion_uniform_mesh_launcher_add_field(
+  sclegion_uniform_mesh_launcher_t launcher,
+  const char* field_name,
+  legion_privilege_mode_t mode) {
   printf("uniform_mesh_launcher_add_field %s %d\n",field_name, mode);
   static_cast<Launcher*>(launcher.impl)->addField(field_name, mode);
 }
 
-void sclegion_uniform_mesh_launcher_execute(legion_context_t context,
-                                            legion_runtime_t runtime,
-                                            sclegion_uniform_mesh_launcher_t launcher) {
+void
+sclegion_uniform_mesh_launcher_execute(
+  legion_context_t context,
+  legion_runtime_t runtime,
+  sclegion_uniform_mesh_launcher_t launcher) {
   static_cast<Launcher*>(launcher.impl)->execute(context, runtime);
 }
+
+} // extern "C"
