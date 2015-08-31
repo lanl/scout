@@ -136,8 +136,12 @@ namespace scout{
                 size_t fromCount,
                 Id* toIndices,
                 size_t toCount){
+
         toIdVec_.clear();
+        toIdVec_.resize(toCount);
+        
         fromIndexVec_.clear();
+        fromIndexVec_.resize(fromCount);
 
         std::copy(fromIndices, fromIndices + fromCount,
                   fromIndexVec_.begin());
@@ -901,6 +905,9 @@ namespace scout{
                              size_t toCount){
       Connectivity& c = getConnectivity_(fromDim, toDim);
       c.init(fromIndices, fromCount, toIds, toCount);
+
+      size_[fromDim] = fromCount - 1;
+      size_[toDim] = toCount;
     }
 
     void setConnectivityRaw(size_t fromDim,
@@ -909,7 +916,8 @@ namespace scout{
                             size_t fromCount,
                             Id* toIds,
                             size_t toCount) override{
-      setConnectivityRaw_(fromDim, toDim, fromIndices, fromCount, toIds, toCount);
+      setConnectivityRaw_(fromDim, toDim, fromIndices,
+                          fromCount, toIds, toCount);
     }
 
     void getConnectivityRaw(size_t fromDim,

@@ -92,6 +92,8 @@ namespace{
 
   static const legion_variant_id_t VARIANT_ID = 4294967295;
 
+  using Id = uint64_t;
+
   struct MeshHeader{
     uint32_t width;
     uint32_t height;
@@ -100,6 +102,7 @@ namespace{
     uint32_t numFields;
     uint32_t numColors;
     uint32_t numConnections;
+    uint32_t numElements;
   };
 
   struct MeshFieldInfo{
@@ -166,6 +169,7 @@ namespace{
     struct TopologyArray{
       size_t size;
       LogicalRegion logicalRegion;
+      LogicalRegion fillLogicalRegion;
       LogicalPartition logicalPartition;
       IndexPartition indexPartition;
       FieldSpace fieldSpace;
@@ -174,6 +178,7 @@ namespace{
       FieldAllocator fieldAllocator;
       Domain colorDomain;
       DomainColoring coloring;
+      Id* indices;
     };
 
     Mesh(HighLevelRuntime* runtime,
@@ -189,8 +194,9 @@ namespace{
 
     }
 
-    void addField(const char* fieldName, sclegion_element_kind_t elementKind,
-                  sclegion_field_kind_t fieldKind) {
+    void addField(const char* fieldName,
+                  sclegion_element_kind_t elementKind,
+                  sclegion_field_kind_t fieldKind){
       Field field;
       field.fieldName = fieldName;
       field.elementKind = elementKind;
@@ -205,7 +211,7 @@ namespace{
       }
     }
 
-    void getFields(sclegion_element_kind_t elementKind, FieldVec& fields) {
+    void getFields(sclegion_element_kind_t elementKind, FieldVec& fields){
       for (auto& itr : fieldMap_) {
         const Field& field = itr.second;
 
@@ -216,12 +222,12 @@ namespace{
     }
 
     void init() {
-      for (size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i) {
+      for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
         Element& element = elements_[i];
 
         size_t count = element.count;
 
-        if (count == 0) {
+        if(count == 0){
           continue;
         }
 
@@ -281,7 +287,11 @@ namespace{
       }
     }
 
-    void createTopologyArray(TopologyArray& array, size_t size){
+    void createTopologyArray(Context& context,
+                             HighLevelRuntime* runtime,
+                             TopologyArray& array,
+                             Id* indices,
+                             size_t size){
       array.size = size;
 
       Rect<1> rect(Point<1>(0), Point<1>(size - 1));
@@ -293,12 +303,17 @@ namespace{
 
       array.fieldSpace = runtime_->create_field_space(context_);
 
-      array.fieldAllocator = runtime_->create_field_allocator(context_,
-                                                              array.fieldSpace);
+      array.fieldAllocator = 
+        runtime_->create_field_allocator(context_,
+                                         array.fieldSpace);
 
-      array.fieldAllocator.allocate_field(sizeof(uint64_t), 0);
+      array.fieldAllocator.allocate_field(sizeof(Id), 0);
 
       array.logicalRegion = 
+        runtime_->create_logical_region(context_,
+                                        array.indexSpace, array.fieldSpace);
+
+      array.fillLogicalRegion = 
         runtime_->create_logical_region(context_,
                                         array.indexSpace, array.fieldSpace);
         
@@ -319,6 +334,27 @@ namespace{
       array.logicalPartition = 
         runtime_->get_logical_partition(context_, array.logicalRegion,
                                         array.indexPartition);
+
+      InlineLauncher 
+        launcher(RegionRequirement(array.logicalRegion,
+                                   WRITE_DISCARD,
+                                   EXCLUSIVE,
+                                   array.logicalRegion));
+
+      launcher.requirement.add_field(0);
+
+      PhysicalRegion region = 
+        runtime->map_region(context, launcher);
+
+      RegionAccessor<AccessorType::Generic, Id> accessor = 
+        region.get_field_accessor(0).typeify<Id>();
+
+      Rect<1> r = array.domain.get_rect<1>();
+      Rect<1> sr;
+      ByteOffset bo[1];
+
+      memcpy(accessor.raw_rect_ptr<1>(r, sr, bo),
+             indices, size * sizeof(Id));
     }
 
     size_t numItems(sclegion_element_kind_t elementKind) {
@@ -606,13 +642,12 @@ namespace{
     void execute(legion_context_t ctx, legion_runtime_t rt) {
       using TopologyArray = Mesh::TopologyArray;
 
-      using Id = uint64_t;
+      HighLevelRuntime* runtime = static_cast<HighLevelRuntime*>(rt.impl);
+      Context context = static_cast<Context>(ctx.impl);
 
       MeshTopologyBase* topology = mesh_->topology();
 
       size_t d = topology->topologicalDimension();
-
-      size_t numConnections = 0;
 
       FieldSpace fieldSpace;
     
@@ -622,8 +657,8 @@ namespace{
       using ArrayHeaderVec = vector<ArrayHeader>;
       ArrayHeaderVec arrayHeaders;
 
-      for(size_t i = 0; i < d; ++i){
-        for(size_t j = 0; j < d; ++j){
+      for(size_t i = 0; i <= d; ++i){
+        for(size_t j = 0; j <= d; ++j){
           if(i == j){
             continue;
           }
@@ -648,22 +683,22 @@ namespace{
           arrayHeader.fromSize = fromSize;
           arrayHeader.toSize = toSize;
           arrayHeaders.emplace_back(move(arrayHeader));
-        
+
           TopologyArray fromArray;
-          mesh_->createTopologyArray(fromArray, fromSize);
+          mesh_->createTopologyArray(context, runtime,
+                                     fromArray, fromIndices, fromSize);
 
           TopologyArray toArray;
-          mesh_->createTopologyArray(toArray, toSize);          
-        
+          mesh_->createTopologyArray(context, runtime,
+                                     toArray, toIndices, toSize);          
+
           topologyArrays.emplace_back(move(fromArray));
           topologyArrays.emplace_back(move(toArray));
         }
       }
 
-      HighLevelRuntime* runtime = static_cast<HighLevelRuntime*>(rt.impl);
-      Context context = static_cast<Context>(ctx.impl);
-
-      size_t argsLen = sizeof(MeshHeader) + numFields_ * sizeof(MeshFieldInfo) + 
+      size_t argsLen = 
+        sizeof(MeshHeader) + numFields_ * sizeof(MeshFieldInfo) + 
         arrayHeaders.size() * sizeof(ArrayHeader);
 
       void* argsPtr = malloc(argsLen);
@@ -674,6 +709,8 @@ namespace{
       header->numConnections = arrayHeaders.size();
       args += sizeof(MeshHeader);
 
+      header->numElements = 0;
+
       for(size_t i = 0; i < SCLEGION_ELEMENT_MAX; ++i){
         Mesh::Element& element = 
           mesh_->getElement(sclegion_element_kind_t(i));
@@ -683,9 +720,12 @@ namespace{
         if(element.count == 0){
           continue;
         }
+
+        ++header->numElements;
       }
      
-      memcpy(args, arrayHeaders.data(), sizeof(ArrayHeader)*arrayHeaders.size());
+      memcpy(args, arrayHeaders.data(),
+             arrayHeaders.size() * sizeof(ArrayHeader));
     
       ArgumentMap argMap;
 
@@ -702,7 +742,8 @@ namespace{
           continue;
         }
 
-        const Mesh::Element& element = mesh_->getElement(sclegion_element_kind_t(i));
+        const Mesh::Element& element = 
+          mesh_->getElement(sclegion_element_kind_t(i));
 
         launcher.add_region_requirement(RegionRequirement(
           element.logicalPartition,
@@ -722,7 +763,7 @@ namespace{
         region.addFieldsToIndexLauncher(launcher, i);
 
       }
-    
+
       for(TopologyArray& array : topologyArrays){
         RegionRequirement req(array.logicalPartition,
                               0/*projection ID*/,
@@ -824,7 +865,8 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   MeshHeader* header = (MeshHeader*) args;
   args += sizeof(MeshHeader);
 
-  size_t size = sizeof(void*) * (header->numFields + 1) + 10 * sizeof(uint32_t);
+  size_t size = 
+    sizeof(void*) * (header->numFields + 1) + 10 * sizeof(uint32_t);
   void** meshPtr = (void**) malloc(size);
 
   void* ret = meshPtr;
@@ -901,27 +943,30 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
   }
 
   ArrayHeader* ah;
-  for(size_t i = 0; i < numConnections * 2; i += 2){
+  size_t arrayIndex = 0;
+
+  for(size_t i = 0; i < numConnections; ++i){
     ah = (ArrayHeader*)args;
 
-    uint64_t* fromIndices;
-    uint64_t* toIndices;
+    Id* fromIndices;
+    Id* toIndices;
 
     for(size_t j = 0; j < 2; ++j){
-      size_t regionIndex = SCLEGION_ELEMENT_MAX + i/2 + j;
+      size_t regionIndex = header->numElements + arrayIndex + j;
 
       PhysicalRegion* hp = 
         static_cast<PhysicalRegion*>(region[regionIndex].impl);
-                          
+
       IndexSpace is = ht->regions[regionIndex].region.get_index_space();
+
       Domain d = hr->get_index_space_domain(hc, is);
-    
+
       Rect<1> r = d.get_rect<1>();
       Rect<1> sr;
       ByteOffset bo[1];
 
-      RegionAccessor<AccessorType::Generic, uint64_t> fm;
-      fm = hp->get_field_accessor(fi->fieldId).typeify<uint64_t>();
+      RegionAccessor<AccessorType::Generic, Id> fm;
+      fm = hp->get_field_accessor(fi->fieldId).typeify<Id>();
       
       if(j == 0){
         fromIndices = fm.raw_rect_ptr<1>(r, sr, bo);
@@ -930,6 +975,8 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
         toIndices = fm.raw_rect_ptr<1>(r, sr, bo);
       }
     }
+
+    arrayIndex += 2;
 
     topology->setConnectivityRaw(ah->fromDim, ah->toDim,
                                  fromIndices, ah->fromSize,
