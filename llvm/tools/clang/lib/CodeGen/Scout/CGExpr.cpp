@@ -450,15 +450,20 @@ llvm::Value *CodeGenFunction::getMeshIndex(const MeshFieldDecl* MFD) {
 // compute the linear index based on cshift parameters
 // with circular boundary conditions
 llvm::Value *
-CodeGenFunction::getCShiftLinearIdx(SmallVector< llvm::Value *, 3 > args) {
+CodeGenFunction::getCShiftLinearIdx(const MeshFieldDecl *MFD, SmallVector< llvm::Value *, 3 > args) {
 
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int64Ty, 0);
+  llvm::Value *ConstantOne = llvm::ConstantInt::get(Int64Ty, 1);
 
   //get the dimensions (Width, Height, Depth)
   SmallVector< llvm::Value *, 3 > dims;
   for(unsigned i = 0; i < args.size(); ++i) {
     sprintf(IRNameStr, "%s", DimNames[i]);
-    dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
+    llvm::Value *x = Builder.CreateLoad(LookupMeshDim(i), IRNameStr);
+    if (MFD->isVertexLocated()) {
+      x = Builder.CreateAdd(x, ConstantOne);
+    }
+    dims.push_back(x);
   }
   
   SmallVector< llvm::Value *, 3 > start;
@@ -599,9 +604,10 @@ RValue CodeGenFunction::EmitCShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) {
   // get the member expr for first arg.
   if(const MemberExpr *E = dyn_cast<MemberExpr>(A1E)) {
     // make sure this is a mesh
-    if(isa<MeshFieldDecl>(E->getMemberDecl())) {
+
+    if(const MeshFieldDecl *MFD = dyn_cast<MeshFieldDecl>(E->getMemberDecl())) {
       // get the correct mesh member
-      llvm::Value* mi = getCShiftLinearIdx(args);
+      llvm::Value* mi = getCShiftLinearIdx(MFD, args);
       LValue LV = EmitMeshMemberExpr(E, mi);
       
       return RValue::get(Builder.CreateLoad(LV.getAddress(), "cshift.element"));
@@ -1597,6 +1603,7 @@ llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
     llvm::Value *topiv = LinearIdx2InductionVar(
         Builder.CreateLoad(ForallStack[0].indexPtr), ForallStack[0].elementType,
         dim, dims.size());
+    // SC_TODO: only works for cells/vert and vert/cells
     idx = Builder.CreateSub(idx, topiv);
     if (ForallStack[0].elementType == Vertices) {
       llvm::Value* one = llvm::ConstantInt::get(Int64Ty, 1);
