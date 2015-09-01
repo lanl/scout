@@ -87,9 +87,9 @@ extern "C"
 void __scrt_gpu_init_kernel(const char* meshName,
                             const char* data,
                             const char* kernelName,
-                            uint32_t width,
-                            uint32_t height,
-                            uint32_t depth){
+                            uint64_t width,
+                            uint64_t height,
+                            uint64_t depth){
   GPURuntime* runtime = GPURuntime::get();
   runtime->initKernel(meshName, data, kernelName, width, height, depth);
 }

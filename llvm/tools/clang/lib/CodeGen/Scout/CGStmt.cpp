@@ -513,7 +513,7 @@ void CodeGenFunction::EmitGPUForall(const ForallMeshStmt& S, llvm::Value *&Index
 
   EmitBlock(bodyBlock);
 
-  Index = GPUThreadId;
+  Index = threadId;
   EmitStmt(S.getBody());
   Index = 0;
 

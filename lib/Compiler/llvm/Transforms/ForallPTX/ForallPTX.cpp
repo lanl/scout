@@ -521,6 +521,7 @@ public:
     kernelModule_("kernel_module", context_),
     builder_(context_){
 
+    int64Ty = Type::getInt64Ty(context_);
     int32Ty = Type::getInt32Ty(context_);
     int8Ty = Type::getInt8Ty(context_);
     voidTy = Type::getVoidTy(context_);
@@ -534,7 +535,7 @@ public:
     createFunction("__scrt_gpu_finish",
                    voidTy, tv);
 
-    tv = {stringTy, stringTy, stringTy, int32Ty, int32Ty, int32Ty};
+    tv = {stringTy, stringTy, stringTy, int64Ty, int64Ty, int64Ty};
     createFunction("__scrt_gpu_init_kernel",
                    voidTy, tv);
 
@@ -548,10 +549,12 @@ public:
   }
 
   void init(){
-    //cerr << "-- CPU module before: " << endl;
-    //module_->dump();
-    //cerr << "======================" << endl;
-    
+    /*
+    cerr << "-- CPU module before: " << endl;
+    module_->dump();
+    cerr << "======================" << endl;
+    */    
+
     NamedMDNode* kernelsMD = module_->getNamedMetadata("scout.kernels");
     assert(kernelsMD);
     
@@ -565,10 +568,12 @@ public:
       kernels.push_back(kernel);
     }
 
-    //cerr << "--------- kernel module: " << endl;
-    //kernelModule_.dump();
-    //cerr << "=========================" << endl;
-
+    /*
+    cerr << "--------- kernel module: " << endl;
+    kernelModule_.dump();
+    cerr << "=========================" << endl;
+    */
+     
     string ptx = generatePTX();
 
     Constant* pc = ConstantDataArray::getString(context_, ptx);
@@ -586,9 +591,11 @@ public:
       delete kernel;
     }
 
-    //cerr << "--- CPU module after: " << endl;
-    //module_->dump();
-    //cerr << "======================" << endl;
+    /*
+    cerr << "--- CPU module after: " << endl;
+    module_->dump();
+    cerr << "======================" << endl;
+    */
   }
 
   Module* module(){
@@ -699,7 +706,8 @@ public:
   GlobalVariable* ptxGlobal(){
     return ptxGlobal_;
   }
-  
+
+  Type* int64Ty;  
   Type* int32Ty;
   Type* int8Ty;
   Type* voidTy;
