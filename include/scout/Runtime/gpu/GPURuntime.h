@@ -78,9 +78,9 @@ public:
   virtual void initKernel(const char* meshName,
                           const char* data,
                           const char* kernelName,
-                          uint32_t width,
-                          uint32_t height,
-                          uint32_t depth) = 0;
+                          uint64_t width,
+                          uint64_t height,
+                          uint64_t depth) = 0;
 
   virtual void initField(const char* kernelName,
                          const char* fieldName,

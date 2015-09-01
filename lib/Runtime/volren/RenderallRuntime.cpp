@@ -148,7 +148,7 @@ public:
 
   class Mesh{
   public:
-    Mesh(uint32_t width, uint32_t height, uint32_t depth)
+    Mesh(uint64_t width, uint64_t height, uint64_t depth)
       : width_(width),
         height_(height),
         depth_(depth){
@@ -248,15 +248,15 @@ public:
       return meshField;
     }
 
-    uint32_t width(){
+    uint64_t width(){
       return width_;
     }
 
-    uint32_t height(){
+    uint64_t height(){
       return height_;
     }
 
-    uint32_t depth(){
+    uint64_t depth(){
       return depth_;
     }
 
@@ -264,9 +264,9 @@ public:
     typedef map<const char*, MeshField*> MeshFieldMap_;
 
     MeshFieldMap_ meshFieldMap_;
-    uint32_t width_;
-    uint32_t height_;
-    uint32_t depth_;
+    uint64_t width_;
+    uint64_t height_;
+    uint64_t depth_;
     size_t rank_;
   };
 
@@ -325,9 +325,9 @@ public:
     Kernel* createKernel(Mesh* mesh,
                          const char* kernelName,
                          void* window,
-                         uint32_t width,
-                         uint32_t height,
-                         uint32_t depth);
+                         uint64_t width,
+                         uint64_t height,
+                         uint64_t depth);
 
   private:
     CUmodule module_;
@@ -353,9 +353,9 @@ public:
            Mesh* mesh,
            void* window,
            CUfunction function,
-           uint32_t width,
-           uint32_t height,
-           uint32_t depth)
+           uint64_t width,
+           uint64_t height,
+           uint64_t depth)
       : module_(module),
         mesh_(mesh),
         function_(function),
@@ -528,9 +528,9 @@ public:
     uint32_t startX_;
     uint32_t startY_;
     uint32_t startZ_;
-    uint32_t width_;
-    uint32_t height_;
-    uint32_t depth_;
+    uint64_t width_;
+    uint64_t height_;
+    uint64_t depth_;
     float density_;
     float brightness_;
     float transferOffset_;
@@ -580,9 +580,9 @@ public:
                   const char* ptx,
                   const char* kernelName,
                   void* window,
-                  uint32_t width,
-                  uint32_t height,
-                  uint32_t depth){
+                  uint64_t width,
+                  uint64_t height,
+                  uint64_t depth){
 
     auto kitr = kernelMap_.find(kernelName);
     if(kitr != kernelMap_.end()){
@@ -684,9 +684,9 @@ RenderallRuntime::Kernel*
 RenderallRuntime::PTXModule::createKernel(Mesh* mesh,
                                           const char* kernelName,
                                           void* window,
-                                          uint32_t width,
-                                          uint32_t height,
-                                          uint32_t depth){
+                                          uint64_t width,
+                                          uint64_t height,
+                                          uint64_t depth){
   CUfunction function;
   //CUresult err = cuModuleGetFunction(&function, module_, kernelName);
   CUresult err = 
@@ -721,9 +721,9 @@ void __scrt_volren_init_kernel(const char* scoutPtxDir,
                                const char* data,
                                const char* kernelName,
                                void* window,
-                               uint32_t width,
-                               uint32_t height,
-                               uint32_t depth){
+                               uint64_t width,
+                               uint64_t height,
+                               uint64_t depth){
   RenderallRuntime* runtime = _getRuntime();
   runtime->initKernel(scoutPtxDir, meshName, data, kernelName,
                       window, width, height, depth);

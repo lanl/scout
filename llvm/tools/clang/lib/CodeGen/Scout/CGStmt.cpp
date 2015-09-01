@@ -513,7 +513,7 @@ void CodeGenFunction::EmitGPUForall(const ForallMeshStmt& S, llvm::Value *&Index
 
   EmitBlock(bodyBlock);
 
-  Index = GPUThreadId;
+  Index = threadId;
   EmitStmt(S.getBody());
   Index = 0;
 
@@ -1244,8 +1244,6 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
 }
 
 void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
-  assert(false && "refactoring");
-  /*
   using namespace llvm;
   using namespace std;
   
@@ -1308,7 +1306,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   TypeVec params =
   {MeshBaseAddr->getType(), targetPtr->getType(),
-    Int32Ty, Int32Ty, Int32Ty};
+    Int64Ty, Int64Ty, Int64Ty};
   
   for(VarDecl* vd : vs){
     Value* v = LocalDeclMap[vd];
@@ -1620,7 +1618,6 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   volrenData.push_back(varsMD);
   volrens->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), volrenData));
-*/
 }
 
 void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S){

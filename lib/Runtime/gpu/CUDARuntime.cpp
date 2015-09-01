@@ -134,7 +134,7 @@ public:
 
   class Mesh{
   public:
-    Mesh(uint32_t width, uint32_t height, uint32_t depth)
+    Mesh(uint64_t width, uint64_t height, uint64_t depth)
       : width_(width),
         height_(height),
         depth_(depth){
@@ -234,15 +234,15 @@ public:
       return meshField;
     }
 
-    uint32_t width(){
+    uint64_t width(){
       return width_;
     }
 
-    uint32_t height(){
+    uint64_t height(){
       return height_;
     }
 
-    uint32_t depth(){
+    uint64_t depth(){
       return depth_;
     }
 
@@ -250,9 +250,9 @@ public:
     typedef map<const char*, MeshField*> MeshFieldMap_;
 
     MeshFieldMap_ meshFieldMap_;
-    uint32_t width_;
-    uint32_t height_;
-    uint32_t depth_;
+    uint64_t width_;
+    uint64_t height_;
+    uint64_t depth_;
     size_t rank_;
   };
 
@@ -429,9 +429,9 @@ public:
   void initKernel(const char* meshName,
                   const char* ptx,
                   const char* kernelName,
-                  uint32_t width,
-                  uint32_t height,
-                  uint32_t depth){
+                  uint64_t width,
+                  uint64_t height,
+                  uint64_t depth){
 
     auto kitr = kernelMap_.find(kernelName);
     if(kitr != kernelMap_.end()){
