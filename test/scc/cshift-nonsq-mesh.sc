@@ -24,6 +24,7 @@ int main()
   
   forall vertices v in M
   {
+    //printf("pos %d %d\n",positionx(),positiony());
     v.v_index = positionx() + (3+1) * positiony(); // Vertices have values 0-19
   }// end forall vertices loop
   

@@ -3797,6 +3797,20 @@ ClangASTContext::GetTypeClass (void* type)
             // pointer type decayed from an array or function type.
         case clang::Type::Decayed:                  break;
         case clang::Type::Adjusted:                 break;
+
+        // +===== Scout ==============================================================+
+        case clang::Type::UniformMesh:
+        case clang::Type::ALEMesh:
+        case clang::Type::RectilinearMesh:
+        case clang::Type::StructuredMesh:
+        case clang::Type::UnstructuredMesh:
+        case clang::Type::Window:
+        case clang::Type::Image:
+        case clang::Type::Query:
+        case clang::Type::FrameVar:
+        case clang::Type::Frame:
+           break;
+        // +==========================================================================+
     }
     // We don't know hot to display this type...
     return lldb::eTypeClassOther;
@@ -4491,6 +4505,20 @@ ClangASTContext::GetEncoding (void* type, uint64_t &count)
             // pointer type decayed from an array or function type.
         case clang::Type::Decayed:
             break;
+
+        // +===== Scout ==============================================================+
+        case clang::Type::UniformMesh:
+        case clang::Type::ALEMesh:
+        case clang::Type::RectilinearMesh:
+        case clang::Type::StructuredMesh:
+        case clang::Type::UnstructuredMesh:
+        case clang::Type::Window:
+        case clang::Type::Image:
+        case clang::Type::Query:
+        case clang::Type::FrameVar:
+        case clang::Type::Frame: 
+          break;
+        // +==========================================================================+
     }
     count = 0;
     return lldb::eEncodingInvalid;
@@ -4624,6 +4652,20 @@ ClangASTContext::GetFormat (void* type)
             // pointer type decayed from an array or function type.
         case clang::Type::Decayed:
             break;
+
+        // +===== Scout ==============================================================+
+        case clang::Type::UniformMesh:
+        case clang::Type::ALEMesh:
+        case clang::Type::RectilinearMesh:
+        case clang::Type::StructuredMesh:
+        case clang::Type::UnstructuredMesh:
+        case clang::Type::Window:
+        case clang::Type::Image:
+        case clang::Type::Query:
+        case clang::Type::FrameVar:
+        case clang::Type::Frame:
+           break;
+        // +==========================================================================+
     }
     // We don't know hot to display this type...
     return lldb::eFormatBytes;
