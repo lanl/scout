@@ -1578,7 +1578,12 @@ llvm::Value *CodeGenFunction::EmitGIndex(unsigned int dim) {
 }
 
 llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
-
+  if(ForallStack.empty()){
+    sprintf(IRNameStr, "lindex.%s", IndexNames[dim]);
+    return Builder.CreateTrunc(Builder.CreateLoad(InductionVar[dim]),
+                               Int32Ty, IRNameStr);
+  }
+  
   llvm::Value* idx;
 
   if (dim == 3) {
