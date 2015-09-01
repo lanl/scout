@@ -169,7 +169,6 @@ namespace{
     struct TopologyArray{
       size_t size;
       LogicalRegion logicalRegion;
-      LogicalRegion fillLogicalRegion;
       LogicalPartition logicalPartition;
       IndexPartition indexPartition;
       FieldSpace fieldSpace;
@@ -310,10 +309,6 @@ namespace{
       array.fieldAllocator.allocate_field(sizeof(Id), 0);
 
       array.logicalRegion = 
-        runtime_->create_logical_region(context_,
-                                        array.indexSpace, array.fieldSpace);
-
-      array.fillLogicalRegion = 
         runtime_->create_logical_region(context_,
                                         array.indexSpace, array.fieldSpace);
         
