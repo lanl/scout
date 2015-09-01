@@ -388,6 +388,7 @@ public:
     kernelModule_("kernel_module", context_),
     builder_(context_){
 
+    int64Ty = Type::getInt64Ty(context_);
     int32Ty = Type::getInt32Ty(context_);
     int8Ty = Type::getInt8Ty(context_);
     voidTy = Type::getVoidTy(context_);
@@ -398,7 +399,7 @@ public:
 
     params = 
       {stringTy, stringTy, stringTy, stringTy,
-        voidPtrTy, int32Ty, int32Ty, int32Ty};
+        voidPtrTy, int64Ty, int64Ty, int64Ty};
     
     createFunction("__scrt_volren_init_kernel", voidTy, params);
 
@@ -555,7 +556,8 @@ public:
   GlobalVariable* ptxGlobal(){
     return ptxGlobal_;
   }
-  
+
+  Type* int64Ty;
   Type* int32Ty;
   Type* int8Ty;
   Type* voidTy;
