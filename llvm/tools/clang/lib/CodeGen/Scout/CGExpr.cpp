@@ -453,17 +453,20 @@ llvm::Value *
 CodeGenFunction::getCShiftLinearIdx(const MeshFieldDecl *MFD, SmallVector< llvm::Value *, 3 > args) {
 
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int64Ty, 0);
-  llvm::Value *ConstantOne = llvm::ConstantInt::get(Int64Ty, 1);
 
   //get the dimensions (Width, Height, Depth)
   SmallVector< llvm::Value *, 3 > dims;
   for(unsigned i = 0; i < args.size(); ++i) {
     sprintf(IRNameStr, "%s", DimNames[i]);
-    llvm::Value *x = Builder.CreateLoad(LookupMeshDim(i), IRNameStr);
-    if (MFD->isVertexLocated()) {
-      x = Builder.CreateAdd(x, ConstantOne);
+    if (MFD->isCellLocated()) {
+      dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
+    } else if (MFD->isVertexLocated()) {
+      llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
+      dims.push_back(Builder.CreateAdd(
+          Builder.CreateLoad(LookupMeshDim(i), IRNameStr), One));
+    } else {
+      assert(false && "Non Cell/Vertex in CShift");
     }
-    dims.push_back(x);
   }
   
   SmallVector< llvm::Value *, 3 > start;
@@ -693,7 +696,7 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
         if (MFD->isCellLocated()) {
           dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
         } else if (MFD->isVertexLocated()) {
-          llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
+          llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
           dims.push_back(Builder.CreateAdd(
             Builder.CreateLoad(LookupMeshDim(i), IRNameStr), One));
         } else {
