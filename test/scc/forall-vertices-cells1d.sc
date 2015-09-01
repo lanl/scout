@@ -58,7 +58,7 @@
 uniform mesh MyMesh {
  cells:
   int a;
- edges:
+ vertices:
   int b;
 };
 
@@ -69,22 +69,22 @@ int main(int argc, char** argv) {
     a = position().x;
   }
  
-  forall edges e in m {
+  forall vertices v in m {
     b = 0;
   }
 
-  forall edges e in m {
-    forall cells c in e {
+  forall vertices v in m {
+    forall cells c in v {
       b += a;
     }
   }
 
-  int expected[] = {0, 1, 2, 3, 4};
+  int expected[] = {0, 1, 3, 5, 7, 4};
 
   int i = 0;
-  forall edges e in m {
+  forall vertices v in m {
     printf("%d\n", b);
-    //assert(b == expected[i] && "unexpected value");
+    assert(b == expected[i] && "unexpected value");
     ++i;
   }
 
