@@ -48,13 +48,14 @@
 #
 ###########################################################################
 #
-project(scout_test_scc_gpu)
+project(scout_test_scc_volren)
+
+# only run these tests if the $DISPLAY variable is set
+
 
 # Note: By default we pull in all the .sc source files in this
 # directory for inclusion into the regression checks. 
 file(GLOB SC_SRCS *.sc) 
-
-set(CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS} -gpu")
 
 # Add an executable and test entry for each source file...
 foreach (test ${SC_SRCS})
@@ -62,10 +63,12 @@ foreach (test ${SC_SRCS})
   if (NOT tname) 
     message(FATAL_ERROR "runtime regression check ${test} produced an empty name")
   else (NOT tname)
-     set(fname "scc_gpu_${tname}")
+     set(fname "scc_volren_${tname}")
     add_executable(${fname} ${test})
-    add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
-    message(" + added runtime regression test entry: ${fname}")
+    if(DEFINED ENV{DISPLAY}) 
+      add_test("${fname}" "${TEST_BINARY_DIR}/${fname}")
+      message(" + added runtime regression test entry: ${fname}")
+    endif()
   endif(NOT tname)
 endforeach(test)
 

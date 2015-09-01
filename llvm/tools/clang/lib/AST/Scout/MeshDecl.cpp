@@ -23,9 +23,11 @@
 
 using namespace clang;
 
+#if 0 // currently unused
 static bool isFieldOrIndirectField(Decl::Kind K) {
   return MeshFieldDecl::classofKind(K);
 }
+#endif
 
 //===----------------------------------------------------------------------===//
 // MeshDecl Implementation
