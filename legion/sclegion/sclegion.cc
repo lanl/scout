@@ -878,7 +878,7 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
     if (fi->count == 0) {
       *meshPtr = 0;
     } else {
-      //printf("region %d\n",fi->region); 
+      //printf("region %d\n",fi->region);
       PhysicalRegion* hp = 
         static_cast<PhysicalRegion*>(region[fi->region].impl);
 
@@ -963,7 +963,7 @@ sclegion_uniform_mesh_reconstruct(const legion_task_t task,
       ByteOffset bo[1];
 
       RegionAccessor<AccessorType::Generic, Id> fm;
-      fm = hp->get_field_accessor(fi->fieldId).typeify<Id>();
+      fm = hp->get_field_accessor(0).typeify<Id>();
       
       if(j == 0){
         fromIndices = fm.raw_rect_ptr<1>(r, sr, bo);
