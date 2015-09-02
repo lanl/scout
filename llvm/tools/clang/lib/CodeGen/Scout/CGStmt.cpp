@@ -721,7 +721,8 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
       ++i;
     }
   }
-  
+
+#if 0  
   const VarDecl* mvd;
   if(const ImplicitMeshParamDecl* ip =
      dyn_cast<ImplicitMeshParamDecl>(S.getMeshVarDecl())){
@@ -730,6 +731,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   else{
     mvd = S.getMeshVarDecl();
   }
+#endif
   
   int i = FindForallData(S.getMeshElementRef());
 

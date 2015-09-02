@@ -157,11 +157,12 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
   else{
     base = cast<DeclRefExpr>(E->getBase());
   }
-  
-  const ValueDecl* mvd;
-  
+
   ImplicitMeshParamDecl* mp =
   dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
+  
+#if 0  
+  const ValueDecl* mvd;
   
   if(mp){
     mvd = mp->getMeshVarDecl();
@@ -169,6 +170,7 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
   else{
     mvd = base->getDecl();
   }
+#endif
   
   if(ForallStack.empty()){
     return InductionVar[3];
