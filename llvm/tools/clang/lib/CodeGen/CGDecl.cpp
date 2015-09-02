@@ -1022,7 +1022,7 @@ CodeGenFunction::EmitAutoVarAlloca(const VarDecl &D) {
 
       // +===== Scout ========================================================+
       // SC_TODO - we need to make sure we handle other mesh types here.
-      EmitScoutAutoVarAlloca(Alloc, D);
+      if(isScoutLang(getLangOpts())) EmitScoutAutoVarAlloca(Alloc, D);
       // +====================================================================+
 
       // Emit a lifetime intrinsic if meaningful.  There's no point

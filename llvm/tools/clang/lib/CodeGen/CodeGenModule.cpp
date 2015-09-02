@@ -138,10 +138,11 @@ CodeGenModule::CodeGenModule(ASTContext &C, const HeaderSearchOptions &HSO,
   if (LangOpts.CUDA)
     createCUDARuntime();
         
-  createScoutRuntime();
-        
   // +===== Scout ============================================================+
   if(isScoutLang(LangOpts)) {
+
+    createScoutRuntime();
+
     createPlotRuntime();
     
     if (CodeGenOpts.ScoutLegionSupport) {
