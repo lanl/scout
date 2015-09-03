@@ -3212,7 +3212,7 @@ Sema::DiagnoseMultipleUserDefinedConversion(Expr *From, QualType ToType) {
                              diag::err_typecheck_nonviable_condition_incomplete,
                              From->getType(), From->getSourceRange()))
       Diag(From->getLocStart(), diag::err_typecheck_nonviable_condition)
-          << From->getType() << From->getSourceRange() << ToType;
+          << false << From->getType() << From->getSourceRange() << ToType;
   } else
     return false;
   CandidateSet.NoteCandidates(*this, OCD_AllCandidates, From);
@@ -5826,10 +5826,11 @@ EnableIfAttr *Sema::CheckEnableIf(FunctionDecl *Function, ArrayRef<Expr *> Args,
 
   SFINAETrap Trap(*this);
 
-  // Convert the arguments.
   SmallVector<Expr *, 16> ConvertedArgs;
   bool InitializationFailed = false;
   bool ContainsValueDependentExpr = false;
+
+  // Convert the arguments.
   for (unsigned i = 0, e = Args.size(); i != e; ++i) {
     if (i == 0 && !MissingImplicitThis && isa<CXXMethodDecl>(Function) &&
         !cast<CXXMethodDecl>(Function)->isStatic() &&
@@ -5862,6 +5863,28 @@ EnableIfAttr *Sema::CheckEnableIf(FunctionDecl *Function, ArrayRef<Expr *> Args,
 
   if (InitializationFailed || Trap.hasErrorOccurred())
     return cast<EnableIfAttr>(Attrs[0]);
+
+  // Push default arguments if needed.
+  if (!Function->isVariadic() && Args.size() < Function->getNumParams()) {
+    for (unsigned i = Args.size(), e = Function->getNumParams(); i != e; ++i) {
+      ParmVarDecl *P = Function->getParamDecl(i);
+      ExprResult R = PerformCopyInitialization(
+          InitializedEntity::InitializeParameter(Context,
+                                                 Function->getParamDecl(i)),
+          SourceLocation(),
+          P->hasUninstantiatedDefaultArg() ? P->getUninstantiatedDefaultArg()
+                                           : P->getDefaultArg());
+      if (R.isInvalid()) {
+        InitializationFailed = true;
+        break;
+      }
+      ContainsValueDependentExpr |= R.get()->isValueDependent();
+      ConvertedArgs.push_back(R.get());
+    }
+
+    if (InitializationFailed || Trap.hasErrorOccurred())
+      return cast<EnableIfAttr>(Attrs[0]);
+  }
 
   for (AttrVec::iterator I = Attrs.begin(); I != E; ++I) {
     APValue Result;
@@ -10678,8 +10701,8 @@ BuildRecoveryCallExpr(Sema &SemaRef, Scope *S, Expr *Fn,
   // casts and such from the call, we don't really care.
   ExprResult NewFn = ExprError();
   if ((*R.begin())->isCXXClassMember())
-    NewFn = SemaRef.BuildPossibleImplicitMemberExpr(SS, TemplateKWLoc,
-                                                    R, ExplicitTemplateArgs);
+    NewFn = SemaRef.BuildPossibleImplicitMemberExpr(SS, TemplateKWLoc, R,
+                                                    ExplicitTemplateArgs, S);
   else if (ExplicitTemplateArgs || TemplateKWLoc.isValid())
     NewFn = SemaRef.BuildTemplateIdExpr(SS, TemplateKWLoc, R, false,
                                         ExplicitTemplateArgs);
@@ -11604,6 +11627,16 @@ Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
     FoundDecl = MemExpr->getFoundDecl();
     Qualifier = MemExpr->getQualifier();
     UnbridgedCasts.restore();
+
+    if (const EnableIfAttr *Attr = CheckEnableIf(Method, Args, true)) {
+      Diag(MemExprE->getLocStart(),
+           diag::err_ovl_no_viable_member_function_in_call)
+          << Method << Method->getSourceRange();
+      Diag(Method->getLocation(),
+           diag::note_ovl_candidate_disabled_by_enable_if_attr)
+          << Attr->getCond()->getSourceRange() << Attr->getMessage();
+      return ExprError();
+    }
   } else {
     UnresolvedMemberExpr *UnresExpr = cast<UnresolvedMemberExpr>(NakedMemExpr);
     Qualifier = UnresExpr->getQualifier();
@@ -12288,7 +12321,7 @@ Sema::BuildForRangeBeginEndCall(Scope *S, SourceLocation Loc,
                                  /*TemplateKWLoc=*/SourceLocation(),
                                  /*FirstQualifierInScope=*/nullptr,
                                  MemberLookup,
-                                 /*TemplateArgs=*/nullptr);
+                                 /*TemplateArgs=*/nullptr, S);
     if (MemberRef.isInvalid()) {
       *CallExpr = ExprError();
       Diag(Range->getLocStart(), diag::note_in_for_range)

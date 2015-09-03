@@ -292,6 +292,18 @@ const internal::VariadicDynCastAllOfMatcher<Decl, NamedDecl> namedDecl;
 ///   matches "namespace {}" and "namespace test {}"
 const internal::VariadicDynCastAllOfMatcher<Decl, NamespaceDecl> namespaceDecl;
 
+/// \brief Matches a declaration of a namespace alias.
+///
+/// Given
+/// \code
+///   namespace test {}
+///   namespace alias = ::test;
+/// \endcode
+/// namespaceAliasDecl()
+///   matches "namespace alias" but not "namespace test"
+const internal::VariadicDynCastAllOfMatcher<Decl, NamespaceAliasDecl>
+    namespaceAliasDecl;
+
 /// \brief Matches C++ class declarations.
 ///
 /// Example matches \c X, \c Z
@@ -3935,6 +3947,20 @@ AST_MATCHER_P(ElaboratedType, namesType, internal::Matcher<QualType>,
               InnerMatcher) {
   return InnerMatcher.matches(Node.getNamedType(), Finder, Builder);
 }
+
+/// \brief Matches types that represent the result of substituting a type for a
+/// template type parameter.
+///
+/// Given
+/// \code
+///   template <typename T>
+///   void F(T t) {
+///     int i = 1 + t;
+///   }
+/// \code
+///
+/// \c substTemplateTypeParmType() matches the type of 't' but not '1'
+AST_TYPE_MATCHER(SubstTemplateTypeParmType, substTemplateTypeParmType);
 
 /// \brief Matches declarations whose declaration context, interpreted as a
 /// Decl, matches \c InnerMatcher.

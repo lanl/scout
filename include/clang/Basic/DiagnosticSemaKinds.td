@@ -1977,6 +1977,8 @@ def err_function_concept_not_defined : Error<
   "function concept declaration must be a definition">;
 def err_var_concept_not_initialized : Error<
   "variable concept declaration must be initialized">;
+def err_function_concept_exception_spec : Error<
+  "function concept cannot have exception specification">;
 
 // C++11 char16_t/char32_t
 def warn_cxx98_compat_unicode_type : Warning<
@@ -5672,6 +5674,9 @@ def err_throw_incomplete_ptr : Error<
   "cannot throw pointer to object of incomplete type %0">;
 def err_return_in_constructor_handler : Error<
   "return in the catch of a function try block of a constructor is illegal">;
+def warn_cdtor_function_try_handler_mem_expr : Warning<
+  "cannot refer to a non-static member from the handler of a "
+  "%select{constructor|destructor}0 function try block">, InGroup<Exceptions>;
 
 let CategoryName = "Lambda Issue" in {
   def err_capture_more_than_once : Error<
@@ -5792,7 +5797,8 @@ def err_typecheck_bool_condition : Error<
 def err_typecheck_ambiguous_condition : Error<
   "conversion %diff{from $ to $|between types}0,1 is ambiguous">;
 def err_typecheck_nonviable_condition : Error<
-  "no viable conversion%diff{ from $ to $|}0,1">;
+  "no viable conversion%select{%diff{ from $ to $|}1,2|"
+  "%diff{ from returned value of type $ to function return type $|}1,2}0">;
 def err_typecheck_nonviable_condition_incomplete : Error<
   "no viable conversion%diff{ from $ to incomplete type $|}0,1">;
 def err_typecheck_deleted_function : Error<
@@ -7442,6 +7448,8 @@ def err_opencl_return_value_with_address_space : Error<
   "return value cannot be qualified with address space">;
 def err_opencl_constant_no_init : Error<
   "variable in constant address space must be initialized">;
+def err_opencl_implicit_vector_conversion : Error<
+  "implicit conversions between vector types (%0 and %1) are not permitted">;
 } // end of sema category
 
 let CategoryName = "OpenMP Issue" in {
@@ -7686,6 +7694,14 @@ def err_omp_wrong_linear_modifier_non_reference : Error<
   "variable of non-reference type %0 can be used only with 'val' modifier, but used with '%1'">;
 def err_omp_wrong_simdlen_safelen_values : Error<
   "the value of 'simdlen' parameter must be less than or equal to the value of the 'safelen' parameter">;
+def err_omp_wrong_if_directive_name_modifier : Error<
+  "directive name modifier '%0' is not allowed for '#pragma omp %1'">;
+def err_omp_no_more_if_clause : Error<
+  "no more 'if' clause is allowed">;
+def err_omp_unnamed_if_clause : Error<
+  "expected %select{|one of}0 %1 directive name modifier%select{|s}0">;
+def note_omp_previous_named_if_clause : Note<
+  "previous clause with directive name modifier specified here">;
 } // end of OpenMP category
 
 let CategoryName = "Related Result Type Issue" in {

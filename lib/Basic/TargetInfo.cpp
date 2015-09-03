@@ -311,6 +311,18 @@ void TargetInfo::adjust(const LangOptions &Opts) {
   }
 }
 
+bool TargetInfo::initFeatureMap(llvm::StringMap<bool> &Features,
+                                DiagnosticsEngine &Diags, StringRef CPU,
+                                std::vector<std::string> &FeatureVec) const {
+  for (const auto &F : FeatureVec) {
+    const char *Name = F.c_str();
+    // Apply the feature via the target.
+    bool Enabled = Name[0] == '+';
+    setFeatureEnabled(Features, Name + 1, Enabled);
+  }
+  return true;
+}
+
 //===----------------------------------------------------------------------===//
 
 
@@ -648,20 +660,5 @@ bool TargetInfo::validateInputConstraint(ConstraintInfo *OutputConstraints,
     Name++;
   }
 
-  return true;
-}
-
-bool TargetCXXABI::tryParse(llvm::StringRef name) {
-  const Kind unknown = static_cast<Kind>(-1);
-  Kind kind = llvm::StringSwitch<Kind>(name)
-    .Case("arm", GenericARM)
-    .Case("ios", iOS)
-    .Case("itanium", GenericItanium)
-    .Case("microsoft", Microsoft)
-    .Case("mips", GenericMIPS)
-    .Default(unknown);
-  if (kind == unknown) return false;
-
-  set(kind);
   return true;
 }

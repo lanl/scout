@@ -3375,6 +3375,10 @@ public:
                                        bool IsUnevaluatedContext);
   bool LookupInlineAsmField(StringRef Base, StringRef Member,
                             unsigned &Offset, SourceLocation AsmLoc);
+  ExprResult LookupInlineAsmVarDeclField(Expr *RefExpr, StringRef Member,
+                                         unsigned &Offset,
+                                         llvm::InlineAsmIdentifierInfo &Info,
+                                         SourceLocation AsmLoc);
   StmtResult ActOnMSAsmStmt(SourceLocation AsmLoc, SourceLocation LBraceLoc,
                             ArrayRef<Token> AsmToks,
                             StringRef AsmString,
@@ -3675,19 +3679,23 @@ public:
   ExprResult BuildPossibleImplicitMemberExpr(const CXXScopeSpec &SS,
                                              SourceLocation TemplateKWLoc,
                                              LookupResult &R,
-                                const TemplateArgumentListInfo *TemplateArgs);
+                                const TemplateArgumentListInfo *TemplateArgs,
+                                             const Scope *S);
   ExprResult BuildImplicitMemberExpr(const CXXScopeSpec &SS,
                                      SourceLocation TemplateKWLoc,
                                      LookupResult &R,
                                 const TemplateArgumentListInfo *TemplateArgs,
-                                     bool IsDefiniteInstance);
+                                     bool IsDefiniteInstance,
+                                     const Scope *S);
   bool UseArgumentDependentLookup(const CXXScopeSpec &SS,
                                   const LookupResult &R,
                                   bool HasTrailingLParen);
 
-  ExprResult BuildQualifiedDeclarationNameExpr(
-      CXXScopeSpec &SS, const DeclarationNameInfo &NameInfo,
-      bool IsAddressOfOperand, TypeSourceInfo **RecoveryTSI = nullptr);
+  ExprResult
+  BuildQualifiedDeclarationNameExpr(CXXScopeSpec &SS,
+                                    const DeclarationNameInfo &NameInfo,
+                                    bool IsAddressOfOperand, const Scope *S,
+                                    TypeSourceInfo **RecoveryTSI = nullptr);
 
   ExprResult BuildDependentDeclRefExpr(const CXXScopeSpec &SS,
                                        SourceLocation TemplateKWLoc,
@@ -3804,6 +3812,7 @@ public:
       CXXScopeSpec &SS, SourceLocation TemplateKWLoc,
       NamedDecl *FirstQualifierInScope, const DeclarationNameInfo &NameInfo,
       const TemplateArgumentListInfo *TemplateArgs,
+      const Scope *S,
       ActOnMemberAccessExtraArgs *ExtraArgs = nullptr);
 
   ExprResult
@@ -3812,6 +3821,7 @@ public:
                            SourceLocation TemplateKWLoc,
                            NamedDecl *FirstQualifierInScope, LookupResult &R,
                            const TemplateArgumentListInfo *TemplateArgs,
+                           const Scope *S,
                            bool SuppressQualifierCheck = false,
                            ActOnMemberAccessExtraArgs *ExtraArgs = nullptr);
 
@@ -7879,8 +7889,11 @@ public:
                                          SourceLocation LParenLoc,
                                          SourceLocation EndLoc);
   /// \brief Called on well-formed 'if' clause.
-  OMPClause *ActOnOpenMPIfClause(Expr *Condition, SourceLocation StartLoc,
+  OMPClause *ActOnOpenMPIfClause(OpenMPDirectiveKind NameModifier,
+                                 Expr *Condition, SourceLocation StartLoc,
                                  SourceLocation LParenLoc,
+                                 SourceLocation NameModifierLoc,
+                                 SourceLocation ColonLoc,
                                  SourceLocation EndLoc);
   /// \brief Called on well-formed 'final' clause.
   OMPClause *ActOnOpenMPFinalClause(Expr *Condition, SourceLocation StartLoc,
@@ -7935,7 +7948,7 @@ public:
                                                 SourceLocation StartLoc,
                                                 SourceLocation LParenLoc,
                                                 SourceLocation ArgumentLoc,
-                                                SourceLocation CommaLoc,
+                                                SourceLocation DelimLoc,
                                                 SourceLocation EndLoc);
   /// \brief Called on well-formed 'schedule' clause.
   OMPClause *ActOnOpenMPScheduleClause(OpenMPScheduleClauseKind Kind,

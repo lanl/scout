@@ -17,6 +17,7 @@
 #ifndef LLVM_CLANG_SERIALIZATION_ASTBITCODES_H
 #define LLVM_CLANG_SERIALIZATION_ASTBITCODES_H
 
+#include "clang/AST/DeclarationName.h"
 #include "clang/AST/Type.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Bitcode/BitCodes.h"
@@ -343,7 +344,7 @@ namespace clang {
 
       /// \brief This is so that older clang versions, before the introduction
       /// of the control block, can read and reject the newer PCH format.
-      /// *DON"T CHANGE THIS NUMBER*.
+      /// *DON'T CHANGE THIS NUMBER*.
       METADATA_OLD_FORMAT = 4,
 
       /// \brief Record code for the identifier table.
@@ -1480,8 +1481,72 @@ namespace clang {
       }
     };
 
+    /// \brief A key used when looking up entities by \ref DeclarationName.
+    ///
+    /// Different \ref DeclarationNames are mapped to different keys, but the
+    /// same key can occasionally represent multiple names (for names that
+    /// contain types, in particular).
+    class DeclarationNameKey {
+      typedef unsigned NameKind;
+
+      NameKind Kind;
+      uint64_t Data;
+
+    public:
+      DeclarationNameKey() : Kind(), Data() {}
+      DeclarationNameKey(DeclarationName Name);
+
+      DeclarationNameKey(NameKind Kind, uint64_t Data)
+          : Kind(Kind), Data(Data) {}
+
+      NameKind getKind() const { return Kind; }
+
+      IdentifierInfo *getIdentifier() const {
+        assert(Kind == DeclarationName::Identifier ||
+               Kind == DeclarationName::CXXLiteralOperatorName);
+        return (IdentifierInfo *)Data;
+      }
+      Selector getSelector() const {
+        assert(Kind == DeclarationName::ObjCZeroArgSelector ||
+               Kind == DeclarationName::ObjCOneArgSelector ||
+               Kind == DeclarationName::ObjCMultiArgSelector);
+        return Selector(Data);
+      }
+      OverloadedOperatorKind getOperatorKind() const {
+        assert(Kind == DeclarationName::CXXOperatorName);
+        return (OverloadedOperatorKind)Data;
+      }
+
+      /// Compute a fingerprint of this key for use in on-disk hash table.
+      unsigned getHash() const;
+
+      friend bool operator==(const DeclarationNameKey &A,
+                             const DeclarationNameKey &B) {
+        return A.Kind == B.Kind && A.Data == B.Data;
+      }
+    };
+
     /// @}
   }
 } // end namespace clang
+
+namespace llvm {
+  template <> struct DenseMapInfo<clang::serialization::DeclarationNameKey> {
+    static clang::serialization::DeclarationNameKey getEmptyKey() {
+      return clang::serialization::DeclarationNameKey(-1, 1);
+    }
+    static clang::serialization::DeclarationNameKey getTombstoneKey() {
+      return clang::serialization::DeclarationNameKey(-1, 2);
+    }
+    static unsigned
+    getHashValue(const clang::serialization::DeclarationNameKey &Key) {
+      return Key.getHash();
+    }
+    static bool isEqual(const clang::serialization::DeclarationNameKey &L,
+                        const clang::serialization::DeclarationNameKey &R) {
+      return L == R;
+    }
+  };
+}
 
 #endif
