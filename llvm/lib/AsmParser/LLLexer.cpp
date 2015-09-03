@@ -105,7 +105,7 @@ void LLLexer::FP80HexToIntPair(const char *Buffer, const char *End,
     Pair[1] += hexDigitValue(*Buffer);
   }
   Pair[0] = 0;
-  for (int i=0; i<16; i++, Buffer++) {
+  for (int i = 0; i < 16 && Buffer != End; i++, Buffer++) {
     Pair[0] *= 16;
     Pair[0] += hexDigitValue(*Buffer);
   }
@@ -757,6 +757,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   INSTKEYWORD(terminatepad, TerminatePad);
   INSTKEYWORD(cleanuppad,   CleanupPad);
   INSTKEYWORD(catchendpad,  CatchEndPad);
+  INSTKEYWORD(cleanupendpad, CleanupEndPad);
 #undef INSTKEYWORD
 
 #define DWKEYWORD(TYPE, TOKEN)                                                 \

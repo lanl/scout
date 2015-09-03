@@ -2431,7 +2431,7 @@ void X86InstrInfo::reMaterialize(MachineBasicBlock &MBB,
 }
 
 /// True if MI has a condition code def, e.g. EFLAGS, that is not marked dead.
-static bool hasLiveCondCodeDef(MachineInstr *MI) {
+bool X86InstrInfo::hasLiveCondCodeDef(MachineInstr *MI) const {
   for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
     MachineOperand &MO = MI->getOperand(i);
     if (MO.isReg() && MO.isDef() &&
@@ -5511,7 +5511,7 @@ bool X86InstrInfo::unfoldMemoryOperand(MachineFunction &MF, MachineInstr *MI,
   // TODO: Check if 32-byte or greater accesses are slow too?
   if (!MI->hasOneMemOperand() &&
       RC == &X86::VR128RegClass &&
-      Subtarget.isUnalignedMemUnder32Slow())
+      Subtarget.isUnalignedMem16Slow())
     // Without memoperands, loadRegFromAddr and storeRegToStackSlot will
     // conservatively assume the address is unaligned. That's bad for
     // performance.
@@ -5659,7 +5659,7 @@ X86InstrInfo::unfoldMemoryOperand(SelectionDAG &DAG, SDNode *N,
                             cast<MachineSDNode>(N)->memoperands_end());
     if (!(*MMOs.first) &&
         RC == &X86::VR128RegClass &&
-        Subtarget.isUnalignedMemUnder32Slow())
+        Subtarget.isUnalignedMem16Slow())
       // Do not introduce a slow unaligned load.
       return false;
     // FIXME: If a VR128 can have size 32, we should be checking if a 32-byte
@@ -5704,7 +5704,7 @@ X86InstrInfo::unfoldMemoryOperand(SelectionDAG &DAG, SDNode *N,
                              cast<MachineSDNode>(N)->memoperands_end());
     if (!(*MMOs.first) &&
         RC == &X86::VR128RegClass &&
-        Subtarget.isUnalignedMemUnder32Slow())
+        Subtarget.isUnalignedMem16Slow())
       // Do not introduce a slow unaligned store.
       return false;
     // FIXME: If a VR128 can have size 32, we should be checking if a 32-byte
@@ -6389,10 +6389,18 @@ static bool hasReassociableSibling(const MachineInstr &Inst, bool &Commuted) {
 
 // TODO: There are many more machine instruction opcodes to match:
 //       1. Other data types (integer, vectors)
-//       2. Other math / logic operations (and, or)
+//       2. Other math / logic operations (xor, or)
 //       3. Other forms of the same operation (intrinsics and other variants)
 static bool isAssociativeAndCommutative(const MachineInstr &Inst) {
   switch (Inst.getOpcode()) {
+  case X86::AND8rr:
+  case X86::AND16rr:
+  case X86::AND32rr:
+  case X86::AND64rr:
+  case X86::OR8rr:
+  case X86::OR16rr:
+  case X86::OR32rr:
+  case X86::OR64rr:
   case X86::IMUL16rr:
   case X86::IMUL32rr:
   case X86::IMUL64rr:
@@ -6650,7 +6658,7 @@ X86InstrInfo::decomposeMachineOperandsTargetFlags(unsigned TF) const {
 ArrayRef<std::pair<unsigned, const char *>>
 X86InstrInfo::getSerializableDirectMachineOperandTargetFlags() const {
   using namespace X86II;
-  static std::pair<unsigned, const char *> TargetFlags[] = {
+  static const std::pair<unsigned, const char *> TargetFlags[] = {
       {MO_GOT_ABSOLUTE_ADDRESS, "x86-got-absolute-address"},
       {MO_PIC_BASE_OFFSET, "x86-pic-base-offset"},
       {MO_GOT, "x86-got"},

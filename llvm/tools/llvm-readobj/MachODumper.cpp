@@ -42,6 +42,9 @@ public:
 
   // MachO-specific.
   void printMachODataInCode() override;
+  void printMachOVersionMin() override;
+  void printMachODysymtab() override;
+  void printMachOSegment() override;
 
 private:
   template<class MachHeader>
@@ -258,6 +261,21 @@ namespace {
     uint32_t Flags;
     uint32_t Reserved1;
     uint32_t Reserved2;
+    uint32_t Reserved3;
+  };
+
+  struct MachOSegment {
+    StringRef CmdName;
+    StringRef SegName;
+    uint64_t cmdsize;
+    uint64_t vmaddr;
+    uint64_t vmsize;
+    uint64_t fileoff;
+    uint64_t filesize;
+    uint32_t maxprot;
+    uint32_t initprot;
+    uint32_t nsects;
+    uint32_t flags;
   };
 
   struct MachOSymbol {
@@ -267,6 +285,18 @@ namespace {
     uint16_t Flags;
     uint64_t Value;
   };
+}
+
+static std::string getMask(uint32_t prot)
+{
+  // TODO (davide): This always assumes prot is valid.
+  // Catch mistakes and report if needed.
+  std::string Prot;
+  Prot = "";
+  Prot += (prot & MachO::VM_PROT_READ) ? "r" : "-";
+  Prot += (prot & MachO::VM_PROT_WRITE) ? "w" : "-";
+  Prot += (prot & MachO::VM_PROT_EXECUTE) ? "x" : "-";
+  return Prot;
 }
 
 static void getSection(const MachOObjectFile *Obj,
@@ -295,8 +325,40 @@ static void getSection(const MachOObjectFile *Obj,
   Section.Flags       = Sect.flags;
   Section.Reserved1   = Sect.reserved1;
   Section.Reserved2   = Sect.reserved2;
+  Section.Reserved3   = Sect.reserved3;
 }
 
+static void getSegment(const MachOObjectFile *Obj,
+                       const MachOObjectFile::LoadCommandInfo &L,
+                       MachOSegment &Segment) {
+  if (!Obj->is64Bit()) {
+    MachO::segment_command SC = Obj->getSegmentLoadCommand(L);
+    Segment.CmdName = "LC_SEGMENT";
+    Segment.SegName = SC.segname;
+    Segment.cmdsize = SC.cmdsize;
+    Segment.vmaddr = SC.vmaddr;
+    Segment.vmsize = SC.vmsize;
+    Segment.fileoff = SC.fileoff;
+    Segment.filesize = SC.filesize;
+    Segment.maxprot = SC.maxprot;
+    Segment.initprot = SC.initprot;
+    Segment.nsects = SC.nsects;
+    Segment.flags = SC.flags;
+    return;
+  }
+  MachO::segment_command_64 SC = Obj->getSegment64LoadCommand(L);
+  Segment.CmdName = "LC_SEGMENT_64";
+  Segment.SegName = SC.segname;
+  Segment.cmdsize = SC.cmdsize;
+  Segment.vmaddr = SC.vmaddr;
+  Segment.vmsize = SC.vmsize;
+  Segment.fileoff = SC.fileoff;
+  Segment.filesize = SC.filesize;
+  Segment.maxprot = SC.maxprot;
+  Segment.initprot = SC.initprot;
+  Segment.nsects = SC.nsects;
+  Segment.flags = SC.flags;
+}
 
 static void getSymbol(const MachOObjectFile *Obj,
                       DataRefImpl DRI,
@@ -400,6 +462,8 @@ void MachODumper::printSections(const MachOObjectFile *Obj) {
                  makeArrayRef(MachOSectionAttributes));
     W.printHex("Reserved1", MOSection.Reserved1);
     W.printHex("Reserved2", MOSection.Reserved2);
+    if (Obj->is64Bit())
+      W.printHex("Reserved3", MOSection.Reserved3);
 
     if (opts::SectionRelocations) {
       ListScope D(W, "Relocations");
@@ -622,6 +686,91 @@ void MachODumper::printMachODataInCode() {
         W.printNumber("Length", DICE.length);
         W.printNumber("Kind", DICE.kind);
       }
+    }
+  }
+}
+
+void MachODumper::printMachOVersionMin() {
+  for (const auto &Load : Obj->load_commands()) {
+    if (Load.C.cmd == MachO::LC_VERSION_MIN_MACOSX ||
+        Load.C.cmd == MachO::LC_VERSION_MIN_IPHONEOS) {
+      MachO::version_min_command VMC = Obj->getVersionMinLoadCommand(Load);
+      DictScope Group(W, "MinVersion");
+      StringRef Cmd;
+      if (Load.C.cmd == MachO::LC_VERSION_MIN_MACOSX)
+        Cmd = "LC_VERSION_MIN_MACOSX";
+      else
+        Cmd = "LC_VERSION_MIN_IPHONEOS";
+      W.printString("Cmd", Cmd);
+      W.printNumber("Size", VMC.cmdsize);
+      SmallString<32> Version;
+      Version = utostr(MachOObjectFile::getVersionMinMajor(VMC, false)) + "." +
+        utostr(MachOObjectFile::getVersionMinMinor(VMC, false));
+      uint32_t Update = MachOObjectFile::getVersionMinUpdate(VMC, false);
+      if (Update != 0)
+        Version += "." + utostr(MachOObjectFile::getVersionMinUpdate(VMC,
+                                                                     false));
+      W.printString("Version", Version);
+      SmallString<32> SDK;
+      if (VMC.sdk == 0)
+        SDK = "n/a";
+      else {
+        SDK = utostr(MachOObjectFile::getVersionMinMajor(VMC, true)) + "." +
+          utostr(MachOObjectFile::getVersionMinMinor(VMC, true));
+        uint32_t Update = MachOObjectFile::getVersionMinUpdate(VMC, true);
+        if (Update != 0)
+          SDK += "." + utostr(MachOObjectFile::getVersionMinUpdate(VMC,
+                                                                   true));
+      }
+      W.printString("SDK", SDK);
+    }
+  }
+}
+
+void MachODumper::printMachODysymtab() {
+  for (const auto &Load : Obj->load_commands()) {
+    if (Load.C.cmd == MachO::LC_DYSYMTAB) {
+      MachO::dysymtab_command DLC = Obj->getDysymtabLoadCommand();
+      DictScope Group(W, "Dysymtab");
+      W.printNumber("ilocalsym", DLC.ilocalsym);
+      W.printNumber("nlocalsym", DLC.nlocalsym);
+      W.printNumber("iextdefsym", DLC.iextdefsym);
+      W.printNumber("nextdefsym", DLC.nextdefsym);
+      W.printNumber("iundefsym", DLC.iundefsym);
+      W.printNumber("nundefsym", DLC.nundefsym);
+      W.printNumber("tocoff", DLC.tocoff);
+      W.printNumber("ntoc", DLC.ntoc);
+      W.printNumber("modtaboff", DLC.modtaboff);
+      W.printNumber("nmodtab", DLC.nmodtab);
+      W.printNumber("extrefsymoff", DLC.extrefsymoff);
+      W.printNumber("nextrefsyms", DLC.nextrefsyms);
+      W.printNumber("indirectsymoff", DLC.indirectsymoff);
+      W.printNumber("nindirectsyms", DLC.nindirectsyms);
+      W.printNumber("extreloff", DLC.extreloff);
+      W.printNumber("nextrel", DLC.nextrel);
+      W.printNumber("locreloff", DLC.locreloff);
+      W.printNumber("nlocrel", DLC.nlocrel);
+    }
+  }
+}
+
+void MachODumper::printMachOSegment() {
+  for (const auto &Load : Obj->load_commands()) {
+    if (Load.C.cmd == MachO::LC_SEGMENT || Load.C.cmd == MachO::LC_SEGMENT_64) {
+      MachOSegment MOSegment;
+      getSegment(Obj, Load, MOSegment);
+      DictScope Group(W, "Segment");
+      W.printString("Cmd", MOSegment.CmdName);
+      W.printString("Name", MOSegment.SegName);
+      W.printNumber("Size", MOSegment.cmdsize);
+      W.printHex("vmaddr", MOSegment.vmaddr);
+      W.printHex("vmsize", MOSegment.vmsize);
+      W.printNumber("fileoff", MOSegment.fileoff);
+      W.printNumber("filesize", MOSegment.fileoff);
+      W.printString("maxprot", getMask(MOSegment.maxprot));
+      W.printString("initprot", getMask(MOSegment.initprot));
+      W.printNumber("nsects", MOSegment.nsects);
+      W.printHex("flags", MOSegment.flags);
     }
   }
 }
