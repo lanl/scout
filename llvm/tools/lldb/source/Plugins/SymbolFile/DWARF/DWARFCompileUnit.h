@@ -12,6 +12,7 @@
 
 #include "lldb/lldb-enumerations.h"
 #include "DWARFDebugInfoEntry.h"
+#include "DWARFDIE.h"
 #include "SymbolFileDWARF.h"
 
 class NameToDIE;
@@ -32,16 +33,13 @@ public:
 
     bool        Extract(const lldb_private::DWARFDataExtractor &debug_info, lldb::offset_t *offset_ptr);
     size_t      ExtractDIEsIfNeeded (bool cu_die_only);
-    bool        LookupAddress(
-                    const dw_addr_t address,
-                    DWARFDebugInfoEntry** function_die,
-                    DWARFDebugInfoEntry** block_die);
-
+    DWARFDIE    LookupAddress(const dw_addr_t address);
     size_t      AppendDIEsWithTag (const dw_tag_t tag, DWARFDIECollection& matching_dies, uint32_t depth = UINT32_MAX) const;
     void        Clear();
     bool        Verify(lldb_private::Stream *s) const;
     void        Dump(lldb_private::Stream *s) const;
     dw_offset_t GetOffset() const { return m_offset; }
+    lldb::user_id_t GetID () const;
     uint32_t    Size() const { return m_is_dwarf64 ? 23 : 11; /* Size in bytes of the compile unit header */ }
     bool        ContainsDIEOffset(dw_offset_t die_offset) const { return die_offset >= GetFirstDIEOffset() && die_offset < GetNextCompileUnitOffset(); }
     dw_offset_t GetFirstDIEOffset() const { return m_offset + Size(); }
@@ -58,28 +56,28 @@ public:
     void        BuildAddressRangeTable (SymbolFileDWARF* dwarf2Data,
                                         DWARFDebugAranges* debug_aranges);
 
+    lldb_private::TypeSystem *
+                GetTypeSystem();
+
+    DWARFFormValue::FixedFormSizes
+                GetFixedFormSizes ();
+
     void
     SetBaseAddress(dw_addr_t base_addr)
     {
         m_base_addr = base_addr;
     }
 
-    const DWARFDebugInfoEntry*
+    DWARFDIE
     GetCompileUnitDIEOnly()
     {
-        ExtractDIEsIfNeeded (true);
-        if (m_die_array.empty())
-            return NULL;
-        return &m_die_array[0];
+        return DWARFDIE(this, GetCompileUnitDIEPtrOnly());
     }
 
-    const DWARFDebugInfoEntry*
-    DIE()
+    DWARFDIE
+    DIE ()
     {
-        ExtractDIEsIfNeeded (false);
-        if (m_die_array.empty())
-            return NULL;
-        return &m_die_array[0];
+        return DWARFDIE(this, DIEPtr());
     }
 
     void
@@ -105,17 +103,11 @@ public:
         return m_die_array.size() > 1;
     }
 
-    DWARFDebugInfoEntry*
-    GetDIEAtIndexUnchecked (uint32_t idx)
-    {
-        return &m_die_array[idx];
-    }
+    DWARFDIE
+    GetDIE (dw_offset_t die_offset);
 
-    DWARFDebugInfoEntry*
-    GetDIEPtr (dw_offset_t die_offset);
-
-    const DWARFDebugInfoEntry*
-    GetDIEPtrContainingOffset (dw_offset_t die_offset);
+    DWARFDIE
+    GetDIEContainingOffset (dw_offset_t die_offset);
 
     static uint8_t
     GetAddressByteSize(const DWARFCompileUnit* cu);
@@ -150,12 +142,6 @@ public:
     bool
     Supports_unnamed_objc_bitfields ();
 
-//    void
-//    AddGlobalDIEByIndex (uint32_t die_idx);
-//
-//    void
-//    AddGlobal (const DWARFDebugInfoEntry* die);
-//
     void
     Index (const uint32_t cu_idx,
            NameToDIE& func_basenames,
@@ -222,6 +208,26 @@ protected:
     void
     ParseProducerInfo ();
 private:
+
+    const DWARFDebugInfoEntry*
+    GetCompileUnitDIEPtrOnly()
+    {
+        ExtractDIEsIfNeeded (true);
+        if (m_die_array.empty())
+            return NULL;
+        return &m_die_array[0];
+    }
+
+    const DWARFDebugInfoEntry*
+    DIEPtr()
+    {
+        ExtractDIEsIfNeeded (false);
+        if (m_die_array.empty())
+            return NULL;
+        return &m_die_array[0];
+    }
+
+
     DISALLOW_COPY_AND_ASSIGN (DWARFCompileUnit);
 };
 

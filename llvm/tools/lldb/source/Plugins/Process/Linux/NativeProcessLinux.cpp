@@ -1262,7 +1262,16 @@ NativeProcessLinux::MonitorSIGTRAP(const siginfo_t &info, NativeThreadLinux &thr
             SetExitStatus (convert_pid_status_to_exit_type (data), convert_pid_status_to_return_code (data), nullptr, true);
         }
 
-        ResumeThread(thread, thread.GetState(), LLDB_INVALID_SIGNAL_NUMBER);
+        StateType state = thread.GetState();
+        if (! StateIsRunningState(state))
+        {
+            // Due to a kernel bug, we may sometimes get this stop after the inferior gets a
+            // SIGKILL. This confuses our state tracking logic in ResumeThread(), since normally,
+            // we should not be receiving any ptrace events while the inferior is stopped. This
+            // makes sure that the inferior is resumed and exits normally.
+            state = eStateRunning;
+        }
+        ResumeThread(thread, state, LLDB_INVALID_SIGNAL_NUMBER);
 
         break;
     }
@@ -1302,7 +1311,7 @@ NativeProcessLinux::MonitorSIGTRAP(const siginfo_t &info, NativeThreadLinux &thr
             log->Printf("NativeProcessLinux::%s() "
                         "received error while checking for watchpoint hits, "
                         "pid = %" PRIu64 " error = %s",
-                        __FUNCTION__, pid, error.AsCString());
+                        __FUNCTION__, thread.GetID(), error.AsCString());
         if (wp_index != LLDB_INVALID_INDEX32)
         {
             MonitorWatchpoint(thread, wp_index);
@@ -1785,14 +1794,20 @@ NativeProcessLinux::Detach ()
 {
     Error error;
 
-    // Tell ptrace to detach from the process.
-    if (GetID () != LLDB_INVALID_PROCESS_ID)
-        error = Detach (GetID ());
-
     // Stop monitoring the inferior.
     m_sigchld_handle.reset();
 
-    // No error.
+    // Tell ptrace to detach from the process.
+    if (GetID () == LLDB_INVALID_PROCESS_ID)
+        return error;
+
+    for (auto thread_sp : m_threads)
+    {
+        Error e = Detach(thread_sp->GetID());
+        if (e.Fail())
+            error = e; // Save the error, but still attempt to detach from other threads.
+    }
+
     return error;
 }
 

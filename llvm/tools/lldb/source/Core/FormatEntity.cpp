@@ -13,7 +13,6 @@
 
 #include "lldb/Core/Address.h"
 #include "lldb/Core/Debugger.h"
-#include "lldb/Core/Language.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/Stream.h"
 #include "lldb/Core/StreamString.h"
@@ -21,7 +20,8 @@
 #include "lldb/Core/ValueObjectVariable.h"
 #include "lldb/DataFormatters/DataVisualization.h"
 #include "lldb/DataFormatters/FormatManager.h"
-#include "lldb/Expression/ClangExpressionVariable.h"
+#include "lldb/DataFormatters/ValueObjectPrinter.h"
+#include "Plugins/ExpressionParser/Clang/ClangExpressionVariable.h"
 #include "lldb/Host/FileSpec.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Symbol/Block.h"
@@ -31,6 +31,7 @@
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Symbol/VariableList.h"
 #include "lldb/Target/ExecutionContext.h"
+#include "lldb/Target/Language.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/RegisterContext.h"
 #include "lldb/Target/SectionLoadList.h"
@@ -1528,8 +1529,7 @@ FormatEntity::Format (const Entry &entry,
                 CompileUnit *cu = sc->comp_unit;
                 if (cu)
                 {
-                    Language lang(cu->GetLanguage());
-                    const char *lang_name = lang.AsCString();
+                    const char *lang_name = Language::GetNameForLanguageType(cu->GetLanguage());
                     if (lang_name)
                     {
                         s.PutCString(lang_name);
@@ -1786,20 +1786,34 @@ FormatEntity::Format (const Entry &entry,
 
                                 VariableSP var_sp (args.GetVariableAtIndex (arg_idx));
                                 ValueObjectSP var_value_sp (ValueObjectVariable::Create (exe_scope, var_sp));
+                                StreamString ss;
                                 const char *var_representation = nullptr;
                                 const char *var_name = var_value_sp->GetName().GetCString();
-                                if (var_value_sp->GetCompilerType().IsAggregateType() &&
-                                    DataVisualization::ShouldPrintAsOneLiner(*var_value_sp.get()))
+                                if (var_value_sp->GetCompilerType().IsValid())
                                 {
-                                    static StringSummaryFormat format(TypeSummaryImpl::Flags()
-                                                                      .SetHideItemNames(false)
-                                                                      .SetShowMembersOneLiner(true),
-                                                                      "");
-                                    format.FormatObject(var_value_sp.get(), buffer, TypeSummaryOptions());
-                                    var_representation = buffer.c_str();
+                                    if (var_value_sp && exe_scope->CalculateTarget())
+                                        var_value_sp = var_value_sp->GetQualifiedRepresentationIfAvailable(exe_scope->CalculateTarget()->TargetProperties::GetPreferDynamicValue(),
+                                                                                                           exe_scope->CalculateTarget()->TargetProperties::GetEnableSyntheticValue());
+                                    if (var_value_sp->GetCompilerType().IsAggregateType() &&
+                                        DataVisualization::ShouldPrintAsOneLiner(*var_value_sp.get()))
+                                    {
+                                        static StringSummaryFormat format(TypeSummaryImpl::Flags()
+                                                                          .SetHideItemNames(false)
+                                                                          .SetShowMembersOneLiner(true),
+                                                                          "");
+                                        format.FormatObject(var_value_sp.get(), buffer, TypeSummaryOptions());
+                                        var_representation = buffer.c_str();
+                                    }
+                                    else
+                                        var_value_sp->DumpPrintableRepresentation(ss,
+                                                                                  ValueObject::ValueObjectRepresentationStyle::eValueObjectRepresentationStyleSummary,
+                                                                                  eFormatDefault,
+                                                                                  ValueObject::PrintableRepresentationSpecialCases::ePrintableRepresentationSpecialCasesAllow,
+                                                                                  false);
                                 }
-                                else
-                                    var_representation = var_value_sp->GetValueAsCString();
+                                
+                                if (ss.GetData() && ss.GetSize())
+                                    var_representation = ss.GetData();
                                 if (arg_idx > 0)
                                     s.PutCString (", ");
                                 if (var_value_sp->GetError().Success())
@@ -2410,10 +2424,10 @@ FormatEntity::ExtractVariableInfo (llvm::StringRef &format_str, llvm::StringRef 
     variable_name = llvm::StringRef();
     variable_format = llvm::StringRef();
 
-    const size_t paren_pos = format_str.find_first_of('}');
+    const size_t paren_pos = format_str.find('}');
     if (paren_pos != llvm::StringRef::npos)
     {
-        const size_t percent_pos = format_str.find_first_of('%');
+        const size_t percent_pos = format_str.find('%');
         if (percent_pos < paren_pos)
         {
             if (percent_pos > 0)

@@ -20,6 +20,10 @@ set( LLDB_USED_LIBS
   lldbPluginDynamicLoaderPosixDYLD
   lldbPluginDynamicLoaderHexagonDYLD
   lldbPluginDynamicLoaderWindowsDYLD
+  
+  lldbPluginCPlusPlusLanguage
+  lldbPluginObjCLanguage
+  lldbPluginObjCPlusPlusLanguage
 
   lldbPluginObjectFileELF
   lldbPluginObjectFileJIT
@@ -67,6 +71,7 @@ set( LLDB_USED_LIBS
   lldbPluginSystemRuntimeMacOSX
   lldbPluginProcessElfCore
   lldbPluginJITLoaderGDB
+  lldbPluginExpressionParserClang
   )
 
 # Windows-only libraries

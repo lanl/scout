@@ -1,5 +1,3 @@
-set(LLVM_NO_RTTI 1)
-
 add_lldb_library(lldbExpression
   ASTDumper.cpp
   ASTResultSynthesizer.cpp
@@ -7,7 +5,6 @@ add_lldb_library(lldbExpression
   ClangASTSource.cpp
   ClangExpressionDeclMap.cpp
   ClangExpressionParser.cpp
-  ClangExpressionVariable.cpp
   ClangFunction.cpp
   ClangModulesDeclVendor.cpp
   ClangPersistentVariables.cpp
@@ -15,6 +12,7 @@ add_lldb_library(lldbExpression
   ClangUtilityFunction.cpp
   DWARFExpression.cpp
   ExpressionSourceCode.cpp
+  ExpressionVariable.cpp
   IRDynamicChecks.cpp
   IRExecutionUnit.cpp
   IRForTarget.cpp

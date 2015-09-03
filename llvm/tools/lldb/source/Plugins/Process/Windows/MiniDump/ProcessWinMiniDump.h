@@ -23,7 +23,7 @@ class ProcessWinMiniDump : public lldb_private::Process
 {
 public:
     static lldb::ProcessSP
-    CreateInstance (lldb_private::Target& target,
+    CreateInstance (lldb::TargetSP target_sp,
                     lldb_private::Listener &listener,
                     const lldb_private::FileSpec *crash_file_path);
 
@@ -39,7 +39,7 @@ public:
     static const char *
     GetPluginDescriptionStatic();
 
-    ProcessWinMiniDump(lldb_private::Target& target,
+    ProcessWinMiniDump(lldb::TargetSP target_sp,
                        lldb_private::Listener &listener,
                        const lldb_private::FileSpec &core_file);
 
@@ -47,7 +47,7 @@ public:
     ~ProcessWinMiniDump();
 
     bool
-    CanDebug(lldb_private::Target &target, bool plugin_specified_by_name) override;
+    CanDebug(lldb::TargetSP target_sp, bool plugin_specified_by_name) override;
 
     lldb_private::Error
     DoLoadCore() override;
@@ -70,6 +70,9 @@ public:
     bool
     IsAlive() override;
 
+    bool
+    WarnBeforeDetach () const override;
+
     size_t
     ReadMemory(lldb::addr_t addr, void *buf, size_t size, lldb_private::Error &error) override;
 
@@ -91,6 +94,19 @@ protected:
                      lldb_private::ThreadList &new_thread_list) override;
 
 private:
+    // Describes a range of memory captured in the mini dump.
+    struct Range {
+      lldb::addr_t start;  // virtual address of the beginning of the range
+      size_t size;         // size of the range in bytes
+      const uint8_t *ptr;  // absolute pointer to the first byte of the range
+    };
+
+    // If the mini dump has a memory range that contains the desired address, it
+    // returns true with the details of the range in *range_out.  Otherwise, it
+    // returns false.
+    bool
+    FindMemoryRange(lldb::addr_t addr, Range *range_out) const;
+
     lldb_private::Error
     MapMiniDumpIntoMemory(const char *file);
 
@@ -100,11 +116,14 @@ private:
     void
     ReadExceptionRecord();
 
+    void
+    ReadModuleList();
+
     // A thin wrapper around WinAPI's MiniDumpReadDumpStream to avoid redundant
     // checks.  If there's a failure (e.g., if the requested stream doesn't exist),
     // the function returns nullptr and sets *size_out to 0.
     void *
-    FindDumpStream(unsigned stream_number, size_t *size_out);
+    FindDumpStream(unsigned stream_number, size_t *size_out) const;
 
     // Isolate the data to keep Windows-specific types out of this header.  Can't
     // use the typical pimpl idiom because the implementation of this class also
