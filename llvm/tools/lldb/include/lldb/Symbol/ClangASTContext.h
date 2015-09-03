@@ -945,7 +945,7 @@ public:
                           uint32_t bitfield_bit_size);
   
   // +===== Scout ==========================================
-  clang::MeshFieldDecl *
+  static clang::MeshFieldDecl *
   AddFieldToMeshType (const CompilerType& type,
                       const char *name,
                       const CompilerType &field_type,
@@ -953,7 +953,7 @@ public:
                       uint32_t bitfield_bit_size,
                       uint32_t field_flags);
   
-  clang::VarDecl*
+  static clang::VarDecl*
   AddFieldToFrameType (const CompilerType& type,
                        const char *name,
                        const CompilerType &field_type,
@@ -1035,10 +1035,10 @@ public:
     CompleteTagDeclarationDefinition (const CompilerType &type);
   
     // +===== Scout ===========================
-    bool
+    static bool
     StartScoutDeclarationDefinition (const CompilerType &type);
   
-    bool
+    static bool
     CompleteScoutDeclarationDefinition (const CompilerType &type);
     // +========================================
   
@@ -1131,11 +1131,11 @@ public:
     GetAsObjCInterfaceDecl (const CompilerType& type);
   
     // +===== Scout =====================
-    clang::MeshDecl *
-    GetAsMeshDecl (const CompilerType& type) const;
+    static clang::MeshDecl *
+    GetAsMeshDecl (const CompilerType& type);
   
-    clang::FrameDecl *
-    GetAsFrameDecl (const CompilerType& type) const;
+    static clang::FrameDecl *
+    GetAsFrameDecl (const CompilerType& type);
     // +=================================
   
     static clang::QualType

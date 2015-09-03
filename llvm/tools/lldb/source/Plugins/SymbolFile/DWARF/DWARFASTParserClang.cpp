@@ -172,7 +172,7 @@ DWARFASTParserClang::ParseTypeFromDWARF (const SymbolContext& sc,
             DWARFFormValue form_value;
 
             dw_attr_t attr;
-
+          
             switch (tag)
             {
                 case DW_TAG_base_type:
@@ -368,6 +368,15 @@ DWARFASTParserClang::ParseTypeFromDWARF (const SymbolContext& sc,
                 }
                     break;
 
+                // +===== Scout =============
+              case DW_TAG_SCOUT_uniform_mesh_type:
+              case DW_TAG_SCOUT_ALE_mesh_type:
+              case DW_TAG_SCOUT_structured_mesh_type:
+              case DW_TAG_SCOUT_rectilinear_mesh_type:
+              case DW_TAG_SCOUT_unstructured_mesh_type:
+              case DW_TAG_SCOUT_frame_type:
+                // +=========================
+                
                 case DW_TAG_structure_type:
                 case DW_TAG_union_type:
                 case DW_TAG_class_type:
@@ -479,6 +488,11 @@ DWARFASTParserClang::ParseTypeFromDWARF (const SymbolContext& sc,
                     DEBUG_PRINTF ("0x%8.8" PRIx64 ": %s (\"%s\")\n", die.GetID(), DW_TAG_value_to_name(tag), type_name_cstr);
 
                     int tag_decl_kind = -1;
+
+                    // +===== Scout ======================
+                    bool isScoutType = false;
+                    // +==================================
+
                     AccessType default_accessibility = eAccessNone;
                     if (tag == DW_TAG_structure_type)
                     {
@@ -495,6 +509,17 @@ DWARFASTParserClang::ParseTypeFromDWARF (const SymbolContext& sc,
                         tag_decl_kind = clang::TTK_Class;
                         default_accessibility = eAccessPrivate;
                     }
+                  // +===== Scout ======================
+                    else if (tag == DW_TAG_SCOUT_uniform_mesh_type ||
+                             tag == DW_TAG_SCOUT_ALE_mesh_type ||
+                             tag == DW_TAG_SCOUT_structured_mesh_type ||
+                             tag == DW_TAG_SCOUT_rectilinear_mesh_type ||
+                             tag == DW_TAG_SCOUT_unstructured_mesh_type ||
+                             tag == DW_TAG_SCOUT_frame_type){
+                      isScoutType = true;
+                      default_accessibility = eAccessPublic;
+                    }
+                  // +==================================
 
                     if (byte_size_valid && byte_size == 0 && type_name_cstr &&
                         die.HasChildren() == false &&
@@ -616,7 +641,7 @@ DWARFASTParserClang::ParseTypeFromDWARF (const SymbolContext& sc,
                             return type_sp;
                         }
                     }
-                    assert (tag_decl_kind != -1);
+                    assert (/* +===== Scout ======= */ isScoutType || /* +============ */ tag_decl_kind != -1);
                     bool clang_type_was_created = false;
                     clang_type.SetCompilerType(&m_ast, dwarf->m_forward_decl_die_to_clang_type.lookup (die.GetDIE()));
                     if (!clang_type)
@@ -660,6 +685,88 @@ DWARFASTParserClang::ParseTypeFromDWARF (const SymbolContext& sc,
 
                         if (!clang_type_was_created)
                         {
+                          // +===== Scout =================
+                          if(isScoutType){
+                            const uint32_t dimX =
+                            die.GetAttributeValueAsUnsigned(DW_AT_SCOUT_mesh_dim_x, 0);
+                            
+                            const uint32_t dimY =
+                            die.GetAttributeValueAsUnsigned(DW_AT_SCOUT_mesh_dim_y, 0);
+                            
+                            const uint32_t dimZ =
+                            die.GetAttributeValueAsUnsigned(DW_AT_SCOUT_mesh_dim_z, 0);
+                            
+                            
+                            
+                            switch(tag){
+                            case DW_TAG_SCOUT_uniform_mesh_type:
+                              clang_type = m_ast.CreateUniformMeshType (decl_ctx,
+                                                                        accessibility,
+                                                                        type_name_cstr,
+                                                                        dimX,
+                                                                        dimY,
+                                                                        dimZ,
+                                                                        class_language,
+                                                                        &metadata);
+                              break;
+                                
+                            case DW_TAG_SCOUT_ALE_mesh_type:
+                              clang_type = m_ast.CreateALEMeshType (decl_ctx,
+                                                                    accessibility,
+                                                                    type_name_cstr,
+                                                                    dimX,
+                                                                    dimY,
+                                                                    dimZ,
+                                                                    class_language,
+                                                                    &metadata);
+                              break;
+                                
+                            case DW_TAG_SCOUT_structured_mesh_type:
+                              clang_type = m_ast.CreateStructuredMeshType (decl_ctx,
+                                                                           accessibility,
+                                                                           type_name_cstr,
+                                                                           dimX,
+                                                                           dimY,
+                                                                           dimZ,
+                                                                           class_language,
+                                                                           &metadata);
+                              break;
+                            case DW_TAG_SCOUT_rectilinear_mesh_type:
+                              clang_type = m_ast.CreateRectilinearMeshType (decl_ctx,
+                                                                            accessibility,
+                                                                            type_name_cstr,
+                                                                            dimX,
+                                                                            dimY,
+                                                                            dimZ,
+                                                                            class_language,
+                                                                            &metadata);
+                              break;
+                            case DW_TAG_SCOUT_unstructured_mesh_type:
+                              clang_type = m_ast.CreateUnstructuredMeshType (decl_ctx,
+                                                                             accessibility,
+                                                                             type_name_cstr,
+                                                                             dimX,
+                                                                             dimY,
+                                                                             dimZ,
+                                                                             class_language,
+                                                                             &metadata);
+                              break;
+                            case DW_TAG_SCOUT_frame_type:
+                              clang_type = m_ast.CreateFrameType (decl_ctx,
+                                                                  accessibility,
+                                                                  type_name_cstr,
+                                                                  class_language,
+                                                                  &metadata);
+                                break;
+                              default:
+                                assert(false && "Invalid Scout type");
+                            }
+                            
+                            clang_type_was_created = true;
+                          }
+                          else{
+                            // +=============================
+
                             clang_type_was_created = true;
                             clang_type = m_ast.CreateRecordType (decl_ctx,
                                                                  accessibility,
@@ -667,6 +774,7 @@ DWARFASTParserClang::ParseTypeFromDWARF (const SymbolContext& sc,
                                                                  tag_decl_kind,
                                                                  class_language,
                                                                  &metadata);
+                          }
                         }
                     }
 
@@ -736,8 +844,16 @@ DWARFASTParserClang::ParseTypeFromDWARF (const SymbolContext& sc,
                         if (die.HasChildren() == false)
                         {
                             // No children for this struct/union/class, lets finish it
+                          // +===== Scout ==========================
+                          if(isScoutType){
+                            ClangASTContext::StartScoutDeclarationDefinition (clang_type);
+                            ClangASTContext::CompleteScoutDeclarationDefinition (clang_type);
+                          }
+                          else{
                             ClangASTContext::StartTagDeclarationDefinition (clang_type);
                             ClangASTContext::CompleteTagDeclarationDefinition (clang_type);
+                          }
+                          // +======================================
 
                             if (tag == DW_TAG_structure_type) // this only applies in C
                             {
@@ -759,7 +875,14 @@ DWARFASTParserClang::ParseTypeFromDWARF (const SymbolContext& sc,
 
                             if (class_language != eLanguageTypeObjC &&
                                 class_language != eLanguageTypeObjC_plus_plus)
+                              // +===== Scout =========================
+                              if(isScoutType){
+                                ClangASTContext::StartScoutDeclarationDefinition (clang_type);
+                              }
+                              else{
                                 ClangASTContext::StartTagDeclarationDefinition (clang_type);
+                              }
+                              // +=====================================
 
                             // Leave this as a forward declaration until we need
                             // to know the details of the type. lldb_private::Type
@@ -1775,6 +1898,95 @@ DWARFASTParserClang::CompleteTypeFromDWARF (const DWARFDIE &die,
 
     switch (tag)
     {
+
+      // +===== Scout =======================
+      case DW_TAG_SCOUT_uniform_mesh_type:
+      case DW_TAG_SCOUT_ALE_mesh_type:
+      case DW_TAG_SCOUT_structured_mesh_type:
+      case DW_TAG_SCOUT_rectilinear_mesh_type:
+      case DW_TAG_SCOUT_unstructured_mesh_type:
+      {
+        MeshLayoutInfo layout_info;
+        
+        {
+          if (die.HasChildren())
+          {
+            
+            AccessType default_accessibility = eAccessPublic;
+            
+            SymbolContext sc(die.GetLLDBCompileUnit());
+            
+            ParseMeshChildMembers (sc,
+                                   die,
+                                   clang_type,
+                                   default_accessibility,
+                                   layout_info);
+          }
+        }
+        
+        ClangASTContext::CompleteScoutDeclarationDefinition (clang_type);
+        
+        if (!layout_info.field_offsets.empty())
+        {
+          if (type)
+            layout_info.bit_size = type->GetByteSize() * 8;
+          if (layout_info.bit_size == 0)
+            layout_info.bit_size = die.GetAttributeValueAsUnsigned(DW_AT_byte_size, 0) * 8;
+          
+          clang::MeshDecl *mesh_decl =
+          ClangASTContext::GetAsMeshDecl(clang_type);
+          
+          assert(mesh_decl && "Expected as MeshDecl");
+          
+          ModuleSP module_sp = dwarf->GetObjectFile()->GetModule();
+          
+          if (module_sp)
+          {
+            module_sp->LogMessage (log,
+                                   "SymbolFileDWARF::ResolveClangOpaqueTypeDefinition (clang_type = %p) caching layout info for record_decl = %p, bit_size = %" PRIu64 ", alignment = %" PRIu64 ", field_offsets[%u])",
+                                   clang_type.GetOpaqueQualType(),
+                                   mesh_decl,
+                                   layout_info.bit_size,
+                                   layout_info.alignment,
+                                   (uint32_t)layout_info.field_offsets.size());
+            
+            uint32_t idx;
+            {
+              llvm::DenseMap <const clang::MeshFieldDecl *, uint64_t>::const_iterator pos, end = layout_info.field_offsets.end();
+              for (idx = 0, pos = layout_info.field_offsets.begin(); pos != end; ++pos, ++idx)
+              {
+                module_sp->LogMessage (log,
+                                       "SymbolFileDWARF::ResolveClangOpaqueTypeDefinition (clang_type = %p) field[%u] = { bit_offset=%u, name='%s' }",
+                                       clang_type.GetOpaqueQualType(),
+                                       idx,
+                                       (uint32_t)pos->second,
+                                       pos->first->getNameAsString().c_str());
+              }
+            }
+          }
+          m_mesh_decl_to_layout_map.insert(std::make_pair(mesh_decl, layout_info));
+        }
+        return (bool)clang_type;
+      }
+      case DW_TAG_SCOUT_frame_type:
+      {
+        if (die.HasChildren())
+        {
+          
+          SymbolContext sc(die.GetLLDBCompileUnit());
+          
+          ParseFrameChildMembers (sc,
+                                  die,
+                                  clang_type);
+        }
+        
+        ClangASTContext::CompleteScoutDeclarationDefinition (clang_type);
+        
+        return (bool)clang_type;
+      }
+      // +===================================
+
+
         case DW_TAG_structure_type:
         case DW_TAG_union_type:
         case DW_TAG_class_type:
@@ -3088,6 +3300,267 @@ DWARFASTParserClang::ParseChildParameters (const SymbolContext& sc,
     }
     return arg_idx;
 }
+
+// +===== Scout ==========================================
+
+size_t
+DWARFASTParserClang::ParseMeshChildMembers
+(
+ const SymbolContext& sc,
+ const DWARFDIE &parent_die,
+ CompilerType &class_clang_type,
+ AccessType& default_accessibility,
+ MeshLayoutInfo &layout_info
+ )
+{
+  if (!parent_die)
+    return 0;
+  
+  size_t count = 0;
+  uint32_t member_idx = 0;
+  BitfieldInfo last_field_info;
+  
+  ModuleSP module_sp = parent_die.GetDWARF()->GetObjectFile()->GetModule();
+  ClangASTContext* ast = class_clang_type.GetTypeSystem()->AsClangASTContext();
+  if (ast == nullptr)
+    return 0;
+  
+  for (DWARFDIE die = parent_die.GetFirstChild(); die.IsValid(); die = die.GetSibling())
+  {
+    dw_tag_t tag = die.Tag();
+    
+    switch (tag)
+    {
+      case DW_TAG_member:
+        DWARFAttributes attributes;
+        const size_t num_attributes = die.GetAttributes (attributes);
+        
+        if (num_attributes > 0)
+        {
+          Declaration decl;
+          //DWARFExpression location;
+          const char *name = NULL;
+          //const char *prop_name = NULL;
+          //const char *prop_getter_name = NULL;
+          //const char *prop_setter_name = NULL;
+          //uint32_t prop_attributes = 0;
+          
+          
+          lldb::user_id_t encoding_uid = LLDB_INVALID_UID;
+          AccessType accessibility = eAccessNone;
+          uint32_t member_byte_offset = UINT32_MAX;
+          uint32_t i;
+          uint32_t fieldFlags;
+          for (i=0; i<num_attributes; ++i)
+          {
+            const dw_attr_t attr = attributes.AttributeAtIndex(i);
+            DWARFFormValue form_value;
+            if (attributes.ExtractFormValueAtIndex(i, form_value))
+            {
+              switch (attr)
+              {
+                case DW_AT_decl_file:   decl.SetFile(sc.comp_unit->GetSupportFiles().GetFileSpecAtIndex(form_value.Unsigned())); break;
+                case DW_AT_decl_line:   decl.SetLine(form_value.Unsigned()); break;
+                case DW_AT_decl_column: decl.SetColumn(form_value.Unsigned()); break;
+                case DW_AT_name:        name = form_value.AsCString(); break;
+                case DW_AT_type:        encoding_uid = form_value.Reference(); break;
+                case DW_AT_data_member_location:
+                  if (form_value.BlockData())
+                  {
+                    Value initialValue(0);
+                    Value memberOffset(0);
+                    const DWARFDataExtractor& debug_info_data = die.GetDWARF()->get_debug_info_data();
+                    uint32_t block_length = form_value.Unsigned();
+                    uint32_t block_offset = form_value.BlockData() - debug_info_data.GetDataStart();
+                    if (DWARFExpression::Evaluate(NULL, // ExecutionContext *
+                                                  NULL, // ClangExpressionVariableList *
+                                                  NULL, // ClangExpressionDeclMap *
+                                                  NULL, // RegisterContext *
+                                                  module_sp,
+                                                  debug_info_data,
+                                                  die.GetCU(),
+                                                  block_offset,
+                                                  block_length,
+                                                  eRegisterKindDWARF,
+                                                  &initialValue,
+                                                  memberOffset,
+                                                  NULL))
+                    {
+                      member_byte_offset = memberOffset.ResolveValue(NULL).UInt();
+                    }
+                  }
+                  else
+                  {
+                    // With DWARF 3 and later, if the value is an integer constant,
+                    // this form value is the offset in bytes from the beginning
+                    // of the containing entity.
+                    member_byte_offset = form_value.Unsigned();
+                  }
+                  break;
+                case DW_AT_SCOUT_field_flags:
+                  fieldFlags = form_value.Unsigned();
+                  break;
+              }
+            }
+          }
+          
+          Type *member_type = die.ResolveTypeUID(encoding_uid);
+          clang::MeshFieldDecl *field_decl = NULL;
+          if (tag == DW_TAG_member)
+          {
+            if (member_type)
+            {
+              if (accessibility == eAccessNone)
+                accessibility = default_accessibility;
+              
+              uint64_t field_bit_offset = (member_byte_offset == UINT32_MAX ? 0 : (member_byte_offset * 8));
+              
+              last_field_info.Clear();
+              
+              CompilerType member_clang_type = member_type->GetLayoutCompilerType ();
+              
+              field_decl = ClangASTContext::AddFieldToMeshType (class_clang_type,
+                                                                name,
+                                                                member_clang_type,
+                                                                accessibility,
+                                                                0,
+                                                                fieldFlags);
+              
+              m_ast.SetMetadataAsUserID (field_decl, die.GetID());
+              
+              layout_info.field_offsets.insert(std::make_pair(field_decl, field_bit_offset));
+            }
+          }
+        }
+    }
+  }
+  
+  return count;
+}
+
+size_t
+DWARFASTParserClang::ParseFrameChildMembers
+(
+ const SymbolContext& sc,
+ const DWARFDIE &parent_die,
+ CompilerType &class_clang_type)
+{
+  if (!parent_die)
+    return 0;
+  
+  size_t count = 0;
+  uint32_t member_idx = 0;
+  BitfieldInfo last_field_info;
+
+  ModuleSP module_sp = parent_die.GetDWARF()->GetObjectFile()->GetModule();
+  ClangASTContext* ast = class_clang_type.GetTypeSystem()->AsClangASTContext();
+  if (ast == nullptr)
+    return 0;
+  
+  for (DWARFDIE die = parent_die.GetFirstChild(); die.IsValid(); die = die.GetSibling())
+  {
+    dw_tag_t tag = die.Tag();
+    
+    switch (tag)
+    {
+      case DW_TAG_member:
+        DWARFAttributes attributes;
+        const size_t num_attributes = die.GetAttributes (attributes);
+        
+        if (num_attributes > 0)
+        {
+          Declaration decl;
+          //DWARFExpression location;
+          const char *name = NULL;
+          //const char *prop_name = NULL;
+          //const char *prop_getter_name = NULL;
+          //const char *prop_setter_name = NULL;
+          //uint32_t prop_attributes = 0;
+          
+          
+          lldb::user_id_t encoding_uid = LLDB_INVALID_UID;
+          //AccessType accessibility = eAccessNone;
+          uint32_t member_byte_offset = UINT32_MAX;
+          uint32_t i;
+          uint32_t varId;
+          for (i=0; i<num_attributes; ++i)
+          {
+            const dw_attr_t attr = attributes.AttributeAtIndex(i);
+            DWARFFormValue form_value;
+            if (attributes.ExtractFormValueAtIndex(i, form_value))
+            {
+              switch (attr)
+              {
+                case DW_AT_decl_file:   decl.SetFile(sc.comp_unit->GetSupportFiles().GetFileSpecAtIndex(form_value.Unsigned())); break;
+                case DW_AT_decl_line:   decl.SetLine(form_value.Unsigned()); break;
+                case DW_AT_decl_column: decl.SetColumn(form_value.Unsigned()); break;
+                case DW_AT_name:        name = form_value.AsCString(); break;
+                case DW_AT_type:        encoding_uid = form_value.Reference(); break;
+                case DW_AT_data_member_location:
+                  if (form_value.BlockData())
+                  {
+                    Value initialValue(0);
+                    Value memberOffset(0);
+                    const DWARFDataExtractor& debug_info_data = die.GetDWARF()->get_debug_info_data();
+                    uint32_t block_length = form_value.Unsigned();
+                    uint32_t block_offset = form_value.BlockData() - debug_info_data.GetDataStart();
+                    if (DWARFExpression::Evaluate(NULL, // ExecutionContext *
+                                                  NULL, // ClangExpressionVariableList *
+                                                  NULL, // ClangExpressionDeclMap *
+                                                  NULL, // RegisterContext *
+                                                  module_sp,
+                                                  debug_info_data,
+                                                  die.GetCU(),
+                                                  block_offset,
+                                                  block_length,
+                                                  eRegisterKindDWARF,
+                                                  &initialValue,
+                                                  memberOffset,
+                                                  NULL))
+                    {
+                      member_byte_offset = memberOffset.ResolveValue(NULL).UInt();
+                    }
+                  }
+                  else
+                  {
+                    // With DWARF 3 and later, if the value is an integer constant,
+                    // this form value is the offset in bytes from the beginning
+                    // of the containing entity.
+                    member_byte_offset = form_value.Unsigned();
+                  }
+                  break;
+                case DW_AT_SCOUT_field_flags:
+                  varId = form_value.Unsigned();
+                  break;
+              }
+            }
+          }
+          
+          Type *member_type = die.ResolveTypeUID(encoding_uid);
+          if (tag == DW_TAG_member)
+          {
+            if (member_type)
+            {
+              //uint64_t field_bit_offset = (member_byte_offset == UINT32_MAX ? 0 : (member_byte_offset * 8));
+              
+              last_field_info.Clear();
+              
+              CompilerType member_clang_type = member_type->GetLayoutCompilerType ();
+              
+              ClangASTContext::AddFieldToFrameType (class_clang_type,
+                                                    name,
+                                                    member_clang_type,
+                                                    varId);
+            }
+          }
+        }
+    }
+  }
+  
+  return count;
+}
+
+// =====================================================================
 
 void
 DWARFASTParserClang::ParseChildArrayInfo (const SymbolContext& sc,

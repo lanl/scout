@@ -1709,7 +1709,7 @@ ClangExpressionDeclMap::GetVariableValue (VariableSP &var,
 void
 ClangExpressionDeclMap::AddOneVariable (NameSearchContext &context, VariableSP var, ValueObjectSP valobj, unsigned int current_id)
 {
-    assert (m_parser_vars.get());
+  assert (m_parser_vars.get());
 
     Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_EXPRESSIONS));
 

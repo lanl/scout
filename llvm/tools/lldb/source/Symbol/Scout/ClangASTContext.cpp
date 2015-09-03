@@ -497,21 +497,21 @@ ClangASTContext::AddFieldToMeshType (const CompilerType& type,
 }
 
 clang::MeshDecl *
-ClangASTContext::GetAsMeshDecl (const CompilerType& type) const
+ClangASTContext::GetAsMeshDecl (const CompilerType& type)
 {
-  const clang::MeshType *mesh_type = dyn_cast<MeshType>(GetCanonicalQualType(type));
+  const clang::MeshType *mesh_type = dyn_cast<clang::MeshType>(GetCanonicalQualType(type));
     if (mesh_type)
         return mesh_type->getDecl();
-    return NULL;
+    return nullptr;
 }
 
 clang::FrameDecl *
-ClangASTContext::GetAsFrameDecl (const CompilerType& type) const
+ClangASTContext::GetAsFrameDecl (const CompilerType& type)
 {
-  const clang::FrameType *frame_type = dyn_cast<FrameType>(GetCanonicalQualType(type));
+  const clang::FrameType *frame_type = dyn_cast<clang::FrameType>(GetCanonicalQualType(type));
   if (frame_type)
     return frame_type->getDecl();
-  return NULL;
+  return nullptr;
 }
 
 clang::VarDecl*

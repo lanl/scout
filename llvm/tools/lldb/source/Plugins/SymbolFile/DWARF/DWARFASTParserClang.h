@@ -83,6 +83,30 @@ protected:
         llvm::DenseMap<const clang::CXXRecordDecl *, clang::CharUnits> vbase_offsets;
     };
 
+    // +===== Scout ==========================================
+  
+    struct MeshLayoutInfo
+    {
+      MeshLayoutInfo () :
+      bit_size(0),
+      alignment(0),
+      field_offsets(),
+      base_offsets(),
+      vbase_offsets()
+      {
+      }
+      uint64_t bit_size;
+      uint64_t alignment;
+      llvm::DenseMap<const clang::MeshFieldDecl *, uint64_t> field_offsets;
+      llvm::DenseMap<const clang::MeshDecl *, clang::CharUnits> base_offsets;
+      llvm::DenseMap<const clang::MeshDecl *, clang::CharUnits> vbase_offsets;
+    };
+
+    typedef llvm::DenseMap<const clang::MeshDecl *, MeshLayoutInfo>
+    MeshDeclToLayoutMap;
+
+    // =======================================================
+
     clang::NamespaceDecl *
     ResolveNamespaceDIE (const DWARFDIE &die);
 
@@ -118,6 +142,20 @@ protected:
                           std::vector<lldb_private::CompilerType>& function_args,
                           std::vector<clang::ParmVarDecl*>& function_param_decls,
                           unsigned &type_quals);
+
+  // +===== Scout =========================================================
+  size_t
+  ParseMeshChildMembers(const lldb_private::SymbolContext& sc,
+                        const DWARFDIE &die,
+                        lldb_private::CompilerType &class_clang_type,
+                        lldb::AccessType &default_accessibility,
+                        MeshLayoutInfo &layout_info);
+  
+  size_t
+  ParseFrameChildMembers(const lldb_private::SymbolContext& sc,
+                         const DWARFDIE &die,
+                         lldb_private::CompilerType &class_clang_type);
+  // +=====================================================================
 
 
     void
@@ -164,6 +202,10 @@ protected:
     DIEToDeclContextMap m_die_to_decl_ctx;
     DeclContextToDIEMap m_decl_ctx_to_die;
     RecordDeclToLayoutMap m_record_decl_to_layout_map;
+
+    // +===== Scout ==========================================
+    MeshDeclToLayoutMap m_mesh_decl_to_layout_map;
+    // +======================================================
 };
 
 #endif  // SymbolFileDWARF_DWARFASTParserClang_h_
