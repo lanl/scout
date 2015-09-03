@@ -864,6 +864,14 @@ Decl *TemplateDeclInstantiator::VisitEnumDecl(EnumDecl *D) {
   Enum->setAccess(D->getAccess());
   // Forward the mangling number from the template to the instantiated decl.
   SemaRef.Context.setManglingNumber(Enum, SemaRef.Context.getManglingNumber(D));
+  // See if the old tag was defined along with a declarator.
+  // If it did, mark the new tag as being associated with that declarator.
+  if (DeclaratorDecl *DD = SemaRef.Context.getDeclaratorForUnnamedTagDecl(D))
+    SemaRef.Context.addDeclaratorForUnnamedTagDecl(Enum, DD);
+  // See if the old tag was defined along with a typedef.
+  // If it did, mark the new tag as being associated with that typedef.
+  if (TypedefNameDecl *TND = SemaRef.Context.getTypedefNameForUnnamedTagDecl(D))
+    SemaRef.Context.addTypedefNameForUnnamedTagDecl(Enum, TND);
   if (SubstQualifier(D, Enum)) return nullptr;
   Owner->addDecl(Enum);
 
@@ -1348,6 +1356,16 @@ Decl *TemplateDeclInstantiator::VisitCXXRecordDecl(CXXRecordDecl *D) {
   // Forward the mangling number from the template to the instantiated decl.
   SemaRef.Context.setManglingNumber(Record,
                                     SemaRef.Context.getManglingNumber(D));
+
+  // See if the old tag was defined along with a declarator.
+  // If it did, mark the new tag as being associated with that declarator.
+  if (DeclaratorDecl *DD = SemaRef.Context.getDeclaratorForUnnamedTagDecl(D))
+    SemaRef.Context.addDeclaratorForUnnamedTagDecl(Record, DD);
+
+  // See if the old tag was defined along with a typedef.
+  // If it did, mark the new tag as being associated with that typedef.
+  if (TypedefNameDecl *TND = SemaRef.Context.getTypedefNameForUnnamedTagDecl(D))
+    SemaRef.Context.addTypedefNameForUnnamedTagDecl(Record, TND);
 
   Owner->addDecl(Record);
 
@@ -3701,19 +3719,6 @@ void Sema::BuildVariableInstantiation(
     if (OldVar->isUsed(false))
       NewVar->setIsUsed();
     NewVar->setReferenced(OldVar->isReferenced());
-  }
-
-  // See if the old variable had a type-specifier that defined an anonymous tag.
-  // If it did, mark the new variable as being the declarator for the new
-  // anonymous tag.
-  if (const TagType *OldTagType = OldVar->getType()->getAs<TagType>()) {
-    TagDecl *OldTag = OldTagType->getDecl();
-    if (OldTag->getDeclaratorForAnonDecl() == OldVar) {
-      TagDecl *NewTag = NewVar->getType()->castAs<TagType>()->getDecl();
-      assert(!NewTag->hasNameForLinkage() &&
-             !NewTag->hasDeclaratorForAnonDecl());
-      NewTag->setDeclaratorForAnonDecl(NewVar);
-    }
   }
 
   InstantiateAttrs(TemplateArgs, OldVar, NewVar, LateAttrs, StartingScope);

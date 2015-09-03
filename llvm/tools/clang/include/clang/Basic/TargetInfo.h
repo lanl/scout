@@ -660,6 +660,10 @@ public:
                              std::string &/*SuggestedModifier*/) const {
     return true;
   }
+  virtual bool
+  validateAsmConstraint(const char *&Name,
+                        TargetInfo::ConstraintInfo &info) const = 0;
+
   bool resolveSymbolicName(const char *&Name,
                            ConstraintInfo *OutputConstraints,
                            unsigned NumOutputs, unsigned &Index) const;
@@ -674,15 +678,14 @@ public:
     return std::string(1, *Constraint);
   }
 
+  /// \brief Returns a string of target-specific clobbers, in LLVM format.
+  virtual const char *getClobbers() const = 0;
+
   /// \brief Returns true if NaN encoding is IEEE 754-2008.
   /// Only MIPS allows a different encoding.
   virtual bool isNan2008() const {
     return true;
   }
-
-  /// \brief Returns a string of target-specific clobbers, in LLVM format.
-  virtual const char *getClobbers() const = 0;
-
 
   /// \brief Returns the target triple of the primary target.
   const llvm::Triple &getTriple() const {
@@ -738,10 +741,12 @@ public:
   virtual void adjust(const LangOptions &Opts);
 
   /// \brief Initialize the map with the default set of target features for the
-  /// CPU, ABI, and FPMath options - these should have already been set prior
-  /// to calling this function; this should include all legal feature strings on
-  /// the target.
-  virtual void initDefaultFeatures(llvm::StringMap<bool> &Features) const {}
+  /// CPU this should include all legal feature strings on the target.
+  ///
+  /// \return False on error (invalid features).
+  virtual bool initFeatureMap(llvm::StringMap<bool> &Features,
+                              DiagnosticsEngine &Diags, StringRef CPU,
+                              std::vector<std::string> &FeatureVec) const;
 
   /// \brief Get the ABI currently in use.
   virtual StringRef getABI() const { return StringRef(); }
@@ -772,45 +777,12 @@ public:
     return false;
   }
 
-  /// \brief Use this specified C++ ABI.
-  ///
-  /// \return False on error (invalid C++ ABI name).
-  bool setCXXABI(llvm::StringRef name) {
-    TargetCXXABI ABI;
-    if (!ABI.tryParse(name)) return false;
-    return setCXXABI(ABI);
-  }
-
-  /// \brief Set the C++ ABI to be used by this implementation.
-  ///
-  /// \return False on error (ABI not valid on this target)
-  virtual bool setCXXABI(TargetCXXABI ABI) {
-    TheCXXABI = ABI;
-    return true;
-  }
-
   /// \brief Enable or disable a specific target feature;
   /// the feature name must be valid.
   virtual void setFeatureEnabled(llvm::StringMap<bool> &Features,
                                  StringRef Name,
                                  bool Enabled) const {
     Features[Name] = Enabled;
-  }
-
-  /// \brief Add user defined features to the feature set while
-  /// possibly diagnosing incompatibilities.
-  ///
-  /// \return False on error.
-  virtual bool handleUserFeatures(llvm::StringMap<bool> &Features,
-				  std::vector<std::string> &UserFeatures,
-				  DiagnosticsEngine &Diags) {
-    for (const auto &F : UserFeatures) {
-      const char *Name = F.c_str();
-      // Apply the feature via the target.
-      bool Enabled = Name[0] == '+';
-      setFeatureEnabled(Features, Name + 1, Enabled);
-    }
-    return true;
   }
 
   /// \brief Perform initialization based on the user configured
@@ -956,8 +928,6 @@ protected:
     Addl = nullptr;
     NumAddl = 0;
   }
-  virtual bool validateAsmConstraint(const char *&Name,
-                                     TargetInfo::ConstraintInfo &info) const= 0;
 };
 
 }  // end namespace clang

@@ -288,6 +288,7 @@ RegistryMaps::RegistryMaps() {
   REGISTER_MATCHER(memberPointerType);
   REGISTER_MATCHER(methodDecl);
   REGISTER_MATCHER(namedDecl);
+  REGISTER_MATCHER(namespaceAliasDecl);
   REGISTER_MATCHER(namespaceDecl);
   REGISTER_MATCHER(namesType);
   REGISTER_MATCHER(nestedNameSpecifier);
@@ -327,6 +328,7 @@ RegistryMaps::RegistryMaps() {
   REGISTER_MATCHER(stmt);
   REGISTER_MATCHER(stringLiteral);
   REGISTER_MATCHER(substNonTypeTemplateParmExpr);
+  REGISTER_MATCHER(substTemplateTypeParmType);
   REGISTER_MATCHER(switchCase);
   REGISTER_MATCHER(switchStmt);
   REGISTER_MATCHER(templateArgument);

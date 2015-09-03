@@ -20,6 +20,7 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/Frontend/PCHContainerOperations.h"
+#include "clang/AST/ASTMutationListener.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/Type.h"
 #include "clang/AST/TypeLocVisitor.h"
@@ -850,23 +851,48 @@ IdentifierInfo *ASTIdentifierLookupTrait::ReadData(const internal_key_type& k,
   return II;
 }
 
-unsigned 
-ASTDeclContextNameLookupTrait::ComputeHash(const DeclNameKey &Key) {
-  llvm::FoldingSetNodeID ID;
-  ID.AddInteger(Key.Kind);
-
-  switch (Key.Kind) {
+DeclarationNameKey::DeclarationNameKey(DeclarationName Name)
+    : Kind(Name.getNameKind()) {
+  switch (Kind) {
   case DeclarationName::Identifier:
-  case DeclarationName::CXXLiteralOperatorName:
-    ID.AddString(((IdentifierInfo*)Key.Data)->getName());
+    Data = (uint64_t)Name.getAsIdentifierInfo();
     break;
   case DeclarationName::ObjCZeroArgSelector:
   case DeclarationName::ObjCOneArgSelector:
   case DeclarationName::ObjCMultiArgSelector:
-    ID.AddInteger(serialization::ComputeHash(Selector(Key.Data)));
+    Data = (uint64_t)Name.getObjCSelector().getAsOpaquePtr();
     break;
   case DeclarationName::CXXOperatorName:
-    ID.AddInteger((OverloadedOperatorKind)Key.Data);
+    Data = Name.getCXXOverloadedOperator();
+    break;
+  case DeclarationName::CXXLiteralOperatorName:
+    Data = (uint64_t)Name.getCXXLiteralIdentifier();
+    break;
+  case DeclarationName::CXXConstructorName:
+  case DeclarationName::CXXDestructorName:
+  case DeclarationName::CXXConversionFunctionName:
+  case DeclarationName::CXXUsingDirective:
+    Data = 0;
+    break;
+  }
+}
+
+unsigned DeclarationNameKey::getHash() const {
+  llvm::FoldingSetNodeID ID;
+  ID.AddInteger(Kind);
+
+  switch (Kind) {
+  case DeclarationName::Identifier:
+  case DeclarationName::CXXLiteralOperatorName:
+    ID.AddString(((IdentifierInfo*)Data)->getName());
+    break;
+  case DeclarationName::ObjCZeroArgSelector:
+  case DeclarationName::ObjCOneArgSelector:
+  case DeclarationName::ObjCMultiArgSelector:
+    ID.AddInteger(serialization::ComputeHash(Selector(Data)));
+    break;
+  case DeclarationName::CXXOperatorName:
+    ID.AddInteger((OverloadedOperatorKind)Data);
     break;
   case DeclarationName::CXXConstructorName:
   case DeclarationName::CXXDestructorName:
@@ -878,91 +904,67 @@ ASTDeclContextNameLookupTrait::ComputeHash(const DeclNameKey &Key) {
   return ID.ComputeHash();
 }
 
-ASTDeclContextNameLookupTrait::internal_key_type 
-ASTDeclContextNameLookupTrait::GetInternalKey(
-                                          const external_key_type& Name) {
-  DeclNameKey Key;
-  Key.Kind = Name.getNameKind();
-  switch (Name.getNameKind()) {
-  case DeclarationName::Identifier:
-    Key.Data = (uint64_t)Name.getAsIdentifierInfo();
-    break;
-  case DeclarationName::ObjCZeroArgSelector:
-  case DeclarationName::ObjCOneArgSelector:
-  case DeclarationName::ObjCMultiArgSelector:
-    Key.Data = (uint64_t)Name.getObjCSelector().getAsOpaquePtr();
-    break;
-  case DeclarationName::CXXOperatorName:
-    Key.Data = Name.getCXXOverloadedOperator();
-    break;
-  case DeclarationName::CXXLiteralOperatorName:
-    Key.Data = (uint64_t)Name.getCXXLiteralIdentifier();
-    break;
-  case DeclarationName::CXXConstructorName:
-  case DeclarationName::CXXDestructorName:
-  case DeclarationName::CXXConversionFunctionName:
-  case DeclarationName::CXXUsingDirective:
-    Key.Data = 0;
-    break;
-  }
-
-  return Key;
+ModuleFile *
+ASTDeclContextNameLookupTrait::ReadFileRef(const unsigned char *&d) {
+  using namespace llvm::support;
+  uint32_t ModuleFileID = endian::readNext<uint32_t, little, unaligned>(d);
+  return Reader.getLocalModuleFile(F, ModuleFileID);
 }
 
 std::pair<unsigned, unsigned>
-ASTDeclContextNameLookupTrait::ReadKeyDataLength(const unsigned char*& d) {
+ASTDeclContextNameLookupTrait::ReadKeyDataLength(const unsigned char *&d) {
   using namespace llvm::support;
   unsigned KeyLen = endian::readNext<uint16_t, little, unaligned>(d);
   unsigned DataLen = endian::readNext<uint16_t, little, unaligned>(d);
   return std::make_pair(KeyLen, DataLen);
 }
 
-ASTDeclContextNameLookupTrait::internal_key_type 
-ASTDeclContextNameLookupTrait::ReadKey(const unsigned char* d, unsigned) {
+ASTDeclContextNameLookupTrait::internal_key_type
+ASTDeclContextNameLookupTrait::ReadKey(const unsigned char *d, unsigned) {
   using namespace llvm::support;
 
-  DeclNameKey Key;
-  Key.Kind = (DeclarationName::NameKind)*d++;
-  switch (Key.Kind) {
+  auto Kind = (DeclarationName::NameKind)*d++;
+  uint64_t Data;
+  switch (Kind) {
   case DeclarationName::Identifier:
-    Key.Data = (uint64_t)Reader.getLocalIdentifier(
+    Data = (uint64_t)Reader.getLocalIdentifier(
         F, endian::readNext<uint32_t, little, unaligned>(d));
     break;
   case DeclarationName::ObjCZeroArgSelector:
   case DeclarationName::ObjCOneArgSelector:
   case DeclarationName::ObjCMultiArgSelector:
-    Key.Data =
+    Data =
         (uint64_t)Reader.getLocalSelector(
                              F, endian::readNext<uint32_t, little, unaligned>(
                                     d)).getAsOpaquePtr();
     break;
   case DeclarationName::CXXOperatorName:
-    Key.Data = *d++; // OverloadedOperatorKind
+    Data = *d++; // OverloadedOperatorKind
     break;
   case DeclarationName::CXXLiteralOperatorName:
-    Key.Data = (uint64_t)Reader.getLocalIdentifier(
+    Data = (uint64_t)Reader.getLocalIdentifier(
         F, endian::readNext<uint32_t, little, unaligned>(d));
     break;
   case DeclarationName::CXXConstructorName:
   case DeclarationName::CXXDestructorName:
   case DeclarationName::CXXConversionFunctionName:
   case DeclarationName::CXXUsingDirective:
-    Key.Data = 0;
+    Data = 0;
     break;
   }
 
-  return Key;
+  return DeclarationNameKey(Kind, Data);
 }
 
-ASTDeclContextNameLookupTrait::data_type
-ASTDeclContextNameLookupTrait::ReadData(internal_key_type,
-                                        const unsigned char *d,
-                                        unsigned DataLen) {
+void ASTDeclContextNameLookupTrait::ReadDataInto(internal_key_type,
+                                                 const unsigned char *d,
+                                                 unsigned DataLen,
+                                                 data_type_builder &Val) {
   using namespace llvm::support;
-  unsigned NumDecls = DataLen / 4;
-  LE32DeclID *Start = reinterpret_cast<LE32DeclID *>(
-                        const_cast<unsigned char *>(d));
-  return std::make_pair(Start, Start + NumDecls);
+  for (unsigned NumDecls = DataLen / 4; NumDecls; --NumDecls) {
+    uint32_t LocalID = endian::readNext<uint32_t, little, unaligned>(d);
+    Val.insert(Reader.getGlobalDeclID(F, LocalID));
+  }
 }
 
 bool ASTReader::ReadLexicalDeclContextStorage(ModuleFile &M,
@@ -1021,9 +1023,8 @@ bool ASTReader::ReadVisibleDeclContextStorage(ModuleFile &M,
 
   // We can't safely determine the primary context yet, so delay attaching the
   // lookup table until we're done with recursive deserialization.
-  unsigned BucketOffset = Record[0];
-  PendingVisibleUpdates[ID].push_back(PendingVisibleUpdate{
-      &M, (const unsigned char *)Blob.data(), BucketOffset});
+  auto *Data = (const unsigned char*)Blob.data();
+  PendingVisibleUpdates[ID].push_back(PendingVisibleUpdate{&M, Data});
   return false;
 }
 
@@ -1057,11 +1058,12 @@ bool ASTReader::ParseLineTable(ModuleFile &F,
 
   // Parse the file names
   std::map<int, int> FileIDs;
-  for (int I = 0, N = Record[Idx++]; I != N; ++I) {
+  for (unsigned I = 0; Record[Idx]; ++I) {
     // Extract the file name
     auto Filename = ReadPath(F, Record, Idx);
     FileIDs[I] = LineTable.getLineTableFilenameID(Filename);
   }
+  ++Idx;
 
   // Parse the line entries
   std::vector<LineEntry> Entries;
@@ -1073,7 +1075,7 @@ bool ASTReader::ParseLineTable(ModuleFile &F,
 
     // Extract the line entries
     unsigned NumEntries = Record[Idx++];
-    assert(NumEntries && "Numentries is 00000");
+    assert(NumEntries && "no line entries for file ID");
     Entries.clear();
     Entries.reserve(NumEntries);
     for (unsigned I = 0; I != NumEntries; ++I) {
@@ -2557,9 +2559,7 @@ ASTReader::ReadASTBlock(ModuleFile &F, unsigned ClientLoadCapabilities) {
       unsigned Idx = 0;
       serialization::DeclID ID = ReadDeclID(F, Record, Idx);
       auto *Data = (const unsigned char*)Blob.data();
-      unsigned BucketOffset = Record[Idx++];
-      PendingVisibleUpdates[ID].push_back(
-          PendingVisibleUpdate{&F, Data, BucketOffset});
+      PendingVisibleUpdates[ID].push_back(PendingVisibleUpdate{&F, Data});
       // If we've already loaded the decl, perform the updates when we finish
       // loading this block.
       if (Decl *D = GetExistingDecl(ID))
@@ -3710,14 +3710,7 @@ ASTReader::ReadASTCore(StringRef FileName,
       break;
     }
 
-    // We only know the control subblock ID.
     switch (Entry.ID) {
-    case llvm::bitc::BLOCKINFO_BLOCK_ID:
-      if (Stream.ReadBlockInfoBlock()) {
-        Error("malformed BlockInfoBlock in AST file");
-        return Failure;
-      }
-      break;
     case CONTROL_BLOCK_ID:
       HaveReadControlBlock = true;
       switch (ReadControlBlock(F, Loaded, ImportedBy, ClientLoadCapabilities)) {
@@ -3744,6 +3737,7 @@ ASTReader::ReadASTCore(StringRef FileName,
       case HadErrors: return HadErrors;
       }
       break;
+
     case AST_BLOCK_ID:
       if (!HaveReadControlBlock) {
         if ((ClientLoadCapabilities & ARR_VersionMismatch) == 0)
@@ -6463,208 +6457,60 @@ void ASTReader::FindFileRegionDecls(FileID File,
     Decls.push_back(GetDecl(getGlobalDeclID(*DInfo.Mod, *DIt)));
 }
 
-/// \brief Retrieve the "definitive" module file for the definition of the
-/// given declaration context, if there is one.
-///
-/// The "definitive" module file is the only place where we need to look to
-/// find information about the declarations within the given declaration
-/// context. For example, C++ and Objective-C classes, C structs/unions, and
-/// Objective-C protocols, categories, and extensions are all defined in a
-/// single place in the source code, so they have definitive module files
-/// associated with them. C++ namespaces, on the other hand, can have
-/// definitions in multiple different module files.
-///
-/// Note: this needs to be kept in sync with ASTWriter::AddedVisibleDecl's
-/// NDEBUG checking.
-static ModuleFile *getDefinitiveModuleFileFor(const DeclContext *DC,
-                                              ASTReader &Reader) {
-  if (const DeclContext *DefDC = getDefinitiveDeclContext(DC))
-    return Reader.getOwningModuleFile(cast<Decl>(DefDC));
-
-  return nullptr;
-}
-
-namespace {
-  /// \brief ModuleFile visitor used to perform name lookup into a
-  /// declaration context.
-  class DeclContextNameLookupVisitor {
-    ASTReader &Reader;
-    const DeclContext *Context;
-    DeclarationName Name;
-    ASTDeclContextNameLookupTrait::DeclNameKey NameKey;
-    unsigned NameHash;
-    SmallVectorImpl<NamedDecl *> &Decls;
-    llvm::SmallPtrSetImpl<NamedDecl *> &DeclSet;
-
-  public:
-    DeclContextNameLookupVisitor(ASTReader &Reader,
-                                 const DeclContext *Context,
-                                 DeclarationName Name,
-                                 SmallVectorImpl<NamedDecl *> &Decls,
-                                 llvm::SmallPtrSetImpl<NamedDecl *> &DeclSet)
-      : Reader(Reader), Context(Context), Name(Name),
-        NameKey(ASTDeclContextNameLookupTrait::GetInternalKey(Name)),
-        NameHash(ASTDeclContextNameLookupTrait::ComputeHash(NameKey)),
-        Decls(Decls), DeclSet(DeclSet) {}
-
-    bool operator()(ModuleFile &M) {
-      // Check whether we have any visible declaration information for
-      // this context in this module.
-      auto Info = M.DeclContextInfos.find(Context);
-      if (Info == M.DeclContextInfos.end() || !Info->second.NameLookupTableData)
-        return false;
-
-      // Look for this name within this module.
-      ASTDeclContextNameLookupTable *LookupTable =
-          Info->second.NameLookupTableData;
-      ASTDeclContextNameLookupTable::iterator Pos =
-          LookupTable->find_hashed(NameKey, NameHash);
-      if (Pos == LookupTable->end())
-        return false;
-
-      bool FoundAnything = false;
-      ASTDeclContextNameLookupTrait::data_type Data = *Pos;
-      for (; Data.first != Data.second; ++Data.first) {
-        NamedDecl *ND = Reader.GetLocalDeclAs<NamedDecl>(M, *Data.first);
-        if (!ND)
-          continue;
-
-        if (ND->getDeclName() != Name) {
-          // A name might be null because the decl's redeclarable part is
-          // currently read before reading its name. The lookup is triggered by
-          // building that decl (likely indirectly), and so it is later in the
-          // sense of "already existing" and can be ignored here.
-          // FIXME: This should not happen; deserializing declarations should
-          // not perform lookups since that can lead to deserialization cycles.
-          continue;
-        }
-
-        // Record this declaration.
-        FoundAnything = true;
-        if (DeclSet.insert(ND).second)
-          Decls.push_back(ND);
-      }
-
-      return FoundAnything;
-    }
-  };
-}
-
 bool
 ASTReader::FindExternalVisibleDeclsByName(const DeclContext *DC,
                                           DeclarationName Name) {
-  assert(DC->hasExternalVisibleStorage() &&
+  assert(DC->hasExternalVisibleStorage() && DC == DC->getPrimaryContext() &&
          "DeclContext has no visible decls in storage");
   if (!Name)
     return false;
 
+  auto It = Lookups.find(DC);
+  if (It == Lookups.end())
+    return false;
+
   Deserializing LookupResults(this);
 
+  // Load the list of declarations.
   SmallVector<NamedDecl *, 64> Decls;
-  llvm::SmallPtrSet<NamedDecl*, 64> DeclSet;
-
-  DeclContextNameLookupVisitor Visitor(*this, DC, Name, Decls, DeclSet);
-
-  // If we can definitively determine which module file to look into,
-  // only look there. Otherwise, look in all module files.
-  if (ModuleFile *Definitive = getDefinitiveModuleFileFor(DC, *this))
-    Visitor(*Definitive);
-  else
-    ModuleMgr.visit(Visitor);
+  for (DeclID ID : It->second.Table.find(Name)) {
+    NamedDecl *ND = cast<NamedDecl>(GetDecl(ID));
+    if (ND->getDeclName() == Name)
+      Decls.push_back(ND);
+  }
 
   ++NumVisibleDeclContextsRead;
   SetExternalVisibleDeclsForName(DC, Name, Decls);
   return !Decls.empty();
 }
 
-namespace {
-  /// \brief ModuleFile visitor used to retrieve all visible names in a
-  /// declaration context.
-  class DeclContextAllNamesVisitor {
-    ASTReader &Reader;
-    SmallVectorImpl<const DeclContext *> &Contexts;
-    DeclsMap &Decls;
-    llvm::SmallPtrSet<NamedDecl *, 256> DeclSet;
-    bool VisitAll;
-
-  public:
-    DeclContextAllNamesVisitor(ASTReader &Reader,
-                               SmallVectorImpl<const DeclContext *> &Contexts,
-                               DeclsMap &Decls, bool VisitAll)
-      : Reader(Reader), Contexts(Contexts), Decls(Decls), VisitAll(VisitAll) { }
-
-    bool operator()(ModuleFile &M) {
-      // Check whether we have any visible declaration information for
-      // this context in this module.
-      ModuleFile::DeclContextInfosMap::iterator Info;
-      bool FoundInfo = false;
-      for (unsigned I = 0, N = Contexts.size(); I != N; ++I) {
-        Info = M.DeclContextInfos.find(Contexts[I]);
-        if (Info != M.DeclContextInfos.end() &&
-            Info->second.NameLookupTableData) {
-          FoundInfo = true;
-          break;
-        }
-      }
-
-      if (!FoundInfo)
-        return false;
-
-      ASTDeclContextNameLookupTable *LookupTable =
-        Info->second.NameLookupTableData;
-      bool FoundAnything = false;
-      for (ASTDeclContextNameLookupTable::data_iterator
-             I = LookupTable->data_begin(), E = LookupTable->data_end();
-           I != E;
-           ++I) {
-        ASTDeclContextNameLookupTrait::data_type Data = *I;
-        for (; Data.first != Data.second; ++Data.first) {
-          NamedDecl *ND = Reader.GetLocalDeclAs<NamedDecl>(M, *Data.first);
-          if (!ND)
-            continue;
-
-          // Record this declaration.
-          FoundAnything = true;
-          if (DeclSet.insert(ND).second)
-            Decls[ND->getDeclName()].push_back(ND);
-        }
-      }
-
-      return FoundAnything && !VisitAll;
-    }
-  };
-}
-
 void ASTReader::completeVisibleDeclsMap(const DeclContext *DC) {
   if (!DC->hasExternalVisibleStorage())
     return;
+
+  auto It = Lookups.find(DC);
+  assert(It != Lookups.end() &&
+         "have external visible storage but no lookup tables");
+
   DeclsMap Decls;
 
-  // Compute the declaration contexts we need to look into. Multiple such
-  // declaration contexts occur when two declaration contexts from disjoint
-  // modules get merged, e.g., when two namespaces with the same name are
-  // independently defined in separate modules.
-  SmallVector<const DeclContext *, 2> Contexts;
-  Contexts.push_back(DC);
-
-  if (DC->isNamespace()) {
-    KeyDeclsMap::iterator Key =
-        KeyDecls.find(const_cast<Decl *>(cast<Decl>(DC)));
-    if (Key != KeyDecls.end()) {
-      for (unsigned I = 0, N = Key->second.size(); I != N; ++I)
-        Contexts.push_back(cast<DeclContext>(GetDecl(Key->second[I])));
-    }
+  for (DeclID ID : It->second.Table.findAll()) {
+    NamedDecl *ND = cast<NamedDecl>(GetDecl(ID));
+    Decls[ND->getDeclName()].push_back(ND);
   }
 
-  DeclContextAllNamesVisitor Visitor(*this, Contexts, Decls,
-                                     /*VisitAll=*/DC->isFileContext());
-  ModuleMgr.visit(Visitor);
   ++NumVisibleDeclContextsRead;
 
   for (DeclsMap::iterator I = Decls.begin(), E = Decls.end(); I != E; ++I) {
     SetExternalVisibleDeclsForName(DC, I->first, I->second);
   }
   const_cast<DeclContext *>(DC)->setHasExternalVisibleStorage(false);
+}
+
+const serialization::reader::DeclContextLookupTable *
+ASTReader::getLoadedLookupTables(DeclContext *Primary) const {
+  auto I = Lookups.find(Primary);
+  return I == Lookups.end() ? nullptr : &I->second;
 }
 
 /// \brief Under non-PCH compilation the consumer receives the objc methods
@@ -7496,6 +7342,36 @@ Module *ASTReader::getSubmodule(SubmoduleID GlobalID) {
 
 Module *ASTReader::getModule(unsigned ID) {
   return getSubmodule(ID);
+}
+
+ModuleFile *ASTReader::getLocalModuleFile(ModuleFile &F, unsigned ID) {
+  if (ID & 1) {
+    // It's a module, look it up by submodule ID.
+    auto I = GlobalSubmoduleMap.find(getGlobalSubmoduleID(F, ID >> 1));
+    return I == GlobalSubmoduleMap.end() ? nullptr : I->second;
+  } else {
+    // It's a prefix (preamble, PCH, ...). Look it up by index.
+    unsigned IndexFromEnd = ID >> 1;
+    assert(IndexFromEnd && "got reference to unknown module file");
+    return getModuleManager().pch_modules().end()[-IndexFromEnd];
+  }
+}
+
+unsigned ASTReader::getModuleFileID(ModuleFile *F) {
+  if (!F)
+    return 1;
+
+  // For a file representing a module, use the submodule ID of the top-level
+  // module as the file ID. For any other kind of file, the number of such
+  // files loaded beforehand will be the same on reload.
+  // FIXME: Is this true even if we have an explicit module file and a PCH?
+  if (F->isModule())
+    return ((F->BaseSubmoduleID + NUM_PREDEF_SUBMODULE_IDS) << 1) | 1;
+
+  auto PCHModules = getModuleManager().pch_modules();
+  auto I = std::find(PCHModules.begin(), PCHModules.end(), F);
+  assert(I != PCHModules.end() && "emitting reference to unknown file");
+  return (I - PCHModules.end()) << 1;
 }
 
 ExternalASTSource::ASTSourceDescriptor
@@ -8546,6 +8422,8 @@ void ASTReader::FinishedDeserializing() {
       for (auto Update : Updates) {
         auto *FPT = Update.second->getType()->castAs<FunctionProtoType>();
         auto ESI = FPT->getExtProtoInfo().ExceptionSpec;
+        if (auto *Listener = Context.getASTMutationListener())
+          Listener->ResolvedExceptionSpec(cast<FunctionDecl>(Update.second));
         for (auto *Redecl : Update.second->redecls())
           Context.adjustExceptionSpec(cast<FunctionDecl>(Redecl), ESI);
       }
