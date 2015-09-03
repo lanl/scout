@@ -18,9 +18,8 @@
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/Type.h"
 
-class SymbolFileDWARF;
-class DWARFCompileUnit;
-class DWARFDebugInfoEntry;
+class DWARFDIE;
+class DWARFASTParser;
 
 namespace lldb_private {
     
@@ -40,47 +39,10 @@ public:
     virtual ClangASTContext *
     AsClangASTContext() = 0;
 
-    //----------------------------------------------------------------------
-    // DWARF type parsing
-    //----------------------------------------------------------------------
-    virtual lldb::TypeSP
-    ParseTypeFromDWARF (const SymbolContext& sc,
-                        SymbolFileDWARF *dwarf,
-                        DWARFCompileUnit* dwarf_cu,
-                        const DWARFDebugInfoEntry *die,
-                        Log *log,
-                        bool *type_is_new_ptr) = 0;
-
-    virtual Function *
-    ParseFunctionFromDWARF (const SymbolContext& sc,
-                            SymbolFileDWARF *dwarf,
-                            DWARFCompileUnit* dwarf_cu,
-                            const DWARFDebugInfoEntry *die) = 0;
-
-    virtual bool
-    CompleteTypeFromDWARF (SymbolFileDWARF *dwarf,
-                           DWARFCompileUnit *dwarf_cu,
-                           const DWARFDebugInfoEntry* die,
-                           lldb_private::Type *type,
-                           CompilerType &clang_type)
+    virtual DWARFASTParser *
+    GetDWARFParser ()
     {
-        return false;
-    }
-
-    virtual CompilerDeclContext
-    GetDeclContextForUIDFromDWARF (SymbolFileDWARF *dwarf,
-                                   DWARFCompileUnit *dwarf_cu,
-                                   const DWARFDebugInfoEntry* die)
-    {
-        return CompilerDeclContext();
-    }
-
-    virtual CompilerDeclContext
-    GetDeclContextContainingUIDFromDWARF (SymbolFileDWARF *dwarf,
-                                          DWARFCompileUnit *dwarf_cu,
-                                          const DWARFDebugInfoEntry* die)
-    {
-        return CompilerDeclContext();
+        return nullptr;
     }
 
     virtual SymbolFile *

@@ -22,11 +22,8 @@
 #include "UniqueDWARFASTType.h"
 
 class SymbolFileDWARF;
-class DWARFCompileUnit;
 class DWARFDebugAranges;
-class DWARFDebugInfoEntry;
 class DWARFDeclContext;
-class DebugMapModule;
 
 class SymbolFileDWARFDebugMap : public lldb_private::SymbolFile
 {
@@ -112,7 +109,7 @@ protected:
     friend class DWARFCompileUnit;
     friend class SymbolFileDWARF;
     friend class DebugMapModule;
-    friend class lldb_private::ClangASTContext;
+    friend class DWARFASTParserClang;
     struct OSOInfo
     {
         lldb::ModuleSP module_sp;
@@ -266,7 +263,7 @@ protected:
     Supports_DW_AT_APPLE_objc_complete_type (SymbolFileDWARF *skip_dwarf_oso);
 
     lldb::TypeSP
-    FindCompleteObjCDefinitionTypeForDIE (const DWARFDebugInfoEntry *die, 
+    FindCompleteObjCDefinitionTypeForDIE (const DWARFDIE &die,
                                           const lldb_private::ConstString &type_name,
                                           bool must_be_implementation);
     

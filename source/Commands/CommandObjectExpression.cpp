@@ -16,7 +16,7 @@
 #include "lldb/Core/Value.h"
 #include "lldb/Core/ValueObjectVariable.h"
 #include "lldb/DataFormatters/ValueObjectPrinter.h"
-#include "lldb/Expression/ClangExpressionVariable.h"
+#include "Plugins/ExpressionParser/Clang/ClangExpressionVariable.h"
 #include "lldb/Expression/ClangUserExpression.h"
 #include "lldb/Expression/ClangFunction.h"
 #include "lldb/Expression/DWARFExpression.h"
@@ -25,7 +25,7 @@
 #include "lldb/Core/Debugger.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
-#include "lldb/Target/ObjCLanguageRuntime.h"
+#include "lldb/Target/Language.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/Variable.h"
 #include "lldb/Target/Process.h"
@@ -86,7 +86,7 @@ CommandObjectExpression::CommandOptions::SetOptionValue (CommandInterpreter &int
     switch (short_option)
     {
     case 'l':
-        language = LanguageRuntime::GetLanguageTypeFromString (option_arg);
+        language = Language::GetLanguageTypeFromString (option_arg);
         if (language == eLanguageTypeUnknown)
             error.SetErrorStringWithFormat ("unknown language type: '%s' for expression", option_arg);
         break;

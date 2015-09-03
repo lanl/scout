@@ -16,13 +16,17 @@
 
 #include "lldb/Core/Debugger.h"
 #include "lldb/DataFormatters/CXXFormatterFunctions.h"
+#include "lldb/DataFormatters/FormattersHelpers.h"
+#include "lldb/DataFormatters/LanguageCategory.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Platform.h"
 #include "llvm/ADT/STLExtras.h"
 
+#include <initializer_list>
+
 using namespace lldb;
 using namespace lldb_private;
-
+using namespace lldb_private::formatters;
 
 struct FormatInfo
 {
@@ -472,6 +476,21 @@ FormatManager::GetValidatorForType (lldb::TypeNameSpecifierImplSP type_sp)
     return validator_chosen_sp;
 }
 
+void
+FormatManager::LoopThroughCategories (CategoryCallback callback, void* param)
+{
+    m_categories_map.LoopThrough(callback, param);
+    Mutex::Locker locker(m_language_categories_mutex);
+    for (const auto& entry : m_language_categories_map)
+    {
+        if (auto category_sp = entry.second->GetCategory())
+        {
+            if (!callback(param, category_sp))
+                break;
+        }
+    }
+}
+
 lldb::TypeCategoryImplSP
 FormatManager::GetCategory (const ConstString& category_name,
                             bool can_create)
@@ -596,8 +615,8 @@ FormatManager::GetValidTypeName (const ConstString& type)
 }
 
 ConstString
-GetTypeForCache (ValueObject& valobj,
-                 lldb::DynamicValueType use_dynamic)
+FormatManager::GetTypeForCache (ValueObject& valobj,
+                                lldb::DynamicValueType use_dynamic)
 {
     if (use_dynamic == lldb::eNoDynamicValues)
     {
@@ -616,6 +635,29 @@ GetTypeForCache (ValueObject& valobj,
     if (valobj.GetDynamicValue(use_dynamic))
         return valobj.GetDynamicValue(use_dynamic)->GetQualifiedTypeName();
     return ConstString();
+}
+
+static std::vector<lldb::LanguageType>
+GetCandidateLanguages (ValueObject& valobj)
+{
+    lldb::LanguageType lang_type = valobj.GetObjectRuntimeLanguage();
+    switch (lang_type)
+    {
+        default:
+            return {lang_type};
+    }
+}
+
+LanguageCategory*
+FormatManager::GetCategoryForLanguage (lldb::LanguageType lang_type)
+{
+    Mutex::Locker locker(m_language_categories_mutex);
+    auto iter = m_language_categories_map.find(lang_type), end = m_language_categories_map.end();
+    if (iter != end)
+        return iter->second.get();
+    LanguageCategory* lang_category = new LanguageCategory(lang_type);
+    m_language_categories_map[lang_type] = LanguageCategory::UniquePointer(lang_category);
+    return lang_category;
 }
 
 lldb::TypeFormatImplSP
@@ -655,7 +697,29 @@ FormatManager::GetFormat (ValueObject& valobj,
         if (log)
             log->Printf("[FormatManager::GetFormat] Cache search failed. Going normal route");
     }
-    retval = m_categories_map.GetFormat(valobj, use_dynamic);
+    
+    FormattersMatchVector matches = GetPossibleMatches(valobj, use_dynamic);
+    
+    retval = m_categories_map.GetFormat(valobj, use_dynamic, matches);
+    if (!retval)
+    {
+        if (log)
+            log->Printf("[FormatManager::GetFormat] Search failed. Giving language a chance.");
+        for (lldb::LanguageType lang_type : GetCandidateLanguages(valobj))
+        {
+            if (LanguageCategory* lang_category = GetCategoryForLanguage(lang_type))
+            {
+                if (lang_category->Get(valobj, use_dynamic, matches, retval))
+                    break;
+            }
+        }
+        if (retval)
+        {
+            if (log)
+                log->Printf("[FormatManager::GetFormat] Language search success. Returning.");
+            return retval;
+        }
+    }
     if (!retval)
     {
         if (log)
@@ -713,7 +777,29 @@ FormatManager::GetSummaryFormat (ValueObject& valobj,
         if (log)
             log->Printf("[FormatManager::GetSummaryFormat] Cache search failed. Going normal route");
     }
-    retval = m_categories_map.GetSummaryFormat(valobj, use_dynamic);
+    
+    FormattersMatchVector matches = GetPossibleMatches(valobj, use_dynamic);
+    
+    retval = m_categories_map.GetSummaryFormat(valobj, use_dynamic, matches);
+    if (!retval)
+    {
+        if (log)
+            log->Printf("[FormatManager::GetSummaryFormat] Search failed. Giving language a chance.");
+        for (lldb::LanguageType lang_type : GetCandidateLanguages(valobj))
+        {
+            if (LanguageCategory* lang_category = GetCategoryForLanguage(lang_type))
+            {
+                if (lang_category->Get(valobj, use_dynamic, matches, retval))
+                    break;
+            }
+        }
+        if (retval)
+        {
+            if (log)
+                log->Printf("[FormatManager::GetSummaryFormat] Language search success. Returning.");
+            return retval;
+        }
+    }
     if (!retval)
     {
         if (log)
@@ -772,7 +858,29 @@ FormatManager::GetSyntheticChildren (ValueObject& valobj,
         if (log)
             log->Printf("[FormatManager::GetSyntheticChildren] Cache search failed. Going normal route");
     }
-    retval = m_categories_map.GetSyntheticChildren(valobj, use_dynamic);
+    
+    FormattersMatchVector matches = GetPossibleMatches(valobj, use_dynamic);
+    
+    retval = m_categories_map.GetSyntheticChildren(valobj, use_dynamic, matches);
+    if (!retval)
+    {
+        if (log)
+            log->Printf("[FormatManager::GetSyntheticChildren] Search failed. Giving language a chance.");
+        for (lldb::LanguageType lang_type : GetCandidateLanguages(valobj))
+        {
+            if (LanguageCategory* lang_category = GetCategoryForLanguage(lang_type))
+            {
+                if (lang_category->Get(valobj, use_dynamic, matches, retval))
+                    break;
+            }
+        }
+        if (retval)
+        {
+            if (log)
+                log->Printf("[FormatManager::GetSyntheticChildren] Language search success. Returning.");
+            return retval;
+        }
+    }
     if (!retval)
     {
         if (log)
@@ -818,7 +926,29 @@ FormatManager::GetValidator (ValueObject& valobj,
         if (log)
             log->Printf("[FormatManager::GetValidator] Cache search failed. Going normal route");
     }
-    retval = m_categories_map.GetValidator(valobj, use_dynamic);
+    
+    FormattersMatchVector matches = GetPossibleMatches(valobj, use_dynamic);
+    
+    retval = m_categories_map.GetValidator(valobj, use_dynamic, matches);
+    if (!retval)
+    {
+        if (log)
+            log->Printf("[FormatManager::GetValidator] Search failed. Giving language a chance.");
+        for (lldb::LanguageType lang_type : GetCandidateLanguages(valobj))
+        {
+            if (LanguageCategory* lang_category = GetCategoryForLanguage(lang_type))
+            {
+                if (lang_category->Get(valobj, use_dynamic, matches, retval))
+                    break;
+            }
+        }
+        if (retval)
+        {
+            if (log)
+                log->Printf("[FormatManager::GetValidator] Language search success. Returning.");
+            return retval;
+        }
+    }
     if (!retval)
     {
         if (log)
@@ -857,6 +987,8 @@ FormatManager::FormatManager() :
     m_named_summaries_map(this),
     m_last_revision(0),
     m_categories_map(this),
+    m_language_categories_map(),
+    m_language_categories_mutex(Mutex::eMutexTypeRecursive),
     m_default_category_name(ConstString("default")),
     m_system_category_name(ConstString("system")), 
     m_gnu_cpp_category_name(ConstString("gnu-libstdc++")),
@@ -892,104 +1024,6 @@ FormatManager::FormatManager() :
     EnableCategory(m_vectortypes_category_name,TypeCategoryMap::Last);
     EnableCategory(m_system_category_name,TypeCategoryMap::Last);
 }
-
-static void
-AddFormat (TypeCategoryImpl::SharedPointer category_sp,
-           lldb::Format format,
-           ConstString type_name,
-           TypeFormatImpl::Flags flags,
-           bool regex = false)
-{
-    lldb::TypeFormatImplSP format_sp(new TypeFormatImpl_Format(format, flags));
-    
-    if (regex)
-        category_sp->GetRegexTypeFormatsContainer()->Add(RegularExpressionSP(new RegularExpression(type_name.AsCString())),format_sp);
-    else
-        category_sp->GetTypeFormatsContainer()->Add(type_name, format_sp);
-}
-
-
-static void
-AddStringSummary(TypeCategoryImpl::SharedPointer category_sp,
-                 const char* string,
-                 ConstString type_name,
-                 TypeSummaryImpl::Flags flags,
-                 bool regex = false)
-{
-    lldb::TypeSummaryImplSP summary_sp(new StringSummaryFormat(flags,
-                                                               string));
-    
-    if (regex)
-        category_sp->GetRegexTypeSummariesContainer()->Add(RegularExpressionSP(new RegularExpression(type_name.AsCString())),summary_sp);
-    else
-        category_sp->GetTypeSummariesContainer()->Add(type_name, summary_sp);
-}
-
-static void
-AddOneLineSummary (TypeCategoryImpl::SharedPointer category_sp,
-                   ConstString type_name,
-                   TypeSummaryImpl::Flags flags,
-                   bool regex = false)
-{
-    flags.SetShowMembersOneLiner(true);
-    lldb::TypeSummaryImplSP summary_sp(new StringSummaryFormat(flags, ""));
-    
-    if (regex)
-        category_sp->GetRegexTypeSummariesContainer()->Add(RegularExpressionSP(new RegularExpression(type_name.AsCString())),summary_sp);
-    else
-        category_sp->GetTypeSummariesContainer()->Add(type_name, summary_sp);
-}
-
-#ifndef LLDB_DISABLE_PYTHON
-static void
-AddCXXSummary (TypeCategoryImpl::SharedPointer category_sp,
-               CXXFunctionSummaryFormat::Callback funct,
-               const char* description,
-               ConstString type_name,
-               TypeSummaryImpl::Flags flags,
-               bool regex = false)
-{
-    lldb::TypeSummaryImplSP summary_sp(new CXXFunctionSummaryFormat(flags,funct,description));
-    if (regex)
-        category_sp->GetRegexTypeSummariesContainer()->Add(RegularExpressionSP(new RegularExpression(type_name.AsCString())),summary_sp);
-    else
-        category_sp->GetTypeSummariesContainer()->Add(type_name, summary_sp);
-}
-#endif
-
-#ifndef LLDB_DISABLE_PYTHON
-static void AddCXXSynthetic  (TypeCategoryImpl::SharedPointer category_sp,
-                              CXXSyntheticChildren::CreateFrontEndCallback generator,
-                              const char* description,
-                              ConstString type_name,
-                              ScriptedSyntheticChildren::Flags flags,
-                              bool regex = false)
-{
-    lldb::SyntheticChildrenSP synth_sp(new CXXSyntheticChildren(flags,description,generator));
-    if (regex)
-        category_sp->GetRegexTypeSyntheticsContainer()->Add(RegularExpressionSP(new RegularExpression(type_name.AsCString())), synth_sp);
-    else
-        category_sp->GetTypeSyntheticsContainer()->Add(type_name,synth_sp);
-}
-#endif
-
-#ifndef LLDB_DISABLE_PYTHON
-static void AddFilter  (TypeCategoryImpl::SharedPointer category_sp,
-                        std::vector<std::string> children,
-                        const char* description,
-                        ConstString type_name,
-                        ScriptedSyntheticChildren::Flags flags,
-                        bool regex = false)
-{
-    TypeFilterImplSP filter_sp(new TypeFilterImpl(flags));
-    for (auto child : children)
-        filter_sp->AddExpressionPath(child);
-    if (regex)
-        category_sp->GetRegexTypeFiltersContainer()->Add(RegularExpressionSP(new RegularExpression(type_name.AsCString())), filter_sp);
-    else
-        category_sp->GetTypeFiltersContainer()->Add(type_name,filter_sp);
-}
-#endif
 
 void
 FormatManager::LoadLibStdcppFormatters()
@@ -1083,16 +1117,16 @@ FormatManager::LoadLibcxxFormatters()
     lldb::TypeSummaryImplSP std_wstring_summary_sp(new CXXFunctionSummaryFormat(stl_summary_flags, lldb_private::formatters::LibcxxWStringSummaryProvider, "std::wstring summary provider"));
 
     TypeCategoryImpl::SharedPointer libcxx_category_sp = GetCategory(m_libcxx_category_name);
-    
-    libcxx_category_sp->GetTypeSummariesContainer()->Add(ConstString("std::__1::string"),
-                                                   std_string_summary_sp);
-    libcxx_category_sp->GetTypeSummariesContainer()->Add(ConstString("std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >"),
-                                                   std_string_summary_sp);
 
+    libcxx_category_sp->GetTypeSummariesContainer()->Add(ConstString("std::__1::string"),
+                                                         std_string_summary_sp);
+    libcxx_category_sp->GetTypeSummariesContainer()->Add(ConstString("std::__1::basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >"),
+                                                         std_string_summary_sp);
+    
     libcxx_category_sp->GetTypeSummariesContainer()->Add(ConstString("std::__1::wstring"),
-                                                   std_wstring_summary_sp);
+                                                         std_wstring_summary_sp);
     libcxx_category_sp->GetTypeSummariesContainer()->Add(ConstString("std::__1::basic_string<wchar_t, std::__1::char_traits<wchar_t>, std::__1::allocator<wchar_t> >"),
-                                                   std_wstring_summary_sp);
+                                                         std_wstring_summary_sp);
     
     SyntheticChildren::Flags stl_synth_flags;
     stl_synth_flags.SetCascades(true).SetSkipPointers(false).SetSkipReferences(false);

@@ -1,5 +1,3 @@
-set(LLVM_NO_RTTI 1)
-
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/..)
 include_directories(${LLDB_SOURCE_DIR}/source)
 
@@ -14,12 +12,6 @@ check_cxx_compiler_flag("-Wno-gnu-zero-variadic-macro-arguments"
                         CXX_SUPPORTS_NO_GNU_ZERO_VARIADIC_MACRO_ARGUMENTS)
 if (CXX_SUPPORTS_NO_GNU_ZERO_VARIADIC_MACRO_ARGUMENTS)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-gnu-zero-variadic-macro-arguments")
-endif ()
-
-check_cxx_compiler_flag("-Wno-vla-extension"
-                        CXX_SUPPORTS_NO_VLA_EXTENSION)
-if (CXX_SUPPORTS_NO_VLA_EXTENSION)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-vla-extension")
 endif ()
 
 check_cxx_compiler_flag("-Wno-zero-length-array"

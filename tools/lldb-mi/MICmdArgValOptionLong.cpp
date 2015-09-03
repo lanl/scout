@@ -249,12 +249,12 @@ CMICmdArgValOptionLong::ExtractExpectedOptions(CMICmdArgContext &vrwTxt, const M
 bool
 CMICmdArgValOptionLong::IsArgLongOption(const CMIUtilString &vrTxt) const
 {
-    const bool bHavePosSlash = (vrTxt.find_first_of("/") != std::string::npos);
-    const bool bHaveBckSlash = (vrTxt.find_first_of("\\") != std::string::npos);
+    const bool bHavePosSlash = (vrTxt.find('/') != std::string::npos);
+    const bool bHaveBckSlash = (vrTxt.find('\\') != std::string::npos);
     if (bHavePosSlash || bHaveBckSlash)
         return false;
 
-    const size_t nPos = vrTxt.find_first_of("--");
+    const size_t nPos = vrTxt.find("--");
     if (nPos != 0)
         return false;
 

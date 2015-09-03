@@ -28,11 +28,12 @@ namespace lldb_private
     typedef LogChannel* (*LogChannelCreateInstance) ();
     typedef EmulateInstruction * (*EmulateInstructionCreateInstance) (const ArchSpec &arch, InstructionType inst_type);
     typedef OperatingSystem* (*OperatingSystemCreateInstance) (Process *process, bool force);
+    typedef Language *(*LanguageCreateInstance) (lldb::LanguageType language);
     typedef LanguageRuntime *(*LanguageRuntimeCreateInstance) (Process *process, lldb::LanguageType language);
     typedef lldb::CommandObjectSP (*LanguageRuntimeGetCommandObject) (CommandInterpreter& interpreter);
     typedef SystemRuntime *(*SystemRuntimeCreateInstance) (Process *process);
     typedef lldb::PlatformSP (*PlatformCreateInstance) (bool force, const ArchSpec *arch);
-    typedef lldb::ProcessSP (*ProcessCreateInstance) (Target &target, Listener &listener, const FileSpec *crash_file_path);
+    typedef lldb::ProcessSP (*ProcessCreateInstance) (lldb::TargetSP target_sp, Listener &listener, const FileSpec *crash_file_path);
     typedef lldb::ScriptInterpreterSP (*ScriptInterpreterCreateInstance)(CommandInterpreter &interpreter);
     typedef SymbolFile* (*SymbolFileCreateInstance) (ObjectFile* obj_file);
     typedef SymbolVendor* (*SymbolVendorCreateInstance) (const lldb::ModuleSP &module_sp, lldb_private::Stream *feedback_strm);   // Module can be NULL for default system symbol vendor
