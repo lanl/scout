@@ -158,29 +158,45 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
     base = cast<DeclRefExpr>(E->getBase());
   }
 
-  ImplicitMeshParamDecl* mp =
-  dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
+  if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(base->getDecl())) {
   
-#if 0  
-  const ValueDecl* mvd;
-  
-  if(mp){
-    mvd = mp->getMeshVarDecl();
+  #if 0
+    const ValueDecl* mvd;
+
+    if(mp){
+      mvd = mp->getMeshVarDecl();
+    }
+    else{
+      mvd = base->getDecl();
+    }
+  #endif
+
+    if(ForallStack.empty()){
+      return InductionVar[3];
+    }
+
+    int i = FindForallData(IMPD->getElementType());
+    assert(i >= 0 && "error finding forall data");
+
+    ForallData& data = ForallStack[i];
+    return data.indexPtr;
+  } else if (ParmVarDecl *PVD = dyn_cast<ParmVarDecl>(base->getDecl())) {
+    llvm::errs() << "PVD in GetForallIndex mush be stencil\n";
+    PVD->dump();
+
+    llvm::Value *Addr = LocalDeclMap.lookup(PVD);
+
+    if(Addr) {
+      // If Mesh ptr then load
+      const Type *T = PVD->getType().getTypePtr();
+      if(T->isAnyPointerType() || T->isReferenceType()) {
+        Addr = Builder.CreateLoad(Addr);
+      }
+    }
+
+    Addr->getType()->dump();
   }
-  else{
-    mvd = base->getDecl();
-  }
-#endif
-  
-  if(ForallStack.empty()){
-    return InductionVar[3];
-  }
-  
-  int i = FindForallData(mp->getElementType());
-  assert(i >= 0 && "error finding forall data");
-  
-  ForallData& data = ForallStack[i];
-  return data.indexPtr;
+
 }
 
 LValue
@@ -194,58 +210,31 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr* E,
     base = cast<DeclRefExpr>(E->getBase());
   }
   
-  ImplicitMeshParamDecl* mp =
-  dyn_cast<ImplicitMeshParamDecl>(base->getDecl());
-  
-  assert(mp && "expected a implicit mesh param");
-  
-  const VarDecl* mvd = mp->getMeshVarDecl();
-
   llvm::Value* Addr;
   
-  // lookup underlying mesh instead of implicit mesh
-  GetMeshBaseAddr(mvd, Addr);
-  
-  LValue BaseLV  = MakeAddrLValue(Addr, E->getType());
-  // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
-  MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
-  return EmitLValueForMeshField(BaseLV,  cast<MeshFieldDecl>(MFD), IndexPtr); //SC_TODO: why cast?
-  
-  assert(false && "unhandled case");
-  
-  /*
-  DeclRefExpr* Base;
-  if(ImplicitCastExpr *CE = dyn_cast<ImplicitCastExpr>(E->getBase())) {
-    Base = cast<DeclRefExpr>(CE->getSubExpr());
-  } else {
-    Base = cast<DeclRefExpr>(E->getBase());
-  }
-
-  llvm::Value *Addr;
-
   // inside forall we are referencing the implicit mesh e.g. 'c' in forall cells c in mesh
-  if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(Base->getDecl())) {
-    // lookup underlying mesh instead of implicit mesh
-    GetMeshBaseAddr(IMPD->getMeshVarDecl(), Addr);
-  } else if (ParmVarDecl *PVD = dyn_cast<ParmVarDecl>(Base->getDecl())) {
-    llvm::errs() << "ParmVarDecl in EmitMeshMemberExpr must be stencil?\n";
-    Addr = LocalDeclMap.lookup(PVD);
-    if(Addr) {
-      // If Mesh ptr then load
-      const Type *T = PVD->getType().getTypePtr();
-      if(T->isAnyPointerType() || T->isReferenceType()) {
-        Addr = Builder.CreateLoad(Addr);
-      }
-    }
-  } else {
-    llvm_unreachable("Cannot lookup underlying mesh");
-  }
+   if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(base->getDecl())) {
+     // lookup underlying mesh instead of implicit mesh
+     GetMeshBaseAddr(IMPD->getMeshVarDecl(), Addr);
+   } else if (ParmVarDecl *PVD = dyn_cast<ParmVarDecl>(base->getDecl())) {
+     llvm::errs() << "ParmVarDecl in EmitMeshMemberExpr must be stencil\n";
+     Addr = LocalDeclMap.lookup(PVD);
 
+     if(Addr) {
+       // If Mesh ptr then load
+       const Type *T = PVD->getType().getTypePtr();
+       if(T->isAnyPointerType() || T->isReferenceType()) {
+         Addr = Builder.CreateLoad(Addr);
+       }
+     }
+   } else {
+     llvm_unreachable("Cannot lookup underlying mesh");
+   }
+  
   LValue BaseLV  = MakeAddrLValue(Addr, E->getType());
   // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
   MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
-  return EmitLValueForMeshField(BaseLV,  cast<MeshFieldDecl>(MFD), Index); //SC_TODO: why cast?
-   */
+  return EmitLValueForMeshField(BaseLV,  cast<MeshFieldDecl>(MFD), IndexPtr);
 }
 
 LValue
