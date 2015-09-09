@@ -28,6 +28,7 @@
 using namespace clang;
 using namespace CodeGen;
 
+
 /// Try to emit a base destructor as an alias to its primary
 /// base-class destructor.
 bool CodeGenModule::TryEmitBaseDestructorAsAlias(const CXXDestructorDecl *D) {
@@ -37,6 +38,12 @@ bool CodeGenModule::TryEmitBaseDestructorAsAlias(const CXXDestructorDecl *D) {
   // Producing an alias to a base class ctor/dtor can degrade debug quality
   // as the debugger cannot tell them apart.
   if (getCodeGenOpts().OptimizationLevel == 0)
+    return true;
+
+  // If sanitizing memory to check for use-after-dtor, do not emit as
+  //  an alias, unless this class owns no members.
+  if (getCodeGenOpts().SanitizeMemoryUseAfterDtor &&
+      !D->getParent()->field_empty())
     return true;
 
   // If the destructor doesn't have a trivial body, we have to emit it
@@ -267,7 +274,7 @@ static llvm::Value *BuildAppleKextVirtualCall(CodeGenFunction &CGF,
   VTableIndex += AddressPoint;
   llvm::Value *VFuncPtr =
     CGF.Builder.CreateConstInBoundsGEP1_64(VTable, VTableIndex, "vfnkxt");
-  return CGF.Builder.CreateLoad(VFuncPtr);
+  return CGF.Builder.CreateAlignedLoad(VFuncPtr, CGF.PointerAlignInBytes);
 }
 
 /// BuildAppleKextVirtualCall - This routine is to support gcc's kext ABI making
