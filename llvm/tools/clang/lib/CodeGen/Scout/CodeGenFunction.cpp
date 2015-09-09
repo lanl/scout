@@ -155,6 +155,7 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
 
   llvm::Value *V = LocalDeclMap.lookup(ScoutABIInductionVarDecl[index]);
   if(V) {
+    llvm::errs() << "stencil in LookupInductionVar\n";
     if (index == 3) sprintf(IRNameStr, "stencil.linearidx.ptr");
     else sprintf(IRNameStr, "stencil.induct.%s.ptr", IndexNames[index]);
     return Builder.CreateLoad(V, IRNameStr);

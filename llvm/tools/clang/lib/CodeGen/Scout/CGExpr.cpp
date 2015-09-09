@@ -180,23 +180,16 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
 
     ForallData& data = ForallStack[i];
     return data.indexPtr;
-  } else if (ParmVarDecl *PVD = dyn_cast<ParmVarDecl>(base->getDecl())) {
-    llvm::errs() << "PVD in GetForallIndex mush be stencil\n";
-    PVD->dump();
+  } else if (isa<ParmVarDecl>(base->getDecl())) {
+    llvm::errs() << "ParmVarDecl in GetForallIndex must be stencil\n";
 
-    llvm::Value *Addr = LocalDeclMap.lookup(PVD);
-
-    if(Addr) {
-      // If Mesh ptr then load
-      const Type *T = PVD->getType().getTypePtr();
-      if(T->isAnyPointerType() || T->isReferenceType()) {
-        Addr = Builder.CreateLoad(Addr);
-      }
+    if (ForallStack.empty()) {
+      return LookupInductionVar(3);
+    } else {
+      assert(false && "stencil in nested forall not supported");
     }
-
-    Addr->getType()->dump();
   }
-
+  assert(false && "failed to getforallIndex");
 }
 
 LValue
