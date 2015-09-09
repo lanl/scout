@@ -1517,8 +1517,8 @@ ObjectFileELF::GetSectionHeaderInfo(SectionHeaderColl &section_headers,
                  I != section_headers.end(); ++I)
             {
                 static ConstString g_sect_name_gnu_debuglink (".gnu_debuglink");
-                const ELFSectionHeaderInfo &header = *I;
-                const uint64_t section_size = header.sh_type == SHT_NOBITS ? 0 : header.sh_size;
+                const ELFSectionHeaderInfo &sheader = *I;
+                const uint64_t section_size = sheader.sh_type == SHT_NOBITS ? 0 : sheader.sh_size;
                 ConstString name(shstr_data.PeekCStr(I->sh_name));
 
                 I->section_name = name;
@@ -1526,23 +1526,33 @@ ObjectFileELF::GetSectionHeaderInfo(SectionHeaderColl &section_headers,
                 if (arch_spec.GetMachine() == llvm::Triple::mips || arch_spec.GetMachine() == llvm::Triple::mipsel
                     || arch_spec.GetMachine() == llvm::Triple::mips64 || arch_spec.GetMachine() == llvm::Triple::mips64el)
                 {
-                    if (header.sh_type == SHT_MIPS_ABIFLAGS)
+                    uint32_t arch_flags = arch_spec.GetFlags ();
+                    DataExtractor data;
+                    if (sheader.sh_type == SHT_MIPS_ABIFLAGS)
                     {
-                        DataExtractor data;
-                        if (section_size && (data.SetData (object_data, header.sh_offset, section_size) == section_size))
+                        
+                        if (section_size && (data.SetData (object_data, sheader.sh_offset, section_size) == section_size))
                         {
                             lldb::offset_t ase_offset = 12; // MIPS ABI Flags Version: 0
-                            uint32_t arch_flags = arch_spec.GetFlags ();
                             arch_flags |= data.GetU32 (&ase_offset);
-                            arch_spec.SetFlags (arch_flags);
                         }
                     }
+                    // Settings appropriate ArchSpec ABI Flags
+                    if (header.e_flags & llvm::ELF::EF_MIPS_ABI2)
+                    {   
+                        arch_flags |= lldb_private::ArchSpec::eMIPSABI_N32;
+                    }
+                    else if (header.e_flags & llvm::ELF::EF_MIPS_ABI_O32)
+                    {
+                         arch_flags |= lldb_private::ArchSpec::eMIPSABI_O32;       
+                    }
+                    arch_spec.SetFlags (arch_flags);
                 }
 
                 if (name == g_sect_name_gnu_debuglink)
                 {
                     DataExtractor data;
-                    if (section_size && (data.SetData (object_data, header.sh_offset, section_size) == section_size))
+                    if (section_size && (data.SetData (object_data, sheader.sh_offset, section_size) == section_size))
                     {
                         lldb::offset_t gnu_debuglink_offset = 0;
                         gnu_debuglink_file = data.GetCStr (&gnu_debuglink_offset);
@@ -1552,7 +1562,7 @@ ObjectFileELF::GetSectionHeaderInfo(SectionHeaderColl &section_headers,
                 }
 
                 // Process ELF note section entries.
-                bool is_note_header = (header.sh_type == SHT_NOTE);
+                bool is_note_header = (sheader.sh_type == SHT_NOTE);
 
                 // The section header ".note.android.ident" is stored as a
                 // PROGBITS type header but it is actually a note header.
@@ -1564,7 +1574,7 @@ ObjectFileELF::GetSectionHeaderInfo(SectionHeaderColl &section_headers,
                 {
                     // Allow notes to refine module info.
                     DataExtractor data;
-                    if (section_size && (data.SetData (object_data, header.sh_offset, section_size) == section_size))
+                    if (section_size && (data.SetData (object_data, sheader.sh_offset, section_size) == section_size))
                     {
                         Error error = RefineModuleDetailsFromNote (data, arch_spec, uuid);
                         if (error.Fail ())
@@ -1684,6 +1694,12 @@ ObjectFileELF::CreateSections(SectionList &unified_section_list)
             static ConstString g_sect_name_dwarf_debug_ranges (".debug_ranges");
             static ConstString g_sect_name_dwarf_debug_str (".debug_str");
             static ConstString g_sect_name_dwarf_debug_str_offsets (".debug_str_offsets");
+            static ConstString g_sect_name_dwarf_debug_abbrev_dwo (".debug_abbrev.dwo");
+            static ConstString g_sect_name_dwarf_debug_info_dwo (".debug_info.dwo");
+            static ConstString g_sect_name_dwarf_debug_line_dwo (".debug_line.dwo");
+            static ConstString g_sect_name_dwarf_debug_loc_dwo (".debug_loc.dwo");
+            static ConstString g_sect_name_dwarf_debug_str_dwo (".debug_str.dwo");
+            static ConstString g_sect_name_dwarf_debug_str_offsets_dwo (".debug_str_offsets.dwo");
             static ConstString g_sect_name_eh_frame (".eh_frame");
 
             SectionType sect_type = eSectionTypeOther;
@@ -1717,20 +1733,26 @@ ObjectFileELF::CreateSections(SectionList &unified_section_list)
             // MISSING? .gnu_debugdata - "mini debuginfo / MiniDebugInfo" section, http://sourceware.org/gdb/onlinedocs/gdb/MiniDebugInfo.html
             // MISSING? .debug-index - http://src.chromium.org/viewvc/chrome/trunk/src/build/gdb-add-index?pathrev=144644
             // MISSING? .debug_types - Type descriptions from DWARF 4? See http://gcc.gnu.org/wiki/DwarfSeparateTypeInfo
-            else if (name == g_sect_name_dwarf_debug_abbrev)      sect_type = eSectionTypeDWARFDebugAbbrev;
-            else if (name == g_sect_name_dwarf_debug_addr)        sect_type = eSectionTypeDWARFDebugAddr;
-            else if (name == g_sect_name_dwarf_debug_aranges)     sect_type = eSectionTypeDWARFDebugAranges;
-            else if (name == g_sect_name_dwarf_debug_frame)       sect_type = eSectionTypeDWARFDebugFrame;
-            else if (name == g_sect_name_dwarf_debug_info)        sect_type = eSectionTypeDWARFDebugInfo;
-            else if (name == g_sect_name_dwarf_debug_line)        sect_type = eSectionTypeDWARFDebugLine;
-            else if (name == g_sect_name_dwarf_debug_loc)         sect_type = eSectionTypeDWARFDebugLoc;
-            else if (name == g_sect_name_dwarf_debug_macinfo)     sect_type = eSectionTypeDWARFDebugMacInfo;
-            else if (name == g_sect_name_dwarf_debug_pubnames)    sect_type = eSectionTypeDWARFDebugPubNames;
-            else if (name == g_sect_name_dwarf_debug_pubtypes)    sect_type = eSectionTypeDWARFDebugPubTypes;
-            else if (name == g_sect_name_dwarf_debug_ranges)      sect_type = eSectionTypeDWARFDebugRanges;
-            else if (name == g_sect_name_dwarf_debug_str)         sect_type = eSectionTypeDWARFDebugStr;
-            else if (name == g_sect_name_dwarf_debug_str_offsets) sect_type = eSectionTypeDWARFDebugStrOffsets;
-            else if (name == g_sect_name_eh_frame)                sect_type = eSectionTypeEHFrame;
+            else if (name == g_sect_name_dwarf_debug_abbrev)          sect_type = eSectionTypeDWARFDebugAbbrev;
+            else if (name == g_sect_name_dwarf_debug_addr)            sect_type = eSectionTypeDWARFDebugAddr;
+            else if (name == g_sect_name_dwarf_debug_aranges)         sect_type = eSectionTypeDWARFDebugAranges;
+            else if (name == g_sect_name_dwarf_debug_frame)           sect_type = eSectionTypeDWARFDebugFrame;
+            else if (name == g_sect_name_dwarf_debug_info)            sect_type = eSectionTypeDWARFDebugInfo;
+            else if (name == g_sect_name_dwarf_debug_line)            sect_type = eSectionTypeDWARFDebugLine;
+            else if (name == g_sect_name_dwarf_debug_loc)             sect_type = eSectionTypeDWARFDebugLoc;
+            else if (name == g_sect_name_dwarf_debug_macinfo)         sect_type = eSectionTypeDWARFDebugMacInfo;
+            else if (name == g_sect_name_dwarf_debug_pubnames)        sect_type = eSectionTypeDWARFDebugPubNames;
+            else if (name == g_sect_name_dwarf_debug_pubtypes)        sect_type = eSectionTypeDWARFDebugPubTypes;
+            else if (name == g_sect_name_dwarf_debug_ranges)          sect_type = eSectionTypeDWARFDebugRanges;
+            else if (name == g_sect_name_dwarf_debug_str)             sect_type = eSectionTypeDWARFDebugStr;
+            else if (name == g_sect_name_dwarf_debug_str_offsets)     sect_type = eSectionTypeDWARFDebugStrOffsets;
+            else if (name == g_sect_name_dwarf_debug_abbrev_dwo)      sect_type = eSectionTypeDWARFDebugAbbrev;
+            else if (name == g_sect_name_dwarf_debug_info_dwo)        sect_type = eSectionTypeDWARFDebugInfo;
+            else if (name == g_sect_name_dwarf_debug_line_dwo)        sect_type = eSectionTypeDWARFDebugLine;
+            else if (name == g_sect_name_dwarf_debug_loc_dwo)         sect_type = eSectionTypeDWARFDebugLoc;
+            else if (name == g_sect_name_dwarf_debug_str_dwo)         sect_type = eSectionTypeDWARFDebugStr;
+            else if (name == g_sect_name_dwarf_debug_str_offsets_dwo) sect_type = eSectionTypeDWARFDebugStrOffsets;
+            else if (name == g_sect_name_eh_frame)                    sect_type = eSectionTypeEHFrame;
 
             switch (header.sh_type)
             {

@@ -57,23 +57,6 @@ public:
     typedef offset_collection::iterator         offset_collection_iterator;
     typedef offset_collection::const_iterator   offset_collection_const_iterator;
 
-    struct CompareState
-    {
-        CompareState() :
-            die_offset_pairs()
-        {
-            assert(sizeof(dw_offset_t)*2 == sizeof(uint64_t));
-        }
-
-        bool AddTypePair(dw_offset_t a, dw_offset_t b)
-        {
-            uint64_t a_b_offsets = (uint64_t)a << 32 | (uint64_t)b;
-            // Return true if this type was inserted, false otherwise
-            return die_offset_pairs.insert(a_b_offsets).second;
-        }
-        std::set< uint64_t > die_offset_pairs;
-    };
-
                 DWARFDebugInfoEntry():
                     m_offset        (DW_INVALID_OFFSET),
                     m_parent_idx    (0),
@@ -132,62 +115,62 @@ public:
                     DWARFAttributes& attrs,
                     uint32_t curr_depth = 0) const; // "curr_depth" for internal use only, don't set this yourself!!!
 
-    dw_offset_t GetAttributeValue(
-                    SymbolFileDWARF* dwarf2Data,
-                    const DWARFCompileUnit* cu,
-                    const dw_attr_t attr,
-                    DWARFFormValue& formValue,
-                    dw_offset_t* end_attr_offset_ptr = NULL) const;
-
     const char* GetAttributeValueAsString(
                     SymbolFileDWARF* dwarf2Data,
                     const DWARFCompileUnit* cu,
                     const dw_attr_t attr,
-                    const char* fail_value) const;
+                    const char* fail_value,
+                    bool check_specification_or_abstract_origin = false) const;
 
     uint64_t    GetAttributeValueAsUnsigned(
                     SymbolFileDWARF* dwarf2Data,
                     const DWARFCompileUnit* cu,
                     const dw_attr_t attr,
-                    uint64_t fail_value) const;
+                    uint64_t fail_value,
+                    bool check_specification_or_abstract_origin = false) const;
 
     uint64_t    GetAttributeValueAsReference(
                     SymbolFileDWARF* dwarf2Data,
                     const DWARFCompileUnit* cu,
                     const dw_attr_t attr,
-                    uint64_t fail_value) const;
+                    uint64_t fail_value,
+                    bool check_specification_or_abstract_origin = false) const;
 
     int64_t     GetAttributeValueAsSigned(
                     SymbolFileDWARF* dwarf2Data,
                     const DWARFCompileUnit* cu,
                     const dw_attr_t attr,
-                    int64_t fail_value) const;
+                    int64_t fail_value,
+                    bool check_specification_or_abstract_origin = false) const;
+
+    uint64_t    GetAttributeValueAsAddress(
+                    SymbolFileDWARF* dwarf2Data,
+                    const DWARFCompileUnit* cu,
+                    const dw_attr_t attr,
+                    uint64_t fail_value,
+                    bool check_specification_or_abstract_origin = false) const;
 
     dw_addr_t   GetAttributeHighPC(
                     SymbolFileDWARF* dwarf2Data,
                     const DWARFCompileUnit* cu,
                     dw_addr_t lo_pc,
-                    uint64_t fail_value) const;
+                    uint64_t fail_value,
+                    bool check_specification_or_abstract_origin = false) const;
 
     bool        GetAttributeAddressRange(
                     SymbolFileDWARF* dwarf2Data,
                     const DWARFCompileUnit* cu,
                     dw_addr_t& lo_pc,
                     dw_addr_t& hi_pc,
-                    uint64_t fail_value) const;
+                    uint64_t fail_value,
+                    bool check_specification_or_abstract_origin = false) const;
     
     size_t      GetAttributeAddressRanges (
                     SymbolFileDWARF* dwarf2Data,
                     const DWARFCompileUnit* cu,
                     DWARFRangeList &ranges,
-                    bool check_hi_lo_pc) const;
-    
-    dw_offset_t GetAttributeValueAsLocation(
-                    SymbolFileDWARF* dwarf2Data,
-                    const DWARFCompileUnit* cu,
-                    const dw_attr_t attr,
-                    lldb_private::DWARFDataExtractor& data,
-                    uint32_t &block_size) const;
+                    bool check_hi_lo_pc,
+                    bool check_specification_or_abstract_origin = false) const;
 
     const char* GetName(
                     SymbolFileDWARF* dwarf2Data,
@@ -224,22 +207,6 @@ public:
                     DWARFCompileUnit* cu,
                     const DWARFAttributes& attributes,
                     std::string &storage) const;
-
-//    static int  Compare(
-//                    SymbolFileDWARF* dwarf2Data,
-//                    dw_offset_t a_die_offset,
-//                    dw_offset_t b_die_offset,
-//                    CompareState &compare_state,
-//                    bool compare_siblings,
-//                    bool compare_children);
-//
-//    static int Compare(
-//                    SymbolFileDWARF* dwarf2Data,
-//                    DWARFCompileUnit* a_cu, const DWARFDebugInfoEntry* a_die,
-//                    DWARFCompileUnit* b_cu, const DWARFDebugInfoEntry* b_die,
-//                    CompareState &compare_state,
-//                    bool compare_siblings,
-//                    bool compare_children);
 
     static bool OffsetLessThan (
                     const DWARFDebugInfoEntry& a,
@@ -415,6 +382,13 @@ public:
                        DWARFDebugInfoEntry::collection &die_collection);
 
 protected:
+    dw_offset_t GetAttributeValue(SymbolFileDWARF* dwarf2Data,
+                                  const DWARFCompileUnit* cu,
+                                  const dw_attr_t attr,
+                                  DWARFFormValue& formValue,
+                                  dw_offset_t* end_attr_offset_ptr = nullptr,
+                                  bool check_specification_or_abstract_origin = false) const;
+
     dw_offset_t m_offset;           // Offset within the .debug_info of the start of this entry
     uint32_t    m_parent_idx;       // How many to subtract from "this" to get the parent. If zero this die has no parent
     uint32_t    m_sibling_idx:31,   // How many to add to "this" to get the sibling.
@@ -422,7 +396,6 @@ protected:
     uint32_t    m_abbr_idx:DIE_ABBR_IDX_BITSIZE,
                 m_has_children:1,   // Set to 1 if this DIE has children
                 m_tag:16;           // A copy of the DW_TAG value so we don't have to go through the compile unit abbrev table
-                
 };
 
 #endif  // SymbolFileDWARF_DWARFDebugInfoEntry_h_

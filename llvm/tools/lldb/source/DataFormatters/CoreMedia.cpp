@@ -7,11 +7,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "lldb/DataFormatters/CXXFormatterFunctions.h"
+#include "lldb/DataFormatters/CoreMedia.h"
 
 #include "lldb/Core/Flags.h"
-#include "lldb/Symbol/ClangASTContext.h"
-
+#include "lldb/Symbol/TypeSystem.h"
+#include "lldb/Target/Target.h"
 #include <inttypes.h>
 
 using namespace lldb;
@@ -21,15 +21,17 @@ using namespace lldb_private::formatters;
 bool
 lldb_private::formatters::CMTimeSummaryProvider (ValueObject& valobj, Stream& stream, const TypeSummaryOptions& options)
 {
-    if (!valobj.GetCompilerType().IsValid())
+    CompilerType type = valobj.GetCompilerType();
+    if (!type.IsValid())
         return false;
-    ClangASTContext *ast_ctx = valobj.GetCompilerType().GetTypeSystem()->AsClangASTContext();
-    if (!ast_ctx)
+
+    TypeSystem *type_system = valobj.GetExecutionContextRef().GetTargetSP()->GetTypeSystemForLanguage(lldb::eLanguageTypeC);
+    if (!type_system)
         return false;
     
     // fetch children by offset to compensate for potential lack of debug info
-    auto int64_ty = ast_ctx->GetIntTypeFromBitSize(64, true);
-    auto int32_ty = ast_ctx->GetIntTypeFromBitSize(32, true);
+    auto int64_ty = type_system->GetIntTypeFromBitSize(64, true);
+    auto int32_ty = type_system->GetIntTypeFromBitSize(32, true);
     
     auto value_sp(valobj.GetSyntheticChildAtOffset(0, int64_ty, true));
     auto timescale_sp(valobj.GetSyntheticChildAtOffset(8, int32_ty, true));
