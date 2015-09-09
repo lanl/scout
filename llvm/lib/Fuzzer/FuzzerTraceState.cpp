@@ -166,38 +166,6 @@ struct LabelRange {
   }
 };
 
-// A passport for a CMP site. We want to keep track of where the given CMP is
-// and how many times it is evaluated to true or false.
-struct CmpSitePassport {
-  uintptr_t PC;
-  size_t Counter[2];
-
-  bool IsInterestingCmpTarget() {
-    static const size_t kRareEnough = 50;
-    size_t C0 = Counter[0];
-    size_t C1 = Counter[1];
-    return C0 > kRareEnough * (C1 + 1) || C1 > kRareEnough * (C0 + 1);
-  }
-};
-
-// For now, just keep a simple imprecise hash table PC => CmpSitePassport.
-// Potentially, will need to have a compiler support to have a precise mapping
-// and also thread-safety.
-struct CmpSitePassportTable {
-  static const size_t kSize = 99991;  // Prime.
-  CmpSitePassport Passports[kSize];
-
-  CmpSitePassport *GetPassport(uintptr_t PC) {
-    uintptr_t Idx = PC & kSize;
-    CmpSitePassport *Res = &Passports[Idx];
-    if (Res->PC == 0)  // Not thread safe.
-      Res->PC = PC;
-    return Res->PC == PC ? Res : nullptr;
-  }
-};
-
-static CmpSitePassportTable CSPTable;  // Zero initialized.
-
 // For now, very simple: put Size bytes of Data at position Pos.
 struct TraceBasedMutation {
   size_t Pos;
@@ -216,8 +184,8 @@ class TraceState {
                         dfsan_label L2);
   void DFSanSwitchCallback(uint64_t PC, size_t ValSizeInBits, uint64_t Val,
                            size_t NumCases, uint64_t *Cases, dfsan_label L);
-  void TraceCmpCallback(uintptr_t PC, size_t CmpSize, size_t CmpType, uint64_t Arg1,
-                        uint64_t Arg2);
+  void TraceCmpCallback(uintptr_t PC, size_t CmpSize, size_t CmpType,
+                        uint64_t Arg1, uint64_t Arg2);
 
   void TraceSwitchCallback(uintptr_t PC, size_t ValSizeInBits, uint64_t Val,
                            size_t NumCases, uint64_t *Cases);
@@ -330,7 +298,7 @@ int TraceState::TryToAddDesiredData(uint64_t PresentData, uint64_t DesiredData,
   int Res = 0;
   const uint8_t *Beg = CurrentUnit.data();
   const uint8_t *End = Beg + CurrentUnit.size();
-  for (const uint8_t *Cur = Beg; Cur < End; Cur += DataSize) {
+  for (const uint8_t *Cur = Beg; Cur < End; Cur++) {
     Cur = (uint8_t *)memmem(Cur, End - Cur, &PresentData, DataSize);
     if (!Cur)
       break;
@@ -340,26 +308,17 @@ int TraceState::TryToAddDesiredData(uint64_t PresentData, uint64_t DesiredData,
     Mutations.push_back({Pos, DataSize, DesiredData});
     Mutations.push_back({Pos, DataSize, DesiredData + 1});
     Mutations.push_back({Pos, DataSize, DesiredData - 1});
-    Cur += DataSize;
     Res++;
   }
   return Res;
 }
 
-void TraceState::TraceCmpCallback(uintptr_t PC, size_t CmpSize, size_t CmpType, uint64_t Arg1,
-                        uint64_t Arg2) {
+void TraceState::TraceCmpCallback(uintptr_t PC, size_t CmpSize, size_t CmpType,
+                                  uint64_t Arg1, uint64_t Arg2) {
   if (!RecordingTraces) return;
   int Added = 0;
-  CmpSitePassport *CSP = CSPTable.GetPassport(PC);
-  if (!CSP) return;
-  CSP->Counter[ComputeCmp(CmpSize, CmpType, Arg1, Arg2)]++;
-  size_t C0 = CSP->Counter[0];
-  size_t C1 = CSP->Counter[1];
-  // FIXME: is this a good idea or a bad?
-  // if (!CSP->IsInterestingCmpTarget())
-  //  return;
   if (Options.Verbosity >= 3)
-    Printf("TraceCmp: %p %zd/%zd; %zd %zd\n", CSP->PC, C0, C1, Arg1, Arg2);
+    Printf("TraceCmp %zd/%zd: %p %zd %zd\n", CmpSize, CmpType, PC, Arg1, Arg2);
   Added += TryToAddDesiredData(Arg1, Arg2, CmpSize);
   Added += TryToAddDesiredData(Arg2, Arg1, CmpSize);
   if (!Added && CmpSize == 4 && IsTwoByteData(Arg1) && IsTwoByteData(Arg2)) {

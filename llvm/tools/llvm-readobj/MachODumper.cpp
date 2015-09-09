@@ -45,6 +45,8 @@ public:
   void printMachOVersionMin() override;
   void printMachODysymtab() override;
   void printMachOSegment() override;
+  void printMachOIndirectSymbols() override;
+  void printMachOLinkerOptions () override;
 
 private:
   template<class MachHeader>
@@ -766,11 +768,46 @@ void MachODumper::printMachOSegment() {
       W.printHex("vmaddr", MOSegment.vmaddr);
       W.printHex("vmsize", MOSegment.vmsize);
       W.printNumber("fileoff", MOSegment.fileoff);
-      W.printNumber("filesize", MOSegment.fileoff);
+      W.printNumber("filesize", MOSegment.filesize);
       W.printString("maxprot", getMask(MOSegment.maxprot));
       W.printString("initprot", getMask(MOSegment.initprot));
       W.printNumber("nsects", MOSegment.nsects);
       W.printHex("flags", MOSegment.flags);
+    }
+  }
+}
+
+void MachODumper::printMachOIndirectSymbols() {
+  for (const auto &Load : Obj->load_commands()) {
+    if (Load.C.cmd == MachO::LC_DYSYMTAB) {
+      MachO::dysymtab_command DLC = Obj->getDysymtabLoadCommand();
+      DictScope Group(W, "Indirect Symbols");
+      W.printNumber("Number", DLC.nindirectsyms);
+      ListScope D(W, "Symbols");
+      for (unsigned i = 0; i < DLC.nindirectsyms; ++i) {
+        DictScope Group(W, "Entry");
+        W.printNumber("Entry Index", i);
+        W.printHex("Symbol Index", Obj->getIndirectSymbolTableEntry(DLC, i));
+      }
+    }
+  }
+}
+
+void MachODumper::printMachOLinkerOptions() {
+  for (const auto &Load : Obj->load_commands()) {
+    if (Load.C.cmd == MachO::LC_LINKER_OPTION) {
+      MachO::linker_option_command LOLC = Obj->getLinkerOptionLoadCommand(Load);
+      DictScope Group(W, "Linker Options");
+      W.printNumber("Size", LOLC.cmdsize);
+      ListScope D(W, "Strings");
+      uint64_t DataSize = LOLC.cmdsize - sizeof(MachO::linker_option_command);
+      const char *P = Load.Ptr + sizeof(MachO::linker_option_command);
+      StringRef Data(P, DataSize);
+      for (unsigned i = 0; i < LOLC.count; ++i) {
+        std::pair<StringRef,StringRef> Split = Data.split('\0');
+        W.printString("Value", Split.first);
+        Data = Split.second;
+      }
     }
   }
 }
