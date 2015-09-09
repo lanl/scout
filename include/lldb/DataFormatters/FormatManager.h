@@ -93,16 +93,10 @@ public:
     }
     
     void
-    EnableAllCategories ()
-    {
-        m_categories_map.EnableAllCategories ();
-    }
+    EnableAllCategories ();
     
     void
-    DisableAllCategories ()
-    {
-        m_categories_map.DisableAllCategories ();
-    }
+    DisableAllCategories ();
     
     bool
     DeleteCategory (const ConstString& category_name)
@@ -264,8 +258,14 @@ public:
     
     static ConstString
     GetTypeForCache (ValueObject&, lldb::DynamicValueType);
+    
+    LanguageCategory*
+    GetCategoryForLanguage (lldb::LanguageType lang_type);
 
 private:
+    
+    static std::vector<lldb::LanguageType>
+    GetCandidateLanguages (ValueObject& valobj);
     
     static void
     GetPossibleMatches (ValueObject& valobj,
@@ -278,9 +278,6 @@ private:
                         bool did_strip_typedef,
                         bool root_level = false);
     
-    LanguageCategory*
-    GetCategoryForLanguage (lldb::LanguageType lang_type);
-    
     FormatCache m_format_cache;
     NamedSummariesMap m_named_summaries_map;
     std::atomic<uint32_t> m_last_revision;
@@ -290,8 +287,6 @@ private:
     
     ConstString m_default_category_name;
     ConstString m_system_category_name;
-    ConstString m_gnu_cpp_category_name;
-    ConstString m_libcxx_category_name;
     ConstString m_objc_category_name;
     ConstString m_corefoundation_category_name;
     ConstString m_coregraphics_category_name;
@@ -327,12 +322,6 @@ private:
     // while a few of these actually should be globally available and setup by LLDB itself
     // most would actually belong to the users' lldbinit file or to some other form of configurable
     // storage
-    void
-    LoadLibStdcppFormatters ();
-    
-    void
-    LoadLibcxxFormatters ();
-    
     void
     LoadSystemFormatters ();
     

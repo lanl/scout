@@ -7,10 +7,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "lldb/DataFormatters/CXXFormatterFunctions.h"
+#include "lldb/DataFormatters/Cocoa.h"
 
 #include "lldb/Core/ValueObject.h"
 #include "lldb/Core/ValueObjectConstResult.h"
+#include "lldb/DataFormatters/FormattersHelpers.h"
 #include "lldb/DataFormatters/TypeSynthetic.h"
 #include "lldb/Target/ObjCLanguageRuntime.h"
 #include "lldb/Target/Process.h"
@@ -26,7 +27,6 @@ public:
     NSIndexPathSyntheticFrontEnd (lldb::ValueObjectSP valobj_sp) :
     SyntheticChildrenFrontEnd (*valobj_sp.get()),
     m_ptr_size(0),
-    m_ast_ctx(nullptr),
     m_uint_star_type()
     {
         m_ptr_size = m_backend.GetTargetSP()->GetArchitecture().GetAddressByteSize();
@@ -52,11 +52,12 @@ public:
         TypeSystem* type_system = m_backend.GetCompilerType().GetTypeSystem();
         if (!type_system)
             return false;
-        m_ast_ctx = type_system->AsClangASTContext();
-        if (!m_ast_ctx)
+
+        ClangASTContext *ast = m_backend.GetExecutionContextRef().GetTargetSP()->GetScratchClangASTContext();
+        if (!ast)
             return false;
-        
-        m_uint_star_type = m_ast_ctx->GetPointerSizedIntType(false);
+
+        m_uint_star_type = ast->GetPointerSizedIntType(false);
         
         static ConstString g__indexes("_indexes");
         static ConstString g__length("_length");
@@ -324,7 +325,6 @@ protected:
     } m_impl;
     
     uint32_t m_ptr_size;
-    ClangASTContext* m_ast_ctx;
     CompilerType m_uint_star_type;
 };
 
