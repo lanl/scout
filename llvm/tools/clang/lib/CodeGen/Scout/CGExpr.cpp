@@ -443,11 +443,11 @@ CodeGenFunction::getCShiftLinearIdx(const MeshFieldDecl *MFD, SmallVector< llvm:
   for(unsigned i = 0; i < args.size(); ++i) {
     sprintf(IRNameStr, "%s", DimNames[i]);
     if (MFD->isCellLocated()) {
-      dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
+      dims.push_back(Builder.CreateSExt(Builder.CreateLoad(LookupMeshDim(i), IRNameStr), Int64Ty));
     } else if (MFD->isVertexLocated()) {
       llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
       dims.push_back(Builder.CreateAdd(
-          Builder.CreateLoad(LookupMeshDim(i), IRNameStr), One));
+          Builder.CreateSExt(Builder.CreateLoad(LookupMeshDim(i), IRNameStr), Int64Ty), One));
     } else {
       assert(false && "Non Cell/Vertex in CShift");
     }
@@ -477,7 +477,7 @@ CodeGenFunction::getCShiftLinearIdx(const MeshFieldDecl *MFD, SmallVector< llvm:
       // add starting offset (for legion mode)
       Index = Builder.CreateAdd(Builder.CreateAdd(iv, ai), start[i], IRNameStr);
     } else {
-      Index = Builder.CreateAdd(iv, ai, IRNameStr);
+      Index = Builder.CreateAdd(Builder.CreateSExt(iv, Int64Ty), ai, IRNameStr);
     }
     
     // make sure it is in range or wrap
