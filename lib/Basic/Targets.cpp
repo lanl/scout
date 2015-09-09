@@ -734,6 +734,35 @@ public:
   }
 };
 
+namespace {
+// WebAssembly target
+template <typename Target>
+class WebAssemblyOSTargetInfo : public OSTargetInfo<Target> {
+  void getOSDefines(const LangOptions &Opts, const llvm::Triple &Triple,
+                    MacroBuilder &Builder) const override final {
+    // A common platform macro.
+    if (Opts.POSIXThreads)
+      Builder.defineMacro("_REENTRANT");
+    // Follow g++ convention and predefine _GNU_SOURCE for C++.
+    if (Opts.CPlusPlus)
+      Builder.defineMacro("_GNU_SOURCE");
+  }
+
+  // As an optimization, group static init code together in a section.
+  const char *getStaticInitSectionSpecifier() const override final {
+    return ".text.__startup";
+  }
+
+public:
+  explicit WebAssemblyOSTargetInfo(const llvm::Triple &Triple)
+      : OSTargetInfo<Target>(Triple) {
+    this->MCountName = "__mcount";
+    this->UserLabelPrefix = "";
+    this->TheCXXABI.set(TargetCXXABI::WebAssembly);
+  }
+};
+} // end anonymous namespace
+
 //===----------------------------------------------------------------------===//
 // Specific target implementations.
 //===----------------------------------------------------------------------===//
@@ -2022,6 +2051,14 @@ const TargetInfo::AddlRegName AddlRegNames[] = {
   { { "edi", "rdi" }, 5 },
   { { "esp", "rsp" }, 7 },
   { { "ebp", "rbp" }, 6 },
+  { { "r8d", "r8w", "r8b" }, 38 },
+  { { "r9d", "r9w", "r9b" }, 39 },
+  { { "r10d", "r10w", "r10b" }, 40 },
+  { { "r11d", "r11w", "r11b" }, 41 },
+  { { "r12d", "r12w", "r12b" }, 42 },
+  { { "r13d", "r13w", "r13b" }, 43 },
+  { { "r14d", "r14w", "r14b" }, 44 },
+  { { "r15d", "r15w", "r15b" }, 45 },
 };
 
 // X86 target abstract base class; x86-32 and x86-64 are very close, so
@@ -4405,37 +4442,20 @@ public:
   bool initFeatureMap(llvm::StringMap<bool> &Features, DiagnosticsEngine &Diags,
                       StringRef CPU,
                       std::vector<std::string> &FeaturesVec) const override {
-    if (CPU == "arm1136jf-s" || CPU == "arm1176jzf-s" || CPU == "mpcore")
-      Features["vfp2"] = true;
-    else if (CPU == "cortex-a8" || CPU == "cortex-a9") {
-      Features["vfp3"] = true;
-      Features["neon"] = true;
-    }
-    else if (CPU == "cortex-a5") {
-      Features["vfp4"] = true;
-      Features["neon"] = true;
-    } else if (CPU == "swift" || CPU == "cortex-a7" ||
-               CPU == "cortex-a12" || CPU == "cortex-a15" ||
-               CPU == "cortex-a17" || CPU == "krait") {
-      Features["vfp4"] = true;
-      Features["neon"] = true;
-      Features["hwdiv"] = true;
-      Features["hwdiv-arm"] = true;
-    } else if (CPU == "cyclone" || CPU == "cortex-a53" || CPU == "cortex-a57" ||
-               CPU == "cortex-a72") {
-      Features["fp-armv8"] = true;
-      Features["neon"] = true;
-      Features["hwdiv"] = true;
-      Features["hwdiv-arm"] = true;
-      Features["crc"] = true;
-      Features["crypto"] = true;
-    } else if (CPU == "cortex-r5" || CPU == "cortex-r7" || ArchVersion == 8) {
-      Features["hwdiv"] = true;
-      Features["hwdiv-arm"] = true;
-    } else if (CPU == "cortex-m3" || CPU == "cortex-m4" || CPU == "cortex-m7" ||
-               CPU == "sc300" || CPU == "cortex-r4" || CPU == "cortex-r4f") {
-      Features["hwdiv"] = true;
-    }
+   
+    std::vector<const char*> TargetFeatures;
+
+    // get default FPU features
+    unsigned FPUKind = llvm::ARM::getDefaultFPU(CPU);
+    llvm::ARM::getFPUFeatures(FPUKind, TargetFeatures);
+
+    // get default Extension features
+    unsigned Extensions = llvm::ARM::getDefaultExtensions(CPU);
+    llvm::ARM::getExtensionFeatures(Extensions, TargetFeatures);
+
+    for (const char *Feature : TargetFeatures)
+      if (Feature[0] == '+')
+        Features[Feature+1] = true; 
 
     if (ArchVersion < 6  || 
        (ArchVersion == 6 && ArchProfile == llvm::ARM::PK_M))
@@ -6955,6 +6975,145 @@ public:
 
   bool hasProtectedVisibility() const override { return false; }
 };
+
+class WebAssemblyTargetInfo : public TargetInfo {
+  static const Builtin::Info BuiltinInfo[];
+
+  enum SIMDEnum {
+    NoSIMD,
+    SIMD128,
+  } SIMDLevel;
+
+public:
+  explicit WebAssemblyTargetInfo(const llvm::Triple &T)
+      : TargetInfo(T), SIMDLevel(NoSIMD) {
+    BigEndian = false;
+    NoAsmVariants = true;
+    SuitableAlign = 128;
+    LargeArrayMinWidth = 128;
+    LargeArrayAlign = 128;
+    SimdDefaultAlign = 128;
+  }
+
+protected:
+  void getTargetDefines(const LangOptions &Opts,
+                        MacroBuilder &Builder) const override {
+    defineCPUMacros(Builder, "wasm", /*Tuning=*/false);
+    if (SIMDLevel >= SIMD128)
+      Builder.defineMacro("__wasm_simd128__");
+  }
+
+private:
+  bool initFeatureMap(llvm::StringMap<bool> &Features, DiagnosticsEngine &Diags,
+                      StringRef CPU,
+                      std::vector<std::string> &FeaturesVec) const override {
+    if (CPU == "bleeding-edge")
+      Features["simd128"] = true;
+    return TargetInfo::initFeatureMap(Features, Diags, CPU, FeaturesVec);
+  }
+  bool hasFeature(StringRef Feature) const override final {
+    return llvm::StringSwitch<bool>(Feature)
+        .Case("simd128", SIMDLevel >= SIMD128)
+        .Default(false);
+  }
+  bool handleTargetFeatures(std::vector<std::string> &Features,
+                            DiagnosticsEngine &Diags) override final {
+    for (const auto &Feature : Features) {
+      if (Feature == "+simd128") {
+        SIMDLevel = std::max(SIMDLevel, SIMD128);
+        continue;
+      }
+      if (Feature == "-simd128") {
+        SIMDLevel = std::min(SIMDLevel, SIMDEnum(SIMD128 - 1));
+        continue;
+      }
+
+      Diags.Report(diag::err_opt_not_valid_with_opt) << Feature
+                                                     << "-target-feature";
+      return false;
+    }
+    return true;
+  }
+  bool setCPU(const std::string &Name) override final {
+    return llvm::StringSwitch<bool>(Name)
+              .Case("mvp",           true)
+              .Case("bleeding-edge", true)
+              .Case("generic",       true)
+              .Default(false);
+  }
+  void getTargetBuiltins(const Builtin::Info *&Records,
+                         unsigned &NumRecords) const override final {
+    Records = BuiltinInfo;
+    NumRecords = clang::WebAssembly::LastTSBuiltin - Builtin::FirstTSBuiltin;
+  }
+  BuiltinVaListKind getBuiltinVaListKind() const override final {
+    // TODO: Implement va_list properly.
+    return VoidPtrBuiltinVaList;
+  }
+  void getGCCRegNames(const char *const *&Names,
+                      unsigned &NumNames) const override final {
+    Names = nullptr;
+    NumNames = 0;
+  }
+  void getGCCRegAliases(const GCCRegAlias *&Aliases,
+                        unsigned &NumAliases) const override final {
+    Aliases = nullptr;
+    NumAliases = 0;
+  }
+  bool
+  validateAsmConstraint(const char *&Name,
+                        TargetInfo::ConstraintInfo &Info) const override final {
+    return false;
+  }
+  const char *getClobbers() const override final { return ""; }
+  bool isCLZForZeroUndef() const override final { return false; }
+  bool hasInt128Type() const override final { return true; }
+};
+
+const Builtin::Info WebAssemblyTargetInfo::BuiltinInfo[] = {
+#define BUILTIN(ID, TYPE, ATTRS) \
+  { #ID, TYPE, ATTRS, nullptr, ALL_LANGUAGES, nullptr },
+#define LIBBUILTIN(ID, TYPE, ATTRS, HEADER) \
+  { #ID, TYPE, ATTRS, HEADER, ALL_LANGUAGES, nullptr },
+#include "clang/Basic/BuiltinsWebAssembly.def"
+};
+
+class WebAssembly32TargetInfo : public WebAssemblyTargetInfo {
+public:
+  explicit WebAssembly32TargetInfo(const llvm::Triple &T)
+      : WebAssemblyTargetInfo(T) {
+    // TODO: Set this to the correct value once the spec issues are resolved.
+    MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 0;
+    DataLayoutString = "e-p:32:32-i64:64-n32:64-S128";
+  }
+
+protected:
+  void getTargetDefines(const LangOptions &Opts,
+                        MacroBuilder &Builder) const override {
+    WebAssemblyTargetInfo::getTargetDefines(Opts, Builder);
+    defineCPUMacros(Builder, "wasm32", /*Tuning=*/false);
+  }
+};
+
+class WebAssembly64TargetInfo : public WebAssemblyTargetInfo {
+public:
+  explicit WebAssembly64TargetInfo(const llvm::Triple &T)
+      : WebAssemblyTargetInfo(T) {
+    LongAlign = LongWidth = 64;
+    PointerAlign = PointerWidth = 64;
+    // TODO: Set this to the correct value once the spec issues are resolved.
+    MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 0;
+    DataLayoutString = "e-p:64:64-i64:64-n32:64-S128";
+  }
+
+protected:
+  void getTargetDefines(const LangOptions &Opts,
+                        MacroBuilder &Builder) const override {
+    WebAssemblyTargetInfo::getTargetDefines(Opts, Builder);
+    defineCPUMacros(Builder, "wasm64", /*Tuning=*/false);
+  }
+};
+
 } // end anonymous namespace.
 
 const Builtin::Info Le64TargetInfo::BuiltinInfo[] = {
@@ -7559,6 +7718,14 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple) {
       return nullptr;
     return new SPIR64TargetInfo(Triple);
   }
+  case llvm::Triple::wasm32:
+    if (!(Triple == llvm::Triple("wasm32-unknown-unknown")))
+      return nullptr;
+    return new WebAssemblyOSTargetInfo<WebAssembly32TargetInfo>(Triple);
+  case llvm::Triple::wasm64:
+    if (!(Triple == llvm::Triple("wasm64-unknown-unknown")))
+      return nullptr;
+    return new WebAssemblyOSTargetInfo<WebAssembly64TargetInfo>(Triple);
   }
 }
 

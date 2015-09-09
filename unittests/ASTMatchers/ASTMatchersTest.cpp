@@ -919,6 +919,9 @@ TEST(TypeMatcher, MatchesClassType) {
 
   EXPECT_TRUE(
       matches("class A { public: A *a; class B {}; };", TypeAHasClassB));
+
+  EXPECT_TRUE(matchesC("struct S {}; void f(void) { struct S s; }",
+                       varDecl(hasType(namedDecl(hasName("S"))))));
 }
 
 TEST(Matcher, BindMatchedNodes) {
@@ -4885,6 +4888,9 @@ TEST(ObjCMessageExprMatcher, SimpleExprs) {
   EXPECT_TRUE(matchesObjC(
       Objc1String,
       objcMessageExpr(hasSelector("contents"), hasUnarySelector())));
+  EXPECT_TRUE(matchesObjC(
+      Objc1String,
+      objcMessageExpr(hasSelector("contents"), numSelectorArgs(0))));
   EXPECT_TRUE(matchesObjC(
       Objc1String,
       objcMessageExpr(matchesSelector("uppercase*"),
