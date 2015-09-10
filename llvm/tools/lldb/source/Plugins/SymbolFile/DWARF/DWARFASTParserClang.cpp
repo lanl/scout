@@ -874,7 +874,7 @@ DWARFASTParserClang::ParseTypeFromDWARF (const SymbolContext& sc,
                             // to complete that type..
 
                             if (class_language != eLanguageTypeObjC &&
-                                class_language != eLanguageTypeObjC_plus_plus)
+                                class_language != eLanguageTypeObjC_plus_plus){
                               // +===== Scout =========================
                               if(isScoutType){
                                 ClangASTContext::StartScoutDeclarationDefinition (clang_type);
@@ -882,6 +882,7 @@ DWARFASTParserClang::ParseTypeFromDWARF (const SymbolContext& sc,
                               else{
                                 ClangASTContext::StartTagDeclarationDefinition (clang_type);
                               }
+                            }
                               // +=====================================
 
                             // Leave this as a forward declaration until we need
@@ -3317,7 +3318,7 @@ DWARFASTParserClang::ParseMeshChildMembers
   BitfieldInfo last_field_info;
   
   ModuleSP module_sp = parent_die.GetDWARF()->GetObjectFile()->GetModule();
-  ClangASTContext* ast = class_clang_type.GetTypeSystem()->AsClangASTContext();
+  ClangASTContext *ast = llvm::dyn_cast_or_null<ClangASTContext>(class_clang_type.GetTypeSystem());
   if (ast == nullptr)
     return 0;
   
@@ -3449,7 +3450,7 @@ DWARFASTParserClang::ParseFrameChildMembers
   BitfieldInfo last_field_info;
 
   ModuleSP module_sp = parent_die.GetDWARF()->GetObjectFile()->GetModule();
-  ClangASTContext* ast = class_clang_type.GetTypeSystem()->AsClangASTContext();
+  ClangASTContext *ast = llvm::dyn_cast_or_null<ClangASTContext>(class_clang_type.GetTypeSystem());
   if (ast == nullptr)
     return 0;
   

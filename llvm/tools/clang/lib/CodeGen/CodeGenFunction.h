@@ -354,6 +354,10 @@ public:
 
   // +===== Scout ============================================================+
 
+  Address scoutPtr(llvm::Value* ptr){
+    return Address(ptr, getPointerAlign());
+  }
+  
   // used by EmitCShiftExpr
   typedef CallExpr::const_arg_iterator ArgIterator;
 
@@ -392,7 +396,7 @@ public:
   llvm::Value *LookupMeshStart(unsigned int index);
 
   inline llvm::Value *getLinearIdx() {
-    return Builder.CreateLoad(LookupInductionVar(3), "Xall.linearidx");
+    return Builder.CreateLoad(scoutPtr(LookupInductionVar(3)), "Xall.linearidx");
   }
 
   bool isGPU() {

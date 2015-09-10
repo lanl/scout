@@ -248,10 +248,12 @@ namespace scout{
       
         size_t size = 0;
 
-        for(size_t i = 0; i <= n; i++){
+        for(size_t i = 0; i < n; i++){
           fromIndexVec_[i] = size;
           size += conns[i].size();
         }
+
+        fromIndexVec_[n] = size;
             
         toIdVec_.reserve(size);
 

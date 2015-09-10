@@ -328,10 +328,10 @@ CommandObjectExpression::EvaluateExpression
         
         // +===== Scout ==========================================
         //CompileUnit *comp_unit = NULL;
-        StackFrame *frame = exe_ctx.GetFramePtr();
+        StackFrame *frame2 = exe_ctx.GetFramePtr();
         if (frame)
         {
-            SymbolContext sc = frame->GetSymbolContext (eSymbolContextCompUnit);
+            SymbolContext sc = frame2->GetSymbolContext (eSymbolContextCompUnit);
             if (sc.comp_unit)
             {
               LanguageType lang_type = sc.comp_unit->GetLanguage();

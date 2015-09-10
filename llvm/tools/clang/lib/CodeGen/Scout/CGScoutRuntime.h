@@ -70,7 +70,7 @@ namespace clang {
       CodeGen::CodeGenModule &CGM;
       llvm::Function *ScoutRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params);
       llvm::Function *ScoutRuntimeFunction(std::string funcName, std::vector<llvm::Type*> Params, 
-                                           llvm::Type* retType);
+                                           llvm::Type* retType);      
      public:
       CGScoutRuntime(CodeGen::CodeGenModule &CGM);
       

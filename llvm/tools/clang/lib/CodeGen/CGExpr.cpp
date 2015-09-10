@@ -2049,7 +2049,6 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
       return EmitFrameVarDeclRefLValue(VD);
     }
     // =======================================================================
->>>>>>> 6e0961cd3820f971b2cbee125f1cc70527892984
 
     // A DeclRefExpr for a reference initialized by a constant expression can
     // appear without being odr-used. Directly emit the constant initializer.
@@ -2118,8 +2117,8 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     // +===== Scout ========================================================+
     // for stencil
     if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)) {
-      addr = LocalDeclMap.lookup(IP->getMeshVarDecl());
-      if(!V) {
+      auto itr = LocalDeclMap.find(IP->getMeshVarDecl());
+      if(itr == LocalDeclMap.end()){
         llvm::errs() << "lookup fail for " << VD->getName() << "\n";
         VD->dump();
       }

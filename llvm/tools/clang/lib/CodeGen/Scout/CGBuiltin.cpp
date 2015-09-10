@@ -90,7 +90,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
               Builder.getInt32(i), IRNameStr);
        }
        Result = Builder.CreateInsertElement(Result, 
-            Builder.CreateLoad(LookupInductionVar(3), "forall.linearidx"),
+            Builder.CreateLoad(scoutPtr(LookupInductionVar(3)), "forall.linearidx"),
             Builder.getInt32(3), "gindex.w");
        *RV = RValue::get(Result);
        return true;
@@ -112,7 +112,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     }
 
     case Builtin::BIgindexw: {
-      *RV = RValue::get(Builder.CreateLoad(LookupInductionVar(3), "forall.linearidx"));
+      *RV = RValue::get(Builder.CreateLoad(scoutPtr(LookupInductionVar(3)), "forall.linearidx"));
       return true;
     }
 
@@ -191,8 +191,8 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
      // number of args is already known to be 0 or 1 as it was checked in sema
     if(E->getNumArgs() == 0) { //inside forall/renderall/stencil
       // if we can lookup the LoopBound Decl then we must be in a stencil function
-      if (MeshDims[0] || LocalDeclMap.lookup(ScoutABIMeshDimDecl[0])) {
-        *RV = RValue::get(Builder.CreateTrunc(Builder.CreateLoad(LookupMeshDim(0)), Int32Ty, "width"));
+      if (MeshDims[0] || GetAddrOfLocalVar(ScoutABIMeshDimDecl[0]).getPointer()) {
+        *RV = RValue::get(Builder.CreateTrunc(Builder.CreateLoad(scoutPtr(LookupMeshDim(0))), Int32Ty, "width"));
       } else {
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
         *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
@@ -207,8 +207,8 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     // number of args is already known to be 0 or 1 as it was checked in sema
     if(E->getNumArgs() == 0) { //inside forall/renderall/stencil
       // if we can lookup the MeshDims Decl then we must be in a stencil function
-      if (MeshDims[1] || LocalDeclMap.lookup(ScoutABIMeshDimDecl[1])) {
-        *RV = RValue::get(Builder.CreateTrunc(Builder.CreateLoad(LookupMeshDim(1)), Int32Ty, "height"));
+      if (MeshDims[1] || GetAddrOfLocalVar(ScoutABIMeshDimDecl[1]).getPointer()) {
+        *RV = RValue::get(Builder.CreateTrunc(Builder.CreateLoad(scoutPtr(LookupMeshDim(1))), Int32Ty, "height"));
       } else {
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
         *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
@@ -223,8 +223,8 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     // number of args is already known to be 0 or 1 as it was checked in sema
     if(E->getNumArgs() == 0) { //inside forall/renderall/stencil
       // if we can lookup the MeshDims Decl then we must be in a stencil function
-      if (MeshDims[2] || LocalDeclMap.lookup(ScoutABIMeshDimDecl[2])) {
-        *RV = RValue::get(Builder.CreateTrunc(Builder.CreateLoad(LookupMeshDim(2)), Int32Ty, "depth"));
+      if (MeshDims[2] || GetAddrOfLocalVar(ScoutABIMeshDimDecl[2]).getPointer()) {
+        *RV = RValue::get(Builder.CreateTrunc(Builder.CreateLoad(scoutPtr(LookupMeshDim(2))), Int32Ty, "depth"));
       } else {
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
         *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
@@ -239,7 +239,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     // number of args is already known to be 0 or 1 as it was checked in sema
     if(E->getNumArgs() == 0) { //inside forall/renderall
       if (MeshRank)
-        *RV = RValue::get(Builder.CreateTrunc(Builder.CreateLoad(MeshRank), Int32Ty, "rank"));
+        *RV = RValue::get(Builder.CreateTrunc(Builder.CreateLoad(scoutPtr(MeshRank)), Int32Ty, "rank"));
       else {
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
         *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));

@@ -55,6 +55,14 @@
 #include "Scout/CGScoutRuntime.h"
 #include "CodeGenFunction.h"
 
+namespace{
+  
+  Address scoutPtr(llvm::Value* ptr){
+    return Address(ptr, CharUnits::fromQuantity(16));
+  }
+  
+} // namespace
+
 using namespace clang;
 using namespace CodeGen;
 
@@ -291,7 +299,8 @@ llvm::Value *CGScoutRuntime::RenderallUniformColorsGlobal(CodeGenFunction &CGF) 
   llvm::Value *Color = CGM.getModule().getNamedGlobal(varName);
 
   llvm::Value *ColorPtr  = CGF.Builder.CreateAlloca(flt4PtrTy, 0, "color.ptr");
-  CGF.Builder.CreateStore(CGF.Builder.CreateLoad(Color, "runtime.color"), ColorPtr);
+  CGF.Builder.CreateStore(CGF.Builder.CreateLoad(scoutPtr(Color), "runtime.color"),
+                          scoutPtr(ColorPtr));
 
   return ColorPtr;
 }

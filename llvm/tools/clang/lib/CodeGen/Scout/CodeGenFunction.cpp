@@ -99,7 +99,7 @@ llvm::Value *CodeGenFunction::LinearIdx2InductionVar(llvm::Value *linearidx,
 
   llvm::Value* induct;
 
-  llvm::Value* width = Builder.CreateLoad(MeshDims[0], "width");
+  llvm::Value* width = Builder.CreateLoad(scoutPtr(MeshDims[0]), "width");
   if(elementType == Vertices) {
     width = Builder.CreateAdd(width, llvm::ConstantInt::get(Int64Ty, 1));
   }
@@ -117,7 +117,7 @@ llvm::Value *CodeGenFunction::LinearIdx2InductionVar(llvm::Value *linearidx,
       }
 
       if(ndims == 3) {
-        llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
+        llvm::Value* height = Builder.CreateLoad(scoutPtr(MeshDims[1]), "height");
         if (elementType == Vertices) {
           height = Builder.CreateAdd(height, llvm::ConstantInt::get(Int64Ty, 1));
         }
@@ -134,7 +134,7 @@ llvm::Value *CodeGenFunction::LinearIdx2InductionVar(llvm::Value *linearidx,
         break;
       }
 
-      llvm::Value* height = Builder.CreateLoad(MeshDims[1], "height");
+      llvm::Value* height = Builder.CreateLoad(scoutPtr(MeshDims[1]), "height");
       if (elementType == Vertices) {
         height = Builder.CreateAdd(height, llvm::ConstantInt::get(Int64Ty, 1));
       }
@@ -153,11 +153,11 @@ llvm::Value *CodeGenFunction::LinearIdx2InductionVar(llvm::Value *linearidx,
 // If in Stencil then lookup and load InductionVar, otherwise return it directly
 llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
 
-  llvm::Value *V = LocalDeclMap.lookup(ScoutABIInductionVarDecl[index]);
+  llvm::Value *V = GetAddrOfLocalVar(ScoutABIInductionVarDecl[index]).getPointer();
   if(V) {
     if (index == 3) sprintf(IRNameStr, "stencil.linearidx.ptr");
     else sprintf(IRNameStr, "stencil.induct.%s.ptr", IndexNames[index]);
-    return Builder.CreateLoad(V, IRNameStr);
+    return Builder.CreateLoad(scoutPtr(V), IRNameStr);
   }
   
   if(ForallStack.empty()){
@@ -176,10 +176,10 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     
     sprintf(IRNameStr, "induct.%s.ptr", IndexNames[index]);
     
-    llvm::Value* idx = Builder.CreateLoad(data->indexPtr, "index");
+    llvm::Value* idx = Builder.CreateLoad(scoutPtr(data->indexPtr), "index");
     llvm::Value* induct = LinearIdx2InductionVar(idx, data->elementType, index, dims.size());
 
-    Builder.CreateStore(induct, data->inductionVar[index]);
+    Builder.CreateStore(induct, scoutPtr(data->inductionVar[index]));
     data->hasInductionVar[index] = true;
   }
   
@@ -187,20 +187,20 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
 }
 
 llvm::Value *CodeGenFunction::LookupMeshStart(unsigned int index) {
-  llvm::Value *V = LocalDeclMap.lookup(ScoutABIMeshStartDecl[index]);
+  llvm::Value *V = GetAddrOfLocalVar(ScoutABIMeshStartDecl[index]).getPointer();
   if(V) {
     sprintf(IRNameStr, "stencil.induct.%s.ptr", IndexNames[index]);
-    return Builder.CreateLoad(V, IRNameStr);
+    return Builder.CreateLoad(scoutPtr(V), IRNameStr);
   }
   return MeshStart[index];
 }
 
 // If in Stencil then lookup and load Mesh Dimension, otherwise return it directly
 llvm::Value *CodeGenFunction::LookupMeshDim(unsigned int index) {
-  llvm::Value *V = LocalDeclMap.lookup(ScoutABIMeshDimDecl[index]);
+  llvm::Value *V = GetAddrOfLocalVar(ScoutABIMeshDimDecl[index]).getPointer();
   if(V) {
     sprintf(IRNameStr, "stencil.%s.ptr", DimNames[index]);
-    return Builder.CreateLoad(V, IRNameStr);
+    return Builder.CreateLoad(scoutPtr(V), IRNameStr);
   }
   return MeshDims[index];
 }

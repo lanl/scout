@@ -122,7 +122,8 @@ void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const
   Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0,
                                      nfields + MeshParameterOffset::RankOffset, IRNameStr);
   sprintf(IRNameStr, "%s.rank", MeshName.str().c_str());
-  llvm::Value *Check = Builder.CreateICmpEQ(Builder.CreateLoad(Rank, IRNameStr), ConstantZero);
+  llvm::Value *Check =
+  Builder.CreateICmpEQ(Builder.CreateLoad(scoutPtr(Rank), IRNameStr), ConstantZero);
   Builder.CreateCondBr(Check, Then, Done);
 
   //then block (do setup)
@@ -177,12 +178,12 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
     }
 
     llvm::Value* extIntValue = Builder.CreateZExt(intValue, Int64Ty);
-    Builder.CreateStore(extIntValue, x);
+    Builder.CreateStore(extIntValue, scoutPtr(x));
 
     // also store width/height/depth in sizes
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), SizeNames[i]);
     llvm::Value *size = Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0, sizestart+i, IRNameStr);
-    Builder.CreateStore(extIntValue, size);
+    Builder.CreateStore(extIntValue, scoutPtr(size));
 
   }
   // set unused dimensions/sizes to 0
@@ -191,17 +192,17 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
   for(size_t i = rank; i< 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
     llvm::Value *x = Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0, start+i, IRNameStr);
-    Builder.CreateStore(ConstantZero, x);
+    Builder.CreateStore(ConstantZero, scoutPtr(x));
 
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), SizeNames[i]);
     llvm::Value *size = Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0, sizestart+i, IRNameStr);
-    Builder.CreateStore(ConstantZero, size);
+    Builder.CreateStore(ConstantZero, scoutPtr(size));
   }
 
   //set rank this makes Codegen easier for rank() builtin
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
   llvm::Value *Rank = Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0, nfields +MeshParameterOffset::RankOffset, IRNameStr);
-  Builder.CreateStore(llvm::ConstantInt::get(Int64Ty, rank), Rank);
+  Builder.CreateStore(llvm::ConstantInt::get(Int64Ty, rank), scoutPtr(Rank));
 
   // set xstart/ystart/zstart to 0
   size_t xstart = nfields + MeshParameterOffset::XStartOffset;
@@ -209,7 +210,7 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), StartNames[i]);
     llvm::Value *x = Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0, xstart+i, IRNameStr);
     llvm::Value* ConstantZero =  llvm::ConstantInt::get(Int64Ty, 0);
-    Builder.CreateStore(ConstantZero, x);
+    Builder.CreateStore(ConstantZero, scoutPtr(x));
   }
 }
 
@@ -429,12 +430,12 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
       llvm::SmallVector< llvm::Value *, 6 > Args;
 
       llvm::Value* runtime =
-      Builder.CreateLoad(CGM.getLegionCRuntime().GetLegionRuntimeGlobal());
+      Builder.CreateLoad(scoutPtr(CGM.getLegionCRuntime().GetLegionRuntimeGlobal()));
 
       Args.push_back(runtime);
       
       llvm::Value* context =
-      Builder.CreateLoad(CGM.getLegionCRuntime().GetLegionContextGlobal());
+      Builder.CreateLoad(scoutPtr(CGM.getLegionCRuntime().GetLegionContextGlobal()));
       
       Args.push_back(context);
 
@@ -560,7 +561,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
 
         sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), MeshFieldName.str().c_str());
         llvm::Value *field = Builder.CreateConstInBoundsGEP2_32(0, Alloc, 0, i, IRNameStr);
-        Builder.CreateStore(val, field);
+        Builder.CreateStore(val, scoutPtr(field));
       }
 
       if(CGM.getCodeGenOpts().ScoutLegionSupport) {
@@ -622,7 +623,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     llvm::Value* mtField =
     Builder.CreateConstInBoundsGEP2_32(0, Alloc, 0, nfields);
     
-    Builder.CreateStore(meshTopology, mtField);
+    Builder.CreateStore(meshTopology, scoutPtr(mtField));
     
     if(CGM.getCodeGenOpts().ScoutLegionSupport) {
       llvm::Function *F = CGM.getLegionCRuntime().ScUniformMeshInitFunc();
@@ -724,7 +725,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     llvm::Value* ptr_cast = Builder.CreateBitCast(ptr_call, pt->getElementType(), "");
     
     // store call result into previously allocated ptr for window
-    llvm::Value* void_store = Builder.CreateStore(ptr_cast, Alloc, false);
+    llvm::Value* void_store = Builder.CreateStore(ptr_cast, scoutPtr(Alloc), false);
     (void)void_store; // suppress warning
 
   }
@@ -742,7 +743,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
   
     ValueVec args;
     Value* fp = Builder.CreateCall(R.CreateFrameFunc(), args, "frame.ptr");
-    Builder.CreateStore(fp, Alloc);
+    Builder.CreateStore(fp, scoutPtr(Alloc));
     
     auto m = FD->getVarMap();
     for(auto& itr : m){

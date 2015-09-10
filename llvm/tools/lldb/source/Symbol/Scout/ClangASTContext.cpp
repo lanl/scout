@@ -436,7 +436,7 @@ ClangASTContext::AddFieldToMeshType (const CompilerType& type,
   if (!type.IsValid() || !field_clang_type.IsValid())
         return NULL;
 
-  ClangASTContext* ast = type.GetTypeSystem()->AsClangASTContext();
+  ClangASTContext *ast = llvm::dyn_cast_or_null<ClangASTContext>(type.GetTypeSystem());
   if (!ast)
     return nullptr;
   
@@ -523,7 +523,7 @@ ClangASTContext::AddFieldToFrameType (const CompilerType& type,
   if (!type.IsValid() || !field_clang_type.IsValid())
     return NULL;
   
-  ClangASTContext* ast = type.GetTypeSystem()->AsClangASTContext();
+  ClangASTContext *ast = llvm::dyn_cast_or_null<ClangASTContext>(type.GetTypeSystem());
   if (!ast)
     return nullptr;
   
