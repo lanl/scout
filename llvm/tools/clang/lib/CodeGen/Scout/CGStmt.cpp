@@ -1413,6 +1413,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
                       varOffset, vd->getName());
     
     rm[vd] = GetAddrOfLocalVar(vd).getPointer();
+    LocalDeclMap.erase(vd);
     setAddrOfLocalVar(vd, scoutPtr(v));
     
     ++varOffset;
@@ -1421,6 +1422,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   EmitStmt(S.getBody());
   
   for(auto& itr : rm){
+    LocalDeclMap.erase(itr.first);
     setAddrOfLocalVar(itr.first, scoutPtr(itr.second));
   }
   

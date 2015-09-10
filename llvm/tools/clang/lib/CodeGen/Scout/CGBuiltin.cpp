@@ -191,7 +191,8 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
      // number of args is already known to be 0 or 1 as it was checked in sema
     if(E->getNumArgs() == 0) { //inside forall/renderall/stencil
       // if we can lookup the LoopBound Decl then we must be in a stencil function
-      if (MeshDims[0] || GetAddrOfLocalVar(ScoutABIMeshDimDecl[0]).getPointer()) {
+      auto itr = LocalDeclMap.find(ScoutABIMeshDimDecl[0]);
+      if (MeshDims[0] || itr != LocalDeclMap.end()) {
         *RV = RValue::get(Builder.CreateTrunc(Builder.CreateLoad(scoutPtr(LookupMeshDim(0))), Int32Ty, "width"));
       } else {
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);

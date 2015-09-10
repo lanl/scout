@@ -286,7 +286,7 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
     sprintf(IRNameStr, "TheMesh.%s.element.ptr",
             field->getName().str().c_str());
     addr = Builder.CreateInBoundsGEP(addr, Index, IRNameStr);
-    LValue LV = MakeAddrLValue(addr, field->getType(), CharUnits::Zero());
+    LValue LV = MakeAddrLValue(addr, field->getType(), getPointerAlign());
     return LV;
   }
 
@@ -1301,6 +1301,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   Value* baseAddr = GetAddrOfLocalVar(mvd).getPointer();
   
+  LocalDeclMap.erase(mvd);
   setAddrOfLocalVar(mvd, scoutPtr(meshPtr));
   
   BasicBlock* entry = BasicBlock::Create(C, "entry", queryFunc);
@@ -1365,6 +1366,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   B.SetInsertPoint(prevBlock, prevPoint);
  
+  LocalDeclMap.erase(mvd);
   setAddrOfLocalVar(mvd, scoutPtr(baseAddr));
   
   Value* qp = LV.getAddress().getPointer();
