@@ -153,9 +153,10 @@ llvm::Value *CodeGenFunction::LinearIdx2InductionVar(llvm::Value *linearidx,
 // If in Stencil then lookup and load InductionVar, otherwise return it directly
 llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   auto itr = LocalDeclMap.find(ScoutABIInductionVarDecl[index]);
-
+  
   if(itr != LocalDeclMap.end()) {
     llvm::Value *V = itr->second.getPointer();
+    llvm::errs() << "stencil in LookupInductionVar\n";
     if (index == 3) sprintf(IRNameStr, "stencil.linearidx.ptr");
     else sprintf(IRNameStr, "stencil.induct.%s.ptr", IndexNames[index]);
     return Builder.CreateLoad(scoutPtr(V), IRNameStr);
@@ -166,7 +167,7 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   }
   
   ForallData* data = GetForallData(ForallStackIndex);
-
+  
   if(index == 3) {
     return data->indexPtr;
   }
@@ -179,7 +180,7 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     
     llvm::Value* idx = Builder.CreateLoad(scoutPtr(data->indexPtr), "index");
     llvm::Value* induct = LinearIdx2InductionVar(idx, data->elementType, index, dims.size());
-
+    
     Builder.CreateStore(induct, scoutPtr(data->inductionVar[index]));
     data->hasInductionVar[index] = true;
   }

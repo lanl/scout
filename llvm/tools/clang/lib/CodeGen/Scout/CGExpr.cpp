@@ -180,20 +180,16 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
 
     ForallData& data = ForallStack[i];
     return data.indexPtr;
-  } else if (ParmVarDecl *PVD = dyn_cast<ParmVarDecl>(base->getDecl())) {
-    llvm::errs() << "PVD in GetForallIndex mush be stencil\n";
-    PVD->dump();
-
-    auto itr = LocalDeclMap.find(PVD);
-    if(itr != LocalDeclMap.end()){
-      llvm::Value *Addr = itr->second.getPointer();
-      const Type *T = PVD->getType().getTypePtr();
-      if(T->isAnyPointerType() || T->isReferenceType()) {
-        Addr = Builder.CreateLoad(scoutPtr(Addr));
-      }
-      return Addr;
+  } else if (isa<ParmVarDecl>(base->getDecl())) {
+    llvm::errs() << "ParmVarDecl in GetForallIndex must be stencil\n";
+    
+    if (ForallStack.empty()) {
+      return LookupInductionVar(3);
+    } else {
+      assert(false && "stencil in nested forall not supported");
     }
   }
+  assert(false && "failed to getforallIndex");
 }
 
 LValue
@@ -444,11 +440,11 @@ CodeGenFunction::getCShiftLinearIdx(const MeshFieldDecl *MFD, SmallVector< llvm:
   for(unsigned i = 0; i < args.size(); ++i) {
     sprintf(IRNameStr, "%s", DimNames[i]);
     if (MFD->isCellLocated()) {
-      dims.push_back(Builder.CreateLoad(scoutPtr(LookupMeshDim(i)), IRNameStr));
+      dims.push_back(Builder.CreateSExt(Builder.CreateLoad(scoutPtr(LookupMeshDim(i)), IRNameStr), Int64Ty));
     } else if (MFD->isVertexLocated()) {
       llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
       dims.push_back(Builder.CreateAdd(
-          Builder.CreateLoad(scoutPtr(LookupMeshDim(i)), IRNameStr), One));
+        Builder.CreateSExt(Builder.CreateLoad(scoutPtr(LookupMeshDim(i)), IRNameStr), Int64Ty), One));
     } else {
       assert(false && "Non Cell/Vertex in CShift");
     }
@@ -478,7 +474,7 @@ CodeGenFunction::getCShiftLinearIdx(const MeshFieldDecl *MFD, SmallVector< llvm:
       // add starting offset (for legion mode)
       Index = Builder.CreateAdd(Builder.CreateAdd(iv, ai), start[i], IRNameStr);
     } else {
-      Index = Builder.CreateAdd(iv, ai, IRNameStr);
+      Index = Builder.CreateAdd(Builder.CreateSExt(iv, Int64Ty), ai, IRNameStr);
     }
     
     // make sure it is in range or wrap
