@@ -240,7 +240,7 @@ void finally_capture_twice(int x) {
     int z = x;
   }
 }
-//  
+//
 // CHECK-LABEL: define void @finally_capture_twice(
 // CHECK:         [[X:%.*]] = alloca i32, align 4
 // CHECK:         call void (...) @llvm.localescape(i32* [[X]])
