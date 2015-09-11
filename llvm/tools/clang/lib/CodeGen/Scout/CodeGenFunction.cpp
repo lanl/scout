@@ -189,7 +189,7 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
 }
 
 llvm::Value *CodeGenFunction::LookupMeshStart(unsigned int index) {
-  auto itr = LocalDeclMap.find(ScoutABIInductionVarDecl[index]);
+  auto itr = LocalDeclMap.find(ScoutABIMeshStartDecl[index]);
   
   if(itr != LocalDeclMap.end()) {
     llvm::Value *V = itr->second.getPointer();
@@ -201,7 +201,7 @@ llvm::Value *CodeGenFunction::LookupMeshStart(unsigned int index) {
 
 // If in Stencil then lookup and load Mesh Dimension, otherwise return it directly
 llvm::Value *CodeGenFunction::LookupMeshDim(unsigned int index) {
-  auto itr = LocalDeclMap.find(ScoutABIInductionVarDecl[index]);
+  auto itr = LocalDeclMap.find(ScoutABIMeshDimDecl[index]);
   
   if(itr != LocalDeclMap.end()) {
     llvm::Value *V = itr->second.getPointer();
