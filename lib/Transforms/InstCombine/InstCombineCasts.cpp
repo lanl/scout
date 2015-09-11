@@ -514,7 +514,7 @@ Instruction *InstCombiner::visitTrunc(TruncInst &CI) {
     if (Cst->getValue().ult(ASize)) {
       Value *Shift = Builder->CreateAShr(A, Cst->getZExtValue());
       Shift->takeName(Src);
-      return CastInst::CreateIntegerCast(Shift, CI.getType(), false);
+      return CastInst::CreateIntegerCast(Shift, CI.getType(), true);
     }
   }
 
