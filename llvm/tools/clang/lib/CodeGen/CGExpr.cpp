@@ -2117,7 +2117,7 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
     // +===== Scout ========================================================+
     // for stencil
     } else if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)) {
-      llvm::errs() << "stencil\n";
+      //llvm::errs() << "stencil\n";
       auto itr = LocalDeclMap.find(IP->getMeshVarDecl());
       if(itr == LocalDeclMap.end()){
         llvm::errs() << "lookup fail for " << VD->getName() << "\n";
