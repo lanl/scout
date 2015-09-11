@@ -2116,13 +2116,15 @@ LValue CodeGenFunction::EmitDeclRefLValue(const DeclRefExpr *E) {
 
     // +===== Scout ========================================================+
     // for stencil
-    if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)) {
+    } else if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(VD)) {
+      llvm::errs() << "stencil\n";
       auto itr = LocalDeclMap.find(IP->getMeshVarDecl());
       if(itr == LocalDeclMap.end()){
         llvm::errs() << "lookup fail for " << VD->getName() << "\n";
         VD->dump();
+      } else {
+        addr = itr->second;
       }
-    }
     // +====================================================================+
 
     // Otherwise, it might be static local we haven't emitted yet for
