@@ -1165,9 +1165,8 @@ void SelectionDAGBuilder::visitCatchPad(const CatchPadInst &I) {
 
 void SelectionDAGBuilder::visitCatchRet(const CatchReturnInst &I) {
   // Update machine-CFG edge.
-  MachineBasicBlock *PadMBB = FuncInfo.MBB;
   MachineBasicBlock *TargetMBB = FuncInfo.MBBMap[I.getSuccessor()];
-  PadMBB->addSuccessor(TargetMBB);
+  FuncInfo.MBB->addSuccessor(TargetMBB);
 
   // Create the terminator node.
   SDValue Ret = DAG.getNode(ISD::CATCHRET, getCurSDLoc(), MVT::Other,
@@ -1180,11 +1179,64 @@ void SelectionDAGBuilder::visitCatchEndPad(const CatchEndPadInst &I) {
 }
 
 void SelectionDAGBuilder::visitCleanupPad(const CleanupPadInst &CPI) {
-  report_fatal_error("visitCleanupPad not yet implemented!");
+  // Don't emit any special code for the cleanuppad instruction. It just marks
+  // the start of a funclet.
+  FuncInfo.MBB->setIsEHFuncletEntry();
+}
+
+/// When an invoke or a cleanupret unwinds to the next EH pad, there are
+/// many places it could ultimately go. In the IR, we have a single unwind
+/// destination, but in the machine CFG, we enumerate all the possible blocks.
+/// This function skips over imaginary basic blocks that hold catchpad,
+/// terminatepad, or catchendpad instructions, and finds all the "real" machine
+/// basic block destinations.
+static void
+findUnwindDestinations(FunctionLoweringInfo &FuncInfo,
+                       const BasicBlock *EHPadBB,
+                       SmallVectorImpl<MachineBasicBlock *> &UnwindDests) {
+  bool IsMSVCCXX = classifyEHPersonality(FuncInfo.Fn->getPersonalityFn()) ==
+                   EHPersonality::MSVC_CXX;
+  while (EHPadBB) {
+    const Instruction *Pad = EHPadBB->getFirstNonPHI();
+    if (isa<LandingPadInst>(Pad)) {
+      // Stop on landingpads. They are not funclets.
+      UnwindDests.push_back(FuncInfo.MBBMap[EHPadBB]);
+      break;
+    } else if (isa<CleanupPadInst>(Pad) || isa<LandingPadInst>(Pad)) {
+      // Stop on cleanup pads. Cleanups are always funclet entries for all known
+      // personalities.
+      UnwindDests.push_back(FuncInfo.MBBMap[EHPadBB]);
+      UnwindDests.back()->setIsEHFuncletEntry();
+      break;
+    } else if (const auto *CPI = dyn_cast<CatchPadInst>(Pad)) {
+      // Add the catchpad handler to the possible destinations.
+      UnwindDests.push_back(FuncInfo.MBBMap[CPI->getNormalDest()]);
+      // In MSVC C++, catchblocks are funclets and need prologues.
+      if (IsMSVCCXX)
+        UnwindDests.back()->setIsEHFuncletEntry();
+      EHPadBB = CPI->getUnwindDest();
+    } else if (const auto *CEPI = dyn_cast<CatchEndPadInst>(Pad)) {
+      EHPadBB = CEPI->getUnwindDest();
+    } else if (const auto *CEPI = dyn_cast<CleanupEndPadInst>(Pad)) {
+      EHPadBB = CEPI->getUnwindDest();
+    }
+  }
 }
 
 void SelectionDAGBuilder::visitCleanupRet(const CleanupReturnInst &I) {
-  report_fatal_error("visitCleanupRet not yet implemented!");
+  // Update successor info.
+  // FIXME: The weights for catchpads will be wrong.
+  SmallVector<MachineBasicBlock *, 1> UnwindDests;
+  findUnwindDestinations(FuncInfo, I.getUnwindDest(), UnwindDests);
+  for (MachineBasicBlock *UnwindDest : UnwindDests) {
+    UnwindDest->setIsEHPad();
+    addSuccessorWithWeight(FuncInfo.MBB, UnwindDest);
+  }
+
+  // Create the terminator node.
+  SDValue Ret =
+      DAG.getNode(ISD::CLEANUPRET, getCurSDLoc(), MVT::Other, getControlRoot());
+  DAG.setRoot(Ret);
 }
 
 void SelectionDAGBuilder::visitCleanupEndPad(const CleanupEndPadInst &I) {
@@ -1989,7 +2041,6 @@ void SelectionDAGBuilder::visitInvoke(const InvokeInst &I) {
   // and catchendpads for successors.
   MachineBasicBlock *Return = FuncInfo.MBBMap[I.getSuccessor(0)];
   const BasicBlock *EHPadBB = I.getSuccessor(1);
-  bool IsLandingPad = EHPadBB->isLandingPad();
 
   const Value *Callee(I.getCalledValue());
   const Function *Fn = dyn_cast<Function>(Callee);
@@ -2021,35 +2072,14 @@ void SelectionDAGBuilder::visitInvoke(const InvokeInst &I) {
     CopyToExportRegsIfNeeded(&I);
   }
 
-  // Stop when we hit a pad that generates real code or we unwind to caller.
-  // Catchpads are conditional branches that add real MBB destinations and
-  // continue the loop. EH "end" pads are not real BBs and simply continue.
   SmallVector<MachineBasicBlock *, 1> UnwindDests;
-  while (EHPadBB) {
-    const Instruction *Pad = EHPadBB->getFirstNonPHI();
-    if (isa<CleanupPadInst>(Pad) || isa<LandingPadInst>(Pad)) {
-      assert(FuncInfo.MBBMap[EHPadBB]);
-      // Stop on cleanup pads and landingpads.
-      UnwindDests.push_back(FuncInfo.MBBMap[EHPadBB]);
-      break;
-    } else if (const auto *CPI = dyn_cast<CatchPadInst>(Pad)) {
-      // Add the catchpad handler to the possible destinations.
-      UnwindDests.push_back(FuncInfo.MBBMap[CPI->getNormalDest()]);
-      EHPadBB = CPI->getUnwindDest();
-    } else if (const auto *CEPI = dyn_cast<CatchEndPadInst>(Pad)) {
-      EHPadBB = CEPI->getUnwindDest();
-    } else if (const auto *CEPI = dyn_cast<CleanupEndPadInst>(Pad)) {
-      EHPadBB = CEPI->getUnwindDest();
-    }
-  }
+  findUnwindDestinations(FuncInfo, EHPadBB, UnwindDests);
 
-  // Update successor info
+  // Update successor info.
   // FIXME: The weights for catchpads will be wrong.
   addSuccessorWithWeight(InvokeMBB, Return);
-  for (auto *UnwindDest : UnwindDests) {
+  for (MachineBasicBlock *UnwindDest : UnwindDests) {
     UnwindDest->setIsEHPad();
-    if (!IsLandingPad)
-      UnwindDest->setIsEHFuncletEntry();
     addSuccessorWithWeight(InvokeMBB, UnwindDest);
   }
 

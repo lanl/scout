@@ -2,7 +2,7 @@
 
 ; Test that basic call operations assemble as expected.
 
-target datalayout = "e-p:32:32-i64:64-v128:8:128-n32:64-S128"
+target datalayout = "e-p:32:32-i64:64-n32:64-S128"
 target triple = "wasm32-unknown-unknown"
 
 declare i32 @i32_nullary()
@@ -11,6 +11,7 @@ declare i32 @i32_binary(i32, i32)
 declare i64 @i64_nullary()
 declare float @float_nullary()
 declare double @double_nullary()
+declare void @void_nullary()
 
 ; CHECK-LABEL: (func $call_i32_nullary
 ; CHECK-NEXT: (result i32)
@@ -50,6 +51,15 @@ define float @call_float_nullary() {
 define double @call_double_nullary() {
   %r = call double @double_nullary()
   ret double %r
+}
+
+; CHECK-LABEL: (func $call_void_nullary
+; CHECK-NEXT: (setlocal @0 (global $void_nullary))
+; CHECK-NEXT: (call @0)
+; CHECK-NEXT: (return)
+define void @call_void_nullary() {
+  call void @void_nullary()
+  ret void
 }
 
 ; CHECK-LABEL: (func $call_i32_unary

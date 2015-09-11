@@ -176,52 +176,52 @@ declare void @g.f1()
 ;                   [unnamed_addr] alias <AliaseeTy> @<Aliasee>
 
 ; Aliases -- Linkage
-@a.private = private alias i32* @g.private
-; CHECK: @a.private = private alias i32* @g.private
-@a.internal = internal alias i32* @g.internal
-; CHECK: @a.internal = internal alias i32* @g.internal
-@a.linkonce = linkonce alias i32* @g.linkonce
-; CHECK: @a.linkonce = linkonce alias i32* @g.linkonce
-@a.weak = weak alias i32* @g.weak
-; CHECK: @a.weak = weak alias i32* @g.weak
-@a.linkonce_odr = linkonce_odr alias i32* @g.linkonce_odr
-; CHECK: @a.linkonce_odr = linkonce_odr alias i32* @g.linkonce_odr
-@a.weak_odr = weak_odr alias i32* @g.weak_odr
-; CHECK: @a.weak_odr = weak_odr alias i32* @g.weak_odr
-@a.external = external alias i32* @g1
-; CHECK: @a.external = alias i32* @g1
+@a.private = private alias i32, i32* @g.private
+; CHECK: @a.private = private alias i32, i32* @g.private
+@a.internal = internal alias i32, i32* @g.internal
+; CHECK: @a.internal = internal alias i32, i32* @g.internal
+@a.linkonce = linkonce alias i32, i32* @g.linkonce
+; CHECK: @a.linkonce = linkonce alias i32, i32* @g.linkonce
+@a.weak = weak alias i32, i32* @g.weak
+; CHECK: @a.weak = weak alias i32, i32* @g.weak
+@a.linkonce_odr = linkonce_odr alias i32, i32* @g.linkonce_odr
+; CHECK: @a.linkonce_odr = linkonce_odr alias i32, i32* @g.linkonce_odr
+@a.weak_odr = weak_odr alias i32, i32* @g.weak_odr
+; CHECK: @a.weak_odr = weak_odr alias i32, i32* @g.weak_odr
+@a.external = external alias i32, i32* @g1
+; CHECK: @a.external = alias i32, i32* @g1
 
 ; Aliases -- Visibility
-@a.default = default alias i32* @g.default
-; CHECK: @a.default = alias i32* @g.default
-@a.hidden = hidden alias i32* @g.hidden
-; CHECK: @a.hidden = hidden alias i32* @g.hidden
-@a.protected = protected alias i32* @g.protected
-; CHECK: @a.protected = protected alias i32* @g.protected
+@a.default = default alias i32, i32* @g.default
+; CHECK: @a.default = alias i32, i32* @g.default
+@a.hidden = hidden alias i32, i32* @g.hidden
+; CHECK: @a.hidden = hidden alias i32, i32* @g.hidden
+@a.protected = protected alias i32, i32* @g.protected
+; CHECK: @a.protected = protected alias i32, i32* @g.protected
 
 ; Aliases -- DLLStorageClass
-@a.dlldefault = default alias i32* @g.dlldefault
-; CHECK: @a.dlldefault = alias i32* @g.dlldefault
-@a.dllimport = dllimport alias i32* @g1
-; CHECK: @a.dllimport = dllimport alias i32* @g1
-@a.dllexport = dllexport alias i32* @g.dllexport
-; CHECK: @a.dllexport = dllexport alias i32* @g.dllexport
+@a.dlldefault = default alias i32, i32* @g.dlldefault
+; CHECK: @a.dlldefault = alias i32, i32* @g.dlldefault
+@a.dllimport = dllimport alias i32, i32* @g1
+; CHECK: @a.dllimport = dllimport alias i32, i32* @g1
+@a.dllexport = dllexport alias i32, i32* @g.dllexport
+; CHECK: @a.dllexport = dllexport alias i32, i32* @g.dllexport
 
 ; Aliases -- ThreadLocal
-@a.notthreadlocal = alias i32* @g.notthreadlocal
-; CHECK: @a.notthreadlocal = alias i32* @g.notthreadlocal
-@a.generaldynamic = thread_local alias i32* @g.generaldynamic
-; CHECK: @a.generaldynamic = thread_local alias i32* @g.generaldynamic
-@a.localdynamic = thread_local(localdynamic) alias i32* @g.localdynamic
-; CHECK: @a.localdynamic = thread_local(localdynamic) alias i32* @g.localdynamic
-@a.initialexec = thread_local(initialexec) alias i32* @g.initialexec
-; CHECK: @a.initialexec = thread_local(initialexec) alias i32* @g.initialexec
-@a.localexec = thread_local(localexec) alias i32* @g.localexec
-; CHECK: @a.localexec = thread_local(localexec) alias i32* @g.localexec
+@a.notthreadlocal = alias i32, i32* @g.notthreadlocal
+; CHECK: @a.notthreadlocal = alias i32, i32* @g.notthreadlocal
+@a.generaldynamic = thread_local alias i32, i32* @g.generaldynamic
+; CHECK: @a.generaldynamic = thread_local alias i32, i32* @g.generaldynamic
+@a.localdynamic = thread_local(localdynamic) alias i32, i32* @g.localdynamic
+; CHECK: @a.localdynamic = thread_local(localdynamic) alias i32, i32* @g.localdynamic
+@a.initialexec = thread_local(initialexec) alias i32, i32* @g.initialexec
+; CHECK: @a.initialexec = thread_local(initialexec) alias i32, i32* @g.initialexec
+@a.localexec = thread_local(localexec) alias i32, i32* @g.localexec
+; CHECK: @a.localexec = thread_local(localexec) alias i32, i32* @g.localexec
 
 ; Aliases -- unnamed_addr
-@a.unnamed_addr = unnamed_addr alias i32* @g.unnamed_addr
-; CHECK: @a.unnamed_addr = unnamed_addr alias i32* @g.unnamed_addr
+@a.unnamed_addr = unnamed_addr alias i32, i32* @g.unnamed_addr
+; CHECK: @a.unnamed_addr = unnamed_addr alias i32, i32* @g.unnamed_addr
 
 ;; Functions
 ; Format: define [linkage] [visibility] [DLLStorageClass]
@@ -773,15 +773,18 @@ entry:
 
 catchpad1:
   catchpad [] to label %normal unwind label %exn.1
-  ; CHECK: catchpad [] to label %normal unwind label %exn.1
+  ; CHECK: catchpad []
+  ; CHECK-NEXT: to label %normal unwind label %exn.1
 
 catchpad2:
   catchpad [i32* %arg1] to label %normal unwind label %exn.2
-  ; CHECK: catchpad [i32* %arg1] to label %normal unwind label %exn.2
+  ; CHECK: catchpad [i32* %arg1]
+  ; CHECK-NEXT: to label %normal unwind label %exn.2
 
 catchpad3:
   catchpad [i32* %arg1, i32* %arg2] to label %normal unwind label %exn.3
-  ; CHECK: catchpad [i32* %arg1, i32* %arg2] to label %normal unwind label %exn.3
+  ; CHECK: catchpad [i32* %arg1, i32* %arg2] 
+  ; CHECK-NEXT: to label %normal unwind label %exn.3
 
 exn.1:
   catchendpad unwind label %terminate.1
@@ -835,7 +838,8 @@ cleanup:
 
 catchpad:
   %catch = catchpad [] to label %body unwind label %catchend
-  ; CHECK: %catch = catchpad [] to label %body unwind label %catchend
+  ; CHECK: %catch = catchpad []
+  ; CHECK-NEXT: to label %body unwind label %catchend
 
 body:
   invoke void @f.ccc() to label %continue unwind label %catchend
