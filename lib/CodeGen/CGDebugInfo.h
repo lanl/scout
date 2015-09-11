@@ -84,7 +84,7 @@ class CGDebugInfo {
   llvm::SmallVector<ObjCInterfaceCacheEntry, 32> ObjCInterfaceCache;
 
   /// Cache of references to AST files such as PCHs or modules.
-  llvm::DenseMap<uint64_t, llvm::DIModule *> ModuleRefCache;
+  llvm::DenseMap<uint64_t, llvm::TrackingMDRef> ModuleRefCache;
 
   /// List of interfaces we want to keep even if orphaned.
   std::vector<void *> RetainedTypes;
@@ -366,8 +366,11 @@ private:
   llvm::DIType *EmitTypeForVarWithBlocksAttr(const VarDecl *VD,
                                              uint64_t *OffSet);
 
-  /// Get context info for the decl.
-  llvm::DIScope *getContextDescriptor(const Decl *Decl);
+  /// Get context info for the DeclContext of \p Decl.
+  llvm::DIScope *getDeclContextDescriptor(const Decl *D);
+  /// Get context info for a given DeclContext \p Decl.
+  llvm::DIScope *getContextDescriptor(const Decl *Context,
+                                      llvm::DIScope *Default);
 
   llvm::DIScope *getCurrentContextDescriptor(const Decl *Decl);
 
@@ -393,6 +396,9 @@ private:
   /// Get a reference to a clang module.
   llvm::DIModule *
   getOrCreateModuleRef(ExternalASTSource::ASTSourceDescriptor Mod);
+
+  /// DebugTypeExtRefs: If \p D originated in a clang module, return it.
+  llvm::DIModule *getParentModuleOrNull(const Decl *D);
 
   /// Get the type from the cache or create a new partial type if
   /// necessary.

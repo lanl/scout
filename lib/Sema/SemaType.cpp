@@ -6465,6 +6465,17 @@ bool Sema::RequireCompleteTypeImpl(SourceLocation Loc, QualType T,
   //  assert(!T->isDependentType() &&
   //         "Can't ask whether a dependent type is complete");
 
+  // We lock in the inheritance model once somebody has asked us to ensure
+  // that a pointer-to-member type is complete.
+  if (Context.getTargetInfo().getCXXABI().isMicrosoft()) {
+    if (const MemberPointerType *MPTy = T->getAs<MemberPointerType>()) {
+      if (!MPTy->getClass()->isDependentType()) {
+        RequireCompleteType(Loc, QualType(MPTy->getClass(), 0), 0);
+        assignInheritanceModel(*this, MPTy->getMostRecentCXXRecordDecl());
+      }
+    }
+  }
+
   // If we have a complete type, we're done.
   NamedDecl *Def = nullptr;
   if (!T->isIncompleteType(&Def)) {
@@ -6473,17 +6484,6 @@ bool Sema::RequireCompleteTypeImpl(SourceLocation Loc, QualType T,
     if (!Diagnoser.Suppressed && Def &&
         !hasVisibleDefinition(Def, &SuggestedDef, /*OnlyNeedComplete*/true))
       diagnoseMissingImport(Loc, SuggestedDef, /*NeedDefinition*/true);
-
-    // We lock in the inheritance model once somebody has asked us to ensure
-    // that a pointer-to-member type is complete.
-    if (Context.getTargetInfo().getCXXABI().isMicrosoft()) {
-      if (const MemberPointerType *MPTy = T->getAs<MemberPointerType>()) {
-        if (!MPTy->getClass()->isDependentType()) {
-          RequireCompleteType(Loc, QualType(MPTy->getClass(), 0), 0);
-          assignInheritanceModel(*this, MPTy->getMostRecentCXXRecordDecl());
-        }
-      }
-    }
 
     return false;
   }

@@ -904,6 +904,16 @@ const internal::VariadicDynCastAllOfMatcher<
   Stmt,
   ObjCMessageExpr> objcMessageExpr;
 
+/// \brief Matches Objective-C interface declarations.
+///
+/// Example matches Foo
+/// \code
+///   @interface Foo
+///   @end
+/// \endcode
+const internal::VariadicDynCastAllOfMatcher<
+  Decl,
+  ObjCInterfaceDecl> objcInterfaceDecl;
 
 /// \brief Matches expressions that introduce cleanups to be run at the end
 /// of the sub-expression's evaluation.
@@ -977,6 +987,25 @@ const internal::VariadicDynCastAllOfMatcher<Decl, UsingDirectiveDecl>
 const internal::VariadicDynCastAllOfMatcher<
   Decl,
   UnresolvedUsingValueDecl> unresolvedUsingValueDecl;
+
+/// \brief Matches unresolved using value declarations that involve the
+/// typename.
+///
+/// Given
+/// \code
+///   template <typename T>
+///   struct Base { typedef T Foo; };
+///
+///   template<typename T>
+///   struct S : private Base<T> {
+///     using typename Base<T>::Foo;
+///   };
+/// \endcode
+/// unresolvedUsingTypenameDecl()
+///   matches \code using Base<T>::Foo \endcode
+const internal::VariadicDynCastAllOfMatcher<
+  Decl,
+  UnresolvedUsingTypenameDecl> unresolvedUsingTypenameDecl;
 
 /// \brief Matches constructor call expressions (including implicit ones).
 ///
@@ -1870,7 +1899,7 @@ AST_MATCHER_P_OVERLOAD(CXXRecordDecl, isSameOrDerivedFrom, std::string,
 /// \code
 ///   class A { void func(); };
 ///   class B { void member(); };
-/// \code
+/// \endcode
 ///
 /// \c recordDecl(hasMethod(hasName("func"))) matches the declaration of \c A
 /// but not \c B.
@@ -2282,7 +2311,7 @@ AST_MATCHER_P(QualType, asString, std::string, Name) {
 AST_MATCHER_P(
     QualType, pointsTo, internal::Matcher<QualType>,
     InnerMatcher) {
-  return (!Node.isNull() && Node->isPointerType() &&
+  return (!Node.isNull() && Node->isAnyPointerType() &&
           InnerMatcher.matches(Node->getPointeeType(), Finder, Builder));
 }
 
@@ -2319,7 +2348,7 @@ AST_MATCHER_P(QualType, references, internal::Matcher<QualType>,
 ///   typedef int &int_ref;
 ///   int a;
 ///   int_ref b = a;
-/// \code
+/// \endcode
 ///
 /// \c varDecl(hasType(qualType(referenceType()))))) will not match the
 /// declaration of b but \c
@@ -3090,6 +3119,7 @@ AST_MATCHER_P(UnaryOperator, hasUnaryOperand,
 /// \code
 /// class URL { URL(string); };
 /// URL url = "a string";
+/// \endcode
 AST_MATCHER_P(CastExpr, hasSourceExpression,
               internal::Matcher<Expr>, InnerMatcher) {
   const Expr* const SubExpression = Node.getSubExpr();
@@ -3753,17 +3783,37 @@ AST_TYPE_MATCHER(BlockPointerType, blockPointerType);
 ///   matches "A::* ptr"
 AST_TYPE_MATCHER(MemberPointerType, memberPointerType);
 
-/// \brief Matches pointer types.
+/// \brief Matches pointer types, but does not match Objective-C object pointer
+/// types.
 ///
 /// Given
 /// \code
 ///   int *a;
 ///   int &b = *a;
 ///   int c = 5;
+///
+///   @interface Foo
+///   @end
+///   Foo *f;
 /// \endcode
 /// pointerType()
-///   matches "int *a"
+///   matches "int *a", but does not match "Foo *f".
 AST_TYPE_MATCHER(PointerType, pointerType);
+
+/// \brief Matches an Objective-C object pointer type, which is different from
+/// a pointer type, despite being syntactically similar.
+///
+/// Given
+/// \code
+///   int *a;
+///
+///   @interface Foo
+///   @end
+///   Foo *f;
+/// \endcode
+/// pointerType()
+///   matches "Foo *f", but does not match "int *a".
+AST_TYPE_MATCHER(ObjCObjectPointerType, objcObjectPointerType);
 
 /// \brief Matches both lvalue and rvalue reference types.
 ///
@@ -3854,7 +3904,7 @@ AST_TYPE_MATCHER(TypedefType, typedefType);
 ///
 ///   template class C<int>;  // A
 ///   C<char> var;            // B
-/// \code
+/// \endcode
 ///
 /// \c templateSpecializationType() matches the type of the explicit
 /// instantiation in \c A and the type of the variable declaration in \c B.
@@ -3879,7 +3929,7 @@ AST_TYPE_MATCHER(UnaryTransformType, unaryTransformType);
 ///
 ///   C c;
 ///   S s;
-/// \code
+/// \endcode
 ///
 /// \c recordType() matches the type of the variable declarations of both \c c
 /// and \c s.
@@ -3899,7 +3949,7 @@ AST_TYPE_MATCHER(RecordType, recordType);
 ///
 ///   class C c;
 ///   N::M::D d;
-/// \code
+/// \endcode
 ///
 /// \c elaboratedType() matches the type of the variable declarations of both
 /// \c c and \c d.
@@ -3916,7 +3966,7 @@ AST_TYPE_MATCHER(ElaboratedType, elaboratedType);
 ///     }
 ///   }
 ///   N::M::D d;
-/// \code
+/// \endcode
 ///
 /// \c elaboratedType(hasQualifier(hasPrefix(specifiesNamespace(hasName("N"))))
 /// matches the type of the variable declaration of \c d.
@@ -3938,7 +3988,7 @@ AST_MATCHER_P(ElaboratedType, hasQualifier,
 ///     }
 ///   }
 ///   N::M::D d;
-/// \code
+/// \endcode
 ///
 /// \c elaboratedType(namesType(recordType(
 /// hasDeclaration(namedDecl(hasName("D")))))) matches the type of the variable
@@ -3957,10 +4007,31 @@ AST_MATCHER_P(ElaboratedType, namesType, internal::Matcher<QualType>,
 ///   void F(T t) {
 ///     int i = 1 + t;
 ///   }
-/// \code
+/// \endcode
 ///
 /// \c substTemplateTypeParmType() matches the type of 't' but not '1'
 AST_TYPE_MATCHER(SubstTemplateTypeParmType, substTemplateTypeParmType);
+
+/// \brief Matches template type parameter types.
+///
+/// Example matches T, but not int.
+///     (matcher = templateTypeParmType())
+/// \code
+///   template <typename T> void f(int i);
+/// \endcode
+AST_TYPE_MATCHER(TemplateTypeParmType, templateTypeParmType);
+
+/// \brief Matches injected class name types.
+///
+/// Example matches S s, but not S<T> s.
+///     (matcher = parmVarDecl(hasType(injectedClassNameType())))
+/// \code
+///   template <typename T> struct S {
+///     void f(S s);
+///     void g(S<T> s);
+///   };
+/// \endcode
+AST_TYPE_MATCHER(InjectedClassNameType, injectedClassNameType);
 
 /// \brief Matches declarations whose declaration context, interpreted as a
 /// Decl, matches \c InnerMatcher.
@@ -3972,7 +4043,7 @@ AST_TYPE_MATCHER(SubstTemplateTypeParmType, substTemplateTypeParmType);
 ///       class D {};
 ///     }
 ///   }
-/// \code
+/// \endcode
 ///
 /// \c recordDecl(hasDeclContext(namedDecl(hasName("M")))) matches the
 /// declaration of \c class \c D.

@@ -220,33 +220,36 @@ int main() {
 // CHECK: [[CMP:%.+]] = icmp ne i8 [[B_VAL]], 0
 // CHECK: [[FINAL:%.+]] = select i1 [[CMP]], i32 2, i32 0
 // CHECK: [[FLAGS:%.+]] = or i32 [[FINAL]], 1
-// CHECK: [[ORIG_TASK_PTR:%.+]] = call i8* @__kmpc_omp_task_alloc([[IDENT_T]]* @{{.+}}, i32 [[GTID]], i32 [[FLAGS]], i64 32, i64 1, i32 (i32, i8*)* bitcast (i32 (i32, [[KMP_TASK_T]]{{.*}}*)* [[TASK_ENTRY5:@.+]] to i32 (i32, i8*)*))
+// CHECK: [[ORIG_TASK_PTR:%.+]] = call i8* @__kmpc_omp_task_alloc([[IDENT_T]]* @{{.+}}, i32 [[GTID]], i32 [[FLAGS]], i64 32, i64 8, i32 (i32, i8*)* bitcast (i32 (i32, [[KMP_TASK_T]]{{.*}}*)* [[TASK_ENTRY5:@.+]] to i32 (i32, i8*)*))
 // CHECK: [[DESTRUCTORS_REF_PTR:%.+]] = getelementptr inbounds [[KMP_TASK_T]]{{.*}}* {{%.+}}, i32 0, i32 3
 // CHECK: store i32 (i32, i8*)* null, i32 (i32, i8*)** [[DESTRUCTORS_REF_PTR]]
 // CHECK: call i32 @__kmpc_omp_task([[IDENT_T]]* @{{.+}}, i32 [[GTID]], i8* [[ORIG_TASK_PTR]])
-#pragma omp task final(b)
+  int c __attribute__((aligned(128)));
+#pragma omp task final(b) shared(c)
   {
     a = 4;
+    c = 5;
   }
   return a;
 }
-// CHECK: define internal i32 [[TASK_ENTRY1]](i32, [[KMP_TASK_T]]{{.*}}*)
+// CHECK: define internal i32 [[TASK_ENTRY1]](i32, [[KMP_TASK_T]]{{.*}}* noalias)
 // CHECK: store i32 15, i32* [[A_PTR:@.+]]
 // CHECK: [[A_VAL:%.+]] = load i32, i32* [[A_PTR]]
 // CHECK: [[A_VAL_I8:%.+]] = trunc i32 [[A_VAL]] to i8
 // CHECK: store i8 [[A_VAL_I8]], i8* %{{.+}}
 // CHECK: store i32 10, i32* %{{.+}}
 
-// CHECK: define internal i32 [[TASK_ENTRY2]](i32, [[KMP_TASK_T]]{{.*}}*)
+// CHECK: define internal i32 [[TASK_ENTRY2]](i32, [[KMP_TASK_T]]{{.*}}* noalias)
 // CHECK: store i32 1, i32* [[A_PTR:@.+]]
 
-// CHECK: define internal i32 [[TASK_ENTRY3]](i32, [[KMP_TASK_T]]{{.*}}*)
+// CHECK: define internal i32 [[TASK_ENTRY3]](i32, [[KMP_TASK_T]]{{.*}}* noalias)
 // CHECK: store i32 2, i32* [[A_PTR:@.+]]
 
-// CHECK: define internal i32 [[TASK_ENTRY4]](i32, [[KMP_TASK_T]]{{.*}}*)
+// CHECK: define internal i32 [[TASK_ENTRY4]](i32, [[KMP_TASK_T]]{{.*}}* noalias)
 // CHECK: store i32 3, i32* [[A_PTR:@.+]]
 
-// CHECK: define internal i32 [[TASK_ENTRY5]](i32, [[KMP_TASK_T]]{{.*}}*)
+// CHECK: define internal i32 [[TASK_ENTRY5]](i32, [[KMP_TASK_T]]{{.*}}* noalias)
 // CHECK: store i32 4, i32* [[A_PTR:@.+]]
+// CHECK: store i32 5, i32* [[C_PTR:%.+]], align 128
 #endif
 
