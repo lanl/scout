@@ -339,9 +339,11 @@ llvm::DIType *CGDebugInfo::CreateType(const UniformMeshType *Ty) {
   llvm::DIType *T = cast_or_null<llvm::DIType>(getTypeOrNull(QualType(Ty, 0)));
   
   if (T || shouldOmitDefinition(DebugKind, MD, CGM.getLangOpts())) {
-    if (!T)
+    if (!T) {
+      llvm::DIScope *Mod = getParentModuleOrNull(cast<Decl>(MD->getDeclContext()));
       T = getOrCreateMeshFwdDecl(Ty,
-            getContextDescriptor(cast<Decl>(MD->getDeclContext())));
+            getContextDescriptor(cast<Decl>(MD->getDeclContext()), Mod ? Mod : TheCU));
+    }
     return T;
   }
   
@@ -402,8 +404,9 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
   unsigned Line = getLineNumber(MD->getLocation());
   StringRef MDName = MD->getName();
 
+   llvm::DIScope *Mod = getParentModuleOrNull(cast<Decl>(MD->getDeclContext()));
   llvm::DIScope *MDContext =
-  getContextDescriptor(cast<Decl>(MD->getDeclContext()));
+  getContextDescriptor(cast<Decl>(MD->getDeclContext()), Mod ? Mod : TheCU);
 
   // If we ended up creating the type during the context chain construction,
   // just return that.
@@ -911,9 +914,11 @@ llvm::DIType *CGDebugInfo::CreateType(const FrameType *Ty) {
   llvm::DIType *T = cast_or_null<llvm::DIType>(getTypeOrNull(QualType(Ty, 0)));
   
   if (T || shouldOmitDefinition(DebugKind, FD, CGM.getLangOpts())) {
-    if (!T)
+    if (!T) {
+      llvm::DIScope *Mod = getParentModuleOrNull(cast<Decl>(FD->getDeclContext()));
       T = getOrCreateFrameFwdDecl(Ty,
-                                  getContextDescriptor(cast<Decl>(FD->getDeclContext())));
+                                  getContextDescriptor(cast<Decl>(FD->getDeclContext()), Mod ? Mod : TheCU));
+    }
     return T;
   }
   
@@ -928,9 +933,10 @@ CGDebugInfo::CreateLimitedType(const FrameType *Ty) {
   llvm::DIFile *DefUnit = getOrCreateFile(FD->getLocation());
   unsigned Line = getLineNumber(FD->getLocation());
   StringRef MDName = FD->getName();
-  
+
+   llvm::DIScope *Mod = getParentModuleOrNull(cast<Decl>(FD->getDeclContext())); 
   llvm::DIScope *MDContext =
-  getContextDescriptor(cast<Decl>(FD->getDeclContext()));
+  getContextDescriptor(cast<Decl>(FD->getDeclContext()), Mod ? Mod : TheCU);
   
   // If we ended up creating the type during the context chain construction,
   // just return that.
