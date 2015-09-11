@@ -18,6 +18,7 @@
 #include "lowlevel_gpu.h"
 #endif
 #include "accessor.h"
+#include "realm/threads.h"
 #include <errno.h>
 #include <aio.h>
 
@@ -47,12 +48,19 @@ using namespace LegionRuntime::HighLevel::LegionProf;
 #include "atomics.h"
 
 #include "realm/timers.h"
+#include "realm/serialize.h"
+
+using namespace Realm::Serialization;
 
 namespace LegionRuntime {
   namespace LowLevel {
 
     typedef Realm::GASNetMemory GASNetMemory;
     typedef Realm::DiskMemory DiskMemory;
+    typedef Realm::Thread Thread;
+    typedef Realm::ThreadLaunchParameters ThreadLaunchParameters;
+    typedef Realm::CoreReservation CoreReservation;
+    typedef Realm::CoreReservationParameters CoreReservationParameters;
 
     Logger::Category log_dma("dma");
 #ifdef EVENT_GRAPH_TRACE
@@ -76,7 +84,7 @@ namespace LegionRuntime {
 
     class DmaRequestQueue {
     public:
-      DmaRequestQueue(void);
+      DmaRequestQueue(Realm::CoreReservationSet& crs);
 
       void enqueue_request(DmaRequest *r);
 
@@ -84,24 +92,30 @@ namespace LegionRuntime {
 
       void shutdown_queue(void);
 
+      void start_workers(int count);
+
+      void worker_thread_loop(void);
+
     protected:
       GASNetHSL queue_mutex;
       GASNetCondVar queue_condvar;
       std::map<int, std::list<DmaRequest *> *> queues;
       int queue_sleepers;
       bool shutdown_flag;
+      CoreReservation core_rsrv;
+      std::vector<Thread *> worker_threads;
     };
 
     class DmaRequest : public Realm::Operation {
     public:
       DmaRequest(int _priority, Event _after_copy) 
-	: Operation(), state(STATE_INIT), priority(_priority), 
-          after_copy(_after_copy) {}
+	: Operation(_after_copy, Realm::ProfilingRequestSet()),
+          state(STATE_INIT), priority(_priority) {} 
 
       DmaRequest(int _priority, Event _after_copy,
                  const Realm::ProfilingRequestSet &reqs)
-        : Realm::Operation(reqs), state(STATE_INIT), priority(_priority), 
-          after_copy(_after_copy) {}
+        : Realm::Operation(_after_copy, reqs), state(STATE_INIT),
+          priority(_priority) {} 
 
       virtual ~DmaRequest(void) {}
 
@@ -123,7 +137,6 @@ namespace LegionRuntime {
 
       State state;
       int priority;
-      Event after_copy;
 
       class Waiter : public EventWaiter {
       public:
@@ -267,8 +280,9 @@ namespace LegionRuntime {
       Waiter waiter;
     };
 
-    DmaRequestQueue::DmaRequestQueue(void)
+    DmaRequestQueue::DmaRequestQueue(Realm::CoreReservationSet& crs)
       : queue_condvar(queue_mutex)
+      , core_rsrv("DMA request queue", crs, CoreReservationParameters())
     {
       queue_sleepers = 0;
       shutdown_flag = false;
@@ -285,6 +299,15 @@ namespace LegionRuntime {
 
       queue_condvar.broadcast();
       queue_mutex.unlock();
+
+      // reap all the threads
+      for(std::vector<Thread *>::iterator it = worker_threads.begin();
+	  it != worker_threads.end();
+	  it++) {
+	(*it)->join();
+	delete (*it);
+      }
+      worker_threads.clear();
     }
 
     void DmaRequestQueue::enqueue_request(DmaRequest *r)
@@ -407,6 +430,11 @@ namespace LegionRuntime {
       //Realm::Operation::reconstruct_measurements();
       // better have consumed exactly the right amount of data
       //assert((((unsigned long)result) - ((unsigned long)data)) == datalen);
+      size_t request_size = *reinterpret_cast<const size_t*>(idata);
+      idata += sizeof(size_t) / sizeof(IDType);
+      FixedBufferDeserializer deserializer(idata, request_size);
+      deserializer >> requests;
+      Realm::Operation::reconstruct_measurements();
 
       log_dma.info("dma request %p deserialized - " IDFMT "[%zd]->" IDFMT "[%zd]:%d (+%zd) (" IDFMT ") " IDFMT "/%d " IDFMT "/%d",
 		   this,
@@ -418,7 +446,7 @@ namespace LegionRuntime {
 		   oas_by_inst->begin()->second.size() - 1,
 		   domain.is_id,
 		   before_copy.id, before_copy.gen,
-		   after_copy.id, after_copy.gen);
+		   get_finish_event().id, get_finish_event().gen);
     }
 
     CopyRequest::CopyRequest(const Domain& _domain,
@@ -441,7 +469,7 @@ namespace LegionRuntime {
 		   oas_by_inst->begin()->second.size() - 1,
 		   domain.is_id,
 		   before_copy.id, before_copy.gen,
-		   after_copy.id, after_copy.gen);
+		   get_finish_event().id, get_finish_event().gen);
 
 #ifdef LEGION_LOGGING
       log_timing_event(Processor::NO_PROC, after_copy, COPY_INIT);
@@ -472,6 +500,9 @@ namespace LegionRuntime {
       }
       // TODO: unbreak once the serialization stuff is repaired
       //result += requests.compute_size();
+      ByteCountSerializer counter;
+      counter << requests;
+      result += sizeof(size_t) + counter.bytes_used();
       return result;
     }
 
@@ -501,6 +532,12 @@ namespace LegionRuntime {
       //requests.serialize(msgptr); 
       // We sent this message remotely, so we need to clear the profiling
       // so it doesn't get sent accidentally
+      ByteCountSerializer counter;
+      counter << requests;
+      *reinterpret_cast<size_t*>(msgptr) = counter.bytes_used();
+      msgptr += sizeof(size_t) / sizeof(IDType);
+      FixedBufferSerializer serializer(msgptr, counter.bytes_used());
+      serializer << requests;
       clear_profiling();
     }
 
@@ -532,7 +569,7 @@ namespace LegionRuntime {
     void DmaRequest::Waiter::print_info(FILE *f)
     {
       fprintf(f,"dma request %p: after " IDFMT "/%d\n", 
-	      req, req->after_copy.id, req->after_copy.gen);
+	      req, req->get_finish_event().id, req->get_finish_event().gen);
     }
 
     bool CopyRequest::check_readiness(bool just_check, DmaRequestQueue *rq)
@@ -835,7 +872,7 @@ namespace LegionRuntime {
 		} else {
 		  do_remote_apply_red_list(i, tgt_mem->me, tgt_offset,
 					   redopid, 
-					   entry_buffer, pos * redop->sizeof_list_entry, 0, Event::NO_EVENT);
+					   entry_buffer, pos * redop->sizeof_list_entry, 0);
 		}
 		pos = 0;
 	      }
@@ -847,7 +884,7 @@ namespace LegionRuntime {
 	      } else {
 		do_remote_apply_red_list(i, tgt_mem->me, tgt_offset,
 					 redopid, 
-					 entry_buffer, pos * redop->sizeof_list_entry, 0, Event::NO_EVENT);
+					 entry_buffer, pos * redop->sizeof_list_entry, 0);
 	      }
 	    }
 	  }
@@ -963,6 +1000,7 @@ namespace LegionRuntime {
 	char chunk[CHUNK_SIZE];
       };
 
+#ifdef DEAD_DMA_CODE
       class RemoteWrite {
       public:
 	RemoteWrite(Memory _tgt_mem, off_t _tgt_offset,
@@ -1020,6 +1058,7 @@ namespace LegionRuntime {
 	int span_count;
 	int prev_offset, prev_count;
       };
+#endif
 
     }; // namespace RangeExecutors
 
@@ -1513,36 +1552,37 @@ namespace LegionRuntime {
 					  ReductionOpID redop_id = 0,
 					  bool fold = false);
       MemPairCopier(void) 
+        : total_reqs(0), total_bytes(0)
       { 
-#ifdef EVENT_GRAPH_TRACE
-        total_bytes = 0;
-#endif
       }
+
       virtual ~MemPairCopier(void) { }
 
       virtual InstPairCopier *inst_pair(RegionInstance src_inst, RegionInstance dst_inst,
                                         OASVec &oas_vec) = 0;
 
-      // default behavior of flush is just to trigger the event, if it exists
-      virtual void flush(Event after_copy)
+      // default behavior of flush is just to report bytes (maybe)
+      virtual void flush(DmaRequest *req)
       {
 #ifdef EVENT_GRAPH_TRACE
         report_bytes(after_copy);
 #endif
-	if(after_copy.exists())
-	  get_runtime()->get_genevent_impl(after_copy)->trigger(after_copy.gen, gasnet_mynode());
+      }
+    public:
+      void record_bytes(size_t bytes)
+      {
+        total_reqs++;
+        total_bytes += bytes;
       }
 #ifdef EVENT_GRAPH_TRACE
-    public:
-      void record_bytes(size_t bytes) { total_bytes += bytes; }
       void report_bytes(Event after_copy)
       {
         log_event_graph.debug("Copy Size: (" IDFMT ",%d) %ld",
                               after_copy.id, after_copy.gen, total_bytes);
       }
-    protected:
-      size_t total_bytes;
 #endif
+    protected:
+      size_t total_reqs, total_bytes;
     };
 
     class BufferedMemPairCopier : public MemPairCopier {
@@ -1576,16 +1616,12 @@ namespace LegionRuntime {
 	  src_offset += buffer_size;
 	  dst_offset += buffer_size;
 	  bytes -= buffer_size;
-#ifdef EVENT_GRAPH_TRACE
           record_bytes(buffer_size);
-#endif
 	}
 	if(bytes > 0) {
 	  src_mem->get_bytes(src_offset, buffer, bytes);
 	  dst_mem->put_bytes(dst_offset, buffer, bytes);
-#ifdef EVENT_GRAPH_TRACE
           record_bytes(bytes);
-#endif
 	}
       }
 
@@ -1632,9 +1668,7 @@ namespace LegionRuntime {
       {
 	//printf("memcpy of %zd bytes\n", bytes);
 	memcpy(dst_base + dst_offset, src_base + src_offset, bytes);
-#ifdef EVENT_GRAPH_TRACE
         record_bytes(bytes);
-#endif
       }
 
       // default behavior of 2D copy is to unroll to 1D copies
@@ -1801,13 +1835,14 @@ namespace LegionRuntime {
       bool fold;
     };
      
+#if 0
     // a MemPairCopier that keeps a list of events for component copies and doesn't trigger
     //  the completion event until they're all done
-    class DelayedMemPairCopier : public MemPairCopier {
+    class DelayedMemPairCopierX : public MemPairCopier {
     public:
-      DelayedMemPairCopier(void) {}
+      DelayedMemPairCopierX(void) {}
 
-      virtual ~DelayedMemPairCopier(void) {}
+      virtual ~DelayedMemPairCopierX(void) {}
       
       virtual void flush(Event after_copy)
       {
@@ -1842,9 +1877,10 @@ namespace LegionRuntime {
     protected:
       std::set<Event> events;
     };
+#endif
 
 #ifdef USE_CUDA     
-    class GPUtoFBMemPairCopier : public DelayedMemPairCopier {
+    class GPUtoFBMemPairCopier : public MemPairCopier {
     public:
       GPUtoFBMemPairCopier(Memory _src_mem, GPUProcessor *_gpu)
 	: gpu(_gpu)
@@ -1865,26 +1901,24 @@ namespace LegionRuntime {
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes)
       {
-	Event e = GenEventImpl::create_genevent()->current_event();
 	//printf("gpu write of %zd bytes\n", bytes);
-	gpu->copy_to_fb(dst_offset, src_base + src_offset, bytes, Event::NO_EVENT, e);
-#ifdef EVENT_GRAPH_TRACE
+	gpu->copy_to_fb(dst_offset, src_base + src_offset, bytes);
         record_bytes(bytes);
-#endif
-	events.insert(e);
       }
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
 		     off_t src_stride, off_t dst_stride, size_t lines)
       {
-	Event e = GenEventImpl::create_genevent()->current_event();
         gpu->copy_to_fb_2d(dst_offset, src_base + src_offset,
-                           dst_stride, src_stride, bytes, lines,
-                           Event::NO_EVENT, e);
-#ifdef EVENT_GRAPH_TRACE
+                           dst_stride, src_stride, bytes, lines);
         record_bytes(bytes * lines);
-#endif
-        events.insert(e);
+      }
+
+      virtual void flush(DmaRequest *req)
+      {
+        if(total_reqs > 0)
+          gpu->fence_to_fb(req);
+        MemPairCopier::flush(req);
       }
 
     protected:
@@ -1892,7 +1926,7 @@ namespace LegionRuntime {
       GPUProcessor *gpu;
     };
 
-    class GPUfromFBMemPairCopier : public DelayedMemPairCopier {
+    class GPUfromFBMemPairCopier : public MemPairCopier {
     public:
       GPUfromFBMemPairCopier(GPUProcessor *_gpu, Memory _dst_mem)
 	: gpu(_gpu)
@@ -1913,27 +1947,24 @@ namespace LegionRuntime {
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes)
       {
-	Event e = GenEventImpl::create_genevent()->current_event();
 	//printf("gpu read of %zd bytes\n", bytes);
-	gpu->copy_from_fb(dst_base + dst_offset, src_offset, bytes, Event::NO_EVENT, e);
-#ifdef EVENT_GRAPH_TRACE
+	gpu->copy_from_fb(dst_base + dst_offset, src_offset, bytes);
         record_bytes(bytes);
-#endif
-        events.insert(e);
-	//e.wait(true);
       }
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
 		     off_t src_stride, off_t dst_stride, size_t lines)
       {
-	Event e = GenEventImpl::create_genevent()->current_event();
         gpu->copy_from_fb_2d(dst_base + dst_offset, src_offset,
-                             dst_stride, src_stride, bytes, lines,
-                             Event::NO_EVENT, e);
-#ifdef EVENT_GRAPH_TRACE
+                             dst_stride, src_stride, bytes, lines);
         record_bytes(bytes * lines);
-#endif
-        events.insert(e);
+      }
+
+      virtual void flush(DmaRequest *req)
+      {
+        if(total_reqs > 0)
+          gpu->fence_from_fb(req);
+        MemPairCopier::flush(req);
       }
 
     protected:
@@ -1941,7 +1972,7 @@ namespace LegionRuntime {
       GPUProcessor *gpu;
     };
      
-    class GPUinFBMemPairCopier : public DelayedMemPairCopier {
+    class GPUinFBMemPairCopier : public MemPairCopier {
     public:
       GPUinFBMemPairCopier(GPUProcessor *_gpu)
 	: gpu(_gpu)
@@ -1959,34 +1990,31 @@ namespace LegionRuntime {
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes)
       {
-	Event e = GenEventImpl::create_genevent()->current_event();
 	//printf("gpu write of %zd bytes\n", bytes);
-	gpu->copy_within_fb(dst_offset, src_offset, bytes, Event::NO_EVENT, e);
-#ifdef EVENT_GRAPH_TRACE
+	gpu->copy_within_fb(dst_offset, src_offset, bytes);
         record_bytes(bytes);
-#endif
-	//e.wait(true);
-        events.insert(e);
       }
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
 		     off_t src_stride, off_t dst_stride, size_t lines)
       {
-	Event e = GenEventImpl::create_genevent()->current_event();
         gpu->copy_within_fb_2d(dst_offset, src_offset,
-                               dst_stride, src_stride, bytes, lines,
-                               Event::NO_EVENT, e);
-#ifdef EVENT_GRAPH_TRACE
+                               dst_stride, src_stride, bytes, lines);
         record_bytes(bytes * lines);
-#endif
-        events.insert(e);
+      }
+
+      virtual void flush(DmaRequest *req)
+      {
+        if(total_reqs > 0)
+          gpu->fence_within_fb(req);
+        MemPairCopier::flush(req);
       }
 
     protected:
       GPUProcessor *gpu;
     };
 
-    class GPUPeerMemPairCopier : public DelayedMemPairCopier {
+    class GPUPeerMemPairCopier : public MemPairCopier {
     public:
       GPUPeerMemPairCopier(GPUProcessor *_src, GPUProcessor *_dst)
         : src(_src), dst(_dst)
@@ -2004,26 +2032,25 @@ namespace LegionRuntime {
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes)
       {
-	Event e = GenEventImpl::create_genevent()->current_event();
-        src->copy_to_peer(dst, dst_offset, src_offset, bytes, Event::NO_EVENT, e);
-#ifdef EVENT_GRAPH_TRACE
+        src->copy_to_peer(dst, dst_offset, src_offset, bytes);
         record_bytes(bytes);
-#endif
-        events.insert(e);
       }
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
                      off_t src_stride, off_t dst_stride, size_t lines)
       {
-	Event e = GenEventImpl::create_genevent()->current_event();
         src->copy_to_peer_2d(dst, dst_offset, src_offset,
-                             dst_stride, src_stride, bytes, lines,
-                             Event::NO_EVENT, e);
-#ifdef EVENT_GRAPH_TRACE
+                             dst_stride, src_stride, bytes, lines);
         record_bytes(bytes * lines);
-#endif
-        events.insert(e);
       }
+
+      virtual void flush(DmaRequest *req)
+      {
+        if(total_reqs > 0)
+          src->fence_to_peer(req, dst);
+        MemPairCopier::flush(req);
+      }
+
     protected:
       GPUProcessor *src, *dst;
     };
@@ -2075,16 +2102,14 @@ namespace LegionRuntime {
 #ifdef TIME_REMOTE_WRITES
         unsigned long long start = TimeStamp::get_current_time_in_micros();
 #endif
-#ifdef EVENT_GRAPH_TRACE
         record_bytes(bytes);
-#endif
 	if(bytes >= TARGET_XFER_SIZE) {
 	  // large enough that we can transfer it by itself
 #ifdef DEBUG_REMOTE_WRITES
 	  printf("remote write of %zd bytes (" IDFMT ":%zd -> " IDFMT ":%zd)\n", bytes, src_mem->me.id, src_offset, dst_mem->me.id, dst_offset);
 #endif
 	  num_writes += do_remote_write(dst_mem->me, dst_offset, src_base + src_offset, bytes, 
-					sequence_id, Event::NO_EVENT, false /* no copy */);
+					sequence_id, false /* no copy */);
 	} else {
 	  // see if this can be added to an existing gather
 	  PendingGather *g;
@@ -2150,10 +2175,8 @@ namespace LegionRuntime {
 #endif
 	  num_writes += do_remote_write(dst_mem->me, dst_offset,
 					src_base + src_offset, bytes, src_stride, lines,
-					sequence_id, Event::NO_EVENT, false /* no copy */);
-#ifdef EVENT_GRAPH_TRACE
+					sequence_id, false /* no copy */);
           record_bytes(bytes * lines);
-#endif
 	  return;
 	}
 	
@@ -2166,7 +2189,7 @@ namespace LegionRuntime {
 	}
       }
 
-      void copy_gather(const PendingGather *g, Event trigger = Event::NO_EVENT)
+      void copy_gather(const PendingGather *g)
       {
 #ifdef TIME_REMOTE_WRITES
         unsigned long long start = TimeStamp::get_current_time_in_micros();
@@ -2187,9 +2210,7 @@ namespace LegionRuntime {
 	  // TODO: handle case where single write can include event trigger in message
 	  //num_writes += do_remote_write(dst_mem->me, g->dst_start, span.first, span.second, trigger, false /* no copy */);
 	  num_writes += do_remote_write(dst_mem->me, g->dst_start, span.first, span.second, 
-					sequence_id, Event::NO_EVENT, false /* no copy */);
-	  if(trigger.exists())
-	    do_remote_fence(dst_mem->me, sequence_id, num_writes, trigger);
+					sequence_id, false /* no copy */);
           return;
         }
 
@@ -2201,16 +2222,14 @@ namespace LegionRuntime {
 	// TODO: handle case where single write can include event trigger in message
 	num_writes += do_remote_write(dst_mem->me, g->dst_start, 
 				      g->src_spans, g->dst_size,
-				      sequence_id, Event::NO_EVENT, false /* no copy - data won't change til copy event triggers */);
-	if(trigger.exists())
-	  do_remote_fence(dst_mem->me, sequence_id, num_writes, trigger);
+				      sequence_id, false /* no copy - data won't change til copy event triggers */);
 #ifdef TIME_REMOTE_WRITES
         unsigned long long stop = TimeStamp::get_current_time_in_micros();
         gather_time += (stop - start);
 #endif
       }
 
-      virtual void flush(Event after_copy)
+      virtual void flush(DmaRequest *req)
       {
 #ifdef TIME_REMOTE_WRITES
         size_t total_gathers = gathers.size();
@@ -2222,54 +2241,25 @@ namespace LegionRuntime {
         }
         unsigned long long start = TimeStamp::get_current_time_in_micros();
 #endif
+
 	// do we have any pending gathers to push out?
-	if(gathers.size() > 0) {
-	  // push out all but the last one with events triggered
-	  while(gathers.size() > 1) {
-	    std::map<off_t, PendingGather *>::iterator it = gathers.begin();
-	    PendingGather *g = it->second;
-	    gathers.erase(it);
-
-	    copy_gather(g);
-	    delete g;
-	  }
-
-	  // for the last one, give it the 'after_copy' event to trigger on arrival
+        while(!gathers.empty()) {
 	  std::map<off_t, PendingGather *>::iterator it = gathers.begin();
 	  PendingGather *g = it->second;
 	  gathers.erase(it);
 
-#define NO_SEPARATE_FENCE
-#ifndef SEPARATE_FENCE
-	  copy_gather(g, after_copy);
-#else
 	  copy_gather(g);
-#ifdef DEBUG_REMOTE_WRITES
-	  printf("remote write fence: " IDFMT "/%d\n", after_copy.id, after_copy.gen);
-#endif
-	  do_remote_write(dst_mem->me, 0, 0, 0, after_copy);
-#endif
 	  delete g;
-	} else {
-	  // didn't have any pending copies, but if we have an event to trigger, send that
-	  //  to the remote side as a zero-size copy to push the data in front of it
-	  if(after_copy.exists()) {
-            if(num_writes == 0) {
-              // an empty dma - no need to send a fence - we can trigger the
-              //  completion event here and save a message
-	      get_runtime()->get_genevent_impl(after_copy)->trigger(after_copy.gen, gasnet_mynode());
-            } else {
-#ifdef DEBUG_REMOTE_WRITES
-	      printf("remote write fence: " IDFMT "/%d\n", after_copy.id, after_copy.gen);
-#endif
-	      //do_remote_write(dst_mem->me, 0, 0, 0, after_copy);
-	      do_remote_fence(dst_mem->me, sequence_id, num_writes, after_copy);
-            }
-	  }
 	}
-#ifdef EVENT_GRAPH_TRACE
-        report_bytes(after_copy);
-#endif
+
+        // if we did any remote writes, we need a fence, and the DMA request
+	//  needs to know about it
+        if(total_reqs > 0) {
+          Realm::RemoteWriteFence *fence = new Realm::RemoteWriteFence(req);
+          req->add_async_work_item(fence);
+          do_remote_fence(dst_mem->me, sequence_id, num_writes, fence);
+        }
+
 #ifdef TIME_REMOTE_WRITES
         unsigned long long stop = TimeStamp::get_current_time_in_micros();
         gather_time += (stop - start);
@@ -2277,6 +2267,8 @@ namespace LegionRuntime {
                 "total gathers %ld total spans %d\n", 
                 span_time, gather_time, total_gathers, total_spans);
 #endif
+
+        MemPairCopier::flush(req);
       }
 
     protected:
@@ -2333,7 +2325,9 @@ namespace LegionRuntime {
 	num_writes += do_remote_reduce(dst_mem->me, dst_offset, redop_id, fold,
 				       src_base + src_offset, bytes / redop->sizeof_rhs,
 				       redop->sizeof_rhs, redop->sizeof_lhs,
-				       sequence_id, Event::NO_EVENT, false /* no copy */);
+				       sequence_id, false /* no copy */);
+
+        record_bytes(bytes);
       }
 
       void copy_span(off_t src_offset, off_t dst_offset, size_t bytes,
@@ -2353,9 +2347,17 @@ namespace LegionRuntime {
 	}
       }
 
-      virtual void flush(Event after_copy)
+      virtual void flush(DmaRequest *req)
       {
-	do_remote_fence(dst_mem->me, sequence_id, num_writes, after_copy);
+        // if we did any remote writes, we need a fence, and the DMA request
+	//  needs to know about it
+        if(total_reqs > 0) {
+          Realm::RemoteWriteFence *fence = new Realm::RemoteWriteFence(req);
+          req->add_async_work_item(fence);
+          do_remote_fence(dst_mem->me, sequence_id, num_writes, fence);
+        }
+
+        MemPairCopier::flush(req);
       }
 
     protected:
@@ -2857,12 +2859,12 @@ namespace LegionRuntime {
 		   oas_by_inst->begin()->second.size() - 1,
 		   domain.is_id,
 		   before_copy.id, before_copy.gen,
-		   after_copy.id, after_copy.gen);
+		   get_finish_event().id, get_finish_event().gen);
 
       // if(after_copy.exists())
       // 	after_copy.impl()->trigger(after_copy.gen, gasnet_mynode());
 
-      mpc->flush(after_copy);
+      mpc->flush(this);
       delete mpc;
 
 #ifdef EVEN_MORE_DEAD_DMA_CODE
@@ -3188,6 +3190,11 @@ namespace LegionRuntime {
       //Realm::Operation::reconstruct_measurements();
       // better have consumed exactly the right amount of data
       //assert((((unsigned long long)result) - ((unsigned long long)data)) == datalen);
+      size_t request_size = *reinterpret_cast<const size_t*>(idata);
+      idata += sizeof(size_t) / sizeof(IDType);
+      FixedBufferDeserializer deserializer(idata, request_size);
+      deserializer >> requests;
+      Realm::Operation::reconstruct_measurements();
 
       log_dma.info("dma request %p deserialized - " IDFMT "[%d]->" IDFMT "[%d]:%d (+%zd) %s %d (" IDFMT ") " IDFMT "/%d " IDFMT "/%d",
 		   this,
@@ -3198,7 +3205,7 @@ namespace LegionRuntime {
 		   redop_id,
 		   domain.is_id,
 		   before_copy.id, before_copy.gen,
-		   after_copy.id, after_copy.gen);
+		   get_finish_event().id, get_finish_event().gen);
     }
 
     ReduceRequest::ReduceRequest(const Domain& _domain,
@@ -3229,7 +3236,7 @@ namespace LegionRuntime {
 		   redop_id,
 		   domain.is_id,
 		   before_copy.id, before_copy.gen,
-		   after_copy.id, after_copy.gen);
+		   get_finish_event().id, get_finish_event().gen);
 
 #ifdef LEGION_LOGGING
       log_timing_event(Processor::NO_PROC, after_copy, COPY_INIT);
@@ -3256,6 +3263,9 @@ namespace LegionRuntime {
       result += sizeof(IDType); // for inst_lock_needed
       // TODO: unbreak once the serialization stuff is repaired
       //result += requests.compute_size();
+      ByteCountSerializer counter;
+      counter << requests;
+      result += sizeof(size_t) + counter.bytes_used();
       return result;
     }
 
@@ -3284,6 +3294,12 @@ namespace LegionRuntime {
       // TODO: unbreak once the serialization stuff is repaired
       //requests.serialize(msgptr);
       // We sent this request remotely so we need to clear it's profiling
+      ByteCountSerializer counter;
+      counter << requests;
+      *reinterpret_cast<size_t*>(msgptr) = counter.bytes_used();
+      msgptr += sizeof(size_t) / sizeof(IDType);
+      FixedBufferSerializer serializer(msgptr, counter.bytes_used());
+      serializer << requests;
       clear_profiling();
     }
 
@@ -3598,8 +3614,6 @@ namespace LegionRuntime {
 				       false /*not exclusive*/);
 	      }
 
-	      // all done - we can trigger the event locally in this case
-	      get_runtime()->get_genevent_impl(after_copy)->trigger(after_copy.gen, gasnet_mynode());
               delete e;
 	      break;
 	    }
@@ -3669,14 +3683,14 @@ namespace LegionRuntime {
 		rdma_count += do_remote_reduce(dst_mem, dst_offset, redop_id, red_fold,
 					       ((const char *)src_base) + (rstart * src_stride),
 					       rlen, src_stride, dst_stride,
-					       sequence_id, Event::NO_EVENT);
+					       sequence_id);
 	      }
 
 	      // if we did any actual reductions, send a fence, otherwise trigger here
 	      if(rdma_count > 0) {
-		do_remote_fence(dst_mem, sequence_id, rdma_count, after_copy);
-	      } else {
-		get_runtime()->get_genevent_impl(after_copy)->trigger(after_copy.gen, gasnet_mynode());
+                Realm::RemoteWriteFence *fence = new Realm::RemoteWriteFence(this);
+                this->add_async_work_item(fence);
+		do_remote_fence(dst_mem, sequence_id, rdma_count, fence);
 	      }
               delete e;
 	      break;
@@ -3746,9 +3760,6 @@ namespace LegionRuntime {
 		free(buffer);
 	      }
 
-	      // all done - we can trigger the event locally in this case
-	      get_runtime()->get_genevent_impl(after_copy)->trigger(after_copy.gen, gasnet_mynode());
-
 	      // also release the instance lock
 	      dst_impl->lock.release();
 
@@ -3771,11 +3782,11 @@ namespace LegionRuntime {
 	default: assert(0);
 	}
 
-	mpc->flush(after_copy);
+	mpc->flush(this);
 
 	// if an instance lock was taken, release it after copy completes
 	if(inst_lock_needed)
-	  get_runtime()->get_instance_impl(dst.inst)->lock.me.release(after_copy);
+	  get_runtime()->get_instance_impl(dst.inst)->lock.me.release(get_finish_event());
 
 	delete mpc;
       }
@@ -3789,7 +3800,7 @@ namespace LegionRuntime {
 		   redop_id,
 		   domain.is_id,
 		   before_copy.id, before_copy.gen,
-		   after_copy.id, after_copy.gen);
+		   get_finish_event().id, get_finish_event().gen);
     }
 
     FillRequest::FillRequest(const void *data, size_t datalen,
@@ -4035,8 +4046,6 @@ namespace LegionRuntime {
       } else {
         // TODO: Implement GASNet, Disk, and Framebuffer
       }
-      if(after_copy.exists())
-        get_runtime()->get_genevent_impl(after_copy)->trigger(after_copy.gen, gasnet_mynode());
     }
 
     template<int DIM>
@@ -4046,7 +4055,7 @@ namespace LegionRuntime {
       off_t field_start; int field_size;
       find_field_start(inst_impl->metadata.field_sizes, dst.offset,
                        dst.size, field_start, field_size);
-      assert(field_size <= fill_size);
+      assert(field_size <= (int)fill_size);
       typename Arrays::Mapping<DIM, 1> *dst_linearization = 
         inst_impl->metadata.linearization.get_mapping<DIM>();
       typename Arrays::Rect<DIM> rect = domain.get_rect<DIM>();
@@ -4112,76 +4121,89 @@ namespace LegionRuntime {
       return fill_size;
     }
 
-    static volatile bool terminate_flag = false;
-    static int num_threads = 0;
-    static pthread_t *worker_threads = 0;
+#if 0
+    class CopyCompletionProfiler : public EventWaiter, public Realm::Operation::AsyncWorkItem {
+      public:
+        CopyCompletionProfiler(DmaRequest* _req)
+	  : Realm::Operation::AsyncWorkItem(_req), req(_req)
+        { }
+
+        virtual ~CopyCompletionProfiler(void) { }
+
+        virtual bool event_triggered(void)
+        {
+          mark_finished();
+          return false;
+        }
+
+        virtual void print_info(FILE *f)
+        {
+          fprintf(f, "copy completion profiler - " IDFMT "/%d\n",
+              req->get_finish_event().id, req->get_finish_event().gen);
+        }
+
+        virtual void request_cancellation(void)
+        {
+	  // ignored for now
+	}
+
+      protected:
+        DmaRequest* req;
+    };
+#endif
 
     // for now we use a single queue for all (local) dmas
     static DmaRequestQueue *dma_queue = 0;
-    
-    static void *dma_worker_thread_loop(void *arg)
-    {
-      DmaRequestQueue *rq = (DmaRequestQueue *)arg;
 
+    void DmaRequestQueue::worker_thread_loop(void)
+    {
       log_dma.info("dma worker thread created");
 
-      while(!terminate_flag) {
+      while(!shutdown_flag) {
 	// get a request, sleeping as necessary
-	DmaRequest *r = rq->dequeue_request(true);
+	DmaRequest *r = dequeue_request(true);
 
 	if(r) {
           r->mark_started();
+
+          // this will automatically add any necessary AsyncWorkItem's
 	  r->perform_dma();
-          r->mark_completed();
-	  delete r;
+
+	  r->mark_finished();
 	}
       }
 
       log_dma.info("dma worker thread terminating");
+    }
 
-      return 0;
+    void DmaRequestQueue::start_workers(int count)
+    {
+      ThreadLaunchParameters tlp;
+
+      for(int i = 0; i < count; i++) {
+	Thread *t = Thread::create_kernel_thread<DmaRequestQueue,
+						 &DmaRequestQueue::worker_thread_loop>(this,
+										       tlp,
+										       core_rsrv,
+										       0 /* default scheduler*/);
+	worker_threads.push_back(t);
+      }
     }
     
-    void start_dma_worker_threads(int count)
+    void start_dma_worker_threads(int count, Realm::CoreReservationSet& crs)
     {
 #ifdef OLD_LEGION_PROF
       CHECK_PTHREAD( pthread_key_create(&copy_profiler_key, 0) );
 #endif
-      dma_queue = new DmaRequestQueue;
-      num_threads = count;
-
-      worker_threads = new pthread_t[count];
-      for(int i = 0; i < count; i++) {
-	pthread_attr_t attr;
-	CHECK_PTHREAD( pthread_attr_init(&attr) );
-	if(Realm::proc_assignment)
-	  Realm::proc_assignment->bind_thread(-1, &attr, "DMA worker");
-	CHECK_PTHREAD( pthread_create(&worker_threads[i], 0, 
-				      dma_worker_thread_loop, dma_queue) );
-	CHECK_PTHREAD( pthread_attr_destroy(&attr) );
-#ifdef DEADLOCK_TRACE
-        get_runtime()->add_thread(&worker_threads[i]);
-#endif
-      }
+      dma_queue = new DmaRequestQueue(crs);
+      dma_queue->start_workers(count);
     }
 
     void stop_dma_worker_threads(void)
     {
-      terminate_flag = true;
       dma_queue->shutdown_queue();
-
-      if(worker_threads) {
-	for(int i = 0; i < num_threads; i++) {
-	  void *dummy;
-	  CHECK_PTHREAD( pthread_join(worker_threads[i], &dummy) );
-	}
-	num_threads = 0;
-	delete[] worker_threads;
-      }
-
       delete dma_queue;
       dma_queue = 0;
-      terminate_flag = false;
     }
 
   };
