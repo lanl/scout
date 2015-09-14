@@ -166,7 +166,7 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
     return InductionVar[index];
   }
   
-  ForallData* data = GetForallData(ForallStackIndex);
+  ForallData* data = ForallStack.back();
   
   if(index == 3) {
     return data->indexPtr;

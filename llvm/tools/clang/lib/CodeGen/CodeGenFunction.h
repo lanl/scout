@@ -2413,8 +2413,8 @@ public:
     }
     
     for(int i = n - 1; i >= 0; --i){
-      ForallData& d = ForallStack[i];
-      if(d.elementType == elementType){
+      ForallData* d = ForallStack[i];
+      if(d->elementType == elementType){
         return i;
       }
     }
@@ -2472,10 +2472,15 @@ public:
     bool hasInductionVar[3];
   };
   
-  ForallData *GetForallData(unsigned int index);
-
-  std::vector<ForallData> ForallStack;
-  int ForallStackIndex = 0;
+  void InitForallData(ForallInfo* info,
+                      std::vector<ForallData*>& stack,
+                      llvm::Value* meshPtr,
+                      llvm::Value* topologyPtr,
+                      llvm::Value* rank);
+  
+  std::map<const ForallMeshStmt*, ForallData*> ForallDataMap;
+  
+  std::vector<ForallData*> ForallStack;
   
   // +========================================================================+
 

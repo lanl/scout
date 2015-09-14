@@ -178,8 +178,8 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
     int i = FindForallData(IMPD->getElementType());
     assert(i >= 0 && "error finding forall data");
 
-    ForallData& data = ForallStack[i];
-    return data.indexPtr;
+    ForallData* data = ForallStack[i];
+    return data->indexPtr;
   } else if (isa<ParmVarDecl>(base->getDecl())) {
     llvm::errs() << "ParmVarDecl in GetForallIndex must be stencil\n";
     
@@ -407,21 +407,21 @@ llvm::Value *CodeGenFunction::getMeshIndex(const MeshFieldDecl* MFD) {
     int i = FindForallData(Vertices);
     assert(i >= 0 && "null vertex index while referencing vertex field");
     // use the vertex index if we are within a forall vertices
-    Index = Builder.CreateLoad(scoutPtr(ForallStack[i].indexPtr));
+    Index = Builder.CreateLoad(scoutPtr(ForallStack[i]->indexPtr));
   } else if(MFD->isEdgeLocated()) {
     int i = FindForallData(Edges);
     assert(i >= 0 && "null edge index while referencing edge field");
     // use the vertex index if we are within a forall vertices
-    Index = Builder.CreateLoad(scoutPtr(ForallStack[i].indexPtr));
+    Index = Builder.CreateLoad(scoutPtr(ForallStack[i]->indexPtr));
   } else if(MFD->isFaceLocated()) {
     int i = FindForallData(Faces);
     assert(i >= 0 && "null face index while referencing face field");
     // use the vertex index if we are within a forall vertices
-    Index = Builder.CreateLoad(scoutPtr(ForallStack[i].indexPtr));
+    Index = Builder.CreateLoad(scoutPtr(ForallStack[i]->indexPtr));
   } else if(MFD->isCellLocated()) {
     int i = FindForallData(Cells);
     assert(i >= 0 && "null cell index while referencing vertex field");
-    Index = Builder.CreateLoad(scoutPtr(ForallStack[i].indexPtr));
+    Index = Builder.CreateLoad(scoutPtr(ForallStack[i]->indexPtr));
   } else {
     Index = getLinearIdx();
   }
@@ -866,7 +866,7 @@ RValue CodeGenFunction::EmitTailExpr(void) {
   int i = FindForallData(Edges);
   assert(i >= 0 && "failed to find edge index");
   
-  llvm::Value* EdgeIndex = ForallStack[i].indexPtr;
+  llvm::Value* EdgeIndex = ForallStack[i]->indexPtr;
   
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
@@ -975,7 +975,7 @@ RValue CodeGenFunction::EmitHeadExpr(void) {
   int i = FindForallData(Edges);
   assert(i >= 0 && "failed to find edge index");
   
-  llvm::Value* EdgeIndex = ForallStack[i].indexPtr;
+  llvm::Value* EdgeIndex = ForallStack[i]->indexPtr;
 
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
@@ -1322,7 +1322,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   topology = B.CreateLoad(scoutPtr(topology), "topology.ptr");
   data.topology = topology;
   
-  ForallStack.emplace_back(move(data));
+  ForallStack.emplace_back(&data);
   
   Value* result = EmitAnyExprToTemp(pred).getScalarVal();
 
@@ -1534,27 +1534,16 @@ RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
   return RValue::get(Result);
 }
 
-CodeGenFunction::ForallData *CodeGenFunction::GetForallData(unsigned int index) {
-  ForallData *data = nullptr;
-
-  ForallData& d = ForallStack[index];
-  if (d.elementType == Vertices || d.elementType == Cells) {
-    data = &d;
-  }
-  assert(data && "unable to find cells or vertices forall data");
-  return data;
-}
-
 llvm::Value *CodeGenFunction::FindGIndex(unsigned int dim) {
 
-   ForallData* data = GetForallData(ForallStackIndex);
+   ForallData* data = ForallStack.back();
    const MeshType* mt = data->getMeshType();
    auto& dims = mt->dimensions();
 
    llvm::Value* idx = Builder.CreateLoad(scoutPtr(data->indexPtr));
 
    // for partitioned legion case need to add start to induction var
-   if (ForallStackIndex == 0 && dim < 3) {
+   if (ForallStack.size() == 1 && dim < 3) {
       idx = Builder.CreateAdd(Builder.CreateLoad(scoutPtr(LookupMeshStart(dim))), idx);
    }
 
@@ -1579,24 +1568,24 @@ llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
   llvm::Value* idx;
 
   if (dim == 3) {
-    idx = Builder.CreateLoad(scoutPtr(ForallStack[ForallStackIndex].indexPtr));
+    idx = Builder.CreateLoad(scoutPtr(ForallStack.back()->indexPtr));
     return Builder.CreateTrunc(idx, Int32Ty, "lindex.w");
   }
 
   // get current iv
   idx = FindGIndex(dim);
 
-  if (ForallStackIndex > 0) {
-    ForallData* data = GetForallData(ForallStackIndex);
+  if (ForallStack.size() > 1) {
+    ForallData* data = ForallStack.back();
     const MeshType* mt = data->getMeshType();
     auto& dims = mt->dimensions();
     // get top iv
     llvm::Value *topiv = LinearIdx2InductionVar(
-        Builder.CreateLoad(scoutPtr(ForallStack[0].indexPtr)), ForallStack[0].elementType,
+        Builder.CreateLoad(scoutPtr(ForallStack[0]->indexPtr)), ForallStack[0]->elementType,
         dim, dims.size());
     // SC_TODO: only works for cells/vert and vert/cells
     idx = Builder.CreateSub(idx, topiv);
-    if (ForallStack[0].elementType == Vertices) {
+    if (ForallStack[0]->elementType == Vertices) {
       llvm::Value* one = llvm::ConstantInt::get(Int64Ty, 1);
       idx = Builder.CreateAdd(idx, one);
     }

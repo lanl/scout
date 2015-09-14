@@ -2597,6 +2597,11 @@ public:
   static bool classof(const ForallMeshStmt *) { return true; }
 };
 
+struct ForallInfo{
+  ForallMeshStmt* forallStmt;
+  std::vector<ForallInfo*> children;
+};
+
 // An array-based forall statement
 class ForallArrayStmt : public ForallStmt {
   IdentifierInfo* InductionVarInfo[3];

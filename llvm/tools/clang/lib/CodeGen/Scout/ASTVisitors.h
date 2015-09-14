@@ -132,10 +132,10 @@ private:
   MeshShiftMap mins_;
   MeshShiftMap maxs_;
 };
-
+  
 class NestedForallVisitor : public StmtVisitor<NestedForallVisitor> {
 public:
-  using ForallStmtVec = std::vector<ForallMeshStmt*>;
+  using ForallInfoVec = std::vector<ForallInfo*>;
   
   NestedForallVisitor(){}
   
@@ -151,19 +151,36 @@ public:
   }
   
   void VisitStmt(Stmt* S) {
+    bool shouldPop = false;
+    
     if(ForallMeshStmt* FS = dyn_cast<ForallMeshStmt>(S)){
-      forallStmts_.push_back(FS);
+      ForallInfo* info = new ForallInfo;
+      info->forallStmt = FS;
+      
+      if(!stack_.empty()){
+        ForallInfo* aboveInfo = stack_.back();
+        aboveInfo->children.push_back(info);
+        shouldPop = true;
+      }
+      
+      stack_.push_back(info);
     }
     
     VisitChildren(S);
+    
+    if(shouldPop){
+      stack_.pop_back();
+    }
   }
   
-  const ForallStmtVec& forallStmts() const{
-    return forallStmts_;
+  ForallInfo* getForallInfo(){
+    assert(!stack_.empty());
+    
+    return stack_[0];
   }
   
 private:
-  ForallStmtVec forallStmts_;
+  ForallInfoVec stack_;
 };
   
 // find what mesh fields are used in a forall

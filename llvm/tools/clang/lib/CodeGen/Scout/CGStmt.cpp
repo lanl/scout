@@ -596,6 +596,82 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
   cGLegionTask.EmitLegionTask();
 }
 
+void CodeGenFunction::InitForallData(ForallInfo* info,
+                                     std::vector<ForallData*>& stack,
+                                     llvm::Value* meshPtr,
+                                     llvm::Value* topologyPtr,
+                                     llvm::Value* rank){
+  using namespace std;
+  using namespace llvm;
+  
+  auto& B = Builder;
+  auto R = CGM.getScoutRuntime();
+  
+  using ValueVec = vector<Value*>;
+  
+  ForallData* data = new ForallData;
+  ForallDataMap[info->forallStmt] = data;
+  
+  const ForallMeshStmt& S = *info->forallStmt;
+  
+  const VarDecl* mvd;
+  if(const ImplicitMeshParamDecl* ip =
+     dyn_cast<ImplicitMeshParamDecl>(S.getMeshVarDecl())){
+    mvd = ip->getBaseVarDecl();
+  }
+  else{
+    mvd = S.getMeshVarDecl();
+  }
+  
+  data->meshVarDecl = mvd;
+  data->topology = topologyPtr;
+  data->elementType = S.getMeshElementRef();
+  data->indexPtr = B.CreateAlloca(Int64Ty, nullptr, "index.ptr");
+  
+  for(size_t j = 0; j < 3; ++j){
+    data->inductionVar[j] = Builder.CreateAlloca(Int64Ty, nullptr, IRNameStr);
+  }
+  
+  Value* topologyDim = GetMeshTopologyDim(rank, data->elementType);
+  
+  if(stack.empty()){
+    data->fromIndicesPtr = nullptr;
+    data->toIndicesPtr = nullptr;
+  }
+  else{
+    const ForallData* aboveData = stack.back();
+    
+    Value* aboveTopologyDim = GetMeshTopologyDim(rank, aboveData->elementType);
+    
+    ValueVec args =
+    {topologyPtr, aboveTopologyDim, topologyDim};
+    
+    if(stack.size() > 1){
+      data->fromIndicesPtr =
+      B.CreateCall(R.MeshGetFromIndicesFunc(), args, "from.indices.ptr");
+    }
+    else{
+      data->fromIndicesPtr = nullptr;
+    }
+    
+    data->startToIndicesPtr =
+    B.CreateCall(R.MeshGetToIndicesFunc(), args, "to.indices.ptr");
+    
+    data->toIndicesPtr =
+    B.CreateAlloca(data->startToIndicesPtr->getType(),
+                   nullptr, "to.indices.ptr.ptr");
+    
+    B.CreateStore(data->startToIndicesPtr, scoutPtr(data->toIndicesPtr));
+  }
+  
+  stack.push_back(data);
+  size_t n = info->children.size();
+  for(size_t i = 0; i < n; ++i){
+    InitForallData(info->children[i], stack, meshPtr, topologyPtr, rank);
+  }
+  stack.pop_back();
+}
+
 void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   using namespace std;
   using namespace llvm;
@@ -607,155 +683,88 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     return;
   }
   
-  typedef vector<Value*> ValueVec;
+  bool top = ForallStack.empty();
+  
+  using ValueVec = vector<Value*>;
   
   auto& B = Builder;
   auto R = CGM.getScoutRuntime();
   
-  bool top = ForallStack.empty();
-  
-  Value* topology;
-  Value* meshPtr;
   Value* rank;
   
   if(top){
     SetMeshBounds(S);
     
+    const VarDecl* mvd;
+    if(const ImplicitMeshParamDecl* ip =
+       dyn_cast<ImplicitMeshParamDecl>(S.getMeshVarDecl())){
+      mvd = ip->getBaseVarDecl();
+    }
+    else{
+      mvd = S.getMeshVarDecl();
+    }
+    
+    QualType t = mvd->getType();
+    const MeshType* mt;
+    
+    for(;;){
+      if(const PointerType* pt = dyn_cast<PointerType>(t)){
+        t = pt->getPointeeType();
+      }
+      else if(const ReferenceType* rt = dyn_cast<ReferenceType>(t)){
+        t = rt->getPointeeType();
+      }
+      else{
+        mt = dyn_cast<MeshType>(t);
+        assert(mt && "expected a mesh type");
+        break;
+      }
+    }
+    
+    const MeshDecl* md = mt->getDecl();
+    
+    Value* meshPtr;
+    GetMeshBaseAddr(mvd, meshPtr);
+    
+    Value* topologyPtr =
+    B.CreateStructGEP(nullptr, meshPtr,
+                      md->fields() + MeshParameterOffset::TopologyOffset);
+    topologyPtr = B.CreateLoad(scoutPtr(topologyPtr), "topology.ptr");
+    
+    rank =
+    B.CreateStructGEP(nullptr, meshPtr,
+                      md->fields() + MeshParameterOffset::RankOffset);
+    rank = B.CreateLoad(scoutPtr(rank));
+    
     NestedForallVisitor visitor;
     visitor.VisitStmt(const_cast<ForallMeshStmt*>(&S));
-    auto fs = visitor.forallStmts();
     
-    size_t i = 0;
-    MeshElementType aboveElementType;
-    Value* aboveRank;
-    
-    for(const ForallMeshStmt* s : fs){
-      ForallData data;
-      
-      const VarDecl* mvd;
-      if(const ImplicitMeshParamDecl* ip =
-         dyn_cast<ImplicitMeshParamDecl>(s->getMeshVarDecl())){
-        mvd = ip->getBaseVarDecl();
-      }
-      else{
-        mvd = s->getMeshVarDecl();
-      }
-      
-      data.meshVarDecl = mvd;
-      
-      QualType t = data.meshVarDecl->getType();
-      const MeshType* mt;
-      
-      for(;;){
-        if(const PointerType* pt = dyn_cast<PointerType>(t)){
-          t = pt->getPointeeType();
-        }
-        else if(const ReferenceType* rt = dyn_cast<ReferenceType>(t)){
-          t = rt->getPointeeType();
-        }
-        else{
-          mt = dyn_cast<MeshType>(t);
-          assert(mt && "expected a mesh type");
-          break;
-        }
-      }
-      
-      const MeshDecl* md = mt->getDecl();
-
-      GetMeshBaseAddr(mvd, meshPtr);
-      
-      if(i == 0){
-        topology =
-        B.CreateStructGEP(nullptr, meshPtr,
-                          md->fields() + MeshParameterOffset::TopologyOffset);
-        topology = B.CreateLoad(scoutPtr(topology), "topology.ptr");
-        data.topology = topology;
-      }
-      
-      rank =
-      B.CreateStructGEP(nullptr, meshPtr,
-                        md->fields() + MeshParameterOffset::RankOffset);
-      rank = B.CreateLoad(scoutPtr(rank));
-            
-      data.elementType = s->getMeshElementRef();
-      data.indexPtr = B.CreateAlloca(Int64Ty, nullptr, "index.ptr");
-   
-      for(size_t j = 0; j < 3; ++j){
-        data.inductionVar[j] = Builder.CreateAlloca(Int64Ty, nullptr, IRNameStr);
-      }
-      
-      Value* topologyDim = GetMeshTopologyDim(rank, data.elementType);
-      
-      if(i > 0){
-        Value* aboveTopologyDim = GetMeshTopologyDim(aboveRank, aboveElementType);
-        
-        ValueVec args =
-        {topology, aboveTopologyDim, topologyDim};
-        
-        if(i > 1){
-          data.fromIndicesPtr =
-          B.CreateCall(R.MeshGetFromIndicesFunc(), args, "from.indices.ptr");
-        }
-        else{
-           data.fromIndicesPtr = nullptr;
-        }
-        
-        data.startToIndicesPtr =
-        B.CreateCall(R.MeshGetToIndicesFunc(), args, "to.indices.ptr");
-        
-        data.toIndicesPtr =
-        B.CreateAlloca(data.startToIndicesPtr->getType(),
-                       nullptr, "to.indices.ptr.ptr");
-        
-        B.CreateStore(data.startToIndicesPtr, scoutPtr(data.toIndicesPtr));
-      }
-      else{
-        data.fromIndicesPtr = nullptr;
-        data.toIndicesPtr = nullptr;
-      }
-      
-      ForallStack.emplace_back(move(data));
-    
-      aboveElementType = data.elementType;
-      aboveRank = rank;
-      
-      ++i;
-    }
+    std::vector<ForallData*> stack;
+    InitForallData(visitor.getForallInfo(), stack, meshPtr, topologyPtr, rank);
   }
-
-#if 0  
-  const VarDecl* mvd;
-  if(const ImplicitMeshParamDecl* ip =
-     dyn_cast<ImplicitMeshParamDecl>(S.getMeshVarDecl())){
-    mvd = ip->getBaseVarDecl();
-  }
-  else{
-    mvd = S.getMeshVarDecl();
-  }
-#endif
   
-  int i = FindForallData(S.getMeshElementRef());
-
-  ForallStackIndex = i; // stash current state
-  assert(i >= 0 && "error finding forall data");
+  auto itr = ForallDataMap.find(&S);
+  assert(itr != ForallDataMap.end() && "failed to find forall data");
+  ForallData* data = itr->second;
   
-  ForallData& topData = ForallStack[0];
-  topology = topData.topology;
+  ForallStack.push_back(data);
+  size_t stackSize = ForallStack.size();
   
-  ForallData& data = ForallStack[i];
+  ForallData* topData = ForallStack[0];
+  llvm::Value* topology = topData->topology;
   
-  data.entryBlock = createBasicBlock("forall.entry");
-  B.CreateBr(data.entryBlock);
-  EmitBlock(data.entryBlock);
+  data->entryBlock = createBasicBlock("forall.entry");
+  B.CreateBr(data->entryBlock);
+  EmitBlock(data->entryBlock);
   
-  if(data.fromIndicesPtr){
-    ForallData& aboveData = ForallStack[i - 1];
+  if(data->fromIndicesPtr){
+    ForallData* aboveData = ForallStack[stackSize - 2];
     
-    Value* fromIndex = B.CreateLoad(scoutPtr(aboveData.indexPtr), "from.index");
-    Value* toPos = B.CreateGEP(data.fromIndicesPtr, fromIndex);
+    Value* fromIndex = B.CreateLoad(scoutPtr(aboveData->indexPtr), "from.index");
+    Value* toPos = B.CreateGEP(data->fromIndicesPtr, fromIndex);
     toPos = B.CreateLoad(scoutPtr(toPos), "to.pos");
-    Value* ptr = B.CreateGEP(data.startToIndicesPtr, toPos, "to.indices");
-    B.CreateStore(ptr, scoutPtr(data.toIndicesPtr));
+    Value* ptr = B.CreateGEP(data->startToIndicesPtr, toPos, "to.indices");
+    B.CreateStore(ptr, scoutPtr(data->toIndicesPtr));
   }
   
   Value* endIndex;
@@ -763,7 +772,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   Value* queryMask = nullptr;
   
   if(top){
-    Value* topologyDim = GetMeshTopologyDim(rank, data.elementType);
+    Value* topologyDim = GetMeshTopologyDim(rank, data->elementType);
     ValueVec args = {topology, topologyDim};
     endIndex = B.CreateCall(R.MeshNumEntitiesFunc(), args, "end.index");
     
@@ -771,7 +780,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
       queryMask = EmitForallQueryCall(S, endIndex);
     }
     
-    B.CreateStore(ConstantInt::get(Int64Ty, 0), scoutPtr(data.indexPtr));
+    B.CreateStore(ConstantInt::get(Int64Ty, 0), scoutPtr(data->indexPtr));
   }
   
   BasicBlock* loopBlock = createBasicBlock("forall.loop");
@@ -782,7 +791,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     condBlock = createBasicBlock("query.cond");
     EmitBlock(condBlock);
     
-    Value* index = B.CreateLoad(scoutPtr(data.indexPtr), "index");
+    Value* index = B.CreateLoad(scoutPtr(data->indexPtr), "index");
     
     Value* mask = B.CreateGEP(queryMask, index);
     mask = Builder.CreateLoad(scoutPtr(mask));
@@ -791,13 +800,13 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     B.CreateCondBr(cond, loopBlock, skipBlock);
     EmitBlock(skipBlock);
     index = B.CreateAdd(index, llvm::ConstantInt::get(Int64Ty, 1));
-    B.CreateStore(index, scoutPtr(data.indexPtr));
+    B.CreateStore(index, scoutPtr(data->indexPtr));
     B.CreateBr(condBlock);
   }
   else{
     B.CreateBr(loopBlock);
   }
-
+  
   EmitBlock(loopBlock);
   
   Value* cond;
@@ -805,27 +814,27 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   if(top){
     EmitStmt(S.getBody());
     
-    Value* index = B.CreateLoad(scoutPtr(data.indexPtr), "index");
+    Value* index = B.CreateLoad(scoutPtr(data->indexPtr), "index");
     Value* incIndex = B.CreateAdd(index, ConstantInt::get(Int64Ty, 1), "index.inc");
-    B.CreateStore(incIndex, scoutPtr(data.indexPtr));
+    B.CreateStore(incIndex, scoutPtr(data->indexPtr));
     cond = B.CreateICmpSLT(incIndex, endIndex, "cond");
   }
   else{
-    Value* toIndicesPtr = B.CreateLoad(scoutPtr(data.toIndicesPtr), "to.indices.ptr");
+    Value* toIndicesPtr = B.CreateLoad(scoutPtr(data->toIndicesPtr), "to.indices.ptr");
     
     Value* rawIndex = B.CreateLoad(scoutPtr(toIndicesPtr), "raw.index");
     Value* index = Builder.CreateAnd(rawIndex, ~(1UL << 63), "index");
     
-    B.CreateStore(index, scoutPtr(data.indexPtr));
+    B.CreateStore(index, scoutPtr(data->indexPtr));
     
     EmitStmt(S.getBody());
     
     toIndicesPtr = B.CreateConstGEP1_64(toIndicesPtr, 1, "next.to.indices.ptr");
-    B.CreateStore(toIndicesPtr, scoutPtr(data.toIndicesPtr));
+    B.CreateStore(toIndicesPtr, scoutPtr(data->toIndicesPtr));
     Value* done = B.CreateAnd(rawIndex, 1UL << 63, "done");
     cond = B.CreateICmpEQ(done, ConstantInt::get(Int64Ty, 0), "cond");
   }
-
+  
   BasicBlock* exitBlock = createBasicBlock("forall.exit");
   
   if(condBlock){
@@ -834,14 +843,10 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   else{
     B.CreateCondBr(cond, loopBlock, exitBlock);
   }
-
-  EmitBlock(exitBlock);
-  ForallStackIndex--; // update state.
   
-  if(top){
-    ForallStack.clear();
-    ForallStackIndex = 0;
-  }
+  EmitBlock(exitBlock);
+  
+  ForallStack.pop_back();
 }
 
 // ----- EmitforallCellsOrVertices
