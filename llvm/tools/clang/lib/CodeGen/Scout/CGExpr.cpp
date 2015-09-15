@@ -171,10 +171,6 @@ llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){
     }
   #endif
 
-    if(ForallStack.empty()){
-      return InductionVar[3];
-    }
-
     int i = FindForallData(IMPD->getElementType());
     assert(i >= 0 && "error finding forall data");
 
@@ -1558,13 +1554,7 @@ llvm::Value *CodeGenFunction::EmitGIndex(unsigned int dim) {
   return Builder.CreateTrunc(FindGIndex(dim), Int32Ty, IRNameStr);
 }
 
-llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
-  if(ForallStack.empty()){
-    sprintf(IRNameStr, "lindex.%s", IndexNames[dim]);
-    return Builder.CreateTrunc(Builder.CreateLoad(scoutPtr(InductionVar[dim])),
-                               Int32Ty, IRNameStr);
-  }
-  
+llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {  
   llvm::Value* idx;
 
   if (dim == 3) {

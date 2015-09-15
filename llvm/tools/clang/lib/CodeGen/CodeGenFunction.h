@@ -370,8 +370,6 @@ public:
   llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
   const MeshType* MeshTy;
   const VarDecl* CurrentMeshVarDecl;
-
-  llvm::Value* InductionVar[4];
   
   llvm::Value *MeshRank = 0;
 
@@ -2329,14 +2327,9 @@ public:
   void EmitForallArrayLoop(const ForallArrayStmt &S,  unsigned r);
 
   void EmitRenderallStmt(const RenderallMeshStmt &S);
-
+  
   void EmitVolumeRenderallStmt(const RenderallMeshStmt &S);
   
-  void EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S);
-
-  void EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned r);
-  //void EmitVolumeRenderAllStmt(const VolumeRenderAllStmt &S);
-
   void insertMeshDump(llvm::Value* baseAddr);
 
   typedef llvm::SmallVector<llvm::Value*,3> MySmallVector;

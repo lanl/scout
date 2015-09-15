@@ -678,8 +678,12 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   
   if(isGPU()){
     SetMeshBounds(S);
-    InductionVar[3] = Builder.CreateAlloca(Int64Ty);
-    EmitGPUForall(S, InductionVar[3]);
+    ForallData* data = new ForallData;
+    data->elementType = S.getMeshElementRef();
+    data->indexPtr = Builder.CreateAlloca(Int64Ty);
+    ForallStack.push_back(data);
+    EmitGPUForall(S, data->indexPtr);
+    ForallStack.pop_back();
     return;
   }
   
@@ -1126,128 +1130,153 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
 }
 
 void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
+  using namespace std;
+  using namespace llvm;
+  
   const MeshType* mt = S.getMeshType();
   if (mt->dimensions().size() == 3) {
     EmitVolumeRenderallStmt(S);
     return;
   }
   
-  llvm::Value *ConstantZero = llvm::ConstantInt::get(Int64Ty, 0);
-
-  llvm::Value *MeshBaseAddr;
-  GetMeshBaseAddr(S, MeshBaseAddr);
-  llvm::StringRef MeshName = MeshBaseAddr->getName();
-
-  // Add render target argument
-  const VarDecl* RTVD = S.getRenderTargetVarDecl();
-
-  llvm::Value* RTAlloc;
+  using ValueVec = vector<Value*>;
   
-  if ((RTVD->hasLinkage() || RTVD->isStaticDataMember())
-      && RTVD->getTLSKind() != VarDecl::TLS_Dynamic) {
-    RTAlloc = CGM.GetAddrOfGlobalVar(RTVD);
-  } else {
-    RTAlloc = GetAddrOfLocalVar(RTVD).getPointer();
-  }
-
-  // Check if it's a window or image type cuz we don't handle images
-  // yet.
-  const clang::Type &Ty = *getContext().getCanonicalType(RTVD->getType()).getTypePtr();
+  auto& B = Builder;
+  auto R = CGM.getScoutRuntime();
   
-  llvm::SmallVector< llvm::Value *, 4 > Args;
-  Args.clear();
-
-
-  ResetMeshBounds();
+  assert(ForallStack.empty() && "expected empty forall stack");
+  
   SetMeshBounds(S);
-
-  // Create the induction variables for eack rank.
-  for(unsigned int i = 0; i < 3; i++) {
-    sprintf(IRNameStr, "renderall.induct.%s.ptr", IndexNames[i]);
-    InductionVar[i] = CreateTempAlloca(Int64Ty, IRNameStr);
-    //zero-initialize induction var
-    Builder.CreateStore(ConstantZero, scoutPtr(InductionVar[i]));
+  
+  const VarDecl* mvd;
+  if(const ImplicitMeshParamDecl* ip =
+     dyn_cast<ImplicitMeshParamDecl>(S.getMeshVarDecl())){
+    mvd = ip->getBaseVarDecl();
   }
-
-  //build argument list for renderall setup runtime function
-  for(unsigned int i = 0; i < 3; i++) {
-    Args.push_back(0);
-    sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-    Args[i] =
-    Builder.CreateTrunc(Builder.CreateLoad(scoutPtr(LoopBounds[i]), IRNameStr), Int32Ty);
+  else{
+    mvd = S.getMeshVarDecl();
   }
   
-  if (Ty.getTypeClass() != Type::Window) {
-    RTAlloc = Builder.CreateLoad(scoutPtr(RTAlloc));
+  const MeshDecl* md = mt->getDecl();
+  
+  Value* meshPtr;
+  GetMeshBaseAddr(mvd, meshPtr);
+  
+  Value* topologyPtr =
+  B.CreateStructGEP(nullptr, meshPtr,
+                    md->fields() + MeshParameterOffset::TopologyOffset);
+  topologyPtr = B.CreateLoad(scoutPtr(topologyPtr), "topology.ptr");
+  
+  Value* rank =
+  B.CreateStructGEP(nullptr, meshPtr,
+                    md->fields() + MeshParameterOffset::RankOffset);
+  rank = B.CreateLoad(scoutPtr(rank));
+  
+  MeshElementType et = S.getMeshElementRef();
+  
+  Value* topologyDim = GetMeshTopologyDim(rank, et);
+  ValueVec args = {topologyPtr, topologyDim};
+  Value* endIndex = B.CreateCall(R.MeshNumEntitiesFunc(), args, "end.index");
+  
+  ForallData* data = new ForallData;
+  data->meshVarDecl = mvd;
+  data->topology = topologyPtr;
+  data->elementType = et;
+  data->indexPtr = B.CreateAlloca(Int64Ty, nullptr, "index.ptr");
+  
+  for(size_t j = 0; j < 3; ++j){
+    data->inductionVar[j] = B.CreateAlloca(Int64Ty, nullptr, IRNameStr);
   }
-
-  // cast scout.window_t** to void**
-  llvm::Value* int8PtrPtrRTAlloc = Builder.CreateBitCast(RTAlloc, Int8PtrPtrTy, "");
-
-  // dereference the void** 
-  llvm::Value* int8PtrRTAlloc = Builder.CreateLoad(scoutPtr(int8PtrPtrRTAlloc), "derefwin");
-
-  // put the window on the arg list
-  Args.push_back(int8PtrRTAlloc);
-
-  // create linear loop index as 4th element and zero-initialize
-  InductionVar[3] = CreateTempAlloca(Int64Ty, "renderall.linearidx.ptr");
-  //zero-initialize induction var
-  Builder.CreateStore(ConstantZero, scoutPtr(InductionVar[3]));
-
-  MeshElementType ET = S.getMeshElementRef();
-
-  // make quad renderable and add to the window and return color pointer
-  // use same args as for RenderallUniformBeginFunction
-  // in the future, this will be a mesh renderable
-
-  llvm::Function *WinQuadRendFunc;
-  llvm::Function *WinPaintFunc = CGM.getScoutRuntime().CreateWindowPaintFunction();
   
-  bool cellLoop = false;
+  data->fromIndicesPtr = nullptr;
+  data->toIndicesPtr = nullptr;
+  data->startToIndicesPtr = nullptr;
   
-  switch(ET) {
-    
+  args.clear();
+  
+  for(size_t i = 0; i < 3; i++){
+    sprintf(IRNameStr, "%s", DimNames[i]);
+    args.push_back(B.CreateTrunc(B.CreateLoad(scoutPtr(LoopBounds[i]),
+                                              IRNameStr), Int32Ty));
+  }
+  
+  const VarDecl* rvd = S.getRenderTargetVarDecl();
+  
+  Value* rtPtr;
+  
+  if ((rvd->hasLinkage() || rvd->isStaticDataMember())
+      && rvd->getTLSKind() != VarDecl::TLS_Dynamic) {
+    rtPtr = CGM.GetAddrOfGlobalVar(rvd);
+  } else {
+    rtPtr = GetAddrOfLocalVar(rvd).getPointer();
+  }
+  
+  const clang::Type& rtType =
+  *getContext().getCanonicalType(rvd->getType()).getTypePtr();
+  
+  if(rtType.getTypeClass() != Type::Window){
+    rtPtr = B.CreateLoad(scoutPtr(rtPtr));
+  }
+  
+  Value* rtVoidPtr = B.CreateBitCast(rtPtr, Int8PtrPtrTy);
+  rtVoidPtr = B.CreateLoad(scoutPtr(rtVoidPtr));
+  
+  args.push_back(rtVoidPtr);
+  
+  Function* renderFunc;
+  
+  switch(et){
     case Cells:
-      WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableColorsFunction();
-      cellLoop = true;
+      renderFunc = R.CreateWindowQuadRenderableColorsFunction();
       break;
-      
     case Vertices:
-      WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableVertexColorsFunction();
+      renderFunc = R.CreateWindowQuadRenderableVertexColorsFunction();
       break;
-      
     case Edges:
-      WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableEdgeColorsFunction();
+      renderFunc = R.CreateWindowQuadRenderableEdgeColorsFunction();
       break;
-      
     case Faces:
-      WinQuadRendFunc = CGM.getScoutRuntime().CreateWindowQuadRenderableEdgeColorsFunction();
+      renderFunc = R.CreateWindowQuadRenderableEdgeColorsFunction();
       break;
-      
     default:
       assert(false && "unrecognized renderall type");
   }
-
-  // %1 = call <4 x float>* @__scrt_window_quad_renderable_colors(i32 %HeatMeshType.width.ptr14, i32 %HeatMeshType.height.ptr16, i32 %HeatMeshType.depth.ptr18, i8* %derefwin)
-  Color = Builder.CreateCall(WinQuadRendFunc, ArrayRef<llvm::Value *>(Args), "localcolor.ptr");
-
-  if (cellLoop) {
-    // renderall loops + body
-    EmitRenderallMeshLoop(S, 3);
-  } else {
-    EmitRenderallVerticesEdgesFaces(S);
+  
+  Color = B.CreateCall(renderFunc, args, "color.ptr");
+  
+  ForallStack.push_back(data);
+  
+  data->entryBlock = createBasicBlock("forall.entry");
+  B.CreateBr(data->entryBlock);
+  EmitBlock(data->entryBlock);
+  
+  B.CreateStore(ConstantInt::get(Int64Ty, 0), scoutPtr(data->indexPtr));
+  
+  BasicBlock* loopBlock = createBasicBlock("forall.loop");
+  B.CreateBr(loopBlock);
+  EmitBlock(loopBlock);
+  
+  EmitStmt(S.getBody());
+  
+  Value* index = B.CreateLoad(scoutPtr(data->indexPtr), "index");
+  Value* incIndex = B.CreateAdd(index, ConstantInt::get(Int64Ty, 1), "index.inc");
+  B.CreateStore(incIndex, scoutPtr(data->indexPtr));
+  Value* cond = B.CreateICmpSLT(incIndex, endIndex, "cond");
+  
+  BasicBlock* exitBlock = createBasicBlock("forall.exit");
+  
+  B.CreateCondBr(cond, loopBlock, exitBlock);
+  
+  EmitBlock(exitBlock);
+  
+  ForallStack.pop_back();
+  
+  if(S.isLast()){
+    args.clear();
+    args.push_back(rtVoidPtr);
+    B.CreateCall(R.CreateWindowPaintFunction(), args);
   }
   
-  // paint window (draws all renderables) (does clear beforehand, and swap buffers after)
-  if (S.isLast()) {
-    Args.clear();
-    Args.push_back(int8PtrRTAlloc);
-    Builder.CreateCall(WinPaintFunc, ArrayRef<llvm::Value *>(Args));
-  }
-
-  // reset Loopbounds, Rank, induction var
-  // so width/height etc can't be called after renderall
   ResetMeshBounds();
 }
 
@@ -1628,170 +1657,6 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   volrenData.push_back(varsMD);
   volrens->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), volrenData));
-}
-
-void CodeGenFunction::EmitRenderallVerticesEdgesFaces(const RenderallMeshStmt &S){
-  auto R = CGM.getScoutRuntime();
-  
-  llvm::Value* Zero = llvm::ConstantInt::get(Int64Ty, 0);
-  llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
-
-  const MeshType* mt = S.getMeshType();
-  
-  const MeshDecl* md = mt->getDecl();
-  
-  llvm::Value *MeshBaseAddr;
-  GetMeshBaseAddr(S, MeshBaseAddr);
-  
-  llvm::Value* topology = Builder.CreateStructGEP(nullptr, MeshBaseAddr, md->fields());
-  topology = Builder.CreateLoad(scoutPtr(topology), "topology.ptr");
-  
-  llvm::Value* rank =
-  Builder.CreateStructGEP(nullptr, MeshBaseAddr,
-                          md->fields() + MeshParameterOffset::RankOffset);
-  
-
-  llvm::Value* topologyDim = GetMeshTopologyDim(rank, S.getMeshElementRef());
-  
-  std::vector<llvm::Value*> args = {topology, topologyDim};
-  llvm::Value* numItems = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
-  
-  EmitMarkerBlock("renderall.entry");
-
-  InductionVar[3] = CreateTempAlloca(Int64Ty, "renderall.idx.ptr");
-  //zero-initialize induction var
-  Builder.CreateStore(Zero, scoutPtr(InductionVar[3]));
-  //InnerIndex = CreateTempAlloca(Int64Ty, "renderall.inneridx.ptr");
-
-  llvm::BasicBlock *LoopBlock = createBasicBlock("renderall.loop");
-  Builder.CreateBr(LoopBlock);
-
-  EmitBlock(LoopBlock);
-  
-  EmitStmt(S.getBody());
-
-  llvm::Value* k = Builder.CreateLoad(scoutPtr(InductionVar[3]), "renderall.idx");
-  k = Builder.CreateAdd(k, One);
-  Builder.CreateStore(k, scoutPtr(InductionVar[3]));
-  k = Builder.CreateZExt(k, Int64Ty, "k");
-
-  llvm::Value* Cond = Builder.CreateICmpSLT(k, numItems, "cond");
-
-  llvm::BasicBlock *ExitBlock = createBasicBlock("renderall.exit");
-  Builder.CreateCondBr(Cond, LoopBlock, ExitBlock);
-  EmitBlock(ExitBlock);
-
-  //InnerIndex = 0;
-}
-
-//generate one of the nested loops
-void CodeGenFunction::EmitRenderallMeshLoop(const RenderallMeshStmt &S, unsigned r) {
-  llvm::StringRef MeshName = S.getMeshVarDecl()->getName();
-
-  CGDebugInfo *DI = getDebugInfo();
-
-  llvm::Value *ConstantZero  = 0;
-  llvm::Value *ConstantOne   = 0;
-  ConstantZero = llvm::ConstantInt::get(Int64Ty, 0);
-  ConstantOne  = llvm::ConstantInt::get(Int64Ty, 1);
-
-  //zero-initialize induction var
-  Builder.CreateStore(ConstantZero, scoutPtr(InductionVar[r-1]));
-
-  sprintf(IRNameStr, "renderall.%s.end", DimNames[r-1]);
-  JumpDest LoopExit = getJumpDestInCurrentScope(IRNameStr);
-  RunCleanupsScope RenderallScope(*this);
-
-  if (DI)
-    DI->EmitLexicalBlockStart(Builder, S.getSourceRange().getBegin());
-
-  // Extract the loop bounds from the mesh for this rank, this requires
-  // a GEP from the mesh and a load from returned address...
-  // note: width/height depth are stored after mesh fields
-  // GEP is done in EmitRenderallStmt so just load here.
-  sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), DimNames[r-1]);
-  llvm::Value *LoopBound  = Builder.CreateLoad(scoutPtr(LoopBounds[r-1]), IRNameStr);
-
-  // Next we create a block that tests the induction variables value to
-  // the rank's dimension.
-  sprintf(IRNameStr, "renderall.cond.%s", DimNames[r-1]);
-  JumpDest Continue = getJumpDestInCurrentScope(IRNameStr);
-  llvm::BasicBlock *CondBlock = Continue.getBlock();
-
-  EmitBlock(CondBlock);
-  RunCleanupsScope ConditionScope(*this);
-
-  sprintf(IRNameStr, "renderall.induct.%s", IndexNames[r-1]);
-  llvm::LoadInst *IVar = Builder.CreateLoad(scoutPtr(InductionVar[r-1]), IRNameStr);
-
-  sprintf(IRNameStr, "renderall.done.%s", IndexNames[r-1]);
-  llvm::Value *CondValue = Builder.CreateICmpSLT(IVar,
-                                                  LoopBound,
-                                                  IRNameStr);
-
-  llvm::BasicBlock *ExitBlock = LoopExit.getBlock();
-
-  // If there are any cleanups between here and the loop-exit
-  // scope, create a block to stage a loop exit along.  (We're
-  // following Clang's lead here in generating a for loop.)
-  if (RenderallScope.requiresCleanups()) {
-    sprintf(IRNameStr, "renderall.cond.cleanup.%s", DimNames[r-1]);
-    ExitBlock = createBasicBlock(IRNameStr);
-  }
-
-  llvm::BasicBlock *LoopBody = createBasicBlock(IRNameStr);
-  Builder.CreateCondBr(CondValue, LoopBody, ExitBlock);
-
-  if (ExitBlock != LoopExit.getBlock()) {
-    EmitBlock(ExitBlock);
-    EmitBranchThroughCleanup(LoopExit);
-  }
-
-  EmitBlock(LoopBody);
-
-  sprintf(IRNameStr, "renderall.incblk.%s", IndexNames[r-1]);
-  Continue = getJumpDestInCurrentScope(IRNameStr);
-
-
-  // Store the blocks to use for break and continue.
-
-  BreakContinueStack.push_back(BreakContinue(LoopExit, Continue));
-
-  if (r == 1) {  // This is our innermost rank, generate the loop body.
-    EmitStmt(S.getBody());
-    // Increment the loop index stored as last element of InductionVar
-    llvm::LoadInst* liv = Builder.CreateLoad(scoutPtr(InductionVar[3]), "renderall.linearidx");
-    llvm::Value *IncLoopIndexVar = Builder.CreateAdd(liv,
-        ConstantOne,
-        "renderall.linearidx.inc");
-
-    Builder.CreateStore(IncLoopIndexVar, scoutPtr(InductionVar[3]));
-  } else { // generate nested loop
-    EmitRenderallMeshLoop(S, r-1);
-  }
-
-  EmitBlock(Continue.getBlock());
-
-  sprintf(IRNameStr, "renderall.induct.%s", IndexNames[r-1]);
-  llvm::LoadInst* iv = Builder.CreateLoad(scoutPtr(InductionVar[r-1]), IRNameStr);
-
-  sprintf(IRNameStr, "renderall.inc.%s", IndexNames[r-1]);
-  llvm::Value *IncInductionVar = Builder.CreateAdd(iv,
-      ConstantOne,
-      IRNameStr);
-
-  Builder.CreateStore(IncInductionVar, scoutPtr(InductionVar[r-1]));
-
-  BreakContinueStack.pop_back();
-  ConditionScope.ForceCleanup();
-
-  EmitBranch(CondBlock);
-  RenderallScope.ForceCleanup();
-
-  if (DI)
-    DI->EmitLexicalBlockEnd(Builder, S.getSourceRange().getEnd());
-
-  EmitBlock(LoopExit.getBlock(), true);
 }
 
 #ifdef __clang__
