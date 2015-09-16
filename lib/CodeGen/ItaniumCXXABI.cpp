@@ -243,10 +243,24 @@ public:
   void emitVTableDefinitions(CodeGenVTables &CGVT,
                              const CXXRecordDecl *RD) override;
 
+  bool isVirtualOffsetNeededForVTableField(CodeGenFunction &CGF,
+                                           CodeGenFunction::VPtr Vptr) override;
+
+  bool doStructorsInitializeVPtrs(const CXXRecordDecl *VTableClass) override {
+    return true;
+  }
+
+  llvm::Constant *
+  getVTableAddressPoint(BaseSubobject Base,
+                        const CXXRecordDecl *VTableClass) override;
+
   llvm::Value *getVTableAddressPointInStructor(
       CodeGenFunction &CGF, const CXXRecordDecl *VTableClass,
-      BaseSubobject Base, const CXXRecordDecl *NearestVBase,
-      bool &NeedsVirtualOffset) override;
+      BaseSubobject Base, const CXXRecordDecl *NearestVBase) override;
+
+  llvm::Value *getVTableAddressPointInStructorWithVTT(
+      CodeGenFunction &CGF, const CXXRecordDecl *VTableClass,
+      BaseSubobject Base, const CXXRecordDecl *NearestVBase);
 
   llvm::Constant *
   getVTableAddressPointForConstExpr(BaseSubobject Base,
@@ -267,7 +281,7 @@ public:
 
   void emitVirtualInheritanceTables(const CXXRecordDecl *RD) override;
 
-  bool canEmitAvailableExternallyVTable(const CXXRecordDecl *RD) const override;
+  bool canSpeculativelyEmitVTable(const CXXRecordDecl *RD) const override;
 
   void setThunkLinkage(llvm::Function *Thunk, bool ForVTable, GlobalDecl GD,
                        bool ReturnAdjustment) override {
@@ -369,6 +383,25 @@ public:
       const CXXMethodDecl *Method = VtableComponent.getFunctionDecl();
       if (Method->getCanonicalDecl()->isInlined())
         return true;
+    }
+    return false;
+  }
+
+  bool isVTableHidden(const CXXRecordDecl *RD) const {
+    const auto &VtableLayout =
+            CGM.getItaniumVTableContext().getVTableLayout(RD);
+
+    for (const auto &VtableComponent : VtableLayout.vtable_components()) {
+      if (VtableComponent.isRTTIKind()) {
+        const CXXRecordDecl *RTTIDecl = VtableComponent.getRTTIDecl();
+        if (RTTIDecl->getVisibility() == Visibility::HiddenVisibility)
+          return true;
+      } else if (VtableComponent.isUsedFunctionPointerKind()) {
+        const CXXMethodDecl *Method = VtableComponent.getFunctionDecl();
+        if (Method->getVisibility() == Visibility::HiddenVisibility &&
+            !Method->isDefined())
+          return true;
+      }
     }
     return false;
   }
@@ -551,7 +584,7 @@ llvm::Value *ItaniumCXXABI::EmitLoadOfMemberFunctionPointer(
     CGF.CGM.getDynamicOffsetAlignment(ThisAddr.getAlignment(), RD,
                                       CGF.getPointerAlign());
   llvm::Value *VTable =
-    CGF.GetVTablePtr(Address(This, VTablePtrAlign), VTableTy);
+    CGF.GetVTablePtr(Address(This, VTablePtrAlign), VTableTy, RD);
 
   // Apply the offset.
   llvm::Value *VTableOffset = FnAsInt;
@@ -979,7 +1012,10 @@ void ItaniumCXXABI::emitVirtualObjectDelete(CodeGenFunction &CGF,
     // to pass to the deallocation function.
 
     // Grab the vtable pointer as an intptr_t*.
-    llvm::Value *VTable = CGF.GetVTablePtr(Ptr, CGF.IntPtrTy->getPointerTo());
+    auto *ClassDecl =
+        cast<CXXRecordDecl>(ElementType->getAs<RecordType>()->getDecl());
+    llvm::Value *VTable =
+        CGF.GetVTablePtr(Ptr, CGF.IntPtrTy->getPointerTo(), ClassDecl);
 
     // Track back to entry -2 and pull out the offset there.
     llvm::Value *OffsetPtr = CGF.Builder.CreateConstInBoundsGEP1_64(
@@ -1178,8 +1214,10 @@ llvm::Value *ItaniumCXXABI::EmitTypeid(CodeGenFunction &CGF,
                                        QualType SrcRecordTy,
                                        Address ThisPtr,
                                        llvm::Type *StdTypeInfoPtrTy) {
+  auto *ClassDecl =
+      cast<CXXRecordDecl>(SrcRecordTy->getAs<RecordType>()->getDecl());
   llvm::Value *Value =
-      CGF.GetVTablePtr(ThisPtr, StdTypeInfoPtrTy->getPointerTo());
+      CGF.GetVTablePtr(ThisPtr, StdTypeInfoPtrTy->getPointerTo(), ClassDecl);
 
   // Load the type info.
   Value = CGF.Builder.CreateConstInBoundsGEP1_64(Value, -1ULL);
@@ -1242,8 +1280,11 @@ llvm::Value *ItaniumCXXABI::EmitDynamicCastToVoid(CodeGenFunction &CGF,
       CGF.ConvertType(CGF.getContext().getPointerDiffType());
   llvm::Type *DestLTy = CGF.ConvertType(DestTy);
 
+  auto *ClassDecl =
+      cast<CXXRecordDecl>(SrcRecordTy->getAs<RecordType>()->getDecl());
   // Get the vtable pointer.
-  llvm::Value *VTable = CGF.GetVTablePtr(ThisAddr, PtrDiffLTy->getPointerTo());
+  llvm::Value *VTable = CGF.GetVTablePtr(ThisAddr, PtrDiffLTy->getPointerTo(),
+      ClassDecl);
 
   // Get the offset-to-top from the vtable.
   llvm::Value *OffsetToTop =
@@ -1272,7 +1313,7 @@ ItaniumCXXABI::GetVirtualBaseClassOffset(CodeGenFunction &CGF,
                                          Address This,
                                          const CXXRecordDecl *ClassDecl,
                                          const CXXRecordDecl *BaseClassDecl) {
-  llvm::Value *VTablePtr = CGF.GetVTablePtr(This, CGM.Int8PtrTy);
+  llvm::Value *VTablePtr = CGF.GetVTablePtr(This, CGM.Int8PtrTy, ClassDecl);
   CharUnits VBaseOffsetOffset =
       CGM.getItaniumVTableContext().getVirtualBaseOffsetOffset(ClassDecl,
                                                                BaseClassDecl);
@@ -1459,41 +1500,29 @@ void ItaniumCXXABI::emitVTableDefinitions(CodeGenVTables &CGVT,
   CGM.EmitVTableBitSetEntries(VTable, VTLayout);
 }
 
-llvm::Value *ItaniumCXXABI::getVTableAddressPointInStructor(
-    CodeGenFunction &CGF, const CXXRecordDecl *VTableClass, BaseSubobject Base,
-    const CXXRecordDecl *NearestVBase, bool &NeedsVirtualOffset) {
-  bool NeedsVTTParam = CGM.getCXXABI().NeedsVTTParameter(CGF.CurGD);
-  NeedsVirtualOffset = (NeedsVTTParam && NearestVBase);
-
-  llvm::Value *VTableAddressPoint;
-  if (NeedsVTTParam && (Base.getBase()->getNumVBases() || NearestVBase)) {
-    // Get the secondary vpointer index.
-    uint64_t VirtualPointerIndex =
-        CGM.getVTables().getSecondaryVirtualPointerIndex(VTableClass, Base);
-
-    /// Load the VTT.
-    llvm::Value *VTT = CGF.LoadCXXVTT();
-    if (VirtualPointerIndex)
-      VTT = CGF.Builder.CreateConstInBoundsGEP1_64(VTT, VirtualPointerIndex);
-
-    // And load the address point from the VTT.
-    VTableAddressPoint = CGF.Builder.CreateAlignedLoad(VTT, CGF.getPointerAlign());
-  } else {
-    llvm::Constant *VTable =
-        CGM.getCXXABI().getAddrOfVTable(VTableClass, CharUnits());
-    uint64_t AddressPoint = CGM.getItaniumVTableContext()
-                                .getVTableLayout(VTableClass)
-                                .getAddressPoint(Base);
-    VTableAddressPoint =
-        CGF.Builder.CreateConstInBoundsGEP2_64(VTable, 0, AddressPoint);
-  }
-
-  return VTableAddressPoint;
+bool ItaniumCXXABI::isVirtualOffsetNeededForVTableField(
+    CodeGenFunction &CGF, CodeGenFunction::VPtr Vptr) {
+  if (Vptr.NearestVBase == nullptr)
+    return false;
+  return NeedsVTTParameter(CGF.CurGD);
 }
 
-llvm::Constant *ItaniumCXXABI::getVTableAddressPointForConstExpr(
-    BaseSubobject Base, const CXXRecordDecl *VTableClass) {
-  auto *VTable = getAddrOfVTable(VTableClass, CharUnits());
+llvm::Value *ItaniumCXXABI::getVTableAddressPointInStructor(
+    CodeGenFunction &CGF, const CXXRecordDecl *VTableClass, BaseSubobject Base,
+    const CXXRecordDecl *NearestVBase) {
+
+  if ((Base.getBase()->getNumVBases() || NearestVBase != nullptr) &&
+      NeedsVTTParameter(CGF.CurGD)) {
+    return getVTableAddressPointInStructorWithVTT(CGF, VTableClass, Base,
+                                                  NearestVBase);
+  }
+  return getVTableAddressPoint(Base, VTableClass);
+}
+
+llvm::Constant *
+ItaniumCXXABI::getVTableAddressPoint(BaseSubobject Base,
+                                     const CXXRecordDecl *VTableClass) {
+  llvm::GlobalValue *VTable = getAddrOfVTable(VTableClass, CharUnits());
 
   // Find the appropriate vtable within the vtable group.
   uint64_t AddressPoint = CGM.getItaniumVTableContext()
@@ -1506,6 +1535,30 @@ llvm::Constant *ItaniumCXXABI::getVTableAddressPointForConstExpr(
 
   return llvm::ConstantExpr::getInBoundsGetElementPtr(VTable->getValueType(),
                                                       VTable, Indices);
+}
+
+llvm::Value *ItaniumCXXABI::getVTableAddressPointInStructorWithVTT(
+    CodeGenFunction &CGF, const CXXRecordDecl *VTableClass, BaseSubobject Base,
+    const CXXRecordDecl *NearestVBase) {
+  assert((Base.getBase()->getNumVBases() || NearestVBase != nullptr) &&
+         NeedsVTTParameter(CGF.CurGD) && "This class doesn't have VTT");
+
+  // Get the secondary vpointer index.
+  uint64_t VirtualPointerIndex =
+      CGM.getVTables().getSecondaryVirtualPointerIndex(VTableClass, Base);
+
+  /// Load the VTT.
+  llvm::Value *VTT = CGF.LoadCXXVTT();
+  if (VirtualPointerIndex)
+    VTT = CGF.Builder.CreateConstInBoundsGEP1_64(VTT, VirtualPointerIndex);
+
+  // And load the address point from the VTT.
+  return CGF.Builder.CreateAlignedLoad(VTT, CGF.getPointerAlign());
+}
+
+llvm::Constant *ItaniumCXXABI::getVTableAddressPointForConstExpr(
+    BaseSubobject Base, const CXXRecordDecl *VTableClass) {
+  return getVTableAddressPoint(Base, VTableClass);
 }
 
 llvm::GlobalVariable *ItaniumCXXABI::getAddrOfVTable(const CXXRecordDecl *RD,
@@ -1546,10 +1599,11 @@ llvm::Value *ItaniumCXXABI::getVirtualFunctionPointer(CodeGenFunction &CGF,
                                                       SourceLocation Loc) {
   GD = GD.getCanonicalDecl();
   Ty = Ty->getPointerTo()->getPointerTo();
-  llvm::Value *VTable = CGF.GetVTablePtr(This, Ty);
+  auto *MethodDecl = cast<CXXMethodDecl>(GD.getDecl());
+  llvm::Value *VTable = CGF.GetVTablePtr(This, Ty, MethodDecl->getParent());
 
   if (CGF.SanOpts.has(SanitizerKind::CFIVCall))
-    CGF.EmitVTablePtrCheckForCall(cast<CXXMethodDecl>(GD.getDecl()), VTable,
+    CGF.EmitVTablePtrCheckForCall(MethodDecl, VTable,
                                   CodeGenFunction::CFITCK_VCall, Loc);
 
   uint64_t VTableIndex = CGM.getItaniumVTableContext().getMethodVTableIndex(GD);
@@ -1583,18 +1637,17 @@ void ItaniumCXXABI::emitVirtualInheritanceTables(const CXXRecordDecl *RD) {
   VTables.EmitVTTDefinition(VTT, CGM.getVTableLinkage(RD), RD);
 }
 
-bool ItaniumCXXABI::canEmitAvailableExternallyVTable(
-    const CXXRecordDecl *RD) const {
+bool ItaniumCXXABI::canSpeculativelyEmitVTable(const CXXRecordDecl *RD) const {
   // We don't emit available_externally vtables if we are in -fapple-kext mode
   // because kext mode does not permit devirtualization.
   if (CGM.getLangOpts().AppleKext)
     return false;
 
-  // If we don't have any inline virtual functions,
+  // If we don't have any inline virtual functions, and if vtable is not hidden,
   // then we are safe to emit available_externally copy of vtable.
   // FIXME we can still emit a copy of the vtable if we
   // can emit definition of the inline functions.
-  return !hasAnyUsedVirtualInlineFunction(RD);
+  return !hasAnyUsedVirtualInlineFunction(RD) && !isVTableHidden(RD);
 }
 static llvm::Value *performTypeAdjustment(CodeGenFunction &CGF,
                                           Address InitialPtr,
@@ -2464,9 +2517,19 @@ static bool TypeInfoIsInStandardLibrary(const BuiltinType *Ty) {
     case BuiltinType::OCLImage1dBuffer:
     case BuiltinType::OCLImage2d:
     case BuiltinType::OCLImage2dArray:
+    case BuiltinType::OCLImage2dDepth:
+    case BuiltinType::OCLImage2dArrayDepth:
+    case BuiltinType::OCLImage2dMSAA:
+    case BuiltinType::OCLImage2dArrayMSAA:
+    case BuiltinType::OCLImage2dMSAADepth:
+    case BuiltinType::OCLImage2dArrayMSAADepth:
     case BuiltinType::OCLImage3d:
     case BuiltinType::OCLSampler:
     case BuiltinType::OCLEvent:
+    case BuiltinType::OCLClkEvent:
+    case BuiltinType::OCLQueue:
+    case BuiltinType::OCLNDRange:
+    case BuiltinType::OCLReserveID:
       return true;
 
     case BuiltinType::Dependent:
@@ -3348,15 +3411,13 @@ static void emitConstructorDestructorAlias(CodeGenModule &CGM,
     return;
 
   auto *Aliasee = cast<llvm::GlobalValue>(CGM.GetAddrOfGlobal(TargetDecl));
-  llvm::PointerType *AliasType = Aliasee->getType();
 
   // Create the alias with no name.
-  auto *Alias = llvm::GlobalAlias::create(AliasType, Linkage, "", Aliasee,
-                                          &CGM.getModule());
+  auto *Alias = llvm::GlobalAlias::create(Linkage, "", Aliasee);
 
   // Switch any previous uses to the alias.
   if (Entry) {
-    assert(Entry->getType() == AliasType &&
+    assert(Entry->getType() == Aliasee->getType() &&
            "declaration exists with different type");
     Alias->takeName(Entry);
     Entry->replaceAllUsesWith(Alias);

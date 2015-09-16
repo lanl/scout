@@ -52,7 +52,7 @@ import shutil
 import time
 import plistlib
 import argparse
-from subprocess import check_call, CalledProcessError
+from subprocess import check_call, check_output, CalledProcessError
 
 #------------------------------------------------------------------------------
 # Helper functions.
@@ -210,9 +210,14 @@ def runScanBuild(Dir, SBOutputDir, PBuildLogFile):
     if not os.path.exists(BuildScriptPath):
         print "Error: build script is not defined: %s" % BuildScriptPath
         sys.exit(-1)
+
+    AllCheckers = Checkers
+    if os.environ.has_key('SA_ADDITIONAL_CHECKERS'):
+        AllCheckers = AllCheckers + ',' + os.environ['SA_ADDITIONAL_CHECKERS']
+
     SBOptions = "--use-analyzer " + Clang + " "
     SBOptions += "-plist-html -o " + SBOutputDir + " "
-    SBOptions += "-enable-checker " + Checkers + " "
+    SBOptions += "-enable-checker " + AllCheckers + " "
     SBOptions += "--keep-empty "
     # Always use ccc-analyze to ensure that we can locate the failures
     # directory.
@@ -255,6 +260,15 @@ def isValidSingleInputFile(FileName):
         return True
     return False
 
+# Get the path to the SDK for the given SDK name. Returns None if
+# the path cannot be determined.
+def getSDKPath(SDKName):
+    if which("xcrun") is None:
+        return None
+
+    Cmd = "xcrun --sdk " + SDKName + " --show-sdk-path"
+    return check_output(Cmd, shell=True).rstrip()
+
 # Run analysis on a set of preprocessed files.
 def runAnalyzePreprocessed(Dir, SBOutputDir, Mode):
     if os.path.exists(os.path.join(Dir, BuildScript)):
@@ -262,7 +276,15 @@ def runAnalyzePreprocessed(Dir, SBOutputDir, Mode):
                BuildScript
         raise Exception()
 
-    CmdPrefix = Clang + " -cc1 -analyze -analyzer-output=plist -w "
+    CmdPrefix = Clang + " -cc1 "
+
+    # For now, we assume the preprocessed files should be analyzed
+    # with the OS X SDK.
+    SDKPath = getSDKPath("macosx")
+    if SDKPath is not None:
+      CmdPrefix += "-isysroot " + SDKPath + " "
+
+    CmdPrefix += "-analyze -analyzer-output=plist -w "
     CmdPrefix += "-analyzer-checker=" + Checkers +" -fcxx-exceptions -fblocks "
 
     if (Mode == 2) :
@@ -596,8 +618,5 @@ if __name__ == '__main__':
     elif Args.update_reference:
         IsReference = True
         UpdateSVN = True
-
-    if os.environ.has_key('SA_ADDITIONAL_CHECKERS'):
-        Checkers = Checkers + ',' + os.environ['SA_ADDITIONAL_CHECKERS']
 
     testAll(IsReference, UpdateSVN, Strictness)
