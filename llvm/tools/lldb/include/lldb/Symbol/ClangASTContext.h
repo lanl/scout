@@ -209,10 +209,6 @@ public:
         return GetTranslationUnitDecl (getASTContext());
     }
     
-    static CompilerType
-    CopyType(clang::ASTContext *dest_context, 
-             CompilerType source_type);
-    
     static clang::Decl *
     CopyDecl (clang::ASTContext *dest_context, 
               clang::ASTContext *source_context,
@@ -549,7 +545,6 @@ public:
     //------------------------------------------------------------------
     // TypeSystem methods
     //------------------------------------------------------------------
-    
     DWARFASTParser *
     GetDWARFParser () override;
 
@@ -572,8 +567,23 @@ public:
                      llvm::DenseMap<const clang::CXXRecordDecl *, clang::CharUnits> &vbase_offsets);
 
     //----------------------------------------------------------------------
+    // CompilerDecl override functions
+    //----------------------------------------------------------------------
+    lldb::VariableSP
+    DeclGetVariable (void *opaque_decl) override;
+
+    void
+    DeclLinkToObject (void *opaque_decl, std::shared_ptr<void> object) override;
+    
+    ConstString
+    DeclGetName (void *opaque_decl) override;
+
+    //----------------------------------------------------------------------
     // CompilerDeclContext override functions
     //----------------------------------------------------------------------
+    
+    std::vector<void *>
+    DeclContextFindDeclByName (void *opaque_decl_ctx, ConstString name) override;
 
     bool
     DeclContextIsStructUnionOrClass (void *opaque_decl_ctx) override;
@@ -594,7 +604,7 @@ public:
     static bool
     IsClangType (const CompilerType &ct)
     {
-        return llvm::dyn_cast_or_null<ClangASTContext>(ct.GetTypeSystem()) != nullptr;
+        return llvm::dyn_cast_or_null<ClangASTContext>(ct.GetTypeSystem()) != nullptr && ct.GetOpaqueQualType() != nullptr;
     }
 
     //----------------------------------------------------------------------
@@ -1167,6 +1177,17 @@ public:
                             int tag_decl_kind,
                             const ClangASTContext::TemplateParameterInfos &template_param_infos);
 
+    clang::BlockDecl *
+    CreateBlockDeclaration (clang::DeclContext *ctx);
+
+    clang::UsingDirectiveDecl *
+    CreateUsingDirectiveDeclaration (clang::DeclContext *decl_ctx, clang::NamespaceDecl *ns_decl);
+
+    clang::UsingDecl *
+    CreateUsingDeclaration (clang::DeclContext *current_decl_ctx, clang::NamedDecl *target);
+
+    clang::VarDecl *
+    CreateVariableDeclaration (clang::DeclContext *decl_context, const char *name, clang::QualType type);
 protected:
     static clang::QualType
     GetQualType (void *type)
@@ -1206,6 +1227,8 @@ protected:
     void *                                          m_callback_baton;
     uint32_t                                        m_pointer_byte_size;
     bool                                            m_ast_owned;
+    bool                                            m_can_evaluate_expressions;
+    std::map<void *, std::shared_ptr<void>>         m_decl_objects;
 
 private:
     //------------------------------------------------------------------
@@ -1213,6 +1236,31 @@ private:
     //------------------------------------------------------------------
     ClangASTContext(const ClangASTContext&);
     const ClangASTContext& operator=(const ClangASTContext&);
+};
+
+class ClangASTContextForExpressions : public ClangASTContext
+{
+public:
+    ClangASTContextForExpressions (Target &target);
+    
+    virtual ~ClangASTContextForExpressions () {}
+    
+    UserExpression *
+    GetUserExpression (const char *expr,
+                       const char *expr_prefix,
+                       lldb::LanguageType language,
+                       Expression::ResultType desired_type) override;
+    
+    FunctionCaller *
+    GetFunctionCaller (const CompilerType &return_type,
+                       const Address& function_address,
+                       const ValueList &arg_value_list,
+                       const char *name) override;
+    
+    UtilityFunction *
+    GetUtilityFunction(const char *text, const char *name) override;
+private:
+    lldb::TargetWP m_target_wp;
 };
 
 } // namespace lldb_private

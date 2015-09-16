@@ -10,6 +10,8 @@
 #ifndef liblldb_CompilerDeclContext_h_
 #define liblldb_CompilerDeclContext_h_
 
+#include <vector>
+
 #include "lldb/lldb-private.h"
 #include "lldb/Core/ConstString.h"
 
@@ -50,7 +52,7 @@ public:
     operator < (const CompilerDeclContext &rhs) const
     {
         if (m_type_system == rhs.m_type_system)
-            return m_type_system < rhs.m_type_system;
+            return m_opaque_decl_ctx < rhs.m_opaque_decl_ctx;
         return m_type_system < rhs.m_type_system;
     }
 
@@ -62,6 +64,9 @@ public:
 
     bool
     IsClang () const;
+
+    std::vector<CompilerDecl>
+    FindDeclByName (ConstString name);
 
     //----------------------------------------------------------------------
     /// Checks if this decl context represents a method of a class.

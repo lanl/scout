@@ -69,14 +69,20 @@
 #include "lldb/Core/ThreadSafeDenseMap.h"
 #include "lldb/Core/UniqueCStringMap.h"
 #include "lldb/Expression/ASTDumper.h"
+#include "lldb/Expression/ASTResultSynthesizer.h"
+#include "lldb/Expression/ClangExpressionDeclMap.h"
+#include "lldb/Expression/ClangUserExpression.h"
+#include "lldb/Expression/ClangFunctionCaller.h"
+#include "lldb/Expression/ClangUtilityFunction.h"
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/ClangExternalASTSourceCallbacks.h"
 #include "lldb/Symbol/ClangExternalASTSourceCommon.h"
 #include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Symbol/VerifyDecl.h"
 #include "lldb/Target/ExecutionContext.h"
-#include "lldb/Target/Process.h"
 #include "lldb/Target/ObjCLanguageRuntime.h"
+#include "lldb/Target/Process.h"
+#include "lldb/Target/Target.h"
 
 #include "Plugins/SymbolFile/DWARF/DWARFASTParserClang.h"
 
@@ -1117,25 +1123,6 @@ ClangASTContext::GetTranslationUnitDecl (clang::ASTContext *ast)
     return ast->getTranslationUnitDecl();
 }
 
-CompilerType
-ClangASTContext::CopyType (ASTContext *dst_ast, 
-                           CompilerType src)
-{
-    FileSystemOptions file_system_options;
-    ClangASTContext *src_ast = llvm::dyn_cast_or_null<ClangASTContext>(src.GetTypeSystem());
-    if (src_ast == nullptr)
-        return CompilerType();
-    FileManager file_manager (file_system_options);
-    ASTImporter importer(*dst_ast, file_manager,
-                         *src_ast->getASTContext(), file_manager,
-                         false);
-    
-    QualType dst (importer.Import(GetQualType(src)));
-    
-    return CompilerType (dst_ast, dst);
-}
-
-
 clang::Decl *
 ClangASTContext::CopyDecl (ASTContext *dst_ast, 
                            ASTContext *src_ast,
@@ -1746,24 +1733,6 @@ ClangASTContext::GetUniqueNamespaceDeclaration (const char *name, DeclContext *d
                 // BAD!!!
             }
         }
-        
-
-        if (namespace_decl)
-        {
-            // If we make it here, we are creating the anonymous namespace decl
-            // for the first time, so we need to do the using directive magic
-            // like SEMA does
-            UsingDirectiveDecl* using_directive_decl = UsingDirectiveDecl::Create (*ast, 
-                                                                                   decl_ctx, 
-                                                                                   SourceLocation(),
-                                                                                   SourceLocation(),
-                                                                                   NestedNameSpecifierLoc(),
-                                                                                   SourceLocation(),
-                                                                                   namespace_decl,
-                                                                                   decl_ctx);
-            using_directive_decl->setImplicit();
-            decl_ctx->addDecl(using_directive_decl);
-        }
     }
 #ifdef LLDB_CONFIGURATION_DEBUG
     VerifyDecl(namespace_decl);
@@ -1771,6 +1740,98 @@ ClangASTContext::GetUniqueNamespaceDeclaration (const char *name, DeclContext *d
     return namespace_decl;
 }
 
+
+clang::BlockDecl *
+ClangASTContext::CreateBlockDeclaration (clang::DeclContext *ctx)
+{
+    if (ctx != nullptr)
+    {
+        clang::BlockDecl *decl = clang::BlockDecl::Create(*getASTContext(), ctx, clang::SourceLocation());
+        ctx->addDecl(decl);
+        return decl;
+    }
+    return nullptr;
+}
+
+clang::DeclContext *
+FindLCABetweenDecls(clang::DeclContext *left, clang::DeclContext *right, clang::DeclContext *root)
+{
+    if (root == nullptr)
+        return nullptr;
+
+    std::set<clang::DeclContext *> path_left;
+    for (clang::DeclContext *d = left; d != nullptr; d = d->getParent())
+        path_left.insert(d);
+
+    for (clang::DeclContext *d = right; d != nullptr; d = d->getParent())
+        if (path_left.find(d) != path_left.end())
+            return d;
+
+    return nullptr;
+}
+
+clang::UsingDirectiveDecl *
+ClangASTContext::CreateUsingDirectiveDeclaration (clang::DeclContext *decl_ctx, clang::NamespaceDecl *ns_decl)
+{
+    if (decl_ctx != nullptr && ns_decl != nullptr)
+    {
+        clang::TranslationUnitDecl *translation_unit = (clang::TranslationUnitDecl *)GetTranslationUnitDecl(getASTContext());
+        clang::UsingDirectiveDecl *using_decl = clang::UsingDirectiveDecl::Create(*getASTContext(),
+            decl_ctx,
+            clang::SourceLocation(),
+            clang::SourceLocation(),
+            clang::NestedNameSpecifierLoc(),
+            clang::SourceLocation(),
+            ns_decl,
+            FindLCABetweenDecls(decl_ctx, ns_decl, translation_unit));
+        decl_ctx->addDecl(using_decl);
+        return using_decl;
+    }
+    return nullptr;
+}
+
+clang::UsingDecl *
+ClangASTContext::CreateUsingDeclaration (clang::DeclContext *current_decl_ctx, clang::NamedDecl *target)
+{
+    if (current_decl_ctx != nullptr && target != nullptr)
+    {
+        clang::UsingDecl *using_decl = clang::UsingDecl::Create(*getASTContext(),
+            current_decl_ctx,
+            clang::SourceLocation(),
+            clang::NestedNameSpecifierLoc(),
+            clang::DeclarationNameInfo(),
+            false);
+        clang::UsingShadowDecl *shadow_decl = clang::UsingShadowDecl::Create(*getASTContext(),
+            current_decl_ctx,
+            clang::SourceLocation(),
+            using_decl,
+            target);
+        using_decl->addShadowDecl(shadow_decl);
+        current_decl_ctx->addDecl(using_decl);
+        return using_decl;
+    }
+    return nullptr;
+}
+
+clang::VarDecl *
+ClangASTContext::CreateVariableDeclaration (clang::DeclContext *decl_context, const char *name, clang::QualType type)
+{
+    if (decl_context != nullptr)
+    {
+        clang::VarDecl *var_decl = clang::VarDecl::Create(*getASTContext(),
+            decl_context,
+            clang::SourceLocation(),
+            clang::SourceLocation(),
+            name && name[0] ? &getASTContext()->Idents.getOwn(name) : nullptr,
+            type,
+            nullptr,
+            clang::SC_None);
+        var_decl->setAccess(clang::AS_public);
+        decl_context->addDecl(var_decl);
+        return var_decl;
+    }
+    return nullptr;
+}
 
 #pragma mark Function Types
 
@@ -2497,7 +2558,7 @@ ClangASTContext::IsArrayType (void* type,
         *size = 0;
     if (is_incomplete)
         *is_incomplete = false;
-    return 0;
+    return false;
 }
 
 bool
@@ -3079,7 +3140,7 @@ ClangASTContext::IsObjCClassType (const CompilerType& type)
 bool
 ClangASTContext::IsObjCObjectOrInterfaceType (const CompilerType& type)
 {
-    if (type)
+    if (IsClangType(type))
         return GetCanonicalQualType(type)->isObjCObjectOrInterfaceType();
     return false;
 }
@@ -3193,48 +3254,7 @@ ClangASTContext::IsPossibleDynamicType (void* type, CompilerType *dynamic_pointe
                         if (dynamic_pointee_type)
                             dynamic_pointee_type->SetCompilerType(getASTContext(), pointee_qual_type);
                         return true;
-                        
-                    case clang::BuiltinType::NullPtr:
-                    case clang::BuiltinType::Bool:
-                    case clang::BuiltinType::Char_U:
-                    case clang::BuiltinType::UChar:
-                    case clang::BuiltinType::WChar_U:
-                    case clang::BuiltinType::Char16:
-                    case clang::BuiltinType::Char32:
-                    case clang::BuiltinType::UShort:
-                    case clang::BuiltinType::UInt:
-                    case clang::BuiltinType::ULong:
-                    case clang::BuiltinType::ULongLong:
-                    case clang::BuiltinType::UInt128:
-                    case clang::BuiltinType::Char_S:
-                    case clang::BuiltinType::SChar:
-                    case clang::BuiltinType::WChar_S:
-                    case clang::BuiltinType::Short:
-                    case clang::BuiltinType::Int:
-                    case clang::BuiltinType::Long:
-                    case clang::BuiltinType::LongLong:
-                    case clang::BuiltinType::Int128:
-                    case clang::BuiltinType::Float:
-                    case clang::BuiltinType::Double:
-                    case clang::BuiltinType::LongDouble:
-                    case clang::BuiltinType::Dependent:
-                    case clang::BuiltinType::Overload:
-                    case clang::BuiltinType::ObjCId:
-                    case clang::BuiltinType::ObjCClass:
-                    case clang::BuiltinType::ObjCSel:
-                    case clang::BuiltinType::BoundMember:
-                    case clang::BuiltinType::Half:
-                    case clang::BuiltinType::ARCUnbridgedCast:
-                    case clang::BuiltinType::PseudoObject:
-                    case clang::BuiltinType::BuiltinFn:
-                    case clang::BuiltinType::OCLEvent:
-                    case clang::BuiltinType::OCLImage1d:
-                    case clang::BuiltinType::OCLImage1dArray:
-                    case clang::BuiltinType::OCLImage1dBuffer:
-                    case clang::BuiltinType::OCLImage2d:
-                    case clang::BuiltinType::OCLImage2dArray:
-                    case clang::BuiltinType::OCLImage3d:
-                    case clang::BuiltinType::OCLSampler:
+                    default:
                         break;
                 }
                     break;
@@ -3326,12 +3346,14 @@ ClangASTContext::GetCXXClassName (const CompilerType& type, std::string &class_n
     if (type)
     {
         clang::QualType qual_type (GetCanonicalQualType(type));
-        
-        clang::CXXRecordDecl *cxx_record_decl = qual_type->getAsCXXRecordDecl();
-        if (cxx_record_decl)
+        if (!qual_type.isNull())
         {
-            class_name.assign (cxx_record_decl->getIdentifier()->getNameStart());
-            return true;
+            clang::CXXRecordDecl *cxx_record_decl = qual_type->getAsCXXRecordDecl();
+            if (cxx_record_decl)
+            {
+                class_name.assign(cxx_record_decl->getIdentifier()->getNameStart());
+                return true;
+            }
         }
     }
     class_name.clear();
@@ -3346,7 +3368,7 @@ ClangASTContext::IsCXXClassType (const CompilerType& type)
         return false;
     
     clang::QualType qual_type (GetCanonicalQualType(type));
-    if (qual_type->getAsCXXRecordDecl() != nullptr)
+    if (!qual_type.isNull() && qual_type->getAsCXXRecordDecl() != nullptr)
         return true;
     return false;
 }
@@ -3370,8 +3392,8 @@ ClangASTContext::IsObjCObjectPointerType (const CompilerType& type, CompilerType
         return false;
 
     clang::QualType qual_type (GetCanonicalQualType(type));
-    
-    if (qual_type->isObjCObjectPointerType())
+
+    if (!qual_type.isNull() && qual_type->isObjCObjectPointerType())
     {
         if (class_type_ptr)
         {
@@ -3821,7 +3843,7 @@ ClangASTContext::GetTypeQualifiers(void* type)
 CompilerType
 ClangASTContext::AddConstModifier (const CompilerType& type)
 {
-    if (type && llvm::dyn_cast<ClangASTContext>(type.GetTypeSystem()))
+    if (IsClangType(type))
     {
         // Make sure this type is a clang AST type
         clang::QualType result(GetQualType(type));
@@ -3835,7 +3857,7 @@ ClangASTContext::AddConstModifier (const CompilerType& type)
 CompilerType
 ClangASTContext::AddRestrictModifier (const CompilerType& type)
 {
-    if (type && llvm::dyn_cast<ClangASTContext>(type.GetTypeSystem()))
+    if (IsClangType(type))
     {
         clang::QualType result(GetQualType(type));
         result.getQualifiers().setRestrict (true);
@@ -3847,7 +3869,7 @@ ClangASTContext::AddRestrictModifier (const CompilerType& type)
 CompilerType
 ClangASTContext::AddVolatileModifier (const CompilerType& type)
 {
-    if (type && llvm::dyn_cast<ClangASTContext>(type.GetTypeSystem()))
+    if (IsClangType(type))
     {
         clang::QualType result(GetQualType(type));
         result.getQualifiers().setVolatile (true);
@@ -4148,11 +4170,10 @@ ClangASTContext::GetMemberFunctionAtIndex (void* type, size_t idx)
 CompilerType
 ClangASTContext::GetLValueReferenceType (const CompilerType& type)
 {
-    if (type)
+    if (IsClangType(type))
     {
         ClangASTContext *ast = llvm::dyn_cast<ClangASTContext>(type.GetTypeSystem());
-        if (ast)
-            return CompilerType(ast->getASTContext(), ast->getASTContext()->getLValueReferenceType(GetQualType(type)));
+        return CompilerType(ast->getASTContext(), ast->getASTContext()->getLValueReferenceType(GetQualType(type)));
     }
     return CompilerType();
 }
@@ -4160,11 +4181,10 @@ ClangASTContext::GetLValueReferenceType (const CompilerType& type)
 CompilerType
 ClangASTContext::GetRValueReferenceType (const CompilerType& type)
 {
-    if (type)
+    if (IsClangType(type))
     {
         ClangASTContext *ast = llvm::dyn_cast<ClangASTContext>(type.GetTypeSystem());
-        if (ast)
-            return CompilerType(ast->getASTContext(), ast->getASTContext()->getRValueReferenceType(GetQualType(type)));
+        return CompilerType(ast->getASTContext(), ast->getASTContext()->getRValueReferenceType(GetQualType(type)));
     }
     return CompilerType();
 }
@@ -4257,7 +4277,7 @@ ClangASTContext::GetTypedefedType (void* type)
 CompilerType
 ClangASTContext::RemoveFastQualifiers (const CompilerType& type)
 {
-    if (type && llvm::dyn_cast<ClangASTContext>(type.GetTypeSystem()))
+    if (IsClangType(type))
     {
         clang::QualType qual_type(GetQualType(type));
         qual_type.getQualifiers().removeFastQualifiers();
@@ -4574,24 +4594,7 @@ ClangASTContext::GetFormat (void* type)
             case clang::BuiltinType::Float:         return lldb::eFormatFloat;
             case clang::BuiltinType::Double:        return lldb::eFormatFloat;
             case clang::BuiltinType::LongDouble:    return lldb::eFormatFloat;
-            case clang::BuiltinType::NullPtr:
-            case clang::BuiltinType::Overload:
-            case clang::BuiltinType::Dependent:
-            case clang::BuiltinType::ObjCId:
-            case clang::BuiltinType::ObjCClass:
-            case clang::BuiltinType::ObjCSel:
-            case clang::BuiltinType::Half:
-            case clang::BuiltinType::ARCUnbridgedCast:
-            case clang::BuiltinType::PseudoObject:
-            case clang::BuiltinType::BuiltinFn:
-            case clang::BuiltinType::OCLEvent:
-            case clang::BuiltinType::OCLImage1d:
-            case clang::BuiltinType::OCLImage1dArray:
-            case clang::BuiltinType::OCLImage1dBuffer:
-            case clang::BuiltinType::OCLImage2d:
-            case clang::BuiltinType::OCLImage2dArray:
-            case clang::BuiltinType::OCLImage3d:
-            case clang::BuiltinType::OCLSampler:
+            default:
                 return lldb::eFormatHex;
         }
             break;
@@ -4888,21 +4891,7 @@ ClangASTContext::GetBasicTypeEnumeration (void* type)
                 case clang::BuiltinType::ObjCId:    return eBasicTypeObjCID;
                 case clang::BuiltinType::ObjCClass: return eBasicTypeObjCClass;
                 case clang::BuiltinType::ObjCSel:   return eBasicTypeObjCSel;
-                case clang::BuiltinType::Dependent:
-                case clang::BuiltinType::Overload:
-                case clang::BuiltinType::BoundMember:
-                case clang::BuiltinType::PseudoObject:
-                case clang::BuiltinType::UnknownAny:
-                case clang::BuiltinType::BuiltinFn:
-                case clang::BuiltinType::ARCUnbridgedCast:
-                case clang::BuiltinType::OCLEvent:
-                case clang::BuiltinType::OCLImage1d:
-                case clang::BuiltinType::OCLImage1dArray:
-                case clang::BuiltinType::OCLImage1dBuffer:
-                case clang::BuiltinType::OCLImage2d:
-                case clang::BuiltinType::OCLImage2dArray:
-                case clang::BuiltinType::OCLImage3d:
-                case clang::BuiltinType::OCLSampler:
+                default:
                     return eBasicTypeOther;
             }
         }
@@ -5507,7 +5496,10 @@ ClangASTContext::GetNumPointeeChildren (clang::QualType type)
             case clang::BuiltinType::ARCUnbridgedCast:
             case clang::BuiltinType::PseudoObject:
             case clang::BuiltinType::BuiltinFn:
+            case clang::BuiltinType::OMPArraySection:
                 return 1;
+            default:
+                return 0;
         }
             break;
             
@@ -8908,8 +8900,96 @@ ClangASTContext::LayoutRecordType(void *baton,
 }
 
 //----------------------------------------------------------------------
+// CompilerDecl override functions
+//----------------------------------------------------------------------
+lldb::VariableSP
+ClangASTContext::DeclGetVariable (void *opaque_decl)
+{
+    if (llvm::dyn_cast<clang::VarDecl>((clang::Decl *)opaque_decl))
+    {
+        auto decl_search_it = m_decl_objects.find(opaque_decl);
+        if (decl_search_it != m_decl_objects.end())
+            return std::static_pointer_cast<Variable>(decl_search_it->second);
+    }
+    return VariableSP();
+}
+
+void
+ClangASTContext::DeclLinkToObject (void *opaque_decl, std::shared_ptr<void> object)
+{
+    if (m_decl_objects.find(opaque_decl) == m_decl_objects.end())
+        m_decl_objects.insert(std::make_pair(opaque_decl, object));
+}
+
+ConstString
+ClangASTContext::DeclGetName (void *opaque_decl)
+{
+    if (opaque_decl)
+    {
+        clang::NamedDecl *nd = llvm::dyn_cast<NamedDecl>((clang::Decl*)opaque_decl);
+        if (nd != nullptr)
+            return ConstString(nd->getName());
+    }
+    return ConstString();
+}
+
+//----------------------------------------------------------------------
 // CompilerDeclContext functions
 //----------------------------------------------------------------------
+
+std::vector<void *>
+ClangASTContext::DeclContextFindDeclByName(void *opaque_decl_ctx, ConstString name)
+{
+    std::vector<void *> found_decls;
+    if (opaque_decl_ctx)
+    {
+        DeclContext *root_decl_ctx = (DeclContext *)opaque_decl_ctx;
+        std::set<DeclContext *> searched;
+        std::multimap<DeclContext *, DeclContext *> search_queue;
+        SymbolFile *symbol_file = GetSymbolFile();
+
+        for (clang::DeclContext *decl_context = root_decl_ctx; decl_context != nullptr && found_decls.empty(); decl_context = decl_context->getParent())
+        {
+            search_queue.insert(std::make_pair(decl_context, decl_context));
+
+            for (auto it = search_queue.find(decl_context); it != search_queue.end(); it++)
+            {
+                searched.insert(it->second);
+                symbol_file->ParseDeclsForContext(CompilerDeclContext(this, it->second));
+
+                for (clang::Decl *child : it->second->decls())
+                {
+                    if (clang::UsingDirectiveDecl *ud = llvm::dyn_cast<clang::UsingDirectiveDecl>(child))
+                    {
+                        clang::DeclContext *from = ud->getCommonAncestor();
+                        if (searched.find(ud->getNominatedNamespace()) == searched.end())
+                            search_queue.insert(std::make_pair(from, ud->getNominatedNamespace()));
+                    }
+                    else if (clang::UsingDecl *ud = llvm::dyn_cast<clang::UsingDecl>(child))
+                    {
+                        for (clang::UsingShadowDecl *usd : ud->shadows())
+                        {
+                            clang::Decl *target = usd->getTargetDecl();
+                            if (clang::NamedDecl *nd = llvm::dyn_cast<clang::NamedDecl>(target))
+                            {
+                                IdentifierInfo *ii = nd->getIdentifier();
+                                if (ii != nullptr && ii->getName().equals(name.AsCString(nullptr)))
+                                    found_decls.push_back(nd);
+                            }
+                        }
+                    }
+                    else if (clang::NamedDecl *nd = llvm::dyn_cast<clang::NamedDecl>(child))
+                    {
+                        IdentifierInfo *ii = nd->getIdentifier();
+                        if (ii != nullptr && ii->getName().equals(name.AsCString(nullptr)))
+                            found_decls.push_back(nd);
+                    }
+                }
+            }
+        }
+    }
+    return found_decls;
+}
 
 bool
 ClangASTContext::DeclContextIsStructUnionOrClass (void *opaque_decl_ctx)
@@ -9036,4 +9116,51 @@ ClangASTContext::DeclContextGetClangASTContext (const CompilerDeclContext &dc)
     if (ast)
         return ast->getASTContext();
     return nullptr;
+}
+
+ClangASTContextForExpressions::ClangASTContextForExpressions (Target &target) :
+    ClangASTContext (target.GetArchitecture().GetTriple().getTriple().c_str()),
+    m_target_wp(target.shared_from_this())
+{
+}
+
+UserExpression *
+ClangASTContextForExpressions::GetUserExpression (const char *expr,
+                   const char *expr_prefix,
+                   lldb::LanguageType language,
+                   Expression::ResultType desired_type)
+{
+    TargetSP target_sp = m_target_wp.lock();
+    if (!target_sp)
+        return nullptr;
+    
+    return new ClangUserExpression(*target_sp.get(), expr, expr_prefix, language, desired_type);
+}
+
+FunctionCaller *
+ClangASTContextForExpressions::GetFunctionCaller (const CompilerType &return_type,
+                                                  const Address& function_address,
+                                                  const ValueList &arg_value_list,
+                                                  const char *name)
+{
+    TargetSP target_sp = m_target_wp.lock();
+    if (!target_sp)
+        return nullptr;
+    
+   Process *process = target_sp->GetProcessSP().get();
+   if (!process)
+       return nullptr;
+   
+   return new ClangFunctionCaller (*process, return_type, function_address, arg_value_list, name);
+}
+
+UtilityFunction *
+ClangASTContextForExpressions::GetUtilityFunction (const char *text,
+                                                   const char *name)
+{
+     TargetSP target_sp = m_target_wp.lock();
+    if (!target_sp)
+        return nullptr;
+    
+    return new ClangUtilityFunction(*target_sp.get(), text, name);
 }

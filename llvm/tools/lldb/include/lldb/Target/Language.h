@@ -18,8 +18,10 @@
 // Other libraries and framework includes
 // Project includes
 #include "lldb/lldb-public.h"
-#include "lldb/Core/PluginInterface.h"
 #include "lldb/lldb-private.h"
+#include "lldb/Core/PluginInterface.h"
+#include "lldb/DataFormatters/FormatClasses.h"
+#include "lldb/DataFormatters/StringPrinter.h"
 
 namespace lldb_private {
     
@@ -41,10 +43,25 @@ public:
     
     virtual lldb::TypeCategoryImplSP
     GetFormatters ();
+    
+    virtual HardcodedFormatters::HardcodedFormatFinder
+    GetHardcodedFormats ();
+    
+    virtual HardcodedFormatters::HardcodedSummaryFinder
+    GetHardcodedSummaries ();
+
+    virtual HardcodedFormatters::HardcodedSyntheticFinder
+    GetHardcodedSynthetics ();
+    
+    virtual HardcodedFormatters::HardcodedValidatorFinder
+    GetHardcodedValidators ();
 
     virtual std::vector<ConstString>
     GetPossibleFormattersMatches (ValueObject& valobj, lldb::DynamicValueType use_dynamic);
 
+    virtual lldb_private::formatters::StringPrinter::EscapingHelper
+    GetStringPrinterEscapingHelper (lldb_private::formatters::StringPrinter::GetPrintableElementType);
+    
     // These are accessors for general information about the Languages lldb knows about:
     
     static lldb::LanguageType

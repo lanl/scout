@@ -45,6 +45,8 @@ class TestCppNsImport(TestBase):
         # Break on main function
         break_0 = target.BreakpointCreateBySourceRegex("// break 0", src_file_spec)
         self.assertTrue(break_0.IsValid() and break_0.GetNumLocations() >= 1, VALID_BREAKPOINT)
+        break_1 = target.BreakpointCreateBySourceRegex("// break 1", src_file_spec)
+        self.assertTrue(break_1.IsValid() and break_1.GetNumLocations() >= 1, VALID_BREAKPOINT)
 
         # Launch the process
         args = None
@@ -72,6 +74,45 @@ class TestCppNsImport(TestBase):
         test_result = frame.EvaluateExpression("anon")
         self.assertTrue(test_result.IsValid() and test_result.GetValueAsSigned() == 2, "anon = 2")
 
+        test_result = frame.EvaluateExpression("global")
+        self.assertTrue(test_result.IsValid() and test_result.GetValueAsSigned() == 4, "global = 4")
+
+        test_result = frame.EvaluateExpression("fun_var")
+        self.assertTrue(test_result.IsValid() and test_result.GetValueAsSigned() == 9, "fun_var = 9")
+
+        test_result = frame.EvaluateExpression("Fun::fun_var")
+        self.assertTrue(test_result.IsValid() and test_result.GetValueAsSigned() == 0, "Fun::fun_var = 0")
+
+        test_result = frame.EvaluateExpression("not_imported")
+        self.assertTrue(test_result.IsValid() and test_result.GetValueAsSigned() == 35, "not_imported = 35")
+
+        # Currently there is no way to distinguish between "::imported" and "imported" in ClangExpressionDeclMap so this fails
+        #test_result = frame.EvaluateExpression("::imported")
+        #self.assertTrue(test_result.IsValid() and test_result.GetValueAsSigned() == 89, "::imported = 89")
+
+        test_result = frame.EvaluateExpression("Imported::imported")
+        self.assertTrue(test_result.IsValid() and test_result.GetValueAsSigned() == 99, "Imported::imported = 99")
+        
+        test_result = frame.EvaluateExpression("imported")
+        self.assertTrue(test_result.IsValid() and test_result.GetError().Fail(), "imported is ambiguous")
+
+        test_result = frame.EvaluateExpression("single")
+        self.assertTrue(test_result.IsValid() and test_result.GetValueAsSigned() == 3, "single = 3")
+
+        # Continue to second breakpoint
+        process.Continue()
+
+        # Get the thread of the process
+        self.assertTrue(process.GetState() == lldb.eStateStopped, PROCESS_STOPPED)
+        thread = lldbutil.get_stopped_thread(process, lldb.eStopReasonBreakpoint)
+
+        # Get current fream of the thread at the breakpoint
+        frame = thread.GetSelectedFrame()
+
+        # Test function inside namespace
+        test_result = frame.EvaluateExpression("fun_var")
+        self.assertTrue(test_result.IsValid() and test_result.GetValueAsSigned() == 5, "fun_var = 5")
+        
 
 if __name__ == '__main__':
     import atexit

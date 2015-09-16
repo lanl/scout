@@ -14,6 +14,7 @@
 #include "lldb/Core/ArchSpec.h"
 #include "lldb/Core/ClangForward.h"
 #include "lldb/Core/Error.h"
+#include "lldb/Expression/ExpressionParser.h"
 #include "lldb/Expression/IRForTarget.h"
 
 #include <string>
@@ -34,7 +35,7 @@ class IRExecutionUnit;
 /// conversion to formats (DWARF bytecode, or JIT compiled machine code)
 /// that can be executed.
 //----------------------------------------------------------------------
-class ClangExpressionParser
+class ClangExpressionParser : public ExpressionParser
 {
 public:
     //------------------------------------------------------------------
@@ -51,13 +52,13 @@ public:
     ///     The expression to be parsed.
     //------------------------------------------------------------------
     ClangExpressionParser (ExecutionContextScope *exe_scope,
-                           ClangExpression &expr,
+                           Expression &expr,
                            bool generate_debug_info);
     
     //------------------------------------------------------------------
     /// Destructor
     //------------------------------------------------------------------
-    ~ClangExpressionParser ();
+    ~ClangExpressionParser () override;
     
     //------------------------------------------------------------------
     /// Parse a single expression and convert it to IR using Clang.  Don't
@@ -71,7 +72,7 @@ public:
     ///     success.
     //------------------------------------------------------------------
     unsigned
-    Parse (Stream &stream);
+    Parse (Stream &stream) override;
     
     //------------------------------------------------------------------
     /// Ready an already-parsed expression for execution, possibly
@@ -116,30 +117,9 @@ public:
                          std::shared_ptr<IRExecutionUnit> &execution_unit_sp,
                          ExecutionContext &exe_ctx,
                          bool &can_interpret,
-                         lldb_private::ExecutionPolicy execution_policy);
+                         lldb_private::ExecutionPolicy execution_policy) override;
         
-    //------------------------------------------------------------------
-    /// Disassemble the machine code for a JITted function from the target 
-    /// process's memory and print the result to a stream.
-    ///
-    /// @param[in] stream
-    ///     The stream to print disassembly to.
-    ///
-    /// @param[in] exc_context
-    ///     The execution context to get the machine code from.
-    ///
-    /// @return
-    ///     The error generated.  If .Success() is true, disassembly succeeded.
-    //------------------------------------------------------------------
-    Error
-    DisassembleFunction (Stream &stream, 
-                         ExecutionContext &exe_ctx);
-    
-    bool
-    GetGenerateDebugInfo () const;
-    
 private:
-    ClangExpression &                       m_expr;                 ///< The expression to be parsed
     std::unique_ptr<llvm::LLVMContext>       m_llvm_context;         ///< The LLVM context to generate IR into
     std::unique_ptr<clang::FileManager>      m_file_manager;         ///< The Clang file manager object used by the compiler
     std::unique_ptr<clang::CompilerInstance> m_compiler;             ///< The Clang compiler used to parse expressions into IR

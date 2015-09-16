@@ -21,14 +21,14 @@ class ExprCommandWithTimeoutsTestCase(TestBase):
 
     @skipUnlessDarwin
     @dsym_test
-    @expectedFailureDarwin # failed 1/134 runs, line 83, value.IsValid() 
     def test_with_dsym(self):
         """Test calling std::String member function."""
         self.buildDsym()
         self.call_function()
 
-    @expectedFailureFreeBSD("llvm.org/pr19605") # fails on buildbot
+    @expectedFlakeyFreeBSD("llvm.org/pr19605")
     @expectedFlakeyLinux("llvm.org/pr20275")
+    @expectedFailureWindows("llvm.org/pr21765")
     @dwarf_test
     def test_with_dwarf(self):
         """Test calling std::String member function."""

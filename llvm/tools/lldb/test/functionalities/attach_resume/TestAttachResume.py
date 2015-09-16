@@ -14,8 +14,9 @@ class AttachResumeTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @expectedFlakeyFreeBSD('llvm.org/pr19310')
+    @expectedFailureFreeBSD('llvm.org/pr19310')
     @expectedFlakeyLinux('llvm.org/pr19310')
+    @expectedFailureWindows("llvm.org/pr24778")
     @skipIfRemote
     @dwarf_test
     def test_attach_continue_interrupt_detach(self):
