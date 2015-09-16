@@ -13,3 +13,5 @@ add_llvm_library(scDriver
   Driver.cpp
   PTXDriver.cpp
 )
+
+add_dependencies(scDriver intrinsics_gen)
