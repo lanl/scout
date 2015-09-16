@@ -340,9 +340,7 @@ llvm::DIType *CGDebugInfo::CreateType(const UniformMeshType *Ty) {
   
   if (T || shouldOmitDefinition(DebugKind, MD, CGM.getLangOpts())) {
     if (!T) {
-      llvm::DIScope *Mod = getParentModuleOrNull(cast<Decl>(MD->getDeclContext()));
-      T = getOrCreateMeshFwdDecl(Ty,
-            getContextDescriptor(cast<Decl>(MD->getDeclContext()), Mod ? Mod : TheCU));
+      T = getOrCreateMeshFwdDecl(Ty, getDeclContextDescriptor(MD));
     }
     return T;
   }
@@ -404,9 +402,7 @@ CGDebugInfo::CreateLimitedType(const UniformMeshType *Ty) {
   unsigned Line = getLineNumber(MD->getLocation());
   StringRef MDName = MD->getName();
 
-   llvm::DIScope *Mod = getParentModuleOrNull(cast<Decl>(MD->getDeclContext()));
-  llvm::DIScope *MDContext =
-  getContextDescriptor(cast<Decl>(MD->getDeclContext()), Mod ? Mod : TheCU);
+  llvm::DIScope *MDContext = getDeclContextDescriptor(MD);
 
   // If we ended up creating the type during the context chain construction,
   // just return that.
@@ -915,9 +911,7 @@ llvm::DIType *CGDebugInfo::CreateType(const FrameType *Ty) {
   
   if (T || shouldOmitDefinition(DebugKind, FD, CGM.getLangOpts())) {
     if (!T) {
-      llvm::DIScope *Mod = getParentModuleOrNull(cast<Decl>(FD->getDeclContext()));
-      T = getOrCreateFrameFwdDecl(Ty,
-                                  getContextDescriptor(cast<Decl>(FD->getDeclContext()), Mod ? Mod : TheCU));
+      T = getOrCreateFrameFwdDecl(Ty, getDeclContextDescriptor(FD));
     }
     return T;
   }
@@ -934,9 +928,7 @@ CGDebugInfo::CreateLimitedType(const FrameType *Ty) {
   unsigned Line = getLineNumber(FD->getLocation());
   StringRef MDName = FD->getName();
 
-   llvm::DIScope *Mod = getParentModuleOrNull(cast<Decl>(FD->getDeclContext())); 
-  llvm::DIScope *MDContext =
-  getContextDescriptor(cast<Decl>(FD->getDeclContext()), Mod ? Mod : TheCU);
+  llvm::DIScope *MDContext = getDeclContextDescriptor(FD);
   
   // If we ended up creating the type during the context chain construction,
   // just return that.
