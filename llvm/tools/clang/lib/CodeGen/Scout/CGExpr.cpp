@@ -335,7 +335,7 @@ LValue CodeGenFunction::EmitLValueForMeshField(LValue base,
         tbaa = CGM.getTBAAInfo(getContext().CharTy);
       else
         tbaa = CGM.getTBAAInfo(type);
-      CGM.DecorateInstruction(load, tbaa);
+      CGM.DecorateInstructionWithTBAA(load, tbaa);
     }
 
     addr = load;

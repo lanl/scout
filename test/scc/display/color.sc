@@ -55,7 +55,7 @@
  */
 
 int main(int argc, char *argv[]) {
-  const int NTIME_STEPS = 1000;
+  const int NTIME_STEPS = 250;
   window win[512,512];
 
   uniform mesh HeatMeshType{

@@ -59,7 +59,6 @@
 #include "lldb/Core/ModuleList.h"
 #include "lldb/Expression/ASTDumper.h"
 #include "lldb/Expression/ClangASTSource.h"
-#include "lldb/Expression/ClangExpression.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Target/ObjCLanguageRuntime.h"
