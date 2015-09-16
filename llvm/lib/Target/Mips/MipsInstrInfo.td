@@ -206,6 +206,8 @@ def IsLE           :  Predicate<"Subtarget->isLittle()">;
 def IsBE           :  Predicate<"!Subtarget->isLittle()">;
 def IsNotNaCl    :    Predicate<"!Subtarget->isTargetNaCl()">;
 def UseTCCInDIV    :  AssemblerPredicate<"FeatureUseTCCInDIV">;
+def HasEVA       :    Predicate<"Subtarget->hasEVA()">,
+                      AssemblerPredicate<"FeatureEVA,FeatureMips32r2">;
 
 //===----------------------------------------------------------------------===//
 // Mips GPR size adjectives.
@@ -261,6 +263,11 @@ class ISA_MICROMIPS32R6 {
 }
 class ISA_MICROMIPS64R6 {
   list<Predicate> InsnPredicates = [HasMicroMips64r6];
+}
+
+class INSN_EVA { list<Predicate> InsnPredicates = [HasEVA]; }
+class INSN_EVA_NOT_32R6_64R6 {
+  list<Predicate> InsnPredicates = [NotMips32r6, NotMips64r6, HasEVA];
 }
 
 // The portions of MIPS-III that were also added to MIPS32
@@ -451,6 +458,22 @@ def MipsMemAsmOperand : AsmOperandClass {
   let ParserMethod = "parseMemOperand";
 }
 
+def MipsMemSimm9AsmOperand : AsmOperandClass {
+  let Name = "MemOffsetSimm9";
+  let SuperClasses = [MipsMemAsmOperand];
+  let RenderMethod = "addMemOperands";
+  let ParserMethod = "parseMemOperand";
+  let PredicateMethod = "isMemWithSimmOffset<9>";
+}
+
+def MipsMemSimm9GPRAsmOperand : AsmOperandClass {
+  let Name = "MemOffsetSimm9GPR";
+  let SuperClasses = [MipsMemAsmOperand];
+  let RenderMethod = "addMemOperands";
+  let ParserMethod = "parseMemOperand";
+  let PredicateMethod = "isMemWithSimmOffsetGPR<9>";
+}
+
 def MipsMemSimm11AsmOperand : AsmOperandClass {
   let Name = "MemOffsetSimm11";
   let SuperClasses = [MipsMemAsmOperand];
@@ -501,6 +524,13 @@ def mem_msa : mem_generic {
 def mem_simm9 : mem_generic {
   let MIOperandInfo = (ops ptr_rc, simm9);
   let EncoderMethod = "getMemEncoding";
+  let ParserMatchClass = MipsMemSimm9AsmOperand;
+}
+
+def mem_simm9gpr : mem_generic {
+  let MIOperandInfo = (ops ptr_rc, simm9);
+  let EncoderMethod = "getMemEncoding";
+  let ParserMatchClass = MipsMemSimm9GPRAsmOperand;
 }
 
 def mem_simm11 : mem_generic {
@@ -673,7 +703,7 @@ class shift_rotate_reg<string opstr, RegisterOperand RO, InstrItinClass itin,
          [(set RO:$rd, (OpNode RO:$rt, GPR32Opnd:$rs))], itin, FrmR,
          opstr>;
 
-// Load Upper Imediate
+// Load Upper Immediate
 class LoadUpper<string opstr, RegisterOperand RO, Operand Imm>:
   InstSE<(outs RO:$rt), (ins Imm:$imm16), !strconcat(opstr, "\t$rt, $imm16"),
          [], II_LUI, FrmI, opstr>, IsAsCheapAsAMove {
@@ -691,13 +721,18 @@ class Load<string opstr, DAGOperand RO, SDPatternOperator OpNode = null_frag,
   let mayLoad = 1;
 }
 
-class Store<string opstr, DAGOperand RO, SDPatternOperator OpNode = null_frag,
+class StoreMemory<string opstr, DAGOperand RO, DAGOperand MO,
+            SDPatternOperator OpNode = null_frag,
             InstrItinClass Itin = NoItinerary, ComplexPattern Addr = addr> :
-  InstSE<(outs), (ins RO:$rt, mem:$addr), !strconcat(opstr, "\t$rt, $addr"),
+  InstSE<(outs), (ins RO:$rt, MO:$addr), !strconcat(opstr, "\t$rt, $addr"),
          [(OpNode RO:$rt, Addr:$addr)], Itin, FrmI, opstr> {
   let DecoderMethod = "DecodeMem";
   let mayStore = 1;
 }
+
+class Store<string opstr, DAGOperand RO, SDPatternOperator OpNode = null_frag,
+            InstrItinClass Itin = NoItinerary, ComplexPattern Addr = addr> :
+  StoreMemory<opstr, RO, mem, OpNode, Itin, Addr>;
 
 // Load/Store Left/Right
 let canFoldAsLoad = 1 in
@@ -1741,24 +1776,38 @@ def BLTU : CondBranchPseudo<"bltu">;
 def BLEU : CondBranchPseudo<"bleu">;
 def BGEU : CondBranchPseudo<"bgeu">;
 def BGTU : CondBranchPseudo<"bgtu">;
+def BLTL : CondBranchPseudo<"bltl">, ISA_MIPS2_NOT_32R6_64R6;
+def BLEL : CondBranchPseudo<"blel">, ISA_MIPS2_NOT_32R6_64R6;
+def BGEL : CondBranchPseudo<"bgel">, ISA_MIPS2_NOT_32R6_64R6;
+def BGTL : CondBranchPseudo<"bgtl">, ISA_MIPS2_NOT_32R6_64R6;
+def BLTUL: CondBranchPseudo<"bltul">, ISA_MIPS2_NOT_32R6_64R6;
+def BLEUL: CondBranchPseudo<"bleul">, ISA_MIPS2_NOT_32R6_64R6;
+def BGEUL: CondBranchPseudo<"bgeul">, ISA_MIPS2_NOT_32R6_64R6;
+def BGTUL: CondBranchPseudo<"bgtul">, ISA_MIPS2_NOT_32R6_64R6;
+
+// FIXME: Predicates are removed because instructions are matched regardless of
+// predicates, because PredicateControl was not in the hierarchy. This was
+// done to emit more precise error message from expansion function.
+// Once the tablegen-erated errors are made better, this needs to be fixed and
+// predicates needs to be restored.
 
 def SDivMacro : MipsAsmPseudoInst<(outs), (ins GPR32Opnd:$rs, GPR32Opnd:$rt),
-                                  "div\t$rs, $rt">, ISA_MIPS1_NOT_32R6_64R6;
+                                  "div\t$rs, $rt">; //, ISA_MIPS1_NOT_32R6_64R6;
 
 def UDivMacro : MipsAsmPseudoInst<(outs), (ins GPR32Opnd:$rs, GPR32Opnd:$rt),
-                                  "divu\t$rs, $rt">, ISA_MIPS1_NOT_32R6_64R6;
+                                  "divu\t$rs, $rt">; //, ISA_MIPS1_NOT_32R6_64R6;
 
 def DSDivMacro : MipsAsmPseudoInst<(outs), (ins GPR32Opnd:$rs, GPR32Opnd:$rt),
-                                   "ddiv\t$rs, $rt">, ISA_MIPS64_NOT_64R6;
+                                   "ddiv\t$rs, $rt">; //, ISA_MIPS64_NOT_64R6;
 
 def DUDivMacro : MipsAsmPseudoInst<(outs), (ins GPR32Opnd:$rs, GPR32Opnd:$rt),
-                                   "ddivu\t$rs, $rt">, ISA_MIPS64_NOT_64R6;
+                                   "ddivu\t$rs, $rt">; //, ISA_MIPS64_NOT_64R6;
 
 def Ulhu : MipsAsmPseudoInst<(outs GPR32Opnd:$rt), (ins mem:$addr),
-                             "ulhu\t$rt, $addr">, ISA_MIPS1_NOT_32R6_64R6;
+                             "ulhu\t$rt, $addr">; //, ISA_MIPS1_NOT_32R6_64R6;
 
 def Ulw : MipsAsmPseudoInst<(outs GPR32Opnd:$rt), (ins mem:$addr),
-                            "ulw\t$rt, $addr">, ISA_MIPS1_NOT_32R6_64R6;
+                            "ulw\t$rt, $addr">; //, ISA_MIPS1_NOT_32R6_64R6;
 
 //===----------------------------------------------------------------------===//
 //  Arbitrary patterns that map to one or more instructions
@@ -1998,6 +2047,10 @@ include "MipsDSPInstrInfo.td"
 // MSA
 include "MipsMSAInstrFormats.td"
 include "MipsMSAInstrInfo.td"
+
+// EVA
+include "MipsEVAInstrFormats.td"
+include "MipsEVAInstrInfo.td"
 
 // Micromips
 include "MicroMipsInstrFormats.td"
