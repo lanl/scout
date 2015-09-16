@@ -1100,6 +1100,7 @@ sub RunBuildCommand {
 
 sub DisplayHelp {
 
+  my $ArgClangNotFoundErrMsg = shift;
 print <<ENDTEXT;
 USAGE: $Prog [options] <build command> [build options]
 
@@ -1258,39 +1259,40 @@ LOADING CHECKERS:
  -load-plugin [plugin library]
 ENDTEXT
 
-  # Query clang for list of checkers that are enabled.
+  if (defined $Clang && -x $Clang) {
+    # Query clang for list of checkers that are enabled.
 
-  # create a list to load the plugins via the 'Xclang' command line
-  # argument
-  my @PluginLoadCommandline_xclang;
-  foreach my $param ( @{$Options{PluginsToLoad}} ) {
-    push ( @PluginLoadCommandline_xclang, "-Xclang" );
-    push ( @PluginLoadCommandline_xclang, "-load" );
-    push ( @PluginLoadCommandline_xclang, "-Xclang" );
-    push ( @PluginLoadCommandline_xclang, $param );
-  }
+    # create a list to load the plugins via the 'Xclang' command line
+    # argument
+    my @PluginLoadCommandline_xclang;
+    foreach my $param ( @{$Options{PluginsToLoad}} ) {
+      push ( @PluginLoadCommandline_xclang, "-Xclang" );
+      push ( @PluginLoadCommandline_xclang, "-load" );
+      push ( @PluginLoadCommandline_xclang, "-Xclang" );
+      push ( @PluginLoadCommandline_xclang, $param );
+    }
 
-  my %EnabledCheckers;
-  foreach my $lang ("c", "objective-c", "objective-c++", "c++") {
-    my $ExecLine = join(' ', qq/"$Clang"/, @PluginLoadCommandline_xclang, "--analyze", "-x", $lang, "-", "-###", "2>&1", "|");
-    open(PS, $ExecLine);
-    while (<PS>) {
-      foreach my $val (split /\s+/) {
-        $val =~ s/\"//g;
-        if ($val =~ /-analyzer-checker\=([^\s]+)/) {
-          $EnabledCheckers{$1} = 1;
+    my %EnabledCheckers;
+    foreach my $lang ("c", "objective-c", "objective-c++", "c++") {
+      my $ExecLine = join(' ', qq/"$Clang"/, @PluginLoadCommandline_xclang, "--analyze", "-x", $lang, "-", "-###", "2>&1", "|");
+      open(PS, $ExecLine);
+      while (<PS>) {
+        foreach my $val (split /\s+/) {
+          $val =~ s/\"//g;
+          if ($val =~ /-analyzer-checker\=([^\s]+)/) {
+            $EnabledCheckers{$1} = 1;
+          }
         }
       }
     }
-  }
 
-  # Query clang for complete list of checkers.
-  my @PluginLoadCommandline;
-  foreach my $param ( @{$Options{PluginsToLoad}} ) {
-    push ( @PluginLoadCommandline, "-load" );
-    push ( @PluginLoadCommandline, $param );
-  }
-  if (defined $Clang && -x $Clang) {
+    # Query clang for complete list of checkers.
+    my @PluginLoadCommandline;
+    foreach my $param ( @{$Options{PluginsToLoad}} ) {
+      push ( @PluginLoadCommandline, "-load" );
+      push ( @PluginLoadCommandline, $param );
+    }
+
     my $ExecLine = join(' ', qq/"$Clang"/, "-cc1", @PluginLoadCommandline, "-analyzer-checker-help", "2>&1", "|");
     open(PS, $ExecLine);
     my $foundCheckers = 0;
@@ -1347,6 +1349,12 @@ ENDTEXT
     }
     close PS;
   }
+  else {
+    print "  *** Could not query Clang for the list of available checkers.\n";
+    if (defined  $ArgClangNotFoundErrMsg) {
+      print "  *** Reason: $ArgClangNotFoundErrMsg\n";
+    }
+  }
 
 print <<ENDTEXT
 
@@ -1389,6 +1397,45 @@ sub ShellEscape {
   my $arg = shift || '';
   if ($arg =~ /["\s]/) { return "'" . $arg . "'"; }
   return $arg;
+}
+
+##----------------------------------------------------------------------------##
+# FindClang - searches for 'clang' executable.
+##----------------------------------------------------------------------------##
+
+sub FindClang {
+  if (!defined $Options{AnalyzerDiscoveryMethod}) {
+    $Clang = Cwd::realpath("$RealBin/bin/clang") if (-f "$RealBin/bin/clang");
+    if (!defined $Clang || ! -x $Clang) {
+      $Clang = Cwd::realpath("$RealBin/clang") if (-f "$RealBin/clang");
+    }
+    if (!defined $Clang || ! -x $Clang) {
+      return "error: Cannot find an executable 'clang' relative to" .
+             " scan-build. Consider using --use-analyzer to pick a version of" .
+             " 'clang' to use for static analysis.\n";
+    }
+  }
+  else {
+    if ($Options{AnalyzerDiscoveryMethod} =~ /^[Xx]code$/) {
+      my $xcrun = `which xcrun`;
+      chomp $xcrun;
+      if ($xcrun eq "") {
+        return "Cannot find 'xcrun' to find 'clang' for analysis.\n";
+      }
+      $Clang = `$xcrun -toolchain XcodeDefault -find clang`;
+      chomp $Clang;
+      if ($Clang eq "") {
+        return "No 'clang' executable found by 'xcrun'\n";
+      }
+    }
+    else {
+      $Clang = $Options{AnalyzerDiscoveryMethod};
+      if (!defined $Clang or not -x $Clang) {
+        return "Cannot find an executable clang at '$Options{AnalyzerDiscoveryMethod}'\n";
+      }
+    }
+  }
+  return undef;
 }
 
 ##----------------------------------------------------------------------------##
@@ -1634,50 +1681,21 @@ if (!@ARGV) {
 }
 
 ProcessArgs(\@ARGV);
+# All arguments are now shifted from @ARGV. The rest is a build command, if any.
 
 if (!@ARGV and !$RequestDisplayHelp) {
   ErrorDiag("No build command specified.\n\n");
   $ForceDisplayHelp = 1;
 }
 
-# Find 'clang'
-if (!defined $Options{AnalyzerDiscoveryMethod}) {
-  $Clang = Cwd::realpath("$RealBin/bin/clang");
-  if (!defined $Clang || ! -x $Clang) {
-    $Clang = Cwd::realpath("$RealBin/clang");
-  }
-  if (!defined $Clang || ! -x $Clang) {
-    if (!$RequestDisplayHelp && !$ForceDisplayHelp) {
-      DieDiag("error: Cannot find an executable 'clang' relative to scan-build." .
-                 "  Consider using --use-analyzer to pick a version of 'clang' to use for static analysis.\n");
-    }
-  }
-}
-else {
-  if ($Options{AnalyzerDiscoveryMethod} =~ /^[Xx]code$/) {
-    my $xcrun = `which xcrun`;
-    chomp $xcrun;
-    if ($xcrun eq "") {
-        DieDiag("Cannot find 'xcrun' to find 'clang' for analysis.\n");
-    }
-    $Clang = `$xcrun -toolchain XcodeDefault -find clang`;
-    chomp $Clang;
-    if ($Clang eq "") {
-      DieDiag("No 'clang' executable found by 'xcrun'\n");
-    }
-  }
-  else {
-    $Clang = $Options{AnalyzerDiscoveryMethod};
-    if (!defined $Clang or not -x $Clang) {
-      DieDiag("Cannot find an executable clang at '$Options{AnalyzerDiscoveryMethod}'\n");
-    }
-  }
-}
+my $ClangNotFoundErrMsg = FindClang();
 
 if ($ForceDisplayHelp || $RequestDisplayHelp) {
-  DisplayHelp();
+  DisplayHelp($ClangNotFoundErrMsg);
   exit $ForceDisplayHelp;
 }
+
+DieDiag($ClangNotFoundErrMsg) if (defined $ClangNotFoundErrMsg);
 
 $ClangCXX = $Clang;
 if ($Clang !~ /\+\+(\.exe)?$/) {

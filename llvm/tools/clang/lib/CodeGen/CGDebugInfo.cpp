@@ -453,6 +453,24 @@ llvm::DIType *CGDebugInfo::CreateType(const BuiltinType *BT) {
   case BuiltinType::OCLImage2dArray:
     return getOrCreateStructPtrType("opencl_image2d_array_t",
                                     OCLImage2dArrayDITy);
+  case BuiltinType::OCLImage2dDepth:
+    return getOrCreateStructPtrType("opencl_image2d_depth_t",
+                                    OCLImage2dDepthDITy);
+  case BuiltinType::OCLImage2dArrayDepth:
+    return getOrCreateStructPtrType("opencl_image2d_array_depth_t",
+                                    OCLImage2dArrayDepthDITy);
+  case BuiltinType::OCLImage2dMSAA:
+    return getOrCreateStructPtrType("opencl_image2d_msaa_t",
+                                    OCLImage2dMSAADITy);
+  case BuiltinType::OCLImage2dArrayMSAA:
+    return getOrCreateStructPtrType("opencl_image2d_array_msaa_t",
+                                    OCLImage2dArrayMSAADITy);
+  case BuiltinType::OCLImage2dMSAADepth:
+    return getOrCreateStructPtrType("opencl_image2d_msaa_depth_t",
+                                    OCLImage2dMSAADepthDITy);
+  case BuiltinType::OCLImage2dArrayMSAADepth:
+    return getOrCreateStructPtrType("opencl_image2d_array_msaa_depth_t",
+                                    OCLImage2dArrayMSAADepthDITy);
   case BuiltinType::OCLImage3d:
     return getOrCreateStructPtrType("opencl_image3d_t", OCLImage3dDITy);
   case BuiltinType::OCLSampler:
@@ -461,6 +479,14 @@ llvm::DIType *CGDebugInfo::CreateType(const BuiltinType *BT) {
         CGM.getContext().getTypeAlign(BT), llvm::dwarf::DW_ATE_unsigned);
   case BuiltinType::OCLEvent:
     return getOrCreateStructPtrType("opencl_event_t", OCLEventDITy);
+  case BuiltinType::OCLClkEvent:
+    return getOrCreateStructPtrType("opencl_clk_event_t", OCLClkEventDITy);
+  case BuiltinType::OCLQueue:
+    return getOrCreateStructPtrType("opencl_queue_t", OCLQueueDITy);
+  case BuiltinType::OCLNDRange:
+    return getOrCreateStructPtrType("opencl_ndrange_t", OCLNDRangeDITy);
+  case BuiltinType::OCLReserveID:
+    return getOrCreateStructPtrType("opencl_reserve_id_t", OCLReserveIDDITy);
 
   case BuiltinType::UChar:
   case BuiltinType::Char_U:
@@ -1486,14 +1512,8 @@ static bool shouldOmitDefinition(CodeGenOptions::DebugInfoKind DebugKind,
                                  const RecordDecl *RD,
                                  const LangOptions &LangOpts) {
   // Does the type exist in an imported clang module?
-  if (DebugTypeExtRefs && RD->isFromASTFile()) {
-    if (auto *CTSD = dyn_cast<ClassTemplateSpecializationDecl>(RD))
-      if (CTSD->isExplicitInstantiationOrSpecialization())
-        // We may not assume that this type made it into the module.
-        return true;
-    if (RD->getDefinition())
+  if (DebugTypeExtRefs && RD->isFromASTFile() && RD->getDefinition())
       return true;
-  }
 
   if (DebugKind > CodeGenOptions::LimitedDebugInfo)
     return false;
@@ -2141,7 +2161,7 @@ ObjCInterfaceDecl *CGDebugInfo::getObjCInterfaceDecl(QualType Ty) {
 }
 
 llvm::DIModule *CGDebugInfo::getParentModuleOrNull(const Decl *D) {
-  if (!DebugTypeExtRefs || !D || !D->isFromASTFile())
+  if (!DebugTypeExtRefs || !D->isFromASTFile())
     return nullptr;
 
   llvm::DIModule *ModuleRef = nullptr;

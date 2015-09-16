@@ -1423,7 +1423,8 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
 
     if (const FunctionDecl *Fn = dyn_cast<FunctionDecl>(TargetDecl)) {
       const FunctionProtoType *FPT = Fn->getType()->getAs<FunctionProtoType>();
-      if (FPT && FPT->isNothrow(getContext()))
+      if (FPT && !isUnresolvedExceptionSpec(FPT->getExceptionSpecType()) &&
+          FPT->isNothrow(getContext()))
         FuncAttrs.addAttribute(llvm::Attribute::NoUnwind);
       // Don't use [[noreturn]] or _Noreturn for a call to a virtual function.
       // These attributes are not inherited by overloads.
@@ -1500,8 +1501,8 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
     FuncAttrs.addAttribute("stack-protector-buffer-size",
                            llvm::utostr(CodeGenOpts.SSPBufferSize));
 
-    if (!CodeGenOpts.StackRealignment)
-      FuncAttrs.addAttribute("no-realign-stack");
+    if (CodeGenOpts.StackRealignment)
+      FuncAttrs.addAttribute("stackrealign");
 
     // Add target-cpu and target-features attributes to functions. If
     // we have a decl for the function and it has a target attribute then
