@@ -71,6 +71,7 @@ USEDLIBS = lldbAPI.a \
 	lldbPluginObjectFilePECOFF.a \
 	lldbPluginOSPython.a \
 	lldbPluginPlatformGDB.a \
+	lldbPluginProcessElfCore.a \
 	lldbPluginProcessGDBRemote.a \
 	lldbPluginSymbolFileDWARF.a \
 	lldbPluginSymbolFileSymtab.a \
@@ -94,6 +95,7 @@ USEDLIBS = lldbAPI.a \
 	clangSerialization.a \
 	LLVMMCDisassembler.a \
 	LLVMProfileData.a \
+	LLVMObjCARCOpts.a \
 	lldbPluginPlatformMacOSX.a \
 	lldbPluginPlatformLinux.a \
 	lldbPluginPlatformWindows.a \
@@ -101,6 +103,7 @@ USEDLIBS = lldbAPI.a \
 	lldbPluginPlatformPOSIX.a \
 	lldbPluginPlatformKalimba.a \
 	lldbPluginPlatformAndroid.a \
+	lldbPluginJITLoaderGDB.a \
 	lldbPluginScriptInterpreterNone.a \
 	lldbPluginScriptInterpreterPython.a
 
@@ -123,28 +126,17 @@ ifeq ($(HOST_OS),Darwin)
               lldbPluginObjectFileMachO.a \
               lldbPluginSymbolVendorMacOSX.a \
               lldbPluginProcessDarwin.a \
-              lldbPluginProcessMachCore.a \
-              lldbPluginProcessElfCore.a \
-              lldbPluginJITLoaderGDB.a
+              lldbPluginProcessMachCore.a
 endif
 
 ifeq ($(HOST_OS),Linux)
   USEDLIBS += lldbPluginProcessLinux.a \
-              lldbPluginProcessPOSIX.a \
-              lldbPluginProcessElfCore.a \
-              lldbPluginJITLoaderGDB.a
-endif
-
-ifeq ($(HOST_OS),MingW)
-  USEDLIBS += lldbPluginProcessElfCore.a \
-              lldbPluginJITLoaderGDB.a
+              lldbPluginProcessPOSIX.a
 endif
 
 ifneq (,$(filter $(HOST_OS), FreeBSD GNU/kFreeBSD))
   USEDLIBS += lldbPluginProcessPOSIX.a \
-              lldbPluginProcessFreeBSD.a \
-              lldbPluginProcessElfCore.a \
-              lldbPluginJITLoaderGDB.a
+              lldbPluginProcessFreeBSD.a
 endif
 
 include $(LEVEL)/Makefile.common

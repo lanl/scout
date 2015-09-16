@@ -19,6 +19,7 @@
 
 using namespace lldb;
 using namespace lldb_private;
+using namespace lldb_private::formatters;
 
 typedef std::unique_ptr<Language> LanguageUP;
 typedef std::map<lldb::LanguageType, LanguageUP> LanguagesMap;
@@ -94,10 +95,40 @@ Language::GetFormatters ()
     return nullptr;
 }
 
+HardcodedFormatters::HardcodedFormatFinder
+Language::GetHardcodedFormats ()
+{
+    return {};
+}
+
+HardcodedFormatters::HardcodedSummaryFinder
+Language::GetHardcodedSummaries ()
+{
+    return {};
+}
+
+HardcodedFormatters::HardcodedSyntheticFinder
+Language::GetHardcodedSynthetics ()
+{
+    return {};
+}
+
+HardcodedFormatters::HardcodedValidatorFinder
+Language::GetHardcodedValidators ()
+{
+    return {};
+}
+
 std::vector<ConstString>
 Language::GetPossibleFormattersMatches (ValueObject& valobj, lldb::DynamicValueType use_dynamic)
 {
     return {};
+}
+
+lldb_private::formatters::StringPrinter::EscapingHelper
+Language::GetStringPrinterEscapingHelper (lldb_private::formatters::StringPrinter::GetPrintableElementType elem_type)
+{
+    return StringPrinter::GetDefaultEscapingHelper(elem_type);
 }
 
 struct language_name_pair {

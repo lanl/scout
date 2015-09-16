@@ -79,7 +79,6 @@ if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
   list(APPEND LLDB_USED_LIBS
     lldbPluginProcessWindows
     lldbPluginProcessWinMiniDump
-    lldbPluginJITLoaderGDB
     Ws2_32
     Rpcrt4
     )
@@ -90,8 +89,6 @@ if ( CMAKE_SYSTEM_NAME MATCHES "Linux" )
   list(APPEND LLDB_USED_LIBS
     lldbPluginProcessLinux
     lldbPluginProcessPOSIX
-    lldbPluginProcessElfCore
-    lldbPluginJITLoaderGDB
    )
 endif ()
 
@@ -100,8 +97,6 @@ if ( CMAKE_SYSTEM_NAME MATCHES "FreeBSD" )
   list(APPEND LLDB_USED_LIBS
     lldbPluginProcessFreeBSD
     lldbPluginProcessPOSIX
-    lldbPluginProcessElfCore
-    lldbPluginJITLoaderGDB
     )
 endif ()
 

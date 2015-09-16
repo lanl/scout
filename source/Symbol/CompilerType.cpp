@@ -42,6 +42,10 @@ CompilerType::CompilerType (clang::ASTContext *ast,
     m_type (qual_type.getAsOpaquePtr()),
     m_type_system (ClangASTContext::GetASTContext(ast))
 {
+#ifdef LLDB_CONFIGURATION_DEBUG
+    if (m_type)
+        assert(m_type_system != nullptr);
+#endif
 }
 
 CompilerType::~CompilerType()
@@ -74,7 +78,7 @@ CompilerType::IsArrayType (CompilerType *element_type_ptr,
         *size = 0;
     if (is_incomplete)
         *is_incomplete = false;
-    return 0;
+    return false;
 }
 
 bool
