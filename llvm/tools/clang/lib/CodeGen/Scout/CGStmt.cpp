@@ -635,6 +635,7 @@ void CodeGenFunction::InitForallData(ForallInfo* info,
   Value* topologyDim = GetMeshTopologyDim(rank, data->elementType);
   
   if(stack.empty()){
+    data->startToIndicesPtr = nullptr;
     data->fromIndicesPtr = nullptr;
     data->toIndicesPtr = nullptr;
   }
@@ -646,7 +647,7 @@ void CodeGenFunction::InitForallData(ForallInfo* info,
     ValueVec args =
     {topologyPtr, aboveTopologyDim, topologyDim};
     
-    if(stack.size() > 1){
+    if(stack.size() > 0){
       data->fromIndicesPtr =
       B.CreateCall(R.MeshGetFromIndicesFunc(), args, "from.indices.ptr");
     }
