@@ -437,23 +437,6 @@ void WinEHStatePass::addCXXStateStores(Function &F, WinEHFuncInfo &FuncInfo) {
   // Set up RegNodeEscapeIndex
   int RegNodeEscapeIndex = escapeRegNode(F);
   FuncInfo.EHRegNodeEscapeIndex = RegNodeEscapeIndex;
-
-  // Only insert stores in catch handlers.
-  Constant *FI8 =
-      ConstantExpr::getBitCast(&F, Type::getInt8PtrTy(TheModule->getContext()));
-  for (auto P : FuncInfo.HandlerBaseState) {
-    Function *Handler = const_cast<Function *>(P.first);
-    int BaseState = P.second;
-    IRBuilder<> Builder(&Handler->getEntryBlock(),
-                        Handler->getEntryBlock().begin());
-    // FIXME: Find and reuse such a call if present.
-    Value *ParentFP = Builder.CreateCall(FrameAddress, {Builder.getInt32(1)});
-    Value *RecoveredRegNode = Builder.CreateCall(
-        FrameRecover, {FI8, ParentFP, Builder.getInt32(RegNodeEscapeIndex)});
-    RecoveredRegNode =
-        Builder.CreateBitCast(RecoveredRegNode, RegNodeTy->getPointerTo(0));
-    addStateStoresToFunclet(RecoveredRegNode, FuncInfo, *Handler, BaseState);
-  }
 }
 
 /// Escape RegNode so that we can access it from child handlers. Find the call
@@ -517,15 +500,6 @@ void WinEHStatePass::addStateStoresToFunclet(Value *ParentRegNode,
         insertStateNumberStore(ParentRegNode, II, State);
       }
     }
-
-    // Insert calls to llvm.x86.seh.restoreframe at catchret destinations.  In
-    // SEH, insert them before the catchret.
-    // FIXME: We should probably do this as part of catchret lowering in the
-    // DAG.
-    if (auto *CR = dyn_cast<CatchReturnInst>(BB.getTerminator()))
-      insertRestoreFrame(Personality == EHPersonality::MSVC_X86SEH
-                             ? CR->getParent()
-                             : CR->getSuccessor());
   }
 }
 
