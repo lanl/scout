@@ -524,7 +524,7 @@ void CodeGenModule::DecorateInstructionWithInvariantGroup(
   // Check if we have to wrap MDString in MDNode.
   if (!MetaDataNode)
     MetaDataNode = llvm::MDNode::get(getLLVMContext(), MD);
-  I->setMetadata("invariant.group", MetaDataNode);
+  I->setMetadata(llvm::LLVMContext::MD_invariant_group, MetaDataNode);
 }
 
 void CodeGenModule::Error(SourceLocation loc, StringRef message) {
@@ -3806,12 +3806,6 @@ llvm::Constant *CodeGenModule::EmitUuidofInitializer(StringRef Uuid) {
   };
 
   return llvm::ConstantStruct::getAnon(Fields);
-}
-
-llvm::Constant *
-CodeGenModule::getAddrOfCXXCatchHandlerType(QualType Ty,
-                                            QualType CatchHandlerType) {
-  return getCXXABI().getAddrOfCXXCatchHandlerType(Ty, CatchHandlerType);
 }
 
 llvm::Constant *CodeGenModule::GetAddrOfRTTIDescriptor(QualType Ty,
