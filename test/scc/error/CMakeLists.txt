@@ -137,6 +137,11 @@ set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION
     "error: first argument to eoshift")
 set_property(TEST ${tname} PROPERTY WILL_FAIL) 
 
+set(name eoshift-typemismatch)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: type mismatch in eoshift")
 set(name renderall-color)
 set(tname scc_error_${name})
 add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)

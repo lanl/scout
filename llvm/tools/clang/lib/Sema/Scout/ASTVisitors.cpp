@@ -106,6 +106,10 @@ namespace clang {
         }
 
         if (MemberExpr* me = dyn_cast<MemberExpr>(fe)) {
+          if (kind == ShiftKind::EOShift && me->getType() != E->getArg(1)->getType()) {
+              S.Diag(me->getExprLoc(), diag::err_eoshift_type);
+              error = true;
+          }
           if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())) {
             ValueDecl* bd = dr->getDecl();
             const Type *T= bd->getType().getCanonicalType().getTypePtr();
