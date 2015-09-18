@@ -362,7 +362,7 @@ public:
   typedef CallExpr::const_arg_iterator ArgIterator;
 
   // mesh dimension sizes
-  llvm::SmallVector< llvm::Value *, 3 > MeshDims;
+  llvm::SmallVector< Address, 3 > MeshDims;
   // for threaded case
   llvm::SmallVector< llvm::Value *, 3 > MeshStart;
   llvm::SmallVector< llvm::Value *, 3 > MeshSize;
@@ -390,7 +390,7 @@ public:
   llvm::Value *LookupInductionVar(unsigned int index);
   llvm::Value *LinearIdx2InductionVar(llvm::Value *linearidx,
       MeshElementType elementType, unsigned int dindex, unsigned int ndims);
-  llvm::Value *LookupMeshDim(unsigned int index);
+  Address LookupMeshDim(unsigned int index);
   llvm::Value *LookupMeshStart(unsigned int index);
 
   inline llvm::Value *getLinearIdx() {

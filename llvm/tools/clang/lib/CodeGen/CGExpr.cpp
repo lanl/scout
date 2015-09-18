@@ -3868,7 +3868,7 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
       // Add meshdims to args, could get this out of the
       // mesh but it is easier this way.
       for(unsigned i = 0; i < 3; i++)
-        Args.add(RValue::get(MeshDims[i]), T);
+        Args.add(RValue::get(MeshDims[i].getPointer()), T);
       // Add induction vars to args
       for(unsigned i = 0; i <= 3; i++)
         Args.add(RValue::get(LookupInductionVar(i)), T);
