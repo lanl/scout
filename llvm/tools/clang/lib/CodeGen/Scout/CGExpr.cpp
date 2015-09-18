@@ -450,7 +450,7 @@ CodeGenFunction::getCShiftLinearIdx(const MeshFieldDecl *MFD, SmallVector< llvm:
   if(CGM.getCodeGenOpts().ScoutLegionSupport) {
     for(unsigned i = 0; i < args.size(); ++i) {
       sprintf(IRNameStr, "start.%s", DimNames[i]);
-      start.push_back(Builder.CreateLoad(scoutPtr(LookupMeshStart(i)), IRNameStr));
+      start.push_back(Builder.CreateLoad(LookupMeshStart(i), IRNameStr));
     }
   }
   
@@ -1393,7 +1393,7 @@ RValue CodeGenFunction::EmitMPosition(const CallExpr *E , unsigned int index) {
   sprintf(IRNameStr, "mposition.index.%s", IndexNames[index]);
   llvm::Value *indexVal = Builder.CreateAdd(
       Builder.CreateLoad(scoutPtr(LookupInductionVar(index))),
-      Builder.CreateLoad(scoutPtr(LookupMeshStart(index))),
+      Builder.CreateLoad(LookupMeshStart(index)),
       IRNameStr);
 
 
@@ -1491,7 +1491,7 @@ RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
     sprintf(IRNameStr, "mposition.index.%s", IndexNames[i]);
     indexVal = Builder.CreateAdd(
       Builder.CreateLoad(scoutPtr(LookupInductionVar(i))),
-      Builder.CreateLoad(scoutPtr(LookupMeshStart(i))),
+      Builder.CreateLoad(LookupMeshStart(i)),
       IRNameStr);
     llvm::Value *BaseAddr;
     GetMeshBaseAddr(CurrentMeshVarDecl, BaseAddr);
@@ -1540,7 +1540,7 @@ llvm::Value *CodeGenFunction::FindGIndex(unsigned int dim) {
 
    // for partitioned legion case need to add start to induction var
    if (ForallStack.size() == 1 && dim < 3) {
-      idx = Builder.CreateAdd(Builder.CreateLoad(scoutPtr(LookupMeshStart(dim))), idx);
+      idx = Builder.CreateAdd(Builder.CreateLoad(LookupMeshStart(dim)), idx);
    }
 
    // get current iv

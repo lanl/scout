@@ -364,7 +364,7 @@ public:
   // mesh dimension sizes
   llvm::SmallVector< Address, 3 > MeshDims;
   // for threaded case
-  llvm::SmallVector< llvm::Value *, 3 > MeshStart;
+  llvm::SmallVector< Address, 3 > MeshStart;
   llvm::SmallVector< llvm::Value *, 3 > MeshSize;
   // loopbounds for forall cells/vertices
   llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
@@ -391,7 +391,7 @@ public:
   llvm::Value *LinearIdx2InductionVar(llvm::Value *linearidx,
       MeshElementType elementType, unsigned int dindex, unsigned int ndims);
   Address LookupMeshDim(unsigned int index);
-  llvm::Value *LookupMeshStart(unsigned int index);
+  Address LookupMeshStart(unsigned int index);
 
   inline llvm::Value *getLinearIdx() {
     return Builder.CreateLoad(scoutPtr(LookupInductionVar(3)), "Xall.linearidx");

@@ -184,13 +184,12 @@ llvm::Value *CodeGenFunction::LookupInductionVar(unsigned int index) {
   return data->inductionVar[index];
 }
 
-llvm::Value *CodeGenFunction::LookupMeshStart(unsigned int index) {
+Address CodeGenFunction::LookupMeshStart(unsigned int index) {
   auto itr = LocalDeclMap.find(ScoutABIMeshStartDecl[index]);
   
   if(itr != LocalDeclMap.end()) {
-    llvm::Value *V = itr->second.getPointer();
     sprintf(IRNameStr, "stencil.induct.%s.ptr", IndexNames[index]);
-    return Builder.CreateLoad(scoutPtr(V), IRNameStr);
+    return Address(Builder.CreateLoad(itr->second, IRNameStr), getPointerAlign());
   }
   return MeshStart[index];
 }
@@ -201,7 +200,7 @@ Address CodeGenFunction::LookupMeshDim(unsigned int index) {
   
   if(itr != LocalDeclMap.end()) {
     sprintf(IRNameStr, "stencil.%s.ptr", DimNames[index]);
-    return Address(Builder.CreateLoad(itr->second, IRNameStr),getPointerAlign());
+    return Address(Builder.CreateLoad(itr->second, IRNameStr), getPointerAlign());
   }
   return MeshDims[index];
 }

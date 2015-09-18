@@ -304,9 +304,10 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   start =  nfields + MeshParameterOffset::XStartOffset;
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), StartNames[i]);
-    MeshStart[i] =
+    MeshStart[i] = Address(
         Builder.CreateConstInBoundsGEP2_32(0,
-                                           MeshBaseAddr, 0, start + i, IRNameStr);
+                                           MeshBaseAddr, 0, start + i, IRNameStr),
+                                           getPointerAlign());
   }
 
   start =  nfields + MeshParameterOffset::XSizeOffset;
@@ -954,7 +955,7 @@ void CodeGenFunction::ResetMeshBounds(void) {
     LoopBounds.clear();
     for(unsigned int i = 0; i < 3; i++) {
        MeshDims.push_back(Address::invalid());
-       MeshStart.push_back(nullptr);
+       MeshStart.push_back(Address::invalid());
        MeshSize.push_back(nullptr);
        LoopBounds.push_back(nullptr);
     }

@@ -93,7 +93,7 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
     // for now...
 
     MeshDims.push_back(Address::invalid());
-    MeshStart.push_back(nullptr);
+    MeshStart.push_back(Address::invalid());
     MeshSize.push_back(nullptr);
     LoopBounds.push_back(nullptr);
   }
