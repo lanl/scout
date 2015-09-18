@@ -31,7 +31,6 @@ static char IRNameStr[160];
 static const char *IndexNames[] = { "x", "y", "z", "w"};
 static const char *DimNames[]   = { "width", "height", "depth" };
 
-
 void CodeGenFunction::EmitMeshFieldsUsedMD(MeshFieldMap HS,
     const char *str, llvm::BranchInst *BI) {
   SmallVector<llvm::Metadata*, 16> MDL;
