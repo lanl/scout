@@ -87,15 +87,15 @@ CodeGenFunction::CodeGenFunction(CodeGenModule &cgm, bool suppressNewContext)
   // +===== Scout =========================================+
   MeshTy = NULL;
   for(unsigned i = 0; i < 3; ++i) {
-    // We use MeshDims[0] == 0 as a test for being in a
+    // We use MeshDims[i].isValid() as a test for being in a
     // valid mesh/forall state where instrinsics are safe
     // to call -- may not be a rock solid plan but working
     // for now...
 
-    MeshDims.push_back(nullptr);
-    MeshStart.push_back(nullptr);
-    MeshSize.push_back(nullptr);
-    LoopBounds.push_back(nullptr);
+    MeshDims.push_back(Address::invalid());
+    MeshStart.push_back(Address::invalid());
+    MeshSize.push_back(Address::invalid());
+    LoopBounds.push_back(Address::invalid());
   }
   for(unsigned i = 0; i <= 3; ++i) {
     ScoutABIInductionVarDecl.push_back(nullptr);

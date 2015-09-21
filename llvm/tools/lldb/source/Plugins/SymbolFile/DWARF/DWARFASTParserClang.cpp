@@ -3333,7 +3333,7 @@ DWARFASTParserClang::ParseMeshChildMembers
     return 0;
   
   size_t count = 0;
-  uint32_t member_idx = 0;
+  //uint32_t member_idx = 0;
   BitfieldInfo last_field_info;
   
   ModuleSP module_sp = parent_die.GetDWARF()->GetObjectFile()->GetModule();
@@ -3465,7 +3465,7 @@ DWARFASTParserClang::ParseFrameChildMembers
     return 0;
   
   size_t count = 0;
-  uint32_t member_idx = 0;
+  //uint32_t member_idx = 0;
   BitfieldInfo last_field_info;
 
   ModuleSP module_sp = parent_die.GetDWARF()->GetObjectFile()->GetModule();

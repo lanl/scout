@@ -106,6 +106,10 @@ namespace clang {
         }
 
         if (MemberExpr* me = dyn_cast<MemberExpr>(fe)) {
+          if (kind == ShiftKind::EOShift && me->getType() != E->getArg(1)->getType()) {
+              S.Diag(me->getExprLoc(), diag::err_eoshift_type);
+              error = true;
+          }
           if (DeclRefExpr* dr = dyn_cast<DeclRefExpr>(me->getBase())) {
             ValueDecl* bd = dr->getDecl();
             const Type *T= bd->getType().getCanonicalType().getTypePtr();
@@ -127,17 +131,26 @@ namespace clang {
           S.Diag(fe->getExprLoc(), diag::err_shift_field) << kind;
           error = true;
         }
-        // only allow integers for shift values in legion mode
-        if(S.getLangOpts().ScoutLegionSupport) { 
-          for (unsigned i = kind+1; i < args; i++) {
-            Expr *arg = E->getArg(i);
+        // only allow integers or integer expr for shift values
+        for (unsigned i = kind+1; i < args; i++) {
+          Expr *arg = E->getArg(i);
+
+          const Type *T = arg->getType().getCanonicalType().getTypePtr();
+
+          if(!T->isIntegerType()) {
+            S.Diag(arg->getExprLoc(), diag::err_shift_nonint) << kind;
+            error = true;
+          }
+
+          // only allow integers in legion mode
+          if(S.getLangOpts().ScoutLegionSupport) {
             // remove unary operator if it exists
             if(UnaryOperator *UO = dyn_cast<UnaryOperator>(arg)) {
               arg = UO->getSubExpr();
             }
             if(!isa<IntegerLiteral>(arg)) {
               S.Diag(arg->getExprLoc(), diag::warn_shift_nonint) << kind;
-              error = true;
+
             }
           }
         }

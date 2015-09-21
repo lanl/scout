@@ -436,11 +436,11 @@ CodeGenFunction::getCShiftLinearIdx(const MeshFieldDecl *MFD, SmallVector< llvm:
   for(unsigned i = 0; i < args.size(); ++i) {
     sprintf(IRNameStr, "%s", DimNames[i]);
     if (MFD->isCellLocated()) {
-      dims.push_back(Builder.CreateSExt(Builder.CreateLoad(scoutPtr(LookupMeshDim(i)), IRNameStr), Int64Ty));
+      dims.push_back(Builder.CreateSExt(Builder.CreateLoad(LookupMeshDim(i), IRNameStr), Int64Ty));
     } else if (MFD->isVertexLocated()) {
       llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
       dims.push_back(Builder.CreateAdd(
-        Builder.CreateSExt(Builder.CreateLoad(scoutPtr(LookupMeshDim(i)), IRNameStr), Int64Ty), One));
+        Builder.CreateSExt(Builder.CreateLoad(LookupMeshDim(i), IRNameStr), Int64Ty), One));
     } else {
       assert(false && "Non Cell/Vertex in CShift");
     }
@@ -450,7 +450,7 @@ CodeGenFunction::getCShiftLinearIdx(const MeshFieldDecl *MFD, SmallVector< llvm:
   if(CGM.getCodeGenOpts().ScoutLegionSupport) {
     for(unsigned i = 0; i < args.size(); ++i) {
       sprintf(IRNameStr, "start.%s", DimNames[i]);
-      start.push_back(Builder.CreateLoad(scoutPtr(LookupMeshStart(i)), IRNameStr));
+      start.push_back(Builder.CreateLoad(LookupMeshStart(i), IRNameStr));
     }
   }
   
@@ -528,7 +528,7 @@ CodeGenFunction::getVFieldLinearIdx(SmallVector<llvm::Value*, 3> args){
   
   Value* y = B.CreateLoad(scoutPtr(LookupInductionVar(1)), "y");
   Value* yc = B.CreateAdd(y, args[1], "yc");
-  Value* width = B.CreateLoad(scoutPtr(LookupMeshDim(0)), "width");
+  Value* width = B.CreateLoad(LookupMeshDim(0), "width");
   Value* width1 = B.CreateAdd(One, width, "width1");
   Value* yv = B.CreateAdd(xv, B.CreateMul(width1, yc), "yv");
   
@@ -538,7 +538,7 @@ CodeGenFunction::getVFieldLinearIdx(SmallVector<llvm::Value*, 3> args){
 
   Value* z = B.CreateLoad(scoutPtr(LookupInductionVar(2)), "z");
   Value* zc = B.CreateAdd(z, args[2], "zc");
-  Value* height = B.CreateLoad(scoutPtr(LookupMeshDim(1)), "height");
+  Value* height = B.CreateLoad(LookupMeshDim(1), "height");
   Value* height1 = B.CreateAdd(One, height, "height1");
   Value* zv = B.CreateMul(B.CreateMul(width1, height1), zc, "zv");
   
@@ -671,11 +671,11 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
       for(unsigned i = 0; i < args.size(); ++i) {
         sprintf(IRNameStr, "%s", DimNames[i]);
         if (MFD->isCellLocated()) {
-          dims.push_back(Builder.CreateLoad(scoutPtr(LookupMeshDim(i)), IRNameStr));
+          dims.push_back(Builder.CreateLoad(LookupMeshDim(i), IRNameStr));
         } else if (MFD->isVertexLocated()) {
           llvm::Value* One = llvm::ConstantInt::get(Int64Ty, 1);
           dims.push_back(Builder.CreateAdd(
-            Builder.CreateLoad(scoutPtr(LookupMeshDim(i)), IRNameStr), One));
+            Builder.CreateLoad(LookupMeshDim(i), IRNameStr), One));
         } else {
           assert(false && "Non Cell/Vertex in EOShift");
         }
@@ -869,14 +869,14 @@ RValue CodeGenFunction::EmitTailExpr(void) {
   llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
   llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
 
-  llvm::Value *Rank = Builder.CreateLoad(scoutPtr(MeshRank));
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
   Rank = Builder.CreateTrunc(Rank, Int32Ty);
   llvm::Value *Index = Builder.CreateLoad(scoutPtr(EdgeIndex), "forall.edgeIndex");
   Index = Builder.CreateTrunc(Index, Int32Ty);
-  llvm::Value *Dx = Builder.CreateLoad(scoutPtr(MeshDims[0]));
+  llvm::Value *Dx = Builder.CreateLoad(MeshDims[0]);
   Dx = Builder.CreateTrunc(Dx, Int32Ty);
   llvm::Value *Dx1 = Builder.CreateAdd(Dx,One);
-  llvm::Value *Dy = Builder.CreateLoad(scoutPtr(MeshDims[1]));
+  llvm::Value *Dy = Builder.CreateLoad(MeshDims[1]);
   Dy = Builder.CreateTrunc(Dy, Int32Ty);
   llvm::Value *Dy1 = Builder.CreateAdd(Dy,One);
 
@@ -978,14 +978,14 @@ RValue CodeGenFunction::EmitHeadExpr(void) {
   llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
   llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
 
-  llvm::Value *Rank = Builder.CreateLoad(scoutPtr(MeshRank));
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
   Rank = Builder.CreateTrunc(Rank, Int32Ty);
   llvm::Value *Index = Builder.CreateLoad(scoutPtr(EdgeIndex), "forall.edgeIndex");
   Index = Builder.CreateTrunc(Index, Int32Ty);
-  llvm::Value *Dx = Builder.CreateLoad(scoutPtr(MeshDims[0]));
+  llvm::Value *Dx = Builder.CreateLoad(MeshDims[0]);
   Dx = Builder.CreateTrunc(Dx, Int32Ty);
   llvm::Value *Dx1 = Builder.CreateAdd(Dx,One);
-  llvm::Value *Dy = Builder.CreateLoad(scoutPtr(MeshDims[1]));
+  llvm::Value *Dy = Builder.CreateLoad(MeshDims[1]);
   Dy = Builder.CreateTrunc(Dy, Int32Ty);
   llvm::Value *Dy1 = Builder.CreateAdd(Dy,One);
 
@@ -1393,7 +1393,7 @@ RValue CodeGenFunction::EmitMPosition(const CallExpr *E , unsigned int index) {
   sprintf(IRNameStr, "mposition.index.%s", IndexNames[index]);
   llvm::Value *indexVal = Builder.CreateAdd(
       Builder.CreateLoad(scoutPtr(LookupInductionVar(index))),
-      Builder.CreateLoad(scoutPtr(LookupMeshStart(index))),
+      Builder.CreateLoad(LookupMeshStart(index)),
       IRNameStr);
 
 
@@ -1491,7 +1491,7 @@ RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
     sprintf(IRNameStr, "mposition.index.%s", IndexNames[i]);
     indexVal = Builder.CreateAdd(
       Builder.CreateLoad(scoutPtr(LookupInductionVar(i))),
-      Builder.CreateLoad(scoutPtr(LookupMeshStart(i))),
+      Builder.CreateLoad(LookupMeshStart(i)),
       IRNameStr);
     llvm::Value *BaseAddr;
     GetMeshBaseAddr(CurrentMeshVarDecl, BaseAddr);
@@ -1540,7 +1540,7 @@ llvm::Value *CodeGenFunction::FindGIndex(unsigned int dim) {
 
    // for partitioned legion case need to add start to induction var
    if (ForallStack.size() == 1 && dim < 3) {
-      idx = Builder.CreateAdd(Builder.CreateLoad(scoutPtr(LookupMeshStart(dim))), idx);
+      idx = Builder.CreateAdd(Builder.CreateLoad(LookupMeshStart(dim)), idx);
    }
 
    // get current iv

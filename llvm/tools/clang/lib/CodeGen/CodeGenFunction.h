@@ -362,16 +362,16 @@ public:
   typedef CallExpr::const_arg_iterator ArgIterator;
 
   // mesh dimension sizes
-  llvm::SmallVector< llvm::Value *, 3 > MeshDims;
+  llvm::SmallVector< Address, 3 > MeshDims;
   // for threaded case
-  llvm::SmallVector< llvm::Value *, 3 > MeshStart;
-  llvm::SmallVector< llvm::Value *, 3 > MeshSize;
+  llvm::SmallVector< Address, 3 > MeshStart;
+  llvm::SmallVector< Address, 3 > MeshSize;
   // loopbounds for forall cells/vertices
-  llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
+  llvm::SmallVector< Address, 3 > LoopBounds;
   const MeshType* MeshTy;
   const VarDecl* CurrentMeshVarDecl;
   
-  llvm::Value *MeshRank = 0;
+  Address MeshRank = Address::invalid();
 
   llvm::Value* GPUThreadId;
   llvm::Value* GPUThreadInc;
@@ -390,8 +390,8 @@ public:
   llvm::Value *LookupInductionVar(unsigned int index);
   llvm::Value *LinearIdx2InductionVar(llvm::Value *linearidx,
       MeshElementType elementType, unsigned int dindex, unsigned int ndims);
-  llvm::Value *LookupMeshDim(unsigned int index);
-  llvm::Value *LookupMeshStart(unsigned int index);
+  Address LookupMeshDim(unsigned int index);
+  Address LookupMeshStart(unsigned int index);
 
   inline llvm::Value *getLinearIdx() {
     return Builder.CreateLoad(scoutPtr(LookupInductionVar(3)), "Xall.linearidx");

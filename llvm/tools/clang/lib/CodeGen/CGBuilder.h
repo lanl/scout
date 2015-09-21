@@ -195,6 +195,16 @@ public:
                    Addr.getAlignment().alignmentAtOffset(Offset));
   }
 
+
+  // +===== Scout ==========================================================+
+  Address CreateMeshGEP(Address Addr, unsigned Idx0,
+                        unsigned Idx1, const llvm::Twine &Name = "") {
+    return Address(
+       CreateConstInBoundsGEP2_32(0, Addr.getPointer(), Idx0, Idx1, Name),
+       Addr.getAlignment());
+  }
+  // +======================================================================+
+
   /// Given
   ///   %addr = [n x T]* ...
   /// produce
