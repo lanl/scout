@@ -413,6 +413,7 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
     // clang-cl targets MSVC-style Win32.
     llvm::Triple T(DefaultTargetTriple);
     T.setOS(llvm::Triple::Win32);
+    T.setVendor(llvm::Triple::PC);
     T.setEnvironment(llvm::Triple::MSVC);
     DefaultTargetTriple = T.str();
   }
@@ -950,8 +951,8 @@ static bool ContainsCompileOrAssembleAction(const Action *A) {
       isa<AssembleJobAction>(A))
     return true;
 
-  for (Action::const_iterator it = A->begin(), ie = A->end(); it != ie; ++it)
-    if (ContainsCompileOrAssembleAction(*it))
+  for (const Action *Input : *A)
+    if (ContainsCompileOrAssembleAction(Input))
       return true;
 
   return false;
@@ -992,9 +993,7 @@ void Driver::BuildUniversalActions(const ToolChain &TC, DerivedArgList &Args,
 
   // Add in arch bindings for every top level action, as well as lipo and
   // dsymutil steps if needed.
-  for (unsigned i = 0, e = SingleActions.size(); i != e; ++i) {
-    Action *Act = SingleActions[i];
-
+  for (Action* Act : SingleActions) {
     // Make sure we can lipo this kind of output. If not (and it is an actual
     // output) then we disallow, since we can't create an output file with the
     // right name without overwriting it. We could remove this oddity by just
