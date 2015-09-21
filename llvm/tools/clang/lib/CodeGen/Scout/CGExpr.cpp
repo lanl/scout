@@ -149,7 +149,7 @@ LValue CodeGenFunction::EmitFrameVarDeclRefLValue(const VarDecl* VD){
   return MakeAddrLValue(addr, VD->getType(), Alignment);
 }
 
-llvm::Value* CodeGenFunction::GetForallIndex(const MemberExpr* E){  
+Address CodeGenFunction::GetForallIndex(const MemberExpr* E){
   DeclRefExpr* base;
   if(ImplicitCastExpr* ce = dyn_cast<ImplicitCastExpr>(E->getBase())){
     base = cast<DeclRefExpr>(ce->getSubExpr());
@@ -403,21 +403,21 @@ llvm::Value *CodeGenFunction::getMeshIndex(const MeshFieldDecl* MFD) {
     int i = FindForallData(Vertices);
     assert(i >= 0 && "null vertex index while referencing vertex field");
     // use the vertex index if we are within a forall vertices
-    Index = Builder.CreateLoad(scoutPtr(ForallStack[i]->indexPtr));
+    Index = Builder.CreateLoad(ForallStack[i]->indexPtr);
   } else if(MFD->isEdgeLocated()) {
     int i = FindForallData(Edges);
     assert(i >= 0 && "null edge index while referencing edge field");
     // use the vertex index if we are within a forall vertices
-    Index = Builder.CreateLoad(scoutPtr(ForallStack[i]->indexPtr));
+    Index = Builder.CreateLoad(ForallStack[i]->indexPtr);
   } else if(MFD->isFaceLocated()) {
     int i = FindForallData(Faces);
     assert(i >= 0 && "null face index while referencing face field");
     // use the vertex index if we are within a forall vertices
-    Index = Builder.CreateLoad(scoutPtr(ForallStack[i]->indexPtr));
+    Index = Builder.CreateLoad(ForallStack[i]->indexPtr);
   } else if(MFD->isCellLocated()) {
     int i = FindForallData(Cells);
     assert(i >= 0 && "null cell index while referencing vertex field");
-    Index = Builder.CreateLoad(scoutPtr(ForallStack[i]->indexPtr));
+    Index = Builder.CreateLoad(ForallStack[i]->indexPtr);
   } else {
     Index = getLinearIdx();
   }
@@ -460,7 +460,7 @@ CodeGenFunction::getCShiftLinearIdx(const MeshFieldDecl *MFD, SmallVector< llvm:
     
     sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
 
-    llvm::Value *iv   = Builder.CreateLoad(scoutPtr(LookupInductionVar(i)), IRNameStr);
+    llvm::Value *iv   = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
     
     // take index and add offset from cshift
     sprintf(IRNameStr, "cshift.rawindex.%s", IndexNames[i]);
@@ -519,14 +519,14 @@ CodeGenFunction::getVFieldLinearIdx(SmallVector<llvm::Value*, 3> args){
   
   Value* One = llvm::ConstantInt::get(Int32Ty, 1);
   
-  Value* x = B.CreateLoad(scoutPtr(LookupInductionVar(0)), "x");
+  Value* x = B.CreateLoad(LookupInductionVar(0), "x");
   Value* xv = B.CreateAdd(x, args[0], "xv");
   
   if(args.size() == 1){
     return xv;
   }
   
-  Value* y = B.CreateLoad(scoutPtr(LookupInductionVar(1)), "y");
+  Value* y = B.CreateLoad(LookupInductionVar(1), "y");
   Value* yc = B.CreateAdd(y, args[1], "yc");
   Value* width = B.CreateLoad(LookupMeshDim(0), "width");
   Value* width1 = B.CreateAdd(One, width, "width1");
@@ -536,7 +536,7 @@ CodeGenFunction::getVFieldLinearIdx(SmallVector<llvm::Value*, 3> args){
     return yv;
   }
 
-  Value* z = B.CreateLoad(scoutPtr(LookupInductionVar(2)), "z");
+  Value* z = B.CreateLoad(LookupInductionVar(2), "z");
   Value* zc = B.CreateAdd(z, args[2], "zc");
   Value* height = B.CreateLoad(LookupMeshDim(1), "height");
   Value* height1 = B.CreateAdd(One, height, "height1");
@@ -685,7 +685,7 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        SmallVector< llvm::Value *, 3 > rawindices, indices;
        for(unsigned i = 0; i < args.size(); ++i) {
 	       sprintf(IRNameStr, "forall.induct.%s", IndexNames[i]);
-	       llvm::Value *iv = Builder.CreateLoad(scoutPtr(LookupInductionVar(i)), IRNameStr);
+	       llvm::Value *iv = Builder.CreateLoad(LookupInductionVar(i), IRNameStr);
 
          llvm::Value* ai = Builder.CreateSExt(args[i], Int64Ty);
          
@@ -862,7 +862,7 @@ RValue CodeGenFunction::EmitTailExpr(void) {
   int i = FindForallData(Edges);
   assert(i >= 0 && "failed to find edge index");
   
-  llvm::Value* EdgeIndex = ForallStack[i]->indexPtr;
+  llvm::Value* EdgeIndex = ForallStack[i]->indexPtr.getPointer();
   
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
@@ -971,7 +971,7 @@ RValue CodeGenFunction::EmitHeadExpr(void) {
   int i = FindForallData(Edges);
   assert(i >= 0 && "failed to find edge index");
   
-  llvm::Value* EdgeIndex = ForallStack[i]->indexPtr;
+  llvm::Value* EdgeIndex = ForallStack[i]->indexPtr.getPointer();
 
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
@@ -1299,9 +1299,9 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   BasicBlock* entry = BasicBlock::Create(C, "entry", queryFunc);
   B.SetInsertPoint(entry);
   
-  Value* inductPtr = B.CreateAlloca(Int64Ty, 0, "induct.ptr");
+  Address inductPtr = Address(B.CreateAlloca(Int64Ty, 0, "induct.ptr"), getPointerAlign());
 
-  B.CreateStore(start, scoutPtr(inductPtr));
+  B.CreateStore(start, inductPtr);
   
   BasicBlock* loopBlock = BasicBlock::Create(C, "query.loop", queryFunc);
   B.CreateBr(loopBlock);
@@ -1333,13 +1333,13 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   
   ForallStack.pop_back();
   
-  Value* induct = B.CreateLoad(scoutPtr(inductPtr), "induct");
+  Value* induct = B.CreateLoad(inductPtr, "induct");
 
   Value* outPosPtr = B.CreateGEP(outPtr, induct, "outPos.ptr");
   B.CreateStore(result, scoutPtr(outPosPtr));
 
   Value* nextInduct = B.CreateAdd(induct, One, "nextInduct");
-  B.CreateStore(nextInduct, scoutPtr(inductPtr));
+  B.CreateStore(nextInduct, inductPtr);
 
   BasicBlock* condBlock = BasicBlock::Create(C, "query.cond", queryFunc);
   
@@ -1392,7 +1392,7 @@ RValue CodeGenFunction::EmitMPosition(const CallExpr *E , unsigned int index) {
   // otherwise, we compute the index of the mpositionx
   sprintf(IRNameStr, "mposition.index.%s", IndexNames[index]);
   llvm::Value *indexVal = Builder.CreateAdd(
-      Builder.CreateLoad(scoutPtr(LookupInductionVar(index))),
+      Builder.CreateLoad(LookupInductionVar(index)),
       Builder.CreateLoad(LookupMeshStart(index)),
       IRNameStr);
 
@@ -1490,7 +1490,7 @@ RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
     llvm::Value *indexVal;
     sprintf(IRNameStr, "mposition.index.%s", IndexNames[i]);
     indexVal = Builder.CreateAdd(
-      Builder.CreateLoad(scoutPtr(LookupInductionVar(i))),
+      Builder.CreateLoad(LookupInductionVar(i)),
       Builder.CreateLoad(LookupMeshStart(i)),
       IRNameStr);
     llvm::Value *BaseAddr;
@@ -1536,7 +1536,7 @@ llvm::Value *CodeGenFunction::FindGIndex(unsigned int dim) {
    const MeshType* mt = data->getMeshType();
    auto& dims = mt->dimensions();
 
-   llvm::Value* idx = Builder.CreateLoad(scoutPtr(data->indexPtr));
+   llvm::Value* idx = Builder.CreateLoad(data->indexPtr);
 
    // for partitioned legion case need to add start to induction var
    if (ForallStack.size() == 1 && dim < 3) {
@@ -1558,7 +1558,7 @@ llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
   llvm::Value* idx;
 
   if (dim == 3) {
-    idx = Builder.CreateLoad(scoutPtr(ForallStack.back()->indexPtr));
+    idx = Builder.CreateLoad(ForallStack.back()->indexPtr);
     return Builder.CreateTrunc(idx, Int32Ty, "lindex.w");
   }
 
@@ -1571,7 +1571,7 @@ llvm::Value *CodeGenFunction::EmitLIndex(unsigned int dim) {
     auto& dims = mt->dimensions();
     // get top iv
     llvm::Value *topiv = LinearIdx2InductionVar(
-        Builder.CreateLoad(scoutPtr(ForallStack[0]->indexPtr)), ForallStack[0]->elementType,
+        Builder.CreateLoad(ForallStack[0]->indexPtr), ForallStack[0]->elementType,
         dim, dims.size());
     // SC_TODO: only works for cells/vert and vert/cells
     idx = Builder.CreateSub(idx, topiv);

@@ -493,7 +493,7 @@ void CodeGenFunction::AddScoutKernel(llvm::Function* f,
   kernels->addOperand(llvm::MDNode::get(CGM.getLLVMContext(), kernelData));
 }
 
-void CodeGenFunction::EmitGPUForall(const ForallMeshStmt& S, llvm::Value *&Index) {
+void CodeGenFunction::EmitGPUForall(const ForallMeshStmt& S, Address &Index) {
   llvm::BasicBlock *entry = EmitMarkerBlock("forall.entry");
 
   EmitGPUPreamble(S);
@@ -512,9 +512,9 @@ void CodeGenFunction::EmitGPUForall(const ForallMeshStmt& S, llvm::Value *&Index
 
   EmitBlock(bodyBlock);
 
-  Index = threadId;
+  Index = Address(threadId, getPointerAlign());
   EmitStmt(S.getBody());
-  Index = 0;
+  Index = Address::invalid();
 
   threadId = Builder.CreateAdd(threadId, GPUThreadInc);
   Builder.CreateStore(threadId, scoutPtr(GPUThreadId));
@@ -624,10 +624,10 @@ void CodeGenFunction::InitForallData(ForallInfo* info,
   data->meshVarDecl = mvd;
   data->topology = topologyPtr;
   data->elementType = S.getMeshElementRef();
-  data->indexPtr = B.CreateAlloca(Int64Ty, nullptr, "index.ptr");
+  data->indexPtr = Address(B.CreateAlloca(Int64Ty, nullptr, "index.ptr"), getPointerAlign());
   
   for(size_t j = 0; j < 3; ++j){
-    data->inductionVar[j] = Builder.CreateAlloca(Int64Ty, nullptr, IRNameStr);
+    data->inductionVar[j] = Address(Builder.CreateAlloca(Int64Ty, nullptr, IRNameStr), getPointerAlign());
   }
   
   Value* topologyDim = GetMeshTopologyDim(rank, data->elementType);
@@ -679,9 +679,9 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     SetMeshBounds(S);
     ForallData* data = new ForallData;
     data->elementType = S.getMeshElementRef();
-    data->indexPtr = Builder.CreateAlloca(Int64Ty);
+    data->indexPtr = Address(Builder.CreateAlloca(Int64Ty), getPointerAlign());
     ForallStack.push_back(data);
-    EmitGPUForall(S, data->indexPtr);
+    EmitGPUForall(S,data->indexPtr);
     ForallStack.pop_back();
     return;
   }
@@ -763,7 +763,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   if(data->fromIndicesPtr){
     ForallData* aboveData = ForallStack[stackSize - 2];
     
-    Value* fromIndex = B.CreateLoad(scoutPtr(aboveData->indexPtr), "from.index");
+    Value* fromIndex = B.CreateLoad(aboveData->indexPtr, "from.index");
     Value* toPos = B.CreateGEP(data->fromIndicesPtr, fromIndex);
     toPos = B.CreateLoad(scoutPtr(toPos), "to.pos");
     Value* ptr = B.CreateGEP(data->startToIndicesPtr, toPos, "to.indices");
@@ -783,7 +783,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
       queryMask = EmitForallQueryCall(S, endIndex);
     }
     
-    B.CreateStore(ConstantInt::get(Int64Ty, 0), scoutPtr(data->indexPtr));
+    B.CreateStore(ConstantInt::get(Int64Ty, 0), data->indexPtr);
   }
   
   BasicBlock* loopBlock = createBasicBlock("forall.loop");
@@ -794,7 +794,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     condBlock = createBasicBlock("query.cond");
     EmitBlock(condBlock);
     
-    Value* index = B.CreateLoad(scoutPtr(data->indexPtr), "index");
+    Value* index = B.CreateLoad(data->indexPtr, "index");
     
     Value* mask = B.CreateGEP(queryMask, index);
     mask = Builder.CreateLoad(scoutPtr(mask));
@@ -803,7 +803,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     B.CreateCondBr(cond, loopBlock, skipBlock);
     EmitBlock(skipBlock);
     index = B.CreateAdd(index, llvm::ConstantInt::get(Int64Ty, 1));
-    B.CreateStore(index, scoutPtr(data->indexPtr));
+    B.CreateStore(index, data->indexPtr);
     B.CreateBr(condBlock);
   }
   else{
@@ -817,9 +817,9 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   if(top){
     EmitStmt(S.getBody());
     
-    Value* index = B.CreateLoad(scoutPtr(data->indexPtr), "index");
+    Value* index = B.CreateLoad(data->indexPtr, "index");
     Value* incIndex = B.CreateAdd(index, ConstantInt::get(Int64Ty, 1), "index.inc");
-    B.CreateStore(incIndex, scoutPtr(data->indexPtr));
+    B.CreateStore(incIndex, data->indexPtr);
     cond = B.CreateICmpSLT(incIndex, endIndex, "cond");
   }
   else{
@@ -828,7 +828,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     Value* rawIndex = B.CreateLoad(scoutPtr(toIndicesPtr), "raw.index");
     Value* index = Builder.CreateAnd(rawIndex, ~(1UL << 63), "index");
     
-    B.CreateStore(index, scoutPtr(data->indexPtr));
+    B.CreateStore(index, data->indexPtr);
     
     EmitStmt(S.getBody());
     
@@ -1181,10 +1181,10 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   data->meshVarDecl = mvd;
   data->topology = topologyPtr;
   data->elementType = et;
-  data->indexPtr = B.CreateAlloca(Int64Ty, nullptr, "index.ptr");
+  data->indexPtr = Address(B.CreateAlloca(Int64Ty, nullptr, "index.ptr"), getPointerAlign());
   
   for(size_t j = 0; j < 3; ++j){
-    data->inductionVar[j] = B.CreateAlloca(Int64Ty, nullptr, IRNameStr);
+    data->inductionVar[j] = Address(B.CreateAlloca(Int64Ty, nullptr, IRNameStr), getPointerAlign());
   }
   
   data->fromIndicesPtr = nullptr;
@@ -1249,7 +1249,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   B.CreateBr(data->entryBlock);
   EmitBlock(data->entryBlock);
   
-  B.CreateStore(ConstantInt::get(Int64Ty, 0), scoutPtr(data->indexPtr));
+  B.CreateStore(ConstantInt::get(Int64Ty, 0), data->indexPtr);
   
   BasicBlock* loopBlock = createBasicBlock("forall.loop");
   B.CreateBr(loopBlock);
@@ -1257,9 +1257,9 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   
   EmitStmt(S.getBody());
   
-  Value* index = B.CreateLoad(scoutPtr(data->indexPtr), "index");
+  Value* index = B.CreateLoad(data->indexPtr, "index");
   Value* incIndex = B.CreateAdd(index, ConstantInt::get(Int64Ty, 1), "index.inc");
-  B.CreateStore(incIndex, scoutPtr(data->indexPtr));
+  B.CreateStore(incIndex, data->indexPtr);
   Value* cond = B.CreateICmpSLT(incIndex, endIndex, "cond");
   
   BasicBlock* exitBlock = createBasicBlock("forall.exit");
