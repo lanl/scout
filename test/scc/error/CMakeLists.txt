@@ -366,3 +366,9 @@ add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
 set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
     "error: member access on mesh rather than implicit mesh")
 set_property(TEST ${tname} PROPERTY WILL_FAIL)
+
+set(name non-int-shift)
+set(tname scc_error_${name})
+add_test(${tname} ${CMAKE_SCC_COMPILER} ${SRC_PATH}/${name}.sc)
+set_property(TEST ${tname} PROPERTY PASS_REGULAR_EXPRESSION 
+    "error: Non integer shift in")
