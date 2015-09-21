@@ -43,9 +43,6 @@ namespace bitc {
     TYPE_BLOCK_ID_NEW,
 
     USELIST_BLOCK_ID,
-
-    MODULE_STRTAB_BLOCK_ID,
-    FUNCTION_SUMMARY_BLOCK_ID
   };
 
 
@@ -69,7 +66,7 @@ namespace bitc {
     MODULE_CODE_FUNCTION    = 8,
 
     // ALIAS: [alias type, aliasee val#, linkage, visibility]
-    MODULE_CODE_ALIAS       = 9,
+    MODULE_CODE_ALIAS_OLD   = 9,
 
     // MODULE_CODE_PURGEVALS: [numvals]
     MODULE_CODE_PURGEVALS   = 10,
@@ -78,6 +75,9 @@ namespace bitc {
     MODULE_CODE_COMDAT      = 12,  // COMDAT: [selection_kind, name]
 
     MODULE_CODE_VSTOFFSET   = 13,  // VSTOFFSET: [offset]
+
+    // ALIAS: [alias value type, addrspace, aliasee val#, linkage, visibility]
+    MODULE_CODE_ALIAS       = 14,
   };
 
   /// PARAMATTR blocks have code for defining a parameter attribute set.
