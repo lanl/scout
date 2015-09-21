@@ -283,9 +283,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   
   // extract rank from mesh stored after width/height/depth
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
-  MeshRank =
-  Builder.CreateConstInBoundsGEP2_32(0,
-                                     MeshBaseAddr, 0,
+  MeshRank = Builder.CreateMeshGEP(Address(MeshBaseAddr, getPointerAlign()), 0,
                                      nfields + MeshParameterOffset::RankOffset,
                                      IRNameStr);
   
@@ -312,9 +310,8 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   start =  nfields + MeshParameterOffset::XSizeOffset;
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), SizeNames[i]);
-    MeshSize[i] =
-        Builder.CreateConstInBoundsGEP2_32(0,
-                                           MeshBaseAddr, 0, start + i, IRNameStr);
+    MeshSize[i] = Builder.CreateMeshGEP(Address(MeshBaseAddr, getPointerAlign()),
+                                        0, start + i, IRNameStr);
   }
 
   for(unsigned int i = 0; i < 3; i++) {
@@ -322,23 +319,23 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
      if(isForall == true) { // forall
        if  (meshType == Cells) {
          // if LoopBound == 0 then set it to 1 (for cells)
-         LoopBounds[i] = CreateTempAlloca(Int64Ty, "loopbound.ptr");
-         llvm::Value *dim = Builder.CreateLoad(scoutPtr(MeshSize[i]));
+         LoopBounds[i] = CreateTempAlloca(Int64Ty, getPointerAlign(),"loopbound.ptr");
+         llvm::Value *dim = Builder.CreateLoad(MeshSize[i]);
          llvm::Value *Check = Builder.CreateICmpEQ(dim, ConstantZero);
          llvm::Value *x = Builder.CreateSelect(Check, ConstantOne, dim);
-         Builder.CreateStore(x, scoutPtr(LoopBounds[i]));
+         Builder.CreateStore(x, LoopBounds[i]);
        } else if  (meshType == Vertices) {
-         LoopBounds[i] = CreateTempAlloca(Int64Ty, "loopbounds.ptr");
-         llvm::Value *incr = Builder.CreateAdd(Builder.CreateLoad(scoutPtr(MeshSize[i])), ConstantOne);
-         Builder.CreateStore(incr, scoutPtr(LoopBounds[i]));
+         LoopBounds[i] = CreateTempAlloca(Int64Ty, getPointerAlign(), "loopbounds.ptr");
+         llvm::Value *incr = Builder.CreateAdd(Builder.CreateLoad(MeshSize[i]), ConstantOne);
+         Builder.CreateStore(incr, LoopBounds[i]);
        }
      } else { //renderall
        // for renderall want full mesh w/ cell based bounds
-       LoopBounds[i] = CreateTempAlloca(Int64Ty, "loopbound.ptr");
+       LoopBounds[i] = CreateTempAlloca(Int64Ty, getPointerAlign(), "loopbound.ptr");
        llvm::Value *dim = Builder.CreateLoad(MeshDims[i]);
        llvm::Value *Check = Builder.CreateICmpEQ(dim, ConstantZero);
        llvm::Value *x = Builder.CreateSelect(Check, ConstantOne, dim);
-       Builder.CreateStore(x, scoutPtr(LoopBounds[i]));
+       Builder.CreateStore(x, LoopBounds[i]);
      }
    }
 }
@@ -346,7 +343,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
 // generate code to return d1 if rank = 1, d2 if rank = 2, d3 if rank = 3;
 llvm::Value *CodeGenFunction::GetNumLocalMeshItems(llvm::Value *d1, llvm::Value *d2, llvm::Value *d3) {
 
-  llvm::Value *Rank = Builder.CreateLoad(scoutPtr(MeshRank));
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
   llvm::Value *check3 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 3));
   llvm::Value *check2 = Builder.CreateICmpEQ(Rank, llvm::ConstantInt::get(Int32Ty, 2));
   return Builder.CreateSelect(check3, d3, Builder.CreateSelect(check2, d2, d1));
@@ -420,7 +417,7 @@ void CodeGenFunction::GetNumMeshItems(llvm::Value** numCells, llvm::Value** numV
     llvm::BasicBlock *Else = createBasicBlock("numfaces.else");
     llvm::BasicBlock *Merge = createBasicBlock("numfaces.merge");
 
-    llvm::Value *Check = Builder.CreateICmpEQ(Builder.CreateLoad(scoutPtr(MeshRank)), Three);
+    llvm::Value *Check = Builder.CreateICmpEQ(Builder.CreateLoad(MeshRank), Three);
     Builder.CreateCondBr(Check, Then, Else);
 
     //then block (rank == 3 case)
@@ -544,9 +541,9 @@ void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
 
   MeshElementType FET = S.getMeshElementRef();
 
-  Builder.CreateLoad(scoutPtr(LoopBounds[0]), "TheMesh.width");
-  Builder.CreateLoad(scoutPtr(LoopBounds[1]), "TheMesh.height");
-  Builder.CreateLoad(scoutPtr(LoopBounds[2]), "TheMesh.depth");
+  Builder.CreateLoad(LoopBounds[0], "TheMesh.width");
+  Builder.CreateLoad(LoopBounds[1], "TheMesh.height");
+  Builder.CreateLoad(LoopBounds[2], "TheMesh.depth");
 
   llvm::Value* numItems;
   
@@ -955,11 +952,11 @@ void CodeGenFunction::ResetMeshBounds(void) {
     for(unsigned int i = 0; i < 3; i++) {
        MeshDims.push_back(Address::invalid());
        MeshStart.push_back(Address::invalid());
-       MeshSize.push_back(nullptr);
-       LoopBounds.push_back(nullptr);
+       MeshSize.push_back(Address::invalid());
+       LoopBounds.push_back(Address::invalid());
     }
     // create linear loop index as 4th element
-    MeshRank = nullptr;
+    MeshRank = Address::invalid();
 }
 
 
@@ -1198,7 +1195,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   
   for(size_t i = 0; i < 3; i++){
     sprintf(IRNameStr, "%s", DimNames[i]);
-    args.push_back(B.CreateTrunc(B.CreateLoad(scoutPtr(LoopBounds[i]),
+    args.push_back(B.CreateTrunc(B.CreateLoad(LoopBounds[i],
                                               IRNameStr), Int32Ty));
   }
   

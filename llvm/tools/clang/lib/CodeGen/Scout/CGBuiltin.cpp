@@ -239,8 +239,8 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
   case Builtin::BIrank: {
     // number of args is already known to be 0 or 1 as it was checked in sema
     if(E->getNumArgs() == 0) { //inside forall/renderall
-      if (MeshRank)
-        *RV = RValue::get(Builder.CreateTrunc(Builder.CreateLoad(scoutPtr(MeshRank)), Int32Ty, "rank"));
+      if (MeshRank.isValid())
+        *RV = RValue::get(Builder.CreateTrunc(Builder.CreateLoad(MeshRank), Int32Ty, "rank"));
       else {
         CGM.getDiags().Report(E->getExprLoc(), diag::warn_mesh_intrinsic_outside_scope);
         *RV = RValue::get(llvm::ConstantInt::get(Int32Ty, 0));

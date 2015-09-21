@@ -869,7 +869,7 @@ RValue CodeGenFunction::EmitTailExpr(void) {
   llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
   llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
 
-  llvm::Value *Rank = Builder.CreateLoad(scoutPtr(MeshRank));
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
   Rank = Builder.CreateTrunc(Rank, Int32Ty);
   llvm::Value *Index = Builder.CreateLoad(scoutPtr(EdgeIndex), "forall.edgeIndex");
   Index = Builder.CreateTrunc(Index, Int32Ty);
@@ -978,7 +978,7 @@ RValue CodeGenFunction::EmitHeadExpr(void) {
   llvm::Value* Two = llvm::ConstantInt::get(Int32Ty, 2);
   llvm::Value* Three = llvm::ConstantInt::get(Int32Ty, 3);
 
-  llvm::Value *Rank = Builder.CreateLoad(scoutPtr(MeshRank));
+  llvm::Value *Rank = Builder.CreateLoad(MeshRank);
   Rank = Builder.CreateTrunc(Rank, Int32Ty);
   llvm::Value *Index = Builder.CreateLoad(scoutPtr(EdgeIndex), "forall.edgeIndex");
   Index = Builder.CreateTrunc(Index, Int32Ty);

@@ -365,13 +365,13 @@ public:
   llvm::SmallVector< Address, 3 > MeshDims;
   // for threaded case
   llvm::SmallVector< Address, 3 > MeshStart;
-  llvm::SmallVector< llvm::Value *, 3 > MeshSize;
+  llvm::SmallVector< Address, 3 > MeshSize;
   // loopbounds for forall cells/vertices
-  llvm::SmallVector< llvm::Value *, 3 > LoopBounds;
+  llvm::SmallVector< Address, 3 > LoopBounds;
   const MeshType* MeshTy;
   const VarDecl* CurrentMeshVarDecl;
   
-  llvm::Value *MeshRank = 0;
+  Address MeshRank = Address::invalid();
 
   llvm::Value* GPUThreadId;
   llvm::Value* GPUThreadInc;
