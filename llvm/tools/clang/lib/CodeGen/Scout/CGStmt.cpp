@@ -634,8 +634,8 @@ void CodeGenFunction::InitForallData(ForallInfo* info,
   
   if(stack.empty()){
     data->startToIndicesPtr = nullptr;
-    data->fromIndicesPtr = nullptr;
-    data->toIndicesPtr = nullptr;
+    data->fromIndicesPtr = Address::invalid();
+    data->toIndicesPtr = Address::invalid();
   }
   else{
     const ForallData* aboveData = stack.back();
@@ -646,21 +646,23 @@ void CodeGenFunction::InitForallData(ForallInfo* info,
     {topologyPtr, aboveTopologyDim, topologyDim};
     
     if(stack.size() > 0){
-      data->fromIndicesPtr =
-      B.CreateCall(R.MeshGetFromIndicesFunc(), args, "from.indices.ptr");
+      data->fromIndicesPtr = Address(
+      B.CreateCall(R.MeshGetFromIndicesFunc(), args, "from.indices.ptr"),
+      getPointerAlign());
     }
     else{
-      data->fromIndicesPtr = nullptr;
+      data->fromIndicesPtr = Address::invalid();
     }
     
     data->startToIndicesPtr =
     B.CreateCall(R.MeshGetToIndicesFunc(), args, "to.indices.ptr");
     
-    data->toIndicesPtr =
+    data->toIndicesPtr = Address(
     B.CreateAlloca(data->startToIndicesPtr->getType(),
-                   nullptr, "to.indices.ptr.ptr");
+                   nullptr, "to.indices.ptr.ptr"),
+                   getPointerAlign());
     
-    B.CreateStore(data->startToIndicesPtr, scoutPtr(data->toIndicesPtr));
+    B.CreateStore(data->startToIndicesPtr, data->toIndicesPtr);
   }
   
   stack.push_back(data);
@@ -760,14 +762,14 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   B.CreateBr(data->entryBlock);
   EmitBlock(data->entryBlock);
   
-  if(data->fromIndicesPtr){
+  if(data->fromIndicesPtr.isValid()){
     ForallData* aboveData = ForallStack[stackSize - 2];
     
     Value* fromIndex = B.CreateLoad(aboveData->indexPtr, "from.index");
-    Value* toPos = B.CreateGEP(data->fromIndicesPtr, fromIndex);
+    Value* toPos = B.CreateGEP(data->fromIndicesPtr.getPointer(), fromIndex);
     toPos = B.CreateLoad(scoutPtr(toPos), "to.pos");
     Value* ptr = B.CreateGEP(data->startToIndicesPtr, toPos, "to.indices");
-    B.CreateStore(ptr, scoutPtr(data->toIndicesPtr));
+    B.CreateStore(ptr, data->toIndicesPtr);
   }
   
   Value* endIndex;
@@ -823,7 +825,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     cond = B.CreateICmpSLT(incIndex, endIndex, "cond");
   }
   else{
-    Value* toIndicesPtr = B.CreateLoad(scoutPtr(data->toIndicesPtr), "to.indices.ptr");
+    Value* toIndicesPtr = B.CreateLoad(data->toIndicesPtr, "to.indices.ptr");
     
     Value* rawIndex = B.CreateLoad(scoutPtr(toIndicesPtr), "raw.index");
     Value* index = Builder.CreateAnd(rawIndex, ~(1UL << 63), "index");
@@ -833,7 +835,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     EmitStmt(S.getBody());
     
     toIndicesPtr = B.CreateConstGEP1_64(toIndicesPtr, 1, "next.to.indices.ptr");
-    B.CreateStore(toIndicesPtr, scoutPtr(data->toIndicesPtr));
+    B.CreateStore(toIndicesPtr, data->toIndicesPtr);
     Value* done = B.CreateAnd(rawIndex, 1UL << 63, "done");
     cond = B.CreateICmpEQ(done, ConstantInt::get(Int64Ty, 0), "cond");
   }
@@ -1187,8 +1189,8 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
     data->inductionVar[j] = Address(B.CreateAlloca(Int64Ty, nullptr, IRNameStr), getPointerAlign());
   }
   
-  data->fromIndicesPtr = nullptr;
-  data->toIndicesPtr = nullptr;
+  data->fromIndicesPtr = Address::invalid();
+  data->toIndicesPtr = Address::invalid();
   data->startToIndicesPtr = nullptr;
   
   args.clear();

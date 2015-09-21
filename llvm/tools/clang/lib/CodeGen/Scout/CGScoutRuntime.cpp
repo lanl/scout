@@ -280,8 +280,9 @@ llvm::Function *CGScoutRuntime::CreateWindowPaintFunction() {
 // build function to set all colors to red
 //llvm::Function *CGcoutRuntime::SetColorsRedFunction() { }
 
+#if 0
 // get Value for global runtime variable __scrt_renderall_uniform_colors
-llvm::Value *CGScoutRuntime::RenderallUniformColorsGlobal(CodeGenFunction &CGF) {
+Address CGScoutRuntime::RenderallUniformColorsGlobal(CodeGenFunction &CGF) {
   std::string varName = "__scrt_renderall_uniform_colors";
   llvm::Type *flt4PtrTy = llvm::PointerType::get(
       llvm::VectorType::get(llvm::Type::getFloatTy(CGM.getLLVMContext()), 4), 0);
@@ -296,14 +297,16 @@ llvm::Value *CGScoutRuntime::RenderallUniformColorsGlobal(CodeGenFunction &CGF) 
         varName);
   }
 
-  llvm::Value *Color = CGM.getModule().getNamedGlobal(varName);
+  Address Color = Address(CGM.getModule().getNamedGlobal(varName), CGM.getPointerAlign());
 
-  llvm::Value *ColorPtr  = CGF.Builder.CreateAlloca(flt4PtrTy, 0, "color.ptr");
-  CGF.Builder.CreateStore(CGF.Builder.CreateLoad(scoutPtr(Color), "runtime.color"),
-                          scoutPtr(ColorPtr));
+  Address ColorPtr = Address(CGF.Builder.CreateAlloca(flt4PtrTy, 0, "color.ptr"),
+                             CGM.getPointerAlign());
+  CGF.Builder.CreateStore(CGF.Builder.CreateLoad(Color, "runtime.color"),
+                          ColorPtr);
 
   return ColorPtr;
 }
+#endif
 
 llvm::Type *CGScoutRuntime::convertScoutSpecificType(const Type *T) {
   llvm::LLVMContext& Ctx = CGM.getLLVMContext();

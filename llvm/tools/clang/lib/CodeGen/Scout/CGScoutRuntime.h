@@ -84,7 +84,7 @@ namespace clang {
       llvm::Function *CreateWindowQuadRenderableVertexColorsFunction();
       llvm::Function *CreateWindowQuadRenderableEdgeColorsFunction();
       llvm::Function *CreateWindowPaintFunction();
-      llvm::Value    *RenderallUniformColorsGlobal(CodeGenFunction &CGF);
+      //Address RenderallUniformColorsGlobal(CodeGenFunction &CGF);
       llvm::Type     *convertScoutSpecificType(const Type *T);
 
       llvm::Function *EmitRuntimeInitFunc(SourceLocation Loc,

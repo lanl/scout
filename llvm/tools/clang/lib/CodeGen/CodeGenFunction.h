@@ -2464,6 +2464,8 @@ public:
   
   struct ForallData{
     ForallData() : indexPtr(Address::invalid()),
+                   toIndicesPtr(Address::invalid()),
+                   fromIndicesPtr(Address::invalid()),
                    inductionVar{Address::invalid(), Address::invalid(), Address::invalid()} {
 
       hasInductionVar[0] = false;
@@ -2486,9 +2488,9 @@ public:
     
     llvm::Value* topology;
     Address indexPtr;
-    llvm::Value *fromIndicesPtr;
+    Address toIndicesPtr;
+    Address fromIndicesPtr;
     llvm::Value* startToIndicesPtr;
-    llvm::Value *toIndicesPtr;
     llvm::BasicBlock* entryBlock;
     Address inductionVar[3];
     bool hasInductionVar[3];
