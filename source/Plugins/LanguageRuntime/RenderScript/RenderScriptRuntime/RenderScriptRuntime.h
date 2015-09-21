@@ -150,8 +150,7 @@ class RenderScriptRuntime : public lldb_private::CPPLanguageRuntime
         eModuleKindKernelObj
     };
 
-
-    ~RenderScriptRuntime() {}
+    ~RenderScriptRuntime();
 
     //------------------------------------------------------------------
     // Static Functions
@@ -182,7 +181,8 @@ class RenderScriptRuntime : public lldb_private::CPPLanguageRuntime
     virtual bool IsVTableName(const char *name);
 
     virtual bool GetDynamicTypeAndAddress(ValueObject &in_value, lldb::DynamicValueType use_dynamic,
-                                          TypeAndOrName &class_type_or_name, Address &address);
+                                          TypeAndOrName &class_type_or_name, Address &address,
+                                          Value::ValueType &value_type);
 
     virtual bool CouldHaveDynamicValue(ValueObject &in_value);
 
@@ -236,7 +236,8 @@ class RenderScriptRuntime : public lldb_private::CPPLanguageRuntime
     struct HookDefn
     {
         const char * name;
-        const char * symbol_name;
+        const char * symbol_name_m32; // mangled name for the 32 bit architectures
+        const char * symbol_name_m64; // mangled name for the 64 bit archs
         uint32_t version;
         ModuleKind kind;
         CaptureStateFn grabber;
@@ -251,20 +252,16 @@ class RenderScriptRuntime : public lldb_private::CPPLanguageRuntime
     
     typedef std::shared_ptr<RuntimeHook> RuntimeHookSP;
 
-    struct ScriptDetails
-    {
-        std::string resname;
-        std::string scriptDyLib;
-        std::string cachedir;
-        lldb::addr_t context;
-        lldb::addr_t script;
-    };
+    struct ScriptDetails;
+    struct AllocationDetails;
 
     lldb::ModuleSP m_libRS;
     lldb::ModuleSP m_libRSDriver;
     lldb::ModuleSP m_libRSCpuRef;
     std::vector<lldb_renderscript::RSModuleDescriptorSP> m_rsmodules;
-    std::vector<ScriptDetails> m_scripts;
+
+    std::vector<std::unique_ptr<ScriptDetails>> m_scripts;
+    std::vector<std::unique_ptr<AllocationDetails>> m_allocations;
 
     std::map<lldb::addr_t, lldb_renderscript::RSModuleDescriptorSP> m_scriptMappings;
     std::map<lldb::addr_t, RuntimeHookSP> m_runtimeHooks;
@@ -285,12 +282,23 @@ class RenderScriptRuntime : public lldb_private::CPPLanguageRuntime
 
     void HookCallback(RuntimeHook* hook_info, ExecutionContext& context);
 
-    bool GetArg32Simple(ExecutionContext& context, uint32_t arg, uint32_t *data);
+    bool GetArgSimple(ExecutionContext& context, uint32_t arg, uint64_t* data);
 
     void CaptureScriptInit1(RuntimeHook* hook_info, ExecutionContext& context);
     void CaptureAllocationInit1(RuntimeHook* hook_info, ExecutionContext& context);
     void CaptureSetGlobalVar1(RuntimeHook* hook_info, ExecutionContext& context);
 
+    // Search for a script detail object using a target address.
+    // If a script does not currently exist this function will return nullptr.
+    // If 'create' is true and there is no previous script with this address,
+    // then a new Script detail object will be created for this address and returned.
+    ScriptDetails* LookUpScript(lldb::addr_t address, bool create);
+
+    // Search for a previously saved allocation detail object using a target address.
+    // If an allocation does not exist for this address then nullptr will be returned.
+    // If 'create' is true and there is no previous allocation then a new allocation
+    // detail object will be created for this address and returned.
+    AllocationDetails* LookUpAllocation(lldb::addr_t address, bool create);
 };
 
 } // namespace lldb_private

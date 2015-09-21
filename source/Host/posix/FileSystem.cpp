@@ -182,6 +182,16 @@ FileSystem::Hardlink(const FileSpec &src, const FileSpec &dst)
     return error;
 }
 
+int
+FileSystem::GetHardlinkCount(const FileSpec &file_spec)
+{
+    struct stat file_stat;
+    if (::stat(file_spec.GetCString(), &file_stat) == 0)
+        return file_stat.st_nlink;
+
+    return -1;
+}
+
 Error
 FileSystem::Symlink(const FileSpec &src, const FileSpec &dst)
 {
@@ -214,6 +224,28 @@ FileSystem::Readlink(const FileSpec &src, FileSpec &dst)
         dst.SetFile(buf, false);
     }
     return error;
+}
+
+Error
+FileSystem::ResolveSymbolicLink(const FileSpec &src, FileSpec &dst)
+{
+    char resolved_path[PATH_MAX];
+    if (!src.GetPath (resolved_path, sizeof (resolved_path)))
+    {
+        return Error("Couldn't get the canonical path for %s", src.GetCString());
+    }
+    
+    char real_path[PATH_MAX + 1];
+    if (realpath(resolved_path, real_path) == nullptr)
+    {
+        Error err;
+        err.SetErrorToErrno();
+        return err;
+    }
+    
+    dst = FileSpec(real_path, false);
+    
+    return Error();
 }
 
 #if defined(__NetBSD__)

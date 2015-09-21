@@ -32,6 +32,126 @@ using namespace lldb;
 using namespace lldb_private;
 using namespace lldb_renderscript;
 
+namespace {
+
+// The empirical_type adds a basic level of validation to arbitrary data
+// allowing us to track if data has been discovered and stored or not.
+// An empirical_type will be marked as valid only if it has been explicitly assigned to.
+template <typename type_t>
+class empirical_type
+{
+  public:
+    // Ctor. Contents is invalid when constructed.
+    empirical_type()
+        : valid(false)
+    {}
+
+    // Return true and copy contents to out if valid, else return false.
+    bool get(type_t& out) const
+    {
+        if (valid)
+            out = data;
+        return valid;
+    }
+
+    // Return a pointer to the contents or nullptr if it was not valid.
+    const type_t* get() const
+    {
+        return valid ? &data : nullptr;
+    }
+
+    // Assign data explicitly.
+    void set(const type_t in)
+    {
+        data = in;
+        valid = true;
+    }
+
+    // Mark contents as invalid.
+    void invalidate()
+    {
+        valid = false;
+    }
+
+    // Returns true if this type contains valid data.
+    bool isValid() const
+    {
+        return valid;
+    }
+
+    // Assignment operator.
+    empirical_type<type_t>& operator = (const type_t in)
+    {
+        set(in);
+        return *this;
+    }
+
+    // Dereference operator returns contents.
+    // Warning: Will assert if not valid so use only when you know data is valid.
+    const type_t& operator * () const
+    {
+        assert(valid);
+        return data;
+    }
+
+  protected:
+    bool valid;
+    type_t data;
+};
+
+} // namespace {}
+
+// The ScriptDetails class collects data associated with a single script instance.
+struct RenderScriptRuntime::ScriptDetails
+{
+    ~ScriptDetails() {};
+
+    enum ScriptType
+    {
+        eScript,
+        eScriptC
+    };
+
+    // The derived type of the script.
+    empirical_type<ScriptType> type;
+    // The name of the original source file.
+    empirical_type<std::string> resName;
+    // Path to script .so file on the device.
+    empirical_type<std::string> scriptDyLib;
+    // Directory where kernel objects are cached on device.
+    empirical_type<std::string> cacheDir;
+    // Pointer to the context which owns this script.
+    empirical_type<lldb::addr_t> context;
+    // Pointer to the script object itself.
+    empirical_type<lldb::addr_t> script;
+};
+
+// This AllocationDetails class collects data associated with a single
+// allocation instance.
+struct RenderScriptRuntime::AllocationDetails
+{
+    ~AllocationDetails () {};
+
+    enum DataType
+    {
+        eInt,
+    };
+
+    enum Dimension
+    {
+        e1d,
+        e2d,
+        e3d,
+        eCubeMap,
+    };
+
+    empirical_type<DataType> type;
+    empirical_type<Dimension> dimension;
+    empirical_type<lldb::addr_t> address;
+    empirical_type<lldb::addr_t> dataPtr;
+    empirical_type<lldb::addr_t> context;
+};
+
 //------------------------------------------------------------------
 // Static Functions
 //------------------------------------------------------------------
@@ -187,7 +307,8 @@ RenderScriptRuntime::IsVTableName(const char *name)
 
 bool
 RenderScriptRuntime::GetDynamicTypeAndAddress(ValueObject &in_value, lldb::DynamicValueType use_dynamic,
-                                              TypeAndOrName &class_type_or_name, Address &address)
+                                              TypeAndOrName &class_type_or_name, Address &address,
+                                              Value::ValueType &value_type)
 {
     return false;
 }
@@ -209,15 +330,64 @@ RenderScriptRuntime::CreateExceptionResolver(Breakpoint *bkpt, bool catch_bp, bo
 const RenderScriptRuntime::HookDefn RenderScriptRuntime::s_runtimeHookDefns[] =
 {
     //rsdScript
-    {"rsdScriptInit", "_Z13rsdScriptInitPKN7android12renderscript7ContextEPNS0_7ScriptCEPKcS7_PKhjj", 0, RenderScriptRuntime::eModuleKindDriver, &lldb_private::RenderScriptRuntime::CaptureScriptInit1},
-    {"rsdScriptInvokeForEach", "_Z22rsdScriptInvokeForEachPKN7android12renderscript7ContextEPNS0_6ScriptEjPKNS0_10AllocationEPS6_PKvjPK12RsScriptCall", 0, RenderScriptRuntime::eModuleKindDriver, nullptr},
-    {"rsdScriptInvokeForEachMulti", "_Z27rsdScriptInvokeForEachMultiPKN7android12renderscript7ContextEPNS0_6ScriptEjPPKNS0_10AllocationEjPS6_PKvjPK12RsScriptCall", 0, RenderScriptRuntime::eModuleKindDriver, nullptr},
-    {"rsdScriptInvokeFunction", "_Z23rsdScriptInvokeFunctionPKN7android12renderscript7ContextEPNS0_6ScriptEjPKvj", 0, RenderScriptRuntime::eModuleKindDriver, nullptr},
-    {"rsdScriptSetGlobalVar", "_Z21rsdScriptSetGlobalVarPKN7android12renderscript7ContextEPKNS0_6ScriptEjPvj", 0, RenderScriptRuntime::eModuleKindDriver, &lldb_private::RenderScriptRuntime::CaptureSetGlobalVar1},
+    {
+        "rsdScriptInit", //name
+        "_Z13rsdScriptInitPKN7android12renderscript7ContextEPNS0_7ScriptCEPKcS7_PKhjj", // symbol name 32 bit
+        "_Z13rsdScriptInitPKN7android12renderscript7ContextEPNS0_7ScriptCEPKcS7_PKhmj", // symbol name 64 bit
+        0, // version
+        RenderScriptRuntime::eModuleKindDriver, // type
+        &lldb_private::RenderScriptRuntime::CaptureScriptInit1 // handler
+    },
+    {
+        "rsdScriptInvokeForEach", // name
+        "_Z22rsdScriptInvokeForEachPKN7android12renderscript7ContextEPNS0_6ScriptEjPKNS0_10AllocationEPS6_PKvjPK12RsScriptCall", // symbol name 32bit
+        "_Z22rsdScriptInvokeForEachPKN7android12renderscript7ContextEPNS0_6ScriptEjPKNS0_10AllocationEPS6_PKvmPK12RsScriptCall", // symbol name 64bit
+        0, // version
+        RenderScriptRuntime::eModuleKindDriver, // type
+        nullptr // handler
+    },
+    {
+        "rsdScriptInvokeForEachMulti", // name
+        "_Z27rsdScriptInvokeForEachMultiPKN7android12renderscript7ContextEPNS0_6ScriptEjPPKNS0_10AllocationEjPS6_PKvjPK12RsScriptCall", // symbol name 32bit
+        "_Z27rsdScriptInvokeForEachMultiPKN7android12renderscript7ContextEPNS0_6ScriptEjPPKNS0_10AllocationEmPS6_PKvmPK12RsScriptCall", // symbol name 64bit
+        0, // version
+        RenderScriptRuntime::eModuleKindDriver, // type
+        nullptr // handler
+    },
+    {
+        "rsdScriptInvokeFunction", // name
+        "_Z23rsdScriptInvokeFunctionPKN7android12renderscript7ContextEPNS0_6ScriptEjPKvj", // symbol name 32bit
+        "_Z23rsdScriptInvokeFunctionPKN7android12renderscript7ContextEPNS0_6ScriptEjPKvm", // symbol name 64bit
+        0, // version
+        RenderScriptRuntime::eModuleKindDriver, // type
+        nullptr // handler
+    },
+    {
+        "rsdScriptSetGlobalVar", // name
+        "_Z21rsdScriptSetGlobalVarPKN7android12renderscript7ContextEPKNS0_6ScriptEjPvj", // symbol name 32bit
+        "_Z21rsdScriptSetGlobalVarPKN7android12renderscript7ContextEPKNS0_6ScriptEjPvm", // symbol name 64bit
+        0, // version
+        RenderScriptRuntime::eModuleKindDriver, // type
+        &lldb_private::RenderScriptRuntime::CaptureSetGlobalVar1 // handler
+    },
 
     //rsdAllocation
-    {"rsdAllocationInit", "_Z17rsdAllocationInitPKN7android12renderscript7ContextEPNS0_10AllocationEb", 0, RenderScriptRuntime::eModuleKindDriver, &lldb_private::RenderScriptRuntime::CaptureAllocationInit1},
-    {"rsdAllocationRead2D", "_Z19rsdAllocationRead2DPKN7android12renderscript7ContextEPKNS0_10AllocationEjjj23RsAllocationCubemapFacejjPvjj", 0, RenderScriptRuntime::eModuleKindDriver, nullptr},
+    {
+        "rsdAllocationInit", // name
+        "_Z17rsdAllocationInitPKN7android12renderscript7ContextEPNS0_10AllocationEb", // symbol name 32bit
+        "_Z17rsdAllocationInitPKN7android12renderscript7ContextEPNS0_10AllocationEb", // symbol name 64bit
+        0, // version
+        RenderScriptRuntime::eModuleKindDriver, // type
+        &lldb_private::RenderScriptRuntime::CaptureAllocationInit1 // handler
+    },
+    {
+        "rsdAllocationRead2D", //name
+        "_Z19rsdAllocationRead2DPKN7android12renderscript7ContextEPKNS0_10AllocationEjjj23RsAllocationCubemapFacejjPvjj", // symbol name 32bit
+        "_Z19rsdAllocationRead2DPKN7android12renderscript7ContextEPKNS0_10AllocationEjjj23RsAllocationCubemapFacejjPvmm", // symbol name 64bit
+        0, // version
+        RenderScriptRuntime::eModuleKindDriver, // type
+        nullptr // handler
+    },
 };
 const size_t RenderScriptRuntime::s_runtimeHookCount = sizeof(s_runtimeHookDefns)/sizeof(s_runtimeHookDefns[0]);
 
@@ -241,7 +411,7 @@ RenderScriptRuntime::HookCallback(RuntimeHook* hook_info, ExecutionContext& cont
 {
     Log* log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_LANGUAGE));
 
-    if(log)
+    if (log)
         log->Printf ("RenderScriptRuntime::HookCallback - '%s' .", hook_info->defn->name);
 
     if (hook_info->defn->grabber) 
@@ -252,54 +422,115 @@ RenderScriptRuntime::HookCallback(RuntimeHook* hook_info, ExecutionContext& cont
 
 
 bool
-RenderScriptRuntime::GetArg32Simple(ExecutionContext& context, uint32_t arg, uint32_t *data)
+RenderScriptRuntime::GetArgSimple(ExecutionContext &context, uint32_t arg, uint64_t *data)
 {
-    Log* log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_LANGUAGE));
-
     if (!data)
         return false;
 
+    Log* log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_LANGUAGE));
     Error error;
     RegisterContext* reg_ctx = context.GetRegisterContext();
     Process* process = context.GetProcessPtr();
+    bool success = false; // return value
 
-    if (context.GetTargetPtr()->GetArchitecture().GetMachine() == llvm::Triple::ArchType::x86) 
+    if (!context.GetTargetPtr())
     {
-        uint64_t sp = reg_ctx->GetSP();
-        {
-            uint32_t offset = (1 + arg) * sizeof(uint32_t);
-            process->ReadMemory(sp + offset, data, sizeof(uint32_t), error);
-            if(error.Fail())
-            {
-                if(log)
-                    log->Printf ("RenderScriptRuntime:: GetArg32Simple - error reading X86 stack: %s.", error.AsCString());     
-            }
-        }
+        if (log)
+            log->Printf("RenderScriptRuntime::GetArgSimple - Invalid target");
+
+        return false;
     }
-    else if (context.GetTargetPtr()->GetArchitecture().GetMachine() == llvm::Triple::ArchType::arm) 
+
+    switch (context.GetTargetPtr()->GetArchitecture().GetMachine())
     {
-        if (arg < 4)
-        {
-            const RegisterInfo* rArg = reg_ctx->GetRegisterInfoAtIndex(arg);
-            RegisterValue rVal;
-            reg_ctx->ReadRegister(rArg, rVal);
-            (*data) = rVal.GetAsUInt32();
-        }
-        else
+        case llvm::Triple::ArchType::x86:
         {
             uint64_t sp = reg_ctx->GetSP();
+            uint32_t offset = (1 + arg) * sizeof(uint32_t);
+            uint32_t result = 0;
+            process->ReadMemory(sp + offset, &result, sizeof(uint32_t), error);
+            if (error.Fail())
             {
-                uint32_t offset = (arg-4) * sizeof(uint32_t);
-                process->ReadMemory(sp + offset, &data, sizeof(uint32_t), error);
-                if(error.Fail())
+                if (log)
+                    log->Printf ("RenderScriptRuntime:: GetArgSimple - error reading X86 stack: %s.", error.AsCString());
+            }
+            else
+            {
+                *data = result;
+                success = true;
+            }
+
+            break;
+        }
+        case llvm::Triple::ArchType::arm:
+        {
+            // arm 32 bit
+            if (arg < 4)
+            {
+                const RegisterInfo* rArg = reg_ctx->GetRegisterInfoAtIndex(arg);
+                RegisterValue rVal;
+                reg_ctx->ReadRegister(rArg, rVal);
+                (*data) = rVal.GetAsUInt32();
+                success = true;
+            }
+            else
+            {
+                uint64_t sp = reg_ctx->GetSP();
                 {
-                    if(log)
-                        log->Printf ("RenderScriptRuntime:: GetArg32Simple - error reading ARM stack: %s.", error.AsCString());     
+                    uint32_t offset = (arg-4) * sizeof(uint32_t);
+                    process->ReadMemory(sp + offset, &data, sizeof(uint32_t), error);
+                    if (error.Fail())
+                    {
+                        if (log)
+                            log->Printf ("RenderScriptRuntime:: GetArgSimple - error reading ARM stack: %s.", error.AsCString());
+                    }
+                    else
+                    {
+                        success = true;
+                    }
                 }
             }
-        }   
+
+            break;
+        }
+        case llvm::Triple::ArchType::aarch64:
+        {
+            // arm 64 bit
+            // first 8 arguments are in the registers
+            if (arg < 8)
+            {
+                const RegisterInfo* rArg = reg_ctx->GetRegisterInfoAtIndex(arg);
+                RegisterValue rVal;
+                success = reg_ctx->ReadRegister(rArg, rVal);
+                if (success)
+                {
+                    *data = rVal.GetAsUInt64();
+                }
+                else
+                {
+                    if (log)
+                        log->Printf("RenderScriptRuntime::GetArgSimple() - AARCH64 - Error while reading the argument #%d", arg);
+                }
+            }
+            else
+            {
+                // @TODO: need to find the argument in the stack
+                if (log)
+                    log->Printf("RenderScriptRuntime::GetArgSimple - AARCH64 - FOR #ARG >= 8 NOT IMPLEMENTED YET. Argument number: %d", arg);
+            }
+            break;
+        }
+        default:
+        {
+            // invalid architecture
+            if (log)
+                log->Printf("RenderScriptRuntime::GetArgSimple - Architecture not supported");
+
+        }
     }
-    return true;
+
+
+    return success;
 }
 
 void 
@@ -309,35 +540,38 @@ RenderScriptRuntime::CaptureSetGlobalVar1(RuntimeHook* hook_info, ExecutionConte
     
     //Context, Script, int, data, length
 
-    Error error;
-    
-    uint32_t rs_context_u32 = 0U;
-    uint32_t rs_script_u32 = 0U;
-    uint32_t rs_id_u32 = 0U;
-    uint32_t rs_data_u32 = 0U;
-    uint32_t rs_length_u32 = 0U;
+    uint64_t rs_context_u64 = 0U;
+    uint64_t rs_script_u64 = 0U;
+    uint64_t rs_id_u64 = 0U;
+    uint64_t rs_data_u64 = 0U;
+    uint64_t rs_length_u64 = 0U;
 
-    std::string resname;
-    std::string cachedir;
+    bool success =
+        GetArgSimple(context, 0, &rs_context_u64) &&
+        GetArgSimple(context, 1, &rs_script_u64) &&
+        GetArgSimple(context, 2, &rs_id_u64) &&
+        GetArgSimple(context, 3, &rs_data_u64) &&
+        GetArgSimple(context, 4, &rs_length_u64);
 
-    GetArg32Simple(context, 0, &rs_context_u32);
-    GetArg32Simple(context, 1, &rs_script_u32);
-    GetArg32Simple(context, 2, &rs_id_u32);
-    GetArg32Simple(context, 3, &rs_data_u32);
-    GetArg32Simple(context, 4, &rs_length_u32);
+    if (!success)
+    {
+        if (log)
+            log->Printf("RenderScriptRuntime::CaptureSetGlobalVar1 - Error while reading the function parameters");
+        return;
+    }
     
-    if(log)
+    if (log)
     {
         log->Printf ("RenderScriptRuntime::CaptureSetGlobalVar1 - 0x%" PRIx64 ",0x%" PRIx64 " slot %" PRIu64 " = 0x%" PRIx64 ":%" PRIu64 "bytes.",
-                        (uint64_t)rs_context_u32, (uint64_t)rs_script_u32, (uint64_t)rs_id_u32, (uint64_t)rs_data_u32, (uint64_t)rs_length_u32);
+                        rs_context_u64, rs_script_u64, rs_id_u64, rs_data_u64, rs_length_u64);
 
-        addr_t script_addr =  (addr_t)rs_script_u32;
+        addr_t script_addr =  (addr_t)rs_script_u64;
         if (m_scriptMappings.find( script_addr ) != m_scriptMappings.end())
         {
             auto rsm = m_scriptMappings[script_addr];
-            if (rs_id_u32 < rsm->m_globals.size())
+            if (rs_id_u64 < rsm->m_globals.size())
             {
-                auto rsg = rsm->m_globals[rs_id_u32];
+                auto rsg = rsm->m_globals[rs_id_u64];
                 log->Printf ("RenderScriptRuntime::CaptureSetGlobalVar1 - Setting of '%s' within '%s' inferred", rsg.m_name.AsCString(), 
                                 rsm->m_module->GetFileSpec().GetFilename().AsCString());
             }
@@ -352,19 +586,28 @@ RenderScriptRuntime::CaptureAllocationInit1(RuntimeHook* hook_info, ExecutionCon
     
     //Context, Alloc, bool
 
-    Error error;
-    
-    uint32_t rs_context_u32 = 0U;
-    uint32_t rs_alloc_u32 = 0U;
-    uint32_t rs_forceZero_u32 = 0U;
+    uint64_t rs_context_u64 = 0U;
+    uint64_t rs_alloc_u64 = 0U;
+    uint64_t rs_forceZero_u64 = 0U;
 
-    GetArg32Simple(context, 0, &rs_context_u32);
-    GetArg32Simple(context, 1, &rs_alloc_u32);
-    GetArg32Simple(context, 2, &rs_forceZero_u32);
-        
-    if(log)
+    bool success =
+        GetArgSimple(context, 0, &rs_context_u64) &&
+        GetArgSimple(context, 1, &rs_alloc_u64) &&
+        GetArgSimple(context, 2, &rs_forceZero_u64);
+    if (!success) // error case
+    {
+        if (log)
+            log->Printf("RenderScriptRuntime::CaptureAllocationInit1 - Error while reading the function parameters");
+        return; // abort
+    }
+
+    if (log)
         log->Printf ("RenderScriptRuntime::CaptureAllocationInit1 - 0x%" PRIx64 ",0x%" PRIx64 ",0x%" PRIx64 " .",
-                        (uint64_t)rs_context_u32, (uint64_t)rs_alloc_u32, (uint64_t)rs_forceZero_u32);
+                        rs_context_u64, rs_alloc_u64, rs_forceZero_u64);
+
+    AllocationDetails* alloc = LookUpAllocation(rs_alloc_u64, true);
+    if (alloc)
+        alloc->context = rs_context_u64;
 }
 
 void 
@@ -376,55 +619,65 @@ RenderScriptRuntime::CaptureScriptInit1(RuntimeHook* hook_info, ExecutionContext
     Error error;
     Process* process = context.GetProcessPtr();
 
-    uint32_t rs_context_u32 = 0U;
-    uint32_t rs_script_u32 = 0U;
-    uint32_t rs_resnameptr_u32 = 0U;
-    uint32_t rs_cachedirptr_u32 = 0U;
+    uint64_t rs_context_u64 = 0U;
+    uint64_t rs_script_u64 = 0U;
+    uint64_t rs_resnameptr_u64 = 0U;
+    uint64_t rs_cachedirptr_u64 = 0U;
 
     std::string resname;
     std::string cachedir;
 
-    GetArg32Simple(context, 0, &rs_context_u32);
-    GetArg32Simple(context, 1, &rs_script_u32);
-    GetArg32Simple(context, 2, &rs_resnameptr_u32);
-    GetArg32Simple(context, 3, &rs_cachedirptr_u32);
+    // read the function parameters
+    bool success =
+        GetArgSimple(context, 0, &rs_context_u64) &&
+        GetArgSimple(context, 1, &rs_script_u64) &&
+        GetArgSimple(context, 2, &rs_resnameptr_u64) &&
+        GetArgSimple(context, 3, &rs_cachedirptr_u64);
 
-    process->ReadCStringFromMemory((lldb::addr_t)rs_resnameptr_u32, resname, error);
+    if (!success)
+    {
+        if (log)
+            log->Printf("RenderScriptRuntime::CaptureScriptInit1 - Error while reading the function parameters");
+        return;
+    }
+
+    process->ReadCStringFromMemory((lldb::addr_t)rs_resnameptr_u64, resname, error);
     if (error.Fail())
     {
-        if(log)
+        if (log)
             log->Printf ("RenderScriptRuntime::CaptureScriptInit1 - error reading resname: %s.", error.AsCString());
                    
     }
 
-    process->ReadCStringFromMemory((lldb::addr_t)rs_cachedirptr_u32, cachedir, error);
+    process->ReadCStringFromMemory((lldb::addr_t)rs_cachedirptr_u64, cachedir, error);
     if (error.Fail())
     {
-        if(log)
+        if (log)
             log->Printf ("RenderScriptRuntime::CaptureScriptInit1 - error reading cachedir: %s.", error.AsCString());     
     }
     
     if (log)
         log->Printf ("RenderScriptRuntime::CaptureScriptInit1 - 0x%" PRIx64 ",0x%" PRIx64 " => '%s' at '%s' .",
-                     (uint64_t)rs_context_u32, (uint64_t)rs_script_u32, resname.c_str(), cachedir.c_str());
+                     rs_context_u64, rs_script_u64, resname.c_str(), cachedir.c_str());
 
     if (resname.size() > 0)
     {
         StreamString strm;
         strm.Printf("librs.%s.so", resname.c_str());
 
-        ScriptDetails script;
-        script.cachedir = cachedir;
-        script.resname = resname;
-        script.scriptDyLib.assign(strm.GetData());
-        script.script = rs_script_u32;
-        script.context = rs_context_u32;
-
-        m_scripts.push_back(script);
+        ScriptDetails* script = LookUpScript(rs_script_u64, true);
+        if (script)
+        {
+            script->type = ScriptDetails::eScriptC;
+            script->cacheDir = cachedir;
+            script->resName = resname;
+            script->scriptDyLib = strm.GetData();
+            script->context = addr_t(rs_context_u64);
+        }
 
         if (log)
             log->Printf ("RenderScriptRuntime::CaptureScriptInit1 - '%s' tagged with context 0x%" PRIx64 " and script 0x%" PRIx64 ".",
-                         strm.GetData(), (uint64_t)rs_context_u32, (uint64_t)rs_script_u32);
+                         strm.GetData(), rs_context_u64, rs_script_u64);
     } 
     else if (log)
     {
@@ -432,7 +685,6 @@ RenderScriptRuntime::CaptureScriptInit1(RuntimeHook* hook_info, ExecutionContext
     }
 
 }
-
 
 void
 RenderScriptRuntime::LoadRuntimeHooks(lldb::ModuleSP module, ModuleKind kind)
@@ -444,8 +696,12 @@ RenderScriptRuntime::LoadRuntimeHooks(lldb::ModuleSP module, ModuleKind kind)
         return;
     }
 
-    if ((GetProcess()->GetTarget().GetArchitecture().GetMachine() != llvm::Triple::ArchType::x86)
-        && (GetProcess()->GetTarget().GetArchitecture().GetMachine() != llvm::Triple::ArchType::arm))
+    Target &target = GetProcess()->GetTarget();
+    llvm::Triple::ArchType targetArchType = target.GetArchitecture().GetMachine();
+
+    if (targetArchType != llvm::Triple::ArchType::x86
+        && targetArchType != llvm::Triple::ArchType::arm
+        && targetArchType != llvm::Triple::ArchType::aarch64)
     {
         if (log)
             log->Printf ("RenderScriptRuntime::LoadRuntimeHooks - Unable to hook runtime. Only X86, ARM supported currently.");
@@ -453,7 +709,7 @@ RenderScriptRuntime::LoadRuntimeHooks(lldb::ModuleSP module, ModuleKind kind)
         return;
     }
 
-    Target &target = GetProcess()->GetTarget();
+    uint32_t archByteSize = target.GetArchitecture().GetAddressByteSize();
 
     for (size_t idx = 0; idx < s_runtimeHookCount; idx++)
     {
@@ -462,15 +718,28 @@ RenderScriptRuntime::LoadRuntimeHooks(lldb::ModuleSP module, ModuleKind kind)
             continue;
         }
 
-        const Symbol *sym = module->FindFirstSymbolWithNameAndType(ConstString(hook_defn->symbol_name), eSymbolTypeCode);
+        const char* symbol_name = (archByteSize == 4) ? hook_defn->symbol_name_m32 : hook_defn->symbol_name_m64;
+
+        const Symbol *sym = module->FindFirstSymbolWithNameAndType(ConstString(symbol_name), eSymbolTypeCode);
+        if (!sym){
+            if (log){
+                log->Printf("RenderScriptRuntime::LoadRuntimeHooks - ERROR: Symbol '%s' related to the function %s not found", symbol_name, hook_defn->name);
+            }
+            continue;
+        }
 
         addr_t addr = sym->GetLoadAddress(&target);
         if (addr == LLDB_INVALID_ADDRESS)
         {
-            if(log)
+            if (log)
                 log->Printf ("RenderScriptRuntime::LoadRuntimeHooks - Unable to resolve the address of hook function '%s' with symbol '%s'.", 
-                             hook_defn->name, hook_defn->symbol_name);
+                             hook_defn->name, symbol_name);
             continue;
+        }
+        else
+        {
+            if (log)
+                log->Printf("RenderScriptRuntime::LoadRuntimeHooks - Function %s, address resolved at 0x%" PRIx64, hook_defn->name, addr);
         }
 
         RuntimeHookSP hook(new RuntimeHook());
@@ -497,35 +766,51 @@ RenderScriptRuntime::FixupScriptDetails(RSModuleDescriptorSP rsmodule_sp)
 
     const ModuleSP module = rsmodule_sp->m_module;
     const FileSpec& file = module->GetPlatformFileSpec();
-    
-    for (const auto &rs_script : m_scripts)
+
+    // Iterate over all of the scripts that we currently know of.
+    // Note: We cant push or pop to m_scripts here or it may invalidate rs_script.
+    for (const auto & rs_script : m_scripts)
     {
-        if (file.GetFilename() == ConstString(rs_script.scriptDyLib.c_str()))
+        // Extract the expected .so file path for this script.
+        std::string dylib;
+        if (!rs_script->scriptDyLib.get(dylib))
+            continue;
+
+        // Only proceed if the module that has loaded corresponds to this script.
+        if (file.GetFilename() != ConstString(dylib.c_str()))
+            continue;
+
+        // Obtain the script address which we use as a key.
+        lldb::addr_t script;
+        if (!rs_script->script.get(script))
+            continue;
+
+        // If we have a script mapping for the current script.
+        if (m_scriptMappings.find(script) != m_scriptMappings.end())
         {
-            if (m_scriptMappings.find( rs_script.script ) != m_scriptMappings.end())
+            // if the module we have stored is different to the one we just received.
+            if (m_scriptMappings[script] != rsmodule_sp)
             {
-                if (m_scriptMappings[rs_script.script] != rsmodule_sp)
-                {
-                    if (log)
-                    {
-                        log->Printf ("RenderScriptRuntime::FixupScriptDetails - Error: script %" PRIx64 " wants reassigned to new rsmodule '%s'.", 
-                                     (uint64_t)rs_script.script, rsmodule_sp->m_module->GetFileSpec().GetFilename().AsCString());
-                    }
-                }
-            }
-            else
-            {
-                m_scriptMappings[rs_script.script] = rsmodule_sp;
-                rsmodule_sp->m_resname = rs_script.resname;
                 if (log)
-                {
-                    log->Printf ("RenderScriptRuntime::FixupScriptDetails - script %" PRIx64 " associated with rsmodule '%s'.", 
-                                    (uint64_t)rs_script.script, rsmodule_sp->m_module->GetFileSpec().GetFilename().AsCString());
-                }
+                    log->Printf ("RenderScriptRuntime::FixupScriptDetails - Error: script %" PRIx64 " wants reassigned to new rsmodule '%s'.",
+                                    (uint64_t)script, rsmodule_sp->m_module->GetFileSpec().GetFilename().AsCString());
             }
         }
+        // We don't have a script mapping for the current script.
+        else
+        {
+            // Obtain the script resource name.
+            std::string resName;
+            if (rs_script->resName.get(resName))
+                // Set the modules resource name.
+                rsmodule_sp->m_resname = resName;
+            // Add Script/Module pair to map.
+            m_scriptMappings[script] = rsmodule_sp;
+            if (log)
+                log->Printf ("RenderScriptRuntime::FixupScriptDetails - script %" PRIx64 " associated with rsmodule '%s'.",
+                                (uint64_t)script, rsmodule_sp->m_module->GetFileSpec().GetFilename().AsCString());
+        }
     }
-    
 }
 
 bool
@@ -777,15 +1062,21 @@ RenderScriptRuntime::DumpContexts(Stream &strm) const
 
     std::map<addr_t, uint64_t> contextReferences;
 
-    for (const auto &script : m_scripts)
+    // Iterate over all of the currently discovered scripts.
+    // Note: We cant push or pop from m_scripts inside this loop or it may invalidate script.
+    for (const auto & script : m_scripts)
     {
-        if (contextReferences.find(script.context) != contextReferences.end())
+        if (!script->context.isValid())
+            continue;
+        lldb::addr_t context = *script->context;
+
+        if (contextReferences.find(context) != contextReferences.end())
         {
-            contextReferences[script.context]++;
+            contextReferences[context]++;
         }
         else
         {
-            contextReferences[script.context] = 1;
+            contextReferences[context] = 1;
         }
     }
 
@@ -918,6 +1209,44 @@ RenderScriptRuntime::DumpModules(Stream &strm) const
         module->Dump(strm);
     }
     strm.IndentLess();
+}
+
+RenderScriptRuntime::ScriptDetails*
+RenderScriptRuntime::LookUpScript(addr_t address, bool create)
+{
+    for (const auto & s : m_scripts)
+    {
+        if (s->script.isValid())
+            if (*s->script == address)
+                return s.get();
+    }
+    if (create)
+    {
+        std::unique_ptr<ScriptDetails> s(new ScriptDetails);
+        s->script = address;
+        m_scripts.push_back(std::move(s));
+        return s.get();
+    }
+    return nullptr;
+}
+
+RenderScriptRuntime::AllocationDetails*
+RenderScriptRuntime::LookUpAllocation(addr_t address, bool create)
+{
+    for (const auto & a : m_allocations)
+    {
+        if (a->address.isValid())
+            if (*a->address == address)
+                return a.get();
+    }
+    if (create)
+    {
+        std::unique_ptr<AllocationDetails> a(new AllocationDetails);
+        a->address = address;
+        m_allocations.push_back(std::move(a));
+        return a.get();
+    }
+    return nullptr;
 }
 
 void
@@ -1337,3 +1666,4 @@ RenderScriptRuntime::GetCommandObject(lldb_private::CommandInterpreter& interpre
     return command_object;
 }
 
+RenderScriptRuntime::~RenderScriptRuntime() = default;

@@ -11,10 +11,13 @@
 #include <utility>
 #include <vector>
 
+#include "lldb/Core/Module.h"
+#include "lldb/Core/PluginManager.h"
 #include "lldb/Core/UniqueCStringMap.h"
 #include "lldb/Core/ValueObject.h"
 #include "lldb/DataFormatters/StringPrinter.h"
 #include "lldb/Symbol/CompilerType.h"
+#include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Symbol/GoASTContext.h"
 #include "lldb/Symbol/Type.h"
@@ -295,6 +298,59 @@ GoASTContext::~GoASTContext()
 {
 }
 
+//------------------------------------------------------------------
+// PluginInterface functions
+//------------------------------------------------------------------
+
+ConstString
+GoASTContext::GetPluginNameStatic()
+{
+    return ConstString("go");
+}
+
+ConstString
+GoASTContext::GetPluginName()
+{
+    return GoASTContext::GetPluginNameStatic();
+}
+
+uint32_t
+GoASTContext::GetPluginVersion()
+{
+    return 1;
+}
+
+lldb::TypeSystemSP
+GoASTContext::CreateInstance (lldb::LanguageType language, const lldb_private::ArchSpec &arch)
+{
+    if (language == eLanguageTypeGo)
+    {
+        if (arch.IsValid())
+        {
+            std::shared_ptr<GoASTContext> go_ast_sp(new GoASTContext);
+            go_ast_sp->SetAddressByteSize(arch.GetAddressByteSize());
+            return go_ast_sp;
+        }
+    }
+    return lldb::TypeSystemSP();
+}
+
+
+void
+GoASTContext::Initialize()
+{
+    PluginManager::RegisterPlugin (GetPluginNameStatic(),
+                                   "AST context plug-in",
+                                   CreateInstance);
+}
+
+void
+GoASTContext::Terminate()
+{
+    PluginManager::UnregisterPlugin (CreateInstance);
+}
+
+
 //----------------------------------------------------------------------
 // Tests
 //----------------------------------------------------------------------
@@ -546,6 +602,12 @@ GoASTContext::IsVoidType(void *type)
     if (!type)
         return false;
     return static_cast<GoType *>(type)->GetGoKind() == GoType::KIND_LLDB_VOID;
+}
+
+bool
+GoASTContext::SupportsLanguage (lldb::LanguageType language)
+{
+    return language == eLanguageTypeGo;
 }
 
 //----------------------------------------------------------------------
@@ -829,11 +891,9 @@ GoASTContext::GetBasicTypeFromAST(lldb::BasicType basic_type)
     return CompilerType();
 }
 
-CompilerType GoASTContext::GetIntTypeFromBitSize (size_t bit_size, bool is_signed)
-{
-    return CompilerType();
-}
-CompilerType GoASTContext::GetFloatTypeFromBitSize (size_t bit_size)
+CompilerType
+GoASTContext::GetBuiltinTypeForEncodingAndBitSize (lldb::Encoding encoding,
+                                                   size_t bit_size)
 {
     return CompilerType();
 }
@@ -1035,11 +1095,11 @@ GoASTContext::GetFieldAtIndex(void *type, size_t idx, std::string &name, uint64_
 }
 
 CompilerType
-GoASTContext::GetChildClangTypeAtIndex(void *type, ExecutionContext *exe_ctx, size_t idx, bool transparent_pointers,
-                                       bool omit_empty_base_classes, bool ignore_array_bounds, std::string &child_name,
-                                       uint32_t &child_byte_size, int32_t &child_byte_offset,
-                                       uint32_t &child_bitfield_bit_size, uint32_t &child_bitfield_bit_offset,
-                                       bool &child_is_base_class, bool &child_is_deref_of_parent, ValueObject *valobj)
+GoASTContext::GetChildCompilerTypeAtIndex(void *type, ExecutionContext *exe_ctx, size_t idx, bool transparent_pointers,
+                                          bool omit_empty_base_classes, bool ignore_array_bounds, std::string &child_name,
+                                          uint32_t &child_byte_size, int32_t &child_byte_offset,
+                                          uint32_t &child_bitfield_bit_size, uint32_t &child_bitfield_bit_offset,
+                                          bool &child_is_base_class, bool &child_is_deref_of_parent, ValueObject *valobj)
 {
     child_name.clear();
     child_byte_size = 0;
@@ -1069,7 +1129,7 @@ GoASTContext::GetChildClangTypeAtIndex(void *type, ExecutionContext *exe_ctx, si
         if (transparent_pointers && pointee.IsAggregateType())
         {
             bool tmp_child_is_deref_of_parent = false;
-            return pointee.GetChildClangTypeAtIndex(exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
+            return pointee.GetChildCompilerTypeAtIndex(exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
                                                     ignore_array_bounds, child_name, child_byte_size, child_byte_offset,
                                                     child_bitfield_bit_size, child_bitfield_bit_offset,
                                                     child_is_base_class, tmp_child_is_deref_of_parent, valobj);
@@ -1111,7 +1171,7 @@ GoASTContext::GetChildClangTypeAtIndex(void *type, ExecutionContext *exe_ctx, si
     }
     else if (t->IsTypedef())
     {
-        return t->GetElementType().GetChildClangTypeAtIndex(
+        return t->GetElementType().GetChildCompilerTypeAtIndex(
             exe_ctx, idx, transparent_pointers, omit_empty_base_classes, ignore_array_bounds, child_name,
             child_byte_size, child_byte_offset, child_bitfield_bit_size, child_bitfield_bit_offset, child_is_base_class,
             child_is_deref_of_parent, valobj);
@@ -1306,7 +1366,7 @@ GoASTContext::CreateBaseType(int go_kind, const lldb_private::ConstString &name,
 }
 
 CompilerType
-GoASTContext::CreateTypedef(int kind, const ConstString &name, CompilerType impl)
+GoASTContext::CreateTypedefType(int kind, const ConstString &name, CompilerType impl)
 {
     GoType *type = new GoElem(kind, name, impl);
     (*m_types)[name].reset(type);

@@ -823,6 +823,25 @@ def parseOptionsAndInitTestdirs():
         lldb_platform_url = args.lldb_platform_url
     if args.lldb_platform_working_dir:
         lldb_platform_working_dir = args.lldb_platform_working_dir
+
+    if args.event_add_entries and len(args.event_add_entries) > 0:
+        entries = {}
+        # Parse out key=val pairs, separated by comma
+        for keyval in args.event_add_entries.split(","):
+            key_val_entry = keyval.split("=")
+            if len(key_val_entry) == 2:
+                (key, val) = key_val_entry
+                val_parts = val.split(':')
+                if len(val_parts) > 1:
+                    (val, val_type) = val_parts
+                    if val_type == 'int':
+                        val = int(val)
+                entries[key] = val
+        # Tell the event builder to create all events with these
+        # key/val pairs in them.
+        if len(entries) > 0:
+            test_results.EventBuilder.add_entries_to_all_events(entries)
+
     # Gather all the dirs passed on the command line.
     if len(args.args) > 0:
         testdirs = map(os.path.abspath, args.args)
@@ -947,8 +966,15 @@ def setupTestResults():
 
     if results_filename:
         # Open the results file for writing.
-        results_file_object = open(results_filename, "w")
-        cleanup_func = results_file_object.close
+        if results_filename == 'stdout':
+            results_file_object = sys.stdout
+            cleanup_func = None
+        elif results_filename == 'stderr':
+            results_file_object = sys.stderr
+            cleanup_func = None
+        else:
+            results_file_object = open(results_filename, "w")
+            cleanup_func = results_file_object.close
         default_formatter_name = "test_results.XunitFormatter"
     elif results_port:
         # Connect to the specified localhost port.
@@ -986,16 +1012,30 @@ def setupTestResults():
 
         # Start the results formatter session - we'll only have one
         # during a given dotest process invocation.
-        results_formatter_object.begin_session()
+        initialize_event = EventBuilder.bare_event("initialize")
+        if isMultiprocessTestRunner():
+            if test_runner_name is not None and test_runner_name == "serial":
+                # Only one worker queue here.
+                worker_count = 1
+            else:
+                # Workers will be the number of threads specified.
+                worker_count = num_threads
+        else:
+            worker_count = 1
+        initialize_event["worker_count"] = worker_count
+
+        results_formatter_object.handle_event(initialize_event)
 
         def shutdown_formatter():
             # Tell the formatter to write out anything it may have
             # been saving until the very end (e.g. xUnit results
             # can't complete its output until this point).
-            results_formatter_object.end_session()
+            terminate_event = EventBuilder.bare_event("terminate")
+            results_formatter_object.handle_event(terminate_event)
 
             # And now close out the output file-like object.
-            cleanup_func()
+            if cleanup_func is not None:
+                cleanup_func()
 
         atexit.register(shutdown_formatter)
 
@@ -1852,7 +1892,7 @@ if __name__ == "__main__":
                         self.stream.write(self.fmt % self.counter)
                     super(LLDBTestResult, self).startTest(test)
                     if self.results_formatter:
-                        self.results_formatter.process_event(
+                        self.results_formatter.handle_event(
                             EventBuilder.event_for_start(test))
 
                 def addSuccess(self, test):
@@ -1861,7 +1901,7 @@ if __name__ == "__main__":
                     if parsable:
                         self.stream.write("PASS: LLDB (%s) :: %s\n" % (self._config_string(test), str(test)))
                     if self.results_formatter:
-                        self.results_formatter.process_event(
+                        self.results_formatter.handle_event(
                             EventBuilder.event_for_success(test))
 
                 def addError(self, test, err):
@@ -1875,7 +1915,7 @@ if __name__ == "__main__":
                     if parsable:
                         self.stream.write("FAIL: LLDB (%s) :: %s\n" % (self._config_string(test), str(test)))
                     if self.results_formatter:
-                        self.results_formatter.process_event(
+                        self.results_formatter.handle_event(
                             EventBuilder.event_for_error(test, err))
 
                 def addCleanupError(self, test, err):
@@ -1889,7 +1929,7 @@ if __name__ == "__main__":
                     if parsable:
                         self.stream.write("CLEANUP ERROR: LLDB (%s) :: %s\n" % (self._config_string(test), str(test)))
                     if self.results_formatter:
-                        self.results_formatter.process_event(
+                        self.results_formatter.handle_event(
                             EventBuilder.event_for_cleanup_error(
                                 test, err))
 
@@ -1912,7 +1952,7 @@ if __name__ == "__main__":
                             else:
                                 failuresPerCategory[category] = 1
                     if self.results_formatter:
-                        self.results_formatter.process_event(
+                        self.results_formatter.handle_event(
                             EventBuilder.event_for_failure(test, err))
 
 
@@ -1927,7 +1967,7 @@ if __name__ == "__main__":
                     if parsable:
                         self.stream.write("XFAIL: LLDB (%s) :: %s\n" % (self._config_string(test), str(test)))
                     if self.results_formatter:
-                        self.results_formatter.process_event(
+                        self.results_formatter.handle_event(
                             EventBuilder.event_for_expected_failure(
                             test, err, bugnumber))
 
@@ -1942,7 +1982,7 @@ if __name__ == "__main__":
                     if parsable:
                         self.stream.write("UNSUPPORTED: LLDB (%s) :: %s (%s) \n" % (self._config_string(test), str(test), reason))
                     if self.results_formatter:
-                        self.results_formatter.process_event(
+                        self.results_formatter.handle_event(
                             EventBuilder.event_for_skip(test, reason))
 
                 def addUnexpectedSuccess(self, test, bugnumber):
@@ -1956,7 +1996,7 @@ if __name__ == "__main__":
                     if parsable:
                         self.stream.write("XPASS: LLDB (%s) :: %s\n" % (self._config_string(test), str(test)))
                     if self.results_formatter:
-                        self.results_formatter.process_event(
+                        self.results_formatter.handle_event(
                             EventBuilder.event_for_unexpected_success(
                                 test, bugnumber))
 

@@ -44,7 +44,7 @@ import signal
 import subprocess
 import sys
 import threading
-
+import test_results
 import dotest_channels
 import dotest_args
 
@@ -75,12 +75,17 @@ total_tests = None
 test_name_len = None
 dotest_options = None
 output_on_success = False
-
 RESULTS_FORMATTER = None
 RUNNER_PROCESS_ASYNC_MAP = None
 RESULTS_LISTENER_CHANNEL = None
 
-def setup_global_variables(lock, counter, total, name_len, options):
+"""Contains an optional function pointer that can return the worker index
+   for the given thread/process calling it.  Returns a 0-based index."""
+GET_WORKER_INDEX = None
+
+
+def setup_global_variables(
+        lock, counter, total, name_len, options, worker_index_map):
     global output_lock, test_counter, total_tests, test_name_len
     global dotest_options
     output_lock = lock
@@ -89,24 +94,42 @@ def setup_global_variables(lock, counter, total, name_len, options):
     test_name_len = name_len
     dotest_options = options
 
+    if worker_index_map is not None:
+        # We'll use the output lock for this to avoid sharing another lock.
+        # This won't be used much.
+        index_lock = lock
+
+        def get_worker_index_use_pid():
+            """Returns a 0-based, process-unique index for the worker."""
+            pid = os.getpid()
+            with index_lock:
+                if pid not in worker_index_map:
+                    worker_index_map[pid] = len(worker_index_map)
+                return worker_index_map[pid]
+
+        global GET_WORKER_INDEX
+        GET_WORKER_INDEX = get_worker_index_use_pid
+
 
 def report_test_failure(name, command, output):
     global output_lock
     with output_lock:
-        print >> sys.stderr
-        print >> sys.stderr, output
-        print >> sys.stderr, "[%s FAILED]" % name
-        print >> sys.stderr, "Command invoked: %s" % ' '.join(command)
+        if not (RESULTS_FORMATTER and RESULTS_FORMATTER.is_using_terminal()):
+            print >> sys.stderr
+            print >> sys.stderr, output
+            print >> sys.stderr, "[%s FAILED]" % name
+            print >> sys.stderr, "Command invoked: %s" % ' '.join(command)
         update_progress(name)
 
 
 def report_test_pass(name, output):
     global output_lock, output_on_success
     with output_lock:
-        if output_on_success:
-            print >> sys.stderr
-            print >> sys.stderr, output
-            print >> sys.stderr, "[%s PASSED]" % name
+        if not (RESULTS_FORMATTER and RESULTS_FORMATTER.is_using_terminal()):
+            if output_on_success:
+                print >> sys.stderr
+                print >> sys.stderr, output
+                print >> sys.stderr, "[%s PASSED]" % name
         update_progress(name)
 
 
@@ -114,10 +137,11 @@ def update_progress(test_name=""):
     global output_lock, test_counter, total_tests, test_name_len
     with output_lock:
         counter_len = len(str(total_tests))
-        sys.stderr.write(
-            "\r%*d out of %d test suites processed - %-*s" %
-            (counter_len, test_counter.value, total_tests,
-             test_name_len.value, test_name))
+        if not (RESULTS_FORMATTER and RESULTS_FORMATTER.is_using_terminal()):
+            sys.stderr.write(
+                "\r%*d out of %d test suites processed - %-*s" %
+                (counter_len, test_counter.value, total_tests,
+                 test_name_len.value, test_name))
         if len(test_name) > test_name_len.value:
             test_name_len.value = len(test_name)
         test_counter.value += 1
@@ -150,31 +174,6 @@ def parse_test_results(output):
     return passes, failures, unexpected_successes
 
 
-def inferior_session_interceptor(forwarding_func, event):
-    """Intercepts session begin/end events, passing through everyting else.
-
-    @param forwarding_func a callable object to pass along the event if it
-    is not one that gets intercepted.
-
-    @param event the test result event received.
-    """
-
-    if event is not None and isinstance(event, dict):
-        if "event" in event:
-            if event["event"] == "session_begin":
-                # Swallow it.  Could report on inferior here if we
-                # cared.
-                return
-            elif event["event"] == "session_end":
-                # Swallow it.  Could report on inferior here if we
-                # cared.  More usefully, we can verify that the
-                # inferior went down hard if we don't receive this.
-                return
-
-    # Pass it along.
-    forwarding_func(event)
-
-
 def call_with_timeout(command, timeout, name, inferior_pid_events):
     """Run command with a timeout if possible.
     -s QUIT will create a coredump if they are enabled on your system
@@ -182,6 +181,15 @@ def call_with_timeout(command, timeout, name, inferior_pid_events):
     process = None
     if timeout_command and timeout != "0":
         command = [timeout_command, '-s', 'QUIT', timeout] + command
+
+    if GET_WORKER_INDEX is not None:
+        try:
+            worker_index = GET_WORKER_INDEX()
+            command.extend([
+                "--event-add-entries", "worker_index={}:int".format(worker_index)])
+        except:
+            # Ctrl-C does bad things to multiprocessing.Manager.dict() lookup.
+            pass
 
     # Specifying a value for close_fds is unsupported on Windows when using
     # subprocess.PIPE
@@ -263,17 +271,19 @@ out_q = None
 
 def process_dir_worker_multiprocessing(
         a_output_lock, a_test_counter, a_total_tests, a_test_name_len,
-        a_dotest_options, job_queue, result_queue, inferior_pid_events):
+        a_dotest_options, job_queue, result_queue, inferior_pid_events,
+        worker_index_map):
     """Worker thread main loop when in multiprocessing mode.
     Takes one directory specification at a time and works on it."""
 
     # Shut off interrupt handling in the child process.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
     # Setup the global state for the worker process.
     setup_global_variables(
         a_output_lock, a_test_counter, a_total_tests, a_test_name_len,
-        a_dotest_options)
+        a_dotest_options, worker_index_map)
 
     # Keep grabbing entries from the queue until done.
     while not job_queue.empty():
@@ -428,11 +438,13 @@ def find_test_files_in_dir_tree(dir_root, found_func):
 
 def initialize_global_vars_common(num_threads, test_work_items):
     global total_tests, test_counter, test_name_len
+    
     total_tests = sum([len(item[1]) for item in test_work_items])
     test_counter = multiprocessing.Value('i', 0)
     test_name_len = multiprocessing.Value('i', 0)
-    print >> sys.stderr, "Testing: %d test suites, %d thread%s" % (
-        total_tests, num_threads, (num_threads > 1) * "s")
+    if not (RESULTS_FORMATTER and RESULTS_FORMATTER.is_using_terminal()):
+        print >> sys.stderr, "Testing: %d test suites, %d thread%s" % (
+            total_tests, num_threads, (num_threads > 1) * "s")
     update_progress()
 
 
@@ -441,14 +453,36 @@ def initialize_global_vars_multiprocessing(num_threads, test_work_items):
     # rest of the flat module.
     global output_lock
     output_lock = multiprocessing.RLock()
+
     initialize_global_vars_common(num_threads, test_work_items)
 
 
 def initialize_global_vars_threading(num_threads, test_work_items):
+    """Initializes global variables used in threading mode.
+    @param num_threads specifies the number of workers used.
+    @param test_work_items specifies all the work items
+    that will be processed.
+    """
     # Initialize the global state we'll use to communicate with the
     # rest of the flat module.
     global output_lock
     output_lock = threading.RLock()
+
+    index_lock = threading.RLock()
+    index_map = {}
+
+    def get_worker_index_threading():
+        """Returns a 0-based, thread-unique index for the worker thread."""
+        thread_id = threading.current_thread().ident
+        with index_lock:
+            if thread_id not in index_map:
+                index_map[thread_id] = len(index_map)
+            return index_map[thread_id]
+
+
+    global GET_WORKER_INDEX
+    GET_WORKER_INDEX = get_worker_index_threading
+
     initialize_global_vars_common(num_threads, test_work_items)
 
 
@@ -630,6 +664,10 @@ def multiprocessing_test_runner(num_threads, test_work_items):
     # hold 2 * (num inferior dotest.py processes started) entries.
     inferior_pid_events = multiprocessing.Queue(4096)
 
+    # Worker dictionary allows each worker to figure out its worker index.
+    manager = multiprocessing.Manager()
+    worker_index_map = manager.dict()
+
     # Create workers.  We don't use multiprocessing.Pool due to
     # challenges with handling ^C keyboard interrupts.
     workers = []
@@ -643,7 +681,8 @@ def multiprocessing_test_runner(num_threads, test_work_items):
                   dotest_options,
                   job_queue,
                   result_queue,
-                  inferior_pid_events))
+                  inferior_pid_events,
+                  worker_index_map))
         worker.start()
         workers.append(worker)
 
@@ -717,11 +756,14 @@ def multiprocessing_test_runner_pool(num_threads, test_work_items):
     # Initialize our global state.
     initialize_global_vars_multiprocessing(num_threads, test_work_items)
 
+    manager = multiprocessing.Manager()
+    worker_index_map = manager.dict()
+
     pool = multiprocessing.Pool(
         num_threads,
         initializer=setup_global_variables,
         initargs=(output_lock, test_counter, total_tests, test_name_len,
-                  dotest_options))
+                  dotest_options, worker_index_map))
 
     # Start the map operation (async mode).
     map_future = pool.map_async(
@@ -819,6 +861,10 @@ def inprocess_exec_test_runner(test_work_items):
     # Initialize our global state.
     initialize_global_vars_multiprocessing(1, test_work_items)
 
+    # We're always worker index 0
+    global GET_WORKER_INDEX
+    GET_WORKER_INDEX = lambda: 0
+
     # Run the listener and related channel maps in a separate thread.
     # global RUNNER_PROCESS_ASYNC_MAP
     global RESULTS_LISTENER_CHANNEL
@@ -861,8 +907,7 @@ def walk_and_invoke(test_directory, test_subdir, dotest_argv,
     # listener channel and tell the inferior to send results to the
     # port on which we'll be listening.
     if RESULTS_FORMATTER is not None:
-        forwarding_func = lambda event: inferior_session_interceptor(
-            RESULTS_FORMATTER.process_event, event)
+        forwarding_func = RESULTS_FORMATTER.handle_event
         RESULTS_LISTENER_CHANNEL = (
             dotest_channels.UnpicklingForwardingListenerChannel(
                 RUNNER_PROCESS_ASYNC_MAP, "localhost", 0, forwarding_func))
@@ -1045,7 +1090,6 @@ def _remove_option(args, option_name, removal_count):
         for index in range(len(args)):
             match = regex.match(args[index])
             if match:
-                print "found matching option= at index {}".format(index)
                 del args[index]
                 return
         print "failed to find regex '{}'".format(regex_string)
@@ -1088,6 +1132,11 @@ def adjust_inferior_options(dotest_argv):
     if dotest_options.results_formatter_options is not None:
         _remove_option(dotest_argv, "--results-formatter-options", 2)
 
+    # Remove test runner name if present.
+    if dotest_options.test_runner_name is not None:
+        _remove_option(dotest_argv, "--test-runner-name", 2)
+
+
 def main(print_details_on_success, num_threads, test_subdir,
          test_runner_name, results_formatter):
     """Run dotest.py in inferior mode in parallel.
@@ -1117,6 +1166,9 @@ def main(print_details_on_success, num_threads, test_subdir,
     test runner, which will forward them on to results_formatter.
     """
 
+    # Do not shut down on sighup.
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
+
     dotest_argv = sys.argv[1:]
 
     global output_on_success, RESULTS_FORMATTER
@@ -1144,15 +1196,6 @@ def main(print_details_on_success, num_threads, test_subdir,
     cores = find('core.*', test_subdir)
     for core in cores:
         os.unlink(core)
-
-    if not num_threads:
-        num_threads_str = os.environ.get("LLDB_TEST_THREADS")
-        if num_threads_str:
-            num_threads = int(num_threads_str)
-        else:
-            num_threads = multiprocessing.cpu_count()
-    if num_threads < 1:
-        num_threads = 1
 
     system_info = " ".join(platform.uname())
 

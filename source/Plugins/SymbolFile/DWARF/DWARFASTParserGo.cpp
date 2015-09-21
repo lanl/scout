@@ -20,6 +20,8 @@
 #include "SymbolFileDWARFDebugMap.h"
 #include "UniqueDWARFASTType.h"
 
+#include "clang/Basic/Specifiers.h"
+
 #include "lldb/Core/Module.h"
 #include "lldb/Core/Value.h"
 #include "lldb/Symbol/CompileUnit.h"
@@ -177,7 +179,7 @@ DWARFASTParserGo::ParseTypeFromDWARF(const lldb_private::SymbolContext &sc, cons
                                     return type->shared_from_this();
                                 }
                                 impl = type->GetForwardCompilerType();
-                                clang_type = m_ast.CreateTypedef(go_kind, type_name_const_str, impl);
+                                clang_type = m_ast.CreateTypedefType (go_kind, type_name_const_str, impl);
                             }
                             break;
                     }

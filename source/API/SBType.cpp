@@ -16,13 +16,12 @@
 #include "lldb/Core/Stream.h"
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/Type.h"
+#include "lldb/Symbol/TypeSystem.h"
 
 #include "llvm/ADT/APSInt.h"
-#include "clang/AST/Decl.h"
 
 using namespace lldb;
 using namespace lldb_private;
-using namespace clang;
 
 SBType::SBType() :
     m_opaque_sp()

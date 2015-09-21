@@ -20,7 +20,6 @@
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/ClangExternalASTSourceCommon.h"
 #include "lldb/Symbol/Type.h"
-#include "lldb/Symbol/VerifyDecl.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
 
@@ -532,11 +531,66 @@ CompilerType::GetPointerType () const
 }
 
 CompilerType
+CompilerType::GetLValueReferenceType () const
+{
+    if (IsValid())
+        return m_type_system->GetLValueReferenceType(m_type);
+    else
+        return CompilerType();
+}
+
+CompilerType
+CompilerType::GetRValueReferenceType () const
+{
+    if (IsValid())
+        return m_type_system->GetRValueReferenceType(m_type);
+    else
+        return CompilerType();
+}
+
+CompilerType
+CompilerType::AddConstModifier () const
+{
+    if (IsValid())
+        return m_type_system->AddConstModifier(m_type);
+    else
+        return CompilerType();
+}
+
+CompilerType
+CompilerType::AddVolatileModifier () const
+{
+    if (IsValid())
+        return m_type_system->AddVolatileModifier(m_type);
+    else
+        return CompilerType();
+}
+
+CompilerType
+CompilerType::AddRestrictModifier () const
+{
+    if (IsValid())
+        return m_type_system->AddRestrictModifier(m_type);
+    else
+        return CompilerType();
+}
+
+CompilerType
+CompilerType::CreateTypedef (const char *name, const CompilerDeclContext &decl_ctx) const
+{
+    if (IsValid())
+        return m_type_system->CreateTypedef(m_type, name, decl_ctx);
+    else
+        return CompilerType();
+}
+
+CompilerType
 CompilerType::GetTypedefedType () const
 {
     if (IsValid())
         return m_type_system->GetTypedefedType(m_type);
-    return CompilerType();
+    else
+        return CompilerType();
 }
 
 //----------------------------------------------------------------------
@@ -698,36 +752,36 @@ CompilerType::GetIndexOfFieldWithName (const char* name,
 
 
 CompilerType
-CompilerType::GetChildClangTypeAtIndex (ExecutionContext *exe_ctx,
-                                        size_t idx,
-                                        bool transparent_pointers,
-                                        bool omit_empty_base_classes,
-                                        bool ignore_array_bounds,
-                                        std::string& child_name,
-                                        uint32_t &child_byte_size,
-                                        int32_t &child_byte_offset,
-                                        uint32_t &child_bitfield_bit_size,
-                                        uint32_t &child_bitfield_bit_offset,
-                                        bool &child_is_base_class,
-                                        bool &child_is_deref_of_parent,
-                                        ValueObject *valobj) const
+CompilerType::GetChildCompilerTypeAtIndex (ExecutionContext *exe_ctx,
+                                           size_t idx,
+                                           bool transparent_pointers,
+                                           bool omit_empty_base_classes,
+                                           bool ignore_array_bounds,
+                                           std::string& child_name,
+                                           uint32_t &child_byte_size,
+                                           int32_t &child_byte_offset,
+                                           uint32_t &child_bitfield_bit_size,
+                                           uint32_t &child_bitfield_bit_offset,
+                                           bool &child_is_base_class,
+                                           bool &child_is_deref_of_parent,
+                                           ValueObject *valobj) const
 {
     if (!IsValid())
         return CompilerType();
-    return m_type_system->GetChildClangTypeAtIndex(m_type,
-                                                   exe_ctx,
-                                                   idx,
-                                                   transparent_pointers,
-                                                   omit_empty_base_classes,
-                                                   ignore_array_bounds,
-                                                   child_name,
-                                                   child_byte_size,
-                                                   child_byte_offset,
-                                                   child_bitfield_bit_size,
-                                                   child_bitfield_bit_offset,
-                                                   child_is_base_class,
-                                                   child_is_deref_of_parent,
-                                                   valobj);
+    return m_type_system->GetChildCompilerTypeAtIndex(m_type,
+                                                      exe_ctx,
+                                                      idx,
+                                                      transparent_pointers,
+                                                      omit_empty_base_classes,
+                                                      ignore_array_bounds,
+                                                      child_name,
+                                                      child_byte_size,
+                                                      child_byte_offset,
+                                                      child_bitfield_bit_size,
+                                                      child_bitfield_bit_offset,
+                                                      child_is_base_class,
+                                                      child_is_deref_of_parent,
+                                                      valobj);
 }
 
 // Look for a child member (doesn't include base classes, but it does include
