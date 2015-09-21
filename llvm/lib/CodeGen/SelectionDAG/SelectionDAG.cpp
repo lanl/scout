@@ -763,6 +763,7 @@ static void VerifySDNode(SDNode *N) {
 void SelectionDAG::InsertNode(SDNode *N) {
   AllNodes.push_back(N);
 #ifndef NDEBUG
+  N->PersistentId = NextPersistentId++;
   VerifySDNode(N);
 #endif
 }
@@ -926,7 +927,7 @@ SelectionDAG::SelectionDAG(const TargetMachine &tm, CodeGenOpt::Level OL)
       EntryNode(ISD::EntryToken, 0, DebugLoc(), getVTList(MVT::Other)),
       Root(getEntryNode()), NewNodesMustHaveLegalTypes(false),
       UpdateListeners(nullptr) {
-  AllNodes.push_back(&EntryNode);
+  InsertNode(&EntryNode);
   DbgInfo = new SDDbgInfo();
 }
 
@@ -948,6 +949,9 @@ void SelectionDAG::allnodes_clear() {
   AllNodes.remove(AllNodes.begin());
   while (!AllNodes.empty())
     DeallocateNode(AllNodes.begin());
+#ifndef NDEBUG
+  NextPersistentId = 0;
+#endif
 }
 
 BinarySDNode *SelectionDAG::GetBinarySDNode(unsigned Opcode, SDLoc DL,
@@ -1020,7 +1024,7 @@ void SelectionDAG::clear() {
             static_cast<SDNode*>(nullptr));
 
   EntryNode.UseList = nullptr;
-  AllNodes.push_back(&EntryNode);
+  InsertNode(&EntryNode);
   Root = getEntryNode();
   DbgInfo->clear();
 }
