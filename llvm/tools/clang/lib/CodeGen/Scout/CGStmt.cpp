@@ -268,6 +268,7 @@ void CodeGenFunction::SetMeshBounds(MeshElementType type, llvm::Value* MeshBaseA
 }
 
 // deal w/ differences in Renderall/Forall cases
+//SC_TODO: make MeshBaseAddr an Adddres.
 void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value* MeshBaseAddr, const MeshType* mt) {
 
   MeshTy = mt;
@@ -294,20 +295,18 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   // note: width/height depth are stored after mesh fields
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-    MeshDims[i] = Address(
-    Builder.CreateConstInBoundsGEP2_32(0,
-                                       MeshBaseAddr, 0, start + i, IRNameStr),
-                                       getPointerAlign());
+    MeshDims[i] = Builder.CreateMeshGEP(Address(MeshBaseAddr, getPointerAlign()),
+                                        0, start + i, IRNameStr);
+
 
   }
 
   start =  nfields + MeshParameterOffset::XStartOffset;
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), StartNames[i]);
-    MeshStart[i] = Address(
-        Builder.CreateConstInBoundsGEP2_32(0,
-                                           MeshBaseAddr, 0, start + i, IRNameStr),
-                                           getPointerAlign());
+    MeshStart[i] = Builder.CreateMeshGEP(Address(MeshBaseAddr, getPointerAlign()),
+                                         0, start + i, IRNameStr);
+
   }
 
   start =  nfields + MeshParameterOffset::XSizeOffset;
