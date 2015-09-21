@@ -90,7 +90,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
               Builder.getInt32(i), IRNameStr);
        }
        Result = Builder.CreateInsertElement(Result, 
-            Builder.CreateLoad(scoutPtr(LookupInductionVar(3)), "forall.linearidx"),
+            Builder.CreateLoad(LookupInductionVar(3), "forall.linearidx"),
             Builder.getInt32(3), "gindex.w");
        *RV = RValue::get(Result);
        return true;
@@ -112,7 +112,7 @@ bool CodeGenFunction::EmitScoutBuiltinExpr(const FunctionDecl *FD,
     }
 
     case Builtin::BIgindexw: {
-      *RV = RValue::get(Builder.CreateLoad(scoutPtr(LookupInductionVar(3)), "forall.linearidx"));
+      *RV = RValue::get(Builder.CreateLoad(LookupInductionVar(3), "forall.linearidx"));
       return true;
     }
 

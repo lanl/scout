@@ -3035,9 +3035,9 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
       return EmitVolumeRenderMeshMemberExpr(E);
     }
     
-    llvm::Value* IndexPtr = GetForallIndex(E);
+    Address IndexPtr = GetForallIndex(E);
     
-    return EmitMeshMemberExpr(E, IndexPtr);
+    return EmitMeshMemberExpr(E, IndexPtr.getPointer());
   }
   // +========================================================================+
 
@@ -3871,7 +3871,7 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, llvm::Value *Callee,
         Args.add(RValue::get(MeshDims[i].getPointer()), T);
       // Add induction vars to args
       for(unsigned i = 0; i <= 3; i++)
-        Args.add(RValue::get(LookupInductionVar(i)), T);
+        Args.add(RValue::get(LookupInductionVar(i).getPointer()), T);
     }
     else if(CurrentPlotStmt && CurrentPlotStmt->getFrameDecl()->hasFunc(FD)){
       return EmitPlotCall(E);

@@ -387,14 +387,14 @@ public:
   llvm::Value* CurrentVolumeRenderallIndex = nullptr;
   llvm::Value* CurrentVolumeRenderallColor = nullptr;
   
-  llvm::Value *LookupInductionVar(unsigned int index);
+  Address LookupInductionVar(unsigned int index);
   llvm::Value *LinearIdx2InductionVar(llvm::Value *linearidx,
       MeshElementType elementType, unsigned int dindex, unsigned int ndims);
   Address LookupMeshDim(unsigned int index);
   Address LookupMeshStart(unsigned int index);
 
   inline llvm::Value *getLinearIdx() {
-    return Builder.CreateLoad(scoutPtr(LookupInductionVar(3)), "Xall.linearidx");
+    return Builder.CreateLoad(LookupInductionVar(3), "Xall.linearidx");
   }
 
   bool isGPU() {
@@ -2345,7 +2345,7 @@ public:
   void EmitMeshFieldsUsedMD(MeshFieldMap HS,
       const char *str, llvm::BranchInst *BI);
 
-  void EmitGPUForall(const ForallMeshStmt& S, llvm::Value *&Index);
+  void EmitGPUForall(const ForallMeshStmt& S, Address &Index);
   void EmitGPUPreamble(const ForallMeshStmt& S);
   void AddScoutKernel(llvm::Function* f, const ForallMeshStmt &S);
 
@@ -2369,7 +2369,7 @@ public:
   LValue EmitColorDeclRefLValue(const NamedDecl *ND);
   //LValue EmitScoutForAllArrayDeclRefLValue(const NamedDecl *ND);
   
-  llvm::Value* GetForallIndex(const MemberExpr* E);
+  Address GetForallIndex(const MemberExpr* E);
   
   LValue EmitMeshMemberExpr(const MemberExpr* E, llvm::Value* IndexPtr);
   LValue EmitVolumeRenderMeshMemberExpr(const MemberExpr *E);
@@ -2463,11 +2463,9 @@ public:
   }
   
   struct ForallData{
-    ForallData(){
-      inductionVar[0] = nullptr;
-      inductionVar[1] = nullptr;
-      inductionVar[2] = nullptr;
-      
+    ForallData() : indexPtr(Address::invalid()),
+                   inductionVar{Address::invalid(), Address::invalid(), Address::invalid()} {
+
       hasInductionVar[0] = false;
       hasInductionVar[1] = false;
       hasInductionVar[2] = false;
@@ -2487,13 +2485,12 @@ public:
     MeshElementType elementType;
     
     llvm::Value* topology;
-    llvm::Value* indexPtr;
-    llvm::Value* innerIndexPtr;
-    llvm::Value* fromIndicesPtr;
+    Address indexPtr;
+    llvm::Value *fromIndicesPtr;
     llvm::Value* startToIndicesPtr;
-    llvm::Value* toIndicesPtr;
+    llvm::Value *toIndicesPtr;
     llvm::BasicBlock* entryBlock;
-    llvm::Value* inductionVar[3];
+    Address inductionVar[3];
     bool hasInductionVar[3];
   };
   
