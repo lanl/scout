@@ -12,14 +12,20 @@ import argparse
 import cPickle
 import inspect
 import os
+import pprint
+import re
 import sys
 import threading
 import time
+import traceback
 import xml.sax.saxutils
 
 
 class EventBuilder(object):
     """Helper class to build test result event dictionaries."""
+
+    BASE_DICTIONARY = None
+
     @staticmethod
     def _get_test_name_info(test):
         """Returns (test-class-name, test-method-name) from a test case instance.
@@ -34,6 +40,29 @@ class EventBuilder(object):
         return (test_class_name, test_name)
 
     @staticmethod
+    def bare_event(event_type):
+        """Creates an event with default additions, event type and timestamp.
+
+        @param event_type the value set for the "event" key, used
+        to distinguish events.
+
+        @returns an event dictionary with all default additions, the "event"
+        key set to the passed in event_type, and the event_time value set to
+        time.time().
+        """
+        if EventBuilder.BASE_DICTIONARY is not None:
+            # Start with a copy of the "always include" entries.
+            event = dict(EventBuilder.BASE_DICTIONARY)
+        else:
+            event = {}
+
+        event.update({
+            "event": event_type,
+            "event_time": time.time()
+            })
+        return event
+
+    @staticmethod
     def _event_dictionary_common(test, event_type):
         """Returns an event dictionary setup with values for the given event type.
 
@@ -44,12 +73,14 @@ class EventBuilder(object):
         @return event dictionary with common event fields set.
         """
         test_class_name, test_name = EventBuilder._get_test_name_info(test)
-        return {
-            "event": event_type,
+
+        event = EventBuilder.bare_event(event_type)
+        event.update({
             "test_class": test_class_name,
             "test_name": test_name,
-            "event_time": time.time()
-        }
+            "test_filename": inspect.getfile(test.__class__)
+        })
+        return event
 
     @staticmethod
     def _error_tuple_class(error_tuple):
@@ -76,6 +107,16 @@ class EventBuilder(object):
         @return the error message provided by the test framework.
         """
         return str(error_tuple[1])
+
+    @staticmethod
+    def _error_tuple_traceback(error_tuple):
+        """Returns the unittest error tuple's error message.
+
+        @param error_tuple the error tuple provided by the test framework.
+
+        @return the error message provided by the test framework.
+        """
+        return error_tuple[2]
 
     @staticmethod
     def _event_dictionary_test_result(test, status):
@@ -110,6 +151,9 @@ class EventBuilder(object):
         event = EventBuilder._event_dictionary_test_result(test, status)
         event["issue_class"] = EventBuilder._error_tuple_class(error_tuple)
         event["issue_message"] = EventBuilder._error_tuple_message(error_tuple)
+        backtrace = EventBuilder._error_tuple_traceback(error_tuple)
+        if backtrace is not None:
+            event["issue_backtrace"] = traceback.format_tb(backtrace)
         return event
 
     @staticmethod
@@ -231,8 +275,30 @@ class EventBuilder(object):
         event["issue_phase"] = "cleanup"
         return event
 
+    @staticmethod
+    def add_entries_to_all_events(entries_dict):
+        """Specifies a dictionary of entries to add to all test events.
+
+        This provides a mechanism for, say, a parallel test runner to
+        indicate to each inferior dotest.py that it should add a
+        worker index to each.
+
+        Calling this method replaces all previous entries added
+        by a prior call to this.
+
+        Event build methods will overwrite any entries that collide.
+        Thus, the passed in dictionary is the base, which gets merged
+        over by event building when keys collide.
+
+        @param entries_dict a dictionary containing key and value
+        pairs that should be merged into all events created by the
+        event generator.  May be None to clear out any extra entries.
+        """
+        EventBuilder.BASE_DICTIONARY = dict(entries_dict)
+
 
 class ResultsFormatter(object):
+
     """Provides interface to formatting test results out to a file-like object.
 
     This class allows the LLDB test framework's raw test-realted
@@ -256,6 +322,8 @@ class ResultsFormatter(object):
     # Single call to session start, before parsing any events.
     formatter.begin_session()
 
+    formatter.handle_event({"event":"initialize",...})
+
     # Zero or more calls specified for events recorded during the test session.
     # The parallel test runner manages getting results from all the inferior
     # dotest processes, so from a new format perspective, don't worry about
@@ -263,12 +331,12 @@ class ResultsFormatter(object):
     # sandwiched between a single begin_session()/end_session() pair in the
     # parallel test runner process/thread.
     for event in zero_or_more_test_events():
-        formatter.process_event(event)
+        formatter.handle_event(event)
 
-    # Single call to session end.  Formatters that need all the data before
-    # they can print a correct result (e.g. xUnit/JUnit), this is where
-    # the final report can be generated.
-    formatter.end_session()
+    # Single call to terminate/wrap-up. Formatters that need all the
+    # data before they can print a correct result (e.g. xUnit/JUnit),
+    # this is where the final report can be generated.
+    formatter.handle_event({"event":"terminate",...})
 
     It is not the formatter's responsibility to close the file_like_object.
     (i.e. do not close it).
@@ -314,6 +382,7 @@ class ResultsFormatter(object):
         super(ResultsFormatter, self).__init__()
         self.out_file = out_file
         self.options = options
+        self.using_terminal = False
         if not self.out_file:
             raise Exception("ResultsFormatter created with no file object")
         self.start_time_by_test = {}
@@ -324,32 +393,8 @@ class ResultsFormatter(object):
         # entirely consistent from the outside.
         self.lock = threading.Lock()
 
-    def begin_session(self):
-        """Begins a test session.
-
-        All process_event() calls must be sandwiched between
-        begin_session() and end_session() calls.
-
-        Derived classes may override this but should call this first.
-        """
-        pass
-
-    def end_session(self):
-        """Ends a test session.
-
-        All process_event() calls must be sandwiched between
-        begin_session() and end_session() calls.
-
-        All results formatting should be sent to the output
-        file object by the end of this call.
-
-        Derived classes may override this but should call this after
-        the dervied class's behavior is complete.
-        """
-        pass
-
-    def process_event(self, test_event):
-        """Processes the test event for collection into the formatter output.
+    def handle_event(self, test_event):
+        """Handles the test event for collection into the formatter output.
 
         Derived classes may override this but should call down to this
         implementation first.
@@ -392,6 +437,9 @@ class ResultsFormatter(object):
             del self.start_time_by_test[test_key]
         return end_time - start_time
 
+    def is_using_terminal(self):
+        """Returns True if this results formatter is using the terminal and output should be avoided"""
+        return self.using_terminal
 
 class XunitFormatter(ResultsFormatter):
     """Provides xUnit-style formatted output.
@@ -404,6 +452,34 @@ class XunitFormatter(ResultsFormatter):
     RM_PASSTHRU = 'passthru'
 
     @staticmethod
+    def _build_illegal_xml_regex():
+        """Contructs a regex to match all illegal xml characters.
+
+        Expects to be used against a unicode string."""
+        # Construct the range pairs of invalid unicode chareacters.
+        illegal_chars_u = [
+            (0x00, 0x08), (0x0B, 0x0C), (0x0E, 0x1F), (0x7F, 0x84),
+            (0x86, 0x9F), (0xFDD0, 0xFDDF), (0xFFFE, 0xFFFF)]
+
+        # For wide builds, we have more.
+        if sys.maxunicode >= 0x10000:
+            illegal_chars_u.extend(
+                [(0x1FFFE, 0x1FFFF), (0x2FFFE, 0x2FFFF), (0x3FFFE, 0x3FFFF),
+                 (0x4FFFE, 0x4FFFF), (0x5FFFE, 0x5FFFF), (0x6FFFE, 0x6FFFF),
+                 (0x7FFFE, 0x7FFFF), (0x8FFFE, 0x8FFFF), (0x9FFFE, 0x9FFFF),
+                 (0xAFFFE, 0xAFFFF), (0xBFFFE, 0xBFFFF), (0xCFFFE, 0xCFFFF),
+                 (0xDFFFE, 0xDFFFF), (0xEFFFE, 0xEFFFF), (0xFFFFE, 0xFFFFF),
+                 (0x10FFFE, 0x10FFFF)])
+
+        # Build up an array of range expressions.
+        illegal_ranges = [
+            "%s-%s" % (unichr(low), unichr(high))
+            for (low, high) in illegal_chars_u]
+
+        # Compile the regex
+        return re.compile(u'[%s]' % u''.join(illegal_ranges))
+
+    @staticmethod
     def _quote_attribute(text):
         """Returns the given text in a manner safe for usage in an XML attribute.
 
@@ -411,6 +487,23 @@ class XunitFormatter(ResultsFormatter):
         @return the attribute-escaped version of the input text.
         """
         return xml.sax.saxutils.quoteattr(text)
+
+    def _replace_invalid_xml(self, str_or_unicode):
+        """Replaces invalid XML characters with a '?'.
+
+        @param str_or_unicode a string to replace invalid XML
+        characters within.  Can be unicode or not.  If not unicode,
+        assumes it is a byte string in utf-8 encoding.
+
+        @returns a utf-8-encoded byte string with invalid
+        XML replaced with '?'.
+        """
+        # Get the content into unicode
+        if isinstance(str_or_unicode, str):
+            unicode_content = str_or_unicode.decode('utf-8')
+        else:
+            unicode_content = str_or_unicode
+        return self.invalid_xml_re.sub(u'?', unicode_content).encode('utf-8')
 
     @classmethod
     def arg_parser(cls):
@@ -423,6 +516,11 @@ class XunitFormatter(ResultsFormatter):
             XunitFormatter.RM_SUCCESS,
             XunitFormatter.RM_FAILURE,
             XunitFormatter.RM_PASSTHRU]
+        parser.add_argument(
+            "--assert-on-unknown-events",
+            action="store_true",
+            help=('cause unknown test events to generate '
+                  'a python assert.  Default is to ignore.'))
         parser.add_argument(
             "--xpass", action="store", choices=results_mapping_choices,
             default=XunitFormatter.RM_FAILURE,
@@ -444,6 +542,7 @@ class XunitFormatter(ResultsFormatter):
         # Initialize the parent
         super(XunitFormatter, self).__init__(out_file, options)
         self.text_encoding = "UTF-8"
+        self.invalid_xml_re = XunitFormatter._build_illegal_xml_regex()
 
         self.total_test_count = 0
 
@@ -466,17 +565,16 @@ class XunitFormatter(ResultsFormatter):
             "unexpected_success": self._handle_unexpected_success
             }
 
-    def begin_session(self):
-        super(XunitFormatter, self).begin_session()
-
-    def process_event(self, test_event):
-        super(XunitFormatter, self).process_event(test_event)
+    def handle_event(self, test_event):
+        super(XunitFormatter, self).handle_event(test_event)
 
         event_type = test_event["event"]
         if event_type is None:
             return
 
-        if event_type == "test_start":
+        if event_type == "terminate":
+            self._finish_output()
+        elif event_type == "test_start":
             self.track_start_time(
                 test_event["test_class"],
                 test_event["test_name"],
@@ -484,8 +582,10 @@ class XunitFormatter(ResultsFormatter):
         elif event_type == "test_result":
             self._process_test_result(test_event)
         else:
-            sys.stderr.write("unknown event type {} from {}\n".format(
-                event_type, test_event))
+            # This is an unknown event.
+            if self.options.assert_on_unknown_events:
+                raise Exception("unknown event type {} from {}\n".format(
+                    event_type, test_event))
 
     def _handle_success(self, test_event):
         """Handles a test success.
@@ -499,11 +599,18 @@ class XunitFormatter(ResultsFormatter):
         """Handles a test failure.
         @param test_event the test event to handle.
         """
+        message = self._replace_invalid_xml(test_event["issue_message"])
+        backtrace = self._replace_invalid_xml(
+            "".join(test_event.get("issue_backtrace", [])))
+
         result = self._common_add_testcase_entry(
             test_event,
-            inner_content='<failure type={} message={} />'.format(
-                XunitFormatter._quote_attribute(test_event["issue_class"]),
-                XunitFormatter._quote_attribute(test_event["issue_message"])))
+            inner_content=(
+                '<failure type={} message={}><![CDATA[{}]]></failure>'.format(
+                    XunitFormatter._quote_attribute(test_event["issue_class"]),
+                    XunitFormatter._quote_attribute(message),
+                    backtrace)
+            ))
         with self.lock:
             self.elements["failures"].append(result)
 
@@ -511,11 +618,18 @@ class XunitFormatter(ResultsFormatter):
         """Handles a test error.
         @param test_event the test event to handle.
         """
+        message = self._replace_invalid_xml(test_event["issue_message"])
+        backtrace = self._replace_invalid_xml(
+            "".join(test_event.get("issue_backtrace", [])))
+
         result = self._common_add_testcase_entry(
             test_event,
-            inner_content='<error type={} message={} />'.format(
-                XunitFormatter._quote_attribute(test_event["issue_class"]),
-                XunitFormatter._quote_attribute(test_event["issue_message"])))
+            inner_content=(
+                '<error type={} message={}><![CDATA[{}]]></error>'.format(
+                    XunitFormatter._quote_attribute(test_event["issue_class"]),
+                    XunitFormatter._quote_attribute(message),
+                    backtrace)
+            ))
         with self.lock:
             self.elements["errors"].append(result)
 
@@ -523,10 +637,11 @@ class XunitFormatter(ResultsFormatter):
         """Handles a skipped test.
         @param test_event the test event to handle.
         """
+        reason = self._replace_invalid_xml(test_event.get("skip_reason", ""))
         result = self._common_add_testcase_entry(
             test_event,
             inner_content='<skipped message={} />'.format(
-                XunitFormatter._quote_attribute(test_event["skip_reason"])))
+                XunitFormatter._quote_attribute(reason)))
         with self.lock:
             self.elements["skips"].append(result)
 
@@ -681,7 +796,7 @@ class XunitFormatter(ResultsFormatter):
 
         return result
 
-    def _end_session_internal(self):
+    def _finish_output_no_lock(self):
         """Flushes out the report of test executions to form valid xml output.
 
         xUnit output is in XML.  The reporting system cannot complete the
@@ -708,6 +823,7 @@ class XunitFormatter(ResultsFormatter):
         # Output the header.
         self.out_file.write(
             '<?xml version="1.0" encoding="{}"?>\n'
+            '<testsuites>'
             '<testsuite name="{}" tests="{}" errors="{}" failures="{}" '
             'skip="{}"{}>\n'.format(
                 self.text_encoding,
@@ -723,13 +839,11 @@ class XunitFormatter(ResultsFormatter):
             self.out_file.write(result + '\n')
 
         # Close off the test suite.
-        self.out_file.write('</testsuite>\n')
+        self.out_file.write('</testsuite></testsuites>\n')
 
-        super(XunitFormatter, self).end_session()
-
-    def end_session(self):
+    def _finish_output(self):
         with self.lock:
-            self._end_session_internal()
+            self._finish_output_no_lock()
 
 
 class RawPickledFormatter(ResultsFormatter):
@@ -750,29 +864,149 @@ class RawPickledFormatter(ResultsFormatter):
         super(RawPickledFormatter, self).__init__(out_file, options)
         self.pid = os.getpid()
 
-    def begin_session(self):
-        super(RawPickledFormatter, self).begin_session()
-        self.process_event({
-            "event": "session_begin",
-            "event_time": time.time(),
-            "pid": self.pid
-        })
+    def handle_event(self, test_event):
+        super(RawPickledFormatter, self).handle_event(test_event)
 
-    def process_event(self, test_event):
-        super(RawPickledFormatter, self).process_event(test_event)
+        # Convert initialize/terminate events into job_begin/job_end events.
+        event_type = test_event["event"]
+        if event_type is None:
+            return
 
-        # Add pid to the event for tracking.
-        # test_event["pid"] = self.pid
+        if event_type == "initialize":
+            test_event["event"] = "job_begin"
+        elif event_type == "terminate":
+            test_event["event"] = "job_end"
+
+        # Tack on the pid.
+        test_event["pid"] = self.pid
 
         # Send it as {serialized_length_of_serialized_bytes}#{serialized_bytes}
         pickled_message = cPickle.dumps(test_event)
         self.out_file.send(
             "{}#{}".format(len(pickled_message), pickled_message))
 
-    def end_session(self):
-        self.process_event({
-            "event": "session_end",
-            "event_time": time.time(),
-            "pid": self.pid
-        })
-        super(RawPickledFormatter, self).end_session()
+class Curses(ResultsFormatter):
+    """Receives live results from tests that are running and reports them to the terminal in a curses GUI"""
+
+    def clear_line(self, y):
+        self.out_file.write("\033[%u;0H\033[2K" % (y))
+        self.out_file.flush()
+
+    def print_line(self, y, str):
+        self.out_file.write("\033[%u;0H\033[2K%s" % (y, str))
+        self.out_file.flush()
+
+    def __init__(self, out_file, options):
+        # Initialize the parent
+        super(Curses, self).__init__(out_file, options)
+        self.using_terminal = True
+        self.have_curses = True
+        self.initialize_event = None
+        self.jobs = [None] * 64
+        self.job_tests = [None] * 64
+        try:
+            import lldbcurses
+            self.main_window = lldbcurses.intialize_curses()
+            self.main_window.refresh()
+        except:
+            self.have_curses = False
+            lldbcurses.terminate_curses()
+            self.using_terminal = False
+            print "Unexpected error:", sys.exc_info()[0]
+            raise
+            
+        
+        self.line_dict = dict()
+        self.events_file = open("/tmp/events.txt", "w")
+        # self.formatters = list()
+        # if tee_results_formatter:
+        #     self.formatters.append(tee_results_formatter)
+
+    def status_to_short_str(self, status):
+        if status == 'success':
+            return '.'
+        elif status == 'failure':
+            return 'F'
+        elif status == 'unexpected_success':
+            return '?'
+        elif status == 'expected_failure':
+            return 'X'
+        elif status == 'skip':
+            return 'S'
+        elif status == 'error':
+            return 'E'
+        else:
+            return status
+    def handle_event(self, test_event):
+        with self.lock:
+            super(Curses, self).handle_event(test_event)
+            # for formatter in self.formatters:
+            #     formatter.process_event(test_event)
+            if self.have_curses:
+                import lldbcurses
+                worker_index = -1
+                if 'worker_index' in test_event:
+                    worker_index = test_event['worker_index']
+                if 'event' in test_event:
+                    print >>self.events_file, str(test_event)
+                    event = test_event['event']
+                    if event == 'test_start':
+                        name = test_event['test_class'] + '.' + test_event['test_name']
+                        self.job_tests[worker_index] = test_event
+                        if 'pid' in test_event:
+                            line = 'pid: %5d ' % (test_event['pid']) + name
+                        else:
+                            line = name
+                        self.job_panel.set_line(worker_index, line)
+                        self.main_window.refresh()
+                    elif event == 'test_result':
+                        status = test_event['status']
+                        self.status_panel.increment_status(status)
+                        if 'pid' in test_event:
+                            line = 'pid: %5d ' % (test_event['pid'])
+                        else:
+                            line = ''
+                        self.job_panel.set_line(worker_index, line)
+                        # if status != 'success' and status != 'skip' and status != 'expect_failure':
+                        name = test_event['test_class'] + '.' + test_event['test_name']
+                        time = test_event['event_time'] - self.job_tests[worker_index]['event_time']
+                        self.fail_panel.append_line('%s (%6.2f sec) %s' % (self.status_to_short_str(status), time, name))
+                        self.main_window.refresh()
+                        self.job_tests[worker_index] = ''
+                    elif event == 'job_begin':
+                        self.jobs[worker_index] = test_event
+                        if 'pid' in test_event:
+                            line = 'pid: %5d ' % (test_event['pid'])
+                        else:
+                            line = ''
+                        self.job_panel.set_line(worker_index, line)
+                    elif event == 'job_end':
+                        self.jobs[worker_index] = ''
+                        self.job_panel.set_line(worker_index, '')
+                    elif event == 'initialize':
+                        self.initialize_event = test_event
+                        num_jobs = test_event['worker_count']
+                        job_frame = self.main_window.get_contained_rect(height=num_jobs+2)
+                        fail_frame = self.main_window.get_contained_rect(top_inset=num_jobs+2, bottom_inset=1)
+                        status_frame = self.main_window.get_contained_rect(height=1, top_inset=self.main_window.get_size().h-1)
+                        self.job_panel = lldbcurses.BoxedPanel(job_frame, "Jobs")
+                        self.fail_panel = lldbcurses.BoxedPanel(fail_frame, "Completed Tests")
+                        self.status_panel = lldbcurses.StatusPanel(status_frame)
+                        self.status_panel.add_status_item(name="success", title="Success", format="%u", width=20, value=0, update=False)
+                        self.status_panel.add_status_item(name="failure", title="Failure", format="%u", width=20, value=0, update=False)
+                        self.status_panel.add_status_item(name="error", title="Error", format="%u", width=20, value=0, update=False)
+                        self.status_panel.add_status_item(name="skip", title="Skipped", format="%u", width=20, value=0, update=True)
+                        self.status_panel.add_status_item(name="expected_failure", title="Expected Failure", format="%u", width=30, value=0, update=False)
+                        self.status_panel.add_status_item(name="unexpected_success", title="Unexpected Success", format="%u", width=30, value=0, update=False)
+                        self.main_window.refresh()
+                    elif event == 'terminate':
+                        lldbcurses.terminate_curses()
+                        self.using_terminal = False
+                        
+
+class DumpFormatter(ResultsFormatter):
+    """Formats events to the file as their raw python dictionary format."""
+
+    def handle_event(self, test_event):
+        super(DumpFormatter, self).handle_event(test_event)
+        self.out_file.write("\n" + pprint.pformat(test_event) + "\n")
