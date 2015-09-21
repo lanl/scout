@@ -47,7 +47,10 @@ lldb_private::GetVersion ()
     static char g_version_string[32];
     if (g_version_string[0] == '\0')
     {
-        const char *version_string = ::strstr ((const char *)liblldb_coreVersionString, "PROJECT:");
+      // +====== Scout ======================================
+      //const char *version_string = ::strstr ((const char *)liblldb_coreVersionString, "PROJECT:");
+      const char *version_string = "scdb 1.0.0";
+      // +===================================================
         
         if (version_string)
             version_string += sizeof("PROJECT:") - 1;

@@ -63,6 +63,7 @@
 #include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Target/ObjCLanguageRuntime.h"
 #include "lldb/Target/Target.h"
+#include "lldb/Symbol/ClangASTContext.h"
 
 using namespace clang;
 using namespace lldb_private;

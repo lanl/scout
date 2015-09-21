@@ -6175,7 +6175,11 @@ static const unsigned TCEOpenCLAddrSpaceMap[] = {
     0, // opencl_generic
     0, // cuda_device
     0, // cuda_constant
-    0  // cuda_shared
+    0,  // cuda_shared
+    // +===== Scout ==========================================================+
+    0,    // scout_persistent
+    0     // scout_nonvolatile
+    // +======================================================================+
 };
 
 class TCETargetInfo : public TargetInfo {
