@@ -1023,7 +1023,7 @@ llvm::Function* CGLegionCRuntime::ScUniformMeshLauncherExecuteFunc(){
                  {ContextTy, RuntimeTy, ScUniformMeshLauncherTy});
 }
 
-llvm::Value* CGLegionCRuntime::GetLegionGlobal(std::string name,
+Address CGLegionCRuntime::GetLegionGlobal(std::string name,
                                               llvm::Type* type){
   if(!CGM.getModule().getNamedGlobal(name)) {
     new llvm::GlobalVariable(CGM.getModule(),
@@ -1033,14 +1033,14 @@ llvm::Value* CGLegionCRuntime::GetLegionGlobal(std::string name,
                              0,
                              name);
   }
-  return CGM.getModule().getNamedGlobal(name);
+  return Address(CGM.getModule().getNamedGlobal(name), CGM.getPointerAlign());
 }
 
-llvm::Value* CGLegionCRuntime::GetLegionRuntimeGlobal() {
+Address CGLegionCRuntime::GetLegionRuntimeGlobal() {
   return GetLegionGlobal("__scrt_legion_runtime", RuntimeTy);
 }
 
-llvm::Value* CGLegionCRuntime::GetLegionContextGlobal() {
+Address CGLegionCRuntime::GetLegionContextGlobal() {
   return GetLegionGlobal("__scrt_legion_context", ContextTy);
 }
 
