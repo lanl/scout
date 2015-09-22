@@ -101,13 +101,14 @@ using namespace clang;
 
 namespace
 {
-    static inline bool ClangASTContextSupportsLanguage (lldb::LanguageType language)
-    {
-        return language == eLanguageTypeUnknown || // Clang is the default type system
-               Language::LanguageIsC (language) ||
-               Language::LanguageIsCPlusPlus (language) ||
-               Language::LanguageIsObjC (language);
-    }
+  static inline bool ClangASTContextSupportsLanguage (lldb::LanguageType language)
+  {
+    return language == eLanguageTypeUnknown || // Clang is the default type system
+    Language::LanguageIsC (language) ||
+    Language::LanguageIsCPlusPlus (language) ||
+    Language::LanguageIsObjC (language) ||
+    /* +===== Scout ======= */ language == eLanguageTypeScoutC;
+  }
 }
 
 typedef lldb_private::ThreadSafeDenseMap<clang::ASTContext *, ClangASTContext*> ClangASTMap;
