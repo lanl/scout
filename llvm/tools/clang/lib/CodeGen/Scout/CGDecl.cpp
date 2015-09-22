@@ -91,6 +91,7 @@ static const char *SizeNames[]   = { "xsize", "ysize", "zsize" };
 static char IRNameStr[160];
 
 //if global mesh is not setup then set it up
+//SC_TODO MeshAddr should be Address
 void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const VarDecl &D) {
 
   const Type *Ty = D.getType().getTypePtr();
@@ -118,12 +119,12 @@ void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const
 
   // test if rank is not set.
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
-  llvm::Value *Rank =
-  Builder.CreateConstInBoundsGEP2_32(0, MeshAddr, 0,
-                                     nfields + MeshParameterOffset::RankOffset, IRNameStr);
+  Address Rank =
+  Builder.CreateMeshGEP(Address(MeshAddr, getPointerAlign()), 0,
+                                nfields + MeshParameterOffset::RankOffset, IRNameStr);
   sprintf(IRNameStr, "%s.rank", MeshName.str().c_str());
   llvm::Value *Check =
-  Builder.CreateICmpEQ(Builder.CreateLoad(scoutPtr(Rank), IRNameStr), ConstantZero);
+  Builder.CreateICmpEQ(Builder.CreateLoad(Rank, IRNameStr), ConstantZero);
   Builder.CreateCondBr(Check, Then, Done);
 
   //then block (do setup)
