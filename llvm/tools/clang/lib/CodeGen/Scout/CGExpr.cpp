@@ -199,7 +199,7 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr* E,
     base = cast<DeclRefExpr>(E->getBase());
   }
   
-  llvm::Value* Addr;
+  Address Addr = Address::invalid();
   
   // inside forall we are referencing the implicit mesh e.g. 'c' in forall cells c in mesh
    if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(base->getDecl())) {
@@ -208,16 +208,16 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr* E,
    } else if (ParmVarDecl *PVD = dyn_cast<ParmVarDecl>(base->getDecl())) {
      llvm::errs() << "ParmVarDecl in EmitMeshMemberExpr must be stencil\n";
 
-     Addr = GetAddrOfLocalVar(PVD).getPointer();
+     Addr = GetAddrOfLocalVar(PVD);
      const Type *T = PVD->getType().getTypePtr();
      if(T->isAnyPointerType() || T->isReferenceType()) {
-       Addr = Builder.CreateLoad(scoutPtr(Addr));
+      Addr = scoutPtr(Builder.CreateLoad(Addr));
      }
    } else {
      llvm_unreachable("Cannot lookup underlying mesh");
    }
   
-  LValue BaseLV  = MakeAddrLValue(scoutPtr(Addr), E->getType());
+  LValue BaseLV  = MakeAddrLValue(Addr, E->getType());
   // assume we have already checked that we are working w/ a mesh and cast to MeshField Decl
   MeshFieldDecl* MFD = cast<MeshFieldDecl>(E->getMemberDecl());
   return EmitLValueForMeshField(BaseLV,  cast<MeshFieldDecl>(MFD), IndexPtr);
@@ -841,16 +841,16 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
     }
 
     if(const VarDecl *VD = dyn_cast<VarDecl>(DRE->getDecl())) {
-      llvm::Value *BaseAddr;
+      Address BaseAddr = Address::invalid();
       GetMeshBaseAddr(VD, BaseAddr);
-      llvm::StringRef MeshName = BaseAddr->getName();
+      llvm::StringRef MeshName = BaseAddr.getPointer()->getName();
 
 
       sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), names[offset]);
-      value = Builder.CreateConstInBoundsGEP2_32(0, BaseAddr, 0, nfields+offset, IRNameStr);
+      Address addr = Builder.CreateMeshGEP(BaseAddr, 0, nfields+offset, IRNameStr);
 
       sprintf(IRNameStr, "%s.%s", MeshName.str().c_str(), names[offset]);
-      value = Builder.CreateLoad(scoutPtr(value), IRNameStr);
+      value = Builder.CreateLoad(addr, IRNameStr);
       return RValue::get(Builder.CreateTrunc(value, Int32Ty));
     }
   }
@@ -1098,19 +1098,19 @@ CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
   const StringLiteral* pathLiteral = dyn_cast<StringLiteral>(*argsBegin);
   std::string path = pathLiteral->getString();
   
-  llvm::Value* meshAddr;
+  Address meshAddr = Address::invalid();
   GetMeshBaseAddr(vd, meshAddr);
-  llvm::Value* topology = Builder.CreateStructGEP(nullptr, meshAddr, md->fields());
-  topology = Builder.CreateLoad(scoutPtr(topology), "topology.ptr");
+  Address topology = Builder.CreateStructGEP(meshAddr, md->fields(), getPointerAlign());
+  topology = scoutPtr(Builder.CreateLoad(topology, "topology.ptr"));
   
-  llvm::Value* meshPtr = Builder.CreateBitCast(meshAddr, VoidPtrTy);
+  Address meshPtr = Builder.CreateBitCast(meshAddr, VoidPtrTy);
   
   llvm::StructType* structTy =
-  cast<llvm::StructType>(meshAddr->getType()->getContainedType(0));
+  cast<llvm::StructType>(meshAddr.getPointer()->getType()->getContainedType(0));
   
   CGScoutRuntime& r = CGM.getScoutRuntime();
   
-  std::vector<llvm::Value*> args = {meshPtr};
+  std::vector<llvm::Value*> args = {meshPtr.getPointer()};
   Builder.CreateCall(r.SaveMeshStartFunc(), args);
   
   for(auto itr = md->field_begin(), itrEnd = md->field_end();
@@ -1123,8 +1123,8 @@ CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
     
     unsigned idx = CGM.getTypes().getCGMeshLayout(md).getLLVMFieldNo(field);
     
-    llvm::Value* fieldAddr = Builder.CreateStructGEP(0, meshAddr, idx);
-    fieldAddr = Builder.CreateLoad(scoutPtr(fieldAddr), "mesh.field");
+    Address fieldAddr = Builder.CreateStructGEP(meshAddr, idx, getPointerAlign());
+    fieldAddr = scoutPtr(Builder.CreateLoad(fieldAddr, "mesh.field"));
     
     llvm::Type* fieldTy = structTy->getContainedType(idx);
     llvm::PointerType* ptrTy = dyn_cast<llvm::PointerType>(fieldTy);
@@ -1154,19 +1154,19 @@ CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
     llvm::Value* elementKind;
     
     if (field->isCellLocated()) {
-      ValueVec args = {topology, llvm::ConstantInt::get(Int32Ty, dims.size())};
+      ValueVec args = {topology.getPointer(), llvm::ConstantInt::get(Int32Ty, dims.size())};
       numItems = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
       elementKind = r.CellVal;
     } else if (field->isVertexLocated()) {
-      ValueVec args = {topology, llvm::ConstantInt::get(Int32Ty, 0)};
+      ValueVec args = {topology.getPointer(), llvm::ConstantInt::get(Int32Ty, 0)};
       numItems = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
       elementKind = r.VertexVal;
     } else if(field->isEdgeLocated()) {
-      ValueVec args = {topology, llvm::ConstantInt::get(Int32Ty, 1)};
+      ValueVec args = {topology.getPointer(), llvm::ConstantInt::get(Int32Ty, 1)};
       numItems = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
       elementKind = r.EdgeVal;
     } else if(field->isFaceLocated()) {
-      ValueVec args = {topology, llvm::ConstantInt::get(Int32Ty, dims.size() - 1)};
+      ValueVec args = {topology.getPointer(), llvm::ConstantInt::get(Int32Ty, dims.size() - 1)};
       numItems = Builder.CreateCall(R.MeshNumEntitiesFunc(), args);
       elementKind = r.FaceVal;
     } else {
@@ -1175,7 +1175,7 @@ CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
     
     fieldAddr = Builder.CreateBitCast(fieldAddr, VoidPtrTy);
     
-    args = {meshPtr, fieldName, numItems, elementKind, scalarKind, fieldAddr};
+    args = {meshPtr.getPointer(), fieldName, numItems, elementKind, scalarKind, fieldAddr.getPointer()};
     Builder.CreateCall(r.SaveMeshAddFieldFunc(), args);
   }
   
@@ -1183,7 +1183,7 @@ CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
   pathValue =
   Builder.CreateBitCast(pathValue, llvm::PointerType::get(CGM.Int8Ty, 0));
   
-  args = {meshPtr, pathValue};
+  args = {meshPtr.getPointer(), pathValue};
   Builder.CreateCall(r.SaveMeshEndFunc(), args);
 
   return RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
@@ -1192,8 +1192,8 @@ CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
 RValue CodeGenFunction::EmitSwapFieldsExpr(ArgIterator argsBegin, ArgIterator argsEnd){
   // proper checking is already done in Sema::CheckSwapFieldsCall()
   
-  llvm::Value* fieldPtr[2];
-  llvm::Value* meshAddr;
+  Address fieldPtr[2] = {Address::invalid(),Address::invalid()};
+  Address meshAddr = Address::invalid();
   
   for(size_t i = 0; i < 2; ++i){
     const MemberExpr* memberExpr = cast<MemberExpr>(*argsBegin);
@@ -1210,14 +1210,14 @@ RValue CodeGenFunction::EmitSwapFieldsExpr(ArgIterator argsBegin, ArgIterator ar
     const MeshDecl* mesh = field->getParent();
     unsigned idx = CGM.getTypes().getCGMeshLayout(mesh).getLLVMFieldNo(field);
     
-    fieldPtr[i] = Builder.CreateStructGEP(0, meshAddr, idx);
+    fieldPtr[i] = Builder.CreateStructGEP(meshAddr, idx, getPointerAlign());
     
     ++argsBegin;
   }
   
-  llvm::Value* firstField = Builder.CreateLoad(scoutPtr(fieldPtr[0]));
-  Builder.CreateStore(Builder.CreateLoad(scoutPtr(fieldPtr[1])), scoutPtr(fieldPtr[0]));
-  Builder.CreateStore(firstField, scoutPtr(fieldPtr[1]));
+  llvm::Value* firstField = Builder.CreateLoad(fieldPtr[0]);
+  Builder.CreateStore(Builder.CreateLoad(fieldPtr[1]), fieldPtr[0]);
+  Builder.CreateStore(firstField, fieldPtr[1]);
   
   return RValue::get(llvm::ConstantInt::get(Int32Ty, 0));
 }
@@ -1314,9 +1314,9 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   data.indexPtr = inductPtr;
   data.elementType = et;
   
-  Value* topology = B.CreateStructGEP(nullptr, meshPtr, md->fields());
-  topology = B.CreateLoad(scoutPtr(topology), "topology.ptr");
-  data.topology = topology;
+  Address topology = B.CreateStructGEP(scoutPtr(meshPtr), md->fields(), getPointerAlign());
+  llvm::Value *topov = B.CreateLoad(topology, "topology.ptr");
+  data.topology = scoutPtr(topov);
   
   ForallStack.emplace_back(&data);
   
@@ -1397,17 +1397,17 @@ RValue CodeGenFunction::EmitMPosition(const CallExpr *E , unsigned int index) {
       IRNameStr);
 
 
-  llvm::Value *BaseAddr;
+  Address BaseAddr = Address::invalid();
   GetMeshBaseAddr(CurrentMeshVarDecl, BaseAddr);
-  llvm::StringRef MeshName = BaseAddr->getName();
+  llvm::StringRef MeshName = BaseAddr.getPointer()->getName();
 
   // We GEP to the index-th field of the record 
   sprintf(IRNameStr, "%s.%s.ptr.%s", MeshName.str().c_str(), "mposition", IndexNames[index]);
-  llvm::Value* value = Builder.CreateConstInBoundsGEP2_32(0, BaseAddr, 0, index, IRNameStr);
+  Address value = Builder.CreateMeshGEP(BaseAddr, 0, index, IRNameStr);
 
   // load that address value
   sprintf(IRNameStr, "%s.%s.%s", MeshName.str().c_str(), "mposition", IndexNames[index]);
-  value = Builder.CreateLoad(scoutPtr(value), IRNameStr);
+  value = scoutPtr(Builder.CreateLoad(value, IRNameStr));
 
   // work around bug in llvm, this is similar to what a for loop appears to do
   // see EmitArraySubscriptExpr()
@@ -1416,14 +1416,14 @@ RValue CodeGenFunction::EmitMPosition(const CallExpr *E , unsigned int index) {
 
   // get the correct element of the mposition field depending on the index
   sprintf(IRNameStr, "%s.%s.%s.element.ptr", MeshName.str().c_str(), "mposition", IndexNames[index]);
-  llvm::Value *valueptr = Builder.CreateInBoundsGEP(value, Idx, IRNameStr);
+  llvm::Value *valueptr = Builder.CreateInBoundsGEP(value.getPointer(), Idx, IRNameStr);
 
   // number of args is already known to be 0 or 1 as it was checked in sema
   // return the value of the mposition if it has no arguments
   if(E->getNumArgs() == 0) { 
     sprintf(IRNameStr, "%s.%s.%s.element", MeshName.str().c_str(), "mposition", IndexNames[index]);
-    value = Builder.CreateLoad(scoutPtr(valueptr), IRNameStr);
-    return RValue::get(value);
+    llvm::Value *v = Builder.CreateLoad(scoutPtr(valueptr), IRNameStr);
+    return RValue::get(v);
 
   } else { // otherwise, set the mposition[x,y,z] to the argument
 
@@ -1493,17 +1493,17 @@ RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
       Builder.CreateLoad(LookupInductionVar(i)),
       Builder.CreateLoad(LookupMeshStart(i)),
       IRNameStr);
-    llvm::Value *BaseAddr;
+    Address BaseAddr = Address::invalid();
     GetMeshBaseAddr(CurrentMeshVarDecl, BaseAddr);
-    llvm::StringRef MeshName = BaseAddr->getName();
+    llvm::StringRef MeshName = BaseAddr.getPointer()->getName();
 
     // We GEP to the ith field of the record 
     sprintf(IRNameStr, "%s.%s.ptr.%s", MeshName.str().c_str(), "mposition", IndexNames[i]);
-    llvm::Value* value = Builder.CreateConstInBoundsGEP2_32(0, BaseAddr, 0, i, IRNameStr);
+    Address value = Builder.CreateMeshGEP(BaseAddr, 0, i, IRNameStr);
 
     // load that address value
     sprintf(IRNameStr, "%s.%s.%s", MeshName.str().c_str(), "mposition", IndexNames[i]);
-    value = Builder.CreateLoad(scoutPtr(value), IRNameStr);
+    value = scoutPtr(Builder.CreateLoad(value, IRNameStr));
 
     // work around bug in llvm, this is similar to what a for loop appears to do
     // see EmitArraySubscriptExpr()
@@ -1512,15 +1512,15 @@ RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
 
     // get the correct element of the mposition field depending on the index
     sprintf(IRNameStr, "%s.%s.%s.element.ptr", MeshName.str().c_str(), "mposition", IndexNames[i]);
-    llvm::Value *valueptr = Builder.CreateInBoundsGEP(value, Idx, IRNameStr);
+    llvm::Value *valueptr = Builder.CreateInBoundsGEP(value.getPointer(), Idx, IRNameStr);
 
     // number of args is already known to be 0 or 1 as it was checked in sema
     // return the value of the mposition if it has no arguments
     if(E->getNumArgs() == 0) {  // extract the vector values and return them
       sprintf(IRNameStr, "%s.%s.%s.element", MeshName.str().c_str(), "mposition", IndexNames[i]);
-      value = Builder.CreateLoad(scoutPtr(valueptr), IRNameStr);
+      llvm::Value *v = Builder.CreateLoad(scoutPtr(valueptr), IRNameStr);
       sprintf(IRNameStr, "%s.%s.%s.insertelement", MeshName.str().c_str(), "mposition", IndexNames[i]);
-      Result = Builder.CreateInsertElement(Result, value, Builder.getInt32(i), IRNameStr);
+      Result = Builder.CreateInsertElement(Result, v, Builder.getInt32(i), IRNameStr);
     } else { // otherwise, set the mposition to the argument 
       sprintf(IRNameStr, "%s.%s.%s.extractelement", MeshName.str().c_str(), "mposition", IndexNames[i]);
       llvm::Value* newvalue = Builder.CreateExtractElement(Result, i, IRNameStr); 

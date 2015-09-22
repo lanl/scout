@@ -125,12 +125,12 @@ llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
 }
 
 //from VarDecl get base addr of mesh
-void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& BaseAddr) {
+void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, Address& BaseAddr) {
   // is a global. SC_TODO why not MeshVarDecl->hasGlobalStorage()?
   if ((MeshVarDecl->hasLinkage() || MeshVarDecl->isStaticDataMember())
       && MeshVarDecl->getTLSKind() != VarDecl::TLS_Dynamic) {
 
-    BaseAddr = CGM.GetAddrOfGlobalVar(MeshVarDecl);
+    BaseAddr = scoutPtr(CGM.GetAddrOfGlobalVar(MeshVarDecl));
 
     // If BaseAddr is an external global then it is assumed that we are within LLDB
     // and we need to load the mesh base address because it is passed as a global
@@ -139,43 +139,44 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& 
       auto itr = LocalDeclMap.find(MeshVarDecl);
       
       if(itr != LocalDeclMap.end()){
-        BaseAddr = itr->second.getPointer();
+        BaseAddr = itr->second;
         return;
       }
       
       while(llvm::PointerType* PT =
-            dyn_cast<llvm::PointerType>(BaseAddr->getType())){
+            dyn_cast<llvm::PointerType>(BaseAddr.getPointer()->getType())){
         
         if(!PT->getElementType()->isPointerTy()){
           break;
         }
         
-        BaseAddr = Builder.CreateLoad(scoutPtr(BaseAddr));
+        BaseAddr = scoutPtr(Builder.CreateLoad(BaseAddr));
       }
       
-      setAddrOfLocalVar(MeshVarDecl, scoutPtr(BaseAddr));
+      setAddrOfLocalVar(MeshVarDecl, BaseAddr);
       return;
     }
     
-    EmitGlobalMeshAllocaIfMissing(scoutPtr(BaseAddr), *MeshVarDecl);
+    EmitGlobalMeshAllocaIfMissing(BaseAddr, *MeshVarDecl);
     
   } else {
     if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(MeshVarDecl)){
-      BaseAddr = GetAddrOfLocalVar(IP->getMeshVarDecl()).getPointer();
+      BaseAddr = GetAddrOfLocalVar(IP->getMeshVarDecl());
     } else {
-      BaseAddr = GetAddrOfLocalVar(MeshVarDecl).getPointer();
+      BaseAddr = GetAddrOfLocalVar(MeshVarDecl);
     }
 
     // If Mesh ptr then load
     const Type *T = MeshVarDecl->getType().getTypePtr();
     if(T->isAnyPointerType() || T->isReferenceType()) {
-      BaseAddr = Builder.CreateLoad(scoutPtr(BaseAddr));
+      BaseAddr = scoutPtr(Builder.CreateLoad(BaseAddr));
     }
   }
 }
 
+//SC_TODO: return Addr?
 //from Stmt get base addr of mesh
-void CodeGenFunction::GetMeshBaseAddr(const Stmt &S, llvm::Value*& BaseAddr) {
+void CodeGenFunction::GetMeshBaseAddr(const Stmt &S, Address& BaseAddr) {
 
   const VarDecl *MeshVarDecl;
 
@@ -247,7 +248,7 @@ unsigned int GetMeshNFields(const Stmt &S) {
 
 
 void CodeGenFunction::SetMeshBounds(const Stmt &S) {
-  llvm::Value *MeshBaseAddr;
+  Address MeshBaseAddr = Address::invalid();
   GetMeshBaseAddr(S, MeshBaseAddr);
   const MeshType* mt;
 
@@ -263,13 +264,13 @@ void CodeGenFunction::SetMeshBounds(const Stmt &S) {
 }
 
 
-void CodeGenFunction::SetMeshBounds(MeshElementType type, llvm::Value* MeshBaseAddr, const MeshType* mt, bool isForAll) {
+void CodeGenFunction::SetMeshBounds(MeshElementType type, Address MeshBaseAddr, const MeshType* mt, bool isForAll) {
   SetMeshBoundsImpl(isForAll, type, MeshBaseAddr, mt);
 }
 
 // deal w/ differences in Renderall/Forall cases
 //SC_TODO: make MeshBaseAddr an Adddres.
-void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value* MeshBaseAddr, const MeshType* mt) {
+void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, Address MeshBaseAddr, const MeshType* mt) {
 
   MeshTy = mt;
 
@@ -279,11 +280,11 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   llvm::Value *ConstantOne = llvm::ConstantInt::get(Int64Ty, 1);
   llvm::Value *ConstantZero = llvm::ConstantInt::get(Int64Ty, 0);
   
-  llvm::StringRef MeshName = MeshBaseAddr->getName();
+  llvm::StringRef MeshName = MeshBaseAddr.getPointer()->getName();
   
   // extract rank from mesh stored after width/height/depth
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
-  MeshRank = Builder.CreateMeshGEP(scoutPtr(MeshBaseAddr), 0,
+  MeshRank = Builder.CreateMeshGEP(MeshBaseAddr, 0,
                                      nfields + MeshParameterOffset::RankOffset,
                                      IRNameStr);
   
@@ -293,7 +294,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   // note: width/height depth are stored after mesh fields
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-    MeshDims[i] = Builder.CreateMeshGEP(scoutPtr(MeshBaseAddr),
+    MeshDims[i] = Builder.CreateMeshGEP(MeshBaseAddr,
                                         0, start + i, IRNameStr);
 
 
@@ -302,7 +303,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   start =  nfields + MeshParameterOffset::XStartOffset;
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), StartNames[i]);
-    MeshStart[i] = Builder.CreateMeshGEP(scoutPtr(MeshBaseAddr),
+    MeshStart[i] = Builder.CreateMeshGEP(MeshBaseAddr,
                                          0, start + i, IRNameStr);
 
   }
@@ -310,7 +311,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   start =  nfields + MeshParameterOffset::XSizeOffset;
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), SizeNames[i]);
-    MeshSize[i] = Builder.CreateMeshGEP(scoutPtr(MeshBaseAddr),
+    MeshSize[i] = Builder.CreateMeshGEP(MeshBaseAddr,
                                         0, start + i, IRNameStr);
   }
 
@@ -596,9 +597,9 @@ void CodeGenFunction::EmitLegionTask(const FunctionDecl* FD,
 
 void CodeGenFunction::InitForallData(ForallInfo* info,
                                      std::vector<ForallData*>& stack,
-                                     llvm::Value* meshPtr,
-                                     llvm::Value* topologyPtr,
-                                     llvm::Value* rank){
+                                     Address meshPtr,
+                                     Address topologyPtr,
+                                     Address rank){
   using namespace std;
   using namespace llvm;
   
@@ -643,7 +644,7 @@ void CodeGenFunction::InitForallData(ForallInfo* info,
     Value* aboveTopologyDim = GetMeshTopologyDim(rank, aboveData->elementType);
     
     ValueVec args =
-    {topologyPtr, aboveTopologyDim, topologyDim};
+    {topologyPtr.getPointer(), aboveTopologyDim, topologyDim};
     
     if(stack.size() > 0){
       data->fromIndicesPtr = Address(
@@ -695,7 +696,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   auto& B = Builder;
   auto R = CGM.getScoutRuntime();
   
-  Value* rank;
+  Address rank = Address::invalid();
   
   if(top){
     SetMeshBounds(S);
@@ -728,18 +729,18 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     
     const MeshDecl* md = mt->getDecl();
     
-    Value* meshPtr;
+    Address meshPtr = Address::invalid();
     GetMeshBaseAddr(mvd, meshPtr);
     
-    Value* topologyPtr =
-    B.CreateStructGEP(nullptr, meshPtr,
-                      md->fields() + MeshParameterOffset::TopologyOffset);
-    topologyPtr = B.CreateLoad(scoutPtr(topologyPtr), "topology.ptr");
+    Address topologyPtr = B.CreateStructGEP(meshPtr,
+                      md->fields() + MeshParameterOffset::TopologyOffset,
+                      getPointerAlign());
+    topologyPtr = scoutPtr(B.CreateLoad(topologyPtr, "topology.ptr"));
     
-    rank =
-    B.CreateStructGEP(nullptr, meshPtr,
-                      md->fields() + MeshParameterOffset::RankOffset);
-    rank = B.CreateLoad(scoutPtr(rank));
+    rank = B.CreateStructGEP(meshPtr,
+                      md->fields() + MeshParameterOffset::RankOffset,
+                      getPointerAlign());
+    rank = scoutPtr(B.CreateLoad(rank));
     
     NestedForallVisitor visitor;
     visitor.VisitStmt(const_cast<ForallMeshStmt*>(&S));
@@ -756,7 +757,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   size_t stackSize = ForallStack.size();
   
   ForallData* topData = ForallStack[0];
-  llvm::Value* topology = topData->topology;
+  Address topology = topData->topology;
   
   data->entryBlock = createBasicBlock("forall.entry");
   B.CreateBr(data->entryBlock);
@@ -778,7 +779,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
   
   if(top){
     Value* topologyDim = GetMeshTopologyDim(rank, data->elementType);
-    ValueVec args = {topology, topologyDim};
+    ValueVec args = {topology.getPointer(), topologyDim};
     endIndex = B.CreateCall(R.MeshNumEntitiesFunc(), args, "end.index");
     
     if(S.getQueryVarDecl()){
@@ -1160,33 +1161,34 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   
   const MeshDecl* md = mt->getDecl();
   
-  Value* meshPtr;
+  Address meshPtr = Address::invalid();
   GetMeshBaseAddr(mvd, meshPtr);
   
-  Value* topologyPtr =
-  B.CreateStructGEP(nullptr, meshPtr,
-                    md->fields() + MeshParameterOffset::TopologyOffset);
-  topologyPtr = B.CreateLoad(scoutPtr(topologyPtr), "topology.ptr");
+  Address topologyPtr =
+  B.CreateStructGEP(meshPtr,
+                    md->fields() + MeshParameterOffset::TopologyOffset,
+                    getPointerAlign());
+  topologyPtr = scoutPtr(B.CreateLoad(topologyPtr, "topology.ptr"));
   
-  Value* rank =
-  B.CreateStructGEP(nullptr, meshPtr,
-                    md->fields() + MeshParameterOffset::RankOffset);
-  rank = B.CreateLoad(scoutPtr(rank));
+  Address rank = B.CreateStructGEP(meshPtr,
+                    md->fields() + MeshParameterOffset::RankOffset,
+                    getPointerAlign());
+  rank = scoutPtr(B.CreateLoad(rank));
   
   MeshElementType et = S.getMeshElementRef();
   
   Value* topologyDim = GetMeshTopologyDim(rank, et);
-  ValueVec args = {topologyPtr, topologyDim};
+  ValueVec args = {topologyPtr.getPointer(), topologyDim};
   Value* endIndex = B.CreateCall(R.MeshNumEntitiesFunc(), args, "end.index");
   
   ForallData* data = new ForallData;
   data->meshVarDecl = mvd;
   data->topology = topologyPtr;
   data->elementType = et;
-  data->indexPtr = Address(B.CreateAlloca(Int64Ty, nullptr, "index.ptr"), getPointerAlign());
+  data->indexPtr = scoutPtr(B.CreateAlloca(Int64Ty, nullptr, "index.ptr"));
   
   for(size_t j = 0; j < 3; ++j){
-    data->inductionVar[j] = Address(B.CreateAlloca(Int64Ty, nullptr, IRNameStr), getPointerAlign());
+    data->inductionVar[j] = scoutPtr(B.CreateAlloca(Int64Ty, nullptr, IRNameStr));
   }
   
   data->fromIndicesPtr = Address::invalid();
@@ -1302,23 +1304,23 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   MeshDecl* MD = cast<MeshDecl>(S.getMeshType()->getDecl());
   
-  Value* MeshBaseAddr;
+  Address MeshBaseAddr = Address::invalid();
   GetMeshBaseAddr(S, MeshBaseAddr);
   
   StructType* meshStruct =
-  dyn_cast<StructType>(MeshBaseAddr->getType()->getPointerElementType());
+  dyn_cast<StructType>(MeshBaseAddr.getPointer()->getType()->getPointerElementType());
   
   Value* width =
-  B.CreateLoad(scoutPtr(B.CreateStructGEP(nullptr, MeshBaseAddr,
-                                 meshStruct->getNumElements() - 1)), "width");
+  B.CreateLoad(B.CreateStructGEP(MeshBaseAddr,
+                      meshStruct->getNumElements() - 1, getPointerAlign()), "width");
   
   Value* height =
-  B.CreateLoad(scoutPtr(B.CreateStructGEP(nullptr, MeshBaseAddr,
-                                 meshStruct->getNumElements() - 2)), "height");
+  B.CreateLoad(B.CreateStructGEP(MeshBaseAddr,
+                       meshStruct->getNumElements() - 2, getPointerAlign()), "height");
   
   Value* depth =
-  B.CreateLoad(scoutPtr(B.CreateStructGEP(nullptr, MeshBaseAddr,
-                                 meshStruct->getNumElements() - 3)), "depth");
+  B.CreateLoad(B.CreateStructGEP(MeshBaseAddr,
+                        meshStruct->getNumElements() - 3, getPointerAlign()), "depth");
   
   const VarDecl* target = S.getRenderTargetVarDecl();
   
@@ -1343,7 +1345,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   BasicBlock::iterator prevPoint = B.GetInsertPoint();
   
   TypeVec params =
-  {MeshBaseAddr->getType(), targetPtr->getType(),
+  {MeshBaseAddr.getPointer()->getType(), targetPtr->getType(),
     Int64Ty, Int64Ty, Int64Ty};
   
   for(VarDecl* vd : vs){
@@ -1370,7 +1372,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   aitr->setName("depth");
   aitr++;
   
-  ValueVec args = {MeshBaseAddr, targetPtr, width, height, depth};
+  ValueVec args = {MeshBaseAddr.getPointer(), targetPtr, width, height, depth};
   
   auto vitr = vs.begin();
   while(aitr != renderallFunc->arg_end()){
@@ -2103,16 +2105,15 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         
         llvm::Value* varId = ConstantInt::get(R.Int32Ty, fd->getVarId(itr->second));
         
-        Value* meshPtr;
-        
+        Address meshPtr = Address::invalid();
         GetMeshBaseAddr(frame, meshPtr);
         
-        Value* fieldPtr = Builder.CreateStructGEP(0, meshPtr, field->getFieldIndex());
-        fieldPtr = Builder.CreateLoad(scoutPtr(fieldPtr));
+        Address fieldPtr = Builder.CreateStructGEP(meshPtr, field->getFieldIndex(), getPointerAlign());
+        llvm::Value *fieldv = Builder.CreateLoad(fieldPtr);
         
-        llvm::PointerType* pt = dyn_cast<llvm::PointerType>(fieldPtr->getType());
+        llvm::PointerType* pt = dyn_cast<llvm::PointerType>(fieldv->getType());
         
-        fieldPtr = Builder.CreateBitCast(fieldPtr, R.VoidPtrTy, "field.ptr");
+        fieldv = Builder.CreateBitCast(fieldv, R.VoidPtrTy, "field.ptr");
         
         llvm::Type* et = pt->getElementType();
         
@@ -2149,7 +2150,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
           numElements = numFaces;
         }
         
-        ValueVec args = {framePtr, varId, fieldType, fieldPtr, numElements};
+        ValueVec args = {framePtr, varId, fieldType, fieldv, numElements};
         
         Builder.CreateCall(R.FrameAddArrayVarFunc(), args);
       }

@@ -2307,15 +2307,15 @@ public:
 
   // +===== Scout ============================================================+
   //
-  void GetMeshBaseAddr(const Stmt &S, llvm::Value *&BaseAddr);
-  void GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& BaseAddr);
+  void GetMeshBaseAddr(const Stmt &S, Address& BaseAddr);
+  void GetMeshBaseAddr(const VarDecl *MeshVarDecl, Address& BaseAddr);
   void GetFrameBaseAddr(const VarDecl *FrameVarDecl, llvm::Value*& BaseAddr);
   
   void SetMeshBounds(const Stmt &S);
-  void SetMeshBounds(MeshElementType type, llvm::Value* MeshBaseAddr, const MeshType* mt, bool isForall = true);
+  void SetMeshBounds(MeshElementType type, Address MeshBaseAddr, const MeshType* mt, bool isForall = true);
   
  private:
-  void SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value* MeshBaseAddr, const MeshType* mt);
+  void SetMeshBoundsImpl(bool isForall, int meshType, Address MeshBaseAddr, const MeshType* mt);
   
  public:
 
@@ -2446,23 +2446,24 @@ public:
     return -1;
   }
 
-  llvm::Value* GetMeshTopologyDim(llvm::Value* rank, MeshElementType elementType){
+  llvm::Value* GetMeshTopologyDim(Address rank, MeshElementType elementType){
     switch(elementType){
       case Vertices:
         return llvm::ConstantInt::get(Int32Ty, 0);
       case Edges:
         return llvm::ConstantInt::get(Int32Ty, 1);
       case Faces:
-        return Builder.CreateSub(Builder.CreateTrunc(rank, Int32Ty), llvm::ConstantInt::get(Int32Ty, 1));
+        return Builder.CreateSub(Builder.CreateTrunc(rank.getPointer(), Int32Ty), llvm::ConstantInt::get(Int32Ty, 1));
       case Cells:
-        return Builder.CreateTrunc(rank, Int32Ty);
+        return Builder.CreateTrunc(rank.getPointer(), Int32Ty);
       default:
         assert(false && "invalid element type");
     }
   }
   
   struct ForallData{
-    ForallData() : indexPtr(Address::invalid()),
+    ForallData() : topology(Address::invalid()),
+                   indexPtr(Address::invalid()),
                    toIndicesPtr(Address::invalid()),
                    fromIndicesPtr(Address::invalid()),
                    inductionVar{Address::invalid(), Address::invalid(), Address::invalid()} {
@@ -2485,7 +2486,7 @@ public:
     const VarDecl* meshVarDecl;
     MeshElementType elementType;
     
-    llvm::Value* topology;
+    Address topology;
     Address indexPtr;
     Address toIndicesPtr;
     Address fromIndicesPtr;
@@ -2497,9 +2498,9 @@ public:
   
   void InitForallData(ForallInfo* info,
                       std::vector<ForallData*>& stack,
-                      llvm::Value* meshPtr,
-                      llvm::Value* topologyPtr,
-                      llvm::Value* rank);
+                      Address meshPtr,
+                      Address topologyPtr,
+                      Address rank);
   
   std::map<const ForallMeshStmt*, ForallData*> ForallDataMap;
   
