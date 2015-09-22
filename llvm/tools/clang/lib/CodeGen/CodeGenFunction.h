@@ -2200,10 +2200,9 @@ public:
   AutoVarEmission EmitAutoVarAlloca(const VarDecl &var);
 
   // +===== Scout ============================================================+
-  void EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D);
-  void EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const VarDecl &D);
-  void EmitScoutAutoVarAlloca(llvm::Value *Alloc,
-                              const VarDecl &var);
+  void EmitMeshParameters(Address MeshAddr, const VarDecl &D);
+  void EmitGlobalMeshAllocaIfMissing(Address MeshAddr, const VarDecl &D);
+  void EmitScoutAutoVarAlloca(Address Alloc, const VarDecl &var);
   void GetMeshDimensions(const MeshType* MT, SmallVector<llvm::Value*, 3>& DS);
 
   void GetNumMeshItems(SmallVector<llvm::Value*, 3>& Dimensions,

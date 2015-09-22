@@ -157,7 +157,7 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, llvm::Value*& 
       return;
     }
     
-    EmitGlobalMeshAllocaIfMissing(BaseAddr, *MeshVarDecl);
+    EmitGlobalMeshAllocaIfMissing(scoutPtr(BaseAddr), *MeshVarDecl);
     
   } else {
     if(const ImplicitMeshParamDecl* IP = dyn_cast<ImplicitMeshParamDecl>(MeshVarDecl)){
@@ -283,7 +283,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   
   // extract rank from mesh stored after width/height/depth
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
-  MeshRank = Builder.CreateMeshGEP(Address(MeshBaseAddr, getPointerAlign()), 0,
+  MeshRank = Builder.CreateMeshGEP(scoutPtr(MeshBaseAddr), 0,
                                      nfields + MeshParameterOffset::RankOffset,
                                      IRNameStr);
   
@@ -293,7 +293,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   // note: width/height depth are stored after mesh fields
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-    MeshDims[i] = Builder.CreateMeshGEP(Address(MeshBaseAddr, getPointerAlign()),
+    MeshDims[i] = Builder.CreateMeshGEP(scoutPtr(MeshBaseAddr),
                                         0, start + i, IRNameStr);
 
 
@@ -302,7 +302,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   start =  nfields + MeshParameterOffset::XStartOffset;
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), StartNames[i]);
-    MeshStart[i] = Builder.CreateMeshGEP(Address(MeshBaseAddr, getPointerAlign()),
+    MeshStart[i] = Builder.CreateMeshGEP(scoutPtr(MeshBaseAddr),
                                          0, start + i, IRNameStr);
 
   }
@@ -310,7 +310,7 @@ void CodeGenFunction::SetMeshBoundsImpl(bool isForall, int meshType, llvm::Value
   start =  nfields + MeshParameterOffset::XSizeOffset;
   for(unsigned int i = 0; i < 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), SizeNames[i]);
-    MeshSize[i] = Builder.CreateMeshGEP(Address(MeshBaseAddr, getPointerAlign()),
+    MeshSize[i] = Builder.CreateMeshGEP(scoutPtr(MeshBaseAddr),
                                         0, start + i, IRNameStr);
   }
 

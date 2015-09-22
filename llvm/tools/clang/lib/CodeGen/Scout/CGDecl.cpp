@@ -92,7 +92,7 @@ static char IRNameStr[160];
 
 //if global mesh is not setup then set it up
 //SC_TODO MeshAddr should be Address
-void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const VarDecl &D) {
+void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(Address MeshAddr, const VarDecl &D) {
 
   const Type *Ty = D.getType().getTypePtr();
 
@@ -105,7 +105,7 @@ void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const
   getTypes().GlobalMeshInit[Ty] = true;
 
   const MeshType* MT = cast<MeshType>(Ty);
-  llvm::StringRef MeshName  = MeshAddr->getName();
+  llvm::StringRef MeshName  = MeshAddr.getPointer()->getName();
   MeshDecl* MD = MT->getDecl();
   unsigned int nfields = MD->fields();
 
@@ -119,9 +119,8 @@ void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const
 
   // test if rank is not set.
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
-  Address Rank =
-  Builder.CreateMeshGEP(Address(MeshAddr, getPointerAlign()), 0,
-                                nfields + MeshParameterOffset::RankOffset, IRNameStr);
+  Address Rank = Builder.CreateMeshGEP(MeshAddr, 0,
+                         nfields + MeshParameterOffset::RankOffset, IRNameStr);
   sprintf(IRNameStr, "%s.rank", MeshName.str().c_str());
   llvm::Value *Check =
   Builder.CreateICmpEQ(Builder.CreateLoad(Rank, IRNameStr), ConstantZero);
@@ -137,11 +136,11 @@ void CodeGenFunction::EmitGlobalMeshAllocaIfMissing(llvm::Value* MeshAddr, const
   return;
 }
 
-void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D) {
+void CodeGenFunction::EmitMeshParameters(Address MeshAddr, const VarDecl &D) {
 
   QualType T = D.getType();
   const MeshType* MT = cast<MeshType>(T.getTypePtr());
-  llvm::StringRef MeshName  = MeshAddr->getName();
+  llvm::StringRef MeshName  = MeshAddr.getPointer()->getName();
   MeshDecl* MD = MT->getDecl();
 
   MeshType::MeshDimensions dims;
@@ -154,7 +153,7 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
 
   for(size_t i = 0; i < rank; ++i) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-    Address x = Builder.CreateMeshGEP(scoutPtr(MeshAddr), 0, start+i, IRNameStr);
+    Address x = Builder.CreateMeshGEP(MeshAddr, 0, start+i, IRNameStr);
     llvm::Value* intValue;
 
     Expr* E = dims[i];
@@ -183,7 +182,7 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
 
     // also store width/height/depth in sizes
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), SizeNames[i]);
-    Address size = Builder.CreateMeshGEP(scoutPtr(MeshAddr), 0, sizestart+i, IRNameStr);
+    Address size = Builder.CreateMeshGEP(MeshAddr, 0, sizestart+i, IRNameStr);
     Builder.CreateStore(extIntValue, size);
 
   }
@@ -192,24 +191,24 @@ void CodeGenFunction::EmitMeshParameters(llvm::Value* MeshAddr, const VarDecl &D
 
   for(size_t i = rank; i< 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), DimNames[i]);
-    Address x = Builder.CreateMeshGEP(scoutPtr(MeshAddr), 0, start+i, IRNameStr);
+    Address x = Builder.CreateMeshGEP(MeshAddr, 0, start+i, IRNameStr);
     Builder.CreateStore(ConstantZero, x);
 
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), SizeNames[i]);
-    Address size = Builder.CreateMeshGEP(scoutPtr(MeshAddr), 0, sizestart+i, IRNameStr);
+    Address size = Builder.CreateMeshGEP(MeshAddr, 0, sizestart+i, IRNameStr);
     Builder.CreateStore(ConstantZero, size);
   }
 
   //set rank this makes Codegen easier for rank() builtin
   sprintf(IRNameStr, "%s.rank.ptr", MeshName.str().c_str());
-  Address Rank = Builder.CreateMeshGEP(scoutPtr(MeshAddr), 0, nfields+MeshParameterOffset::RankOffset, IRNameStr);
+  Address Rank = Builder.CreateMeshGEP(MeshAddr, 0, nfields+MeshParameterOffset::RankOffset, IRNameStr);
   Builder.CreateStore(llvm::ConstantInt::get(Int64Ty, rank), Rank);
 
   // set xstart/ystart/zstart to 0
   size_t xstart = nfields + MeshParameterOffset::XStartOffset;
   for(size_t i = 0; i< 3; i++) {
     sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), StartNames[i]);
-    Address x = Builder.CreateMeshGEP(scoutPtr(MeshAddr), 0, xstart+i, IRNameStr);
+    Address x = Builder.CreateMeshGEP(MeshAddr, 0, xstart+i, IRNameStr);
     llvm::Value* ConstantZero =  llvm::ConstantInt::get(Int64Ty, 0);
     Builder.CreateStore(ConstantZero, x);
   }
@@ -368,7 +367,7 @@ CodeGenFunction::GetNumMeshItems(SmallVector<llvm::Value*, 3>& Dimensions,
   }
 }
 
-void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
+void CodeGenFunction::EmitScoutAutoVarAlloca(Address Alloc,
                                              const VarDecl &D) {
   QualType T = D.getType();
   const clang::Type &Ty = *getContext().getCanonicalType(T).getTypePtr();
@@ -390,7 +389,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     //
 
     const MeshType* MT = cast<MeshType>(T.getTypePtr());
-    llvm::StringRef MeshName  = Alloc->getName();
+    llvm::StringRef MeshName  = Alloc.getPointer()->getName();
     MeshDecl* MD = MT->getDecl();
 
     SmallVector<llvm::Value*, 3> Dimensions;
@@ -509,7 +508,8 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     MeshDecl::field_iterator itr_end = MD->field_end();
     unsigned int nfields = MD->fields();
 
-    llvm::StructType *structTy = cast<llvm::StructType>(Alloc->getType()->getContainedType(0));
+    llvm::StructType *structTy = cast<llvm::StructType>
+         (Alloc.getPointer()->getType()->getContainedType(0));
     
     for(unsigned i = 0; i < nfields; ++i) {
 
@@ -561,7 +561,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
         val = Builder.CreateBitCast(val, structTy->getContainedType(i));
 
         sprintf(IRNameStr, "%s.%s.ptr", MeshName.str().c_str(), MeshFieldName.str().c_str());
-        Address field = Builder.CreateMeshGEP(scoutPtr(Alloc), 0, i, IRNameStr);
+        Address field = Builder.CreateMeshGEP(Alloc, 0, i, IRNameStr);
         Builder.CreateStore(val, field);
       }
 
@@ -621,8 +621,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     }
 
     // store ptr to mesh topology
-    Address mtField =
-    Builder.CreateMeshGEP(scoutPtr(Alloc), 0, nfields);
+    Address mtField = Builder.CreateMeshGEP(Alloc, 0, nfields);
     
     Builder.CreateStore(meshTopology, mtField);
     
@@ -720,13 +719,13 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
     // make type for ptr to scout.window_t
     //llvm::StructType *StructTy_scout_window_t = CGM.getModule().getTypeByName("scout.window_t");
     
-    llvm::PointerType* pt = dyn_cast<llvm::PointerType>(Alloc->getType());
+    llvm::PointerType* pt = dyn_cast<llvm::PointerType>(Alloc.getPointer()->getType());
     
     // cast call result to scout.window_t
     llvm::Value* ptr_cast = Builder.CreateBitCast(ptr_call, pt->getElementType(), "");
     
     // store call result into previously allocated ptr for window
-    llvm::Value* void_store = Builder.CreateStore(ptr_cast, scoutPtr(Alloc), false);
+    llvm::Value* void_store = Builder.CreateStore(ptr_cast, Alloc, false);
     (void)void_store; // suppress warning
 
   }
@@ -744,7 +743,7 @@ void CodeGenFunction::EmitScoutAutoVarAlloca(llvm::Value *Alloc,
   
     ValueVec args;
     Value* fp = Builder.CreateCall(R.CreateFrameFunc(), args, "frame.ptr");
-    Builder.CreateStore(fp, scoutPtr(Alloc));
+    Builder.CreateStore(fp, Alloc);
     
     auto m = FD->getVarMap();
     for(auto& itr : m){
