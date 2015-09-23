@@ -33,6 +33,7 @@ echo core.%p | sudo tee /proc/sys/kernel/core_pattern
 """
 
 import asyncore
+import distutils.version
 import fnmatch
 import multiprocessing
 import multiprocessing.pool
@@ -174,6 +175,11 @@ def parse_test_results(output):
     return passes, failures, unexpected_successes
 
 
+def create_new_process_group():
+    """Creates a new process group for the process."""
+    os.setpgid(os.getpid(), os.getpid())
+
+
 def call_with_timeout(command, timeout, name, inferior_pid_events):
     """Run command with a timeout if possible.
     -s QUIT will create a coredump if they are enabled on your system
@@ -198,7 +204,8 @@ def call_with_timeout(command, timeout, name, inferior_pid_events):
                                    stdin=subprocess.PIPE,
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE,
-                                   close_fds=True)
+                                   close_fds=True,
+                                   preexec_fn=create_new_process_group)
     else:
         process = subprocess.Popen(command,
                                    stdin=subprocess.PIPE,
@@ -888,7 +895,7 @@ def inprocess_exec_test_runner(test_work_items):
     return test_results
 
 def walk_and_invoke(test_directory, test_subdir, dotest_argv,
-                    test_runner_func):
+                    num_workers, test_runner_func):
     """Look for matched files and invoke test driver on each one.
     In single-threaded mode, each test driver is invoked directly.
     In multi-threaded mode, submit each test driver to a worker
@@ -910,7 +917,8 @@ def walk_and_invoke(test_directory, test_subdir, dotest_argv,
         forwarding_func = RESULTS_FORMATTER.handle_event
         RESULTS_LISTENER_CHANNEL = (
             dotest_channels.UnpicklingForwardingListenerChannel(
-                RUNNER_PROCESS_ASYNC_MAP, "localhost", 0, forwarding_func))
+                RUNNER_PROCESS_ASYNC_MAP, "localhost", 0,
+                2 * num_workers, forwarding_func))
         dotest_argv.append("--results-port")
         dotest_argv.append(str(RESULTS_LISTENER_CHANNEL.address[1]))
 
@@ -1060,43 +1068,87 @@ def get_test_runner_strategies(num_threads):
     }
 
 
-def _remove_option(args, option_name, removal_count):
+def _remove_option(
+        args, long_option_name, short_option_name, takes_arg):
     """Removes option and related option arguments from args array.
+
+    This method removes all short/long options that match the given
+    arguments.
+
     @param args the array of command line arguments (in/out)
-    @param option_name the full command line representation of the
-    option that will be removed (including '--' or '-').
-    @param the count of elements to remove.  A value of 1 will remove
-    just the found option, while 2 will remove the option and its first
-    argument.
+
+    @param long_option_name the full command line representation of the
+    long-form option that will be removed (including '--').
+
+    @param short_option_name the short version of the command line option
+    that will be removed (including '-').
+
+    @param takes_arg True if the option takes an argument.
+
     """
-    try:
-        index = args.index(option_name)
-        # Handle the exact match case.
-        del args[index:index+removal_count]
-        return
-    except ValueError:
-        # Thanks to argparse not handling options with known arguments
-        # like other options parsing libraries (see
-        # https://bugs.python.org/issue9334), we need to support the
-        # --results-formatter-options={second-level-arguments} (note
-        # the equal sign to fool the first-level arguments parser into
-        # not treating the second-level arguments as first-level
-        # options). We're certainly at risk of getting this wrong
-        # since now we're forced into the business of trying to figure
-        # out what is an argument (although I think this
-        # implementation will suffice).
-        regex_string = "^" + option_name + "="
-        regex = re.compile(regex_string)
+    if long_option_name is not None:
+        regex_string = "^" + long_option_name + "="
+        long_regex = re.compile(regex_string)
+    if short_option_name is not None:
+        # Short options we only match the -X and assume
+        # any arg is one command line argument jammed together.
+        # i.e. -O--abc=1 is a single argument in the args list.
+        # We don't handle -O --abc=1, as argparse doesn't handle
+        # it, either.
+        regex_string = "^" + short_option_name
+        short_regex = re.compile(regex_string)
+
+    def remove_long_internal():
+        """Removes one matching long option from args.
+        @returns True if one was found and removed; False otherwise.
+        """
+        try:
+            index = args.index(long_option_name)
+            # Handle the exact match case.
+            if takes_arg:
+                removal_count = 2
+            else:
+                removal_count = 1
+            del args[index:index+removal_count]
+            return True
+        except ValueError:
+            # Thanks to argparse not handling options with known arguments
+            # like other options parsing libraries (see
+            # https://bugs.python.org/issue9334), we need to support the
+            # --results-formatter-options={second-level-arguments} (note
+            # the equal sign to fool the first-level arguments parser into
+            # not treating the second-level arguments as first-level
+            # options). We're certainly at risk of getting this wrong
+            # since now we're forced into the business of trying to figure
+            # out what is an argument (although I think this
+            # implementation will suffice).
+            for index in range(len(args)):
+                match = long_regex.search(args[index])
+                if match:
+                    del args[index]
+                    return True
+            return False
+
+    def remove_short_internal():
+        """Removes one matching short option from args.
+        @returns True if one was found and removed; False otherwise.
+        """
         for index in range(len(args)):
-            match = regex.match(args[index])
+            match = short_regex.search(args[index])
             if match:
                 del args[index]
-                return
-        print "failed to find regex '{}'".format(regex_string)
+                return True
+        return False
 
-    # We didn't find the option but we should have.
-    raise Exception("failed to find option '{}' in args '{}'".format(
-        option_name, args))
+    removal_count = 0
+    while long_option_name is not None and remove_long_internal():
+        removal_count += 1
+    while short_option_name is not None and remove_short_internal():
+        removal_count += 1
+    if removal_count == 0:
+        raise Exception(
+            "failed to find at least one of '{}', '{}' in options".format(
+                long_option_name, short_option_name))
 
 
 def adjust_inferior_options(dotest_argv):
@@ -1124,17 +1176,66 @@ def adjust_inferior_options(dotest_argv):
     # we'll have inferiors spawn with the --results-port option and
     # strip the original test runner options.
     if dotest_options.results_file is not None:
-        _remove_option(dotest_argv, "--results-file", 2)
+        _remove_option(dotest_argv, "--results-file", None, True)
     if dotest_options.results_port is not None:
-        _remove_option(dotest_argv, "--results-port", 2)
+        _remove_option(dotest_argv, "--results-port", None, True)
     if dotest_options.results_formatter is not None:
-        _remove_option(dotest_argv, "--results-formatter", 2)
+        _remove_option(dotest_argv, "--results-formatter", None, True)
     if dotest_options.results_formatter_options is not None:
-        _remove_option(dotest_argv, "--results-formatter-options", 2)
+        _remove_option(dotest_argv, "--results-formatter-option", "-O",
+                       True)
 
     # Remove test runner name if present.
     if dotest_options.test_runner_name is not None:
-        _remove_option(dotest_argv, "--test-runner-name", 2)
+        _remove_option(dotest_argv, "--test-runner-name", None, True)
+
+
+def is_darwin_version_lower_than(target_version):
+    """Checks that os is Darwin and version is lower than target_version.
+
+    @param target_version the StrictVersion indicating the version
+    we're checking against.
+
+    @return True if the OS is Darwin (OS X) and the version number of
+    the OS is less than target_version; False in all other cases.
+    """
+    if platform.system() != 'Darwin':
+        # Can't be Darwin lower than a certain version.
+        return False
+
+    system_version = distutils.version.StrictVersion(platform.mac_ver()[0])
+    return cmp(system_version, target_version) < 0
+
+
+def default_test_runner_name(num_threads):
+    """Returns the default test runner name for the configuration.
+
+    @param num_threads the number of threads/workers this test runner is
+    supposed to use.
+
+    @return the test runner name that should be used by default when
+    no test runner was explicitly called out on the command line.
+    """
+    if num_threads == 1:
+        # Use the serial runner.
+        test_runner_name = "serial"
+    elif os.name == "nt":
+        # Currently the multiprocessing test runner with ctrl-c
+        # support isn't running correctly on nt.  Use the pool
+        # support without ctrl-c.
+        test_runner_name = "threading-pool"
+    elif is_darwin_version_lower_than(
+            distutils.version.StrictVersion("10.10.0")):
+        # OS X versions before 10.10 appear to have an issue using
+        # the threading test runner.  Fall back to multiprocessing.
+        # Supports Ctrl-C.
+        test_runner_name = "multiprocessing"
+    else:
+        # For everyone else, use the ctrl-c-enabled threading support.
+        # Should use fewer system resources than the multprocessing
+        # variant.
+        test_runner_name = "threading"
+    return test_runner_name
 
 
 def main(print_details_on_success, num_threads, test_subdir,
@@ -1205,31 +1306,26 @@ def main(print_details_on_success, num_threads, test_subdir,
     # If the user didn't specify a test runner strategy, determine
     # the default now based on number of threads and OS type.
     if not test_runner_name:
-        if num_threads == 1:
-            # Use the serial runner.
-            test_runner_name = "serial"
-        elif os.name == "nt":
-            # Currently the multiprocessing test runner with ctrl-c
-            # support isn't running correctly on nt.  Use the pool
-            # support without ctrl-c.
-            test_runner_name = "multiprocessing-pool"
-        else:
-            # For everyone else, use the ctrl-c-enabled
-            # multiprocessing support.
-            test_runner_name = "multiprocessing"
+        test_runner_name = default_test_runner_name(num_threads)
 
     if test_runner_name not in runner_strategies_by_name:
-        raise Exception("specified testrunner name '{}' unknown. "
-               "Valid choices: {}".format(
-                   test_runner_name,
-                   runner_strategies_by_name.keys()))
+        raise Exception(
+            "specified testrunner name '{}' unknown. Valid choices: {}".format(
+                test_runner_name,
+                runner_strategies_by_name.keys()))
     test_runner_func = runner_strategies_by_name[test_runner_name]
 
     summary_results = walk_and_invoke(
-        test_directory, test_subdir, dotest_argv, test_runner_func)
+        test_directory, test_subdir, dotest_argv,
+        num_threads, test_runner_func)
 
     (timed_out, passed, failed, unexpected_successes, pass_count,
      fail_count) = summary_results
+
+    # The results formatter - if present - is done now.  Tell it to
+    # terminate.
+    if results_formatter is not None:
+        results_formatter.send_terminate_as_needed()
 
     timed_out = set(timed_out)
     num_test_files = len(passed) + len(failed)

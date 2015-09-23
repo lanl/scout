@@ -207,7 +207,7 @@ public:
                const lldb_private::CompilerDeclContext *parent_decl_ctx,
                bool append,
                uint32_t max_matches,
-               lldb_private::TypeList& types) override;
+               lldb_private::TypeMap& types) override;
 
     lldb_private::TypeList *
     GetTypeList () override;
@@ -323,8 +323,8 @@ public:
 protected:
     typedef llvm::DenseMap<const DWARFDebugInfoEntry *, lldb_private::Type *> DIEToTypePtr;
     typedef llvm::DenseMap<const DWARFDebugInfoEntry *, lldb::VariableSP> DIEToVariableSP;
-    typedef llvm::DenseMap<const DWARFDebugInfoEntry *, lldb::clang_type_t> DIEToClangType;
-    typedef llvm::DenseMap<lldb::clang_type_t, DIERef> ClangTypeToDIE;
+    typedef llvm::DenseMap<const DWARFDebugInfoEntry *, lldb::opaque_compiler_type_t> DIEToClangType;
+    typedef llvm::DenseMap<lldb::opaque_compiler_type_t, DIERef> ClangTypeToDIE;
 
     enum
     {

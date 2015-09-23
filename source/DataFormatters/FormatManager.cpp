@@ -199,7 +199,7 @@ FormatManager::GetPossibleMatches (ValueObject& valobj,
                                    bool did_strip_typedef,
                                    bool root_level)
 {
-    compiler_type = ClangASTContext::RemoveFastQualifiers(compiler_type);
+    compiler_type = compiler_type.GetTypeForFormatters();
     ConstString type_name(compiler_type.GetConstTypeName());
     if (valobj.GetBitfieldBitSize() > 0)
     {
@@ -557,6 +557,22 @@ FormatManager::ShouldPrintAsOneLiner (ValueObject& valobj)
     // no children, no party
     if (valobj.GetNumChildren() == 0)
         return false;
+    
+    // ask the type if it has any opinion about this
+    // eLazyBoolCalculate == no opinion; other values should be self explanatory
+    CompilerType compiler_type(valobj.GetCompilerType());
+    if (compiler_type.IsValid())
+    {
+        switch (compiler_type.ShouldPrintAsOneLiner())
+        {
+            case eLazyBoolNo:
+                return false;
+            case eLazyBoolYes:
+                return true;
+            case eLazyBoolCalculate:
+                break;
+        }
+    }
     
     size_t total_children_name_len = 0;
     

@@ -43,6 +43,7 @@
 #include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Symbol/TypeSystem.h"
 #include "lldb/Symbol/VariableList.h"
+#include "lldb/Symbol/TypeMap.h"
 
 #include "Plugins/Language/CPlusPlus/CPlusPlusLanguage.h"
 #include "Plugins/Language/ObjC/ObjCLanguage.h"
@@ -1110,6 +1111,7 @@ struct ParseDWARFLineTableCallbackInfo
 {
     LineTable* line_table;
     std::unique_ptr<LineSequence> sequence_ap;
+    lldb::addr_t addr_mask;
 };
 
 //----------------------------------------------------------------------
@@ -1139,7 +1141,7 @@ ParseDWARFLineTableCallback(dw_offset_t offset, const DWARFDebugLine::State& sta
             assert(info->sequence_ap.get());
         }
         line_table->AppendLineEntryToSequence (info->sequence_ap.get(),
-                                               state.address,
+                                               state.address & info->addr_mask,
                                                state.line,
                                                state.column,
                                                state.file,
@@ -1179,6 +1181,28 @@ SymbolFileDWARF::ParseCompileUnitLineTable (const SymbolContext &sc)
                 {
                     ParseDWARFLineTableCallbackInfo info;
                     info.line_table = line_table_ap.get();
+
+                    /*
+                     * MIPS:
+                     * The SymbolContext may not have a valid target, thus we may not be able
+                     * to call Address::GetOpcodeLoadAddress() which would clear the bit #0
+                     * for MIPS. Use ArchSpec to clear the bit #0.
+                    */
+                    ArchSpec arch;
+                    GetObjectFile()->GetArchitecture(arch);
+                    switch (arch.GetMachine())
+                    {
+                    case llvm::Triple::mips:
+                    case llvm::Triple::mipsel:
+                    case llvm::Triple::mips64:
+                    case llvm::Triple::mips64el:
+                        info.addr_mask = ~((lldb::addr_t)1);
+                        break;
+                    default:
+                        info.addr_mask = ~((lldb::addr_t)0);
+                        break;
+                    }
+
                     lldb::offset_t offset = cu_line_offset;
                     DWARFDebugLine::ParseStatementTable(get_debug_line_data(), &offset, ParseDWARFLineTableCallback, &info);
                     if (m_debug_map_symfile)
@@ -2817,7 +2841,7 @@ SymbolFileDWARF::FindTypes (const SymbolContext& sc,
                             const CompilerDeclContext *parent_decl_ctx, 
                             bool append, 
                             uint32_t max_matches, 
-                            TypeList& types)
+                            TypeMap& types)
 {
     DWARFDebugInfo* info = DebugInfo();
     if (info == NULL)
@@ -3031,6 +3055,17 @@ SymbolFileDWARF::GetTypeForDIE (const DWARFDIE &die)
             CompileUnit* lldb_cu = GetCompUnitForDWARFCompUnit(die.GetCU());
             assert (lldb_cu);
             SymbolContext sc(lldb_cu);
+            const DWARFDebugInfoEntry* parent_die = die.GetParent().GetDIE();
+            while (parent_die != nullptr)
+                {
+                    if (parent_die->Tag() == DW_TAG_subprogram)
+                        break;
+                    parent_die = parent_die->GetParent();
+                }
+            SymbolContext sc_backup = sc;
+            if (parent_die != nullptr && !GetFunction(DWARFDIE(die.GetCU(),parent_die), sc))
+                sc = sc_backup;
+
             type_sp = ParseType(sc, die, NULL);
         }
         else if (type_ptr != DIE_IS_BEING_PARSED)

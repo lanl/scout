@@ -1000,12 +1000,10 @@ def setupTestResults():
         # Handle formatter options for the results formatter class.
         formatter_arg_parser = clazz.arg_parser()
         if results_formatter_options and len(results_formatter_options) > 0:
-            import shlex
-            split_options = shlex.split(results_formatter_options)
+            formatter_options = formatter_arg_parser.parse_args(
+                results_formatter_options)
         else:
-            split_options = []
-
-        formatter_options = formatter_arg_parser.parse_args(split_options)
+            formatter_options = []
 
         # Create the TestResultsFormatter given the processed options.
         results_formatter_object = clazz(results_file_object, formatter_options)
@@ -1030,8 +1028,7 @@ def setupTestResults():
             # Tell the formatter to write out anything it may have
             # been saving until the very end (e.g. xUnit results
             # can't complete its output until this point).
-            terminate_event = EventBuilder.bare_event("terminate")
-            results_formatter_object.handle_event(terminate_event)
+            results_formatter_object.send_terminate_as_needed()
 
             # And now close out the output file-like object.
             if cleanup_func is not None:

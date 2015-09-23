@@ -34,7 +34,7 @@ public:
     //----------------------------------------------------------------------
     // Constructors and Destructors
     //----------------------------------------------------------------------
-    CompilerType (TypeSystem *type_system, void *type);
+    CompilerType (TypeSystem *type_system, lldb::opaque_compiler_type_t type);
     CompilerType (clang::ASTContext *ast_context, clang::QualType qual_type);
 
     CompilerType (const CompilerType &rhs) :
@@ -225,7 +225,7 @@ public:
     lldb::LanguageType
     GetMinimumLanguage ();
 
-    void *
+    lldb::opaque_compiler_type_t
     GetOpaqueQualType() const
     {
         return m_type;
@@ -235,7 +235,7 @@ public:
     GetTypeClass () const;
     
     void
-    SetCompilerType (TypeSystem* type_system, void* type);
+    SetCompilerType (TypeSystem* type_system, lldb::opaque_compiler_type_t type);
     void
     SetCompilerType (clang::ASTContext *ast, clang::QualType qual_type);
 
@@ -456,6 +456,12 @@ public:
     GetTemplateArgument (size_t idx,
                          lldb::TemplateArgumentKind &kind) const;
     
+    CompilerType
+    GetTypeForFormatters () const;
+    
+    LazyBool
+    ShouldPrintAsOneLiner () const;
+    
     //------------------------------------------------------------------
     // Pointers & References
     //------------------------------------------------------------------
@@ -535,7 +541,7 @@ public:
         m_type_system = NULL;
     }
 private:
-    void* m_type;
+    lldb::opaque_compiler_type_t m_type;
     TypeSystem *m_type_system;
     
 };
