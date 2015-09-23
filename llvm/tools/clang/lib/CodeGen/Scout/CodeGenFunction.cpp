@@ -204,9 +204,10 @@ Address CodeGenFunction::LookupMeshDim(unsigned int index) {
 
 /// Emit field annotations for the given mesh field & value. Returns the
 /// annotation result.
-llvm::Value *CodeGenFunction::EmitFieldAnnotations(const MeshFieldDecl *D,
-                                                   llvm::Value *V) {
+Address CodeGenFunction::EmitFieldAnnotations(const MeshFieldDecl *D,
+                                                   Address Addr) {
   assert(D->hasAttr<AnnotateAttr>() && "no annotate attribute");
+  llvm::Value *V = Addr.getPointer();
   llvm::Type *VTy = V->getType();
   llvm::Value *F = CGM.getIntrinsic(llvm::Intrinsic::ptr_annotation,
                                     CGM.Int8PtrTy);
@@ -223,7 +224,7 @@ llvm::Value *CodeGenFunction::EmitFieldAnnotations(const MeshFieldDecl *D,
     V = Builder.CreateBitCast(V, VTy);
   }
 
-  return V;
+  return Address(V, Addr.getAlignment());
 }
 
 // Special case for mesh types, because we cannot check

@@ -3031,7 +3031,7 @@ LValue CodeGenFunction::EmitMemberExpr(const MemberExpr *E) {
   // check if we are dealing w/ a mesh
   if(isa<MeshFieldDecl>(E->getMemberDecl())) {
     
-    if(CurrentVolumeRenderallMeshPtr){
+    if(CurrentVolumeRenderallMeshPtr.isValid()){
       return EmitVolumeRenderMeshMemberExpr(E);
     }
     

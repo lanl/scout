@@ -1438,20 +1438,20 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   B.SetInsertPoint(entry);
   
   CurrentVolumeRenderallMeshPtr =
-  B.CreateBitCast(mp, llvm::PointerType::get(meshType, 0));
+  scoutPtr(B.CreateBitCast(mp, llvm::PointerType::get(meshType, 0)));
   
   using RestoreMap = map<VarDecl*, Value*>;
   RestoreMap rm;
   
   size_t varOffset = fs.size();
   for(VarDecl* vd : vs){
-    Value* v =
-    B.CreateStructGEP(nullptr, CurrentVolumeRenderallMeshPtr,
-                      varOffset, vd->getName());
+    Address addr =
+    B.CreateStructGEP(CurrentVolumeRenderallMeshPtr,
+                      varOffset, getPointerAlign(), vd->getName());
     
     rm[vd] = GetAddrOfLocalVar(vd).getPointer();
     LocalDeclMap.erase(vd);
-    setAddrOfLocalVar(vd, scoutPtr(v));
+    setAddrOfLocalVar(vd, addr);
     
     ++varOffset;
   }
@@ -1465,7 +1465,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   Builder.CreateRet(B.CreateLoad(scoutPtr(CurrentVolumeRenderallColor)));
   
-  CurrentVolumeRenderallMeshPtr = nullptr;
+  CurrentVolumeRenderallMeshPtr = Address::invalid();
   CurrentVolumeRenderallIndex = nullptr;
   CurrentVolumeRenderallColor = nullptr;
   CurrentVolumeRenderallFieldMap.clear();

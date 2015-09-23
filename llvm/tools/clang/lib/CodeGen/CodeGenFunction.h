@@ -382,7 +382,7 @@ public:
   //renderall color buffer
   llvm::Value *Color;
 
-  llvm::Value* CurrentVolumeRenderallMeshPtr = nullptr;
+  Address CurrentVolumeRenderallMeshPtr = Address::invalid();
   std::map<MeshFieldDecl*, size_t> CurrentVolumeRenderallFieldMap;
   llvm::Value* CurrentVolumeRenderallIndex = nullptr;
   llvm::Value* CurrentVolumeRenderallColor = nullptr;
@@ -3341,7 +3341,7 @@ public:
   // +===== Scout ============================================================+
   /// Emit field annotations for the given mesh field & value. Returns the
   /// annotation result.
-  llvm::Value *EmitFieldAnnotations(const MeshFieldDecl *D, llvm::Value *V);
+  Address EmitFieldAnnotations(const MeshFieldDecl *D, Address V);
   // +========================================================================+
 
   //===--------------------------------------------------------------------===//
