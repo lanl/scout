@@ -204,7 +204,7 @@ CodeGenFunction::EmitMeshMemberExpr(const MemberExpr* E,
   // inside forall we are referencing the implicit mesh e.g. 'c' in forall cells c in mesh
    if (ImplicitMeshParamDecl *IMPD = dyn_cast<ImplicitMeshParamDecl>(base->getDecl())) {
      // lookup underlying mesh instead of implicit mesh
-     GetMeshBaseAddr(IMPD->getMeshVarDecl(), Addr);
+     Addr = GetMeshBaseAddr(IMPD->getMeshVarDecl());
    } else if (ParmVarDecl *PVD = dyn_cast<ParmVarDecl>(base->getDecl())) {
      llvm::errs() << "ParmVarDecl in EmitMeshMemberExpr must be stencil\n";
 
@@ -841,8 +841,7 @@ RValue CodeGenFunction::EmitMeshParameterExpr(const Expr *E, MeshParameterOffset
     }
 
     if(const VarDecl *VD = dyn_cast<VarDecl>(DRE->getDecl())) {
-      Address BaseAddr = Address::invalid();
-      GetMeshBaseAddr(VD, BaseAddr);
+      Address BaseAddr = GetMeshBaseAddr(VD);
       llvm::StringRef MeshName = BaseAddr.getPointer()->getName();
 
 
@@ -1098,8 +1097,7 @@ CodeGenFunction::EmitSaveMeshExpr(ArgIterator argsBegin, ArgIterator argsEnd){
   const StringLiteral* pathLiteral = dyn_cast<StringLiteral>(*argsBegin);
   std::string path = pathLiteral->getString();
   
-  Address meshAddr = Address::invalid();
-  GetMeshBaseAddr(vd, meshAddr);
+  Address meshAddr = GetMeshBaseAddr(vd);
   Address topology = Builder.CreateStructGEP(meshAddr, md->fields(), getPointerAlign());
   topology = scoutPtr(Builder.CreateLoad(topology, "topology.ptr"));
   
@@ -1202,7 +1200,7 @@ RValue CodeGenFunction::EmitSwapFieldsExpr(ArgIterator argsBegin, ArgIterator ar
     //const UniformMeshType* mt = cast<UniformMeshType>(vd->getType().getTypePtr());
 
     if(i == 0){
-      GetMeshBaseAddr(vd, meshAddr);
+      meshAddr = GetMeshBaseAddr(vd);
     }
     
     MeshFieldDecl* field = cast<MeshFieldDecl>(memberExpr->getMemberDecl());
@@ -1397,8 +1395,7 @@ RValue CodeGenFunction::EmitMPosition(const CallExpr *E , unsigned int index) {
       IRNameStr);
 
 
-  Address BaseAddr = Address::invalid();
-  GetMeshBaseAddr(CurrentMeshVarDecl, BaseAddr);
+  Address BaseAddr = GetMeshBaseAddr(CurrentMeshVarDecl);
   llvm::StringRef MeshName = BaseAddr.getPointer()->getName();
 
   // We GEP to the index-th field of the record 
@@ -1493,8 +1490,7 @@ RValue CodeGenFunction::EmitMPositionVector(const CallExpr *E) {
       Builder.CreateLoad(LookupInductionVar(i)),
       Builder.CreateLoad(LookupMeshStart(i)),
       IRNameStr);
-    Address BaseAddr = Address::invalid();
-    GetMeshBaseAddr(CurrentMeshVarDecl, BaseAddr);
+    Address BaseAddr = GetMeshBaseAddr(CurrentMeshVarDecl);
     llvm::StringRef MeshName = BaseAddr.getPointer()->getName();
 
     // We GEP to the ith field of the record 

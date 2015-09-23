@@ -2307,9 +2307,9 @@ public:
 
   // +===== Scout ============================================================+
   //
-  void GetMeshBaseAddr(const Stmt &S, Address& BaseAddr);
-  void GetMeshBaseAddr(const VarDecl *MeshVarDecl, Address& BaseAddr);
-  void GetFrameBaseAddr(const VarDecl *FrameVarDecl, llvm::Value*& BaseAddr);
+  Address GetMeshBaseAddr(const Stmt &S);
+  Address GetMeshBaseAddr(const VarDecl *MeshVarDecl);
+  Address GetFrameBaseAddr(const VarDecl *FrameVarDecl);
   
   void SetMeshBounds(const Stmt &S);
   void SetMeshBounds(MeshElementType type, Address MeshBaseAddr, const MeshType* mt, bool isForall = true);
