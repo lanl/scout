@@ -373,7 +373,7 @@ public:
   
   Address MeshRank = Address::invalid();
 
-  llvm::Value* GPUThreadId;
+  Address GPUThreadId = Address::invalid();
   llvm::Value* GPUThreadInc;
   llvm::Value* GPUNumThreads;
   

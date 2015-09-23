@@ -505,7 +505,7 @@ void CodeGenFunction::EmitGPUForall(const ForallMeshStmt& S, Address &Index) {
   llvm::BasicBlock* condBlock = createBasicBlock("forall.cond");
   EmitBlock(condBlock);
 
-  llvm::Value* threadId = Builder.CreateLoad(scoutPtr(GPUThreadId), "threadId");
+  llvm::Value* threadId = Builder.CreateLoad(GPUThreadId, "threadId");
 
   llvm::Value* cond = Builder.CreateICmpULT(threadId, GPUNumThreads);
 
@@ -521,7 +521,7 @@ void CodeGenFunction::EmitGPUForall(const ForallMeshStmt& S, Address &Index) {
   Index = Address::invalid();
 
   threadId = Builder.CreateAdd(threadId, GPUThreadInc);
-  Builder.CreateStore(threadId, scoutPtr(GPUThreadId));
+  Builder.CreateStore(threadId, GPUThreadId);
 
   Builder.CreateBr(condBlock);
 
@@ -570,21 +570,21 @@ void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
   
   GPUNumThreads = Builder.CreateIntCast(numItems, Int32Ty, false);
   
-  llvm::Value* ptr = Builder.CreateAlloca(Int32Ty, 0, "tid.x.ptr");
-  llvm::Value* tid = Builder.CreateLoad(scoutPtr(ptr), "tid.x");
+  Address ptr = scoutPtr(Builder.CreateAlloca(Int32Ty, 0, "tid.x.ptr"));
+  llvm::Value* tid = Builder.CreateLoad(ptr, "tid.x");
 
-  ptr = Builder.CreateAlloca(Int32Ty, 0, "ntid.x.ptr");
-  llvm::Value* ntid = Builder.CreateLoad(scoutPtr(ptr), "ntid.x");
+  ptr = scoutPtr(Builder.CreateAlloca(Int32Ty, 0, "ntid.x.ptr"));
+  llvm::Value* ntid = Builder.CreateLoad(ptr, "ntid.x");
   
-  ptr = Builder.CreateAlloca(Int32Ty, 0, "ctaid.x.ptr");
-  llvm::Value* ctaid = Builder.CreateLoad(scoutPtr(ptr), "ctaid.x");
+  ptr = scoutPtr(Builder.CreateAlloca(Int32Ty, 0, "ctaid.x.ptr"));
+  llvm::Value* ctaid = Builder.CreateLoad(ptr, "ctaid.x");
 
-  ptr = Builder.CreateAlloca(Int32Ty, 0, "nctaid.x.ptr");
-  llvm::Value* nctaid = Builder.CreateLoad(scoutPtr(ptr), "nctaid.x");
+  ptr = scoutPtr(Builder.CreateAlloca(Int32Ty, 0, "nctaid.x.ptr"));
+  llvm::Value* nctaid = Builder.CreateLoad(ptr, "nctaid.x");
   
-  GPUThreadId = Builder.CreateAlloca(Int32Ty, 0, "threadId.ptr");
+  GPUThreadId = scoutPtr(Builder.CreateAlloca(Int32Ty, 0, "threadId.ptr"));
   llvm::Value* threadId = Builder.CreateAdd(tid, Builder.CreateMul(ctaid, ntid));
-  Builder.CreateStore(threadId, scoutPtr(GPUThreadId));
+  Builder.CreateStore(threadId, GPUThreadId);
   
   GPUThreadInc = Builder.CreateMul(ntid, nctaid, "threadInc");
 }
@@ -1054,8 +1054,8 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
   //initialize induction var
   const VarDecl *VD = S.getInductionVarDecl(r-1);
   EmitAutoVarDecl(*VD); //add induction var to LocalDeclmap.
-  llvm::Value* InductVar = GetAddrOfLocalVar(VD).getPointer();
-  Builder.CreateStore(Start, scoutPtr(InductVar));
+  Address InductVar = GetAddrOfLocalVar(VD);
+  Builder.CreateStore(Start, InductVar);
 
   sprintf(IRNameStr, "forall.%s.end", DimNames[r-1]);
   JumpDest LoopExit = getJumpDestInCurrentScope(IRNameStr);
@@ -1073,7 +1073,7 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
 
   RunCleanupsScope ConditionScope(*this);
 
-  llvm::LoadInst *IVar = Builder.CreateLoad(scoutPtr(InductVar), VD->getName().str().c_str());
+  llvm::LoadInst *IVar = Builder.CreateLoad(InductVar, VD->getName().str().c_str());
 
   sprintf(IRNameStr, "forall.done.%s", IndexNames[r-1]);
   llvm::Value *CondValue = Builder.CreateICmpSLT(IVar,
@@ -1112,14 +1112,14 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
 
   EmitBlock(Continue.getBlock());
 
-  llvm::LoadInst* iv = Builder.CreateLoad(scoutPtr(InductVar), VD->getName().str().c_str());
+  llvm::LoadInst* iv = Builder.CreateLoad(InductVar, VD->getName().str().c_str());
 
   sprintf(IRNameStr, "%s.inc", VD->getName().str().c_str());
   llvm::Value *IncInductionVar = Builder.CreateAdd(iv,
       Stride,
       IRNameStr);
 
-  Builder.CreateStore(IncInductionVar, scoutPtr(InductVar));
+  Builder.CreateStore(IncInductionVar, InductVar);
 
   BreakContinueStack.pop_back();
   ConditionScope.ForceCleanup();
@@ -1880,9 +1880,9 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
   
   Builder.SetInsertPoint(prevBlock, prevPoint);
   
-  Value* funcAlloc = Builder.CreateAlloca(func->getType());
-  Builder.CreateStore(func, scoutPtr(funcAlloc));
-  Value* funcPtr = Builder.CreateBitCast(Builder.CreateLoad(scoutPtr(funcAlloc)), R.VoidPtrTy, "func.ptr");
+  Address funcAlloc = scoutPtr(Builder.CreateAlloca(func->getType()));
+  Builder.CreateStore(func, funcAlloc);
+  Value* funcPtr = Builder.CreateBitCast(Builder.CreateLoad(funcAlloc), R.VoidPtrTy, "func.ptr");
   
   Value* vid =
   ConstantInt::get(R.Int32Ty, useVarId == 0 ? S.nextVarId() : useVarId);
@@ -2449,10 +2449,9 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     const VarDecl* vd = itr.first;
     uint32_t vid = itr.second;
     
-    Value* vp = GetAddrOfLocalVar(vd).getPointer();
-    assert(vp);
-    
-    Value* v = Builder.CreateLoad(scoutPtr(vp));
+    Address vp = GetAddrOfLocalVar(vd);
+
+    Value* v = Builder.CreateLoad(vp);
     
     args = {plotPtr, ConstantInt::get(R.Int32Ty, vid), v};
     

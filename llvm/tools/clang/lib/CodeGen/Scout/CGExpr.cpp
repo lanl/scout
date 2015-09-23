@@ -699,9 +699,9 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        }
 
        // setup flag
-       llvm::Value *flag;
-       flag = Builder.CreateAlloca(Int32Ty, 0, "flag");
-       Builder.CreateStore(ConstantZero, scoutPtr(flag));
+
+       Address flag = scoutPtr(Builder.CreateAlloca(Int32Ty, 0, "flag"));
+       Builder.CreateStore(ConstantZero, flag);
 
        // setup basic blocks
        SmallVector< llvm::BasicBlock *, 3 > Start, Then, Else;
@@ -740,9 +740,9 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
          // Else Block
          EmitBlock(Else[i]);
          //index is not in range increment flag and break
-         llvm::Value *IncFlag = Builder.CreateAdd(Builder.CreateLoad(scoutPtr(flag), "flag"),
+         llvm::Value *IncFlag = Builder.CreateAdd(Builder.CreateLoad(flag, "flag"),
         		 ConstantOne, "flaginc");
-         Builder.CreateStore(IncFlag, scoutPtr(flag));
+         Builder.CreateStore(IncFlag, flag);
 
          Builder.CreateBr(Done);
        }
@@ -755,7 +755,7 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
        // Done Block
        EmitBlock(Done);
        //check if flag is set
-       llvm::Value *FlagCheck = Builder.CreateICmpNE(Builder.CreateLoad(scoutPtr(flag), "flag"), ConstantZero);
+       llvm::Value *FlagCheck = Builder.CreateICmpNE(Builder.CreateLoad(flag, "flag"), ConstantZero);
        Builder.CreateCondBr(FlagCheck, FlagThen, FlagElse);
 
        // Then Block
@@ -861,7 +861,7 @@ RValue CodeGenFunction::EmitTailExpr(void) {
   int i = FindForallData(Edges);
   assert(i >= 0 && "failed to find edge index");
   
-  llvm::Value* EdgeIndex = ForallStack[i]->indexPtr.getPointer();
+  Address EdgeIndex = ForallStack[i]->indexPtr;
   
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
@@ -870,7 +870,7 @@ RValue CodeGenFunction::EmitTailExpr(void) {
 
   llvm::Value *Rank = Builder.CreateLoad(MeshRank);
   Rank = Builder.CreateTrunc(Rank, Int32Ty);
-  llvm::Value *Index = Builder.CreateLoad(scoutPtr(EdgeIndex), "forall.edgeIndex");
+  llvm::Value *Index = Builder.CreateLoad(EdgeIndex, "forall.edgeIndex");
   Index = Builder.CreateTrunc(Index, Int32Ty);
   llvm::Value *Dx = Builder.CreateLoad(MeshDims[0]);
   Dx = Builder.CreateTrunc(Dx, Int32Ty);
@@ -970,7 +970,7 @@ RValue CodeGenFunction::EmitHeadExpr(void) {
   int i = FindForallData(Edges);
   assert(i >= 0 && "failed to find edge index");
   
-  llvm::Value* EdgeIndex = ForallStack[i]->indexPtr.getPointer();
+  Address EdgeIndex = ForallStack[i]->indexPtr;;
 
   llvm::Value* Zero = llvm::ConstantInt::get(Int32Ty, 0);
   llvm::Value* One = llvm::ConstantInt::get(Int32Ty, 1);
@@ -979,7 +979,7 @@ RValue CodeGenFunction::EmitHeadExpr(void) {
 
   llvm::Value *Rank = Builder.CreateLoad(MeshRank);
   Rank = Builder.CreateTrunc(Rank, Int32Ty);
-  llvm::Value *Index = Builder.CreateLoad(scoutPtr(EdgeIndex), "forall.edgeIndex");
+  llvm::Value *Index = Builder.CreateLoad(EdgeIndex, "forall.edgeIndex");
   Index = Builder.CreateTrunc(Index, Int32Ty);
   llvm::Value *Dx = Builder.CreateLoad(MeshDims[0]);
   Dx = Builder.CreateTrunc(Dx, Int32Ty);
@@ -1289,7 +1289,7 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   Value* end = aitr++;
   end->setName("end");
   
-  Value* baseAddr = GetAddrOfLocalVar(mvd).getPointer();
+  Address baseAddr = GetAddrOfLocalVar(mvd);
   
   LocalDeclMap.erase(mvd);
   setAddrOfLocalVar(mvd, scoutPtr(meshPtr));
@@ -1357,17 +1357,17 @@ void CodeGenFunction::EmitQueryExpr(const ValueDecl* VD,
   B.SetInsertPoint(prevBlock, prevPoint);
  
   LocalDeclMap.erase(mvd);
-  setAddrOfLocalVar(mvd, scoutPtr(baseAddr));
+  setAddrOfLocalVar(mvd, baseAddr);
   
-  Value* qp = LV.getAddress().getPointer();
+  Address qp = LV.getAddress();
 
-  Value* funcField = B.CreateStructGEP(0, qp, 0, "query.func.ptr");
-  Value* meshPtrField = B.CreateStructGEP(0, qp, 1, "query.mesh.ptr");
+  Address funcField = B.CreateStructGEP(qp, 0, getPointerAlign(), "query.func.ptr");
+  Address  meshPtrField = B.CreateStructGEP(qp, 1, getPointerAlign(), "query.mesh.ptr");
   
-  B.CreateStore(B.CreateBitCast(queryFunc, CGM.VoidPtrTy), scoutPtr(funcField));
-  B.CreateStore(B.CreateBitCast(baseAddr, CGM.VoidPtrTy), scoutPtr(meshPtrField));
+  B.CreateStore(B.CreateBitCast(queryFunc, CGM.VoidPtrTy), funcField);
+  B.CreateStore(B.CreateBitCast(baseAddr.getPointer(), CGM.VoidPtrTy), meshPtrField);
   
-  LocalDeclMap.insert({VD, scoutPtr(qp)});
+  LocalDeclMap.insert({VD, qp});
 }
 
 RValue CodeGenFunction::EmitMPosition(const CallExpr *E , unsigned int index) {
@@ -1427,9 +1427,9 @@ RValue CodeGenFunction::EmitMPosition(const CallExpr *E , unsigned int index) {
     RValue argval = EmitAnyExpr(E->getArg(0));
     llvm::Value* newvalue;
     if(argval.isAggregate()) { 
-      llvm::Value* addr = argval.getAggregateAddress().getPointer();
+      Address addr = argval.getAggregateAddress();
       sprintf(IRNameStr, "%s.%s.%s.newaggvalue", MeshName.str().c_str(), "mposition", IndexNames[index]);
-      newvalue = Builder.CreateLoad(scoutPtr(addr), IRNameStr);
+      newvalue = Builder.CreateLoad(addr, IRNameStr);
       sprintf(IRNameStr, "%s.%s.%s.newcastedaggvalue", MeshName.str().c_str(), "mposition", IndexNames[index]);
       newvalue = Builder.CreateFPCast(newvalue, FloatTy, IRNameStr);
     } else {
