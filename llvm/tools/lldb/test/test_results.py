@@ -386,6 +386,7 @@ class ResultsFormatter(object):
         if not self.out_file:
             raise Exception("ResultsFormatter created with no file object")
         self.start_time_by_test = {}
+        self.terminate_called = False
 
         # Lock that we use while mutating inner state, like the
         # total test count and the elements.  We minimize how
@@ -402,7 +403,14 @@ class ResultsFormatter(object):
         @param test_event the test event as formatted by one of the
         event_for_* calls.
         """
-        pass
+        # Keep track of whether terminate was received.  We do this so
+        # that a process can call the 'terminate' event on its own, to
+        # close down a formatter at the appropriate time.  Then the
+        # atexit() cleanup can call the "terminate if it hasn't been
+        # called yet".
+        if test_event is not None:
+            if test_event.get("event", "") == "terminate":
+                self.terminate_called = True
 
     def track_start_time(self, test_class, test_name, start_time):
         """Tracks the start time of a test so elapsed time can be computed.
@@ -438,8 +446,16 @@ class ResultsFormatter(object):
         return end_time - start_time
 
     def is_using_terminal(self):
-        """Returns True if this results formatter is using the terminal and output should be avoided"""
+        """Returns True if this results formatter is using the terminal and
+        output should be avoided."""
         return self.using_terminal
+
+    def send_terminate_as_needed(self):
+        """Sends the terminate event if it hasn't been received yet."""
+        if not self.terminate_called:
+            terminate_event = EventBuilder.bare_event("terminate")
+            self.handle_event(terminate_event)
+
 
 class XunitFormatter(ResultsFormatter):
     """Provides xUnit-style formatted output.
@@ -522,6 +538,26 @@ class XunitFormatter(ResultsFormatter):
             help=('cause unknown test events to generate '
                   'a python assert.  Default is to ignore.'))
         parser.add_argument(
+            "--ignore-skip-name",
+            "-n",
+            metavar='PATTERN',
+            action="append",
+            dest='ignore_skip_name_patterns',
+            help=('a python regex pattern, where '
+                  'any skipped test with a test method name where regex '
+                  'matches (via search) will be ignored for xUnit test '
+                  'result purposes.  Can be specified multiple times.'))
+        parser.add_argument(
+            "--ignore-skip-reason",
+            "-r",
+            metavar='PATTERN',
+            action="append",
+            dest='ignore_skip_reason_patterns',
+            help=('a python regex pattern, where '
+                  'any skipped test with a skip reason where the regex '
+                  'matches (via search) will be ignored for xUnit test '
+                  'result purposes.  Can be specified multiple times.'))
+        parser.add_argument(
             "--xpass", action="store", choices=results_mapping_choices,
             default=XunitFormatter.RM_FAILURE,
             help=('specify mapping from unexpected success to jUnit/xUnit '
@@ -533,6 +569,22 @@ class XunitFormatter(ResultsFormatter):
                   'result type'))
         return parser
 
+    @staticmethod
+    def _build_regex_list_from_patterns(patterns):
+        """Builds a list of compiled regexes from option value.
+
+        @param option string containing a comma-separated list of regex
+        patterns. Zero-length or None will produce an empty regex list.
+
+        @return list of compiled regular expressions, empty if no
+        patterns provided.
+        """
+        regex_list = []
+        if patterns is not None:
+            for pattern in patterns:
+                regex_list.append(re.compile(pattern))
+        return regex_list
+
     def __init__(self, out_file, options):
         """Initializes the XunitFormatter instance.
         @param out_file file-like object where formatted output is written.
@@ -543,8 +595,13 @@ class XunitFormatter(ResultsFormatter):
         super(XunitFormatter, self).__init__(out_file, options)
         self.text_encoding = "UTF-8"
         self.invalid_xml_re = XunitFormatter._build_illegal_xml_regex()
-
         self.total_test_count = 0
+        self.ignore_skip_name_regexes = (
+            XunitFormatter._build_regex_list_from_patterns(
+                options.ignore_skip_name_patterns))
+        self.ignore_skip_reason_regexes = (
+            XunitFormatter._build_regex_list_from_patterns(
+                options.ignore_skip_reason_patterns))
 
         self.elements = {
             "successes": [],
@@ -633,10 +690,40 @@ class XunitFormatter(ResultsFormatter):
         with self.lock:
             self.elements["errors"].append(result)
 
+    @staticmethod
+    def _ignore_based_on_regex_list(test_event, test_key, regex_list):
+        """Returns whether to ignore a test event based on patterns.
+
+        @param test_event the test event dictionary to check.
+        @param test_key the key within the dictionary to check.
+        @param regex_list a list of zero or more regexes.  May contain
+        zero or more compiled regexes.
+
+        @return True if any o the regex list match based on the
+        re.search() method; false otherwise.
+        """
+        for regex in regex_list:
+            match = regex.search(test_event.get(test_key, ''))
+            if match:
+                return True
+        return False
+
     def _handle_skip(self, test_event):
         """Handles a skipped test.
         @param test_event the test event to handle.
         """
+
+        # Are we ignoring this test based on test name?
+        if XunitFormatter._ignore_based_on_regex_list(
+                test_event, 'test_name', self.ignore_skip_name_regexes):
+            return
+
+        # Are we ignoring this test based on skip reason?
+        if XunitFormatter._ignore_based_on_regex_list(
+                test_event, 'skip_reason', self.ignore_skip_reason_regexes):
+            return
+
+        # We're not ignoring this test.  Process the skip.
         reason = self._replace_invalid_xml(test_event.get("skip_reason", ""))
         result = self._common_add_testcase_entry(
             test_event,
@@ -842,6 +929,7 @@ class XunitFormatter(ResultsFormatter):
         self.out_file.write('</testsuite></testsuites>\n')
 
     def _finish_output(self):
+        """Finish writing output as all incoming events have arrived."""
         with self.lock:
             self._finish_output_no_lock()
 
@@ -885,124 +973,6 @@ class RawPickledFormatter(ResultsFormatter):
         self.out_file.send(
             "{}#{}".format(len(pickled_message), pickled_message))
 
-class Curses(ResultsFormatter):
-    """Receives live results from tests that are running and reports them to the terminal in a curses GUI"""
-
-    def clear_line(self, y):
-        self.out_file.write("\033[%u;0H\033[2K" % (y))
-        self.out_file.flush()
-
-    def print_line(self, y, str):
-        self.out_file.write("\033[%u;0H\033[2K%s" % (y, str))
-        self.out_file.flush()
-
-    def __init__(self, out_file, options):
-        # Initialize the parent
-        super(Curses, self).__init__(out_file, options)
-        self.using_terminal = True
-        self.have_curses = True
-        self.initialize_event = None
-        self.jobs = [None] * 64
-        self.job_tests = [None] * 64
-        try:
-            import lldbcurses
-            self.main_window = lldbcurses.intialize_curses()
-            self.main_window.refresh()
-        except:
-            self.have_curses = False
-            lldbcurses.terminate_curses()
-            self.using_terminal = False
-            print "Unexpected error:", sys.exc_info()[0]
-            raise
-            
-        
-        self.line_dict = dict()
-        self.events_file = open("/tmp/events.txt", "w")
-        # self.formatters = list()
-        # if tee_results_formatter:
-        #     self.formatters.append(tee_results_formatter)
-
-    def status_to_short_str(self, status):
-        if status == 'success':
-            return '.'
-        elif status == 'failure':
-            return 'F'
-        elif status == 'unexpected_success':
-            return '?'
-        elif status == 'expected_failure':
-            return 'X'
-        elif status == 'skip':
-            return 'S'
-        elif status == 'error':
-            return 'E'
-        else:
-            return status
-    def handle_event(self, test_event):
-        with self.lock:
-            super(Curses, self).handle_event(test_event)
-            # for formatter in self.formatters:
-            #     formatter.process_event(test_event)
-            if self.have_curses:
-                import lldbcurses
-                worker_index = -1
-                if 'worker_index' in test_event:
-                    worker_index = test_event['worker_index']
-                if 'event' in test_event:
-                    print >>self.events_file, str(test_event)
-                    event = test_event['event']
-                    if event == 'test_start':
-                        name = test_event['test_class'] + '.' + test_event['test_name']
-                        self.job_tests[worker_index] = test_event
-                        if 'pid' in test_event:
-                            line = 'pid: %5d ' % (test_event['pid']) + name
-                        else:
-                            line = name
-                        self.job_panel.set_line(worker_index, line)
-                        self.main_window.refresh()
-                    elif event == 'test_result':
-                        status = test_event['status']
-                        self.status_panel.increment_status(status)
-                        if 'pid' in test_event:
-                            line = 'pid: %5d ' % (test_event['pid'])
-                        else:
-                            line = ''
-                        self.job_panel.set_line(worker_index, line)
-                        # if status != 'success' and status != 'skip' and status != 'expect_failure':
-                        name = test_event['test_class'] + '.' + test_event['test_name']
-                        time = test_event['event_time'] - self.job_tests[worker_index]['event_time']
-                        self.fail_panel.append_line('%s (%6.2f sec) %s' % (self.status_to_short_str(status), time, name))
-                        self.main_window.refresh()
-                        self.job_tests[worker_index] = ''
-                    elif event == 'job_begin':
-                        self.jobs[worker_index] = test_event
-                        if 'pid' in test_event:
-                            line = 'pid: %5d ' % (test_event['pid'])
-                        else:
-                            line = ''
-                        self.job_panel.set_line(worker_index, line)
-                    elif event == 'job_end':
-                        self.jobs[worker_index] = ''
-                        self.job_panel.set_line(worker_index, '')
-                    elif event == 'initialize':
-                        self.initialize_event = test_event
-                        num_jobs = test_event['worker_count']
-                        job_frame = self.main_window.get_contained_rect(height=num_jobs+2)
-                        fail_frame = self.main_window.get_contained_rect(top_inset=num_jobs+2, bottom_inset=1)
-                        status_frame = self.main_window.get_contained_rect(height=1, top_inset=self.main_window.get_size().h-1)
-                        self.job_panel = lldbcurses.BoxedPanel(job_frame, "Jobs")
-                        self.fail_panel = lldbcurses.BoxedPanel(fail_frame, "Completed Tests")
-                        self.status_panel = lldbcurses.StatusPanel(status_frame)
-                        self.status_panel.add_status_item(name="success", title="Success", format="%u", width=20, value=0, update=False)
-                        self.status_panel.add_status_item(name="failure", title="Failure", format="%u", width=20, value=0, update=False)
-                        self.status_panel.add_status_item(name="error", title="Error", format="%u", width=20, value=0, update=False)
-                        self.status_panel.add_status_item(name="skip", title="Skipped", format="%u", width=20, value=0, update=True)
-                        self.status_panel.add_status_item(name="expected_failure", title="Expected Failure", format="%u", width=30, value=0, update=False)
-                        self.status_panel.add_status_item(name="unexpected_success", title="Unexpected Success", format="%u", width=30, value=0, update=False)
-                        self.main_window.refresh()
-                    elif event == 'terminate':
-                        lldbcurses.terminate_curses()
-                        self.using_terminal = False
-                        
 
 class DumpFormatter(ResultsFormatter):
     """Formats events to the file as their raw python dictionary format."""

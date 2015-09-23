@@ -30,7 +30,7 @@ using namespace lldb;
 using namespace lldb_private;
 
 CompilerType::CompilerType (TypeSystem *type_system,
-                            void* type) :
+                            lldb::opaque_compiler_type_t type) :
     m_type (type),
     m_type_system (type_system)
 {
@@ -399,7 +399,7 @@ CompilerType::GetTypeClass () const
 }
 
 void
-CompilerType::SetCompilerType (TypeSystem* type_system, void*  type)
+CompilerType::SetCompilerType (TypeSystem* type_system, lldb::opaque_compiler_type_t type)
 {
     m_type_system = type_system;
     m_type = type;
@@ -851,6 +851,21 @@ CompilerType::GetTemplateArgument (size_t idx,
     return CompilerType();
 }
 
+CompilerType
+CompilerType::GetTypeForFormatters () const
+{
+    if (IsValid())
+        return m_type_system->GetTypeForFormatters(m_type);
+    return CompilerType();
+}
+
+LazyBool
+CompilerType::ShouldPrintAsOneLiner () const
+{
+    if (IsValid())
+        return m_type_system->ShouldPrintAsOneLiner(m_type);
+    return eLazyBoolCalculate;
+}
 
 // Get the index of the child of "clang_type" whose name matches. This function
 // doesn't descend into the children, but only looks one level deep and name
@@ -1255,7 +1270,7 @@ CompilerType::WriteToMemory (lldb_private::ExecutionContext *exe_ctx,
 }
 
 //clang::CXXRecordDecl *
-//CompilerType::GetAsCXXRecordDecl (lldb::clang_type_t opaque_clang_qual_type)
+//CompilerType::GetAsCXXRecordDecl (lldb::opaque_compiler_type_t opaque_clang_qual_type)
 //{
 //    if (opaque_clang_qual_type)
 //        return clang::QualType::getFromOpaquePtr(opaque_clang_qual_type)->getAsCXXRecordDecl();

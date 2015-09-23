@@ -845,7 +845,7 @@ ClangASTContext::GetBasicType (ASTContext *ast, lldb::BasicType basic_type)
 {
     if (ast)
     {
-        clang_type_t clang_type = nullptr;
+        lldb::opaque_compiler_type_t clang_type = nullptr;
         
         switch (basic_type)
         {
@@ -2128,7 +2128,7 @@ ClangASTContext::CreateEnumerationType
 // so we can support remote targets. The code below also requires a patch to
 // llvm::APInt.
 //bool
-//ClangASTContext::ConvertFloatValueToString (ASTContext *ast, clang_type_t clang_type, const uint8_t* bytes, size_t byte_size, int apint_byte_order, std::string &float_str)
+//ClangASTContext::ConvertFloatValueToString (ASTContext *ast, lldb::opaque_compiler_type_t clang_type, const uint8_t* bytes, size_t byte_size, int apint_byte_order, std::string &float_str)
 //{
 //  uint32_t count = 0;
 //  bool is_complex = false;
@@ -2530,7 +2530,7 @@ ConvertAccessTypeToObjCIvarAccessControl (AccessType access)
 //----------------------------------------------------------------------
 
 bool
-ClangASTContext::IsAggregateType (void* type)
+ClangASTContext::IsAggregateType (lldb::opaque_compiler_type_t type)
 {
     clang::QualType qual_type (GetCanonicalQualType(type));
     
@@ -2560,7 +2560,7 @@ ClangASTContext::IsAggregateType (void* type)
 }
 
 bool
-ClangASTContext::IsArrayType (void* type,
+ClangASTContext::IsArrayType (lldb::opaque_compiler_type_t type,
                               CompilerType *element_type_ptr,
                               uint64_t *size,
                               bool *is_incomplete)
@@ -2629,7 +2629,7 @@ ClangASTContext::IsArrayType (void* type,
 }
 
 bool
-ClangASTContext::IsVectorType (void* type,
+ClangASTContext::IsVectorType (lldb::opaque_compiler_type_t type,
                                CompilerType *element_type,
                                uint64_t *size)
 {
@@ -2670,7 +2670,7 @@ ClangASTContext::IsVectorType (void* type,
 }
 
 bool
-ClangASTContext::IsRuntimeGeneratedType (void* type)
+ClangASTContext::IsRuntimeGeneratedType (lldb::opaque_compiler_type_t type)
 {
     clang::DeclContext* decl_ctx = ClangASTContext::GetASTContext(getASTContext())->GetDeclContextForType(GetQualType(type));
     if (!decl_ctx)
@@ -2688,27 +2688,27 @@ ClangASTContext::IsRuntimeGeneratedType (void* type)
 }
 
 bool
-ClangASTContext::IsCharType (void* type)
+ClangASTContext::IsCharType (lldb::opaque_compiler_type_t type)
 {
     return GetQualType(type).getUnqualifiedType()->isCharType();
 }
 
 
 bool
-ClangASTContext::IsCompleteType (void* type)
+ClangASTContext::IsCompleteType (lldb::opaque_compiler_type_t type)
 {
     const bool allow_completion = false;
     return GetCompleteQualType (getASTContext(), GetQualType(type), allow_completion);
 }
 
 bool
-ClangASTContext::IsConst(void* type)
+ClangASTContext::IsConst(lldb::opaque_compiler_type_t type)
 {
     return GetQualType(type).isConstQualified();
 }
 
 bool
-ClangASTContext::IsCStringType (void* type, uint32_t &length)
+ClangASTContext::IsCStringType (lldb::opaque_compiler_type_t type, uint32_t &length)
 {
     CompilerType pointee_or_element_clang_type;
     length = 0;
@@ -2735,7 +2735,7 @@ ClangASTContext::IsCStringType (void* type, uint32_t &length)
 }
 
 bool
-ClangASTContext::IsFunctionType (void* type, bool *is_variadic_ptr)
+ClangASTContext::IsFunctionType (lldb::opaque_compiler_type_t type, bool *is_variadic_ptr)
 {
     if (type)
     {
@@ -2780,7 +2780,7 @@ ClangASTContext::IsFunctionType (void* type, bool *is_variadic_ptr)
 
 // Used to detect "Homogeneous Floating-point Aggregates"
 uint32_t
-ClangASTContext::IsHomogeneousAggregate (void* type, CompilerType* base_type_ptr)
+ClangASTContext::IsHomogeneousAggregate (lldb::opaque_compiler_type_t type, CompilerType* base_type_ptr)
 {
     if (!type)
         return 0;
@@ -2875,7 +2875,7 @@ ClangASTContext::IsHomogeneousAggregate (void* type, CompilerType* base_type_ptr
 }
 
 size_t
-ClangASTContext::GetNumberOfFunctionArguments (void* type)
+ClangASTContext::GetNumberOfFunctionArguments (lldb::opaque_compiler_type_t type)
 {
     if (type)
     {
@@ -2888,7 +2888,7 @@ ClangASTContext::GetNumberOfFunctionArguments (void* type)
 }
 
 CompilerType
-ClangASTContext::GetFunctionArgumentAtIndex (void* type, const size_t index)
+ClangASTContext::GetFunctionArgumentAtIndex (lldb::opaque_compiler_type_t type, const size_t index)
 {
     if (type)
     {
@@ -2904,7 +2904,7 @@ ClangASTContext::GetFunctionArgumentAtIndex (void* type, const size_t index)
 }
 
 bool
-ClangASTContext::IsFunctionPointerType (void* type)
+ClangASTContext::IsFunctionPointerType (lldb::opaque_compiler_type_t type)
 {
     if (type)
     {
@@ -2940,7 +2940,7 @@ ClangASTContext::IsFunctionPointerType (void* type)
 }
 
 bool
-ClangASTContext::IsIntegerType (void* type, bool &is_signed)
+ClangASTContext::IsIntegerType (lldb::opaque_compiler_type_t type, bool &is_signed)
 {
     if (!type)
         return false;
@@ -2961,7 +2961,7 @@ ClangASTContext::IsIntegerType (void* type, bool &is_signed)
 }
 
 bool
-ClangASTContext::IsPointerType (void* type, CompilerType *pointee_type)
+ClangASTContext::IsPointerType (lldb::opaque_compiler_type_t type, CompilerType *pointee_type)
 {
     if (type)
     {
@@ -3012,7 +3012,7 @@ ClangASTContext::IsPointerType (void* type, CompilerType *pointee_type)
 
 
 bool
-ClangASTContext::IsPointerOrReferenceType (void* type, CompilerType *pointee_type)
+ClangASTContext::IsPointerOrReferenceType (lldb::opaque_compiler_type_t type, CompilerType *pointee_type)
 {
     if (type)
     {
@@ -3071,7 +3071,7 @@ ClangASTContext::IsPointerOrReferenceType (void* type, CompilerType *pointee_typ
 
 
 bool
-ClangASTContext::IsReferenceType (void* type, CompilerType *pointee_type, bool* is_rvalue)
+ClangASTContext::IsReferenceType (lldb::opaque_compiler_type_t type, CompilerType *pointee_type, bool* is_rvalue)
 {
     if (type)
     {
@@ -3109,7 +3109,7 @@ ClangASTContext::IsReferenceType (void* type, CompilerType *pointee_type, bool* 
 }
 
 bool
-ClangASTContext::IsFloatingPointType (void* type, uint32_t &count, bool &is_complex)
+ClangASTContext::IsFloatingPointType (lldb::opaque_compiler_type_t type, uint32_t &count, bool &is_complex)
 {
     if (type)
     {
@@ -3151,7 +3151,7 @@ ClangASTContext::IsFloatingPointType (void* type, uint32_t &count, bool &is_comp
 
 
 bool
-ClangASTContext::IsDefined(void* type)
+ClangASTContext::IsDefined(lldb::opaque_compiler_type_t type)
 {
     if (!type)
         return false;
@@ -3213,7 +3213,7 @@ ClangASTContext::IsObjCObjectOrInterfaceType (const CompilerType& type)
 }
 
 bool
-ClangASTContext::IsPolymorphicClass (void* type)
+ClangASTContext::IsPolymorphicClass (lldb::opaque_compiler_type_t type)
 {
     if (type)
     {
@@ -3243,7 +3243,7 @@ ClangASTContext::IsPolymorphicClass (void* type)
 }
 
 bool
-ClangASTContext::IsPossibleDynamicType (void* type, CompilerType *dynamic_pointee_type,
+ClangASTContext::IsPossibleDynamicType (lldb::opaque_compiler_type_t type, CompilerType *dynamic_pointee_type,
                                            bool check_cplusplus,
                                            bool check_objc)
 {
@@ -3383,7 +3383,7 @@ ClangASTContext::IsPossibleDynamicType (void* type, CompilerType *dynamic_pointe
 
 
 bool
-ClangASTContext::IsScalarType (void* type)
+ClangASTContext::IsScalarType (lldb::opaque_compiler_type_t type)
 {
     if (!type)
         return false;
@@ -3392,7 +3392,7 @@ ClangASTContext::IsScalarType (void* type)
 }
 
 bool
-ClangASTContext::IsTypedefType (void* type)
+ClangASTContext::IsTypedefType (lldb::opaque_compiler_type_t type)
 {
     if (!type)
         return false;
@@ -3400,7 +3400,7 @@ ClangASTContext::IsTypedefType (void* type)
 }
 
 bool
-ClangASTContext::IsVoidType (void* type)
+ClangASTContext::IsVoidType (lldb::opaque_compiler_type_t type)
 {
     if (!type)
         return false;
@@ -3447,7 +3447,7 @@ ClangASTContext::IsCXXClassType (const CompilerType& type)
 }
 
 bool
-ClangASTContext::IsBeingDefined (void* type)
+ClangASTContext::IsBeingDefined (lldb::opaque_compiler_type_t type)
 {
     if (!type)
         return false;
@@ -3514,7 +3514,7 @@ ClangASTContext::GetObjCClassName (const CompilerType& type, std::string &class_
 //----------------------------------------------------------------------
 
 bool
-ClangASTContext::GetCompleteType (void* type)
+ClangASTContext::GetCompleteType (lldb::opaque_compiler_type_t type)
 {
     if (!type)
         return false;
@@ -3523,7 +3523,7 @@ ClangASTContext::GetCompleteType (void* type)
 }
 
 ConstString
-ClangASTContext::GetTypeName (void* type)
+ClangASTContext::GetTypeName (lldb::opaque_compiler_type_t type)
 {
     std::string type_name;
     if (type)
@@ -3547,7 +3547,7 @@ ClangASTContext::GetTypeName (void* type)
 }
 
 uint32_t
-ClangASTContext::GetTypeInfo (void* type, CompilerType *pointee_or_element_clang_type)
+ClangASTContext::GetTypeInfo (lldb::opaque_compiler_type_t type, CompilerType *pointee_or_element_clang_type)
 {
     if (!type)
         return 0;
@@ -3725,7 +3725,7 @@ ClangASTContext::GetTypeInfo (void* type, CompilerType *pointee_or_element_clang
 
 
 lldb::LanguageType
-ClangASTContext::GetMinimumLanguage (void* type)
+ClangASTContext::GetMinimumLanguage (lldb::opaque_compiler_type_t type)
 {
     if (!type)
         return lldb::eLanguageTypeC;
@@ -3809,7 +3809,7 @@ ClangASTContext::GetMinimumLanguage (void* type)
 }
 
 lldb::TypeClass
-ClangASTContext::GetTypeClass (void* type)
+ClangASTContext::GetTypeClass (lldb::opaque_compiler_type_t type)
 {
     if (!type)
         return lldb::eTypeClassInvalid;
@@ -3902,7 +3902,7 @@ ClangASTContext::GetTypeClass (void* type)
 }
 
 unsigned
-ClangASTContext::GetTypeQualifiers(void* type)
+ClangASTContext::GetTypeQualifiers(lldb::opaque_compiler_type_t type)
 {
     if (type)
         return GetQualType(type).getQualifiers().getCVRQualifiers();
@@ -3914,7 +3914,7 @@ ClangASTContext::GetTypeQualifiers(void* type)
 //----------------------------------------------------------------------
 
 CompilerType
-ClangASTContext::GetArrayElementType (void* type, uint64_t *stride)
+ClangASTContext::GetArrayElementType (lldb::opaque_compiler_type_t type, uint64_t *stride)
 {
     if (type)
     {
@@ -3938,7 +3938,7 @@ ClangASTContext::GetArrayElementType (void* type, uint64_t *stride)
 }
 
 CompilerType
-ClangASTContext::GetCanonicalType (void* type)
+ClangASTContext::GetCanonicalType (lldb::opaque_compiler_type_t type)
 {
     if (type)
         return CompilerType (getASTContext(), GetCanonicalQualType(type));
@@ -3959,7 +3959,7 @@ GetFullyUnqualifiedType_Impl (clang::ASTContext *ast, clang::QualType qual_type)
 }
 
 CompilerType
-ClangASTContext::GetFullyUnqualifiedType (void* type)
+ClangASTContext::GetFullyUnqualifiedType (lldb::opaque_compiler_type_t type)
 {
     if (type)
         return CompilerType(getASTContext(), GetFullyUnqualifiedType_Impl(getASTContext(), GetQualType(type)));
@@ -3968,7 +3968,7 @@ ClangASTContext::GetFullyUnqualifiedType (void* type)
 
 
 int
-ClangASTContext::GetFunctionArgumentCount (void* type)
+ClangASTContext::GetFunctionArgumentCount (lldb::opaque_compiler_type_t type)
 {
     if (type)
     {
@@ -3980,7 +3980,7 @@ ClangASTContext::GetFunctionArgumentCount (void* type)
 }
 
 CompilerType
-ClangASTContext::GetFunctionArgumentTypeAtIndex (void* type, size_t idx)
+ClangASTContext::GetFunctionArgumentTypeAtIndex (lldb::opaque_compiler_type_t type, size_t idx)
 {
     if (type)
     {
@@ -3996,7 +3996,7 @@ ClangASTContext::GetFunctionArgumentTypeAtIndex (void* type, size_t idx)
 }
 
 CompilerType
-ClangASTContext::GetFunctionReturnType (void* type)
+ClangASTContext::GetFunctionReturnType (lldb::opaque_compiler_type_t type)
 {
     if (type)
     {
@@ -4009,7 +4009,7 @@ ClangASTContext::GetFunctionReturnType (void* type)
 }
 
 size_t
-ClangASTContext::GetNumMemberFunctions (void* type)
+ClangASTContext::GetNumMemberFunctions (lldb::opaque_compiler_type_t type)
 {
     size_t num_functions = 0;
     if (type)
@@ -4073,7 +4073,7 @@ ClangASTContext::GetNumMemberFunctions (void* type)
 }
 
 TypeMemberFunctionImpl
-ClangASTContext::GetMemberFunctionAtIndex (void* type, size_t idx)
+ClangASTContext::GetMemberFunctionAtIndex (lldb::opaque_compiler_type_t type, size_t idx)
 {
     std::string name("");
     MemberFunctionKind kind(MemberFunctionKind::eMemberFunctionKindUnknown);
@@ -4203,7 +4203,7 @@ ClangASTContext::GetMemberFunctionAtIndex (void* type, size_t idx)
 }
 
 CompilerType
-ClangASTContext::GetNonReferenceType (void* type)
+ClangASTContext::GetNonReferenceType (lldb::opaque_compiler_type_t type)
 {
     if (type)
         return CompilerType(getASTContext(), GetQualType(type).getNonReferenceType());
@@ -4244,7 +4244,7 @@ ClangASTContext::CreateTypedefType (const CompilerType& type,
 }
 
 CompilerType
-ClangASTContext::GetPointeeType (void* type)
+ClangASTContext::GetPointeeType (lldb::opaque_compiler_type_t type)
 {
     if (type)
     {
@@ -4255,7 +4255,7 @@ ClangASTContext::GetPointeeType (void* type)
 }
 
 CompilerType
-ClangASTContext::GetPointerType (void* type)
+ClangASTContext::GetPointerType (lldb::opaque_compiler_type_t type)
 {
     if (type)
     {
@@ -4277,7 +4277,7 @@ ClangASTContext::GetPointerType (void* type)
 
 
 CompilerType
-ClangASTContext::GetLValueReferenceType (void *type)
+ClangASTContext::GetLValueReferenceType (lldb::opaque_compiler_type_t type)
 {
     if (type)
         return CompilerType(this, getASTContext()->getLValueReferenceType(GetQualType(type)).getAsOpaquePtr());
@@ -4286,7 +4286,7 @@ ClangASTContext::GetLValueReferenceType (void *type)
 }
 
 CompilerType
-ClangASTContext::GetRValueReferenceType (void *type)
+ClangASTContext::GetRValueReferenceType (lldb::opaque_compiler_type_t type)
 {
     if (type)
         return CompilerType(this, getASTContext()->getRValueReferenceType(GetQualType(type)).getAsOpaquePtr());
@@ -4295,7 +4295,7 @@ ClangASTContext::GetRValueReferenceType (void *type)
 }
 
 CompilerType
-ClangASTContext::AddConstModifier (void *type)
+ClangASTContext::AddConstModifier (lldb::opaque_compiler_type_t type)
 {
     if (type)
     {
@@ -4307,7 +4307,7 @@ ClangASTContext::AddConstModifier (void *type)
 }
 
 CompilerType
-ClangASTContext::AddVolatileModifier (void *type)
+ClangASTContext::AddVolatileModifier (lldb::opaque_compiler_type_t type)
 {
     if (type)
     {
@@ -4320,7 +4320,7 @@ ClangASTContext::AddVolatileModifier (void *type)
 }
 
 CompilerType
-ClangASTContext::AddRestrictModifier (void *type)
+ClangASTContext::AddRestrictModifier (lldb::opaque_compiler_type_t type)
 {
     if (type)
     {
@@ -4333,7 +4333,7 @@ ClangASTContext::AddRestrictModifier (void *type)
 }
 
 CompilerType
-ClangASTContext::CreateTypedef (void *type, const char *typedef_name, const CompilerDeclContext &compiler_decl_ctx)
+ClangASTContext::CreateTypedef (lldb::opaque_compiler_type_t type, const char *typedef_name, const CompilerDeclContext &compiler_decl_ctx)
 {
     if (type)
     {
@@ -4362,7 +4362,7 @@ ClangASTContext::CreateTypedef (void *type, const char *typedef_name, const Comp
 }
 
 CompilerType
-ClangASTContext::GetTypedefedType (void* type)
+ClangASTContext::GetTypedefedType (lldb::opaque_compiler_type_t type)
 {
     if (type)
     {
@@ -4400,7 +4400,7 @@ ClangASTContext::GetBasicTypeFromAST (lldb::BasicType basic_type)
 //----------------------------------------------------------------------
 
 uint64_t
-ClangASTContext::GetBitSize (void* type, ExecutionContextScope *exe_scope)
+ClangASTContext::GetBitSize (lldb::opaque_compiler_type_t type, ExecutionContextScope *exe_scope)
 {
     if (GetCompleteType (type))
     {
@@ -4457,7 +4457,7 @@ ClangASTContext::GetBitSize (void* type, ExecutionContextScope *exe_scope)
 }
 
 size_t
-ClangASTContext::GetTypeBitAlign (void* type)
+ClangASTContext::GetTypeBitAlign (lldb::opaque_compiler_type_t type)
 {
     if (GetCompleteType(type))
         return getASTContext()->getTypeAlign(GetQualType(type));
@@ -4466,7 +4466,7 @@ ClangASTContext::GetTypeBitAlign (void* type)
 
 
 lldb::Encoding
-ClangASTContext::GetEncoding (void* type, uint64_t &count)
+ClangASTContext::GetEncoding (lldb::opaque_compiler_type_t type, uint64_t &count)
 {
     if (!type)
         return lldb::eEncodingInvalid;
@@ -4635,7 +4635,7 @@ ClangASTContext::GetEncoding (void* type, uint64_t &count)
 }
 
 lldb::Format
-ClangASTContext::GetFormat (void* type)
+ClangASTContext::GetFormat (lldb::opaque_compiler_type_t type)
 {
     if (!type)
         return lldb::eFormatDefault;
@@ -4781,7 +4781,7 @@ ObjCDeclHasIVars (clang::ObjCInterfaceDecl *class_interface_decl, bool check_sup
 }
 
 uint32_t
-ClangASTContext::GetNumChildren (void* type, bool omit_empty_base_classes)
+ClangASTContext::GetNumChildren (lldb::opaque_compiler_type_t type, bool omit_empty_base_classes)
 {
     if (!type)
         return 0;
@@ -4956,7 +4956,7 @@ ClangASTContext::GetBuiltinTypeByName (const ConstString &name)
 }
 
 lldb::BasicType
-ClangASTContext::GetBasicTypeEnumeration (void* type)
+ClangASTContext::GetBasicTypeEnumeration (lldb::opaque_compiler_type_t type)
 {
     if (type)
     {
@@ -5005,7 +5005,7 @@ ClangASTContext::GetBasicTypeEnumeration (void* type)
 }
 
 void
-ClangASTContext::ForEachEnumerator (void* type, std::function <bool (const CompilerType &integer_type, const ConstString &name, const llvm::APSInt &value)> const &callback)
+ClangASTContext::ForEachEnumerator (lldb::opaque_compiler_type_t type, std::function <bool (const CompilerType &integer_type, const ConstString &name, const llvm::APSInt &value)> const &callback)
 {
     const clang::EnumType *enum_type = llvm::dyn_cast<clang::EnumType>(GetCanonicalQualType(type));
     if (enum_type)
@@ -5030,7 +5030,7 @@ ClangASTContext::ForEachEnumerator (void* type, std::function <bool (const Compi
 #pragma mark Aggregate Types
 
 uint32_t
-ClangASTContext::GetNumFields (void* type)
+ClangASTContext::GetNumFields (lldb::opaque_compiler_type_t type)
 {
     if (!type)
         return 0;
@@ -5106,7 +5106,7 @@ ClangASTContext::GetNumFields (void* type)
     return count;
 }
 
-static clang_type_t
+static lldb::opaque_compiler_type_t
 GetObjCFieldAtIndex (clang::ASTContext *ast,
                      clang::ObjCInterfaceDecl *class_interface_decl,
                      size_t idx,
@@ -5166,7 +5166,7 @@ GetObjCFieldAtIndex (clang::ASTContext *ast,
 }
 
 CompilerType
-ClangASTContext::GetFieldAtIndex (void* type, size_t idx,
+ClangASTContext::GetFieldAtIndex (lldb::opaque_compiler_type_t type, size_t idx,
                                      std::string& name,
                                      uint64_t *bit_offset_ptr,
                                      uint32_t *bitfield_bit_size_ptr,
@@ -5285,7 +5285,7 @@ ClangASTContext::GetFieldAtIndex (void* type, size_t idx,
 }
 
 uint32_t
-ClangASTContext::GetNumDirectBaseClasses (void *type)
+ClangASTContext::GetNumDirectBaseClasses (lldb::opaque_compiler_type_t type)
 {
     uint32_t count = 0;
     clang::QualType qual_type(GetCanonicalQualType(type));
@@ -5352,7 +5352,7 @@ ClangASTContext::GetNumDirectBaseClasses (void *type)
 }
 
 uint32_t
-ClangASTContext::GetNumVirtualBaseClasses (void *type)
+ClangASTContext::GetNumVirtualBaseClasses (lldb::opaque_compiler_type_t type)
 {
     uint32_t count = 0;
     clang::QualType qual_type(GetCanonicalQualType(type));
@@ -5388,7 +5388,7 @@ ClangASTContext::GetNumVirtualBaseClasses (void *type)
 }
 
 CompilerType
-ClangASTContext::GetDirectBaseClassAtIndex (void *type, size_t idx, uint32_t *bit_offset_ptr)
+ClangASTContext::GetDirectBaseClassAtIndex (lldb::opaque_compiler_type_t type, size_t idx, uint32_t *bit_offset_ptr)
 {
     clang::QualType qual_type(GetCanonicalQualType(type));
     const clang::Type::TypeClass type_class = qual_type->getTypeClass();
@@ -5487,7 +5487,7 @@ ClangASTContext::GetDirectBaseClassAtIndex (void *type, size_t idx, uint32_t *bi
 }
 
 CompilerType
-ClangASTContext::GetVirtualBaseClassAtIndex (void *type,
+ClangASTContext::GetVirtualBaseClassAtIndex (lldb::opaque_compiler_type_t type,
                                              size_t idx,
                                              uint32_t *bit_offset_ptr)
 {
@@ -5649,7 +5649,7 @@ ClangASTContext::GetNumPointeeChildren (clang::QualType type)
 
 
 CompilerType
-ClangASTContext::GetChildCompilerTypeAtIndex (void* type,
+ClangASTContext::GetChildCompilerTypeAtIndex (lldb::opaque_compiler_type_t type,
                                               ExecutionContext *exe_ctx,
                                               size_t idx,
                                               bool transparent_pointers,
@@ -6302,7 +6302,7 @@ GetIndexForRecordChild (const clang::RecordDecl *record_decl,
 // The second index 1 is the child index for "m_b" within class A
 
 size_t
-ClangASTContext::GetIndexOfChildMemberWithName (void* type, const char *name,
+ClangASTContext::GetIndexOfChildMemberWithName (lldb::opaque_compiler_type_t type, const char *name,
                                                    bool omit_empty_base_classes,
                                                    std::vector<uint32_t>& child_indexes)
 {
@@ -6567,7 +6567,7 @@ ClangASTContext::GetIndexOfChildMemberWithName (void* type, const char *name,
 // matches can include base class names.
 
 uint32_t
-ClangASTContext::GetIndexOfChildWithName (void* type, const char *name, bool omit_empty_base_classes)
+ClangASTContext::GetIndexOfChildWithName (lldb::opaque_compiler_type_t type, const char *name, bool omit_empty_base_classes)
 {
     if (type && name && name[0])
     {
@@ -6766,7 +6766,7 @@ ClangASTContext::GetIndexOfChildWithName (void* type, const char *name, bool omi
 
 
 size_t
-ClangASTContext::GetNumTemplateArguments (void* type)
+ClangASTContext::GetNumTemplateArguments (lldb::opaque_compiler_type_t type)
 {
     if (!type)
         return 0;
@@ -6805,7 +6805,7 @@ ClangASTContext::GetNumTemplateArguments (void* type)
 }
 
 CompilerType
-ClangASTContext::GetTemplateArgument (void* type, size_t arg_idx, lldb::TemplateArgumentKind &kind)
+ClangASTContext::GetTemplateArgument (lldb::opaque_compiler_type_t type, size_t arg_idx, lldb::TemplateArgumentKind &kind)
 {
     if (!type)
         return CompilerType();
@@ -6881,6 +6881,14 @@ ClangASTContext::GetTemplateArgument (void* type, size_t arg_idx, lldb::Template
     }
     kind = eTemplateArgumentKindNull;
     return CompilerType ();
+}
+
+CompilerType
+ClangASTContext::GetTypeForFormatters (void* type)
+{
+    if (type)
+        return RemoveFastQualifiers(CompilerType(this, type));
+    return CompilerType();
 }
 
 static bool
@@ -7118,7 +7126,7 @@ ClangASTContext::GetAsRecordDecl (const CompilerType& type)
 }
 
 clang::CXXRecordDecl *
-ClangASTContext::GetAsCXXRecordDecl (void* type)
+ClangASTContext::GetAsCXXRecordDecl (lldb::opaque_compiler_type_t type)
 {
     return GetCanonicalQualType(type)->getAsCXXRecordDecl();
 }
@@ -7396,7 +7404,7 @@ ClangASTContext::AddVariableToRecordType (const CompilerType& type, const char *
 
 
 clang::CXXMethodDecl *
-ClangASTContext::AddMethodToCXXRecordType (void* type, const char *name,
+ClangASTContext::AddMethodToCXXRecordType (lldb::opaque_compiler_type_t type, const char *name,
                                               const CompilerType &method_clang_type,
                                               lldb::AccessType access,
                                               bool is_virtual,
@@ -7608,7 +7616,7 @@ ClangASTContext::AddMethodToCXXRecordType (void* type, const char *name,
 #pragma mark C++ Base Classes
 
 clang::CXXBaseSpecifier *
-ClangASTContext::CreateBaseClassSpecifier (void* type, AccessType access, bool is_virtual, bool base_of_class)
+ClangASTContext::CreateBaseClassSpecifier (lldb::opaque_compiler_type_t type, AccessType access, bool is_virtual, bool base_of_class)
 {
     if (type)
         return new clang::CXXBaseSpecifier (clang::SourceRange(),
@@ -7631,7 +7639,7 @@ ClangASTContext::DeleteBaseClassSpecifiers (clang::CXXBaseSpecifier **base_class
 }
 
 bool
-ClangASTContext::SetBaseClassesForClassType (void* type, clang::CXXBaseSpecifier const * const *base_classes,
+ClangASTContext::SetBaseClassesForClassType (lldb::opaque_compiler_type_t type, clang::CXXBaseSpecifier const * const *base_classes,
                                                 unsigned num_base_classes)
 {
     if (type)
@@ -7872,7 +7880,7 @@ ClangASTContext::IsObjCClassTypeAndHasIVars (const CompilerType& type, bool chec
 
 clang::ObjCMethodDecl *
 ClangASTContext::AddMethodToObjCObjectType (const CompilerType& type,
-                                            const char *name,  // the full symbol name as seen in the symbol table (void* type, "-[NString stringWithCString:]")
+                                            const char *name,  // the full symbol name as seen in the symbol table (lldb::opaque_compiler_type_t type, "-[NString stringWithCString:]")
                                             const CompilerType &method_clang_type,
                                             lldb::AccessType access,
                                             bool is_artificial)
@@ -7994,7 +8002,7 @@ ClangASTContext::AddMethodToObjCObjectType (const CompilerType& type,
 }
 
 bool
-ClangASTContext::SetHasExternalStorage (void* type, bool has_extern)
+ClangASTContext::SetHasExternalStorage (lldb::opaque_compiler_type_t type, bool has_extern)
 {
     if (!type)
         return false;
@@ -8158,7 +8166,7 @@ ClangASTContext::CompleteTagDeclarationDefinition (const CompilerType& type)
 }
 
 bool
-ClangASTContext::AddEnumerationValueToEnumerationType (void* type,
+ClangASTContext::AddEnumerationValueToEnumerationType (lldb::opaque_compiler_type_t type,
                                                        const CompilerType &enumerator_clang_type,
                                                        const Declaration &decl,
                                                        const char *name,
@@ -8206,7 +8214,7 @@ ClangASTContext::AddEnumerationValueToEnumerationType (void* type,
 }
 
 CompilerType
-ClangASTContext::GetEnumerationIntegerType (void* type)
+ClangASTContext::GetEnumerationIntegerType (lldb::opaque_compiler_type_t type)
 {
     clang::QualType enum_qual_type (GetCanonicalQualType(type));
     const clang::Type *clang_type = enum_qual_type.getTypePtr();
@@ -8240,7 +8248,7 @@ ClangASTContext::CreateMemberPointerType (const CompilerType& type, const Compil
 
 
 size_t
-ClangASTContext::ConvertStringToFloatValue (void* type, const char *s, uint8_t *dst, size_t dst_size)
+ClangASTContext::ConvertStringToFloatValue (lldb::opaque_compiler_type_t type, const char *s, uint8_t *dst, size_t dst_size)
 {
     if (type)
     {
@@ -8286,7 +8294,7 @@ ClangASTContext::ConvertStringToFloatValue (void* type, const char *s, uint8_t *
 #define DEPTH_INCREMENT 2
 
 void
-ClangASTContext::DumpValue (void* type, ExecutionContext *exe_ctx,
+ClangASTContext::DumpValue (lldb::opaque_compiler_type_t type, ExecutionContext *exe_ctx,
                                Stream *s,
                                lldb::Format format,
                                const lldb_private::DataExtractor &data,
@@ -8616,7 +8624,7 @@ ClangASTContext::DumpValue (void* type, ExecutionContext *exe_ctx,
 
 
 bool
-ClangASTContext::DumpTypeValue (void* type, Stream *s,
+ClangASTContext::DumpTypeValue (lldb::opaque_compiler_type_t type, Stream *s,
                                    lldb::Format format,
                                    const lldb_private::DataExtractor &data,
                                    lldb::offset_t byte_offset,
@@ -8778,7 +8786,7 @@ ClangASTContext::DumpTypeValue (void* type, Stream *s,
 
 
 void
-ClangASTContext::DumpSummary (void* type, ExecutionContext *exe_ctx,
+ClangASTContext::DumpSummary (lldb::opaque_compiler_type_t type, ExecutionContext *exe_ctx,
                                  Stream *s,
                                  const lldb_private::DataExtractor &data,
                                  lldb::offset_t data_byte_offset,
@@ -8826,7 +8834,7 @@ ClangASTContext::DumpSummary (void* type, ExecutionContext *exe_ctx,
 }
 
 void
-ClangASTContext::DumpTypeDescription (void* type)
+ClangASTContext::DumpTypeDescription (lldb::opaque_compiler_type_t type)
 {
     StreamFile s (stdout, false);
     DumpTypeDescription (&s);
@@ -8838,7 +8846,7 @@ ClangASTContext::DumpTypeDescription (void* type)
 }
 
 void
-ClangASTContext::DumpTypeDescription (void* type, Stream *s)
+ClangASTContext::DumpTypeDescription (lldb::opaque_compiler_type_t type, Stream *s)
 {
     if (type)
     {
