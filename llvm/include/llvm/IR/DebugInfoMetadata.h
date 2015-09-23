@@ -1326,7 +1326,8 @@ public:
   DIImportedEntityArray getImportedEntities() const {
     return cast_or_null<MDTuple>(getRawImportedEntities());
   }
-  unsigned getDWOId() const { return DWOId; }
+  uint64_t getDWOId() const { return DWOId; }
+  void setDWOId(uint64_t DwoId) { DWOId = DwoId; }
 
   MDString *getRawProducer() const { return getOperandAs<MDString>(1); }
   MDString *getRawFlags() const { return getOperandAs<MDString>(2); }
