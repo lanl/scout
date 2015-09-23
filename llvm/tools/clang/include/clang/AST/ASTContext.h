@@ -462,6 +462,7 @@ private:
   friend class CXXRecordDecl;
 
   const TargetInfo *Target;
+  const TargetInfo *AuxTarget;
   clang::PrintingPolicy PrintingPolicy;
   
 public:
@@ -548,7 +549,8 @@ public:
   }
 
   const TargetInfo &getTargetInfo() const { return *Target; }
-  
+  const TargetInfo *getAuxTargetInfo() const { return AuxTarget; }
+
   /// getIntTypeForBitwidth -
   /// sets integer QualTy according to specified details:
   /// bitwidth, signed/unsigned.
@@ -2503,9 +2505,10 @@ public:
   /// This routine may only be invoked once for a given ASTContext object.
   /// It is normally invoked after ASTContext construction.
   ///
-  /// \param Target The target 
-  void InitBuiltinTypes(const TargetInfo &Target);
-  
+  /// \param Target The target
+  void InitBuiltinTypes(const TargetInfo &Target,
+                        const TargetInfo *AuxTarget = nullptr);
+
 private:
   void InitBuiltinType(CanQualType &R, BuiltinType::Kind K);
 

@@ -564,8 +564,7 @@ static void checkARMCPUName(const Driver &D, const Arg *A, const ArgList &Args,
                             llvm::StringRef CPUName, llvm::StringRef ArchName,
                             const llvm::Triple &Triple) {
   std::string CPU = arm::getARMTargetCPU(CPUName, ArchName, Triple);
-  std::string Arch = arm::getARMArch(ArchName, Triple);
-  if (arm::getLLVMArchSuffixForARM(CPU, Arch).empty())
+  if (arm::getLLVMArchSuffixForARM(CPU, ArchName, Triple).empty())
     D.Diag(diag::err_drv_clang_unsupported) << A->getAsString(Args);
 }
 
@@ -2387,6 +2386,12 @@ static void CollectArgsForIntegratedAssembler(Compilation &C,
       } else if (Value == "--break") {
         CmdArgs.push_back("-target-feature");
         CmdArgs.push_back("-use-tcc-in-div");
+      } else if (Value.startswith("-msoft-float")) {
+        CmdArgs.push_back("-target-feature");
+        CmdArgs.push_back("+soft-float");
+      } else if (Value.startswith("-mhard-float")) {
+        CmdArgs.push_back("-target-feature");
+        CmdArgs.push_back("-soft-float");
       } else {
         D.Diag(diag::err_drv_unsupported_option_argument)
             << A->getOption().getName() << Value;
@@ -2513,6 +2518,28 @@ static OpenMPRuntimeKind getOpenMPRuntime(const ToolChain &TC,
   }
 
   return RT;
+}
+
+static void addOpenMPRuntime(ArgStringList &CmdArgs, const ToolChain &TC,
+                              const ArgList &Args) {
+  if (!Args.hasFlag(options::OPT_fopenmp, options::OPT_fopenmp_EQ,
+                    options::OPT_fno_openmp, false))
+    return;
+
+  switch (getOpenMPRuntime(TC, Args)) {
+  case OMPRT_OMP:
+    CmdArgs.push_back("-lomp");
+    break;
+  case OMPRT_GOMP:
+    CmdArgs.push_back("-lgomp");
+    break;
+  case OMPRT_IOMP5:
+    CmdArgs.push_back("-liomp5");
+    break;
+  case OMPRT_Unknown:
+    // Already diagnosed.
+    break;
+  }
 }
 
 static void addSanitizerRuntime(const ToolChain &TC, const ArgList &Args,
@@ -5067,6 +5094,13 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // Forward -fparse-all-comments to -cc1.
   Args.AddAllArgs(CmdArgs, options::OPT_fparse_all_comments);
 
+  // Turn -fplugin=name.so into -load name.so
+  for (const Arg *A : Args.filtered(options::OPT_fplugin_EQ)) {
+    CmdArgs.push_back("-load");
+    CmdArgs.push_back(A->getValue());
+    A->claim();
+  }
+
   // Forward -Xclang arguments to -cc1, and -mllvm arguments to the LLVM option
   // parser.
   Args.AddAllArgValues(CmdArgs, options::OPT_Xclang);
@@ -6116,7 +6150,7 @@ const std::string arm::getARMArch(StringRef Arch, const llvm::Triple &Triple) {
     std::string CPU = llvm::sys::getHostCPUName();
     if (CPU != "generic") {
       // Translate the native cpu into the architecture suffix for that CPU.
-      StringRef Suffix = arm::getLLVMArchSuffixForARM(CPU, MArch);
+      StringRef Suffix = arm::getLLVMArchSuffixForARM(CPU, MArch, Triple);
       // If there is no valid architecture suffix for this CPU we don't know how
       // to handle it, so return no architecture.
       if (Suffix.empty())
@@ -6162,12 +6196,19 @@ std::string arm::getARMTargetCPU(StringRef CPU, StringRef Arch,
 /// getLLVMArchSuffixForARM - Get the LLVM arch name to use for a particular
 /// CPU  (or Arch, if CPU is generic).
 // FIXME: This is redundant with -mcpu, why does LLVM use this.
-StringRef arm::getLLVMArchSuffixForARM(StringRef CPU, StringRef Arch) {
-  if (CPU == "generic")
-    return llvm::ARM::getSubArch(
-        llvm::ARM::parseArch(Arch));
-
-  unsigned ArchKind = llvm::ARM::parseCPUArch(CPU);
+StringRef arm::getLLVMArchSuffixForARM(StringRef CPU, StringRef Arch,
+                                       const llvm::Triple &Triple) {
+  unsigned ArchKind;
+  Arch = tools::arm::getARMArch(Arch, Triple);
+  if (CPU == "generic") {
+    ArchKind = llvm::ARM::parseArch(Arch);
+    if (ArchKind == llvm::ARM::AK_INVALID)
+      // In case of generic Arch, i.e. "arm",
+      // extract arch from default cpu of the Triple
+      ArchKind = llvm::ARM::parseCPUArch(Triple.getARMCPUForArch(Arch));
+  } else {
+    ArchKind = llvm::ARM::parseCPUArch(CPU);
+  }
   if (ArchKind == llvm::ARM::AK_INVALID)
     return "";
   return llvm::ARM::getSubArch(ArchKind);
@@ -6743,23 +6784,7 @@ void darwin::Linker::ConstructJob(Compilation &C, const JobAction &JA,
 
   Args.AddAllArgs(CmdArgs, options::OPT_L);
 
-  if (Args.hasFlag(options::OPT_fopenmp, options::OPT_fopenmp_EQ,
-                   options::OPT_fno_openmp, false)) {
-    switch (getOpenMPRuntime(getToolChain(), Args)) {
-    case OMPRT_OMP:
-      CmdArgs.push_back("-lomp");
-      break;
-    case OMPRT_GOMP:
-      CmdArgs.push_back("-lgomp");
-      break;
-    case OMPRT_IOMP5:
-      CmdArgs.push_back("-liomp5");
-      break;
-    case OMPRT_Unknown:
-      // Already diagnosed.
-      break;
-    }
-  }
+  addOpenMPRuntime(CmdArgs, getToolChain(), Args);
 
   AddLinkerInputs(getToolChain(), Inputs, Args, CmdArgs);
   // Build the input file for -filelist (list of linker input files) in case we

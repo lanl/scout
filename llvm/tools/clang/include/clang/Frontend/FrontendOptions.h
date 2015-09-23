@@ -260,6 +260,9 @@ public:
   /// (in the format produced by -fdump-record-layouts).
   std::string OverrideRecordLayoutsFile;
 
+  /// \brief Auxiliary triple for CUDA compilation.
+  std::string AuxTriple;
+
 public:
   FrontendOptions() :
     DisableFree(false), RelocatablePCH(false), ShowHelp(false),

@@ -1250,9 +1250,12 @@ static ASTFileSignature getSignature() {
 }
 
 /// \brief Write the control block.
-void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
-                                  StringRef isysroot,
-                                  const std::string &OutputFile) {
+uint64_t ASTWriter::WriteControlBlock(Preprocessor &PP,
+                                      ASTContext &Context,
+                                      StringRef isysroot,
+                                      const std::string &OutputFile) {
+  ASTFileSignature Signature = 0;
+
   using namespace llvm;
   Stream.EnterSubblock(CONTROL_BLOCK_ID, 5);
   RecordData Record;
@@ -1285,7 +1288,8 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
     // is non-deterministic.
     // FIXME: Remove this when output is deterministic.
     if (Context.getLangOpts().ImplicitModules) {
-      RecordData::value_type Record[] = {getSignature()};
+      Signature = getSignature();
+      RecordData::value_type Record[] = {Signature};
       Stream.EmitRecord(SIGNATURE, Record);
     }
 
@@ -1552,6 +1556,7 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP, ASTContext &Context,
                   PP.getHeaderSearchInfo().getHeaderSearchOpts(),
                   PP.getLangOpts().Modules);
   Stream.ExitBlock();
+  return Signature;
 }
 
 namespace  {
@@ -4096,12 +4101,11 @@ time_t ASTWriter::getTimestampForOutput(const FileEntry *E) const {
   return IncludeTimestamps ? E->getModificationTime() : 0;
 }
 
-void ASTWriter::WriteAST(Sema &SemaRef,
-                         const std::string &OutputFile,
-                         Module *WritingModule, StringRef isysroot,
-                         bool hasErrors) {
+uint64_t ASTWriter::WriteAST(Sema &SemaRef, const std::string &OutputFile,
+                             Module *WritingModule, StringRef isysroot,
+                             bool hasErrors) {
   WritingAST = true;
-  
+
   ASTHasCompilerErrors = hasErrors;
   
   // Emit the file header.
@@ -4115,13 +4119,15 @@ void ASTWriter::WriteAST(Sema &SemaRef,
   Context = &SemaRef.Context;
   PP = &SemaRef.PP;
   this->WritingModule = WritingModule;
-  WriteASTCore(SemaRef, isysroot, OutputFile, WritingModule);
+  ASTFileSignature Signature =
+      WriteASTCore(SemaRef, isysroot, OutputFile, WritingModule);
   Context = nullptr;
   PP = nullptr;
   this->WritingModule = nullptr;
   this->BaseDirectory.clear();
 
   WritingAST = false;
+  return Signature;
 }
 
 template<typename Vector>
@@ -4133,10 +4139,9 @@ static void AddLazyVectorDecls(ASTWriter &Writer, Vector &Vec,
   }
 }
 
-void ASTWriter::WriteASTCore(Sema &SemaRef,
-                             StringRef isysroot,
-                             const std::string &OutputFile, 
-                             Module *WritingModule) {
+uint64_t ASTWriter::WriteASTCore(Sema &SemaRef, StringRef isysroot,
+                                 const std::string &OutputFile,
+                                 Module *WritingModule) {
   using namespace llvm;
 
   bool isModule = WritingModule != nullptr;
@@ -4281,7 +4286,7 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
   }
 
   // Write the control block
-  WriteControlBlock(PP, Context, isysroot, OutputFile);
+  uint64_t Signature = WriteControlBlock(PP, Context, isysroot, OutputFile);
 
   // Write the remaining AST contents.
   Stream.EnterSubblock(AST_BLOCK_ID, 5);
@@ -4611,6 +4616,8 @@ void ASTWriter::WriteASTCore(Sema &SemaRef,
       NumStatements, NumMacros, NumLexicalDeclContexts, NumVisibleDeclContexts};
   Stream.EmitRecord(STATISTICS, Record);
   Stream.ExitBlock();
+
+  return Signature;
 }
 
 void ASTWriter::WriteDeclUpdatesBlocks(RecordDataImpl &OffsetsRecord) {
