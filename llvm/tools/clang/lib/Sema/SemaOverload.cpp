@@ -10819,6 +10819,8 @@ bool Sema::buildOverloadedCallSet(Scope *S, Expr *Fn,
       CallExpr *CE = new (Context) CallExpr(
           Context, Fn, Args, Context.DependentTy, VK_RValue, RParenLoc);
       CE->setTypeDependent(true);
+      CE->setValueDependent(true);
+      CE->setInstantiationDependent(true);
       *Result = CE;
       return true;
     }
