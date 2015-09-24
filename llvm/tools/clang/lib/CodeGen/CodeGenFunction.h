@@ -373,7 +373,7 @@ public:
   
   Address MeshRank = Address::invalid();
 
-  llvm::Value* GPUThreadId;
+  Address GPUThreadId = Address::invalid();
   llvm::Value* GPUThreadInc;
   llvm::Value* GPUNumThreads;
   
@@ -382,7 +382,7 @@ public:
   //renderall color buffer
   llvm::Value *Color;
 
-  llvm::Value* CurrentVolumeRenderallMeshPtr = nullptr;
+  Address CurrentVolumeRenderallMeshPtr = Address::invalid();
   std::map<MeshFieldDecl*, size_t> CurrentVolumeRenderallFieldMap;
   llvm::Value* CurrentVolumeRenderallIndex = nullptr;
   llvm::Value* CurrentVolumeRenderallColor = nullptr;
@@ -2307,9 +2307,9 @@ public:
 
   // +===== Scout ============================================================+
   //
-  void GetMeshBaseAddr(const Stmt &S, Address& BaseAddr);
-  void GetMeshBaseAddr(const VarDecl *MeshVarDecl, Address& BaseAddr);
-  void GetFrameBaseAddr(const VarDecl *FrameVarDecl, llvm::Value*& BaseAddr);
+  Address GetMeshBaseAddr(const Stmt &S);
+  Address GetMeshBaseAddr(const VarDecl *MeshVarDecl);
+  Address GetFrameBaseAddr(const VarDecl *FrameVarDecl);
   
   void SetMeshBounds(const Stmt &S);
   void SetMeshBounds(MeshElementType type, Address MeshBaseAddr, const MeshType* mt, bool isForall = true);
@@ -3341,7 +3341,7 @@ public:
   // +===== Scout ============================================================+
   /// Emit field annotations for the given mesh field & value. Returns the
   /// annotation result.
-  llvm::Value *EmitFieldAnnotations(const MeshFieldDecl *D, llvm::Value *V);
+  Address EmitFieldAnnotations(const MeshFieldDecl *D, Address V);
   // +========================================================================+
 
   //===--------------------------------------------------------------------===//

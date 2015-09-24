@@ -125,7 +125,9 @@ llvm::Value *CodeGenFunction::TranslateExprToValue(const Expr *E) {
 }
 
 //from VarDecl get base addr of mesh
-void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, Address& BaseAddr) {
+Address CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl) {
+
+  Address BaseAddr = Address::invalid();
   // is a global. SC_TODO why not MeshVarDecl->hasGlobalStorage()?
   if ((MeshVarDecl->hasLinkage() || MeshVarDecl->isStaticDataMember())
       && MeshVarDecl->getTLSKind() != VarDecl::TLS_Dynamic) {
@@ -138,9 +140,8 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, Address& BaseA
     if(inLLDB()){
       auto itr = LocalDeclMap.find(MeshVarDecl);
       
-      if(itr != LocalDeclMap.end()){
-        BaseAddr = itr->second;
-        return;
+      if(itr != LocalDeclMap.end()) {
+        return itr->second;
       }
       
       while(llvm::PointerType* PT =
@@ -154,7 +155,7 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, Address& BaseA
       }
       
       setAddrOfLocalVar(MeshVarDecl, BaseAddr);
-      return;
+      return BaseAddr;
     }
     
     EmitGlobalMeshAllocaIfMissing(BaseAddr, *MeshVarDecl);
@@ -172,11 +173,11 @@ void CodeGenFunction::GetMeshBaseAddr(const VarDecl *MeshVarDecl, Address& BaseA
       BaseAddr = scoutPtr(Builder.CreateLoad(BaseAddr));
     }
   }
+  return BaseAddr;
 }
 
-//SC_TODO: return Addr?
 //from Stmt get base addr of mesh
-void CodeGenFunction::GetMeshBaseAddr(const Stmt &S, Address& BaseAddr) {
+Address  CodeGenFunction::GetMeshBaseAddr(const Stmt &S) {
 
   const VarDecl *MeshVarDecl;
 
@@ -188,15 +189,18 @@ void CodeGenFunction::GetMeshBaseAddr(const Stmt &S, Address& BaseAddr) {
     assert(false && "expected ForallMeshStmt or RenderallMeshStmt");
   }
 
-  GetMeshBaseAddr(MeshVarDecl, BaseAddr);
+  return GetMeshBaseAddr(MeshVarDecl);
+
 }
 
-void CodeGenFunction::GetFrameBaseAddr(const VarDecl *FrameVarDecl, llvm::Value*& BaseAddr) {
+Address CodeGenFunction::GetFrameBaseAddr(const VarDecl *FrameVarDecl) {
+  Address BaseAddr = Address::invalid();
+
   // is a global. SC_TODO why not MeshVarDecl->hasGlobalStorage()?
   if ((FrameVarDecl->hasLinkage() || FrameVarDecl->isStaticDataMember())
       && FrameVarDecl->getTLSKind() != VarDecl::TLS_Dynamic) {
     
-    BaseAddr = CGM.GetAddrOfGlobalVar(FrameVarDecl);
+    BaseAddr = scoutPtr(CGM.GetAddrOfGlobalVar(FrameVarDecl));
     
     // If BaseAddr is an external global then it is assumed that we are within LLDB
     // and we need to load the Frame base address because it is passed as a global
@@ -205,32 +209,32 @@ void CodeGenFunction::GetFrameBaseAddr(const VarDecl *FrameVarDecl, llvm::Value*
       auto itr = LocalDeclMap.find(FrameVarDecl);
 
       if(itr != LocalDeclMap.end()){
-        BaseAddr = itr->second.getPointer();
-        return;
+        return itr->second;
       }
       
       while(llvm::PointerType* PT =
-            dyn_cast<llvm::PointerType>(BaseAddr->getType())){
+            dyn_cast<llvm::PointerType>(BaseAddr.getPointer()->getType())){
         
         if(!PT->getElementType()->isPointerTy()){
           break;
         }
         
-        BaseAddr = Builder.CreateLoad(scoutPtr(BaseAddr));
+        BaseAddr = scoutPtr(Builder.CreateLoad(BaseAddr));
       }
-      setAddrOfLocalVar(FrameVarDecl, scoutPtr(BaseAddr));
-      return;
+      setAddrOfLocalVar(FrameVarDecl, BaseAddr);
+      return BaseAddr;
     }
   } else {
-    BaseAddr = GetAddrOfLocalVar(FrameVarDecl).getPointer();
-    BaseAddr = Builder.CreateLoad(scoutPtr(BaseAddr));
+    BaseAddr = GetAddrOfLocalVar(FrameVarDecl);
+    BaseAddr = scoutPtr(Builder.CreateLoad(BaseAddr));
     
     // If Frame ptr then load
     const Type *T = FrameVarDecl->getType().getTypePtr();
     if(T->isAnyPointerType() || T->isReferenceType()) {
-      BaseAddr = Builder.CreateLoad(scoutPtr(BaseAddr));
+      BaseAddr = scoutPtr(Builder.CreateLoad(BaseAddr));
     }
   }
+  return BaseAddr;
 }
 
 // find number of fields
@@ -248,8 +252,7 @@ unsigned int GetMeshNFields(const Stmt &S) {
 
 
 void CodeGenFunction::SetMeshBounds(const Stmt &S) {
-  Address MeshBaseAddr = Address::invalid();
-  GetMeshBaseAddr(S, MeshBaseAddr);
+  Address MeshBaseAddr = GetMeshBaseAddr(S);
   const MeshType* mt;
 
   if (const ForallMeshStmt *FAMS = dyn_cast<ForallMeshStmt>(&S)) {
@@ -502,7 +505,7 @@ void CodeGenFunction::EmitGPUForall(const ForallMeshStmt& S, Address &Index) {
   llvm::BasicBlock* condBlock = createBasicBlock("forall.cond");
   EmitBlock(condBlock);
 
-  llvm::Value* threadId = Builder.CreateLoad(scoutPtr(GPUThreadId), "threadId");
+  llvm::Value* threadId = Builder.CreateLoad(GPUThreadId, "threadId");
 
   llvm::Value* cond = Builder.CreateICmpULT(threadId, GPUNumThreads);
 
@@ -518,7 +521,7 @@ void CodeGenFunction::EmitGPUForall(const ForallMeshStmt& S, Address &Index) {
   Index = Address::invalid();
 
   threadId = Builder.CreateAdd(threadId, GPUThreadInc);
-  Builder.CreateStore(threadId, scoutPtr(GPUThreadId));
+  Builder.CreateStore(threadId, GPUThreadId);
 
   Builder.CreateBr(condBlock);
 
@@ -567,21 +570,21 @@ void CodeGenFunction::EmitGPUPreamble(const ForallMeshStmt& S){
   
   GPUNumThreads = Builder.CreateIntCast(numItems, Int32Ty, false);
   
-  llvm::Value* ptr = Builder.CreateAlloca(Int32Ty, 0, "tid.x.ptr");
-  llvm::Value* tid = Builder.CreateLoad(scoutPtr(ptr), "tid.x");
+  Address ptr = scoutPtr(Builder.CreateAlloca(Int32Ty, 0, "tid.x.ptr"));
+  llvm::Value* tid = Builder.CreateLoad(ptr, "tid.x");
 
-  ptr = Builder.CreateAlloca(Int32Ty, 0, "ntid.x.ptr");
-  llvm::Value* ntid = Builder.CreateLoad(scoutPtr(ptr), "ntid.x");
+  ptr = scoutPtr(Builder.CreateAlloca(Int32Ty, 0, "ntid.x.ptr"));
+  llvm::Value* ntid = Builder.CreateLoad(ptr, "ntid.x");
   
-  ptr = Builder.CreateAlloca(Int32Ty, 0, "ctaid.x.ptr");
-  llvm::Value* ctaid = Builder.CreateLoad(scoutPtr(ptr), "ctaid.x");
+  ptr = scoutPtr(Builder.CreateAlloca(Int32Ty, 0, "ctaid.x.ptr"));
+  llvm::Value* ctaid = Builder.CreateLoad(ptr, "ctaid.x");
 
-  ptr = Builder.CreateAlloca(Int32Ty, 0, "nctaid.x.ptr");
-  llvm::Value* nctaid = Builder.CreateLoad(scoutPtr(ptr), "nctaid.x");
+  ptr = scoutPtr(Builder.CreateAlloca(Int32Ty, 0, "nctaid.x.ptr"));
+  llvm::Value* nctaid = Builder.CreateLoad(ptr, "nctaid.x");
   
-  GPUThreadId = Builder.CreateAlloca(Int32Ty, 0, "threadId.ptr");
+  GPUThreadId = scoutPtr(Builder.CreateAlloca(Int32Ty, 0, "threadId.ptr"));
   llvm::Value* threadId = Builder.CreateAdd(tid, Builder.CreateMul(ctaid, ntid));
-  Builder.CreateStore(threadId, scoutPtr(GPUThreadId));
+  Builder.CreateStore(threadId, GPUThreadId);
   
   GPUThreadInc = Builder.CreateMul(ntid, nctaid, "threadInc");
 }
@@ -729,8 +732,7 @@ void CodeGenFunction::EmitForallMeshStmt(const ForallMeshStmt &S){
     
     const MeshDecl* md = mt->getDecl();
     
-    Address meshPtr = Address::invalid();
-    GetMeshBaseAddr(mvd, meshPtr);
+    Address meshPtr = GetMeshBaseAddr(mvd);
     
     Address topologyPtr = B.CreateStructGEP(meshPtr,
                       md->fields() + MeshParameterOffset::TopologyOffset,
@@ -1052,8 +1054,8 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
   //initialize induction var
   const VarDecl *VD = S.getInductionVarDecl(r-1);
   EmitAutoVarDecl(*VD); //add induction var to LocalDeclmap.
-  llvm::Value* InductVar = GetAddrOfLocalVar(VD).getPointer();
-  Builder.CreateStore(Start, scoutPtr(InductVar));
+  Address InductVar = GetAddrOfLocalVar(VD);
+  Builder.CreateStore(Start, InductVar);
 
   sprintf(IRNameStr, "forall.%s.end", DimNames[r-1]);
   JumpDest LoopExit = getJumpDestInCurrentScope(IRNameStr);
@@ -1071,7 +1073,7 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
 
   RunCleanupsScope ConditionScope(*this);
 
-  llvm::LoadInst *IVar = Builder.CreateLoad(scoutPtr(InductVar), VD->getName().str().c_str());
+  llvm::LoadInst *IVar = Builder.CreateLoad(InductVar, VD->getName().str().c_str());
 
   sprintf(IRNameStr, "forall.done.%s", IndexNames[r-1]);
   llvm::Value *CondValue = Builder.CreateICmpSLT(IVar,
@@ -1110,14 +1112,14 @@ void CodeGenFunction::EmitForallArrayLoop(const ForallArrayStmt &S, unsigned r) 
 
   EmitBlock(Continue.getBlock());
 
-  llvm::LoadInst* iv = Builder.CreateLoad(scoutPtr(InductVar), VD->getName().str().c_str());
+  llvm::LoadInst* iv = Builder.CreateLoad(InductVar, VD->getName().str().c_str());
 
   sprintf(IRNameStr, "%s.inc", VD->getName().str().c_str());
   llvm::Value *IncInductionVar = Builder.CreateAdd(iv,
       Stride,
       IRNameStr);
 
-  Builder.CreateStore(IncInductionVar, scoutPtr(InductVar));
+  Builder.CreateStore(IncInductionVar, InductVar);
 
   BreakContinueStack.pop_back();
   ConditionScope.ForceCleanup();
@@ -1161,8 +1163,7 @@ void CodeGenFunction::EmitRenderallStmt(const RenderallMeshStmt &S) {
   
   const MeshDecl* md = mt->getDecl();
   
-  Address meshPtr = Address::invalid();
-  GetMeshBaseAddr(mvd, meshPtr);
+  Address meshPtr = GetMeshBaseAddr(mvd);
   
   Address topologyPtr =
   B.CreateStructGEP(meshPtr,
@@ -1304,8 +1305,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   MeshDecl* MD = cast<MeshDecl>(S.getMeshType()->getDecl());
   
-  Address MeshBaseAddr = Address::invalid();
-  GetMeshBaseAddr(S, MeshBaseAddr);
+  Address MeshBaseAddr = GetMeshBaseAddr(S);
   
   StructType* meshStruct =
   dyn_cast<StructType>(MeshBaseAddr.getPointer()->getType()->getPointerElementType());
@@ -1438,20 +1438,20 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   B.SetInsertPoint(entry);
   
   CurrentVolumeRenderallMeshPtr =
-  B.CreateBitCast(mp, llvm::PointerType::get(meshType, 0));
+  scoutPtr(B.CreateBitCast(mp, llvm::PointerType::get(meshType, 0)));
   
   using RestoreMap = map<VarDecl*, Value*>;
   RestoreMap rm;
   
   size_t varOffset = fs.size();
   for(VarDecl* vd : vs){
-    Value* v =
-    B.CreateStructGEP(nullptr, CurrentVolumeRenderallMeshPtr,
-                      varOffset, vd->getName());
+    Address addr =
+    B.CreateStructGEP(CurrentVolumeRenderallMeshPtr,
+                      varOffset, getPointerAlign(), vd->getName());
     
     rm[vd] = GetAddrOfLocalVar(vd).getPointer();
     LocalDeclMap.erase(vd);
-    setAddrOfLocalVar(vd, scoutPtr(v));
+    setAddrOfLocalVar(vd, addr);
     
     ++varOffset;
   }
@@ -1465,7 +1465,7 @@ void CodeGenFunction::EmitVolumeRenderallStmt(const RenderallMeshStmt &S) {
   
   Builder.CreateRet(B.CreateLoad(scoutPtr(CurrentVolumeRenderallColor)));
   
-  CurrentVolumeRenderallMeshPtr = nullptr;
+  CurrentVolumeRenderallMeshPtr = Address::invalid();
   CurrentVolumeRenderallIndex = nullptr;
   CurrentVolumeRenderallColor = nullptr;
   CurrentVolumeRenderallFieldMap.clear();
@@ -1696,9 +1696,9 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
 
   const SpecObjectExpr* spec = S.getSpec();
   
-  Value* framePtr = GetAddrOfLocalVar(vd).getPointer();
-  assert(framePtr);
-  framePtr = Builder.CreateLoad(scoutPtr(framePtr), "frame.ptr");
+  Address framePtr = GetAddrOfLocalVar(vd);
+
+  framePtr = scoutPtr(Builder.CreateLoad(framePtr, "frame.ptr"));
 
   auto m = fd->getVarMap();
   auto mm = spec->memberMap();
@@ -1717,7 +1717,7 @@ void CodeGenFunction::EmitFrameCaptureStmt(const FrameCaptureStmt &S) {
     Value* val =
     EmitAnyExprToTemp(itr.second.second->toExpr()).getScalarVal();
     
-    ValueVec args = {framePtr, Builder.getInt32(varId), val};
+    ValueVec args = {framePtr.getPointer(), Builder.getInt32(varId), val};
     
     if(lt->isIntegerTy(32)){
       Builder.CreateCall(R.FrameCaptureI32Func(), args);
@@ -1880,9 +1880,9 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
   
   Builder.SetInsertPoint(prevBlock, prevPoint);
   
-  Value* funcAlloc = Builder.CreateAlloca(func->getType());
-  Builder.CreateStore(func, scoutPtr(funcAlloc));
-  Value* funcPtr = Builder.CreateBitCast(Builder.CreateLoad(scoutPtr(funcAlloc)), R.VoidPtrTy, "func.ptr");
+  Address funcAlloc = scoutPtr(Builder.CreateAlloca(func->getType()));
+  Builder.CreateStore(func, funcAlloc);
+  Value* funcPtr = Builder.CreateBitCast(Builder.CreateLoad(funcAlloc), R.VoidPtrTy, "func.ptr");
   
   Value* vid =
   ConstantInt::get(R.Int32Ty, useVarId == 0 ? S.nextVarId() : useVarId);
@@ -2019,7 +2019,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   const FrameDecl* fd = S.getFrameDecl();
     
-  Value* framePtr;
+  Address framePtr = Address::invalid();
   
   PlotVarsVisitor visitor(S);
   visitor.Visit(const_cast<SpecObjectExpr*>(S.getSpec()));
@@ -2029,7 +2029,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     dyn_cast<FrameType>(frame->getType().getNonReferenceType().getTypePtr());
     
     if(ft){
-      GetFrameBaseAddr(frame, framePtr);
+      framePtr = GetFrameBaseAddr(frame);
     }
     else{
       const MeshType* mt = dyn_cast<MeshType>(frame->getType().getTypePtr());
@@ -2091,7 +2091,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         Builder.CreateTrunc(Dimensions[1], R.Int32Ty, "height"),
         Builder.CreateTrunc(Dimensions[2], R.Int32Ty, "depth")};
       
-      framePtr = Builder.CreateCall(R.CreateMeshFrameFunc(), args, "frame.ptr");
+      framePtr = scoutPtr(Builder.CreateCall(R.CreateMeshFrameFunc(), args, "frame.ptr"));
       
       for(MeshDecl::field_iterator fitr = MD->field_begin(),
           fitrEnd = MD->field_end(); fitr != fitrEnd; ++fitr){
@@ -2105,8 +2105,7 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         
         llvm::Value* varId = ConstantInt::get(R.Int32Ty, fd->getVarId(itr->second));
         
-        Address meshPtr = Address::invalid();
-        GetMeshBaseAddr(frame, meshPtr);
+        Address meshPtr = GetMeshBaseAddr(frame);
         
         Address fieldPtr = Builder.CreateStructGEP(meshPtr, field->getFieldIndex(), getPointerAlign());
         llvm::Value *fieldv = Builder.CreateLoad(fieldPtr);
@@ -2150,14 +2149,14 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
           numElements = numFaces;
         }
         
-        ValueVec args = {framePtr, varId, fieldType, fieldv, numElements};
+        ValueVec args = {framePtr.getPointer(), varId, fieldType, fieldv, numElements};
         
         Builder.CreateCall(R.FrameAddArrayVarFunc(), args);
       }
     }
   }
   else{
-    framePtr = ConstantPointerNull::get(R.VoidPtrTy);
+    framePtr = Address::invalid();
   }
   
   const VarDecl* target = S.getRenderTargetVar();
@@ -2179,7 +2178,13 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
   
   targetPtr = Builder.CreateLoad(scoutPtr(targetPtr));
   
-  args = {plotPtr, framePtr, targetPtr};
+  llvm::Value *V;
+  if (framePtr.isValid()) {
+    V = framePtr.getPointer();
+  } else {
+    V = ConstantPointerNull::get(R.VoidPtrTy);
+  }
+  args = {plotPtr, V, targetPtr};
   Builder.CreateCall(R.PlotInitFunc(), args);
   
   auto ev = visitor.getExtVarSet();
@@ -2444,10 +2449,9 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
     const VarDecl* vd = itr.first;
     uint32_t vid = itr.second;
     
-    Value* vp = GetAddrOfLocalVar(vd).getPointer();
-    assert(vp);
-    
-    Value* v = Builder.CreateLoad(scoutPtr(vp));
+    Address vp = GetAddrOfLocalVar(vd);
+
+    Value* v = Builder.CreateLoad(vp);
     
     args = {plotPtr, ConstantInt::get(R.Int32Ty, vid), v};
     
