@@ -135,3 +135,5 @@ project(scout_test_scc)
   add_subdirectory(error) 
   #add_subdirectory(inline) 
   add_subdirectory(warning) 
+  add_subdirectory(sgh) 
+
