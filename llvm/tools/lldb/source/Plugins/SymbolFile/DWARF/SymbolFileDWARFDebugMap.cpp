@@ -28,7 +28,6 @@
 #include "lldb/Symbol/LineTable.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/SymbolVendor.h"
-#include "lldb/Symbol/TypeMap.h"
 #include "lldb/Symbol/VariableList.h"
 
 #include "LogChannelDWARF.h"
@@ -779,15 +778,15 @@ SymbolFileDWARFDebugMap::ResolveTypeUID(lldb::user_id_t type_uid)
 }
 
 bool
-SymbolFileDWARFDebugMap::CompleteType (CompilerType& clang_type)
+SymbolFileDWARFDebugMap::CompleteType (CompilerType& compiler_type)
 {
     bool success = false;
-    if (clang_type)
+    if (compiler_type)
     {
         ForEachSymbolFile([&](SymbolFileDWARF *oso_dwarf) -> bool {
-            if (oso_dwarf->HasForwardDeclForClangType (clang_type))
+            if (oso_dwarf->HasForwardDeclForClangType (compiler_type))
             {
-                oso_dwarf->CompleteType (clang_type);
+                oso_dwarf->CompleteType (compiler_type);
                 success = true;
                 return true;
             }
@@ -1296,7 +1295,7 @@ SymbolFileDWARFDebugMap::FindTypes
     const CompilerDeclContext *parent_decl_ctx,
     bool append,
     uint32_t max_matches, 
-    TypeMap& types
+    TypeList& types
 )
 {
     if (!append)
