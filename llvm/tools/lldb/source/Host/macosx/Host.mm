@@ -1348,6 +1348,10 @@ Host::ShellExpandArguments (ProcessLaunchInfo &launch_info)
             error.SetErrorString("could not get support executable directory for argdumper tool");
             return error;
         }
+        /* +====== Scout ====================== */
+        expand_tool_spec.AppendPathComponent("..");
+        expand_tool_spec.AppendPathComponent("bin");
+        /* +=================================== */
         expand_tool_spec.AppendPathComponent("argdumper");
         if (!expand_tool_spec.Exists())
         {
