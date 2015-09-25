@@ -74,3 +74,4 @@ foreach (test ${SC_SRCS})
 endforeach(test)
 
 add_subdirectory(multifile)
+add_subdirectory(sgh)
