@@ -308,6 +308,9 @@ void PlotExprVisitor::VisitDeclRefExpr(DeclRefExpr* E){
   if(VD && (FD->hasVar(VD) || S_.getVarId(VD) != 0 || S_.getExtVarId(VD) != 0)){
     isConstant_ = false;
   }
+  if(FD->hasMeshVar(VD)){
+    usesMesh_ = true;
+  }
 }
 
 void PlotVarsVisitor::VisitDeclRefExpr(DeclRefExpr* E){

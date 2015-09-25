@@ -121,6 +121,7 @@ namespace{
   
   const uint32_t FLAG_VAR_CONSTANT = 0x00000001; 
   const uint32_t FLAG_VAR_POSITION = 0x00000002; 
+  const uint32_t FLAG_VAR_MESH =     0x00000004; 
 
   const uint64_t AGG_SUM = 0;
   const uint64_t AGG_MEAN = 1;
@@ -292,6 +293,8 @@ namespace{
     virtual bool isConst() const{
       return false;
     }
+
+    virtual void prepare(){};
   };
 
   template<class T>
@@ -416,9 +419,10 @@ namespace{
         i_(RESERVE){
     }
 
-    Var(T (*fp)(void*, uint64_t))
+    Var(T (*fp)(void*, uint64_t), uint32_t flags=0)
       : fp_(fp),
-        i_(RESERVE){
+        i_(RESERVE),
+        flags_(flags){
     }
 
     void capture(T value){
@@ -456,10 +460,17 @@ namespace{
       i_ = RESERVE;
     }
 
+    void prepare() override{
+      if(flags_ & FLAG_VAR_MESH){
+        clear();
+      }
+    }
+
   private:
     vector<T> v_;
     size_t i_;
     T (*fp_)(void*, uint64_t);
+    uint32_t flags_;
   };
 
   template<class T>
@@ -916,6 +927,8 @@ namespace{
       for(size_t i = 0; i < n; ++i){
         VarBase* v = vars_[i];
 
+        v->prepare();
+
         for(size_t j = v->size(); j < end; ++j){
           v->compute(plot, j);
         }
@@ -928,6 +941,8 @@ namespace{
 
       for(size_t i = 0; i < n; ++i){
         VarBase* v = vars_[i];
+
+        v->prepare();
 
         for(size_t j = v->size(); j < end; ++j){
           v->compute(t, plot, j);
@@ -1390,7 +1405,7 @@ namespace{
         v = new ConstVar<T>((*fp)(0, 0));
       }
       else{
-        v = new Var<T>(fp);
+        v = new Var<T>(fp, flags);
       }
 
       plotFrame_->addVar(varId - PLOT_VAR_BEGIN, v);

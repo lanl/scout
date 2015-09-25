@@ -101,7 +101,8 @@ namespace{
 
 const uint32_t FLAG_VAR_CONSTANT = 0x00000001;
 const uint32_t FLAG_VAR_POSITION = 0x00000002;
-
+const uint32_t FLAG_VAR_MESH =     0x00000004;
+  
 const uint32_t nullVarId = std::numeric_limits<uint32_t>::max();
   
 } // namespace
@@ -1788,6 +1789,7 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
   SpecArrayExpr* array = E->toArray();
   
   bool isConstant;
+  bool usesMesh;
   if(array){
     isConstant = true;
     
@@ -1799,12 +1801,15 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
         isConstant = false;
         break;
       }
+      
+      usesMesh = v.usesMesh();
     }
   }
   else{
     PlotExprVisitor v(S);
     v.Visit(E->toExpr());
     isConstant = v.isConstant();
+    usesMesh = v.usesMesh();
   }
   
   BasicBlock* prevBlock = Builder.GetInsertBlock();
@@ -1892,6 +1897,10 @@ llvm::Value* CodeGenFunction::EmitPlotExpr(const PlotStmt &S,
   uint32_t allFlags = flags;
   if(isConstant){
     allFlags |= FLAG_VAR_CONSTANT;
+  }
+  
+  if(usesMesh){
+    allFlags |= FLAG_VAR_MESH;
   }
   
   if(isVec){

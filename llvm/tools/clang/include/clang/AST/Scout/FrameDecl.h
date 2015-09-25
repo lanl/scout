@@ -129,6 +129,8 @@ namespace clang {
     
     typedef std::map<VarDecl*, uint32_t> VarIdMap;
     
+    using VarSet = std::set<VarDecl*>;
+      
     using FuncSet = std::set<FunctionDecl*>;
       
     VarMap varMap;
@@ -137,6 +139,8 @@ namespace clang {
     uint32_t nextVarId;
       
     FuncSet funcSet_;
+
+    VarSet meshVarSet_;
       
   protected:
     FrameDecl(const ASTContext &ASTC,
@@ -188,6 +192,15 @@ namespace clang {
       return itr->second;
     }
     
+    void addMeshVar(const std::string& name, VarDecl* v){
+      addVar(name, v);
+      meshVarSet_.insert(v);
+    }
+      
+    bool hasMeshVar(VarDecl* v) const{
+      return meshVarSet_.find(v) != meshVarSet_.end();
+    }
+      
     void addVar(const std::string& name, VarDecl* v){
       uint32_t varId = nextVarId++;
       varMap.insert({name, Var{varId, v}});

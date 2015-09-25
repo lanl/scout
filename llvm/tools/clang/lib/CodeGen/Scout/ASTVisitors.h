@@ -348,6 +348,10 @@ public:
     return isConstant_;
   }
   
+  bool usesMesh() const{
+    return usesMesh_;
+  }
+  
   void VisitChildren(Stmt* S) {
     if(S){
       for(Stmt::child_iterator I = S->child_begin(),
@@ -366,6 +370,7 @@ public:
 private:
   const PlotStmt& S_;
   bool isConstant_;
+  bool usesMesh_;
 };
   
 class PlotVarsVisitor : public StmtVisitor<PlotVarsVisitor> {

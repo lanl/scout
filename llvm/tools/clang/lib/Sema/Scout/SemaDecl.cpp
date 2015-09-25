@@ -653,7 +653,7 @@ void Sema::InitFrameFromMesh(Scope* Scope, FrameDecl* FD, MeshDecl* MD){
                     SC_Static);
     
     PushOnScopeChains(field, Scope, true);
-    FD->addVar(fd->getName().str(), field);
+    FD->addMeshVar(fd->getName().str(), field);
   }
 }
 
