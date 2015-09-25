@@ -235,7 +235,7 @@ llvm::Function* CGPlotRuntime::PlotAddPieFunc(){
 
 llvm::Function* CGPlotRuntime::PlotAddBinsFunc(){
   return GetFunc("__scrt_plot_add_bins",
-                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty});
+                 {VoidPtrTy, Int32Ty, Int32Ty, Int32Ty, DoubleTy, DoubleTy});
 }
 
 llvm::Function* CGPlotRuntime::PlotAddProportionFunc(){

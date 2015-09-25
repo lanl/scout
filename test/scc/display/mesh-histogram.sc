@@ -21,7 +21,7 @@ int main(int argc, char** argv){
 
   for(size_t i = 0; i < 500; ++i){
     with m in win plot{
-       interval: {position: {bin:h + 10, n:100},
+    interval: {position: {bin:h + 10, n:100, range:[0, 30]},
           color: [0.2, 0.3, 0.4, 1.0]},
 
         axis: {dim:1, label:"Temperature"},

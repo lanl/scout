@@ -35,7 +35,7 @@ int main(int argc, char** argv){
     }
 
     with f in win plot{
-     interval: {position: {bin:temperature, n:100},
+    interval: {position: {bin:temperature, n:100},
                 color: [0.2, 0.3, 0.4, 1.0]},
 
       axis: {dim:1, label:"Temperature"},

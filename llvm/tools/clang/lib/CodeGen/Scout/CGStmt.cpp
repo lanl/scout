@@ -2365,8 +2365,11 @@ void CodeGenFunction::EmitPlotStmt(const PlotStmt &S) {
         
         Value* vi = EmitPlotExpr(S, plotPtr, bo->get("bin"));
         Value* n = ConstantInt::get(R.Int32Ty, bo->get("n")->getInteger());
+        SpecArrayExpr* r = bo->get("range")->toArray();
+        Value* min = EmitAnyExpr(r->get(0)->toExpr()).getScalarVal();
+        Value* max = EmitAnyExpr(r->get(1)->toExpr()).getScalarVal();
         
-        args = {plotPtr, vi, xy, n};
+        args = {plotPtr, vi, xy, n, min, max};
         Builder.CreateCall(R.PlotAddBinsFunc(), args);
         
         args = {plotPtr, xy, cv};

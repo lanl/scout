@@ -1145,12 +1145,14 @@ namespace{
 
     class Bins : public Element{
     public:
-      Bins(VarId varIn, VarId posOut, uint32_t n)
-        : varIn(varIn), posOut(posOut), n(n){}
+      Bins(VarId varIn, VarId posOut, uint32_t n, double min, double max)
+        : varIn(varIn), posOut(posOut), n(n), min(min), max(max){}
 
       VarId varIn;
       VarId posOut;
       uint32_t n;
+      double min;
+      double max;
 
       int order(){
         return 0;
@@ -1552,8 +1554,12 @@ namespace{
       elements_.push_back(new Pie(count, color)); 
     }
 
-    void addBins(VarId varIn, VarId posOut, uint32_t n){
-      elements_.push_back(new Bins(varIn, posOut, n));
+    void addBins(VarId varIn,
+                 VarId posOut,
+                 uint32_t n,
+                 double min,
+                 double max){
+      elements_.push_back(new Bins(varIn, posOut, n, min, max));
       addPos(posOut);
     }
 
@@ -1877,16 +1883,26 @@ namespace{
 
           PositionVar* posOut = getPos(b->posOut);
 
-          double min = MAX;
-          double max = MIN;
-          for(size_t i = 0; i < size; ++i){
-            double x = varIn->get(i);
-            if(x < min){
-              min = x;
-            }
+          double min;
+          double max;
 
-            if(x > max){
-              max = x;
+          if(b->min != b->max){
+            min = b->min;
+            max = b->max;
+          }
+          else{
+            min = MAX;
+            max = MIN;
+            
+            for(size_t i = 0; i < size; ++i){
+              double x = varIn->get(i);
+              if(x < min){
+                min = x;
+              }
+
+              if(x > max){
+                max = x;
+              }
             }
           }
 
@@ -1902,9 +1918,12 @@ namespace{
           }
 
           for(size_t i = 0; i < size; ++i){
-            auto itr = binMap.lower_bound(varIn->get(i));
-            assert(itr != binMap.end());
-            ++itr->second;
+            double x = varIn->get(i);
+            if(x >= min && x <= max){
+              auto itr = binMap.lower_bound(varIn->get(i));
+              assert(itr != binMap.end());
+              ++itr->second;
+            }
           }
             
           posOut->clear();
@@ -2638,8 +2657,10 @@ extern "C"{
   void __scrt_plot_add_bins(void* plot,
                             VarId varIn,
                             VarId posOut,
-                            uint32_t n){
-    static_cast<Plot*>(plot)->addBins(varIn, posOut, n);
+                            uint32_t n,
+                            double min,
+                            double max){
+    static_cast<Plot*>(plot)->addBins(varIn, posOut, n, min, max);
   }
 
   void* __scrt_plot_add_aggregate(void* plot,
