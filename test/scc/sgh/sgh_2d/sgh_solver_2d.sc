@@ -44,7 +44,7 @@ int main()
   fprintf(v_l, "# Col 7 M\n");
   
   FILE *v_r = fopen("verts_R.txt", "w");
-  fprintf(v_l, "# Vertex index\n");
+  fprintf(v_r, "# Vertex index\n");
   fprintf(v_r, "# Col 1 x\n");
   fprintf(v_r, "# Col 2 y\n");
   fprintf(v_r, "# Col 3 u\n");
@@ -63,7 +63,7 @@ int main()
   fprintf(c_l, "# Col 6 M\n");
   
   FILE *c_r = fopen("cells_R.txt", "w");
-  fprintf(c_l, "# Cell index\n");
+  fprintf(c_r, "# Cell index\n");
   fprintf(c_r, "# Col 1 x\n");
   fprintf(c_r, "# Col 2 y\n");
   fprintf(c_r, "# Col 3 p\n");
@@ -94,7 +94,7 @@ int main()
       
       forall cells c in M
       {
-          fprintf(c_l, "%d,%d\t %f \t %f \t %f \t %f \t %f \t %e \n", positionx(), positiony(), c.c_x_new, c.c_y_new, c.c_p_new, c.c_r_new, c.c_e_new, c.c_M_new);
+          fprintf(c_l, "%d,%d\t %f \t %f \t %f \t %f \t %f \t %f \n", positionx(), positiony(), c.c_x_new, c.c_y_new, c.c_p_new, c.c_r_new, c.c_e_new, c.c_M_new);
       }// end forall cells loop
       fprintf(v_l, "\n");
       fprintf(c_l, "\n");
@@ -117,7 +117,7 @@ int main()
       forall cells c in M
       {
         {
-          fprintf(c_r, "%d,%d\t %f \t %f \t %f \t %f \t %f \t %f \t %e \n", positionx(), positiony(), c.c_x_new, c.c_y_new, c.c_p_new, c.c_r_new, c.c_e_new, c.c_M_new, c.c_U);
+          fprintf(c_r, "%d,%d\t %f \t %f \t %f \t %f \t %f \t %f \n", positionx(), positiony(), c.c_x_new, c.c_y_new, c.c_p_new, c.c_r_new, c.c_e_new, c.c_M_new);
           //fprintf(temp, "%f %f \n", c.c_x_new, c.c_r_new);
         }
       }// end forall cells loop
