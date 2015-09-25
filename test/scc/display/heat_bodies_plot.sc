@@ -135,9 +135,7 @@ int main(int argc, char *argv[])
     
     float h_mean = 0;
     forall cells c in heat_mesh {
-      if(h > 0 && h < 1.0){
-        h_mean += h;
-      }
+      h_mean += h;
     }
     h_mean /= MESH_DIM*MESH_DIM;
 
