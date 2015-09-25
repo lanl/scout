@@ -334,6 +334,8 @@ void PlotVarsVisitor::VisitCallExpr(CallExpr* E){
   if(S_.getFrameDecl()->hasFunc(F)){
     callSet_.insert(E);
   }
+  
+  VisitChildren(E);
 }
   
 void PlotVarsVisitor::VisitScoutExpr(ScoutExpr* S){
