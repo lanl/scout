@@ -59,8 +59,6 @@
 #include <math.h>
 
 #define N_BODIES   5
-#define SOLUBLE    0
-#define SHOW_SOLID (1-SOLUBLE)
 #define MESH_DIM   512
 
 int main(int argc, char *argv[])
@@ -70,12 +68,12 @@ int main(int argc, char *argv[])
 
   window render_win[512,512];
   window plot_win[512,512];
+  window plot_win2[512,512];
 
   uniform mesh HeatMeshType{
    cells:
     float h;
     float h_next;
-    float h_norm;
     float mask;
   };
 
@@ -91,14 +89,6 @@ int main(int argc, char *argv[])
     h_next = 0.0f;
     mask = 1.0;
 
-    /* no left/right boundaries 
-    if (position().x == 0 || position().x == (width()-1)) {
-      h = MAX_TEMP;
-      h_next = MAX_TEMP;
-      mask = 0.0;
-    }
-    */
-
     if (position().y == 0 || position().y == (height()-1)) {
       h = MAX_TEMP;
       h_next = MAX_TEMP;
@@ -109,11 +99,7 @@ int main(int argc, char *argv[])
       float r2 = (position().x - c_x[i])*(position().x - c_x[i]) +
         (position().y - c_y[i])*(position().y - c_y[i]);
       if (r2 < r2cyl) {
-        if (SOLUBLE) {
-          mask = r2/r2cyl;
-        } else {
-          mask = 0.0;
-        }
+        mask = 0.0;
         h = MAX_TEMP;
         h_next = MAX_TEMP;
       }
@@ -124,8 +110,6 @@ int main(int argc, char *argv[])
   const float dy    = 10.0f / MESH_DIM;
   const float alpha = 0.00001f;
   const float dt    = 0.5f * (dx * dx+ dy * dy)/4.0f/alpha;
-  
-  //printf ("dx = dy = %e, alpha = %e, dt = %e\n", dx, alpha, dt);
 
   // Time steps loop.
   for(unsigned int t = 0; t < NTIME_STEPS; ++t) {
@@ -143,34 +127,36 @@ int main(int argc, char *argv[])
 
     swapFields(heat_mesh.h, heat_mesh.h_next);
 
-    forall cells c in heat_mesh {
-      if(h < 0.0f){
-        h_norm = 0.0f;
-      }
-      else if(h > 1.0f){
-        h_norm = 1.0f;
-      }
-      else{
-        h_norm = h;
-      }
-    }
-
     renderall cells c in heat_mesh to render_win {
       float norm_h = h / MAX_TEMP;
       float hue = 240.0f - 240.0f * norm_h;
-#if (SHOW_SOLID)
-      color = hsv(hue, 1.0f, mask);
-#else
       color = hsv(hue, 1.0f, 1.0f);
-#endif
     }
+    
+    float h_mean = 0;
+    forall cells c in heat_mesh {
+      if(h > 0 && h < 1.0){
+        h_mean += h;
+      }
+    }
+    h_mean /= MESH_DIM*MESH_DIM;
 
+    in plot_win2 plot{
+      lines: {position: [t, h_mean],
+               color: [0.7, 0.1, 0.1, 1.0],
+               size: 2.0},
+
+      axis: {dim:1, label:"Timestep"},
+      axis: {dim:2, label:"Mean temperature"}
+    }
+    
     with heat_mesh in plot_win plot{
-    interval: {position: {bin:h_norm, n:50, range:[0.2, 0.8]},
+      interval: {position: {bin:h, n:50, range:[0.01, 0.99]},
          color: [0.2, 0.3, 0.4, 1.0]},
           axis: {dim:1, label:"Temperature"},
           axis: {dim:2, label:"Count"} 
     }
   }
+
   return 0;
 }
