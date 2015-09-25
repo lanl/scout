@@ -953,9 +953,13 @@ namespace{
     size_t size() const{
       size_t n = vars_.size();
       size_t m = 0;
-      
-      for(size_t i = 0; i < n; ++i){
-        size_t mi = vars_[i]->size();
+
+      for(VarBase* v : vars_){
+        if(!v){
+          continue;
+        }
+
+        size_t mi = v->size();
         if(mi > m){
           m = mi;
         }
