@@ -3,7 +3,7 @@ project(scout_test_scc_display_sgh_sgh2d)
   file(GLOB sgh2d_SOURCES "*.sc")
   file(GLOB sgh2d_HEADERS "*.sch")
   #ignore warnings about i/o in forall
-  set(CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS} -Wno-calling-io-function")
+  set(CMAKE_SCC_FLAGS "${CMAKE_SCC_FLAGS} -Wno-calling-io-function -Wno-mesh-variable-scope")
 
   set (sgh2d_INCLUDE_DIRS "")
   foreach (_headerFile ${sgh2d_HEADERS})
