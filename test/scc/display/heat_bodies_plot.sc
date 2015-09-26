@@ -135,9 +135,7 @@ int main(int argc, char *argv[])
     
     float h_mean = 0;
     forall cells c in heat_mesh {
-      if(h > 0 && h < 1.0){
-        h_mean += h;
-      }
+      h_mean += h;
     }
     h_mean /= MESH_DIM*MESH_DIM;
 
@@ -151,7 +149,7 @@ int main(int argc, char *argv[])
     }
     
     with heat_mesh in plot_win plot{
-      interval: {position: {bin:h, n:50, range:[0.01, 0.99]},
+      interval: {position: {bin:h, n:50/*, range:[0.01, 0.99]*/},
          color: [0.2, 0.3, 0.4, 1.0]},
           axis: {dim:1, label:"Temperature"},
           axis: {dim:2, label:"Count"} 
