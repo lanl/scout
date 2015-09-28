@@ -165,7 +165,7 @@ Address CodeGenFunction::LookupInductionVar(unsigned int index) {
     return data->indexPtr;
   }
   
-  if(!data->hasInductionVar[index]){
+  //if(!data->hasInductionVar[index]){
     const MeshType* mt = data->getMeshType();
     auto& dims = mt->dimensions();
     
@@ -176,7 +176,7 @@ Address CodeGenFunction::LookupInductionVar(unsigned int index) {
     
     Builder.CreateStore(induct, data->inductionVar[index]);
     data->hasInductionVar[index] = true;
-  }
+  //}
   
   return data->inductionVar[index];
 }

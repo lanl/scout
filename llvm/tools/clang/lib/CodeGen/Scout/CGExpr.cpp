@@ -693,9 +693,9 @@ RValue CodeGenFunction::EmitEOShiftExpr(ArgIterator ArgBeg, ArgIterator ArgEnd) 
 				 sprintf(IRNameStr, "eoshift.rawindex.%s", IndexNames[i]);
 				 rawindices.push_back(Builder.CreateAdd(iv, ai, IRNameStr));
 
-	 // find if index will wrap
-	 sprintf(IRNameStr, "eoshift.index.%s", IndexNames[i]);
-	 indices.push_back(Builder.CreateURem(rawindices[i], dims[i], IRNameStr));
+	       // find if index will wrap
+	       sprintf(IRNameStr, "eoshift.index.%s", IndexNames[i]);
+	       indices.push_back(Builder.CreateURem(rawindices[i], dims[i], IRNameStr));
        }
 
        // setup flag
