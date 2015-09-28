@@ -51,7 +51,7 @@
  *
  * ##### 
  */ 
-
+#include <assert.h>
 #include <stdio.h>
 
 uniform mesh MyMesh {
@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
   int i = 0;
   forall cells c in m {
     if (positionx() == 0) {
-      printf("cell position 0: %d, b: %f, cshift cell-1 b: %f, cell+1 b: %f, eoshift cell-1 b: %f, cell+1 b: %f\n",
+      printf("cell position 0: %d, b: %d, cshift cell-1 b: %d, cell+1 b: %d, eoshift cell-1 b: %d, cell+1 b: %d\n",
           positionx(), c.b, cshift(c.b, -1), cshift (c.b, 1), eoshift(c.b, -1, -1), eoshift(c.b, -1, 1) );
       assert(cshift(c.b, -1) ==  coutm1[i] && "bad cshift -1");
       assert(cshift(c.b, 1) ==  coutp1[i] && "bad cshift 1");
@@ -82,8 +82,8 @@ int main(int argc, char** argv) {
       assert(eoshift(c.b, -1, 1) ==  eoutp1[i] && "bad eoshift 1");
 
     } else {
-      printf("cell position: %d, b: %f, cshift cell-1 b: %f, cell+1 b: %f, eoshift cell-1 b: %f, cell+1 b: %f\n",
-          positionx(), c.b, cshift(c.b, -1), cshift (c.b, 1), eoshift(c.b, -1 -1), eoshift(c.b, -1, 1) );
+      printf("cell position: %d, b: %d, cshift cell-1 b: %d, cell+1 b: %d, eoshift cell-1 b: %d, cell+1 b: %d\n",
+          positionx(), c.b, cshift(c.b, -1), cshift (c.b, 1), eoshift(c.b, -1, -1), eoshift(c.b, -1, 1) );
       assert(cshift(c.b, -1) ==  coutm1[i] && "bad cshift -1");
       assert(cshift(c.b, 1) ==  coutp1[i] && "bad cshift 1");
       assert(eoshift(c.b, -1, -1) ==  eoutm1[i] && "bad eoshift -1");
