@@ -25,7 +25,7 @@ if [ "$dirty" = "yes" ]; then
 fi 
 
 
-if [ ! -d ./llvm ]; then 
+if [ ! -d ./legion ]; then 
     echo "Unable to find 'legion' in current working directory."
     exit 1;
 fi 
