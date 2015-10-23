@@ -793,12 +793,18 @@ ASTContext::~ASTContext() {
 }
 
 void ASTContext::ReleaseParentMapEntries() {
-  if (!AllParents) return;
-  for (const auto &Entry : *AllParents) {
+  if (!PointerParents) return;
+  for (const auto &Entry : *PointerParents) {
     if (Entry.second.is<ast_type_traits::DynTypedNode *>()) {
       delete Entry.second.get<ast_type_traits::DynTypedNode *>();
-    } else {
-      assert(Entry.second.is<ParentVector *>());
+    } else if (Entry.second.is<ParentVector *>()) {
+      delete Entry.second.get<ParentVector *>();
+    }
+  }
+  for (const auto &Entry : *OtherParents) {
+    if (Entry.second.is<ast_type_traits::DynTypedNode *>()) {
+      delete Entry.second.get<ast_type_traits::DynTypedNode *>();
+    } else if (Entry.second.is<ParentVector *>()) {
       delete Entry.second.get<ParentVector *>();
     }
   }
@@ -2990,6 +2996,21 @@ static bool isCanonicalResultType(QualType T) {
           T.getObjCLifetime() == Qualifiers::OCL_ExplicitNone);
 }
 
+CanQualType
+ASTContext::getCanonicalFunctionResultType(QualType ResultType) const {
+  CanQualType CanResultType = getCanonicalType(ResultType);
+
+  // Canonical result types do not have ARC lifetime qualifiers.
+  if (CanResultType.getQualifiers().hasObjCLifetime()) {
+    Qualifiers Qs = CanResultType.getQualifiers();
+    Qs.removeObjCLifetime();
+    return CanQualType::CreateUnsafe(
+             getQualifiedType(CanResultType.getUnqualifiedType(), Qs));
+  }
+
+  return CanResultType;
+}
+
 QualType
 ASTContext::getFunctionType(QualType ResultTy, ArrayRef<QualType> ArgArray,
                             const FunctionProtoType::ExtProtoInfo &EPI) const {
@@ -3027,14 +3048,8 @@ ASTContext::getFunctionType(QualType ResultTy, ArrayRef<QualType> ArgArray,
     CanonicalEPI.HasTrailingReturn = false;
     CanonicalEPI.ExceptionSpec = FunctionProtoType::ExceptionSpecInfo();
 
-    // Result types do not have ARC lifetime qualifiers.
-    QualType CanResultTy = getCanonicalType(ResultTy);
-    if (ResultTy.getQualifiers().hasObjCLifetime()) {
-      Qualifiers Qs = CanResultTy.getQualifiers();
-      Qs.removeObjCLifetime();
-      CanResultTy = getQualifiedType(CanResultTy.getUnqualifiedType(), Qs);
-    }
-
+    // Adjust the canonical function result type.
+    CanQualType CanResultTy = getCanonicalFunctionResultType(ResultTy);
     Canonical = getFunctionType(CanResultTy, CanonicalArgs, CanonicalEPI);
 
     // Get the new insert position for the node we care about.
@@ -3629,20 +3644,18 @@ static bool areSortedAndUniqued(ObjCProtocolDecl * const *Protocols,
   return true;
 }
 
-static void SortAndUniqueProtocols(ObjCProtocolDecl **Protocols,
-                                   unsigned &NumProtocols) {
-  ObjCProtocolDecl **ProtocolsEnd = Protocols+NumProtocols;
-
+static void
+SortAndUniqueProtocols(SmallVectorImpl<ObjCProtocolDecl *> &Protocols) {
   // Sort protocols, keyed by name.
-  llvm::array_pod_sort(Protocols, ProtocolsEnd, CmpProtocolNames);
+  llvm::array_pod_sort(Protocols.begin(), Protocols.end(), CmpProtocolNames);
 
   // Canonicalize.
-  for (unsigned I = 0, N = NumProtocols; I != N; ++I)
-    Protocols[I] = Protocols[I]->getCanonicalDecl();
-  
+  for (ObjCProtocolDecl *&P : Protocols)
+    P = P->getCanonicalDecl();
+
   // Remove duplicates.
-  ProtocolsEnd = std::unique(Protocols, ProtocolsEnd);
-  NumProtocols = ProtocolsEnd-Protocols;
+  auto ProtocolsEnd = std::unique(Protocols.begin(), Protocols.end());
+  Protocols.erase(ProtocolsEnd, Protocols.end());
 }
 
 QualType ASTContext::getObjCObjectType(QualType BaseType,
@@ -3707,12 +3720,9 @@ QualType ASTContext::getObjCObjectType(
     ArrayRef<ObjCProtocolDecl *> canonProtocols;
     SmallVector<ObjCProtocolDecl*, 8> canonProtocolsVec;
     if (!protocolsSorted) {
-      canonProtocolsVec.insert(canonProtocolsVec.begin(),
-                               protocols.begin(), 
-                               protocols.end());
-      unsigned uniqueCount = protocols.size();
-      SortAndUniqueProtocols(&canonProtocolsVec[0], uniqueCount);
-      canonProtocols = llvm::makeArrayRef(&canonProtocolsVec[0], uniqueCount);
+      canonProtocolsVec.append(protocols.begin(), protocols.end());
+      SortAndUniqueProtocols(canonProtocolsVec);
+      canonProtocols = canonProtocolsVec;
     } else {
       canonProtocols = protocols;
     }
@@ -4943,8 +4953,6 @@ bool ASTContext::BlockRequiresCopying(QualType Ty,
   
   // If we have lifetime, that dominates.
   if (Qualifiers::ObjCLifetime lifetime = qs.getObjCLifetime()) {
-    assert(getLangOpts().ObjCAutoRefCount);
-    
     switch (lifetime) {
       case Qualifiers::OCL_None: llvm_unreachable("impossible");
         
@@ -4978,14 +4986,14 @@ bool ASTContext::getByrefLifetime(QualType Ty,
   if (Ty->isRecordType()) {
     HasByrefExtendedLayout = true;
     LifeTime = Qualifiers::OCL_None;
-  }
-  else if (getLangOpts().ObjCAutoRefCount)
-    LifeTime = Ty.getObjCLifetime();
-  // MRR.
-  else if (Ty->isObjCObjectPointerType() || Ty->isBlockPointerType())
+  } else if ((LifeTime = Ty.getObjCLifetime())) {
+    // Honor the ARC qualifiers.
+  } else if (Ty->isObjCObjectPointerType() || Ty->isBlockPointerType()) {
+    // The MRR rule.
     LifeTime = Qualifiers::OCL_ExplicitNone;
-  else
+  } else {
     LifeTime = Qualifiers::OCL_None;
+  }
   return true;
 }
 
@@ -5024,9 +5032,10 @@ CharUnits ASTContext::getObjCEncodingTypeSize(QualType type) const {
 }
 
 bool ASTContext::isMSStaticDataMemberInlineDefinition(const VarDecl *VD) const {
-  return getLangOpts().MSVCCompat && VD->isStaticDataMember() &&
+  return getTargetInfo().getCXXABI().isMicrosoft() &&
+         VD->isStaticDataMember() &&
          VD->getType()->isIntegralOrEnumerationType() &&
-         VD->isFirstDecl() && !VD->isOutOfLine() && VD->hasInit();
+         !VD->getFirstDecl()->isOutOfLine() && VD->getFirstDecl()->hasInit();
 }
 
 static inline 
@@ -8261,7 +8270,8 @@ static GVALinkage basicGVALinkageForFunction(const ASTContext &Context,
   if (!FD->isInlined())
     return External;
 
-  if ((!Context.getLangOpts().CPlusPlus && !Context.getLangOpts().MSVCCompat &&
+  if ((!Context.getLangOpts().CPlusPlus &&
+       !Context.getTargetInfo().getCXXABI().isMicrosoft() &&
        !FD->hasAttr<DLLExportAttr>()) ||
       FD->hasAttr<GNUInlineAttr>()) {
     // FIXME: This doesn't match gcc's behavior for dllexport inline functions.
@@ -8337,7 +8347,8 @@ static GVALinkage basicGVALinkageForVariable(const ASTContext &Context,
     return GVA_StrongExternal;
 
   case TSK_ExplicitSpecialization:
-    return Context.getLangOpts().MSVCCompat && VD->isStaticDataMember()
+    return Context.getTargetInfo().getCXXABI().isMicrosoft() &&
+                   VD->isStaticDataMember()
                ? GVA_StrongODR
                : GVA_StrongExternal;
 
@@ -8666,6 +8677,32 @@ bool ASTContext::AtomicUsesUnsupportedLibcall(const AtomicExpr *E) const {
 
 namespace {
 
+ast_type_traits::DynTypedNode getSingleDynTypedNodeFromParentMap(
+    ASTContext::ParentMapPointers::mapped_type U) {
+  if (const auto *D = U.dyn_cast<const Decl *>())
+    return ast_type_traits::DynTypedNode::create(*D);
+  if (const auto *S = U.dyn_cast<const Stmt *>())
+    return ast_type_traits::DynTypedNode::create(*S);
+  return *U.get<ast_type_traits::DynTypedNode *>();
+}
+
+/// Template specializations to abstract away from pointers and TypeLocs.
+/// @{
+template <typename T>
+ast_type_traits::DynTypedNode createDynTypedNode(const T &Node) {
+  return ast_type_traits::DynTypedNode::create(*Node);
+}
+template <>
+ast_type_traits::DynTypedNode createDynTypedNode(const TypeLoc &Node) {
+  return ast_type_traits::DynTypedNode::create(Node);
+}
+template <>
+ast_type_traits::DynTypedNode
+createDynTypedNode(const NestedNameSpecifierLoc &Node) {
+  return ast_type_traits::DynTypedNode::create(Node);
+}
+/// @}
+
   /// \brief A \c RecursiveASTVisitor that builds a map from nodes to their
   /// parents as defined by the \c RecursiveASTVisitor.
   ///
@@ -8680,17 +8717,21 @@ namespace {
     /// \brief Builds and returns the translation unit's parent map.
     ///
     ///  The caller takes ownership of the returned \c ParentMap.
-    static ASTContext::ParentMap *buildMap(TranslationUnitDecl &TU) {
-      ParentMapASTVisitor Visitor(new ASTContext::ParentMap);
+    static std::pair<ASTContext::ParentMapPointers *,
+                     ASTContext::ParentMapOtherNodes *>
+    buildMap(TranslationUnitDecl &TU) {
+      ParentMapASTVisitor Visitor(new ASTContext::ParentMapPointers,
+                                  new ASTContext::ParentMapOtherNodes);
       Visitor.TraverseDecl(&TU);
-      return Visitor.Parents;
+      return std::make_pair(Visitor.Parents, Visitor.OtherParents);
     }
 
   private:
     typedef RecursiveASTVisitor<ParentMapASTVisitor> VisitorBase;
 
-    ParentMapASTVisitor(ASTContext::ParentMap *Parents) : Parents(Parents) {
-    }
+    ParentMapASTVisitor(ASTContext::ParentMapPointers *Parents,
+                        ASTContext::ParentMapOtherNodes *OtherParents)
+        : Parents(Parents), OtherParents(OtherParents) {}
 
     bool shouldVisitTemplateInstantiations() const {
       return true;
@@ -8704,8 +8745,9 @@ namespace {
       return false;
     }
 
-    template <typename T>
-    bool TraverseNode(T *Node, bool(VisitorBase:: *traverse) (T *)) {
+    template <typename T, typename MapNodeTy, typename MapTy>
+    bool TraverseNode(T Node, MapNodeTy MapNode,
+                      bool (VisitorBase::*traverse)(T), MapTy *Parents) {
       if (!Node)
         return true;
       if (ParentStack.size() > 0) {
@@ -8719,18 +8761,25 @@ namespace {
         // map. The main problem there is to implement hash functions /
         // comparison operators for all types that DynTypedNode supports that
         // do not have pointer identity.
-        auto &NodeOrVector = (*Parents)[Node];
+        auto &NodeOrVector = (*Parents)[MapNode];
         if (NodeOrVector.isNull()) {
-          NodeOrVector = new ast_type_traits::DynTypedNode(ParentStack.back());
+          if (const auto *D = ParentStack.back().get<Decl>())
+            NodeOrVector = D;
+          else if (const auto *S = ParentStack.back().get<Stmt>())
+            NodeOrVector = S;
+          else
+            NodeOrVector =
+                new ast_type_traits::DynTypedNode(ParentStack.back());
         } else {
-          if (NodeOrVector.template is<ast_type_traits::DynTypedNode *>()) {
-            auto *Node =
-                NodeOrVector.template get<ast_type_traits::DynTypedNode *>();
-            auto *Vector = new ASTContext::ParentVector(1, *Node);
+          if (!NodeOrVector.template is<ASTContext::ParentVector *>()) {
+            auto *Vector = new ASTContext::ParentVector(
+                1, getSingleDynTypedNodeFromParentMap(NodeOrVector));
+            if (auto *Node =
+                    NodeOrVector
+                        .template dyn_cast<ast_type_traits::DynTypedNode *>())
+              delete Node;
             NodeOrVector = Vector;
-            delete Node;
           }
-          assert(NodeOrVector.template is<ASTContext::ParentVector *>());
 
           auto *Vector =
               NodeOrVector.template get<ASTContext::ParentVector *>();
@@ -8745,21 +8794,36 @@ namespace {
             Vector->push_back(ParentStack.back());
         }
       }
-      ParentStack.push_back(ast_type_traits::DynTypedNode::create(*Node));
+      ParentStack.push_back(createDynTypedNode(Node));
       bool Result = (this ->* traverse) (Node);
       ParentStack.pop_back();
       return Result;
     }
 
     bool TraverseDecl(Decl *DeclNode) {
-      return TraverseNode(DeclNode, &VisitorBase::TraverseDecl);
+      return TraverseNode(DeclNode, DeclNode, &VisitorBase::TraverseDecl,
+                          Parents);
     }
 
     bool TraverseStmt(Stmt *StmtNode) {
-      return TraverseNode(StmtNode, &VisitorBase::TraverseStmt);
+      return TraverseNode(StmtNode, StmtNode, &VisitorBase::TraverseStmt,
+                          Parents);
     }
 
-    ASTContext::ParentMap *Parents;
+    bool TraverseTypeLoc(TypeLoc TypeLocNode) {
+      return TraverseNode(TypeLocNode,
+                          ast_type_traits::DynTypedNode::create(TypeLocNode),
+                          &VisitorBase::TraverseTypeLoc, OtherParents);
+    }
+
+    bool TraverseNestedNameSpecifierLoc(NestedNameSpecifierLoc NNSLocNode) {
+      return TraverseNode(
+          NNSLocNode, ast_type_traits::DynTypedNode::create(NNSLocNode),
+          &VisitorBase::TraverseNestedNameSpecifierLoc, OtherParents);
+    }
+
+    ASTContext::ParentMapPointers *Parents;
+    ASTContext::ParentMapOtherNodes *OtherParents;
     llvm::SmallVector<ast_type_traits::DynTypedNode, 16> ParentStack;
 
     friend class RecursiveASTVisitor<ParentMapASTVisitor>;
@@ -8767,25 +8831,31 @@ namespace {
 
 } // end namespace
 
-ArrayRef<ast_type_traits::DynTypedNode>
+template <typename NodeTy, typename MapTy>
+static ASTContext::DynTypedNodeList getDynNodeFromMap(const NodeTy &Node,
+                                                      const MapTy &Map) {
+  auto I = Map.find(Node);
+  if (I == Map.end()) {
+    return llvm::ArrayRef<ast_type_traits::DynTypedNode>();
+  }
+  if (auto *V = I->second.template dyn_cast<ASTContext::ParentVector *>()) {
+    return llvm::makeArrayRef(*V);
+  }
+  return getSingleDynTypedNodeFromParentMap(I->second);
+}
+
+ASTContext::DynTypedNodeList
 ASTContext::getParents(const ast_type_traits::DynTypedNode &Node) {
-  assert(Node.getMemoizationData() &&
-         "Invariant broken: only nodes that support memoization may be "
-         "used in the parent map.");
-  if (!AllParents) {
+  if (!PointerParents) {
     // We always need to run over the whole translation unit, as
     // hasAncestor can escape any subtree.
-    AllParents.reset(
-        ParentMapASTVisitor::buildMap(*getTranslationUnitDecl()));
+    auto Maps = ParentMapASTVisitor::buildMap(*getTranslationUnitDecl());
+    PointerParents.reset(Maps.first);
+    OtherParents.reset(Maps.second);
   }
-  ParentMap::const_iterator I = AllParents->find(Node.getMemoizationData());
-  if (I == AllParents->end()) {
-    return None;
-  }
-  if (auto *N = I->second.dyn_cast<ast_type_traits::DynTypedNode *>()) {
-    return llvm::makeArrayRef(N, 1);
-  }
-  return *I->second.get<ParentVector *>();
+  if (Node.getNodeKind().hasPointerIdentity())
+    return getDynNodeFromMap(Node.getMemoizationData(), *PointerParents);
+  return getDynNodeFromMap(Node, *OtherParents);
 }
 
 bool

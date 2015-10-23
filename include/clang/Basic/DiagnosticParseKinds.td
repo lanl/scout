@@ -271,7 +271,7 @@ def warn_cxx98_compat_ref_qualifier : Warning<
   "reference qualifiers on functions are incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
 def ext_inline_namespace : ExtWarn<
-  "inline namespaces are a C++11 feature">, InGroup<CXX11>;
+  "inline namespaces are a C++11 feature">, InGroup<CXX11InlineNamespace>;
 def warn_cxx98_compat_inline_namespace : Warning<
   "inline namespaces are incompatible with C++98">,
   InGroup<CXX98Compat>, DefaultIgnore;
@@ -1026,6 +1026,11 @@ def err_objc_parameterized_implementation : Error<
 
 def err_objc_type_args_after_protocols : Error<
   "protocol qualifiers must precede type arguments">;
+}
+
+let CategoryName = "Coroutines Issue" in {
+def err_for_co_await_not_range_for : Error<
+  "'co_await' modifier can only be applied to range-based for loop">;
 }
 
 } // end of Parser diagnostics

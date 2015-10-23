@@ -8,6 +8,12 @@
 // LINK_WITH_RTEMS: Inputs/basic_myriad_tree/lib/gcc/sparc-myriad-elf/4.8.2/crtend.o
 // LINK_WITH_RTEMS: Inputs/basic_myriad_tree/lib/gcc/sparc-myriad-elf/4.8.2/crtn.o
 
+// RUN: %clang -c -no-canonical-prefixes -### -target sparc-myriad-rtems-elf -x c++ %s \
+// RUN: -B %S/Inputs/basic_myriad_tree 2>&1 | FileCheck %s -check-prefix=COMPILE_CXX
+// COMPILE_CXX: "-internal-isystem" "{{.*}}/Inputs/basic_myriad_tree/lib/gcc/sparc-myriad-elf/4.8.2/../../../../sparc-myriad-elf/include/c++/4.8.2"
+// COMPILE_CXX: "-internal-isystem" "{{.*}}/Inputs/basic_myriad_tree/lib/gcc/sparc-myriad-elf/4.8.2/../../../../sparc-myriad-elf/include/c++/4.8.2/sparc-myriad-elf"
+// COMPILE_CXX: "-internal-isystem" "{{.*}}/Inputs/basic_myriad_tree/lib/gcc/sparc-myriad-elf/4.8.2/../../../../sparc-myriad-elf/include/c++/4.8.2/backward"
+
 // RUN: %clang -### -E -target sparc-myriad --sysroot=/yow %s 2>&1 \
 // RUN:   | FileCheck %s -check-prefix=SLASH_INCLUDE
 // SLASH_INCLUDE: "-isysroot" "/yow" "-internal-isystem" "/yow/include"
@@ -53,3 +59,12 @@
 // RUN: %clang -target shave-myriad -c %s -o foo.o -### -MD -MF dep.d 2>&1 \
 // RUN:   | FileCheck %s -check-prefix=MDMF
 // MDMF: "-S" "-MD" "-MF" "dep.d" "-MT" "foo.o"
+
+// RUN: %clang -target sparc-myriad -### --driver-mode=g++ %s 2>&1 | FileCheck %s --check-prefix=STDLIBCXX
+// STDLIBCXX: "-lstdc++" "-lc" "-lgcc"
+
+// RUN: %clang -target sparc-myriad -### -nostdlib %s 2>&1 | FileCheck %s --check-prefix=NOSTDLIB
+// NOSTDLIB-NOT: "-lc"
+
+// RUN: %clang -### -c -g %s -target sparc-myriad 2>&1 | FileCheck -check-prefix=G_SPARC %s
+// G_SPARC: "-debug-info-kind=limited" "-dwarf-version=2"

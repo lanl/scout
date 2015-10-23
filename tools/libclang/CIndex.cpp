@@ -147,7 +147,7 @@ CXSourceRange cxloc::translateSourceRange(const SourceManager &SM,
   SourceLocation EndLoc = R.getEnd();
   if (EndLoc.isValid() && EndLoc.isMacroID() && !SM.isMacroArgExpansion(EndLoc))
     EndLoc = SM.getExpansionRange(EndLoc).second;
-  if (R.isTokenRange() && !EndLoc.isInvalid()) {
+  if (R.isTokenRange() && EndLoc.isValid()) {
     unsigned Length = Lexer::MeasureTokenLength(SM.getSpellingLoc(EndLoc),
                                                 SM, LangOpts);
     EndLoc = EndLoc.getLocWithOffset(Length);
@@ -1523,10 +1523,7 @@ bool CursorVisitor::VisitTemplateTypeParmTypeLoc(TemplateTypeParmTypeLoc TL) {
 }
 
 bool CursorVisitor::VisitObjCInterfaceTypeLoc(ObjCInterfaceTypeLoc TL) {
-  if (Visit(MakeCursorObjCClassRef(TL.getIFaceDecl(), TL.getNameLoc(), TU)))
-    return true;
-
-  return false;
+  return Visit(MakeCursorObjCClassRef(TL.getIFaceDecl(), TL.getNameLoc(), TU));
 }
 
 bool CursorVisitor::VisitObjCObjectTypeLoc(ObjCObjectTypeLoc TL) {
@@ -1644,10 +1641,7 @@ bool CursorVisitor::VisitUnaryTransformTypeLoc(UnaryTransformTypeLoc TL) {
 }
 
 bool CursorVisitor::VisitDependentNameTypeLoc(DependentNameTypeLoc TL) {
-  if (VisitNestedNameSpecifierLoc(TL.getQualifierLoc()))
-    return true;
-  
-  return false;
+  return VisitNestedNameSpecifierLoc(TL.getQualifierLoc());
 }
 
 bool CursorVisitor::VisitDependentTemplateSpecializationTypeLoc(
@@ -2066,6 +2060,10 @@ void OMPClauseEnqueue::VisitOMPCaptureClause(const OMPCaptureClause *) {}
 
 void OMPClauseEnqueue::VisitOMPSeqCstClause(const OMPSeqCstClause *) {}
 
+void OMPClauseEnqueue::VisitOMPThreadsClause(const OMPThreadsClause *) {}
+
+void OMPClauseEnqueue::VisitOMPSIMDClause(const OMPSIMDClause *) {}
+
 void OMPClauseEnqueue::VisitOMPDeviceClause(const OMPDeviceClause *C) {
   Visitor->AddStmt(C->getDevice());
 }
@@ -2108,6 +2106,9 @@ void OMPClauseEnqueue::VisitOMPSharedClause(const OMPSharedClause *C) {
 }
 void OMPClauseEnqueue::VisitOMPReductionClause(const OMPReductionClause *C) {
   VisitOMPClauseList(C);
+  for (auto *E : C->privates()) {
+    Visitor->AddStmt(E);
+  }
   for (auto *E : C->lhs_exprs()) {
     Visitor->AddStmt(E);
   }
@@ -2832,7 +2833,7 @@ namespace {
 typedef SmallVector<SourceRange, 4> RefNamePieces;
 RefNamePieces
 buildPieces(unsigned NameFlags, bool IsMemberRefExpr,
-            const DeclarationNameInfo &NI, const SourceRange &QLoc,
+            const DeclarationNameInfo &NI, SourceRange QLoc,
             const ASTTemplateArgumentListInfo *TemplateArgs = nullptr) {
   const bool WantQualifier = NameFlags & CXNameRange_WantQualifier;
   const bool WantTemplateArgs = NameFlags & CXNameRange_WantTemplateArgs;
@@ -3892,7 +3893,11 @@ CXString clang_Cursor_getMangling(CXCursor C) {
 
   std::string FrontendBuf;
   llvm::raw_string_ostream FrontendBufOS(FrontendBuf);
-  MC->mangleName(ND, FrontendBufOS);
+  if (MC->shouldMangleDeclName(ND)) {
+    MC->mangleName(ND, FrontendBufOS);
+  } else {
+    ND->printName(FrontendBufOS);
+  }
 
   // Now apply backend mangling.
   std::unique_ptr<llvm::DataLayout> DL(
@@ -6410,7 +6415,7 @@ extern "C" {
 
 static CXAvailabilityKind getCursorAvailabilityForDecl(const Decl *D) {
   if (isa<FunctionDecl>(D) && cast<FunctionDecl>(D)->isDeleted())
-    return CXAvailability_Available;
+    return CXAvailability_NotAvailable;
   
   switch (D->getAvailability()) {
   case AR_Available:
@@ -6604,8 +6609,6 @@ enum CX_StorageClass clang_Cursor_getStorageClass(CXCursor C) {
     return CX_SC_Static;
   case SC_PrivateExtern:
     return CX_SC_PrivateExtern;
-  case SC_OpenCLWorkGroupLocal:
-    return CX_SC_OpenCLWorkGroupLocal;
   case SC_Auto:
     return CX_SC_Auto;
   case SC_Register:

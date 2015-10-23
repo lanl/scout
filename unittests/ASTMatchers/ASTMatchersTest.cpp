@@ -1172,6 +1172,20 @@ TEST(Matcher, SubstNonTypeTemplateParm) {
                       substNonTypeTemplateParmExpr()));
 }
 
+TEST(Matcher, NonTypeTemplateParmDecl) {
+  EXPECT_TRUE(matches("template <int N> void f();",
+                      nonTypeTemplateParmDecl(hasName("N"))));
+  EXPECT_TRUE(
+      notMatches("template <typename T> void f();", nonTypeTemplateParmDecl()));
+}
+
+TEST(Matcher, templateTypeParmDecl) {
+  EXPECT_TRUE(matches("template <typename T> void f();",
+                      templateTypeParmDecl(hasName("T"))));
+  EXPECT_TRUE(
+      notMatches("template <int N> void f();", templateTypeParmDecl()));
+}
+
 TEST(Matcher, UserDefinedLiteral) {
   EXPECT_TRUE(matches("constexpr char operator \"\" _inc (const char i) {"
                       "  return i + 1;"
@@ -1511,6 +1525,13 @@ TEST(Function, MatchesFunctionDeclarations) {
       notMatches("void f(int);"
                  "template <typename T> struct S { void g(T t) { f(t); } };",
                  CallFunctionF));
+
+  EXPECT_TRUE(matches("void f(...);", functionDecl(isVariadic())));
+  EXPECT_TRUE(notMatches("void f(int);", functionDecl(isVariadic())));
+  EXPECT_TRUE(notMatches("template <typename... Ts> void f(Ts...);",
+                         functionDecl(isVariadic())));
+  EXPECT_TRUE(notMatches("void f();", functionDecl(isVariadic())));
+  EXPECT_TRUE(notMatchesC("void f();", functionDecl(isVariadic())));
 }
 
 TEST(FunctionTemplate, MatchesFunctionTemplateDeclarations) {
@@ -4093,6 +4114,11 @@ TEST(TypeMatching, MatchesArrayTypes) {
   EXPECT_TRUE(matches("int a[2];",
                       constantArrayType(hasElementType(builtinType()))));
   EXPECT_TRUE(matches("const int a = 0;", qualType(isInteger())));
+}
+
+TEST(TypeMatching, DecayedType) {
+  EXPECT_TRUE(matches("void f(int i[]);", valueDecl(hasType(decayedType(hasDecayedType(pointerType()))))));
+  EXPECT_TRUE(notMatches("int i[7];", decayedType()));
 }
 
 TEST(TypeMatching, MatchesComplexTypes) {

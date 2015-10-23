@@ -441,13 +441,17 @@ public:
   ///
   /// One set of Objective-C lifetime qualifiers compatibly includes the other
   /// if the lifetime qualifiers match, or if both are non-__weak and the
-  /// including set also contains the 'const' qualifier.
+  /// including set also contains the 'const' qualifier, or both are non-__weak
+  /// and one is None (which can only happen in non-ARC modes).
   bool compatiblyIncludesObjCLifetime(Qualifiers other) const {
     if (getObjCLifetime() == other.getObjCLifetime())
       return true;
 
     if (getObjCLifetime() == OCL_Weak || other.getObjCLifetime() == OCL_Weak)
       return false;
+
+    if (getObjCLifetime() == OCL_None || other.getObjCLifetime() == OCL_None)
+      return true;
 
     return hasConst();
   }
@@ -4635,7 +4639,7 @@ public:
   /// Retrieve the type arguments of this object type as they were
   /// written.
   ArrayRef<QualType> getTypeArgsAsWritten() const {
-    return ArrayRef<QualType>(getTypeArgStorage(),
+    return llvm::makeArrayRef(getTypeArgStorage(),
                               ObjCObjectTypeBits.NumTypeArgs);
   }
 

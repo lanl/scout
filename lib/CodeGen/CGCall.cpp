@@ -21,6 +21,7 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
+#include "clang/Basic/TargetBuiltins.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/CodeGen/CGFunctionInfo.h"
 #include "clang/Frontend/CodeGenOptions.h"
@@ -2150,9 +2151,9 @@ static llvm::Value *tryEmitFusedAutoreleaseOfResult(CodeGenFunction &CGF,
 
   bool doRetainAutorelease;
 
-  if (call->getCalledValue() == CGF.CGM.getARCEntrypoints().objc_retain) {
+  if (call->getCalledValue() == CGF.CGM.getObjCEntrypoints().objc_retain) {
     doRetainAutorelease = true;
-  } else if (call->getCalledValue() == CGF.CGM.getARCEntrypoints()
+  } else if (call->getCalledValue() == CGF.CGM.getObjCEntrypoints()
                                           .objc_retainAutoreleasedReturnValue) {
     doRetainAutorelease = false;
 
@@ -2161,7 +2162,7 @@ static llvm::Value *tryEmitFusedAutoreleaseOfResult(CodeGenFunction &CGF,
     // for that call.  If we can't find it, we can't do this
     // optimization.  But it should always be the immediately previous
     // instruction, unless we needed bitcasts around the call.
-    if (CGF.CGM.getARCEntrypoints().retainAutoreleasedReturnValueMarker) {
+    if (CGF.CGM.getObjCEntrypoints().retainAutoreleasedReturnValueMarker) {
       llvm::Instruction *prev = call->getPrevNode();
       assert(prev);
       if (isa<llvm::BitCastInst>(prev)) {
@@ -2170,7 +2171,7 @@ static llvm::Value *tryEmitFusedAutoreleaseOfResult(CodeGenFunction &CGF,
       }
       assert(isa<llvm::CallInst>(prev));
       assert(cast<llvm::CallInst>(prev)->getCalledValue() ==
-               CGF.CGM.getARCEntrypoints().retainAutoreleasedReturnValueMarker);
+               CGF.CGM.getObjCEntrypoints().retainAutoreleasedReturnValueMarker);
       insnsToKill.push_back(prev);
     }
   } else {
@@ -2215,7 +2216,7 @@ static llvm::Value *tryRemoveRetainOfSelf(CodeGenFunction &CGF,
   llvm::CallInst *retainCall =
     dyn_cast<llvm::CallInst>(result->stripPointerCasts());
   if (!retainCall ||
-      retainCall->getCalledValue() != CGF.CGM.getARCEntrypoints().objc_retain)
+      retainCall->getCalledValue() != CGF.CGM.getObjCEntrypoints().objc_retain)
     return nullptr;
 
   // Look for an ordinary load of 'self'.
@@ -2752,25 +2753,12 @@ void CallArgList::allocateArgumentMemory(CodeGenFunction &CGF) {
   // Save the stack.
   llvm::Function *F = CGF.CGM.getIntrinsic(llvm::Intrinsic::stacksave);
   StackBase = CGF.Builder.CreateCall(F, {}, "inalloca.save");
-
-  // Control gets really tied up in landing pads, so we have to spill the
-  // stacksave to an alloca to avoid violating SSA form.
-  // TODO: This is dead if we never emit the cleanup.  We should create the
-  // alloca and store lazily on the first cleanup emission.
-  StackBaseMem = CGF.CreateTempAlloca(CGF.Int8PtrTy, CGF.getPointerAlign(),
-                                      "inalloca.spmem");
-  CGF.Builder.CreateStore(StackBase, StackBaseMem);
-  CGF.pushStackRestore(EHCleanup, StackBaseMem);
-  StackCleanup = CGF.EHStack.getInnermostEHScope();
-  assert(StackCleanup.isValid());
 }
 
 void CallArgList::freeArgumentMemory(CodeGenFunction &CGF) const {
   if (StackBase) {
-    CGF.DeactivateCleanupBlock(StackCleanup, StackBase);
+    // Restore the stack after the call.
     llvm::Value *F = CGF.CGM.getIntrinsic(llvm::Intrinsic::stackrestore);
-    // We could load StackBase from StackBaseMem, but in the non-exceptional
-    // case we can skip it.
     CGF.Builder.CreateCall(F, StackBase);
   }
 }
@@ -3049,12 +3037,6 @@ CodeGenFunction::EmitRuntimeCallOrInvoke(llvm::Value *callee,
   llvm::CallSite callSite = EmitCallOrInvoke(callee, args, name);
   callSite.setCallingConv(getRuntimeCC());
   return callSite;
-}
-
-llvm::CallSite
-CodeGenFunction::EmitCallOrInvoke(llvm::Value *Callee,
-                                  const Twine &Name) {
-  return EmitCallOrInvoke(Callee, None, Name);
 }
 
 /// Emits a call or invoke instruction to the given function, depending

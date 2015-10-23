@@ -1810,6 +1810,10 @@ void OMPClauseWriter::VisitOMPCaptureClause(OMPCaptureClause *) {}
 
 void OMPClauseWriter::VisitOMPSeqCstClause(OMPSeqCstClause *) {}
 
+void OMPClauseWriter::VisitOMPThreadsClause(OMPThreadsClause *) {}
+
+void OMPClauseWriter::VisitOMPSIMDClause(OMPSIMDClause *) {}
+
 void OMPClauseWriter::VisitOMPPrivateClause(OMPPrivateClause *C) {
   Record.push_back(C->varlist_size());
   Writer->Writer.AddSourceLocation(C->getLParenLoc(), Record);
@@ -1864,6 +1868,8 @@ void OMPClauseWriter::VisitOMPReductionClause(OMPReductionClause *C) {
   Writer->Writer.AddNestedNameSpecifierLoc(C->getQualifierLoc(), Record);
   Writer->Writer.AddDeclarationNameInfo(C->getNameInfo(), Record);
   for (auto *VE : C->varlists())
+    Writer->Writer.AddStmt(VE);
+  for (auto *VE : C->privates())
     Writer->Writer.AddStmt(VE);
   for (auto *E : C->lhs_exprs())
     Writer->Writer.AddStmt(E);
@@ -2155,6 +2161,7 @@ void ASTStmtWriter::VisitOMPFlushDirective(OMPFlushDirective *D) {
 
 void ASTStmtWriter::VisitOMPOrderedDirective(OMPOrderedDirective *D) {
   VisitStmt(D);
+  Record.push_back(D->getNumClauses());
   VisitOMPExecutableDirective(D);
   Code = serialization::STMT_OMP_ORDERED_DIRECTIVE;
 }

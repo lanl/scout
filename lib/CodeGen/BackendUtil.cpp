@@ -14,6 +14,7 @@
 #include "clang/Frontend/CodeGenOptions.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Frontend/Utils.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
@@ -455,13 +456,8 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   llvm::cl::ParseCommandLineOptions(BackendArgs.size() - 1,
                                     BackendArgs.data());
 
-  std::string FeaturesStr;
-  if (!TargetOpts.Features.empty()) {
-    SubtargetFeatures Features;
-    for (const std::string &Feature : TargetOpts.Features)
-      Features.AddFeature(Feature);
-    FeaturesStr = Features.getString();
-  }
+  std::string FeaturesStr =
+      llvm::join(TargetOpts.Features.begin(), TargetOpts.Features.end(), ",");
 
   // Keep this synced with the equivalent code in tools/driver/cc1as_main.cpp.
   llvm::Reloc::Model RM = llvm::Reloc::Default;
@@ -492,24 +488,16 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
       .Case("posix", llvm::ThreadModel::POSIX)
       .Case("single", llvm::ThreadModel::Single);
 
-  if (CodeGenOpts.DisableIntegratedAS)
-    Options.DisableIntegratedAS = true;
-
-  if (CodeGenOpts.CompressDebugSections)
-    Options.CompressDebugSections = true;
-
-  if (CodeGenOpts.UseInitArray)
-    Options.UseInitArray = true;
-
   // Set float ABI type.
-  if (CodeGenOpts.FloatABI == "soft" || CodeGenOpts.FloatABI == "softfp")
-    Options.FloatABIType = llvm::FloatABI::Soft;
-  else if (CodeGenOpts.FloatABI == "hard")
-    Options.FloatABIType = llvm::FloatABI::Hard;
-  else {
-    assert(CodeGenOpts.FloatABI.empty() && "Invalid float abi!");
-    Options.FloatABIType = llvm::FloatABI::Default;
-  }
+  assert((CodeGenOpts.FloatABI == "soft" || CodeGenOpts.FloatABI == "softfp" ||
+          CodeGenOpts.FloatABI == "hard" || CodeGenOpts.FloatABI.empty()) &&
+         "Invalid Floating Point ABI!");
+  Options.FloatABIType =
+      llvm::StringSwitch<llvm::FloatABI::ABIType>(CodeGenOpts.FloatABI)
+          .Case("soft", llvm::FloatABI::Soft)
+          .Case("softfp", llvm::FloatABI::Soft)
+          .Case("hard", llvm::FloatABI::Hard)
+          .Default(llvm::FloatABI::Default);
 
   // Set FP fusion mode.
   switch (CodeGenOpts.getFPContractMode()) {
@@ -524,6 +512,9 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
     break;
   }
 
+  Options.UseInitArray = CodeGenOpts.UseInitArray;
+  Options.DisableIntegratedAS = CodeGenOpts.DisableIntegratedAS;
+  Options.CompressDebugSections = CodeGenOpts.CompressDebugSections;
   Options.LessPreciseFPMADOption = CodeGenOpts.LessPreciseFPMAD;
   Options.NoInfsFPMath = CodeGenOpts.NoInfsFPMath;
   Options.NoNaNsFPMath = CodeGenOpts.NoNaNsFPMath;
@@ -609,8 +600,8 @@ void EmitAssemblyHelper::EmitAssembly(BackendAction Action,
     break;
 
   case Backend_EmitBC:
-    getPerModulePasses()->add(
-        createBitcodeWriterPass(*OS, CodeGenOpts.EmitLLVMUseLists));
+    getPerModulePasses()->add(createBitcodeWriterPass(
+        *OS, CodeGenOpts.EmitLLVMUseLists, CodeGenOpts.EmitFunctionSummary));
     break;
 
   case Backend_EmitLL:

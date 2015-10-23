@@ -1289,9 +1289,11 @@ llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
   Address allocation = Address::invalid();
   CallArgList allocatorArgs;
   if (allocator->isReservedGlobalPlacementOperator()) {
+    assert(E->getNumPlacementArgs() == 1);
+    const Expr *arg = *E->placement_arguments().begin();
+
     AlignmentSource alignSource;
-    allocation = EmitPointerWithAlignment(*E->placement_arguments().begin(),
-                                          &alignSource);
+    allocation = EmitPointerWithAlignment(arg, &alignSource);
 
     // The pointer expression will, in many cases, be an opaque void*.
     // In these cases, discard the computed alignment and use the
@@ -1299,6 +1301,14 @@ llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
     if (alignSource != AlignmentSource::Decl) {
       allocation = Address(allocation.getPointer(),
                            getContext().getTypeAlignInChars(allocType));
+    }
+
+    // Set up allocatorArgs for the call to operator delete if it's not
+    // the reserved global operator.
+    if (E->getOperatorDelete() &&
+        !E->getOperatorDelete()->isReservedGlobalPlacementOperator()) {
+      allocatorArgs.add(RValue::get(allocSize), getContext().getSizeType());
+      allocatorArgs.add(RValue::get(allocation.getPointer()), arg->getType());
     }
 
   } else {
@@ -1516,9 +1526,8 @@ static void EmitObjectDelete(CodeGenFunction &CGF,
                               /*ForVirtualBase=*/false,
                               /*Delegating=*/false,
                               Ptr);
-  else if (CGF.getLangOpts().ObjCAutoRefCount &&
-           ElementType->isObjCLifetimeType()) {
-    switch (ElementType.getObjCLifetime()) {
+  else if (auto Lifetime = ElementType.getObjCLifetime()) {
+    switch (Lifetime) {
     case Qualifiers::OCL_None:
     case Qualifiers::OCL_ExplicitNone:
     case Qualifiers::OCL_Autoreleasing:
@@ -1796,6 +1805,7 @@ static llvm::Value *EmitDynamicCastToNull(CodeGenFunction &CGF,
 
 llvm::Value *CodeGenFunction::EmitDynamicCast(Address ThisAddr,
                                               const CXXDynamicCastExpr *DCE) {
+  CGM.EmitExplicitCastExprType(DCE, this);
   QualType DestTy = DCE->getTypeAsWritten();
 
   if (DCE->isAlwaysNull())

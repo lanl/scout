@@ -99,9 +99,24 @@ TEST_F(FormatTestJS, LiteralOperatorsCanBeKeywords) {
   verifyFormat("not.and.or.not_eq = 1;");
 }
 
+TEST_F(FormatTestJS, ReservedWords) {
+  // JavaScript reserved words (aka keywords) are only illegal when used as
+  // Identifiers, but are legal as IdentifierNames.
+  verifyFormat("x.class.struct = 1;");
+  verifyFormat("x.case = 1;");
+  verifyFormat("x.interface = 1;");
+  verifyFormat("x = {\n"
+               "  a: 12,\n"
+               "  interface: 1,\n"
+               "  switch: 1,\n"
+               "};");
+}
+
 TEST_F(FormatTestJS, ES6DestructuringAssignment) {
   verifyFormat("var [a, b, c] = [1, 2, 3];");
+  verifyFormat("let [a, b, c] = [1, 2, 3];");
   verifyFormat("var {a, b} = {a: 1, b: 2};");
+  verifyFormat("let {a, b} = {a: 1, b: 2};");
 }
 
 TEST_F(FormatTestJS, ContainerLiterals) {
@@ -585,6 +600,13 @@ TEST_F(FormatTestJS, RegexLiteralClassification) {
 
   // Not regex literals.
   verifyFormat("var a = a / 2 + b / 3;");
+  verifyFormat("var a = a++ / 2;");
+  // Prefix unary can operate on regex literals, not that it makes sense.
+  verifyFormat("var a = ++/a/;");
+
+  // This is a known issue, regular expressions are incorrectly detected if
+  // directly following a closing parenthesis.
+  verifyFormat("if (foo) / bar /.exec(baz);");
 }
 
 TEST_F(FormatTestJS, RegexLiteralSpecialCharacters) {
@@ -602,9 +624,18 @@ TEST_F(FormatTestJS, RegexLiteralSpecialCharacters) {
   verifyFormat("var regex = /x|y/;");
   verifyFormat("var regex = /a{2}/;");
   verifyFormat("var regex = /a{1,3}/;");
+
   verifyFormat("var regex = /[abc]/;");
   verifyFormat("var regex = /[^abc]/;");
   verifyFormat("var regex = /[\\b]/;");
+  verifyFormat("var regex = /[/]/;");
+  verifyFormat("var regex = /[\\/]/;");
+  verifyFormat("var regex = /\\[/;");
+  verifyFormat("var regex = /\\\\[/]/;");
+  verifyFormat("var regex = /}[\"]/;");
+  verifyFormat("var regex = /}[/\"]/;");
+  verifyFormat("var regex = /}[\"/]/;");
+
   verifyFormat("var regex = /\\b/;");
   verifyFormat("var regex = /\\B/;");
   verifyFormat("var regex = /\\d/;");

@@ -628,13 +628,10 @@ static bool checkAcquireOrderAttrCommon(Sema &S, Decl *D,
 
   // Check that this attribute only applies to lockable types.
   QualType QT = cast<ValueDecl>(D)->getType();
-  if (!QT->isDependentType()) {
-    const RecordType *RT = getRecordType(QT);
-    if (!RT || !RT->getDecl()->hasAttr<CapabilityAttr>()) {
-      S.Diag(Attr.getLoc(), diag::warn_thread_attribute_decl_not_lockable)
-        << Attr.getName();
-      return false;
-    }
+  if (!QT->isDependentType() && !typeHasCapability(S, QT)) {
+    S.Diag(Attr.getLoc(), diag::warn_thread_attribute_decl_not_lockable)
+      << Attr.getName();
+    return false;
   }
 
   // Check that all arguments are lockable objects.
@@ -1311,6 +1308,17 @@ void Sema::AddAssumeAlignedAttr(SourceRange AttrRange, Decl *D, Expr *E,
             AssumeAlignedAttr(AttrRange, Context, E, OE, SpellingListIndex));
 }
 
+/// Normalize the attribute, __foo__ becomes foo.
+/// Returns true if normalization was applied.
+static bool normalizeName(StringRef &AttrName) {
+  if (AttrName.size() > 4 && AttrName.startswith("__") &&
+      AttrName.endswith("__")) {
+    AttrName = AttrName.drop_front(2).drop_back(2);
+    return true;
+  }
+  return false;
+}
+
 static void handleOwnershipAttr(Sema &S, Decl *D, const AttributeList &AL) {
   // This attribute must be applied to a function declaration. The first
   // argument to the attribute must be an identifier, the name of the resource,
@@ -1352,11 +1360,8 @@ static void handleOwnershipAttr(Sema &S, Decl *D, const AttributeList &AL) {
 
   IdentifierInfo *Module = AL.getArgAsIdent(0)->Ident;
 
-  // Normalize the argument, __foo__ becomes foo.
   StringRef ModuleName = Module->getName();
-  if (ModuleName.startswith("__") && ModuleName.endswith("__") &&
-      ModuleName.size() > 4) {
-    ModuleName = ModuleName.drop_front(2).drop_back(2);
+  if (normalizeName(ModuleName)) {
     Module = &S.PP.getIdentifierTable().get(ModuleName);
   }
 
@@ -1824,12 +1829,24 @@ AvailabilityAttr *Sema::mergeAvailabilityAttr(NamedDecl *D, SourceRange Range,
                                               VersionTuple Obsoleted,
                                               bool IsUnavailable,
                                               StringRef Message,
-                                              bool Override,
+                                              AvailabilityMergeKind AMK,
                                               unsigned AttrSpellingListIndex) {
   VersionTuple MergedIntroduced = Introduced;
   VersionTuple MergedDeprecated = Deprecated;
   VersionTuple MergedObsoleted = Obsoleted;
   bool FoundAny = false;
+  bool OverrideOrImpl = false;
+  switch (AMK) {
+  case AMK_None:
+  case AMK_Redeclaration:
+    OverrideOrImpl = false;
+    break;
+
+  case AMK_Override:
+  case AMK_ProtocolImplementation:
+    OverrideOrImpl = true;
+    break;
+  }
 
   if (D->hasAttrs()) {
     AttrVec &Attrs = D->getAttrs();
@@ -1852,24 +1869,24 @@ AvailabilityAttr *Sema::mergeAvailabilityAttr(NamedDecl *D, SourceRange Range,
       VersionTuple OldObsoleted = OldAA->getObsoleted();
       bool OldIsUnavailable = OldAA->getUnavailable();
 
-      if (!versionsMatch(OldIntroduced, Introduced, Override) ||
-          !versionsMatch(Deprecated, OldDeprecated, Override) ||
-          !versionsMatch(Obsoleted, OldObsoleted, Override) ||
+      if (!versionsMatch(OldIntroduced, Introduced, OverrideOrImpl) ||
+          !versionsMatch(Deprecated, OldDeprecated, OverrideOrImpl) ||
+          !versionsMatch(Obsoleted, OldObsoleted, OverrideOrImpl) ||
           !(OldIsUnavailable == IsUnavailable ||
-            (Override && !OldIsUnavailable && IsUnavailable))) {
-        if (Override) {
+            (OverrideOrImpl && !OldIsUnavailable && IsUnavailable))) {
+        if (OverrideOrImpl) {
           int Which = -1;
           VersionTuple FirstVersion;
           VersionTuple SecondVersion;
-          if (!versionsMatch(OldIntroduced, Introduced, Override)) {
+          if (!versionsMatch(OldIntroduced, Introduced, OverrideOrImpl)) {
             Which = 0;
             FirstVersion = OldIntroduced;
             SecondVersion = Introduced;
-          } else if (!versionsMatch(Deprecated, OldDeprecated, Override)) {
+          } else if (!versionsMatch(Deprecated, OldDeprecated, OverrideOrImpl)) {
             Which = 1;
             FirstVersion = Deprecated;
             SecondVersion = OldDeprecated;
-          } else if (!versionsMatch(Obsoleted, OldObsoleted, Override)) {
+          } else if (!versionsMatch(Obsoleted, OldObsoleted, OverrideOrImpl)) {
             Which = 2;
             FirstVersion = Obsoleted;
             SecondVersion = OldObsoleted;
@@ -1878,15 +1895,20 @@ AvailabilityAttr *Sema::mergeAvailabilityAttr(NamedDecl *D, SourceRange Range,
           if (Which == -1) {
             Diag(OldAA->getLocation(),
                  diag::warn_mismatched_availability_override_unavail)
-              << AvailabilityAttr::getPrettyPlatformName(Platform->getName());
+              << AvailabilityAttr::getPrettyPlatformName(Platform->getName())
+              << (AMK == AMK_Override);
           } else {
             Diag(OldAA->getLocation(),
                  diag::warn_mismatched_availability_override)
               << Which
               << AvailabilityAttr::getPrettyPlatformName(Platform->getName())
-              << FirstVersion.getAsString() << SecondVersion.getAsString();
+              << FirstVersion.getAsString() << SecondVersion.getAsString()
+              << (AMK == AMK_Override);
           }
-          Diag(Range.getBegin(), diag::note_overridden_method);
+          if (AMK == AMK_Override)
+            Diag(Range.getBegin(), diag::note_overridden_method);
+          else
+            Diag(Range.getBegin(), diag::note_protocol_method);
         } else {
           Diag(OldAA->getLocation(), diag::warn_mismatched_availability);
           Diag(Range.getBegin(), diag::note_previous_attribute);
@@ -1929,11 +1951,11 @@ AvailabilityAttr *Sema::mergeAvailabilityAttr(NamedDecl *D, SourceRange Range,
       MergedObsoleted == Obsoleted)
     return nullptr;
 
-  // Only create a new attribute if !Override, but we want to do
+  // Only create a new attribute if !OverrideOrImpl, but we want to do
   // the checking.
   if (!checkAvailabilityAttr(*this, Range, Platform, MergedIntroduced,
                              MergedDeprecated, MergedObsoleted) &&
-      !Override) {
+      !OverrideOrImpl) {
     return ::new (Context) AvailabilityAttr(Range, Context, Platform,
                                             Introduced, Deprecated,
                                             Obsoleted, IsUnavailable, Message,
@@ -1974,7 +1996,7 @@ static void handleAvailabilityAttr(Sema &S, Decl *D,
                                                       Deprecated.Version,
                                                       Obsoleted.Version,
                                                       IsUnavailable, Str,
-                                                      /*Override=*/false,
+                                                      Sema::AMK_None,
                                                       Index);
   if (NewAttr)
     D->addAttr(NewAttr);
@@ -2634,9 +2656,7 @@ static void handleFormatAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   IdentifierInfo *II = Attr.getArgAsIdent(0)->Ident;
   StringRef Format = II->getName();
 
-  // Normalize the argument, __foo__ becomes foo.
-  if (Format.startswith("__") && Format.endswith("__")) {
-    Format = Format.substr(2, Format.size() - 4);
+  if (normalizeName(Format)) {
     // If we've modified the string name, we need a new identifier for it.
     II = &S.Context.Idents.get(Format);
   }
@@ -3117,9 +3137,7 @@ static void handleModeAttr(Sema &S, Decl *D, const AttributeList &Attr) {
   IdentifierInfo *Name = Attr.getArgAsIdent(0)->Ident;
   StringRef Str = Name->getName();
 
-  // Normalize the attribute name, __foo__ becomes foo.
-  if (Str.startswith("__") && Str.endswith("__"))
-    Str = Str.substr(2, Str.size() - 4);
+  normalizeName(Str);
 
   unsigned DestWidth = 0;
   bool IntegerMode = true;
@@ -4519,8 +4537,10 @@ static void handleNoSanitizeAttr(Sema &S, Decl *D, const AttributeList &Attr) {
 
 static void handleNoSanitizeSpecificAttr(Sema &S, Decl *D,
                                          const AttributeList &Attr) {
+  StringRef AttrName = Attr.getName()->getName();
+  normalizeName(AttrName);
   std::string SanitizerName =
-      llvm::StringSwitch<std::string>(Attr.getName()->getName())
+      llvm::StringSwitch<std::string>(AttrName)
           .Case("no_address_safety_analysis", "address")
           .Case("no_sanitize_address", "address")
           .Case("no_sanitize_thread", "thread")

@@ -519,7 +519,7 @@ void Preprocessor::EnterMainSourceFile() {
     llvm::MemoryBuffer::getMemBufferCopy(Predefines, "<built-in>");
   assert(SB && "Cannot create predefined source buffer");
   FileID FID = SourceMgr.createFileID(std::move(SB));
-  assert(!FID.isInvalid() && "Could not create FileID for predefines?");
+  assert(FID.isValid() && "Could not create FileID for predefines?");
   setPredefinesFileID(FID);
 
   // Start parsing the predefines.
@@ -716,7 +716,7 @@ bool Preprocessor::HandleIdentifier(Token &Identifier) {
 }
 
 void Preprocessor::Lex(Token &Result) {
-  // We loop here until a lex function retuns a token; this avoids recursion.
+  // We loop here until a lex function returns a token; this avoids recursion.
   bool ReturnedToken;
   do {
     switch (CurLexerKind) {

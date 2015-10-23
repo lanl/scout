@@ -641,7 +641,7 @@ std::unique_ptr<llvm::raw_pwrite_stream> CompilerInstance::createOutputFile(
       if (llvm::sys::fs::exists(Status)) {
         // Fail early if we can't write to the final destination.
         if (!llvm::sys::fs::can_write(OutputPath)) {
-          Error = std::make_error_code(std::errc::operation_not_permitted);
+          Error = make_error_code(llvm::errc::operation_not_permitted);
           return nullptr;
         }
 
@@ -726,7 +726,7 @@ bool CompilerInstance::InitializeSourceManager(const FrontendInputFile &Input,
   if (Input.isBuffer()) {
     SourceMgr.setMainFileID(SourceMgr.createFileID(
         std::unique_ptr<llvm::MemoryBuffer>(Input.getBuffer()), Kind));
-    assert(!SourceMgr.getMainFileID().isInvalid() &&
+    assert(SourceMgr.getMainFileID().isValid() &&
            "Couldn't establish MainFileID!");
     return true;
   }
@@ -777,7 +777,7 @@ bool CompilerInstance::InitializeSourceManager(const FrontendInputFile &Input,
     SourceMgr.overrideFileContents(File, std::move(SB));
   }
 
-  assert(!SourceMgr.getMainFileID().isInvalid() &&
+  assert(SourceMgr.getMainFileID().isValid() &&
          "Couldn't establish MainFileID!");
   return true;
 }
@@ -1335,15 +1335,24 @@ bool CompilerInstance::loadModuleFile(StringRef FileName) {
                                                    std::move(Listener));
 
   // Try to load the module file.
-  if (ModuleManager->ReadAST(FileName, serialization::MK_ExplicitModule,
-                             SourceLocation(), ASTReader::ARR_None)
-          != ASTReader::Success)
-    return false;
-
+  switch (ModuleManager->ReadAST(FileName, serialization::MK_ExplicitModule,
+                                 SourceLocation(),
+                                 ASTReader::ARR_ConfigurationMismatch)) {
+  case ASTReader::Success:
   // We successfully loaded the module file; remember the set of provided
   // modules so that we don't try to load implicit modules for them.
   ListenerRef.registerAll();
   return true;
+
+  case ASTReader::ConfigurationMismatch:
+    // Ignore unusable module files.
+    getDiagnostics().Report(SourceLocation(), diag::warn_module_config_mismatch)
+        << FileName;
+    return true;
+
+  default:
+    return false;
+  }
 }
 
 ModuleLoadResult
@@ -1358,7 +1367,7 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
   // If we've already handled this import, just return the cached result.
   // This one-element cache is important to eliminate redundant diagnostics
   // when both the preprocessor and parser see the same import declaration.
-  if (!ImportLoc.isInvalid() && LastModuleImportLoc == ImportLoc) {
+  if (ImportLoc.isValid() && LastModuleImportLoc == ImportLoc) {
     // Make the named module visible.
     if (LastModuleImportResult && ModuleName != getLangOpts().CurrentModule &&
         ModuleName != getLangOpts().ImplementationOfModule)

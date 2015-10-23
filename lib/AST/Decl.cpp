@@ -1749,7 +1749,6 @@ const char *VarDecl::getStorageClassSpecifierString(StorageClass SC) {
   case SC_None:                 break;
   case SC_Auto:                 return "auto";
   case SC_Extern:               return "extern";
-  case SC_OpenCLWorkGroupLocal: return "<<work-group-local>>";
   case SC_PrivateExtern:        return "__private_extern__";
   case SC_Register:             return "register";
   case SC_Static:               return "static";
@@ -2704,7 +2703,8 @@ bool FunctionDecl::isMSExternInline() const {
   assert(isInlined() && "expected to get called on an inlined function!");
 
   const ASTContext &Context = getASTContext();
-  if (!Context.getLangOpts().MSVCCompat && !hasAttr<DLLExportAttr>())
+  if (!Context.getTargetInfo().getCXXABI().isMicrosoft() &&
+      !hasAttr<DLLExportAttr>())
     return false;
 
   for (const FunctionDecl *FD = getMostRecentDecl(); FD;

@@ -96,6 +96,7 @@ def Deprecated : DiagGroup<"deprecated", [DeprecatedDeclarations,
                                           DeprecatedWritableStr]>,
                  DiagCategory<"Deprecations">;
 
+def LibLTO : DiagGroup<"liblto">;
 def : DiagGroup<"disabled-optimization">;
 def : DiagGroup<"discard-qual">;
 def : DiagGroup<"div-by-zero">;
@@ -201,6 +202,7 @@ def InfiniteRecursion : DiagGroup<"infinite-recursion">;
 def GNUImaginaryConstant : DiagGroup<"gnu-imaginary-constant">;
 def IgnoredQualifiers : DiagGroup<"ignored-qualifiers">;
 def : DiagGroup<"import">;
+def GNUIncludeNext : DiagGroup<"gnu-include-next">;
 def IncompatibleMSStruct : DiagGroup<"incompatible-ms-struct">;
 def IncompatiblePointerTypesDiscardsQualifiers 
   : DiagGroup<"incompatible-pointer-types-discards-qualifiers">;
@@ -215,6 +217,7 @@ def NonModularIncludeInModule : DiagGroup<"non-modular-include-in-module",
 def IncompleteModule : DiagGroup<"incomplete-module",
     [IncompleteUmbrella, NonModularIncludeInModule]>;
 
+def CXX11InlineNamespace : DiagGroup<"c++11-inline-namespace">;
 def InvalidNoreturn : DiagGroup<"invalid-noreturn">;
 def InvalidSourceEncoding : DiagGroup<"invalid-source-encoding">;
 def KNRPromotedParameter : DiagGroup<"knr-promoted-parameter">;
@@ -677,7 +680,8 @@ def NonGCC : DiagGroup<"non-gcc",
 
 // A warning group for warnings about using C++11 features as extensions in
 // earlier C++ versions.
-def CXX11 : DiagGroup<"c++11-extensions", [CXX11ExtraSemi, CXX11LongLong]>;
+def CXX11 : DiagGroup<"c++11-extensions", [CXX11ExtraSemi, CXX11InlineNamespace,
+                                           CXX11LongLong]>;
 
 // A warning group for warnings about using C++14 features as extensions in
 // earlier C++ versions.
@@ -707,7 +711,8 @@ def GNU : DiagGroup<"gnu", [GNUAlignofExpression, GNUAnonymousStruct,
                             GNUEmptyInitializer, GNUEmptyStruct,
                             VLAExtension, GNUFlexibleArrayInitializer,
                             GNUFlexibleArrayUnionMember, GNUFoldingConstant,
-                            GNUImaginaryConstant, GNULabelsAsValue,
+                            GNUImaginaryConstant, GNUIncludeNext,
+                            GNULabelsAsValue,
                             RedeclaredClassMember, GNURedeclaredEnum,
                             GNUStatementExpression, GNUStaticFloatInit,
                             GNUStringLiteralOperatorTemplate,
@@ -820,3 +825,7 @@ def CudaCompat : DiagGroup<"cuda-compat">;
 
 // A warning group for things that will change semantics in the future.
 def FutureCompat : DiagGroup<"future-compat">;
+
+def InvalidOrNonExistentDirectory : DiagGroup<"invalid-or-nonexistent-directory">;
+
+def OptionIgnored : DiagGroup<"option-ignored">;

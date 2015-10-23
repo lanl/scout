@@ -1777,6 +1777,12 @@ OMPClause *OMPClauseReader::readClause() {
   case OMPC_seq_cst:
     C = new (Context) OMPSeqCstClause();
     break;
+  case OMPC_threads:
+    C = new (Context) OMPThreadsClause();
+    break;
+  case OMPC_simd:
+    C = new (Context) OMPSIMDClause();
+    break;
   case OMPC_private:
     C = OMPPrivateClause::CreateEmpty(Context, Record[Idx++]);
     break;
@@ -1899,6 +1905,10 @@ void OMPClauseReader::VisitOMPCaptureClause(OMPCaptureClause *) {}
 
 void OMPClauseReader::VisitOMPSeqCstClause(OMPSeqCstClause *) {}
 
+void OMPClauseReader::VisitOMPThreadsClause(OMPThreadsClause *) {}
+
+void OMPClauseReader::VisitOMPSIMDClause(OMPSIMDClause *) {}
+
 void OMPClauseReader::VisitOMPPrivateClause(OMPPrivateClause *C) {
   C->setLParenLoc(Reader->ReadSourceLocation(Record, Idx));
   unsigned NumVars = C->varlist_size();
@@ -1983,6 +1993,10 @@ void OMPClauseReader::VisitOMPReductionClause(OMPReductionClause *C) {
   for (unsigned i = 0; i != NumVars; ++i)
     Vars.push_back(Reader->Reader.ReadSubExpr());
   C->setVarRefs(Vars);
+  Vars.clear();
+  for (unsigned i = 0; i != NumVars; ++i)
+    Vars.push_back(Reader->Reader.ReadSubExpr());
+  C->setPrivates(Vars);
   Vars.clear();
   for (unsigned i = 0; i != NumVars; ++i)
     Vars.push_back(Reader->Reader.ReadSubExpr());
@@ -2281,6 +2295,8 @@ void ASTStmtReader::VisitOMPFlushDirective(OMPFlushDirective *D) {
 
 void ASTStmtReader::VisitOMPOrderedDirective(OMPOrderedDirective *D) {
   VisitStmt(D);
+  // The NumClauses field was read in ReadStmtFromStream.
+  ++Idx;
   VisitOMPExecutableDirective(D);
 }
 
@@ -2921,7 +2937,8 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
       break;
 
     case STMT_OMP_ORDERED_DIRECTIVE:
-      S = OMPOrderedDirective::CreateEmpty(Context, Empty);
+      S = OMPOrderedDirective::CreateEmpty(
+          Context, Record[ASTStmtReader::NumStmtFields], Empty);
       break;
 
     case STMT_OMP_ATOMIC_DIRECTIVE:

@@ -1589,16 +1589,29 @@ class OMPReductionClause : public OMPVarListClause<OMPReductionClause> {
   void setQualifierLoc(NestedNameSpecifierLoc NSL) { QualifierLoc = NSL; }
 
   /// \brief Set list of helper expressions, required for proper codegen of the
+  /// clause. These expressions represent private copy of the reduction
+  /// variable.
+  void setPrivates(ArrayRef<Expr *> Privates);
+
+  /// \brief Get the list of helper privates.
+  MutableArrayRef<Expr *> getPrivates() {
+    return MutableArrayRef<Expr *>(varlist_end(), varlist_size());
+  }
+  ArrayRef<const Expr *> getPrivates() const {
+    return llvm::makeArrayRef(varlist_end(), varlist_size());
+  }
+
+  /// \brief Set list of helper expressions, required for proper codegen of the
   /// clause. These expressions represent LHS expression in the final
   /// reduction expression performed by the reduction clause.
   void setLHSExprs(ArrayRef<Expr *> LHSExprs);
 
   /// \brief Get the list of helper LHS expressions.
   MutableArrayRef<Expr *> getLHSExprs() {
-    return MutableArrayRef<Expr *>(varlist_end(), varlist_size());
+    return MutableArrayRef<Expr *>(getPrivates().end(), varlist_size());
   }
   ArrayRef<const Expr *> getLHSExprs() const {
-    return llvm::makeArrayRef(varlist_end(), varlist_size());
+    return llvm::makeArrayRef(getPrivates().end(), varlist_size());
   }
 
   /// \brief Set list of helper expressions, required for proper codegen of the
@@ -1640,6 +1653,8 @@ public:
   /// \param VL The variables in the clause.
   /// \param QualifierLoc The nested-name qualifier with location information
   /// \param NameInfo The full name info for reduction identifier.
+  /// \param Privates List of helper expressions for proper generation of
+  /// private copies.
   /// \param LHSExprs List of helper expressions for proper generation of
   /// assignment operation required for copyprivate clause. This list represents
   /// LHSs of the reduction expressions.
@@ -1662,8 +1677,9 @@ public:
   Create(const ASTContext &C, SourceLocation StartLoc, SourceLocation LParenLoc,
          SourceLocation ColonLoc, SourceLocation EndLoc, ArrayRef<Expr *> VL,
          NestedNameSpecifierLoc QualifierLoc,
-         const DeclarationNameInfo &NameInfo, ArrayRef<Expr *> LHSExprs,
-         ArrayRef<Expr *> RHSExprs, ArrayRef<Expr *> ReductionOps);
+         const DeclarationNameInfo &NameInfo, ArrayRef<Expr *> Privates,
+         ArrayRef<Expr *> LHSExprs, ArrayRef<Expr *> RHSExprs,
+         ArrayRef<Expr *> ReductionOps);
   /// \brief Creates an empty clause with the place for \a N variables.
   ///
   /// \param C AST context.
@@ -1684,6 +1700,12 @@ public:
   typedef llvm::iterator_range<helper_expr_const_iterator>
       helper_expr_const_range;
 
+  helper_expr_const_range privates() const {
+    return helper_expr_const_range(getPrivates().begin(), getPrivates().end());
+  }
+  helper_expr_range privates() {
+    return helper_expr_range(getPrivates().begin(), getPrivates().end());
+  }
   helper_expr_const_range lhs_exprs() const {
     return helper_expr_const_range(getLHSExprs().begin(), getLHSExprs().end());
   }
@@ -2513,7 +2535,7 @@ public:
   ///
   OMPDeviceClause()
       : OMPClause(OMPC_device, SourceLocation(), SourceLocation()), 
-        LParenLoc(SourceLocation()), Device(0) {}
+        LParenLoc(SourceLocation()), Device(nullptr) {}
   /// \brief Sets the location of '('.
   void setLParenLoc(SourceLocation Loc) { LParenLoc = Loc; }
   /// \brief Returns the location of '('.
@@ -2530,7 +2552,67 @@ public:
   child_range children() { return child_range(&Device, &Device + 1); }
 };
 
+/// \brief This represents 'threads' clause in the '#pragma omp ...' directive.
+///
+/// \code
+/// #pragma omp ordered threads
+/// \endcode
+/// In this example directive '#pragma omp ordered' has simple 'threads' clause.
+///
+class OMPThreadsClause : public OMPClause {
+public:
+  /// \brief Build 'threads' clause.
+  ///
+  /// \param StartLoc Starting location of the clause.
+  /// \param EndLoc Ending location of the clause.
+  ///
+  OMPThreadsClause(SourceLocation StartLoc, SourceLocation EndLoc)
+      : OMPClause(OMPC_threads, StartLoc, EndLoc) {}
+
+  /// \brief Build an empty clause.
+  ///
+  OMPThreadsClause()
+      : OMPClause(OMPC_threads, SourceLocation(), SourceLocation()) {}
+
+  static bool classof(const OMPClause *T) {
+    return T->getClauseKind() == OMPC_threads;
+  }
+
+  child_range children() {
+    return child_range(child_iterator(), child_iterator());
+  }
+};
+
+/// \brief This represents 'simd' clause in the '#pragma omp ...' directive.
+///
+/// \code
+/// #pragma omp ordered simd
+/// \endcode
+/// In this example directive '#pragma omp ordered' has simple 'simd' clause.
+///
+class OMPSIMDClause : public OMPClause {
+public:
+  /// \brief Build 'simd' clause.
+  ///
+  /// \param StartLoc Starting location of the clause.
+  /// \param EndLoc Ending location of the clause.
+  ///
+  OMPSIMDClause(SourceLocation StartLoc, SourceLocation EndLoc)
+      : OMPClause(OMPC_simd, StartLoc, EndLoc) {}
+
+  /// \brief Build an empty clause.
+  ///
+  OMPSIMDClause() : OMPClause(OMPC_simd, SourceLocation(), SourceLocation()) {}
+
+  static bool classof(const OMPClause *T) {
+    return T->getClauseKind() == OMPC_simd;
+  }
+
+  child_range children() {
+    return child_range(child_iterator(), child_iterator());
+  }
+};
+
 } // end namespace clang
 
-#endif
-
+#endif // LLVM_CLANG_AST_OPENMPCLAUSE_H
