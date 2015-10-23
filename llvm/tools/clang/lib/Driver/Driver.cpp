@@ -11,6 +11,7 @@
 #include "InputInfo.h"
 #include "ToolChains.h"
 #include "clang/Basic/Version.h"
+#include "clang/Basic/VirtualFileSystem.h"
 #include "clang/Config/config.h"
 #include "clang/Driver/Action.h"
 #include "clang/Driver/Compilation.h"
@@ -46,9 +47,11 @@ using namespace clang;
 using namespace llvm::opt;
 
 Driver::Driver(StringRef ClangExecutable, StringRef DefaultTargetTriple,
-               DiagnosticsEngine &Diags)
-    : Opts(createDriverOptTable()), Diags(Diags), Mode(GCCMode),
-      SaveTemps(SaveTempsNone), ClangExecutable(ClangExecutable),
+               DiagnosticsEngine &Diags,
+               IntrusiveRefCntPtr<vfs::FileSystem> VFS)
+    : Opts(createDriverOptTable()), Diags(Diags), VFS(VFS), Mode(GCCMode),
+      SaveTemps(SaveTempsNone), LTOMode(LTOK_None),
+      ClangExecutable(ClangExecutable),
       SysRoot(DEFAULT_SYSROOT), UseStdLib(true),
       DefaultTargetTriple(DefaultTargetTriple),
       DriverTitle("clang LLVM compiler"), CCPrintOptionsFilename(nullptr),
@@ -57,8 +60,13 @@ Driver::Driver(StringRef ClangExecutable, StringRef DefaultTargetTriple,
       CCGenDiagnostics(false), CCCGenericGCCName(""), CheckInputsExist(true),
       CCCUsePCH(true), SuppressMissingInputWarning(false) {
 
+  // Provide a sane fallback if no VFS is specified.
+  if (!this->VFS)
+    this->VFS = vfs::getRealFileSystem();
+
   Name = llvm::sys::path::filename(ClangExecutable);
   Dir = llvm::sys::path::parent_path(ClangExecutable);
+  InstalledDir = Dir; // Provide a sensible default installed dir.
 
   // +===== Scout ===============================================+
   // Compute the path to the scout resource directory.  This is
@@ -234,7 +242,7 @@ DerivedArgList *Driver::TranslateInputArgs(const InputArgList &Args) const {
       DAL->AddFlagArg(A, Opts->getOption(options::OPT_Z_Xlinker__no_demangle));
 
       // Add the remaining values as Xlinker arguments.
-      for (const StringRef Val : A->getValues())
+      for (StringRef Val : A->getValues())
         if (Val != "--no-demangle")
           DAL->AddSeparateArg(A, Opts->getOption(options::OPT_Xlinker), Val);
 
@@ -278,7 +286,7 @@ DerivedArgList *Driver::TranslateInputArgs(const InputArgList &Args) const {
     // Pick up inputs via the -- option.
     if (A->getOption().matches(options::OPT__DASH_DASH)) {
       A->claim();
-      for (const StringRef Val : A->getValues())
+      for (StringRef Val : A->getValues())
         DAL->append(MakeInputArg(*DAL, Opts, Val));
       continue;
     }
@@ -378,6 +386,31 @@ static llvm::Triple computeTargetTriple(StringRef DefaultTargetTriple,
   return Target;
 }
 
+// \brief Parse the LTO options and record the type of LTO compilation
+// based on which -f(no-)?lto(=.*)? option occurs last.
+void Driver::setLTOMode(const llvm::opt::ArgList &Args) {
+  LTOMode = LTOK_None;
+  if (!Args.hasFlag(options::OPT_flto, options::OPT_flto_EQ,
+                    options::OPT_fno_lto, false))
+    return;
+
+  StringRef LTOName("full");
+
+  const Arg *A = Args.getLastArg(options::OPT_flto_EQ);
+  if (A) LTOName = A->getValue();
+
+  LTOMode = llvm::StringSwitch<LTOKind>(LTOName)
+                .Case("full", LTOK_Full)
+                .Case("thin", LTOK_Thin)
+                .Default(LTOK_Unknown);
+
+  if (LTOMode == LTOK_Unknown) {
+    assert(A);
+    Diag(diag::err_drv_unsupported_option_argument) << A->getOption().getName()
+                                                    << A->getValue();
+  }
+}
+
 Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
   llvm::PrettyStackTraceString CrashInfo("Compilation construction");
 
@@ -464,6 +497,8 @@ Compilation *Driver::BuildCompilation(ArrayRef<const char *> ArgList) {
                     .Case("obj", SaveTempsObj)
                     .Default(SaveTempsCwd);
   }
+
+  setLTOMode(Args);
 
   std::unique_ptr<llvm::opt::InputArgList> UArgs =
       llvm::make_unique<InputArgList>(std::move(Args));
@@ -1592,7 +1627,7 @@ Driver::ConstructPhaseAction(const ToolChain &TC, const ArgList &Args,
                                                types::TY_LLVM_BC);
   }
   case phases::Backend: {
-    if (IsUsingLTO(Args)) {
+    if (isUsingLTO()) {
       types::ID Output =
           Args.hasArg(options::OPT_S) ? types::TY_LTO_IR : types::TY_LTO_BC;
       return llvm::make_unique<BackendJobAction>(std::move(Input), Output);
@@ -1611,10 +1646,6 @@ Driver::ConstructPhaseAction(const ToolChain &TC, const ArgList &Args,
   }
 
   llvm_unreachable("invalid phase in ConstructPhaseAction");
-}
-
-bool Driver::IsUsingLTO(const ArgList &Args) const {
-  return Args.hasFlag(options::OPT_flto, options::OPT_fno_lto, false);
 }
 
 void Driver::BuildJobs(Compilation &C) const {
@@ -2285,6 +2316,9 @@ const ToolChain &Driver::getToolChain(const ArgList &Args,
       break;
     case llvm::Triple::CUDA:
       TC = new toolchains::CudaToolChain(*this, Target, Args);
+      break;
+    case llvm::Triple::PS4:
+      TC = new toolchains::PS4CPU(*this, Target, Args);
       break;
     default:
       // Of these targets, Hexagon is the only one that might have

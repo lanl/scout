@@ -2,6 +2,8 @@
 
 typedef int (*fp)(int);
 int surrogate(int);
+struct Incomplete;  // expected-note{{forward declaration of 'Incomplete'}} \
+                    // expected-note {{forward declaration of 'Incomplete'}}
 
 struct X {
   X() = default;  // expected-note{{candidate constructor not viable: requires 0 arguments, but 1 was provided}}
@@ -13,12 +15,15 @@ struct X {
 
   void g(int n) __attribute__((enable_if(n == 0, "chosen when 'n' is zero")));  // expected-note{{candidate disabled: chosen when 'n' is zero}}
 
-  void h(int n, int m = 0) __attribute((enable_if(m == 0, "chosen when 'm' is zero")));  // expected-note{{candidate disabled: chosen when 'm' is zero}}
+  void h(int n, int m = 0) __attribute__((enable_if(m == 0, "chosen when 'm' is zero")));  // expected-note{{candidate disabled: chosen when 'm' is zero}}
 
   static void s(int n) __attribute__((enable_if(n == 0, "chosen when 'n' is zero")));  // expected-note2{{candidate disabled: chosen when 'n' is zero}}
 
   void conflict(int n) __attribute__((enable_if(n+n == 10, "chosen when 'n' is five")));  // expected-note{{candidate function}}
   void conflict(int n) __attribute__((enable_if(n*2 == 10, "chosen when 'n' is five")));  // expected-note{{candidate function}}
+
+  void hidden_by_argument_conversion(Incomplete n, int m = 0) __attribute__((enable_if(m == 10, "chosen when 'm' is ten")));
+  Incomplete hidden_by_incomplete_return_value(int n = 0) __attribute__((enable_if(n == 10, "chosen when 'n' is ten"))); // expected-note{{'hidden_by_incomplete_return_value' declared here}}
 
   operator long() __attribute__((enable_if(true, "chosen on your platform")));
   operator int() __attribute__((enable_if(false, "chosen on other platform")));
@@ -84,6 +89,9 @@ void test() {
   X::s(1);  // expected-error{{no matching member function for call to 's'}}
 
   x.conflict(5);  // expected-error{{call to member function 'conflict' is ambiguous}}
+
+  x.hidden_by_argument_conversion(10);  // expected-error{{argument type 'Incomplete' is incomplete}}
+  x.hidden_by_incomplete_return_value(10);  // expected-error{{calling 'hidden_by_incomplete_return_value' with incomplete return type 'Incomplete'}}
 
   deprec2(0);
 
@@ -153,5 +161,76 @@ namespace PR20988 {
   int fn3(bool b) __attribute__((enable_if(b, "")));
   template <class T> void test3() {
     fn3(sizeof(T) == 1);
+  }
+}
+
+namespace FnPtrs {
+  int ovlFoo(int m) __attribute__((enable_if(m > 0, "")));
+  int ovlFoo(int m);
+
+  void test() {
+    // Assignment gives us a different code path than declarations, and `&foo`
+    // gives us a different code path than `foo`
+    int (*p)(int) = ovlFoo;
+    int (*p2)(int) = &ovlFoo;
+    int (*a)(int);
+    a = ovlFoo;
+    a = &ovlFoo;
+  }
+
+  int ovlBar(int) __attribute__((enable_if(true, "")));
+  int ovlBar(int m) __attribute__((enable_if(false, "")));
+  void test2() {
+    int (*p)(int) = ovlBar;
+    int (*p2)(int) = &ovlBar;
+    int (*a)(int);
+    a = ovlBar;
+    a = &ovlBar;
+  }
+
+  int ovlConflict(int m) __attribute__((enable_if(true, "")));
+  int ovlConflict(int m) __attribute__((enable_if(1, "")));
+  void test3() {
+    int (*p)(int) = ovlConflict; // expected-error{{address of overloaded function 'ovlConflict' is ambiguous}} expected-note@191{{candidate function}} expected-note@192{{candidate function}}
+    int (*p2)(int) = &ovlConflict; // expected-error{{address of overloaded function 'ovlConflict' is ambiguous}} expected-note@191{{candidate function}} expected-note@192{{candidate function}}
+    int (*a)(int);
+    a = ovlConflict; // expected-error{{assigning to 'int (*)(int)' from incompatible type '<overloaded function type>'}} expected-note@191{{candidate function}} expected-note@192{{candidate function}}
+    a = &ovlConflict; // expected-error{{assigning to 'int (*)(int)' from incompatible type '<overloaded function type>'}} expected-note@191{{candidate function}} expected-note@192{{candidate function}}
+  }
+
+  template <typename T>
+  T templated(T m) __attribute__((enable_if(true, ""))) { return T(); }
+  template <typename T>
+  T templated(T m) __attribute__((enable_if(false, ""))) { return T(); }
+  void test4() {
+    int (*p)(int) = templated<int>;
+    int (*p2)(int) = &templated<int>;
+    int (*a)(int);
+    a = templated<int>;
+    a = &templated<int>;
+  }
+
+  template <typename T>
+  T templatedBar(T m) __attribute__((enable_if(m > 0, ""))) { return T(); }
+  void test5() {
+    int (*p)(int) = templatedBar<int>; // expected-error{{address of overloaded function 'templatedBar' does not match required type 'int (int)'}} expected-note@214{{candidate function made ineligible by enable_if}}
+    int (*p2)(int) = &templatedBar<int>; // expected-error{{address of overloaded function 'templatedBar' does not match required type 'int (int)'}} expected-note@214{{candidate function made ineligible by enable_if}}
+    int (*a)(int);
+    a = templatedBar<int>; // expected-error{{assigning to 'int (*)(int)' from incompatible type '<overloaded function type>'}} expected-note@214{{candidate function made ineligible by enable_if}}
+    a = &templatedBar<int>; // expected-error{{assigning to 'int (*)(int)' from incompatible type '<overloaded function type>'}} expected-note@214{{candidate function made ineligible by enable_if}}
+  }
+
+  template <typename T>
+  T templatedConflict(T m) __attribute__((enable_if(false, ""))) { return T(); }
+  template <typename T>
+  T templatedConflict(T m) __attribute__((enable_if(true, ""))) { return T(); }
+  template <typename T>
+  T templatedConflict(T m) __attribute__((enable_if(1, ""))) { return T(); }
+  void test6() {
+    int (*p)(int) = templatedConflict<int>; // expected-error{{address of overloaded function 'templatedConflict' is ambiguous}} expected-note@224{{candidate function made ineligible by enable_if}} expected-note@226{{candidate function}} expected-note@228{{candidate function}}
+    int (*p0)(int) = &templatedConflict<int>; // expected-error{{address of overloaded function 'templatedConflict' is ambiguous}} expected-note@224{{candidate function made ineligible by enable_if}} expected-note@226{{candidate function}} expected-note@228{{candidate function}}
+    int (*a)(int);
+    a = templatedConflict<int>; // expected-error{{assigning to 'int (*)(int)' from incompatible type '<overloaded function type>'}} expected-note@226{{candidate function}} expected-note@228{{candidate function}}
+    a = &templatedConflict<int>; // expected-error{{assigning to 'int (*)(int)' from incompatible type '<overloaded function type>'}} expected-note@226{{candidate function}} expected-note@228{{candidate function}}
   }
 }

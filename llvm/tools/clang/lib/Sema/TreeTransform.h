@@ -1763,7 +1763,9 @@ public:
       }
     }
 
-    return getSema().BuildCXXForRangeStmt(ForLoc, ColonLoc, Range, BeginEnd,
+    SourceLocation CoawaitLoc; // FIXME
+    return getSema().BuildCXXForRangeStmt(ForLoc, CoawaitLoc, ColonLoc,
+                                          Range, BeginEnd,
                                           Cond, Inc, LoopVar, RParenLoc,
                                           Sema::BFRK_Rebuild);
   }
@@ -1876,12 +1878,11 @@ public:
   /// By default, performs semantic analysis to build the new expression.
   /// Subclasses may override this routine to provide different behavior.
   ExprResult RebuildOffsetOfExpr(SourceLocation OperatorLoc,
-                                       TypeSourceInfo *Type,
-                                       Sema::OffsetOfComponent *Components,
-                                       unsigned NumComponents,
-                                       SourceLocation RParenLoc) {
+                                 TypeSourceInfo *Type,
+                                 ArrayRef<Sema::OffsetOfComponent> Components,
+                                 SourceLocation RParenLoc) {
     return getSema().BuildBuiltinOffsetOf(OperatorLoc, Type, Components,
-                                          NumComponents, RParenLoc);
+                                          RParenLoc);
   }
 
   /// \brief Build a new sizeof, alignof or vec_step expression with a
@@ -7525,7 +7526,7 @@ OMPClause *
 TreeTransform<Derived>::TransformOMPCollapseClause(OMPCollapseClause *C) {
   ExprResult E = getDerived().TransformExpr(C->getNumForLoops());
   if (E.isInvalid())
-    return 0;
+    return nullptr;
   return getDerived().RebuildOMPCollapseClause(
       E.get(), C->getLocStart(), C->getLParenLoc(), C->getLocEnd());
 }
@@ -7620,6 +7621,19 @@ TreeTransform<Derived>::TransformOMPCaptureClause(OMPCaptureClause *C) {
 template <typename Derived>
 OMPClause *
 TreeTransform<Derived>::TransformOMPSeqCstClause(OMPSeqCstClause *C) {
+  // No need to rebuild this clause, no template-dependent parameters.
+  return C;
+}
+
+template <typename Derived>
+OMPClause *
+TreeTransform<Derived>::TransformOMPThreadsClause(OMPThreadsClause *C) {
+  // No need to rebuild this clause, no template-dependent parameters.
+  return C;
+}
+
+template <typename Derived>
+OMPClause *TreeTransform<Derived>::TransformOMPSIMDClause(OMPSIMDClause *C) {
   // No need to rebuild this clause, no template-dependent parameters.
   return C;
 }
@@ -8062,8 +8076,7 @@ TreeTransform<Derived>::TransformOffsetOfExpr(OffsetOfExpr *E) {
 
   // Build a new offsetof expression.
   return getDerived().RebuildOffsetOfExpr(E->getOperatorLoc(), Type,
-                                          Components.data(), Components.size(),
-                                          E->getRParenLoc());
+                                          Components, E->getRParenLoc());
 }
 
 template<typename Derived>
@@ -9373,9 +9386,20 @@ TreeTransform<Derived>::TransformUnresolvedLookupExpr(
   SourceLocation TemplateKWLoc = Old->getTemplateKeywordLoc();
 
   // If we have neither explicit template arguments, nor the template keyword,
-  // it's a normal declaration name.
-  if (!Old->hasExplicitTemplateArgs() && !TemplateKWLoc.isValid())
+  // it's a normal declaration name or member reference.
+  if (!Old->hasExplicitTemplateArgs() && !TemplateKWLoc.isValid()) {
+    NamedDecl *D = R.getAsSingle<NamedDecl>();
+    // In a C++11 unevaluated context, an UnresolvedLookupExpr might refer to an
+    // instance member. In other contexts, BuildPossibleImplicitMemberExpr will
+    // give a good diagnostic.
+    if (D && D->isCXXInstanceMember()) {
+      return SemaRef.BuildPossibleImplicitMemberExpr(SS, TemplateKWLoc, R,
+                                                     /*TemplateArgs=*/nullptr,
+                                                     /*Scope=*/nullptr);
+    }
+
     return getDerived().RebuildDeclarationNameExpr(SS, R, Old->requiresADL());
+  }
 
   // If we have template arguments, rebuild them, then rebuild the
   // templateid expression.
@@ -11565,4 +11589,4 @@ TreeTransform<Derived>::TransformCapturedStmt(CapturedStmt *S) {
 
 } // end namespace clang
 
-#endif
+#endif // LLVM_CLANG_LIB_SEMA_TREETRANSFORM_H

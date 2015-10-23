@@ -211,7 +211,7 @@ namespace clang {
       auto &&PartialSpecializations = getPartialSpecializations(Common);
       ArrayRef<DeclID> LazySpecializations;
       if (auto *LS = Common->LazySpecializations)
-        LazySpecializations = ArrayRef<DeclID>(LS + 1, LS + 1 + LS[0]);
+        LazySpecializations = llvm::makeArrayRef(LS + 1, LS[0]);
 
       // Add a slot to the record for the number of specializations.
       unsigned I = Record.size();
@@ -263,7 +263,7 @@ void ASTDeclWriter::Visit(Decl *D) {
   // Source locations require array (variable-length) abbreviations.  The
   // abbreviation infrastructure requires that arrays are encoded last, so
   // we handle it here in the case of those classes derived from DeclaratorDecl
-  if (DeclaratorDecl *DD = dyn_cast<DeclaratorDecl>(D)){
+  if (DeclaratorDecl *DD = dyn_cast<DeclaratorDecl>(D)) {
     Writer.AddTypeSourceInfo(DD->getTypeSourceInfo(), Record);
   }
 
@@ -2181,8 +2181,8 @@ void ASTWriter::WriteDecl(ASTContext &Context, Decl *D) {
     serialization::DeclID &IDR = DeclIDs[D];
     if (IDR == 0)
       IDR = NextDeclID++;
-
-    ID= IDR;
+    
+    ID = IDR;
   }
   bool isReplacingADecl = ID < FirstDeclID;
 
