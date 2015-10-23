@@ -37,16 +37,24 @@ namespace Realm {
 	   Processor::TaskFuncID _func_id,
 	   const void *_args, size_t _arglen,
            const ProfilingRequestSet &reqs,
+	   Event _before_event,
 	   Event _finish_event, int _priority);
 
       virtual ~Task(void);
+
+      virtual void mark_ready(void);
+      virtual void mark_started(void);
 
       void execute_on_processor(Processor p);
 
       Processor proc;
       Processor::TaskFuncID func_id;
       ByteArray args;
+      Event before_event;
       int priority;
+
+    protected:
+      virtual void mark_completed(void);
     };
 
     // a task scheduler in which one or more worker threads execute tasks from one
@@ -107,14 +115,37 @@ namespace Realm {
       //  that monotonically increments whenever any kind of new work is available and a 
       //  "suspended on" value that indicates if any threads are suspended on a particular
       //  count and need to be signalled
-      // this model allows the provided of new work to update the counter in a lock-free way
+      // this model allows the provider of new work to update the counter in a lock-free way
       //  and only do the condition variable broadcast if somebody is probably sleeping
-      //
-      // 64-bit counters are used to avoid dealing with wrap-around cases
-      volatile long long work_counter, work_counter_wait_value;
-      GASNetCondVar work_counter_condvar;
 
-      void increment_work_counter(void);
+      class WorkCounter {
+      public:
+	WorkCounter(void);
+	~WorkCounter(void);
+
+	// called whenever new work is available
+	void increment_counter(void);
+
+	long long read_counter(void) const;
+
+	// returns true if there is new work since the old_counter value was read
+	// this is non-blocking, and may be called while holding another lock
+	bool check_for_work(long long old_counter);
+
+	// waits until new work arrives - this will possibly take the counter lock and 
+	// sleep, so should not be called while holding another lock
+	void wait_for_work(long long old_counter);
+
+      protected:
+	// 64-bit counters are used to avoid dealing with wrap-around cases
+	volatile long long counter;
+	volatile long long wait_value;
+	GASNetHSL mutex;
+	GASNetCondVar condvar;
+      };
+	
+      WorkCounter work_counter;
+
       virtual void wait_for_work(long long old_work_counter);
 
       // most of our work counter updates are going to come from priority queues, so a little
@@ -125,7 +156,7 @@ namespace Realm {
         WorkCounterUpdater(ThreadedTaskScheduler *_sched) : sched(_sched) {}
 	virtual bool item_available(typename PQ::ITEMTYPE, typename PQ::priority_t) 
 	{ 
-	  sched->increment_work_counter();
+	  sched->work_counter.increment_counter();
 	  return false;  // never consumes the work
 	}
       protected:
@@ -175,6 +206,7 @@ namespace Realm {
 
       std::set<Thread *> all_workers;
       std::set<Thread *> active_workers;
+      std::set<Thread *> terminating_workers;
       std::map<Thread *, GASNetCondVar *> sleeping_threads;
       GASNetCondVar shutdown_condvar;
     };
