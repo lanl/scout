@@ -60,17 +60,12 @@ project(sc_include)
 
   add_subdirectory(scout/Config)
   
-  #copy lsci header
-  configure_file("../legion/liblsci/lib/lsci.h" 
-	"${SCOUT_BUILD_DIR}/include/legion/lsci.h"
-	COPYONLY)
-
   #copy legion headers
-  configure_file("../legion/runtime/legion_c.h" 
+  configure_file("../legion/runtime/legion/legion_c.h" 
         "${SCOUT_BUILD_DIR}/include/legion/legion_c.h"
         COPYONLY)
 
-  configure_file("../legion/runtime/legion_config.h" 
+  configure_file("../legion/runtime/legion/legion_config.h" 
         "${SCOUT_BUILD_DIR}/include/legion/legion_config.h"
         COPYONLY)
 

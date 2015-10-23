@@ -65,28 +65,31 @@ include_directories(${SCOUT_SRC_DIR}/lib/Runtime/mesh)
 list(APPEND low_level_src 
   ${LG_RT_DIR}/shared_lowlevel.cc
   ${LG_RT_DIR}/realm/logging.cc 
+  ${LG_RT_DIR}/realm/cmdline.cc 
   ${LG_RT_DIR}/realm/profiling.cc 
-  ${LG_RT_DIR}/realm/operation.cc
   ${LG_RT_DIR}/realm/timers.cc
 )
 
 list(APPEND mapper_src 
-  ${LG_RT_DIR}/default_mapper.cc 
-  ${LG_RT_DIR}/shim_mapper.cc 
-  ${LG_RT_DIR}/mapping_utilities.cc
+  ${LG_RT_DIR}/mappers/default_mapper.cc 
+  ${LG_RT_DIR}/mappers/shim_mapper.cc 
+  ${LG_RT_DIR}/mappers/mapping_utilities.cc
 )
 
 list(APPEND high_level_src 
-  ${LG_RT_DIR}/legion.cc 
-  ${LG_RT_DIR}/legion_c.cc 
-  ${LG_RT_DIR}/legion_ops.cc 
-  ${LG_RT_DIR}/legion_tasks.cc 
-  ${LG_RT_DIR}/legion_trace.cc 
-  ${LG_RT_DIR}/legion_spy.cc 
-  ${LG_RT_DIR}/legion_profiling.cc 
-  ${LG_RT_DIR}/region_tree.cc 
-  ${LG_RT_DIR}/runtime.cc
-  ${LG_RT_DIR}/garbage_collection.cc
+  ${LG_RT_DIR}/legion/legion.cc 
+  ${LG_RT_DIR}/legion/legion_c.cc 
+  ${LG_RT_DIR}/legion/legion_ops.cc 
+  ${LG_RT_DIR}/legion/legion_tasks.cc 
+  ${LG_RT_DIR}/legion/legion_trace.cc 
+  ${LG_RT_DIR}/legion/legion_spy.cc 
+  ${LG_RT_DIR}/legion/legion_profiling.cc 
+  ${LG_RT_DIR}/legion/legion_instances.cc 
+  ${LG_RT_DIR}/legion/legion_views.cc 
+  ${LG_RT_DIR}/legion/legion_analysis.cc 
+  ${LG_RT_DIR}/legion/region_tree.cc 
+  ${LG_RT_DIR}/legion/runtime.cc
+  ${LG_RT_DIR}/legion/garbage_collection.cc
 )
 
 list(APPEND sclegion_src ${SCOUT_SRC_DIR}/legion/sclegion/sclegion.cc)
@@ -94,6 +97,9 @@ list(APPEND sclegion_src ${SCOUT_SRC_DIR}/legion/sclegion/sclegion.cc)
 include_directories(
   sclegion
   runtime
+  runtime/legion
+  runtime/mappers
+  runtime/realm
 )
 
 add_library(sclegion STATIC ${low_level_src} ${mapper_src} ${high_level_src} ${sclegion_src})
