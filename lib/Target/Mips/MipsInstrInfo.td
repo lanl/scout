@@ -178,6 +178,8 @@ def IsGP32bit    :    Predicate<"!Subtarget->isGP64bit()">,
                       AssemblerPredicate<"!FeatureGP64Bit">;
 def HasMips64    :    Predicate<"Subtarget->hasMips64()">,
                       AssemblerPredicate<"FeatureMips64">;
+def NotMips64    :    Predicate<"!Subtarget->hasMips64()">,
+                      AssemblerPredicate<"!FeatureMips64">;
 def HasMips64r2  :    Predicate<"Subtarget->hasMips64r2()">,
                       AssemblerPredicate<"FeatureMips64r2">;
 def HasMips64r6  :    Predicate<"Subtarget->hasMips64r6()">,
@@ -267,6 +269,9 @@ class ISA_MICROMIPS32R6 {
 class ISA_MICROMIPS64R6 {
   list<Predicate> InsnPredicates = [HasMicroMips64r6];
 }
+class ISA_MICROMIPS32_NOT_MIPS32R6 {
+  list<Predicate> InsnPredicates = [InMicroMips, NotMips32r6];
+}
 
 class INSN_EVA { list<Predicate> InsnPredicates = [HasEVA]; }
 class INSN_EVA_NOT_32R6_64R6 {
@@ -305,6 +310,10 @@ class INSN_MIPS5_32R2_NOT_32R6_64R6 {
 
 class ASE_MSA {
   list<Predicate> InsnPredicates = [HasMSA];
+}
+
+class ASE_MSA_NOT_MSA64 {
+  list<Predicate> InsnPredicates = [HasMSA, NotMips64];
 }
 
 class ASE_MSA64 {
@@ -1509,9 +1518,11 @@ def CLZ : MMRel, CountLeading0<"clz", GPR32Opnd>, CLO_FM<0x20>,
 def CLO : MMRel, CountLeading1<"clo", GPR32Opnd>, CLO_FM<0x21>,
           ISA_MIPS32_NOT_32R6_64R6;
 
-/// Word Swap Bytes Within Halfwords
-def WSBH : MMRel, SubwordSwap<"wsbh", GPR32Opnd, II_WSBH>, SEB_FM<2, 0x20>,
-           ISA_MIPS32R2;
+let AdditionalPredicates = [NotInMicroMips] in {
+  /// Word Swap Bytes Within Halfwords
+  def WSBH : MMRel, SubwordSwap<"wsbh", GPR32Opnd, II_WSBH>, SEB_FM<2, 0x20>,
+             ISA_MIPS32R2;
+}
 
 /// No operation.
 def NOP : PseudoSE<(outs), (ins), []>, PseudoInstExpansion<(SLL ZERO, ZERO, 0)>;
@@ -1770,6 +1781,9 @@ def JalTwoReg : MipsAsmPseudoInst<(outs GPR32Opnd:$rd), (ins GPR32Opnd:$rs),
 def JalOneReg : MipsAsmPseudoInst<(outs), (ins GPR32Opnd:$rs),
                       "jal\t$rs"> ;
 
+def NORImm : MipsAsmPseudoInst<(outs), (ins GPR32Opnd:$rs, GPR32Opnd:$rt, simm16:$imm),
+                               "nor\t$rs, $rt, $imm"> ;
+
 let hasDelaySlot = 1 in {
 def BneImm : MipsAsmPseudoInst<(outs GPR32Opnd:$rt),
                                (ins imm64:$imm64, brtarget:$offset),
@@ -1801,6 +1815,27 @@ def BLEUL: CondBranchPseudo<"bleul">, ISA_MIPS2_NOT_32R6_64R6;
 def BGEUL: CondBranchPseudo<"bgeul">, ISA_MIPS2_NOT_32R6_64R6;
 def BGTUL: CondBranchPseudo<"bgtul">, ISA_MIPS2_NOT_32R6_64R6;
 
+class CondBranchImmPseudo<string instr_asm> :
+  MipsAsmPseudoInst<(outs), (ins GPR32Opnd:$rs, imm64:$imm, brtarget:$offset),
+                    !strconcat(instr_asm, "\t$rs, $imm, $offset")>;
+
+def BLTImmMacro  : CondBranchImmPseudo<"blt">;
+def BLEImmMacro  : CondBranchImmPseudo<"ble">;
+def BGEImmMacro  : CondBranchImmPseudo<"bge">;
+def BGTImmMacro  : CondBranchImmPseudo<"bgt">;
+def BLTUImmMacro : CondBranchImmPseudo<"bltu">;
+def BLEUImmMacro : CondBranchImmPseudo<"bleu">;
+def BGEUImmMacro : CondBranchImmPseudo<"bgeu">;
+def BGTUImmMacro : CondBranchImmPseudo<"bgtu">;
+def BLTLImmMacro : CondBranchImmPseudo<"bltl">, ISA_MIPS2_NOT_32R6_64R6;
+def BLELImmMacro : CondBranchImmPseudo<"blel">, ISA_MIPS2_NOT_32R6_64R6;
+def BGELImmMacro : CondBranchImmPseudo<"bgel">, ISA_MIPS2_NOT_32R6_64R6;
+def BGTLImmMacro : CondBranchImmPseudo<"bgtl">, ISA_MIPS2_NOT_32R6_64R6;
+def BLTULImmMacro : CondBranchImmPseudo<"bltul">, ISA_MIPS2_NOT_32R6_64R6;
+def BLEULImmMacro : CondBranchImmPseudo<"bleul">, ISA_MIPS2_NOT_32R6_64R6;
+def BGEULImmMacro : CondBranchImmPseudo<"bgeul">, ISA_MIPS2_NOT_32R6_64R6;
+def BGTULImmMacro : CondBranchImmPseudo<"bgtul">, ISA_MIPS2_NOT_32R6_64R6;
+
 // FIXME: Predicates are removed because instructions are matched regardless of
 // predicates, because PredicateControl was not in the hierarchy. This was
 // done to emit more precise error message from expansion function.
@@ -1818,6 +1853,9 @@ def DSDivMacro : MipsAsmPseudoInst<(outs), (ins GPR32Opnd:$rs, GPR32Opnd:$rt),
 
 def DUDivMacro : MipsAsmPseudoInst<(outs), (ins GPR32Opnd:$rs, GPR32Opnd:$rt),
                                    "ddivu\t$rs, $rt">; //, ISA_MIPS64_NOT_64R6;
+
+def Ulh : MipsAsmPseudoInst<(outs GPR32Opnd:$rt), (ins mem:$addr),
+                            "ulh\t$rt, $addr">; //, ISA_MIPS1_NOT_32R6_64R6;
 
 def Ulhu : MipsAsmPseudoInst<(outs GPR32Opnd:$rt), (ins mem:$addr),
                              "ulhu\t$rt, $addr">; //, ISA_MIPS1_NOT_32R6_64R6;
@@ -2080,3 +2118,7 @@ include "MicroMips32r6InstrInfo.td"
 // Micromips64 r6
 include "MicroMips64r6InstrFormats.td"
 include "MicroMips64r6InstrInfo.td"
+
+// Micromips DSP
+include "MicroMipsDSPInstrFormats.td"
+include "MicroMipsDSPInstrInfo.td"

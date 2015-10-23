@@ -42,7 +42,7 @@ struct {
 #undef FUZZER_FLAG_STRING
 } Flags;
 
-static FlagDescription FlagDescriptions [] {
+static const FlagDescription FlagDescriptions [] {
 #define FUZZER_FLAG_INT(Name, Default, Description)                            \
   { #Name, Description, Default, &Flags.Name, nullptr},
 #define FUZZER_FLAG_STRING(Name, Description)                                  \
@@ -182,23 +182,9 @@ static int RunInMultipleProcesses(const std::vector<std::string> &Args,
   return HasErrors ? 1 : 0;
 }
 
-std::vector<std::string> ReadTokensFile(const char *TokensFilePath) {
-  if (!TokensFilePath) return {};
-  std::string TokensFileContents = FileToString(TokensFilePath);
-  std::istringstream ISS(TokensFileContents);
-  std::vector<std::string> Res = {std::istream_iterator<std::string>{ISS},
-                                  std::istream_iterator<std::string>{}};
-  Res.push_back(" ");
-  Res.push_back("\t");
-  Res.push_back("\n");
-  return Res;
-}
-
-int ApplyTokens(const Fuzzer &F, const char *InputFilePath) {
+int RunOneTest(Fuzzer *F, const char *InputFilePath) {
   Unit U = FileToVector(InputFilePath);
-  auto T = F.SubstituteTokens(U);
-  T.push_back(0);
-  Printf("%s", T.data());
+  F->ExecuteCallback(U);
   return 0;
 }
 
@@ -243,15 +229,16 @@ int FuzzerDriver(const std::vector<std::string> &Args,
   Options.Verbosity = Flags.verbosity;
   Options.MaxLen = Flags.max_len;
   Options.UnitTimeoutSec = Flags.timeout;
+  Options.MaxTotalTimeSec = Flags.max_total_time;
   Options.DoCrossOver = Flags.cross_over;
   Options.MutateDepth = Flags.mutate_depth;
   Options.ExitOnFirst = Flags.exit_on_first;
   Options.UseCounters = Flags.use_counters;
+  Options.UseIndirCalls = Flags.use_indir_calls;
   Options.UseTraces = Flags.use_traces;
-  Options.UseFullCoverageSet = Flags.use_full_coverage_set;
+  Options.ShuffleAtStartUp = Flags.shuffle;
   Options.PreferSmallDuringInitialShuffle =
       Flags.prefer_small_during_initial_shuffle;
-  Options.Tokens = ReadTokensFile(Flags.deprecated_tokens);
   Options.Reload = Flags.reload;
   Options.OnlyASCII = Flags.only_ascii;
   Options.TBMDepth = Flags.tbm_depth;
@@ -264,16 +251,23 @@ int FuzzerDriver(const std::vector<std::string> &Args,
     Options.SyncCommand = Flags.sync_command;
   Options.SyncTimeout = Flags.sync_timeout;
   Options.ReportSlowUnits = Flags.report_slow_units;
+  if (Flags.artifact_prefix)
+    Options.ArtifactPrefix = Flags.artifact_prefix;
   if (Flags.dict)
     if (!ParseDictionaryFile(FileToString(Flags.dict), &Options.Dictionary))
       return 1;
   if (Flags.verbosity > 0 && !Options.Dictionary.empty())
     Printf("Dictionary: %zd entries\n", Options.Dictionary.size());
+  Options.SaveArtifacts = !Flags.test_single_input;
 
   Fuzzer F(USF, Options);
 
-  if (Flags.apply_tokens)
-    return ApplyTokens(F, Flags.apply_tokens);
+  // Timer
+  if (Flags.timeout > 0)
+    SetTimer(Flags.timeout / 2 + 1);
+
+  if (Flags.test_single_input)
+    return RunOneTest(&F, Flags.test_single_input);
 
   unsigned Seed = Flags.seed;
   // Initialize Seed.
@@ -282,17 +276,6 @@ int FuzzerDriver(const std::vector<std::string> &Args,
   if (Flags.verbosity)
     Printf("Seed: %u\n", Seed);
   USF.GetRand().ResetSeed(Seed);
-
-  // Timer
-  if (Flags.timeout > 0)
-    SetTimer(Flags.timeout / 2 + 1);
-
-  if (Flags.verbosity >= 2) {
-    Printf("Tokens: {");
-    for (auto &T : Options.Tokens)
-      Printf("%s,", T.c_str());
-    Printf("}\n");
-  }
 
   F.RereadOutputCorpus();
   for (auto &inp : *Inputs)
@@ -309,7 +292,7 @@ int FuzzerDriver(const std::vector<std::string> &Args,
     Printf("Done %d runs in %zd second(s)\n", F.getTotalNumberOfRuns(),
            F.secondsSinceProcessStartUp());
 
-  return 0;
+  exit(0);  // Don't let F destroy itself.
 }
 
 }  // namespace fuzzer

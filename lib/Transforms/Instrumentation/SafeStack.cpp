@@ -254,7 +254,7 @@ Value *SafeStack::getOrCreateUnsafeStackPtr(IRBuilder<> &IRB, Function &F) {
   unsigned Offset;
   unsigned AddressSpace;
   // Check if the target keeps the unsafe stack pointer at a fixed offset.
-  if (TLI && TLI->getSafeStackPointerLocation(Offset, AddressSpace)) {
+  if (TLI && TLI->getSafeStackPointerLocation(AddressSpace, Offset)) {
     Constant *OffsetVal =
         ConstantInt::get(Type::getInt32Ty(F.getContext()), Offset);
     return ConstantExpr::getIntToPtr(OffsetVal,
@@ -262,7 +262,7 @@ Value *SafeStack::getOrCreateUnsafeStackPtr(IRBuilder<> &IRB, Function &F) {
   }
 
   // Android provides a libc function that returns the stack pointer address.
-  if (TargetTriple.getEnvironment() == llvm::Triple::Android) {
+  if (TargetTriple.isAndroid()) {
     Value *Fn = M.getOrInsertFunction(kUnsafeStackPtrAddrFn,
                                       StackPtrTy->getPointerTo(0), nullptr);
     return IRB.CreateCall(Fn);
@@ -278,7 +278,7 @@ Value *SafeStack::getOrCreateUnsafeStackPtr(IRBuilder<> &IRB, Function &F) {
       UnsafeStackPtr = new GlobalVariable(
           /*Module=*/M, /*Type=*/StackPtrTy,
           /*isConstant=*/false, /*Linkage=*/GlobalValue::ExternalLinkage,
-          /*Initializer=*/0, /*Name=*/kUnsafeStackPtrVar,
+          /*Initializer=*/nullptr, /*Name=*/kUnsafeStackPtrVar,
           /*InsertBefore=*/nullptr,
           /*ThreadLocalMode=*/GlobalValue::InitialExecTLSModel);
     } else {
@@ -443,7 +443,7 @@ SafeStack::moveStaticAllocasToUnsafeStack(IRBuilder<> &IRB, Function &F,
       cast<Instruction>(NewAI)->takeName(AI);
 
     // Replace alloc with the new location.
-    replaceDbgDeclareForAlloca(AI, NewAI, DIB, /*Deref=*/true);
+    replaceDbgDeclareForAlloca(AI, BasePointer, DIB, /*Deref=*/true, -StaticOffset);
     AI->replaceAllUsesWith(NewAI);
     AI->eraseFromParent();
   }
@@ -596,7 +596,7 @@ bool SafeStack::runOnFunction(Function &F) {
   if (!StackRestorePoints.empty())
     ++NumUnsafeStackRestorePointsFunctions;
 
-  IRBuilder<> IRB(F.begin()->getFirstInsertionPt());
+  IRBuilder<> IRB(&F.front(), F.begin()->getFirstInsertionPt());
   UnsafeStackPtr = getOrCreateUnsafeStackPtr(IRB, F);
 
   // The top of the unsafe stack after all unsafe static allocas are allocated.
@@ -619,7 +619,7 @@ bool SafeStack::runOnFunction(Function &F) {
   return true;
 }
 
-} // end anonymous namespace
+} // anonymous namespace
 
 char SafeStack::ID = 0;
 INITIALIZE_TM_PASS_BEGIN(SafeStack, "safe-stack",

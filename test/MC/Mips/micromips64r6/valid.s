@@ -109,5 +109,17 @@ a:
         tltu $16, $sp, 15        # CHECK: tltu $16, $sp, 15   # encoding: [0x03,0xb0,0xfa,0x3c]
         tne $6, $17              # CHECK: tne $6, $17         # encoding: [0x02,0x26,0x0c,0x3c]
         tne $7, $8, 15           # CHECK: tne $7, $8, 15      # encoding: [0x01,0x07,0xfc,0x3c]
+        cachee 1, 8($5)          # CHECK: cachee 1, 8($5)     # encoding: [0x60,0x25,0xa6,0x08]
+        wrpgpr $3, $4            # CHECK: wrpgpr $3, $4       # encoding: [0x00,0x64,0xf1,0x7c]
+        wsbh $3, $4              # CHECK: wsbh $3, $4         # encoding: [0x00,0x64,0x7b,0x3c]
+        jalr $9                  # CHECK: jalr $9             # encoding: [0x45,0x2b]
+        jrc16 $9                 # CHECK: jrc16 $9            # encoding: [0x45,0x23]
+        jrcaddiusp 20            # CHECK: jrcaddiusp 20       # encoding: [0x44,0xb3]
+        break16 8                # CHECK: break16 8                # encoding: [0x46,0x1b]
+        li16 $3, -1              # CHECK: li16 $3, -1              # encoding: [0xed,0xff]
+        move16 $3, $5            # CHECK: move16 $3, $5            # encoding: [0x0c,0x65]
+        sdbbp16 8                # CHECK: sdbbp16 8                # encoding: [0x46,0x3b]
+        subu16 $5, $16, $3       # CHECK: subu16 $5, $16, $3       # encoding: [0x04,0x3b]
+        xor16 $17, $5            # CHECK: xor16 $17, $5            # encoding: [0x44,0xd8]
 
 1:

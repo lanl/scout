@@ -62,3 +62,16 @@
   tlt $8, $9, $2           # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
   tltu $8, $9, $2          # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
   tne $8, $9, $2           # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
+  wrpgpr $34, $4           # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
+  wrpgpr $3, $33           # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
+  wsbh $34, $4             # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
+  wsbh $3, $33             # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
+  jrcaddiusp 1             # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
+  jrcaddiusp 2             # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
+  jrcaddiusp 3             # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
+  jrcaddiusp 10            # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
+  jrcaddiusp 18            # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
+  jrcaddiusp 31            # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
+  jrcaddiusp 33            # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
+  jrcaddiusp 125           # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction
+  jrcaddiusp 132           # CHECK: :[[@LINE]]:{{[0-9]+}}: error: invalid operand for instruction

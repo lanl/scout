@@ -96,6 +96,11 @@ public:
     return StackRealignable;
   }
 
+  /// Return the skew that has to be applied to stack alignment under
+  /// certain conditions (e.g. stack was adjusted before function \p MF
+  /// was called).
+  virtual unsigned getStackAlignmentSkew(const MachineFunction &MF) const;
+
   /// getOffsetOfLocalArea - This method returns the offset of the local area
   /// from the stack pointer on entrance to a function.
   ///
@@ -145,7 +150,7 @@ public:
   virtual bool enableShrinkWrapping(const MachineFunction &MF) const {
     return false;
   }
-  
+
   /// emitProlog/emitEpilog - These methods insert prolog and epilog code into
   /// the function.
   virtual void emitPrologue(MachineFunction &MF,
@@ -231,10 +236,11 @@ public:
                                      unsigned &FrameReg) const;
 
   /// Same as above, except that the 'base register' will always be RSP, not
-  /// RBP on x86.  This is used exclusively for lowering STATEPOINT nodes.
+  /// RBP on x86. This is generally used for emitting statepoint or EH tables
+  /// that use offsets from RSP.
   /// TODO: This should really be a parameterizable choice.
   virtual int getFrameIndexReferenceFromSP(const MachineFunction &MF, int FI,
-                                          unsigned &FrameReg) const {
+                                           unsigned &FrameReg) const {
     // default to calling normal version, we override this on x86 only
     llvm_unreachable("unimplemented for non-x86");
     return 0;
@@ -257,6 +263,10 @@ public:
   ///
   virtual void processFunctionBeforeFrameFinalized(MachineFunction &MF,
                                              RegScavenger *RS = nullptr) const {
+  }
+
+  virtual unsigned getWinEHParentFrameOffset(const MachineFunction &MF) const {
+    report_fatal_error("WinEH not implemented for this target");
   }
 
   /// eliminateCallFramePseudoInstr - This method is called during prolog/epilog

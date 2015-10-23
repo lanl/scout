@@ -41,6 +41,10 @@ class InstSI <dag outs, dag ins, string asm, list<dag> pattern> :
   field bits<1> WQM = 0;
   field bits<1> VGPRSpill = 0;
 
+  // This bit tells the assembler to use the 32-bit encoding in case it
+  // is unable to infer the encoding from the operands.
+  field bits<1> VOPAsmPrefer32Bit = 0;
+
   // These need to be kept in sync with the enum in SIInstrFlags.
   let TSFlags{0} = VM_CNT;
   let TSFlags{1} = EXP_CNT;
@@ -68,10 +72,8 @@ class InstSI <dag outs, dag ins, string asm, list<dag> pattern> :
   let TSFlags{19} = FLAT;
   let TSFlags{20} = WQM;
   let TSFlags{21} = VGPRSpill;
+  let TSFlags{22} = VOPAsmPrefer32Bit;
 
-  // Most instructions require adjustments after selection to satisfy
-  // operand requirements.
-  let hasPostISelHook = 1;
   let SchedRW = [Write32Bit];
 }
 
@@ -137,6 +139,11 @@ class VOP3Common <dag outs, dag ins, string asm, list<dag> pattern> :
   let isCodeGenOnly = 0;
 
   int Size = 8;
+
+  // Because SGPRs may be allowed if there are multiple operands, we
+  // need a post-isel hook to insert copies in order to avoid
+  // violating constant bus requirements.
+  let hasPostISelHook = 1;
 }
 
 } // End Uses = [EXEC]

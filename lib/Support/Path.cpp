@@ -455,17 +455,15 @@ void append(SmallVectorImpl<char> &path, const Twine &a,
   if (!c.isTriviallyEmpty()) components.push_back(c.toStringRef(c_storage));
   if (!d.isTriviallyEmpty()) components.push_back(d.toStringRef(d_storage));
 
-  for (SmallVectorImpl<StringRef>::const_iterator i = components.begin(),
-                                                  e = components.end();
-                                                  i != e; ++i) {
+  for (auto &component : components) {
     bool path_has_sep = !path.empty() && is_separator(path[path.size() - 1]);
-    bool component_has_sep = !i->empty() && is_separator((*i)[0]);
-    bool is_root_name = has_root_name(*i);
+    bool component_has_sep = !component.empty() && is_separator(component[0]);
+    bool is_root_name = has_root_name(component);
 
     if (path_has_sep) {
       // Strip separators from beginning of component.
-      size_t loc = i->find_first_not_of(separators);
-      StringRef c = i->substr(loc);
+      size_t loc = component.find_first_not_of(separators);
+      StringRef c = component.substr(loc);
 
       // Append it.
       path.append(c.begin(), c.end());
@@ -477,7 +475,7 @@ void append(SmallVectorImpl<char> &path, const Twine &a,
       path.push_back(preferred_separator);
     }
 
-    path.append(i->begin(), i->end());
+    path.append(component.begin(), component.end());
   }
 }
 
@@ -740,7 +738,9 @@ std::error_code createUniqueDirectory(const Twine &Prefix,
                             true, 0, FS_Dir);
 }
 
-std::error_code make_absolute(SmallVectorImpl<char> &path) {
+static std::error_code make_absolute(const Twine &current_directory,
+                                     SmallVectorImpl<char> &path,
+                                     bool use_current_directory) {
   StringRef p(path.data(), path.size());
 
   bool rootDirectory = path::has_root_directory(p),
@@ -756,7 +756,9 @@ std::error_code make_absolute(SmallVectorImpl<char> &path) {
 
   // All of the following conditions will need the current directory.
   SmallString<128> current_dir;
-  if (std::error_code ec = current_path(current_dir))
+  if (use_current_directory)
+    current_directory.toVector(current_dir);
+  else if (std::error_code ec = current_path(current_dir))
     return ec;
 
   // Relative path. Prepend the current directory.
@@ -791,6 +793,15 @@ std::error_code make_absolute(SmallVectorImpl<char> &path) {
 
   llvm_unreachable("All rootName and rootDirectory combinations should have "
                    "occurred above!");
+}
+
+std::error_code make_absolute(const Twine &current_directory,
+                              SmallVectorImpl<char> &path) {
+  return make_absolute(current_directory, path, true);
+}
+
+std::error_code make_absolute(SmallVectorImpl<char> &path) {
+  return make_absolute(Twine(), path, false);
 }
 
 std::error_code create_directories(const Twine &Path, bool IgnoreExisting,

@@ -83,6 +83,53 @@ ModuleInfo::ModuleInfo(ObjectFile *Obj, DIContext *DICtx)
       computeSymbolSizes(*Module);
   for (auto &P : Symbols)
     addSymbol(P.first, P.second, OpdExtractor.get(), OpdAddress);
+
+  // If this is a COFF object and we didn't find any symbols, try the export
+  // table.
+  if (Symbols.empty()) {
+    if (auto *CoffObj = dyn_cast<COFFObjectFile>(Obj))
+      addCoffExportSymbols(CoffObj);
+  }
+}
+
+namespace {
+struct OffsetNamePair {
+  uint32_t Offset;
+  StringRef Name;
+  bool operator<(const OffsetNamePair &R) const {
+    return Offset < R.Offset;
+  }
+};
+}
+
+void ModuleInfo::addCoffExportSymbols(const COFFObjectFile *CoffObj) {
+  // Get all export names and offsets.
+  std::vector<OffsetNamePair> ExportSyms;
+  for (const ExportDirectoryEntryRef &Ref : CoffObj->export_directories()) {
+    StringRef Name;
+    uint32_t Offset;
+    if (error(Ref.getSymbolName(Name)) || error(Ref.getExportRVA(Offset)))
+      return;
+    ExportSyms.push_back(OffsetNamePair{Offset, Name});
+  }
+  if (ExportSyms.empty())
+    return;
+
+  // Sort by ascending offset.
+  array_pod_sort(ExportSyms.begin(), ExportSyms.end());
+
+  // Approximate the symbol sizes by assuming they run to the next symbol.
+  // FIXME: This assumes all exports are functions.
+  uint64_t ImageBase = CoffObj->getImageBase();
+  for (auto I = ExportSyms.begin(), E = ExportSyms.end(); I != E; ++I) {
+    OffsetNamePair &Export = *I;
+    // FIXME: The last export has a one byte size now.
+    uint32_t NextOffset = I != E ? I->Offset : Export.Offset + 1;
+    uint64_t SymbolStart = ImageBase + Export.Offset;
+    uint64_t SymbolSize = NextOffset - Export.Offset;
+    SymbolDesc SD = {SymbolStart, SymbolSize};
+    Functions.insert(std::make_pair(SD, Export.Name));
+  }
 }
 
 void ModuleInfo::addSymbol(const SymbolRef &Symbol, uint64_t SymbolSize,
@@ -124,6 +171,12 @@ void ModuleInfo::addSymbol(const SymbolRef &Symbol, uint64_t SymbolSize,
 bool ModuleInfo::isWin32Module() const {
   auto *CoffObject = dyn_cast<COFFObjectFile>(Module);
   return CoffObject && CoffObject->getMachine() == COFF::IMAGE_FILE_MACHINE_I386;
+}
+
+uint64_t ModuleInfo::getModulePreferredBase() const {
+  if (auto *CoffObject = dyn_cast<COFFObjectFile>(Module))
+    return CoffObject->getImageBase();
+  return 0;
 }
 
 bool ModuleInfo::getNameFromSymbolTable(SymbolRef::Type Type, uint64_t Address,
@@ -210,6 +263,12 @@ std::string LLVMSymbolizer::symbolizeCode(const std::string &ModuleName,
   ModuleInfo *Info = getOrCreateModuleInfo(ModuleName);
   if (!Info)
     return printDILineInfo(DILineInfo(), Info);
+
+  // If the user is giving us relative addresses, add the preferred base of the
+  // object to the offset before we do the query. It's what DIContext expects.
+  if (Opts.RelativeAddresses)
+    ModuleOffset += Info->getModulePreferredBase();
+
   if (Opts.PrintInlining) {
     DIInliningInfo InlinedContext =
         Info->symbolizeInlinedCode(ModuleOffset, Opts);
@@ -233,6 +292,10 @@ std::string LLVMSymbolizer::symbolizeData(const std::string &ModuleName,
   uint64_t Size = 0;
   if (Opts.UseSymbolTable) {
     if (ModuleInfo *Info = getOrCreateModuleInfo(ModuleName)) {
+      // If the user is giving us relative addresses, add the preferred base of the
+      // object to the offset before we do the query. It's what DIContext expects.
+      if (Opts.RelativeAddresses)
+        ModuleOffset += Info->getModulePreferredBase();
       if (Info->symbolizeData(ModuleOffset, Name, Start, Size) && Opts.Demangle)
         Name = DemangleName(Name, Info);
     }
@@ -474,8 +537,7 @@ LLVMSymbolizer::getOrCreateModuleInfo(const std::string &ModuleName) {
     PDB_ErrorCode Error = loadDataForEXE(PDB_ReaderType::DIA,
                                          Objects.first->getFileName(), Session);
     if (Error == PDB_ErrorCode::Success) {
-      Context = new PDBContext(*CoffObject, std::move(Session),
-                               Opts.RelativeAddresses);
+      Context = new PDBContext(*CoffObject, std::move(Session));
     }
   }
   if (!Context)

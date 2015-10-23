@@ -30,7 +30,9 @@ def isGCN : Predicate<"Subtarget->getGeneration() "
                       ">= AMDGPUSubtarget::SOUTHERN_ISLANDS">,
             AssemblerPredicate<"FeatureGCN">;
 def isSI : Predicate<"Subtarget->getGeneration() "
-                      "== AMDGPUSubtarget::SOUTHERN_ISLANDS">;
+                      "== AMDGPUSubtarget::SOUTHERN_ISLANDS">,
+           AssemblerPredicate<"FeatureSouthernIslands">;
+
 
 def has16BankLDS : Predicate<"Subtarget->getLDSBankCount() == 16">;
 def has32BankLDS : Predicate<"Subtarget->getLDSBankCount() == 32">;
@@ -91,7 +93,9 @@ defm S_BUFFER_LOAD_DWORDX16 : SMRD_Helper <
 } // mayLoad = 1
 
 //def S_MEMTIME : SMRD_ <0x0000001e, "s_memtime", []>;
-//def S_DCACHE_INV : SMRD_ <0x0000001f, "s_dcache_inv", []>;
+
+defm S_DCACHE_INV : SMRD_Inval <smrd<0x1f, 0x20>, "s_dcache_inv",
+  int_amdgcn_s_dcache_inv>;
 
 //===----------------------------------------------------------------------===//
 // SOP1 Instructions
@@ -183,10 +187,14 @@ defm S_XNOR_SAVEEXEC_B64 : SOP1_64 <sop1<0x2b, 0x27>, "s_xnor_saveexec_b64", []>
 
 defm S_QUADMASK_B32 : SOP1_32 <sop1<0x2c, 0x28>, "s_quadmask_b32", []>;
 defm S_QUADMASK_B64 : SOP1_64 <sop1<0x2d, 0x29>, "s_quadmask_b64", []>;
+
+let Uses = [M0] in {
 defm S_MOVRELS_B32 : SOP1_32 <sop1<0x2e, 0x2a>, "s_movrels_b32", []>;
 defm S_MOVRELS_B64 : SOP1_64 <sop1<0x2f, 0x2b>, "s_movrels_b64", []>;
 defm S_MOVRELD_B32 : SOP1_32 <sop1<0x30, 0x2c>, "s_movreld_b32", []>;
 defm S_MOVRELD_B64 : SOP1_64 <sop1<0x31, 0x2d>, "s_movreld_b64", []>;
+} // End Uses = [M0]
+
 defm S_CBRANCH_JOIN : SOP1_1 <sop1<0x32, 0x2e>, "s_cbranch_join", []>;
 defm S_MOV_REGRD_B32 : SOP1_32 <sop1<0x33, 0x2f>, "s_mov_regrd_b32", []>;
 let Defs = [SCC] in {
@@ -1028,9 +1036,12 @@ defm BUFFER_ATOMIC_XOR : MUBUF_Atomic <
 //def BUFFER_ATOMIC_FCMPSWAP_X2 : MUBUF_X2 <mubuf<0x5e>, "buffer_atomic_fcmpswap_x2", []>; // isn't on VI
 //def BUFFER_ATOMIC_FMIN_X2 : MUBUF_X2 <mubuf<0x5f>, "buffer_atomic_fmin_x2", []>; // isn't on VI
 //def BUFFER_ATOMIC_FMAX_X2 : MUBUF_X2 <mubuf<0x60>, "buffer_atomic_fmax_x2", []>; // isn't on VI
-//def BUFFER_WBINVL1_SC : MUBUF_WBINVL1 <mubuf<0x70>, "buffer_wbinvl1_sc", []>; // isn't on CI & VI
-//def BUFFER_WBINVL1_VOL : MUBUF_WBINVL1 <mubuf<0x70, 0x3f>, "buffer_wbinvl1_vol", []>; // isn't on SI
-//def BUFFER_WBINVL1 : MUBUF_WBINVL1 <mubuf<0x71, 0x3e>, "buffer_wbinvl1", []>;
+
+let SubtargetPredicate = isSI in {
+defm BUFFER_WBINVL1_SC : MUBUF_Invalidate <mubuf<0x70>, "buffer_wbinvl1_sc", int_amdgcn_buffer_wbinvl1_sc>; // isn't on CI & VI
+}
+
+defm BUFFER_WBINVL1 : MUBUF_Invalidate <mubuf<0x71, 0x3e>, "buffer_wbinvl1", int_amdgcn_buffer_wbinvl1>;
 
 //===----------------------------------------------------------------------===//
 // MTBUF Instructions
@@ -1149,8 +1160,8 @@ defm IMAGE_SAMPLE_C_CD_CL_O : MIMG_Sampler <0x0000006f, "image_sample_c_cd_cl_o"
 // VOP1 Instructions
 //===----------------------------------------------------------------------===//
 
-let vdst = 0, src0 = 0 in {
-defm V_NOP : VOP1_m <vop1<0x0>, (outs), (ins), "v_nop", [], "v_nop">;
+let vdst = 0, src0 = 0, VOPAsmPrefer32Bit = 1 in {
+defm V_NOP : VOP1Inst <vop1<0x0>, "v_nop", VOP_NONE>;
 }
 
 let isMoveImm = 1, isReMaterializable = 1, isAsCheapAsAMove = 1 in {
@@ -1325,14 +1336,15 @@ defm V_FREXP_EXP_I32_F32 : VOP1Inst <vop1<0x3f, 0x33>, "v_frexp_exp_i32_f32",
 defm V_FREXP_MANT_F32 : VOP1Inst <vop1<0x40, 0x34>, "v_frexp_mant_f32",
   VOP_F32_F32
 >;
-let vdst = 0, src0 = 0 in {
-defm V_CLREXCP : VOP1_m <vop1<0x41,0x35>, (outs), (ins), "v_clrexcp", [],
-  "v_clrexcp"
->;
+let vdst = 0, src0 = 0, VOPAsmPrefer32Bit = 1 in {
+defm V_CLREXCP : VOP1Inst <vop1<0x41,0x35>, "v_clrexcp", VOP_NONE>;
 }
+
+let Uses = [M0, EXEC] in {
 defm V_MOVRELD_B32 : VOP1Inst <vop1<0x42, 0x36>, "v_movreld_b32", VOP_I32_I32>;
 defm V_MOVRELS_B32 : VOP1Inst <vop1<0x43, 0x37>, "v_movrels_b32", VOP_I32_I32>;
 defm V_MOVRELSD_B32 : VOP1Inst <vop1<0x44, 0x38>, "v_movrelsd_b32", VOP_I32_I32>;
+} // End Uses = [M0, EXEC]
 
 // These instruction only exist on SI and CI
 let SubtargetPredicate = isSICI in {
@@ -1761,12 +1773,16 @@ defm V_MUL_HI_I32 : VOP3Inst <vop3<0x16c, 0x287>, "v_mul_hi_i32",
 } // isCommutable = 1, SchedRW = [WriteQuarterRate32]
 
 let SchedRW = [WriteFloatFMA, WriteSALU] in {
-defm V_DIV_SCALE_F32 : VOP3b_32 <vop3<0x16d, 0x1e0>, "v_div_scale_f32", []>;
+defm V_DIV_SCALE_F32 : VOP3bInst <vop3<0x16d, 0x1e0>, "v_div_scale_f32",
+  VOP3b_F32_I1_F32_F32_F32
+>;
 }
 
 let SchedRW = [WriteDouble, WriteSALU] in {
 // Double precision division pre-scale.
-defm V_DIV_SCALE_F64 : VOP3b_64 <vop3<0x16e, 0x1e1>, "v_div_scale_f64", []>;
+defm V_DIV_SCALE_F64 : VOP3bInst <vop3<0x16e, 0x1e1>, "v_div_scale_f64",
+  VOP3b_F64_I1_F64_F64_F64
+>;
 } // let SchedRW = [WriteDouble]
 
 let isCommutable = 1, Uses = [VCC, EXEC] in {
@@ -1848,7 +1864,7 @@ let hasSideEffects = 0, mayLoad = 0, mayStore = 0, Uses = [EXEC] in {
 def V_MOV_B64_PSEUDO : InstSI <(outs VReg_64:$dst), (ins VSrc_64:$src0), "", []>;
 } // end let hasSideEffects = 0, mayLoad = 0, mayStore = 0
 
-let hasSideEffects = 1 in {
+let hasSideEffects = 1, SALU = 1 in {
 def SGPR_USE : InstSI <(outs),(ins), "", []>;
 }
 
@@ -1958,9 +1974,9 @@ def SI_RegisterStore : SIRegStore<(outs SReg_64:$temp)>;
 
 } // End UseNamedOperandTable = 1
 
-def SI_INDIRECT_SRC : InstSI <
+class SI_INDIRECT_SRC<RegisterClass rc> : InstSI <
   (outs VGPR_32:$dst, SReg_64:$temp),
-  (ins unknown:$src, VSrc_32:$idx, i32imm:$off),
+  (ins rc:$src, VSrc_32:$idx, i32imm:$off),
   "si_indirect_src $dst, $temp, $src, $idx, $off",
   []
 >;
@@ -1973,6 +1989,13 @@ class SI_INDIRECT_DST<RegisterClass rc> : InstSI <
 > {
   let Constraints = "$src = $dst";
 }
+
+// TODO: We can support indirect SGPR access.
+def SI_INDIRECT_SRC_V1 : SI_INDIRECT_SRC<VGPR_32>;
+def SI_INDIRECT_SRC_V2 : SI_INDIRECT_SRC<VReg_64>;
+def SI_INDIRECT_SRC_V4 : SI_INDIRECT_SRC<VReg_128>;
+def SI_INDIRECT_SRC_V8 : SI_INDIRECT_SRC<VReg_256>;
+def SI_INDIRECT_SRC_V16 : SI_INDIRECT_SRC<VReg_512>;
 
 def SI_INDIRECT_DST_V1 : SI_INDIRECT_DST<VGPR_32>;
 def SI_INDIRECT_DST_V2 : SI_INDIRECT_DST<VReg_64>;
@@ -2051,7 +2074,9 @@ def SI_CONSTDATA_PTR : InstSI <
   (outs SReg_64:$dst),
   (ins),
   "", [(set SReg_64:$dst, (i64 SIconstdata_ptr))]
->;
+> {
+  let SALU = 1;
+}
 
 } // End Defs = [SCC]
 
@@ -3010,42 +3035,42 @@ def : MTBUF_StoreResource <v4i32, 4, TBUFFER_STORE_FORMAT_XYZW>;
 /**********   Indirect adressing   **********/
 /********** ====================== **********/
 
-multiclass SI_INDIRECT_Pattern <ValueType vt, ValueType eltvt, SI_INDIRECT_DST IndDst> {
+multiclass SI_INDIRECT_Pattern <ValueType vt, ValueType eltvt, string VecSize> {
 
   // 1. Extract with offset
   def : Pat<
     (eltvt (vector_extract vt:$vec, (add i32:$idx, imm:$off))),
-    (SI_INDIRECT_SRC $vec, $idx, imm:$off)
+    (!cast<Instruction>("SI_INDIRECT_SRC_"#VecSize) $vec, $idx, imm:$off)
   >;
 
   // 2. Extract without offset
   def : Pat<
     (eltvt (vector_extract vt:$vec, i32:$idx)),
-    (SI_INDIRECT_SRC $vec, $idx, 0)
+    (!cast<Instruction>("SI_INDIRECT_SRC_"#VecSize) $vec, $idx, 0)
   >;
 
   // 3. Insert with offset
   def : Pat<
     (vector_insert vt:$vec, eltvt:$val, (add i32:$idx, imm:$off)),
-    (IndDst $vec, $idx, imm:$off, $val)
+    (!cast<Instruction>("SI_INDIRECT_DST_"#VecSize) $vec, $idx, imm:$off, $val)
   >;
 
   // 4. Insert without offset
   def : Pat<
     (vector_insert vt:$vec, eltvt:$val, i32:$idx),
-    (IndDst $vec, $idx, 0, $val)
+    (!cast<Instruction>("SI_INDIRECT_DST_"#VecSize) $vec, $idx, 0, $val)
   >;
 }
 
-defm : SI_INDIRECT_Pattern <v2f32, f32, SI_INDIRECT_DST_V2>;
-defm : SI_INDIRECT_Pattern <v4f32, f32, SI_INDIRECT_DST_V4>;
-defm : SI_INDIRECT_Pattern <v8f32, f32, SI_INDIRECT_DST_V8>;
-defm : SI_INDIRECT_Pattern <v16f32, f32, SI_INDIRECT_DST_V16>;
+defm : SI_INDIRECT_Pattern <v2f32, f32, "V2">;
+defm : SI_INDIRECT_Pattern <v4f32, f32, "V4">;
+defm : SI_INDIRECT_Pattern <v8f32, f32, "V8">;
+defm : SI_INDIRECT_Pattern <v16f32, f32, "V16">;
 
-defm : SI_INDIRECT_Pattern <v2i32, i32, SI_INDIRECT_DST_V2>;
-defm : SI_INDIRECT_Pattern <v4i32, i32, SI_INDIRECT_DST_V4>;
-defm : SI_INDIRECT_Pattern <v8i32, i32, SI_INDIRECT_DST_V8>;
-defm : SI_INDIRECT_Pattern <v16i32, i32, SI_INDIRECT_DST_V16>;
+defm : SI_INDIRECT_Pattern <v2i32, i32, "V2">;
+defm : SI_INDIRECT_Pattern <v4i32, i32, "V4">;
+defm : SI_INDIRECT_Pattern <v8i32, i32, "V8">;
+defm : SI_INDIRECT_Pattern <v16i32, i32, "V16">;
 
 //===----------------------------------------------------------------------===//
 // Conversion Patterns
