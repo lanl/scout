@@ -1,7 +1,10 @@
 """Test that we handle inferiors that send signals to themselves"""
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -13,24 +16,15 @@ class RaiseTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_sigstop_with_dsym(self):
-        self.buildDsym()
+    def test_sigstop(self):
+        self.build()
         self.signal_test('SIGSTOP', False)
         # passing of SIGSTOP is not correctly handled, so not testing that scenario: https://llvm.org/bugs/show_bug.cgi?id=23574
 
-    @dwarf_test
-    def test_sigstop_with_dwarf(self):
-        self.buildDwarf()
-        self.signal_test('SIGSTOP', False)
-        # passing of SIGSTOP is not correctly handled, so not testing that scenario: https://llvm.org/bugs/show_bug.cgi?id=23574
-
-    @dwarf_test
     @skipIfDarwin # darwin does not support real time signals
     @skipIfTargetAndroid()
-    def test_sigsigrtmin_with_dwarf(self):
-        self.buildDwarf()
+    def test_sigsigrtmin(self):
+        self.build()
         self.signal_test('SIGRTMIN', True)
 
     def launch(self, target, signal):
@@ -154,23 +148,12 @@ class RaiseTestCase(TestBase):
         # reset signal handling to default
         self.set_handle(signal, default_pass, default_stop, default_notify)
 
-    @dwarf_test
     @expectedFailureLinux("llvm.org/pr24530") # the signal the inferior generates gets lost
     @expectedFailureDarwin("llvm.org/pr24530") # the signal the inferior generates gets lost
-    def test_restart_bug_with_dwarf(self):
-        self.buildDwarf()
-        self.restart_bug_test()
-
-    @dsym_test
-    @expectedFailureDarwin("llvm.org/pr24530") # the signal the inferior generates gets lost
-    def test_restart_bug_with_dsym(self):
-        self.buildDsym()
-        self.restart_bug_test()
-
-    def restart_bug_test(self):
+    def test_restart_bug(self):
         """Test that we catch a signal in the edge case where the process receives it while we are
         about to interrupt it"""
-
+        self.build()
         exe = os.path.join(os.getcwd(), "a.out")
 
         # Create a target by the debugger.
@@ -203,7 +186,7 @@ class RaiseTestCase(TestBase):
         # The last WaitForEvent call will time out after 2 seconds.
         while listener.WaitForEvent(2, event):
             if self.TraceOn():
-                print "Process changing state to:", self.dbg.StateAsCString(process.GetStateFromEvent(event))
+                print("Process changing state to:", self.dbg.StateAsCString(process.GetStateFromEvent(event)))
 
         # now the process should be stopped
         self.assertEqual(process.GetState(), lldb.eStateStopped, PROCESS_STOPPED)
@@ -223,7 +206,7 @@ class RaiseTestCase(TestBase):
         # Clear the events again
         while listener.WaitForEvent(2, event):
             if self.TraceOn():
-                print "Process changing state to:", self.dbg.StateAsCString(process.GetStateFromEvent(event))
+                print("Process changing state to:", self.dbg.StateAsCString(process.GetStateFromEvent(event)))
 
         # The process should be stopped due to a signal
         self.assertEqual(process.GetState(), lldb.eStateStopped)
@@ -236,9 +219,3 @@ class RaiseTestCase(TestBase):
 
         # We are done
         process.Kill()
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

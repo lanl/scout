@@ -76,9 +76,15 @@ namespace platform_android {
         
         uint32_t
         GetSdkVersion();
-        
+
+        bool
+        GetRemoteOSVersion() override;
+
         Error
         DisconnectRemote () override;
+
+        uint32_t
+        GetDefaultMemoryCacheLineSize() override;
 
      protected:
         const char *

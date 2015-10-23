@@ -20,6 +20,8 @@
 #include <utility>
 
 // Other libraries and framework includes
+#include "Plugins/ExpressionParser/Clang/ClangPersistentVariables.h"
+
 #include "llvm/ADT/SmallVector.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/TemplateBase.h"
@@ -69,7 +71,10 @@ public:
     GetPluginNameStatic ();
 
     static lldb::TypeSystemSP
-    CreateInstance (lldb::LanguageType language, const lldb_private::ArchSpec &arch);
+    CreateInstance (lldb::LanguageType language, Module *module, Target *target);
+    
+    static void
+    EnumerateSupportedLanguages(std::set<lldb::LanguageType> &languages_for_types, std::set<lldb::LanguageType> &languages_for_expressions);
 
     static void
     Initialize ();
@@ -210,7 +215,6 @@ public:
     {
         return ClangASTContext::GetUnknownAnyType(getASTContext());
     }
-    
     
     static clang::DeclContext *
     GetDeclContextForType (clang::QualType type);
@@ -394,7 +398,6 @@ public:
                                      size_t num_assigned_accessibilities);
 
     // Returns a mask containing bits from the ClangASTContext::eTypeXXX enumerations
-
 
     //------------------------------------------------------------------
     // Namespace Declarations
@@ -1001,9 +1004,7 @@ public:
                                           const char *name,
                                           int64_t enum_value,
                                           uint32_t enum_value_bit_size);
-    
-    
-    
+
     CompilerType
     GetEnumerationIntegerType (lldb::opaque_compiler_type_t type);
     
@@ -1016,7 +1017,6 @@ public:
     static CompilerType
     CreateMemberPointerType (const CompilerType& type, const CompilerType &pointee_type);
     
-    
     // Converts "s" to a floating point value and place resulting floating
     // point bytes in the "dst" buffer.
     size_t
@@ -1024,6 +1024,7 @@ public:
                                const char *s,
                                uint8_t *dst,
                                size_t dst_size) override;
+
     //----------------------------------------------------------------------
     // Dumping types
     //----------------------------------------------------------------------
@@ -1061,7 +1062,7 @@ public:
                  lldb::offset_t data_offset,
                  size_t data_byte_size) override;
     
-    virtual void
+    void
     DumpTypeDescription (lldb::opaque_compiler_type_t type) override; // Dump to stdout
     
     void
@@ -1117,6 +1118,7 @@ public:
 
     clang::VarDecl *
     CreateVariableDeclaration (clang::DeclContext *decl_context, const char *name, clang::QualType type);
+
 protected:
     static clang::QualType
     GetQualType (lldb::opaque_compiler_type_t type)
@@ -1151,6 +1153,7 @@ protected:
     std::unique_ptr<clang::SelectorTable>           m_selector_table_ap;
     std::unique_ptr<clang::Builtin::Context>        m_builtins_ap;
     std::unique_ptr<DWARFASTParser>                 m_dwarf_ast_parser_ap;
+    std::unique_ptr<ClangASTSource>                 m_scratch_ast_source_ap;
     CompleteTagDeclCallback                         m_callback_tag_decl;
     CompleteObjCInterfaceDeclCallback               m_callback_objc_decl;
     void *                                          m_callback_baton;
@@ -1172,7 +1175,7 @@ class ClangASTContextForExpressions : public ClangASTContext
 public:
     ClangASTContextForExpressions (Target &target);
     
-    virtual ~ClangASTContextForExpressions () {}
+    ~ClangASTContextForExpressions() override = default;
     
     UserExpression *
     GetUserExpression (const char *expr,
@@ -1188,8 +1191,12 @@ public:
     
     UtilityFunction *
     GetUtilityFunction(const char *text, const char *name) override;
+    
+    PersistentExpressionState *
+    GetPersistentExpressionState() override;
 private:
     lldb::TargetWP m_target_wp;
+    lldb::ClangPersistentVariablesUP m_persistent_variables;      ///< These are the persistent variables associated with this process for the expression parser.
 };
 
 } // namespace lldb_private

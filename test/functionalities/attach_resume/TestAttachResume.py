@@ -2,8 +2,11 @@
 Test process attach/resume.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -14,16 +17,15 @@ class AttachResumeTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
+    @skipIfRemote
     @expectedFailureFreeBSD('llvm.org/pr19310')
     @expectedFailureWindows("llvm.org/pr24778")
-    @skipIfRemote
-    @dwarf_test
+    @expectedFlakeyLinux('llvm.org/pr19310')
     def test_attach_continue_interrupt_detach(self):
         """Test attach/continue/interrupt/detach"""
-        self.buildDwarf()
+        self.build()
         self.process_attach_continue_interrupt_detach()
 
-    @skipIfRemote
     def process_attach_continue_interrupt_detach(self):
         """Test attach/continue/interrupt/detach"""
 
@@ -67,9 +69,3 @@ class AttachResumeTestCase(TestBase):
         # make sure to detach while in running state (r204759)
         self.runCmd("detach")
         lldbutil.expect_state_changes(self, listener, [lldb.eStateDetached])
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

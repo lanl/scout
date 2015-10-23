@@ -2,9 +2,13 @@
 Test lldb-mi -data-xxx commands.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
+import unittest2
 import lldbmi_testcase
 from lldbtest import *
-import unittest2
 
 class MiDataTestCase(lldbmi_testcase.MiTestCaseBase):
 
@@ -31,8 +35,8 @@ class MiDataTestCase(lldbmi_testcase.MiTestCaseBase):
 
         # Get an address for disassembling: use main
         self.runCmd("-data-evaluate-expression main")
-        self.expect("\^done,value=\"0x[0-9a-f]+\"")
-        addr = int(self.child.after.split("\"")[1], 16)
+        self.expect("\^done,value=\"0x[0-9a-f]+ \(a.out`main at main.cpp:[0-9]+\)\"")
+        addr = int(self.child.after.split("\"")[1].split(" ")[0], 16)
 
         # Test -data-disassemble: try to disassemble some address
         self.runCmd("-data-disassemble -s %#x -e %#x -- 0" % (addr, addr + 0x10))
@@ -47,8 +51,8 @@ class MiDataTestCase(lldbmi_testcase.MiTestCaseBase):
 
         # Get an address for disassembling: use hello_world
         self.runCmd("-data-evaluate-expression hello_world")
-        self.expect("\^done,value=\"0x[0-9a-f]+\"")
-        addr = int(self.child.after.split("\"")[1], 16)
+        self.expect("\^done,value=\"0x[0-9a-f]+ \(a.out`hello_world\(\) at main.cpp:[0-9]+\)\"")
+        addr = int(self.child.after.split("\"")[1].split(" ")[0], 16)
 
         # Test -data-disassemble: try to disassemble some address
         self.runCmd("-data-disassemble -s %#x -e %#x -- 0" % (addr, addr + 0x10))
@@ -286,8 +290,8 @@ class MiDataTestCase(lldbmi_testcase.MiTestCaseBase):
 
         # Get the address of main and its line
         self.runCmd("-data-evaluate-expression main")
-        self.expect("\^done,value=\"0x[0-9a-f]+\"")
-        addr = int(self.child.after.split("\"")[1], 16)
+        self.expect("\^done,value=\"0x[0-9a-f]+ \(a.out`main at main.cpp:[0-9]+\)\"")
+        addr = int(self.child.after.split("\"")[1].split(" ")[0], 16)
         line = line_number('main.cpp', '// FUNC_main')
 
         # Test that -data-info-line works for address
@@ -334,6 +338,3 @@ class MiDataTestCase(lldbmi_testcase.MiTestCaseBase):
         # Check 2d array 
         self.runCmd("-data-evaluate-expression array2d")
         self.expect("\^done,value=\"\{\[0\] = \{\[0\] = 1, \[1\] = 2, \[2\] = 3\}, \[1\] = \{\[0\] = 4, \[1\] = 5, \[2\] = 6\}\}\"")
-
-if __name__ == '__main__':
-    unittest2.main()

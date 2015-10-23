@@ -9,6 +9,8 @@
 Configuration options for lldbtest.py set by dotest.py during initialization
 """
 
+from __future__ import print_function
+
 import curses
 import datetime
 import lldbcurses
@@ -29,7 +31,6 @@ class Curses(test_results.ResultsFormatter):
         self.jobs = [None] * 64
         self.job_tests = [None] * 64
         self.results = list()
-        self.saved_first_responder = None
         try:
             self.main_window = lldbcurses.intialize_curses()         
             self.main_window.add_key_action('\t', self.main_window.select_next_first_responder, "Switch between views that can respond to keyboard input")
@@ -44,7 +45,7 @@ class Curses(test_results.ResultsFormatter):
             self.have_curses = False
             lldbcurses.terminate_curses()
             self.using_terminal = False
-            print "Unexpected error:", sys.exc_info()[0]
+            print("Unexpected error:", sys.exc_info()[0])
             raise
             
         
@@ -82,8 +83,7 @@ class Curses(test_results.ResultsFormatter):
             else:
                 self.info_panel.show()
             
-            self.saved_first_responder = self.main_window.first_responder  
-            self.main_window.set_first_responder(self.info_panel)
+            self.main_window.push_first_responder(self.info_panel)
             test_start = self.results[selected_idx][0]
             test_result = self.results[selected_idx][1]
             self.info_panel.set_line(0, "File: %s" % (test_start['test_filename']))
@@ -92,9 +92,8 @@ class Curses(test_results.ResultsFormatter):
             self.info_panel.set_line(3, "Status: %s" % (test_result['status']))
 
     def hide_info_panel(self):
-        self.info_panel.resign_first_responder(remove_from_parent=True, new_first_responder=self.saved_first_responder)
+        self.main_window.pop_first_responder(self.info_panel)
         self.info_panel.hide()        
-        self.saved_first_responder = None
         self.main_window.refresh()
         
     def toggle_status(self, status):
@@ -131,7 +130,7 @@ class Curses(test_results.ResultsFormatter):
                     worker_index = test_event['worker_index']
                 if 'event' in test_event:
                     check_for_one_key = True
-                    #print >>self.events_file, str(test_event)
+                    #print(str(test_event), file=self.events_file)
                     event = test_event['event']   
                     if self.status_panel:
                         self.status_panel.update_status('time', str(datetime.timedelta(seconds=math.floor(time.time() - self.start_time))))
@@ -207,7 +206,7 @@ class Curses(test_results.ResultsFormatter):
                         self.status_panel.add_status_item(name="unexpected_success", title="Unexpected Success", format="%u", width=30, value=0, update=False)
                         self.main_window.refresh()
                     elif event == 'terminate':
-                        self.main_window.key_event_loop()
+                        #self.main_window.key_event_loop()
                         lldbcurses.terminate_curses()
                         check_for_one_key = False
                         self.using_terminal = False

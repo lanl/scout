@@ -2,8 +2,11 @@
 Test lldb data formatter subsystem.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import datetime
@@ -14,17 +17,9 @@ class DataFormatterOneIsSingularTestCase(TestBase):
     mydir = TestBase.compute_mydir(__file__)
 
     @skipUnlessDarwin
-    @dsym_test
-    def test_one_is_singular_with_dsym_and_run_command(self):
+    def test_one_is_singular_with_run_command(self):
         """Test that 1 item is not as reported as 1 items."""
-        self.buildDsym()
-        self.oneness_data_formatter_commands()
-
-    @skipUnlessDarwin
-    @dwarf_test
-    def test_one_is_singular_with_dwarf_and_run_command(self):
-        """Test that 1 item is not as reported as 1 items."""
-        self.buildDwarf()
+        self.build()
         self.oneness_data_formatter_commands()
 
     def setUp(self):
@@ -58,13 +53,13 @@ class DataFormatterOneIsSingularTestCase(TestBase):
 
         # Now check that we are displaying Cocoa classes correctly
         self.expect('frame variable key',
-                    substrs = ['@"1 object"'])
+                    substrs = ['@"1 element"'])
         self.expect('frame variable key', matching=False,
-                    substrs = ['1 objects'])
+                    substrs = ['1 elements'])
         self.expect('frame variable value',
-                    substrs = ['@"1 object"'])
+                    substrs = ['@"1 element"'])
         self.expect('frame variable value', matching=False,
-                    substrs = ['1 objects'])
+                    substrs = ['1 elements'])
         self.expect('frame variable dict',
                     substrs = ['1 key/value pair'])
         self.expect('frame variable dict', matching=False,
@@ -74,9 +69,9 @@ class DataFormatterOneIsSingularTestCase(TestBase):
         self.expect('frame variable mutable_bag_ref', matching=False,
                     substrs = ['1 values'])
         self.expect('frame variable nscounted_set',
-                    substrs = ['1 object'])
+                    substrs = ['1 element'])
         self.expect('frame variable nscounted_set', matching=False,
-                    substrs = ['1 objects'])
+                    substrs = ['1 elements'])
         self.expect('frame variable imset',
                     substrs = ['1 index'])
         self.expect('frame variable imset', matching=False,
@@ -86,17 +81,10 @@ class DataFormatterOneIsSingularTestCase(TestBase):
         self.expect('frame variable binheap_ref', matching=False,
                     substrs = ['1 items'])
         self.expect('frame variable nsset',
-                    substrs = ['1 object'])
+                    substrs = ['1 element'])
         self.expect('frame variable nsset', matching=False,
-                    substrs = ['1 objects'])
+                    substrs = ['1 elements'])
         self.expect('frame variable immutableData',
                     substrs = ['1 byte'])
         self.expect('frame variable immutableData', matching=False,
                     substrs = ['1 bytes'])
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

@@ -31,26 +31,28 @@ OK
 $ 
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import abc
+import gc
 import glob
 import os, sys, traceback
 import os.path
 import re
 import signal
 from subprocess import *
-import StringIO
 import time
 import types
 import unittest2
 import lldb
 import lldbtest_config
 import lldbutil
-from _pyio import __metaclass__
 
-if sys.version_info.major < 3:
-    import urlparse
-else:
-    import urllib.parse as urlparse
+from six import add_metaclass
+from six import StringIO as SixStringIO
+from six.moves.urllib import parse as urlparse
 
 # dosep.py starts lots and lots of dotest instances
 # This option helps you find if two (or more) dotest instances are using the same
@@ -184,7 +186,7 @@ def SETTING_MSG(setting):
 
 def EnvArray():
     """Returns an env variable array from the os.environ map object."""
-    return map(lambda k,v: k+"="+v, os.environ.keys(), os.environ.values())
+    return list(map(lambda k,v: k+"="+v, list(os.environ.keys()), list(os.environ.values())))
 
 def line_number(filename, string_to_match):
     """Helper function to return the line number of the first matched string."""
@@ -218,15 +220,15 @@ def which(program):
                 return exe_file
     return None
 
-class recording(StringIO.StringIO):
+class recording(SixStringIO):
     """
     A nice little context manager for recording the debugger interactions into
     our session object.  If trace flag is ON, it also emits the interactions
     into the stderr.
     """
     def __init__(self, test, trace):
-        """Create a StringIO instance; record the session obj and trace flag."""
-        StringIO.StringIO.__init__(self)
+        """Create a SixStringIO instance; record the session obj and trace flag."""
+        SixStringIO.__init__(self)
         # The test might not have undergone the 'setUp(self)' phase yet, so that
         # the attribute 'session' might not even exist yet.
         self.session = getattr(test, "session", None) if test else None
@@ -235,7 +237,7 @@ class recording(StringIO.StringIO):
     def __enter__(self):
         """
         Context management protocol on entry to the body of the with statement.
-        Just return the StringIO object.
+        Just return the SixStringIO object.
         """
         return self
 
@@ -243,16 +245,16 @@ class recording(StringIO.StringIO):
         """
         Context management protocol on exit from the body of the with statement.
         If trace is ON, it emits the recordings into stderr.  Always add the
-        recordings to our session object.  And close the StringIO object, too.
+        recordings to our session object.  And close the SixStringIO object, too.
         """
         if self.trace:
-            print >> sys.stderr, self.getvalue()
+            print(self.getvalue(), file=sys.stderr)
         if self.session:
-            print >> self.session, self.getvalue()
+            print(self.getvalue(), file=self.session)
         self.close()
 
+@add_metaclass(abc.ABCMeta)
 class _BaseProcess(object):
-    __metaclass__ = abc.ABCMeta
 
     @abc.abstractproperty
     def pid(self):
@@ -389,13 +391,13 @@ def system(commands, **kwargs):
             trace = True
 
         with recording(test, trace) as sbuf:
-            print >> sbuf
-            print >> sbuf, "os command:", shellCommand
-            print >> sbuf, "with pid:", pid
-            print >> sbuf, "stdout:", this_output
-            print >> sbuf, "stderr:", this_error
-            print >> sbuf, "retcode:", retcode
-            print >> sbuf
+            print(file=sbuf)
+            print("os command:", shellCommand, file=sbuf)
+            print("with pid:", pid, file=sbuf)
+            print("stdout:", this_output, file=sbuf)
+            print("stderr:", this_error, file=sbuf)
+            print("retcode:", retcode, file=sbuf)
+            print(file=sbuf)
 
         if retcode:
             cmd = kwargs.get("args")
@@ -475,11 +477,8 @@ def python_api_test(func):
         raise Exception("@python_api_test can only be used to decorate a test method")
     @wraps(func)
     def wrapper(self, *args, **kwargs):
-        try:
-            if lldb.dont_do_python_api_test:
-                self.skipTest("python api tests")
-        except AttributeError:
-            pass
+        if lldb.dont_do_python_api_test:
+            self.skipTest("python api tests")
         return func(self, *args, **kwargs)
 
     # Mark this function as such to separate them from lldb command line tests.
@@ -492,11 +491,8 @@ def lldbmi_test(func):
         raise Exception("@lldbmi_test can only be used to decorate a test method")
     @wraps(func)
     def wrapper(self, *args, **kwargs):
-        try:
-            if lldb.dont_do_lldbmi_test:
-                self.skipTest("lldb-mi tests")
-        except AttributeError:
-            pass
+        if lldb.dont_do_lldbmi_test:
+            self.skipTest("lldb-mi tests")
         return func(self, *args, **kwargs)
 
     # Mark this function as such to separate them from lldb command line tests.
@@ -509,15 +505,25 @@ def benchmarks_test(func):
         raise Exception("@benchmarks_test can only be used to decorate a test method")
     @wraps(func)
     def wrapper(self, *args, **kwargs):
-        try:
-            if not lldb.just_do_benchmarks_test:
-                self.skipTest("benchmarks tests")
-        except AttributeError:
-            pass
+        if not lldb.just_do_benchmarks_test:
+            self.skipTest("benchmarks tests")
         return func(self, *args, **kwargs)
 
     # Mark this function as such to separate them from the regular tests.
     wrapper.__benchmarks_test__ = True
+    return wrapper
+
+def no_debug_info_test(func):
+    """Decorate the item as a test what don't use any debug info. If this annotation is specified
+       then the test runner won't generate a separate test for each debug info format. """
+    if isinstance(func, type) and issubclass(func, unittest2.TestCase):
+        raise Exception("@no_debug_info_test can only be used to decorate a test method")
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        return func(self, *args, **kwargs)
+
+    # Mark this function as such to separate them from the regular tests.
+    wrapper.__no_debug_info_test__ = True
     return wrapper
 
 def dsym_test(func):
@@ -526,11 +532,8 @@ def dsym_test(func):
         raise Exception("@dsym_test can only be used to decorate a test method")
     @wraps(func)
     def wrapper(self, *args, **kwargs):
-        try:
-            if lldb.dont_do_dsym_test:
-                self.skipTest("dsym tests")
-        except AttributeError:
-            pass
+        if lldb.dont_do_dsym_test:
+            self.skipTest("dsym tests")
         return func(self, *args, **kwargs)
 
     # Mark this function as such to separate them from the regular tests.
@@ -543,15 +546,26 @@ def dwarf_test(func):
         raise Exception("@dwarf_test can only be used to decorate a test method")
     @wraps(func)
     def wrapper(self, *args, **kwargs):
-        try:
-            if lldb.dont_do_dwarf_test:
-                self.skipTest("dwarf tests")
-        except AttributeError:
-            pass
+        if lldb.dont_do_dwarf_test:
+            self.skipTest("dwarf tests")
         return func(self, *args, **kwargs)
 
     # Mark this function as such to separate them from the regular tests.
     wrapper.__dwarf_test__ = True
+    return wrapper
+
+def dwo_test(func):
+    """Decorate the item as a dwo test."""
+    if isinstance(func, type) and issubclass(func, unittest2.TestCase):
+        raise Exception("@dwo_test can only be used to decorate a test method")
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        if lldb.dont_do_dwo_test:
+            self.skipTest("dwo tests")
+        return func(self, *args, **kwargs)
+
+    # Mark this function as such to separate them from the regular tests.
+    wrapper.__dwo_test__ = True
     return wrapper
 
 def debugserver_test(func):
@@ -560,11 +574,8 @@ def debugserver_test(func):
         raise Exception("@debugserver_test can only be used to decorate a test method")
     @wraps(func)
     def wrapper(self, *args, **kwargs):
-        try:
-            if lldb.dont_do_debugserver_test:
-                self.skipTest("debugserver tests")
-        except AttributeError:
-            pass
+        if lldb.dont_do_debugserver_test:
+            self.skipTest("debugserver tests")
         return func(self, *args, **kwargs)
 
     # Mark this function as such to separate them from the regular tests.
@@ -577,11 +588,8 @@ def llgs_test(func):
         raise Exception("@llgs_test can only be used to decorate a test method")
     @wraps(func)
     def wrapper(self, *args, **kwargs):
-        try:
-            if lldb.dont_do_llgs_test:
-                self.skipTest("llgs tests")
-        except AttributeError:
-            pass
+        if lldb.dont_do_llgs_test:
+            self.skipTest("llgs tests")
         return func(self, *args, **kwargs)
 
     # Mark this function as such to separate them from the regular tests.
@@ -594,11 +602,8 @@ def not_remote_testsuite_ready(func):
         raise Exception("@not_remote_testsuite_ready can only be used to decorate a test method")
     @wraps(func)
     def wrapper(self, *args, **kwargs):
-        try:
-            if lldb.lldbtest_remote_sandbox or lldb.remote_platform:
-                self.skipTest("not ready for remote testsuite")
-        except AttributeError:
-            pass
+        if lldb.lldbtest_remote_sandbox or lldb.remote_platform:
+            self.skipTest("not ready for remote testsuite")
         return func(self, *args, **kwargs)
 
     # Mark this function as such to separate them from the regular tests.
@@ -628,26 +633,34 @@ def expectedFailure(expected_fn, bugnumber=None):
     else:
         return expectedFailure_impl
 
-def expectedFailureCompiler(compiler, compiler_version=None, bugnumber=None):
-    if compiler_version is None:
-        compiler_version=['=', None]
-    def fn(self):
-        return compiler in self.getCompiler() and self.expectedCompilerVersion(compiler_version)
-    return expectedFailure(fn, bugnumber)
-
 # provide a function to xfail on defined oslist, compiler version, and archs
 # if none is specified for any argument, that argument won't be checked and thus means for all
 # for example,
 # @expectedFailureAll, xfail for all platform/compiler/arch,
 # @expectedFailureAll(compiler='gcc'), xfail for gcc on all platform/architecture
 # @expectedFailureAll(bugnumber, ["linux"], "gcc", ['>=', '4.9'], ['i386']), xfail for gcc>=4.9 on linux with i386
-def expectedFailureAll(bugnumber=None, oslist=None, compiler=None, compiler_version=None, archs=None, triple=None):
+def expectedFailureAll(bugnumber=None, oslist=None, compiler=None, compiler_version=None, archs=None, triple=None, debug_info=None):
     def fn(self):
         return ((oslist is None or self.getPlatform() in oslist) and
                 (compiler is None or (compiler in self.getCompiler() and self.expectedCompilerVersion(compiler_version))) and
                 self.expectedArch(archs) and
-                (triple is None or re.match(triple, lldb.DBG.GetSelectedPlatform().GetTriple())))
+                (triple is None or re.match(triple, lldb.DBG.GetSelectedPlatform().GetTriple())) and
+                (debug_info is None or self.debug_info in debug_info))
     return expectedFailure(fn, bugnumber)
+
+def expectedFailureDwarf(bugnumber=None):
+    return expectedFailureAll(bugnumber=bugnumber, debug_info="dwarf")
+
+def expectedFailureDwo(bugnumber=None):
+    return expectedFailureAll(bugnumber=bugnumber, debug_info="dwo")
+
+def expectedFailureDsym(bugnumber=None):
+    return expectedFailureAll(bugnumber=bugnumber, debug_info="dsym")
+
+def expectedFailureCompiler(compiler, compiler_version=None, bugnumber=None):
+    if compiler_version is None:
+        compiler_version=['=', None]
+    return expectedFailureAll(bugnumber=bugnumber, compiler=compiler, compiler_version=compiler_version)
 
 # to XFAIL a specific clang versions, try this
 # @expectedFailureClang('bugnumber', ['<=', '3.4'])
@@ -671,10 +684,11 @@ def expectedFailurei386(bugnumber=None):
 def expectedFailurex86_64(bugnumber=None):
     return expectedFailureArch('x86_64', bugnumber)
 
-def expectedFailureOS(oslist, bugnumber=None, compilers=None):
+def expectedFailureOS(oslist, bugnumber=None, compilers=None, debug_info=None):
     def fn(self):
         return (self.getPlatform() in oslist and
-                self.expectedCompiler(compilers))
+                self.expectedCompiler(compilers) and
+                (debug_info is None or self.debug_info in debug_info))
     return expectedFailure(fn, bugnumber)
 
 def expectedFailureHostOS(oslist, bugnumber=None, compilers=None):
@@ -683,18 +697,18 @@ def expectedFailureHostOS(oslist, bugnumber=None, compilers=None):
                 self.expectedCompiler(compilers))
     return expectedFailure(fn, bugnumber)
 
-def expectedFailureDarwin(bugnumber=None, compilers=None):
+def expectedFailureDarwin(bugnumber=None, compilers=None, debug_info=None):
     # For legacy reasons, we support both "darwin" and "macosx" as OS X triples.
-    return expectedFailureOS(getDarwinOSTriples(), bugnumber, compilers)
+    return expectedFailureOS(getDarwinOSTriples(), bugnumber, compilers, debug_info=debug_info)
 
-def expectedFailureFreeBSD(bugnumber=None, compilers=None):
-    return expectedFailureOS(['freebsd'], bugnumber, compilers)
+def expectedFailureFreeBSD(bugnumber=None, compilers=None, debug_info=None):
+    return expectedFailureOS(['freebsd'], bugnumber, compilers, debug_info=debug_info)
 
-def expectedFailureLinux(bugnumber=None, compilers=None):
-    return expectedFailureOS(['linux'], bugnumber, compilers)
+def expectedFailureLinux(bugnumber=None, compilers=None, debug_info=None):
+    return expectedFailureOS(['linux'], bugnumber, compilers, debug_info=debug_info)
 
-def expectedFailureWindows(bugnumber=None, compilers=None):
-    return expectedFailureOS(['windows'], bugnumber, compilers)
+def expectedFailureWindows(bugnumber=None, compilers=None, debug_info=None):
+    return expectedFailureOS(['windows'], bugnumber, compilers, debug_info=debug_info)
 
 def expectedFailureHostWindows(bugnumber=None, compilers=None):
     return expectedFailureHostOS(['windows'], bugnumber, compilers)
@@ -758,6 +772,16 @@ def expectedFlakey(expected_fn, bugnumber=None):
         return expectedFailure_impl(bugnumber)
     else:
         return expectedFailure_impl
+
+def expectedFlakeyDwarf(bugnumber=None):
+    def fn(self):
+        return self.debug_info == "dwarf"
+    return expectedFlakey(fn, bugnumber)
+
+def expectedFlakeyDsym(bugnumber=None):
+    def fn(self):
+        return self.debug_info == "dwarf"
+    return expectedFlakey(fn, bugnumber)
 
 def expectedFlakeyOS(oslist, bugnumber=None, compilers=None):
     def fn(self):
@@ -909,6 +933,24 @@ def skipUnlessGoInstalled(func):
         if not compiler:
             self.skipTest("skipping because go compiler not found")
         else:
+            # Ensure the version is the minimum version supported by
+            # the LLDB go support.
+            match_version = re.search(r"(\d+\.\d+(\.\d+)?)", compiler)
+            if not match_version:
+                # Couldn't determine version.
+                self.skipTest(
+                    "skipping because go version could not be parsed "
+                    "out of {}".format(compiler))
+            else:
+                from distutils.version import StrictVersion
+                min_strict_version = StrictVersion("1.4.0")
+                compiler_strict_version = StrictVersion(match_version.group(1))
+                if compiler_strict_version < min_strict_version:
+                    self.skipTest(
+                        "skipping because available go version ({}) does "
+                        "not meet minimum required go version ({})".format(
+                            compiler_strict_version,
+                            min_strict_version))
             func(*args, **kwargs)
     return wrapper
 
@@ -1021,12 +1063,25 @@ def skipIfLinuxClang(func):
 # @skipIf(bugnumber, ["linux"], "gcc", ['>=', '4.9'], ['i386']), skip for gcc>=4.9 on linux with i386
 
 # TODO: refactor current code, to make skipIfxxx functions to call this function
-def skipIf(bugnumber=None, oslist=None, compiler=None, compiler_version=None, archs=None):
+def skipIf(bugnumber=None, oslist=None, compiler=None, compiler_version=None, archs=None, debug_info=None):
     def fn(self):
         return ((oslist is None or self.getPlatform() in oslist) and
                 (compiler is None or (compiler in self.getCompiler() and self.expectedCompilerVersion(compiler_version))) and
-                self.expectedArch(archs))
-    return skipTestIfFn(fn, bugnumber, skipReason="skipping because os:%s compiler: %s %s arch: %s"%(oslist, compiler, compiler_version, archs))
+                self.expectedArch(archs) and
+                (debug_info is None or self.debug_info in debug_info))
+    return skipTestIfFn(fn, bugnumber, skipReason="skipping because os:%s compiler: %s %s arch: %s debug info: %s"%(oslist, compiler, compiler_version, archs, debug_info))
+
+def skipIfDebugInfo(bugnumber=None, debug_info=None):
+    return skipIf(bugnumber=bugnumber, debug_info=debug_info)
+
+def skipIfDWO(bugnumber=None):
+    return skipIfDebugInfo(bugnumber, ["dwo"])
+
+def skipIfDwarf(bugnumber=None):
+    return skipIfDebugInfo(bugnumber, ["dwarf"])
+
+def skipIfDsym(bugnumber=None):
+    return skipIfDebugInfo(bugnumber, ["dsym"])
 
 def skipTestIfFn(expected_fn, bugnumber=None, skipReason=None):
     def skipTestIfFn_impl(func):
@@ -1181,7 +1236,7 @@ class Base(unittest2.TestCase):
         if ("LLDB_TEST" in os.environ):
             full_dir = os.path.join(os.environ["LLDB_TEST"], cls.mydir)
             if traceAlways:
-                print >> sys.stderr, "Change dir to:", full_dir
+                print("Change dir to:", full_dir, file=sys.stderr)
             os.chdir(os.path.join(os.environ["LLDB_TEST"], cls.mydir))
 
         if debug_confirm_directory_exclusivity:
@@ -1197,7 +1252,7 @@ class Base(unittest2.TestCase):
                 cls.dir_lock.acquire()
                 # read the previous owner from the lock file
                 lock_id = cls.dir_lock.handle.read()
-                print >> sys.stderr, "LOCK ERROR: {} wants to lock '{}' but it is already locked by '{}'".format(cls.__name__, full_dir, lock_id)
+                print("LOCK ERROR: {} wants to lock '{}' but it is already locked by '{}'".format(cls.__name__, full_dir, lock_id), file=sys.stderr)
                 raise ioerror
 
         # Set platform context.
@@ -1223,7 +1278,7 @@ class Base(unittest2.TestCase):
             # Subclass might have specific cleanup function defined.
             if getattr(cls, "classCleanup", None):
                 if traceAlways:
-                    print >> sys.stderr, "Call class-specific cleanup function for class:", cls
+                    print("Call class-specific cleanup function for class:", cls, file=sys.stderr)
                 try:
                     cls.classCleanup()
                 except:
@@ -1236,7 +1291,7 @@ class Base(unittest2.TestCase):
 
         # Restore old working directory.
         if traceAlways:
-            print >> sys.stderr, "Restore dir to:", cls.oldcwd
+            print("Restore dir to:", cls.oldcwd, file=sys.stderr)
         os.chdir(cls.oldcwd)
 
     @classmethod
@@ -1529,7 +1584,7 @@ class Base(unittest2.TestCase):
         During test execution, there might be cases where we don't want to show the
         standard output to the user.  For example,
 
-            self.runCmd(r'''sc print "\n\n\tHello!\n"''')
+            self.runCmd(r'''sc print("\n\n\tHello!\n")''')
 
         tests whether command abbreviation for 'script' works or not.  There is no
         need to show the 'Hello' output to the user as long as the 'script' command
@@ -1572,7 +1627,7 @@ class Base(unittest2.TestCase):
         """
         if callable(hook):
             with recording(self, traceAlways) as sbuf:
-                print >> sbuf, "Adding tearDown hook:", getsource_if_available(hook)
+                print("Adding tearDown hook:", getsource_if_available(hook), file=sbuf)
             self.hooks.append(hook)
         
         return self
@@ -1583,7 +1638,7 @@ class Base(unittest2.TestCase):
         if self.child and self.child.isalive():
             import pexpect
             with recording(self, traceAlways) as sbuf:
-                print >> sbuf, "tearing down the child process...."
+                print("tearing down the child process....", file=sbuf)
             try:
                 if self.child_in_script_interpreter:
                     self.child.sendline('quit()')
@@ -1615,7 +1670,7 @@ class Base(unittest2.TestCase):
         # Check and run any hook functions.
         for hook in reversed(self.hooks):
             with recording(self, traceAlways) as sbuf:
-                print >> sbuf, "Executing tearDown hook:", getsource_if_available(hook)
+                print("Executing tearDown hook:", getsource_if_available(hook), file=sbuf)
             import inspect
             hook_argc = len(inspect.getargspec(hook).args)
             if hook_argc == 0 or getattr(hook,'im_self',None):
@@ -1649,7 +1704,7 @@ class Base(unittest2.TestCase):
         with recording(self, False) as sbuf:
             # False because there's no need to write "ERROR" to the stderr twice.
             # Once by the Python unittest framework, and a second time by us.
-            print >> sbuf, "ERROR"
+            print("ERROR", file=sbuf)
 
     def markCleanupError(self):
         """Callback invoked when an error occurs while a test is cleaning up."""
@@ -1657,7 +1712,7 @@ class Base(unittest2.TestCase):
         with recording(self, False) as sbuf:
             # False because there's no need to write "CLEANUP_ERROR" to the stderr twice.
             # Once by the Python unittest framework, and a second time by us.
-            print >> sbuf, "CLEANUP_ERROR"
+            print("CLEANUP_ERROR", file=sbuf)
 
     def markFailure(self):
         """Callback invoked when a failure (test assertion failure) occurred."""
@@ -1665,7 +1720,7 @@ class Base(unittest2.TestCase):
         with recording(self, False) as sbuf:
             # False because there's no need to write "FAIL" to the stderr twice.
             # Once by the Python unittest framework, and a second time by us.
-            print >> sbuf, "FAIL"
+            print("FAIL", file=sbuf)
 
     def markExpectedFailure(self,err,bugnumber):
         """Callback invoked when an expected failure/error occurred."""
@@ -1675,9 +1730,9 @@ class Base(unittest2.TestCase):
             # stderr twice.
             # Once by the Python unittest framework, and a second time by us.
             if bugnumber == None:
-                print >> sbuf, "expected failure"
+                print("expected failure", file=sbuf)
             else:
-                print >> sbuf, "expected failure (problem id:" + str(bugnumber) + ")"
+                print("expected failure (problem id:" + str(bugnumber) + ")", file=sbuf)
 
     def markSkippedTest(self):
         """Callback invoked when a test is skipped."""
@@ -1686,7 +1741,7 @@ class Base(unittest2.TestCase):
             # False because there's no need to write "skipped test" to the
             # stderr twice.
             # Once by the Python unittest framework, and a second time by us.
-            print >> sbuf, "skipped test"
+            print("skipped test", file=sbuf)
 
     def markUnexpectedSuccess(self, bugnumber):
         """Callback invoked when an unexpected success occurred."""
@@ -1696,9 +1751,9 @@ class Base(unittest2.TestCase):
             # stderr twice.
             # Once by the Python unittest framework, and a second time by us.
             if bugnumber == None:
-                print >> sbuf, "unexpected success"
+                print("unexpected success", file=sbuf)
             else:
-                print >> sbuf, "unexpected success (problem id:" + str(bugnumber) + ")"
+                print("unexpected success (problem id:" + str(bugnumber) + ")", file=sbuf)
 
     def getRerunArgs(self):
         return " -f %s.%s" % (self.__class__.__name__, self._testMethodName)
@@ -1776,7 +1831,7 @@ class Base(unittest2.TestCase):
         if not self.__unexpected__ and not self.__skipped__:
             for test, traceback in pairs:
                 if test is self:
-                    print >> self.session, traceback
+                    print(traceback, file=self.session)
 
         # put footer (timestamp/rerun instructions) into session
         testMethod = getattr(self, self._testMethodName)
@@ -1786,11 +1841,11 @@ class Base(unittest2.TestCase):
             benchmarks = False
 
         import datetime
-        print >> self.session, "Session info generated @", datetime.datetime.now().ctime()
-        print >> self.session, "To rerun this test, issue the following command from the 'test' directory:\n"
-        print >> self.session, "./dotest.py %s -v %s %s" % (self.getRunOptions(),
+        print("Session info generated @", datetime.datetime.now().ctime(), file=self.session)
+        print("To rerun this test, issue the following command from the 'test' directory:\n", file=self.session)
+        print("./dotest.py %s -v %s %s" % (self.getRunOptions(),
                                                  ('+b' if benchmarks else '-t'),
-                                                 self.getRerunArgs())
+                                                 self.getRerunArgs()), file=self.session)
         self.session.close()
         del self.session
 
@@ -2018,7 +2073,7 @@ class Base(unittest2.TestCase):
                  'CFLAGS_EXTRAS' : "%s %s -I%s" % (stdflag, stdlibflag, os.path.join(os.environ["LLDB_SRC"], "include")),
                  'LD_EXTRAS' : "-L%s -lliblldb" % self.implib_dir}
         if self.TraceOn():
-            print "Building LLDB Driver (%s) from sources %s" % (exe_name, sources)
+            print("Building LLDB Driver (%s) from sources %s" % (exe_name, sources))
 
         self.buildDefault(dictionary=d)
 
@@ -2046,10 +2101,10 @@ class Base(unittest2.TestCase):
                  'CFLAGS_EXTRAS' : "%s -I%s -fPIC" % (stdflag, os.path.join(os.environ["LLDB_SRC"], "include")),
                  'LD_EXTRAS' : "-shared -l%s\liblldb.lib" % self.implib_dir}
         if self.TraceOn():
-            print "Building LLDB Library (%s) from sources %s" % (lib_name, sources)
+            print("Building LLDB Library (%s) from sources %s" % (lib_name, sources))
 
         self.buildDefault(dictionary=d)
-
+    
     def buildProgram(self, sources, exe_name):
         """ Platform specific way to build an executable from C/C++ sources. """
         d = {'CXX_SOURCES' : sources,
@@ -2083,6 +2138,16 @@ class Base(unittest2.TestCase):
             dictionary = append_android_envs(dictionary)
         if not module.buildDwarf(self, architecture, compiler, dictionary, clean):
             raise Exception("Don't know how to build binary with dwarf")
+
+    def buildDwo(self, architecture=None, compiler=None, dictionary=None, clean=True):
+        """Platform specific way to build binaries with dwarf maps."""
+        if lldb.skip_build_and_cleanup:
+            return
+        module = builder_module()
+        if target_is_android():
+            dictionary = append_android_envs(dictionary)
+        if not module.buildDwo(self, architecture, compiler, dictionary, clean):
+            raise Exception("Don't know how to build binary with dwo")
 
     def buildGo(self):
         """Build the default go binary.
@@ -2177,6 +2242,44 @@ class Base(unittest2.TestCase):
         else:
             return ['libc++.1.dylib','libc++abi.dylib']
 
+# Metaclass for TestBase to change the list of test metods when a new TestCase is loaded.
+# We change the test methods to create a new test method for each test for each debug info we are
+# testing. The name of the new test method will be '<original-name>_<debug-info>' and with adding
+# the new test method we remove the old method at the same time.
+class LLDBTestCaseFactory(type):
+    def __new__(cls, name, bases, attrs):
+        newattrs = {}
+        for attrname, attrvalue in attrs.items():
+            if attrname.startswith("test") and not getattr(attrvalue, "__no_debug_info_test__", False):
+                @dsym_test
+                def dsym_test_method(self, attrvalue=attrvalue):
+                    self.debug_info = "dsym"
+                    return attrvalue(self)
+                dsym_method_name = attrname + "_dsym"
+                dsym_test_method.__name__ = dsym_method_name
+                newattrs[dsym_method_name] = dsym_test_method
+
+                @dwarf_test
+                def dwarf_test_method(self, attrvalue=attrvalue):
+                    self.debug_info = "dwarf"
+                    return attrvalue(self)
+                dwarf_method_name = attrname + "_dwarf"
+                dwarf_test_method.__name__ = dwarf_method_name
+                newattrs[dwarf_method_name] = dwarf_test_method
+                
+                @dwo_test
+                def dwo_test_method(self, attrvalue=attrvalue):
+                    self.debug_info = "dwo"
+                    return attrvalue(self)
+                dwo_method_name = attrname + "_dwo"
+                dwo_test_method.__name__ = dwo_method_name
+                newattrs[dwo_method_name] = dwo_test_method
+            else:
+                newattrs[attrname] = attrvalue
+        return super(LLDBTestCaseFactory, cls).__new__(cls, name, bases, newattrs)
+
+# Setup the metaclass for this class to change the list of the test methods when a new class is loaded
+@add_metaclass(LLDBTestCaseFactory)
 class TestBase(Base):
     """
     This abstract base class is meant to be subclassed.  It provides default
@@ -2320,7 +2423,7 @@ class TestBase(Base):
                 return target
             self.dbg.CreateTarget = DecoratedCreateTarget
             if self.TraceOn():
-                print "self.dbg.Create is redefined to:\n%s" % getsource_if_available(DecoratedCreateTarget)
+                print("self.dbg.Create is redefined to:\n%s" % getsource_if_available(DecoratedCreateTarget))
 
         # We want our debugger to be synchronous.
         self.dbg.SetAsync(False)
@@ -2337,7 +2440,7 @@ class TestBase(Base):
         if lldb.pre_flight:
             lldb.pre_flight(self)
 
-        if lldb.remote_platform:
+        if lldb.remote_platform and lldb.remote_platform_working_dir:
             remote_test_dir = lldbutil.join_remote_paths(
                     lldb.remote_platform_working_dir,
                     self.getArchitecture(),
@@ -2346,8 +2449,20 @@ class TestBase(Base):
             error = lldb.remote_platform.MakeDirectory(remote_test_dir, 0700)
             if error.Success():
                 lldb.remote_platform.SetWorkingDirectory(remote_test_dir)
+
+                # This function removes all files from the current working directory while leaving
+                # the directories in place. The cleaup is required to reduce the disk space required
+                # by the test suit while leaving the directories untached is neccessary because
+                # sub-directories might belong to an other test
+                def clean_working_directory():
+                    # TODO: Make it working on Windows when we need it for remote debugging support
+                    # TODO: Replace the heuristic to remove the files with a logic what collects the
+                    # list of files we have to remove during test runs.
+                    shell_cmd = lldb.SBPlatformShellCommand("rm %s/*" % remote_test_dir)
+                    lldb.remote_platform.Run(shell_cmd)
+                self.addTearDownHook(clean_working_directory)
             else:
-                print "error: making remote directory '%s': %s" % (remote_test_dir, error)
+                print("error: making remote directory '%s': %s" % (remote_test_dir, error))
     
     def registerSharedLibrariesWithTarget(self, target, shlibs):
         '''If we are remotely running the test suite, register the shared libraries with the target so they get uploaded, otherwise do nothing
@@ -2430,6 +2545,11 @@ class TestBase(Base):
         #import traceback
         #traceback.print_stack()
 
+        # Ensure all the references to SB objects have gone away so that we can
+        # be sure that all test-specific resources have been freed before we
+        # attempt to delete the targets.
+        gc.collect()
+
         # Delete the target(s) from the debugger as a general cleanup step.
         # This includes terminating the process for each target, if any.
         # We'd like to reuse the debugger for our next test without incurring
@@ -2498,11 +2618,11 @@ class TestBase(Base):
                 target = atoms[-1]
                 # Now let's get the absolute pathname of our target.
                 abs_target = os.path.abspath(target)
-                print >> sbuf, "Found a file command, target (with absolute pathname)=%s" % abs_target
+                print("Found a file command, target (with absolute pathname)=%s" % abs_target, file=sbuf)
                 fpath, fname = os.path.split(abs_target)
                 parent_dir = os.path.split(fpath)[0]
                 platform_target_install_command = 'platform target-install %s %s' % (fpath, lldb.lldbtest_remote_sandbox)
-                print >> sbuf, "Insert this command to be run first: %s" % platform_target_install_command
+                print("Insert this command to be run first: %s" % platform_target_install_command, file=sbuf)
                 self.ci.HandleCommand(platform_target_install_command, self.res)
                 # And this is the file command we want to execute, instead.
                 #
@@ -2512,7 +2632,7 @@ class TestBase(Base):
                 #
                 lldb.lldbtest_remote_sandboxed_executable = abs_target.replace(parent_dir, lldb.lldbtest_remote_sandbox)
                 cmd = "file -P %s %s %s" % (lldb.lldbtest_remote_sandboxed_executable, the_rest.replace(target, ''), abs_target)
-                print >> sbuf, "And this is the replaced file command: %s" % cmd
+                print("And this is the replaced file command: %s" % cmd, file=sbuf)
 
         running = (cmd.startswith("run") or cmd.startswith("process launch"))
 
@@ -2520,14 +2640,14 @@ class TestBase(Base):
             self.ci.HandleCommand(cmd, self.res, inHistory)
 
             with recording(self, trace) as sbuf:
-                print >> sbuf, "runCmd:", cmd
+                print("runCmd:", cmd, file=sbuf)
                 if not check:
-                    print >> sbuf, "check of return status not required"
+                    print("check of return status not required", file=sbuf)
                 if self.res.Succeeded():
-                    print >> sbuf, "output:", self.res.GetOutput()
+                    print("output:", self.res.GetOutput(), file=sbuf)
                 else:
-                    print >> sbuf, "runCmd failed!"
-                    print >> sbuf, self.res.GetError()
+                    print("runCmd failed!", file=sbuf)
+                    print(self.res.GetError(), file=sbuf)
 
             if self.res.Succeeded():
                 break
@@ -2535,7 +2655,7 @@ class TestBase(Base):
                 # For process launch, wait some time before possible next try.
                 time.sleep(self.timeWaitNextLaunch)
                 with recording(self, trace) as sbuf:
-                    print >> sbuf, "Command '" + cmd + "' failed!"
+                    print("Command '" + cmd + "' failed!", file=sbuf)
 
         if check:
             self.assertTrue(self.res.Succeeded(),
@@ -2564,7 +2684,7 @@ class TestBase(Base):
             # No execution required, just compare str against the golden input.
             output = str
             with recording(self, trace) as sbuf:
-                print >> sbuf, "looking at:", output
+                print("looking at:", output, file=sbuf)
 
         # The heading says either "Expecting" or "Not expecting".
         heading = "Expecting" if matching else "Not expecting"
@@ -2574,8 +2694,8 @@ class TestBase(Base):
             match_object = re.search(pattern, output)
             matched = bool(match_object)
             with recording(self, trace) as sbuf:
-                print >> sbuf, "%s pattern: %s" % (heading, pattern)
-                print >> sbuf, "Matched" if matched else "Not matched"
+                print("%s pattern: %s" % (heading, pattern), file=sbuf)
+                print("Matched" if matched else "Not matched", file=sbuf)
             if matched:
                 break
 
@@ -2629,7 +2749,7 @@ class TestBase(Base):
             else:
                 output = str
             with recording(self, trace) as sbuf:
-                print >> sbuf, "looking at:", output
+                print("looking at:", output, file=sbuf)
 
         # The heading says either "Expecting" or "Not expecting".
         heading = "Expecting" if matching else "Not expecting"
@@ -2640,16 +2760,16 @@ class TestBase(Base):
 
         if startstr:
             with recording(self, trace) as sbuf:
-                print >> sbuf, "%s start string: %s" % (heading, startstr)
-                print >> sbuf, "Matched" if matched else "Not matched"
+                print("%s start string: %s" % (heading, startstr), file=sbuf)
+                print("Matched" if matched else "Not matched", file=sbuf)
 
         # Look for endstr, if specified.
         keepgoing = matched if matching else not matched
         if endstr:
             matched = output.endswith(endstr)
             with recording(self, trace) as sbuf:
-                print >> sbuf, "%s end string: %s" % (heading, endstr)
-                print >> sbuf, "Matched" if matched else "Not matched"
+                print("%s end string: %s" % (heading, endstr), file=sbuf)
+                print("Matched" if matched else "Not matched", file=sbuf)
 
         # Look for sub strings, if specified.
         keepgoing = matched if matching else not matched
@@ -2657,8 +2777,8 @@ class TestBase(Base):
             for str in substrs:
                 matched = output.find(str) != -1
                 with recording(self, trace) as sbuf:
-                    print >> sbuf, "%s sub string: %s" % (heading, str)
-                    print >> sbuf, "Matched" if matched else "Not matched"
+                    print("%s sub string: %s" % (heading, str), file=sbuf)
+                    print("Matched" if matched else "Not matched", file=sbuf)
                 keepgoing = matched if matching else not matched
                 if not keepgoing:
                     break
@@ -2670,8 +2790,8 @@ class TestBase(Base):
                 # Match Objects always have a boolean value of True.
                 matched = bool(re.search(pattern, output))
                 with recording(self, trace) as sbuf:
-                    print >> sbuf, "%s pattern: %s" % (heading, pattern)
-                    print >> sbuf, "Matched" if matched else "Not matched"
+                    print("%s pattern: %s" % (heading, pattern), file=sbuf)
+                    print("Matched" if matched else "Not matched", file=sbuf)
                 keepgoing = matched if matching else not matched
                 if not keepgoing:
                     break
@@ -2689,8 +2809,26 @@ class TestBase(Base):
                         name + "is a method name of object: " + str(obj))
         result = method()
         with recording(self, trace) as sbuf:
-            print >> sbuf, str(method) + ":",  result
+            print(str(method) + ":",  result, file=sbuf)
         return result
+
+    def build(self, architecture=None, compiler=None, dictionary=None, clean=True):
+        """Platform specific way to build the default binaries."""
+        if lldb.skip_build_and_cleanup:
+            return
+        module = builder_module()
+        if target_is_android():
+            dictionary = append_android_envs(dictionary)
+        if self.debug_info is None:
+            return self.buildDefault(architecture, compiler, dictionary, clean)
+        elif self.debug_info == "dsym":
+            return self.buildDsym(architecture, compiler, dictionary, clean)
+        elif self.debug_info == "dwarf":
+            return self.buildDwarf(architecture, compiler, dictionary, clean)
+        elif self.debug_info == "dwo":
+            return self.buildDwo(architecture, compiler, dictionary, clean)
+        else:
+            self.fail("Can't build for debug info: %s" % self.debug_info)
 
     # =================================================
     # Misc. helper methods for debugging test execution
@@ -2731,7 +2869,7 @@ class TestBase(Base):
         if not traceAlways:
             return
 
-        print child
+        print(child)
 
     @classmethod
     def RemoveTempFile(cls, file):

@@ -25,6 +25,7 @@ class   AddressImpl;
 class   AddressRange;
 class   AddressResolver;
 class   ArchSpec;
+class   ArmUnwindInfo;
 class   Args;
 class   ASTResultSynthesizer;
 class   ASTStructExtractor;
@@ -78,7 +79,7 @@ class   DataExtractor;
 class   Debugger;
 class   Declaration;
 class   Disassembler;
-struct  DumpValueObjectOptions;
+class   DumpValueObjectOptions;
 class   DynamicCheckerFunctions;
 class   DynamicLoader;
 class   Editline;
@@ -164,6 +165,7 @@ class   OptionValueUUID;
 class   NamedOption;
 class   PathMappingList;
 class   FunctionCaller;
+class   PersistentExpressionState;
 class   Platform;
 class   Process;
 class   ProcessAttachInfo;
@@ -181,12 +183,11 @@ class   RegisterLocation;
 class   RegisterLocationList;
 class   RegisterValue;
 class   RegularExpression;
+class   REPL;
 class   Scalar;
 class   ScriptInterpreter;
 class   ScriptInterpreterLocker;
-#ifndef LLDB_DISABLE_PYTHON
 struct  ScriptSummaryFormat;
-#endif
 class   SearchFilter;
 class   Section;
 class   SectionImpl;
@@ -254,6 +255,7 @@ class   TypeAndOrName;
 class   TypeCategoryMap;
 class   TypeImpl;
 class   TypeList;
+class   TypeMap;
 class   TypeListImpl;
 class   TypeMemberImpl;
 class   TypeMemberFunctionImpl;
@@ -308,7 +310,6 @@ namespace lldb {
     typedef std::shared_ptr<lldb_private::Broadcaster> BroadcasterSP;
     typedef std::unique_ptr<lldb_private::ClangASTContext> ClangASTContextUP;
     typedef std::unique_ptr<lldb_private::ClangASTImporter> ClangASTImporterUP;
-    typedef std::unique_ptr<lldb_private::ClangASTSource> ClangASTSourceUP;
     typedef std::unique_ptr<lldb_private::ClangModulesDeclVendor> ClangModulesDeclVendorUP;
     typedef std::unique_ptr<lldb_private::ClangPersistentVariables> ClangPersistentVariablesUP;
     typedef std::shared_ptr<lldb_private::UserExpression> UserExpressionSP;
@@ -382,9 +383,8 @@ namespace lldb {
     typedef std::shared_ptr<lldb_private::Queue> QueueSP;
     typedef std::weak_ptr<lldb_private::Queue> QueueWP;
     typedef std::shared_ptr<lldb_private::QueueItem> QueueItemSP;
-#ifndef LLDB_DISABLE_PYTHON
+    typedef std::shared_ptr<lldb_private::REPL> REPLSP;
     typedef std::shared_ptr<lldb_private::ScriptSummaryFormat> ScriptSummaryFormatSP;
-#endif // #ifndef LLDB_DISABLE_PYTHON
     typedef std::shared_ptr<lldb_private::ScriptInterpreter> ScriptInterpreterSP;
     typedef std::unique_ptr<lldb_private::ScriptInterpreter> ScriptInterpreterUP;
     typedef std::shared_ptr<lldb_private::Section> SectionSP;

@@ -2,8 +2,11 @@
 Test the use of setjmp/longjmp for non-local goto operations in a single-threaded inferior.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os
-import unittest2
 import lldb
 import lldbutil
 from lldbtest import *
@@ -21,7 +24,7 @@ class LongjmpTestCase(TestBase):
     @expectedFailureWindows("llvm.org/pr24778")
     def test_step_out(self):
         """Test stepping when the inferior calls setjmp/longjmp, in particular, thread step-out."""
-        self.buildDefault()
+        self.build()
         self.step_out()
 
     @skipIfDarwin # llvm.org/pr16769: LLDB on Mac OS X dies in function ReadRegisterBytes in GDBRemoteRegisterContext.cpp
@@ -30,7 +33,7 @@ class LongjmpTestCase(TestBase):
     @expectedFailureWindows("llvm.org/pr24778")
     def test_step_over(self):
         """Test stepping when the inferior calls setjmp/longjmp, in particular, thread step-over a longjmp."""
-        self.buildDefault()
+        self.build()
         self.step_over()
 
     @skipIfDarwin # llvm.org/pr16769: LLDB on Mac OS X dies in function ReadRegisterBytes in GDBRemoteRegisterContext.cpp
@@ -39,7 +42,7 @@ class LongjmpTestCase(TestBase):
     @expectedFailureWindows("llvm.org/pr24778")
     def test_step_back_out(self):
         """Test stepping when the inferior calls setjmp/longjmp, in particular, thread step-out after thread step-in."""
-        self.buildDefault()
+        self.build()
         self.step_back_out()
 
     def start_test(self, symbol):
@@ -80,9 +83,3 @@ class LongjmpTestCase(TestBase):
         self.runCmd("thread step-in", RUN_SUCCEEDED)
         self.runCmd("thread step-out", RUN_SUCCEEDED)
         self.check_status()
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

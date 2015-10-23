@@ -1,7 +1,10 @@
 """Test that lldb functions correctly after the inferior has crashed while in a recursive routine."""
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb, lldbutil, lldbplatformutil
 import sys
 from lldbtest import *
@@ -10,87 +13,52 @@ class CrashingRecursiveInferiorTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    def test_recursive_inferior_crashing_dsym(self):
-        """Test that lldb reliably catches the inferior crashing (command)."""
-        self.buildDsym()
-        self.recursive_inferior_crashing()
-
     @expectedFailureFreeBSD("llvm.org/pr23699 SIGSEGV is reported as exception, not signal")
     @expectedFailureWindows("llvm.org/pr24778")
-    def test_recursive_inferior_crashing_dwarf(self):
+    def test_recursive_inferior_crashing(self):
         """Test that lldb reliably catches the inferior crashing (command)."""
-        self.buildDwarf()
+        self.build()
         self.recursive_inferior_crashing()
 
-    @skipUnlessDarwin
-    def test_recursive_inferior_crashing_registers_dsym(self):
-        """Test that lldb reliably reads registers from the inferior after crashing (command)."""
-        self.buildDsym()
-        self.recursive_inferior_crashing_registers()
-
     @expectedFailureWindows("llvm.org/pr24778")
-    def test_recursive_inferior_crashing_register_dwarf(self):
+    def test_recursive_inferior_crashing_register(self):
         """Test that lldb reliably reads registers from the inferior after crashing (command)."""
-        self.buildDwarf()
+        self.build()
         self.recursive_inferior_crashing_registers()
 
     @python_api_test
     @expectedFailureWindows("llvm.org/pr24778")
     def test_recursive_inferior_crashing_python(self):
         """Test that lldb reliably catches the inferior crashing (Python API)."""
-        self.buildDefault()
+        self.build()
         self.recursive_inferior_crashing_python()
 
-    @skipUnlessDarwin
-    def test_recursive_inferior_crashing_expr_dsym(self):
+    @expectedFailureWindows("llvm.org/pr24778")
+    def test_recursive_inferior_crashing_expr(self):
         """Test that the lldb expression interpreter can read from the inferior after crashing (command)."""
-        self.buildDsym()
+        self.build()
         self.recursive_inferior_crashing_expr()
 
     @expectedFailureWindows("llvm.org/pr24778")
-    def test_recursive_inferior_crashing_expr_dwarf(self):
-        """Test that the lldb expression interpreter can read from the inferior after crashing (command)."""
-        self.buildDwarf()
-        self.recursive_inferior_crashing_expr()
-
-    @skipUnlessDarwin
-    def test_recursive_inferior_crashing_step_dsym(self):
-        """Test that lldb functions correctly after stepping through a crash."""
-        self.buildDsym()
+    def test_recursive_inferior_crashing_step(self):
+        """Test that stepping after a crash behaves correctly."""
+        self.build()
         self.recursive_inferior_crashing_step()
 
-    @expectedFailureWindows("llvm.org/pr24778")
-    def test_recursive_inferior_crashing_step_dwarf(self):
-        """Test that stepping after a crash behaves correctly."""
-        self.buildDwarf()
-        self.recursive_inferior_crashing_step()
-
-    @skipUnlessDarwin
-    def test_recursive_inferior_crashing_step_after_break_dsym(self):
-        """Test that stepping after a crash behaves correctly."""
-        self.buildDsym()
-        self.recursive_inferior_crashing_step_after_break()
-
-    @skipIfFreeBSD # llvm.org/pr16684
+    @expectedFailureFreeBSD('llvm.org/pr24939')
     @expectedFailureWindows("llvm.org/pr24778")
     @expectedFailureAndroid(archs=['aarch64'], api_levels=range(21 + 1)) # No eh_frame for sa_restorer
-    def test_recursive_inferior_crashing_step_after_break_dwarf(self):
+    def test_recursive_inferior_crashing_step_after_break(self):
         """Test that lldb functions correctly after stepping through a crash."""
-        self.buildDwarf()
+        self.build()
         self.recursive_inferior_crashing_step_after_break()
 
-    @skipUnlessDarwin
-    def test_recursive_inferior_crashing_expr_step_and_expr_dsym(self):
-        """Test that lldb expressions work before and after stepping after a crash."""
-        self.buildDsym()
-        self.recursive_inferior_crashing_expr_step_expr()
-
+    @expectedFailureFreeBSD('llvm.org/pr15989') # Couldn't allocate space for the stack frame
     @skipIfLinux # Inferior exits after stepping after a segfault. This is working as intended IMHO.
     @expectedFailureWindows("llvm.org/pr24778")
-    def test_recursive_inferior_crashing_expr_step_and_expr_dwarf(self):
+    def test_recursive_inferior_crashing_expr_step_and_expr(self):
         """Test that lldb expressions work before and after stepping after a crash."""
-        self.buildDwarf()
+        self.build()
         self.recursive_inferior_crashing_expr_step_expr()
 
     def set_breakpoint(self, line):
@@ -249,9 +217,3 @@ class CrashingRecursiveInferiorTestCase(TestBase):
             startstr = '(char *) $1 = 0x0')
 
         self.check_stop_reason()
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

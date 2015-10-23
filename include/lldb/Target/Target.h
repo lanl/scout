@@ -25,6 +25,7 @@
 #include "lldb/Core/ModuleList.h"
 #include "lldb/Core/UserSettingsController.h"
 #include "lldb/Expression/Expression.h"
+#include "lldb/Symbol/TypeSystem.h"
 #include "lldb/Target/ExecutionContextScope.h"
 #include "lldb/Target/PathMappingList.h"
 #include "lldb/Target/ProcessLaunchInfo.h"
@@ -441,6 +442,18 @@ public:
     }
     
     bool
+    GetColorizeErrors () const
+    {
+        return m_ansi_color_errors;
+    }
+    
+    void
+    SetColorizeErrors (bool b)
+    {
+        m_ansi_color_errors = b;
+    }
+    
+    bool
     GetTrapExceptions() const
     {
         return m_trap_exceptions;
@@ -450,6 +463,18 @@ public:
     SetTrapExceptions (bool b)
     {
         m_trap_exceptions = b;
+    }
+    
+    bool
+    GetREPLEnabled() const
+    {
+        return m_repl;
+    }
+    
+    void
+    SetREPLEnabled (bool b)
+    {
+        m_repl = b;
     }
     
     void
@@ -466,6 +491,37 @@ public:
             return false;
         else
             return m_cancel_callback (phase, m_cancel_callback_baton);
+    }
+    
+    // Allows the expression contents to be remapped to point to the specified file and line
+    // using #line directives.
+    void
+    SetPoundLine (const char *path, uint32_t line) const
+    {
+        if (path && path[0])
+        {
+            m_pound_line_file = path;
+            m_pound_line_line = line;
+        }
+        else
+        {
+            m_pound_line_file.clear();
+            m_pound_line_line = 0;
+        }
+    }
+    
+    const char *
+    GetPoundLineFilePath () const
+    {
+        if (m_pound_line_file.empty())
+            return NULL;
+        return m_pound_line_file.c_str();
+    }
+    
+    uint32_t
+    GetPoundLineLine () const
+    {
+        return m_pound_line_line;
     }
 
     void
@@ -492,13 +548,20 @@ private:
     bool m_stop_others;
     bool m_debug;
     bool m_trap_exceptions;
+    bool m_repl;
     bool m_generate_debug_info;
+    bool m_ansi_color_errors;
     bool m_result_is_internal;
     lldb::DynamicValueType m_use_dynamic;
     uint32_t m_timeout_usec;
     uint32_t m_one_thread_timeout_usec;
     lldb::ExpressionCancelCallback m_cancel_callback;
     void *m_cancel_callback_baton;
+    // If m_pound_line_file is not empty and m_pound_line_line is non-zero,
+    // use #line %u "%s" before the expression content to remap where the source
+    // originates
+    mutable std::string m_pound_line_file;
+    mutable uint32_t m_pound_line_line;
 };
 
 //----------------------------------------------------------------------
@@ -1229,7 +1292,10 @@ public:
     GetImageSearchPathList ();
     
     TypeSystem *
-    GetScratchTypeSystemForLanguage (lldb::LanguageType language, bool create_on_demand = true);
+    GetScratchTypeSystemForLanguage (Error *error, lldb::LanguageType language, bool create_on_demand = true);
+    
+    PersistentExpressionState *
+    GetPersistentExpressionStateForLanguage (lldb::LanguageType language);
     
     // Creates a UserExpression for the given language, the rest of the parameters have the
     // same meaning as for the UserExpression constructor.
@@ -1319,9 +1385,12 @@ public:
                         lldb::ValueObjectSP &result_valobj_sp,
                         const EvaluateExpressionOptions& options = EvaluateExpressionOptions());
 
-    ClangPersistentVariables &
-    GetPersistentVariables();
-
+    lldb::ExpressionVariableSP
+    GetPersistentVariable(const ConstString &name);
+    
+    lldb::addr_t
+    GetPersistentSymbol(const ConstString &name);
+    
     //------------------------------------------------------------------
     // Target Stop Hooks
     //------------------------------------------------------------------
@@ -1497,6 +1566,12 @@ public:
     
     lldb::SearchFilterSP
     GetSearchFilterForModuleAndCUList (const FileSpecList *containingModules, const FileSpecList *containingSourceFiles);
+    
+    lldb::REPLSP
+    GetREPL (Error &err, lldb::LanguageType language, const char *repl_options, bool can_create);
+    
+    void
+    SetREPL (lldb::LanguageType language, lldb::REPLSP repl_sp);
 
 protected:
     //------------------------------------------------------------------
@@ -1519,11 +1594,13 @@ protected:
     lldb::ProcessSP m_process_sp;
     lldb::SearchFilterSP  m_search_filter_sp;
     PathMappingList m_image_search_paths;
-    lldb::ClangASTContextUP m_scratch_ast_context_ap;
-    lldb::ClangASTSourceUP m_scratch_ast_source_ap;
+    TypeSystemMap m_scratch_type_system_map;
+    
+    typedef std::map<lldb::LanguageType, lldb::REPLSP> REPLMap;
+    REPLMap m_repl_map;
+    
     lldb::ClangASTImporterUP m_ast_importer_ap;
     lldb::ClangModulesDeclVendorUP m_clang_modules_decl_vendor_ap;
-    lldb::ClangPersistentVariablesUP m_persistent_variables;      ///< These are the persistent variables associated with this process for the expression parser.
 
     lldb::SourceManagerUP m_source_manager_ap;
 

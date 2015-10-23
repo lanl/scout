@@ -40,6 +40,7 @@
 #include "lldb/Core/Timer.h"
 #include "lldb/Core/Value.h"
 #include "lldb/DataFormatters/FormatManager.h"
+#include "lldb/Host/FileSystem.h"
 #include "lldb/Host/HostThread.h"
 #include "lldb/Host/StringConvert.h"
 #include "lldb/Host/Symbols.h"
@@ -1004,11 +1005,11 @@ ProcessGDBRemote::DoLaunch (Module *exe_module, ProcessLaunchInfo &launch_info)
             {
                 // set to /dev/null unless redirected to a file above
                 if (!stdin_file_spec)
-                    stdin_file_spec.SetFile("/dev/null", false);
+                    stdin_file_spec.SetFile(FileSystem::DEV_NULL, false);
                 if (!stdout_file_spec)
-                    stdout_file_spec.SetFile("/dev/null", false);
+                    stdout_file_spec.SetFile(FileSystem::DEV_NULL, false);
                 if (!stderr_file_spec)
-                    stderr_file_spec.SetFile("/dev/null", false);
+                    stderr_file_spec.SetFile(FileSystem::DEV_NULL, false);
             }
             else if (platform_sp && platform_sp->IsHost())
             {
@@ -2105,6 +2106,8 @@ ProcessGDBRemote::SetThreadStopInfo (lldb::tid_t tid,
                             watch_id_t watch_id = LLDB_INVALID_WATCH_ID;
                             if (wp_addr != LLDB_INVALID_ADDRESS)
                             {
+                                if (wp_hit_addr != LLDB_INVALID_ADDRESS)
+                                    wp_addr = wp_hit_addr;
                                 WatchpointSP wp_sp = GetTarget().GetWatchpointList().FindByAddress(wp_addr);
                                 if (wp_sp)
                                 {
@@ -3041,14 +3044,8 @@ ProcessGDBRemote::DoReadMemory (addr_t addr, void *buf, size_t size, Error &erro
     char packet[64];
     int packet_len;
     bool binary_memory_read = m_gdb_comm.GetxPacketSupported();
-    if (binary_memory_read)
-    {
-        packet_len = ::snprintf (packet, sizeof(packet), "x0x%" PRIx64 ",0x%" PRIx64, (uint64_t)addr, (uint64_t)size);
-    }
-    else
-    {
-        packet_len = ::snprintf (packet, sizeof(packet), "m%" PRIx64 ",%" PRIx64, (uint64_t)addr, (uint64_t)size);
-    }
+    packet_len = ::snprintf(packet, sizeof(packet), "%c%" PRIx64 ",%" PRIx64,
+                            binary_memory_read ? 'x' : 'm', (uint64_t)addr, (uint64_t)size);
     assert (packet_len + 1 < (int)sizeof(packet));
     StringExtractorGDBRemote response;
     if (m_gdb_comm.SendPacketAndWaitForResponse(packet, packet_len, response, true) == GDBRemoteCommunication::PacketResult::Success)
@@ -3565,14 +3562,22 @@ ProcessGDBRemote::LaunchAndConnectToDebugserver (const ProcessInfo &process_info
         // Set hostname being NULL to do the reverse connect where debugserver
         // will bind to port zero and it will communicate back to us the port
         // that we will connect to
-        const char *hostname = NULL;
+        const char *hostname = nullptr;
         uint16_t port = 0;
 #endif
 
-        error = m_gdb_comm.StartDebugserverProcess (hostname,
-                                                    port,
+        StreamString url_str;
+        const char* url = nullptr;
+        if (hostname != nullptr)
+        {
+            url_str.Printf("%s:%u", hostname, port);
+            url = url_str.GetData();
+        }
+
+        error = m_gdb_comm.StartDebugserverProcess (url,
+                                                    GetTarget().GetPlatform().get(),
                                                     debugserver_launch_info,
-                                                    port);
+                                                    &port);
 
         if (error.Success ())
             m_debugserver_pid = debugserver_launch_info.GetProcessID();

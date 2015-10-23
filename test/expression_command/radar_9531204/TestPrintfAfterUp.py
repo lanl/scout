@@ -2,8 +2,11 @@
 The evaluating printf(...) after break stop and then up a stack frame.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -16,7 +19,7 @@ class Radar9531204TestCase(TestBase):
     @expectedFailureWindows("llvm.org/pr21765")
     def test_expr_commands(self):
         """The evaluating printf(...) after break stop and then up a stack frame."""
-        self.buildDefault()
+        self.build()
 
         self.runCmd("file a.out", CURRENT_EXECUTABLE_SET)
 
@@ -37,10 +40,3 @@ class Radar9531204TestCase(TestBase):
 
         # This does not currently.
         self.runCmd('expression (int)printf("argc is: %d.\\n", argc)')
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

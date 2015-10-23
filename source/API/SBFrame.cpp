@@ -21,7 +21,7 @@
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Core/ValueObjectRegister.h"
 #include "lldb/Core/ValueObjectVariable.h"
-#include "lldb/Expression/ClangPersistentVariables.h"
+#include "Plugins/ExpressionParser/Clang/ClangPersistentVariables.h"
 #include "lldb/Expression/UserExpression.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Symbol/Block.h"
@@ -956,7 +956,7 @@ SBFrame::FindValue (const char *name, ValueType value_type, lldb::DynamicValueTy
                 case eValueTypeConstResult:         // constant result variables
                     {
                         ConstString const_name(name);
-                        ExpressionVariableSP expr_var_sp (target->GetPersistentVariables().GetVariable (const_name));
+                        ExpressionVariableSP expr_var_sp (target->GetPersistentVariable (const_name));
                         if (expr_var_sp)
                         {
                             value_sp = expr_var_sp->GetValueObject();

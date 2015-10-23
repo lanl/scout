@@ -32,7 +32,11 @@ class ScriptInterpreterPython :
     public IOHandlerDelegateMultiline
 {
 public:
-    typedef void (*SWIGInitCallback) (void);
+#if PY_MAJOR_VERSION >= 3
+    typedef PyObject*(*SWIGInitCallback) (void);
+#else
+    typedef void(*SWIGInitCallback) (void);
+#endif
 
     typedef bool (*SWIGBreakpointCallbackFunction) (const char *python_function_name,
                                                     const char *session_dictionary_name,
@@ -69,7 +73,7 @@ public:
                                                const char *session_dictionary_name,
                                                const lldb::ProcessSP& process_sp);
     
-    typedef size_t          (*SWIGPythonCalculateNumChildren)                   (void *implementor);
+    typedef size_t          (*SWIGPythonCalculateNumChildren)                   (void *implementor, uint32_t max);
     typedef void*           (*SWIGPythonGetChildAtIndex)                        (void *implementor, uint32_t idx);
     typedef int             (*SWIGPythonGetIndexOfChildWithName)                (void *implementor, const char* child_name);
     typedef void*           (*SWIGPythonCastPyObjectToSBValue)                  (void* data);
@@ -196,7 +200,7 @@ public:
     StructuredData::DictionarySP GetDynamicSettings(StructuredData::ObjectSP plugin_module_sp, Target *target, const char *setting_name,
                                                     lldb_private::Error &error) override;
 
-    size_t CalculateNumChildren(const StructuredData::ObjectSP &implementor) override;
+    size_t CalculateNumChildren(const StructuredData::ObjectSP &implementor, uint32_t max) override;
 
     lldb::ValueObjectSP GetChildAtIndex(const StructuredData::ObjectSP &implementor, uint32_t idx) override;
 
@@ -520,6 +524,7 @@ public:
         PyGILState_STATE         m_GILState;
 	};
 protected:
+
     enum class AddLocation
     {
         Beginning,
@@ -553,9 +558,9 @@ protected:
         eIOHandlerBreakpoint,
         eIOHandlerWatchpoint
     };
-    PythonObject &
-    GetMainModule ();
-    
+
+    PythonObject &GetMainModule();
+
     PythonDictionary &
     GetSessionDictionary ();
     
@@ -564,10 +569,10 @@ protected:
 
     bool
     GetEmbeddedInterpreterModuleObjects ();
-    
-    PythonObject m_saved_stdin;
-    PythonObject m_saved_stdout;
-    PythonObject m_saved_stderr;
+
+    PythonFile m_saved_stdin;
+    PythonFile m_saved_stdout;
+    PythonFile m_saved_stderr;
     PythonObject m_main_module;
     PythonObject m_lldb_module;
     PythonDictionary m_session_dict;

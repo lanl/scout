@@ -47,6 +47,7 @@ set( LLDB_USED_LIBS
   lldbPluginUnwindAssemblyX86
   lldbPluginAppleObjCRuntime
   lldbPluginRenderScriptRuntime
+  lldbPluginLanguageRuntimeGo
   lldbPluginCXXItaniumABI
   lldbPluginABIMacOSX_arm
   lldbPluginABIMacOSX_arm64
@@ -103,13 +104,6 @@ endif ()
 
 # Darwin-only libraries
 if ( CMAKE_SYSTEM_NAME MATCHES "Darwin" )
-  set(LLDB_VERS_GENERATED_FILE ${LLDB_BINARY_DIR}/source/LLDB_vers.c)
-  add_custom_command(OUTPUT ${LLDB_VERS_GENERATED_FILE}
-    COMMAND ${LLDB_SOURCE_DIR}/scripts/generate-vers.pl
-            ${LLDB_SOURCE_DIR}/lldb.xcodeproj/project.pbxproj liblldb_core
-            > ${LLDB_VERS_GENERATED_FILE})
-
-  set_source_files_properties(${LLDB_VERS_GENERATED_FILE} PROPERTIES GENERATED 1)
   list(APPEND LLDB_USED_LIBS
     lldbPluginDynamicLoaderDarwinKernel
     lldbPluginObjectFileMachO
@@ -197,6 +191,6 @@ if ( NOT LLDB_DISABLE_PYTHON )
   if (LLVM_COMPILER_IS_GCC_COMPATIBLE AND
       NOT "${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
     set_property(SOURCE ${LLDB_WRAP_PYTHON}
-                 APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-sequence-point")
+                 APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-sequence-point -Wno-cast-qual")
   endif ()
 endif()

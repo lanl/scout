@@ -1,7 +1,10 @@
 """Test stepping over and into inlined functions."""
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time, sys
-import unittest2
 import lldb
 import lldbutil
 from lldbtest import *
@@ -10,56 +13,29 @@ class TestInlineStepping(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
     @python_api_test
-    @dsym_test
-    def test_with_dsym_and_python_api(self):
-        """Test stepping over and into inlined functions."""
-        self.buildDsym()
-        self.inline_stepping()
-
-    @python_api_test
-    @dwarf_test
     @expectedFailureFreeBSD('llvm.org/pr17214')
     @expectedFailureIcc # Not really a bug.  ICC combines two inlined functions.
     @expectedFailureAll("llvm.org/pr23139", oslist=["linux"], compiler="gcc", compiler_version=[">=","4.9"], archs=["i386"])
     @expectedFailureWindows("llvm.org/pr24778")
     # failed 1/365 dosep runs, (i386-clang), TestInlineStepping.py:237 failed to stop at first breakpoint in main
     @expectedFailureAll(oslist=["linux"], archs=["i386"])
-    def test_with_dwarf_and_python_api(self):
+    def test_with_python_api(self):
         """Test stepping over and into inlined functions."""
-        self.buildDwarf()
+        self.build()
         self.inline_stepping()
 
-    @skipUnlessDarwin
     @python_api_test
-    @dsym_test
-    def test_step_over_with_dsym_and_python_api(self):
-        """Test stepping over and into inlined functions."""
-        self.buildDsym()
-        self.inline_stepping_step_over()
-
-    @python_api_test
-    @dwarf_test
     @expectedFailureAll("llvm.org/pr23139", oslist=["linux"], compiler="gcc", compiler_version=[">=","4.9"], archs=["i386"])
-    def test_step_over_with_dwarf_and_python_api(self):
+    def test_step_over_with_python_api(self):
         """Test stepping over and into inlined functions."""
-        self.buildDwarf()
+        self.build()
         self.inline_stepping_step_over()
     
-    @skipUnlessDarwin
     @python_api_test
-    @dsym_test
-    def test_step_in_template_with_dsym_and_python_api(self):
+    def test_step_in_template_with_python_api(self):
         """Test stepping in to templated functions."""
-        self.buildDsym()
-        self.step_in_template()
-
-    @python_api_test
-    @dwarf_test
-    def test_step_in_template_with_dwarf_and_python_api(self):
-        """Test stepping in to templated functions."""
-        self.buildDwarf()
+        self.build()
         self.step_in_template()
 
     def setUp(self):
@@ -294,9 +270,3 @@ class TestInlineStepping(TestBase):
         
         step_sequence = [["// In max_value specialized", "into"]]
         self.run_step_sequence(step_sequence)
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

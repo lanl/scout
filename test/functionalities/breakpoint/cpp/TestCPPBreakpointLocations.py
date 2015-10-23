@@ -2,8 +2,11 @@
 Test lldb breakpoint ids.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -12,16 +15,9 @@ class TestCPPBreakpointLocations(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_with_dsym (self):
-        self.buildDsym ()
-        self.breakpoint_id_tests ()
-
-    @dwarf_test
     @expectedFailureWindows("llvm.org/pr24764")
-    def test_with_dwarf (self):
-        self.buildDwarf ()
+    def test (self):
+        self.build ()
         self.breakpoint_id_tests ()
 
     def verify_breakpoint_locations(self, target, bp_dict):
@@ -38,7 +34,7 @@ class TestCPPBreakpointLocations(TestBase):
         for name in names:
             found = name in bp_loc_names
             if not found:
-                print "Didn't find '%s' in: %s" % (name, bp_loc_names)
+                print("Didn't find '%s' in: %s" % (name, bp_loc_names))
             self.assertTrue (found, "Make sure we find all required locations")
         
     def breakpoint_id_tests (self):
@@ -64,11 +60,3 @@ class TestCPPBreakpointLocations(TestBase):
         
         for bp_dict in bp_dicts:
             self.verify_breakpoint_locations(target, bp_dict)
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()
-

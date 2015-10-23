@@ -3,8 +3,11 @@
 There should be nothing unwanted there and a simpe main.cpp which includes SB*.h
 should compile and link with the LLDB framework."""
 
-import os, re, StringIO
-import unittest2
+from __future__ import print_function
+
+import lldb_shared
+
+import os, re
 from lldbtest import *
 import lldbutil
 
@@ -71,7 +74,7 @@ class SBDirCheckerCase(TestBase):
 
         env_cmd = "settings set target.env-vars %s=%s" %(self.dylibPath, self.getLLDBLibraryEnvVal())
         if self.TraceOn():
-            print "Set environment to: ", env_cmd
+            print("Set environment to: ", env_cmd)
         self.runCmd(env_cmd)
         self.addTearDownHook(lambda: self.dbg.HandleCommand("settings remove target.env-vars %s" % self.dylibPath))
 
@@ -85,9 +88,3 @@ class SBDirCheckerCase(TestBase):
                        'stop reason = breakpoint'])
 
         self.runCmd('frame variable')
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

@@ -2,6 +2,8 @@
 Abstract base class of basic types provides a generic type tester method.
 """
 
+from __future__ import print_function
+
 import os, time
 import re
 import lldb
@@ -33,7 +35,7 @@ class GenericTester(TestBase):
 
     def tearDown(self):
         """Cleanup the test byproducts."""
-        #print "Removing golden-output.txt..."
+        #print("Removing golden-output.txt...")
         if os.path.exists(self.golden_filename):
             os.remove(self.golden_filename)
         TestBase.tearDown(self)
@@ -46,9 +48,6 @@ class GenericTester(TestBase):
     # functions.  There are also three optional keyword arguments of interest, #
     # as follows:                                                              #
     #                                                                          #
-    # dsym -> build for dSYM (defaulted to True)                               #
-    #         True: build dSYM file                                            #
-    #         False: build DWARF map                                           #
     # bc -> blockCaptured (defaulted to False)                                 #
     #         True: testing vars of various basic types from inside a block    #
     #         False: testing vars of various basic types from a function       #
@@ -59,22 +58,19 @@ class GenericTester(TestBase):
     #                variable                                                  #
     #==========================================================================#
 
-    def build_and_run(self, source, atoms, dsym=True, bc=False, qd=False):
-        self.build_and_run_with_source_atoms_expr(source, atoms, expr=False, dsym=dsym, bc=bc, qd=qd)
+    def build_and_run(self, source, atoms, bc=False, qd=False):
+        self.build_and_run_with_source_atoms_expr(source, atoms, expr=False, bc=bc, qd=qd)
 
-    def build_and_run_expr(self, source, atoms, dsym=True, bc=False, qd=False):
-        self.build_and_run_with_source_atoms_expr(source, atoms, expr=True, dsym=dsym, bc=bc, qd=qd)
+    def build_and_run_expr(self, source, atoms, bc=False, qd=False):
+        self.build_and_run_with_source_atoms_expr(source, atoms, expr=True, bc=bc, qd=qd)
 
-    def build_and_run_with_source_atoms_expr(self, source, atoms, expr, dsym=True, bc=False, qd=False):
+    def build_and_run_with_source_atoms_expr(self, source, atoms, expr, bc=False, qd=False):
         # See also Makefile and basic_type.cpp:177.
         if bc:
             d = {'CXX_SOURCES': source, 'EXE': self.exe_name, 'CFLAGS_EXTRAS': '-DTEST_BLOCK_CAPTURED_VARS'}
         else:
             d = {'CXX_SOURCES': source, 'EXE': self.exe_name}
-        if dsym:
-            self.buildDsym(dictionary=d)
-        else:
-            self.buildDwarf(dictionary=d)
+        self.build(dictionary=d)
         self.setTearDownCleanup(dictionary=d)
         if expr:
             self.generic_type_expr_tester(self.exe_name, atoms, blockCaptured=bc, quotedDisplay=qd)
@@ -123,7 +119,7 @@ class GenericTester(TestBase):
             if match:
                 var, val = match.group(1), match.group(2)
                 gl.append((var, val))
-        #print "golden list:", gl
+        #print("golden list:", gl)
 
         # This test uses a #include of "basic_type.cpp" so we need to enable
         # always setting inlined breakpoints.
@@ -207,7 +203,7 @@ class GenericTester(TestBase):
             if match:
                 var, val = match.group(1), match.group(2)
                 gl.append((var, val))
-        #print "golden list:", gl
+        #print("golden list:", gl)
 
         # This test uses a #include of "basic_type.cpp" so we need to enable
         # always setting inlined breakpoints.

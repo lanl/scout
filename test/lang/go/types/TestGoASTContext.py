@@ -1,7 +1,10 @@
 """Test the go DWARF type parsing."""
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 import lldbutil
 from lldbtest import *
@@ -13,6 +16,7 @@ class TestGoASTContext(TestBase):
     @python_api_test
     @skipIfFreeBSD # llvm.org/pr24895 triggers assertion failure
     @skipIfRemote # Not remote test suit ready
+    @no_debug_info_test
     @skipUnlessGoInstalled
     def test_with_dsym_and_python_api(self):
         """Test GoASTContext dwarf parsing."""
@@ -101,8 +105,8 @@ class TestGoASTContext(TestBase):
         self.assertEqual(1, v.GetNumChildren())
         self.assertEqual('-10', v.GetChildAtIndex(0).value)
         
-        # print
-        # print os.getpid()
+        # print()
+        # print(os.getpid())
         # time.sleep(60)
         v = self.var('theStruct')
         if v.TypeIsPointerType():
@@ -127,10 +131,3 @@ class TestGoASTContext(TestBase):
         self.assertEqual(5, v.GetNumChildren())
         for i in xrange(5):
             self.assertEqual(str(i + 1), v.GetChildAtIndex(i).value)
-        
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

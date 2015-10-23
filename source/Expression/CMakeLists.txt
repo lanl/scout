@@ -1,15 +1,4 @@
 add_lldb_library(lldbExpression
-  ASTDumper.cpp
-  ASTResultSynthesizer.cpp
-  ASTStructExtractor.cpp
-  ClangASTSource.cpp
-  ClangExpressionDeclMap.cpp
-  ClangExpressionParser.cpp
-  ClangFunctionCaller.cpp
-  ClangModulesDeclVendor.cpp
-  ClangPersistentVariables.cpp
-  ClangUserExpression.cpp
-  ClangUtilityFunction.cpp
   DWARFExpression.cpp
   Expression.cpp
   ExpressionSourceCode.cpp
@@ -17,10 +6,10 @@ add_lldb_library(lldbExpression
   FunctionCaller.cpp
   IRDynamicChecks.cpp
   IRExecutionUnit.cpp
-  IRForTarget.cpp
   IRInterpreter.cpp
   IRMemoryMap.cpp
   Materializer.cpp
+  REPL.cpp
   UserExpression.cpp
   UtilityFunction.cpp
   )

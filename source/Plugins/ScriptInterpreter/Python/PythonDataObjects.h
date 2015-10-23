@@ -19,13 +19,13 @@
 #include "lldb/Core/ConstString.h"
 #include "lldb/Core/StructuredData.h"
 #include "lldb/Core/Flags.h"
+#include "lldb/Host/File.h"
 #include "lldb/Interpreter/OptionValue.h"
 
 namespace lldb_private {
 class PythonString;
 class PythonList;
 class PythonDictionary;
-class PythonObject;
 class PythonInteger;
 
 class StructuredPythonObject : public StructuredData::Generic
@@ -68,212 +68,288 @@ enum class PyObjectType
     Integer,
     Dictionary,
     List,
-    String
+    String,
+    File
 };
 
-    class PythonObject
+enum class PyRefType
+{
+    Borrowed, // We are not given ownership of the incoming PyObject.
+              // We cannot safely hold it without calling Py_INCREF.
+    Owned     // We have ownership of the incoming PyObject.  We should
+              // not call Py_INCREF.
+};
+
+enum class PyInitialValue
+{
+    Invalid,
+    Empty
+};
+
+class PythonObject
+{
+public:
+    PythonObject()
+        : m_py_obj(nullptr)
     {
-    public:
-        PythonObject () :
-            m_py_obj(NULL)
-        {
-        }
-        
-        explicit PythonObject (PyObject* py_obj) :
-            m_py_obj(NULL)
-        {
-            Reset (py_obj);
-        }
-        
-        PythonObject (const PythonObject &rhs) :
-            m_py_obj(NULL)
-        {
-            Reset (rhs.m_py_obj);
-        }
+    }
 
-        virtual
-        ~PythonObject ()
-        {
-            Reset (NULL);
-        }
-
-        bool
-        Reset (const PythonObject &object)
-        {
-            return Reset(object.get());
-        }
-
-        virtual bool
-        Reset (PyObject* py_obj = NULL)
-        {
-            if (py_obj != m_py_obj)
-            {
-                if (Py_IsInitialized())
-                    Py_XDECREF(m_py_obj);
-                m_py_obj = py_obj;
-                if (Py_IsInitialized())
-                    Py_XINCREF(m_py_obj);
-            }
-            return true;
-        }
-        
-        void
-        Dump () const
-        {
-            if (m_py_obj)
-                _PyObject_Dump (m_py_obj);
-            else
-                puts ("NULL");
-        }
-        
-        void
-        Dump (Stream &strm) const;
-
-        PyObject*
-        get () const
-        {
-            return m_py_obj;
-        }
-
-        PyObjectType GetObjectType() const;
-
-        PythonString
-        Repr ();
-        
-        PythonString
-        Str ();
-        
-        explicit operator bool () const
-        {
-            return m_py_obj != NULL;
-        }
-        
-        bool
-        IsNULLOrNone () const;
-
-        StructuredData::ObjectSP CreateStructuredObject() const;
-
-    protected:
-        PyObject* m_py_obj;
-    };
-    
-    class PythonString: public PythonObject
+    PythonObject(PyRefType type, PyObject *py_obj)
+        : m_py_obj(nullptr)
     {
-    public:
-        PythonString ();
-        PythonString (PyObject *o);
-        PythonString (const PythonObject &object);
-        PythonString (llvm::StringRef string);
-        PythonString (const char *string);
-        virtual ~PythonString ();
+        Reset(type, py_obj);
+    }
 
-        virtual bool
-        Reset (PyObject* py_obj = NULL);
-
-        llvm::StringRef
-        GetString() const;
-
-        size_t
-        GetSize() const;
-
-        void SetString(llvm::StringRef string);
-
-        StructuredData::StringSP CreateStructuredString() const;
-    };
-    
-    class PythonInteger: public PythonObject
+    PythonObject(const PythonObject &rhs)
+        : m_py_obj(nullptr)
     {
-    public:
-        
-        PythonInteger ();
-        PythonInteger (PyObject* py_obj);
-        PythonInteger (const PythonObject &object);
-        PythonInteger (int64_t value);
-        virtual ~PythonInteger ();
-        
-        virtual bool
-        Reset (PyObject* py_obj = NULL);
+        Reset(rhs);
+    }
 
-        int64_t GetInteger() const;
+    virtual ~PythonObject() { Reset(); }
 
-        void
-        SetInteger (int64_t value);
-
-        StructuredData::IntegerSP CreateStructuredInteger() const;
-    };
-    
-    class PythonList: public PythonObject
+    void
+    Reset()
     {
-    public:
-        
-        PythonList (bool create_empty);
-        PythonList (PyObject* py_obj);
-        PythonList (const PythonObject &object);
-        PythonList (uint32_t count);
-        virtual ~PythonList ();
-        
-        virtual bool
-        Reset (PyObject* py_obj = NULL);
+        // Avoid calling the virtual method since it's not necessary
+        // to actually validate the type of the PyObject if we're
+        // just setting to null.
+        if (Py_IsInitialized())
+            Py_XDECREF(m_py_obj);
+        m_py_obj = nullptr;
+    }
 
-        uint32_t GetSize() const;
-
-        PythonObject GetItemAtIndex(uint32_t index) const;
-
-        void
-        SetItemAtIndex (uint32_t index, const PythonObject &object);
-        
-        void
-        AppendItem (const PythonObject &object);
-
-        StructuredData::ArraySP CreateStructuredArray() const;
-    };
-    
-    class PythonDictionary: public PythonObject
+    void
+    Reset(const PythonObject &rhs)
     {
-    public:
-        
-        explicit PythonDictionary (bool create_empty);
-        PythonDictionary (PyObject* object);
-        PythonDictionary (const PythonObject &object);
-        virtual ~PythonDictionary ();
-        
-        virtual bool
-        Reset (PyObject* object = NULL);
+        // Avoid calling the virtual method if it's not necessary
+        // to actually validate the type of the PyObject.
+        if (!rhs.IsValid())
+            Reset();
+        else
+            Reset(PyRefType::Borrowed, rhs.m_py_obj);
+    }
 
-        uint32_t GetSize() const;
+    // PythonObject is implicitly convertible to PyObject *, which will call the
+    // wrong overload.  We want to explicitly disallow this, since a PyObject
+    // *always* owns its reference.  Therefore the overload which takes a
+    // PyRefType doesn't make sense, and the copy constructor should be used.
+    void
+    Reset(PyRefType type, const PythonObject &ref) = delete;
 
-        PythonObject
-        GetItemForKey (const PythonString &key) const;
+    virtual void
+    Reset(PyRefType type, PyObject *py_obj)
+    {
+        if (py_obj == m_py_obj)
+            return;
+
+        if (Py_IsInitialized())
+            Py_XDECREF(m_py_obj);
+
+        m_py_obj = py_obj;
+
+        // If this is a borrowed reference, we need to convert it to
+        // an owned reference by incrementing it.  If it is an owned
+        // reference (for example the caller allocated it with PyDict_New()
+        // then we must *not* increment it.
+        if (Py_IsInitialized() && type == PyRefType::Borrowed)
+            Py_XINCREF(m_py_obj);
+    }
         
-        const char *
-        GetItemForKeyAsString (const PythonString &key, const char *fail_value = NULL) const;
-
-        int64_t
-        GetItemForKeyAsInteger (const PythonString &key, int64_t fail_value = 0) const;
-
-        PythonObject
-        GetItemForKey (const char *key) const;
-
-        typedef bool (*DictionaryIteratorCallback)(PythonString* key, PythonDictionary* dict);
+    void
+    Dump () const
+    {
+        if (m_py_obj)
+            _PyObject_Dump (m_py_obj);
+        else
+            puts ("NULL");
+    }
         
-        PythonList
-        GetKeys () const;
-        
-        PythonString
-        GetKeyAtPosition (uint32_t pos) const;
-        
-        PythonObject
-        GetValueAtPosition (uint32_t pos) const;
-        
-        void
-        SetItemForKey (const PythonString &key, PyObject *value);
+    void
+    Dump (Stream &strm) const;
 
-        void
-        SetItemForKey (const PythonString &key, const PythonObject& value);
+    PyObject*
+    get() const
+    {
+        return m_py_obj;
+    }
 
-        StructuredData::DictionarySP CreateStructuredDictionary() const;
-    };
-    
+    PyObject*
+    release()
+    {
+        PyObject *result = m_py_obj;
+        m_py_obj = nullptr;
+        return result;
+    }
+
+    PyObjectType
+    GetObjectType() const;
+
+    PythonString
+    Repr ();
+        
+    PythonString
+    Str ();
+
+    PythonObject &
+    operator=(const PythonObject &other)
+    {
+        Reset(PyRefType::Borrowed, other.get());
+        return *this;
+    }
+
+    bool
+    HasAttribute(llvm::StringRef attribute) const;
+
+    PythonObject
+    GetAttributeValue(llvm::StringRef attribute) const;
+
+    bool
+    IsValid() const;
+
+    bool
+    IsAllocated() const;
+
+    bool
+    IsNone() const;
+
+    template<typename T>
+    T AsType() const
+    {
+        if (!T::Check(m_py_obj))
+            return T();
+        return T(PyRefType::Borrowed, m_py_obj);
+    }
+
+    StructuredData::ObjectSP CreateStructuredObject() const;
+
+protected:
+    PyObject* m_py_obj;
+};
+
+class PythonString : public PythonObject
+{
+public:
+    PythonString();
+    explicit PythonString(llvm::StringRef string);
+    explicit PythonString(const char *string);
+    PythonString(PyRefType type, PyObject *o);
+    PythonString(const PythonString &object);
+    ~PythonString() override;
+
+    static bool Check(PyObject *py_obj);
+
+    // Bring in the no-argument base class version
+    using PythonObject::Reset;
+
+    void Reset(PyRefType type, PyObject *py_obj) override;
+
+    llvm::StringRef
+    GetString() const;
+
+    size_t
+    GetSize() const;
+
+    void SetString(llvm::StringRef string);
+
+    StructuredData::StringSP CreateStructuredString() const;
+};
+
+class PythonInteger : public PythonObject
+{
+public:
+    PythonInteger();
+    explicit PythonInteger(int64_t value);
+    PythonInteger(PyRefType type, PyObject *o);
+    PythonInteger(const PythonInteger &object);
+    ~PythonInteger() override;
+
+    static bool Check(PyObject *py_obj);
+
+    // Bring in the no-argument base class version
+    using PythonObject::Reset;
+
+    void Reset(PyRefType type, PyObject *py_obj) override;
+
+    int64_t GetInteger() const;
+
+    void
+    SetInteger (int64_t value);
+
+    StructuredData::IntegerSP CreateStructuredInteger() const;
+};
+
+class PythonList : public PythonObject
+{
+public:
+    explicit PythonList(PyInitialValue value);
+    explicit PythonList(int list_size);
+    PythonList(PyRefType type, PyObject *o);
+    PythonList(const PythonList &list);
+    ~PythonList() override;
+
+    static bool Check(PyObject *py_obj);
+
+    // Bring in the no-argument base class version
+    using PythonObject::Reset;
+
+    void Reset(PyRefType type, PyObject *py_obj) override;
+
+    uint32_t GetSize() const;
+
+    PythonObject GetItemAtIndex(uint32_t index) const;
+
+    void SetItemAtIndex(uint32_t index, const PythonObject &object);
+
+    void AppendItem(const PythonObject &object);
+
+    StructuredData::ArraySP CreateStructuredArray() const;
+};
+
+class PythonDictionary : public PythonObject
+{
+public:
+    explicit PythonDictionary(PyInitialValue value);
+    PythonDictionary(PyRefType type, PyObject *o);
+    PythonDictionary(const PythonDictionary &dict);
+    ~PythonDictionary() override;
+
+    static bool Check(PyObject *py_obj);
+
+    // Bring in the no-argument base class version
+    using PythonObject::Reset;
+
+    void Reset(PyRefType type, PyObject *py_obj) override;
+
+    uint32_t GetSize() const;
+
+    PythonList GetKeys() const;
+
+    PythonObject GetItemForKey(const PythonObject &key) const;
+    void SetItemForKey(const PythonObject &key, const PythonObject &value);
+
+    StructuredData::DictionarySP CreateStructuredDictionary() const;
+};
+
+class PythonFile : public PythonObject
+{
+  public:
+    PythonFile();
+    PythonFile(File &file, const char *mode);
+    PythonFile(const char *path, const char *mode);
+    PythonFile(PyRefType type, PyObject *o);
+    ~PythonFile() override;
+
+    static bool Check(PyObject *py_obj);
+
+    using PythonObject::Reset;
+
+    void Reset(PyRefType type, PyObject *py_obj) override;
+    void Reset(File &file, const char *mode);
+
+    bool GetUnderlyingFile(File &file) const;
+};
+
 } // namespace lldb_private
 
 #endif  // LLDB_PLUGINS_SCRIPTINTERPRETER_PYTHON_PYTHONDATAOBJECTS_H

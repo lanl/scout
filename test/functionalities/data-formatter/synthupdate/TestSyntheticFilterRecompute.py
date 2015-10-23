@@ -2,8 +2,11 @@
 Test lldb data formatter subsystem.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import datetime
@@ -13,28 +16,16 @@ class SyntheticFilterRecomputingTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_rdar12437442_with_dsym_and_run_command(self):
-        """Test that we update SBValues correctly as dynamic types change."""
-        self.buildDsym()
-        self.rdar12437442_tester()
-
-    @skipUnlessDarwin
-    @dwarf_test
-    def test_rdar12437442_with_dwarf_and_run_command(self):
-        """Test that we update SBValues correctly as dynamic types change."""
-        self.buildDwarf()
-        self.rdar12437442_tester()
-
     def setUp(self):
         # Call super's setUp().
         TestBase.setUp(self)
         # Find the line number to break at.
         self.line = line_number('main.m', '// Set break point at this line.')
 
-    def rdar12437442_tester(self):
+    @skipUnlessDarwin
+    def test_rdar12437442_with_run_command(self):
         """Test that we update SBValues correctly as dynamic types change."""
+        self.build()
         self.runCmd("file a.out", CURRENT_EXECUTABLE_SET)
 
         lldbutil.run_break_set_by_file_and_line (self, "main.m", self.line, num_expected_locations=1, loc_exact=True)
@@ -64,7 +55,7 @@ class SyntheticFilterRecomputingTestCase(TestBase):
         if self.TraceOn():
             self.runCmd("expr --dynamic-type run-target --ptr-depth 1 -- x")
 
-        self.assertTrue(id_x.GetSummary() == '@"5 objects"', "array does not get correct summary")
+        self.assertTrue(id_x.GetSummary() == '@"5 elements"', "array does not get correct summary")
 
         self.runCmd("next")
         self.runCmd("frame select 0")
@@ -81,10 +72,3 @@ class SyntheticFilterRecomputingTestCase(TestBase):
         self.assertFalse(id_x.GetNumChildren() == 7, "dictionary still looks synthetic")
         id_x.SetPreferSyntheticValue(True)
         self.assertTrue(id_x.GetSummary() == "7 key/value pairs", "dictionary does not get correct summary")
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

@@ -32,6 +32,11 @@ ulimit -c unlimited
 echo core.%p | sudo tee /proc/sys/kernel/core_pattern
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
+# system packages and modules
 import asyncore
 import distutils.version
 import fnmatch
@@ -39,33 +44,21 @@ import multiprocessing
 import multiprocessing.pool
 import os
 import platform
-import Queue
 import re
 import signal
-import subprocess
 import sys
 import threading
-import test_results
+
+from six.moves import queue
+
+# Add our local test_runner/lib dir to the python path.
+sys.path.append(os.path.join(os.path.dirname(__file__), "test_runner", "lib"))
+
+# Our packages and modules
 import dotest_channels
 import dotest_args
-
-
-def get_timeout_command():
-    """Search for a suitable timeout command."""
-    if not sys.platform.startswith("win32"):
-        try:
-            subprocess.call("timeout", stderr=subprocess.PIPE)
-            return "timeout"
-        except OSError:
-            pass
-    try:
-        subprocess.call("gtimeout", stderr=subprocess.PIPE)
-        return "gtimeout"
-    except OSError:
-        pass
-    return None
-
-timeout_command = get_timeout_command()
+import lldb_utils
+import process_control
 
 # Status codes for running command with timeout.
 eTimedOut, ePassed, eFailed = 124, 0, 1
@@ -116,10 +109,10 @@ def report_test_failure(name, command, output):
     global output_lock
     with output_lock:
         if not (RESULTS_FORMATTER and RESULTS_FORMATTER.is_using_terminal()):
-            print >> sys.stderr
-            print >> sys.stderr, output
-            print >> sys.stderr, "[%s FAILED]" % name
-            print >> sys.stderr, "Command invoked: %s" % ' '.join(command)
+            print(file=sys.stderr)
+            print(output, file=sys.stderr)
+            print("[%s FAILED]" % name, file=sys.stderr)
+            print("Command invoked: %s" % ' '.join(command), file=sys.stderr)
         update_progress(name)
 
 
@@ -128,9 +121,9 @@ def report_test_pass(name, output):
     with output_lock:
         if not (RESULTS_FORMATTER and RESULTS_FORMATTER.is_using_terminal()):
             if output_on_success:
-                print >> sys.stderr
-                print >> sys.stderr, output
-                print >> sys.stderr, "[%s PASSED]" % name
+                print(file=sys.stderr)
+                print(output, file=sys.stderr)
+                print("[%s PASSED]" % name, file=sys.stderr)
         update_progress(name)
 
 
@@ -171,73 +164,119 @@ def parse_test_results(output):
             unexpected_successes = unexpected_successes + int(unexpected_success_count.group(1))
         if error_count is not None:
             failures = failures + int(error_count.group(1))
-        pass
     return passes, failures, unexpected_successes
 
 
-def create_new_process_group():
-    """Creates a new process group for the process."""
-    os.setpgid(os.getpid(), os.getpid())
+class DoTestProcessDriver(process_control.ProcessDriver):
+    """Drives the dotest.py inferior process and handles bookkeeping."""
+    def __init__(self, output_file, output_file_lock, pid_events, file_name,
+                 soft_terminate_timeout):
+        super(DoTestProcessDriver, self).__init__(
+            soft_terminate_timeout=soft_terminate_timeout)
+        self.output_file = output_file
+        self.output_lock = lldb_utils.OptionalWith(output_file_lock)
+        self.pid_events = pid_events
+        self.results = None
+        self.file_name = file_name
+
+    def write(self, content):
+        with self.output_lock:
+            self.output_file.write(content)
+
+    def on_process_started(self):
+        if self.pid_events:
+            self.pid_events.put_nowait(('created', self.process.pid))
+
+    def on_process_exited(self, command, output, was_timeout, exit_status):
+        if self.pid_events:
+            # No point in culling out those with no exit_status (i.e.
+            # those we failed to kill). That would just cause
+            # downstream code to try to kill it later on a Ctrl-C. At
+            # this point, a best-effort-to-kill already took place. So
+            # call it destroyed here.
+            self.pid_events.put_nowait(('destroyed', self.process.pid))
+
+        # Override the exit status if it was a timeout.
+        if was_timeout:
+            exit_status = eTimedOut
+
+        # If we didn't end up with any output, call it empty for
+        # stdout/stderr.
+        if output is None:
+            output = ('', '')
+
+        # Now parse the output.
+        passes, failures, unexpected_successes = parse_test_results(output)
+        if exit_status == 0:
+            # stdout does not have any useful information from 'dotest.py',
+            # only stderr does.
+            report_test_pass(self.file_name, output[1])
+        else:
+            report_test_failure(self.file_name, command, output[1])
+
+        # Save off the results for the caller.
+        self.results = (
+            self.file_name,
+            exit_status,
+            passes,
+            failures,
+            unexpected_successes)
+
+
+def get_soft_terminate_timeout():
+    # Defaults to 10 seconds, but can set
+    # LLDB_TEST_SOFT_TERMINATE_TIMEOUT to a floating point
+    # number in seconds.  This value indicates how long
+    # the test runner will wait for the dotest inferior to
+    # handle a timeout via a soft terminate before it will
+    # assume that failed and do a hard terminate.
+
+    # TODO plumb through command-line option
+    return float(os.environ.get('LLDB_TEST_SOFT_TERMINATE_TIMEOUT', 10.0))
+
+
+def want_core_on_soft_terminate():
+    # TODO plumb through command-line option
+    if platform.system() == 'Linux':
+        return True
+    else:
+        return False
 
 
 def call_with_timeout(command, timeout, name, inferior_pid_events):
-    """Run command with a timeout if possible.
-    -s QUIT will create a coredump if they are enabled on your system
-    """
-    process = None
-    if timeout_command and timeout != "0":
-        command = [timeout_command, '-s', 'QUIT', timeout] + command
-
+    # Add our worker index (if we have one) to all test events
+    # from this inferior.
     if GET_WORKER_INDEX is not None:
         try:
             worker_index = GET_WORKER_INDEX()
             command.extend([
-                "--event-add-entries", "worker_index={}:int".format(worker_index)])
-        except:
-            # Ctrl-C does bad things to multiprocessing.Manager.dict() lookup.
+                "--event-add-entries",
+                "worker_index={}:int".format(worker_index)])
+        except:  # pylint: disable=bare-except
+            # Ctrl-C does bad things to multiprocessing.Manager.dict()
+            # lookup.  Just swallow it.
             pass
 
-    # Specifying a value for close_fds is unsupported on Windows when using
-    # subprocess.PIPE
-    if os.name != "nt":
-        process = subprocess.Popen(command,
-                                   stdin=subprocess.PIPE,
-                                   stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE,
-                                   close_fds=True,
-                                   preexec_fn=create_new_process_group)
-    else:
-        process = subprocess.Popen(command,
-                                   stdin=subprocess.PIPE,
-                                   stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE)
-    inferior_pid = process.pid
-    if inferior_pid_events:
-        inferior_pid_events.put_nowait(('created', inferior_pid))
-    output = process.communicate()
+    # Create the inferior dotest.py ProcessDriver.
+    soft_terminate_timeout = get_soft_terminate_timeout()
+    want_core = want_core_on_soft_terminate()
 
-    # The inferior should now be entirely wrapped up.
-    exit_status = process.returncode
-    if exit_status is None:
-        raise Exception(
-            "no exit status available after the inferior dotest.py "
-            "should have completed")
+    process_driver = DoTestProcessDriver(
+        sys.stdout,
+        output_lock,
+        inferior_pid_events,
+        name,
+        soft_terminate_timeout)
 
-    if inferior_pid_events:
-        inferior_pid_events.put_nowait(('destroyed', inferior_pid))
+    # Run it with a timeout.
+    process_driver.run_command_with_timeout(command, timeout, want_core)
 
-    passes, failures, unexpected_successes = parse_test_results(output)
-    if exit_status == 0:
-        # stdout does not have any useful information from 'dotest.py',
-        # only stderr does.
-        report_test_pass(name, output[1])
-    else:
-        # TODO need to differentiate a failing test from a run that
-        # was broken out of by a SIGTERM/SIGKILL, reporting those as
-        # an error.  If a signal-based completion, need to call that
-        # an error.
-        report_test_failure(name, command, output[1])
-    return name, exit_status, passes, failures, unexpected_successes
+    # Return the results.
+    if not process_driver.results:
+        # This is truly exceptional.  Even a failing or timed out
+        # binary should have called the results-generation code.
+        raise Exception("no test results were generated whatsoever")
+    return process_driver.results
 
 
 def process_dir(root, files, test_root, dotest_argv, inferior_pid_events):
@@ -300,7 +339,7 @@ def process_dir_worker_multiprocessing(
             result = process_dir(job[0], job[1], job[2], job[3],
                                  inferior_pid_events)
             result_queue.put(result)
-        except Queue.Empty:
+        except queue.Empty:
             # Fine, we're done.
             pass
 
@@ -323,7 +362,7 @@ def process_dir_worker_threading(job_queue, result_queue, inferior_pid_events):
             result = process_dir(job[0], job[1], job[2], job[3],
                                  inferior_pid_events)
             result_queue.put(result)
-        except Queue.Empty:
+        except queue.Empty:
             # Fine, we're done.
             pass
 
@@ -380,7 +419,7 @@ def kill_all_worker_processes(workers, inferior_pid_events):
     active_pid_set = collect_active_pids_from_pid_events(
         inferior_pid_events)
     for inferior_pid in active_pid_set:
-        print "killing inferior pid {}".format(inferior_pid)
+        print("killing inferior pid {}".format(inferior_pid))
         os.kill(inferior_pid, signal.SIGKILL)
 
 
@@ -398,7 +437,7 @@ def kill_all_worker_threads(workers, inferior_pid_events):
     active_pid_set = collect_active_pids_from_pid_events(
         inferior_pid_events)
     for inferior_pid in active_pid_set:
-        print "killing inferior pid {}".format(inferior_pid)
+        print("killing inferior pid {}".format(inferior_pid))
         os.kill(inferior_pid, signal.SIGKILL)
 
     # We don't have a way to nuke the threads.  However, since we killed
@@ -451,8 +490,8 @@ def initialize_global_vars_common(num_threads, test_work_items):
     test_counter = multiprocessing.Value('i', 0)
     test_name_len = multiprocessing.Value('i', 0)
     if not (RESULTS_FORMATTER and RESULTS_FORMATTER.is_using_terminal()):
-        print >> sys.stderr, "Testing: %d test suites, %d thread%s" % (
-            total_tests, num_threads, (num_threads > 1) * "s")
+        print("Testing: %d test suites, %d thread%s" % (
+            total_tests, num_threads, (num_threads > 1) * "s"), file=sys.stderr)
     update_progress()
 
 
@@ -596,7 +635,7 @@ def handle_ctrl_c(ctrl_c_count, job_queue, workers, inferior_pid_events,
         name_index = len(key_name) - 1
     message = "\nHandling {} KeyboardInterrupt".format(key_name[name_index])
     with output_lock:
-        print message
+        print(message)
 
     if ctrl_c_count == 1:
         # Remove all outstanding items from the work queue so we stop
@@ -605,16 +644,16 @@ def handle_ctrl_c(ctrl_c_count, job_queue, workers, inferior_pid_events,
             try:
                 # Just drain it to stop more work from being started.
                 job_queue.get_nowait()
-            except Queue.Empty:
+            except queue.Empty:
                 pass
         with output_lock:
-            print "Stopped more work from being started."
+            print("Stopped more work from being started.")
     elif ctrl_c_count == 2:
         # Try to stop all inferiors, even the ones currently doing work.
         stop_all_inferiors_func(workers, inferior_pid_events)
     else:
         with output_lock:
-            print "All teardown activities kicked off, should finish soon."
+            print("All teardown activities kicked off, should finish soon.")
 
 
 def workers_and_async_done(workers, async_map):
@@ -798,16 +837,16 @@ def threading_test_runner(num_threads, test_work_items):
     initialize_global_vars_threading(num_threads, test_work_items)
 
     # Create jobs.
-    job_queue = Queue.Queue()
+    job_queue = queue.Queue()
     for test_work_item in test_work_items:
         job_queue.put(test_work_item)
 
-    result_queue = Queue.Queue()
+    result_queue = queue.Queue()
 
     # Create queues for started child pids.  Terminating
     # the threading threads does not terminate the
     # child processes they spawn.
-    inferior_pid_events = Queue.Queue()
+    inferior_pid_events = queue.Queue()
 
     # Create workers. We don't use multiprocessing.pool.ThreadedPool
     # due to challenges with handling ^C keyboard interrupts.
@@ -882,7 +921,7 @@ def inprocess_exec_test_runner(test_work_items):
         socket_thread.start()
 
     # Do the work.
-    test_results = map(process_dir_mapper_inprocess, test_work_items)
+    test_results = list(map(process_dir_mapper_inprocess, test_work_items))
 
     # If we have a listener channel, shut it down here.
     if RESULTS_LISTENER_CHANNEL is not None:
@@ -959,7 +998,6 @@ def getExpectedTimeouts(platform_name):
 
     if target.startswith("linux"):
         expected_timeout |= {
-            "TestProcessAttach.py",
             "TestConnectRemote.py",
             "TestCreateAfterAttach.py",
             "TestEvents.py",
@@ -1221,10 +1259,13 @@ def default_test_runner_name(num_threads):
         # Use the serial runner.
         test_runner_name = "serial"
     elif os.name == "nt":
-        # Currently the multiprocessing test runner with ctrl-c
-        # support isn't running correctly on nt.  Use the pool
-        # support without ctrl-c.
-        test_runner_name = "threading-pool"
+        # On Windows, Python uses CRT with a low limit on the number of open
+        # files.  If you have a lot of cores, the threading-pool runner will
+        # often fail because it exceeds that limit.
+        if num_threads > 32:
+            test_runner_name = "multiprocessing-pool"
+        else:
+            test_runner_name = "threading-pool"
     elif is_darwin_version_lower_than(
             distutils.version.StrictVersion("10.10.0")):
         # OS X versions before 10.10 appear to have an issue using
@@ -1314,7 +1355,7 @@ def main(print_details_on_success, num_threads, test_subdir,
         raise Exception(
             "specified testrunner name '{}' unknown. Valid choices: {}".format(
                 test_runner_name,
-                runner_strategies_by_name.keys()))
+                list(runner_strategies_by_name.keys())))
     test_runner_func = runner_strategies_by_name[test_runner_name]
 
     summary_results = walk_and_invoke(
@@ -1356,33 +1397,33 @@ def main(print_details_on_success, num_threads, test_subdir,
             test_name = os.path.splitext(xtime)[0]
             touch(os.path.join(session_dir, "{}-{}".format(result, test_name)))
 
-    print
+    print()
     sys.stdout.write("Ran %d test suites" % num_test_files)
     if num_test_files > 0:
         sys.stdout.write(" (%d failed) (%f%%)" % (
             len(failed), 100.0 * len(failed) / num_test_files))
-    print
+    print()
     sys.stdout.write("Ran %d test cases" % num_test_cases)
     if num_test_cases > 0:
         sys.stdout.write(" (%d failed) (%f%%)" % (
             fail_count, 100.0 * fail_count / num_test_cases))
-    print
+    print()
     exit_code = 0
 
     if len(failed) > 0:
         failed.sort()
-        print "Failing Tests (%d)" % len(failed)
+        print("Failing Tests (%d)" % len(failed))
         for f in failed:
-            print "%s: LLDB (suite) :: %s (%s)" % (
+            print("%s: LLDB (suite) :: %s (%s)" % (
                 "TIMEOUT" if f in timed_out else "FAIL", f, system_info
-            )
+            ))
         exit_code = 1
 
     if len(unexpected_successes) > 0:
         unexpected_successes.sort()
-        print "\nUnexpected Successes (%d)" % len(unexpected_successes)
+        print("\nUnexpected Successes (%d)" % len(unexpected_successes))
         for u in unexpected_successes:
-            print "UNEXPECTED SUCCESS: LLDB (suite) :: %s (%s)" % (u, system_info)
+            print("UNEXPECTED SUCCESS: LLDB (suite) :: %s (%s)" % (u, system_info))
 
     sys.exit(exit_code)
 

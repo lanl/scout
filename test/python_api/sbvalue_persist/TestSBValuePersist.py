@@ -1,7 +1,10 @@
 """Test SBValue::Persist"""
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, sys, time
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -10,30 +13,12 @@ class SBValuePersistTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @python_api_test
-    @dsym_test
-    def test_with_dsym(self):
-        """Test SBValue::Persist"""
-        self.buildDsym()
-        self.setTearDownCleanup()
-        self.doTest()
-
     @python_api_test
     @expectedFailureWindows("llvm.org/pr24772")
-    @dwarf_test
-    def test_with_dwarf(self):
+    def test(self):
         """Test SBValue::Persist"""
-        self.buildDwarf()
+        self.build()
         self.setTearDownCleanup()
-        self.doTest()
-
-    def setUp(self):
-        # Call super's setUp().
-        TestBase.setUp(self)
-
-    def doTest(self):
-        """Test SBValue::Persist"""
         self.runCmd("file a.out", CURRENT_EXECUTABLE_SET)
 
         lldbutil.run_break_set_by_source_regexp (self, "break here")
@@ -87,9 +72,3 @@ class SBValuePersistTestCase(TestBase):
         self.assertTrue(bazPersist.GetSummary() == '"85"', "bazPersist != 85")
         
         self.expect("expr *(%s)" % (barPersist.GetName()), substrs = ['= 4'])
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

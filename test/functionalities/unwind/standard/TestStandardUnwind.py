@@ -10,8 +10,12 @@ file up and generate a test case from it in run time (with name test_standard_un
 after escaping some special characters).
 """
 
-import os, time
+from __future__ import print_function
+
+import lldb_shared
+
 import unittest2
+import os, time
 import lldb
 from lldbtest import *
 import lldbutil
@@ -82,9 +86,9 @@ class StandardUnwindTest(TestBase):
             thread = process.GetThreadAtIndex(0)
 
             if self.TraceOn():
-                print "INDEX: %u" % index
+                print("INDEX: %u" % index)
                 for f in thread.frames:
-                    print f
+                    print(f)
 
             if thread.GetFrameAtIndex(0).GetFunctionName() is not None:
                 found_main = False
@@ -129,7 +133,7 @@ for f in test_source_files:
                 self.setTearDownCleanup(d)
             except:
                 if self.TraceOn():
-                    print sys.exc_info()[0]
+                    print(sys.exc_info()[0])
                 self.skipTest("Inferior not supported")
             self.standard_unwind_tests()
 
@@ -139,9 +143,3 @@ for f in test_source_files:
 
         test_function_dwarf.__name__ = test_name
         setattr(StandardUnwindTest, test_function_dwarf.__name__, test_function_dwarf)
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

@@ -2,9 +2,12 @@
 Test the iteration protocol for some lldb container objects.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
 import re
-import unittest2
 import lldb
 from lldbtest import *
 
@@ -22,22 +25,7 @@ class LLDBIteratorTestCase(TestBase):
     @python_api_test
     def test_lldb_iter_module(self):
         """Test module_iter works correctly for SBTarget -> SBModule."""
-        self.buildDefault()
-        self.lldb_iter_module()
-
-    @python_api_test
-    def test_lldb_iter_breakpoint(self):
-        """Test breakpoint_iter works correctly for SBTarget -> SBBreakpoint."""
-        self.buildDefault()
-        self.lldb_iter_breakpoint()
-
-    @python_api_test
-    def test_lldb_iter_frame(self):
-        """Test iterator works correctly for SBProcess->SBThread->SBFrame."""
-        self.buildDefault()
-        self.lldb_iter_frame()
-
-    def lldb_iter_module(self):
+        self.build()
         exe = os.path.join(os.getcwd(), "a.out")
 
         target = self.dbg.CreateTarget(exe)
@@ -63,12 +51,15 @@ class LLDBIteratorTestCase(TestBase):
         self.assertTrue(len(yours) == len(mine))
         for i in range(len(yours)):
             if self.TraceOn():
-                print "yours[%d]='%s'" % (i, get_description(yours[i]))
-                print "mine[%d]='%s'" % (i, get_description(mine[i]))
+                print("yours[%d]='%s'" % (i, get_description(yours[i])))
+                print("mine[%d]='%s'" % (i, get_description(mine[i])))
             self.assertTrue(yours[i] == mine[i],
                             "UUID+FileSpec of yours[{0}] and mine[{0}] matches".format(i))
 
-    def lldb_iter_breakpoint(self):
+    @python_api_test
+    def test_lldb_iter_breakpoint(self):
+        """Test breakpoint_iter works correctly for SBTarget -> SBBreakpoint."""
+        self.build()
         exe = os.path.join(os.getcwd(), "a.out")
 
         target = self.dbg.CreateTarget(exe)
@@ -92,12 +83,15 @@ class LLDBIteratorTestCase(TestBase):
         self.assertTrue(len(yours) == len(mine))
         for i in range(len(yours)):
             if self.TraceOn():
-                print "yours[%d]='%s'" % (i, get_description(yours[i]))
-                print "mine[%d]='%s'" % (i, get_description(mine[i]))
+                print("yours[%d]='%s'" % (i, get_description(yours[i])))
+                print("mine[%d]='%s'" % (i, get_description(mine[i])))
             self.assertTrue(yours[i] == mine[i],
                             "ID of yours[{0}] and mine[{0}] matches".format(i))
 
-    def lldb_iter_frame(self):
+    @python_api_test
+    def test_lldb_iter_frame(self):
+        """Test iterator works correctly for SBProcess->SBThread->SBFrame."""
+        self.build()
         exe = os.path.join(os.getcwd(), "a.out")
 
         target = self.dbg.CreateTarget(exe)
@@ -123,12 +117,6 @@ class LLDBIteratorTestCase(TestBase):
             for frame in thread:
                 self.assertTrue(frame.GetThread().GetThreadID() == ID)
                 if self.TraceOn():
-                    print frame
+                    print(frame)
 
         self.assertTrue(stopped_due_to_breakpoint)
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

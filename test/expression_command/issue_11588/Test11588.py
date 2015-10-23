@@ -4,8 +4,11 @@ valobj.AddressOf() returns None when an address is
 expected in a SyntheticChildrenProvider
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 import lldbutil
 from lldbtest import *
@@ -26,7 +29,7 @@ class Issue11581TestCase(TestBase):
         self.addTearDownHook(cleanup)
 
         """valobj.AddressOf() should return correct values."""
-        self.buildDefault()
+        self.build()
         
         exe = os.path.join(os.getcwd(), "a.out")
         
@@ -72,10 +75,3 @@ class Issue11581TestCase(TestBase):
                     "load_address = ",
                     hex(addr)[2:].rstrip("L"),
                     str(addr)])
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

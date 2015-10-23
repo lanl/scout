@@ -61,6 +61,7 @@ USEDLIBS = lldbAPI.a \
 	lldbPluginRenderScriptRuntime.a \
 	lldbPluginMemoryHistoryASan.a \
 	lldbPluginCPlusPlusLanguage.a \
+	lldbPluginLanguageRuntimeGo.a \
 	lldbPluginObjCLanguage.a \
 	lldbPluginObjCPlusPlusLanguage.a \
 	lldbPluginObjectContainerBSDArchive.a \
@@ -97,7 +98,6 @@ USEDLIBS = lldbAPI.a \
 	LLVMMCDisassembler.a \
 	LLVMProfileData.a \
 	LLVMObjCARCOpts.a \
-	LLVMSupport.a \
 	lldbPluginPlatformMacOSX.a \
 	lldbPluginPlatformLinux.a \
 	lldbPluginPlatformWindows.a \

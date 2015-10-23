@@ -1,7 +1,10 @@
 """Test the Go OS Plugin."""
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 import lldbutil
 from lldbtest import *
@@ -13,6 +16,7 @@ class TestGoASTContext(TestBase):
     @python_api_test
     @skipIfFreeBSD # llvm.org/pr24895 triggers assertion failure
     @skipIfRemote # Not remote test suite ready
+    @no_debug_info_test
     @skipUnlessGoInstalled
     def test_goroutine_plugin(self):
         """Test goroutine as threads support."""
@@ -79,10 +83,3 @@ class TestGoASTContext(TestBase):
         self.dbg.HandleCommand("settings set plugin.os.goroutines.enable false")
         self.thread().StepInstruction(False)
         self.assertLess(len(self.process().threads), 20)
-        
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

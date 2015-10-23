@@ -2,8 +2,11 @@
 Test breakpoint command for different options.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -12,17 +15,9 @@ class BreakpointOptionsTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_with_dsym(self):
+    def test(self):
         """Test breakpoint command for different options."""
-        self.buildDsym()
-        self.breakpoint_options_test()
-
-    @dwarf_test
-    def test_with_dwarf(self):
-        """Test breakpoint command for different options."""
-        self.buildDwarf()
+        self.build()
         self.breakpoint_options_test()
 
     def setUp(self):
@@ -96,9 +91,3 @@ class BreakpointOptionsTestCase(TestBase):
         # We should exit.
         self.expect("process status", "Process exited successfully",
             patterns = ["^Process [0-9]+ exited with status = 0"])
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

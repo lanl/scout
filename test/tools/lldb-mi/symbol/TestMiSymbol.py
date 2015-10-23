@@ -2,9 +2,12 @@
 Test lldb-mi -symbol-xxx commands.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import lldbmi_testcase
 from lldbtest import *
-import unittest2
 
 class MiSymbolTestCase(lldbmi_testcase.MiTestCaseBase):
 
@@ -31,8 +34,8 @@ class MiSymbolTestCase(lldbmi_testcase.MiTestCaseBase):
 
         # Get address of main and its line
         self.runCmd("-data-evaluate-expression main")
-        self.expect("\^done,value=\"0x[0-9a-f]+\"")
-        addr = int(self.child.after.split("\"")[1], 16)
+        self.expect("\^done,value=\"0x[0-9a-f]+ \(a.out`main at main.cpp:[0-9]+\)\"")
+        addr = int(self.child.after.split("\"")[1].split(" ")[0], 16)
         line = line_number('main.cpp', '// FUNC_main')
 
         # Test that -symbol-list-lines works on valid data
@@ -69,6 +72,3 @@ class MiSymbolTestCase(lldbmi_testcase.MiTestCaseBase):
         # Test that -symbol-list-lines fails when file doesn't exist
         self.runCmd("-symbol-list-lines unknown_dir/main.cpp")
         self.expect("\^error,message=\"warning: No source filenames matched 'unknown_dir/main\.cpp'\. error: no source filenames matched any command arguments \"")
-
-if __name__ == '__main__':
-    unittest2.main()

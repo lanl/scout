@@ -170,6 +170,11 @@ else
 	endif
 endif
 
+LIMIT_DEBUG_INFO_FLAGS =
+ifneq (,$(findstring clang,$(CC)))
+   LIMIT_DEBUG_INFO_FLAGS += -flimit-debug-info
+endif
+
 CFLAGS ?= -g -O0 -fno-builtin
 ifeq "$(OS)" "Darwin"
 	CFLAGS += $(ARCHFLAG) $(ARCH) $(FRAMEWORK_INCLUDES) $(CFLAGS_EXTRAS) -I$(LLDB_BASE_DIR)include
@@ -183,6 +188,10 @@ ifeq "$(OS)" "Darwin"
 	CFLAGS_NO_DEBUG = -O0 $(ARCHFLAG) $(ARCH) $(FRAMEWORK_INCLUDES) $(CFLAGS_EXTRAS) $(TRIPLE_CFLAGS)
 else
 	CFLAGS_NO_DEBUG = -O0 $(ARCHFLAG)$(ARCH) $(FRAMEWORK_INCLUDES) $(CFLAGS_EXTRAS) $(TRIPLE_CFLAGS)
+endif
+
+ifeq "$(MAKE_DWO)" "YES"
+	CFLAGS += -gsplit-dwarf
 endif
 
 CXXFLAGS += -std=c++11
@@ -287,12 +296,12 @@ ifeq (1,$(USE_LIBCPP))
 		ifeq "$(OS)" "Linux"
 			# This is the default install location on Ubuntu 14.04
 			ifneq ($(wildcard /usr/include/c++/v1/.),)
-				CXXFLAGS += -stdlib=libc++
+				CXXFLAGS += -stdlib=libc++ -DLLDB_USING_LIBCPP
 				LDFLAGS += -stdlib=libc++
 				CXXFLAGS += -I/usr/include/c++/v1
 			endif
 		else
-			CXXFLAGS += -stdlib=libc++
+			CXXFLAGS += -stdlib=libc++ -DLLDB_USING_LIBCPP
 			LDFLAGS += -stdlib=libc++
 		endif
 	endif
@@ -480,7 +489,7 @@ endif
 # files by replacing all .c files with .d.
 #----------------------------------------------------------------------
 PREREQS := $(OBJECTS:.o=.d)
-DWOS := $(OBJECTS:.o=.dwo)
+DWOS := $(OBJECTS:.o=.dwo) $(ARCHIVE_OBJECTS:.o=.dwo)
 ifneq "$(DYLIB_NAME)" ""
 	DYLIB_PREREQS := $(DYLIB_OBJECTS:.o=.d)
 	DYLIB_DWOS := $(DYLIB_OBJECTS:.o=.dwo)

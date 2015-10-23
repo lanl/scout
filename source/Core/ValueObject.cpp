@@ -35,7 +35,7 @@
 #include "lldb/DataFormatters/ValueObjectPrinter.h"
 
 #include "Plugins/ExpressionParser/Clang/ClangExpressionVariable.h"
-#include "lldb/Expression/ClangPersistentVariables.h"
+#include "Plugins/ExpressionParser/Clang/ClangPersistentVariables.h"
 
 #include "lldb/Host/Endian.h"
 
@@ -275,7 +275,7 @@ ValueObject::UpdateValueIfNeeded (bool update_format)
 bool
 ValueObject::UpdateFormatsIfNeeded()
 {
-    Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_TYPES));
+    Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_DATAFORMATTERS));
     if (log)
         log->Printf("[%s %p] checking for FormatManager revisions. ValueObject rev: %d - Global rev: %d",
                     GetName().GetCString(), static_cast<void*>(this),
@@ -770,9 +770,21 @@ ValueObject::GetChildMemberWithName (const ConstString &name, bool can_create)
 
 
 size_t
-ValueObject::GetNumChildren ()
+ValueObject::GetNumChildren (uint32_t max)
 {
     UpdateValueIfNeeded();
+
+    if (max < UINT32_MAX)
+    {
+        if (m_children_count_valid)
+        {
+            size_t children_count = m_children.GetChildrenCount();
+            return children_count <= max ? children_count : max;
+        }
+        else
+            return CalculateNumChildren(max);
+    }
+
     if (!m_children_count_valid)
     {
         SetNumChildren (CalculateNumChildren());
@@ -874,9 +886,10 @@ ValueObject::CreateChildAtIndex (size_t idx, bool synthetic_array_member, int32_
 
 bool
 ValueObject::GetSummaryAsCString (TypeSummaryImpl* summary_ptr,
-                                  std::string& destination)
+                                  std::string& destination,
+                                  lldb::LanguageType lang)
 {
-    return GetSummaryAsCString(summary_ptr, destination, TypeSummaryOptions());
+    return GetSummaryAsCString(summary_ptr, destination, TypeSummaryOptions().SetLanguage(lang));
 }
 
 bool
@@ -885,7 +898,7 @@ ValueObject::GetSummaryAsCString (TypeSummaryImpl* summary_ptr,
                                   const TypeSummaryOptions& options)
 {
     destination.clear();
-
+    
     // ideally we would like to bail out if passing NULL, but if we do so
     // we end up not providing the summary for function pointers anymore
     if (/*summary_ptr == NULL ||*/ m_is_getting_summary)
@@ -893,31 +906,38 @@ ValueObject::GetSummaryAsCString (TypeSummaryImpl* summary_ptr,
     
     m_is_getting_summary = true;
     
+    TypeSummaryOptions actual_options(options);
+    
+    if (actual_options.GetLanguage() == lldb::eLanguageTypeUnknown)
+        actual_options.SetLanguage(GetPreferredDisplayLanguage());
+    
     // this is a hot path in code and we prefer to avoid setting this string all too often also clearing out other
     // information that we might care to see in a crash log. might be useful in very specific situations though.
     /*Host::SetCrashDescriptionWithFormat("Trying to fetch a summary for %s %s. Summary provider's description is %s",
-                                        GetTypeName().GetCString(),
-                                        GetName().GetCString(),
-                                        summary_ptr->GetDescription().c_str());*/
+     GetTypeName().GetCString(),
+     GetName().GetCString(),
+     summary_ptr->GetDescription().c_str());*/
     
     if (UpdateValueIfNeeded (false) && summary_ptr)
     {
         if (HasSyntheticValue())
             m_synthetic_value->UpdateValueIfNeeded(); // the summary might depend on the synthetic children being up-to-date (e.g. ${svar%#})
-        summary_ptr->FormatObject(this, destination, options);
+        summary_ptr->FormatObject(this, destination, actual_options);
     }
     m_is_getting_summary = false;
     return !destination.empty();
 }
 
 const char *
-ValueObject::GetSummaryAsCString ()
+ValueObject::GetSummaryAsCString (lldb::LanguageType lang)
 {
     if (UpdateValueIfNeeded(true) && m_summary_str.empty())
     {
+        TypeSummaryOptions summary_options;
+        summary_options.SetLanguage(lang);
         GetSummaryAsCString(GetSummaryFormat().get(),
                             m_summary_str,
-                            TypeSummaryOptions());
+                            summary_options);
     }
     if (m_summary_str.empty())
         return NULL;
@@ -929,8 +949,8 @@ ValueObject::GetSummaryAsCString (std::string& destination,
                                   const TypeSummaryOptions& options)
 {
     return GetSummaryAsCString(GetSummaryFormat().get(),
-                        destination,
-                        options);
+                               destination,
+                               options);
 }
 
 bool
@@ -4251,6 +4271,13 @@ ValueObject::SetPreferredDisplayLanguage (lldb::LanguageType lt)
     m_preferred_display_language = lt;
 }
 
+void
+ValueObject::SetPreferredDisplayLanguageIfNeeded (lldb::LanguageType lt)
+{
+    if (m_preferred_display_language == lldb::eLanguageTypeUnknown)
+        SetPreferredDisplayLanguage(lt);
+}
+
 bool
 ValueObject::CanProvideValue ()
 {
@@ -4277,15 +4304,18 @@ ValueObject::Persist ()
     if (!target_sp)
         return nullptr;
     
-    ConstString name(target_sp->GetPersistentVariables().GetNextPersistentVariableName());
+    PersistentExpressionState *persistent_state = target_sp->GetPersistentExpressionStateForLanguage(GetPreferredDisplayLanguage());
     
-    ExpressionVariableSP clang_var_sp(new ClangExpressionVariable(target_sp.get(), GetValue(), name));
-    if (clang_var_sp)
-    {
-        clang_var_sp->m_live_sp = clang_var_sp->m_frozen_sp;
-        clang_var_sp->m_flags |= ClangExpressionVariable::EVIsProgramReference;
-        target_sp->GetPersistentVariables().AddVariable(clang_var_sp);
-    }
+    if (!persistent_state)
+        return nullptr;
+    
+    ConstString name(persistent_state->GetNextPersistentVariableName());
+    
+    ValueObjectSP const_result_sp = ValueObjectConstResult::Create (target_sp.get(), GetValue(), name);
+    
+    ExpressionVariableSP clang_var_sp = persistent_state->CreatePersistentVariable(const_result_sp);
+    clang_var_sp->m_live_sp = clang_var_sp->m_frozen_sp;
+    clang_var_sp->m_flags |= ExpressionVariable::EVIsProgramReference;
     
     return clang_var_sp->GetValueObject();
 }

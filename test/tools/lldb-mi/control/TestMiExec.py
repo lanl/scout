@@ -2,13 +2,36 @@
 Test lldb-mi -exec-xxx commands.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import lldbmi_testcase
 from lldbtest import *
-import unittest2
 
 class MiExecTestCase(lldbmi_testcase.MiTestCaseBase):
 
     mydir = TestBase.compute_mydir(__file__)
+
+    @lldbmi_test
+    @skipIfWindows #llvm.org/pr24452: Get lldb-mi tests working on Windows
+    @skipIfFreeBSD # llvm.org/pr22411: Failure presumably due to known thread races
+    @expectedFailureLinux # llvm.org/pr25000: lldb-mi does not receive broadcasted notification from Core/Process about process stopped
+    def test_lldbmi_exec_run(self):
+        """Test that 'lldb-mi --interpreter' can stop at entry."""
+
+        self.spawnLldbMi(args = None)
+
+        # Load executable
+        self.runCmd("-file-exec-and-symbols %s" % self.myexe)
+        self.expect("\^done")
+
+        # Test that program is stopped at entry
+        self.runCmd("-exec-run --start")
+        self.expect("\^running")
+        self.expect("\*stopped,reason=\"signal-received\",signal-name=\"SIGSTOP\",signal-meaning=\"Stop\",.*?thread-id=\"1\",stopped-threads=\"all\"")
+        # Test that lldb-mi is ready to execute next commands
+        self.expect(self.child_prompt, exactly = True)
 
     @lldbmi_test
     @skipIfWindows #llvm.org/pr24452: Get lldb-mi tests working on Windows
@@ -446,6 +469,3 @@ class MiExecTestCase(lldbmi_testcase.MiTestCaseBase):
         self.runCmd("-exec-finish --thread 1 --frame 0")
         self.expect("\^running")
         self.expect("\*stopped,reason=\"end-stepping-range\".+?func=\"main\"")
-
-if __name__ == '__main__':
-    unittest2.main()

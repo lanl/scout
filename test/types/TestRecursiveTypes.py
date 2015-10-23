@@ -2,10 +2,13 @@
 Test that recursive types are handled correctly.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import lldb
 import lldbutil
 import sys
-import unittest2
 from lldbtest import *
 
 class RecursiveTypesTestCase(TestBase):
@@ -25,33 +28,15 @@ class RecursiveTypesTestCase(TestBase):
         self.d1 = {'CXX_SOURCES': 'recursive_type_main.cpp recursive_type_1.cpp'}
         self.d2 = {'CXX_SOURCES': 'recursive_type_main.cpp recursive_type_2.cpp'}
 
-    @unittest2.skipUnless(sys.platform.startswith("darwin"), "requires Darwin")
-    @dsym_test
-    def test_recursive_dsym_type_1(self):
+    def test_recursive_type_1(self):
         """Test that recursive structs are displayed correctly."""
-        self.buildDsym(dictionary=self.d1)
+        self.build(dictionary=self.d1)
         self.setTearDownCleanup(dictionary=self.d1)
         self.print_struct()
 
-    @dwarf_test
-    def test_recursive_dwarf_type_1(self):
+    def test_recursive_type_2(self):
         """Test that recursive structs are displayed correctly."""
-        self.buildDwarf(dictionary=self.d1)
-        self.setTearDownCleanup(dictionary=self.d1)
-        self.print_struct()
-
-    @unittest2.skipUnless(sys.platform.startswith("darwin"), "requires Darwin")
-    @dsym_test
-    def test_recursive_dsym_type_2(self):
-        """Test that recursive structs are displayed correctly."""
-        self.buildDsym(dictionary=self.d2)
-        self.setTearDownCleanup(dictionary=self.d2)
-        self.print_struct()
-
-    @dwarf_test
-    def test_recursive_dwarf_type_2(self):
-        """Test that recursive structs are displayed correctly."""
-        self.buildDwarf(dictionary=self.d2)
+        self.build(dictionary=self.d2)
         self.setTearDownCleanup(dictionary=self.d2)
         self.print_struct()
 
@@ -64,9 +49,3 @@ class RecursiveTypesTestCase(TestBase):
 
         self.expect("print tpi", RUN_SUCCEEDED)
         self.expect("print *tpi", RUN_SUCCEEDED)
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

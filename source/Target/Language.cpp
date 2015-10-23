@@ -89,6 +89,12 @@ Language::ForEach (std::function<bool(Language*)> callback)
     }
 }
 
+bool
+Language::IsTopLevelFunction (Function& function)
+{
+    return false;
+}
+
 lldb::TypeCategoryImplSP
 Language::GetFormatters ()
 {
@@ -279,6 +285,70 @@ Language::LanguageIsPascal (LanguageType language)
         default:
             return false;
     }
+}
+
+void
+Language::GetLanguagesSupportingTypeSystems (std::set<lldb::LanguageType> &languages,
+                                             std::set<lldb::LanguageType> &languages_for_expressions)
+{
+    uint32_t idx = 0;
+    
+    while (TypeSystemEnumerateSupportedLanguages enumerate = PluginManager::GetTypeSystemEnumerateSupportedLanguagesCallbackAtIndex(idx++))
+    {
+        (*enumerate)(languages, languages_for_expressions);
+    }
+}
+
+void
+Language::GetLanguagesSupportingREPLs (std::set<lldb::LanguageType> &languages)
+{
+    uint32_t idx = 0;
+    
+    while (REPLEnumerateSupportedLanguages enumerate = PluginManager::GetREPLEnumerateSupportedLanguagesCallbackAtIndex(idx++))
+    {
+        (*enumerate)(languages);
+    }
+}
+
+std::unique_ptr<Language::TypeScavenger>
+Language::GetTypeScavenger ()
+{
+    return nullptr;
+}
+
+size_t
+Language::TypeScavenger::Find (ExecutionContextScope *exe_scope,
+                               const char *key,
+                               ResultSet &results,
+                               bool append)
+{
+    if (!exe_scope || !exe_scope->CalculateTarget().get())
+        return false;
+    
+    if (!key || !key[0])
+        return false;
+
+    if (!append)
+        results.clear();
+    
+    size_t old_size = results.size();
+    
+    if (this->Find_Impl(exe_scope, key, results))
+        return results.size() - old_size;
+    return 0;
+}
+
+bool
+Language::GetFormatterPrefixSuffix (ValueObject& valobj, ConstString type_hint,
+                                    std::string& prefix, std::string& suffix)
+{
+    return false;
+}
+
+DumpValueObjectOptions::DeclPrintingHelper
+Language::GetDeclPrintingHelper ()
+{
+    return nullptr;
 }
 
 //----------------------------------------------------------------------

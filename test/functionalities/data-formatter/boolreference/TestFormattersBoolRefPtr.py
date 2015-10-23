@@ -2,8 +2,11 @@
 Test lldb data formatter subsystem.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import datetime
@@ -14,17 +17,9 @@ class DataFormatterBoolRefPtr(TestBase):
     mydir = TestBase.compute_mydir(__file__)
 
     @skipUnlessDarwin
-    @dsym_test
-    def test_boolrefptr_with_dsym_and_run_command(self):
+    def test_boolrefptr_with_run_command(self):
         """Test the formatters we use for BOOL& and BOOL* in Objective-C."""
-        self.buildDsym()
-        self.boolrefptr_data_formatter_commands()
-
-    @skipUnlessDarwin
-    @dwarf_test
-    def test_boolrefptr_with_dwarf_and_run_command(self):
-        """Test the formatters we use for BOOL& and BOOL* in Objective-C."""
-        self.buildDwarf()
+        self.build()
         self.boolrefptr_data_formatter_commands()
 
     def setUp(self):
@@ -75,10 +70,3 @@ class DataFormatterBoolRefPtr(TestBase):
                     substrs = ['YES'])
         self.expect('frame variable no',
                     substrs = ['NO'])
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

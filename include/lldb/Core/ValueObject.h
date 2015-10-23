@@ -595,7 +595,7 @@ public:
     GetIndexOfChildWithName (const ConstString &name);
 
     size_t
-    GetNumChildren ();
+    GetNumChildren (uint32_t max=UINT32_MAX);
 
     const Value &
     GetValue() const;
@@ -610,11 +610,12 @@ public:
     GetLocationAsCString ();
 
     const char *
-    GetSummaryAsCString ();
+    GetSummaryAsCString (lldb::LanguageType lang = lldb::eLanguageTypeUnknown);
     
     bool
     GetSummaryAsCString (TypeSummaryImpl* summary_ptr,
-                         std::string& destination);
+                         std::string& destination,
+                         lldb::LanguageType lang = lldb::eLanguageTypeUnknown);
     
     bool
     GetSummaryAsCString (std::string& destination,
@@ -1203,7 +1204,7 @@ protected:
 
     // Should only be called by ValueObject::GetNumChildren()
     virtual size_t
-    CalculateNumChildren() = 0;
+    CalculateNumChildren(uint32_t max=UINT32_MAX) = 0;
 
     void
     SetNumChildren (size_t num_children);
@@ -1240,6 +1241,9 @@ protected:
     
     bool
     IsChecksumEmpty ();
+    
+    void
+    SetPreferredDisplayLanguageIfNeeded (lldb::LanguageType);
     
 private:
     //------------------------------------------------------------------

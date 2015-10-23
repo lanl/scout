@@ -2,9 +2,12 @@
 Test that breakpoint by symbol name works correctly with dynamic libs.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
 import re
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -75,7 +78,7 @@ class LoadUnloadTestCase(TestBase):
         """Test target modules list after loading a different copy of the library libd.dylib, and verifies that it works with 'target modules search-paths add'."""
 
         # Invoke the default build rule.
-        self.buildDefault()
+        self.build()
 
         if self.platformIsDarwin():
             dylibName = 'libloadunload_d.dylib'
@@ -109,7 +112,7 @@ class LoadUnloadTestCase(TestBase):
         # Inform (DY)LD_LIBRARY_PATH of the new path, too.
         env_cmd_string = "settings set target.env-vars " + self.dylibPath + "=" + new_dir
         if self.TraceOn():
-            print "Set environment to: ", env_cmd_string
+            print("Set environment to: ", env_cmd_string)
         self.runCmd(env_cmd_string)
         self.runCmd("settings show target.env-vars")
 
@@ -129,7 +132,7 @@ class LoadUnloadTestCase(TestBase):
         """Test (DY)LD_LIBRARY_PATH after moving libd.dylib, which defines d_function, somewhere else."""
 
         # Invoke the default build rule.
-        self.buildDefault()
+        self.build()
         self.copy_shlibs_to_remote(hidden_dir=True)
 
         exe = os.path.join(os.getcwd(), "a.out")
@@ -185,7 +188,7 @@ class LoadUnloadTestCase(TestBase):
         """Test that lldb process load/unload command work correctly."""
 
         # Invoke the default build rule.
-        self.buildDefault()
+        self.build()
         self.copy_shlibs_to_remote()
 
         exe = os.path.join(os.getcwd(), "a.out")
@@ -223,7 +226,7 @@ class LoadUnloadTestCase(TestBase):
         output = self.res.GetOutput()
         pattern = re.compile("Image ([0-9]+) loaded")
         for l in output.split(os.linesep):
-            #print "l:", l
+            #print("l:", l)
             match = pattern.search(l)
             if match:
                 break
@@ -245,7 +248,7 @@ class LoadUnloadTestCase(TestBase):
         """Test breakpoint by name works correctly with dlopen'ing."""
 
         # Invoke the default build rule.
-        self.buildDefault()
+        self.build()
         self.copy_shlibs_to_remote()
 
         exe = os.path.join(os.getcwd(), "a.out")
@@ -288,7 +291,7 @@ class LoadUnloadTestCase(TestBase):
         """Test stepping over code that loads a shared library works correctly."""
 
         # Invoke the default build rule.
-        self.buildDefault()
+        self.build()
         self.copy_shlibs_to_remote()
 
         exe = os.path.join(os.getcwd(), "a.out")
@@ -310,9 +313,3 @@ class LoadUnloadTestCase(TestBase):
         self.expect("thread list", "step over succeeded.", 
             substrs = ['stopped',
                       'stop reason = step over'])
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

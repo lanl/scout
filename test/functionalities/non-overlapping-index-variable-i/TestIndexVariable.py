@@ -1,7 +1,10 @@
 """Test evaluating expressions which ref. index variable 'i' which just goes
 from out of scope to in scope when stopped at the breakpoint."""
 
-import unittest2
+from __future__ import print_function
+
+import lldb_shared
+
 import lldb
 from lldbtest import *
 import lldbutil
@@ -18,13 +21,9 @@ class NonOverlappingIndexVariableCase(TestBase):
     # rdar://problem/9890530
     def test_eval_index_variable(self):
         """Test expressions of variable 'i' which appears in two for loops."""
-        self.buildDefault()
+        self.build()
         self.exe_name = 'a.out'
-        self.eval_index_variable_i(self.exe_name)
-
-    def eval_index_variable_i(self, exe_name):
-        """Test expressions of variable 'i' which appears in two for loops."""
-        exe = os.path.join(os.getcwd(), exe_name)
+        exe = os.path.join(os.getcwd(), self.exe_name)
         self.runCmd("file %s" % exe, CURRENT_EXECUTABLE_SET)
 
         lldbutil.run_break_set_by_file_and_line (self, self.source, self.line_to_break, num_expected_locations=1, loc_exact=True)
@@ -42,9 +41,3 @@ class NonOverlappingIndexVariableCase(TestBase):
         self.runCmd('expr ptr[0]->point.y')
         self.runCmd('expr ptr[i]->point.x')
         self.runCmd('expr ptr[i]->point.y')
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()
