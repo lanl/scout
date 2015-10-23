@@ -17,9 +17,6 @@
 #include "lowlevel.h"
 #include "accessor.h"
 #include "legion_logging.h"
-#ifdef OLD_LEGION_PROF
-#include "legion_utilities.h"
-#endif
 #include "realm/profiling.h"
 #include "realm/timers.h"
 
@@ -5817,10 +5814,6 @@ namespace LegionRuntime {
                                     Processor::NO_PROC,
                                     done_event->get_event(), COPY_BEGIN);
 #endif
-#ifdef OLD_LEGION_PROF
-      HighLevel::LegionProf::register_copy_event(
-            done_event->get_event().id, LegionRuntime::HighLevel::PROF_BEGIN_COPY);
-#endif
       // A little bit of a hack for the shared lowlevel profiling
       if (capture_usage && !srcs.empty() && !dsts.empty()) {
         usage.source = srcs[0].inst.get_location();
@@ -5872,10 +5865,6 @@ namespace LegionRuntime {
       LegionRuntime::HighLevel::LegionLogging::log_timing_event(
                                       Processor::NO_PROC,
                                       done_event->get_event(), COPY_END);
-#endif
-#ifdef OLD_LEGION_PROF
-      HighLevel::LegionProf::register_copy_event(
-            done_event->get_event().id, LegionRuntime::HighLevel::PROF_END_COPY);
 #endif
       // Trigger the event indicating that we are done
       done_event->trigger();
@@ -6164,9 +6153,6 @@ namespace LegionRuntime {
 
     void DMAQueue::start(void)
     {
-#ifdef OLD_LEGION_PROF
-      pthread_key_create(&HighLevel::LegionProf::copy_profiler_key, 0);
-#endif
       pthread_attr_t attr;
       PTHREAD_SAFE_CALL(pthread_attr_init(&attr));
       for (unsigned idx = 0; idx < num_dma_threads; idx++)
@@ -6738,7 +6724,13 @@ namespace LegionRuntime {
         dma_queue = new DMAQueue(num_dma_threads);
 
         // Initialize the logger
-	Realm::Logger::configure_from_cmdline(*argc, (const char**)*argv);
+	// this now wants std::vector<std::string> instead of argc/argv
+	{
+	  std::vector<std::string> cmdline(*argc - 1);
+	  for(int i = 1; i < *argc; i++)
+	    cmdline[i - 1] = (*argv)[i];
+	  Realm::Logger::configure_from_cmdline(cmdline);
+	}
 	
         // Fill in the tables
         // find in proc 0 with NULL
