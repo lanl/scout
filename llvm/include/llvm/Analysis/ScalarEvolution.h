@@ -253,6 +253,10 @@ namespace llvm {
     /// conditions dominating the backedge of a loop.
     bool WalkingBEDominatingConds;
 
+    /// Set to true by isKnownPredicateViaSplitting when we're trying to prove a
+    /// predicate by splitting it into a set of independent predicates.
+    bool ProvingSplitPredicate;
+
     /// Information about the number of loop iterations for which a loop exit's
     /// branch condition evaluates to the not-taken path.  This is a temporary
     /// pair of exact and max expressions that are eventually summarized in
@@ -411,6 +415,19 @@ namespace llvm {
     /// Provide the special handling we need to analyze PHI SCEVs.
     const SCEV *createNodeForPHI(PHINode *PN);
 
+    /// Helper function called from createNodeForPHI.
+    const SCEV *createAddRecFromPHI(PHINode *PN);
+
+    /// Helper function called from createNodeForPHI.
+    const SCEV *createNodeFromSelectLikePHI(PHINode *PN);
+
+    /// Provide special handling for a select-like instruction (currently this
+    /// is either a select instruction or a phi node).  \p I is the instruction
+    /// being processed, and it is assumed equivalent to "Cond ? TrueVal :
+    /// FalseVal".
+    const SCEV *createNodeForSelectOrPHI(Instruction *I, Value *Cond,
+                                         Value *TrueVal, Value *FalseVal);
+
     /// Provide the special handling we need to analyze GEP SCEVs.
     const SCEV *createNodeForGEP(GEPOperator *GEP);
 
@@ -429,16 +446,16 @@ namespace llvm {
     const BackedgeTakenInfo &getBackedgeTakenInfo(const Loop *L);
 
     /// Compute the number of times the specified loop will iterate.
-    BackedgeTakenInfo ComputeBackedgeTakenCount(const Loop *L);
+    BackedgeTakenInfo computeBackedgeTakenCount(const Loop *L);
 
     /// Compute the number of times the backedge of the specified loop will
     /// execute if it exits via the specified block.
-    ExitLimit ComputeExitLimit(const Loop *L, BasicBlock *ExitingBlock);
+    ExitLimit computeExitLimit(const Loop *L, BasicBlock *ExitingBlock);
 
     /// Compute the number of times the backedge of the specified loop will
     /// execute if its exit condition were a conditional branch of ExitCond,
     /// TBB, and FBB.
-    ExitLimit ComputeExitLimitFromCond(const Loop *L,
+    ExitLimit computeExitLimitFromCond(const Loop *L,
                                        Value *ExitCond,
                                        BasicBlock *TBB,
                                        BasicBlock *FBB,
@@ -447,7 +464,7 @@ namespace llvm {
     /// Compute the number of times the backedge of the specified loop will
     /// execute if its exit condition were a conditional branch of the ICmpInst
     /// ExitCond, TBB, and FBB.
-    ExitLimit ComputeExitLimitFromICmp(const Loop *L,
+    ExitLimit computeExitLimitFromICmp(const Loop *L,
                                        ICmpInst *ExitCond,
                                        BasicBlock *TBB,
                                        BasicBlock *FBB,
@@ -457,12 +474,12 @@ namespace llvm {
     /// execute if its exit condition were a switch with a single exiting case
     /// to ExitingBB.
     ExitLimit
-    ComputeExitLimitFromSingleExitSwitch(const Loop *L, SwitchInst *Switch,
+    computeExitLimitFromSingleExitSwitch(const Loop *L, SwitchInst *Switch,
                                BasicBlock *ExitingBB, bool IsSubExpr);
 
     /// Given an exit condition of 'icmp op load X, cst', try to see if we can
     /// compute the backedge-taken count.
-    ExitLimit ComputeLoadConstantCompareExitLimit(LoadInst *LI,
+    ExitLimit computeLoadConstantCompareExitLimit(LoadInst *LI,
                                                   Constant *RHS,
                                                   const Loop *L,
                                                   ICmpInst::Predicate p);
@@ -472,7 +489,7 @@ namespace llvm {
     /// of the loop until we get the exit condition gets a value of ExitWhen
     /// (true or false).  If we cannot evaluate the exit count of the loop,
     /// return CouldNotCompute.
-    const SCEV *ComputeExitCountExhaustively(const Loop *L,
+    const SCEV *computeExitCountExhaustively(const Loop *L,
                                              Value *Cond,
                                              bool ExitWhen);
 
@@ -507,6 +524,13 @@ namespace llvm {
                        bool Inverse);
 
     /// Test whether the condition described by Pred, LHS, and RHS is true
+    /// whenever the condition described by FoundPred, FoundLHS, FoundRHS is
+    /// true.
+    bool isImpliedCond(ICmpInst::Predicate Pred, const SCEV *LHS,
+                       const SCEV *RHS, ICmpInst::Predicate FoundPred,
+                       const SCEV *FoundLHS, const SCEV *FoundRHS);
+
+    /// Test whether the condition described by Pred, LHS, and RHS is true
     /// whenever the condition described by Pred, FoundLHS, and FoundRHS is
     /// true.
     bool isImpliedCondOperands(ICmpInst::Predicate Pred,
@@ -529,6 +553,17 @@ namespace llvm {
                                         const SCEV *FoundLHS,
                                         const SCEV *FoundRHS);
 
+    /// Test whether the condition described by Pred, LHS, and RHS is true
+    /// whenever the condition described by Pred, FoundLHS, and FoundRHS is
+    /// true.
+    ///
+    /// This routine tries to rule out certain kinds of integer overflow, and
+    /// then tries to reason about arithmetic properties of the predicates.
+    bool isImpliedCondOperandsViaNoOverflow(ICmpInst::Predicate Pred,
+                                            const SCEV *LHS, const SCEV *RHS,
+                                            const SCEV *FoundLHS,
+                                            const SCEV *FoundRHS);
+
     /// If we know that the specified Phi is in the header of its containing
     /// loop, we know the loop executes a constant number of times, and the PHI
     /// node is just a recurrence involving constants, fold it.
@@ -540,6 +575,28 @@ namespace llvm {
     ///
     bool isKnownPredicateWithRanges(ICmpInst::Predicate Pred,
                                     const SCEV *LHS, const SCEV *RHS);
+
+    /// Try to prove the condition described by "LHS Pred RHS" by ruling out
+    /// integer overflow.
+    ///
+    /// For instance, this will return true for "A s< (A + C)<nsw>" if C is
+    /// positive.
+    bool isKnownPredicateViaNoOverflow(ICmpInst::Predicate Pred,
+                                       const SCEV *LHS, const SCEV *RHS);
+
+    /// Try to split Pred LHS RHS into logical conjunctions (and's) and try to
+    /// prove them individually.
+    bool isKnownPredicateViaSplitting(ICmpInst::Predicate Pred, const SCEV *LHS,
+                                      const SCEV *RHS);
+
+    /// Try to match the Expr as "(L + R)<Flags>".
+    bool splitBinaryAdd(const SCEV *Expr, const SCEV *&L, const SCEV *&R,
+                        SCEV::NoWrapFlags &Flags);
+
+    /// Return true if More == (Less + C), where C is a constant.  This is
+    /// intended to be used as a cheaper substitute for full SCEV subtraction.
+    bool computeConstantDifference(const SCEV *Less, const SCEV *More,
+                                   APInt &C);
 
     /// Drop memoized information computed for S.
     void forgetMemoizedResults(const SCEV *S);

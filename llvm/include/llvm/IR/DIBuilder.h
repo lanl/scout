@@ -531,13 +531,11 @@ namespace llvm {
         DIType *UnderlyingType, StringRef UniqueIdentifier = "");
 
     /// Create subroutine type.
-    /// \param File            File in which this subroutine is defined.
     /// \param ParameterTypes  An array of subroutine parameter types. This
     ///                        includes return type at 0th index.
     /// \param Flags           E.g.: LValueReference.
     ///                        These flags are used to emit dwarf attributes.
-    DISubroutineType *createSubroutineType(DIFile *File,
-                                           DITypeRefArray ParameterTypes,
+    DISubroutineType *createSubroutineType(DITypeRefArray ParameterTypes,
                                            unsigned Flags = 0);
 
     /// Create an external type reference.
@@ -876,7 +874,7 @@ namespace llvm {
     /// has a self-reference -- \a DIBuilder needs to track the array to
     /// resolve cycles.
     void replaceArrays(DICompositeType *&T, DINodeArray Elements,
-                       DINodeArray TParems = DINodeArray());
+                       DINodeArray TParams = DINodeArray());
 
     // +===== Scout =============================
     

@@ -43,10 +43,10 @@ StringRef ArchiveMemberHeader::getName() const {
   return llvm::StringRef(Name, end);
 }
 
-uint32_t ArchiveMemberHeader::getSize() const {
+ErrorOr<uint32_t> ArchiveMemberHeader::getSize() const {
   uint32_t Ret;
   if (llvm::StringRef(Size, sizeof(Size)).rtrim(" ").getAsInteger(10, Ret))
-    llvm_unreachable("Size is not a decimal number.");
+    return object_error::parse_failed;
   return Ret;
 }
 
@@ -107,13 +107,20 @@ Archive::Child::Child(const Archive *Parent, const char *Start)
 }
 
 uint64_t Archive::Child::getSize() const {
-  if (Parent->IsThin)
-    return getHeader()->getSize();
+  if (Parent->IsThin) {
+    ErrorOr<uint32_t> Size = getHeader()->getSize();
+    if (Size.getError())
+      return 0;
+    return Size.get();
+  }
   return Data.size() - StartOfFile;
 }
 
 uint64_t Archive::Child::getRawSize() const {
-  return getHeader()->getSize();
+  ErrorOr<uint32_t> Size = getHeader()->getSize();
+  if (Size.getError())
+    return 0;
+  return Size.get();
 }
 
 bool Archive::Child::isThinMember() const {
@@ -510,12 +517,12 @@ Archive::symbol_iterator Archive::symbol_begin() const {
 }
 
 Archive::symbol_iterator Archive::symbol_end() const {
-  if (!hasSymbolTable())
-    return symbol_iterator(Symbol(this, 0, 0));
   return symbol_iterator(Symbol(this, getNumberOfSymbols(), 0));
 }
 
 uint32_t Archive::getNumberOfSymbols() const {
+  if (!hasSymbolTable())
+    return 0;
   const char *buf = getSymbolTable().begin();
   if (kind() == K_GNU)
     return read32be(buf);

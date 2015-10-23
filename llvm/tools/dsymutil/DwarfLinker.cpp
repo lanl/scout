@@ -166,13 +166,14 @@ public:
   /// required strings will be interned in \a StringPool.
   /// \returns The child DeclContext along with one bit that is set if
   /// this context is invalid.
-  /// FIXME: the invalid bit along the return value is to emulate some
-  /// dsymutil-classic functionality. See the fucntion definition for
-  /// a more thorough discussion of its use.
+  /// An invalid context means it shouldn't be considered for uniquing, but its
+  /// not returning null, because some children of that context might be
+  /// uniquing candidates.  FIXME: The invalid bit along the return value is to
+  /// emulate some dsymutil-classic functionality.
   PointerIntPair<DeclContext *, 1>
   getChildDeclContext(DeclContext &Context,
                       const DWARFDebugInfoEntryMinimal *DIE, CompileUnit &Unit,
-                      NonRelocatableStringpool &StringPool);
+                      NonRelocatableStringpool &StringPool, bool InClangModule);
 
   DeclContext &getRoot() { return Root; }
 };
@@ -1432,7 +1433,7 @@ private:
   /// The units of the current debug map object.
   std::vector<CompileUnit> Units;
 
-  /// The debug map object curently under consideration.
+  /// The debug map object currently under consideration.
   DebugMapObject *CurrentDebugObject;
 
   /// \brief The Dwarf string pool
@@ -1535,18 +1536,9 @@ bool DeclContext::setLastSeenDIE(CompileUnit &U,
   return true;
 }
 
-/// Get the child context of \a Context corresponding to \a DIE.
-///
-/// \returns the child context or null if we shouldn't track children
-/// contexts. It also returns an additional bit meaning 'invalid'. An
-/// invalid context means it shouldn't be considered for uniquing, but
-/// its not returning null, because some children of that context
-/// might be uniquing candidates.
-/// FIXME: this is for dsymutil-classic compatibility, I don't think
-/// it buys us much.
 PointerIntPair<DeclContext *, 1> DeclContextTree::getChildDeclContext(
     DeclContext &Context, const DWARFDebugInfoEntryMinimal *DIE, CompileUnit &U,
-    NonRelocatableStringpool &StringPool) {
+    NonRelocatableStringpool &StringPool, bool InClangModule) {
   unsigned Tag = DIE->getTag();
 
   // FIXME: dsymutil-classic compat: We should bail out here if we
@@ -1612,50 +1604,52 @@ PointerIntPair<DeclContext *, 1> DeclContextTree::getChildDeclContext(
 
   std::string File;
   unsigned Line = 0;
-  unsigned ByteSize = 0;
+  unsigned ByteSize = UINT32_MAX;
 
-  // Gather some discriminating data about the DeclContext we will be
-  // creating: File, line number and byte size. This shouldn't be
-  // necessary, because the ODR is just about names, but given that we
-  // do some approximations with overloaded functions and anonymous
-  // namespaces, use these additional data points to make the process
-  // safer.  This is disabled for clang modules, because forward
-  // declarations of module-defined types do not have a file and line.
-  ByteSize = DIE->getAttributeValueAsUnsignedConstant(
-      &U.getOrigUnit(), dwarf::DW_AT_byte_size, UINT64_MAX);
-  if (!U.isClangModule() && (Tag != dwarf::DW_TAG_namespace || !Name)) {
-    if (unsigned FileNum = DIE->getAttributeValueAsUnsignedConstant(
-            &U.getOrigUnit(), dwarf::DW_AT_decl_file, 0)) {
-      if (const auto *LT = U.getOrigUnit().getContext().getLineTableForUnit(
-              &U.getOrigUnit())) {
-        // FIXME: dsymutil-classic compatibility. I'd rather not
-        // unique anything in anonymous namespaces, but if we do, then
-        // verify that the file and line correspond.
-        if (!Name && Tag == dwarf::DW_TAG_namespace)
-          FileNum = 1;
+  if (!InClangModule) {
+    // Gather some discriminating data about the DeclContext we will be
+    // creating: File, line number and byte size. This shouldn't be
+    // necessary, because the ODR is just about names, but given that we
+    // do some approximations with overloaded functions and anonymous
+    // namespaces, use these additional data points to make the process
+    // safer.  This is disabled for clang modules, because forward
+    // declarations of module-defined types do not have a file and line.
+    ByteSize = DIE->getAttributeValueAsUnsignedConstant(
+        &U.getOrigUnit(), dwarf::DW_AT_byte_size, UINT64_MAX);
+    if (Tag != dwarf::DW_TAG_namespace || !Name) {
+      if (unsigned FileNum = DIE->getAttributeValueAsUnsignedConstant(
+              &U.getOrigUnit(), dwarf::DW_AT_decl_file, 0)) {
+        if (const auto *LT = U.getOrigUnit().getContext().getLineTableForUnit(
+                &U.getOrigUnit())) {
+          // FIXME: dsymutil-classic compatibility. I'd rather not
+          // unique anything in anonymous namespaces, but if we do, then
+          // verify that the file and line correspond.
+          if (!Name && Tag == dwarf::DW_TAG_namespace)
+            FileNum = 1;
 
-        // FIXME: Passing U.getOrigUnit().getCompilationDir()
-        // instead of "" would allow more uniquing, but for now, do
-        // it this way to match dsymutil-classic.
-        if (LT->getFileNameByIndex(
-                FileNum, "",
-                DILineInfoSpecifier::FileLineInfoKind::AbsoluteFilePath,
-                File)) {
-          Line = DIE->getAttributeValueAsUnsignedConstant(
-              &U.getOrigUnit(), dwarf::DW_AT_decl_line, 0);
+          // FIXME: Passing U.getOrigUnit().getCompilationDir()
+          // instead of "" would allow more uniquing, but for now, do
+          // it this way to match dsymutil-classic.
+          if (LT->getFileNameByIndex(
+                  FileNum, "",
+                  DILineInfoSpecifier::FileLineInfoKind::AbsoluteFilePath,
+                  File)) {
+            Line = DIE->getAttributeValueAsUnsignedConstant(
+                &U.getOrigUnit(), dwarf::DW_AT_decl_line, 0);
 #ifdef HAVE_REALPATH
-          // Cache the resolved paths, because calling realpath is expansive.
-          if (const char *ResolvedPath = U.getResolvedPath(FileNum)) {
-            File = ResolvedPath;
-          } else {
-            char RealPath[PATH_MAX + 1];
-            RealPath[PATH_MAX] = 0;
-            if (::realpath(File.c_str(), RealPath))
-              File = RealPath;
-            U.setResolvedPath(FileNum, File);
-          }
+            // Cache the resolved paths, because calling realpath is expansive.
+            if (const char *ResolvedPath = U.getResolvedPath(FileNum)) {
+              File = ResolvedPath;
+            } else {
+              char RealPath[PATH_MAX + 1];
+              RealPath[PATH_MAX] = 0;
+              if (::realpath(File.c_str(), RealPath))
+                File = RealPath;
+              U.setResolvedPath(FileNum, File);
+            }
 #endif
-          FileRef = StringPool.internString(File);
+            FileRef = StringPool.internString(File);
+          }
         }
       }
     }
@@ -1780,17 +1774,18 @@ static bool analyzeContextInfo(const DWARFDebugInfoEntryMinimal *DIE,
   //   definitions match)."
   //
   // We treat non-C++ modules like namespaces for this reason.
-  if (DIE->getTag() == dwarf::DW_TAG_module &&
+  if (DIE->getTag() == dwarf::DW_TAG_module && ParentIdx == 0 &&
       DIE->getAttributeValueAsString(&CU.getOrigUnit(), dwarf::DW_AT_name,
                                      "") != CU.getClangModuleName()) {
     InImportedModule = true;
   }
 
   Info.ParentIdx = ParentIdx;
-  if (CU.hasODR() || CU.isClangModule() || InImportedModule) {
+  bool InClangModule = CU.isClangModule() || InImportedModule;
+  if (CU.hasODR() || InClangModule) {
     if (CurrentDeclContext) {
-      auto PtrInvalidPair = Contexts.getChildDeclContext(*CurrentDeclContext,
-                                                         DIE, CU, StringPool);
+      auto PtrInvalidPair = Contexts.getChildDeclContext(
+          *CurrentDeclContext, DIE, CU, StringPool, InClangModule);
       CurrentDeclContext = PtrInvalidPair.getPointer();
       Info.Ctxt =
           PtrInvalidPair.getInt() ? nullptr : PtrInvalidPair.getPointer();
@@ -1811,6 +1806,9 @@ static bool analyzeContextInfo(const DWARFDebugInfoEntryMinimal *DIE,
   Info.Prune &= (DIE->getTag() == dwarf::DW_TAG_module) ||
                 DIE->getAttributeValueAsUnsignedConstant(
                     &CU.getOrigUnit(), dwarf::DW_AT_declaration, 0);
+
+  // Don't prune it if there is no definition for the DIE.
+  Info.Prune &= Info.Ctxt && Info.Ctxt->getCanonicalDIEOffset();
 
   return Info.Prune;
 }
@@ -3343,20 +3341,22 @@ bool DwarfLinker::link(const DebugMap &Map) {
     DWARFContextInMemory DwarfContext(*ErrOrObj);
     startDebugObject(DwarfContext, *Obj);
 
-    // In a first phase, just read in the debug info and store the DIE
-    // parent links that we will use during the next phase.
+    // In a first phase, just read in the debug info and load all clang modules.
     for (const auto &CU : DwarfContext.compile_units()) {
       auto *CUDie = CU->getUnitDIE(false);
       if (Options.Verbose) {
         outs() << "Input compilation unit:";
         CUDie->dump(outs(), CU.get(), 0);
       }
-      if (!registerModuleReference(*CUDie, *CU, ModuleMap)) {
+
+      if (!registerModuleReference(*CUDie, *CU, ModuleMap))
         Units.emplace_back(*CU, UnitID++, !Options.NoODR, "");
-        analyzeContextInfo(CUDie, 0, Units.back(), &ODRContexts.getRoot(),
-                           StringPool, ODRContexts);
-      }
     }
+
+    // Now build the DIE parent links that we will use during the next phase.
+    for (auto &CurrentUnit : Units)
+      analyzeContextInfo(CurrentUnit.getOrigUnit().getUnitDIE(), 0, CurrentUnit,
+                         &ODRContexts.getRoot(), StringPool, ODRContexts);
 
     // Then mark all the DIEs that need to be present in the linked
     // output and collect some information about them. Note that this

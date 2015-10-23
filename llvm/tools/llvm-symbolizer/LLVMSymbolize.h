@@ -117,6 +117,10 @@ public:
   // Return true if this is a 32-bit x86 PE COFF module.
   bool isWin32Module() const;
 
+  // Returns the preferred base of the module, i.e. where the loader would place
+  // it in memory assuming there were no conflicts.
+  uint64_t getModulePreferredBase() const;
+
 private:
   bool getNameFromSymbolTable(SymbolRef::Type Type, uint64_t Address,
                               std::string &Name, uint64_t &Addr,
@@ -126,6 +130,7 @@ private:
   void addSymbol(const SymbolRef &Symbol, uint64_t SymbolSize,
                  DataExtractor *OpdExtractor = nullptr,
                  uint64_t OpdAddress = 0);
+  void addCoffExportSymbols(const COFFObjectFile *CoffObj);
   ObjectFile *Module;
   std::unique_ptr<DIContext> DebugInfoContext;
 

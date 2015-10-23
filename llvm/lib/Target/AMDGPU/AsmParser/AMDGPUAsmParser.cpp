@@ -344,8 +344,14 @@ private:
   bool ParseDirectiveHSACodeObjectISA();
   bool ParseAMDKernelCodeTValue(StringRef ID, amd_kernel_code_t &Header);
   bool ParseDirectiveAMDKernelCodeT();
+  bool ParseSectionDirectiveHSAText();
 
 public:
+public:
+  enum AMDGPUMatchResultTy {
+    Match_PreferE32 = FIRST_TARGET_MATCH_RESULT_TY
+  };
+
   AMDGPUAsmParser(MCSubtargetInfo &STI, MCAsmParser &_Parser,
                const MCInstrInfo &MII,
                const MCTargetOptions &Options)
@@ -555,6 +561,11 @@ unsigned AMDGPUAsmParser::checkTargetMatchPredicate(MCInst &Inst) {
       (getForcedEncodingSize() == 64 && !(TSFlags & SIInstrFlags::VOP3)))
     return Match_InvalidOperand;
 
+  if ((TSFlags & SIInstrFlags::VOP3) &&
+      (TSFlags & SIInstrFlags::VOPAsmPrefer32Bit) &&
+      getForcedEncodingSize() != 64)
+    return Match_PreferE32;
+
   return Match_Success;
 }
 
@@ -613,6 +624,9 @@ bool AMDGPUAsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
       }
       return Error(ErrorLoc, "invalid operand for instruction");
     }
+    case Match_PreferE32:
+      return Error(IDLoc, "internal error: instruction without _e64 suffix "
+                          "should be encoded as e32");
   }
   llvm_unreachable("Implement any new match types added!");
 }
@@ -903,6 +917,12 @@ bool AMDGPUAsmParser::ParseDirectiveAMDKernelCodeT() {
   return false;
 }
 
+bool AMDGPUAsmParser::ParseSectionDirectiveHSAText() {
+  getParser().getStreamer().SwitchSection(
+      AMDGPU::getHSATextSection(getContext()));
+  return false;
+}
+
 bool AMDGPUAsmParser::ParseDirective(AsmToken DirectiveID) {
   StringRef IDVal = DirectiveID.getString();
 
@@ -914,6 +934,9 @@ bool AMDGPUAsmParser::ParseDirective(AsmToken DirectiveID) {
 
   if (IDVal == ".amd_kernel_code_t")
     return ParseDirectiveAMDKernelCodeT();
+
+  if (IDVal == ".hsatext" || IDVal == ".text")
+    return ParseSectionDirectiveHSAText();
 
   return true;
 }
@@ -964,13 +987,11 @@ AMDGPUAsmParser::parseOperand(OperandVector &Operands, StringRef Mnemonic) {
       int64_t IntVal;
       if (getParser().parseAbsoluteExpression(IntVal))
         return MatchOperand_ParseFail;
-      APInt IntVal32(32, IntVal);
-      if (IntVal32.getSExtValue() != IntVal) {
+      if (!isInt<32>(IntVal) && !isUInt<32>(IntVal)) {
         Error(S, "invalid immediate: only 32-bit values are legal");
         return MatchOperand_ParseFail;
       }
 
-      IntVal = IntVal32.getSExtValue();
       if (Negate)
         IntVal *= -1;
       Operands.push_back(AMDGPUOperand::CreateImm(IntVal, S));
@@ -1691,8 +1712,12 @@ AMDGPUAsmParser::parseVOP3OptionalOps(OperandVector &Operands) {
 }
 
 void AMDGPUAsmParser::cvtVOP3(MCInst &Inst, const OperandVector &Operands) {
-  ((AMDGPUOperand &)*Operands[1]).addRegOperands(Inst, 1);
-  unsigned i = 2;
+
+  unsigned i = 1;
+  const MCInstrDesc &Desc = MII.get(Inst.getOpcode());
+  if (Desc.getNumDefs() > 0) {
+    ((AMDGPUOperand &)*Operands[i++]).addRegOperands(Inst, 1);
+  }
 
   std::map<enum AMDGPUOperand::ImmTy, unsigned> OptionalIdx;
 

@@ -405,7 +405,7 @@ void MachineSchedulerBase::scheduleRegions(ScheduleDAGInstrs &Scheduler) {
   for (MachineFunction::iterator MBB = MF->begin(), MBBEnd = MF->end();
        MBB != MBBEnd; ++MBB) {
 
-    Scheduler.startBlock(MBB);
+    Scheduler.startBlock(&*MBB);
 
 #ifndef NDEBUG
     if (SchedOnlyFunc.getNumOccurrences() && SchedOnlyFunc != MF->getName())
@@ -434,7 +434,7 @@ void MachineSchedulerBase::scheduleRegions(ScheduleDAGInstrs &Scheduler) {
 
       // Avoid decrementing RegionEnd for blocks with no terminator.
       if (RegionEnd != MBB->end() ||
-          isSchedBoundary(std::prev(RegionEnd), MBB, MF, TII, IsPostRA)) {
+          isSchedBoundary(&*std::prev(RegionEnd), &*MBB, MF, TII, IsPostRA)) {
         --RegionEnd;
         // Count the boundary instruction.
         --RemainingInstrs;
@@ -445,14 +445,14 @@ void MachineSchedulerBase::scheduleRegions(ScheduleDAGInstrs &Scheduler) {
       unsigned NumRegionInstrs = 0;
       MachineBasicBlock::iterator I = RegionEnd;
       for(;I != MBB->begin(); --I, --RemainingInstrs) {
-        if (isSchedBoundary(std::prev(I), MBB, MF, TII, IsPostRA))
+        if (isSchedBoundary(&*std::prev(I), &*MBB, MF, TII, IsPostRA))
           break;
         if (!I->isDebugValue())
           ++NumRegionInstrs;
       }
       // Notify the scheduler of the region, even if we may skip scheduling
       // it. Perhaps it still needs to be bundled.
-      Scheduler.enterRegion(MBB, I, RegionEnd, NumRegionInstrs);
+      Scheduler.enterRegion(&*MBB, I, RegionEnd, NumRegionInstrs);
 
       // Skip empty scheduling regions (0 or 1 schedulable instructions).
       if (I == RegionEnd || I == std::prev(RegionEnd)) {
@@ -492,7 +492,7 @@ void MachineSchedulerBase::scheduleRegions(ScheduleDAGInstrs &Scheduler) {
     if (Scheduler.isPostRA()) {
       // FIXME: Ideally, no further passes should rely on kill flags. However,
       // thumb2 size reduction is currently an exception.
-      Scheduler.fixupKills(MBB);
+      Scheduler.fixupKills(&*MBB);
     }
   }
   Scheduler.finalizeSchedule();
@@ -2722,8 +2722,8 @@ void GenericScheduler::tryCandidate(SchedCandidate &Cand,
 
   // Avoid serializing long latency dependence chains.
   // For acyclic path limited loops, latency was already checked above.
-  if (Cand.Policy.ReduceLatency && !Rem.IsAcyclicLatencyLimited
-      && tryLatency(TryCand, Cand, Zone)) {
+  if (!RegionPolicy.DisableLatencyHeuristic && Cand.Policy.ReduceLatency &&
+      !Rem.IsAcyclicLatencyLimited && tryLatency(TryCand, Cand, Zone)) {
     return;
   }
 

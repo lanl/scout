@@ -8,35 +8,39 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/MC/StringTableBuilder.h"
-#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/COFF.h"
 #include "llvm/Support/Endian.h"
 
+#include <vector>
+
 using namespace llvm;
 
-static bool compareBySuffix(StringRef a, StringRef b) {
-  size_t sizeA = a.size();
-  size_t sizeB = b.size();
-  size_t len = std::min(sizeA, sizeB);
-  for (size_t i = 0; i < len; ++i) {
-    char ca = a[sizeA - i - 1];
-    char cb = b[sizeB - i - 1];
-    if (ca != cb)
-      return ca > cb;
+static int compareBySuffix(std::pair<StringRef, size_t> *const *AP,
+                           std::pair<StringRef, size_t> *const *BP) {
+  StringRef A = (*AP)->first;
+  StringRef B = (*BP)->first;
+  size_t SizeA = A.size();
+  size_t SizeB = B.size();
+  size_t Len = std::min(SizeA, SizeB);
+  for (size_t I = 0; I < Len; ++I) {
+    char CA = A[SizeA - I - 1];
+    char CB = B[SizeB - I - 1];
+    if (CA != CB)
+      return CB - CA;
   }
-  return sizeA > sizeB;
+  return SizeB - SizeA;
 }
 
-void StringTableBuilder::finalize(Kind kind) {
-  SmallVector<StringRef, 8> Strings;
+void StringTableBuilder::finalize(Kind K) {
+  std::vector<std::pair<StringRef, size_t> *> Strings;
   Strings.reserve(StringIndexMap.size());
+  for (std::pair<StringRef, size_t> &P : StringIndexMap)
+    Strings.push_back(&P);
 
-  for (auto i = StringIndexMap.begin(), e = StringIndexMap.end(); i != e; ++i)
-    Strings.push_back(i->getKey());
+  array_pod_sort(Strings.begin(), Strings.end(), compareBySuffix);
 
-  std::sort(Strings.begin(), Strings.end(), compareBySuffix);
-
-  switch (kind) {
+  switch (K) {
   case ELF:
   case MachO:
     // Start the table with a NUL byte.
@@ -49,22 +53,23 @@ void StringTableBuilder::finalize(Kind kind) {
   }
 
   StringRef Previous;
-  for (StringRef s : Strings) {
-    if (kind == WinCOFF)
-      assert(s.size() > COFF::NameSize && "Short string in COFF string table!");
+  for (std::pair<StringRef, size_t> *P : Strings) {
+    StringRef S = P->first;
+    if (K == WinCOFF)
+      assert(S.size() > COFF::NameSize && "Short string in COFF string table!");
 
-    if (Previous.endswith(s)) {
-      StringIndexMap[s] = StringTable.size() - 1 - s.size();
+    if (Previous.endswith(S)) {
+      P->second = StringTable.size() - 1 - S.size();
       continue;
     }
 
-    StringIndexMap[s] = StringTable.size();
-    StringTable += s;
+    P->second = StringTable.size();
+    StringTable += S;
     StringTable += '\x00';
-    Previous = s;
+    Previous = S;
   }
 
-  switch (kind) {
+  switch (K) {
   case ELF:
     break;
   case MachO:
@@ -75,9 +80,9 @@ void StringTableBuilder::finalize(Kind kind) {
   case WinCOFF:
     // Write the table size in the first word.
     assert(StringTable.size() <= std::numeric_limits<uint32_t>::max());
-    uint32_t size = static_cast<uint32_t>(StringTable.size());
+    uint32_t Size = static_cast<uint32_t>(StringTable.size());
     support::endian::write<uint32_t, support::little, support::unaligned>(
-        StringTable.data(), size);
+        StringTable.data(), Size);
     break;
   }
 }
@@ -85,4 +90,16 @@ void StringTableBuilder::finalize(Kind kind) {
 void StringTableBuilder::clear() {
   StringTable.clear();
   StringIndexMap.clear();
+}
+
+size_t StringTableBuilder::getOffset(StringRef S) const {
+  assert(isFinalized());
+  auto I = StringIndexMap.find(S);
+  assert(I != StringIndexMap.end() && "String is not in table!");
+  return I->second;
+}
+
+void StringTableBuilder::add(StringRef S) {
+  assert(!isFinalized());
+  StringIndexMap.insert(std::make_pair(S, 0));
 }

@@ -543,14 +543,21 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
 
     if (Subtarget.hasVSX()) {
       setOperationAction(ISD::SCALAR_TO_VECTOR, MVT::v2f64, Legal);
-      if (Subtarget.hasP8Vector())
+      setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v2f64, Legal);
+      if (Subtarget.hasP8Vector()) {
         setOperationAction(ISD::SCALAR_TO_VECTOR, MVT::v4f32, Legal);
+        setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v4f32, Legal);
+      }
       if (Subtarget.hasDirectMove()) {
         setOperationAction(ISD::SCALAR_TO_VECTOR, MVT::v16i8, Legal);
         setOperationAction(ISD::SCALAR_TO_VECTOR, MVT::v8i16, Legal);
         setOperationAction(ISD::SCALAR_TO_VECTOR, MVT::v4i32, Legal);
         // FIXME: this is causing bootstrap failures, disable temporarily
         //setOperationAction(ISD::SCALAR_TO_VECTOR, MVT::v2i64, Legal);
+        setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v16i8, Legal);
+        setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v8i16, Legal);
+        setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v4i32, Legal);
+        setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v2i64, Legal);
       }
       setOperationAction(ISD::EXTRACT_VECTOR_ELT, MVT::v2f64, Legal);
 
@@ -3186,15 +3193,15 @@ PPCTargetLowering::LowerFormalArguments_64SVR4(
             EVT ObjType = (ObjSize == 1 ? MVT::i8 :
                            (ObjSize == 2 ? MVT::i16 : MVT::i32));
             Store = DAG.getTruncStore(Val.getValue(1), dl, Val, Arg,
-                                      MachinePointerInfo(FuncArg),
-                                      ObjType, false, false, 0);
+                                      MachinePointerInfo(&*FuncArg), ObjType,
+                                      false, false, 0);
           } else {
             // For sizes that don't fit a truncating store (3, 5, 6, 7),
             // store the whole register as-is to the parameter save area
             // slot.
-            Store = DAG.getStore(Val.getValue(1), dl, Val, FIN,
-                                 MachinePointerInfo(FuncArg),
-                                 false, false, 0);
+            Store =
+                DAG.getStore(Val.getValue(1), dl, Val, FIN,
+                             MachinePointerInfo(&*FuncArg), false, false, 0);
           }
 
           MemOps.push_back(Store);
@@ -3221,9 +3228,9 @@ PPCTargetLowering::LowerFormalArguments_64SVR4(
           SDValue Off = DAG.getConstant(j, dl, PtrVT);
           Addr = DAG.getNode(ISD::ADD, dl, Off.getValueType(), Addr, Off);
         }
-        SDValue Store = DAG.getStore(Val.getValue(1), dl, Val, Addr,
-                                     MachinePointerInfo(FuncArg, j),
-                                     false, false, 0);
+        SDValue Store =
+            DAG.getStore(Val.getValue(1), dl, Val, Addr,
+                         MachinePointerInfo(&*FuncArg, j), false, false, 0);
         MemOps.push_back(Store);
         ++GPR_idx;
       }
@@ -3601,7 +3608,7 @@ PPCTargetLowering::LowerFormalArguments_Darwin(
           SDValue Val = DAG.getCopyFromReg(Chain, dl, VReg, PtrVT);
           EVT ObjType = ObjSize == 1 ? MVT::i8 : MVT::i16;
           SDValue Store = DAG.getTruncStore(Val.getValue(1), dl, Val, FIN,
-                                            MachinePointerInfo(FuncArg),
+                                            MachinePointerInfo(&*FuncArg),
                                             ObjType, false, false, 0);
           MemOps.push_back(Store);
           ++GPR_idx;
@@ -3624,9 +3631,9 @@ PPCTargetLowering::LowerFormalArguments_Darwin(
           int FI = MFI->CreateFixedObject(PtrByteSize, ArgOffset, true);
           SDValue FIN = DAG.getFrameIndex(FI, PtrVT);
           SDValue Val = DAG.getCopyFromReg(Chain, dl, VReg, PtrVT);
-          SDValue Store = DAG.getStore(Val.getValue(1), dl, Val, FIN,
-                                       MachinePointerInfo(FuncArg, j),
-                                       false, false, 0);
+          SDValue Store =
+              DAG.getStore(Val.getValue(1), dl, Val, FIN,
+                           MachinePointerInfo(&*FuncArg, j), false, false, 0);
           MemOps.push_back(Store);
           ++GPR_idx;
           ArgOffset += PtrByteSize;
@@ -7322,11 +7329,11 @@ SDValue PPCTargetLowering::LowerVECTOR_SHUFFLE(SDValue Op,
                        V1, V2, VPermMask);
 }
 
-/// getAltivecCompareInfo - Given an intrinsic, return false if it is not an
-/// altivec comparison.  If it is, return true and fill in Opc/isDot with
+/// getVectorCompareInfo - Given an intrinsic, return false if it is not a
+/// vector comparison.  If it is, return true and fill in Opc/isDot with
 /// information about the intrinsic.
-static bool getAltivecCompareInfo(SDValue Intrin, int &CompareOpc,
-                                  bool &isDot, const PPCSubtarget &Subtarget) {
+static bool getVectorCompareInfo(SDValue Intrin, int &CompareOpc,
+                                 bool &isDot, const PPCSubtarget &Subtarget) {
   unsigned IntrinsicID =
     cast<ConstantSDNode>(Intrin.getOperand(0))->getZExtValue();
   CompareOpc = -1;
@@ -7368,6 +7375,28 @@ static bool getAltivecCompareInfo(SDValue Intrin, int &CompareOpc,
       CompareOpc = 711;
       isDot = 1;
     } else
+      return false;
+
+    break;
+    // VSX predicate comparisons use the same infrastructure
+  case Intrinsic::ppc_vsx_xvcmpeqdp_p:
+  case Intrinsic::ppc_vsx_xvcmpgedp_p:
+  case Intrinsic::ppc_vsx_xvcmpgtdp_p:
+  case Intrinsic::ppc_vsx_xvcmpeqsp_p:
+  case Intrinsic::ppc_vsx_xvcmpgesp_p:
+  case Intrinsic::ppc_vsx_xvcmpgtsp_p:
+    if (Subtarget.hasVSX()) {
+      switch (IntrinsicID) {
+      case Intrinsic::ppc_vsx_xvcmpeqdp_p: CompareOpc = 99; break;
+      case Intrinsic::ppc_vsx_xvcmpgedp_p: CompareOpc = 115; break;
+      case Intrinsic::ppc_vsx_xvcmpgtdp_p: CompareOpc = 107; break;
+      case Intrinsic::ppc_vsx_xvcmpeqsp_p: CompareOpc = 67; break;
+      case Intrinsic::ppc_vsx_xvcmpgesp_p: CompareOpc = 83; break;
+      case Intrinsic::ppc_vsx_xvcmpgtsp_p: CompareOpc = 75; break;
+      }
+      isDot = 1;
+    }
+    else
       return false;
 
     break;
@@ -7423,7 +7452,7 @@ SDValue PPCTargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
   SDLoc dl(Op);
   int CompareOpc;
   bool isDot;
-  if (!getAltivecCompareInfo(Op, CompareOpc, isDot, Subtarget))
+  if (!getVectorCompareInfo(Op, CompareOpc, isDot, Subtarget))
     return SDValue();    // Don't custom lower most intrinsics.
 
   // If this is a non-dot comparison, make the VCMP node and we are done.
@@ -8101,8 +8130,7 @@ PPCTargetLowering::EmitAtomicBinary(MachineInstr *MI, MachineBasicBlock *BB,
 
   const BasicBlock *LLVM_BB = BB->getBasicBlock();
   MachineFunction *F = BB->getParent();
-  MachineFunction::iterator It = BB;
-  ++It;
+  MachineFunction::iterator It = ++BB->getIterator();
 
   unsigned dest = MI->getOperand(0).getReg();
   unsigned ptrA = MI->getOperand(1).getReg();
@@ -8172,8 +8200,7 @@ PPCTargetLowering::EmitPartwordAtomicBinary(MachineInstr *MI,
 
   const BasicBlock *LLVM_BB = BB->getBasicBlock();
   MachineFunction *F = BB->getParent();
-  MachineFunction::iterator It = BB;
-  ++It;
+  MachineFunction::iterator It = ++BB->getIterator();
 
   unsigned dest = MI->getOperand(0).getReg();
   unsigned ptrA = MI->getOperand(1).getReg();
@@ -8295,8 +8322,7 @@ PPCTargetLowering::emitEHSjLjSetJmp(MachineInstr *MI,
   MachineRegisterInfo &MRI = MF->getRegInfo();
 
   const BasicBlock *BB = MBB->getBasicBlock();
-  MachineFunction::iterator I = MBB;
-  ++I;
+  MachineFunction::iterator I = ++MBB->getIterator();
 
   // Memory Reference
   MachineInstr::mmo_iterator MMOBegin = MI->memoperands_begin();
@@ -8574,8 +8600,7 @@ PPCTargetLowering::EmitInstrWithCustomInserter(MachineInstr *MI,
   // To "insert" these instructions we actually have to insert their
   // control-flow patterns.
   const BasicBlock *LLVM_BB = BB->getBasicBlock();
-  MachineFunction::iterator It = BB;
-  ++It;
+  MachineFunction::iterator It = ++BB->getIterator();
 
   MachineFunction *F = BB->getParent();
 
@@ -10618,7 +10643,7 @@ SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,
 
     if (LHS.getOpcode() == ISD::INTRINSIC_WO_CHAIN &&
         isa<ConstantSDNode>(RHS) && (CC == ISD::SETEQ || CC == ISD::SETNE) &&
-        getAltivecCompareInfo(LHS, CompareOpc, isDot, Subtarget)) {
+        getVectorCompareInfo(LHS, CompareOpc, isDot, Subtarget)) {
       assert(isDot && "Can't compare against a vector result!");
 
       // If this is a comparison against something other than 0/1, then we know
