@@ -113,13 +113,16 @@ ValueObjectDynamicValue::GetDisplayTypeName()
 }
 
 size_t
-ValueObjectDynamicValue::CalculateNumChildren()
+ValueObjectDynamicValue::CalculateNumChildren(uint32_t max)
 {
     const bool success = UpdateValueIfNeeded(false);
     if (success && m_dynamic_type_info.HasType())
-        return GetCompilerType().GetNumChildren (true);
+    {
+        auto children_count = GetCompilerType().GetNumChildren (true);
+        return children_count <= max ? children_count : max;
+    }
     else
-        return m_parent->GetNumChildren();
+        return m_parent->GetNumChildren(max);
 }
 
 uint64_t
@@ -127,7 +130,10 @@ ValueObjectDynamicValue::GetByteSize()
 {
     const bool success = UpdateValueIfNeeded(false);
     if (success && m_dynamic_type_info.HasType())
-        return m_value.GetValueByteSize(nullptr);
+    {
+        ExecutionContext exe_ctx (GetExecutionContextRef());
+        return m_value.GetValueByteSize(nullptr, &exe_ctx);
+    }
     else
         return m_parent->GetByteSize();
 }
@@ -389,6 +395,27 @@ ValueObjectDynamicValue::SetData (DataExtractor &data, Error &error)
     bool ret_val = m_parent->SetData(data, error);
     SetNeedsUpdate();
     return ret_val;
+}
+
+void
+ValueObjectDynamicValue::SetPreferredDisplayLanguage (lldb::LanguageType lang)
+{
+    this->ValueObject::SetPreferredDisplayLanguage(lang);
+    if (m_parent)
+        m_parent->SetPreferredDisplayLanguage(lang);
+}
+
+lldb::LanguageType
+ValueObjectDynamicValue::GetPreferredDisplayLanguage ()
+{
+    if (m_preferred_display_language == lldb::eLanguageTypeUnknown)
+    {
+        if (m_parent)
+            return m_parent->GetPreferredDisplayLanguage();
+        return lldb::eLanguageTypeUnknown;
+    }
+    else
+        return m_preferred_display_language;
 }
 
 bool

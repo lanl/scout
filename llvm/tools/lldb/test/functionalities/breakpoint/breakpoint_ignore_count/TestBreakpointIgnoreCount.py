@@ -2,9 +2,12 @@
 Test breakpoint ignore count features.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
 import re
-import unittest2
 import lldb, lldbutil
 from lldbtest import *
 
@@ -12,32 +15,15 @@ class BreakpointIgnoreCountTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_with_dsym_and_run_command(self):
+    def test_with_run_command(self):
         """Exercise breakpoint ignore count with 'breakpoint set -i <count>'."""
-        self.buildDsym()
-        self.breakpoint_ignore_count()
-
-    @skipUnlessDarwin
-    @python_api_test
-    @dsym_test
-    def test_with_dsym_and_python_api(self):
-        """Use Python APIs to set breakpoint ignore count."""
-        self.buildDsym()
-        self.breakpoint_ignore_count_python()
-
-    @dwarf_test
-    def test_with_dwarf_and_run_command(self):
-        """Exercise breakpoint ignore count with 'breakpoint set -i <count>'."""
-        self.buildDwarf()
+        self.build()
         self.breakpoint_ignore_count()
 
     @python_api_test
-    @dwarf_test
-    def test_with_dwarf_and_python_api(self):
+    def test_with_python_api(self):
         """Use Python APIs to set breakpoint ignore count."""
-        self.buildDwarf()
+        self.build()
         self.breakpoint_ignore_count_python()
 
     def setUp(self):
@@ -147,10 +133,3 @@ class BreakpointIgnoreCountTestCase(TestBase):
         self.assertTrue(breakpoint.GetHitCount() == 3)
 
         process.Continue()
-
-        
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

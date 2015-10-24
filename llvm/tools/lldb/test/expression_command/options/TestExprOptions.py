@@ -7,8 +7,11 @@ o test_expr_options:
   Test expression command options.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 import lldbutil
 from lldbtest import *
@@ -28,7 +31,7 @@ class ExprOptionsTestCase(TestBase):
 
     def test_expr_options(self):
         """These expression command options should work as expected."""
-        self.buildDefault()
+        self.build()
 
         # Set debugger into synchronous mode
         self.dbg.SetAsync(False)
@@ -71,9 +74,3 @@ class ExprOptionsTestCase(TestBase):
         val = frame.EvaluateExpression('foo != nullptr', options)
         self.assertTrue(val.IsValid())
         self.assertFalse(val.GetError().Success())
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

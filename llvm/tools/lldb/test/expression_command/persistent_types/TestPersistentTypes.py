@@ -2,8 +2,11 @@
 Test that lldb persistent types works correctly.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 
@@ -14,7 +17,7 @@ class PersistenttypesTestCase(TestBase):
     @expectedFailureWindows("llvm.org/pr21765")
     def test_persistent_types(self):
         """Test that lldb persistent types works correctly."""
-        self.buildDefault()
+        self.build()
 
         self.runCmd("file a.out", CURRENT_EXECUTABLE_SET)
 
@@ -52,10 +55,3 @@ class PersistenttypesTestCase(TestBase):
 
         self.expect("expression struct A { int x; int y; }; struct { struct A a; int z; } object; object.a.y = 1; object.z = 3; object.a.x = 2; object",
                     substrs = ['x = 2', 'y = 1', 'z = 3'])
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

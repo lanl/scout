@@ -3,8 +3,11 @@ This tests that we do not lose control of the inferior, while doing an instructi
 over a thread creation instruction.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -19,12 +22,8 @@ class CreateDuringInstructionStepTestCase(TestBase):
 
     @skipUnlessPlatform(['linux'])
     @expectedFailureAndroid('llvm.org/pr24737', archs=['arm'])
-    @dwarf_test
-    def test_step_inst_with_dwarf(self):
-        self.buildDwarf(dictionary=self.getBuildFlags())
-        self.create_during_step_inst_test()
-
-    def create_during_step_inst_test(self):
+    def test_step_inst(self):
+        self.build(dictionary=self.getBuildFlags())
         exe = os.path.join(os.getcwd(), "a.out")
         target = self.dbg.CreateTarget(exe)
         self.assertTrue(target and target.IsValid(), "Target is valid")
@@ -65,9 +64,3 @@ class CreateDuringInstructionStepTestCase(TestBase):
 
         # At this point, the inferior process should have exited.
         self.assertEqual(process.GetState(), lldb.eStateExited, PROCESS_EXITED)
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

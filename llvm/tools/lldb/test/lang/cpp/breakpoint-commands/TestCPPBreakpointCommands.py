@@ -2,8 +2,11 @@
 Test lldb breakpoint command for CPP methods & functions in a namespace.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 
@@ -11,25 +14,10 @@ class CPPBreakpointCommandsTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_with_dsym(self):
+    @expectedFailureWindows
+    def test(self):
         """Test a sequence of breakpoint command add, list, and delete."""
-        self.buildDsym()
-        self.cpp_breakpoints()
-
-    @dwarf_test
-    def test_with_dwarf(self):
-        """Test a sequence of breakpoint command add, list, and delete."""
-        self.buildDwarf()
-        self.cpp_breakpoints()
-
-    def setUp(self):
-        # Call super's setUp().
-        TestBase.setUp(self)
-
-    def cpp_breakpoints (self):
-        """Test a sequence of breakpoint command add, list, and delete."""
+        self.build()
         exe = os.path.join(os.getcwd(), "a.out")
 
         # Create a target from the debugger.
@@ -94,11 +82,3 @@ class CPPBreakpointCommandsTestCase(TestBase):
                                                             a_out_module,
                                                             nested_comp_unit)
         self.assertTrue (plain_method_break.GetNumLocations() == 1)
-
-        
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

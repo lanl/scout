@@ -1,7 +1,11 @@
 """Test that thread-local storage can be read correctly."""
 
-import os, time
+from __future__ import print_function
+
+import lldb_shared
+
 import unittest2
+import os, time
 import lldb
 from lldbtest import *
 import lldbutil
@@ -9,22 +13,6 @@ import lldbutil
 class TlsGlobalTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
-
-    @skipUnlessDarwin
-    @dsym_test
-    @unittest2.expectedFailure("rdar://7796742")
-    def test_with_dsym(self):
-        """Test thread-local storage."""
-        self.buildDsym()
-        self.tls_globals()
-
-    @dwarf_test
-    @unittest2.expectedFailure("rdar://7796742")
-    @skipIfWindows # TLS works differently on Windows, this would need to be implemented separately.
-    def test_with_dwarf(self):
-        """Test thread-local storage."""
-        self.buildDwarf()
-        self.tls_globals()
 
     def setUp(self):
         TestBase.setUp(self)
@@ -37,9 +25,11 @@ class TlsGlobalTestCase(TestBase):
                 self.runCmd("settings set target.env-vars " + self.dylibPath + "=" + os.getcwd())
             self.addTearDownHook(lambda: self.runCmd("settings remove target.env-vars " + self.dylibPath))
 
-    def tls_globals(self):
+    @unittest2.expectedFailure("rdar://7796742")
+    @skipIfWindows # TLS works differently on Windows, this would need to be implemented separately.
+    def test(self):
         """Test thread-local storage."""
-
+        self.build()
         exe = os.path.join(os.getcwd(), "a.out")
         self.runCmd("file " + exe, CURRENT_EXECUTABLE_SET)
 
@@ -83,9 +73,3 @@ class TlsGlobalTestCase(TestBase):
             patterns = ["\(int\) \$.* = 44"])
         self.expect("expr var_shared", VARIABLES_DISPLAYED_CORRECTLY,
             patterns = ["\(int\) \$.* = 33"])
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

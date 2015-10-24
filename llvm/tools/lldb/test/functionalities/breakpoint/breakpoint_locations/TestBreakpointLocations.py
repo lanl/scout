@@ -2,8 +2,11 @@
 Test breakpoint commands for a breakpoint ID with multiple locations.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -12,18 +15,11 @@ class BreakpointLocationsTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_with_dsym(self):
-        """Test breakpoint enable/disable for a breakpoint ID with multiple locations."""
-        self.buildDsym()
-        self.breakpoint_locations_test()
-
-    @dwarf_test
     @expectedFailureWindows("llvm.org/pr24528")
-    def test_with_dwarf(self):
+    @expectedFailureAll(oslist=["linux"], compiler="clang", compiler_version=["=", "3.8"], archs=["i386"], debug_info="dwo")
+    def test(self):
         """Test breakpoint enable/disable for a breakpoint ID with multiple locations."""
-        self.buildDwarf()
+        self.build()
         self.breakpoint_locations_test()
 
     def setUp(self):
@@ -90,10 +86,3 @@ class BreakpointLocationsTestCase(TestBase):
             patterns = ["1\.1: .+ unresolved, hit count = 0 +Options: disabled",
                         "1\.2: .+ resolved, hit count = 1",
                         "1\.3: .+ resolved, hit count = 1"])
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

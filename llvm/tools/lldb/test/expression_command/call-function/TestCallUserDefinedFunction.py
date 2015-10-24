@@ -7,7 +7,10 @@ Note:
 
 """
 
-import unittest2
+from __future__ import print_function
+
+import lldb_shared
+
 import lldb
 import lldbutil
 from lldbtest import *
@@ -22,23 +25,11 @@ class ExprCommandCallUserDefinedFunction(TestBase):
         # Find the line number to break for main.c.
         self.line = line_number('main.cpp',
                                 '// Please test these expressions while stopped at this line:')
-    @skipUnlessDarwin
-    @dsym_test
-    @expectedFailureDarwin("llvm.org/pr20274") # intermittent failure on MacOSX
-    def test_with_dsym(self):
-        """Test return values of user defined function calls."""
-        self.buildDsym()
-        self.call_function()
-
-    @dwarf_test
+    @expectedFlakeyDsym("llvm.org/pr20274")
     @expectedFailureWindows("llvm.org/pr24489: Name lookup not working correctly on Windows")
-    def test_with_dwarf(self):
+    def test(self):
         """Test return values of user defined function calls."""
-        self.buildDwarf()
-        self.call_functions()
-
-    def call_functions(self):
-        """Test return values of user defined function calls."""
+        self.build()
 
         # Set breakpoint in main and run exe
         self.runCmd("file a.out", CURRENT_EXECUTABLE_SET)
@@ -59,10 +50,3 @@ class ExprCommandCallUserDefinedFunction(TestBase):
         # Test function with pointer paramter
         self.expect("exp stringCompare((const char*) \"Hello world\")", substrs = ['$4 = true'])
         self.expect("exp stringCompare((const char*) \"Hellworld\")", substrs = ['$5 = false'])
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

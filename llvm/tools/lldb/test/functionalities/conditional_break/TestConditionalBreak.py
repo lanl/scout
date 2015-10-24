@@ -2,9 +2,12 @@
 Test conditionally break on a function and inspect its variables.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
 import re
-import unittest2
 import lldb, lldbutil
 from lldbtest import *
 
@@ -17,33 +20,16 @@ class ConditionalBreakTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @python_api_test
-    @dsym_test
-    def test_with_dsym_python(self):
-        """Exercise some thread and frame APIs to break if c() is called by a()."""
-        self.buildDsym()
-        self.do_conditional_break()
-
     @expectedFailureWindows("llvm.org/pr24778")
     @python_api_test
-    @dwarf_test
-    def test_with_dwarf_python(self):
+    def test_with_python(self):
         """Exercise some thread and frame APIs to break if c() is called by a()."""
-        self.buildDwarf()
+        self.build()
         self.do_conditional_break()
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_with_dsym_command(self):
+    def test_with_command(self):
         """Simulate a user using lldb commands to break on c() if called from a()."""
-        self.buildDsym()
-        self.simulate_conditional_break_by_user()
-
-    @dwarf_test
-    def test_with_dwarf_command(self):
-        """Simulate a user using lldb commands to break on c() if called from a()."""
-        self.buildDwarf()
+        self.build()
         self.simulate_conditional_break_by_user()
 
     def do_conditional_break(self):
@@ -77,7 +63,7 @@ class ConditionalBreakTestCase(TestBase):
         # like to try for at most 10 times.
         for j in range(10):
             if self.TraceOn():
-                print "j is: ", j
+                print("j is: ", j)
             thread = process.GetThreadAtIndex(0)
             
             if thread.GetNumFrames() >= 2:
@@ -110,7 +96,7 @@ class ConditionalBreakTestCase(TestBase):
         # breakpoint such that lldb only stops when the caller of c() is a().
         # the "my" package that defines the date() function.
         if self.TraceOn():
-            print "About to source .lldb"
+            print("About to source .lldb")
 
         if not self.TraceOn():
             self.HideStdout()
@@ -123,13 +109,13 @@ class ConditionalBreakTestCase(TestBase):
         self.runCmd ("break list")
 
         if self.TraceOn():
-            print "About to run."
+            print("About to run.")
         self.runCmd("run", RUN_SUCCEEDED)
 
         self.runCmd ("break list")
 
         if self.TraceOn():
-            print "Done running"
+            print("Done running")
 
         # The stop reason of the thread should be breakpoint.
         self.expect("thread list", STOPPED_DUE_TO_BREAKPOINT,
@@ -145,11 +131,3 @@ class ConditionalBreakTestCase(TestBase):
         self.runCmd("frame select 1")
         self.expect("frame info", "The immediate caller should be a()",
             substrs = ["a.out`a"])
-
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

@@ -10,14 +10,22 @@
 #ifndef liblldb_TypeSystem_h_
 #define liblldb_TypeSystem_h_
 
+// C Includes
+// C++ Includes
 #include <functional>
+#include <map>
 #include <string>
+
+// Other libraries and framework includes
+#include "llvm/ADT/APSInt.h"
+#include "llvm/Support/Casting.h"
+
+// Project includes
 #include "lldb/lldb-private.h"
 #include "lldb/Core/PluginInterface.h"
 #include "lldb/Expression/Expression.h"
+#include "lldb/Host/Mutex.h"
 #include "lldb/Symbol/CompilerDeclContext.h"
-#include "llvm/ADT/APSInt.h"
-#include "llvm/Support/Casting.h"
 
 class DWARFDIE;
 class DWARFASTParser;
@@ -68,17 +76,20 @@ public:
         kNumKinds
     };
 
-    LLVMCastKind getKind() const { return m_kind; }
-
-    static lldb::TypeSystemSP
-    CreateInstance (lldb::LanguageType language, const lldb_private::ArchSpec &arch);
-
     //----------------------------------------------------------------------
     // Constructors and Destructors
     //----------------------------------------------------------------------
-    TypeSystem (LLVMCastKind kind);
+    TypeSystem(LLVMCastKind kind);
     
-    virtual ~TypeSystem ();
+    ~TypeSystem() override;
+
+    LLVMCastKind getKind() const { return m_kind; }
+
+    static lldb::TypeSystemSP
+    CreateInstance (lldb::LanguageType language, Module *module);
+
+    static lldb::TypeSystemSP
+    CreateInstance (lldb::LanguageType language, Target *target);
 
     virtual DWARFASTParser *
     GetDWARFParser ()
@@ -369,6 +380,7 @@ public:
     //----------------------------------------------------------------------
     // Dumping types
     //----------------------------------------------------------------------
+
     virtual void
     DumpValue (lldb::opaque_compiler_type_t type,
                ExecutionContext *exe_ctx,
@@ -504,18 +516,62 @@ public:
         return nullptr;
     }
     
+    virtual PersistentExpressionState *
+    GetPersistentExpressionState()
+    {
+        return nullptr;
+    }
+    
     virtual CompilerType
     GetTypeForFormatters (void* type);
     
     virtual LazyBool
     ShouldPrintAsOneLiner (void* type);
     
+    // Type systems can have types that are placeholder types, which are meant to indicate
+    // the presence of a type, but offer no actual information about said types, and leave
+    // the burden of actually figuring type information out to dynamic type resolution. For instance
+    // a language with a generics system, can use placeholder types to indicate "type argument goes here",
+    // without promising uniqueness of the placeholder, nor attaching any actually idenfiable information
+    // to said placeholder. This API allows type systems to tell LLDB when such a type has been encountered
+    // In response, the debugger can react by not using this type as a cache entry in any type-specific way
+    // For instance, LLDB will currently not cache any formatters that are discovered on such a type as
+    // attributable to the meaningless type itself, instead preferring to use the dynamic type
+    virtual bool
+    IsMeaninglessWithoutDynamicResolution (void* type);
+    
 protected:
     const LLVMCastKind m_kind; // Support for llvm casting
     SymbolFile *m_sym_file;
 
 };
-    
+
+    class TypeSystemMap
+    {
+    public:
+        TypeSystemMap ();
+        ~TypeSystemMap();
+
+        void
+        Clear ();
+
+        // Iterate through all of the type systems that are created. Return true
+        // from callback to keep iterating, false to stop iterating.
+        void
+        ForEach (std::function <bool(TypeSystem *)> const &callback);
+
+        TypeSystem *
+        GetTypeSystemForLanguage (lldb::LanguageType language, Module *module, bool can_create);
+
+        TypeSystem *
+        GetTypeSystemForLanguage (lldb::LanguageType language, Target *target, bool can_create);
+
+    protected:
+        typedef std::map<lldb::LanguageType, lldb::TypeSystemSP> collection;
+        mutable Mutex m_mutex; ///< A mutex to keep this object happy in multi-threaded environments.
+        collection m_map;
+    };
+
 } // namespace lldb_private
 
-#endif // #ifndef liblldb_TypeSystem_h_
+#endif // liblldb_TypeSystem_h_

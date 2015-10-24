@@ -2,8 +2,11 @@
 Test _regexp-break command which uses regular expression matching to dispatch to other built in breakpoint commands.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -12,17 +15,9 @@ class RegexpBreakCommandTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_with_dsym(self):
+    def test(self):
         """Test _regexp-break command."""
-        self.buildDsym()
-        self.regexp_break_command()
-
-    @dwarf_test
-    def test_with_dwarf(self):
-        """Test _regexp-break command."""
-        self.buildDwarf()
+        self.build()
         self.regexp_break_command()
 
     def setUp(self):
@@ -54,10 +49,3 @@ class RegexpBreakCommandTestCase(TestBase):
         self.expect("thread list", STOPPED_DUE_TO_BREAKPOINT,
             substrs = ['stopped',
                        'stop reason = breakpoint'])
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

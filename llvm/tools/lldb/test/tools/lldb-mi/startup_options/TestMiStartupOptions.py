@@ -2,9 +2,12 @@
 Test lldb-mi startup options.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import lldbmi_testcase
 from lldbtest import *
-import unittest2
 
 class MiStartupOptionsTestCase(lldbmi_testcase.MiTestCaseBase):
 
@@ -295,6 +298,3 @@ class MiStartupOptionsTestCase(lldbmi_testcase.MiTestCaseBase):
         # Delete log
         for f in logFile:
             os.remove(f)
-
-if __name__ == '__main__':
-    unittest2.main()

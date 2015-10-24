@@ -1,4 +1,6 @@
-import unittest2
+from __future__ import print_function
+
+import lldb_shared
 
 import gdbremote_testcase
 import lldbgdbserverutils

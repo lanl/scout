@@ -2,7 +2,10 @@
 Test calling a function that waits a while, and make sure the timeout option to expr works.
 """
 
-import unittest2
+from __future__ import print_function
+
+import lldb_shared
+
 import lldb
 import lldbutil
 from lldbtest import *
@@ -19,24 +22,13 @@ class ExprCommandWithTimeoutsTestCase(TestBase):
         self.main_source_spec = lldb.SBFileSpec (self.main_source)
 
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_with_dsym(self):
-        """Test calling std::String member function."""
-        self.buildDsym()
-        self.call_function()
-
     @expectedFlakeyFreeBSD("llvm.org/pr19605")
     @expectedFlakeyLinux("llvm.org/pr20275")
     @expectedFailureWindows("llvm.org/pr21765")
-    @dwarf_test
-    def test_with_dwarf(self):
+    def test(self):
         """Test calling std::String member function."""
-        self.buildDwarf()
-        self.call_function()
+        self.build()
 
-    def call_function(self):
-        """Test calling function with timeout."""
         exe_name = "a.out"
         exe = os.path.join(os.getcwd(), exe_name)
 
@@ -98,10 +90,3 @@ class ExprCommandWithTimeoutsTestCase(TestBase):
         value = frame.EvaluateExpression ("wait_a_while (1000)", options)
         self.assertTrue(value.IsValid())
         self.assertTrue (value.GetError().Success() == True)
-        
-        
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

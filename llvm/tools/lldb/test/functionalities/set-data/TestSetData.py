@@ -2,25 +2,23 @@
 Set the contents of variables and registers using raw data
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
 
-@skipUnlessDarwin
 class SetDataTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @dsym_test
-    def test_set_data_dsym(self):
+    @skipUnlessDarwin
+    def test_set_data(self):
         """Test setting the contents of variables and registers using raw data."""
-        self.buildDsym()
-        self.setData()
-
-    def setData(self):
-        """Test setting objc breakpoints using '_regexp-break' and 'breakpoint set'."""
+        self.build()
         exe = os.path.join(os.getcwd(), "a.out")
         self.runCmd("file " + exe, CURRENT_EXECUTABLE_SET)
 
@@ -62,9 +60,3 @@ class SetDataTestCase(TestBase):
 
         self.expect("fr var -d run-target string", VARIABLES_DISPLAYED_CORRECTLY,
             substrs = ['NSString *', 'nil'])
-        
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

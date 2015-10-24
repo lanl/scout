@@ -8,8 +8,11 @@ Provides classes used by the test results reporting infrastructure
 within the LLDB test suite.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import argparse
-import cPickle
 import inspect
 import os
 import pprint
@@ -19,6 +22,9 @@ import threading
 import time
 import traceback
 import xml.sax.saxutils
+
+import six
+from six.moves import cPickle
 
 
 class EventBuilder(object):
@@ -489,11 +495,11 @@ class XunitFormatter(ResultsFormatter):
 
         # Build up an array of range expressions.
         illegal_ranges = [
-            "%s-%s" % (unichr(low), unichr(high))
+            "%s-%s" % (six.unichr(low), six.unichr(high))
             for (low, high) in illegal_chars_u]
 
         # Compile the regex
-        return re.compile(u'[%s]' % u''.join(illegal_ranges))
+        return re.compile(six.u('[%s]') % six.u('').join(illegal_ranges))
 
     @staticmethod
     def _quote_attribute(text):
@@ -519,7 +525,7 @@ class XunitFormatter(ResultsFormatter):
             unicode_content = str_or_unicode.decode('utf-8')
         else:
             unicode_content = str_or_unicode
-        return self.invalid_xml_re.sub(u'?', unicode_content).encode('utf-8')
+        return self.invalid_xml_re.sub(six.u('?'), unicode_content).encode('utf-8')
 
     @classmethod
     def arg_parser(cls):

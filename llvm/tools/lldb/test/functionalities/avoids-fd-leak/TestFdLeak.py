@@ -2,8 +2,11 @@
 Test whether a process started by lldb has no extra file descriptors open.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -32,7 +35,7 @@ class AvoidsFdLeakTestCase(TestBase):
         self.do_test(["log enable -f '/dev/null' lldb commands"])
 
     def do_test (self, commands):
-        self.buildDefault()
+        self.build()
         exe = os.path.join (os.getcwd(), "a.out")
 
         for c in commands:
@@ -52,7 +55,7 @@ class AvoidsFdLeakTestCase(TestBase):
     @skipIfWindows # The check for descriptor leakage needs to be implemented differently here.
     @skipIfTargetAndroid() # Android have some other file descriptors open by the shell
     def test_fd_leak_multitarget (self):
-        self.buildDefault()
+        self.build()
         exe = os.path.join (os.getcwd(), "a.out")
 
         target = self.dbg.CreateTarget(exe)
@@ -70,10 +73,3 @@ class AvoidsFdLeakTestCase(TestBase):
         self.assertTrue(process2.GetState() == lldb.eStateExited, "Process should have exited.")
         self.assertTrue(process2.GetExitStatus() == 0,
                 "Process returned non-zero status. Were incorrect file descriptors passed?")
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

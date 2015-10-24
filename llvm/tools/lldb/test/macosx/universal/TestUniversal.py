@@ -1,7 +1,11 @@
 """Test aspects of lldb commands on universal binaries."""
 
-import os, time
+from __future__ import print_function
+
+import lldb_shared
+
 import unittest2
+import os, time
 import lldb
 from lldbtest import *
 import lldbutil
@@ -23,7 +27,7 @@ class UniversalTestCase(TestBase):
     def test_sbdebugger_create_target_with_file_and_target_triple(self):
         """Test the SBDebugger.CreateTargetWithFileAndTargetTriple() API."""
         # Invoke the default build rule.
-        self.buildDefault()
+        self.build()
 
         # Note that "testit" is a universal binary.
         exe = os.path.join(os.getcwd(), "testit")
@@ -44,7 +48,7 @@ class UniversalTestCase(TestBase):
         from lldbutil import print_registers
 
         # Invoke the default build rule.
-        self.buildDefault()
+        self.build()
 
         # Note that "testit" is a universal binary.
         exe = os.path.join(os.getcwd(), "testit")
@@ -101,10 +105,3 @@ class UniversalTestCase(TestBase):
             substrs = ['Name: eax'])
 
         self.runCmd("continue")
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

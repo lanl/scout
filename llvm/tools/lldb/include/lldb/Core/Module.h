@@ -11,6 +11,7 @@
 #define liblldb_Module_h_
 
 #include <atomic>
+
 #include "lldb/lldb-forward.h"
 #include "lldb/Core/ArchSpec.h"
 #include "lldb/Core/UUID.h"
@@ -18,6 +19,7 @@
 #include "lldb/Host/Mutex.h"
 #include "lldb/Host/TimeValue.h"
 #include "lldb/Symbol/SymbolContextScope.h"
+#include "lldb/Symbol/TypeSystem.h"
 #include "lldb/Target/PathMappingList.h"
 
 namespace lldb_private {
@@ -100,8 +102,7 @@ public:
     //------------------------------------------------------------------
     /// Destructor.
     //------------------------------------------------------------------
-    virtual 
-    ~Module ();
+    ~Module() override;
 
     bool
     MatchesModuleSpec (const ModuleSpec &module_ref);
@@ -155,11 +156,11 @@ public:
     ///
     /// @see SymbolContextScope
     //------------------------------------------------------------------
-    virtual void
-    CalculateSymbolContext (SymbolContext* sc);
+    void
+    CalculateSymbolContext(SymbolContext* sc) override;
 
-    virtual lldb::ModuleSP
-    CalculateSymbolContextModule ();
+    lldb::ModuleSP
+    CalculateSymbolContextModule() override;
 
     void
     GetDescription (Stream *s,
@@ -208,10 +209,9 @@ public:
     ///
     /// @see SymbolContextScope
     //------------------------------------------------------------------
-    virtual void
-    DumpSymbolContext (Stream *s);
+    void
+    DumpSymbolContext(Stream *s) override;
 
-    
     //------------------------------------------------------------------
     /// Find a symbol in the object file's symbol table.
     ///
@@ -289,7 +289,6 @@ public:
     FindCompileUnits (const FileSpec &path,
                       bool append,
                       SymbolContextList &sc_list);
-    
 
     //------------------------------------------------------------------
     /// Find functions by name.
@@ -936,7 +935,6 @@ public:
     uint32_t
     ResolveSymbolContextsForFileSpec (const FileSpec &file_spec, uint32_t line, bool check_inlines, uint32_t resolve_scope, SymbolContextList& sc_list);
 
-
     void
     SetFileSpecAndObjectName (const FileSpec &file,
                               const ConstString &object_name);
@@ -1042,7 +1040,6 @@ public:
     bool
     RemapSourceFile (const char *path, std::string &new_path) const;
     
-    
     //------------------------------------------------------------------
     /// Prepare to do a function name lookup.
     ///
@@ -1098,7 +1095,6 @@ public:
                                   bool &match_name_after_lookup);
 
 protected:
-    typedef std::map<lldb::LanguageType, lldb::TypeSystemSP> TypeSystemMap;
     //------------------------------------------------------------------
     // Member Variables
     //------------------------------------------------------------------
@@ -1184,7 +1180,6 @@ protected:
     friend class SymbolFile;
 
 private:
-    
     Module (); // Only used internally by CreateJITModule ()
     
     size_t
@@ -1193,12 +1188,11 @@ private:
                     const CompilerDeclContext *parent_decl_ctx,
                     bool append, 
                     size_t max_matches,
-                    TypeList& types);
+                    TypeMap& types);
 
-    
     DISALLOW_COPY_AND_ASSIGN (Module);
 };
 
 } // namespace lldb_private
 
-#endif  // liblldb_Module_h_
+#endif // liblldb_Module_h_

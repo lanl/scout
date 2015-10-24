@@ -2,35 +2,18 @@
 Test some SBValue APIs.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
 import re
-import unittest2
 import lldb, lldbutil
 from lldbtest import *
 
 class ValueAPITestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
-
-    @skipUnlessDarwin
-    @python_api_test
-    @dsym_test
-    def test_with_dsym(self):
-        """Exercise some SBValue APIs."""
-        d = {'EXE': self.exe_name}
-        self.buildDsym(dictionary=d)
-        self.setTearDownCleanup(dictionary=d)
-        self.value_api(self.exe_name)
-
-    @expectedFailureWindows("llvm.org/pr24772")
-    @python_api_test
-    @dwarf_test
-    def test_with_dwarf(self):
-        """Exercise some SBValue APIs."""
-        d = {'EXE': self.exe_name}
-        self.buildDwarf(dictionary=d)
-        self.setTearDownCleanup(dictionary=d)
-        self.value_api(self.exe_name)
 
     def setUp(self):
         # Call super's setUp().
@@ -40,9 +23,14 @@ class ValueAPITestCase(TestBase):
         # Find the line number to of function 'c'.
         self.line = line_number('main.c', '// Break at this line')
 
-    def value_api(self, exe_name):
+    @expectedFailureWindows("llvm.org/pr24772")
+    @python_api_test
+    def test(self):
         """Exercise some SBValue APIs."""
-        exe = os.path.join(os.getcwd(), exe_name)
+        d = {'EXE': self.exe_name}
+        self.build(dictionary=d)
+        self.setTearDownCleanup(dictionary=d)
+        exe = os.path.join(os.getcwd(), self.exe_name)
 
         # Create a target by the debugger.
         target = self.dbg.CreateTarget(exe)
@@ -87,10 +75,10 @@ class ValueAPITestCase(TestBase):
         cvf = lldbutil.ChildVisitingFormatter(indent_child=2)
         rdf = lldbutil.RecursiveDecentFormatter(indent_child=2)
         if self.TraceOn():
-            print fmt.format(days_of_week)
-            print cvf.format(days_of_week)
-            print cvf.format(weekdays)
-            print rdf.format(g_table)
+            print(fmt.format(days_of_week))
+            print(cvf.format(days_of_week))
+            print(cvf.format(weekdays))
+            print(rdf.format(g_table))
 
         # Get variable 'my_int_ptr'.
         value = frame0.FindVariable('my_int_ptr')
@@ -144,9 +132,3 @@ class ValueAPITestCase(TestBase):
         val_a = target.EvaluateExpression('a')
         self.assertTrue(val_s.GetChildMemberWithName('a').AddressOf(), VALID_VARIABLE)
         self.assertTrue(val_a.Cast(val_i.GetType()).AddressOf(), VALID_VARIABLE)
-        
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

@@ -22,19 +22,19 @@
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Core/StreamString.h"
 #include "lldb/Core/ValueObjectConstResult.h"
-#include "lldb/Expression/ASTResultSynthesizer.h"
-#include "lldb/Expression/ClangPersistentVariables.h"
 #include "lldb/Expression/ExpressionSourceCode.h"
 #include "lldb/Expression/IRExecutionUnit.h"
 #include "lldb/Expression/IRInterpreter.h"
 #include "lldb/Expression/Materializer.h"
 #include "lldb/Expression/UserExpression.h"
+#include "Plugins/ExpressionParser/Clang/ClangPersistentVariables.h"
 #include "lldb/Host/HostInfo.h"
 #include "lldb/Symbol/Block.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Symbol/Type.h"
+#include "lldb/Symbol/TypeSystem.h"
 #include "lldb/Symbol/VariableList.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
@@ -265,7 +265,7 @@ UserExpression::FinalizeJITExecution (Stream &error_stream,
 
     Error dematerialize_error;
 
-    m_dematerializer_sp->Dematerialize(dematerialize_error, result, function_stack_bottom, function_stack_top);
+    m_dematerializer_sp->Dematerialize(dematerialize_error, function_stack_bottom, function_stack_top);
 
     if (!dematerialize_error.Success())
     {
@@ -273,6 +273,8 @@ UserExpression::FinalizeJITExecution (Stream &error_stream,
         return false;
     }
 
+    result = GetResultAfterDematerialization(exe_ctx.GetBestExecutionContextScope());
+    
     if (result)
         result->TransferAddress();
 
@@ -463,12 +465,14 @@ UserExpression::Evaluate (ExecutionContext &exe_ctx,
                                const char *expr_cstr,
                                const char *expr_prefix,
                                lldb::ValueObjectSP &result_valobj_sp,
-                               Error &error)
+                               Error &error,
+                               uint32_t line_offset,
+                               lldb::ModuleSP *jit_module_sp_ptr)
 {
     Log *log(lldb_private::GetLogIfAnyCategoriesSet (LIBLLDB_LOG_EXPRESSIONS | LIBLLDB_LOG_STEP));
 
     lldb_private::ExecutionPolicy execution_policy = options.GetExecutionPolicy();
-    const lldb::LanguageType language = options.GetLanguage();
+    lldb::LanguageType language = options.GetLanguage();
     const ResultType desired_type = options.DoesCoerceToId() ? UserExpression::eResultTypeId : UserExpression::eResultTypeAny;
     lldb::ExpressionResults execution_results = lldb::eExpressionSetupError;
     
@@ -513,6 +517,17 @@ UserExpression::Evaluate (ExecutionContext &exe_ctx,
     else
         full_prefix = option_prefix;
 
+    // If the language was not specified in the expression command,
+    // set it to the language in the target's properties if
+    // specified, else default to the langage for the frame.
+    if (language == lldb::eLanguageTypeUnknown)
+    {
+        if (target->GetLanguage() != lldb::eLanguageTypeUnknown)
+            language = target->GetLanguage();
+        else if (StackFrame *frame = exe_ctx.GetFramePtr())
+            language = frame->GetLanguage();
+    }
+
     lldb::UserExpressionSP user_expression_sp(target->GetUserExpressionForLanguage (expr_cstr,
                                                                                     full_prefix,
                                                                                     language,
@@ -554,6 +569,10 @@ UserExpression::Evaluate (ExecutionContext &exe_ctx,
     }
     else
     {
+        // If a pointer to a lldb::ModuleSP was passed in, return the JIT'ed module if one was created
+        if (jit_module_sp_ptr && user_expression_sp->m_execution_unit_sp)
+            *jit_module_sp_ptr = user_expression_sp->m_execution_unit_sp->GetJITModule();
+
         lldb::ExpressionVariableSP expr_result;
 
         if (execution_policy == eExecutionPolicyNever &&
@@ -587,7 +606,7 @@ UserExpression::Evaluate (ExecutionContext &exe_ctx,
 
             if (options.GetResultIsInternal() && expr_result && process)
             {
-                process->GetTarget().GetPersistentVariables().RemovePersistentVariable (expr_result);
+                process->GetTarget().GetPersistentExpressionStateForLanguage(language)->RemovePersistentVariable (expr_result);
             }
 
             if (execution_results != lldb::eExpressionCompleted)

@@ -1,7 +1,10 @@
 """Test that importing modules in C works as expected."""
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 import platform
 import lldbutil
@@ -14,35 +17,15 @@ class CModulesTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @dsym_test
-    @expectedFailureDarwin('http://llvm.org/pr24302')
-    def test_expr_with_dsym(self):
-        self.buildDsym()
-        self.expr()
-
-    @dwarf_test
     @skipIfFreeBSD
     @expectedFailureDarwin('http://llvm.org/pr24302')
     @expectedFailureLinux('http://llvm.org/pr23456') # 'fopen' has unknown return type
     @expectedFailureWindows("llvm.org/pr24489: Name lookup not working correctly on Windows")
-    def test_expr_with_dwarf(self):
-        self.buildDwarf()
-        self.expr()
-
-    def setUp(self):
-        # Call super's setUp().
-        TestBase.setUp(self)
-        # Find the line number to break inside main().
-        self.line = line_number('main.c', '// Set breakpoint 0 here.')
-
-    def applies(self):
+    def test_expr(self):
         if platform.system() == "Darwin" and platform.release() < StrictVersion('12.0.0'):
-            return False
+            self.skipTest()
 
-        return True
-
-    def common_setup(self):
+        self.build()
         exe = os.path.join(os.getcwd(), "a.out")
         self.runCmd("file " + exe, CURRENT_EXECUTABLE_SET)
 
@@ -60,12 +43,6 @@ class CModulesTestCase(TestBase):
         self.expect("breakpoint list -f", BREAKPOINT_HIT_ONCE,
             substrs = [' resolved, hit count = 1'])
 
-    def expr(self):
-        if not self.applies():
-            return
-
-        self.common_setup()
-
         self.expect("expr @import Darwin; 3", VARIABLES_DISPLAYED_CORRECTLY,
             substrs = ["int", "3"])
 
@@ -80,9 +57,9 @@ class CModulesTestCase(TestBase):
 
         self.expect("expr stdin", VARIABLES_DISPLAYED_CORRECTLY,
             substrs = ["(FILE *)", "0x"])
-            
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()
+
+    def setUp(self):
+        # Call super's setUp().
+        TestBase.setUp(self)
+        # Find the line number to break inside main().
+        self.line = line_number('main.c', '// Set breakpoint 0 here.')

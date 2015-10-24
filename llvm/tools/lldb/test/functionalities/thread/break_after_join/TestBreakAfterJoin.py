@@ -2,8 +2,11 @@
 Test number of threads.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -12,31 +15,19 @@ class BreakpointAfterJoinTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @expectedFailureDarwin("llvm.org/pr15824") # thread states not properly maintained
-    @dsym_test
-    def test_with_dsym(self):
-        """Test breakpoint handling after a thread join."""
-        self.buildDsym(dictionary=self.getBuildFlags())
-        self.breakpoint_after_join_test()
-
-    @expectedFailureDarwin("llvm.org/pr15824") # thread states not properly maintained
-    @expectedFailureFreeBSD("llvm.org/pr18190") # thread states not properly maintained
-    @expectedFailureLinux("llvm.org/pr15824") # thread states not properly maintained
-    @dwarf_test
-    def test_with_dwarf(self):
-        """Test breakpoint handling after a thread join."""
-        self.buildDwarf(dictionary=self.getBuildFlags())
-        self.breakpoint_after_join_test()
-
     def setUp(self):
         # Call super's setUp().
         TestBase.setUp(self)
         # Find the line number for our breakpoint.
         self.breakpoint = line_number('main.cpp', '// Set breakpoint here')
 
-    def breakpoint_after_join_test(self):
+    @expectedFailureDarwin("llvm.org/pr15824") # thread states not properly maintained
+    @expectedFailureFreeBSD("llvm.org/pr18190") # thread states not properly maintained
+    @expectedFailureLinux("llvm.org/pr15824") # thread states not properly maintained
+    def test(self):
         """Test breakpoint handling after a thread join."""
+        self.build(dictionary=self.getBuildFlags())
+
         exe = os.path.join(os.getcwd(), "a.out")
         self.runCmd("file " + exe, CURRENT_EXECUTABLE_SET)
 
@@ -84,9 +75,3 @@ class BreakpointAfterJoinTestCase(TestBase):
 
         # At this point, the inferior process should have exited.
         self.assertTrue(process.GetState() == lldb.eStateExited, PROCESS_EXITED)
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

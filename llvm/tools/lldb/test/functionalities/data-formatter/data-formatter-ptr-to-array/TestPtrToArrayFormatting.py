@@ -2,8 +2,11 @@
 Test lldb data formatter subsystem.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -12,17 +15,9 @@ class PtrToArrayDataFormatterTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_with_dsym_and_run_command(self):
+    def test_with_run_command(self):
         """Test that LLDB handles the clang typeclass Paren correctly."""
-        self.buildDsym()
-        self.data_formatter_commands()
-
-    @dwarf_test
-    def test_with_dwarf_and_run_command(self):
-        """Test that LLDB handles the clang typeclass Paren correctly."""
-        self.buildDwarf()
+        self.build()
         self.data_formatter_commands()
 
     def setUp(self):
@@ -60,10 +55,3 @@ class PtrToArrayDataFormatterTestCase(TestBase):
             substrs = ['01 00 00 00 02 00 00 00 03 00 00 00'])
         self.expect('p *(int (*)[3])foo', matching=False,
             substrs = ['0x000000030000000200000001'])
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

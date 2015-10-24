@@ -11,12 +11,7 @@
 #define liblldb_ExpressionParser_h_
 
 #include "lldb/lldb-public.h"
-#include "lldb/Core/ArchSpec.h"
 #include "lldb/Core/Error.h"
-#include "lldb/Expression/IRForTarget.h"
-
-#include <string>
-#include <vector>
 
 namespace lldb_private
 {

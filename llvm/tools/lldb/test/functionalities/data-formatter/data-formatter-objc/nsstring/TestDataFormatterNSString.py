@@ -3,8 +3,11 @@
 Test lldb data formatter subsystem.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import datetime
@@ -14,8 +17,8 @@ class NSStringDataFormatterTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    def appkit_tester_impl(self,builder,commands):
-        builder()
+    def appkit_tester_impl(self,commands):
+        self.build()
         self.runCmd("file a.out", CURRENT_EXECUTABLE_SET)
 
         lldbutil.run_break_set_by_file_and_line (self, "main.m", self.line, num_expected_locations=1, loc_exact=True)
@@ -40,40 +43,19 @@ class NSStringDataFormatterTestCase(TestBase):
         commands()
 
     @skipUnlessDarwin
-    @dsym_test
-    def test_nsstring_with_dsym_and_run_command(self):
+    def test_nsstring_with_run_command(self):
         """Test formatters for NSString."""
-        self.appkit_tester_impl(self.buildDsym,self.nsstring_data_formatter_commands)
+        self.appkit_tester_impl(self.nsstring_data_formatter_commands)
 
     @skipUnlessDarwin
-    @dwarf_test
-    def test_nsstring_with_dwarf_and_run_command(self):
-        """Test formatters for NSString."""
-        self.appkit_tester_impl(self.buildDwarf,self.nsstring_data_formatter_commands)
-
-    @skipUnlessDarwin
-    @dsym_test
-    def test_rdar11106605_with_dsym_and_run_command(self):
+    def test_rdar11106605_with_run_command(self):
         """Check that Unicode characters come out of CFString summary correctly."""
-        self.appkit_tester_impl(self.buildDsym,self.rdar11106605_commands)
+        self.appkit_tester_impl(self.rdar11106605_commands)
 
     @skipUnlessDarwin
-    @dwarf_test
-    def test_rdar11106605_with_dwarf_and_run_command(self):
-        """Check that Unicode characters come out of CFString summary correctly."""
-        self.appkit_tester_impl(self.buildDwarf,self.rdar11106605_commands)
-
-    @skipUnlessDarwin
-    @dsym_test
-    def test_nsstring_withNULs_with_dsym_and_run_command(self):
+    def test_nsstring_withNULS_with_run_command(self):
         """Test formatters for NSString."""
-        self.appkit_tester_impl(self.buildDsym,self.nsstring_withNULs_commands)
-
-    @skipUnlessDarwin
-    @dwarf_test
-    def test_nsstring_withNULS_with_dwarf_and_run_command(self):
-        """Test formatters for NSString."""
-        self.appkit_tester_impl(self.buildDwarf,self.nsstring_withNULs_commands)
+        self.appkit_tester_impl(self.nsstring_withNULs_commands)
 
 
     def setUp(self):
@@ -123,10 +105,3 @@ class NSStringDataFormatterTestCase(TestBase):
         self.expect('po strwithNULs2', substrs=['a very much boring task to write'])
         self.expect('expr [strwithNULs2 length]', substrs=['52'])
         self.expect('frame variable strwithNULs2', substrs=['@"a very much boring task to write\\0a string this way!!'])
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

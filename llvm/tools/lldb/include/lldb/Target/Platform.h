@@ -947,6 +947,36 @@ class ModuleCache;
         virtual const std::vector<ConstString> &
         GetTrapHandlerSymbolNames ();
 
+        //------------------------------------------------------------------
+        /// Find a support executable that may not live within in the
+        /// standard locations related to LLDB.
+        ///
+        /// Executable might exist within the Platform SDK directories, or
+        /// in standard tool directories within the current IDE that is
+        /// running LLDB.
+        ///
+        /// @param[in] basename
+        ///     The basename of the executable to locate in the current
+        ///     platform.
+        ///
+        /// @return
+        ///     A FileSpec pointing to the executable on disk, or an invalid
+        ///     FileSpec if the executable cannot be found.
+        //------------------------------------------------------------------
+        virtual FileSpec
+        LocateExecutable (const char *basename)
+        {
+            return FileSpec();
+        }
+
+        //------------------------------------------------------------------
+        /// Allow the platform to set preferred memory cache line size. If non-zero (and the user
+        /// has not set cache line size explicitly), this value will be used as the cache line
+        /// size for memory reads.
+        //------------------------------------------------------------------
+        virtual uint32_t
+        GetDefaultMemoryCacheLineSize() { return 0; }
+
     protected:
         bool m_is_host;
         // Set to true when we are able to actually set the OS version while 

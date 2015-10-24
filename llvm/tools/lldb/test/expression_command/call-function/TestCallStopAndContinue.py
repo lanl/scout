@@ -2,7 +2,10 @@
 Test calling a function, stopping in the call, continue and gather the result on stop.
 """
 
-import unittest2
+from __future__ import print_function
+
+import lldb_shared
+
 import lldb
 import lldbutil
 from lldbtest import *
@@ -20,24 +23,11 @@ class ExprCommandCallStopContinueTestCase(TestBase):
         self.func_line = line_number ('main.cpp', 
                                 '{ 5, "five" }')
 
-    @skipUnlessDarwin
-    @dsym_test
-    @expectedFlakeyDarwin("llvm.org/pr20274")
-    def test_with_dsym(self):
-        """Test gathering result from interrupted function call."""
-        self.buildDsym()
-        self.call_function()
-
-    @dwarf_test
     @expectedFlakeyDarwin("llvm.org/pr20274")
     @expectedFailureWindows("llvm.org/pr24489: Name lookup not working correctly on Windows")
-    def test_with_dwarf(self):
+    def test(self):
         """Test gathering result from interrupted function call."""
-        self.buildDwarf()
-        self.call_function()
-
-    def call_function(self):
-        """Test gathering result from interrupted function call."""
+        self.build()
         self.runCmd("file a.out", CURRENT_EXECUTABLE_SET)
 
         # Some versions of GCC encode two locations for the 'return' statement in main.cpp
@@ -54,9 +44,3 @@ class ExprCommandCallStopContinueTestCase(TestBase):
         self.expect ("thread list",
                      substrs = ['stop reason = User Expression thread plan',
                                 r'Completed expression: (Five) $0 = (number = 5, name = "five")'])
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

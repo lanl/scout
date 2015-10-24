@@ -4,10 +4,15 @@ Some of the test suite takes advantage of the utility functions defined here.
 They can also be useful for general purpose lldb scripting.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import lldb
 import os, sys
-import StringIO
 import re
+
+from six import StringIO as SixStringIO
 
 # ===================================================
 # Utilities for locating/checking executable programs
@@ -39,10 +44,10 @@ def disassemble(target, function_or_symbol):
 
     It returns the disassembly content in a string object.
     """
-    buf = StringIO.StringIO()
+    buf = SixStringIO()
     insts = function_or_symbol.GetInstructions(target)
     for i in insts:
-        print >> buf, i
+        print(i, file=buf)
     return buf.getvalue()
 
 # ==========================================================
@@ -72,7 +77,7 @@ def int_to_bytearray(val, bytesize):
         return None
 
     packed = struct.pack(fmt, val)
-    return bytearray(map(ord, packed))
+    return bytearray(list(map(ord, packed)))
 
 def bytearray_to_int(bytes, bytesize):
     """Utility function to convert a bytearray into an integer.
@@ -602,7 +607,7 @@ def get_function_names(thread):
     def GetFuncName(i):
         return thread.GetFrameAtIndex(i).GetFunctionName()
 
-    return map(GetFuncName, range(thread.GetNumFrames()))
+    return list(map(GetFuncName, range(thread.GetNumFrames())))
 
 
 def get_symbol_names(thread):
@@ -612,7 +617,7 @@ def get_symbol_names(thread):
     def GetSymbol(i):
         return thread.GetFrameAtIndex(i).GetSymbol().GetName()
 
-    return map(GetSymbol, range(thread.GetNumFrames()))
+    return list(map(GetSymbol, range(thread.GetNumFrames())))
 
 
 def get_pc_addresses(thread):
@@ -622,7 +627,7 @@ def get_pc_addresses(thread):
     def GetPCAddress(i):
         return thread.GetFrameAtIndex(i).GetPCAddress()
 
-    return map(GetPCAddress, range(thread.GetNumFrames()))
+    return list(map(GetPCAddress, range(thread.GetNumFrames())))
 
 
 def get_filenames(thread):
@@ -632,7 +637,7 @@ def get_filenames(thread):
     def GetFilename(i):
         return thread.GetFrameAtIndex(i).GetLineEntry().GetFileSpec().GetFilename()
 
-    return map(GetFilename, range(thread.GetNumFrames()))
+    return list(map(GetFilename, range(thread.GetNumFrames())))
 
 
 def get_line_numbers(thread):
@@ -642,7 +647,7 @@ def get_line_numbers(thread):
     def GetLineNumber(i):
         return thread.GetFrameAtIndex(i).GetLineEntry().GetLine()
 
-    return map(GetLineNumber, range(thread.GetNumFrames()))
+    return list(map(GetLineNumber, range(thread.GetNumFrames())))
 
 
 def get_module_names(thread):
@@ -652,7 +657,7 @@ def get_module_names(thread):
     def GetModuleName(i):
         return thread.GetFrameAtIndex(i).GetModule().GetFileSpec().GetFilename()
 
-    return map(GetModuleName, range(thread.GetNumFrames()))
+    return list(map(GetModuleName, range(thread.GetNumFrames())))
 
 
 def get_stack_frames(thread):
@@ -662,13 +667,13 @@ def get_stack_frames(thread):
     def GetStackFrame(i):
         return thread.GetFrameAtIndex(i)
 
-    return map(GetStackFrame, range(thread.GetNumFrames()))
+    return list(map(GetStackFrame, range(thread.GetNumFrames())))
 
 
 def print_stacktrace(thread, string_buffer = False):
     """Prints a simple stack trace of this thread."""
 
-    output = StringIO.StringIO() if string_buffer else sys.stdout
+    output = SixStringIO() if string_buffer else sys.stdout
     target = thread.GetProcess().GetTarget()
 
     depth = thread.GetNumFrames()
@@ -684,8 +689,8 @@ def print_stacktrace(thread, string_buffer = False):
         desc =  "stop reason=" + stop_reason_to_str(thread.GetStopReason())
     else:
         desc = ""
-    print >> output, "Stack trace for thread id={0:#x} name={1} queue={2} ".format(
-        thread.GetThreadID(), thread.GetName(), thread.GetQueueName()) + desc
+    print("Stack trace for thread id={0:#x} name={1} queue={2} ".format(
+        thread.GetThreadID(), thread.GetName(), thread.GetQueueName()) + desc, file=output)
 
     for i in range(depth):
         frame = thread.GetFrameAtIndex(i)
@@ -696,14 +701,14 @@ def print_stacktrace(thread, string_buffer = False):
             file_addr = addrs[i].GetFileAddress()
             start_addr = frame.GetSymbol().GetStartAddress().GetFileAddress()
             symbol_offset = file_addr - start_addr
-            print >> output, "  frame #{num}: {addr:#016x} {mod}`{symbol} + {offset}".format(
-                num=i, addr=load_addr, mod=mods[i], symbol=symbols[i], offset=symbol_offset)
+            print("  frame #{num}: {addr:#016x} {mod}`{symbol} + {offset}".format(
+                num=i, addr=load_addr, mod=mods[i], symbol=symbols[i], offset=symbol_offset), file=output)
         else:
-            print >> output, "  frame #{num}: {addr:#016x} {mod}`{func} at {file}:{line} {args}".format(
+            print("  frame #{num}: {addr:#016x} {mod}`{func} at {file}:{line} {args}".format(
                 num=i, addr=load_addr, mod=mods[i],
                 func='%s [inlined]' % funcs[i] if frame.IsInlined() else funcs[i],
                 file=files[i], line=lines[i],
-                args=get_args_as_string(frame, showFuncName=False) if not frame.IsInlined() else '()')
+                args=get_args_as_string(frame, showFuncName=False) if not frame.IsInlined() else '()'), file=output)
 
     if string_buffer:
         return output.getvalue()
@@ -712,12 +717,12 @@ def print_stacktrace(thread, string_buffer = False):
 def print_stacktraces(process, string_buffer = False):
     """Prints the stack traces of all the threads."""
 
-    output = StringIO.StringIO() if string_buffer else sys.stdout
+    output = SixStringIO() if string_buffer else sys.stdout
 
-    print >> output, "Stack traces for " + str(process)
+    print("Stack traces for " + str(process), file=output)
 
     for thread in process:
-        print >> output, print_stacktrace(thread, string_buffer=True)
+        print(print_stacktrace(thread, string_buffer=True), file=output)
 
     if string_buffer:
         return output.getvalue()
@@ -784,17 +789,17 @@ def get_args_as_string(frame, showFuncName=True):
 def print_registers(frame, string_buffer = False):
     """Prints all the register sets of the frame."""
 
-    output = StringIO.StringIO() if string_buffer else sys.stdout
+    output = SixStringIO() if string_buffer else sys.stdout
 
-    print >> output, "Register sets for " + str(frame)
+    print("Register sets for " + str(frame), file=output)
 
     registerSet = frame.GetRegisters() # Return type of SBValueList.
-    print >> output, "Frame registers (size of register set = %d):" % registerSet.GetSize()
+    print("Frame registers (size of register set = %d):" % registerSet.GetSize(), file=output)
     for value in registerSet:
-        #print >> output, value 
-        print >> output, "%s (number of children = %d):" % (value.GetName(), value.GetNumChildren())
+        #print(value, file=output)
+        print("%s (number of children = %d):" % (value.GetName(), value.GetNumChildren()), file=output)
         for child in value:
-            print >> output, "Name: %s, Value: %s" % (child.GetName(), child.GetValue())
+            print("Name: %s, Value: %s" % (child.GetName(), child.GetValue()), file=output)
 
     if string_buffer:
         return output.getvalue()
@@ -819,7 +824,7 @@ def get_GPRs(frame):
         from lldbutil import get_GPRs
         regs = get_GPRs(frame)
         for reg in regs:
-            print "%s => %s" % (reg.GetName(), reg.GetValue())
+            print("%s => %s" % (reg.GetName(), reg.GetValue()))
         ...
     """
     return get_registers(frame, "general purpose")
@@ -832,7 +837,7 @@ def get_FPRs(frame):
         from lldbutil import get_FPRs
         regs = get_FPRs(frame)
         for reg in regs:
-            print "%s => %s" % (reg.GetName(), reg.GetValue())
+            print("%s => %s" % (reg.GetName(), reg.GetValue()))
         ...
     """
     return get_registers(frame, "floating point")
@@ -845,7 +850,7 @@ def get_ESRs(frame):
         from lldbutil import get_ESRs
         regs = get_ESRs(frame)
         for reg in regs:
-            print "%s => %s" % (reg.GetName(), reg.GetValue())
+            print("%s => %s" % (reg.GetName(), reg.GetValue()))
         ...
     """
     return get_registers(frame, "exception state")
@@ -858,7 +863,7 @@ class BasicFormatter(object):
     """The basic formatter inspects the value object and prints the value."""
     def format(self, value, buffer=None, indent=0):
         if not buffer:
-            output = StringIO.StringIO()
+            output = SixStringIO()
         else:
             output = buffer
         # If there is a summary, it suffices.
@@ -868,11 +873,11 @@ class BasicFormatter(object):
             val = value.GetValue()
         if val == None and value.GetNumChildren() > 0:
             val = "%s (location)" % value.GetLocation()
-        print >> output, "{indentation}({type}) {name} = {value}".format(
+        print("{indentation}({type}) {name} = {value}".format(
             indentation = ' ' * indent,
             type = value.GetTypeName(),
             name = value.GetName(),
-            value = val)
+            value = val), file=output)
         return output.getvalue()
 
 class ChildVisitingFormatter(BasicFormatter):
@@ -885,7 +890,7 @@ class ChildVisitingFormatter(BasicFormatter):
         self.cindent = indent_child
     def format(self, value, buffer=None):
         if not buffer:
-            output = StringIO.StringIO()
+            output = SixStringIO()
         else:
             output = buffer
 
@@ -908,7 +913,7 @@ class RecursiveDecentFormatter(BasicFormatter):
         self.cindent = indent_child
     def format(self, value, buffer=None):
         if not buffer:
-            output = StringIO.StringIO()
+            output = SixStringIO()
         else:
             output = buffer
 

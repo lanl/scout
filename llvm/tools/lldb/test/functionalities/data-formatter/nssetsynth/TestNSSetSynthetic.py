@@ -2,8 +2,11 @@
 Test lldb data formatter subsystem.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import datetime
@@ -13,28 +16,16 @@ class NSSetSyntheticTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_rdar12529957_with_dsym_and_run_command(self):
-        """Test that NSSet reports its synthetic children properly."""
-        self.buildDsym()
-        self.rdar12529957_tester()
-
-    @skipUnlessDarwin
-    @dwarf_test
-    def test_rdar12529957_with_dwarf_and_run_command(self):
-        """Test that NSSet reports its synthetic children properly."""
-        self.buildDwarf()
-        self.rdar12529957_tester()
-
     def setUp(self):
         # Call super's setUp().
         TestBase.setUp(self)
         # Find the line number to break at.
         self.line = line_number('main.m', '// Set break point at this line.')
 
-    def rdar12529957_tester(self):
+    @skipUnlessDarwin
+    def test_rdar12529957_with_run_command(self):
         """Test that NSSet reports its synthetic children properly."""
+        self.build()
         self.runCmd("file a.out", CURRENT_EXECUTABLE_SET)
 
         lldbutil.run_break_set_by_file_and_line (self, "main.m", self.line, num_expected_locations=1, loc_exact=True)
@@ -58,32 +49,26 @@ class NSSetSyntheticTestCase(TestBase):
 
         # Now check that we are displaying Cocoa classes correctly
         self.expect('frame variable set',
-                    substrs = ['4 objects'])
+                    substrs = ['4 elements'])
         self.expect('frame variable mutable',
-                    substrs = ['9 objects'])
+                    substrs = ['9 elements'])
         self.expect('frame variable set --ptr-depth 1 -d run -T',
-                    substrs = ['4 objects','[0]','[1]','[2]','[3]','hello','world','(int)1','(int)2'])
+                    substrs = ['4 elements','[0]','[1]','[2]','[3]','hello','world','(int)1','(int)2'])
         self.expect('frame variable mutable --ptr-depth 1 -d run -T',
-                    substrs = ['9 objects','(int)5','@"3 objects"','@"www.apple.com"','(int)3','@"world"','(int)4'])
+                    substrs = ['9 elements','(int)5','@"3 elements"','@"www.apple.com"','(int)3','@"world"','(int)4'])
 
         self.runCmd("next")
         self.expect('frame variable mutable',
-                    substrs = ['0 objects'])
+                    substrs = ['0 elements'])
 
         self.runCmd("next")
         self.expect('frame variable mutable',
-                    substrs = ['4 objects'])
+                    substrs = ['4 elements'])
         self.expect('frame variable mutable --ptr-depth 1 -d run -T',
-                    substrs = ['4 objects','[0]','[1]','[2]','[3]','hello','world','(int)1','(int)2'])
+                    substrs = ['4 elements','[0]','[1]','[2]','[3]','hello','world','(int)1','(int)2'])
 
         self.runCmd("next")
         self.expect('frame variable mutable',
-                    substrs = ['4 objects'])
+                    substrs = ['4 elements'])
         self.expect('frame variable mutable --ptr-depth 1 -d run -T',
-                    substrs = ['4 objects','[0]','[1]','[2]','[3]','hello','world','(int)1','(int)2'])
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()
+                    substrs = ['4 elements','[0]','[1]','[2]','[3]','hello','world','(int)1','(int)2'])

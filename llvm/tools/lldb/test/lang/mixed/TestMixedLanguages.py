@@ -1,7 +1,10 @@
 """Test that lldb works correctly on compile units form different languages."""
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time, re
-import unittest2
 import lldb
 from lldbtest import *
 
@@ -11,7 +14,7 @@ class MixedLanguagesTestCase(TestBase):
 
     def test_language_of_frame(self):
         """Test that the language defaults to the language of the current frame."""
-        self.buildDefault()
+        self.build()
         exe = os.path.join(os.getcwd(), "a.out")
         self.runCmd("file " + exe, CURRENT_EXECUTABLE_SET)
 
@@ -51,9 +54,3 @@ class MixedLanguagesTestCase(TestBase):
         # (note: C++11 is enabled by default for C++).
         self.expect("expr foo != nullptr",
             patterns = ["true"])
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

@@ -3,8 +3,11 @@
 Test that C++ supports wchar_t correctly.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -13,20 +16,6 @@ class CxxWCharTTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_with_dsym(self):
-        """Test that C++ supports wchar_t correctly."""
-        self.buildDsym()
-        self.wchar_t()
-
-    @dwarf_test
-    @expectedFailureWindows("llvm.org/pr24764")
-    def test_with_dwarf(self):
-        """Test that C++ supports wchar_t correctly."""
-        self.buildDwarf()
-        self.wchar_t()
-
     def setUp(self):
         # Call super's setUp().
         TestBase.setUp(self)
@@ -34,8 +23,9 @@ class CxxWCharTTestCase(TestBase):
         self.source = 'main.cpp'
         self.line = line_number(self.source, '// Set break point at this line.')
 
-    def wchar_t(self):
+    def test(self):
         """Test that C++ supports wchar_t correctly."""
+        self.build()
         exe = os.path.join(os.getcwd(), "a.out")
 
         # Create a target by the debugger.
@@ -82,9 +72,3 @@ class CxxWCharTTestCase(TestBase):
         
         self.expect('frame variable wchar_zero', substrs=["L'\\0'"])
         self.expect('expression wchar_zero', substrs=["L'\\0'"])
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

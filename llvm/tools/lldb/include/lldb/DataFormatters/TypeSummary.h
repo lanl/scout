@@ -27,8 +27,6 @@
 #include "lldb/Core/Error.h"
 #include "lldb/Core/FormatEntity.h"
 #include "lldb/Core/StructuredData.h"
-#include "lldb/Core/ValueObject.h"
-#include "lldb/Symbol/Type.h"
 
 namespace lldb_private {
     class TypeSummaryOptions
@@ -61,6 +59,19 @@ namespace lldb_private {
     class TypeSummaryImpl
     {
     public:
+        enum class Kind
+        {
+            eSummaryString,
+            eScript,
+            eCallback
+        };
+        
+        Kind
+        GetKind () const
+        {
+            return m_kind;
+        }
+        
         class Flags
         {
         public:
@@ -260,16 +271,6 @@ namespace lldb_private {
             uint32_t m_flags;
         };
         
-        typedef enum Type
-        {
-            eTypeUnknown,
-            eTypeString,
-            eTypeScript,
-            eTypeCallback
-        } Type;
-        
-        TypeSummaryImpl (const TypeSummaryImpl::Flags& flags);
-        
         bool
         Cascades () const
         {
@@ -397,12 +398,6 @@ namespace lldb_private {
         virtual std::string
         GetDescription () = 0;
         
-        virtual bool
-        IsScripted () = 0;
-        
-        virtual Type
-        GetType () = 0;
-        
         uint32_t&
         GetRevision ()
         {
@@ -417,7 +412,11 @@ namespace lldb_private {
         uint32_t m_my_revision;
         Flags m_flags;
         
+        TypeSummaryImpl (Kind kind,
+                         const TypeSummaryImpl::Flags& flags);
+        
     private:
+        Kind m_kind;
         DISALLOW_COPY_AND_ASSIGN(TypeSummaryImpl);
     };
     
@@ -452,16 +451,9 @@ namespace lldb_private {
         std::string
         GetDescription() override;
         
-        bool
-        IsScripted() override
+        static bool classof(const TypeSummaryImpl* S)
         {
-            return false;
-        }
-        
-        Type
-        GetType() override
-        {
-            return TypeSummaryImpl::eTypeString;
+            return S->GetKind() == Kind::eSummaryString;
         }
         
     private:
@@ -523,16 +515,9 @@ namespace lldb_private {
         std::string
         GetDescription() override;
         
-        bool
-        IsScripted() override
+        static bool classof(const TypeSummaryImpl* S)
         {
-            return false;
-        }
-        
-        Type
-        GetType() override
-        {
-            return TypeSummaryImpl::eTypeCallback;
+            return S->GetKind() == Kind::eCallback;
         }
         
         typedef std::shared_ptr<CXXFunctionSummaryFormat> SharedPointer;
@@ -540,8 +525,6 @@ namespace lldb_private {
     private:
         DISALLOW_COPY_AND_ASSIGN(CXXFunctionSummaryFormat);
     };
-    
-#ifndef LLDB_DISABLE_PYTHON
     
     // Python-based summaries, running script code to show data
     struct ScriptSummaryFormat : public TypeSummaryImpl
@@ -597,16 +580,9 @@ namespace lldb_private {
         std::string
         GetDescription() override;
         
-        bool
-        IsScripted() override
+        static bool classof(const TypeSummaryImpl* S)
         {
-            return true;
-        }
-        
-        Type
-        GetType() override
-        {
-            return TypeSummaryImpl::eTypeScript;
+            return S->GetKind() == Kind::eScript;
         }
         
         typedef std::shared_ptr<ScriptSummaryFormat> SharedPointer;
@@ -614,7 +590,6 @@ namespace lldb_private {
     private:
         DISALLOW_COPY_AND_ASSIGN(ScriptSummaryFormat);
     };
-#endif
 } // namespace lldb_private
 
 #endif // lldb_TypeSummary_h_

@@ -1,7 +1,10 @@
 """Test lldb reloads the inferior after it was changed during the session."""
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -10,21 +13,10 @@ class ChangedInferiorTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    def test_inferior_crashing_dsym(self):
-        """Test lldb reloads the inferior after it was changed during the session."""
-        self.buildDsym()
-        self.inferior_crashing()
-        self.cleanup()
-        d = {'C_SOURCES': 'main2.c'}
-        self.buildDsym(dictionary=d)
-        self.setTearDownCleanup(dictionary=d)
-        self.inferior_not_crashing()
-
     @skipIfHostWindows
-    def test_inferior_crashing_dwarf(self):
+    def test_inferior_crashing(self):
         """Test lldb reloads the inferior after it was changed during the session."""
-        self.buildDwarf()
+        self.build()
         self.inferior_crashing()
         self.cleanup()
         # lldb needs to recognize the inferior has changed. If lldb needs to check the
@@ -32,7 +24,7 @@ class ChangedInferiorTestCase(TestBase):
         # 1 second delay.
         time.sleep(1)
         d = {'C_SOURCES': 'main2.c'}
-        self.buildDwarf(dictionary=d)
+        self.build(dictionary=d)
         self.setTearDownCleanup(dictionary=d)
         self.inferior_not_crashing()
 
@@ -88,10 +80,3 @@ class ChangedInferiorTestCase(TestBase):
             substrs = ['= 7'])
         self.expect("expression *int_ptr",
             substrs = ['= 7'])
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

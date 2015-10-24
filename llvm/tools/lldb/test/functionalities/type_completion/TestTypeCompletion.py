@@ -2,8 +2,11 @@
 Check that types only get completed when necessary.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -12,27 +15,11 @@ class TypeCompletionTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_with_dsym_and_run_command(self):
-        """Check that types only get completed when necessary."""
-        self.buildDsym()
-        self.type_completion_commands()
-
-    @dwarf_test
     @expectedFailureIcc # often fails with 'NameAndAddress should be valid'
     # Fails with gcc 4.8.1 with llvm.org/pr15301 LLDB prints incorrect sizes of STL containers
-    def test_with_dwarf_and_run_command(self):
+    def test_with_run_command(self):
         """Check that types only get completed when necessary."""
-        self.buildDwarf()
-        self.type_completion_commands()
-
-    def setUp(self):
-        # Call super's setUp().
-        TestBase.setUp(self)
-
-    def type_completion_commands(self):
-        """Check that types only get completed when necessary."""
+        self.build()
         self.runCmd("file a.out", CURRENT_EXECUTABLE_SET)
 
         lldbutil.run_break_set_by_source_regexp (self, "// Set break point at this line.")
@@ -87,11 +74,11 @@ class TypeCompletionTestCase(TestBase):
         self.assertTrue(name_address_type.IsTypeComplete(), 'NameAndAddress should now be complete')
         field0 = name_address_type.GetFieldAtIndex(0)
         if self.TraceOn():
-             print 'field0: ' + str(field0)
+             print('field0: ' + str(field0))
         self.assertTrue(field0.IsValid(), 'NameAndAddress::m_name should be valid')
         string = field0.GetType().GetPointeeType()
         if self.TraceOn():
-             print 'string: ' + str(string)
+             print('string: ' + str(string))
         self.assertTrue(string.IsValid(), 'std::string should be valid')
         self.assertFalse(string.IsTypeComplete(), 'std::string complete but it should not be')
 
@@ -105,11 +92,11 @@ class TypeCompletionTestCase(TestBase):
         self.assertTrue(name_address_type.IsTypeComplete(), 'NameAndAddress should now be complete')
         field0 = name_address_type.GetFieldAtIndex(0)
         if self.TraceOn():
-             print 'field0: ' + str(field0)
+             print('field0: ' + str(field0))
         self.assertTrue(field0.IsValid(), 'NameAndAddress::m_name should be valid')
         string = field0.GetType().GetPointeeType()
         if self.TraceOn():
-             print 'string: ' + str(string)
+             print('string: ' + str(string))
         self.assertTrue(string.IsValid(), 'std::string should be valid')
         self.assertFalse(string.IsTypeComplete(), 'std::string complete but it should not be')
 
@@ -127,9 +114,3 @@ class TypeCompletionTestCase(TestBase):
         string = field0.GetType().GetPointeeType()
         self.assertTrue(string.IsValid(), 'std::string should be valid')
         self.assertTrue(string.IsTypeComplete(), 'std::string should now be complete')
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

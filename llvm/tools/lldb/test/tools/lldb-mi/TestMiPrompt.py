@@ -2,9 +2,12 @@
 Test that the lldb-mi driver prints prompt properly.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import lldbmi_testcase
 from lldbtest import *
-import unittest2
 
 class MiPromptTestCase(lldbmi_testcase.MiTestCaseBase):
 
@@ -50,6 +53,3 @@ class MiPromptTestCase(lldbmi_testcase.MiTestCaseBase):
         # Test that lldb-mi is ready after program exited
         self.expect("\*stopped,reason=\"exited-normally\"")
         self.expect(self.child_prompt, exactly = True)
-
-if __name__ == '__main__':
-    unittest2.main()

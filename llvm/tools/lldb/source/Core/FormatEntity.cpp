@@ -7,9 +7,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/StringRef.h"
-
 #include "lldb/Core/FormatEntity.h"
+
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
 
 #include "lldb/Core/Address.h"
 #include "lldb/Core/Debugger.h"
@@ -533,7 +534,7 @@ ScanBracketedRange (llvm::StringRef subpath,
                     int64_t& index_lower,
                     int64_t& index_higher)
 {
-    Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_TYPES));
+    Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_DATAFORMATTERS));
     close_bracket_index = llvm::StringRef::npos;
     const size_t open_bracket_index = subpath.find('[');
     if (open_bracket_index == llvm::StringRef::npos)
@@ -670,7 +671,7 @@ ExpandIndexedExpression (ValueObject* valobj,
                          StackFrame* frame,
                          bool deref_pointer)
 {
-    Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_TYPES));
+    Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_DATAFORMATTERS));
     const char* ptr_deref_format = "[%d]";
     std::string ptr_deref_buffer(10,0);
     ::sprintf(&ptr_deref_buffer[0], ptr_deref_format, index);
@@ -731,7 +732,7 @@ DumpValue (Stream &s,
     if (valobj == NULL)
         return false;
 
-    Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_TYPES));
+    Log *log(lldb_private::GetLogIfAllCategoriesSet (LIBLLDB_LOG_DATAFORMATTERS));
     Format custom_format = eFormatInvalid;
     ValueObject::ValueObjectRepresentationStyle val_obj_display = entry.string.empty() ? ValueObject::eValueObjectRepresentationStyleValue : ValueObject::eValueObjectRepresentationStyleSummary;
 

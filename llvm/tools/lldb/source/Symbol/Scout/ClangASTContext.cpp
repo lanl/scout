@@ -120,7 +120,7 @@
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Core/ThreadSafeDenseMap.h"
 #include "lldb/Core/UniqueCStringMap.h"
-#include "lldb/Expression/ASTDumper.h"
+#include "Plugins/ExpressionParser/Clang/ASTDumper.h"
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/ClangExternalASTSourceCommon.h"
 #include "lldb/Symbol/VerifyDecl.h"

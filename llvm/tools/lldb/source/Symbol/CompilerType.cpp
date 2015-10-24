@@ -867,6 +867,14 @@ CompilerType::ShouldPrintAsOneLiner () const
     return eLazyBoolCalculate;
 }
 
+bool
+CompilerType::IsMeaninglessWithoutDynamicResolution () const
+{
+    if (IsValid())
+        return m_type_system->IsMeaninglessWithoutDynamicResolution(m_type);
+    return false;
+}
+
 // Get the index of the child of "clang_type" whose name matches. This function
 // doesn't descend into the children, but only looks one level deep and name
 // matches can include base class names.
@@ -1201,7 +1209,7 @@ CompilerType::ReadFromMemory (lldb_private::ExecutionContext *exe_ctx,
         data.SetData(data_sp);
     }
     
-    uint8_t* dst = (uint8_t*)data.PeekData(0, byte_size);
+    uint8_t* dst = const_cast<uint8_t*>(data.PeekData(0, byte_size));
     if (dst != nullptr)
     {
         if (address_type == eAddressTypeHost)

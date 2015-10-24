@@ -142,8 +142,8 @@ DataExtractor::DataExtractor () :
 // The data must stay around as long as this object is valid.
 //----------------------------------------------------------------------
 DataExtractor::DataExtractor (const void* data, offset_t length, ByteOrder endian, uint32_t addr_size, uint32_t target_byte_size/*=1*/) :
-    m_start     ((uint8_t*)data),
-    m_end       ((uint8_t*)data + length),
+    m_start     (const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(data))),
+    m_end       (const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(data)) + length),
     m_byte_order(endian),
     m_addr_size (addr_size),
     m_data_sp   (),
@@ -287,7 +287,7 @@ DataExtractor::SetData (const void *bytes, offset_t length, ByteOrder endian)
     }
     else
     {
-        m_start = (uint8_t *)bytes;
+        m_start = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(bytes));
         m_end = m_start + length;
     }
     return GetByteSize();
@@ -2009,6 +2009,12 @@ DataExtractor::Dump (Stream *s,
         case eFormatVectorOfUInt64:
             s->PutChar('{');
             offset = Dump (s, offset, eFormatHex,     sizeof(uint64_t), item_byte_size / sizeof(uint64_t), item_byte_size / sizeof(uint64_t), LLDB_INVALID_ADDRESS, 0, 0);
+            s->PutChar('}');
+            break;
+
+        case eFormatVectorOfFloat16:
+            s->PutChar('{');
+            offset = Dump (s, offset, eFormatFloat,       2, item_byte_size / 2, item_byte_size / 2, LLDB_INVALID_ADDRESS, 0, 0);
             s->PutChar('}');
             break;
 

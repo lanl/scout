@@ -1,7 +1,10 @@
 """Test that we are able to evaluate expressions when the inferior is blocked in a syscall"""
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -11,16 +14,9 @@ class ExprSyscallTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @dsym_test
-    def test_setpgid_with_dsym(self):
-        self.buildDsym()
-        self.expr_syscall()
-
-    @dwarf_test
     @expectedFailureWindows("llvm.org/pr21765") # Also getpid() is not a function on Windows anyway
-    def test_setpgid_with_dwarf(self):
-        self.buildDwarf()
+    def test_setpgid(self):
+        self.build()
         self.expr_syscall()
 
     def expr_syscall(self):
@@ -84,9 +80,3 @@ class ExprSyscallTestCase(TestBase):
 
         self.assertEqual(process.GetState(), lldb.eStateExited)
         self.assertEqual(process.GetExitStatus(), 0)
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

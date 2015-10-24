@@ -1,7 +1,10 @@
 """Show bitfields and check that they display correctly."""
 
+from __future__ import print_function
+
+import lldb_shared
+
 import os, time
-import unittest2
 import lldb
 from lldbtest import *
 import lldbutil
@@ -9,45 +12,17 @@ import lldbutil
 class BitfieldsTestCase(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
-
-    @skipUnlessDarwin
-    @dsym_test
-    def test_with_dsym_and_run_command(self):
-        """Test 'frame variable ...' on a variable with bitfields."""
-        self.buildDsym()
-        self.bitfields_variable()
-
-    @skipUnlessDarwin
-    @python_api_test
-    @dsym_test
-    def test_with_dsym_and_python_api(self):
-        """Use Python APIs to inspect a bitfields variable."""
-        self.buildDsym()
-        self.bitfields_variable_python()
-
-    @dwarf_test
-    @skipIfWindows # BitFields exhibit crashes in record layout on Windows (http://llvm.org/pr21800)
-    def test_with_dwarf_and_run_command(self):
-        """Test 'frame variable ...' on a variable with bitfields."""
-        self.buildDwarf()
-        self.bitfields_variable()
-
-    @python_api_test
-    @dwarf_test
-    @skipIfWindows # BitFields exhibit crashes in record layout on Windows (http://llvm.org/pr21800)
-    def test_with_dwarf_and_python_api(self):
-        """Use Python APIs to inspect a bitfields variable."""
-        self.buildDwarf()
-        self.bitfields_variable_python()
-
+    
     def setUp(self):
         # Call super's setUp().
         TestBase.setUp(self)
         # Find the line number to break inside main().
         self.line = line_number('main.c', '// Set break point at this line.')
 
-    def bitfields_variable(self):
+    @skipIfWindows # BitFields exhibit crashes in record layout on Windows (http://llvm.org/pr21800)
+    def test_and_run_command(self):
         """Test 'frame variable ...' on a variable with bitfields."""
+        self.build()
         exe = os.path.join(os.getcwd(), "a.out")
         self.runCmd("file " + exe, CURRENT_EXECUTABLE_SET)
 
@@ -120,8 +95,11 @@ class BitfieldsTestCase(TestBase):
         self.expect("expr (more_bits.d)", VARIABLES_DISPLAYED_CORRECTLY,
             substrs = ['uint8_t', '\\0'])
 
-    def bitfields_variable_python(self):
+    @python_api_test
+    @skipIfWindows # BitFields exhibit crashes in record layout on Windows (http://llvm.org/pr21800)
+    def test_and_python_api(self):
         """Use Python APIs to inspect a bitfields variable."""
+        self.build()
         exe = os.path.join(os.getcwd(), "a.out")
 
         target = self.dbg.CreateTarget(exe)
@@ -182,10 +160,3 @@ class BitfieldsTestCase(TestBase):
         # Now kill the process, and we are done.
         rc = target.GetProcess().Kill()
         self.assertTrue(rc.Success())
-
-
-if __name__ == '__main__':
-    import atexit
-    lldb.SBDebugger.Initialize()
-    atexit.register(lambda: lldb.SBDebugger.Terminate())
-    unittest2.main()

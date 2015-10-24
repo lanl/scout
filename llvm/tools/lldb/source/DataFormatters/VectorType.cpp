@@ -13,6 +13,7 @@
 #include "lldb/DataFormatters/FormattersHelpers.h"
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
+#include "lldb/Target/Target.h"
 
 #include "lldb/Utility/LLDBAssert.h"
 
@@ -235,7 +236,7 @@ namespace lldb_private {
                 TargetSP target_sp(m_backend.GetTargetSP());
                 m_child_type = ::GetCompilerTypeForFormat(m_parent_format,
                                                           element_type,
-                                                          target_sp ? target_sp->GetScratchTypeSystemForLanguage(lldb::eLanguageTypeC) : nullptr);
+                                                          target_sp ? target_sp->GetScratchTypeSystemForLanguage(nullptr, lldb::eLanguageTypeC) : nullptr);
                 m_num_children = ::CalculateNumChildren(parent_type,
                                                         m_child_type);
                 m_item_format = GetItemFormatForFormat(m_parent_format,

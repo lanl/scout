@@ -2,9 +2,12 @@
 Test lldb-mi -interpreter-exec command.
 """
 
+from __future__ import print_function
+
+import lldb_shared
+
 import lldbmi_testcase
 from lldbtest import *
-import unittest2
 
 class MiInterpreterExecTestCase(lldbmi_testcase.MiTestCaseBase):
 
@@ -231,6 +234,3 @@ class MiInterpreterExecTestCase(lldbmi_testcase.MiTestCaseBase):
         self.expect("\^done")
         self.expect("@\"argc=1\\\\r\\\\n")
         self.expect("\*stopped,reason=\"exited-normally\"")
-
-if __name__ == '__main__':
-    unittest2.main()

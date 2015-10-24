@@ -17,20 +17,14 @@
 // Other libraries and framework includes
 // Project includes
 #include "lldb/Core/Address.h"
-#include "lldb/Core/ArchSpec.h"
 #include "lldb/Core/Value.h"
-#include "lldb/Core/ValueObjectList.h"
 #include "lldb/Expression/Expression.h"
 #include "lldb/Expression/ExpressionParser.h"
 #include "lldb/Symbol/CompilerType.h"
-#include "lldb/Target/Process.h"
 
 namespace lldb_private
 {
     
-class ASTStructExtractor;
-class ClangExpressionParser;
-
 //----------------------------------------------------------------------
 /// @class FunctionCaller FunctionCaller.h "lldb/Expression/FunctionCaller.h"
 /// @brief Encapsulates a function that can be called.
@@ -380,8 +374,6 @@ protected:
     std::string                     m_wrapper_struct_name;          ///< The name of the struct that contains the target function address, arguments, and result.
     std::list<lldb::addr_t>         m_wrapper_args_addrs;           ///< The addresses of the arguments to the wrapper function.
     
-    std::unique_ptr<ASTStructExtractor> m_struct_extractor;         ///< The class that generates the argument struct below.
-
     bool                            m_struct_valid;                 ///< True if the ASTStructExtractor has populated the variables below.
     
     //------------------------------------------------------------------
