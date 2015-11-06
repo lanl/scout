@@ -33,10 +33,13 @@ if(_CLANGXX_COMMAND MATCHES "NOTFOUND")
   set(CLANGXX_COMMAND "${SCOUT_BUILD_DIR}/bin/clang++" CACHE FILEPATH "Clang++")
 else()
   set(CLANGXX_COMMAND ${_CLANGXX_COMMAND} CACHE FILEPATH "Clang++")
-endif()
+#endif()
 unset(_CLANGXX_COMMAND)
 
-#message(STATUS "clang found: ${CLANG_COMMAND} ${CLANGXX_COMMAND}")
+
+#hack always use scout clang rather than system clang 
+set(CLANG_COMMAND "${SCOUT_BUILD_DIR}/bin/clang" CACHE FILEPATH "Clang")
+set(CLANGXX_COMMAND "${SCOUT_BUILD_DIR}/bin/clang++" CACHE FILEPATH "Clang++")
 
 # handle the QUIETLY and REQUIRED arguments and set xxx_FOUND to TRUE if
 # all listed variables are TRUE
