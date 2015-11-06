@@ -33,7 +33,7 @@ if(_CLANGXX_COMMAND MATCHES "NOTFOUND")
   set(CLANGXX_COMMAND "${SCOUT_BUILD_DIR}/bin/clang++" CACHE FILEPATH "Clang++")
 else()
   set(CLANGXX_COMMAND ${_CLANGXX_COMMAND} CACHE FILEPATH "Clang++")
-#endif()
+endif()
 unset(_CLANGXX_COMMAND)
 
 
