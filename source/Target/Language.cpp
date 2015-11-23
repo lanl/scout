@@ -351,6 +351,34 @@ Language::GetDeclPrintingHelper ()
     return nullptr;
 }
 
+LazyBool
+Language::IsLogicalTrue (ValueObject& valobj,
+                         Error& error)
+{
+    return eLazyBoolCalculate;
+}
+
+bool
+Language::IsNilReference (ValueObject& valobj)
+{
+    return false;
+}
+
+bool
+Language::IsUninitializedReference (ValueObject& valobj)
+{
+    return false;
+}
+
+bool
+Language::GetFunctionDisplayName (const SymbolContext *sc,
+                                  const ExecutionContext *exe_ctx,
+                                  FunctionNameRepresentation representation,
+                                  Stream& s)
+{
+    return false;
+}
+
 //----------------------------------------------------------------------
 // Constructor
 //----------------------------------------------------------------------

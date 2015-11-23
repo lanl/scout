@@ -47,6 +47,7 @@
 #include "lldb/Symbol/Type.h"
 
 #include "lldb/Target/ExecutionContext.h"
+#include "lldb/Target/Language.h"
 #include "lldb/Target/LanguageRuntime.h"
 #include "lldb/Target/ObjCLanguageRuntime.h"
 #include "lldb/Target/Process.h"
@@ -96,6 +97,7 @@ ValueObject::ValueObject (ValueObject &parent) :
     m_address_type_of_ptr_or_ref_children(eAddressTypeInvalid),
     m_value_checksum(),
     m_preferred_display_language(lldb::eLanguageTypeUnknown),
+    m_language_flags(0),
     m_value_is_valid (false),
     m_value_did_change (false),
     m_children_count_valid (false),
@@ -147,6 +149,7 @@ ValueObject::ValueObject (ExecutionContextScope *exe_scope,
     m_address_type_of_ptr_or_ref_children(child_ptr_or_ref_addr_type),
     m_value_checksum(),
     m_preferred_display_language(lldb::eLanguageTypeUnknown),
+    m_language_flags(0),
     m_value_is_valid (false),
     m_value_did_change (false),
     m_children_count_valid (false),
@@ -513,6 +516,39 @@ ValueObject::ResolveValue (Scalar &scalar)
 }
 
 bool
+ValueObject::IsLogicalTrue (Error& error)
+{
+    if (Language *language = Language::FindPlugin(GetObjectRuntimeLanguage()))
+    {
+        LazyBool is_logical_true = language->IsLogicalTrue(*this, error);
+        switch (is_logical_true)
+        {
+            case eLazyBoolYes:
+            case eLazyBoolNo:
+                return (is_logical_true == true);
+            case eLazyBoolCalculate:
+                break;
+        }
+    }
+    
+    Scalar scalar_value;
+    
+    if (!ResolveValue (scalar_value))
+    {
+        error.SetErrorString("failed to get a scalar result");
+        return false;
+    }
+    
+    bool ret;
+    if (scalar_value.ULongLong(1) == 0)
+        ret = false;
+    else
+        ret = true;
+    error.Clear();
+    return ret;
+}
+
+bool
 ValueObject::GetValueIsValid () const
 {
     return m_value_is_valid;
@@ -839,6 +875,7 @@ ValueObject::CreateChildAtIndex (size_t idx, bool synthetic_array_member, int32_
     uint32_t child_bitfield_bit_offset = 0;
     bool child_is_base_class = false;
     bool child_is_deref_of_parent = false;
+    uint64_t language_flags = 0;
 
     const bool transparent_pointers = synthetic_array_member == false;
     CompilerType child_compiler_type;
@@ -857,7 +894,8 @@ ValueObject::CreateChildAtIndex (size_t idx, bool synthetic_array_member, int32_
                                                                       child_bitfield_bit_offset,
                                                                       child_is_base_class,
                                                                       child_is_deref_of_parent,
-                                                                      this);
+                                                                      this,
+                                                                      language_flags);
     if (child_compiler_type)
     {
         if (synthetic_index)
@@ -876,7 +914,8 @@ ValueObject::CreateChildAtIndex (size_t idx, bool synthetic_array_member, int32_
                                        child_bitfield_bit_offset,
                                        child_is_base_class,
                                        child_is_deref_of_parent,
-                                       eAddressTypeInvalid);
+                                       eAddressTypeInvalid,
+                                       language_flags);
         //if (valobj)
         //    valobj->SetAddressTypeOfChildren(eAddressTypeInvalid);
    }
@@ -1070,7 +1109,7 @@ ValueObject::GetPointeeData (DataExtractor& data,
                     {
                         size_t bytes_read = std::min<uint64_t>(max_bytes - offset, bytes);
                         addr = m_value.GetScalar().ULongLong(LLDB_INVALID_ADDRESS);
-                        if (addr == LLDB_INVALID_ADDRESS)
+                        if (addr == 0 || addr == LLDB_INVALID_ADDRESS)
                             break;
                         heap_buf_ptr->CopyData((uint8_t*)(addr + offset), bytes_read);
                         data.SetData(data_sp);
@@ -1220,13 +1259,14 @@ CopyStringDataToBufferSP(const StreamString& source,
     return true;
 }
 
-size_t
+std::pair<size_t,bool>
 ValueObject::ReadPointedString (lldb::DataBufferSP& buffer_sp,
                                 Error& error,
                                 uint32_t max_length,
                                 bool honor_array,
                                 Format item_format)
 {
+    bool was_capped = false;
     StreamString s;
     ExecutionContext exe_ctx (GetExecutionContextRef());
     Target* target = exe_ctx.GetTargetPtr();
@@ -1236,7 +1276,7 @@ ValueObject::ReadPointedString (lldb::DataBufferSP& buffer_sp,
         s << "<no target to read from>";
         error.SetErrorString("no target to read from");
         CopyStringDataToBufferSP(s, buffer_sp);
-        return 0;
+        return {0,was_capped};
     }
     
     if (max_length == 0)
@@ -1282,7 +1322,7 @@ ValueObject::ReadPointedString (lldb::DataBufferSP& buffer_sp,
             s << "<invalid address>";
             error.SetErrorString("invalid address");
             CopyStringDataToBufferSP(s, buffer_sp);
-            return 0;
+            return {0,was_capped};
         }
         
         Address cstr_so_addr (cstr_address);
@@ -1299,7 +1339,7 @@ ValueObject::ReadPointedString (lldb::DataBufferSP& buffer_sp,
                 for (size_t offset = 0; offset < bytes_read; offset++)
                     s.Printf("%c", *data.PeekData(offset, 1));
                 if (capped_data)
-                    s << "...";
+                    was_capped = true;
             }
         }
         else
@@ -1351,7 +1391,7 @@ ValueObject::ReadPointedString (lldb::DataBufferSP& buffer_sp,
             if (cstr_len_displayed >= 0)
             {
                 if (capped_cstr)
-                    s << "...";
+                    was_capped = true;
             }
         }
     }
@@ -1361,7 +1401,7 @@ ValueObject::ReadPointedString (lldb::DataBufferSP& buffer_sp,
         s << "<not a string object>";
     }
     CopyStringDataToBufferSP(s, buffer_sp);
-    return total_bytes_read;
+    return {total_bytes_read,was_capped};
 }
 
 std::pair<TypeValidatorResult, std::string>
@@ -1609,17 +1649,18 @@ ValueObject::DumpPrintableRepresentation(Stream& s,
             {
                 Error error;
                 lldb::DataBufferSP buffer_sp;
-                ReadPointedString(buffer_sp,
-                                  error,
-                                  0,
-                                  (custom_format == eFormatVectorOfChar) ||
-                                  (custom_format == eFormatCharArray));
+                std::pair<size_t, bool> read_string = ReadPointedString(buffer_sp,
+                                                                        error,
+                                                                        0,
+                                                                        (custom_format == eFormatVectorOfChar) ||
+                                                                        (custom_format == eFormatCharArray));
                 lldb_private::formatters::StringPrinter::ReadBufferAndDumpToStreamOptions options(*this);
                 options.SetData(DataExtractor(buffer_sp, lldb::eByteOrderInvalid, 8)); // none of this matters for a string - pass some defaults
                 options.SetStream(&s);
                 options.SetPrefixToken(0);
                 options.SetQuote('"');
                 options.SetSourceSize(buffer_sp->GetByteSize());
+                options.SetIsTruncated(read_string.second);
                 formatters::StringPrinter::ReadBufferAndDumpToStream<lldb_private::formatters::StringPrinter::StringElementType::ASCII>(options);
                 return !error.Fail();
             }
@@ -2104,15 +2145,23 @@ ValueObject::IsRuntimeSupportValue ()
 }
 
 bool
-ValueObject::IsObjCNil ()
+ValueObject::IsNilReference ()
 {
-    const uint32_t mask = eTypeIsObjC | eTypeIsPointer;
-    bool isObjCpointer = (((GetCompilerType().GetTypeInfo(NULL)) & mask) == mask);
-    if (!isObjCpointer)
-        return false;
-    bool canReadValue = true;
-    bool isZero = GetValueAsUnsigned(0,&canReadValue) == 0;
-    return canReadValue && isZero;
+    if (Language *language = Language::FindPlugin(GetObjectRuntimeLanguage()))
+    {
+        return language->IsNilReference(*this);
+    }
+    return false;
+}
+
+bool
+ValueObject::IsUninitializedReference ()
+{
+    if (Language *language = Language::FindPlugin(GetObjectRuntimeLanguage()))
+    {
+        return language->IsUninitializedReference(*this);
+    }
+    return false;
 }
 
 // This allows you to create an array member using and index
@@ -2183,7 +2232,8 @@ ValueObject::GetSyntheticBitFieldChild (uint32_t from, uint32_t to, bool can_cre
                                                                       from,
                                                                       false,
                                                                       false,
-                                                                      eAddressTypeInvalid);
+                                                                      eAddressTypeInvalid,
+                                                                      0);
             
             // Cache the value if we got one back...
             if (synthetic_child)
@@ -2229,7 +2279,8 @@ ValueObject::GetSyntheticChildAtOffset(uint32_t offset, const CompilerType& type
                                                              0,
                                                              false,
                                                              false,
-                                                             eAddressTypeInvalid);
+                                                             eAddressTypeInvalid,
+                                                             0);
     if (synthetic_child)
     {
         AddSyntheticChild(name_const_str, synthetic_child);
@@ -2272,7 +2323,8 @@ ValueObject::GetSyntheticBase (uint32_t offset, const CompilerType& type, bool c
                                                              0,
                                                              is_base_class,
                                                              false,
-                                                             eAddressTypeInvalid);
+                                                             eAddressTypeInvalid,
+                                                             0);
     if (synthetic_child)
     {
         AddSyntheticChild(name_const_str, synthetic_child);
@@ -3747,6 +3799,7 @@ ValueObject::Dereference (Error &error)
         const bool transparent_pointers = false;
         CompilerType compiler_type = GetCompilerType();
         CompilerType child_compiler_type;
+        uint64_t language_flags;
 
         ExecutionContext exe_ctx (GetExecutionContextRef());
 
@@ -3762,7 +3815,8 @@ ValueObject::Dereference (Error &error)
                                                                          child_bitfield_bit_offset,
                                                                          child_is_base_class,
                                                                          child_is_deref_of_parent,
-                                                                         this);
+                                                                         this,
+                                                                         language_flags);
         if (child_compiler_type && child_byte_size)
         {
             ConstString child_name;
@@ -3778,7 +3832,8 @@ ValueObject::Dereference (Error &error)
                                                    child_bitfield_bit_offset,
                                                    child_is_base_class,
                                                    child_is_deref_of_parent,
-                                                   eAddressTypeInvalid);
+                                                   eAddressTypeInvalid,
+                                                   language_flags);
         }
     }
 
@@ -4330,4 +4385,16 @@ void
 ValueObject::SetSyntheticChildrenGenerated (bool b)
 {
     m_is_synthetic_children_generated = b;
+}
+
+uint64_t
+ValueObject::GetLanguageFlags ()
+{
+    return m_language_flags;
+}
+
+void
+ValueObject::SetLanguageFlags (uint64_t flags)
+{
+    m_language_flags = flags;
 }

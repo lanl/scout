@@ -194,7 +194,11 @@ if (LLDB_DISABLE_PYTHON)
   add_definitions( -DLLDB_DISABLE_PYTHON )
 endif()
 
-include_directories(../clang/include)
+if (LLVM_EXTERNAL_CLANG_SOURCE_DIR)
+  include_directories(${LLVM_EXTERNAL_CLANG_SOURCE_DIR}/include)
+else ()
+  include_directories(${CMAKE_SOURCE_DIR}/tools/clang/include)
+endif ()
 include_directories("${CMAKE_CURRENT_BINARY_DIR}/../clang/include")
 
 # Disable GCC warnings
@@ -305,7 +309,7 @@ if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
   find_library(DEBUG_SYMBOLS_LIBRARY DebugSymbols PATHS "/System/Library/PrivateFrameworks")
 
   add_definitions( -DLIBXML2_DEFINED )
-  list(APPEND system_libs xml2 ncurses panel)
+  list(APPEND system_libs xml2 ${CURSES_LIBRARIES})
   list(APPEND system_libs ${CARBON_LIBRARY} ${FOUNDATION_LIBRARY}
   ${CORE_FOUNDATION_LIBRARY} ${CORE_SERVICES_LIBRARY} ${SECURITY_LIBRARY}
   ${DEBUG_SYMBOLS_LIBRARY})
@@ -377,7 +381,8 @@ endif()
 # ensure we build lldb-server when an lldb target is being built.
 if ((CMAKE_SYSTEM_NAME MATCHES "Darwin") OR
     (CMAKE_SYSTEM_NAME MATCHES "FreeBSD") OR
-    (CMAKE_SYSTEM_NAME MATCHES "Linux"))
+    (CMAKE_SYSTEM_NAME MATCHES "Linux") OR
+    (CMAKE_SYSTEM_NAME MATCHES "NetBSD"))
     set(LLDB_CAN_USE_LLDB_SERVER 1)
 else()
     set(LLDB_CAN_USE_LLDB_SERVER 0)
@@ -390,3 +395,18 @@ if ( CMAKE_SYSTEM_NAME MATCHES "Darwin" )
 else()
     set(LLDB_CAN_USE_DEBUGSERVER 0)
 endif()
+
+if (NOT LLDB_DISABLE_CURSES)
+    find_package(Curses REQUIRED)
+
+    find_library(CURSES_PANEL_LIBRARY NAMES panel DOC "The curses panel library")
+    if (NOT CURSES_PANEL_LIBRARY)
+        message(FATAL_ERROR "A required curses' panel library not found.")
+    endif ()
+
+    # Add panels to the library path
+    set (CURSES_LIBRARIES ${CURSES_LIBRARIES} ${CURSES_PANEL_LIBRARY})
+
+    list(APPEND system_libs ${CURSES_LIBRARIES})
+    include_directories(${CURSES_INCLUDE_DIR})
+endif ()

@@ -45,6 +45,7 @@
 #include <pwd.h>
 #include <spawn.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/proc.h>
 #include <sys/stat.h>
 #include <sys/sysctl.h>
@@ -815,7 +816,7 @@ GetMacOSXProcessArgs (const ProcessInstanceInfoMatch *match_info_ptr,
         arg_data_size = arg_data.GetByteSize();
         if (::sysctl (proc_args_mib, 3, arg_data.GetBytes(), &arg_data_size , NULL, 0) == 0)
         {
-            DataExtractor data (arg_data.GetBytes(), arg_data_size, lldb::endian::InlHostByteOrder(), sizeof(void *));
+            DataExtractor data (arg_data.GetBytes(), arg_data_size, endian::InlHostByteOrder(), sizeof(void *));
             lldb::offset_t offset = 0;
             uint32_t argc = data.GetU32 (&offset);
             llvm::Triple &triple = process_info.GetArchitecture().GetTriple();
@@ -1356,26 +1357,46 @@ Host::ShellExpandArguments (ProcessLaunchInfo &launch_info)
         FileSpec expand_tool_spec;
         if (!HostInfo::GetLLDBPath(lldb::ePathTypeSupportExecutableDir, expand_tool_spec))
         {
-            error.SetErrorString("could not get support executable directory for argdumper tool");
+            error.SetErrorString("could not get support executable directory for lldb-argdumper tool");
             return error;
         }
-        expand_tool_spec.AppendPathComponent("argdumper");
+        expand_tool_spec.AppendPathComponent("lldb-argdumper");
         if (!expand_tool_spec.Exists())
         {
-            error.SetErrorStringWithFormat("could not find argdumper tool: %s", expand_tool_spec.GetPath().c_str());
+            error.SetErrorStringWithFormat("could not find the lldb-argdumper tool: %s", expand_tool_spec.GetPath().c_str());
             return error;
         }
+        
+        StreamString expand_tool_spec_stream;
+        expand_tool_spec_stream.Printf("\"%s\"",expand_tool_spec.GetPath().c_str());
 
-        Args expand_command(expand_tool_spec.GetPath().c_str());
+        Args expand_command(expand_tool_spec_stream.GetData());
         expand_command.AppendArguments (launch_info.GetArguments());
         
         int status;
         std::string output;
-        RunShellCommand(expand_command, launch_info.GetWorkingDirectory(), &status, nullptr, &output, 10);
+        FileSpec cwd(launch_info.GetWorkingDirectory());
+        if (!cwd.Exists())
+        {
+            char *wd = getcwd(nullptr, 0);
+            if (wd == nullptr)
+            {
+                error.SetErrorStringWithFormat("cwd does not exist; cannot launch with shell argument expansion");
+                return error;
+            }
+            else
+            {
+                FileSpec working_dir(wd, false);
+                free(wd);
+                launch_info.SetWorkingDirectory(working_dir);
+
+            }
+        }
+        RunShellCommand(expand_command, cwd, &status, nullptr, &output, 10);
         
         if (status != 0)
         {
-            error.SetErrorStringWithFormat("argdumper exited with error %d", status);
+            error.SetErrorStringWithFormat("lldb-argdumper exited with error %d", status);
             return error;
         }
         

@@ -1,5 +1,6 @@
 """Loading unittests."""
 
+import functools
 import os
 import re
 import sys
@@ -9,7 +10,7 @@ import unittest
 
 from fnmatch import fnmatch
 
-from unittest2 import case, suite
+from unittest2 import case, suite, cmp_
 
 try:
     from os.path import relpath
@@ -17,17 +18,6 @@ except ImportError:
     from unittest2.compatibility import relpath
 
 __unittest = True
-
-
-def _CmpToKey(mycmp):
-    'Convert a cmp= function into a key= function'
-    class K(object):
-        def __init__(self, obj):
-            self.obj = obj
-        def __lt__(self, other):
-            return mycmp(self.obj, other.obj) == -1
-    return K
-
 
 # what about .pyc or .pyo (etc)
 # we would need to avoid loading the same tests multiple times
@@ -60,10 +50,12 @@ class TestLoader(unittest.TestLoader):
     This class is responsible for loading tests according to various criteria
     and returning them wrapped in a TestSuite
     """
-    testMethodPrefix = 'test'
-    sortTestMethodsUsing = cmp
-    suiteClass = suite.TestSuite
-    _top_level_dir = None
+
+    def __init__(self):
+        self.testMethodPrefix = 'test'
+        self.sortTestMethodsUsing = cmp_
+        self.suiteClass = suite.TestSuite
+        self._top_level_dir = None
 
     def loadTestsFromTestCase(self, testCaseClass):
         """Return a suite of all tests cases contained in testCaseClass"""
@@ -89,7 +81,7 @@ class TestLoader(unittest.TestLoader):
         if use_load_tests and load_tests is not None:
             try:
                 return load_tests(self, tests, None)
-            except Exception, e:
+            except Exception as e:
                 return _make_failed_load_tests(module.__name__, e,
                                                self.suiteClass)
         return tests
@@ -155,9 +147,9 @@ class TestLoader(unittest.TestLoader):
                          prefix=self.testMethodPrefix):
             return attrname.startswith(prefix) and \
                 hasattr(getattr(testCaseClass, attrname), '__call__')
-        testFnNames = filter(isTestMethod, dir(testCaseClass))
+        testFnNames = list(filter(isTestMethod, dir(testCaseClass)))
         if self.sortTestMethodsUsing:
-            testFnNames.sort(key=_CmpToKey(self.sortTestMethodsUsing))
+            testFnNames.sort(key=functools.cmp_to_key(self.sortTestMethodsUsing))
         return testFnNames
 
     def discover(self, start_dir, pattern='test*.py', top_level_dir=None):
@@ -295,7 +287,7 @@ class TestLoader(unittest.TestLoader):
                 else:
                     try:
                         yield load_tests(self, tests, pattern)
-                    except Exception, e:
+                    except Exception as e:
                         yield _make_failed_load_tests(package.__name__, e,
                                                       self.suiteClass)
 
@@ -310,13 +302,13 @@ def _makeLoader(prefix, sortUsing, suiteClass=None):
         loader.suiteClass = suiteClass
     return loader
 
-def getTestCaseNames(testCaseClass, prefix, sortUsing=cmp):
+def getTestCaseNames(testCaseClass, prefix, sortUsing=cmp_):
     return _makeLoader(prefix, sortUsing).getTestCaseNames(testCaseClass)
 
-def makeSuite(testCaseClass, prefix='test', sortUsing=cmp,
+def makeSuite(testCaseClass, prefix='test', sortUsing=cmp_,
               suiteClass=suite.TestSuite):
     return _makeLoader(prefix, sortUsing, suiteClass).loadTestsFromTestCase(testCaseClass)
 
-def findTestCases(module, prefix='test', sortUsing=cmp,
+def findTestCases(module, prefix='test', sortUsing=cmp_,
                   suiteClass=suite.TestSuite):
     return _makeLoader(prefix, sortUsing, suiteClass).loadTestsFromModule(module)

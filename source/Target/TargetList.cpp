@@ -245,17 +245,23 @@ TargetList::CreateTargetInternal (Debugger &debugger,
                             }
                             
                             // Just find a platform that matches the architecture in the executable file
-                            platforms.push_back(Platform::GetPlatformForArchitecture(module_spec.GetArchitecture(), nullptr));
+                            PlatformSP fallback_platform_sp (Platform::GetPlatformForArchitecture(module_spec.GetArchitecture(), nullptr));
+                            if (fallback_platform_sp)
+                            {
+                                platforms.push_back(fallback_platform_sp);
+                            }
                         }
                     }
                     
                     Platform *platform_ptr = NULL;
+                    bool more_than_one_platforms = false;
                     for (const auto &the_platform_sp : platforms)
                     {
                         if (platform_ptr)
                         {
                             if (platform_ptr->GetName() != the_platform_sp->GetName())
                             {
+                                more_than_one_platforms = true;
                                 platform_ptr = NULL;
                                 break;
                             }
@@ -270,6 +276,12 @@ TargetList::CreateTargetInternal (Debugger &debugger,
                     {
                         // All platforms for all modules in the exectuable match, so we can select this platform
                         platform_sp = platforms.front();
+                    }
+                    else if (more_than_one_platforms == false)
+                    {
+                        // No platforms claim to support this file
+                        error.SetErrorString ("No matching platforms found for this file, specify one with the --platform option");
+                        return error;
                     }
                     else
                     {

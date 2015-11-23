@@ -27,7 +27,7 @@
 #include "lldb/lldb-private.h"
 #include "lldb/Core/Address.h"
 #include "lldb/Core/ClangForward.h"
-#include "lldb/Expression/UserExpression.h"
+#include "lldb/Expression/LLVMUserExpression.h"
 #include "lldb/Expression/Materializer.h"
 #include "lldb/Target/ExecutionContext.h"
 
@@ -43,7 +43,7 @@ namespace lldb_private
 /// the objects needed to parse and interpret or JIT an expression.  It
 /// uses the Clang parser to produce LLVM IR from the expression.
 //----------------------------------------------------------------------
-class ClangUserExpression : public UserExpression
+class ClangUserExpression : public LLVMUserExpression
 {
 public:
     enum { kDefaultTimeout = 500000u };
@@ -118,7 +118,8 @@ public:
                          const char *expr,
                          const char *expr_prefix,
                          lldb::LanguageType language,
-                         ResultType desired_type);
+                         ResultType desired_type,
+                         const EvaluateExpressionOptions &options);
 
     ~ClangUserExpression() override;
 
@@ -187,9 +188,10 @@ private:
                  lldb_private::Error &err) override;
 
     bool
-    AddInitialArguments (ExecutionContext &exe_ctx,
-                         std::vector<lldb::addr_t> &args,
-                         Stream &error_stream) override;
+    AddArguments (ExecutionContext &exe_ctx,
+                  std::vector<lldb::addr_t> &args,
+                  lldb::addr_t struct_address,
+                  Stream &error_stream) override;
     
     ClangUserExpressionHelper   m_type_system_helper;
     

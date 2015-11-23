@@ -1,6 +1,7 @@
 import difflib
 import pprint
 import re
+import six
 
 from copy import deepcopy
 
@@ -502,7 +503,7 @@ class Test_TestCase(unittest2.TestCase, EqualityMixin, HashingMixin):
             def runTest(self):
                 pass
 
-        self.assertIsInstance(Foo().id(), basestring)
+        self.assertIsInstance(Foo().id(), six.string_types)
 
     # "If result is omitted or None, a temporary result object is created
     # and used, but is not made available to the caller. As TestCase owns the
@@ -893,7 +894,7 @@ test case
             try:
                 self.assertMultiLineEqual(type_changer(sample_text),
                                           type_changer(revised_sample_text))
-            except self.failureException, e:
+            except self.failureException as e:
                 # need to remove the first line of the error message
                 error = str(e).encode('utf8').split('\n', 1)[1]
 
@@ -913,7 +914,7 @@ test case
         self.maxDiff = len(diff)//2
         try:
             self.assertSequenceEqual(seq1, seq2)
-        except self.failureException, e:
+        except self.failureException as e:
             msg = e.args[0]
         else:
             self.fail('assertSequenceEqual did not fail.')
@@ -923,7 +924,7 @@ test case
         self.maxDiff = len(diff) * 2
         try:
             self.assertSequenceEqual(seq1, seq2)
-        except self.failureException, e:
+        except self.failureException as e:
             msg = e.args[0]
         else:
             self.fail('assertSequenceEqual did not fail.')
@@ -933,7 +934,7 @@ test case
         self.maxDiff = None
         try:
             self.assertSequenceEqual(seq1, seq2)
-        except self.failureException, e:
+        except self.failureException as e:
             msg = e.args[0]
         else:
             self.fail('assertSequenceEqual did not fail.')
@@ -961,7 +962,7 @@ test case
         test._truncateMessage = truncate
         try:
             test.assertDictEqual({}, {1: 0})
-        except self.failureException, e:
+        except self.failureException as e:
             self.assertEqual(str(e), 'foo')
         else:
             self.fail('assertDictEqual did not fail')
@@ -973,7 +974,7 @@ test case
         test._truncateMessage = truncate
         try:
             test.assertMultiLineEqual('foo', 'bar')
-        except self.failureException, e:
+        except self.failureException as e:
             self.assertEqual(str(e), 'foo')
         else:
             self.fail('assertMultiLineEqual did not fail')

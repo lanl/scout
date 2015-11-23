@@ -11,6 +11,7 @@
 
 #include "lldb/Host/FileSystem.h"
 
+#include <stddef.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
@@ -29,18 +30,31 @@ namespace {
 const int kDomain = AF_UNIX;
 const int kType   = SOCK_STREAM;
 
-bool SetSockAddr(llvm::StringRef name, const size_t name_offset, sockaddr_un* saddr_un)
+bool SetSockAddr(llvm::StringRef name,
+                 const size_t name_offset,
+                 sockaddr_un* saddr_un,
+                 socklen_t& saddr_un_len)
 {
     if (name.size() + name_offset > sizeof(saddr_un->sun_path))
         return false;
 
+    memset(saddr_un, 0, sizeof(*saddr_un));
     saddr_un->sun_family = kDomain;
-    memset(saddr_un->sun_path, 0, sizeof(saddr_un->sun_path));
 
-    strncpy(&saddr_un->sun_path[name_offset], name.data(), name.size());
+    memcpy(saddr_un->sun_path + name_offset, name.data(), name.size());
+
+    // For domain sockets we can use SUN_LEN in order to calculate size of
+    // sockaddr_un, but for abstract sockets we have to calculate size manually
+    // because of leading null symbol.
+    if (name_offset == 0)
+        saddr_un_len = SUN_LEN(saddr_un);
+    else
+        saddr_un_len = offsetof(struct sockaddr_un, sun_path) + name_offset + name.size();
+
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__)
-    saddr_un->sun_len = SUN_LEN (saddr_un);
+    saddr_un->sun_len = saddr_un_len;
 #endif
+
     return true;
 }
 
@@ -65,11 +79,12 @@ Error
 DomainSocket::Connect(llvm::StringRef name)
 {
     sockaddr_un saddr_un;
-    if (!SetSockAddr(name, GetNameOffset(), &saddr_un))
+    socklen_t saddr_un_len;
+    if (!SetSockAddr(name, GetNameOffset(), &saddr_un, saddr_un_len))
         return Error("Failed to set socket address");
 
     Error error;
-    if (::connect(GetNativeSocket(), (struct sockaddr *)&saddr_un, sizeof(saddr_un)) < 0)
+    if (::connect(GetNativeSocket(), (struct sockaddr *)&saddr_un, saddr_un_len) < 0)
         SetLastError (error);
 
     return error;
@@ -79,13 +94,14 @@ Error
 DomainSocket::Listen(llvm::StringRef name, int backlog)
 {
     sockaddr_un saddr_un;
-    if (!SetSockAddr(name, GetNameOffset(), &saddr_un))
+    socklen_t saddr_un_len;
+    if (!SetSockAddr(name, GetNameOffset(), &saddr_un, saddr_un_len))
         return Error("Failed to set socket address");
 
     DeleteSocketFile(name);
 
     Error error;
-    if (::bind(GetNativeSocket(), (struct sockaddr *)&saddr_un, sizeof(saddr_un)) == 0)
+    if (::bind(GetNativeSocket(), (struct sockaddr *)&saddr_un, saddr_un_len) == 0)
         if (::listen(GetNativeSocket(), backlog) == 0)
             return error;
 

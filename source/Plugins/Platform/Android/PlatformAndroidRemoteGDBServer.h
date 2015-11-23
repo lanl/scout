@@ -19,16 +19,19 @@
 // Project includes
 #include "Plugins/Platform/gdb-server/PlatformRemoteGDBServer.h"
 
+#include "llvm/ADT/Optional.h"
+
+#include "AdbClient.h"
+
 namespace lldb_private {
 namespace platform_android {
 
 class PlatformAndroidRemoteGDBServer : public platform_gdb_server::PlatformRemoteGDBServer
 {
 public:
-    PlatformAndroidRemoteGDBServer ();
+    PlatformAndroidRemoteGDBServer();
 
-    virtual
-    ~PlatformAndroidRemoteGDBServer ();
+    ~PlatformAndroidRemoteGDBServer() override;
 
     Error
     ConnectRemote (Args& args) override;
@@ -39,6 +42,7 @@ public:
 protected:
     std::string m_device_id;
     std::map<lldb::pid_t, uint16_t> m_port_forwards;
+    llvm::Optional<AdbClient::UnixSocketNamespace> m_socket_namespace;
 
     bool
     LaunchGDBServer (lldb::pid_t &pid, std::string &connect_url) override;
@@ -57,10 +61,9 @@ protected:
 
 private:
     DISALLOW_COPY_AND_ASSIGN (PlatformAndroidRemoteGDBServer);
-
 };
 
 } // namespace platform_android
 } // namespace lldb_private
 
-#endif  // liblldb_PlatformAndroidRemoteGDBServer_h_
+#endif // liblldb_PlatformAndroidRemoteGDBServer_h_

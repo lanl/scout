@@ -1,4 +1,4 @@
-//===-- PythonDataObjects.h----------------------------------------*- C++ -*-===//
+//===-- PythonDataObjects.h--------------------------------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -10,9 +10,10 @@
 #ifndef LLDB_PLUGINS_SCRIPTINTERPRETER_PYTHON_PYTHONDATAOBJECTS_H
 #define LLDB_PLUGINS_SCRIPTINTERPRETER_PYTHON_PYTHONDATAOBJECTS_H
 
+#ifndef LLDB_DISABLE_PYTHON
+
 // C Includes
 // C++ Includes
-
 // Other libraries and framework includes
 // Project includes
 #include "lldb/lldb-defines.h"
@@ -23,6 +24,7 @@
 #include "lldb/Interpreter/OptionValue.h"
 
 namespace lldb_private {
+
 class PythonString;
 class PythonList;
 class PythonDictionary;
@@ -30,7 +32,7 @@ class PythonInteger;
 
 class StructuredPythonObject : public StructuredData::Generic
 {
-  public:
+public:
     StructuredPythonObject()
         : StructuredData::Generic()
     {
@@ -42,7 +44,7 @@ class StructuredPythonObject : public StructuredData::Generic
         Py_XINCREF(GetValue());
     }
 
-    virtual ~StructuredPythonObject()
+    ~StructuredPythonObject() override
     {
         if (Py_IsInitialized())
             Py_XDECREF(GetValue());
@@ -57,7 +59,7 @@ class StructuredPythonObject : public StructuredData::Generic
 
     void Dump(Stream &s) const override;
 
-  private:
+private:
     DISALLOW_COPY_AND_ASSIGN(StructuredPythonObject);
 };
 
@@ -69,6 +71,9 @@ enum class PyObjectType
     Dictionary,
     List,
     String,
+    Module,
+    Callable,
+    Tuple,
     File
 };
 
@@ -106,7 +111,10 @@ public:
         Reset(rhs);
     }
 
-    virtual ~PythonObject() { Reset(); }
+    virtual ~PythonObject()
+    {
+        Reset();
+    }
 
     void
     Reset()
@@ -182,20 +190,40 @@ public:
         return result;
     }
 
-    PyObjectType
-    GetObjectType() const;
-
-    PythonString
-    Repr ();
-        
-    PythonString
-    Str ();
-
     PythonObject &
     operator=(const PythonObject &other)
     {
         Reset(PyRefType::Borrowed, other.get());
         return *this;
+    }
+
+    PyObjectType
+    GetObjectType() const;
+
+    PythonString
+    Repr() const;
+
+    PythonString
+    Str() const;
+
+    static PythonObject
+    ResolveNameWithDictionary(llvm::StringRef name, const PythonDictionary &dict);
+
+    template<typename T>
+    static T
+    ResolveNameWithDictionary(llvm::StringRef name, const PythonDictionary &dict)
+    {
+        return ResolveNameWithDictionary(name, dict).AsType<T>();
+    }
+
+    PythonObject
+    ResolveName(llvm::StringRef name) const;
+
+    template<typename T>
+    T
+    ResolveName(llvm::StringRef name) const
+    {
+        return ResolveName(name).AsType<T>();
     }
 
     bool
@@ -221,7 +249,8 @@ public:
         return T(PyRefType::Borrowed, m_py_obj);
     }
 
-    StructuredData::ObjectSP CreateStructuredObject() const;
+    StructuredData::ObjectSP
+    CreateStructuredObject() const;
 
 protected:
     PyObject* m_py_obj;
@@ -235,6 +264,7 @@ public:
     explicit PythonString(const char *string);
     PythonString(PyRefType type, PyObject *o);
     PythonString(const PythonString &object);
+
     ~PythonString() override;
 
     static bool Check(PyObject *py_obj);
@@ -262,6 +292,7 @@ public:
     explicit PythonInteger(int64_t value);
     PythonInteger(PyRefType type, PyObject *o);
     PythonInteger(const PythonInteger &object);
+
     ~PythonInteger() override;
 
     static bool Check(PyObject *py_obj);
@@ -282,10 +313,12 @@ public:
 class PythonList : public PythonObject
 {
 public:
+    PythonList() {}
     explicit PythonList(PyInitialValue value);
     explicit PythonList(int list_size);
     PythonList(PyRefType type, PyObject *o);
     PythonList(const PythonList &list);
+
     ~PythonList() override;
 
     static bool Check(PyObject *py_obj);
@@ -306,12 +339,43 @@ public:
     StructuredData::ArraySP CreateStructuredArray() const;
 };
 
+class PythonTuple : public PythonObject
+{
+public:
+    PythonTuple() {}
+    explicit PythonTuple(PyInitialValue value);
+    explicit PythonTuple(int tuple_size);
+    PythonTuple(PyRefType type, PyObject *o);
+    PythonTuple(const PythonTuple &tuple);
+    PythonTuple(std::initializer_list<PythonObject> objects);
+    PythonTuple(std::initializer_list<PyObject*> objects);
+
+    ~PythonTuple() override;
+
+    static bool Check(PyObject *py_obj);
+
+    // Bring in the no-argument base class version
+    using PythonObject::Reset;
+
+    void Reset(PyRefType type, PyObject *py_obj) override;
+
+    uint32_t GetSize() const;
+
+    PythonObject GetItemAtIndex(uint32_t index) const;
+
+    void SetItemAtIndex(uint32_t index, const PythonObject &object);
+
+    StructuredData::ArraySP CreateStructuredArray() const;
+};
+
 class PythonDictionary : public PythonObject
 {
 public:
+    PythonDictionary() {}
     explicit PythonDictionary(PyInitialValue value);
     PythonDictionary(PyRefType type, PyObject *o);
     PythonDictionary(const PythonDictionary &dict);
+
     ~PythonDictionary() override;
 
     static bool Check(PyObject *py_obj);
@@ -331,6 +395,82 @@ public:
     StructuredData::DictionarySP CreateStructuredDictionary() const;
 };
 
+class PythonModule : public PythonObject
+{
+  public:
+    PythonModule();
+    PythonModule(PyRefType type, PyObject *o);
+    PythonModule(const PythonModule &dict);
+
+    ~PythonModule() override;
+
+    static bool Check(PyObject *py_obj);
+
+    static PythonModule
+    BuiltinsModule();
+
+    static PythonModule
+    MainModule();
+
+    static PythonModule
+    AddModule(llvm::StringRef module);
+
+    static PythonModule
+    ImportModule(llvm::StringRef module);
+
+    // Bring in the no-argument base class version
+    using PythonObject::Reset;
+
+    void Reset(PyRefType type, PyObject *py_obj) override;
+
+    PythonDictionary GetDictionary() const;
+};
+
+class PythonCallable : public PythonObject
+{
+public:
+    struct ArgInfo {
+        size_t count;
+        bool has_varargs : 1;
+        bool has_kwargs : 1;
+    };
+
+    PythonCallable();
+    PythonCallable(PyRefType type, PyObject *o);
+    PythonCallable(const PythonCallable &dict);
+
+    ~PythonCallable() override;
+
+    static bool
+    Check(PyObject *py_obj);
+
+    // Bring in the no-argument base class version
+    using PythonObject::Reset;
+
+    void
+    Reset(PyRefType type, PyObject *py_obj) override;
+
+    ArgInfo
+    GetNumArguments() const;
+
+    PythonObject
+    operator ()();
+
+    PythonObject
+    operator ()(std::initializer_list<PyObject*> args);
+
+    PythonObject
+    operator ()(std::initializer_list<PythonObject> args);
+
+    template<typename Arg, typename... Args>
+    PythonObject
+    operator ()(const Arg &arg, Args... args)
+    {
+        return operator()({ arg, args... });
+    }
+};
+
+
 class PythonFile : public PythonObject
 {
   public:
@@ -338,6 +478,7 @@ class PythonFile : public PythonObject
     PythonFile(File &file, const char *mode);
     PythonFile(const char *path, const char *mode);
     PythonFile(PyRefType type, PyObject *o);
+
     ~PythonFile() override;
 
     static bool Check(PyObject *py_obj);
@@ -352,4 +493,6 @@ class PythonFile : public PythonObject
 
 } // namespace lldb_private
 
-#endif  // LLDB_PLUGINS_SCRIPTINTERPRETER_PYTHON_PYTHONDATAOBJECTS_H
+#endif
+
+#endif // LLDB_PLUGINS_SCRIPTINTERPRETER_PYTHON_PYTHONDATAOBJECTS_H

@@ -10,7 +10,9 @@
 #ifndef liblldb_ExpressionVariable_h_
 #define liblldb_ExpressionVariable_h_
 
+// C Includes
 // C++ Includes
+#include <memory>
 #include <vector>
 
 // Other libraries and framework includes
@@ -41,10 +43,13 @@ public:
     LLVMCastKind getKind() const { return m_kind; }
     
     ExpressionVariable(LLVMCastKind kind) :
+        m_flags(0),
         m_kind(kind)
     {
     }
-    
+
+    virtual ~ExpressionVariable();
+
     size_t
     GetByteSize ()
     {
@@ -110,18 +115,16 @@ public:
     void
     TransferAddress (bool force = false)
     {
-        if (m_live_sp.get() == NULL)
+        if (m_live_sp.get() == nullptr)
             return;
         
-        if (m_frozen_sp.get() == NULL)
+        if (m_frozen_sp.get() == nullptr)
             return;
         
         if (force || (m_frozen_sp->GetLiveAddress() == LLDB_INVALID_ADDRESS))
             m_frozen_sp->SetLiveAddress(m_live_sp->GetLiveAddress());
     }
     
-    virtual ~ExpressionVariable();
-
     enum Flags
     {
         EVNone                  = 0,
@@ -207,7 +210,7 @@ public:
     ///     The name of the requested variable.
     ///
     /// @return
-    ///     The variable requested, or NULL if that variable is not in the list.
+    ///     The variable requested, or nullptr if that variable is not in the list.
     //----------------------------------------------------------------------
     lldb::ExpressionVariableSP
     GetVariable (const ConstString &name)
@@ -286,7 +289,9 @@ public:
         m_kind(kind)
     {
     }
-    
+
+    virtual ~PersistentExpressionState();
+
     virtual lldb::ExpressionVariableSP
     CreatePersistentVariable (const lldb::ValueObjectSP &valobj_sp) = 0;
     
@@ -297,8 +302,6 @@ public:
                               lldb::ByteOrder byte_order,
                               uint32_t addr_byte_size) = 0;
 
-    virtual ~PersistentExpressionState ();
-    
     virtual ConstString
     GetNextPersistentVariableName () = 0;
     
@@ -312,6 +315,6 @@ private:
     LLVMCastKind m_kind;
 };
     
-}
+} // namespace lldb_private
 
-#endif /* liblldb_ExpressionVariable_h_ */
+#endif // liblldb_ExpressionVariable_h_

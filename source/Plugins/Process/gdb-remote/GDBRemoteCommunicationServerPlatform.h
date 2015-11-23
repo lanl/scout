@@ -10,11 +10,15 @@
 #ifndef liblldb_GDBRemoteCommunicationServerPlatform_h_
 #define liblldb_GDBRemoteCommunicationServerPlatform_h_
 
-#include "GDBRemoteCommunicationServerCommon.h"
-
-#include "lldb/Host/Socket.h"
-
+// C Includes
+// C++ Includes
+#include <map>
 #include <set>
+
+// Other libraries and framework includes
+// Project includes
+#include "GDBRemoteCommunicationServerCommon.h"
+#include "lldb/Host/Socket.h"
 
 namespace lldb_private {
 namespace process_gdb_remote {
@@ -25,10 +29,10 @@ class GDBRemoteCommunicationServerPlatform :
 public:
     typedef std::map<uint16_t, lldb::pid_t> PortMap;
 
-    GDBRemoteCommunicationServerPlatform(const Socket::SocketProtocol socket_protocol);
+    GDBRemoteCommunicationServerPlatform(const Socket::SocketProtocol socket_protocol,
+                                         const char* socket_scheme);
 
-    virtual
-    ~GDBRemoteCommunicationServerPlatform();
+    ~GDBRemoteCommunicationServerPlatform() override;
 
     Error
     LaunchProcess () override;
@@ -64,6 +68,7 @@ public:
 
 protected:
     const Socket::SocketProtocol m_socket_protocol;
+    const std::string m_socket_scheme;
     Mutex m_spawned_pids_mutex;
     std::set<lldb::pid_t> m_spawned_pids;
     lldb::PlatformSP m_platform_sp;
@@ -112,13 +117,10 @@ private:
     static FileSpec
     GetDomainSocketPath(const char* prefix);
 
-    //------------------------------------------------------------------
-    // For GDBRemoteCommunicationServerPlatform only
-    //------------------------------------------------------------------
     DISALLOW_COPY_AND_ASSIGN (GDBRemoteCommunicationServerPlatform);
 };
 
 } // namespace process_gdb_remote
 } // namespace lldb_private
 
-#endif  // liblldb_GDBRemoteCommunicationServerPlatform_h_
+#endif // liblldb_GDBRemoteCommunicationServerPlatform_h_

@@ -22,6 +22,10 @@
 #include "lldb/DataFormatters/DumpValueObjectOptions.h"
 #include "lldb/Symbol/CompilerType.h"
 
+//#include <functional>
+//#include <memory>
+//#include <set>
+
 namespace lldb_private {
 
 class ValueObjectPrinter
@@ -41,14 +45,19 @@ public:
     PrintValueObject ();
     
 protected:
+    typedef std::set<uint64_t> InstancePointersSet;
+    typedef std::shared_ptr<InstancePointersSet> InstancePointersSetSP;
     
+    InstancePointersSetSP m_printed_instance_pointers;
+
     // only this class (and subclasses, if any) should ever be concerned with
     // the depth mechanism
     ValueObjectPrinter (ValueObject* valobj,
                         Stream* s,
                         const DumpValueObjectOptions& options,
                         const DumpValueObjectOptions::PointerDepth& ptr_depth,
-                        uint32_t curr_depth);
+                        uint32_t curr_depth,
+                        InstancePointersSetSP printed_instance_pointers);
     
     // we should actually be using delegating constructors here
     // but some versions of GCC still have trouble with those
@@ -57,7 +66,8 @@ protected:
           Stream* s,
           const DumpValueObjectOptions& options,
           const DumpValueObjectOptions::PointerDepth& ptr_depth,
-          uint32_t curr_depth);
+          uint32_t curr_depth,
+          InstancePointersSetSP printed_instance_pointers);
     
     bool
     GetMostSpecializedValue ();
@@ -78,10 +88,16 @@ protected:
     IsNil ();
     
     bool
+    IsUninitialized ();
+    
+    bool
     IsPtr ();
     
     bool
     IsRef ();
+    
+    bool
+    IsInstancePointer ();
     
     bool
     IsAggregate ();
@@ -101,8 +117,12 @@ protected:
     bool
     CheckScopeIfNeeded ();
     
+    bool
+    ShouldPrintEmptyBrackets (bool value_printed,
+                              bool summary_printed);
+    
     TypeSummaryImpl*
-    GetSummaryFormatter ();
+    GetSummaryFormatter (bool null_if_omitted = true);
     
     void
     GetValueSummaryError (std::string& value,
@@ -157,20 +177,23 @@ private:
     ValueObject *m_orig_valobj;
     ValueObject *m_valobj;
     Stream *m_stream;
-    DumpValueObjectOptions options;
+    DumpValueObjectOptions m_options;
     Flags m_type_flags;
     CompilerType m_compiler_type;
     DumpValueObjectOptions::PointerDepth m_ptr_depth;
     uint32_t m_curr_depth;
     LazyBool m_should_print;
     LazyBool m_is_nil;
+    LazyBool m_is_uninit;
     LazyBool m_is_ptr;
     LazyBool m_is_ref;
     LazyBool m_is_aggregate;
+    LazyBool m_is_instance_ptr;
     std::pair<TypeSummaryImpl*,bool> m_summary_formatter;
     std::string m_value;
     std::string m_summary;
     std::string m_error;
+    bool m_val_summary_ok;
     std::pair<TypeValidatorResult,std::string> m_validation;
     
     friend struct StringSummaryFormat;

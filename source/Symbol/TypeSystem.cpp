@@ -55,6 +55,12 @@ TypeSystem::CreateInstance (lldb::LanguageType language, Target *target)
     return lldb::TypeSystemSP();
 }
 
+bool
+TypeSystem::IsAnonymousType (lldb::opaque_compiler_type_t type)
+{
+    return false;
+}
+
 CompilerType
 TypeSystem::GetLValueReferenceType (lldb::opaque_compiler_type_t type)
 {
@@ -104,7 +110,7 @@ TypeSystem::GetTypeForFormatters (void* type)
 }
 
 LazyBool
-TypeSystem::ShouldPrintAsOneLiner (void* type)
+TypeSystem::ShouldPrintAsOneLiner (void* type, ValueObject* valobj)
 {
     return eLazyBoolCalculate;
 }
@@ -113,6 +119,36 @@ bool
 TypeSystem::IsMeaninglessWithoutDynamicResolution (void* type)
 {
     return false;
+}
+
+ConstString
+TypeSystem::DeclGetMangledName (void *opaque_decl)
+{
+    return ConstString();
+}
+
+CompilerDeclContext
+TypeSystem::DeclGetDeclContext (void *opaque_decl)
+{
+    return CompilerDeclContext();
+}
+
+CompilerType
+TypeSystem::DeclGetFunctionReturnType(void *opaque_decl)
+{
+    return CompilerType();
+}
+
+size_t
+TypeSystem::DeclGetFunctionNumArguments(void *opaque_decl)
+{
+    return 0;
+}
+
+CompilerType
+TypeSystem::DeclGetFunctionArgumentType (void *opaque_decl, size_t arg_idx)
+{
+    return CompilerType();
 }
 
 #pragma mark TypeSystemMap

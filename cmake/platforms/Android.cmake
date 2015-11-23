@@ -103,7 +103,7 @@ if( X86 )
 elseif( ANDROID_ABI STREQUAL "armeabi" )
  # 64 bit atomic operations used in c++ libraries require armv7-a instructions
  # armv5te and armv6 were tried but do not work.
- set( ANDROID_CXX_FLAGS "${ANDROID_CXX_FLAGS} -march=armv7-a" )
+ set( ANDROID_CXX_FLAGS "${ANDROID_CXX_FLAGS} -march=armv7-a -mthumb" )
  if( LLVM_BUILD_STATIC )
   # Temporary workaround for static linking with the latest API.
   set( ANDROID_CXX_FLAGS "${ANDROID_CXX_FLAGS} -DANDROID_ARM_BUILD_STATIC" )
@@ -114,6 +114,10 @@ elseif( ANDROID_ABI STREQUAL "mips" )
  if( index EQUAL -1 )
   list( APPEND LLDB_SYSTEM_LIBS atomic )
   set( LLDB_SYSTEM_LIBS ${LLDB_SYSTEM_LIBS} CACHE INTERNAL "" FORCE )
+ endif()
+ if( LLVM_BUILD_STATIC )
+  # Temporary workaround for static linking with the latest API.
+  set( ANDROID_CXX_FLAGS "${ANDROID_CXX_FLAGS} -DANDROID_MIPS_BUILD_STATIC" )
  endif()
 endif()
 

@@ -11,7 +11,6 @@
 #include "lldb/Core/Error.h"
 #include "lldb/Core/Log.h"
 #include "lldb/Host/common/TCPSocket.h"
-#include "AdbClient.h"
 #include "PlatformAndroidRemoteGDBServer.h"
 #include "Utility/UriParser.h"
 
@@ -27,6 +26,7 @@ static Error
 ForwardPortWithAdb (const uint16_t local_port,
                     const uint16_t remote_port,
                     const char* remote_socket_name,
+                    const llvm::Optional<AdbClient::UnixSocketNamespace>& socket_namespace,
                     std::string& device_id)
 {
     Log *log(GetLogIfAllCategoriesSet (LIBLLDB_LOG_PLATFORM));
@@ -49,7 +49,11 @@ ForwardPortWithAdb (const uint16_t local_port,
 
     if (log)
         log->Printf("Forwarding remote socket \"%s\" to local TCP port %d", remote_socket_name, local_port);
-    return adb.SetPortForwarding(local_port, remote_socket_name);
+
+    if (!socket_namespace)
+        return Error("Invalid socket namespace");
+
+    return adb.SetPortForwarding(local_port, remote_socket_name, *socket_namespace);
 }
 
 static Error
@@ -126,8 +130,14 @@ PlatformAndroidRemoteGDBServer::ConnectRemote (Args& args)
         return Error("URL is null.");
     if (!UriParser::Parse (url, scheme, host, remote_port, path))
         return Error("Invalid URL: %s", url);
-    if (scheme == "adb")
+    if (host != "localhost")
         m_device_id = host;
+
+    m_socket_namespace.reset();
+    if (scheme == ConnectionFileDescriptor::UNIX_CONNECT_SCHEME)
+        m_socket_namespace = AdbClient::UnixSocketNamespaceFileSystem;
+    else if (scheme == ConnectionFileDescriptor::UNIX_ABSTRACT_CONNECT_SCHEME)
+        m_socket_namespace = AdbClient::UnixSocketNamespaceAbstract;
 
     std::string connect_url;
     auto error = MakeConnectURL (g_remote_platform_pid,
@@ -196,7 +206,11 @@ PlatformAndroidRemoteGDBServer::MakeConnectURL(const lldb::pid_t pid,
         if (error.Fail())
             return error;
 
-        error = ForwardPortWithAdb(local_port, remote_port, remote_socket_name, m_device_id);
+        error = ForwardPortWithAdb(local_port,
+                                   remote_port,
+                                   remote_socket_name,
+                                   m_socket_namespace,
+                                   m_device_id);
         if (error.Success())
         {
             m_port_forwards[pid] = local_port;
