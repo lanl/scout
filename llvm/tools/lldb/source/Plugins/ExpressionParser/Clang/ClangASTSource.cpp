@@ -543,7 +543,7 @@ ClangASTSource::FindExternalLexicalDecls (const DeclContext *decl_context,
             {
               QualType copied_field_type = copied_field->getType();
               
-              m_ast_importer->RequireCompleteType(copied_field_type);
+              m_ast_importer_sp->RequireCompleteType(copied_field_type);
             }
             // +===============================================================
 

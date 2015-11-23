@@ -89,7 +89,7 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
         dumper.ToLog(log, "      [CTD] ");
     }
 
-    if (!m_ast_importer->CompleteMeshDecl (mesh_decl))
+    if (!m_ast_importer_sp->CompleteMeshDecl (mesh_decl))
     {
         // We couldn't complete the type.  Maybe there's a definition
         // somewhere else that can be completed.
@@ -103,7 +103,7 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
 
         if (const NamespaceDecl *namespace_context = dyn_cast<NamespaceDecl>(decl_ctx))
         {
-            ClangASTImporter::NamespaceMapSP namespace_map = m_ast_importer->GetNamespaceMap(namespace_context);
+            ClangASTImporter::NamespaceMapSP namespace_map = m_ast_importer_sp->GetNamespaceMap(namespace_context);
 
             if (log && log->GetVerbose())
                 log->Printf("      CTD[%u] Inspecting namespace map %p (%d entries)",
@@ -153,7 +153,7 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
 
                     MeshDecl *candidate_mesh_decl = const_cast<MeshDecl*>(mesh_type->getDecl());
 
-                    if (m_ast_importer->CompleteMeshDeclWithOrigin (mesh_decl, candidate_mesh_decl))
+                    if (m_ast_importer_sp->CompleteMeshDeclWithOrigin (mesh_decl, candidate_mesh_decl))
                         found = true;
                 }
             }
@@ -193,7 +193,7 @@ ClangASTSource::CompleteType (MeshDecl *mesh_decl)
 
                 MeshDecl *candidate_mesh_decl = const_cast<MeshDecl*>(mesh_type->getDecl());
 
-                if (m_ast_importer->CompleteMeshDeclWithOrigin (mesh_decl, candidate_mesh_decl))
+                if (m_ast_importer_sp->CompleteMeshDeclWithOrigin (mesh_decl, candidate_mesh_decl))
                     found = true;
             }
         }
@@ -228,7 +228,7 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
     dumper.ToLog(log, "      [CTD] ");
   }
   
-  if (!m_ast_importer->CompleteFrameDecl (frame_decl))
+  if (!m_ast_importer_sp->CompleteFrameDecl (frame_decl))
   {
     // We couldn't complete the type.  Maybe there's a definition
     // somewhere else that can be completed.
@@ -242,7 +242,7 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
     
     if (const NamespaceDecl *namespace_context = dyn_cast<NamespaceDecl>(decl_ctx))
     {
-      ClangASTImporter::NamespaceMapSP namespace_map = m_ast_importer->GetNamespaceMap(namespace_context);
+      ClangASTImporter::NamespaceMapSP namespace_map = m_ast_importer_sp->GetNamespaceMap(namespace_context);
       
       if (log && log->GetVerbose())
         log->Printf("      CTD[%u] Inspecting namespace map %p (%d entries)",
@@ -292,7 +292,7 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
           
           FrameDecl *candidate_frame_decl = const_cast<FrameDecl*>(frame_type->getDecl());
           
-          if (m_ast_importer->CompleteFrameDeclWithOrigin (frame_decl, candidate_frame_decl))
+          if (m_ast_importer_sp->CompleteFrameDeclWithOrigin (frame_decl, candidate_frame_decl))
             found = true;
         }
       }
@@ -332,7 +332,7 @@ ClangASTSource::CompleteType (FrameDecl *frame_decl)
         
         FrameDecl *candidate_frame_decl = const_cast<FrameDecl*>(frame_type->getDecl());
         
-        if (m_ast_importer->CompleteFrameDeclWithOrigin (frame_decl, candidate_frame_decl))
+        if (m_ast_importer_sp->CompleteFrameDeclWithOrigin (frame_decl, candidate_frame_decl))
           found = true;
       }
     }
