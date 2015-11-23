@@ -1481,8 +1481,12 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
       FuncAttrs.addAttribute("no-frame-pointer-elim-non-leaf");
     }
 
+    bool DisableTailCalls =
+        CodeGenOpts.DisableTailCalls ||
+        (TargetDecl && TargetDecl->hasAttr<DisableTailCallsAttr>());
     FuncAttrs.addAttribute("disable-tail-calls",
-                           llvm::toStringRef(CodeGenOpts.DisableTailCalls));
+                           llvm::toStringRef(DisableTailCalls));
+
     FuncAttrs.addAttribute("less-precise-fpmad",
                            llvm::toStringRef(CodeGenOpts.LessPreciseFPMAD));
     FuncAttrs.addAttribute("no-infs-fp-math",
@@ -1506,24 +1510,7 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
     const FunctionDecl *FD = dyn_cast_or_null<FunctionDecl>(TargetDecl);
     if (FD && FD->hasAttr<TargetAttr>()) {
       llvm::StringMap<bool> FeatureMap;
-      const auto *TD = FD->getAttr<TargetAttr>();
-      TargetAttr::ParsedTargetAttr ParsedAttr = TD->parse();
-
-      // Make a copy of the features as passed on the command line into the
-      // beginning of the additional features from the function to override.
-      ParsedAttr.first.insert(
-          ParsedAttr.first.begin(),
-          getTarget().getTargetOpts().FeaturesAsWritten.begin(),
-          getTarget().getTargetOpts().FeaturesAsWritten.end());
-
-      if (ParsedAttr.second != "")
-	TargetCPU = ParsedAttr.second;
-
-      // Now populate the feature map, first with the TargetCPU which is either
-      // the default or a new one from the target attribute string. Then we'll
-      // use the passed in features (FeaturesAsWritten) along with the new ones
-      // from the attribute.
-      getTarget().initFeatureMap(FeatureMap, Diags, TargetCPU, ParsedAttr.first);
+      getFunctionFeatureMap(FeatureMap, FD);
 
       // Produce the canonical string for this set of features.
       std::vector<std::string> Features;
@@ -1533,6 +1520,13 @@ void CodeGenModule::ConstructAttributeList(const CGFunctionInfo &FI,
         Features.push_back((it->second ? "+" : "-") + it->first().str());
 
       // Now add the target-cpu and target-features to the function.
+      // While we populated the feature map above, we still need to
+      // get and parse the target attribute so we can get the cpu for
+      // the function.
+      const auto *TD = FD->getAttr<TargetAttr>();
+      TargetAttr::ParsedTargetAttr ParsedAttr = TD->parse();
+      if (ParsedAttr.second != "")
+        TargetCPU = ParsedAttr.second;
       if (TargetCPU != "")
         FuncAttrs.addAttribute("target-cpu", TargetCPU);
       if (!Features.empty()) {
@@ -2350,7 +2344,7 @@ void CodeGenFunction::EmitFunctionEpilog(const CGFunctionInfo &FI,
     if (RetAI.getInAllocaSRet()) {
       llvm::Function::arg_iterator EI = CurFn->arg_end();
       --EI;
-      llvm::Value *ArgStruct = EI;
+      llvm::Value *ArgStruct = &*EI;
       llvm::Value *SRet = Builder.CreateStructGEP(
           nullptr, ArgStruct, RetAI.getInAllocaFieldIndex());
       RV = Builder.CreateAlignedLoad(SRet, getPointerAlign(), "sret");
@@ -2365,7 +2359,7 @@ void CodeGenFunction::EmitFunctionEpilog(const CGFunctionInfo &FI,
     case TEK_Complex: {
       ComplexPairTy RT =
         EmitLoadOfComplex(MakeAddrLValue(ReturnValue, RetTy), EndLoc);
-      EmitStoreOfComplex(RT, MakeNaturalAlignAddrLValue(AI, RetTy),
+      EmitStoreOfComplex(RT, MakeNaturalAlignAddrLValue(&*AI, RetTy),
                          /*isInit*/ true);
       break;
     }
@@ -2374,7 +2368,7 @@ void CodeGenFunction::EmitFunctionEpilog(const CGFunctionInfo &FI,
       break;
     case TEK_Scalar:
       EmitStoreOfScalar(Builder.CreateLoad(ReturnValue),
-                        MakeNaturalAlignAddrLValue(AI, RetTy),
+                        MakeNaturalAlignAddrLValue(&*AI, RetTy),
                         /*isInit*/ true);
       break;
     }
@@ -2847,8 +2841,6 @@ struct DestroyUnpassedArg final : EHScopeStack::Cleanup {
   }
 };
 
-}
-
 struct DisableDebugLocationUpdates {
   CodeGenFunction &CGF;
   bool disabledDebugInfo;
@@ -2861,6 +2853,8 @@ struct DisableDebugLocationUpdates {
       CGF.enableDebugInfo();
   }
 };
+
+} // end anonymous namespace
 
 void CodeGenFunction::EmitCallArg(CallArgList &args, const Expr *E,
                                   QualType type) {
@@ -3440,8 +3434,14 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
         Attrs.addAttribute(getLLVMContext(), llvm::AttributeSet::FunctionIndex,
                            llvm::Attribute::AlwaysInline);
 
-  // Disable inlining inside SEH __try blocks.
-  if (isSEHTryScope())
+  // Disable inlining inside SEH __try blocks and cleanup funclets. None of the
+  // funclet EH personalities that clang supports have tables that are
+  // expressive enough to describe catching an exception inside a cleanup.
+  // __CxxFrameHandler3, for example, will terminate the program without
+  // catching it.
+  // FIXME: Move this decision to the LLVM inliner. Before we can do that, the
+  // inliner needs to know if a given call site is part of a cleanuppad.
+  if (isSEHTryScope() || isCleanupPadScope())
     Attrs =
         Attrs.addAttribute(getLLVMContext(), llvm::AttributeSet::FunctionIndex,
                            llvm::Attribute::NoInline);
@@ -3486,6 +3486,10 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
   // The stack cleanup for inalloca arguments has to run out of the normal
   // lexical order, so deactivate it and run it manually here.
   CallArgs.freeArgumentMemory(*this);
+
+  if (llvm::CallInst *Call = dyn_cast<llvm::CallInst>(CI))
+    if (TargetDecl && TargetDecl->hasAttr<NotTailCalledAttr>())
+      Call->setTailCallKind(llvm::CallInst::TCK_NoTail);
 
   RValue Ret = [&] {
     switch (RetAI.getKind()) {
